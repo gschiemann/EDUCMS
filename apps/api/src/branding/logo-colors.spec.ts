@@ -23,7 +23,15 @@ import {
   isChromatic,
   isLogoBackground,
   LOGO_BACKGROUNDS,
+  imagePixelStats,
+  looksPhotographic,
 } from './logo-colors';
+import sharp from 'sharp';
+import {
+  photoPng,
+  wordmarkPng,
+  awardBadgePng,
+} from '../../test/supertaco-site';
 
 // ── helpers ──────────────────────────────────────────────────────────
 /** Build an RGBA buffer of n pixels of one color. */
@@ -387,5 +395,76 @@ describe('resolveStoredLogoBackground — measure the mark we already hold', () 
     expect(['primary', 'dark']).toContain(
       resolveStoredLogoBackground({ svgInline: pale, primaryHex: '#0f2d52' }),
     );
+  });
+});
+
+// ── 2026-09-22: a mark or a PHOTOGRAPH? ────────────────────────────────
+//
+// supertacomex.com's apple-touch-icon is a 180×180 crop of a food photo; it
+// became "the logo" and its browns became the brand palette. Only the pixels
+// say it is a photo. The stand-ins (test/supertaco-site.ts) sit on the same
+// side of every threshold as the real files, measured 2026-09-22 (touch icon:
+// ~650 buckets, <2% flat; logo: 5 buckets; award badge: top-8 ≈ 77%).
+describe('imagePixelStats + looksPhotographic', () => {
+  async function stats(png: Buffer) {
+    const { data, info } = await sharp(png)
+      .resize(96, 96, { fit: 'inside', withoutEnlargement: true })
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    return imagePixelStats(data, info.width, info.height);
+  }
+
+  it('calls the food-photo touch icon a photograph', async () => {
+    const s = await stats(await photoPng(180, 180, 5));
+    expect(s.buckets).toBeGreaterThanOrEqual(160);
+    expect(s.top8Share).toBeLessThan(0.4);
+    expect(s.flatShare).toBeLessThan(0.15);
+    expect(looksPhotographic(s)).toBe(true);
+  });
+
+  it('never calls a flat two-ink wordmark on transparency a photograph', async () => {
+    const s = await stats(await wordmarkPng(1400, 392));
+    expect(s.transparentShare).toBeGreaterThan(0.3);
+    expect(s.buckets).toBeLessThan(20);
+    expect(looksPhotographic(s)).toBe(false);
+  });
+
+  it('never calls a flat award badge a photograph', async () => {
+    expect(looksPhotographic(await stats(await awardBadgePng(394, 196)))).toBe(
+      false,
+    );
+  });
+
+  it('refuses to call a tiny or mostly-transparent sample anything (thin evidence)', () => {
+    // 100 opaque noise pixels: many colors, but under the 300-pixel floor.
+    const n = 100;
+    const data = new Uint8Array(n * 4);
+    for (let i = 0; i < n; i++) {
+      data[i * 4] = (i * 37) % 256;
+      data[i * 4 + 1] = (i * 91) % 256;
+      data[i * 4 + 2] = (i * 53) % 256;
+      data[i * 4 + 3] = 255;
+    }
+    expect(looksPhotographic(imagePixelStats(data, 10, 10))).toBe(false);
+    expect(looksPhotographic(imagePixelStats(new Uint8Array(0), 0, 0))).toBe(
+      false,
+    );
+  });
+
+  it('counts transparency and flatness exactly on a known buffer', () => {
+    // 2×2: two opaque red pixels side by side (one flat pair), two transparent.
+    const data = new Uint8Array([
+      255, 0, 0, 255, 255, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0,
+    ]);
+    const s = imagePixelStats(data, 2, 2);
+    expect(s).toEqual({
+      pixels: 4,
+      opaque: 2,
+      transparentShare: 0.5,
+      buckets: 1,
+      top8Share: 1,
+      flatShare: 1,
+    });
   });
 });

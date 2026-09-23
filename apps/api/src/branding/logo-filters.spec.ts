@@ -18,6 +18,12 @@ import {
   scoreLogoCandidate,
   ensureSurvivor,
   hostOf,
+  awardBadgeDemotion,
+  brandKeysFrom,
+  logoSignalBonus,
+  capIconsBelowRealLogo,
+  isRealLogoCandidate,
+  decodedPhotoDemotion,
 } from './logo-filters';
 
 describe('classifyLogoUrl — third-party hosts (hard reject)', () => {
@@ -340,5 +346,199 @@ describe('hostOf', () => {
   it('returns empty string for a relative / unparseable URL', () => {
     expect(hostOf('/assets/logo.png')).toBe('');
     expect(hostOf('')).toBe('');
+  });
+});
+
+// ── 2026-09-22: the Super Taco logo — the real mark vs. its neighbours ──────
+//
+// supertacomex.com's header shows a "Best of Sacramento" award badge
+// (`BOSLogo19_edited.png`, 78) right before the real wordmark
+// (`super_taco_logo_(1).png`, 78, linked to the home page), and its
+// apple-touch-icon — a crop of a FOOD PHOTO — scored 85 above both.
+describe("awardBadgeDemotion — somebody else's program is not the logo", () => {
+  const badges: Array<[string, string, string]> = [
+    [
+      '"best of" in the alt',
+      'Best of Sacramento 2019',
+      'https://acme.com/img/badge-2019.png',
+    ],
+    ['an award filename', '', 'https://acme.com/img/award-2023.png'],
+    ['a winner seal', 'readers choice winner', 'https://acme.com/img/seal.png'],
+    [
+      'a certification mark',
+      'Certified B Corporation',
+      'https://acme.com/img/bcorp.png',
+    ],
+    ['a partner logo', 'our partners', 'https://acme.com/img/partner-logo.png'],
+    ['a top-N list', '', 'https://acme.com/img/top-10-restaurants.png'],
+    ['an "as seen on" strip', 'As seen on TV', 'https://acme.com/img/tv.png'],
+  ];
+  it.each(badges)('demotes %s', (_label, text, url) => {
+    const v = awardBadgeDemotion(text, url, ['acmetacos']);
+    expect(v.reject).toBe(false);
+    expect(v.factor).toBeLessThan(0.5);
+    expect(v.reasons).toEqual(['award/partner badge']);
+  });
+
+  it('exempts a mark that carries the BRAND name ("Best Of Philly" calls its own logo that)', () => {
+    const keys = brandKeysFrom('Best Of Philly Cheesesteaks');
+    expect(
+      awardBadgeDemotion(
+        'Best Of Philly Cheesesteaks logo',
+        'https://bop.com/img/best-of-philly-cheesesteaks-logo.png',
+        keys,
+      ).factor,
+    ).toBe(1);
+  });
+
+  it('leaves an ordinary logo alone — no token-boundary false hits', () => {
+    const plain: Array<[string, string]> = [
+      [
+        'super_taco_logo_(1).png',
+        'https://static.wixstatic.com/media/e44cfe_5ca48~mv2.png/v1/fill/w_700,h_196/super_taco_logo_(1).png',
+      ],
+      ['Generated Logo', 'https://acme.com/img/generated-logo.png'],
+      ['Won Ton House', 'https://wonton.com/logo.svg'],
+      ['Seal Beach Surf Shop', 'https://sealbeachsurf.com/logo.png'],
+    ];
+    for (const [text, url] of plain) {
+      expect(awardBadgeDemotion(text, url, []).factor).toBe(1);
+    }
+  });
+});
+
+describe('brandKeysFrom + logoSignalBonus — positive evidence of THE logo', () => {
+  it('normalizes brand names and drops "The" and short keys', () => {
+    expect(brandKeysFrom('Super Taco', 'Super Taco', 'Supertacomex')).toEqual([
+      'supertaco',
+      'supertacomex',
+    ]);
+    expect(brandKeysFrom('The Home Depot')).toEqual(['homedepot']);
+    expect(brandKeysFrom('IHOP', 'X', null, undefined)).toEqual(['ihop']);
+    expect(brandKeysFrom('Café Río')).toEqual(['caferio']);
+  });
+
+  it('super_taco_logo_(1).png — brand in the filename + linked home + wordmark shape = +31', () => {
+    const b = logoSignalBonus({
+      text: 'super_taco_logo_(1).png super_taco_logo_(1).png',
+      brandKeys: brandKeysFrom('Super Taco'),
+      linksHome: true,
+      width: 350,
+      height: 98,
+    });
+    expect(b).toEqual({ bonus: 31, brandMatch: true });
+  });
+
+  it('the award badge beside it earns nothing', () => {
+    const b = logoSignalBonus({
+      text: 'boslogo19_edited.png BOSLogo19_edited.png',
+      brandKeys: brandKeysFrom('Super Taco'),
+      linksHome: false,
+      width: 197,
+      height: 98,
+    });
+    expect(b).toEqual({ bonus: 0, brandMatch: false });
+  });
+
+  it('counts each signal on its own, and a square mark gets no shape bonus', () => {
+    expect(
+      logoSignalBonus({
+        text: 'logo.png',
+        linksHome: true,
+        width: 200,
+        height: 200,
+      }).bonus,
+    ).toBe(10);
+    expect(
+      logoSignalBonus({ text: 'logo.png', width: 900, height: 200 }).bonus,
+    ).toBe(6);
+    expect(
+      logoSignalBonus({
+        text: 'acme-coffee-logo.svg',
+        brandKeys: ['acmecoffee'],
+      }).bonus,
+    ).toBe(15);
+    // A 20:1 strip is a divider, not a wordmark.
+    expect(
+      logoSignalBonus({ text: 'strip.png', width: 2000, height: 100 }).bonus,
+    ).toBe(0);
+  });
+});
+
+describe('capIconsBelowRealLogo — a site icon never out-ranks the real mark', () => {
+  it('caps the apple-touch-icon / favicon / og card below the best real logo', () => {
+    const logos: Array<{
+      kind: string;
+      score: number;
+      filterReasons?: string[];
+    }> = [
+      { kind: 'apple-touch', score: 85 },
+      { kind: 'icon', score: 82 },
+      { kind: 'og', score: 60 },
+      { kind: 'img-logo', score: 70 },
+    ];
+    capIconsBelowRealLogo(logos);
+    const real = logos.find((l) => l.kind === 'img-logo')!;
+    for (const l of logos)
+      if (l !== real) expect(l.score).toBeLessThan(real.score);
+    expect(logos[0].score).toBe(63);
+    expect(logos[0].filterReasons?.join(' ')).toMatch(/site icon/);
+    // Already below the ceiling: untouched, no reason stamped.
+    expect(logos[2].score).toBe(60);
+    expect(logos[2].filterReasons).toBeUndefined();
+  });
+
+  it('is a no-op when the site has no real logo candidate (icons stay the fallback)', () => {
+    const logos = [
+      { kind: 'apple-touch', score: 85 },
+      {
+        kind: 'img-logo',
+        score: 20,
+        filterReasons: ['social/share/badge asset name'],
+      },
+    ];
+    capIconsBelowRealLogo(logos);
+    expect(logos[0].score).toBe(85);
+  });
+
+  it('does not count a DEMOTED img as a real logo', () => {
+    expect(isRealLogoCandidate({ kind: 'img-logo' })).toBe(true);
+    expect(isRealLogoCandidate({ kind: 'svg-inline', filterReasons: [] })).toBe(
+      true,
+    );
+    expect(
+      isRealLogoCandidate({
+        kind: 'img-logo',
+        filterReasons: ['award/partner badge'],
+      }),
+    ).toBe(false);
+    expect(isRealLogoCandidate({ kind: 'apple-touch' })).toBe(false);
+    expect(isRealLogoCandidate(null)).toBe(false);
+  });
+});
+
+describe('decodedPhotoDemotion + scoreLogoCandidate(brandKeys)', () => {
+  it('a candidate whose pixels are a photograph drops to a fifth', () => {
+    expect(decodedPhotoDemotion(true)).toEqual({
+      reject: false,
+      factor: 0.2,
+      reasons: ['decodes as a photograph'],
+    });
+    expect(decodedPhotoDemotion(false).factor).toBe(1);
+  });
+
+  it('scoreLogoCandidate applies the award demotion on every path', () => {
+    const v = scoreLogoCandidate(
+      {
+        url: 'https://acme.com/img/best-of-2019.png',
+        score: 78,
+        kind: 'img-logo',
+        text: 'best of the city',
+      },
+      'acme.com',
+      { brandKeys: ['acmetacos'] },
+    );
+    expect(v.score).toBeLessThan(30);
+    expect(v.reasons).toContain('award/partner badge');
   });
 });

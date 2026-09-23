@@ -82,6 +82,190 @@ export const PHOTO_TEXT_TOKEN: RegExp =
 /** Extensions that are photographic containers. Logos are ~never JPEG. */
 const PHOTO_EXT: RegExp = /\.(?:jpe?g|avif|heic|heif)(?:[?#]|$)/i;
 
+/**
+ * Award / accreditation / partner BADGES (2026-09-22). supertacomex.com shows
+ * a "Best of Sacramento" badge in its header, right before the real wordmark;
+ * both scored 78 and the badge came first in page order. A badge names
+ * SOMEBODY ELSE's program, so it is demoted — never rejected, because a
+ * gallery that hides the operator's own upload is worse than one extra tile.
+ *
+ * Matched on token boundaries against alt / class / id / filename. Not "won"
+ * (Won Ton House), not "seal" alone (a school seal IS its logo).
+ */
+export const AWARD_BADGE_TOKEN: RegExp =
+  /(?:^|[\s/_.,-])(?:best[\s_-]*of|awards?|awarded|winners?|certified|certification|accredited|accreditation|readers?[\s_-]*choice|voted|rated|top[\s_-]*\d{1,3}|seal[\s_-]*of|as[\s_-]*seen[\s_-]*(?:on|in)|featured[\s_-]*(?:on|in)|proud[\s_-]*member|member[\s_-]*of|partners?|sponsors?|sponsored|michelin|zagat|diners[\s_-]*choice|bbb)(?:[\s/_.,-]|$)/i;
+
+/** Discovery paths that yield a site-icon or a share card, never a header mark. */
+export const ICON_LOGO_KINDS: ReadonlySet<string> = new Set([
+  'icon',
+  'apple-touch',
+  'mask',
+  'og',
+  'twitter',
+]);
+
+export function isIconLogoKind(kind: string | undefined | null): boolean {
+  return !!kind && ICON_LOGO_KINDS.has(kind);
+}
+
+/** Lowercase, accent-stripped, alphanumerics only — "Super Taco" → "supertaco". */
+export function normalizeBrandText(s: string | null | undefined): string {
+  if (!s || typeof s !== 'string') return '';
+  let t = s;
+  try {
+    t = decodeURIComponent(t);
+  } catch {
+    /* keep the raw text */
+  }
+  return t
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '');
+}
+
+/**
+ * Brand keys to look for in a logo's filename / alt text: the display name,
+ * og:site_name, the host's root word. A leading "The " is dropped and keys
+ * under 4 characters are ignored (too many false matches).
+ */
+export function brandKeysFrom(
+  ...names: Array<string | null | undefined>
+): string[] {
+  const out = new Set<string>();
+  for (const n of names) {
+    if (!n || typeof n !== 'string') continue;
+    const k = normalizeBrandText(n.replace(/^\s*the\s+/i, ''));
+    if (k.length >= 4) out.add(k);
+  }
+  return [...out];
+}
+
+export interface LogoSignalInput {
+  /** alt / class / id / filename text. */
+  text: string;
+  brandKeys?: string[];
+  /** The mark is wrapped in a link to the site's home page. */
+  linksHome?: boolean;
+  width?: number;
+  height?: number;
+}
+
+/**
+ * Positive evidence that an <img> is THE site's logo (2026-09-22). A header
+ * logo that links home, whose file is named after the brand, in a wordmark
+ * shape, is the textbook logo; an award badge beside it has none of those.
+ *
+ *   brand name in the filename / alt     +15
+ *   wrapped in a link to the home page   +10
+ *   wordmark aspect (2.5:1 – 12:1)        +6
+ */
+export function logoSignalBonus(input: LogoSignalInput): {
+  bonus: number;
+  brandMatch: boolean;
+} {
+  let bonus = 0;
+  const text = normalizeBrandText(input.text || '');
+  const brandMatch =
+    !!text &&
+    (input.brandKeys || []).some((k) => k.length >= 4 && text.includes(k));
+  if (brandMatch) bonus += 15;
+  if (input.linksHome) bonus += 10;
+  const w = input.width || 0;
+  const h = input.height || 0;
+  if (w > 0 && h > 0) {
+    const aspect = w / h;
+    if (aspect >= 2.5 && aspect <= 12) bonus += 6;
+  }
+  return { bonus, brandMatch };
+}
+
+/**
+ * Demote an award / partner badge. A candidate whose text also carries the
+ * BRAND name is exempt — "Best Of Philly Cheesesteaks" may call its own logo
+ * `best-of-philly-logo.png`.
+ */
+export function awardBadgeDemotion(
+  text: string,
+  url: string,
+  brandKeys: string[] = [],
+): LogoFilterVerdict {
+  const reasons: string[] = [];
+  let pathPart = '';
+  try {
+    pathPart = decodeURIComponent(new URL(url).pathname);
+  } catch {
+    pathPart = url || '';
+  }
+  const haystack = `${text || ''} ${pathPart}`;
+  if (!AWARD_BADGE_TOKEN.test(haystack))
+    return { reject: false, factor: 1, reasons };
+  const norm = normalizeBrandText(haystack);
+  if (brandKeys.some((k) => k.length >= 4 && norm.includes(k))) {
+    return { reject: false, factor: 1, reasons };
+  }
+  reasons.push('award/partner badge');
+  return { reject: false, factor: 0.3, reasons };
+}
+
+/**
+ * A candidate that is plausibly the site's own mark: an <img> / inline-SVG
+ * logo that no filter has demoted. Favicons, touch icons and share cards never
+ * count — they are the fallback, not the logo.
+ */
+export function isRealLogoCandidate(
+  c: { kind?: string; filterReasons?: string[] } | null | undefined,
+): boolean {
+  if (!c) return false;
+  if (
+    !(
+      c.kind === 'img-logo' ||
+      c.kind === 'img-wordmark' ||
+      c.kind === 'svg-inline'
+    )
+  )
+    return false;
+  return !(c.filterReasons && c.filterReasons.length);
+}
+
+/**
+ * "A favicon / apple-touch-icon / og / twitter image is never the logo when a
+ * real header logo candidate exists" (2026-09-22). supertacomex.com's
+ * apple-touch-icon (base 85) beat its real header wordmark (78) — and the icon
+ * was a crop of a food photo. When any real candidate exists, every
+ * icon/share-card candidate is capped at 90% of the best real one. Mutates and
+ * returns `logos`; a no-op when there is no real candidate.
+ */
+export function capIconsBelowRealLogo<
+  T extends { kind?: string; score: number; filterReasons?: string[] },
+>(logos: T[]): T[] {
+  let best = -Infinity;
+  for (const c of logos)
+    if (isRealLogoCandidate(c) && c.score > best) best = c.score;
+  if (!Number.isFinite(best)) return logos;
+  const ceiling = Math.max(1, +(best * 0.9).toFixed(2));
+  for (const c of logos) {
+    if (!isIconLogoKind(c.kind) || c.score <= ceiling) continue;
+    c.score = ceiling;
+    c.filterReasons = [
+      ...(c.filterReasons || []),
+      'site icon / share card — the site has a real logo',
+    ];
+  }
+  return logos;
+}
+
+/**
+ * Demotion for a candidate whose DECODED pixels read as a photograph (see
+ * `looksPhotographic` in logo-colors.ts). A square icon cut from a food photo
+ * must lose to a wordmark.
+ */
+export function decodedPhotoDemotion(photographic: boolean): LogoFilterVerdict {
+  return photographic
+    ? { reject: false, factor: 0.2, reasons: ['decodes as a photograph'] }
+    : { reject: false, factor: 1, reasons: [] };
+}
+
 /** Lowercased hostname of a URL, or '' when it isn't parseable/absolute. */
 export function hostOf(url: string): string {
   try {
@@ -232,6 +416,7 @@ export function scoreLogoCandidate(
     text?: string;
   },
   siteHost = '',
+  opts: { brandKeys?: string[] } = {},
 ): { reject: boolean; score: number; reasons: string[] } {
   const urlVerdict = classifyLogoUrl(candidate.url, siteHost);
   if (urlVerdict.reject) {
@@ -244,8 +429,17 @@ export function scoreLogoCandidate(
     kind: candidate.kind,
     text: candidate.text,
   });
-  const factor = urlVerdict.factor * photoVerdict.factor;
-  const reasons = [...urlVerdict.reasons, ...photoVerdict.reasons];
+  const awardVerdict = awardBadgeDemotion(
+    candidate.text || '',
+    candidate.url,
+    opts.brandKeys || [],
+  );
+  const factor = urlVerdict.factor * photoVerdict.factor * awardVerdict.factor;
+  const reasons = [
+    ...urlVerdict.reasons,
+    ...photoVerdict.reasons,
+    ...awardVerdict.reasons,
+  ];
   return {
     reject: false,
     score: Math.max(1, +(candidate.score * factor).toFixed(2)),

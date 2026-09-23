@@ -20,7 +20,15 @@ import valueParser from 'postcss-value-parser';
 import { safeFetch, SsrfError } from './safe-fetch';
 import { parseColor, derivePalette, contrastRatio, wcagGrade, relativeLuminance, DerivedPalette, ContrastReport } from './color-utils';
 import { matchGoogleFont, buildGoogleFontsUrl } from './google-fonts';
-import { scoreLogoCandidate, ensureSurvivor, photoSignalDemotion } from './logo-filters';
+import {
+  scoreLogoCandidate,
+  ensureSurvivor,
+  photoSignalDemotion,
+  brandKeysFrom,
+  logoSignalBonus,
+  capIconsBelowRealLogo,
+  decodedPhotoDemotion,
+} from './logo-filters';
 import {
   extractSvgColors,
   dominantColorsFromRgba,
@@ -28,8 +36,11 @@ import {
   paletteFromLogoColors,
   suggestLogoBackground,
   svgInkLuminance,
+  imagePixelStats,
+  looksPhotographic,
   LogoBackground,
 } from './logo-colors';
+import { isPlaceholderImageUrl, largestSrcsetCandidate, originalImageUrl, SrcsetCandidate } from './image-url';
 
 // ── Types (also exported to the web via api-types later) ──────────
 
@@ -75,13 +86,27 @@ export interface LogoCandidate {
   inkLuminance?: number;
   /** Why this candidate was demoted, if it was. Diagnostics only. */
   filterReasons?: string[];
+  /**
+   * The decoded pixels read as a PHOTOGRAPH, not a mark (2026-09-22 — the
+   * Super Taco apple-touch-icon was a crop of a food photo). Such a candidate
+   * never supplies the brand palette.
+   */
+  photographic?: boolean;
 }
 
 export interface HeroCandidate {
   url: string;
   alt?: string;
+  /** The page's width/height ATTRIBUTES — a display box, not pixels. */
   width?: number;
   height?: number;
+  /** The image's true size where the page states it (Wix `data-image-info`). */
+  naturalWidth?: number;
+  naturalHeight?: number;
+  /** The biggest `w` descriptor in the image's srcset. */
+  srcsetWidth?: number;
+  /** `url` is a loading placeholder (e.g. a Wix `blur_2` LQIP) — use its CDN original. */
+  placeholder?: boolean;
   kind: 'og' | 'twitter' | 'large-img';
   score: number;
 }
@@ -464,21 +489,29 @@ export class BrandingScraperService {
     // skips obvious 1x1/SVG placeholders, and falls back to picking
     // the largest URL from a srcset descriptor. Returns null if
     // nothing usable was found.
-    const PLACEHOLDER_RE = /^data:image\/svg\+xml|placeholder|blank\.(gif|png)|1x1\.(gif|png)|spacer\.(gif|png)/i;
-    const isPlaceholder = (src: string): boolean => PLACEHOLDER_RE.test(src);
-    const pickLargestSrcset = (srcset: string): string | null => {
-      let best: { url: string; width: number } | null = null;
-      for (const raw of srcset.split(',')) {
-        const part = raw.trim();
-        if (!part) continue;
-        const [url, descriptor] = part.split(/\s+/);
-        if (!url) continue;
-        const width = descriptor ? parseInt(descriptor.replace(/[^\d]/g, ''), 10) || 0 : 0;
-        if (!best || width > best.width) best = { url, width };
+    //
+    // 2026-09-22 — the BIGGEST srcset candidate now wins over `src` (a page's
+    // `src` is the 1x / phone rendition), and srcsets are parsed the way a
+    // browser parses them: Wix URLs carry commas INSIDE the URL
+    // (`w_35,h_35,al_c`), which the old `split(',')` cut in half. Placeholder
+    // detection is shared with the designer-asset resolver (image-url.ts) and
+    // now knows Wix `blur_N` LQIPs, `?blur=` and Cloudinary `e_blur`.
+    const isPlaceholder = (src: string): boolean => isPlaceholderImageUrl(src);
+    const bestSrcsetOf = ($el: cheerio.Cheerio<any>): SrcsetCandidate | null => {
+      for (const attr of ['srcset', 'data-srcset', 'data-lazy-srcset']) {
+        const v = $el.attr(attr);
+        if (!v) continue;
+        const best = largestSrcsetCandidate(v);
+        if (best) return best;
       }
-      return best?.url ?? null;
+      return null;
     };
     const bestImageSrc = ($el: cheerio.Cheerio<any>): string | null => {
+      const fromSrcset = bestSrcsetOf($el);
+      if (fromSrcset) {
+        const abs = absolutize(fromSrcset.url);
+        if (abs) return abs;
+      }
       // Direct src wins UNLESS it's a known placeholder pattern (in
       // which case we know the real URL is in a lazy-load attribute).
       const direct = $el.attr('src') || '';
@@ -499,15 +532,7 @@ export class BrandingScraperService {
         if (v && !isPlaceholder(v)) return absolutize(v);
       }
 
-      // Srcset variants (some lazy plugins put srcset in data-srcset).
-      const srcsetAttr = $el.attr('srcset')
-        || $el.attr('data-srcset')
-        || $el.attr('data-lazy-srcset')
-        || '';
-      if (srcsetAttr) {
-        const largest = pickLargestSrcset(srcsetAttr);
-        if (largest && !isPlaceholder(largest)) return absolutize(largest);
-      }
+      // (Srcset variants — including data-srcset — were tried first, above.)
 
       // Last resort — return the placeholder src so we at least know
       // there WAS an image. The downstream filter at the rehost step
@@ -790,6 +815,25 @@ export class BrandingScraperService {
     const siteHost = (() => {
       try { return new URL(finalUrl || url).hostname.toLowerCase(); } catch { return ''; }
     })();
+    // 2026-09-22 — what the brand is CALLED, to recognise a logo file named
+    // after it (`super_taco_logo_(1).png`) over a badge beside it
+    // (`BOSLogo19_edited.png`, "Best of Sacramento").
+    const brandKeys = brandKeysFrom(displayName, ogSiteName, hostDerivedName);
+    // A logo wrapped in a link to the site's own home page is the textbook
+    // header mark; an award badge links elsewhere or nowhere.
+    const homeHost = siteHost.replace(/^www\./, '');
+    const linksToHome = ($el: cheerio.Cheerio<any>): boolean => {
+      const href = $el.closest('a[href]').attr('href');
+      const abs = href ? absolutize(href) : null;
+      if (!abs || !homeHost) return false;
+      try {
+        const u = new URL(abs);
+        if (u.hostname.toLowerCase().replace(/^www\./, '') !== homeHost) return false;
+        return /^\/(?:index\.(?:html?|php)|home\/?)?$/i.test(u.pathname || '/');
+      } catch {
+        return false;
+      }
+    };
     /**
      * THE single choke point for every logo discovery path — link
      * rel=icon / apple-touch-icon, og:image, twitter:image, <img>, and
@@ -807,6 +851,7 @@ export class BrandingScraperService {
       const verdict = scoreLogoCandidate(
         { url: c.url, score: c.score, width: c.width, height: c.height, kind: c.kind, text },
         siteHost,
+        { brandKeys },
       );
       if (verdict.reject) {
         rejectedLogos.push({ ...c, filterReasons: verdict.reasons });
@@ -971,6 +1016,24 @@ export class BrandingScraperService {
       if (/wordmark/.test(combined)) score += 10;
       if (area > 10_000) score += 8;
       else if (area && area < 400) score -= 10;
+      // 2026-09-22 — positive evidence this is THE site's logo: named after
+      // the brand, linked to the home page, wordmark-shaped. supertacomex.com's
+      // real wordmark and its "Best of Sacramento" badge both scored 78 here,
+      // and the badge came first in the page.
+      const fileName = (() => {
+        try {
+          return new URL(src).pathname.split('/').pop() || '';
+        } catch {
+          return '';
+        }
+      })();
+      score += logoSignalBonus({
+        text: `${alt} ${fileName}`,
+        brandKeys,
+        linksHome: linksToHome($el),
+        width: w,
+        height: h,
+      }).bonus;
       pushLogo(
         { url: src, kind: /wordmark/.test(combined) ? 'img-wordmark' : 'img-logo', score, area, width: w, height: h, isSvg },
         combined,
@@ -987,6 +1050,10 @@ export class BrandingScraperService {
       logos.push(...survivingLogos);
       warnings.push('Every logo we found is served by a third-party host — showing the best one anyway. Upload your logo for a clean result.');
     }
+    // A site icon or share card never out-ranks a real logo (2026-09-22 —
+    // supertacomex.com's apple-touch-icon, a crop of a food photo, scored 85
+    // against its header wordmark's 78 and became the logo on every board).
+    capIconsBelowRealLogo(logos);
     logos.sort((a, b) => b.score - a.score);
 
     // Kick off logo COLOR analysis now so it overlaps the stylesheet
@@ -1094,13 +1161,20 @@ export class BrandingScraperService {
     // the way back to the old page-color behavior — unchanged.
     await logoAnalysis;
     // The analysis may have re-scored candidates on their REAL decoded
-    // dimensions (a 1200x630 share photo is not a logo), so re-sort.
+    // dimensions (a 1200x630 share photo is not a logo), so re-sort. A real
+    // candidate the decode demoted must not let an icon climb back over it.
+    capIconsBelowRealLogo(logos);
     logos.sort((a, b) => b.score - a.score);
 
     const pageColorHexes = colors.map((c) => c.hex);
     const topLogo = logos[0];
+    // Never a palette from a PHOTOGRAPH (2026-09-22): the Super Taco brand
+    // came out brown + pale blue because its "logo" was a food-photo icon.
+    // A photographic top candidate falls back to page colors, exactly as a
+    // monochrome or undecodable mark always has.
+    const topLogoColors = topLogo && !topLogo.photographic ? topLogo.brandColors || [] : [];
     const logoChoice = paletteFromLogoColors(
-      (topLogo?.brandColors || []).map((hex) => ({ hex, count: 1, share: 1 })),
+      topLogoColors.map((hex) => ({ hex, count: 1, share: 1 })),
       pageColorHexes,
     );
 
@@ -1144,6 +1218,27 @@ export class BrandingScraperService {
     (palette as any).logoBackground = logoBackground;
 
     // 8. Hero image candidates.
+    //
+    // 2026-09-22 — sized by what the page says the IMAGE is, not by the box
+    // it is drawn in. Wix renders every background photo as a blurred 151×101
+    // placeholder <img> whose width/height ATTRIBUTES are the display box
+    // (1805×670 for Super Taco's hero); the true size (6000×4000) sits in the
+    // wrapping <wow-image data-image-info> JSON. A srcset's biggest `w` is the
+    // next-best signal; the attributes stay the last resort. A placeholder the
+    // CDN cannot turn back into an original is dropped, and a thin strip
+    // (a divider or a header band) is never a hero photo.
+    const wixNaturalSize = ($el: cheerio.Cheerio<any>): { width: number; height: number } | null => {
+      const raw = $el.closest('wow-image[data-image-info]').attr('data-image-info') || $el.attr('data-image-info');
+      if (!raw || raw.length > 20_000) return null;
+      try {
+        const info = JSON.parse(raw) as { imageData?: { width?: unknown; height?: unknown } } | null;
+        const w = Number(info?.imageData?.width);
+        const h = Number(info?.imageData?.height);
+        return w > 0 && h > 0 && w < 100_000 && h < 100_000 ? { width: w, height: h } : null;
+      } catch {
+        return null;
+      }
+    };
     const heroImages: HeroCandidate[] = [];
     if (ogImage) heroImages.push({ url: ogImage, kind: 'og', score: 80 });
     if (twitterImage && twitterImage !== ogImage) heroImages.push({ url: twitterImage, kind: 'twitter', score: 70 });
@@ -1156,10 +1251,30 @@ export class BrandingScraperService {
       if (!src) return;
       const w = parseInt(($el.attr('width') || '0') as string, 10) || 0;
       const h = parseInt(($el.attr('height') || '0') as string, 10) || 0;
-      if (w < 800 && h < 500) return;
+      const natural = wixNaturalSize($el);
+      const srcsetWidth = bestSrcsetOf($el)?.width || 0;
+      const placeholder = isPlaceholder(src);
+      if (placeholder && originalImageUrl(src) === src && !natural) return; // nothing to recover
+      const knownW = natural?.width || srcsetWidth || w;
+      const knownH = natural?.height || (srcsetWidth && w && h ? Math.round((srcsetWidth * h) / w) : h);
+      if (knownW < 800 && knownH < 500) return;
+      const aspect = knownW && knownH ? knownW / knownH : 1;
+      if (aspect > 4 || aspect < 0.25) return;
       const alt = $el.attr('alt') || '';
       if (heroImages.length < 12) {
-        heroImages.push({ url: src, kind: 'large-img', width: w || undefined, height: h || undefined, alt, score: 40 + Math.min(30, Math.log2(Math.max(1, w * h)) * 2) });
+        heroImages.push({
+          url: src,
+          kind: 'large-img',
+          width: w || undefined,
+          height: h || undefined,
+          ...(natural ? { naturalWidth: natural.width, naturalHeight: natural.height } : {}),
+          ...(srcsetWidth ? { srcsetWidth } : {}),
+          ...(placeholder ? { placeholder: true } : {}),
+          alt,
+          // Stays below the og:image's 80, but a 24-MP photo now out-ranks a
+          // 1-MP one (the old ×2 curve saturated at 30 for anything ≥ 0.03 MP).
+          score: 40 + Math.min(35, Math.log2(Math.max(1, knownW * knownH)) * 1.4),
+        });
       }
     });
     heroImages.sort((a, b) => b.score - a.score);
@@ -1327,7 +1442,10 @@ export class BrandingScraperService {
     try {
       const res = await safeFetch(cand.url, {
         timeoutMs: Math.min(remaining(), 3000),
-        maxBytes: 512 * 1024,
+        // 1.5 MB (was 512 KB): candidates now carry the srcset's BIGGEST
+        // rendition, and a 2x wordmark PNG must not fail the cap and silently
+        // cost the brand its logo colours.
+        maxBytes: 1536 * 1024,
         accept: 'image/*',
       });
 
@@ -1372,6 +1490,22 @@ export class BrandingScraperService {
           cand.score = Math.max(1, +(cand.score * verdict.factor).toFixed(2));
           cand.filterReasons = [...(cand.filterReasons || []), ...verdict.reasons];
         }
+      }
+
+      // A mark or a PHOTOGRAPH? (2026-09-22.) Nothing in a URL or a declared
+      // size says so — supertacomex.com's apple-touch-icon is a 180×180 crop
+      // of a food photo — only the pixels do (see looksPhotographic).
+      const sample = await img
+        .clone()
+        .resize(96, 96, { fit: 'inside', withoutEnlargement: true })
+        .ensureAlpha()
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+      if (looksPhotographic(imagePixelStats(sample.data, sample.info.width, sample.info.height))) {
+        const verdict = decodedPhotoDemotion(true);
+        cand.photographic = true;
+        cand.score = Math.max(1, +(cand.score * verdict.factor).toFixed(2));
+        cand.filterReasons = [...(cand.filterReasons || []), ...verdict.reasons];
       }
 
       const { data } = await img

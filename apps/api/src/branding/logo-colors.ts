@@ -303,6 +303,99 @@ export function averageOpaqueLuminance(
   return n === 0 ? null : sum / n;
 }
 
+// ── Photo vs. mark (2026-09-22) ─────────────────────────────────────────
+//
+// supertacomex.com's `apple-touch-icon` is a 180×180 crop of a FOOD PHOTO.
+// It out-scored the real header wordmark, became "the logo" on every AI
+// board, and its browns (#996738, #c7d7e4) became the brand palette. Nothing
+// in the URL or the declared size says "photo" — only the pixels do.
+//
+// Measured on the real files (96-px sample): the touch icon occupies ~500
+// quantized color buckets with its 8 biggest buckets covering ~11% of the
+// opaque pixels, and <1% of neighbouring pixel pairs are flat. The real logo
+// uses ~5 buckets (top-8 = 100%, a third of pairs perfectly flat); the "Best
+// of Sacramento" award badge ~90 buckets, top-8 ≈ 70%. A mark is a handful of
+// flat inks; a photograph is texture everywhere.
+
+export interface ImagePixelStats {
+  /** Pixels sampled. */
+  pixels: number;
+  /** Pixels with alpha ≥ the floor. */
+  opaque: number;
+  /** Share of sampled pixels that are (mostly) transparent. */
+  transparentShare: number;
+  /** Distinct 4-bit-per-channel color buckets among opaque pixels. */
+  buckets: number;
+  /** Share of opaque pixels inside the 8 most common buckets. */
+  top8Share: number;
+  /** Share of horizontal opaque neighbour pairs that are (near-)identical. */
+  flatShare: number;
+}
+
+/**
+ * Texture statistics of a decoded RGBA sample (the caller decodes — `sharp`
+ * resize to ~96 px `inside` — so this stays pure and unit-testable).
+ */
+export function imagePixelStats(
+  data: Uint8Array | Buffer,
+  width: number,
+  height: number,
+  alphaFloor = 200,
+): ImagePixelStats {
+  const pixels = Math.max(0, Math.floor((data?.length || 0) / 4));
+  const buckets = new Map<number, number>();
+  let opaque = 0;
+  for (let i = 0; i + 3 < (data?.length || 0); i += 4) {
+    if (data[i + 3] < alphaFloor) continue;
+    opaque++;
+    const key =
+      ((data[i] >> 4) << 8) | ((data[i + 1] >> 4) << 4) | (data[i + 2] >> 4);
+    buckets.set(key, (buckets.get(key) || 0) + 1);
+  }
+  let pairs = 0;
+  let flat = 0;
+  const w = Math.max(0, Math.floor(width));
+  const h = Math.max(0, Math.floor(height));
+  if (w * h * 4 <= (data?.length || 0)) {
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x + 1 < w; x++) {
+        const a = (y * w + x) * 4;
+        const b = a + 4;
+        if (data[a + 3] < alphaFloor || data[b + 3] < alphaFloor) continue;
+        pairs++;
+        const d =
+          Math.abs(data[a] - data[b]) +
+          Math.abs(data[a + 1] - data[b + 1]) +
+          Math.abs(data[a + 2] - data[b + 2]);
+        if (d <= 3) flat++;
+      }
+    }
+  }
+  const sorted = [...buckets.values()].sort((a, b) => b - a);
+  const top8 = sorted.slice(0, 8).reduce((a, b) => a + b, 0);
+  return {
+    pixels,
+    opaque,
+    transparentShare: pixels ? (pixels - opaque) / pixels : 0,
+    buckets: buckets.size,
+    top8Share: opaque ? top8 / opaque : 1,
+    flatShare: pairs ? flat / pairs : 1,
+  };
+}
+
+/**
+ * True when the pixels read as a PHOTOGRAPH rather than a mark / wordmark /
+ * badge: lots of distinct colors, no few inks dominating, almost no flat
+ * neighbours. Needs a real sample (≥ 300 opaque pixels) to say yes — a tiny or
+ * mostly-transparent image is never called a photo on thin evidence.
+ */
+export function looksPhotographic(stats: ImagePixelStats): boolean {
+  if (!stats || stats.opaque < 300) return false;
+  return (
+    stats.buckets >= 160 && stats.top8Share < 0.4 && stats.flatShare < 0.15
+  );
+}
+
 function rgbToHexTuple(r: number, g: number, b: number): string {
   const c = (n: number) =>
     Math.max(0, Math.min(255, n)).toString(16).padStart(2, '0');
