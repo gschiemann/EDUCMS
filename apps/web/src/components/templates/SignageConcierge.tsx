@@ -36,7 +36,8 @@ import {
   ArrowRight,
   UtensilsCrossed,
 } from 'lucide-react';
-import type { ConciergeReference, ConciergeMessage, ConciergeIntake } from '@cms/api-types';
+import type { ConciergeReference, ConciergeMessage, ConciergeIntake, ConciergePosSelection } from '@cms/api-types';
+import { useTranslations } from 'next-intl';
 import {
   useConciergeChat,
   useConciergeUrlReference,
@@ -45,6 +46,9 @@ import {
 import { conciergeGuidance } from './conciergeReadiness';
 import { readyReply } from './conciergeReply';
 import { referenceMenuItemCount } from './conciergeMenuContent';
+// 2026-09-22 — the POS card: "Use your Toast menu?" / "Which POS do you use?".
+import { ConciergePosPanel } from './ConciergePosCard';
+import { looksLikeMenuBoard } from './conciergePos';
 
 // ── friendly error mapping ──────────────────────────────────────────────
 // Mirrors friendlyAiError() in templates/page.tsx so chat speaks the same
@@ -136,7 +140,20 @@ export interface SignageConciergeProps {
    * `wantsTouch` = the operator's own words asked for taps/links, so the page
    * can route to the generator that can actually wire them.
    */
-  onGenerate: (args: { prompt: string; intake: ConciergeIntake; references: ConciergeReference[]; userNotes: string; wantsTouch: boolean }) => void;
+  onGenerate: (args: {
+    prompt: string;
+    intake: ConciergeIntake;
+    references: ConciergeReference[];
+    userNotes: string;
+    wantsTouch: boolean;
+    /** The POS menu picked in the card — the server builds a BOUND board from it. */
+    posSelection?: ConciergePosSelection;
+  }) => void;
+  /**
+   * Show the POS card when the chat is about a menu (2026-09-22). The page turns
+   * it on; off, the Concierge behaves exactly as before.
+   */
+  posEnabled?: boolean;
   /** True while the page's generate request is in flight. */
   generating: boolean;
   /** Error from the page's GENERATE step (e.g. hourly AI cap, provider error) —
@@ -152,7 +169,8 @@ export interface SignageConciergeProps {
 type ChipKind = ConciergeReference['kind'];
 
 export function SignageConcierge(props: SignageConciergeProps) {
-  const { canvas, interactive, vertical, onGenerate, generating, generateError, typeToggle, screenPicker } = props;
+  const { canvas, interactive, vertical, onGenerate, generating, generateError, typeToggle, screenPicker, posEnabled } = props;
+  const tPos = useTranslations('conciergePos');
 
   // Display transcript. The leading assistant greeting is display-only and
   // is NOT sent in the FIRST chat call (the contract prefers a leading USER
@@ -175,6 +193,11 @@ export function SignageConcierge(props: SignageConciergeProps) {
   const [urlValue, setUrlValue] = useState('');
   const [refError, setRefError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // The POS menu picked for THIS board (rides with every turn and Generate),
+  // and whether the operator said they would type the menu instead.
+  const [posSelection, setPosSelection] = useState<ConciergePosSelection | undefined>(undefined);
+  const [posDeclined, setPosDeclined] = useState(false);
 
   const chat = useConciergeChat();
   const urlRef = useConciergeUrlReference();
@@ -217,11 +240,20 @@ export function SignageConcierge(props: SignageConciergeProps) {
     [hasUserTurn, ready, missing, operatorText],
   );
 
+  // THE POS CARD (2026-09-22) — only for a menu board; ConciergePosPanel fetches
+  // its data only then (refreshed when the operator comes back from connecting a
+  // POS in another tab; never polled).
+  const isMenu = useMemo(
+    () => looksLikeMenuBoard({ intake, operatorText, references }),
+    [intake, operatorText, references],
+  );
+
   const send = useCallback(
     // refsOverride lets a caller (e.g. just-added website/photo) pass the
     // UP-TO-DATE references synchronously, avoiding the setReferences race where
-    // the closure's `references` is still the pre-add array.
-    async (text: string, refsOverride?: ConciergeReference[]) => {
+    // the closure's `references` is still the pre-add array. posOverride does
+    // the same for a POS pick made this instant (null = explicitly none).
+    async (text: string, refsOverride?: ConciergeReference[], posOverride?: ConciergePosSelection | null) => {
       const content = text.trim();
       if (!content || busy) return;
       setError(null);
@@ -236,6 +268,7 @@ export function SignageConcierge(props: SignageConciergeProps) {
           ? nextMessages.slice(1)
           : nextMessages;
       const refs = refsOverride ?? references;
+      const pos = posOverride === null ? undefined : posOverride ?? posSelection;
       try {
         const turn = await chat.mutateAsync({
           messages: wire,
@@ -243,6 +276,7 @@ export function SignageConcierge(props: SignageConciergeProps) {
           vertical,
           screenWidth: canvas.w,
           screenHeight: canvas.h,
+          ...(pos ? { posSelection: pos } : {}),
         });
         // Ready turns end by pointing at the button, never with "Shall I
         // proceed?" — see conciergeReply.ts.
@@ -255,8 +289,26 @@ export function SignageConcierge(props: SignageConciergeProps) {
         setError(friendlyConciergeError(e));
       }
     },
-    [busy, messages, references, vertical, canvas.w, canvas.h, chat],
+    [busy, messages, references, vertical, canvas.w, canvas.h, chat, posSelection],
   );
+
+  // POS card actions — each one also tells the Concierge, in the operator's
+  // voice, so the chat moves on ("I'll use your Toast menu — what look?").
+  const choosePos = useCallback(
+    (selection: ConciergePosSelection, provider: string, sections: string[]) => {
+      setPosSelection(selection);
+      setPosDeclined(false);
+      void send(tPos('chatUse', { provider, sections: sections.join(', ') }), undefined, selection);
+    },
+    [send, tPos],
+  );
+  const changePos = useCallback(() => setPosSelection(undefined), []);
+  const declinePos = useCallback(() => {
+    setPosSelection(undefined);
+    setPosDeclined(true);
+    void send(tPos('chatDecline'), undefined, null);
+  }, [send, tPos]);
+  const undoDeclinePos = useCallback(() => setPosDeclined(false), []);
 
   const addUrl = useCallback(async () => {
     const url = normalizeWebUrl(urlValue);
@@ -335,8 +387,10 @@ export function SignageConcierge(props: SignageConciergeProps) {
       // this to route to the generator that can actually wire them, instead of
       // silently handing the request to one that cannot.
       wantsTouch: !!guidance.touchNotice,
+      // The POS menu picked in the card: the server builds a board BOUND to it.
+      ...(posSelection ? { posSelection } : {}),
     });
-  }, [generating, brief, lastUserText, intake, references, operatorText, guidance.touchNotice, onGenerate, urlValue, urlRef]);
+  }, [generating, brief, lastUserText, intake, references, operatorText, guidance.touchNotice, onGenerate, urlValue, urlRef, posSelection]);
 
   // ── "What I've gathered" chips ─────────────────────────────────────────
   const intakeChips = useMemo(() => {
@@ -522,6 +576,25 @@ export function SignageConcierge(props: SignageConciergeProps) {
             ))}
           </div>
         </div>
+      )}
+
+      {/* ── POS card (2026-09-22): "Use your Toast menu?" / "Which POS do you
+            use?" — only when the chat is about a menu. The pick rides with
+            every turn and with Generate; the server re-verifies it. ── */}
+      {posEnabled && (
+        <ConciergePosPanel
+          isMenu={isMenu}
+          canvas={canvas}
+          operatorText={operatorText}
+          references={references}
+          selection={posSelection}
+          declined={posDeclined}
+          onUse={choosePos}
+          onChange={changePos}
+          onDecline={declinePos}
+          onUndoDecline={undoDeclinePos}
+          busy={busy}
+        />
       )}
 
       {/* ── Composer (pinned at the bottom of the flow) ── */}

@@ -137,6 +137,11 @@ function friendlyAiError(e: any): string {
   if (code === 'AI_FAILURE_CAP_REACHED') {
     return 'Too many failed AI requests in the last hour. Wait an hour, or contact support if you think this is wrong.';
   }
+  // 2026-09-22 — a POS-bound board: the server's own words are the actionable
+  // ones ("21 items don't fit one screen — choose fewer sections.").
+  if (['MENU_BINDING_INCOMPLETE', 'MENU_TOO_MANY_ITEMS', 'POS_SELECTION_EMPTY', 'POS_CONNECTION_NOT_FOUND'].includes(code)) {
+    return e?.body?.message || e?.message || 'Choose fewer menu sections and try again.';
+  }
   if (code === 'AI_TIMEOUT' || raw.includes('took longer than usual')) {
     return 'The AI took longer than usual on this one. Tap Generate again — it almost always works on the next try.';
   }
@@ -1282,7 +1287,15 @@ export default function TemplatesPage() {
   // run it through buildIntakeRequestFields, which expects the wizard's answer
   // shape). The prompt feeds aiPrompt too so the pick-grid "Regenerate" works.
   const runGenerateFromConcierge = useCallback(
-    (args: { prompt: string; intake: ConciergeIntake; references?: ConciergeReference[]; userNotes?: string; wantsTouch?: boolean }) => {
+    (args: {
+      prompt: string;
+      intake: ConciergeIntake;
+      references?: ConciergeReference[];
+      userNotes?: string;
+      wantsTouch?: boolean;
+      /** 2026-09-22 — the POS menu picked in the Concierge's card. */
+      posSelection?: { connectionId: string; sections: string[] };
+    }) => {
       // The synthesized brief summarizes the chat and loses specifics. Append
       // the operator's verbatim chat turns so the designer agent honors exactly
       // what they asked for (the 2026-06-29 "it ignored my chat" report). Only
@@ -1321,18 +1334,21 @@ export default function TemplatesPage() {
       // through, so no plumbing between here and the prompt has to change.
       // THE MENU, IN ORDER OF AUTHORITY (2026-09-22): what the operator pasted
       // into the chat, then any menu read off their website or a photo of it.
-      const menuContent =
-        [buildMenuContentFromChat(args.userNotes), buildMenuContentFromReferences(refs)]
-          .filter(Boolean)
-          .join('\n\n')
-          .slice(0, 7_500) || undefined;
+      // 2026-09-22 — an explicit POS pick REPLACES any site/pasted menu: the
+      // server builds the board's item list from that POS and binds every row.
+      const menuContent = args.posSelection
+        ? undefined
+        : [buildMenuContentFromChat(args.userNotes), buildMenuContentFromReferences(refs)]
+            .filter(Boolean)
+            .join('\n\n')
+            .slice(0, 7_500) || undefined;
       // They pointed us at their website and no menu came off it (and they
       // have not pasted one): tell the server, so it does not quietly fill the
       // board from this account's hand-entered price book — the burger / fries /
       // shake test rows that went on every Super Taco board. A catalog synced
       // from a live POS still grounds; the server decides that.
       const siteMenuMissing =
-        !menuContent && refs.some((r) => r.kind === 'url' && referenceMenuItemCount(r) === 0);
+        !args.posSelection && !menuContent && refs.some((r) => r.kind === 'url' && referenceMenuItemCount(r) === 0);
       // The business the board is FOR (2026-09-22) — never sent before, so the
       // model guessed the name and the server could not tell a taqueria's board
       // made from a school account from the school's own.
@@ -1343,6 +1359,7 @@ export default function TemplatesPage() {
           ...args.intake,
           ...(menuContent ? { content: menuContent } : {}),
           ...(siteMenuMissing ? { siteMenuMissing: true } : {}),
+          ...(args.posSelection ? { posSelection: args.posSelection } : {}),
         },
         forceDesigner: true,
         designerExtras: {
@@ -2555,6 +2572,7 @@ export default function TemplatesPage() {
                         screenPicker={screenPicker}
                         typeToggle={typeToggle}
                         onGenerate={runGenerateFromConcierge}
+                        posEnabled
                       />
                       <button
                         type="button"

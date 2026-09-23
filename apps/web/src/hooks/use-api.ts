@@ -2403,6 +2403,8 @@ export function useConciergeChat() {
       vertical?: string;
       screenWidth?: number;
       screenHeight?: number;
+      /** 2026-09-22 — the POS menu picked in the Concierge's card (server re-verifies it). */
+      posSelection?: { connectionId: string; sections: string[] };
     }
   >({
     mutationFn: (body) =>

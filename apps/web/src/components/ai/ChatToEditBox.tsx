@@ -40,6 +40,18 @@ export interface ChatDiffEntry {
   summary: string[];
 }
 
+/**
+ * A POS-bound AI board's bindings, re-derived by refine-designer (2026-09-22),
+ * ride with its new html. `pos` absent = the board was never bound (nothing to
+ * change); `null` = nothing on the revised board is bound any more, so the
+ * zone stops asking for the live menu.
+ */
+export function refinedPosConfig(res: { pos?: Record<string, unknown> | null } | null | undefined): Record<string, unknown> {
+  if (!res || !('pos' in res)) return {};
+  if (res.pos) return res.pos;
+  return { posSync: false, dataSource: undefined, posProvider: undefined, posConnectionId: undefined, posItemBindings: undefined };
+}
+
 function friendlyChatError(e: any): string {
   const code = String(e?.code || '');
   const status = Number(e?.status || 0);
@@ -121,7 +133,7 @@ export function ChatToEditBox({
         const curHtml = dz.defaultConfig!.html as string;
         // utf8-safe base64 so the global request sanitizer passes it untouched.
         const b64 = btoa(unescape(encodeURIComponent(curHtml)));
-        const dres = await apiFetch<{ html?: string }>('/templates/refine-designer', {
+        const dres = await apiFetch<{ html?: string; pos?: Record<string, unknown> | null }>('/templates/refine-designer', {
           method: 'POST',
           body: JSON.stringify({ instruction: text, htmlBase64: b64, ...(vertical ? { vertical } : {}) }),
           signal: abortRef.current.signal,
@@ -132,7 +144,7 @@ export function ChatToEditBox({
           return;
         }
         setReview({
-          diff: [{ zoneId: dz.id, patch: { defaultConfig: { html: newHtml } }, summary: [`Applied: ${text}`] }],
+          diff: [{ zoneId: dz.id, patch: { defaultConfig: { html: newHtml, ...refinedPosConfig(dres) } }, summary: [`Applied: ${text}`] }],
           unresolved: [],
         });
         return;
