@@ -39,7 +39,10 @@ function attackHtml(l: Listeners, { localOnly }: { localOnly: boolean }): string
       .filter((line) => !line.includes('example.com') && !line.includes('169.254.169.254'))
       .join('\n');
   }
-  return html.split('__PORT__').join(String(l.port)).split('__UDP__').join(String(l.udpPort));
+  return html
+    .split('__PORT__').join(String(l.port))
+    .split('__UDPHOST__').join(l.udpHost)
+    .split('__UDP__').join(String(l.udpPort));
 }
 
 async function loadDirect(args: string[], html: string): Promise<void> {

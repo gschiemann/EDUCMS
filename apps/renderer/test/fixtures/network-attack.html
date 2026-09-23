@@ -2,7 +2,7 @@
 <!--
   A board that tries every way out of the renderer it can: markup, CSS,
   script, workers, sockets, beacons, WebRTC, popups, navigation, forms.
-  __PORT__ is a local TCP listener and __UDP__ a local UDP listener that the
+  __PORT__ is a local TCP listener and __UDPHOST__:__UDP__ a UDP listener that the
   test asserts receive NOTHING. It also carries the two brief-named probes:
   an http://example.com image and a fetch of the cloud metadata address.
   No CSP of its own: it exercises the renderer's layers, not a board policy.
@@ -53,7 +53,7 @@
   try { if (navigator.serviceWorker) navigator.serviceWorker.register('/sw.js').catch(function () {}); } catch (e) {}
   try { window.open(P + '/popup'); } catch (e) {}
   try {
-    var pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:127.0.0.1:__UDP__' }, { urls: 'turn:127.0.0.1:__PORT__', username: 'u', credential: 'p' }] });
+    var pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:__UDPHOST__:__UDP__' }, { urls: 'turn:127.0.0.1:__PORT__', username: 'u', credential: 'p' }] });
     pc.createDataChannel('x');
     pc.createOffer().then(function (o) { return pc.setLocalDescription(o); }).catch(function () {});
   } catch (e) {}

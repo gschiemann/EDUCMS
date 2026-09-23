@@ -4,11 +4,32 @@
  */
 import http from 'node:http';
 import dgram from 'node:dgram';
+import os from 'node:os';
 import type { AddressInfo } from 'node:net';
+
+/**
+ * The address the UDP listener binds to: this machine's first non-internal
+ * IPv4, else loopback. Linux Chromium gathers no WebRTC candidates on loopback,
+ * so a STUN server at 127.0.0.1 is never contacted there — not even by a stock
+ * browser — and the CONTROL ("a stock Chromium DOES send STUN") failed on the
+ * GitHub runner while passing on macOS (2026-09-23). On a real interface the
+ * control leaks on every OS, so the lockdown's "0 datagrams" means the same
+ * thing everywhere.
+ */
+function udpBindHost(): string {
+  for (const list of Object.values(os.networkInterfaces())) {
+    for (const a of list || []) {
+      if (a.family === 'IPv4' && !a.internal) return a.address;
+    }
+  }
+  return '127.0.0.1';
+}
 
 export interface Listeners {
   port: number;
   udpPort: number;
+  /** Where the UDP listener is bound (see udpBindHost). */
+  udpHost: string;
   connections: string[];
   requests: string[];
   udpPackets: number;
@@ -32,10 +53,12 @@ export async function startListeners(): Promise<Listeners> {
   udp.on('message', () => {
     state.udpPackets += 1;
   });
-  await new Promise<void>((resolve) => udp.bind(0, '127.0.0.1', () => resolve()));
+  const udpHost = udpBindHost();
+  await new Promise<void>((resolve) => udp.bind(0, udpHost, () => resolve()));
   return {
     port: (server.address() as AddressInfo).port,
     udpPort: udp.address().port,
+    udpHost,
     get connections() {
       return state.connections;
     },
