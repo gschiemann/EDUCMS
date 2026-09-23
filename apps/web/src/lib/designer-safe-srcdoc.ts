@@ -94,11 +94,12 @@ export const TRUSTED_RUNTIMES: TrustedRuntime[] = [
   },
   {
     // apps/api/src/ai/designer-edit-shim.ts DESIGNER_LAYOUT_ENGINE.
-    // Seven distinct bodies shipped under the SAME marker — every one of them is
+    // Eight distinct bodies shipped under the SAME marker — every one of them is
     // baked into boards that are still persisted, so all are pinned.
     marker: 'VOS-FIT-ENGINE',
     hashes: [
-      'a494d67f5a4782e3bf7065963342fd4ac28375ab5986a9ad4441f6f065190f95', // current (2026-08-25 headline-wrap + container clamp)
+      'f8b01244e1d17bd5151365ce7fd37967b28fdde46059c29843cc37e72d8c77cd', // current (2026-09-22 faint text ignored, photo slots never decoration, column-scoped shrink ≥85%)
+      'a494d67f5a4782e3bf7065963342fd4ac28375ab5986a9ad4441f6f065190f95', // 2026-08-25 headline-wrap + container clamp
       'c45a887c7d9e5657896a69ab228b7efb552a45b834926bee9d0b0ddb4ee0204e', // 7d06e59b
       '71ab636ca6a942a1819440d9c74369b0adf070f872caf46fdd73d9b23c64b063', // 6459b0be
       '3b9244a003408266694ac0f207feb94814f69668ca33c656ee9240a01dbc59ba', // 8ca38f6c

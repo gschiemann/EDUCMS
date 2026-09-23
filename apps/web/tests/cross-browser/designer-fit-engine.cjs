@@ -25,6 +25,13 @@
  *      not turn well-fitting boards into wrapped ones (zero regression);
  *   4. a long row NAME still shrinks/wraps beside its value instead of riding it.
  *
+ * AND (2026-09-22, AI Designer rework — research report 01, measured red first):
+ *   R1. a nearly invisible decorative initial (opacity .06 / aria-hidden /
+ *       6%-alpha color) is not a collision — before: headline 220 → 101px, rows
+ *       90 → 52px; a fully opaque initial still is (negative control);
+ *   R2. a photo slot is never "decoration" — before: 1280×2160 → 640×1080;
+ *   R3. a real collision shrinks only its own column, never below 85%.
+ *
  * Run locally:  cd apps/web && node tests/cross-browser/designer-fit-engine.cjs
  */
 const fs = require('node:fs');
@@ -121,6 +128,106 @@ async function measure(browserType, name, headline) {
   }
 }
 
+// ── 2026-09-22 — the engine was shrinking and fading GOOD work ──────────────
+//
+// Research report 01 (docs/research/2026-09-22-ai-designer-rework) measured two
+// ways this engine wrecked a well-built 4K board, both with the real engine in
+// headless Chromium:
+//   R1. ONE translucent decorative initial behind the headline (6% opacity —
+//       the prompt's own art direction asked for it) counted as a text
+//       collision, and a collision shrank EVERY text element on the board:
+//       headline 220 → 101 px, menu rows 90 → 52 px.
+//   R2. The decoration guard treated the venue's PHOTO panel as decoration and
+//       shrank it: 1280×2160 → 640×1080.
+// And the fix's own contract:
+//   R3. a REAL collision shrinks only the column it happens in, never below 85%,
+//       and leaves the rest of the board at its authored size.
+const W4K = 3840;
+const H4K = 2160;
+
+/** R1 — a translucent watermark initial overlapping the headline + rows. */
+function watermarkBoard(kind) {
+  const wm = {
+    opacity: '<div class="wm" style="opacity:.06">S</div>',
+    ariaHidden: '<div class="wm" aria-hidden="true" style="color:#fff">S</div>',
+    colorAlpha: '<div class="wm" style="color:rgba(255,255,255,.06)">S</div>',
+    none: '',
+  }[kind];
+  return `<!doctype html><html><head><meta charset="utf-8"><style>
+*{margin:0;padding:0;box-sizing:border-box}html,body{width:${W4K}px;height:${H4K}px;overflow:hidden}
+.stage{position:relative;width:${W4K}px;height:${H4K}px;background:#1b1b1b;color:#fff;font-family:Arial,sans-serif}
+.wm{position:absolute;top:120px;left:200px;font-size:900px;line-height:1;font-weight:900}
+.col{position:absolute;top:200px;left:240px;width:2000px}
+h1{font-size:220px;line-height:1}
+.row{font-size:90px;margin-top:40px}
+</style></head><body><div class="stage">
+${wm}
+<div class="col"><h1 id="hl" data-field="headline">Super Taco</h1>
+<div class="row" data-field="item.0.name">Asada Super Burrito</div>
+<div class="row" data-field="item.1.name">Street Tacos</div>
+<div class="row" data-field="item.2.name">Menudo</div></div>
+</div><script>/*VOS-CANVAS*/window.__VOS_CW=${W4K};window.__VOS_CH=${H4K};</script>${ENGINE}</body></html>`;
+}
+
+/** R2 — a right-third hero PHOTO panel with the headline bridging onto it. */
+function photoPanelBoard(slot) {
+  const hero = {
+    imgslot: '<div class="hero" data-imgslot="hero.image"></div>',
+    img: '<div class="hero"><img data-imgslot="hero.image" alt="" style="width:100%;height:100%;display:block;background:#c84"></div>',
+  }[slot];
+  return `<!doctype html><html><head><meta charset="utf-8"><style>
+*{margin:0;padding:0;box-sizing:border-box}html,body{width:${W4K}px;height:${H4K}px;overflow:hidden}
+.stage{position:relative;width:${W4K}px;height:${H4K}px;background:#2a1a12;color:#fff;font-family:Arial,sans-serif}
+.hero{position:absolute;top:0;right:0;width:1280px;height:2160px;background:linear-gradient(#c84,#420)}
+.col{position:absolute;top:300px;left:200px;width:3100px}
+h1{font-size:260px;line-height:1}
+</style></head><body><div class="stage">
+${hero}
+<div class="col"><h1 data-field="headline">Welcome To Super Taco</h1></div>
+</div><script>/*VOS-CANVAS*/window.__VOS_CW=${W4K};window.__VOS_CH=${H4K};</script>${ENGINE}</body></html>`;
+}
+
+/** R3 — two columns; the LEFT one has a real collision (a two-line name in a
+ *  one-line box overlapping the description under it), the RIGHT one is clean. */
+function twoColumnBoard() {
+  return `<!doctype html><html><head><meta charset="utf-8"><style>
+*{margin:0;padding:0;box-sizing:border-box}html,body{width:${W4K}px;height:${H4K}px;overflow:hidden}
+.stage{position:relative;width:${W4K}px;height:${H4K}px;background:#f7f0e3;color:#2d1a13;font-family:Arial,sans-serif;display:grid;grid-template-columns:1200px 1fr}
+.left{padding:120px 96px}.right{padding:120px 96px;background:#fffaf2}
+.card{position:relative;height:520px}
+.name{font-size:120px;line-height:1;height:120px}
+.desc{font-size:60px;line-height:1.1;margin-top:8px}
+.title{font-size:180px;line-height:1}
+.body{font-size:72px;line-height:1.2;margin-top:48px}
+</style></head><body><div class="stage">
+<section class="left"><div class="card"><div class="name" id="lname" data-field="item.0.name">Grilled Chicken Super Burrito</div><div class="desc" id="ldesc" data-field="item.0.desc">Chicken, rice, beans and all the fixings.</div></div></section>
+<section class="right"><div class="title" id="rtitle" data-field="headline">Burritos &amp; More</div><div class="body" id="rbody" data-field="subhead">Big flavor for every appetite.</div></section>
+</div><script>/*VOS-CANVAS*/window.__VOS_CW=${W4K};window.__VOS_CH=${H4K};</script>${ENGINE}</body></html>`;
+}
+
+async function runBoard(browserType, html, evaluate) {
+  const browser = await browserType.launch();
+  try {
+    const page = await browser.newPage({ viewport: { width: W4K, height: H4K } });
+    await page.setContent(html, { waitUntil: 'load' });
+    await page.waitForTimeout(2400);
+    return await page.evaluate(evaluate);
+  } finally {
+    await browser.close();
+  }
+}
+
+const FONT_SIZES = () =>
+  Array.from(document.querySelectorAll('h1,.row')).map((e) => parseFloat(getComputedStyle(e).fontSize));
+const HERO_BOX = () => {
+  const h = document.querySelector('.hero');
+  return { w: h.offsetWidth, h: h.offsetHeight, opacity: parseFloat(getComputedStyle(h).opacity) };
+};
+const TWO_COLUMNS = () => {
+  const fs = (id) => parseFloat(getComputedStyle(document.getElementById(id)).fontSize);
+  return { lname: fs('lname'), ldesc: fs('ldesc'), rtitle: fs('rtitle'), rbody: fs('rbody') };
+};
+
 let failures = 0;
 function check(label, ok, detail) {
   console.log(`   ${ok ? 'PASS' : 'FAIL'}  ${label}${detail ? ` — ${detail}` : ''}`);
@@ -144,6 +251,38 @@ function check(label, ok, detail) {
     console.log(`   short headline: ${short.fontSize.toFixed(1)}px, ${short.lines} line(s)`);
     check('a SHORT headline still fits on one line at full size (no regression)', short.lines === 1 && short.fontSize >= 117);
     check('a short headline does not overflow', short.overflowsColumnBy <= 4);
+
+    // R1 — decorative, nearly invisible text is not a collision.
+    for (const kind of ['opacity', 'ariaHidden', 'colorAlpha']) {
+      const sizes = await runBoard(browserType, watermarkBoard(kind), FONT_SIZES);
+      console.log(`   R1 watermark (${kind}): headline + rows = ${sizes.map((s) => s.toFixed(1)).join(', ')} (authored 220, 90, 90, 90)`);
+      check(`R1 a ${kind} decorative initial leaves the 220px headline alone`, sizes[0] >= 219.5, `${sizes[0].toFixed(1)}px`);
+      check(`R1 a ${kind} decorative initial leaves the 90px rows alone`, sizes.slice(1).every((s) => s >= 89.5), sizes.slice(1).join(', '));
+    }
+    // Negative control: the SAME geometry with a fully opaque initial is a real
+    // collision, so the engine must still act on it (proves R1 is not simply
+    // "the engine stopped measuring").
+    {
+      const sizes = await runBoard(browserType, watermarkBoard('none').replace('<div class="col">', '<div class="wm" style="color:#fff">S</div><div class="col">'), FONT_SIZES);
+      console.log(`   R1 control (opaque initial): headline + rows = ${sizes.map((s) => s.toFixed(1)).join(', ')}`);
+      check('R1 control: an OPAQUE overlapping initial still triggers the collision repair', sizes[0] < 219.5, `${sizes[0].toFixed(1)}px`);
+    }
+
+    // R2 — a photo slot is content, never decoration.
+    for (const slot of ['imgslot', 'img']) {
+      const box = await runBoard(browserType, photoPanelBoard(slot), HERO_BOX);
+      console.log(`   R2 photo panel (${slot}): ${box.w}x${box.h} opacity ${box.opacity} (authored 1280x2160, opacity 1)`);
+      check(`R2 the ${slot} photo panel keeps its 1280x2160 size`, box.w === 1280 && box.h === 2160, `${box.w}x${box.h}`);
+      check(`R2 the ${slot} photo panel is not faded`, box.opacity >= 0.99, String(box.opacity));
+    }
+
+    // R3 — a real collision shrinks only its own column, and never below 85%.
+    {
+      const s = await runBoard(browserType, twoColumnBoard(), TWO_COLUMNS);
+      console.log(`   R3 two columns: left name ${s.lname.toFixed(1)} desc ${s.ldesc.toFixed(1)} | right title ${s.rtitle.toFixed(1)} body ${s.rbody.toFixed(1)} (authored 120/60 | 180/72)`);
+      check('R3 the clean RIGHT column keeps its authored sizes', s.rtitle >= 179.5 && s.rbody >= 71.5, `${s.rtitle}/${s.rbody}`);
+      check('R3 the colliding LEFT column never goes below 85%', s.lname >= 120 * 0.85 - 0.5 && s.ldesc >= 60 * 0.85 - 0.5, `${s.lname}/${s.ldesc}`);
+    }
   }
 
   console.log(failures ? `\n${failures} check(s) FAILED\n` : '\nAll fit-engine checks passed\n');

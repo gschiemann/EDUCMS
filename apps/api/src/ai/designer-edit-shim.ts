@@ -94,7 +94,17 @@ export const DESIGNER_LAYOUT_ENGINE =
   "if(wrapFits()){wbest=wm;wlo=wm;}else{whi=wm;}}el.style.fontSize=wbest+'px';}catch(e){}}" +
   "function runFit(){try{var n=document.querySelectorAll('[data-fit]');for(var i=0;i<n.length;i++)fitOne(n[i]);}catch(e){}}" +
   // ── collision detection over visible TEXT-LEAF elements (post-transform) ──
-  "function vis(el){var cs=getComputedStyle(el);return cs.visibility!=='hidden'&&cs.display!=='none'&&parseFloat(cs.opacity)!==0;}" +
+  // 2026-09-22 — text a reader cannot see is not text. A 6%-opacity decorative
+  // initial behind the headline (the old prompt's own art direction asked for
+  // one) counted as a collision, and the repair shrank the 220px headline to
+  // 101px and every menu row from 90 to 52 on a 4K board. faint() drops
+  // aria-hidden text, text whose EFFECTIVE opacity (the product up the
+  // ancestor chain) is under 0.2, and text painted in a color under 0.2 alpha
+  // (unless it is gradient text painted through background-clip, which shows).
+  "function alphaOf(c){var m=/rgba?\\(([^)]*)\\)/.exec(c||'');if(!m)return c==='transparent'?0:1;var p=m[1].split(/[\\s,\\/]+/).filter(function(x){return x!=='';});return p.length>=4?parseFloat(p[3]):1;}" +
+  "function faint(el){try{if(el.closest&&el.closest('[aria-hidden=\"true\"]'))return true;var o=1,n=el;while(n&&n.nodeType===1){var v=parseFloat(getComputedStyle(n).opacity);if(!isNaN(v))o*=v;if(o<0.2)return true;n=n.parentElement;}" +
+  "var cs=getComputedStyle(el);var clip=String(cs.webkitBackgroundClip||'')+String(cs.backgroundClip||'');if(clip.indexOf('text')===-1&&alphaOf(cs.webkitTextFillColor||cs.color)<0.2)return true;return false;}catch(e){return false;}}" +
+  "function vis(el){var cs=getComputedStyle(el);return cs.visibility!=='hidden'&&cs.display!=='none'&&parseFloat(cs.opacity)!==0&&!faint(el);}" +
   "function leaves(){var out=[];if(!document.body)return out;var all=document.body.querySelectorAll('*');" +
   "for(var i=0;i<all.length;i++){var el=all[i];var t=(el.textContent||'').replace(/\\s+/g,'');if(!t)continue;" +
   "var ct=false,ch=el.children;for(var k=0;k<ch.length;k++){if((ch[k].textContent||'').replace(/\\s+/g,'')){ct=true;break;}}if(ct)continue;" +
@@ -123,13 +133,31 @@ export const DESIGNER_LAYOUT_ENGINE =
   // ── Pass B: stop text-clipping ancestors from hiding pushed content ──
   "function clearClips(ps){try{for(var i=0;i<ps.length;i++)for(var s=0;s<2;s++){var p=ps[i][s];for(var u=0;u<4&&p;u++){" +
   "var cs=getComputedStyle(p);if(cs.overflow==='hidden'||cs.overflowY==='hidden'||cs.overflowX==='hidden')p.style.overflow='visible';p=p.parentElement;}}}catch(e){}}" +
-  // ── Pass C: uniform text down-scale until clean (idempotent via stored orig) ──
+  // ── Pass C: scoped text down-scale until clean (idempotent via stored orig) ──
   "var stored=false;function storeOrig(){if(stored)return;var lv=leaves();for(var i=0;i<lv.length;i++){var el=lv[i].el;" +
   "if(!el.getAttribute('data-vos-fs')){var fs=parseFloat(getComputedStyle(el).fontSize)||0;if(fs>0)el.setAttribute('data-vos-fs',String(fs));}}stored=true;}" +
   // applyScale clamps at the legibility floor — the overlap down-scale can NEVER
   // push text below MINPX. If a board can't be both legible AND collision-free it
   // stays legible (content density is the prompt's job, not the engine's).
-  "function applyScale(k){var n=document.querySelectorAll('[data-vos-fs]');for(var i=0;i<n.length;i++){var o=parseFloat(n[i].getAttribute('data-vos-fs'))||0;if(o>0){var v=o*k;if(v<MINPX)v=MINPX;n[i].style.fontSize=(Math.round(v*100)/100)+'px';}}}" +
+  // 2026-09-22 — it scales only the text inside `roots` (the colliding columns,
+  // see scopes()), never the whole board: one crowded card must not shrink the
+  // headline, the rail and every other card with it.
+  "function applyScale(k,roots){var n=document.querySelectorAll('[data-vos-fs]');for(var i=0;i<n.length;i++){var el=n[i];if(roots){var inside=false;for(var r=0;r<roots.length;r++){if(roots[r]===el||roots[r].contains(el)){inside=true;break;}}if(!inside)continue;}" +
+  "var o=parseFloat(el.getAttribute('data-vos-fs'))||0;if(o>0){var v=o*k;if(v<MINPX)v=MINPX;el.style.fontSize=(Math.round(v*100)/100)+'px';}}}" +
+  // The COLUMN a collision lives in. For each colliding pair: the author's own
+  // [data-fit-col] column when there is one. Else their nearest common
+  // container when it is local (a card, a row, a column — at most 35% of the
+  // canvas). Else, for the two sides of a big container (a rail vs the menu
+  // grid), the branch holding each element. Everything outside stays as authored.
+  // (Comments in this constant must never END a line with a semicolon: the web
+  // drift tests extract it with a lazy match up to the first semicolon+newline.)
+  "function lca(a,b){var s=[];for(var n=a;n;n=n.parentElement)s.push(n);for(var m=b;m;m=m.parentElement){if(s.indexOf(m)!==-1)return m;}return document.body;}" +
+  "function branchOf(root,el){var n=el;while(n&&n.parentElement&&n.parentElement!==root)n=n.parentElement;return n||el;}" +
+  "function fitColOf(el){for(var n=el;n&&n!==document.body;n=n.parentElement){if(n.hasAttribute&&n.hasAttribute('data-fit-col'))return n;}return null;}" +
+  "function scopes(ps){var SA=(window.innerWidth||1920)*(window.innerHeight||1080);var out=[];function add(e){if(e&&e!==document.body&&e!==document.documentElement&&out.indexOf(e)===-1)out.push(e);}" +
+  "for(var i=0;i<ps.length;i++){var a=ps[i][0],b=ps[i][1];var L=lca(a,b);var col=fitColOf(L);if(col){add(col);continue;}" +
+  "var r=L.getBoundingClientRect();if(L!==document.body&&L!==document.documentElement&&r.width*r.height<=SA*0.35){add(L);continue;}" +
+  "var ca=fitColOf(a),cb=fitColOf(b);add(ca||branchOf(L,a));add(cb||branchOf(L,b));}return out;}" +
   // ── FLOOR-UP: scale any under-floor text UP to MINPX (the legibility guard). ──
   // Stores the true original first so a later overlap down-scale starts from it.
   "function floorUp(){try{var lv=leaves();for(var i=0;i<lv.length;i++){var el=lv[i].el;var fs=parseFloat(getComputedStyle(el).fontSize)||0;if(fs>0&&fs<MINPX-0.5){if(!el.getAttribute('data-vos-fs'))el.setAttribute('data-vos-fs',String(fs));el.style.fontSize=MINPX+'px';}}}catch(e){}}" +
@@ -169,12 +197,18 @@ export const DESIGNER_LAYOUT_ENGINE =
   //    restore an element that no longer collides (idempotent). Good boards never
   //    trigger it (nothing covers their text).
   "function _da(r){return Math.max(0,r.width)*Math.max(0,r.height);}" +
+  // 2026-09-22 — a PHOTO is content, never decoration. The guard used to treat
+  // the venue's photo panel as a decorative shape covering the headline and
+  // shrink it (1280x2160 -> 640x1080 on a 4K board). An image slot, an <img> /
+  // <video>, anything holding one, or anything inside one is exempt.
+  "function isPhoto(el){try{var t=el.tagName;if(t==='IMG'||t==='VIDEO'||t==='PICTURE')return true;if(el.hasAttribute('data-imgslot')||el.hasAttribute('data-img'))return true;" +
+  "if(el.closest&&el.closest('[data-imgslot],[data-img]'))return true;if(el.querySelector&&el.querySelector('img,video,picture,[data-imgslot],[data-img]'))return true;}catch(e){}return false;}" +
   "function guardDeco(){try{var lv=leaves();if(!lv.length)return;var SA=(window.innerWidth||1920)*(window.innerHeight||1080);var all=document.body.querySelectorAll('*');var cands=[];" +
-  "for(var i=0;i<all.length;i++){var el=all[i];if((el.textContent||'').replace(/\\s+/g,''))continue;" +
+  "for(var i=0;i<all.length;i++){var el=all[i];if((el.textContent||'').replace(/\\s+/g,''))continue;if(isPhoto(el))continue;" +
   "var cs=getComputedStyle(el);if(cs.display==='none'||cs.visibility==='hidden')continue;" +
-  "if((parseFloat(cs.opacity)||1)<0.5&&el.getAttribute('data-vgo')===null)continue;" +
+  "var op=parseFloat(cs.opacity);if(isNaN(op))op=1;if(op<0.5&&el.getAttribute('data-vgo')===null)continue;" +
   "var bg=cs.backgroundImage&&cs.backgroundImage!=='none';var bc=cs.backgroundColor&&cs.backgroundColor!=='rgba(0, 0, 0, 0)'&&cs.backgroundColor!=='transparent';var cl=cs.clipPath&&cs.clipPath!=='none';" +
-  "if(!(bg||bc||cl||el.tagName==='IMG'||el.tagName==='svg'))continue;" +
+  "if(!(bg||bc||cl||el.tagName==='svg'))continue;" +
   "var r=el.getBoundingClientRect();var a=_da(r);if(a<SA*0.05||a>SA*0.7)continue;cands.push({el:el,a:a});}" +
   "cands.sort(function(x,y){return y.a-x.a;});" +
   "function cov(el){var er=el.getBoundingClientRect();for(var k=0;k<lv.length;k++){var T=lv[k];if(el===T.el||el.contains(T.el)||T.el.contains(el))continue;var ix=Math.min(er.right,T.r.right)-Math.max(er.left,T.r.left);var iy=Math.min(er.bottom,T.r.bottom)-Math.max(er.top,T.r.top);if(ix>8&&iy>8)return true;}return false;}" +
@@ -191,9 +225,16 @@ export const DESIGNER_LAYOUT_ENGINE =
   // NB: do NOT call runFit() inside the shrink loop. runFit re-grows data-fit
   // elements to fill their WIDTH, which re-inflates a data-fit line (e.g. a
   // medallion's big middle line) and re-introduces the VERTICAL crowding we are
-  // shrinking to resolve. runFit ran once up top; the loop shrinks ALL leaves
-  // (data-fit included, via their stored size) so stacked lines actually separate.
-  "var k=1.0;for(var i=0;i<9;i++){k-=0.06;applyScale(k);if(nOver()===0)break;if(k<=0.5)break;}}catch(e){}}" +
+  // shrinking to resolve. runFit ran once up top; the loop shrinks the leaves in
+  // the colliding columns (data-fit included, via their stored size) so stacked
+  // lines actually separate.
+  // 2026-09-22 — scoped + floored. Every stored leaf is put back at its authored
+  // size first (so a re-run never compounds an earlier shrink), then ONLY the
+  // colliding columns step down, 3% at a time, to 85% at the most. A board that
+  // still collides at 85% keeps its size: shrinking a whole 4K board to half
+  // size to dodge one overlap was the cure that killed the patient.
+  "applyScale(1,null);var roots=scopes(pairs(leaves()));if(!roots.length)return;" +
+  "for(var i=1;i<=5;i++){applyScale((100-3*i)/100,roots);if(nOver()===0)break;}}catch(e){}}" +
   "function run(){repair();}" +
   "if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',run);else run();" +
   "if(document.fonts&&document.fonts.ready){try{document.fonts.ready.then(run);}catch(e){}}" +
