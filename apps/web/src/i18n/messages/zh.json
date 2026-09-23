@@ -2567,7 +2567,26 @@
       "nameHero": "欢迎主视觉",
       "splitWelcome": "分栏欢迎",
       "scene": "场景"
-    }
+    },
+    "job": {
+      "queued": "正在准备…",
+      "working": "正在设计你的看板…",
+      "drawing": "{count, plural, other {正在绘制 # 块看板…}}",
+      "binding": "正在核对细节…",
+      "rendering": "正在预览方案 {n}…",
+      "renderingAll": "正在预览你的看板…",
+      "reviewing": "正在检查方案 {n}…",
+      "reviewingAll": "正在检查你的看板…",
+      "revising": "正在修正方案 {n}…",
+      "revisingAll": "正在润色你的看板…",
+      "ready": "方案 {n} 已完成…",
+      "done": "即将完成…",
+      "cancel": "取消",
+      "cancelling": "正在取消…",
+      "busy": "此账户已有两个生成任务在进行中。请等其中一个完成后再试。",
+      "stalled": "此次生成未完成就停止了。请重试。"
+    },
+    "boundTo": "已绑定 {provider} · {count, plural, other {# 个商品}}"
   },
   "posBind": {
     "fieldPrice": "价格",

@@ -2567,7 +2567,26 @@
       "nameHero": "Welcome hero",
       "splitWelcome": "Split welcome",
       "scene": "Scene"
-    }
+    },
+    "job": {
+      "queued": "Getting started…",
+      "working": "Designing your boards…",
+      "drawing": "{count, plural, one {Drawing # board…} other {Drawing # boards…}}",
+      "binding": "Checking the details…",
+      "rendering": "Previewing option {n}…",
+      "renderingAll": "Previewing your boards…",
+      "reviewing": "Looking at option {n}…",
+      "reviewingAll": "Looking over your boards…",
+      "revising": "Fixing option {n}…",
+      "revisingAll": "Polishing your boards…",
+      "ready": "Option {n} is ready…",
+      "done": "Finishing up…",
+      "cancel": "Cancel",
+      "cancelling": "Cancelling…",
+      "busy": "Two generations are already running for this account. Try again when one finishes.",
+      "stalled": "This generation stopped before it finished. Try again."
+    },
+    "boundTo": "Bound to {provider} · {count, plural, one {# item} other {# items}}"
   },
   "posBind": {
     "fieldPrice": "Price",

@@ -2567,7 +2567,26 @@
       "nameHero": "Bienvenida destacada",
       "splitWelcome": "Bienvenida dividida",
       "scene": "Escena"
-    }
+    },
+    "job": {
+      "queued": "Preparando…",
+      "working": "Diseñando tus tableros…",
+      "drawing": "{count, plural, one {Dibujando # tablero…} other {Dibujando # tableros…}}",
+      "binding": "Comprobando los detalles…",
+      "rendering": "Previsualizando la opción {n}…",
+      "renderingAll": "Previsualizando tus tableros…",
+      "reviewing": "Revisando la opción {n}…",
+      "reviewingAll": "Revisando tus tableros…",
+      "revising": "Corrigiendo la opción {n}…",
+      "revisingAll": "Puliendo tus tableros…",
+      "ready": "La opción {n} está lista…",
+      "done": "Terminando…",
+      "cancel": "Cancelar",
+      "cancelling": "Cancelando…",
+      "busy": "Ya hay dos generaciones en curso en esta cuenta. Inténtalo de nuevo cuando termine una.",
+      "stalled": "Esta generación se detuvo antes de terminar. Inténtalo de nuevo."
+    },
+    "boundTo": "Vinculado a {provider} · {count, plural, one {# artículo} other {# artículos}}"
   },
   "posBind": {
     "fieldPrice": "Precio",
