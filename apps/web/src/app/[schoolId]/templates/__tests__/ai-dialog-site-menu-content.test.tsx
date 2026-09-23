@@ -15,6 +15,7 @@
  */
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { designerJobHookMocks, fakeDesignerJobs } from './designer-job-hooks.mock';
 import {
   MENU_REFERENCE,
   MENU_ROWS,
@@ -22,7 +23,11 @@ import {
 
 // ── The data layer, staged ────────────────────────────────────────────
 let templatesResult: any = { data: [], isLoading: false, isError: false, refetch: jest.fn() };
-const designerCalls: any[] = [];
+// 2026-09-23 — the Designer generates through a background job (a started job answers `done`);
+// `jobs.starts` holds each request body — what `designerCalls` held when the page awaited the
+// synchronous endpoint.
+const jobs = fakeDesignerJobs();
+const designerCalls = jobs.starts as any[];
 
 const noopMutation = () => ({ mutateAsync: jest.fn(), isPending: false, mutate: jest.fn() });
 
@@ -43,17 +48,7 @@ jest.mock('@/hooks/use-api', () => ({
   useGenerateTouchCandidates: noopMutation,
   useCreateFromCandidate: noopMutation,
   useRefineSignageBoard: noopMutation,
-  useGenerateDesignerCandidates: () => ({
-    mutateAsync: jest.fn(async (vars: any) => {
-      designerCalls.push(vars);
-      return {
-        batchId: 'b1',
-        candidates: [1, 2, 3].map((n) => ({ name: `Board ${n}`, html: '<html></html>', artDirection: `dir-${n}` })),
-      };
-    }),
-    isPending: false,
-    mutate: jest.fn(),
-  }),
+  ...designerJobHookMocks(jobs),
   useCreateDesigner: noopMutation,
   useRegenerateBoardImage: noopMutation,
   useAssets: () => ({ data: [], isLoading: false }),
@@ -141,7 +136,7 @@ async function generate() {
 
 beforeEach(() => {
   templatesResult = { data: [], isLoading: false, isError: false, refetch: jest.fn() };
-  designerCalls.length = 0;
+  jobs.reset();
   stubReferences = [];
   stubNotes = 'pull the menu items from the website i gave you';
 });

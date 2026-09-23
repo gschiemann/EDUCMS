@@ -283,6 +283,25 @@ export function busyError(): ProducedError {
   return producedError(httpException({ code: DESIGNER_JOBS_BUSY_CODE, message: m[1] }, status));
 }
 
+/** Read `new <ExceptionClass>({ code: '<code>', message: '<message>' })` out of the controller. */
+function controllerException(code: string): ProducedError {
+  const src = fs.readFileSync(PRODUCER_FILES.controller, 'utf8');
+  const m = new RegExp(`new (\\w+Exception)\\(\\{\\s*code: '${code}',\\s*message: '([^']+)'`).exec(src);
+  if (!m) throw new Error(`designer-job fixture: the controller no longer throws ${code} where this fixture reads it`);
+  const Exception = nest<new (payload: unknown) => unknown>(m[1]);
+  return producedError(new Exception({ code, message: m[2] }));
+}
+
+/** GET / cancel / again of an id that is not this account's (or was pruned): the controller's 404. */
+export function jobNotFoundError(): ProducedError {
+  return controllerException('AI_DESIGN_JOB_NOT_FOUND');
+}
+
+/** …/again of a job whose stored request no longer validates: the controller's 422. */
+export function jobRequestInvalidError(): ProducedError {
+  return controllerException('AI_DESIGN_JOB_REQUEST_INVALID');
+}
+
 /**
  * An `apiFetch` error for a failed response carrying this envelope — what the page's hooks reject
  * with (api-client.ts: `new Error(body.message)` + `status`, `code`, `body`). The filter's body is

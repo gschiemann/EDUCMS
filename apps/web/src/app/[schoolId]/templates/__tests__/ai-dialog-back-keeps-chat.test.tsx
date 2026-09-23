@@ -8,10 +8,13 @@
  */
 import React from 'react';
 import { render, screen, fireEvent, within } from '@testing-library/react';
+import { designerJobHookMocks, fakeDesignerJobs } from './designer-job-hooks.mock';
 
 // ── The data layer, staged ────────────────────────────────────────────
 let templatesResult: any = { data: [], isLoading: false, isError: false, refetch: jest.fn() };
 let usageResult: any = { data: undefined };
+// 2026-09-23 — the Designer generates through a background job; a started job answers `done`.
+const jobs = fakeDesignerJobs();
 
 const noopMutation = () => ({ mutateAsync: jest.fn(), isPending: false, mutate: jest.fn() });
 
@@ -35,10 +38,7 @@ jest.mock('@/hooks/use-api', () => ({
   }),
   useCreateFromCandidate: noopMutation,
   useRefineSignageBoard: noopMutation,
-  useGenerateDesignerCandidates: () => ({
-    mutateAsync: jest.fn(async () => ({ candidates: [1, 2, 3].map((n) => ({ name: `Draft ${n}`, spec: { name: `Draft ${n}` }, zones: [], background: '#111', _designerHtml: '<html></html>' })) })),
-    isPending: false, mutate: jest.fn(),
-  }),
+  ...designerJobHookMocks(jobs),
   useCreateDesigner: noopMutation,
   useRegenerateBoardImage: noopMutation,
   useAssets: () => ({ data: [], isLoading: false }),
@@ -130,6 +130,7 @@ beforeEach(() => {
   usageResult = { data: undefined };
   mockRole = 'SCHOOL_ADMIN';
   conciergeMounts = 0;
+  jobs.reset();
 });
 
 it('the Concierge stays mounted behind the picker, so Back returns to the SAME chat', async () => {

@@ -19,6 +19,7 @@
  */
 
 import { render, screen, fireEvent, within } from '@testing-library/react';
+import { inertDesignerJobHooks } from './designer-job-hooks.mock';
 
 // ── The data layer, staged ────────────────────────────────────────────
 let templatesResult: any = { data: [], isLoading: false, isError: false, refetch: jest.fn() };
@@ -43,7 +44,8 @@ jest.mock('@/hooks/use-api', () => ({
   useGenerateTouchCandidates: noopMutation,
   useCreateFromCandidate: noopMutation,
   useRefineSignageBoard: noopMutation,
-  useGenerateDesignerCandidates: noopMutation,
+  // 2026-09-23 — the Designer generates through a background job (not exercised here).
+  ...inertDesignerJobHooks,
   useCreateDesigner: noopMutation,
   useRegenerateBoardImage: noopMutation,
   useAssets: () => ({ data: [], isLoading: false }),
