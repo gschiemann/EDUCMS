@@ -194,6 +194,8 @@ function mapRawItems(rows: RawMenuItem[], opts?: { keepUnavailable?: boolean }):
 export interface FetchMenuOptions {
   /** Optional category filter (matches MenuBoardWidget's posCategory). */
   category?: string;
+  connectionId?: string;
+  providerId?: string;
   /** Abort signal so the polling loop can cancel an in-flight request. */
   signal?: AbortSignal;
   /** Include 86'd / sold-out items (flagged available:false) instead of
@@ -232,6 +234,8 @@ export async function fetchDeviceMenu(
     try {
       const params = new URLSearchParams();
       if (opts.category) params.set('category', opts.category);
+      if (opts.connectionId) params.set('connectionId', opts.connectionId);
+      else if (opts.providerId) params.set('providerId', opts.providerId);
       if (opts.includeUnavailable) params.set('includeUnavailable', '1');
       const qs = params.toString() ? `?${params.toString()}` : '';
       const url = `${getApiRoot()}/api/v1/screens/${encodeURIComponent(screenId)}/menu${qs}`;
@@ -268,9 +272,11 @@ export async function fetchDeviceMenu(
 
   // ── Dashboard-preview path: legacy session-authed /pos/items ──
   try {
-    const path = opts.category
-      ? `/pos/items?category=${encodeURIComponent(opts.category)}`
-      : '/pos/items';
+    const params = new URLSearchParams();
+    if (opts.category) params.set('category', opts.category);
+    if (opts.connectionId) params.set('connectionId', opts.connectionId);
+    else if (opts.providerId) params.set('providerId', opts.providerId);
+    const path = `/pos/items${params.toString() ? `?${params}` : ''}`;
     const rows = await apiFetchFallback(path, { signal: opts.signal });
     // Not an array = malformed/failed. An EMPTY array is a real, empty menu.
     if (!Array.isArray(rows)) return null;

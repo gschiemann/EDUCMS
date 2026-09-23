@@ -405,6 +405,9 @@ const QSR_REDESIGN_ALSO_RESTAURANT = [
   'preset-sig-qsr-25-super-taco-tacos',
   'preset-sig-qsr-26-super-taco-burritos',
   'preset-sig-qsr-27-super-taco-combos',
+  'preset-sig-qsr-25-super-taco-tacos-portrait',
+  'preset-sig-qsr-26-super-taco-burritos-portrait',
+  'preset-sig-qsr-27-super-taco-combos-portrait',
 ];
 for (const id of QSR_REDESIGN_ALSO_RESTAURANT) {
   PRESET_VERTICALS.set(id, ['QSR', 'RESTAURANT']);

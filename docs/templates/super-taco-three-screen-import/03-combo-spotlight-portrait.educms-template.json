@@ -2,12 +2,12 @@
   "_format": "educms.template",
   "_version": 1,
   "template": {
-    "name": "Super Taco · Menu Wall 2 · Burritos & More",
-    "description": "Center screen: burritos, nachos, quesadillas and drinks with live Toast catalog updates.",
+    "name": "Super Taco · Menu Wall 3 · Combo Spotlight · Portrait",
+    "description": "Right screen: rotating combination plates with live Toast names, prices, descriptions and photos.",
     "category": "QSR",
-    "orientation": "LANDSCAPE",
-    "screenWidth": 3840,
-    "screenHeight": 2160,
+    "orientation": "PORTRAIT",
+    "screenWidth": 2160,
+    "screenHeight": 3840,
     "bgColor": "#f7f0e3",
     "zones": [
       {
@@ -20,7 +20,7 @@
         "zIndex": 1,
         "sortOrder": 0,
         "defaultConfig": {
-          "url": "/templates/signage/qsr/26-super-taco-burritos.html",
+          "url": "/templates/signage/qsr/27-super-taco-combos.html?orientation=portrait",
           "posSync": true,
           "posProvider": "toast",
           "dataSource": "POS"

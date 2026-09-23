@@ -4376,9 +4376,10 @@ function ExternalHtmlWidget({ config, freeze }: { config: any; freeze?: boolean 
   // returns null) and respects an explicit config.posSync / dataSource.
   const isMenuBoard = /\/signage\/(qsr|menus-pos|bar)\//.test(url);
   const menuDriven = isMenuBoard || config?.posSync === true || config?.dataSource === 'POS';
+  const isSuperTacoWall = ['25-super-taco-', '26-super-taco-', '27-super-taco-'].some((part) => url.includes(part));
   // includeUnavailable: the fixed-slot HTML boards grey out 86'd items
   // (the shim's applyMenu styles them) rather than dropping them.
-  const liveMenu = usePosMenuItems(menuDriven, config?.posCategory, { includeUnavailable: true });
+  const liveMenu = usePosMenuItems(menuDriven, config?.posCategory, { includeUnavailable: true, connectionId: typeof config?.posConnectionId === 'string' ? config.posConnectionId : undefined, providerId: typeof config?.posProvider === 'string' ? config.posProvider : isSuperTacoWall ? 'toast' : undefined });
   // ── Gym media state ─────────────────────────────────────────────
   // Same shape as the live menu feed below: the parent resolves the
   // board's bound sources and postMessages ONE snapshot into the
@@ -4429,9 +4430,9 @@ function ExternalHtmlWidget({ config, freeze }: { config: any; freeze?: boolean 
     // category left the board's baked-in items, and their prices, on the glass.
     if (!win || !Array.isArray(liveMenu)) return;
     try {
-      win.postMessage({ type: 'educms-overrides', menu: { items: liveMenu, configured: menuSourceConfigured(liveMenu) } }, '*');
+      win.postMessage({ type: 'educms-overrides', menu: { items: liveMenu, configured: menuSourceConfigured(liveMenu), bindings: config?.posItemBindings || {} } }, '*');
     } catch { /* detached / cross-origin frame — ignore */ }
-  }, [liveMenu]);
+  }, [liveMenu, config?.posItemBindings]);
   // Re-post whenever the live menu changes (each 30s poll), and bind a
   // 'load' listener on the frame so the first paint (and any remount from
   // a config edit) gets the menu too. Listener is attached imperatively

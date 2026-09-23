@@ -21,7 +21,7 @@ import { sealCredentials, openCredentials } from '../streaming/creds-cipher';
 import { type CatalogSnapshot } from './providers/square';
 import { getConnector, type PosConnector } from './providers/registry';
 import { MenuService } from './menu.service';
-import { parseToastCredentials, toastMenusChanged } from './providers/toast';
+import { discoverToastRestaurants, parseToastCredentials, toastMenusChanged } from './providers/toast';
 
 @Injectable()
 export class PosService {
@@ -51,6 +51,11 @@ export class PosService {
       salesLedOnly: p.salesLedOnly,
       tierReason: p.tierReason,
     }));
+  }
+
+  async discoverToastStores(credentials: Record<string, unknown>) {
+    try { return await discoverToastRestaurants(credentials); }
+    catch (err: any) { throw new BadRequestException(err?.message || 'Toast store discovery failed.'); }
   }
 
   // ─── Connections ──────────────────────────────────────────────────
@@ -186,15 +191,19 @@ export class PosService {
   // ─── Catalog read ─────────────────────────────────────────────────
 
   /** Live menu items for a tenant — used by the menu-board widget. */
-  async listMenuItems(tenantId: string, opts?: { connectionId?: string; category?: string; locationId?: string }) {
+  async listMenuItems(tenantId: string, opts?: { connectionId?: string; category?: string; locationId?: string; providerId?: string }) {
     const where: any = { tenantId, available: true };
     if (opts?.connectionId) where.connectionId = opts.connectionId;
+    else if (opts?.providerId) {
+      const connections = await (this.prisma.client as any).posProviderConnection.findMany({ where: { tenantId, providerId: opts.providerId, status: 'ACTIVE' }, select: { id: true } });
+      where.connectionId = { in: connections.map((connection: any) => connection.id) };
+    }
     if (opts?.category) where.category = opts.category;
     if (opts?.locationId) where.locationId = opts.locationId;
     const rows = await (this.prisma.client as any).posMenuItem.findMany({
       where,
       orderBy: [{ category: 'asc' }, { name: 'asc' }],
-      take: 200,
+      take: opts?.connectionId ? 1000 : 200,
     });
     return rows.map((r: any) => ({
       id: r.id,
@@ -300,7 +309,7 @@ export class PosService {
   ) {
     const loc = await (this.prisma.client as any).posLocation.findFirst({
       where: { id: locationId, connectionId, tenantId },
-      select: { id: true },
+      select: { id: true, locationTenantId: true },
     });
     if (!loc) throw new NotFoundException('POS location not found.');
 
@@ -315,17 +324,52 @@ export class PosService {
           'Target location must be your tenant or one of its locations.',
         );
       }
+      const alreadyMapped = await (this.prisma.client as any).posLocation.findFirst({
+        where: { tenantId, connectionId, locationTenantId, id: { not: locationId } },
+        select: { id: true },
+      });
+      if (alreadyMapped) throw new BadRequestException('Another POS store is already mapped to that screen location.');
     }
 
-    const updated = await (this.prisma.client as any).posLocation.update({
-      where: { id: locationId, tenantId },
-      data: { locationTenantId },
-      select: { id: true, externalId: true, name: true, locationTenantId: true },
+    const connection = await (this.prisma.client as any).posProviderConnection.findFirst({
+      where: { id: connectionId, tenantId },
     });
-    await this.audit(tenantId, actorUserId, 'POS_LOCATION_MAPPED', locationId, {
-      connectionId,
-      locationTenantId,
+    const updated = await this.prisma.client.$transaction(async (tx: any) => {
+      const row = await tx.posLocation.update({
+        where: { id: locationId, tenantId },
+        data: { locationTenantId },
+        select: { id: true, externalId: true, name: true, locationTenantId: true },
+      });
+      if (connection?.providerId === 'toast' && loc.locationTenantId && loc.locationTenantId !== locationTenantId) {
+        // A remap must not leave the old store's Toast price attached to its
+        // former screen location. Preserve any operator-authored overrides.
+        const otherStore = await tx.posLocation.findFirst({
+          where: { tenantId, connectionId, locationTenantId: loc.locationTenantId, id: { not: locationId } },
+          select: { id: true },
+        });
+        if (!otherStore) {
+          const catalog = await tx.menuCatalog.findFirst({ where: { tenantId, connectionId }, select: { id: true } });
+          if (catalog) {
+            const items = await tx.menuItem.findMany({ where: { tenantId, catalogId: catalog.id }, select: { id: true } });
+            if (items.length) await tx.menuLocationOverride.deleteMany({
+              where: { tenantId, locationTenantId: loc.locationTenantId, source: 'toast', menuItemId: { in: items.map((item: any) => item.id) } },
+            });
+          }
+        }
+      }
+      await tx.auditLog.create({ data: {
+        tenantId, userId: actorUserId, action: 'POS_LOCATION_MAPPED', targetType: 'PosLocation', targetId: locationId,
+        details: JSON.stringify({ connectionId, locationTenantId, previousLocationTenantId: loc.locationTenantId }),
+      } });
+      return row;
     });
+    // Location overrides are produced during a full menu ingest. Refresh now
+    // so the newly mapped screen gets its own prices without waiting for a
+    // future menu publication (the metadata poll would skip an unchanged menu).
+    if (connection?.providerId === 'toast' && locationTenantId) {
+      const result = await this.syncConnection(tenantId, connection, actorUserId);
+      if (result.status !== 'ok') throw new BadRequestException(`Store mapped, but Toast refresh failed: ${result.message}`);
+    }
     return updated;
   }
 
@@ -500,7 +544,13 @@ export class PosService {
     // API hiccup must never block the core catalog sync below.
     try {
       await this.syncLocations(conn, connector, accessToken, creds);
+      if (conn.providerId === 'toast') await this.autoMapToastLocations(tenantId, conn.id, actorUserId);
     } catch (err: any) {
+      if (conn.providerId === 'toast') {
+        const message = `Toast store setup failed: ${err?.message || err}`;
+        await this.markConnectionError(tenantId, conn.id, message);
+        return { status: 'error', itemCount: 0, categoryCount: 0, message };
+      }
       this.logger.warn(`${providerName} location sync failed for conn=${conn.id}: ${err?.message || err}`);
     }
 
@@ -585,6 +635,11 @@ export class PosService {
       );
     } catch (err: any) {
       this.logger.warn(`${providerName} menu-platform bridge failed for conn=${conn.id}: ${err?.message || err}`);
+      if (conn.providerId === 'toast') {
+        const message = `Toast menu sync succeeded, but location pricing could not be updated: ${err?.message || err}`;
+        await this.markConnectionError(tenantId, conn.id, message);
+        return { status: 'error', itemCount: snapshot.items.length, categoryCount: snapshot.categories.length, message };
+      }
     }
 
     await this.audit(tenantId, actorUserId, 'POS_SYNC_COMPLETED', conn.id, {
@@ -599,6 +654,33 @@ export class PosService {
       categoryCount: snapshot.categories.length,
       message: `${providerName} sync complete: ${snapshot.items.length} items, ${snapshot.categories.length} categories.`,
     };
+  }
+
+  private async autoMapToastLocations(tenantId: string, connectionId: string, actorUserId: string | null) {
+    const db = this.prisma.client as any;
+    const stores = await db.posLocation.findMany({ where: { tenantId, connectionId, isActive: true }, select: { id: true, name: true, locationTenantId: true } });
+    if (!stores.length) return;
+    const children = await db.tenant.findMany({ where: { parentId: tenantId }, select: { id: true, name: true } });
+    const pending = stores.filter((store: any) => !store.locationTenantId);
+    const used = new Set(stores.map((store: any) => store.locationTenantId).filter(Boolean));
+    const normalize = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, '');
+    for (const store of pending) {
+      let target: string | undefined;
+      if (stores.length === 1 && children.length <= 1) target = children[0]?.id || tenantId;
+      else {
+        const matches = children.filter((child: any) => normalize(child.name) === normalize(store.name) && !used.has(child.id));
+        if (matches.length === 1) target = matches[0].id;
+      }
+      if (!target || used.has(target)) continue;
+      await db.$transaction(async (tx: any) => {
+        await tx.posLocation.update({ where: { id: store.id, tenantId }, data: { locationTenantId: target } });
+        await tx.auditLog.create({ data: {
+          tenantId, userId: actorUserId, action: 'POS_LOCATION_AUTO_MAPPED', targetType: 'PosLocation', targetId: store.id,
+          details: JSON.stringify({ connectionId, locationTenantId: target }),
+        } });
+      });
+      used.add(target);
+    }
   }
 
   /**

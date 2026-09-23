@@ -79,6 +79,24 @@ function svcWith(prisma: any): MenuService {
 }
 
 describe('MenuService.resolveMenuForLocation', () => {
+  it('limits a menu wall to its selected Toast connection inside the tenant scope', async () => {
+    const prisma = makeMockPrisma();
+    await svcWith(prisma).resolveMenuForLocation(LOC_A, { catalogTenantId: TENANT, connectionId: 'toast-connection' });
+    expect(prisma.client.menuCatalog.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ connectionId: 'toast-connection', isActive: true }),
+    }));
+  });
+  it('limits an unbound Super Taco preset to active Toast connections owned by its location or chain', async () => {
+    const prisma = makeMockPrisma();
+    prisma.client.posProviderConnection = { findMany: jest.fn().mockResolvedValue([{ id: 'toast-connection' }]) };
+    await svcWith(prisma).resolveMenuForLocation(LOC_A, { catalogTenantId: TENANT, providerId: 'toast' });
+    expect(prisma.client.posProviderConnection.findMany).toHaveBeenCalledWith({
+      where: { tenantId: { in: [TENANT, LOC_A] }, providerId: 'toast', status: 'ACTIVE' }, select: { id: true },
+    });
+    expect(prisma.client.menuCatalog.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ connectionId: { in: ['toast-connection'] } }),
+    }));
+  });
   it('uses the location override price when set, else the catalog default', async () => {
     const prisma = makeMockPrisma({
       catalogs: [{ id: 'cat-1' }],

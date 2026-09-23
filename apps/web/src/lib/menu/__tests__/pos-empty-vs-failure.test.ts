@@ -167,4 +167,21 @@ describe('fetchDeviceMenu — PLAYER path requests the right address', () => {
     await fetchDeviceMenu({}, async () => { throw new Error('session fallback must not run'); });
     expect(String(fetchMock.mock.calls[0][0])).toBe('https://api.example.test/api/v1/screens/scr_test/menu');
   });
+
+  it('asks the device endpoint for the board-selected Toast connection', async () => {
+    process.env.NEXT_PUBLIC_API_URL = 'https://api.example.test';
+    const fetchMock = jest.fn().mockResolvedValue({ ok: true, status: 200, json: async () => [] });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    await fetchDeviceMenu({ connectionId: 'toast-123', providerId: 'toast', includeUnavailable: true }, async () => { throw new Error('session fallback must not run'); });
+    expect(String(fetchMock.mock.calls[0][0])).toContain('connectionId=toast-123');
+    expect(String(fetchMock.mock.calls[0][0])).toContain('includeUnavailable=1');
+  });
+
+  it('filters an unbound imported preset to Toast instead of mixing providers', async () => {
+    process.env.NEXT_PUBLIC_API_URL = 'https://api.example.test';
+    const fetchMock = jest.fn().mockResolvedValue({ ok: true, status: 200, json: async () => [] });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    await fetchDeviceMenu({ providerId: 'toast' }, async () => { throw new Error('session fallback must not run'); });
+    expect(String(fetchMock.mock.calls[0][0])).toContain('providerId=toast');
+  });
 });

@@ -1,4 +1,4 @@
-import { normalizeToastMenus, parseToastCredentials, toastFetchCatalog, toastMenusChanged } from './toast';
+import { discoverToastRestaurants, normalizeToastMenus, parseToastCredentials, toastFetchCatalog, toastMenusChanged } from './toast';
 
 const A = '11111111-1111-4111-8111-111111111111';
 const B = '22222222-2222-4222-8222-222222222222';
@@ -24,6 +24,46 @@ describe('Toast machine-client Menus V2 connector', () => {
   it('rejects non-Toast hosts before credentials can be sent', () => {
     expect(() => parseToastCredentials({ ...credentials, apiBaseUrl: 'https://evil.example' })).toThrow(/toasttab.com/);
     expect(() => parseToastCredentials({ ...credentials, apiBaseUrl: 'http://ws-api.toasttab.com' })).toThrow(/HTTPS/);
+  });
+
+  it('discovers and deduplicates accessible partner restaurants without a GUID in the form', async () => {
+    const response = (body: unknown) => ({ ok: true, status: 200, json: async () => body });
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(response({ token: { accessToken: 'token-123' } }))
+      .mockResolvedValueOnce(response([
+        { restaurantGuid: A, restaurantName: 'Super Taco', locationName: 'Calvine' },
+        { restaurantGuid: A, restaurantName: 'Super Taco', locationName: 'Calvine' },
+        { restaurantGuid: B, restaurantName: 'Super Taco', locationName: 'Laguna Blvd' },
+      ]));
+    global.fetch = fetchMock as typeof fetch;
+    expect(await discoverToastRestaurants({ clientId: 'id', clientSecret: 'secret', apiBaseUrl: 'https://ws-api.toasttab.com' })).toEqual({
+      restaurants: [{ guid: A, name: 'Calvine' }, { guid: B, name: 'Laguna Blvd' }], manualRequired: false,
+    });
+    expect(fetchMock.mock.calls[1][0]).toBe('https://ws-api.toasttab.com/partners/v1/restaurants');
+    expect(fetchMock.mock.calls[1][1].headers.Authorization).toBe('Bearer token-123');
+  });
+
+  it('asks for restaurant GUIDs when Toast does not grant partner discovery', async () => {
+    global.fetch = jest.fn()
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ token: { accessToken: 'token-123' } }) })
+      .mockResolvedValueOnce({ ok: false, status: 403 })
+      .mockResolvedValueOnce({ ok: false, status: 403 }) as typeof fetch;
+    expect(await discoverToastRestaurants({ clientId: 'id', clientSecret: 'secret', apiBaseUrl: 'https://ws-api.toasttab.com' })).toEqual({ restaurants: [], manualRequired: true });
+  });
+
+  it('falls back to management-group analytics when partner discovery is unavailable', async () => {
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ token: { accessToken: 'token-123' } }) })
+      .mockResolvedValueOnce({ ok: false, status: 403 })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => [
+        { restaurantGuid: A, restaurantName: 'Calvine', active: true, archived: false },
+        { restaurantGuid: B, restaurantName: 'Old store', active: false },
+      ] });
+    global.fetch = fetchMock as typeof fetch;
+    expect(await discoverToastRestaurants({ clientId: 'id', clientSecret: 'secret', apiBaseUrl: 'https://ws-api.toasttab.com' })).toEqual({
+      restaurants: [{ guid: A, name: 'Calvine' }], manualRequired: false,
+    });
+    expect(fetchMock.mock.calls[2][0]).toBe('https://ws-api.toasttab.com/era/v1/restaurants-information');
   });
 
   it('normalizes resolved dollar prices to cents and omits open prices', () => {

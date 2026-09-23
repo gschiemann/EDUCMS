@@ -302,11 +302,11 @@ function StoreMappingPanel({ connectionId }: { connectionId: string }) {
         method: 'PUT',
         body: JSON.stringify({ locationTenantId }),
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['pos-locations', connectionId] }),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['pos-locations', connectionId] }),
   });
 
   const stores = locations.data || [];
-  if (locations.isLoading || stores.length === 0) return null; // single-location → nothing to map
+  if (locations.isLoading || stores.length === 0) return null;
   const kids = children.data?.children || [];
   const mapped = stores.filter((s) => s.locationTenantId).length;
 
@@ -329,16 +329,14 @@ function StoreMappingPanel({ connectionId }: { connectionId: string }) {
               className="px-2 py-1 rounded-md border border-slate-300 bg-white text-slate-700 max-w-[13rem]"
             >
               <option value="">{t('billingCommerce.notMapped')}</option>
+              {children.data?.districtId && <option value={children.data.districtId}>Main account</option>}
               {kids.map((k) => <option key={k.id} value={k.id}>{k.name}</option>)}
             </select>
           </div>
         ))}
       </div>
-      {kids.length === 0 && (
-        <p className="mt-2 text-[11px] text-slate-400">
-          {t('billingCommerce.noLocationsFound')}
-        </p>
-      )}
+      {mapped < stores.length && <p className="mt-2 text-[11px] text-amber-700">Map every store to its screen location to use that store’s Toast prices.</p>}
+      {mapStore.isError && <p className="mt-2 text-[11px] text-rose-700">{mapStore.error instanceof Error ? mapStore.error.message : 'Could not update this store mapping.'}</p>}
     </div>
   );
 }
@@ -364,7 +362,7 @@ function ProviderTile({ provider, connected, onConnect }: { provider: PosProvide
         <div className="flex items-center gap-1">
           {connected && <CheckCircle2 className="w-5 h-5 text-emerald-600" />}
           {isClosed && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 uppercase tracking-wider">{t('billingCommerce.infoOnly')}</span>}
-          {isPartner && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 uppercase tracking-wider">{t('billingCommerce.partnership')}</span>}
+          {isPartner && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 uppercase tracking-wider">{provider.id === 'toast' ? 'API access' : t('billingCommerce.partnership')}</span>}
           {provider.integrationTier === 'DIRECT' && !connected && (
             <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 uppercase tracking-wider">{t('billingCommerce.selfServe')}</span>
           )}
@@ -396,18 +394,45 @@ function ConnectModal({ provider, onClose, onConnected }: { provider: PosProvide
   const [credentials, setCredentials] = useState<Record<string, string>>({});
   const [displayName, setDisplayName] = useState('');
   const [toastLocations, setToastLocations] = useState('');
+  const [discoveredStores, setDiscoveredStores] = useState<Array<{ guid: string; name: string }> | null>(null);
+  const [selectedStores, setSelectedStores] = useState<string[]>([]);
+  const [manualToastStores, setManualToastStores] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   const submit = async () => {
     setSubmitting(true); setErr(null);
     try {
+      let stores = discoveredStores?.filter((store) => selectedStores.includes(store.guid)) || [];
+      if (provider.id === 'toast' && !manualToastStores && discoveredStores === null) {
+        const result = await apiFetch<{ restaurants: Array<{ guid: string; name: string }>; manualRequired: boolean }>('/pos/toast/discover-stores', {
+          method: 'POST',
+          body: JSON.stringify({ credentials: { ...credentials, apiBaseUrl: credentials.apiBaseUrl || 'https://ws-api.toasttab.com' } }),
+        });
+        if (result.manualRequired || !result.restaurants.length) {
+          setManualToastStores(true);
+          setErr('This Toast account does not allow automatic store discovery. Enter the restaurant GUID from Toast to continue.');
+          return;
+        }
+        setDiscoveredStores(result.restaurants);
+        if (result.restaurants.length > 1) {
+          setSelectedStores([]);
+          return;
+        }
+        stores = result.restaurants;
+        setSelectedStores([stores[0].guid]);
+      }
+      if (provider.id === 'toast' && !manualToastStores && discoveredStores && !stores.length) {
+        setErr('Select at least one Toast store.');
+        return;
+      }
       const toastCredentials = provider.id === 'toast' ? {
         ...credentials,
-        restaurants: toastLocations.split('\n').map((line) => line.trim()).filter(Boolean).map((line) => {
+        apiBaseUrl: credentials.apiBaseUrl || 'https://ws-api.toasttab.com',
+        restaurants: manualToastStores ? toastLocations.split('\n').map((line) => line.trim()).filter(Boolean).map((line) => {
           const [name, guid] = line.split('|').map((part) => part.trim());
           return { name, guid };
-        }),
+        }) : stores,
       } : credentials;
       const created = await apiFetch<{ id: string }>('/pos/connections', {
         method: 'POST',
@@ -483,16 +508,27 @@ function ConnectModal({ provider, onClose, onConnected }: { provider: PosProvide
           {provider.id === 'toast' && (
             <>
               <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-                Enter the API endpoint and credentials from Toast, then add each store GUID. We’ll sync its published menu now and hourly after that.
+                Enter your Toast API credentials. We’ll look for your stores, import the published menu, and keep connected screens updated automatically.
               </p>
-              <Field label="Toast API endpoint" placeholder="https://ws-api.toasttab.com" value={credentials.apiBaseUrl || ''} onChange={(v) => setCredentials({ ...credentials, apiBaseUrl: v })} />
-              <Field label="Client ID" value={credentials.clientId || ''} onChange={(v) => setCredentials({ ...credentials, clientId: v })} />
-              <Field label="Client secret" type="password" value={credentials.clientSecret || ''} onChange={(v) => setCredentials({ ...credentials, clientSecret: v })} />
-              <label className="block">
-                <span className="text-xs font-bold text-slate-600">Stores · one per line</span>
-                <textarea className="mt-1 w-full min-h-28 px-3 py-2 text-sm rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-400" placeholder="Calvine | restaurant-guid\nLaguna Blvd | restaurant-guid" value={toastLocations} onChange={(e) => setToastLocations(e.target.value)} />
-                <span className="text-[11px] text-slate-500">Map each synced store to its screen location after connecting for local prices.</span>
-              </label>
+              <Field label="Client ID" value={credentials.clientId || ''} onChange={(v) => { setCredentials({ ...credentials, clientId: v }); setDiscoveredStores(null); }} />
+              <Field label="Client secret" type="password" value={credentials.clientSecret || ''} onChange={(v) => { setCredentials({ ...credentials, clientSecret: v }); setDiscoveredStores(null); }} />
+              <details className="text-xs text-slate-600"><summary className="cursor-pointer">Advanced: Toast API endpoint</summary>
+                <div className="mt-2"><Field label="API endpoint" placeholder="https://ws-api.toasttab.com" value={credentials.apiBaseUrl || ''} onChange={(v) => { setCredentials({ ...credentials, apiBaseUrl: v }); setDiscoveredStores(null); }} /></div>
+              </details>
+              {discoveredStores && !manualToastStores && (
+                <fieldset className="rounded-lg border border-slate-200 p-3 space-y-2">
+                  <legend className="text-xs font-bold text-slate-700">Choose the stores for this account</legend>
+                  {discoveredStores.map((store) => <label key={store.guid} className="flex items-center gap-2 text-sm text-slate-700">
+                    <input type="checkbox" checked={selectedStores.includes(store.guid)} onChange={(e) => setSelectedStores((current) => e.target.checked ? [...current, store.guid] : current.filter((guid) => guid !== store.guid))} />
+                    {store.name}
+                  </label>)}
+                </fieldset>
+              )}
+              {manualToastStores && <label className="block">
+                <span className="text-xs font-bold text-slate-600">Toast stores · Name | restaurant GUID, one per line</span>
+                <textarea className="mt-1 w-full min-h-28 px-3 py-2 text-sm rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-400" placeholder="Calvine | restaurant-guid" value={toastLocations} onChange={(e) => setToastLocations(e.target.value)} />
+                <span className="text-[11px] text-slate-500">Some Toast account types do not allow store discovery. The GUID is listed with your Toast API access details.</span>
+              </label>}
             </>
           )}
 
@@ -561,7 +597,7 @@ function ConnectModal({ provider, onClose, onConnected }: { provider: PosProvide
               className="px-4 py-2 text-sm font-bold rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
             >
               {submitting && <Loader2 className="w-3 h-3 animate-spin" />}
-              {t('billingCommerce.connect')}
+              {provider.id === 'toast' && !manualToastStores && !discoveredStores ? 'Find stores & connect' : t('billingCommerce.connect')}
             </button>
           )}
         </div>

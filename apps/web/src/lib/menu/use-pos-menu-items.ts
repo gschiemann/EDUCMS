@@ -51,7 +51,7 @@ export interface PosMenuItem {
 export function usePosMenuItems(
   enabled: boolean,
   category?: string,
-  opts?: { includeUnavailable?: boolean },
+  opts?: { includeUnavailable?: boolean; connectionId?: string; providerId?: string },
 ): PosMenuItem[] | null {
   const [items, setItems] = useState<PosMenuItem[] | null>(null);
   // Ref (not state) so the poll loop always sees the live "have we ever
@@ -70,7 +70,7 @@ export function usePosMenuItems(
     const tick = async () => {
       controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
       const next = await fetchDeviceMenu(
-        { category, signal: controller?.signal, includeUnavailable: opts?.includeUnavailable },
+        { category, signal: controller?.signal, includeUnavailable: opts?.includeUnavailable, connectionId: opts?.connectionId, providerId: opts?.providerId },
         // Session fallback for the dashboard preview path. `apiFetch`
         // attaches the user JWT + CSRF; device-menu never uses it on a
         // real player (no session there).
@@ -102,6 +102,6 @@ export function usePosMenuItems(
       if (timer) clearTimeout(timer);
       try { controller?.abort(); } catch { /* noop */ }
     };
-  }, [enabled, category, opts?.includeUnavailable]);
+  }, [enabled, category, opts?.includeUnavailable, opts?.connectionId, opts?.providerId]);
   return items;
 }

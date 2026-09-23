@@ -8,9 +8,11 @@ export interface ToastCredentials {
   restaurants: { guid: string; name: string }[];
 }
 
+export type ToastAccess = Pick<ToastCredentials, 'clientId' | 'clientSecret' | 'apiBaseUrl'>;
+
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export function parseToastCredentials(raw: Record<string, unknown>): ToastCredentials {
+export function parseToastAccess(raw: Record<string, unknown>): ToastAccess {
   const clientId = String(raw.clientId || '').trim();
   const clientSecret = String(raw.clientSecret || '').trim();
   const base = String(raw.apiBaseUrl || '').trim().replace(/\/$/, '');
@@ -22,6 +24,11 @@ export function parseToastCredentials(raw: Record<string, unknown>): ToastCreden
       url.pathname !== '/' || url.search || url.hash || url.port || url.username || url.password) {
     throw new Error('Toast API endpoint must be an HTTPS toasttab.com hostname.');
   }
+  return { clientId, clientSecret, apiBaseUrl: url.origin };
+}
+
+export function parseToastCredentials(raw: Record<string, unknown>): ToastCredentials {
+  const access = parseToastAccess(raw);
   const rows = Array.isArray(raw.restaurants) ? raw.restaurants : [
     { guid: raw.restaurantGuid, name: raw.restaurantName || 'Restaurant' },
   ];
@@ -34,7 +41,40 @@ export function parseToastCredentials(raw: Record<string, unknown>): ToastCreden
   if (new Set(restaurants.map((r) => r.guid.toLowerCase())).size !== restaurants.length) {
     throw new Error('Toast restaurant GUIDs must be unique.');
   }
-  return { clientId, clientSecret, apiBaseUrl: url.origin, restaurants };
+  return { ...access, restaurants };
+}
+
+/** Partner API credentials can enumerate accessible stores. Standard restaurant
+ * API credentials may lack this permission; callers then ask for a GUID. */
+export async function discoverToastRestaurants(raw: Record<string, unknown>): Promise<{ restaurants: ToastCredentials['restaurants']; manualRequired: boolean }> {
+  const access = parseToastAccess(raw);
+  const token = await authenticateToast({ ...access, restaurants: [] });
+  let response = await fetch(`${access.apiBaseUrl}/partners/v1/restaurants`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (response.status === 401) throw new Error('Toast rejected the API credentials.');
+  if (response.status === 403 || response.status === 404) {
+    // Management-group/analytics accounts can enumerate restaurants without
+    // partner access. Standard menu-only credentials may lack both scopes.
+    response = await fetch(`${access.apiBaseUrl}/era/v1/restaurants-information`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  }
+  if (response.status === 403 || response.status === 404) return { restaurants: [], manualRequired: true };
+  if (!response.ok) throw new Error(`Toast store discovery failed (${response.status}). Try again or enter your restaurant GUID.`);
+  const body: unknown = await response.json();
+  if (!Array.isArray(body)) throw new Error('Toast returned an invalid store list.');
+  const byGuid = new Map<string, { guid: string; name: string }>();
+  for (const row of body) {
+    if (!row || typeof row !== 'object') continue;
+    const item = row as Record<string, unknown>;
+    if (item.deleted === true || item.archived === true || item.active === false) continue;
+    const guid = String(item.restaurantGuid || '').trim();
+    if (!GUID.test(guid)) continue;
+    const name = String(item.locationName || item.restaurantName || 'Restaurant').trim();
+    byGuid.set(guid.toLowerCase(), { guid, name: name || 'Restaurant' });
+  }
+  return { restaurants: [...byGuid.values()], manualRequired: byGuid.size === 0 };
 }
 
 type ToastItem = {

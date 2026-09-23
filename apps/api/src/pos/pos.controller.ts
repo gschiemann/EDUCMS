@@ -34,6 +34,12 @@ export class PosController {
     return this.svc.listConnections(req.user.tenantId);
   }
 
+  @Post('toast/discover-stores')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async discoverToastStores(@Body() body: { credentials?: Record<string, unknown> }) {
+    return this.svc.discoverToastStores(body?.credentials || {});
+  }
+
   @Post('connections')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   async createConnection(
@@ -75,8 +81,9 @@ export class PosController {
     @Query('connectionId') connectionId?: string,
     @Query('category') category?: string,
     @Query('locationId') locationId?: string,
+    @Query('providerId') providerId?: string,
   ) {
-    return this.svc.listMenuItems(req.user.tenantId, { connectionId, category, locationId });
+    return this.svc.listMenuItems(req.user.tenantId, { connectionId, category, locationId, providerId });
   }
 
   // Sprint 8d follow-up (2026-05-03) — distinct categories + item counts

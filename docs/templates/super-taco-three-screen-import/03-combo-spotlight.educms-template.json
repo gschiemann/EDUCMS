@@ -22,6 +22,7 @@
         "defaultConfig": {
           "url": "/templates/signage/qsr/27-super-taco-combos.html",
           "posSync": true,
+          "posProvider": "toast",
           "dataSource": "POS"
         }
       }

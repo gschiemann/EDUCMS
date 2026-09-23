@@ -120,7 +120,7 @@ export const POS_PROVIDERS: ReadonlyArray<PosProviderDef> = [
     pricingNote: 'Toast API access required',
     bestFor: ['QSR'],
     capabilities: { menuSync: true, categorySync: true, availabilitySync: false, locationsSync: true, realtimeUpdates: false },
-    tierReason: 'Connect with Toast-issued or Toast Web API credentials and each restaurant GUID. Published menu data syncs hourly and on demand.',
+    tierReason: 'Connect with Toast API credentials. Stores are discovered when the account permits it; otherwise enter a restaurant GUID. Published menus are checked every five minutes and can be synced on demand.',
   },
   {
     id: 'clover',

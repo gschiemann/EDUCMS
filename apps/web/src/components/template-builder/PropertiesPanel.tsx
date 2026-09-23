@@ -3,6 +3,7 @@
 import { useId, useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { MediaSourcePicker } from './MediaSourcePicker';
+import { ToastItemBindingsPanel } from './ToastItemBindingsPanel';
 import WALL_CLOCK_FIELDS from '@/lib/wall-clock-fields.json';
 import { boardMenuRows, matchMenuToBoard, planRowFills } from '@/lib/menu/menu-matching';
 import { AlignLeft, AlignCenter, AlignRight, AlignStartVertical, AlignEndVertical, AlignVerticalJustifyCenter, ChevronDown, ChevronRight, X as XIcon, Tv, ExternalLink, RefreshCw, GripVertical, Hand, Globe, Play, Layers, ShieldAlert, Volume2, Webhook, Bell, Sparkles, Link2, Unlink, Eye, EyeOff, RotateCcw, Loader2, Plus} from 'lucide-react';
@@ -2918,12 +2919,12 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
         const posUrl = typeof cfg.url === 'string' ? cfg.url : '';
         if (/\/signage\/(qsr|menus-pos|bar)\//.test(posUrl) || cfg.posSync === true || cfg.dataSource === 'POS') {
           fields.push(SH('ext-pos', 'Live menu'));
-          fields.push(<PosDriverPicker key="ext-pos-picker" cfg={cfg} setField={setField} />);
-          // Which of this board's rows the live menu will actually fill.
-          // Turning POS on used to change nothing visible: some rows take a
-          // live price, some silently keep their typed one, and the operator
-          // was told neither.
-          fields.push(<MenuMatchReport key="ext-pos-match" cfg={cfg} setField={setField} url={typeof cfg.url === 'string' ? cfg.url : ''} />);
+          if (['25-super-taco-', '26-super-taco-', '27-super-taco-'].some((part) => posUrl.includes(part))) {
+            fields.push(<ToastItemBindingsPanel key="ext-toast-items" cfg={cfg} setField={setField} url={posUrl} />);
+          } else {
+            fields.push(<PosDriverPicker key="ext-pos-picker" cfg={cfg} setField={setField} />);
+            fields.push(<MenuMatchReport key="ext-pos-match" cfg={cfg} setField={setField} url={posUrl} />);
+          }
         }
       }
 

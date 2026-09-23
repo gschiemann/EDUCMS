@@ -22,6 +22,7 @@
         "defaultConfig": {
           "url": "/templates/signage/qsr/25-super-taco-tacos.html",
           "posSync": true,
+          "posProvider": "toast",
           "dataSource": "POS"
         }
       }

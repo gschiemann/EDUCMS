@@ -7188,6 +7188,8 @@ export class ScreensController {
     @Param('id') id: string,
     @Req() req: ExpressReq,
     @Query('includeUnavailable') includeUnavailable?: string,
+    @Query('connectionId') connectionId?: string,
+    @Query('providerId') providerId?: string,
   ) {
     // SEC-001 — prior behaviour, stated. Live POS prices are tenant data;
     // an unproven credential no longer reads them.
@@ -7235,6 +7237,8 @@ export class ScreensController {
     const resolved = await this.menu.resolveMenuForLocation(locationTenantId, {
       catalogTenantId,
       includeUnavailable: wantUnavailable,
+      connectionId: connectionId || undefined,
+      providerId: providerId || undefined,
     });
 
     // Shape compatible with what MenuBoardWidget maps (name / description

@@ -86,6 +86,18 @@ it('returns the resolved menu for a valid device token bound to the screen', asy
   expect(res.items[0].available).toBe(true);
 });
 
+it('passes a board-selected Toast connection through to the tenant-scoped menu resolver', async () => {
+  mockPrisma.client.screen.findUnique.mockResolvedValue({
+    tenantId: 'loc-A', posLocationId: null, posLocation: null,
+    tenant: { id: 'loc-A', parentId: 'chain-1' },
+  });
+  await controller.getMenu('screen-1', reqWithBearer(deviceToken('screen-1')), '1', 'toast-connection', 'toast');
+  expect(mockMenu.resolveMenuForLocation).toHaveBeenCalledWith('loc-A', expect.objectContaining({
+    catalogTenantId: 'chain-1', includeUnavailable: true,
+    connectionId: 'toast-connection', providerId: 'toast',
+  }));
+});
+
 it('resolves location = the screen tenant and chain = its parent when not POS-location-mapped', async () => {
   mockPrisma.client.screen.findUnique.mockResolvedValue({
     tenantId: 'loc-A',

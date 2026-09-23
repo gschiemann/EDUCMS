@@ -159,6 +159,8 @@ export class MenuService {
     opts?: {
       catalogTenantId?: string;
       catalogId?: string;
+      connectionId?: string;
+      providerId?: string;
       now?: Date;
       includeHidden?: boolean;
       includeUnavailable?: boolean;
@@ -184,6 +186,14 @@ export class MenuService {
       isActive: true,
     };
     if (opts?.catalogId) catalogWhere.id = opts.catalogId;
+    if (opts?.connectionId) catalogWhere.connectionId = opts.connectionId;
+    else if (opts?.providerId) {
+      const connections = await (this.prisma.client as any).posProviderConnection.findMany({
+        where: { tenantId: { in: catalogTenantIds }, providerId: opts.providerId, status: 'ACTIVE' },
+        select: { id: true },
+      });
+      catalogWhere.connectionId = { in: connections.map((connection: any) => connection.id) };
+    }
 
     const catalogs = await (this.prisma.client as any).menuCatalog.findMany({
       where: catalogWhere,

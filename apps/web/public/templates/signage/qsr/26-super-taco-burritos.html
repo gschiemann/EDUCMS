@@ -36,6 +36,39 @@
 .empty{display:none;flex:1;align-items:center;justify-content:center;background:var(--brand-paper);border-radius:28px;font:800 calc(86px * var(--type-scale))/1.15 var(--font-display);text-transform:uppercase;text-align:center;padding:100px}
 .mode-burritos .rail-photo{background-position:80% center}.mode-burritos .rail{--rail:#321e17}.mode-burritos .rail-title{font-size:calc(206px * var(--type-scale))}
 
+
+/* One HTML design, two native screen orientations. */
+.portrait .stage{width:2160px;height:3840px}
+.portrait .top{height:230px;padding:28px 66px}
+.portrait .logo{width:800px;height:150px}
+.portrait .top-kicker{font-size:43px}
+.portrait .top-series{font-size:70px}
+.portrait .bottom{height:130px;padding:0 65px}
+.portrait .bottom span{font-size:43px}
+.portrait .menu-main{height:3464px;grid-template-columns:1fr;grid-template-rows:580px minmax(0,1fr)}
+.portrait .rail{padding:55px 65px;display:grid;grid-template-columns:minmax(0,1fr) 670px;grid-template-rows:85px 210px 120px;align-content:center;column-gap:50px}
+.portrait .rail-no{font-size:64px}
+.portrait .rail-title,.portrait .mode-burritos .rail-title{margin:0;font-size:205px;max-width:none}
+.portrait .rail-sub{margin:0;font-size:51px;max-width:none}
+.portrait .mode-burritos .rail{grid-template-rows:65px 310px 80px}
+.portrait .mode-burritos .rail-title{font-size:158px}
+.portrait .mode-burritos .rail-sub{font-size:43px}
+.portrait .rail-photo{grid-column:2;grid-row:1 / span 3;width:670px;height:470px;min-height:0;margin:0}
+.portrait .menu-area{padding:35px 65px 42px}
+.portrait .menu-heading{height:165px}
+.portrait .menu-heading h1{font-size:127px}
+.portrait .menu-heading .aside{font-size:44px;max-width:500px}
+.portrait .cards{grid-template-columns:1fr;grid-template-rows:repeat(6,minmax(0,1fr));gap:16px}
+.portrait .dish{padding:18px 30px 14px;border-radius:20px}
+.portrait .dish-top{height:44px;flex-basis:44px}
+.portrait .dish-type{font-size:42px;max-width:calc(100% - 150px)}
+.portrait .dish-photo{width:120px;height:120px;top:18px;right:25px}
+.portrait .dish-name{font-size:82px;height:125px;flex-basis:125px;margin:2px 140px 0 0}
+.portrait .dish-desc{font-size:46px;height:70px;flex-basis:70px;margin:0}
+.portrait .dish-bottom{height:90px;flex-basis:90px;padding-top:7px}
+.portrait .dish-price{font-size:91px}
+.portrait .dish-number{font-size:42px}
+
 </style>
 <script>/*EDUCMS-SHIM-V14*/(function(){try{
 var editMode=false;
@@ -190,7 +223,7 @@ addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='objec
   var manualImages={};
   function decode(v){try{return JSON.parse(decodeURIComponent(escape(atob(v.replace(/-/g,'+').replace(/_/g,'/')))));}catch(e){return {};}}
   manualImages=decode(q.get('img')||'');
-  function fit(){stage.style.setProperty('--stage-scale',Math.min(innerWidth/3840,innerHeight/2160));}
+  function fit(){var portrait=q.get('orientation')==='portrait'||(q.get('orientation')!=='landscape'&&innerHeight>innerWidth);document.documentElement.classList.toggle('portrait',portrait);stage.style.setProperty('--stage-scale',Math.min(innerWidth/(portrait?2160:3840),innerHeight/(portrait?3840:2160)));}
   function norm(v){return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,' ').trim();}
   function safeImage(v){var raw=Array.isArray(v)?v[0]:v;if(typeof raw!=='string'||!raw.trim())return null;try{var u=new URL(raw,location.href);return u.protocol==='https:'||u.origin===location.origin?u.href:null;}catch(e){return null;}}
   function image(slot,url,fallback){if(!slot)return;var src=safeImage(url)||fallback;slot.style.backgroundImage=src?'url("'+src.replace(/"/g,'')+'")':'none';slot.setAttribute('data-has-image',src?'true':'false');}
@@ -198,10 +231,10 @@ addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='objec
   function hasPrice(it){return it&&it.price!=null&&String(it.price).trim()!=='';}
   function isMenuItem(it){if(!it||!it.name||!hasPrice(it)||it.available===false)return false;var n=norm(it.name),c=norm(it.category);if(/^\s*#/.test(String(it.name))||/(combination|combo plate)/.test(c))return false;return mode==='tacos'?/(taco|quesabirria)/.test(n)||/(taco|birria)/.test(c):/(burrito|nacho|quesadilla|agua fresca|drink)/.test(n)||/(burrito|nacho|quesadilla|agua fresca|fountain drink)/.test(c);}
   function isCombo(it){if(!it||!it.name||!hasPrice(it)||it.available===false)return false;return /^\s*#\s*\d+/.test(String(it.name))||/(combination|combo plate)/.test(norm(it.category));}
-  function choose(rows,nodes){var used={};var selected=nodes.map(function(node){var seed=norm(node.getAttribute('data-seed'));var i=rows.findIndex(function(it,j){return !used[j]&&norm(it.name)===seed;});if(i<0)i=rows.findIndex(function(it,j){return !used[j]&&norm(it.name).indexOf(seed)>=0;});if(i>=0)used[i]=1;return i;});selected.forEach(function(i,pos){if(i>=0)return;var next=rows.findIndex(function(it,j){return !used[j];});if(next>=0){selected[pos]=next;used[next]=1;}});return selected;}
+  function choose(rows,nodes,bindings){var used={},prefix=mode==='combos'?'combo.':'item.';var selected=nodes.map(function(node,pos){var id=bindings&&bindings[prefix+pos];if(id){var bound=rows.findIndex(function(it,j){return !used[j]&&it.externalId===id;});if(bound>=0)used[bound]=1;return bound;}var seed=norm(node.getAttribute('data-seed'));var i=rows.findIndex(function(it,j){return !used[j]&&norm(it.name)===seed;});if(i<0)i=rows.findIndex(function(it,j){return !used[j]&&norm(it.name).indexOf(seed)>=0;});if(i>=0)used[i]=1;return i;});selected.forEach(function(i,pos){if(i>=0||(bindings&&bindings[prefix+pos]))return;var next=rows.findIndex(function(it,j){return !used[j];});if(next>=0){selected[pos]=next;used[next]=1;}});return selected;}
   function set(root,key,value){var el=root.querySelector('[data-field="'+key+'"]');if(el&&value!=null)el.textContent=String(value);}
   function renderMenu(menu){if(!menu||!Array.isArray(menu.items))return;if(menu.configured===false&&menu.items.length===0)return;
-    var rows=menu.items.filter(isMenuItem),cards=[].slice.call(document.querySelectorAll('.dish')),picks=choose(rows,cards),visible=0;
+    var boundIds=Object.keys(menu.bindings||{}).map(function(k){return menu.bindings[k];});var rows=menu.items.filter(function(it){return isMenuItem(it)||(it&&it.externalId&&boundIds.indexOf(it.externalId)>=0&&hasPrice(it)&&it.available!==false);}),cards=[].slice.call(document.querySelectorAll('.dish')),picks=choose(rows,cards,menu.bindings),visible=0;
     cards.forEach(function(card,i){var it=rows[picks[i]];card.style.display=it?'flex':'none';if(!it)return;visible++;
       var key='item.'+i+'.';set(card,key+'name',it.name);set(card,key+'desc',it.desc||'');set(card,key+'price',it.price);set(card,key+'category',it.category||'MENU');
       var photo=card.querySelector('.dish-photo');image(photo,manualImages[key+'image']||it.imageUrl,'');
@@ -211,7 +244,7 @@ addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='objec
   var slides=[].slice.call(document.querySelectorAll('.combo-slide')),active=0,timer=null;
   function showSlide(index){var visible=slides.filter(function(s){return s.style.display!=='none';});if(!visible.length)return;active=((index%visible.length)+visible.length)%visible.length;slides.forEach(function(s){s.classList.remove('active');});visible[active].classList.add('active');var dots=[].slice.call(document.querySelectorAll('.combo-progress span'));dots.forEach(function(d,i){d.classList.toggle('active',i===active);d.style.display=i<visible.length?'block':'none';});fitText();}
   function renderCombos(menu){if(!menu||!Array.isArray(menu.items))return;if(menu.configured===false&&menu.items.length===0)return;
-    var rows=menu.items.filter(isCombo),picks=choose(rows,slides),visible=0;
+    var boundIds=Object.keys(menu.bindings||{}).map(function(k){return menu.bindings[k];});var rows=menu.items.filter(function(it){return isCombo(it)||(it&&it.externalId&&boundIds.indexOf(it.externalId)>=0&&hasPrice(it)&&it.available!==false);}),picks=choose(rows,slides,menu.bindings),visible=0;
     slides.forEach(function(slide,i){var it=rows[picks[i]];slide.style.display=it?'grid':'none';if(!it)return;visible++;
       var key='combo.'+i+'.',number=String(it.name).match(/^\s*(#\s*\d+)/);set(slide,key+'index',number?number[1]:String(i+1));set(slide,key+'name',String(it.name).replace(/^\s*#\s*\d+\s*/,''));set(slide,key+'desc',it.desc||'Served with rice, beans and side salad.');set(slide,key+'price',it.price);
       var photo=slide.querySelector('.combo-photo');image(photo,manualImages[key+'image']||it.imageUrl,'/templates/signage/qsr/assets/super-taco/hero.jpg');
