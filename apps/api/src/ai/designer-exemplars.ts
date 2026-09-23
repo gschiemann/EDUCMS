@@ -10,10 +10,13 @@
  * designer-exemplars.generated.ts (the API image does not ship apps/web/public).
  * This module only CHOOSES among them.
  *
+ * The compiled boards carry no business's content: every word, price and photo
+ * is a neutral placeholder (VENUE NAME, Menu Item One, $0.00, empty frames), so
+ * the model learns layout, type scale and structure and has nothing to copy —
+ * and every venue, including the one a board was first made for, gets them.
+ *
  * Rules (pure, deterministic, unit-tested in designer-exemplars.spec.ts):
  *   - only boards tagged for the request's purpose;
- *   - never the target brand's own board (a Super Taco request must not be
- *     shown Super Taco's wall — the model would copy it);
  *   - the candidate's own structure first, then a different structure, so the
  *     three candidates of a batch are each anchored on a different layout;
  *   - the request's orientation, else the other one;
@@ -25,18 +28,13 @@ import { findDesignerStructure, type DesignerPurpose } from './designer-structur
 export type { DesignerPurpose };
 
 export interface DesignerExemplar {
+  /** Neutral id; which board it was compiled from is SOURCES in the builder. */
   id: string;
   title: string;
-  /** The approved source board, relative to the repo root. */
-  source: string;
-  /** First 16 hex chars of the source file's SHA-256 at build time. */
+  /** First 16 hex chars of the source board's SHA-256 at build time. */
   sourceSha256: string;
   /** Where the approval is recorded. */
   approval: string;
-  /** The business the board was made for — never shown for that business. */
-  brand: string;
-  /** Lower-case strings that identify that business in a request. */
-  brandTokens: string[];
   vertical: string;
   purposes: DesignerPurpose[];
   /** Layout family — matches a DesignerStructure id in designer-prompt.ts. */
@@ -54,32 +52,6 @@ export interface DesignerExemplar {
 
 export { DESIGNER_EXEMPLARS };
 
-/** Lower-case, alphanumerics only, single spaces — for brand matching. */
-function norm(s: string | null | undefined): string {
-  return (s ?? '')
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim();
-}
-
-/**
- * Is this exemplar's business the one the request is for? Checks every brand
- * token against the request's own words (venue name, website reference, brief).
- * Both the spaced and the joined form match: "Super Taco" and supertacomex.com.
- */
-export function exemplarIsTargetBrand(ex: Pick<DesignerExemplar, 'brandTokens'>, brandText: Array<string | null | undefined>): boolean {
-  const hay = brandText.map(norm).filter(Boolean).join(' | ');
-  if (!hay) return false;
-  const joined = hay.replace(/ /g, '');
-  return ex.brandTokens.some((t) => {
-    const nt = norm(t);
-    if (!nt) return false;
-    return (` ${hay} `).includes(` ${nt} `) || joined.includes(nt.replace(/ /g, ''));
-  });
-}
-
 export interface SelectDesignerExemplarsInput {
   purpose: DesignerPurpose;
   orientation: 'landscape' | 'portrait';
@@ -87,8 +59,6 @@ export interface SelectDesignerExemplarsInput {
   itemCount?: number;
   /** This candidate's structure — its matching reference goes first. */
   structureId?: string;
-  /** The request's own words, for the never-the-target-brand rule. */
-  brandText?: Array<string | null | undefined>;
   max?: number;
   /** Test seam: the pool to choose from (defaults to the compiled set). */
   pool?: readonly DesignerExemplar[];
@@ -99,9 +69,7 @@ export function selectDesignerExemplars(input: SelectDesignerExemplarsInput): De
   const pool = input.pool ?? DESIGNER_EXEMPLARS;
   const max = Math.max(0, Math.min(input.max ?? 2, 3));
   const items = Math.max(0, input.itemCount ?? 0);
-  const eligible = pool.filter(
-    (e) => e.purposes.includes(input.purpose) && !exemplarIsTargetBrand(e, input.brandText ?? []),
-  );
+  const eligible = pool.filter((e) => e.purposes.includes(input.purpose));
   if (!eligible.length || !max) return [];
 
   // One board per structure: the request's orientation if the structure has
@@ -137,18 +105,19 @@ export function structureLabelFromId(id: string): string {
 }
 
 /**
- * The block the Designer's user message opens with. Each board is labelled
- * with whose it is, so the model borrows the craft and never the content.
+ * The block the Designer's user message opens with. The boards carry
+ * placeholders, and the header says so: the model borrows the craft, and every
+ * word, price, photo and color on this board comes from THIS BOARD below.
  */
 export function formatExemplarsForPrompt(exemplars: readonly DesignerExemplar[]): string {
   if (!exemplars.length) return '';
   const lines: string[] = [
-    'REFERENCE BOARDS — approved boards from our own production library, made for these same screens. Match this craft. Their text, dishes, prices, colors and logo belong to the business named on each one; none of it goes on this board.',
+    'REFERENCE BOARDS — approved boards from our own production library, made for these same screens. Match this craft: layout, type scale, spacing, structure. Every word, price and photo on them is a placeholder (VENUE NAME, Menu Item One, $0.00, empty photo frames) and their colors are only tokens — none of it goes on this board; its words, prices, photos and colors come from THIS BOARD below.',
   ];
   exemplars.forEach((e, i) => {
     lines.push(
       '',
-      `Reference ${i + 1} — ${e.title} (${e.brand}). ${e.width}×${e.height} ${e.orientation}, ${structureLabelFromId(e.structure)} layout${e.itemCount ? `, ${e.itemCount} item${e.itemCount === 1 ? '' : 's'}` : ''}.`,
+      `Reference ${i + 1} — ${e.title}. ${e.width}×${e.height} ${e.orientation}, ${structureLabelFromId(e.structure)} layout${e.itemCount ? `, ${e.itemCount} item${e.itemCount === 1 ? '' : 's'}` : ''}.`,
       e.html,
     );
   });

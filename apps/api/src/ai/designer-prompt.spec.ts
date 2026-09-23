@@ -70,7 +70,7 @@ describe('DESIGNER_SYSTEM_PROMPT — the contract', () => {
     expect(bar).toBeLessThan(DESIGNER_SYSTEM_PROMPT.indexOf('OUTPUT'));
     expect(DESIGNER_SYSTEM_PROMPT).toMatch(/REFERENCE BOARDS/);
     expect(DESIGNER_SYSTEM_PROMPT).toMatch(/Match their craft/);
-    expect(DESIGNER_SYSTEM_PROMPT).toMatch(/none of it goes on this board/);
+    expect(DESIGNER_SYSTEM_PROMPT).toMatch(/none of them goes on this board/);
   });
 
   it('keeps the output contract: raw HTML, first-child stage, no scripts', () => {
@@ -171,13 +171,14 @@ describe('buildDesignerUserPrompt', () => {
     expect(p).toContain('data-fit-min="26"');
   });
 
-  it('opens with the reference boards when there are any, and labels whose they are', () => {
-    const exemplars = selectDesignerExemplars({ purpose: 'menu', orientation: 'landscape', structureId: 'rail-cards', brandText: ['Casa Lupita'] });
+  it('opens with the reference boards when there are any, and says they carry placeholders', () => {
+    const exemplars = selectDesignerExemplars({ purpose: 'menu', orientation: 'landscape', structureId: 'rail-cards' });
     expect(exemplars.length).toBe(2);
     const p = buildDesignerUserPrompt({ prompt: 'menu board', width: 3840, height: 2160, purpose: 'menu', exemplars });
     expect(p.startsWith('REFERENCE BOARDS')).toBe(true);
     expect(p).toContain('Reference 1 — ');
-    expect(p).toContain('(Super Taco)');
+    expect(p).toContain('is a placeholder (VENUE NAME, Menu Item One, $0.00, empty photo frames)');
+    expect(p).not.toMatch(/super ?taco/i);
     expect(p).toContain(exemplars[0].html);
     expect(p.indexOf('REFERENCE BOARDS')).toBeLessThan(p.indexOf('THIS BOARD'));
   });
@@ -199,7 +200,7 @@ describe('buildDesignerUserPrompt', () => {
 
   it('stays within budget with two reference boards and a 60-row menu (~16k tokens)', () => {
     const rows = Array.from({ length: 60 }, (_v, i) => `Mains — A Long Descriptive Dish Name Number ${i} — $${(10 + i / 10).toFixed(2)} — with a short description`).join('\n');
-    const exemplars = selectDesignerExemplars({ purpose: 'menu', orientation: 'landscape', itemCount: 60, structureId: 'leader-rows', brandText: [] });
+    const exemplars = selectDesignerExemplars({ purpose: 'menu', orientation: 'landscape', itemCount: 60, structureId: 'leader-rows' });
     const p = buildDesignerUserPrompt({ prompt: 'our whole menu', width: 3840, height: 2160, purpose: 'menu', exemplars, content: rows, structure: menu[2], otherStructures: menu });
     expect(tokens(p)).toBeLessThanOrEqual(16_000);
   });
@@ -974,8 +975,8 @@ describe('FACTS in the designer prompt', () => {
     expect(DESIGNER_SYSTEM_PROMPT).toContain('Where a section has no supplied facts, that section is left out');
   });
 
-  it('labels reference-board content as another business\'s, not a pattern to copy', () => {
-    expect(DESIGNER_SYSTEM_PROMPT).toMatch(/text, dishes, prices, colors and logo belong to that business/);
+  it('says a reference board\'s words, prices and photos are placeholders, never content for this board', () => {
+    expect(DESIGNER_SYSTEM_PROMPT).toContain("A reference board's words, prices and photos are placeholders (VENUE NAME, Menu Item One, $0.00, empty frames) and its colors are only tokens: none of them goes on this board.");
   });
 });
 

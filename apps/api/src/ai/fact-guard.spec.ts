@@ -249,13 +249,13 @@ describe('enforceGroundedFactsInHtml', () => {
   it.each(DESIGNER_EXEMPLARS.map((e) => [e.id, e.html] as const))(
     'strips every price out of the reference board %s when nothing is grounded',
     (_id, html) => {
-      // The Designer shows the model real, priced boards (another business's
-      // menu) — the strongest fabrication signal in the prompt. If the model
-      // copied one, with no grounded facts not one of its prices may survive.
+      // The Designer shows the model priced boards — placeholder prices
+      // ($0.00), but prices on a menu all the same. If the model copied one,
+      // with no grounded facts not one of its prices may survive.
       expect(html).toMatch(/\$\d/); // the reference really is priced
       const res = enforceGroundedFactsInHtml(html, NO_FACTS);
       expect(res.html).not.toMatch(/\$\d/);
-      expect(res.html).toContain('SUPER TACO'); // the wordmark survives
+      expect(res.html).toContain('VENUE NAME'); // the wordmark survives
       expect(res.removedNodes).toBeGreaterThan(0);
     },
   );

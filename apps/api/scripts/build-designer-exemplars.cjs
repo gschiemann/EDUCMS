@@ -31,7 +31,13 @@
  *   - the stage is normalised to the Designer contract (first child of <body>,
  *     fixed px size, position:relative, no self-scaling), and the few CSS
  *     features the Chromium-83 LED players lack are compiled out (flex `gap`
- *     → child margins, `color-mix()` → a resolved rgba). Grid `gap` stays.
+ *     → child margins, `color-mix()` → a resolved rgba). Grid `gap` stays;
+ *   - every word, price and photo becomes a neutral placeholder of about the
+ *     same length (NEUTRALIZE) — a reference teaches layout, never content, so
+ *     no dish crosses to another venue and every venue can be shown every
+ *     board, the one it was made for included;
+ *   - no type under the Designer's size floor (The type floor) — lifted in the
+ *     compiled copy only; the source boards are never edited.
  *
  * WHICH BOARDS. Only boards with a documented approval — see `approval` on each
  * entry. Purposes with no approved board get none (listed in the research
@@ -54,8 +60,9 @@ const OUT = process.env.DESIGNER_EXEMPLARS_OUT
   : path.join(REPO, 'apps/api/src/ai/designer-exemplars.generated.ts');
 
 // ─── Approvals ──────────────────────────────────────────────────────────────
-const SUPER_TACO_APPROVAL =
-  "Greg, 2026-09-22: the Super Taco wall Codex built on GPT-6 Sol is the bar the AI Designer must meet (\"learn from this and make our AI generation this good\") — docs/research/2026-09-22-ai-designer-rework/README.md";
+// Emitted into the generated module, so written brand-free (see NEUTRALIZE).
+const QSR_WALL_APPROVAL =
+  "Greg, 2026-09-22: the qsr 24-27 menu wall Codex built on GPT-6 Sol is the bar the AI Designer must meet (\"learn from this and make our AI generation this good\") — docs/research/2026-09-22-ai-designer-rework/README.md";
 const GYM_WELCOME_APPROVAL =
   "APPROVED 2026-07-02 by Greg (\"i like them all, keep them\") — docs/design/approved/2026-07-02-gym-welcome/README.md";
 const MORNING_NEWS_APPROVAL =
@@ -73,13 +80,18 @@ const MORNING_NEWS_APPROVAL =
 //       (data-menu-row="N" around item.N.* fields — the same slot keys Codex's
 //       posItemBindings use). `rename` maps the board's own field prefix/leaves
 //       onto the standard item.N.{category,name,desc,price,image} keys.
+// brandTokens: how the business is written on the board, so NEUTRALIZE can
+//       find every line that names it. Build-time only — never emitted.
+// renameClasses: class names that carry the business's content ("burritos"),
+//       renamed in markup and CSS alike.
+// adjust: compiled-only declaration overrides (per orientation) that give the
+//       type-floor lift room — the source boards are never edited.
 const SOURCES = [
   {
     status: 'reference',
-    id: 'super-taco-hero-cards',
+    id: 'menu-hero-cards',
     file: 'apps/web/public/templates/signage/qsr/24-super-taco-flagship.html',
-    title: 'Super Taco · Flagship Menu',
-    brand: 'Super Taco',
+    title: 'Menu board — hero panel + dish cards',
     brandTokens: ['super taco', 'supertaco'],
     vertical: 'qsr',
     purposes: ['menu'],
@@ -90,14 +102,13 @@ const SOURCES = [
     rows: { selector: 'article.dish' },
     dropMarkup: ['#empty'],
     dropCss: [/^\.empty$/, /\.soldout/],
-    approval: SUPER_TACO_APPROVAL,
+    approval: QSR_WALL_APPROVAL,
   },
   {
     status: 'reference',
-    id: 'super-taco-rail-cards',
+    id: 'menu-rail-cards',
     file: 'apps/web/public/templates/signage/qsr/26-super-taco-burritos.html',
-    title: 'Super Taco · Burritos & More (menu wall 2 of 3)',
-    brand: 'Super Taco',
+    title: 'Menu board — photo rail + dish cards (one screen of a three-screen wall)',
     brandTokens: ['super taco', 'supertaco'],
     vertical: 'qsr',
     purposes: ['menu'],
@@ -108,14 +119,23 @@ const SOURCES = [
     rows: { selector: 'article.dish' },
     dropMarkup: ['#empty'],
     dropCss: [/^\.empty$/, /^\.theme-data$/, /\.combo-/, /^\.mode-(tacos|combos)/],
-    approval: SUPER_TACO_APPROVAL,
+    renameClasses: { 'mode-burritos': 'mode-menu' },
+    // Portrait sets its card labels at 42-46 px; lifted to the 52 px floor they
+    // need a taller label row (52 × 1.1 line) and a wider aside (it wrapped to
+    // four lines and ran into the first card even at 44 px).
+    adjust: {
+      portrait: [
+        { selector: '.portrait .dish-top', set: { height: '58px', 'flex-basis': '58px' } },
+        { selector: '.portrait .menu-heading .aside', set: { 'max-width': '820px' } },
+      ],
+    },
+    approval: QSR_WALL_APPROVAL,
   },
   {
     status: 'reference',
-    id: 'super-taco-split-offer',
+    id: 'offer-split',
     file: 'apps/web/public/templates/signage/qsr/27-super-taco-combos.html',
-    title: 'Super Taco · Combination Plates (menu wall 3 of 3)',
-    brand: 'Super Taco',
+    title: 'Offer board — photo + one featured offer (one screen of a three-screen wall)',
     brandTokens: ['super taco', 'supertaco'],
     vertical: 'qsr',
     purposes: ['offer', 'menu'],
@@ -131,12 +151,12 @@ const SOURCES = [
     dropDeclarations: [{ selector: /^\.combo-slide$/, props: ['opacity', 'visibility', 'transition'] }],
     removeClasses: { '.combo-slide': ['active'] },
     rows: { selector: 'section.combo-slide', rename: { prefix: 'combo', leaves: { kicker: 'category' } } },
-    approval: SUPER_TACO_APPROVAL,
+    approval: QSR_WALL_APPROVAL,
   },
   // ── Considered, NOT compiled ────────────────────────────────────────────
   {
     status: 'candidate',
-    id: 'super-taco-rail-cards-tacos',
+    id: 'menu-rail-cards (wall screen 1)',
     file: 'apps/web/public/templates/signage/qsr/25-super-taco-tacos.html',
     why: 'Approved (same wall), but the same rail + cards structure as 26 — a second copy adds tokens, not range.',
   },
@@ -406,6 +426,211 @@ function splitFontShorthand(value) {
   return { pre: t.slice(0, idx), size: t[idx], families: t.slice(idx + 1).join(' ') };
 }
 
+// ─── NEUTRALIZE: content → placeholders ─────────────────────────────────────
+// A reference teaches layout, type scale and structure — never content. With a
+// real business's words on it the model copied dish names onto other venues'
+// boards, and the business itself could not be shown its own wall. So every
+// word that belongs to the business (name, taglines, dishes, descriptions,
+// prices, address, website) becomes a neutral placeholder of about the same
+// length and line count — the layout still shows how long a name it holds — and
+// the board's own furniture (01, 02 / 03, #1, ✹) stays. Photos are already
+// empty frames (their files only resolve inside apps/web/public).
+const ORDINALS = ['One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve'];
+// Each role: one bank per line (the last bank serves every later line). The
+// entry closest in length to the original wins; ties go to the shorter one.
+const BANKS = {
+  name: [
+    ['Item {n}', 'Menu Item {n}', 'Menu Item {n} Name', 'Featured Menu Item {n}', 'Menu Item {n} With A Long Name', 'Menu Item {n} With A Longer Name'],
+    ['Name', 'Line Two', 'Second Line', 'Name Line Two', 'Second Name Line'],
+  ],
+  desc: [[
+    'Short description.',
+    'A short item description.',
+    'A short description of this item.',
+    'A short description of this menu item.',
+    'A short description of this menu item goes here.',
+    'A short description of this menu item, on one or two lines.',
+  ]],
+  category: [['Category', 'Category Name', 'Category Label', 'Menu Category Label', 'Featured Menu Category', 'Featured Menu Category Label']],
+  label: [
+    ['Label', 'Label Text', 'Short Label', 'Short Label Text', 'A Short Label Line'],
+    ['Name', 'Line Two', 'Second Line', 'Name Line Two', 'Second Name Line'],
+  ],
+  listWord: [['Items', 'Category', 'Categories', 'Menu Items', 'More Categories']],
+  headline: [
+    ['Headline', 'Big Headline', 'Headline Here', 'Main Headline', 'Headline Goes Here'],
+    ['Line Two', 'Second Line', 'Headline Line Two'],
+  ],
+  section: [
+    ['Section', 'Menu Title', 'Section Title', 'Menu Section Title'],
+    ['Title', '& Title', 'Line Two', 'Second Line'],
+  ],
+  brand: [['Venue Name', 'Venue Name Here', 'Venue Name and Tagline', 'Venue Name and Short Tagline']],
+  tagline: [
+    [
+      'Tagline.',
+      'Tagline here.',
+      'Tagline goes here.',
+      'Your tagline goes here.',
+      'A short tagline goes here.',
+      'A short tagline for the venue.',
+      'A short tagline for the venue goes here.',
+      'A longer tagline for the venue goes on this line.',
+    ],
+    ['Line Two', 'Second Line', 'Tagline Line Two', 'Second Tagline Line'],
+  ],
+};
+const URL_RE = /(^|\s)(https?:\/\/|www\.)|[a-z0-9-]\.(com|net|org|co|us|io|biz|info|menu|restaurant|app)(\/|\s|$)/i;
+const PHONE_RE = /\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}/;
+const PRICE_RE = /[$€£¥]\s?\d/;
+const HAS_LETTER = /\p{L}/u;
+// Fields whose text is a list of short items split by a separator (the aside
+// "Tacos · Burritos", the series "Menu Wall · 02 / 03", the origin line).
+const LIST_LEAVES = new Set(['aside', 'series', 'origin']);
+
+function normWords(s) {
+  return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+}
+function namesBrand(text, tokens) {
+  const hay = ` ${normWords(text)} `;
+  const joined = hay.replace(/ /g, '');
+  return (tokens || []).some((t) => {
+    const nt = normWords(t);
+    return !!nt && (hay.includes(` ${nt} `) || joined.includes(nt.replace(/ /g, '')));
+  });
+}
+/** The bank entry closest in length to `text` (its trailing period set aside). */
+function pick(text, bank, n) {
+  const period = /\.$/.test(text);
+  const target = (period ? text.slice(0, -1) : text).length;
+  let best = null;
+  for (const raw of bank) {
+    const cand = raw.replace('{n}', n || 'One').replace(/\.$/, '');
+    if (!best || Math.abs(cand.length - target) < Math.abs(best.length - target)) best = cand;
+  }
+  return period ? `${best}.` : best;
+}
+function matchCase(original, placeholder) {
+  const letters = original.replace(/[^\p{L}]/gu, '');
+  return letters.length > 1 && letters === letters.toUpperCase() ? placeholder.toUpperCase() : placeholder;
+}
+/** One line of one field → its placeholder. */
+function placeholderFor(text, key, line, src) {
+  if (PRICE_RE.test(text)) return text.replace(/\d/g, '0');
+  if (!HAS_LETTER.test(text)) return text; // 01 · 02 / 03 · #1 · ✹ — the board's own furniture
+  if (URL_RE.test(text)) return text.length >= 14 ? 'www.example.com' : 'example.com';
+  if (PHONE_RE.test(text)) return '(555) 010-0000';
+  const parts = String(key || '').split('.');
+  const leaf = parts[parts.length - 1];
+  const item = /^item\.(\d+)\./.exec(key || '');
+  const bank = (role) => BANKS[role][Math.min(line, BANKS[role].length - 1)];
+  const say = (role) => matchCase(text, pick(text, bank(role), item ? ORDINALS[Number(item[1])] : null));
+  if (item && ['name', 'desc', 'category', 'label'].includes(leaf)) return say(leaf);
+  if (namesBrand(text, src.brandTokens)) {
+    // The wordmark alone ("SUPER TACO") is the venue's name, nothing more.
+    const rest = normWords(text).replace(new RegExp(src.brandTokens.map((t) => normWords(t)).join('|'), 'g'), '').trim();
+    return rest ? say('brand') : matchCase(text, 'Venue Name');
+  }
+  if (leaf === 'title') return say(parts[0] === 'hero' ? 'headline' : 'section');
+  if (LIST_LEAVES.has(leaf)) {
+    return text
+      .split(/(\s+[·•|]\s+)/)
+      .map((p, i) => (i % 2 === 1 || !HAS_LETTER.test(p) ? p : matchCase(p, pick(p, BANKS[leaf === 'aside' ? 'listWord' : 'label'][0]))))
+      .join('');
+  }
+  return say('tagline');
+}
+
+/**
+ * Replace every content text node under <body> with its placeholder, keeping
+ * whitespace, <br> line structure and every element. Line N of a field is its
+ * Nth text node with letters, so "3 Birria Tacos<br>with Consomé" becomes
+ * "Menu Item One<br>Second Line".
+ */
+function neutralizeContent($, $body, src) {
+  const lineOf = new Map();
+  const walk = (node) => {
+    for (const child of node.children || []) {
+      if (child.type === 'text') {
+        const raw = child.data;
+        const text = raw.trim();
+        if (!text) continue;
+        const $field = $(child.parent).closest('[data-field]');
+        const fieldEl = $field.get(0) || null;
+        const key = fieldEl ? $field.attr('data-field') : '';
+        let line = 0;
+        if (fieldEl && HAS_LETTER.test(text)) {
+          line = lineOf.get(fieldEl) || 0;
+          lineOf.set(fieldEl, line + 1);
+        }
+        const lead = raw.slice(0, raw.indexOf(text));
+        const tail = raw.slice(raw.indexOf(text) + text.length);
+        child.data = lead + placeholderFor(text, key, line, src) + tail;
+      } else if (child.type === 'tag') {
+        walk(child);
+      }
+    }
+  };
+  walk($body.get(0));
+  // Text carried in attributes is content too.
+  $body.find('[title],[aria-label],[alt]').each((_i, el) => {
+    for (const attr of ['title', 'aria-label', 'alt']) {
+      const v = $(el).attr(attr);
+      if (v && HAS_LETTER.test(v)) $(el).attr(attr, attr === 'alt' ? '' : 'Label');
+    }
+  });
+}
+
+// ─── The type floor ─────────────────────────────────────────────────────────
+// The Designer's size floor is clamp(round(0.024 × short side), 24, 60) — 52 px
+// on these 4K canvases (designer-prompt.ts designerSizeFloor; the fit engine's
+// MINPX). A reference must not teach type below it: the model copies the
+// scale, and the fit engine would then enlarge the copy into its own boxes. So
+// every font size under the floor is lifted to it here, in the COMPILED
+// exemplar only; `adjust` on the source entry gives the few fixed boxes that
+// need it the extra room.
+function typeFloor(w, h) {
+  return Math.min(60, Math.max(24, Math.round(0.024 * Math.min(w, h))));
+}
+/** Index of the `/` that separates size from line-height (outside parens), or -1. */
+function topLevelSlash(s) {
+  let depth = 0;
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === '(') depth++;
+    else if (s[i] === ')') depth--;
+    else if (s[i] === '/' && depth === 0) return i;
+  }
+  return -1;
+}
+/** `42px` / `calc(42px * var(--type-scale))` under the floor → the floor; else unchanged. */
+function liftSize(size, floor) {
+  const m = /^(calc\(\s*)?(\d+(?:\.\d+)?)px(\s*\*\s*var\(--type-scale\)\s*\))?$/.exec(size);
+  if (!m || Boolean(m[1]) !== Boolean(m[3])) return size;
+  if (Number(m[2]) >= floor) return size;
+  return `${m[1] || ''}${floor}px${m[3] || ''}`;
+}
+function liftDecls(decls, floor, notes, selector) {
+  return decls.map((d) => {
+    if (d.prop === 'font-size') {
+      const v = liftSize(d.value, floor);
+      if (v !== d.value) notes.push(`type floor: ${selector} font-size ${d.value} → ${v}`);
+      return { prop: d.prop, value: v };
+    }
+    if (d.prop === 'font') {
+      const parts = splitFontShorthand(d.value);
+      if (!parts) return d;
+      const slash = topLevelSlash(parts.size);
+      const size = slash < 0 ? parts.size : parts.size.slice(0, slash);
+      const lh = slash < 0 ? '' : parts.size.slice(slash + 1);
+      const v = liftSize(size, floor);
+      if (v === size) return d;
+      notes.push(`type floor: ${selector} font ${size} → ${v}`);
+      return { prop: d.prop, value: [...parts.pre, lh ? `${v}/${lh}` : v, parts.families].join(' ') };
+    }
+    return d;
+  });
+}
+
 // ─── The build ──────────────────────────────────────────────────────────────
 function sha(s) {
   return crypto.createHash('sha256').update(s, 'utf8').digest('hex');
@@ -484,6 +709,13 @@ function buildVariant(src, rawHtml, orientation) {
     if (kept.length) $(el).attr('style', joinDecls(kept) + ';');
     else $(el).removeAttr('style');
   });
+  // Content → placeholders (see NEUTRALIZE), and class names that carry content.
+  neutralizeContent($, $body, src);
+  for (const [from, to] of Object.entries(src.renameClasses || {})) {
+    const hits = $body.find(`.${from}`);
+    if (!hits.length) throw new Error(`${src.id}: renameClasses — no .${from} in the markup`);
+    hits.each((_i, el) => { $(el).removeClass(from).addClass(to); });
+  }
 
   // Portrait: set the flag the board's own runtime would set.
   let bodyClass = '';
@@ -671,7 +903,34 @@ function buildVariant(src, rawHtml, orientation) {
     }
   }
   stmts = out;
-  const finalCss = serialize(stmts);
+
+  // The type floor, then the compiled-only room it needs (see The type floor).
+  const canvas = orientation === 'portrait' ? src.portrait.canvas : src.canvas;
+  const floor = typeFloor(canvas.w, canvas.h);
+  const liftRules = (list) =>
+    list.map((s) => {
+      if (s.kind === 'rule') return { ...s, body: joinDecls(liftDecls(splitDecls(s.body), floor, notes, s.selector)) };
+      if (s.kind === 'at' && /^@(media|supports)/i.test(s.prelude)) return { ...s, body: serialize(liftRules(splitStatements(s.body))) };
+      return s;
+    });
+  stmts = liftRules(stmts);
+  for (const a of (src.adjust || {})[orientation] || []) {
+    const rule = stmts.find((s) => s.kind === 'rule' && s.selector === a.selector);
+    if (!rule) throw new Error(`${src.id}: adjust — no rule "${a.selector}" in the ${orientation} CSS`);
+    const decls = splitDecls(rule.body);
+    for (const [prop, value] of Object.entries(a.set)) {
+      const at = decls.findIndex((d) => d.prop === prop);
+      if (at >= 0) decls[at] = { prop, value };
+      else decls.push({ prop, value });
+    }
+    rule.body = joinDecls(decls);
+    notes.push(`adjust (${orientation}): ${a.selector} ${JSON.stringify(a.set)}`);
+  }
+
+  let finalCss = serialize(stmts);
+  for (const [from, to] of Object.entries(src.renameClasses || {})) {
+    finalCss = finalCss.replace(new RegExp(`\\.${from}(?![\\w-])`, 'g'), `.${to}`);
+  }
 
   // 5. Fonts used → the one Google Fonts <link> this board needs.
   const families = new Set();
@@ -699,7 +958,6 @@ function buildVariant(src, rawHtml, orientation) {
   // 7. Facts about the result, for selection + the prompt label.
   const itemGroups = new Set();
   for (const m of bodyHtml.matchAll(/data-field="(?:item|combo|event)\.(\d+)\./g)) itemGroups.add(m[1]);
-  const canvas = orientation === 'portrait' ? src.portrait.canvas : src.canvas;
   return { html, itemCount: itemGroups.size, canvas, scriptMarkers: [...new Set(scriptMarkers)].sort(), notes };
 }
 
@@ -714,11 +972,8 @@ function buildAll() {
       entries.push({
         id: orientation === 'portrait' ? `${src.id}-portrait` : src.id,
         title: src.title,
-        source: src.file,
         sourceSha256: sha(raw).slice(0, 16),
         approval: src.approval,
-        brand: src.brand,
-        brandTokens: src.brandTokens,
         vertical: src.vertical,
         purposes: src.purposes,
         structure: src.structure,
@@ -744,14 +999,17 @@ function render() {
   lines.push(' * or the script; designer-exemplars.spec.ts fails while this file is stale.');
   lines.push(' *');
   lines.push(' * The AI Designer\'s reference boards: approved boards from apps/web/public/templates, reduced');
-  lines.push(' * to their hand-written CSS + markup (no scripts, fonts on DESIGNER_FONTS, LED-safe CSS).');
+  lines.push(' * to their hand-written CSS + markup (no scripts, fonts on DESIGNER_FONTS, LED-safe CSS, no type');
+  lines.push(' * under the size floor). Every word, price and photo is a neutral placeholder (VENUE NAME,');
+  lines.push(' * Menu Item One, $0.00, empty photo frames): a reference teaches layout, type scale and');
+  lines.push(' * structure, never content. Which board each one came from: SOURCES in the builder.');
   lines.push(' */');
   lines.push("import type { DesignerExemplar } from './designer-exemplars';");
   lines.push('');
   lines.push('export const DESIGNER_EXEMPLARS: readonly DesignerExemplar[] = [');
   for (const e of entries) {
     lines.push('  {');
-    for (const key of ['id', 'title', 'source', 'sourceSha256', 'approval', 'brand', 'brandTokens', 'vertical', 'purposes', 'structure', 'orientation', 'width', 'height', 'itemCount', 'strippedRuntimes', 'html']) {
+    for (const key of ['id', 'title', 'sourceSha256', 'approval', 'vertical', 'purposes', 'structure', 'orientation', 'width', 'height', 'itemCount', 'strippedRuntimes', 'html']) {
       lines.push(`    ${key}: ${JSON.stringify(e[key])},`);
     }
     lines.push('  },');
@@ -761,7 +1019,7 @@ function render() {
   return lines.join('\n');
 }
 
-module.exports = { render, buildAll, SOURCES, colorMix, splitStatements, splitDecls, mapFamilyList };
+module.exports = { render, buildAll, SOURCES, colorMix, splitStatements, splitDecls, mapFamilyList, placeholderFor, liftSize, typeFloor };
 
 if (require.main === module) {
   const text = render();

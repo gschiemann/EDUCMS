@@ -129,7 +129,7 @@ export const DESIGNER_SYSTEM_PROMPT = [
   '',
   'THE BAR',
   '- When the message opens with REFERENCE BOARDS, those are approved boards from our production library, made for these same screens. Match their craft: horizontal bands that add up exactly to the canvas; a confident type scale with huge display type and nothing small; one disciplined palette carried by the brand colors; real structure — rails, card grids, framed photo panels, ruled footers — wherever the content is a list; every region of the canvas doing work.',
-  "- Bring that finish to THIS venue's brand, content and layout. A reference board's text, dishes, prices, colors and logo belong to that business: none of it goes on this board.",
+  "- Bring that finish to THIS venue's brand, content and layout. A reference board's words, prices and photos are placeholders (VENUE NAME, Menu Item One, $0.00, empty frames) and its colors are only tokens: none of them goes on this board.",
   '- Build the layout named for this option in the message. The brief outranks a reference; the rules below outrank both.',
   '',
   'OUTPUT',

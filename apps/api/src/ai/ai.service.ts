@@ -3557,17 +3557,17 @@ export class AiService {
     // A full premium HTML board is large — a generous output budget. (dispatchAi
     // adds reasoning headroom on top of this for every model that thinks.)
     const MAX_HTML_TOKENS = 16000;
-    // REFERENCE BOARDS (report 01, harness D) — approved production boards,
-    // chosen per candidate: its own layout first, never the target brand's own
-    // board. Recorded in the audit row so a keep can be traced to what the model
-    // was shown.
+    // REFERENCE BOARDS (report 01, harness D) — approved production boards with
+    // every word, price and photo replaced by neutral placeholders, chosen per
+    // candidate: its own layout first. Every venue gets them (nothing on them
+    // is any business's content). Recorded in the audit row so a keep can be
+    // traced to what the model was shown.
     const exemplarsByCandidate = structures.map((structure) =>
       selectDesignerExemplars({
         purpose,
         orientation,
         itemCount,
         structureId: structure.id,
-        brandText: [opts.venueName, opts.reference, prompt],
       }),
     );
     const settled = await Promise.allSettled(

@@ -2548,7 +2548,7 @@ describe('AiService — AI Designer rework: venue type, layouts, references, sam
     expect(lastAudit()).toMatchObject({ purpose: 'offer', structures: ['split-offer', 'headline-poster', 'offer-stack'] });
   });
 
-  it('shows approved reference boards for a menu — but never a brand its own', async () => {
+  it('shows approved reference boards for a menu — to every venue, the one a board was first made for included', async () => {
     const { service } = buildService(makeFakeRedisClient());
     const rows = 'Tacos — Al Pastor — $4.25\nTacos — Carnitas — $4.25\nDrinks — Horchata — $3';
     await service.generateDesignerBoardCandidates({ tenantId: 'riot', prompt: 'menu board', vertical: 'qsr', venueName: 'Casa Lupita', content: rows, purpose: 'menu' });
@@ -2558,13 +2558,30 @@ describe('AiService — AI Designer rework: venue type, layouts, references, sam
     }
     const shown = lastAudit().exemplars as string[][];
     expect(shown).toHaveLength(3);
-    expect(shown[0][0]).toBe('super-taco-rail-cards'); // candidate 1 = rail + cards
-    expect(shown[1][0]).toBe('super-taco-hero-cards'); // candidate 2 = hero + cards
+    expect(shown[0]).toEqual(['menu-rail-cards', 'menu-hero-cards']); // candidate 1 = rail + cards
+    expect(shown[1]).toEqual(['menu-hero-cards', 'menu-rail-cards']); // candidate 2 = hero + cards
 
+    // Super Taco — the business the wall was first made for — used to get NO
+    // references. The boards carry placeholders now: it gets the same two per
+    // candidate, and nothing on them names it or its dishes.
     dispatchMock.mockClear();
-    await service.generateDesignerBoardCandidates({ tenantId: 'riot', prompt: 'menu board', vertical: 'qsr', venueName: 'Super Taco', content: rows, purpose: 'menu' });
-    for (const [, input] of boardCalls()) expect(input.userPrompt).not.toContain('REFERENCE BOARDS');
-    expect(lastAudit().exemplars).toEqual([[], [], []]);
+    await service.generateDesignerBoardCandidates({
+      tenantId: 'riot',
+      prompt: 'menu board',
+      vertical: 'qsr',
+      venueName: 'Super Taco',
+      reference: 'Brand: Super Taco. What they are / sell: "Mexican restaurant".',
+      content: rows,
+      purpose: 'menu',
+    });
+    expect(boardCalls()).toHaveLength(3);
+    for (const [, input] of boardCalls()) {
+      expect(input.userPrompt.startsWith('REFERENCE BOARDS')).toBe(true);
+      const references = input.userPrompt.slice(0, input.userPrompt.indexOf('THIS BOARD'));
+      expect(references).not.toMatch(/super ?taco|birria|burrito|quesadilla|\$(?!0+\.00)\d/i);
+      expect(thisBoard(input.userPrompt)).toContain('Super Taco');
+    }
+    expect(lastAudit().exemplars).toEqual(shown);
   });
 
   it('"edit with words" keeps the board\'s own venue type and keeps the binder attributes', async () => {
