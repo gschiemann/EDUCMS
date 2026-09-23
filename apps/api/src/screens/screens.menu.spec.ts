@@ -230,14 +230,51 @@ describe('the section filter (?category=) — POS-A, 2026-09-23', () => {
   });
 
   it('the filter is applied AFTER the location resolution — prices stay per-location', async () => {
-    await menuFor('Mains');
-    expect(resolveMenu).toHaveBeenCalledWith(
-      'loc-A',
-      expect.objectContaining({
-        catalogTenantId: 'loc-A',
-        includeUnavailable: true,
-      }),
+    // A chain store: the screen is mapped to POS location loc-B under chain-1,
+    // whose resolved price for the burger is its OWN (650, overridden). The
+    // section narrows what that location resolved; it changes nothing about
+    // what is resolved or how (the exact call — no section rides into it).
+    findScreen.mockResolvedValue({
+      tenantId: 'store-7',
+      posLocationId: 'pl-1',
+      posLocation: { locationTenantId: 'loc-B' },
+      tenant: { id: 'store-7', parentId: 'chain-1' },
+    });
+    const storeBurger = {
+      ...row('burger', 'Burger', 'Mains'),
+      priceCents: 650,
+      priceOverridden: true,
+    };
+    resolveMenu.mockResolvedValue({
+      ...TWO_SECTIONS,
+      locationTenantId: 'loc-B',
+      items: [storeBurger, row('cola', 'Cola', 'Drinks')],
+    });
+    const noConnection = undefined;
+    const noProvider = undefined;
+    const res = await controller.getMenu(
+      'screen-1',
+      reqWithBearer(deviceToken('screen-1')) as DeviceReq,
+      '1',
+      noConnection,
+      noProvider,
+      'Mains',
     );
+    expect(resolveMenu).toHaveBeenCalledTimes(1);
+    expect(resolveMenu).toHaveBeenCalledWith('loc-B', {
+      catalogTenantId: 'chain-1',
+      includeUnavailable: true,
+      connectionId: undefined,
+      providerId: undefined,
+    });
+    expect(res.locationTenantId).toBe('loc-B');
+    expect(res.items).toEqual([
+      expect.objectContaining({
+        externalId: 'burger',
+        priceCents: 650,
+        priceOverridden: true,
+      }),
+    ]);
   });
 });
 
