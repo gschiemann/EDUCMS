@@ -211,3 +211,58 @@ export function platformDesignRouteAvailable(): boolean {
 export function stripeConfigured(): boolean {
   return !!process.env.STRIPE_SECRET_KEY;
 }
+
+/**
+ * Whose key draws a tenant's boards: 'tenant' = its own (or its organisation's) key — unlimited
+ * here; 'platform' = ours; 'none' = neither (no key of its own and no design route on ours — the
+ * state production is in while it holds no platform AI key at all).
+ */
+export type BoardSource = 'platform' | 'tenant' | 'none';
+
+export type BoardPurchaseAvailability =
+  | { enabled: true }
+  | { enabled: false; reasonCode: 'NO_PLATFORM_KEY' | 'OWN_KEY' | 'STRIPE_NOT_CONFIGURED'; reason: string };
+
+/**
+ * May a pack be bought? Only when a board could actually be drawn on it: our key must have a design
+ * route (a pack bought with none would buy nothing usable), the buyer must be on our key (on its own
+ * key it is unlimited here — nothing to buy), and Stripe must be configured. The allowance endpoint's
+ * `purchaseEnabled` and the checkout endpoint answer from this one function.
+ */
+export function boardPurchaseAvailability(source: BoardSource): BoardPurchaseAvailability {
+  if (source === 'none' || !platformDesignRouteAvailable()) {
+    return { enabled: false, reasonCode: 'NO_PLATFORM_KEY', reason: 'AI runs on your own key — add it in Settings → AI provider.' };
+  }
+  if (source === 'tenant') {
+    return {
+      enabled: false,
+      reasonCode: 'OWN_KEY',
+      reason: 'Your boards run on your own AI key, with no limit here — there is nothing to buy.',
+    };
+  }
+  if (!stripeConfigured()) {
+    return { enabled: false, reasonCode: 'STRIPE_NOT_CONFIGURED', reason: "Buying more boards isn't set up on this deployment yet." };
+  }
+  return { enabled: true };
+}
+
+/**
+ * The operator-facing 402 when a batch (or a refine) does not fit: the numbers, when the included
+ * boards come back, and the ways forward — buying more only when a pack can actually be bought.
+ */
+export function boardsCapMessage(o: {
+  needed: number;
+  left: number;
+  resetAt: string;
+  purchaseEnabled: boolean;
+  kind: 'batch' | 'refine';
+}): string {
+  const what = o.kind === 'refine' ? 'This edit' : 'This batch';
+  const needs = `${what} needs ${o.needed} ${o.needed === 1 ? 'board' : 'boards'}`;
+  const have = o.left <= 0 ? 'you have none left this month' : `you have ${o.left} left this month`;
+  const resetDay = new Date(o.resetAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', timeZone: 'UTC' });
+  const ways = o.purchaseEnabled
+    ? 'Buy more boards in Settings → Billing, or add your own AI key in Settings → AI provider — you pay your provider directly, with no limit here.'
+    : 'Add your own AI key in Settings → AI provider to keep going — you pay your provider directly, with no limit here.';
+  return `${needs}; ${have} (included boards reset ${resetDay}). ${ways}`;
+}
