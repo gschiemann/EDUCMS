@@ -213,6 +213,13 @@ describe('MenuService.resolveMenuForLocation', () => {
     const res = await svcWith(prisma).resolveMenuForLocation(LOC_A, { catalogTenantId: TENANT, now });
     expect(res.items.map((i) => i.id)).toEqual(['i-ad']);
     expect(res.categories.map((c) => c.id)).toEqual(['c-allday']);
+
+    // 2026-09-22 — DESIGNING a board is not playing one: the breakfast section
+    // exists at 3pm too, so the Concierge / bound-board generator ask for every
+    // section. Opt-in only — the player default above is unchanged.
+    const all = await svcWith(prisma).resolveMenuForLocation(LOC_A, { catalogTenantId: TENANT, now, ignoreDayparts: true });
+    expect(all.items.map((i) => i.id)).toEqual(['i-bk', 'i-ad']);
+    expect(all.categories.map((c) => c.id)).toEqual(['c-breakfast', 'c-allday']);
   });
 
   // ── Parent/child catalog scoping (POS sandbox bug #2, 2026-08-04) ──
@@ -699,5 +706,20 @@ describe('MenuService.resolvePosMenuForLocation — POS-synced catalogs only', (
     expect(menu.items.map((i: any) => i.name).sort()).toEqual(['square-site', 'toast-chain']);
     expect(resolveSpy).toHaveBeenCalledWith('site', { catalogTenantId: 'chain', catalogId: 'toast-chain' });
     expect(resolveSpy).toHaveBeenCalledWith('site', { catalogTenantId: 'site', catalogId: 'square-site' });
+  });
+
+  it('design-time read: one connection, sold-out items and out-of-hours sections included (2026-09-22)', async () => {
+    const findMany = jest.fn(async () => [{ id: 'toast-chain', tenantId: 'chain' }]);
+    const prisma: any = { client: { tenant: { findUnique: jest.fn(async () => ({ parentId: 'chain' })) }, menuCatalog: { findMany } } };
+    const svc = new MenuService(prisma);
+    const resolveSpy = jest.spyOn(svc, 'resolveMenuForLocation').mockResolvedValue({
+      locationTenantId: 'site', generatedAt: 'x', sourceConfigured: true, categories: [], items: [],
+    });
+    await svc.resolvePosMenuForLocation('site', { connectionId: 'conn-toast', includeUnavailable: true, ignoreDayparts: true });
+    // Still scoped to the location + its chain parent — the connection id only NARROWS.
+    expect((findMany.mock.calls[0] as any)[0].where).toEqual({ tenantId: { in: ['site', 'chain'] }, isActive: true, connectionId: 'conn-toast' });
+    expect(resolveSpy).toHaveBeenCalledWith('site', {
+      catalogTenantId: 'chain', catalogId: 'toast-chain', includeUnavailable: true, ignoreDayparts: true,
+    });
   });
 });

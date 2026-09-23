@@ -68,6 +68,8 @@ import { AiKeyController } from '../ai/ai-key.controller';
 import { SampleDataController } from '../sample-data/sample-data.controller';
 import { SuperLicenseController } from '../license/super-license.controller';
 import { IntegrationsHealthController } from '../health/integrations-health.controller';
+import { PosService } from '../pos/pos.service';
+import { MenuService } from '../pos/menu.service';
 
 const HOME = 't-alpha';
 const FOREIGN = 't-beta';
@@ -554,6 +556,19 @@ const MATRIX: Case[] = [
     controller: TemplatesController, handler: 'listScenes', op: 'list',
     build: (p) => new TemplatesController(p, {} as any, {} as any, stubStorage),
     invoke: (c, req) => c.listScenes(req, 'tpl-b'),
+  },
+  {
+    // 2026-09-22 — the Concierge's "Use your Toast menu?" card. Keyed on the
+    // session tenant (+ its chain parent) only; the REAL PosService + MenuService
+    // run over the double, so a query missing its tenant predicate would hand
+    // back tenant B's POS connection here.
+    name: 'templates: the Concierge POS context never lists another tenant\'s POS connection',
+    controller: TemplatesController, handler: 'conciergePosContext', op: 'list',
+    build: (p) => {
+      const menu = new MenuService(p);
+      return new TemplatesController(p, {} as any, {} as any, stubStorage, new PosService(p, menu), menu);
+    },
+    invoke: (c, req) => c.conciergePosContext(req),
   },
   {
     name: 'templates: update another tenant\'s template',

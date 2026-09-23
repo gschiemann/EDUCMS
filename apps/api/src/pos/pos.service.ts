@@ -22,6 +22,7 @@ import { type CatalogSnapshot } from './providers/square';
 import { getConnector, type PosConnector } from './providers/registry';
 import { MenuService } from './menu.service';
 import { discoverToastRestaurants, parseToastCredentials, toastMenusChanged } from './providers/toast';
+import { loadConciergePosContext } from './concierge-pos-context';
 
 @Injectable()
 export class PosService {
@@ -51,6 +52,15 @@ export class PosService {
       salesLedOnly: p.salesLedOnly,
       tierReason: p.tierReason,
     }));
+  }
+
+  /**
+   * What the AI Concierge may say about this location's POS (2026-09-22): its own
+   * and its chain parent's connections, each menu's sections with bindable item
+   * counts, and what each provider honestly keeps live. See concierge-pos-context.ts.
+   */
+  async conciergePosContext(tenantId: string) {
+    return loadConciergePosContext({ prisma: this.prisma, menu: this.menu }, tenantId);
   }
 
   async discoverToastStores(credentials: Record<string, unknown>) {

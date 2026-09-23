@@ -131,7 +131,20 @@ export class MenuService {
    * (every writer sets one, e.g. `pasted-burger-0`); the catalog's POS link is the real signal.
    * Hand-built menus still reach a board when the operator explicitly picks them.
    */
-  async resolvePosMenuForLocation(locationTenantId: string): Promise<ResolvedMenu> {
+  async resolvePosMenuForLocation(
+    locationTenantId: string,
+    /**
+     * Opt-in, for DESIGNING a board rather than playing one (2026-09-22 — the
+     * Concierge's "Use your Toast menu" card and the bound-board generator):
+     *   connectionId       — one POS connection's catalog only;
+     *   includeUnavailable — keep items that are sold out RIGHT NOW (they are on
+     *                        the menu; a bound board greys them live);
+     *   ignoreDayparts     — keep sections outside their time of day (the
+     *                        breakfast section exists at 3pm too).
+     * With no options the result is exactly what it always was.
+     */
+    opts?: { connectionId?: string; includeUnavailable?: boolean; ignoreDayparts?: boolean },
+  ): Promise<ResolvedMenu> {
     const generatedAt = new Date().toISOString();
     const empty: ResolvedMenu = { locationTenantId, generatedAt, sourceConfigured: false, categories: [], items: [] };
     // ten-ok: the location's OWN row (the authenticated tenant), read only to find its chain parent.
@@ -141,13 +154,22 @@ export class MenuService {
     })) as { parentId?: string | null } | null;
     const owners = Array.from(new Set([locationTenantId, loc?.parentId].filter((x): x is string => !!x)));
     const catalogs = (await (this.prisma.client as any).menuCatalog.findMany({
-      where: { tenantId: { in: owners }, isActive: true, connectionId: { not: null } },
+      where: {
+        tenantId: { in: owners },
+        isActive: true,
+        connectionId: opts?.connectionId ? opts.connectionId : { not: null },
+      },
       select: { id: true, tenantId: true },
     })) as Array<{ id: string; tenantId: string }>;
     if (!catalogs.length) return empty;
     const merged: ResolvedMenu = { ...empty, sourceConfigured: true };
     for (const c of catalogs) {
-      const menu = await this.resolveMenuForLocation(locationTenantId, { catalogTenantId: c.tenantId, catalogId: c.id });
+      const menu = await this.resolveMenuForLocation(locationTenantId, {
+        catalogTenantId: c.tenantId,
+        catalogId: c.id,
+        ...(opts?.includeUnavailable ? { includeUnavailable: true } : {}),
+        ...(opts?.ignoreDayparts ? { ignoreDayparts: true } : {}),
+      });
       merged.categories.push(...menu.categories);
       merged.items.push(...menu.items);
     }
@@ -164,6 +186,8 @@ export class MenuService {
       now?: Date;
       includeHidden?: boolean;
       includeUnavailable?: boolean;
+      /** Treat every section as in its time of day (designing a board, not playing one). */
+      ignoreDayparts?: boolean;
     },
   ): Promise<ResolvedMenu> {
     const now = opts?.now ?? new Date();
@@ -242,7 +266,7 @@ export class MenuService {
     const categoryNameById = new Map<string, string>();
     for (const cat of categories) {
       categoryNameById.set(cat.id, cat.name);
-      const active = !cat.daypart || this.isDaypartActive(cat.daypart, now);
+      const active = opts?.ignoreDayparts === true || !cat.daypart || this.isDaypartActive(cat.daypart, now);
       if (active) {
         activeCategoryIds.add(cat.id);
         resolvedCategories.push({

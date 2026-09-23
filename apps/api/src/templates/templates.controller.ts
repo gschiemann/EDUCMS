@@ -4,6 +4,11 @@ import {
   BadRequestException, ServiceUnavailableException, UseInterceptors, UploadedFile,
   Optional,
 } from '@nestjs/common';
+// POS-bound AI boards (2026-09-22) — the Concierge's POS card + keeping a bound
+// board. Logic lives in pos/concierge-pos-context.ts + designer-pos-bindings.ts.
+import { PosService } from '../pos/pos.service';
+import { MenuService } from '../pos/menu.service';
+import { IntegrationDiscoveryService } from '../integrations/discovery.service';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { PrismaService } from '../prisma/prisma.service';
@@ -68,6 +73,8 @@ import {
   TemplateReplaceZonesSchema, type TemplateReplaceZonesInput,
   ConciergeChatSchema, type ConciergeChatInput,
   ConciergeReferenceUrlSchema, type ConciergeReferenceUrlInput,
+  ConciergePosSelectionSchema,
+  conciergeConnectablePos,
   BoundedText,
   backgroundToPersist,
 } from '@cms/api-types';
@@ -124,6 +131,11 @@ export const DesignerGenerateSchema = z.object({
   siteMenuMissing: z.boolean().optional(),
   /** Which saved menu may ground the board: 'pos' (default — a POS-synced menu only), 'saved' (the operator picked their saved menu), 'none'. */
   menuSource: z.enum(['pos', 'saved', 'none']).optional(),
+  // 2026-09-22 — the POS menu the operator picked in the Concierge's card. The
+  // server builds the item list itself from THIS tenant's catalog for that
+  // connection + sections (client `content` is ignored), and binds every row of
+  // the board to its POS item.
+  posSelection: ConciergePosSelectionSchema.optional(),
   count: z.number().int().min(1).max(3).optional(),
   // TAP TARGETS (2026-08-25) — the operator asked for touch / links / buttons in
   // their own words, so the board must carry [data-action] hot zones. The
@@ -203,6 +215,14 @@ export class TemplatesController {
     // Supabase bucket on persist (durable + offline-cacheable on Taurus). The
     // storage service is a global app.module provider (stateless, env-driven).
     private readonly storage: SupabaseStorageService,
+    // 2026-09-22 — POS-bound AI boards: the Concierge's POS context, the website
+    // POS detector, and verifying a kept board's bindings against THIS tenant's
+    // catalog. Exported by PosModule / IntegrationsModule (both imported by
+    // AppModule). @Optional so the specs that construct this controller by hand
+    // keep compiling.
+    @Optional() private readonly pos?: PosService,
+    @Optional() private readonly menu?: MenuService,
+    @Optional() private readonly discovery?: IntegrationDiscoveryService,
     // 2026-09-22 — the Concierge reference's last-resort photo (Pexels at the
     // board's width). Optional so every existing test module still compiles;
     // absent ⇒ a fresh instance, which is inert without PEXELS_API_KEY.
@@ -1704,6 +1724,19 @@ export class TemplatesController {
           ? { w: body.screenWidth, h: body.screenHeight }
           : null,
     });
+  }
+
+  /**
+   * What the Concierge's POS card shows (2026-09-22): this location's own and its
+   * chain parent's POS connections, each menu's sections with bindable item
+   * counts, what each POS keeps live, and which POS the operator could connect.
+   * Tenant from the session only — see pos/concierge-pos-context.ts.
+   */
+  @Get('concierge/pos-context')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async conciergePosContext(@Request() req: any) {
+    if (!this.pos) return { connections: [], connectable: conciergeConnectablePos() };
+    return this.pos.conciergePosContext(req.user.tenantId);
   }
 
   @Post('concierge/reference/url')
