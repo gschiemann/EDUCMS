@@ -16,7 +16,8 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { bindMenuRows, readMenuBindings, setTagAttrs, validateBoundBoard, type BindingPlan } from './menu-binding';
-import { DESIGNER_EXEMPLAR, sanitizeDesignerHtml } from './designer-prompt';
+import { sanitizeDesignerHtml } from './designer-prompt';
+import { DESIGNER_EXEMPLARS } from './designer-exemplars';
 import { collectGroundedFacts, enforceGroundedFactsInHtml } from './fact-guard';
 import { buildPosBindingPlan, formatPosPlanContent } from './pos-binding-plan';
 
@@ -110,21 +111,31 @@ describe('bindMenuRows — a real card board', () => {
   });
 });
 
-describe('bindMenuRows — the exemplar\'s row layout (description nested in the name)', () => {
-  const EXEMPLAR_PLAN = plan([
+describe('bindMenuRows — every compiled menu reference board (the layouts the model is taught)', () => {
+  const ROWS: Array<[string, string, number]> = [
     ['sq-1', 'Cortado', 450],
     ['sq-2', 'Flat White', 500],
     ['sq-3', 'Pour Over', 525],
     ['sq-4', 'Brown Sugar Oat Latte', 575],
     ['sq-5', 'Nitro Cold Brew (16oz)', 550],
-  ], { providerId: 'square', providerName: 'Square', connectionId: 'conn-sq' });
+    ['sq-6', 'Matcha Latte', 600],
+  ];
+  const MENU_BOARDS = DESIGNER_EXEMPLARS.filter((e) => e.purposes.includes('menu'));
 
-  it('rewrites the name\'s own text and keeps its nested description', () => {
-    const res = bindMenuRows(DESIGNER_EXEMPLAR, EXEMPLAR_PLAN);
-    expect(res.bound).toEqual([0, 1, 2, 3, 4]);
-    expect(res.html).toContain('data-field="item.4.name">Nitro Cold Brew (16oz)<span class="sub" data-field="item.4.desc">18-hour steep · on tap</span>');
-    expect(res.html).toContain('data-field="item.2.price">$5.25<');
-    expect(res.html).toMatch(/<div class="row"[^>]*data-menu-row="0"[^>]*data-pos-item="sq-1"/);
+  it('there are menu reference boards to bind (landscape + portrait)', () => {
+    expect(MENU_BOARDS.length).toBeGreaterThanOrEqual(4);
+    expect(new Set(MENU_BOARDS.map((e) => e.orientation))).toEqual(new Set(['landscape', 'portrait']));
+  });
+
+  it.each(MENU_BOARDS.map((e) => [e.id, e] as const))('%s: every row binds to its catalog item, and the bound board validates', (_id, ex) => {
+    const p = plan(ROWS.slice(0, ex.itemCount), { providerId: 'square', providerName: 'Square', connectionId: 'conn-sq' });
+    const res = bindMenuRows(ex.html, p);
+    expect(res.bound).toEqual(p.items.map((it) => it.n));
+    expect(res.html).toMatch(/data-menu-row="0"[^>]*data-pos-item="sq-1"/);
+    // The placeholder names and zeroed prices are gone; the catalog's are on the glass.
+    expect(res.html).toContain('Cortado');
+    expect(res.html).not.toContain('Menu Item One');
+    expect(validateBoundBoard(res.html, p)).toEqual({ ok: true, missing: [] });
   });
 });
 

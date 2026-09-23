@@ -643,6 +643,9 @@ describe('rankPhotoCandidates — the biggest real photo, never a placeholder', 
       height: 4000,
       fallbackUrls: [],
     });
+  });
+});
+
 // ── 2026-09-22 — the Concierge knows the venue's POS ─────────────────────────
 //
 // Greg: "our AI needs to be super tuned into our POS integrations so that when
