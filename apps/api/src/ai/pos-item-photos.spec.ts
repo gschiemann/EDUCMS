@@ -12,7 +12,7 @@
  */
 import sharp from 'sharp';
 import { loadPosBindingPlan } from './designer-pos-binding';
-import { formatPosPlanContent } from './pos-binding-plan';
+import { buildPosBindingPlan, formatPosPlanContent } from './pos-binding-plan';
 import { buildDesignerUserPrompt, parsePosBoundRows, countMenuContentRows } from './designer-prompt';
 import {
   memoryBucket,
@@ -120,5 +120,42 @@ describe('loadPosBindingPlan — item photos checked and copied BEFORE the draw'
     const plan = await loadPosBindingPlan({ prisma, menu, photos: { storage: memoryBucket({ fail: true }), fetch: cdn.fetch } }, 't1', SELECTION, CANVAS);
     expect(plan.items).toHaveLength(5);
     expect(plan.items.every((i) => i.imageUrl === undefined)).toBe(true);
+  });
+});
+
+describe('a long row keeps its photo marker and still counts as a row', () => {
+  it('the description is shortened (never the name, price or marker) to keep the row within 300 characters', () => {
+    const long = (label: string, n: number) => `${label} ${'x'.repeat(n)}`.slice(0, n);
+    const section = long('Section', 60);
+    const plan = buildPosBindingPlan({
+      menu: {
+        categories: [{ id: 'c', name: section }],
+        items: [
+          {
+            externalId: 'ml-long',
+            name: long('A Very Long Dish Name', 80),
+            description: long('Slow-braised, hand-pulled, twice-fried', 120),
+            priceCents: 123456,
+            category: section,
+            imageUrl: 'https://images.toasttab.com/long.jpg',
+          },
+        ],
+      },
+      sections: [section],
+      providerId: 'toast',
+      providerName: 'Toast',
+      connectionId: TOAST_CONNECTION_ID,
+      rowLimit: 24,
+    });
+    plan.itemPhotos = true;
+    plan.items[0].imageUrl = 'https://sb.example/storage/v1/object/public/assets/ai-designer/t1/item-0123456789abcdef.jpg';
+    const content = formatPosPlanContent(plan);
+    const row = content.split('\n').find((l) => l.startsWith('[item.0] '))!;
+    expect(row.length).toBeLessThanOrEqual(300);
+    expect(row.endsWith(' — photo: item.0.photo')).toBe(true);
+    expect(row).toContain(`— ${long('A Very Long Dish Name', 80)} — $1234.56 — `);
+    expect(row).toContain('…'); // the description, and only it, was shortened
+    expect(countMenuContentRows(content)).toBe(1);
+    expect(parsePosBoundRows(content)[0].photo).toBe(plan.items[0].imageUrl);
   });
 });
