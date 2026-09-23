@@ -133,9 +133,15 @@ describe('which boards the live menu feeds', () => {
     expect(isMenuDrivenBoard({ url })).toBe(expected);
   });
 
-  it('an explicit flag turns any board into a menu board', () => {
-    expect(isMenuDrivenBoard({ url: '/templates/hs/varsity.html', posSync: true })).toBe(true);
-    expect(isMenuDrivenBoard({ url: '/templates/hs/varsity.html', dataSource: 'POS' })).toBe(true);
+  // 2026-09-23 (POS-A) — this used to say "an explicit flag turns any board
+  // into a menu board". It does not: a flag cannot give a board a runtime that
+  // reads the menu. Such a board reaches the POS only through explicit
+  // bindings, which the name-join does not describe.
+  it('a "Driven by POS" flag does NOT make a board without a menu runtime name-match', () => {
+    expect(isMenuDrivenBoard({ url: '/templates/hs/varsity.html', posSync: true })).toBe(false);
+    expect(isMenuDrivenBoard({ url: '/templates/hs/varsity.html', dataSource: 'POS' })).toBe(false);
+    expect(isMenuDrivenBoard({ url: '/templates/signage/qsr/redesign-counter-v1-the-pass.html', posSync: true })).toBe(false);
+    expect(isMenuDrivenBoard({ posSync: true })).toBe(false); // an inline AI board
   });
 });
 

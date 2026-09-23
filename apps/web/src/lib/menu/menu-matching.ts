@@ -141,18 +141,20 @@ export function boardHasMenuRuntime(url: unknown): boolean {
 }
 
 /**
- * Is this board one the live menu feeds?
+ * Is this a board whose rows the live menu fills BY NAME?
  *
- * Same test the renderer uses (see ExternalHtmlWidget): the packaged menu
- * packs by URL, or an explicit POS flag on the zone.
+ * Same rule the renderer uses (ExternalHtmlWidget): only a board carrying its
+ * own menu runtime name-matches. 2026-09-23 — a "Driven by POS" flag used to
+ * count too, so the Menu console listed boards that read nothing (the
+ * redesign-* boards, an AI board) as "listening to the price book" and matched
+ * catalog names against their rows. A board without a runtime reaches the POS
+ * only through explicit bindings (resolve-menu-bindings.ts), which this
+ * name-join report does not describe.
  */
 export function isMenuDrivenBoard(cfg: {
   url?: unknown; posSync?: unknown; dataSource?: unknown;
 }): boolean {
-  const url = typeof cfg?.url === 'string' ? cfg.url : '';
-  return /\/signage\/(qsr|menus-pos|bar)\//.test(url)
-    || cfg?.posSync === true
-    || cfg?.dataSource === 'POS';
+  return boardHasMenuRuntime(cfg?.url);
 }
 
 /**
