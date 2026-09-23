@@ -28,7 +28,7 @@ import {
   type DesignerStructure,
 } from './designer-structures';
 import { formatExemplarsForPrompt, type DesignerExemplar } from './designer-exemplars';
-import { documentIncompleteness, DesignerHtmlIncompleteError } from './designer-board-defects';
+import { documentIncompleteness, DesignerHtmlIncompleteError } from './designer-document-completeness';
 
 export type { DesignerPurpose, DesignerStructure };
 export { designerStructuresFor, normalizeDesignerPurpose };

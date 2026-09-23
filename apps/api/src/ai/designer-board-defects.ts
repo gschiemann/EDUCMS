@@ -57,32 +57,11 @@ export interface BoardDefectContext {
   binding?: { ok: boolean; missing: number[] } | null;
 }
 
-/** Thrown by sanitizeDesignerHtml for a document that was cut off before it ended. */
-export class DesignerHtmlIncompleteError extends Error {
-  readonly code = 'DESIGNER_HTML_INCOMPLETE' as const;
-  constructor(readonly reason: string) {
-    super(`Designer HTML is incomplete: ${reason}.`);
-    this.name = 'DesignerHtmlIncompleteError';
-  }
-}
-
-/**
- * Why this is not a complete document, or null when it is. A document that
- * opens `<!doctype` / `<html` must close `</html>`; one that opens `<body` must
- * close `</body>`. A bare fragment (no html/body tags at all) is not judged here.
- */
-export function documentIncompleteness(html: string): string | null {
-  const s = String(html || '');
-  if (
-    (/<!doctype\s+html/i.test(s) || /<html[\s>]/i.test(s)) &&
-    !/<\/html\s*>/i.test(s)
-  ) {
-    return 'it opens a document and never closes </html>';
-  }
-  if (/<body[\s>]/i.test(s) && !/<\/body\s*>/i.test(s))
-    return 'it opens <body> and never closes it';
-  return null;
-}
+// The two cheerio-free pieces the PROMPT module needs live in a dependency-free
+// module (web tests load designer-prompt.ts from source and cannot parse cheerio);
+// re-exported here so every other caller keeps one import.
+export { DesignerHtmlIncompleteError, documentIncompleteness } from './designer-document-completeness';
+import { documentIncompleteness } from './designer-document-completeness';
 
 const WORD_CHARS = /[\p{L}\p{N}]/gu;
 
