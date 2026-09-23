@@ -26,9 +26,29 @@ import {
   useTenantBranding, useApplyBrandToTemplates, useTemplateUsageSummary,
   useGenerateTouchTemplate, useExportTemplate, useImportTemplate,
   useGenerateTouchCandidates, useCreateFromCandidate, useRefineSignageBoard, type AiTemplateCandidate,
-  useGenerateDesignerCandidates, useCreateDesigner,
+  useCreateDesigner,
   useRegenerateBoardImage,
+  // AI Designer background jobs (2026-09-23) — the Designer generates through a job, never the
+  // synchronous generate-designer/candidates request (see runGenerateCandidatesCore).
+  useStartDesignerJob, useDesignerJob, useCancelDesignerJob, useRegenerateDesignerJob,
+  type DesignerJob, type DesignerJobResult,
 } from '@/hooks/use-api';
+import {
+  mapDesignerBoards,
+  designerJobErrorAsApiError,
+  designerJobGone,
+  designerJobFailureIsStall,
+  designerJobReplayRefused,
+  DESIGNER_JOBS_BUSY_CODE,
+  newDesignerJobKey,
+  pendingDesignerJobKey,
+  readPendingDesignerJob,
+  writePendingDesignerJob,
+  clearPendingDesignerJob,
+} from '@/lib/designer-jobs';
+import { DesignerJobProgress, DesignerBoundBadge } from '@/components/templates/DesignerJobProgress';
+import { toast } from 'sonner';
+import { ERROR_TOAST_DURATION_MS, MUTATION_ERROR_TOAST_ID, humanizeMutationError } from '@/lib/mutation-error-toast';
 // E3 (CRUSH Wave E, 2026-07-03) — shared "Put on a screen" express lane,
 // extracted so the editor toolbar (BuilderShell) can reuse it verbatim.
 import { usePutOnScreen } from '@/lib/put-on-screen';
@@ -177,6 +197,37 @@ function candidateLabel(t: AiBoardsT, c: { _structure?: string; _artDirection?: 
   }
   if (c._artDirection) return c._artDirection;
   return ['Balanced', 'Bold', 'Detailed'][i] || `Option ${i + 1}`;
+}
+
+// ── AI Designer background jobs (2026-09-23) ─────────────────────────────
+/** "Bound to Toast · 9 items" — set when a batch came back bound to a POS menu. */
+type DesignerBoundTo = NonNullable<DesignerJobResult['boundTo']>;
+
+/** The Designer job this dialog is waiting on. `resumed` = picked back up after a reload. */
+interface TrackedDesignerJob {
+  id: string;
+  /** The confirmed brief the batch was made with — cached with the batch when it lands. */
+  brief: DesignerBrief | null;
+  resumed: boolean;
+}
+
+/**
+ * A job could not be STARTED (POST …/jobs or …/again refused it). friendlyAiError's words, except
+ * the jobs' own 429: two generations already running is not "this hour's AI limit".
+ */
+function designerJobStartError(e: any, tAi: AiBoardsT): string {
+  return e?.code === DESIGNER_JOBS_BUSY_CODE ? tAi('job.busy') : friendlyAiError(e);
+}
+
+/**
+ * The toast every failed mutation raises app-wide (lib/mutation-error-cache.ts), raised by hand
+ * where a Designer generation fails OUTSIDE a failing mutation: a job the server ran and failed,
+ * or a Regenerate whose hook opts out of the global toast so its quiet 404/422 fallback stays
+ * quiet. The synchronous request this replaces always raised it, so the operator's error
+ * surfaces are exactly what they were: this toast plus the dialog's inline message.
+ */
+function toastGenerationError(e: unknown): void {
+  toast.error(humanizeMutationError(e), { id: MUTATION_ERROR_TOAST_ID, duration: ERROR_TOAST_DURATION_MS });
 }
 
 // Args accepted by runGenerateCandidatesCore — hoisted to module scope (2026-
@@ -672,6 +723,21 @@ export default function TemplatesPage() {
   // after a guided-form generation. Persisted with the batch cache, so a
   // resumed batch regenerates the same way.
   const lastConciergeArgsRef = useRef<RunGenerateCandidatesCoreArgs | null>(null);
+  // AI DESIGNER BACKGROUND JOBS (2026-09-23). A Designer batch is a job the API
+  // runs on its own (render → critique → revise included — the synchronous
+  // endpoint skips that loop), so this dialog STARTS it, POLLS it (visible tab
+  // only), can CANCEL it, and — through the `vos:ai:job:<school>` cache —
+  // RESUMES it after a reload instead of losing the batch. `designerJob` is the
+  // job being waited on; `lastJobIdRef` is the job the batch ON SCREEN came
+  // from, so Regenerate replays it server-side (`…/again`); `aiBoundTo` is that
+  // batch's POS binding, for the pick grid's "Bound to" badge.
+  const [designerJob, setDesignerJob] = useState<TrackedDesignerJob | null>(null);
+  const lastJobIdRef = useRef<string | null>(null);
+  const [aiBoundTo, setAiBoundTo] = useState<DesignerBoundTo | null>(null);
+  // A job's outcome is applied exactly once, whatever re-runs the effect that reads it.
+  const settledJobIdsRef = useRef<Set<string>>(new Set());
+  // Read by the Esc handler, which is bound once per open (see below).
+  const aiBusyRef = useRef(false);
   // CC-1 (2026-06-27) — canvas size for the AI generate request. Without this
   // every board was generated at 1920×1080 and CLIPPED on a real screen of a
   // different aspect (the live LED is 960×1080 portrait). { w, h } is forwarded
@@ -716,8 +782,10 @@ export default function TemplatesPage() {
   // this batch, if any, so resuming a cached batch keeps its brief intact
   // (e.g. for a future "regenerate with the same brief" affordance) instead
   // of silently dropping it.
+  // (2026-09-23) `jobId` — the Designer job the batch came from, so a resumed
+  // batch's Regenerate still replays server-side; `boundTo` — its POS binding.
   const [aiLastBatch, setAiLastBatch] = useState<
-    { candidates: AiTemplateCandidate[]; canvas: { w: number; h: number }; interactive: boolean; ts: number; brief?: DesignerBrief | null; replay?: RunGenerateCandidatesCoreArgs | null } | null
+    { candidates: AiTemplateCandidate[]; canvas: { w: number; h: number }; interactive: boolean; ts: number; brief?: DesignerBrief | null; replay?: RunGenerateCandidatesCoreArgs | null; jobId?: string | null; boundTo?: DesignerBoundTo | null } | null
   >(null);
   // Esc-to-close — wired only when the modal is open so dashboard
   // keyboard shortcuts elsewhere aren't shadowed. Disabled while a
@@ -727,8 +795,13 @@ export default function TemplatesPage() {
     if (!showAiGenerate) return;
     const onKey = (e: KeyboardEvent) => {
       // Don't let Esc abort an in-flight generate / candidate fan-out / pick.
+      // (2026-09-23) `aiBusyRef` — this handler is bound once per open, so the
+      // mutation objects it closed over never saw a later `isPending`; the ref
+      // is current, and covers a running Designer job (Cancel is the way out,
+      // exactly like the disabled close button and backdrop).
       if (
         e.key === 'Escape' &&
+        !aiBusyRef.current &&
         !generateTouch?.isPending &&
         !generateCandidates?.isPending &&
         aiPicking === null
@@ -873,7 +946,13 @@ export default function TemplatesPage() {
   const generateTouch = useGenerateTouchTemplate();
   const generateCandidates = useGenerateTouchCandidates();
   const createFromCandidate = useCreateFromCandidate();
-  const generateDesigner = useGenerateDesignerCandidates();
+  // The Designer's generation path (2026-09-23): start a job, poll it, cancel
+  // it, replay it. `useDesignerJob` polls every 2 s only while the job is
+  // queued/running AND the tab is visible (mobile-perf standard).
+  const startDesignerJob = useStartDesignerJob();
+  const regenerateDesignerJob = useRegenerateDesignerJob();
+  const cancelDesignerJob = useCancelDesignerJob();
+  const designerJobQuery = useDesignerJob(designerJob?.id);
   const createDesigner = useCreateDesigner();
   const refineSignage = useRefineSignageBoard();
   // Wave D1 (2026-07-02, #282) — the designer-board counterpart of
@@ -887,7 +966,14 @@ export default function TemplatesPage() {
   // like `{ brief: null }` (see startGenerateWithConfirm).
   const extractBrief = useExtractDesignerBrief();
   // Any AI generation in flight (touch-engine OR designer) drives the spinners.
-  const aiBusy = [generateCandidates, generateDesigner].some((m) => m.isPending);
+  // A Designer generation is in flight from the moment its job is requested
+  // until the job lands (done / failed / cancelled) — not just while a request
+  // is open.
+  const designerJobActive = startDesignerJob.isPending || regenerateDesignerJob.isPending || !!designerJob;
+  const aiBusy = generateCandidates.isPending || designerJobActive;
+  useEffect(() => {
+    aiBusyRef.current = aiBusy;
+  }, [aiBusy]);
   const exportTemplate = useExportTemplate();
   const importTemplate = useImportTemplate();
   // Express lane — "Put on a screen". Creates a one-item playlist FROM this
@@ -974,6 +1060,9 @@ export default function TemplatesPage() {
     setAiBrief(null);
     setAiBriefLoading(false);
     aiPendingGenerateArgsRef.current = null;
+    // The batch on screen is gone, and with it where it came from.
+    lastJobIdRef.current = null;
+    setAiBoundTo(null);
   }, []);
 
   const closeAiModal = useCallback(() => {
@@ -1031,7 +1120,13 @@ export default function TemplatesPage() {
     // #268 item 3 — `brief` carries the confirmed brief context for this
     // batch (undefined when the confirm step wasn't taken / found no
     // signal), so a resumed batch keeps its brief instead of losing it.
-    (candidates: AiTemplateCandidate[], brief?: DesignerBrief | null) => {
+    // (2026-09-23) `job` — the Designer job the batch came from and its POS
+    // binding, so a resumed batch regenerates server-side and keeps its badge.
+    (
+      candidates: AiTemplateCandidate[],
+      brief?: DesignerBrief | null,
+      job?: { jobId: string; boundTo: DesignerBoundTo | null },
+    ) => {
       try {
         if (!candidates?.length) return;
         const replay = lastConciergeArgsRef.current;
@@ -1042,6 +1137,8 @@ export default function TemplatesPage() {
           ts: Date.now(),
           brief: brief ?? null,
           replay: replay ? { ...replay, brief: undefined } : null,
+          jobId: job?.jobId ?? null,
+          boundTo: job?.boundTo ?? null,
         };
         const json = JSON.stringify(payload);
         if (json.length > 3_000_000) return; // don't blow the ~5MB quota
@@ -1073,8 +1170,123 @@ export default function TemplatesPage() {
     setAiBrief(aiLastBatch.brief ?? null);
     // …and how it was made, so Regenerate replays the same request.
     lastConciergeArgsRef.current = aiLastBatch.replay ?? null;
+    lastJobIdRef.current = aiLastBatch.jobId ?? null;
+    setAiBoundTo(aiLastBatch.boundTo ?? null);
     setAiPhase('pick');
   }, [aiLastBatch]);
+
+  // ── AI Designer background jobs (2026-09-23) ──────────────────────────
+  // While a job runs, `vos:ai:job:<school>` names it (plus the canvas, the
+  // brief and the Concierge request it was made from), so a reload — iOS
+  // discards a backgrounded tab — picks the SAME job back up: the dialog
+  // reopens on its progress, or straight on its boards if it finished while
+  // the page was gone. Separate from the last-batch cache on purpose: a job
+  // that fails or is cancelled must never cost the operator their last batch.
+  const pendingJobKey = pendingDesignerJobKey(params?.schoolId);
+  const trackDesignerJob = useCallback(
+    (jobId: string, brief: DesignerBrief | null) => {
+      settledJobIdsRef.current.delete(jobId);
+      setDesignerJob({ id: jobId, brief, resumed: false });
+      const replay = lastConciergeArgsRef.current;
+      writePendingDesignerJob(pendingJobKey, {
+        jobId,
+        ts: Date.now(),
+        canvas: aiCanvas,
+        interactive: aiInteractive,
+        brief,
+        replay: replay ? { ...replay, brief: undefined } : null,
+      });
+    },
+    [pendingJobKey, aiCanvas, aiInteractive],
+  );
+
+  // A job has an outcome (or its id stopped answering). Applied once per job.
+  //   done      → the boards, mapped EXACTLY as the synchronous response was:
+  //               the pick grid, the batch cache, `_batchId`, and now
+  //               `boundTo` + the job id for Regenerate.
+  //   failed    → the same inline message + toast the failed request raised
+  //               (friendlyAiError reads the stored envelope exactly as it read
+  //               apiFetch's error); a job the server gave up on says so.
+  //   cancelled → quietly back to where the operator was. A resumed job has no
+  //   / gone      "where": the dialog opened itself, so it closes itself.
+  const settleDesignerJob = useCallback(
+    (tracked: TrackedDesignerJob, job: DesignerJob | null) => {
+      if (settledJobIdsRef.current.has(tracked.id)) return;
+      settledJobIdsRef.current.add(tracked.id);
+      clearPendingDesignerJob(pendingJobKey);
+      setDesignerJob(null);
+      if (job?.status === 'done') {
+        const mapped = mapDesignerBoards(job.result);
+        if (!mapped.length) {
+          setAiError('The AI returned no options. Try rephrasing your prompt with more concrete details.');
+          return;
+        }
+        const boundTo = job.result?.boundTo ?? null;
+        lastJobIdRef.current = job.id;
+        setAiBoundTo(boundTo);
+        setAiCandidates(mapped);
+        persistLastBatch(mapped, tracked.brief, { jobId: job.id, boundTo }); // closing the picker never forces a re-generate
+        // Fresh set → forget which indices were saved / open full-screen.
+        setAiSavedIds({});
+        setAiFullscreenIdx(null);
+        setAiPhase('pick');
+        return;
+      }
+      if (job?.status === 'failed') {
+        const err = designerJobErrorAsApiError(job.error);
+        setAiError(designerJobFailureIsStall(job.error) ? tAi('job.stalled') : friendlyAiError(err));
+        toastGenerationError(err);
+        return;
+      }
+      if (tracked.resumed) {
+        closeAiModal();
+        return;
+      }
+      // The confirm step with nothing to confirm was only ever a pass-through
+      // on the way to generating; the operator came from the intake.
+      setAiPhase((p) => (p === 'confirm' && !designerBriefHasSignal(aiBrief) ? 'intake' : p));
+    },
+    [pendingJobKey, persistLastBatch, tAi, closeAiModal, aiBrief],
+  );
+  useEffect(() => {
+    if (!designerJob) return;
+    const job = designerJobQuery.data?.id === designerJob.id ? designerJobQuery.data : undefined;
+    if (job && (job.status === 'done' || job.status === 'failed' || job.status === 'cancelled')) {
+      settleDesignerJob(designerJob, job);
+    } else if (designerJobQuery.error && designerJobGone(designerJobQuery.error)) {
+      // Pruned, another account's id, or a session that cannot read it: polling it
+      // again can never succeed. (A network error or a 5xx keeps polling.)
+      settleDesignerJob(designerJob, null);
+    }
+  }, [designerJob, designerJobQuery.data, designerJobQuery.error, settleDesignerJob]);
+
+  // Cancel — the one way out while a job runs. The answer is written into the
+  // job's query, so it settles through the effect above like any poll: as
+  // `cancelled`, or with its boards if it had already finished.
+  const cancelTrackedJob = useCallback(() => {
+    if (designerJob) cancelDesignerJob.mutate(designerJob.id);
+  }, [designerJob, cancelDesignerJob]);
+
+  // Resume after a reload: once, when this admin's page first mounts.
+  const resumeCheckedRef = useRef(false);
+  useEffect(() => {
+    if (resumeCheckedRef.current || !isAdmin) return;
+    resumeCheckedRef.current = true;
+    const pending = readPendingDesignerJob<DesignerBrief, RunGenerateCandidatesCoreArgs>(pendingJobKey);
+    if (!pending) return;
+    resetAiModal();
+    // The job's own canvas, not the fleet default that loads after mount.
+    aiCanvasDefaultedRef.current = true;
+    setAiCanvas(pending.canvas);
+    setAiCustomText({ w: String(pending.canvas.w), h: String(pending.canvas.h) });
+    setAiInteractive(pending.interactive);
+    setAiBrief(pending.brief);
+    lastConciergeArgsRef.current = pending.replay;
+    settledJobIdsRef.current.delete(pending.jobId);
+    setDesignerJob({ id: pending.jobId, brief: pending.brief, resumed: true });
+    setAiPhase('confirm');
+    setShowAiGenerate(true);
+  }, [isAdmin, pendingJobKey, resetAiModal]);
 
   // Phase 1 → 2: fan out 3 candidate drafts. The SHARED core — both the
   // guided-wizard path and the conversational Signage Concierge path call
@@ -1099,18 +1311,25 @@ export default function TemplatesPage() {
         setAiError('Tell the AI what to build.');
         return;
       }
-      try {
-        // AI Designer (2026-06-29): a top model authors the WHOLE board as HTML.
-        // Each board maps to a one-zone EXTERNAL_HTML candidate so the existing
-        // pick-grid previews it via srcdoc; the raw html rides on _designerHtml
-        // for persist (create-designer, base64).
-        if (aiDesignerMode || forceDesigner) {
+      // AI Designer (2026-06-29): a top model authors the WHOLE board as HTML.
+      // Each board maps to a one-zone EXTERNAL_HTML candidate so the existing
+      // pick-grid previews it via srcdoc; the raw html rides on _designerHtml
+      // for persist (create-designer, base64).
+      //
+      // (2026-09-23) Through a BACKGROUND JOB, always: this starts it and
+      // returns. The job's progress, Cancel, and its outcome — the boards
+      // (mapped exactly as the synchronous response was), or the same error
+      // surfaces the request had — live in settleDesignerJob above. Only a job
+      // gets the render → critique → revise loop; the synchronous endpoint
+      // skips it (`allowReview: false`), so the dashboard no longer calls it.
+      if (aiDesignerMode || forceDesigner) {
+        try {
           // #268 item 3 — the operator-confirmed (or chip-edited) brief, if the
           // confirm strip ran. `buildDesignerBriefPayload` returns undefined for
           // a no-signal brief so the server falls back to its own inline
           // extraction exactly as if the confirm step never happened.
           const briefPayload = buildDesignerBriefPayload(brief);
-          const dres = await generateDesigner.mutateAsync({
+          const started = await startDesignerJob.mutateAsync({
             prompt,
             screenWidth: aiCanvas.w,
             screenHeight: aiCanvas.h,
@@ -1133,33 +1352,20 @@ export default function TemplatesPage() {
                 }
               : {}),
             // Spread via Record<string,any> (matches the intakeFields/designerExtras
-            // pattern above) so this doesn't require widening useGenerateDesignerCandidates'
-            // mutation variable type — the backend schema `.passthrough()`es it either way.
+            // pattern above) — the backend schema `.passthrough()`es it either way.
             ...(briefPayload ? ({ brief: briefPayload } as Record<string, any>) : {}),
+            // A fresh key per start: apiFetch re-sends a POST after a network
+            // error, and the same key returns the job already started instead
+            // of a second paid batch.
+            idempotencyKey: newDesignerJobKey(),
           });
-          const boards = dres?.candidates || [];
-          if (!boards.length) {
-            setAiError('The AI returned no options. Try rephrasing your prompt with more concrete details.');
-            return;
-          }
-          const mapped: AiTemplateCandidate[] = boards.map((b) => ({
-            name: b.name || 'AI Designer board',
-            zones: [{ name: 'board', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, defaultConfig: { html: b.html } }],
-            _designerHtml: b.html,
-            // #268-1 keep-telemetry — carried through the picker (and the
-            // resume-last-batch cache) so the keep can echo them to the server.
-            _batchId: dres?.batchId,
-            _artDirection: b.artDirection,
-            _structure: b.structure,
-          }));
-          setAiCandidates(mapped);
-          persistLastBatch(mapped, brief); // cache so closing the picker never forces a re-generate
-          // Fresh set → forget which indices were saved / open full-screen.
-          setAiSavedIds({});
-          setAiFullscreenIdx(null);
-          setAiPhase('pick');
-          return;
+          trackDesignerJob(started.jobId, brief ?? null);
+        } catch (e: any) {
+          setAiError(designerJobStartError(e, tAi));
         }
+        return;
+      }
+      try {
         const res = await generateCandidates.mutateAsync({
           prompt,
           // CC-1 — lay the board out for the chosen aspect so it isn't clipped on
@@ -1190,6 +1396,9 @@ export default function TemplatesPage() {
           return;
         }
         setAiCandidates(cands);
+        // An engine batch has no job to replay and no POS binding.
+        lastJobIdRef.current = null;
+        setAiBoundTo(null);
         persistLastBatch(cands); // cache so closing the picker never forces a re-generate
         // Fresh set → forget which indices were saved / open full-screen.
         setAiSavedIds({});
@@ -1199,7 +1408,7 @@ export default function TemplatesPage() {
         setAiError(friendlyAiError(e));
       }
     },
-    [aiInteractive, aiSetMode, aiDesignerMode, aiCanvas, tenantCopy.vertical, generateCandidates, generateDesigner, persistLastBatch],
+    [aiInteractive, aiSetMode, aiDesignerMode, aiCanvas, tenantCopy.vertical, generateCandidates, startDesignerJob, trackDesignerJob, tAi, persistLastBatch],
   );
 
   // BRIEF-ECHO CONFIRM handoff (#268 item 3 / task #277) — the shared
@@ -1278,10 +1487,32 @@ export default function TemplatesPage() {
     return runGenerateCandidates();
   }, [runGenerateCandidates]);
   // The pick grid's Regenerate: the request that made THIS batch, again.
-  const regenerateBatch = useCallback(() => {
+  // (2026-09-23) A batch that came from a Designer job is replayed by the
+  // SERVER (`…/jobs/:id/again`) from the request that job persisted — brand,
+  // content source, POS selection, generator — whatever this page still
+  // remembers. Only when the server can no longer replay it (the job was
+  // pruned after 7 days, or its request no longer validates) does the page
+  // fall back to replaying what it remembers.
+  const regenerateBatch = useCallback(async () => {
+    const jobId = lastJobIdRef.current;
+    if (jobId) {
+      setAiError(null);
+      try {
+        const started = await regenerateDesignerJob.mutateAsync({ jobId, idempotencyKey: newDesignerJobKey() });
+        trackDesignerJob(started.jobId, aiBrief);
+        return;
+      } catch (e: any) {
+        if (!designerJobReplayRefused(e)) {
+          setAiError(designerJobStartError(e, tAi));
+          toastGenerationError(e);
+          return;
+        }
+        lastJobIdRef.current = null;
+      }
+    }
     const replay = lastConciergeArgsRef.current;
     return replay ? startGenerateWithConfirm(replay) : runGenerateCandidates();
-  }, [startGenerateWithConfirm, runGenerateCandidates]);
+  }, [regenerateDesignerJob, trackDesignerJob, aiBrief, tAi, startGenerateWithConfirm, runGenerateCandidates]);
 
   // The CONCIERGE path: the chat hands us a synthesized prompt (brief) + a
   // ConciergeIntake that's ALREADY the wire shape — spread it directly (do NOT
@@ -1969,6 +2200,18 @@ export default function TemplatesPage() {
     );
   }
 
+  // The Designer job's generating state (2026-09-23) — rendered by the confirm
+  // step and under the pick grid, wherever the generation was started from.
+  // Before the job has an id (its start request is in flight) it reads
+  // "Getting started…" and Cancel waits for the id.
+  const designerJobProgress = designerJobActive ? (
+    <DesignerJobProgress
+      job={designerJob && designerJobQuery.data?.id === designerJob.id ? designerJobQuery.data : null}
+      onCancel={designerJob ? cancelTrackedJob : undefined}
+      cancelling={cancelDesignerJob.isPending}
+    />
+  ) : null;
+
   return (
     <div className="space-y-8">
       {/* ── Page header (Calm v1 §4.1, §5.2) ───────────────────────────
@@ -2109,6 +2352,12 @@ export default function TemplatesPage() {
                     className="text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-100 rounded-lg px-3 py-2.5"
                   >
                     {aiError}
+                  </div>
+                )}
+                {/* 2026-09-23 — the batch came back bound to a POS menu: say which, and how much of it. */}
+                {aiBoundTo && (
+                  <div className="flex">
+                    <DesignerBoundBadge boundTo={aiBoundTo} />
                   </div>
                 )}
                 <div
@@ -2310,16 +2559,21 @@ export default function TemplatesPage() {
                     );
                   })}
                 </div>
+                {/* A Regenerate running as a job: where it is + Cancel, right above the
+                    button that started it (the grid above can be taller than a phone). */}
+                {designerJobProgress}
                 <div className="flex items-center justify-between pt-1">
                   <button
                     onClick={() => { setAiPhase('intake'); setAiError(null); }}
-                    disabled={aiPicking !== null}
+                    // Not mid-job: Cancel is the way out of a running generation,
+                    // the same as the confirm step's Back and the close button.
+                    disabled={aiBusy || aiPicking !== null}
                     className="px-4 py-2 text-sm font-bold rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                   >
                     ← Back
                   </button>
                   <button
-                    onClick={regenerateBatch}
+                    onClick={() => { void regenerateBatch(); }}
                     disabled={aiBusy || aiPicking !== null}
                     className="px-4 py-2 text-sm font-bold rounded-xl bg-white border border-violet-200 text-violet-700 hover:bg-violet-50 disabled:opacity-50 flex items-center gap-1.5"
                   >
@@ -2352,14 +2606,12 @@ export default function TemplatesPage() {
                   onSkip={skipBriefAndGenerate}
                   generating={aiBusy}
                 />
-                {/* The fail-open auto-generate renders no strip (no signal) —
-                    show honest progress instead of an empty modal. */}
-                {!aiBriefLoading && !designerBriefHasSignal(aiBrief) && aiBusy && (
-                  <div className="flex items-center justify-center gap-2 text-sm font-semibold text-slate-500 py-6">
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Designing your boards…
-                  </div>
-                )}
+                {/* The generation, as a job (2026-09-23): what it is doing now
+                    ("Drawing 3 boards…" → "Looking at option 2…" → "Fixing option
+                    2…") and Cancel. Also the whole dialog when the fail-open
+                    auto-generate renders no strip (no signal) — it used to be a
+                    bare "Designing your boards…" spinner. */}
+                {designerJobProgress}
                 <button
                   type="button"
                   onClick={() => {

@@ -6103,9 +6103,16 @@ export function useCancelDesignerJob() {
  * A NEW job from the request the old one persisted (re-validated on the
  * server), so a regenerate keeps the brand, content source, bindings and
  * generator no matter what the page still remembers.
+ *
+ * No global error toast: the templates page answers every failure itself. A
+ * 404 (the job was pruned after 7 days) or a 422 (its stored request no longer
+ * validates) is not an error the operator should see — the page quietly
+ * regenerates from what it still remembers — and any other failure gets the
+ * page's inline message plus the same toast a failed mutation raises.
  */
 export function useRegenerateDesignerJob() {
   return useMutation<DesignerJobStarted, Error, { jobId: string; idempotencyKey?: string }>({
+    meta: { suppressGlobalError: true },
     mutationFn: ({ jobId, idempotencyKey }) =>
       apiFetch<DesignerJobStarted>(`/templates/generate-designer/jobs/${encodeURIComponent(jobId)}/again`, {
         method: 'POST',

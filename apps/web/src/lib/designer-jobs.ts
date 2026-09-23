@@ -10,11 +10,19 @@
  *     throws for the same response, so the page's existing error mapping (`friendlyAiError`:
  *     AI_CAP_REACHED / 402, MENU_BINDING_INCOMPLETE, 429, 503 …) says exactly what it said before.
  *   - `designerJobStageMessage` — the translated "Drawing 3 boards…" line for a job's progress.
+ *   - `designerJobGone` / `designerJobFailureIsStall` / `designerJobReplayRefused` — how the page
+ *     reads the three ways a job ends without boards (the id is gone, the job died, the stored
+ *     request can no longer be replayed).
  *   - the pending-job cache — while a job runs, `vos:ai:job:<school>` holds its id (and how to
  *     regenerate it), so a reload (iOS discards backgrounded tabs) resumes polling instead of
  *     losing the batch. Kept apart from `vos:ai:lastbatch:<school>`, so a job that fails or is
  *     cancelled never costs the operator their previous batch.
- *   - `designerJobsEndpointMissing` — the deploy-window fallback test (see the page).
+ *
+ * (2026-09-23, wiring) The deploy-window fallback that sent a 404 on `POST …/jobs` back to the
+ * synchronous endpoint is GONE: an API with the jobs endpoints is live in production (probed —
+ * `GET …/generate-designer/jobs/:id` answers 401 unauthenticated where an unknown route answers
+ * 404), and the page no longer calls the synchronous endpoint at all. It only ever protected that
+ * window.
  */
 import type {
   AiTemplateCandidate,
@@ -51,15 +59,31 @@ export function designerJobErrorAsApiError(envelope: DesignerJobError | null | u
   return err;
 }
 
+/** `POST …/jobs` (or `…/again`) answered 429 with this: the tenant already has two jobs running. */
+export const DESIGNER_JOBS_BUSY_CODE = 'AI_DESIGN_JOBS_BUSY';
+
 /**
- * DEPLOY-WINDOW FALLBACK. The web can deploy before the API that serves the jobs endpoints; in
- * that window `POST …/generate-designer/jobs` is an unknown route (Nest answers a plain 404). The
- * page then generates through the sync endpoint exactly as it did before jobs existed. Remove this
- * (and its one call site in templates/page.tsx) once an API with the jobs endpoints is live.
+ * The job's id no longer answers — pruned (7 days), another account's id left on a shared device,
+ * or a signed-out / role-less session. Polling it again can never succeed, so the page stops.
+ * (A network error or a 5xx is NOT gone: the poll keeps going and the job keeps running.)
  */
-export function designerJobsEndpointMissing(err: unknown): boolean {
+export function designerJobGone(err: unknown): boolean {
+  const s = (err as { status?: number } | null)?.status;
+  return s === 404 || s === 403 || s === 401;
+}
+
+/** A failed job the API gave up on itself: its worker died twice, or no worker ever claimed it. */
+export function designerJobFailureIsStall(envelope: DesignerJobError | null | undefined): boolean {
+  return envelope?.code === 'AI_DESIGN_JOB_STALLED' || envelope?.code === 'AI_DESIGN_JOB_EXPIRED';
+}
+
+/**
+ * `POST …/jobs/:id/again` refused to replay: the job is gone (404) or its stored request no longer
+ * validates (422). The page then regenerates from what it still remembers of the request.
+ */
+export function designerJobReplayRefused(err: unknown): boolean {
   const e = err as { status?: number; code?: string } | null;
-  return e?.status === 404 && e?.code !== 'AI_DESIGN_JOB_NOT_FOUND';
+  return e?.status === 404 || e?.status === 422;
 }
 
 type Translate = (key: string, values?: Record<string, string | number>) => string;
@@ -84,7 +108,10 @@ export function designerJobStageMessage(
     case 'revising':
       return n ? t('job.revising', { n }) : t('job.revisingAll');
     case 'done':
-      return t('job.done');
+      // The boards finish one at a time (the pipeline emits `done` + candidate for each, then a
+      // bare `done` for the batch): "Option 1 is ready…" while its siblings are still being
+      // looked at — "Finishing up…" there would claim the whole batch is nearly done.
+      return n ? t('job.ready', { n }) : t('job.done');
     default:
       // Running with no progress yet, or a stage this build does not know.
       return t('job.working');
@@ -114,8 +141,14 @@ export interface PendingDesignerJob<Brief = unknown, Replay = unknown> {
   replay: Replay | null;
 }
 
-/** Older than this, a pending job is not resumed on load (the server stops waiting at 30 min too). */
-export const PENDING_DESIGNER_JOB_MAX_AGE_MS = 30 * 60_000;
+/**
+ * Older than this, a pending job is not resumed on load. A job runs for minutes, but its RESULT is
+ * kept for 7 days — and the case this cache exists for is an operator who starts a batch, switches
+ * apps, and comes back an hour later to a tab iOS discarded: the boards they paid for must still
+ * be there. (This was 30 min — the server's queued-job expiry, which says nothing about how long a
+ * finished batch is worth resuming.)
+ */
+export const PENDING_DESIGNER_JOB_MAX_AGE_MS = 24 * 60 * 60_000;
 
 export function pendingDesignerJobKey(schoolId: string | undefined | null): string {
   return `vos:ai:job:${schoolId ?? 'x'}`;
