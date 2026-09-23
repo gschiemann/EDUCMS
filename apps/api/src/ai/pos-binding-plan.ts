@@ -57,8 +57,8 @@ export function formatPosPrice(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
-function clean(v: unknown, max: number): string {
-  return String(v ?? '')
+function clean(v: string | null | undefined, max: number): string {
+  return (typeof v === 'string' ? v : '')
     .replace(/\s+/g, ' ')
     // The row format is " — "-delimited: a dash inside a name must not look like a delimiter.
     .replace(/\s[—–]\s/g, ' - ')

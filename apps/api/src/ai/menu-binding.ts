@@ -392,8 +392,8 @@ export function readMenuBindings(html: string): ReadBindings {
     let n = rowNumber(nodeAttr(html, nodes[i], 'data-menu-row'));
     if (n == null) n = itemNumberOfKey(nodeAttr(html, nodes[i], 'data-field'));
     if (n == null) {
-      const nums = new Set(sitesWithin(sites, nodes[i]).map((s) => itemNumberOfKey(s.key)).filter((x) => x != null));
-      if (nums.size === 1) n = [...nums][0] as number;
+      const nums = new Set(sitesWithin(sites, nodes[i]).map((s) => itemNumberOfKey(s.key)).filter((x): x is number => x != null));
+      if (nums.size === 1) n = [...nums][0];
     }
     if (n == null) continue;
     const key = `item.${n}`;

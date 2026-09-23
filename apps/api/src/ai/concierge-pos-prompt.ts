@@ -60,7 +60,7 @@ export function detectedPosFromReferences(references: ConciergeReference[] | nul
   const known = new Map(conciergeConnectablePos().map((p) => [p.providerId, p.name]));
   const out: ConciergeDetectedPos[] = [];
   for (const ref of references || []) {
-    const list = Array.isArray((ref as any)?.detectedPos) ? (ref as any).detectedPos : [];
+    const list: ConciergeDetectedPos[] = Array.isArray(ref?.detectedPos) ? ref.detectedPos : [];
     for (const d of list) {
       const id = typeof d?.providerId === 'string' ? d.providerId : '';
       if (!known.has(id) || out.some((o) => o.providerId === id)) continue;
