@@ -48,7 +48,8 @@ const server = {
   timeline: new Map<string, ProducedJobView[]>(),
   cancelled: new Set<string>(),
   startReply: (): unknown => producedStarted('job-1'),
-  againReply: (_id: string): unknown => producedStarted('job-2'),
+  /** The job …/again creates from job `id`. */
+  againReply: (id: string): unknown => producedStarted(id === 'job-1' ? 'job-2' : `${id}-again`),
 };
 const notFound = () =>
   apiFetchError({ code: 'AI_DESIGN_JOB_NOT_FOUND', message: 'That board generation was not found.', status: 404 });
@@ -254,7 +255,7 @@ beforeEach(() => {
   server.timeline.clear();
   server.cancelled.clear();
   server.startReply = () => producedStarted('job-1');
-  server.againReply = () => producedStarted('job-2');
+  server.againReply = (id: string) => producedStarted(id === 'job-1' ? 'job-2' : `${id}-again`);
 });
 afterEach(() => {
   cleanup();
@@ -414,8 +415,9 @@ it('a reload mid-job picks the SAME job back up — the dialog reopens on its pr
 });
 
 it.each([
-  ['cancelled on another device', (id: string) => server.cancelled.add(id)],
-  ['gone (404 — pruned, or another account’s id)', (_id: string) => undefined],
+  ['cancelled on another device', (id: string) => { server.cancelled.add(id); }],
+  // No row for it at all: the fake API answers the controller's 404.
+  ['gone (404 — pruned, or another account’s id)', (id: string) => { server.timeline.delete(id); }],
 ])('a resumed job that was %s closes the dialog it opened, quietly', async (_name, arrange) => {
   localStorage.setItem(
     PENDING,

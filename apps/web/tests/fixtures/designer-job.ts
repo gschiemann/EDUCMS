@@ -30,7 +30,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-export const API_SRC = path.resolve(__dirname, '../../../api/src');
+// `DESIGNER_JOB_FIXTURE_API_SRC` points the fixture (and the drift guard) at a COPY of the API
+// source — the negative-control hook: mutate a producer line in the copy, watch the guard go red,
+// without touching the real API.
+export const API_SRC = process.env.DESIGNER_JOB_FIXTURE_API_SRC || path.resolve(__dirname, '../../../api/src');
 export const PRODUCER_FILES = {
   controller: path.join(API_SRC, 'templates', 'templates.controller.ts'),
   service: path.join(API_SRC, 'templates', 'designer-jobs', 'designer-jobs.service.ts'),

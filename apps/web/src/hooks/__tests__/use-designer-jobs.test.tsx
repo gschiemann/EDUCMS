@@ -8,6 +8,7 @@
  * `@/lib/api-client`, the REAL hooks inside a real QueryClientProvider.
  */
 import * as fs from 'fs';
+import { useEffect } from 'react';
 import { act, render } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
@@ -61,20 +62,28 @@ type Hooks = {
   again: ReturnType<typeof useRegenerateDesignerJob>;
 };
 
+/** Renders the four REAL hooks and hands their latest results to `expose` after every commit. */
+function Inner({ id, expose }: { id: string | null; expose: (h: Hooks) => void }) {
+  const h: Hooks = {
+    start: useStartDesignerJob(),
+    job: useDesignerJob(id),
+    cancel: useCancelDesignerJob(),
+    again: useRegenerateDesignerJob(),
+  };
+  useEffect(() => {
+    expose(h);
+  });
+  return null;
+}
+
 function mount(jobId: string | null) {
   // Queries keep the hook's OWN retry rule (that is under test); mutations never retry here.
   const qc = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
   const hooks = {} as Hooks;
-  function Inner({ id }: { id: string | null }) {
-    hooks.start = useStartDesignerJob();
-    hooks.job = useDesignerJob(id);
-    hooks.cancel = useCancelDesignerJob();
-    hooks.again = useRegenerateDesignerJob();
-    return null;
-  }
+  const expose = (h: Hooks) => Object.assign(hooks, h);
   render(
     <QueryClientProvider client={qc}>
-      <Inner id={jobId} />
+      <Inner id={jobId} expose={expose} />
     </QueryClientProvider>,
   );
   return { qc, hooks };

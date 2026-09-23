@@ -215,8 +215,8 @@ interface TrackedDesignerJob {
  * A job could not be STARTED (POST …/jobs or …/again refused it). friendlyAiError's words, except
  * the jobs' own 429: two generations already running is not "this hour's AI limit".
  */
-function designerJobStartError(e: any, tAi: AiBoardsT): string {
-  return e?.code === DESIGNER_JOBS_BUSY_CODE ? tAi('job.busy') : friendlyAiError(e);
+function designerJobStartError(e: unknown, tAi: AiBoardsT): string {
+  return (e as { code?: unknown } | null)?.code === DESIGNER_JOBS_BUSY_CODE ? tAi('job.busy') : friendlyAiError(e);
 }
 
 /**
@@ -1360,7 +1360,7 @@ export default function TemplatesPage() {
             idempotencyKey: newDesignerJobKey(),
           });
           trackDesignerJob(started.jobId, brief ?? null);
-        } catch (e: any) {
+        } catch (e) {
           setAiError(designerJobStartError(e, tAi));
         }
         return;
@@ -1501,7 +1501,7 @@ export default function TemplatesPage() {
         const started = await regenerateDesignerJob.mutateAsync({ jobId, idempotencyKey: newDesignerJobKey() });
         trackDesignerJob(started.jobId, aiBrief);
         return;
-      } catch (e: any) {
+      } catch (e) {
         if (!designerJobReplayRefused(e)) {
           setAiError(designerJobStartError(e, tAi));
           toastGenerationError(e);

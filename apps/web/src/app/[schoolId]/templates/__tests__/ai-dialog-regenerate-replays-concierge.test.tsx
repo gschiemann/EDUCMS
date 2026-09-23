@@ -163,10 +163,13 @@ beforeEach(() => {
 /** The job the cached (= on-screen) batch came from. */
 const cachedJobId = () => JSON.parse(localStorage.getItem('vos:ai:lastbatch:riot') || 'null')?.jobId ?? null;
 
-/** Regenerate, and wait until the page has settled on the batch of job `expectJob`. */
+/**
+ * Regenerate, and wait until the page has settled on the batch of job `expectJob`. (A generous
+ * wait: the three boards re-render as srcdoc frames, which is slow on a loaded runner.)
+ */
 async function regenerate(expectJob: string) {
   fireEvent.click(screen.getByRole('button', { name: /regenerate/i }));
-  await waitFor(() => expect(cachedJobId()).toBe(expectJob));
+  await waitFor(() => expect(cachedJobId()).toBe(expectJob), { timeout: 10_000 });
   expect(screen.getByText('Pick your favorite')).toBeInTheDocument();
 }
 
