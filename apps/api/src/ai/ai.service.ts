@@ -50,6 +50,10 @@ import {
 // never trusted from the client (pos/concierge-pos-context.ts + concierge-pos-prompt.ts).
 import { loadConciergePosContext } from '../pos/concierge-pos-context';
 import { conciergePosPromptState, conciergePosState } from './concierge-pos-prompt';
+// …and a board the operator bound to that POS comes back with every row bound to
+// its POS item (plan → bind → price guard → validate), or not at all.
+import { finishDesignerBoard, loadPosBindingPlan, menuBindingIncomplete, verifiedBoardBindings } from './designer-pos-binding';
+import { formatPosPlanContent } from './pos-binding-plan';
 // 2026-09-22 — the Concierge promised "I'll pull the menu items from your
 // website" and had no way to keep it. The extractor is a PURE-ish module with
 // every side effect injected; AiService owns the provider key, the caps and
@@ -135,11 +139,12 @@ import {
 import { stripInjectedRuntime } from './designer-edit-shim';
 import { selectDesignerExemplars } from './designer-exemplars';
 // GROUND-TRUTH LAW (2026-08-25) — a price/discount the operator never gave us
-// never reaches a screen. See fact-guard.ts for the incident + the rule.
+// never reaches a screen. See fact-guard.ts for the incident + the rule. (The
+// Designer path runs the HTML guard through designer-pos-binding.ts's
+// finishDesignerBoard, which binds POS rows first.)
 import {
   collectGroundedFacts,
   enforceGroundedFactsInCopy,
-  enforceGroundedFactsInHtml,
 } from './fact-guard';
 import {
   isVertical,
@@ -3412,11 +3417,21 @@ export class AiService {
      * failure) — exactly the pre-#268 behavior.
      */
     brief?: unknown;
+    /**
+     * POS-BOUND BOARD (2026-09-22) — the operator picked their POS menu in the
+     * Concierge's card. The item list is built HERE from this tenant's catalog
+     * for that connection + sections (client `content` / brief items are
+     * ignored, auto-grounding is skipped), and every board comes back with each
+     * row bound to its POS item — or not at all (designer-pos-binding.ts).
+     */
+    posSelection?: ConciergePosSelection;
   }): Promise<{
     candidates: Array<{ name: string; html: string; screenWidth: number; screenHeight: number; taurusWarnings: string[]; artDirection: string; structure: string }>;
     batchId: string;
     source: 'tenant' | 'platform';
     usage: { used: number; cap: number; resetAt: string } | null;
+    /** Set when the boards are bound to a POS menu. */
+    boundTo?: { providerId: string; providerName: string; itemCount: number };
   }> {
     if (designerKillSwitchOn()) {
       throw new ServiceUnavailableException({
@@ -3440,6 +3455,11 @@ export class AiService {
     const count = Math.min(Math.max(opts.count ?? 3, 1), 3);
     const sw = opts.screenWidth || 1920;
     const sh = opts.screenHeight || 1080;
+    // The POS plan first: an unknown connection or a selection too big for one
+    // screen is a 422 before anything is spent.
+    const posPlan = opts.posSelection
+      ? await loadPosBindingPlan({ prisma: this.prisma, menu: this.menuService }, opts.tenantId, opts.posSelection, { width: sw, height: sh })
+      : null;
 
     // Up-front caps — reserve headroom for the WHOLE fan-out (audit W0-09).
     // The Designer batch builds `count` candidates (the most expensive path —
@@ -3464,10 +3484,14 @@ export class AiService {
     // account designing a taqueria's menu used to get the K-12 audience clause
     // and "Vertical: k12"; the venue type now comes from what the request is
     // about, and the tenant's column is only the fallback.
+    // POS-BOUND (2026-09-22): the plan's `[item.N]` rows ARE the content. The
+    // client's own content and any items in the brief are ignored, and
+    // auto-grounding has nothing to add.
+    const posContent = posPlan ? formatPosPlanContent(posPlan) : null;
     const boardVertical = inferDesignerVertical({
       prompt,
       reference: opts.reference,
-      content: opts.content,
+      content: posContent ?? opts.content,
       venueName: opts.venueName,
       tenantVertical: opts.vertical,
     });
@@ -3488,24 +3512,25 @@ export class AiService {
     // fine, generation proceeds exactly as it did before #268 with no brief.
     const clientBrief = sanitizeClientDesignerBrief(opts.brief);
     let briefExtracted = false;
-    const brief =
+    const briefRead =
       clientBrief ??
       (await (async () => {
         const extracted = await this.extractDesignerBrief({
           resolved,
           prompt,
           vertical: boardVertical.vertical.toLowerCase(),
-          content: opts.content,
+          content: posContent ?? opts.content,
         });
         briefExtracted = !!extracted;
         return extracted;
       })());
+    const brief = briefRead && posPlan ? { ...briefRead, items: [] } : briefRead;
 
     // SAMPLE-MENU MODE (report 02 §4). "Standard Mexican food items" with no
     // menu anywhere: generic names are allowed, every price is an empty slot,
     // and NO saved menu is pulled in (menuSource 'none') — the operator asked
     // for placeholders, not their price book.
-    const hasRealContent = !!(opts.content && opts.content.trim());
+    const hasRealContent = !!(posContent || (opts.content && opts.content.trim()));
     const sampleMenu = hasRealContent
       ? null
       : opts.sampleMenu === true
@@ -3515,16 +3540,18 @@ export class AiService {
     // AUTO-GROUND WITH TENANT DATA (#268 item 5) — only fills a gap; never
     // overrides operator-supplied content. Read-only, hard-truncated, and the
     // brief (whichever source) informs whether grounding is even relevant.
-    const groundedContent = await this.autoGroundContent({
-      tenantId: opts.tenantId,
-      prompt,
-      vertical: opts.vertical,
-      brief,
-      existingContent: opts.content,
-      siteMenuMissing: opts.siteMenuMissing === true,
-      menuSource: sampleMenu ? 'none' : opts.menuSource,
-    });
-    const content = opts.content || groundedContent || undefined;
+    const groundedContent = posPlan
+      ? null
+      : await this.autoGroundContent({
+          tenantId: opts.tenantId,
+          prompt,
+          vertical: opts.vertical,
+          brief,
+          existingContent: opts.content,
+          siteMenuMissing: opts.siteMenuMissing === true,
+          menuSource: sampleMenu ? 'none' : opts.menuSource,
+        });
+    const content = posContent || opts.content || groundedContent || undefined;
 
     // WHAT THE BOARD IS FOR, and the three layouts its candidates build — one
     // each, so the batch is three different boards rather than three moods of
@@ -3557,18 +3584,25 @@ export class AiService {
     // GROUND-TRUTH LAW (2026-08-25) — every number the operator actually gave
     // us. Anything money-shaped on a returned board that is NOT in here is a
     // fabrication and is removed before the operator ever sees it.
-    const facts = collectGroundedFacts([
-      prompt,
-      content,
-      opts.reference,
-      opts.tagline,
-      opts.venueName,
-      brief?.occasion,
-      brief?.headline,
-      brief?.dateTime,
-      brief?.callToAction,
-      ...(brief?.items || []),
-    ]);
+    const facts = collectGroundedFacts(
+      [
+        prompt,
+        // A POS plan grounds its ROW PRICES only (menuContent below) — its
+        // header's "3 items in 2 sections" must not make "$2 extra guac" true.
+        posPlan ? null : content,
+        opts.reference,
+        opts.tagline,
+        opts.venueName,
+        brief?.occasion,
+        brief?.headline,
+        brief?.dateTime,
+        brief?.callToAction,
+        ...(brief?.items || []),
+      ],
+      // 2026-09-22 — the content's own ROWS, so a price in a row field must be
+      // THAT row's price (the "$3.00 coincidence"; fact-guard.ts).
+      { menuContent: content },
+    );
 
     // A full premium HTML board is large — a generous output budget. (dispatchAi
     // adds reasoning headroom on top of this for every model that thinks.)
@@ -3586,6 +3620,9 @@ export class AiService {
         structureId: structure.id,
       }),
     );
+    // Usable boards drawn (a POS-bound retry is a second one) and the retries.
+    let usableDraws = 0;
+    let bindingRetries = 0;
     const settled = await Promise.allSettled(
       structures.map((structure, i) => {
         const userPrompt = buildDesignerUserPrompt({
@@ -3609,13 +3646,17 @@ export class AiService {
           houseStyle: houseStyle || undefined,
           brief: brief || undefined,
         });
-        return this.dispatchRawDetailed(resolved, system, userPrompt, MAX_HTML_TOKENS, { job: 'design', feature: 'designer' }).then(({ raw, provider, model, durationMs, usage }) => {
+        const draw = () => this.dispatchRawDetailed(resolved, system, userPrompt, MAX_HTML_TOKENS, { job: 'design', feature: 'designer' }).then(({ raw, provider, model, durationMs, usage }) => {
           const clean = sanitizeDesignerHtml(raw);
+          usableDraws += 1;
           // GROUND-TRUTH LAW — the deterministic backstop behind the prompt.
           // A price/discount the operator never gave us never reaches a screen,
           // whatever the model decided to write. No-op when everything is
           // grounded (the normal case), so a good board is byte-identical.
-          const guarded = enforceGroundedFactsInHtml(clean.html, facts);
+          // POS-BOUND (2026-09-22): with a plan, each row is first bound to its
+          // POS item from the plan (never from the page), then guarded, then
+          // checked to still show every planned item (designer-pos-binding.ts).
+          const guarded = finishDesignerBoard(clean.html, facts, posPlan);
           if (guarded.dropped.length) {
             this.logger.warn(
               `AI Designer: dropped ${guarded.removedNodes} element(s) carrying ungrounded price claims [${guarded.dropped.slice(0, 8).join(', ')}]`,
@@ -3625,10 +3666,19 @@ export class AiService {
             ...clean,
             html: guarded.html,
             ungrounded: guarded.dropped,
+            binding: guarded.binding,
             // Per-board telemetry for the audit row (2026-09-22): which model drew it, how long it
             // took and how big it came back — the numbers a model change is judged on.
             telemetry: { provider, model, durationMs, htmlChars: guarded.html.length, outputTokens: usage?.outputTokens ?? null },
           };
+        });
+        // A bound board that lost a planned item gets ONE more try, then it is dropped.
+        return draw().then(async (first) => {
+          if (!first.binding || first.binding.ok) return first;
+          bindingRetries += 1;
+          const second = await draw();
+          if (!second.binding || second.binding.ok) return second;
+          throw menuBindingIncomplete(posPlan!, second.binding.missing);
         });
       }),
     );
@@ -3649,19 +3699,23 @@ export class AiService {
           artDirection: string;
           structure: string;
           ungrounded: string[];
+          binding: { ok: boolean; missing: number[] } | null;
           telemetry: { provider: AiProvider; model: string; durationMs: number; htmlChars: number; outputTokens: number | null };
         } => !!v,
       );
+    // Record spend per USABLE board drawn (honest 3-tier accounting) — with no
+    // POS plan that is exactly one per successful candidate, as always; a
+    // POS-bound retry is a second board the model really drew.
+    for (let i = 0; i < usableDraws; i++) {
+      await this.recordEvent(this.RL_SUCCESS_PREFIX, opts.tenantId);
+    }
     if (!built.length) {
       await this.recordFailure(opts.tenantId);
-      const firstRej = settled.find((s) => s.status === 'rejected') as PromiseRejectedResult | undefined;
+      const rejections = settled.filter((s): s is PromiseRejectedResult => s.status === 'rejected');
+      // "21 items don't fit one screen" is the actionable answer when it is one of them.
+      const firstRej = rejections.find((r) => (r.reason as any)?.response?.code === 'MENU_BINDING_INCOMPLETE') ?? rejections[0];
       if (firstRej?.reason instanceof HttpException) throw firstRej.reason;
       throw new ServiceUnavailableException('AI could not design a usable board. Try rephrasing your brief.');
-    }
-
-    // Record spend per SUCCESSFUL candidate (honest 3-tier accounting).
-    for (let i = 0; i < built.length; i++) {
-      await this.recordEvent(this.RL_SUCCESS_PREFIX, opts.tenantId);
     }
     let usage: { used: number; cap: number; resetAt: string } | null = null;
     if (resolved.source === 'platform') {
@@ -3722,6 +3776,16 @@ export class AiService {
           // them. A non-empty array means the model tried to invent prices;
           // it is the metric for whether the prompt-side law is landing.
           ungroundedClaimsDropped: Array.from(new Set(built.flatMap((b) => b.ungrounded))).slice(0, 12),
+          // 2026-09-22 — a POS-bound batch: which POS, how many bound rows, how
+          // many boards needed their one retry, how many were dropped anyway.
+          pos: posPlan
+            ? {
+                providerId: posPlan.providerId,
+                items: posPlan.items.length,
+                bindingRetries,
+                boardsDropped: settled.filter((s) => s.status === 'rejected' && (s.reason as any)?.response?.code === 'MENU_BINDING_INCOMPLETE').length,
+              }
+            : null,
         }),
       },
     }).catch(() => { /* audit best-effort */ });
@@ -3736,7 +3800,13 @@ export class AiService {
       artDirection: b.artDirection,
       structure: b.structure,
     }));
-    return { candidates, batchId, source: resolved.source, usage };
+    return {
+      candidates,
+      batchId,
+      source: resolved.source,
+      usage,
+      ...(posPlan ? { boundTo: { providerId: posPlan.providerId, providerName: posPlan.providerName, itemCount: posPlan.items.length } } : {}),
+    };
   }
 
   /**
@@ -3812,7 +3882,13 @@ export class AiService {
     // legitimate (they either passed this guard at generation or the operator
     // typed them in the editor); this only stops a revise from ADDING a price
     // nobody asked for ("make it pop" must not grow a price list).
-    const reviseFacts = collectGroundedFacts([instruction, clean]);
+    // POS-BOUND (2026-09-22): a board bound to the POS keeps its bindings through
+    // a revision — the same rows are re-stamped from THIS tenant's catalog after
+    // the model is done, so a dropped attribute cannot unbind a row (a row the
+    // model ADDED stays unbound). The catalog's current prices are grounded too.
+    const posPlan =
+      (await verifiedBoardBindings({ prisma: this.prisma, menu: this.menuService }, opts.tenantId, clean).catch(() => null))?.plan ?? null;
+    const reviseFacts = collectGroundedFacts([instruction, clean, posPlan ? formatPosPlanContent(posPlan) : null]);
     const userPrompt = buildDesignerRevisePrompt({
       currentHtml: clean,
       instruction,
@@ -3827,7 +3903,7 @@ export class AiService {
     try {
       const raw = await this.dispatchRawOrThrow(resolved, system, userPrompt, MAX_HTML_TOKENS, { job: 'design', feature: 'designer-revise', served });
       const sanitized = sanitizeDesignerHtml(raw);
-      const guarded = enforceGroundedFactsInHtml(sanitized.html, reviseFacts);
+      const guarded = finishDesignerBoard(sanitized.html, reviseFacts, posPlan, { removeStrays: false });
       if (guarded.dropped.length) {
         this.logger.warn(
           `AI Designer revise: dropped ${guarded.removedNodes} element(s) carrying ungrounded price claims [${guarded.dropped.slice(0, 8).join(', ')}]`,

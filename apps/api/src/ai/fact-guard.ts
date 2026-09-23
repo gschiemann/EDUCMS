@@ -88,15 +88,17 @@ export function collectGroundedFacts(
   sources: Array<string | null | undefined>,
   opts?: {
     /**
-     * The REAL CONTENT block (the menu rows). Its numbers join `amounts` like any
-     * source, AND its priced rows become `menuRows` — so a price in a row field
-     * is checked against that row, not against every number anyone typed.
+     * The REAL CONTENT block (the menu rows). Its priced rows become `menuRows`
+     * — so a price in a row field is checked against THAT row — and each row's
+     * price joins `amounts`. Its OTHER numbers (a header's "21 items in 2
+     * sections", the 3 in "3 Birria Tacos") ground nothing through this option;
+     * pass the content in `sources` too for the old permissive reading.
      */
     menuContent?: string | null;
   },
 ): GroundedFacts {
   const amounts = new Set<string>();
-  for (const src of [...sources, opts?.menuContent]) {
+  for (const src of sources) {
     if (typeof src !== 'string' || !src) continue;
     const matches = src.match(NUMBER_RE);
     if (!matches) continue;
@@ -106,6 +108,7 @@ export function collectGroundedFacts(
     }
   }
   const menuRows = opts?.menuContent ? parseMenuRowFacts(opts.menuContent) : [];
+  for (const row of menuRows) for (const a of row.amounts) amounts.add(a);
   return menuRows.length ? { amounts, menuRows } : { amounts };
 }
 

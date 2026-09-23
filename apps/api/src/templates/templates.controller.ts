@@ -10,6 +10,7 @@ import { PosService } from '../pos/pos.service';
 import { MenuService } from '../pos/menu.service';
 import { IntegrationDiscoveryService } from '../integrations/discovery.service';
 import { detectedPosFromDiscovery } from '../pos/concierge-pos-context';
+import { bindingsForSave, stripBoardBindings } from '../ai/designer-pos-binding';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { PrismaService } from '../prisma/prisma.service';
@@ -1557,6 +1558,9 @@ export class TemplatesController {
       // if the FE called generate-designer/brief first. AiService re-validates
       // the shape server-side (sanitizeClientDesignerBrief) — never trusted as-is.
       brief: body.brief,
+      // 2026-09-22 — the POS menu picked in the Concierge's card: the boards come
+      // back with every row bound to its POS item (or a 422 saying why not).
+      posSelection: body.posSelection,
     });
     // Bake the VOS-FIT-ENGINE into each candidate NOW (not just at save) so the
     // 3-up preview the operator sees is already collision-free + auto-fit on the
@@ -1568,7 +1572,33 @@ export class TemplatesController {
         ? { ...cnd, html: injectDesignerLayoutEngine(cnd.html, cnd.screenWidth, cnd.screenHeight) }
         : cnd,
     );
-    return { candidates, designer: true, ai: { source: out.source, usage: out.usage } };
+    return {
+      candidates,
+      designer: true,
+      ai: { source: out.source, usage: out.usage },
+      ...(out.boundTo ? { boundTo: out.boundTo } : {}),
+    };
+  }
+
+  /**
+   * A kept / revised AI board's POS bindings, verified (2026-09-22): read back
+   * off the board, every id checked against THIS tenant's catalog for the
+   * board's connection, the rest stripped with a warning. null = the board
+   * carries no bindings (saved exactly as before). A verification failure never
+   * blocks the save — the board is kept, unbound.
+   */
+  private async posBindingsForSave(tenantId: string, html: string) {
+    if (!this.menu) return null;
+    try {
+      const out = await bindingsForSave({ prisma: this.prisma, menu: this.menu }, tenantId, html);
+      if (out?.dropped.length) {
+        this.auditLogger.warn(`AI board: dropped ${out.dropped.length} POS binding(s) not in this tenant's catalog`);
+      }
+      return out;
+    } catch (e: any) {
+      this.auditLogger.warn(`AI board: POS bindings could not be verified (${e?.message}); saving it unbound`);
+      return { html: stripBoardBindings(html), config: null, dropped: [] as string[] };
+    }
   }
 
   @Post('create-designer')
@@ -1602,6 +1632,12 @@ export class TemplatesController {
       }
     }
     const sanitized = sanitizeDesignerHtml(rawHtml);
+    // 2026-09-22 — a POS-bound board: its bindings are verified against THIS
+    // tenant's catalog and saved in Codex's zone-config convention beside the
+    // html ({ html, posSync, dataSource, posProvider, posConnectionId,
+    // posItemBindings: { 'item.N': externalId } }) — the screen's live menu feed
+    // starts for it. A board with no bindings saves `{ html }` exactly as before.
+    const pos = await this.posBindingsForSave(req.user.tenantId, sanitized.html);
     // Phase 4: bake the EDUCMS-SHIM-V6 editability runtime into the board so it
     // becomes click-to-edit + accepts live overrides via postMessage (same
     // protocol the static boards + PropertiesPanel already speak). Trusted code
@@ -1612,7 +1648,7 @@ export class TemplatesController {
     const screenWidth = body.screenWidth || 1920;
     const screenHeight = body.screenHeight || 1080;
     const html = injectDesignerLayoutEngine(
-      injectDesignerEditShim(sanitized.html),
+      injectDesignerEditShim(pos ? pos.html : sanitized.html),
       screenWidth,
       screenHeight,
     );
@@ -1626,7 +1662,7 @@ export class TemplatesController {
           y: 0,
           width: 100,
           height: 100,
-          defaultConfig: { html },
+          defaultConfig: pos?.config ? { html, ...pos.config } : { html },
         },
       ],
     };
@@ -1648,6 +1684,15 @@ export class TemplatesController {
           batchId: body.batchId ?? null,
           candidateIndex: body.candidateIndex ?? null,
           artDirection: body.artDirection ?? null,
+          // 2026-09-22 — how many rows were saved bound to the POS, and how many
+          // ids on the board could not be verified for this tenant.
+          ...(pos
+            ? {
+                posProvider: pos.config?.posProvider ?? null,
+                posBindings: pos.config ? Object.keys(pos.config.posItemBindings).length : 0,
+                posBindingsDropped: pos.dropped.length,
+              }
+            : {}),
         }),
       },
     }).catch(() => { /* audit best-effort */ });
@@ -1692,12 +1737,21 @@ export class TemplatesController {
     // exactly like create-designer, so the revised board is collision-free,
     // legibility-floored, editable, and base64-safe to persist.
     const sanitized = sanitizeDesignerHtml(out.html);
+    // 2026-09-22 — "Edit with words" re-derives a POS-bound board's bindings the
+    // same way keep does; `pos` tells the caller what the zone config becomes
+    // (null = nothing on the board is bound any more). Absent = never bound.
+    const pos = await this.posBindingsForSave(req.user.tenantId, sanitized.html);
     const html = injectDesignerLayoutEngine(
-      injectDesignerEditShim(sanitized.html),
+      injectDesignerEditShim(pos ? pos.html : sanitized.html),
       screenWidth,
       screenHeight,
     );
-    return { html, designer: true, ai: { source: out.source, usage: out.usage } };
+    return {
+      html,
+      designer: true,
+      ai: { source: out.source, usage: out.usage },
+      ...(pos ? { pos: pos.config } : {}),
+    };
   }
 
   // ───────────────────────────────────────────────────────────────────────
