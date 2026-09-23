@@ -8629,7 +8629,7 @@ function MenuMatchReport({ cfg, setField, url }: {
   const catalogQ = useQuery<Array<{ name: string }>>({
     queryKey: ['menu-catalog'],
     queryFn: () => apiFetch<Array<{ name: string }>>('/menu/catalog'),
-    enabled: posOn, staleTime: 60_000, retry: false,
+    enabled: posOn && !!url, staleTime: 60_000, retry: false,
   });
 
   const [boardFields, setBoardFields] = useState<Array<{ key: string; defaultText: string }> | null>(null);
@@ -8658,6 +8658,11 @@ function MenuMatchReport({ cfg, setField, url }: {
   }, [posOn, url]);
 
   if (!posOn) return null;
+  // An AI-made board is inline HTML with no board URL: there is nothing to fetch
+  // and read, so this report would wait forever (the "Checking which items…"
+  // spinner on every kept POS-bound AI board, 2026-09-23). Its rows are bound by
+  // POS item id (posItemBindings), not by the name join this report explains.
+  if (!url) return null;
   if (catalogQ.isLoading || boardFields === null) {
     return (
       <div className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 text-[10px] text-slate-500">
