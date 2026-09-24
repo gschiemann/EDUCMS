@@ -40,7 +40,10 @@ const ASSET = (over: Record<string, unknown> = {}) => ({
 
 const ASSETS = [
   ASSET(),
-  ASSET({ id: 'a2', originalName: 'Trainer-Tips-01.mp4', mimeType: 'video/mp4', fileSize: 28_700_000, createdAt: iso(60) }),
+  // A video the server has probed (VideoPosterService → ffprobe): dimensions
+  // land in originalDimensions (processedDimensions stays null — a video is
+  // never re-encoded at upload) and the duration beside them.
+  ASSET({ id: 'a2', originalName: 'Trainer-Tips-01.mp4', mimeType: 'video/mp4', fileSize: 28_700_000, createdAt: iso(60), processingMeta: { originalDimensions: { w: 1920, h: 1080 }, processedDimensions: null, durationMs: 75_400 } }),
   ASSET({ id: 'a3', originalName: 'Member-Welcome.pdf', mimeType: 'application/pdf', fileSize: 2_300_000, createdAt: iso(90), processingMeta: null }),
   ASSET({ id: 'a4', originalName: 'New-Signup-Flyer.png', mimeType: 'image/png', fileSize: 1_100_000, createdAt: iso(10), status: 'PENDING_APPROVAL' }),
 ];
@@ -233,6 +236,36 @@ describe('Media Library v1 — the calm default view', () => {
     const pdfCard = rtl.getByRole('button', { name: 'View details for Member-Welcome.pdf' });
     expect(pdfCard).toHaveTextContent('PDF');
     expect(pdfCard.textContent).not.toMatch(/×/);
+  });
+
+  it('a video card prints its probed dimensions AND duration (the 2026-09-24 "—" bug)', () => {
+    mount();
+    // originalDimensions written by ffprobe at upload; nothing client-measured
+    // (the client fallback is image-only by design).
+    expect(rtl.getByText('MP4 · 1920 × 1080 · 1:15')).toBeInTheDocument();
+  });
+
+  it('the detail panel shows a video\'s resolution with its duration beside it', () => {
+    mount();
+    fireEvent.click(rtl.getByRole('button', { name: 'More actions for Trainer-Tips-01.mp4' }));
+    fireEvent.click(rtl.getByRole('menuitem', { name: 'View details' }));
+    const dialog = rtl.getByRole('dialog', { name: /Asset details: Trainer-Tips-01\.mp4/ });
+    expect(within(dialog).getByText('1920 × 1080 px · 1:15')).toBeInTheDocument();
+  });
+
+  it('a video that was never probed still prints an em dash, never a fabricated size', () => {
+    assetsResponse = [
+      ASSET({ id: 'v9', originalName: 'Unprobed.mp4', mimeType: 'video/mp4', processingMeta: null }),
+    ];
+    mount();
+    const card = rtl.getByRole('button', { name: 'View details for Unprobed.mp4' });
+    expect(card).toHaveTextContent('MP4');
+    expect(card.textContent).not.toMatch(/×/);
+    fireEvent.click(rtl.getByRole('button', { name: 'More actions for Unprobed.mp4' }));
+    fireEvent.click(rtl.getByRole('menuitem', { name: 'View details' }));
+    const dialog = rtl.getByRole('dialog', { name: /Asset details: Unprobed\.mp4/ });
+    expect(dialog.textContent).not.toMatch(/\d+ × \d+/);
+    expect(within(dialog).getAllByText('—').length).toBeGreaterThan(0);
   });
 
   it('flags only the states that change what the operator can do', () => {

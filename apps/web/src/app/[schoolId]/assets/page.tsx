@@ -263,6 +263,23 @@ function metaDims(a: any): { w: number; h: number } | null {
     : null;
 }
 
+// A video's duration, from the same server-side ffprobe pass that writes its
+// dimensions (processing_meta.durationMs — VideoPosterService, 2026-09-24).
+// Unknown → null and the UI prints nothing for it; never a guess (§22).
+function metaDurationMs(a: any): number | null {
+  const ms = a?.processingMeta?.durationMs;
+  return typeof ms === 'number' && Number.isFinite(ms) && ms > 0 ? ms : null;
+}
+
+/** 75_400 → "1:15"; 3_725_000 → "1:02:05" — media-player style. */
+function fmtDuration(ms: number): string {
+  const total = Math.round(ms / 1000);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = String(total % 60).padStart(2, '0');
+  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`;
+}
+
 /** Card status pill — only rendered when the state CHANGES what the operator can do (§11). */
 function statusBadge(a: any): { label: string; className: string } | null {
   // Server-declared only. This page never infers protection.
@@ -998,7 +1015,7 @@ export default function AssetsPage() {
   const absoluteUrl = (a: any) =>
     a?.fileUrl?.startsWith('http') ? a.fileUrl : `${apiBase}${a?.fileUrl || ''}`;
 
-  /** §11 metadata line — type, then real dimensions when we have them. */
+  /** §11 metadata line — type, then real dimensions (and a video's duration) when we have them. */
   const metaLine = (a: any) => {
     const dims = metaDims(a);
     if (isUrl(a)) {
@@ -1006,7 +1023,12 @@ export default function AssetsPage() {
       try { host = new URL(a.fileUrl).hostname.replace(/^www\./, ''); } catch { host = ''; }
       return host ? `LINK · ${host}` : 'LINK';
     }
-    return dims ? `${shortType(a.mimeType)} · ${dims.w} × ${dims.h}` : shortType(a.mimeType);
+    const dur = metaDurationMs(a);
+    return [
+      shortType(a.mimeType),
+      dims ? `${dims.w} × ${dims.h}` : null,
+      dur ? fmtDuration(dur) : null,
+    ].filter(Boolean).join(' · ');
   };
 
   const openDetail = (a: any, opener?: HTMLElement | null) => {
@@ -1066,6 +1088,8 @@ export default function AssetsPage() {
       : null;
   const measuredDims = useImageDimensions(selectedMetaDims ? null : selectedRawUrl);
   const selectedDims = selectedMetaDims ?? measuredDims;
+  // Video only — the probe writes it beside the dimensions; images have none.
+  const selectedDurationMs = selectedAsset ? metaDurationMs(selectedAsset) : null;
 
   // Close folder context menu on outside click
   useEffect(() => {
@@ -2032,9 +2056,12 @@ export default function AssetsPage() {
                     <Maximize2 className="w-3 h-3 text-slate-400" aria-hidden />
                     <span className="text-[10px] font-bold text-slate-500 uppercase">{t('assetsLib.labelResolution')}</span>
                   </div>
-                  {/* §20 — unknown metadata is an em dash, never a fabricated size. */}
+                  {/* §20 — unknown metadata is an em dash, never a fabricated size.
+                      A video that was probed also shows its duration beside the size. */}
                   <p className="text-xs font-semibold text-slate-800">
-                    {selectedDims ? `${selectedDims.w} × ${selectedDims.h} px` : '—'}
+                    {selectedDims
+                      ? `${selectedDims.w} × ${selectedDims.h} px${selectedDurationMs ? ` · ${fmtDuration(selectedDurationMs)}` : ''}`
+                      : '—'}
                   </p>
                 </div>
                 <div className="bg-slate-50 rounded-lg p-3">
