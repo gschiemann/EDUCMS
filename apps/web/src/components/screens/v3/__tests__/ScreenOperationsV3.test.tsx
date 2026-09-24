@@ -298,13 +298,68 @@ describe('detail drawer (§10 / §14)', () => {
     expect(within(dialog).getByText(/Content behind · 18 minutes/)).toBeInTheDocument();
   });
 
-  it('names what is scheduled and what the player says it is playing — never "On screen" (2026-09-24)', () => {
+  it('one Content card: what is scheduled and, under it, what the player reports — never "On screen" (2026-09-24)', () => {
     const dialog = open();
-    expect(within(dialog).getByText('Scheduled')).toBeInTheDocument();
-    expect(within(dialog).getByText('Playing now')).toBeInTheDocument();
-    expect(within(dialog).getByText(/As reported by the player/)).toBeInTheDocument();
+    const card = within(dialog).getByTestId('screen-content-card');
+    expect(within(card).getByText('Content')).toBeInTheDocument();
+    // G43 takes its playlist from the Sacramento group's schedule.
+    expect(within(card).getByText('Summer Strength')).toBeInTheDocument();
+    expect(within(card).getByText(/Scheduled for this group/)).toBeInTheDocument();
+    // G43 has an unconfirmed refresh outstanding, so the card wears that state.
+    expect(card).toHaveAttribute('data-reported-state', 'behind');
+    expect(within(card).getByText(/As reported by the player/)).toBeInTheDocument();
+    // The two-card split is gone, and so are the words it used.
+    expect(within(dialog).queryByText('Scheduled')).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('Playing now')).not.toBeInTheDocument();
     expect(within(dialog).queryByText('On screen')).not.toBeInTheDocument();
     expect(within(dialog).queryByText('Reported content')).not.toBeInTheDocument();
+  });
+
+  it('a Device card built only from facts the screen reported (2026-09-24)', () => {
+    const dialog = open();
+    const card = within(dialog).getByTestId('screen-device-card');
+    expect(within(card).getByText('Device')).toBeInTheDocument();
+    // The fixture reports a hardware model, a live push channel and a ping —
+    // and NOT a resolution, OS, browser or IP, so those rows do not exist.
+    expect(within(card).getByText('Wall Mount')).toBeInTheDocument();
+    expect(within(card).getByText('live push')).toBeInTheDocument();
+    expect(within(card).getByText('8 seconds ago')).toBeInTheDocument();
+    expect(within(card).queryByText('Panel')).not.toBeInTheDocument();
+    expect(within(card).queryByText('Browser')).not.toBeInTheDocument();
+    expect(within(card).queryByText('Paired')).not.toBeInTheDocument();
+    // The web bundle's state rides the Player app row, not the content card.
+    expect(within(card).getByText('Current build')).toBeInTheDocument();
+  });
+
+  it('the Device card shows the panel, OS, browser, IP and cache when the screen reported them', () => {
+    renderPage({
+      screens: FLEET.map((s) =>
+        s.id === 'g43'
+          ? {
+              ...s,
+              resolution: '3840x2160',
+              orientation: 'portrait',
+              hardwareModel: 'goodview-ep6n',
+              osInfo: 'Android 11',
+              browserInfo: 'Chrome/120.0.6099.230 Mobile WebView',
+              playerVersion: '1.1.12',
+              managerVersion: '1.0.4',
+              ipAddress: '10.20.30.40',
+              pairedAt: '2026-08-01T15:00:00.000Z',
+              lastCacheReport: { playlist: { count: 12, bytes: 480 * 1024 * 1024 }, emergency: { count: 3, bytes: 2_400_000 } },
+            }
+          : s,
+      ),
+    });
+    fireEvent.click(within(rtl.getByTestId('screens-desktop')).getAllByRole('button', { name: 'G43' })[0]);
+    const card = within(rtl.getByRole('dialog')).getByTestId('screen-device-card');
+    expect(within(card).getByText('3840 × 2160 · portrait')).toBeInTheDocument();
+    expect(within(card).getByText('goodview ep6n · Android 11')).toBeInTheDocument();
+    expect(within(card).getByText('Chrome 120 (WebView)')).toBeInTheDocument();
+    expect(within(card).getByText('Player 1.1.12 · Manager 1.0.4')).toBeInTheDocument();
+    expect(within(card).getByText('10.20.30.40 · live push')).toBeInTheDocument();
+    expect(within(card).getByText('Aug 1, 2026')).toBeInTheDocument();
+    expect(within(card).getByText('Content 12 files (480 MB) · Alerts 3 files (2.3 MB)')).toBeInTheDocument();
   });
 
   it('delivery is one plain sentence — no stepper, no Downloaded, no "Physical display"', () => {

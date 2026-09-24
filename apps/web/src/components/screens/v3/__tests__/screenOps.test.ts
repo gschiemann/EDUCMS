@@ -10,7 +10,10 @@
 import {
   buildScreenOps,
   compactAge,
+  contentStatusLine,
   deriveDelivery,
+  deriveDeviceFacts,
+  fmtBytes,
   deriveExpectedContent,
   deriveRecovery,
   deriveReportedContent,
@@ -997,5 +1000,97 @@ describe('videoSampleName', () => {
     expect(videoSampleName('https://cdn/a/b/clip%20one.mp4?x=1#t=0.1')).toBe('clip one.mp4');
     expect(videoSampleName('')).toBe('video');
     expect(videoSampleName(null)).toBe('video');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// Overview — one content card, one device card (2026-09-24)
+// ═══════════════════════════════════════════════════════════════════
+
+describe('contentStatusLine', () => {
+  it('does not repeat the name under a confirmed match, and keeps the player’s own words otherwise', () => {
+    const app = { state: 'current' as const, line: 'Player app: current build.' };
+    expect(contentStatusLine({ state: 'confirmed', line: 'Playing Summer Strength', app })).toBe('Playing as scheduled');
+    expect(contentStatusLine({ state: 'behind', line: 'Still on the previous version', app })).toBe('Still on the previous version');
+    expect(contentStatusLine({ state: 'idle', line: 'Nothing scheduled — idle', app })).toBe('Nothing scheduled — idle');
+  });
+});
+
+describe('fmtBytes', () => {
+  it('rounds to the unit an operator reads', () => {
+    expect(fmtBytes(0)).toBe('0 B');
+    expect(fmtBytes(512)).toBe('512 B');
+    expect(fmtBytes(48 * 1024)).toBe('48 KB');
+    expect(fmtBytes(48.8 * 1024 * 1024)).toBe('48.8 MB');
+    expect(fmtBytes(1.25 * 1024 ** 3)).toBe('1.25 GB');
+    expect(fmtBytes(-5)).toBe('0 B');
+    expect(fmtBytes(Number.NaN)).toBe('0 B');
+  });
+});
+
+describe('deriveDeviceFacts', () => {
+  const app = (state: 'current' | 'updating' | 'unknown') => ({ state, line: state === 'unknown' ? null : 'x' });
+  const keys = (s: Partial<OpsScreen>, a = app('current')) => deriveDeviceFacts(scr(s), a, NOW).map((f) => f.key);
+  const fact = (s: Partial<OpsScreen>, key: string, a = app('current')) =>
+    deriveDeviceFacts(scr(s), a, NOW).find((f) => f.key === key);
+
+  it('never invents a row: a bare screen has only what it reported', () => {
+    // scr() carries a ping and a live push channel, nothing else.
+    expect(keys({})).toEqual(['player', 'network', 'contact']);
+    expect(fact({}, 'player')).toMatchObject({ value: 'Current build' });
+    expect(fact({}, 'player')!.hint).toBeUndefined();
+    expect(fact({}, 'network')).toMatchObject({ value: 'live push' });
+    expect(fact({}, 'network')!.tone).toBeUndefined();
+    expect(fact({}, 'contact')).toMatchObject({ value: '8 seconds ago' });
+    expect(keys({ pushChannel: 'unknown', lastPingAt: null }, app('unknown'))).toEqual([]);
+  });
+
+  it('reads the panel, device, browser and network the way an operator says them', () => {
+    expect(fact({ resolution: '3840x2160' }, 'panel')!.value).toBe('3840 × 2160');
+    expect(fact({ resolution: '1080 × 1920', orientation: 'portrait' }, 'panel')!.value).toBe('1080 × 1920 · portrait');
+    expect(fact({ hardwareModel: 'goodview-ep6n', osInfo: 'Android 11' }, 'device')!.value).toBe('goodview ep6n · Android 11');
+    expect(fact({ osInfo: 'Android 9' }, 'device')!.value).toBe('Android 9');
+    expect(fact({ browserInfo: 'Chrome/120.0.6099.230 Mobile WebView' }, 'browser')!.value).toBe('Chrome 120 (WebView)');
+    expect(fact({ browserInfo: 'Safari/17.4' }, 'browser')!.value).toBe('Safari 17');
+    expect(fact({ browserInfo: 'Some Odd UA' }, 'browser')!.value).toBe('Some Odd UA');
+    expect(fact({ ipAddress: '10.0.0.7', pushChannel: 'stale' }, 'network')).toMatchObject({
+      value: '10.0.0.7 · polling only (push channel silent)',
+      tone: 'warn',
+    });
+  });
+
+  it('the Player app row carries the APK versions and the bundle state', () => {
+    expect(fact({ playerVersion: '1.1.12', managerVersion: '1.0.4' }, 'player')).toMatchObject({
+      value: 'Player 1.1.12 · Manager 1.0.4',
+      hint: 'Current build',
+    });
+    expect(fact({ playerVersion: '1.1.12' }, 'player', app('updating'))).toMatchObject({
+      value: 'Player 1.1.12',
+      hint: 'Update pending — reloads onto the current build on its own',
+      tone: 'warn',
+    });
+    // A browser-only player has no APK; a pending update is still a fact about it.
+    expect(fact({}, 'player', app('updating'))).toMatchObject({
+      value: 'Update pending — reloads onto the current build on its own',
+      tone: 'warn',
+    });
+    expect(fact({ playerVersion: '1.1.12' }, 'player', app('unknown'))).toMatchObject({ value: 'Player 1.1.12' });
+    expect(fact({ playerVersion: '1.1.12' }, 'player', app('unknown'))!.hint).toBeUndefined();
+  });
+
+  it('paired date, on-device cache and a recent crash', () => {
+    expect(fact({ pairedAt: '2026-08-01T15:00:00.000Z' }, 'paired')!.value).toBe('Aug 1, 2026');
+    expect(
+      fact({ lastCacheReport: { playlist: { count: 12, bytes: 480 * 1024 * 1024 }, emergency: { count: 3, bytes: 2_400_000 } } }, 'cache')!.value,
+    ).toBe('Content 12 files (480 MB) · Alerts 3 files (2.3 MB)');
+    expect(fact({ lastCacheReport: { emergency: { count: 1, bytes: 900 } } }, 'cache')!.value).toBe('Alerts 1 file (900 B)');
+    expect(fact({ lastCacheReport: {} }, 'cache')).toBeUndefined();
+    const crash = fact(
+      { lastCrashAt: new Date(NOW - 2 * 60 * MIN).toISOString(), lastCrashVersion: '1.1.11', lastCrashMessage: 'OOM in WebView' },
+      'crash',
+    );
+    expect(crash).toMatchObject({ value: '2 hours ago · v1.1.11 — OOM in WebView', tone: 'warn' });
+    // A crash from months ago is history, not a fact about the device today.
+    expect(fact({ lastCrashAt: new Date(NOW - 45 * 24 * 60 * MIN).toISOString() }, 'crash')).toBeUndefined();
   });
 });

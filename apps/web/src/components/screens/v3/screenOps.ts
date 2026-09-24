@@ -106,6 +106,13 @@ export interface OpsScreen {
   orientation?: string | null;
   deviceFingerprint?: string | null;
   emergencyStatus?: string | null;
+  /** Facts for the Overview's Device card (2026-09-24). All optional; a missing one is simply not shown. */
+  ipAddress?: string | null;
+  pairedAt?: string | null;
+  lastCacheReport?: { playlist?: { count?: number; bytes?: number }; emergency?: { count?: number; bytes?: number } } | null;
+  lastCrashAt?: string | null;
+  lastCrashMessage?: string | null;
+  lastCrashVersion?: string | null;
 }
 
 /** One row of `GET /schedules` (schedules.controller.ts list()). */
@@ -1482,4 +1489,143 @@ export function syncStatusFor(screen: OpsScreen, fleet: OpsScreen[], nowMs: numb
     }
   }
   return { kind: 'locking' };
+}
+
+// ── Overview: one content card, one device card (2026-09-24) ──────────────
+//
+// Greg, on the two-card Overview: "scheduled and playing now dont seem like it
+// makes sense to me, also this overview page should have more info, such a
+// waste of space here... give info about the screen itself right? resolution,
+// os version, etc". So: ONE content card that names the scheduled content and
+// says, in one line, what the player reports about it; and a Device card
+// built only from facts the screen actually reported.
+
+/**
+ * The one-line status under the content name. A confirmed match does not
+ * repeat the name ("Playing Pro Series Video 1" under "Pro Series Video 1" is
+ * the redundancy Greg called out); every other state keeps the player's own
+ * words.
+ */
+export function contentStatusLine(reported: ReportedContent): string {
+  return reported.state === 'confirmed' ? 'Playing as scheduled' : reported.line;
+}
+
+export interface DeviceFact {
+  key: 'panel' | 'device' | 'browser' | 'player' | 'network' | 'contact' | 'paired' | 'cache' | 'crash';
+  label: string;
+  value: string;
+  /** A second, quieter line. */
+  hint?: string;
+  tone?: 'warn';
+}
+
+/** "48.8 MB" / "1.2 GB" / "640 KB" — for the on-device cache row. */
+export function fmtBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+  if (bytes < 1024) return `${Math.round(bytes)} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${Math.round((bytes / (1024 * 1024)) * 10) / 10} MB`;
+  return `${Math.round((bytes / (1024 * 1024 * 1024)) * 100) / 100} GB`;
+}
+
+/** "3840×2160" / "1920x1080" → "3840 × 2160"; anything else passes through trimmed. */
+function prettyResolution(raw: string): string {
+  const m = /(\d{3,5})\s*[x×X]\s*(\d{3,5})/.exec(raw);
+  return m ? `${m[1]} × ${m[2]}` : raw.trim();
+}
+
+/** "Chrome/120.0.6099 Mobile WebView" → "Chrome 120 (WebView)". Unknown shapes pass through. */
+function prettyBrowser(raw: string): string {
+  const t = raw.trim();
+  const m = /^([A-Za-z][A-Za-z ]*?)\/(\d+)(?:\.\d+)*(.*)$/.exec(t);
+  if (!m) return t;
+  const webview = /webview|\bwv\b/i.test(m[3] || '') ? ' (WebView)' : '';
+  return `${m[1]} ${m[2]}${webview}`;
+}
+
+/** A crash is worth a row only while it is recent. */
+const CRASH_RECENT_MS = 30 * 24 * 60 * 60_000;
+
+/**
+ * The Device card's rows, in display order, from what the screen reported.
+ * Pure. Never invents a value: a fact the player never sent has no row.
+ */
+export function deriveDeviceFacts(screen: OpsScreen, app: ReportedContent['app'], now: number): DeviceFact[] {
+  const out: DeviceFact[] = [];
+
+  if (screen.resolution) {
+    const portrait = (screen.orientation ?? '').toLowerCase() === 'portrait';
+    out.push({ key: 'panel', label: 'Panel', value: `${prettyResolution(screen.resolution)}${portrait ? ' · portrait' : ''}` });
+  }
+
+  const model = screen.hardwareModel ? screen.hardwareModel.replace(/[-_]+/g, ' ') : null;
+  if (model || screen.osInfo) {
+    out.push({ key: 'device', label: 'Hardware', value: [model, screen.osInfo].filter(Boolean).join(' · ') });
+  }
+
+  if (screen.browserInfo) out.push({ key: 'browser', label: 'Browser', value: prettyBrowser(screen.browserInfo) });
+
+  // The APK versions when the box reported them, and the web bundle's state
+  // either way — a browser-only player has no APK, but "update pending" is
+  // still a fact about it.
+  const versions = [screen.playerVersion ? `Player ${screen.playerVersion}` : null, screen.managerVersion ? `Manager ${screen.managerVersion}` : null]
+    .filter(Boolean)
+    .join(' · ');
+  const build =
+    app.state === 'updating'
+      ? 'Update pending — reloads onto the current build on its own'
+      : app.state === 'current'
+        ? 'Current build'
+        : null;
+  if (versions || build) {
+    out.push({
+      key: 'player',
+      label: 'Player app',
+      value: versions || (build as string),
+      hint: versions && build ? build : undefined,
+      tone: app.state === 'updating' ? 'warn' : undefined,
+    });
+  }
+
+  if (screen.ipAddress || screen.pushChannel === 'live' || screen.pushChannel === 'stale') {
+    const push = screen.pushChannel === 'live' ? 'live push' : screen.pushChannel === 'stale' ? 'polling only (push channel silent)' : null;
+    out.push({
+      key: 'network',
+      label: 'Network',
+      value: [screen.ipAddress, push].filter(Boolean).join(' · '),
+      tone: screen.pushChannel === 'stale' ? 'warn' : undefined,
+    });
+  }
+
+  const pingMs = msOf(screen.lastPingAt);
+  if (pingMs != null) {
+    const age = wordyAge(pingMs, now);
+    out.push({ key: 'contact', label: 'Last contact', value: age ? `${age} ago` : 'just now' });
+  }
+
+  const pairedMs = msOf(screen.pairedAt);
+  if (pairedMs != null) {
+    out.push({ key: 'paired', label: 'Paired', value: new Date(pairedMs).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) });
+  }
+
+  const cache = screen.lastCacheReport;
+  if (cache && (cache.playlist || cache.emergency)) {
+    const tier = (t: { count?: number; bytes?: number } | undefined) =>
+      t && typeof t.count === 'number' ? `${t.count} ${t.count === 1 ? 'file' : 'files'} (${fmtBytes(t.bytes ?? 0)})` : null;
+    const playlist = tier(cache.playlist);
+    const emergency = tier(cache.emergency);
+    const value = [playlist ? `Content ${playlist}` : null, emergency ? `Alerts ${emergency}` : null].filter(Boolean).join(' · ');
+    if (value) out.push({ key: 'cache', label: 'Cached on device', value });
+  }
+
+  const crashMs = msOf(screen.lastCrashAt);
+  if (crashMs != null && now - crashMs >= 0 && now - crashMs < CRASH_RECENT_MS) {
+    const age = wordyAge(crashMs, now);
+    const what = [screen.lastCrashVersion ? `v${screen.lastCrashVersion}` : null, screen.lastCrashMessage ? screen.lastCrashMessage.slice(0, 120) : null]
+      .filter(Boolean)
+      .join(' — ');
+    out.push({ key: 'crash', label: 'Last crash', value: `${age ? `${age} ago` : 'just now'}${what ? ` · ${what}` : ''}`, tone: 'warn' });
+  }
+
+  return out;
 }

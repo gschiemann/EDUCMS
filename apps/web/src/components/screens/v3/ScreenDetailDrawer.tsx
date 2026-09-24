@@ -30,7 +30,7 @@
  */
 
 import dynamic from 'next/dynamic';
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import {
   AlertTriangle, ArrowRight, CheckCircle2, ChevronRight, CircleDashed, Clock,
@@ -45,7 +45,7 @@ import {
 import { eventCopy } from '@/components/dashboard/district/screenEventCopy';
 import { appConfirm } from '@/components/ui/app-dialog';
 import {
-  compactAge, deriveDelivery, deriveRecovery, msOf, wordyAge,
+  compactAge, contentStatusLine, deriveDelivery, deriveDeviceFacts, deriveRecovery, msOf, wordyAge,
   type Delivery, type OpsRow, type ReportedState, type SyncStatus, type VideoPlaybackGrade,
 } from './screenOps';
 import { ExpectedThumb } from './ExpectedThumb';
@@ -336,6 +336,7 @@ export function ScreenDetailDrawer({
 
   const online = screen.status === 'ONLINE';
   const delivery = useMemo(() => deriveDelivery(screen, status, now), [screen, status, now]);
+  const deviceFacts = useMemo(() => deriveDeviceFacts(screen, reported.app, now), [screen, reported.app, now]);
   const ackedAtMs = useMemo(() => {
     const ev = events.data?.events?.find((e) => e.kind === 'refresh-acked');
     return ev ? msOf(ev.createdAt) : null;
@@ -591,87 +592,117 @@ export function ScreenDetailDrawer({
           {/* ── OVERVIEW ───────────────────────────────────────── */}
           {tab === 'overview' && (
             <div id="screen-panel-overview" role="tabpanel" aria-labelledby="screen-tab-overview" className="p-5 space-y-5">
-              {/* Scheduled vs "Playing now" — never "on screen" (§10): the
-                  dashboard cannot see the panel. The right-hand card is the
-                  player's own report, matched against the schedule
-                  (2026-09-24 — Greg: "it doesnt show that the content was
-                  pushed but i know its playing"). */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-xl border border-slate-200 p-3">
-                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Scheduled</p>
-                  <p className="mt-1 text-[13px] font-bold text-slate-800 leading-snug break-words">
-                    {expected.name ?? 'Nothing scheduled'}
-                  </p>
+              {/* Content — ONE card (2026-09-24): what is scheduled, its preview,
+                  and in one line what the player reports about it. Greg, on
+                  the two-card version: "scheduled and playing now dont seem
+                  like it makes sense to me". Still never "on screen" (§10):
+                  the dashboard cannot see the panel — the status line is the
+                  player's own report, matched against the schedule. */}
+              <div
+                className={`rounded-xl border p-3.5 ${REPORTED_TONE[reported.state].wrap}`}
+                data-reported-state={reported.state}
+                data-testid="screen-content-card"
+              >
+                <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Content</p>
+                <div className="mt-2 flex items-start gap-3">
                   {expected.thumbnailKind !== 'none' ? (
-                    <ExpectedThumb
-                      expected={expected}
-                      className="mt-2 w-full aspect-video"
-                      rounded="rounded-lg"
-                    />
+                    <ExpectedThumb expected={expected} className="w-36 shrink-0 aspect-video" rounded="rounded-lg" />
                   ) : (
-                    <div className="mt-2 w-full aspect-video rounded-lg bg-slate-100 flex items-center justify-center">
+                    <div className="w-36 shrink-0 aspect-video rounded-lg bg-slate-100 flex items-center justify-center">
                       <span className="text-[10px] font-bold text-slate-400">No preview image</span>
                     </div>
                   )}
-                  {expected.thumbnailKind === 'board' && (
-                    <p className="mt-1 text-[10px] font-semibold text-slate-400 leading-snug">
-                      The board&apos;s own look — brand or text changes you made are not shown here.
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[13px] font-bold text-slate-800 leading-snug break-words">
+                      {expected.name ?? 'Nothing scheduled'}
                     </p>
-                  )}
-                  <p className="mt-1.5 text-[10.5px] font-semibold text-slate-400 leading-snug">
-                    {expected.name
-                      ? `What you scheduled${expected.viaGroup ? ' for this group' : ''}${expected.windowClosed ? ' — outside its time window right now' : ''}.`
-                      : 'No playlist is scheduled for this screen.'}
-                  </p>
-                </div>
-
-                <div className={`rounded-xl border p-3 ${REPORTED_TONE[reported.state].wrap}`} data-reported-state={reported.state}>
-                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Playing now</p>
-                  <p className={`mt-1 text-[13px] font-bold leading-snug break-words ${REPORTED_TONE[reported.state].ink}`}>
-                    {reported.line}
-                  </p>
-                  {reported.detail && (
-                    <p className="mt-1.5 text-[10.5px] font-semibold text-slate-500 leading-snug">{reported.detail}</p>
-                  )}
-                  {reported.app.line && (
-                    <p
-                      className={`mt-2 text-[10.5px] font-semibold leading-snug ${
-                        reported.app.state === 'updating' ? 'text-amber-700' : 'text-slate-400'
-                      }`}
-                    >
-                      {reported.app.line}
+                    <p className={`mt-0.5 text-[12px] font-bold leading-snug break-words ${REPORTED_TONE[reported.state].ink}`}>
+                      {contentStatusLine(reported)}
                     </p>
-                  )}
-                  {/* Last video (2026-09-24): the player's own dropped-frame
-                      count for the clip it last played. Read beside the file's
-                      grade in the Media Library: a clean file that stutters
-                      here is the player or the box; a red file that stutters
-                      is the file. */}
-                  {video && (
-                    <div
-                      className={`mt-2 rounded-lg border px-2.5 py-2 ${VIDEO_TONE[video.grade].wrap}`}
-                      data-testid="screen-video-playback"
-                      data-video-grade={video.grade}
-                    >
-                      <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Last video</p>
-                      <p className={`mt-0.5 text-[11.5px] font-bold leading-snug break-words ${VIDEO_TONE[video.grade].ink}`}>
-                        {video.headline}
+                    {reported.detail && (
+                      <p className="mt-1 text-[10.5px] font-semibold text-slate-500 leading-snug">{reported.detail}</p>
+                    )}
+                    {(expected.viaGroup || expected.windowClosed) && (
+                      <p className="mt-1 text-[10.5px] font-semibold text-slate-400 leading-snug">
+                        {[
+                          expected.viaGroup ? 'Scheduled for this group' : null,
+                          expected.windowClosed ? 'Outside its time window right now' : null,
+                        ]
+                          .filter(Boolean)
+                          .join(' · ')}
                       </p>
-                      <p className="mt-0.5 text-[10.5px] font-semibold text-slate-600 leading-snug break-words">
-                        {video.name} — {video.detail}
+                    )}
+                    {expected.thumbnailKind === 'board' && (
+                      <p className="mt-1 text-[10px] font-semibold text-slate-400 leading-snug">
+                        The board&apos;s own look — brand or text changes you made are not shown here.
                       </p>
-                      {video.grade === 'stuttering' && (
-                        <p className="mt-1 text-[10.5px] font-semibold text-slate-500 leading-snug">
-                          Open this file in the Media Library — its &ldquo;Playback on screens&rdquo; card says whether the file itself is the reason.
-                        </p>
-                      )}
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
+                {/* Last video (2026-09-24): the player's own dropped-frame
+                    count for the clip it last played. Read beside the file's
+                    grade in the Media Library: a clean file that stutters
+                    here is the player or the box; a red file that stutters
+                    is the file. */}
+                {video && (
+                  <div
+                    className={`mt-2 rounded-lg border px-2.5 py-2 ${VIDEO_TONE[video.grade].wrap}`}
+                    data-testid="screen-video-playback"
+                    data-video-grade={video.grade}
+                  >
+                    <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Last video</p>
+                    <p className={`mt-0.5 text-[11.5px] font-bold leading-snug break-words ${VIDEO_TONE[video.grade].ink}`}>
+                      {video.headline}
+                    </p>
+                    <p className="mt-0.5 text-[10.5px] font-semibold text-slate-600 leading-snug break-words">
+                      {video.name} — {video.detail}
+                    </p>
+                    {video.grade === 'stuttering' && (
+                      <p className="mt-1 text-[10.5px] font-semibold text-slate-500 leading-snug">
+                        Open this file in the Media Library — its &ldquo;Playback on screens&rdquo; card says whether the file itself is the reason.
+                      </p>
+                    )}
+                  </div>
+                )}
+                <p className="mt-2 text-[10.5px] font-semibold text-slate-400 leading-snug">
+                  As reported by the player — we can&apos;t see the panel itself.
+                </p>
               </div>
-              <p className="text-[11px] font-semibold text-slate-400 -mt-2">
-                As reported by the player — we can&apos;t see the panel itself.
-              </p>
+
+              {/* Device — the facts the screen reported about itself
+                  (2026-09-24, Greg: "give info about the screen itself right?
+                  resolution, os version, etc"). Only rows with a value: a fact
+                  the player never sent has no row, and nothing is inferred. */}
+              {deviceFacts.length > 0 && (
+                <div className="rounded-xl border border-slate-200 p-3.5" data-testid="screen-device-card">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Device</p>
+                  <dl className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5">
+                    {deviceFacts.map((f) => (
+                      <Fragment key={f.key}>
+                        <dt className="text-[11px] font-semibold text-slate-400 whitespace-nowrap pt-px">{f.label}</dt>
+                        <dd className="min-w-0" data-device-fact={f.key}>
+                          <p
+                            className={`text-[12px] font-semibold leading-snug break-words ${
+                              f.tone === 'warn' ? 'text-amber-800' : 'text-slate-700'
+                            }`}
+                          >
+                            {f.value}
+                          </p>
+                          {f.hint && (
+                            <p
+                              className={`text-[10.5px] font-semibold leading-snug ${
+                                f.tone === 'warn' ? 'text-amber-700' : 'text-slate-400'
+                              }`}
+                            >
+                              {f.hint}
+                            </p>
+                          )}
+                        </dd>
+                      </Fragment>
+                    ))}
+                  </dl>
+                </div>
+              )}
 
               {/* Delivery — one sentence (2026-09-24), not a stepper. */}
               <div className="rounded-xl border border-slate-200 p-3.5 flex items-start gap-3">
