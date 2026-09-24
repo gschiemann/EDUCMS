@@ -2634,7 +2634,59 @@
       "busy": "Ya hay dos generaciones en curso en esta cuenta. Inténtalo de nuevo cuando termine una.",
       "stalled": "Esta generación se detuvo antes de terminar. Inténtalo de nuevo."
     },
-    "boundTo": "Vinculado a {provider} · {count, plural, one {# artículo} other {# artículos}}"
+    "boundTo": "Vinculado a {provider} · {count, plural, one {# artículo} other {# artículos}}",
+    "credits": {
+      "left": "Te quedan {left} de {total} tableros este mes · se renuevan el {date}",
+      "leftWithBought": "Te quedan {left} de {total} tableros · {bought} comprados · los del mes se renuevan el {date}",
+      "ownKey": "Usas tu propia clave de IA — sin límite de tableros",
+      "buyMore": "Comprar más",
+      "reasons": {
+        "NO_PLATFORM_KEY": "La IA funciona con tu propia clave — agrégala en Ajustes → Proveedor de IA.",
+        "OWN_KEY": "Tus tableros usan tu propia clave de IA, sin límite aquí — no hay nada que comprar.",
+        "STRIPE_NOT_CONFIGURED": "La compra de más tableros todavía no está disponible en esta instalación."
+      },
+      "capBuyMore": "Comprar más tableros",
+      "capAddKey": "Agregar tu propia clave de IA",
+      "sheet": {
+        "title": "Comprar más tableros",
+        "body": "Un solo pago en la página segura de Stripe. Los tableros comprados se usan cuando se acaban los del mes.",
+        "pack": "{count, plural, one {# tablero} other {# tableros}}",
+        "opening": "Abriendo el pago…",
+        "failed": "No se pudo abrir el pago. Inténtalo de nuevo.",
+        "close": "Cerrar"
+      },
+      "card": {
+        "title": "Tableros con IA",
+        "description": "El Diseñador con IA crea tableros con nuestra clave de IA, con una asignación cada mes. Compra más cuando quieras, o usa tu propia clave sin límite.",
+        "purchases": "Tableros comprados",
+        "noPurchases": "Todavía no has comprado tableros.",
+        "purchaseTitle": "{count, plural, one {# tablero} other {# tableros}} · {price}",
+        "purchaseActive": "Comprado el {date} · quedan {left} · válido hasta el {until}",
+        "purchaseUsedUp": "Comprado el {date} · todos usados",
+        "purchaseExpired": "Comprado el {date} · venció el {until}"
+      },
+      "returned": {
+        "success": "Pago recibido.",
+        "successDetail": "Tus tableros se añaden en cuanto Stripe confirma el pago; normalmente en menos de un minuto.",
+        "cancelled": "Se canceló el pago; no se te cobró nada."
+      }
+    },
+    "history": {
+      "open": "Historial",
+      "title": "Tus tableros generados",
+      "subtitle": "Cada lote se guarda 90 días. Abre uno para guardar, editar o volver a generar sus tableros.",
+      "back": "Atrás",
+      "boards": "{count, plural, one {# tablero} other {# tableros}}",
+      "keptAs": "Guardado como {name}",
+      "empty": "Todavía no hay nada. Cada lote que generas se guarda aquí 90 días para que puedas volver a él.",
+      "loadFailed": "No se pudo cargar tu historial.",
+      "retry": "Reintentar",
+      "more": "Ver más",
+      "loadingMore": "Cargando…",
+      "opening": "Abriendo…",
+      "openFailed": "No se pudo abrir ese lote. Inténtalo de nuevo.",
+      "untitled": "Lote sin título"
+    }
   },
   "posBind": {
     "fieldPrice": "Precio",

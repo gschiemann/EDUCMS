@@ -2634,7 +2634,59 @@
       "busy": "Two generations are already running for this account. Try again when one finishes.",
       "stalled": "This generation stopped before it finished. Try again."
     },
-    "boundTo": "Bound to {provider} · {count, plural, one {# item} other {# items}}"
+    "boundTo": "Bound to {provider} · {count, plural, one {# item} other {# items}}",
+    "credits": {
+      "left": "{left} of {total} boards left this month · resets {date}",
+      "leftWithBought": "{left} of {total} boards left · {bought} bought · monthly boards reset {date}",
+      "ownKey": "Using your own AI key — no board limit",
+      "buyMore": "Buy more",
+      "reasons": {
+        "NO_PLATFORM_KEY": "AI runs on your own key — add it in Settings → AI provider.",
+        "OWN_KEY": "Your boards run on your own AI key, with no limit here — there is nothing to buy.",
+        "STRIPE_NOT_CONFIGURED": "Buying more boards isn't set up on this deployment yet."
+      },
+      "capBuyMore": "Buy more boards",
+      "capAddKey": "Add your own AI key",
+      "sheet": {
+        "title": "Buy more boards",
+        "body": "One payment on Stripe's secure page. Bought boards are used once your monthly boards run out.",
+        "pack": "{count, plural, one {# board} other {# boards}}",
+        "opening": "Opening checkout…",
+        "failed": "Couldn't open checkout. Try again.",
+        "close": "Close"
+      },
+      "card": {
+        "title": "AI boards",
+        "description": "The AI Designer draws boards on our AI key, with an allowance each month. Buy more any time — or use your own key for no limit.",
+        "purchases": "Bought boards",
+        "noPurchases": "No boards bought yet.",
+        "purchaseTitle": "{count, plural, one {# board} other {# boards}} · {price}",
+        "purchaseActive": "Bought {date} · {left} left · good until {until}",
+        "purchaseUsedUp": "Bought {date} · all used",
+        "purchaseExpired": "Bought {date} · expired {until}"
+      },
+      "returned": {
+        "success": "Payment received.",
+        "successDetail": "Your boards are added as soon as Stripe confirms the payment — usually within a minute.",
+        "cancelled": "Checkout was cancelled — you weren't charged."
+      }
+    },
+    "history": {
+      "open": "History",
+      "title": "Your generated boards",
+      "subtitle": "Every batch is kept for 90 days. Open one to keep, edit or regenerate its boards.",
+      "back": "Back",
+      "boards": "{count, plural, one {# board} other {# boards}}",
+      "keptAs": "Kept as {name}",
+      "empty": "Nothing here yet. Every batch you generate is kept here for 90 days, so you can come back to it.",
+      "loadFailed": "Couldn't load your history.",
+      "retry": "Try again",
+      "more": "Show more",
+      "loadingMore": "Loading…",
+      "opening": "Opening…",
+      "openFailed": "That batch couldn't be opened. Try again.",
+      "untitled": "Untitled batch"
+    }
   },
   "posBind": {
     "fieldPrice": "Price",

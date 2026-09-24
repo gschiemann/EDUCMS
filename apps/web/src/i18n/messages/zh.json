@@ -2634,7 +2634,59 @@
       "busy": "此账户已有两个生成任务在进行中。请等其中一个完成后再试。",
       "stalled": "此次生成未完成就停止了。请重试。"
     },
-    "boundTo": "已绑定 {provider} · {count, plural, other {# 个商品}}"
+    "boundTo": "已绑定 {provider} · {count, plural, other {# 个商品}}",
+    "credits": {
+      "left": "本月剩余 {left}/{total} 块看板 · {date} 重置",
+      "leftWithBought": "剩余 {left}/{total} 块看板 · 已购 {bought} 块 · 每月额度于 {date} 重置",
+      "ownKey": "正在使用你自己的 AI 密钥 — 看板数量不限",
+      "buyMore": "购买更多",
+      "reasons": {
+        "NO_PLATFORM_KEY": "AI 使用你自己的密钥 — 请在 设置 → AI 服务商 中添加。",
+        "OWN_KEY": "你的看板使用你自己的 AI 密钥，这里没有数量限制 — 无需购买。",
+        "STRIPE_NOT_CONFIGURED": "此部署尚未开通购买更多看板。"
+      },
+      "capBuyMore": "购买更多看板",
+      "capAddKey": "添加你自己的 AI 密钥",
+      "sheet": {
+        "title": "购买更多看板",
+        "body": "在 Stripe 安全页面一次性付款。每月额度用完后才会使用购买的看板。",
+        "pack": "{count, plural, other {# 块看板}}",
+        "opening": "正在打开付款页面…",
+        "failed": "无法打开付款页面，请重试。",
+        "close": "关闭"
+      },
+      "card": {
+        "title": "AI 看板",
+        "description": "AI 设计师使用我们的 AI 密钥绘制看板，每月有一定额度。可随时购买更多，或使用你自己的密钥，不限数量。",
+        "purchases": "已购看板",
+        "noPurchases": "尚未购买看板。",
+        "purchaseTitle": "{count, plural, other {# 块看板}} · {price}",
+        "purchaseActive": "{date} 购买 · 剩余 {left} 块 · 有效期至 {until}",
+        "purchaseUsedUp": "{date} 购买 · 已用完",
+        "purchaseExpired": "{date} 购买 · 已于 {until} 过期"
+      },
+      "returned": {
+        "success": "已收到付款。",
+        "successDetail": "Stripe 确认付款后，看板会立即添加 — 通常在一分钟内。",
+        "cancelled": "结账已取消 — 未产生任何扣费。"
+      }
+    },
+    "history": {
+      "open": "历史记录",
+      "title": "你生成的看板",
+      "subtitle": "每批看板保留 90 天。打开任意一批即可保存、编辑或重新生成。",
+      "back": "返回",
+      "boards": "{count, plural, other {# 块看板}}",
+      "keptAs": "已保存为 {name}",
+      "empty": "这里还没有内容。你生成的每一批看板都会在此保留 90 天，方便你随时回来查看。",
+      "loadFailed": "无法加载你的历史记录。",
+      "retry": "重试",
+      "more": "显示更多",
+      "loadingMore": "正在加载…",
+      "opening": "正在打开…",
+      "openFailed": "无法打开这批看板，请重试。",
+      "untitled": "未命名批次"
+    }
   },
   "posBind": {
     "fieldPrice": "价格",
