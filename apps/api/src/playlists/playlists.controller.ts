@@ -230,10 +230,16 @@ export class PlaylistsController {
         createdBy: { select: { email: true } },
         _count: { select: { items: true, schedules: true } },
         // First few items only — enough to find a thumbnail, never the graph.
+        // posterUrl (2026-09-24): a video's still frame. Without it the
+        // library tile for a video playlist is a blank mat on every touch
+        // device (a <video preload="none"> paints nothing, and there is no
+        // hover to trigger its load).
         items: {
           orderBy: { sequenceOrder: 'asc' },
           take: 4,
-          select: { asset: { select: { fileUrl: true, mimeType: true } } },
+          select: {
+            asset: { select: { fileUrl: true, mimeType: true, posterUrl: true } },
+          },
         },
       },
       orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
@@ -513,7 +519,23 @@ export class PlaylistsController {
       include: {
         items: {
           orderBy: { sequenceOrder: 'asc' },
-          include: { asset: { select: { id: true, fileUrl: true, mimeType: true, originalName: true } } },
+          // posterUrl (2026-09-24): the editor's content rows and the Add
+          // Media picker draw a video as its poster frame and only fetch
+          // video bytes on hover. Same `select` bug class as the group list
+          // (omit a column here and every row reads undefined while
+          // Postgres holds the answer) — GET /playlists/:id includes the
+          // whole asset row, so it needs nothing.
+          include: {
+            asset: {
+              select: {
+                id: true,
+                fileUrl: true,
+                mimeType: true,
+                originalName: true,
+                posterUrl: true,
+              },
+            },
+          },
         },
         // zones + bg travel with the template so the dashboard can PREVIEW a
         // template-backed playlist. Before this the Screens page could only show
@@ -651,7 +673,19 @@ export class PlaylistsController {
         createdBy: { select: { id: true, email: true } },
         items: {
           orderBy: { sequenceOrder: 'asc' },
-          include: { asset: { select: { id: true, fileUrl: true, mimeType: true, originalName: true } } },
+          // Same shape as GET /playlists — a freshly created row is cached
+          // straight into the list the editor reads.
+          include: {
+            asset: {
+              select: {
+                id: true,
+                fileUrl: true,
+                mimeType: true,
+                originalName: true,
+                posterUrl: true,
+              },
+            },
+          },
         },
         _count: { select: { schedules: true } },
       },
