@@ -32,7 +32,13 @@
  *   • Physical display is always 'not-instrumented'.
  */
 
-import { deriveRenderTrustGrade, type RenderHealth, type RenderTrustGrade } from '../renderTrust';
+import {
+  deriveRenderTrustGrade,
+  IDLE_PROOF_PREFIX,
+  PAUSED_PROOF_PREFIX,
+  type RenderHealth,
+  type RenderTrustGrade,
+} from '../renderTrust';
 import { deriveBundleSkew, type BundleSkewVariant } from '../bundleSkew';
 import { contentBehindCause } from '@/components/dashboard/district/fleetCommand';
 import { isWindowOpen } from '@/app/player/scheduleWindow';
@@ -112,11 +118,26 @@ export interface OpsSchedule {
   playlist?: { id: string; name: string } | null;
 }
 
-/** One row of `GET /playlists` — read only for a name + a first still. */
+/**
+ * One row of `GET /playlists` — a name, a first still, and (2026-09-24) the
+ * item facts the player signs its render proof with, so the Overview can say
+ * "Playing <name>" and mean it.
+ */
 export interface OpsPlaylist {
   id: string;
   name?: string | null;
-  items?: Array<{ asset?: { fileUrl?: string | null; mimeType?: string | null } | null }> | null;
+  items?: Array<{
+    /** `PlaylistItem.id` — the manifest's `item_id`, which the player signs. */
+    id?: string | null;
+    sequenceOrder?: number | null;
+    durationMs?: number | null;
+    asset?: {
+      fileUrl?: string | null;
+      mimeType?: string | null;
+      /** A video's poster frame (`Asset.posterUrl`, 2026-09-11). */
+      posterUrl?: string | null;
+    } | null;
+  }> | null;
   /** A playlist can BE a board — a template with no items of its own. */
   template?: {
     id?: string | null;
@@ -567,6 +588,18 @@ export type ExpectedThumbnailKind = 'still' | 'frame' | 'board' | 'tint' | 'none
 export interface ExpectedContent {
   /** The playlist scheduled to win on this screen right now, if any. */
   name: string | null;
+  /** Its id (2026-09-24), so the player's render proof can be matched to it. */
+  playlistId: string | null;
+  /** The board it is laid onto, when the playlist is template-backed. */
+  templateId: string | null;
+  /**
+   * The render proof the player would sign for exactly this content
+   * (`pl:<sig>`, see `playlistRenderSignature`), rebuilt from the same item
+   * facts the manifest serves — so `deriveReportedContent` can say "Playing
+   * <name>" only when the screen's own report says so. Null when the items
+   * cannot be signed (no item ids), in which case nothing is claimed.
+   */
+  renderSignature: string | null;
   /** An EXPECTED preview of that playlist, never a capture of the glass.
    *  `thumbnailKind` says what it actually is so the UI never implies a
    *  poster of a board is a photograph of the screen. */
@@ -575,10 +608,69 @@ export interface ExpectedContent {
   /** Paintable background of a board we have no poster for — last resort so a
    *  template-backed playlist is never a blank grey box. */
   thumbnailTint: string | null;
+  /** A video's poster frame, when the preview is a video (`thumbnailKind`
+   *  'frame'). Null = no poster yet; the tile falls back to a first frame. */
+  posterUrl: string | null;
   /** True when the winning schedule targets the group, not the screen. */
   viaGroup: boolean;
   /** A schedule exists but its day/time window is closed right now. */
   windowClosed: boolean;
+}
+
+/** The honest empty answer: nothing scheduled, nothing to preview. */
+const NOTHING_SCHEDULED: ExpectedContent = Object.freeze({
+  name: null,
+  playlistId: null,
+  templateId: null,
+  renderSignature: null,
+  thumbnailUrl: null,
+  thumbnailKind: 'none',
+  thumbnailTint: null,
+  posterUrl: null,
+  viaGroup: false,
+  windowClosed: false,
+});
+
+/**
+ * The render proof the player signs for a playlist: `pl:` + one
+ * `<sequence>|<durationMs>|<item id>` per item, in order, joined by `||` —
+ * the recipe in apps/web/src/app/player/page.tsx (`currentPlaylistSigRef`),
+ * fed by the same PlaylistItem facts the manifest serializes
+ * (screens.controller.ts: `item_id` / `duration_ms` / `sequence`). Rebuilt
+ * here from `GET /playlists` so the dashboard can recognise its own schedule
+ * in `Screen.lastRenderedHash`. Null when an item has no id: then nothing
+ * can be matched honestly, and the Overview says "a playlist" instead.
+ *
+ * If either side of this recipe changes, the other changes in the same
+ * commit — otherwise every screen silently stops reading "Playing <name>".
+ */
+export function playlistRenderSignature(pl: OpsPlaylist | null | undefined): string | null {
+  const items = pl?.items ?? [];
+  if (items.length === 0) return null;
+  const ordered = items
+    .map((it, idx) => ({ it, idx }))
+    .sort((a, b) => (a.it.sequenceOrder ?? a.idx) - (b.it.sequenceOrder ?? b.idx) || a.idx - b.idx);
+  const parts: string[] = [];
+  for (const { it, idx } of ordered) {
+    if (!it.id) return null;
+    parts.push(`${it.sequenceOrder ?? idx}|${it.durationMs ?? 0}|${it.id}`);
+  }
+  return `pl:${parts.join('||')}`;
+}
+
+/**
+ * Does a stored render proof name this signature? The API keeps the first
+ * 128 characters of what the player sent (64 on the legacy route), so a long
+ * playlist's proof is a PREFIX of its signature. A prefix that covers at
+ * least the whole first item is a match; anything shorter is not evidence.
+ */
+export function renderProofMatches(signature: string | null, proof: string | null | undefined): boolean {
+  if (!signature || !proof) return false;
+  if (proof === signature) return true;
+  if (!signature.startsWith(proof)) return false;
+  const firstItemEnd = signature.indexOf('||');
+  const minimum = firstItemEnd === -1 ? signature.length : firstItemEnd;
+  return proof.length >= minimum;
 }
 
 /**
@@ -603,7 +695,7 @@ export function deriveExpectedContent(
       ((s.screenId && s.screenId === screen.id) ||
         (s.screenGroupId && screen.screenGroupId && s.screenGroupId === screen.screenGroupId)),
   );
-  if (!mine.length) return { name: null, thumbnailUrl: null, thumbnailKind: 'none', thumbnailTint: null, viaGroup: false, windowClosed: false };
+  if (!mine.length) return NOTHING_SCHEDULED;
 
   const startMs = (s: OpsSchedule) => msOf(s.startTime) ?? 0;
   const ranked = [...mine].sort((a, b) => {
@@ -626,16 +718,20 @@ export function deriveExpectedContent(
   const replaceRows = ranked.filter((s) => (s.mode ?? 'replace') !== 'append');
   const open = replaceRows.find((s) => isWindowOpen(s, nowDate));
   const winner = open ?? replaceRows[0] ?? ranked[0];
-  if (!winner) return { name: null, thumbnailUrl: null, thumbnailKind: 'none', thumbnailTint: null, viaGroup: false, windowClosed: false };
+  if (!winner) return NOTHING_SCHEDULED;
 
   const pl = winner.playlistId ? playlistById.get(winner.playlistId) : undefined;
   const preview = previewOf(pl);
 
   return {
     name: winner.playlist?.name ?? pl?.name ?? null,
+    playlistId: winner.playlistId ?? pl?.id ?? null,
+    templateId: pl?.template?.id ?? null,
+    renderSignature: playlistRenderSignature(pl),
     thumbnailUrl: preview.url,
     thumbnailKind: preview.kind,
     thumbnailTint: preview.tint,
+    posterUrl: preview.posterUrl,
     viaGroup: !winner.screenId,
     windowClosed: !open,
   };
@@ -657,60 +753,76 @@ export function deriveExpectedContent(
  */
 export function previewOf(
   pl: OpsPlaylist | undefined,
-): { url: string | null; kind: ExpectedThumbnailKind; tint: string | null } {
+): { url: string | null; kind: ExpectedThumbnailKind; tint: string | null; posterUrl: string | null } {
   const items = pl?.items ?? [];
   const still = items.find((i) => i.asset?.fileUrl && (i.asset.mimeType ?? '').startsWith('image/'))?.asset?.fileUrl;
-  if (still) return { url: still, kind: 'still', tint: null };
+  if (still) return { url: still, kind: 'still', tint: null, posterUrl: null };
 
-  const video = items.find((i) => i.asset?.fileUrl && (i.asset.mimeType ?? '').startsWith('video/'))?.asset?.fileUrl;
-  if (video) return { url: video, kind: 'frame', tint: null };
+  // A video previews as its poster frame when the API has cut one
+  // (2026-09-24) — a plain image that paints on every browser and every
+  // input; the tile falls back to a browser-decoded first frame without it.
+  const videoItem = items.find((i) => i.asset?.fileUrl && (i.asset.mimeType ?? '').startsWith('video/'));
+  const video = videoItem?.asset?.fileUrl;
+  if (video) return { url: video, kind: 'frame', tint: null, posterUrl: videoItem?.asset?.posterUrl ?? null };
 
   // A board with no media of its own. `allowCustomized` because the caller's
   // only alternative is a blank box: a table row cannot mount a live 4K frame,
   // and "which board is this" is still worth answering. Callers label it as
   // the template's own look, never as the operator's customized result.
   const poster = templatePosterUrl(pl?.template?.zones, { allowCustomized: true });
-  if (poster) return { url: poster, kind: 'board', tint: null };
+  if (poster) return { url: poster, kind: 'board', tint: null, posterUrl: null };
 
   const t = pl?.template;
   const tint = t?.bgImage
     ? (t.bgImage.trim().startsWith('url(') ? t.bgImage : `url(${t.bgImage})`)
     : (t?.bgGradient || t?.bgColor || null);
-  if (tint) return { url: null, kind: 'tint', tint };
+  if (tint) return { url: null, kind: 'tint', tint, posterUrl: null };
 
-  return { url: null, kind: 'none', tint: null };
+  return { url: null, kind: 'none', tint: null, posterUrl: null };
 }
 
-/** What the PLAYER told us about the content it is running. Never physical. */
+/**
+ * What the PLAYER told us it is running. Never physical — the dashboard
+ * cannot see the panel, only the player's own report.
+ *
+ * 2026-09-24 rewrite. Greg, on the old "Reported content · On the published
+ * version" card: "what is this menu even telling me? it doesnt show that the
+ * content was pushed but i know its playing". That card answered a different
+ * question (is the player APP current?) under a heading about content. This
+ * one reads the render proof the player signs every ~30 s
+ * (`Screen.lastRenderedHash`): which KIND of thing is on the glass — a
+ * playlist, a board, the waiting screen, a pause, a stuck video, an alert —
+ * and, for a playlist or board, whether it is THE scheduled one, by matching
+ * the proof against the signature rebuilt from the schedule
+ * (`ExpectedContent.renderSignature`). It claims "Playing <name>" only on a
+ * match; anything it cannot match is "a playlist", never an accusation. The
+ * app-version fact survives as its own line (`app`).
+ */
+export type ReportedState =
+  | 'confirmed' // playing exactly what is scheduled
+  | 'playing' // playing a playlist or board that cannot be matched to the schedule
+  | 'behind' // an update is outstanding, or the schedule is not on the glass yet
+  | 'idle' // the waiting screen, with nothing scheduled (or the window closed)
+  | 'paused' // paused on the screen itself
+  | 'stalled' // the current video is not advancing; the player is recovering
+  | 'emergency' // an alert is on the glass
+  | 'unknown'; // offline, or no proof at all
+
 export interface ReportedContent {
-  state: 'confirmed' | 'behind' | 'unknown';
+  state: ReportedState;
   /** One plain line — the exact fact, never a guess. */
   line: string;
   /** Secondary evidence, when there is any. */
   detail?: string;
+  /** The player APP's version — a separate fact, never dressed up as content. */
+  app: { state: 'current' | 'updating' | 'unknown'; line: string | null };
 }
 
-export function deriveReportedContent(
+function deriveAppVersion(
   screen: OpsScreen,
   deployedSha: string | null,
-  now: number,
   deployedBundleId?: string | null,
-): ReportedContent {
-  if (screen.status !== 'ONLINE') {
-    return {
-      state: 'unknown',
-      line: 'Not reported',
-      detail: 'This screen isn’t answering, so it can’t tell us what it is running.',
-    };
-  }
-  const pendingMs = msOf(screen.pendingRefreshAt);
-  if (pendingMs != null) {
-    return {
-      state: 'behind',
-      line: 'Update not confirmed',
-      detail: `Sent ${wordyAge(pendingMs, now) ?? 'a moment'} ago; the screen has not echoed it back.`,
-    };
-  }
+): ReportedContent['app'] {
   const skew: BundleSkewVariant = deriveBundleSkew({
     status: screen.status,
     reportedSha: screen.lastBundleSha ?? null,
@@ -718,103 +830,180 @@ export function deriveReportedContent(
     reportedBundleId: screen.lastBundleId ?? null,
     deployedBundleId,
   });
-  if (skew === 'stale') {
-    return {
-      state: 'behind',
-      line: 'Older app version',
-      detail: 'The screen is running a previous build of the player app; it reloads onto the new one on its own.',
-    };
-  }
-  if (skew === 'unknown') {
+  if (skew === 'stale') return { state: 'updating', line: 'Player app: updating itself to the latest version.' };
+  if (skew === 'unknown') return { state: 'unknown', line: null };
+  return { state: 'current', line: 'Player app: up to date.' };
+}
+
+export function deriveReportedContent(
+  screen: OpsScreen,
+  deployedSha: string | null,
+  now: number,
+  deployedBundleId?: string | null,
+  expected?: ExpectedContent | null,
+): ReportedContent {
+  const app = deriveAppVersion(screen, deployedSha, deployedBundleId);
+  if (screen.status !== 'ONLINE') {
+    const heard = wordyAge(msOf(screen.lastPingAt), now);
     return {
       state: 'unknown',
-      line: 'Not reported',
-      detail: 'This screen hasn’t reported which version it is running.',
+      line: 'Not reporting',
+      detail: heard
+        ? `This screen isn’t answering, so it can’t say what it is playing. Last heard from ${heard} ago.`
+        : 'This screen isn’t answering, so it can’t say what it is playing.',
+      app,
     };
   }
-  return {
-    state: 'confirmed',
-    line: 'On the published version',
-    detail: 'The screen reported the current app version and has no update outstanding.',
-  };
+
+  const proof = screen.lastRenderedHash ?? '';
+  const confirmedAgo = wordyAge(msOf(screen.lastRenderedAt), now);
+  const dated = (text: string) => (confirmedAgo ? `${text} Confirmed ${confirmedAgo} ago.` : text);
+  const pendingMs = msOf(screen.pendingRefreshAt);
+  const scheduled = expected?.name ?? null;
+
+  // The alert proofs first — the same precedence the status grade uses.
+  if (proof.startsWith('unconfirmed|em:')) {
+    return {
+      state: 'emergency',
+      line: 'Showing an emergency alert',
+      detail: 'The screen is holding an alert it has not been able to re-confirm with the server.',
+      app,
+    };
+  }
+  if (proof.startsWith('em:')) {
+    return { state: 'emergency', line: 'Showing an emergency alert', detail: dated('The alert is on the glass.'), app };
+  }
+  if (proof.startsWith('stall|')) {
+    return {
+      state: 'stalled',
+      line: 'Video stuck',
+      detail: 'The current video stopped advancing; the player is restarting it on its own.',
+      app,
+    };
+  }
+  if (proof.startsWith(PAUSED_PROOF_PREFIX)) {
+    return {
+      state: 'paused',
+      line: 'Paused on the screen',
+      detail: 'Someone paused playback on the screen itself. It resumes from the screen.',
+      app,
+    };
+  }
+  // An outstanding update outranks whatever is on the glass: until the screen
+  // echoes it back, what it shows may be the previous content.
+  if (pendingMs != null) {
+    return {
+      state: 'behind',
+      line: 'Update not confirmed',
+      detail: `Sent ${wordyAge(pendingMs, now) ?? 'a moment'} ago; the screen has not echoed it back yet.`,
+      app,
+    };
+  }
+  if (proof.startsWith(IDLE_PROOF_PREFIX)) {
+    if (scheduled && !expected?.windowClosed) {
+      return {
+        state: 'behind',
+        line: 'Not showing the schedule yet',
+        detail: dated('The screen is on its waiting screen and has not picked up the scheduled playlist.'),
+        app,
+      };
+    }
+    return {
+      state: 'idle',
+      line: 'Nothing playing',
+      detail: dated(
+        scheduled
+          ? 'The scheduled playlist is outside its time window, so the screen shows its waiting screen.'
+          : 'No playlist is scheduled, so the screen shows its waiting screen.',
+      ),
+      app,
+    };
+  }
+  if (proof.startsWith('tpl:')) {
+    const boardId = proof.slice('tpl:'.length).split(':')[0];
+    if (expected?.templateId && boardId === expected.templateId) {
+      return { state: 'confirmed', line: `Playing ${scheduled}`, detail: dated('The board on the glass is the one you scheduled.'), app };
+    }
+    return {
+      state: 'playing',
+      line: 'Playing a board',
+      detail: dated(
+        scheduled
+          ? 'Not the board scheduled right now — the screen re-checks on its own; Resync hurries it.'
+          : 'Nothing is scheduled for this screen, yet a board is playing.',
+      ),
+      app,
+    };
+  }
+  if (proof.startsWith('pl:')) {
+    if (renderProofMatches(expected?.renderSignature ?? null, proof)) {
+      return { state: 'confirmed', line: `Playing ${scheduled}`, detail: dated('Item for item, what you scheduled.'), app };
+    }
+    return {
+      state: 'playing',
+      line: 'Playing a playlist',
+      detail: dated(
+        scheduled
+          ? `Can’t confirm it is ${scheduled} yet — it may be an older version of it. The screen re-checks on its own; Resync hurries it.`
+          : 'Nothing is scheduled for this screen, yet a playlist is playing.',
+      ),
+      app,
+    };
+  }
+  // A dated proof in a shape this dashboard does not know (an older bundle),
+  // or none at all. Say exactly that.
+  if (confirmedAgo) {
+    return {
+      state: 'playing',
+      line: 'Showing content',
+      detail: `The screen confirmed a picture ${confirmedAgo} ago, but this player version does not say what it is showing.`,
+      app,
+    };
+  }
+  return { state: 'unknown', line: 'No picture confirmation yet', detail: 'The player has not reported what it is showing.', app };
 }
 
 /**
- * §10 evidence chain. THREE steps, not four.
+ * §10 delivery, in one sentence (2026-09-24).
  *
- * "Downloaded" is deliberately absent: the player emits no per-deployment
- * download milestone. The nearest field, `Screen.lastCacheReport`, is a
- * service-worker coverage count with no revision identity, so a green
- * Downloaded step would be inferred, not proven — and §15 forbids inferring
- * Downloaded from Online, or Rendered from Downloaded.
+ * This replaced a three-step "How far the update got" stepper (Sent →
+ * Rendered → Physical display) that tracked only a pending resync command,
+ * drew a permanently grey "Physical display · Not instrumented" step, and left
+ * its first dot hollow whenever nothing was pending — Greg: "wtf is how far
+ * update got, again its not correct and doesnt make sense to an average
+ * user". The facts it drew are still here, as prose an operator can read: is
+ * an update outstanding, and when did the screen last confirm a picture. The
+ * §15 rule stands — no Downloaded milestone is invented, and nothing here
+ * claims to have seen the panel.
  */
-export type EvidenceState = 'ok' | 'pending' | 'unknown' | 'not-instrumented';
-
-export interface EvidenceStep {
-  key: 'sent' | 'rendered' | 'physical';
-  label: string;
-  state: EvidenceState;
-  /** What this step actually proves — shown under the chain, never implied. */
-  note: string;
+export interface Delivery {
+  state: 'ok' | 'pending' | 'unknown';
+  /** One plain sentence. */
+  line: string;
 }
 
-export function deriveEvidenceChain(
-  screen: OpsScreen,
-  status: StatusDescriptor,
-  now: number,
-): EvidenceStep[] {
+export function deriveDelivery(screen: OpsScreen, status: StatusDescriptor, now: number): Delivery {
   const pendingMs = msOf(screen.pendingRefreshAt);
   const renderedMs = msOf(screen.lastRenderedAt);
-  const online = screen.status === 'ONLINE';
-
-  const sent: EvidenceStep =
-    pendingMs != null
-      ? {
-          key: 'sent',
-          label: 'Sent',
-          state: 'ok',
-          note: `Update recorded ${wordyAge(pendingMs, now) ?? 'just now'} ago.`,
-        }
-      : {
-          key: 'sent',
-          label: 'Sent',
-          state: 'unknown',
-          note: 'No update is waiting on this screen.',
-        };
-
-  const renderedOk =
-    online &&
+  if (screen.status !== 'ONLINE') {
+    return { state: 'unknown', line: 'This screen isn’t answering, so nothing can be confirmed until it comes back.' };
+  }
+  if (pendingMs != null) {
+    return {
+      state: 'pending',
+      line: `An update was sent ${wordyAge(pendingMs, now) ?? 'a moment'} ago and the screen hasn’t confirmed it yet.`,
+    };
+  }
+  // A screen on an older app build is still showing its content and still
+  // confirming pictures; the app updates itself, so that is not a delivery gap.
+  const confirmed =
     renderedMs != null &&
-    (status.key === 'current' || status.key === 'idle' || status.key === 'paused');
-  const rendered: EvidenceStep = renderedOk
-    ? {
-        key: 'rendered',
-        label: 'Rendered',
-        state: 'ok',
-        note: `Screen confirmed a picture ${wordyAge(renderedMs, now) ?? 'just now'} ago.`,
-      }
-    : online && (pendingMs != null || status.key === 'confirming')
-      ? {
-          key: 'rendered',
-          label: 'Rendered',
-          state: 'pending',
-          note: 'Waiting for the screen to confirm its picture.',
-        }
-      : {
-          key: 'rendered',
-          label: 'Rendered',
-          state: 'unknown',
-          note: 'No picture confirmation from this screen.',
-        };
-
-  const physical: EvidenceStep = {
-    key: 'physical',
-    label: 'Physical display',
-    state: 'not-instrumented',
-    note: 'Not instrumented — nothing is watching the actual panel.',
-  };
-
-  return [sent, rendered, physical];
+    (status.key === 'current' || status.key === 'idle' || status.key === 'paused' || status.key === 'app-updating');
+  if (confirmed) {
+    return { state: 'ok', line: `Nothing waiting. The screen confirmed its picture ${wordyAge(renderedMs, now) ?? 'just now'} ago.` };
+  }
+  if (status.key === 'confirming') return { state: 'pending', line: 'Waiting for the screen to confirm its picture.' };
+  return { state: 'unknown', line: 'No picture confirmation from this screen.' };
 }
 
 /**
@@ -957,11 +1146,13 @@ export function buildScreenOps(input: {
 
   const rows: OpsRow[] = screens.map((screen) => {
     const status = deriveScreenStatus({ screen, deployedSha, deployedBundleId, now });
+    const expected = deriveExpectedContent(screen, schedules, playlistById, now);
     return {
       screen,
       status,
-      expected: deriveExpectedContent(screen, schedules, playlistById, now),
-      reported: deriveReportedContent(screen, deployedSha, now, deployedBundleId),
+      expected,
+      // Matched against the schedule, so a row can say "Playing <name>".
+      reported: deriveReportedContent(screen, deployedSha, now, deployedBundleId, expected),
       rank: STATUS_RANK[status.key],
     };
   });

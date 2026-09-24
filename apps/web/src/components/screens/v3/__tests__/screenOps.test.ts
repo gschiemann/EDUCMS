@@ -10,13 +10,15 @@
 import {
   buildScreenOps,
   compactAge,
-  deriveEvidenceChain,
+  deriveDelivery,
   deriveExpectedContent,
   deriveRecovery,
   deriveReportedContent,
   deriveScreenStatus,
   matchesFilter,
   matchesQuery,
+  playlistRenderSignature,
+  renderProofMatches,
   STATUS_ORDER,
   UNGROUPED_ID,
   type OpsPlaylist,
@@ -315,15 +317,16 @@ describe('fail-closed rules (§3.5 / §13)', () => {
     expect(compactAge(NOW + 5 * MIN, NOW)).toBeUndefined();
   });
 
-  it('an offline screen reports content as Not reported, never confirmed', () => {
+  it('an offline screen reports Not reporting, never a confirmation', () => {
     const r = deriveReportedContent(scr({ status: 'OFFLINE' }), SHA, NOW);
     expect(r.state).toBe('unknown');
-    expect(r.line).toBe('Not reported');
+    expect(r.line).toBe('Not reporting');
   });
 
-  it('a screen that never reported a bundle SHA is unknown, not confirmed', () => {
+  it('a screen that never reported a bundle SHA has an unknown app version — no app line is printed', () => {
     const r = deriveReportedContent(scr({ lastBundleSha: null }), SHA, NOW);
-    expect(r.state).toBe('unknown');
+    expect(r.app.state).toBe('unknown');
+    expect(r.app.line).toBeNull();
   });
 });
 
@@ -360,8 +363,8 @@ describe('screenOps — graded on the identity the player RELOADS on', () => {
       NOW,
       BUNDLE,
     );
-    expect(r.state).toBe('confirmed');
-    expect(r.line).toBe('On the published version');
+    expect(r.app.state).toBe('current');
+    expect(r.app.line).toBe('Player app: up to date.');
   });
 
   it('a screen genuinely on an older BUNDLE still reads Updating itself — and asks for nothing', () => {
@@ -509,34 +512,134 @@ describe('deriveExpectedContent — mirrors the API winner rule', () => {
   });
 });
 
-describe('deriveEvidenceChain — three steps, Downloaded deliberately absent', () => {
-  it('never emits a Downloaded step (no per-deployment download milestone exists)', () => {
-    const screen = scr();
-    const chain = deriveEvidenceChain(screen, status(), NOW);
-    expect(chain.map((s) => s.key)).toEqual(['sent', 'rendered', 'physical']);
+describe('deriveDelivery — one sentence, no Downloaded, no Physical display (2026-09-24)', () => {
+  // Greg: "wtf is how far update got, again its not correct and doesnt make
+  // sense to an average user".
+  it('nothing waiting + a fresh picture → ok, dated', () => {
+    const d = deriveDelivery(scr(), status(), NOW);
+    expect(d.state).toBe('ok');
+    expect(d.line).toMatch(/Nothing waiting\. The screen confirmed its picture 20 seconds ago\./);
   });
 
-  it('Physical display is always not-instrumented', () => {
-    const chain = deriveEvidenceChain(scr(), status(), NOW);
-    expect(chain[2].state).toBe('not-instrumented');
-    expect(chain[2].note).toContain('Not instrumented');
-  });
-
-  it('Rendered is green only for an earned green status', () => {
-    expect(deriveEvidenceChain(scr(), status(), NOW)[1].state).toBe('ok');
-  });
-
-  it('an outstanding update marks Sent green and Rendered pending', () => {
+  it('an outstanding update → pending, dated from the send', () => {
     const over = { pendingRefreshAt: new Date(NOW - 4 * MIN).toISOString() };
-    const chain = deriveEvidenceChain(scr(over), status(over), NOW);
-    expect(chain[0].state).toBe('ok');
-    expect(chain[1].state).toBe('pending');
+    const d = deriveDelivery(scr(over), status(over), NOW);
+    expect(d.state).toBe('pending');
+    expect(d.line).toMatch(/An update was sent 4 minutes ago and the screen hasn’t confirmed it yet\./);
   });
 
-  it('an offline screen proves nothing — Rendered is unknown, never red-by-assumption', () => {
+  it('an offline screen proves nothing — unknown, never red-by-assumption', () => {
     const over = { status: 'OFFLINE', lastPingAt: new Date(NOW - 20 * MIN).toISOString() };
-    const chain = deriveEvidenceChain(scr(over), status(over), NOW);
-    expect(chain[1].state).toBe('unknown');
+    const d = deriveDelivery(scr(over), status(over), NOW);
+    expect(d.state).toBe('unknown');
+  });
+
+  it('a screen on an older app build that still confirms pictures is ok — the app updates itself', () => {
+    const over = { lastBundleSha: 'oldsha000000' };
+    expect(status(over).key).toBe('app-updating');
+    expect(deriveDelivery(scr(over), status(over), NOW).state).toBe('ok');
+  });
+
+  it('never mentions a Downloaded step or the physical panel', () => {
+    for (const over of [{}, { pendingRefreshAt: new Date(NOW - MIN).toISOString() }, { status: 'OFFLINE' }]) {
+      const d = deriveDelivery(scr(over), status(over), NOW);
+      expect(d.line).not.toMatch(/download|physical|instrument/i);
+    }
+  });
+});
+
+describe('deriveReportedContent — what the player says it is playing (2026-09-24)', () => {
+  // Greg: "it doesnt show that the content was pushed but i know its playing".
+  const playlist: OpsPlaylist = {
+    id: 'pl-v',
+    name: 'Pro Series Video 1',
+    items: [
+      {
+        id: 'item-1', sequenceOrder: 0, durationMs: 10_000,
+        asset: { fileUrl: 'https://cdn/x.mp4', mimeType: 'video/mp4', posterUrl: 'https://cdn/x.jpg' },
+      },
+      { id: 'item-2', sequenceOrder: 1, durationMs: 15_000, asset: { fileUrl: 'https://cdn/y.mp4', mimeType: 'video/mp4' } },
+    ],
+  };
+  const byId = new Map([[playlist.id, playlist]]);
+  const schedule: OpsSchedule = {
+    id: 'sc', playlistId: 'pl-v', screenId: 'scr-1', isActive: true, mode: 'replace', priority: 0,
+    startTime: new Date(NOW - 3600_000).toISOString(), playlist: { id: 'pl-v', name: 'Pro Series Video 1' },
+  };
+  const expected = () => deriveExpectedContent(scr(), [schedule], byId, NOW);
+  // The exact recipe the player signs (page.tsx currentPlaylistSigRef).
+  const SIG = 'pl:0|10000|item-1||1|15000|item-2';
+
+  it('rebuilds the signature the player signs, and carries the poster', () => {
+    const e = expected();
+    expect(e.renderSignature).toBe(SIG);
+    expect(e.playlistId).toBe('pl-v');
+    expect(e.posterUrl).toBe('https://cdn/x.jpg');
+    // An item without an id cannot be signed → nothing is claimed.
+    expect(playlistRenderSignature({ id: 'x', items: [{ sequenceOrder: 0, durationMs: 1, asset: null }] })).toBeNull();
+  });
+
+  it('a proof that matches the schedule → "Playing <name>", confirmed and dated', () => {
+    const r = deriveReportedContent(scr({ lastRenderedHash: SIG }), SHA, NOW, undefined, expected());
+    expect(r.state).toBe('confirmed');
+    expect(r.line).toBe('Playing Pro Series Video 1');
+    expect(r.detail).toMatch(/Confirmed 20 seconds ago/);
+  });
+
+  it('the API keeps only a prefix of a long proof — a prefix past the first item still matches', () => {
+    expect(renderProofMatches(SIG, SIG.slice(0, 24))).toBe(true);
+    expect(renderProofMatches(SIG, 'pl:0|10')).toBe(false);
+    expect(renderProofMatches(SIG, 'pl:9|10000|item-9')).toBe(false);
+    expect(renderProofMatches(null, SIG)).toBe(false);
+  });
+
+  it('a playlist proof that does NOT match is "a playlist" — a hedge, never an accusation', () => {
+    const r = deriveReportedContent(scr({ lastRenderedHash: 'pl:0|10000|item-old' }), SHA, NOW, undefined, expected());
+    expect(r.state).toBe('playing');
+    expect(r.line).toBe('Playing a playlist');
+    expect(r.detail).toMatch(/Can’t confirm it is Pro Series Video 1 yet/);
+  });
+
+  it('the waiting screen while something is scheduled → behind; with nothing scheduled → idle', () => {
+    const behind = deriveReportedContent(scr({ lastRenderedHash: 'idle:playing' }), SHA, NOW, undefined, expected());
+    expect(behind.state).toBe('behind');
+    expect(behind.line).toBe('Not showing the schedule yet');
+    const idle = deriveReportedContent(scr({ lastRenderedHash: 'idle:playing' }), SHA, NOW, undefined, null);
+    expect(idle.state).toBe('idle');
+    expect(idle.line).toBe('Nothing playing');
+  });
+
+  it('an outstanding update outranks the glass: "Update not confirmed"', () => {
+    const r = deriveReportedContent(
+      scr({ lastRenderedHash: SIG, pendingRefreshAt: new Date(NOW - 2 * MIN).toISOString() }),
+      SHA, NOW, undefined, expected(),
+    );
+    expect(r.state).toBe('behind');
+    expect(r.line).toBe('Update not confirmed');
+  });
+
+  it('a board proof is matched on the template id', () => {
+    const board: OpsPlaylist = { id: 'pl-b', name: 'Lobby Board', items: [], template: { id: 'tpl-9', name: 'Lobby', zones: [] } };
+    const e = deriveExpectedContent(
+      scr(),
+      [{ ...schedule, playlistId: 'pl-b', playlist: { id: 'pl-b', name: 'Lobby Board' } }],
+      new Map([[board.id, board]]),
+      NOW,
+    );
+    expect(deriveReportedContent(scr({ lastRenderedHash: 'tpl:tpl-9:abc123' }), SHA, NOW, undefined, e).state).toBe('confirmed');
+    expect(deriveReportedContent(scr({ lastRenderedHash: 'tpl:tpl-2:abc123' }), SHA, NOW, undefined, e).line).toBe('Playing a board');
+  });
+
+  it('alerts, stalls and pauses are named for what they are', () => {
+    expect(deriveReportedContent(scr({ lastRenderedHash: 'em:LOCKDOWN' }), SHA, NOW).state).toBe('emergency');
+    expect(deriveReportedContent(scr({ lastRenderedHash: 'stall|pl:x' }), SHA, NOW).line).toBe('Video stuck');
+    expect(deriveReportedContent(scr({ lastRenderedHash: 'paused:pl:x' }), SHA, NOW).line).toBe('Paused on the screen');
+  });
+
+  it('the app-version fact stays separate: an older build is "updating itself", never the content line', () => {
+    const r = deriveReportedContent(scr({ lastRenderedHash: SIG, lastBundleSha: 'oldsha000000' }), SHA, NOW, undefined, expected());
+    expect(r.state).toBe('confirmed');
+    expect(r.app.state).toBe('updating');
   });
 });
 
@@ -677,12 +780,16 @@ describe('previewOf — the expected picture of a playlist', () => {
       id: 'p', items: [{ asset: { fileUrl: '/a.png', mimeType: 'image/png' } }],
       template: { id: 't', zones: boardZones },
     });
-    expect(out).toEqual({ url: '/a.png', kind: 'still', tint: null });
+    expect(out).toEqual({ url: '/a.png', kind: 'still', tint: null, posterUrl: null });
   });
 
-  it('previews a video-only playlist with the video first frame', () => {
+  it('previews a video-only playlist with the video itself, carrying its poster frame when the API cut one', () => {
     const out = previewOf({ id: 'p', items: [{ asset: { fileUrl: '/clip.mp4', mimeType: 'video/mp4' } }] });
-    expect(out).toEqual({ url: '/clip.mp4', kind: 'frame', tint: null });
+    expect(out).toEqual({ url: '/clip.mp4', kind: 'frame', tint: null, posterUrl: null });
+    const withPoster = previewOf({
+      id: 'p', items: [{ asset: { fileUrl: '/clip.mp4', mimeType: 'video/mp4', posterUrl: '/clip.jpg' } }],
+    });
+    expect(withPoster).toEqual({ url: '/clip.mp4', kind: 'frame', tint: null, posterUrl: '/clip.jpg' });
   });
 
   it('previews a board-backed playlist that has no items of its own', () => {
@@ -705,17 +812,17 @@ describe('previewOf — the expected picture of a playlist', () => {
       id: 'p', items: [],
       template: { id: 't', zones: [{ widgetType: 'CLOCK' }], bgGradient: 'linear-gradient(#fff,#000)' },
     });
-    expect(out).toEqual({ url: null, kind: 'tint', tint: 'linear-gradient(#fff,#000)' });
+    expect(out).toEqual({ url: null, kind: 'tint', tint: 'linear-gradient(#fff,#000)', posterUrl: null });
   });
 
   it('wraps a bare background image url so it is usable as a CSS value', () => {
     const out = previewOf({ id: 'p', items: [], template: { id: 't', zones: [], bgImage: 'https://cdn/x.jpg' } });
-    expect(out).toEqual({ url: null, kind: 'tint', tint: 'url(https://cdn/x.jpg)' });
+    expect(out).toEqual({ url: null, kind: 'tint', tint: 'url(https://cdn/x.jpg)', posterUrl: null });
   });
 
   it('says none when there is genuinely nothing — never invents a picture', () => {
-    expect(previewOf({ id: 'p', items: [] })).toEqual({ url: null, kind: 'none', tint: null });
-    expect(previewOf(undefined)).toEqual({ url: null, kind: 'none', tint: null });
+    expect(previewOf({ id: 'p', items: [] })).toEqual({ url: null, kind: 'none', tint: null, posterUrl: null });
+    expect(previewOf(undefined)).toEqual({ url: null, kind: 'none', tint: null, posterUrl: null });
   });
 
   it('ignores a non-media item rather than linking a pdf as an image', () => {

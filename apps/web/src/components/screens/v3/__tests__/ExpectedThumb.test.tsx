@@ -9,7 +9,7 @@ import { ExpectedThumb } from '../ExpectedThumb';
  */
 afterEach(cleanup);
 
-const base = { name: 'LED posters', thumbnailTint: null } as const;
+const base = { name: 'LED posters', thumbnailTint: null, posterUrl: null } as const;
 
 describe('ExpectedThumb', () => {
   it('renders a still as an image', () => {
@@ -24,15 +24,27 @@ describe('ExpectedThumb', () => {
     expect(screen.getByRole('img')).toHaveAccessibleName(/the template's own look/i);
   });
 
-  it('renders a video as a muted, non-autoplaying video element', () => {
+  it('renders a video as its poster frame at rest — a plain image, no video bytes (2026-09-24)', () => {
     const { container } = render(
-      <ExpectedThumb expected={{ ...base, thumbnailUrl: '/clip.mp4', thumbnailKind: 'frame' }} />,
+      <ExpectedThumb expected={{ ...base, thumbnailUrl: '/clip.mp4', thumbnailKind: 'frame', posterUrl: '/clip.jpg' }} />,
+    );
+    expect(container.querySelector('img')).toHaveAttribute('src', '/clip.jpg');
+    const v = container.querySelector('video');
+    expect(v).toBeTruthy();
+    expect(v).toHaveAttribute('preload', 'none');
+    // A table full of rows must never make noise or move.
+    expect((v as HTMLVideoElement).muted || v!.hasAttribute('muted')).toBe(true);
+    expect(v!.hasAttribute('autoplay')).toBe(false);
+  });
+
+  it('without a poster, falls back to a muted, non-autoplaying first frame', () => {
+    const { container } = render(
+      <ExpectedThumb expected={{ ...base, thumbnailUrl: '/clip.mp4', thumbnailKind: 'frame', posterUrl: null }} />,
     );
     const v = container.querySelector('video');
     expect(v).toBeTruthy();
-    expect(v).toHaveAttribute('src', '/clip.mp4');
+    expect(v!.getAttribute('src')).toContain('/clip.mp4');
     expect(v).toHaveAttribute('preload', 'metadata');
-    // A table full of rows must never make noise or move.
     expect((v as HTMLVideoElement).muted || v!.hasAttribute('muted')).toBe(true);
     expect(v!.hasAttribute('autoplay')).toBe(false);
   });

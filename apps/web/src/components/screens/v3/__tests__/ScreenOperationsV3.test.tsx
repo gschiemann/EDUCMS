@@ -298,20 +298,23 @@ describe('detail drawer (§10 / §14)', () => {
     expect(within(dialog).getByText(/Content behind · 18 minutes/)).toBeInTheDocument();
   });
 
-  it('says "Reported content", never "On screen"', () => {
+  it('names what is scheduled and what the player says it is playing — never "On screen" (2026-09-24)', () => {
     const dialog = open();
-    expect(within(dialog).getByText('Reported content')).toBeInTheDocument();
+    expect(within(dialog).getByText('Scheduled')).toBeInTheDocument();
+    expect(within(dialog).getByText('Playing now')).toBeInTheDocument();
+    expect(within(dialog).getByText(/As reported by the player/)).toBeInTheDocument();
     expect(within(dialog).queryByText('On screen')).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('Reported content')).not.toBeInTheDocument();
   });
 
-  it('draws three evidence steps — no Downloaded, Physical display not instrumented', () => {
+  it('delivery is one plain sentence — no stepper, no Downloaded, no "Physical display"', () => {
     const dialog = open();
-    expect(within(dialog).getAllByText('Sent').length).toBeGreaterThan(0);
-    expect(within(dialog).getAllByText('Rendered').length).toBeGreaterThan(0);
-    expect(within(dialog).getAllByText('Physical display').length).toBeGreaterThan(0);
+    expect(within(dialog).getByText('Delivery')).toBeInTheDocument();
+    expect(within(dialog).getByText(/An update was sent .* ago and the screen hasn’t confirmed it yet\./)).toBeInTheDocument();
+    expect(within(dialog).queryByText('How far the update got')).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('Physical display')).not.toBeInTheDocument();
     expect(within(dialog).queryByText('Downloaded')).not.toBeInTheDocument();
-    expect(within(dialog).getByText('Not instrumented')).toBeInTheDocument();
-    expect(within(dialog).getByText(/Physical display not verified/)).toBeInTheDocument();
+    expect(within(dialog).queryByText('Not instrumented')).not.toBeInTheDocument();
   });
 
   it('shows the recovery card only from a real outstanding command', () => {

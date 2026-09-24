@@ -18,30 +18,14 @@
 
 import React, { useState } from 'react';
 import type { ExpectedContent } from './screenOps';
-
-/** A video's first frame, decoded by the browser. `preload="metadata"` fetches
- *  only the header + first frame, not the file — a 40MB clip costs a few KB.
- *  Muted + no autoplay: it must never make sound or move in a table. */
-function VideoFrame({ src, className }: { src: string; className: string }) {
-  return (
-    <video
-      src={src}
-      className={className}
-      preload="metadata"
-      muted
-      playsInline
-      tabIndex={-1}
-      aria-hidden
-    />
-  );
-}
+import { VideoPreviewThumb } from '@/components/playlists/VideoPreviewThumb';
 
 export function ExpectedThumb({
   expected,
   className = '',
   rounded = 'rounded-md',
 }: {
-  expected: Pick<ExpectedContent, 'thumbnailUrl' | 'thumbnailKind' | 'thumbnailTint' | 'name'>;
+  expected: Pick<ExpectedContent, 'thumbnailUrl' | 'thumbnailKind' | 'thumbnailTint' | 'name' | 'posterUrl'>;
   className?: string;
   rounded?: string;
 }) {
@@ -53,9 +37,17 @@ export function ExpectedThumb({
 
   if (expected.thumbnailUrl && !failed) {
     if (expected.thumbnailKind === 'frame') {
+      // 2026-09-24 — the poster frame at rest, hover to play, first-frame
+      // fallback without a poster; the same tile every playlist surface
+      // draws. The old <video preload="metadata"> painted nothing on a
+      // touch screen (Greg, on an iPad: a blank grey box).
       return (
         <span className={`${base} block`}>
-          <VideoFrame src={expected.thumbnailUrl} className="w-full h-full object-cover" />
+          <VideoPreviewThumb
+            src={expected.thumbnailUrl}
+            posterUrl={expected.posterUrl}
+            className="w-full h-full object-cover"
+          />
         </span>
       );
     }

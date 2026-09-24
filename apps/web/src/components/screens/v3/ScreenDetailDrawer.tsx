@@ -9,11 +9,18 @@
  * fourth, fifth and sixth top-level tab.
  *
  * ── What it will and will not claim (§15) ────────────────────────────
- *   • "Reported content" is what the PLAYER said. It is never dressed up as
- *     a capture, and the Expected thumbnail is always labelled as expected.
- *   • The evidence chain has THREE steps. "Downloaded" is absent because no
- *     per-deployment download milestone exists to prove it.
- *   • "Physical display" is permanently gray: nothing is watching the panel.
+ *   • "Playing now" is what the PLAYER said, matched against the schedule
+ *     (`deriveReportedContent`): "Playing <name>" only when the player's own
+ *     render proof names the scheduled content, "a playlist" when it cannot
+ *     be matched, and a plain "as reported by the player" line under both
+ *     cards. It is never dressed up as a capture, and the Scheduled
+ *     thumbnail is always labelled as what you scheduled.
+ *   • Delivery is ONE sentence (`deriveDelivery`): whether an update is
+ *     outstanding and when the screen last confirmed a picture. It replaced a
+ *     Sent → Rendered → Physical display stepper on 2026-09-24 (Greg: "wtf is
+ *     how far update got … doesnt make sense to an average user"). No
+ *     "Downloaded" milestone is invented — none exists to prove — and nothing
+ *     here claims to have seen the panel.
  *   • The recovery card only appears while a real command is outstanding,
  *     and no timer can promote it to success.
  *
@@ -27,7 +34,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useMutation } from '@tanstack/react-query';
 import {
   AlertTriangle, ArrowRight, CheckCircle2, ChevronRight, CircleDashed, Clock,
-  ExternalLink, Loader2, Minus, RefreshCw, Settings2, ShieldCheck, Trash2, Wifi, WifiOff, X,
+  ExternalLink, Loader2, RefreshCw, Settings2, ShieldCheck, Trash2, Wifi, WifiOff, X,
 } from 'lucide-react';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { apiFetch } from '@/lib/api-client';
@@ -38,7 +45,8 @@ import {
 import { eventCopy } from '@/components/dashboard/district/screenEventCopy';
 import { appConfirm } from '@/components/ui/app-dialog';
 import {
-  compactAge, deriveEvidenceChain, deriveRecovery, msOf, wordyAge, type EvidenceStep, type OpsRow, type SyncStatus,
+  compactAge, deriveDelivery, deriveRecovery, msOf, wordyAge,
+  type Delivery, type OpsRow, type ReportedState, type SyncStatus,
 } from './screenOps';
 import { ExpectedThumb } from './ExpectedThumb';
 
@@ -83,7 +91,19 @@ function toneClasses(tone: string) {
   }
 }
 
-function EvidenceDot({ state }: { state: EvidenceStep['state'] }) {
+/** Tint for the "Playing now" card — semantic, never brand. */
+const REPORTED_TONE: Record<ReportedState, { wrap: string; ink: string }> = {
+  confirmed: { wrap: 'border-emerald-200 bg-emerald-50/40', ink: 'text-emerald-800' },
+  playing: { wrap: 'border-slate-200', ink: 'text-slate-800' },
+  behind: { wrap: 'border-amber-200 bg-amber-50/40', ink: 'text-amber-800' },
+  idle: { wrap: 'border-slate-200', ink: 'text-slate-700' },
+  paused: { wrap: 'border-slate-200', ink: 'text-slate-700' },
+  stalled: { wrap: 'border-amber-200 bg-amber-50/40', ink: 'text-amber-800' },
+  emergency: { wrap: 'border-rose-200 bg-rose-50/40', ink: 'text-rose-800' },
+  unknown: { wrap: 'border-slate-200', ink: 'text-slate-500' },
+};
+
+function DeliveryDot({ state }: { state: Delivery['state'] }) {
   if (state === 'ok') {
     return (
       <span className="w-7 h-7 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0">
@@ -95,13 +115,6 @@ function EvidenceDot({ state }: { state: EvidenceStep['state'] }) {
     return (
       <span className="w-7 h-7 rounded-full bg-amber-500 text-white flex items-center justify-center shrink-0">
         <Clock className="w-4 h-4" aria-hidden />
-      </span>
-    );
-  }
-  if (state === 'not-instrumented') {
-    return (
-      <span className="w-7 h-7 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center shrink-0">
-        <Minus className="w-4 h-4" aria-hidden />
       </span>
     );
   }
@@ -314,7 +327,7 @@ export function ScreenDetailDrawer({
   };
 
   const online = screen.status === 'ONLINE';
-  const evidence = useMemo(() => deriveEvidenceChain(screen, status, now), [screen, status, now]);
+  const delivery = useMemo(() => deriveDelivery(screen, status, now), [screen, status, now]);
   const ackedAtMs = useMemo(() => {
     const ev = events.data?.events?.find((e) => e.kind === 'refresh-acked');
     return ev ? msOf(ev.createdAt) : null;
@@ -570,10 +583,14 @@ export function ScreenDetailDrawer({
           {/* ── OVERVIEW ───────────────────────────────────────── */}
           {tab === 'overview' && (
             <div id="screen-panel-overview" role="tabpanel" aria-labelledby="screen-tab-overview" className="p-5 space-y-5">
-              {/* Expected vs REPORTED CONTENT — never "on screen" (§10). */}
+              {/* Scheduled vs "Playing now" — never "on screen" (§10): the
+                  dashboard cannot see the panel. The right-hand card is the
+                  player's own report, matched against the schedule
+                  (2026-09-24 — Greg: "it doesnt show that the content was
+                  pushed but i know its playing"). */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="rounded-xl border border-slate-200 p-3">
-                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Expected</p>
+                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Scheduled</p>
                   <p className="mt-1 text-[13px] font-bold text-slate-800 leading-snug break-words">
                     {expected.name ?? 'Nothing scheduled'}
                   </p>
@@ -600,59 +617,36 @@ export function ScreenDetailDrawer({
                   </p>
                 </div>
 
-                <div className="rounded-xl border border-slate-200 p-3">
-                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Reported content</p>
-                  <p
-                    className={`mt-1 text-[13px] font-bold leading-snug ${
-                      reported.state === 'confirmed' ? 'text-emerald-700'
-                        : reported.state === 'behind' ? 'text-rose-700' : 'text-slate-500'
-                    }`}
-                  >
+                <div className={`rounded-xl border p-3 ${REPORTED_TONE[reported.state].wrap}`} data-reported-state={reported.state}>
+                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Playing now</p>
+                  <p className={`mt-1 text-[13px] font-bold leading-snug break-words ${REPORTED_TONE[reported.state].ink}`}>
                     {reported.line}
                   </p>
-                  <div className="mt-2 w-full aspect-video rounded-lg bg-slate-100 border border-dashed border-slate-300 flex items-center justify-center px-2 text-center">
-                    <span className="text-[10px] font-bold text-slate-400 leading-tight">
-                      No picture from the device
-                    </span>
-                  </div>
-                  <p className="mt-1.5 text-[10.5px] font-semibold text-slate-400 leading-snug">
-                    {reported.detail}
-                  </p>
+                  {reported.detail && (
+                    <p className="mt-1.5 text-[10.5px] font-semibold text-slate-500 leading-snug">{reported.detail}</p>
+                  )}
+                  {reported.app.line && (
+                    <p
+                      className={`mt-2 text-[10.5px] font-semibold leading-snug ${
+                        reported.app.state === 'updating' ? 'text-amber-700' : 'text-slate-400'
+                      }`}
+                    >
+                      {reported.app.line}
+                    </p>
+                  )}
                 </div>
               </div>
               <p className="text-[11px] font-semibold text-slate-400 -mt-2">
-                This is what the player told us it is running — not a picture of the panel.
+                As reported by the player — we can&apos;t see the panel itself.
               </p>
 
-              {/* Evidence chain — Sent → Rendered → Physical display. */}
-              <div className="rounded-xl border border-slate-200 p-3.5">
-                <SectionLabel>How far the update got</SectionLabel>
-                <ol className="flex items-start">
-                  {evidence.map((step, i) => (
-                    <li key={step.key} className="flex-1 min-w-0 flex flex-col items-center text-center">
-                      <div className="flex items-center w-full">
-                        <span className={`h-0.5 flex-1 ${i === 0 ? 'bg-transparent' : evidence[i - 1].state === 'ok' ? 'bg-emerald-300' : 'bg-slate-200'}`} aria-hidden />
-                        <EvidenceDot state={step.state} />
-                        <span className={`h-0.5 flex-1 ${i === evidence.length - 1 ? 'bg-transparent' : step.state === 'ok' ? 'bg-emerald-300' : 'bg-slate-200'}`} aria-hidden />
-                      </div>
-                      <p className="mt-1.5 text-[11px] font-bold text-slate-700 leading-tight">{step.label}</p>
-                      {step.state === 'not-instrumented' && (
-                        <p className="text-[10px] font-bold text-slate-400">Not instrumented</p>
-                      )}
-                    </li>
-                  ))}
-                </ol>
-                <ul className="mt-3 space-y-1">
-                  {evidence.map((step) => (
-                    <li key={step.key} className="text-[11px] font-semibold text-slate-500 leading-snug">
-                      <span className="text-slate-700">{step.label}:</span> {step.note}
-                    </li>
-                  ))}
-                </ul>
-                <p className="mt-2.5 pt-2.5 border-t border-slate-100 text-[11px] font-semibold text-slate-400 leading-snug">
-                  Software render evidence only · Physical display not verified. There is no separate
-                  download step: this player does not report one, so we do not draw one.
-                </p>
+              {/* Delivery — one sentence (2026-09-24), not a stepper. */}
+              <div className="rounded-xl border border-slate-200 p-3.5 flex items-start gap-3">
+                <DeliveryDot state={delivery.state} />
+                <div className="min-w-0">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Delivery</p>
+                  <p className="mt-0.5 text-[12.5px] font-semibold text-slate-700 leading-snug">{delivery.line}</p>
+                </div>
               </div>
 
               {/* Recovery — only while something is genuinely in flight. */}
