@@ -20,6 +20,7 @@ import { mintUploadRenewTicket, verifyUploadRenewTicket } from './upload-renew-t
 import { VideoTranscodeService } from '../storage/video-transcode/video-transcode.service';
 import { StorageQuotaService } from './storage-quota.service';
 import { VideoPosterService } from '../storage/video-poster.service';
+import { retainedOriginalPath } from '../storage/video-remux';
 import { EmailService } from '../email/email.service';
 import { Logger } from '@nestjs/common';
 import { AiAltTextService, AiAltTextQuotaError } from '../ai/ai-alt-text.service';
@@ -1792,6 +1793,11 @@ export class AssetsController {
    * keyframe. Both are never-throw inside the service, so this endpoint can
    * only fail on the asset lookup. Idempotent: the service's persist guards
    * make a second click a no-op write.
+   *
+   * An MP4 whose index sits at the END (the grade's "no fast start") is then
+   * re-muxed losslessly in the BACKGROUND (`remux: 'async'`, video-remux.ts):
+   * the response says `remux: 'scheduled'` and the row moves onto the
+   * fast-start copy seconds later. Never for emergency content.
    */
   @Post(':id/check-playback')
   @RequireRoles(
@@ -1832,13 +1838,18 @@ export class AssetsController {
         HttpStatus.BAD_REQUEST,
       );
     }
-    const result = await this.videoPoster.processVideo({
-      assetId: asset.id,
-      tenantId: req.user.tenantId,
-      mimeType: asset.mimeType,
-      storagePath,
-      ext: extname(asset.originalName || '') || null,
-    });
+    const result = await this.videoPoster.processVideo(
+      {
+        assetId: asset.id,
+        tenantId: req.user.tenantId,
+        mimeType: asset.mimeType,
+        storagePath,
+        ext: extname(asset.originalName || '') || null,
+      },
+      // The probe answer comes back now; a file whose index sits at the end
+      // is re-muxed right after, in the background.
+      { remux: 'async' },
+    );
     const fresh = await this.prisma.client.asset.findFirst({
       where: { id, tenantId: req.user.tenantId },
       include: {
@@ -1849,6 +1860,7 @@ export class AssetsController {
     return {
       probed: result.probed,
       posterUrl: result.posterUrl,
+      remux: result.remux,
       asset: fresh ?? asset,
     };
   }
@@ -2117,6 +2129,28 @@ export class AssetsController {
     if (posterUrl) {
       const posterPath = this.storage.extractPath(posterUrl);
       if (posterPath) await this.storage.delete(posterPath).catch(() => undefined);
+    }
+
+    // 2026-09-24 — and the original a fast-start re-mux kept beside its copy
+    // (VideoPosterService keeps it on purpose: widget configs and other rows
+    // hold copies of its URL). The asset owned it, so it goes with the asset —
+    // only in the shape the swap records, and never while another row still
+    // points at it (a count that cannot be read counts as "still used").
+    const keptOriginal = retainedOriginalPath(
+      asset.processingMeta,
+      asset.tenantId,
+    );
+    if (keptOriginal) {
+      const stillUsed = await this.prisma.client.asset
+        .count({
+          where: {
+            fileUrl: this.storage.publicUrlForPath(keptOriginal),
+            id: { not: id },
+          },
+        })
+        .catch(() => 1);
+      if (stillUsed === 0)
+        await this.storage.delete(keptOriginal).catch(() => undefined);
     }
 
     // 2026-05-23 launch audit P1: forensic trail for asset deletes.

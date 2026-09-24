@@ -36,6 +36,7 @@ function makeController(rows: any[]) {
       return Promise.resolve({
         probed: true,
         posterUrl: `${PREFIX}t1/posters/x.jpg`,
+        remux: 'scheduled',
       });
     }),
   } as any;
@@ -116,14 +117,19 @@ describe('POST /assets/:id/check-playback', () => {
       },
     ]);
     const out = await controller.checkPlayback(req, 'a1');
-    expect(videoPoster.processVideo).toHaveBeenCalledWith({
-      assetId: 'a1',
-      tenantId: 't1',
-      mimeType: 'video/mp4',
-      storagePath: 't1/uploads/v.mp4',
-      ext: '.mp4',
-    });
+    expect(videoPoster.processVideo).toHaveBeenCalledWith(
+      {
+        assetId: 'a1',
+        tenantId: 't1',
+        mimeType: 'video/mp4',
+        storagePath: 't1/uploads/v.mp4',
+        ext: '.mp4',
+      },
+      // The probe answer now; a moov-last file is re-muxed in the background.
+      { remux: 'async' },
+    );
     expect(out.probed).toBe(true);
+    expect(out.remux).toBe('scheduled');
     expect(out.asset.processingMeta).toMatchObject({
       probe: { codec: 'h264' },
     });

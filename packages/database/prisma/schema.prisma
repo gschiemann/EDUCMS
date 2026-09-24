@@ -1680,6 +1680,28 @@ model Asset {
   // does, `processedDimensions: null`). So on a video row these keys always
   // describe the file at `fileUrl`; the upload's own size lives in
   // `transcode` and on the job row (`video_transcode_jobs.details.dimsIn`).
+  // 2026-09-24 — FAST START. When the probe reads an MP4 whose index (`moov`)
+  // sits after its samples, VideoPosterService re-muxes it LOSSLESSLY
+  // (apps/api/src/storage/video-remux.ts: `-c copy -movflags +faststart`, no
+  // re-encode), stores the copy beside the original as
+  // `<basename>-faststart-<token>.mp4`, and moves THIS row onto it in one
+  // tenant-scoped write guarded by the old file_url (fileUrl, fileSize,
+  // fileHash, processingMeta). `probe` is then re-read from the NEW file, so
+  // `probe.fastStart: true` is measured, and one key is added:
+  //   {
+  //     remux: {
+  //       at: ISO8601 string,           // when the swap was written
+  //       reason: 'fast-start',
+  //       previousStoragePath: string,  // the ORIGINAL object — KEPT in storage
+  //                                     // (widget configs and other rows hold
+  //                                     // copies of its URL); deleted with the
+  //                                     // asset (DELETE /assets/:id)
+  //       bytesBefore: number,
+  //       bytesAfter: number
+  //     }
+  //   }
+  // Present = never re-muxed again. Never written for emergency content, for a
+  // file another asset row shares, or while VIDEO_FASTSTART_REMUX_DISABLED=1.
   // Nullable + additive — every existing row stays untouched. Read it
   // (rarely) to diagnose "why is this asset 4 MB?" or to drive a future
   // "X GB of images saved this month" dashboard tile.

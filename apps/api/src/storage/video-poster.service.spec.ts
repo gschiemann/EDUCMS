@@ -8,7 +8,29 @@
  * `posterUrl` NULL / `processingMeta` untouched rather than propagating, and
  * that a failure in ONE job never skips the OTHER.
  */
+import { Logger } from '@nestjs/common';
+import { createHash } from 'crypto';
+import type { PrismaService } from '../prisma/prisma.service';
+import type { SupabaseStorageService } from './supabase-storage.service';
+import {
+  extractVideoPosterFromBuffer,
+  extractVideoPosterFromUrl,
+} from './video-poster';
 import { VideoPosterService } from './video-poster.service';
+import {
+  needsProbe,
+  probeVideoFromBuffer,
+  probeVideoFromUrl,
+  type ProbeSuccess,
+} from './video-probe';
+import { remuxFastStart, type RemuxOutcome } from './video-remux';
+
+// The fast-start re-mux's binary half is faked; its pure helpers stay real.
+jest.mock('./video-remux', () => {
+  const actual =
+    jest.requireActual<typeof import('./video-remux')>('./video-remux');
+  return { ...actual, remuxFastStart: jest.fn() };
+});
 
 jest.mock('./video-poster', () => {
   const actual = jest.requireActual('./video-poster');
@@ -407,6 +429,7 @@ describe('dimensions probe on upload — the happy path', () => {
     expect(result).toEqual({
       probed: true,
       posterUrl: expect.stringContaining('/posters/'),
+      remux: 'not-needed',
     });
     expect(storage.download).toHaveBeenCalledTimes(1); // memoised across probe + poster
     expect(probeFromBuffer).toHaveBeenCalledWith(bytes, '.mp4');
@@ -582,7 +605,11 @@ describe('poster and probe are independent — one failing never skips the other
       ext: '.mp4',
     });
 
-    expect(result).toEqual({ probed: true, posterUrl: null });
+    expect(result).toEqual({
+      probed: true,
+      posterUrl: null,
+      remux: 'not-needed',
+    });
     expect(writtenMeta(prisma).originalDimensions).toEqual({
       w: 1920,
       h: 1080,
@@ -595,7 +622,7 @@ describe('poster and probe are independent — one failing never skips the other
     const { service } = make();
     await expect(
       service.processVideo({ ...JOB, buffer: JPEG }),
-    ).resolves.toEqual({ probed: true, posterUrl: null });
+    ).resolves.toEqual({ probed: true, posterUrl: null, remux: 'not-needed' });
   });
 
   it('a probe that fails (or throws) does not skip the poster', async () => {
@@ -684,5 +711,679 @@ describe('2026-09-23 — the download fallback is bounded (direct uploads reach 
     const { service } = make({ storage });
     await service.generateForAsset({ ...JOB, storagePath: 'tenant-1/abc.mp4' });
     expect(storage.download).toHaveBeenCalledWith('tenant-1/abc.mp4');
+  });
+});
+
+// ── the fast-start re-mux ───────────────────────────────────────────────────
+// An MP4 whose index sits at the tail is re-muxed (video-remux.ts, faked here)
+// and the row moved onto the copy. Everything below uses TYPED fakes — no
+// `any` — over an in-memory asset table that the fake Prisma really updates,
+// so every test reads exactly what the swap left behind.
+
+const remuxMock = jest.mocked(remuxFastStart);
+const probeBufferMock = jest.mocked(probeVideoFromBuffer);
+const probeUrlMock = jest.mocked(probeVideoFromUrl);
+const posterBufferMock = jest.mocked(extractVideoPosterFromBuffer);
+const posterUrlMock = jest.mocked(extractVideoPosterFromUrl);
+
+const OLD_PATH = 'tenant-1/0c5e-clip.mp4';
+const OLD_URL = `${PREFIX}${OLD_PATH}`;
+/** The upload as it arrived: samples first, index at the tail. */
+const ORIGINAL = Buffer.from('original bytes: mdat, then moov');
+/** What the re-mux hands back: index first. */
+const FIXED = Buffer.from('re-muxed bytes: moov, then mdat');
+const TAIL_PROBE: ProbeSuccess = { ...PROBE_OK, ok: true, fastStart: false };
+const FRONT_PROBE: ProbeSuccess = { ...PROBE_OK, ok: true, fastStart: true };
+const REMUX_OK: RemuxOutcome = {
+  ok: true,
+  buffer: FIXED,
+  bytesBefore: ORIGINAL.length,
+  bytesAfter: FIXED.length,
+};
+/** The multipart upload: the bytes are in hand. */
+const BYTES_JOB = { ...JOB, buffer: ORIGINAL, ext: '.mp4' };
+/** Presign, the auto-heal cron and "Check this file": only the stored path. */
+const PATH_JOB = { ...JOB, storagePath: OLD_PATH, ext: '.mp4' };
+
+interface FakeRow {
+  id: string;
+  tenantId: string;
+  fileUrl: string;
+  fileSize: number | null;
+  fileHash: string | null;
+  processingMeta: unknown;
+}
+interface RowWhere {
+  id: string;
+  tenantId: string;
+  fileUrl?: string;
+}
+interface Query {
+  where: Record<string, unknown>;
+}
+interface Found {
+  id: string;
+}
+
+const assetRow = (over: Partial<FakeRow> = {}): FakeRow => ({
+  id: 'asset-1',
+  tenantId: 'tenant-1',
+  fileUrl: OLD_URL,
+  fileSize: ORIGINAL.length,
+  fileHash: 'sha-of-the-original',
+  processingMeta: null,
+  ...over,
+});
+
+const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
+const orOf = (q: Query): unknown[] => (q.where as { OR: unknown[] }).OR;
+
+describe('the fast-start re-mux — an MP4 whose index sits at the tail', () => {
+  const spies: Array<{ mockRestore(): void }> = [];
+
+  /**
+   * One service over an in-memory asset table. `swap` makes the SWAP write
+   * (the one that moves `fileUrl`) misbehave: throw before committing, throw
+   * after committing (a dropped connection), or throw and leave every later
+   * read failing too.
+   */
+  function remuxWorld(
+    rows: FakeRow[] = [assetRow()],
+    opts: {
+      swap?: 'throws' | 'throws-after-commit' | 'throws-unreadable';
+    } = {},
+  ) {
+    let unreadable = false;
+    const find = (w: RowWhere) =>
+      rows.find(
+        (r) =>
+          r.id === w.id &&
+          r.tenantId === w.tenantId &&
+          (w.fileUrl === undefined || r.fileUrl === w.fileUrl),
+      );
+    const asset = {
+      findFirst: jest.fn((args: { where: RowWhere }) => {
+        if (unreadable) return Promise.reject(new Error('connection reset'));
+        const row = find(args.where);
+        return Promise.resolve(row ? { ...row } : null);
+      }),
+      updateMany: jest.fn(
+        (args: { where: RowWhere; data: Record<string, unknown> }) => {
+          const isSwap = 'fileUrl' in args.data;
+          if (isSwap && opts.swap === 'throws')
+            return Promise.reject(new Error('pool timeout'));
+          if (isSwap && opts.swap === 'throws-unreadable') {
+            unreadable = true;
+            return Promise.reject(new Error('connection reset'));
+          }
+          const row = find(args.where);
+          if (row) Object.assign(row, args.data);
+          if (isSwap && opts.swap === 'throws-after-commit')
+            return Promise.reject(new Error('connection reset after commit'));
+          return Promise.resolve({ count: row ? 1 : 0 });
+        },
+      ),
+      count: jest.fn(
+        (args: { where: { fileUrl: string; id: { not: string } } }) =>
+          Promise.resolve(
+            rows.filter(
+              (r) =>
+                r.fileUrl === args.where.fileUrl && r.id !== args.where.id.not,
+            ).length,
+          ),
+      ),
+    };
+    const none = () =>
+      jest.fn<Promise<Found | null>, [Query]>().mockResolvedValue(null);
+    const db = {
+      asset,
+      playlistItem: {
+        findMany: jest
+          .fn<Promise<Array<{ playlistId: string }>>, [Query]>()
+          .mockResolvedValue([]),
+      },
+      playlist: { findFirst: none() },
+      tenant: { findFirst: none() },
+      screen: { findFirst: none() },
+      screenEmergencyOverride: { findFirst: none() },
+      emergencyMessage: { findFirst: none() },
+    };
+    const uploads: Array<{ path: string; bytes: Buffer; mime: string }> = [];
+    const deleted: string[] = [];
+    const storage = {
+      upload: jest.fn((p: string, bytes: Buffer, mime: string) => {
+        uploads.push({ path: p, bytes, mime });
+        return Promise.resolve(`${PREFIX}${p}`);
+      }),
+      delete: jest.fn((p: string) => {
+        deleted.push(p);
+        return Promise.resolve();
+      }),
+      download: jest.fn((p: string) =>
+        Promise.resolve(p === OLD_PATH ? ORIGINAL : null),
+      ),
+      publicUrlForPath: (p: string) => `${PREFIX}${p}`,
+      extractPath: (u: string) =>
+        u.startsWith(PREFIX) ? u.slice(PREFIX.length) : null,
+    };
+    const service = new VideoPosterService(
+      { client: db } as unknown as PrismaService,
+      storage as unknown as SupabaseStorageService,
+    );
+    const log = jest
+      .spyOn(Logger.prototype, 'log')
+      .mockImplementation(() => undefined);
+    const warn = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
+    spies.push(log, warn);
+    return {
+      service,
+      db,
+      storage,
+      rows,
+      uploads,
+      deleted,
+      /** Every write that moved a row's file (the probe's writes never do). */
+      swaps: () =>
+        asset.updateMany.mock.calls
+          .map((c) => c[0])
+          .filter((a) => 'fileUrl' in a.data),
+      /** Every log / warn line, as text. */
+      lines: () =>
+        [...log.mock.calls, ...warn.mock.calls].map((c: unknown[]) =>
+          String(c[0]),
+        ),
+    };
+  }
+
+  beforeEach(() => {
+    remuxMock.mockReset();
+    remuxMock.mockResolvedValue(REMUX_OK);
+    posterBufferMock.mockResolvedValue({ ok: false, reason: 'no poster here' });
+    posterUrlMock.mockResolvedValue({ ok: false, reason: 'no poster here' });
+    // The ORIGINAL reads index-at-the-tail; the re-muxed copy, index-in-front.
+    probeBufferMock.mockImplementation((bytes) =>
+      Promise.resolve(bytes === FIXED ? FRONT_PROBE : TAIL_PROBE),
+    );
+    probeUrlMock.mockImplementation((url) =>
+      Promise.resolve(url.includes('-faststart-') ? FRONT_PROBE : TAIL_PROBE),
+    );
+  });
+
+  afterEach(() => {
+    while (spies.length > 0) spies.pop()?.mockRestore();
+    delete process.env.VIDEO_FASTSTART_REMUX_DISABLED;
+  });
+
+  it('re-muxes after the probe reads the index at the tail, then moves the row onto the copy in ONE tenant-scoped write guarded by the old URL', async () => {
+    const w = remuxWorld();
+
+    const result = await w.service.processVideo(BYTES_JOB, { remux: 'sync' });
+
+    expect(result).toEqual({ probed: true, posterUrl: null, remux: 'remuxed' });
+    // A lossless re-mux of the bytes the upload already holds — no download.
+    expect(remuxMock).toHaveBeenCalledWith({ buffer: ORIGINAL, ext: '.mp4' });
+    expect(w.storage.download).not.toHaveBeenCalled();
+    // The probe's facts were saved BEFORE the re-mux ran.
+    expect(w.db.asset.updateMany.mock.invocationCallOrder[0]).toBeLessThan(
+      remuxMock.mock.invocationCallOrder[0],
+    );
+    // The copy sits beside the original, under a fresh name, as an MP4.
+    expect(w.uploads).toHaveLength(1);
+    const copy = w.uploads[0];
+    expect(copy.path).toMatch(
+      /^tenant-1\/0c5e-clip-faststart-[0-9a-f]{8}\.mp4$/,
+    );
+    expect(copy.bytes).toBe(FIXED);
+    expect(copy.mime).toBe('video/mp4');
+    // ONE swap: tenant-scoped, and guarded by the URL the re-mux started from.
+    const swaps = w.swaps();
+    expect(swaps).toHaveLength(1);
+    expect(swaps[0].where).toEqual({
+      id: 'asset-1',
+      tenantId: 'tenant-1',
+      fileUrl: OLD_URL,
+    });
+    expect(swaps[0].data).toMatchObject({
+      fileUrl: `${PREFIX}${copy.path}`,
+      fileSize: FIXED.length,
+      // The player's cache refuses bytes that do not match this digest.
+      fileHash: createHash('sha256').update(FIXED).digest('hex'),
+    });
+    const row = w.rows[0];
+    expect(row.fileUrl).toBe(`${PREFIX}${copy.path}`);
+    expect(row.processingMeta).toMatchObject({
+      originalDimensions: { w: 1920, h: 1080 },
+      probe: { probeVersion: 2, fastStart: true, codec: 'h264' },
+      remux: {
+        reason: 'fast-start',
+        previousStoragePath: OLD_PATH,
+        bytesBefore: ORIGINAL.length,
+        bytesAfter: FIXED.length,
+      },
+    });
+    const { remux } = row.processingMeta as { remux: { at: string } };
+    expect(Number.isNaN(Date.parse(remux.at))).toBe(false);
+    // Stable: the auto-heal cron's predicate (needsProbe is its in-process
+    // twin) never selects the swapped row again.
+    expect(needsProbe(row.processingMeta)).toBe(false);
+    expect(w.lines().some((l) => l.includes('index moved to the front'))).toBe(
+      true,
+    );
+  });
+
+  it('KEEPS the original object: widget configs, fleet rows and emergency columns hold copies of its URL', async () => {
+    const w = remuxWorld();
+    await w.service.processVideo(BYTES_JOB, { remux: 'sync' });
+    expect(w.swaps()).toHaveLength(1);
+    expect(w.storage.delete).not.toHaveBeenCalled();
+  });
+
+  it("a swap that matches no row (another replica moved it first) changes nothing and deletes ONLY this attempt's copy", async () => {
+    const w = remuxWorld();
+    const winner = `${PREFIX}tenant-1/0c5e-clip-faststart-0a0b0c0d.mp4`;
+    remuxMock.mockImplementationOnce(() => {
+      w.rows[0].fileUrl = winner; // the other replica's swap lands meanwhile
+      return Promise.resolve(REMUX_OK);
+    });
+
+    const result = await w.service.processVideo(BYTES_JOB, { remux: 'sync' });
+
+    expect(result.remux).toBe('skipped');
+    expect(w.swaps()).toHaveLength(1); // attempted, guarded, matched nothing
+    expect(w.rows[0].fileUrl).toBe(winner);
+    // Never the original, never the winner's copy — only our own.
+    expect(w.deleted).toEqual([w.uploads[0].path]);
+  });
+
+  it('an asset deleted during the re-mux gets no swap, and the copy is dropped', async () => {
+    const w = remuxWorld();
+    remuxMock.mockImplementationOnce(() => {
+      w.rows.length = 0;
+      return Promise.resolve(REMUX_OK);
+    });
+    await expect(
+      w.service.processVideo(BYTES_JOB, { remux: 'sync' }),
+    ).resolves.toMatchObject({ remux: 'skipped' });
+    expect(w.swaps()).toEqual([]);
+    expect(w.deleted).toEqual([w.uploads[0].path]);
+  });
+
+  it.each([
+    ['a protected (system-owned) emergency playlist', 'playlist'],
+    ['a tenant emergency / panic playlist', 'tenant'],
+    ['a per-screen emergency playlist', 'screen'],
+  ] as const)('never re-muxes a video in %s', async (_label, model) => {
+    const w = remuxWorld();
+    w.db.playlistItem.findMany.mockResolvedValue([{ playlistId: 'pl-lock' }]);
+    w.db[model].findFirst.mockResolvedValue({ id: `${model}-1` });
+
+    const result = await w.service.processVideo(BYTES_JOB, { remux: 'sync' });
+
+    expect(result.remux).toBe('skipped');
+    expect(remuxMock).not.toHaveBeenCalled();
+    expect(w.uploads).toEqual([]);
+    expect(w.swaps()).toEqual([]);
+    expect(w.rows[0].fileUrl).toBe(OLD_URL);
+    expect(w.lines().some((l) => l.includes('emergency content'))).toBe(true);
+  });
+
+  it.each([
+    ["a screen's emergency media (a raw URL copy)", 'screen'],
+    ['the media of a live per-screen override', 'screenEmergencyOverride'],
+    ['the media of a live emergency message', 'emergencyMessage'],
+  ] as const)('never re-muxes a video that is %s', async (_label, model) => {
+    const w = remuxWorld();
+    w.db[model].findFirst.mockResolvedValue({ id: `${model}-1` });
+    await expect(
+      w.service.processVideo(BYTES_JOB, { remux: 'sync' }),
+    ).resolves.toMatchObject({ remux: 'skipped' });
+    expect(remuxMock).not.toHaveBeenCalled();
+    expect(w.rows[0].fileUrl).toBe(OLD_URL);
+  });
+
+  it('reads every column the never-evict cache tier is built from — across tenants, not just this one', async () => {
+    const w = remuxWorld();
+    w.db.playlistItem.findMany.mockResolvedValue([
+      { playlistId: 'pl-1' },
+      { playlistId: 'pl-1' },
+    ]);
+
+    await w.service.processVideo(BYTES_JOB, { remux: 'sync' });
+
+    expect(w.db.playlistItem.findMany.mock.calls[0][0].where).toEqual({
+      assetId: 'asset-1',
+    });
+    expect(w.db.playlist.findFirst.mock.calls[0][0].where).toEqual({
+      id: { in: ['pl-1'] },
+      isProtected: true,
+    });
+    const tenantQuery = w.db.tenant.findFirst.mock.calls[0][0];
+    expect(orOf(tenantQuery)).toHaveLength(14);
+    expect(orOf(tenantQuery)).toContainEqual({
+      panicLockdownPlaylistId: { in: ['pl-1'] },
+    });
+    expect(orOf(tenantQuery)).toContainEqual({
+      emergencyPortraitPlaylistId: { in: ['pl-1'] },
+    });
+    // A district playlist can hold a school's asset: no tenant filter here.
+    expect(tenantQuery.where).not.toHaveProperty('id');
+    const screenPlaylists = w.db.screen.findFirst.mock.calls[0][0];
+    expect(orOf(screenPlaylists)).toHaveLength(12);
+    expect(orOf(screenPlaylists)).toContainEqual({
+      emergencyMedicalPortraitPlaylistId: { in: ['pl-1'] },
+    });
+    const screenMedia = w.db.screen.findFirst.mock.calls[1][0];
+    expect(orOf(screenMedia)).toHaveLength(12);
+    expect(orOf(screenMedia)).toContainEqual({
+      emergencyLockdownAssetUrl: OLD_URL,
+    });
+  });
+
+  it('fails CLOSED: an emergency check that cannot run leaves the file alone', async () => {
+    const w = remuxWorld();
+    w.db.playlistItem.findMany.mockRejectedValue(new Error('pool timeout'));
+    await expect(
+      w.service.processVideo(BYTES_JOB, { remux: 'sync' }),
+    ).resolves.toMatchObject({ remux: 'skipped' });
+    expect(remuxMock).not.toHaveBeenCalled();
+    expect(
+      w.lines().some((l) => l.includes('the emergency check could not run')),
+    ).toBe(true);
+  });
+
+  it('looks again right before the swap: a video that became emergency content during the re-mux is left alone', async () => {
+    const w = remuxWorld();
+    w.db.screen.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 'gym-wing' });
+
+    const result = await w.service.processVideo(BYTES_JOB, { remux: 'sync' });
+
+    expect(result.remux).toBe('skipped');
+    expect(w.uploads).toHaveLength(1);
+    expect(w.deleted).toEqual([w.uploads[0].path]);
+    expect(w.swaps()).toEqual([]);
+    expect(w.rows[0].fileUrl).toBe(OLD_URL);
+  });
+
+  it('never re-muxes a file another asset row also points at — fleet distribution: one object, a row per location', async () => {
+    const w = remuxWorld([
+      assetRow(),
+      assetRow({ id: 'asset-school-2', tenantId: 'school-2' }),
+    ]);
+    await expect(
+      w.service.processVideo(BYTES_JOB, { remux: 'sync' }),
+    ).resolves.toMatchObject({ remux: 'skipped' });
+    expect(remuxMock).not.toHaveBeenCalled();
+    // A GLOBAL count: the other row lives in another tenant.
+    expect(w.db.asset.count).toHaveBeenCalledWith({
+      where: { fileUrl: OLD_URL, id: { not: 'asset-1' } },
+    });
+  });
+
+  it.each([
+    ['a linked URL', 'https://cdn.example.com/clip.mp4'],
+    ["a file in another tenant's folder", `${PREFIX}district-1/0c5e-clip.mp4`],
+  ])('never re-muxes %s', async (_label, fileUrl) => {
+    const w = remuxWorld([assetRow({ fileUrl })]);
+    await expect(
+      w.service.processVideo(BYTES_JOB, { remux: 'sync' }),
+    ).resolves.toMatchObject({ remux: 'skipped' });
+    expect(remuxMock).not.toHaveBeenCalled();
+    expect(w.rows[0].fileUrl).toBe(fileUrl);
+  });
+
+  it('skips when the row no longer points at the file that was probed', async () => {
+    const w = remuxWorld();
+    await expect(
+      w.service.processVideo(
+        { ...JOB, storagePath: 'tenant-1/some-other.mp4', ext: '.mp4' },
+        { remux: 'sync' },
+      ),
+    ).resolves.toMatchObject({ remux: 'skipped' });
+    expect(remuxMock).not.toHaveBeenCalled();
+  });
+
+  it("never re-muxes a row twice — and a late probe of the ORIGINAL never overwrites the copy's facts", async () => {
+    const w = remuxWorld();
+    await expect(
+      w.service.processVideo(BYTES_JOB, { remux: 'sync' }),
+    ).resolves.toMatchObject({ remux: 'remuxed' });
+    const settled = JSON.stringify(w.rows[0]);
+
+    // The original's bytes again (a retried upload job) and the original's
+    // path (a "Check this file" that read the old URL just before the swap):
+    // their facts describe a file the row no longer plays — nothing written.
+    for (const job of [BYTES_JOB, PATH_JOB]) {
+      await expect(
+        w.service.processVideo(job, { remux: 'sync' }),
+      ).resolves.toMatchObject({ probed: false, remux: 'not-needed' });
+    }
+    expect(JSON.stringify(w.rows[0])).toBe(settled);
+
+    // The copy itself (the cron, a later check): fast-start, nothing to do.
+    await expect(
+      w.service.processVideo(
+        { ...JOB, storagePath: w.uploads[0].path, ext: '.mp4' },
+        { remux: 'sync' },
+      ),
+    ).resolves.toMatchObject({ probed: true, remux: 'not-needed' });
+
+    expect(remuxMock).toHaveBeenCalledTimes(1);
+    expect(w.uploads).toHaveLength(1);
+    expect(w.swaps()).toHaveLength(1);
+    expect(w.rows[0].processingMeta).toMatchObject({
+      probe: { fastStart: true },
+      remux: { previousStoragePath: OLD_PATH },
+    });
+  });
+
+  it('a row that carries a remux record is never re-muxed again, whatever a probe says', async () => {
+    const w = remuxWorld([
+      assetRow({
+        processingMeta: {
+          remux: {
+            reason: 'fast-start',
+            previousStoragePath: 'tenant-1/older.mp4',
+          },
+        },
+      }),
+    ]);
+    await expect(
+      w.service.processVideo(PATH_JOB, { remux: 'sync' }),
+    ).resolves.toMatchObject({ probed: true, remux: 'skipped' });
+    expect(remuxMock).not.toHaveBeenCalled();
+    expect(w.lines().some((l) => l.includes('already fast-start'))).toBe(true);
+  });
+
+  it('VIDEO_FASTSTART_REMUX_DISABLED=1 leaves every file exactly as it is', async () => {
+    process.env.VIDEO_FASTSTART_REMUX_DISABLED = '1';
+    const w = remuxWorld();
+    await expect(
+      w.service.processVideo(BYTES_JOB, { remux: 'sync' }),
+    ).resolves.toEqual({ probed: true, posterUrl: null, remux: 'skipped' });
+    expect(remuxMock).not.toHaveBeenCalled();
+    expect(w.rows[0].fileUrl).toBe(OLD_URL);
+    expect(
+      w.lines().some((l) => l.includes('VIDEO_FASTSTART_REMUX_DISABLED=1')),
+    ).toBe(true);
+  });
+
+  it("'skip' probes and grabs the poster but never re-muxes", async () => {
+    const w = remuxWorld();
+    await expect(
+      w.service.processVideo(BYTES_JOB, { remux: 'skip' }),
+    ).resolves.toEqual({ probed: true, posterUrl: null, remux: 'skipped' });
+    expect(remuxMock).not.toHaveBeenCalled();
+    expect(w.rows[0].processingMeta).toMatchObject({
+      probe: { fastStart: false },
+    });
+  });
+
+  it('a re-mux that fails leaves fileUrl AND meta exactly as the probe left them — no failure stamp, never a throw', async () => {
+    const w = remuxWorld();
+    remuxMock.mockResolvedValue({
+      ok: false,
+      reason: 'ffmpeg exited 1: Invalid data found',
+    });
+
+    await expect(
+      w.service.processVideo(BYTES_JOB, { remux: 'sync' }),
+    ).resolves.toEqual({ probed: true, posterUrl: null, remux: 'failed' });
+
+    const row = w.rows[0];
+    expect(row.fileUrl).toBe(OLD_URL);
+    expect(row.fileHash).toBe('sha-of-the-original');
+    expect(row.processingMeta).toMatchObject({ probe: { fastStart: false } });
+    expect(row.processingMeta).not.toHaveProperty('remux');
+    expect(row.processingMeta).not.toHaveProperty('probeFailed');
+    expect(w.uploads).toEqual([]);
+    expect(w.swaps()).toEqual([]);
+    expect(
+      w
+        .lines()
+        .some((l) =>
+          l.includes('re-mux failed, file left as it was: ffmpeg exited 1'),
+        ),
+    ).toBe(true);
+  });
+
+  it('a re-mux that THROWS is swallowed the same way', async () => {
+    const w = remuxWorld();
+    remuxMock.mockRejectedValue(new Error('ffmpeg exploded'));
+    await expect(
+      w.service.processVideo(BYTES_JOB, { remux: 'sync' }),
+    ).resolves.toMatchObject({ remux: 'failed' });
+    expect(w.rows[0].fileUrl).toBe(OLD_URL);
+    expect(w.uploads).toEqual([]);
+  });
+
+  it('a copy that does not probe as the same media is never stored', async () => {
+    const w = remuxWorld();
+    probeBufferMock.mockImplementation((bytes) =>
+      Promise.resolve(
+        bytes === FIXED ? { ...FRONT_PROBE, audio: null } : TAIL_PROBE,
+      ),
+    );
+    await expect(
+      w.service.processVideo(BYTES_JOB, { remux: 'sync' }),
+    ).resolves.toMatchObject({ remux: 'failed' });
+    expect(w.uploads).toEqual([]);
+    expect(w.swaps()).toEqual([]);
+    expect(w.lines().some((l) => l.includes('audio aac/2ch → none'))).toBe(
+      true,
+    );
+  });
+
+  it('an upload that fails swaps nothing, and drops whatever may have landed', async () => {
+    const w = remuxWorld();
+    w.storage.upload.mockRejectedValueOnce(new Error('upload failed (502)'));
+    await expect(
+      w.service.processVideo(BYTES_JOB, { remux: 'sync' }),
+    ).resolves.toMatchObject({ remux: 'failed' });
+    expect(w.swaps()).toEqual([]);
+    expect(w.rows[0].fileUrl).toBe(OLD_URL);
+    expect(w.deleted).toHaveLength(1);
+    expect(w.deleted[0]).toMatch(/-faststart-[0-9a-f]{8}\.mp4$/);
+  });
+
+  it('a swap that throws before committing: a read proves the row untouched, so the copy is dropped', async () => {
+    const w = remuxWorld([assetRow()], { swap: 'throws' });
+    await expect(
+      w.service.processVideo(BYTES_JOB, { remux: 'sync' }),
+    ).resolves.toMatchObject({ remux: 'failed' });
+    expect(w.rows[0].fileUrl).toBe(OLD_URL);
+    expect(w.deleted).toEqual([w.uploads[0].path]);
+  });
+
+  it('a swap that throws AFTER committing (a dropped connection) counts: a read proves it landed', async () => {
+    const w = remuxWorld([assetRow()], { swap: 'throws-after-commit' });
+    await expect(
+      w.service.processVideo(BYTES_JOB, { remux: 'sync' }),
+    ).resolves.toMatchObject({ remux: 'remuxed' });
+    expect(w.rows[0].fileUrl).toBe(`${PREFIX}${w.uploads[0].path}`);
+    expect(w.deleted).toEqual([]);
+  });
+
+  it('a swap whose outcome cannot be read KEEPS the copy — nothing is deleted on a guess', async () => {
+    const w = remuxWorld([assetRow()], { swap: 'throws-unreadable' });
+    await expect(
+      w.service.processVideo(BYTES_JOB, { remux: 'sync' }),
+    ).resolves.toMatchObject({ remux: 'failed' });
+    expect(w.deleted).toEqual([]);
+    expect(w.lines().some((l) => l.includes(`kept ${w.uploads[0].path}`))).toBe(
+      true,
+    );
+  });
+
+  it("'async' — the default, and what the upload path, the cron and check-playback use — answers 'scheduled' at once; the swap lands after", async () => {
+    const w = remuxWorld();
+    await expect(w.service.processVideo(BYTES_JOB)).resolves.toEqual({
+      probed: true,
+      posterUrl: null,
+      remux: 'scheduled',
+    });
+    await w.service.whenRemuxIdle();
+    expect(w.swaps()).toHaveLength(1);
+    expect(w.rows[0].fileUrl).toBe(`${PREFIX}${w.uploads[0].path}`);
+  });
+
+  it('kickOff (the upload path) queues it too', async () => {
+    const w = remuxWorld();
+    w.service.kickOff(BYTES_JOB);
+    for (let i = 0; i < 50 && remuxMock.mock.calls.length === 0; i++)
+      await tick();
+    await w.service.whenRemuxIdle();
+    expect(w.swaps()).toHaveLength(1);
+  });
+
+  it('presign / cron / check-playback: re-muxes the stored object, downloaded ONCE and shared with the poster', async () => {
+    const w = remuxWorld();
+    await expect(
+      w.service.processVideo(PATH_JOB, { remux: 'sync' }),
+    ).resolves.toMatchObject({ probed: true, remux: 'remuxed' });
+    expect(probeUrlMock).toHaveBeenCalledWith(OLD_URL, PREFIX);
+    expect(w.storage.download).toHaveBeenCalledTimes(1);
+    expect(w.storage.download).toHaveBeenCalledWith(OLD_PATH);
+    expect(remuxMock).toHaveBeenCalledWith({ buffer: ORIGINAL, ext: '.mp4' });
+  });
+
+  it('runs ONE re-mux at a time per replica, and never queues the same asset twice', async () => {
+    const w = remuxWorld([
+      assetRow(),
+      assetRow({ id: 'asset-2', fileUrl: `${PREFIX}tenant-1/second.mp4` }),
+    ]);
+    let release: () => void = () => undefined;
+    remuxMock.mockImplementationOnce(
+      () =>
+        new Promise<RemuxOutcome>((resolve) => {
+          release = () => resolve(REMUX_OK);
+        }),
+    );
+
+    await expect(w.service.processVideo(BYTES_JOB)).resolves.toMatchObject({
+      remux: 'scheduled',
+    });
+    for (let i = 0; i < 50 && remuxMock.mock.calls.length === 0; i++)
+      await tick();
+    expect(remuxMock).toHaveBeenCalledTimes(1);
+
+    // The same asset again while its re-mux runs: not queued twice.
+    await expect(w.service.processVideo(BYTES_JOB)).resolves.toMatchObject({
+      remux: 'skipped',
+    });
+    // Another asset: queued BEHIND the running one, never beside it.
+    await expect(
+      w.service.processVideo({ ...BYTES_JOB, assetId: 'asset-2' }),
+    ).resolves.toMatchObject({ remux: 'scheduled' });
+    for (let i = 0; i < 10; i++) await tick();
+    expect(remuxMock).toHaveBeenCalledTimes(1);
+
+    release();
+    await w.service.whenRemuxIdle();
+    expect(remuxMock).toHaveBeenCalledTimes(2);
+    expect(w.swaps()).toHaveLength(2);
   });
 });
