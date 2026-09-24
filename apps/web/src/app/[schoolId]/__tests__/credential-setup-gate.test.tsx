@@ -24,11 +24,13 @@ jest.mock('next/navigation', () => ({
 // 2026-09-24 — the school layout now mounts EncodeTargetProvider (React Query) around its
 // children (7bfe050d); this suite tests the credential gate, not the encode target, and renders
 // the layout without a QueryClient — so the provider is a pass-through here, like DashboardLayout.
+// The layout mounts EncodeTargetProvider (a useQuery); this gate test has no
+// QueryClient, so the provider is a pass-through and the hook answers nothing.
 jest.mock('@/hooks/use-encode-target', () => ({
   EncodeTargetProvider: ({ children }: { children: React.ReactNode }) => children,
-  EncodeTargetContext: () => ({ data: undefined, isLoading: false }),
-  ENCODE_TARGET_QUERY_KEY: () => ({ data: undefined, isLoading: false }),
-  useEncodeTarget: () => ({ data: undefined, isLoading: false }),
+  EncodeTargetContext: (jest.requireActual('react') as typeof import('react')).createContext(undefined),
+  ENCODE_TARGET_QUERY_KEY: ['screens', 'panel-target'],
+  useEncodeTarget: () => undefined,
 }));
 
 jest.mock('@/components/layout/DashboardLayout', () => ({
