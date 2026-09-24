@@ -17,7 +17,7 @@ import {
   Layers, ChevronUp, ChevronDown, Lock, Unlock, GripVertical,
   ZoomIn, ZoomOut, Maximize2, RotateCcw, RotateCw, Palette, MousePointer,
   PanelLeft, Sparkles, Search, FolderOpen, ChevronRight, Wand2, MonitorPlay,
-  Check, Expand, ChevronLeft, Trophy, AlertTriangle,
+  Check, Expand, ChevronLeft, Trophy, AlertTriangle, History,
 } from 'lucide-react';
 import {
   useTemplates, useCreateTemplate, useDeleteTemplate, useCreateFromPreset,
@@ -32,6 +32,9 @@ import {
   // synchronous generate-designer/candidates request (see runGenerateCandidatesCore).
   useStartDesignerJob, useDesignerJob, useCancelDesignerJob, useRegenerateDesignerJob,
   type DesignerJob, type DesignerJobResult,
+  // AI board history + board credits (2026-09-23) — the History list, the boards-left line and
+  // what a refused (402) generation offers.
+  useAiAllowance, useRefreshAiBoards, type DesignerHistoryItem,
 } from '@/hooks/use-api';
 import {
   designerBatchFromJob,
@@ -47,6 +50,10 @@ import {
   clearPendingDesignerJob,
 } from '@/lib/designer-jobs';
 import { DesignerJobProgress, DesignerBoundBadge } from '@/components/templates/DesignerJobProgress';
+import { DesignerHistory } from '@/components/templates/DesignerHistory';
+import { AiBoardsLeft, AiCapActions } from '@/components/ai/AiBoardsLeft';
+import { BuyBoardsSheet } from '@/components/ai/BuyBoardsSheet';
+import { isAiCapError } from '@/lib/ai-boards';
 import { toast } from 'sonner';
 import { ERROR_TOAST_DURATION_MS, MUTATION_ERROR_TOAST_ID, humanizeMutationError } from '@/lib/mutation-error-toast';
 // E3 (CRUSH Wave E, 2026-07-03) — shared "Put on a screen" express lane,
@@ -153,7 +160,12 @@ function friendlyAiError(e: any): string {
     return e?.body?.message || e?.message || 'Your AI provider is out of credit. Add credits with your provider and try again.';
   }
   if (code === 'AI_CAP_REACHED' || status === 402) {
-    return "This month's included AI is used up. Add your own AI key in Settings → AI provider to keep going, or wait for it to reset next month.";
+    // 2026-09-23 — the server's own words: for the Designer they name the numbers ("This batch
+    // needs 3 boards; you have 1 left this month (included boards reset October 1). Buy more
+    // boards … or add your own AI key …"), for everything else when the included AI comes back.
+    // The dialog puts Buy more / Add your own key right under it (AiCapActions).
+    const own = e?.body?.message || (typeof e?.message === 'string' && !/^API error: \d+$/.test(e.message) ? e.message : '');
+    return own || "This month's included AI is used up. Add your own AI key in Settings → AI provider to keep going, or wait for it to reset next month.";
   }
   if (code === 'AI_FAILURE_CAP_REACHED') {
     return 'Too many failed AI requests in the last hour. Wait an hour, or contact support if you think this is wrong.';
@@ -682,7 +694,9 @@ export default function TemplatesPage() {
   // operator gets a 2-second glance-confirm BEFORE paying for the expensive
   // 3x fan-out. It is SKIPPABLE and NEVER blocks generation (fail-open — see
   // runGenerateCandidatesCore).
-  const [aiPhase, setAiPhase] = useState<'intake' | 'confirm' | 'pick'>('intake');
+  // (2026-09-23) 'history' — the AI board history list (the header's History entry); a batch
+  // reopened from it lands in 'pick' like a fresh one.
+  const [aiPhase, setAiPhase] = useState<'intake' | 'confirm' | 'pick' | 'history'>('intake');
   // (2026-06-28) — the intake phase now DEFAULTS to a conversational Signage
   // Concierge chat; the guided 6-step wizard stays one click away as a
   // fallback ("Use the guided form instead"). 'chat' | 'wizard'.
@@ -738,6 +752,21 @@ export default function TemplatesPage() {
   const settledJobIdsRef = useRef<Set<string>>(new Set());
   // Read by the Esc handler, which is bound once per open (see below).
   const aiBusyRef = useRef(false);
+  // AI BOARD HISTORY (2026-09-23) — Greg: "keep a history of the generated templates so we aren't
+  // just throwing away tokens". The 'history' phase lists this account's finished batches
+  // (DesignerHistory); tapping one reopens it by id — `historyOpening` is the job being read, and
+  // once it lands it goes through `designerBatchFromJob` into the SAME pick grid a fresh batch uses.
+  // `historyReturnRef` is where Back from the list goes; `pickFromHistoryRef` sends the pick grid's
+  // Back to the list for a batch that came from it.
+  const [historyOpening, setHistoryOpening] = useState<string | null>(null);
+  const [historyOpenError, setHistoryOpenError] = useState<string | null>(null);
+  const historyReturnRef = useRef<'intake' | 'pick'>('intake');
+  const pickFromHistoryRef = useRef(false);
+  // AI BOARD CREDITS (2026-09-23) — the "Buy more" sheet, and the message of a generation the
+  // Designer refused with the 402 (AI_CAP_REACHED), so Buy more / Add your own key sit under
+  // exactly that message and go away with it.
+  const [buyBoardsOpen, setBuyBoardsOpen] = useState(false);
+  const [aiCapError, setAiCapError] = useState<string | null>(null);
   // CC-1 (2026-06-27) — canvas size for the AI generate request. Without this
   // every board was generated at 1920×1080 and CLIPPED on a real screen of a
   // different aspect (the live LED is 960×1080 portrait). { w, h } is forwarded
@@ -801,6 +830,9 @@ export default function TemplatesPage() {
       // exactly like the disabled close button and backdrop).
       if (
         e.key === 'Escape' &&
+        // A sheet open over the dialog (Buy more boards — useBottomSheet) takes its own Escape
+        // and marks it handled: that closes the sheet, not the dialog under it.
+        !e.defaultPrevented &&
         !aiBusyRef.current &&
         !generateTouch?.isPending &&
         !generateCandidates?.isPending &&
@@ -953,6 +985,13 @@ export default function TemplatesPage() {
   const regenerateDesignerJob = useRegenerateDesignerJob();
   const cancelDesignerJob = useCancelDesignerJob();
   const designerJobQuery = useDesignerJob(designerJob?.id);
+  // (2026-09-23) A batch reopened from the board history: the same read of the same job, so a
+  // done job is fetched once and never polled (useDesignerJob stops at done).
+  const historyJobQuery = useDesignerJob(historyOpening);
+  // The boards left — the line under Generate and what a refused (402) generation offers — read
+  // while the dialog is open; refreshed when something that spends boards finishes (never polled).
+  const aiAllowance = useAiAllowance({ enabled: showAiGenerate && isAdmin });
+  const refreshAiBoards = useRefreshAiBoards();
   const createDesigner = useCreateDesigner();
   const refineSignage = useRefineSignageBoard();
   // Wave D1 (2026-07-02, #282) — the designer-board counterpart of
@@ -1063,6 +1102,12 @@ export default function TemplatesPage() {
     // The batch on screen is gone, and with it where it came from.
     lastJobIdRef.current = null;
     setAiBoundTo(null);
+    // (2026-09-23) …and any history read, refusal actions or pack sheet.
+    setHistoryOpening(null);
+    setHistoryOpenError(null);
+    pickFromHistoryRef.current = false;
+    setAiCapError(null);
+    setBuyBoardsOpen(false);
   }, []);
 
   const closeAiModal = useCallback(() => {
@@ -1172,6 +1217,7 @@ export default function TemplatesPage() {
     lastConciergeArgsRef.current = aiLastBatch.replay ?? null;
     lastJobIdRef.current = aiLastBatch.jobId ?? null;
     setAiBoundTo(aiLastBatch.boundTo ?? null);
+    pickFromHistoryRef.current = false;
     setAiPhase('pick');
   }, [aiLastBatch]);
 
@@ -1215,6 +1261,9 @@ export default function TemplatesPage() {
       settledJobIdsRef.current.add(tracked.id);
       clearPendingDesignerJob(pendingJobKey);
       setDesignerJob(null);
+      // Whatever the outcome, boards may have been drawn (a job can fail or be cancelled after
+      // some): the line under Generate re-reads what is left. One read, on this event only.
+      refreshAiBoards();
       const batch = designerBatchFromJob(job);
       if (batch) {
         // The ONE job → boards mapping (lib/designer-jobs.ts) — the board history reuses it.
@@ -1222,6 +1271,8 @@ export default function TemplatesPage() {
           setAiError('The AI returned no options. Try rephrasing your prompt with more concrete details.');
           return;
         }
+        // A fresh batch — its Back goes to the intake, even when it regenerated a reopened one.
+        pickFromHistoryRef.current = false;
         lastJobIdRef.current = batch.jobId;
         setAiBoundTo(batch.boundTo);
         setAiCandidates(batch.candidates);
@@ -1234,7 +1285,10 @@ export default function TemplatesPage() {
       }
       if (job?.status === 'failed') {
         const err = designerJobErrorAsApiError(job.error);
-        setAiError(designerJobFailureIsStall(job.error) ? tAi('job.stalled') : friendlyAiError(err));
+        const message = designerJobFailureIsStall(job.error) ? tAi('job.stalled') : friendlyAiError(err);
+        setAiError(message);
+        // Refused for want of boards (the 402): Buy more / Add your own key go right under it.
+        if (isAiCapError(err)) setAiCapError(message);
         toastGenerationError(err);
         return;
       }
@@ -1246,7 +1300,7 @@ export default function TemplatesPage() {
       // on the way to generating; the operator came from the intake.
       setAiPhase((p) => (p === 'confirm' && !designerBriefHasSignal(aiBrief) ? 'intake' : p));
     },
-    [pendingJobKey, persistLastBatch, tAi, closeAiModal, aiBrief],
+    [pendingJobKey, persistLastBatch, tAi, closeAiModal, aiBrief, refreshAiBoards],
   );
   useEffect(() => {
     if (!designerJob) return;
@@ -1287,6 +1341,83 @@ export default function TemplatesPage() {
     setAiPhase('confirm');
     setShowAiGenerate(true);
   }, [isAdmin, pendingJobKey, resetAiModal]);
+
+  // ── AI board HISTORY (2026-09-23) ──────────────────────────────────────
+  // The header's History entry lists this account's finished batches (DesignerHistory). Back
+  // returns to where the operator was — the intake, or the pick grid they were looking at.
+  const historyItemRef = useRef<DesignerHistoryItem | null>(null);
+  const openHistory = useCallback(() => {
+    historyReturnRef.current = aiPhase === 'pick' ? 'pick' : 'intake';
+    historyItemRef.current = null;
+    setHistoryOpening(null);
+    setHistoryOpenError(null);
+    setAiError(null);
+    setAiPhase('history');
+  }, [aiPhase]);
+  const closeHistory = useCallback(() => {
+    setHistoryOpening(null);
+    setHistoryOpenError(null);
+    setAiPhase(historyReturnRef.current);
+  }, []);
+  // A row: read that job (GET …/jobs/:id) — the effect below reopens it once it lands.
+  const openHistoryItem = useCallback((item: DesignerHistoryItem) => {
+    historyItemRef.current = item;
+    setHistoryOpenError(null);
+    setHistoryOpening(item.id);
+  }, []);
+  // The job landed: through the ONE job → boards mapping into the SAME pick grid a fresh batch
+  // uses, with everything Keep / Edit with words / Regenerate read — the batch's own canvas (Keep
+  // persists at the dialog's canvas), the job id (Regenerate replays it on the server with
+  // `…/again`), its POS binding, and `_batchId` on every board (Keep stamps the job). Nothing of
+  // the dialog's previous batch or request survives into it.
+  useEffect(() => {
+    if (!historyOpening) return;
+    const job = historyJobQuery.data?.id === historyOpening ? historyJobQuery.data : undefined;
+    if (job) {
+      // A cached read of a job still settling: the hook keeps polling it until it is done.
+      if (job.status === 'queued' || job.status === 'running') return;
+      const batch = designerBatchFromJob(job);
+      setHistoryOpening(null);
+      if (!batch || !batch.candidates.length) {
+        setHistoryOpenError(tAi('history.openFailed'));
+        return;
+      }
+      const canvas = batch.canvas ?? historyItemRef.current?.canvas ?? null;
+      if (canvas) {
+        aiCanvasDefaultedRef.current = true;
+        setAiCanvas(canvas);
+        setAiCustomText({ w: String(canvas.w), h: String(canvas.h) });
+        setAiCustomSize(false);
+      }
+      setAiSetMode(false);
+      setAiBrief(null);
+      lastConciergeArgsRef.current = null;
+      lastJobIdRef.current = batch.jobId;
+      setAiBoundTo(batch.boundTo);
+      setAiCandidates(batch.candidates);
+      setAiSavedIds({});
+      setAiFullscreenIdx(null);
+      setAiTweakIdx(null);
+      setAiError(null);
+      pickFromHistoryRef.current = true;
+      setAiPhase('pick');
+      return;
+    }
+    // Gone (404/403) answers at once; anything else after the hook's own retries.
+    if (historyJobQuery.error && !historyJobQuery.isFetching) {
+      setHistoryOpening(null);
+      setHistoryOpenError(tAi('history.openFailed'));
+    }
+  }, [historyOpening, historyJobQuery.data, historyJobQuery.error, historyJobQuery.isFetching, tAi]);
+  // "Kept as <name>" — only for a template that still exists (the history keeps the id, not the name).
+  const templateNameById = useMemo(() => {
+    const names = new Map<string, string>();
+    for (const tpl of (templates || []) as Array<{ id?: string; name?: string }>) {
+      if (tpl?.id && tpl.name) names.set(tpl.id, tpl.name);
+    }
+    return names;
+  }, [templates]);
+  const keptTemplateName = useCallback((id: string) => templateNameById.get(id), [templateNameById]);
 
   // Phase 1 → 2: fan out 3 candidate drafts. The SHARED core — both the
   // guided-wizard path and the conversational Signage Concierge path call
@@ -1361,7 +1492,9 @@ export default function TemplatesPage() {
           });
           trackDesignerJob(started.jobId, brief ?? null);
         } catch (e) {
-          setAiError(designerJobStartError(e, tAi));
+          const message = designerJobStartError(e, tAi);
+          setAiError(message);
+          if (isAiCapError(e)) setAiCapError(message);
         }
         return;
       }
@@ -1503,7 +1636,9 @@ export default function TemplatesPage() {
         return;
       } catch (e) {
         if (!designerJobReplayRefused(e)) {
-          setAiError(designerJobStartError(e, tAi));
+          const message = designerJobStartError(e, tAi);
+          setAiError(message);
+          if (isAiCapError(e)) setAiCapError(message);
           toastGenerationError(e);
           return;
         }
@@ -1743,6 +1878,8 @@ export default function TemplatesPage() {
           instruction: text,
           vertical,
         });
+        // An edit with words on our key is one board: the line under Generate says what is left.
+        refreshAiBoards();
         const newHtml = res?.html;
         if (newHtml && newHtml.length > 200) {
           setAiCandidates((prev) => prev.map((c, i) => (i === index ? {
@@ -1787,11 +1924,17 @@ export default function TemplatesPage() {
         setAiError('That change produced nothing usable. Try rephrasing it.');
       }
     } catch (e: any) {
-      setAiError(friendlyAiError(e));
+      const message = friendlyAiError(e);
+      setAiError(message);
+      // A Designer edit refused for want of a board (the 402): Buy more / Add your own key under it.
+      if (candidate._designerHtml && isAiCapError(e)) {
+        setAiCapError(message);
+        refreshAiBoards();
+      }
     } finally {
       setAiRefiningIdx(null);
     }
-  }, [aiCandidates, refineSignage, refineDesignerBoard, tenantCopy.vertical]);
+  }, [aiCandidates, refineSignage, refineDesignerBoard, tenantCopy.vertical, refreshAiBoards]);
 
   // Human label for a category key — reads the vertical-aware tab set
   // (same source the filter buttons render from) so the empty-state copy
@@ -2212,6 +2355,18 @@ export default function TemplatesPage() {
     />
   ) : null;
 
+  // (2026-09-23) A generation the Designer refused for want of boards — the 402 whose message
+  // names the numbers. Right under THAT message (and gone with it): Buy more, when a pack can be
+  // bought, and Add your own key (Settings → AI provider).
+  const aiCapActions =
+    aiError && aiCapError === aiError ? (
+      <AiCapActions
+        canBuy={aiAllowance.data?.source === 'platform' && aiAllowance.data.purchaseEnabled === true}
+        onBuy={() => setBuyBoardsOpen(true)}
+        keyHref={`/${params?.schoolId ?? ''}/settings/ai`}
+      />
+    ) : null;
+
   return (
     <div className="space-y-8">
       {/* ── Page header (Calm v1 §4.1, §5.2) ───────────────────────────
@@ -2296,19 +2451,23 @@ export default function TemplatesPage() {
             <div className="md:hidden flex justify-center -mt-2 mb-2" aria-hidden>
               <div className="w-10 h-1 rounded-full bg-slate-300" />
             </div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center shadow-md">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 shrink-0 rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center shadow-md">
                   <Sparkles className="w-5 h-5 text-white" />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <h2 id="ai-gen-title" className="text-lg font-bold text-slate-800">
-                    {aiPhase === 'pick'
+                    {aiPhase === 'history'
+                      ? tAi('history.title')
+                      : aiPhase === 'pick'
                       ? (aiSetMode ? 'Your signage set is ready' : 'Pick your favorite')
                       : 'Generate a template with AI'}
                   </h2>
                   <p className="text-xs text-slate-500">
-                    {aiPhase === 'pick'
+                    {aiPhase === 'history'
+                      ? tAi('history.subtitle')
+                      : aiPhase === 'pick'
                       ? (aiSetMode
                           ? 'A cohesive multi-board loop that plays itself — open it to fine-tune any board.'
                           : 'Three takes on your idea — tap any to preview full-screen, then save the ones you like.')
@@ -2320,14 +2479,31 @@ export default function TemplatesPage() {
                   </p>
                 </div>
               </div>
-              <button
-                onClick={() => { if (!aiBusy && aiPicking === null) closeAiModal(); }}
-                disabled={aiBusy || aiPicking !== null}
-                className="text-slate-400 hover:text-slate-600 disabled:opacity-40"
-                aria-label="Close"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex shrink-0 items-center gap-1">
+                {/* 2026-09-23 — the AI board history (Greg: "so we aren't just throwing away
+                    tokens"): every finished batch, to reopen and keep / tweak / regenerate. From
+                    the intake and from a pick grid; never mid-generation. */}
+                {(aiPhase === 'intake' || aiPhase === 'pick') && (
+                  <button
+                    type="button"
+                    onClick={openHistory}
+                    disabled={aiBusy || aiPicking !== null || aiRefiningIdx !== null}
+                    data-testid="ai-history-open"
+                    className="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-2.5 text-xs font-bold text-violet-700 transition-colors hover:bg-violet-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 disabled:opacity-40 sm:min-h-9 motion-reduce:transition-none"
+                  >
+                    <History className="h-4 w-4 shrink-0" aria-hidden />
+                    {tAi('history.open')}
+                  </button>
+                )}
+                <button
+                  onClick={() => { if (!aiBusy && aiPicking === null) closeAiModal(); }}
+                  disabled={aiBusy || aiPicking !== null}
+                  className="text-slate-400 hover:text-slate-600 disabled:opacity-40"
+                  aria-label="Close"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             {aiPhase === 'intake' && aiLastBatch && aiLastBatch.candidates?.length ? (
@@ -2354,6 +2530,7 @@ export default function TemplatesPage() {
                     {aiError}
                   </div>
                 )}
+                {aiCapActions}
                 {/* 2026-09-23 — the batch came back bound to a POS menu: say which, and how much of it. */}
                 {aiBoundTo && (
                   <div className="flex">
@@ -2564,7 +2741,8 @@ export default function TemplatesPage() {
                 {designerJobProgress}
                 <div className="flex items-center justify-between pt-1">
                   <button
-                    onClick={() => { setAiPhase('intake'); setAiError(null); }}
+                    // A batch reopened from the history goes back to the list it came from.
+                    onClick={() => { setAiPhase(pickFromHistoryRef.current ? 'history' : 'intake'); setAiError(null); }}
                     // Not mid-job: Cancel is the way out of a running generation,
                     // the same as the confirm step's Back and the close button.
                     disabled={aiBusy || aiPicking !== null}
@@ -2598,6 +2776,7 @@ export default function TemplatesPage() {
                     {aiError}
                   </div>
                 )}
+                {aiCapActions}
                 <BriefConfirmStrip
                   loading={aiBriefLoading}
                   brief={aiBrief}
@@ -2625,6 +2804,24 @@ export default function TemplatesPage() {
                   className="self-start px-4 py-2 text-sm font-bold rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                 >
                   ← Back
+                </button>
+              </div>
+            ) : aiPhase === 'history' ? (
+              /* ── The AI board history (2026-09-23): this account's finished batches,
+                 newest first; a row reopens its batch into the pick grid above. ── */
+              <div className="flex flex-col gap-3">
+                <DesignerHistory
+                  keptName={keptTemplateName}
+                  openingId={historyOpening}
+                  openError={historyOpenError}
+                  onOpen={openHistoryItem}
+                />
+                <button
+                  type="button"
+                  onClick={closeHistory}
+                  className="self-start px-4 py-2 text-sm font-bold rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  ← {tAi('history.back')}
                 </button>
               </div>
             ) : null}
@@ -2875,9 +3072,16 @@ export default function TemplatesPage() {
                 );
               })()}
             </div>
+
+            {/* 2026-09-23 — how many AI boards are left (Greg: "we must cap it and display how
+                many credits they have left"): one line, right under every phase's Generate /
+                Regenerate — "14 of 20 boards left this month · resets Oct 1", with Buy more when
+                a pack can be bought. Nothing until GET /ai/allowance answers. */}
+            <AiBoardsLeft onBuy={() => setBuyBoardsOpen(true)} className="justify-center text-center" />
           </div>
         </div>
       )}
+      {showAiGenerate && buyBoardsOpen && <BuyBoardsSheet onClose={() => setBuyBoardsOpen(false)} />}
 
       {/* Full-screen candidate preview — opened from any candidate card's
           thumbnail. Sits ABOVE the AI modal (z-110) and renders the candidate

@@ -212,6 +212,61 @@ export function capReachedError(resetDay = 'October 1'): ProducedError {
   return producedError(httpException({ message, code: 'AI_CAP_REACHED', cap: 500, used: 500, unit: 'credits', resetAt: '2026-10-01T00:00:00.000Z' }, status));
 }
 
+/**
+ * The body of `export function <name>(…): string { … }` in a source file — the producer's own code,
+ * lifted out so it runs without loading its module (and that module's import graph).
+ */
+export function exportedFunctionBody(src: string, name: string): string {
+  const start = src.indexOf(`export function ${name}(`);
+  if (start < 0) throw new Error(`designer-job fixture: ${name} is no longer exported where this fixture reads it`);
+  const open = src.indexOf('): string {', start);
+  if (open < 0) throw new Error(`designer-job fixture: ${name} no longer returns a string`);
+  let i = src.indexOf('{', open);
+  const bodyStart = i + 1;
+  for (let depth = 0; i < src.length; i++) {
+    if (src[i] === '{') depth++;
+    else if (src[i] === '}' && --depth === 0) return src.slice(bodyStart, i);
+  }
+  throw new Error(`designer-job fixture: ${name}'s body never closes`);
+}
+
+export interface BoardsCapOptions {
+  needed?: number;
+  left?: number;
+  resetAt?: string;
+  purchaseEnabled?: boolean;
+  kind?: 'batch' | 'refine';
+}
+
+/**
+ * The 402 the Designer's BOARD pre-check throws (AiAllowanceService.assertBoardsAvailable,
+ * 2026-09-23) — what a batch refused for want of boards fails with. Its message is
+ * `boardsCapMessage(…)` from ai/ai-board-credits.ts, a module this fixture must NOT load (its
+ * import graph reaches the model catalog and the platform keys), so the function's OWN body is
+ * lifted out of the source and run by itself; the code and the HttpStatus are read out of the
+ * service; the REAL AllExceptionsFilter turns it into the stored envelope.
+ */
+export function boardsCapReachedError(o: BoardsCapOptions = {}): ProducedError {
+  const credits = fs.readFileSync(path.join(API_SRC, 'ai', 'ai-board-credits.ts'), 'utf8');
+  // eslint-disable-next-line @typescript-eslint/no-implied-eval
+  const boardsCapMessage = new Function('o', exportedFunctionBody(credits, 'boardsCapMessage')) as (
+    opts: Required<BoardsCapOptions>,
+  ) => string;
+  const message = boardsCapMessage({
+    needed: 3,
+    left: 1,
+    resetAt: '2026-10-01T00:00:00.000Z',
+    purchaseEnabled: true,
+    kind: 'batch',
+    ...o,
+  });
+  const svc = fs.readFileSync(path.join(API_SRC, 'ai', 'ai-allowance.service.ts'), 'utf8');
+  const m = /async assertBoardsAvailable\([\s\S]*?message: boardsCapMessage\([\s\S]*?code: 'AI_CAP_REACHED',[\s\S]*?HttpStatus\.([A-Z_]+)/.exec(svc);
+  if (!m) throw new Error('designer-job fixture: assertBoardsAvailable no longer throws where this fixture reads it');
+  const status = nest<Record<string, number>>('HttpStatus')[m[1]];
+  return producedError(httpException({ message, code: 'AI_CAP_REACHED', unit: 'boards' }, status));
+}
+
 /** The POS-bound pipeline's own "N items don't fit one screen" (designer-pos-binding.ts). */
 export function menuBindingIncompleteError(items = 21, missing: number[] = [18, 19, 20]): ProducedError {
   const { menuBindingIncomplete } = apiModule<BindingModule>('ai/designer-pos-binding');

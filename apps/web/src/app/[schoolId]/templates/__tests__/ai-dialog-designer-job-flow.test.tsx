@@ -22,6 +22,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   apiFetchError,
+  boardsCapReachedError,
   busyError,
   capReachedError,
   designerOutput,
@@ -37,6 +38,7 @@ import {
   type ProducedJobView,
 } from '../../../../../tests/fixtures/designer-job';
 import { humanizeMutationError } from '@/lib/mutation-error-toast';
+import { inertAiBoardsHooks } from './designer-job-hooks.mock';
 
 // ── the fake API: the four job routes, answered from the producer ─────────────────────────────
 const server = {
@@ -123,6 +125,9 @@ jest.mock('@/hooks/use-api', () => {
     useDesignerJob: actual.useDesignerJob,
     useCancelDesignerJob: actual.useCancelDesignerJob,
     useRegenerateDesignerJob: actual.useRegenerateDesignerJob,
+    // 2026-09-23 — the board history + board credits (their real hooks run in
+    // ai-dialog-history-credits.test.tsx): inert here.
+    ...inertAiBoardsHooks,
   };
 });
 
@@ -352,9 +357,12 @@ it('Cancel stops the job and returns quietly to where the operator was — no er
 });
 
 describe('a job that fails says exactly what the failed request said', () => {
-  it.each<[string, () => ProducedError, string]>([
+  it.each<[string, () => ProducedError, string | ((env: ProducedError) => string)]>([
     ['a POS menu too long for one screen (MENU_BINDING_INCOMPLETE)', () => menuBindingIncompleteError(21, [18, 19, 20]), "21 items don't fit one screen — choose fewer sections."],
-    ['the included AI used up (402)', () => capReachedError(), "This month's included AI is used up. Add your own AI key in Settings → AI provider to keep going, or wait for it to reset next month."],
+    // 2026-09-23 — a 402 shows the SERVER's words (they say when it resets, and for boards how
+    // many were needed and are left), with Buy more / Add your own key right under them.
+    ['the included AI used up (402)', () => capReachedError(), (env) => env.message],
+    ['no boards left for this batch (402, boards)', () => boardsCapReachedError({ needed: 3, left: 1 }), (env) => env.message],
     ['a 503 from the pipeline', () => producedError(serviceUnavailable('AI could not design a usable board. Try rephrasing your brief.')), 'AI could not design a usable board. Try rephrasing your brief.'],
     ['a crash (production masks it)', () => producedError(new TypeError('boom'), { production: true }), 'Generation failed. Try rephrasing or try again later.'],
     ['a worker that died twice (the stale sweep)', () => sweepError('stalled'), 'This generation stopped before it finished. Try again.'],
@@ -368,7 +376,16 @@ describe('a job that fails says exactly what the failed request said', () => {
     await openAndGenerate();
     await tick(DESIGNER_JOB_POLL_MS);
 
-    expect(screen.getByRole('alert')).toHaveTextContent(inline);
+    expect(screen.getByRole('alert')).toHaveTextContent(typeof inline === 'function' ? inline(error) : inline);
+    // A refusal for want of boards / included AI (the 402) offers the ways forward under it; no
+    // other failure does. (Buy more needs a pack for sale — the allowance is inert here.)
+    if (error.status === 402) {
+      const offers = screen.getByTestId('ai-cap-actions');
+      expect(within(offers).getByRole('link', { name: 'Add your own AI key' })).toHaveAttribute('href', '/super-taco/settings/ai');
+      expect(within(offers).queryByRole('button', { name: 'Buy more boards' })).toBeNull();
+    } else {
+      expect(screen.queryByTestId('ai-cap-actions')).toBeNull();
+    }
     expect(progress()).toBeNull();
     // …and the same toast every failed mutation raises (the synchronous request raised it).
     expect(toastError()).toHaveBeenCalledTimes(1);

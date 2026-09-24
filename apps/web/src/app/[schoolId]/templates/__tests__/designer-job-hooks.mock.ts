@@ -56,6 +56,29 @@ export function fakeDesignerJobs(): FakeDesignerJobs {
   return jobs;
 }
 
+/**
+ * The AI board history + board credit hooks (2026-09-23), inert: no allowance answer (the dialog's
+ * boards-left line renders nothing), an empty history, nothing bought. Their real behaviour is
+ * exercised with a mocked `apiFetch` in ai-dialog-history-credits.test.tsx and use-ai-boards.test.tsx.
+ * Spread by both hook sets below, so every page suite that mocks use-api gets them.
+ */
+const refreshAiBoardsNoop = () => {};
+export const inertAiBoardsHooks = {
+  useAiAllowance: () => ({ data: undefined, error: null, isPending: true }),
+  useRefreshAiBoards: () => refreshAiBoardsNoop,
+  useDesignerJobHistory: () => ({
+    data: { pages: [{ items: [] }], pageParams: [null] },
+    isPending: false,
+    isError: false,
+    hasNextPage: false,
+    isFetchingNextPage: false,
+    fetchNextPage: jest.fn(),
+    refetch: jest.fn(),
+  }),
+  useAiBoardPacks: () => ({ data: undefined, error: null, isPending: true }),
+  useBuyAiBoardPack: () => ({ mutateAsync: jest.fn(), mutate: jest.fn(), isPending: false }),
+};
+
 /** The hooks, answering from `jobs`. Spread into a suite's `jest.mock('@/hooks/use-api', …)`. */
 export function designerJobHookMocks(jobs: FakeDesignerJobs) {
   const finishNext = () => {
@@ -84,6 +107,7 @@ export function designerJobHookMocks(jobs: FakeDesignerJobs) {
       mutate: jest.fn(),
       isPending: false,
     }),
+    ...inertAiBoardsHooks,
   };
 }
 
@@ -93,4 +117,5 @@ export const inertDesignerJobHooks = {
   useDesignerJob: () => ({ data: undefined, error: null }),
   useCancelDesignerJob: () => ({ mutateAsync: jest.fn(), mutate: jest.fn(), isPending: false }),
   useRegenerateDesignerJob: () => ({ mutateAsync: jest.fn(), mutate: jest.fn(), isPending: false }),
+  ...inertAiBoardsHooks,
 };
