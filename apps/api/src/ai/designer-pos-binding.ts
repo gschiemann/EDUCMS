@@ -28,7 +28,11 @@
  */
 import { HttpException, HttpStatus } from '@nestjs/common';
 import type { safeFetch } from '../branding/safe-fetch';
-import { rehostItemPhotos, type DesignerAssetStorage } from './designer-assets';
+// TYPE-ONLY at module load: designer-assets.ts reaches cheerio (through menu-extractor.ts), and
+// the web test fixtures load THIS module from source under a transformer that cannot parse
+// cheerio. The runtime import happens inside attachPlanPhotos, the only caller.
+import type { DesignerAssetStorage } from './designer-assets';
+import type * as DesignerAssets from './designer-assets';
 import { conciergePosRowLimit, getPosProvider, type ConciergePosSelection } from '@cms/api-types';
 import {
   loadBindableConnections,
@@ -131,6 +135,8 @@ export async function attachPlanPhotos(
     .map((it) => ({ n: it.n, url: it.sourceImageUrl as string }));
   if (!wanted.length || !photoDeps?.storage) return;
   try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { rehostItemPhotos } = require('./designer-assets') as typeof DesignerAssets;
     const res = await rehostItemPhotos(
       wanted,
       {

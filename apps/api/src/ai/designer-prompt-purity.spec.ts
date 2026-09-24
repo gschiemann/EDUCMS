@@ -46,3 +46,29 @@ describe('designer-prompt.ts import graph', () => {
     expect(g.bare).toContain('designer-board-defects.ts → cheerio');
   });
 });
+
+/**
+ * The web test fixtures load these API modules FROM SOURCE too
+ * (apps/web/tests/fixtures/designer-job.ts, kept-pos-board.ts). Their static
+ * import graphs must never reach the cheerio-importing modules; a runtime
+ * dependency on one of them goes through a lazy require() inside the caller
+ * (designer-pos-binding.ts → designer-assets.ts, 2026-09-24).
+ */
+describe('modules the web fixtures load from source stay clear of cheerio', () => {
+  const CHEERIO_MODULES = ['designer-board-defects.ts', 'menu-extractor.ts', 'designer-assets.ts'];
+  const ROOTS = [
+    path.join(ROOT, 'designer-pos-binding.ts'),
+    path.join(ROOT, 'menu-binding.ts'),
+    path.join(ROOT, '..', 'templates', 'designer-jobs', 'designer-job-request.ts'),
+    path.join(ROOT, '..', 'templates', 'designer-jobs', 'designer-job-error.ts'),
+  ];
+  for (const root of ROOTS) {
+    it(`${path.relative(path.join(ROOT, '..'), root)} does not statically reach a cheerio module`, () => {
+      const g = graphOf(root);
+      const hits = g.files.filter((f) => CHEERIO_MODULES.includes(path.basename(f)));
+      expect(hits).toEqual([]);
+      expect(g.bare).not.toEqual(expect.arrayContaining([expect.stringMatching(/→ cheerio$/)]));
+    });
+  }
+});
+
