@@ -258,6 +258,12 @@ RUN apk add --no-cache \
 # ffmpeg: server-side video transcode in MediaOptimizationService. Signage
 # video uploaded at phone bitrate (40MB+) is re-encoded to ~1080p H.264 so a
 # screen isn't re-streaming tens of MB per loop. ~30MB added to the image.
+# The same package ships `ffprobe` (checked against the Alpine package index:
+# /usr/bin/ffprobe is owned by community/ffmpeg on v3.22), which
+# VideoPosterService uses to read every uploaded video's dimensions and
+# duration into Asset.processingMeta (2026-09-24). Do not swap ffmpeg for a
+# slimmer split package without checking ffprobe survives — the boot check
+# further down hard-fails the build without it.
 
 # Drop the package managers node:22-alpine bundles. Nothing in this image
 # invokes npm, npx or yarn at runtime (verified: the only child processes the
@@ -396,6 +402,8 @@ RUN set -eu; \
       || { echo "FATAL: Chromium missing — the /proxy/web renderer and poster/PDF paths need it"; exit 1; }; \
     command -v ffmpeg >/dev/null 2>&1 \
       || { echo "FATAL: ffmpeg missing — MediaOptimizationService shells out to it"; exit 1; }; \
+    command -v ffprobe >/dev/null 2>&1 \
+      || { echo "FATAL: ffprobe missing — VideoPosterService reads every uploaded video's dimensions/duration with it (Alpine's ffmpeg package ships it; a slimmer split package would drop it)"; exit 1; }; \
     echo "[dockerfile] verifying the pinned Supabase root CA"; \
     test -r /etc/ssl/venueos/supabase-prod-ca-2021.crt \
       || { echo "FATAL: the database TLS trust anchor is missing from the image. Any DATABASE_URL carrying sslaccept=strict&sslcert=/etc/ssl/venueos/supabase-prod-ca-2021.crt would fail to connect AT BOOT."; exit 1; }; \
