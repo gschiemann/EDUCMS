@@ -56,6 +56,20 @@ export interface DesignerJobBatch {
   candidates: AiTemplateCandidate[];
   /** "Bound to Toast · 9 items" — set when every row is bound to a POS menu. */
   boundTo: NonNullable<DesignerJobResult['boundTo']> | null;
+  /**
+   * The canvas the boards were drawn for (the first board's own size), or null when the result
+   * carries none. A batch reopened from the history needs it: Keep persists the template at the
+   * dialog's canvas, which must be the batch's — not whatever the dialog was last set to.
+   */
+  canvas: { w: number; h: number } | null;
+}
+
+/** The first board's own size — what the pipeline drew the batch at. */
+function designerResultCanvas(result: DesignerJobResult | null | undefined): { w: number; h: number } | null {
+  const first = result?.candidates?.[0];
+  const w = Number(first?.screenWidth);
+  const h = Number(first?.screenHeight);
+  return Number.isFinite(w) && w > 0 && Number.isFinite(h) && h > 0 ? { w: Math.round(w), h: Math.round(h) } : null;
 }
 
 /**
@@ -68,7 +82,12 @@ export function designerBatchFromJob(
   job: Pick<DesignerJob, 'id' | 'status' | 'result'> | null | undefined,
 ): DesignerJobBatch | null {
   if (!job || job.status !== 'done') return null;
-  return { jobId: job.id, candidates: mapDesignerBoards(job.result), boundTo: job.result?.boundTo ?? null };
+  return {
+    jobId: job.id,
+    candidates: mapDesignerBoards(job.result),
+    boundTo: job.result?.boundTo ?? null,
+    canvas: designerResultCanvas(job.result),
+  };
 }
 
 export type ApiLikeError = Error & { status?: number; code?: string; body?: unknown };

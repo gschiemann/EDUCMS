@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+  useInfiniteQuery,
+  type QueryClient,
+} from '@tanstack/react-query';
 // TYPE-ONLY (2026-09-21 passkey wave). use-api is imported by most of the
 // dashboard, so the WebAuthn package must never become a runtime dependency
 // of this module — only `@/lib/passkeys` and the two UI surfaces import it
@@ -6207,4 +6213,208 @@ export function useRegenerateDesignerJob() {
         body: JSON.stringify(idempotencyKey ? { idempotencyKey } : {}),
       }),
   });
+}
+
+// ─── AI board HISTORY (2026-09-23) ─────────────────────────────────────
+//
+// Greg: "keep a history of the generated templates so we aren't just
+// throwing away tokens, that way they can go back to them and decide later if
+// they want to continue tweaking them". Every batch the Designer finishes is a
+// DONE job the API keeps (90 days; a batch a board was kept from, for good),
+// so the AI dialog lists them — newest first, never any board HTML in the
+// list — and reopens one by id through `useDesignerJob` +
+// `designerBatchFromJob` into the same pick grid a fresh batch lands in.
+// Shapes copy `apps/api/src/templates/designer-jobs/designer-job-history.ts`.
+
+/** One board of a listed batch — never its HTML. */
+export interface DesignerHistoryCandidate {
+  /** Its position in the job's `result.candidates` (the `candidateIndex` a keep sends). */
+  index: number;
+  name: string;
+  structure: string | null;
+  artDirection: string | null;
+  /** Present only when the look-and-fix loop rendered and measured this board. */
+  review?: { score: number | null; revised: boolean };
+}
+
+/** One finished generation in the list. */
+export interface DesignerHistoryItem {
+  id: string;
+  createdAt: string;
+  finishedAt: string | null;
+  /** The first 140 characters of the operator's prompt, verbatim (newlines included). */
+  prompt: string;
+  venueName: string | null;
+  /** The canvas the boards were drawn for. */
+  canvas: { w: number; h: number };
+  candidateCount: number;
+  candidates: DesignerHistoryCandidate[];
+  /** Set when the boards are bound to a POS menu. */
+  boundTo?: { providerId: string; providerName: string; itemCount: number };
+  /** The template the operator kept from this batch (the last keep). It may since have been deleted. */
+  keptTemplateId?: string;
+  /** Whose AI key paid for it. */
+  source: 'tenant' | 'platform' | null;
+}
+
+export interface DesignerHistoryPage {
+  items: DesignerHistoryItem[];
+  /** Pass back verbatim as `?before=` for the next, older page. Absent on the last page. */
+  nextBefore?: string;
+}
+
+/** Batches per page of the history (the API clamps 1–50 and defaults to 20). */
+export const DESIGNER_HISTORY_PAGE_SIZE = 20;
+
+/** `GET …/generate-designer/jobs` for one page: the first (no cursor) or the one before `before`. */
+export function designerHistoryPath(before?: string | null): string {
+  const cursor = before ? `&before=${encodeURIComponent(before)}` : '';
+  return `/templates/generate-designer/jobs?limit=${DESIGNER_HISTORY_PAGE_SIZE}${cursor}`;
+}
+
+/**
+ * GET /templates/generate-designer/jobs — this account's finished batches, newest first, a page at
+ * a time ("Show more" passes the last page's `nextBefore`). Read each time the History list opens
+ * (the API answers `private, no-cache`: a batch that just finished must be in it). Never polled,
+ * never refetched on focus.
+ */
+export function useDesignerJobHistory(enabled = true) {
+  return useInfiniteQuery({
+    queryKey: ['designer-job-history'],
+    queryFn: ({ pageParam }: { pageParam: string | null }) =>
+      apiFetch<DesignerHistoryPage>(designerHistoryPath(pageParam)),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last: DesignerHistoryPage | null) => last?.nextBefore || undefined,
+    enabled,
+    staleTime: 0,
+  });
+}
+
+// ─── AI board CREDITS (2026-09-23) ─────────────────────────────────────
+//
+// Greg: "we must cap it and display how many credits they have left … or
+// allow them to buy more generations". On OUR AI key the Designer is sold in
+// BOARDS (apps/api/src/ai/ai-board-credits.ts): every board a batch draws, and
+// every edit-with-words, is one; an organisation gets an allowance a month;
+// packs of boards are bought through Stripe. Shapes copy `AiAllowanceView`
+// (apps/api/src/ai/ai-allowance.service.ts) and BillingController.aiPacks.
+
+/** Why a pack cannot be bought (the allowance's `reasonCode`; ai-packs calls it `reason`). */
+export type AiBoardsReasonCode = 'NO_PLATFORM_KEY' | 'OWN_KEY' | 'STRIPE_NOT_CONFIGURED';
+
+export interface AiBoardPack {
+  id: string;
+  boards: number;
+  usd: number;
+}
+
+/** GET /ai/allowance — this organisation's AI boards. */
+export interface AiAllowance {
+  /** Whose key draws the boards: ours (counted), theirs (no limit here), or nobody's. */
+  source: 'platform' | 'tenant' | 'none';
+  unlimited: boolean;
+  boardsIncluded: number | null;
+  boardsUsed: number | null;
+  boardsPurchasedRemaining: number | null;
+  boardsLeft: number | null;
+  /** When the month's INCLUDED boards come back: the first instant of the next UTC month. */
+  resetAt: string;
+  screens: number | null;
+  packs: AiBoardPack[];
+  purchaseEnabled: boolean;
+  /** Present when `purchaseEnabled` is false: the API's one line for it. */
+  reason?: string;
+  reasonCode?: AiBoardsReasonCode;
+  /** A read failed on the server: the numbers are the floor, not the truth. */
+  degraded?: true;
+  /** SUPER_ADMIN only — our cost per board. Never shown to anyone. */
+  boardCostUsdTrailing?: number | null;
+}
+
+/**
+ * GET /ai/allowance — how many AI boards this organisation has left. Read when a surface that shows
+ * it mounts (the AI dialog, Settings → AI, the Stripe return), and again when the operator comes
+ * BACK to the tab — they may just have paid for a pack in Stripe's checkout or on another device.
+ * That focus refetch is opted in on THIS hook only (mobile-perf standard: the global default stays
+ * off). Never polled: a batch landing, an edit-with-words and a key change refresh it through
+ * `useRefreshAiBoards`.
+ */
+export function useAiAllowance(opts: { enabled?: boolean } = {}) {
+  return useQuery<AiAllowance>({
+    queryKey: ['ai-allowance'],
+    queryFn: () => apiFetch<AiAllowance>('/ai/allowance'),
+    enabled: opts.enabled ?? true,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+    retry: 1,
+  });
+}
+
+/** One pack the organisation bought (GET /billing/ai-packs → `purchases`, newest first). */
+export interface AiBoardPackPurchase {
+  id: string;
+  pack: string;
+  boards: number;
+  /** Boards of this pack not drawn yet (0 once used up or expired). */
+  remaining: number;
+  usd: number;
+  purchasedAt: string;
+  expiresAt: string;
+  expired: boolean;
+}
+
+/** GET /billing/ai-packs */
+export interface AiBoardPacks {
+  enabled: boolean;
+  /** When `enabled` is false: the code… */
+  reason?: AiBoardsReasonCode;
+  /** …and the API's one line for it. */
+  message?: string;
+  packs: AiBoardPack[];
+  validMonths: number;
+  purchases: AiBoardPackPurchase[];
+}
+
+/** GET /billing/ai-packs — the packs and what this organisation bought (Settings → AI). */
+export function useAiBoardPacks(opts: { enabled?: boolean } = {}) {
+  return useQuery<AiBoardPacks>({
+    queryKey: ['billing', 'ai-packs'],
+    queryFn: () => apiFetch<AiBoardPacks>('/billing/ai-packs'),
+    enabled: opts.enabled ?? true,
+    staleTime: 0,
+  });
+}
+
+/** POST /billing/ai-packs/checkout → a Stripe-hosted Checkout URL, or why a pack cannot be bought. */
+export type AiBoardPackCheckout =
+  | { url: string }
+  | { enabled: false; reason: AiBoardsReasonCode; message: string };
+
+/**
+ * Buy one pack. The answer is a Stripe-hosted Checkout URL the page sends the operator to, in the
+ * same tab — exactly like the subscription checkout on Settings → Billing (card entry happens on
+ * Stripe's page, never here). Stripe's webhook credits the boards, not this call. The sheet answers
+ * its own failures inline, so the global mutation toast stays out of it.
+ */
+export function useBuyAiBoardPack() {
+  return useMutation<AiBoardPackCheckout | null, Error, { pack: string }>({
+    meta: { suppressGlobalError: true },
+    mutationFn: ({ pack }) =>
+      apiFetch<AiBoardPackCheckout | null>('/billing/ai-packs/checkout', {
+        method: 'POST',
+        body: JSON.stringify({ pack }),
+      }),
+  });
+}
+
+/**
+ * Re-read what just changed the boards: a batch landed or failed, an edit-with-words finished, a
+ * key was saved or removed, a pack was paid for. Event-driven only — never on a timer.
+ */
+export function useRefreshAiBoards() {
+  const qc = useQueryClient();
+  return useCallback(() => {
+    void qc.invalidateQueries({ queryKey: ['ai-allowance'] });
+    void qc.invalidateQueries({ queryKey: ['billing', 'ai-packs'] });
+  }, [qc]);
 }
