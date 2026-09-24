@@ -136,6 +136,7 @@ afterAll(() => {
 
 const welcome = (over: Record<string, unknown> = {}) => ({
   tenantId: 't1',
+  count: 3, // these specs read every structure's draw; the default batch is 2 since 945fcaa7
   prompt: 'a welcome board for the lobby',
   vertical: 'restaurant',
   venueName: 'Super Taco',
@@ -342,6 +343,7 @@ function imagesOf(html: string): Array<[string | null, string | null]> {
 const posGenerate = (service: AiService) =>
   service.generateDesignerBoardCandidates({
     tenantId: 't1',
+    count: 3, // every structure's draw is inspected; the default batch is 2 since 945fcaa7
     prompt: 'a menu board with our Toast menu',
     vertical: 'restaurant',
     screenWidth: 3840,

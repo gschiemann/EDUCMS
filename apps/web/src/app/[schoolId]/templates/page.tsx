@@ -92,6 +92,7 @@ import {
   type DesignerBrief,
 } from '@/hooks/use-ai-designer';
 import { conciergeVenueName } from '@/components/templates/conciergeVenue';
+import { pickConciergeDesignerAssets } from '@/lib/concierge-designer-assets';
 import { useTranslations } from 'next-intl';
 import type { ConciergeIntake, ConciergeReference } from '@cms/api-types';
 import { useParams, useRouter } from 'next/navigation';
@@ -1318,10 +1319,12 @@ export default function TemplatesPage() {
       ).slice(0, 8);
       // The brand's REAL logo (its own mark) and REAL hero/work photo — kept
       // SEPARATE so the board places the logo in the header AND uses the photo as
-      // the hero (the 2026-06-30 "take color, content, logos" fix). Both are the
-      // brand's own verified assets, so they survive the guessed-stock-photo strip.
-      const logoUrl = refs.map((r) => (r as any).logoUrl).find((u) => typeof u === 'string' && u) || undefined;
-      const heroImageUrl = refs.map((r) => r.imageUrl).find((u) => typeof u === 'string' && u) || undefined;
+      // the hero (the 2026-06-30 "take color, content, logos" fix). 2026-09-23:
+      // the operator's own image wins (upload > POS > site > stock), and whose it
+      // is rides along so the Designer never captions a stock photo as theirs.
+      const assets = pickConciergeDesignerAssets(refs);
+      const logoUrl = assets.logoUrl;
+      const heroImageUrl = assets.heroImageUrl;
       const reference = refs.map((r) => r.summary).filter(Boolean).join('\n\n').slice(0, 4000) || undefined;
       // THE REAL MENU (2026-09-22). A URL reference can now carry the venue's
       // actual menu, read off their own site. It rides as the designer's
@@ -1360,6 +1363,8 @@ export default function TemplatesPage() {
           ...(menuContent ? { content: menuContent } : {}),
           ...(siteMenuMissing ? { siteMenuMissing: true } : {}),
           ...(args.posSelection ? { posSelection: args.posSelection } : {}),
+          ...(assets.logoSource ? { logoSource: assets.logoSource } : {}),
+          ...(assets.heroImageSource ? { heroImageSource: assets.heroImageSource } : {}),
         },
         forceDesigner: true,
         designerExtras: {
