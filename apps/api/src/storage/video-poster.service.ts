@@ -120,6 +120,14 @@ import {
  * `VIDEO_FASTSTART_REMUX_DISABLED=1` is set. At most ONE re-mux runs per
  * process at a time: each holds ~3× the file in memory, on the pod that also
  * carries emergency delivery.
+ *
+ * ORDER WITH THE SIGNAGE TRANSCODE (storage/video-transcode, 2026-09-24): a
+ * re-mux is DEFERRED while a `video_transcode_jobs` row for the asset is
+ * queued or running — checked before it starts and again right before the
+ * swap. The transcode's swap is conditional on the row still serving the URL
+ * it was queued with, so a re-mux first would make it `source-changed`; its
+ * output is `+faststart` anyway, and when it KEEPS the original (not smaller,
+ * already optimal, a failed encode) its worker runs this pass itself.
  */
 /**
  * Largest object the in-memory download fallback will pull (2026-09-23): the
@@ -177,7 +185,8 @@ export class VideoPosterService {
       return { probed: false, posterUrl: null, remux: 'not-needed' };
     const source = this.sourceFor(args);
     const probe = await this.probeAndPersist(args, source);
-    const posterUrl = await this.generateForAsset(args, source);
+    const posterUrl =
+      opts.poster === false ? null : await this.generateForAsset(args, source);
     const remux = await this.fastStart(
       args,
       source,
@@ -421,6 +430,9 @@ export class VideoPosterService {
       );
     if (!probe.persisted)
       return this.remuxSkipped(args, 'its probe could not be saved');
+    const transcode = await this.transcodePending(args.assetId);
+    if (transcode !== null)
+      return this.remuxSkipped(args, describeTranscodeDeferral(transcode));
     if (this.remuxInFlight.has(args.assetId))
       return this.remuxSkipped(args, 'a re-mux of it is already queued here');
 
@@ -529,6 +541,16 @@ export class VideoPosterService {
         await this.discardCopy(newPath);
         return this.skippedAsEmergency(args, late);
       }
+      //    …and a signage transcode can be (re-)queued for it meanwhile: its
+      //    swap must find the row unchanged, so it wins and this copy goes.
+      const lateTranscode = await this.transcodePending(args.assetId);
+      if (lateTranscode !== null) {
+        await this.discardCopy(newPath);
+        return this.remuxSkipped(
+          args,
+          `during the re-mux, ${describeTranscodeDeferral(lateTranscode)}`,
+        );
+      }
 
       // 6. The swap.
       return await this.swapOntoCopy(args, {
@@ -629,6 +651,31 @@ export class VideoPosterService {
       );
     }
     return this.remuxDone(args, s);
+  }
+
+  /**
+   * Is a signage transcode (storage/video-transcode) on its way for this
+   * asset? 'queued' | 'running' when one is, null when none is, 'unknown'
+   * when the read failed (treated as "yes" — fail closed). The transcode's
+   * swap is conditional on the row STILL serving the URL it was queued with,
+   * so a re-mux that moved the row first would turn the transcode into
+   * `source-changed` and cost the file its smaller copy; the transcode's own
+   * output is `+faststart`, and its worker calls back into `processVideo`
+   * (`VideoTranscodePipeline.remuxKeptOriginal`) when it keeps the original.
+   */
+  private async transcodePending(
+    assetId: string,
+  ): Promise<'queued' | 'running' | 'unknown' | null> {
+    try {
+      const job = await this.prisma.client.videoTranscodeJob.findFirst({
+        where: { assetId, status: { in: ['queued', 'running'] } },
+        select: { status: true },
+      });
+      if (!job) return null;
+      return job.status === 'running' ? 'running' : 'queued';
+    } catch {
+      return 'unknown';
+    }
   }
 
   /**
@@ -966,6 +1013,21 @@ export type RemuxMode = 'sync' | 'async' | 'skip';
 
 export interface VideoJobOptions {
   remux?: RemuxMode;
+  /**
+   * `false` runs the probe and the fast-start step without cutting a poster —
+   * for a pass over a file that already has one (the transcode worker's
+   * `remuxKeptOriginal`). Default `true`.
+   */
+  poster?: boolean;
+}
+
+/** The one line the log carries when a re-mux stands aside for the transcode. */
+function describeTranscodeDeferral(
+  state: 'queued' | 'running' | 'unknown',
+): string {
+  return state === 'unknown'
+    ? 'could not confirm that no signage transcode is queued for it'
+    : `a signage transcode is ${state} for it — its output is fast-start, and the worker runs this pass itself if it keeps the original`;
 }
 
 /** What the fast-start step did on this call. Anything but 'remuxed' left the row as it was. */

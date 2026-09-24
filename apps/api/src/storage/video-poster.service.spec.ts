@@ -671,10 +671,16 @@ describe('2026-09-23 — the download fallback is bounded (direct uploads reach 
     fromUrl.mockResolvedValue({ ok: false, reason: 'ffmpeg exited 1' });
     const storage = makeStorage({
       download: jest.fn(async () => Buffer.from('video-bytes')),
-      getObjectInfo: jest.fn(async () => ({ size: 1536 * 1024 * 1024, contentType: 'video/mp4' })),
+      getObjectInfo: jest.fn(async () => ({
+        size: 1536 * 1024 * 1024,
+        contentType: 'video/mp4',
+      })),
     });
     const { service } = make({ storage });
-    const url = await service.generateForAsset({ ...JOB, storagePath: 'tenant-1/big.mp4' });
+    const url = await service.generateForAsset({
+      ...JOB,
+      storagePath: 'tenant-1/big.mp4',
+    });
     expect(url).toBeNull();
     expect(storage.download).not.toHaveBeenCalled();
   });
@@ -683,21 +689,35 @@ describe('2026-09-23 — the download fallback is bounded (direct uploads reach 
     probeFromUrl.mockResolvedValue({ ok: false, reason: 'ffprobe exited 1' });
     const storage = makeStorage({
       download: jest.fn(async () => Buffer.from('video-bytes')),
-      getObjectInfo: jest.fn(async () => ({ size: 1536 * 1024 * 1024, contentType: 'video/mp4' })),
+      getObjectInfo: jest.fn(async () => ({
+        size: 1536 * 1024 * 1024,
+        contentType: 'video/mp4',
+      })),
     });
     const { service, prisma } = make({ storage });
-    await expect(service.probeForAsset({ ...JOB, storagePath: 'tenant-1/big.mp4' })).resolves.toBe(false);
+    await expect(
+      service.probeForAsset({ ...JOB, storagePath: 'tenant-1/big.mp4' }),
+    ).resolves.toBe(false);
     expect(storage.download).not.toHaveBeenCalled();
     expect(probeFromBuffer).not.toHaveBeenCalled();
-    expect(writtenMeta(prisma).probeFailed).toContain('too-large-for-download-fallback (1536 MB)');
+    expect(writtenMeta(prisma).probeFailed).toContain(
+      'too-large-for-download-fallback (1536 MB)',
+    );
   });
 
   it('a storage that cannot report a size falls through to the download as before', async () => {
     fromUrl.mockResolvedValue({ ok: false, reason: 'ffmpeg exited 1' });
     fromBuffer.mockResolvedValue(OK);
-    const storage = makeStorage({ download: jest.fn(async () => Buffer.from('video-bytes')) }); // no getObjectInfo
+    const storage = makeStorage({
+      download: jest.fn(async () => Buffer.from('video-bytes')),
+    }); // no getObjectInfo
     const { service } = make({ storage });
-    expect(await service.generateForAsset({ ...JOB, storagePath: 'tenant-1/abc.mp4' })).toContain('/posters/');
+    expect(
+      await service.generateForAsset({
+        ...JOB,
+        storagePath: 'tenant-1/abc.mp4',
+      }),
+    ).toContain('/posters/');
     expect(storage.download).toHaveBeenCalledWith('tenant-1/abc.mp4');
   });
 
@@ -706,7 +726,10 @@ describe('2026-09-23 — the download fallback is bounded (direct uploads reach 
     fromBuffer.mockResolvedValue(OK);
     const storage = makeStorage({
       download: jest.fn(async () => Buffer.from('video-bytes')),
-      getObjectInfo: jest.fn(async () => ({ size: 40 * 1024 * 1024, contentType: 'video/mp4' })),
+      getObjectInfo: jest.fn(async () => ({
+        size: 40 * 1024 * 1024,
+        contentType: 'video/mp4',
+      })),
     });
     const { service } = make({ storage });
     await service.generateForAsset({ ...JOB, storagePath: 'tenant-1/abc.mp4' });
@@ -791,9 +814,12 @@ describe('the fast-start re-mux — an MP4 whose index sits at the tail', () => 
     rows: FakeRow[] = [assetRow()],
     opts: {
       swap?: 'throws' | 'throws-after-commit' | 'throws-unreadable';
+      /** The signage transcode's job row for the asset, if any ('throws' = the read fails). */
+      transcode?: 'queued' | 'running' | 'done' | 'throws' | null;
     } = {},
   ) {
     let unreadable = false;
+    let transcode = opts.transcode ?? null;
     const find = (w: RowWhere) =>
       rows.find(
         (r) =>
@@ -847,6 +873,17 @@ describe('the fast-start re-mux — an MP4 whose index sits at the tail', () => 
       screen: { findFirst: none() },
       screenEmergencyOverride: { findFirst: none() },
       emergencyMessage: { findFirst: none() },
+      // The gate's read: `status IN (...)`, answered from the switch above.
+      videoTranscodeJob: {
+        findFirst: jest.fn(
+          (args: { where: { assetId: string; status: { in: string[] } } }) => {
+            if (transcode === 'throws')
+              return Promise.reject(new Error('connection reset'));
+            const hit = transcode && args.where.status.in.includes(transcode);
+            return Promise.resolve(hit ? { status: transcode } : null);
+          },
+        ),
+      },
     };
     const uploads: Array<{ path: string; bytes: Buffer; mime: string }> = [];
     const deleted: string[] = [];
@@ -894,6 +931,10 @@ describe('the fast-start re-mux — an MP4 whose index sits at the tail', () => 
         [...log.mock.calls, ...warn.mock.calls].map((c: unknown[]) =>
           String(c[0]),
         ),
+      /** Queue (or finish) a signage transcode for the asset mid-test. */
+      setTranscode: (state: typeof transcode) => {
+        transcode = state;
+      },
     };
   }
 
@@ -1133,6 +1174,72 @@ describe('the fast-start re-mux — an MP4 whose index sits at the tail', () => 
     ).resolves.toMatchObject({ remux: 'skipped' });
     expect(remuxMock).not.toHaveBeenCalled();
     expect(w.rows[0].fileUrl).toBe(fileUrl);
+  });
+
+  it('DEFERS to a signage transcode queued or running for the asset — its swap must find the row unchanged, and its output is fast-start', async () => {
+    for (const status of ['queued', 'running'] as const) {
+      const w = remuxWorld([assetRow()], { transcode: status });
+      await expect(
+        w.service.processVideo(BYTES_JOB, { remux: 'sync' }),
+      ).resolves.toMatchObject({ probed: true, remux: 'skipped' });
+      expect(remuxMock).not.toHaveBeenCalled();
+      expect(w.swaps()).toHaveLength(0);
+      expect(
+        w.lines().some((l) => l.includes(`a signage transcode is ${status}`)),
+      ).toBe(true);
+      // The facts still landed — only the fix waits.
+      expect(w.rows[0].processingMeta).toMatchObject({
+        probe: { fastStart: false },
+      });
+    }
+  });
+
+  it('a transcode that already finished (kept the original) does not stand in the way', async () => {
+    const w = remuxWorld([assetRow()], { transcode: 'done' });
+    await expect(
+      w.service.processVideo(BYTES_JOB, { remux: 'sync' }),
+    ).resolves.toMatchObject({ remux: 'remuxed' });
+    expect(w.swaps()).toHaveLength(1);
+  });
+
+  it('fails CLOSED: a transcode-queue read that cannot run leaves the file alone', async () => {
+    const w = remuxWorld([assetRow()], { transcode: 'throws' });
+    await expect(
+      w.service.processVideo(BYTES_JOB, { remux: 'sync' }),
+    ).resolves.toMatchObject({ remux: 'skipped' });
+    expect(remuxMock).not.toHaveBeenCalled();
+    expect(
+      w
+        .lines()
+        .some((l) =>
+          l.includes('could not confirm that no signage transcode is queued'),
+        ),
+    ).toBe(true);
+  });
+
+  it('looks again right before the swap: a transcode queued during the re-mux wins, and the copy is dropped', async () => {
+    const w = remuxWorld();
+    remuxMock.mockImplementation(() => {
+      w.setTranscode('queued');
+      return Promise.resolve(REMUX_OK);
+    });
+    await expect(
+      w.service.processVideo(BYTES_JOB, { remux: 'sync' }),
+    ).resolves.toMatchObject({ remux: 'skipped' });
+    expect(w.swaps()).toHaveLength(0);
+    expect(w.uploads).toHaveLength(1);
+    expect(w.deleted).toEqual([w.uploads[0].path]);
+    expect(w.rows[0].fileUrl).toBe(OLD_URL);
+  });
+
+  it('poster: false runs the probe and the fast-start step without cutting a poster (the transcode worker’s pass)', async () => {
+    const w = remuxWorld();
+    await expect(
+      w.service.processVideo(BYTES_JOB, { remux: 'sync', poster: false }),
+    ).resolves.toEqual({ probed: true, posterUrl: null, remux: 'remuxed' });
+    expect(posterBufferMock).not.toHaveBeenCalled();
+    expect(posterUrlMock).not.toHaveBeenCalled();
+    expect(w.swaps()).toHaveLength(1);
   });
 
   it('skips when the row no longer points at the file that was probed', async () => {

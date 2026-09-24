@@ -29,6 +29,7 @@ import {
   SERVED_FILE_FACT_KEYS,
   mergeTranscodeMeta,
   type PipelineEnv,
+  remuxAfterTranscode,
 } from './video-transcode.pipeline';
 import {
   ORIGINAL_RETENTION_MS,
@@ -841,5 +842,83 @@ describe('VideoTranscodePipeline — after a swap the facts describe the SERVED 
       },
     });
     expect(await tempLeftovers()).toEqual([]);
+  });
+});
+
+describe('VideoTranscodePipeline — the deferred fast-start pass after a kept original (2026-09-24)', () => {
+  const world = (asset: unknown, servedFile?: World['servedFile']) =>
+    build({
+      asset,
+      emergency: false,
+      outBytes: 1,
+      outProbe: OUT_2160,
+      runOk: true,
+      servedFile,
+    });
+
+  it('remuxAfterTranscode: only an outcome that left the served file alone', () => {
+    expect(
+      remuxAfterTranscode({ status: 'skipped', reason: 'not-smaller' }),
+    ).toBe(true);
+    expect(
+      remuxAfterTranscode({ status: 'skipped', reason: 'already-optimal' }),
+    ).toBe(true);
+    expect(
+      remuxAfterTranscode({ status: 'failed', reason: 'ffmpeg-failed' }),
+    ).toBe(true);
+    expect(remuxAfterTranscode({ status: 'done', reason: 'swapped' })).toBe(
+      false,
+    );
+    for (const reason of [
+      'asset-deleted',
+      'source-changed',
+      'not-video',
+      'asset-archived',
+      'emergency-content',
+      'external-url',
+      'aborted',
+    ]) {
+      expect(remuxAfterTranscode({ status: 'skipped', reason })).toBe(false);
+    }
+  });
+
+  it('runs the probe + fast-start pass on the file the row still serves — no poster, async re-mux', async () => {
+    const t = world(videoAsset({ originalName: 'Pro Series Video 1.MOV' }));
+    await t.pipeline.remuxKeptOriginal(job());
+    expect(t.videoPoster.processVideo).toHaveBeenCalledTimes(1);
+    expect(t.videoPoster.processVideo).toHaveBeenCalledWith(
+      {
+        assetId: 'asset-1',
+        tenantId: TENANT,
+        mimeType: 'video/mp4',
+        storagePath: SRC_URL.slice(SUPA.length),
+        ext: '.MOV',
+      },
+      { remux: 'async', poster: false },
+    );
+  });
+
+  it('touches nothing when the row moved on, the asset is gone, the job has no asset, or the file is not a video', async () => {
+    const moved = world(videoAsset({ fileUrl: `${SUPA}${TENANT}/other.mp4` }));
+    await moved.pipeline.remuxKeptOriginal(job());
+    expect(moved.videoPoster.processVideo).not.toHaveBeenCalled();
+
+    const gone = world(null);
+    await gone.pipeline.remuxKeptOriginal(job());
+    expect(gone.videoPoster.processVideo).not.toHaveBeenCalled();
+
+    const orphan = world(videoAsset());
+    await orphan.pipeline.remuxKeptOriginal(job({ assetId: null }));
+    expect(orphan.videoPoster.processVideo).not.toHaveBeenCalled();
+
+    const image = world(videoAsset({ mimeType: 'image/png' }));
+    await image.pipeline.remuxKeptOriginal(job());
+    expect(image.videoPoster.processVideo).not.toHaveBeenCalled();
+  });
+
+  it('never throws — a pass that explodes is logged and the job’s outcome stands', async () => {
+    const t = world(videoAsset(), 'throw');
+    await expect(t.pipeline.remuxKeptOriginal(job())).resolves.toBeUndefined();
+    expect(t.videoPoster.processVideo).toHaveBeenCalledTimes(1);
   });
 });

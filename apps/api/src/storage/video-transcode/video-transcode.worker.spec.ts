@@ -59,6 +59,7 @@ function makeWorker(
   const jobs = opts.jobs ?? makeJobs();
   const pipeline = {
     ffmpegAvailable: jest.fn(async () => opts.ffmpeg ?? true),
+    remuxKeptOriginal: jest.fn(() => Promise.resolve()),
     process: jest.fn(
       opts.process ??
         (async () =>
@@ -242,6 +243,81 @@ describe('VideoTranscodeWorker.run — lease discipline', () => {
     release();
     await running;
     expect(jobs.finish).not.toHaveBeenCalled();
+  });
+});
+
+describe('VideoTranscodeWorker.run — the deferred fast-start pass (2026-09-24)', () => {
+  const settle = async () => {
+    for (let i = 0; i < 4; i++) await new Promise((r) => setImmediate(r));
+  };
+  /** The harness, with the one pipeline method these tests read typed. */
+  const remuxWorker = (opts: {
+    outcome: TranscodeOutcome;
+    finish?: () => Promise<boolean>;
+  }) =>
+    makeWorker({
+      jobs: opts.finish
+        ? (makeJobs({ finish: jest.fn(opts.finish) }) as unknown)
+        : undefined,
+      process: () => Promise.resolve(opts.outcome),
+    }) as {
+      worker: VideoTranscodeWorker;
+      pipeline: {
+        remuxKeptOriginal: jest.Mock<Promise<void>, [ClaimedTranscodeJob]>;
+      };
+    };
+
+  it('a job that KEPT the original hands the file to the fast-start pass, AFTER the job is stored terminal', async () => {
+    const order: string[] = [];
+    const w = remuxWorker({
+      outcome: { status: 'skipped', reason: 'not-smaller' },
+      finish: () => {
+        order.push('finish');
+        return Promise.resolve(true);
+      },
+    });
+    w.pipeline.remuxKeptOriginal.mockImplementation(() => {
+      order.push('remux');
+      return Promise.resolve();
+    });
+    await w.worker.tick();
+    await settle();
+    expect(w.pipeline.remuxKeptOriginal).toHaveBeenCalledTimes(1);
+    expect(w.pipeline.remuxKeptOriginal.mock.calls[0][0]).toMatchObject({
+      id: 'job-1',
+    });
+    expect(order).toEqual(['finish', 'remux']);
+  });
+
+  it('a swap, an outcome discarded as re-queued elsewhere, and the no-touch reasons never start it', async () => {
+    const cases: Array<[TranscodeOutcome, boolean]> = [
+      [
+        { status: 'done', reason: 'swapped', outputUrl: 'u', outputBytes: 10 },
+        false,
+      ],
+      [{ status: 'skipped', reason: 'emergency-content' }, false],
+      [{ status: 'skipped', reason: 'source-changed' }, false],
+      [{ status: 'skipped', reason: 'asset-deleted' }, false],
+      [{ status: 'failed', reason: 'ffmpeg-failed', error: 'x' }, true],
+      [{ status: 'skipped', reason: 'already-optimal' }, true],
+    ];
+    for (const [outcome, expected] of cases) {
+      const w = remuxWorker({ outcome });
+      await w.worker.tick();
+      await settle();
+      expect(w.pipeline.remuxKeptOriginal).toHaveBeenCalledTimes(
+        expected ? 1 : 0,
+      );
+    }
+    // Stored=false: another replica re-queued it; this run's outcome is
+    // discarded, and so is the pass.
+    const w = remuxWorker({
+      outcome: { status: 'skipped', reason: 'not-smaller' },
+      finish: () => Promise.resolve(false),
+    });
+    await w.worker.tick();
+    await settle();
+    expect(w.pipeline.remuxKeptOriginal).not.toHaveBeenCalled();
   });
 });
 

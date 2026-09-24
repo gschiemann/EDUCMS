@@ -178,6 +178,33 @@ export function mergeTranscodeMeta(
   return { ...base, ...transcode };
 }
 
+/**
+ * Terminal outcomes after which the row still serves the file it served
+ * before this job — so the fast-start re-mux VideoPosterService deferred
+ * while the job was queued may still apply. The others swapped (`done`),
+ * lost the asset, found it changed / archived / external / emergency, or
+ * were aborted mid-run (the row is claimed again later).
+ */
+export const NO_REMUX_AFTER_TRANSCODE: ReadonlySet<string> = new Set([
+  'swapped',
+  'asset-deleted',
+  'source-changed',
+  'not-video',
+  'asset-archived',
+  'emergency-content',
+  'external-url',
+  'aborted',
+]);
+
+/** Should the worker run the deferred fast-start pass after this outcome? */
+export function remuxAfterTranscode(
+  outcome: Pick<TranscodeOutcome, 'status' | 'reason'>,
+): boolean {
+  return (
+    outcome.status !== 'done' && !NO_REMUX_AFTER_TRANSCODE.has(outcome.reason)
+  );
+}
+
 /** What `refreshServedFileFacts` records on the job's `details`. */
 export interface ServedFileFacts {
   /** The new file's ffprobe facts landed on the row (probe version 2). */
@@ -208,6 +235,49 @@ export class VideoTranscodePipeline {
   /** For the worker: can this replica transcode at all? */
   ffmpegAvailable(): Promise<boolean> {
     return this.runner.available();
+  }
+
+  /**
+   * The job is terminal and KEPT the original (not smaller, already optimal,
+   * a failed encode — `remuxAfterTranscode`). While it was queued,
+   * VideoPosterService deferred the lossless fast-start re-mux for this
+   * asset: a re-mux that moved the row first would have made this job
+   * `source-changed`. With the transcode out of the way, run that pass on the
+   * file the row still serves — probe, then re-mux if its index sits at the
+   * end — with no poster (the upload already cut one). Called by the worker
+   * AFTER `finish()`, so the job's row reads terminal to the gate. Never
+   * throws; nothing here can undo the job's own outcome.
+   */
+  async remuxKeptOriginal(job: ClaimedTranscodeJob): Promise<void> {
+    if (!job.assetId) return;
+    try {
+      const asset = await this.prisma.client.asset.findFirst({
+        where: { id: job.assetId, tenantId: job.tenantId },
+        select: { fileUrl: true, mimeType: true, originalName: true },
+      });
+      if (!asset || asset.fileUrl !== job.sourceUrl) return;
+      const mimeType = String(asset.mimeType || '').toLowerCase();
+      if (!mimeType.startsWith('video/')) return;
+      const storagePath = this.storage.extractPath(asset.fileUrl);
+      if (!storagePath) return;
+      const r = await this.videoPoster.processVideo(
+        {
+          assetId: job.assetId,
+          tenantId: job.tenantId,
+          mimeType,
+          storagePath,
+          ext: path.extname(asset.originalName || '') || null,
+        },
+        { remux: 'async', poster: false },
+      );
+      this.logger.log(
+        `[transcode] asset ${job.assetId}: kept the original — fast-start pass ${r.remux}`,
+      );
+    } catch (e) {
+      this.logger.warn(
+        `[transcode] asset ${job.assetId}: fast-start pass after the kept original threw: ${(e as Error)?.message ?? e}`,
+      );
+    }
   }
 
   /** Is this asset emergency media? true on ANY error (fail closed — never swap alert media on doubt). */

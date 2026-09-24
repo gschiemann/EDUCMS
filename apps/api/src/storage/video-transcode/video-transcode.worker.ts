@@ -45,7 +45,10 @@ import {
   scanForObjectReference,
   type ReferenceScanResult,
 } from './object-references';
-import { VideoTranscodePipeline } from './video-transcode.pipeline';
+import {
+  VideoTranscodePipeline,
+  remuxAfterTranscode,
+} from './video-transcode.pipeline';
 import {
   ORIGINAL_RECHECK_MS,
   ORIGINAL_UNKNOWN_RECHECK_MS,
@@ -291,6 +294,11 @@ export class VideoTranscodeWorker implements OnModuleInit, OnModuleDestroy {
             ? ` bytes in ${(outcome.details as any).bytesIn}, out ${outcome.outputBytes ?? (outcome.details as any).bytesOut ?? 'n/a'}`
             : ''),
       );
+      // The original stays: the fast-start re-mux VideoPosterService deferred
+      // while this job was queued may still apply to it (pipeline).
+      if (stored && remuxAfterTranscode(outcome)) {
+        await this.pipeline.remuxKeptOriginal(job);
+      }
     } catch (e) {
       // pipeline.process never throws; this is the belt to its braces.
       this.logger.warn(
