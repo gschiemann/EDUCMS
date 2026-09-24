@@ -15,6 +15,8 @@ import {
   deriveRecovery,
   deriveReportedContent,
   deriveScreenStatus,
+  deriveVideoPlayback,
+  videoSampleName,
   matchesFilter,
   matchesQuery,
   playlistRenderSignature,
@@ -867,5 +869,76 @@ describe('syncStatusFor — synced playback, as the player reports it (gated on 
     const me = inGroup({ lastSyncReport: { locked: true, errMs: 1, clockUncertaintyMs: 1, rttMs: 20, contentSig: 'mine' } });
     const sib = (id: string) => inGroup({ id, lastSyncReport: { locked: true, contentSig: 'theirs' } });
     expect(syncStatusFor(me, [me, sib('b'), sib('c')], T)).toEqual({ kind: 'diverged' });
+  });
+});
+
+// ── Video playback quality (2026-09-24) ───────────────────────────────
+describe('deriveVideoPlayback', () => {
+  const sample = (over: Record<string, unknown> = {}) => ({
+    url: 'https://x.supabase.co/storage/v1/object/public/assets/t1/uploads/Pro%20Series%20_%202026%20(2).mp4',
+    totalFrames: 1830,
+    droppedFrames: 6,
+    elapsedMs: 61_000,
+    width: 1920,
+    height: 1080,
+    at: new Date(NOW - 2 * MIN).toISOString(),
+    ...over,
+  });
+
+  it('is null when the player never sent a sample', () => {
+    expect(deriveVideoPlayback(scr(), NOW)).toBeNull();
+    expect(deriveVideoPlayback(scr({ lastVideoReport: { url: 'x', totalFrames: 0, droppedFrames: 0 } }), NOW)).toBeNull();
+  });
+
+  it('reads a clean play as smooth, with the file name decoded and the counters spelled out', () => {
+    const v = deriveVideoPlayback(scr({ lastVideoReport: sample() }), NOW)!;
+    expect(v.grade).toBe('smooth');
+    expect(v.name).toBe('Pro Series _ 2026 (2).mp4');
+    expect(v.headline).toBe('Played smoothly on this screen');
+    expect(v.detail).toBe('6 of 1,830 frames dropped (0.3%) · 1920 × 1080 · 2m ago');
+    expect(v.droppedPct).toBe(0.3);
+  });
+
+  it('grades 1–5% as hitching and 5%+ as stuttering', () => {
+    expect(deriveVideoPlayback(scr({ lastVideoReport: sample({ droppedFrames: 40 }) }), NOW)!.grade).toBe('hitching');
+    const bad = deriveVideoPlayback(scr({ lastVideoReport: sample({ droppedFrames: 312 }) }), NOW)!;
+    expect(bad.grade).toBe('stuttering');
+    expect(bad.headline).toBe('Stuttered on this screen');
+    expect(bad.detail.startsWith('312 of 1,830 frames dropped (17%)')).toBe(true);
+  });
+
+  it('refuses to judge a clip shorter than five seconds, and never lets dropped exceed total', () => {
+    const short = deriveVideoPlayback(scr({ lastVideoReport: sample({ totalFrames: 90, droppedFrames: 200 }) }), NOW)!;
+    expect(short.grade).toBe('short');
+    expect(short.droppedFrames).toBe(90);
+  });
+
+  it('dates the sample from the row stamp when the sample itself carries none', () => {
+    const v = deriveVideoPlayback(
+      scr({ lastVideoReport: sample({ at: undefined, width: undefined, height: undefined }), lastVideoReportAt: new Date(NOW - 5 * MIN).toISOString() }),
+      NOW,
+    )!;
+    expect(v.detail).toBe('6 of 1,830 frames dropped (0.3%) · 5m ago');
+  });
+
+  it('rides every ops row', () => {
+    const ops = buildScreenOps({
+      screens: [scr({ lastVideoReport: sample({ droppedFrames: 312 }) }), scr({ id: 'scr-2' })],
+      schedules: [],
+      playlists: [],
+      deployedSha: SHA,
+      now: NOW,
+    });
+    const byId = new Map(ops.rows.map((r) => [r.screen.id, r]));
+    expect(byId.get('scr-1')!.video?.grade).toBe('stuttering');
+    expect(byId.get('scr-2')!.video).toBeNull();
+  });
+});
+
+describe('videoSampleName', () => {
+  it('takes the last path segment, decoded, ignoring query and hash', () => {
+    expect(videoSampleName('https://cdn/a/b/clip%20one.mp4?x=1#t=0.1')).toBe('clip one.mp4');
+    expect(videoSampleName('')).toBe('video');
+    expect(videoSampleName(null)).toBe('video');
   });
 });

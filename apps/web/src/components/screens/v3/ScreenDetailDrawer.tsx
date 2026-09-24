@@ -46,7 +46,7 @@ import { eventCopy } from '@/components/dashboard/district/screenEventCopy';
 import { appConfirm } from '@/components/ui/app-dialog';
 import {
   compactAge, deriveDelivery, deriveRecovery, msOf, wordyAge,
-  type Delivery, type OpsRow, type ReportedState, type SyncStatus,
+  type Delivery, type OpsRow, type ReportedState, type SyncStatus, type VideoPlaybackGrade,
 } from './screenOps';
 import { ExpectedThumb } from './ExpectedThumb';
 
@@ -90,6 +90,14 @@ function toneClasses(tone: string) {
       return 'bg-slate-100 text-slate-600 border-slate-200';
   }
 }
+
+/** Tint for the "Last video" block — semantic, never brand. */
+const VIDEO_TONE: Record<VideoPlaybackGrade, { wrap: string; ink: string }> = {
+  smooth: { wrap: 'border-emerald-200 bg-emerald-50/60', ink: 'text-emerald-800' },
+  hitching: { wrap: 'border-amber-200 bg-amber-50/70', ink: 'text-amber-800' },
+  stuttering: { wrap: 'border-rose-200 bg-rose-50/70', ink: 'text-rose-800' },
+  short: { wrap: 'border-slate-200 bg-slate-50', ink: 'text-slate-600' },
+};
 
 /** Tint for the "Playing now" card — semantic, never brand. */
 const REPORTED_TONE: Record<ReportedState, { wrap: string; ink: string }> = {
@@ -195,7 +203,7 @@ export function ScreenDetailDrawer({
   pushState, onPushApk, apkPending, onRefreshWeb, refreshWebPending, syncActive, syncStatus, onSetLocation,
 }: ScreenDetailDrawerProps) {
   useOverlayLock(); // mounts only while open — hides the mobile tab bar
-  const { screen, status, expected, reported } = row;
+  const { screen, status, expected, reported, video } = row;
   const [tab, setTab] = useState<DrawerTab>(initialTab);
   const panelRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -633,6 +641,31 @@ export function ScreenDetailDrawer({
                     >
                       {reported.app.line}
                     </p>
+                  )}
+                  {/* Last video (2026-09-24): the player's own dropped-frame
+                      count for the clip it last played. Read beside the file's
+                      grade in the Media Library: a clean file that stutters
+                      here is the player or the box; a red file that stutters
+                      is the file. */}
+                  {video && (
+                    <div
+                      className={`mt-2 rounded-lg border px-2.5 py-2 ${VIDEO_TONE[video.grade].wrap}`}
+                      data-testid="screen-video-playback"
+                      data-video-grade={video.grade}
+                    >
+                      <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Last video</p>
+                      <p className={`mt-0.5 text-[11.5px] font-bold leading-snug break-words ${VIDEO_TONE[video.grade].ink}`}>
+                        {video.headline}
+                      </p>
+                      <p className="mt-0.5 text-[10.5px] font-semibold text-slate-600 leading-snug break-words">
+                        {video.name} — {video.detail}
+                      </p>
+                      {video.grade === 'stuttering' && (
+                        <p className="mt-1 text-[10.5px] font-semibold text-slate-500 leading-snug">
+                          Open this file in the Media Library — its &ldquo;Playback on screens&rdquo; card says whether the file itself is the reason.
+                        </p>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>

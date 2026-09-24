@@ -306,6 +306,15 @@ export const SCREEN_TELEMETRY_ONLY_FIELDS = new Set([
     // heartbeat would thrash the manifest cache (the exact 25 GB/mo
     // egress failure the cache exists to prevent).
     'lastPushConnectedAt',
+    // Video playback quality (2026-09-24) — the dropped-frame sample the
+    // player posts beside its render proof, at the same fleet-wide cadence.
+    // Non-content for the same reason lastSyncReport is: a fact about what
+    // the device DID, read only by the fleet surfaces, in no manifest
+    // branch. Leaving it off this list would bust the manifest cache on
+    // every telemetry tick — the 25 GB/mo egress failure the cache exists
+    // to prevent.
+    'lastVideoReport',
+    'lastVideoReportAt',
     // Device-credential revocation state (2026-08-03, DT-01/DT-02). None of
     // these appear in the manifest payload, so a write must not invalidate a
     // screen's cached content. Safe because revocation is NOT enforced via

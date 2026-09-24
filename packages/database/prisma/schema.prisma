@@ -1199,6 +1199,18 @@ model Screen {
   // Telemetry-only: listed in SCREEN_TELEMETRY_ONLY_FIELDS so writes never
   // thrash the manifest hot cache.
   lastPushConnectedAt                 DateTime?    @map("last_push_connected_at")
+  // ── Video playback quality (2026-09-24) ──────────────────────────────
+  // The LAST dropped-frame sample the player took from a <video> element
+  // (`getVideoPlaybackQuality()`), so "did that clip stutter on the wall?"
+  // has an answer that comes from the device, not from a guess:
+  //   { url, totalFrames, droppedFrames, elapsedMs, width, height, at }
+  // One sample, not a history — the dashboard polls /screens every 10 s and
+  // this rides that list for every row. Written by POST /screens/:id/telemetry
+  // beside the render proof; TELEMETRY-ONLY (listed in
+  // SCREEN_TELEMETRY_ONLY_FIELDS), so the write never busts the manifest
+  // cache. Nullable + additive; migration 20260924120000_screen_video_playback.
+  lastVideoReport                     Json?        @map("last_video_report")
+  lastVideoReportAt                   DateTime?    @map("last_video_report_at")
   // ── Device-credential revocation (2026-08-03, DT-01/DT-02) ───────────
   // Device JWTs live up to 180 days and there was previously NO way to
   // revoke one: `status='REVOKED'` was read in 8 places and written in

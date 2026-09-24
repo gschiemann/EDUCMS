@@ -76,6 +76,12 @@
  *   render.contentKind             → accepted, NOT persisted (no column) —
  *                                     exactly as /render-proof treats it
  *                                     today. Kept for wire parity.
+ *   video                          → lastVideoReport / At (2026-09-24). The
+ *                                     dropped-frame sample for the clip the
+ *                                     player last played, sent only when it
+ *                                     has a NEW one; the server keeps the
+ *                                     latest. Answers "did that file stutter
+ *                                     on the wall?" from the device.
  *   refreshAckMs                   → clears pendingRefreshAt on VALUE
  *                                     IDENTITY only (player rule 6)
  *   capsHash                       → drives the `capabilitiesReportRequested`

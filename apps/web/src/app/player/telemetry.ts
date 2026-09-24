@@ -100,6 +100,24 @@ export interface TelemetryRenderBlock {
   sync?: TelemetrySyncReport;
 }
 
+/**
+ * Video playback quality (2026-09-24) — ONE dropped-frame sample from the
+ * `<video>` the player last played (`getVideoPlaybackQuality()`), sent only
+ * when there is a NEW one since the last report. The server keeps the latest
+ * per screen and the dashboard reads it as "Stuttered on this screen" next to
+ * the file's own encode grade — the pair tells a bad file from a struggling
+ * player. ⚠️ `strictObject` on the server: the API that accepts this key
+ * ships BEFORE the player bundle that sends it (same rule as `bundleId`).
+ */
+export interface TelemetryVideoReport {
+  url: string;
+  totalFrames: number;
+  droppedFrames: number;
+  elapsedMs?: number;
+  width?: number;
+  height?: number;
+}
+
 export interface TelemetryBody {
   versions?: {
     player?: string;
@@ -119,6 +137,7 @@ export interface TelemetryBody {
   render?: TelemetryRenderBlock;
   refreshAckMs?: number;
   capsHash?: string;
+  video?: TelemetryVideoReport;
 }
 
 /**
@@ -321,6 +340,8 @@ export interface TelemetryBodyInput {
   /** Durable-REFRESH ack — the exact command VALUE this page acted on. */
   refreshAckMs?: number | null;
   capsHash?: string | null;
+  /** The last video's dropped-frame sample, when there is a new one to report. */
+  video?: TelemetryVideoReport | null;
 }
 
 /**
@@ -369,7 +390,27 @@ export function buildTelemetryBody(input: TelemetryBodyInput): TelemetryBody {
   const capsHash = (input.capsHash ?? '').trim();
   if (capsHash) body.capsHash = capsHash;
 
+  if (input.video) body.video = videoReport(input.video);
+
   return body;
+}
+
+/** Only the documented keys, as bounded non-negative ints — the server's
+ *  schema is strict and a stray key would 400 the whole report. */
+function videoReport(v: TelemetryVideoReport): TelemetryVideoReport {
+  const int = (n: unknown): number =>
+    typeof n === 'number' && Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
+  const out: TelemetryVideoReport = {
+    url: String(v.url ?? '').slice(0, 512),
+    totalFrames: int(v.totalFrames),
+    droppedFrames: Math.min(int(v.droppedFrames), int(v.totalFrames)),
+  };
+  if (typeof v.elapsedMs === 'number' && Number.isFinite(v.elapsedMs) && v.elapsedMs >= 0) out.elapsedMs = Math.floor(v.elapsedMs);
+  if (typeof v.width === 'number' && v.width > 0 && typeof v.height === 'number' && v.height > 0) {
+    out.width = Math.floor(v.width);
+    out.height = Math.floor(v.height);
+  }
+  return out;
 }
 
 /** Only the two counters, only as non-negative ints — the server's schema

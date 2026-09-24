@@ -306,6 +306,17 @@ export class TelemetryController {
       }
     }
 
+    // ── 4b. VIDEO PLAYBACK QUALITY (2026-09-24) ─────────────────────────
+    // The dropped-frame sample for the clip the player last played. Its own
+    // block, outside the render-proof debounce: the client sends it only
+    // when it has a NEW sample, so every arrival is worth one write. Never
+    // synthesized — a screen that played no video keeps its last sample.
+    const videoReport = sanitizeVideoReport(body.video);
+    if (videoReport) {
+      data.lastVideoReport = { ...videoReport, at: now.toISOString() };
+      data.lastVideoReportAt = now;
+    }
+
     // ── 5. DURABLE-REFRESH ACK (was: render-proof's refreshAckMs) ───────
     // VALUE IDENTITY, never a clock comparison (player rule 6).
     const refreshAckMs =
@@ -444,6 +455,8 @@ export const TELEMETRY_COLUMNS: ReadonlySet<string> = new Set([
   'lastBundleId',
   'lastSyncReport',
   'lastSyncReportAt',
+  'lastVideoReport',
+  'lastVideoReportAt',
   'pendingRefreshAt',
 ]);
 
@@ -527,6 +540,39 @@ function sanitizeSyncReport(sync: unknown): Record<string, unknown> | null {
     renderLeadMs: num(s.renderLeadMs, 0, 1_000),
     skewPpm: num(s.skewPpm, -500, 500),
   };
+}
+
+/**
+ * Rebuild the video-quality sample field by field — never persist the raw
+ * payload. Dropped frames can never exceed total frames (a decoder that
+ * reports otherwise is lying, and the dashboard divides the two).
+ */
+export function sanitizeVideoReport(
+  video: unknown,
+): Record<string, unknown> | null {
+  if (!video || typeof video !== 'object') return null;
+  const v = video as Record<string, unknown>;
+  const int = (x: unknown, hi: number): number | null =>
+    typeof x === 'number' && Number.isFinite(x) && x >= 0
+      ? Math.min(Math.floor(x), hi)
+      : null;
+  const url = typeof v.url === 'string' ? v.url.trim().slice(0, 512) : '';
+  const totalFrames = int(v.totalFrames, Number.MAX_SAFE_INTEGER);
+  if (!url || totalFrames === null) return null;
+  const droppedFrames = Math.min(
+    int(v.droppedFrames, Number.MAX_SAFE_INTEGER) ?? 0,
+    totalFrames,
+  );
+  const out: Record<string, unknown> = { url, totalFrames, droppedFrames };
+  const elapsedMs = int(v.elapsedMs, 86_400_000);
+  if (elapsedMs !== null) out.elapsedMs = elapsedMs;
+  const width = int(v.width, 16_384);
+  const height = int(v.height, 16_384);
+  if (width !== null && height !== null) {
+    out.width = width;
+    out.height = height;
+  }
+  return out;
 }
 
 /**

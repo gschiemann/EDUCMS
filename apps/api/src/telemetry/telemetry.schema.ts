@@ -50,6 +50,24 @@ const syncSchema = z.strictObject({
   skewPpm: z.number().finite().nullable().optional(),
 });
 
+/**
+ * Video playback quality (2026-09-24) — ONE sample from the player's
+ * `HTMLVideoElement.getVideoPlaybackQuality()` for the clip it most recently
+ * finished (or has been looping): how many frames the decoder produced and
+ * how many the compositor dropped. Sent only when the player has a NEW sample
+ * since its last report; the server keeps the latest one per screen.
+ */
+const videoSchema = z.strictObject({
+  /** The file's URL (or its last path segment) — matched to the asset by the dashboard. */
+  url: z.string().max(512),
+  totalFrames: z.number().finite().min(0).max(Number.MAX_SAFE_INTEGER),
+  droppedFrames: z.number().finite().min(0).max(Number.MAX_SAFE_INTEGER),
+  /** Wall-clock span the counters cover, ms. */
+  elapsedMs: z.number().finite().min(0).max(86_400_000).optional(),
+  width: z.number().finite().min(0).max(16_384).optional(),
+  height: z.number().finite().min(0).max(16_384).optional(),
+});
+
 export const screenTelemetrySchema = z.strictObject({
   versions: z
     .strictObject({
@@ -89,6 +107,7 @@ export const screenTelemetrySchema = z.strictObject({
     .optional(),
   refreshAckMs: z.number().finite().min(0).optional(),
   capsHash: z.string().max(64).optional(),
+  video: videoSchema.optional(),
 });
 
 export type ScreenTelemetryBody = z.infer<typeof screenTelemetrySchema>;

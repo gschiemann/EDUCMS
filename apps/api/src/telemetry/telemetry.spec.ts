@@ -154,15 +154,90 @@ describe('POST /screens/:id/telemetry', () => {
         contentKind: 'playlist',
         sync: { locked: true, errMs: 4.2, rttMs: 30, contentSig: 'abc' },
       },
+      video: {
+        url: 'https://cdn/x/Pro%20Series.mp4',
+        totalFrames: 1830,
+        droppedFrames: 12,
+        elapsedMs: 61_000,
+        width: 1920,
+        height: 1080,
+      },
     });
 
     const data = writtenData();
     expect(data).not.toBeNull();
     const keys = Object.keys(data as Record<string, unknown>);
+    expect(keys).toEqual(
+      expect.arrayContaining(['lastVideoReport', 'lastVideoReportAt']),
+    );
     // Every key is on the telemetry-only list…
     expect(keys.filter((k) => !SCREEN_TELEMETRY_ONLY_FIELDS.has(k))).toEqual([]);
     // …so the Prisma $use hook's decision function says "do not bust".
     expect(shouldBumpManifestRev('Screen', 'update', keys)).toBe(false);
+  });
+
+  // ── 2b. VIDEO PLAYBACK QUALITY (2026-09-24) ─────────────────────────
+  it('stores the dropped-frame sample rebuilt field by field, dated by the server clock', async () => {
+    await controller.report(SCREEN_ID, makeReq(), {
+      video: {
+        url: '  https://cdn/x/clip.mp4  ',
+        totalFrames: 1830.9,
+        droppedFrames: 12.2,
+        elapsedMs: 61_000.5,
+        width: 1920,
+        height: 1080,
+      },
+    });
+    const data = writtenData() as Record<string, unknown>;
+    expect(data.lastVideoReport).toEqual({
+      url: 'https://cdn/x/clip.mp4',
+      totalFrames: 1830,
+      droppedFrames: 12,
+      elapsedMs: 61_000,
+      width: 1920,
+      height: 1080,
+      at: new Date(NOW).toISOString(),
+    });
+    expect(data.lastVideoReportAt).toEqual(new Date(NOW));
+  });
+
+  it('never lets dropped exceed total, and a report with no video leaves the last sample alone', async () => {
+    await controller.report(SCREEN_ID, makeReq(), {
+      video: {
+        url: 'https://cdn/x/clip.mp4',
+        totalFrames: 100,
+        droppedFrames: 500,
+      },
+    });
+    const first = writtenData() as Record<string, unknown>;
+    expect(
+      (first.lastVideoReport as Record<string, unknown>).droppedFrames,
+    ).toBe(100);
+    expect(first.lastVideoReport).not.toHaveProperty('width');
+
+    jest.clearAllMocks();
+    jest.setSystemTime(NOW + 35_000); // past the per-screen accept window
+    await controller.report(SCREEN_ID, makeReq(), { refreshAckMs: 1 });
+    const second = writtenData();
+    expect(second === null || !('lastVideoReport' in second)).toBe(true);
+  });
+
+  it('rejects a sample that is not the documented shape (strict schema)', async () => {
+    await expect(
+      controller.report(SCREEN_ID, makeReq(), {
+        video: {
+          url: 'https://cdn/x/clip.mp4',
+          totalFrames: 10,
+          droppedFrames: 0,
+          extra: 1,
+        } as never,
+      }),
+    ).rejects.toMatchObject({ status: 400 });
+    await expect(
+      controller.report(SCREEN_ID, makeReq(), {
+        video: { url: 'x', totalFrames: -1, droppedFrames: 0 },
+      }),
+    ).rejects.toMatchObject({ status: 400 });
   });
 
   it('the ONE write that must bust is the durable-REFRESH ack (pendingRefreshAt clear)', async () => {

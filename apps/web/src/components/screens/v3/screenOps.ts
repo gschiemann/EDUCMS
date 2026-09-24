@@ -79,6 +79,13 @@ export interface OpsScreen {
    */
   lastBundleId?: string | null;
   /**
+   * `Screen.lastVideoReport` (2026-09-24) — the dropped-frame sample the
+   * player took from the last <video> it played (`getVideoPlaybackQuality`).
+   * The one fact that tells a bad FILE from a struggling PLAYER on the wall.
+   */
+  lastVideoReport?: VideoPlaybackSample | null;
+  lastVideoReportAt?: string | null;
+  /**
    * `Screen.pendingRefreshAt` — an outstanding refresh command this screen
    * has NOT acknowledged. There is no persisted ack column: the server
    * CLEARS this field on the value-identity ack (screens.controller.ts
@@ -1095,8 +1102,95 @@ export interface OpsRow {
   status: StatusDescriptor;
   expected: ExpectedContent;
   reported: ReportedContent;
+  /** The last video's dropped-frame verdict, or null when the player never sent one. */
+  video: VideoPlayback | null;
   /** Sort key — lower is worse. */
   rank: number;
+}
+
+// ── Video playback quality ─────────────────────────────────────────────
+
+export interface VideoPlaybackSample {
+  url?: string | null;
+  totalFrames?: number | null;
+  droppedFrames?: number | null;
+  elapsedMs?: number | null;
+  width?: number | null;
+  height?: number | null;
+  at?: string | null;
+}
+
+export type VideoPlaybackGrade = 'smooth' | 'hitching' | 'stuttering' | 'short';
+
+export interface VideoPlayback {
+  grade: VideoPlaybackGrade;
+  /** The file, as the player saw it — its last path segment, decoded. */
+  name: string;
+  /** "Played smoothly" / "Hitched" / "Stuttered" / "Too short to judge". */
+  headline: string;
+  /** "12 of 1,830 frames dropped (0.7%) · 1920 × 1080 · 2m ago". */
+  detail: string;
+  droppedPct: number;
+  totalFrames: number;
+  droppedFrames: number;
+  /** Compact age of the sample, e.g. "2m". */
+  age?: string;
+}
+
+/** Below this many frames a sample says nothing reliable (5 s at 30 fps). */
+export const VIDEO_SAMPLE_MIN_FRAMES = 150;
+/** Dropped-frame share thresholds. Under 1% is invisible; over 5% is what an operator calls choppy. */
+export const VIDEO_HITCHING_PCT = 1;
+export const VIDEO_STUTTERING_PCT = 5;
+
+export function videoSampleName(url: string | null | undefined): string {
+  const raw = (url ?? '').split('?')[0].split('#')[0];
+  const last = raw.split('/').filter(Boolean).pop() ?? '';
+  try {
+    return decodeURIComponent(last) || 'video';
+  } catch {
+    return last || 'video';
+  }
+}
+
+/**
+ * The player's dropped-frame sample as a verdict. Pure. `null` when the
+ * screen has never reported one. Copy states only what the counters prove:
+ * a share of frames dropped, never "the file is bad" — the file's own grade
+ * lives in the Media Library, and the two together tell file from player.
+ */
+export function deriveVideoPlayback(screen: OpsScreen, now: number): VideoPlayback | null {
+  const s = screen.lastVideoReport;
+  if (!s || typeof s !== 'object') return null;
+  const total = typeof s.totalFrames === 'number' && Number.isFinite(s.totalFrames) ? Math.max(0, Math.floor(s.totalFrames)) : 0;
+  if (total <= 0) return null;
+  const dropped = Math.min(
+    total,
+    typeof s.droppedFrames === 'number' && Number.isFinite(s.droppedFrames) ? Math.max(0, Math.floor(s.droppedFrames)) : 0,
+  );
+  const droppedPct = Math.round((dropped / total) * 1000) / 10;
+  const name = videoSampleName(s.url);
+  const atMs = s.at ? new Date(s.at).getTime() : msOf(screen.lastVideoReportAt);
+  const age = compactAge(atMs, now);
+  const size = s.width && s.height ? `${s.width} × ${s.height}` : null;
+  const framesLine = `${dropped.toLocaleString('en-US')} of ${total.toLocaleString('en-US')} frames dropped (${droppedPct}%)`;
+  const detail = [framesLine, size, age ? `${age} ago` : null].filter(Boolean).join(' · ');
+  let grade: VideoPlaybackGrade;
+  let headline: string;
+  if (total < VIDEO_SAMPLE_MIN_FRAMES) {
+    grade = 'short';
+    headline = 'Too short to judge';
+  } else if (droppedPct >= VIDEO_STUTTERING_PCT) {
+    grade = 'stuttering';
+    headline = 'Stuttered on this screen';
+  } else if (droppedPct >= VIDEO_HITCHING_PCT) {
+    grade = 'hitching';
+    headline = 'Hitched a little on this screen';
+  } else {
+    grade = 'smooth';
+    headline = 'Played smoothly on this screen';
+  }
+  return { grade, name, headline, detail, droppedPct, totalFrames: total, droppedFrames: dropped, age };
 }
 
 export interface OpsGroup {
@@ -1153,6 +1247,7 @@ export function buildScreenOps(input: {
       expected,
       // Matched against the schedule, so a row can say "Playing <name>".
       reported: deriveReportedContent(screen, deployedSha, now, deployedBundleId, expected),
+      video: deriveVideoPlayback(screen, now),
       rank: STATUS_RANK[status.key],
     };
   });
