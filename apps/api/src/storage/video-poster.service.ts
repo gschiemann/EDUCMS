@@ -701,6 +701,11 @@ export class VideoPosterService {
       const ids = [...new Set(items.map((i) => i.playlistId))];
       if (ids.length > 0) {
         const inIds = { in: ids };
+        // A system guard, not a caller's read: `ids` are the playlists THIS
+        // asset belongs to (its row was read tenant-scoped in remuxForAsset),
+        // looked up across tenants on purpose — a district playlist can hold
+        // a school's asset, and a wider look only makes the guard stricter.
+        // ten-ok: the answer is only "is one of the asset's own playlists protected", used to REFUSE a rewrite; nothing is returned to a caller and nothing is written
         const guarded = await db.playlist.findFirst({
           where: { id: inIds, isProtected: true },
           select: { id: true },
