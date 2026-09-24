@@ -36,7 +36,8 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { appAlert } from '@/components/ui/app-dialog';
-import { useTenant } from '@/hooks/use-api';
+import { useRefreshAiBoards, useTenant } from '@/hooks/use-api';
+import { AiBoardsLeft } from '@/components/ai/AiBoardsLeft';
 import { SettingsPageFrame } from '@/components/settings/shell/SettingsPageFrame';
 import {
   ContextModule,
@@ -46,6 +47,8 @@ import {
 } from '@/components/settings/shell/primitives';
 
 const SALES_EMAIL = 'sales@venueos.app';
+/** How long after the return from a board-pack checkout the allowance is read once more. */
+const BOARDS_RECHECK_MS = 5_000;
 
 interface CurrentLicense {
   tier: string;
@@ -104,9 +107,23 @@ export default function BillingPage() {
   // Post-Checkout return flag — read client-side so the page needs no
   // useSearchParams Suspense boundary.
   const [checkoutResult, setCheckoutResult] = useState<string | null>(null);
+  // 2026-09-23 — the AI board packs' checkout returns here too (`?boards=success|cancelled`;
+  // BillingController.aiPackCheckout's success/cancel URLs).
+  const [boardsResult, setBoardsResult] = useState<string | null>(null);
   useEffect(() => {
-    setCheckoutResult(new URLSearchParams(window.location.search).get('checkout'));
+    const qs = new URLSearchParams(window.location.search);
+    setCheckoutResult(qs.get('checkout'));
+    setBoardsResult(qs.get('boards'));
   }, []);
+  // Back from paying for a pack: the boards line below reads the allowance fresh, but Stripe's
+  // webhook credits the pack a few seconds after the redirect — so ONE more read shortly after.
+  // A single point-in-time check, not a poll; coming back to the tab re-reads it too.
+  const refreshAiBoards = useRefreshAiBoards();
+  useEffect(() => {
+    if (boardsResult !== 'success') return;
+    const once = window.setTimeout(refreshAiBoards, BOARDS_RECHECK_MS);
+    return () => window.clearTimeout(once);
+  }, [boardsResult, refreshAiBoards]);
 
   const license = useQuery<CurrentLicense | null>({
     queryKey: ['license', 'current'],
@@ -295,6 +312,25 @@ export default function BillingPage() {
         <div className="mb-5 rounded-[11px] border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-800 flex items-start gap-2" role="status">
           <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" aria-hidden />
           <span>{t('billingCommerce.checkoutCancelled')}</span>
+        </div>
+      )}
+      {/* 2026-09-23 — back from buying AI boards: say so, with the boards-left line itself. */}
+      {boardsResult === 'success' && (
+        <div data-testid="boards-returned" className="mb-5 rounded-[11px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-[13px] text-emerald-800 flex items-start gap-2" role="status">
+          <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0" aria-hidden />
+          <div className="min-w-0">
+            <span>
+              <strong>{t('aiBoards.credits.returned.success')}</strong>{' '}
+              {t('aiBoards.credits.returned.successDetail')}
+            </span>
+            <AiBoardsLeft className="mt-1.5" />
+          </div>
+        </div>
+      )}
+      {boardsResult === 'cancelled' && (
+        <div data-testid="boards-returned" className="mb-5 rounded-[11px] border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-800 flex items-start gap-2" role="status">
+          <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" aria-hidden />
+          <span>{t('aiBoards.credits.returned.cancelled')}</span>
         </div>
       )}
 

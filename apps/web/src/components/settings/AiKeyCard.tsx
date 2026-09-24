@@ -66,7 +66,15 @@ function formatPerCallCost(t: ReturnType<typeof useTranslations>, usd: number): 
   return t('settings.ai.costPerGeneration', { cost: `$${usd.toFixed(3)}` });
 }
 
-export function AiKeyCard() {
+export function AiKeyCard({
+  onKeyChanged,
+}: {
+  /**
+   * A key was saved or removed (2026-09-23). Whose key draws the AI boards changes with it — the
+   * boards card beside this one goes from "14 of 20 left" to "no board limit" and back.
+   */
+  onKeyChanged?: () => void;
+} = {}) {
   const t = useTranslations();
   const [status, setStatus] = useState<AiKeyStatus | null>(null);
   const [catalog, setCatalog] = useState<AiProviderInfo[] | null>(null);
@@ -160,6 +168,7 @@ export function AiKeyCard() {
       setMsg({ kind: 'ok', text: t('settings.ai.savedRoute', { provider: providerLabel, model: modelLabel }) });
       setApiKey('');
       setEditing(false);
+      onKeyChanged?.();
       await load();
     } catch (e: any) {
       setMsg({ kind: 'err', text: e?.message || t('settings.ai.saveKeyFailed') });
@@ -182,6 +191,7 @@ export function AiKeyCard() {
       setMsg({ kind: 'ok', text: t('settings.ai.disconnected') });
       setApiKey('');
       setEditing(false);
+      onKeyChanged?.();
       await load();
     } catch (e: any) {
       setMsg({ kind: 'err', text: e?.message || t('settings.ai.disconnectFailed') });

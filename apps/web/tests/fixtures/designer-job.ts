@@ -248,7 +248,6 @@ export interface BoardsCapOptions {
  */
 export function boardsCapReachedError(o: BoardsCapOptions = {}): ProducedError {
   const credits = fs.readFileSync(path.join(API_SRC, 'ai', 'ai-board-credits.ts'), 'utf8');
-  // eslint-disable-next-line @typescript-eslint/no-implied-eval
   const boardsCapMessage = new Function('o', exportedFunctionBody(credits, 'boardsCapMessage')) as (
     opts: Required<BoardsCapOptions>,
   ) => string;

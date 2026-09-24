@@ -22,7 +22,9 @@ import { useParams } from 'next/navigation';
 import { Sparkles } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { AiKeyCard } from '@/components/settings/AiKeyCard';
+import { AiBoardsCard } from '@/components/settings/AiBoardsCard';
 import { BrandVoiceCard } from '@/components/settings/BrandVoiceCard';
+import { useRefreshAiBoards } from '@/hooks/use-api';
 import { RoleGate } from '@/components/RoleGate';
 import { SettingsPageFrame } from '@/components/settings/shell/SettingsPageFrame';
 import { ContextAction, ContextModule, EditorHead } from '@/components/settings/shell/primitives';
@@ -31,9 +33,13 @@ export default function SettingsAiPage() {
   const params = useParams();
   const schoolId = params?.schoolId as string;
   const t = useTranslations();
+  // 2026-09-23 — saving or removing a key changes whose key draws the AI boards: the boards card
+  // re-reads its line (event-driven, never a timer).
+  const refreshAiBoards = useRefreshAiBoards();
 
   const searchItems = useMemo(() => ([
         { label: t('settings.ai.title'), keywords: ['ai key', 'byok', 'anthropic', 'openai', 'gemini'] },
+        { label: t('aiBoards.credits.card.title'), keywords: ['ai boards', 'credits', 'boards left', 'buy boards', 'packs'] },
         { label: t('settings.aiVoice.title'), keywords: ['brand voice', 'tone'] },
       ] as const), []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -84,7 +90,9 @@ export default function SettingsAiPage() {
         }
       >
         <div className="space-y-5">
-          <AiKeyCard />
+          <AiKeyCard onKeyChanged={refreshAiBoards} />
+          {/* 2026-09-23 — how many AI boards are left, Buy more, and the packs bought. */}
+          <AiBoardsCard />
           <BrandVoiceCard />
         </div>
       </RoleGate>
