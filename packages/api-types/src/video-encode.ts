@@ -14,26 +14,30 @@
  * turns into sentences. It is PURE and shared by the API and the web app so
  * the two can never disagree about what "will stutter" means.
  *
- * ── The target ("kiosk-safe") ────────────────────────────────────────────
- * H.264 (AVC), High profile at level 4.1 or below, 8-bit 4:2:0, at most
- * 1920 × 1080 in either orientation, at most 30 fps, a sane bitrate, the
- * MP4 index at the FRONT of the file ("fast start"), and AAC stereo audio or
- * none. That is what a 2014-era Rockchip box, an Android-9 Goodview LCD and a
- * Chromium-83 NovaStar controller all decode in hardware. A laptop plays far
- * more than that, which is exactly why a file "looks fine on my desk" and
- * stutters on the wall. The 2026-09-24 diagnosis of the Canva clip is in
- * docs/research/2026-09-24-video-choppiness/.
+ * ── The target ────────────────────────────────────────────────────────────
+ * H.264 (AVC), 8-bit 4:2:0, at most 30 fps, a bitrate in proportion to what
+ * it shows, the MP4 index at the FRONT of the file ("fast start"), AAC stereo
+ * audio or none — and a frame size that matches the screens it will play
+ * on. The size half is the caller's `VideoEncodeTarget`: the largest panel in
+ * the operator's fleet (a 4K fleet WANTS 3840 × 2160 files; a 1080p fleet
+ * cannot show more than 1920 × 1080 and pays the decode for nothing). With no
+ * fleet to read the target defaults to 1920 × 1080 and the size rules stay
+ * quiet about "soft" files. Greg, 2026-09-24: "these are all 4k screens so
+ * why would we recommend 1080? dont we want the max out of them?"
  *
  * ── Grades ───────────────────────────────────────────────────────────────
- *   red     — a fact that makes most kiosks stutter or refuse the file
- *             (non-H.264 codec, 10-bit colour, above 1080p, above 30 fps,
- *             an extreme bitrate)
- *   amber   — plays, but may hitch or start slowly (very high bitrate, the
- *             index at the end of the file, a variable frame rate, unusual
- *             audio, a non-MP4 container, an H.264 level above 4.1)
+ *   red     — a fact that makes most players stutter or refuse the file
+ *             (non-H.264 codec, 10-bit colour, larger than the biggest
+ *             screen, more than ~60 fps, an extreme bitrate)
+ *   amber   — plays, but may hitch or start slowly (above 30 fps, a very
+ *             high bitrate for its size, the index at the end of the file,
+ *             a variable frame rate, unusual audio, a non-MP4 container, an
+ *             H.264 level above 5.1)
  *   green   — inside the target on every fact we know
  *   unknown — nothing probed yet (an upload from before the probe existed,
  *             an external URL, a file ffprobe could not read)
+ *   plus INFO reasons that never change the grade: a file that uses only a
+ *   fraction of the panel's pixels ("soft"), when the panel is known.
  *
  * A fact we do not know never counts against the file: a row probed by the
  * first, dimensions-only pass grades on codec, size and frame rate alone.
@@ -63,19 +67,53 @@ export interface VideoEncodeFacts {
   audio: { codec: string | null; channels: number | null; sampleRate: number | null } | null;
 }
 
-/** The kiosk-safe target every threshold below is measured against. */
+/**
+ * The screens a file is graded against: the LARGEST panel in the fleet,
+ * landscape-normalised (long edge × short edge). `panelKnown` is false when
+ * the caller has no fleet to read — the size rules then use 1920 × 1080 and
+ * say nothing about "soft" files, because "soft on your screens" needs a
+ * screen to be true of.
+ */
+export interface VideoEncodeTarget {
+  panelWidth: number;
+  panelHeight: number;
+  panelKnown: boolean;
+}
+
+export const DEFAULT_ENCODE_TARGET: VideoEncodeTarget = Object.freeze({
+  panelWidth: 1920,
+  panelHeight: 1080,
+  panelKnown: false,
+});
+
+/** The size-independent half of the target every threshold below is measured against. */
 export const KIOSK_SAFE_VIDEO = Object.freeze({
   codec: 'h264',
-  maxLongEdge: 1920,
-  maxShortEdge: 1080,
   /** 30 fps, with room for 29.97 / 30.0x timebases. */
   maxFps: 30.5,
-  /** H.264 level 4.1 — the ceiling older hardware decoders advertise. */
-  maxLevel: 41,
+  /** Past ~60 fps no signage player keeps up. */
+  redFps: 61,
+  /** H.264 level 5.1 is 4K30 — the ceiling common hardware decoders advertise. */
+  maxLevel: 51,
   pixFmt: 'yuv420p',
-  /** Above this a file may hitch on Wi-Fi + eMMC; above `redBitrateKbps` it usually does. */
-  amberBitrateKbps: 12_000,
-  redBitrateKbps: 25_000,
+  /**
+   * Bitrate is judged against what the file SHOWS: 0.1 bits per pixel per
+   * frame is a high-quality H.264 encode (1080p30 ≈ 6 Mbps, 4K30 ≈ 25 Mbps).
+   * Three times that is wasteful and slow to download; six times is a
+   * problem on Wi-Fi and kiosk storage. Files whose size or rate is unknown
+   * fall back to the absolute ceilings.
+   */
+  referenceBitsPerPixel: 0.1,
+  amberBitrateMultiple: 3,
+  redBitrateMultiple: 6,
+  amberBitrateKbpsAbsolute: 20_000,
+  redBitrateKbpsAbsolute: 100_000,
+  /**
+   * A file whose long edge is at most this fraction of the panel's uses
+   * a quarter of its pixels or fewer (1080p on 4K, 720p on 1440p) — it plays
+   * fine, but the operator asked for the most out of the panel.
+   */
+  softFraction: 0.5,
   audioCodec: 'aac',
   maxAudioChannels: 2,
   audioSampleRates: [44_100, 48_000] as readonly number[],
@@ -86,8 +124,10 @@ export const KIOSK_SAFE_VIDEO = Object.freeze({
  * hand to whoever makes the video. Copy for the dashboards lives in i18n;
  * this is the canonical fact list.
  */
-export const KIOSK_SAFE_EXPORT_SUMMARY =
-  'MP4 · H.264 · 1920 × 1080 (or 1080 × 1920 portrait) · 30 fps · 8-bit colour · fast start · AAC stereo';
+export function kioskSafeExportSummary(target: VideoEncodeTarget = DEFAULT_ENCODE_TARGET): string {
+  const { panelWidth: w, panelHeight: h } = target;
+  return `MP4 · H.264 · ${w} × ${h} (or ${h} × ${w} portrait) · 30 fps · 8-bit colour · fast start · AAC stereo`;
+}
 
 export type VideoEncodeGrade = 'green' | 'amber' | 'red' | 'unknown';
 
@@ -95,6 +135,7 @@ export type VideoEncodeReasonCode =
   | 'codec'
   | 'bit-depth'
   | 'resolution'
+  | 'soft'
   | 'frame-rate'
   | 'level'
   | 'bitrate'
@@ -105,14 +146,15 @@ export type VideoEncodeReasonCode =
 
 export interface VideoEncodeReason {
   code: VideoEncodeReasonCode;
-  severity: 'red' | 'amber';
+  /** `info` never changes the grade — it is advice, not a warning. */
+  severity: 'red' | 'amber' | 'info';
   /** The numbers/names the sentence for this code interpolates. */
   detail: Record<string, string | number>;
 }
 
 export interface VideoEncodeVerdict {
   grade: VideoEncodeGrade;
-  /** Red reasons first, then amber, in the order the checks run. */
+  /** Red reasons first, then amber, then info, in the order the checks run. */
   reasons: VideoEncodeReason[];
 }
 
@@ -164,13 +206,22 @@ function isEightBit420(pixFmt: string): boolean {
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
 /**
- * Grade the facts. Pure, deterministic, tolerant of nulls: a null fact adds
- * no reason. `null` facts (nothing probed) grade `unknown`.
+ * Grade the facts against the target. Pure, deterministic, tolerant of
+ * nulls: a null fact adds no reason. `null` facts (nothing probed) grade
+ * `unknown`.
  */
-export function gradeVideoEncode(facts: VideoEncodeFacts | null | undefined): VideoEncodeVerdict {
+export function gradeVideoEncode(
+  facts: VideoEncodeFacts | null | undefined,
+  target: VideoEncodeTarget = DEFAULT_ENCODE_TARGET,
+): VideoEncodeVerdict {
   if (!facts) return { grade: 'unknown', reasons: [] };
   const red: VideoEncodeReason[] = [];
   const amber: VideoEncodeReason[] = [];
+  const info: VideoEncodeReason[] = [];
+
+  const panelLong = Math.max(target.panelWidth, target.panelHeight);
+  const panelShort = Math.min(target.panelWidth, target.panelHeight);
+  const panel = { panelWidth: panelLong, panelHeight: panelShort };
 
   const codec = facts.codec ? facts.codec.toLowerCase() : null;
   if (codec && codec !== KIOSK_SAFE_VIDEO.codec) {
@@ -183,33 +234,45 @@ export function gradeVideoEncode(facts: VideoEncodeFacts | null | undefined): Vi
 
   const w = facts.width;
   const h = facts.height;
-  const tooBig =
-    w != null && h != null && w > 0 && h > 0 &&
-    (Math.max(w, h) > KIOSK_SAFE_VIDEO.maxLongEdge || Math.min(w, h) > KIOSK_SAFE_VIDEO.maxShortEdge);
-  if (tooBig) red.push({ code: 'resolution', severity: 'red', detail: { width: w as number, height: h as number } });
+  const sized = w != null && h != null && w > 0 && h > 0;
+  const longEdge = sized ? Math.max(w as number, h as number) : null;
+  const shortEdge = sized ? Math.min(w as number, h as number) : null;
+  // Larger than the biggest screen: the player decodes pixels it can never
+  // show, and pays for it in frames. Judged edge by edge so a 1080 × 1920
+  // portrait clip is fine on a 1920 × 1080 fleet.
+  const tooBig = longEdge != null && shortEdge != null && (longEdge > panelLong || shortEdge > panelShort);
+  if (tooBig) {
+    red.push({ code: 'resolution', severity: 'red', detail: { width: w as number, height: h as number, ...panel } });
+  } else if (target.panelKnown && longEdge != null && longEdge <= panelLong * KIOSK_SAFE_VIDEO.softFraction) {
+    info.push({ code: 'soft', severity: 'info', detail: { width: w as number, height: h as number, ...panel } });
+  }
 
-  const tooFast = facts.fps != null && facts.fps > KIOSK_SAFE_VIDEO.maxFps;
-  if (tooFast) red.push({ code: 'frame-rate', severity: 'red', detail: { fps: round1(facts.fps as number) } });
+  const fps = facts.fps != null && facts.fps > 0 ? facts.fps : null;
+  if (fps != null && fps >= KIOSK_SAFE_VIDEO.redFps) {
+    red.push({ code: 'frame-rate', severity: 'red', detail: { fps: round1(fps) } });
+  } else if (fps != null && fps > KIOSK_SAFE_VIDEO.maxFps) {
+    amber.push({ code: 'frame-rate', severity: 'amber', detail: { fps: round1(fps) } });
+  }
 
-  // Level is a consequence of size × rate; only mention it when neither of
-  // those already explains it (a 4K file needs no second sentence about 5.1).
-  if (
-    codec === KIOSK_SAFE_VIDEO.codec &&
-    facts.level != null &&
-    facts.level > KIOSK_SAFE_VIDEO.maxLevel &&
-    !tooBig &&
-    !tooFast
-  ) {
+  if (codec === KIOSK_SAFE_VIDEO.codec && facts.level != null && facts.level > KIOSK_SAFE_VIDEO.maxLevel) {
     amber.push({ code: 'level', severity: 'amber', detail: { level: (facts.level / 10).toFixed(1) } });
   }
 
   if (facts.bitrateKbps != null && facts.bitrateKbps > 0) {
-    const mbps = round1(facts.bitrateKbps / 1000);
-    if (facts.bitrateKbps >= KIOSK_SAFE_VIDEO.redBitrateKbps) {
-      red.push({ code: 'bitrate', severity: 'red', detail: { mbps } });
-    } else if (facts.bitrateKbps > KIOSK_SAFE_VIDEO.amberBitrateKbps) {
-      amber.push({ code: 'bitrate', severity: 'amber', detail: { mbps } });
-    }
+    const kbps = facts.bitrateKbps;
+    const mbps = round1(kbps / 1000);
+    // Reference: what a high-quality encode of THIS size and rate needs.
+    const pixelRate = sized ? (w as number) * (h as number) * (fps ?? 30) : null;
+    const referenceKbps = pixelRate != null ? (pixelRate * KIOSK_SAFE_VIDEO.referenceBitsPerPixel) / 1000 : null;
+    const amberAt = referenceKbps != null
+      ? Math.min(referenceKbps * KIOSK_SAFE_VIDEO.amberBitrateMultiple, KIOSK_SAFE_VIDEO.amberBitrateKbpsAbsolute * 5)
+      : KIOSK_SAFE_VIDEO.amberBitrateKbpsAbsolute;
+    const redAt = referenceKbps != null
+      ? Math.min(referenceKbps * KIOSK_SAFE_VIDEO.redBitrateMultiple, KIOSK_SAFE_VIDEO.redBitrateKbpsAbsolute)
+      : KIOSK_SAFE_VIDEO.redBitrateKbpsAbsolute;
+    const detail = { mbps, width: w ?? 0, height: h ?? 0, fps: round1(fps ?? 30) };
+    if (kbps >= redAt) red.push({ code: 'bitrate', severity: 'red', detail });
+    else if (kbps > amberAt) amber.push({ code: 'bitrate', severity: 'amber', detail });
   }
 
   if (facts.fastStart === false) amber.push({ code: 'fast-start', severity: 'amber', detail: {} });
@@ -239,7 +302,7 @@ export function gradeVideoEncode(facts: VideoEncodeFacts | null | undefined): Vi
     amber.push({ code: 'container', severity: 'amber', detail: { container: (facts.container ?? '').split(',')[0].toUpperCase() } });
   }
 
-  const reasons = [...red, ...amber];
+  const reasons = [...red, ...amber, ...info];
   return { grade: red.length ? 'red' : amber.length ? 'amber' : 'green', reasons };
 }
 
@@ -290,6 +353,33 @@ export function videoEncodeFactsFromProcessingMeta(meta: unknown): VideoEncodeFa
 }
 
 /** One call for the dashboards: processingMeta in, verdict out. */
-export function gradeVideoProcessingMeta(meta: unknown): VideoEncodeVerdict {
-  return gradeVideoEncode(videoEncodeFactsFromProcessingMeta(meta));
+export function gradeVideoProcessingMeta(
+  meta: unknown,
+  target: VideoEncodeTarget = DEFAULT_ENCODE_TARGET,
+): VideoEncodeVerdict {
+  return gradeVideoEncode(videoEncodeFactsFromProcessingMeta(meta), target);
+}
+
+/**
+ * Build a target from the panel sizes a fleet reports (`Screen.resolution`,
+ * "3840×2160" / "1920x1080" / "1080x1920"). The largest long edge and the
+ * largest short edge win, landscape-normalised, so a mixed fleet is graded
+ * against its best screen. No parseable size → the default, `panelKnown`
+ * false.
+ */
+export function encodeTargetFromResolutions(resolutions: Array<string | null | undefined>): VideoEncodeTarget {
+  let long = 0;
+  let short = 0;
+  for (const r of resolutions) {
+    if (typeof r !== 'string') continue;
+    const m = /(\d{3,5})\s*[x×X]\s*(\d{3,5})/.exec(r);
+    if (!m) continue;
+    const a = Number(m[1]);
+    const b = Number(m[2]);
+    if (!Number.isFinite(a) || !Number.isFinite(b) || a <= 0 || b <= 0) continue;
+    long = Math.max(long, Math.max(a, b));
+    short = Math.max(short, Math.min(a, b));
+  }
+  if (long === 0 || short === 0) return DEFAULT_ENCODE_TARGET;
+  return { panelWidth: long, panelHeight: short, panelKnown: true };
 }

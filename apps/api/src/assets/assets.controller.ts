@@ -531,6 +531,55 @@ export class AssetsController {
     } catch { /* non-fatal */ }
   }
 
+  /**
+   * Storage used by this tenant's library (2026-09-24). Greg: "where do i
+   * see my total storage and amount used?" — nothing operator-facing showed
+   * it (only the Super Admin licence view sums fileSize platform-wide). One
+   * aggregate per media kind; linked URLs carry no bytes and are not counted.
+   * There is no per-tenant quota on the per-screen plan, so this is the
+   * number, not a bar. Literal path: it sits ABOVE the `:id` routes.
+   */
+  @Get('storage-summary')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  async storageSummary(@Request() req: { user: { tenantId: string } }) {
+    const rows = await this.prisma.client.asset.findMany({
+      where: { tenantId: req.user.tenantId },
+      select: { mimeType: true, fileSize: true },
+    });
+    const bucket = (mime: string | null): 'videos' | 'images' | 'other' => {
+      const m = (mime || '').toLowerCase();
+      if (m.startsWith('video/')) return 'videos';
+      if (m.startsWith('image/')) return 'images';
+      return 'other';
+    };
+    const out = {
+      totalBytes: 0,
+      totalFiles: 0,
+      videos: { bytes: 0, files: 0 },
+      images: { bytes: 0, files: 0 },
+      other: { bytes: 0, files: 0 },
+    };
+    for (const r of rows) {
+      const bytes =
+        typeof r.fileSize === 'number' &&
+        Number.isFinite(r.fileSize) &&
+        r.fileSize > 0
+          ? r.fileSize
+          : 0;
+      const k = bucket(r.mimeType);
+      out[k].bytes += bytes;
+      out[k].files += 1;
+      out.totalBytes += bytes;
+      out.totalFiles += 1;
+    }
+    return out;
+  }
+
   @Get()
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
   async list(

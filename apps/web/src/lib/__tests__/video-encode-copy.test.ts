@@ -41,6 +41,23 @@ describe('videoEncodeState', () => {
     expect(s.facts?.codec).toBe('h264');
   });
 
+  it('grades against the fleet: 4K is fine on a 4K fleet, and 720p gets a size note there', () => {
+    const fourK = { panelWidth: 3840, panelHeight: 2160, panelKnown: true };
+    const big = videoEncodeState(
+      { mimeType: 'video/mp4', processingMeta: { ...SAFE_PROBE, originalDimensions: { w: 3840, h: 2160 }, probe: { ...SAFE_PROBE.probe, level: 51 } }, createdAt: '2026-09-24T11:58:00Z' },
+      NOW,
+      fourK,
+    );
+    expect(big.status).toBe('green');
+    const small = videoEncodeState(
+      { mimeType: 'video/mp4', processingMeta: { ...SAFE_PROBE, originalDimensions: { w: 1280, h: 720 } }, createdAt: '2026-09-24T11:58:00Z' },
+      NOW,
+      fourK,
+    );
+    expect(small.status).toBe('green');
+    expect(small.verdict.reasons.map((r) => `${r.severity}:${r.code}`)).toEqual(['info:soft']);
+  });
+
   it('is red with reasons for a 4K HEVC export', () => {
     const s = videoEncodeState(
       {
@@ -104,7 +121,7 @@ describe('reason copy', () => {
   const reasons: Record<string, string> = en.assetsLib.encode.reason;
 
   it('maps every reason code to an existing English sentence', () => {
-    const codes = ['codec', 'bit-depth', 'resolution', 'frame-rate', 'level', 'bitrate', 'fast-start', 'variable-frame-rate', 'audio', 'container'] as const;
+    const codes = ['codec', 'bit-depth', 'resolution', 'soft', 'frame-rate', 'level', 'bitrate', 'fast-start', 'variable-frame-rate', 'audio', 'container'] as const;
     for (const code of codes) {
       const key = encodeReasonKey(code);
       const leaf = key.replace('assetsLib.encode.reason.', '');
@@ -117,9 +134,9 @@ describe('reason copy', () => {
       const leaf = key.replace('assetsLib.encode.reason.', '');
       return reasons[leaf].replace(/\{(\w+)\}/g, (_, k) => String(values?.[k]));
     };
-    expect(describeEncodeReason(t, { code: 'resolution', severity: 'red', detail: { width: 3840, height: 2160 } })).toBe(
-      '3840 × 2160 — larger than 1080p',
-    );
+    expect(
+      describeEncodeReason(t, { code: 'resolution', severity: 'red', detail: { width: 3840, height: 2160, panelWidth: 1920, panelHeight: 1080 } }),
+    ).toBe('3840 × 2160 — larger than your biggest screen (1920 × 1080); the player decodes pixels it can never show');
     expect(describeEncodeReason(t, { code: 'codec', severity: 'red', detail: { codec: 'H.265 / HEVC' } })).toContain('H.265 / HEVC');
   });
 });
@@ -127,8 +144,8 @@ describe('reason copy', () => {
 describe('encodeFactsLine', () => {
   it('prints what the probe saw, in order, skipping unknowns', () => {
     const s = videoEncodeState({ mimeType: 'video/mp4', processingMeta: SAFE_PROBE, createdAt: '2026-09-24T11:58:00Z' }, NOW);
-    expect(encodeFactsLine(s.facts)).toBe('H.264 · 1920 × 1080 · 30 fps · 8.2 Mbps');
-    expect(encodeFactsLine({ ...s.facts!, bitrateKbps: null, fps: null })).toBe('H.264 · 1920 × 1080');
+    expect(encodeFactsLine(s.facts)).toBe('H.264 High 4.0 · 1920 × 1080 · 29.97 fps · 8.2 Mbps · 8-bit 4:2:0 · AAC stereo 48 kHz · MP4 · front of file');
+    expect(encodeFactsLine({ ...s.facts!, bitrateKbps: null, fps: null, audio: null, container: null, fastStart: null, pixFmt: null, profile: null, level: null })).toBe('H.264 · 1920 × 1080');
     expect(encodeFactsLine(null)).toBe('');
   });
 });

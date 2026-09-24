@@ -7,6 +7,7 @@ import {
   VERTICAL_EMERGENCY_TYPES,
   effectiveEmergencyEnabled,
   emergencyEnablementLocked,
+  emergencyVerticalStated,
   normalizeVertical,
 } from '@cms/api-types';
 
@@ -63,6 +64,12 @@ export interface EmergencyReadinessReport {
   verdict: EmergencyReadinessVerdict;
   /** The effective enablement the verdict was graded under (false ⇔ DISABLED). */
   enabled: boolean;
+  /**
+   * False when the organization never stated an industry (2026-09-24): the
+   * grade then assumes a school. The dashboard says so instead of "can't
+   * display an emergency alert", and points at Settings → Organization.
+   */
+  verticalStated: boolean;
   /** True when this vertical may never turn the capability off (K-12). */
   locked: boolean;
   score: number; // 0-100, informational — the verdict is the contract
@@ -80,6 +87,8 @@ export interface DistrictSchoolReadiness {
   verdict: EmergencyReadinessVerdict;
   /** Effective enablement (see EmergencyReadinessVerdict). false ⇔ DISABLED. */
   enabled: boolean;
+  /** False when this location never stated an industry — graded as a school by default. */
+  verticalStated: boolean;
   /** K-12 lock: the capability cannot be turned off for this location. */
   locked: boolean;
   /** How many of THIS vertical's required alert types have content wired. */
@@ -169,13 +178,14 @@ function resolveEnablement(
     | { vertical?: unknown; emergencyEnabled?: boolean | null }
     | null
     | undefined,
-): { enabled: boolean; locked: boolean } {
+): { enabled: boolean; locked: boolean; verticalStated: boolean } {
   const vertical = row?.vertical ?? null;
   const stored =
     typeof row?.emergencyEnabled === 'boolean' ? row.emergencyEnabled : null;
   return {
     enabled: effectiveEmergencyEnabled(vertical, stored),
     locked: emergencyEnablementLocked(vertical),
+    verticalStated: emergencyVerticalStated(vertical),
   };
 }
 
@@ -227,6 +237,7 @@ export class EmergencyReadinessService {
         verdict: 'DISABLED',
         enabled: false,
         locked: enablement.locked,
+        verticalStated: enablement.verticalStated,
         score: 0,
         items: [],
         computedAt: new Date(now).toISOString(),
@@ -363,6 +374,7 @@ export class EmergencyReadinessService {
       verdict,
       enabled: true,
       locked: enablement.locked,
+      verticalStated: enablement.verticalStated,
       score,
       items,
       computedAt: new Date(now).toISOString(),
@@ -504,6 +516,7 @@ export class EmergencyReadinessService {
         verdict,
         enabled: enablement.enabled,
         locked: enablement.locked,
+        verticalStated: enablement.verticalStated,
         contentWired: wired.length,
         contentTotal: required.length,
         anchorLabel: anchor.label,

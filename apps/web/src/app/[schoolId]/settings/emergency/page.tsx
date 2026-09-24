@@ -254,7 +254,7 @@ const ENABLEMENT_ERROR_ID = 'emergency-enabled-error';
 
 function EnablementSection() {
   const t = useTranslations();
-  const { enabled, locked, isLoading, isError } = useEmergencyEnablement();
+  const { enabled, locked, verticalStated, isLoading, isError } = useEmergencyEnablement();
   const setEnabled = useSetEmergencyEnabled();
   const [error, setError] = useState<string | null>(null);
   const [confirmedMessage, setConfirmedMessage] = useState<string | null>(null);
@@ -359,6 +359,11 @@ function EnablementSection() {
                 {locked && (
                   <p className="mt-1.5 text-[12px] leading-[17px] text-slate-600">
                     {t('settings.cc.emergency.enablement.lockedNote')}
+                  </p>
+                )}
+                {!locked && !verticalStated && enabled && (
+                  <p className="mt-1.5 text-[12px] leading-[17px] text-slate-600" data-testid="emergency-industry-unset">
+                    {t('settings.cc.emergency.enablement.industryUnsetNote')}
                   </p>
                 )}
                 {confirmedMessage && (

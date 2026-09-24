@@ -316,11 +316,11 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSel
           <div className="flex items-center gap-1.5">
             <p className="text-xs font-medium text-slate-700 truncate" title={name}>{name}</p>
             {/* Encode grade (2026-09-24) — the row-level half of the
-                publish-time warning: an amber/red video carries a pill beside
-                its name (icon-only on a phone, where the row has no room for
-                text — the title carries the reasons). The banner above the
-                list carries the full sentences. */}
-            <AssetEncodeBadge asset={item.asset} labels="row" iconOnlyOnMobile className="shrink-0" />
+                publish-time warning: an amber/red video carries a small mark
+                beside its name. Hover for the reasons; tap for the details
+                popover (a phone has no hover). The banner above the list
+                carries the full sentences. */}
+            <AssetEncodeBadge asset={item.asset} interactive className="shrink-0" />
           </div>
           {/* Mime label is desktop-only — secondary info, eats a
               line on mobile that we can't afford. Available via

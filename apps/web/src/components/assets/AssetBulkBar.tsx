@@ -9,12 +9,14 @@
  * header became an eight-button header on the operator's laptop and wrapped
  * off-screen on their phone. Selection context belongs next to the files.
  *
- * Destructive stays behind "More" (§13) and mobile sticks the bar above the
- * tab bar (§19) with 44px targets.
+ * Delete is a direct button (2026-09-24). It sat alone behind a "More" menu —
+ * Greg: "why hide delete under more when thats the only option...just show
+ * delete". A one-item menu is a click for nothing; the confirm dialog behind
+ * `onDelete` is the safety, not the menu. Mobile sticks the bar above the tab
+ * bar (§19) with 44px targets.
  */
 
-import { useEffect, useRef, useState } from 'react';
-import { Download, FolderInput, ListPlus, MoreHorizontal, Trash2, X } from 'lucide-react';
+import { Download, FolderInput, ListPlus, Trash2, X } from 'lucide-react';
 
 export function AssetBulkBar({
   count,
@@ -48,18 +50,6 @@ export function AssetBulkBar({
   onDelete: () => void;
   onClear: () => void;
 }) {
-  const [moreOpen, setMoreOpen] = useState(false);
-  const moreRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!moreOpen) return;
-    const onDoc = (e: MouseEvent) => {
-      if (!moreRef.current?.contains(e.target as Node)) setMoreOpen(false);
-    };
-    document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
-  }, [moreOpen]);
-
   if (count <= 0) return null;
   const title = disabled ? disabledReason : undefined;
   const deleteTitle = deleteDisabled ? deleteDisabledReason : undefined;
@@ -101,42 +91,15 @@ export function AssetBulkBar({
         <Download className="w-3.5 h-3.5" /> Download
       </button>
 
-      <div ref={moreRef} className="relative">
-        <button
-          type="button"
-          aria-haspopup="menu"
-          aria-expanded={moreOpen}
-          onClick={() => setMoreOpen((v) => !v)}
-          className="min-h-11 sm:min-h-0 px-3 py-2 rounded-lg bg-white border border-indigo-200 hover:bg-indigo-100 text-indigo-800 text-xs font-bold flex items-center gap-1.5"
-        >
-          <MoreHorizontal className="w-3.5 h-3.5" /> More
-        </button>
-        {moreOpen && (
-          <div
-            role="menu"
-            tabIndex={-1}
-            aria-label="More selection actions"
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') setMoreOpen(false);
-            }}
-            className="absolute z-30 top-full mt-1 left-0 min-w-[200px] bg-white border border-slate-200 rounded-xl shadow-xl py-1"
-          >
-            <button
-              type="button"
-              role="menuitem"
-              disabled={deleteDisabled}
-              title={deleteTitle}
-              onClick={() => {
-                setMoreOpen(false);
-                onDelete();
-              }}
-              className="w-full px-3 py-2 min-h-11 sm:min-h-0 text-left text-xs font-medium text-rose-700 hover:bg-rose-50 flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <Trash2 className="w-3.5 h-3.5" /> Delete…
-            </button>
-          </div>
-        )}
-      </div>
+      <button
+        type="button"
+        disabled={deleteDisabled}
+        title={deleteTitle}
+        onClick={onDelete}
+        className="min-h-11 sm:min-h-0 px-3 py-2 rounded-lg bg-white border border-rose-200 hover:bg-rose-50 text-rose-700 text-xs font-bold flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        <Trash2 className="w-3.5 h-3.5" /> Delete…
+      </button>
 
       <button
         type="button"

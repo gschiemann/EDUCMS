@@ -44,7 +44,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   useAssets, useAddWebUrl, useDeleteAsset, useAssetFolders, useCreateAssetFolder,
   useRenameAssetFolder, useDeleteAssetFolder, useMoveAsset, useGenerateAltText,
-  useUpdateAltText, useAssetUsage, normalizeAssetList, assetUsageQueryKey, fetchAssetUsage, useCheckAssetPlayback,
+  useUpdateAltText, useAssetUsage, normalizeAssetList, assetUsageQueryKey, fetchAssetUsage, useCheckAssetPlayback, useAssetStorageSummary,
   type AssetUsage,
 } from '@/hooks/use-api';
 import { useUIStore } from '@/store/ui-store';
@@ -58,7 +58,10 @@ import { AiImageModal, useAiImageAvailable } from '@/components/ai/AiImageGenera
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { transformedImageUrl } from '@/lib/asset-image';
 import { AssetEncodeBadge, VideoEncodeCard } from '@/components/assets/VideoEncode';
-import { videoEncodeState, encodeWarns, isVideoMime, type EncodeGradableAsset } from '@/lib/video-encode-copy';
+import { useEncodeTarget } from '@/hooks/use-encode-target';
+import { videoEncodeState, encodeWarns, encodeWarnings, encodeNotes, describeEncodeReason, isVideoMime, type EncodeGradableAsset, type VideoEncodeState } from '@/lib/video-encode-copy';
+import { inspectVideoFile } from '@/lib/mp4-inspect';
+import { gradeVideoEncode } from '@cms/api-types';
 
 // Match the server limit (apps/api/src/assets/assets.controller.ts).
 // 200MB was rejecting any reasonably-sized video before it even tried to
@@ -151,6 +154,16 @@ interface UploadItem {
   progress: number;
   phase: UploadPhase;
   error?: string;
+  /**
+   * The encode verdict read from the FILE before/while it uploads
+   * (2026-09-24, `mp4-inspect.ts`): the codec, size, frame rate, index
+   * placement and the rest come from the MP4's own moov box, so the queue
+   * row can say "May hitch on your screens — the index is at the end of the
+   * file" the moment the file is dropped. `checking` until the read lands;
+   * `unknown` for a container we cannot read. The server's ffprobe pass
+   * confirms it after the upload.
+   */
+  encode?: VideoEncodeState;
 }
 
 interface PresignedUploadResponse {
@@ -402,6 +415,7 @@ export default function AssetsPage() {
   const addWebUrl = useAddWebUrl();
   const deleteAsset = useDeleteAsset();
   const checkPlayback = useCheckAssetPlayback();
+  const storage = useAssetStorageSummary();
   // Audit P1-2 (2026-05-28) — AI alt-text generator + manual override.
   const generateAltText = useGenerateAltText();
   const updateAltText = useUpdateAltText();
@@ -439,34 +453,7 @@ export default function AssetsPage() {
   const page = useMemo(() => normalizeAssetList(assetsRaw), [assetsRaw]);
   const assets = page.assets;
 
-  // "Warn at upload" (2026-09-24). The tile pill and the detail card carry
-  // the grade, but an operator who drops a file and walks to the playlist
-  // never opens either. So the FIRST time a video uploaded in this session
-  // grades amber/red, say so in a toast with a way into the reasons — once
-  // per file, never for uploads from earlier sessions (those show their
-  // pills; a toast storm on page load is not a warning, it is noise).
-  const freshVideoIdsRef = useRef<Set<string>>(new Set());
-  const warnedVideoIdsRef = useRef<Set<string>>(new Set());
-  useEffect(() => {
-    if (freshVideoIdsRef.current.size === 0) return;
-    for (const a of assets as Array<EncodeGradableAsset & { id?: string; originalName?: string | null; fileUrl?: string | null }>) {
-      const id = a?.id;
-      if (!id || !freshVideoIdsRef.current.has(id) || warnedVideoIdsRef.current.has(id)) continue;
-      const state = videoEncodeState(a);
-      if (state.status === 'checking') continue; // not graded yet — keep waiting
-      freshVideoIdsRef.current.delete(id);
-      if (!encodeWarns(state.status)) continue;
-      warnedVideoIdsRef.current.add(id);
-      const name = a.originalName || a.fileUrl?.split('/').pop() || '';
-      toast.warning(t('assetsLib.encode.uploadToast', { name }), {
-        description: t(`assetsLib.encode.${state.status}`),
-        duration: 12_000,
-        action: { label: t('assetsLib.encode.uploadToastAction'), onClick: () => openDetail(a) },
-      });
-    }
-    // openDetail / t are stable for the life of the page; `assets` is the signal.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [assets]);
+  const encodeTarget = useEncodeTarget();
   /** true once the server answered a query it actually applied itself. */
   const serverSearched = !!debouncedSearch && page.appliedQuery === debouncedSearch;
 
@@ -754,7 +741,13 @@ export default function AssetsPage() {
     if (list.length === 0) return;
     const genId = () => { try { return crypto.randomUUID(); } catch { return Math.random().toString(36).substring(2, 10); } };
     const items = list.map((file) => {
-      const item: UploadItem = { id: genId(), file, progress: 0, phase: 'idle' };
+      const item: UploadItem = {
+        id: genId(),
+        file,
+        progress: 0,
+        phase: 'idle',
+        ...(isVideoMime(file.type) ? { encode: { status: 'checking', verdict: { grade: 'unknown', reasons: [] }, facts: null } as VideoEncodeState } : {}),
+      };
       // Reject BEFORE any network call. The order matters: format check
       // first (we'd rather tell the operator "export as MP4" than "too
       // large" if both happen to be true on the same file). Both states
@@ -778,6 +771,25 @@ export default function AssetsPage() {
     // fast for small batches, doesn't hammer any single downstream.
     // Everything past the first three sits in the queue reading
     // "Waiting" (§14), which is the truth.
+    // Pre-upload playback check (2026-09-24): read the MP4's own index the
+    // moment it is dropped — bounded reads, never the media — and grade it
+    // against the fleet's panels, so the queue row warns BEFORE the bytes go
+    // up. Never blocks or fails an upload; a container we cannot read simply
+    // reads "not checked" until the server's ffprobe pass lands.
+    for (const item of items) {
+      if (!item.encode) continue;
+      void inspectVideoFile(item.file)
+        .then((inspected) => {
+          const facts = inspected.container ? inspected.facts : null;
+          const verdict = gradeVideoEncode(facts, encodeTarget);
+          const status: VideoEncodeState['status'] = facts ? verdict.grade : 'unknown';
+          setUploads((p) => p.map((u) => (u.id === item.id ? { ...u, encode: { status, verdict, facts } } : u)));
+        })
+        .catch(() => {
+          setUploads((p) => p.map((u) => (u.id === item.id ? { ...u, encode: { status: 'unknown', verdict: { grade: 'unknown', reasons: [] }, facts: null } } : u)));
+        });
+    }
+
     const MAX_CONCURRENT_UPLOADS = 3;
     const queue = items.filter((u) => u.phase === 'idle').slice();
     const runWorker = async (): Promise<void> => {
@@ -791,7 +803,7 @@ export default function AssetsPage() {
     const workers = Array.from({ length: workerCount }, () => runWorker());
     void Promise.all(workers);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [encodeTarget]);
 
   const doUpload = async (item: UploadItem, targetFolderIdOverride?: string | null): Promise<void> => {
     // Destination precedence:
@@ -914,10 +926,6 @@ export default function AssetsPage() {
       // of "Ready", which would be a lie about what is on screen.
       const needsReview = created?.status === 'PENDING_APPROVAL';
       setUploads(p => p.map(u => u.id === item.id ? { ...u, progress: 100, phase: needsReview ? 'pending-review' : 'success' } : u));
-      // A video's encode grade lands a few seconds later (the probe is
-      // async); remember the id so the page can say so out loud once it
-      // does — see the effect on `assets` below.
-      if (typeof created?.id === 'string' && isVideoMime(created?.mimeType)) freshVideoIdsRef.current.add(created.id);
       queryClient.invalidateQueries({ queryKey: ['assets'] });
     } catch (err: any) {
       const elapsedMs = Math.round(performance.now() - started);
@@ -1275,6 +1283,17 @@ export default function AssetsPage() {
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">{t('assetsLib.title')}</h1>
           <p className="text-sm text-slate-600 mt-0.5" data-testid="library-subtitle">
             {t('assetsLib.subtitleScope', { assets: libraryTotal, folders: folderCount })}
+            {/* Storage used (2026-09-24). Greg: "where do i see my total storage
+                and amount used?" — the number, by kind; no quota on the
+                per-screen plan, so no bar. Absent until the summary lands. */}
+            {storage.data && storage.data.totalFiles > 0 && (
+              <span data-testid="library-storage" className="block sm:inline sm:before:content-['·'] sm:before:mx-1.5 sm:before:text-slate-400">
+                {t('assetsLib.storageUsed', { total: fmtSize(storage.data.totalBytes) })}
+                {storage.data.videos.files > 0 && (
+                  <span className="text-slate-500"> · {t('assetsLib.storageVideos', { size: fmtSize(storage.data.videos.bytes), count: storage.data.videos.files })}</span>
+                )}
+              </span>
+            )}
           </p>
         </div>
         <div className="flex gap-2 items-center">
@@ -1460,6 +1479,34 @@ export default function AssetsPage() {
                     scrolling the operator can still read it. */}
                 {u.phase === 'error' && u.error && (
                   <p className="text-[10px] text-rose-700 font-medium leading-snug mt-1 ml-6 pr-2" title={u.error}>{u.error}</p>
+                )}
+                {/* Pre-upload playback verdict (2026-09-24): shown right here,
+                    where the operator is looking, the moment the file's index
+                    has been read — not as a toast somewhere else. Green is one
+                    quiet line; amber/red list the reasons and what to export;
+                    a size note (uses part of the panel) is advice, not a warning. */}
+                {u.encode && u.encode.status !== 'checking' && u.encode.status !== 'unknown' && (
+                  <div className="mt-1 ml-6 pr-2" data-testid="upload-encode" data-encode-status={u.encode.status}>
+                    <p className={`text-[10px] font-bold leading-snug ${u.encode.status === 'red' ? 'text-rose-700' : u.encode.status === 'amber' ? 'text-amber-700' : 'text-emerald-700'}`}>
+                      {t(`assetsLib.encode.${u.encode.status}`)}
+                    </p>
+                    {encodeWarnings(u.encode.verdict).map((r) => (
+                      <p key={r.code} className="text-[10px] text-slate-600 leading-snug">{describeEncodeReason(t, r)}</p>
+                    ))}
+                    {encodeNotes(u.encode.verdict).map((r) => (
+                      <p key={r.code} className="text-[10px] text-slate-500 leading-snug">{describeEncodeReason(t, r)}</p>
+                    ))}
+                    {(encodeWarns(u.encode.status) || encodeNotes(u.encode.verdict).length > 0) && (
+                      <p className="text-[10px] text-slate-600 leading-snug mt-0.5">
+                        {encodeTarget.panelKnown
+                          ? t('assetsLib.encode.suggested', { width: encodeTarget.panelWidth, height: encodeTarget.panelHeight })
+                          : t('assetsLib.encode.suggestedGeneric')}
+                      </p>
+                    )}
+                  </div>
+                )}
+                {u.encode?.status === 'checking' && (
+                  <p className="text-[10px] text-slate-400 leading-snug mt-1 ml-6">{t('assetsLib.encode.checking')}</p>
                 )}
               </div>
             ))}
@@ -1908,11 +1955,13 @@ export default function AssetsPage() {
                       </span>
                     )}
                     {/* Encode grade (2026-09-24) — the one overlay that DOES
-                        change what the operator should do: a video that will
-                        stutter on the wall gets a pill before it is scheduled
-                        anywhere. Green and unknown stay quiet. The full reasons
-                        are in the detail panel's "Playback on screens" card. */}
-                    <AssetEncodeBadge asset={a} variant="onImage" className="absolute top-1.5 left-1.5" />
+                        change what the operator should do: a video that may
+                        stutter on the wall gets a small mark before it is
+                        scheduled anywhere (bottom-left: the checkbox owns the
+                        top-left, the menu the top-right). Hover for the
+                        reasons; the tile's own click opens the card. Green
+                        and unknown stay quiet. */}
+                    <AssetEncodeBadge asset={a} variant="onImage" className="absolute bottom-1.5 left-1.5" />
                     {status && (
                       <span className={`absolute bottom-1.5 right-1.5 text-[9px] font-black px-1.5 py-0.5 rounded ${status.className}`}>
                         {status.label}

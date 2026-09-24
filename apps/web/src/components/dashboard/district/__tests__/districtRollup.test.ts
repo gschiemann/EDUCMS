@@ -268,6 +268,7 @@ describe('compareScorecards — worst first', () => {
     tenantId: over.name || 'x', name: 'x', slug: 'x', isSelf: false,
     screensTotal: 10, screensOnline: 10, screensOffline: 0, notPainting: 0,
     readiness: 'READY', missingTypes: [], lockdownWired: true, emergencyEnabled: true,
+    emergencyVerticalStated: true,
     pendingApprovals: 0, needsAttention: false,
     ...over,
   });

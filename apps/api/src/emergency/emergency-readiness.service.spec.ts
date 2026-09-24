@@ -185,8 +185,18 @@ describe('EmergencyReadinessService', () => {
     const svc = new EmergencyReadinessService(prisma, redis, wsSigner);
     const r = await svc.compute('t1');
     expect(r.enabled).toBe(true);
-    // The default mock tenant stores no vertical → K12 → locked.
+    // The default mock tenant stores no vertical → graded as K12 (on), but an
+    // unstated industry never LOCKS the toggle, and the report says so.
+    expect(r.locked).toBe(false);
+    expect(r.verticalStated).toBe(false);
+  });
+
+  it('a stated K-12 school is locked and stated', async () => {
+    const { prisma, redis, wsSigner } = makeMocks({ tenant: { vertical: 'K12' } });
+    const svc = new EmergencyReadinessService(prisma, redis, wsSigner);
+    const r = await svc.compute('t1');
     expect(r.locked).toBe(true);
+    expect(r.verticalStated).toBe(true);
   });
 
   it('lockdown-only wiring → content WARN naming the missing types', async () => {

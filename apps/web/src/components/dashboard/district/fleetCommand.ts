@@ -575,6 +575,19 @@ export function buildFleetCommand(input: {
   for (const sc of locations) {
     if (!sc.hasScreens) continue; // screenless → single 'setup' row below
     if (sc.readiness === 'NOT_CONFIGURED') {
+      // An unstated industry (2026-09-24) is graded as a school by default —
+      // say THAT, and point at the two ways out, instead of accusing a gym of
+      // having no lockdown content. Greg: "emergency alert still showing even
+      // though its not enabled".
+      if (sc.emergencyVerticalStated === false) {
+        inbox.push({
+          kind: 'emergency', tenantId: sc.tenantId, tenantName: sc.name, slug: sc.slug,
+          headline: `${sc.name}: industry not set — emergency alerts are on by default`,
+          detail: 'Set the industry under Settings → Organization, or turn alerts off under Settings → Emergency.',
+          path: 'settings/organization', count: 1,
+        });
+        continue;
+      }
       inbox.push({
         kind: 'emergency', tenantId: sc.tenantId, tenantName: sc.name, slug: sc.slug,
         headline: `${sc.name} can’t display an emergency alert`,
@@ -886,6 +899,7 @@ export function worstLine(
 ): { text: string; cls: string; tone: 'muted' | 'warn' | 'bad' } | null {
   const line = (tone: 'muted' | 'warn' | 'bad', text: string) => ({ text, tone, cls: WORST_TONE_CLS[tone] });
   if (!row.hasScreens) return line('muted', 'No screens set up yet');
+  if (row.readiness === 'NOT_CONFIGURED' && row.emergencyVerticalStated === false) return line('bad', 'Industry not set — alerts graded as a school');
   if (row.readiness === 'NOT_CONFIGURED') return line('bad', 'Can’t display an emergency alert');
   if (row.notPainting > 0) return line('bad', `${row.notPainting} no picture confirmed`);
   if (row.screensOffline > 0) return line('warn', `${row.screensOffline} offline`);
@@ -909,6 +923,7 @@ export function locationTone(row: LocationRow): 'ok' | 'warn' | 'bad' {
 /** Where a click on this location lands — keyed off the SAME precedence. */
 export function worstPath(row: LocationRow): string {
   if (!row.hasScreens) return 'screens';
+  if (row.readiness === 'NOT_CONFIGURED' && row.emergencyVerticalStated === false) return 'settings/organization';
   if (row.readiness === 'NOT_CONFIGURED') return 'settings/emergency';
   return worstLine(row) ? 'screens' : 'dashboard';
 }

@@ -2169,7 +2169,7 @@ function SortableMediaRow({
           <p className="text-[11px] font-semibold text-slate-700 truncate">
             {asset.originalName || asset.title || 'Untitled'}
           </p>
-          <AssetEncodeBadge asset={asset} labels="row" iconOnlyOnMobile className="ml-1.5 shrink-0" />
+          <AssetEncodeBadge asset={asset} interactive className="ml-1.5 shrink-0" />
           {isAV && (
             <span
               className="ml-1.5 text-[9px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-sm px-1 leading-tight"

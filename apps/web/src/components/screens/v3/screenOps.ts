@@ -456,12 +456,12 @@ export function deriveScreenStatus({
     return {
       key: 'app-updating',
       tone: 'muted',
-      label: 'Updating itself',
-      evidence: 'Content is playing; the app updates itself',
+      label: 'Player update pending',
+      evidence: 'Content is playing on the previous player build',
       action: 'View',
       needsAttention: false,
       detail:
-        'This screen is playing its scheduled content. It is running a slightly older build of the player app and will reload onto the current one on its own, usually within half an hour. Nothing for you to do.',
+        'This screen is playing its scheduled content on an older build of the player app. It reloads onto the current build on its own, usually within half an hour. Nothing for you to do.',
     };
   }
 
@@ -837,9 +837,9 @@ function deriveAppVersion(
     reportedBundleId: screen.lastBundleId ?? null,
     deployedBundleId,
   });
-  if (skew === 'stale') return { state: 'updating', line: 'Player app: updating itself to the latest version.' };
+  if (skew === 'stale') return { state: 'updating', line: 'Player app: update pending — it reloads onto the current build on its own.' };
   if (skew === 'unknown') return { state: 'unknown', line: null };
-  return { state: 'current', line: 'Player app: up to date.' };
+  return { state: 'current', line: 'Player app: current build.' };
 }
 
 export function deriveReportedContent(

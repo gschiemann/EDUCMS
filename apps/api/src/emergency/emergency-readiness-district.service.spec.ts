@@ -198,7 +198,7 @@ describe('EmergencyReadinessService.computeDistrict', () => {
   });
 
   it('a K-12 location is graded even with a stored false — the lock wins', async () => {
-    const m = makeDistrictMocks({ enabled: { 'school-1': false } });
+    const m = makeDistrictMocks({ enabled: { 'school-1': false }, verticals: { 'school-1': 'K12' } });
     const r = await svcFor(m).computeDistrict('district');
     const school = r.schools.find((s) => s.tenantId === 'school-1')!;
     expect(school.enabled).toBe(true);
@@ -207,10 +207,19 @@ describe('EmergencyReadinessService.computeDistrict', () => {
     expect(r.disabledCount).toBe(0);
   });
 
-  it('every row carries the enablement facts; rows with no stored vertical grade as K-12: on and locked', async () => {
+  it('a location with NO stated industry and a stored false is OFF — an assumption never locks a toggle', async () => {
+    const m = makeDistrictMocks({ enabled: { 'school-1': false } });
+    const r = await svcFor(m).computeDistrict('district');
+    const school = r.schools.find((s) => s.tenantId === 'school-1')!;
+    expect(school.verdict).toBe('DISABLED');
+    expect(school.locked).toBe(false);
+    expect(school.verticalStated).toBe(false);
+  });
+
+  it('every row carries the enablement facts; rows with no stored vertical grade as K-12: on, unlocked, unstated', async () => {
     const r = await svcFor(makeDistrictMocks()).computeDistrict('district');
     expect(
-      r.schools.every((s) => s.enabled === true && s.locked === true),
+      r.schools.every((s) => s.enabled === true && s.locked === false && s.verticalStated === false),
     ).toBe(true);
     expect(r.disabledCount).toBe(0);
   });

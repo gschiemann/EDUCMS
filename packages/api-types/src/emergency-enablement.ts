@@ -22,7 +22,7 @@
  * PURE — no React, no Prisma, no network. Shared by the API (authority) and
  * the web dashboard (presentation) so the two can never disagree.
  */
-import { normalizeVertical, type Vertical } from './verticals';
+import { isVertical, normalizeVertical, VERTICAL_ALIASES, type Vertical } from './verticals';
 
 /**
  * Verticals whose emergency capability is ALWAYS ON and cannot be turned
@@ -32,9 +32,38 @@ import { normalizeVertical, type Vertical } from './verticals';
  */
 const ALWAYS_ON_VERTICALS: ReadonlySet<Vertical> = new Set<Vertical>(['K12']);
 
-/** True when this vertical's emergency capability may never be turned off. */
+/**
+ * The industry the organization actually STATED, or null when it never did
+ * (a legacy row, an empty or unknown string). `normalizeVertical` answers
+ * K12 for those — right for defaults, wrong for a LOCK: an assumption must
+ * never be the reason a life-safety toggle cannot be turned off. 2026-09-24,
+ * a gym whose industry was never set: "emergency alert still showing even
+ * though its not enabled" — its alerts were being graded as a school's, and
+ * the settings page hid the toggle behind the K-12 note.
+ */
+export function statedVertical(rawVertical: unknown): Vertical | null {
+  if (isVertical(rawVertical)) return rawVertical;
+  if (typeof rawVertical === 'string') {
+    const up = rawVertical.trim().toUpperCase();
+    if (isVertical(up)) return up;
+    if (VERTICAL_ALIASES[up]) return VERTICAL_ALIASES[up];
+  }
+  return null;
+}
+
+/** True when the organization has stated an industry at all. */
+export function emergencyVerticalStated(rawVertical: unknown): boolean {
+  return statedVertical(rawVertical) !== null;
+}
+
+/**
+ * True when this vertical's emergency capability may never be turned off.
+ * Only a STATED always-on vertical locks; an unstated one keeps the K-12
+ * default (on) but leaves the operator the toggle.
+ */
 export function emergencyEnablementLocked(rawVertical: unknown): boolean {
-  return ALWAYS_ON_VERTICALS.has(normalizeVertical(rawVertical));
+  const stated = statedVertical(rawVertical);
+  return stated !== null && ALWAYS_ON_VERTICALS.has(stated);
 }
 
 /**
@@ -43,7 +72,9 @@ export function emergencyEnablementLocked(rawVertical: unknown): boolean {
  * a capability nobody configured must not advertise itself as ready.
  */
 export function defaultEmergencyEnabled(rawVertical: unknown): boolean {
-  return emergencyEnablementLocked(rawVertical);
+  // Unstated → K12 → on: a legacy school that never picked an industry keeps
+  // its alarm. It just is not LOCKED on (see emergencyEnablementLocked).
+  return ALWAYS_ON_VERTICALS.has(normalizeVertical(rawVertical));
 }
 
 /**

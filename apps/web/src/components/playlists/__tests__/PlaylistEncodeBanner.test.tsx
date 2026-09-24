@@ -45,14 +45,14 @@ describe('PlaylistEncodeBanner', () => {
     const banner = screen.getByTestId('playlist-encode-banner');
     expect(banner).toHaveAttribute('data-encode-status', 'red');
     expect(banner).toHaveTextContent('2 videos in this playlist may not play smoothly on your screens');
-    expect(banner).toHaveTextContent('Pro Series 2026.mp4 — 3840 × 2160 — larger than 1080p');
+    expect(banner).toHaveTextContent('Pro Series 2026.mp4 — 3840 × 2160 — larger than your biggest screen (1920 × 1080)');
     expect(banner).toHaveTextContent('promo.mp4 — The index is at the end of the file');
     expect(banner).not.toHaveTextContent('good.mp4');
-    expect(banner).toHaveTextContent('Best result: MP4, H.264, 1080p, 30 fps, fast start. Re-export and replace the file.');
+    expect(banner).toHaveTextContent("Suggested: MP4, H.264 at your screens' resolution, 30 fps, fast start. Re-export and replace the file.");
   });
 
   it('uses the singular for one file and amber when nothing is red', () => {
-    render(<PlaylistEncodeBanner items={[video('c', 'promo.mp4', { ...safeProbe, probe: { ...safeProbe.probe, bitrateKbps: 15_000 } })]} />);
+    render(<PlaylistEncodeBanner items={[video('c', 'promo.mp4', { ...safeProbe, probe: { ...safeProbe.probe, fastStart: false } })]} />);
     const banner = screen.getByTestId('playlist-encode-banner');
     expect(banner).toHaveAttribute('data-encode-status', 'amber');
     expect(banner).toHaveTextContent('1 video in this playlist may not play smoothly on your screens');

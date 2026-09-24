@@ -11,6 +11,7 @@ import {
   isVertical,
   effectiveEmergencyEnabled,
   emergencyEnablementLocked,
+  emergencyVerticalStated,
   effectiveMfaEnforced,
 } from '@cms/api-types';
 import { evaluateMfaPolicy } from '../auth/mfa-policy';
@@ -730,11 +731,14 @@ export class TenantsController {
     });
     if (!tenant) return tenant;
     const row = tenant as any;
+    const vertical: unknown = row.vertical;
     return {
       ...row,
-      emergencyEnabledEffective: effectiveEmergencyEnabled(row.vertical, row.emergencyEnabled),
+      emergencyEnabledEffective: effectiveEmergencyEnabled(vertical, row.emergencyEnabled),
       /** True for verticals that may never turn the capability off (K–12). */
-      emergencyEnabledLocked: emergencyEnablementLocked(row.vertical),
+      emergencyEnabledLocked: emergencyEnablementLocked(vertical),
+      /** False when the industry was never stated — alerts then default to on as for a school, unlocked. */
+      emergencyVerticalStated: emergencyVerticalStated(vertical),
       /** The resolved MFA posture — what the dashboard toggle renders. */
       mfaEnforcedEffective: effectiveMfaEnforced(row.mfaEnforced),
     };

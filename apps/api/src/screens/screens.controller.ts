@@ -1,4 +1,5 @@
 import { Controller, Post, Get, Put, Delete, Body, Param, Query, Req, Res, UseGuards, Request, HttpException, HttpStatus } from '@nestjs/common';
+import { encodeTargetFromResolutions } from '@cms/api-types';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import type { Request as ExpressReq, Response } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
@@ -2258,6 +2259,32 @@ export class ScreensController {
   // trim per hardware model across the whole fleet. A new screen of a
   // known-slow model gets a one-tap suggested starting trim instead of a
   // blind hunt. Returns aggregate numbers only.
+  /**
+   * The size target a video is graded against (2026-09-24): the LARGEST panel
+   * in this tenant's fleet, landscape-normalised, from what each player
+   * reported as `resolution` at registration. Sixty bytes, so the Media
+   * Library and the playlist pages can read it without pulling the whole
+   * fleet list. Greg: "these are all 4k screens so why would we recommend
+   * 1080? dont we want the max out of them?". Same shape and rule as the
+   * web's `encodeTargetFromResolutions` (@cms/api-types) — one function.
+   * Literal path, so it sits ABOVE `@Get(':id')`.
+   */
+  @UseGuards(JwtAuthGuard, RbacGuard)
+  @Get('panel-target')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  async panelTarget(@Request() req: { user: { tenantId: string } }) {
+    const rows = await this.prisma.client.screen.findMany({
+      where: { tenantId: req.user.tenantId, status: { not: 'REVOKED' } },
+      select: { resolution: true },
+    });
+    return encodeTargetFromResolutions(rows.map((r) => r.resolution));
+  }
+
   @UseGuards(JwtAuthGuard, RbacGuard)
   @Get('sync-trim-suggestions')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)

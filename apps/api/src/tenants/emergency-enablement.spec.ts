@@ -50,13 +50,18 @@ describe('effectiveEmergencyEnabled', () => {
     });
   });
 
-  describe('unknown / legacy verticals fail to the K12 default, never to a crash', () => {
+  describe('unknown / legacy verticals default to the K12 answer, never to a crash — but are not LOCKED', () => {
     // normalizeVertical maps unknown values to K12, which is the SAFE
-    // direction for a life-safety capability: on, not silently off.
-    it('an unknown string resolves like K12', () => {
+    // direction for a life-safety capability: on, not silently off. An
+    // assumption is not a lock, though (2026-09-24): a gym whose industry was
+    // never stated must be able to turn alerts off from the dashboard.
+    it('an unknown or unstated industry defaults on', () => {
       expect(effectiveEmergencyEnabled('NOT_A_VERTICAL', null)).toBe(true);
       expect(effectiveEmergencyEnabled(undefined, null)).toBe(true);
-      expect(effectiveEmergencyEnabled(null, false)).toBe(true);
+    });
+    it('but a stored false wins, because nothing stated locks it', () => {
+      expect(effectiveEmergencyEnabled(null, false)).toBe(false);
+      expect(effectiveEmergencyEnabled('NOT_A_VERTICAL', false)).toBe(false);
     });
   });
 

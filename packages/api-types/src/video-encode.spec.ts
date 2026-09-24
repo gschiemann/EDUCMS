@@ -4,11 +4,15 @@
  * an unknown fact never counts against a file.
  */
 import {
+  DEFAULT_ENCODE_TARGET,
+  encodeTargetFromResolutions,
   gradeVideoEncode,
   gradeVideoProcessingMeta,
+  kioskSafeExportSummary,
   videoCodecLabel,
   videoEncodeFactsFromProcessingMeta,
   type VideoEncodeFacts,
+  type VideoEncodeTarget,
 } from './video-encode';
 
 const safe = (over: Partial<VideoEncodeFacts> = {}): VideoEncodeFacts => ({
@@ -29,7 +33,7 @@ const safe = (over: Partial<VideoEncodeFacts> = {}): VideoEncodeFacts => ({
 
 const codes = (facts: VideoEncodeFacts) => gradeVideoEncode(facts).reasons.map((r) => `${r.severity}:${r.code}`);
 
-describe('gradeVideoEncode — the kiosk-safe target', () => {
+describe('gradeVideoEncode — the target', () => {
   it('a textbook signage export is green with no reasons', () => {
     expect(gradeVideoEncode(safe())).toEqual({ grade: 'green', reasons: [] });
   });
@@ -57,33 +61,70 @@ describe('gradeVideoEncode — the kiosk-safe target', () => {
     expect(codes(safe({ pixFmt: 'yuvj420p' }))).toEqual([]);
   });
 
-  it('above 1080p is red in either orientation', () => {
+  it('larger than the biggest screen is red in either orientation — and the target is the FLEET, not a fixed 1080p', () => {
+    // Default target (no fleet read): 1920 × 1080.
     expect(codes(safe({ width: 3840, height: 2160 }))).toEqual(['red:resolution']);
     expect(codes(safe({ width: 2160, height: 3840 }))).toEqual(['red:resolution']);
     expect(codes(safe({ width: 2560, height: 1080 }))).toEqual(['red:resolution']);
+    expect(gradeVideoEncode(safe({ width: 3840, height: 2160 })).reasons[0].detail).toEqual({
+      width: 3840, height: 2160, panelWidth: 1920, panelHeight: 1080,
+    });
+    // A 4K fleet WANTS 4K files.
+    const fourK: VideoEncodeTarget = { panelWidth: 3840, panelHeight: 2160, panelKnown: true };
+    expect(gradeVideoEncode(safe({ width: 3840, height: 2160 }), fourK)).toEqual({ grade: 'green', reasons: [] });
+    expect(gradeVideoEncode(safe({ width: 2160, height: 3840 }), fourK).grade).toBe('green');
+    expect(gradeVideoEncode(safe({ width: 4096, height: 2160 }), fourK).reasons.map((r) => r.code)).toEqual(['resolution']);
   });
 
-  it('above 30 fps is red; 29.97 and 30 are not', () => {
-    expect(codes(safe({ fps: 59.94 }))).toEqual(['red:frame-rate']);
+  it('a file that uses half the panel or less gets an INFO note on a known fleet — never a warning, never on an unknown one', () => {
+    const fourK: VideoEncodeTarget = { panelWidth: 3840, panelHeight: 2160, panelKnown: true };
+    const v = gradeVideoEncode(safe({ width: 1280, height: 720 }), fourK);
+    expect(v.grade).toBe('green');
+    expect(v.reasons).toEqual([
+      { code: 'soft', severity: 'info', detail: { width: 1280, height: 720, panelWidth: 3840, panelHeight: 2160 } },
+    ]);
+    // 1080p on 4K is exactly half the long edge: still a note.
+    expect(gradeVideoEncode(safe(), fourK).reasons.map((r) => r.code)).toEqual(['soft']);
+    // 2560 × 1440 on 4K: more than half — nothing to say.
+    expect(gradeVideoEncode(safe({ width: 2560, height: 1440 }), fourK).reasons).toEqual([]);
+    // Unknown fleet: no screen to be soft on.
+    expect(gradeVideoEncode(safe({ width: 1280, height: 720 })).reasons).toEqual([]);
+  });
+
+  it('above 30 fps is amber; 61 fps and up is red; 29.97 and 30 are fine', () => {
+    expect(codes(safe({ fps: 59.94 }))).toEqual(['amber:frame-rate']);
     expect(gradeVideoEncode(safe({ fps: 59.94 })).reasons[0].detail).toEqual({ fps: 59.9 });
+    expect(codes(safe({ fps: 120 }))).toEqual(['red:frame-rate']);
     expect(codes(safe({ fps: 30 }))).toEqual([]);
     expect(codes(safe({ fps: 25 }))).toEqual([]);
   });
 
-  it('an H.264 level above 4.1 is amber only when size and rate do not already explain it', () => {
-    expect(codes(safe({ level: 42 }))).toEqual(['amber:level']);
-    expect(gradeVideoEncode(safe({ level: 42 })).reasons[0].detail).toEqual({ level: '4.2' });
-    // 4K at level 5.1: the resolution reason says it all.
-    expect(codes(safe({ level: 51, width: 3840, height: 2160 }))).toEqual(['red:resolution']);
+  it('an H.264 level above 5.1 is amber; 4K30 at 5.1 is normal', () => {
+    expect(codes(safe({ level: 52 }))).toEqual(['amber:level']);
+    expect(gradeVideoEncode(safe({ level: 52 })).reasons[0].detail).toEqual({ level: '5.2' });
+    expect(codes(safe({ level: 42 }))).toEqual([]);
+    const fourK: VideoEncodeTarget = { panelWidth: 3840, panelHeight: 2160, panelKnown: true };
+    expect(gradeVideoEncode(safe({ level: 51, width: 3840, height: 2160 }), fourK).reasons).toEqual([]);
     // Not H.264 → the codec reason says it all.
     expect(codes(safe({ codec: 'hevc', level: 153 }))).toEqual(['red:codec']);
   });
 
-  it('bitrate: over 12 Mbps is amber, 25 Mbps and up is red', () => {
+  it('bitrate is judged against what the file shows: 3× a high-quality encode is amber, 6× is red', () => {
+    // 1080p @ 29.97: reference ≈ 6.2 Mbps → amber above ≈ 18.6, red at ≈ 37.3.
     expect(codes(safe({ bitrateKbps: 12_000 }))).toEqual([]);
-    expect(codes(safe({ bitrateKbps: 18_500 }))).toEqual(['amber:bitrate']);
-    expect(gradeVideoEncode(safe({ bitrateKbps: 18_500 })).reasons[0].detail).toEqual({ mbps: 18.5 });
-    expect(codes(safe({ bitrateKbps: 27_000 }))).toEqual(['red:bitrate']);
+    expect(codes(safe({ bitrateKbps: 18_500 }))).toEqual([]);
+    expect(codes(safe({ bitrateKbps: 20_000 }))).toEqual(['amber:bitrate']);
+    expect(gradeVideoEncode(safe({ bitrateKbps: 20_000 })).reasons[0].detail).toEqual({ mbps: 20, width: 1920, height: 1080, fps: 30 });
+    expect(codes(safe({ bitrateKbps: 40_000 }))).toEqual(['red:bitrate']);
+    // 4K @ 30 on a 4K fleet: 45 Mbps is a normal 4K bitrate.
+    const fourK: VideoEncodeTarget = { panelWidth: 3840, panelHeight: 2160, panelKnown: true };
+    expect(gradeVideoEncode(safe({ width: 3840, height: 2160, fps: 30, bitrateKbps: 45_000 }), fourK).reasons).toEqual([]);
+    expect(gradeVideoEncode(safe({ width: 3840, height: 2160, fps: 30, bitrateKbps: 80_000 }), fourK).reasons.map((r) => r.code)).toEqual(['bitrate']);
+    // 720p @ 30: the 48.8 MB / 71 s clip (≈ 5.5 Mbps) is under 3× its 2.8 Mbps reference.
+    expect(codes(safe({ width: 1280, height: 720, fps: 30, bitrateKbps: 5_500 }))).toEqual([]);
+    // Size unknown → absolute ceilings.
+    expect(codes(safe({ width: null, height: null, bitrateKbps: 25_000 }))).toEqual(['amber:bitrate']);
+    expect(codes(safe({ width: null, height: null, bitrateKbps: 120_000 }))).toEqual(['red:bitrate']);
   });
 
   it('the index at the end of the file, a variable frame rate and odd audio are amber', () => {
@@ -102,16 +143,30 @@ describe('gradeVideoEncode — the kiosk-safe target', () => {
     expect(codes(safe({ container: null }))).toEqual([]);
   });
 
-  it('red reasons come first, and one red makes the grade red', () => {
+  it('red reasons come first, then amber, then info — and one red makes the grade red', () => {
     const v = gradeVideoEncode(safe({ codec: 'hevc', width: 3840, height: 2160, fps: 60, fastStart: false }));
     expect(v.grade).toBe('red');
-    expect(v.reasons.map((r) => r.code)).toEqual(['codec', 'resolution', 'frame-rate', 'fast-start']);
+    expect(v.reasons.map((r) => `${r.severity}:${r.code}`)).toEqual([
+      'red:codec', 'red:resolution', 'amber:frame-rate', 'amber:fast-start',
+    ]);
+    const fourK: VideoEncodeTarget = { panelWidth: 3840, panelHeight: 2160, panelKnown: true };
+    const soft = gradeVideoEncode(safe({ width: 1280, height: 720, fastStart: false }), fourK);
+    expect(soft.grade).toBe('amber');
+    expect(soft.reasons.map((r) => `${r.severity}:${r.code}`)).toEqual(['amber:fast-start', 'info:soft']);
   });
 
-  it('a Canva 4K export — H.264, 3840 × 2160, 30 fps, index at the end — reads red for the size and amber for the start', () => {
-    const v = gradeVideoEncode(safe({ width: 3840, height: 2160, fastStart: false, bitrateKbps: 5_200 }));
-    expect(v.grade).toBe('red');
-    expect(v.reasons.map((r) => r.code)).toEqual(['resolution', 'fast-start']);
+  it('the 720p clip that stuttered on a 4K wall: H.264, 1280 × 720, index at the end — amber for the start, a note about the size', () => {
+    const fourK: VideoEncodeTarget = { panelWidth: 3840, panelHeight: 2160, panelKnown: true };
+    const v = gradeVideoEncode(safe({ width: 1280, height: 720, fps: 30, level: 31, fastStart: false, bitrateKbps: 5_500 }), fourK);
+    expect(v.grade).toBe('amber');
+    expect(v.reasons.map((r) => r.code)).toEqual(['fast-start', 'soft']);
+  });
+
+  it('a 4K export on a 4K fleet with the index at the end is amber for the start alone', () => {
+    const fourK: VideoEncodeTarget = { panelWidth: 3840, panelHeight: 2160, panelKnown: true };
+    const v = gradeVideoEncode(safe({ width: 3840, height: 2160, level: 51, fastStart: false, bitrateKbps: 30_000 }), fourK);
+    expect(v.grade).toBe('amber');
+    expect(v.reasons.map((r) => r.code)).toEqual(['fast-start']);
   });
 
   it('an unknown fact never counts against the file (the dimensions-only first probe)', () => {
@@ -174,5 +229,30 @@ describe('videoEncodeFactsFromProcessingMeta — dimensions alone never grade', 
   it('returns null for a row that carries a size but no probe block', () => {
     expect(videoEncodeFactsFromProcessingMeta({ originalDimensions: { w: 1920, h: 1080 } })).toBeNull();
     expect(gradeVideoProcessingMeta({ originalDimensions: { w: 1920, h: 1080 }, probedAt: '2026-09-24T00:00:00Z', probeFailed: 'ffprobe: moov atom not found' }).grade).toBe('unknown');
+  });
+});
+
+describe('encodeTargetFromResolutions — the fleet decides the size target', () => {
+  it('takes the biggest panel, landscape-normalised, from whatever the screens report', () => {
+    expect(encodeTargetFromResolutions(['1920x1080', '3840×2160', '1080x1920'])).toEqual({
+      panelWidth: 3840, panelHeight: 2160, panelKnown: true,
+    });
+    expect(encodeTargetFromResolutions(['1080x1920'])).toEqual({ panelWidth: 1920, panelHeight: 1080, panelKnown: true });
+    expect(encodeTargetFromResolutions(['2560 x 1440', null, undefined, 'garbage'])).toEqual({
+      panelWidth: 2560, panelHeight: 1440, panelKnown: true,
+    });
+  });
+
+  it('is the default, panel unknown, when no screen reports a size', () => {
+    expect(encodeTargetFromResolutions([])).toBe(DEFAULT_ENCODE_TARGET);
+    expect(encodeTargetFromResolutions([null, 'unknown'])).toBe(DEFAULT_ENCODE_TARGET);
+    expect(DEFAULT_ENCODE_TARGET).toEqual({ panelWidth: 1920, panelHeight: 1080, panelKnown: false });
+  });
+
+  it('the export summary names the fleet size', () => {
+    expect(kioskSafeExportSummary({ panelWidth: 3840, panelHeight: 2160, panelKnown: true })).toBe(
+      'MP4 · H.264 · 3840 × 2160 (or 2160 × 3840 portrait) · 30 fps · 8-bit colour · fast start · AAC stereo',
+    );
+    expect(kioskSafeExportSummary()).toContain('1920 × 1080');
   });
 });

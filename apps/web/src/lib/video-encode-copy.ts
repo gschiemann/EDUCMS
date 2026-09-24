@@ -17,12 +17,14 @@
  * warn them that they may have issues".
  */
 import {
+  DEFAULT_ENCODE_TARGET,
   gradeVideoProcessingMeta,
   videoEncodeFactsFromProcessingMeta,
   videoCodecLabel,
   type VideoEncodeFacts,
   type VideoEncodeReason,
   type VideoEncodeReasonCode,
+  type VideoEncodeTarget,
   type VideoEncodeVerdict,
 } from '@cms/api-types';
 
@@ -47,6 +49,7 @@ export const ENCODE_REASON_KEY: Record<VideoEncodeReasonCode, string> = {
   codec: 'codec',
   'bit-depth': 'bitDepth',
   resolution: 'resolution',
+  soft: 'soft',
   'frame-rate': 'frameRate',
   level: 'level',
   bitrate: 'bitrate',
@@ -88,11 +91,15 @@ const UNKNOWN: VideoEncodeVerdict = { grade: 'unknown', reasons: [] };
  * `unknown` once a probe has demonstrably run (`probedAt` is stamped even
  * when ffprobe could not read the file) or the window has passed.
  */
-export function videoEncodeState(asset: EncodeGradableAsset | null | undefined, now: number = Date.now()): VideoEncodeState {
+export function videoEncodeState(
+  asset: EncodeGradableAsset | null | undefined,
+  now: number = Date.now(),
+  target: VideoEncodeTarget = DEFAULT_ENCODE_TARGET,
+): VideoEncodeState {
   if (!asset || !isVideoMime(asset.mimeType)) return { status: 'unknown', verdict: UNKNOWN, facts: null };
   const meta = asset.processingMeta;
   const facts = videoEncodeFactsFromProcessingMeta(meta);
-  const verdict = gradeVideoProcessingMeta(meta);
+  const verdict = gradeVideoProcessingMeta(meta, target);
   if (verdict.grade !== 'unknown') return { status: verdict.grade, verdict, facts };
 
   const probed =
@@ -109,17 +116,80 @@ export function encodeWarns(status: VideoEncodeStatus): status is 'amber' | 'red
   return status === 'amber' || status === 'red';
 }
 
+/** Only the warnings — the pill shows up for these, never for an info note. */
+export function encodeWarnings(verdict: VideoEncodeVerdict): VideoEncodeReason[] {
+  return verdict.reasons.filter((r) => r.severity !== 'info');
+}
+
+/** The advice notes (a file that uses only part of the panel). */
+export function encodeNotes(verdict: VideoEncodeVerdict): VideoEncodeReason[] {
+  return verdict.reasons.filter((r) => r.severity === 'info');
+}
+
 /**
- * "H.264 · 1920 × 1080 · 30 fps · 8.2 Mbps" — what the probe saw, for the
- * green card, so an operator can tell the check was real. Facts we lack are
- * simply left out; an empty result means there is nothing to print.
+ * "H.264 · 1920 × 1080 · 30 fps · 8.2 Mbps" — what the probe saw, in one
+ * line. Facts we lack are simply left out; an empty result means there is
+ * nothing to print.
  */
 export function encodeFactsLine(facts: VideoEncodeFacts | null): string {
-  if (!facts) return '';
-  const parts: string[] = [];
-  if (facts.codec) parts.push(videoCodecLabel(facts.codec));
-  if (facts.width && facts.height) parts.push(`${facts.width} × ${facts.height}`);
-  if (facts.fps) parts.push(`${Math.round(facts.fps * 10) / 10} fps`);
-  if (facts.bitrateKbps) parts.push(`${Math.round(facts.bitrateKbps / 100) / 10} Mbps`);
-  return parts.join(' · ');
+  return encodeFacts(facts).map((f) => f.value).join(' · ');
+}
+
+export interface EncodeFact {
+  /** i18n leaf under `assetsLib.encode.fact.*`. */
+  key: 'codec' | 'size' | 'frameRate' | 'bitrate' | 'audio' | 'container' | 'fastStart' | 'colour';
+  value: string;
+}
+
+/**
+ * Every fact the probe found, as label/value pairs for the card. Greg,
+ * 2026-09-24: "we should give the info we can get and then show suggested
+ * specs if its different than standard". Unknown facts are left out —
+ * never printed as a dash that looks like a measurement.
+ */
+export function encodeFacts(facts: VideoEncodeFacts | null): EncodeFact[] {
+  if (!facts) return [];
+  const out: EncodeFact[] = [];
+  if (facts.codec) {
+    const level = facts.level != null && facts.level > 0 ? ` ${(facts.level / 10).toFixed(1)}` : '';
+    const profile = facts.profile ? ` ${facts.profile}${level}` : level;
+    out.push({ key: 'codec', value: `${videoCodecLabel(facts.codec)}${profile}` });
+  }
+  if (facts.width && facts.height) out.push({ key: 'size', value: `${facts.width} × ${facts.height}` });
+  if (facts.fps) {
+    const fps = `${Math.round(facts.fps * 100) / 100} fps`;
+    out.push({ key: 'frameRate', value: facts.variableFrameRate === true ? `${fps} (variable)` : fps });
+  }
+  if (facts.bitrateKbps) out.push({ key: 'bitrate', value: `${Math.round(facts.bitrateKbps / 100) / 10} Mbps` });
+  if (facts.pixFmt) out.push({ key: 'colour', value: describePixFmt(facts.pixFmt) });
+  if (facts.audio) {
+    const a = facts.audio;
+    const ch = a.channels === 1 ? 'mono' : a.channels === 2 ? 'stereo' : a.channels ? `${a.channels} ch` : '';
+    const rate = a.sampleRate ? ` ${Math.round(a.sampleRate / 100) / 10} kHz` : '';
+    out.push({ key: 'audio', value: `${(a.codec ?? 'unknown').toUpperCase()}${ch ? ` ${ch}` : ''}${rate}`.trim() });
+  } else if (facts.container) {
+    out.push({ key: 'audio', value: 'none' });
+  }
+  if (facts.container) out.push({ key: 'container', value: describeContainer(facts.container) });
+  if (facts.fastStart === true) out.push({ key: 'fastStart', value: 'front of file' });
+  else if (facts.fastStart === false) out.push({ key: 'fastStart', value: 'end of file' });
+  return out;
+}
+
+/** 'yuv420p' → '8-bit 4:2:0'; 'yuv420p10le' → '10-bit 4:2:0'; 'yuv422p' → '8-bit 4:2:2'. */
+export function describePixFmt(pixFmt: string): string {
+  const p = pixFmt.toLowerCase();
+  const bits = /p(\d{2})/.exec(p)?.[1] ?? '8';
+  const sub = /4[0-4][0-4]/.exec(p)?.[0] ?? '420';
+  return `${bits}-bit ${sub[0]}:${sub[1]}:${sub[2]}`;
+}
+
+/** 'mov,mp4,m4a,3gp,3g2,mj2' → 'MP4'; 'matroska,webm' → 'MKV/WebM'. */
+export function describeContainer(container: string): string {
+  const names = container.toLowerCase().split(',').map((s) => s.trim());
+  if (names.includes('mp4') || names.includes('mov')) return 'MP4';
+  if (names.includes('matroska') || names.includes('webm')) return 'MKV/WebM';
+  if (names.includes('avi')) return 'AVI';
+  if (names.includes('mpegts')) return 'MPEG-TS';
+  return (names[0] ?? '').toUpperCase();
 }

@@ -72,6 +72,8 @@ export interface SchoolReadinessLike {
    * and never becomes an inbox row — see `emergencyEnabled` on the scorecard.
    */
   verdict: 'READY' | 'NEEDS_ATTENTION' | 'NOT_CONFIGURED' | 'DISABLED';
+  /** False when the location never stated an industry (older APIs omit it). */
+  verticalStated?: boolean;
   enabled?: boolean;
   locked?: boolean;
   contentWired: number;
@@ -104,6 +106,12 @@ export interface SchoolScorecard {
    * null while readiness is unknown. Never a reason for attention.
    */
   emergencyEnabled: boolean | null;
+  /**
+   * False when this location never stated an industry (2026-09-24): its
+   * alerts are graded as a school's by default. null while readiness is
+   * unknown; older APIs that omit the field read as stated.
+   */
+  emergencyVerticalStated: boolean | null;
   pendingApprovals: number;
   /** True when this row has anything at all the admin should look at. */
   needsAttention: boolean;
@@ -267,6 +275,7 @@ export function buildDistrictRollup(input: BuildDistrictRollupInput): DistrictRo
       missingTypes: r?.missingTypes ?? [],
       lockdownWired: r ? r.lockdownWired : null,
       emergencyEnabled: r ? r.verdict !== 'DISABLED' : null,
+      emergencyVerticalStated: r ? r.verticalStated !== false : null,
       pendingApprovals,
       needsAttention:
         b.offline > 0 ||

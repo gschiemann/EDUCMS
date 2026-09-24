@@ -122,10 +122,10 @@ describe('deriveScreenStatus — §9 taxonomy', () => {
   // A screen on an older BUNDLE is not behind on CONTENT; it is playing exactly
   // what it was told to play. The old expectation is kept below as the thing
   // that must NOT come back.
-  it('stale page bundle with no pending push → Updating itself, NOT an exception', () => {
+  it('stale page bundle with no pending push → Player update pending, NOT an exception', () => {
     const s = status({ lastBundleSha: 'oldsha000000' });
     expect(s.key).toBe('app-updating');
-    expect(s.label).toBe('Updating itself');
+    expect(s.label).toBe('Player update pending');
     expect(s.tone).toBe('muted');
     expect(s.needsAttention).toBe(false);
     expect(s.age).toBeUndefined();
@@ -366,10 +366,10 @@ describe('screenOps — graded on the identity the player RELOADS on', () => {
       BUNDLE,
     );
     expect(r.app.state).toBe('current');
-    expect(r.app.line).toBe('Player app: up to date.');
+    expect(r.app.line).toBe('Player app: current build.');
   });
 
-  it('a screen genuinely on an older BUNDLE still reads Updating itself — and asks for nothing', () => {
+  it('a screen genuinely on an older BUNDLE still reads Player update pending — and asks for nothing', () => {
     // The calm self-healing state must survive — silent would hide a panel
     // actually stuck on old code.
     const s = deriveScreenStatus({
@@ -379,7 +379,7 @@ describe('screenOps — graded on the identity the player RELOADS on', () => {
       now: NOW,
     });
     expect(s.key).toBe('app-updating');
-    expect(s.label).toBe('Updating itself');
+    expect(s.label).toBe('Player update pending');
     expect(s.needsAttention).toBe(false);
     expect(s.action).toBe('View'); // no Resync button: it reloads on its own
   });
@@ -536,7 +536,7 @@ describe('deriveDelivery — one sentence, no Downloaded, no Physical display (2
     expect(d.state).toBe('unknown');
   });
 
-  it('a screen on an older app build that still confirms pictures is ok — the app updates itself', () => {
+  it('a screen on an older app build that still confirms pictures is ok — the player update is pending, not a fault', () => {
     const over = { lastBundleSha: 'oldsha000000' };
     expect(status(over).key).toBe('app-updating');
     expect(deriveDelivery(scr(over), status(over), NOW).state).toBe('ok');
@@ -638,7 +638,7 @@ describe('deriveReportedContent — what the player says it is playing (2026-09-
     expect(deriveReportedContent(scr({ lastRenderedHash: 'paused:pl:x' }), SHA, NOW).line).toBe('Paused on the screen');
   });
 
-  it('the app-version fact stays separate: an older build is "updating itself", never the content line', () => {
+  it('the app-version fact stays separate: an older build is "update pending", never the content line', () => {
     const r = deriveReportedContent(scr({ lastRenderedHash: SIG, lastBundleSha: 'oldsha000000' }), SHA, NOW, undefined, expected());
     expect(r.state).toBe('confirmed');
     expect(r.app.state).toBe('updating');

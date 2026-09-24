@@ -25,6 +25,7 @@ import {
   findSport,
   effectiveEmergencyEnabled,
   emergencyEnablementLocked,
+  emergencyVerticalStated,
   effectiveMfaEnforced,
 } from '@cms/api-types';
 import type {
@@ -1706,6 +1707,23 @@ export function useMoveAsset() {
 
 // ─── Asset Folders ──────────────────────────────────────────────
 
+export interface AssetStorageSummary {
+  totalBytes: number;
+  totalFiles: number;
+  videos: { bytes: number; files: number };
+  images: { bytes: number; files: number };
+  other: { bytes: number; files: number };
+}
+
+/** The tenant's storage used, by kind (2026-09-24 — "where do i see my total storage?"). */
+export function useAssetStorageSummary() {
+  return useQuery({
+    queryKey: ['assets', 'storage-summary'],
+    queryFn: () => apiFetch('/assets/storage-summary') as Promise<AssetStorageSummary>,
+    staleTime: 60_000,
+  });
+}
+
 export function useAssetFolders() {
   return useQuery({
     queryKey: ['asset-folders'],
@@ -3084,6 +3102,8 @@ export interface DistrictSchoolReadiness {
   enabled?: boolean;
   /** K-12 lock — the capability cannot be turned off here. */
   locked?: boolean;
+  /** False when the location never stated an industry — graded as a school by default (older APIs omit it). */
+  verticalStated?: boolean;
   contentWired: number;
   contentTotal: number;
   lockdownWired: boolean;
@@ -3688,6 +3708,8 @@ export interface EmergencyEnablement {
   stored: boolean | null;
   /** True when this vertical may never turn the capability off (K-12). */
   locked: boolean;
+  /** False when the organization never stated an industry; alerts then default on, unlocked. */
+  verticalStated: boolean;
   isLoading: boolean;
   isError: boolean;
 }
@@ -3707,7 +3729,13 @@ export function useEmergencyEnablement(): EmergencyEnablement {
     typeof t?.emergencyEnabledEffective === 'boolean'
       ? (t.emergencyEnabledEffective as boolean)
       : effectiveEmergencyEnabled(t?.vertical, stored);
-  return { enabled, stored, locked, isLoading, isError };
+  // An unstated industry (2026-09-24): alerts default on as for a school, but
+  // the toggle is NOT locked, and the page says why it is on.
+  const verticalStated =
+    typeof t?.emergencyVerticalStated === 'boolean'
+      ? (t.emergencyVerticalStated as boolean)
+      : emergencyVerticalStated(t?.vertical);
+  return { enabled, stored, locked, verticalStated, isLoading, isError };
 }
 
 /**

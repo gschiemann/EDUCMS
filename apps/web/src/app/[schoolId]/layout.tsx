@@ -1,6 +1,7 @@
 "use client";
 
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
+import { EncodeTargetProvider } from '@/hooks/use-encode-target';
 import { CredentialSetupGate } from '@/components/auth/CredentialSetupGate';
 import { useAppStore } from '@/lib/store';
 import { useEffect, useState } from 'react';
@@ -98,5 +99,11 @@ export default function SchoolLayout({
     return <CredentialSetupGate />;
   }
 
-  return <DashboardLayout>{children}</DashboardLayout>;
+  return (
+    <DashboardLayout>
+      {/* The fleet's largest panel, for the video grade on every library and
+          playlist surface (2026-09-24). One 60-byte read, cached, no polling. */}
+      <EncodeTargetProvider>{children}</EncodeTargetProvider>
+    </DashboardLayout>
+  );
 }

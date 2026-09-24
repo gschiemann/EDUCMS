@@ -64,6 +64,7 @@ jest.mock('@/hooks/use-api', () => {
     useGenerateAltText: mutation,
     useUpdateAltText: mutation,
     useCheckAssetPlayback: mutation,
+    useAssetStorageSummary: () => ({ data: { totalBytes: 309_900_000, totalFiles: 5, videos: { bytes: 306_400_000, files: 2 }, images: { bytes: 1_200_000, files: 1 }, other: { bytes: 2_300_000, files: 2 } }, isLoading: false }),
   };
 });
 jest.mock('@tanstack/react-query', () => ({

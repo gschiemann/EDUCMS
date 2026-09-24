@@ -99,6 +99,7 @@ jest.mock('@/hooks/use-api', () => {
     useGenerateAltText: mutation,
     useUpdateAltText: mutation,
     useCheckAssetPlayback: mutation,
+    useAssetStorageSummary: () => ({ data: { totalBytes: 309_900_000, totalFiles: 5, videos: { bytes: 306_400_000, files: 2 }, images: { bytes: 1_200_000, files: 1 }, other: { bytes: 2_300_000, files: 2 } }, isLoading: false }),
   };
 });
 jest.mock('@tanstack/react-query', () => ({
@@ -325,17 +326,15 @@ describe('Media Library v1 — selection bar (§13)', () => {
     expect(rtl.queryByTestId('asset-bulk-bar')).not.toBeInTheDocument();
   });
 
-  it('keeps the routine actions inline and the destructive one behind More', () => {
+  it('keeps every selection action inline — Delete included, since a one-item More menu was a click for nothing (2026-09-24)', () => {
     mount();
     fireEvent.click(rtl.getByRole('button', { name: 'Select Recovery-Lounge-August.jpg' }));
     const bar = rtl.getByTestId('asset-bulk-bar');
     expect(within(bar).getByRole('button', { name: /Create playlist/ })).toBeInTheDocument();
     expect(within(bar).getByRole('button', { name: /Move to folder/ })).toBeInTheDocument();
     expect(within(bar).getByRole('button', { name: /Download/ })).toBeInTheDocument();
-    expect(within(bar).queryByRole('button', { name: /Delete/ })).not.toBeInTheDocument();
-
-    fireEvent.click(within(bar).getByRole('button', { name: /More/ }));
-    expect(within(bar).getByRole('menuitem', { name: /Delete…/ })).toBeInTheDocument();
+    expect(within(bar).getByRole('button', { name: /Delete…/ })).toBeInTheDocument();
+    expect(within(bar).queryByRole('button', { name: /More/ })).not.toBeInTheDocument();
   });
 
   it('Move to folder opens the destination picker for the selection', () => {
@@ -556,9 +555,8 @@ describe('Media Library v1 — deletion is admin-only', () => {
     fireEvent.click(rtl.getByRole('button', { name: 'More actions for Recovery-Lounge-August.jpg' }));
   const openFolderMenu = () =>
     fireEvent.click(rtl.getByRole('button', { name: 'Folder actions for Campaigns' }));
-  const openBulkMore = () => {
+  const openBulkBar = () => {
     fireEvent.click(rtl.getByRole('button', { name: 'Select Recovery-Lounge-August.jpg' }));
-    fireEvent.click(within(rtl.getByTestId('asset-bulk-bar')).getByRole('button', { name: /More/ }));
     return rtl.getByTestId('asset-bulk-bar');
   };
   const openDetail = () =>
@@ -592,8 +590,8 @@ describe('Media Library v1 — deletion is admin-only', () => {
       openFolderMenu();
       check(rtl.getByRole('menuitem', { name: /Delete folder/ }));
 
-      const bar = openBulkMore();
-      check(within(bar).getByRole('menuitem', { name: /Delete…/ }));
+      const bar = openBulkBar();
+      check(within(bar).getByRole('button', { name: /Delete…/ }));
 
       openDetail();
       check(rtl.getByRole('button', { name: /Delete asset/ }));

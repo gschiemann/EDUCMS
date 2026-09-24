@@ -14,7 +14,14 @@
 import { useMemo } from 'react';
 import { useTranslations } from 'next-intl';
 import { AlertTriangle } from 'lucide-react';
-import { describeEncodeReason, encodeWarns, videoEncodeState, type EncodeGradableAsset } from '@/lib/video-encode-copy';
+import { useEncodeTarget } from '@/hooks/use-encode-target';
+import {
+  describeEncodeReason,
+  encodeWarnings,
+  encodeWarns,
+  videoEncodeState,
+  type EncodeGradableAsset,
+} from '@/lib/video-encode-copy';
 
 export interface EncodeBannerItem {
   id: string;
@@ -38,12 +45,13 @@ function itemName(item: EncodeBannerItem): string {
 
 export function PlaylistEncodeBanner({ items }: { items: EncodeBannerItem[] }) {
   const t = useTranslations();
+  const target = useEncodeTarget();
   const flagged = useMemo(
     () =>
       items
-        .map((item) => ({ item, state: videoEncodeState(item.asset) }))
+        .map((item) => ({ item, state: videoEncodeState(item.asset, undefined, target) }))
         .filter(({ state }) => encodeWarns(state.status)),
-    [items],
+    [items, target],
   );
   if (flagged.length === 0) return null;
   const worst = flagged.some(({ state }) => state.status === 'red') ? 'red' : 'amber';
@@ -67,9 +75,10 @@ export function PlaylistEncodeBanner({ items }: { items: EncodeBannerItem[] }) {
       </p>
       <ul className="mt-1.5 pl-6 space-y-0.5">
         {listed.map(({ item, state }) => {
-          const first = state.verdict.reasons[0];
+          const warnings = encodeWarnings(state.verdict);
+          const first = warnings[0];
           return (
-            <li key={item.id} className="text-[11px] leading-snug text-slate-700 truncate" title={state.verdict.reasons.map((r) => describeEncodeReason(t, r)).join(' · ')}>
+            <li key={item.id} className="text-[11px] leading-snug text-slate-700 truncate" title={warnings.map((r) => describeEncodeReason(t, r)).join(' · ')}>
               <span className="font-semibold text-slate-800">{itemName(item)}</span>
               {first && <span> — {describeEncodeReason(t, first)}</span>}
             </li>

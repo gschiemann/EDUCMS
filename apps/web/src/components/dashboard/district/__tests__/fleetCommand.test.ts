@@ -380,6 +380,23 @@ describe('buildFleetCommand — per-screen inbox granularity', () => {
     expect(approvalRows[0].count).toBe(7);
   });
 
+  it('a NOT_CONFIGURED location that never stated an industry is told THAT, and sent to Settings → Organization', () => {
+    const fc = build(
+      [screen({ id: 'a' })],
+      {
+        readiness: [{ ...readiness('t1', 'RIOT Cleveland', 'riot', 'NOT_CONFIGURED'), verticalStated: false }],
+        approvals: {},
+        now: NOW,
+      },
+    );
+    const emergency = fc.inbox.filter((r) => r.kind === 'emergency');
+    expect(emergency).toHaveLength(1);
+    // The name comes from the fleet roster, not the readiness row.
+    expect(emergency[0].headline).toBe('Peak West: industry not set — emergency alerts are on by default');
+    expect(emergency[0].detail).toBe('Set the industry under Settings → Organization, or turn alerts off under Settings → Emergency.');
+    expect(emergency[0].path).toBe('settings/organization');
+  });
+
   it('worst-first still holds across the new per-screen rows', () => {
     const fc = build(
       [
