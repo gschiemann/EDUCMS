@@ -106,7 +106,7 @@ describe('connected POS — "Use your Toast menu?"', () => {
     await say('bold and warm');
     expect(chatCalls[chatCalls.length - 1].posSelection).toEqual({ connectionId: 'conn-chain-toast', sections: ['Tacos', 'Burritos'] });
 
-    fireEvent.click(screen.getByRole('button', { name: /Generate 3 boards/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Generate 2 boards/ }));
     await waitFor(() => expect(onGenerate).toHaveBeenCalled());
     expect(onGenerate.mock.calls[0][0].posSelection).toEqual({ connectionId: 'conn-chain-toast', sections: ['Tacos', 'Burritos'] });
   });

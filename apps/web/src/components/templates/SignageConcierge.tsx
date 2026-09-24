@@ -157,7 +157,7 @@ export interface SignageConciergeProps {
   /** True while the page's generate request is in flight. */
   generating: boolean;
   /** Error from the page's GENERATE step (e.g. hourly AI cap, provider error) —
-   *  surfaced here so a failed "Generate 3 boards" never looks like it did
+   *  surfaced here so a failed "Generate 2 boards" never looks like it did
    *  nothing. Set by the parent's generate handler; null/undefined = no error. */
   generateError?: string | null;
   /** The Touch / Display / Build-a-set toggle (owned by the page). */
@@ -634,7 +634,7 @@ export function SignageConcierge(props: SignageConciergeProps) {
       )}
 
       {/* ── Generate error (e.g. hourly AI cap) — surfaced so a failed
-            "Generate 3 boards" never looks like nothing happened. ── */}
+            "Generate 2 boards" never looks like nothing happened. ── */}
       {generateError && (
         <div
           role="alert"
@@ -723,10 +723,10 @@ export function SignageConcierge(props: SignageConciergeProps) {
         {generating
           ? 'Generating…'
           : guidance.touchNotice
-            ? 'Generate 3 tappable boards'
+            ? 'Generate 2 tappable boards'
             : interactive
-              ? 'Generate 3 touch boards'
-              : 'Generate 3 boards'}
+              ? 'Generate 2 touch boards'
+              : 'Generate 2 boards'}
         {!generating && guidance.stage === 'ready' && <ArrowRight className="w-4 h-4" />}
       </button>
     </div>

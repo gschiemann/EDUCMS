@@ -287,7 +287,7 @@ it('a generation is ONE job: started once, polled while it runs — the stage in
     screenWidth: 3840,
     screenHeight: 2160,
     vertical: 'restaurant',
-    count: 3,
+    count: 2,
     purpose: 'menu',
   });
   expect(server.starts[0].idempotencyKey).toMatch(/^[A-Za-z0-9._:-]{8,100}$/);

@@ -12,7 +12,7 @@
  * Pure, so it is unit-tested on the exact messages Greg saw.
  */
 
-export const GENERATE_POINTER = "When you're ready, hit Generate 3 boards below.";
+export const GENERATE_POINTER = "When you're ready, hit Generate 2 boards below.";
 
 /** A sentence that asks the customer to green-light generation. */
 const ASKS_TO_PROCEED = /\b(proceed|go ahead|generate|ready|shall|want me|should i|would you like)\b/i;
@@ -25,7 +25,7 @@ const ASKS_TO_PROCEED = /\b(proceed|go ahead|generate|ready|shall|want me|should
 const CLAIMS_TO_GENERATE =
   /^\s*(generating|designing|creating|building)\b|\b(i'?m|i am|i'?ll|i will|let me)\s+(now\s+|just\s+)?(generat|design|creat|build)(e|ing)\b/i;
 /** Already points at the button. */
-const MENTIONS_BUTTON = /\bGenerate 3 boards\b|\bhit Generate\b/i;
+const MENTIONS_BUTTON = /\bGenerate 2 boards\b|\bhit Generate\b/i;
 
 function splitSentences(text: string): string[] {
   return text.match(/[^.!?]+[.!?]+(?:\s+|$)|[^.!?]+$/g) ?? [text];

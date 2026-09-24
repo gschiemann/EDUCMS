@@ -9,7 +9,8 @@
  * bodies cut from the API producer (tests/fixtures/designer-job.ts — the same fixture the jest
  * suites use).
  *
- *   E2E_BASE=http://localhost:3100 pnpm exec playwright test -c playwright.sandbox.config.ts tests/e2e/ai-designer-job.spec.ts
+ *   E2E_BASE=http://localhost:3217 pnpm exec playwright test -c playwright.sandbox.config.ts tests/e2e/ai-designer-job.spec.ts
+ *   (a dev server started with NEXT_PUBLIC_API_URL=http://api.invalid/api/v1 — the `web-e2e-mock` preview)
  */
 import { test, expect, type Page, type Route } from '@playwright/test';
 import {
@@ -20,6 +21,7 @@ import {
   producedStarted,
   type ProducedJobView,
 } from '../fixtures/designer-job';
+import { platformAllowance } from '../fixtures/ai-boards';
 
 const SCHOOL_ID = 'e2e-school';
 const ORIGIN = process.env.E2E_BASE || 'http://localhost:3000';
@@ -40,6 +42,15 @@ interface JobApi {
   timeline: Map<string, ProducedJobView[]>;
 }
 
+/**
+ * A route on the API origin ONLY (`NEXT_PUBLIC_API_URL=http://api.invalid/api/v1` on the dev
+ * server). A bare `**\/templates` glob also matches the PAGE (`/e2e-school/templates`) and answers
+ * the document with JSON — anchoring to the API origin is the whole point (the same harness as
+ * ai-board-history-credits.spec.ts).
+ */
+const API_ROOT = 'http://api.invalid/api/v1';
+const at = (pathPattern: string) => new RegExp(`^${API_ROOT.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')}${pathPattern}(\\?.*)?$`);
+
 async function installApiMocks(page: Page, api: JobApi) {
   const cors = (route: Route, respond: () => unknown) =>
     route.request().method() === 'OPTIONS'
@@ -49,30 +60,31 @@ async function installApiMocks(page: Page, api: JobApi) {
     cors(route, () => route.fulfill({ status, contentType: 'application/json', headers: CORS_HEADERS, body: JSON.stringify(body) }));
   const empty = (route: Route) => cors(route, () => route.fulfill({ status: 204, headers: CORS_HEADERS, body: '' }));
 
-  // Broadest catch-alls FIRST (Playwright matches last-registered first).
-  await page.route(/http:\/\/api\.invalid\/.*/, empty);
-  await page.route('**/api/v1/**', empty);
-  await page.route('**/auth/me', (route) => okJson(route, FAKE_USER));
-  await page.route('**/tenants', (route) => okJson(route, [{ id: SCHOOL_ID, name: 'Super Taco', slug: SCHOOL_ID, vertical: 'RESTAURANT' }]));
-  await page.route('**/tenants/accessible', (route) => okJson(route, [{ id: SCHOOL_ID, name: 'Super Taco', slug: SCHOOL_ID }]));
-  await page.route('**/templates', (route) => okJson(route, []));
-  await page.route('**/templates/usage-summary', (route) => okJson(route, {}));
-  await page.route('**/screens', (route) => okJson(route, []));
-  await page.route('**/branding/me', (route) => okJson(route, {}));
-  await page.route('**/ai/key', (route) => okJson(route, { usage: { source: 'platform', used: 0, cap: 500 } }));
+  // Broadest catch-all FIRST (Playwright matches last-registered first).
+  await page.route(/^http:\/\/api\.invalid\//, empty);
+  await page.route(at('/auth/me'), (route) => okJson(route, FAKE_USER));
+  await page.route(at('/tenants'), (route) => okJson(route, [{ id: SCHOOL_ID, name: 'Super Taco', slug: SCHOOL_ID, vertical: 'RESTAURANT' }]));
+  await page.route(at('/tenants/accessible'), (route) => okJson(route, [{ id: SCHOOL_ID, name: 'Super Taco', slug: SCHOOL_ID }]));
+  await page.route(at('/templates'), (route) => okJson(route, []));
+  await page.route(at('/templates/usage-summary'), (route) => okJson(route, {}));
+  await page.route(at('/screens'), (route) => okJson(route, []));
+  await page.route(at('/branding/me'), (route) => okJson(route, {}));
+  await page.route(at('/ai/key'), (route) => okJson(route, { usage: { source: 'platform', used: 0, cap: 500 } }));
+  await page.route(at('/ai/allowance'), (route) => okJson(route, platformAllowance()));
   // The brief-echo read finds nothing to confirm → the page generates straight away.
-  await page.route('**/templates/generate-designer/brief', (route) => okJson(route, { brief: null, ai: { source: 'platform' } }));
+  await page.route(at('/templates/generate-designer/brief'), (route) => okJson(route, { brief: null, ai: { source: 'platform' } }));
   // A route that must NEVER be called again from the dashboard.
-  await page.route('**/templates/generate-designer/candidates', (route) => okJson(route, { error: true, code: 'E2E_SYNC_CALLED', message: 'sync endpoint called' }, 500));
+  await page.route(at('/templates/generate-designer/candidates'), (route) => okJson(route, { error: true, code: 'E2E_SYNC_CALLED', message: 'sync endpoint called' }, 500));
 
   // ── the four job routes ──
-  await page.route('**/templates/generate-designer/jobs', (route) =>
+  await page.route(at('/templates/generate-designer/jobs'), (route) =>
     cors(route, () => {
+      if (route.request().method() !== 'POST') return okJson(route, { items: [], nextBefore: null });
       api.starts.push(JSON.parse(route.request().postData() || '{}'));
       return route.fulfill({ status: 202, contentType: 'application/json', headers: CORS_HEADERS, body: JSON.stringify(producedStarted('job-e2e')) });
     }),
   );
-  await page.route(/\/templates\/generate-designer\/jobs\/[^/?]+(\?.*)?$/, (route) =>
+  await page.route(at('/templates/generate-designer/jobs/[^/?]+'), (route) =>
     cors(route, () => {
       const id = decodeURIComponent(new URL(route.request().url()).pathname.split('/').pop() as string);
       api.gets.push(id);
@@ -82,7 +94,7 @@ async function installApiMocks(page: Page, api: JobApi) {
       return okJson(route, view);
     }),
   );
-  await page.route(/\/templates\/generate-designer\/jobs\/[^/]+\/cancel$/, (route) =>
+  await page.route(at('/templates/generate-designer/jobs/[^/]+/cancel'), (route) =>
     cors(route, () => {
       const parts = new URL(route.request().url()).pathname.split('/');
       const id = decodeURIComponent(parts[parts.length - 2]);
@@ -98,16 +110,25 @@ function jobApi(): JobApi {
   return { starts: [], cancels: [], gets: [], timeline: new Map() };
 }
 
+/** A signed-in SCHOOL_ADMIN tab: the store boots from sessionStorage (ui-store.ts). Unsigned JWT, far exp. */
+const b64url = (s: string) => Buffer.from(s).toString('base64').replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_');
+const FAKE_TOKEN = `${b64url('{"alg":"HS256","typ":"JWT"}')}.${b64url(JSON.stringify({ sub: 'u1', exp: 4102444800 }))}.e2e`;
+
 async function openTemplates(page: Page, api: JobApi, seed?: Record<string, string>) {
   await installApiMocks(page, api);
-  await page.addInitScript((entries: Record<string, string>) => {
-    try {
-      localStorage.setItem('edu_cms_eula_accepted_v1.0', '1');
-      for (const [k, v] of Object.entries(entries)) localStorage.setItem(k, v);
-    } catch {
-      /* ignore */
-    }
-  }, seed || {});
+  await page.addInitScript(
+    ({ token, user, entries }: { token: string; user: string; entries: Record<string, string> }) => {
+      try {
+        localStorage.setItem('edu_cms_eula_accepted_v1.0', '1');
+        sessionStorage.setItem('edu_cms_token', token);
+        sessionStorage.setItem('edu_cms_user', user);
+        for (const [k, v] of Object.entries(entries)) localStorage.setItem(k, v);
+      } catch {
+        /* ignore */
+      }
+    },
+    { token: FAKE_TOKEN, user: JSON.stringify(FAKE_USER), entries: seed || {} },
+  );
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`/${SCHOOL_ID}/templates`, { waitUntil: 'domcontentloaded' });
 }
@@ -151,7 +172,7 @@ test.describe('AI Designer — a generation is a background job', () => {
     await expect(progress).toHaveCount(0);
 
     expect(api.starts).toHaveLength(1);
-    expect(api.starts[0]).toMatchObject({ screenWidth: 3840, screenHeight: 2160, count: 3 });
+    expect(api.starts[0]).toMatchObject({ screenWidth: 3840, screenHeight: 2160, count: 2 });
     expect(String(api.starts[0].idempotencyKey)).toMatch(/^[A-Za-z0-9._:-]{8,100}$/);
     // Finished → no more reads.
     const reads = api.gets.length;

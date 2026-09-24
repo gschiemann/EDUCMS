@@ -1465,7 +1465,7 @@ export default function TemplatesPage() {
             screenWidth: aiCanvas.w,
             screenHeight: aiCanvas.h,
             vertical: (tenantCopy.vertical || 'venue').toLowerCase(),
-            count: 3,
+            count: 2,
             // palette/content/venueName/tagline ride through (schema passthrough).
             ...(intakeFields as Record<string, any>),
             // Scraped-reference brand + business-type + logo (Concierge path) win
@@ -1507,10 +1507,11 @@ export default function TemplatesPage() {
           screenHeight: aiCanvas.h,
           vertical: (tenantCopy.vertical || 'venue').toLowerCase(),
           interactive: aiInteractive,
-          // Pick-a-winner = 3 drafts. A SET omits count so the backend builds its
+          // Pick-a-winner = 2 drafts (2026-09-23: two, not three — every board drawn
+          // costs a credit; the server default agrees). A SET omits count so the backend builds its
           // cohesive 4-board loop (beta-QA P1: count:3 forced sets down to 3 and
           // never reached the welcome→offer→hours→event story).
-          count: aiSetMode ? undefined : 3,
+          count: aiSetMode ? undefined : 2,
           // Passive signage boards run through the signage-design art-director
           // engine (Wave 2) — grid-locked archetype + theme + signage-scale type.
           // Touch templates keep the multi-scene generator (touchActions).
