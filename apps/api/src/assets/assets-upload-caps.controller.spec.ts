@@ -22,7 +22,12 @@
  */
 
 import { HttpException, HttpStatus } from '@nestjs/common';
-import { AssetsController, perTypeSizeCapError, MAX_VIDEO_SIZE } from './assets.controller';
+import {
+  AssetsController,
+  perTypeSizeCapError,
+  MAX_VIDEO_SIZE,
+  MAX_MULTIPART_VIDEO_SIZE,
+} from './assets.controller';
 
 const MB = 1024 * 1024;
 
@@ -99,7 +104,8 @@ async function expectHttp(fn: () => Promise<any>, code: string, status: HttpStat
 
 describe('perTypeSizeCapError (shared helper)', () => {
   it('flags an over-cap video (> the video cap) with the video envelope', () => {
-    const e = perTypeSizeCapError('video/mp4', MAX_VIDEO_SIZE + MB);
+    // Default path is MULTIPART — the stricter (RAM-bound) ceiling.
+    const e = perTypeSizeCapError('video/mp4', MAX_MULTIPART_VIDEO_SIZE + MB);
     expect(e).toBeInstanceOf(HttpException);
     expect(e!.getStatus()).toBe(HttpStatus.PAYLOAD_TOO_LARGE);
     expect((e!.getResponse() as any).code).toBe('ASSET_VIDEO_TOO_LARGE');
@@ -114,6 +120,29 @@ describe('perTypeSizeCapError (shared helper)', () => {
     expect(perTypeSizeCapError('image/png', 10 * MB)).toBeNull();
     expect(perTypeSizeCapError('image/png', 0)).toBeNull(); // unknown/zero → no rejection
   });
+
+  it('2026-09-23: the DIRECT path allows a video up to 2 GB; multipart stays at 500 MB', () => {
+    expect(MAX_MULTIPART_VIDEO_SIZE).toBe(500 * MB);
+    // 2 GiB minus one byte — the largest size Asset.fileSize (int4) can hold.
+    expect(MAX_VIDEO_SIZE).toBe(2 ** 31 - 1);
+    const oneAndAHalfGb = 1536 * MB;
+    expect(perTypeSizeCapError('video/mp4', oneAndAHalfGb, 'direct')).toBeNull();
+    expect(perTypeSizeCapError('video/mp4', MAX_VIDEO_SIZE, 'direct')).toBeNull();
+    // …the same file on the multipart path is refused.
+    expect((perTypeSizeCapError('video/mp4', oneAndAHalfGb, 'multipart')!.getResponse() as any).code).toBe('ASSET_VIDEO_TOO_LARGE');
+    // One byte over the direct ceiling is refused, and the message names it.
+    const over = perTypeSizeCapError('video/mp4', MAX_VIDEO_SIZE + 1, 'direct')!;
+    expect(over.getStatus()).toBe(HttpStatus.PAYLOAD_TOO_LARGE);
+    expect((over.getResponse() as any).message).toContain('Max is 2 GB');
+  });
+
+  it('the direct cap is clamped to what storage will really accept (bucket not raised yet)', () => {
+    const e = perTypeSizeCapError('video/mp4', 600 * MB, 'direct', 500 * MB)!;
+    expect(e).toBeInstanceOf(HttpException);
+    expect((e.getResponse() as any).message).toContain('Max is 500 MB');
+    // Images keep their 25 MB cap on either path — the 2 GB is video-only.
+    expect((perTypeSizeCapError('image/jpeg', 30 * MB, 'direct')!.getResponse() as any).code).toBe('ASSET_IMAGE_TOO_LARGE');
+  });
 });
 
 describe('BUG #7 — legacy multipart /assets/upload enforces per-type caps', () => {
@@ -121,10 +150,11 @@ describe('BUG #7 — legacy multipart /assets/upload enforces per-type caps', ()
     const storage = makeStorage();
     const { controller } = makeController(storage);
     const file: any = {
-      buffer: Buffer.allocUnsafe(MAX_VIDEO_SIZE + MB),
+      // Multipart keeps the 500 MB (RAM) ceiling — the 2 GB one is direct-only.
+      buffer: Buffer.allocUnsafe(MAX_MULTIPART_VIDEO_SIZE + MB),
       mimetype: 'video/mp4',
       originalname: 'big.mp4',
-      size: MAX_VIDEO_SIZE + MB,
+      size: MAX_MULTIPART_VIDEO_SIZE + MB,
     };
     await expectHttp(
       () => controller.upload(adminReq as any, file, {}),
@@ -210,6 +240,45 @@ describe('BUG #6 — presigned /assets/complete-upload enforces the cap against 
     expect(res.fileSize).toBe(30 * MB);
   });
 
+  it('2026-09-23: ALLOWS a 1.5 GB video on the direct path (real stored size, over the old 500 MB cap)', async () => {
+    const storage = makeStorage({
+      getObjectInfo: jest.fn(async () => ({ size: 1536 * MB, contentType: 'video/mp4' })),
+    });
+    const { controller, prisma } = makeController(storage);
+    const res = await controller.completeUpload(adminReq as any, { ...base, size: 1536 * MB });
+    expect(prisma.client.asset.create).toHaveBeenCalledTimes(1);
+    expect(storage.delete).not.toHaveBeenCalled();
+    expect(res.fileSize).toBe(1536 * MB);
+  });
+
+  it('NEGATIVE CONTROL: 413 + delete when the REAL stored size is one byte over 2 GB, even if the claim was small', async () => {
+    const storage = makeStorage({
+      getObjectInfo: jest.fn(async () => ({ size: MAX_VIDEO_SIZE + 1, contentType: 'video/mp4' })),
+    });
+    const { controller, prisma } = makeController(storage);
+    await expectHttp(
+      () => controller.completeUpload(adminReq as any, { ...base, size: 5 * MB }),
+      'ASSET_VIDEO_TOO_LARGE',
+      HttpStatus.PAYLOAD_TOO_LARGE,
+    );
+    expect(prisma.client.asset.create).not.toHaveBeenCalled();
+    expect(storage.delete).toHaveBeenCalledWith(base.storagePath);
+  });
+
+  it('the REAL-size check honours the bucket ceiling when storage has not been raised to 2 GB', async () => {
+    const storage = makeStorage({
+      getObjectInfo: jest.fn(async () => ({ size: 700 * MB, contentType: 'video/mp4' })),
+      assetsBucketCap: () => 500 * MB,
+    });
+    const { controller } = makeController(storage);
+    await expectHttp(
+      () => controller.completeUpload(adminReq as any, { ...base, size: 5 * MB }),
+      'ASSET_VIDEO_TOO_LARGE',
+      HttpStatus.PAYLOAD_TOO_LARGE,
+    );
+    expect(storage.delete).toHaveBeenCalledWith(base.storagePath);
+  });
+
   it('does NOT newly reject when storage-info is unavailable (graceful degrade to claimed-size)', async () => {
     // getObjectInfo returns null → we fall back to the claimed (in-spec) size
     // and do not block; this is the documented enforcement limit.
@@ -237,7 +306,7 @@ describe('UPLD-01 — /assets/emergency-upload enforces the same caps as the med
     const { controller, prisma } = makeController(storage);
 
     await expectHttp(
-      () => controller.uploadEmergencyAsset(adminReq as any, emergencyFile('video/mp4', MAX_VIDEO_SIZE + MB, 'lockdown.mp4')),
+      () => controller.uploadEmergencyAsset(adminReq as any, emergencyFile('video/mp4', MAX_MULTIPART_VIDEO_SIZE + MB, 'lockdown.mp4')),
       'ASSET_VIDEO_TOO_LARGE',
       HttpStatus.PAYLOAD_TOO_LARGE,
     );

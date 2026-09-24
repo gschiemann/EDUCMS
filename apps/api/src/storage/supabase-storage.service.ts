@@ -1,8 +1,33 @@
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { makeStorageFetch, storageTransportState } from './storage-transport';
+import {
+  streamDownloadToFile,
+  streamUploadFile,
+  StreamTransferError,
+  type StreamDownloadResult,
+} from './storage-stream';
 
 const BUCKET = 'assets';
+
+/**
+ * Per-object cap requested for the `assets` bucket (2026-09-23 — 4K video).
+ * 2 GiB: direct browser → Supabase uploads never pass through the API, so the
+ * ceiling is storage's. Supabase refuses a bucket limit above the PROJECT's
+ * global upload limit (Storage → Settings), so this only takes effect once
+ * that global is ≥ 2 GB — `assetsBucketCap()` reports what actually applied.
+ */
+export const ASSETS_BUCKET_FILE_SIZE_LIMIT = 2 * 1024 * 1024 * 1024;
+
+/**
+ * Supabase requires TUS resumable uploads to use EXACTLY 6 MB chunks (S3
+ * multipart part size) — "must be set to 6MB (for now) do not change it"
+ * (supabase.com/docs/guides/storage/uploads/resumable-uploads).
+ */
+export const RESUMABLE_CHUNK_BYTES = 6 * 1024 * 1024;
+
+/** A re-POST through `resetCacheControl` buffers the whole object — refuse anything bigger. */
+const RESET_CACHE_CONTROL_MAX_BYTES = 500 * 1024 * 1024;
 
 // PRIVATE bucket for floor plans (Audit launch-readiness P1). Floor plans are
 // operational-security data (building layouts + emergency exits). The `assets`
@@ -72,6 +97,12 @@ const PUBLIC_BUCKETS = new Set([BUCKET, LOGO_BUCKET]);
 export class SupabaseStorageService implements OnModuleInit {
   private client: SupabaseClient;
   private readonly logger = new Logger(SupabaseStorageService.name);
+  /**
+   * The `assets` bucket's EFFECTIVE per-object limit, read back from Supabase
+   * after the boot-time `updateBucket`. null = not known (no Supabase config,
+   * or the read failed) — callers then assume the requested cap.
+   */
+  private assetsBucketCapBytes: number | null = null;
 
   // fetch-compatible transport with a node:https fallback + cause-chain
   // logging (2026-07-31 "fetch failed" incident — see storage-transport.ts).
@@ -121,9 +152,14 @@ export class SupabaseStorageService implements OnModuleInit {
       global: { fetch: this.storageFetch },
     });
 
-    // Bucket file-size limit. Multer cap (500MB) + Railway request body
-    // cap mean the actual uploadable ceiling is whichever is lower; this
-    // is the Supabase side. Bumped from 50MB to 500MB to match Multer.
+    // Bucket file-size limit. 2026-09-23: 2 GiB (ASSETS_BUCKET_FILE_SIZE_LIMIT).
+    // Direct browser → Supabase uploads (presign → signed PUT / TUS) never
+    // touch the API, so storage — not Multer's 500 MB RAM ceiling — is the
+    // limit on that path. The multipart path keeps its own 500 MB cap in
+    // assets.controller.ts. Supabase rejects a bucket limit above the
+    // project's GLOBAL upload limit; when that happens the WARN below fires
+    // and the bucket keeps its previous cap — `assetsBucketCap()` then
+    // reports the real value so the API advertises what storage will accept.
     // 2026-05-13 — Dropped video/quicktime + video/x-msvideo. .mov files
     // (especially QuickTime-only ftyp=qt containers) and AVI don't play
     // in Android WebView / Chromium / WebKit, breaking the screen
@@ -150,7 +186,7 @@ export class SupabaseStorageService implements OnModuleInit {
       'application/vnd.openxmlformats-officedocument.presentationml.presentation', // .pptx
       'application/vnd.ms-powerpoint', // .ppt
     ];
-    const FILE_SIZE_LIMIT = 500 * 1024 * 1024; // 500MB
+    const FILE_SIZE_LIMIT = ASSETS_BUCKET_FILE_SIZE_LIMIT; // 2 GiB
 
     // Ensure the bucket exists (idempotent on create)
     const { error } = await this.client.storage.createBucket(BUCKET, {
@@ -190,10 +226,15 @@ export class SupabaseStorageService implements OnModuleInit {
       allowedMimeTypes: ALLOWED_MIMES,
     });
     if (updErr) {
-      this.logger.warn(`Failed to update bucket limits: ${updErr.message}`);
+      this.logger.warn(
+        `Failed to update bucket limits (requested ${FILE_SIZE_LIMIT / (1024 * 1024)}MB): ${updErr.message} — ` +
+          `the bucket keeps its previous cap. Raise the project's global upload limit (Supabase → Storage → Settings) ` +
+          `to at least ${FILE_SIZE_LIMIT / (1024 * 1024 * 1024)}GB and restart the API.`,
+      );
     } else {
       this.logger.log(`Supabase Storage bucket "assets" ready (cap ${FILE_SIZE_LIMIT / (1024*1024)}MB)`);
     }
+    await this.refreshAssetsBucketCap(updErr ? null : FILE_SIZE_LIMIT);
 
     // PRIVATE floor-plan bucket (launch-readiness P1). public:false so objects
     // are never world-readable; floor-plan endpoints serve them via short-TTL
@@ -516,6 +557,111 @@ export class SupabaseStorageService implements OnModuleInit {
   }
 
   /**
+   * Read the `assets` bucket's per-object limit back from Supabase. Called once
+   * after the boot-time `updateBucket`: when the update succeeded the requested
+   * cap is what applies; when Supabase refused it (project global lower), the
+   * bucket kept its OLD limit and that is what an upload will actually meet.
+   * Best-effort — a failed read leaves the cap unknown (null).
+   */
+  private async refreshAssetsBucketCap(appliedCap: number | null): Promise<void> {
+    if (appliedCap !== null) {
+      this.assetsBucketCapBytes = appliedCap;
+      return;
+    }
+    try {
+      const { data, error } = await (this.ensureClient().storage as any).getBucket(BUCKET);
+      if (error) throw error;
+      const raw = data?.file_size_limit ?? data?.fileSizeLimit;
+      const n = typeof raw === 'string' ? Number(raw) : raw;
+      this.assetsBucketCapBytes = typeof n === 'number' && Number.isFinite(n) && n > 0 ? n : null;
+      if (this.assetsBucketCapBytes !== null) {
+        this.logger.warn(
+          `assets bucket is still capped at ${Math.round(this.assetsBucketCapBytes / (1024 * 1024))}MB — ` +
+            `direct uploads above that are refused at presign with a clear message until the global limit is raised.`,
+        );
+      }
+    } catch (e: any) {
+      this.assetsBucketCapBytes = null;
+      this.logger.warn(`Could not read the assets bucket's effective cap: ${e?.message ?? e}`);
+    }
+  }
+
+  /**
+   * The effective per-object limit of the `assets` bucket, or null when it is
+   * unknown (no Supabase config, or it could not be read). Direct-upload caps
+   * are clamped to it so the operator is told the real ceiling up front
+   * instead of receiving Supabase's raw 413 after the bytes are sent.
+   */
+  assetsBucketCap(): number | null {
+    return this.assetsBucketCapBytes;
+  }
+
+  /**
+   * The TUS endpoint for SIGNED resumable uploads. The `/sign` suffix is what
+   * makes Supabase read the `x-signature` header (the token from
+   * `createSignedUploadUrl`) instead of expecting a user JWT — without it the
+   * TUS server answers "Invalid Compact JWS" (tus/lifecycle.ts
+   * `SIGNED_URL_SUFFIX`). The token only authorises the one object path it was
+   * minted for, so the browser never holds anything broader.
+   */
+  resumableUploadEndpoint(): string {
+    const { url } = this.supabaseConfig();
+    return `${url}/storage/v1/upload/resumable/sign`;
+  }
+
+  /**
+   * Stream an `assets` object to a local file (service-role GET, never
+   * buffered). `maxBytes` is a hard budget — the transfer is aborted and the
+   * partial file removed the moment it is exceeded.
+   */
+  async downloadObjectToFile(
+    filePath: string,
+    destPath: string,
+    opts: { maxBytes: number; signal?: AbortSignal; inactivityMs?: number },
+  ): Promise<StreamDownloadResult> {
+    const { url, key } = this.supabaseConfig();
+    return streamDownloadToFile(
+      `${url}/storage/v1/object/${BUCKET}/${filePath}`,
+      { Authorization: `Bearer ${key}`, apikey: key },
+      destPath,
+      opts,
+    );
+  }
+
+  /**
+   * Stream a local file into the `assets` bucket at `filePath` and return its
+   * public URL. Same headers as `uploadToBucket` — including the bare
+   * `max-age=31536000` Cache-Control Supabase actually serves (see the
+   * 2026-05-30 note in `uploadToBucket`) — but the body is piped from disk, so
+   * a 2 GB file costs a socket buffer, not 2 GB of heap.
+   */
+  async uploadFileFromDisk(
+    filePath: string,
+    srcPath: string,
+    contentType: string,
+    opts: { signal?: AbortSignal; inactivityMs?: number } = {},
+  ): Promise<string> {
+    const { url, key } = this.supabaseConfig();
+    this.logger.log(`Upload (stream): bucket=${BUCKET}, path=${filePath}, contentType=${contentType}`);
+    const res = await streamUploadFile(
+      `${url}/storage/v1/object/${BUCKET}/${filePath}`,
+      {
+        Authorization: `Bearer ${key}`,
+        apikey: key,
+        'Content-Type': contentType,
+        'x-upsert': 'true',
+        'cache-control': 'max-age=31536000',
+      },
+      srcPath,
+      { method: 'POST', ...opts },
+    );
+    if (res.status < 200 || res.status >= 300) {
+      throw new StreamTransferError(`Storage upload failed (${res.status}): ${res.body.slice(0, 300)}`, res.status, 'http');
+    }
+    return `${url}/storage/v1/object/public/${BUCKET}/${filePath}`;
+  }
+
+  /**
    * Best-effort: split a stored Supabase object URL (public OR signed) into its
    * { bucket, path }. Floor-plan rows persist a full URL in `imageUrl`; old
    * floor plans live in the public `assets` bucket, new ones in the private
@@ -619,6 +765,15 @@ export class SupabaseStorageService implements OnModuleInit {
         headers: { Authorization: `Bearer ${key}`, apikey: key },
       });
       if (!getRes.ok) return { ok: false, error: `download ${getRes.status}` };
+      // 2026-09-23 — this path buffers the WHOLE object (download + re-POST).
+      // Direct uploads now reach 2 GB; refuse anything big enough to hurt the
+      // API process rather than hold it in memory. (Objects written since the
+      // 2026-05-30 fix already carry `max-age`, so the caller skips them.)
+      const declared = Number(getRes.headers.get('content-length'));
+      if (Number.isFinite(declared) && declared > RESET_CACHE_CONTROL_MAX_BYTES) {
+        await getRes.body?.cancel().catch(() => undefined);
+        return { ok: false, error: `skipped: ${Math.round(declared / (1024 * 1024))}MB is too large for an in-memory re-write` };
+      }
       const contentType = getRes.headers.get('content-type') || 'application/octet-stream';
       const ab = await getRes.arrayBuffer();
       const putRes = await this.storageFetch(`${url}/storage/v1/object/${BUCKET}/${filePath}`, {

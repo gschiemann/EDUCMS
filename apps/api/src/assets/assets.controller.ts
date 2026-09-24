@@ -11,11 +11,12 @@ import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
 import { extname } from 'path';
 import { randomUUID, createHash } from 'crypto';
-import { SupabaseStorageService } from '../storage/supabase-storage.service';
+import { SupabaseStorageService, RESUMABLE_CHUNK_BYTES } from '../storage/supabase-storage.service';
 import {
   MediaOptimizationService,
   VIDEO_WARN_SIZE_BYTES,
 } from '../storage/media-optimization.service';
+import { mintUploadRenewTicket, verifyUploadRenewTicket } from './upload-renew-ticket';
 import { VideoPosterService } from '../storage/video-poster.service';
 import { EmailService } from '../email/email.service';
 import { Logger } from '@nestjs/common';
@@ -71,7 +72,24 @@ const REJECTED_MIMES: Record<string, string> = {
   'video/x-msvideo': REJECTED_EXTENSIONS['.avi'],
 };
 
-const MAX_ASSET_FILE_SIZE = 500 * 1024 * 1024;
+// ── Upload size ceilings (2026-09-23 — 4K video) ───────────────────────────
+//
+// TWO upload paths, TWO ceilings, and the difference is where the bytes live:
+//
+//   • MULTIPART (`POST /assets/upload`, `/assets/emergency-upload`): multer's
+//     memoryStorage() holds the WHOLE file in the API container's RAM — the
+//     same process that delivers lockdown alerts — and the page allows three
+//     uploads in parallel. 500 MB is as far as that goes safely.
+//   • DIRECT (`/assets/presign` → browser PUT/TUS straight to Supabase →
+//     `/assets/complete-upload`): the API never touches the bytes. The ceiling
+//     is storage's: 2 GiB minus one byte — the largest size `Asset.fileSize`
+//     (a Postgres int4) can record. A 4K camera file runs 150–300 MB a minute,
+//     so this is a five-to-ten-minute clip; the signage transcode
+//     (storage/video-transcode) then shrinks what screens actually download.
+export const MAX_MULTIPART_FILE_SIZE = 500 * 1024 * 1024;
+export const MAX_DIRECT_FILE_SIZE = 2 * 1024 * 1024 * 1024 - 1;
+/** Kept for callers of the old name: the multipart (RAM-bound) ceiling. */
+const MAX_ASSET_FILE_SIZE = MAX_MULTIPART_FILE_SIZE;
 // Per-type caps (Supabase egress hardening 2026-05-23). Signage content
 // has a sweet spot — 1080p H.264 at 5 Mbps is broadcast-tier on a wall
 // and 30-50 MB for a typical 60-second loop. A raw 200 MB phone export
@@ -80,13 +98,53 @@ const MAX_ASSET_FILE_SIZE = 500 * 1024 * 1024;
 // egress overage" tradeoff. Audio is rare here and small; PDFs are
 // usually logos/branding.
 // 2026-09-23 — raised 50 MB → 500 MB (Greg: a tester's 300 MB video failed; "4K videos will
-// normally be pretty large"). The 50 MB figure was the 2026-05-23 egress bound because the
-// upload path does not transcode video yet; egress is now bounded by the fleet's local media
-// cache and the operator's own judgement, and the next build adds a signage-profile transcode.
-export const MAX_VIDEO_SIZE = MAX_ASSET_FILE_SIZE; // 500 MB — the general cap
+// normally be pretty large"), then to 2 GB on the DIRECT path the same day: videos that come
+// in through presign are transcoded to a signage profile after upload (the served copy is what
+// screens download), so the original's size no longer bounds fleet egress. The multipart path
+// keeps 500 MB because there the size bounds the API's RAM, not egress.
+export const MAX_VIDEO_SIZE = MAX_DIRECT_FILE_SIZE;               // direct path — 2 GB
+export const MAX_MULTIPART_VIDEO_SIZE = MAX_MULTIPART_FILE_SIZE;  // multipart path — 500 MB
 const MAX_IMAGE_SIZE_RAW = 25 * 1024 * 1024;    // 25 MB raw — optimizer brings to ~0.5 MB WebP
 const MAX_AUDIO_SIZE = 25 * 1024 * 1024;        // 25 MB
 const MAX_PDF_SIZE = 25 * 1024 * 1024;          // 25 MB
+
+/** Which upload path a size is being judged for. See the block above. */
+export type UploadPath = 'direct' | 'multipart';
+
+/**
+ * How long after creating an asset its OWN uploader may re-send the same
+ * `complete-upload` and get that asset back instead of a 409 (a retry after a
+ * lost response). See the replay branch in `completeUpload`.
+ */
+export const COMPLETE_UPLOAD_REPLAY_WINDOW_MS = 30 * 60 * 1000;
+
+/** "2 GB" / "500 MB" — for messages. */
+export function formatCapBytes(bytes: number): string {
+  const GiB = 1024 * 1024 * 1024;
+  if (bytes >= GiB - 1024 * 1024) return `${Math.round((bytes / GiB) * 10) / 10} GB`;
+  return `${Math.round(bytes / (1024 * 1024))} MB`;
+}
+
+/**
+ * The video ceiling for a path. `directCeiling` lets the caller clamp the
+ * direct cap to what storage will ACTUALLY accept (the bucket keeps a lower
+ * limit until the Supabase project's global upload limit is raised).
+ */
+export function videoCapFor(path: UploadPath, directCeiling?: number | null): number {
+  if (path === 'multipart') return MAX_MULTIPART_VIDEO_SIZE;
+  const c = Number(directCeiling);
+  return Number.isFinite(c) && c > 0 ? Math.min(MAX_VIDEO_SIZE, c) : MAX_VIDEO_SIZE;
+}
+
+/** The per-type ceiling for `mimeType` on `path` (the outer cap for types without one). */
+export function perTypeCap(mimeType: string, path: UploadPath, directCeiling?: number | null): number {
+  const mt = (mimeType || '').toLowerCase();
+  if (mt.startsWith('video/')) return videoCapFor(path, directCeiling);
+  if (mt.startsWith('image/')) return MAX_IMAGE_SIZE_RAW;
+  if (mt.startsWith('audio/')) return MAX_AUDIO_SIZE;
+  if (mt === 'application/pdf') return MAX_PDF_SIZE;
+  return path === 'direct' ? MAX_DIRECT_FILE_SIZE : MAX_MULTIPART_FILE_SIZE;
+}
 
 /**
  * Single source of truth for the per-type size caps. Returns an
@@ -105,16 +163,25 @@ const MAX_PDF_SIZE = 25 * 1024 * 1024;          // 25 MB
  *     `storage.getObjectInfo()`. We re-run this check against that real
  *     size and delete the orphaned object if it's over cap.
  *
+ * `path` defaults to 'multipart' — the STRICTER ceiling — so a caller that
+ * forgets to say which path it is on can never be handed the 2 GB one.
+ *
  * Pure function (no `this`) so it is trivially unit-testable and can't
  * drift from the claimed-size check inside `assertUploadIntent`.
  */
-export function perTypeSizeCapError(mimeType: string, size: number): HttpException | null {
+export function perTypeSizeCapError(
+  mimeType: string,
+  size: number,
+  path: UploadPath = 'multipart',
+  directCeiling?: number | null,
+): HttpException | null {
   const numSize = Number(size);
   if (!Number.isFinite(numSize) || numSize <= 0) return null;
   const mt = (mimeType || '').toLowerCase();
-  if (mt.startsWith('video/') && numSize > MAX_VIDEO_SIZE) {
-    return new HttpException({ code: 'ASSET_VIDEO_TOO_LARGE', message: `Video is too large for signage (${Math.round(numSize / (1024 * 1024))} MB). ` +
-        `Max is ${Math.round(MAX_VIDEO_SIZE / (1024 * 1024))} MB — plenty for a clean 4K loop ` +
+  const videoCap = videoCapFor(path, directCeiling);
+  if (mt.startsWith('video/') && numSize > videoCap) {
+    return new HttpException({ code: 'ASSET_VIDEO_TOO_LARGE', message: `Video is too large for signage (${formatCapBytes(numSize)}). ` +
+        `Max is ${formatCapBytes(videoCap)} — plenty for a clean 4K loop ` +
         `at signage-tier quality. Compress with HandBrake (free, handbrake.fr), iMovie's ` +
         `"Share → File → 1080p", or your phone's built-in "Save as smaller file" option, then try again.` }, HttpStatus.PAYLOAD_TOO_LARGE);
   }
@@ -329,7 +396,22 @@ export class AssetsController {
     return explicit;
   }
 
-  private assertUploadIntent(filename: string | undefined, contentType: string | undefined, size: number | undefined): string {
+  /**
+   * The direct path's ceiling as storage will actually enforce it: the 2 GB
+   * code cap, clamped to the `assets` bucket's effective limit when Supabase
+   * refused to raise it (project global upload limit still lower).
+   */
+  private directCeiling(): number {
+    const bucketCap = typeof this.storage.assetsBucketCap === 'function' ? this.storage.assetsBucketCap() : null;
+    return typeof bucketCap === 'number' && bucketCap > 0 ? Math.min(MAX_DIRECT_FILE_SIZE, bucketCap) : MAX_DIRECT_FILE_SIZE;
+  }
+
+  private assertUploadIntent(
+    filename: string | undefined,
+    contentType: string | undefined,
+    size: number | undefined,
+    path: UploadPath = 'direct',
+  ): string {
     // Surface friendly per-format guidance BEFORE the generic "not
     // supported" fall-through. .mov / .avi are the common foot-guns
     // (operators export from iMovie / QuickTime / Camtasia and don't
@@ -360,20 +442,21 @@ export class AssetsController {
       throw new HttpException({ code: 'ASSET_FILE_SIZE_REQUIRED', message: 'File size is required.' }, HttpStatus.BAD_REQUEST);
     }
 
-    if (Number(size) > MAX_ASSET_FILE_SIZE) {
-      throw new HttpException({ code: 'ASSET_FILE_TOO_LARGE', message: `File is too large. Max size is ${Math.round(MAX_ASSET_FILE_SIZE / (1024 * 1024))} MB.` }, HttpStatus.PAYLOAD_TOO_LARGE);
+    const outerCap = path === 'direct' ? this.directCeiling() : MAX_ASSET_FILE_SIZE;
+    if (Number(size) > outerCap) {
+      throw new HttpException({ code: 'ASSET_FILE_TOO_LARGE', message: `File is too large. Max size is ${formatCapBytes(outerCap)}.` }, HttpStatus.PAYLOAD_TOO_LARGE);
     }
 
-    // Per-type caps (Supabase egress hardening 2026-05-23). The 500 MB
-    // outer cap is the absolute ceiling; these tighter per-type caps
-    // are what actually keep egress bounded. NOTE: at this point `size`
+    // Per-type caps (Supabase egress hardening 2026-05-23). The outer cap
+    // is the absolute ceiling; these tighter per-type caps are what
+    // actually keep egress bounded. NOTE: at this point `size`
     // is the client-CLAIMED size (this runs pre-upload on the presign
     // path and on the completeUpload re-validation). The claimed-size
     // check is a fast-fail UX nicety — the AUTHORITATIVE per-type
     // enforcement against REAL bytes happens in `upload()` (legacy
     // multipart, buffer in-process) and `completeUpload()` (presigned,
     // real size from storage.getObjectInfo) via `perTypeSizeCapError`.
-    const capError = perTypeSizeCapError(mimeType, Number(size));
+    const capError = perTypeSizeCapError(mimeType, Number(size), path, this.directCeiling());
     if (capError) throw capError;
 
     return mimeType;
@@ -777,6 +860,41 @@ export class AssetsController {
       throw new HttpException({ code: 'ASSET_PRESIGN_FAILED', message: `Unable to prepare upload: ${err.message}` }, HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
+    // 2026-09-23 — RESUMABLE (TUS) upload for large files. The browser sends
+    // 6 MB chunks straight to Supabase, each carrying the SAME signed upload
+    // token as `x-signature` — the token only authorises this one object
+    // path, so nothing broader (never the service-role key) reaches the
+    // browser. A dropped connection resumes from the last acknowledged chunk
+    // instead of restarting a 1.5 GB upload. `renewTicket` lets that upload
+    // fetch a fresh token for THIS path if it outlives the first one
+    // (upload-renew-ticket.ts explains why a bare path is not enough).
+    let resumable: {
+      endpoint: string;
+      bucketName: string;
+      objectName: string;
+      chunkSize: number;
+      cacheControl: string;
+    } | null = null;
+    try {
+      resumable = {
+        endpoint: this.storage.resumableUploadEndpoint(),
+        bucketName: this.storage.bucketName(),
+        objectName: signed.path,
+        chunkSize: RESUMABLE_CHUNK_BYTES,
+        // Seconds, as digits: Supabase's TUS server turns it into
+        // `max-age=31536000` and stores `no-cache` for anything else — the
+        // egress bug the 2026-05-23 fix exists for.
+        cacheControl: '31536000',
+      };
+    } catch {
+      resumable = null; // storage not configured for it — the client uses the single signed PUT
+    }
+    const renew = mintUploadRenewTicket({
+      tenantId: String(req.user.tenantId),
+      userId: String(req.user.id),
+      storagePath: signed.path,
+    });
+
     return {
       uploadUrl: signed.signedUrl,
       signedUrl: signed.signedUrl,
@@ -784,7 +902,76 @@ export class AssetsController {
       storagePath: signed.path,
       fileUrl: signed.publicUrl,
       mimeType,
-      maxFileSize: MAX_ASSET_FILE_SIZE,
+      // The ceiling for THIS file's type on the direct path (2 GB for video).
+      maxFileSize: perTypeCap(mimeType, 'direct', this.directCeiling()),
+      resumable,
+      renewTicket: renew.ticket,
+      renewTicketExpiresAt: renew.expiresAt,
+    };
+  }
+
+  /**
+   * Fresh storage token for an upload that is STILL IN FLIGHT (2026-09-23).
+   *
+   * Supabase re-checks the signed upload token's expiry on every TUS chunk, so
+   * a slow multi-gigabyte upload can outlive it. This hands the browser a new
+   * token for the SAME path — and only that: the body must carry the
+   * `renewTicket` presign minted for this caller, this tenant and this exact
+   * path (upload-renew-ticket.ts), the path must still be the presign shape,
+   * and no Asset may already own it (a finalized upload is never re-opened).
+   */
+  @Post('presign/renew')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
+  async renewPresign(
+    @Request() req: any,
+    @Body() body: { storagePath?: string; renewTicket?: string } = {},
+  ) {
+    const tenantId = String(req.user.tenantId);
+    const storagePath = String(body?.storagePath || '').trim();
+    const verdict = verifyUploadRenewTicket(body?.renewTicket, {
+      tenantId,
+      userId: String(req.user.id),
+      storagePath,
+    });
+    if (!verdict.ok) {
+      this.logger.warn(`[assets] upload renew refused (${verdict.reason}) for ${tenantId}/${req.user.id}`);
+      throw new HttpException(
+        { code: 'ASSET_UPLOAD_RENEW_REFUSED', message: 'This upload can no longer be continued. Start the upload again.' },
+        HttpStatus.FORBIDDEN,
+      );
+    }
+    if (!isMintedUploadPath(storagePath, tenantId) || storagePath.includes('/emergency/')) {
+      throw new HttpException({ code: 'ASSET_UPLOAD_PATH_INVALID', message: 'Invalid upload path.' }, HttpStatus.BAD_REQUEST);
+    }
+    const claimed = await this.prisma.client.asset.findFirst({
+      where: {
+        OR: [
+          { fileUrl: this.storage.publicUrlForPath(storagePath) },
+          { AND: [{ tenantId }, { fileUrl: { endsWith: `/${storagePath}` } }] },
+        ],
+      },
+      select: { id: true },
+    });
+    if (claimed) {
+      throw new HttpException(
+        { code: 'ASSET_UPLOAD_PATH_ALREADY_CLAIMED', message: 'That upload has already been finalized. Start a new upload.' },
+        HttpStatus.CONFLICT,
+      );
+    }
+    let signed: Awaited<ReturnType<SupabaseStorageService['createSignedUploadUrl']>>;
+    try {
+      signed = await this.storage.createSignedUploadUrl(storagePath);
+    } catch (err: any) {
+      throw new HttpException(
+        { code: 'ASSET_PRESIGN_FAILED', message: `Unable to continue the upload: ${err?.message ?? err}` },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+    return {
+      token: signed.token,
+      signedUrl: signed.signedUrl,
+      uploadUrl: signed.signedUrl,
+      storagePath: signed.path,
     };
   }
 
@@ -851,9 +1038,50 @@ export class AssetsController {
           { AND: [{ tenantId: req.user.tenantId }, { fileUrl: { endsWith: `/${storagePath}` } }] },
         ],
       },
-      select: { id: true },
+      select: {
+        id: true,
+        tenantId: true,
+        uploadedByUserId: true,
+        createdAt: true,
+        fileUrl: true,
+        mimeType: true,
+        fileSize: true,
+        fileHash: true,
+        originalName: true,
+        status: true,
+        altText: true,
+        posterUrl: true,
+      },
     });
     if (alreadyClaimed) {
+      // 2026-09-23 — IDEMPOTENT REPLAY for the uploader's own retry. After a
+      // multi-minute direct upload, a finalize whose RESPONSE is lost (mobile
+      // network, app switch) is retried by the client — and used to earn a
+      // 409 for an asset that had in fact been created, so the operator
+      // re-sent a 1.5 GB file. The SAME user finalizing the SAME path moments
+      // later gets the asset it already made. Nothing re-runs (no delete, no
+      // re-encode) — this is a read of the caller's own row, so the UPLD-02
+      // refusal below still holds for everyone else.
+      const created = alreadyClaimed.createdAt instanceof Date ? alreadyClaimed.createdAt.getTime() : NaN;
+      const sameUploaderReplay =
+        alreadyClaimed.tenantId === req.user.tenantId &&
+        !!alreadyClaimed.uploadedByUserId &&
+        alreadyClaimed.uploadedByUserId === req.user.id &&
+        Number.isFinite(created) &&
+        Date.now() - created < COMPLETE_UPLOAD_REPLAY_WINDOW_MS;
+      if (sameUploaderReplay) {
+        return {
+          id: alreadyClaimed.id,
+          fileUrl: alreadyClaimed.fileUrl,
+          mimeType: alreadyClaimed.mimeType,
+          fileSize: alreadyClaimed.fileSize,
+          fileHash: alreadyClaimed.fileHash,
+          originalName: alreadyClaimed.originalName,
+          status: alreadyClaimed.status,
+          altText: (alreadyClaimed as any).altText ?? null,
+          posterUrl: (alreadyClaimed as any).posterUrl ?? null,
+        };
+      }
       throw new HttpException(
         {
           code: 'ASSET_UPLOAD_PATH_ALREADY_CLAIMED',
@@ -905,7 +1133,30 @@ export class AssetsController {
     // rendering + the dashboard's cache-status math. Falls back to the
     // claimed values only if the info endpoint is unavailable.
     const info = await this.storage.getObjectInfo(storagePath);
-    const realMime = info?.contentType || mimeType;
+    const storedMime = (info?.contentType || '').split(';')[0].trim().toLowerCase();
+
+    // 2026-09-23 — the STORED content type must be one we accept. The single
+    // signed PUT could never land anything else (the bucket's allowedMimeTypes
+    // rejects the Content-Type at write time), but a TUS resumable upload only
+    // validates the type when the client DECLARES one: omit `contentType` from
+    // the Upload-Metadata and the object is stored as whatever storage
+    // defaults to, with no allowlist check at all (Supabase tus/lifecycle.ts
+    // `onCreate`). The claimed type at presign proves nothing about the bytes'
+    // label in storage — this does. Anything outside ALLOWED_TYPES is removed
+    // before an Asset row can point at it.
+    if (storedMime && !ALLOWED_TYPES.includes(storedMime)) {
+      await this.storage.delete(storagePath).catch(() => undefined);
+      throw new HttpException(
+        {
+          code: 'ASSET_STORED_TYPE_REJECTED',
+          message:
+            `Storage recorded this file as "${storedMime.slice(0, 80)}", which isn't a supported media type. ` +
+            'Upload MP4/WebM video, JPG/PNG/WebP/GIF images, MP3/OGG/WAV/M4A audio or PDF.',
+        },
+        HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+      );
+    }
+    const realMime = storedMime || mimeType;
     const realSize = info?.size ?? Number(body.size);
 
     // BUG #6 FIX — per-type size cap enforcement against the REAL stored
@@ -926,7 +1177,8 @@ export class AssetsController {
     // the pre-fix behavior rather than blocking legitimate uploads. This is
     // the tightest enforcement available without downloading every object.
     if (info && typeof info.size === 'number') {
-      const realCapError = perTypeSizeCapError(realMime, info.size);
+      // DIRECT path: videos up to 2 GB (clamped to the bucket's effective cap).
+      const realCapError = perTypeSizeCapError(realMime, info.size, 'direct', this.directCeiling());
       if (realCapError) {
         // Remove the over-cap object we just confirmed exists — otherwise it
         // stays in the bucket, world-readable + egress-billable, with no
@@ -1136,9 +1388,11 @@ export class AssetsController {
     // can pressure the Railway pod's RAM during simultaneous uploads
     // — but a 500MB cap is still safe for 1-2 concurrent uploads on
     // a typical Railway-Standard plan, and most signage video clips
-    // are under 200MB. For the 1GB+ video case we'll move to direct
-    // browser→Supabase presigned uploads in a follow-up.
-    limits: { fileSize: 500 * 1024 * 1024 }, // 500MB
+    // are under 200MB. 2026-09-23: the 1 GB+ case now goes browser →
+    // Supabase directly (presign → TUS/PUT → complete-upload, up to
+    // 2 GB); every dashboard picker uses that path, so this one only
+    // serves callers that still post multipart. It stays RAM-bound.
+    limits: { fileSize: MAX_MULTIPART_FILE_SIZE }, // 500MB
     fileFilter: (_req, file, cb) => {
       if (ALLOWED_TYPES.includes(file.mimetype)) {
         cb(null, true);
@@ -1184,7 +1438,8 @@ export class AssetsController {
     // in-process (`safeBuffer.length` — the actual uploaded size, before any
     // optimization), so we can enforce the exact cap authoritatively against
     // the real mime here and reject with the shared error envelope.
-    const legacyCapError = perTypeSizeCapError(file.mimetype, safeBuffer.length);
+    // MULTIPART ceiling (500 MB video) — the bytes are in this process's RAM.
+    const legacyCapError = perTypeSizeCapError(file.mimetype, safeBuffer.length, 'multipart');
     if (legacyCapError) throw legacyCapError;
 
     // Audit P0-5 (2026-05-27) — sharp-based resize inline before storing.
