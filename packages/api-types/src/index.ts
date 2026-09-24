@@ -1027,3 +1027,8 @@ export * from './display-control';
 // is a contract that drifts silently.
 export * from './design-import';
 export * from './template-background';
+
+// Video encode grading (2026-09-24) — will an upload play well on signage
+// hardware? Shared so the API (which probes) and the dashboard (which warns)
+// can never disagree about what "will stutter on the wall" means.
+export * from './video-encode';

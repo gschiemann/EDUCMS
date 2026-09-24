@@ -533,6 +533,9 @@ export class PlaylistsController {
                 mimeType: true,
                 originalName: true,
                 posterUrl: true,
+                // processingMeta (2026-09-24): the ffprobe facts behind the
+                // "may stutter on screens" warning in the editor rows.
+                processingMeta: true,
               },
             },
           },
@@ -683,6 +686,9 @@ export class PlaylistsController {
                 mimeType: true,
                 originalName: true,
                 posterUrl: true,
+                // processingMeta (2026-09-24): the ffprobe facts behind the
+                // "may stutter on screens" warning in the editor rows.
+                processingMeta: true,
               },
             },
           },

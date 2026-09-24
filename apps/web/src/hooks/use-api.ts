@@ -1346,11 +1346,24 @@ export function normalizeAssetList(raw: any): AssetListPage {
  * every asset mutation below invalidates the `['assets']` PREFIX, which
  * covers both.
  */
-export function useAssets(params?: { take?: number; skip?: number; q?: string }) {
+export function useAssets(params?: {
+  take?: number;
+  skip?: number;
+  q?: string;
+  /**
+   * Poll while the page needs a server-side result that lands AFTER the
+   * upload response (the video probe / poster, 2026-09-24). Receives the
+   * current data; return a period in ms, or `false` to stop. Runs only
+   * while the tab is visible (React Query's default), per the mobile-perf
+   * standard — never `refetchIntervalInBackground`.
+   */
+  refetchInterval?: (data: unknown) => number | false;
+}) {
   const take = params?.take;
   const skip = params?.skip;
   const q = params?.q?.trim() || undefined;
   const paged = params !== undefined;
+  const refetchInterval = params?.refetchInterval;
   return useQuery({
     queryKey: paged ? ['assets', 'page', { take, skip, q }] : ['assets'],
     queryFn: () => {
@@ -1362,6 +1375,7 @@ export function useAssets(params?: { take?: number; skip?: number; q?: string })
       return apiFetch(`/assets${qs ? `?${qs}` : ''}`);
     },
     staleTime: 30_000,
+    refetchInterval: refetchInterval ? (query) => refetchInterval(query.state.data) : undefined,
     // Growing the window (Load more) or typing in search must not blank the
     // grid — keep the previous page painted while the next one lands.
     placeholderData: paged ? (prev: unknown) => prev : undefined,

@@ -57,6 +57,8 @@ import { AssetUsageSection, AssetInUseBlock } from '@/components/assets/AssetUsa
 import { AiImageModal, useAiImageAvailable } from '@/components/ai/AiImageGenerateButton';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { transformedImageUrl } from '@/lib/asset-image';
+import { AssetEncodeBadge, VideoEncodeCard } from '@/components/assets/VideoEncode';
+import { videoEncodeState, encodeWarns, isVideoMime, type EncodeGradableAsset } from '@/lib/video-encode-copy';
 
 // Match the server limit (apps/api/src/assets/assets.controller.ts).
 // 200MB was rejecting any reasonably-sized video before it even tried to
@@ -271,6 +273,15 @@ function metaDurationMs(a: any): number | null {
   return typeof ms === 'number' && Number.isFinite(ms) && ms > 0 ? ms : null;
 }
 
+/** Poll period while a freshly uploaded video's probe has not landed yet. */
+const ENCODE_CHECK_POLL_MS = 5_000;
+
+/** `useAssets` refetchInterval: 5 s while any video in the window is still being probed, else off. */
+function hasCheckingVideos(raw: unknown): number | false {
+  const rows: EncodeGradableAsset[] = normalizeAssetList(raw).assets;
+  return rows.some((a) => videoEncodeState(a).status === 'checking') ? ENCODE_CHECK_POLL_MS : false;
+}
+
 /** 75_400 → "1:15"; 3_725_000 → "1:02:05" — media-player style. */
 function fmtDuration(ms: number): string {
   const total = Math.round(ms / 1000);
@@ -416,9 +427,45 @@ export default function AssetsPage() {
   const { data: assetsRaw, isLoading, isError, refetch, isFetching } = useAssets({
     take: windowSize,
     q: sentQuery,
+    // A video's ffprobe pass + poster land a few seconds AFTER the upload
+    // response (VideoPosterService.kickOff is fire-and-forget). While any row
+    // in the window still reads "Checking the encoding…", poll so the grade
+    // and the poster appear on their own — no manual refresh. Stops the
+    // moment nothing is checking (the state times out on its own after ten
+    // minutes, so a probe that never lands cannot poll forever).
+    refetchInterval: hasCheckingVideos,
   });
   const page = useMemo(() => normalizeAssetList(assetsRaw), [assetsRaw]);
   const assets = page.assets;
+
+  // "Warn at upload" (2026-09-24). The tile pill and the detail card carry
+  // the grade, but an operator who drops a file and walks to the playlist
+  // never opens either. So the FIRST time a video uploaded in this session
+  // grades amber/red, say so in a toast with a way into the reasons — once
+  // per file, never for uploads from earlier sessions (those show their
+  // pills; a toast storm on page load is not a warning, it is noise).
+  const freshVideoIdsRef = useRef<Set<string>>(new Set());
+  const warnedVideoIdsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (freshVideoIdsRef.current.size === 0) return;
+    for (const a of assets as Array<EncodeGradableAsset & { id?: string; originalName?: string | null; fileUrl?: string | null }>) {
+      const id = a?.id;
+      if (!id || !freshVideoIdsRef.current.has(id) || warnedVideoIdsRef.current.has(id)) continue;
+      const state = videoEncodeState(a);
+      if (state.status === 'checking') continue; // not graded yet — keep waiting
+      freshVideoIdsRef.current.delete(id);
+      if (!encodeWarns(state.status)) continue;
+      warnedVideoIdsRef.current.add(id);
+      const name = a.originalName || a.fileUrl?.split('/').pop() || '';
+      toast.warning(t('assetsLib.encode.uploadToast', { name }), {
+        description: t(`assetsLib.encode.${state.status}`),
+        duration: 12_000,
+        action: { label: t('assetsLib.encode.uploadToastAction'), onClick: () => openDetail(a) },
+      });
+    }
+    // openDetail / t are stable for the life of the page; `assets` is the signal.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assets]);
   /** true once the server answered a query it actually applied itself. */
   const serverSearched = !!debouncedSearch && page.appliedQuery === debouncedSearch;
 
@@ -866,6 +913,10 @@ export default function AssetsPage() {
       // of "Ready", which would be a lie about what is on screen.
       const needsReview = created?.status === 'PENDING_APPROVAL';
       setUploads(p => p.map(u => u.id === item.id ? { ...u, progress: 100, phase: needsReview ? 'pending-review' : 'success' } : u));
+      // A video's encode grade lands a few seconds later (the probe is
+      // async); remember the id so the page can say so out loud once it
+      // does — see the effect on `assets` below.
+      if (typeof created?.id === 'string' && isVideoMime(created?.mimeType)) freshVideoIdsRef.current.add(created.id);
       queryClient.invalidateQueries({ queryKey: ['assets'] });
     } catch (err: any) {
       const elapsedMs = Math.round(performance.now() - started);
@@ -1847,6 +1898,12 @@ export default function AssetsPage() {
                         <Video className="w-4 h-4 text-white" />
                       </span>
                     )}
+                    {/* Encode grade (2026-09-24) — the one overlay that DOES
+                        change what the operator should do: a video that will
+                        stutter on the wall gets a pill before it is scheduled
+                        anywhere. Green and unknown stay quiet. The full reasons
+                        are in the detail panel's "Playback on screens" card. */}
+                    <AssetEncodeBadge asset={a} variant="onImage" className="absolute top-1.5 left-1.5" />
                     {status && (
                       <span className={`absolute bottom-1.5 right-1.5 text-[9px] font-black px-1.5 py-0.5 rounded ${status.className}`}>
                         {status.label}
@@ -1922,6 +1979,7 @@ export default function AssetsPage() {
                         <span className="min-w-0">
                           <span className="block text-xs font-semibold text-slate-800 truncate" title={name}>{name}</span>
                           {status && <span className={`inline-block mt-0.5 text-[9px] font-black px-1.5 py-0.5 rounded ${status.className}`}>{status.label}</span>}
+                          <AssetEncodeBadge asset={a} className="mt-0.5 ml-1" />
                         </span>
                       </button>
                     </td>
@@ -2072,6 +2130,11 @@ export default function AssetsPage() {
                   <p className="text-xs font-semibold text-slate-800">{fmtDate(selectedAsset.createdAt)}</p>
                 </div>
               </div>
+
+              {/* 4b. Playback on screens (2026-09-24) — the encode grade for a
+                  video: will this file play smoothly on signage hardware, and
+                  if not, exactly why and what export settings fix it. */}
+              <VideoEncodeCard asset={selectedAsset} />
 
               {/* 5. Folder + uploader */}
               <div className="flex items-center justify-between bg-slate-50 rounded-lg p-3">

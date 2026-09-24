@@ -147,6 +147,8 @@ import { describeScreenConflicts, findScreenConflicts } from '@/components/playl
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { transformedImageUrl } from '@/lib/asset-image';
 import { AssetPreviewOverlay } from './AssetPreviewOverlay';
+import { assetPosterUrl } from './VideoPreviewThumb';
+import { AssetEncodeBadge } from '@/components/assets/VideoEncode';
 import { imageShape, type ImageShape } from '@/lib/image-shape';
 import { isTouchTemplate } from '@/lib/template-relevance';
 // Typed-or-picked schedule fields (2026-09-21). Desktop Safari's native date
@@ -294,11 +296,19 @@ function MiniAssetThumb({ asset, showOrientation = false }: { asset: any; showOr
     );
   }
   if (asset?.mimeType?.startsWith('video/')) {
-    // 2026-05-30 — EGRESS FIX: preload="none" so wizard picker tiles
-    // don't auto-download video bytes. Show a dark box with play icon.
+    // 2026-05-30 — EGRESS FIX: no <video> here, so wizard picker tiles never
+    // download video bytes. 2026-09-24: a video that has its server-made
+    // poster (Asset.posterUrl, a small JPEG) shows that still — the same
+    // frame the Media Library and the playlist rows show — under the play
+    // glyph; one without it keeps the dark box.
+    const poster = assetPosterUrl(asset);
     return (
-      <div className="w-full h-full bg-slate-800 flex items-center justify-center">
-        <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'rgba(255,255,255,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div className="w-full h-full bg-slate-800 flex items-center justify-center relative overflow-hidden">
+        {poster && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={poster} alt="" loading="lazy" decoding="async" className="absolute top-0 right-0 bottom-0 left-0 w-full h-full object-contain" />
+        )}
+        <div className="relative" style={{ width: 28, height: 28, borderRadius: '50%', background: 'rgba(255,255,255,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <Play style={{ width: 12, height: 12, color: '#fff' }} fill="#fff" aria-hidden="true" />
         </div>
       </div>
@@ -1902,8 +1912,11 @@ function Step2Media({
                   {selected && <Check className="w-3.5 h-3.5 text-white" />}
                 </span>
 
-                <div className="aspect-video bg-slate-100">
+                <div className="aspect-video bg-slate-100 relative">
                   <MiniAssetThumb asset={a} showOrientation />
+                  {/* Encode grade (2026-09-24): a video that will stutter on
+                      the wall says so before it is picked. */}
+                  <AssetEncodeBadge asset={a} variant="onImage" className="absolute top-2 right-2 z-20" />
                 </div>
                 <div className="px-2 py-1.5 bg-white">
                   <div className="flex items-center">
@@ -2156,6 +2169,7 @@ function SortableMediaRow({
           <p className="text-[11px] font-semibold text-slate-700 truncate">
             {asset.originalName || asset.title || 'Untitled'}
           </p>
+          <AssetEncodeBadge asset={asset} labels="row" iconOnlyOnMobile className="ml-1.5 shrink-0" />
           {isAV && (
             <span
               className="ml-1.5 text-[9px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-sm px-1 leading-tight"

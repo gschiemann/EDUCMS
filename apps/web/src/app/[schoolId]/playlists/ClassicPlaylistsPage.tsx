@@ -42,6 +42,8 @@ import { computeBlastRadius, reachWarnings, isReachBlocked } from '@/lib/blast-r
 import { BlastRadiusSummary } from '@/components/playlists/BlastRadiusSummary';
 import { AssetPreviewOverlay } from '@/components/playlists/AssetPreviewOverlay';
 import { VideoPreviewThumb, assetPosterUrl } from '@/components/playlists/VideoPreviewThumb';
+import { AssetEncodeBadge } from '@/components/assets/VideoEncode';
+import { PlaylistEncodeBanner } from '@/components/playlists/PlaylistEncodeBanner';
 import { imageShape, type ImageShape } from '@/lib/image-shape';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
@@ -203,6 +205,9 @@ function PickerTileThumb({ asset }: { asset: any }) {
           </span>
         </span>
       )}
+      {/* Encode grade (2026-09-24): a video that will stutter on the wall
+          says so BEFORE it is picked. Green / unknown render nothing. */}
+      <AssetEncodeBadge asset={asset} variant="onImage" className="absolute top-2 right-2" />
       {shape && (
         <span
           data-testid="asset-orientation"
@@ -310,6 +315,12 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSel
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
             <p className="text-xs font-medium text-slate-700 truncate" title={name}>{name}</p>
+            {/* Encode grade (2026-09-24) — the row-level half of the
+                publish-time warning: an amber/red video carries a pill beside
+                its name (icon-only on a phone, where the row has no room for
+                text — the title carries the reasons). The banner above the
+                list carries the full sentences. */}
+            <AssetEncodeBadge asset={item.asset} labels="row" iconOnlyOnMobile className="shrink-0" />
           </div>
           {/* Mime label is desktop-only — secondary info, eats a
               line on mobile that we can't afford. Available via
@@ -1573,7 +1584,19 @@ export default function ClassicPlaylistsPage({
       assetId: asset.id,
       durationMs: dur,
       sequenceOrder: prev.length,
-      asset: { id: asset.id, fileUrl: asset.fileUrl, mimeType: asset.mimeType, originalName: asset.originalName },
+      // The working copy carries what the row and the picker RENDER from —
+      // the poster (VideoPreviewThumb) and the probe facts behind the encode
+      // grade (2026-09-24). Without them a video added this session showed a
+      // bare black tile and no warning until the next save + refetch.
+      asset: {
+        id: asset.id,
+        fileUrl: asset.fileUrl,
+        mimeType: asset.mimeType,
+        originalName: asset.originalName,
+        posterUrl: asset.posterUrl ?? null,
+        processingMeta: asset.processingMeta ?? null,
+        createdAt: asset.createdAt ?? null,
+      },
     }]);
     setHasChanges(true);
   };
@@ -2207,6 +2230,11 @@ export default function ClassicPlaylistsPage({
             ) : tab === 'editor' ? (
               localItems.length > 0 ? (
                 <div className="flex flex-col h-full">
+                  {/* Encode warning (2026-09-24) — publish-time half of the
+                      grade: names each video that may not play smoothly on the
+                      screens, with the reason and the export that fixes it.
+                      Renders nothing when every item is fine. */}
+                  <PlaylistEncodeBanner items={localItems} />
                   {/* Bulk Actions Header */}
                   <div className="flex flex-wrap items-center justify-between mb-4 px-2 py-2 bg-slate-50/50 rounded-xl border border-slate-100/50 gap-y-2">
                     <div className="flex items-center gap-3">
