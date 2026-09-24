@@ -722,11 +722,17 @@ describe('VideoTranscodePipeline — after a swap the facts describe the SERVED 
     });
     // ORDER: the swap (the updateMany carrying fileUrl) precedes the re-probe,
     // so the pass reads a row whose fileUrl is already the copy.
-    const swapAt = t.calls.findIndex((c) => c.startsWith('asset.updateMany(') && c.includes('fileUrl'));
-    const probeAt = t.calls.findIndex((c) => c.startsWith('videoPoster.processVideo('));
+    const swapAt = t.calls.findIndex(
+      (c) => c.startsWith('asset.updateMany(') && c.includes('fileUrl'),
+    );
+    const probeAt = t.calls.findIndex((c) =>
+      c.startsWith('videoPoster.processVideo('),
+    );
     expect(swapAt).toBeGreaterThanOrEqual(0);
     expect(probeAt).toBeGreaterThan(swapAt);
-    expect(out.details).toMatchObject({ servedFile: { probed: true, poster: true } });
+    expect(out.details).toMatchObject({
+      servedFile: { probed: true, poster: true },
+    });
   });
 
   it("the swap's own write DROPS the original's probe facts and keeps every other key (negative control: remove the drop → red)", async () => {
@@ -743,7 +749,8 @@ describe('VideoTranscodePipeline — after a swap the facts describe the SERVED 
       ([a]: any) => 'fileUrl' in a.data,
     )[0];
     const meta = swap.data.processingMeta;
-    for (const key of SERVED_FILE_FACT_KEYS) expect(meta).not.toHaveProperty(key);
+    for (const key of SERVED_FILE_FACT_KEYS)
+      expect(meta).not.toHaveProperty(key);
     expect(meta.skippedReason).toBe('legacy-key-that-must-survive');
     expect(meta).toMatchObject({
       originalSize: SOURCE_BYTES,
@@ -758,26 +765,45 @@ describe('VideoTranscodePipeline — after a swap the facts describe the SERVED 
     expect(mergeTranscodeMeta(null, t)).toEqual(t);
     expect(mergeTranscodeMeta('garbage', t)).toEqual(t);
     expect(mergeTranscodeMeta([1, 2], t)).toEqual(t);
-    expect(mergeTranscodeMeta({ probe: { codec: 'hevc' }, durationMs: 5, keep: 'me' }, t)).toEqual({ keep: 'me', ...t });
+    expect(
+      mergeTranscodeMeta(
+        { probe: { codec: 'hevc' }, durationMs: 5, keep: 'me' },
+        t,
+      ),
+    ).toEqual({ keep: 'me', ...t });
   });
 
   it.each([
-    ['larger output', { outBytes: SOURCE_BYTES + 1, runOk: true as const, emergency: false }],
-    ['ffmpeg failed', { outBytes: FIFTH, runOk: false as const, emergency: false }],
-    ['emergency content', { outBytes: FIFTH, runOk: true as const, emergency: true }],
-  ])('NEGATIVE CONTROL: no swap (%s) → the pass never runs, the original\'s facts stay', async (_name, w) => {
-    const t = build({
-      asset: videoAsset({ processingMeta: ORIGINAL_FACTS }),
-      outProbe: OUT_2160,
-      ...w,
-    });
-    const out = await t.pipeline.process(job());
-    expect(out.status).not.toBe('done');
-    expect(t.videoPoster.processVideo).not.toHaveBeenCalled();
-    expect(
-      t.prisma.client.asset.updateMany.mock.calls.some(([a]: any) => 'processingMeta' in a.data),
-    ).toBe(false);
-  });
+    [
+      'larger output',
+      { outBytes: SOURCE_BYTES + 1, runOk: true as const, emergency: false },
+    ],
+    [
+      'ffmpeg failed',
+      { outBytes: FIFTH, runOk: false as const, emergency: false },
+    ],
+    [
+      'emergency content',
+      { outBytes: FIFTH, runOk: true as const, emergency: true },
+    ],
+  ])(
+    "NEGATIVE CONTROL: no swap (%s) → the pass never runs, the original's facts stay",
+    async (_name, w) => {
+      const t = build({
+        asset: videoAsset({ processingMeta: ORIGINAL_FACTS }),
+        outProbe: OUT_2160,
+        ...w,
+      });
+      const out = await t.pipeline.process(job());
+      expect(out.status).not.toBe('done');
+      expect(t.videoPoster.processVideo).not.toHaveBeenCalled();
+      expect(
+        t.prisma.client.asset.updateMany.mock.calls.some(
+          ([a]: any) => 'processingMeta' in a.data,
+        ),
+      ).toBe(false);
+    },
+  );
 
   it('a pass that reports nothing landed, or that THROWS, never un-swaps and never fails the job', async () => {
     const incomplete = build({
@@ -791,7 +817,9 @@ describe('VideoTranscodePipeline — after a swap the facts describe the SERVED 
     const a = await incomplete.pipeline.process(job());
     expect(a.status).toBe('done');
     expect(a.reason).toBe('swapped');
-    expect(a.details).toMatchObject({ servedFile: { probed: false, poster: false } });
+    expect(a.details).toMatchObject({
+      servedFile: { probed: false, poster: false },
+    });
     expect(incomplete.deleted).toEqual([]); // the copy is what the asset serves now
 
     const throwing = build({
@@ -806,7 +834,11 @@ describe('VideoTranscodePipeline — after a swap the facts describe the SERVED 
     expect(b.status).toBe('done');
     expect(b.reason).toBe('swapped');
     expect(b.details).toMatchObject({
-      servedFile: { probed: false, poster: false, error: 'poster service exploded' },
+      servedFile: {
+        probed: false,
+        poster: false,
+        error: 'poster service exploded',
+      },
     });
     expect(await tempLeftovers()).toEqual([]);
   });

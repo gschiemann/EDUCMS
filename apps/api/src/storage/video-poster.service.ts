@@ -356,7 +356,10 @@ export class VideoPosterService {
       typeof this.storage.getObjectInfo === 'function'
         ? await this.storage.getObjectInfo(storagePath).catch(() => null)
         : null;
-    if (typeof info?.size === 'number' && info.size > POSTER_FALLBACK_MAX_BYTES) {
+    if (
+      typeof info?.size === 'number' &&
+      info.size > POSTER_FALLBACK_MAX_BYTES
+    ) {
       source.downloadSkipped = `too-large-for-download-fallback (${Math.round(info.size / (1024 * 1024))} MB)`;
       return null;
     }
