@@ -62,7 +62,7 @@ describe('VideoEncodeCard', () => {
   it('shows every fact it has, says a safe export plays smoothly, and suggests nothing when nothing differs', () => {
     render(<VideoEncodeCard asset={SAFE} now={NOW} />);
     expect(screen.getByTestId('video-encode-card')).toHaveAttribute('data-encode-status', 'green');
-    expect(screen.getByText('Plays smoothly on every screen')).toBeInTheDocument();
+    expect(screen.getByText('Meets recommended playback specifications')).toBeInTheDocument();
     const facts = screen.getByTestId('video-encode-facts');
     expect(facts).toHaveTextContent('CodecH.264 High 4.0');
     expect(facts).toHaveTextContent('Size1920 × 1080');
@@ -95,11 +95,23 @@ describe('VideoEncodeCard', () => {
     );
     expect(screen.getByTestId('video-encode-card')).toHaveAttribute('data-encode-status', 'amber');
     expect(screen.getByText('May hitch or start slowly on some screens')).toBeInTheDocument();
-    expect(screen.getByTestId('video-encode-reasons')).toHaveTextContent('The index is at the end of the file');
+    expect(screen.getByTestId('video-encode-reasons')).toHaveTextContent('The playback index is at the end of the file');
     expect(screen.getByTestId('video-encode-notes')).toHaveTextContent('1280 × 720 uses only part of your 3840 × 2160 screens');
-    expect(screen.getByTestId('video-encode-suggested')).toHaveTextContent('Suggested for your screens: MP4, H.264, 3840 × 2160');
+    expect(screen.getByTestId('video-encode-suggested')).toHaveTextContent('Export from your original design at 3840 × 2160');
     expect(screen.getByTestId('video-encode-facts')).toHaveTextContent('Indexend of file');
     expect(screen.queryByText(/Canva/)).not.toBeInTheDocument();
+  });
+
+  it('a matching 4K Canva-style export needs only fast start, not a new resolution or audio track', () => {
+    const asset = { ...SAFE, processingMeta: { ...SAFE.processingMeta,
+      originalDimensions: { w: 3840, h: 2160 },
+      probe: { ...SAFE.processingMeta.probe, level: 51, bitrateKbps: 30_000, fastStart: false, audio: null },
+    } };
+    render(withTarget(<VideoEncodeCard asset={asset} now={NOW} />, FOUR_K));
+    const advice = screen.getByTestId('video-encode-suggested');
+    expect(advice).toHaveTextContent('Suggested changes: Fast start: VenueOS attempts');
+    expect(advice).toHaveTextContent('without changing picture quality or resolution');
+    expect(advice).not.toHaveTextContent(/Export at|Use H.264|AAC|30 fps/);
   });
 
   it('a 4K file on a 4K fleet is green; on an unknown fleet it is red for the size', () => {
@@ -110,7 +122,7 @@ describe('VideoEncodeCard', () => {
     render(<VideoEncodeCard asset={fourK} now={NOW} />);
     expect(screen.getByTestId('video-encode-card')).toHaveAttribute('data-encode-status', 'red');
     expect(screen.getByTestId('video-encode-reasons')).toHaveTextContent('3840 × 2160 — larger than your biggest screen (1920 × 1080)');
-    expect(screen.getByTestId('video-encode-suggested')).toHaveTextContent("Suggested: MP4, H.264 at your screens' resolution");
+    expect(screen.getByTestId('video-encode-suggested')).toHaveTextContent("Export at 1920 × 1080");
   });
 
   it('says it is still checking a video uploaded seconds ago, and admits an unchecked legacy upload', () => {
@@ -193,7 +205,7 @@ describe('AssetEncodeBadge', () => {
     const popover = screen.getByTestId('video-encode-popover');
     expect(popover).toHaveTextContent('Likely to stutter or fail on screen hardware');
     expect(popover).toHaveTextContent('H.265 / HEVC video');
-    expect(popover).toHaveTextContent("Suggested: MP4, H.264 at your screens' resolution");
+    expect(popover).toHaveTextContent("Suggested changes: Use H.264 video");
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(screen.queryByTestId('video-encode-popover')).not.toBeInTheDocument();
   });

@@ -628,6 +628,33 @@ describe('Media Library v1 — deletion is admin-only', () => {
 });
 
 describe('Media Library v1 — upload queue phases (§14)', () => {
+  it('shows only the fast-start change during upload and removes the original warning after upload', async () => {
+    const inspected = jest.spyOn(require('@/lib/mp4-inspect'), 'inspectVideoFile').mockResolvedValue({
+      container: 'mp4', facts: { codec: 'h264', profile: 'High', level: 40, pixFmt: 'yuv420p',
+        width: 1920, height: 1080, fps: 30, bitrateKbps: 8_000, fastStart: false,
+        variableFrameRate: false, audio: null, container: 'mp4' },
+    });
+    let finish!: (result: { status: string }) => void;
+    const upload = jest.spyOn(require('@/lib/direct-upload'), 'uploadAssetDirect').mockImplementation(
+      () => new Promise((resolve) => { finish = resolve; }),
+    );
+    try {
+      mount();
+      const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+      await act(async () => {
+        fireEvent.change(input, { target: { files: [new File(['video'], 'Canva.mp4', { type: 'video/mp4' })] } });
+      });
+      const warning = rtl.getByTestId('upload-encode');
+      expect(warning).toHaveTextContent('Suggested changes: Fast start:');
+      expect(warning).not.toHaveTextContent(/Use H.264|AAC stereo/);
+      await act(async () => { finish({ status: 'PUBLISHED' }); });
+      expect(rtl.queryByTestId('upload-encode')).not.toBeInTheDocument();
+    } finally {
+      inspected.mockRestore();
+      upload.mockRestore();
+    }
+  });
+
   it('a rejected file never enters the queue as Uploading — it names the fix', async () => {
     mount();
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
@@ -677,16 +704,33 @@ describe('Media Library — videos being optimized for screens (2026-09-23)', ()
     expect(rtl.getByTestId('video-optimizing')).toHaveTextContent('Optimizing for screens… 77%');
   });
 
-  it('a finished swap shows what it saved; one that saved nothing shows nothing on the tile', () => {
+  it('completed optimization stays off previews and is available in file details', () => {
     assetsResponse = [
       VIDEO({ status: 'done', reason: 'swapped', progress: 100, sourceBytes: 1_000_000_000, outputBytes: 220_000_000, finishedAt: iso(1) }, { fileSize: 220_000_000 }),
       VIDEO({ status: 'skipped', reason: 'not-smaller', progress: null, sourceBytes: 5_000_000, outputBytes: 6_000_000, finishedAt: iso(1) }, { id: 'v2', originalName: 'Small.mp4' }),
     ];
     mount();
-    const chips = rtl.getAllByTestId('video-optimized');
-    expect(chips).toHaveLength(1);
-    expect(chips[0]).toHaveTextContent('Optimized −78%');
+    expect(rtl.queryByTestId('video-optimized')).not.toBeInTheDocument();
     expect(rtl.queryByTestId('video-optimizing')).not.toBeInTheDocument();
+    fireEvent.click(rtl.getByRole('button', { name: 'View details for Gym-4K.mp4' }));
+    expect(rtl.getByTestId('video-optimized-detail')).toHaveTextContent('Optimization complete:');
+    expect(rtl.getByText('Ready to use')).toBeInTheDocument();
+    expect(rtl.queryByText('Published')).not.toBeInTheDocument();
+  });
+
+  it('an open detail panel follows the finished list row after the progress poll stops', () => {
+    assetsResponse = [VIDEO({ status: 'running', progress: 48, sourceBytes: 1_000_000_000 })];
+    const view = mount();
+    fireEvent.click(rtl.getByRole('button', { name: 'View details for Gym-4K.mp4' }));
+    expect(rtl.getAllByTestId('video-optimizing')).toHaveLength(2);
+    assetsResponse = [VIDEO({ status: 'done', reason: 'swapped', progress: 100, sourceBytes: 1_000_000_000, outputBytes: 220_000_000, finishedAt: iso(1) }, { fileSize: 220_000_000, fileUrl: 'https://cdn.example.com/optimized.mp4' })];
+    liveOptimization = new Map();
+    view.rerender(<AssetsPage />);
+    expect(rtl.queryByTestId('video-optimizing')).not.toBeInTheDocument();
+    expect(rtl.getByTestId('video-optimized-detail')).toHaveTextContent('Optimization complete:');
+    expect(document.querySelector('video[controls]')).toHaveAttribute('src', 'https://cdn.example.com/optimized.mp4');
+    const dialog = rtl.getByRole('dialog', { name: 'Asset details: Gym-4K.mp4' });
+    expect(dialog).toHaveTextContent('209.8 MB');
   });
 });
 

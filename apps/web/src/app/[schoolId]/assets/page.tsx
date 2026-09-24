@@ -60,7 +60,7 @@ import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { transformedImageUrl } from '@/lib/asset-image';
 import { AssetEncodeBadge, VideoEncodeCard } from '@/components/assets/VideoEncode';
 import { useEncodeTarget } from '@/hooks/use-encode-target';
-import { encodeWarns, encodeWarnings, encodeNotes, describeEncodeReason, isVideoMime, libraryPollMs, type VideoEncodeState } from '@/lib/video-encode-copy';
+import { encodeWarns, encodeSuggestions, encodeWarnings, encodeNotes, describeEncodeReason, isVideoMime, libraryPollMs, type VideoEncodeState } from '@/lib/video-encode-copy';
 import { inspectVideoFile } from '@/lib/mp4-inspect';
 import { gradeVideoEncode } from '@cms/api-types';
 import {
@@ -1106,7 +1106,7 @@ export default function AssetsPage() {
   const selectedLive = selectedAsset
     ? (assets.find((a) => a?.id === selectedAsset.id) ?? selectedAsset)
     : null;
-  const selectedMetaDims = selectedAsset ? metaDims(selectedAsset) : null;
+  const selectedMetaDims = selectedLive ? metaDims(selectedLive) : null;
   const selectedRawUrl =
     selectedAsset?.fileUrl && selectedAsset.mimeType?.startsWith('image/')
       ? absoluteUrl(selectedAsset)
@@ -1114,7 +1114,7 @@ export default function AssetsPage() {
   const measuredDims = useImageDimensions(selectedMetaDims ? null : selectedRawUrl);
   const selectedDims = selectedMetaDims ?? measuredDims;
   // Video only — the probe writes it beside the dimensions; images have none.
-  const selectedDurationMs = selectedAsset ? metaDurationMs(selectedAsset) : null;
+  const selectedDurationMs = selectedLive ? metaDurationMs(selectedLive) : null;
 
   // Close folder context menu on outside click
   useEffect(() => {
@@ -1472,7 +1472,7 @@ export default function AssetsPage() {
                     has been read — not as a toast somewhere else. Green is one
                     quiet line; amber/red list the reasons and what to export;
                     a size note (uses part of the panel) is advice, not a warning. */}
-                {u.encode && u.encode.status !== 'checking' && u.encode.status !== 'unknown' && (
+                {u.phase !== 'success' && u.phase !== 'pending-review' && u.encode && u.encode.status !== 'checking' && u.encode.status !== 'unknown' && (
                   <div className="mt-1 ml-6 pr-2" data-testid="upload-encode" data-encode-status={u.encode.status}>
                     <p className={`text-[10px] font-bold leading-snug ${u.encode.status === 'red' ? 'text-rose-700' : u.encode.status === 'amber' ? 'text-amber-700' : 'text-emerald-700'}`}>
                       {t(`assetsLib.encode.${u.encode.status}`)}
@@ -1485,9 +1485,7 @@ export default function AssetsPage() {
                     ))}
                     {(encodeWarns(u.encode.status) || encodeNotes(u.encode.verdict).length > 0) && (
                       <p className="text-[10px] text-slate-600 leading-snug mt-0.5">
-                        {encodeTarget.panelKnown
-                          ? t('assetsLib.encode.suggested', { width: encodeTarget.panelWidth, height: encodeTarget.panelHeight })
-                          : t('assetsLib.encode.suggestedGeneric')}
+                        {encodeSuggestions(t, u.encode.verdict)}
                       </p>
                     )}
                   </div>
@@ -2094,7 +2092,7 @@ export default function AssetsPage() {
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={absoluteUrl(selectedAsset)} alt={selectedAsset.altText || ''} className="max-w-full max-h-full object-contain" />
               ) : selectedAsset.mimeType?.startsWith('video/') ? (
-                <video src={absoluteUrl(selectedAsset)} controls autoPlay className="max-w-full max-h-full" />
+                <video src={absoluteUrl(selectedLive)} controls autoPlay className="max-w-full max-h-full" />
               ) : selectedAsset.mimeType?.startsWith('audio/') ? (
                 <div className="text-center px-8 w-full">
                   {typeIcon(selectedAsset.mimeType, 'w-12 h-12 mx-auto mb-4')}
@@ -2164,7 +2162,7 @@ export default function AssetsPage() {
                     <HardDrive className="w-3 h-3 text-slate-400" aria-hidden />
                     <span className="text-[10px] font-bold text-slate-500 uppercase">{t('assetsLib.labelSize')}</span>
                   </div>
-                  <p className="text-xs font-semibold text-slate-800">{fmtSize(selectedAsset.fileSize)}</p>
+                  <p className="text-xs font-semibold text-slate-800">{fmtSize(selectedLive.fileSize)}</p>
                 </div>
                 <div className="bg-slate-50 rounded-lg p-3">
                   <div className="flex items-center gap-1.5 mb-1">
@@ -2205,13 +2203,13 @@ export default function AssetsPage() {
               />
 
               {/* 4c. The signage transcode (2026-09-23) — what screens actually download. */}
-              {isVideo(selectedAsset) && optimizationOf(selectedAsset, liveOptimization) && (
+              {isVideo(selectedAsset) && optimizationOf(selectedLive, liveOptimization) && (
                 <div className="bg-slate-50 rounded-lg p-3" data-testid="asset-screen-version">
                   <div className="flex items-center gap-1.5 mb-1">
                     <Video className="w-3 h-3 text-slate-400" aria-hidden />
                     <span className="text-[10px] font-bold text-slate-500 uppercase">{t('assetsLib.labelScreenVersion')}</span>
                   </div>
-                  <VideoOptimizationNote optimization={optimizationOf(selectedAsset, liveOptimization)} variant="detail" fmtSize={fmtSize} />
+                  <VideoOptimizationNote optimization={optimizationOf(selectedLive, liveOptimization)} variant="detail" fmtSize={fmtSize} />
                 </div>
               )}
 
@@ -2248,13 +2246,13 @@ export default function AssetsPage() {
               <div className="flex items-center justify-between bg-slate-50 rounded-lg p-3">
                 <span className="text-[10px] font-bold text-slate-500 uppercase">{t('assetsLib.labelStatus')}</span>
                 <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
-                  selectedAsset.status === 'PENDING_APPROVAL'
+                  selectedLive.status === 'PENDING_APPROVAL'
                     ? 'bg-amber-100 text-amber-900'
-                    : selectedAsset.status === 'ARCHIVED'
+                    : selectedLive.status === 'ARCHIVED'
                     ? 'bg-slate-200 text-slate-700'
                     : 'bg-emerald-100 text-emerald-800'
                 }`}>
-                  {selectedAsset.status === 'PENDING_APPROVAL' ? 'Pending review' : selectedAsset.status === 'ARCHIVED' ? 'Archived' : 'Published'}
+                  {t(selectedLive.status === 'PUBLISHED' ? 'assetsLib.statusReady' : selectedLive.status === 'PENDING_APPROVAL' ? 'assetsLib.statusPending' : selectedLive.status === 'ARCHIVED' ? 'assetsLib.statusArchived' : 'assetsLib.statusUnavailable')}
                 </span>
               </div>
 

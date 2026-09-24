@@ -3,12 +3,11 @@
 /**
  * One quiet line about a video's signage transcode (2026-09-23):
  *   queued/running → "Optimizing for screens… 42%"
- *   done           → "Optimized −78%"  (card/row) · "1.4 GB → 312 MB (saved 1.1 GB)" (detail)
+ *   done           → details only: "1.4 GB → 312 MB (saved 1.1 GB)"
  *   skipped/failed → nothing on a card; an honest sentence in the detail panel
  *
- * The media library's §11 rule holds: tiles only carry what changes what the
- * operator can do or know at a glance — so a finished job that saved nothing
- * says nothing on the card.
+ * Previews carry only active progress. Completed optimization belongs in
+ * file details, where savings cannot be mistaken for unfinished progress.
  */
 import { useTranslations } from 'next-intl';
 import { Loader2 } from 'lucide-react';
@@ -41,16 +40,8 @@ export function VideoOptimizationNote({
     );
   }
 
+  if (variant !== 'detail') return null;
   const saved = savedPercent(o);
-  if (variant !== 'detail') {
-    if (saved === null) return null;
-    return (
-      <span className="inline-flex text-[10px] font-bold text-emerald-700" data-testid="video-optimized">
-        {t('optimizedChip', { pct: saved })}
-      </span>
-    );
-  }
-
   if (saved !== null) {
     return (
       <span className="text-xs font-semibold text-slate-800" data-testid="video-optimized-detail">

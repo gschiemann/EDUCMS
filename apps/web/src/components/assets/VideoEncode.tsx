@@ -31,13 +31,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { AlertTriangle, CheckCircle2, HelpCircle, Loader2, Tv2, XCircle } from 'lucide-react';
-import type { VideoEncodeTarget } from '@cms/api-types';
 import { useEncodeTarget } from '@/hooks/use-encode-target';
 import {
   describeEncodeReason,
   encodeFacts,
   encodeNotes,
   encodeRemuxRecord,
+  encodeSuggestions,
   encodeWarnings,
   encodeWarns,
   videoEncodeState,
@@ -155,7 +155,7 @@ export function AssetEncodeBadge({
           data-testid="video-encode-popover"
           className="absolute left-0 top-full z-30 mt-1.5 w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-slate-200 bg-white p-3 text-left shadow-[0_8px_30px_rgba(0,0,0,0.12)]"
         >
-          <EncodeVerdictBody t={t} state={state} target={target} compact />
+          <EncodeVerdictBody t={t} state={state} compact />
         </div>
       )}
     </span>
@@ -194,21 +194,17 @@ function StatusIcon({ status }: { status: VideoEncodeStatus }) {
 function EncodeVerdictBody({
   t,
   state,
-  target,
   compact = false,
 }: {
   t: Translator;
   state: VideoEncodeState;
-  target: VideoEncodeTarget;
   compact?: boolean;
 }) {
   const { status, verdict } = state;
   const warnings = encodeWarnings(verdict);
   const notes = encodeNotes(verdict);
   const differs = encodeWarns(status) || notes.length > 0;
-  const suggested = target.panelKnown
-    ? t('assetsLib.encode.suggested', { width: target.panelWidth, height: target.panelHeight })
-    : t('assetsLib.encode.suggestedGeneric');
+  const suggested = encodeSuggestions(t, verdict);
   const indent = compact ? '' : 'pl-[22px]';
   return (
     <>
@@ -294,7 +290,7 @@ export function VideoEncodeCard({
           ))}
         </dl>
       )}
-      <EncodeVerdictBody t={t} state={state} target={target} />
+      <EncodeVerdictBody t={t} state={state} />
       {remux && (
         // The index used to be the warning on this file; say that it was
         // moved, and when, so a green card after an amber one is not a mystery.

@@ -71,6 +71,14 @@ export function describeEncodeReason(t: EncodeTranslator, reason: VideoEncodeRea
   return t(encodeReasonKey(reason.code), reason.detail);
 }
 
+/** Suggest only changes flagged by the probe, never repeat already-matching specs. */
+export function encodeSuggestions(t: EncodeTranslator, verdict: VideoEncodeVerdict): string {
+  const changes = verdict.reasons.map((reason) =>
+    t(`assetsLib.encode.change.${ENCODE_REASON_KEY[reason.code]}`, reason.detail),
+  );
+  return changes.length ? t('assetsLib.encode.suggestedChanges', { changes: changes.join(' · ') }) : '';
+}
+
 export function isVideoMime(mime: unknown): boolean {
   return typeof mime === 'string' && mime.toLowerCase().startsWith('video/');
 }
