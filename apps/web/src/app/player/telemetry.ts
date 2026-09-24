@@ -116,6 +116,16 @@ export interface TelemetryVideoReport {
   elapsedMs?: number;
   width?: number;
   height?: number;
+  /**
+   * Rebuffer pauses in the same stretch: how many times playback stopped
+   * mid-clip for lack of data, and the wall-clock ms it spent stopped — the
+   * delivery stutter dropped frames cannot see (a file with its MP4 index at
+   * the end drops nothing and still freezes while bytes arrive). ABSENT means
+   * "not counted", never "no pauses". ⚠️ Same rollout rule as the block: the
+   * API that accepts these keys ships before the player that sends them.
+   */
+  stalls?: number;
+  stalledMs?: number;
 }
 
 export interface TelemetryBody {
@@ -340,7 +350,8 @@ export interface TelemetryBodyInput {
   /** Durable-REFRESH ack — the exact command VALUE this page acted on. */
   refreshAckMs?: number | null;
   capsHash?: string | null;
-  /** The last video's dropped-frame sample, when there is a new one to report. */
+  /** The last video's playback sample (dropped frames, and rebuffer pauses
+   *  when counted), when there is a new one to report. */
   video?: TelemetryVideoReport | null;
 }
 
@@ -395,6 +406,10 @@ export function buildTelemetryBody(input: TelemetryBodyInput): TelemetryBody {
   return body;
 }
 
+/** The server's bounds on the rebuffer counters (`telemetry.schema.ts`). */
+const VIDEO_MAX_STALLS = 1_000_000;
+const VIDEO_MAX_STALLED_MS = 86_400_000;
+
 /** Only the documented keys, as bounded non-negative ints — the server's
  *  schema is strict and a stray key would 400 the whole report. */
 function videoReport(v: TelemetryVideoReport): TelemetryVideoReport {
@@ -410,6 +425,15 @@ function videoReport(v: TelemetryVideoReport): TelemetryVideoReport {
     out.width = Math.floor(v.width);
     out.height = Math.floor(v.height);
   }
+  // Rebuffer pauses: CLAMPED to the server's bounds, because one value past
+  // them 400s the WHOLE report — liveness and render proof with it. Omitted,
+  // never zeroed, when absent or garbage: absent means "not counted".
+  const bounded = (n: unknown, hi: number): number | null =>
+    typeof n === 'number' && Number.isFinite(n) && n >= 0 ? Math.min(Math.floor(n), hi) : null;
+  const stalls = bounded(v.stalls, VIDEO_MAX_STALLS);
+  if (stalls !== null) out.stalls = stalls;
+  const stalledMs = bounded(v.stalledMs, VIDEO_MAX_STALLED_MS);
+  if (stalledMs !== null) out.stalledMs = stalledMs;
   return out;
 }
 

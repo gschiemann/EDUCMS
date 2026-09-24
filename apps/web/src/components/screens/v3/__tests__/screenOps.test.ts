@@ -921,6 +921,63 @@ describe('deriveVideoPlayback', () => {
     expect(v.detail).toBe('6 of 1,830 frames dropped (0.3%) · 5m ago');
   });
 
+  // Rebuffer pauses: a clip can drop no frames and still freeze while its
+  // bytes arrive (an MP4 whose index sits at the end of the file).
+  it('a clean-frame clip that paused to buffer for a second or more is at least hitching', () => {
+    const v = deriveVideoPlayback(scr({ lastVideoReport: sample({ stalls: 1, stalledMs: 1_200 }) }), NOW)!;
+    expect(v.grade).toBe('hitching');
+    expect(v.headline).toBe('Hitched a little on this screen');
+    expect(v.detail).toBe('6 of 1,830 frames dropped (0.3%) · 1920 × 1080 · 2m ago · paused once to buffer (1.2 s)');
+  });
+
+  it('three pauses, or five seconds spent waiting, is stuttering whatever the dropped-frame share', () => {
+    const v = deriveVideoPlayback(scr({ lastVideoReport: sample({ stalls: 4, stalledMs: 9_000 }) }), NOW)!;
+    expect(v.grade).toBe('stuttering');
+    expect(v.headline).toBe('Stuttered on this screen');
+    expect(v.detail.endsWith(' · paused 4 times to buffer (9 s)')).toBe(true);
+    const grade = (over: Record<string, unknown>) => deriveVideoPlayback(scr({ lastVideoReport: sample(over) }), NOW)!.grade;
+    expect(grade({ stalls: 3, stalledMs: 900 })).toBe('stuttering'); // the count alone
+    expect(grade({ stalls: 1, stalledMs: 5_000 })).toBe('stuttering'); // the time alone
+    expect(grade({ droppedFrames: 40, stalls: 3, stalledMs: 3_000 })).toBe('stuttering'); // lifts a frame-hitch
+  });
+
+  it('a sub-second pause is spelled out but moves no grade, and a pause never LOWERS a dropped-frame verdict', () => {
+    const blip = deriveVideoPlayback(scr({ lastVideoReport: sample({ stalls: 1, stalledMs: 800 }) }), NOW)!;
+    expect(blip.grade).toBe('smooth');
+    expect(blip.detail.endsWith(' · paused once to buffer (0.8 s)')).toBe(true);
+    const grade = (over: Record<string, unknown>) => deriveVideoPlayback(scr({ lastVideoReport: sample(over) }), NOW)!.grade;
+    expect(grade({ droppedFrames: 312, stalls: 1, stalledMs: 1_500 })).toBe('stuttering');
+    expect(grade({ droppedFrames: 40, stalls: 1, stalledMs: 1_500 })).toBe('hitching');
+  });
+
+  it('writes the waiting time with one decimal at most, and never "0 s"', () => {
+    const detail = (stalls: number, stalledMs: number) =>
+      deriveVideoPlayback(scr({ lastVideoReport: sample({ stalls, stalledMs }) }), NOW)!.detail;
+    expect(detail(2, 12_345)).toMatch(/ · paused 2 times to buffer \(12\.3 s\)$/);
+    expect(detail(2, 30)).toMatch(/ · paused 2 times to buffer \(<0\.1 s\)$/);
+    expect(detail(1_200, 86_400_000)).toMatch(/ · paused 1,200 times to buffer \(86,400 s\)$/);
+  });
+
+  it('no pauses — or a player that does not count them — reads exactly as before', () => {
+    const plain = '6 of 1,830 frames dropped (0.3%) · 1920 × 1080 · 2m ago';
+    const read = (over: Record<string, unknown>) => deriveVideoPlayback(scr({ lastVideoReport: sample(over) }), NOW)!;
+    expect(read({ stalls: 0, stalledMs: 0 })).toMatchObject({ grade: 'smooth', detail: plain });
+    expect(read({})).toMatchObject({ grade: 'smooth', detail: plain });
+    // Garbage counts, and waiting time with no pause behind it, grade nothing.
+    expect(read({ stalls: -2, stalledMs: 60_000 })).toMatchObject({ grade: 'smooth', detail: plain });
+    expect(read({ stalls: 0, stalledMs: 60_000 })).toMatchObject({ grade: 'smooth', detail: plain });
+    // A count with no time says the count, and invents no duration.
+    expect(read({ stalls: 2 })).toMatchObject({ grade: 'smooth', detail: `${plain} · paused 2 times to buffer` });
+  });
+
+  it('pauses still judge a sample that is too short for its dropped-frame share', () => {
+    const grade = (over: Record<string, unknown>) =>
+      deriveVideoPlayback(scr({ lastVideoReport: sample({ totalFrames: 90, droppedFrames: 0, ...over }) }), NOW)!.grade;
+    expect(grade({ stalls: 3, stalledMs: 7_000 })).toBe('stuttering');
+    expect(grade({ stalls: 1, stalledMs: 1_000 })).toBe('hitching');
+    expect(grade({ stalls: 1, stalledMs: 400 })).toBe('short');
+  });
+
   it('rides every ops row', () => {
     const ops = buildScreenOps({
       screens: [scr({ lastVideoReport: sample({ droppedFrames: 312 }) }), scr({ id: 'scr-2' })],

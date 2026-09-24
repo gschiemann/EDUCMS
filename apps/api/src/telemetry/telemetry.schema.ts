@@ -56,6 +56,18 @@ const syncSchema = z.strictObject({
  * finished (or has been looping): how many frames the decoder produced and
  * how many the compositor dropped. Sent only when the player has a NEW sample
  * since its last report; the server keeps the latest one per screen.
+ *
+ * `stalls` / `stalledMs` — the REBUFFER pauses in the same stretch: how many
+ * times playback stopped mid-clip for lack of data, and the wall-clock time
+ * it spent stopped. Dropped frames cannot see this at all — a file whose MP4
+ * index sits at the end (no fast start) can drop nothing and still freeze
+ * while the next bytes arrive. Optional: a player that predates the counter
+ * sends neither, and absence means "not counted", never "never paused".
+ *
+ * ⚠️ ROLLOUT ORDER — same rule as `versions.bundleId`: this object is a
+ * `strictObject`, so an API that does not know `stalls`/`stalledMs` answers
+ * 400 to the WHOLE report. This API has to be live before a player bundle
+ * that sends them.
  */
 const videoSchema = z.strictObject({
   /** The file's URL (or its last path segment) — matched to the asset by the dashboard. */
@@ -66,6 +78,10 @@ const videoSchema = z.strictObject({
   elapsedMs: z.number().finite().min(0).max(86_400_000).optional(),
   width: z.number().finite().min(0).max(16_384).optional(),
   height: z.number().finite().min(0).max(16_384).optional(),
+  /** Rebuffer pauses in this stretch. */
+  stalls: z.number().finite().min(0).max(1_000_000).optional(),
+  /** Wall-clock ms spent inside those pauses. */
+  stalledMs: z.number().finite().min(0).max(86_400_000).optional(),
 });
 
 export const screenTelemetrySchema = z.strictObject({

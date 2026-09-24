@@ -354,6 +354,33 @@ describe('body assembly', () => {
     });
   });
 
+  it('carries the rebuffer pauses as ints clamped to the server bounds, and omits them when absent or garbage', () => {
+    const base = { url: 'https://cdn/x/clip.mp4', totalFrames: 1_800, droppedFrames: 0 };
+    expect(buildTelemetryBody({ video: { ...base, stalls: 4.9, stalledMs: 9_000.7 } }).video).toEqual({
+      ...base,
+      stalls: 4,
+      stalledMs: 9_000,
+    });
+    // A value past the server's bounds would 400 the WHOLE report (liveness
+    // and render proof with it) — so it is clamped, never sent raw.
+    expect(buildTelemetryBody({ video: { ...base, stalls: 5_000_000, stalledMs: 3 * 86_400_000 } }).video).toEqual({
+      ...base,
+      stalls: 1_000_000,
+      stalledMs: 86_400_000,
+    });
+    // A counted zero is a fact ("counted, none") and is sent…
+    expect(buildTelemetryBody({ video: { ...base, stalls: 0, stalledMs: 0 } }).video).toEqual({
+      ...base,
+      stalls: 0,
+      stalledMs: 0,
+    });
+    // …but absent or garbage is never invented into one.
+    for (const junk of [undefined, -1, Number.NaN, Infinity]) {
+      const video = buildTelemetryBody({ video: { ...base, stalls: junk, stalledMs: junk } }).video;
+      expect(video).toEqual(base);
+    }
+  });
+
   it('a full report is the shape the server accepts', () => {
     const body = buildTelemetryBody({
       playerVersion: '1.1.17',

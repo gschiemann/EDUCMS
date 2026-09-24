@@ -82,6 +82,9 @@
  *                                     has a NEW one; the server keeps the
  *                                     latest. Answers "did that file stutter
  *                                     on the wall?" from the device.
+ *                                     `stalls` / `stalledMs` add the rebuffer
+ *                                     pauses in the same stretch — the
+ *                                     delivery stutter dropped frames miss.
  *   refreshAckMs                   → clears pendingRefreshAt on VALUE
  *                                     IDENTITY only (player rule 6)
  *   capsHash                       → drives the `capabilitiesReportRequested`

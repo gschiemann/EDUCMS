@@ -1117,6 +1117,13 @@ export interface VideoPlaybackSample {
   elapsedMs?: number | null;
   width?: number | null;
   height?: number | null;
+  /**
+   * Rebuffer pauses in the same stretch — times playback stopped mid-clip for
+   * lack of data, and the wall-clock ms it spent stopped. Absent on samples
+   * from a player that does not count them ("not counted", not "none").
+   */
+  stalls?: number | null;
+  stalledMs?: number | null;
   at?: string | null;
 }
 
@@ -1128,7 +1135,7 @@ export interface VideoPlayback {
   name: string;
   /** "Played smoothly" / "Hitched" / "Stuttered" / "Too short to judge". */
   headline: string;
-  /** "12 of 1,830 frames dropped (0.7%) · 1920 × 1080 · 2m ago". */
+  /** "12 of 1,830 frames dropped (0.7%) · 1920 × 1080 · 2m ago", then " · paused 4 times to buffer (9 s)" when it did. */
   detail: string;
   droppedPct: number;
   totalFrames: number;
@@ -1142,6 +1149,35 @@ export const VIDEO_SAMPLE_MIN_FRAMES = 150;
 /** Dropped-frame share thresholds. Under 1% is invisible; over 5% is what an operator calls choppy. */
 export const VIDEO_HITCHING_PCT = 1;
 export const VIDEO_STUTTERING_PCT = 5;
+/**
+ * Rebuffer thresholds. A pause to buffer is a FREEZE on the glass, which no
+ * dropped-frame share can express — a file whose MP4 index sits at the end
+ * drops nothing and still stops while its bytes arrive. So pauses grade the
+ * sample whatever its dropped-frame share: pauses adding up to a second or
+ * more are at least a hitch; three pauses, or five seconds spent waiting,
+ * are a stutter.
+ */
+export const VIDEO_STALL_HITCHING_MS = 1_000;
+export const VIDEO_STALL_STUTTERING_COUNT = 3;
+export const VIDEO_STALL_STUTTERING_MS = 5_000;
+
+const VIDEO_HEADLINE: Record<VideoPlaybackGrade, string> = {
+  smooth: 'Played smoothly on this screen',
+  hitching: 'Hitched a little on this screen',
+  stuttering: 'Stuttered on this screen',
+  short: 'Too short to judge',
+};
+
+/** A reported counter as a non-negative int, or null when absent or garbage. */
+const sampleCount = (n: unknown): number | null =>
+  typeof n === 'number' && Number.isFinite(n) && n >= 0 ? Math.floor(n) : null;
+
+/** "9 s", "0.8 s", "125.4 s" — one decimal at most; a blip that rounds to nothing reads "<0.1 s", never "0 s". */
+function stallSeconds(ms: number): string {
+  const tenths = Math.round(ms / 100);
+  if (tenths < 1) return '<0.1 s';
+  return `${(tenths / 10).toLocaleString('en-US', { maximumFractionDigits: 1 })} s`;
+}
 
 export function videoSampleName(url: string | null | undefined): string {
   const raw = (url ?? '').split('?')[0].split('#')[0];
@@ -1154,10 +1190,11 @@ export function videoSampleName(url: string | null | undefined): string {
 }
 
 /**
- * The player's dropped-frame sample as a verdict. Pure. `null` when the
- * screen has never reported one. Copy states only what the counters prove:
- * a share of frames dropped, never "the file is bad" — the file's own grade
- * lives in the Media Library, and the two together tell file from player.
+ * The player's playback sample as a verdict. Pure. `null` when the screen
+ * has never reported one. Copy states only what the counters prove — a share
+ * of frames dropped and the pauses to buffer, never "the file is bad": the
+ * file's own grade lives in the Media Library, and the two together tell
+ * file from player.
  */
 export function deriveVideoPlayback(screen: OpsScreen, now: number): VideoPlayback | null {
   const s = screen.lastVideoReport;
@@ -1174,23 +1211,30 @@ export function deriveVideoPlayback(screen: OpsScreen, now: number): VideoPlayba
   const age = compactAge(atMs, now);
   const size = s.width && s.height ? `${s.width} × ${s.height}` : null;
   const framesLine = `${dropped.toLocaleString('en-US')} of ${total.toLocaleString('en-US')} frames dropped (${droppedPct}%)`;
-  const detail = [framesLine, size, age ? `${age} ago` : null].filter(Boolean).join(' · ');
+  // Rebuffer pauses. Waiting time with no pause behind it is incoherent (the
+  // player never sends it) and is ignored, rather than graded with no reason
+  // on screen.
+  const stalls = sampleCount(s.stalls) ?? 0;
+  const stalledMs = stalls > 0 ? sampleCount(s.stalledMs) : null;
+  const pausedLine =
+    stalls > 0
+      ? `paused ${stalls === 1 ? 'once' : `${stalls.toLocaleString('en-US')} times`} to buffer${stalledMs !== null ? ` (${stallSeconds(stalledMs)})` : ''}`
+      : null;
+  const detail = [framesLine, size, age ? `${age} ago` : null, pausedLine].filter(Boolean).join(' · ');
   let grade: VideoPlaybackGrade;
-  let headline: string;
-  if (total < VIDEO_SAMPLE_MIN_FRAMES) {
-    grade = 'short';
-    headline = 'Too short to judge';
-  } else if (droppedPct >= VIDEO_STUTTERING_PCT) {
+  if (total < VIDEO_SAMPLE_MIN_FRAMES) grade = 'short';
+  else if (droppedPct >= VIDEO_STUTTERING_PCT) grade = 'stuttering';
+  else if (droppedPct >= VIDEO_HITCHING_PCT) grade = 'hitching';
+  else grade = 'smooth';
+  // Pauses grade the sample whatever its dropped-frame share. A pause needs
+  // no frame floor to be believed, so it lifts "too short to judge" as well.
+  const waitedMs = stalledMs ?? 0;
+  if (stalls >= VIDEO_STALL_STUTTERING_COUNT || waitedMs >= VIDEO_STALL_STUTTERING_MS) {
     grade = 'stuttering';
-    headline = 'Stuttered on this screen';
-  } else if (droppedPct >= VIDEO_HITCHING_PCT) {
+  } else if (stalls >= 1 && waitedMs >= VIDEO_STALL_HITCHING_MS && (grade === 'smooth' || grade === 'short')) {
     grade = 'hitching';
-    headline = 'Hitched a little on this screen';
-  } else {
-    grade = 'smooth';
-    headline = 'Played smoothly on this screen';
   }
-  return { grade, name, headline, detail, droppedPct, totalFrames: total, droppedFrames: dropped, age };
+  return { grade, name, headline: VIDEO_HEADLINE[grade], detail, droppedPct, totalFrames: total, droppedFrames: dropped, age };
 }
 
 export interface OpsGroup {

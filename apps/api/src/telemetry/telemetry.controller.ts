@@ -307,10 +307,11 @@ export class TelemetryController {
     }
 
     // ── 4b. VIDEO PLAYBACK QUALITY (2026-09-24) ─────────────────────────
-    // The dropped-frame sample for the clip the player last played. Its own
-    // block, outside the render-proof debounce: the client sends it only
-    // when it has a NEW sample, so every arrival is worth one write. Never
-    // synthesized — a screen that played no video keeps its last sample.
+    // The dropped-frame sample for the clip the player last played, with its
+    // rebuffer pauses when the player counts them. Its own block, outside
+    // the render-proof debounce: the client sends it only when it has a NEW
+    // sample, so every arrival is worth one write. Never synthesized — a
+    // screen that played no video keeps its last sample.
     const videoReport = sanitizeVideoReport(body.video);
     if (videoReport) {
       data.lastVideoReport = { ...videoReport, at: now.toISOString() };
@@ -572,6 +573,13 @@ export function sanitizeVideoReport(
     out.width = width;
     out.height = height;
   }
+  // Rebuffer pauses — each kept only when sent. A player that predates the
+  // counter sends neither, and the dashboard must read that as "not
+  // counted", never as a clean "no pauses".
+  const stalls = int(v.stalls, 1_000_000);
+  if (stalls !== null) out.stalls = stalls;
+  const stalledMs = int(v.stalledMs, 86_400_000);
+  if (stalledMs !== null) out.stalledMs = stalledMs;
   return out;
 }
 

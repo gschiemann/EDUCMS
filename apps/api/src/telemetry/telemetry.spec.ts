@@ -24,6 +24,7 @@
 import {
   TelemetryController,
   resetTelemetryStateForTests,
+  sanitizeVideoReport,
   TELEMETRY_COLUMNS,
   TELEMETRY_MIN_ACCEPT_INTERVAL_MS,
 } from './telemetry.controller';
@@ -161,6 +162,8 @@ describe('POST /screens/:id/telemetry', () => {
         elapsedMs: 61_000,
         width: 1920,
         height: 1080,
+        stalls: 4,
+        stalledMs: 9_000,
       },
     });
 
@@ -186,6 +189,8 @@ describe('POST /screens/:id/telemetry', () => {
         elapsedMs: 61_000.5,
         width: 1920,
         height: 1080,
+        stalls: 4.7,
+        stalledMs: 9_000.9,
       },
     });
     const data = writtenData() as Record<string, unknown>;
@@ -196,6 +201,8 @@ describe('POST /screens/:id/telemetry', () => {
       elapsedMs: 61_000,
       width: 1920,
       height: 1080,
+      stalls: 4,
+      stalledMs: 9_000,
       at: new Date(NOW).toISOString(),
     });
     expect(data.lastVideoReportAt).toEqual(new Date(NOW));
@@ -214,6 +221,10 @@ describe('POST /screens/:id/telemetry', () => {
       (first.lastVideoReport as Record<string, unknown>).droppedFrames,
     ).toBe(100);
     expect(first.lastVideoReport).not.toHaveProperty('width');
+    // A player that predates the rebuffer counter sends neither key, and
+    // none is invented — absent means "not counted", never "no pauses".
+    expect(first.lastVideoReport).not.toHaveProperty('stalls');
+    expect(first.lastVideoReport).not.toHaveProperty('stalledMs');
 
     jest.clearAllMocks();
     jest.setSystemTime(NOW + 35_000); // past the per-screen accept window
@@ -238,6 +249,43 @@ describe('POST /screens/:id/telemetry', () => {
         video: { url: 'x', totalFrames: -1, droppedFrames: 0 },
       }),
     ).rejects.toMatchObject({ status: 400 });
+    // The rebuffer counters are bounded like every other number here.
+    const req = makeReq() as Parameters<TelemetryController['report']>[1];
+    for (const bad of [
+      { stalls: -1 },
+      { stalls: 1_000_001 },
+      { stalledMs: -1 },
+      { stalledMs: 86_400_001 },
+    ]) {
+      await expect(
+        controller.report(SCREEN_ID, req, {
+          video: { url: 'x', totalFrames: 10, droppedFrames: 0, ...bad },
+        }),
+      ).rejects.toMatchObject({ status: 400 });
+    }
+    expect(writtenData()).toBeNull();
+  });
+
+  it('sanitizeVideoReport keeps the rebuffer counters only as bounded non-negative ints, and only when sent', () => {
+    const base = { url: 'x', totalFrames: 1830, droppedFrames: 0 };
+    expect(sanitizeVideoReport({ ...base, stalls: 0, stalledMs: 0 })).toEqual({
+      ...base,
+      stalls: 0,
+      stalledMs: 0,
+    });
+    // The schema bounds these first; the sanitizer never trusts that it did.
+    expect(
+      sanitizeVideoReport({ ...base, stalls: 2e6, stalledMs: 1e9 }),
+    ).toEqual({ ...base, stalls: 1_000_000, stalledMs: 86_400_000 });
+    for (const junk of [-1, Number.NaN, Infinity, '3', null]) {
+      const out = sanitizeVideoReport({
+        ...base,
+        stalls: junk,
+        stalledMs: junk,
+      });
+      expect(out).not.toHaveProperty('stalls');
+      expect(out).not.toHaveProperty('stalledMs');
+    }
   });
 
   it('the ONE write that must bust is the durable-REFRESH ack (pendingRefreshAt clear)', async () => {
