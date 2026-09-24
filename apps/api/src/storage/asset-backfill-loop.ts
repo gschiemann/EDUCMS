@@ -58,6 +58,14 @@ export interface BackfillLoopDeps<R extends BackfillAssetRow, T> {
   produce(row: R, storagePath: string): Promise<StepOutcome<T>>;
   /** Tenant-scoped, still-missing-guarded write. Returns rows changed. */
   persist(row: R, value: T): Promise<number>;
+  /**
+   * Optional: stamp a row whose expensive step FAILED (live runs only), so a
+   * permanently unreadable file is not re-attempted on every run — the probe
+   * backfill writes `probedAt` + `probeFailed` (+ version) here. Same
+   * tenant-scoped, still-missing guard as `persist`; returns rows changed. A
+   * throw is caught and logged: the row is then simply retried next run.
+   */
+  persistFailure?(row: R, reason: string): Promise<number>;
   log(line: string): void;
   sleep(ms: number): Promise<void>;
 }
@@ -79,6 +87,8 @@ export interface BackfillLoopCopy<R extends BackfillAssetRow, T> {
   describe(value: T, row: R): string;
   /** "stays NULL, safe to re-run" */
   failedNote: string;
+  /** With `persistFailure`: the note once the failure stamp has been written. */
+  failedStampedNote?: string;
   /** "poster set by another run, left as-is" */
   alreadySetNote: string;
 }
@@ -183,9 +193,19 @@ export async function runAssetBackfill<R extends BackfillAssetRow, T>(
       const made = await deps.produce(row, storagePath);
       if (!made.ok) {
         summary.failed++;
-        deps.log(
-          `  ${tag('failed')} ${label} — ${made.reason} (${copy.failedNote})`,
-        );
+        let note = copy.failedNote;
+        if (deps.persistFailure) {
+          try {
+            const stamped = await deps.persistFailure(row, made.reason);
+            if (stamped > 0 && copy.failedStampedNote)
+              note = copy.failedStampedNote;
+          } catch (e) {
+            note = `${copy.failedNote}; failure stamp not written: ${
+              e instanceof Error ? e.message : String(e)
+            }`;
+          }
+        }
+        deps.log(`  ${tag('failed')} ${label} — ${made.reason} (${note})`);
         await deps.sleep(opts.delayMs);
         continue;
       }

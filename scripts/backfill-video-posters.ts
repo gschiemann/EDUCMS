@@ -1,7 +1,10 @@
 /**
  * backfill-video-posters.ts — one-off MANUAL backfill for historical VIDEO rows:
  *   1. `Asset.posterUrl`            — a poster frame (ffmpeg), since 2026-09-11;
- *   2. `Asset.processingMeta` dims  — width × height / duration (ffprobe), since 2026-09-24.
+ *   2. `Asset.processingMeta` probe — width × height / duration (ffprobe), since
+ *      2026-09-24, and since probe VERSION 2 (same day) the codec facts the
+ *      signage-compatibility grader reads: codec / profile / level / pixel
+ *      format / avg + nominal fps / bitrate / container / fast-start / audio.
  *
  * WHY (posters): the asset picker draws a video tile as `<video preload="none">`,
  * which paints a blank grey rectangle — the operator saw 11 real videos
@@ -12,19 +15,33 @@
  * optimizer ever wrote — so a 257 MB, 1920×1080 video showed "—" for its
  * resolution (operator screenshot, 2026-09-24).
  *
+ * WHY (probe version 2): "The video was exported from Canva and you really
+ * don't get any options besides resolution… why can't we check the file for
+ * fps, the codec, and anything else that the signage might not display
+ * properly… if the content doesn't meet spec we should at least warn them."
+ * A row the version-1 pass probed has dimensions but none of those facts, so
+ * it is a candidate again — exactly once: the version-2 write stamps
+ * `probe.probeVersion = 2`, after which the row is skipped. A row ffprobe
+ * CANNOT read is stamped too (`probedAt` + `probeFailed` + `probeFailedVersion`,
+ * the same stamp the API writes at upload time) and is likewise tried once
+ * per version — pass `--retry-failed` to try those again (a transient
+ * storage or network failure looks the same as an unreadable file).
+ *
  * New uploads now get BOTH automatically (VideoPosterService, fire-and-forget
  * on both upload paths). Every video uploaded before either date is missing
  * one or both; this script closes the gap. The two passes are independent — a
- * row the 2026-09-11 poster run already fixed still gets its dimensions here.
+ * row the 2026-09-11 poster run already fixed still gets its probe here.
  *
  * THIS IS NOT A CRON, and it is DRY-RUN BY DEFAULT. It is:
  *   - dry-run unless you pass --apply — a bare run downloads nothing, writes
  *     nothing, and just reports what it would do;
  *   - idempotent — posters: the candidate filter is `posterUrl IS NULL` and the
- *     write re-asserts it; dimensions: the candidate filter is "no usable
- *     `originalDimensions`" and the write MERGES the probe into the existing
- *     JSON in one statement that re-asserts the same condition — so a re-run
- *     (or two runs at once) can never overwrite a value that already exists;
+ *     write re-asserts it; probe: the candidate filter is "no usable
+ *     `originalDimensions` OR `probe.probeVersion` is not the current one"
+ *     and the write MERGES the probe into the existing JSON in one statement
+ *     that re-asserts the same condition — so a re-run (or two runs at once)
+ *     can never overwrite a value that already exists, and a second `--apply`
+ *     after a complete first one changes nothing;
  *   - resumable — the summary ends with a `--after=<id>` you can hand back to
  *     continue exactly where it stopped (both passes walk ids ascending);
  *   - rate-limited — a pause between rows (default 400 ms) so a large backfill
@@ -35,9 +52,11 @@
  *   pnpm db:backfill-posters
  *   # real run, both passes:
  *   pnpm db:backfill-posters -- --apply
- *   # one pass only:
+ *   # one pass only (`dimensions` is the probe pass — the flag name predates v2):
  *   pnpm db:backfill-posters -- --apply --only=dimensions
  *   pnpm db:backfill-posters -- --apply --only=posters
+ *   # probe pass: also retry rows the current probe version already FAILED on:
+ *   pnpm db:backfill-posters -- --apply --only=dimensions --retry-failed
  *   # tuning:
  *   pnpm db:backfill-posters -- --apply --batch=25 --limit=100 \
  *                               --tenant=<tenantId> --delay=400 --after=<assetId>
@@ -70,7 +89,9 @@ import {
   POSTER_MIME,
 } from '../apps/api/src/storage/video-poster';
 import {
+  buildProbeFailureMeta,
   buildProbeMeta,
+  PROBE_VERSION,
   probeVideoFromBuffer,
   probeVideoFromUrl,
   type ProbeOutcome,
@@ -103,6 +124,8 @@ const TENANT = strFlag('tenant');
 const AFTER = strFlag('after');
 /** `--only=posters` | `--only=dimensions`; default runs both, posters first. */
 const ONLY = strFlag('only');
+/** Probe pass: also retry rows the CURRENT probe version has already failed on. */
+const RETRY_FAILED = hasFlag('retry-failed');
 if (ONLY && ONLY !== 'posters' && ONLY !== 'dimensions') {
   console.error(`--only must be "posters" or "dimensions" (got "${ONLY}"). Aborting.`);
   process.exit(1);
@@ -189,12 +212,49 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 /**
  * "This video row still has no usable dimensions" — as SQL, because Prisma's
  * JSON filters cannot express "key missing or not a number" and the SAME
- * predicate has to sit inside the UPDATE that writes them (see `persistDims`):
- * the guard and the write in one statement is what makes the pass idempotent
- * under a concurrent run or an upload-time probe. `jsonb_typeof(NULL)` is
- * NULL, so a NULL column, an empty object and a missing key all qualify.
+ * predicate has to sit inside the UPDATE that writes them (the probe pass's
+ * `persist`): the guard and the write in one statement is what makes the pass
+ * idempotent under a concurrent run or an upload-time probe. `jsonb_typeof(NULL)`
+ * is NULL, so a NULL column, an empty object and a missing key all qualify.
  */
 const NO_USABLE_DIMS = Prisma.sql`jsonb_typeof(processing_meta->'originalDimensions'->'w') IS DISTINCT FROM 'number'`;
+
+/** The current `PROBE_VERSION` as a jsonb literal — `'2'::jsonb` is the number 2. */
+const PROBE_VERSION_JSONB = Prisma.sql`${JSON.stringify(PROBE_VERSION)}::jsonb`;
+
+/**
+ * "This video row has no CURRENT probe" — the SQL twin of `!hasCurrentProbe()`
+ * in video-probe.ts: no usable dimensions, OR a `probe.probeVersion` that is
+ * not the current `PROBE_VERSION`. A row today's version-1 pass wrote (dims,
+ * no version marker) matches once; the version-2 write stamps the marker and
+ * it never matches again. Compared as jsonb against the number itself rather
+ * than `(...->>'probeVersion')::int`, so a non-numeric value in that slot (we
+ * never write one, but a cast would make the WHOLE pass throw) simply counts
+ * as "not current" and is re-probed — the same answer the in-process guard
+ * gives, which is the point of a twin.
+ */
+const NO_CURRENT_PROBE = Prisma.sql`(${NO_USABLE_DIMS} OR processing_meta->'probe'->'probeVersion' IS DISTINCT FROM ${PROBE_VERSION_JSONB})`;
+
+/**
+ * "The current probe version already FAILED on this row" — the twin of
+ * `hasCurrentProbeFailure()`: a `probeFailed` string plus `probeFailedVersion`
+ * equal to the current version (the stamp the API writes at upload time, and
+ * this pass writes in `persistFailure`). COALESCE'd to false so NULL meta can
+ * never make the surrounding NOT go NULL and silently drop candidates.
+ */
+const CURRENT_PROBE_FAILURE = Prisma.sql`COALESCE(jsonb_typeof(processing_meta->'probeFailed') = 'string' AND processing_meta->'probeFailedVersion' = ${PROBE_VERSION_JSONB}, false)`;
+
+/**
+ * "This video row still needs a probe" — the twin of `needsProbe()`: no current
+ * probe, and not already failed by the current version either — a permanently
+ * unreadable file is tried ONCE per version, not on every run. `--retry-failed`
+ * drops the second clause for one run. This is the candidate filter AND the
+ * guard inside both writes (facts and failure stamp), so a re-run or a
+ * concurrent run can never overwrite what the current version already wrote.
+ */
+const NEEDS_PROBE = RETRY_FAILED
+  ? NO_CURRENT_PROBE
+  : Prisma.sql`(${NO_CURRENT_PROBE} AND NOT ${CURRENT_PROBE_FAILURE})`;
 
 async function main() {
   const supaUrl = (process.env.SUPABASE_URL || '').trim().replace(/\/+$/, '');
@@ -267,10 +327,10 @@ async function main() {
     wouldWrite += summary.posted;
   }
 
-  // ── pass 2: dimensions ─────────────────────────────────────────────────
+  // ── pass 2: probe (dimensions + codec facts) ───────────────────────────
   if (ONLY !== 'posters') {
     const tenantClause = TENANT ? Prisma.sql` AND tenant_id = ${TENANT}` : Prisma.empty;
-    const candidateWhere = Prisma.sql`mime_type LIKE 'video/%' AND ${NO_USABLE_DIMS}${tenantClause}`;
+    const candidateWhere = Prisma.sql`mime_type LIKE 'video/%' AND ${NEEDS_PROBE}${tenantClause}`;
 
     const summary = await runProbeBackfill(
       {
@@ -308,19 +368,38 @@ async function main() {
           }
         },
         // Tenant-scoped, MERGE (jsonb `||` keeps every key the probe does not
-        // own, exactly like the API's mergeProbeMeta), and re-asserts "still no
-        // usable dimensions" in the same statement: the idempotency lock. A
+        // own, exactly like the API's mergeProbeMeta), and re-asserts "still
+        // needs a probe" in the same statement: the idempotency lock. A
         // non-object value in the column (never written by us, but possible)
-        // is treated as empty rather than making `||` throw.
+        // is treated as empty rather than making `||` throw. `||` is shallow,
+        // so the whole `probe` block is REPLACED by the version-2 one — a
+        // version-1 key set never lingers under the new marker — and an
+        // earlier failure stamp is dropped first (facts and "the probe
+        // failed" never coexist; same as mergeProbeMeta).
         persist: (row, p) =>
+          prisma.$executeRaw(
+            Prisma.sql`UPDATE assets
+                          SET processing_meta = ((CASE WHEN jsonb_typeof(processing_meta) = 'object'
+                                                       THEN processing_meta ELSE '{}'::jsonb END)
+                                                 - 'probeFailed' - 'probeFailedVersion')
+                                                || ${JSON.stringify(buildProbeMeta(p))}::jsonb,
+                              updated_at = now()
+                        WHERE id = ${row.id} AND tenant_id = ${row.tenantId}
+                          AND ${NEEDS_PROBE}`,
+          ),
+        // A row ffprobe could not read gets the SAME stamp the API writes at
+        // upload time (probedAt + probeFailed + probeFailedVersion), under the
+        // same guard; the dimensions are never touched, and the row is not a
+        // candidate again until the next probe version (or --retry-failed).
+        persistFailure: (row, reason) =>
           prisma.$executeRaw(
             Prisma.sql`UPDATE assets
                           SET processing_meta = (CASE WHEN jsonb_typeof(processing_meta) = 'object'
                                                       THEN processing_meta ELSE '{}'::jsonb END)
-                                                || ${JSON.stringify(buildProbeMeta(p))}::jsonb,
+                                                || ${JSON.stringify(buildProbeFailureMeta(reason))}::jsonb,
                               updated_at = now()
                         WHERE id = ${row.id} AND tenant_id = ${row.tenantId}
-                          AND ${NO_USABLE_DIMS}`,
+                          AND ${NEEDS_PROBE}`,
           ),
         log: (line) => console.log(line),
         sleep,
