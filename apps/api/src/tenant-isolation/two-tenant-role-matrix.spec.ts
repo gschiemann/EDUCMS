@@ -49,6 +49,8 @@ import { makeTwoTenantPrisma, type Dataset } from './two-tenant-prisma';
 import { ImportJobsController } from '../imports/import-jobs.controller';
 
 import { AssetsController } from '../assets/assets.controller';
+import { mintUploadRenewTicket } from '../assets/upload-renew-ticket';
+import { VideoTranscodeService } from '../storage/video-transcode/video-transcode.service';
 import { TemplatesController } from '../templates/templates.controller';
 import { DesignerJobsService } from '../templates/designer-jobs/designer-jobs.service';
 import { PlaylistsController } from '../playlists/playlists.controller';
@@ -116,6 +118,22 @@ function dataset(): Dataset {
       playlistItems: [],
     })),
     assetFolder: pair((tenantId, s) => ({ id: `folder-${s}`, tenantId, parentId: null, name: `folder ${s}` })),
+    // 2026-09-23 — one signage transcode per video asset.
+    videoTranscodeJob: pair((tenantId, s) => ({
+      id: `vtj-${s}`,
+      tenantId,
+      assetId: `asset-${s}`,
+      status: 'running',
+      reason: null,
+      progress: 40,
+      attempts: 1,
+      leaseOwner: 'worker-1',
+      sourceUrl: `https://cdn.test/${s}.mp4`,
+      sourceBytes: 1000,
+      outputUrl: null,
+      outputBytes: null,
+      finishedAt: null,
+    })),
     importJob: pair((tenantId, s) => ({
       id: `import-${s}`,
       tenantId,
@@ -568,6 +586,22 @@ const MATRIX: Case[] = [
     controller: AssetsController, handler: 'remove', op: 'delete',
     build: (p) => new AssetsController(p, stubStorage, {} as any, {} as any, {} as any, stubVideoPoster),
     invoke: (c, req) => c.remove(req, 'asset-b'),
+  },
+  {
+    name: 'assets: read another tenant\'s video optimization state',
+    controller: AssetsController, handler: 'optimizationStatus', op: 'read',
+    build: (p) => new AssetsController(p, stubStorage, {} as any, {} as any, {} as any, stubVideoPoster, new VideoTranscodeService(p)),
+    invoke: (c, req) => c.optimizationStatus(req, 'asset-b,asset-a'),
+  },
+  {
+    name: 'assets: renew another tenant\'s in-flight direct upload',
+    controller: AssetsController, handler: 'renewPresign', op: 'write',
+    build: (p) => new AssetsController(p, { ...stubStorage, createSignedUploadUrl: jest.fn(async () => { throw new Error('must not mint'); }) }, {} as any, {} as any, {} as any, stubVideoPoster),
+    invoke: (c, req) => {
+      const storagePath = `${FOREIGN}/0f6b1c2d-3e4f-4a5b-8c9d-0e1f2a3b4c5d.mp4`;
+      const { ticket } = mintUploadRenewTicket({ tenantId: FOREIGN, userId: 'user-b', storagePath });
+      return c.renewPresign(req, { storagePath, renewTicket: ticket });
+    },
   },
   {
     name: 'assets: rename another tenant\'s folder',
@@ -1038,7 +1072,7 @@ function containsForeignId(value: unknown, seen = new Set<unknown>()): string | 
   if (value == null) return null;
   if (typeof value === 'string') {
     if (
-      /^(asset|tpl|pl|sch|scr|grp|fp|sub|folder|user|audit|pi|panic|game|brand|touch|zone|pbs|stream|pos|dj|djh)-b$/.test(
+      /^(asset|tpl|pl|sch|scr|grp|fp|sub|folder|user|audit|pi|panic|game|brand|touch|zone|pbs|stream|pos|dj|djh|vtj)-b$/.test(
         value,
       )
     ) {

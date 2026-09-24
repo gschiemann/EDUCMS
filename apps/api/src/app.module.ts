@@ -149,6 +149,9 @@ import { PlatformHealthMonitorService } from './health/platform-health-monitor.s
 import { MediaOptimizationService } from './storage/media-optimization.service';
 import { VideoPosterService } from './storage/video-poster.service';
 import { VideoProbeAutoHealCron } from './storage/video-probe-autoheal.cron';
+import { VideoTranscodeService } from './storage/video-transcode/video-transcode.service';
+import { VideoTranscodePipeline } from './storage/video-transcode/video-transcode.pipeline';
+import { VideoTranscodeWorker } from './storage/video-transcode/video-transcode.worker';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { RbacGuard } from './auth/rbac.guard';
 import { SentryModule } from '@sentry/nestjs/setup';
@@ -307,6 +310,18 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     // grade appears on the whole library without anyone running the CLI
     // backfill. See video-probe-autoheal.cron.ts.
     VideoProbeAutoHealCron,
+    // 2026-09-23 — signage-profile video transcode (4K uploads). The service owns
+    // the video_transcode_jobs table (AssetsController enqueues after every video
+    // upload); the worker claims one job at a time per replica (SKIP LOCKED — see
+    // the NO LEADER LEASE note in video-transcode.worker.ts) and the pipeline swaps
+    // an asset to its optimized copy only when it is smaller and complete — and
+    // then re-runs VideoPosterService on the copy, so the probe facts and the
+    // poster describe the file screens actually download (2026-09-24). Registered
+    // HERE, not in a module of its own, so they share this module's single
+    // SupabaseStorageService (a second instance would re-run the bucket setup at boot).
+    VideoTranscodeService,
+    VideoTranscodePipeline,
+    VideoTranscodeWorker,
     // Server-side URL renderer (Puppeteer + Alpine Chromium). Used by
     // ProxyController to handle JS-heavy / AJAX-loaded sites that the
     // legacy strip-scripts proxy can't render. See renderer.service.ts.

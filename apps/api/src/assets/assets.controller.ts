@@ -1,6 +1,6 @@
 import {
   Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards, Request,
-  UseInterceptors, UploadedFile, HttpException, HttpStatus,
+  UseInterceptors, UploadedFile, HttpException, HttpStatus, Optional,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
@@ -17,6 +17,7 @@ import {
   VIDEO_WARN_SIZE_BYTES,
 } from '../storage/media-optimization.service';
 import { mintUploadRenewTicket, verifyUploadRenewTicket } from './upload-renew-ticket';
+import { VideoTranscodeService } from '../storage/video-transcode/video-transcode.service';
 import { VideoPosterService } from '../storage/video-poster.service';
 import { EmailService } from '../email/email.service';
 import { Logger } from '@nestjs/common';
@@ -271,7 +272,46 @@ export class AssetsController {
     private readonly mediaOpt: MediaOptimizationService,
     private readonly aiAltText: AiAltTextService,
     private readonly videoPoster: VideoPosterService,
+    // 2026-09-23 — signage-profile transcode queue. Optional so the many specs
+    // that build this controller by hand keep working; production always has it.
+    @Optional() private readonly transcodes?: VideoTranscodeService,
   ) {}
+
+  /**
+   * Queue the signage transcode for a just-created video asset (2026-09-23).
+   * Fire-and-forget like the poster: the operator's "uploaded" toast never
+   * waits on it, and a failure to queue leaves the original serving — the
+   * `VIDEO_WARN_SIZE_BYTES` line below is then the ops signal that a big
+   * original is going to screens as-is.
+   */
+  private kickOffVideoTranscode(args: {
+    assetId: string;
+    tenantId: string;
+    mimeType: string;
+    fileUrl: string;
+    fileSize: number | null;
+    originalName: string | null;
+  }): void {
+    if (!(args.mimeType || '').toLowerCase().startsWith('video/')) return;
+    const warnIfLarge = () => {
+      if (typeof args.fileSize === 'number' && args.fileSize > VIDEO_WARN_SIZE_BYTES) {
+        this.logger.warn(
+          `[assets] large video upload (${Math.round(args.fileSize / (1024 * 1024))} MB, ${args.mimeType}, ` +
+            `${args.originalName || args.assetId}) — NOT queued for the signage transcode; every screen downloads the original.`,
+        );
+      }
+    };
+    if (!this.transcodes) {
+      warnIfLarge();
+      return;
+    }
+    void this.transcodes
+      .enqueue({ tenantId: args.tenantId, assetId: args.assetId, sourceUrl: args.fileUrl, sourceBytes: args.fileSize })
+      .then((queued) => {
+        if (!queued) warnIfLarge();
+      })
+      .catch(() => warnIfLarge());
+  }
 
   /**
    * Audit P1-2 (2026-05-28) — fire-and-forget alt-text generation.
@@ -728,6 +768,12 @@ export class AssetsController {
       include: {
         uploadedBy: { select: { id: true, email: true } },
         folder: { select: { id: true, name: true } },
+        // 2026-09-23 — the signage transcode's state, so the library can say
+        // "Optimizing for screens…" and then the size it saved. One-to-one
+        // (unique asset_id); a video uploaded before this shipped has none.
+        transcodeJob: {
+          select: { status: true, reason: true, progress: true, sourceBytes: true, outputBytes: true, finishedAt: true },
+        },
       },
       orderBy: { createdAt: 'desc' },
       take,
@@ -744,6 +790,24 @@ export class AssetsController {
       return { assets: rows, total, take, skip };
     }
     return rows;
+  }
+
+  /**
+   * Transcode state for a handful of THIS tenant's assets (2026-09-23). The
+   * media library polls it — only while a tile says "Optimizing…" and the tab
+   * is visible — instead of re-downloading the whole list; the moment a job
+   * finishes it refetches the list once for the new URL and size.
+   */
+  @Get('optimization')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
+  async optimizationStatus(@Request() req: any, @Query('ids') idsRaw?: string) {
+    const ids = String(idsRaw || '')
+      .split(',')
+      .map((x) => x.trim())
+      .filter(Boolean)
+      .slice(0, 100);
+    if (!this.transcodes || ids.length === 0) return { items: [] };
+    return { items: await this.transcodes.statusForAssets(String(req.user.tenantId), ids) };
   }
 
   @Post('emergency-upload')
@@ -1298,14 +1362,20 @@ export class AssetsController {
         );
       }
     } else if ((realMime || '').startsWith('video/')) {
-      // Heavy ffmpeg transcode is deferred. Warn so the candidate is
-      // visible to ops without trawling every upload.
-      if (typeof realSize === 'number' && realSize > VIDEO_WARN_SIZE_BYTES) {
-        this.logger.warn(
-          `[assets] large video upload (${Math.round(realSize / (1024 * 1024))} MB, ` +
-            `${realMime}, ${body.filename || asset.id}) — transcode pipeline deferred to next sprint.`,
-        );
-      }
+      // 2026-09-23 — queue the signage-profile transcode (storage/video-transcode).
+      // The asset serves the original until the worker swaps in a smaller,
+      // verified-complete copy; a large original that cannot be queued is
+      // logged against VIDEO_WARN_SIZE_BYTES inside the helper. After a swap
+      // the worker re-runs the probe + poster below on the NEW file, so the
+      // facts on the row always describe what screens download.
+      this.kickOffVideoTranscode({
+        assetId: asset.id,
+        tenantId: req.user.tenantId,
+        mimeType: realMime,
+        fileUrl: asset.fileUrl,
+        fileSize: typeof realSize === 'number' ? realSize : null,
+        originalName: body.filename || null,
+      });
       // 2026-09-11 — VIDEO POSTER FRAME (`Asset.posterUrl`), and since
       // 2026-09-24 the video's DIMENSIONS + DURATION (`Asset.processingMeta`,
       // via ffprobe) on the same kick-off. The bytes went browser→Supabase on
@@ -1475,17 +1545,9 @@ export class AssetsController {
         transcodedAt: new Date().toISOString(),
         ...(opt.optimized ? {} : { skippedReason: 'no-gain-or-passthrough' }),
       };
-    } else if ((file.mimetype || '').startsWith('video/')) {
-      // Heavy ffmpeg transcode is deferred — see the comment above. We do
-      // however want a single warn line for ops so the candidate-for-
-      // shrinking is visible in logs without trawling every upload.
-      if (safeBuffer.length > VIDEO_WARN_SIZE_BYTES) {
-        this.logger.warn(
-          `[assets] large video upload (${Math.round(safeBuffer.length / (1024 * 1024))} MB, ` +
-            `${file.mimetype}, ${file.originalname}) — transcode pipeline deferred to next sprint.`,
-        );
-      }
     }
+    // Video: stored as-is here; the signage transcode is queued right after
+    // the Asset row exists (kickOffVideoTranscode below).
 
     // Upload to Supabase Storage: tenant/<tenantId>/<uuid>.<ext>
     const storagePath = `${req.user.tenantId}/${randomUUID()}${uploadExt}`;
@@ -1563,6 +1625,14 @@ export class AssetsController {
       mimeType: uploadMime,
       buffer: uploadBuf,
       ext: uploadExt || null,
+    });
+    this.kickOffVideoTranscode({
+      assetId: asset.id,
+      tenantId: req.user.tenantId,
+      mimeType: uploadMime,
+      fileUrl: asset.fileUrl,
+      fileSize: uploadBuf.length,
+      originalName: file.originalname || null,
     });
 
     return {
