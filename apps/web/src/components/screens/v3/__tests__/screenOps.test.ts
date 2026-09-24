@@ -1048,7 +1048,11 @@ describe('deriveDeviceFacts', () => {
   it('reads the panel, device, browser and network the way an operator says them', () => {
     expect(fact({ resolution: '3840x2160' }, 'panel')!.value).toBe('3840 × 2160');
     expect(fact({ resolution: '1080 × 1920', orientation: 'portrait' }, 'panel')!.value).toBe('1080 × 1920 · portrait');
-    expect(fact({ hardwareModel: 'goodview-ep6n', osInfo: 'Android 11' }, 'device')!.value).toBe('goodview ep6n · Android 11');
+    // A catalogue model wears the catalogue's name; free text passes through; 'unknown' is no label.
+    expect(fact({ hardwareModel: 'goodview-ep6n', osInfo: 'Android 11' }, 'device')!.value).toBe('Goodview EP6N · Android 11');
+    expect(fact({ hardwareModel: 'novastar-taurus' }, 'device')!.value).toBe('NovaStar Taurus');
+    expect(fact({ hardwareModel: 'Wall Mount' }, 'device')!.value).toBe('Wall Mount');
+    expect(fact({ hardwareModel: 'unknown' }, 'device')).toBeUndefined();
     expect(fact({ osInfo: 'Android 9' }, 'device')!.value).toBe('Android 9');
     expect(fact({ browserInfo: 'Chrome/120.0.6099.230 Mobile WebView' }, 'browser')!.value).toBe('Chrome 120 (WebView)');
     expect(fact({ browserInfo: 'Safari/17.4' }, 'browser')!.value).toBe('Safari 17');

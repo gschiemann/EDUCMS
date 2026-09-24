@@ -354,7 +354,7 @@ describe('detail drawer (§10 / §14)', () => {
     fireEvent.click(within(rtl.getByTestId('screens-desktop')).getAllByRole('button', { name: 'G43' })[0]);
     const card = within(rtl.getByRole('dialog')).getByTestId('screen-device-card');
     expect(within(card).getByText('3840 × 2160 · portrait')).toBeInTheDocument();
-    expect(within(card).getByText('goodview ep6n · Android 11')).toBeInTheDocument();
+    expect(within(card).getByText('Goodview EP6N · Android 11')).toBeInTheDocument();
     expect(within(card).getByText('Chrome 120 (WebView)')).toBeInTheDocument();
     expect(within(card).getByText('Player 1.1.12 · Manager 1.0.4')).toBeInTheDocument();
     expect(within(card).getByText('10.20.30.40 · live push')).toBeInTheDocument();

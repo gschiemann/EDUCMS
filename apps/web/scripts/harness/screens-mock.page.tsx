@@ -75,6 +75,29 @@ const SCREENS: OpsScreen[] = [
   // RIOT Sacramento — the location that needs the operator.
   scr('g43', 'G43', GROUPS[0], {
     pendingRefreshAt: new Date(NOW - 18 * MIN).toISOString(),
+    // Every fact the Overview's Device card can show (2026-09-24), the way a
+    // 4K Goodview panel reports them — plus a stuttering last video, so the
+    // "Last video" block is on the screenshot too.
+    hardwareModel: 'goodview-ep6n',
+    osInfo: 'Android 11',
+    browserInfo: 'Chrome/120.0.6099.230 Mobile WebView',
+    resolution: '3840x2160',
+    playerVersion: '1.1.12',
+    managerVersion: '1.0.4',
+    ipAddress: '10.20.30.40',
+    pairedAt: '2026-08-01T15:00:00.000Z',
+    lastCacheReport: { playlist: { count: 12, bytes: 480 * 1024 * 1024 }, emergency: { count: 3, bytes: 2_400_000 } },
+    lastVideoReport: {
+      url: 'https://cdn.example/riot/Pro%20Series%20Video%201.mp4',
+      totalFrames: 2130,
+      droppedFrames: 312,
+      elapsedMs: 71_000,
+      width: 1280,
+      height: 720,
+      stalls: 4,
+      stalledMs: 9_800,
+    },
+    lastVideoReportAt: new Date(NOW - 2 * MIN).toISOString(),
   }),
   scr('m43', 'M43', GROUPS[0], {
     pushChannel: 'stale',

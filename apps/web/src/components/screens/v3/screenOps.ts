@@ -43,6 +43,7 @@ import { deriveBundleSkew, type BundleSkewVariant } from '../bundleSkew';
 import { contentBehindCause } from '@/components/dashboard/district/fleetCommand';
 import { isWindowOpen } from '@/app/player/scheduleWindow';
 import { templatePosterUrl } from '@/lib/template-poster';
+import { HARDWARE_CATALOG, resolveHardwareModel } from '@cms/api-types';
 
 // ═══════════════════════════════════════════════════════════════════
 // Inputs — the subset of `GET /screens` this surface reads
@@ -1543,6 +1544,19 @@ function prettyBrowser(raw: string): string {
   return `${m[1]} ${m[2]}${webview}`;
 }
 
+/**
+ * 'goodview-ep6n' → 'Goodview EP6N' — the catalog's own name for a model it
+ * knows, minus any trailing parenthetical ("(LED controller-native)" is
+ * catalogue copy, not a fact about this box). An operator's free-text model
+ * ("Wall Mount") passes through; the catalogue's 'unknown' is no label.
+ */
+function hardwareLabel(raw: string | null | undefined): string | null {
+  if (!raw || !raw.trim()) return null;
+  const known = resolveHardwareModel(raw);
+  if (known === 'unknown') return raw.trim().toLowerCase() === 'unknown' ? null : raw.trim();
+  return HARDWARE_CATALOG[known].name.replace(/\s*\([^)]*\)\s*$/, '');
+}
+
 /** A crash is worth a row only while it is recent. */
 const CRASH_RECENT_MS = 30 * 24 * 60 * 60_000;
 
@@ -1558,7 +1572,7 @@ export function deriveDeviceFacts(screen: OpsScreen, app: ReportedContent['app']
     out.push({ key: 'panel', label: 'Panel', value: `${prettyResolution(screen.resolution)}${portrait ? ' · portrait' : ''}` });
   }
 
-  const model = screen.hardwareModel ? screen.hardwareModel.replace(/[-_]+/g, ' ') : null;
+  const model = hardwareLabel(screen.hardwareModel);
   if (model || screen.osInfo) {
     out.push({ key: 'device', label: 'Hardware', value: [model, screen.osInfo].filter(Boolean).join(' · ') });
   }
