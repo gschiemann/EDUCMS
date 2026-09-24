@@ -1005,16 +1005,19 @@ export class AssetsController {
             `${realMime}, ${body.filename || asset.id}) — transcode pipeline deferred to next sprint.`,
         );
       }
-      // 2026-09-11 — VIDEO POSTER FRAME (`Asset.posterUrl`). The bytes went
-      // browser→Supabase on this path, so we never held them: the service
-      // points ffmpeg at the object URL with an INPUT seek, which range-reads
-      // to the first keyframe instead of pulling the whole file back (a poster
-      // for a 50 MB clip costs a few hundred KB of egress, not 50 MB). It
-      // falls back to a full download only if that fails.
+      // 2026-09-11 — VIDEO POSTER FRAME (`Asset.posterUrl`), and since
+      // 2026-09-24 the video's DIMENSIONS + DURATION (`Asset.processingMeta`,
+      // via ffprobe) on the same kick-off. The bytes went browser→Supabase on
+      // this path, so we never held them: the service points ffprobe/ffmpeg at
+      // the object URL — ffprobe reads the container index, ffmpeg INPUT-seeks
+      // to the first keyframe — which range-reads a few hundred KB instead of
+      // pulling the whole file back (a 257 MB clip costs KB of egress, not
+      // 257 MB). It falls back to ONE full download, shared by both jobs, only
+      // if that fails.
       //
       // Fire-and-forget, deliberately: the operator's "uploaded" toast must
-      // not wait on ffmpeg, and a poster that can't be made is a cosmetic gap
-      // — NEVER a failed upload.
+      // not wait on ffmpeg, and a poster or a resolution that can't be read is
+      // a cosmetic gap — NEVER a failed upload.
       this.kickOffVideoPoster({
         assetId: asset.id,
         tenantId: req.user.tenantId,
@@ -1239,12 +1242,17 @@ export class AssetsController {
       originalName: file.originalname || null,
     });
 
-    // 2026-09-11 — VIDEO POSTER FRAME (`Asset.posterUrl`). A video tile in the
-    // asset picker is a blank grey rectangle until something extracts a frame.
-    // Fire-and-forget, same shape as alt-text above: we already hold the bytes,
-    // so no download; 0 ms added to this response; ANY failure leaves
-    // `posterUrl` NULL and the upload completely intact (the service swallows
-    // everything — see video-poster.service.ts).
+    // 2026-09-11 — VIDEO POSTER FRAME (`Asset.posterUrl`), and since 2026-09-24
+    // the video's DIMENSIONS + DURATION (`Asset.processingMeta`, via ffprobe).
+    // The sharp branch above never runs for a video, so this kick-off is the
+    // ONLY thing that gives a video row the `originalDimensions` the media
+    // library's RESOLUTION tile reads — without it a 1920×1080 clip showed "—".
+    // A video tile in the asset picker is likewise a blank grey rectangle until
+    // something extracts a frame. Fire-and-forget, same shape as alt-text
+    // above: we already hold the bytes, so no download; 0 ms added to this
+    // response; ANY failure leaves `posterUrl` / the dimensions NULL and the
+    // upload completely intact (the service swallows everything — see
+    // video-poster.service.ts).
     this.kickOffVideoPoster({
       assetId: asset.id,
       tenantId: req.user.tenantId,

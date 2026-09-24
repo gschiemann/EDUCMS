@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import type { Prisma } from '@cms/database';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { SupabaseStorageService } from './supabase-storage.service';
@@ -10,17 +11,36 @@ import {
   POSTER_MIME,
   type PosterOutcome,
 } from './video-poster';
+import {
+  errorMessage,
+  formatDurationMs,
+  mergeProbeMeta,
+  probeVideoFromBuffer,
+  probeVideoFromUrl,
+  type ProbeOutcome,
+} from './video-probe';
 
 /**
- * Turns an uploaded video into a poster frame and hangs it on `Asset.posterUrl`.
+ * The background work for ONE uploaded video: a poster frame on
+ * `Asset.posterUrl` (2026-09-11) and its real dimensions / duration on
+ * `Asset.processingMeta` (2026-09-24). One `kickOff`, two independent jobs.
  *
  * ── THE CONTRACT, IN ONE LINE ───────────────────────────────────────────────
  * This service can fail in any way it likes and the upload it was called from
  * must still succeed. Every public method resolves; none of them reject. A
- * video with no poster is a cosmetic gap the backfill can repair later; an
- * upload that 500s because ffmpeg choked on a weird container is a broken
- * product. Both call sites therefore use `kickOff()` (fire-and-forget, exactly
- * like the alt-text pipeline) so poster work adds 0 ms to upload latency.
+ * video with no poster is a cosmetic gap and a video with no dimensions is an
+ * em dash in a panel — both repaired by the backfill later; an upload that
+ * 500s because ffmpeg choked on a weird container is a broken product. Both
+ * call sites therefore use `kickOff()` (fire-and-forget, exactly like the
+ * alt-text pipeline) so this work adds 0 ms to upload latency.
+ *
+ * ── TWO JOBS, SHIELDED FROM EACH OTHER ──────────────────────────────────────
+ * The probe (ffprobe, headers only, milliseconds) runs first and lands the
+ * RESOLUTION tile; the frame grab (ffmpeg, decodes to a keyframe) runs after.
+ * Sequential rather than parallel so one upload never runs two decoders at
+ * once on a small pod. They write DIFFERENT columns, so they cannot clobber
+ * each other, and each is never-throws on its own: a poster that cannot be
+ * extracted does not skip the probe, and vice versa.
  *
  * ── WHERE THE POSTER LIVES ──────────────────────────────────────────────────
  * `<tenantId>/posters/<uuid>.jpg` in the SAME public `assets` bucket the video
@@ -32,14 +52,24 @@ import {
  * therefore never name a poster object, so the UPLD-02 hijack-delete class
  * cannot reach one.
  *
+ * ── WHERE THE DIMENSIONS LIVE ───────────────────────────────────────────────
+ * `processingMeta.originalDimensions` (DISPLAY size — a portrait phone clip
+ * is 1080×1920, not the 1920×1080 it is stored as), `durationMs`, and a
+ * `probe` block with codec / fps / rotation / coded size, MERGED over whatever
+ * the row already holds (`mergeProbeMeta`). That is the same JSON the sharp
+ * optimizer writes for an image, so the media library's `metaDims` reads it
+ * with no change. No new column, no migration.
+ *
  * ── WHICH SOURCE IT READS ───────────────────────────────────────────────────
  * The multipart path already holds the bytes, so it passes the buffer. The
- * presign path and the backfill only have a storage path, so ffmpeg is pointed
- * at the object URL we rebuild from `SUPABASE_URL` (never at a stored
+ * presign path and the backfill only have a storage path, so the tools are
+ * pointed at the object URL we rebuild from `SUPABASE_URL` (never at a stored
  * `Asset.fileUrl`, which can be an arbitrary external address via
- * `POST /assets/url`). An input seek range-reads, so that costs a few hundred
- * KB rather than re-downloading up to the 50 MB per-video cap; if it fails for
- * any reason we fall back to downloading the object and extracting from bytes.
+ * `POST /assets/url`). Over http, ffprobe reads the container index and
+ * ffmpeg's input seek range-reads to the first keyframe, so that costs a few
+ * hundred KB rather than re-downloading the whole video; if either fails for
+ * any reason we fall back to downloading the object — ONCE, shared by both
+ * jobs (`VideoSource.download` is memoised) — and work from bytes.
  */
 @Injectable()
 export class VideoPosterService {
@@ -61,29 +91,125 @@ export class VideoPosterService {
    */
   kickOff(args: PosterJobArgs): void {
     if (!isPosterableVideo(args.mimeType)) return;
-    void this.generateForAsset(args).catch((err) => {
-      // generateForAsset already swallows everything; this is the belt to its
-      // braces, so a future edit can never turn a poster bug into an
+    void this.processVideo(args).catch((err: unknown) => {
+      // processVideo already swallows everything; this is the belt to its
+      // braces, so a future edit can never turn a poster or probe bug into an
       // unhandled rejection that takes the pod down.
       this.logger.warn(
-        `[poster] unexpected throw for ${args.assetId}: ${err?.message ?? err}`,
+        `[video] unexpected throw for ${args.assetId}: ${errorMessage(err)}`,
       );
     });
+  }
+
+  /**
+   * Both jobs for one video, each shielded from the other. Resolves what each
+   * produced; never throws.
+   */
+  async processVideo(args: PosterJobArgs): Promise<VideoJobResult> {
+    if (!isPosterableVideo(args.mimeType))
+      return { probed: false, posterUrl: null };
+    const source = this.sourceFor(args);
+    const probed = await this.probeForAsset(args, source);
+    const posterUrl = await this.generateForAsset(args, source);
+    return { probed, posterUrl };
+  }
+
+  /**
+   * Probe → merge → persist. Resolves true when dimensions were written, false
+   * for every failure (already logged). Never throws.
+   */
+  async probeForAsset(
+    args: PosterJobArgs,
+    source: VideoSource = this.sourceFor(args),
+  ): Promise<boolean> {
+    if (!isPosterableVideo(args.mimeType)) return false;
+
+    let outcome: ProbeOutcome;
+    try {
+      outcome = await this.probe(source);
+    } catch (err) {
+      this.logger.warn(
+        `[probe] ffprobe threw for ${args.assetId}: ${errorMessage(err)}`,
+      );
+      return false;
+    }
+
+    if (!outcome.ok) {
+      // NULL dimensions are a supported state ("—" in the panel). Say why, at
+      // warn, once; the backfill retries rows with no usable dimensions.
+      this.logger.warn(
+        `[probe] no dimensions for asset ${args.assetId}: ${outcome.reason}`,
+      );
+      return false;
+    }
+
+    try {
+      // Read → merge → write, because Prisma's Json column has no partial
+      // update and every key the probe does not own must survive. Both reads
+      // and writes are tenant-scoped: an asset id alone is not a tenant
+      // boundary. updateMany, not update, so a row deleted while ffprobe ran
+      // (a real race — this runs after the upload response was sent) is a
+      // count of 0, not a throw.
+      const row = await this.prisma.client.asset.findFirst({
+        where: { id: args.assetId, tenantId: args.tenantId },
+        select: { processingMeta: true },
+      });
+      if (!row) {
+        this.logger.warn(
+          `[probe] asset ${args.assetId} gone before persist; dimensions discarded`,
+        );
+        return false;
+      }
+      const merged = mergeProbeMeta(row.processingMeta, outcome);
+      const res = await this.prisma.client.asset.updateMany({
+        where: { id: args.assetId, tenantId: args.tenantId },
+        // The merged value is plain JSON by construction (mergeProbeMeta only
+        // ever spreads JSON it read back plus number/string/null leaves); the
+        // assertion is what Prisma's NullableJson input type needs to see.
+        data: { processingMeta: merged as Prisma.InputJsonObject },
+      });
+      if (res.count === 0) {
+        this.logger.warn(
+          `[probe] asset ${args.assetId} gone before persist; dimensions discarded`,
+        );
+        return false;
+      }
+    } catch (err) {
+      this.logger.warn(
+        `[probe] persist failed for ${args.assetId}: ${errorMessage(err)}`,
+      );
+      return false;
+    }
+
+    const dur = formatDurationMs(outcome.durationMs);
+    this.logger.log(
+      `[probe] asset ${args.assetId} → ${outcome.displayWidth}×${outcome.displayHeight}` +
+        (dur ? ` · ${dur}` : '') +
+        (outcome.codec ? ` · ${outcome.codec}` : '') +
+        (outcome.fps ? ` @ ${outcome.fps} fps` : '') +
+        (outcome.rotation
+          ? ` (rotated ${outcome.rotation}°, coded ${outcome.width}×${outcome.height})`
+          : ''),
+    );
+    return true;
   }
 
   /**
    * Extract → store → persist. Resolves the poster's public URL, or null if
    * anything at all went wrong (already logged). Never throws.
    */
-  async generateForAsset(args: PosterJobArgs): Promise<string | null> {
+  async generateForAsset(
+    args: PosterJobArgs,
+    source: VideoSource = this.sourceFor(args),
+  ): Promise<string | null> {
     if (!isPosterableVideo(args.mimeType)) return null;
 
     let outcome: PosterOutcome;
     try {
-      outcome = await this.extract(args);
-    } catch (err: any) {
+      outcome = await this.extract(source);
+    } catch (err) {
       this.logger.warn(
-        `[poster] extract threw for ${args.assetId}: ${err?.message ?? err}`,
+        `[poster] extract threw for ${args.assetId}: ${errorMessage(err)}`,
       );
       return null;
     }
@@ -105,9 +231,9 @@ export class VideoPosterService {
         outcome.buffer,
         POSTER_MIME,
       );
-    } catch (err: any) {
+    } catch (err) {
       this.logger.warn(
-        `[poster] upload failed for ${args.assetId}: ${err?.message ?? err}`,
+        `[poster] upload failed for ${args.assetId}: ${errorMessage(err)}`,
       );
       return null;
     }
@@ -118,7 +244,7 @@ export class VideoPosterService {
       // a real race, since this runs after the upload response was sent.
       const res = await this.prisma.client.asset.updateMany({
         where: { id: args.assetId, tenantId: args.tenantId },
-        data: { posterUrl } as any,
+        data: { posterUrl },
       });
       if (res.count === 0) {
         // Asset vanished mid-flight. Don't leave the orphan behind.
@@ -128,10 +254,10 @@ export class VideoPosterService {
         );
         return null;
       }
-    } catch (err: any) {
+    } catch (err) {
       await this.storage.delete(posterPath).catch(() => undefined);
       this.logger.warn(
-        `[poster] persist failed for ${args.assetId}: ${err?.message ?? err}`,
+        `[poster] persist failed for ${args.assetId}: ${errorMessage(err)}`,
       );
       return null;
     }
@@ -143,35 +269,75 @@ export class VideoPosterService {
   }
 
   /**
+   * One video, two consumers. In-memory bytes when the caller has them; else
+   * the object URL WE built (the trusted-prefix contract in video-poster.ts /
+   * video-probe.ts) plus a memoised full download, so if both jobs have to
+   * fall back to bytes the object is pulled back once, not twice.
+   */
+  private sourceFor(args: PosterJobArgs): VideoSource {
+    const buffer = args.buffer && args.buffer.length > 0 ? args.buffer : null;
+    const storagePath = args.storagePath || null;
+    let pending: Promise<Buffer | null> | null = null;
+    return {
+      buffer,
+      ext: args.ext ?? null,
+      // Trusted prefix = the public-URL shape THIS service builds. Anything
+      // that doesn't start with it never reaches a decoder.
+      url: storagePath ? this.storage.publicUrlForPath(storagePath) : null,
+      trustedPrefix: storagePath ? this.storage.publicUrlForPath('') : '',
+      download: () => {
+        if (!storagePath) return Promise.resolve(null);
+        if (!pending)
+          pending = this.storage.download(storagePath).catch(() => null);
+        return pending;
+      },
+    };
+  }
+
+  /**
    * Pick the cheapest source that can work: in-memory bytes if the caller has
    * them, otherwise a range-read straight off the object URL, otherwise a full
    * download. Each step degrades into the next.
    */
-  private async extract(args: PosterJobArgs): Promise<PosterOutcome> {
-    if (args.buffer && args.buffer.length > 0) {
-      return extractVideoPosterFromBuffer(args.buffer, args.ext ?? null);
+  private async extract(source: VideoSource): Promise<PosterOutcome> {
+    if (source.buffer) {
+      return extractVideoPosterFromBuffer(source.buffer, source.ext);
     }
-    if (!args.storagePath) return { ok: false, reason: 'no-source' };
+    if (!source.url) return { ok: false, reason: 'no-source' };
 
-    // Trusted prefix = the public-URL shape THIS service builds. Anything that
-    // doesn't start with it never reaches ffmpeg (see video-poster.ts).
-    const trustedPrefix = this.storage.publicUrlForPath('');
-    const url = this.storage.publicUrlForPath(args.storagePath);
-    const viaUrl = await extractVideoPosterFromUrl(url, trustedPrefix);
+    const viaUrl = await extractVideoPosterFromUrl(
+      source.url,
+      source.trustedPrefix,
+    );
     if (viaUrl.ok) return viaUrl;
 
     // Fallback: pull the bytes back and try locally. Costs egress, so it is
     // second — but a poster we can only get this way is still worth having.
-    const bytes = await this.storage
-      .download(args.storagePath)
-      .catch(() => null);
+    const bytes = await source.download();
     if (!bytes || bytes.length === 0) {
       return { ok: false, reason: `url:${viaUrl.reason}; download-miss` };
     }
-    const viaBytes = await extractVideoPosterFromBuffer(
-      bytes,
-      args.ext ?? null,
-    );
+    const viaBytes = await extractVideoPosterFromBuffer(bytes, source.ext);
+    if (viaBytes.ok) return viaBytes;
+    return {
+      ok: false,
+      reason: `url:${viaUrl.reason}; bytes:${viaBytes.reason}`,
+    };
+  }
+
+  /** Same ladder as `extract`, for ffprobe. */
+  private async probe(source: VideoSource): Promise<ProbeOutcome> {
+    if (source.buffer) return probeVideoFromBuffer(source.buffer, source.ext);
+    if (!source.url) return { ok: false, reason: 'no-source' };
+
+    const viaUrl = await probeVideoFromUrl(source.url, source.trustedPrefix);
+    if (viaUrl.ok) return viaUrl;
+
+    const bytes = await source.download();
+    if (!bytes || bytes.length === 0) {
+      return { ok: false, reason: `url:${viaUrl.reason}; download-miss` };
+    }
+    const viaBytes = await probeVideoFromBuffer(bytes, source.ext);
     if (viaBytes.ok) return viaBytes;
     return {
       ok: false,
@@ -190,4 +356,22 @@ export interface PosterJobArgs {
   buffer?: Buffer | null;
   /** Original file extension, only a demuxer hint for the temp file. */
   ext?: string | null;
+}
+
+export interface VideoJobResult {
+  /** Dimensions/duration were written to `processingMeta`. */
+  probed: boolean;
+  /** Public URL of the stored poster, or null. */
+  posterUrl: string | null;
+}
+
+/** The resolved input for one job — see `sourceFor`. */
+export interface VideoSource {
+  readonly buffer: Buffer | null;
+  readonly ext: string | null;
+  /** Object URL built from SUPABASE_URL + storage path; null without a path. */
+  readonly url: string | null;
+  readonly trustedPrefix: string;
+  /** Memoised full download of the object; null without a path or on failure. */
+  download(): Promise<Buffer | null>;
 }

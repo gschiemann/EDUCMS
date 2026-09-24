@@ -1,10 +1,12 @@
 /**
- * video-poster.service.spec.ts — extract → store → persist, and the far more
- * important half: what happens when any of those three fails.
+ * video-poster.service.spec.ts — extract → store → persist (poster) and
+ * probe → merge → persist (dimensions), and the far more important half:
+ * what happens when any of those fails.
  *
- * The binding rule from the task: poster extraction MUST NOT block or fail an
- * upload. These tests pin that the service swallows every failure mode and
- * leaves `posterUrl` NULL rather than propagating.
+ * The binding rule from the task: neither job may block or fail an upload.
+ * These tests pin that the service swallows every failure mode, leaves
+ * `posterUrl` NULL / `processingMeta` untouched rather than propagating, and
+ * that a failure in ONE job never skips the OTHER.
  */
 import { VideoPosterService } from './video-poster.service';
 
@@ -17,9 +19,21 @@ jest.mock('./video-poster', () => {
   };
 });
 
+jest.mock('./video-probe', () => {
+  const actual = jest.requireActual('./video-probe');
+  return {
+    ...actual,
+    probeVideoFromBuffer: jest.fn(),
+    probeVideoFromUrl: jest.fn(),
+  };
+});
+
 const posterModule = require('./video-poster');
 const fromBuffer = posterModule.extractVideoPosterFromBuffer as jest.Mock;
 const fromUrl = posterModule.extractVideoPosterFromUrl as jest.Mock;
+const probeModule = require('./video-probe');
+const probeFromBuffer = probeModule.probeVideoFromBuffer as jest.Mock;
+const probeFromUrl = probeModule.probeVideoFromUrl as jest.Mock;
 
 const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0]);
 const OK = {
@@ -30,6 +44,24 @@ const OK = {
   bytes: JPEG.length,
   seekSeconds: 1,
 };
+const PROBE_OK = {
+  ok: true,
+  width: 1920,
+  height: 1080,
+  displayWidth: 1920,
+  displayHeight: 1080,
+  durationMs: 75_400,
+  codec: 'h264',
+  fps: 29.97,
+  rotation: 0,
+};
+const PROBE_PORTRAIT = {
+  ...PROBE_OK,
+  displayWidth: 1080,
+  displayHeight: 1920,
+  rotation: 90,
+};
+const PROBE_FAIL = { ok: false, reason: 'no-video-dimensions' };
 const PREFIX = 'https://proj.supabase.co/storage/v1/object/public/assets/';
 
 function makeStorage(overrides: Partial<any> = {}) {
@@ -42,15 +74,18 @@ function makeStorage(overrides: Partial<any> = {}) {
   } as any;
 }
 
-function makePrisma(updateMany = jest.fn(async () => ({ count: 1 }))) {
-  return { client: { asset: { updateMany } } } as any;
+function makePrisma(
+  updateMany = jest.fn(async () => ({ count: 1 })),
+  findFirst = jest.fn(async () => ({ processingMeta: null })),
+) {
+  return { client: { asset: { updateMany, findFirst } } } as any;
 }
 
 function make(overrides: { storage?: any; prisma?: any } = {}) {
   const storage = overrides.storage ?? makeStorage();
   const prisma = overrides.prisma ?? makePrisma();
   const service = new VideoPosterService(prisma, storage);
-  // Silence the deliberate warn lines; a failing poster is expected noise here.
+  // Silence the deliberate warn lines; a failing job is expected noise here.
   jest
     .spyOn((service as any).logger, 'warn')
     .mockImplementation(() => undefined);
@@ -60,11 +95,24 @@ function make(overrides: { storage?: any; prisma?: any } = {}) {
   return { service, storage, prisma };
 }
 
+/** The processingMeta the LAST updateMany wrote, or undefined. */
+function writtenMeta(prisma: any): any {
+  const calls = prisma.client.asset.updateMany.mock.calls as any[][];
+  const hit = [...calls].reverse().find((c) => 'processingMeta' in c[0].data);
+  return hit?.[0].data.processingMeta;
+}
+
 const JOB = { assetId: 'asset-1', tenantId: 'tenant-1', mimeType: 'video/mp4' };
 
 beforeEach(() => {
   fromBuffer.mockReset();
   fromUrl.mockReset();
+  probeFromBuffer.mockReset();
+  probeFromUrl.mockReset();
+  // Default: the probe half quietly fails, so the poster-only tests below read
+  // exactly as they did before the probe existed.
+  probeFromBuffer.mockResolvedValue(PROBE_FAIL);
+  probeFromUrl.mockResolvedValue(PROBE_FAIL);
 });
 
 describe('poster on upload — the happy path', () => {
@@ -221,6 +269,7 @@ describe('the failure path — an upload must survive all of it', () => {
 
   it('kickOff is synchronous, returns void, and cannot produce an unhandled rejection', async () => {
     fromBuffer.mockRejectedValue(new Error('boom'));
+    probeFromBuffer.mockRejectedValue(new Error('boom too'));
     const { service } = make();
     const unhandled = jest.fn();
     process.once('unhandledRejection', unhandled);
@@ -237,6 +286,259 @@ describe('the failure path — an upload must survive all of it', () => {
     const { service, storage } = make();
     service.kickOff({ ...JOB, mimeType: 'application/pdf', buffer: JPEG });
     expect(fromBuffer).not.toHaveBeenCalled();
+    expect(probeFromBuffer).not.toHaveBeenCalled();
     expect(storage.upload).not.toHaveBeenCalled();
+  });
+});
+
+describe('dimensions probe on upload — the happy path', () => {
+  it('multipart: probes the bytes it was handed and merges DISPLAY dims into processingMeta, tenant-scoped', async () => {
+    probeFromBuffer.mockResolvedValue(PROBE_OK);
+    const { service, storage, prisma } = make();
+
+    const ok = await service.probeForAsset({
+      ...JOB,
+      buffer: Buffer.from('video'),
+      ext: '.mp4',
+    });
+
+    expect(ok).toBe(true);
+    expect(probeFromBuffer).toHaveBeenCalledWith(expect.any(Buffer), '.mp4');
+    expect(storage.download).not.toHaveBeenCalled();
+    // The read AND the write are tenant-scoped.
+    expect(prisma.client.asset.findFirst).toHaveBeenCalledWith({
+      where: { id: 'asset-1', tenantId: 'tenant-1' },
+      select: { processingMeta: true },
+    });
+    const call = prisma.client.asset.updateMany.mock.calls[0][0];
+    expect(call.where).toEqual({ id: 'asset-1', tenantId: 'tenant-1' });
+    // The exact shape the media library's metaDims reads.
+    expect(call.data.processingMeta).toMatchObject({
+      originalDimensions: { w: 1920, h: 1080 },
+      processedDimensions: null,
+      durationMs: 75_400,
+      probe: {
+        codec: 'h264',
+        fps: 29.97,
+        rotation: 0,
+        codedWidth: 1920,
+        codedHeight: 1080,
+      },
+    });
+    expect(typeof call.data.processingMeta.probedAt).toBe('string');
+  });
+
+  it('a rotated (portrait) clip persists the DISPLAY size, not the coded one', async () => {
+    probeFromBuffer.mockResolvedValue(PROBE_PORTRAIT);
+    const { service, prisma } = make();
+    await service.probeForAsset({ ...JOB, buffer: JPEG });
+    expect(writtenMeta(prisma)).toMatchObject({
+      originalDimensions: { w: 1080, h: 1920 },
+      probe: { rotation: 90, codedWidth: 1920, codedHeight: 1080 },
+    });
+  });
+
+  it('MERGES: every key already in processingMeta survives the write', async () => {
+    probeFromBuffer.mockResolvedValue(PROBE_OK);
+    const prisma = makePrisma(
+      undefined,
+      jest.fn(async () => ({
+        processingMeta: { originalSize: 9_000_000, skippedReason: 'legacy' },
+      })),
+    );
+    const { service } = make({ prisma });
+    await service.probeForAsset({ ...JOB, buffer: JPEG });
+    const meta = writtenMeta(prisma);
+    expect(meta.originalSize).toBe(9_000_000);
+    expect(meta.skippedReason).toBe('legacy');
+    expect(meta.originalDimensions).toEqual({ w: 1920, h: 1080 });
+  });
+
+  it('presign path: probes the object URL WE built (trusted prefix) and never downloads', async () => {
+    probeFromUrl.mockResolvedValue(PROBE_OK);
+    const { service, storage, prisma } = make();
+
+    const ok = await service.probeForAsset({
+      ...JOB,
+      storagePath: 'tenant-1/abc.mp4',
+      ext: '.mp4',
+    });
+
+    expect(ok).toBe(true);
+    expect(probeFromUrl).toHaveBeenCalledWith(
+      `${PREFIX}tenant-1/abc.mp4`,
+      PREFIX,
+    );
+    expect(probeFromBuffer).not.toHaveBeenCalled();
+    expect(storage.download).not.toHaveBeenCalled();
+    expect(writtenMeta(prisma).originalDimensions).toEqual({
+      w: 1920,
+      h: 1080,
+    });
+  });
+
+  it('falls back to a download when the URL probe fails — and both jobs share that ONE download', async () => {
+    probeFromUrl.mockResolvedValue({ ok: false, reason: 'ffprobe exited 1' });
+    probeFromBuffer.mockResolvedValue(PROBE_OK);
+    fromUrl.mockResolvedValue({ ok: false, reason: 'ffmpeg exited 1' });
+    fromBuffer.mockResolvedValue(OK);
+    const bytes = Buffer.from('video-bytes');
+    const storage = makeStorage({ download: jest.fn(async () => bytes) });
+    const { service, prisma } = make({ storage });
+
+    const result = await service.processVideo({
+      ...JOB,
+      storagePath: 'tenant-1/abc.mp4',
+      ext: '.mp4',
+    });
+
+    expect(result).toEqual({
+      probed: true,
+      posterUrl: expect.stringContaining('/posters/'),
+    });
+    expect(storage.download).toHaveBeenCalledTimes(1); // memoised across probe + poster
+    expect(probeFromBuffer).toHaveBeenCalledWith(bytes, '.mp4');
+    expect(fromBuffer).toHaveBeenCalledWith(bytes, '.mp4');
+    expect(writtenMeta(prisma).originalDimensions).toEqual({
+      w: 1920,
+      h: 1080,
+    });
+  });
+
+  it('does nothing at all for a non-video asset', async () => {
+    const { service, prisma } = make();
+    expect(
+      await service.probeForAsset({
+        ...JOB,
+        mimeType: 'image/png',
+        buffer: JPEG,
+      }),
+    ).toBe(false);
+    expect(probeFromBuffer).not.toHaveBeenCalled();
+    expect(prisma.client.asset.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('dimensions probe — the failure path writes nothing', () => {
+  it('a failed probe leaves processingMeta untouched and returns false', async () => {
+    probeFromBuffer.mockResolvedValue({ ok: false, reason: 'no-video-stream' });
+    const { service, prisma } = make();
+    await expect(service.probeForAsset({ ...JOB, buffer: JPEG })).resolves.toBe(
+      false,
+    );
+    expect(prisma.client.asset.findFirst).not.toHaveBeenCalled();
+    expect(prisma.client.asset.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('a THROWING probe returns false, never rejects', async () => {
+    probeFromBuffer.mockRejectedValue(new Error('ffprobe exploded'));
+    const { service, prisma } = make();
+    await expect(service.probeForAsset({ ...JOB, buffer: JPEG })).resolves.toBe(
+      false,
+    );
+    expect(prisma.client.asset.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('asset deleted before the read → no write, false', async () => {
+    probeFromBuffer.mockResolvedValue(PROBE_OK);
+    const prisma = makePrisma(
+      undefined,
+      jest.fn(async () => null),
+    );
+    const { service } = make({ prisma });
+    await expect(service.probeForAsset({ ...JOB, buffer: JPEG })).resolves.toBe(
+      false,
+    );
+    expect(prisma.client.asset.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('asset deleted between read and write (0 rows) → false, no throw', async () => {
+    probeFromBuffer.mockResolvedValue(PROBE_OK);
+    const prisma = makePrisma(jest.fn(async () => ({ count: 0 })));
+    const { service } = make({ prisma });
+    await expect(service.probeForAsset({ ...JOB, buffer: JPEG })).resolves.toBe(
+      false,
+    );
+  });
+
+  it('a DB error on persist → false, no throw', async () => {
+    probeFromBuffer.mockResolvedValue(PROBE_OK);
+    const prisma = makePrisma(
+      jest.fn(async () => {
+        throw new Error('pool timeout');
+      }),
+    );
+    const { service } = make({ prisma });
+    await expect(service.probeForAsset({ ...JOB, buffer: JPEG })).resolves.toBe(
+      false,
+    );
+  });
+
+  it('returns false when there is neither a buffer nor a storage path', async () => {
+    const { service, prisma } = make();
+    await expect(service.probeForAsset({ ...JOB })).resolves.toBe(false);
+    expect(probeFromBuffer).not.toHaveBeenCalled();
+    expect(probeFromUrl).not.toHaveBeenCalled();
+    expect(prisma.client.asset.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('poster and probe are independent — one failing never skips the other', () => {
+  it('a poster that cannot be extracted does not skip the probe', async () => {
+    fromBuffer.mockResolvedValue({ ok: false, reason: 'Invalid data found' });
+    probeFromBuffer.mockResolvedValue(PROBE_OK);
+    const { service, prisma } = make();
+
+    const result = await service.processVideo({
+      ...JOB,
+      buffer: JPEG,
+      ext: '.mp4',
+    });
+
+    expect(result).toEqual({ probed: true, posterUrl: null });
+    expect(writtenMeta(prisma).originalDimensions).toEqual({
+      w: 1920,
+      h: 1080,
+    });
+  });
+
+  it('a poster that THROWS does not skip the probe', async () => {
+    fromBuffer.mockRejectedValue(new Error('ffmpeg exploded'));
+    probeFromBuffer.mockResolvedValue(PROBE_OK);
+    const { service } = make();
+    await expect(
+      service.processVideo({ ...JOB, buffer: JPEG }),
+    ).resolves.toEqual({ probed: true, posterUrl: null });
+  });
+
+  it('a probe that fails (or throws) does not skip the poster', async () => {
+    fromBuffer.mockResolvedValue(OK);
+    probeFromBuffer.mockRejectedValue(new Error('ffprobe exploded'));
+    const { service, prisma } = make();
+
+    const result = await service.processVideo({ ...JOB, buffer: JPEG });
+
+    expect(result.probed).toBe(false);
+    expect(result.posterUrl).toContain('/posters/');
+    // Only the poster column was written; processingMeta was left alone.
+    const calls = prisma.client.asset.updateMany.mock.calls;
+    expect(calls).toHaveLength(1);
+    expect(calls[0][0].data).toEqual({ posterUrl: result.posterUrl });
+  });
+
+  it('kickOff runs BOTH jobs for one video', async () => {
+    fromBuffer.mockResolvedValue(OK);
+    probeFromBuffer.mockResolvedValue(PROBE_OK);
+    const { service, prisma } = make();
+
+    service.kickOff({ ...JOB, buffer: JPEG, ext: '.mp4' });
+    for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
+
+    const datas = prisma.client.asset.updateMany.mock.calls.map(
+      (c: any[]) => c[0].data,
+    );
+    expect(datas).toHaveLength(2);
+    expect(datas.some((d: any) => 'processingMeta' in d)).toBe(true);
+    expect(datas.some((d: any) => 'posterUrl' in d)).toBe(true);
   });
 });
