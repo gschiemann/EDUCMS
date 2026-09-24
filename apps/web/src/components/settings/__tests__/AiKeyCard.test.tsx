@@ -3,7 +3,7 @@
  * before this, Greg's RIOT locations showed "free trial" while every AI call there quietly ran on
  * our key instead of the OpenAI key he had saved on RIOT Las Vegas - Downtown.
  */
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 jest.mock('next-intl', () => ({
   // Render the key path itself so assertions do not depend on copy.
@@ -57,5 +57,45 @@ describe('AiKeyCard — a location covered by its organisation\'s key', () => {
     render(<AiKeyCard />);
     await waitFor(() => expect(screen.getByText('settings.ai.freeTrialBanner')).toBeTruthy());
     expect(screen.queryByText(/settings\.ai\.inheritedBanner/)).toBeNull();
+  });
+});
+
+// 2026-09-23 — whose key draws the AI boards changes with the key: Settings → AI's boards card
+// ("14 of 20 left" ↔ "no board limit") re-reads its line when one is saved or removed.
+describe('AiKeyCard — tells the page a key changed', () => {
+  beforeEach(() => apiFetch.mockReset());
+
+  async function typeKeyAndSave() {
+    await waitFor(() => expect(screen.getByText('settings.ai.testAndSave')).toBeTruthy());
+    const input = document.querySelector('input[autocomplete="off"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'sk-test-0123456789' } });
+    // The save's awaits (test the key, reload the status) resolve inside act.
+    await act(async () => {
+      fireEvent.click(screen.getByText('settings.ai.testAndSave'));
+    });
+  }
+
+  it('a saved key → onKeyChanged, once', async () => {
+    mockStatus({ ...notConfigured, inheritedFrom: null });
+    const onKeyChanged = jest.fn();
+    render(<AiKeyCard onKeyChanged={onKeyChanged} />);
+    await typeKeyAndSave();
+    await waitFor(() => expect(onKeyChanged).toHaveBeenCalledTimes(1));
+    expect(apiFetch).toHaveBeenCalledWith('/ai/key', expect.objectContaining({ method: 'POST' }));
+  });
+
+  it('a key the provider rejected changes nothing — no call', async () => {
+    apiFetch.mockImplementation(async (path: string, opts?: { method?: string }) => {
+      if (path === '/ai/key/catalog') return catalog;
+      if (path === '/ai/key' && opts?.method === 'POST') throw new Error('That key was rejected by the provider.');
+      if (path === '/ai/key') return { ...notConfigured, inheritedFrom: null };
+      return {};
+    });
+    const onKeyChanged = jest.fn();
+    render(<AiKeyCard onKeyChanged={onKeyChanged} />);
+    await typeKeyAndSave();
+    await waitFor(() => expect(screen.getByText('That key was rejected by the provider.')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('settings.ai.testAndSave')).toBeTruthy()); // settled
+    expect(onKeyChanged).not.toHaveBeenCalled();
   });
 });
