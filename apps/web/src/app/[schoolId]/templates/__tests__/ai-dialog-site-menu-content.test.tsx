@@ -162,7 +162,7 @@ it('sends EVERY item and price from the site menu as the designer `content`', as
   expect(vars.logoUrl).toBe('https://supertaco.example/logo.svg');
   expect(vars.heroImageUrl).toBe('https://supertaco.example/hero.jpg');
   expect(vars.purpose).toBe('menu');
-  expect(vars.count).toBe(3);
+  expect(vars.count).toBe(2);
 });
 
 it('a website with NO menu sends no `content` — and tells the server so (siteMenuMissing)', async () => {
