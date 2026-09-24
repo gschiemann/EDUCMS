@@ -78,6 +78,14 @@ export class DirectUploadError extends Error {
      * network, and the message is ours to translate.
      */
     readonly source: 'api' | 'client' = 'client',
+    /**
+     * The API's machine code (`err.code` as api-client attaches it — e.g.
+     * `STORAGE_QUOTA_EXCEEDED`) when `source` is 'api'. Lets a picker translate a
+     * refusal that carries numbers instead of passing the English message through.
+     */
+    readonly apiCode?: string,
+    /** The API's whole error body (the numbers such a message needs) when `source` is 'api'. */
+    readonly apiBody?: unknown,
   ) {
     super(message);
     this.name = 'DirectUploadError';
@@ -231,12 +239,15 @@ const isSignatureProblem = (r: XhrResult) =>
 
 function mapApiError(e: unknown): DirectUploadError {
   if (e instanceof DirectUploadError) return e;
-  const err = (e ?? {}) as { status?: unknown; message?: unknown };
+  const err = (e ?? {}) as { status?: unknown; message?: unknown; code?: unknown; body?: unknown };
   const status = typeof err.status === 'number' ? err.status : undefined;
   const message = typeof err.message === 'string' && err.message ? err.message : 'Upload failed.';
-  if (status === 413) return new DirectUploadError('too-large', message, status, 'api');
-  if (status === 415) return new DirectUploadError('unsupported', message, status, 'api');
-  return new DirectUploadError('server', message, status, 'api');
+  // api-client attaches the API's envelope: `code` (the machine code) and `body`.
+  const apiCode = typeof err.code === 'string' && err.code ? err.code : undefined;
+  const apiBody = err.body && typeof err.body === 'object' ? err.body : undefined;
+  if (status === 413) return new DirectUploadError('too-large', message, status, 'api', apiCode, apiBody);
+  if (status === 415) return new DirectUploadError('unsupported', message, status, 'api', apiCode, apiBody);
+  return new DirectUploadError('server', message, status, 'api', apiCode, apiBody);
 }
 
 /**

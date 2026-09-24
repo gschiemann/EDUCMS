@@ -1700,6 +1700,8 @@
     "subtitleScope": "{assets} 个素材，分布在 {folders} 个文件夹",
     "storageUsed": "已用 {total}",
     "storageVideos": "视频 {size}（{count}）",
+    "storageUsage": "存储：已用 {used} / {total}",
+    "storageUsageWarn": "存储：已用 {used} / {total} — 即将用满",
     "filterAll": "全部",
     "filterImages": "图片",
     "filterVideos": "视频",
@@ -2797,6 +2799,7 @@
     "networkLost": "连接中断，上传无法继续。请检查网络后重试。",
     "expired": "此上传已无法继续，请重新开始。",
     "storageRefused": "存储服务拒绝了该文件。请重试，或导出为 MP4（H.264）。",
-    "cancelled": "上传已取消。"
+    "cancelled": "上传已取消。",
+    "storageFull": "此文件需要 {need}；您的 {total} 仅剩 {left} — 请删除不用的媒体或添加屏幕。"
   }
 }

@@ -313,6 +313,37 @@ describe('uploadAssetDirect — small files and server refusals', () => {
     const err = await uploadAssetDirect(file(10), { deps: h.deps }).catch((e) => e);
     expect(err.code).toBe('too-large');
     expect(err.message).toContain('Max is 2 GB');
+    expect(err.apiCode).toBeUndefined();
+    expect(err.apiBody).toBeUndefined();
+  });
+
+  it("a refusal's machine code and body ride on the error (2026-09-24 — the storage allowance 413 carries numbers)", async () => {
+    // Cut from the producer: storageQuotaError() in apps/api/src/assets/storage-quota.service.ts,
+    // 10 screens (50 GB), 49.6 GB stored, a 0.9 GB file — exactly what api-client attaches as
+    // err.code / err.body when the API answers 413.
+    const body = {
+      code: 'STORAGE_QUOTA_EXCEEDED',
+      message: 'This file needs 0.9 GB; 0.4 GB of your 50 GB is left — delete unused media or add screens.',
+      usedBytes: 53257594470,
+      includedBytes: 53687091200,
+      neededBytes: 966367642,
+    };
+    const h = harness();
+    h.postJson.mockImplementationOnce(async () => {
+      const e = new Error(body.message) as Error & { status?: number; code?: string; body?: unknown };
+      e.status = 413;
+      e.code = body.code;
+      e.body = body;
+      throw e;
+    });
+    const err = await uploadAssetDirect(file(10), { deps: h.deps }).catch((e) => e);
+    expect(err).toBeInstanceOf(DirectUploadError);
+    expect(err.code).toBe('too-large');
+    expect(err.source).toBe('api');
+    expect(err.apiCode).toBe('STORAGE_QUOTA_EXCEEDED');
+    expect(err.apiBody).toEqual(body);
+    // Nothing was sent and nothing registered: the refusal came before a byte moved.
+    expect(h.server.puts).toBe(0);
   });
 });
 

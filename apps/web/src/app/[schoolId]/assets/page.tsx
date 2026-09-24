@@ -45,6 +45,7 @@ import {
   useAssets, useAddWebUrl, useDeleteAsset, useAssetFolders, useCreateAssetFolder,
   useRenameAssetFolder, useDeleteAssetFolder, useMoveAsset, useGenerateAltText,
   useUpdateAltText, useAssetUsage, normalizeAssetList, assetUsageQueryKey, fetchAssetUsage, useCheckAssetPlayback, useAssetStorageSummary,
+  useAssetStorageUsage,
   type AssetUsage,
 } from '@/hooks/use-api';
 import { useUIStore } from '@/store/ui-store';
@@ -71,6 +72,7 @@ import {
 import { useVideoOptimizationStatus, optimizationOf } from '@/hooks/use-video-optimization';
 import { VideoOptimizationNote } from '@/components/assets/VideoOptimizationNote';
 import { useUploadErrorText } from '@/lib/use-upload-error-text';
+import { formatStorageBytes } from '@/lib/storage-bytes';
 
 // Match the server limit (apps/api/src/assets/assets.controller.ts).
 // 200MB was rejecting any reasonably-sized video before it even tried to
@@ -423,6 +425,13 @@ export default function AssetsPage() {
   const deleteAsset = useDeleteAsset();
   const checkPlayback = useCheckAssetPlayback();
   const storage = useAssetStorageSummary();
+  // 2026-09-24 — the organisation's storage ALLOWANCE ("Storage: 2.3 GB of
+  // 50 GB", amber from 80 %): max(10 GB, 5 GB × paired screens), pooled at the
+  // organisation. `GET /assets/storage` is admin-only — the same role set that
+  // may delete — so a CONTRIBUTOR's page never asks and keeps the plain "used"
+  // line below. No poll; it rides the ['assets'] invalidation every upload and
+  // delete already issues.
+  const storageUsage = useAssetStorageUsage(canDelete);
   // Audit P1-2 (2026-05-28) — AI alt-text generator + manual override.
   const generateAltText = useGenerateAltText();
   const updateAltText = useUpdateAltText();
@@ -1230,17 +1239,33 @@ export default function AssetsPage() {
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">{t('assetsLib.title')}</h1>
           <p className="text-sm text-slate-600 mt-0.5" data-testid="library-subtitle">
             {t('assetsLib.subtitleScope', { assets: libraryTotal, folders: folderCount })}
-            {/* Storage used (2026-09-24). Greg: "where do i see my total storage
-                and amount used?" — the number, by kind; no quota on the
-                per-screen plan, so no bar. Absent until the summary lands. */}
-            {storage.data && storage.data.totalFiles > 0 && (
+            {/* Storage (2026-09-24). Greg: "where do i see my total storage
+                and amount used?" — for an admin, the organisation's allowance:
+                "Storage: 2.3 GB of 50 GB", amber and "almost full" from 80 %
+                (the API refuses the upload that would pass 100 %). For anyone
+                the allowance endpoint refuses, the plain number by kind. */}
+            {storageUsage.data ? (
+              <span
+                data-testid="library-storage"
+                data-storage-warn={storageUsage.data.warn ? 'true' : undefined}
+                className={`block sm:inline sm:before:content-['·'] sm:before:mx-1.5 sm:before:text-slate-400 ${storageUsage.data.warn ? 'text-amber-700 font-semibold' : ''}`}
+              >
+                {t(storageUsage.data.warn ? 'assetsLib.storageUsageWarn' : 'assetsLib.storageUsage', {
+                  used: formatStorageBytes(storageUsage.data.usedBytes),
+                  total: formatStorageBytes(storageUsage.data.includedBytes),
+                })}
+                {storage.data && storage.data.videos.files > 0 && (
+                  <span className="text-slate-500 font-normal"> · {t('assetsLib.storageVideos', { size: fmtSize(storage.data.videos.bytes), count: storage.data.videos.files })}</span>
+                )}
+              </span>
+            ) : storage.data && storage.data.totalFiles > 0 ? (
               <span data-testid="library-storage" className="block sm:inline sm:before:content-['·'] sm:before:mx-1.5 sm:before:text-slate-400">
                 {t('assetsLib.storageUsed', { total: fmtSize(storage.data.totalBytes) })}
                 {storage.data.videos.files > 0 && (
                   <span className="text-slate-500"> · {t('assetsLib.storageVideos', { size: fmtSize(storage.data.videos.bytes), count: storage.data.videos.files })}</span>
                 )}
               </span>
-            )}
+            ) : null}
           </p>
         </div>
         <div className="flex gap-2 items-center">

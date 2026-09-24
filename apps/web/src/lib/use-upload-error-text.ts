@@ -9,6 +9,7 @@
  */
 import { useTranslations } from 'next-intl';
 import { DirectUploadError, formatUploadCap, maxUploadBytesFor } from '@/lib/direct-upload';
+import { STORAGE_QUOTA_EXCEEDED, formatStorageBytes, storageQuotaNumbers } from '@/lib/storage-bytes';
 
 function fmtBytes(bytes: number): string {
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
@@ -20,6 +21,20 @@ export function useUploadErrorText(): (err: unknown, file: File) => string {
   const t = useTranslations('directUpload');
   return (err, file) => {
     if (err instanceof DirectUploadError) {
+      // 2026-09-24 — the organisation's storage allowance is full (413
+      // STORAGE_QUOTA_EXCEEDED from presign, multipart or complete-upload).
+      // The body carries the numbers, so this one refusal is translated; a
+      // body without them falls through to the server's own sentence.
+      if (err.source === 'api' && err.apiCode === STORAGE_QUOTA_EXCEEDED) {
+        const n = storageQuotaNumbers(err.apiBody);
+        if (n) {
+          return t('storageFull', {
+            need: formatStorageBytes(n.neededBytes),
+            left: formatStorageBytes(Math.max(0, n.includedBytes - n.usedBytes)),
+            total: formatStorageBytes(n.includedBytes),
+          });
+        }
+      }
       // Our API's refusal already says exactly what to do — show it as sent.
       if (err.source === 'api' && err.message) return err.message;
       if (err.code === 'aborted') return t('cancelled');

@@ -60,6 +60,10 @@ let assetsResponse: unknown = ASSETS;
 /** Every `useAssets` argument the page asked for, in order. */
 let assetRequests: Array<Record<string, unknown> | undefined> = [];
 let usageResponse: { data?: unknown; isLoading?: boolean; isError?: boolean } = { data: undefined, isLoading: false, isError: true };
+/** What `useAssetStorageUsage` (GET /assets/storage, the organisation's allowance) answers. */
+let storageUsageResponse: { data?: unknown; isLoading?: boolean; isError?: boolean } = { data: undefined, isLoading: false, isError: false };
+/** Every `enabled` the page passed to `useAssetStorageUsage`, in order. */
+let storageUsageEnabled: boolean[] = [];
 /** What POST /assets/folders resolves to — or an Error it rejects with. */
 let createFolderResult: unknown = { id: 'x' };
 
@@ -100,6 +104,10 @@ jest.mock('@/hooks/use-api', () => {
     useUpdateAltText: mutation,
     useCheckAssetPlayback: mutation,
     useAssetStorageSummary: () => ({ data: { totalBytes: 309_900_000, totalFiles: 5, videos: { bytes: 306_400_000, files: 2 }, images: { bytes: 1_200_000, files: 1 }, other: { bytes: 2_300_000, files: 2 } }, isLoading: false }),
+    useAssetStorageUsage: (enabled: boolean) => {
+      storageUsageEnabled.push(enabled);
+      return { data: storageUsageResponse.data, isLoading: !!storageUsageResponse.isLoading, isError: !!storageUsageResponse.isError };
+    },
   };
 });
 jest.mock('@tanstack/react-query', () => ({
@@ -148,6 +156,8 @@ beforeEach(() => {
   assetsResponse = ASSETS;
   assetRequests = [];
   usageResponse = { data: undefined, isLoading: false, isError: true };
+  storageUsageResponse = { data: undefined, isLoading: false, isError: false };
+  storageUsageEnabled = [];
   createFolderResult = { id: 'x' };
   liveOptimization = new Map();
   (toast.error as jest.Mock).mockClear();
@@ -749,5 +759,55 @@ describe('a new folder opens itself', () => {
     );
     expect(rtl.getByLabelText('New folder name')).toHaveValue('Fall Festival');
     expect(rtl.getByLabelText('Folder path')).toHaveTextContent('All Files');
+  });
+});
+
+describe('Media Library — the organisation storage allowance line (2026-09-24)', () => {
+  // GET /assets/storage: max(10 GB, 5 GB × paired screens), pooled at the organisation.
+  const GiB = 1024 * 1024 * 1024;
+  const usage = (over: Record<string, unknown> = {}) => ({
+    usedBytes: Math.round(2.3 * GiB),
+    includedBytes: 50 * GiB,
+    screens: 10,
+    percent: 5,
+    warn: false,
+    ...over,
+  });
+
+  it('an admin sees "Storage: 2.3 GB of 50 GB" in the header, with the by-kind breakdown beside it', () => {
+    storageUsageResponse = { data: usage() };
+    mount();
+    const line = rtl.getByTestId('library-storage');
+    expect(line).toHaveTextContent('Storage: 2.3 GB of 50 GB');
+    expect(line).toHaveTextContent('videos 292.2 MB (2)');
+    expect(line).not.toHaveAttribute('data-storage-warn');
+    expect(line.className).not.toMatch(/amber/);
+    // The page asked for the allowance — an admin may.
+    expect(storageUsageEnabled.length).toBeGreaterThan(0);
+    expect(storageUsageEnabled.every((v) => v === true)).toBe(true);
+  });
+
+  it('at 80 % and above the line is amber and says "almost full"', () => {
+    storageUsageResponse = { data: usage({ usedBytes: 42 * GiB, percent: 84, warn: true }) };
+    mount();
+    const line = rtl.getByTestId('library-storage');
+    expect(line).toHaveTextContent('Storage: 42 GB of 50 GB — almost full');
+    expect(line).toHaveAttribute('data-storage-warn', 'true');
+    expect(line.className).toMatch(/text-amber-700/);
+  });
+
+  it('with no allowance answer (a refusal, or still loading) the plain used-by-kind line stays', () => {
+    storageUsageResponse = { data: undefined, isError: true };
+    mount();
+    const line = rtl.getByTestId('library-storage');
+    expect(line).toHaveTextContent('295.5 MB used');
+    expect(line).not.toHaveTextContent('Storage:');
+  });
+
+  it('a CONTRIBUTOR never asks for the allowance — the endpoint is admin-only and would answer 403', () => {
+    asRole('CONTRIBUTOR', () => {
+      expect(storageUsageEnabled.length).toBeGreaterThan(0);
+      expect(storageUsageEnabled.every((v) => v === false)).toBe(true);
+    });
   });
 });

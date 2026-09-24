@@ -1730,6 +1730,37 @@ export function useAssetStorageSummary() {
   });
 }
 
+/** `GET /assets/storage` — the organisation's storage allowance and what it stores (2026-09-24). */
+export interface AssetStorageUsage {
+  usedBytes: number;
+  /** max(10 GB, 5 GB × paired screens), pooled at the organisation (the root of the tenant tree). */
+  includedBytes: number;
+  screens: number;
+  /** Rounded; can exceed 100 when the organisation is over. */
+  percent: number;
+  /** At or above 80 % — the header line turns amber. */
+  warn: boolean;
+}
+
+/**
+ * The organisation's storage allowance for the media library's header line.
+ * The endpoint is admin-only (SUPER / DISTRICT / SCHOOL_ADMIN — a CONTRIBUTOR
+ * gets 403), so the page passes its role gate as `enabled` and no request is
+ * made for anyone else. No `refetchInterval` (mobile-perf standard): an upload
+ * or a delete already invalidates `['assets']`, which this key sits under, so
+ * the number moves when the library does. `retry: false` — a refusal is an
+ * answer, not a blip.
+ */
+export function useAssetStorageUsage(enabled = true) {
+  return useQuery({
+    queryKey: ['assets', 'storage'],
+    queryFn: () => apiFetch('/assets/storage') as Promise<AssetStorageUsage>,
+    staleTime: 60_000,
+    enabled,
+    retry: false,
+  });
+}
+
 export function useAssetFolders() {
   return useQuery({
     queryKey: ['asset-folders'],

@@ -1700,6 +1700,8 @@
     "subtitleScope": "{assets} assets across {folders} folders",
     "storageUsed": "{total} used",
     "storageVideos": "videos {size} ({count})",
+    "storageUsage": "Storage: {used} of {total}",
+    "storageUsageWarn": "Storage: {used} of {total} — almost full",
     "filterAll": "All",
     "filterImages": "Images",
     "filterVideos": "Videos",
@@ -2797,6 +2799,7 @@
     "networkLost": "The connection dropped and the upload couldn't resume. Check your connection and try again.",
     "expired": "This upload can no longer be continued. Start it again.",
     "storageRefused": "Storage refused the file. Try again, or export it as MP4 (H.264).",
-    "cancelled": "Upload cancelled."
+    "cancelled": "Upload cancelled.",
+    "storageFull": "This file needs {need}; {left} of your {total} is left — delete unused media or add screens."
   }
 }

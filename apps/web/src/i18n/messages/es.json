@@ -1700,6 +1700,8 @@
     "subtitleScope": "{assets} archivos en {folders} carpetas",
     "storageUsed": "{total} en uso",
     "storageVideos": "vídeos {size} ({count})",
+    "storageUsage": "Almacenamiento: {used} de {total}",
+    "storageUsageWarn": "Almacenamiento: {used} de {total} — casi lleno",
     "filterAll": "Todos",
     "filterImages": "Imágenes",
     "filterVideos": "Vídeos",
@@ -2797,6 +2799,7 @@
     "networkLost": "Se perdió la conexión y la subida no pudo reanudarse. Revisa tu conexión e inténtalo de nuevo.",
     "expired": "Esta subida ya no puede continuar. Vuelve a iniciarla.",
     "storageRefused": "El almacenamiento rechazó el archivo. Inténtalo de nuevo o expórtalo como MP4 (H.264).",
-    "cancelled": "Subida cancelada."
+    "cancelled": "Subida cancelada.",
+    "storageFull": "Este archivo necesita {need}; te quedan {left} de tus {total} — elimina contenido que no uses o añade pantallas."
   }
 }
