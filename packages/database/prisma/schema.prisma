@@ -1569,13 +1569,44 @@ model Asset {
   //   {
   //     processedDimensions: null,   // a video is never re-encoded at upload
   //     durationMs: number | null,
-  //     probe: { codec, fps, rotation, codedWidth, codedHeight },
+  //     probe: {                     // PROBE VERSION 2 — `ProbeFacts` in
+  //                                  // apps/api/src/storage/video-probe.ts;
+  //                                  // every key present, null = "not said"
+  //       probeVersion: 2,
+  //       codec: string | null,      // ffprobe codec_name: 'h264','hevc','vp9','av1','prores',…
+  //       profile: string | null,    // 'High', 'Main', 'High 10', 'High 4:2:2', 'Main 10', …
+  //       level: number | null,      // as ffprobe reports it (h264 41 = 4.1); -99/unknown → null
+  //       pixFmt: string | null,     // 'yuv420p', 'yuv420p10le', 'yuv422p', …
+  //       fps: number | null,        // avg_frame_rate
+  //       nominalFps: number | null, // r_frame_rate
+  //       variableFrameRate: boolean | null, // both known and > 0.5 % apart
+  //       bitrateKbps: number | null, // stream bit_rate, else format bit_rate, else size/duration
+  //       rotation: number,          // 0 | 90 | 180 | 270
+  //       codedWidth: number, codedHeight: number, // as stored, before rotation
+  //       container: string | null,  // format_name: 'mov,mp4,m4a,3gp,3g2,mj2', 'matroska,webm', …
+  //       fastStart: boolean | null, // ISO-BMFF only: moov before mdat; null elsewhere / unreadable
+  //       audio: { codec, channels, sampleRate } | null  // first audio stream; null = none
+  //     },
   //     probedAt: ISO8601 string
   //   }
   // merged over whatever the row already held (`mergeProbeMeta`), so the media
-  // library's RESOLUTION tile reads a video exactly like an image. Historical
-  // rows: `scripts/backfill-video-posters.ts --only=dimensions`, idempotent on
-  // "no usable originalDimensions".
+  // library's RESOLUTION tile reads a video exactly like an image and the
+  // signage-compatibility grader reads `probe`. A probe that FAILS (ffprobe
+  // threw, no video stream, no dimensions) stamps the row instead of staying
+  // silent — otherwise the dashboard reads "Checking the encoding…" and polls
+  // for facts that are not coming:
+  //   {
+  //     probedAt: ISO8601 string,    // same key as a success: "a probe ran"
+  //     probeFailed: string,         // short reason, e.g. 'no-video-stream'
+  //     probeFailedVersion: 2        // which probe version failed
+  //   }
+  // (`mergeProbeFailure`; dimensions and every other key untouched; a later
+  // success removes both failure keys). Historical rows:
+  // `scripts/backfill-video-posters.ts --only=dimensions`, idempotent on
+  // "(no usable originalDimensions OR probe.probeVersion IS DISTINCT FROM 2)
+  // AND NOT (probeFailed is a string AND probeFailedVersion = 2)" — a
+  // version-1 probe (no marker) and a version-less failure are each re-probed
+  // exactly once; `--retry-failed` retries current-version failures too.
   // Nullable + additive — every existing row stays untouched. Read it
   // (rarely) to diagnose "why is this asset 4 MB?" or to drive a future
   // "X GB of images saved this month" dashboard tile.

@@ -60,8 +60,17 @@ const PROBE_OK = {
   displayHeight: 1080,
   durationMs: 75_400,
   codec: 'h264',
+  profile: 'High',
+  level: 41,
+  pixFmt: 'yuv420p',
   fps: 29.97,
+  nominalFps: 30,
+  variableFrameRate: false,
+  bitrateKbps: 4523,
   rotation: 0,
+  container: 'mov,mp4,m4a,3gp,3g2,mj2',
+  fastStart: true,
+  audio: { codec: 'aac', channels: 2, sampleRate: 48000 },
 };
 const FAIL = { ok: false, reason: 'stubbed' };
 const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0]);
@@ -404,17 +413,26 @@ describe('the dimensions probe rides the SAME kick-off — through the REAL serv
     expect(metaWrite(prisma)).toBeUndefined();
   });
 
-  it('⚠️ a probe AND a poster that both fail leave the upload intact and write nothing', async () => {
+  it('⚠️ a probe AND a poster that both fail leave the upload intact — the only write is the probe FAILURE STAMP', async () => {
     probeFromBuffer.mockRejectedValue(new Error('ffprobe exploded'));
     extractFromBuffer.mockRejectedValue(new Error('ffmpeg exploded'));
     const { controller, prisma } = makeController({ realVideoPoster: true });
 
     const res: any = await controller.upload(adminReq as any, videoFile(), {});
-    for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
+    await waitFor(() => !!metaWrite(prisma));
 
     expect(res.id).toBe('asset-1');
     expect(res.posterUrl).toBeNull();
-    expect(prisma.client.asset.updateMany).not.toHaveBeenCalled();
+    // No poster URL was ever written; the stamp carries no facts and no
+    // dimensions — it only tells the dashboard to stop waiting for them.
+    expect(prisma.client.asset.updateMany).toHaveBeenCalledTimes(1);
+    const write = metaWrite(prisma);
+    expect(write.where).toEqual({ id: 'asset-1', tenantId: 'tenant-1' });
+    expect(write.data.processingMeta).toEqual({
+      probedAt: expect.any(String),
+      probeFailed: 'threw: ffprobe exploded',
+      probeFailedVersion: 2,
+    });
   });
 });
 

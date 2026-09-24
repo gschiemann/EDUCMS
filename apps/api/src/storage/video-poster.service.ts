@@ -12,8 +12,10 @@ import {
   type PosterOutcome,
 } from './video-poster';
 import {
+  describeProbe,
   errorMessage,
-  formatDurationMs,
+  hasCurrentProbe,
+  mergeProbeFailure,
   mergeProbeMeta,
   probeVideoFromBuffer,
   probeVideoFromUrl,
@@ -55,10 +57,13 @@ import {
  * ── WHERE THE DIMENSIONS LIVE ───────────────────────────────────────────────
  * `processingMeta.originalDimensions` (DISPLAY size — a portrait phone clip
  * is 1080×1920, not the 1920×1080 it is stored as), `durationMs`, and a
- * `probe` block with codec / fps / rotation / coded size, MERGED over whatever
- * the row already holds (`mergeProbeMeta`). That is the same JSON the sharp
- * optimizer writes for an image, so the media library's `metaDims` reads it
- * with no change. No new column, no migration.
+ * `probe` block (`ProbeFacts`, `probeVersion: 2` — codec / profile / level /
+ * pixel format / avg + nominal fps / bitrate / rotation / coded size /
+ * container / fast-start / first audio stream: everything the signage
+ * compatibility grader reads), MERGED over whatever the row already holds
+ * (`mergeProbeMeta`). That is the same JSON the sharp optimizer writes for an
+ * image, so the media library's `metaDims` reads it with no change. No new
+ * column, no migration.
  *
  * ── WHICH SOURCE IT READS ───────────────────────────────────────────────────
  * The multipart path already holds the bytes, so it passes the buffer. The
@@ -128,18 +133,21 @@ export class VideoPosterService {
     try {
       outcome = await this.probe(source);
     } catch (err) {
-      this.logger.warn(
-        `[probe] ffprobe threw for ${args.assetId}: ${errorMessage(err)}`,
-      );
+      const reason = `threw: ${errorMessage(err)}`;
+      this.logger.warn(`[probe] ffprobe threw for ${args.assetId}: ${reason}`);
+      await this.stampProbeFailure(args, reason);
       return false;
     }
 
     if (!outcome.ok) {
       // NULL dimensions are a supported state ("—" in the panel). Say why, at
-      // warn, once; the backfill retries rows with no usable dimensions.
+      // warn, once, and STAMP the row so the dashboard stops waiting for
+      // facts that are not coming; the backfill gives it one more try per
+      // probe version.
       this.logger.warn(
         `[probe] no dimensions for asset ${args.assetId}: ${outcome.reason}`,
       );
+      await this.stampProbeFailure(args, outcome.reason);
       return false;
     }
 
@@ -181,17 +189,44 @@ export class VideoPosterService {
       return false;
     }
 
-    const dur = formatDurationMs(outcome.durationMs);
     this.logger.log(
-      `[probe] asset ${args.assetId} → ${outcome.displayWidth}×${outcome.displayHeight}` +
-        (dur ? ` · ${dur}` : '') +
-        (outcome.codec ? ` · ${outcome.codec}` : '') +
-        (outcome.fps ? ` @ ${outcome.fps} fps` : '') +
-        (outcome.rotation
-          ? ` (rotated ${outcome.rotation}°, coded ${outcome.width}×${outcome.height})`
-          : ''),
+      `[probe] asset ${args.assetId} → ${describeProbe(outcome)}`,
     );
     return true;
+  }
+
+  /**
+   * A FAILED probe stamps the row: `probedAt` + `probeFailed` (+ the version
+   * that failed), merged through the same read → merge → updateMany path a
+   * success uses, so every other key survives and the dimensions are never
+   * touched. Without this an unreadable file reads "Checking the encoding…"
+   * on the dashboard, which polls for facts that are not coming, for ten
+   * minutes. Never throws; a row that already carries a current probe is left
+   * alone (a stamp must never contradict facts). Resolves true when written.
+   */
+  private async stampProbeFailure(
+    args: PosterJobArgs,
+    reason: string,
+  ): Promise<boolean> {
+    try {
+      const row = await this.prisma.client.asset.findFirst({
+        where: { id: args.assetId, tenantId: args.tenantId },
+        select: { processingMeta: true },
+      });
+      if (!row) return false;
+      if (hasCurrentProbe(row.processingMeta)) return false;
+      const merged = mergeProbeFailure(row.processingMeta, reason);
+      const res = await this.prisma.client.asset.updateMany({
+        where: { id: args.assetId, tenantId: args.tenantId },
+        data: { processingMeta: merged as Prisma.InputJsonObject },
+      });
+      return res.count > 0;
+    } catch (err) {
+      this.logger.warn(
+        `[probe] failure stamp not written for ${args.assetId}: ${errorMessage(err)}`,
+      );
+      return false;
+    }
   }
 
   /**

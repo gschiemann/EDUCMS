@@ -52,8 +52,17 @@ const PROBE_OK = {
   displayHeight: 1080,
   durationMs: 75_400,
   codec: 'h264',
+  profile: 'High',
+  level: 41,
+  pixFmt: 'yuv420p',
   fps: 29.97,
+  nominalFps: 30,
+  variableFrameRate: false,
+  bitrateKbps: 4523,
   rotation: 0,
+  container: 'mov,mp4,m4a,3gp,3g2,mj2',
+  fastStart: true,
+  audio: { codec: 'aac', channels: 2, sampleRate: 48000 },
 };
 const PROBE_PORTRAIT = {
   ...PROBE_OK,
@@ -419,24 +428,94 @@ describe('dimensions probe on upload — the happy path', () => {
   });
 });
 
-describe('dimensions probe — the failure path writes nothing', () => {
-  it('a failed probe leaves processingMeta untouched and returns false', async () => {
+describe('dimensions probe — the failure path STAMPS the row, never facts', () => {
+  // Without a stamp the dashboard reads "Checking the encoding…" and polls for
+  // facts that are not coming, for ten minutes: a failure must say so.
+  const isIso = (v: unknown) =>
+    typeof v === 'string' && !Number.isNaN(Date.parse(v));
+
+  it('a probe with no dimensions writes probedAt + probeFailed (+ version), nothing else, and returns false', async () => {
     probeFromBuffer.mockResolvedValue({ ok: false, reason: 'no-video-stream' });
     const { service, prisma } = make();
     await expect(service.probeForAsset({ ...JOB, buffer: JPEG })).resolves.toBe(
       false,
     );
-    expect(prisma.client.asset.findFirst).not.toHaveBeenCalled();
-    expect(prisma.client.asset.updateMany).not.toHaveBeenCalled();
+    // The same tenant-scoped read → merge → write path a success uses.
+    expect(prisma.client.asset.findFirst).toHaveBeenCalledWith({
+      where: { id: 'asset-1', tenantId: 'tenant-1' },
+      select: { processingMeta: true },
+    });
+    const call = prisma.client.asset.updateMany.mock.calls[0][0];
+    expect(call.where).toEqual({ id: 'asset-1', tenantId: 'tenant-1' });
+    expect(call.data.processingMeta).toEqual({
+      probedAt: expect.any(String),
+      probeFailed: 'no-video-stream',
+      probeFailedVersion: 2,
+    });
+    expect(isIso(call.data.processingMeta.probedAt)).toBe(true);
   });
 
-  it('a THROWING probe returns false, never rejects', async () => {
+  it('a THROWING probe returns false, never rejects — and stamps the row with every other key intact', async () => {
     probeFromBuffer.mockRejectedValue(new Error('ffprobe exploded'));
-    const { service, prisma } = make();
+    const prisma = makePrisma(
+      undefined,
+      jest.fn(async () => ({
+        processingMeta: {
+          originalSize: 9_000_000,
+          skippedReason: 'legacy',
+          originalDimensions: { w: 1280, h: 720 },
+        },
+      })),
+    );
+    const { service } = make({ prisma });
+    await expect(service.probeForAsset({ ...JOB, buffer: JPEG })).resolves.toBe(
+      false,
+    );
+    const meta = writtenMeta(prisma);
+    expect(meta).toEqual({
+      originalSize: 9_000_000,
+      skippedReason: 'legacy',
+      originalDimensions: { w: 1280, h: 720 }, // untouched
+      probedAt: expect.any(String),
+      probeFailed: 'threw: ffprobe exploded',
+      probeFailedVersion: 2,
+    });
+    expect(isIso(meta.probedAt)).toBe(true);
+  });
+
+  it('the stamp never contradicts facts: a row that already carries a current probe is left alone', async () => {
+    probeFromBuffer.mockResolvedValue({ ok: false, reason: 'no-video-stream' });
+    const { mergeProbeMeta } = probeModule;
+    const prisma = makePrisma(
+      undefined,
+      jest.fn(async () => ({ processingMeta: mergeProbeMeta(null, PROBE_OK) })),
+    );
+    const { service } = make({ prisma });
     await expect(service.probeForAsset({ ...JOB, buffer: JPEG })).resolves.toBe(
       false,
     );
     expect(prisma.client.asset.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('a stamp that cannot be written (row gone, DB error) is swallowed — still false, never a throw', async () => {
+    probeFromBuffer.mockResolvedValue({ ok: false, reason: 'no-video-stream' });
+    const gone = makePrisma(
+      undefined,
+      jest.fn(async () => null),
+    );
+    await expect(
+      make({ prisma: gone }).service.probeForAsset({ ...JOB, buffer: JPEG }),
+    ).resolves.toBe(false);
+    expect(gone.client.asset.updateMany).not.toHaveBeenCalled();
+
+    const broken = makePrisma(
+      jest.fn(async () => {
+        throw new Error('pool timeout');
+      }),
+    );
+    await expect(
+      make({ prisma: broken }).service.probeForAsset({ ...JOB, buffer: JPEG }),
+    ).resolves.toBe(false);
   });
 
   it('asset deleted before the read → no write, false', async () => {
@@ -479,7 +558,12 @@ describe('dimensions probe — the failure path writes nothing', () => {
     await expect(service.probeForAsset({ ...JOB })).resolves.toBe(false);
     expect(probeFromBuffer).not.toHaveBeenCalled();
     expect(probeFromUrl).not.toHaveBeenCalled();
-    expect(prisma.client.asset.updateMany).not.toHaveBeenCalled();
+    // Nothing could be probed, so the row is stamped: the dashboard must not
+    // wait ten minutes for facts no probe will ever produce.
+    expect(writtenMeta(prisma)).toMatchObject({
+      probeFailed: 'no-source',
+      probeFailedVersion: 2,
+    });
   });
 });
 
@@ -520,10 +604,17 @@ describe('poster and probe are independent — one failing never skips the other
 
     expect(result.probed).toBe(false);
     expect(result.posterUrl).toContain('/posters/');
-    // Only the poster column was written; processingMeta was left alone.
-    const calls = prisma.client.asset.updateMany.mock.calls;
-    expect(calls).toHaveLength(1);
-    expect(calls[0][0].data).toEqual({ posterUrl: result.posterUrl });
+    // Two writes: the probe's FAILURE STAMP (no facts), then the poster URL.
+    const datas = prisma.client.asset.updateMany.mock.calls.map(
+      (c: any[]) => c[0].data,
+    );
+    expect(datas).toHaveLength(2);
+    expect(datas[0].processingMeta).toMatchObject({
+      probeFailed: 'threw: ffprobe exploded',
+      probeFailedVersion: 2,
+    });
+    expect(datas[0].processingMeta.originalDimensions).toBeUndefined();
+    expect(datas[1]).toEqual({ posterUrl: result.posterUrl });
   });
 
   it('kickOff runs BOTH jobs for one video', async () => {
