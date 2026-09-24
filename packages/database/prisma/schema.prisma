@@ -229,6 +229,8 @@ model Tenant {
   aiUsageEvents                   AiUsageEvent[]
   // 2026-09-23 — AI Designer background generation jobs. See AiDesignerJob.
   aiDesignerJobs                  AiDesignerJob[]
+  // 2026-09-23 — signage-profile video transcodes. See VideoTranscodeJob.
+  videoTranscodeJobs              VideoTranscodeJob[]
   // Per-screen billing meter. One License row per Tenant; absence means
   // "Pilot" (free tier with cap of 3 screens, no expiry). License flips
   // when an admin runs a Stripe checkout or the SUPER_ADMIN comps seats.
@@ -803,6 +805,65 @@ model AiDesignerJob {
   // Which batch a template was kept from.
   @@index([keptTemplateId])
   @@map("ai_designer_jobs")
+}
+
+// 2026-09-23 — signage-profile VIDEO TRANSCODE jobs (4K uploads; Greg: "4K videos will normally
+// be pretty large"). Every screen downloads what an asset's fileUrl points at, so a 1.5 GB camera
+// original is 1.5 GB of Supabase egress per screen. After a video's complete-upload (or multipart
+// upload) one row is queued here; VideoTranscodeWorker claims it (FOR UPDATE SKIP LOCKED, every
+// replica), streams the original to a temp file, re-encodes it to H.264 High (1080p, or 2160p when
+// the source is 4K) and — ONLY when the result is smaller and provably complete — swaps the
+// asset's fileUrl to the optimized copy. Screens keep playing whatever URL the asset row carries,
+// so nothing is ever broken mid-transcode. Not a manifest-fed model (manifest-hot-cache.ts), so
+// heartbeats and progress never invalidate the player manifest cache; only the one swap write to
+// `assets` does.
+model VideoTranscodeJob {
+  id                     String    @id @default(uuid())
+  tenantId               String    @map("tenant_id")
+  // One job per asset (the enqueue is `ON CONFLICT DO NOTHING`, so a retried upload can never
+  // queue a second transcode). NULL once the asset is deleted: the row deliberately OUTLIVES it,
+  // because a swapped job still owns a retained ORIGINAL object the retention sweep must remove.
+  assetId                String?   @unique @map("asset_id")
+  // queued | running | done | skipped | failed
+  status                 String    @default("queued")
+  // Why the job ended as it did, as a code: swapped, not-smaller, already-optimal,
+  // emergency-content, source-changed, asset-deleted, no-video-stream, ffmpeg-failed, timeout, …
+  reason                 String?
+  // 0–100 while running; written at most every few seconds.
+  progress               Int?
+  // Claims so far; a stalled job is re-queued once, then failed.
+  attempts               Int       @default(0)
+  leaseOwner             String?   @map("lease_owner")
+  heartbeatAt            DateTime? @map("heartbeat_at")
+  // The URL the asset served when the job was queued. The swap is conditional on the asset STILL
+  // serving exactly this, so a replaced/deleted asset is never overwritten by a late transcode.
+  sourceUrl              String    @map("source_url")
+  sourceBytes            Int?      @map("source_bytes")
+  outputUrl              String?   @map("output_url")
+  outputBytes            Int?      @map("output_bytes")
+  // Probe + profile + timing forensics: { profile, codecIn, dimsIn, dimsOut, durationS, fpsIn,
+  // bitrateIn, seconds, sha256Out, … } — also the source of the "bytes in vs bytes out" log line.
+  details                Json?
+  error                  String?
+  createdAt              DateTime  @default(now()) @map("created_at")
+  startedAt              DateTime? @map("started_at")
+  finishedAt             DateTime? @map("finished_at")
+  // Retention of the ORIGINAL object after a swap: kept at least 7 days (rollback window, in-flight
+  // downloads, CDN), then deleted only if no row anywhere still names it (template zones embed
+  // asset URLs BY VALUE). A reference found pushes the date out and records why.
+  originalDeleteAfter    DateTime? @map("original_delete_after")
+  originalDeletedAt      DateTime? @map("original_deleted_at")
+  originalRetainedReason String?   @map("original_retained_reason")
+  tenant                 Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  asset                  Asset?    @relation(fields: [assetId], references: [id], onDelete: SetNull)
+
+  // The worker's claim (status = 'queued' ORDER BY created_at) and its stale sweep.
+  @@index([status, createdAt])
+  // A tenant's own jobs, newest first.
+  @@index([tenantId, createdAt(sort: Desc)])
+  // The retention sweep (done jobs whose original is due).
+  @@index([originalDeleteAfter])
+  @@map("video_transcode_jobs")
 }
 
 // 2026-09-22 — the live AI model catalog's editable state (apps/api/src/ai/ai-model-catalog.ts
@@ -1657,6 +1718,9 @@ model Asset {
   tenant           Tenant         @relation(fields: [tenantId], references: [id])
   folder           AssetFolder?   @relation(fields: [folderId], references: [id])
   playlistItems    PlaylistItem[]
+  // 2026-09-23 — the signage-profile transcode of this video, if one was queued. Back-relation
+  // only (the foreign key lives on video_transcode_jobs) — no column on this table.
+  transcodeJob     VideoTranscodeJob?
 
   // Hot-path:
   //   - GET /assets            → where: { tenantId } order by createdAt
