@@ -14,6 +14,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import {
+  useMfaStatus,
   usePasskeys,
   usePasskeyRegisterOptions,
   usePasskeyRegisterVerify,
@@ -241,6 +242,10 @@ export function PasskeyCard({ autoOpenAdd = false }: { autoOpenAdd?: boolean } =
   };
 
   const hasPasskeys = passkeys.length > 0;
+  // Whether the authenticator app is ON — the same cached read the Security
+  // page's rail makes (['mfa-status']), so this costs no request of its own.
+  const { data: mfaStatus } = useMfaStatus();
+  const totpOn = mfaStatus?.enabled === true;
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
@@ -506,11 +511,13 @@ export function PasskeyCard({ autoOpenAdd = false }: { autoOpenAdd?: boolean } =
         )}
 
         {/* Once a passkey exists the authenticator app is optional. Say so —
-            and do NOT act on it. Turning someone's second factor off on their
-            behalf is exactly the kind of silent security change that must
-            always be the operator's own deliberate click (MfaCard, below,
-            still owns that control). */}
-        {hasPasskeys && (
+            only when the app is actually ON (2026-09-24: with 2FA off, "you
+            can turn it off" described a control that was not there) — and do
+            NOT act on it. Turning someone's second factor off on their behalf
+            is exactly the kind of silent security change that must always be
+            the operator's own deliberate click (MfaCard, below, still owns
+            that control). */}
+        {hasPasskeys && totpOn && (
           <p className="text-[11px] text-slate-400 leading-relaxed">
             {t('passkeys.mayDisableTotp')}
           </p>

@@ -91,6 +91,30 @@ describe('PasskeyCard — empty state', () => {
   });
 });
 
+describe('PasskeyCard — the "you may turn the app off" note', () => {
+  const ROW = { id: 'pk-1', label: 'Mac', createdAt: '2026-09-20T00:00:00Z', lastUsedAt: null, transports: ['internal'] };
+  const withStatus = (enabled: boolean) => (path: string) =>
+    path === '/auth/passkeys'
+      ? Promise.resolve({ passkeys: [ROW], max: 10 })
+      : path === '/auth/mfa/status'
+        ? Promise.resolve({ enabled, passkeyCount: 1 })
+        : Promise.resolve(null);
+
+  it('appears once a passkey exists AND the authenticator app is on', async () => {
+    apiFetch.mockImplementation(withStatus(true));
+    await act(async () => { renderCard(); });
+    expect(await screen.findByText('Mac')).toBeInTheDocument();
+    expect(await screen.findByText(/turn the authenticator app off/i)).toBeInTheDocument();
+  });
+
+  it('stays quiet when the app is OFF — it would describe a control that is not there (2026-09-24)', async () => {
+    apiFetch.mockImplementation(withStatus(false));
+    await act(async () => { renderCard(); });
+    expect(await screen.findByText('Mac')).toBeInTheDocument();
+    expect(screen.queryByText(/turn the authenticator app off/i)).not.toBeInTheDocument();
+  });
+});
+
 describe('PasskeyCard — add flow', () => {
   it('password → options → create → verify → the row appears', async () => {
     let list: any[] = [];
@@ -103,6 +127,9 @@ describe('PasskeyCard — add flow', () => {
         list = [IPHONE];
         return Promise.resolve({ passkey: IPHONE });
       }
+      // The authenticator app is ON for this account, so the "you may turn it
+      // off now" note is due once the passkey lands.
+      if (path === '/auth/mfa/status') return Promise.resolve({ enabled: true, passkeyCount: list.length });
       return Promise.resolve(null);
     });
     startRegistration.mockResolvedValue(ATTESTATION);
