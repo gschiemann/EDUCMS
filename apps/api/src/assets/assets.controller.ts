@@ -18,6 +18,7 @@ import {
 } from '../storage/media-optimization.service';
 import { mintUploadRenewTicket, verifyUploadRenewTicket } from './upload-renew-ticket';
 import { VideoTranscodeService } from '../storage/video-transcode/video-transcode.service';
+import { StorageQuotaService } from './storage-quota.service';
 import { VideoPosterService } from '../storage/video-poster.service';
 import { EmailService } from '../email/email.service';
 import { Logger } from '@nestjs/common';
@@ -275,6 +276,9 @@ export class AssetsController {
     // 2026-09-23 — signage-profile transcode queue. Optional so the many specs
     // that build this controller by hand keep working; production always has it.
     @Optional() private readonly transcodes?: VideoTranscodeService,
+    // 2026-09-24 — per-organisation storage allowance (storage-quota.service.ts).
+    // Optional for the same reason; production always has it.
+    @Optional() private readonly storageQuota?: StorageQuotaService,
   ) {}
 
   /**
@@ -810,6 +814,21 @@ export class AssetsController {
     return { items: await this.transcodes.statusForAssets(String(req.user.tenantId), ids) };
   }
 
+  /**
+   * The organisation's storage allowance and what it stores (2026-09-24). The
+   * tenant resolves to its organisation (the root of the tenant tree), so a
+   * school sees its district's pool. Admin roles only.
+   */
+  @Get('storage')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async storageUsage(@Request() req: any) {
+    if (!this.storageQuota) {
+      throw new HttpException({ code: 'STORAGE_USAGE_UNAVAILABLE', message: 'Storage usage is not available.' }, HttpStatus.SERVICE_UNAVAILABLE);
+    }
+    const u = await this.storageQuota.usage(String(req.user.tenantId));
+    return { usedBytes: u.usedBytes, includedBytes: u.includedBytes, screens: u.screens, percent: u.percent, warn: u.warn };
+  }
+
   @Post('emergency-upload')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   @UseInterceptors(FileInterceptor('file', {
@@ -914,6 +933,10 @@ export class AssetsController {
   ) {
     const mimeType = this.assertUploadIntent(body.filename, body.contentType, Number(body.size));
     await this.resolveFolderId(req.user.tenantId, body.folderId);
+    // 2026-09-24 — the organisation's storage allowance, against the DECLARED
+    // size: refused before a single byte moves (the real stored size is
+    // re-checked at complete-upload).
+    await this.storageQuota?.assertRoomFor(String(req.user.tenantId), Number(body.size));
 
     const ext = this.storageExtension(body.filename, mimeType);
     const storagePath = `${req.user.tenantId}/${randomUUID()}${ext}`;
@@ -1250,6 +1273,15 @@ export class AssetsController {
         await this.storage.delete(storagePath).catch(() => undefined);
         throw realCapError;
       }
+      // 2026-09-24 — the organisation's storage allowance against the REAL
+      // stored bytes (fresh read). Over → the object is removed before any
+      // Asset row can point at it, same as the per-type cap above.
+      try {
+        await this.storageQuota?.assertRoomFor(String(req.user.tenantId), info.size, { fresh: true });
+      } catch (quotaErr) {
+        await this.storage.delete(storagePath).catch(() => undefined);
+        throw quotaErr;
+      }
     }
 
     const asset = await this.prisma.client.asset.create({
@@ -1428,6 +1460,7 @@ export class AssetsController {
     if (asset.status === 'PENDING_APPROVAL') {
       this.notifyAdminsOfPendingReview(req.user.tenantId, asset);
     }
+    void this.storageQuota?.invalidate(String(req.user.tenantId));
 
     return {
       id: asset.id,
@@ -1549,6 +1582,10 @@ export class AssetsController {
     // Video: stored as-is here; the signage transcode is queued right after
     // the Asset row exists (kickOffVideoTranscode below).
 
+    // 2026-09-24 — the organisation's storage allowance against the REAL bytes
+    // about to be stored (post-optimization), before anything is written.
+    await this.storageQuota?.assertRoomFor(String(req.user.tenantId), uploadBuf.length);
+
     // Upload to Supabase Storage: tenant/<tenantId>/<uuid>.<ext>
     const storagePath = `${req.user.tenantId}/${randomUUID()}${uploadExt}`;
 
@@ -1595,6 +1632,7 @@ export class AssetsController {
       // notification fan-out.
       this.notifyAdminsOfPendingReview(req.user.tenantId, asset);
     }
+    void this.storageQuota?.invalidate(String(req.user.tenantId));
 
     // Audit P1-2 (2026-05-28) — fire-and-forget alt-text generation.
     // We're feeding the OPTIMIZED bytes (`uploadBuf`) so the vision

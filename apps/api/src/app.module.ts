@@ -152,6 +152,7 @@ import { VideoProbeAutoHealCron } from './storage/video-probe-autoheal.cron';
 import { VideoTranscodeService } from './storage/video-transcode/video-transcode.service';
 import { VideoTranscodePipeline } from './storage/video-transcode/video-transcode.pipeline';
 import { VideoTranscodeWorker } from './storage/video-transcode/video-transcode.worker';
+import { StorageQuotaService } from './assets/storage-quota.service';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { RbacGuard } from './auth/rbac.guard';
 import { SentryModule } from '@sentry/nestjs/setup';
@@ -322,6 +323,9 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     VideoTranscodeService,
     VideoTranscodePipeline,
     VideoTranscodeWorker,
+    // 2026-09-24 — per-organisation storage allowance on the media-library upload
+    // paths (assets/storage-quota.service.ts).
+    StorageQuotaService,
     // Server-side URL renderer (Puppeteer + Alpine Chromium). Used by
     // ProxyController to handle JS-heavy / AJAX-loaded sites that the
     // legacy strip-scripts proxy can't render. See renderer.service.ts.
