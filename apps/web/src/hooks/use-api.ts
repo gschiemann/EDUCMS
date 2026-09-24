@@ -6287,6 +6287,8 @@ export function useDesignerJobHistory(enabled = true) {
     getNextPageParam: (last: DesignerHistoryPage | null) => last?.nextBefore || undefined,
     enabled,
     staleTime: 0,
+    // A re-read on focus would re-fetch EVERY page loaded so far — the list is read when it opens.
+    refetchOnWindowFocus: false,
   });
 }
 
