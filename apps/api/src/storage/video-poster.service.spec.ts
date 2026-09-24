@@ -83,9 +83,12 @@ function makeStorage(overrides: Partial<any> = {}) {
   } as any;
 }
 
+// Typed as plain `jest.Mock`, not off the defaults: a test hands in a mock that
+// resolves a populated processingMeta (or null), and inferring the parameter
+// type from the default value made the full `tsc` reject exactly those.
 function makePrisma(
-  updateMany = jest.fn(async () => ({ count: 1 })),
-  findFirst = jest.fn(async () => ({ processingMeta: null })),
+  updateMany: jest.Mock = jest.fn(async () => ({ count: 1 })),
+  findFirst: jest.Mock = jest.fn(async () => ({ processingMeta: null })),
 ) {
   return { client: { asset: { updateMany, findFirst } } } as any;
 }
