@@ -4,7 +4,7 @@
  * These tests pin the fix for two egress-cap bypasses:
  *
  *   #7 — Legacy multipart POST /assets/upload NEVER enforced the tighter
- *        per-type caps (video 50 MB, image/audio/pdf 25 MB) — only the
+ *        per-type caps (video = the 500 MB general cap, image/audio/pdf 25 MB) — only the
  *        blanket 500 MB multer limit applied. The real bytes are in-process
  *        (`file.buffer`), so an oversize file for a type must now be rejected
  *        with the existing error-envelope shape.
@@ -22,7 +22,7 @@
  */
 
 import { HttpException, HttpStatus } from '@nestjs/common';
-import { AssetsController, perTypeSizeCapError } from './assets.controller';
+import { AssetsController, perTypeSizeCapError, MAX_VIDEO_SIZE } from './assets.controller';
 
 const MB = 1024 * 1024;
 
@@ -98,8 +98,8 @@ async function expectHttp(fn: () => Promise<any>, code: string, status: HttpStat
 }
 
 describe('perTypeSizeCapError (shared helper)', () => {
-  it('flags an over-cap video (>50 MB) with the video envelope', () => {
-    const e = perTypeSizeCapError('video/mp4', 60 * MB);
+  it('flags an over-cap video (> the video cap) with the video envelope', () => {
+    const e = perTypeSizeCapError('video/mp4', MAX_VIDEO_SIZE + MB);
     expect(e).toBeInstanceOf(HttpException);
     expect(e!.getStatus()).toBe(HttpStatus.PAYLOAD_TOO_LARGE);
     expect((e!.getResponse() as any).code).toBe('ASSET_VIDEO_TOO_LARGE');
@@ -117,14 +117,14 @@ describe('perTypeSizeCapError (shared helper)', () => {
 });
 
 describe('BUG #7 — legacy multipart /assets/upload enforces per-type caps', () => {
-  it('REJECTS a 60 MB video against the 50 MB video cap (real in-process bytes)', async () => {
+  it('REJECTS an over-cap video against the video cap (real in-process bytes)', async () => {
     const storage = makeStorage();
     const { controller } = makeController(storage);
     const file: any = {
-      buffer: Buffer.alloc(60 * MB),
+      buffer: Buffer.allocUnsafe(MAX_VIDEO_SIZE + MB),
       mimetype: 'video/mp4',
       originalname: 'big.mp4',
-      size: 60 * MB,
+      size: MAX_VIDEO_SIZE + MB,
     };
     await expectHttp(
       () => controller.upload(adminReq as any, file, {}),
@@ -180,10 +180,10 @@ describe('BUG #6 — presigned /assets/complete-upload enforces the cap against 
     folderId: null,
   };
 
-  it('REJECTS + DELETES when the real stored size (300 MB) blows the video cap despite a small claimed size', async () => {
+  it('REJECTS + DELETES when the real stored size (over the cap) blows the video cap despite a small claimed size', async () => {
     // …but storage reports the REAL object is 300 MB.
     const storage = makeStorage({
-      getObjectInfo: jest.fn(async () => ({ size: 300 * MB, contentType: 'video/mp4' })),
+      getObjectInfo: jest.fn(async () => ({ size: MAX_VIDEO_SIZE + MB, contentType: 'video/mp4' })),
     });
     const { controller, prisma } = makeController(storage);
 
@@ -230,14 +230,14 @@ describe('UPLD-01 — /assets/emergency-upload enforces the same caps as the med
   // 400 MB x N screens of egress off a single config change, discovered at
   // incident time rather than config time.
   const emergencyFile = (mimetype: string, bytes: number, originalname: string) =>
-    ({ buffer: Buffer.alloc(bytes), mimetype, originalname, size: bytes }) as any;
+    ({ buffer: Buffer.allocUnsafe(bytes), mimetype, originalname, size: bytes }) as any;
 
-  it('REJECTS a 60 MB emergency video against the shared 50 MB video cap', async () => {
+  it('REJECTS an over-cap emergency video against the shared video cap', async () => {
     const storage = makeStorage();
     const { controller, prisma } = makeController(storage);
 
     await expectHttp(
-      () => controller.uploadEmergencyAsset(adminReq as any, emergencyFile('video/mp4', 60 * MB, 'lockdown.mp4')),
+      () => controller.uploadEmergencyAsset(adminReq as any, emergencyFile('video/mp4', MAX_VIDEO_SIZE + MB, 'lockdown.mp4')),
       'ASSET_VIDEO_TOO_LARGE',
       HttpStatus.PAYLOAD_TOO_LARGE,
     );

@@ -79,7 +79,11 @@ const MAX_ASSET_FILE_SIZE = 500 * 1024 * 1024;
 // egress bomb. Cap matched to "best content on the display + zero
 // egress overage" tradeoff. Audio is rare here and small; PDFs are
 // usually logos/branding.
-const MAX_VIDEO_SIZE = 50 * 1024 * 1024;        // 50 MB — 60s 1080p @ 5Mbps
+// 2026-09-23 — raised 50 MB → 500 MB (Greg: a tester's 300 MB video failed; "4K videos will
+// normally be pretty large"). The 50 MB figure was the 2026-05-23 egress bound because the
+// upload path does not transcode video yet; egress is now bounded by the fleet's local media
+// cache and the operator's own judgement, and the next build adds a signage-profile transcode.
+export const MAX_VIDEO_SIZE = MAX_ASSET_FILE_SIZE; // 500 MB — the general cap
 const MAX_IMAGE_SIZE_RAW = 25 * 1024 * 1024;    // 25 MB raw — optimizer brings to ~0.5 MB WebP
 const MAX_AUDIO_SIZE = 25 * 1024 * 1024;        // 25 MB
 const MAX_PDF_SIZE = 25 * 1024 * 1024;          // 25 MB
@@ -110,7 +114,7 @@ export function perTypeSizeCapError(mimeType: string, size: number): HttpExcepti
   const mt = (mimeType || '').toLowerCase();
   if (mt.startsWith('video/') && numSize > MAX_VIDEO_SIZE) {
     return new HttpException({ code: 'ASSET_VIDEO_TOO_LARGE', message: `Video is too large for signage (${Math.round(numSize / (1024 * 1024))} MB). ` +
-        `Max is ${Math.round(MAX_VIDEO_SIZE / (1024 * 1024))} MB — plenty for a clean 1080p loop ` +
+        `Max is ${Math.round(MAX_VIDEO_SIZE / (1024 * 1024))} MB — plenty for a clean 4K loop ` +
         `at signage-tier quality. Compress with HandBrake (free, handbrake.fr), iMovie's ` +
         `"Share → File → 1080p", or your phone's built-in "Save as smaller file" option, then try again.` }, HttpStatus.PAYLOAD_TOO_LARGE);
   }

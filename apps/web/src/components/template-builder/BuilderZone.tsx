@@ -202,7 +202,7 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
       console.error('Upload failed:', err);
       await appAlert({
         title: "Couldn't upload that image",
-        message: 'The upload failed. Check your connection or try a smaller file (under 50 MB) and try again.',
+        message: 'The upload failed. Check your connection or try a smaller file (under 500 MB) and try again.',
         tone: 'danger',
       });
     } finally {

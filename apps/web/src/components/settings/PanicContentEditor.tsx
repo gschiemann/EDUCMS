@@ -28,7 +28,7 @@ const ACCENT_MAP = {
   rose:   { dot: 'bg-rose-500',   border: 'border-rose-200',   bg: 'bg-rose-50/40',   chip: 'text-rose-700' },
 };
 
-const MAX_FILE_SIZE = 50 * 1024 * 1024;
+const MAX_FILE_SIZE = 500 * 1024 * 1024; // matches the /assets video cap (raised 2026-09-23)
 
 /**
  * Direct asset uploader for one panic content bucket. Bypasses the
@@ -77,7 +77,7 @@ export function PanicContentEditor({ kind, label, accent, hint }: Props) {
     Array.from(files).forEach(file => {
       const id = genId();
       if (file.size > MAX_FILE_SIZE) {
-        setUploads(prev => [{ id, name: file.name, progress: 0, phase: 'error', error: `Too large (${Math.round(file.size / (1024 * 1024))}MB > 50MB cap)` }, ...prev]);
+        setUploads(prev => [{ id, name: file.name, progress: 0, phase: 'error', error: `Too large (${Math.round(file.size / (1024 * 1024))}MB > 500MB cap)` }, ...prev]);
         return;
       }
       setUploads(prev => [{ id, name: file.name, progress: 0, phase: 'uploading' }, ...prev]);

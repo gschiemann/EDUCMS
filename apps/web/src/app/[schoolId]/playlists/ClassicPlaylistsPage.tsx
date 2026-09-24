@@ -1945,7 +1945,7 @@ export default function ClassicPlaylistsPage({
   // On success we (a) invalidate the assets cache so it refetches and
   // (b) auto-select the new asset so "Add Selected" picks it up
   // without an extra click.
-  const PICKER_MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB matches /assets
+  const PICKER_MAX_FILE_SIZE = 500 * 1024 * 1024; // 500 MB matches /assets (video cap raised 2026-09-23)
 
   const handlePickerUploadFiles = (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -1959,7 +1959,7 @@ export default function ClassicPlaylistsPage({
       name: file.name,
       progress: 0,
       phase: file.size > PICKER_MAX_FILE_SIZE ? 'error' : 'uploading',
-      error: file.size > PICKER_MAX_FILE_SIZE ? `Too large (${Math.round(file.size / (1024 * 1024))}MB > 50MB cap)` : undefined,
+      error: file.size > PICKER_MAX_FILE_SIZE ? `Too large (${Math.round(file.size / (1024 * 1024))}MB > 500MB cap)` : undefined,
     }));
     setPickerUploads(prev => [...newItems, ...prev]);
 
