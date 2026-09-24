@@ -140,6 +140,9 @@ function makeController(
         create: jest.fn(async ({ data }: any) => ({ ...created, ...data })),
         update: jest.fn(async ({ data }: any) => ({ id: 'asset-1', ...data })),
         updateMany: jest.fn(async () => ({ count: 1 })),
+        // 2026-09-24 — the delete path asks whether any other row still
+        // holds the file before removing it; here the row is always alone.
+        count: jest.fn(async () => 0),
         delete: jest.fn(async () => ({ id: 'asset-1' })),
       },
       $transaction: jest.fn(async (fn: any) =>

@@ -65,7 +65,12 @@ function makeController(
       findFirst: jest.fn(() => Promise.resolve({ ...asset })),
       count: jest.fn((args: { where: CountWhere }) => {
         counted.push(args.where);
-        const used = opts.stillUsed ?? 0;
+        // `stillUsed` answers for the kept ORIGINAL; the row's own file is
+        // always the row's alone here (its own guard has its own spec).
+        const used =
+          args.where.fileUrl === `${PREFIX}${ORIGINAL}`
+            ? (opts.stillUsed ?? 0)
+            : 0;
         return used instanceof Error
           ? Promise.reject(used)
           : Promise.resolve(used);
@@ -113,8 +118,9 @@ describe('DELETE /assets/:id — the original a fast-start re-mux kept', () => {
     });
 
     expect(deleted).toEqual([COPY, ORIGINAL]);
-    // Asked across EVERY tenant whether any other row still uses it.
+    // Asked across EVERY tenant whether any other row still uses either file.
     expect(counted).toEqual([
+      { fileUrl: `${PREFIX}${COPY}`, id: { not: 'a1' } },
       { fileUrl: `${PREFIX}${ORIGINAL}`, id: { not: 'a1' } },
     ]);
     expect(client.asset.delete).toHaveBeenCalledTimes(1);
@@ -148,7 +154,9 @@ describe('DELETE /assets/:id — the original a fast-start re-mux kept', () => {
     );
     await controller.remove(REQ, 'a1');
     expect(deleted).toEqual([COPY]);
-    expect(counted).toEqual([]);
+    expect(counted).toEqual([
+      { fileUrl: `${PREFIX}${COPY}`, id: { not: 'a1' } },
+    ]);
   });
 
   it('a video that was never re-muxed deletes exactly as before', async () => {
@@ -160,6 +168,8 @@ describe('DELETE /assets/:id — the original a fast-start re-mux kept', () => {
     );
     await controller.remove(REQ, 'a1');
     expect(deleted).toEqual([ORIGINAL]);
-    expect(counted).toEqual([]);
+    expect(counted).toEqual([
+      { fileUrl: `${PREFIX}${ORIGINAL}`, id: { not: 'a1' } },
+    ]);
   });
 });

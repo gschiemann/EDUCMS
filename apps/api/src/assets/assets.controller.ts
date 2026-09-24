@@ -2044,7 +2044,10 @@ export class AssetsController {
 
   @Delete(':id')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
-  async remove(@Request() req: any, @Param('id') id: string) {
+  async remove(
+    @Request() req: { user: { id: string; tenantId: string; role: string } },
+    @Param('id') id: string,
+  ) {
     const asset = await this.prisma.client.asset.findFirst({
       where: { id, tenantId: req.user.tenantId },
     });
@@ -2116,10 +2119,33 @@ export class AssetsController {
     // a reference added between the check above and the transaction below.)
     const removedItems = await this.prisma.client.playlistItem.deleteMany({ where: { assetId: id, playlist: { tenantId: req.user.tenantId } } });
 
-    // Delete from Supabase Storage if it's a Supabase URL
+    // Delete the stored file — only when this row is the LAST holder of it,
+    // and only inside this tenant's own folder (2026-09-24, found during the
+    // fast-start re-mux work). Fleet distribution gives every child location
+    // its own row pointing at the PARENT's object, so a school deleting its
+    // copy used to blank the district's and every sibling's video; and a URL
+    // asset whose fileUrl points into another tenant's folder let an admin
+    // delete that tenant's file. The row still goes; only the bytes stay. A
+    // count that cannot be read counts as "still used".
     const storagePath = this.storage.extractPath(asset.fileUrl);
     if (storagePath) {
-      await this.storage.delete(storagePath);
+      const ownFolder = storagePath.startsWith(`${req.user.tenantId}/`);
+      const stillUsed = ownFolder
+        ? await this.prisma.client.asset
+            .count({ where: { fileUrl: asset.fileUrl, id: { not: id } } })
+            .catch(() => 1)
+        : 1;
+      if (ownFolder && stillUsed === 0) {
+        await this.storage.delete(storagePath);
+      } else {
+        this.logger.log(
+          `[assets] delete ${id}: kept ${storagePath} (${
+            ownFolder
+              ? `${stillUsed} other row(s) still use it`
+              : "outside this tenant's folder"
+          })`,
+        );
+      }
     }
 
     // 2026-09-11 — and its poster frame, if a video ever got one. Best-effort:
