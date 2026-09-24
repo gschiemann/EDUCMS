@@ -1740,6 +1740,8 @@
       "canvaHint": "En Canva: Compartir, Descargar, elige Vídeo MP4 y ajusta el tamaño a 1920 × 1080 (o 1080 × 1920 para una pantalla vertical).",
       "uploadToast": "{name} puede no reproducirse con fluidez en tus pantallas",
       "uploadToastAction": "Ver por qué",
+      "checkNow": "Comprobar este archivo",
+      "checkFailed": "No pudimos comprobar este archivo. Inténtalo de nuevo en un momento.",
       "reason": {
         "codec": "Vídeo {codec}: la mayoría de los reproductores de pantalla no lo decodifican por hardware",
         "bitDepth": "Color de 10 bits o alta crominancia ({pixFmt}): los reproductores decodifican 8 bits 4:2:0",

@@ -63,6 +63,7 @@ jest.mock('@/hooks/use-api', () => {
     useMoveAsset: mutation,
     useGenerateAltText: mutation,
     useUpdateAltText: mutation,
+    useCheckAssetPlayback: mutation,
   };
 });
 jest.mock('@tanstack/react-query', () => ({

@@ -44,7 +44,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   useAssets, useAddWebUrl, useDeleteAsset, useAssetFolders, useCreateAssetFolder,
   useRenameAssetFolder, useDeleteAssetFolder, useMoveAsset, useGenerateAltText,
-  useUpdateAltText, useAssetUsage, normalizeAssetList, assetUsageQueryKey, fetchAssetUsage,
+  useUpdateAltText, useAssetUsage, normalizeAssetList, assetUsageQueryKey, fetchAssetUsage, useCheckAssetPlayback,
   type AssetUsage,
 } from '@/hooks/use-api';
 import { useUIStore } from '@/store/ui-store';
@@ -401,6 +401,7 @@ export default function AssetsPage() {
   const moveAsset = useMoveAsset();
   const addWebUrl = useAddWebUrl();
   const deleteAsset = useDeleteAsset();
+  const checkPlayback = useCheckAssetPlayback();
   // Audit P1-2 (2026-05-28) — AI alt-text generator + manual override.
   const generateAltText = useGenerateAltText();
   const updateAltText = useUpdateAltText();
@@ -1132,6 +1133,14 @@ export default function AssetsPage() {
   // processing meta fall back to client measuring — against the ORIGINAL
   // file URL, never the 320px transformed thumbnail (measuring the thumb
   // was the "wrong resolution vs every other CMS" bug, 2026-07-09).
+  // The detail panel holds a SNAPSHOT of the row (openDetail copies it). The
+  // playback card must read the LIVE row instead: a video opened seconds
+  // after upload reads "Checking…" until the probe lands, and the poll
+  // above only refreshes the list — the snapshot would say "Checking…"
+  // forever. Falls back to the snapshot when the row left the window.
+  const selectedLive = selectedAsset
+    ? (assets.find((a) => a?.id === selectedAsset.id) ?? selectedAsset)
+    : null;
   const selectedMetaDims = selectedAsset ? metaDims(selectedAsset) : null;
   const selectedRawUrl =
     selectedAsset?.fileUrl && selectedAsset.mimeType?.startsWith('image/')
@@ -2134,7 +2143,16 @@ export default function AssetsPage() {
               {/* 4b. Playback on screens (2026-09-24) — the encode grade for a
                   video: will this file play smoothly on signage hardware, and
                   if not, exactly why and what export settings fix it. */}
-              <VideoEncodeCard asset={selectedAsset} />
+              <VideoEncodeCard
+                asset={selectedLive}
+                checking={checkPlayback.isPending && checkPlayback.variables === selectedAsset.id}
+                onCheck={() => {
+                  checkPlayback.mutate(selectedAsset.id, {
+                    onSuccess: (data) => { if (data?.asset?.id === selectedAsset.id) setSelectedAsset((cur: { id?: string } | null) => (cur?.id === data.asset.id ? { ...cur, ...data.asset } : cur)); },
+                    onError: (e: Error & { body?: { message?: string } }) => toast.error(e?.body?.message || e?.message || t('assetsLib.encode.checkFailed')),
+                  });
+                }}
+              />
 
               {/* 5. Folder + uploader */}
               <div className="flex items-center justify-between bg-slate-50 rounded-lg p-3">

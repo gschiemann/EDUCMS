@@ -1364,6 +1364,83 @@ export class AssetsController {
    * chars is rejected (matches the Prisma column cap); the FE should
    * surface a character count so the operator doesn't lose work.
    */
+  /**
+   * Playback check on demand (2026-09-24).
+   *
+   * Every NEW video is probed at upload (ffprobe → `processingMeta.probe`,
+   * the facts the "Playback on screens" grade reads). A video from before
+   * the probe existed has no facts, and the operator looking at it should
+   * not have to wait for a backfill: one click runs the same probe + poster
+   * pass right now and hands back the fresh row. Greg, after a Canva export
+   * stuttered on a kiosk: "why can't we check the file for fps, the codec,
+   * and anything else that the signage might not display properly".
+   *
+   * Synchronous on purpose — the caller wants the answer, and ffprobe reads
+   * headers only (milliseconds); the poster grab that follows decodes one
+   * keyframe. Both are never-throw inside the service, so this endpoint can
+   * only fail on the asset lookup. Idempotent: the service's persist guards
+   * make a second click a no-op write.
+   */
+  @Post(':id/check-playback')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  async checkPlayback(
+    @Request() req: { user: { id: string; tenantId: string } },
+    @Param('id') id: string,
+  ) {
+    const asset = await this.prisma.client.asset.findFirst({
+      where: { id, tenantId: req.user.tenantId },
+    });
+    if (!asset)
+      throw new HttpException(
+        { code: 'ASSET_NOT_FOUND', message: 'Asset not found' },
+        HttpStatus.NOT_FOUND,
+      );
+    if (!(asset.mimeType || '').toLowerCase().startsWith('video/')) {
+      throw new HttpException(
+        {
+          code: 'ASSET_NOT_VIDEO',
+          message: 'Only videos have a playback check.',
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    const storagePath = this.storage.extractPath(asset.fileUrl);
+    if (!storagePath) {
+      throw new HttpException(
+        {
+          code: 'ASSET_EXTERNAL_URL',
+          message:
+            'We can only check files stored in your library, not a linked URL.',
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    const result = await this.videoPoster.processVideo({
+      assetId: asset.id,
+      tenantId: req.user.tenantId,
+      mimeType: asset.mimeType,
+      storagePath,
+      ext: extname(asset.originalName || '') || null,
+    });
+    const fresh = await this.prisma.client.asset.findFirst({
+      where: { id, tenantId: req.user.tenantId },
+      include: {
+        uploadedBy: { select: { id: true, email: true } },
+        folder: { select: { id: true, name: true } },
+      },
+    });
+    return {
+      probed: result.probed,
+      posterUrl: result.posterUrl,
+      asset: fresh ?? asset,
+    };
+  }
+
   @Put(':id/alt-text')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
   async updateAltText(

@@ -131,3 +131,25 @@ describe('AssetEncodeBadge', () => {
     expect(badge).toHaveTextContent("Won't play well on screens");
   });
 });
+
+describe('VideoEncodeCard — check this file', () => {
+  const legacy = { mimeType: 'video/mp4', processingMeta: null, createdAt: '2026-01-01T00:00:00Z' };
+
+  it('offers the check only for an unchecked video, and runs it on click', () => {
+    const onCheck = jest.fn();
+    render(<VideoEncodeCard asset={legacy} now={NOW} onCheck={onCheck} />);
+    screen.getByRole('button', { name: 'Check this file' }).click();
+    expect(onCheck).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads "Checking…" while the check is in flight, and hides the button', () => {
+    render(<VideoEncodeCard asset={legacy} now={NOW} onCheck={jest.fn()} checking />);
+    expect(screen.getByTestId('video-encode-card')).toHaveAttribute('data-encode-status', 'checking');
+    expect(screen.queryByRole('button', { name: 'Check this file' })).not.toBeInTheDocument();
+  });
+
+  it('never offers the check on a graded video', () => {
+    render(<VideoEncodeCard asset={SAFE} now={NOW} onCheck={jest.fn()} />);
+    expect(screen.queryByRole('button', { name: 'Check this file' })).not.toBeInTheDocument();
+  });
+});

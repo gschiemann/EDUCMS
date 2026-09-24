@@ -1638,6 +1638,31 @@ export function useGenerateAltText() {
  * `altText: null` (or '') to clear; anything longer than 160 chars is
  * rejected server-side.
  */
+/**
+ * "Check this file" (2026-09-24) — runs the ffprobe + poster pass on a video
+ * that was never probed (an upload from before the probe existed) and swaps
+ * the fresh row into every cached assets list, so the "Playback on screens"
+ * card and the tile pill update in place.
+ */
+export function useCheckAssetPlayback() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiFetch(`/assets/${id}/check-playback`, { method: 'POST' }) as Promise<{
+        probed: boolean;
+        posterUrl: string | null;
+        asset: { id: string } & Record<string, unknown>;
+      }>,
+    onSuccess: (data) => {
+      const fresh = data?.asset;
+      if (fresh?.id) {
+        patchAssetCaches(qc, (assets) => assets.map((a) => (a?.id === fresh.id ? { ...a, ...fresh } : a)));
+      }
+      void qc.invalidateQueries({ queryKey: ['assets'] });
+    },
+  });
+}
+
 export function useUpdateAltText() {
   const qc = useQueryClient();
   return useMutation({

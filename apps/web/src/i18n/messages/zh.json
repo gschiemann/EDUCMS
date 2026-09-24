@@ -1740,6 +1740,8 @@
       "canvaHint": "在 Canva 中：分享、下载，选择 MP4 视频，并将尺寸设为 1920 × 1080（竖屏屏幕为 1080 × 1920）。",
       "uploadToast": "{name} 在您的屏幕上可能无法流畅播放",
       "uploadToastAction": "查看原因",
+      "checkNow": "检查此文件",
+      "checkFailed": "我们无法检查此文件。请稍后重试。",
       "reason": {
         "codec": "{codec} 视频：大多数屏幕播放器无法硬件解码",
         "bitDepth": "10 位或高色度色彩（{pixFmt}）：屏幕播放器解码 8 位 4:2:0",

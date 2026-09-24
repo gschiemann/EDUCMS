@@ -137,10 +137,27 @@ function StatusIcon({ status }: { status: VideoEncodeStatus }) {
  * The detail-panel card. Renders nothing for a non-video, so the caller can
  * mount it unconditionally next to the other metadata tiles.
  */
-export function VideoEncodeCard({ asset, now }: { asset: EncodeGradableAsset | null | undefined; now?: number }) {
+export function VideoEncodeCard({
+  asset,
+  now,
+  onCheck,
+  checking = false,
+}: {
+  asset: EncodeGradableAsset | null | undefined;
+  now?: number;
+  /**
+   * "Check this file" — runs the probe now for a video that has no facts
+   * (an upload from before the probe existed). Shown only for `unknown`.
+   */
+  onCheck?: () => void;
+  /** True while that check is in flight: the card reads "Checking…". */
+  checking?: boolean;
+}) {
   const t = useTranslations();
   if (!asset || !(typeof asset.mimeType === 'string' && asset.mimeType.toLowerCase().startsWith('video/'))) return null;
-  const { status, verdict, facts } = videoEncodeState(asset, now);
+  const graded = videoEncodeState(asset, now);
+  const status: VideoEncodeStatus = checking && graded.status === 'unknown' ? 'checking' : graded.status;
+  const { verdict, facts } = graded;
   const tone = CARD_TONE[status];
   const factsLine = status === 'green' ? encodeFactsLine(facts) : '';
   return (
@@ -172,6 +189,17 @@ export function VideoEncodeCard({ asset, now }: { asset: EncodeGradableAsset | n
         <div className="mt-2 pl-[22px] space-y-1">
           <p className="text-[11px] leading-snug text-slate-700">{t('assetsLib.encode.recommendation')}</p>
           <p className="text-[11px] leading-snug text-slate-500">{t('assetsLib.encode.canvaHint')}</p>
+        </div>
+      )}
+      {status === 'unknown' && onCheck && (
+        <div className="mt-2 pl-[22px]">
+          <button
+            type="button"
+            onClick={onCheck}
+            className="min-h-11 sm:min-h-0 px-3 py-2 sm:py-1.5 rounded-lg bg-white border border-slate-300 hover:border-indigo-400 hover:text-indigo-700 text-[11px] font-bold text-slate-700 transition-colors"
+          >
+            {t('assetsLib.encode.checkNow')}
+          </button>
         </div>
       )}
     </section>

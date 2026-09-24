@@ -1740,6 +1740,8 @@
       "canvaHint": "In Canva: Share, Download, choose MP4 Video and set the size to 1920 × 1080 (or 1080 × 1920 for a portrait screen).",
       "uploadToast": "{name} may not play smoothly on your screens",
       "uploadToastAction": "See why",
+      "checkNow": "Check this file",
+      "checkFailed": "We couldn't check this file. Try again in a moment.",
       "reason": {
         "codec": "{codec} video — most screen players can't decode it in hardware",
         "bitDepth": "10-bit or high-chroma colour ({pixFmt}) — screen players decode 8-bit 4:2:0",
