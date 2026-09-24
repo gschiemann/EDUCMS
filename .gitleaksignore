@@ -24,3 +24,5 @@
 74443642ad4f73be61bb0fc2d90fd7183efb98b5:apps/web/tests/fixtures/educms-shim-v6-bodies.json:venueos-hardcoded-256bit-hex-secret:8
 74443642ad4f73be61bb0fc2d90fd7183efb98b5:apps/web/tests/fixtures/educms-shim-v6-bodies.json:venueos-hardcoded-256bit-hex-secret:15
 74443642ad4f73be61bb0fc2d90fd7183efb98b5:apps/web/tests/fixtures/educms-shim-v6-bodies.json:venueos-hardcoded-256bit-hex-secret:22
+# 2026-09-24 — a localStorage KEY NAME (`venueos_passkey_offer_snoozed_at.v2`), not a credential; gitleaks generic-api-key matched "…KEY = '…'".
+caec73bf5e3b6780ac0b168b2ea1b329ff094ebb:apps/web/src/lib/passkey-offer.ts:generic-api-key:48
