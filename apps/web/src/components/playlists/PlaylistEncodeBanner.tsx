@@ -17,6 +17,7 @@ import { AlertTriangle } from 'lucide-react';
 import { useEncodeTarget } from '@/hooks/use-encode-target';
 import {
   describeEncodeReason,
+  encodeSuggestions,
   encodeWarnings,
   encodeWarns,
   videoEncodeState,
@@ -77,16 +78,19 @@ export function PlaylistEncodeBanner({ items }: { items: EncodeBannerItem[] }) {
         {listed.map(({ item, state }) => {
           const warnings = encodeWarnings(state.verdict);
           const first = warnings[0];
+          const suggestion = encodeSuggestions(t, state.verdict);
           return (
-            <li key={item.id} className="text-[11px] leading-snug text-slate-700 truncate" title={warnings.map((r) => describeEncodeReason(t, r)).join(' · ')}>
-              <span className="font-semibold text-slate-800">{itemName(item)}</span>
-              {first && <span> — {describeEncodeReason(t, first)}</span>}
+            <li key={item.id} className="text-[11px] leading-snug text-slate-700" title={warnings.map((r) => describeEncodeReason(t, r)).join(' · ')}>
+              <div className="truncate">
+                <span className="font-semibold text-slate-800">{itemName(item)}</span>
+                {first && <span> — {describeEncodeReason(t, first)}</span>}
+              </div>
+              {suggestion && <div className="pl-2 text-slate-600">{suggestion}</div>}
             </li>
           );
         })}
         {more > 0 && <li className="text-[11px] text-slate-500">+{more}</li>}
       </ul>
-      <p className="mt-1.5 pl-6 text-[11px] leading-snug text-slate-600">{t('playlistsPage.encodeBannerHint')}</p>
     </div>
   );
 }

@@ -46,9 +46,11 @@ describe('PlaylistEncodeBanner', () => {
     expect(banner).toHaveAttribute('data-encode-status', 'red');
     expect(banner).toHaveTextContent('2 videos in this playlist may not play smoothly on your screens');
     expect(banner).toHaveTextContent('Pro Series 2026.mp4 — 3840 × 2160 — larger than your biggest screen (1920 × 1080)');
-    expect(banner).toHaveTextContent('promo.mp4 — The index is at the end of the file');
+    expect(banner).toHaveTextContent('promo.mp4 — The playback index is at the end of the file');
+    expect(banner).toHaveTextContent('Suggested changes: Export at 1920 × 1080 (swap dimensions for portrait) · Use 30 fps');
+    expect(banner).toHaveTextContent('Suggested changes: Fast start: VenueOS attempts to move the playback index to the front automatically after upload, without changing picture quality or resolution');
     expect(banner).not.toHaveTextContent('good.mp4');
-    expect(banner).toHaveTextContent("Suggested: MP4, H.264 at your screens' resolution, 30 fps, fast start. Re-export and replace the file.");
+    expect(banner).not.toHaveTextContent("Suggested: MP4, H.264 at your screens' resolution, 30 fps, fast start. Re-export and replace the file.");
   });
 
   it('uses the singular for one file and amber when nothing is red', () => {
