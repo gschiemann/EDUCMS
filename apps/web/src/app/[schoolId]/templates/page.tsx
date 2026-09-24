@@ -3570,18 +3570,39 @@ export function TemplateListView({
           const edited = t.isSystem ? null : lastEditedLabel(t.updatedAt);
           return (
             <li key={t.id} className="flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50/70">
+              {/* 2026-09-24 — a REAL thumbnail: the same still frame the grid
+                  card draws (an EXTERNAL_HTML board's poster PNG, a zone
+                  template's frozen scaled render). This row used to paint only
+                  the template's background colour or gradient — Greg: "it just
+                  shows some random colors". The tint remains the fallback for
+                  a layout with no zones at all. */}
               <button
                 type="button"
                 onClick={() => onPreview(t)}
                 aria-label={`Preview of ${t.name} template`}
-                className="h-10 w-[72px] shrink-0 overflow-hidden rounded-md border border-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
-                style={{
+                className="relative h-10 w-[72px] shrink-0 overflow-hidden rounded-md border border-slate-200 bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                style={(t.zones?.length ?? 0) > 0 ? undefined : {
                   backgroundColor: t.bgColor || '#f1f5f9',
                   backgroundImage: t.bgImage ? `url(${t.bgImage})` : (t.bgGradient || undefined),
                   backgroundSize: 'cover',
                   backgroundPosition: 'center',
                 }}
-              />
+              >
+                {(t.zones?.length ?? 0) > 0 && (
+                  <ScaledTemplateThumbnail
+                    zones={t.zones as any}
+                    screenWidth={t.screenWidth || 1920}
+                    screenHeight={t.screenHeight || 1080}
+                    bgImage={t.bgImage}
+                    bgGradient={t.bgGradient}
+                    bgColor={t.bgColor}
+                    maxHeight={40}
+                    fill={(t.screenWidth || 1920) / (t.screenHeight || 1080) >= 1.5}
+                    flush
+                    freeze
+                  />
+                )}
+              </button>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[13px] font-bold text-slate-800" title={t.name}>{t.name}</p>
                 <p className="truncate text-[11px] text-slate-500">
