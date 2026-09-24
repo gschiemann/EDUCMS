@@ -3081,7 +3081,9 @@ export default function TemplatesPage() {
           </div>
         </div>
       )}
-      {showAiGenerate && buyBoardsOpen && <BuyBoardsSheet onClose={() => setBuyBoardsOpen(false)} />}
+      {showAiGenerate && buyBoardsOpen && (
+        <BuyBoardsSheet packs={aiAllowance.data?.packs ?? []} onClose={() => setBuyBoardsOpen(false)} />
+      )}
 
       {/* Full-screen candidate preview — opened from any candidate card's
           thumbnail. Sits ABOVE the AI modal (z-110) and renders the candidate

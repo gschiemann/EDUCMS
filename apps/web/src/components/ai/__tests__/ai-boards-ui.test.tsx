@@ -123,7 +123,8 @@ describe('AiBoardsLeft — one line, the same everywhere', () => {
 describe('BuyBoardsSheet — one tap to Stripe', () => {
   async function openSheet() {
     const onClose = jest.fn();
-    renderWith(<BuyBoardsSheet onClose={onClose} />);
+    // The packs the opener already holds (GET /ai/allowance → packs) — the sheet reads nothing itself.
+    renderWith(<BuyBoardsSheet packs={platformAllowance().packs} onClose={onClose} />);
     const sheet = await screen.findByRole('dialog', { name: 'Buy more boards' });
     await within(sheet).findByRole('button', { name: /30 boards/ });
     return { sheet, onClose };
@@ -131,6 +132,7 @@ describe('BuyBoardsSheet — one tap to Stripe', () => {
 
   it('lists the packs from the allowance — boards and price, nothing else to choose', async () => {
     const { sheet } = await openSheet();
+    expect(apiFetch).not.toHaveBeenCalled(); // the opener's allowance, not a second read
     const rows = within(sheet)
       .getAllByRole('button')
       .filter((b) => /boards/.test(b.textContent ?? ''))

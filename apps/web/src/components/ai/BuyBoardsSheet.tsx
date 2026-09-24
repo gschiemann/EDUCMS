@@ -23,19 +23,23 @@ import { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Loader2, X } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
-import { useAiAllowance, useBuyAiBoardPack } from '@/hooks/use-api';
+import { useBuyAiBoardPack, type AiBoardPack } from '@/hooks/use-api';
 import { useBottomSheet } from '@/hooks/use-bottom-sheet';
 import { boardsReason, formatUsd } from '@/lib/ai-boards';
 import { goToCheckout } from '@/lib/checkout-redirect';
 
 export interface BuyBoardsSheetProps {
+  /**
+   * The packs, from the allowance the opener already holds (GET /ai/allowance → `packs`) — the
+   * sheet does not read it again: that answer is seconds old.
+   */
+  packs: AiBoardPack[];
   onClose: () => void;
 }
 
-export function BuyBoardsSheet({ onClose }: BuyBoardsSheetProps) {
+export function BuyBoardsSheet({ packs, onClose }: BuyBoardsSheetProps) {
   const t = useTranslations('aiBoards');
   const locale = useLocale();
-  const { data: allowance } = useAiAllowance();
   const buy = useBuyAiBoardPack();
   // The pack whose checkout is being opened. It stays set once the browser is on its way to Stripe:
   // the page is leaving, and a second tap must not open a second session.
@@ -43,8 +47,6 @@ export function BuyBoardsSheet({ onClose }: BuyBoardsSheetProps) {
   const [notice, setNotice] = useState<string | null>(null);
   const sheetRef = useRef<HTMLDivElement>(null);
   useBottomSheet({ open: true, onClose, sheetRef });
-
-  const packs = allowance?.packs ?? [];
 
   const choose = async (pack: string) => {
     if (opening) return;

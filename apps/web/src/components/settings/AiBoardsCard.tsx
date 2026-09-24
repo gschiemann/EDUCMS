@@ -59,7 +59,7 @@ export function AiBoardsCard() {
           )}
         </div>
       )}
-      {buying && <BuyBoardsSheet onClose={() => setBuying(false)} />}
+      {buying && <BuyBoardsSheet packs={allowance.data?.packs ?? []} onClose={() => setBuying(false)} />}
     </section>
   );
 }
