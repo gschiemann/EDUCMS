@@ -1,12 +1,11 @@
 "use client";
 
 import { useState, useRef, useEffect } from 'react';
+import { uploadAssetDirect } from '@/lib/direct-upload';
 import { createPortal } from 'react-dom';
 import { Palette, Image as ImageIcon, Code2, Upload, X, Check, Pipette } from 'lucide-react';
 import { useBuilderStore } from './useBuilderStore';
 import { useTemplate } from '@/hooks/use-api';
-import { useUIStore } from '@/store/ui-store';
-import { API_URL } from '@/lib/api-url';
 import { ColorPickerBody } from '@/components/ui/color-picker';
 import { TemplateBackdropPicker } from './PropertiesPanel';
 // Wave B / editor-crush B6c (2026-07-02) — shared "search stock photos" tab,
@@ -200,17 +199,11 @@ export function BackgroundPanel() {
     }
     setUploading(true);
     try {
-      const fd = new FormData();
-      fd.append('file', file);
-      const token = useUIStore.getState().token;
-      const res = await fetch(`${API_URL}/assets/upload`, {
-        method: 'POST',
-        body: fd,
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      });
-      if (!res.ok) throw new Error(`Upload failed (${res.status})`);
-      const { url } = await res.json();
-      applyImage(url);
+      // 2026-09-23 — direct to storage (src/lib/direct-upload.ts). The old
+      // multipart response had no `url` — it answers `fileUrl` — so this set
+      // the background to undefined.
+      const { fileUrl } = await uploadAssetDirect(file);
+      applyImage(fileUrl);
     } catch (err: any) {
       setUploadError(err?.message || 'Upload failed.');
     } finally {

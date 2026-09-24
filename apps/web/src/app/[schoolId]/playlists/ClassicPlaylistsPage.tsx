@@ -45,6 +45,8 @@ import { VideoPreviewThumb, assetPosterUrl } from '@/components/playlists/VideoP
 import { AssetEncodeBadge } from '@/components/assets/VideoEncode';
 import { PlaylistEncodeBanner } from '@/components/playlists/PlaylistEncodeBanner';
 import { imageShape, type ImageShape } from '@/lib/image-shape';
+import { uploadAssetDirect } from '@/lib/direct-upload';
+import { useUploadErrorText, useUploadTooLargeText } from '@/lib/use-upload-error-text';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
 const apiBase = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1').replace('/api/v1', '');
@@ -1158,8 +1160,12 @@ export default function ClassicPlaylistsPage({
     progress: number;
     phase: 'uploading' | 'success' | 'error';
     error?: string;
+    /** "Connection dropped — resuming…" while a resumable upload reconnects. */
+    note?: string;
   };
   const [pickerUploads, setPickerUploads] = useState<PickerUpload[]>([]);
+  const pickerUploadErrorText = useUploadErrorText();
+  const pickerTooLargeText = useUploadTooLargeText();
   const [pickerDragOver, setPickerDragOver] = useState(false);
   const pickerFileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
@@ -1980,71 +1986,62 @@ export default function ClassicPlaylistsPage({
     });
   };
 
-  // Inline upload from the asset picker. Files post to the same
-  // /assets/upload endpoint the /assets page uses, with the upload's
-  // folderId set to whichever folder the picker is currently browsing.
-  // On success we (a) invalidate the assets cache so it refetches and
-  // (b) auto-select the new asset so "Add Selected" picks it up
+  // Inline upload from the asset picker, through the same direct-to-storage
+  // client the /assets page uses (src/lib/direct-upload.ts — 2026-09-23: this
+  // used to POST multipart, i.e. through the API's RAM, capped at 500 MB).
+  // Large files go up RESUMABLE, so a 4K video survives a dropped connection;
+  // video may be up to 2 GB. The upload lands in whichever folder the picker
+  // is browsing. On success we (a) invalidate the assets cache so it
+  // refetches and (b) auto-select the new asset so "Add Selected" picks it up
   // without an extra click.
-  const PICKER_MAX_FILE_SIZE = 500 * 1024 * 1024; // 500 MB matches /assets (video cap raised 2026-09-23)
-
   const handlePickerUploadFiles = (files: FileList | null) => {
     if (!files || files.length === 0) return;
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
-    const token = useUIStore.getState().token;
     const folderId = pickerFolderId; // capture current folder for the batch
     const genId = () => { try { return crypto.randomUUID(); } catch { return Math.random().toString(36).substring(2, 10); } };
+    const list = Array.from(files);
 
-    const newItems: PickerUpload[] = Array.from(files).map(file => ({
-      id: genId(),
-      name: file.name,
-      progress: 0,
-      phase: file.size > PICKER_MAX_FILE_SIZE ? 'error' : 'uploading',
-      error: file.size > PICKER_MAX_FILE_SIZE ? `Too large (${Math.round(file.size / (1024 * 1024))}MB > 500MB cap)` : undefined,
-    }));
+    const newItems: PickerUpload[] = list.map(file => {
+      const tooBig = pickerTooLargeText(file);
+      return {
+        id: genId(),
+        name: file.name,
+        progress: 0,
+        phase: tooBig ? 'error' : 'uploading',
+        error: tooBig ?? undefined,
+      };
+    });
     setPickerUploads(prev => [...newItems, ...prev]);
 
-    Array.from(files).forEach((file, i) => {
-      const item = newItems[i];
-      if (item.phase === 'error') return;
-      const fd = new FormData();
-      fd.append('file', file);
-      if (folderId) fd.append('folderId', folderId);
-      const xhr = new XMLHttpRequest();
-      xhr.upload.onprogress = e => {
-        if (!e.lengthComputable) return;
-        const pct = Math.round((e.loaded * 100) / e.total);
-        setPickerUploads(prev => prev.map(u => (u.id === item.id ? { ...u, progress: pct } : u)));
-      };
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          setPickerUploads(prev => prev.map(u => (u.id === item.id ? { ...u, progress: 100, phase: 'success' } : u)));
-          // Refetch assets and pre-select the freshly-uploaded one so
-          // the user can hit "Add Selected" right away.
-          try {
-            const resp = JSON.parse(xhr.responseText);
-            if (resp?.id) {
-              setSelectedPickerAssets(prev => new Set(prev).add(resp.id));
-            }
-          } catch { /* server didn't return JSON, just refetch */ }
+    const patch = (id: string, next: Partial<PickerUpload>) =>
+      setPickerUploads(prev => prev.map(u => (u.id === id ? { ...u, ...next } : u)));
+
+    // Three at a time, like the /assets page — the rest wait their turn.
+    const queue = list.map((file, i) => ({ file, item: newItems[i] })).filter(({ item }) => item.phase !== 'error');
+    const worker = async () => {
+      for (let next = queue.shift(); next; next = queue.shift()) {
+        const { file, item } = next;
+        try {
+          const created = await uploadAssetDirect(file, {
+            folderId: folderId || null,
+            onProgress: (p) => patch(item.id, { progress: Math.round(p.fraction * 100) }),
+            onPhase: (ph) => {
+              if (ph === 'reconnecting') patch(item.id, { note: t('directUpload.resuming') });
+              else if (ph === 'uploading') patch(item.id, { note: undefined });
+            },
+          });
+          patch(item.id, { progress: 100, phase: 'success', note: undefined });
+          if (created?.id) setSelectedPickerAssets(prev => new Set(prev).add(created.id));
           queryClient.invalidateQueries({ queryKey: ['assets'] });
           // Sweep this row out after a short success flash.
           setTimeout(() => {
             setPickerUploads(prev => prev.filter(u => u.id !== item.id));
           }, 1500);
-        } else {
-          let msg = `Upload failed (${xhr.status})`;
-          try { const r = JSON.parse(xhr.responseText); msg = r.message || msg; } catch {}
-          setPickerUploads(prev => prev.map(u => (u.id === item.id ? { ...u, phase: 'error', error: msg } : u)));
+        } catch (err) {
+          patch(item.id, { phase: 'error', note: undefined, error: pickerUploadErrorText(err, file) });
         }
-      };
-      xhr.onerror = () => {
-        setPickerUploads(prev => prev.map(u => (u.id === item.id ? { ...u, phase: 'error', error: 'Network error' } : u)));
-      };
-      xhr.open('POST', `${apiUrl}/assets/upload`);
-      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-      xhr.send(fd);
-    });
+      }
+    };
+    void Promise.all(Array.from({ length: Math.min(3, queue.length) }, () => worker()));
   };
 
   const handleSelectAllPickerAssets = () => {
@@ -2671,9 +2668,15 @@ export default function ClassicPlaylistsPage({
                         <div className="flex-1 min-w-0">
                           <div className="font-bold text-slate-700 truncate">{u.name}</div>
                           {u.phase === 'uploading' && (
-                            <div className="h-1 bg-slate-100 rounded-full overflow-hidden mt-1">
-                              <div className="h-full bg-indigo-500 transition-all" style={{ width: `${u.progress}%` }} />
-                            </div>
+                            <>
+                              <div className="h-1 bg-slate-100 rounded-full overflow-hidden mt-1">
+                                <div className="h-full bg-indigo-500 transition-all" style={{ width: `${u.progress}%` }} />
+                              </div>
+                              <div className="text-[11px] text-slate-500 mt-0.5">
+                                {t('directUpload.uploadingPct', { pct: u.progress })}
+                                {u.note && <span className="block text-amber-700 font-semibold">{u.note}</span>}
+                              </div>
+                            </>
                           )}
                           {u.phase === 'error' && <div className="text-[11px] text-rose-600 font-medium">{u.error}</div>}
                           {u.phase === 'success' && <div className="text-[11px] text-emerald-600 font-medium">{t('playlistsPage.uploadedAdded')}</div>}

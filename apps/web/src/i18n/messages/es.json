@@ -1796,10 +1796,21 @@
     "allFiles": "Todos los archivos",
     "addUrlToggle": "Añadir URL",
     "upload": "Subir",
-    "dropHint": "Elige una carpeta (o la raíz) — imágenes, vídeo, audio, PDF, hasta 500 MB",
+    "dropHint": "Elige una carpeta (o la raíz) — imágenes, vídeo, audio, PDF · vídeo de hasta 2 GB",
     "uploadToFolder": "Subir {count, plural, one {# archivo} other {# archivos}} a…",
     "uploadWhichFolder": "¿A qué carpeta subir los archivos?",
-    "moveToWhichFolder": "¿A qué carpeta mover {count, plural, one {# elemento} other {# elementos}}?"
+    "moveToWhichFolder": "¿A qué carpeta mover {count, plural, one {# elemento} other {# elementos}}?",
+    "supportedCopy": "Imágenes, video, audio y PDF · video de hasta {video}",
+    "fileTooLargeFor": "El archivo supera {max} (este ocupa {size})",
+    "optimizing": "Optimizando para pantallas…",
+    "optimizingPct": "Optimizando para pantallas… {pct}%",
+    "optimizedChip": "Optimizado −{pct}%",
+    "labelScreenVersion": "Versión para pantallas",
+    "optimizedDetail": "Optimizado para pantallas: {from} → {to} (ahorro de {saved})",
+    "optimizeKept": "Ya está listo para pantallas: se reproduce tal como se subió.",
+    "optimizeNotSmaller": "Se conservó tal como se subió: recodificarlo no lo habría hecho más pequeño.",
+    "optimizeFailed": "No se pudo optimizar este video: las pantallas reproducen el archivo tal como se subió.",
+    "optimizeEmergency": "El contenido de emergencia nunca se recodifica: las pantallas reproducen el archivo tal como se subió."
   },
   "playlistsPage": {
     "title": "Listas de reproducción",
@@ -2776,5 +2787,16 @@
     "missingOption": "El producto vinculado antes ya no está en Toast",
     "missingNote": "Este producto ya no está en el catálogo sincronizado; el espacio queda oculto hasta que elijas otro.",
     "menuFallback": "Menú"
+  },
+  "directUpload": {
+    "uploadingPct": "Subiendo… {pct}%",
+    "sentOfTotal": "{sent} de {total}",
+    "resuming": "Se perdió la conexión — reanudando…",
+    "finishing": "Finalizando…",
+    "tooLarge": "{name} ocupa {size}; el límite para este tipo de archivo es {max}.",
+    "networkLost": "Se perdió la conexión y la subida no pudo reanudarse. Revisa tu conexión e inténtalo de nuevo.",
+    "expired": "Esta subida ya no puede continuar. Vuelve a iniciarla.",
+    "storageRefused": "El almacenamiento rechazó el archivo. Inténtalo de nuevo o expórtalo como MP4 (H.264).",
+    "cancelled": "Subida cancelada."
   }
 }

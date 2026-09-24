@@ -2,8 +2,7 @@
 
 import { createElement, memo, useRef, useState } from 'react';
 import { Lock, Loader2, Upload, Hand } from 'lucide-react';
-import { useUIStore } from '@/store/ui-store';
-import { API_URL } from '@/lib/api-url';
+import { uploadAssetDirect } from '@/lib/direct-upload';
 import type { Zone, ResizeHandle } from './types';
 import { getZoneColor, widgetIcon, widgetLabel } from './constants';
 import { isFullCanvasExternalZone } from './SelectionChrome';
@@ -176,19 +175,10 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
 
     setIsUploading(true);
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      // Was going through a Next server action that called the API
-      // without a Bearer token — API rejected the upload. Call the API
-      // directly from the browser with the user's JWT instead.
-      const token = useUIStore.getState().token;
-      const res = await fetch(`${API_URL}/assets/upload`, {
-        method: 'POST',
-        body: formData,
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      });
-      if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
-      const { url } = await res.json();
+      // 2026-09-23 — straight to storage (src/lib/direct-upload.ts). This used
+      // to POST multipart and read `{ url }` off a response that only ever
+      // carried `fileUrl`, so a dropped image left the zone's URL undefined.
+      const { fileUrl: url } = await uploadAssetDirect(file);
       
       if (zone.widgetType === 'IMAGE_CAROUSEL') {
         const existing = Array.isArray(zone.defaultConfig?.urls) ? zone.defaultConfig.urls : [];

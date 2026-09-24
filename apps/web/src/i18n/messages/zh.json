@@ -1796,10 +1796,21 @@
     "allFiles": "全部文件",
     "addUrlToggle": "添加网址",
     "upload": "上传",
-    "dropHint": "接着选择文件夹（或根目录）— 图片、视频、音频、PDF，最大 500 MB",
+    "dropHint": "接着选择文件夹（或根目录）— 图片、视频、音频、PDF · 视频最大 2 GB",
     "uploadToFolder": "上传 {count} 个文件到…",
     "uploadWhichFolder": "将文件上传到哪个文件夹？",
-    "moveToWhichFolder": "将 {count} 项移动到哪个文件夹？"
+    "moveToWhichFolder": "将 {count} 项移动到哪个文件夹？",
+    "supportedCopy": "图片、视频、音频和 PDF · 视频最大 {video}",
+    "fileTooLargeFor": "文件超过 {max}（此文件为 {size}）",
+    "optimizing": "正在为屏幕优化…",
+    "optimizingPct": "正在为屏幕优化… {pct}%",
+    "optimizedChip": "已优化 −{pct}%",
+    "labelScreenVersion": "屏幕版本",
+    "optimizedDetail": "已为屏幕优化：{from} → {to}（节省 {saved}）",
+    "optimizeKept": "已适合屏幕播放 — 屏幕按上传的原文件播放。",
+    "optimizeNotSmaller": "保留上传的原文件 — 重新编码不会让它更小。",
+    "optimizeFailed": "无法优化此视频 — 屏幕播放上传的原文件。",
+    "optimizeEmergency": "紧急媒体从不重新编码 — 屏幕播放上传的原文件。"
   },
   "playlistsPage": {
     "title": "播放列表",
@@ -2776,5 +2787,16 @@
     "missingOption": "之前关联的商品已不在 Toast 中",
     "missingNote": "此商品已不在同步的目录中；在你选择其他商品之前，该位置会保持隐藏。",
     "menuFallback": "菜单"
+  },
+  "directUpload": {
+    "uploadingPct": "正在上传… {pct}%",
+    "sentOfTotal": "{sent} / {total}",
+    "resuming": "连接中断 — 正在续传…",
+    "finishing": "正在完成…",
+    "tooLarge": "{name} 的大小为 {size}，此类文件的上限为 {max}。",
+    "networkLost": "连接中断，上传无法继续。请检查网络后重试。",
+    "expired": "此上传已无法继续，请重新开始。",
+    "storageRefused": "存储服务拒绝了该文件。请重试，或导出为 MP4（H.264）。",
+    "cancelled": "上传已取消。"
   }
 }

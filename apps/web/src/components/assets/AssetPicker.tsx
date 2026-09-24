@@ -13,18 +13,20 @@
  * else too — which is the whole point: load all your content once,
  * organize it into folders, then select it wherever you need it.
  *
- * Uploads use the same presign → signed-PUT → complete-upload flow the
- * /assets page uses. `onPick` receives the asset's stored `fileUrl`
- * (the same value a direct upload would yield) so callers store it
- * exactly as before.
+ * Uploads use the same direct-to-storage client the /assets page uses
+ * (src/lib/direct-upload.ts: presign → resumable TUS / signed PUT →
+ * complete-upload, up to 2 GB for video, with live progress). `onPick`
+ * receives the asset's stored `fileUrl` so callers store it exactly as before.
  */
 
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import { X, Upload, Loader2, ImageIcon, FolderOpen, Music } from 'lucide-react';
 import { useAssets, useAssetFolders } from '@/hooks/use-api';
-import { apiFetch } from '@/lib/api-client';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
+import { uploadAssetDirect } from '@/lib/direct-upload';
+import { useUploadErrorText, useUploadTooLargeText } from '@/lib/use-upload-error-text';
 import { transformedImageUrl } from '@/lib/asset-image';
 
 export type AssetKind = 'image' | 'video' | 'audio' | 'all';
@@ -76,7 +78,11 @@ export function AssetPicker({
   const fileRef = useRef<HTMLInputElement>(null);
   const [folderId, setFolderId] = useState<string>('all');
   const [uploading, setUploading] = useState(false);
+  const [uploadPct, setUploadPct] = useState<number | null>(null);
   const [err, setErr] = useState('');
+  const tu = useTranslations('directUpload');
+  const uploadErrorText = useUploadErrorText();
+  const tooLargeText = useUploadTooLargeText();
 
   const folderList: Array<{ id: string; name: string }> = Array.isArray(folders) ? folders : [];
   const all: Array<Record<string, unknown>> = Array.isArray(assets) ? assets : [];
@@ -117,80 +123,28 @@ export function AssetPicker({
       setErr("SVG logos aren't supported yet — export as PNG (SVG support is coming soon).");
       return;
     }
+    const tooBig = tooLargeText(file);
+    if (tooBig) {
+      setErr(tooBig);
+      return;
+    }
     setUploading(true);
+    setUploadPct(0);
     try {
-      const contentType = file.type || 'application/octet-stream';
       // Upload straight into the folder the operator is browsing.
       const targetFolder = folderId === 'all' || folderId === 'none' ? null : folderId;
-      const pre = await apiFetch<{
-        uploadUrl?: string;
-        signedUrl?: string;
-        storagePath: string;
-        fileUrl: string;
-        mimeType?: string;
-        maxFileSize?: number;
-      }>('/assets/presign', {
-        method: 'POST',
-        body: JSON.stringify({
-          filename: file.name,
-          contentType,
-          size: file.size,
-          folderId: targetFolder,
-        }),
-      });
-      if (pre.maxFileSize && file.size > pre.maxFileSize) {
-        throw new Error(
-          `File too big (${Math.round(file.size / 1024 / 1024)}MB). Max ${Math.round(
-            pre.maxFileSize / 1024 / 1024,
-          )}MB.`,
-        );
-      }
-      const target = pre.uploadUrl || pre.signedUrl;
-      if (!target) throw new Error('Server did not return an upload URL.');
-      const put = await fetch(target, {
-        method: 'PUT',
-        headers: {
-          'content-type': pre.mimeType || contentType,
-          // SUPABASE EGRESS FIX (2026-05-23): see /assets/page.tsx for
-          // the full reasoning. Without this, Supabase signed-URL
-          // uploads default to `cache-control: no-cache` which forces
-          // every player/browser to re-download on every fetch.
-          //
-          // 2026-06-09 Fable audit — this is INTENTIONALLY the full
-          // `public, …, immutable` string and NOT the bare `max-age=N`
-          // the SERVER uses (supabase-storage.service.ts:226). They differ
-          // because they hit different Supabase APIs: this browser path is
-          // a direct signed-URL PUT, which preserves the full string on the
-          // wire; the server path is a storage-js POST, which DROPS the full
-          // string (the 2026-05-30 regression — DB said immutable, wire said
-          // no-cache) and only honors bare `max-age=N`. Keep the full form
-          // here — `immutable` is strictly better (no revalidation 304 on a
-          // player reload, which matters across a screen fleet). Do NOT
-          // "unify" to bare without first moving the server to a signed-URL
-          // PUT, or you weaken fleet caching.
-          'cache-control': 'public, max-age=31536000, immutable',
-        },
-        body: file,
-      });
-      if (!put.ok) throw new Error(`Storage upload failed (${put.status}).`);
-      const done = await apiFetch<{ fileUrl: string }>('/assets/complete-upload', {
-        method: 'POST',
-        body: JSON.stringify({
-          storagePath: pre.storagePath,
-          filename: file.name,
-          contentType: pre.mimeType || contentType,
-          size: file.size,
-          folderId: targetFolder,
-        }),
+      const done = await uploadAssetDirect(file, {
+        folderId: targetFolder,
+        onProgress: (p) => setUploadPct(Math.round(p.fraction * 100)),
       });
       await qc.invalidateQueries({ queryKey: ['assets'] });
-      const url = done.fileUrl || pre.fileUrl;
-      if (!url) throw new Error('Upload completed but no file URL came back.');
-      onPick(url);
+      if (!done.fileUrl) throw new Error('Upload completed but no file URL came back.');
+      onPick(done.fileUrl);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Upload failed.');
+      setErr(uploadErrorText(e, file));
     } finally {
       setUploading(false);
+      setUploadPct(null);
       if (fileRef.current) fileRef.current.value = '';
     }
   };
@@ -271,7 +225,7 @@ export function AssetPicker({
             ) : (
               <Upload className="h-3.5 w-3.5" />
             )}
-            Upload new
+            {uploading && uploadPct !== null ? tu('uploadingPct', { pct: uploadPct }) : 'Upload new'}
           </button>
         </div>
 

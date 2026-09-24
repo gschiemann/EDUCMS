@@ -55,6 +55,8 @@ import { ChatToEditBox } from '@/components/ai/ChatToEditBox';
 // mounted on /assets — see docs/research/2026-07-01-launch-sprint/
 // 05-EDITOR-CRUSH-LENSES.md elements-assets P0/P2).
 import { StockPhotoSearch } from '@/components/assets/StockPhotoSearch';
+import { uploadAssetDirect } from '@/lib/direct-upload';
+import { useUploadErrorText, useUploadTooLargeText } from '@/lib/use-upload-error-text';
 import { AiImageGenerateButton } from '@/components/ai/AiImageGenerateButton';
 // Wave B / editor-crush B2/B5 (2026-07-02) — SHAPE + ICON element editors.
 import { SHAPE_KINDS } from '@/components/widgets/ShapeWidget';
@@ -9383,10 +9385,12 @@ export function CanvasBackdropSection({
   const [uploadError, setUploadError] = useState<string | null>(null);
 
   /**
-   * Upload a file from the operator's computer. Same endpoint as
-   * BuilderZone's drop-target — POST /assets/upload with bearer token,
-   * returns the asset URL. Asset goes into the operator's media library
-   * so the same image is reusable on other templates.
+   * Upload a file from the operator's computer, straight to storage
+   * (src/lib/direct-upload.ts — the API never holds the bytes). Asset goes
+   * into the operator's media library so the same image is reusable on
+   * other templates. 2026-09-23: this read `{ url }` off the old multipart
+   * response, which never had one (it answers `fileUrl`) — the backdrop was
+   * set to `undefined`. The direct client returns the created asset.
    */
   const handleFile = async (file: File) => {
     setUploadError(null);
@@ -9396,23 +9400,10 @@ export function CanvasBackdropSection({
     }
     setUploading(true);
     try {
-      const fd = new FormData();
-      fd.append('file', file);
-      // Lazy-load the auth + URL helpers so this section can be tree-
-      // shaken when a future build splits the panel from the modal.
-      const { useUIStore } = await import('@/store/ui-store');
-      const { API_URL } = await import('@/lib/api-url');
-      const token = useUIStore.getState().token;
-      const res = await fetch(`${API_URL}/assets/upload`, {
-        method: 'POST',
-        body: fd,
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      });
-      if (!res.ok) throw new Error(`Upload failed (${res.status})`);
-      const { url } = await res.json();
+      const done = await uploadAssetDirect(file);
       // Setting bgImage clears bgColor/bgGradient — they all stack with
       // image winning, but the operator picked image so be explicit.
-      onChange({ bgImage: url, bgColor: '', bgGradient: '' });
+      onChange({ bgImage: done.fileUrl, bgColor: '', bgGradient: '' });
     } catch (err: any) {
       setUploadError(err?.message || 'Could not upload image. Try a smaller file.');
     } finally {
@@ -10616,7 +10607,11 @@ export function AssetLibraryModal({
   // SOME storage backing — the library being shared is the cheap
   // way to deliver "upload anywhere, available everywhere").
   const [uploading, setUploading] = useState(false);
+  const [uploadPct, setUploadPct] = useState<number | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const tu = useTranslations('directUpload');
+  const uploadErrorText = useUploadErrorText();
+  const tooLargeText = useUploadTooLargeText();
   const filtered = (assets || []).filter((a: any) => {
     const mt = (a.mimeType || '').toLowerCase();
     return kind === 'image' ? mt.startsWith('image/') : mt.startsWith('video/');
@@ -10648,75 +10643,20 @@ export function AssetLibraryModal({
       setUploadError("AVI files aren't supported by browsers. Convert to MP4 (H.264) and re-upload.");
       return;
     }
+    const tooBig = tooLargeText(file);
+    if (tooBig) {
+      setUploadError(tooBig);
+      return;
+    }
     setUploading(true);
+    setUploadPct(0);
     try {
-      const contentType = file.type || (kind === 'image' ? 'image/jpeg' : 'video/mp4');
-      // Step 1: get a presigned upload URL.
-      const presigned = await apiFetch<{
-        uploadUrl?: string;
-        signedUrl?: string;
-        token?: string;
-        storagePath: string;
-        fileUrl: string;
-        mimeType?: string;
-        maxFileSize?: number;
-      }>('/assets/presign', {
-        method: 'POST',
-        body: JSON.stringify({
-          filename: file.name,
-          contentType,
-          size: file.size,
-          folderId: null,
-        }),
-      });
-
-      if (presigned.maxFileSize && file.size > presigned.maxFileSize) {
-        throw new Error(`File too big (${Math.round(file.size / 1024 / 1024)}MB). Max ${Math.round(presigned.maxFileSize / 1024 / 1024)}MB.`);
-      }
-
-      // Step 2: PUT bytes directly to Supabase storage. Match the
-      // working /assets page flow: prefer uploadUrl, fall back to
-      // signedUrl. Supabase signed URLs only accept PUT (POST returns
-      // a "headers must have required" error from the storage edge
-      // handler — a Supabase quirk we hit on every MP4 upload after
-      // the d29e6c5 direct-storage switch).
-      const targetUrl = presigned.uploadUrl || presigned.signedUrl;
-      if (!targetUrl) {
-        throw new Error('Server did not return a signed upload URL. Ask your admin to check Supabase Storage config.');
-      }
-      const putRes = await fetch(targetUrl, {
-        method: 'PUT',
-        headers: {
-          'content-type': presigned.mimeType || contentType,
-          // SUPABASE EGRESS FIX (2026-05-23): see /assets/page.tsx for
-          // the full reasoning. Without this, Supabase signed-URL
-          // uploads default to `cache-control: no-cache` which forces
-          // every player/browser to re-download on every fetch.
-          'cache-control': 'public, max-age=31536000, immutable',
-        },
-        body: file,
-      });
-      if (!putRes.ok) {
-        // Pull a useful error out of Supabase's response body if it
-        // gave us one; surface the generic status code otherwise.
-        let detail = '';
-        try {
-          const txt = await putRes.text();
-          if (txt) detail = ` — ${txt.slice(0, 200)}`;
-        } catch { /* ignore */ }
-        throw new Error(`Storage upload failed (${putRes.status})${detail}`);
-      }
-
-      // Step 3: register the asset in our DB.
-      const completed = await apiFetch<{ id?: string; fileUrl: string }>('/assets/complete-upload', {
-        method: 'POST',
-        body: JSON.stringify({
-          storagePath: presigned.storagePath,
-          filename: file.name,
-          contentType: presigned.mimeType || contentType,
-          size: file.size,
-          folderId: null,
-        }),
+      // 2026-09-23 — straight to storage (src/lib/direct-upload.ts): resumable
+      // for large files (a 4K video survives a dropped connection), up to 2 GB,
+      // with real progress; the API never holds the bytes.
+      const completed = await uploadAssetDirect(file, {
+        folderId: null,
+        onProgress: (p) => setUploadPct(Math.round(p.fraction * 100)),
       });
 
       // Refresh the list so the new asset appears. In single-pick mode
@@ -10725,7 +10665,7 @@ export function AssetLibraryModal({
       // the new URL to the selected set so the operator can keep
       // picking more before hitting "Add N selected".
       await queryClient.invalidateQueries({ queryKey: ['assets'] });
-      const finalUrl = completed.fileUrl || presigned.fileUrl;
+      const finalUrl = completed.fileUrl;
       if (!finalUrl) throw new Error('Upload completed but server did not return a file URL.');
       if (multi) {
         setPicked((prev) => new Set(prev).add(finalUrl));
@@ -10736,9 +10676,10 @@ export function AssetLibraryModal({
       // Console too — Vercel/Sentry won't capture these errors otherwise.
       // eslint-disable-next-line no-console
       console.error('[asset-upload] failed', e);
-      setUploadError(e?.message || 'Upload failed.');
+      setUploadError(uploadErrorText(e, file));
     } finally {
       setUploading(false);
+      setUploadPct(null);
     }
   };
 
@@ -10839,7 +10780,7 @@ export function AssetLibraryModal({
             {uploading ? (
               <>
                 <svg className="w-4 h-4 animate-spin" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="8" cy="8" r="6" strokeOpacity="0.25" /><path d="M14 8a6 6 0 0 0-6-6" /></svg>
-                Uploading…
+                {uploadPct !== null ? tu('uploadingPct', { pct: uploadPct }) : 'Uploading…'}
               </>
             ) : (
               <>📤 Upload {kind === 'image' ? 'image' : 'video'} from your computer</>

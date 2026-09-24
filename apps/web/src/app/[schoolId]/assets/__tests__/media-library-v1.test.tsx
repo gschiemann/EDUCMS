@@ -128,6 +128,14 @@ jest.mock('@/components/ai/AiImageGenerateButton', () => {
   };
 });
 jest.mock('sonner', () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
+// 2026-09-23 — the transcode poll uses react-query's useQuery, which this file's
+// react-query mock does not provide. Keep the PURE helpers real (they decide
+// what a tile says) and stub only the network poll with a controllable map.
+let liveOptimization = new Map<string, unknown>();
+jest.mock('@/hooks/use-video-optimization', () => {
+  const actual = jest.requireActual('@/hooks/use-video-optimization');
+  return { ...actual, useVideoOptimizationStatus: () => liveOptimization };
+});
 
 import { toast } from 'sonner';
 import AssetsPage from '../page';
@@ -141,6 +149,7 @@ beforeEach(() => {
   assetRequests = [];
   usageResponse = { data: undefined, isLoading: false, isError: true };
   createFolderResult = { id: 'x' };
+  liveOptimization = new Map();
   (toast.error as jest.Mock).mockClear();
 });
 
@@ -218,7 +227,8 @@ describe('Media Library v1 — the calm default view', () => {
     mount();
     const strip = rtl.getByTestId('upload-strip');
     expect(strip).toHaveTextContent('Drop files anywhere to upload');
-    expect(strip).toHaveTextContent('Images, video, audio and PDF · up to 500 MB');
+    // 2026-09-23: uploads go straight to storage, so video may be up to 2 GB.
+    expect(strip).toHaveTextContent('Images, video, audio and PDF · video up to 2 GB');
     // The uploader rejects SVG, so the strip must never advertise it (§6).
     expect(strip).not.toHaveTextContent(/svg/i);
   });
@@ -625,12 +635,48 @@ describe('Media Library v1 — upload queue phases (§14)', () => {
   it('an oversized file is refused with the real limit, before any network call', async () => {
     mount();
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    // Video: the direct-upload ceiling is 2 GB (a 600 MB 4K clip is fine now).
     const big = new File(['x'], 'huge.mp4', { type: 'video/mp4' });
-    Object.defineProperty(big, 'size', { value: 600 * 1024 * 1024 });
-    Object.defineProperty(input, 'files', { value: [big], configurable: true });
+    Object.defineProperty(big, 'size', { value: 2.5 * 1024 * 1024 * 1024 });
+    // Anything else keeps the 500 MB outer cap.
+    const pdf = new File(['x'], 'scan.pdf', { type: 'application/pdf' });
+    Object.defineProperty(pdf, 'size', { value: 600 * 1024 * 1024 });
+    Object.defineProperty(input, 'files', { value: [big, pdf], configurable: true });
     await act(async () => { fireEvent.change(input); });
 
-    expect(rtl.getByTestId('upload-queue')).toHaveTextContent('File exceeds 500 MB');
+    const queue = rtl.getByTestId('upload-queue');
+    expect(queue).toHaveTextContent('File exceeds 2 GB (this one is 2.50 GB)');
+    expect(queue).toHaveTextContent('File exceeds 500 MB (this one is 600.0 MB)');
+  });
+});
+
+describe('Media Library — videos being optimized for screens (2026-09-23)', () => {
+  const VIDEO = (job: Record<string, unknown> | null, over: Record<string, unknown> = {}) =>
+    ASSET({ id: 'v1', originalName: 'Gym-4K.mp4', mimeType: 'video/mp4', fileSize: 1_503_238_553, transcodeJob: job, processingMeta: null, ...over });
+
+  it('a queued/running transcode says so on the tile, with its progress', () => {
+    assetsResponse = [VIDEO({ status: 'running', reason: null, progress: 42, sourceBytes: 1_503_238_553, outputBytes: null, finishedAt: null })];
+    mount();
+    expect(rtl.getByTestId('video-optimizing')).toHaveTextContent('Optimizing for screens… 42%');
+  });
+
+  it('the poll’s fresher answer wins over the list row', () => {
+    assetsResponse = [VIDEO({ status: 'queued', reason: null, progress: null, sourceBytes: 1_503_238_553, outputBytes: null, finishedAt: null })];
+    liveOptimization = new Map([['v1', { status: 'running', reason: null, progress: 77, sourceBytes: 1_503_238_553, outputBytes: null, finishedAt: null }]]);
+    mount();
+    expect(rtl.getByTestId('video-optimizing')).toHaveTextContent('Optimizing for screens… 77%');
+  });
+
+  it('a finished swap shows what it saved; one that saved nothing shows nothing on the tile', () => {
+    assetsResponse = [
+      VIDEO({ status: 'done', reason: 'swapped', progress: 100, sourceBytes: 1_000_000_000, outputBytes: 220_000_000, finishedAt: iso(1) }, { fileSize: 220_000_000 }),
+      VIDEO({ status: 'skipped', reason: 'not-smaller', progress: null, sourceBytes: 5_000_000, outputBytes: 6_000_000, finishedAt: iso(1) }, { id: 'v2', originalName: 'Small.mp4' }),
+    ];
+    mount();
+    const chips = rtl.getAllByTestId('video-optimized');
+    expect(chips).toHaveLength(1);
+    expect(chips[0]).toHaveTextContent('Optimized −78%');
+    expect(rtl.queryByTestId('video-optimizing')).not.toBeInTheDocument();
   });
 });
 

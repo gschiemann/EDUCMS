@@ -99,6 +99,13 @@ jest.mock('@/components/ai/AiImageGenerateButton', () => {
   };
 });
 jest.mock('sonner', () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
+// 2026-09-23 — the page now polls transcode state with react-query's useQuery,
+// which this file's react-query mock does not provide. The poll is not what
+// these tests are about: keep the pure helpers real, stub the network poll.
+jest.mock('@/hooks/use-video-optimization', () => {
+  const actual = jest.requireActual('@/hooks/use-video-optimization');
+  return { ...actual, useVideoOptimizationStatus: () => new Map() };
+});
 
 // Indirection so the module-level mock can read a value assigned per test.
 const ASSET_REF = { current: ASSET as Record<string, unknown> };

@@ -62,13 +62,24 @@ import { useEncodeTarget } from '@/hooks/use-encode-target';
 import { videoEncodeState, encodeWarns, encodeWarnings, encodeNotes, describeEncodeReason, isVideoMime, type EncodeGradableAsset, type VideoEncodeState } from '@/lib/video-encode-copy';
 import { inspectVideoFile } from '@/lib/mp4-inspect';
 import { gradeVideoEncode } from '@cms/api-types';
+import {
+  uploadAssetDirect,
+  maxUploadBytesFor,
+  formatUploadCap,
+  MAX_DIRECT_VIDEO_BYTES,
+} from '@/lib/direct-upload';
+import { useVideoOptimizationStatus, optimizationOf } from '@/hooks/use-video-optimization';
+import { VideoOptimizationNote } from '@/components/assets/VideoOptimizationNote';
+import { useUploadErrorText } from '@/lib/use-upload-error-text';
 
 // Match the server limit (apps/api/src/assets/assets.controller.ts).
 // 200MB was rejecting any reasonably-sized video before it even tried to
 // upload — partner reported "added a video and i get a network error and
-// it never loads" but the actual error was the client-side guard. Server
-// is 500MB.
-const MAX_FILE_SIZE = 500 * 1024 * 1024;
+// it never loads" but the actual error was the client-side guard.
+// 2026-09-23 — per file now (`maxUploadBytesFor`): uploads go browser →
+// storage directly, so video may be up to 2 GB; everything else keeps the
+// 500 MB outer cap (the server applies the tighter per-type caps with its
+// own friendly message).
 // 2026-05-13 — Dropped .mov and .avi from the accept list. Browsers /
 // Android WebView refuse QuickTime (`ftyp=qt  `) containers and have
 // never supported AVI cross-platform. Operator hit this with an
@@ -88,8 +99,8 @@ const MAX_FILE_SIZE = 500 * 1024 * 1024;
 const ACCEPT_STRING = '.jpg,.jpeg,.png,.webp,.gif,.bmp,.mp4,.m4v,.webm,.mp3,.ogg,.wav,.m4a,.pdf';
 
 // §6 — the strip's supported-file line is generated from the SAME rule the
-// uploader enforces, so it can never advertise a format the picker rejects.
-const SUPPORTED_COPY = 'Images, video, audio and PDF · up to 500 MB';
+// uploader enforces, so it can never advertise a format the picker rejects
+// (rendered through `assetsLib.supportedCopy` with the real video ceiling).
 
 // §17 — first window. Small enough that a big library paints fast, and the
 // footer always says how much of the library that is. Opening a folder,
@@ -164,14 +175,10 @@ interface UploadItem {
    * confirms it after the upload.
    */
   encode?: VideoEncodeState;
-}
-
-interface PresignedUploadResponse {
-  uploadUrl: string;
-  signedUrl: string;
-  storagePath: string;
-  fileUrl: string;
-  mimeType: string;
+  /** Bytes the storage server has received (drives "412 MB of 1.4 GB"). */
+  sent?: number;
+  /** A transient state line — "Connection dropped — resuming…". */
+  note?: string;
 }
 
 function getAssetType(mime: string): FilterType {
@@ -454,6 +461,11 @@ export default function AssetsPage() {
   const assets = page.assets;
 
   const encodeTarget = useEncodeTarget();
+  // 2026-09-23 — videos still being optimized for screens: polled (visible
+  // tab only) until they finish, then the list refetches once.
+  const liveOptimization = useVideoOptimizationStatus(assets);
+  // A refused / failed upload in the operator's words (server messages pass through).
+  const uploadErrorMessage = useUploadErrorText();
   /** true once the server answered a query it actually applied itself. */
   const serverSearched = !!debouncedSearch && page.appliedQuery === debouncedSearch;
 
@@ -755,7 +767,10 @@ export default function AssetsPage() {
       // blocked and why.
       const unsupportedReason = getUnsupportedReason(file);
       if (unsupportedReason) { item.phase = 'error'; item.error = unsupportedReason; }
-      else if (file.size > MAX_FILE_SIZE) { item.phase = 'error'; item.error = `File exceeds 500 MB (this one is ${fmtSize(file.size)})`; }
+      else if (file.size > maxUploadBytesFor(file)) {
+        item.phase = 'error';
+        item.error = t('assetsLib.fileTooLargeFor', { max: formatUploadCap(maxUploadBytesFor(file)), size: fmtSize(file.size) });
+      }
       return item;
     });
     setUploads(prev => [...items, ...prev]);
@@ -824,114 +839,46 @@ export default function AssetsPage() {
       folderId: targetFolderId || '(root)',
     });
 
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
-    const token = useUIStore.getState().token;
-    const postJson = async <T,>(path: string, body: Record<string, unknown>): Promise<T> => {
-      const res = await fetch(`${apiUrl}${path}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify(body),
-      });
-
-      if (!res.ok) {
-        let msg = `${path} failed (${res.status})`;
-        try {
-          const payload = await res.json();
-          msg = payload?.message || payload?.error || msg;
-        } catch {}
-        throw new Error(msg);
-      }
-
-      return res.json() as Promise<T>;
-    };
-
     const setPhase = (phase: UploadPhase, progress?: number) => {
-      setUploads(p => p.map(u => u.id === item.id ? { ...u, phase, ...(progress !== undefined ? { progress } : {}) } : u));
+      setUploads(p => p.map(u => u.id === item.id ? { ...u, phase, note: undefined, ...(progress !== undefined ? { progress } : {}) } : u));
     };
-    const setProgress = (progress: number) => {
-      setUploads(p => p.map(u => u.id === item.id ? { ...u, progress } : u));
-    };
-
-    const uploadToSignedUrl = (signed: PresignedUploadResponse): Promise<void> => new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) {
-          const storageProgress = Math.round((e.loaded * 90) / e.total);
-          setProgress(Math.min(95, 5 + storageProgress));
-        }
-      };
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          setProgress(96);
-          resolve();
-        } else {
-          let msg = `Storage unavailable — try again later (${xhr.status})`;
-          try {
-            const payload = JSON.parse(xhr.responseText);
-            msg = payload?.message || payload?.error || msg;
-          } catch {}
-          reject(new Error(msg));
-        }
-      };
-      xhr.onerror = () => {
-        reject(new Error('Network interrupted while sending the file. The file reached the direct storage step, so check Supabase Storage CORS/network and MIME settings, then try again.'));
-      };
-      xhr.onabort = () => reject(new Error(t('assetsLib.cancelled')));
-      // Supabase signed upload URLs require PUT, not POST. POST returns
-      // a generic "headers must have required" error from Supabase's
-      // storage edge handler. Operator hit this on every MP4 upload
-      // after Codex's d29e6c5 switched to direct-storage uploads.
-      xhr.open('PUT', signed.uploadUrl || signed.signedUrl);
-      xhr.setRequestHeader('Content-Type', signed.mimeType || item.file.type || 'application/octet-stream');
-      // SUPABASE EGRESS FIX (2026-05-23): Supabase signed-URL uploads
-      // default the stored object's cache-control to `no-cache`, which
-      // re-causes the 11.7GB-from-273MB-stored egress incident we hit
-      // with the legacy multipart path. Assets here are content-addressed
-      // (UUID filenames) and never mutated in place, so caching for one
-      // year + immutable is correct. Supabase storage server reads this
-      // header verbatim and stores it on the object's metadata, so every
-      // future GET serves with the same Cache-Control and edge PoPs only
-      // pull origin once per asset per year.
-      xhr.setRequestHeader('Cache-Control', 'public, max-age=31536000, immutable');
-      xhr.send(item.file);
-    });
 
     try {
       setPhase('uploading', 2);
-      const signed = await postJson<PresignedUploadResponse>('/assets/presign', {
-        filename: item.file.name,
-        contentType: item.file.type || 'application/octet-stream',
-        size: item.file.size,
+      // 2026-09-23 — straight to storage (src/lib/direct-upload.ts): large
+      // files go up RESUMABLE (TUS, 6 MB chunks) and survive a dropped
+      // connection; the API never holds the bytes. Progress is the storage
+      // server's own byte count, mapped onto 2–96% (the last stretch is the
+      // server registering the asset — §14: never "Ready" before that).
+      const created = await uploadAssetDirect(item.file, {
         folderId: targetFolderId || null,
-      });
-      setProgress(5);
-      await uploadToSignedUrl(signed);
-      // The bytes are in storage but the asset does NOT exist yet — §14:
-      // "Do not mark an asset Ready until upload completion AND server
-      // registration succeed."
-      setPhase('processing', 98);
-      const created = await postJson<any>('/assets/complete-upload', {
-        storagePath: signed.storagePath,
-        filename: item.file.name,
-        contentType: signed.mimeType || item.file.type || 'application/octet-stream',
-        size: item.file.size,
-        folderId: targetFolderId || null,
+        onProgress: ({ loaded, fraction }) => {
+          setUploads(p => p.map(u => u.id === item.id
+            ? { ...u, sent: loaded, progress: Math.max(u.progress, Math.min(96, 2 + Math.round(fraction * 94))) }
+            : u));
+        },
+        onPhase: (ph) => {
+          if (ph === 'reconnecting') {
+            setUploads(p => p.map(u => u.id === item.id ? { ...u, note: t('directUpload.resuming') } : u));
+          } else if (ph === 'uploading') {
+            setUploads(p => p.map(u => u.id === item.id && u.note ? { ...u, note: undefined } : u));
+          } else if (ph === 'finalizing') {
+            setPhase('processing', 98);
+          }
+        },
       });
       const elapsedMs = Math.round(performance.now() - started);
-      clog.info('upload', 'Success', { id: item.id, name: item.file.name, elapsedMs });
+      clog.info('upload', 'Success', { id: item.id, name: item.file.name, elapsedMs, bytes: item.file.size });
       // A contributor's upload lands in the review queue — say so instead
       // of "Ready", which would be a lie about what is on screen.
       const needsReview = created?.status === 'PENDING_APPROVAL';
-      setUploads(p => p.map(u => u.id === item.id ? { ...u, progress: 100, phase: needsReview ? 'pending-review' : 'success' } : u));
+      setUploads(p => p.map(u => u.id === item.id ? { ...u, progress: 100, note: undefined, phase: needsReview ? 'pending-review' : 'success' } : u));
       queryClient.invalidateQueries({ queryKey: ['assets'] });
     } catch (err: any) {
       const elapsedMs = Math.round(performance.now() - started);
-      const msg = err?.message || t('assetsLib.uploadFailed');
-      clog.error('upload', 'Failed', { id: item.id, name: item.file.name, msg, elapsedMs });
-      setUploads(p => p.map(u => u.id === item.id ? { ...u, phase: 'error', error: msg } : u));
+      const msg = uploadErrorMessage(err, item.file);
+      clog.error('upload', 'Failed', { id: item.id, name: item.file.name, msg, code: err?.code, elapsedMs });
+      setUploads(p => p.map(u => u.id === item.id ? { ...u, phase: 'error', note: undefined, error: msg } : u));
     }
   };
 
@@ -1436,7 +1383,7 @@ export default function AssetsPage() {
           <span className="block text-xs font-bold text-slate-800">
             {dragOver ? 'Drop the files — we’ll ask where to put them' : 'Drop files anywhere to upload'}
           </span>
-          <span className="block text-[11px] text-slate-500 mt-0.5">{SUPPORTED_COPY}</span>
+          <span className="block text-[11px] text-slate-500 mt-0.5">{t('assetsLib.supportedCopy', { video: formatUploadCap(MAX_DIRECT_VIDEO_BYTES) })}</span>
         </span>
       </button>
 
@@ -1477,6 +1424,20 @@ export default function AssetsPage() {
                     wrap and stay legible. Title attribute preserves the full
                     text on hover so even if it's clipped by vertical
                     scrolling the operator can still read it. */}
+                {u.phase === 'uploading' && (
+                  // Per-file, on its own line so it stays readable on a phone:
+                  // "Uploading… 42% · 612 MB of 1.4 GB" (and why it paused).
+                  <p className="text-[10px] text-slate-600 leading-snug mt-1 ml-6 pr-2" data-testid="upload-progress-text">
+                    {t('directUpload.uploadingPct', { pct: u.progress })}
+                    {typeof u.sent === 'number' && u.file.size > 0 && (
+                      <> · {t('directUpload.sentOfTotal', { sent: fmtSize(u.sent), total: fmtSize(u.file.size) })}</>
+                    )}
+                    {u.note && <span className="block text-amber-700 font-semibold">{u.note}</span>}
+                  </p>
+                )}
+                {u.phase === 'processing' && (
+                  <p className="text-[10px] text-slate-600 leading-snug mt-1 ml-6 pr-2">{t('directUpload.finishing')}</p>
+                )}
                 {u.phase === 'error' && u.error && (
                   <p className="text-[10px] text-rose-700 font-medium leading-snug mt-1 ml-6 pr-2" title={u.error}>{u.error}</p>
                 )}
@@ -1972,6 +1933,11 @@ export default function AssetsPage() {
                     <span className="block text-[13px] font-semibold text-slate-800 truncate" title={name}>{name}</span>
                     <span className="block text-[11px] text-slate-500 mt-0.5">{metaLine(a)}</span>
                     <span className="block text-[11px] text-slate-500">{fmtSize(a.fileSize)}</span>
+                    {isVideo(a) && (
+                      <span className="block">
+                        <VideoOptimizationNote optimization={optimizationOf(a, liveOptimization)} variant="card" fmtSize={fmtSize} />
+                      </span>
+                    )}
                   </span>
                 </button>
               </li>
@@ -2045,7 +2011,14 @@ export default function AssetsPage() {
                     <td className="hidden lg:table-cell px-3 py-2 text-[11px] text-slate-600 truncate max-w-[160px]">
                       {a.folder?.name || (a.folderId ? folderNameById.get(a.folderId) : null) || 'All files'}
                     </td>
-                    <td className="px-3 py-2 text-[11px] text-slate-600 whitespace-nowrap">{fmtSize(a.fileSize)}</td>
+                    <td className="px-3 py-2 text-[11px] text-slate-600 whitespace-nowrap">
+                      {fmtSize(a.fileSize)}
+                      {isVideo(a) && (
+                        <span className="block">
+                          <VideoOptimizationNote optimization={optimizationOf(a, liveOptimization)} variant="row" fmtSize={fmtSize} />
+                        </span>
+                      )}
+                    </td>
                     <td className="hidden md:table-cell px-3 py-2 text-[11px] text-slate-600 whitespace-nowrap">{fmtRelative(a.createdAt) || '—'}</td>
                     <td className="hidden xl:table-cell px-3 py-2 text-[11px] text-slate-600 truncate max-w-[180px]">{a.uploadedBy?.email || '—'}</td>
                     <td className="px-3 py-2">
@@ -2191,7 +2164,9 @@ export default function AssetsPage() {
 
               {/* 4b. Playback on screens (2026-09-24) — the encode grade for a
                   video: will this file play smoothly on signage hardware, and
-                  if not, exactly why and what export settings fix it. */}
+                  if not, exactly why and what export settings fix it. After a
+                  signage transcode swap the API re-probes the NEW file, so this
+                  card and the "Screen version" row below describe the same bytes. */}
               <VideoEncodeCard
                 asset={selectedLive}
                 checking={checkPlayback.isPending && checkPlayback.variables === selectedAsset.id}
@@ -2202,6 +2177,17 @@ export default function AssetsPage() {
                   });
                 }}
               />
+
+              {/* 4c. The signage transcode (2026-09-23) — what screens actually download. */}
+              {isVideo(selectedAsset) && optimizationOf(selectedAsset, liveOptimization) && (
+                <div className="bg-slate-50 rounded-lg p-3" data-testid="asset-screen-version">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <Video className="w-3 h-3 text-slate-400" aria-hidden />
+                    <span className="text-[10px] font-bold text-slate-500 uppercase">{t('assetsLib.labelScreenVersion')}</span>
+                  </div>
+                  <VideoOptimizationNote optimization={optimizationOf(selectedAsset, liveOptimization)} variant="detail" fmtSize={fmtSize} />
+                </div>
+              )}
 
               {/* 5. Folder + uploader */}
               <div className="flex items-center justify-between bg-slate-50 rounded-lg p-3">

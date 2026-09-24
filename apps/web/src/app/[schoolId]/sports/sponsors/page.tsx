@@ -10,6 +10,7 @@
  */
 
 import { useMemo, useRef, useState } from 'react';
+import { uploadAssetDirect } from '@/lib/direct-upload';
 import { useParams, useRouter } from 'next/navigation';
 import {
   ArrowLeft, Plus, Pencil, Trash2, X, BadgeDollarSign, Upload, Loader2, ImageIcon,
@@ -19,8 +20,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { appConfirm } from '@/components/ui/app-dialog';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
-import { useUIStore } from '@/store/ui-store';
-import { API_URL } from '@/lib/api-url';
 import {
   useSponsors,
   useSponsorReport,
@@ -264,25 +263,12 @@ function Stat({ label, value }: { label: string; value: string }) {
 }
 
 /** Upload one image file (a sponsor logo) and return its hosted URL.
- *  Reuses the hardened /assets/upload chain. */
+ *  Direct to storage (src/lib/direct-upload.ts) — the same client every
+ *  media picker uses; the asset lands in the library like any other. */
 async function uploadLogo(file: File): Promise<string> {
-  const fd = new FormData();
-  fd.append('file', file);
-  const token = useUIStore.getState().token;
-  const res = await fetch(`${API_URL}/assets/upload`, {
-    method: 'POST',
-    body: fd,
-    credentials: 'include',
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-  });
-  if (!res.ok) {
-    const t = await res.text().catch(() => '');
-    throw new Error(`Logo upload failed (${res.status}) ${t}`.trim());
-  }
-  const data = await res.json().catch(() => ({}) as any);
-  const url = data.fileUrl || data.url || data?.asset?.fileUrl || '';
-  if (!url) throw new Error('Upload succeeded but no URL came back.');
-  return url;
+  const done = await uploadAssetDirect(file);
+  if (!done.fileUrl) throw new Error('Upload succeeded but no URL came back.');
+  return done.fileUrl;
 }
 
 function SponsorModal({ sponsor, onClose }: { sponsor: Sponsor | null; onClose: () => void }) {

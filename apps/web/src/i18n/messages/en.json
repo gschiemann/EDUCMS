@@ -1796,10 +1796,21 @@
     "allFiles": "All Files",
     "addUrlToggle": "Add URL",
     "upload": "Upload",
-    "dropHint": "Choose a folder (or root) next — images, video, audio, PDF, up to 500 MB",
+    "dropHint": "Choose a folder (or root) next — images, video, audio, PDF · video up to 2 GB",
     "uploadToFolder": "Upload {count, plural, one {# file} other {# files}} to…",
     "uploadWhichFolder": "Upload files to which folder?",
-    "moveToWhichFolder": "Move {count, plural, one {# item} other {# items}} to which folder?"
+    "moveToWhichFolder": "Move {count, plural, one {# item} other {# items}} to which folder?",
+    "supportedCopy": "Images, video, audio and PDF · video up to {video}",
+    "fileTooLargeFor": "File exceeds {max} (this one is {size})",
+    "optimizing": "Optimizing for screens…",
+    "optimizingPct": "Optimizing for screens… {pct}%",
+    "optimizedChip": "Optimized −{pct}%",
+    "labelScreenVersion": "Screen version",
+    "optimizedDetail": "Optimized for screens: {from} → {to} (saved {saved})",
+    "optimizeKept": "Already screen-ready — screens play this file as uploaded.",
+    "optimizeNotSmaller": "Kept as uploaded — re-encoding wouldn't have made it smaller.",
+    "optimizeFailed": "Couldn't optimize this video — screens play the file as uploaded.",
+    "optimizeEmergency": "Emergency media is never re-encoded — screens play the file as uploaded."
   },
   "playlistsPage": {
     "title": "Playlists",
@@ -2776,5 +2787,16 @@
     "missingOption": "Previously linked product is missing from Toast",
     "missingNote": "This product is no longer in the synced catalog; the slot stays hidden until you choose another.",
     "menuFallback": "Menu"
+  },
+  "directUpload": {
+    "uploadingPct": "Uploading… {pct}%",
+    "sentOfTotal": "{sent} of {total}",
+    "resuming": "Connection dropped — resuming…",
+    "finishing": "Finishing…",
+    "tooLarge": "{name} is {size} — the limit for this kind of file is {max}.",
+    "networkLost": "The connection dropped and the upload couldn't resume. Check your connection and try again.",
+    "expired": "This upload can no longer be continued. Start it again.",
+    "storageRefused": "Storage refused the file. Try again, or export it as MP4 (H.264).",
+    "cancelled": "Upload cancelled."
   }
 }

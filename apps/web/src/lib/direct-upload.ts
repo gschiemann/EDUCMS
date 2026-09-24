@@ -72,6 +72,12 @@ export class DirectUploadError extends Error {
     readonly code: DirectUploadErrorCode,
     message: string,
     readonly status?: number,
+    /**
+     * 'api' = our server refused it (presign / complete-upload) and `message`
+     * is its specific, operator-facing explanation; 'client' = storage or the
+     * network, and the message is ours to translate.
+     */
+    readonly source: 'api' | 'client' = 'client',
   ) {
     super(message);
     this.name = 'DirectUploadError';
@@ -223,13 +229,14 @@ export function tusMetadata(meta: Record<string, string>): string {
 const isSignatureProblem = (r: XhrResult) =>
   (r.status === 400 || r.status === 401 || r.status === 403) && /signature|jwt|expired|jws|unauthori[sz]ed/i.test(r.body || '');
 
-function mapApiError(e: any): DirectUploadError {
+function mapApiError(e: unknown): DirectUploadError {
   if (e instanceof DirectUploadError) return e;
-  const status = typeof e?.status === 'number' ? e.status : undefined;
-  const message = e?.message || 'Upload failed.';
-  if (status === 413) return new DirectUploadError('too-large', message, status);
-  if (status === 415) return new DirectUploadError('unsupported', message, status);
-  return new DirectUploadError('server', message, status);
+  const err = (e ?? {}) as { status?: unknown; message?: unknown };
+  const status = typeof err.status === 'number' ? err.status : undefined;
+  const message = typeof err.message === 'string' && err.message ? err.message : 'Upload failed.';
+  if (status === 413) return new DirectUploadError('too-large', message, status, 'api');
+  if (status === 415) return new DirectUploadError('unsupported', message, status, 'api');
+  return new DirectUploadError('server', message, status, 'api');
 }
 
 /**

@@ -7,9 +7,15 @@
  * unmounted mid-edit. Post-fix, BuilderCanvas preventDefaults file
  * dragover/drop window-wide while mounted (except native file inputs)
  * and routes canvas drops through placeDroppedImageFiles(): each image
- * uploads via the same authed /assets/upload path the per-zone drop
- * uses, then lands as an IMAGE zone centered on the cursor (staggered
- * for multi-file drops).
+ * uploads through the same direct-to-storage client the per-zone drop
+ * uses (src/lib/direct-upload.ts), then lands as an IMAGE zone centered on
+ * the cursor (staggered for multi-file drops).
+ *
+ * 2026-09-23 — the upload is mocked at the client boundary with the shape the
+ * PRODUCER returns (AssetsController.completeUpload: `fileUrl`, never `url`).
+ * The old fixture answered `{ url }` — a key the real multipart endpoint
+ * never sent — which is exactly how "the zone's URL is undefined" hid behind
+ * a green test.
  */
 import { placeDroppedImageFiles } from '../BuilderCanvas';
 import { useBuilderStore } from '../useBuilderStore';
@@ -23,6 +29,24 @@ jest.mock('@/components/ui/app-dialog', () => ({
 jest.mock('@/hooks/use-api', () => ({
   useTemplate: () => ({ data: null, isLoading: false }),
 }));
+
+const uploadAssetDirect = jest.fn();
+jest.mock('@/lib/direct-upload', () => ({
+  uploadAssetDirect: (...args: unknown[]) => uploadAssetDirect(...args),
+}));
+
+/** Cut from AssetsController.completeUpload's return. */
+const completed = (fileUrl: string) => ({
+  id: 'asset-new',
+  fileUrl,
+  mimeType: 'image/png',
+  fileSize: 1,
+  fileHash: null,
+  originalName: 'a.png',
+  status: 'PUBLISHED',
+  altText: null,
+  posterUrl: null,
+});
 
 function initStore() {
   useBuilderStore.getState().init({
@@ -39,20 +63,15 @@ function initStore() {
 const png = (name: string) => new File(['x'], name, { type: 'image/png' });
 
 describe('BONUS — canvas-level file drop places uploaded images at the cursor', () => {
-  const realFetch = global.fetch;
-
   afterEach(() => {
-    global.fetch = realFetch;
     jest.clearAllMocks();
+    uploadAssetDirect.mockReset();
   });
 
   it('uploads each file and adds one IMAGE zone per file, centered on the drop point', async () => {
     initStore();
     let call = 0;
-    global.fetch = jest.fn().mockImplementation(async () => ({
-      ok: true,
-      json: async () => ({ url: `https://cdn.example/asset-${++call}.png` }),
-    })) as unknown as typeof fetch;
+    uploadAssetDirect.mockImplementation(async () => completed(`https://cdn.example/asset-${++call}.png`));
 
     const ids = await placeDroppedImageFiles([png('a.png'), png('b.png')], { x: 50, y: 40 });
 
@@ -71,14 +90,14 @@ describe('BONUS — canvas-level file drop places uploaded images at the cursor'
     expect(zones[1].x).toBeCloseTo(33, 5);
     expect(zones[1].y).toBeCloseTo(28, 5);
 
-    // Both went through the real upload endpoint.
-    expect((global.fetch as jest.Mock).mock.calls.length).toBe(2);
-    expect(String((global.fetch as jest.Mock).mock.calls[0][0])).toContain('/assets/upload');
+    // Both went through the direct-upload client, one file each.
+    expect(uploadAssetDirect).toHaveBeenCalledTimes(2);
+    expect((uploadAssetDirect.mock.calls[0][0] as File).name).toBe('a.png');
   });
 
   it('a failed upload surfaces the standard dialog and adds no zone', async () => {
     initStore();
-    global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 500 }) as unknown as typeof fetch;
+    uploadAssetDirect.mockRejectedValue(new Error('Storage upload failed (500).'));
     const errSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
 
     const ids = await placeDroppedImageFiles([png('broken.png')], { x: 50, y: 40 });
@@ -91,10 +110,7 @@ describe('BONUS — canvas-level file drop places uploaded images at the cursor'
 
   it('placement still works without a drop point (falls back to addZone default flow)', async () => {
     initStore();
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ url: 'https://cdn.example/one.png' }),
-    }) as unknown as typeof fetch;
+    uploadAssetDirect.mockResolvedValue(completed('https://cdn.example/one.png'));
 
     const ids = await placeDroppedImageFiles([png('one.png')]);
     expect(ids.length).toBe(1);

@@ -1,11 +1,10 @@
 ﻿"use client";
 
 import { useRef, useEffect, useState, useCallback } from 'react';
+import { uploadAssetDirect } from '@/lib/direct-upload';
 import { useDroppable } from '@dnd-kit/core';
 import { useBuilderStore } from './useBuilderStore';
 import { useTemplate } from '@/hooks/use-api';
-import { useUIStore } from '@/store/ui-store';
-import { API_URL } from '@/lib/api-url';
 import { TEMPLATE_DEFAULT_BG } from '@cms/api-types';
 import { appAlert } from '@/components/ui/app-dialog';
 import { BuilderZone } from './BuilderZone';
@@ -48,8 +47,8 @@ export function scaleZoneInBox(orig: Rect, origBox: Rect, newBox: Rect): Rect {
 
 /**
  * BONUS (Wave A) — canvas-level file drop. Uploads each dropped image
- * through the SAME authed /assets/upload path BuilderZone's per-zone
- * drop already uses, then places one IMAGE zone per file centered on
+ * through the SAME direct-to-storage client BuilderZone's per-zone drop
+ * uses (src/lib/direct-upload.ts), then places one IMAGE zone per file centered on
  * the drop point (staggered +3%/+3% per extra file so a multi-drop
  * doesn't stack invisibly). Exported for the file-drop regression spec.
  * Returns the new zone ids (empty on upload failure — the operator gets
@@ -59,19 +58,12 @@ export async function placeDroppedImageFiles(
   files: File[],
   dropAt?: { x: number; y: number },
 ): Promise<string[]> {
-  const token = useUIStore.getState().token;
   const newIds: string[] = [];
   for (let i = 0; i < files.length; i++) {
     try {
-      const formData = new FormData();
-      formData.append('file', files[i]);
-      const res = await fetch(`${API_URL}/assets/upload`, {
-        method: 'POST',
-        body: formData,
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      });
-      if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
-      const { url } = await res.json();
+      // 2026-09-23 — direct to storage; the created asset's `fileUrl` (the old
+      // multipart response had no `url`, so zones got an undefined source).
+      const { fileUrl: url } = await uploadAssetDirect(files[i]);
       const st = useBuilderStore.getState();
       const at = dropAt
         ? { x: Math.min(100, dropAt.x + i * 3), y: Math.min(100, dropAt.y + i * 3) }
