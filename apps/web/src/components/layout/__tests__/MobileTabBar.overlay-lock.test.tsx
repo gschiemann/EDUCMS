@@ -30,6 +30,8 @@ jest.mock('next/link', () => ({
   default: ({ children, ...props }: any) => <a {...props}>{children}</a>,
 }));
 jest.mock('@/hooks/use-api', () => ({
+  // The chrome's passkey entry (2026-09-24) reads the list; none here.
+  usePasskeys: () => ({ data: undefined }),
   useNotifications: () => ({ data: { unreadCount: 0 } }),
 }));
 jest.mock('@/hooks/use-tenant-copy', () => ({

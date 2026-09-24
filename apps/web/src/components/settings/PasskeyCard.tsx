@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   AlertCircle,
@@ -52,7 +52,7 @@ import {
 /** apiFetch attaches `code` + `message` from the API's normalized envelope. */
 type ApiError = Error & { code?: string; status?: number };
 
-export function PasskeyCard() {
+export function PasskeyCard({ autoOpenAdd = false }: { autoOpenAdd?: boolean } = {}) {
   const t = useTranslations();
   const locale = useLocale();
 
@@ -72,6 +72,15 @@ export function PasskeyCard() {
   const [showAdd, setShowAdd] = useState(false);
   const [addPassword, setAddPassword] = useState('');
   const [adding, setAdding] = useState(false);
+  // `?add=passkey` (2026-09-24) — the account menu's "Set up a passkey" lands
+  // on this card with the password panel ALREADY open, once the browser is
+  // known to be able to create one. Once only: closing it must stay closed.
+  const autoOpened = useRef(false);
+  useEffect(() => {
+    if (!autoOpenAdd || autoOpened.current || supported !== true) return;
+    autoOpened.current = true;
+    setShowAdd(true);
+  }, [autoOpenAdd, supported]);
 
   // ── Remove flow (one row at a time) ─────────────────────────────────
   const [removeId, setRemoveId] = useState<string | null>(null);
@@ -336,6 +345,9 @@ export function PasskeyCard() {
               id="passkey-add-password"
               type="password"
               autoComplete="current-password"
+              // The panel only ever appears on purpose (the Add button, or
+              // `?add=passkey`), and the password is its one field.
+              autoFocus
               placeholder={t('mfaCard.yourPassword')}
               value={addPassword}
               onChange={(e) => setAddPassword(e.target.value)}

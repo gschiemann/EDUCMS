@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { notifyExplicitLogout } from '@/lib/auth-events';
 import { clog } from '@/lib/client-logger';
+import { clearPasskeyOfferSessionAnswer } from '@/lib/passkey-offer';
 
 /**
  * Unified application state store.
@@ -300,6 +301,10 @@ export const useUIStore = create<AppState>((set) => ({
       ss.removeItem(TOKEN_KEY);
       ss.removeItem(USER_KEY);
     }
+    // 2026-09-24 — "Not now" on the post-sign-in passkey offer holds for the
+    // SESSION, and a deliberate sign-out ends it: the next sign-in may ask
+    // again. ("Don't ask on this device" is a device answer and is untouched.)
+    clearPasskeyOfferSessionAnswer();
     // SEC-010 — revoke the durable half too. Fire-and-forget: a logout that
     // waited on the network could be cancelled by the hard redirect that
     // follows it, and the cookie is cleared by the route handler either way.

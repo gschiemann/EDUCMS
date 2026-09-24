@@ -457,10 +457,12 @@ function LoginContent() {
    * already headed for — "Not now", Continue, Esc, and the browser's Back.
    * No path leaves the operator on this page.
    *
-   * `remember`: 'thirty-days' is "Not now" (and Esc / Back before starting);
-   * 'session' follows a cancelled or failed setup — not again this session,
-   * but a later day may ask; 'none' after success (there is nothing left to
-   * offer — the account has a passkey now).
+   * `remember` (2026-09-24 — one "Not now" used to mean thirty days, which is
+   * how the operator lost the offer for a month): 'session' is "Not now", Esc
+   * and Back before starting, and a cancelled or failed setup — not again
+   * this session, the next sign-in may ask; 'thirty-days' is the quiet
+   * "Don't ask on this device" choice only; 'none' after success (there is
+   * nothing left to offer — the account has a passkey now).
    */
   const leaveOffer = (
     remember: 'thirty-days' | 'session' | 'none',
@@ -486,8 +488,10 @@ function LoginContent() {
       if (!passkeyOffer || offerClosedRef.current) return;
       switch (offerPhase) {
         case 'ready':
-          // Esc or Back before starting says what "Not now" says.
-          leaveOffer('thirty-days', via === 'history' ? 'history' : 'ui');
+          // Esc or Back before starting says what "Not now" says: this
+          // session only. Never the 30-day answer — that takes a deliberate
+          // choice of its own button.
+          leaveOffer('session', via === 'history' ? 'history' : 'ui');
           return;
         case 'working':
           // Esc belongs to the device sheet, which cancels itself. Back leaves
@@ -1277,11 +1281,23 @@ function LoginContent() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => leaveOffer('thirty-days')}
+                    onClick={() => leaveOffer('session')}
                     disabled={offerPhase === 'working'}
                     className="w-full py-2 text-sm font-semibold text-slate-600 hover:text-slate-900 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {t('passkeyOfferNotNow')}
+                  </button>
+                  {/* The 30-day answer is its OWN quiet choice (2026-09-24).
+                      "Not now" holds for this session; only this puts the
+                      offer away for a month on this device. slate-500, not
+                      400: the card is white and slate-400 fails AA here. */}
+                  <button
+                    type="button"
+                    onClick={() => leaveOffer('thirty-days')}
+                    disabled={offerPhase === 'working'}
+                    className="w-full py-1 text-xs font-medium text-slate-500 hover:text-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {t('passkeyOfferDontAsk')}
                   </button>
                   <p className="text-[11px] leading-snug text-slate-500 text-center">
                     {t('passkeyOfferFootnote')}

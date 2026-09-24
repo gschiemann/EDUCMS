@@ -503,6 +503,22 @@ describe('MINT SITE 1 — POST /auth/login (password, no second factor owed)', (
     const { signIn } = controllerFor(null, SESSION);
     await expect(signIn('wrong')).rejects.toBeInstanceOf(UnauthorizedException);
   });
+
+  /**
+   * 2026-09-24 — operator (SUPER_ADMIN): "it seems like the passkey still has
+   * no way to get setup for me". The offer must read the ACCOUNT — no
+   * passkey, not behind setup — never the role: the owner's account is
+   * offered exactly like a contributor's.
+   */
+  it.each(['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN', 'CONTRIBUTOR', 'RESTRICTED_VIEWER'])(
+    'every role is offered a passkey after a password sign-in — %s',
+    async (role) => {
+      const { signIn, auditDetails } = controllerFor({ ...passwordOnly, role }, SESSION);
+      const res = await signIn();
+      expect(res.passkeyEnrollment?.grant).toMatch(/^[A-Za-z0-9_-]{43}$/);
+      expect(auditDetails().passkeyEnrollmentOffered).toBe(true);
+    },
+  );
 });
 
 // ───────────────────────────────────────────────────────────────────────
@@ -579,6 +595,41 @@ describe('MINT SITE 2 — POST /auth/mfa/challenge (password + authenticator cod
     expect(session.access_token).toBe('final-jwt');
     expect(session.passkeyEnrollment).toBeUndefined();
   });
+
+  /**
+   * 2026-09-24 — a passkey is ALSO passwordless sign-in, not only a second
+   * factor, so an account that already has the authenticator app is offered
+   * one after its code, whatever its role. This is the operator's own shape
+   * (SUPER_ADMIN + TOTP + backup codes) alongside every other role.
+   */
+  it.each(['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN', 'CONTRIBUTOR', 'RESTRICTED_VIEWER'])(
+    'an authenticator-app account of every role gets the grant after its code, and it opens registration — %s',
+    async (role) => {
+      const { secretBase32 } = generateTotpSecret();
+      const h = await buildHarness([
+        await makeUser({
+          role,
+          mfaTotpSecret: sealMfaSecret(secretBase32),
+          mfaTotpVerifiedAt: new Date('2026-09-01'),
+          mfaBackupCodes: [{ hash: 'x', createdAt: '2026-09-01T00:00:00Z' }],
+        }),
+      ]);
+      h.jwt.verifyAsync.mockResolvedValue({
+        sub: 'user-1',
+        purpose: MFA_CHALLENGE_PURPOSE,
+      });
+
+      const session = (await h.mfa.challenge({
+        mfaToken: 'x'.repeat(20),
+        code: totpCode(secretBase32),
+      })) as SignInResponse;
+
+      expect(session.access_token).toBe('final-jwt');
+      expect(session.passkeyEnrollment?.grant).toMatch(/^[A-Za-z0-9_-]{43}$/);
+      await registerWithGrant(h, session.passkeyEnrollment!.grant);
+      expect(h.passkeys).toHaveLength(1);
+    },
+  );
 
   it('a WRONG code mints nothing', async () => {
     const { secretBase32 } = generateTotpSecret();

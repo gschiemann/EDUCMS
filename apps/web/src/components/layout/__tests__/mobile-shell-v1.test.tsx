@@ -24,7 +24,19 @@ jest.mock('next/link', () => ({
 }));
 jest.mock('@/hooks/use-api', () => ({
   useNotifications: () => ({ data: { unreadCount: 3 } }),
+  usePasskeys: () => ({ data: mockPasskeyList }),
 }));
+// The sheet's passkey row reads WebAuthn support after mount; jsdom has no
+// PublicKeyCredential, so the value is set per test.
+const browserSupportsWebAuthn = jest.fn(() => true);
+jest.mock('@simplewebauthn/browser', () => ({
+  browserSupportsWebAuthn: () => browserSupportsWebAuthn(),
+  platformAuthenticatorIsAvailable: () => Promise.resolve(false),
+  startRegistration: jest.fn(),
+  startAuthentication: jest.fn(),
+  WebAuthnAbortService: { cancelCeremony: jest.fn() },
+}));
+let mockPasskeyList: { passkeys: unknown[]; max: number } | undefined = { passkeys: [], max: 10 };
 jest.mock('@/hooks/use-tenant-copy', () => ({
   useTenantCopy: () => ({ vertical: 'K12' }),
 }));
@@ -122,6 +134,42 @@ describe('§6.3 — one navigation system: the More sheet is a superset of the d
     render(<MobileTabBar />);
     fireEvent.click(screen.getByRole('button', { name: /More/ }));
     expect(await screen.findByRole('button', { name: /Sign Out/i })).toBeInTheDocument();
+  });
+
+  /**
+   * 2026-09-24 — the always-there way to a passkey. The phone hides the
+   * avatar menu, so the sheet's account area carries the entry: "Set up a
+   * passkey" opens the Security page's Add panel; once one exists it reads
+   * "Manage passkeys" and lands on the list.
+   */
+  it('reaches "Set up a passkey" (→ the Security page with the Add panel open) when the account has none', async () => {
+    mockPasskeyList = { passkeys: [], max: 10 };
+    render(<MobileTabBar />);
+    fireEvent.click(screen.getByRole('button', { name: /More/ }));
+    await screen.findByRole('dialog');
+    const row = await screen.findByRole('link', { name: /Set up a passkey/i });
+    expect(row).toHaveAttribute('href', '/school-1/settings/security?add=passkey');
+    expect(screen.queryByRole('link', { name: /Manage passkeys/i })).not.toBeInTheDocument();
+  });
+
+  it('reads "Manage passkeys" (→ the list) once the account holds one', async () => {
+    mockPasskeyList = { passkeys: [{ id: 'pk-1' }], max: 10 };
+    render(<MobileTabBar />);
+    fireEvent.click(screen.getByRole('button', { name: /More/ }));
+    await screen.findByRole('dialog');
+    const row = await screen.findByRole('link', { name: /Manage passkeys/i });
+    expect(row).toHaveAttribute('href', '/school-1/settings/security#sec-passkeys');
+    expect(screen.queryByRole('link', { name: /Set up a passkey/i })).not.toBeInTheDocument();
+  });
+
+  it('offers no passkey row at all on a browser without WebAuthn', async () => {
+    browserSupportsWebAuthn.mockReturnValueOnce(false);
+    render(<MobileTabBar />);
+    fireEvent.click(screen.getByRole('button', { name: /More/ }));
+    await screen.findByRole('dialog');
+    expect(screen.queryByTestId('passkey-menu-entry')).not.toBeInTheDocument();
+    // …while everything else in the account area is untouched.
+    expect(screen.getByRole('button', { name: /Sign Out/i })).toBeInTheDocument();
   });
 
   it('offers a contributor their own queue instead of the reviewer queue', async () => {

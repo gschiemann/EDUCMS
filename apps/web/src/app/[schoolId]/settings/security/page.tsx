@@ -16,7 +16,7 @@
  * containment behaviour that IS built is stated where it happens, next to
  * the password form (§7.11 "…ONLY if implemented").
  */
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Lock } from 'lucide-react';
 import { MfaCard } from '@/components/settings/MfaCard';
@@ -38,6 +38,25 @@ export default function SecuritySettingsPage() {
   const { data: mfaStatus, isLoading: mfaLoading, isError: mfaError } = useMfaStatus();
   const mfaState: 'on' | 'off' | 'unknown' =
     mfaLoading || mfaError || !mfaStatus ? 'unknown' : mfaStatus.enabled ? 'on' : 'off';
+
+  // `?add=passkey` (2026-09-24) — the account menu's "Set up a passkey" lands
+  // here with the Add panel already open and the Passkeys section scrolled
+  // into view; `#sec-passkeys` ("Manage passkeys") only scrolls. Read after
+  // mount, so the page needs no useSearchParams Suspense boundary (the same
+  // pattern billing uses for `?checkout=`).
+  const [addPasskeyRequested, setAddPasskeyRequested] = useState(false);
+  useEffect(() => {
+    let wantsPasskeys = false;
+    try {
+      if (new URLSearchParams(window.location.search).get('add') === 'passkey') {
+        setAddPasskeyRequested(true);
+        wantsPasskeys = true;
+      }
+      if (window.location.hash === '#sec-passkeys') wantsPasskeys = true;
+    } catch { /* nothing to read */ }
+    // The sections are static, so the target exists on the first paint.
+    if (wantsPasskeys) document.getElementById('sec-passkeys')?.scrollIntoView?.({ block: 'start' });
+  }, []);
 
   const searchItems = useMemo(
     () => [
@@ -116,7 +135,7 @@ export default function SecuritySettingsPage() {
         title={t('settings.cc.security.passkeysTitle')}
         description={t('settings.cc.security.passkeysDesc')}
       >
-        <PasskeyCard />
+        <PasskeyCard autoOpenAdd={addPasskeyRequested} />
       </EditorSection>
 
       <EditorSection

@@ -207,7 +207,10 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDefinition[] = [
     icon: Lock,
     path: 'security',
     matches: ['security'],
-    keywords: ['password', 'two-factor', '2fa', 'mfa', 'authenticator', 'recovery codes', 'my account', 'personal'],
+    // 'passkey…' (2026-09-24): the section's label and description never say
+    // the word, so a settings search for "passkey" found nothing from any
+    // other page — one of the reasons the operator could not find the setup.
+    keywords: ['password', 'two-factor', '2fa', 'mfa', 'authenticator', 'recovery codes', 'my account', 'personal', 'passkey', 'passkeys', 'face id', 'touch id', 'windows hello'],
     scopes: ['account'],
     roles: ALL_ROLES,
   },

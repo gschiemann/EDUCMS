@@ -21,6 +21,8 @@ import { render, screen, act } from '@testing-library/react';
 import { useUIStore } from '@/store/ui-store';
 
 jest.mock('@/hooks/use-api', () => ({
+  // The chrome's passkey entry (2026-09-24) reads the list; none here.
+  usePasskeys: () => ({ data: undefined }),
   useAssets: () => ({ data: [], isLoading: false }),
   usePlaylists: () => ({ data: [], isLoading: false }),
   useTemplates: () => ({ data: [], isLoading: false }),

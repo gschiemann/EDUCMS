@@ -5919,13 +5919,22 @@ export interface PasskeyRegisterVerifyResponse {
   backupCodes?: string[];
 }
 
-/** The signed-in user's passkeys. Read-only GET, safe to fire on mount. */
-export function usePasskeys() {
+/**
+ * The signed-in user's passkeys. Read-only GET, safe to fire on mount.
+ *
+ * `enabled` (2026-09-24): the account menu reads this list to label its
+ * passkey entry ("Set up a passkey" vs "Manage passkeys") and passes
+ * `passkeysSupported()` — resolved after mount — so a browser with no
+ * WebAuthn never makes the call. One request per cold load, cached under the
+ * key the Security page's card invalidates on add/remove; never an interval.
+ */
+export function usePasskeys(opts: { enabled?: boolean } = {}) {
   return useQuery<PasskeyListResponse, Error>({
     queryKey: ['passkeys'],
     queryFn: () => apiFetch<PasskeyListResponse>('/auth/passkeys'),
     staleTime: 60_000,
     retry: false,
+    enabled: opts.enabled ?? true,
   });
 }
 

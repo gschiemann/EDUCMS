@@ -1,16 +1,17 @@
 "use client";
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { usePathname, useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   Home, FolderOpen, ListMusic, MonitorPlay, MoreHorizontal,
   Trophy, LayoutTemplate, Settings, ClipboardCheck, FileClock, User, X,
-  UtensilsCrossed, Tag, LifeBuoy, Crown, LogOut, RotateCcw,
+  UtensilsCrossed, Tag, LifeBuoy, Crown, LogOut, RotateCcw, Fingerprint,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/lib/store';
-import { useNotifications } from '@/hooks/use-api';
+import { useNotifications, usePasskeys } from '@/hooks/use-api';
+import { passkeysSupported } from '@/lib/passkeys';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
 import { useTranslations } from 'next-intl';
 import { useBottomSheet } from '@/hooks/use-bottom-sheet';
@@ -65,6 +66,16 @@ export function MobileNavV1({ onSwitchShell }: { onSwitchShell: (v: MobileShell)
   const sheetRef = useRef<HTMLDivElement>(null);
   const moreBtnRef = useRef<HTMLButtonElement>(null);
 
+  // The passkey row in the account area of the sheet (2026-09-24) — the
+  // phone's counterpart of TopToolbar's account-menu entry (the avatar is
+  // desktop-only on this shell). Same rule: only on a device that can hold a
+  // passkey, labelled from the cached list (TopToolbar is mounted on every
+  // shell and owns the one request; React Query dedupes this read).
+  const [passkeyCapable, setPasskeyCapable] = useState(false);
+  useEffect(() => { setPasskeyCapable(passkeysSupported()); }, []);
+  const { data: passkeyList } = usePasskeys({ enabled: passkeyCapable && !!user });
+  const hasPasskey = (passkeyList?.passkeys?.length ?? 0) > 0;
+
   // §6.2 / §15: shared overlay lock, focus trap, inert background, Escape,
   // focus restored to More.
   useBottomSheet({
@@ -94,6 +105,9 @@ export function MobileNavV1({ onSwitchShell }: { onSwitchShell: (v: MobileShell)
 
   const base = schoolId ? `/${schoolId}` : '';
   const homeHref = base ? `${base}/dashboard` : '/';
+  // Settings live under the tenant slug; off a slugged route fall back to the
+  // operator's home slug (same rule as TopToolbar).
+  const securityBase = base || (user?.tenantSlug ? `/${user.tenantSlug}` : user?.tenantId ? `/${user.tenantId}` : '');
   const isAdmin =
     user?.role === 'SUPER_ADMIN' || user?.role === 'DISTRICT_ADMIN' || user?.role === 'SCHOOL_ADMIN';
   const isSportsVertical = vertical === 'SPORTS';
@@ -217,6 +231,21 @@ export function MobileNavV1({ onSwitchShell }: { onSwitchShell: (v: MobileShell)
             {/* Sign-out was reachable ONLY from the drawer this sheet
                 replaces. Losing it would have stranded every phone session. */}
             <div className="px-2 pb-2 pt-1 border-t border-slate-100">
+              {passkeyCapable && securityBase && (
+                <Link
+                  href={hasPasskey
+                    ? `${securityBase}/settings/security#sec-passkeys`
+                    : `${securityBase}/settings/security?add=passkey`}
+                  data-testid="passkey-menu-entry"
+                  onClick={() => setMoreOpen(false)}
+                  className="flex items-center gap-3 px-3 min-h-[48px] rounded-xl text-slate-700 transition-colors active:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                >
+                  <Fingerprint className="w-5 h-5 shrink-0" aria-hidden />
+                  <span className="text-[14px] font-semibold">
+                    {hasPasskey ? t('toolbar.managePasskeys') : t('toolbar.setUpPasskey')}
+                  </span>
+                </Link>
+              )}
               <button
                 type="button"
                 onClick={() => { setMoreOpen(false); logout(); window.location.replace('/login'); }}

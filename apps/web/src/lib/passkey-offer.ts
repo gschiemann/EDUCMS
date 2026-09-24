@@ -10,23 +10,48 @@
  * lives in the login page; what is here is everything about it that is a
  * plain decision rather than UI:
  *
- *   • whether "Not now" is still in force (30 days per device, and never
- *     twice in one session) — every storage access wrapped, because Safari
- *     private mode and locked-down kiosks THROW on storage, and a sign-in must
- *     never fail over a convenience;
+ *   • whether the offer is on hold — every storage access wrapped, because
+ *     Safari private mode and locked-down kiosks THROW on storage, and a
+ *     sign-in must never fail over a convenience;
  *   • which words to use for this device's authenticator;
  *   • reading the grant out of a login response without trusting its shape.
+ *
+ * ── HOW LONG AN ANSWER HOLDS (2026-09-24) ─────────────────────────────────
+ * Operator, two days after the offer shipped: "it seems like the passkey
+ * still has no way to get setup for me". It did not — one "Not now" (or Esc,
+ * or Back) on 2026-09-22 had put the offer away for THIRTY DAYS, and nothing
+ * else in the product pointed at Settings → My security. A month of silence
+ * for a single tap is the wrong scale, so the two answers are now separate:
+ *
+ *   • "Not now" / Esc / Back / a cancelled or failed setup  → THIS SESSION.
+ *     sessionStorage, so a new tab or the next day asks again, and an explicit
+ *     sign-out ends the session too (`clearPasskeyOfferSessionAnswer`, called
+ *     by the store's `logout`). Within the session — including a re-login
+ *     after the access token expires — it is not asked twice.
+ *   • "Don't ask on this device"                            → 30 DAYS.
+ *     localStorage, under a VERSIONED key. The pre-2026-09-24 key held the
+ *     30-day answer that "Not now" used to write; it is ignored (and removed
+ *     when seen), so a device that dismissed the old offer once is asked
+ *     again exactly once rather than staying dark for the rest of the month.
  *
  * The grant itself is never stored anywhere by this module — it lives in the
  * login page's memory for the one request that redeems it.
  */
 
-/** How long "Not now" holds on this device. */
+/** How long "Don't ask on this device" holds. */
 export const PASSKEY_OFFER_SNOOZE_MS = 30 * 24 * 60 * 60 * 1000;
 
-/** localStorage: the timestamp of the last "Not now" on this device. */
-export const PASSKEY_OFFER_SNOOZE_KEY = 'venueos_passkey_offer_snoozed_at';
-/** sessionStorage: this tab session has already answered the offer. */
+/**
+ * localStorage: the timestamp of the last "Don't ask on this device".
+ * VERSIONED (`.v2`) — see the header for why the unversioned key is ignored.
+ */
+export const PASSKEY_OFFER_SNOOZE_KEY = 'venueos_passkey_offer_snoozed_at.v2';
+/**
+ * The key "Not now" wrote before 2026-09-24, when it meant 30 days. Never
+ * read as a snooze; removed the first time it is seen.
+ */
+export const LEGACY_PASSKEY_OFFER_SNOOZE_KEYS: readonly string[] = ['venueos_passkey_offer_snoozed_at'];
+/** sessionStorage: this session has already answered the offer. */
 export const PASSKEY_OFFER_SESSION_KEY = 'venueos_passkey_offer_answered';
 
 /** Fallback for when sessionStorage itself is unavailable: this page load. */
@@ -51,11 +76,10 @@ function session(): Storage | null {
 /**
  * Remember that the operator answered the offer.
  *
- * `forThirtyDays: true` is "Not now" (and Esc / Back on the offer, which say
- * the same thing): nothing more for 30 days on this device. `false` is a
- * softer "not again this session" — used after a cancelled or failed setup,
- * so the next sign-in in the same session does not ask again, while a later
- * day still can.
+ * `forThirtyDays: true` is "Don't ask on this device": nothing more for 30
+ * days here. `false` is every other exit — "Not now", Esc, Back, a cancelled
+ * or failed setup — and holds for THIS SESSION only, so the next sign-in
+ * (a new tab, tomorrow, or after signing out) asks again.
  */
 export function snoozePasskeyOffer(
   opts: { forThirtyDays: boolean },
@@ -76,6 +100,20 @@ export function snoozePasskeyOffer(
   }
 }
 
+/**
+ * The session's answer is over — called by the store's `logout`, because a
+ * deliberate sign-out ends the session the answer was given in. A 30-day
+ * "Don't ask on this device" is untouched: that one is about the device.
+ */
+export function clearPasskeyOfferSessionAnswer(): void {
+  answeredThisPage = false;
+  try {
+    session()?.removeItem(PASSKEY_OFFER_SESSION_KEY);
+  } catch {
+    /* unreadable storage — the page flag above is already cleared */
+  }
+}
+
 /** Is the offer on hold for this device / session right now? */
 export function isPasskeyOfferSnoozed(now: number = Date.now()): boolean {
   if (answeredThisPage) return true;
@@ -84,6 +122,15 @@ export function isPasskeyOfferSnoozed(now: number = Date.now()): boolean {
   } catch {
     /* unreadable — fall through */
   }
+  // The pre-versioning key is never honoured. Drop it so it cannot be
+  // mistaken for anything later — hygiene only, never a decision.
+  for (const legacy of LEGACY_PASSKEY_OFFER_SNOOZE_KEYS) {
+    try {
+      local()?.removeItem(legacy);
+    } catch {
+      /* private mode — nothing to remove or no way to; either is fine */
+    }
+  }
   try {
     const raw = local()?.getItem(PASSKEY_OFFER_SNOOZE_KEY);
     if (!raw) return false;
@@ -91,7 +138,7 @@ export function isPasskeyOfferSnoozed(now: number = Date.now()): boolean {
     if (!Number.isFinite(at)) return false;
     const age = now - at;
     // A timestamp from the FUTURE (a clock that was wrong, then fixed) does
-    // not snooze forever: it simply stops counting, and the next "Not now"
+    // not snooze forever: it simply stops counting, and the next "Don't ask"
     // writes a fresh one.
     return age >= 0 && age < PASSKEY_OFFER_SNOOZE_MS;
   } catch {

@@ -29,6 +29,8 @@ jest.mock('next/navigation', () => ({
 // Wholesale mock — every hook any component under test reaches for. Extend
 // this list rather than weakening an assertion when a component grows a hook.
 jest.mock('@/hooks/use-api', () => ({
+  // The chrome's passkey entry (2026-09-24) reads the list; none here.
+  usePasskeys: () => ({ data: undefined }),
   usePendingAssets: () => ({ data: [] }),
   useSubmissions: () => ({ data: [] }),
   useTenantBranding: () => ({ data: null }),

@@ -3,12 +3,13 @@
 import { useAppStore } from '@/lib/store';
 import { hasPanicAuthority } from '@/lib/emergency-capability';
 import { fullName as userFullName, initials as userInitials } from '@/lib/user-display';
-import { ShieldAlert, LogOut, Menu, UserCog } from 'lucide-react';
+import { ShieldAlert, LogOut, Menu, UserCog, Fingerprint } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { LanguageMenuRows } from './LanguageMenu';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { useTenantStatus } from '@/hooks/use-api';
+import { usePasskeys, useTenantStatus } from '@/hooks/use-api';
+import { passkeysSupported } from '@/lib/passkeys';
 import { useState, useEffect } from 'react';
 import { EmergencyTriggerModal } from '../emergency/EmergencyTriggerModal';
 import { HelpDrawer } from '../help/HelpDrawer';
@@ -53,6 +54,25 @@ export function TopToolbar() {
   const { shell, loaded: shellLoaded } = useMobileShell();
 
   useEffect(() => { setMounted(true); }, []);
+
+  // THE ALWAYS-THERE WAY TO A PASSKEY (2026-09-24). Operator: "it seems like
+  // the passkey still has no way to get setup for me" — the sign-in offer is
+  // one screen, once per sign-in, and nothing in the app named the Settings
+  // path. This menu row does. Shown only on a device that can hold a passkey
+  // (`passkeysSupported()`, read after mount so SSR and the first paint
+  // agree), and labelled from the list the Security page already maintains —
+  // one GET per cold load, cached, invalidated on add/remove, never polled
+  // (mobile-perf standard: nothing new in the chrome runs on a timer).
+  const [passkeyCapable, setPasskeyCapable] = useState(false);
+  useEffect(() => { setPasskeyCapable(passkeysSupported()); }, []);
+  const { data: passkeyList } = usePasskeys({ enabled: passkeyCapable && !!user });
+  const hasPasskey = (passkeyList?.passkeys?.length ?? 0) > 0;
+  // Settings live under the tenant slug; off a slugged route (/super) fall
+  // back to the operator's home slug.
+  const securitySlug = schoolId || user?.tenantSlug || user?.tenantId || '';
+  const passkeyHref = hasPasskey
+    ? `/${securitySlug}/settings/security#sec-passkeys`
+    : `/${securitySlug}/settings/security?add=passkey`;
 
   /**
    * The active alert's own name, when the tenant row carries one
@@ -261,6 +281,20 @@ export function TopToolbar() {
                 >
                   <UserCog className="w-3.5 h-3.5 text-slate-400" /> {t('toolbar.editProfile')}
                 </button>
+                {/* 2026-09-24 — "Set up a passkey" opens the Security page's
+                    Add panel (`?add=passkey`); once the account has one it
+                    reads "Manage passkeys" and lands on the list. */}
+                {passkeyCapable && securitySlug && (
+                  <Link
+                    href={passkeyHref}
+                    data-testid="passkey-menu-entry"
+                    onClick={() => setShowUserMenu(false)}
+                    className="w-full text-left px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                  >
+                    <Fingerprint className="w-3.5 h-3.5 text-slate-400" aria-hidden />
+                    {hasPasskey ? t('toolbar.managePasskeys') : t('toolbar.setUpPasskey')}
+                  </Link>
+                )}
                 <LanguageMenuRows onPicked={() => setShowUserMenu(false)} />
                 <button
                   onClick={() => { setShowUserMenu(false); logout(); window.location.replace('/login'); }}

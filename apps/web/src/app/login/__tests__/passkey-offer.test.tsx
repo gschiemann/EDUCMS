@@ -18,7 +18,7 @@
  * Every exit (Not now, Continue, Esc, Back) must reach the destination; the
  * one hold is a first factor's one-time backup codes.
  */
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act, cleanup } from '@testing-library/react';
 
 const push = jest.fn();
 const replace = jest.fn();
@@ -56,6 +56,7 @@ import { useUIStore } from '@/store/ui-store';
 import { API_URL } from '@/lib/api-url';
 import {
   __resetPasskeyOfferMemoryForTests,
+  LEGACY_PASSKEY_OFFER_SNOOZE_KEYS,
   PASSKEY_OFFER_SESSION_KEY,
   PASSKEY_OFFER_SNOOZE_KEY,
 } from '@/lib/passkey-offer';
@@ -213,7 +214,13 @@ describe('the walk-through after password + authenticator code', () => {
     expect(push).not.toHaveBeenCalled();
   });
 
-  it('"Not now" continues and is remembered for 30 days — the next sign-in does not ask, or spend its grant', async () => {
+  /**
+   * 2026-09-24 — one "Not now" used to mean THIRTY DAYS on the device, which
+   * is how the operator lost the offer for a month with nothing else in the
+   * product pointing at Settings. "Not now" (and Esc / Back) now holds for
+   * THIS SESSION; only "Don't ask on this device" writes the 30-day answer.
+   */
+  it('"Not now" continues and holds for this session only — the same session does not ask again, the next one does', async () => {
     let calls = mockFetchByPath(OFFER_ROUTES);
     const { unmount } = render(<LoginPage />);
     await typePasswordAndSubmit();
@@ -223,10 +230,46 @@ describe('the walk-through after password + authenticator code', () => {
     fireEvent.click(await screen.findByRole('button', { name: /^Not now$/i }));
     expect(replace).toHaveBeenCalledWith(DEST);
     expect(startRegistration).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem(PASSKEY_OFFER_SESSION_KEY)).toBe('1');
+    // Never the device-wide answer.
+    expect(localStorage.getItem(PASSKEY_OFFER_SNOOZE_KEY)).toBeNull();
+    unmount();
+
+    // A brand-new page in the SAME session (page memory gone, sessionStorage kept): not asked again.
+    __resetPasskeyOfferMemoryForTests();
+    push.mockReset();
+    replace.mockReset();
+    calls = mockFetchByPath(OFFER_ROUTES);
+    await signInWithPasswordAndCode();
+    await waitFor(() => { expect(push).toHaveBeenCalledWith(DEST); });
+    expect(screen.queryByRole('heading', { name: 'Sign in faster next time' })).not.toBeInTheDocument();
+    expect(calls.some((c) => c.url.endsWith('/auth/passkeys/register/options'))).toBe(false);
+    cleanup();
+
+    // A NEW session on the same device (a new tab, tomorrow, after signing out): asked again.
+    __resetPasskeyOfferMemoryForTests();
+    sessionStorage.clear();
+    push.mockReset();
+    replace.mockReset();
+    mockFetchByPath(OFFER_ROUTES);
+    await signInWithPasswordAndCode();
+    expect(await screen.findByRole('button', { name: /Set up passkey/i })).toBeInTheDocument();
+  });
+
+  it('"Don\'t ask on this device" is the one answer that holds for 30 days — the next session does not ask, or spend its grant', async () => {
+    let calls = mockFetchByPath(OFFER_ROUTES);
+    const { unmount } = render(<LoginPage />);
+    await typePasswordAndSubmit();
+    fireEvent.change(await screen.findByLabelText('Authentication code'), { target: { value: '123456' } });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Verify & sign in/i })); });
+
+    fireEvent.click(await screen.findByRole('button', { name: /Don.t ask on this device/i }));
+    expect(replace).toHaveBeenCalledWith(DEST);
+    expect(startRegistration).not.toHaveBeenCalled();
     expect(Number(localStorage.getItem(PASSKEY_OFFER_SNOOZE_KEY))).toBeGreaterThan(0);
     unmount();
 
-    // A brand-new page (new session memory) on the same device.
+    // A brand-new SESSION on the same device.
     __resetPasskeyOfferMemoryForTests();
     sessionStorage.clear();
     push.mockReset();
@@ -238,13 +281,22 @@ describe('the walk-through after password + authenticator code', () => {
     expect(calls.some((c) => c.url.endsWith('/auth/passkeys/register/options'))).toBe(false);
   });
 
-  it('Esc on the offer says what "Not now" says', async () => {
+  it('the pre-2026-09-24 30-day key (what "Not now" used to write) is ignored and removed — the device is asked again', async () => {
+    localStorage.setItem(LEGACY_PASSKEY_OFFER_SNOOZE_KEYS[0], String(Date.now()));
+    mockFetchByPath(OFFER_ROUTES);
+    await signInWithPasswordAndCode();
+    expect(await screen.findByRole('button', { name: /Set up passkey/i })).toBeInTheDocument();
+    expect(localStorage.getItem(LEGACY_PASSKEY_OFFER_SNOOZE_KEYS[0])).toBeNull();
+  });
+
+  it('Esc on the offer says what "Not now" says — this session, never the 30-day answer', async () => {
     mockFetchByPath(OFFER_ROUTES);
     await signInWithPasswordAndCode();
     await screen.findByRole('button', { name: /Set up passkey/i });
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(replace).toHaveBeenCalledWith(DEST);
-    expect(localStorage.getItem(PASSKEY_OFFER_SNOOZE_KEY)).not.toBeNull();
+    expect(sessionStorage.getItem(PASSKEY_OFFER_SESSION_KEY)).toBe('1');
+    expect(localStorage.getItem(PASSKEY_OFFER_SNOOZE_KEY)).toBeNull();
   });
 
   it('the browser Back button continues to the destination instead of stranding the operator', async () => {
@@ -370,7 +422,7 @@ describe('no offer — straight to the dashboard, exactly as before', () => {
     ['the account is behind the first-login setup gate', () => undefined, {
       '/auth/login': { body: { ...WITH_GRANT, user: { ...USER, mustSetupCredentials: true } } },
     }],
-    ['"Not now" is in force on this device', () => localStorage.setItem(PASSKEY_OFFER_SNOOZE_KEY, String(Date.now())), {}],
+    ['"Don\'t ask on this device" is in force (the 30-day answer)', () => localStorage.setItem(PASSKEY_OFFER_SNOOZE_KEY, String(Date.now())), {}],
   ])('%s', async (_what, arrange, overrides) => {
     arrange();
     const calls = mockFetchByPath({
