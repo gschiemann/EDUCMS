@@ -1,33 +1,30 @@
 /**
- * video-poster-backfill.ts — the REUSABLE CORE of `scripts/backfill-video-posters.ts`.
+ * video-poster-backfill.ts — the poster half of `scripts/backfill-video-posters.ts`.
  *
- * Kept here, away from the CLI, for one reason: `apps/api`'s jest rootDir is
- * `src`, so this is the only place the loop's real behaviour (idempotency,
- * resumability, rate limiting, dry-run purity) can be unit-tested. The script
- * is then a thin wiring layer — Prisma + Supabase + ffmpeg — over this.
+ * The loop itself — dry-run purity, idempotency, resumability, rate limiting —
+ * lives in `asset-backfill-loop.ts`, shared with the dimensions backfill
+ * (`video-probe-backfill.ts`). This file supplies only what is poster-specific:
+ * the step signature (`makePoster` → a stored URL), the guarded write (which
+ * re-asserts `posterUrl IS NULL`), and the words in the log. The spec next to
+ * it pins the observable behaviour of the WHOLE thing, so the shared loop
+ * cannot drift under it unnoticed.
  *
- * INVARIANTS THE TESTS PIN:
- *   * DRY RUN WRITES NOTHING. Not the DB, not storage. It doesn't even ask for
- *     a poster to be made — extracting a frame means downloading video bytes,
- *     and a "preview" that burns egress is not a preview.
- *   * IDEMPOTENT. A candidate is a row with `posterUrl IS NULL`; persistence
- *     re-asserts that condition, so a re-run (or a second concurrent run)
- *     never overwrites a poster that already exists.
- *   * RESUMABLE. The cursor advances by ascending id and ALWAYS moves, even
- *     over a row that failed — otherwise one undecodable video parks the run
- *     forever on the same page.
- *   * RATE LIMITED. A fixed pause between rows, so a 1,000-video backfill
- *     can't saturate the API pod, Supabase egress, or the connection pool
- *     (`connection_limit=10` in session mode — see CLAUDE.md).
+ * INVARIANTS (see the loop for why each one exists):
+ *   * DRY RUN WRITES NOTHING — not the DB, not storage, and it never asks for
+ *     a poster to be made (that would download video bytes).
+ *   * IDEMPOTENT — a candidate is a row with `posterUrl IS NULL`; `persist`
+ *     re-asserts that, so a re-run or a concurrent run never overwrites.
+ *   * RESUMABLE — the cursor always advances, even over a failed row.
+ *   * RATE LIMITED — a fixed pause between rows.
  */
+import {
+  runAssetBackfill,
+  type BackfillAssetRow,
+  type BackfillLoopCopy,
+  type BackfillLoopOptions,
+} from './asset-backfill-loop';
 
-export interface BackfillAssetRow {
-  id: string;
-  tenantId: string;
-  fileUrl: string;
-  mimeType: string;
-  originalName: string | null;
-}
+export type { BackfillAssetRow } from './asset-backfill-loop';
 
 export type MakePosterResult =
   | { ok: true; posterUrl: string; bytes?: number }
@@ -56,15 +53,7 @@ export interface BackfillDeps {
   sleep(ms: number): Promise<void>;
 }
 
-export interface BackfillOptions {
-  dryRun: boolean;
-  batch: number;
-  limit: number;
-  /** Pause between rows — the rate limit. */
-  delayMs: number;
-  /** Resume point: process only ids strictly greater than this. */
-  afterId?: string | null;
-}
+export type BackfillOptions = BackfillLoopOptions;
 
 export interface BackfillSummary {
   scanned: number;
@@ -78,112 +67,57 @@ export interface BackfillSummary {
   dryRun: boolean;
 }
 
+interface PosterValue {
+  posterUrl: string;
+  bytes?: number;
+}
+
+const POSTER_COPY: BackfillLoopCopy<BackfillAssetRow, PosterValue> = {
+  title: 'Video poster backfill',
+  candidateNoun: 'videos with no poster',
+  nothingToDo: 'every video already has a poster',
+  wouldTag: 'would-poster',
+  progressVerb: { dry: 'would-poster', live: 'postered' },
+  summaryVerb: { dry: 'would poster', live: 'postered' },
+  describe: (v) => ` → ${v.posterUrl}${v.bytes ? ` (${v.bytes} B)` : ''}`,
+  failedNote: 'stays NULL, safe to re-run',
+  alreadySetNote: 'poster set by another run, left as-is',
+};
+
 export async function runPosterBackfill(
   deps: BackfillDeps,
   opts: BackfillOptions,
 ): Promise<BackfillSummary> {
-  const total = await deps.countCandidates();
-  const toProcess = Math.min(total, opts.limit);
-
-  deps.log('─'.repeat(64));
-  deps.log(
-    `Video poster backfill ${opts.dryRun ? '(DRY RUN — no writes, no downloads)' : '(LIVE — will write)'}`,
+  // Every dep is looked up on `deps` at call time, not captured up front: the
+  // spec (and a CLI that wants to swap a step mid-run) reassigns them.
+  const s = await runAssetBackfill<BackfillAssetRow, PosterValue>(
+    {
+      countCandidates: () => deps.countCandidates(),
+      fetchBatch: (afterId, take) => deps.fetchBatch(afterId, take),
+      storagePathFor: (row) => deps.storagePathFor(row),
+      produce: async (row, storagePath) => {
+        const made = await deps.makePoster(row, storagePath);
+        return made.ok
+          ? {
+              ok: true,
+              value: { posterUrl: made.posterUrl, bytes: made.bytes },
+            }
+          : made;
+      },
+      persist: (row, v) => deps.persist(row, v.posterUrl),
+      log: (line) => deps.log(line),
+      sleep: (ms) => deps.sleep(ms),
+    },
+    opts,
+    POSTER_COPY,
   );
-  deps.log(`  videos with no poster : ${total}`);
-  deps.log(`  will process this run : ${toProcess}`);
-  deps.log(`  batch / delay         : ${opts.batch} / ${opts.delayMs}ms`);
-  if (opts.afterId) deps.log(`  resuming after id     : ${opts.afterId}`);
-  deps.log('─'.repeat(64));
-
-  const summary: BackfillSummary = {
-    scanned: 0,
-    posted: 0,
-    skippedExternal: 0,
-    failed: 0,
-    alreadySet: 0,
-    lastId: null,
-    dryRun: opts.dryRun,
+  return {
+    scanned: s.scanned,
+    posted: s.written,
+    skippedExternal: s.skippedExternal,
+    failed: s.failed,
+    alreadySet: s.alreadySet,
+    lastId: s.lastId,
+    dryRun: s.dryRun,
   };
-
-  if (toProcess === 0) {
-    deps.log('Nothing to do — every video already has a poster. ✅');
-    return summary;
-  }
-
-  // The cursor advances by id even on failure, so a row ffmpeg cannot decode
-  // is skipped this run and retried on the next one (it stays posterUrl=NULL)
-  // instead of wedging the page.
-  let cursor: string | null = opts.afterId ?? null;
-
-  while (summary.scanned < toProcess) {
-    const take = Math.min(opts.batch, toProcess - summary.scanned);
-    const page = await deps.fetchBatch(cursor, take);
-    if (page.length === 0) break;
-
-    for (const row of page) {
-      summary.scanned++;
-      cursor = row.id;
-      summary.lastId = row.id;
-      const label = row.originalName ? `"${row.originalName}"` : row.id;
-
-      const storagePath = deps.storagePathFor(row);
-      if (!storagePath) {
-        summary.skippedExternal++;
-        deps.log(`  [skip:external] ${label} — not an assets-bucket URL`);
-        continue;
-      }
-
-      if (opts.dryRun) {
-        summary.posted++;
-        deps.log(
-          `  [would-poster ] ${label} — ${row.mimeType} @ ${storagePath}`,
-        );
-        continue;
-      }
-
-      const made = await deps.makePoster(row, storagePath);
-      if (!made.ok) {
-        summary.failed++;
-        deps.log(
-          `  [failed       ] ${label} — ${made.reason} (stays NULL, safe to re-run)`,
-        );
-        await deps.sleep(opts.delayMs);
-        continue;
-      }
-
-      const changed = await deps.persist(row, made.posterUrl);
-      if (changed > 0) {
-        summary.posted++;
-        deps.log(
-          `  [wrote        ] ${label} → ${made.posterUrl}${made.bytes ? ` (${made.bytes} B)` : ''}`,
-        );
-      } else {
-        // Another run (or an upload) set it between fetch and persist.
-        summary.alreadySet++;
-        deps.log(
-          `  [already-set  ] ${label} — poster set by another run, left as-is`,
-        );
-      }
-      await deps.sleep(opts.delayMs);
-    }
-
-    deps.log(
-      `  … progress: ${summary.scanned}/${toProcess} scanned, ${summary.posted} ${opts.dryRun ? 'would-poster' : 'postered'}`,
-    );
-  }
-
-  deps.log('─'.repeat(64));
-  deps.log('Done.');
-  deps.log(`  scanned            : ${summary.scanned}`);
-  deps.log(
-    `  ${opts.dryRun ? 'would poster' : 'postered    '}       : ${summary.posted}`,
-  );
-  deps.log(`  skipped (external) : ${summary.skippedExternal}`);
-  deps.log(`  already set        : ${summary.alreadySet}`);
-  deps.log(`  failed             : ${summary.failed}`);
-  if (summary.lastId)
-    deps.log(`  resume with        : --after=${summary.lastId}`);
-  deps.log('─'.repeat(64));
-
-  return summary;
 }

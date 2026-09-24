@@ -1,31 +1,43 @@
 /**
- * backfill-video-posters.ts — one-off MANUAL backfill of `Asset.posterUrl`.
+ * backfill-video-posters.ts — one-off MANUAL backfill for historical VIDEO rows:
+ *   1. `Asset.posterUrl`            — a poster frame (ffmpeg), since 2026-09-11;
+ *   2. `Asset.processingMeta` dims  — width × height / duration (ffprobe), since 2026-09-24.
  *
- * WHY: the asset picker draws a video tile as `<video preload="none">`, which
- * paints a blank grey rectangle — the operator saw 11 real videos identifiable
- * only by a truncated filename ("every sample content is blank"). New uploads
- * now get a poster frame automatically (VideoPosterService, fire-and-forget on
- * both upload paths). Every video uploaded BEFORE that has `posterUrl = NULL`
- * and still shows as a grey box. This script closes the gap: for each such
- * video it extracts one frame with ffmpeg, stores it next to the video in the
- * public `assets` bucket, and writes the URL back.
+ * WHY (posters): the asset picker draws a video tile as `<video preload="none">`,
+ * which paints a blank grey rectangle — the operator saw 11 real videos
+ * identifiable only by a truncated filename ("every sample content is blank").
+ *
+ * WHY (dimensions): `Asset` has no width/height columns; the media library
+ * reads `processingMeta.originalDimensions`, which only the sharp IMAGE
+ * optimizer ever wrote — so a 257 MB, 1920×1080 video showed "—" for its
+ * resolution (operator screenshot, 2026-09-24).
+ *
+ * New uploads now get BOTH automatically (VideoPosterService, fire-and-forget
+ * on both upload paths). Every video uploaded before either date is missing
+ * one or both; this script closes the gap. The two passes are independent — a
+ * row the 2026-09-11 poster run already fixed still gets its dimensions here.
  *
  * THIS IS NOT A CRON, and it is DRY-RUN BY DEFAULT. It is:
  *   - dry-run unless you pass --apply — a bare run downloads nothing, writes
  *     nothing, and just reports what it would do;
- *   - idempotent — the candidate filter is `posterUrl IS NULL`, and the write
- *     re-asserts that condition, so a re-run (or two runs at once) can never
- *     overwrite a poster that already exists;
- *   - resumable — every line of the summary ends with a `--after=<id>` you can
- *     hand back to continue exactly where it stopped;
+ *   - idempotent — posters: the candidate filter is `posterUrl IS NULL` and the
+ *     write re-asserts it; dimensions: the candidate filter is "no usable
+ *     `originalDimensions`" and the write MERGES the probe into the existing
+ *     JSON in one statement that re-asserts the same condition — so a re-run
+ *     (or two runs at once) can never overwrite a value that already exists;
+ *   - resumable — the summary ends with a `--after=<id>` you can hand back to
+ *     continue exactly where it stopped (both passes walk ids ascending);
  *   - rate-limited — a pause between rows (default 400 ms) so a large backfill
  *     can't saturate Supabase egress or the connection pool.
  *
  * USAGE (from repo root):
  *   # preview — the default; writes nothing, downloads nothing:
  *   pnpm db:backfill-posters
- *   # real run:
+ *   # real run, both passes:
  *   pnpm db:backfill-posters -- --apply
+ *   # one pass only:
+ *   pnpm db:backfill-posters -- --apply --only=dimensions
+ *   pnpm db:backfill-posters -- --apply --only=posters
  *   # tuning:
  *   pnpm db:backfill-posters -- --apply --batch=25 --limit=100 \
  *                               --tenant=<tenantId> --delay=400 --after=<assetId>
@@ -33,15 +45,16 @@
  * (or directly, from packages/database with its tsx:)
  *   pnpm --filter @cms/database exec tsx ../../scripts/backfill-video-posters.ts
  *
- * REQUIRES: `ffmpeg` on PATH (the production image has it; on a Mac,
- * `brew install ffmpeg`) and env DATABASE_URL, SUPABASE_URL,
- * SUPABASE_SERVICE_ROLE_KEY — the same vars the API uses. Never hardcode them.
+ * REQUIRES: `ffmpeg` AND `ffprobe` on PATH (the production image has both; on
+ * a Mac, `brew install ffmpeg` installs both) and env DATABASE_URL,
+ * SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY — the same vars the API uses. Never
+ * hardcode them.
  *
  * ⚠️ Point it at the database in your env and nothing else. There is no
  * `--force`/`--prod` affordance on purpose: the safety here is that the
  * default run cannot change anything.
  */
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import * as dotenv from 'dotenv';
 import {
@@ -49,12 +62,19 @@ import {
   type BackfillAssetRow,
   type MakePosterResult,
 } from '../apps/api/src/storage/video-poster-backfill';
+import { runProbeBackfill } from '../apps/api/src/storage/video-probe-backfill';
 import {
   extractVideoPosterFromBuffer,
   extractVideoPosterFromUrl,
   POSTER_EXT,
   POSTER_MIME,
 } from '../apps/api/src/storage/video-poster';
+import {
+  buildProbeMeta,
+  probeVideoFromBuffer,
+  probeVideoFromUrl,
+  type ProbeOutcome,
+} from '../apps/api/src/storage/video-probe';
 
 dotenv.config();
 
@@ -81,13 +101,19 @@ const LIMIT = numFlag('limit', Number.MAX_SAFE_INTEGER);
 const DELAY_MS = numFlag('delay', 400);
 const TENANT = strFlag('tenant');
 const AFTER = strFlag('after');
+/** `--only=posters` | `--only=dimensions`; default runs both, posters first. */
+const ONLY = strFlag('only');
+if (ONLY && ONLY !== 'posters' && ONLY !== 'dimensions') {
+  console.error(`--only must be "posters" or "dimensions" (got "${ONLY}"). Aborting.`);
+  process.exit(1);
+}
 
 /**
  * Recover the bucket-relative path from a stored Supabase object URL.
  * Mirrors SupabaseStorageService.parseObjectUrl. Returns null for anything
  * that isn't an object in OUR bucket — an external/CDN URL added via
  * `POST /assets/url` has bytes we don't own, and we never hand a stored
- * third-party URL to ffmpeg.
+ * third-party URL to ffmpeg or ffprobe.
  */
 function pathFromObjectUrl(objectUrl: string): string | null {
   if (typeof objectUrl !== 'string' || !objectUrl) return null;
@@ -160,6 +186,16 @@ async function uploadPoster(
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+/**
+ * "This video row still has no usable dimensions" — as SQL, because Prisma's
+ * JSON filters cannot express "key missing or not a number" and the SAME
+ * predicate has to sit inside the UPDATE that writes them (see `persistDims`):
+ * the guard and the write in one statement is what makes the pass idempotent
+ * under a concurrent run or an upload-time probe. `jsonb_typeof(NULL)` is
+ * NULL, so a NULL column, an empty object and a missing key all qualify.
+ */
+const NO_USABLE_DIMS = Prisma.sql`jsonb_typeof(processing_meta->'originalDimensions'->'w') IS DISTINCT FROM 'number'`;
+
 async function main() {
   const supaUrl = (process.env.SUPABASE_URL || '').trim().replace(/\/+$/, '');
   const supaKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
@@ -176,57 +212,126 @@ async function main() {
   }
 
   const prisma = new PrismaClient();
-  const where: any = { posterUrl: null, mimeType: { startsWith: 'video/' } };
-  if (TENANT) where.tenantId = TENANT;
-
   const trustedPrefix = `${supaUrl}/storage/v1/object/public/${BUCKET}/`;
+  const loopOpts = { dryRun: !APPLY, batch: BATCH, limit: LIMIT, delayMs: DELAY_MS, afterId: AFTER };
+  let wouldWrite = 0;
 
-  const summary = await runPosterBackfill(
-    {
-      countCandidates: () => prisma.asset.count({ where }),
-      fetchBatch: (afterId, take) =>
-        prisma.asset.findMany({
-          where: afterId ? { ...where, id: { gt: afterId } } : where,
-          select: { id: true, tenantId: true, fileUrl: true, mimeType: true, originalName: true },
-          orderBy: { id: 'asc' },
-          take,
-        }) as Promise<BackfillAssetRow[]>,
-      storagePathFor: (row) => pathFromObjectUrl(row.fileUrl),
-      makePoster: async (row, storagePath): Promise<MakePosterResult> => {
-        try {
-          // Cheap path first: an INPUT seek over https range-reads to the
-          // first keyframe instead of pulling the whole video back.
-          const url = `${trustedPrefix}${storagePath}`;
-          let out = await extractVideoPosterFromUrl(url, trustedPrefix);
-          if (!out.ok) {
-            const bytes = await download(storagePath, supaUrl, supaKey);
-            if (!bytes) return { ok: false, reason: `url:${out.reason}; download-miss` };
-            out = await extractVideoPosterFromBuffer(bytes, extOf(storagePath));
+  // ── pass 1: posters ────────────────────────────────────────────────────
+  if (ONLY !== 'dimensions') {
+    const where: any = { posterUrl: null, mimeType: { startsWith: 'video/' } };
+    if (TENANT) where.tenantId = TENANT;
+
+    const summary = await runPosterBackfill(
+      {
+        countCandidates: () => prisma.asset.count({ where }),
+        fetchBatch: (afterId, take) =>
+          prisma.asset.findMany({
+            where: afterId ? { ...where, id: { gt: afterId } } : where,
+            select: { id: true, tenantId: true, fileUrl: true, mimeType: true, originalName: true },
+            orderBy: { id: 'asc' },
+            take,
+          }) as Promise<BackfillAssetRow[]>,
+        storagePathFor: (row) => pathFromObjectUrl(row.fileUrl),
+        makePoster: async (row, storagePath): Promise<MakePosterResult> => {
+          try {
+            // Cheap path first: an INPUT seek over https range-reads to the
+            // first keyframe instead of pulling the whole video back.
+            const url = `${trustedPrefix}${storagePath}`;
+            let out = await extractVideoPosterFromUrl(url, trustedPrefix);
+            if (!out.ok) {
+              const bytes = await download(storagePath, supaUrl, supaKey);
+              if (!bytes) return { ok: false, reason: `url:${out.reason}; download-miss` };
+              out = await extractVideoPosterFromBuffer(bytes, extOf(storagePath));
+            }
+            if (!out.ok) return { ok: false, reason: out.reason };
+            const posterPath = `${row.tenantId}/posters/${randomUUID()}${POSTER_EXT}`;
+            const posterUrl = await uploadPoster(posterPath, out.buffer, supaUrl, supaKey);
+            return { ok: true, posterUrl, bytes: out.bytes };
+          } catch (e: any) {
+            return { ok: false, reason: `threw: ${e?.message ?? e}` };
           }
-          if (!out.ok) return { ok: false, reason: out.reason };
-          const posterPath = `${row.tenantId}/posters/${randomUUID()}${POSTER_EXT}`;
-          const posterUrl = await uploadPoster(posterPath, out.buffer, supaUrl, supaKey);
-          return { ok: true, posterUrl, bytes: out.bytes };
-        } catch (e: any) {
-          return { ok: false, reason: `threw: ${e?.message ?? e}` };
-        }
+        },
+        // Tenant-scoped AND still-null-guarded: this is the idempotency lock.
+        persist: async (row, posterUrl) => {
+          const r = await prisma.asset.updateMany({
+            where: { id: row.id, tenantId: row.tenantId, posterUrl: null },
+            data: { posterUrl },
+          });
+          return r.count;
+        },
+        log: (line) => console.log(line),
+        sleep,
       },
-      // Tenant-scoped AND still-null-guarded: this is the idempotency lock.
-      persist: async (row, posterUrl) => {
-        const r = await prisma.asset.updateMany({
-          where: { id: row.id, tenantId: row.tenantId, posterUrl: null },
-          data: { posterUrl },
-        });
-        return r.count;
-      },
-      log: (line) => console.log(line),
-      sleep,
-    },
-    { dryRun: !APPLY, batch: BATCH, limit: LIMIT, delayMs: DELAY_MS, afterId: AFTER },
-  );
+      loopOpts,
+    );
+    wouldWrite += summary.posted;
+  }
 
-  if (!APPLY && summary.posted > 0) {
-    console.log('\n  This was a DRY RUN. Re-run with --apply to write posters.');
+  // ── pass 2: dimensions ─────────────────────────────────────────────────
+  if (ONLY !== 'posters') {
+    const tenantClause = TENANT ? Prisma.sql` AND tenant_id = ${TENANT}` : Prisma.empty;
+    const candidateWhere = Prisma.sql`mime_type LIKE 'video/%' AND ${NO_USABLE_DIMS}${tenantClause}`;
+
+    const summary = await runProbeBackfill(
+      {
+        countCandidates: async () => {
+          const rows = await prisma.$queryRaw<Array<{ count: number }>>(
+            Prisma.sql`SELECT count(*)::int AS count FROM assets WHERE ${candidateWhere}`,
+          );
+          return rows[0]?.count ?? 0;
+        },
+        fetchBatch: (afterId, take) =>
+          prisma.$queryRaw<BackfillAssetRow[]>(
+            Prisma.sql`SELECT id, tenant_id AS "tenantId", file_url AS "fileUrl",
+                              mime_type AS "mimeType", original_name AS "originalName"
+                         FROM assets
+                        WHERE ${candidateWhere}${afterId ? Prisma.sql` AND id > ${afterId}` : Prisma.empty}
+                        ORDER BY id ASC
+                        LIMIT ${take}`,
+          ),
+        storagePathFor: (row) => pathFromObjectUrl(row.fileUrl),
+        probe: async (row, storagePath): Promise<ProbeOutcome> => {
+          try {
+            // ffprobe reads the container index over http — a few hundred KB,
+            // never the frames. Full download only if that fails.
+            const url = `${trustedPrefix}${storagePath}`;
+            const viaUrl = await probeVideoFromUrl(url, trustedPrefix);
+            if (viaUrl.ok) return viaUrl;
+            const bytes = await download(storagePath, supaUrl, supaKey);
+            if (!bytes) return { ok: false, reason: `url:${viaUrl.reason}; download-miss` };
+            const viaBytes = await probeVideoFromBuffer(bytes, extOf(storagePath));
+            return viaBytes.ok
+              ? viaBytes
+              : { ok: false, reason: `url:${viaUrl.reason}; bytes:${viaBytes.reason}` };
+          } catch (e: any) {
+            return { ok: false, reason: `threw: ${e?.message ?? e}` };
+          }
+        },
+        // Tenant-scoped, MERGE (jsonb `||` keeps every key the probe does not
+        // own, exactly like the API's mergeProbeMeta), and re-asserts "still no
+        // usable dimensions" in the same statement: the idempotency lock. A
+        // non-object value in the column (never written by us, but possible)
+        // is treated as empty rather than making `||` throw.
+        persist: (row, p) =>
+          prisma.$executeRaw(
+            Prisma.sql`UPDATE assets
+                          SET processing_meta = (CASE WHEN jsonb_typeof(processing_meta) = 'object'
+                                                      THEN processing_meta ELSE '{}'::jsonb END)
+                                                || ${JSON.stringify(buildProbeMeta(p))}::jsonb,
+                              updated_at = now()
+                        WHERE id = ${row.id} AND tenant_id = ${row.tenantId}
+                          AND ${NO_USABLE_DIMS}`,
+          ),
+        log: (line) => console.log(line),
+        sleep,
+      },
+      loopOpts,
+    );
+    wouldWrite += summary.probed;
+  }
+
+  if (!APPLY && wouldWrite > 0) {
+    console.log('\n  This was a DRY RUN. Re-run with --apply to write.');
   }
 
   await prisma.$disconnect();
@@ -238,6 +343,6 @@ function extOf(p: string): string {
 }
 
 main().catch((err) => {
-  console.error('Poster backfill crashed:', err);
+  console.error('Video backfill crashed:', err);
   process.exit(1);
 });
