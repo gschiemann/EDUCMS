@@ -1658,6 +1658,8 @@ export function useCheckAssetPlayback() {
       apiFetch(`/assets/${id}/check-playback`, { method: 'POST' }) as Promise<{
         probed: boolean;
         posterUrl: string | null;
+        /** What the fast-start step did — 'scheduled' means the row moves onto the fixed copy seconds later (2026-09-24). */
+        remux?: 'not-needed' | 'skipped' | 'scheduled' | 'remuxed' | 'failed';
         asset: { id: string } & Record<string, unknown>;
       }>,
     onSuccess: (data) => {

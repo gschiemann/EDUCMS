@@ -1749,6 +1749,7 @@
       "uploadToastAction": "See why",
       "checkNow": "Check this file",
       "checkFailed": "We couldn't check this file. Try again in a moment.",
+      "remuxed": "We moved this file's index to the front on {date}, so it plays from the first byte. The original stays in storage until the file is deleted.",
       "fact": {
         "codec": "Codec",
         "size": "Size",

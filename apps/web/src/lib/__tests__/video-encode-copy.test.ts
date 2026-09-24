@@ -10,6 +10,10 @@ import {
   encodeReasonKey,
   encodeWarns,
   videoEncodeState,
+  encodeRemuxRecord,
+  libraryPollMs,
+  remuxMayStillLand,
+  REMUX_LANDING_WINDOW_MS,
 } from '../video-encode-copy';
 import en from '../../i18n/messages/en.json';
 
@@ -147,5 +151,49 @@ describe('encodeFactsLine', () => {
     expect(encodeFactsLine(s.facts)).toBe('H.264 High 4.0 · 1920 × 1080 · 29.97 fps · 8.2 Mbps · 8-bit 4:2:0 · AAC stereo 48 kHz · MP4 · front of file');
     expect(encodeFactsLine({ ...s.facts!, bitrateKbps: null, fps: null, audio: null, container: null, fastStart: null, pixFmt: null, profile: null, level: null })).toBe('H.264 · 1920 × 1080');
     expect(encodeFactsLine(null)).toBe('');
+  });
+});
+
+describe('the automatic fast-start fix (2026-09-24)', () => {
+  const minute = 60_000;
+  const video = (meta: unknown) => ({ mimeType: 'video/mp4', createdAt: '2026-09-24T11:00:00Z', processingMeta: meta });
+  const moovLast = (probedAgoMs: number, extra: Record<string, unknown> = {}) =>
+    video({
+      probedAt: new Date(NOW - probedAgoMs).toISOString(),
+      probe: { ...SAFE_PROBE, fastStart: false },
+      ...extra,
+    });
+
+  it('reads the swap record, and only a real one', () => {
+    expect(encodeRemuxRecord({ remux: { at: '2026-09-24T11:30:00Z', bytesBefore: 10, bytesAfter: 10 } })).toEqual({
+      at: '2026-09-24T11:30:00Z',
+      bytesBefore: 10,
+      bytesAfter: 10,
+    });
+    expect(encodeRemuxRecord({ remux: { at: 'yesterday-ish' } })).toBeNull();
+    expect(encodeRemuxRecord({ probe: SAFE_PROBE })).toBeNull();
+    expect(encodeRemuxRecord(null)).toBeNull();
+  });
+
+  it('keeps polling while a moov-last probe is fresh and no swap has landed', () => {
+    expect(remuxMayStillLand(moovLast(1 * minute), NOW)).toBe(true);
+    // The swap landed: done.
+    expect(remuxMayStillLand(moovLast(1 * minute, { remux: { at: '2026-09-24T11:59:30Z' } }), NOW)).toBe(false);
+    // The index was in front all along: nothing to wait for.
+    expect(remuxMayStillLand(video({ probedAt: new Date(NOW - minute).toISOString(), probe: SAFE_PROBE }), NOW)).toBe(false);
+    // Past the window the API has either given up or decided not to touch it.
+    expect(remuxMayStillLand(moovLast(REMUX_LANDING_WINDOW_MS + 1), NOW)).toBe(false);
+    // A probe stamped in the future is no evidence.
+    expect(remuxMayStillLand(moovLast(-minute), NOW)).toBe(false);
+    expect(remuxMayStillLand({ mimeType: 'image/png', processingMeta: null }, NOW)).toBe(false);
+  });
+
+  it('libraryPollMs: 5 s while anything is still being probed or fixed, else off', () => {
+    const settled = video({ probedAt: new Date(NOW - minute).toISOString(), probe: SAFE_PROBE });
+    expect(libraryPollMs([settled], NOW)).toBe(false);
+    expect(libraryPollMs([settled, moovLast(2 * minute)], NOW)).toBe(5_000);
+    // A just-uploaded video with no probe yet reads "checking" — also polled.
+    expect(libraryPollMs([{ mimeType: 'video/mp4', createdAt: new Date(NOW - 30_000).toISOString(), processingMeta: null }], NOW)).toBe(5_000);
+    expect(libraryPollMs([], NOW)).toBe(false);
   });
 });

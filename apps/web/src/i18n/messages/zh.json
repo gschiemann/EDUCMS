@@ -1749,6 +1749,7 @@
       "uploadToastAction": "查看原因",
       "checkNow": "检查此文件",
       "checkFailed": "我们无法检查此文件。请稍后重试。",
+      "remuxed": "我们已于 {date} 将此文件的索引移到文件开头，因此可从第一个字节开始播放。原始文件会保留至该文件被删除。",
       "fact": {
         "codec": "编码",
         "size": "尺寸",

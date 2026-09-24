@@ -37,6 +37,7 @@ import {
   describeEncodeReason,
   encodeFacts,
   encodeNotes,
+  encodeRemuxRecord,
   encodeWarnings,
   encodeWarns,
   videoEncodeState,
@@ -246,6 +247,12 @@ function EncodeVerdictBody({
  * The detail-panel card. Renders nothing for a non-video, so the caller can
  * mount it unconditionally next to the other metadata tiles.
  */
+/** "Sep 24" — the day the index was moved; the operator's own locale. */
+function fmtRemuxDate(iso: string): string {
+  const d = new Date(iso);
+  return Number.isFinite(d.getTime()) ? d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
+}
+
 export function VideoEncodeCard({
   asset,
   now,
@@ -265,6 +272,7 @@ export function VideoEncodeCard({
   const graded = videoEncodeState(asset, now, target);
   const state: VideoEncodeState = checking && graded.status === 'unknown' ? { ...graded, status: 'checking' } : graded;
   const facts = encodeFacts(state.facts);
+  const remux = encodeRemuxRecord(asset.processingMeta);
   return (
     <section
       data-testid="video-encode-card"
@@ -287,6 +295,13 @@ export function VideoEncodeCard({
         </dl>
       )}
       <EncodeVerdictBody t={t} state={state} target={target} />
+      {remux && (
+        // The index used to be the warning on this file; say that it was
+        // moved, and when, so a green card after an amber one is not a mystery.
+        <p className="mt-1.5 pl-[22px] text-[11px] leading-snug text-slate-500" data-testid="video-encode-remuxed">
+          {t('assetsLib.encode.remuxed', { date: fmtRemuxDate(remux.at) })}
+        </p>
+      )}
       {state.status === 'unknown' && onCheck && (
         <div className="mt-2 pl-[22px]">
           <button

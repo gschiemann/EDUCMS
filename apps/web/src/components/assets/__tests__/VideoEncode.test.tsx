@@ -30,6 +30,30 @@ const withTarget = (ui: React.ReactElement, target: VideoEncodeTarget) => (
 );
 
 describe('VideoEncodeCard', () => {
+  it('says when the index was moved to the front for the operator, and the card is green', () => {
+    render(
+      <VideoEncodeCard
+        asset={{
+          ...SAFE,
+          processingMeta: {
+            ...SAFE.processingMeta,
+            remux: { at: '2026-09-24T11:59:30Z', reason: 'fast-start', previousStoragePath: 't1/clip.mp4', bytesBefore: 100, bytesAfter: 100 },
+          },
+        }}
+        now={NOW}
+      />,
+    );
+    expect(screen.getByTestId('video-encode-card')).toHaveAttribute('data-encode-status', 'green');
+    const note = screen.getByTestId('video-encode-remuxed');
+    expect(note).toHaveTextContent(/We moved this file's index to the front on Sep 24, so it plays from the first byte\./);
+    expect(note).toHaveTextContent('The original stays in storage until the file is deleted.');
+  });
+
+  it('says nothing about the index on a file that was never re-muxed', () => {
+    render(<VideoEncodeCard asset={SAFE} now={NOW} />);
+    expect(screen.queryByTestId('video-encode-remuxed')).not.toBeInTheDocument();
+  });
+
   it('renders nothing for a non-video', () => {
     const { container } = render(<VideoEncodeCard asset={{ mimeType: 'image/png', processingMeta: SAFE.processingMeta, createdAt: SAFE.createdAt }} now={NOW} />);
     expect(container).toBeEmptyDOMElement();

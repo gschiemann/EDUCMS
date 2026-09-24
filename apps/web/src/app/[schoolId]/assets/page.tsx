@@ -60,7 +60,7 @@ import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { transformedImageUrl } from '@/lib/asset-image';
 import { AssetEncodeBadge, VideoEncodeCard } from '@/components/assets/VideoEncode';
 import { useEncodeTarget } from '@/hooks/use-encode-target';
-import { videoEncodeState, encodeWarns, encodeWarnings, encodeNotes, describeEncodeReason, isVideoMime, type EncodeGradableAsset, type VideoEncodeState } from '@/lib/video-encode-copy';
+import { encodeWarns, encodeWarnings, encodeNotes, describeEncodeReason, isVideoMime, libraryPollMs, type VideoEncodeState } from '@/lib/video-encode-copy';
 import { inspectVideoFile } from '@/lib/mp4-inspect';
 import { gradeVideoEncode } from '@cms/api-types';
 import {
@@ -295,13 +295,14 @@ function metaDurationMs(a: any): number | null {
   return typeof ms === 'number' && Number.isFinite(ms) && ms > 0 ? ms : null;
 }
 
-/** Poll period while a freshly uploaded video's probe has not landed yet. */
-const ENCODE_CHECK_POLL_MS = 5_000;
-
-/** `useAssets` refetchInterval: 5 s while any video in the window is still being probed, else off. */
-function hasCheckingVideos(raw: unknown): number | false {
-  const rows: EncodeGradableAsset[] = normalizeAssetList(raw).assets;
-  return rows.some((a) => videoEncodeState(a).status === 'checking') ? ENCODE_CHECK_POLL_MS : false;
+/**
+ * `useAssets` refetchInterval: 5 s while any video in the window is still
+ * being probed, or its automatic fast-start fix may still land (the API
+ * re-muxes a moov-last MP4 in the background — the icon flips on its own
+ * instead of waiting for a reload); else off.
+ */
+function libraryRefetchInterval(raw: unknown): number | false {
+  return libraryPollMs(normalizeAssetList(raw).assets);
 }
 
 /** 75_400 → "1:15"; 3_725_000 → "1:02:05" — media-player style. */
@@ -464,7 +465,7 @@ export default function AssetsPage() {
     // and the poster appear on their own — no manual refresh. Stops the
     // moment nothing is checking (the state times out on its own after ten
     // minutes, so a probe that never lands cannot poll forever).
-    refetchInterval: hasCheckingVideos,
+    refetchInterval: libraryRefetchInterval,
   });
   const page = useMemo(() => normalizeAssetList(assetsRaw), [assetsRaw]);
   const assets = page.assets;

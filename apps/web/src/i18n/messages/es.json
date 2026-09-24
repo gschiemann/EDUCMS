@@ -1749,6 +1749,7 @@
       "uploadToastAction": "Ver por qué",
       "checkNow": "Comprobar este archivo",
       "checkFailed": "No pudimos comprobar este archivo. Inténtalo de nuevo en un momento.",
+      "remuxed": "Movimos el índice de este archivo al principio el {date}, así que se reproduce desde el primer byte. El original se conserva hasta que se elimine el archivo.",
       "fact": {
         "codec": "Códec",
         "size": "Tamaño",
