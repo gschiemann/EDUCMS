@@ -48,6 +48,8 @@ export function AiBoardsLeft({ onBuy, className = '' }: AiBoardsLeftProps) {
       } ${className}`}
     >
       <span>{line.text}</span>
+      {/* A real space between the sentences for screen readers and copy (flex ignores it). */}
+      {line.note && ' '}
       {line.note && <span className="font-normal text-slate-400">{line.note}</span>}
       {line.canBuy && onBuy && (
         <button
