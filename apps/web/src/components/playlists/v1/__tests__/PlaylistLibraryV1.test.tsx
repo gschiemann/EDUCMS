@@ -93,7 +93,6 @@ function mount(over: Partial<PlaylistLibraryV1Props> = {}) {
     onRemove: jest.fn(),
     onPublishToLocations: jest.fn(),
     onSubmitForReview: jest.fn(),
-    onSwitchClassic: jest.fn(),
     isViewer: false,
     isContributor: false,
     isHQ: false,
@@ -428,11 +427,11 @@ describe('roles + overflow (§8.4, §22.7)', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────
-describe('rollback', () => {
-  it('offers a quiet Classic view escape', () => {
-    const { props } = mount();
-    fireEvent.click(screen.getByRole('button', { name: 'Classic view' }));
-    expect(props.onSwitchClassic).toHaveBeenCalled();
+describe('no classic view (2026-09-24)', () => {
+  it('offers NO way back into the pre-v1 library', () => {
+    mount();
+    expect(screen.queryByRole('button', { name: /classic/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/classic view/i)).not.toBeInTheDocument();
   });
 });
 

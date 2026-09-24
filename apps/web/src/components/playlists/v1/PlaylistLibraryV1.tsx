@@ -82,7 +82,6 @@ export interface PlaylistLibraryV1Props {
   onRemove: (row: PlaylistSummaryRow) => void;
   onPublishToLocations?: (id: string) => void;
   onSubmitForReview?: (id: string) => void;
-  onSwitchClassic: () => void;
   isViewer: boolean;
   isContributor: boolean;
   isHQ: boolean;
@@ -404,16 +403,6 @@ export function PlaylistLibraryV1(props: PlaylistLibraryV1Props) {
           )}
         </div>
       )}
-
-      <div className="flex items-center justify-end pt-1">
-        <button
-          type="button"
-          onClick={props.onSwitchClassic}
-          className={`text-[12px] ${INK_3} hover:${INK_2} underline underline-offset-2`}
-        >
-          Classic view
-        </button>
-      </div>
     </div>
   );
 }

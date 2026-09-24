@@ -1,27 +1,27 @@
 "use client";
 
 /**
- * /[schoolId]/playlists — Playlists Operations v1, with the classic page one
- * click away (2026-08-31).
+ * /[schoolId]/playlists — Playlists Operations v1 (2026-08-31).
  *
  * Design contract: scratch/design/playlists-page/PLAYLISTS-V1-DESIGN-HANDOFF.md
- * + playlists-operations-v1.png. This file is the SWITCHER and the data layer;
- * every pixel of the default surface lives in `components/playlists/v1/`, and
- * the previous 3.3k-line page is preserved as ./ClassicPlaylistsPage.tsx.
+ * + playlists-operations-v1.png. This file is the data layer; every pixel of
+ * the surface lives in `components/playlists/v1/`.
  *
- * ── Three rules this file exists to keep ─────────────────────────────
+ * THE CLASSIC LIBRARY IS GONE (2026-09-24). This route used to be a switcher:
+ * a per-user "Classic view" preference (localStorage `venueos_playlists_view`)
+ * and a one-visit `?classic=<id>` deep link could swap the whole page for the
+ * pre-v1 library in ./ClassicPlaylistsPage.tsx. Greg, on seeing the footer
+ * link three weeks after v1 shipped: "why is a classic view option still
+ * showing...dump that shit, no more classic view". Both entry points are
+ * removed and the stored preference is never read again — an operator who had
+ * chosen classic simply lands on v1. ClassicPlaylistsPage.tsx itself stays,
+ * because the v1 workspace still MOUNTS its editor for the Content and
+ * Schedule tabs (see [playlistId]/page.tsx); the page-level library it also
+ * carries is unreachable now.
  *
- * 1. NEVER PAINT THE WRONG VARIANT FIRST. The operator, hours before this
- *    shipped, about the dashboard's own rollback toggle: "everytime i click on
- *    the dashboard, i see the old classic dashboard for about .5 seconds and
- *    then the new one loads." The stored preference is read BEFORE either
- *    surface renders; until then a quiet skeleton holds the space.
+ * ── The rule this file exists to keep ────────────────────────────────
  *
- * 2. THE COMMON PATH PAYS FOR ONE SURFACE. The classic page loads via
- *    next/dynamic, so an operator on v1 never downloads it. Fleet-wide
- *    rollback is the ONE constant below.
- *
- * 3. GRACEFUL DEGRADATION IS NOT OPTIONAL. `GET /playlists/summary` and
+ * GRACEFUL DEGRADATION IS NOT OPTIONAL. `GET /playlists/summary` and
  *    `GET /playlists/:id/delivery` are landing separately. When the summary
  *    endpoint is absent the identical row model is derived here from the full
  *    playlists payload — same UI, heavier read. When the delivery endpoint is
@@ -30,7 +30,6 @@
  *    §26), and the workspace's Delivery tab says so out loud.
  */
 
-import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
@@ -57,29 +56,6 @@ import {
   type OpsGroupRef, type OpsScheduleRef, type OpsScreenRef, type PlaylistSummaryRow,
 } from '@/components/playlists/v1/playlistOps';
 
-/**
- * FLEET-WIDE ROLLBACK: flip this one constant to 'classic' and every operator
- * who has not made their own choice lands on the previous page. Nothing else
- * changes; no code is removed.
- */
-const PLAYLISTS_VIEW_DEFAULT: 'v1' | 'classic' = 'v1';
-const VIEW_PREF_KEY = 'venueos_playlists_view';
-
-/**
- * The classic page is ~3.3k lines and pulls dnd-kit, the asset picker and the
- * publish sheet with it. Lazy so the default path never downloads it.
- * `ssr: false` because it reads window on mount (the ?newPlaylist= and
- * ?publishPlaylist= handoffs).
- */
-const ClassicPlaylistsPage = dynamic(() => import('./ClassicPlaylistsPage'), {
-  ssr: false,
-  loading: () => (
-    <div className="flex items-center justify-center py-20">
-      <Loader2 className="w-8 h-8 animate-spin" style={{ color: 'var(--brand-primary, #6366f1)' }} />
-    </div>
-  ),
-});
-
 export default function PlaylistsPage() {
   const params = useParams<{ schoolId: string }>();
   const router = useRouter();
@@ -90,48 +66,10 @@ export default function PlaylistsPage() {
   const isContributor = currentUser?.role === 'CONTRIBUTOR';
   const canFleetPublish = currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'DISTRICT_ADMIN';
 
-  // ── which surface? (decide before painting either) ───────────────
-  const [viewPref, setViewPref] = useState<'v1' | 'classic'>(PLAYLISTS_VIEW_DEFAULT);
-  const [prefLoaded, setPrefLoaded] = useState(false);
-  /** A one-visit hop into classic (a `?classic=` deep link), never persisted. */
-  const [classicOnce, setClassicOnce] = useState<string | null>(null);
-  useEffect(() => {
-    try {
-      const v = localStorage.getItem(VIEW_PREF_KEY);
-      if (v === 'classic' || v === 'v1') setViewPref(v);
-    } catch { /* storage unavailable — the default stands */ }
-    setPrefLoaded(true);
-  }, []);
-  const setView = (v: 'v1' | 'classic') => {
-    setViewPref(v);
-    setClassicOnce(null);
-    try { localStorage.setItem(VIEW_PREF_KEY, v); } catch { /* ignore */ }
-  };
-  const showClassic = viewPref === 'classic' || classicOnce !== null;
-
-  // A `?classic=<id>` deep link — a ONE-VISIT hop into
-  // the classic page, deep-linked at the playlist the operator was looking at,
-  // for the handful of things it still owns exclusively. Never persisted, so
-  // the next visit lands back on v1. Read before the surface decision is used,
-  // and stripped so a refresh does not re-trigger it.
-  useEffect(() => {
-    if (!prefLoaded || typeof window === 'undefined') return;
-    const sp = new URLSearchParams(window.location.search);
-    const want = sp.get('classic');
-    if (!want) return;
-    sp.delete('classic');
-    const qs = sp.toString();
-    window.history.replaceState(null, '', window.location.pathname + (qs ? `?${qs}` : ''));
-    setClassicOnce(want);
-  }, [prefLoaded]);
-
-  // ── §5: the ?newPlaylist=1 contract must keep working on BOTH surfaces ──
+  // ── §5: the ?newPlaylist=1 contract ──────────────────────────────
   // The dashboard and the Assets page both link here with it (Assets also
-  // stashes the picked asset ids in sessionStorage). The classic page runs its
-  // own copy of this effect; this one covers the v1 library. Reading it here
-  // while the classic surface is showing would consume the param before the
-  // classic page mounts, so it is gated on `!showClassic` — and on
-  // `prefLoaded`, so the gate is evaluated against a settled decision.
+  // stashes the picked asset ids in sessionStorage). Read once on mount and
+  // stripped, so a refresh does not re-open the wizard.
   const [wizardOpen, setWizardOpen] = useState(false);
   const [pendingAssetIds, setPendingAssetIds] = useState<string[] | undefined>(undefined);
   // Export to USB reports itself here — there is no imperative toast in this
@@ -143,7 +81,6 @@ export default function PlaylistsPage() {
   // Which row opened the sheet — it used to open with no playlist chosen.
   const [publishToLocationsId, setPublishToLocationsId] = useState<string | undefined>(undefined);
   useEffect(() => {
-    if (!prefLoaded || showClassic) return;
     if (typeof window === 'undefined') return;
     try {
       const sp = new URLSearchParams(window.location.search);
@@ -166,15 +103,15 @@ export default function PlaylistsPage() {
       if (ids.length > 0) setPendingAssetIds(ids);
       setWizardOpen(true);
     } catch { /* the library still renders */ }
-    // Runs once the decision has settled.
+    // Once, on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [prefLoaded, showClassic]);
+  }, []);
 
   // §5 — Templates' "Put on a screen" express lane (?publishPlaylist=<id>).
   // v1 sends it straight to that playlist's Publishing tab, which is the same
   // destination with a durable URL.
   useEffect(() => {
-    if (!prefLoaded || showClassic || typeof window === 'undefined') return;
+    if (typeof window === 'undefined') return;
     const sp = new URLSearchParams(window.location.search);
     const wantId = sp.get('publishPlaylist');
     if (!wantId) return;
@@ -183,7 +120,7 @@ export default function PlaylistsPage() {
     window.history.replaceState(null, '', window.location.pathname + (qs ? `?${qs}` : ''));
     router.push(`/${schoolId}/playlists/${wantId}?tab=schedule`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [prefLoaded, showClassic]);
+  }, []);
 
   // ── data (all existing endpoints; the two new ones degrade to null) ──
   const playlistsQuery = usePlaylists();
@@ -191,8 +128,8 @@ export default function PlaylistsPage() {
   const screensQuery = useScreens();
   const groupsQuery = useScreenGroups();
   const templatesQuery = useTemplates();
-  const summaryQuery = usePlaylistSummary({ enabled: !showClassic });
-  const fleetQuery = useFleet({ enabled: canFleetPublish && !showClassic });
+  const summaryQuery = usePlaylistSummary();
+  const fleetQuery = useFleet({ enabled: canFleetPublish });
   const deletePlaylist = useDeletePlaylist();
   const createPlaylist = useCreatePlaylist();
   const saveItems = useReorderPlaylistItems();
@@ -408,10 +345,11 @@ export default function PlaylistsPage() {
     }
   }, [playlists, createPlaylist, saveItems, openWorkspace]);
 
-  // ⚠️ Hooks live ABOVE the decision gate below. Placed under it, they are
-  // skipped on the skeleton and classic renders, and React throws "Rendered
-  // more hooks than during the previous render" the moment the preference
-  // resolves. Anything added here must stay above those early returns.
+  // Hooks stay ABOVE the render below and never behind an early return.
+  // (This page used to carry a skeleton + classic-view return gate, and a hook
+  // placed under it threw "Rendered more hooks than during the previous
+  // render" the moment the preference resolved. The gate is gone; the rule
+  // remains.)
   /**
    * Stop / start a playlist from the library row (2026-09-16). Greg: "let me
    * stop the playlist right from the main menu here".
@@ -449,34 +387,6 @@ export default function PlaylistsPage() {
     }
   }, [setPlaylistActive, schedules]);
 
-  // ── the decision gate: never guess which surface to paint ──────────
-  if (!prefLoaded) {
-    return (
-      <div className="space-y-4" aria-busy="true">
-        <div className="h-9 w-40 rounded-lg bg-slate-100 animate-pulse" />
-        <div className="h-11 w-full rounded-xl bg-slate-100 animate-pulse" />
-        <div className="h-[420px] w-full rounded-2xl bg-slate-100 animate-pulse" />
-      </div>
-    );
-  }
-
-  if (showClassic) {
-    return (
-      <div className="space-y-3">
-        <div className="flex items-center justify-end">
-          <button
-            type="button"
-            onClick={() => setView('v1')}
-            className="text-[12px] text-slate-400 hover:text-slate-600 underline underline-offset-2"
-          >
-            Back to the new Playlists
-          </button>
-        </div>
-        <ClassicPlaylistsPage initialPlaylistId={classicOnce ?? undefined} />
-      </div>
-    );
-  }
-
   return (
     <>
       <PlaylistLibraryV1
@@ -499,7 +409,6 @@ export default function PlaylistsPage() {
         onPublishToLocations={isHQ ? (id: string) => { setPublishToLocationsId(id); setPublishToLocationsOpen(true); } : undefined}
         onSubmitForReview={(id) => openWorkspace(id)}
         onSetActive={(row, next) => { void handleSetActive(row, next); }}
-        onSwitchClassic={() => setView('classic')}
         isViewer={isViewer}
         isContributor={isContributor}
         isHQ={isHQ}

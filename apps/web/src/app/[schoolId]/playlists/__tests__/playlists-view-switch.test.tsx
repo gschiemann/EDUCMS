@@ -1,16 +1,16 @@
 /**
- * The Playlists switcher — the three contracts the page itself owns.
+ * The Playlists route — the contracts the page itself owns.
  *
- *   1. NEVER PAINT THE WRONG VARIANT FIRST. A stored `classic` preference must
- *      not show a frame of the v1 library on the way to the classic page. This
- *      is the operator's own 2026-08-31 report about the dashboard's rollback
- *      toggle ("i see the old classic dashboard for about .5 seconds"), turned
- *      into a test.
+ *   1. THERE IS NO CLASSIC VIEW (2026-09-24). The route used to be a switcher
+ *      with a per-user "Classic view" preference and a `?classic=<id>` deep
+ *      link into the pre-v1 library. Greg: "why is a classic view option still
+ *      showing...dump that shit, no more classic view". A stored preference
+ *      from before the removal and the old deep link both land on v1, and no
+ *      control on the page offers the old library.
  *   2. THE ?newPlaylist=1 CONTRACT SURVIVES. The dashboard and the Assets page
  *      both link here with it, and Assets also stashes the picked asset ids in
  *      sessionStorage. Both must still open the wizard, and the param must be
  *      stripped so a refresh does not re-open it.
- *   3. ROLLBACK IS ONE CLICK, and it persists.
  */
 
 import * as React from 'react';
@@ -75,14 +75,6 @@ jest.mock('@/components/playlists/PlaylistPreviewThumb', () => ({
   PlaylistPreviewThumb: () => <div data-testid="thumb" />,
 }));
 
-// next/dynamic would pull the whole 3.3k-line classic tree into this suite.
-// Resolve it to a marker instead — what matters here is WHICH surface renders.
-jest.mock('next/dynamic', () => () => {
-  const Stub = () => <div data-testid="classic-page">classic</div>;
-  Stub.displayName = 'ClassicStub';
-  return Stub;
-});
-
 import PlaylistsPage from '../page';
 
 function setUrl(search: string) {
@@ -97,25 +89,29 @@ beforeEach(() => {
 });
 
 // ─────────────────────────────────────────────────────────────────────
-describe('never paint the wrong variant first', () => {
-  it('shows the v1 library by default', () => {
+describe('there is no classic view', () => {
+  it('shows the v1 library, and offers no way into the old one', () => {
     render(<PlaylistsPage />);
     expect(screen.getByRole('heading', { name: 'Playlists' })).toBeInTheDocument();
-    expect(screen.queryByTestId('classic-page')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /classic/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/classic view/i)).not.toBeInTheDocument();
   });
 
-  it('a stored classic preference goes straight to classic — the v1 library never appears', () => {
+  it('a preference stored before the removal is ignored — v1 renders, nothing else', () => {
     localStorage.setItem('venueos_playlists_view', 'classic');
     render(<PlaylistsPage />);
-    expect(screen.getByTestId('classic-page')).toBeInTheDocument();
-    // The v1 header is the tell: if it rendered at all, the page guessed.
-    expect(screen.queryByRole('heading', { name: 'Playlists' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('tab', { name: /Needs attention/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Playlists' })).toBeInTheDocument();
+    expect(screen.queryByText(/Back to the new Playlists/)).not.toBeInTheDocument();
   });
 
-  it('holds a skeleton rather than guessing while the preference is unread', () => {
-    // Storage that throws is the pathological case the try/catch covers; the
-    // page must still resolve to a decision rather than spin forever.
+  it('the old ?classic=<id> deep link lands on v1 and is left alone (nothing consumes it)', () => {
+    setUrl('?classic=p1');
+    render(<PlaylistsPage />);
+    expect(screen.getByRole('heading', { name: 'Playlists' })).toBeInTheDocument();
+    expect(screen.queryByText(/Back to the new Playlists/)).not.toBeInTheDocument();
+  });
+
+  it('renders straight away even when storage throws — there is no preference to wait for', () => {
     const spy = jest.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
       throw new Error('storage disabled');
     });
@@ -152,13 +148,6 @@ describe('§5 — the ?newPlaylist=1 contract', () => {
     render(<PlaylistsPage />);
     expect(screen.queryByTestId('wizard')).not.toBeInTheDocument();
   });
-
-  it('does NOT consume the param while the classic surface is showing — that page reads it itself', () => {
-    localStorage.setItem('venueos_playlists_view', 'classic');
-    setUrl('?newPlaylist=1');
-    render(<PlaylistsPage />);
-    expect(window.location.search).toBe('?newPlaylist=1');
-  });
 });
 
 // ─────────────────────────────────────────────────────────────────────
@@ -167,32 +156,6 @@ describe('§5 — Templates’ ?publishPlaylist= express lane', () => {
     setUrl('?publishPlaylist=p1');
     render(<PlaylistsPage />);
     expect(push).toHaveBeenCalledWith('/demo/playlists/p1?tab=schedule');
-    expect(window.location.search).toBe('');
-  });
-});
-
-// ─────────────────────────────────────────────────────────────────────
-describe('rollback', () => {
-  it('Classic view switches surface and persists the choice', () => {
-    render(<PlaylistsPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'Classic view' }));
-    expect(screen.getByTestId('classic-page')).toBeInTheDocument();
-    expect(localStorage.getItem('venueos_playlists_view')).toBe('classic');
-  });
-
-  it('and back again', () => {
-    localStorage.setItem('venueos_playlists_view', 'classic');
-    render(<PlaylistsPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'Back to the new Playlists' }));
-    expect(screen.getByRole('heading', { name: 'Playlists' })).toBeInTheDocument();
-    expect(localStorage.getItem('venueos_playlists_view')).toBe('v1');
-  });
-
-  it('?classic=<id> is a ONE-VISIT hop that never becomes the stored preference', () => {
-    setUrl('?classic=p1');
-    render(<PlaylistsPage />);
-    expect(screen.getByTestId('classic-page')).toBeInTheDocument();
-    expect(localStorage.getItem('venueos_playlists_view')).toBeNull();
     expect(window.location.search).toBe('');
   });
 });

@@ -295,7 +295,6 @@ export default function PlaylistsMockHarness() {
             onExport={() => {}}
             onRemove={() => {}}
             onPublishToLocations={() => {}}
-            onSwitchClassic={() => {}}
             isViewer={false}
             isContributor={false}
             isHQ
