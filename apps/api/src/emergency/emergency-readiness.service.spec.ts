@@ -103,6 +103,8 @@ describe('EmergencyReadinessService', () => {
     const { prisma, redis, wsSigner } = makeMocks({
       tenant: {
         vertical: 'GYM',
+        // A gym is graded only once someone turned alerts on (2026-09-24).
+        emergencyEnabled: true,
         panicEvacuatePlaylistId: 'pl4',
         panicWeatherPlaylistId: 'pl5',
         panicMedicalPlaylistId: 'pl6',
@@ -117,13 +119,74 @@ describe('EmergencyReadinessService', () => {
   });
 
   it('GYM vertical: nothing wired → anchor copy says Fire / Evacuate, not Lockdown', async () => {
-    const { prisma, redis, wsSigner } = makeMocks({ tenant: { vertical: 'GYM' } });
+    const { prisma, redis, wsSigner } = makeMocks({
+      tenant: { vertical: 'GYM', emergencyEnabled: true },
+    });
     const svc = new EmergencyReadinessService(prisma, redis, wsSigner);
     const r = await svc.compute('t1');
     const content = r.items.find((i) => i.key === 'content')!;
     expect(content.status).toBe('missing');
     expect(content.fixHint).toContain('Start with Fire / Evacuate');
     expect(content.fixHint).not.toContain('Lockdown');
+  });
+
+  // ── Enablement (2026-09-24) ─────────────────────────────────────────
+  // Greg: "why are we showing an alert that we cant play emergency content
+  // but i havent even enabled it?" OFF is not "not ready" — it is not graded.
+  it('GYM vertical, alerts never turned on → DISABLED with no checks, and nothing is probed', async () => {
+    const { prisma, redis, wsSigner } = makeMocks({
+      tenant: { vertical: 'GYM' },
+    });
+    const svc = new EmergencyReadinessService(prisma, redis, wsSigner);
+    const r = await svc.compute('t1');
+    expect(r.verdict).toBe('DISABLED');
+    expect(r.enabled).toBe(false);
+    expect(r.locked).toBe(false);
+    expect(r.items).toEqual([]);
+    expect(prisma.client.screen.count).not.toHaveBeenCalled();
+    expect(prisma.client.$queryRaw).not.toHaveBeenCalled();
+    expect(redis.publisher.ping).not.toHaveBeenCalled();
+  });
+
+  it('GYM vertical, explicitly OFF → DISABLED; K-12 with a stored false is still graded (the lock wins)', async () => {
+    const off = makeMocks({
+      tenant: {
+        vertical: 'GYM',
+        emergencyEnabled: false,
+        panicEvacuatePlaylistId: 'pl4',
+        panicWeatherPlaylistId: 'pl5',
+        panicMedicalPlaylistId: 'pl6',
+      },
+    });
+    const offSvc = new EmergencyReadinessService(
+      off.prisma,
+      off.redis,
+      off.wsSigner,
+    );
+    const offReport = await offSvc.compute('t1');
+    expect(offReport.verdict).toBe('DISABLED');
+
+    const k12 = makeMocks({
+      tenant: { vertical: 'K12', emergencyEnabled: false },
+    });
+    const k12Svc = new EmergencyReadinessService(
+      k12.prisma,
+      k12.redis,
+      k12.wsSigner,
+    );
+    const r = await k12Svc.compute('t1');
+    expect(r.verdict).toBe('NOT_CONFIGURED');
+    expect(r.enabled).toBe(true);
+    expect(r.locked).toBe(true);
+  });
+
+  it('a graded report says so: enabled true, and locked mirrors the vertical', async () => {
+    const { prisma, redis, wsSigner } = makeMocks();
+    const svc = new EmergencyReadinessService(prisma, redis, wsSigner);
+    const r = await svc.compute('t1');
+    expect(r.enabled).toBe(true);
+    // The default mock tenant stores no vertical → K12 → locked.
+    expect(r.locked).toBe(true);
   });
 
   it('lockdown-only wiring → content WARN naming the missing types', async () => {

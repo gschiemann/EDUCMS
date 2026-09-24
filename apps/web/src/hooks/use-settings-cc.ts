@@ -46,7 +46,10 @@ export interface CcReadinessItem {
   fixHint: string;
 }
 export interface CcReadinessReport {
-  verdict: 'READY' | 'NEEDS_ATTENTION' | 'NOT_CONFIGURED';
+  /** DISABLED (2026-09-24): the capability is off, nothing was graded. */
+  verdict: 'READY' | 'NEEDS_ATTENTION' | 'NOT_CONFIGURED' | 'DISABLED';
+  enabled?: boolean;
+  locked?: boolean;
   score: number;
   items: CcReadinessItem[];
   computedAt: string;

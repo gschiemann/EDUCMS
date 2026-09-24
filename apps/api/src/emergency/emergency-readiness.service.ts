@@ -3,7 +3,12 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
 import { withTimeout } from '../health/with-timeout';
-import { VERTICAL_EMERGENCY_TYPES, normalizeVertical } from '@cms/api-types';
+import {
+  VERTICAL_EMERGENCY_TYPES,
+  effectiveEmergencyEnabled,
+  emergencyEnablementLocked,
+  normalizeVertical,
+} from '@cms/api-types';
 
 /**
  * EmergencyReadinessService — the "am I actually ready for a drill?"
@@ -35,8 +40,31 @@ export interface ReadinessItem {
   fixHint: string;
 }
 
+/**
+ * READY / NEEDS_ATTENTION / NOT_CONFIGURED grade a capability that is ON.
+ *
+ * DISABLED (2026-09-24) means the capability is OFF for this tenant and
+ * NOTHING was graded. Resolved by `effectiveEmergencyEnabled`: K-12 is always
+ * on; every other vertical is off until an admin turns it on (Settings →
+ * Emergency). Before this verdict existed the report graded every tenant as
+ * if alerts were on, so a bar, a gym or a print shop that had never opened
+ * the emergency settings was told — in red, worst-first, on its dashboard —
+ * that it "can't display an emergency alert". Greg: "why are we showing an
+ * alert that we cant play emergency content but i havent even enabled it?"
+ * DISABLED is not a failure state and no surface may draw it as one.
+ */
+export type EmergencyReadinessVerdict =
+  | 'READY'
+  | 'NEEDS_ATTENTION'
+  | 'NOT_CONFIGURED'
+  | 'DISABLED';
+
 export interface EmergencyReadinessReport {
-  verdict: 'READY' | 'NEEDS_ATTENTION' | 'NOT_CONFIGURED';
+  verdict: EmergencyReadinessVerdict;
+  /** The effective enablement the verdict was graded under (false ⇔ DISABLED). */
+  enabled: boolean;
+  /** True when this vertical may never turn the capability off (K-12). */
+  locked: boolean;
   score: number; // 0-100, informational — the verdict is the contract
   items: ReadinessItem[];
   computedAt: string;
@@ -49,7 +77,11 @@ export interface DistrictSchoolReadiness {
   slug: string;
   /** True for the district's own tenant row (the office), false for a child. */
   isSelf: boolean;
-  verdict: EmergencyReadinessReport['verdict'];
+  verdict: EmergencyReadinessVerdict;
+  /** Effective enablement (see EmergencyReadinessVerdict). false ⇔ DISABLED. */
+  enabled: boolean;
+  /** K-12 lock: the capability cannot be turned off for this location. */
+  locked: boolean;
   /** How many of THIS vertical's required alert types have content wired. */
   contentWired: number;
   /** The vertical's required-type count (6 for K12, 3 for a gym, ...). */
@@ -73,8 +105,13 @@ export interface DistrictReadinessReport {
    */
   delivery: ReadinessItem;
   schools: DistrictSchoolReadiness[];
-  /** Schools whose verdict is not READY — the number the dashboard leads with. */
+  /**
+   * Schools that are ON and not READY — the number the dashboard leads with.
+   * A DISABLED school is neither ready nor not-ready; it is not graded.
+   */
   notReadyCount: number;
+  /** Schools whose capability is off (verdict DISABLED). */
+  disabledCount: number;
   computedAt: string;
 }
 
@@ -120,6 +157,28 @@ const TYPE_TO_FIELD: Record<string, { field: string; label: string }> = {
  * gate key on: lockdown where the vertical carries it, else the
  * vertical's first declared type (evacuate everywhere today).
  */
+/**
+ * The enablement facts a verdict is graded under. Pure and shared with the
+ * dashboard (`@cms/api-types`), so the API and the UI can never disagree about
+ * whether a tenant's alerts are on. NULL in the column means "never stated",
+ * which resolves to the vertical's default — that is the whole reason a
+ * never-configured gym is OFF rather than "not ready".
+ */
+function resolveEnablement(
+  row:
+    | { vertical?: unknown; emergencyEnabled?: boolean | null }
+    | null
+    | undefined,
+): { enabled: boolean; locked: boolean } {
+  const vertical = row?.vertical ?? null;
+  const stored =
+    typeof row?.emergencyEnabled === 'boolean' ? row.emergencyEnabled : null;
+  return {
+    enabled: effectiveEmergencyEnabled(vertical, stored),
+    locked: emergencyEnablementLocked(vertical),
+  };
+}
+
 function requiredTypesFor(rawVertical: unknown): {
   required: Array<{ field: string; label: string }>;
   anchor: { field: string; label: string };
@@ -148,8 +207,31 @@ export class EmergencyReadinessService {
     // beats a burst, and this endpoint is operator-paced (page open), not hot.
     const tenant = await this.prisma.client.tenant.findFirst({
       where: { id: tenantId },
-      select: { vertical: true, ...Object.fromEntries(PANIC_TYPES.map((t) => [t.field, true])) } as any,
+      select: {
+        vertical: true,
+        emergencyEnabled: true,
+        ...Object.fromEntries(PANIC_TYPES.map((t) => [t.field, true])),
+      } as any,
     });
+    // OFF is not "not ready" — it is not graded at all. Answer before any
+    // probe runs: a tenant with alerts off owes the operator no checklist, and
+    // the readiness endpoints must never manufacture one (see the verdict doc).
+    const enablement = resolveEnablement(
+      tenant as {
+        vertical?: unknown;
+        emergencyEnabled?: boolean | null;
+      } | null,
+    );
+    if (!enablement.enabled) {
+      return {
+        verdict: 'DISABLED',
+        enabled: false,
+        locked: enablement.locked,
+        score: 0,
+        items: [],
+        computedAt: new Date(now).toISOString(),
+      };
+    }
     const totalScreens = await this.prisma.client.screen.count({ where: { tenantId } });
     const onlineScreens = await this.prisma.client.screen.count({
       where: { tenantId, lastPingAt: { gte: onlineCutoff } },
@@ -277,7 +359,14 @@ export class EmergencyReadinessService {
         items.length) * 100,
     );
 
-    return { verdict, score, items, computedAt: new Date(now).toISOString() };
+    return {
+      verdict,
+      enabled: true,
+      locked: enablement.locked,
+      score,
+      items,
+      computedAt: new Date(now).toISOString(),
+    };
   }
 
   /**
@@ -335,6 +424,7 @@ export class EmergencyReadinessService {
         name: true,
         slug: true,
         vertical: true,
+        emergencyEnabled: true,
         ...(Object.fromEntries(PANIC_TYPES.map((t) => [t.field, true])) as Record<string, true>),
       } as any,
       orderBy: { name: 'asc' },
@@ -365,6 +455,7 @@ export class EmergencyReadinessService {
     const delivery = await this.probeDelivery();
 
     const schools: DistrictSchoolReadiness[] = tenants.map((row: any) => {
+      const enablement = resolveEnablement(row);
       // Per-vertical grading (2026-08-30): a gym is graded on evacuate +
       // weather + medical, never on K12's lockdown set.
       const { required, anchor } = requiredTypesFor(row.vertical);
@@ -393,8 +484,13 @@ export class EmergencyReadinessService {
       //     backstop. Letting it repaint 40 rows amber would drown the
       //     per-school signal this rollup exists to surface, so it is
       //     reported once at the district level instead.
-      const verdict: EmergencyReadinessReport['verdict'] =
-        contentStatus === 'missing' || delivery.status === 'missing'
+      //   - a location whose capability is OFF is DISABLED: nothing above
+      //     applies to it, and it must not surface as a gap anywhere. Wiring
+      //     facts still ride along (they are true), but the fix list is empty
+      //     because there is nothing to fix until someone turns alerts on.
+      const verdict: EmergencyReadinessVerdict = !enablement.enabled
+        ? 'DISABLED'
+        : contentStatus === 'missing' || delivery.status === 'missing'
           ? 'NOT_CONFIGURED'
           : contentStatus !== 'ok' || screensStatus !== 'ok'
             ? 'NEEDS_ATTENTION'
@@ -406,12 +502,14 @@ export class EmergencyReadinessService {
         slug: row.slug as string,
         isSelf: (row.id as string) === rootTenantId,
         verdict,
+        enabled: enablement.enabled,
+        locked: enablement.locked,
         contentWired: wired.length,
         contentTotal: required.length,
         anchorLabel: anchor.label,
         anchorWired,
         lockdownWired: anchorWired,
-        missingTypes,
+        missingTypes: verdict === 'DISABLED' ? [] : missingTypes,
         screensTotal,
         screensOnline,
       };
@@ -420,7 +518,10 @@ export class EmergencyReadinessService {
     return {
       delivery,
       schools,
-      notReadyCount: schools.filter((s) => s.verdict !== 'READY').length,
+      notReadyCount: schools.filter(
+        (s) => s.verdict !== 'READY' && s.verdict !== 'DISABLED',
+      ).length,
+      disabledCount: schools.filter((s) => s.verdict === 'DISABLED').length,
       computedAt: new Date(now).toISOString(),
     };
   }

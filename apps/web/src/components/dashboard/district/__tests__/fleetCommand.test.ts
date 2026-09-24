@@ -1,4 +1,7 @@
-import { buildFleetCommand, isContentBehind, type FleetCommandScreen } from '../fleetCommand';
+import {
+  buildFleetCommand, isContentBehind, locationTone, worstLine, worstPath,
+  type FleetCommandScreen,
+} from '../fleetCommand';
 
 /**
  * fleetCommand — Phase 1 derivation matrix. The five assurance truths must
@@ -538,5 +541,49 @@ describe('fleetCommand — a bundle-neutral deploy leaves a healthy fleet alone'
         'aaaaaaaaaaaa',
       ),
     ).toBe(false);
+  });
+});
+
+// ─── Emergency alerts OFF (readiness DISABLED, 2026-09-24) ───────────
+// Greg, on a print-shop location the dashboard had painted red: "why are we
+// showing an alert that we cant play emergency content but i havent even
+// enabled it?" A location with the capability off is not graded: no inbox
+// row, no red line, not in the pill's denominator.
+describe('buildFleetCommand — emergency alerts OFF (DISABLED)', () => {
+  const off = (tenantId: string, name: string, slug: string) => ({
+    ...readiness(tenantId, name, slug, 'READY'),
+    verdict: 'DISABLED',
+    enabled: false,
+    contentWired: 0,
+    missingTypes: [],
+  });
+
+  it('a location with alerts off gets no emergency row, no red line, and leaves the pill to the armed locations', () => {
+    const fc = build([screen(), screen({ id: 'b', sourceTenant: T2 })], {
+      readiness: [readiness('t1', 'Peak West', 'west', 'READY'), off('t2', 'Peak East', 'east')],
+    });
+    expect(fc.inbox.some((r) => r.kind === 'emergency')).toBe(false);
+    expect(fc.assurance.emergencyReady).toMatchObject({ n: 1, total: 1, state: 'ok' });
+    const east = fc.locations.find((l) => l.tenantId === 't2')!;
+    expect(east.emergencyEnabled).toBe(false);
+    expect(worstLine(east)).toBeNull();
+    expect(locationTone(east)).toBe('ok');
+    expect(worstPath(east)).toBe('dashboard');
+  });
+
+  it('an armed location with nothing wired still alarms — turning alerts off is the only thing that silences it', () => {
+    const fc = build([screen(), screen({ id: 'b', sourceTenant: T2 })], {
+      readiness: [readiness('t1', 'Peak West', 'west', 'READY'), readiness('t2', 'Peak East', 'east', 'NOT_CONFIGURED')],
+    });
+    expect(fc.inbox.some((r) => r.kind === 'emergency' && r.tenantId === 't2')).toBe(true);
+    expect(fc.assurance.emergencyReady).toMatchObject({ n: 1, total: 2, state: 'bad' });
+  });
+
+  it('every location off → the pill reads "off", never 0/0 and never a false all-clear', () => {
+    const fc = build([screen(), screen({ id: 'b', sourceTenant: T2 })], {
+      readiness: [off('t1', 'Peak West', 'west'), off('t2', 'Peak East', 'east')],
+    });
+    expect(fc.assurance.emergencyReady).toMatchObject({ n: 0, total: 0, state: 'off' });
+    expect(fc.inbox.some((r) => r.kind === 'emergency')).toBe(false);
   });
 });

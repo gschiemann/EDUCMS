@@ -66,7 +66,14 @@ export interface SchoolReadinessLike {
   name: string;
   slug: string;
   isSelf: boolean;
-  verdict: 'READY' | 'NEEDS_ATTENTION' | 'NOT_CONFIGURED';
+  /**
+   * DISABLED (2026-09-24): the emergency capability is OFF for this location
+   * and nothing was graded. It is not a gap, never counts against a location
+   * and never becomes an inbox row — see `emergencyEnabled` on the scorecard.
+   */
+  verdict: 'READY' | 'NEEDS_ATTENTION' | 'NOT_CONFIGURED' | 'DISABLED';
+  enabled?: boolean;
+  locked?: boolean;
   contentWired: number;
   contentTotal: number;
   lockdownWired: boolean;
@@ -92,6 +99,11 @@ export interface SchoolScorecard {
   /** Alert types with no content wired; empty when readiness is UNKNOWN. */
   missingTypes: string[];
   lockdownWired: boolean | null;
+  /**
+   * false ⇔ readiness DISABLED: alerts are off here and nothing is graded.
+   * null while readiness is unknown. Never a reason for attention.
+   */
+  emergencyEnabled: boolean | null;
   pendingApprovals: number;
   /** True when this row has anything at all the admin should look at. */
   needsAttention: boolean;
@@ -105,6 +117,8 @@ export interface DistrictNeedsAction {
   emergencyNotReadySchools: number;
   /** Subset of the above that cannot run a lockdown at all — the worst case. */
   emergencyNotConfiguredSchools: number;
+  /** Schools whose alerts are OFF (verdict DISABLED) — informational, never an ask. */
+  emergencyOffSchools: number;
   pendingApprovals: number;
   pendingApprovalSchools: number;
   /** Every counter above is zero. Only trustworthy alongside `coverage`. */
@@ -146,6 +160,9 @@ export interface BuildDistrictRollupInput {
  *   4. Emergency readiness needs attention (content gaps, partial fleet).
  *   5. Approvals waiting on a human.
  *   6. Name, so the order is stable across polls.
+ *
+ * A school whose alerts are OFF (readiness DISABLED, 2026-09-24) is not
+ * graded, so it never ranks under 1 or 4 — it sorts like a healthy one.
  */
 export function compareScorecards(a: SchoolScorecard, b: SchoolScorecard): number {
   const crit = (s: SchoolScorecard) => (s.readiness === 'NOT_CONFIGURED' ? 1 : 0);
@@ -249,6 +266,7 @@ export function buildDistrictRollup(input: BuildDistrictRollupInput): DistrictRo
       readiness,
       missingTypes: r?.missingTypes ?? [],
       lockdownWired: r ? r.lockdownWired : null,
+      emergencyEnabled: r ? r.verdict !== 'DISABLED' : null,
       pendingApprovals,
       needsAttention:
         b.offline > 0 ||
@@ -271,6 +289,9 @@ export function buildDistrictRollup(input: BuildDistrictRollupInput): DistrictRo
       : 0,
     emergencyNotConfiguredSchools: readinessKnown
       ? schools.filter((s) => s.readiness === 'NOT_CONFIGURED').length
+      : 0,
+    emergencyOffSchools: readinessKnown
+      ? schools.filter((s) => s.readiness === 'DISABLED').length
       : 0,
     pendingApprovals: approvalsKnown ? schools.reduce((n, s) => n + s.pendingApprovals, 0) : 0,
     pendingApprovalSchools: approvalsKnown ? schools.filter((s) => s.pendingApprovals > 0).length : 0,

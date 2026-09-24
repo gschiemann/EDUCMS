@@ -31,7 +31,10 @@ export interface ReadinessItem {
   fixHint: string;
 }
 export interface ReadinessReport {
-  verdict: 'READY' | 'NEEDS_ATTENTION' | 'NOT_CONFIGURED';
+  /** DISABLED (2026-09-24): the capability is off, nothing was graded. */
+  verdict: 'READY' | 'NEEDS_ATTENTION' | 'NOT_CONFIGURED' | 'DISABLED';
+  enabled?: boolean;
+  locked?: boolean;
   score: number;
   items: ReadinessItem[];
   computedAt: string;
@@ -81,6 +84,18 @@ const VERDICT_META = {
     title: 'Not ready',
     blurb: 'A critical piece is missing — an alert would not reach your screens correctly.',
   },
+  // OFF is not "not ready" (2026-09-24): nothing is graded while the
+  // capability is off, so this reads calm, never red. The page normally
+  // gates this card on the capability being on; this is the honest answer if
+  // a report arrives anyway.
+  DISABLED: {
+    icon: ShieldOff,
+    wrap: 'bg-slate-50 border-slate-200',
+    ink: 'text-slate-800',
+    sub: 'text-slate-500',
+    title: 'Emergency alerts are off',
+    blurb: 'Nothing is graded while alerts are off. Turn them on to set up alert types and their content.',
+  },
 } as const;
 
 const STATUS_ICON: Record<ReadinessStatus, { Icon: typeof CheckCircle2; cls: string }> = {
@@ -119,6 +134,9 @@ export function EmergencyReadinessCard() {
 
   const meta = VERDICT_META[data.verdict];
   const VerdictIcon = meta.icon;
+  // No score and no checklist for a capability that is off — there is
+  // nothing to add up.
+  const off = data.verdict === 'DISABLED';
 
   return (
     <section aria-label="Emergency readiness" className={`rounded-xl border shadow-sm ${meta.wrap}`}>
@@ -133,10 +151,12 @@ export function EmergencyReadinessCard() {
           </div>
         </div>
         <div className="flex items-center gap-3 shrink-0">
-          <div className={`text-right ${meta.ink}`}>
-            <div className="text-xl font-black tabular-nums leading-none">{data.score}</div>
-            <div className={`text-[10px] font-bold uppercase tracking-wide ${meta.sub}`}>Readiness</div>
-          </div>
+          {!off && (
+            <div className={`text-right ${meta.ink}`}>
+              <div className="text-xl font-black tabular-nums leading-none">{data.score}</div>
+              <div className={`text-[10px] font-bold uppercase tracking-wide ${meta.sub}`}>Readiness</div>
+            </div>
+          )}
           <button
             type="button"
             onClick={() => refetch()}
@@ -149,6 +169,7 @@ export function EmergencyReadinessCard() {
           </button>
         </div>
       </div>
+      {!off && (
       <ul className="bg-white/60 rounded-b-xl divide-y divide-slate-100/80 px-4">
         {data.items.map((item) => {
           const { Icon, cls } = STATUS_ICON[item.status];
@@ -167,6 +188,7 @@ export function EmergencyReadinessCard() {
           );
         })}
       </ul>
+      )}
     </section>
   );
 }

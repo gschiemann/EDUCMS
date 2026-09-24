@@ -159,6 +159,31 @@ describe('buildDistrictRollup — counters', () => {
     expect(byId(r, 'b').missingTypes).toEqual(['Fire / Evacuate', 'Medical']);
   });
 
+  it('a location with alerts OFF (DISABLED) is not an emergency gap of any kind (2026-09-24)', () => {
+    // Greg, on a print-shop location the dashboard had painted red: "why are
+    // we showing an alert that we cant play emergency content but i havent
+    // even enabled it?"
+    const r = buildDistrictRollup({
+      locations: [loc('a'), loc('b')],
+      screens: [screen('a'), screen('b')],
+      readiness: {
+        schools: [
+          readySchool('a'),
+          readySchool('b', { verdict: 'DISABLED', contentWired: 0, lockdownWired: false, missingTypes: [] }),
+        ],
+      },
+      approvals: { byTenant: [] },
+    });
+    expect(r.needsAction.emergencyNotReadySchools).toBe(0);
+    expect(r.needsAction.emergencyNotConfiguredSchools).toBe(0);
+    expect(r.needsAction.emergencyOffSchools).toBe(1);
+    expect(r.needsAction.allClear).toBe(true);
+    expect(byId(r, 'b').emergencyEnabled).toBe(false);
+    expect(byId(r, 'b').needsAttention).toBe(false);
+    expect(byId(r, 'a').emergencyEnabled).toBe(true);
+    expect(r.healthyCount).toBe(2);
+  });
+
   it('rolls up pending approvals per school', () => {
     const r = buildDistrictRollup({
       locations: [loc('a'), loc('b')],
@@ -242,7 +267,7 @@ describe('compareScorecards — worst first', () => {
   const card = (over: Partial<SchoolScorecard>): SchoolScorecard => ({
     tenantId: over.name || 'x', name: 'x', slug: 'x', isSelf: false,
     screensTotal: 10, screensOnline: 10, screensOffline: 0, notPainting: 0,
-    readiness: 'READY', missingTypes: [], lockdownWired: true,
+    readiness: 'READY', missingTypes: [], lockdownWired: true, emergencyEnabled: true,
     pendingApprovals: 0, needsAttention: false,
     ...over,
   });

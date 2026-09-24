@@ -296,21 +296,33 @@ export function SettingsOverviewPage() {
               </div>
             ) : (
               <div className="flex flex-wrap items-center gap-2.5">
+                {/* OFF is its own calm state (2026-09-24): the capability is
+                    not on, so there is no verdict to grade and no "0 of 0
+                    checks" to print. */}
                 <StatusPill
-                  kind={verdict === 'READY' ? 'ready' : verdict === 'NOT_CONFIGURED' ? 'blocked' : 'attention'}
+                  kind={
+                    verdict === 'READY' ? 'ready'
+                      : verdict === 'DISABLED' ? 'notConfigured'
+                        : verdict === 'NOT_CONFIGURED' ? 'blocked'
+                          : 'attention'
+                  }
                   label={
                     verdict === 'READY'
                       ? t('settings.cc.overview.verdictReady')
-                      : verdict === 'NOT_CONFIGURED'
-                        ? t('settings.cc.overview.verdictNotConfigured')
-                        : t('settings.cc.overview.verdictAttention')
+                      : verdict === 'DISABLED'
+                        ? t('settings.cc.overview.verdictOff')
+                        : verdict === 'NOT_CONFIGURED'
+                          ? t('settings.cc.overview.verdictNotConfigured')
+                          : t('settings.cc.overview.verdictAttention')
                   }
                 />
                 <span className="text-[13px] text-slate-600">
-                  {t('settings.cc.overview.readinessChecksPassed', {
-                    passed: readiness.data.items.filter((i) => i.status === 'ok').length,
-                    total: readiness.data.items.length,
-                  })}
+                  {verdict === 'DISABLED'
+                    ? t('settings.cc.overview.readinessOff')
+                    : t('settings.cc.overview.readinessChecksPassed', {
+                        passed: readiness.data.items.filter((i) => i.status === 'ok').length,
+                        total: readiness.data.items.length,
+                      })}
                 </span>
               </div>
             )}

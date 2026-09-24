@@ -78,6 +78,7 @@ const PILL_ICON_TONE: Record<AssuranceState, string> = {
   warn: 'bg-amber-50 text-amber-600',
   bad: 'bg-rose-50 text-rose-600',
   unknown: 'bg-slate-100 text-slate-400',
+  off: 'bg-slate-100 text-slate-400',
 };
 
 const INBOX_ICON: Record<ExceptionRow['kind'], typeof CloudOff> = {
@@ -979,7 +980,7 @@ export function FleetCommandCenter({
     // media is freshly cached on each device (that lives in the location
     // table's own Cache column). The old "ready" wording claimed the fuller
     // guarantee.
-    { key: 'emergency', label: ASSURANCE_LABEL.emergencyReady, Icon: ShieldCheck, pill: fc.assurance.emergencyReady, hint: `${nounMany.charAt(0).toUpperCase() + nounMany.slice(1)} with the right alert content wired and screens online. Does not check that alert media is freshly cached on each device.` },
+    { key: 'emergency', label: ASSURANCE_LABEL.emergencyReady, Icon: ShieldCheck, pill: fc.assurance.emergencyReady, hint: `${nounMany.charAt(0).toUpperCase() + nounMany.slice(1)} with the right alert content wired and screens online. Does not check that alert media is freshly cached on each device. Off means emergency alerts are turned off at every location — turn them on under Settings → Emergency.` },
     { key: 'painting', label: ASSURANCE_LABEL.showingContent, Icon: MonitorCheck, pill: fc.assurance.showingContent, hint: 'Screens with a confirmed picture on the glass.' },
   ];
 
@@ -1104,7 +1105,7 @@ export function FleetCommandCenter({
                 </span>
                 <span className="min-w-0 flex items-baseline gap-1.5">
                   <span className="text-[16px] font-black text-slate-900 shrink-0">
-                    {pill.state === 'unknown' ? '—' : `${pill.n}/${pill.total}`}
+                    {pill.state === 'unknown' ? '—' : pill.state === 'off' ? 'Off' : `${pill.n}/${pill.total}`}
                   </span>
                   <span className="text-[13px] font-semibold text-slate-500 truncate">{label}</span>
                 </span>
@@ -1114,8 +1115,12 @@ export function FleetCommandCenter({
               <Link
                 key={key}
                 href={drill}
-                title={`${hint} Click to see the list.`}
-                aria-label={`${label}: ${pill.n} of ${pill.total} — see the list`}
+                title={pill.state === 'off' ? `${hint} Click to open the emergency settings.` : `${hint} Click to see the list.`}
+                aria-label={
+                  pill.state === 'off'
+                    ? `${label}: off at every location — open the emergency settings`
+                    : `${label}: ${pill.n} of ${pill.total} — see the list`
+                }
                 className={`${CARD} px-4 py-3 flex items-center gap-3 hover:border-slate-300 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 transition-shadow`}
               >
                 {body}

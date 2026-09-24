@@ -64,7 +64,12 @@ export interface FleetCommandScreen {
   sourceTenant: { id: string; name: string; slug: string } | null;
 }
 
-export type AssuranceState = 'ok' | 'warn' | 'bad' | 'unknown';
+/**
+ * 'off' (2026-09-24): the signal is deliberately not in play. Today only the
+ * emergency pill uses it — when every location with screens has alerts turned
+ * off. It is neither unknown (the data answered) nor a grade.
+ */
+export type AssuranceState = 'ok' | 'warn' | 'bad' | 'unknown' | 'off';
 
 export interface AssurancePill {
   /** Numerator — screens (or locations) satisfying the signal. */
@@ -439,8 +444,13 @@ export function buildFleetCommand(input: {
   // screenless location can't display an alert (or anything else); it is
   // a setup task, not an emergency gap (2026-08-31 operator feedback).
   const screenful = rollup.schools.filter((s) => s.screensTotal > 0);
+  // …and over locations whose alerts are ON (2026-09-24). A location with the
+  // capability off (readiness DISABLED) is not graded: it is not in the
+  // denominator, never a gap, and never an inbox row. Greg, on a print shop
+  // the pill had counted against him: "i havent even enabled it".
+  const armed = screenful.filter((s) => s.readiness !== 'DISABLED');
   const readyLocations = readinessKnown
-    ? screenful.filter((s) => s.readiness === 'READY').length
+    ? armed.filter((s) => s.readiness === 'READY').length
     : 0;
 
   const assurance: FleetCommand['assurance'] = {
@@ -467,11 +477,12 @@ export function buildFleetCommand(input: {
     },
     emergencyReady: {
       n: readyLocations,
-      total: screenful.length,
+      total: armed.length,
       state:
         !readinessKnown || screenful.length === 0 ? 'unknown'
-        : screenful.some((s) => s.readiness === 'NOT_CONFIGURED') ? 'bad'
-        : screenful.some((s) => s.readiness === 'NEEDS_ATTENTION') ? 'warn'
+        : armed.length === 0 ? 'off'
+        : armed.some((s) => s.readiness === 'NOT_CONFIGURED') ? 'bad'
+        : armed.some((s) => s.readiness === 'NEEDS_ATTENTION') ? 'warn'
         : 'ok',
     },
     showingContent: {

@@ -391,6 +391,8 @@ function Assurance({
       <p className="mt-1 text-[17px] font-black leading-none tabular-nums">
         {pill.state === 'unknown' ? (
           <span className="text-[13px] font-bold">Not reported</span>
+        ) : pill.state === 'off' ? (
+          <span className="text-[13px] font-bold">Off</span>
         ) : (
           <>
             {pill.n}

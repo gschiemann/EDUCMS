@@ -3036,7 +3036,15 @@ export interface DistrictSchoolReadiness {
   name: string;
   slug: string;
   isSelf: boolean;
-  verdict: 'READY' | 'NEEDS_ATTENTION' | 'NOT_CONFIGURED';
+  /**
+   * DISABLED (2026-09-24) = the emergency capability is OFF for this location
+   * and nothing was graded. Not a failure state; never drawn as one.
+   */
+  verdict: 'READY' | 'NEEDS_ATTENTION' | 'NOT_CONFIGURED' | 'DISABLED';
+  /** Effective enablement the verdict was graded under (older APIs omit it). */
+  enabled?: boolean;
+  /** K-12 lock — the capability cannot be turned off here. */
+  locked?: boolean;
   contentWired: number;
   contentTotal: number;
   lockdownWired: boolean;
@@ -3048,7 +3056,10 @@ export interface DistrictReadinessResponse {
   /** Platform-global delivery chain — computed once for the whole district. */
   delivery: { key: string; status: 'ok' | 'warn' | 'missing'; label: string; detail: string; fixHint: string };
   schools: DistrictSchoolReadiness[];
+  /** Locations that are ON and not READY (a DISABLED location is not graded). */
   notReadyCount: number;
+  /** Locations whose alerts are off. Older APIs omit it. */
+  disabledCount?: number;
   computedAt: string;
 }
 export function useDistrictReadiness(opts?: { enabled?: boolean }) {

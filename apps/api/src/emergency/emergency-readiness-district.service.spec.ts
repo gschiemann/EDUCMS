@@ -23,6 +23,10 @@ import { EmergencyReadinessService } from './emergency-readiness.service';
 interface DistrictMockOpts {
   /** Per-school panic wiring; keys are tenant ids. */
   wiring?: Record<string, Record<string, string | null>>;
+  /** Per-school vertical; a school not listed here has none stored (→ K12 default). */
+  verticals?: Record<string, string>;
+  /** Per-school `Tenant.emergencyEnabled`; unlisted ⇒ null ("never stated"). */
+  enabled?: Record<string, boolean | null>;
   /** Per-school [total, online] screen counts. */
   screens?: Record<string, [number, number]>;
   schoolCount?: number;
@@ -57,6 +61,8 @@ function makeDistrictMocks(opts: DistrictMockOpts = {}) {
             id,
             name: id === 'district' ? 'District Office' : `School ${id.split('-')[1]}`,
             slug: id,
+            ...(opts.verticals?.[id] ? { vertical: opts.verticals[id] } : {}),
+            emergencyEnabled: opts.enabled?.[id] ?? null,
             ...ALL_WIRED,
             ...(opts.wiring?.[id] ?? {}),
           }));
@@ -139,6 +145,74 @@ describe('EmergencyReadinessService.computeDistrict', () => {
     expect(bad.missingTypes).toContain('Lockdown');
     expect(r.notReadyCount).toBe(1);
     expect(r.schools.filter((s) => s.tenantId !== 'school-2').every((s) => s.verdict === 'READY')).toBe(true);
+  });
+
+  // ── Enablement (2026-09-24) ─────────────────────────────────────────
+  // Greg, on a print-shop location the dashboard had painted red: "why are we
+  // showing an alert that we cant play emergency content but i havent even
+  // enabled it?" The report graded every tenant as if alerts were on.
+  const NOTHING_WIRED = {
+    panicLockdownPlaylistId: null,
+    panicSecurePlaylistId: null,
+    panicHoldPlaylistId: null,
+    panicEvacuatePlaylistId: null,
+    panicWeatherPlaylistId: null,
+    panicMedicalPlaylistId: null,
+  };
+
+  it('a non-K-12 location that never turned alerts on is DISABLED — not a gap, not counted, no fix list', async () => {
+    const m = makeDistrictMocks({
+      verticals: { 'school-2': 'BAR' },
+      wiring: { 'school-2': NOTHING_WIRED },
+    });
+    const r = await svcFor(m).computeDistrict('district');
+    const bar = r.schools.find((s) => s.tenantId === 'school-2')!;
+    expect(bar.verdict).toBe('DISABLED');
+    expect(bar.enabled).toBe(false);
+    expect(bar.locked).toBe(false);
+    expect(bar.missingTypes).toEqual([]);
+    expect(r.notReadyCount).toBe(0);
+    expect(r.disabledCount).toBe(1);
+  });
+
+  it('a non-K-12 location that turned alerts ON is graded like any other', async () => {
+    const m = makeDistrictMocks({
+      verticals: { 'school-2': 'BAR' },
+      enabled: { 'school-2': true },
+      wiring: {
+        'school-2': {
+          panicEvacuatePlaylistId: null,
+          panicWeatherPlaylistId: null,
+          panicMedicalPlaylistId: null,
+        },
+      },
+    });
+    const r = await svcFor(m).computeDistrict('district');
+    const bar = r.schools.find((s) => s.tenantId === 'school-2')!;
+    expect(bar.enabled).toBe(true);
+    expect(bar.locked).toBe(false);
+    expect(bar.verdict).toBe('NOT_CONFIGURED');
+    expect(bar.missingTypes).toEqual(['Fire / Evacuate', 'Weather', 'Medical']);
+    expect(r.notReadyCount).toBe(1);
+    expect(r.disabledCount).toBe(0);
+  });
+
+  it('a K-12 location is graded even with a stored false — the lock wins', async () => {
+    const m = makeDistrictMocks({ enabled: { 'school-1': false } });
+    const r = await svcFor(m).computeDistrict('district');
+    const school = r.schools.find((s) => s.tenantId === 'school-1')!;
+    expect(school.enabled).toBe(true);
+    expect(school.locked).toBe(true);
+    expect(school.verdict).toBe('READY');
+    expect(r.disabledCount).toBe(0);
+  });
+
+  it('every row carries the enablement facts; rows with no stored vertical grade as K-12: on and locked', async () => {
+    const r = await svcFor(makeDistrictMocks()).computeDistrict('district');
+    expect(
+      r.schools.every((s) => s.enabled === true && s.locked === true),
+    ).toBe(true);
+    expect(r.disabledCount).toBe(0);
   });
 
   it('lockdown wired but other types missing → NEEDS_ATTENTION naming the gaps', async () => {
