@@ -41,6 +41,7 @@ import { transformedImageUrl } from '@/lib/asset-image';
 import { computeBlastRadius, reachWarnings, isReachBlocked } from '@/lib/blast-radius';
 import { BlastRadiusSummary } from '@/components/playlists/BlastRadiusSummary';
 import { AssetPreviewOverlay } from '@/components/playlists/AssetPreviewOverlay';
+import { VideoPreviewThumb, assetPosterUrl } from '@/components/playlists/VideoPreviewThumb';
 import { imageShape, type ImageShape } from '@/lib/image-shape';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
@@ -103,41 +104,27 @@ function thumbUrl(asset: any) {
 
 /**
  * Renders the right inline media element for any asset's thumbnail.
- * Image → <img>. Video → <video preload="metadata"> that seeks to
- * 0.1s so the browser commits a real first frame instead of leaving
- * a black/empty video tag. Returns null for assets without a thumb.
+ * Image → <img>. Video → <VideoPreviewThumb>: its poster frame at rest,
+ * hover-to-play, first-frame fallback when it has no poster. Returns
+ * null for assets without a thumb.
  *
  * Use this anywhere you'd otherwise have written `{thumb && <img />}`
  * — keeps every preview surface (playlist editor, asset picker,
  * scheduled item card) consistent with the asset library.
  */
-function AssetThumb({ asset, className, onLoad }: { asset: any; className?: string; onLoad?: (e: React.SyntheticEvent<HTMLImageElement>) => void }) {
+function AssetThumb({ asset, className, onDimensions }: { asset: any; className?: string; onDimensions?: (width: number, height: number) => void }) {
   const url = thumbUrl(asset);
   if (!url) return null;
   if (asset?.mimeType?.startsWith('video/')) {
-    // 2026-05-30 — EGRESS FIX: preload="none" so playlist-editor video
-    // thumbnails don't auto-download bytes on mount. Hover-load on
-    // demand if the operator mouses over.
-    return (
-      // eslint-disable-next-line jsx-a11y/media-has-caption
-      <video
-        src={url}
-        muted
-        playsInline
-        preload="none"
-        className={className}
-        onMouseEnter={(e) => {
-          const v = e.currentTarget;
-          if (v.readyState === 0) {
-            v.preload = 'metadata';
-            v.load();
-            v.addEventListener('loadedmetadata', () => {
-              try { v.currentTime = 0.1; } catch { /* ignore */ }
-            }, { once: true });
-          }
-        }}
-      />
-    );
+    // 2026-09-24 — Greg, on an iPad: the first row's thumbnail "is a blank
+    // grey box". This was a <video preload="none"> with a hover-load
+    // trick, and a touch screen has no hover, so every video tile on a
+    // phone or tablet was an empty box. The shared component draws the
+    // poster frame and plays on hover — see VideoPreviewThumb for the
+    // rules (never on mount, never with sound, never on touch, and no
+    // video bytes until a real pointer hovers, so the 2026-05-30 egress
+    // fix still holds).
+    return <VideoPreviewThumb src={url} posterUrl={assetPosterUrl(asset)} className={className} onDimensions={onDimensions} />;
   }
   // eslint-disable-next-line @next/next/no-img-element
   return (
@@ -145,7 +132,7 @@ function AssetThumb({ asset, className, onLoad }: { asset: any; className?: stri
       src={url}
       alt=""
       className={className}
-      onLoad={onLoad}
+      onLoad={(e) => onDimensions?.(e.currentTarget.naturalWidth, e.currentTarget.naturalHeight)}
       onError={(e) => {
         // mshots' first hit on a fresh URL can return a "warming"
         // placeholder that fails to load; the screenshot is ready
@@ -203,11 +190,12 @@ function PickerTileThumb({ asset }: { asset: any }) {
       <AssetThumb
         asset={asset}
         className="w-full h-full object-contain"
-        onLoad={(e) => setShape(imageShape(e.currentTarget.naturalWidth, e.currentTarget.naturalHeight))}
+        onDimensions={(w, h) => setShape(imageShape(w, h))}
       />
-      {/* A video tile is a bare <video preload="none"> (the 2026-05-30 egress
-          rule), so on the dark mat it would be an empty black box. Say what
-          it is. */}
+      {/* A video tile without a poster is a bare <video preload="none"> (the
+          2026-05-30 egress rule), so on the dark mat it would be an empty
+          black box; with a poster it is a still that looks exactly like a
+          photo. Either way, say what it is. */}
       {String(asset?.mimeType || '').startsWith('video/') && (
         <span className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center pointer-events-none" aria-hidden>
           <span className="w-9 h-9 rounded-full bg-white/25 flex items-center justify-center">
@@ -240,12 +228,14 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSel
 
   return (
     <div ref={setNodeRef} style={style} className={`bg-white rounded-2xl border ${isSelected ? 'border-indigo-400 ring-2 ring-indigo-100 shadow-[0_4px_20px_rgba(99,102,241,0.12)]' : 'border-slate-100 group hover:shadow-[0_4px_20px_rgba(0,0,0,0.04)]'} transition-all overflow-hidden flex flex-col`}>
-      {/* Apply drag listeners to the WHOLE row so the operator can grab
-          anywhere — the tiny grip-icon handle was undiscoverable (user
-          reported "I can't drag the order"). The PointerSensor's
-          activationConstraint:{distance:8} keeps clicks on the duration
-          input, checkbox, and settings button working: they only
-          trigger a drag after the pointer has moved 8px. */}
+      {/* The row div carries only dnd-kit's `attributes` (role, aria,
+          tabIndex). The `listeners` — the thing that actually starts a
+          drag — are on the grip <button> alone (see below). So a press on
+          the checkbox, the thumbnail, the duration input, the gear or the
+          trash is a plain click on every input, never a drag activation.
+          An earlier version of this comment described a drag-anywhere
+          row; that was reverted on 2026-05-14 for the iOS reason below,
+          and the row-control tests pin the grip-only contract. */}
       {/* 2026-05-14 — single-row playlist item, mobile-honest.
           Operator: "now you just shifted the 10 sec and settings
           below....fit them into a single row somehow". Then:
@@ -362,21 +352,38 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSel
             </>
           )}
         </div>
+        {/* Gear + trash are ALWAYS visible (2026-09-24). Both used to carry
+            `md:opacity-0 md:group-hover:opacity-100`: invisible on desktop
+            until the pointer hovered the row, and a touch screen has no
+            hover, so on an iPad the trash never appeared at all and the
+            gear only surfaced once a blind tap had toggled it. Greg: "i cant
+            delete content once it has been added...we should have the
+            little trash can just like other menus" / "the gear icon only
+            shows up once you click on the content itself". Same treatment
+            as the Screens tab's power / trash / gear (PlaylistWorkspace):
+            persistent, p-2 hit area, tinted hover, plus the repo's 44 px
+            floor on phones. Neither button carries dnd-kit listeners —
+            those live on the grip alone — so a press here is a click on
+            touch and mouse alike, never the start of a drag. */}
         <button
+          type="button"
           onClick={() => setShowSettings(!showSettings)}
-          className={`p-1 transition-all shrink-0 ${showSettings ? 'text-indigo-500 hover:text-indigo-600' : 'text-slate-400 md:text-slate-300 hover:text-indigo-500 md:opacity-0 md:group-hover:opacity-100'}`}
           aria-label={t('playlistsPage.slideSettings')}
+          title={t('playlistsPage.slideSettings')}
+          aria-expanded={showSettings}
+          className={`min-h-11 min-w-11 sm:min-h-0 sm:min-w-0 inline-flex items-center justify-center p-2 rounded-lg transition-colors shrink-0 ${showSettings ? 'text-indigo-600 bg-indigo-50' : 'text-slate-400 hover:text-indigo-600 hover:bg-indigo-50'}`}
         >
-          <Settings className="w-4 h-4" />
+          <Settings className="w-4 h-4" aria-hidden />
         </button>
         <button
+          type="button"
           onClick={() => onRemove(item.id)}
           disabled={isViewer}
           title={isViewer ? t('playlistsPage.readOnlyViewer') : t('playlistsPage.remove')}
-          className="p-1 text-slate-400 md:text-slate-300 hover:text-red-500 md:opacity-0 md:group-hover:opacity-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
           aria-label={t('playlistsPage.removeSlide')}
+          className="min-h-11 min-w-11 sm:min-h-0 sm:min-w-0 inline-flex items-center justify-center p-2 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
         >
-          <Trash2 className="w-4 h-4" />
+          <Trash2 className="w-4 h-4" aria-hidden />
         </button>
       </div>
 
@@ -1572,6 +1579,17 @@ export default function ClassicPlaylistsPage({
   };
 
   const handleRemove = (id: string) => { setLocalItems(prev => prev.filter(i => i.id !== id)); setSelectedItemIds(prev => { const n = new Set(prev); n.delete(id); return n; }); setHasChanges(true); };
+  // Bulk remove for the selection toolbar (2026-09-24). Same contract as
+  // handleRemove: it edits the working copy and flags it dirty — Save is
+  // the commit point, so there is no confirm step here either. The
+  // selection is cleared because every id in it is gone.
+  const handleRemoveSelected = () => {
+    const ids = selectedItemIds;
+    if (ids.size === 0) return;
+    setLocalItems(prev => prev.filter(i => !ids.has(i.id)));
+    setSelectedItemIds(new Set());
+    setHasChanges(true);
+  };
   const handleDuration = (id: string, sec: number) => { setLocalItems(prev => prev.map(i => i.id === id ? { ...i, durationMs: sec * 1000 } : i)); setHasChanges(true); };
   const handleUpdateItem = (id: string, updates: any) => { setLocalItems(prev => prev.map(i => i.id === id ? { ...i, ...updates } : i)); setHasChanges(true); };
   
@@ -2223,6 +2241,26 @@ export default function ClassicPlaylistsPage({
                           today and would not have been once someone tried it.
                           Scheduling belongs to the playlist — see the Schedule
                           tab. */}
+                      {/* Bulk remove (2026-09-24) — beside SET ALL, only while
+                          something is selected. Greg could not delete content
+                          on an iPad at all (the per-row trash was hover-only);
+                          with the row trash back, "select a few, remove them"
+                          is the obvious next ask. A working-copy edit with no
+                          modal: Save is the commit point, exactly as for the
+                          single-row trash. */}
+                      {selectedItemIds.size > 0 && (
+                        <button
+                          type="button"
+                          onClick={handleRemoveSelected}
+                          disabled={isViewer}
+                          title={isViewer ? t('playlistsPage.readOnlyViewer') : t('playlistsPage.removeSelectedHint')}
+                          aria-label={t('playlistsPage.removeSelectedAria', { count: selectedItemIds.size })}
+                          className="min-h-11 sm:min-h-0 px-3 py-2 sm:py-1.5 bg-rose-50 hover:bg-rose-600 text-rose-600 hover:text-white text-[11px] font-bold rounded-lg flex items-center gap-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-rose-50 disabled:hover:text-rose-600"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" aria-hidden />
+                          {t('playlistsPage.removeSelected', { count: selectedItemIds.size })}
+                        </button>
+                      )}
                       <div className="flex items-center gap-2 bg-white p-1 rounded-lg shadow-sm border border-slate-200/60">
                         <div className="flex items-center pl-2 pr-1 gap-1">
                         <Clock className="w-3.5 h-3.5 text-indigo-400" />
