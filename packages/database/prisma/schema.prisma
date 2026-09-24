@@ -1668,6 +1668,18 @@ model Asset {
   // AND NOT (probeFailed is a string AND probeFailedVersion = 2)" — a
   // version-1 probe (no marker) and a version-less failure are each re-probed
   // exactly once; `--retry-failed` retries current-version failures too.
+  // 2026-09-24 — AFTER A SIGNAGE TRANSCODE SWAP (storage/video-transcode) the
+  // row serves the optimized copy, so the swap write MERGES its own keys
+  // (`originalSize`, `processedSize`, `processedDimensions` = the copy's size,
+  // `transcodedAt`, `transcode: { profile, codecIn, durationS, seconds,
+  // savedBytes }`) over what is here and DROPS the facts that described the
+  // original (`probe`, `probedAt`, `probeFailed`, `probeFailedVersion`,
+  // `durationMs` — SERVED_FILE_FACT_KEYS); the worker then re-runs the probe +
+  // poster on the copy, which writes `originalDimensions` / `durationMs` /
+  // `probe` for the SERVED file through `mergeProbeMeta` (and, as every probe
+  // does, `processedDimensions: null`). So on a video row these keys always
+  // describe the file at `fileUrl`; the upload's own size lives in
+  // `transcode` and on the job row (`video_transcode_jobs.details.dimsIn`).
   // Nullable + additive — every existing row stays untouched. Read it
   // (rarely) to diagnose "why is this asset 4 MB?" or to drive a future
   // "X GB of images saved this month" dashboard tile.

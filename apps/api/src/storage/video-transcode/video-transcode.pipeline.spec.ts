@@ -14,7 +14,10 @@
  *   • emergency media is never downloaded, let alone swapped (before AND after
  *     the encode), and a failed emergency check counts as emergency;
  *   • tenant scoping: the asset is only ever read/written with the job's tenant;
- *   • temp files are gone on every path.
+ *   • temp files are gone on every path;
+ *   • after a swap — and only after a swap — the probe + poster pass is re-run
+ *     on the COPY, and the swap's own write drops the original's probe facts
+ *     (2026-09-24: the grade and the poster must describe the served file).
  */
 import { promises as fs } from 'fs';
 import * as os from 'os';
@@ -23,6 +26,8 @@ import { parseProbe, type ProbeResult } from './transcode-profile';
 import {
   VideoTranscodePipeline,
   EMERGENCY_CONTENT_SQL,
+  SERVED_FILE_FACT_KEYS,
+  mergeTranscodeMeta,
   type PipelineEnv,
 } from './video-transcode.pipeline';
 import {
@@ -122,6 +127,8 @@ interface World {
   inProbe?: ProbeResult;
   swapCount?: number;
   free?: number | null;
+  /** What the re-run probe + poster pass answers after a swap ('throw' = it rejects). */
+  servedFile?: { probed: boolean; posterUrl: string | null } | 'throw';
 }
 
 function build(w: World) {
@@ -219,7 +226,24 @@ function build(w: World) {
     now: () => (clock += 1000),
   };
 
-  const pipeline = new VideoTranscodePipeline(prisma, storage);
+  const videoPoster = {
+    processVideo: jest.fn(async (args: any) => {
+      calls.push(`videoPoster.processVideo(${args.storagePath})`);
+      if (w.servedFile === 'throw') throw new Error('poster service exploded');
+      return (
+        w.servedFile ?? {
+          probed: true,
+          posterUrl: `${SUPA}${TENANT}/posters/new.jpg`,
+        }
+      );
+    }),
+  };
+
+  const pipeline = new VideoTranscodePipeline(
+    prisma,
+    storage,
+    videoPoster as any,
+  );
   pipeline.runner = runner as any;
   pipeline.env = env;
   return {
@@ -227,6 +251,7 @@ function build(w: World) {
     prisma,
     storage,
     runner,
+    videoPoster,
     uploaded,
     deleted,
     calls,
@@ -659,6 +684,130 @@ describe('VideoTranscodePipeline — bounded resources', () => {
     const out = await t.pipeline.process(job());
     expect(out).toMatchObject({ status: 'failed', reason: 'error' });
     expect(out.error).toContain('503');
+    expect(await tempLeftovers()).toEqual([]);
+  });
+});
+
+describe('VideoTranscodePipeline — after a swap the facts describe the SERVED file (2026-09-24)', () => {
+  // The facts an upload wrote about the ORIGINAL: a 10-bit HEVC 4K camera file.
+  const ORIGINAL_FACTS = {
+    originalDimensions: { w: 3840, h: 2160 },
+    processedDimensions: null,
+    durationMs: 30_000,
+    probe: { probeVersion: 2, codec: 'hevc', pixFmt: 'yuv420p10le', fps: 60 },
+    probedAt: '2026-09-24T10:00:00.000Z',
+    probeFailed: 'stale-stamp',
+    probeFailedVersion: 2,
+    skippedReason: 'legacy-key-that-must-survive',
+  };
+
+  it('re-runs the probe + poster pass on the COPY, after the swap write and before the job is done', async () => {
+    const t = build({
+      asset: videoAsset({ processingMeta: ORIGINAL_FACTS }),
+      emergency: false,
+      outBytes: FIFTH,
+      outProbe: OUT_2160,
+      runOk: true,
+    });
+    const out = await t.pipeline.process(job());
+
+    expect(out.status).toBe('done');
+    expect(t.videoPoster.processVideo).toHaveBeenCalledTimes(1);
+    expect(t.videoPoster.processVideo).toHaveBeenCalledWith({
+      assetId: 'asset-1',
+      tenantId: TENANT,
+      mimeType: 'video/mp4',
+      storagePath: t.uploaded[0], // the optimized copy — never the original
+      ext: '.mp4',
+    });
+    // ORDER: the swap (the updateMany carrying fileUrl) precedes the re-probe,
+    // so the pass reads a row whose fileUrl is already the copy.
+    const swapAt = t.calls.findIndex((c) => c.startsWith('asset.updateMany(') && c.includes('fileUrl'));
+    const probeAt = t.calls.findIndex((c) => c.startsWith('videoPoster.processVideo('));
+    expect(swapAt).toBeGreaterThanOrEqual(0);
+    expect(probeAt).toBeGreaterThan(swapAt);
+    expect(out.details).toMatchObject({ servedFile: { probed: true, poster: true } });
+  });
+
+  it("the swap's own write DROPS the original's probe facts and keeps every other key (negative control: remove the drop → red)", async () => {
+    const t = build({
+      asset: videoAsset({ processingMeta: ORIGINAL_FACTS }),
+      emergency: false,
+      outBytes: FIFTH,
+      outProbe: OUT_2160,
+      runOk: true,
+    });
+    await t.pipeline.process(job());
+
+    const swap = t.prisma.client.asset.updateMany.mock.calls.find(
+      ([a]: any) => 'fileUrl' in a.data,
+    )[0];
+    const meta = swap.data.processingMeta;
+    for (const key of SERVED_FILE_FACT_KEYS) expect(meta).not.toHaveProperty(key);
+    expect(meta.skippedReason).toBe('legacy-key-that-must-survive');
+    expect(meta).toMatchObject({
+      originalSize: SOURCE_BYTES,
+      processedSize: FIFTH,
+      processedDimensions: { w: 3840, h: 2160 },
+      transcode: { profile: '2160p', codecIn: 'h264' },
+    });
+  });
+
+  it('mergeTranscodeMeta is pure: null / garbage / array existing meta all start from empty', () => {
+    const t = { originalSize: 1, transcode: { profile: '1080p' } };
+    expect(mergeTranscodeMeta(null, t)).toEqual(t);
+    expect(mergeTranscodeMeta('garbage', t)).toEqual(t);
+    expect(mergeTranscodeMeta([1, 2], t)).toEqual(t);
+    expect(mergeTranscodeMeta({ probe: { codec: 'hevc' }, durationMs: 5, keep: 'me' }, t)).toEqual({ keep: 'me', ...t });
+  });
+
+  it.each([
+    ['larger output', { outBytes: SOURCE_BYTES + 1, runOk: true as const, emergency: false }],
+    ['ffmpeg failed', { outBytes: FIFTH, runOk: false as const, emergency: false }],
+    ['emergency content', { outBytes: FIFTH, runOk: true as const, emergency: true }],
+  ])('NEGATIVE CONTROL: no swap (%s) → the pass never runs, the original\'s facts stay', async (_name, w) => {
+    const t = build({
+      asset: videoAsset({ processingMeta: ORIGINAL_FACTS }),
+      outProbe: OUT_2160,
+      ...w,
+    });
+    const out = await t.pipeline.process(job());
+    expect(out.status).not.toBe('done');
+    expect(t.videoPoster.processVideo).not.toHaveBeenCalled();
+    expect(
+      t.prisma.client.asset.updateMany.mock.calls.some(([a]: any) => 'processingMeta' in a.data),
+    ).toBe(false);
+  });
+
+  it('a pass that reports nothing landed, or that THROWS, never un-swaps and never fails the job', async () => {
+    const incomplete = build({
+      asset: videoAsset({ processingMeta: ORIGINAL_FACTS }),
+      emergency: false,
+      outBytes: FIFTH,
+      outProbe: OUT_2160,
+      runOk: true,
+      servedFile: { probed: false, posterUrl: null },
+    });
+    const a = await incomplete.pipeline.process(job());
+    expect(a.status).toBe('done');
+    expect(a.reason).toBe('swapped');
+    expect(a.details).toMatchObject({ servedFile: { probed: false, poster: false } });
+    expect(incomplete.deleted).toEqual([]); // the copy is what the asset serves now
+
+    const throwing = build({
+      asset: videoAsset({ processingMeta: ORIGINAL_FACTS }),
+      emergency: false,
+      outBytes: FIFTH,
+      outProbe: OUT_2160,
+      runOk: true,
+      servedFile: 'throw',
+    });
+    const b = await throwing.pipeline.process(job());
+    expect(b.status).toBe('done');
+    expect(b.reason).toBe('swapped');
+    expect(b.details).toMatchObject({
+      servedFile: { probed: false, poster: false, error: 'poster service exploded' },
+    });
     expect(await tempLeftovers()).toEqual([]);
   });
 });

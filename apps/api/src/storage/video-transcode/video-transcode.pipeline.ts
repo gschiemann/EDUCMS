@@ -10,6 +10,8 @@
  *     → stream it to `<tenant>/optimized/<uuid>.mp4`
  *     → ONE conditional write swaps the asset's fileUrl — only while the asset
  *       still serves exactly the source and is still not in a protected playlist
+ *     → re-run the probe + poster (VideoPosterService) on the NEW file, so the
+ *       facts on the row describe what screens now download (see step 9)
  *
  * THE CONTRACT: `process` never throws and never breaks an asset. Every early
  * exit returns an outcome; the asset keeps serving its original unless the
@@ -25,12 +27,14 @@
  * MB of egress is never worth that window; those assets are skipped.
  */
 import { Injectable, Logger } from '@nestjs/common';
+import type { Prisma } from '@cms/database';
 import { randomUUID } from 'crypto';
 import { promises as fs } from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SupabaseStorageService } from '../supabase-storage.service';
+import { VideoPosterService } from '../video-poster.service';
 import { VIDEO_WARN_SIZE_BYTES } from '../media-optimization.service';
 import { sha256File } from '../storage-stream';
 import {
@@ -136,6 +140,54 @@ SELECT (
 
 const MB = 1024 * 1024;
 
+/**
+ * The `processingMeta` keys that describe ONE PARTICULAR FILE — the probe facts
+ * (`video-probe.ts`) the "Playback on screens" grade reads, plus the duration.
+ * A swap changes which file the row serves, so these are dropped in the same
+ * write that changes `fileUrl`: a grade that still says "10-bit HEVC" about a
+ * row now serving an 8-bit H.264 copy would send the operator re-exporting a
+ * file that is already fine, and a stale "4K" against a 1080p copy would fail
+ * the resolution rule for nothing. The worker re-probes the new file right
+ * after the swap (`refreshServedFileFacts`); until that lands the row honestly
+ * has no facts, and a failed re-probe may stamp it (`hasCurrentProbe` is false
+ * once these are gone) instead of contradicting facts that are already there.
+ */
+export const SERVED_FILE_FACT_KEYS = [
+  'probe',
+  'probedAt',
+  'probeFailed',
+  'probeFailedVersion',
+  'durationMs',
+] as const;
+
+/**
+ * What the swap writes into `processingMeta`: everything the row already held
+ * (an image-optimizer key, a future field) MINUS the per-file facts above, then
+ * the transcode's own keys on top. Pure; the spec pins the drop as a negative
+ * control. Anything that is not a JSON object is treated as empty.
+ */
+export function mergeTranscodeMeta(
+  existing: unknown,
+  transcode: Record<string, unknown>,
+): Record<string, unknown> {
+  const base: Record<string, unknown> =
+    existing && typeof existing === 'object' && !Array.isArray(existing)
+      ? { ...(existing as Record<string, unknown>) }
+      : {};
+  for (const key of SERVED_FILE_FACT_KEYS) delete base[key];
+  return { ...base, ...transcode };
+}
+
+/** What `refreshServedFileFacts` records on the job's `details`. */
+export interface ServedFileFacts {
+  /** The new file's ffprobe facts landed on the row (probe version 2). */
+  probed: boolean;
+  /** A poster was cut from the new file and hung on `posterUrl`. */
+  poster: boolean;
+  /** Present when the pass itself threw (it never should — VideoPosterService is never-throws by contract). */
+  error?: string;
+}
+
 @Injectable()
 export class VideoTranscodePipeline {
   private readonly logger = new Logger(VideoTranscodePipeline.name);
@@ -147,6 +199,10 @@ export class VideoTranscodePipeline {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: SupabaseStorageService,
+    // 2026-09-24 — the same probe + poster pass an upload gets, re-run on the
+    // optimized copy after a swap (step 9), so the grade and the poster describe
+    // the file screens actually download. Never throws by its own contract.
+    private readonly videoPoster: VideoPosterService,
   ) {}
 
   /** For the worker: can this replica transcode at all? */
@@ -187,6 +243,9 @@ export class VideoTranscodePipeline {
           mimeType: true,
           status: true,
           fileHash: true,
+          // Read for the swap's MERGE (step 8): Prisma's Json column has no
+          // partial update, and every key the transcode does not own survives.
+          processingMeta: true,
         },
       });
       if (!asset) return { status: 'skipped', reason: 'asset-deleted' };
@@ -386,7 +445,12 @@ export class VideoTranscodePipeline {
           // The hash of the bytes the NEW url serves — a stale hash here would
           // make the player's integrity check reject a perfectly good file.
           fileHash: sha256Out,
-          processingMeta: {
+          // MERGED over what the row holds, minus the facts that described the
+          // ORIGINAL file (SERVED_FILE_FACT_KEYS) — step 9 re-probes the copy
+          // and writes the served file's dimensions / duration / probe facts
+          // through the same `mergeProbeMeta` path an upload uses. Until then
+          // `processedDimensions` (the copy's size) is what the library reads.
+          processingMeta: mergeTranscodeMeta(asset.processingMeta, {
             originalSize: bytesIn,
             processedSize: bytesOut,
             originalDimensions:
@@ -402,7 +466,7 @@ export class VideoTranscodePipeline {
               seconds: details.seconds,
               savedBytes: bytesIn - bytesOut,
             },
-          } as any,
+          }) as Prisma.InputJsonObject,
         },
       });
       if (swapped.count === 0) {
@@ -451,6 +515,19 @@ export class VideoTranscodePipeline {
         `[transcode] asset ${asset.id} ${plan.rung.label}: ${Math.round(bytesIn / MB)} MB → ${Math.round(bytesOut / MB)} MB ` +
           `(${Math.round((1 - bytesOut / bytesIn) * 100)}% smaller) in ${details.seconds}s — swapped`,
       );
+
+      // ── 9. The facts on the row must describe the file screens now download. ──
+      // Runs AFTER the swap (the row's fileUrl is the copy) and BEFORE the job
+      // is marked done (the library refetches the list once on `done`, and by
+      // then the new grade + poster are on the row). Cheap: ffprobe reads the
+      // copy's headers over http and the poster grab seeks one keyframe — the
+      // copy is `+faststart`, so both are a few hundred KB of egress.
+      const servedFile = await this.refreshServedFileFacts(
+        asset.id,
+        job.tenantId,
+        outputPath,
+      );
+      details.servedFile = servedFile;
       return {
         status: 'done',
         reason: 'swapped',
@@ -476,6 +553,45 @@ export class VideoTranscodePipeline {
         await fs
           .rm(dir, { recursive: true, force: true })
           .catch(() => undefined);
+    }
+  }
+
+  /**
+   * Re-run the upload-time pass on the OPTIMIZED copy: probe version 2 →
+   * `processingMeta` (display dims, duration, codec facts — merged, so the
+   * transcode keys written a moment ago survive) and a poster cut from the
+   * copy → `posterUrl`. The swap already stands whatever happens here: a pass
+   * that cannot read the copy leaves the row with no facts (and, via the
+   * poster service's own stamp, a reason), which the hourly auto-heal and the
+   * operator's "Check this file" both know how to retry — it never un-swaps
+   * and never fails the job. Never throws.
+   */
+  private async refreshServedFileFacts(
+    assetId: string,
+    tenantId: string,
+    outputPath: string,
+  ): Promise<ServedFileFacts> {
+    try {
+      const r = await this.videoPoster.processVideo({
+        assetId,
+        tenantId,
+        mimeType: 'video/mp4',
+        storagePath: outputPath,
+        ext: '.mp4',
+      });
+      const out: ServedFileFacts = { probed: r.probed, poster: !!r.posterUrl };
+      if (!r.probed || !r.posterUrl) {
+        this.logger.warn(
+          `[transcode] asset ${assetId}: served-file refresh incomplete (probed=${r.probed}, poster=${!!r.posterUrl}) — the swap stands; the auto-heal / "Check this file" can retry the facts`,
+        );
+      }
+      return out;
+    } catch (e) {
+      const error = (e as Error)?.message ?? String(e);
+      this.logger.warn(
+        `[transcode] asset ${assetId}: served-file refresh threw (the swap stands): ${error}`,
+      );
+      return { probed: false, poster: false, error: error.slice(0, 300) };
     }
   }
 
