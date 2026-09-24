@@ -1,4 +1,5 @@
 import { createHash } from 'crypto';
+import { Readable } from 'stream';
 import type { Logger } from '@nestjs/common';
 import type { PrismaService } from '../prisma/prisma.service';
 
@@ -49,14 +50,32 @@ export async function backfillManagedAssetHashes(
   for (const a of rows) {
     try {
       const res = await fetch(a.fileUrl, { redirect: 'follow' });
-      if (!res.ok) continue;
-      const buf = Buffer.from(await res.arrayBuffer());
-      if (buf.length === 0) continue;
-      const fileHash = createHash('sha256').update(buf).digest('hex');
+      if (!res.ok || !res.body) continue;
+      // 2026-09-23 — HASH AS IT STREAMS. This used to be `Buffer.from(await
+      // res.arrayBuffer())`: the whole object in the API's heap. Direct uploads
+      // now reach 2 GB, and a boot that met one would hold 2 GB (twice, briefly)
+      // in the process that delivers lockdown alerts. Memory is now one chunk.
+      const hash = createHash('sha256');
+      let bytes = 0;
+      for await (const chunk of Readable.fromWeb(res.body as any)) {
+        hash.update(chunk as Buffer);
+        bytes += (chunk as Buffer).length;
+      }
+      if (bytes === 0) continue;
+      const fileHash = hash.digest('hex');
       // ten-ok: platform-wide boot maintenance job — deliberately cross-tenant and
       // therefore has no tenant to scope by. It writes ONE derived column (fileHash) on
       // rows it selected itself by `fileHash: null`, never on an id from a request.
-      await prisma.client.asset.update({ where: { id: a.id }, data: { fileHash } });
+      //
+      // CONDITIONAL on the row STILL serving the URL that was hashed and still
+      // having no hash (2026-09-23). A multi-gigabyte download takes minutes, and
+      // meanwhile the signage transcode can swap the asset to a new file WITH its
+      // own hash; an unconditional write here would stamp the ORIGINAL's hash onto
+      // the new file and the player's integrity check would refuse good media.
+      await prisma.client.asset.updateMany({
+        where: { id: a.id, fileUrl: a.fileUrl, fileHash: null },
+        data: { fileHash },
+      });
       hashed += 1;
     } catch {
       // best-effort — leave fileHash null and try again on the next boot

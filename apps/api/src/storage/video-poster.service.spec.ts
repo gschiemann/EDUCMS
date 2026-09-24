@@ -636,3 +636,53 @@ describe('poster and probe are independent — one failing never skips the other
     expect(datas.some((d: any) => 'posterUrl' in d)).toBe(true);
   });
 });
+
+describe('2026-09-23 — the download fallback is bounded (direct uploads reach 2 GB)', () => {
+  // The bound sits on the ONE memoised download both jobs share (`sourceFor`),
+  // so it protects the probe's byte fallback exactly as it protects the poster's.
+  it('skips the in-memory fallback for an object above the multipart ceiling', async () => {
+    fromUrl.mockResolvedValue({ ok: false, reason: 'ffmpeg exited 1' });
+    const storage = makeStorage({
+      download: jest.fn(async () => Buffer.from('video-bytes')),
+      getObjectInfo: jest.fn(async () => ({ size: 1536 * 1024 * 1024, contentType: 'video/mp4' })),
+    });
+    const { service } = make({ storage });
+    const url = await service.generateForAsset({ ...JOB, storagePath: 'tenant-1/big.mp4' });
+    expect(url).toBeNull();
+    expect(storage.download).not.toHaveBeenCalled();
+  });
+
+  it('the probe shares the bound: over it, no download and the row is stamped with the size reason', async () => {
+    probeFromUrl.mockResolvedValue({ ok: false, reason: 'ffprobe exited 1' });
+    const storage = makeStorage({
+      download: jest.fn(async () => Buffer.from('video-bytes')),
+      getObjectInfo: jest.fn(async () => ({ size: 1536 * 1024 * 1024, contentType: 'video/mp4' })),
+    });
+    const { service, prisma } = make({ storage });
+    await expect(service.probeForAsset({ ...JOB, storagePath: 'tenant-1/big.mp4' })).resolves.toBe(false);
+    expect(storage.download).not.toHaveBeenCalled();
+    expect(probeFromBuffer).not.toHaveBeenCalled();
+    expect(writtenMeta(prisma).probeFailed).toContain('too-large-for-download-fallback (1536 MB)');
+  });
+
+  it('a storage that cannot report a size falls through to the download as before', async () => {
+    fromUrl.mockResolvedValue({ ok: false, reason: 'ffmpeg exited 1' });
+    fromBuffer.mockResolvedValue(OK);
+    const storage = makeStorage({ download: jest.fn(async () => Buffer.from('video-bytes')) }); // no getObjectInfo
+    const { service } = make({ storage });
+    expect(await service.generateForAsset({ ...JOB, storagePath: 'tenant-1/abc.mp4' })).toContain('/posters/');
+    expect(storage.download).toHaveBeenCalledWith('tenant-1/abc.mp4');
+  });
+
+  it('still falls back for an object within it', async () => {
+    fromUrl.mockResolvedValue({ ok: false, reason: 'ffmpeg exited 1' });
+    fromBuffer.mockResolvedValue(OK);
+    const storage = makeStorage({
+      download: jest.fn(async () => Buffer.from('video-bytes')),
+      getObjectInfo: jest.fn(async () => ({ size: 40 * 1024 * 1024, contentType: 'video/mp4' })),
+    });
+    const { service } = make({ storage });
+    await service.generateForAsset({ ...JOB, storagePath: 'tenant-1/abc.mp4' });
+    expect(storage.download).toHaveBeenCalledWith('tenant-1/abc.mp4');
+  });
+});

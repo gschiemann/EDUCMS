@@ -403,7 +403,9 @@ RUN set -eu; \
     command -v ffmpeg >/dev/null 2>&1 \
       || { echo "FATAL: ffmpeg missing — MediaOptimizationService shells out to it"; exit 1; }; \
     command -v ffprobe >/dev/null 2>&1 \
-      || { echo "FATAL: ffprobe missing — VideoPosterService reads every uploaded video's dimensions/duration with it (Alpine's ffmpeg package ships it; a slimmer split package would drop it)"; exit 1; }; \
+      || { echo "FATAL: ffprobe missing — VideoPosterService reads every uploaded video's dimensions/duration with it and VideoTranscodeWorker probes every transcode input/output (Alpine's ffmpeg package ships it; a slimmer split package would drop it)"; exit 1; }; \
+    ffmpeg -hide_banner -encoders 2>/dev/null | grep -q libx264 \
+      || { echo "FATAL: this ffmpeg has no libx264 encoder — the signage video profile is H.264 High (storage/video-transcode)"; exit 1; }; \
     echo "[dockerfile] verifying the pinned Supabase root CA"; \
     test -r /etc/ssl/venueos/supabase-prod-ca-2021.crt \
       || { echo "FATAL: the database TLS trust anchor is missing from the image. Any DATABASE_URL carrying sslaccept=strict&sslcert=/etc/ssl/venueos/supabase-prod-ca-2021.crt would fail to connect AT BOOT."; exit 1; }; \

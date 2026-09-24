@@ -76,6 +76,21 @@ import {
  * any reason we fall back to downloading the object — ONCE, shared by both
  * jobs (`VideoSource.download` is memoised) — and work from bytes.
  */
+/**
+ * Largest object the in-memory download fallback will pull (2026-09-23): the
+ * multipart upload ceiling, i.e. the most this path ever held before direct
+ * uploads reached 2 GB.
+ */
+export const POSTER_FALLBACK_MAX_BYTES = 500 * 1024 * 1024;
+
+/**
+ * Largest object the in-memory download fallback will pull (2026-09-23): the
+ * multipart upload ceiling, i.e. the most this path ever held before direct
+ * uploads reached 2 GB. Bounds BOTH jobs — the probe and the poster share the
+ * one memoised download (`sourceFor`).
+ */
+export const POSTER_FALLBACK_MAX_BYTES = 500 * 1024 * 1024;
+
 @Injectable()
 export class VideoPosterService {
   private readonly logger = new Logger(VideoPosterService.name);
@@ -313,20 +328,46 @@ export class VideoPosterService {
     const buffer = args.buffer && args.buffer.length > 0 ? args.buffer : null;
     const storagePath = args.storagePath || null;
     let pending: Promise<Buffer | null> | null = null;
-    return {
+    const source: VideoSource = {
       buffer,
       ext: args.ext ?? null,
       // Trusted prefix = the public-URL shape THIS service builds. Anything
       // that doesn't start with it never reaches a decoder.
       url: storagePath ? this.storage.publicUrlForPath(storagePath) : null,
       trustedPrefix: storagePath ? this.storage.publicUrlForPath('') : '',
+      downloadSkipped: null,
       download: () => {
         if (!storagePath) return Promise.resolve(null);
-        if (!pending)
-          pending = this.storage.download(storagePath).catch(() => null);
+        if (!pending) pending = this.boundedDownload(storagePath, source);
         return pending;
       },
     };
+    return source;
+  }
+
+  /**
+   * The ONE full download both jobs fall back to — BOUNDED (2026-09-23).
+   * `download()` holds the WHOLE object in this process's memory, and direct
+   * uploads now reach 2 GB. Above the multipart ceiling (the most this path
+   * ever held before) the fallback is skipped rather than risk the API's
+   * heap: the probe and the poster each report `too-large-for-download-
+   * fallback`, and a NULL poster / no dimensions is a supported state. The
+   * size comes from one HEAD-style object read; a storage that cannot answer
+   * it falls through to the download exactly as before.
+   */
+  private async boundedDownload(
+    storagePath: string,
+    source: VideoSource,
+  ): Promise<Buffer | null> {
+    const info =
+      typeof this.storage.getObjectInfo === 'function'
+        ? await this.storage.getObjectInfo(storagePath).catch(() => null)
+        : null;
+    if (typeof info?.size === 'number' && info.size > POSTER_FALLBACK_MAX_BYTES) {
+      source.downloadSkipped = `too-large-for-download-fallback (${Math.round(info.size / (1024 * 1024))} MB)`;
+      return null;
+    }
+    return this.storage.download(storagePath).catch(() => null);
   }
 
   /**
@@ -348,9 +389,14 @@ export class VideoPosterService {
 
     // Fallback: pull the bytes back and try locally. Costs egress, so it is
     // second — but a poster we can only get this way is still worth having.
+    // The download is BOUNDED (`sourceFor`): above POSTER_FALLBACK_MAX_BYTES
+    // it resolves null and says why, and a NULL poster is a supported state.
     const bytes = await source.download();
     if (!bytes || bytes.length === 0) {
-      return { ok: false, reason: `url:${viaUrl.reason}; download-miss` };
+      return {
+        ok: false,
+        reason: `url:${viaUrl.reason}; ${source.downloadSkipped ?? 'download-miss'}`,
+      };
     }
     const viaBytes = await extractVideoPosterFromBuffer(bytes, source.ext);
     if (viaBytes.ok) return viaBytes;
@@ -370,7 +416,10 @@ export class VideoPosterService {
 
     const bytes = await source.download();
     if (!bytes || bytes.length === 0) {
-      return { ok: false, reason: `url:${viaUrl.reason}; download-miss` };
+      return {
+        ok: false,
+        reason: `url:${viaUrl.reason}; ${source.downloadSkipped ?? 'download-miss'}`,
+      };
     }
     const viaBytes = await probeVideoFromBuffer(bytes, source.ext);
     if (viaBytes.ok) return viaBytes;
@@ -407,6 +456,8 @@ export interface VideoSource {
   /** Object URL built from SUPABASE_URL + storage path; null without a path. */
   readonly url: string | null;
   readonly trustedPrefix: string;
-  /** Memoised full download of the object; null without a path or on failure. */
+  /** Memoised full download of the object; null without a path, on failure, or when over the bound. */
   download(): Promise<Buffer | null>;
+  /** Set when `download()` was skipped for size, so both ladders can say why instead of `download-miss`. */
+  downloadSkipped: string | null;
 }
