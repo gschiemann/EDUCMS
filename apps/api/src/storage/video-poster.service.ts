@@ -79,13 +79,6 @@ import {
 /**
  * Largest object the in-memory download fallback will pull (2026-09-23): the
  * multipart upload ceiling, i.e. the most this path ever held before direct
- * uploads reached 2 GB.
- */
-export const POSTER_FALLBACK_MAX_BYTES = 500 * 1024 * 1024;
-
-/**
- * Largest object the in-memory download fallback will pull (2026-09-23): the
- * multipart upload ceiling, i.e. the most this path ever held before direct
  * uploads reached 2 GB. Bounds BOTH jobs — the probe and the poster share the
  * one memoised download (`sourceFor`).
  */
