@@ -29,10 +29,14 @@
  *                          (IntersectionObserver) to avoid burning
  *                          CPU on a list scrolled past.
  *
- *   - Video playlist     → first video, preloaded with metadata and
- *                          seeked to 0.1s so the browser paints a
- *                          real first frame. NO autoplay — that
- *                          would be noisy and burn bandwidth.
+ *   - Video playlist     → first video's poster frame (Asset.posterUrl)
+ *                          as an <img>; a mouse hovering the tile plays
+ *                          it muted, leaving brings the poster back.
+ *                          Never autoplays on mount, never on touch;
+ *                          no video bytes until a real hover. A video
+ *                          with no poster falls back to a first-frame
+ *                          <video preload="metadata">. See
+ *                          VideoPreviewThumb.tsx.
  *
  *   - Mixed playlist     → 2×2 grid of the first up-to-4 items.
  *                          Same rendering as a single tile per cell.
@@ -66,6 +70,7 @@ import { LayoutTemplate, Image as ImageIcon, Video, Globe, Music, Layers, Play, 
 import { ScaledTemplateThumbnail } from '@/components/templates/ScaledTemplateThumbnail';
 import { PdfHoverThumb } from '@/components/assets/PdfHoverThumb';
 import { transformedImageUrl } from '@/lib/asset-image';
+import { VideoPreviewThumb, assetPosterUrl } from './VideoPreviewThumb';
 
 const apiBase = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1').replace('/api/v1', '');
 
@@ -204,20 +209,20 @@ function StaticAssetFrame({ asset, className }: { asset: any; className?: string
     );
   }
   if (asset?.mimeType?.startsWith('video/')) {
-    // 2026-05-30 — EGRESS FIX: preload="none" so dashboard/playlist
-    // tile videos don't auto-download the video bytes. Instead we
-    // show a neutral dark placeholder with a play-icon overlay. The
-    // video only fetches when the user explicitly interacts (click
-    // into the playlist detail or preview). This eliminates the
-    // biggest per-render bandwidth cost for video assets.
-    //
-    // Previous approach: `preload="auto"` + `#t=0.5` fragment caused
-    // the browser to eagerly buffer the video on every tile mount —
-    // a 60-item playlist grid would hammer Supabase with 60 full-res
-    // video byte-range requests every page load.
+    // 2026-09-24 — the poster frame at rest, hover to play. Greg: "playlist
+    // videos also arent showing and previews of the content" — this cell
+    // was a bare dark mat with a play glyph, deliberately, since 2026-05-30
+    // (a <video preload="auto"> per tile had 60-card grids hammering
+    // Supabase with full-res byte-range requests on every page load). The
+    // poster keeps that win: it is a few-KB JPEG, and the video behind it
+    // is preload="none" until a real pointer hovers. A video with no poster
+    // falls back to the asset library's first-frame approach — see
+    // VideoPreviewThumb. The mat stays underneath so a letterboxed poster
+    // and the no-poster state read the same.
     return (
       <div className={`relative bg-slate-800 ${className || ''}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        {/* Play icon placeholder — shown until user interacts */}
+        <VideoPreviewThumb src={url} posterUrl={assetPosterUrl(asset)} className="w-full h-full object-contain" />
+        {/* Play glyph — says "video" whether the poster is there or not */}
         <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
           <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'rgba(255,255,255,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Play style={{ width: 14, height: 14, color: '#fff' }} fill="#fff" aria-hidden="true" />
