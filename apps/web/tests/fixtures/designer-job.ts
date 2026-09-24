@@ -213,21 +213,28 @@ export function capReachedError(resetDay = 'October 1'): ProducedError {
 }
 
 /**
- * The body of `export function <name>(…): string { … }` in a source file — the producer's own code,
- * lifted out so it runs without loading its module (and that module's import graph).
+ * The body of `export function <name>(…) { … }` in a source file — the producer's own code, lifted
+ * out so it runs without loading its module (and that module's import graph). The parameter list
+ * is matched by parentheses (its object types may hold braces); an optional `: ReturnType` may
+ * follow, as long as it has no braces of its own. The body must be plain JavaScript.
  */
 export function exportedFunctionBody(src: string, name: string): string {
-  const start = src.indexOf(`export function ${name}(`);
-  if (start < 0) throw new Error(`designer-job fixture: ${name} is no longer exported where this fixture reads it`);
-  const open = src.indexOf('): string {', start);
-  if (open < 0) throw new Error(`designer-job fixture: ${name} no longer returns a string`);
-  let i = src.indexOf('{', open);
+  const head = `export function ${name}(`;
+  const start = src.indexOf(head);
+  if (start < 0) throw new Error(`fixture: ${name} is no longer exported where this fixture reads it`);
+  let i = start + head.length - 1;
+  for (let depth = 0; i < src.length; i++) {
+    if (src[i] === '(') depth++;
+    else if (src[i] === ')' && --depth === 0) break;
+  }
+  i = src.indexOf('{', i);
+  if (i < 0) throw new Error(`fixture: ${name} has no body`);
   const bodyStart = i + 1;
   for (let depth = 0; i < src.length; i++) {
     if (src[i] === '{') depth++;
     else if (src[i] === '}' && --depth === 0) return src.slice(bodyStart, i);
   }
-  throw new Error(`designer-job fixture: ${name}'s body never closes`);
+  throw new Error(`fixture: ${name}'s body never closes`);
 }
 
 export interface BoardsCapOptions {
