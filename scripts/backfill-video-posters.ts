@@ -81,7 +81,7 @@ import {
   type BackfillAssetRow,
   type MakePosterResult,
 } from '../apps/api/src/storage/video-poster-backfill';
-import { runProbeBackfill } from '../apps/api/src/storage/video-probe-backfill';
+import { needsProbeSql, runProbeBackfill } from '../apps/api/src/storage/video-probe-backfill';
 import {
   extractVideoPosterFromBuffer,
   extractVideoPosterFromUrl,
@@ -91,7 +91,6 @@ import {
 import {
   buildProbeFailureMeta,
   buildProbeMeta,
-  PROBE_VERSION,
   probeVideoFromBuffer,
   probeVideoFromUrl,
   type ProbeOutcome,
@@ -209,52 +208,9 @@ async function uploadPoster(
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-/**
- * "This video row still has no usable dimensions" — as SQL, because Prisma's
- * JSON filters cannot express "key missing or not a number" and the SAME
- * predicate has to sit inside the UPDATE that writes them (the probe pass's
- * `persist`): the guard and the write in one statement is what makes the pass
- * idempotent under a concurrent run or an upload-time probe. `jsonb_typeof(NULL)`
- * is NULL, so a NULL column, an empty object and a missing key all qualify.
- */
-const NO_USABLE_DIMS = Prisma.sql`jsonb_typeof(processing_meta->'originalDimensions'->'w') IS DISTINCT FROM 'number'`;
-
-/** The current `PROBE_VERSION` as a jsonb literal — `'2'::jsonb` is the number 2. */
-const PROBE_VERSION_JSONB = Prisma.sql`${JSON.stringify(PROBE_VERSION)}::jsonb`;
-
-/**
- * "This video row has no CURRENT probe" — the SQL twin of `!hasCurrentProbe()`
- * in video-probe.ts: no usable dimensions, OR a `probe.probeVersion` that is
- * not the current `PROBE_VERSION`. A row today's version-1 pass wrote (dims,
- * no version marker) matches once; the version-2 write stamps the marker and
- * it never matches again. Compared as jsonb against the number itself rather
- * than `(...->>'probeVersion')::int`, so a non-numeric value in that slot (we
- * never write one, but a cast would make the WHOLE pass throw) simply counts
- * as "not current" and is re-probed — the same answer the in-process guard
- * gives, which is the point of a twin.
- */
-const NO_CURRENT_PROBE = Prisma.sql`(${NO_USABLE_DIMS} OR processing_meta->'probe'->'probeVersion' IS DISTINCT FROM ${PROBE_VERSION_JSONB})`;
-
-/**
- * "The current probe version already FAILED on this row" — the twin of
- * `hasCurrentProbeFailure()`: a `probeFailed` string plus `probeFailedVersion`
- * equal to the current version (the stamp the API writes at upload time, and
- * this pass writes in `persistFailure`). COALESCE'd to false so NULL meta can
- * never make the surrounding NOT go NULL and silently drop candidates.
- */
-const CURRENT_PROBE_FAILURE = Prisma.sql`COALESCE(jsonb_typeof(processing_meta->'probeFailed') = 'string' AND processing_meta->'probeFailedVersion' = ${PROBE_VERSION_JSONB}, false)`;
-
-/**
- * "This video row still needs a probe" — the twin of `needsProbe()`: no current
- * probe, and not already failed by the current version either — a permanently
- * unreadable file is tried ONCE per version, not on every run. `--retry-failed`
- * drops the second clause for one run. This is the candidate filter AND the
- * guard inside both writes (facts and failure stamp), so a re-run or a
- * concurrent run can never overwrite what the current version already wrote.
- */
-const NEEDS_PROBE = RETRY_FAILED
-  ? NO_CURRENT_PROBE
-  : Prisma.sql`(${NO_CURRENT_PROBE} AND NOT ${CURRENT_PROBE_FAILURE})`;
+// The candidate predicate — one SQL twin shared with the API's auto-heal cron,
+// defined next to the loop it guards (apps/api/src/storage/video-probe-backfill.ts).
+const NEEDS_PROBE = needsProbeSql(RETRY_FAILED);
 
 async function main() {
   const supaUrl = (process.env.SUPABASE_URL || '').trim().replace(/\/+$/, '');

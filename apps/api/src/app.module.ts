@@ -148,6 +148,7 @@ import { StorageWatchdogService } from './storage/storage-watchdog.service';
 import { PlatformHealthMonitorService } from './health/platform-health-monitor.service';
 import { MediaOptimizationService } from './storage/media-optimization.service';
 import { VideoPosterService } from './storage/video-poster.service';
+import { VideoProbeAutoHealCron } from './storage/video-probe-autoheal.cron';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { RbacGuard } from './auth/rbac.guard';
 import { SentryModule } from '@sentry/nestjs/setup';
@@ -300,6 +301,12 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     // picker stops drawing blank grey tiles. Fire-and-forget by contract; see
     // video-poster.service.ts.
     VideoPosterService,
+    // 2026-09-24 — grades every video that predates the upload probe: shortly
+    // after boot and then hourly, the leader probes (and posters) a bounded
+    // batch of rows with no current encode facts, so the "Playback on screens"
+    // grade appears on the whole library without anyone running the CLI
+    // backfill. See video-probe-autoheal.cron.ts.
+    VideoProbeAutoHealCron,
     // Server-side URL renderer (Puppeteer + Alpine Chromium). Used by
     // ProxyController to handle JS-heavy / AJAX-loaded sites that the
     // legacy strip-scripts proxy can't render. See renderer.service.ts.

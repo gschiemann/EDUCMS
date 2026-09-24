@@ -151,9 +151,11 @@ describe('videoEncodeFactsFromProcessingMeta — the API shape', () => {
   it('an image row (sharp metadata, no probe) and an unprobed row are not video facts', () => {
     expect(videoEncodeFactsFromProcessingMeta(null)).toBeNull();
     expect(videoEncodeFactsFromProcessingMeta({ originalSize: 12, processedSize: 8 })).toBeNull();
-    // Dimensions without a probe block still grade — a video whose probe is
-    // pending but whose size is known.
-    expect(gradeVideoProcessingMeta({ originalDimensions: { w: 3840, h: 2160 } }).grade).toBe('red');
+    // Dimensions without a probe block do NOT grade (2026-09-24): a size alone
+    // knows nothing about the codec, and "plays smoothly" must never be said
+    // from one. The probe writes size and facts together, so a real video row
+    // never has one without the other.
+    expect(gradeVideoProcessingMeta({ originalDimensions: { w: 3840, h: 2160 } }).grade).toBe('unknown');
     expect(gradeVideoProcessingMeta('garbage').grade).toBe('unknown');
   });
 });
@@ -165,5 +167,12 @@ describe('videoCodecLabel', () => {
     expect(videoCodecLabel('prores')).toBe('ProRes');
     expect(videoCodecLabel('xyz')).toBe('XYZ');
     expect(videoCodecLabel(null)).toBe('unknown codec');
+  });
+});
+
+describe('videoEncodeFactsFromProcessingMeta — dimensions alone never grade', () => {
+  it('returns null for a row that carries a size but no probe block', () => {
+    expect(videoEncodeFactsFromProcessingMeta({ originalDimensions: { w: 1920, h: 1080 } })).toBeNull();
+    expect(gradeVideoProcessingMeta({ originalDimensions: { w: 1920, h: 1080 }, probedAt: '2026-09-24T00:00:00Z', probeFailed: 'ffprobe: moov atom not found' }).grade).toBe('unknown');
   });
 });

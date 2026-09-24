@@ -34,11 +34,63 @@ import {
 } from './asset-backfill-loop';
 import {
   describeProbe,
+  PROBE_VERSION,
   type ProbeOutcome,
   type ProbeSuccess,
 } from './video-probe';
+import { Prisma } from '@cms/database';
 
 export type { BackfillAssetRow } from './asset-backfill-loop';
+
+// ── The candidate predicate, as SQL ─────────────────────────────────────────
+// Prisma's JSON filters cannot express "key missing or not a number", and the
+// SAME predicate has to sit inside the UPDATE that writes the facts (the guard
+// and the write in one statement is what makes a pass idempotent under a
+// concurrent run or an upload-time probe). Shared by the CLI backfill
+// (scripts/backfill-video-posters.ts) and the in-API auto-heal cron
+// (video-probe-autoheal.cron.ts), so the two can never disagree about which
+// rows still need a probe. In-process twin: `needsProbe()` in video-probe.ts.
+
+/**
+ * "This video row still has no usable dimensions". `jsonb_typeof(NULL)` is
+ * NULL, so a NULL column, an empty object and a missing key all qualify.
+ */
+export const NO_USABLE_DIMS_SQL = Prisma.sql`jsonb_typeof(processing_meta->'originalDimensions'->'w') IS DISTINCT FROM 'number'`;
+
+/** The current `PROBE_VERSION` as a jsonb literal — `'2'::jsonb` is the number 2. */
+const PROBE_VERSION_JSONB = Prisma.sql`${JSON.stringify(PROBE_VERSION)}::jsonb`;
+
+/**
+ * "This video row has no CURRENT probe" — the SQL twin of `!hasCurrentProbe()`:
+ * no usable dimensions, OR a `probe.probeVersion` that is not the current
+ * `PROBE_VERSION`. A row the version-1 pass wrote (dims, no version marker)
+ * matches once; the version-2 write stamps the marker and it never matches
+ * again. Compared as jsonb against the number itself rather than
+ * `(...->>'probeVersion')::int`, so a non-numeric value in that slot (we never
+ * write one, but a cast would make the WHOLE pass throw) simply counts as
+ * "not current" and is re-probed — the same answer the in-process guard gives.
+ */
+export const NO_CURRENT_PROBE_SQL = Prisma.sql`(${NO_USABLE_DIMS_SQL} OR processing_meta->'probe'->'probeVersion' IS DISTINCT FROM ${PROBE_VERSION_JSONB})`;
+
+/**
+ * "The current probe version already FAILED on this row" — the twin of
+ * `hasCurrentProbeFailure()`: a `probeFailed` string plus `probeFailedVersion`
+ * equal to the current version. COALESCE'd to false so NULL meta can never
+ * make the surrounding NOT go NULL and silently drop candidates.
+ */
+export const CURRENT_PROBE_FAILURE_SQL = Prisma.sql`COALESCE(jsonb_typeof(processing_meta->'probeFailed') = 'string' AND processing_meta->'probeFailedVersion' = ${PROBE_VERSION_JSONB}, false)`;
+
+/**
+ * "This video row still needs a probe" — the twin of `needsProbe()`: no
+ * current probe, and not already failed by the current version either, so a
+ * permanently unreadable file is tried ONCE per version, not on every run.
+ * `retryFailed` drops the second clause (the CLI's `--retry-failed`).
+ */
+export function needsProbeSql(retryFailed = false): Prisma.Sql {
+  return retryFailed
+    ? NO_CURRENT_PROBE_SQL
+    : Prisma.sql`(${NO_CURRENT_PROBE_SQL} AND NOT ${CURRENT_PROBE_FAILURE_SQL})`;
+}
 
 export interface ProbeBackfillDeps {
   /** Total rows matching the candidate filter (video + no current probe [+ tenant]). */

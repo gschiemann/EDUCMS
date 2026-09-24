@@ -259,7 +259,11 @@ export function videoEncodeFactsFromProcessingMeta(meta: unknown): VideoEncodeFa
   const dims = m.originalDimensions && typeof m.originalDimensions === 'object'
     ? (m.originalDimensions as Record<string, unknown>)
     : null;
-  if (!probe && !dims) return null;
+  // No probe block, no grade. Dimensions alone (an old image-optimizer-style
+  // row, or a failed probe stamped over nothing) would grade a 1080p file
+  // "green" knowing nothing about its codec, and "plays smoothly on every
+  // screen" must never be said from a size.
+  if (!probe) return null;
 
   const str = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v : null);
   const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);

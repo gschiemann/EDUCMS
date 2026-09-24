@@ -102,6 +102,10 @@ export const LEASE = {
   // 2026-09-22 — daily AI model catalog sync. Leased because it WRITES the one shared catalog row
   // and spends a canary call per new model: two replicas would double both and race the write.
   AI_MODEL_SYNC: 'ai:model-sync',
+  // 2026-09-24 — hourly re-probe of videos with no current encode facts. Leased because every
+  // candidate costs a storage read + ffprobe (+ a poster grab): two replicas would spend it twice
+  // and race the same rows' processingMeta merge.
+  VIDEO_PROBE_AUTOHEAL: 'storage:video-probe-autoheal',
 } as const;
 
 export type LeaseName = (typeof LEASE)[keyof typeof LEASE];
