@@ -133,6 +133,15 @@ async function shot(page: Page, name: string) {
   await page.screenshot({ path: path.join(dir, `${test.info().project.name}-passkey-${name}.png`) });
 }
 
+/**
+ * Exactly the app's own support check (`passkeysSupported` → simplewebauthn's
+ * `browserSupportsWebAuthn`): `PublicKeyCredential` must be a FUNCTION. CI's Linux WebKit
+ * defines the name without the constructor, so the entry and the Add panel are (correctly)
+ * absent there — a test that expected them would be testing the browser, not the product.
+ */
+const webAuthnCapable = (page: Page) =>
+  page.evaluate(() => typeof (window as unknown as { PublicKeyCredential?: unknown }).PublicKeyCredential === 'function');
+
 /** The avatar button carries the operator's email as its title. */
 const avatar = (page: Page) => page.getByTitle(EMAIL).first();
 
@@ -145,9 +154,8 @@ test.describe('Passkeys — the always-there way to set one up', () => {
     await page.goto(`/${SCHOOL_ID}/templates`, { waitUntil: 'domcontentloaded' });
     await expect(avatar(page)).toBeVisible({ timeout: 60_000 });
 
-    // The entry exists only on a device that can hold a passkey — WebKit's headless build may not.
-    const capable = await page.evaluate(() => typeof window.PublicKeyCredential !== 'undefined');
-    test.skip(!capable, 'this browser build has no WebAuthn — the entry is (correctly) absent');
+    // The entry exists only on a device that can hold a passkey — a headless build may not.
+    test.skip(!(await webAuthnCapable(page)), 'this browser build has no WebAuthn — the entry is (correctly) absent');
 
     await avatar(page).click();
     const entry = page.getByTestId('passkey-menu-entry');
@@ -212,6 +220,8 @@ test.describe('Passkeys — the always-there way to set one up', () => {
     const a = api();
     await signedIn(page, a);
     await page.goto(`/${SCHOOL_ID}/settings/security?add=passkey`, { waitUntil: 'domcontentloaded' });
+    await expect(avatar(page)).toBeVisible({ timeout: 60_000 });
+    test.skip(!(await webAuthnCapable(page)), 'this browser build has no WebAuthn — the Add panel is (correctly) absent');
     const password = page.locator('#passkey-add-password');
     await expect(password).toBeVisible({ timeout: 60_000 });
     await password.fill('not it');
