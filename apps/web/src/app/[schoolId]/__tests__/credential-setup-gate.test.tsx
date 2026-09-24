@@ -13,6 +13,7 @@
  * of the gate is that the chrome and its dozen data hooks NEVER MOUNT, and
  * asserting the marker's absence is the direct proof of that.
  */
+import type React from 'react';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 
 jest.mock('next/navigation', () => ({
@@ -20,6 +21,16 @@ jest.mock('next/navigation', () => ({
 }));
 
 // The chrome must never mount behind the gate — a marker makes that assertable.
+// 2026-09-24 — the school layout now mounts EncodeTargetProvider (React Query) around its
+// children (7bfe050d); this suite tests the credential gate, not the encode target, and renders
+// the layout without a QueryClient — so the provider is a pass-through here, like DashboardLayout.
+jest.mock('@/hooks/use-encode-target', () => ({
+  EncodeTargetProvider: ({ children }: { children: React.ReactNode }) => children,
+  EncodeTargetContext: () => ({ data: undefined, isLoading: false }),
+  ENCODE_TARGET_QUERY_KEY: () => ({ data: undefined, isLoading: false }),
+  useEncodeTarget: () => ({ data: undefined, isLoading: false }),
+}));
+
 jest.mock('@/components/layout/DashboardLayout', () => ({
   DashboardLayout: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="dashboard-chrome">{children}</div>
