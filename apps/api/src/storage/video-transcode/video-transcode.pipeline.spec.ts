@@ -459,7 +459,7 @@ describe('VideoTranscodePipeline — never worse', () => {
     });
   });
 
-  it('a source that already IS the profile is skipped without running ffmpeg', async () => {
+  it('an already optimized 4K source keeps its primary file while attempting a 1080p copy', async () => {
     const optimal = { ...OUT_2160, bitRate: 12_000_000, fps: 30 };
     const t = build({
       asset: videoAsset(),
@@ -473,7 +473,8 @@ describe('VideoTranscodePipeline — never worse', () => {
       status: 'skipped',
       reason: 'already-optimal',
     });
-    expect(t.runner.transcode).not.toHaveBeenCalled();
+    expect(t.runner.transcode).toHaveBeenCalledTimes(1);
+    expect(t.prisma.client.asset.updateMany.mock.calls.some(([args]: any) => 'fileUrl' in args.data)).toBe(false);
   });
 });
 
@@ -655,7 +656,7 @@ describe('VideoTranscodePipeline — bounded resources', () => {
     expect(t.storage.downloadObjectToFile).not.toHaveBeenCalled();
   });
 
-  it('the download is capped just above the recorded size, and -fs bounds the output at the source size', async () => {
+  it('bounds both the primary output and the decoder-sized copy', async () => {
     const t = build({
       asset: videoAsset(),
       emergency: false,
@@ -666,9 +667,11 @@ describe('VideoTranscodePipeline — bounded resources', () => {
     await t.pipeline.process(job());
     const opts = t.storage.downloadObjectToFile.mock.calls[0][2];
     expect(opts.maxBytes).toBe(Math.floor(SOURCE_BYTES * 1.01) + MB);
-    const args = t.transcodeArgs!;
-    expect(args[args.indexOf('-fs') + 1]).toBe(String(SOURCE_BYTES));
-    expect(args[args.indexOf('-threads') + 1]).toBe('2');
+    const primaryArgs = t.runner.transcode.mock.calls[0][0];
+    const renditionArgs = t.runner.transcode.mock.calls[1][0];
+    expect(primaryArgs[primaryArgs.indexOf('-fs') + 1]).toBe(String(SOURCE_BYTES));
+    expect(renditionArgs[renditionArgs.indexOf('-fs') + 1]).toBe(String(256 * MB));
+    expect(primaryArgs[primaryArgs.indexOf('-threads') + 1]).toBe('2');
   });
 
   it('a download failure (storage blip) fails soft and cleans up', async () => {

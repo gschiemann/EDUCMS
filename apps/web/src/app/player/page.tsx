@@ -3308,6 +3308,9 @@ function PlayerPage() {
   // `playlistItemsSig` effect below) so a republish always gets a clean
   // slate rather than inheriting stale failure state.
   const [allAssetsFailed, setAllAssetsFailed] = useState(false);
+  // A live carousel is not evidence that its current media loaded. This only
+  // becomes true after <video> fires onPlaying or an image/iframe fires onLoad.
+  const [mediaReady, setMediaReady] = useState(false);
   // Pure tracking logic lives in a small, independently unit-tested class
   // (see all-assets-failed-tracker.test.ts) so the "every item has failed"
   // detection doesn't need the full ~8000-line page component mounted to
@@ -4829,7 +4832,8 @@ function PlayerPage() {
     // isn't operator content — we only want to assert "the content the
     // operator scheduled is on screen").
     const emergencyOn = !!activeEmergency || phase === 'emergency';
-    const playingContent = phase === 'playing' && !!playlist && !playbackStopped;
+    const playingContent = phase === 'playing' && !!playlist && !playbackStopped && !allAssetsFailed &&
+      (mediaReady || !!(playlist as any)?.template);
     const rendering = emergencyOn || playingContent;
     // Short content signature so lastRenderedHash is meaningful for
     // proof-of-display / incident replay without shipping a giant payload.
@@ -4856,6 +4860,12 @@ function PlayerPage() {
     // under an `idle:` signature so nothing downstream can mistake it for
     // proof that OPERATOR CONTENT is on the glass. See the POST below.
     if (!rendering) sig = `idle:${phase}`;
+    if (!emergencyOn && allAssetsFailed && !playbackStopped) {
+      kind = 'idle';
+      sig = 'idle:content-unavailable';
+    } else if (!emergencyOn && !!playlist && !playbackStopped && !mediaReady && !(playlist as any)?.template) {
+      sig = 'idle:content-loading';
+    }
     // ── PAUSED IS A DIFFERENT FACT FROM IDLE (2026-09-01, TC22 field find) ──
     // An operator who stops playback from the remote (Back → Stop) parks the
     // screen on the connected splash with the schedule STILL assigned. That
@@ -4869,7 +4879,7 @@ function PlayerPage() {
       sig = `paused:${currentPlaylistSigRef.current || (playlist as any)?.id || 'unknown'}`;
     }
     renderStateRef.current = { rendering, sig: sig.slice(0, 128), kind };
-  }, [phase, playlist, playbackStopped, activeEmergency]);
+  }, [phase, playlist, playbackStopped, activeEmergency, allAssetsFailed, mediaReady]);
 
   // The rAF paint counter. One loop for the lifetime of the page; it only
   // advances when the compositor paints. We DON'T gate the loop on
@@ -6241,6 +6251,13 @@ function PlayerPage() {
               // fall back to a normalized URL for legacy manifests.
               id: `${mp.id || mp.name || 'pl'}:${item.sequence ?? itemIndex}:${itemIdentity}`,
               manifestKey: itemIdentity,
+              // The same PlaylistItem can point at a newly optimized file.
+              // Fold in the served bytes' identity so a changed URL/hash
+              // actually remounts the video instead of returning "same
+              // playlist" with the old URL for up to an entire session.
+              contentVersion: hashContentSig(
+                `${item.asset_hash || stableManifestUrlKey(item.url)}|${item.muted ?? ''}`,
+              ),
               durationMs: item.duration_ms,
               sequenceOrder: item.sequence ?? itemIndex,
               transitionType: item.transition_type ?? undefined,
@@ -6308,7 +6325,7 @@ function PlayerPage() {
               // playlist item itself. Only one DB write per item ever
               // produces this value, so it's bedrock-stable.
               const stable = i.manifestKey || i.asset?.fileUrl?.split('?')[0] || '';
-              return `${i.sequenceOrder}|${i.durationMs}|${stable}`;
+              return `${i.sequenceOrder}|${i.durationMs}|${stable}|${i.contentVersion}`;
             })
             .join('||');
           if (newSig === currentPlaylistSigRef.current) {
@@ -8623,7 +8640,7 @@ function PlayerPage() {
   const playlistItemsSig = useMemo(() => {
     if (!playlist?.items?.length) return '';
     return playlist.items
-      .map((i: any) => `${i.sequenceOrder}|${i.durationMs}|${i.manifestKey || i.id}`)
+      .map((i: any) => `${i.sequenceOrder}|${i.durationMs}|${i.manifestKey || i.id}|${i.contentVersion || ''}`)
       .join('||');
   }, [playlist]);
 
@@ -8647,6 +8664,7 @@ function PlayerPage() {
   // and skip slide 2 entirely.
   useEffect(() => {
     slideStartedAtRef.current = Date.now();
+    setMediaReady(false);
   }, [currentIndex, playlistItemsSig]);
 
   // Clear the all-broken-assets failure tracker whenever the manifest
@@ -9366,6 +9384,7 @@ function PlayerPage() {
   // early returns have already executed on a given render.
   const markItemFailed = useCallback((itemId: string | undefined) => {
     if (!itemId || !sorted.length) return;
+    setMediaReady(false);
     const allIds = sorted.map((s: any) => s.id as string).filter(Boolean);
     const allFailed = assetsFailedTrackerRef.current.recordFailure(itemId, allIds);
     if (allFailed) setAllAssetsFailed(true);
@@ -9373,6 +9392,7 @@ function PlayerPage() {
   const markItemSucceeded = useCallback(() => {
     assetsFailedTrackerRef.current.recordSuccess();
     setAllAssetsFailed(false);
+    setMediaReady(true);
   }, []);
 
   // Native Android URL overlay. For asset playlists containing URL

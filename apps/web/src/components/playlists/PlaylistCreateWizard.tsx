@@ -149,6 +149,7 @@ import { transformedImageUrl } from '@/lib/asset-image';
 import { AssetPreviewOverlay } from './AssetPreviewOverlay';
 import { assetPosterUrl } from './VideoPreviewThumb';
 import { AssetEncodeBadge } from '@/components/assets/VideoEncode';
+import { publicationOptimizationNotice } from '@/components/playlists/publish-media-notice';
 import { imageShape, type ImageShape } from '@/lib/image-shape';
 import { isTouchTemplate } from '@/lib/template-relevance';
 // Typed-or-picked schedule fields (2026-09-21). Desktop Safari's native date
@@ -1448,6 +1449,11 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
               // Resolved reach, not raw checkbox count — a picked group of 3
               // must not read as "1 screen" here either.
               screensPicked={blastRadius.screenCount}
+              optimizationNotice={publicationOptimizationNotice(
+                (assets ?? []).filter((asset: any) => selectedAssetIds.has(asset.id)),
+                (screens ?? []).filter((screen: any) => selectedScreenIds.has(screen.id) ||
+                  (screen.screenGroupId && selectedGroupIds.has(screen.screenGroupId))),
+              )}
             />
           )}
           {step === 5 && (
@@ -3121,6 +3127,7 @@ export function Step4Publish({
   days,
   toggleDay,
   screensPicked,
+  optimizationNotice,
 }: {
   activate: boolean;
   setActivate: (b: boolean) => void;
@@ -3135,6 +3142,7 @@ export function Step4Publish({
   days: string[];
   toggleDay: (d: string) => void;
   screensPicked: number;
+  optimizationNotice?: string | null;
 }) {
   return (
     <div>
@@ -3144,6 +3152,11 @@ export function Step4Publish({
           ? 'No screens were picked — these settings will be saved with the playlist for when you assign screens later.'
           : `These rules apply to all ${screensPicked} screen${screensPicked === 1 ? '' : 's'} you picked.`}
       </p>
+      {optimizationNotice && (
+        <p role="status" className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+          {optimizationNotice}
+        </p>
+      )}
 
       <button
         type="button"

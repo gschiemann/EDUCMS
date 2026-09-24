@@ -186,6 +186,58 @@ export class VideoTranscodeService {
     }
   }
 
+  /** A publish can request a decoder-sized copy of an asset optimized before
+   * renditions existed. Retain the old terminal row: it may still own an
+   * original file awaiting the seven-day reference-safe cleanup. */
+  async enqueueForRendition(input: {
+    tenantId: string;
+    assetId: string;
+    sourceUrl: string;
+    sourceBytes: number | null;
+  }): Promise<boolean> {
+    if (VideoTranscodeService.disabled()) return false;
+    const valid = await this.prisma.client.asset.findFirst({
+      where: { id: input.assetId, tenantId: input.tenantId, fileUrl: input.sourceUrl },
+      select: { id: true },
+    });
+    if (!valid) return false;
+    const bytes = input.sourceBytes && input.sourceBytes > 0 ? input.sourceBytes : null;
+    try {
+      const existing = await this.prisma.client.videoTranscodeJob.findFirst({
+        where: { tenantId: input.tenantId, assetId: input.assetId },
+        select: { id: true, status: true },
+      });
+      if (!existing) {
+        await this.prisma.client.videoTranscodeJob.createMany({
+          data: [{ tenantId: input.tenantId, assetId: input.assetId,
+            sourceUrl: input.sourceUrl, sourceBytes: bytes, status: 'queued' }],
+          skipDuplicates: true,
+        });
+      } else if (['done', 'skipped', 'failed'].includes(existing.status)) {
+        await this.prisma.client.$transaction(async (tx) => {
+          const detached = await tx.videoTranscodeJob.updateMany({
+            where: { id: existing.id, tenantId: input.tenantId, assetId: input.assetId,
+              status: { in: ['done', 'skipped', 'failed'] } },
+            data: { assetId: null },
+          });
+          if (!detached.count) return;
+          await tx.videoTranscodeJob.create({ data: {
+            tenantId: input.tenantId, assetId: input.assetId,
+            sourceUrl: input.sourceUrl, sourceBytes: bytes, status: 'queued',
+          } });
+        });
+      }
+      this.emitQueued();
+      return true;
+    } catch (error) {
+      this.logger.warn(`Could not queue 1080p playback copy for ${input.assetId}: ${(error as Error).message}`);
+      return !!(await this.prisma.client.videoTranscodeJob.findFirst({
+        where: { tenantId: input.tenantId, assetId: input.assetId,
+          status: { in: ['queued', 'running'] } }, select: { id: true },
+      }).catch(() => null));
+    }
+  }
+
   /** This tenant's transcode state for the given assets (another tenant's rows are never returned). */
   async statusForAssets(
     tenantId: string,

@@ -23,7 +23,7 @@
  *   - SCHOOL_ADMIN / DISTRICT_ADMIN / SUPER_ADMIN can list, view, approve, reject
  */
 
-import { Body, Controller, Get, HttpException, HttpStatus, Param, Post, Query, Request, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpException, HttpStatus, Optional, Param, Post, Query, Request, UseGuards } from '@nestjs/common';
 import { AppRole } from '@cms/database';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
@@ -40,6 +40,7 @@ import {
 // schedule for the same target exactly as a direct publish does, or the player
 // interleaves the old + new playlists. (P1, 2026-07-03.)
 import { displaceCompetingActiveSchedules } from '../schedules/schedule-displacement';
+import { MediaPublicationService } from '../schedules/media-publication.service';
 
 /** Comma-separated CSV → string[] (filtered to non-empty). */
 const fromCsv = (s: string | null | undefined): string[] =>
@@ -53,6 +54,7 @@ export class SubmissionsController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notify: NotificationsService,
+    @Optional() private readonly mediaPublication?: MediaPublicationService,
   ) {}
 
   /**
@@ -343,11 +345,18 @@ export class SubmissionsController {
             // 2026-09-16 — the window rides along so the approval path displaces
             // exactly what a direct publish would: only the rules that overlap.
             select: {
-              id: true, screenId: true, screenGroupId: true, mode: true,
+              id: true, playlistId: true, screenId: true, screenGroupId: true, mode: true,
               daysOfWeek: true, timeStart: true, timeEnd: true, priority: true,
             },
           })
         : [];
+
+      const pendingScheduleIds = new Set<string>();
+      for (const row of scheduleRows) {
+        if (this.mediaPublication && await this.mediaPublication.prepare(
+          tenantId, row.playlistId, row.screenId, row.screenGroupId,
+        )) pendingScheduleIds.add(row.id);
+      }
 
       await this.prisma.client.$transaction(async (tx) => {
         if (aIds.length) {
@@ -361,6 +370,7 @@ export class SubmissionsController {
           // gate). excludeScheduleId guards the row itself (it's still a draft
           // here, but be defensive about ordering).
           for (const s of scheduleRows) {
+            if (pendingScheduleIds.has(s.id)) continue;
             if (s.mode !== 'append') {
               await displaceCompetingActiveSchedules(tx, {
                 tenantId,
@@ -376,8 +386,16 @@ export class SubmissionsController {
               });
             }
           }
-          // Now flip every approved draft live — the competing actives are gone.
-          await tx.schedule.updateMany({ where: { id: { in: sIds }, tenantId }, data: { isActive: true } });
+          // Only ready drafts go live. Other approved drafts become durable
+          // pending publishes and the sweep activates them after encoding.
+          await tx.schedule.updateMany({
+            where: { id: { in: sIds.filter((id) => !pendingScheduleIds.has(id)) }, tenantId },
+            data: { isActive: true, pendingMedia: false, pendingMediaError: null },
+          });
+          if (pendingScheduleIds.size) await tx.schedule.updateMany({
+            where: { id: { in: [...pendingScheduleIds] }, tenantId },
+            data: { isActive: false, pendingMedia: true, pendingMediaError: null },
+          });
         }
       });
     }

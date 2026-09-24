@@ -150,6 +150,7 @@ import { MediaOptimizationService } from './storage/media-optimization.service';
 import { VideoPosterService } from './storage/video-poster.service';
 import { VideoProbeAutoHealCron } from './storage/video-probe-autoheal.cron';
 import { VideoTranscodeService } from './storage/video-transcode/video-transcode.service';
+import { MediaPublicationService } from './schedules/media-publication.service';
 import { VideoTranscodePipeline } from './storage/video-transcode/video-transcode.pipeline';
 import { VideoTranscodeWorker } from './storage/video-transcode/video-transcode.worker';
 import { StorageQuotaService } from './assets/storage-quota.service';
@@ -321,6 +322,7 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     // HERE, not in a module of its own, so they share this module's single
     // SupabaseStorageService (a second instance would re-run the bucket setup at boot).
     VideoTranscodeService,
+    MediaPublicationService,
     VideoTranscodePipeline,
     VideoTranscodeWorker,
     // 2026-09-24 — per-organisation storage allowance on the media-library upload

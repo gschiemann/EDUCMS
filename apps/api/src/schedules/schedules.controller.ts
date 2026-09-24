@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request, HttpException, HttpStatus, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request, HttpException, HttpStatus, Logger, Optional } from '@nestjs/common';
+import { MediaPublicationService } from './media-publication.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
@@ -43,6 +44,7 @@ export class SchedulesController {
     private readonly redisService: RedisService,
     private readonly signer: WebsocketSignerService,
     private readonly notify: NotificationsService,
+    @Optional() private readonly mediaPublication?: MediaPublicationService,
   ) {}
 
   private async notifySync(tenantId: string) {
@@ -179,6 +181,11 @@ export class SchedulesController {
     // (or directly). Everyone else honors the requested isActive flag.
     const isContributor = req.user?.role === AppRole.CONTRIBUTOR;
     const willBeActive = !isContributor && body.isActive !== false;
+    const pendingMedia = willBeActive && this.mediaPublication
+      ? await this.mediaPublication.prepare(req.user.tenantId, body.playlistId,
+          body.screenId || null, body.screenGroupId || null)
+      : false;
+    const activateNow = willBeActive && !pendingMedia;
 
     // Org-wide "Require approval before any content goes live" gate
     // (2026-06-26). When the tenant flag is ON and the actor is a
@@ -199,7 +206,7 @@ export class SchedulesController {
     // Only displace other active schedules when THIS schedule is going
     // live. A saved-draft schedule should not knock the currently-
     // running one off the screen; it's a plan, not a go-live.
-    if (willBeActive && body.mode !== 'append') {
+    if (activateNow && body.mode !== 'append') {
        // Replace mode: disable all existing active schedules that overlap
        // THIS target's screens.
        //
@@ -296,7 +303,7 @@ export class SchedulesController {
           // Draft staging only ever cleans up other drafts — never a
           // live schedule (which may belong to an admin). Live publishes
           // collapse everything as before.
-          ...(willBeActive ? {} : { isActive: false }),
+          ...(activateNow ? {} : { isActive: false }),
       };
       const priorRows = await this.prisma.client.schedule.findMany({
         where: cleanupWhere,
@@ -332,7 +339,8 @@ export class SchedulesController {
         mode: mode,
         // 2026-05-05 — accept null/true/false; null = honor item-level.
         mutedOverride: body.mutedOverride === undefined ? null : body.mutedOverride,
-        isActive: willBeActive,
+        isActive: activateNow,
+        pendingMedia,
       },
       include: {
         playlist: { select: { id: true, name: true } },
@@ -349,7 +357,8 @@ export class SchedulesController {
       screenId: res.screenId,
       screenGroupId: res.screenGroupId,
       isActive: res.isActive,
-      staged: !willBeActive,
+      staged: !activateNow,
+      pendingMedia,
       mode,
       startTime: res.startTime,
       endTime: res.endTime,
@@ -362,7 +371,7 @@ export class SchedulesController {
     // Only nudge players when the new schedule is actually live.
     // Drafts don't affect the running fleet so there's no reason to
     // wake every player up to re-sync.
-    if (willBeActive) {
+    if (activateNow) {
       this.notifySync(req.user.tenantId);
     }
 
@@ -587,6 +596,28 @@ export class SchedulesController {
     const effectiveScreenGroupId =
       data.screenGroupId !== undefined ? data.screenGroupId : schedule.screenGroupId;
 
+    const changesLiveMedia = schedule.isActive && body.isActive !== false &&
+      (body.playlistId !== undefined || body.screenId !== undefined || body.screenGroupId !== undefined);
+    const activatesDraft = !schedule.isActive && body.isActive === true;
+    if ((changesLiveMedia || activatesDraft) && this.mediaPublication) {
+      const needsCopy = await this.mediaPublication.prepare(req.user.tenantId,
+        data.playlistId ?? schedule.playlistId, effectiveScreenId, effectiveScreenGroupId);
+      if (needsCopy && changesLiveMedia) {
+        throw new HttpException({ code: 'SCHEDULE_MEDIA_PREPARING',
+          message: 'This edit needs a screen-sized playback copy. Publish it as a new schedule so the current content stays on screen until the copy is ready.' },
+        HttpStatus.CONFLICT);
+      }
+      if (needsCopy) {
+        data.isActive = false;
+        data.pendingMedia = true;
+        data.pendingMediaError = null;
+      }
+    }
+    if (schedule.pendingMedia && body.isActive === false) {
+      data.pendingMedia = false;
+      data.pendingMediaError = null;
+    }
+
     const res = await this.prisma.client.$transaction(async (tx) => {
       const updated = await tx.schedule.update({
         where: { id, tenantId: req.user.tenantId },
@@ -666,6 +697,14 @@ export class SchedulesController {
     });
     if (!schedule) throw new HttpException({ code: 'SCHEDULE_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
 
+    // A pending publish's toggle cancels it; a draft going live must pass the
+    // same media gate as a new publish.
+    const cancelPending = schedule.pendingMedia && !schedule.isActive;
+    const needsCopy = !schedule.isActive && !cancelPending && this.mediaPublication
+      ? await this.mediaPublication.prepare(req.user.tenantId, schedule.playlistId,
+          schedule.screenId, schedule.screenGroupId)
+      : false;
+
     // 2026-05-23 launch audit P1: toggling a schedule active/inactive
     // directly controls what every screen plays at a given time —
     // audit-worthy. Transactional with the update so a partial state
@@ -673,7 +712,11 @@ export class SchedulesController {
     const res = await this.prisma.client.$transaction(async (tx) => {
       const updated = await tx.schedule.update({
         where: { id, tenantId: req.user.tenantId },
-        data: { isActive: !schedule.isActive },
+        data: {
+          isActive: !schedule.isActive && !needsCopy && !cancelPending,
+          pendingMedia: needsCopy,
+          pendingMediaError: null,
+        },
         include: {
           playlist: { select: { id: true, name: true } },
           screenGroup: { select: { id: true, name: true } },

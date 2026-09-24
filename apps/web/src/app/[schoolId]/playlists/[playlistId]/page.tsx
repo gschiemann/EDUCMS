@@ -32,7 +32,7 @@ import { AddScreensDialog } from '@/components/playlists/v1/PlaylistDialogs';
 import {
   buildPlaylistRow, deriveDeliveryFromScreens, describeScreenConflicts, findScreenConflicts,
   pauseEverywhereCopy, resolveTargetScreenIds,
-  summarizeDeliveryPayload, DELIVERY_UNAVAILABLE,
+  summarizeDelivery, summarizeDeliveryPayload, overlayCurrentScreenHealth, DELIVERY_UNAVAILABLE,
   type OpsGroupRef, type OpsScheduleRef, type OpsScreenRef,
 } from '@/components/playlists/v1/playlistOps';
 
@@ -288,7 +288,9 @@ export default function PlaylistWorkspacePage() {
     deliveryQuery.isFetched && deliveryQuery.data != null && (deliveryQuery.data as any)?.latest != null;
   const deliveryFailed = deliveryQuery.isFetched && deliveryQuery.data == null;
   const deliverySummary = useMemo(() => {
-    if (deliveryAnswered) return summarizeDeliveryPayload(deliveryQuery.data!);
+    if (deliveryAnswered && deliveryQuery.data?.latest) {
+      return summarizeDelivery(overlayCurrentScreenHealth(deliveryQuery.data.latest.targets, targetScreens));
+    }
     if (deliveryFailed) return DELIVERY_UNAVAILABLE;
     return targetScreens.length > 0
       ? deriveDeliveryFromScreens(targetScreens)
@@ -412,6 +414,7 @@ export default function PlaylistWorkspacePage() {
       onClose={() => setAddScreensOpen(false)}
       playlistId={playlistId}
       playlistName={playlist?.name ?? null}
+      playlistItems={playlist?.items ?? []}
       screens={screens}
       groups={groups}
       schedules={mySchedules}

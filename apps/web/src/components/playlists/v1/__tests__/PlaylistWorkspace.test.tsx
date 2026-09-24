@@ -37,9 +37,9 @@ const ROW: PlaylistSummaryRow = {
 
 const PENDING = NOW - 12 * 60_000;
 const SCREENS: OpsScreenRef[] = [
-  { id: 's1', name: 'Front', status: 'ONLINE', pendingRefreshAt: new Date(PENDING).toISOString(), refreshAckMs: PENDING, lastRenderedAt: new Date(NOW - 10_000).toISOString(), renderHealth: 'OK', pushChannel: 'live' },
-  { id: 's2', name: 'Back', status: 'ONLINE', pendingRefreshAt: new Date(PENDING).toISOString(), refreshAckMs: PENDING, lastRenderedAt: new Date(NOW - 10_000).toISOString(), renderHealth: 'OK', pushChannel: 'live' },
-  { id: 's3', name: 'Side', status: 'ONLINE', pendingRefreshAt: new Date(PENDING).toISOString(), refreshAckMs: PENDING, lastRenderedAt: new Date(NOW - 10_000).toISOString(), renderHealth: 'OK', pushChannel: 'live' },
+  { id: 's1', name: 'Front', status: 'ONLINE', pendingRefreshAt: new Date(PENDING).toISOString(), refreshAckMs: PENDING, lastRenderedAt: new Date(NOW - 10_000).toISOString(), lastRenderedHash: 'pl:test', renderHealth: 'OK', pushChannel: 'live' },
+  { id: 's2', name: 'Back', status: 'ONLINE', pendingRefreshAt: new Date(PENDING).toISOString(), refreshAckMs: PENDING, lastRenderedAt: new Date(NOW - 10_000).toISOString(), lastRenderedHash: 'pl:test', renderHealth: 'OK', pushChannel: 'live' },
+  { id: 's3', name: 'Side', status: 'ONLINE', pendingRefreshAt: new Date(PENDING).toISOString(), refreshAckMs: PENDING, lastRenderedAt: new Date(NOW - 10_000).toISOString(), lastRenderedHash: 'pl:test', renderHealth: 'OK', pushChannel: 'live' },
   { id: 's4', name: 'G43', status: 'ONLINE', pendingRefreshAt: new Date(PENDING).toISOString(), refreshAckMs: null, lastRenderedAt: new Date(NOW - 40 * 60_000).toISOString(), renderHealth: 'OK', pushChannel: 'stale' },
 ];
 
@@ -237,7 +237,7 @@ describe('Screens tab — where it plays, and whether it arrived (§15)', () => 
     // Each row still carries what that screen reports about itself — the list
     // became a screen list, not an evidence-free one.
     const g43 = screen.getAllByTestId('delivery-row').find((r) => r.textContent?.includes('G43'))!;
-    expect(g43).toHaveTextContent('Not received');
+    expect(g43).toHaveTextContent('No picture confirmed');
     expect(screen.getAllByTestId('delivery-row')).toHaveLength(4);
   });
 
@@ -251,12 +251,12 @@ describe('Screens tab — where it plays, and whether it arrived (§15)', () => 
     ).not.toBeInTheDocument();
   });
 
-  it('grades the G43 row as not received while the rest are received', () => {
+  it('grades a stale G43 proof as no picture while the rest are received', () => {
     mount({ tab: 'screens' });
     const rows = screen.getAllByTestId('delivery-row');
     const g43 = rows.find((r) => r.textContent?.includes('G43'))!;
-    expect(g43.dataset.state).toBe('not-updated');
-    expect(g43).toHaveTextContent('Not received');
+    expect(g43.dataset.state).toBe('no-picture');
+    expect(g43).toHaveTextContent('No picture confirmed');
     expect(g43).toHaveTextContent('Instant commands not arriving');
     expect(rows.filter((r) => r.dataset.state === 'acknowledged')).toHaveLength(3);
   });

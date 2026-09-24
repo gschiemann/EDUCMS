@@ -2,12 +2,12 @@
  * Audit P0-5 (2026-05-27) — upload-time image optimization.
  *
  * Pinned behaviors:
- *   1. A 4096×2160 PNG resizes so the longest side is ≤ 1920px (aspect
+ *   1. A 4096×2160 PNG resizes so the longest side is ≤ 3840px (aspect
  *      preserved). The audit task names "1920×1015" as a target — we
- *      assert "longest side ≤ 1920" because sharp may shave a pixel for
- *      rounding (4096 / 2160 × 1920 ≈ 1013, not 1015 — sharp clamps to
+ *      assert "longest side ≤ 3840" because sharp may shave a pixel for
+ *      rounding (sharp clamps to
  *      an integer). The constraint we actually care about is "max
- *      1920px on the longest dim" and "aspect ratio preserved."
+ *      3840px on the longest dim" and "aspect ratio preserved."
  *   2. An 800×600 PNG is BELOW the cap — dimensions stay 800×600.
  *   3. A GIF (`isUploadOptimizableImage` returns false) passes through
  *      the controller branch untouched. We assert the gate function
@@ -35,7 +35,7 @@ describe('Asset upload — image optimization (P0-5)', () => {
     service = module.get(MediaOptimizationService);
   });
 
-  it('resizes a 4096×2160 PNG so the longest side is ≤ 1920px (aspect preserved)', async () => {
+  it('preserves 4K detail and offers a separate 1080p copy', async () => {
     // Synthetic 4K-ish input — a flat-color PNG large enough to exceed
     // the upload cap, small enough to compress under sharp's PNG palette.
     const inputBuf = await sharp({
@@ -53,10 +53,11 @@ describe('Asset upload — image optimization (P0-5)', () => {
     expect(result.optimized).toBe(true);
     expect(result.mimeType).toBe('image/png');
     expect(result.processedDimensions).toBeDefined();
-    expect(result.processedDimensions!.w).toBeLessThanOrEqual(1920);
-    expect(result.processedDimensions!.h).toBeLessThanOrEqual(1920);
-    // Longest side === 1920 (aspect preserved => 1920×1012-ish).
-    expect(Math.max(result.processedDimensions!.w, result.processedDimensions!.h)).toBe(1920);
+    expect(result.processedDimensions!.w).toBeLessThanOrEqual(3840);
+    expect(result.processedDimensions!.h).toBeLessThanOrEqual(3840);
+    expect(Math.max(result.processedDimensions!.w, result.processedDimensions!.h)).toBe(3840);
+    const rendition = await service.optimizeImageForUpload(result.buffer, 'image/png', '.png', 1920);
+    expect(Math.max(rendition.processedDimensions!.w, rendition.processedDimensions!.h)).toBe(1920);
     // Aspect ratio preserved within 1% — sharp's integer rounding may
     // shave a pixel.
     const inAspect = 4096 / 2160;
@@ -146,7 +147,7 @@ describe('Asset upload — image optimization (P0-5)', () => {
     expect(result.optimized).toBe(true);
     expect(result.mimeType).toBe('image/jpeg');
     expect(result.ext).toBe('.jpg');
-    expect(Math.max(result.processedDimensions!.w, result.processedDimensions!.h)).toBe(1920);
+    expect(Math.max(result.processedDimensions!.w, result.processedDimensions!.h)).toBe(3840);
     expect(result.finalBytes).toBeLessThan(result.originalBytes);
   });
 });

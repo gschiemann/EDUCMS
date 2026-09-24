@@ -33,6 +33,7 @@ type Row = {
   screenId: string | null;
   screenGroupId: string | null;
   isActive: boolean;
+  pendingMedia: boolean;
   priority: number;
   startTime: Date;
 };
@@ -136,6 +137,7 @@ function row(over: Partial<Row> & Pick<Row, 'id'>): Row {
     screenId: 'scr1',
     screenGroupId: null,
     isActive: false,
+    pendingMedia: false,
     priority: 0,
     startTime: new Date('2026-06-01T00:00:00Z'),
     ...over,

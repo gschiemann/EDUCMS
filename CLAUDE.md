@@ -367,6 +367,41 @@ A reliable player continuously proves FOUR SEPARATE FACTS — never let one stan
     `playbackStopped` is how a screen traps its installer). An escape keypress must never
     silently burn ceremony steps, and touch-only affordances (corner-hold) never count as
     the re-entry path.
+16. **Screen-sized publication is a staged delivery, not a database boolean**
+    (2026-09-24 4K-to-1080p playback incident). A 1080p Android player received
+    a 4K H.264 asset, briefly showed Content Unavailable, then reported severe
+    dropped frames; a manually prepared 1080p copy played smoothly. A fresh
+    playlist publish sent 4K again because optimization was upload-only and
+    the manifest had no screen-specific file selection. The repair lives in
+    `schedules/media-publication.service.ts`: publish queues a 1080p video
+    rendition (or prepares a 1080p image copy), keeps the previous schedule
+    active while video encodes, records `Schedule.pendingMedia` and an explicit
+    error if preparation fails, then atomically displaces the old schedule,
+    audits and sends signed SYNC. `screens/video-rendition.ts` picks a URL,
+    hash and byte size as one unit from validated `Asset.processingMeta.renditions`
+    for 1080p screens; 4K screens keep the original 4K file. Normal manifest
+    resolution uses this selection; do not alter the emergency branch as part
+    of signage optimization. The image upload cap is 3840px so 4K photos retain
+    detail, with a 1920px copy made when publishing to 1080p. The player apply
+    signature includes media URL/hash, so a replacement under one playlist item
+    id re-applies. Render proof reports `idle:content-unavailable` while its
+    fallback page is visible; fresh `lastRenderedAt` alone never means a
+    picture is confirmed. Delivery UI distinguishes playback reports, stalls,
+    and publish intent. Manifest cache revision MUST advance after a mutation
+    commits; advancing before it allowed an old snapshot under a fresh revision
+    for up to the cache TTL. Keep the pending-media migration with any schema
+    changes; production runs `prisma migrate deploy` before API boot. Verify
+    this end-to-end on a physical 1080p unit and a 4K unit before claiming
+    fleet-ready: manifest URL/hash/size, no Content Unavailable interval,
+    dropped-frame telemetry, and truthful delivery label.
+    The same incident also corrected Media Library wording: an Asset's
+    `PUBLISHED` database status means approved for use, not sent to a screen;
+    the upload card may say "Optimizing for screens" only while work is active,
+    with completed optimization facts in file details, and encode warnings
+    must name the actual missing spec (for example fast-start index), not
+    repeat properties the file already has. `PlaylistEncodeBanner.tsx` names
+    per-file fixes. Canva's 4K MP4 export is suitable source material; the
+    CMS, not the operator, owns screen-specific playback preparation.
 
 ## Frame-Locked Multi-Screen Sync (2026-07-28)
 

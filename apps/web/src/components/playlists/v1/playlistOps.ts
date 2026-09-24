@@ -32,6 +32,8 @@
  */
 
 import { isWindowOpen, type WindowFields } from '@/app/player/scheduleWindow';
+import { deriveRenderTrustGrade, RENDER_STALE_AFTER_MS } from '@/components/screens/renderTrust';
+import { deriveVideoPlayback, type OpsScreen } from '@/components/screens/v3/screenOps';
 
 // ─────────────────────────────────────────────────────────────────────
 // Vocabulary (§4)
@@ -62,6 +64,7 @@ export type DeliveryTargetState =
   | 'offline'
   | 'unknown'
   | 'no-picture'
+  | 'playback-issue'
   | 'content-mismatch';
 
 /** Row-level rollup. Adds the two states that only make sense in aggregate. */
@@ -76,6 +79,7 @@ export type DeliveryTone = 'ok' | 'warn' | 'bad' | 'muted' | 'unavailable';
  */
 const TARGET_PRECEDENCE: DeliveryTargetState[] = [
   'content-mismatch',
+  'playback-issue',
   'no-picture',
   'not-updated',
   'offline',
@@ -102,6 +106,7 @@ export function worstTargetState(states: DeliveryTargetState[]): DeliveryTargetS
 export interface OpsScreenRef {
   id: string;
   name?: string | null;
+  resolution?: string | null;
   status?: string | null;
   screenGroupId?: string | null;
   /** Epoch-ms VALUE the operator's last push stamped on this screen. */
@@ -111,6 +116,9 @@ export interface OpsScreenRef {
   renderHealth?: 'OK' | 'STALE' | 'UNKNOWN' | null;
   renderStale?: boolean | null;
   lastRenderedAt?: string | Date | null;
+  lastRenderedHash?: string | null;
+  lastVideoReport?: OpsScreen['lastVideoReport'];
+  lastVideoReportAt?: string | null;
   pushChannel?: 'live' | 'stale' | 'unknown' | null;
   authState?: string | null;
   sourceTenant?: { id: string; name?: string | null } | null;
@@ -130,6 +138,8 @@ export interface OpsScheduleRef extends WindowFields {
   startTime?: string | Date | null;
   endTime?: string | Date | null;
   isActive?: boolean | null;
+  pendingMedia?: boolean | null;
+  pendingMediaError?: string | null;
   mode?: string | null;
   mutedOverride?: boolean | null;
   priority?: number | null;
@@ -330,6 +340,13 @@ export function deriveScheduleState(
   if (upcoming.length > 0) {
     return { state: 'SCHEDULED', pillLabel: 'SCHEDULED', summary: describeNextStart(upcoming, now) };
   }
+  const failedMedia = schedules.find((s) => s.pendingMedia && s.pendingMediaError);
+  if (failedMedia) {
+    return { state: 'PAUSED', pillLabel: 'MEDIA FAILED', summary: failedMedia.pendingMediaError! };
+  }
+  if (schedules.some((s) => s.pendingMedia)) {
+    return { state: 'SCHEDULED', pillLabel: 'PREPARING MEDIA', summary: 'Optimizing media for selected screens; publishing starts automatically when complete' };
+  }
 
   // Everything left is either switched off or past its end date.
   const anyEnabled = enabled.length > 0;
@@ -445,6 +462,8 @@ export interface DeliveryTarget {
   /** Epoch ms the player echoed back, when it matched the pending value. */
   ackAt: number | null;
   lastProofAt: string | null;
+  /** Current screen health, independent of whether an update was received. */
+  pictureState?: 'reported' | 'issue' | 'stale' | 'unknown' | 'offline';
   pushChannel: 'live' | 'stale' | 'unknown';
   state: DeliveryTargetState;
 }
@@ -583,6 +602,15 @@ export function summarizeDelivery(
   }
 
   switch (worst) {
+    case 'playback-issue':
+      return {
+        state: 'playback-issue', tone: 'bad',
+        label: `${nameList(worstNames)}: playback problem`,
+        sub: null,
+        detail: `${nameList(worstNames)} is reachable, but its latest report shows missing or choppy content.`,
+        clause: `${nameList(worstNames)} reported a playback problem.`,
+        acknowledged, total, worstNames,
+      };
     case 'content-mismatch':
       return {
         state: 'content-mismatch',
@@ -598,9 +626,9 @@ export function summarizeDelivery(
         state: 'no-picture',
         tone: 'bad',
         label: `${nameList(worstNames)}: no picture`,
-        sub: `picture on ${total - worstNames.length} of ${total}`,
-        detail: `${nameList(worstNames)} is reachable but has not confirmed a picture recently.`,
-        clause: `${nameList(worstNames)} is reachable but has not confirmed a picture recently.`,
+        sub: `${total - worstNames.length} of ${total} reporting playback`,
+        detail: `${nameList(worstNames)} is reachable but has not reported playback recently.`,
+        clause: `${nameList(worstNames)} has not reported playback recently.`,
         acknowledged, total, worstNames,
       };
     case 'not-updated':
@@ -669,6 +697,77 @@ export const PUSH_GRACE_MS = 2 * 60_000;
 /** A render proof older than this stops counting as a confirmed picture. */
 export const PICTURE_STALE_MS = 5 * 60_000;
 
+type CurrentPictureState = NonNullable<DeliveryTarget['pictureState']>;
+
+/** Grade only current, content-bearing render proof as a healthy report. */
+export function deriveCurrentPictureState(screen: OpsScreenRef, nowMs: number): CurrentPictureState {
+  if (screen.status === 'CONTENT_UNAVAILABLE') return 'issue';
+  if (screen.status !== 'ONLINE') return 'offline';
+
+  const proofMs = toMs(screen.lastRenderedAt);
+  if (proofMs === null || nowMs < proofMs) return 'unknown';
+  if (nowMs - proofMs >= RENDER_STALE_AFTER_MS) return 'stale';
+
+  const grade = deriveRenderTrustGrade({
+    status: screen.status,
+    renderHealth: screen.renderHealth,
+    renderStale: screen.renderStale,
+    lastRenderedAtMs: proofMs,
+    lastRenderedHash: screen.lastRenderedHash,
+    authState: screen.authState,
+    nowMs,
+  });
+  if (grade === 'idle' || grade === 'paused' || grade === 'repair-required' || grade === 'media-stalled' || grade === 'alert-unconfirmed') {
+    return 'issue';
+  }
+  if (grade === 'not-painting' || grade === 'checking' || grade === 'stale-chronic') return 'stale';
+  if (grade !== 'painting') return 'unknown';
+
+  const playback = deriveVideoPlayback({
+    id: screen.id,
+    status: screen.status,
+    lastVideoReport: screen.lastVideoReport,
+    lastVideoReportAt: screen.lastVideoReportAt,
+  } as OpsScreen, nowMs);
+  const reportAt = toMs(screen.lastVideoReportAt ?? screen.lastVideoReport?.at);
+  const reportAge = reportAt === null ? Infinity : nowMs - reportAt;
+  if (playback && reportAge >= 0 && reportAge < RENDER_STALE_AFTER_MS &&
+      (playback.grade === 'hitching' || playback.grade === 'stuttering')) {
+    return 'issue';
+  }
+
+  if (typeof screen.lastRenderedHash !== 'string' || !screen.lastRenderedHash.startsWith('pl:')) {
+    return screen.lastRenderedHash?.startsWith('em:') ? 'issue' : 'unknown';
+  }
+  return 'reported';
+}
+
+/** Apply live screen health over a stored delivery receipt. */
+export function overlayCurrentScreenHealth(
+  targets: DeliveryTarget[],
+  screens: OpsScreenRef[],
+  nowMs: number = Date.now(),
+): DeliveryTarget[] {
+  const current = new Map(deriveTargetsFromScreens(screens, nowMs).map((target) => [target.screenId, target]));
+  return targets.map((target) => {
+    const live = current.get(target.screenId);
+    if (!live) return { ...target, state: target.state === 'acknowledged' ? 'unknown' : target.state, pictureState: 'unknown' };
+    const pictureState = live.pictureState ?? 'unknown';
+    const state = pictureState === 'offline' ? 'offline'
+      : pictureState === 'issue' ? 'playback-issue'
+        : pictureState === 'stale' ? 'no-picture'
+          : pictureState === 'unknown' && target.state === 'acknowledged' ? 'unknown'
+            : target.state;
+    return {
+      ...target,
+      online: live.online,
+      lastProofAt: live.lastProofAt,
+      pictureState,
+      state,
+    };
+  });
+}
+
 /**
  * DEGRADATION PATH (mandatory — the delivery endpoint may not exist yet).
  *
@@ -705,18 +804,21 @@ export function deriveTargetsFromScreens(
     const pushChannel = s.pushChannel ?? 'unknown';
     const lastProofAt = proofMs === null ? null : new Date(proofMs).toISOString();
 
+    const pictureState = deriveCurrentPictureState(s, nowMs);
     let state: DeliveryTargetState;
-    if (!online) {
+    if (pictureState === 'offline') {
       state = 'offline';
+    } else if (pictureState === 'issue') {
+      state = 'playback-issue';
+    } else if (pictureState === 'stale') {
+      state = 'no-picture';
+    } else if (pictureState === 'unknown') {
+      state = pending !== null ? 'not-updated' : 'unknown';
     } else if (pending !== null) {
       // VALUE identity. Equal → the player painted after the request.
       state = ack !== null && ack === pending ? 'acknowledged' : 'not-updated';
-    } else if (s.renderHealth === 'STALE' || s.renderStale === true) {
-      state = 'no-picture';
-    } else if (proofMs !== null) {
-      state = nowMs - proofMs <= PICTURE_STALE_MS ? 'acknowledged' : 'no-picture';
     } else {
-      state = 'unknown';
+      state = 'acknowledged';
     }
 
     return {
@@ -724,8 +826,9 @@ export function deriveTargetsFromScreens(
       name,
       locationName,
       online,
-      ackAt: state === 'acknowledged' && ack !== null ? ack : null,
+      ackAt: pending !== null && ack !== null && ack === pending ? ack : null,
       lastProofAt,
+      pictureState,
       pushChannel,
       state,
     };
@@ -758,11 +861,12 @@ export function deriveDeliveryFromScreens(
     if (!anyPending) {
       return {
         ...summary,
-        // "Picture confirmed" keeps the §4.3-sanctioned phrase intact — the
-        // one permitted use of "confirmed" requires "picture" in the SAME
-        // string, so the two words must not be split across the two lines.
-        label: 'Picture confirmed',
+        // The player reports that its current carousel is rendering. We have
+        // not compared that carousel's version with this playlist's expected
+        // version, so no confirmation claim is justified here.
+        label: 'Playback reported',
         sub: `on ${summary.total} of ${summary.total}`,
+        tone: 'muted',
       };
     }
   }

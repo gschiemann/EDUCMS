@@ -1225,6 +1225,13 @@ export function useSchedules() {
     queryKey: ['schedules'],
     queryFn: () => apiFetch('/schedules'),
     staleTime: 30_000,
+    // While a video copy is encoding, refresh only on a visible page so the
+    // operator sees the automatic publish or its error without reopening it.
+    refetchInterval: (query) => {
+      const rules = query.state.data;
+      return Array.isArray(rules) && rules.some((rule: any) => rule.pendingMedia && !rule.pendingMediaError)
+        ? 10_000 : false;
+    },
   });
 }
 

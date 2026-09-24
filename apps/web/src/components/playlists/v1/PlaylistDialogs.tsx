@@ -27,6 +27,7 @@ import { useMemo, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { Loader2, X } from 'lucide-react';
 import { Step3Screens, Step4Publish } from '@/components/playlists/PlaylistCreateWizard';
+import { publicationOptimizationNotice } from '@/components/playlists/publish-media-notice';
 import { useCreateSchedule, useUpdateSchedule, useSetScreenFaceMode } from '@/hooks/use-api';
 import { appConfirm } from '@/components/ui/app-dialog';
 import {
@@ -159,6 +160,7 @@ export function AddScreensDialog({
   onClose,
   playlistId,
   playlistName,
+  playlistItems,
   screens,
   groups,
   schedules,
@@ -172,6 +174,7 @@ export function AddScreensDialog({
   playlistId: string;
   /** Named in the conflict prompt, so it says which playlist is taking over. */
   playlistName?: string | null;
+  playlistItems?: Array<{ asset?: { mimeType?: string | null; processingMeta?: unknown } | null }>;
   screens: OpsScreenRef[];
   groups: OpsGroupRef[];
   /** This playlist's existing rules — the window to inherit comes from these. */
@@ -222,6 +225,11 @@ export function AddScreensDialog({
   if (!open) return null;
 
   const count = pickedScreens.size;
+  const pickedTargets = screens.filter((screen) => pickedScreens.has(screen.id) ||
+    (screen.screenGroupId && pickedGroups.has(screen.screenGroupId)));
+  const mediaNotice = publicationOptimizationNotice(
+    (playlistItems ?? []).flatMap((item) => item.asset ? [item.asset] : []), pickedTargets,
+  );
 
   const submit = async () => {
     if (count === 0 && pickedGroups.size === 0) return;
@@ -341,6 +349,11 @@ export function AddScreensDialog({
         </>
       }
     >
+      {mediaNotice && (
+        <p role="status" className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+          {mediaNotice}
+        </p>
+      )}
       {addable.length === 0 ? (
         <p className="text-sm text-slate-500 py-10 text-center">
           This playlist already plays on every screen you have.

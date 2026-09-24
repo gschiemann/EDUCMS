@@ -1,5 +1,6 @@
 import { Controller, Post, Get, Put, Delete, Body, Param, Query, Req, Res, UseGuards, Request, HttpException, HttpStatus } from '@nestjs/common';
 import { encodeTargetFromResolutions } from '@cms/api-types';
+import { selectVideoFile } from './video-rendition';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import type { Request as ExpressReq, Response } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
@@ -6321,7 +6322,7 @@ export class ScreensController {
         priority: s.priority ?? 0,
       },
       totalBytes: s.playlist.items.reduce(
-        (sum, pi) => sum + (pi.asset.fileSize || 0),
+        (sum, pi) => sum + (selectVideoFile(pi.asset, screen.resolution).size || 0),
         0,
       ),
       // Include template data when playlist is template-based
@@ -6373,11 +6374,14 @@ export class ScreensController {
             : [],
         },
       } : {}),
-      items: s.playlist.items.map(pi => ({
+      items: s.playlist.items.map(pi => {
+        const selected = selectVideoFile(pi.asset, screen.resolution);
+        return ({
         item_id: pi.id,
         asset_id: pi.assetId,
-        asset_hash: pi.asset.fileHash ?? null,
-        url: pi.asset.fileUrl,
+        asset_hash: selected.sha256,
+        asset_size: selected.size,
+        url: selected.url,
         duration_ms: pi.durationMs,
         sequence: pi.sequenceOrder,
         // Surface mimeType so the player knows whether to render the
@@ -6398,7 +6402,7 @@ export class ScreensController {
         muted: typeof scheduleMute === 'boolean'
           ? scheduleMute
           : ((pi as any).muted ?? true),
-      }))
+      });})
     });
     });
 

@@ -1304,7 +1304,7 @@ export class AssetsController {
     // the presign chain shipped without that step, so iPhone JPGs landed
     // at 8 MB and served raw forever. We close the gap by downloading the
     // just-PUT object, running it through MediaOptimizationService's
-    // 1920px / q=85 upload profile, and re-uploading to a new content-
+    // 3840px / q=85 upload profile, and re-uploading to a new content-
     // addressed path with the correct mime + Cache-Control header
     // (immutable, set inside supabase-storage.service.ts).
     //
@@ -1547,7 +1547,7 @@ export class AssetsController {
     if (legacyCapError) throw legacyCapError;
 
     // Audit P0-5 (2026-05-27) — sharp-based resize inline before storing.
-    //   * Images (JPEG / PNG / WebP): re-encode at 1920px longest side,
+    //   * Images (JPEG / PNG / WebP): re-encode at 3840px longest side,
     //     q=85 for JPEG/WebP, PNG lossless. Strips EXIF.
     //   * Animated GIFs: passthrough (sharp would flatten them to one frame).
     //   * Video: NOT transcoded tonight — heavy ffmpeg deferred to a

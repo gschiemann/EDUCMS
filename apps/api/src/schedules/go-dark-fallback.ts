@@ -73,6 +73,7 @@ export async function reactivateFallbackIfDark(
     where: {
       tenantId,
       isActive: false,
+      pendingMedia: false,
       id: { not: removedScheduleId },
       ...(excludePlaylistId ? { playlistId: { not: excludePlaylistId } } : {}),
       ...targetWhere,

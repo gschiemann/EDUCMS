@@ -33,10 +33,11 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleInit() {
     // Manifest content-rev hook (Supabase egress diet — 2026-07-30). Any
-    // mutation on a model the player manifest reads invalidates every
-    // cached manifest (screens/manifest-hot-cache.ts), so an operator edit
-    // is visible on the very next poll — identical freshness to the
-    // uncached path. Screen updates touching ONLY telemetry columns
+    // committed mutation on a model the player manifest reads invalidates
+    // every cached manifest (screens/manifest-hot-cache.ts). Bumping BEFORE
+    // the write lets a concurrent poll cache the OLD content under the NEW
+    // revision for 30 minutes; the hook must bump after next() succeeds.
+    // Screen updates touching ONLY telemetry columns
     // (heartbeat lastPingAt, cache/render-proof reports) are excluded via
     // shouldBumpManifestRev, otherwise the fleet's own 25-30s telemetry
     // would thrash the cache. $use is deprecated-but-supported on Prisma
@@ -46,15 +47,14 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
       const useFn = (this.client as any).$use;
       if (typeof useFn === 'function') {
         useFn.call(this.client, async (params: any, next: (p: any) => Promise<any>) => {
+          let affectsManifest = false;
           try {
             const data = params?.args?.data;
             const keys =
               data && typeof data === 'object' && !Array.isArray(data)
                 ? Object.keys(data)
                 : null;
-            if (shouldBumpManifestRev(params?.model, params?.action, keys)) {
-              bumpManifestContentRev();
-            }
+            affectsManifest = shouldBumpManifestRev(params?.model, params?.action, keys);
             // Credential-snapshot safety net (efficiency L1, 2026-09-03).
             // Evaluated INDEPENDENTLY of the rev bump above, because the
             // credential columns are all in SCREEN_TELEMETRY_ONLY_FIELDS —
@@ -72,8 +72,22 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
           } catch {
             // Cache accounting must never break a query.
           }
-          return next(params);
+          const result = await next(params);
+          if (affectsManifest) bumpManifestContentRev();
+          return result;
         });
+        // Middleware next() can resolve for a write inside a transaction
+        // before COMMIT. A player poll in that interval can still cache the
+        // old snapshot. Invalidate once more after the transaction resolves.
+        // This covers both batch and interactive Prisma transactions; the
+        // extra bump for a read-only transaction is harmless.
+        const client = this.client as any;
+        const transact = client.$transaction.bind(client);
+        client.$transaction = async (...args: any[]) => {
+          const result = await transact(...args);
+          bumpManifestContentRev();
+          return result;
+        };
         markManifestRevHookArmed();
         this.logger.log('Manifest content-rev hook armed — mutation-busted manifest cache active');
       } else {

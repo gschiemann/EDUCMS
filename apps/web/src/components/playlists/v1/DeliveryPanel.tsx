@@ -29,7 +29,7 @@
 import { AlertTriangle, ExternalLink, Loader2, RefreshCw, WifiOff } from 'lucide-react';
 import {
   deriveDeliveryFromScreens, deriveTargetsFromScreens, exactStamp, summarizeDelivery,
-  summarizeDeliveryPayload, timeAgo,
+  summarizeDeliveryPayload, overlayCurrentScreenHealth, PUSH_GRACE_MS, timeAgo,
   type DeliveryPayload, type DeliverySummary, type DeliveryTarget, type OpsScreenRef,
 } from './playlistOps';
 
@@ -95,8 +95,14 @@ export function DeliveryPanel(props: DeliveryPanelProps) {
   // list and showed a reachable, picture-confirmed screen. One playlist, two
   // sources, opposite claims — Greg's screenshot, 2026-09-16.
   const apiAnswered = !derived && payload != null && payload.latest != null;
+  const targets: DeliveryTarget[] = apiAnswered && payload?.latest
+    ? overlayCurrentScreenHealth(payload.latest.targets, targetScreens)
+    : deriveTargetsFromScreens(targetScreens);
   const summary: DeliverySummary = apiAnswered
-    ? summarizeDeliveryPayload(payload)
+    ? summarizeDelivery(targets, { pushing: !!payload?.latest &&
+        payload.latest.acknowledged < payload.latest.targetCount &&
+        Date.now() - new Date(payload.latest.createdAt).getTime() < PUSH_GRACE_MS &&
+        !targets.some((t) => t.state === 'playback-issue' || t.state === 'no-picture') })
     : derived
       ? (targetScreens.length > 0
         // deriveDeliveryFromScreens, NOT summarizeDelivery: the wrapper carries
@@ -108,10 +114,6 @@ export function DeliveryPanel(props: DeliveryPanelProps) {
         ? deriveDeliveryFromScreens(targetScreens)
         : summarizeDelivery([]))
       : summarizeDeliveryPayload(null); // read failed → §22.5
-
-  const targets: DeliveryTarget[] = apiAnswered && payload?.latest
-    ? payload.latest.targets
-    : deriveTargetsFromScreens(targetScreens);
 
   const screenById = new Map(targetScreens.map((s) => [s.id, s]));
 
@@ -220,18 +222,22 @@ export function DeliveryPanel(props: DeliveryPanelProps) {
                         )}
                       </td>
                       <td className="px-3 py-2.5">
-                        {t.state === 'no-picture' ? (
-                          <span className="text-[13px] text-rose-700 font-semibold">No picture confirmed</span>
-                        ) : t.lastProofAt ? (
-                          <span className="text-[13px] text-emerald-700 font-semibold" title={exactStamp(t.lastProofAt)}>
-                            Picture confirmed {timeAgo(t.lastProofAt)}
+                        {t.pictureState === 'issue' ? (
+                          <span className="text-[13px] text-rose-700 font-semibold">Playback problem reported</span>
+                        ) : t.pictureState === 'stale' ? (
+                          <span className="text-[13px] text-rose-700 font-semibold">No recent playback report</span>
+                        ) : t.pictureState === 'reported' && t.lastProofAt ? (
+                          <span className="text-[13px] text-slate-700 font-semibold" title={exactStamp(t.lastProofAt)}>
+                            Playback reported {timeAgo(t.lastProofAt)}
                           </span>
+                        ) : t.pictureState === 'offline' ? (
+                          <span className={`text-[13px] ${INK_3}`}>Screen offline</span>
                         ) : (
-                          <span className={`text-[13px] ${INK_3}`}>Never reported</span>
+                          <span className={`text-[13px] ${INK_3}`}>Playback not verified</span>
                         )}
                       </td>
                       <td className="px-3 py-2.5">
-                        {t.state === 'acknowledged' && t.ackAt ? (
+                        {t.ackAt ? (
                           <span className="text-[13px] text-emerald-700 font-semibold">Received</span>
                         ) : t.state === 'not-updated' ? (
                           <span className="text-[13px] text-amber-800 font-semibold">Not received</span>

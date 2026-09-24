@@ -26,14 +26,12 @@ export interface OptimizedMedia {
 }
 
 /**
- * Audit P0-5 (2026-05-27) image-upload profile: max 1920px on the longest
+ * Image-upload profile: max 3840px on the longest
  * side, JPEG q=85, WebP q=85, PNG lossless (palette + compressionLevel 9),
- * EXIF stripped, animated GIFs untouched. Conservative compared to the
- * earlier 3840px / q=82 profile so signage screens (most are 1080p; the
- * occasional 4K wall still renders cleanly with bilinear upscale on the
- * GPU) get the smallest possible files without visible loss.
+ * EXIF stripped, animated GIFs untouched. A screen-sized 1920px copy is
+ * prepared when publishing to a 1080p screen; 4K screens keep 4K detail.
  */
-const UPLOAD_IMAGE_MAX_DIM = 1920;
+const UPLOAD_IMAGE_MAX_DIM = 3840;
 const UPLOAD_JPEG_QUALITY = 85;
 const UPLOAD_WEBP_QUALITY = 85;
 
@@ -136,8 +134,8 @@ export class MediaOptimizationService {
 
   /**
    * Audit P0-5 (2026-05-27) — sharp-based resize for uploaded images.
-   *   - Max 1920px on the longest side (signage shows no more than 4K, but
-   *     1080p is the median; 1920 is a clean cap).
+   *   - Max 3840px on the longest side. Publishing prepares a 1920px copy
+   *     separately when a selected screen is 1080p.
    *   - JPEG re-encoded at q=85 with mozjpeg (smaller than libjpeg-turbo for
    *     the same visual quality).
    *   - WebP re-encoded at q=85.
@@ -158,6 +156,7 @@ export class MediaOptimizationService {
     buffer: Buffer,
     mimeType: string,
     ext: string,
+    maxDimension = UPLOAD_IMAGE_MAX_DIM,
   ): Promise<OptimizedMedia> {
     const passthrough = (): OptimizedMedia => ({
       buffer,
@@ -183,13 +182,13 @@ export class MediaOptimizationService {
       const needsResize =
         typeof origW === 'number' &&
         typeof origH === 'number' &&
-        Math.max(origW, origH) > UPLOAD_IMAGE_MAX_DIM;
+        Math.max(origW, origH) > maxDimension;
 
       let pipeline = sharp(buffer, { failOn: 'none' }).rotate();
       if (needsResize) {
         pipeline = pipeline.resize({
-          width: UPLOAD_IMAGE_MAX_DIM,
-          height: UPLOAD_IMAGE_MAX_DIM,
+          width: maxDimension,
+          height: maxDimension,
           fit: 'inside',
           withoutEnlargement: true,
         });

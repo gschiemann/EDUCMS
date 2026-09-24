@@ -227,6 +227,22 @@ export function planTranscode(probe: ProbeResult): PlanDecision {
   };
 }
 
+/** A second, decoder-safe copy for panels with at most a 1920×1080 framebuffer. */
+export function plan1080Rendition(probe: ProbeResult): TranscodePlan | null {
+  if (!probe.hasVideo || !probe.width || !probe.height) return null;
+  const long = Math.max(probe.width, probe.height);
+  const short = Math.min(probe.width, probe.height);
+  if (long <= 1920 && short <= 1080) return null;
+  const scale = Math.min(1, 1920 / long, 1080 / short);
+  return {
+    rung: RUNG_1080,
+    width: even(probe.width * scale),
+    height: even(probe.height * scale),
+    fps: probe.fps !== null && probe.fps > 30.01 ? 30 : null,
+    hasAudio: probe.hasAudio,
+  };
+}
+
 /**
  * The ffmpeg argv for one transcode. `sizeLimitBytes` becomes `-fs`: ffmpeg
  * stops writing once the output reaches the SOURCE's size — an output that big
@@ -237,7 +253,7 @@ export function buildTranscodeArgs(
   input: string,
   output: string,
   plan: TranscodePlan,
-  opts: { sizeLimitBytes: number; threads?: number },
+  opts: { sizeLimitBytes: number; threads?: number; level?: string },
 ): string[] {
   const threads = String(opts.threads ?? TRANSCODE_THREADS);
   const filters = [`scale=${plan.width}:${plan.height}:flags=lanczos`];
@@ -271,6 +287,7 @@ export function buildTranscodeArgs(
     'libx264',
     '-profile:v',
     'high',
+    ...(opts.level ? ['-level:v', opts.level] : []),
     '-preset',
     TRANSCODE_PRESET,
     '-crf',

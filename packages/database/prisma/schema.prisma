@@ -1868,6 +1868,10 @@ model Schedule {
   // without rewriting per-item flags. Null = honor per-item setting.
   mutedOverride Boolean?     @map("muted_override")
   isActive      Boolean      @default(true) @map("is_active")
+  // An operator requested publish, but a screen-specific playback copy is
+  // still encoding. Keep the previous schedule on glass until it is ready.
+  pendingMedia  Boolean      @default(false) @map("pending_media")
+  pendingMediaError String?  @map("pending_media_error")
   screen        Screen?      @relation(fields: [screenId], references: [id])
   screenGroup   ScreenGroup? @relation(fields: [screenGroupId], references: [id])
   playlist      Playlist     @relation(fields: [playlistId], references: [id])
@@ -1877,6 +1881,7 @@ model Schedule {
   // time range to decide which playlist a screen should be playing
   // right now.
   @@index([tenantId, isActive, startTime])
+  @@index([pendingMedia, isActive])
   @@index([screenId])
   @@index([screenGroupId])
   @@index([playlistId])

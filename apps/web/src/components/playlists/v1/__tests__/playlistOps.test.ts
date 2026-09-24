@@ -60,6 +60,7 @@ function screen(over: Partial<OpsScreenRef> = {}): OpsScreenRef {
     name: over.name ?? 'Lobby TV',
     status: 'ONLINE',
     lastRenderedAt: new Date(NOW_MS - 20_000).toISOString(),
+    lastRenderedHash: 'pl:test|30000|version',
     renderHealth: 'OK',
     pushChannel: 'live',
     ...over,
@@ -103,6 +104,13 @@ describe('§4.1 schedule-state precedence', () => {
     );
     expect(r.state).toBe('SCHEDULED');
     expect(r.summary).toBe('Starts Sep 20 · 4:00 PM');
+  });
+
+  it('a failed media preparation is visible as a failed publish', () => {
+    const r = deriveScheduleState([sched({ isActive: false, pendingMedia: true,
+      pendingMediaError: 'A playback copy could not be prepared. Retry publishing this playlist.' })], WED_10AM);
+    expect(r.pillLabel).toBe('MEDIA FAILED');
+    expect(r.summary).toMatch(/could not be prepared/);
   });
 
   it('every schedule disabled is PAUSED even when its window is open', () => {
@@ -248,10 +256,16 @@ describe('degradation: grading targets from the screens payload', () => {
     expect(t.state).toBe('unknown');
   });
 
-  it('with no push on record, a fresh picture is reported as a picture — not as an update', () => {
+  it('an unavailable player fallback is a playback problem', () => {
+    const unavailable = deriveDeliveryFromScreens([screen({ lastRenderedHash: 'idle:content-unavailable' })], NOW_MS);
+    expect(unavailable.state).toBe('playback-issue');
+    expect(unavailable.tone).toBe('bad');
+  });
+
+  it('with no push on record, a fresh picture is reported without claiming confirmation', () => {
     const s = deriveDeliveryFromScreens([screen({ id: 'a' }), screen({ id: 'b', name: 'Cafe' })], NOW_MS);
-    expect(s.tone).toBe('ok');
-    expect(s.label).toBe('Picture confirmed');
+    expect(s.tone).toBe('muted');
+    expect(s.label).toBe('Playback reported');
     expect(s.sub).toBe('on 2 of 2');
     expect(s.label).not.toMatch(/update received/i);
   });
@@ -387,7 +401,7 @@ describe('the library row', () => {
       screens, groups, now: WED_10AM,
     });
     expect(row.scheduleState).toBe('SCHEDULED');
-    expect(row.delivery.tone).toBe('ok');
+    expect(row.delivery.tone).toBe('muted');
   });
 
   it('search text covers name, creator, template and target names (§7.4)', () => {

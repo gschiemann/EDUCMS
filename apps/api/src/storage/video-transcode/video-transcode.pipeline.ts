@@ -39,6 +39,7 @@ import { VIDEO_WARN_SIZE_BYTES } from '../media-optimization.service';
 import { sha256File } from '../storage-stream';
 import {
   buildTranscodeArgs,
+  plan1080Rendition,
   planTranscode,
   progressPercent,
   tempBytesNeeded,
@@ -139,6 +140,46 @@ SELECT (
 `;
 
 const MB = 1024 * 1024;
+
+interface CompatibilityRendition {
+  url: string;
+  sha256: string;
+  size: number;
+  width: number;
+  height: number;
+  path: string;
+}
+
+/** Require the MP4 index before media data, not merely an ffmpeg success code. */
+async function hasFastStart(file: string): Promise<boolean> {
+  const handle = await fs.open(file, 'r');
+  try {
+    const end = (await handle.stat()).size;
+    let pos = 0;
+    let sawFtyp = false;
+    for (let boxes = 0; boxes < 64 && pos + 8 <= end; boxes++) {
+      const header = Buffer.alloc(16);
+      const { bytesRead } = await handle.read(header, 0, 16, pos);
+      if (bytesRead < 8) return false;
+      const type = header.toString('ascii', 4, 8);
+      let size = header.readUInt32BE(0);
+      if (size === 1) {
+        if (bytesRead < 16) return false;
+        const wide = header.readBigUInt64BE(8);
+        if (wide > BigInt(Number.MAX_SAFE_INTEGER)) return false;
+        size = Number(wide);
+      }
+      if (size < 8 || pos + size > end) return false;
+      if (type === 'ftyp') sawFtyp = true;
+      if (type === 'moov') return sawFtyp;
+      if (type === 'mdat') return false;
+      pos += size;
+    }
+    return false;
+  } finally {
+    await handle.close();
+  }
+}
 
 /**
  * The `processingMeta` keys that describe ONE PARTICULAR FILE — the probe facts
@@ -390,6 +431,42 @@ export class VideoTranscodePipeline {
       }
       const decision = planTranscode(inProbe);
       if (decision.action === 'skip') {
+        if (decision.reason === 'already-optimal') {
+          const rendition = await this.create1080Rendition(
+            job, inPath, inProbe, bytesIn, dir, ctx,
+          );
+          if (rendition) {
+            if (await this.isEmergencyContent(asset.id, job.sourceUrl)) {
+              await this.storage.delete(rendition.path).catch(() => undefined);
+              return keepOriginal({ status: 'skipped', reason: 'emergency-content' });
+            }
+            const merged = {
+              ...(asset.processingMeta && typeof asset.processingMeta === 'object' &&
+                  !Array.isArray(asset.processingMeta) ? asset.processingMeta as object : {}),
+              renditions: { '1080p': this.publicRendition(rendition) },
+            };
+            const saved = await this.prisma.client.asset.updateMany({
+              where: {
+                id: asset.id,
+                tenantId: job.tenantId,
+                fileUrl: job.sourceUrl,
+                playlistItems: { none: { playlist: { isProtected: true } } },
+              },
+              data: { processingMeta: merged as Prisma.InputJsonObject },
+            });
+            if (!saved.count) {
+              await this.storage.delete(rendition.path).catch(() => undefined);
+              return keepOriginal({ status: 'skipped', reason: 'source-changed' });
+            }
+            await this.auditRendition(job, rendition);
+            await this.backfillOriginalHash(job, dl.sha256);
+            return {
+              status: 'done', reason: 'rendition-created',
+              outputUrl: rendition.url, outputBytes: rendition.size,
+              details: this.details({ inProbe, bytesIn, t0 }),
+            };
+          }
+        }
         return keepOriginal({
           status: 'skipped',
           reason: decision.reason,
@@ -477,6 +554,9 @@ export class VideoTranscodePipeline {
         'video/mp4',
         { signal: ctx.signal },
       );
+      const rendition = await this.create1080Rendition(
+        job, outPath, outProbe, bytesOut, dir, ctx,
+      );
 
       // ── 8. The swap — the only write a screen can ever see. ─────────────
       const details = this.details({
@@ -492,6 +572,7 @@ export class VideoTranscodePipeline {
       if (await this.isEmergencyContent(asset.id, job.sourceUrl)) {
         // Became alert media while we encoded: never swap it.
         await this.storage.delete(outputPath).catch(() => undefined);
+        if (rendition) await this.storage.delete(rendition.path).catch(() => undefined);
         return keepOriginal({
           status: 'skipped',
           reason: 'emergency-content',
@@ -536,11 +617,13 @@ export class VideoTranscodePipeline {
               seconds: details.seconds,
               savedBytes: bytesIn - bytesOut,
             },
+            ...(rendition ? { renditions: { '1080p': this.publicRendition(rendition) } } : {}),
           }) as Prisma.InputJsonObject,
         },
       });
       if (swapped.count === 0) {
         await this.storage.delete(outputPath).catch(() => undefined);
+        if (rendition) await this.storage.delete(rendition.path).catch(() => undefined);
         const now = await this.prisma.client.asset
           .findFirst({
             where: { id: asset.id, tenantId: job.tenantId },
@@ -585,6 +668,7 @@ export class VideoTranscodePipeline {
         `[transcode] asset ${asset.id} ${plan.rung.label}: ${Math.round(bytesIn / MB)} MB → ${Math.round(bytesOut / MB)} MB ` +
           `(${Math.round((1 - bytesOut / bytesIn) * 100)}% smaller) in ${details.seconds}s — swapped`,
       );
+      if (rendition) await this.auditRendition(job, rendition);
 
       // ── 9. The facts on the row must describe the file screens now download. ──
       // Runs AFTER the swap (the row's fileUrl is the copy) and BEFORE the job
@@ -624,6 +708,95 @@ export class VideoTranscodePipeline {
           .rm(dir, { recursive: true, force: true })
           .catch(() => undefined);
     }
+  }
+
+  private publicRendition(r: CompatibilityRendition) {
+    return { url: r.url, sha256: r.sha256, size: r.size, width: r.width, height: r.height };
+  }
+
+  /** A failed side copy never replaces or invalidates the primary asset. */
+  private async create1080Rendition(
+    job: ClaimedTranscodeJob,
+    inputPath: string,
+    source: ProbeResult,
+    inputBytes: number,
+    dir: string,
+    ctx: { signal?: AbortSignal },
+  ): Promise<CompatibilityRendition | null> {
+    const plan = plan1080Rendition(source);
+    if (!plan) return null;
+    const free = await this.env.freeBytes(dir);
+    if (free !== null && free < inputBytes + 128 * MB) {
+      this.logger.warn(`[transcode] asset ${job.assetId}: no temp disk for 1080p rendition`);
+      return null;
+    }
+    const output = path.join(dir, 'rendition-1080.mp4');
+    let uploadedPath: string | null = null;
+    try {
+      const run = await this.runner.transcode(
+        buildTranscodeArgs(inputPath, output, plan, {
+          sizeLimitBytes: Math.min(2_000_000_000, Math.max(Math.ceil(inputBytes * 1.25), 256 * MB)),
+          level: '4.1',
+        }),
+        { timeoutMs: transcodeTimeoutMs(source.durationS), signal: ctx.signal },
+      );
+      if (!run.ok) throw new Error(`ffmpeg: ${run.reason}`);
+      const size = (await fs.stat(output)).size;
+      // Decoder compatibility matters even if a low-bitrate 4K source needs
+      // more bytes to produce a clean 1080p H.264 file.
+      if (size <= 0) throw new Error('empty-rendition');
+      const probe = await this.runner.probe(output);
+      const verdict = verifyTranscodeOutput(source, probe, plan);
+      if (!verdict.ok) throw new Error(verdict.reason);
+      if (probe.fps === null || probe.fps > 30.01 ||
+          !(probe.formatName ?? '').includes('mp4') ||
+          (source.hasAudio && probe.audioCodec !== 'aac')) {
+        throw new Error('rendition-decoder-profile-rejected');
+      }
+      if (!(await hasFastStart(output))) throw new Error('rendition-not-faststart');
+      if (ctx.signal?.aborted) throw new Error('aborted');
+      if (!job.assetId || await this.isEmergencyContent(job.assetId, job.sourceUrl)) {
+        throw new Error('became-emergency-content');
+      }
+      const sha256 = await sha256File(output);
+      uploadedPath = `${job.tenantId}/${OPTIMIZED_PREFIX}/renditions/${randomUUID()}.mp4`;
+      const url = await this.storage.uploadFileFromDisk(
+        uploadedPath, output, 'video/mp4', { signal: ctx.signal },
+      );
+      return { url, sha256, size, width: plan.width, height: plan.height, path: uploadedPath };
+    } catch (e) {
+      if (uploadedPath) await this.storage.delete(uploadedPath).catch(() => undefined);
+      this.logger.warn(
+        `[transcode] asset ${job.assetId}: 1080p rendition unavailable: ${(e as Error)?.message ?? e}`,
+      );
+      return null;
+    }
+  }
+
+  private async auditRendition(
+    job: ClaimedTranscodeJob,
+    rendition: CompatibilityRendition,
+  ): Promise<void> {
+    if (!job.assetId) return;
+    await this.prisma.client.auditLog.create({
+      data: {
+        tenantId: job.tenantId,
+        userId: null,
+        action: 'ASSET_VIDEO_RENDITION_CREATED',
+        targetType: 'Asset',
+        targetId: job.assetId,
+        details: JSON.stringify({
+          sourceUrl: job.sourceUrl,
+          renditionUrl: rendition.url,
+          size: rendition.size,
+          sha256: rendition.sha256,
+          width: rendition.width,
+          height: rendition.height,
+        }),
+      },
+    }).catch((e: unknown) => this.logger.warn(
+      `[transcode] rendition audit failed for ${job.assetId}: ${(e as Error)?.message ?? e}`,
+    ));
   }
 
   /**
