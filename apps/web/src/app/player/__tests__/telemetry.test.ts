@@ -333,6 +333,27 @@ describe('body assembly', () => {
     expect(buildTelemetryBody({ refreshAckMs: null })).not.toHaveProperty('refreshAckMs');
   });
 
+  it('carries the last video sample as bounded ints, and omits it when there is none', () => {
+    const body = buildTelemetryBody({
+      video: { url: 'https://cdn/x/clip.mp4', totalFrames: 1830.7, droppedFrames: 9000, elapsedMs: 61_000.2, width: 1920.4, height: 1080 },
+    });
+    expect(body.video).toEqual({
+      url: 'https://cdn/x/clip.mp4',
+      totalFrames: 1830,
+      droppedFrames: 1830,
+      elapsedMs: 61_000,
+      width: 1920,
+      height: 1080,
+    });
+    expect(buildTelemetryBody({ video: null })).not.toHaveProperty('video');
+    // No size when the element had none — the key is omitted, never sent as 0.
+    expect(buildTelemetryBody({ video: { url: 'x', totalFrames: 10, droppedFrames: 0 } }).video).toEqual({
+      url: 'x',
+      totalFrames: 10,
+      droppedFrames: 0,
+    });
+  });
+
   it('a full report is the shape the server accepts', () => {
     const body = buildTelemetryBody({
       playerVersion: '1.1.17',

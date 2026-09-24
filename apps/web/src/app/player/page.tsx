@@ -111,6 +111,7 @@ import {
   type TelemetryResponse,
   type TelemetrySyncReport,
 } from './telemetry';
+import { videoQualityTracker } from './videoQuality';
 import { getServiceWorkerContainer, isServiceWorkerAvailable } from '../../lib/safe-service-worker';
 // 2026-07-28 — frame-locked multi-screen sync (docs/research/2026-07-28-multiscreen-sync/).
 // Pure modules (no React/DOM) so the math is unit-tested without mounting this page.
@@ -1585,6 +1586,23 @@ function PlayerVideoSlide({
       try { v.pause(); } catch { /* noop */ }
     }
   }, [isActive, isMuted]);
+
+  // Dropped-frame sample (2026-09-24) — the screen's half of "was it the file
+  // or the player?". A base reading when this slide takes the glass, the
+  // final delta when it leaves; the routine telemetry tick reads the tracker
+  // and ships one sample per report (`video`). A read of two counters on an
+  // effect the slide already has: no timer, no network, nothing that
+  // advances content (sync invariant untouched).
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!isActive || !v) return;
+    videoQualityTracker.attach(v, src, Date.now());
+    return () => {
+      videoQualityTracker.detach(v, Date.now());
+    };
+    // `src` is fixed for the life of a slide (key={videoKey} remounts per item).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive, videoKey]);
 
   // 2026-05-05 — recover from autoplay-with-sound block on first user
   // gesture. Chrome's policy says any document-wide click / keydown /
@@ -6832,6 +6850,9 @@ function PlayerPage() {
         // Durable-REFRESH ack by VALUE identity (player rule 6) — never a
         // clock comparison; signage boxes run minutes of skew.
         refreshAckMs: readRefreshAck(),
+        // The last video's dropped-frame sample, when there is a new one
+        // (2026-09-24). At most one per report; the server keeps the latest.
+        video: videoQualityTracker.take(nowMs),
       });
 
       let status: number | null = null;
