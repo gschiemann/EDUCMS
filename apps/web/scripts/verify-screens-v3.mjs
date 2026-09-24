@@ -52,11 +52,16 @@ if (!fs.existsSync(ROUTE_PAGE)) {
   process.exit(1);
 }
 
-const OUT = '/Users/gschiemann/Desktop/EDU CMS/scratch/design/verify';
+// Default to the repo's own scratch dir; VERIFY_OUT overrides it (a container
+// or a worktree has no ~/Desktop). PW_CHROMIUM points at a Chromium binary
+// when the box carries a different Playwright revision than the project pins.
+const OUT = process.env.VERIFY_OUT || path.join(HERE, '..', '..', '..', 'scratch', 'design', 'verify');
 fs.mkdirSync(OUT, { recursive: true });
 const URL = 'http://localhost:3112/dev/screens-mock';
 
-const browser = await chromium.launch();
+const browser = await chromium.launch(
+  process.env.PW_CHROMIUM ? { executablePath: process.env.PW_CHROMIUM } : {},
+);
 const shot = async (page, name, full = true) => {
   await page.screenshot({ path: `${OUT}/${name}.png`, fullPage: full });
   console.log('shot', name);
