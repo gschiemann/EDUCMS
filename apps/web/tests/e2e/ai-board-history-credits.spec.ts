@@ -72,6 +72,14 @@ async function shot(page: Page, name: string) {
   await page.screenshot({ path: path.join(dir, `${test.info().project.name}-${name}.png`) });
 }
 
+/**
+ * A route on the API origin ONLY (`NEXT_PUBLIC_API_URL=http://api.invalid/api/v1` on the dev
+ * server). A bare `**\/templates` glob also matches the PAGE (`/e2e-school/templates`) and answers
+ * the document with JSON — anchoring to the API origin is the whole point.
+ */
+const API_ROOT = 'http://api.invalid/api/v1';
+const at = (pathPattern: string) => new RegExp(`^${API_ROOT.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')}${pathPattern}(\\?.*)?$`);
+
 async function installApiMocks(page: Page, a: Api) {
   const cors = (route: Route, respond: () => unknown) =>
     route.request().method() === 'OPTIONS' ? route.fulfill({ status: 204, headers: CORS_HEADERS, body: '' }) : respond();
@@ -79,36 +87,35 @@ async function installApiMocks(page: Page, a: Api) {
     cors(route, () => route.fulfill({ status, contentType: 'application/json', headers: CORS_HEADERS, body: JSON.stringify(body) }));
   const empty = (route: Route) => cors(route, () => route.fulfill({ status: 204, headers: CORS_HEADERS, body: '' }));
 
-  // Broadest catch-alls FIRST (Playwright matches last-registered first).
-  await page.route(/http:\/\/api\.invalid\/.*/, empty);
-  await page.route('**/api/v1/**', empty);
-  await page.route('**/auth/me', (route) => okJson(route, FAKE_USER));
-  await page.route('**/tenants', (route) => okJson(route, [{ id: SCHOOL_ID, name: 'Super Taco', slug: SCHOOL_ID, vertical: 'RESTAURANT' }]));
-  await page.route('**/tenants/accessible', (route) => okJson(route, [{ id: SCHOOL_ID, name: 'Super Taco', slug: SCHOOL_ID }]));
-  await page.route('**/templates', (route) => okJson(route, [KEPT]));
-  await page.route('**/templates/usage-summary', (route) => okJson(route, {}));
-  await page.route('**/screens', (route) => okJson(route, []));
-  await page.route('**/branding/me', (route) => okJson(route, {}));
-  await page.route('**/ai/key', (route) => okJson(route, { usage: { source: 'platform', used: 0, cap: 500 } }));
-  await page.route('**/templates/generate-designer/brief', (route) => okJson(route, { brief: null, ai: { source: 'platform' } }));
+  // Broadest catch-all FIRST (Playwright matches last-registered first).
+  await page.route(/^http:\/\/api\.invalid\//, empty);
+  await page.route(at('/auth/me'), (route) => okJson(route, FAKE_USER));
+  await page.route(at('/tenants'), (route) => okJson(route, [{ id: SCHOOL_ID, name: 'Super Taco', slug: SCHOOL_ID, vertical: 'RESTAURANT' }]));
+  await page.route(at('/tenants/accessible'), (route) => okJson(route, [{ id: SCHOOL_ID, name: 'Super Taco', slug: SCHOOL_ID }]));
+  await page.route(at('/templates'), (route) => okJson(route, [KEPT]));
+  await page.route(at('/templates/usage-summary'), (route) => okJson(route, {}));
+  await page.route(at('/screens'), (route) => okJson(route, []));
+  await page.route(at('/branding/me'), (route) => okJson(route, {}));
+  await page.route(at('/ai/key'), (route) => okJson(route, { usage: { source: 'platform', used: 0, cap: 500 } }));
+  await page.route(at('/templates/generate-designer/brief'), (route) => okJson(route, { brief: null, ai: { source: 'platform' } }));
 
   // ── the surfaces under test ──
-  await page.route('**/ai/allowance', (route) => okJson(route, a.allowance));
-  await page.route(/\/templates\/generate-designer\/jobs\?/, (route) =>
+  await page.route(at('/ai/allowance'), (route) => okJson(route, a.allowance));
+  await page.route(at('/templates/generate-designer/jobs'), (route) =>
     cors(route, () => {
-      const before = new URL(route.request().url()).searchParams.get('before') || '';
+      const url = new URL(route.request().url());
+      if (route.request().method() === 'POST') {
+        return route.fulfill({ status: 202, contentType: 'application/json', headers: CORS_HEADERS, body: JSON.stringify({ jobId: 'job-new', status: 'queued' }) });
+      }
+      // GET = the history list.
+      const before = url.searchParams.get('before') || '';
       a.historyGets.push(before);
       const H1 = historyContractItem({ id: 'job-h1', createdAt: '2026-09-22T09:30:00.000Z', keptTemplateId: 'tpl-kept' });
       const H2 = historyPlainItem({ id: 'job-h2', createdAt: '2026-09-21T16:05:00.000Z', prompt: 'A portrait welcome board for the lobby' });
       return okJson(route, before ? historyPage([]) : historyPage([H1, H2]));
     }),
   );
-  await page.route('**/templates/generate-designer/jobs', (route) =>
-    cors(route, () =>
-      route.fulfill({ status: 202, contentType: 'application/json', headers: CORS_HEADERS, body: JSON.stringify({ jobId: 'job-new', status: 'queued' }) }),
-    ),
-  );
-  await page.route(/\/templates\/generate-designer\/jobs\/[^/?]+$/, (route) =>
+  await page.route(at('/templates/generate-designer/jobs/[^/?]+'), (route) =>
     cors(route, () => {
       const id = decodeURIComponent(new URL(route.request().url()).pathname.split('/').pop() as string);
       const answers = a.jobs.get(id);
@@ -116,14 +123,14 @@ async function installApiMocks(page: Page, a: Api) {
       return okJson(route, answers.length > 1 ? answers.shift() : answers[0]);
     }),
   );
-  await page.route('**/templates/create-designer', (route) =>
+  await page.route(at('/templates/create-designer'), (route) =>
     cors(route, () => {
       const body = JSON.parse(route.request().postData() || '{}');
       a.creates.push(body);
       return okJson(route, { id: `tpl-created-${a.creates.length}`, name: body.name });
     }),
   );
-  await page.route('**/billing/ai-packs/checkout', (route) =>
+  await page.route(at('/billing/ai-packs/checkout'), (route) =>
     cors(route, () => {
       a.checkouts.push(JSON.parse(route.request().postData() || '{}'));
       return okJson(route, { url: CHECKOUT_URL });
@@ -135,15 +142,24 @@ async function installApiMocks(page: Page, a: Api) {
   );
 }
 
+/** A signed-in SCHOOL_ADMIN tab: the store boots from sessionStorage (ui-store.ts). Unsigned JWT, far exp. */
+const b64url = (s: string) => Buffer.from(s).toString('base64').replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_');
+const FAKE_TOKEN = `${b64url('{"alg":"HS256","typ":"JWT"}')}.${b64url(JSON.stringify({ sub: 'u1', exp: 4102444800 }))}.e2e`;
+
 async function openTemplates(page: Page, a: Api, viewport = { width: 1280, height: 900 }) {
   await installApiMocks(page, a);
-  await page.addInitScript(() => {
-    try {
-      localStorage.setItem('edu_cms_eula_accepted_v1.0', '1');
-    } catch {
-      /* ignore */
-    }
-  });
+  await page.addInitScript(
+    ({ token, user }: { token: string; user: string }) => {
+      try {
+        localStorage.setItem('edu_cms_eula_accepted_v1.0', '1');
+        sessionStorage.setItem('edu_cms_token', token);
+        sessionStorage.setItem('edu_cms_user', user);
+      } catch {
+        /* ignore */
+      }
+    },
+    { token: FAKE_TOKEN, user: JSON.stringify(FAKE_USER) },
+  );
   await page.setViewportSize(viewport);
   await page.goto(`/${SCHOOL_ID}/templates`, { waitUntil: 'domcontentloaded' });
 }
