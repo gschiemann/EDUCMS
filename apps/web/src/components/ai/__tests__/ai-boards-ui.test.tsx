@@ -48,7 +48,7 @@ const apiFetch = jest.fn(async (path: string, opts?: FetchOpts) => {
 jest.mock('@/lib/api-client', () => ({
   apiFetch: (path: string, opts?: FetchOpts) => apiFetch(path, opts),
 }));
-const goToCheckout = jest.fn((_url: string) => true);
+const goToCheckout = jest.fn<boolean, [string]>(() => true);
 jest.mock('@/lib/checkout-redirect', () => ({
   goToCheckout: (url: string) => goToCheckout(url),
 }));

@@ -102,7 +102,7 @@ const apiFetch = jest.fn(async (path: string, opts?: { method?: string; body?: s
 jest.mock('@/lib/api-client', () => ({
   apiFetch: (path: string, opts?: { method?: string; body?: string }) => apiFetch(path, opts),
 }));
-const goToCheckout = jest.fn((_url: string) => true);
+const goToCheckout = jest.fn<boolean, [string]>(() => true);
 jest.mock('@/lib/checkout-redirect', () => ({ goToCheckout: (url: string) => goToCheckout(url) }));
 
 // ── the page's other data, staged; the hooks under test are REAL ─────────────────────────────

@@ -14,7 +14,9 @@
  * Read as TEXT only — no API module is loaded (see the fixture's header).
  */
 import * as fs from 'fs';
-import { useTranslations } from 'next-intl';
+// Under jest, next-intl is test-mocks/next-intl.tsx: a plain function over the real en.json, not a
+// React hook — so it is named for what it is here.
+import { useTranslations as enTranslator } from 'next-intl';
 import en from '@/i18n/messages/en.json';
 import es from '@/i18n/messages/es.json';
 import zh from '@/i18n/messages/zh.json';
@@ -36,7 +38,7 @@ import { boardsLine } from '../ai-boards';
 import { DESIGNER_HISTORY_PAGE_SIZE, designerHistoryPath } from '@/hooks/use-api';
 
 const read = (file: string) => fs.readFileSync(file, 'utf8');
-const t = useTranslations('aiBoards') as unknown as (key: string, values?: Record<string, string | number>) => string;
+const t = enTranslator('aiBoards') as unknown as (key: string, values?: Record<string, string | number>) => string;
 
 /** `export interface <name> { … }` → its field names, in order. */
 function interfaceFields(src: string, name: string): string[] {

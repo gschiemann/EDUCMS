@@ -3,7 +3,9 @@
  * the pack and purchase lines, the history row text, and the 402 test — fed the producer-shaped
  * bodies of tests/fixtures/ai-boards.ts. Plus lib/checkout-redirect (https only).
  */
-import { useTranslations } from 'next-intl';
+// Under jest, next-intl is test-mocks/next-intl.tsx: a plain function over the real en.json, not a
+// React hook — so it is named for what it is here.
+import { useTranslations as enTranslator } from 'next-intl';
 import {
   historyContractItem,
   historyPlainItem,
@@ -25,7 +27,7 @@ import {
 } from '../ai-boards';
 import { goToCheckout } from '../checkout-redirect';
 
-const t = useTranslations('aiBoards') as unknown as (key: string, values?: Record<string, string | number>) => string;
+const t = enTranslator('aiBoards') as unknown as (key: string, values?: Record<string, string | number>) => string;
 
 describe('boardsLine — what the dialog, Settings → AI and the Stripe return all say', () => {
   it('our key: "14 of 20 boards left this month · resets Oct 1", Buy more on offer', () => {
