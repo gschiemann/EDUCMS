@@ -129,6 +129,12 @@ export class MediaPublicationService implements OnModuleInit, OnModuleDestroy {
     if (this.timer) clearInterval(this.timer);
   }
 
+  /** A finished rendition should reach an already-playing legacy schedule now, not at the next 15-minute scan. */
+  renditionReady(): void {
+    this.lastLegacyBackfillAt = 0;
+    void this.sweep();
+  }
+
   /** Queue only the assets that selected screens cannot decode at native size. */
   async prepare(tenantId: string, playlistId: string, screenId?: string | null, groupId?: string | null): Promise<boolean> {
     const [playlist, screens] = await Promise.all([
@@ -256,26 +262,60 @@ export class MediaPublicationService implements OnModuleInit, OnModuleDestroy {
         orderBy: { startTime: 'desc' },
         include: {
           playlist: { include: { items: { include: { asset: true } } } },
-          screen: { select: { resolution: true } },
-          screenGroup: { include: { screens: { select: { resolution: true } } } },
+          screen: { select: { id: true, resolution: true, lastVideoReport: true, lastVideoReportAt: true, pendingRefreshAt: true } },
+          screenGroup: { include: { screens: { select: { id: true, resolution: true, lastVideoReport: true, lastVideoReportAt: true, pendingRefreshAt: true } } } },
         },
       });
       for (const rule of active) {
-        const targetResolutions = rule.screen
-          ? [rule.screen.resolution] : rule.screenGroup?.screens.map((s) => s.resolution) ?? [];
+        const targets = rule.screen ? [rule.screen] : rule.screenGroup?.screens ?? [];
+        const targetResolutions = targets.map((s) => s.resolution);
         for (const asset of rule.playlist.items.map((i) => i.asset)) {
-          if (!targetResolutions.some((r) => needs1080VideoCopy(asset, r))) continue;
-          const existing = await this.prisma.client.videoTranscodeJob.findFirst({
-            where: { tenantId: rule.tenantId, assetId: asset.id },
-            select: { status: true, reason: true },
-          });
-          // A completed legacy transcode is the only terminal job to upgrade.
-          // A failed/unsupported attempt must not loop forever every sweep.
-          if (!existing || (existing.status === 'done' && existing.reason !== 'rendition-created')) {
-            await this.jobs.enqueueForRendition({
-              tenantId: rule.tenantId, assetId: asset.id,
-              sourceUrl: asset.fileUrl, sourceBytes: asset.fileSize,
+          if (targetResolutions.some((r) => needs1080VideoCopy(asset, r))) {
+            const existing = await this.prisma.client.videoTranscodeJob.findFirst({
+              where: { tenantId: rule.tenantId, assetId: asset.id },
+              select: { status: true, reason: true },
             });
+            // A completed legacy transcode is the only terminal job to upgrade.
+            // A failed/unsupported attempt must not loop forever every sweep.
+            if (!existing || (existing.status === 'done' && existing.reason !== 'rendition-created')) {
+              await this.jobs.enqueueForRendition({
+                tenantId: rule.tenantId, assetId: asset.id,
+                sourceUrl: asset.fileUrl, sourceBytes: asset.fileSize,
+              });
+            }
+            continue;
+          }
+          if (!asset.mimeType?.startsWith('video/') ||
+              !(asset.processingMeta as Record<string, any> | null)?.renditions?.['1080p']) continue;
+          for (const screen of targets) {
+            const report = screen.lastVideoReport as Record<string, any> | null;
+            // Only the screen that is demonstrably still decoding this 4K source
+            // needs a reload. A new player applies the manifest URL itself.
+            if (!isSmallScreen(screen.resolution) || screen.pendingRefreshAt ||
+                report?.url !== asset.fileUrl ||
+                !screen.lastVideoReportAt ||
+                Date.now() - new Date(screen.lastVideoReportAt).getTime() > 2 * 60_000) continue;
+            const value = new Date();
+            const refreshed = await this.prisma.client.$transaction(async (tx) => {
+              const claimed = await tx.screen.updateMany({
+                where: { id: screen.id, tenantId: rule.tenantId, pendingRefreshAt: null },
+                data: { pendingRefreshAt: value },
+              });
+              if (!claimed.count) return false;
+              await tx.auditLog.create({ data: {
+                tenantId: rule.tenantId, userId: null, action: 'AUTO_MEDIA_RENDITION_REFRESH',
+                targetType: 'Screen', targetId: screen.id,
+                details: JSON.stringify({ assetId: asset.id, playlistId: rule.playlistId, refreshRequestedAt: value.toISOString() }),
+              } });
+              return true;
+            });
+            if (refreshed) {
+              const signed = this.signer.signMessage('REFRESH_WEB', {
+                scope: 'screen', scopeId: screen.id, tenantId: rule.tenantId,
+                jitterMs: 0, source: 'media_rendition_ready',
+              });
+              await this.redis.publish(`tenant:${rule.tenantId}`, signed);
+            }
           }
         }
       }

@@ -386,7 +386,12 @@ A reliable player continuously proves FOUR SEPARATE FACTS — never let one stan
     signature includes media URL/hash, so a replacement under one playlist item
     id re-applies. Render proof reports `idle:content-unavailable` while its
     fallback page is visible; fresh `lastRenderedAt` alone never means a
-    picture is confirmed. Delivery UI distinguishes playback reports, stalls,
+    picture is confirmed. A completed rendition wakes the legacy schedule
+    sweep immediately; if an already-active 1080p screen still reports the
+    old 4K URL, it gets an audited, durable, screen-scoped `REFRESH_WEB` so
+    an older player bundle cannot hold that URL until its 15-minute bundle
+    check. Do not broadcast a tenant-wide reload for one asset. Delivery UI
+    distinguishes playback reports, stalls,
     and publish intent. Manifest cache revision MUST advance after a mutation
     commits; advancing before it allowed an old snapshot under a fresh revision
     for up to the cache TTL. Keep the pending-media migration with any schema

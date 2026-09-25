@@ -188,7 +188,8 @@ describe('delivery degradation', () => {
     const rows = screen.getAllByTestId('delivery-row');
     expect(rows).toHaveLength(2);
     expect(rows.find((r) => r.textContent?.includes('G43'))!.dataset.state).toBe('not-updated');
-    expect(rows.find((r) => r.textContent?.includes('Front'))!.dataset.state).toBe('acknowledged');
+    // A fresh render report alone is not proof that media actually loaded.
+    expect(rows.find((r) => r.textContent?.includes('Front'))!.dataset.state).toBe('not-updated');
     expect(screen.queryByText(/Built from each screen’s own last report/)).not.toBeInTheDocument();
   });
 });

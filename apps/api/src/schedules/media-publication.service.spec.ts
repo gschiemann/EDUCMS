@@ -16,7 +16,7 @@ function setup(asset: any = video) {
       update: jest.fn().mockResolvedValue({}),
       findMany: jest.fn().mockResolvedValue([]),
     },
-    screen: { findMany: jest.fn().mockResolvedValue([]) },
+    screen: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
     auditLog: { create: jest.fn().mockResolvedValue({}) },
   };
   const prisma = { client: {
@@ -117,6 +117,33 @@ describe('media publication gate', () => {
     }));
     expect(h.tx.schedule.update).toHaveBeenCalledWith(expect.objectContaining({ data: { isActive: true } }));
     expect(h.tx.auditLog.create).toHaveBeenCalled();
+    expect(h.redis.publish).toHaveBeenCalledWith('tenant:tenant', 'signed-sync');
+  });
+
+  it('durably refreshes a legacy 1080p player still reporting the 4K source after its copy is ready', async () => {
+    const ready = { ...video, processingMeta: {
+      ...video.processingMeta,
+      renditions: { '1080p': { url: 'https://example.com/1080.mp4', sha256: 'a'.repeat(64), size: 40_000_000 } },
+    } };
+    const h = setup(ready);
+    h.prisma.client.schedule.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 'rule-1', tenantId: 'tenant', playlistId: 'playlist-1',
+        playlist: { items: [{ asset: ready }] },
+        screen: { id: 'screen-1', resolution: '1920 x 1080', pendingRefreshAt: null,
+          lastVideoReportAt: new Date(), lastVideoReport: { url: ready.fileUrl, width: 3840 } },
+        screenGroup: null }]);
+    (h.service as any).lastLegacyBackfillAt = 0;
+    await h.service.sweep();
+    expect(h.tx.screen.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'screen-1', tenantId: 'tenant', pendingRefreshAt: null },
+    }));
+    expect(h.tx.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ action: 'AUTO_MEDIA_RENDITION_REFRESH' }),
+    }));
+    expect(h.signer.signMessage).toHaveBeenCalledWith('REFRESH_WEB', expect.objectContaining({
+      scope: 'screen', scopeId: 'screen-1', jitterMs: 0,
+    }));
     expect(h.redis.publish).toHaveBeenCalledWith('tenant:tenant', 'signed-sync');
   });
 });

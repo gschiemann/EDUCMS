@@ -33,12 +33,14 @@
 import {
   Injectable,
   Logger,
+  Optional,
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { hostname } from 'os';
 import { PrismaService } from '../../prisma/prisma.service';
+import { MediaPublicationService } from '../../schedules/media-publication.service';
 import { SupabaseStorageService } from '../supabase-storage.service';
 import {
   objectNeedle,
@@ -101,6 +103,7 @@ export class VideoTranscodeWorker implements OnModuleInit, OnModuleDestroy {
     private readonly pipeline: VideoTranscodePipeline,
     private readonly storage: SupabaseStorageService,
     private readonly prisma: PrismaService,
+    @Optional() private readonly mediaPublication?: MediaPublicationService,
   ) {}
 
   onModuleInit(): void {
@@ -294,6 +297,9 @@ export class VideoTranscodeWorker implements OnModuleInit, OnModuleDestroy {
             ? ` bytes in ${(outcome.details as any).bytesIn}, out ${outcome.outputBytes ?? (outcome.details as any).bytesOut ?? 'n/a'}`
             : ''),
       );
+      if (stored && outcome.reason === 'rendition-created') {
+        this.mediaPublication?.renditionReady();
+      }
       // The original stays: the fast-start re-mux VideoPosterService deferred
       // while this job was queued may still apply to it (pipeline).
       if (stored && remuxAfterTranscode(outcome)) {
