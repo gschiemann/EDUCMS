@@ -913,9 +913,29 @@ export class PlaylistsController {
         HttpStatus.FORBIDDEN,
       );
     }
+    if (body.active) {
+      const waiting = await this.prisma.client.schedule.findFirst({
+        where: { playlistId: id, tenantId: req.user.tenantId, pendingMedia: true },
+        select: { pendingMediaError: true },
+      });
+      if (waiting) {
+        throw new HttpException({
+          code: waiting.pendingMediaError ? 'PLAYBACK_COPY_FAILED' : 'PLAYBACK_COPY_PENDING',
+          message: waiting.pendingMediaError
+            ? 'A playback copy failed. Retry publishing this playlist.'
+            : 'A playback copy is still being prepared. This playlist will publish automatically when preparation finishes.',
+        }, HttpStatus.CONFLICT);
+      }
+    }
     const result = await this.prisma.client.schedule.updateMany({
-      where: { playlistId: id, tenantId: req.user.tenantId },
-      data: { isActive: !!body.active },
+      // The predicate is the concurrency guard: a worker could queue a copy
+      // after the read above. A generic "Play" must never activate it early.
+      where: { playlistId: id, tenantId: req.user.tenantId, ...(body.active ? { pendingMedia: false } : {}) },
+      // Pausing also cancels an in-flight publish. Otherwise the background
+      // sweep would reactivate the rule after the operator stopped it.
+      data: body.active
+        ? { isActive: true }
+        : { isActive: false, pendingMedia: false, pendingMediaError: null },
     });
     // Turning a playlist's schedules off takes its content OFF the wall —
     // the same class of change SCHEDULE_TOGGLED already audits one schedule
@@ -945,8 +965,10 @@ export class PlaylistsController {
       });
       if (copies.length) {
         const casc = await this.prisma.client.schedule.updateMany({
-          where: { playlistId: { in: copies.map((c) => c.id) } },
-          data: { isActive: !!body.active },
+          where: { playlistId: { in: copies.map((c) => c.id) }, ...(body.active ? { pendingMedia: false } : {}) },
+          data: body.active
+            ? { isActive: true }
+            : { isActive: false, pendingMedia: false, pendingMediaError: null },
         });
         cascadedSchedules = casc.count;
         const tenantIds = Array.from(new Set(copies.map((c) => c.tenantId)));
@@ -1001,6 +1023,16 @@ export class PlaylistsController {
         },
         HttpStatus.FORBIDDEN,
       );
+    }
+    const pending = await this.prisma.client.schedule.findFirst({
+      where: { tenantId, playlistId: id, pendingMedia: true },
+      select: { id: true },
+    });
+    if (pending) {
+      throw new HttpException({
+        code: 'PLAYBACK_COPY_PENDING',
+        message: 'This playlist is preparing a playback copy. Stop and cancel publishing before changing individual screens.',
+      }, HttpStatus.CONFLICT);
     }
     const screen = await this.prisma.client.screen.findFirst({
       where: { id: screenId, tenantId },
@@ -1072,7 +1104,12 @@ export class PlaylistsController {
     const takesOffAir = action.kind === 'remove' || !action.active;
     await this.prisma.client.$transaction(async (tx) => {
       for (const u of plan.setActive) {
-        await tx.schedule.update({ where: { id: u.id, tenantId }, data: { isActive: u.isActive } });
+        await tx.schedule.update({
+          where: { id: u.id, tenantId, pendingMedia: false },
+          data: u.isActive
+            ? { isActive: true }
+            : { isActive: false, pendingMedia: false, pendingMediaError: null },
+        });
       }
       if (plan.deleteOwn.length) {
         await tx.schedule.deleteMany({ where: { tenantId, id: { in: plan.deleteOwn } } });
@@ -1088,7 +1125,7 @@ export class PlaylistsController {
             })),
           });
         }
-        await tx.schedule.delete({ where: { id: split.groupRuleId, tenantId } });
+        await tx.schedule.delete({ where: { id: split.groupRuleId, tenantId, pendingMedia: false } });
       }
       await tx.auditLog.create({
         data: {

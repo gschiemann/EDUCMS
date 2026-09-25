@@ -267,7 +267,15 @@ export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
               and could not be started again from here. One button, both
               directions. */}
           {!props.isViewer && props.ruleCount > 0 && (
-            row?.scheduleState === 'PAUSED' ? (
+            row?.statusLabel === 'MEDIA FAILED' ? (
+              <button
+                type="button"
+                onClick={() => props.onTab('schedule')}
+                className="inline-flex items-center gap-1.5 h-10 px-4 rounded-full border border-amber-200 bg-white text-[13px] font-bold text-amber-800 shadow-sm hover:bg-amber-50"
+              >
+                Review publishing
+              </button>
+            ) : row?.scheduleState === 'PAUSED' ? (
               <button
                 type="button"
                 onClick={props.onResumeEverywhere}
@@ -291,7 +299,7 @@ export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
                 className="inline-flex items-center gap-1.5 h-10 px-4 rounded-full border border-slate-200 bg-white text-[13px] font-bold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
               >
                 <PauseCircle className="w-4 h-4" aria-hidden />
-                {props.pausePending ? 'Pausing…' : 'Pause everywhere'}
+                {props.pausePending ? 'Pausing…' : row?.statusLabel === 'PREPARING 1080P' ? 'Stop and cancel publish' : 'Pause everywhere'}
               </button>
             )
           )}

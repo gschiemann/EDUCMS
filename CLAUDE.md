@@ -416,6 +416,13 @@ A reliable player continuously proves FOUR SEPARATE FACTS — never let one stan
     Once the copy exists, the resolution warning is suppressed for 1080p
     screens. Do not invent a countdown or call a pending playlist delivered;
     only the player's own playback report can confirm that.
+    The generic `PUT /playlists/:id/active` must never turn a pending rule on:
+    it rejects an active-true request while `pendingMedia` exists and filters
+    activation by `pendingMedia: false` against a concurrent queue. Turning
+    the playlist off cancels pending publication so the sweep cannot silently
+    reactivate it afterward. Its fleet-copy cascade follows the same rule.
+    Per-screen rule changes also refuse while a copy is pending, and their
+    writes guard against a concurrent pending transition.
 
     Deletion follow-up (2026-09-25): operators may confirm deletion of an
     in-use Asset or a published regular Playlist. Asset deletion removes its

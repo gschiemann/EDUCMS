@@ -131,6 +131,38 @@ describe('PlaylistsController — audit coverage', () => {
     expect(details.scheduleCount).toBe(4);
   });
 
+  it('never starts a schedule while its 1080p playback copy is pending', async () => {
+    const { controller, client } = makePlaylistController();
+    client.schedule.findFirst.mockResolvedValueOnce({ pendingMediaError: null });
+    await expect(controller.setActive(req as any, 'pl1', { active: true } as any))
+      .rejects.toMatchObject({ status: 409 });
+    expect(client.schedule.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('guards against a copy queued after the read, and cancels pending publishing when paused', async () => {
+    const { controller, client } = makePlaylistController();
+    await controller.setActive(req as any, 'pl1', { active: true } as any);
+    expect(client.schedule.updateMany).toHaveBeenCalledWith({
+      where: { playlistId: 'pl1', tenantId: 't1', pendingMedia: false },
+      data: { isActive: true },
+    });
+    await controller.setActive(req as any, 'pl1', { active: false } as any);
+    expect(client.schedule.updateMany).toHaveBeenCalledWith({
+      where: { playlistId: 'pl1', tenantId: 't1' },
+      data: { isActive: false, pendingMedia: false, pendingMediaError: null },
+    });
+  });
+
+  it('does not bypass a pending playback copy in a child location', async () => {
+    const { controller, client } = makePlaylistController();
+    client.playlist.findMany.mockResolvedValueOnce([{ id: 'child-pl', tenantId: 'child-tenant' }]);
+    await controller.setActive(req as any, 'pl1', { active: true } as any);
+    expect(client.schedule.updateMany).toHaveBeenCalledWith({
+      where: { playlistId: { in: ['child-pl'] }, pendingMedia: false },
+      data: { isActive: true },
+    });
+  });
+
   it('audits PLAYLIST_PUBLISHED_TO_FLEET with the target locations', async () => {
     const { controller, auditRows } = makePlaylistController();
     await controller.publishToFleet(req as any, 'pl1', { screenIds: ['s1', 's2'] });

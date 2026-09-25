@@ -560,6 +560,15 @@ describe('refusals and the paper trail', () => {
     }
   };
 
+  it('cannot split or start a screen rule while a playback copy is pending', async () => {
+    const h = makeHarness({ schedules: [rule({ id: 'g-pending', screenGroupId: 'G1', isActive: false, pendingMedia: true })] });
+    const before = JSON.stringify(h.table);
+    expect(await code(h.controller.setScreenActive(req as any, 'P', 'A', { active: true } as any)))
+      .toBe('PLAYBACK_COPY_PENDING');
+    expect(JSON.stringify(h.table)).toBe(before);
+    expect(h.audit).toHaveLength(0);
+  });
+
   it('REFUSES to split a group rule an Editor has waiting for review — and writes nothing', async () => {
     // Approval activates rows by id and silently drops a missing one, so
     // splitting this rule would make the Editor's approved publish vanish.

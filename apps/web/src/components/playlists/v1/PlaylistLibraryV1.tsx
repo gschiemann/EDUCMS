@@ -611,7 +611,8 @@ function Row({ row, ...p }: { row: PlaylistSummaryRow } & RowContext) {
               here by name. Only shown for a playlist that HAS publishing rules:
               there is nothing to stop on one that was never published, and an
               inert switch is worse than no switch. */}
-          {p.onSetActive && !p.isViewer && row.scheduleState !== 'UNASSIGNED' && (
+          {p.onSetActive && !p.isViewer && row.scheduleState !== 'UNASSIGNED'
+            && row.statusLabel !== 'PREPARING 1080P' && row.statusLabel !== 'MEDIA FAILED' && (
             <button
               type="button"
               onClick={() => p.onSetActive!(row, row.scheduleState !== 'ACTIVE')}
