@@ -58,6 +58,7 @@ const rule = (over: Row): Row => ({
   mode: 'replace',
   mutedOverride: null,
   isActive: true,
+  pendingMedia: false,
   ...over,
 });
 

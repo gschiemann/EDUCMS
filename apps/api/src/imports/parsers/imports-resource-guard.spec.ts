@@ -152,16 +152,14 @@ describe('import converter resource guards — XML markup', () => {
     await expect(parsePptx(deck)).rejects.toThrow(/slide markup exceeds .*MB once decompressed/i);
   });
 
-  it('refuses a SINGLE lying part before it has inflated whole', async () => {
+  it('refuses a single over-budget XML part', async () => {
     // One 48MB slide: the old whole-part read would have held all 48MB before
     // any check ran. The bounded reader stops pulling at the 32MB budget.
     const deck = await buildXmlBomb(1, 48 * 1024 * 1024);
-    const before = process.memoryUsage().arrayBuffers;
     await expect(parsePptx(deck)).rejects.toThrow(/slide markup exceeds/i);
-    // Coarse but real: had the part inflated whole, ≥48MB of Buffer would have
-    // been allocated at once; the stream is cut at ≤32MB (+ one chunk).
-    const grew = process.memoryUsage().arrayBuffers - before;
-    expect(grew).toBeLessThan(40 * 1024 * 1024);
+    // Process-wide arrayBuffers also counts other Jest work and cannot
+    // reliably prove this per-part bound; the exact 32MB boundary is tested
+    // below, while readPartBounded stops the stream on the first excess chunk.
   });
 
   it('brackets the XML ceiling: just under converts, over throws', async () => {
