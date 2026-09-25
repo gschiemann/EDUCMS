@@ -149,6 +149,10 @@ function makeController(
         fn({
           asset: { delete: jest.fn(async () => ({})) },
           auditLog: { create: jest.fn(async () => ({})) },
+          playlistItem: {
+            findMany: jest.fn(async () => []),
+            deleteMany: jest.fn(async () => ({ count: 0 })),
+          },
         }),
       ),
     },
