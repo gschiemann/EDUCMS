@@ -10,6 +10,7 @@
 
 import * as React from 'react';
 import { render, screen, fireEvent, within } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const NOW = Date.now();
 const PENDING = NOW - 12 * 60_000;
@@ -99,6 +100,10 @@ jest.mock('next/dynamic', () => () => {
 
 import WorkspacePage from '../[playlistId]/page';
 
+function renderWorkspace() {
+  return render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><WorkspacePage /></QueryClientProvider>);
+}
+
 function setUrl(search: string) {
   window.history.replaceState(null, '', `/demo/playlists/p1${search}`);
 }
@@ -108,7 +113,7 @@ beforeEach(() => { push.mockClear(); setUrl(''); deliveryResult = ABSENT_DELIVER
 // ─────────────────────────────────────────────────────────────────────
 describe('the detail view is a real address (§6.8)', () => {
   it('direct navigation with no ?tab lands on Content', () => {
-    render(<WorkspacePage />);
+    renderWorkspace();
     expect(screen.getByRole('tab', { name: 'Content' })).toHaveAttribute('aria-selected', 'true');
     expect(within(screen.getByTestId('workspace-editor')).getByTestId('classic-editor'))
       .toBeInTheDocument();
@@ -116,14 +121,14 @@ describe('the detail view is a real address (§6.8)', () => {
 
   it('direct navigation to ?tab=screens opens Screens — no Content frame first', () => {
     setUrl('?tab=screens');
-    render(<WorkspacePage />);
+    renderWorkspace();
     expect(screen.getByRole('tab', { name: 'Screens' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByTestId('delivery-table')).toBeInTheDocument();
   });
 
   it('direct navigation to ?tab=schedule opens Schedule', () => {
     setUrl('?tab=schedule');
-    render(<WorkspacePage />);
+    renderWorkspace();
     expect(screen.getByRole('tab', { name: 'Schedule' })).toHaveAttribute('aria-selected', 'true');
   });
 
@@ -131,24 +136,24 @@ describe('the detail view is a real address (§6.8)', () => {
   // item pointing at the old name, must land where that section went.
   it('an old ?tab=delivery link lands on Screens', () => {
     setUrl('?tab=delivery');
-    render(<WorkspacePage />);
+    renderWorkspace();
     expect(screen.getByRole('tab', { name: 'Screens' })).toHaveAttribute('aria-selected', 'true');
   });
 
   it('an old ?tab=publishing link lands on Schedule', () => {
     setUrl('?tab=publishing');
-    render(<WorkspacePage />);
+    renderWorkspace();
     expect(screen.getByRole('tab', { name: 'Schedule' })).toHaveAttribute('aria-selected', 'true');
   });
 
   it('an unknown ?tab falls back to Content rather than a blank panel', () => {
     setUrl('?tab=nonsense');
-    render(<WorkspacePage />);
+    renderWorkspace();
     expect(screen.getByRole('tab', { name: 'Content' })).toHaveAttribute('aria-selected', 'true');
   });
 
   it('switching tabs rewrites the URL — and Content clears the param rather than pinning it', () => {
-    render(<WorkspacePage />);
+    renderWorkspace();
     fireEvent.click(screen.getByRole('tab', { name: 'Screens' }));
     expect(window.location.search).toBe('?tab=screens');
     fireEvent.click(screen.getByRole('tab', { name: 'Content' }));
@@ -156,7 +161,7 @@ describe('the detail view is a real address (§6.8)', () => {
   });
 
   it('Back returns to the library', () => {
-    render(<WorkspacePage />);
+    renderWorkspace();
     fireEvent.click(screen.getByRole('button', { name: 'Back to Playlists' }));
     expect(push).toHaveBeenCalledWith('/demo/playlists');
   });
@@ -166,7 +171,7 @@ describe('the detail view is a real address (§6.8)', () => {
 // ─────────────────────────────────────────────────────────────────────
 describe('the header reads the real playlist', () => {
   it('names it and resolves its reach and schedule from the live payloads', () => {
-    render(<WorkspacePage />);
+    renderWorkspace();
     expect(screen.getByRole('heading', { name: 'Lobby Promotions' })).toBeInTheDocument();
     expect(screen.getByTestId('workspace-status')).toHaveTextContent('ACTIVE');
     expect(screen.getByRole('heading', { name: 'Lobby Promotions' }).parentElement!.parentElement!)
@@ -174,7 +179,7 @@ describe('the header reads the real playlist', () => {
   });
 
   it('flags the G43 exception under the header, from the screens payload alone', () => {
-    render(<WorkspacePage />);
+    renderWorkspace();
     expect(screen.getByTestId('workspace-exception'))
       .toHaveTextContent('G43: not updated');
   });
@@ -184,7 +189,7 @@ describe('the header reads the real playlist', () => {
 describe('delivery degradation', () => {
   it('grades every target from the screens payload when the endpoint has not answered', () => {
     setUrl('?tab=delivery');
-    render(<WorkspacePage />);
+    renderWorkspace();
     const rows = screen.getAllByTestId('delivery-row');
     expect(rows).toHaveLength(2);
     expect(rows.find((r) => r.textContent?.includes('G43'))!.dataset.state).toBe('not-updated');
@@ -212,7 +217,7 @@ describe('answered-but-never-pushed is not "not published"', () => {
       isLoading: false, isError: false, isFetched: true, refetch: jest.fn(),
     });
     setUrl('?tab=screens');
-    render(<WorkspacePage />);
+    renderWorkspace();
 
     // The screens ARE listed…
     expect(screen.getAllByTestId('delivery-row')).toHaveLength(2);

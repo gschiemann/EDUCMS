@@ -84,6 +84,7 @@ const TAB_LABELS: Record<WorkspaceTab, string> = {
 
 export interface PlaylistWorkspaceProps {
   row: PlaylistSummaryRow | null;
+  playbackProgress?: number | null;
   loading: boolean;
   notFound: boolean;
   tab: WorkspaceTab;
@@ -296,6 +297,13 @@ export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
           )}
         </div>
       </div>
+
+      {row?.statusLabel === 'PREPARING 1080P' && (
+        <div role="status" aria-live="polite" data-testid="workspace-playback-preparation" className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-950">
+          Preparing a 1080p playback copy{typeof props.playbackProgress === 'number' ? ` · ${props.playbackProgress}%` : '…'}
+          <span className="block text-xs text-indigo-700 mt-0.5">This playlist will publish automatically after preparation. The 4K version stays available.</span>
+        </div>
+      )}
 
       {/* ── §12 exception summary — only when delivery is degraded, and only
              on the tabs that are NOT already showing it. The Screens tab

@@ -113,6 +113,12 @@ describe('§4.1 schedule-state precedence', () => {
     expect(r.summary).toMatch(/could not be prepared/);
   });
 
+  it('a pending playback copy stays visible when another rule already plays', () => {
+    const r = deriveScheduleState([sched({ id: 'playing' }), sched({ id: 'new', isActive: false, pendingMedia: true })], WED_10AM);
+    expect(r.pillLabel).toBe('PREPARING 1080P');
+    expect(r.summary).toMatch(/publishing starts automatically/);
+  });
+
   it('every schedule disabled is PAUSED even when its window is open', () => {
     const r = deriveScheduleState([sched({ isActive: false })], WED_10AM);
     expect(r.state).toBe('PAUSED');

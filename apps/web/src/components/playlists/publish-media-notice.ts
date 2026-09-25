@@ -11,6 +11,10 @@ export function publicationOptimizationNotice(assets: MediaAsset[], targets: rea
   if (!lowerResolution) return null;
   const affected = assets.filter((asset) => {
     const meta = asset.processingMeta as Record<string, any> | null;
+    const rendition = meta?.renditions?.['1080p'];
+    if (typeof rendition?.url === 'string' && rendition.url.startsWith('https://') &&
+        typeof rendition?.sha256 === 'string' && /^[0-9a-f]{64}$/.test(rendition.sha256) &&
+        Number.isSafeInteger(rendition.size) && rendition.size > 0) return false;
     const dims = meta?.processedDimensions ?? meta?.originalDimensions;
     const w = Number(dims?.w ?? meta?.probe?.codedWidth);
     const h = Number(dims?.h ?? meta?.probe?.codedHeight);
@@ -25,5 +29,5 @@ export function publicationOptimizationNotice(assets: MediaAsset[], targets: rea
     const meta = asset.processingMeta as Record<string, any> | null;
     return !(meta?.processedDimensions ?? meta?.originalDimensions ?? meta?.probe);
   });
-  return `${names} ${unknownSize ? 'may exceed' : 'exceed'} the selected screen resolution. A 1080p playback copy will be prepared automatically if needed. Publishing to those screens starts when the copy is ready; the 4K version remains available for 4K screens. If preparation fails, the publish will show an error.`;
+  return `${names} ${unknownSize ? 'may need' : 'need'} a 1080p playback copy for your selected screen${targets.length === 1 ? '' : 's'}. We’ll prepare it automatically before playback. The 4K version stays available for 4K screens.`;
 }

@@ -667,6 +667,25 @@ function DeliveryCell({
   row, derived, onRetry,
 }: { row: PlaylistSummaryRow; derived: boolean; onRetry: () => void }) {
   void derived; // provenance is stated once in the footer, not per row
+  if (row.statusLabel === 'PREPARING 1080P') {
+    return (
+      <div className="flex items-start gap-1.5" data-testid="delivery-cell" data-tone="muted">
+        <Clock className="w-4 h-4 shrink-0 mt-0.5 text-indigo-600" aria-hidden />
+        <div>
+          <p className="text-[13px] font-semibold text-indigo-800">Preparing 1080p copy</p>
+          <p className={`text-[12px] ${INK_3}`}>Delivery starts after preparation</p>
+        </div>
+      </div>
+    );
+  }
+  if (row.statusLabel === 'MEDIA FAILED') {
+    return (
+      <div className="flex items-start gap-1.5" data-testid="delivery-cell" data-tone="warning">
+        <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" aria-hidden />
+        <p className="text-[13px] font-semibold text-amber-800">Playback copy failed · Retry publishing</p>
+      </div>
+    );
+  }
   const d = row.delivery;
   const tone = DELIVERY_TONE[d.tone] ?? DELIVERY_TONE.muted;
   const Icon = d.tone === 'ok' ? Check : d.tone === 'muted' ? Clock : AlertTriangle;

@@ -645,7 +645,9 @@ describe('Media Library v1 — upload queue phases (§14)', () => {
         fireEvent.change(input, { target: { files: [new File(['video'], 'Canva.mp4', { type: 'video/mp4' })] } });
       });
       const warning = rtl.getByTestId('upload-encode');
-      expect(warning).toHaveTextContent('Suggested changes: Fast start:');
+      expect(warning).toHaveTextContent('Technical details');
+      expect(warning.querySelector('details')).not.toHaveAttribute('open');
+      expect(warning).toHaveTextContent('Fast start is prepared automatically after upload');
       expect(warning).not.toHaveTextContent(/Use H.264|AAC stereo/);
       await act(async () => { finish({ status: 'PUBLISHED' }); });
       expect(rtl.queryByTestId('upload-encode')).not.toBeInTheDocument();

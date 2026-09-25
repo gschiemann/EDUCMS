@@ -330,6 +330,14 @@ export function deriveScheduleState(
     return { state: 'UNASSIGNED', pillLabel: 'UNASSIGNED', summary: 'Not scheduled' };
   }
 
+  const failedMedia = schedules.find((s) => s.pendingMedia && s.pendingMediaError);
+  if (failedMedia) {
+    return { state: 'PAUSED', pillLabel: 'MEDIA FAILED', summary: failedMedia.pendingMediaError! };
+  }
+  if (schedules.some((s) => s.pendingMedia)) {
+    return { state: 'SCHEDULED', pillLabel: 'PREPARING 1080P', summary: 'Preparing a playback copy; publishing starts automatically afterward' };
+  }
+
   const enabled = schedules.filter((s) => s.isActive !== false);
   const eligible = enabled.filter((s) => isScheduleEligibleNow(s, now));
   if (eligible.length > 0 || fleetActive > 0) {
@@ -339,13 +347,6 @@ export function deriveScheduleState(
   const upcoming = enabled.filter((s) => hasFutureWindow(s, now));
   if (upcoming.length > 0) {
     return { state: 'SCHEDULED', pillLabel: 'SCHEDULED', summary: describeNextStart(upcoming, now) };
-  }
-  const failedMedia = schedules.find((s) => s.pendingMedia && s.pendingMediaError);
-  if (failedMedia) {
-    return { state: 'PAUSED', pillLabel: 'MEDIA FAILED', summary: failedMedia.pendingMediaError! };
-  }
-  if (schedules.some((s) => s.pendingMedia)) {
-    return { state: 'SCHEDULED', pillLabel: 'PREPARING MEDIA', summary: 'Optimizing media for selected screens; publishing starts automatically when complete' };
   }
 
   // Everything left is either switched off or past its end date.

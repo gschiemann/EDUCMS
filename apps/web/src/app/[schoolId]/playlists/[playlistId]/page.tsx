@@ -15,7 +15,8 @@
  */
 
 import dynamic from 'next/dynamic';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
 import {
@@ -25,6 +26,8 @@ import {
 } from '@/hooks/use-api';
 import { useUIStore } from '@/store/ui-store';
 import { appAlert, appConfirm } from '@/components/ui/app-dialog';
+import { apiFetch } from '@/lib/api-client';
+import type { VideoOptimization } from '@/hooks/use-video-optimization';
 import {
   PlaylistWorkspace, resolveWorkspaceTab, type WorkspaceTab,
 } from '@/components/playlists/v1/PlaylistWorkspace';
@@ -90,6 +93,7 @@ export default function PlaylistWorkspacePage() {
 
   // ── data ──
   const playlistsQuery = usePlaylists();
+  const queryClient = useQueryClient();
   const schedulesQuery = useSchedules();
   const screensQuery = useScreens();
   const groupsQuery = useScreenGroups();
@@ -155,6 +159,34 @@ export default function PlaylistWorkspacePage() {
     () => schedules.filter((s) => s.playlistId === playlistId),
     [schedules, playlistId],
   );
+  const preparingMedia = mySchedules.some((s) => s.pendingMedia && !s.pendingMediaError);
+  const playbackAssetIds = useMemo(() => [...new Set(((playlist?.items as any[]) ?? [])
+    .map((item) => item?.asset?.id)
+    .filter((id): id is string => typeof id === 'string'))].slice(0, 200), [playlist]);
+  const playbackJobs = useQuery({
+    queryKey: ['playlist-playback-preparation', playlistId, playbackAssetIds.join(',')],
+    queryFn: () => apiFetch<{ items: Array<VideoOptimization & { assetId: string }> }>(
+      `/assets/optimization?ids=${encodeURIComponent(playbackAssetIds.join(','))}`,
+    ),
+    enabled: preparingMedia && playbackAssetIds.length > 0,
+    refetchInterval: preparingMedia ? 5_000 : false,
+    retry: false,
+  });
+  const wasPreparing = useRef(false);
+  useEffect(() => {
+    if (wasPreparing.current && !preparingMedia) {
+      void queryClient.invalidateQueries({ queryKey: ['playlists'] });
+      void queryClient.invalidateQueries({ queryKey: ['assets'] });
+    }
+    wasPreparing.current = preparingMedia;
+  }, [preparingMedia, queryClient]);
+  const playbackProgress = useMemo(() => {
+    const jobs = playbackJobs.data?.items ?? [];
+    const active = jobs.filter((job) => job.status === 'queued' || job.status === 'running');
+    // A single encoder reports a real percentage. Averaging unrelated jobs
+    // would imply a precise playlist-wide percentage that we do not have.
+    return active.length === 1 && typeof active[0].progress === 'number' ? active[0].progress : null;
+  }, [playbackJobs.data]);
 
   const row = useMemo(() => {
     if (!playlist) return null;
@@ -370,6 +402,7 @@ export default function PlaylistWorkspacePage() {
     <>
     <PlaylistWorkspace
       row={row}
+      playbackProgress={preparingMedia ? playbackProgress : null}
       loading={playlistsQuery.isLoading}
       notFound={!playlistsQuery.isLoading && !playlistsQuery.isError && !playlist}
       tab={tab}

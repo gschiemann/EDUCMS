@@ -20,6 +20,7 @@
  */
 import * as React from 'react';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const NOW = Date.now();
 const SCREENS = [
@@ -79,12 +80,16 @@ jest.mock('next/dynamic', () => () => {
 
 import WorkspacePage from '../[playlistId]/page';
 
+function renderWorkspace() {
+  return render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><WorkspacePage /></QueryClientProvider>);
+}
+
 const rowFor = (name: string) =>
   screen.getAllByTestId('delivery-row').find((r) => r.textContent?.includes(name))!;
 
 function open() {
   window.history.replaceState(null, '', '/demo/playlists/p1?tab=screens');
-  render(<WorkspacePage />);
+  renderWorkspace();
 }
 
 beforeEach(() => {

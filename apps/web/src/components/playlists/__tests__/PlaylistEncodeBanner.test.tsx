@@ -44,11 +44,11 @@ describe('PlaylistEncodeBanner', () => {
     );
     const banner = screen.getByTestId('playlist-encode-banner');
     expect(banner).toHaveAttribute('data-encode-status', 'red');
-    expect(banner).toHaveTextContent('2 videos in this playlist may not play smoothly on your screens');
-    expect(banner).toHaveTextContent('Pro Series 2026.mp4 — 3840 × 2160 — larger than your biggest screen (1920 × 1080)');
-    expect(banner).toHaveTextContent('promo.mp4 — The playback index is at the end of the file');
+    expect(banner).toHaveTextContent('2 videos have playback compatibility notes');
+    expect(banner).toHaveTextContent('Pro Series 2026.mp4 — 3840 × 2160 exceeds your 1920 × 1080 screen resolution');
+    expect(banner).toHaveTextContent('promo.mp4 — Playback index is at the end of the file');
     expect(banner).toHaveTextContent('Suggested changes: Export at 1920 × 1080 (swap dimensions for portrait) · Use 30 fps');
-    expect(banner).toHaveTextContent('Suggested changes: Fast start: VenueOS attempts to move the playback index to the front automatically after upload, without changing picture quality or resolution');
+    expect(banner).toHaveTextContent('Suggested changes: Fast start is prepared automatically after upload');
     expect(banner).not.toHaveTextContent('good.mp4');
     expect(banner).not.toHaveTextContent("Suggested: MP4, H.264 at your screens' resolution, 30 fps, fast start. Re-export and replace the file.");
   });
@@ -56,15 +56,15 @@ describe('PlaylistEncodeBanner', () => {
   it('uses the singular for one file and amber when nothing is red', () => {
     render(<PlaylistEncodeBanner items={[video('c', 'promo.mp4', { ...safeProbe, probe: { ...safeProbe.probe, fastStart: false } })]} />);
     const banner = screen.getByTestId('playlist-encode-banner');
-    expect(banner).toHaveAttribute('data-encode-status', 'amber');
-    expect(banner).toHaveTextContent('1 video in this playlist may not play smoothly on your screens');
+    expect(banner).toHaveAttribute('data-encode-status', 'info');
+    expect(banner).toHaveTextContent('Fast start will be prepared automatically for 1 video');
   });
 
   it('caps the list at five names', () => {
     const bad = (i: number) => video(`v${i}`, `clip-${i}.mp4`, { ...safeProbe, probe: { ...safeProbe.probe, codec: 'hevc' } });
     render(<PlaylistEncodeBanner items={[bad(1), bad(2), bad(3), bad(4), bad(5), bad(6), bad(7)]} />);
     const banner = screen.getByTestId('playlist-encode-banner');
-    expect(banner).toHaveTextContent('7 videos in this playlist');
+    expect(banner).toHaveTextContent('7 videos have playback compatibility notes');
     expect(banner).toHaveTextContent('clip-5.mp4');
     expect(banner).not.toHaveTextContent('clip-6.mp4');
     expect(banner).toHaveTextContent('+2');

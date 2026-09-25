@@ -350,7 +350,7 @@ export function AddScreensDialog({
       }
     >
       {mediaNotice && (
-        <p role="status" className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+        <p role="status" className="mb-3 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm text-indigo-950">
           {mediaNotice}
         </p>
       )}

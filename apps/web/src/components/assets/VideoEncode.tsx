@@ -29,8 +29,9 @@
  * fixed 1080p. Nothing here assumes where a file came from.
  */
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslations } from 'next-intl';
-import { AlertTriangle, CheckCircle2, HelpCircle, Loader2, Tv2, XCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, HelpCircle, Loader2, Tv2 } from 'lucide-react';
 import { useEncodeTarget } from '@/hooks/use-encode-target';
 import {
   describeEncodeReason,
@@ -71,7 +72,6 @@ interface BadgeProps {
 /** The icon-only mark. Renders nothing unless the grade warns. */
 export function VideoEncodeBadge({ status, title, variant = 'inline', className = '' }: BadgeProps) {
   if (!encodeWarns(status)) return null;
-  const Icon = status === 'red' ? XCircle : AlertTriangle;
   return (
     <span
       data-testid="video-encode-badge"
@@ -81,7 +81,7 @@ export function VideoEncodeBadge({ status, title, variant = 'inline', className 
       aria-label={title}
       className={`inline-flex items-center justify-center w-6 h-6 rounded-full ${MARK_INK[status][variant]} ${className}`}
     >
-      <Icon className="w-3.5 h-3.5" aria-hidden />
+      <AlertTriangle className="w-3.5 h-3.5" aria-hidden />
     </span>
   );
 }
@@ -109,21 +109,38 @@ export function AssetEncodeBadge({
   const target = useEncodeTarget();
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLSpanElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState({ top: 0, left: 0 });
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent | TouchEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+      if (!wrapRef.current?.contains(e.target as Node) && !popoverRef.current?.contains(e.target as Node)) setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false);
     };
+    const reposition = () => {
+      const rect = wrapRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const width = Math.min(288, window.innerWidth - 16);
+      const height = popoverRef.current?.getBoundingClientRect().height ?? 220;
+      setPosition({
+        left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)),
+        top: rect.bottom + height + 8 <= window.innerHeight ? rect.bottom + 6 : Math.max(8, rect.top - height - 6),
+      });
+    };
+    reposition();
     document.addEventListener('mousedown', onDown);
     document.addEventListener('touchstart', onDown);
     document.addEventListener('keydown', onKey);
+    window.addEventListener('resize', reposition);
+    window.addEventListener('scroll', reposition, true);
     return () => {
       document.removeEventListener('mousedown', onDown);
       document.removeEventListener('touchstart', onDown);
       document.removeEventListener('keydown', onKey);
+      window.removeEventListener('resize', reposition);
+      window.removeEventListener('scroll', reposition, true);
     };
   }, [open]);
 
@@ -131,7 +148,6 @@ export function AssetEncodeBadge({
   if (!encodeWarns(state.status)) return null;
   const title = badgeTitle(t, state);
   if (!interactive) return <VideoEncodeBadge status={state.status} title={title} variant={variant} className={className} />;
-  const Icon = state.status === 'red' ? XCircle : AlertTriangle;
   return (
     <span ref={wrapRef} className={`relative inline-flex ${className ?? ''}`}>
       <button
@@ -147,16 +163,19 @@ export function AssetEncodeBadge({
         }}
         className={`inline-flex items-center justify-center w-6 h-6 rounded-full transition-colors ${MARK_INK[state.status][variant ?? 'inline']} hover:brightness-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400`}
       >
-        <Icon className="w-3.5 h-3.5" aria-hidden />
+        <AlertTriangle className="w-3.5 h-3.5" aria-hidden />
       </button>
-      {open && (
+      {open && createPortal(
         <div
+          ref={popoverRef}
           role="dialog"
+          aria-label={t('assetsLib.encode.detailsAria')}
           data-testid="video-encode-popover"
-          className="absolute left-0 top-full z-30 mt-1.5 w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-slate-200 bg-white p-3 text-left shadow-[0_8px_30px_rgba(0,0,0,0.12)]"
+          style={{ top: position.top, left: position.left, maxHeight: 'calc(100vh - 16px)' }}
+          className="fixed z-[10000] w-72 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 text-left shadow-[0_8px_30px_rgba(0,0,0,0.12)]"
         >
           <EncodeVerdictBody t={t} state={state} compact />
-        </div>
+        </div>, document.body,
       )}
     </span>
   );
@@ -178,7 +197,7 @@ function StatusIcon({ status }: { status: VideoEncodeStatus }) {
     case 'amber':
       return <AlertTriangle className={`${cls} text-amber-600`} aria-hidden />;
     case 'red':
-      return <XCircle className={`${cls} text-rose-600`} aria-hidden />;
+      return <AlertTriangle className={`${cls} text-rose-600`} aria-hidden />;
     case 'checking':
       return <Loader2 className={`${cls} text-slate-500 animate-spin motion-reduce:animate-none`} aria-hidden />;
     default:

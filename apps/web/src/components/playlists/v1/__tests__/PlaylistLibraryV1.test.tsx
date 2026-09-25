@@ -245,6 +245,18 @@ describe('row anatomy (§8.2, §29)', () => {
 
 // ─────────────────────────────────────────────────────────────────────
 describe('the delivery column never overclaims (§4.3, §10)', () => {
+  it('does not claim picture confirmation while a playback copy is pending', () => {
+    mount({ rows: [row({ scheduleState: 'SCHEDULED', statusLabel: 'PREPARING 1080P' })] });
+    const cell = within(screen.getByTestId('playlist-table')).getByTestId('delivery-cell');
+    expect(cell).toHaveTextContent('Preparing 1080p copy');
+    expect(cell).not.toHaveTextContent('Update received');
+  });
+
+  it('shows a failed playback copy as failed delivery', () => {
+    mount({ rows: [row({ scheduleState: 'PAUSED', statusLabel: 'MEDIA FAILED' })] });
+    expect(within(screen.getByTestId('playlist-table')).getByTestId('delivery-cell')).toHaveTextContent('Playback copy failed');
+  });
+
   it('says "Update received", never the mock’s "Confirmed 4/4"', () => {
     mount();
     const cells = within(screen.getByTestId('playlist-table')).getAllByTestId('delivery-cell');

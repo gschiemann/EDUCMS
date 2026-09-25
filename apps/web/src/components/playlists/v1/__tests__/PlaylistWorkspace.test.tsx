@@ -145,6 +145,11 @@ describe('keep screens in sync (2026-09-16 — moved off the screen group)', () 
 
 // ─────────────────────────────────────────────────────────────────────
 describe('workspace shell (§12)', () => {
+  it('shows reported encoder progress while a 1080p publish waits', () => {
+    mount({ row: { ...ROW, scheduleState: 'SCHEDULED', statusLabel: 'PREPARING 1080P' }, playbackProgress: 48 });
+    expect(screen.getByTestId('workspace-playback-preparation')).toHaveTextContent('Preparing a 1080p playback copy · 48%');
+    expect(screen.getByTestId('workspace-status')).toHaveTextContent('PREPARING 1080P');
+  });
   it('renders three tabs, named for what the operator is doing', () => {
     // Greg, 2026-09-16: "i dont think we need 4 buttons here… keep it simple".
     mount();

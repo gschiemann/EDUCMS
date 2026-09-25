@@ -55,26 +55,31 @@ export function PlaylistEncodeBanner({ items }: { items: EncodeBannerItem[] }) {
     [items, target],
   );
   if (flagged.length === 0) return null;
+  const automaticOnly = flagged.every(({ state }) =>
+    encodeWarnings(state.verdict).every((reason) => reason.code === 'resolution' || reason.code === 'fast-start'));
+  const needsSmallerCopy = flagged.some(({ state }) => encodeWarnings(state.verdict).some((reason) => reason.code === 'resolution'));
   const worst = flagged.some(({ state }) => state.status === 'red') ? 'red' : 'amber';
-  const tone =
+  const tone = automaticOnly ? 'bg-indigo-50 border-indigo-200 text-indigo-950' :
     worst === 'red'
       ? 'bg-rose-50 border-rose-200 text-rose-900'
       : 'bg-amber-50 border-amber-200 text-amber-900';
-  const iconTone = worst === 'red' ? 'text-rose-600' : 'text-amber-600';
+  const iconTone = automaticOnly ? 'text-indigo-600' : worst === 'red' ? 'text-rose-600' : 'text-amber-600';
   const listed = flagged.slice(0, MAX_LISTED);
   const more = flagged.length - listed.length;
   return (
     <div
       role="status"
       data-testid="playlist-encode-banner"
-      data-encode-status={worst}
+      data-encode-status={automaticOnly ? 'info' : worst}
       className={`mb-3 rounded-xl border px-3 py-2.5 ${tone}`}
     >
       <p className="flex items-start gap-2 text-xs font-semibold">
         <AlertTriangle className={`w-4 h-4 shrink-0 mt-px ${iconTone}`} aria-hidden />
-        <span>{t('playlistsPage.encodeBanner', { count: flagged.length })}</span>
+        <span>{t(automaticOnly ? needsSmallerCopy ? 'playlistsPage.encodeAutoPrepare' : 'playlistsPage.encodeFastStart' : 'playlistsPage.encodeBanner', { count: flagged.length })}</span>
       </p>
-      <ul className="mt-1.5 pl-6 space-y-0.5">
+      <details className="mt-1 pl-6 text-[11px] text-slate-700">
+        <summary className="cursor-pointer font-semibold text-indigo-700">{t('assetsLib.encode.technicalDetails')}</summary>
+      <ul className="mt-1.5 space-y-0.5">
         {listed.map(({ item, state }) => {
           const warnings = encodeWarnings(state.verdict);
           const first = warnings[0];
@@ -91,6 +96,7 @@ export function PlaylistEncodeBanner({ items }: { items: EncodeBannerItem[] }) {
         })}
         {more > 0 && <li className="text-[11px] text-slate-500">+{more}</li>}
       </ul>
+      </details>
     </div>
   );
 }

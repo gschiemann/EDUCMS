@@ -15,18 +15,24 @@ import { isOptimizing, savedPercent, type VideoOptimization } from '@/hooks/use-
 
 export function VideoOptimizationNote({
   optimization,
+  rendition,
   variant,
   fmtSize,
 }: {
   optimization: VideoOptimization | null;
+  rendition?: { url?: string; sha256?: string; width?: number; height?: number; size?: number } | null;
   variant: 'card' | 'row' | 'detail';
   fmtSize: (bytes: number | null | undefined) => string;
 }) {
   const t = useTranslations('assetsLib');
   const o = optimization;
-  if (!o) return null;
+  const copyReady = !!rendition && typeof rendition.url === 'string' && rendition.url.startsWith('https://') &&
+    typeof rendition.sha256 === 'string' && /^[0-9a-f]{64}$/.test(rendition.sha256) &&
+    Number.isFinite(rendition.width) && Number.isFinite(rendition.height) &&
+    Number.isFinite(rendition.size) && (rendition.size ?? 0) > 0;
+  if (!o && !(variant === 'detail' && copyReady)) return null;
 
-  if (isOptimizing(o)) {
+  if (o && isOptimizing(o)) {
     const pct = o.status === 'running' && typeof o.progress === 'number' ? o.progress : null;
     return (
       <span
@@ -41,6 +47,22 @@ export function VideoOptimizationNote({
   }
 
   if (variant !== 'detail') return null;
+  if (copyReady) {
+    const saved = o?.reason !== 'rendition-created' ? savedPercent(o) : null;
+    return (
+      <span className="block text-xs font-semibold text-slate-800" data-testid="video-rendition-ready">
+        <span className="block">{t('playbackCopyReady', { width: rendition.width!, height: rendition.height!, size: fmtSize(rendition.size) })}</span>
+        {saved !== null && o && <span className="block mt-1 font-normal text-slate-600">{t('optimizedDetail', {
+          from: fmtSize(o.sourceBytes), to: fmtSize(o.outputBytes),
+          saved: fmtSize((o.sourceBytes ?? 0) - (o.outputBytes ?? 0)),
+        })}</span>}
+      </span>
+    );
+  }
+  if (!o) return null;
+  if (o.reason === 'rendition-created') {
+    return <span className="text-xs text-slate-600">{t('playbackCopyChecking')}</span>;
+  }
   const saved = savedPercent(o);
   if (saved !== null) {
     return (

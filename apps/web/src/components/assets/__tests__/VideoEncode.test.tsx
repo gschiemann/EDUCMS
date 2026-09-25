@@ -95,7 +95,7 @@ describe('VideoEncodeCard', () => {
     );
     expect(screen.getByTestId('video-encode-card')).toHaveAttribute('data-encode-status', 'amber');
     expect(screen.getByText('May hitch or start slowly on some screens')).toBeInTheDocument();
-    expect(screen.getByTestId('video-encode-reasons')).toHaveTextContent('The playback index is at the end of the file');
+    expect(screen.getByTestId('video-encode-reasons')).toHaveTextContent('Playback index is at the end of the file');
     expect(screen.getByTestId('video-encode-notes')).toHaveTextContent('1280 × 720 uses only part of your 3840 × 2160 screens');
     expect(screen.getByTestId('video-encode-suggested')).toHaveTextContent('Export from your original design at 3840 × 2160');
     expect(screen.getByTestId('video-encode-facts')).toHaveTextContent('Indexend of file');
@@ -109,8 +109,7 @@ describe('VideoEncodeCard', () => {
     } };
     render(withTarget(<VideoEncodeCard asset={asset} now={NOW} />, FOUR_K));
     const advice = screen.getByTestId('video-encode-suggested');
-    expect(advice).toHaveTextContent('Suggested changes: Fast start: VenueOS attempts');
-    expect(advice).toHaveTextContent('without changing picture quality or resolution');
+    expect(advice).toHaveTextContent('Suggested changes: Fast start is prepared automatically after upload');
     expect(advice).not.toHaveTextContent(/Export at|Use H.264|AAC|30 fps/);
   });
 
@@ -121,7 +120,7 @@ describe('VideoEncodeCard', () => {
     unmount();
     render(<VideoEncodeCard asset={fourK} now={NOW} />);
     expect(screen.getByTestId('video-encode-card')).toHaveAttribute('data-encode-status', 'red');
-    expect(screen.getByTestId('video-encode-reasons')).toHaveTextContent('3840 × 2160 — larger than your biggest screen (1920 × 1080)');
+    expect(screen.getByTestId('video-encode-reasons')).toHaveTextContent('3840 × 2160 exceeds your 1920 × 1080 screen resolution');
     expect(screen.getByTestId('video-encode-suggested')).toHaveTextContent("Export at 1920 × 1080");
   });
 
@@ -168,12 +167,12 @@ describe('VideoEncodeBadge', () => {
   });
 
   it('is an icon only, carrying the reasons as its hover text and accessible name — no words on the tile', () => {
-    render(<VideoEncodeBadge status="red" title={'Likely to stutter or fail on screen hardware\n3840 × 2160 — larger than your biggest screen'} />);
+    render(<VideoEncodeBadge status="red" title={'Playback compatibility warning\n3840 × 2160 exceeds your screen resolution'} />);
     const badge = screen.getByTestId('video-encode-badge');
     expect(badge).toHaveAttribute('data-encode-status', 'red');
     expect(badge.textContent).toBe('');
-    expect(badge).toHaveAttribute('title', expect.stringContaining('larger than your biggest screen'));
-    expect(badge).toHaveAttribute('aria-label', expect.stringContaining('Likely to stutter'));
+    expect(badge).toHaveAttribute('title', expect.stringContaining('exceeds your screen resolution'));
+    expect(badge).toHaveAttribute('aria-label', expect.stringContaining('Playback compatibility'));
   });
 });
 
@@ -194,7 +193,7 @@ describe('AssetEncodeBadge', () => {
     render(<AssetEncodeBadge asset={red} variant="onImage" />);
     const badge = screen.getByTestId('video-encode-badge');
     expect(badge.tagName).toBe('SPAN');
-    expect(badge).toHaveAttribute('title', "Likely to stutter or fail on screen hardware\nH.265 / HEVC video — most screen players can't decode it in hardware");
+    expect(badge).toHaveAttribute('title', "Playback compatibility warning\nH.265 / HEVC video — most screen players can't decode it in hardware");
   });
 
   it('on a row it is a button that opens the details popover on tap and closes on Escape', () => {
@@ -203,7 +202,8 @@ describe('AssetEncodeBadge', () => {
     expect(screen.queryByTestId('video-encode-popover')).not.toBeInTheDocument();
     fireEvent.click(button);
     const popover = screen.getByTestId('video-encode-popover');
-    expect(popover).toHaveTextContent('Likely to stutter or fail on screen hardware');
+    expect(popover).toHaveTextContent('Playback compatibility warning');
+    expect(popover).toHaveClass('fixed');
     expect(popover).toHaveTextContent('H.265 / HEVC video');
     expect(popover).toHaveTextContent("Suggested changes: Use H.264 video");
     fireEvent.keyDown(document, { key: 'Escape' });

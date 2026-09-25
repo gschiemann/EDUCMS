@@ -3153,7 +3153,7 @@ export function Step4Publish({
           : `These rules apply to all ${screensPicked} screen${screensPicked === 1 ? '' : 's'} you picked.`}
       </p>
       {optimizationNotice && (
-        <p role="status" className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+        <p role="status" className="mb-4 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm text-indigo-950">
           {optimizationNotice}
         </p>
       )}

@@ -8,10 +8,17 @@ describe('publish-time optimization notice', () => {
     expect(publicationOptimizationNotice([video, image], [{ resolution: '1920 x 1080' }]))
       .toContain('1 video and 1 image');
     expect(publicationOptimizationNotice([video, image], [{ resolution: '1920 x 1080' }]))
-      .toContain('Publishing to those screens starts when the copy is ready');
+      .toContain('prepare it automatically before playback');
   });
 
   it('leaves a 4K-only publish without a downgrade notice', () => {
     expect(publicationOptimizationNotice([video, image], [{ resolution: '3840 x 2160' }])).toBeNull();
+  });
+
+  it('does not promise preparation again when a 1080p copy is already ready', () => {
+    const ready = { ...video, processingMeta: { ...video.processingMeta, renditions: {
+      '1080p': { url: 'https://example.com/1080.mp4', sha256: 'a'.repeat(64), size: 1000 },
+    } } };
+    expect(publicationOptimizationNotice([ready], [{ resolution: '1920 x 1080' }])).toBeNull();
   });
 });

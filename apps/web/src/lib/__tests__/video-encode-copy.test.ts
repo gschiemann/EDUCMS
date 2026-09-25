@@ -79,6 +79,18 @@ describe('videoEncodeState', () => {
     expect(s.verdict.reasons.map((r) => r.code)).toEqual(['codec', 'bit-depth', 'resolution', 'frame-rate']);
   });
 
+  it('does not warn about 4K resolution once a verified 1080p playback copy exists', () => {
+    const meta = {
+      ...SAFE_PROBE,
+      originalDimensions: { w: 3840, h: 2160 },
+      renditions: { '1080p': { url: 'https://example.com/1080.mp4', sha256: 'a'.repeat(64), size: 50_000_000, width: 1920, height: 1080 } },
+    };
+    const target = { panelWidth: 1920, panelHeight: 1080, panelKnown: true };
+    const result = videoEncodeState({ mimeType: 'video/mp4', processingMeta: meta }, NOW, target);
+    expect(result.status).toBe('green');
+    expect(result.verdict.reasons.find((r) => r.code === 'resolution')).toBeUndefined();
+  });
+
   it('reads "checking" for a video uploaded moments ago with no probe yet', () => {
     const s = videoEncodeState({ mimeType: 'video/mp4', processingMeta: null, createdAt: new Date(NOW - 20_000).toISOString() }, NOW);
     expect(s.status).toBe('checking');
@@ -140,7 +152,7 @@ describe('reason copy', () => {
     };
     expect(
       describeEncodeReason(t, { code: 'resolution', severity: 'red', detail: { width: 3840, height: 2160, panelWidth: 1920, panelHeight: 1080 } }),
-    ).toBe('3840 × 2160 — larger than your biggest screen (1920 × 1080); the player decodes pixels it can never show');
+    ).toBe('3840 × 2160 exceeds your 1920 × 1080 screen resolution. A smaller playback copy is prepared when you publish there.');
     expect(describeEncodeReason(t, { code: 'codec', severity: 'red', detail: { codec: 'H.265 / HEVC' } })).toContain('H.265 / HEVC');
   });
 });

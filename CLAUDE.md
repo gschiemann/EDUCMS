@@ -407,6 +407,23 @@ A reliable player continuously proves FOUR SEPARATE FACTS — never let one stan
     repeat properties the file already has. `PlaylistEncodeBanner.tsx` names
     per-file fixes. Canva's 4K MP4 export is suitable source material; the
     CMS, not the operator, owns screen-specific playback preparation.
+    Follow-up (2026-09-25): the 1080p rendition is metadata on the original
+    Asset (`processingMeta.renditions['1080p']`), not a second library row.
+    Media Library details show its verified size and dimensions; queued jobs
+    show their actual percentage. Publishing copy is a short information note,
+    upload diagnostics sit behind Technical details, and a playlist with
+    `pendingMedia` shows PREPARING 1080P rather than a stale delivery receipt.
+    Once the copy exists, the resolution warning is suppressed for 1080p
+    screens. Do not invent a countdown or call a pending playlist delivered;
+    only the player's own playback report can confirm that.
+
+    Deletion follow-up (2026-09-25): operators may confirm deletion of an
+    in-use Asset or a published regular Playlist. Asset deletion removes its
+    playlist items, retires rules for playlists left empty, applies screen
+    fallback, audits the action, and cleans storage after the database commit.
+    Playlist deletion removes its rules and direct fleet copies, applies
+    fallback per tenant, audits each tenant, then signals SYNC. Protected
+    emergency content still cannot be deleted through these regular actions.
 
 ## Frame-Locked Multi-Screen Sync (2026-07-28)
 

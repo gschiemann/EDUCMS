@@ -107,7 +107,22 @@ export function videoEncodeState(
   if (!asset || !isVideoMime(asset.mimeType)) return { status: 'unknown', verdict: UNKNOWN, facts: null };
   const meta = asset.processingMeta;
   const facts = videoEncodeFactsFromProcessingMeta(meta);
-  const verdict = gradeVideoProcessingMeta(meta, target);
+  const rawVerdict = gradeVideoProcessingMeta(meta, target);
+  const rendition = meta && typeof meta === 'object' && !Array.isArray(meta)
+    ? (meta as { renditions?: { '1080p'?: Record<string, unknown> } }).renditions?.['1080p']
+    : null;
+  // A verified 1080p copy is what a 1080p player downloads. Its 4K source
+  // must no longer be flagged as a resolution failure on that player.
+  const hasPlaybackCopy = !!rendition && typeof rendition.url === 'string' && rendition.url.startsWith('https://') &&
+    typeof rendition.sha256 === 'string' && /^[0-9a-f]{64}$/.test(rendition.sha256) &&
+    typeof rendition.size === 'number' && Number.isSafeInteger(rendition.size) && rendition.size > 0;
+  const reasons = hasPlaybackCopy && target.panelKnown && Math.max(target.panelWidth, target.panelHeight) <= 1920
+    ? rawVerdict.reasons.filter((reason) => reason.code !== 'resolution')
+    : rawVerdict.reasons;
+  const verdict = reasons === rawVerdict.reasons ? rawVerdict : {
+    grade: reasons.some((r) => r.severity === 'red') ? 'red' as const : reasons.some((r) => r.severity === 'amber') ? 'amber' as const : 'green' as const,
+    reasons,
+  };
   if (verdict.grade !== 'unknown') return { status: verdict.grade, verdict, facts };
 
   const probed =

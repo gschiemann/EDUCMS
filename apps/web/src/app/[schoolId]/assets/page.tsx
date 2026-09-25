@@ -1465,26 +1465,21 @@ export default function AssetsPage() {
                 {u.phase === 'error' && u.error && (
                   <p className="text-[10px] text-rose-700 font-medium leading-snug mt-1 ml-6 pr-2" title={u.error}>{u.error}</p>
                 )}
-                {/* Pre-upload playback verdict (2026-09-24): shown right here,
-                    where the operator is looking, the moment the file's index
-                    has been read — not as a toast somewhere else. Green is one
-                    quiet line; amber/red list the reasons and what to export;
-                    a size note (uses part of the panel) is advice, not a warning. */}
+                {/* Keep the upload queue compact; full probe facts remain in file details. */}
                 {u.phase !== 'success' && u.phase !== 'pending-review' && u.encode && u.encode.status !== 'checking' && u.encode.status !== 'unknown' && (
                   <div className="mt-1 ml-6 pr-2" data-testid="upload-encode" data-encode-status={u.encode.status}>
                     <p className={`text-[10px] font-bold leading-snug ${u.encode.status === 'red' ? 'text-rose-700' : u.encode.status === 'amber' ? 'text-amber-700' : 'text-emerald-700'}`}>
                       {t(`assetsLib.encode.${u.encode.status}`)}
                     </p>
-                    {encodeWarnings(u.encode.verdict).map((r) => (
-                      <p key={r.code} className="text-[10px] text-slate-600 leading-snug">{describeEncodeReason(t, r)}</p>
-                    ))}
-                    {encodeNotes(u.encode.verdict).map((r) => (
-                      <p key={r.code} className="text-[10px] text-slate-500 leading-snug">{describeEncodeReason(t, r)}</p>
-                    ))}
                     {(encodeWarns(u.encode.status) || encodeNotes(u.encode.verdict).length > 0) && (
-                      <p className="text-[10px] text-slate-600 leading-snug mt-0.5">
-                        {encodeSuggestions(t, u.encode.verdict)}
-                      </p>
+                      <details className="text-[10px] text-slate-600 leading-snug mt-0.5">
+                        <summary className="cursor-pointer font-semibold text-indigo-700">{t('assetsLib.encode.technicalDetails')}</summary>
+                        <div className="mt-1 space-y-0.5">
+                          {encodeWarnings(u.encode.verdict).map((r) => <p key={r.code}>{describeEncodeReason(t, r)}</p>)}
+                          {encodeNotes(u.encode.verdict).map((r) => <p key={r.code}>{describeEncodeReason(t, r)}</p>)}
+                          <p>{encodeSuggestions(t, u.encode.verdict)}</p>
+                        </div>
+                      </details>
                     )}
                   </div>
                 )}
@@ -2201,13 +2196,18 @@ export default function AssetsPage() {
               />
 
               {/* 4c. The signage transcode (2026-09-23) — what screens actually download. */}
-              {isVideo(selectedAsset) && optimizationOf(selectedLive, liveOptimization) && (
+              {isVideo(selectedAsset) && (optimizationOf(selectedLive, liveOptimization) || (selectedLive?.processingMeta as { renditions?: { '1080p'?: unknown } } | null)?.renditions?.['1080p']) && (
                 <div className="bg-slate-50 rounded-lg p-3" data-testid="asset-screen-version">
                   <div className="flex items-center gap-1.5 mb-1">
                     <Video className="w-3 h-3 text-slate-400" aria-hidden />
                     <span className="text-[10px] font-bold text-slate-500 uppercase">{t('assetsLib.labelScreenVersion')}</span>
                   </div>
-                  <VideoOptimizationNote optimization={optimizationOf(selectedLive, liveOptimization)} variant="detail" fmtSize={fmtSize} />
+                  <VideoOptimizationNote
+                    optimization={optimizationOf(selectedLive, liveOptimization)}
+                    rendition={(selectedLive?.processingMeta as { renditions?: { '1080p'?: { url?: string; sha256?: string; width?: number; height?: number; size?: number } } } | null)?.renditions?.['1080p']}
+                    variant="detail"
+                    fmtSize={fmtSize}
+                  />
                 </div>
               )}
 

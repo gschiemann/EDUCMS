@@ -175,6 +175,7 @@ export default function PlaylistsPage() {
       const row = buildPlaylistRow({ playlist: pl, schedules, screens, groups, now, assetNames });
       const api = apiById.get(pl.id);
       if (!api) return row;
+      const preparing = row.statusLabel === 'PREPARING 1080P' || row.statusLabel === 'MEDIA FAILED';
       // Server-owned fields override the derivation. Delivery, reach and the
       // target list stay client-resolved — the summary contract has no
       // per-target evidence, and a delivery claim must never be inferred from
@@ -188,10 +189,10 @@ export default function PlaylistsPage() {
         thumbnailUrl: api.thumbnailUrl ?? row.thumbnailUrl,
         templateSummary: api.templateSummary ?? row.templateSummary,
         creatorSummary: api.creatorSummary ?? row.creatorSummary,
-        scheduleState: api.scheduleState ?? row.scheduleState,
-        statusLabel: api.scheduleState ?? row.statusLabel,
+        scheduleState: preparing ? row.scheduleState : api.scheduleState ?? row.scheduleState,
+        statusLabel: preparing ? row.statusLabel : api.scheduleState ?? row.statusLabel,
         reviewState: api.reviewState ?? row.reviewState,
-        scheduleSummary: api.scheduleSummary ?? row.scheduleSummary,
+        scheduleSummary: preparing ? row.scheduleSummary : api.scheduleSummary ?? row.scheduleSummary,
         updatedAt: api.updatedAt ?? row.updatedAt,
         sourceOwnership: api.sourceOwnership ?? row.sourceOwnership,
       };
