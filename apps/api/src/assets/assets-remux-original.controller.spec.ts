@@ -78,6 +78,10 @@ function makeController(
       delete: jest.fn(() => Promise.resolve({})),
     },
     auditLog: { create: jest.fn(() => Promise.resolve({})) },
+    playlistItem: {
+      findMany: jest.fn(() => Promise.resolve([])),
+      deleteMany: jest.fn(() => Promise.resolve({ count: 0 })),
+    },
   };
   const client = {
     ...tx,

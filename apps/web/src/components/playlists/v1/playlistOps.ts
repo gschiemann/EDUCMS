@@ -1455,20 +1455,11 @@ export function pauseEverywhereCopy(
   };
 }
 
-/**
- * §20 — moving a playlist to trash. The backend has no trash today, so the
- * unpublished copy never promises restoration (§20.3): it says exactly what
- * the server does. A published playlist is BLOCKED with "Review publishing"
- * as the primary path (§20.2) — the safe route is resolving usage, not
- * emphasising "delete anyway".
- */
+/** Confirmation copy for permanent playlist deletion. */
 export interface RemoveDecision {
-  blocked: boolean;
   title: string;
   message: string;
   confirmLabel: string;
-  /** Rendered as the primary button when blocked. */
-  primaryLabel?: string;
 }
 
 export function removePlaylistCopy(row: PlaylistSummaryRow, ruleCount: number): RemoveDecision {
@@ -1479,15 +1470,12 @@ export function removePlaylistCopy(row: PlaylistSummaryRow, ruleCount: number): 
     ];
     if (row.reach.locations > 1) bits.push(`${row.reach.locations} locations`);
     return {
-      blocked: true,
-      title: `“${row.name}” is currently published`,
-      message: `${bits.join(' · ')}\n\nResolve or reassign its publishing rules before removing it.`,
-      confirmLabel: 'Cancel',
-      primaryLabel: 'Review publishing',
+      title: `Delete published playlist “${row.name}”?`,
+      message: `${bits.join(' · ')}\n\nDeleting it also removes its publishing rules. Affected screens use another available schedule or their default content. This cannot be undone.`,
+      confirmLabel: 'Delete playlist and rules',
     };
   }
   return {
-    blocked: false,
     title: `Remove “${row.name}”?`,
     // No trash exists server-side — never promise a 30-day restore (§20.3).
     message: 'This playlist is not published anywhere. Removing it deletes it permanently — it cannot be restored.',

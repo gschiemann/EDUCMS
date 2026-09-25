@@ -4,7 +4,7 @@
  * §15 makes "where is this playing?" the highest-value missing information,
  * and §16 makes silent deletion of live signage unacceptable. §22's truth
  * rules bind both: an unreachable usage endpoint is UNKNOWN, never zero and
- * never "unused", and nothing on this page may offer a force-delete.
+ * never "unused". Protected emergency content remains undeletable.
  *
  * Every case below is exercised through the real page.
  */
@@ -230,8 +230,10 @@ describe('Deletion safety (§16)', () => {
     expect(arg.message).not.toMatch(/not used by any playlist/i);
   });
 
-  it('IN USE: shows the §16 block instead of a confirmation — and offers no force-delete', async () => {
+  it('IN USE: shows the affected playlists and allows the warned delete', async () => {
     preflight = () => Promise.resolve(USED);
+    const deleted = jest.fn().mockResolvedValue({});
+    deleteImpl = deleted;
     render(<AssetsPage />);
     fireEvent.click(rtl.getByRole('button', { name: 'More actions for Recovery-Lounge-August.jpg' }));
     await act(async () => {
@@ -240,14 +242,16 @@ describe('Deletion safety (§16)', () => {
     const block = await rtl.findByTestId('asset-in-use-block');
     expect(block).toHaveTextContent('This asset is currently in use');
     expect(block).toHaveTextContent('It appears in 3 playlists reaching 8 screens');
-    expect(block).toHaveTextContent('Remove or replace those references before deleting it.');
+    expect(block).toHaveTextContent('this asset from those playlists');
+    expect(block).toHaveTextContent('Any playlist left empty will be unpublished');
     expect(within(block).getByRole('button', { name: 'Review usage' })).toBeInTheDocument();
     expect(within(block).getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
-    // No escape hatch of any kind.
-    const labels = within(block).getAllByRole('button').map((b) => b.textContent || '');
-    expect(labels.some((l) => /delete anyway|force|remove anyway/i.test(l))).toBe(false);
-    // And no confirmation dialog was ever offered.
+    expect(within(block).getByRole('button', { name: 'Delete asset' })).toBeInTheDocument();
     expect(appConfirm).not.toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.click(within(block).getByRole('button', { name: 'Delete asset' }));
+    });
+    expect(deleted).toHaveBeenCalledWith('a1');
   });
 
   it('IN USE: "Review usage" lands the operator in that asset’s detail usage section', async () => {
@@ -280,18 +284,18 @@ describe('Deletion safety (§16)', () => {
     expect(rtl.queryByTestId('asset-in-use-block')).not.toBeInTheDocument();
   });
 
-  it('a server 409 wins over a stale pre-flight: the block appears with the SERVER usage', async () => {
-    // Pre-flight said unused (stale cache); the DELETE comes back 409.
+  it('a server emergency guard wins over a stale pre-flight', async () => {
+    // Pre-flight said unused (stale cache); the server still refuses protected content.
     preflight = () => Promise.resolve(UNUSED);
     appConfirm.mockResolvedValue(true);
     deleteImpl = () =>
-      Promise.reject(Object.assign(new Error('Asset in use'), { status: 409, code: 'ASSET_IN_USE', body: { code: 'ASSET_IN_USE', usage: USED } }));
+      Promise.reject(Object.assign(new Error('Protected emergency content'), { status: 409, code: 'ASSET_IN_PROTECTED_PLAYLIST' }));
     render(<AssetsPage />);
     fireEvent.click(rtl.getByRole('button', { name: 'More actions for Recovery-Lounge-August.jpg' }));
     await act(async () => {
       fireEvent.click(rtl.getByRole('menuitem', { name: 'Delete…' }));
     });
-    const block = await rtl.findByTestId('asset-in-use-block');
-    expect(block).toHaveTextContent('It appears in 3 playlists reaching 8 screens');
+    await waitFor(() => expect(appAlert).toHaveBeenCalled());
+    expect(rtl.queryByTestId('asset-in-use-block')).not.toBeInTheDocument();
   });
 });

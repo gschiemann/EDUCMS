@@ -43,7 +43,11 @@ type ScheduleRow = {
 function matchScheduleWhere(r: ScheduleRow, where: any): boolean {
   if (!where) return true;
   if (where.tenantId !== undefined && r.tenantId !== where.tenantId) return false;
-  if (where.playlistId !== undefined && r.playlistId !== where.playlistId) return false;
+  if (where.playlistId !== undefined) {
+    if (typeof where.playlistId === 'object' && where.playlistId?.not !== undefined) {
+      if (r.playlistId === where.playlistId.not) return false;
+    } else if (r.playlistId !== where.playlistId) return false;
+  }
   if (where.isActive !== undefined && r.isActive !== where.isActive) return false;
   if (where.screenId !== undefined && r.screenId !== where.screenId) return false;
   if (where.screenGroupId !== undefined && r.screenGroupId !== where.screenGroupId) return false;
@@ -71,7 +75,7 @@ function sortRows(rows: ScheduleRow[], orderBy: any): ScheduleRow[] {
   });
 }
 
-function makeController(scheduleRows: ScheduleRow[]) {
+function makeController(scheduleRows: ScheduleRow[], copies: Array<{ id: string; tenantId: string; name: string; isProtected: boolean }> = []) {
   const auditRows: any[] = [];
 
   const client = {
@@ -82,6 +86,7 @@ function makeController(scheduleRows: ScheduleRow[]) {
           : null,
       ),
       delete: jest.fn(async () => ({})),
+      findMany: jest.fn(async () => copies),
     },
     schedule: {
       findMany: jest.fn(async ({ where }: any) =>
@@ -217,5 +222,23 @@ describe('playlist delete — go-dark fallback (P0-1)', () => {
 
     expect(scheduleRows.find((r) => r.id === 's-unrelated')?.isActive).toBe(false);
     expect(auditRows.some((a) => a.action === 'SCHEDULE_AUTO_REACTIVATED')).toBe(false);
+  });
+
+  it('removes distributed child copies and restores each child screen independently', async () => {
+    const { controller, scheduleRows, auditRows, client } = makeController([
+      row({ id: 'child-active', tenantId: 't2', playlistId: 'child-copy', screenId: 'child-screen', isActive: true }),
+      row({ id: 'child-fallback', tenantId: 't2', playlistId: 'child-other', screenId: 'child-screen', isActive: false }),
+    ], [{ id: 'child-copy', tenantId: 't2', name: 'Dying Playlist', isProtected: false }]);
+
+    await controller.remove(req as any, 'pl-dying');
+
+    expect(client.playlist.delete).toHaveBeenCalledWith({ where: { id: 'child-copy', tenantId: 't2' } });
+    expect(client.playlist.delete).toHaveBeenCalledWith({ where: { id: 'pl-dying', tenantId: 't1' } });
+    expect(scheduleRows.find((r) => r.id === 'child-active')).toBeUndefined();
+    expect(scheduleRows.find((r) => r.id === 'child-fallback')?.isActive).toBe(true);
+    expect(auditRows).toEqual(expect.arrayContaining([
+      expect.objectContaining({ action: 'PLAYLIST_DELETED', tenantId: 't2', targetId: 'child-copy' }),
+      expect.objectContaining({ action: 'PLAYLIST_DELETED', tenantId: 't1', targetId: 'pl-dying' }),
+    ]));
   });
 });

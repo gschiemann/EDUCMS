@@ -26,6 +26,10 @@ import { Logger } from '@nestjs/common';
 import { AiAltTextService, AiAltTextQuotaError } from '../ai/ai-alt-text.service';
 import { isEligibleNow } from '../common/schedule-eligibility';
 import { isMintedUploadPath } from './upload-path';
+import { reactivateFallbackIfDark } from '../schedules/go-dark-fallback';
+import { RedisService } from '../realtime/redis.service';
+import { WebsocketSignerService } from '../security/websocket-signer.service';
+import { withDbRetry } from '../prisma/with-db-retry';
 
 // Browser-playable formats only. Cross-browser support is non-negotiable
 // for digital signage (CLAUDE.md "Cross-browser support" section): every
@@ -280,6 +284,8 @@ export class AssetsController {
     // 2026-09-24 — per-organisation storage allowance (storage-quota.service.ts).
     // Optional for the same reason; production always has it.
     @Optional() private readonly storageQuota?: StorageQuotaService,
+    @Optional() private readonly redisService?: RedisService,
+    @Optional() private readonly signer?: WebsocketSignerService,
   ) {}
 
   /**
@@ -2071,53 +2077,92 @@ export class AssetsController {
       );
     }
 
-    // Protected-playlist guard: deleting an asset cascades to playlistItem
-    // rows, which could silently empty an emergency (protected) playlist.
-    // Block the delete and make the operator remove from the playlist
-    // explicitly first — same spirit as the playlist delete guard.
-    const affectedItems = await this.prisma.client.playlistItem.findMany({
-      where: { assetId: id },
-      select: { playlistId: true },
-    });
-    const affectedPlaylistIds = Array.from(new Set(affectedItems.map((i) => i.playlistId)));
-    if (affectedPlaylistIds.length > 0) {
-      const protectedPlaylists = await this.prisma.client.playlist.findMany({
-        where: { id: { in: affectedPlaylistIds }, isProtected: true },
-        select: { id: true, name: true, protectedKind: true },
+    // Remove references, empty-playlist schedules and the asset together. An
+    // audit failure must roll all of them back. A playlist with other items
+    // (or a template) remains published; an empty media playlist cannot be
+    // left active on a screen. Protected emergency playlists stay immutable.
+    const changed = await withDbRetry(() => this.prisma.client.$transaction(async (tx) => {
+      const items = await tx.playlistItem.findMany({
+        where: { assetId: id, playlist: { tenantId: req.user.tenantId } },
+        select: { playlistId: true },
       });
-      if (protectedPlaylists.length > 0) {
-        throw new HttpException(
-          {
-            code: 'ASSET_IN_PROTECTED_PLAYLIST',
-            error: 'Asset is in a protected emergency playlist. Remove from the playlist first.',
-            playlists: protectedPlaylists.map((p) => ({ id: p.id, name: p.name, kind: p.protectedKind })),
-          },
-          HttpStatus.CONFLICT,
+      const playlistIds = [...new Set(items.map((item) => item.playlistId))];
+      const playlists = playlistIds.length
+        ? await tx.playlist.findMany({
+            where: { tenantId: req.user.tenantId, id: { in: playlistIds } },
+            select: { id: true, name: true, templateId: true, isProtected: true, protectedKind: true },
+          })
+        : [];
+      const protectedPlaylists = playlists.filter((p) => p.isProtected);
+      if (protectedPlaylists.length) {
+        throw new HttpException({
+          code: 'ASSET_IN_PROTECTED_PLAYLIST',
+          error: 'Asset is in a protected emergency playlist. Remove it from emergency settings first.',
+          playlists: protectedPlaylists.map((p) => ({ id: p.id, name: p.name, kind: p.protectedKind })),
+        }, HttpStatus.CONFLICT);
+      }
+      const removedItems = await tx.playlistItem.deleteMany({
+        where: { assetId: id, playlist: { tenantId: req.user.tenantId } },
+      });
+      const removedSchedules: Array<{ id: string; playlistId: string; screenId: string | null; screenGroupId: string | null; isActive: boolean }> = [];
+      for (const playlist of playlists) {
+        if (playlist.templateId) continue;
+        const remaining = await tx.playlistItem.count({ where: { playlistId: playlist.id } });
+        if (remaining) continue;
+        const schedules = await tx.schedule.findMany({
+          where: { tenantId: req.user.tenantId, playlistId: playlist.id },
+          select: { id: true, playlistId: true, screenId: true, screenGroupId: true, isActive: true },
+        });
+        if (!schedules.length) continue;
+        await tx.schedule.deleteMany({ where: { tenantId: req.user.tenantId, playlistId: playlist.id } });
+        removedSchedules.push(...schedules);
+        for (const schedule of schedules) {
+          if (!schedule.isActive) continue;
+          await reactivateFallbackIfDark(tx, {
+            tenantId: req.user.tenantId,
+            userId: req.user.id,
+            screenId: schedule.screenId,
+            screenGroupId: schedule.screenGroupId,
+            removedScheduleId: schedule.id,
+            excludePlaylistId: playlist.id,
+          });
+        }
+      }
+      await tx.asset.delete({ where: { id, tenantId: req.user.tenantId } });
+      await tx.auditLog.create({
+        data: {
+          tenantId: req.user.tenantId,
+          userId: req.user.id,
+          action: 'ASSET_DELETED',
+          targetType: 'Asset',
+          targetId: id,
+          details: JSON.stringify({
+            mimeType: asset.mimeType,
+            fileSize: (asset as any).fileSize ?? null,
+            fileHash: (asset as any).fileHash ?? null,
+            originalName: (asset as any).originalName ?? null,
+            removedPlaylistItems: removedItems.count,
+            affectedPlaylistIds: playlistIds,
+            removedSchedules,
+          }),
+        },
+      });
+      return { removedPlaylistItems: removedItems.count };
+    }, { isolationLevel: 'Serializable', timeout: 20000, maxWait: 10000 }), {
+      label: 'assets.remove',
+      logger: this.logger,
+    });
+
+    if (changed.removedPlaylistItems && this.redisService && this.signer) {
+      try {
+        await this.redisService.publish(
+          `tenant:${req.user.tenantId}`,
+          this.signer.signMessage('SYNC', { source: 'asset_delete' }),
         );
+      } catch (e) {
+        this.logger.warn(`SYNC publish failed after asset delete ${id}; screens will converge via manifest polling: ${(e as Error)?.message ?? e}`);
       }
     }
-
-    // Media Library v1 deletion safety (2026-08-31): an asset with LIVE
-    // references never deletes silently — the old behavior stripped the
-    // playlist items on the way out, which for signage means a board loses
-    // a slide with nobody choosing that. The operator removes or replaces
-    // the references first; the 409 carries the real usage so the UI can
-    // show exactly what stands in the way. (Protected/emergency guards
-    // above are stricter still and fire first.)
-    if (affectedPlaylistIds.length > 0) {
-      throw new HttpException(
-        {
-          code: 'ASSET_IN_USE',
-          error: 'Asset is used by playlists. Remove or replace those references first.',
-          usage: await this.buildAssetUsage(req.user.tenantId, id, asset.fileUrl),
-        },
-        HttpStatus.CONFLICT,
-      );
-    }
-
-    // No references — proceed. (deleteMany kept for belt-and-braces against
-    // a reference added between the check above and the transaction below.)
-    const removedItems = await this.prisma.client.playlistItem.deleteMany({ where: { assetId: id, playlist: { tenantId: req.user.tenantId } } });
 
     // Delete the stored file — only when this row is the LAST holder of it,
     // and only inside this tenant's own folder (2026-09-24, found during the
@@ -2136,7 +2181,9 @@ export class AssetsController {
             .catch(() => 1)
         : 1;
       if (ownFolder && stillUsed === 0) {
-        await this.storage.delete(storagePath);
+        await this.storage.delete(storagePath).catch((e) => {
+          this.logger.warn(`Could not remove stored file for deleted asset ${id}: ${(e as Error)?.message ?? e}`);
+        });
       } else {
         this.logger.log(
           `[assets] delete ${id}: kept ${storagePath} (${
@@ -2179,29 +2226,6 @@ export class AssetsController {
         await this.storage.delete(keptOriginal).catch(() => undefined);
     }
 
-    // 2026-05-23 launch audit P1: forensic trail for asset deletes.
-    // Records the original mime / size / hash so an asset deleted in
-    // error can be diagnosed (was it the right file? when was it
-    // uploaded? who removed it?).
-    await this.prisma.client.$transaction(async (tx) => {
-      await tx.asset.delete({ where: { id, tenantId: req.user.tenantId } });
-      await tx.auditLog.create({
-        data: {
-          tenantId: req.user.tenantId,
-          userId: req.user.id,
-          action: 'ASSET_DELETED',
-          targetType: 'Asset',
-          targetId: id,
-          details: JSON.stringify({
-            mimeType: asset.mimeType,
-            fileSize: (asset as any).fileSize ?? null,
-            fileHash: (asset as any).fileHash ?? null,
-            originalName: (asset as any).originalName ?? null,
-            removedPlaylistItems: removedItems.count,
-          }),
-        },
-      });
-    });
     return { deleted: true };
   }
 

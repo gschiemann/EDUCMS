@@ -593,9 +593,8 @@ export default function AssetsPage() {
   //
   // The old flow was a generic "will be permanently deleted" confirm that
   // told the operator nothing about blast radius. Now: ask the usage
-  // endpoint FIRST, then take one of four paths — protected, in-use,
-  // known-unused, or usage-unknown — and say which one it is. There is no
-  // force-delete branch.
+  // endpoint FIRST, then warn about known usage before removal. Emergency
+  // content remains protected.
 
   const loadUsage = async (id: string): Promise<AssetUsage | null> => {
     try {
@@ -612,6 +611,22 @@ export default function AssetsPage() {
 
   const usageInUse = (u: AssetUsage | null) =>
     !!u && (u.totals?.playlists ?? u.playlists?.length ?? 0) > 0;
+
+  const deleteConfirmedAsset = async (a: any) => {
+    try {
+      await deleteAsset.mutateAsync(a.id);
+      setSelectedIds((p) => p.filter((id) => id !== a.id));
+      if (selectedAsset?.id === a.id) closeDetail();
+    } catch (e: any) {
+      clog.error('upload', 'Delete failed', { id: a.id, msg: e?.message });
+      await appAlert({
+        title: "Couldn't delete this asset",
+        message: e?.message || 'Please try again in a moment.',
+        tone: 'danger',
+        confirmLabel: 'OK',
+      });
+    }
+  };
 
   const requestDeleteAsset = async (a: any) => {
     const name = assetName(a);
@@ -642,26 +657,7 @@ export default function AssetsPage() {
     });
     if (!ok) return;
 
-    try {
-      await deleteAsset.mutateAsync(a.id);
-      setSelectedIds((p) => p.filter((id) => id !== a.id));
-      if (selectedAsset?.id === a.id) closeDetail();
-    } catch (e: any) {
-      // The server is the last word: a 409 hands back the same usage shape,
-      // so the operator sees exactly what is holding the file.
-      const serverUsage: AssetUsage | undefined = e?.body?.usage;
-      if (e?.status === 409 && serverUsage) {
-        setInUseBlock({ asset: a, usage: serverUsage });
-        return;
-      }
-      clog.error('upload', 'Delete failed', { id: a.id, msg: e?.message });
-      await appAlert({
-        title: "Couldn't delete this asset",
-        message: e?.message || 'Please try again in a moment.',
-        tone: 'danger',
-        confirmLabel: 'OK',
-      });
-    }
+    await deleteConfirmedAsset(a);
   };
 
   const handleBulkDelete = async () => {
@@ -669,8 +665,8 @@ export default function AssetsPage() {
     const ok = await appConfirm({
       title: `Delete ${selectedIds.length} ${selectedIds.length === 1 ? 'asset' : 'assets'}?`,
       message:
-        `We check each file for playlist usage as it goes. Anything still in use is kept and reported back. ` +
-        `Deleted files cannot be restored.`,
+        `Assets used in playlists will be removed from those playlists. Any playlist left empty will be unpublished; affected screens use another available schedule or their default content. ` +
+        `Protected emergency content will be kept. Deleted files cannot be restored.`,
       tone: 'danger',
       confirmLabel: 'Delete',
     });
@@ -680,31 +676,33 @@ export default function AssetsPage() {
     // instead of just console.error (the old behavior swallowed every
     // 409 silently and the operator thought the delete succeeded).
     const failures: Array<{ id: string; msg: string }> = [];
-    const inUse: string[] = [];
+    const protectedIds: string[] = [];
     const ids = [...selectedIds];
-    await Promise.all(
-      ids.map((id) =>
-        deleteAsset.mutateAsync(id).catch((e: any) => {
-          if (e?.status === 409) inUse.push(id);
-          const msg = e?.message || 'Unknown error';
-          failures.push({ id, msg });
-          clog.error('upload', 'Delete failed', { id, msg });
-        }),
-      ),
-    );
+    // Consecutive deletions can empty the same playlist. Process them in
+    // order so the final delete sees that it removed the last item.
+    for (const id of ids) {
+      try {
+        await deleteAsset.mutateAsync(id);
+      } catch (e: any) {
+        if (e?.code === 'ASSET_IN_PROTECTED_PLAYLIST' || e?.code === 'ASSET_IN_SCREEN_EMERGENCY_CONTENT') protectedIds.push(id);
+        const msg = e?.message || 'Unknown error';
+        failures.push({ id, msg });
+        clog.error('upload', 'Delete failed', { id, msg });
+      }
+    }
     setSelectedIds([]);
     queryClient.invalidateQueries({ queryKey: ['assets'] });
     if (failures.length > 0) {
-      // §13 — every bulk operation reports per-asset success/failure, and
-      // protected / in-use assets are explained rather than lumped in.
+      // §13 — every bulk operation reports success/failure, and protected
+      // emergency content gets a specific explanation.
       await appAlert({
         title: 'Some assets were kept',
         message:
           `${ids.length - failures.length} of ${ids.length} deleted. ` +
-          (inUse.length > 0
-            ? `${inUse.length} ${inUse.length === 1 ? 'is' : 'are'} still used by a playlist and ${inUse.length === 1 ? 'was' : 'were'} kept — open one to see where. `
+          (protectedIds.length > 0
+            ? `${protectedIds.length} ${protectedIds.length === 1 ? 'is' : 'are'} protected emergency content and ${protectedIds.length === 1 ? 'was' : 'were'} kept. `
             : '') +
-          (failures.length > inUse.length ? `First error: "${failures[0].msg}"` : ''),
+          (failures.length > protectedIds.length ? `First error: "${failures[0].msg}"` : ''),
         tone: 'warn',
         confirmLabel: 'OK',
       });
@@ -2407,7 +2405,7 @@ export default function AssetsPage() {
         </div>
       )}
 
-      {/* ── In-use deletion block (§16) ──────────────────────────────── */}
+      {/* ── In-use deletion warning (§16) ────────────────────────────── */}
       {inUseBlock && (
         <div className="fixed top-0 right-0 bottom-0 left-0 z-[60] flex items-center justify-center p-4">
           <button aria-label="Cancel" className="absolute top-0 right-0 bottom-0 left-0 bg-slate-900/50 cursor-default" onClick={() => setInUseBlock(null)} />
@@ -2420,6 +2418,11 @@ export default function AssetsPage() {
                 const a = inUseBlock.asset;
                 setInUseBlock(null);
                 openDetail(a);
+              }}
+              onDelete={() => {
+                const a = inUseBlock.asset;
+                setInUseBlock(null);
+                void deleteConfirmedAsset(a);
               }}
             />
           </div>

@@ -217,11 +217,13 @@ export function AssetInUseBlock({
   assetName,
   usage,
   onReviewUsage,
+  onDelete,
   onCancel,
 }: {
   assetName: string;
   usage: AssetUsage;
   onReviewUsage: () => void;
+  onDelete: () => void;
   onCancel: () => void;
 }) {
   const playlistCount = usage.totals?.playlists ?? usage.playlists.length;
@@ -244,8 +246,8 @@ export function AssetInUseBlock({
           </h2>
           <p className="text-xs text-slate-600 leading-relaxed mt-1">
             It appears in {pluralize(playlistCount, 'playlist', 'playlists')}
-            {reach > 0 ? ` reaching ${pluralize(reach, 'screen', 'screens')}` : ''}. Remove or replace
-            those references before deleting it.
+            {reach > 0 ? ` reaching ${pluralize(reach, 'screen', 'screens')}` : ''}. Deleting it removes
+            this asset from those playlists. Any playlist left empty will be unpublished; affected screens use another available schedule or their default content.
           </p>
           <p className="text-[11px] text-slate-500 mt-1 break-all">{assetName}</p>
         </div>
@@ -264,9 +266,16 @@ export function AssetInUseBlock({
         <button
           type="button"
           onClick={onReviewUsage}
-          className="px-4 py-2 min-h-11 sm:min-h-0 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold"
+          className="px-4 py-2 min-h-11 sm:min-h-0 rounded-lg bg-white border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-50"
         >
           Review usage
+        </button>
+        <button
+          type="button"
+          onClick={onDelete}
+          className="px-4 py-2 min-h-11 sm:min-h-0 rounded-lg bg-rose-700 hover:bg-rose-800 text-white text-xs font-bold"
+        >
+          Delete asset
         </button>
       </div>
     </div>

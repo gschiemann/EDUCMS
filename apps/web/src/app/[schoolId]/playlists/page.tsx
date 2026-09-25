@@ -251,30 +251,10 @@ export default function PlaylistsPage() {
     [router, schoolId],
   );
 
-  /**
-   * §20 — removal. A playlist that is still publishing somewhere is BLOCKED
-   * with "Review publishing" as the way out; the safe path is resolving usage.
-   * When the API lands its 409 (`code: 'PLAYLIST_PUBLISHED'`), that answer wins
-   * over the client's own reach estimate — the server sees copies at child
-   * locations that this tenant's payload does not.
-   *
-   * There is no Trash UI anywhere on this surface: the backend deletes
-   * permanently, and a restore we cannot honour must never be promised (§20.3).
-   */
+  /** Warn about affected publishing rules before the atomic server delete. */
   const handleRemove = useCallback(async (row: PlaylistSummaryRow) => {
     const ruleCount = schedules.filter((s) => s.playlistId === row.id).length;
     const decision = removePlaylistCopy(row, ruleCount);
-    if (decision.blocked) {
-      const review = await appConfirm({
-        title: decision.title,
-        message: decision.message,
-        confirmLabel: decision.primaryLabel ?? 'Review publishing',
-        cancelLabel: 'Cancel',
-        tone: 'warn',
-      });
-      if (review) openWorkspace(row.id, 'schedule');
-      return;
-    }
     const ok = await appConfirm({
       title: decision.title,
       message: decision.message,
@@ -285,30 +265,13 @@ export default function PlaylistsPage() {
     try {
       await deletePlaylist.mutateAsync(row.id);
     } catch (err: any) {
-      if (err?.code === 'PLAYLIST_PUBLISHED') {
-        const reach = err?.body?.reach ?? {};
-        const bits = [
-          reach.rules != null ? `${reach.rules} rules` : null,
-          reach.screens != null ? `${reach.screens} screens` : null,
-          reach.locations != null ? `${reach.locations} locations` : null,
-        ].filter(Boolean).join(' · ');
-        const review = await appConfirm({
-          title: `“${row.name}” is currently published`,
-          message: `${bits || 'It is still publishing.'}\n\nResolve or reassign its publishing rules before removing it.`,
-          confirmLabel: 'Review publishing',
-          cancelLabel: 'Cancel',
-          tone: 'warn',
-        });
-        if (review) openWorkspace(row.id, 'schedule');
-        return;
-      }
       await appAlert({
         title: "Couldn't remove playlist",
         message: err?.message || 'The server rejected the request. Refresh and try again.',
         tone: 'danger',
       });
     }
-  }, [schedules, deletePlaylist, openWorkspace]);
+  }, [schedules, deletePlaylist]);
 
   /** §8.4 — Duplicate. Creates a real copy (name, template, ordered items). */
   const handleDuplicate = useCallback(async (id: string) => {

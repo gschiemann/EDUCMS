@@ -1186,62 +1186,62 @@ export class PlaylistsController {
     // schedules, THEN delete the playlist. PlaylistItems are removed by
     // their own onDelete: Cascade. Single transaction so a partial
     // failure rolls everything back.
-    await this.prisma.client.$transaction(async (tx) => {
-      const attachedSchedules = await tx.schedule.findMany({
-        where: { playlistId: id },
-        select: {
-          id: true, screenId: true, screenGroupId: true,
-          startTime: true, endTime: true, isActive: true,
-        },
+    const affectedTenantIds = await this.prisma.client.$transaction(async (tx) => {
+      // Fleet publishing creates child-owned copies with their own schedules.
+      // A parent delete must remove those copies too or the screens advertised
+      // in the confirmation will keep playing the supposedly deleted content.
+      const copies = await tx.playlist.findMany({
+        where: { sourcePlaylistId: id, tenant: { parentId: req.user.tenantId } },
+        select: { id: true, tenantId: true, name: true, isProtected: true },
       });
-      // 2026-05-23 launch audit P1: audit EVERY playlist delete, not
-      // just deletes-with-attached-schedules. Operators were able to
-      // ghost-delete an unscheduled draft with zero forensic trail.
-      await tx.auditLog.create({
-        data: {
-          tenantId: req.user.tenantId,
-          userId: req.user.id,
-          action: 'PLAYLIST_DELETED',
-          targetType: 'Playlist',
-          targetId: id,
-          details: JSON.stringify({
-            name: playlist.name,
-            scheduleCount: attachedSchedules.length,
-            schedules: attachedSchedules,
-          }),
-        },
-      });
-      // 2026-05-23 launch audit P1: removed the `.catch(() => {})`
-      // that previously swallowed audit-write errors INSIDE this
-      // $transaction. A failed audit MUST roll back the playlist +
-      // schedule delete; a partial state with no forensic trail is
-      // worse than rejecting and asking the operator to retry.
-      if (attachedSchedules.length > 0) {
-        await tx.schedule.deleteMany({ where: { playlistId: id } });
-        // P0-1 (launch-sprint Day 1, 2026-07-01): deleting a playlist kills
-        // every schedule referencing it — a second door into the CC-2
-        // go-dark failure that previously bypassed the fallback entirely.
-        // For each ACTIVE schedule we just removed, run the SAME fallback
-        // the schedules controller runs: if its target (screen/group) is
-        // now uncovered, promote the best inactive candidate. Runs AFTER
-        // deleteMany inside this tx, so candidates can never reference the
-        // dying playlist (its schedules are already gone) and the whole
-        // delete+fallback commits atomically. Idempotent per target — the
-        // helper's stillActive check makes duplicate targets a no-op.
-        for (const s of attachedSchedules) {
-          if (!s.isActive) continue;
-          await reactivateFallbackIfDark(tx, {
-            tenantId: req.user.tenantId,
-            userId: req.user.id ?? null,
-            screenId: s.screenId,
-            screenGroupId: s.screenGroupId,
-            removedScheduleId: s.id,
-          });
-        }
+      if (copies.some((copy) => copy.isProtected)) {
+        throw new HttpException({ code: 'PLAYLIST_PROTECTED', message: 'A distributed copy contains protected emergency content.' }, HttpStatus.FORBIDDEN);
       }
-      await tx.playlist.delete({ where: { id, tenantId: req.user.tenantId } });
-    });
-    this.notifySync(req.user.tenantId);
+      const targets = [...copies, playlist];
+      for (const target of targets) {
+        const attachedSchedules = await tx.schedule.findMany({
+          where: { tenantId: target.tenantId, playlistId: target.id },
+          select: {
+            id: true, screenId: true, screenGroupId: true,
+            startTime: true, endTime: true, isActive: true,
+          },
+        });
+        // Every deleted copy gets a forensic row in its own tenant. A failed
+        // audit rolls the entire cross-location delete back.
+        await tx.auditLog.create({
+          data: {
+            tenantId: target.tenantId,
+            userId: req.user.id,
+            action: 'PLAYLIST_DELETED',
+            targetType: 'Playlist',
+            targetId: target.id,
+            details: JSON.stringify({
+              name: target.name,
+              sourcePlaylistId: target.id === id ? null : id,
+              scheduleCount: attachedSchedules.length,
+              schedules: attachedSchedules,
+            }),
+          },
+        });
+        if (attachedSchedules.length) {
+          await tx.schedule.deleteMany({ where: { tenantId: target.tenantId, playlistId: target.id } });
+          for (const schedule of attachedSchedules) {
+            if (!schedule.isActive) continue;
+            await reactivateFallbackIfDark(tx, {
+              tenantId: target.tenantId,
+              userId: req.user.id ?? null,
+              screenId: schedule.screenId,
+              screenGroupId: schedule.screenGroupId,
+              removedScheduleId: schedule.id,
+              excludePlaylistId: target.id,
+            });
+          }
+        }
+        await tx.playlist.delete({ where: { id: target.id, tenantId: target.tenantId } });
+      }
+      return [...new Set(targets.map((target) => target.tenantId))];
+    }, { timeout: 20000, maxWait: 10000 });
+    await Promise.all(affectedTenantIds.map((tenantId) => this.notifySync(tenantId)));
     return { deleted: true };
   }
 }

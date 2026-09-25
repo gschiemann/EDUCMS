@@ -1102,7 +1102,11 @@ export function useDeletePlaylist() {
     onError: (_e, _id, ctx) => {
       if (ctx?.prev !== undefined) qc.setQueryData(['playlists'], ctx.prev);
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: ['playlists'] }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['playlists'] });
+      qc.invalidateQueries({ queryKey: ['schedules'] });
+      qc.invalidateQueries({ queryKey: ['screens'] });
+    },
   });
 }
 
@@ -1579,7 +1583,7 @@ export function useStockRehost() {
 /**
  * Patch EVERY cached asset list — the legacy `Asset[]` under `['assets']`
  * and the paged `{assets,total}` under `['assets','page',…]`. Returns the
- * snapshot so a failed mutation (e.g. a 409 ASSET_IN_USE) can put the row
+ * snapshot so a failed mutation can put the row
  * straight back.
  */
 function patchAssetCaches(qc: QueryClient, fn: (assets: any[]) => any[]) {
@@ -1616,7 +1620,12 @@ export function useDeleteAsset() {
     onError: (_e, _id, ctx) => {
       restoreAssetCaches(qc, ctx?.prev as any);
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: ['assets'] }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['assets'] });
+      qc.invalidateQueries({ queryKey: ['playlists'] });
+      qc.invalidateQueries({ queryKey: ['schedules'] });
+      qc.invalidateQueries({ queryKey: ['screens'] });
+    },
   });
 }
 

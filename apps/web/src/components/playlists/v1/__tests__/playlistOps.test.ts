@@ -529,15 +529,14 @@ describe('high-consequence confirmations', () => {
     expect(copy.confirmLabel).toBe('Pause everywhere');
   });
 
-  it('a published playlist is BLOCKED from removal with Review publishing as the way out (§20.2)', () => {
+  it('a published playlist can be deleted after an explicit warning about its rules', () => {
     const r = removePlaylistCopy(
       { name: 'Member Promotions', reach: { screens: 18, groups: 0, locations: 3 } } as PlaylistSummaryRow,
       6,
     );
-    expect(r.blocked).toBe(true);
-    expect(r.primaryLabel).toBe('Review publishing');
+    expect(r.confirmLabel).toBe('Delete playlist and rules');
     expect(r.message).toContain('6 rules · 18 screens · 3 locations');
-    expect(r.message).not.toMatch(/delete anyway/i);
+    expect(r.message).toMatch(/removes its publishing rules/);
   });
 
   it('an unpublished removal never promises a restore the backend cannot honour (§20.3)', () => {
@@ -545,7 +544,6 @@ describe('high-consequence confirmations', () => {
       { name: 'New Member Orientation', reach: { screens: 0, groups: 0, locations: 0 } } as PlaylistSummaryRow,
       0,
     );
-    expect(r.blocked).toBe(false);
     expect(r.message).toMatch(/cannot be restored/i);
     expect(r.message).not.toMatch(/30 days|trash|recoverable/i);
   });
@@ -619,7 +617,7 @@ describe('§4.3 prohibited language', () => {
       const d = removePlaylistCopy(
         { name: 'X', reach: { screens: rules ? 4 : 0, groups: 0, locations: 0 } } as PlaylistSummaryRow, rules,
       );
-      push(d.title); push(d.message); push(d.confirmLabel); push(d.primaryLabel);
+      push(d.title); push(d.message); push(d.confirmLabel);
     }
 
     const banner = buildExceptionBanner([{

@@ -1,12 +1,12 @@
-import { HttpException, HttpStatus } from '@nestjs/common';
+import { HttpStatus } from '@nestjs/common';
 import { AssetsController } from './assets.controller';
 
 /**
  * Media Library v1 (2026-08-31) — the three server truths the calm library
  * design leans on:
  *   1. GET /assets/:id/usage reports REAL references and reach.
- *   2. DELETE on an in-use asset is a 409 carrying that usage — the silent
- *      strip-the-playlist-items path is gone.
+ *   2. DELETE on an in-use asset strips ordinary playlist references and
+ *      retires schedules when that leaves a media playlist empty.
  *   3. The list endpoint returns { assets, total } ONLY when the caller
  *      opts into pagination/search; a bare GET keeps the legacy array so
  *      the pre-v1 page keeps parsing.
@@ -25,7 +25,8 @@ function makeController(over: Partial<Record<string, any>> = {}) {
       },
       playlistItem: {
         findMany: jest.fn(async () => over.items ?? []),
-        deleteMany: jest.fn(async () => ({ count: 0 })),
+        deleteMany: jest.fn(async () => ({ count: (over.items ?? []).length })),
+        count: jest.fn(async () => over.remainingItems ?? 0),
       },
       playlist: {
         findMany: jest.fn(async ({ where }: any) =>
@@ -35,7 +36,12 @@ function makeController(over: Partial<Record<string, any>> = {}) {
           ),
         ),
       },
-      schedule: { findMany: jest.fn(async () => over.schedules ?? []) },
+      schedule: {
+        findMany: jest.fn(async () => over.schedules ?? []),
+        deleteMany: jest.fn(async () => ({ count: (over.schedules ?? []).length })),
+        findFirst: jest.fn(async ({ where }: any) => where.isActive === false ? over.fallbackSchedule ?? null : null),
+        update: jest.fn(async () => ({})),
+      },
       screen: {
         // First-call shape differs per usage: emergency probe uses OR on
         // config fields; group/pin lookups use screenGroupId/id filters.
@@ -102,21 +108,51 @@ describe('GET /assets/:id/usage', () => {
 });
 
 describe('DELETE /assets/:id — in-use safety', () => {
-  it('refuses with 409 ASSET_IN_USE carrying the usage payload', async () => {
+  it('removes an in-use asset and retires an empty media playlist schedule in the same transaction', async () => {
     const { controller, prisma } = makeController({
       items: [{ playlistId: 'p1' }],
       playlists: [{ id: 'p1', name: 'Summer Strength', isProtected: false }],
-      schedules: [],
+      schedules: [{ id: 's1', playlistId: 'p1', screenId: 'screen1', screenGroupId: null, isActive: true }],
     });
-    let err: any;
-    try { await controller.remove(req, 'a1'); } catch (e) { err = e; }
-    expect(err).toBeInstanceOf(HttpException);
-    expect(err.getStatus()).toBe(HttpStatus.CONFLICT);
-    expect(err.getResponse().code).toBe('ASSET_IN_USE');
-    expect(err.getResponse().usage.totals.playlists).toBe(1);
-    // Nothing was deleted or stripped.
+    await expect(controller.remove(req, 'a1')).resolves.toEqual({ deleted: true });
+    expect(prisma.client.playlistItem.deleteMany).toHaveBeenCalledWith({ where: { assetId: 'a1', playlist: { tenantId: 't1' } } });
+    expect(prisma.client.schedule.deleteMany).toHaveBeenCalledWith({ where: { tenantId: 't1', playlistId: 'p1' } });
+    expect(prisma.client.asset.delete).toHaveBeenCalled();
+    const audit = prisma.client.auditLog.create.mock.calls[0][0].data;
+    expect(JSON.parse(audit.details)).toMatchObject({ removedPlaylistItems: 1, removedSchedules: [{ id: 's1' }] });
+  });
+
+  it('keeps protected emergency playlists and their assets intact', async () => {
+    const { controller, prisma } = makeController({
+      items: [{ playlistId: 'p9' }],
+      playlists: [{ id: 'p9', name: 'Lockdown', isProtected: true }],
+    });
+    await expect(controller.remove(req, 'a1')).rejects.toMatchObject({ status: HttpStatus.CONFLICT });
     expect(prisma.client.playlistItem.deleteMany).not.toHaveBeenCalled();
     expect(prisma.client.asset.delete).not.toHaveBeenCalled();
+  });
+
+  it('promotes another schedule when deleting the last published item', async () => {
+    const { controller, prisma } = makeController({
+      items: [{ playlistId: 'p1' }],
+      playlists: [{ id: 'p1', name: 'Summer Strength', isProtected: false }],
+      schedules: [{ id: 's1', playlistId: 'p1', screenId: 'screen1', screenGroupId: null, isActive: true }],
+      fallbackSchedule: { id: 's2', playlistId: 'p2', screenId: 'screen1', screenGroupId: null, priority: 1 },
+    });
+    await controller.remove(req, 'a1');
+    expect(prisma.client.schedule.update).toHaveBeenCalledWith({ where: { id: 's2', tenantId: 't1' }, data: { isActive: true } });
+    expect(prisma.client.auditLog.create.mock.calls.map(([arg]: any[]) => arg.data.action)).toContain('SCHEDULE_AUTO_REACTIVATED');
+  });
+
+  it('keeps publishing when the playlist still has another item', async () => {
+    const { controller, prisma } = makeController({
+      items: [{ playlistId: 'p1' }],
+      remainingItems: 1,
+      playlists: [{ id: 'p1', name: 'Summer Strength', isProtected: false }],
+      schedules: [{ id: 's1', playlistId: 'p1', screenId: 'screen1', screenGroupId: null, isActive: true }],
+    });
+    await controller.remove(req, 'a1');
+    expect(prisma.client.schedule.deleteMany).not.toHaveBeenCalled();
   });
 
   it('an unreferenced asset still deletes with the audit row', async () => {
