@@ -1744,6 +1744,7 @@
       "unknown": "尚未检查编码",
       "detailsAria": "播放详情",
       "technicalDetails": "技术详情",
+      "uploadFastStart": "上传后我们会优化此视频，使其更快开始播放。",
       "uploadToast": "{name} 在您的屏幕上可能无法流畅播放",
       "uploadToastAction": "查看原因",
       "checkNow": "检查此文件",

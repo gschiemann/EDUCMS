@@ -1744,6 +1744,7 @@
       "unknown": "Codificación aún sin comprobar",
       "detailsAria": "Detalles de reproducción",
       "technicalDetails": "Detalles técnicos",
+      "uploadFastStart": "Optimizaremos este vídeo para que empiece más rápido después de subirlo.",
       "uploadToast": "{name} puede no reproducirse con fluidez en tus pantallas",
       "uploadToastAction": "Ver por qué",
       "checkNow": "Comprobar este archivo",

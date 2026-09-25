@@ -60,7 +60,7 @@ import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { transformedImageUrl } from '@/lib/asset-image';
 import { AssetEncodeBadge, VideoEncodeCard } from '@/components/assets/VideoEncode';
 import { useEncodeTarget } from '@/hooks/use-encode-target';
-import { encodeWarns, encodeSuggestions, encodeWarnings, encodeNotes, describeEncodeReason, isVideoMime, libraryPollMs, type VideoEncodeState } from '@/lib/video-encode-copy';
+import { encodeSuggestions, encodeWarnings, encodeNotes, describeEncodeReason, isVideoMime, libraryPollMs, type VideoEncodeState } from '@/lib/video-encode-copy';
 import { inspectVideoFile } from '@/lib/mp4-inspect';
 import { gradeVideoEncode } from '@cms/api-types';
 import {
@@ -796,8 +796,9 @@ export default function AssetsPage() {
     // "Waiting" (§14), which is the truth.
     // Pre-upload playback check (2026-09-24): read the MP4's own index the
     // moment it is dropped — bounded reads, never the media — and grade it
-    // against the fleet's panels, so the queue row warns BEFORE the bytes go
-    // up. Never blocks or fails an upload; a container we cannot read simply
+    // against the fleet's panels, so the queue can explain automatic fixes
+    // and flag remaining playback issues before the bytes go up. Never
+    // blocks or fails an upload; a container we cannot read simply
     // reads "not checked" until the server's ffprobe pass lands.
     for (const item of items) {
       if (!item.encode) continue;
@@ -1419,7 +1420,19 @@ export default function AssetsPage() {
             <button onClick={() => setUploads(p => p.filter(u => u.phase === 'uploading' || u.phase === 'processing' || u.phase === 'idle'))} className="text-[11px] text-indigo-700 hover:text-indigo-900 font-bold">{t('assetsLib.clearDone')}</button>
           </div>
           <div className="divide-y divide-slate-100 max-h-64 overflow-y-auto" aria-live="polite">
-            {uploads.map(u => (
+            {uploads.map(u => {
+              // Fast start is handled by the upload pipeline. Keep warnings for
+              // problems that still need attention instead of alarming the
+              // operator about a change we already prepare automatically.
+              const fastStartWillBePrepared = u.encode?.verdict.reasons.some((reason) => reason.code === 'fast-start') ?? false;
+              const remainingVerdict = u.encode && {
+                ...u.encode.verdict,
+                reasons: u.encode.verdict.reasons.filter((reason) => reason.code !== 'fast-start'),
+              };
+              const remainingWarnings = remainingVerdict ? encodeWarnings(remainingVerdict) : [];
+              const remainingNotes = remainingVerdict ? encodeNotes(remainingVerdict) : [];
+              const warningStatus = remainingWarnings.some((reason) => reason.severity === 'red') ? 'red' : 'amber';
+              return (
               <div key={u.id} className="px-4 py-2">
                 <div className="flex items-center gap-3">
                   {typeIcon(u.file.type, 'w-3.5 h-3.5')}
@@ -1466,18 +1479,25 @@ export default function AssetsPage() {
                   <p className="text-[10px] text-rose-700 font-medium leading-snug mt-1 ml-6 pr-2" title={u.error}>{u.error}</p>
                 )}
                 {/* Keep the upload queue compact; full probe facts remain in file details. */}
-                {u.phase !== 'success' && u.phase !== 'pending-review' && u.encode && u.encode.status !== 'checking' && u.encode.status !== 'unknown' && (
-                  <div className="mt-1 ml-6 pr-2" data-testid="upload-encode" data-encode-status={u.encode.status}>
-                    <p className={`text-[10px] font-bold leading-snug ${u.encode.status === 'red' ? 'text-rose-700' : u.encode.status === 'amber' ? 'text-amber-700' : 'text-emerald-700'}`}>
-                      {t(`assetsLib.encode.${u.encode.status}`)}
-                    </p>
-                    {(encodeWarns(u.encode.status) || encodeNotes(u.encode.verdict).length > 0) && (
+                {u.phase !== 'success' && u.phase !== 'pending-review' && u.phase !== 'error' && u.encode && u.encode.status !== 'checking' && u.encode.status !== 'unknown' && (fastStartWillBePrepared || remainingWarnings.length > 0 || remainingNotes.length > 0) && (
+                  <div className="mt-1 ml-6 pr-2" data-testid="upload-encode" data-encode-status={remainingWarnings.length > 0 ? warningStatus : 'optimizing'}>
+                    {remainingWarnings.length > 0 && (
+                      <p className={`text-[10px] font-bold leading-snug ${warningStatus === 'red' ? 'text-rose-700' : 'text-amber-700'}`}>
+                        {t(`assetsLib.encode.${warningStatus}`)}
+                      </p>
+                    )}
+                    {fastStartWillBePrepared && (
+                      <p className="text-[10px] font-medium leading-snug text-indigo-700" data-testid="upload-auto-optimize">
+                        {t('assetsLib.encode.uploadFastStart')}
+                      </p>
+                    )}
+                    {(remainingWarnings.length > 0 || remainingNotes.length > 0) && remainingVerdict && (
                       <details className="text-[10px] text-slate-600 leading-snug mt-0.5">
                         <summary className="cursor-pointer font-semibold text-indigo-700">{t('assetsLib.encode.technicalDetails')}</summary>
                         <div className="mt-1 space-y-0.5">
-                          {encodeWarnings(u.encode.verdict).map((r) => <p key={r.code}>{describeEncodeReason(t, r)}</p>)}
-                          {encodeNotes(u.encode.verdict).map((r) => <p key={r.code}>{describeEncodeReason(t, r)}</p>)}
-                          <p>{encodeSuggestions(t, u.encode.verdict)}</p>
+                          {remainingWarnings.map((r) => <p key={r.code}>{describeEncodeReason(t, r)}</p>)}
+                          {remainingNotes.map((r) => <p key={r.code}>{describeEncodeReason(t, r)}</p>)}
+                          <p>{encodeSuggestions(t, remainingVerdict)}</p>
                         </div>
                       </details>
                     )}
@@ -1487,7 +1507,8 @@ export default function AssetsPage() {
                   <p className="text-[10px] text-slate-400 leading-snug mt-1 ml-6">{t('assetsLib.encode.checking')}</p>
                 )}
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

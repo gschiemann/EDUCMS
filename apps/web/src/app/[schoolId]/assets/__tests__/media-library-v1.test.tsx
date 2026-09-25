@@ -20,6 +20,8 @@
 
 import * as React from 'react';
 import { render, screen as rtl, fireEvent, within, act } from '@testing-library/react';
+import * as Mp4Inspect from '@/lib/mp4-inspect';
+import * as DirectUpload from '@/lib/direct-upload';
 
 const NOW = Date.now();
 const iso = (minsAgo: number) => new Date(NOW - minsAgo * 60_000).toISOString();
@@ -628,14 +630,14 @@ describe('Media Library v1 — deletion is admin-only', () => {
 });
 
 describe('Media Library v1 — upload queue phases (§14)', () => {
-  it('shows only the fast-start change during upload and removes the original warning after upload', async () => {
-    const inspected = jest.spyOn(require('@/lib/mp4-inspect'), 'inspectVideoFile').mockResolvedValue({
+  it('shows automatic fast-start preparation as information, not a warning', async () => {
+    const inspected = jest.spyOn(Mp4Inspect, 'inspectVideoFile').mockResolvedValue({
       container: 'mp4', facts: { codec: 'h264', profile: 'High', level: 40, pixFmt: 'yuv420p',
         width: 1920, height: 1080, fps: 30, bitrateKbps: 8_000, fastStart: false,
         variableFrameRate: false, audio: null, container: 'mp4' },
     });
-    let finish!: (result: { status: string }) => void;
-    const upload = jest.spyOn(require('@/lib/direct-upload'), 'uploadAssetDirect').mockImplementation(
+    let finish!: (result: DirectUpload.CompletedAsset) => void;
+    const upload = jest.spyOn(DirectUpload, 'uploadAssetDirect').mockImplementation(
       () => new Promise((resolve) => { finish = resolve; }),
     );
     try {
@@ -644,13 +646,44 @@ describe('Media Library v1 — upload queue phases (§14)', () => {
       await act(async () => {
         fireEvent.change(input, { target: { files: [new File(['video'], 'Canva.mp4', { type: 'video/mp4' })] } });
       });
-      const warning = rtl.getByTestId('upload-encode');
-      expect(warning).toHaveTextContent('Technical details');
-      expect(warning.querySelector('details')).not.toHaveAttribute('open');
-      expect(warning).toHaveTextContent('Fast start is prepared automatically after upload');
-      expect(warning).not.toHaveTextContent(/Use H.264|AAC stereo/);
-      await act(async () => { finish({ status: 'PUBLISHED' }); });
+      const note = rtl.getByTestId('upload-encode');
+      expect(note).toHaveAttribute('data-encode-status', 'optimizing');
+      expect(note).toHaveTextContent("We'll optimize this video for faster startup after upload.");
+      expect(note).not.toHaveTextContent(/May hitch|Technical details|Playback index|Suggested changes/);
+      await act(async () => { finish({
+        id: 'new-video', fileUrl: 'https://cdn.example.com/new-video.mp4', mimeType: 'video/mp4',
+        fileSize: 5, fileHash: null, originalName: 'Canva.mp4', status: 'PUBLISHED',
+        altText: null, posterUrl: null,
+      }); });
       expect(rtl.queryByTestId('upload-encode')).not.toBeInTheDocument();
+    } finally {
+      inspected.mockRestore();
+      upload.mockRestore();
+    }
+  });
+
+  it('keeps an actionable playback warning when upload can only fix fast start', async () => {
+    const inspected = jest.spyOn(Mp4Inspect, 'inspectVideoFile').mockResolvedValue({
+      container: 'mp4', facts: { codec: 'h264', profile: 'High', level: 40, pixFmt: 'yuv420p',
+        width: 1920, height: 1080, fps: 60, bitrateKbps: 8_000, fastStart: false,
+        variableFrameRate: false, audio: null, container: 'mp4' },
+    });
+    const upload = jest.spyOn(DirectUpload, 'uploadAssetDirect').mockImplementation(
+      () => new Promise(() => {}),
+    );
+    try {
+      mount();
+      const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+      await act(async () => {
+        fireEvent.change(input, { target: { files: [new File(['video'], 'Canva.mp4', { type: 'video/mp4' })] } });
+      });
+      const warning = rtl.getByTestId('upload-encode');
+      expect(warning).toHaveAttribute('data-encode-status', 'amber');
+      expect(warning).toHaveTextContent('May hitch or start slowly on some screens');
+      expect(warning).toHaveTextContent("We'll optimize this video for faster startup after upload.");
+      expect(warning).toHaveTextContent('Technical details');
+      expect(warning).toHaveTextContent('above 30');
+      expect(warning).not.toHaveTextContent('Playback index is at the end');
     } finally {
       inspected.mockRestore();
       upload.mockRestore();

@@ -1744,6 +1744,7 @@
       "unknown": "Encoding not checked yet",
       "detailsAria": "Playback details",
       "technicalDetails": "Technical details",
+      "uploadFastStart": "We'll optimize this video for faster startup after upload.",
       "uploadToast": "{name} may not play smoothly on your screens",
       "uploadToastAction": "See why",
       "checkNow": "Check this file",
