@@ -3205,9 +3205,22 @@ model Game {
   // latest-wins AUTO_PUSH GameEvent. Nullable → purely additive.
   autoPushAt DateTime? @map("auto_push_at")
 
-  tenant Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  events GameEvent[]
-  roster RosterPlayer[]
+  // 2026-09-26 — K-12 launch program, lane A1 (K12-F12). The game-STATE
+  // revision: every write to score / clock / segment / stats / status /
+  // possession goes through SportsService.runGameCommand, which updates the
+  // row only `WHERE version = <the version it read>` and bumps it. A writer
+  // that read a stale row matches nothing and re-runs against the fresh one,
+  // so two operators, a feed and the clock sweep can no longer overwrite each
+  // other's change. Also the revision recorded on every GameEvent, command
+  // receipt and audit row. Identity / template / spotlight edits do not bump
+  // it — no command reads-then-writes those columns.
+  version Int @default(0)
+
+  tenant     Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  events     GameEvent[]
+  roster     RosterPlayer[]
+  commands   GameCommand[]
+  statRollup GameStatRollup?
 
   scoreboardTemplate Template? @relation("GameScoreboardTemplate", fields: [scoreboardTemplateId], references: [id], onDelete: SetNull)
   ribbonTemplate     Template? @relation("GameRibbonTemplate", fields: [ribbonTemplateId], references: [id], onDelete: SetNull)
@@ -3286,6 +3299,20 @@ model GameEvent {
   payload   Json     @default("{}")
   createdAt DateTime @default(now()) @map("created_at")
 
+  // 2026-09-26 — K-12 launch program, lane A1 (K12-F34). WHO produced the
+  // event, written in the same transaction as the state change it records.
+  // Before this a GameEvent carried no actor at all, so "who changed the
+  // score at 7:42 in Q3" had no answer. All nullable: every pre-existing row
+  // reads as unattributed, which is the truth.
+  //   commandId   — the client's durable command id (or null)
+  //   actorType   — user | console | feed | system
+  //   actorUserId — the operator's User.id (null for console/feed/system)
+  //   revision    — Game.version AFTER the command that wrote this event
+  commandId   String? @map("command_id")
+  actorType   String? @map("actor_type")
+  actorUserId String? @map("actor_user_id")
+  revision    Int?
+
   game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
 
   @@index([gameId, createdAt])
@@ -3295,6 +3322,77 @@ model GameEvent {
   // filtering in memory (live 33.5% seq scans). This serves the per-type path.
   @@index([gameId, type, createdAt])
   @@map("game_events")
+}
+
+// 2026-09-26 — K-12 launch program, lane A1 (K12-F10). The durable receipt of
+// ONE game-control command, keyed by the id the client minted for it.
+//
+// The scorer's-table console queues a tap that failed on the network and
+// replays it later; apiFetch also re-sends a mutation after a network error.
+// Neither can know whether the first attempt committed, so before this a
+// response lost after commit plus a retry awarded the same basket twice. Now
+// the receipt is written in the SAME transaction as the state change; a second
+// arrival of the command finds it and gets the original response back without
+// touching the game. The unique key is what makes that hold across replicas:
+// two concurrent arrivals race on the insert, one commits, the other's whole
+// transaction rolls back and it answers from the winner's receipt.
+//
+// `requestHash` = sha256 of the command kind + its request body (transport
+// fields excluded): a command id reused with a DIFFERENT body is refused
+// (409 COMMAND_ID_REUSED) rather than silently answered with another
+// command's result. The undo rail also claims each event exactly once here,
+// under the deterministic id `undo:<eventId>` (K12-F09).
+model GameCommand {
+  id             String   @id @default(uuid())
+  tenantId       String   @map("tenant_id")
+  gameId         String   @map("game_id")
+  commandId      String   @map("command_id")
+  kind           String
+  requestHash    String   @map("request_hash")
+  actorType      String   @map("actor_type")
+  actorUserId    String?  @map("actor_user_id")
+  actorRef       String?  @map("actor_ref")
+  revisionBefore Int      @map("revision_before")
+  revisionAfter  Int      @map("revision_after")
+  response       Json     @default("{}")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@unique([gameId, commandId])
+  @@index([tenantId, createdAt])
+  @@map("game_commands")
+}
+
+// 2026-09-26 — K-12 launch program, lane A1 (K12-F39). Durable, correction-
+// aware roll-up of one game's player stats into the season / career tables.
+//
+// Before this the roll-up ran once, after the FINAL commit, fail-open, guarded
+// by a `stats.statsFinalizedAt` marker: a failure left the season silently
+// short, and a corrected final result could never be re-rolled. Now the FINAL
+// transition queues this row (PENDING) in the same transaction; the roll-up
+// applies the DIFFERENCE between what the game currently contributes and
+// `contribution` (what it last added to the season rows), so it can run any
+// number of times — after a failure, a restart, a reopen-and-correct — and the
+// season holds the game's result exactly once. `state`: PENDING | DONE |
+// FAILED. The recovery sweep retries PENDING/FAILED rows.
+model GameStatRollup {
+  gameId          String   @id @map("game_id")
+  tenantId        String   @map("tenant_id")
+  state           String
+  targetRevision  Int      @map("target_revision")
+  appliedRevision Int?     @map("applied_revision")
+  contribution    Json     @default("[]")
+  attempts        Int      @default(0)
+  lastError       String?  @map("last_error")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at")
+
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@index([state, updatedAt])
+  @@index([tenantId])
+  @@map("game_stat_rollups")
 }
 
 // ─────────────────────────────────────────────────────────────
