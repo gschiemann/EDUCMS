@@ -6,7 +6,8 @@ import { AssetsController } from './assets.controller';
  * design leans on:
  *   1. GET /assets/:id/usage reports REAL references and reach.
  *   2. DELETE on an in-use asset strips ordinary playlist references and
- *      retires schedules when that leaves a media playlist empty.
+ *      retires schedules when that leaves a media playlist empty — only with
+ *      `?confirm=in-use`; without it, 409 ASSET_IN_USE carrying the usage.
  *   3. The list endpoint returns { assets, total } ONLY when the caller
  *      opts into pagination/search; a bare GET keeps the legacy array so
  *      the pre-v1 page keeps parsing.
@@ -68,8 +69,13 @@ function makeController(over: Partial<Record<string, any>> = {}) {
     },
   };
   const storage: any = { extractPath: jest.fn(() => null), delete: jest.fn() };
-  const controller = new AssetsController(prisma, storage, {} as any, {} as any, {} as any, { kickOff: () => {} } as any);
-  return { controller, prisma };
+  const redis: any = { publish: jest.fn(async () => undefined) };
+  const signer: any = { signMessage: jest.fn((type: string) => ({ type })) };
+  const controller = new AssetsController(
+    prisma, storage, {} as any, {} as any, {} as any, { kickOff: () => {} } as any,
+    undefined, undefined, redis, signer,
+  );
+  return { controller, prisma, storage, redis };
 }
 
 const req = { user: { tenantId: 't1', id: 'u1', role: 'SCHOOL_ADMIN' } } as any;
@@ -118,6 +124,8 @@ describe('GET /assets/:id/usage', () => {
   });
 });
 
+// The operator-confirmed delete (`?confirm=in-use`, see the last describe
+// block for what happens without it).
 describe('DELETE /assets/:id — in-use safety', () => {
   it('removes an in-use asset and retires an empty media playlist schedule in the same transaction', async () => {
     const { controller, prisma } = makeController({
@@ -125,7 +133,7 @@ describe('DELETE /assets/:id — in-use safety', () => {
       playlists: [{ id: 'p1', name: 'Summer Strength', isProtected: false }],
       schedules: [{ id: 's1', playlistId: 'p1', screenId: 'screen1', screenGroupId: null, isActive: true }],
     });
-    await expect(controller.remove(req, 'a1')).resolves.toEqual({ deleted: true });
+    await expect(controller.remove(req, 'a1', 'in-use')).resolves.toEqual({ deleted: true });
     expect(prisma.client.playlistItem.deleteMany).toHaveBeenCalledWith({ where: { assetId: 'a1', playlist: { tenantId: 't1' } } });
     expect(prisma.client.schedule.deleteMany).toHaveBeenCalledWith({ where: { tenantId: 't1', playlistId: 'p1' } });
     expect(prisma.client.asset.delete).toHaveBeenCalled();
@@ -150,7 +158,7 @@ describe('DELETE /assets/:id — in-use safety', () => {
       schedules: [{ id: 's1', playlistId: 'p1', screenId: 'screen1', screenGroupId: null, isActive: true }],
       fallbackSchedule: { id: 's2', playlistId: 'p2', screenId: 'screen1', screenGroupId: null, priority: 1 },
     });
-    await controller.remove(req, 'a1');
+    await controller.remove(req, 'a1', 'in-use');
     expect(prisma.client.schedule.update).toHaveBeenCalledWith({ where: { id: 's2', tenantId: 't1' }, data: { isActive: true } });
     expect(prisma.client.auditLog.create.mock.calls.map(([arg]: any[]) => arg.data.action)).toContain('SCHEDULE_AUTO_REACTIVATED');
   });
@@ -162,7 +170,7 @@ describe('DELETE /assets/:id — in-use safety', () => {
       playlists: [{ id: 'p1', name: 'Summer Strength', isProtected: false }],
       schedules: [{ id: 's1', playlistId: 'p1', screenId: 'screen1', screenGroupId: null, isActive: true }],
     });
-    await controller.remove(req, 'a1');
+    await controller.remove(req, 'a1', 'in-use');
     expect(prisma.client.schedule.deleteMany).not.toHaveBeenCalled();
   });
 
@@ -247,5 +255,153 @@ describe('DELETE /assets/:id — emergency content by any alert-pipeline path', 
       response: expect.objectContaining({ code: 'ASSET_IN_EMERGENCY_CONTENT' }),
     });
     expect(prisma.client.playlistItem.deleteMany).not.toHaveBeenCalled();
+  });
+});
+
+// 2026-09-26 — the warned delete (ba1a8ed) lived only in the NEW dashboard: a
+// Media Library tab opened before that deploy, or an API-key client, stripped
+// an in-use asset out of live playlists without a word. An in-use delete now
+// needs `?confirm=in-use`; without it the answer is the pre-ba1a8ed 409
+// ASSET_IN_USE carrying the usage summary that dashboard opens its in-use
+// block from.
+describe('DELETE /assets/:id — an in-use asset needs ?confirm=in-use', () => {
+  const inUse = () => ({
+    items: [{ playlistId: 'p1' }],
+    playlists: [{ id: 'p1', name: 'Summer Strength', isProtected: false, templateId: null }],
+    schedules: [{ id: 's1', playlistId: 'p1', screenId: 'screen1', screenGroupId: null, isActive: true }],
+    pinnedScreens: [{ id: 'screen1', tenantId: 't1' }],
+  });
+
+  it('an old client (no confirmation) is refused with ASSET_IN_USE and the usage summary; nothing is removed, audited or synced', async () => {
+    const { controller, prisma, storage, redis } = makeController(inUse());
+    await expect(controller.remove(req, 'a1')).rejects.toMatchObject({
+      status: HttpStatus.CONFLICT,
+      response: expect.objectContaining({
+        code: 'ASSET_IN_USE',
+        confirmQuery: 'confirm=in-use',
+        message:
+          'This asset is in 1 playlist reaching 1 screen, so it was not deleted. ' +
+          'Refresh the page and delete it again to confirm, or remove it from those playlists first.',
+        // The same shape GET /assets/:id/usage answers — what the old in-use block renders.
+        usage: {
+          playlists: [expect.objectContaining({ id: 'p1', name: 'Summer Strength', itemCount: 1, scheduled: true, screensReached: 1 })],
+          totals: { playlists: 1, screensReached: 1, locations: 1 },
+          protectedEmergency: false,
+        },
+      }),
+    });
+    expect(prisma.client.playlistItem.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.client.schedule.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.client.asset.delete).not.toHaveBeenCalled();
+    expect(prisma.client.auditLog.create).not.toHaveBeenCalled();
+    expect(storage.extractPath).not.toHaveBeenCalled();
+    expect(redis.publish).not.toHaveBeenCalled();
+  });
+
+  it('a new client with ?confirm=in-use deletes it, and the audit row records the confirmed in-use delete', async () => {
+    const { controller, prisma, redis } = makeController(inUse());
+    await expect(controller.remove(req, 'a1', 'in-use')).resolves.toEqual({ deleted: true });
+    expect(prisma.client.playlistItem.deleteMany).toHaveBeenCalledWith({ where: { assetId: 'a1', playlist: { tenantId: 't1' } } });
+    expect(prisma.client.asset.delete).toHaveBeenCalledWith({ where: { id: 'a1', tenantId: 't1' } });
+    const audit = prisma.client.auditLog.create.mock.calls.find(([arg]: any[]) => arg.data.action === 'ASSET_DELETED')[0].data;
+    expect(JSON.parse(audit.details)).toMatchObject({ confirmedInUse: true, removedPlaylistItems: 1, affectedPlaylistIds: ['p1'] });
+    expect(redis.publish).toHaveBeenCalledWith('tenant:t1', expect.objectContaining({ type: 'SYNC' }));
+  });
+
+  it('an unused asset deletes without the flag, and its audit row says it was not an in-use delete', async () => {
+    const { controller, prisma } = makeController({ items: [] });
+    await expect(controller.remove(req, 'a1')).resolves.toEqual({ deleted: true });
+    expect(prisma.client.asset.delete).toHaveBeenCalled();
+    const audit = prisma.client.auditLog.create.mock.calls[0][0].data;
+    expect(JSON.parse(audit.details)).toMatchObject({ confirmedInUse: false, removedPlaylistItems: 0 });
+  });
+
+  it('the flag on an unused asset changes nothing: deleted, and not recorded as an in-use delete', async () => {
+    const { controller, prisma } = makeController({ items: [] });
+    await expect(controller.remove(req, 'a1', 'in-use')).resolves.toEqual({ deleted: true });
+    const audit = prisma.client.auditLog.create.mock.calls[0][0].data;
+    expect(JSON.parse(audit.details).confirmedInUse).toBe(false);
+  });
+
+  it.each(['true', 'yes', 'IN-USE', 'in_use', '', ' in-use'])('?confirm=%p is not a confirmation', async (value) => {
+    const { controller, prisma } = makeController(inUse());
+    await expect(controller.remove(req, 'a1', value)).rejects.toMatchObject({
+      status: HttpStatus.CONFLICT,
+      response: expect.objectContaining({ code: 'ASSET_IN_USE' }),
+    });
+    expect(prisma.client.asset.delete).not.toHaveBeenCalled();
+  });
+
+  it('a repeated ?confirm (an array from the query parser) is not a confirmation', async () => {
+    const { controller, prisma } = makeController(inUse());
+    await expect(controller.remove(req, 'a1', ['in-use', 'in-use'] as any)).rejects.toMatchObject({ status: HttpStatus.CONFLICT });
+    expect(prisma.client.asset.delete).not.toHaveBeenCalled();
+  });
+
+  it('the refusal stands when the usage summary cannot be read — with the count the delete saw', async () => {
+    const { controller, prisma } = makeController(inUse());
+    // Only the usage summary reads schedules on the refusal path.
+    (prisma.client.schedule.findMany as jest.Mock).mockRejectedValueOnce(new Error('pool exhausted'));
+    const err: any = await controller.remove(req, 'a1').catch((e) => e);
+    expect(err.status).toBe(HttpStatus.CONFLICT);
+    expect(err.response).toMatchObject({
+      code: 'ASSET_IN_USE',
+      message: expect.stringMatching(/^This asset is in 1 playlist, so it was not deleted\./),
+    });
+    expect(err.response).not.toHaveProperty('usage');
+    expect(prisma.client.asset.delete).not.toHaveBeenCalled();
+  });
+
+  describe('emergency content is still refused WITH the flag', () => {
+    it("an ordinary playlist that is a tenant's panic default", async () => {
+      const { controller, prisma } = makeController({ ...inUse(), tenantEmergency: { id: 't1' } });
+      await expect(controller.remove(req, 'a1', 'in-use')).rejects.toMatchObject({
+        status: HttpStatus.CONFLICT,
+        response: expect.objectContaining({ code: 'ASSET_IN_EMERGENCY_CONTENT' }),
+      });
+      expect(prisma.client.playlistItem.deleteMany).not.toHaveBeenCalled();
+      expect(prisma.client.asset.delete).not.toHaveBeenCalled();
+      expect(prisma.client.auditLog.create).not.toHaveBeenCalled();
+    });
+
+    it('a protected emergency playlist', async () => {
+      const { controller, prisma } = makeController({
+        items: [{ playlistId: 'p9' }],
+        playlists: [{ id: 'p9', name: 'Lockdown', isProtected: true }],
+      });
+      await expect(controller.remove(req, 'a1', 'in-use')).rejects.toMatchObject({
+        status: HttpStatus.CONFLICT,
+        response: expect.objectContaining({ code: 'ASSET_IN_PROTECTED_PLAYLIST' }),
+      });
+      expect(prisma.client.asset.delete).not.toHaveBeenCalled();
+    });
+
+    it("a screen's emergency media", async () => {
+      const { controller, prisma } = makeController({ ...inUse(), emergencyScreen: { id: 'scr-lobby', name: 'Lobby' } });
+      await expect(controller.remove(req, 'a1', 'in-use')).rejects.toMatchObject({
+        status: HttpStatus.CONFLICT,
+        response: expect.objectContaining({ code: 'ASSET_IN_SCREEN_EMERGENCY_CONTENT' }),
+      });
+      expect(prisma.client.asset.delete).not.toHaveBeenCalled();
+    });
+
+    it('a file a live emergency message carries', async () => {
+      const { controller, prisma } = makeController({ items: [], liveMessage: { id: 'm7' } });
+      await expect(controller.remove(req, 'a1', 'in-use')).rejects.toMatchObject({
+        status: HttpStatus.CONFLICT,
+        response: expect.objectContaining({ code: 'ASSET_IN_EMERGENCY_CONTENT' }),
+      });
+      expect(prisma.client.asset.delete).not.toHaveBeenCalled();
+    });
+
+    it('a check that cannot run (fails closed)', async () => {
+      const { controller, prisma } = makeController(inUse());
+      (prisma.client.tenant.findFirst as jest.Mock).mockRejectedValueOnce(new Error('pool exhausted'));
+      await expect(controller.remove(req, 'a1', 'in-use')).rejects.toMatchObject({
+        status: HttpStatus.CONFLICT,
+        response: expect.objectContaining({ code: 'ASSET_IN_EMERGENCY_CONTENT' }),
+      });
+      expect(prisma.client.playlistItem.deleteMany).not.toHaveBeenCalled();
+    });
   });
 });

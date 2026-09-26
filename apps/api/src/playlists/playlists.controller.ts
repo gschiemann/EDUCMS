@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request, HttpException, HttpStatus, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards, UseFilters, Request, HttpException, HttpStatus, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { recordPushDeployment } from '../screens/deployment-record';
 import { RedisService } from '../realtime/redis.service';
@@ -31,6 +31,13 @@ import {
   PlaylistSetSyncSchema, type PlaylistSetSyncInput,
 } from '@cms/api-types';
 import { playlistEmergencyUse, type EmergencyUseDb } from '../emergency/emergency-content-use';
+import {
+  InUseDeleteConflict,
+  InUseDeleteConflictFilter,
+  InUseDeleteUnconfirmed,
+  countOf,
+  isInUseDeleteConfirmed,
+} from '../common/in-use-delete';
 
 @Controller('api/v1/playlists')
 @UseGuards(JwtAuthGuard, RbacGuard)
@@ -1187,9 +1194,87 @@ export class PlaylistsController {
     };
   }
 
+  /**
+   * The 409 an unconfirmed delete of a published playlist answers with. The
+   * v1 library from before the warned delete (ba1a8ed) already handles it:
+   * it opens its "is currently published" dialog and prints `reach` as
+   * "6 rules · 18 screens · 3 locations". `copies` counts the other locations
+   * holding a copy the delete would remove. Read after the delete transaction
+   * rolled back; a count that cannot be read is null and the refusal stands.
+   */
+  private async playlistPublishedConflict(
+    playlist: { id: string; tenantId: string; name: string | null },
+    copies: Array<{ id: string; tenantId: string }>,
+  ): Promise<InUseDeleteConflict> {
+    const copyLocations = new Set(copies.map((c) => c.tenantId)).size;
+    const reach: { rules: number | null; screens: number | null; locations: number | null; copies: number } = {
+      rules: null, screens: null, locations: null, copies: copyLocations,
+    };
+    try {
+      const rules: Array<{ screenId: string | null; screenGroupId: string | null }> = [];
+      for (const target of [...copies, playlist]) {
+        rules.push(...await this.prisma.client.schedule.findMany({
+          where: { tenantId: target.tenantId, playlistId: target.id },
+          select: { screenId: true, screenGroupId: true },
+        }));
+      }
+      reach.rules = rules.length;
+      const pinnedIds = [...new Set(rules.map((r) => r.screenId).filter((v): v is string => !!v))];
+      const groupIds = [...new Set(rules.map((r) => r.screenGroupId).filter((v): v is string => !!v))];
+      const reached = pinnedIds.length || groupIds.length
+        ? await this.prisma.client.screen.findMany({
+            where: {
+              OR: [
+                ...(pinnedIds.length ? [{ id: { in: pinnedIds } }] : []),
+                ...(groupIds.length ? [{ screenGroupId: { in: groupIds } }] : []),
+              ],
+            },
+            select: { id: true, tenantId: true },
+          })
+        : [];
+      reach.screens = new Set(reached.map((s) => s.id)).size;
+      // Every location the delete touches: this one, each copy's, and each
+      // reached screen's (a group can hold another location's screens).
+      reach.locations = new Set([
+        playlist.tenantId,
+        ...copies.map((c) => c.tenantId),
+        ...reached.map((s) => s.tenantId).filter((t): t is string => !!t),
+      ]).size;
+    } catch (e) {
+      this.auditLogger.warn(`[playlists] delete ${playlist.id}: reach for the published refusal failed: ${(e as Error)?.message ?? e}`);
+    }
+    const bits = [
+      reach.rules !== null ? countOf(reach.rules, 'publishing rule', 'publishing rules') : null,
+      reach.screens !== null ? countOf(reach.screens, 'screen', 'screens') : null,
+      copyLocations > 0 ? `copies at ${countOf(copyLocations, 'other location', 'other locations')}` : null,
+    ].filter((b): b is string => !!b);
+    // Playlist names can be junk (a pasted description with newlines) —
+    // same clean-up as the template in-use refusal.
+    const name = (playlist.name || '').replace(/\s+/g, ' ').trim();
+    const shown = `“${name.length > 60 ? `${name.slice(0, 60)}…` : name || 'Untitled'}”`;
+    return new InUseDeleteConflict({
+      code: 'PLAYLIST_PUBLISHED',
+      message:
+        `${shown} is still published${bits.length ? ` (${bits.join(' · ')})` : ''}, so it was not deleted. ` +
+        'Refresh the page and remove it again to confirm.',
+      reach,
+    });
+  }
+
+  /**
+   * `?confirm=in-use` (2026-09-26): a playlist with publishing rules or
+   * location copies is deleted only when the request says the operator
+   * confirmed it — the dashboard sends it from its published-playlist
+   * warning. Without it: 409 PLAYLIST_PUBLISHED and nothing changes, which is
+   * what an open tab from before the warned delete (ba1a8ed) or an API-key
+   * client gets. The protected and emergency refusals come first and the
+   * confirmation never overrides them. See common/in-use-delete.ts.
+   */
   @Delete(':id')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
-  async remove(@Request() req: any, @Param('id') id: string) {
+  @UseFilters(InUseDeleteConflictFilter)
+  async remove(@Request() req: any, @Param('id') id: string, @Query('confirm') confirm?: string) {
+    const inUseConfirmed = isInUseDeleteConfirmed(confirm);
     await this.prisma.ensurePlaylistMetadataColumns();
     const playlist = await this.prisma.client.playlist.findFirst({
       where: { id, tenantId: req.user.tenantId },
@@ -1250,6 +1335,21 @@ export class PlaylistsController {
           message: `This playlist (or one of its location copies) is emergency content: ${emergencyUse}. Change the emergency settings first.`,
         }, HttpStatus.CONFLICT);
       }
+      // Published — a publishing rule on the playlist or on a copy, or a copy
+      // at another location — and nobody confirmed it: keep everything
+      // (2026-09-26). Decided after the emergency refusals and inside the
+      // transaction, like the delete itself.
+      let published = copies.length > 0;
+      for (const target of targets) {
+        if (published) break;
+        published = !!(await tx.schedule.findFirst({
+          where: { tenantId: target.tenantId, playlistId: target.id },
+          select: { id: true },
+        }));
+      }
+      if (published && !inUseConfirmed) {
+        throw new InUseDeleteUnconfirmed({ copies });
+      }
       for (const target of targets) {
         const attachedSchedules = await tx.schedule.findMany({
           where: { tenantId: target.tenantId, playlistId: target.id },
@@ -1272,6 +1372,9 @@ export class PlaylistsController {
               sourcePlaylistId: target.id === id ? null : id,
               scheduleCount: attachedSchedules.length,
               schedules: attachedSchedules,
+              // The operator knowingly deleted a published playlist (the
+              // request carried ?confirm=in-use and it had rules or copies).
+              confirmedInUse: published && inUseConfirmed,
             }),
           },
         });
@@ -1292,7 +1395,13 @@ export class PlaylistsController {
         await tx.playlist.delete({ where: { id: target.id, tenantId: target.tenantId } });
       }
       return [...new Set(targets.map((target) => target.tenantId))];
-    }, { timeout: 20000, maxWait: 10000 });
+    }, { timeout: 20000, maxWait: 10000 }).catch(async (e: unknown) => {
+      if (e instanceof InUseDeleteUnconfirmed) {
+        const { copies } = (e as InUseDeleteUnconfirmed<{ copies: Array<{ id: string; tenantId: string }> }>).facts;
+        throw await this.playlistPublishedConflict(playlist, copies);
+      }
+      throw e;
+    });
     await Promise.all(affectedTenantIds.map((tenantId) => this.notifySync(tenantId)));
     return { deleted: true };
   }

@@ -23,6 +23,10 @@
  * constructed directly with a mocked Prisma whose $transaction runs the
  * callback against the same in-memory rows, so we assert the realistic
  * post-deleteMany state the fallback queries actually see.
+ *
+ * Since 2026-09-26 deleting a PUBLISHED playlist needs `?confirm=in-use`
+ * (the last describe block), so the fallback cases below pass it — they are
+ * the operator-confirmed delete.
  */
 
 import 'reflect-metadata';
@@ -75,10 +79,13 @@ function sortRows(rows: ScheduleRow[], orderBy: any): ScheduleRow[] {
   });
 }
 
+type ScreenRow = { id: string; tenantId: string; screenGroupId: string | null };
+
 function makeController(
   scheduleRows: ScheduleRow[],
   copies: Array<{ id: string; tenantId: string; name: string; isProtected: boolean }> = [],
   emergencyWiring: { tenant?: { id: string }; screen?: { id: string }; override?: { id: string } } = {},
+  screenRows: ScreenRow[] = [],
 ) {
   const auditRows: any[] = [];
 
@@ -124,7 +131,18 @@ function makeController(
     // Alert-pipeline columns the shared emergency guard reads on delete
     // (emergency-content-use.ts). Default: the playlist is wired nowhere.
     tenant: { findFirst: jest.fn(async () => emergencyWiring.tenant ?? null) },
-    screen: { findFirst: jest.fn(async () => emergencyWiring.screen ?? null) },
+    screen: {
+      findFirst: jest.fn(async () => emergencyWiring.screen ?? null),
+      // The published refusal's reach: pinned screens OR group members.
+      findMany: jest.fn(async ({ where }: any) =>
+        screenRows.filter((s) =>
+          (where.OR ?? []).some((c: any) =>
+            (c.id && c.id.in.includes(s.id)) ||
+            (c.screenGroupId && s.screenGroupId !== null && c.screenGroupId.in.includes(s.screenGroupId)),
+          ),
+        ),
+      ),
+    },
     screenEmergencyOverride: { findFirst: jest.fn(async () => emergencyWiring.override ?? null) },
     $transaction: jest.fn(async (cb: any) => cb(client)),
   };
@@ -164,7 +182,7 @@ describe('playlist delete — go-dark fallback (P0-1)', () => {
       row({ id: 's-cand-high', playlistId: 'pl-other', screenId: 'scr1', priority: 5 }),
     ]);
 
-    const out = await controller.remove(req as any, 'pl-dying');
+    const out = await controller.remove(req as any, 'pl-dying', 'in-use');
 
     expect(out).toEqual({ deleted: true });
     // The dying playlist's schedules are gone…
@@ -185,7 +203,7 @@ describe('playlist delete — go-dark fallback (P0-1)', () => {
       row({ id: 's-wrong-kind', playlistId: 'pl-other', screenId: 'scrX' }),
     ]);
 
-    await controller.remove(req as any, 'pl-dying');
+    await controller.remove(req as any, 'pl-dying', 'in-use');
 
     expect(scheduleRows.find((r) => r.id === 's-cand')?.isActive).toBe(true);
     expect(scheduleRows.find((r) => r.id === 's-wrong-kind')?.isActive).toBe(false);
@@ -199,7 +217,7 @@ describe('playlist delete — go-dark fallback (P0-1)', () => {
       row({ id: 's-cand', playlistId: 'pl-third', screenId: 'scr1' }),
     ]);
 
-    await controller.remove(req as any, 'pl-dying');
+    await controller.remove(req as any, 'pl-dying', 'in-use');
 
     expect(scheduleRows.find((r) => r.id === 's-cand')?.isActive).toBe(false);
     expect(auditRows.some((a) => a.action === 'SCHEDULE_AUTO_REACTIVATED')).toBe(false);
@@ -210,7 +228,7 @@ describe('playlist delete — go-dark fallback (P0-1)', () => {
       row({ id: 's-only', playlistId: 'pl-dying', screenId: 'scr1', isActive: true }),
     ]);
 
-    const out = await controller.remove(req as any, 'pl-dying');
+    const out = await controller.remove(req as any, 'pl-dying', 'in-use');
 
     expect(out).toEqual({ deleted: true });
     expect(scheduleRows.length).toBe(0);
@@ -227,7 +245,7 @@ describe('playlist delete — go-dark fallback (P0-1)', () => {
       row({ id: 's-unrelated', playlistId: 'pl-other', screenId: 'scr2', isActive: false }),
     ]);
 
-    await controller.remove(req as any, 'pl-dying');
+    await controller.remove(req as any, 'pl-dying', 'in-use');
 
     expect(scheduleRows.find((r) => r.id === 's-unrelated')?.isActive).toBe(false);
     expect(auditRows.some((a) => a.action === 'SCHEDULE_AUTO_REACTIVATED')).toBe(false);
@@ -239,7 +257,7 @@ describe('playlist delete — go-dark fallback (P0-1)', () => {
       row({ id: 'child-fallback', tenantId: 't2', playlistId: 'child-other', screenId: 'child-screen', isActive: false }),
     ], [{ id: 'child-copy', tenantId: 't2', name: 'Dying Playlist', isProtected: false }]);
 
-    await controller.remove(req as any, 'pl-dying');
+    await controller.remove(req as any, 'pl-dying', 'in-use');
 
     expect(client.playlist.delete).toHaveBeenCalledWith({ where: { id: 'child-copy', tenantId: 't2' } });
     expect(client.playlist.delete).toHaveBeenCalledWith({ where: { id: 'pl-dying', tenantId: 't1' } });
@@ -299,7 +317,172 @@ describe('playlist delete — emergency wiring by any alert-pipeline path', () =
     const { controller, client } = makeController([
       row({ id: 's-active', playlistId: 'pl-dying', screenId: 'scr1', isActive: true }),
     ]);
-    await expect(controller.remove(req as any, 'pl-dying')).resolves.toEqual({ deleted: true });
+    await expect(controller.remove(req as any, 'pl-dying', 'in-use')).resolves.toEqual({ deleted: true });
     expect(client.playlist.delete).toHaveBeenCalledTimes(1);
+  });
+});
+
+// 2026-09-26 — the warned delete (ba1a8ed) lived only in the NEW dashboard: a
+// tab opened before that deploy, or an API-key client, removed a published
+// playlist, its rules and every location copy without a word. Deleting a
+// published playlist now needs `?confirm=in-use`; without it the answer is the
+// 409 PLAYLIST_PUBLISHED the v1 library already handled, with its reach.
+describe('playlist delete — a published playlist needs ?confirm=in-use', () => {
+  const published = () => [
+    row({ id: 's-pinned', playlistId: 'pl-dying', screenId: 'scr1', isActive: true }),
+    row({ id: 's-group', playlistId: 'pl-dying', screenGroupId: 'grp1', isActive: false }),
+    row({ id: 's-child', tenantId: 't2', playlistId: 'child-copy', screenId: 'child-screen', isActive: true }),
+  ];
+  const copy = [{ id: 'child-copy', tenantId: 't2', name: 'Dying Playlist', isProtected: false }];
+  const screens: ScreenRow[] = [
+    { id: 'scr1', tenantId: 't1', screenGroupId: null },
+    { id: 'g-a', tenantId: 't1', screenGroupId: 'grp1' },
+    { id: 'g-b', tenantId: 't1', screenGroupId: 'grp1' },
+    { id: 'child-screen', tenantId: 't2', screenGroupId: null },
+  ];
+
+  it('an old client (no confirmation) is refused with PLAYLIST_PUBLISHED and its reach; nothing is removed or audited', async () => {
+    const { controller, client, scheduleRows, auditRows } = makeController(published(), copy, {}, screens);
+    await expect(controller.remove(req as any, 'pl-dying')).rejects.toMatchObject({
+      status: 409,
+      response: expect.objectContaining({
+        code: 'PLAYLIST_PUBLISHED',
+        reach: { rules: 3, screens: 4, locations: 2, copies: 1 },
+        confirmQuery: 'confirm=in-use',
+        message:
+          '“Dying Playlist” is still published (3 publishing rules · 4 screens · copies at 1 other location), ' +
+          'so it was not deleted. Refresh the page and remove it again to confirm.',
+      }),
+    });
+    expect(client.playlist.delete).not.toHaveBeenCalled();
+    expect(client.schedule.deleteMany).not.toHaveBeenCalled();
+    expect(client.schedule.update).not.toHaveBeenCalled();
+    expect(scheduleRows).toHaveLength(3);
+    expect(auditRows).toHaveLength(0);
+    expect((controller as any).notifySync).not.toHaveBeenCalled();
+  });
+
+  it('a location copy alone makes it published — the case the library cannot see from its own rules', async () => {
+    const { controller, client } = makeController([], copy);
+    await expect(controller.remove(req as any, 'pl-dying')).rejects.toMatchObject({
+      status: 409,
+      response: expect.objectContaining({
+        code: 'PLAYLIST_PUBLISHED',
+        reach: { rules: 0, screens: 0, locations: 2, copies: 1 },
+      }),
+    });
+    expect(client.playlist.delete).not.toHaveBeenCalled();
+  });
+
+  it('a paused rule is still a publishing rule', async () => {
+    const { controller, client } = makeController(
+      [row({ id: 's-paused', playlistId: 'pl-dying', screenId: 'scr1', isActive: false })],
+      [],
+      {},
+      screens,
+    );
+    await expect(controller.remove(req as any, 'pl-dying')).rejects.toMatchObject({
+      status: 409,
+      response: expect.objectContaining({ code: 'PLAYLIST_PUBLISHED', reach: { rules: 1, screens: 1, locations: 1, copies: 0 } }),
+    });
+    expect(client.playlist.delete).not.toHaveBeenCalled();
+  });
+
+  it('a new client with ?confirm=in-use deletes it, and every PLAYLIST_DELETED row records the confirmed in-use delete', async () => {
+    const { controller, client, auditRows } = makeController(published(), copy, {}, screens);
+    await expect(controller.remove(req as any, 'pl-dying', 'in-use')).resolves.toEqual({ deleted: true });
+    expect(client.playlist.delete).toHaveBeenCalledWith({ where: { id: 'child-copy', tenantId: 't2' } });
+    expect(client.playlist.delete).toHaveBeenCalledWith({ where: { id: 'pl-dying', tenantId: 't1' } });
+    const deleted = auditRows.filter((a) => a.action === 'PLAYLIST_DELETED');
+    expect(deleted).toHaveLength(2);
+    for (const a of deleted) expect(JSON.parse(a.details).confirmedInUse).toBe(true);
+    // The reach lookup belongs to the refusal only.
+    expect(client.screen.findMany).not.toHaveBeenCalled();
+  });
+
+  it('an unpublished playlist deletes without the flag, and its audit row says it was not an in-use delete', async () => {
+    const { controller, client, auditRows } = makeController([
+      row({ id: 's-other', playlistId: 'pl-other', screenId: 'scr1', isActive: true }),
+    ]);
+    await expect(controller.remove(req as any, 'pl-dying')).resolves.toEqual({ deleted: true });
+    expect(client.playlist.delete).toHaveBeenCalledWith({ where: { id: 'pl-dying', tenantId: 't1' } });
+    const deleted = auditRows.find((a) => a.action === 'PLAYLIST_DELETED');
+    expect(JSON.parse(deleted.details)).toMatchObject({ scheduleCount: 0, confirmedInUse: false });
+  });
+
+  it.each(['true', 'yes', 'IN-USE', 'in_use', '', ' in-use'])('?confirm=%p is not a confirmation', async (value) => {
+    const { controller, client } = makeController(published(), [], {}, screens);
+    await expect(controller.remove(req as any, 'pl-dying', value)).rejects.toMatchObject({
+      status: 409,
+      response: expect.objectContaining({ code: 'PLAYLIST_PUBLISHED' }),
+    });
+    expect(client.playlist.delete).not.toHaveBeenCalled();
+  });
+
+  it('a repeated ?confirm (an array from the query parser) is not a confirmation', async () => {
+    const { controller, client } = makeController(published(), [], {}, screens);
+    await expect(controller.remove(req as any, 'pl-dying', ['in-use', 'in-use'] as any)).rejects.toMatchObject({ status: 409 });
+    expect(client.playlist.delete).not.toHaveBeenCalled();
+  });
+
+  it("emergency wiring is still refused WITH the flag — a screen's emergency playlist", async () => {
+    const { controller, client, auditRows } = makeController(published(), copy, { screen: { id: 'scr-gym' } }, screens);
+    await expect(controller.remove(req as any, 'pl-dying', 'in-use')).rejects.toMatchObject({
+      status: 409,
+      response: expect.objectContaining({ code: 'PLAYLIST_IN_EMERGENCY_USE' }),
+    });
+    expect(client.playlist.delete).not.toHaveBeenCalled();
+    expect(auditRows).toHaveLength(0);
+  });
+
+  it("emergency wiring is still refused WITH the flag — a tenant's panic default", async () => {
+    const { controller, client } = makeController(published(), [], { tenant: { id: 't1' } }, screens);
+    await expect(controller.remove(req as any, 'pl-dying', 'in-use')).rejects.toMatchObject({
+      status: 409,
+      response: expect.objectContaining({ code: 'PLAYLIST_IN_EMERGENCY_USE' }),
+    });
+    expect(client.playlist.delete).not.toHaveBeenCalled();
+  });
+
+  it('a protected location copy is still refused WITH the flag', async () => {
+    const { controller, client } = makeController(
+      published(),
+      [{ id: 'child-copy', tenantId: 't2', name: 'Dying Playlist', isProtected: true }],
+      {},
+      screens,
+    );
+    await expect(controller.remove(req as any, 'pl-dying', 'in-use')).rejects.toMatchObject({
+      status: 403,
+      response: expect.objectContaining({ code: 'PLAYLIST_PROTECTED' }),
+    });
+    expect(client.playlist.delete).not.toHaveBeenCalled();
+  });
+
+  it('a protected playlist is still refused WITH the flag', async () => {
+    const { controller, client } = makeController(published(), [], {}, screens);
+    client.playlist.findFirst.mockImplementation(async ({ where }: any) =>
+      where.id === 'pl-dying'
+        ? { id: 'pl-dying', tenantId: 't1', name: 'Lockdown', isProtected: true, protectedKind: 'lockdown' } as any
+        : null,
+    );
+    await expect(controller.remove(req as any, 'pl-dying', 'in-use')).rejects.toMatchObject({
+      status: 403,
+      response: expect.objectContaining({ code: 'PLAYLIST_PROTECTED' }),
+    });
+    expect(client.playlist.delete).not.toHaveBeenCalled();
+  });
+
+  it('the refusal stands when its reach cannot be read — the counts it has are kept', async () => {
+    const { controller, client } = makeController(published(), copy, {}, screens);
+    client.screen.findMany.mockRejectedValueOnce(new Error('pool exhausted'));
+    await expect(controller.remove(req as any, 'pl-dying')).rejects.toMatchObject({
+      status: 409,
+      response: expect.objectContaining({
+        code: 'PLAYLIST_PUBLISHED',
+        reach: { rules: 3, screens: null, locations: null, copies: 1 },
+        message: expect.stringContaining('(3 publishing rules · copies at 1 other location)'),
+      }),
+    });
+    expect(client.playlist.delete).not.toHaveBeenCalled();
   });
 });

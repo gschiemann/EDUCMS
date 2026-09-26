@@ -1,6 +1,6 @@
 import {
   Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards, Request,
-  UseInterceptors, UploadedFile, HttpException, HttpStatus, Optional,
+  UseInterceptors, UploadedFile, HttpException, HttpStatus, Optional, UseFilters,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
@@ -31,6 +31,13 @@ import { RedisService } from '../realtime/redis.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
 import { withDbRetry } from '../prisma/with-db-retry';
 import { emergencyContentUse, type EmergencyUseDb } from '../emergency/emergency-content-use';
+import {
+  InUseDeleteConflict,
+  InUseDeleteConflictFilter,
+  InUseDeleteUnconfirmed,
+  countOf,
+  isInUseDeleteConfirmed,
+} from '../common/in-use-delete';
 
 // Browser-playable formats only. Cross-browser support is non-negotiable
 // for digital signage (CLAUDE.md "Cross-browser support" section): every
@@ -2052,12 +2059,52 @@ export class AssetsController {
     return this.buildAssetUsage(req.user.tenantId, id, asset.fileUrl);
   }
 
+  /**
+   * The 409 an unconfirmed delete of an in-use asset answers with — the
+   * pre-`ba1a8ed` ASSET_IN_USE contract, so a dashboard from before the
+   * warned delete opens its own in-use block from `usage`. The usage is read
+   * after the delete transaction rolled back; if that read fails the refusal
+   * still stands, with the count the transaction saw.
+   */
+  private async assetInUseConflict(
+    tenantId: string,
+    assetId: string,
+    fileUrl: string,
+    playlistCount: number,
+  ): Promise<InUseDeleteConflict> {
+    const usage = await this.buildAssetUsage(tenantId, assetId, fileUrl).catch((e) => {
+      this.logger.warn(`[assets] delete ${assetId}: usage summary for the in-use refusal failed: ${(e as Error)?.message ?? e}`);
+      return null;
+    });
+    const playlists = Math.max(playlistCount, usage?.totals.playlists ?? 0);
+    const screens = usage?.totals.screensReached ?? 0;
+    const reach = screens > 0 ? ` reaching ${countOf(screens, 'screen', 'screens')}` : '';
+    return new InUseDeleteConflict({
+      code: 'ASSET_IN_USE',
+      message:
+        `This asset is in ${countOf(playlists, 'playlist', 'playlists')}${reach}, so it was not deleted. ` +
+        'Refresh the page and delete it again to confirm, or remove it from those playlists first.',
+      ...(usage ? { usage } : {}),
+    });
+  }
+
+  /**
+   * `?confirm=in-use` (2026-09-26): an asset that is in any playlist is
+   * deleted only when the request says the operator confirmed it — the
+   * dashboard sends it from its in-use warning. Without it: 409 ASSET_IN_USE
+   * and nothing changes, which is what an open tab from before the warned
+   * delete (ba1a8ed) or an API-key client gets. Emergency refusals come first
+   * and the confirmation never overrides them. See common/in-use-delete.ts.
+   */
   @Delete(':id')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  @UseFilters(InUseDeleteConflictFilter)
   async remove(
     @Request() req: { user: { id: string; tenantId: string; role: string } },
     @Param('id') id: string,
+    @Query('confirm') confirm?: string,
   ) {
+    const inUseConfirmed = isInUseDeleteConfirmed(confirm);
     const asset = await this.prisma.client.asset.findFirst({
       where: { id, tenantId: req.user.tenantId },
     });
@@ -2123,6 +2170,13 @@ export class AssetsController {
           error: `Asset is emergency content: ${emergencyUse}.`,
         }, HttpStatus.CONFLICT);
       }
+      // In use, and nobody confirmed it: keep everything (2026-09-26). Decided
+      // here, after the emergency refusals and inside the transaction, so a
+      // playlist reference added after the dashboard's own usage check is
+      // still refused rather than silently stripped.
+      if (playlistIds.length > 0 && !inUseConfirmed) {
+        throw new InUseDeleteUnconfirmed({ playlistCount: playlistIds.length });
+      }
       const removedItems = await tx.playlistItem.deleteMany({
         where: { assetId: id, playlist: { tenantId: req.user.tenantId } },
       });
@@ -2166,6 +2220,9 @@ export class AssetsController {
             removedPlaylistItems: removedItems.count,
             affectedPlaylistIds: playlistIds,
             removedSchedules,
+            // The operator knowingly deleted an asset that was in use (the
+            // request carried ?confirm=in-use and there were references).
+            confirmedInUse: playlistIds.length > 0 && inUseConfirmed,
           }),
         },
       });
@@ -2173,6 +2230,12 @@ export class AssetsController {
     }, { isolationLevel: 'Serializable', timeout: 20000, maxWait: 10000 }), {
       label: 'assets.remove',
       logger: this.logger,
+    }).catch(async (e: unknown) => {
+      if (e instanceof InUseDeleteUnconfirmed) {
+        const { playlistCount } = (e as InUseDeleteUnconfirmed<{ playlistCount: number }>).facts;
+        throw await this.assetInUseConflict(req.user.tenantId, id, asset.fileUrl, playlistCount);
+      }
+      throw e;
     });
 
     if (changed.removedPlaylistItems && this.redisService && this.signer) {
