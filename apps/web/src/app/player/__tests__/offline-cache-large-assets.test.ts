@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- vm / fake-worker harness: replies are untyped by design */
 import { getServiceWorkerContainer } from '@/lib/safe-service-worker';
-import { lookupCached, precachePlaylist } from '../offline-cache';
+import { lookupCached, precachePlaylist, quarantinedDigestCount } from '../offline-cache';
+import { __resetDigestQuarantineForTests } from '../digestQuarantine';
 
 // Its own file on purpose: offline-cache.ts memoises the service-worker
 // registration at module level, so a second describe in the same file would
@@ -40,6 +41,8 @@ describe('player offline-cache large-asset orchestration', () => {
   beforeEach(() => {
     sent.length = 0;
     worker.postMessage.mockReset();
+    try { window.localStorage.clear(); } catch { /* jsdom */ }
+    __resetDigestQuarantineForTests();
   });
 
   /** A worker whose replies are computed per message type. */
@@ -131,6 +134,58 @@ describe('player offline-cache large-asset orchestration', () => {
     });
     await expect(precachePlaylist([{ url, size }])).resolves.toEqual({ ok: true, failures: 0, count: 1 });
     expect(sent.some((m) => m.type === 'PRECACHE_ADOPT')).toBe(false);
+  });
+
+  it('a complete download that fails verification is quarantined: the next attempts fetch nothing, a new digest fetches again', async () => {
+    const url = 'https://cdn.example.com/4k.mp4?token=one';
+    const size = 8 * MiB;
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      answerWith((m) => {
+        switch (m.type) {
+          case 'PRECACHE_PLAYLIST': return { ok: false, failures: 0, count: 1, pending: [{ url: m.assets[0].url, sha256: m.assets[0].sha256, size, adoptable: false }] };
+          case 'PRECACHE_CHUNK': return { ok: true, offset: 0, nextOffset: size, total: size, complete: true };
+          case 'PRECACHE_VERIFY': return { ok: false, reason: 'sha256-mismatch' };
+          default: return { ok: false, reason: 'unexpected' };
+        }
+      });
+      // First attempt: downloaded whole, failed verification, purged — one failure.
+      await expect(precachePlaylist([{ url, sha256: 'ab'.repeat(32), size }])).resolves.toEqual({ ok: false, failures: 1, count: 1 });
+      expect(sent.filter((m) => m.type === 'PRECACHE_CHUNK')).toHaveLength(1);
+      expect(quarantinedDigestCount()).toBe(1);
+
+      // Retry ticks (same pair, even under a rotated token): still a failure,
+      // still not ready — but NOT a single byte requested, and one log line.
+      sent.length = 0;
+      await expect(precachePlaylist([{ url: url.replace('one', 'two'), sha256: 'ab'.repeat(32), size }])).resolves.toEqual({ ok: false, failures: 1, count: 1 });
+      await expect(precachePlaylist([{ url, sha256: 'ab'.repeat(32), size }])).resolves.toEqual({ ok: false, failures: 1, count: 1 });
+      expect(sent.map((m) => m.type)).toEqual(['PRECACHE_PLAYLIST', 'PRECACHE_PLAYLIST']);
+      expect(warn.mock.calls.filter((c) => String(c[0]).includes('not downloading it again'))).toHaveLength(1);
+
+      // The row was fixed: a new digest for the URL is a new pair and downloads.
+      sent.length = 0;
+      await precachePlaylist([{ url, sha256: 'cd'.repeat(32), size }]);
+      expect(sent.map((m) => m.type)).toEqual(['PRECACHE_PLAYLIST', 'PRECACHE_CHUNK', 'PRECACHE_VERIFY']);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('an INCOMPLETE attempt is never quarantined — only a complete download that hashed wrong is', async () => {
+    const url = 'https://cdn.example.com/4k.mp4';
+    const size = 16 * MiB;
+    answerWith((m) => {
+      switch (m.type) {
+        case 'PRECACHE_PLAYLIST': return { ok: false, failures: 0, count: 1, pending: [{ url, sha256: 'ab'.repeat(32), size, adoptable: false }] };
+        case 'PRECACHE_CHUNK': return { ok: false, reason: 'source-changed', offset: 0 };
+        default: return { ok: false, reason: 'unexpected' };
+      }
+    });
+    await expect(precachePlaylist([{ url, sha256: 'ab'.repeat(32), size }])).resolves.toEqual({ ok: false, failures: 1, count: 1 });
+    expect(quarantinedDigestCount()).toBe(0);
+    sent.length = 0;
+    await precachePlaylist([{ url, sha256: 'ab'.repeat(32), size }]);
+    expect(sent.some((m) => m.type === 'PRECACHE_CHUNK')).toBe(true); // it tried again
   });
 
   it('a worker with nothing pending settles on its own answer', async () => {

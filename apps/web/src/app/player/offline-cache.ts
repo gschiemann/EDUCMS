@@ -1,4 +1,5 @@
 import { getServiceWorkerContainer, isServiceWorkerAvailable } from '../../lib/safe-service-worker';
+import { digestQuarantine } from './digestQuarantine';
 /**
  * Offline-cache client — talks to /sw-player.js. Used by the player to:
  *   - Register the SW on first run
@@ -172,6 +173,16 @@ async function downloadLargeAsset(
 ): Promise<boolean | 'aborted'> {
   const size = Number.isSafeInteger(asset.size) && (asset.size as number) > 0 ? asset.size as number : null;
   const sha256 = typeof asset.sha256 === 'string' && asset.sha256 ? asset.sha256 : null;
+  // A pair whose COMPLETE download already failed verification is not fetched
+  // again for six hours (digestQuarantine.ts): the bytes will not hash any
+  // differently, and the retry tick would otherwise cost the whole file every
+  // ten minutes. Still a failure — the item stays not-ready — and logged once.
+  if (sha256 && digestQuarantine().isQuarantined(asset.url, sha256, Date.now())) {
+    if (digestQuarantine().shouldLog(asset.url, sha256)) {
+      console.warn('[Player] cache: the file at this URL does not match its stored checksum — not downloading it again for six hours; it will not play until the file or its checksum is fixed', { url: asset.url });
+    }
+    return false;
+  }
   // Bytes already on disk are hashed there first — a legacy entry is adopted,
   // not re-downloaded (141 MB on the field 4K screen, for bytes it had).
   if (asset.adoptable && sha256) {
@@ -222,6 +233,11 @@ async function downloadLargeAsset(
         offset = verified.nextOffset;
         if (!(await failStep())) return false;
         continue;
+      }
+      if (verified?.reason === 'sha256-mismatch' && sha256) {
+        // The whole file arrived and it is not the file the manifest
+        // describes. Remember the pair; the next retry ticks skip it.
+        digestQuarantine().quarantine(asset.url, sha256, Date.now());
       }
       return false;
     }
@@ -472,6 +488,11 @@ export async function getCacheStatus(): Promise<CacheStatus | null> {
       }
     }, 2_000);
   });
+}
+
+/** Diagnostics: (url, sha256) pairs the drive is refusing to re-download right now. */
+export function quarantinedDigestCount(): number {
+  return digestQuarantine().count(Date.now());
 }
 
 export function formatBytes(bytes: number): string {
