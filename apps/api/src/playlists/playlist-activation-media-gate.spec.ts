@@ -559,3 +559,73 @@ describe('PUT /playlists/:id/screens/:screenId/active — one screen', () => {
     expect(byId(h.w, 'r-lcd')).toMatchObject({ isActive: true, pendingMedia: false, pendingMediaError: null });
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────
+describe('POST /playlists/:id/publish-to-fleet — copies in each location', () => {
+  const publish = (h: ReturnType<typeof harness>, screenIds: string[]) =>
+    h.distribution.publishToFleet({ parentTenantId: T1, actorUserId: 'u1', sourcePlaylistId: 'P', screenIds });
+  const childCopyOf = (w: World, sourceId: string) => w.playlists.find((p) => p.sourcePlaylistId === sourceId)!;
+  const childAsset = (w: World) => w.assets.find((a) => a.tenantId === CHILD && a.fileUrl === V4K.fileUrl)!;
+  const rowOn = (w: World, screenId: string) => w.schedules.filter((r) => r.screenId === screenId);
+
+  it('holds the location\'s 1080p screen (previous content stays on it) and starts its 4K screen', async () => {
+    const h = harness(makeWorld({ schedules: [rule({ id: 'q-store', tenantId: CHILD, playlistId: 'Q', screenId: 'c-lcd', isActive: true })] }));
+    const out = await publish(h, ['c-lcd', 'c-wall']);
+
+    expect(out).toMatchObject({ ok: true, totalLocations: 1, screensScheduled: 1, screensPending: 1 });
+    expect(out.perLocation[0]).toMatchObject({ tenantId: CHILD, screensScheduled: 1, screensPending: 1, pendingScreenIds: ['c-lcd'], isParent: false });
+    const copy = childCopyOf(h.w, 'P');
+    expect(rowOn(h.w, 'c-wall')).toEqual([expect.objectContaining({ tenantId: CHILD, playlistId: copy.id, isActive: true, pendingMedia: false })]);
+    const heldRows = rowOn(h.w, 'c-lcd').filter((r) => r.playlistId === copy.id);
+    expect(heldRows).toEqual([expect.objectContaining({ tenantId: CHILD, isActive: false, pendingMedia: true, pendingMediaError: null })]);
+    expect(byId(h.w, 'q-store').isActive).toBe(true);           // NO dark window, nothing displaced yet
+    // The copy is queued under the CHILD, for the child's own row of the shared file.
+    expect(h.w.jobs).toEqual([expect.objectContaining({ tenantId: CHILD, assetId: childAsset(h.w).id, status: 'queued' })]);
+    expect(childAsset(h.w).processingMeta.processedDimensions).toEqual({ w: 3840, h: 2160 }); // adopted from HQ
+    const audit = h.w.audit.find((a) => a.action === 'PLAYLIST_FLEET_PUBLISHED')!;
+    expect(JSON.parse(audit.details)).toMatchObject({ screenIds: ['c-wall'], heldForPlaybackCopy: ['c-lcd'] });
+
+    renditionLands(h.w, childAsset(h.w).id, CHILD);
+    await h.service.sweep();
+    expect(rowOn(h.w, 'c-lcd').find((r) => r.playlistId === copy.id)).toMatchObject({ isActive: true, pendingMedia: false });
+    expect(byId(h.w, 'q-store').isActive).toBe(false);          // displaced by the sweep, like a fresh publish
+    expect(h.redis.publish).toHaveBeenCalledWith(`tenant:${CHILD}`, 'signed-SYNC');
+  });
+
+  it('when HQ already has the 1080p copy the location adopts it and every screen starts now', async () => {
+    const h = harness(makeWorld({ assets: [{ ...V4K, processingMeta: { ...V4K.processingMeta, renditions: { '1080p': RENDITION } } }] }));
+    const out = await publish(h, ['c-lcd', 'c-wall']);
+    expect(out).toMatchObject({ screensScheduled: 2, screensPending: 0 });
+    expect(h.w.schedules.filter((r) => r.tenantId === CHILD).every((r) => r.isActive && !r.pendingMedia)).toBe(true);
+    expect(h.w.jobs).toEqual([]);
+    expect(childAsset(h.w).processingMeta.renditions['1080p']).toEqual(RENDITION);
+  });
+
+  it('HQ\'s own screens go through the same gate', async () => {
+    const h = harness(makeWorld());
+    const out = await publish(h, ['lcd', 'wall']);
+    expect(out.perLocation[0]).toMatchObject({ isParent: true, playlistId: 'P', screensScheduled: 1, pendingScreenIds: ['lcd'] });
+    expect(rowOn(h.w, 'wall')[0]).toMatchObject({ isActive: true });
+    expect(rowOn(h.w, 'lcd')[0]).toMatchObject({ isActive: false, pendingMedia: true });
+  });
+
+  it('a re-publish while the copy is still preparing replaces the held row and keeps the live one', async () => {
+    const h = harness(makeWorld({ schedules: [rule({ id: 'q-store', tenantId: CHILD, playlistId: 'Q', screenId: 'c-lcd', isActive: true })] }));
+    await publish(h, ['c-lcd']);
+    const first = rowOn(h.w, 'c-lcd').find((r) => r.pendingMedia)!.id;
+    await publish(h, ['c-lcd']);
+    const held = rowOn(h.w, 'c-lcd').filter((r) => r.pendingMedia);
+    expect(held).toHaveLength(1);
+    expect(held[0].id).not.toBe(first);
+    expect(byId(h.w, 'q-store').isActive).toBe(true);
+  });
+
+  it('a copy that cannot be queued is that screen\'s failure, reported honestly — the location still publishes its other screen', async () => {
+    const h = harness(makeWorld(), { queueFails: true });
+    const out = await publish(h, ['c-lcd', 'c-wall']);
+    expect(out.perLocation[0]).toMatchObject({ screensScheduled: 1, screensPending: 0 });
+    expect(out.perLocation[0].screenFailures).toEqual([expect.objectContaining({ screenId: 'c-lcd', error: expect.stringContaining('1080p video copy could not be queued') })]);
+    expect(rowOn(h.w, 'c-lcd')).toEqual([]);
+    expect(rowOn(h.w, 'c-wall')[0]).toMatchObject({ isActive: true });
+  });
+});

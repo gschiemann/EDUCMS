@@ -206,6 +206,9 @@ export class PlaylistsController {
     await this.audit(req, 'PLAYLIST_PUBLISHED_TO_FLEET', id, {
       requestedScreenIds: Array.isArray(body?.screenIds) ? body.screenIds.length : 0,
       locations: result.perLocation.map((l: any) => l.tenantId),
+      // Screens whose rule waits for a 1080p copy (2026-09-26); the sweep
+      // publishes them, and each location's own audit row names them.
+      screensPending: result.screensPending ?? 0,
     });
     // A content publish IS a push (2026-08-31): mint the same tracked
     // Deployment the refresh endpoints mint, labeled with the playlist, so

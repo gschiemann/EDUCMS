@@ -4,8 +4,10 @@ import {
   BadRequestException,
   ForbiddenException,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { MediaPublicationService } from '../schedules/media-publication.service';
 
 /**
  * PlaylistDistributionService — Phase 2c "publish to locations".
@@ -31,7 +33,22 @@ import { PrismaService } from '../prisma/prisma.service';
 @Injectable()
 export class PlaylistDistributionService {
   private readonly logger = new Logger(PlaylistDistributionService.name);
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    /**
+     * THE INVARIANT (2026-09-26): every path that makes a Schedule row active
+     * goes through MediaPublicationService.prepare first. scheduleLive used
+     * to create the child's rule active outright, so a 1080p screen in a
+     * location was handed HQ's 4K original.
+     */
+    @Optional() private readonly mediaPublication?: MediaPublicationService,
+  ) {}
+
+  /** The gate, when wired (specs construct this service with stand-ins). */
+  private get gate(): MediaPublicationService | null {
+    return this.mediaPublication && typeof this.mediaPublication.prepare === 'function'
+      ? this.mediaPublication : null;
+  }
 
   async publishToFleet(params: {
     parentTenantId: string;
@@ -50,13 +67,22 @@ export class PlaylistDistributionService {
     ok: boolean;
     locationsSucceeded: number;
     locationsFailed: number;
+    /** Screens playing the new content NOW (a held screen is not counted here). */
     screensScheduled: number;
+    /**
+     * Screens whose rule is HELD for a 1080p playback copy (2026-09-26): the
+     * previous content stays on that screen and the sweep publishes the rule
+     * when the copy lands. Never called "delivered".
+     */
+    screensPending: number;
     failures: Array<{ tenantId: string; tenantName: string; error: string }>;
     perLocation: Array<{
       tenantId: string;
       tenantName: string;
       playlistId: string;
       screensScheduled: number;
+      screensPending: number;
+      pendingScreenIds: string[];
       isParent: boolean;
     }>;
   }> {
@@ -123,6 +149,8 @@ export class PlaylistDistributionService {
       tenantName: string;
       playlistId: string;
       screensScheduled: number;
+      screensPending: number;
+      pendingScreenIds: string[];
       isParent: boolean;
       /** Per-screen failures inside an otherwise-live location (2026-08-30). */
       screenFailures?: Array<{ screenId: string; screenName: string; error: string }>;
@@ -159,11 +187,16 @@ export class PlaylistDistributionService {
         // down the old one), so a mid-swap failure rolls THAT SCREEN back to
         // its previous working schedule — never a dark window.
         const okScreenIds: string[] = [];
+        const pendingScreenIds: string[] = [];
         const screenFailures: Array<{ screenId: string; screenName: string; error: string }> = [];
         for (const sc of tScreens) {
           try {
-            await this.scheduleLive(tenantId, targetPlaylistId, sc.id);
-            okScreenIds.push(sc.id);
+            // Asked in the CHILD tenant, about the CHILD's copy and screen. A
+            // refused copy (503) is this screen's failure, reported honestly
+            // below; the location's other screens are unaffected.
+            const held = this.gate ? await this.gate.prepare(tenantId, targetPlaylistId, sc.id) : false;
+            await this.scheduleLive(tenantId, targetPlaylistId, sc.id, held);
+            (held ? pendingScreenIds : okScreenIds).push(sc.id);
           } catch (se: any) {
             this.logger.error(
               `publishToFleet: screen ${sc.name ?? sc.id} in ${tenantName} failed: ${se?.message ?? se}`,
@@ -175,7 +208,7 @@ export class PlaylistDistributionService {
             });
           }
         }
-        if (okScreenIds.length === 0 && screenFailures.length > 0) {
+        if (okScreenIds.length === 0 && pendingScreenIds.length === 0 && screenFailures.length > 0) {
           throw new Error(
             `all ${screenFailures.length} screen(s) failed (first: ${screenFailures[0].error})`,
           );
@@ -185,6 +218,7 @@ export class PlaylistDistributionService {
           sourcePlaylistId: source.id,
           sourceTenantId: parentTenantId,
           screenIds: okScreenIds,
+          ...(pendingScreenIds.length ? { heldForPlaybackCopy: pendingScreenIds } : {}),
           ...(screenFailures.length ? { screenFailures } : {}),
           isParent,
         });
@@ -194,6 +228,8 @@ export class PlaylistDistributionService {
           tenantName,
           playlistId: targetPlaylistId,
           screensScheduled: okScreenIds.length,
+          screensPending: pendingScreenIds.length,
+          pendingScreenIds,
           isParent,
           ...(screenFailures.length ? { screenFailures } : {}),
         });
@@ -206,6 +242,7 @@ export class PlaylistDistributionService {
     }
 
     const screensScheduled = perLocation.reduce((n, l) => n + l.screensScheduled, 0);
+    const screensPending = perLocation.reduce((n, l) => n + l.screensPending, 0);
 
     // Every targeted location failed → this genuinely IS a total failure, so
     // throw the way the caller/UI expects (nothing went live, nothing to keep).
@@ -226,6 +263,7 @@ export class PlaylistDistributionService {
       locationsSucceeded: perLocation.length,
       locationsFailed: failures.length,
       screensScheduled,
+      screensPending,
       failures,
       perLocation,
     };
@@ -347,8 +385,36 @@ export class PlaylistDistributionService {
    * the deactivate and the create left the screen with NO active schedule —
    * dark. The transaction also makes the whole swap all-or-nothing, so a
    * mid-swap error rolls the screen back to its PREVIOUS working schedule.
+   *
+   * HELD (2026-09-26, rule 16): when the screen needs a 1080p copy first, the
+   * rule is created `pendingMedia` and NOT active, nothing else is stood down,
+   * and the sweep runs the displacement and the SYNC when the copy lands —
+   * exactly what POST /schedules does for a pending publish, stale duplicate
+   * included: only this playlist's PARKED rows on the screen are collapsed, a
+   * live one keeps playing until the sweep displaces it.
    */
-  private async scheduleLive(tenantId: string, playlistId: string, screenId: string) {
+  private async scheduleLive(tenantId: string, playlistId: string, screenId: string, held = false) {
+    if (held) {
+      await this.prisma.client.$transaction(async (tx) => {
+        await tx.schedule.deleteMany({ where: { tenantId, playlistId, screenId, isActive: false } });
+        await tx.schedule.create({
+          data: {
+            tenantId,
+            playlistId,
+            screenId,
+            startTime: new Date(),
+            endTime: null,
+            priority: 0,
+            mode: 'replace',
+            isActive: false,
+            pendingMedia: true,
+            pendingMediaError: null,
+          },
+          select: { id: true },
+        });
+      });
+      return;
+    }
     await this.prisma.client.$transaction(async (tx) => {
       // 1. Clear this playlist's own prior rows for this screen (idempotent
       //    re-publish). Safe because we immediately re-create it active below.
