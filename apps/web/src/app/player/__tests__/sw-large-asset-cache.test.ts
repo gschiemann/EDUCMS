@@ -151,7 +151,7 @@ describe('sw-player large-asset staging', () => {
       { url: URL_4K, size: 141_245_550, sha256: 'a'.repeat(64) },
     ] });
     expect(reply).toMatchObject({ ok: false, failures: 0, count: 2 });
-    expect(reply.pending).toEqual([{ url: URL_4K, sha256: 'a'.repeat(64), size: 141_245_550 }]);
+    expect(reply.pending).toEqual([{ url: URL_4K, sha256: 'a'.repeat(64), size: 141_245_550, adoptable: false }]);
     // Only the small image was fetched — one plain request, no Range.
     expect(server.calls).toEqual([{ range: null }]);
     expect(w.hooks.isLargeAsset({ url: 'https://x/y.mp4' })).toBe(true); // unknown size, video URL
@@ -320,6 +320,104 @@ describe('sw-player large-asset staging', () => {
     expect(w.cacheNamed(w.hooks.STAGING_CACHE).entries.size).toBeGreaterThan(0);
     await w.send({ type: 'PRECACHE_PLAYLIST', assets: [{ url: 'https://cdn.example.com/else.mp4', size: 50 * MiB }] });
     expect(w.cacheNamed(w.hooks.STAGING_CACHE).entries.size).toBe(0);
+  });
+
+  // ── Legacy entries are adopted on disk, never re-downloaded (2026-09-26) ──
+  // An entry cached before this worker stored digests has no meta hash, so
+  // the manifest's new sha256 made `isCachedCurrent` say no and the whole
+  // file was fetched again (141 MB on the field 4K screen, for bytes it had).
+
+  /** Put bytes straight into a tier the way the old worker did: no meta rows at all. */
+  async function seedLegacyEntry(w: ReturnType<typeof loadWorker>, cacheName: string, url: string, bytes: Uint8Array) {
+    const cache = await (w.context.caches as { open: (n: string) => Promise<FakeCache> }).open(cacheName);
+    await cache.put(url, new Response(bytes.slice(), { status: 200, headers: { 'content-type': 'video/mp4' } }));
+  }
+
+  it('a legacy LARGE entry is reported adoptable and PRECACHE_ADOPT verifies it on disk — no fetch', async () => {
+    const w = loadWorker();
+    const file = randomBytes(w.hooks.LARGE_ASSET_BYTES + 11); // large: staged, never fetched inline
+    const server: RangeServer = { file, calls: [] };
+    w.setFetch(rangeFetch(server));
+    await seedLegacyEntry(w, w.hooks.PLAYLIST_CACHE, URL_4K, file);
+    const asset = { url: URL_4K, sha256: sha256Hex(file), size: file.length };
+
+    const first = await w.send({ type: 'PRECACHE_PLAYLIST', assets: [asset] });
+    expect(first).toMatchObject({ ok: false, failures: 0, count: 1 });
+    expect(first.pending).toEqual([{ url: URL_4K, sha256: asset.sha256, size: file.length, adoptable: true }]);
+    // The lookup already says "present" (playable now) but not "current".
+    const before = await w.send({ type: 'CACHE_LOOKUP', urls: [asset] });
+    expect(before).toMatchObject({ cached: { [URL_4K]: false }, present: { [URL_4K]: true } });
+
+    const adopt = await w.send({ type: 'PRECACHE_ADOPT', url: URL_4K, sha256: asset.sha256 });
+    expect(adopt).toEqual({ ok: true, adopted: true, total: file.length });
+    expect(server.calls).toHaveLength(0);
+    const meta = w.cacheNamed(w.hooks.META_CACHE);
+    const metaKeys = [...meta.entries.keys()];
+    expect(metaKeys.some((k) => k.startsWith(`${ORIGIN}/__edu_meta__/`))).toBe(true);
+    expect(metaKeys.some((k) => k.startsWith(`${ORIGIN}/__edu_meta_size__/`))).toBe(true);
+
+    // From now on it is current: the next push loads it, the lookup agrees,
+    // and a second adopt does not read the file again (meta answers).
+    const again = await w.send({ type: 'PRECACHE_PLAYLIST', assets: [asset] });
+    expect(again).toMatchObject({ ok: true, failures: 0, count: 1, pending: [] });
+    const after = await w.send({ type: 'CACHE_LOOKUP', urls: [asset] });
+    expect(after).toMatchObject({ cached: { [URL_4K]: true }, present: { [URL_4K]: true } });
+    expect(await w.send({ type: 'PRECACHE_ADOPT', url: URL_4K, sha256: asset.sha256 })).toEqual({ ok: true, adopted: false });
+    expect(server.calls).toHaveLength(0);
+    // The served bytes are untouched.
+    expect(Buffer.from(w.cacheNamed(w.hooks.PLAYLIST_CACHE).entries.get(URL_4K)!.bytes).equals(Buffer.from(file))).toBe(true);
+  });
+
+  it('a legacy entry whose bytes do NOT match is neither adopted nor deleted; the verified download replaces it', async () => {
+    const w = loadWorker();
+    const stale = randomBytes(w.hooks.LARGE_ASSET_BYTES + 5);
+    const fresh = randomBytes(w.hooks.LARGE_ASSET_BYTES + 5);
+    const server: RangeServer = { file: fresh, calls: [] };
+    w.setFetch(rangeFetch(server));
+    await seedLegacyEntry(w, w.hooks.PLAYLIST_CACHE, URL_4K, stale);
+    const asset = { url: URL_4K, sha256: sha256Hex(fresh), size: fresh.length };
+    // The push hands it back as adoptable — the page tries the on-disk hash first.
+    const first = await w.send({ type: 'PRECACHE_PLAYLIST', assets: [asset] });
+    expect(first.pending).toEqual([{ ...asset, adoptable: true }]);
+    expect(server.calls).toHaveLength(0);
+
+    const adopt = await w.send({ type: 'PRECACHE_ADOPT', url: URL_4K, sha256: asset.sha256 });
+    expect(adopt).toEqual({ ok: false, reason: 'sha256-mismatch' });
+    // Still serving the old bytes — a screen playing them is not taken off them.
+    expect(Buffer.from(w.cacheNamed(w.hooks.PLAYLIST_CACHE).entries.get(URL_4K)!.bytes).equals(Buffer.from(stale))).toBe(true);
+    expect([...w.cacheNamed(w.hooks.META_CACHE).entries.keys()].some((k) => k.startsWith(`${ORIGIN}/__edu_meta__/`))).toBe(false);
+
+    const { assemble } = await drive(w, asset, MiB);
+    expect(assemble.ok).toBe(true);
+    expect(Buffer.from(w.cacheNamed(w.hooks.PLAYLIST_CACHE).entries.get(URL_4K)!.bytes).equals(Buffer.from(fresh))).toBe(true);
+    expect(await w.send({ type: 'CACHE_LOOKUP', urls: [asset] })).toMatchObject({ cached: { [URL_4K]: true } });
+    // Nothing on disk → honest refusal, not a fetch.
+    expect(await w.send({ type: 'PRECACHE_ADOPT', url: 'https://cdn.example.com/none.mp4', sha256: asset.sha256 }))
+      .toEqual({ ok: false, reason: 'not-cached' });
+    expect(await w.send({ type: 'PRECACHE_ADOPT', url: URL_4K, sha256: 'nope' })).toEqual({ ok: false, reason: 'bad-request' });
+  });
+
+  it('a SMALL legacy entry is adopted inside PRECACHE_PLAYLIST with no fetch; a mismatching one is re-fetched and verified', async () => {
+    const w = loadWorker();
+    const good = randomBytes(64 * 1024);
+    const url = 'https://cdn.example.com/small.jpg';
+    const server: RangeServer = { file: good, calls: [] };
+    w.setFetch(rangeFetch(server));
+    await seedLegacyEntry(w, w.hooks.PLAYLIST_CACHE, url, good);
+    const reply = await w.send({ type: 'PRECACHE_PLAYLIST', assets: [{ url, sha256: sha256Hex(good), size: good.length }] });
+    expect(reply).toMatchObject({ ok: true, failures: 0, count: 1, pending: [] });
+    expect(server.calls).toHaveLength(0);
+    expect([...w.cacheNamed(w.hooks.META_CACHE).entries.keys()].some((k) => k.startsWith(`${ORIGIN}/__edu_meta__/`))).toBe(true);
+
+    const w2 = loadWorker();
+    const stale = randomBytes(64 * 1024);
+    const server2: RangeServer = { file: good, calls: [] };
+    w2.setFetch(rangeFetch(server2));
+    await seedLegacyEntry(w2, w2.hooks.PLAYLIST_CACHE, url, stale);
+    const reply2 = await w2.send({ type: 'PRECACHE_PLAYLIST', assets: [{ url, sha256: sha256Hex(good), size: good.length }] });
+    expect(reply2).toMatchObject({ ok: true, failures: 0, count: 1, pending: [] });
+    expect(server2.calls).toHaveLength(1);
+    expect(Buffer.from(w2.cacheNamed(w2.hooks.PLAYLIST_CACHE).entries.get(url)!.bytes).equals(Buffer.from(good))).toBe(true);
   });
 
   it('the incremental SHA-256 matches node:crypto across update boundaries', () => {

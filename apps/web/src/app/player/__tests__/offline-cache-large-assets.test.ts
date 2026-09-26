@@ -83,6 +83,56 @@ describe('player offline-cache large-asset orchestration', () => {
     expect(cached).toEqual([url]);
   });
 
+  it('an adoptable pending file is hashed in place first — adopted: no chunk is ever requested', async () => {
+    const url = 'https://cdn.example.com/legacy-4k.mp4';
+    const cached: string[] = [];
+    answerWith((m) => {
+      switch (m.type) {
+        case 'PRECACHE_PLAYLIST': return { ok: false, failures: 0, count: 1, pending: [{ url, sha256: 'ab'.repeat(32), size: 141_245_550, adoptable: true }] };
+        case 'PRECACHE_ADOPT': return { ok: true, adopted: true, total: 141_245_550 };
+        default: return { ok: false, reason: 'unexpected' };
+      }
+    });
+    const result = await precachePlaylist([{ url, sha256: 'ab'.repeat(32), size: 141_245_550 }], undefined, { onAssetCached: (u) => cached.push(u) });
+    expect(result).toEqual({ ok: true, failures: 0, count: 1 });
+    expect(sent.map((m) => m.type)).toEqual(['PRECACHE_PLAYLIST', 'PRECACHE_ADOPT']);
+    expect(sent[1]).toEqual({ type: 'PRECACHE_ADOPT', url, sha256: 'ab'.repeat(32) });
+    expect(cached).toEqual([url]);
+  });
+
+  it('an adoptable file whose bytes do not match falls through to the verified download', async () => {
+    const url = 'https://cdn.example.com/legacy-4k.mp4';
+    const size = 8 * MiB;
+    answerWith((m) => {
+      switch (m.type) {
+        case 'PRECACHE_PLAYLIST': return { ok: false, failures: 0, count: 1, pending: [{ url, sha256: 'ab'.repeat(32), size, adoptable: true }] };
+        case 'PRECACHE_ADOPT': return { ok: false, reason: 'sha256-mismatch' };
+        case 'PRECACHE_CHUNK': return { ok: true, offset: 0, nextOffset: size, total: size, complete: true };
+        case 'PRECACHE_VERIFY': return { ok: true, total: size, verified: true };
+        case 'PRECACHE_ASSEMBLE': return { ok: true, total: size };
+        default: return { ok: false, reason: 'unexpected' };
+      }
+    });
+    await expect(precachePlaylist([{ url, sha256: 'ab'.repeat(32), size }])).resolves.toEqual({ ok: true, failures: 0, count: 1 });
+    expect(sent.map((m) => m.type)).toEqual(['PRECACHE_PLAYLIST', 'PRECACHE_ADOPT', 'PRECACHE_CHUNK', 'PRECACHE_VERIFY', 'PRECACHE_ASSEMBLE']);
+  });
+
+  it('a pending file that is NOT adoptable (nothing on disk, or no digest) never asks for an adopt', async () => {
+    const url = 'https://cdn.example.com/4k.mp4';
+    const size = 8 * MiB;
+    answerWith((m) => {
+      switch (m.type) {
+        case 'PRECACHE_PLAYLIST': return { ok: false, failures: 0, count: 1, pending: [{ url, sha256: null, size, adoptable: true }] };
+        case 'PRECACHE_CHUNK': return { ok: true, offset: 0, nextOffset: size, total: size, complete: true };
+        case 'PRECACHE_VERIFY': return { ok: true, total: size, verified: false };
+        case 'PRECACHE_ASSEMBLE': return { ok: true, total: size };
+        default: return { ok: false, reason: 'unexpected' };
+      }
+    });
+    await expect(precachePlaylist([{ url, size }])).resolves.toEqual({ ok: true, failures: 0, count: 1 });
+    expect(sent.some((m) => m.type === 'PRECACHE_ADOPT')).toBe(false);
+  });
+
   it('a worker with nothing pending settles on its own answer', async () => {
     answerWith((m) => (m.type === 'PRECACHE_PLAYLIST' ? { ok: false, failures: 2, count: 3, pending: [] } : undefined));
     await expect(precachePlaylist([{ url: 'https://cdn.example.com/a.jpg' }])).resolves.toEqual({ ok: false, failures: 2, count: 3 });

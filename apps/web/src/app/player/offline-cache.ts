@@ -20,7 +20,17 @@ export type CacheStatus = {
 
 export type PlaylistCacheResult = { ok: boolean; failures?: number; count?: number; aborted?: boolean };
 
-export type PlaylistCacheAsset = { url: string; sha256?: string | null; size?: number | null };
+export type PlaylistCacheAsset = {
+  url: string;
+  sha256?: string | null;
+  size?: number | null;
+  /**
+   * Worker → page only (a `pending` entry): the bytes are already on disk but
+   * were never digest-verified (cached before the worker stored digests).
+   * The page hashes them in place (PRECACHE_ADOPT) before any download.
+   */
+  adoptable?: boolean;
+};
 
 export type PlaylistCacheProgress = { url: string; bytesLoaded: number; bytesTotal: number | null };
 
@@ -137,6 +147,19 @@ function isFatalChunkReason(reason: unknown): boolean {
 }
 
 /**
+ * A legacy entry — on disk, never digest-verified — is adopted by hashing the
+ * CACHED bytes (2026-09-26): no network, and the file keeps serving while the
+ * pass runs. True when the worker now counts it current; false (mismatch,
+ * gone, old worker) means the normal verified download takes over.
+ */
+async function adoptCachedAsset(sw: ServiceWorker, asset: PlaylistCacheAsset): Promise<boolean> {
+  const sha256 = typeof asset.sha256 === 'string' && asset.sha256 ? asset.sha256 : null;
+  if (!sha256) return false;
+  const reply = await askWorker(sw, { type: 'PRECACHE_ADOPT', url: asset.url, sha256 }, STEP_ACK_TIMEOUT_MS);
+  return !!reply && reply.ok === true;
+}
+
+/**
  * Drive one large file into the cache. Resolves true when it is assembled and
  * verified, false when this attempt gave up (the page's retry policy owns the
  * next one — staged chunks are kept, so the next attempt resumes), or
@@ -149,6 +172,12 @@ async function downloadLargeAsset(
 ): Promise<boolean | 'aborted'> {
   const size = Number.isSafeInteger(asset.size) && (asset.size as number) > 0 ? asset.size as number : null;
   const sha256 = typeof asset.sha256 === 'string' && asset.sha256 ? asset.sha256 : null;
+  // Bytes already on disk are hashed there first — a legacy entry is adopted,
+  // not re-downloaded (141 MB on the field 4K screen, for bytes it had).
+  if (asset.adoptable && sha256) {
+    if (opts?.signal?.aborted) return 'aborted';
+    if (await adoptCachedAsset(sw, asset)) return true;
+  }
   let offset = 0;
   let chunkBytes = CHUNK_BYTES_START;
   let consecutiveFailures = 0;
@@ -266,9 +295,9 @@ export async function precachePlaylist(
   const count = typeof first.count === 'number' ? first.count : assets.length;
   let failures = typeof first.failures === 'number' ? first.failures : 0;
   const pending: PlaylistCacheAsset[] = Array.isArray(first.pending)
-    ? (first.pending as unknown[]).filter(
-        (p): p is PlaylistCacheAsset => !!p && typeof (p as PlaylistCacheAsset).url === 'string',
-      )
+    ? (first.pending as unknown[])
+        .filter((p): p is PlaylistCacheAsset => !!p && typeof (p as PlaylistCacheAsset).url === 'string')
+        .map((p) => ({ ...p, adoptable: p.adoptable === true }))
     : [];
   if (pending.length === 0) return { ok: first.ok && failures === 0, failures, count };
   for (const asset of pending) {

@@ -54,6 +54,10 @@
  *       — the large-asset staging protocol (2026-09-26); see the block
  *         above precachePlaylist. PRECACHE_PLAYLIST acks `pending` for
  *         files it will not download inside its own event.
+ *   { type: 'PRECACHE_ADOPT', url, sha256 }             (port ack)
+ *       — hash a cached entry ON DISK against the manifest digest and, on a
+ *         match, record it (a legacy entry from before digests were stored
+ *         is adopted, not re-downloaded). Mismatch → the normal download.
  *   { type: 'CACHE_LOOKUP', urls: [{ url, sha256 }] }  (port ack → { cached, present })
  *   { type: 'STATUS_REQUEST' }                         → STATUS_REPLY
  *   { type: 'CLEAR_CACHE',        tier: 'playlist'|'emergency'|'shell'|'all' }
@@ -488,6 +492,9 @@ self.addEventListener('message', (event) => {
     event.waitUntil(answerPort(event, () => verifyStaged(msg)));
   } else if (msg.type === 'PRECACHE_ASSEMBLE') {
     event.waitUntil(answerPort(event, () => assembleStaged(msg)));
+  } else if (msg.type === 'PRECACHE_ADOPT') {
+    // Hash a legacy cached entry on disk against the manifest digest (2026-09-26).
+    event.waitUntil(answerPort(event, () => adoptCached(msg, { cacheName: PLAYLIST_CACHE })));
   } else if (msg.type === 'CACHE_LOOKUP') {
     event.waitUntil(answerPort(event, () => cacheLookup(msg)));
   } else if (msg.type === 'STATUS_REQUEST') {
@@ -900,14 +907,88 @@ async function purgeStagingExcept(liveStableUrls) {
 
 /** Cached and, when the manifest carries a digest, the digest we verified matches it. */
 async function isCachedCurrent(asset, cache, meta) {
-  if (!asset || !asset.url) return false;
+  return (await cachedDigestState(asset, cache, meta)) === 'current';
+}
+
+/**
+ * What the cache knows about one asset against the manifest's digest:
+ *   'absent'    — no entry;
+ *   'current'   — entry + (no digest to check, or the stored digest matches);
+ *   'adoptable' — entry, a manifest digest, and NO stored digest: a legacy
+ *                 entry from before this worker kept digests (2026-09-26).
+ *                 Its bytes can be hashed ON DISK and adopted — no network;
+ *   'stale'     — entry whose stored digest is a different verified digest:
+ *                 the manifest moved on, re-download.
+ */
+async function cachedDigestState(asset, cache, meta) {
+  if (!asset || !asset.url) return 'absent';
   const req = new Request(asset.url, { mode: 'cors', credentials: 'omit' });
   const cached = await cache.match(req, { ignoreSearch: true });
-  if (!cached) return false;
-  if (!asset.sha256) return true;
+  if (!cached) return 'absent';
+  if (!asset.sha256) return 'current';
   const storedHashRes = await meta.match(metaKey(asset.url));
-  const storedHash = storedHashRes ? await storedHashRes.text() : '';
-  return storedHash.toLowerCase() === String(asset.sha256).toLowerCase();
+  const storedHash = storedHashRes ? (await storedHashRes.text()).toLowerCase() : '';
+  if (!storedHash) return 'adoptable';
+  return storedHash === String(asset.sha256).toLowerCase() ? 'current' : 'stale';
+}
+
+/**
+ * Stream a cached body through the incremental SHA-256 — disk in, one 64-byte
+ * block of state, never the whole file in memory. Returns { hex, bytes }.
+ */
+async function digestCachedBody(res) {
+  const hasher = new Sha256();
+  let bytes = 0;
+  if (res.body) {
+    await pumpStream(res.body, (chunk) => { hasher.update(chunk); bytes += chunk.length; });
+  } else {
+    const buf = new Uint8Array(await res.arrayBuffer());
+    hasher.update(buf);
+    bytes = buf.length;
+  }
+  return { hex: hasher.digestHex(), bytes };
+}
+
+/**
+ * Adopt a legacy entry (2026-09-26): the manifest now carries a digest for a
+ * file this worker cached before it stored digests, so `isCachedCurrent`
+ * said no and the whole file was re-downloaded — 141 MB on the field 4K
+ * screen, for bytes it already had. Hash the CACHED bytes instead: a match
+ * writes the digest + size + stored-at rows and the entry counts as current
+ * from now on; a mismatch changes nothing here (the normal verified download
+ * replaces the entry on assemble — the screen is never taken off a file it
+ * is playing just to re-verify it). Its own message event on purpose: a
+ * 2 GB pass through JS SHA-256 belongs outside PRECACHE_PLAYLIST's budget.
+ */
+async function adoptCached(msg, tier) {
+  const url = msg && typeof msg.url === 'string' ? msg.url : '';
+  if (!url) return { ok: false, reason: 'bad-request' };
+  const expected = isSha256Hex(msg.sha256) ? msg.sha256.toLowerCase() : null;
+  if (!expected) return { ok: false, reason: 'bad-request' };
+  const [cache, meta] = await Promise.all([caches.open(tier.cacheName), caches.open(META_CACHE)]);
+  const req = new Request(url, { mode: 'cors', credentials: 'omit' });
+  const cached = await cache.match(req, { ignoreSearch: true });
+  if (!cached) return { ok: false, reason: 'not-cached' };
+  const storedHashRes = await meta.match(metaKey(url));
+  const storedHash = storedHashRes ? (await storedHashRes.text()).toLowerCase() : '';
+  if (storedHash) {
+    // Already digest-verified once: no need to read the file to know.
+    return storedHash === expected ? { ok: true, adopted: false } : { ok: false, reason: 'sha256-mismatch' };
+  }
+  const { hex, bytes } = await digestCachedBody(cached.clone());
+  if (hex !== expected) {
+    console.warn('[sw-player] cached bytes do not match the manifest digest — will re-download', { url });
+    return { ok: false, reason: 'sha256-mismatch' };
+  }
+  await meta.put(metaKey(url), new Response(expected, { headers: { 'content-type': 'text/plain' } }));
+  if (bytes > 0) {
+    SIZE_BY_URL.set(normalizeUrl(url), bytes);
+    await meta.put(sizeMetaKey(url), new Response(String(bytes), { headers: { 'content-type': 'text/plain' } }));
+  }
+  try {
+    await meta.put(storedAtMetaKey(url), new Response(String(Date.now()), { headers: { 'content-type': 'text/plain' } }));
+  } catch (_e) { /* meta write best-effort */ }
+  return { ok: true, adopted: true, total: bytes };
 }
 
 /** An entry exists in either tier: the fetch handler serves it from disk as-is. */
@@ -1377,10 +1458,13 @@ async function precachePlaylist(assets, softCapBytes, ackPort, keepUrls) {
   const pending = [];
   for (const asset of assets) {
     if (isLargeAsset(asset)) {
-      if (await isCachedCurrent(asset, cache, meta)) {
+      const state = await cachedDigestState(asset, cache, meta);
+      if (state === 'current') {
         loaded += 1;
       } else {
-        pending.push({ url: asset.url, sha256: asset.sha256 || null, size: asset.size || null });
+        // `adoptable`: the bytes are on disk but never digest-verified — the
+        // page tries PRECACHE_ADOPT (hash on disk) before any download.
+        pending.push({ url: asset.url, sha256: asset.sha256 || null, size: asset.size || null, adoptable: state === 'adoptable' });
       }
     } else {
       if (!(await fetchAndStore(asset, cache, meta))) failures += 1;
@@ -1546,8 +1630,22 @@ async function fetchAndStore(asset, cache, meta, opts) {
   // the old token. Without this, every token rotation looked like a fresh
   // asset and we re-downloaded the whole playlist hourly.
   const storedHashRes = await meta.match(metaKey(asset.url));
-  const storedHash = storedHashRes ? await storedHashRes.text() : '';
+  let storedHash = storedHashRes ? await storedHashRes.text() : '';
   const cached = await cache.match(req, { ignoreSearch: true });
+  // Adopt a legacy entry (2026-09-26): cached, the manifest carries a digest,
+  // no digest stored. Hash the bytes on disk before fetching anything — a
+  // match is verified and costs no network; a mismatch falls through to the
+  // normal verified re-download below. Small files only reach here (large
+  // ones go through PRECACHE_ADOPT in their own event).
+  if (cached && asset.sha256 && !storedHash && isSha256Hex(asset.sha256)) {
+    try {
+      const { hex } = await digestCachedBody(cached.clone());
+      if (hex === String(asset.sha256).toLowerCase()) {
+        await meta.put(metaKey(asset.url), new Response(hex, { headers: { 'content-type': 'text/plain' } }));
+        storedHash = hex;
+      }
+    } catch (_e) { /* unreadable body — the fetch below decides */ }
+  }
   // P0-1 (2026-05-28): a manifest entry may legitimately carry no sha256
   // (server ships `sha256: null` for assets the upload pipeline never hashed
   // — legacy / external-URL rows). For those we have no body hash to compare
@@ -1577,7 +1675,7 @@ async function fetchAndStore(asset, cache, meta, opts) {
       nullHashFresh = true; // meta unreadable — keep old behavior, never thrash
     }
   }
-  const upToDate = cached && (hasHash ? storedHash === asset.sha256 : nullHashFresh);
+  const upToDate = cached && (hasHash ? storedHash.toLowerCase() === String(asset.sha256).toLowerCase() : nullHashFresh);
   if (upToDate) {
     if (!SIZE_BY_URL.has(norm)) {
       const sz = await measureResponseSize(cached, asset);
