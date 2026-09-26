@@ -30,6 +30,7 @@ import {
   PlaylistSetActiveSchema, type PlaylistSetActiveInput,
   PlaylistSetSyncSchema, type PlaylistSetSyncInput,
 } from '@cms/api-types';
+import { playlistEmergencyUse, type EmergencyUseDb } from '../emergency/emergency-content-use';
 
 @Controller('api/v1/playlists')
 @UseGuards(JwtAuthGuard, RbacGuard)
@@ -1235,6 +1236,20 @@ export class PlaylistsController {
         throw new HttpException({ code: 'PLAYLIST_PROTECTED', message: 'A distributed copy contains protected emergency content.' }, HttpStatus.FORBIDDEN);
       }
       const targets = [...copies, playlist];
+      // `isProtected` is not the only way a playlist becomes alert media
+      // (2026-09-26 review of ba1a8ed): a tenant's panic default, a screen's
+      // per-type emergency playlist and a live override all accept an
+      // ORDINARY playlist, and those columns are plain ids with no foreign
+      // key — deleting the playlist would leave a dangling id and the next
+      // lockdown would find nothing. Checked for the parent AND every copy,
+      // inside the transaction. Fails closed.
+      const emergencyUse = await playlistEmergencyUse(tx as unknown as EmergencyUseDb, targets.map((t) => t.id));
+      if (emergencyUse) {
+        throw new HttpException({
+          code: 'PLAYLIST_IN_EMERGENCY_USE',
+          message: `This playlist (or one of its location copies) is emergency content: ${emergencyUse}. Change the emergency settings first.`,
+        }, HttpStatus.CONFLICT);
+      }
       for (const target of targets) {
         const attachedSchedules = await tx.schedule.findMany({
           where: { tenantId: target.tenantId, playlistId: target.id },

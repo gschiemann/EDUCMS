@@ -1464,15 +1464,24 @@ export interface RemoveDecision {
 }
 
 export function removePlaylistCopy(row: PlaylistSummaryRow, ruleCount: number): RemoveDecision {
-  if (ruleCount > 0 || row.reach.screens > 0) {
+  // Copies at other locations count as published (2026-09-26 review finding):
+  // the server deletes every location's copy and its rules along with the
+  // parent, and `ruleCount` / `reach.screens` only see THIS tenant's rows — a
+  // district playlist published only to its schools used to read "not
+  // published anywhere" right before taking 12 school screens off air.
+  const otherLocations = row.reach.locations > 1 ? row.reach.locations - 1 : 0;
+  if (ruleCount > 0 || row.reach.screens > 0 || otherLocations > 0) {
     const bits = [
       `${ruleCount} ${ruleCount === 1 ? 'rule' : 'rules'}`,
       `${row.reach.screens} ${row.reach.screens === 1 ? 'screen' : 'screens'}`,
     ];
     if (row.reach.locations > 1) bits.push(`${row.reach.locations} locations`);
+    const copies = otherLocations > 0
+      ? ` It also deletes the copies at ${otherLocations} other ${otherLocations === 1 ? 'location' : 'locations'}, including any rules those locations added.`
+      : '';
     return {
       title: `Delete published playlist “${row.name}”?`,
-      message: `${bits.join(' · ')}\n\nDeleting it also removes its publishing rules. Affected screens use another available schedule or their default content. This cannot be undone.`,
+      message: `${bits.join(' · ')}\n\nDeleting it also removes its publishing rules.${copies} Affected screens use another available schedule or their default content. This cannot be undone.`,
       confirmLabel: 'Delete playlist and rules',
     };
   }

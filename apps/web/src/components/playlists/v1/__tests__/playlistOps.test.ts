@@ -553,6 +553,28 @@ describe('high-consequence confirmations', () => {
     expect(r.message).toMatch(/cannot be restored/i);
     expect(r.message).not.toMatch(/30 days|trash|recoverable/i);
   });
+
+  // 2026-09-26 review finding: a district playlist published ONLY to its
+  // schools has no rules and no screens of its own here, but the server deletes
+  // every location's copy and its rules with it. That is published.
+  it('a playlist that lives only as copies at other locations is warned about as published', () => {
+    const r = removePlaylistCopy(
+      { name: 'Fall Fundraiser', reach: { screens: 0, groups: 0, locations: 13 } } as PlaylistSummaryRow,
+      0,
+    );
+    expect(r.confirmLabel).toBe('Delete playlist and rules');
+    expect(r.message).toContain('13 locations');
+    expect(r.message).toMatch(/copies at 12 other locations, including any rules those locations added/);
+    expect(r.message).not.toMatch(/not published anywhere/);
+  });
+
+  it('a playlist published only here does not mention copies', () => {
+    const r = removePlaylistCopy(
+      { name: 'Lobby', reach: { screens: 2, groups: 0, locations: 1 } } as PlaylistSummaryRow,
+      1,
+    );
+    expect(r.message).not.toMatch(/copies at/);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────

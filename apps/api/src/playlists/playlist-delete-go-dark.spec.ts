@@ -75,7 +75,11 @@ function sortRows(rows: ScheduleRow[], orderBy: any): ScheduleRow[] {
   });
 }
 
-function makeController(scheduleRows: ScheduleRow[], copies: Array<{ id: string; tenantId: string; name: string; isProtected: boolean }> = []) {
+function makeController(
+  scheduleRows: ScheduleRow[],
+  copies: Array<{ id: string; tenantId: string; name: string; isProtected: boolean }> = [],
+  emergencyWiring: { tenant?: { id: string }; screen?: { id: string }; override?: { id: string } } = {},
+) {
   const auditRows: any[] = [];
 
   const client = {
@@ -117,6 +121,11 @@ function makeController(scheduleRows: ScheduleRow[], copies: Array<{ id: string;
         return data;
       }),
     },
+    // Alert-pipeline columns the shared emergency guard reads on delete
+    // (emergency-content-use.ts). Default: the playlist is wired nowhere.
+    tenant: { findFirst: jest.fn(async () => emergencyWiring.tenant ?? null) },
+    screen: { findFirst: jest.fn(async () => emergencyWiring.screen ?? null) },
+    screenEmergencyOverride: { findFirst: jest.fn(async () => emergencyWiring.override ?? null) },
     $transaction: jest.fn(async (cb: any) => cb(client)),
   };
 
@@ -240,5 +249,57 @@ describe('playlist delete — go-dark fallback (P0-1)', () => {
       expect.objectContaining({ action: 'PLAYLIST_DELETED', tenantId: 't2', targetId: 'child-copy' }),
       expect.objectContaining({ action: 'PLAYLIST_DELETED', tenantId: 't1', targetId: 'pl-dying' }),
     ]));
+  });
+});
+
+// 2026-09-26 — `isProtected` is not the only way a playlist becomes alert
+// media. A tenant's panic default, a screen's per-type emergency playlist and
+// a live override all accept an ORDINARY playlist by id, with no foreign key,
+// so deleting it (or one of its location copies) would leave a dangling id and
+// the next lockdown with nothing. The shared guard refuses, inside the
+// transaction, before any schedule or playlist row goes.
+describe('playlist delete — emergency wiring by any alert-pipeline path', () => {
+  it("refuses when a LOCATION COPY is a screen's emergency playlist, and deletes nothing", async () => {
+    const { controller, scheduleRows, auditRows, client } = makeController(
+      [row({ id: 's-active', playlistId: 'pl-dying', screenId: 'scr1', isActive: true })],
+      [{ id: 'pl-copy-school', tenantId: 't-school', name: 'Dying Playlist', isProtected: false }],
+      { screen: { id: 'scr-gym' } },
+    );
+    await expect(controller.remove(req as any, 'pl-dying')).rejects.toMatchObject({
+      status: 409,
+      response: expect.objectContaining({
+        code: 'PLAYLIST_IN_EMERGENCY_USE',
+        message: expect.stringContaining('an emergency playlist of screen scr-gym'),
+      }),
+    });
+    expect(scheduleRows.find((r) => r.id === 's-active')).toBeDefined();
+    expect(client.playlist.delete).not.toHaveBeenCalled();
+    expect(client.schedule.deleteMany).not.toHaveBeenCalled();
+    expect(auditRows).toHaveLength(0);
+    // The guard was asked about the parent AND the copy in one query.
+    expect(client.screen.findFirst).toHaveBeenCalledTimes(1);
+    const screenWhere = (client.screen.findFirst as jest.Mock).mock.calls[0][0].where;
+    expect(screenWhere.OR[0]).toEqual({ emergencyLockdownPlaylistId: { in: ['pl-copy-school', 'pl-dying'] } });
+  });
+
+  it("refuses when the parent is a tenant's panic default", async () => {
+    const { controller, client } = makeController(
+      [row({ id: 's-active', playlistId: 'pl-dying', screenId: 'scr1', isActive: true })],
+      [],
+      { tenant: { id: 't1' } },
+    );
+    await expect(controller.remove(req as any, 'pl-dying')).rejects.toMatchObject({
+      status: 409,
+      response: expect.objectContaining({ code: 'PLAYLIST_IN_EMERGENCY_USE' }),
+    });
+    expect(client.playlist.delete).not.toHaveBeenCalled();
+  });
+
+  it('still deletes an ordinary playlist wired nowhere', async () => {
+    const { controller, client } = makeController([
+      row({ id: 's-active', playlistId: 'pl-dying', screenId: 'scr1', isActive: true }),
+    ]);
+    await expect(controller.remove(req as any, 'pl-dying')).resolves.toEqual({ deleted: true });
+    expect(client.playlist.delete).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { Prisma } from '@cms/database';
+import { emergencyContentUse } from '../emergency/emergency-content-use';
 import { createHash, randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { SupabaseStorageService } from './supabase-storage.service';
@@ -692,75 +693,9 @@ export class VideoPosterService {
     assetId: string,
     fileUrl: string,
   ): Promise<string | null> {
-    const db = this.prisma.client;
-    try {
-      const items = await db.playlistItem.findMany({
-        where: { assetId },
-        select: { playlistId: true },
-      });
-      const ids = [...new Set(items.map((i) => i.playlistId))];
-      if (ids.length > 0) {
-        const inIds = { in: ids };
-        // A system guard, not a caller's read: `ids` are the playlists THIS
-        // asset belongs to (its row was read tenant-scoped in remuxForAsset),
-        // looked up across tenants on purpose — a district playlist can hold
-        // a school's asset, and a wider look only makes the guard stricter.
-        // ten-ok: the answer is only "is one of the asset's own playlists protected", used to REFUSE a rewrite; nothing is returned to a caller and nothing is written
-        const guarded = await db.playlist.findFirst({
-          where: { id: inIds, isProtected: true },
-          select: { id: true },
-        });
-        if (guarded) return `protected playlist ${guarded.id}`;
-        const tenant = await db.tenant.findFirst({
-          where: {
-            OR: TENANT_EMERGENCY_PLAYLIST_FIELDS.map(
-              (f) => ({ [f]: inIds }) as Prisma.TenantWhereInput,
-            ),
-          },
-          select: { id: true },
-        });
-        if (tenant) return `an emergency playlist of tenant ${tenant.id}`;
-        const screen = await db.screen.findFirst({
-          where: {
-            OR: SCREEN_EMERGENCY_PLAYLIST_FIELDS.map(
-              (f) => ({ [f]: inIds }) as Prisma.ScreenWhereInput,
-            ),
-          },
-          select: { id: true },
-        });
-        if (screen) return `an emergency playlist of screen ${screen.id}`;
-      }
-      const screenMedia = await db.screen.findFirst({
-        where: {
-          OR: SCREEN_EMERGENCY_MEDIA_URL_FIELDS.map(
-            (f) => ({ [f]: fileUrl }) as Prisma.ScreenWhereInput,
-          ),
-        },
-        select: { id: true },
-      });
-      if (screenMedia) return `the emergency media of screen ${screenMedia.id}`;
-      const override = await db.screenEmergencyOverride.findFirst({
-        where: {
-          OR: [
-            { mediaUrl: fileUrl },
-            ...(ids.length > 0 ? [{ playlistId: { in: ids } }] : []),
-          ],
-        },
-        select: { id: true },
-      });
-      if (override) return `live screen override ${override.id}`;
-      const message = await db.emergencyMessage.findFirst({
-        where: {
-          clearedAt: null,
-          OR: [{ audioUrl: fileUrl }, { mediaUrls: { contains: fileUrl } }],
-        },
-        select: { id: true },
-      });
-      if (message) return `live emergency message ${message.id}`;
-      return null;
-    } catch (err) {
-      return `the emergency check could not run: ${errorMessage(err)}`;
-    }
+    // One check for every writer that must leave alert media alone — the
+    // delete paths read the same columns (emergency-content-use.ts).
+    return emergencyContentUse(this.prisma.client, assetId, fileUrl);
   }
 
   /** OTHER asset rows (any tenant) pointing at this file; null when unknown. */
@@ -942,58 +877,6 @@ export class VideoPosterService {
     };
   }
 }
-
-/**
- * Every column the alert pipeline reads a playlist or a file from — the same
- * lists `GET /screens/:id/emergency-assets` (screens.controller.ts) builds the
- * never-evict cache tier from. `satisfies` keeps every name a real column.
- */
-const TENANT_EMERGENCY_PLAYLIST_FIELDS = [
-  'emergencyPlaylistId',
-  'emergencyPortraitPlaylistId',
-  'panicLockdownPlaylistId',
-  'panicEvacuatePlaylistId',
-  'panicWeatherPlaylistId',
-  'panicHoldPlaylistId',
-  'panicSecurePlaylistId',
-  'panicMedicalPlaylistId',
-  'panicLockdownPortraitPlaylistId',
-  'panicEvacuatePortraitPlaylistId',
-  'panicWeatherPortraitPlaylistId',
-  'panicHoldPortraitPlaylistId',
-  'panicSecurePortraitPlaylistId',
-  'panicMedicalPortraitPlaylistId',
-] as const satisfies readonly (keyof Prisma.TenantWhereInput)[];
-
-const SCREEN_EMERGENCY_PLAYLIST_FIELDS = [
-  'emergencyLockdownPlaylistId',
-  'emergencyEvacuatePlaylistId',
-  'emergencyWeatherPlaylistId',
-  'emergencyHoldPlaylistId',
-  'emergencySecurePlaylistId',
-  'emergencyMedicalPlaylistId',
-  'emergencyLockdownPortraitPlaylistId',
-  'emergencyEvacuatePortraitPlaylistId',
-  'emergencyWeatherPortraitPlaylistId',
-  'emergencyHoldPortraitPlaylistId',
-  'emergencySecurePortraitPlaylistId',
-  'emergencyMedicalPortraitPlaylistId',
-] as const satisfies readonly (keyof Prisma.ScreenWhereInput)[];
-
-const SCREEN_EMERGENCY_MEDIA_URL_FIELDS = [
-  'emergencyLockdownAssetUrl',
-  'emergencyEvacuateAssetUrl',
-  'emergencyWeatherAssetUrl',
-  'emergencyHoldAssetUrl',
-  'emergencySecureAssetUrl',
-  'emergencyMedicalAssetUrl',
-  'emergencyLockdownPortraitAssetUrl',
-  'emergencyEvacuatePortraitAssetUrl',
-  'emergencyWeatherPortraitAssetUrl',
-  'emergencyHoldPortraitAssetUrl',
-  'emergencySecurePortraitAssetUrl',
-  'emergencyMedicalPortraitAssetUrl',
-] as const satisfies readonly (keyof Prisma.ScreenWhereInput)[];
 
 export interface PosterJobArgs {
   assetId: string;

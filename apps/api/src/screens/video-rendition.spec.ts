@@ -1,4 +1,4 @@
-import { selectVideoFile } from './video-rendition';
+import { selectFallbackVideoFile, selectVideoFile } from './video-rendition';
 import { needs1080ImageCopy, needs1080VideoCopy } from '../schedules/media-publication.service';
 
 const original = {
@@ -45,5 +45,30 @@ describe('screen-specific media rendition', () => {
     expect(needs1080ImageCopy({ mimeType: 'image/jpeg', processingMeta: {
       processedDimensions: { w: 1920, h: 1080 },
     } }, '1920 x 1080')).toBe(false);
+  });
+
+  // 2026-09-26 — a >1080p screen gets the 1080p copy as a FALLBACK: the player
+  // plays it until the native file is in its cache (mediaSourceChoice.ts).
+  it('offers the 1080p copy as a fallback to a screen that was given the native video', () => {
+    const selected = selectVideoFile(original, '3840 x 2160');
+    expect(selectFallbackVideoFile(original, selected)).toEqual({
+      url: 'https://example.com/1080.mp4', sha256: 'b'.repeat(64), size: 45_000_000,
+    });
+    // Unknown resolution → native file selected, copy offered as the bridge.
+    expect(selectFallbackVideoFile(original, selectVideoFile(original, null))).not.toBeNull();
+  });
+
+  it('never offers the file that was already selected, nor a partial record, nor one for an image', () => {
+    const on1080 = selectVideoFile(original, '1920 x 1080');
+    expect(selectFallbackVideoFile(original, on1080)).toBeNull();
+    const broken = { ...original, processingMeta: {
+      ...original.processingMeta,
+      renditions: { '1080p': { url: 'https://example.com/1080.mp4', sha256: 'nope', size: 45_000_000 } },
+    } };
+    expect(selectFallbackVideoFile(broken, selectVideoFile(broken, '3840 x 2160'))).toBeNull();
+    const noRendition = { ...original, processingMeta: { processedDimensions: { w: 3840, h: 2160 } } };
+    expect(selectFallbackVideoFile(noRendition, selectVideoFile(noRendition, '3840 x 2160'))).toBeNull();
+    const image = { ...original, mimeType: 'image/jpeg', fileUrl: 'https://example.com/original.jpg' };
+    expect(selectFallbackVideoFile(image, selectVideoFile(image, '3840 x 2160'))).toBeNull();
   });
 });

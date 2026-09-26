@@ -35,7 +35,18 @@ function makeController(over: Partial<Record<string, any>> = {}) {
                      : true,
           ),
         ),
+        // The shared emergency guard (emergency-content-use.ts) asks for a
+        // protected playlist among the asset's own.
+        findFirst: jest.fn(async ({ where }: any) =>
+          (over.playlists ?? []).find((p: any) => where.id.in.includes(p.id) && p.isProtected) ?? null,
+        ),
       },
+      // Alert-pipeline columns the shared emergency guard reads. Default: not
+      // wired anywhere. `tenantEmergency` makes an ORDINARY playlist a panic
+      // default — the case the warned-deletion change had stopped refusing.
+      tenant: { findFirst: jest.fn(async () => over.tenantEmergency ?? null) },
+      screenEmergencyOverride: { findFirst: jest.fn(async () => over.override ?? null) },
+      emergencyMessage: { findFirst: jest.fn(async () => over.liveMessage ?? null) },
       schedule: {
         findMany: jest.fn(async () => over.schedules ?? []),
         deleteMany: jest.fn(async () => ({ count: (over.schedules ?? []).length })),
@@ -178,5 +189,63 @@ describe('GET /assets — response mode', () => {
     expect(out.total).toBe(148);
     const countWhere = prisma.client.asset.count.mock.calls[0][0].where;
     expect(countWhere.OR.some((c: any) => c.originalName)).toBe(true);
+  });
+});
+
+// 2026-09-26 — the guard the warned-deletion change had narrowed away. A
+// playlist becomes alert media through a tenant's panic default, a screen's
+// per-type emergency playlist or a live override WITHOUT being flagged
+// isProtected; deleting the only clip in it would leave the next lockdown
+// with an empty playlist. The shared emergency-content check now runs inside
+// the delete transaction and fails closed.
+describe('DELETE /assets/:id — emergency content by any alert-pipeline path', () => {
+  it("refuses an asset whose ordinary playlist is a tenant's panic default, before anything is removed", async () => {
+    const { controller, prisma } = makeController({
+      items: [{ playlistId: 'p-gym' }],
+      playlists: [{ id: 'p-gym', name: 'Gym lockdown', isProtected: false, templateId: null }],
+      tenantEmergency: { id: 't1' },
+    });
+    await expect(controller.remove(req, 'a1')).rejects.toMatchObject({
+      status: HttpStatus.CONFLICT,
+      response: expect.objectContaining({
+        code: 'ASSET_IN_EMERGENCY_CONTENT',
+        message: expect.stringContaining('an emergency playlist of tenant t1'),
+      }),
+    });
+    expect(prisma.client.playlistItem.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.client.asset.delete).not.toHaveBeenCalled();
+    expect(prisma.client.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('refuses a file a live emergency message still carries, even with no playlist at all', async () => {
+    const { controller, prisma } = makeController({ items: [], liveMessage: { id: 'm7' } });
+    await expect(controller.remove(req, 'a1')).rejects.toMatchObject({
+      status: HttpStatus.CONFLICT,
+      response: expect.objectContaining({ code: 'ASSET_IN_EMERGENCY_CONTENT' }),
+    });
+    expect(prisma.client.asset.delete).not.toHaveBeenCalled();
+  });
+
+  it('the usage pre-check agrees with the delete, so the dialog never offers a refused delete', async () => {
+    const { controller } = makeController({
+      items: [{ playlistId: 'p-gym' }],
+      playlists: [{ id: 'p-gym', name: 'Gym lockdown', isProtected: false }],
+      tenantEmergency: { id: 't1' },
+    });
+    const out: any = await controller.usage(req, 'a1');
+    expect(out.protectedEmergency).toBe(true);
+  });
+
+  it('fails CLOSED when the check itself cannot run', async () => {
+    const { controller, prisma } = makeController({
+      items: [{ playlistId: 'p1' }],
+      playlists: [{ id: 'p1', name: 'Lobby', isProtected: false, templateId: null }],
+    });
+    (prisma.client.tenant.findFirst as jest.Mock).mockRejectedValueOnce(new Error('pool exhausted'));
+    await expect(controller.remove(req, 'a1')).rejects.toMatchObject({
+      status: HttpStatus.CONFLICT,
+      response: expect.objectContaining({ code: 'ASSET_IN_EMERGENCY_CONTENT' }),
+    });
+    expect(prisma.client.playlistItem.deleteMany).not.toHaveBeenCalled();
   });
 });

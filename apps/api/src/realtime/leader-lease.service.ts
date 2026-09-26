@@ -106,6 +106,10 @@ export const LEASE = {
   // candidate costs a storage read + ffprobe (+ a poster grab): two replicas would spend it twice
   // and race the same rows' processingMeta merge.
   VIDEO_PROBE_AUTOHEAL: 'storage:video-probe-autoheal',
+  // 2026-09-26 — the pending-media publication sweep (15 s tick). Every write it
+  // makes is claim-guarded, so a second replica would be safe but wasteful: it
+  // would scan the same rows every tick and re-queue the same rendition jobs.
+  MEDIA_PUBLICATION_SWEEP: 'schedules:media-publication-sweep',
 } as const;
 
 export type LeaseName = (typeof LEASE)[keyof typeof LEASE];

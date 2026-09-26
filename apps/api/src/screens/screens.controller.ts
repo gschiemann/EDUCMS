@@ -1,6 +1,6 @@
 import { Controller, Post, Get, Put, Delete, Body, Param, Query, Req, Res, UseGuards, Request, HttpException, HttpStatus } from '@nestjs/common';
 import { encodeTargetFromResolutions } from '@cms/api-types';
-import { selectVideoFile } from './video-rendition';
+import { selectFallbackVideoFile, selectVideoFile } from './video-rendition';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import type { Request as ExpressReq, Response } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
@@ -6376,12 +6376,24 @@ export class ScreensController {
       } : {}),
       items: s.playlist.items.map(pi => {
         const selected = selectVideoFile(pi.asset, screen.resolution);
+        const fallback = selectFallbackVideoFile(pi.asset, selected);
         return ({
         item_id: pi.id,
         asset_id: pi.assetId,
         asset_hash: selected.sha256,
         asset_size: selected.size,
         url: selected.url,
+        // 2026-09-26 — a >1080p screen also gets the 1080p copy. The player
+        // plays it until the native file is in its cache (4K streamed from
+        // origin stuttered; the copy streams fine and caches in seconds),
+        // then moves up to the native file at the next mount. Older players
+        // ignore these fields. Part of the ETag-hashed payload: content, not
+        // a volatile per-request field.
+        ...(fallback ? {
+          fallback_url: fallback.url,
+          fallback_hash: fallback.sha256,
+          fallback_size: fallback.size,
+        } : {}),
         duration_ms: pi.durationMs,
         sequence: pi.sequenceOrder,
         // Surface mimeType so the player knows whether to render the

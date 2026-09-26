@@ -140,13 +140,17 @@ import { lookupKioskFrame } from '@/lib/kiosk-frame-registry';
 import {
   registerOfflineCache,
   precachePlaylist,
+  lookupCached,
   precacheAppShell,
   precacheEmergency,
   getCacheStatus,
   formatBytes,
   isSwSupported,
   type CacheStatus,
+  type PlaylistCacheAsset,
 } from './offline-cache';
+import { PlaylistCacheRetryPolicy } from './playlistCacheRetryPolicy';
+import { chooseVideoSourceKind, isLoopWrap, upgradeAvailable, type VideoSourceKind } from './mediaSourceChoice';
 import { appConfirm, appAlert } from '@/components/ui/app-dialog';
 // 2026-05-29 — Sentry crash reporting for the player / renderer. Sentry is
 // initialized in apps/web/sentry.client.config.ts and is GATED on
@@ -1486,6 +1490,8 @@ function PlayerVideoSlide({
   syncActiveRef,
   syncPosRef,
   syncItemCount,
+  upgradeReady,
+  onLoopWrap,
 }: {
   src: string;
   isActive: boolean;
@@ -1493,6 +1499,14 @@ function PlayerVideoSlide({
   isSoloPlaylist: boolean;
   onEnded: () => void;
   onError: () => void;
+  /**
+   * 2026-09-26 — this slide is on its 1080p fallback and the native file is
+   * now in the cache. At the next loop wrap the slide tells the parent
+   * (onLoopWrap), which re-decides the file and remounts it — at a moment
+   * the viewer already sees restart. Never mid-clip.
+   */
+  upgradeReady?: boolean;
+  onLoopWrap?: () => void;
   /**
    * Frame-locked sync (2026-07-28) — when these are provided AND the
    * conductor is locked AND this slide is the timeline's current item,
@@ -1682,6 +1696,35 @@ function PlayerVideoSlide({
     // onError/src/isMuted are stable-in-behavior parent closures; keying on
     // the item identity (videoKey) resets the detector per slide.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive, videoKey]);
+
+  // ── Fallback → native file at the loop wrap (2026-09-26) ──────────────
+  // A solo playlist loops natively and never re-mounts, so a slide that
+  // started on the 1080p fallback would never pick up the 4K file once it
+  // cached. A looping <video> restarts without `ended`; currentTime jumping
+  // back to the start is the wrap. At that instant the parent is told and
+  // remounts the slide on the native file (mediaSourceChoice.ts).
+  const upgradeReadyRef = useRef(!!upgradeReady);
+  useEffect(() => { upgradeReadyRef.current = !!upgradeReady; }, [upgradeReady]);
+  const onLoopWrapRef = useRef(onLoopWrap);
+  useEffect(() => { onLoopWrapRef.current = onLoopWrap; }, [onLoopWrap]);
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!isActive || !v) return;
+    let lastTimeS = 0;
+    let fired = false;
+    const onTime = () => {
+      const nowS = v.currentTime;
+      if (!fired && upgradeReadyRef.current && isLoopWrap(lastTimeS, nowS)) {
+        fired = true;
+        onLoopWrapRef.current?.();
+      }
+      lastTimeS = nowS;
+    };
+    v.addEventListener('timeupdate', onTime);
+    return () => v.removeEventListener('timeupdate', onTime);
+    // Keyed on the slide identity like the other element effects; the
+    // callback and readiness flag are read through refs.
   }, [isActive, videoKey]);
 
   // ─── Frame-locked sync: preroll + measured start lead (tier-1) ─────
@@ -4629,7 +4672,19 @@ function PlayerPage() {
   // Equal hash = no-op skip; saves a postMessage + SW work on every poll.
   const lastPlaylistSetHashRef = useRef<string>('');
   const playlistCacheInFlightRef = useRef<string>('');
-  const playlistCacheRetryAtRef = useRef(0);
+  // ── Playlist cache drive + retry (2026-09-26, 4K cache-fill incident) ──
+  // The last asset set applyManifest computed, kept so a retry can run
+  // WITHOUT a fresh manifest apply: an unchanged manifest poll is a 304, and
+  // before this a failed download was only reconsidered on a full apply — a
+  // screen could stream its 4K clip from origin for the rest of the session.
+  const playlistCacheAssetsRef = useRef<{ setHash: string; assets: PlaylistCacheAsset[] } | null>(null);
+  const playlistCacheRetryRef = useRef(new PlaylistCacheRetryPolicy());
+  const playlistCacheAbortRef = useRef<AbortController | null>(null);
+  const startPlaylistPrecacheRef = useRef<(setHash: string, assets: PlaylistCacheAsset[]) => void>(() => {});
+  // Stable keys (stableManifestUrlKey) of media the worker confirmed cached.
+  // State, not a ref: the video slides read it during render to prefer a
+  // cached native file over its 1080p fallback (mediaSourceChoice.ts).
+  const [cachedMediaKeys, setCachedMediaKeys] = useState<ReadonlySet<string>>(() => new Set());
   // Signature of the current playlist items + template so applyManifest
   // can short-circuit when the manifest poll returned the same content
   // we're already rendering. Without this, setPlaylist(new obj) +
@@ -4750,8 +4805,12 @@ function PlayerPage() {
           retrying: prev?.retrying ?? 0,
           lastError: null,
         }));
-      } else if (msg.type === 'PRECACHE_PLAYLIST_DONE' && msg.ok === false) {
+      } else if (msg.type === 'PRECACHE_PLAYLIST_DONE' && (msg.failures ?? 0) > 0) {
         setLoadProgress((prev) => prev ? { ...prev, lastError: 'Content download failed; retrying', retrying: (prev.retrying ?? 0) + 1 } : prev);
+      } else if (msg.type === 'PRECACHE_PLAYLIST_DONE' && (msg.pending ?? 0) > 0) {
+        // The worker handed the big files back to the page (large-asset
+        // staging, 2026-09-26). Not an error, and not "ready" either: the
+        // page's precache orchestration flips the bar to ready when they land.
       } else if (msg.type === 'PRECACHE_PLAYLIST_DONE' || msg.type === 'PRECACHE_EMERGENCY_DONE') {
         // Keep a brief "ready" state so the bar hits 100% before
         // KioskSplash unmounts on phase flip to 'playing'.
@@ -6053,7 +6112,7 @@ function PlayerPage() {
       // the SW every time.
       try {
         const urls = new Set<string>();
-        const playlistAssets: Array<{ url: string; size?: number }> = [];
+        const playlistAssets: PlaylistCacheAsset[] = [];
         const playlistAssetKeys: string[] = [];
         (manifest.playlists || []).forEach((mp: any) => {
           (mp.items || []).forEach((item: any) => {
@@ -6080,7 +6139,29 @@ function PlayerPage() {
               // just to discover its length after writing the cache entry.
               const size = Number.isSafeInteger(item.asset_size) && item.asset_size > 0
                 ? item.asset_size as number : undefined;
-              playlistAssets.push({ url: playbackUrl, ...(size ? { size } : {}) });
+              // The manifest digest lets the worker VERIFY the bytes once and
+              // then keep them (2026-09-26). Without it a video counted as
+              // null-hash and was re-fetched every 24 h by the bounded
+              // revalidation — 141 MB a day per 4K screen. Images go through
+              // the CDN proxy, which may re-encode them, so they carry none.
+              const sha256 = !isImage && typeof item.asset_hash === 'string' && /^[0-9a-f]{64}$/i.test(item.asset_hash)
+                ? item.asset_hash.toLowerCase() : undefined;
+              // A >1080p screen's video may carry its 1080p copy as a fallback
+              // (mediaSourceChoice.ts). List the SMALL file first: this list is
+              // the download order, and the copy is what plays until the native
+              // file has landed.
+              const fbUrl = !isImage && typeof item.fallback_url === 'string' && item.fallback_url ? item.fallback_url : null;
+              if (fbUrl && !urls.has(fbUrl)) {
+                urls.add(fbUrl);
+                const fbAbs = fbUrl.startsWith('http') ? fbUrl : `${getApiRoot()}${fbUrl}`;
+                const fbSize = Number.isSafeInteger(item.fallback_size) && item.fallback_size > 0
+                  ? item.fallback_size as number : undefined;
+                const fbHash = typeof item.fallback_hash === 'string' && /^[0-9a-f]{64}$/i.test(item.fallback_hash)
+                  ? item.fallback_hash.toLowerCase() : undefined;
+                playlistAssets.push({ url: fbAbs, ...(fbSize ? { size: fbSize } : {}), ...(fbHash ? { sha256: fbHash } : {}) });
+                playlistAssetKeys.push(stableManifestUrlKey(fbAbs));
+              }
+              playlistAssets.push({ url: playbackUrl, ...(size ? { size } : {}), ...(sha256 ? { sha256 } : {}) });
               // Item ids do not change when a transcode swaps the media URL.
               // The cache identity must follow the bytes the player renders.
               playlistAssetKeys.push(stableManifestUrlKey(playbackUrl));
@@ -6090,28 +6171,10 @@ function PlayerPage() {
         if (playlistAssets.length > 0) {
           // Stable hash of the URL set so re-pushes are skipped when nothing changed.
           const setHash = playlistAssetKeys.sort().join('|');
-          if (setHash !== lastPlaylistSetHashRef.current &&
-              !playlistCacheInFlightRef.current && Date.now() >= playlistCacheRetryAtRef.current) {
-            playlistCacheInFlightRef.current = setHash;
-            // Kick the SW pre-cache AND seed the splash with the total so
-            // the bar can fill as PRECACHE_PROGRESS events arrive.
-            setLoadProgress({ phase: 'assets', loaded: 0, total: playlistAssets.length });
-            void precachePlaylist(playlistAssets).then((result) => {
-              if (playlistCacheInFlightRef.current !== setHash) return;
-              playlistCacheInFlightRef.current = '';
-              if (result.ok) {
-                lastPlaylistSetHashRef.current = setHash;
-                playlistCacheRetryAtRef.current = 0;
-              } else {
-                // A failed fetch or a full WebView cache must not latch this
-                // URL set as "cached" for the rest of the player session.
-                playlistCacheRetryAtRef.current = Date.now() + 60_000;
-              }
-            }).catch(() => {
-              playlistCacheInFlightRef.current = '';
-              playlistCacheRetryAtRef.current = Date.now() + 60_000;
-            });
-          }
+          // One entry point for the cache drive (2026-09-26): it latches the set
+          // only on a confirmed `ok`, backs off on failure, and the 15 s tick
+          // below re-drives it without waiting for another manifest apply.
+          startPlaylistPrecacheRef.current(setHash, playlistAssets);
         }
       } catch { /* defensive — SW push failures must never break playback */ }
 
@@ -6300,6 +6363,9 @@ function PlayerPage() {
               muted: item.muted,
               asset: {
                 fileUrl: item.url,
+                // 2026-09-26 — the 1080p copy a >1080p screen may play until
+                // its native file is in the cache (mediaSourceChoice.ts).
+                fallbackUrl: typeof item.fallback_url === 'string' && item.fallback_url ? item.fallback_url : null,
                 // Use the manifest's mime_type when available (always set
                 // by the API now). Fall back to URL-extension guessing
                 // only for legacy manifests / older payloads, which is
@@ -9422,6 +9488,123 @@ function PlayerPage() {
     setMediaReady(true);
   }, []);
 
+  // ── Playlist cache drive (2026-09-26, 4K cache-fill incident) ─────────
+  // ONE entry point for pushing the manifest's media into the offline cache.
+  // The worker fetches small files itself and hands big ones back for the
+  // page-driven chunk protocol (offline-cache.ts); this latches the asset
+  // set only on a confirmed `ok`, backs off on failure, and records which
+  // URLs are on disk so the video slides can prefer a cached native file.
+  const startPlaylistPrecache = useCallback((setHash: string, assets: PlaylistCacheAsset[]) => {
+    playlistCacheAssetsRef.current = { setHash, assets };
+    if (lastPlaylistSetHashRef.current === setHash) return; // everything confirmed cached
+    if (playlistCacheInFlightRef.current === setHash) return; // this very set is in flight
+    if (playlistCacheInFlightRef.current) playlistCacheAbortRef.current?.abort(); // a newer manifest wins
+    if (!playlistCacheRetryRef.current.isDue(Date.now())) return; // backing off — the tick retries
+    const controller = new AbortController();
+    playlistCacheAbortRef.current = controller;
+    playlistCacheInFlightRef.current = setHash;
+    const markCached = (urlsToMark: string[]) => setCachedMediaKeys((prev) => {
+      let next: Set<string> | null = null;
+      for (const u of urlsToMark) {
+        const k = stableManifestUrlKey(u);
+        if (prev.has(k)) continue;
+        if (!next) next = new Set(prev);
+        next.add(k);
+      }
+      return next ?? prev;
+    });
+    // What is already on disk decides which file a slide mounts right now.
+    void lookupCached(assets).then((found) => {
+      if (found) markCached(assets.filter((a) => found[a.url] === true).map((a) => a.url));
+    }).catch(() => { /* unknown ≠ not cached; the drive below still runs */ });
+    setLoadProgress({ phase: 'assets', loaded: 0, total: assets.length });
+    void precachePlaylist(assets, undefined, {
+      signal: controller.signal,
+      onAssetCached: (url) => markCached([url]),
+    }).then((result) => {
+      if (playlistCacheInFlightRef.current !== setHash) return; // superseded
+      playlistCacheInFlightRef.current = '';
+      if (result.ok) {
+        lastPlaylistSetHashRef.current = setHash;
+        playlistCacheRetryRef.current.recordSuccess();
+        markCached(assets.map((a) => a.url));
+        setLoadProgress({ phase: 'ready' });
+        return;
+      }
+      if (result.aborted) return;
+      // A failed or partial fill must not latch this set as cached for the
+      // rest of the session; the policy says when to try again.
+      const delayMs = playlistCacheRetryRef.current.recordFailure(Date.now());
+      setLoadProgress((prev) => prev
+        ? { ...prev, lastError: `Content download incomplete; retrying in ${Math.round(delayMs / 1000)}s`, retrying: (prev.retrying ?? 0) + 1 }
+        : prev);
+    }).catch(() => {
+      if (playlistCacheInFlightRef.current !== setHash) return;
+      playlistCacheInFlightRef.current = '';
+      playlistCacheRetryRef.current.recordFailure(Date.now());
+    });
+  }, []);
+  useEffect(() => {
+    startPlaylistPrecacheRef.current = startPlaylistPrecache;
+  }, [startPlaylistPrecache]);
+
+  // The retry tick — deliberately independent of manifest applies: an
+  // unchanged manifest poll is a 304 and never re-enters applyManifest, which
+  // is how a failed download stayed stranded before (Codex handoff, 2026-09-26).
+  // A display surface keeps its timers off-focus (perf-allow: the player is
+  // the screen, not a dashboard tab).
+  useEffect(() => {
+    const attempt = () => {
+      const last = playlistCacheAssetsRef.current;
+      if (!last || lastPlaylistSetHashRef.current === last.setHash || playlistCacheInFlightRef.current) return;
+      if (!playlistCacheRetryRef.current.isDue(Date.now())) return;
+      startPlaylistPrecacheRef.current(last.setHash, last.assets);
+    };
+    const t = setInterval(attempt, 15_000);
+    const onOnline = () => { playlistCacheRetryRef.current.expedite(); attempt(); };
+    window.addEventListener('online', onOnline);
+    return () => { clearInterval(t); window.removeEventListener('online', onOnline); };
+  }, []);
+
+  // ── Which file each video slide mounts (2026-09-26) ───────────────────
+  // Pinned per slide while it is on glass (a swap mid-clip would restart
+  // it). The ACTIVE slide keeps its pin; every other slide is re-decided from
+  // the cache facts each time the index moves, so a hidden next-up slide
+  // remounts on the native file as soon as it lands. A solo loop never
+  // changes index — its slide asks to be re-decided at its wrap instead.
+  const [videoSourceKinds, setVideoSourceKinds] = useState<Record<string, VideoSourceKind>>({});
+  useEffect(() => {
+    setVideoSourceKinds((prev) => {
+      const next: Record<string, VideoSourceKind> = {};
+      if (sorted.length) {
+        const activeId = sorted[currentIndex % sorted.length]?.id as string | undefined;
+        const nextId = sorted.length > 1 ? sorted[(currentIndex + 1) % sorted.length]?.id as string | undefined : undefined;
+        type SlideLike = { id?: string; asset?: { fileUrl?: string; fallbackUrl?: string | null } };
+        for (const id of [activeId, nextId]) {
+          if (!id) continue;
+          const item = (sorted as SlideLike[]).find((s) => s.id === id);
+          if (!item) continue;
+          const fileUrl: string = item.asset?.fileUrl || '';
+          const primaryKey = stableManifestUrlKey(fileUrl.startsWith('http') ? fileUrl : `${getApiRoot()}${fileUrl}`);
+          next[id] = id === activeId && prev[id]
+            ? prev[id]
+            : chooseVideoSourceKind({ primaryCached: cachedMediaKeys.has(primaryKey), hasFallback: !!item.asset?.fallbackUrl });
+        }
+      }
+      const prevKeys = Object.keys(prev);
+      const same = prevKeys.length === Object.keys(next).length && prevKeys.every((k) => prev[k] === next[k]);
+      return same ? prev : next;
+    });
+  }, [sorted, currentIndex, cachedMediaKeys]);
+  const forgetVideoSourceKind = useCallback((itemId: string) => {
+    setVideoSourceKinds((prev) => {
+      if (!(itemId in prev)) return prev;
+      const next = { ...prev };
+      delete next[itemId];
+      return next;
+    });
+  }, []);
+
   // Native Android URL overlay. For asset playlists containing URL
   // items, a modern APK renders the upstream site in a second top-level
   // WebView while this React player stays mounted underneath. Browser
@@ -11173,11 +11356,27 @@ function PlayerPage() {
               // sequence-order copies there are.
               const distinctItemCount = new Set(sorted.map((s: any) => s.id || s.assetId)).size;
               const isSoloPlaylist = distinctItemCount <= 1;
+              // 2026-09-26 — which file: the native one from the cache, else the
+              // 1080p fallback while the native file is still downloading (the
+              // 4K stream from origin is what stuttered). The pin lives in
+              // videoSourceKinds; a first render before the pin lands decides
+              // the same way, so nothing flickers.
+              const fallbackRaw: string | null = item.asset?.fallbackUrl || null;
+              const fallbackAbs = fallbackRaw
+                ? (fallbackRaw.startsWith('http') ? fallbackRaw : `${getApiRoot()}${fallbackRaw}`)
+                : null;
+              const primaryCached = cachedMediaKeys.has(stableManifestUrlKey(rawResUrl));
+              const sourceKind: VideoSourceKind = videoSourceKinds[item.id]
+                ?? chooseVideoSourceKind({ primaryCached, hasFallback: !!fallbackAbs });
+              const videoSrc = sourceKind === 'fallback' && fallbackAbs ? fallbackAbs : resUrl;
+              const slideKey = `${item.id}:${sourceKind}`;
               return (
                 <PlayerVideoSlide
-                  key={item.id}
-                  videoKey={item.id}
-                  src={resUrl}
+                  key={slideKey}
+                  videoKey={slideKey}
+                  src={videoSrc}
+                  upgradeReady={upgradeAvailable({ kind: sourceKind, primaryCached, hasFallback: !!fallbackAbs })}
+                  onLoopWrap={() => forgetVideoSourceKind(item.id)}
                   isActive={isActive}
                   classes={classes}
                   isSoloPlaylist={isSoloPlaylist}
@@ -11198,7 +11397,7 @@ function PlayerPage() {
                     if (!syncActiveRef.current) setCurrentIndex(prev => prev + 1);
                   }}
                   onError={() => {
-                    console.warn('[Player] video error, skipping:', resUrl);
+                    console.warn('[Player] video error, skipping:', videoSrc);
                     markItemFailed(item.id);
                     if (!syncActiveRef.current) setCurrentIndex(prev => prev + 1);
                   }}

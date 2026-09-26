@@ -4,13 +4,14 @@
  * from a durable database row after rendition jobs finish. The sweep also
  * resumes work after an API restart.
  */
-import { HttpException, HttpStatus, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import type { Asset, Prisma } from '@cms/database';
 import { createHash, randomUUID } from 'crypto';
 import { extname } from 'path';
 import sharp from 'sharp';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
+import { LEASE, LeaderLeaseService, leadThisTick } from '../realtime/leader-lease.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
 import { VideoTranscodeService } from '../storage/video-transcode/video-transcode.service';
 import { SupabaseStorageService } from '../storage/supabase-storage.service';
@@ -70,6 +71,7 @@ export class MediaPublicationService implements OnModuleInit, OnModuleDestroy {
     private readonly signer: WebsocketSignerService,
     private readonly storage: SupabaseStorageService,
     private readonly mediaOpt: MediaOptimizationService,
+    @Optional() private readonly lease?: LeaderLeaseService,
   ) {}
 
   private async ensureImageCopy(tenantId: string, asset: Asset): Promise<void> {
@@ -185,8 +187,20 @@ export class MediaPublicationService implements OnModuleInit, OnModuleDestroy {
     if (this.sweeping) return;
     this.sweeping = true;
     try {
+      // Multi-replica (2026-09-26): one sweeper. Every write below is
+      // claim-guarded (updateMany on pendingMedia / pendingRefreshAt), so a
+      // second replica would be safe but wasteful — it would scan the same
+      // rows every 15 s and re-queue the same rendition jobs. A replica that
+      // cannot reach Redis leads, degraded, per the standing rule.
+      const lease = await leadThisTick(this.lease, LEASE.MEDIA_PUBLICATION_SWEEP);
+      if (!lease.leader) return;
+      // A row already stamped with an error is inert: only a fresh publish (a
+      // new row) may go live for that playlist. Re-selecting stamped rows every
+      // tick let 50 platform-wide failures crowd every newer rule out of this
+      // `take` forever (review finding P1-6), and a stale row that activated
+      // months later would displace whatever the operator published since.
       const pending = await this.prisma.client.schedule.findMany({
-        where: { pendingMedia: true, isActive: false },
+        where: { pendingMedia: true, isActive: false, pendingMediaError: null },
         take: 50,
         orderBy: { startTime: 'asc' },
         include: {

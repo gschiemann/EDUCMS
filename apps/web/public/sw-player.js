@@ -46,6 +46,13 @@
  *                                                     → PRECACHE_SHELL_DONE
  *     `extra` = same-origin /_next/static paths the PAGE is running on but
  *     the route HTML does not name — i.e. dynamically imported chunks.
+ *   { type: 'PRECACHE_CHUNK', url, sha256, size, offset, chunkBytes } (port ack)
+ *   { type: 'PRECACHE_VERIFY', url, sha256 }            (port ack)
+ *   { type: 'PRECACHE_ASSEMBLE', url, sha256 }          (port ack)
+ *       — the large-asset staging protocol (2026-09-26); see the block
+ *         above precachePlaylist. PRECACHE_PLAYLIST acks `pending` for
+ *         files it will not download inside its own event.
+ *   { type: 'CACHE_LOOKUP', urls: [{ url, sha256 }] }  (port ack → { cached })
  *   { type: 'STATUS_REQUEST' }                         → STATUS_REPLY
  *   { type: 'CLEAR_CACHE',        tier: 'playlist'|'emergency'|'shell'|'all' }
  */
@@ -96,7 +103,11 @@ const PLAYLIST_CACHE = `edu-player-playlist-${VERSION}`;
 const EMERGENCY_CACHE = `edu-player-emergency-${VERSION}`;
 const META_CACHE = `edu-player-meta-${VERSION}`; // stores sha hashes per URL
 const SHELL_CACHE = `edu-player-shell-${VERSION}`; // /_next/static app shell
-const ALL_CACHES = [PLAYLIST_CACHE, EMERGENCY_CACHE, META_CACHE, SHELL_CACHE];
+// Large-asset staging (2026-09-26): one entry per downloaded Range chunk of a
+// big playlist file, promoted into PLAYLIST_CACHE only after the whole file
+// verified. Same VERSION suffix so a bump discards half-downloads with the rest.
+const STAGING_CACHE = `edu-player-staging-${VERSION}`;
+const ALL_CACHES = [PLAYLIST_CACHE, EMERGENCY_CACHE, META_CACHE, SHELL_CACHE, STAGING_CACHE];
 
 // Routes whose HTML we parse to enumerate the app shell. The SW is scoped
 // to /player, so the player route is the only entry it controls.
@@ -465,6 +476,18 @@ self.addEventListener('message', (event) => {
     event.waitUntil(precacheEmergency(msg.assets || [], msg.setHash || '', ackPort));
   } else if (msg.type === 'PRECACHE_SHELL') {
     event.waitUntil(precacheAppShell(msg.routes, msg.extra));
+  } else if (msg.type === 'PRECACHE_CHUNK') {
+    // Large-asset staging (2026-09-26). Each of these is its OWN message
+    // event on purpose: Chromium stops a worker whose event runs past five
+    // minutes, so a big file is fetched as short, separately-timed steps that
+    // the page drives — see the staging block above precachePlaylist.
+    event.waitUntil(answerPort(event, () => stageChunk(msg)));
+  } else if (msg.type === 'PRECACHE_VERIFY') {
+    event.waitUntil(answerPort(event, () => verifyStaged(msg)));
+  } else if (msg.type === 'PRECACHE_ASSEMBLE') {
+    event.waitUntil(answerPort(event, () => assembleStaged(msg)));
+  } else if (msg.type === 'CACHE_LOOKUP') {
+    event.waitUntil(answerPort(event, () => cacheLookup(msg)));
   } else if (msg.type === 'STATUS_REQUEST') {
     event.waitUntil(replyStatus(event.source));
   } else if (msg.type === 'CLEAR_CACHE') {
@@ -694,6 +717,594 @@ async function precacheAppShell(routes, extra) {
   await broadcast({ type: 'PRECACHE_SHELL_DONE', count: wanted.size, added });
 }
 
+// ─── Large-asset staging (2026-09-26 — the 4K cache-fill incident) ─────────
+//
+// WHY. A 3840×2160 clip is 135–145 MB. Two things in the old path could not
+// survive that on a signage box:
+//   1. fetchAndStore verified the digest with `await res.clone().arrayBuffer()`
+//      — the WHOLE body in service-worker memory, next to the tee'd copy the
+//      cache write consumes. On a 1–2 GB Android WebView that is an OOM kill.
+//   2. The whole playlist downloaded inside ONE PRECACHE_PLAYLIST message
+//      event. Chromium stops a service worker whose event runs past five
+//      minutes (kRequestTimeout, KILL_ON_TIMEOUT). A 141 MB file on a 3 Mbps
+//      venue link takes longer than that: the worker died mid-download, the
+//      cache stayed EMPTY, the <video> streamed 4K from origin, and the field
+//      4K screen dropped 121 of 264 frames (2026-09-25).
+//
+// NOW. An asset at or above LARGE_ASSET_BYTES is never fetched inside
+// PRECACHE_PLAYLIST. The worker reports it as `pending` and the PAGE drives it
+// through short, separately-timed events, one Range request at a time:
+//   PRECACHE_CHUNK    { url, sha256, size, offset, chunkBytes }
+//                     one Range fetch (≤ CHUNK_BYTES_MAX, aborted at
+//                     CHUNK_FETCH_TIMEOUT_MS) → its own STAGING entry keyed by
+//                     byte range. A chunk already staged at that offset acks
+//                     WITHOUT a fetch, so resume after a kill or reload is free.
+//   PRECACHE_VERIFY   { url, sha256 }
+//                     streams every staged chunk through an incremental
+//                     SHA-256 (bounded memory) and compares to the manifest
+//                     digest; a mismatch purges the staging.
+//   PRECACHE_ASSEMBLE { url, sha256 }
+//                     streams the VERIFIED chunks into one PLAYLIST_CACHE entry
+//                     (disk → disk, seconds), writes the same meta rows
+//                     fetchAndStore writes, drops the staging.
+//   CACHE_LOOKUP      { urls: [{ url, sha256 }] }
+//                     which of these URLs are cached and current — the page
+//                     uses it to prefer a cached 4K file over a fallback.
+// No unverified byte ever lands under the real URL. A kill mid-way costs one
+// chunk, never the whole file. Memory stays at one stream buffer.
+//
+// The emergency tier is deliberately NOT routed through this path — its
+// never-evict rules live in precacheEmergency and are a separate sign-off.
+
+const LARGE_ASSET_BYTES = 8 * 1024 * 1024;
+const CHUNK_BYTES_DEFAULT = 8 * 1024 * 1024;
+const CHUNK_BYTES_MIN = 1024 * 1024;
+const CHUNK_BYTES_MAX = 32 * 1024 * 1024;
+// Under Chromium's five-minute event budget with room for the cache write.
+const CHUNK_FETCH_TIMEOUT_MS = 240 * 1000;
+const STAGE_PREFIX = '/__edu_stage__/';
+const STAGE_INFO_PREFIX = '/__edu_stage_info__/';
+const STAGE_OK_PREFIX = '/__edu_stage_ok__/';
+const VIDEO_URL_RE = /\.(mp4|m4v|mov|webm|mkv)(\?|#|$)/i;
+// In-flight chunk fetches, so two overlapping requests for the same range
+// (a reloaded page racing its predecessor) never write the same entry twice.
+const STAGE_IN_FLIGHT = new Set();
+
+/** Big enough that the whole-body digest and the single-event download would hurt. */
+function isLargeAsset(asset) {
+  if (!asset || !asset.url) return false;
+  if (typeof asset.size === 'number' && asset.size > 0) return asset.size >= LARGE_ASSET_BYTES;
+  return VIDEO_URL_RE.test(String(asset.url));
+}
+
+function stageEncodedKey(url) {
+  return encodeURIComponent(stableKey(url));
+}
+function stagePrefixFor(url) {
+  return `${STAGE_PREFIX}${stageEncodedKey(url)}/`;
+}
+function stageChunkKey(url, start, length) {
+  return new Request(`${stagePrefixFor(url)}${start}-${length}`);
+}
+function stageInfoKey(url) {
+  return new Request(`${STAGE_INFO_PREFIX}${stageEncodedKey(url)}`);
+}
+function stageOkKey(url) {
+  return new Request(`${STAGE_OK_PREFIX}${stageEncodedKey(url)}`);
+}
+
+/** `bytes a-b/total` (total may be `*`). null when absent, unreadable (CORS) or malformed. */
+function parseContentRange(header) {
+  const m = /^\s*bytes\s+(\d+)-(\d+)\/(\d+|\*)\s*$/i.exec(String(header || ''));
+  if (!m) return null;
+  const start = Number(m[1]);
+  const end = Number(m[2]);
+  const total = m[3] === '*' ? null : Number(m[3]);
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || end < start) return null;
+  if (total !== null && (!Number.isSafeInteger(total) || end >= total)) return null;
+  return { start, end, total };
+}
+
+/**
+ * Walk staged chunks from byte 0. Returns the contiguous run and where it
+ * stops; `ok` only when it reaches a known total. Overlapping leftovers (a
+ * smaller chunk size after a timeout) are skipped, never double-counted.
+ */
+function contiguousLayout(chunks, total) {
+  const sorted = [...chunks].sort((a, b) => a.start - b.start || b.length - a.length);
+  const run = [];
+  let pos = 0;
+  for (const c of sorted) {
+    if (c.start < pos) continue; // overlap — already covered
+    if (c.start > pos) break; // gap
+    if (c.length <= 0) continue;
+    run.push(c);
+    pos = c.start + c.length;
+    if (total !== null && pos >= total) break;
+  }
+  const ok = total !== null && pos >= total;
+  return { ok, chunks: run, nextOffset: pos, total };
+}
+
+function parseStagedChunkPath(pathname, prefix) {
+  if (!pathname.startsWith(prefix)) return null;
+  const m = /^(\d+)-(\d+)$/.exec(pathname.slice(prefix.length));
+  if (!m) return null;
+  const start = Number(m[1]);
+  const length = Number(m[2]);
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(length) || length <= 0) return null;
+  return { start, length };
+}
+
+async function listStagedChunks(staging, url) {
+  const prefix = stagePrefixFor(url);
+  const keys = await staging.keys();
+  const out = [];
+  for (const req of keys) {
+    let pathname;
+    try { pathname = new URL(req.url).pathname; } catch (_e) { continue; }
+    const parsed = parseStagedChunkPath(pathname, prefix);
+    if (parsed) out.push(parsed);
+  }
+  return out;
+}
+
+async function readStageInfo(staging, url) {
+  try {
+    const res = await staging.match(stageInfoKey(url));
+    if (!res) return null;
+    const info = await res.json();
+    return info && typeof info === 'object' ? info : null;
+  } catch (_e) {
+    return null;
+  }
+}
+
+async function writeStageInfo(staging, url, info) {
+  await staging.put(
+    stageInfoKey(url),
+    new Response(JSON.stringify(info), { headers: { 'content-type': 'application/json' } }),
+  );
+}
+
+async function purgeStaging(staging, url) {
+  const prefix = stagePrefixFor(url);
+  const keys = await staging.keys();
+  for (const req of keys) {
+    let pathname;
+    try { pathname = new URL(req.url).pathname; } catch (_e) { continue; }
+    if (pathname.startsWith(prefix)) await staging.delete(req);
+  }
+  await staging.delete(stageInfoKey(url));
+  await staging.delete(stageOkKey(url));
+}
+
+/** Drop staging for every URL that is not in the live manifest set. */
+async function purgeStagingExcept(liveStableUrls) {
+  const staging = await caches.open(STAGING_CACHE);
+  const keep = new Set();
+  for (const u of liveStableUrls) keep.add(encodeURIComponent(u));
+  const keys = await staging.keys();
+  for (const req of keys) {
+    let pathname;
+    try { pathname = new URL(req.url).pathname; } catch (_e) { continue; }
+    let encoded = null;
+    if (pathname.startsWith(STAGE_PREFIX)) encoded = pathname.slice(STAGE_PREFIX.length).split('/')[0];
+    else if (pathname.startsWith(STAGE_INFO_PREFIX)) encoded = pathname.slice(STAGE_INFO_PREFIX.length);
+    else if (pathname.startsWith(STAGE_OK_PREFIX)) encoded = pathname.slice(STAGE_OK_PREFIX.length);
+    if (encoded !== null && !keep.has(encoded)) await staging.delete(req);
+  }
+}
+
+/** Cached and, when the manifest carries a digest, the digest we verified matches it. */
+async function isCachedCurrent(asset, cache, meta) {
+  if (!asset || !asset.url) return false;
+  const req = new Request(asset.url, { mode: 'cors', credentials: 'omit' });
+  const cached = await cache.match(req, { ignoreSearch: true });
+  if (!cached) return false;
+  if (!asset.sha256) return true;
+  const storedHashRes = await meta.match(metaKey(asset.url));
+  const storedHash = storedHashRes ? await storedHashRes.text() : '';
+  return storedHash.toLowerCase() === String(asset.sha256).toLowerCase();
+}
+
+async function cacheLookup(msg) {
+  const list = Array.isArray(msg && msg.urls) ? msg.urls : [];
+  const [cache, meta] = await Promise.all([caches.open(PLAYLIST_CACHE), caches.open(META_CACHE)]);
+  const cached = {};
+  for (const entry of list) {
+    const asset = typeof entry === 'string' ? { url: entry } : entry;
+    if (!asset || !asset.url) continue;
+    try {
+      cached[asset.url] = await isCachedCurrent(asset, cache, meta);
+    } catch (_e) {
+      cached[asset.url] = false;
+    }
+  }
+  return { ok: true, cached };
+}
+
+/** Reply on the message's port; a thrown error becomes an honest `{ ok: false }`. */
+async function answerPort(event, work) {
+  const port = (event.ports && event.ports[0]) || null;
+  let reply;
+  try {
+    reply = await work();
+  } catch (e) {
+    reply = { ok: false, reason: (e && e.message) || 'error' };
+  }
+  if (port) {
+    try { port.postMessage(reply); } catch (_e) { /* page may have reloaded */ }
+  }
+  return reply;
+}
+
+/**
+ * Store one chunk body: stream it to a temporary entry, measure what actually
+ * landed (a body that ended early must never masquerade as a full chunk), then
+ * copy it under its byte-range key. `Response.blob()` on a cache-backed body is
+ * a handle in Chromium, not a read, so this is a disk-to-disk copy of a few MB.
+ */
+async function storeStagedChunk(staging, url, start, res, contentType) {
+  const tmpKey = new Request(`${stagePrefixFor(url)}tmp`);
+  await staging.put(tmpKey, new Response(res.body, { status: 200, headers: { 'content-type': contentType } }));
+  const tmp = await staging.match(tmpKey);
+  const blob = tmp ? await tmp.blob() : null;
+  const length = blob ? blob.size : 0;
+  if (!blob || length <= 0) {
+    await staging.delete(tmpKey);
+    throw new Error('empty-chunk');
+  }
+  await staging.put(
+    stageChunkKey(url, start, length),
+    new Response(blob, { status: 200, headers: { 'content-type': contentType, 'content-length': String(length) } }),
+  );
+  await staging.delete(tmpKey);
+  return length;
+}
+
+async function stageChunk(msg) {
+  const url = msg && typeof msg.url === 'string' ? msg.url : '';
+  if (!url) return { ok: false, reason: 'bad-request' };
+  const offset = Number.isSafeInteger(msg.offset) && msg.offset >= 0 ? msg.offset : 0;
+  const want = Math.max(CHUNK_BYTES_MIN, Math.min(CHUNK_BYTES_MAX,
+    Number.isSafeInteger(msg.chunkBytes) && msg.chunkBytes > 0 ? msg.chunkBytes : CHUNK_BYTES_DEFAULT));
+  const knownSize = Number.isSafeInteger(msg.size) && msg.size > 0 ? msg.size : null;
+  const staging = await caches.open(STAGING_CACHE);
+  const info = await readStageInfo(staging, url);
+  if (info && knownSize !== null && info.total && info.total !== knownSize) {
+    // The manifest now describes a different file than the one we started.
+    await purgeStaging(staging, url);
+    return { ok: false, reason: 'size-mismatch', offset };
+  }
+  let total = info && Number.isSafeInteger(info.total) && info.total > 0 ? info.total : knownSize;
+
+  // Resume: a chunk already staged at this offset needs no network.
+  const have = await listStagedChunks(staging, url);
+  const existing = have.filter((c) => c.start === offset).sort((a, b) => b.length - a.length)[0];
+  if (existing) {
+    const next = offset + existing.length;
+    return { ok: true, offset, nextOffset: next, total, complete: total !== null && next >= total, staged: true };
+  }
+  if (total !== null && offset >= total) {
+    return { ok: true, offset, nextOffset: offset, total, complete: true, staged: true };
+  }
+
+  const lockKey = `${stableKey(url)}@${offset}`;
+  if (STAGE_IN_FLIGHT.has(lockKey)) return { ok: false, reason: 'busy', offset };
+  STAGE_IN_FLIGHT.add(lockKey);
+  const controller = typeof AbortController === 'function' ? new AbortController() : null;
+  const timer = setTimeout(() => { try { if (controller) controller.abort(); } catch (_e) { /* noop */ } }, CHUNK_FETCH_TIMEOUT_MS);
+  try {
+    const end = total !== null ? Math.min(offset + want, total) - 1 : offset + want - 1;
+    const req = new Request(url, { mode: 'cors', credentials: 'omit', headers: { Range: `bytes=${offset}-${end}` } });
+    let res;
+    try {
+      res = await fetch(req, controller ? { signal: controller.signal } : undefined);
+    } catch (e) {
+      return { ok: false, reason: e && e.name === 'AbortError' ? 'fetch-timeout' : 'network', offset };
+    }
+    if (res.status === 416) {
+      // Past the end. With no total announced yet, a contiguous run up to this
+      // offset IS the whole file (an exact multiple of the chunk size).
+      if (total === null && offset > 0 && contiguousLayout(have, offset).ok) {
+        await writeStageInfo(staging, url, { ...(info || {}), total: offset });
+        return { ok: true, offset, nextOffset: offset, total: offset, complete: true, staged: true };
+      }
+      await purgeStaging(staging, url);
+      return { ok: false, reason: 'range-not-satisfiable', offset };
+    }
+    if (res.status === 200 && offset !== 0) {
+      // The server ignored Range. Only a from-zero request can use a full body.
+      await purgeStaging(staging, url);
+      return { ok: false, reason: 'range-unsupported', offset };
+    }
+    if (res.status !== 206 && res.status !== 200) {
+      return { ok: false, reason: `http-${res.status}`, offset };
+    }
+    const contentType = res.headers.get('content-type') || (info && info.contentType) || 'application/octet-stream';
+    const lastModified = res.headers.get('last-modified') || '';
+    if (info && info.lastModified && lastModified && info.lastModified !== lastModified) {
+      await purgeStaging(staging, url);
+      return { ok: false, reason: 'source-changed', offset };
+    }
+    let expected = null;
+    if (res.status === 206) {
+      const cr = parseContentRange(res.headers.get('content-range'));
+      if (cr) {
+        if (cr.start !== offset) {
+          await purgeStaging(staging, url);
+          return { ok: false, reason: 'range-mismatch', offset };
+        }
+        if (cr.total !== null) {
+          if (total !== null && cr.total !== total) {
+            await purgeStaging(staging, url);
+            return { ok: false, reason: 'size-mismatch', offset };
+          }
+          total = cr.total;
+        }
+        expected = cr.end - cr.start + 1;
+      } else if (total !== null) {
+        expected = Math.min(want, total - offset);
+      }
+    } else {
+      // 200 from offset 0: the whole file in one body.
+      const cl = Number(res.headers.get('content-length') || 0);
+      if (cl > 0) {
+        if (total !== null && cl !== total) {
+          await purgeStaging(staging, url);
+          return { ok: false, reason: 'size-mismatch', offset };
+        }
+        total = cl;
+        expected = cl;
+      }
+    }
+    let stored;
+    try {
+      stored = await storeStagedChunk(staging, url, offset, res, contentType);
+    } catch (e) {
+      return { ok: false, reason: e && e.name === 'AbortError' ? 'fetch-timeout' : 'truncated', offset };
+    }
+    if (expected !== null && stored !== expected) {
+      if (res.status === 206 && total === null && stored < expected) {
+        total = offset + stored; // short final chunk with no total announced
+      } else {
+        await staging.delete(stageChunkKey(url, offset, stored));
+        return { ok: false, reason: 'truncated', offset };
+      }
+    }
+    if (total === null) {
+      if (res.status === 200) total = offset + stored;
+      else if (stored < want) total = offset + stored; // short chunk = end of file
+    }
+    if (total !== null && offset + stored > total) {
+      await purgeStaging(staging, url);
+      return { ok: false, reason: 'size-mismatch', offset };
+    }
+    const nextInfo = { total, contentType, lastModified: lastModified || (info && info.lastModified) || '' };
+    if (!info || info.total !== nextInfo.total || info.contentType !== nextInfo.contentType || info.lastModified !== nextInfo.lastModified) {
+      await writeStageInfo(staging, url, nextInfo);
+    }
+    const next = offset + stored;
+    return { ok: true, offset, nextOffset: next, total, complete: total !== null && next >= total };
+  } finally {
+    clearTimeout(timer);
+    STAGE_IN_FLIGHT.delete(lockKey);
+  }
+}
+
+async function pumpStream(stream, onBytes) {
+  const reader = stream.getReader();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) return;
+    if (value && value.length) onBytes(value);
+  }
+}
+
+function isSha256Hex(value) {
+  return typeof value === 'string' && /^[0-9a-f]{64}$/i.test(value);
+}
+
+async function verifyStaged(msg) {
+  const url = msg && typeof msg.url === 'string' ? msg.url : '';
+  if (!url) return { ok: false, reason: 'bad-request' };
+  const expected = isSha256Hex(msg.sha256) ? msg.sha256.toLowerCase() : null;
+  const staging = await caches.open(STAGING_CACHE);
+  const info = await readStageInfo(staging, url);
+  const total = info && Number.isSafeInteger(info.total) && info.total > 0 ? info.total : null;
+  const layout = contiguousLayout(await listStagedChunks(staging, url), total);
+  if (!layout.ok) return { ok: false, reason: 'incomplete', nextOffset: layout.nextOffset, total };
+  if (expected) {
+    const hasher = new Sha256();
+    for (const c of layout.chunks) {
+      const res = await staging.match(stageChunkKey(url, c.start, c.length));
+      if (!res || !res.body) return { ok: false, reason: 'incomplete', nextOffset: c.start, total };
+      await pumpStream(res.body, (bytes) => hasher.update(bytes));
+    }
+    if (hasher.digestHex() !== expected) {
+      // Wrong bytes must never be promoted, and never be reused either.
+      await purgeStaging(staging, url);
+      console.warn('[sw-player] staged download failed SHA-256, discarded', { url });
+      return { ok: false, reason: 'sha256-mismatch' };
+    }
+  }
+  await staging.put(
+    stageOkKey(url),
+    new Response(JSON.stringify({ sha256: expected, total: layout.total }), { headers: { 'content-type': 'application/json' } }),
+  );
+  return { ok: true, total: layout.total, verified: !!expected };
+}
+
+async function assembleStaged(msg) {
+  const url = msg && typeof msg.url === 'string' ? msg.url : '';
+  if (!url) return { ok: false, reason: 'bad-request' };
+  const expected = isSha256Hex(msg.sha256) ? msg.sha256.toLowerCase() : null;
+  const staging = await caches.open(STAGING_CACHE);
+  let marker = null;
+  try {
+    const okRes = await staging.match(stageOkKey(url));
+    marker = okRes ? await okRes.json() : null;
+  } catch (_e) { marker = null; }
+  // Only bytes PRECACHE_VERIFY passed for THIS digest may become the served file.
+  if (!marker || !Number.isSafeInteger(marker.total) || (expected && marker.sha256 !== expected) || (!expected && marker.sha256)) {
+    return { ok: false, reason: 'not-verified' };
+  }
+  const info = await readStageInfo(staging, url);
+  const layout = contiguousLayout(await listStagedChunks(staging, url), marker.total);
+  if (!layout.ok) return { ok: false, reason: 'incomplete', nextOffset: layout.nextOffset, total: marker.total };
+  const [cache, meta] = await Promise.all([caches.open(PLAYLIST_CACHE), caches.open(META_CACHE)]);
+  const parts = layout.chunks;
+  let index = 0;
+  let reader = null;
+  const body = new ReadableStream({
+    async pull(controller) {
+      for (;;) {
+        if (!reader) {
+          if (index >= parts.length) { controller.close(); return; }
+          const part = parts[index];
+          index += 1;
+          const res = await staging.match(stageChunkKey(url, part.start, part.length));
+          if (!res || !res.body) throw new Error('chunk-missing');
+          reader = res.body.getReader();
+        }
+        const { done, value } = await reader.read();
+        if (done) { reader = null; continue; }
+        controller.enqueue(value);
+        return;
+      }
+    },
+    cancel() {
+      try { if (reader) reader.cancel(); } catch (_e) { /* noop */ }
+    },
+  });
+  const headers = {
+    'content-type': (info && info.contentType) || 'application/octet-stream',
+    'content-length': String(layout.total),
+    'accept-ranges': 'bytes',
+  };
+  const req = new Request(url, { mode: 'cors', credentials: 'omit' });
+  await cache.put(req, new Response(body, { status: 200, headers }));
+  // The same records fetchAndStore writes, so status sums, hash checks and the
+  // bounded revalidation treat this entry exactly like a directly fetched one.
+  const norm = normalizeUrl(url);
+  SIZE_BY_URL.set(norm, layout.total);
+  await meta.put(sizeMetaKey(url), new Response(String(layout.total), { headers: { 'content-type': 'text/plain' } }));
+  if (expected) {
+    await meta.put(metaKey(url), new Response(expected, { headers: { 'content-type': 'text/plain' } }));
+  }
+  try {
+    await meta.put(storedAtMetaKey(url), new Response(String(Date.now()), { headers: { 'content-type': 'text/plain' } }));
+  } catch (_e) { /* meta write best-effort */ }
+  await purgeStaging(staging, url);
+  return { ok: true, total: layout.total };
+}
+
+// ─── Incremental SHA-256 (FIPS 180-4) ───────────────────────────────────────
+// crypto.subtle.digest needs the whole message in one buffer, which is the
+// exact allocation that killed the worker on a 141 MB file. This hashes a
+// stream 64 bytes at a time; the unit test checks it against node:crypto.
+const SHA256_K = new Uint32Array([
+  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+  0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+  0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+  0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+  0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+]);
+
+/** The two 32-bit words of the padded bit length (messages past 512 MiB need the high word). */
+function sha256LengthWords(lengthBytes) {
+  const hi = Math.floor(lengthBytes / 0x20000000); // bytes / 2^29 = bits / 2^32
+  const lo = (lengthBytes % 0x20000000) * 8;
+  return [hi >>> 0, lo >>> 0];
+}
+
+class Sha256 {
+  constructor() {
+    this.h = new Uint32Array([0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19]);
+    this.w = new Uint32Array(64);
+    this.buffer = new Uint8Array(64);
+    this.buffered = 0;
+    this.lengthBytes = 0;
+    this.finished = false;
+  }
+
+  update(input) {
+    if (this.finished) throw new Error('sha256-finished');
+    const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
+    let i = 0;
+    this.lengthBytes += bytes.length;
+    if (this.buffered > 0) {
+      const take = Math.min(64 - this.buffered, bytes.length);
+      this.buffer.set(bytes.subarray(0, take), this.buffered);
+      this.buffered += take;
+      i = take;
+      if (this.buffered < 64) return this;
+      this.block(this.buffer, 0);
+      this.buffered = 0;
+    }
+    for (; i + 64 <= bytes.length; i += 64) this.block(bytes, i);
+    if (i < bytes.length) {
+      this.buffer.set(bytes.subarray(i));
+      this.buffered = bytes.length - i;
+    }
+    return this;
+  }
+
+  block(bytes, offset) {
+    const w = this.w;
+    for (let t = 0; t < 16; t++) {
+      const j = offset + t * 4;
+      w[t] = ((bytes[j] << 24) | (bytes[j + 1] << 16) | (bytes[j + 2] << 8) | bytes[j + 3]) >>> 0;
+    }
+    for (let t = 16; t < 64; t++) {
+      const x = w[t - 15];
+      const y = w[t - 2];
+      const s0 = ((x >>> 7) | (x << 25)) ^ ((x >>> 18) | (x << 14)) ^ (x >>> 3);
+      const s1 = ((y >>> 17) | (y << 15)) ^ ((y >>> 19) | (y << 13)) ^ (y >>> 10);
+      w[t] = (w[t - 16] + s0 + w[t - 7] + s1) >>> 0;
+    }
+    const h = this.h;
+    let a = h[0]; let b = h[1]; let c = h[2]; let d = h[3];
+    let e = h[4]; let f = h[5]; let g = h[6]; let hh = h[7];
+    for (let t = 0; t < 64; t++) {
+      const S1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));
+      const ch = (e & f) ^ (~e & g);
+      const temp1 = (hh + S1 + ch + SHA256_K[t] + w[t]) >>> 0;
+      const S0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));
+      const maj = (a & b) ^ (a & c) ^ (b & c);
+      const temp2 = (S0 + maj) >>> 0;
+      hh = g; g = f; f = e;
+      e = (d + temp1) >>> 0;
+      d = c; c = b; b = a;
+      a = (temp1 + temp2) >>> 0;
+    }
+    h[0] = (h[0] + a) >>> 0; h[1] = (h[1] + b) >>> 0; h[2] = (h[2] + c) >>> 0; h[3] = (h[3] + d) >>> 0;
+    h[4] = (h[4] + e) >>> 0; h[5] = (h[5] + f) >>> 0; h[6] = (h[6] + g) >>> 0; h[7] = (h[7] + hh) >>> 0;
+  }
+
+  digestHex() {
+    if (!this.finished) {
+      const [hi, lo] = sha256LengthWords(this.lengthBytes);
+      const pad = new Uint8Array(this.buffered < 56 ? 64 - this.buffered : 128 - this.buffered);
+      pad[0] = 0x80;
+      const n = pad.length;
+      pad[n - 8] = hi >>> 24; pad[n - 7] = (hi >>> 16) & 0xff; pad[n - 6] = (hi >>> 8) & 0xff; pad[n - 5] = hi & 0xff;
+      pad[n - 4] = lo >>> 24; pad[n - 3] = (lo >>> 16) & 0xff; pad[n - 2] = (lo >>> 8) & 0xff; pad[n - 1] = lo & 0xff;
+      const savedLength = this.lengthBytes;
+      this.update(pad);
+      this.lengthBytes = savedLength;
+      this.finished = true;
+    }
+    let out = '';
+    for (let i = 0; i < 8; i++) out += this.h[i].toString(16).padStart(8, '0');
+    return out;
+  }
+}
+
 // ─── Pre-cache a list of playlist assets, evicting LRU over the soft cap ───
 async function precachePlaylist(assets, softCapBytes, ackPort) {
   const cache = await caches.open(PLAYLIST_CACHE);
@@ -712,14 +1323,34 @@ async function precachePlaylist(assets, softCapBytes, ackPort) {
     }
   }
 
+  // 1b. Half-downloaded files for URLs that left the manifest are dead weight.
+  try { await purgeStagingExcept(liveUrls); } catch (_e) { /* best-effort */ }
+
   // 2. Pre-fetch missing assets, respecting hash changes. Emit a
   //    progress event per completed asset so the splash can show a
   //    real download bar instead of an indeterminate pulse.
+  //
+  //    A LARGE asset (2026-09-26) is never downloaded inside this event: the
+  //    whole playlist used to fetch under ONE waitUntil, and one 4K clip on a
+  //    slow venue link outlived Chromium's five-minute event budget — the
+  //    worker was stopped mid-download and the cache stayed empty. Such an
+  //    asset is reported back as `pending`; the page then drives it through
+  //    PRECACHE_CHUNK / PRECACHE_VERIFY / PRECACHE_ASSEMBLE, each a short,
+  //    separately-timed event. An already-cached large asset counts as done.
   let loaded = 0;
   let failures = 0;
+  const pending = [];
   for (const asset of assets) {
-    if (!(await fetchAndStore(asset, cache, meta))) failures += 1;
-    loaded += 1;
+    if (isLargeAsset(asset)) {
+      if (await isCachedCurrent(asset, cache, meta)) {
+        loaded += 1;
+      } else {
+        pending.push({ url: asset.url, sha256: asset.sha256 || null, size: asset.size || null });
+      }
+    } else {
+      if (!(await fetchAndStore(asset, cache, meta))) failures += 1;
+      loaded += 1;
+    }
     await broadcast({
       type: 'PRECACHE_PROGRESS',
       tier: 'playlist',
@@ -745,11 +1376,13 @@ async function precachePlaylist(assets, softCapBytes, ackPort) {
     }
   }
 
-  const result = { ok: failures === 0, failures, count: assets.length };
+  // `ok` means every live asset is in the cache right now. Large files the
+  // page still has to drive are `pending` — not failures, not done.
+  const result = { ok: failures === 0 && pending.length === 0, failures, count: assets.length, pending };
   if (ackPort) {
     try { ackPort.postMessage(result); } catch (_e) { /* page may have reloaded */ }
   }
-  await broadcast({ type: 'PRECACHE_PLAYLIST_DONE', ...result, totalBytes: total });
+  await broadcast({ type: 'PRECACHE_PLAYLIST_DONE', ok: result.ok, failures, count: assets.length, pending: pending.length, totalBytes: total });
 }
 
 // ─── Pre-cache emergency assets — never evicted, hash-versioned ───
@@ -1169,4 +1802,22 @@ function normalizeUrl(u) {
 
 function stripQuery(u) {
   return stableKey(u);
+}
+
+// Test hooks for the large-asset staging path (2026-09-26). Class declarations
+// are not hoisted, so these are attached at the end of the file rather than in
+// the block near the top. No effect in a real service worker.
+if (typeof self !== 'undefined') {
+  self.__swTestHooks = Object.assign(self.__swTestHooks || {}, {
+    Sha256: Sha256,
+    sha256LengthWords: sha256LengthWords,
+    parseContentRange: parseContentRange,
+    contiguousLayout: contiguousLayout,
+    isLargeAsset: isLargeAsset,
+    LARGE_ASSET_BYTES: LARGE_ASSET_BYTES,
+    CHUNK_FETCH_TIMEOUT_MS: CHUNK_FETCH_TIMEOUT_MS,
+    STAGING_CACHE: STAGING_CACHE,
+    PLAYLIST_CACHE: PLAYLIST_CACHE,
+    META_CACHE: META_CACHE,
+  });
 }

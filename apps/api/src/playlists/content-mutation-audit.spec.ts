@@ -38,7 +38,9 @@ function makePlaylistController(opts: { playlist?: any; scheduleCount?: number }
 
   const client: any = {
     playlist: {
-      findFirst: jest.fn(async () => playlist),
+      // The shared emergency guard asks for a PROTECTED playlist among the
+      // targets (where.isProtected: true); this one is ordinary.
+      findFirst: jest.fn(async ({ where }: any = {}) => (where?.isProtected ? null : playlist)),
       findUnique: jest.fn(async () => ({ ...playlist, items: [] })),
       findMany: jest.fn(async () => []),
       create: jest.fn(async ({ data }: any) => ({ id: 'pl-new', ...data })),
@@ -55,6 +57,10 @@ function makePlaylistController(opts: { playlist?: any; scheduleCount?: number }
       deleteMany: jest.fn(async () => ({})),
     },
     template: { findFirst: jest.fn(async () => ({ id: 'tpl1' })) },
+    // Alert-pipeline reads of the shared emergency guard (2026-09-26): wired nowhere.
+    tenant: { findFirst: jest.fn(async () => null) },
+    screen: { findFirst: jest.fn(async () => null) },
+    screenEmergencyOverride: { findFirst: jest.fn(async () => null) },
     auditLog: {
       create: jest.fn(async ({ data }: any) => {
         auditRows.push(data);

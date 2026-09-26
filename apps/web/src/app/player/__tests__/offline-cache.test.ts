@@ -103,16 +103,16 @@ describe('player offline-cache acknowledgements', () => {
     const reports: Array<{ ok: boolean; failures: number; count: number }> = [];
     (context as Record<string, unknown>).ack = { postMessage: (value: { ok: boolean; failures: number; count: number }) => reports.push(value) };
     runInContext('fetchAndStore = async () => false', context);
-    await runInContext("precachePlaylist([{url:'https://cdn.example.com/video.mp4'}], 5000000000, ack)", context);
-    expect(reports.pop()).toEqual({ ok: false, failures: 1, count: 1 });
+    await runInContext("precachePlaylist([{url:'https://cdn.example.com/photo.jpg'}], 5000000000, ack)", context);
+    expect(reports.pop()).toMatchObject({ ok: false, failures: 1, count: 1 });
     runInContext('fetchAndStore = async () => true', context);
-    await runInContext("precachePlaylist([{url:'https://cdn.example.com/video.mp4'}], 5000000000, ack)", context);
-    expect(reports.pop()).toEqual({ ok: true, failures: 0, count: 1 });
+    await runInContext("precachePlaylist([{url:'https://cdn.example.com/photo.jpg'}], 5000000000, ack)", context);
+    expect(reports.pop()).toMatchObject({ ok: true, failures: 0, count: 1 });
 
     const messages: Array<{ started?: boolean; ok?: boolean }> = [];
     let pending: Promise<unknown> = Promise.resolve();
     handlers.message({
-      data: { type: 'PRECACHE_PLAYLIST', assets: [{ url: 'https://cdn.example.com/video.mp4' }] },
+      data: { type: 'PRECACHE_PLAYLIST', assets: [{ url: 'https://cdn.example.com/photo.jpg' }] },
       ports: [{ postMessage: (value: { started?: boolean; ok?: boolean }) => messages.push(value) }],
       waitUntil: (promise) => { pending = promise; },
     });

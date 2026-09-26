@@ -30,6 +30,7 @@ import { reactivateFallbackIfDark } from '../schedules/go-dark-fallback';
 import { RedisService } from '../realtime/redis.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
 import { withDbRetry } from '../prisma/with-db-retry';
+import { emergencyContentUse, type EmergencyUseDb } from '../emergency/emergency-content-use';
 
 // Browser-playable formats only. Cross-browser support is non-negotiable
 // for digital signage (CLAUDE.md "Cross-browser support" section): every
@@ -2033,7 +2034,10 @@ export class AssetsController {
         screensReached: allScreens.size,
         locations: allTenants.size,
       },
-      protectedEmergency: !!emergencyScreen || playlists.some((p) => p.isProtected),
+      // The same test the delete transaction applies (emergency-content-use.ts),
+      // so the warning dialog never offers a delete the server will refuse.
+      protectedEmergency: !!emergencyScreen || playlists.some((p) => p.isProtected) ||
+        !!(await emergencyContentUse(this.prisma.client as unknown as EmergencyUseDb, assetId, fileUrl)),
     };
   }
 
@@ -2070,6 +2074,7 @@ export class AssetsController {
       throw new HttpException(
         {
           code: 'ASSET_IN_SCREEN_EMERGENCY_CONTENT',
+          message: 'This file is a screen\'s emergency media. Clear it from emergency settings first.',
           error: 'Asset is assigned as protected screen emergency content. Clear it from emergency settings first.',
           screen: emergencyScreen,
         },
@@ -2097,8 +2102,25 @@ export class AssetsController {
       if (protectedPlaylists.length) {
         throw new HttpException({
           code: 'ASSET_IN_PROTECTED_PLAYLIST',
+          message: 'This file is in a protected emergency playlist. Remove it from emergency settings first.',
           error: 'Asset is in a protected emergency playlist. Remove it from emergency settings first.',
           playlists: protectedPlaylists.map((p) => ({ id: p.id, name: p.name, kind: p.protectedKind })),
+        }, HttpStatus.CONFLICT);
+      }
+      // Emergency content by ANY path the alert pipeline reads (2026-09-26
+      // review of ba1a8ed): `isProtected` is not the only way a playlist
+      // becomes alert media — a screen's lockdown playlist, a tenant's panic
+      // default, a live override or a live message can name an ORDINARY
+      // playlist or this very file. Before the warned-deletion change the
+      // blanket in-use 409 covered those; this check restores it, inside the
+      // transaction so nothing can be wired in between the look and the
+      // delete. Fails closed: a check that cannot run keeps the file.
+      const emergencyUse = await emergencyContentUse(tx as unknown as EmergencyUseDb, id, asset.fileUrl);
+      if (emergencyUse) {
+        throw new HttpException({
+          code: 'ASSET_IN_EMERGENCY_CONTENT',
+          message: `This file is emergency content (${emergencyUse}). Change the emergency settings first.`,
+          error: `Asset is emergency content: ${emergencyUse}.`,
         }, HttpStatus.CONFLICT);
       }
       const removedItems = await tx.playlistItem.deleteMany({

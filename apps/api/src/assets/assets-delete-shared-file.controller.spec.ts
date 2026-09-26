@@ -55,6 +55,13 @@ function makeController(
       delete: jest.fn(() => Promise.resolve({})),
     },
     auditLog: { create: jest.fn(() => Promise.resolve({})) },
+    // Alert-pipeline reads of the shared emergency guard (2026-09-26): this
+    // asset is wired nowhere, so the delete may proceed.
+    playlist: { findFirst: jest.fn(() => Promise.resolve(null)), findMany: jest.fn(() => Promise.resolve([])) },
+    tenant: { findFirst: jest.fn(() => Promise.resolve(null)) },
+    screen: { findFirst: jest.fn(() => Promise.resolve(null)) },
+    screenEmergencyOverride: { findFirst: jest.fn(() => Promise.resolve(null)) },
+    emergencyMessage: { findFirst: jest.fn(() => Promise.resolve(null)) },
     playlistItem: {
       findMany: jest.fn(() => Promise.resolve([])),
       deleteMany: jest.fn(() => Promise.resolve({ count: 0 })),

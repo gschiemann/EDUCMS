@@ -149,6 +149,13 @@ function makeController(
         fn({
           asset: { delete: jest.fn(async () => ({})) },
           auditLog: { create: jest.fn(async () => ({})) },
+          // Alert-pipeline reads of the shared emergency guard (2026-09-26):
+          // this asset is wired nowhere, so the delete may proceed.
+          playlist: { findFirst: jest.fn(async () => null), findMany: jest.fn(async () => []) },
+          tenant: { findFirst: jest.fn(async () => null) },
+          screen: { findFirst: jest.fn(async () => null) },
+          screenEmergencyOverride: { findFirst: jest.fn(async () => null) },
+          emergencyMessage: { findFirst: jest.fn(async () => null) },
           playlistItem: {
             findMany: jest.fn(async () => []),
             deleteMany: jest.fn(async () => ({ count: 0 })),
