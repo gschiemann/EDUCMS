@@ -57,6 +57,33 @@ export function needs1080ImageCopy(asset: Pick<Asset, 'mimeType' | 'processingMe
     Number.isSafeInteger(rendition.size) && rendition.size > 0);
 }
 
+/**
+ * The facts about a FILE that decide what a screen may play: its size and its
+ * 1080p copy. A fleet copy (PlaylistDistributionService.ensureChildAsset) is a
+ * row in the child location that serves the source location's file — same
+ * `fileUrl`, no re-upload — so these facts belong to the file, not the row,
+ * and the copy may adopt them from the row that owns the file. Nothing else
+ * crosses: no poster, no remux history, no grading the child did not run.
+ */
+export function playbackFacts(meta: unknown): Record<string, unknown> | null {
+  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return null;
+  const m = meta as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const key of ['originalDimensions', 'processedDimensions', 'probe'] as const) {
+    if (m[key] && typeof m[key] === 'object') out[key] = m[key];
+  }
+  const rendition = (m.renditions as Record<string, unknown> | undefined)?.['1080p'];
+  if (rendition && typeof rendition === 'object') out.renditions = { '1080p': rendition };
+  return Object.keys(out).length ? out : null;
+}
+
+/** A rule an activation door is about to switch on. */
+export interface RuleTarget {
+  id: string;
+  screenId: string | null;
+  screenGroupId: string | null;
+}
+
 @Injectable()
 export class MediaPublicationService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(MediaPublicationService.name);
@@ -74,11 +101,62 @@ export class MediaPublicationService implements OnModuleInit, OnModuleDestroy {
     @Optional() private readonly lease?: LeaderLeaseService,
   ) {}
 
+  /**
+   * The tenant whose folder holds this file: every server-generated upload
+   * path starts with the uploading tenant's id, and a fleet copy points at the
+   * SOURCE tenant's path verbatim. Null for anything that is not our storage.
+   */
+  private fileOwner(fileUrl: string): { path: string; owner: string } | null {
+    const path = this.storage.extractPath(fileUrl);
+    const owner = path?.split('/')[0];
+    return path && owner ? { path, owner } : null;
+  }
+
+  /**
+   * A fleet copy adopts the file owner's playback facts (`playbackFacts`) before
+   * anything is queued for it. Without this a copy of a 1080p video reads as
+   * "unknown size", is sent to an encoder that rightly answers `already-optimal`
+   * with no copy to make, and the rule is stamped failed; and a copy of a 4K
+   * video whose owner already carries a 1080p rendition would be encoded a
+   * second time per location. Owner → copy only, guarded by the copy's own
+   * fileUrl; a copy's metadata is never written back to the owner.
+   */
+  private async adoptOwnerPlaybackFacts(tenantId: string, asset: Asset): Promise<Asset> {
+    const file = this.fileOwner(asset.fileUrl);
+    if (!file || file.owner === tenantId) return asset;
+    const source = await this.prisma.client.asset.findFirst({
+      where: { tenantId: file.owner, fileUrl: asset.fileUrl },
+      select: { processingMeta: true },
+    });
+    const facts = playbackFacts(source?.processingMeta);
+    if (!facts) return asset;
+    const own = asset.processingMeta && typeof asset.processingMeta === 'object' && !Array.isArray(asset.processingMeta)
+      ? asset.processingMeta as Record<string, unknown> : {};
+    const merged = { ...own, ...facts };
+    const updated = await this.prisma.client.asset.updateMany({
+      where: { id: asset.id, tenantId, fileUrl: asset.fileUrl },
+      data: { processingMeta: merged as Prisma.InputJsonObject },
+    });
+    return updated.count ? { ...asset, processingMeta: merged as Prisma.JsonValue } : asset;
+  }
+
   private async ensureImageCopy(tenantId: string, asset: Asset): Promise<void> {
-    const path = this.storage.extractPath(asset.fileUrl);
-    if (!path?.startsWith(`${tenantId}/`) || this.storage.publicUrlForPath(path) !== asset.fileUrl) {
+    const file = this.fileOwner(asset.fileUrl);
+    if (!file || this.storage.publicUrlForPath(file.path) !== asset.fileUrl) {
       throw new Error('This image cannot be optimized for the selected screen. Publishing was not started.');
     }
+    if (file.owner !== tenantId) {
+      // A file outside this tenant's folder is readable here ONLY when it is a
+      // fleet copy: the owner's own row must still serve exactly this URL
+      // (that is how ensureChildAsset built the copy). The 1080p copy is then
+      // written under THIS tenant's folder, never the owner's.
+      const shared = await this.prisma.client.asset.findFirst({
+        where: { tenantId: file.owner, fileUrl: asset.fileUrl },
+        select: { id: true },
+      });
+      if (!shared) throw new Error('This image cannot be optimized for the selected screen. Publishing was not started.');
+    }
+    const path = file.path;
     const source = await this.storage.download(path);
     if (!source) throw new Error('The image could not be downloaded for optimization. Publishing was not started.');
     const actual = await sharp(source).metadata();
@@ -153,11 +231,15 @@ export class MediaPublicationService implements OnModuleInit, OnModuleDestroy {
       }),
     ]);
     if (!playlist || screens.length === 0) return false;
-    const seenImages = new Set<string>();
-    for (const asset of playlist.items.map((i) => i.asset)) {
-      if (seenImages.has(asset.id)) continue;
-      seenImages.add(asset.id);
-      if (screens.some((screen) => needs1080ImageCopy(asset, screen.resolution))) {
+    const needsImage = (asset: Asset) => screens.some((screen) => needs1080ImageCopy(asset, screen.resolution));
+    const needsVideo = (asset: Asset) => screens.some((screen) => needs1080VideoCopy(asset, screen.resolution));
+    // Each asset once, however many times the playlist repeats it.
+    const assets = new Map(playlist.items.map((i) => [i.asset.id, i.asset] as const));
+    const waiting: Asset[] = [];
+    for (let asset of assets.values()) {
+      if (!needsImage(asset) && !needsVideo(asset)) continue;
+      asset = await this.adoptOwnerPlaybackFacts(tenantId, asset);
+      if (needsImage(asset)) {
         try {
           await this.ensureImageCopy(tenantId, asset);
         } catch (error) {
@@ -167,10 +249,8 @@ export class MediaPublicationService implements OnModuleInit, OnModuleDestroy {
           HttpStatus.SERVICE_UNAVAILABLE);
         }
       }
+      if (needsVideo(asset)) waiting.push(asset);
     }
-    const waiting = playlist.items.map((i) => i.asset).filter((asset) =>
-      screens.some((screen) => needs1080VideoCopy(asset, screen.resolution)),
-    );
     for (const asset of waiting) {
       const queued = await this.jobs.enqueueForRendition({
         tenantId, assetId: asset.id, sourceUrl: asset.fileUrl, sourceBytes: asset.fileSize,
@@ -180,6 +260,22 @@ export class MediaPublicationService implements OnModuleInit, OnModuleDestroy {
       HttpStatus.SERVICE_UNAVAILABLE);
     }
     return waiting.length > 0;
+  }
+
+  /**
+   * The rules an activation door is about to switch on, answered one by one:
+   * the ids that must wait for a playback copy. Every path that makes a
+   * Schedule row active goes through this (or `prepare`) first — the
+   * "Play everywhere" button, the per-screen switch and the fleet publish
+   * used to switch rules straight on, which is how a paused 1080p screen was
+   * handed the 4K original again (2026-09-26).
+   */
+  async prepareRules(tenantId: string, playlistId: string, rules: RuleTarget[]): Promise<Set<string>> {
+    const waiting = new Set<string>();
+    for (const rule of rules) {
+      if (await this.prepare(tenantId, playlistId, rule.screenId, rule.screenGroupId)) waiting.add(rule.id);
+    }
+    return waiting;
   }
 
   /** Recheck every item and target; never activate on a failed/incomplete copy. */

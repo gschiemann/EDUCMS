@@ -26,6 +26,8 @@ function setup(asset: any = video) {
       findMany: jest.fn().mockResolvedValue([]),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
+    // The row that OWNS a file (fleet copies adopt its playback facts) — none by default.
+    asset: { findFirst: jest.fn().mockResolvedValue(null), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
     videoTranscodeJob: { findMany: jest.fn().mockResolvedValue([]) },
     $transaction: jest.fn(async (fn: (client: typeof tx) => Promise<unknown>) => fn(tx)),
   } };
@@ -118,6 +120,103 @@ describe('media publication gate', () => {
     expect(h.tx.schedule.update).toHaveBeenCalledWith(expect.objectContaining({ data: { isActive: true } }));
     expect(h.tx.auditLog.create).toHaveBeenCalled();
     expect(h.redis.publish).toHaveBeenCalledWith('tenant:tenant', 'signed-sync');
+  });
+
+  it('answers per rule: only the rules whose target needs a copy wait', async () => {
+    const h = setup();
+    h.prisma.client.screen.findMany.mockImplementation(async ({ where }: any) => {
+      const ids = (where.OR as any[]).map((o) => o.id ?? `group:${o.screenGroupId}`);
+      const res: Record<string, string> = { 'lcd-1080': '1920x1080', 'wall-4k': '3840x2160', 'group:lobby': '1920 x 1080' };
+      return ids.filter((id) => res[id]).map((id) => ({ resolution: res[id] }));
+    });
+    const waiting = await h.service.prepareRules('tenant', 'playlist-1', [
+      { id: 'r-1080', screenId: 'lcd-1080', screenGroupId: null },
+      { id: 'r-4k', screenId: 'wall-4k', screenGroupId: null },
+      { id: 'r-group', screenId: null, screenGroupId: 'lobby' },
+      { id: 'r-unknown', screenId: 'gone', screenGroupId: null },
+    ]);
+    expect([...waiting].sort()).toEqual(['r-1080', 'r-group']);
+    // The 4K wall plays the native file (Greg, 2026-09-26): nothing is queued for it,
+    // and a rule whose target no longer exists never waits on anything.
+    expect(h.jobs.enqueueForRendition).toHaveBeenCalledTimes(2);
+  });
+
+  describe('a fleet copy — a child row serving the source location\'s file', () => {
+    const childVideo = { ...video, id: 'child-v', processingMeta: null,
+      fileUrl: 'https://example.com/storage/v1/object/public/assets/hq/4k.mp4' };
+    const ownerFacts = {
+      processedDimensions: { w: 3840, h: 2160 },
+      renditions: { '1080p': { url: 'https://example.com/hq-1080.mp4', sha256: 'b'.repeat(64), size: 40_000_000 } },
+      remux: { previousStoragePath: 'hq/old.mp4' }, // not a playback fact: must NOT cross
+    };
+
+    it('adopts the owner\'s dimensions + 1080p copy and needs no job of its own', async () => {
+      const h = setup(childVideo);
+      h.storage.extractPath.mockReturnValue('hq/4k.mp4');
+      h.prisma.client.asset.findFirst.mockResolvedValue({ processingMeta: ownerFacts });
+      expect(await h.service.prepare('child', 'playlist-1', 'screen-1')).toBe(false);
+      expect(h.prisma.client.asset.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+        where: { tenantId: 'hq', fileUrl: childVideo.fileUrl },
+      }));
+      const write = h.prisma.client.asset.updateMany.mock.calls[0][0];
+      expect(write.where).toEqual({ id: 'child-v', tenantId: 'child', fileUrl: childVideo.fileUrl });
+      expect(write.data.processingMeta.renditions['1080p'].sha256).toBe('b'.repeat(64));
+      expect(write.data.processingMeta.processedDimensions).toEqual({ w: 3840, h: 2160 });
+      expect(write.data.processingMeta.remux).toBeUndefined();
+      expect(h.jobs.enqueueForRendition).not.toHaveBeenCalled();
+    });
+
+    it('a copy of a 1080p source is never sent to the encoder once its size is known', async () => {
+      const h = setup(childVideo);
+      h.storage.extractPath.mockReturnValue('hq/1080.mp4');
+      h.prisma.client.asset.findFirst.mockResolvedValue({ processingMeta: { processedDimensions: { w: 1920, h: 1080 } } });
+      expect(await h.service.prepare('child', 'playlist-1', 'screen-1')).toBe(false);
+      expect(h.jobs.enqueueForRendition).not.toHaveBeenCalled();
+    });
+
+    it('queues its own copy when the owner has none yet, and never writes back to the owner', async () => {
+      const h = setup(childVideo);
+      h.storage.extractPath.mockReturnValue('hq/4k.mp4');
+      h.prisma.client.asset.findFirst.mockResolvedValue({ processingMeta: { processedDimensions: { w: 3840, h: 2160 } } });
+      expect(await h.service.prepare('child', 'playlist-1', 'screen-1')).toBe(true);
+      expect(h.jobs.enqueueForRendition).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 'child', assetId: 'child-v' }));
+      for (const call of h.prisma.client.asset.updateMany.mock.calls) expect(call[0].where.tenantId).toBe('child');
+    });
+
+    it('with no owner row (file not ours to share) the copy is queued as before — nothing adopted', async () => {
+      const h = setup(childVideo);
+      h.storage.extractPath.mockReturnValue('hq/4k.mp4');
+      expect(await h.service.prepare('child', 'playlist-1', 'screen-1')).toBe(true);
+      expect(h.prisma.client.asset.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('prepares a 1080p IMAGE copy under the child\'s own folder from the owner\'s file', async () => {
+      const fileUrl = 'https://example.com/storage/v1/object/public/assets/hq/4k.jpg';
+      const image = { id: 'child-i', mimeType: 'image/jpeg', fileUrl, fileSize: 100_000,
+        processingMeta: { processedDimensions: { w: 3840, h: 2160 } } };
+      const h = setup(image);
+      h.storage.extractPath.mockReturnValue('hq/4k.jpg');
+      h.prisma.client.asset.findFirst.mockResolvedValue({ id: 'hq-i', processingMeta: image.processingMeta });
+      h.storage.download.mockResolvedValue(await sharp({ create: {
+        width: 3840, height: 2160, channels: 3, background: '#225588',
+      } }).jpeg().toBuffer());
+      expect(await h.service.prepare('child', 'playlist-1', 'screen-1')).toBe(false);
+      expect(h.storage.download).toHaveBeenCalledWith('hq/4k.jpg');
+      expect(h.storage.upload.mock.calls[0][0]).toMatch(/^child\/optimized\/renditions\//);
+      expect(h.tx.asset.updateMany.mock.calls[0][0].where).toMatchObject({ id: 'child-i', tenantId: 'child' });
+    });
+
+    it('refuses to read a foreign file that no owner row serves', async () => {
+      const fileUrl = 'https://example.com/storage/v1/object/public/assets/other/4k.jpg';
+      const image = { id: 'child-i', mimeType: 'image/jpeg', fileUrl, fileSize: 100_000,
+        processingMeta: { processedDimensions: { w: 3840, h: 2160 } } };
+      const h = setup(image);
+      h.storage.extractPath.mockReturnValue('other/4k.jpg');
+      await expect(h.service.prepare('child', 'playlist-1', 'screen-1')).rejects.toMatchObject({
+        response: { code: 'IMAGE_PLAYBACK_COPY_FAILED' },
+      });
+      expect(h.storage.download).not.toHaveBeenCalled();
+    });
   });
 
   it('durably refreshes a legacy 1080p player still reporting the 4K source after its copy is ready', async () => {
