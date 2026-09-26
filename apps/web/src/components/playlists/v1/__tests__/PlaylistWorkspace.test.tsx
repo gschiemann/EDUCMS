@@ -144,6 +144,64 @@ describe('keep screens in sync (2026-09-16 — moved off the screen group)', () 
 });
 
 // ─────────────────────────────────────────────────────────────────────
+describe('a screen row while its 1080p playback copy is in play (rule 16, 2026-09-26)', () => {
+  const FAIL = 'A playback copy could not be prepared. Retry publishing this playlist.';
+  const rows = (playback: Record<string, { state: 'preparing' | 'failed' | 'group-preparing'; error: string | null; groupName: string | null }>) => ({
+    screenRows: SCREENS.map((s) => ({
+      id: s.id, name: s.name || s.id, online: s.status === 'ONLINE', scheduleId: `sc-${s.id}`, viaGroupName: null,
+      active: false, playback: playback[s.id] ?? null,
+    })),
+  });
+
+  it('PREPARING: says so, is not dimmed like a paused row, and its switch is the per-screen cancel', () => {
+    const { props } = mount({ tab: 'screens', ...rows({ s1: { state: 'preparing', error: null, groupName: null } }) });
+    const front = screen.getAllByTestId('delivery-row').find((r) => r.textContent?.includes('Front'))!;
+    expect(front).toHaveAttribute('data-playback', 'preparing');
+    expect(front.className).not.toContain('opacity-60');
+    expect(within(front).getByText('Preparing 1080p copy')).toBeInTheDocument();
+    const power = within(front).getByRole('button', { name: 'Stop and cancel publish on Front' });
+    expect(power).toBeEnabled();
+    fireEvent.click(power);
+    // OFF — the server clears the held rule. The route confirms before calling.
+    expect(props.onToggleScreen).toHaveBeenCalledWith('s1', 'Front', false);
+    // A plain paused row beside it keeps its plain switch.
+    const back = screen.getAllByTestId('delivery-row').find((r) => r.textContent?.includes('Back'))!;
+    expect(within(back).getByRole('button', { name: 'Play this playlist on Back' })).toBeEnabled();
+    expect(within(back).queryByText(/1080p/)).not.toBeInTheDocument();
+  });
+
+  it('FAILED: carries the server\'s words and its switch is a retry (ON)', () => {
+    const { props } = mount({ tab: 'screens', ...rows({ s2: { state: 'failed', error: FAIL, groupName: null } }) });
+    const back = screen.getAllByTestId('delivery-row').find((r) => r.textContent?.includes('Back'))!;
+    expect(within(back).getByText('Playback copy failed')).toHaveAttribute('title', FAIL);
+    fireEvent.click(within(back).getByRole('button', { name: 'Retry publish on Back' }));
+    expect(props.onToggleScreen).toHaveBeenCalledWith('s2', 'Back', true);
+  });
+
+  it('a member of a GROUP whose rule is preparing: both buttons wait, and say why', () => {
+    const { props } = mount({ tab: 'screens', ...rows({ s3: { state: 'group-preparing', error: null, groupName: 'LCD Flat Panels' } }) });
+    const side = screen.getAllByTestId('delivery-row').find((r) => r.textContent?.includes('Side'))!;
+    expect(within(side).getByText('Preparing 1080p copy for LCD Flat Panels')).toBeInTheDocument();
+    const locked = 'Preparing a 1080p copy for LCD Flat Panels — stop and cancel publishing before changing individual screens.';
+    const power = within(side).getByRole('button', { name: locked });
+    expect(power).toBeDisabled();
+    const trash = within(side).getByRole('button', { name: 'Remove Side from this playlist' });
+    expect(trash).toBeDisabled();
+    expect(trash).toHaveAttribute('title', locked);
+    fireEvent.click(power);
+    fireEvent.click(trash);
+    expect(props.onToggleScreen).not.toHaveBeenCalled();
+    expect(props.onRemoveScreen).not.toHaveBeenCalled();
+  });
+
+  it('the header button reads "Stop and cancel publish" while a copy is preparing', () => {
+    mount({ row: { ...ROW, scheduleState: 'SCHEDULED', statusLabel: 'PREPARING 1080P' } });
+    expect(screen.getByRole('button', { name: 'Stop and cancel publish' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Pause everywhere' })).not.toBeInTheDocument();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
 describe('workspace shell (§12)', () => {
   it('shows reported encoder progress while a 1080p publish waits', () => {
     mount({ row: { ...ROW, scheduleState: 'SCHEDULED', statusLabel: 'PREPARING 1080P' }, playbackProgress: 48 });

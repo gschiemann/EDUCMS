@@ -8,7 +8,7 @@ import { PlaylistPreviewThumb, derivePlaylistContentLabel, type TemplateLookupEn
 import { PlaylistCreateWizard, ScheduleWindowFields } from '@/components/playlists/PlaylistCreateWizard';
 import { PublishToLocationsModal } from '@/components/playlists/PublishToLocationsModal';
 import {
-  describeDays, describeScreenConflicts, findScreenConflicts, formatClock,
+  describeDays, describeScreenConflicts, findScreenConflicts, formatClock, retryPublishPayload,
 } from '@/components/playlists/v1/playlistOps';
 import { ScheduleDialog } from '@/components/playlists/v1/PlaylistDialogs';
 import {
@@ -1256,8 +1256,15 @@ export default function ClassicPlaylistsPage({
       screenIds: Set<string>; groupIds: Set<string>; activeCount: number;
       /** Every distinct audio setting inside this window — >1 means mixed. */
       mutes: Set<boolean | 'per-item'>;
+      /**
+       * Rule 16 (2026-09-26): rules held for a 1080p playback copy (the sweep
+       * starts them), and rules whose copy FAILED (inert until retried).
+       */
+      pendingIds: string[];
+      failedRules: any[];
     }>();
     const activeByWindow = new Map<string, Set<string>>();
+    const pendingByWindow = new Map<string, Set<string>>();
     for (const s of playlistSchedules) {
       // WINDOW ONLY. Greg, 2026-09-16: "how do i have two schedules for the
       // same playlist but 1 has only 1 screen assigned....that shouldnt be
@@ -1269,13 +1276,23 @@ export default function ClassicPlaylistsPage({
       const key = `${s.daysOfWeek || ''}|${s.timeStart || ''}|${s.timeEnd || ''}`;
       let e = byWindow.get(key);
       if (!e) {
-        e = { key, sample: s, ids: [], screenIds: new Set(), groupIds: new Set(), activeCount: 0, mutes: new Set() };
+        e = { key, sample: s, ids: [], screenIds: new Set(), groupIds: new Set(), activeCount: 0, mutes: new Set(), pendingIds: [], failedRules: [] };
         byWindow.set(key, e);
       }
       e.mutes.add(s.mutedOverride ?? 'per-item');
       e.ids.push(s.id);
       if (s.screenId) e.screenIds.add(s.screenId);
       if (s.screenGroupId) e.groupIds.add(s.screenGroupId);
+      if (s.pendingMedia && !s.isActive) {
+        if (s.pendingMediaError) e.failedRules.push(s);
+        else {
+          e.pendingIds.push(s.id);
+          let pend = pendingByWindow.get(key);
+          if (!pend) { pend = new Set<string>(); pendingByWindow.set(key, pend); }
+          if (s.screenId) pend.add(s.screenId);
+          if (s.screenGroupId) pend.add(`group:${s.screenGroupId}`);
+        }
+      }
       if (s.isActive) {
         e.activeCount += 1;
         // Track WHICH screens are still running, not just how many rules are.
@@ -1296,23 +1313,31 @@ export default function ClassicPlaylistsPage({
         for (const m of members) if (m?.id) reached.add(m.id);
       }
       // Which of the reached screens are actually still running?
-      const activeMarks = activeByWindow.get(e.key) ?? new Set<string>();
-      const activeReached = new Set<string>();
-      for (const mark of activeMarks) {
-        if (mark.startsWith('group:')) {
-          const gid = mark.slice('group:'.length);
-          const g: any = groupById.get(gid);
-          const members = g?.screens ?? (screens || []).filter((sc: any) => sc.screenGroupId === gid);
-          for (const m of members) if (m?.id) activeReached.add(m.id);
-        } else {
-          activeReached.add(mark);
+      const resolveMarks = (marks: Set<string>) => {
+        const out = new Set<string>();
+        for (const mark of marks) {
+          if (mark.startsWith('group:')) {
+            const gid = mark.slice('group:'.length);
+            const g: any = groupById.get(gid);
+            const members = g?.screens ?? (screens || []).filter((sc: any) => sc.screenGroupId === gid);
+            for (const m of members) if (m?.id) out.add(m.id);
+          } else {
+            out.add(mark);
+          }
         }
-      }
+        return out;
+      };
+      const activeReached = resolveMarks(activeByWindow.get(e.key) ?? new Set<string>());
+      const pendingReached = resolveMarks(pendingByWindow.get(e.key) ?? new Set<string>());
       return {
         ...e,
         screenCount: reached.size,
         activeScreenCount: activeReached.size,
         pausedScreenCount: Math.max(0, reached.size - activeReached.size),
+        // Screens whose 1080p copy is preparing: they start by themselves.
+        pendingScreenCount: pendingReached.size,
+        pendingCount: e.pendingIds.length,
+        failedError: e.failedRules[0]?.pendingMediaError ?? null,
         allActive: e.activeCount === e.ids.length,
         // 2026-09-16 — Greg, on a schedule showing 10 screens under an ACTIVE
         // playlist: "why does this look like its not active...". It was dimmed
@@ -2400,13 +2425,24 @@ export default function ClassicPlaylistsPage({
                 ) : (
                   scheduleWindows.map((win: any) => {
                     const sched = win.sample;
+                    // Rule 16 (2026-09-26): a window with rules held for a
+                    // 1080p copy is WAITING — neither running nor paused, and
+                    // never dimmed like a paused one. A window whose copy
+                    // failed is inert until retried.
+                    const preparing = win.pendingCount > 0;
+                    const failedOnly = !!win.failedError && !win.anyActive && !preparing;
                     return (
-                    <div key={win.key} className={`p-5 rounded-2xl transition-all duration-300 border ${win.anyActive ? 'bg-emerald-50/50 border-emerald-100 hover:bg-emerald-50/80' : 'bg-slate-50 border-slate-100 opacity-60'}`}>
+                    <div
+                      key={win.key}
+                      data-testid="schedule-window"
+                      data-playback={preparing ? 'preparing' : win.failedError ? 'failed' : undefined}
+                      className={`p-5 rounded-2xl transition-all duration-300 border ${win.anyActive ? 'bg-emerald-50/50 border-emerald-100 hover:bg-emerald-50/80' : preparing ? 'bg-indigo-50/50 border-indigo-100' : 'bg-slate-50 border-slate-100 opacity-60'}`}
+                    >
                       {/* ── Read-only Card ── */}
                         <div className="flex items-start justify-between gap-4">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1">
-                              <span className={`w-2 h-2 rounded-full ${win.allActive ? 'bg-emerald-500' : win.anyActive ? 'bg-amber-400' : 'bg-slate-300'}`} title={win.allActive ? 'Running' : win.anyActive ? `Paused on ${win.pausedScreenCount} of ${win.screenCount} screens` : 'Paused everywhere'} />
+                              <span className={`w-2 h-2 rounded-full ${win.allActive ? 'bg-emerald-500' : win.anyActive ? 'bg-amber-400' : preparing ? 'bg-indigo-500 animate-pulse' : 'bg-slate-300'}`} title={win.allActive ? 'Running' : win.anyActive ? `Paused on ${win.pausedScreenCount} of ${win.screenCount} screens` : preparing ? t('playlistsPage.preparingCopy') : 'Paused everywhere'} />
                               <CalendarDays className="w-3.5 h-3.5 text-slate-400" />
                               <p className="text-sm font-bold text-slate-700">
                                 {describeDays(sched.daysOfWeek)}
@@ -2475,7 +2511,20 @@ export default function ClassicPlaylistsPage({
                                   Paused on {win.pausedScreenCount} of {win.screenCount} screens
                                 </span>
                               )}
-                              {!win.anyActive && (
+                              {/* PREPARING 1080P, per window (rule 16). It says
+                                  what is waiting and that it starts by itself —
+                                  never a countdown, never "delivered". */}
+                              {preparing && (
+                                <span className="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded" data-testid="window-preparing" title={t('playlistsPage.preparingCopyHint')}>
+                                  {t('playlistsPage.windowPreparing', { count: win.pendingScreenCount })}
+                                </span>
+                              )}
+                              {win.failedError && (
+                                <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded" data-testid="window-failed" title={win.failedError}>
+                                  {t('playlistsPage.copyFailed')} · {win.failedError}
+                                </span>
+                              )}
+                              {!win.anyActive && !preparing && !win.failedError && (
                                 <span className="bg-slate-200 text-slate-600 px-2 py-0.5 rounded">
                                   Paused everywhere
                                 </span>
@@ -2500,26 +2549,75 @@ export default function ClassicPlaylistsPage({
                             >
                               <Pencil className="w-4 h-4" />
                             </button>
+                            {failedOnly ? (
+                              /* A failed copy leaves the rule inert (bdb3f59a).
+                                 The way forward is a FRESH publish of the same
+                                 window and target — the server collapses the
+                                 failed row and runs the gate again. */
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  try {
+                                    for (const rule of win.failedRules) {
+                                      await createSchedule.mutateAsync(retryPublishPayload(rule) as any);
+                                    }
+                                  } catch (err: any) {
+                                    await appAlert({
+                                      title: t('playlistsPage.retryFailedTitle'),
+                                      message: err?.message || t('playlistsPage.retryFailedMessage'),
+                                      tone: 'danger',
+                                    });
+                                  }
+                                }}
+                                disabled={isViewer || createSchedule.isPending}
+                                data-testid="window-retry"
+                                className="h-8 px-3 rounded-lg border border-amber-300 bg-white text-[12px] font-bold text-amber-800 hover:bg-amber-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                title={isViewer ? 'Read-only — viewer role' : t('playlistsPage.retryPublish')}
+                              >
+                                {createSchedule.isPending ? t('playlistsPage.retrying') : t('playlistsPage.retryPublish')}
+                              </button>
+                            ) : (
                             <button
                               // Every row behind this card. Toggling one of
                               // eleven would leave the card claiming a reach it
                               // no longer has — worse than the duplicate list.
-                              onClick={() => win.ids.forEach((id: string) => toggleSchedule.mutate(id))}
+                              //
+                              // While a 1080p copy is preparing, this is "Stop
+                              // and cancel publish": the server clears the held
+                              // rules. Confirmed and named — never a silent
+                              // cancel behind a pause icon (rule 16).
+                              onClick={async () => {
+                                if (preparing) {
+                                  const ok = await appConfirm({
+                                    title: t('playlistsPage.windowCancelTitle'),
+                                    message: t('playlistsPage.windowCancelMessage', { pending: win.pendingScreenCount, count: win.screenCount }),
+                                    tone: 'danger',
+                                    confirmLabel: t('playlistsPage.stopCancelPublish'),
+                                  });
+                                  if (!ok) return;
+                                }
+                                win.ids.forEach((id: string) => toggleSchedule.mutate(id));
+                              }}
                               disabled={isViewer}
-                              className={`p-1.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${win.allActive ? 'text-emerald-600 hover:bg-emerald-100' : 'text-slate-400 hover:bg-slate-100'}`}
+                              aria-label={preparing ? t('playlistsPage.stopCancelPublish') : undefined}
+                              className={`p-1.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${win.allActive ? 'text-emerald-600 hover:bg-emerald-100' : preparing ? 'text-indigo-600 hover:bg-indigo-100' : 'text-slate-400 hover:bg-slate-100'}`}
                               title={isViewer
                                 ? 'Read-only — viewer role'
-                                : `${win.allActive ? 'Pause' : 'Resume'} this schedule on ${win.screenCount} screen${win.screenCount === 1 ? '' : 's'}`}
+                                : preparing
+                                  ? t('playlistsPage.stopCancelPublish')
+                                  : `${win.allActive ? 'Pause' : 'Resume'} this schedule on ${win.screenCount} screen${win.screenCount === 1 ? '' : 's'}`}
                             >
                               <Power className="w-4 h-4" />
                             </button>
+                            )}
                             <button
                               onClick={async () => {
                                 // State the real reach before removing it: this
                                 // card can stand for eleven rows.
                                 const ok = await appConfirm({
                                   title: t('playlistsPage.deleteScheduleTitle'),
-                                  message: `This stops the playlist on ${win.screenCount} screen${win.screenCount === 1 ? '' : 's'} at these times.`,
+                                  message: `This stops the playlist on ${win.screenCount} screen${win.screenCount === 1 ? '' : 's'} at these times.`
+                                    + (preparing ? ` ${t('playlistsPage.deleteScheduleCancelsCopy')}` : ''),
                                   tone: 'danger',
                                   confirmLabel: 'Delete',
                                 });

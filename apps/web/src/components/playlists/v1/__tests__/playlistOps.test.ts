@@ -19,9 +19,11 @@ import {
   describeDays,
   describeReach,
   deriveDeliveryFromScreens,
+  derivePlaybackCopyStates,
   deriveReach,
   deriveScheduleState,
   deriveTargetsFromScreens,
+  retryPublishPayload,
   DELIVERY_UNAVAILABLE,
   EMPTY_FILTERS,
   formatClock,
@@ -526,6 +528,73 @@ describe('status tabs, filters, sorting', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────
+describe('1080p playback copies — what each screen\'s switch may do (rule 16)', () => {
+  const FAIL = 'A playback copy could not be prepared. Retry publishing this playlist.';
+  const groups = [{ id: 'G', name: 'Hallway', screens: [{ id: 'g1' }, { id: 'g2' }] }];
+  const screens = [screen({ id: 'lcd' }), screen({ id: 'wall' }), screen({ id: 'g1', screenGroupId: 'G' }), screen({ id: 'g2', screenGroupId: 'G' })];
+
+  it('a screen whose own rule is held is preparing; one whose copy failed carries the server\'s words', () => {
+    const m = derivePlaybackCopyStates([
+      sched({ id: 'a', screenId: 'lcd', isActive: false, pendingMedia: true }),
+      sched({ id: 'b', screenId: 'wall', isActive: false, pendingMedia: true, pendingMediaError: FAIL }),
+    ], groups, screens);
+    expect(m.get('lcd')).toEqual({ state: 'preparing', error: null, groupName: null });
+    expect(m.get('wall')).toEqual({ state: 'failed', error: FAIL, groupName: null });
+  });
+
+  it('a screen with nothing pending is absent — its switch is a plain on/off', () => {
+    const m = derivePlaybackCopyStates([sched({ id: 'a', screenId: 'lcd' }), sched({ id: 'b', screenId: 'wall', isActive: false })], groups, screens);
+    expect(m.size).toBe(0);
+  });
+
+  it('every member of a group whose rule is preparing is locked, named for the group', () => {
+    const m = derivePlaybackCopyStates([sched({ id: 'g', screenGroupId: 'G', isActive: false, pendingMedia: true })], groups, screens);
+    expect(m.get('g1')).toEqual({ state: 'group-preparing', error: null, groupName: 'Hallway' });
+    expect(m.get('g2')).toEqual({ state: 'group-preparing', error: null, groupName: 'Hallway' });
+    expect(m.has('lcd')).toBe(false);
+  });
+
+  it('a member with a rule of its OWN answers for itself, not for the group', () => {
+    const m = derivePlaybackCopyStates([
+      sched({ id: 'g', screenGroupId: 'G', isActive: false, pendingMedia: true }),
+      sched({ id: 'own', screenId: 'g1' }),
+    ], groups, screens);
+    expect(m.has('g1')).toBe(false);
+    expect(m.get('g2')?.state).toBe('group-preparing');
+  });
+
+  it('a fresh attempt outranks an older failure on the same screen', () => {
+    const m = derivePlaybackCopyStates([
+      sched({ id: 'old', screenId: 'lcd', isActive: false, pendingMedia: true, pendingMediaError: FAIL }),
+      sched({ id: 'new', screenId: 'lcd', isActive: false, pendingMedia: true }),
+    ], groups, screens);
+    expect(m.get('lcd')?.state).toBe('preparing');
+  });
+
+  it('a failed GROUP rule marks its members failed (switching one on is a retry)', () => {
+    const m = derivePlaybackCopyStates([sched({ id: 'g', screenGroupId: 'G', isActive: false, pendingMedia: true, pendingMediaError: FAIL })], groups, screens);
+    expect(m.get('g1')).toEqual({ state: 'failed', error: FAIL, groupName: 'Hallway' });
+  });
+
+  it('the retry is a fresh publish of the failed rule\'s own window and target', () => {
+    const payload = retryPublishPayload(sched({
+      id: 'x', playlistId: 'p1', screenGroupId: 'G', startTime: '2026-09-01T00:00:00.000Z', endTime: '2026-12-01T00:00:00.000Z',
+      daysOfWeek: 'Mon,Tue', timeStart: '06:00', timeEnd: '10:00', priority: 3, mode: 'append', mutedOverride: true,
+      isActive: false, pendingMedia: true, pendingMediaError: FAIL,
+    }));
+    expect(payload).toEqual({
+      playlistId: 'p1', screenGroupId: 'G', startTime: '2026-09-01T00:00:00.000Z', endTime: '2026-12-01T00:00:00.000Z',
+      daysOfWeek: 'Mon,Tue', timeStart: '06:00', timeEnd: '10:00', priority: 3, mode: 'append', mutedOverride: true,
+    });
+    // Never `isActive: false`: a retry must go live (or be held) through the gate, not be parked as a draft.
+    expect('isActive' in payload).toBe(false);
+    const minimal = retryPublishPayload(sched({ id: 'y', playlistId: 'p1', screenId: 'lcd', startTime: 'not a date' }));
+    expect(minimal).toMatchObject({ playlistId: 'p1', screenId: 'lcd', priority: 0, mode: 'replace', mutedOverride: null });
+    expect(new Date(minimal.startTime as string).getTime()).not.toBeNaN();
+    expect(minimal).not.toHaveProperty('screenGroupId');
+  });
+});
+
 describe('high-consequence confirmations', () => {
   it('pause everywhere states the exact reach (§19.2)', () => {
     const copy = pauseEverywhereCopy('Member Promotions', { screens: 18, groups: 2, locations: 3 }, 6);

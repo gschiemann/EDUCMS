@@ -1456,6 +1456,95 @@ export function pauseEverywhereCopy(
   };
 }
 
+// ─────────────────────────────────────────────────────────────────────
+// 1080p playback copies (rule 16) — what each screen's switch may do
+// ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Why a screen's rule is not simply on or off:
+ *   • `preparing`       — its own rule is held for a 1080p copy. The switch is
+ *                         the per-screen "Stop and cancel publish"; ON is what
+ *                         the server refuses (409 PLAYBACK_COPY_PENDING).
+ *   • `failed`          — the copy could not be prepared; the rule is inert.
+ *                         ON is a fresh attempt through the gate.
+ *   • `group-preparing` — the screen is reached only through a GROUP rule that
+ *                         is preparing. Any change would split that rule, which
+ *                         the server refuses; both buttons wait.
+ */
+export type PlaybackCopyState = 'preparing' | 'failed' | 'group-preparing';
+
+export interface ScreenPlaybackCopy {
+  state: PlaybackCopyState;
+  /** The server's own words for a failed copy; null otherwise. */
+  error: string | null;
+  /** The group whose rule is preparing, for the label. */
+  groupName: string | null;
+}
+
+const isPreparing = (s: OpsScheduleRef) => s.pendingMedia === true && !s.pendingMediaError;
+const isFailed = (s: OpsScheduleRef) => s.pendingMedia === true && !!s.pendingMediaError;
+
+/**
+ * One entry per screen whose switch is NOT a plain on/off right now. A screen's
+ * own rule speaks first (a pin outranks a group rule everywhere else too); a
+ * screen with no rule of its own inherits the state of the group rule reaching
+ * it. Screens with nothing pending are simply absent.
+ */
+export function derivePlaybackCopyStates(
+  schedules: OpsScheduleRef[],
+  groups: OpsGroupRef[],
+  screens: OpsScreenRef[],
+): Map<string, ScreenPlaybackCopy> {
+  const out = new Map<string, ScreenPlaybackCopy>();
+  const groupById = new Map(groups.map((g) => [g.id, g]));
+  const own = new Set<string>();
+  for (const s of schedules) if (s.screenId) own.add(s.screenId);
+  // Own rules: preparing beats failed on the same screen (a fresh attempt
+  // supersedes the old failure the moment it is queued).
+  for (const s of schedules) {
+    if (!s.screenId) continue;
+    if (isPreparing(s)) out.set(s.screenId, { state: 'preparing', error: null, groupName: null });
+    else if (isFailed(s) && out.get(s.screenId)?.state !== 'preparing') {
+      out.set(s.screenId, { state: 'failed', error: s.pendingMediaError ?? null, groupName: null });
+    }
+  }
+  for (const s of schedules) {
+    if (!s.screenGroupId || (!isPreparing(s) && !isFailed(s))) continue;
+    const g = groupById.get(s.screenGroupId);
+    const members = g?.screens ?? screens.filter((sc) => sc.screenGroupId === s.screenGroupId);
+    for (const m of members) {
+      if (!m?.id || own.has(m.id) || out.has(m.id)) continue;
+      out.set(m.id, isPreparing(s)
+        ? { state: 'group-preparing', error: null, groupName: g?.name || s.screenGroup?.name || null }
+        : { state: 'failed', error: s.pendingMediaError ?? null, groupName: g?.name || s.screenGroup?.name || null });
+    }
+  }
+  return out;
+}
+
+/**
+ * A failed copy is retried with a FRESH publish (POST /schedules) carrying the
+ * failed rule's own window and target: the server collapses the failed row
+ * (it is inert since bdb3f59a) and runs the gate again — held if the copy is
+ * still missing, live at once if it has since landed.
+ */
+export function retryPublishPayload(rule: OpsScheduleRef): Record<string, unknown> {
+  const start = rule.startTime ? new Date(rule.startTime) : new Date();
+  return {
+    playlistId: rule.playlistId,
+    ...(rule.screenId ? { screenId: rule.screenId } : {}),
+    ...(rule.screenGroupId ? { screenGroupId: rule.screenGroupId } : {}),
+    startTime: (Number.isFinite(start.getTime()) ? start : new Date()).toISOString(),
+    ...(rule.endTime ? { endTime: new Date(rule.endTime).toISOString() } : {}),
+    ...(rule.daysOfWeek ? { daysOfWeek: rule.daysOfWeek } : {}),
+    ...(rule.timeStart ? { timeStart: rule.timeStart } : {}),
+    ...(rule.timeEnd ? { timeEnd: rule.timeEnd } : {}),
+    priority: rule.priority ?? 0,
+    mode: rule.mode === 'append' ? 'append' : 'replace',
+    mutedOverride: rule.mutedOverride ?? null,
+  };
+}
+
 /** Confirmation copy for permanent playlist deletion. */
 export interface RemoveDecision {
   title: string;

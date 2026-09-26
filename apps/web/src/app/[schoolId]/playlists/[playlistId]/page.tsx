@@ -17,6 +17,7 @@
 import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import { Loader2 } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
 import {
@@ -33,7 +34,7 @@ import {
 } from '@/components/playlists/v1/PlaylistWorkspace';
 import { AddScreensDialog } from '@/components/playlists/v1/PlaylistDialogs';
 import {
-  buildPlaylistRow, deriveDeliveryFromScreens, describeScreenConflicts, findScreenConflicts,
+  buildPlaylistRow, deriveDeliveryFromScreens, derivePlaybackCopyStates, describeScreenConflicts, findScreenConflicts,
   pauseEverywhereCopy, resolveTargetScreenIds,
   summarizeDelivery, summarizeDeliveryPayload, overlayCurrentScreenHealth, DELIVERY_UNAVAILABLE,
   type OpsGroupRef, type OpsScheduleRef, type OpsScreenRef,
@@ -60,6 +61,7 @@ export default function PlaylistWorkspacePage() {
   const playlistId = params?.playlistId || '';
   const currentUser = useUIStore((s) => s.user);
   const isViewer = currentUser?.role === 'RESTRICTED_VIEWER';
+  const t = useTranslations();
   // "Keep screens in sync" (2026-09-16) — moved off the screen group's ⋮ menu.
   const setPlaylistSync = useSetPlaylistSync();
 
@@ -114,9 +116,13 @@ export default function PlaylistWorkspacePage() {
    * reached through a group would take the whole group with it.
    */
   const handleRemoveScreen = useCallback(async (screenId: string, screenName: string) => {
+    // Removing a screen whose 1080p copy is preparing also cancels that
+    // publish — said out loud, never silently (rule 16).
+    const preparing = playbackByScreenRef.current.get(screenId)?.state === 'preparing';
     const ok = await appConfirm({
       title: `Stop playing on ${screenName}?`,
-      message: `This playlist is removed from ${screenName}. Whatever that screen shows next comes from its other schedules, or it falls back to its idle screen.`,
+      message: `This playlist is removed from ${screenName}. Whatever that screen shows next comes from its other schedules, or it falls back to its idle screen.`
+        + (preparing ? ` ${t('playlistsPage.removeScreenCancelsCopy')}` : ''),
       confirmLabel: 'Remove screen',
       cancelLabel: 'Cancel',
       tone: 'danger',
@@ -131,7 +137,7 @@ export default function PlaylistWorkspacePage() {
         tone: 'danger',
       });
     }
-  }, [removeScreen, playlistId]);
+  }, [removeScreen, playlistId, t]);
   const [refreshingScreenId, setRefreshingScreenId] = useState<string | null>(null);
 
   /**
@@ -160,6 +166,19 @@ export default function PlaylistWorkspacePage() {
     [schedules, playlistId],
   );
   const preparingMedia = mySchedules.some((s) => s.pendingMedia && !s.pendingMediaError);
+  /**
+   * Which screens' switches are NOT a plain on/off right now: a 1080p copy
+   * preparing (the switch cancels), failed (the switch retries), or a GROUP
+   * rule preparing (the switch waits). Rule 16, 2026-09-26.
+   */
+  const playbackByScreen = useMemo(
+    () => derivePlaybackCopyStates(mySchedules, groups, screens),
+    [mySchedules, groups, screens],
+  );
+  // The remove handler is declared above the data it needs (hooks order), so
+  // it reads the current map through a ref.
+  const playbackByScreenRef = useRef(playbackByScreen);
+  playbackByScreenRef.current = playbackByScreen;
   const playbackAssetIds = useMemo(() => [...new Set(((playlist?.items as any[]) ?? [])
     .map((item) => item?.asset?.id)
     .filter((id): id is string => typeof id === 'string'))].slice(0, 200), [playlist]);
@@ -238,9 +257,10 @@ export default function PlaylistWorkspacePage() {
         scheduleId: mine?.id ?? null,
         viaGroupName: mine ? null : (grouped?.name ?? null),
         active: mine?.active ?? grouped?.active ?? true,
+        playback: playbackByScreen.get(s.id) ?? null,
       };
     });
-  }, [targetScreens, mySchedules, groups, screens]);
+  }, [targetScreens, mySchedules, groups, screens, playbackByScreen]);
 
   /**
    * The power button on a screen row (2026-09-19).
@@ -265,6 +285,19 @@ export default function PlaylistWorkspacePage() {
    */
   const handleToggleScreen = useCallback(async (screenId: string, screenName: string, next: boolean) => {
     try {
+      // Switching OFF a screen whose 1080p copy is preparing CANCELS that
+      // publish (the server clears the held rule). Confirmed, and named for
+      // what it is — the same words as the header's button (rule 16).
+      if (!next && playbackByScreen.get(screenId)?.state === 'preparing') {
+        const ok = await appConfirm({
+          title: t('playlistsPage.stopCancelPublishScreenTitle', { name: screenName }),
+          message: t('playlistsPage.stopCancelPublishScreenMessage', { name: screenName }),
+          confirmLabel: t('playlistsPage.stopCancelPublish'),
+          cancelLabel: 'Cancel',
+          tone: 'danger',
+        });
+        if (!ok) return;
+      }
       if (next) {
         const screen = screens.find((sc) => sc.id === screenId);
         const reaches = mySchedules.filter(
@@ -299,7 +332,7 @@ export default function PlaylistWorkspacePage() {
         tone: 'danger',
       });
     }
-  }, [setScreenActive, playlistId, playlist, playlists, schedules, screens, groups, mySchedules]);
+  }, [setScreenActive, playlistId, playlist, playlists, schedules, screens, groups, mySchedules, playbackByScreen, t]);
 
   /**
    * Which delivery source is answering?
@@ -332,7 +365,15 @@ export default function PlaylistWorkspacePage() {
   /** §19.2 — exact reach in the confirmation, before anything is disabled. */
   const handlePauseEverywhere = useCallback(async () => {
     if (!row) return;
-    const copy = pauseEverywhereCopy(row.name, row.reach, mySchedules.length);
+    // While a 1080p copy is preparing this button reads "Stop and cancel
+    // publish", so its confirmation says what is cancelled, not just paused.
+    const copy = preparingMedia
+      ? {
+          title: t('playlistsPage.stopCancelPublishTitle', { name: row.name }),
+          message: t('playlistsPage.stopCancelPublishMessage', { rules: mySchedules.length, screens: row.reach.screens }),
+          confirmLabel: t('playlistsPage.stopCancelPublish'),
+        }
+      : pauseEverywhereCopy(row.name, row.reach, mySchedules.length);
     const ok = await appConfirm({
       title: copy.title,
       message: copy.message,
@@ -350,7 +391,7 @@ export default function PlaylistWorkspacePage() {
         tone: 'danger',
       });
     }
-  }, [row, mySchedules.length, setPlaylistActive]);
+  }, [row, mySchedules.length, setPlaylistActive, preparingMedia, t]);
 
   /**
    * The other direction. No confirm: starting a paused playlist restores what

@@ -1308,7 +1308,13 @@ export function useToggleSchedule() {
       const prev = qc.getQueryData<any>(['schedules']);
       qc.setQueryData<any>(['schedules'], (old: any) => {
         if (!Array.isArray(old)) return old;
-        return old.map((s: any) => (s?.id === id ? { ...s, isActive: !s.isActive } : s));
+        return old.map((s: any) => {
+          if (s?.id !== id) return s;
+          // Toggling a rule that is held for a 1080p copy CANCELS the publish
+          // (the server clears it, inactive) — it must not flash "on" first.
+          if (s.pendingMedia && !s.isActive) return { ...s, isActive: false, pendingMedia: false, pendingMediaError: null };
+          return { ...s, isActive: !s.isActive };
+        });
       });
       return { prev };
     },
@@ -3326,7 +3332,16 @@ export interface PublishToFleetResult {
   sourcePlaylistId: string;
   totalScreens: number;
   totalLocations: number;
-  perLocation: Array<{ tenantId: string; tenantName: string; playlistId: string; screensScheduled: number; isParent: boolean }>;
+  /**
+   * Rule 16 (2026-09-26): screens whose rule is HELD for a 1080p playback copy.
+   * They keep what they show now and start by themselves when the copy lands;
+   * `screensScheduled` counts only screens playing the new content NOW.
+   */
+  screensPending?: number;
+  perLocation: Array<{
+    tenantId: string; tenantName: string; playlistId: string; screensScheduled: number; isParent: boolean;
+    screensPending?: number; pendingScreenIds?: string[];
+  }>;
 }
 export function usePublishToFleet() {
   return useMutation<PublishToFleetResult, Error, { playlistId: string; screenIds: string[] }>({

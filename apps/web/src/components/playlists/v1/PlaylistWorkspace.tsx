@@ -33,10 +33,12 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { AlertTriangle, ArrowLeft, Loader2, Monitor, PauseCircle, PlayCircle, Plus, Power, Settings, Trash2 } from 'lucide-react';
 import {
   deriveTargetsFromScreens, describeReach, exactStamp, timeAgo,
   type DeliveryPayload, type DeliverySummary, type OpsScreenRef, type PlaylistSummaryRow,
+  type ScreenPlaybackCopy,
 } from './playlistOps';
 
 const INK = 'text-[#111A3A]';
@@ -147,6 +149,14 @@ export interface PlaylistWorkspaceProps {
      */
     viaGroupName: string | null;
     active: boolean;
+    /**
+     * Set while this screen's switch is NOT a plain on/off (rule 16,
+     * 2026-09-26): its 1080p copy is preparing (the switch is the per-screen
+     * "Stop and cancel publish"), it failed (the switch is a retry), or the
+     * GROUP rule reaching it is preparing (both buttons wait — the server
+     * refuses to split that rule). See `derivePlaybackCopyStates`.
+     */
+    playback?: ScreenPlaybackCopy | null;
   }>;
   /**
    * Switch ONE screen on or off in this playlist (2026-09-19). Addressed by
@@ -165,6 +175,7 @@ export interface PlaylistWorkspaceProps {
 
 export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
   const { row, tab } = props;
+  const t = useTranslations();
   // Delivery evidence per screen, keyed for the Screens tab's cards. The list
   // is a SCREEN list now, but each row still carries what that screen reports
   // about itself — dropping that was how the G43 "not received" signal briefly
@@ -299,7 +310,7 @@ export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
                 className="inline-flex items-center gap-1.5 h-10 px-4 rounded-full border border-slate-200 bg-white text-[13px] font-bold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
               >
                 <PauseCircle className="w-4 h-4" aria-hidden />
-                {props.pausePending ? 'Pausing…' : row?.statusLabel === 'PREPARING 1080P' ? 'Stop and cancel publish' : 'Pause everywhere'}
+                {props.pausePending ? 'Pausing…' : row?.statusLabel === 'PREPARING 1080P' ? t('playlistsPage.stopCancelPublish') : 'Pause everywhere'}
               </button>
             )
           )}
@@ -509,17 +520,32 @@ export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
               // built for.
               const ev = evidenceById.get(s.id);
               const sc = screenById.get(s.id);
+              // The 1080p playback copy, when it changes what the switch does
+              // (rule 16). A preparing screen is neither on nor off: it is
+              // waiting, and reads that way — not dimmed like a paused one.
+              const pb = s.playback ?? null;
+              const preparing = pb?.state === 'preparing';
+              const groupLocked = pb?.state === 'group-preparing';
+              const failed = pb?.state === 'failed';
+              const powerLabel = props.isViewer ? 'Read-only — viewer role'
+                : preparing ? t('playlistsPage.stopCancelPublishOn', { name: s.name })
+                : groupLocked ? t('playlistsPage.groupPreparingLocked', { group: pb?.groupName || s.viaGroupName || 'its group' })
+                : failed ? t('playlistsPage.retryPublishOn', { name: s.name })
+                : s.active ? `Stop this playlist on ${s.name}` : `Play this playlist on ${s.name}`;
               return (
               <div
                 key={s.id}
                 data-testid="delivery-row"
                 data-state={ev?.state ?? 'unknown'}
+                data-playback={pb?.state ?? undefined}
                 className={`p-4 rounded-2xl border flex items-center justify-between gap-4 transition-all ${
-                  s.active ? 'bg-emerald-50/50 border-emerald-100' : 'bg-slate-50 border-slate-100 opacity-60'
+                  s.active ? 'bg-emerald-50/50 border-emerald-100'
+                    : preparing || groupLocked ? 'bg-indigo-50/50 border-indigo-100'
+                    : 'bg-slate-50 border-slate-100 opacity-60'
                 }`}
               >
                 <div className="flex items-center gap-2 min-w-0">
-                  <span className={`w-2 h-2 rounded-full shrink-0 ${s.active ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${s.active ? 'bg-emerald-500' : preparing || groupLocked ? 'bg-indigo-500 animate-pulse' : 'bg-slate-300'}`} />
                   <Monitor className={`w-4 h-4 shrink-0 ${INK_3}`} aria-hidden />
                   <p className={`text-[14px] font-bold ${INK} truncate`}>{s.name}</p>
                   <span className={`text-[11px] font-semibold shrink-0 ${s.online ? 'text-emerald-600' : 'text-slate-400'}`}>
@@ -528,6 +554,18 @@ export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
                   {s.viaGroupName && (
                     <span className="text-[11px] font-semibold text-slate-400 truncate shrink-0">
                       via {s.viaGroupName}
+                    </span>
+                  )}
+                  {(preparing || groupLocked) && (
+                    <span className="text-[11px] font-bold text-indigo-700 shrink-0" title={t('playlistsPage.preparingCopyHint')}>
+                      {groupLocked && pb?.groupName
+                        ? t('playlistsPage.preparingCopyFor', { group: pb.groupName })
+                        : t('playlistsPage.preparingCopy')}
+                    </span>
+                  )}
+                  {failed && (
+                    <span className="text-[11px] font-bold text-amber-700 shrink-0" title={pb?.error ?? undefined}>
+                      {t('playlistsPage.copyFailed')}
                     </span>
                   )}
                   {/* Evidence, but only when there IS something to say. A
@@ -553,28 +591,35 @@ export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
                       from a playlist". A screen here through a GROUP rule used to
                       get a dead button and a tooltip; the server now splits that
                       rule, so EVERY row switches — and only that row. */}
+                  {/* While a 1080p copy is preparing for THIS screen, the switch
+                      is its cancel (the route confirms). While the GROUP rule
+                      reaching it is preparing, the server refuses any change
+                      (it would split that rule), so the switch waits and says
+                      why. A failed copy makes the switch a retry. */}
                   <button
                     type="button"
-                    disabled={props.isViewer || props.screenActionPending}
-                    onClick={() => props.onToggleScreen(s.id, s.name, !s.active)}
-                    title={
-                      props.isViewer ? 'Read-only — viewer role'
-                        : s.active ? `Stop this playlist on ${s.name}` : `Play this playlist on ${s.name}`
-                    }
-                    aria-label={s.active ? `Stop this playlist on ${s.name}` : `Play this playlist on ${s.name}`}
+                    disabled={props.isViewer || props.screenActionPending || groupLocked}
+                    onClick={() => props.onToggleScreen(s.id, s.name, preparing ? false : failed ? true : !s.active)}
+                    title={powerLabel}
+                    aria-label={powerLabel}
                     aria-pressed={s.active}
                     className={`p-2 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
-                      s.active ? 'text-emerald-600 hover:bg-emerald-100' : 'text-slate-400 hover:bg-slate-100'
+                      s.active ? 'text-emerald-600 hover:bg-emerald-100'
+                        : preparing ? 'text-indigo-600 hover:bg-indigo-100'
+                        : failed ? 'text-amber-600 hover:bg-amber-100'
+                        : 'text-slate-400 hover:bg-slate-100'
                     }`}
                   >
                     <Power className="w-4 h-4" aria-hidden />
                   </button>
                   <button
                     type="button"
-                    disabled={props.isViewer || props.screenActionPending}
+                    disabled={props.isViewer || props.screenActionPending || groupLocked}
                     onClick={() => props.onRemoveScreen(s.id, s.name)}
                     aria-label={`Remove ${s.name} from this playlist`}
-                    title={props.isViewer ? 'Read-only — viewer role' : `Remove ${s.name} from this playlist`}
+                    title={props.isViewer ? 'Read-only — viewer role'
+                      : groupLocked ? t('playlistsPage.groupPreparingLocked', { group: pb?.groupName || s.viaGroupName || 'its group' })
+                      : `Remove ${s.name} from this playlist`}
                     className="p-2 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <Trash2 className="w-4 h-4" aria-hidden />

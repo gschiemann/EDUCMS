@@ -12,7 +12,8 @@
  */
 
 import { useMemo, useState } from 'react';
-import { X, Loader2, Send, CheckCircle2, Wifi, WifiOff, Building2, MonitorCheck } from 'lucide-react';
+import { useTranslations } from 'next-intl';
+import { X, Loader2, Send, CheckCircle2, Wifi, WifiOff, Building2, MonitorCheck, Clock } from 'lucide-react';
 import { useFleet, usePlaylists, usePublishToFleet, type PublishToFleetResult } from '@/hooks/use-api';
 import { useQueryClient } from '@tanstack/react-query';
 import { computeBlastRadius, reachWarnings } from '@/lib/blast-radius';
@@ -28,6 +29,7 @@ export function PublishToLocationsModal({
   initialPlaylistId?: string;
 }) {
   const qc = useQueryClient();
+  const t = useTranslations();
   const fleet = useFleet({ enabled: open });
   const { data: playlists } = usePlaylists();
   const publish = usePublishToFleet();
@@ -125,11 +127,23 @@ export function PublishToLocationsModal({
               {result.perLocation.map((l) => (
                 <div key={l.tenantId} className="flex items-center justify-between text-sm rounded-lg border border-slate-200 px-3 py-2">
                   <span className="font-medium text-slate-700">{l.tenantName}{l.isParent && <span className="ml-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">HQ</span>}</span>
-                  <span className="text-slate-500 text-xs inline-flex items-center gap-1"><MonitorCheck className="w-3.5 h-3.5 text-emerald-600" /> {l.screensScheduled} screen{l.screensScheduled === 1 ? '' : 's'} · copy {l.isParent ? 'scheduled' : 'delivered'}</span>
+                  <span className="text-slate-500 text-xs inline-flex items-center gap-1 flex-wrap justify-end">
+                    <MonitorCheck className="w-3.5 h-3.5 text-emerald-600" /> {l.screensScheduled} screen{l.screensScheduled === 1 ? '' : 's'} · copy {l.isParent ? 'scheduled' : 'delivered'}
+                    {/* Rule 16 (2026-09-26): a held screen is not "delivered" —
+                        it keeps what it shows and starts when its copy lands. */}
+                    {(l.screensPending ?? 0) > 0 && (
+                      <span className="inline-flex items-center gap-1 text-indigo-700" data-testid="fleet-pending">
+                        · <Clock className="w-3.5 h-3.5" /> {t('playlistsPage.fleetPending', { count: l.screensPending ?? 0 })}
+                      </span>
+                    )}
+                  </span>
                 </div>
               ))}
             </div>
             <p className="text-xs text-slate-400 mt-3">Each location now has its own copy of this playlist, scheduled live. Re-publishing updates the copy in place.</p>
+            {(result.screensPending ?? 0) > 0 && (
+              <p className="text-xs text-indigo-700 mt-1">{t('playlistsPage.fleetPendingNote')}</p>
+            )}
             <div className="flex justify-end gap-2 mt-4">
               <button onClick={() => { setResult(null); }} className="px-4 py-2 text-sm font-semibold rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50">Publish more</button>
               <button onClick={close} className="px-4 py-2 text-sm font-bold rounded-lg text-white" style={{ background: 'var(--brand-primary, #4f46e5)' }}>Done</button>

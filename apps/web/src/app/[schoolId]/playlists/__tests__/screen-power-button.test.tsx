@@ -190,3 +190,74 @@ describe('switching ONE screen on — the fifth door', () => {
     expect(appConfirmMock).not.toHaveBeenCalled();
   });
 });
+
+describe('a screen whose 1080p playback copy is in play (rule 16, 2026-09-26)', () => {
+  const FAIL = 'A playback copy could not be prepared. Retry publishing this playlist.';
+  const preparingOwn = { id: 'mine', playlistId: 'p1', screenId: 's3', screenGroupId: null, isActive: false, pendingMedia: true, pendingMediaError: null, startTime: start };
+
+  it('PREPARING: the switch is "Stop and cancel publish" — confirmed, named, then OFF for that screen', async () => {
+    SCHEDULES = [preparingOwn];
+    open();
+    const row = rowFor('L55VEC');
+    expect(row).toHaveAttribute('data-playback', 'preparing');
+    fireEvent.click(within(row).getByRole('button', { name: 'Stop and cancel publish on L55VEC' }));
+    await waitFor(() => expect(setActiveSpy).toHaveBeenCalledWith({ playlistId: 'p1', screenId: 's3', active: false }));
+    const arg = appConfirmMock.mock.calls[0][0] as { title: string; message: string; confirmLabel: string; tone: string };
+    expect(arg.title).toBe('Stop and cancel publish on L55VEC?');
+    expect(arg.message).toContain('The 1080p copy being prepared for L55VEC is cancelled');
+    expect(arg.confirmLabel).toBe('Stop and cancel publish');
+    expect(arg.tone).toBe('danger');
+  });
+
+  it('declining the cancel leaves the copy preparing', async () => {
+    appConfirmMock.mockResolvedValue(false);
+    SCHEDULES = [preparingOwn];
+    open();
+    fireEvent.click(within(rowFor('L55VEC')).getByRole('button', { name: 'Stop and cancel publish on L55VEC' }));
+    await waitFor(() => expect(appConfirmMock).toHaveBeenCalled());
+    expect(setActiveSpy).not.toHaveBeenCalled();
+  });
+
+  it('removing a preparing screen says it also cancels the copy', async () => {
+    SCHEDULES = [preparingOwn];
+    open();
+    fireEvent.click(within(rowFor('L55VEC')).getByRole('button', { name: 'Remove L55VEC from this playlist' }));
+    await waitFor(() => expect(removeSpy).toHaveBeenCalledWith({ playlistId: 'p1', screenId: 's3' }));
+    const arg = appConfirmMock.mock.calls[0][0] as { message: string };
+    expect(arg.message).toContain('This also cancels the 1080p copy being prepared for it.');
+  });
+
+  it('FAILED: the switch is a retry — a fresh attempt through the gate, no prompt on a free screen', async () => {
+    SCHEDULES = [{ ...preparingOwn, pendingMediaError: FAIL }];
+    open();
+    const row = rowFor('L55VEC');
+    expect(row).toHaveAttribute('data-playback', 'failed');
+    expect(within(row).getByText('Playback copy failed')).toHaveAttribute('title', FAIL);
+    fireEvent.click(within(row).getByRole('button', { name: 'Retry publish on L55VEC' }));
+    await waitFor(() => expect(setActiveSpy).toHaveBeenCalledWith({ playlistId: 'p1', screenId: 's3', active: true }));
+    expect(appConfirmMock).not.toHaveBeenCalled();
+  });
+
+  it('members of a GROUP whose rule is preparing are locked — the server would refuse the split', async () => {
+    SCHEDULES = [{ id: 'g-rule', playlistId: 'p1', screenId: null, screenGroupId: 'g1', isActive: false, pendingMedia: true, pendingMediaError: null, startTime: start }];
+    open();
+    for (const name of ['G75', 'GUQ55']) {
+      const row = rowFor(name);
+      expect(row).toHaveAttribute('data-playback', 'group-preparing');
+      expect(within(row).getByText('Preparing 1080p copy for LCD Flat Panels')).toBeInTheDocument();
+      expect(within(row).getByRole('button', { name: `Remove ${name} from this playlist` })).toBeDisabled();
+    }
+    expect(setActiveSpy).not.toHaveBeenCalled();
+  });
+
+  it('the group-locked state does NOT spread to a screen with a rule of its own', async () => {
+    SCHEDULES = [
+      { id: 'g-rule', playlistId: 'p1', screenId: null, screenGroupId: 'g1', isActive: false, pendingMedia: true, pendingMediaError: null, startTime: start },
+      { id: 'own-s1', playlistId: 'p1', screenId: 's1', screenGroupId: null, isActive: true, startTime: start },
+    ];
+    open();
+    expect(rowFor('G75')).not.toHaveAttribute('data-playback');
+    expect(within(rowFor('G75')).getByRole('button', { name: 'Stop this playlist on G75' })).toBeEnabled();
+    expect(rowFor('GUQ55')).toHaveAttribute('data-playback', 'group-preparing');
+  });
+});
