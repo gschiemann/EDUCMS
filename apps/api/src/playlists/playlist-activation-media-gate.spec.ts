@@ -425,3 +425,137 @@ describe('PUT /playlists/:id/active — "Play everywhere"', () => {
     });
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────
+describe('PUT /playlists/:id/screens/:screenId/active — one screen', () => {
+  const on = (h: ReturnType<typeof harness>, screenId: string) =>
+    h.controller.setScreenActive(req as any, 'P', screenId, { active: true } as any);
+  const off = (h: ReturnType<typeof harness>, screenId: string) =>
+    h.controller.setScreenActive(req as any, 'P', screenId, { active: false } as any);
+
+  it('holds a 1080p screen\'s own rule for its copy; a 4K screen starts at once', async () => {
+    const h = harness(makeWorld({ schedules: [rule({ id: 'r-lcd', screenId: 'lcd' }), rule({ id: 'r-wall', screenId: 'wall' })] }));
+    expect(await on(h, 'wall')).toMatchObject({ active: true, heldForPlaybackCopy: false });
+    expect(byId(h.w, 'r-wall')).toMatchObject({ isActive: true, pendingMedia: false });
+    expect(h.w.jobs).toEqual([]);
+
+    expect(await on(h, 'lcd')).toMatchObject({ active: true, heldForPlaybackCopy: true });
+    expect(byId(h.w, 'r-lcd')).toMatchObject({ isActive: false, pendingMedia: true, pendingMediaError: null });
+    expect(h.w.jobs).toEqual([expect.objectContaining({ assetId: 'v4k', status: 'queued' })]);
+    const audit = h.w.audit.filter((a) => a.action === 'PLAYLIST_SCREEN_TOGGLED').pop()!;
+    expect(JSON.parse(audit.details)).toMatchObject({ screenId: 'lcd', active: true, heldForPlaybackCopy: true });
+
+    renditionLands(h.w, 'v4k');
+    await h.service.sweep();
+    expect(byId(h.w, 'r-lcd')).toMatchObject({ isActive: true, pendingMedia: false });
+    expect(h.redis.publish).toHaveBeenCalledWith(`tenant:${T1}`, 'signed-SYNC');
+  });
+
+  it('a 1080p member switched on out of a PAUSED group publish gets a held rule of its own; the rest stay off', async () => {
+    const h = harness(makeWorld({ schedules: [rule({ id: 'g', screenGroupId: 'G' })] }));
+    expect(await on(h, 'g1')).toMatchObject({ groupRulesSplit: 1, heldForPlaybackCopy: true });
+    expect(h.w.schedules.find((r) => r.id === 'g')).toBeUndefined();
+    const mine = h.w.schedules.filter((r) => r.screenId === 'g1');
+    expect(mine).toHaveLength(1);
+    expect(mine[0]).toMatchObject({ isActive: false, pendingMedia: true, pendingMediaError: null });
+    expect(h.w.schedules.filter((r) => r.screenId === 'g2').every((r) => !r.isActive && !r.pendingMedia)).toBe(true);
+
+    renditionLands(h.w, 'v4k');
+    await h.service.sweep();
+    expect(h.w.schedules.find((r) => r.screenId === 'g1')).toMatchObject({ isActive: true, pendingMedia: false });
+    expect(h.w.schedules.filter((r) => r.screenId === 'g2').every((r) => !r.isActive)).toBe(true);
+  });
+
+  it('a 4K member switched on out of a paused group publish starts at once — a bigger screen never waits on a smaller file', async () => {
+    const h = harness(makeWorld({ schedules: [rule({ id: 'g', screenGroupId: 'G' })] }));
+    expect(await on(h, 'g2')).toMatchObject({ heldForPlaybackCopy: false });
+    expect(h.w.schedules.find((r) => r.screenId === 'g2')).toMatchObject({ isActive: true, pendingMedia: false });
+    expect(h.w.jobs).toEqual([]);
+  });
+
+  describe('refusals are about the rows this press would touch', () => {
+    const pendingWorld = () => makeWorld({ schedules: [
+      rule({ id: 'r-lcd', screenId: 'lcd', pendingMedia: true }),   // preparing
+      rule({ id: 'r-wall', screenId: 'wall' }),                     // parked
+      rule({ id: 'r-g1', screenId: 'g1', isActive: true }),         // playing
+    ] });
+
+    it('a screen whose copy is preparing cannot be switched on early — the message names the screen', async () => {
+      const h = harness(pendingWorld());
+      const snapshot = JSON.stringify(h.w.schedules);
+      let message = '';
+      try { await on(h, 'lcd'); } catch (e) {
+        const res = (e as HttpException).getResponse() as any;
+        expect(res.code).toBe('PLAYBACK_COPY_PENDING');
+        message = res.message;
+      }
+      expect(message).toContain('Lobby LCD');
+      expect(JSON.stringify(h.w.schedules)).toBe(snapshot);
+      expect(h.w.audit).toHaveLength(0);
+    });
+
+    it('OTHER screens are not locked by it: a 4K screen switches on, a playing screen switches off', async () => {
+      const h = harness(pendingWorld());
+      expect(await code(on(h, 'wall'))).toBe('NO THROW');
+      expect(byId(h.w, 'r-wall').isActive).toBe(true);
+      expect(await code(off(h, 'g1'))).toBe('NO THROW');
+      expect(byId(h.w, 'r-g1').isActive).toBe(false);
+      expect(byId(h.w, 'r-lcd')).toMatchObject({ isActive: false, pendingMedia: true }); // untouched
+    });
+
+    it('a member of a group whose rule is preparing cannot be changed — the split would go live ungated', async () => {
+      const h = harness(makeWorld({ schedules: [rule({ id: 'g', screenGroupId: 'G', pendingMedia: true })] }));
+      const snapshot = JSON.stringify(h.w.schedules);
+      expect(await code(on(h, 'g2'))).toBe('PLAYBACK_COPY_PENDING');
+      expect(await code(off(h, 'g2'))).toBe('PLAYBACK_COPY_PENDING');
+      expect(await code(h.controller.removeScreen(req as any, 'P', 'g2'))).toBe('PLAYBACK_COPY_PENDING');
+      expect(JSON.stringify(h.w.schedules)).toBe(snapshot);
+    });
+  });
+
+  it('switching a preparing screen OFF is the per-screen cancel: the sweep never revives it', async () => {
+    const h = harness(makeWorld({ schedules: [rule({ id: 'r-lcd', screenId: 'lcd' }), rule({ id: 'r-wall', screenId: 'wall', isActive: true })] }));
+    await on(h, 'lcd');
+    expect(byId(h.w, 'r-lcd').pendingMedia).toBe(true);
+
+    expect(await off(h, 'lcd')).toMatchObject({ active: false });
+    expect(byId(h.w, 'r-lcd')).toMatchObject({ isActive: false, pendingMedia: false, pendingMediaError: null });
+    const audit = h.w.audit.filter((a) => a.action === 'PLAYLIST_SCREEN_TOGGLED').pop()!;
+    expect(JSON.parse(audit.details)).toMatchObject({ screenId: 'lcd', active: false, pendingPublishesCancelled: 1 });
+    expect(byId(h.w, 'r-wall').isActive).toBe(true); // the wall keeps playing
+
+    renditionLands(h.w, 'v4k');
+    await h.service.sweep();
+    expect(byId(h.w, 'r-lcd').isActive).toBe(false);
+    expect(h.redis.publish).not.toHaveBeenCalled();
+  });
+
+  it('removing a preparing screen deletes its held rule', async () => {
+    const h = harness(makeWorld({ schedules: [rule({ id: 'r-lcd', screenId: 'lcd' })] }));
+    await on(h, 'lcd');
+    expect(await h.controller.removeScreen(req as any, 'P', 'lcd')).toMatchObject({ removed: true });
+    expect(h.w.schedules.find((r) => r.id === 'r-lcd')).toBeUndefined();
+  });
+
+  it('switching a FAILED screen on is a fresh attempt: the error clears and it waits for a new copy', async () => {
+    const h = harness(makeWorld({ schedules: [
+      rule({ id: 'r-lcd', screenId: 'lcd', pendingMedia: true, pendingMediaError: 'A playback copy could not be prepared. Retry publishing this playlist.' }),
+    ] }));
+    h.w.jobs.push({ id: 'old', tenantId: T1, assetId: 'v4k', status: 'failed', reason: 'ffmpeg-failed' });
+    expect(await on(h, 'lcd')).toMatchObject({ heldForPlaybackCopy: true });
+    expect(byId(h.w, 'r-lcd')).toMatchObject({ isActive: false, pendingMedia: true, pendingMediaError: null });
+    expect(h.w.jobs[0]).toMatchObject({ status: 'queued', reason: null }); // re-queued, as the real enqueue does
+    renditionLands(h.w, 'v4k');
+    await h.service.sweep();
+    expect(byId(h.w, 'r-lcd')).toMatchObject({ isActive: true, pendingMedia: false });
+  });
+
+  it('switching a failed screen on when the copy now exists just starts it', async () => {
+    const h = harness(makeWorld({
+      schedules: [rule({ id: 'r-lcd', screenId: 'lcd', pendingMedia: true, pendingMediaError: 'failed earlier' })],
+      assets: [{ ...V4K, processingMeta: { ...V4K.processingMeta, renditions: { '1080p': RENDITION } } }],
+    }));
+    expect(await on(h, 'lcd')).toMatchObject({ heldForPlaybackCopy: false });
+    expect(byId(h.w, 'r-lcd')).toMatchObject({ isActive: true, pendingMedia: false, pendingMediaError: null });
+  });
+});

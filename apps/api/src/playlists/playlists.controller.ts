@@ -1121,16 +1121,6 @@ export class PlaylistsController {
         HttpStatus.FORBIDDEN,
       );
     }
-    const pending = await this.prisma.client.schedule.findFirst({
-      where: { tenantId, playlistId: id, pendingMedia: true },
-      select: { id: true },
-    });
-    if (pending) {
-      throw new HttpException({
-        code: 'PLAYBACK_COPY_PENDING',
-        message: 'This playlist is preparing a playback copy. Stop and cancel publishing before changing individual screens.',
-      }, HttpStatus.CONFLICT);
-    }
     const screen = await this.prisma.client.screen.findFirst({
       where: { id: screenId, tenantId },
       select: { id: true, name: true, screenGroupId: true },
@@ -1140,11 +1130,18 @@ export class PlaylistsController {
     const RULE = {
       id: true, playlistId: true, screenId: true, screenGroupId: true, startTime: true, endTime: true,
       daysOfWeek: true, timeStart: true, timeEnd: true, priority: true, mode: true, mutedOverride: true, isActive: true,
+      pendingMedia: true, pendingMediaError: true,
     } as const;
+    type GatedRule = RuleRow & { pendingMedia: boolean; pendingMediaError: string | null };
     const rules = (await this.prisma.client.schedule.findMany({
       where: { tenantId, playlistId: id },
       select: RULE,
-    })) as unknown as RuleRow[];
+    })) as unknown as GatedRule[];
+    const ruleById = new Map(rules.map((r) => [r.id, r]));
+    // A rule whose 1080p copy is still being prepared, vs one whose copy FAILED
+    // (inert since bdb3f59a: only a fresh attempt may go live for it).
+    const isPreparing = (r?: GatedRule) => !!r && r.pendingMedia && !r.pendingMediaError;
+    const isFailed = (r?: GatedRule) => !!r && r.pendingMedia && !!r.pendingMediaError;
 
     const groupId = screen.screenGroupId ?? null;
     const splitting = groupId ? rules.filter((r) => !r.screenId && r.screenGroupId === groupId) : [];
@@ -1198,14 +1195,77 @@ export class PlaylistsController {
       );
     }
 
+    // ── The 1080p playback gate, per screen (2026-09-26) ─────────────────
+    // What this press would do to a rule that is still PREPARING its copy:
+    //   • switch it on early — refused; it starts by itself when the copy lands;
+    //   • split the group rule it is — refused; the split deletes that rule and
+    //     re-creates it per screen, and the copies would go live ungated;
+    //   • switch it off / remove it — that IS the per-screen cancel, allowed.
+    // A rule whose copy FAILED is inert: switching it on is a fresh attempt
+    // and goes through the gate like any other activation.
+    const pressedOwnIds = new Set(rules.filter((r) => r.screenId === screenId).map((r) => r.id));
+    const earlyStart = plan.setActive.find((u) => u.isActive && isPreparing(ruleById.get(u.id)));
+    if (earlyStart) {
+      throw new HttpException({
+        code: 'PLAYBACK_COPY_PENDING',
+        message: pressedOwnIds.has(earlyStart.id)
+          ? `${screen.name || 'This screen'} is still preparing its 1080p playback copy. It starts automatically when the copy is ready.`
+          : 'This playlist is preparing a playback copy. Stop and cancel publishing before changing individual screens.',
+      }, HttpStatus.CONFLICT);
+    }
+    if (plan.splits.some((s) => isPreparing(ruleById.get(s.groupRuleId)))) {
+      throw new HttpException({
+        code: 'PLAYBACK_COPY_PENDING',
+        message: 'This playlist is preparing a playback copy for a screen group. Stop and cancel publishing before changing individual screens.',
+      }, HttpStatus.CONFLICT);
+    }
+    // The pressed screen's own activations: its own rules switched on, and the
+    // per-screen rule a split gives it. Every OTHER row the plan writes exists
+    // to keep some other screen showing exactly what it shows now, so none of
+    // them is a new activation and none goes through the gate.
+    const activatesPressed = action.kind === 'set-active' && action.active && (
+      plan.setActive.some((u) => u.isActive && pressedOwnIds.has(u.id))
+      || plan.splits.some((s) => s.create.some((r) => r.screenId === screenId && r.isActive))
+    );
+    const holdPressed = activatesPressed && !!this.mediaPublication
+      && await this.mediaPublication.prepare(tenantId, id, screenId, null);
+    // Switching a screen off or taking it out also cancels a publish that is
+    // still preparing (or failed) for it — the rows the planner does not list
+    // because they are not active.
+    const cancelOwn = action.kind === 'set-active' && action.active
+      ? []
+      : rules.filter((r) => r.screenId === screenId && r.pendingMedia && !r.isActive
+          && !plan.deleteOwn.includes(r.id) && !plan.setActive.some((u) => u.id === r.id));
+
     const takesOffAir = action.kind === 'remove' || !action.active;
     await this.prisma.client.$transaction(async (tx) => {
       for (const u of plan.setActive) {
+        const before = ruleById.get(u.id);
+        if (!u.isActive) {
+          // Off: also cancels a pending or failed publish for this rule.
+          await tx.schedule.update({
+            where: { id: u.id, tenantId },
+            data: { isActive: false, pendingMedia: false, pendingMediaError: null },
+          });
+          continue;
+        }
+        const hold = holdPressed && pressedOwnIds.has(u.id);
         await tx.schedule.update({
-          where: { id: u.id, tenantId, pendingMedia: false },
-          data: u.isActive
-            ? { isActive: true }
-            : { isActive: false, pendingMedia: false, pendingMediaError: null },
+          // The guard is the row's state as READ: a parked rule must still be
+          // parked, a failed one still failed — never a row another door has
+          // since moved into preparation.
+          where: { id: u.id, tenantId, ...(isFailed(before)
+            ? { pendingMedia: true, pendingMediaError: { not: null } }
+            : { pendingMedia: false }) },
+          data: hold
+            ? { isActive: false, pendingMedia: true, pendingMediaError: null }
+            : { isActive: true, pendingMedia: false, pendingMediaError: null },
+        });
+      }
+      for (const r of cancelOwn) {
+        await tx.schedule.update({
+          where: { id: r.id, tenantId },
+          data: { isActive: false, pendingMedia: false, pendingMediaError: null },
         });
       }
       if (plan.deleteOwn.length) {
@@ -1219,10 +1279,21 @@ export class PlaylistsController {
               tenantId,
               startTime: new Date(r.startTime),
               endTime: r.endTime ? new Date(r.endTime) : null,
+              // The pressed screen's new rule waits for its copy like an own
+              // rule would; everyone else's row is created exactly as planned.
+              ...(holdPressed && r.screenId === screenId && r.isActive
+                ? { isActive: false, pendingMedia: true, pendingMediaError: null }
+                : {}),
             })),
           });
         }
-        await tx.schedule.delete({ where: { id: split.groupRuleId, tenantId, pendingMedia: false } });
+        // A FAILED group rule is inert and may be replaced; a PREPARING one was
+        // refused above, and the guard keeps a concurrent transition out.
+        await tx.schedule.delete({
+          where: { id: split.groupRuleId, tenantId, ...(isFailed(ruleById.get(split.groupRuleId))
+            ? { pendingMedia: true, pendingMediaError: { not: null } }
+            : { pendingMedia: false }) },
+        });
       }
       await tx.auditLog.create({
         data: {
@@ -1236,6 +1307,8 @@ export class PlaylistsController {
             screenId,
             screenName: screen.name ?? null,
             active: action.kind === 'set-active' ? action.active : null,
+            heldForPlaybackCopy: holdPressed,
+            pendingPublishesCancelled: cancelOwn.length,
             ownRulesChanged: plan.setActive.length,
             ownRulesDeleted: plan.deleteOwn.length,
             groupRulesSplit: plan.splits.map((s) => ({
@@ -1280,6 +1353,9 @@ export class PlaylistsController {
       active: action.kind === 'set-active' ? action.active : null,
       removed: action.kind === 'remove',
       groupRulesSplit: plan.splits.length,
+      // True when this screen's rule was held for its 1080p copy: it is not
+      // on yet, and starts by itself when the copy lands.
+      heldForPlaybackCopy: holdPressed,
     };
   }
 
