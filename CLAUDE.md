@@ -424,6 +424,22 @@ A reliable player continuously proves FOUR SEPARATE FACTS — never let one stan
     Per-screen rule changes also refuse while a copy is pending, and their
     writes guard against a concurrent pending transition.
 
+    Field follow-up (2026-09-25, 4K Android screen): an optimized 3840×2160
+    H.264 file still reported severe drops and buffering while the device
+    cache row said 0 files. The 4K manifest correctly selected the 4K primary;
+    the 1080p rendition is a compatibility copy produced by the upload worker,
+    not evidence that a 4K screen played 1080p. The web player's playlist
+    precache previously marked a URL set sent BEFORE the service worker
+    confirmed any bytes, so one failed attempt could leave the screen
+    streaming indefinitely. It now waits for a worker acknowledgement,
+    retries failures (including an old service worker that never acknowledges
+    the new request), keys the cache push by the actual media URL (not stable
+    playlist item id), and supplies known size to avoid re-reading a large
+    video body. A timed-out cache status is UNKNOWN, not "0 files"; an old
+    report is labeled unavailable. Do not claim the field device is fixed
+    until its live cache report shows the file and a fresh video sample is
+    smooth; format compatibility alone cannot prove device decode quality.
+
     Deletion follow-up (2026-09-25): operators may confirm deletion of an
     in-use Asset or a published regular Playlist. Asset deletion removes its
     playlist items, retires rules for playlists left empty, applies screen

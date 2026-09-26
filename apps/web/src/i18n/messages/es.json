@@ -1737,7 +1737,7 @@
     "labelResolution": "Resolución",
     "encode": {
       "title": "Reproducción en pantallas",
-      "green": "Cumple las especificaciones de reproducción recomendadas",
+      "green": "El formato del archivo cumple las especificaciones recomendadas",
       "amber": "Puede trabarse o tardar en empezar en algunas pantallas",
       "red": "Aviso de compatibilidad de reproducción",
       "checking": "Comprobando la codificación…",
@@ -1822,7 +1822,7 @@
     "optimizing": "Optimizando para pantallas…",
     "optimizingPct": "Optimizando para pantallas… {pct}%",
     "labelScreenVersion": "Versión para pantallas",
-    "playbackCopyReady": "Copia de reproducción de 1080p lista · {width} × {height} · {size}. La versión 4K sigue disponible para pantallas 4K.",
+    "playbackCopyReady": "Copia opcional de 1080p para pantallas más pequeñas · {width} × {height} · {size}. Las pantallas 4K usan la versión 4K.",
     "playbackCopyChecking": "Comprobando la copia de reproducción de 1080p. Actualiza este archivo en un momento.",
     "optimizedDetail": "Optimización completada: {from} → {to} (ahorro de {saved})",
     "optimizeKept": "Ya está listo para pantallas: se reproduce tal como se subió.",

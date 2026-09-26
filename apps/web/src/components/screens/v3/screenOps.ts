@@ -111,6 +111,7 @@ export interface OpsScreen {
   ipAddress?: string | null;
   pairedAt?: string | null;
   lastCacheReport?: { playlist?: { count?: number; bytes?: number }; emergency?: { count?: number; bytes?: number } } | null;
+  lastCacheReportAt?: string | null;
   lastCrashAt?: string | null;
   lastCrashMessage?: string | null;
   lastCrashVersion?: string | null;
@@ -1624,12 +1625,19 @@ export function deriveDeviceFacts(screen: OpsScreen, app: ReportedContent['app']
 
   const cache = screen.lastCacheReport;
   if (cache && (cache.playlist || cache.emergency)) {
-    const tier = (t: { count?: number; bytes?: number } | undefined) =>
-      t && typeof t.count === 'number' ? `${t.count} ${t.count === 1 ? 'file' : 'files'} (${fmtBytes(t.bytes ?? 0)})` : null;
-    const playlist = tier(cache.playlist);
-    const emergency = tier(cache.emergency);
-    const value = [playlist ? `Content ${playlist}` : null, emergency ? `Alerts ${emergency}` : null].filter(Boolean).join(' · ');
-    if (value) out.push({ key: 'cache', label: 'Cached on device', value });
+    const cacheAt = msOf(screen.lastCacheReportAt);
+    // An old report is not the device's current cache state. In particular,
+    // a service-worker timeout must never leave a permanent "0 files" fact.
+    if (cacheAt == null || now - cacheAt > 5 * 60_000) {
+      out.push({ key: 'cache', label: 'Cached on device', value: 'Status unavailable — waiting for the player', tone: 'warn' });
+    } else {
+      const tier = (t: { count?: number; bytes?: number } | undefined) =>
+        t && typeof t.count === 'number' ? `${t.count} ${t.count === 1 ? 'file' : 'files'} (${fmtBytes(t.bytes ?? 0)})` : null;
+      const playlist = tier(cache.playlist);
+      const emergency = tier(cache.emergency);
+      const value = [playlist ? `Content ${playlist}` : null, emergency ? `Alerts ${emergency}` : null].filter(Boolean).join(' · ');
+      if (value) out.push({ key: 'cache', label: 'Cached on device', value });
+    }
   }
 
   const crashMs = msOf(screen.lastCrashAt);

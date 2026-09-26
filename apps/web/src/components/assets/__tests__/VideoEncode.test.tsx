@@ -62,7 +62,7 @@ describe('VideoEncodeCard', () => {
   it('shows every fact it has, says a safe export plays smoothly, and suggests nothing when nothing differs', () => {
     render(<VideoEncodeCard asset={SAFE} now={NOW} />);
     expect(screen.getByTestId('video-encode-card')).toHaveAttribute('data-encode-status', 'green');
-    expect(screen.getByText('Meets recommended playback specifications')).toBeInTheDocument();
+    expect(screen.getByText('File format matches recommended specs')).toBeInTheDocument();
     const facts = screen.getByTestId('video-encode-facts');
     expect(facts).toHaveTextContent('CodecH.264 High 4.0');
     expect(facts).toHaveTextContent('Size1920 × 1080');

@@ -4628,6 +4628,8 @@ function PlayerPage() {
   // HIGH-5: track the last set of playlist asset URLs we pushed to the SW.
   // Equal hash = no-op skip; saves a postMessage + SW work on every poll.
   const lastPlaylistSetHashRef = useRef<string>('');
+  const playlistCacheInFlightRef = useRef<string>('');
+  const playlistCacheRetryAtRef = useRef(0);
   // Signature of the current playlist items + template so applyManifest
   // can short-circuit when the manifest poll returned the same content
   // we're already rendering. Without this, setPlaylist(new obj) +
@@ -4748,6 +4750,8 @@ function PlayerPage() {
           retrying: prev?.retrying ?? 0,
           lastError: null,
         }));
+      } else if (msg.type === 'PRECACHE_PLAYLIST_DONE' && msg.ok === false) {
+        setLoadProgress((prev) => prev ? { ...prev, lastError: 'Content download failed; retrying', retrying: (prev.retrying ?? 0) + 1 } : prev);
       } else if (msg.type === 'PRECACHE_PLAYLIST_DONE' || msg.type === 'PRECACHE_EMERGENCY_DONE') {
         // Keep a brief "ready" state so the bar hits 100% before
         // KioskSplash unmounts on phase flip to 'playing'.
@@ -4776,7 +4780,14 @@ function PlayerPage() {
   // are both inherited by the telemetry POST — see the effect below.
   const cacheReportRef = useRef<{ playlist: TelemetryCacheTier; emergency: TelemetryCacheTier } | null>(null);
   useEffect(() => {
-    if (!cacheStatus?.supported) return;
+    if (!cacheStatus?.supported) {
+      cacheReportRef.current = null;
+      return;
+    }
+    // The OS may evict CacheStorage after a successful push. A confirmed
+    // empty playlist tier invalidates our in-memory "already cached" mark;
+    // the next manifest poll will restore it instead of streaming forever.
+    if (cacheStatus.playlist?.count === 0) lastPlaylistSetHashRef.current = '';
     cacheReportRef.current = {
       playlist: {
         count: cacheStatus.playlist?.count ?? 0,
@@ -6042,7 +6053,7 @@ function PlayerPage() {
       // the SW every time.
       try {
         const urls = new Set<string>();
-        const playlistAssets: Array<{ url: string }> = [];
+        const playlistAssets: Array<{ url: string; size?: number }> = [];
         const playlistAssetKeys: string[] = [];
         (manifest.playlists || []).forEach((mp: any) => {
           (mp.items || []).forEach((item: any) => {
@@ -6064,26 +6075,42 @@ function PlayerPage() {
                 : (!u.match(/\.(mp4|webm|mov|m4v)$/i)
                   && !u.match(/\.(pdf)$/i)
                   && !(u.match(/^https?:\/\//i) && !u.match(/\.(jpe?g|png|gif|webp|svg|avif)$/i)));
-              playlistAssets.push({ url: isImage ? resolveAssetUrl(absUrl) : absUrl });
-              playlistAssetKeys.push(
-                item.item_id ||
-                item.asset_id ||
-                item.asset_hash ||
-                stableManifestUrlKey(u) ||
-                u,
-              );
+              const playbackUrl = isImage ? resolveAssetUrl(absUrl) : absUrl;
+              // A known size lets the SW avoid cloning a 100+ MB 4K response
+              // just to discover its length after writing the cache entry.
+              const size = Number.isSafeInteger(item.asset_size) && item.asset_size > 0
+                ? item.asset_size as number : undefined;
+              playlistAssets.push({ url: playbackUrl, ...(size ? { size } : {}) });
+              // Item ids do not change when a transcode swaps the media URL.
+              // The cache identity must follow the bytes the player renders.
+              playlistAssetKeys.push(stableManifestUrlKey(playbackUrl));
             }
           });
         });
         if (playlistAssets.length > 0) {
           // Stable hash of the URL set so re-pushes are skipped when nothing changed.
           const setHash = playlistAssetKeys.sort().join('|');
-          if (setHash !== lastPlaylistSetHashRef.current) {
-            lastPlaylistSetHashRef.current = setHash;
+          if (setHash !== lastPlaylistSetHashRef.current &&
+              !playlistCacheInFlightRef.current && Date.now() >= playlistCacheRetryAtRef.current) {
+            playlistCacheInFlightRef.current = setHash;
             // Kick the SW pre-cache AND seed the splash with the total so
             // the bar can fill as PRECACHE_PROGRESS events arrive.
             setLoadProgress({ phase: 'assets', loaded: 0, total: playlistAssets.length });
-            precachePlaylist(playlistAssets).catch(() => {});
+            void precachePlaylist(playlistAssets).then((result) => {
+              if (playlistCacheInFlightRef.current !== setHash) return;
+              playlistCacheInFlightRef.current = '';
+              if (result.ok) {
+                lastPlaylistSetHashRef.current = setHash;
+                playlistCacheRetryAtRef.current = 0;
+              } else {
+                // A failed fetch or a full WebView cache must not latch this
+                // URL set as "cached" for the rest of the player session.
+                playlistCacheRetryAtRef.current = Date.now() + 60_000;
+              }
+            }).catch(() => {
+              playlistCacheInFlightRef.current = '';
+              playlistCacheRetryAtRef.current = Date.now() + 60_000;
+            });
           }
         }
       } catch { /* defensive — SW push failures must never break playback */ }

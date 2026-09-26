@@ -1737,7 +1737,7 @@
     "labelResolution": "Resolution",
     "encode": {
       "title": "Playback on screens",
-      "green": "Meets recommended playback specifications",
+      "green": "File format matches recommended specs",
       "amber": "May hitch or start slowly on some screens",
       "red": "Playback compatibility warning",
       "checking": "Checking the encoding…",
@@ -1822,7 +1822,7 @@
     "optimizing": "Optimizing for screens…",
     "optimizingPct": "Optimizing for screens… {pct}%",
     "labelScreenVersion": "Screen version",
-    "playbackCopyReady": "1080p playback copy ready · {width} × {height} · {size}. The 4K version remains available for 4K screens.",
+    "playbackCopyReady": "Optional 1080p copy for smaller screens · {width} × {height} · {size}. 4K screens use the 4K version.",
     "playbackCopyChecking": "Checking the 1080p playback copy. Refresh this file in a moment.",
     "optimizedDetail": "Optimization complete: {from} → {to} (saved {saved})",
     "optimizeKept": "Already screen-ready — screens play this file as uploaded.",

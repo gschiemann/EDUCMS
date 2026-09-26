@@ -1085,9 +1085,13 @@ describe('deriveDeviceFacts', () => {
   it('paired date, on-device cache and a recent crash', () => {
     expect(fact({ pairedAt: '2026-08-01T15:00:00.000Z' }, 'paired')!.value).toBe('Aug 1, 2026');
     expect(
-      fact({ lastCacheReport: { playlist: { count: 12, bytes: 480 * 1024 * 1024 }, emergency: { count: 3, bytes: 2_400_000 } } }, 'cache')!.value,
+      fact({ lastCacheReport: { playlist: { count: 12, bytes: 480 * 1024 * 1024 }, emergency: { count: 3, bytes: 2_400_000 } }, lastCacheReportAt: new Date(NOW).toISOString() }, 'cache')!.value,
     ).toBe('Content 12 files (480 MB) · Alerts 3 files (2.3 MB)');
-    expect(fact({ lastCacheReport: { emergency: { count: 1, bytes: 900 } } }, 'cache')!.value).toBe('Alerts 1 file (900 B)');
+    expect(fact({ lastCacheReport: { emergency: { count: 1, bytes: 900 } }, lastCacheReportAt: new Date(NOW).toISOString() }, 'cache')!.value).toBe('Alerts 1 file (900 B)');
+    expect(fact({ lastCacheReport: { playlist: { count: 0, bytes: 0 } }, lastCacheReportAt: new Date(NOW - 6 * MIN).toISOString() }, 'cache'))
+      .toMatchObject({ value: 'Status unavailable — waiting for the player', tone: 'warn' });
+    expect(fact({ lastCacheReport: { playlist: { count: 0, bytes: 0 } } }, 'cache'))
+      .toMatchObject({ value: 'Status unavailable — waiting for the player', tone: 'warn' });
     expect(fact({ lastCacheReport: {} }, 'cache')).toBeUndefined();
     const crash = fact(
       { lastCrashAt: new Date(NOW - 2 * 60 * MIN).toISOString(), lastCrashVersion: '1.1.11', lastCrashMessage: 'OOM in WebView' },

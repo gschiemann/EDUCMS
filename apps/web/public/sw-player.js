@@ -445,7 +445,18 @@ self.addEventListener('message', (event) => {
   if (!msg || typeof msg !== 'object') return;
 
   if (msg.type === 'PRECACHE_PLAYLIST') {
-    event.waitUntil(precachePlaylist(msg.assets || [], msg.softCapBytes || DEFAULT_SOFT_CAP_BYTES));
+    const ackPort = (event.ports && event.ports[0]) || null;
+    // Distinguish a current worker doing a long download from an older
+    // active worker that does not understand playlist acknowledgements.
+    if (ackPort) {
+      try { ackPort.postMessage({ started: true }); } catch (_e) { /* page may have reloaded */ }
+    }
+    event.waitUntil(precachePlaylist(msg.assets || [], msg.softCapBytes || DEFAULT_SOFT_CAP_BYTES, ackPort).catch((error) => {
+      console.warn('[sw-player] playlist cache failed', { reason: error && error.name || 'unknown' });
+      if (ackPort) {
+        try { ackPort.postMessage({ ok: false, failures: (msg.assets || []).length, count: (msg.assets || []).length }); } catch (_e) { /* page may have reloaded */ }
+      }
+    }));
   } else if (msg.type === 'PRECACHE_EMERGENCY') {
     // FIX (player-014): if the page passed a MessageChannel port,
     // we ack with { ok: true|false } AFTER deciding allCached so the
@@ -684,7 +695,7 @@ async function precacheAppShell(routes, extra) {
 }
 
 // ─── Pre-cache a list of playlist assets, evicting LRU over the soft cap ───
-async function precachePlaylist(assets, softCapBytes) {
+async function precachePlaylist(assets, softCapBytes, ackPort) {
   const cache = await caches.open(PLAYLIST_CACHE);
   const meta = await caches.open(META_CACHE);
   const liveUrls = new Set(assets.map((a) => normalizeUrl(a.url)));
@@ -705,8 +716,9 @@ async function precachePlaylist(assets, softCapBytes) {
   //    progress event per completed asset so the splash can show a
   //    real download bar instead of an indeterminate pulse.
   let loaded = 0;
+  let failures = 0;
   for (const asset of assets) {
-    await fetchAndStore(asset, cache, meta);
+    if (!(await fetchAndStore(asset, cache, meta))) failures += 1;
     loaded += 1;
     await broadcast({
       type: 'PRECACHE_PROGRESS',
@@ -733,7 +745,11 @@ async function precachePlaylist(assets, softCapBytes) {
     }
   }
 
-  await broadcast({ type: 'PRECACHE_PLAYLIST_DONE', count: assets.length, totalBytes: total });
+  const result = { ok: failures === 0, failures, count: assets.length };
+  if (ackPort) {
+    try { ackPort.postMessage(result); } catch (_e) { /* page may have reloaded */ }
+  }
+  await broadcast({ type: 'PRECACHE_PLAYLIST_DONE', ...result, totalBytes: total });
 }
 
 // ─── Pre-cache emergency assets — never evicted, hash-versioned ───
@@ -997,6 +1013,7 @@ async function fetchAndStore(asset, cache, meta, opts) {
   } catch (e) {
     // Best-effort — leave any prior cached version in place. Caller treats
     // the false return as a partial-cache signal.
+    console.warn('[sw-player] asset cache failed', { reason: e && e.name || 'unknown' });
     return false;
   }
 }

@@ -18,6 +18,8 @@ export type CacheStatus = {
   shell: { count: number; bytes: number };
 };
 
+export type PlaylistCacheResult = { ok: boolean; failures?: number; count?: number };
+
 const SW_PATH = '/sw-player.js';
 const SW_SCOPE = '/player';
 
@@ -53,10 +55,39 @@ async function activeWorker(): Promise<ServiceWorker | null> {
 export async function precachePlaylist(
   assets: Array<{ url: string; sha256?: string; size?: number }>,
   softCapBytes?: number,
-): Promise<void> {
+): Promise<PlaylistCacheResult> {
   const sw = await activeWorker();
-  if (!sw || !assets?.length) return;
-  sw.postMessage({ type: 'PRECACHE_PLAYLIST', assets, softCapBytes });
+  if (!sw || !assets?.length) return { ok: false };
+  return new Promise((resolve) => {
+    const channel = new MessageChannel();
+    let settled = false;
+    const finish = (result: PlaylistCacheResult) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      try { channel.port1.close(); } catch { /* noop */ }
+      resolve(result);
+    };
+    // A large 4K video can take minutes to download. The page keeps the
+    // current picture while waiting and retries a failed/expired attempt.
+    let timeout = setTimeout(() => finish({ ok: false }), 15_000);
+    channel.port1.onmessage = (event: MessageEvent) => {
+      const data = event.data;
+      if (data?.started === true) {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => finish({ ok: false }), 5 * 60_000);
+        return;
+      }
+      finish(data && typeof data.ok === 'boolean'
+        ? { ok: data.ok, failures: data.failures, count: data.count }
+        : { ok: false });
+    };
+    try {
+      sw.postMessage({ type: 'PRECACHE_PLAYLIST', assets, softCapBytes }, [channel.port2]);
+    } catch {
+      finish({ ok: false });
+    }
+  });
 }
 
 /**
@@ -181,11 +212,19 @@ export async function getCacheStatus(): Promise<CacheStatus | null> {
       }
     };
     getServiceWorkerContainer()?.addEventListener('message', onMsg);
-    sw.postMessage({ type: 'STATUS_REQUEST' });
+    try {
+      sw.postMessage({ type: 'STATUS_REQUEST' });
+    } catch {
+      getServiceWorkerContainer()?.removeEventListener('message', onMsg);
+      resolve(null);
+      return;
+    }
     setTimeout(() => {
       if (!settled) {
         getServiceWorkerContainer()?.removeEventListener('message', onMsg);
-        resolve({ supported: true, playlist: { count: 0, bytes: 0 }, emergency: { count: 0, bytes: 0, floorBytes: 0 }, shell: EMPTY_SHELL });
+        // No reply is not evidence of an empty cache. Do not send invented
+        // zeroes to the dashboard as if the device measured them.
+        resolve(null);
       }
     }, 2_000);
   });

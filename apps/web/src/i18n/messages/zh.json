@@ -1737,7 +1737,7 @@
     "labelResolution": "分辨率",
     "encode": {
       "title": "屏幕播放",
-      "green": "符合建议的播放规格",
+      "green": "文件格式符合建议规格",
       "amber": "在部分屏幕上可能卡顿或启动缓慢",
       "red": "播放兼容性提示",
       "checking": "正在检查编码…",
@@ -1822,7 +1822,7 @@
     "optimizing": "正在为屏幕优化…",
     "optimizingPct": "正在为屏幕优化… {pct}%",
     "labelScreenVersion": "屏幕版本",
-    "playbackCopyReady": "1080p 播放副本已就绪 · {width} × {height} · {size}。4K 版本仍可用于 4K 屏幕。",
+    "playbackCopyReady": "供较小屏幕使用的可选 1080p 副本 · {width} × {height} · {size}。4K 屏幕使用 4K 版本。",
     "playbackCopyChecking": "正在检查 1080p 播放副本。请稍后刷新此文件。",
     "optimizedDetail": "优化完成：{from} → {to}（节省 {saved}）",
     "optimizeKept": "已适合屏幕播放 — 屏幕按上传的原文件播放。",

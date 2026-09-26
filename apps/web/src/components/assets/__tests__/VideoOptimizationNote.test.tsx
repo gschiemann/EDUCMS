@@ -6,7 +6,7 @@ const fmtSize = (bytes: number | null | undefined) => `${bytes ?? 0} bytes`;
 describe('1080p playback copy status', () => {
   it('shows the verified copy attached to the original asset', () => {
     render(<VideoOptimizationNote optimization={null} rendition={{ url: 'https://example.com/1080.mp4', sha256: 'a'.repeat(64), width: 1920, height: 1080, size: 42_000 }} variant="detail" fmtSize={fmtSize} />);
-    expect(screen.getByTestId('video-rendition-ready')).toHaveTextContent('1080p playback copy ready · 1920 × 1080 · 42000 bytes');
+    expect(screen.getByTestId('video-rendition-ready')).toHaveTextContent('Optional 1080p copy for smaller screens · 1920 × 1080 · 42000 bytes');
   });
 
   it('keeps completed 4K optimization details in the file panel', () => {
@@ -15,7 +15,7 @@ describe('1080p playback copy status', () => {
       rendition={{ url: 'https://example.com/1080.mp4', sha256: 'a'.repeat(64), width: 1920, height: 1080, size: 20_000 }}
       variant="detail" fmtSize={fmtSize}
     />);
-    expect(screen.getByTestId('video-rendition-ready')).toHaveTextContent('1080p playback copy ready');
+    expect(screen.getByTestId('video-rendition-ready')).toHaveTextContent('Optional 1080p copy for smaller screens');
     expect(screen.getByTestId('video-rendition-ready')).toHaveTextContent('Optimization complete: 100000 bytes → 60000 bytes');
   });
 
