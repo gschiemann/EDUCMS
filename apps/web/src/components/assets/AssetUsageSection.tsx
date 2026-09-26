@@ -209,9 +209,12 @@ export function AssetUsageSection({
 }
 
 /**
- * The §16 "this asset is currently in use" block — shown INSTEAD of a
- * delete confirmation when the server (or a pre-flight usage check) says the
- * asset is referenced. There is deliberately no force-delete affordance.
+ * The §16 "this asset is currently in use" block — shown INSTEAD of a plain
+ * delete confirmation when the pre-flight usage check (or the server's 409
+ * ASSET_IN_USE, which carries the same usage) says the asset is referenced.
+ * Its Delete button is the in-use confirmation: the caller sends
+ * `?confirm=in-use`, which the server requires before it strips an asset out
+ * of playlists (2026-09-26).
  */
 export function AssetInUseBlock({
   assetName,

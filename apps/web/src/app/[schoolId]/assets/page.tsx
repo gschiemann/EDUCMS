@@ -612,12 +612,40 @@ export default function AssetsPage() {
   const usageInUse = (u: AssetUsage | null) =>
     !!u && (u.totals?.playlists ?? u.playlists?.length ?? 0) > 0;
 
-  const deleteConfirmedAsset = async (a: any) => {
+  const alertProtectedEmergency = () =>
+    appAlert({
+      title: 'Protected emergency content',
+      message:
+        'This asset is protected emergency content and cannot be removed here. Open Emergency settings to review it.',
+      tone: 'warn',
+      confirmLabel: 'OK',
+    });
+
+  /**
+   * DELETE the asset. `confirmInUse` is true ONLY from the in-use warning's
+   * Delete button, after the operator has seen which playlists it is in: the
+   * server deletes an in-use asset only with that confirmation (2026-09-26)
+   * and otherwise keeps it and answers 409 ASSET_IN_USE with the real usage.
+   * That answer is how a stale or unknown pre-flight is caught — it opens the
+   * in-use warning with the server's usage instead of deleting anything.
+   */
+  const deleteAssetNow = async (a: any, confirmInUse: boolean) => {
     try {
-      await deleteAsset.mutateAsync(a.id);
+      await deleteAsset.mutateAsync({ id: a.id, confirmInUse });
       setSelectedIds((p) => p.filter((id) => id !== a.id));
       if (selectedAsset?.id === a.id) closeDetail();
     } catch (e: any) {
+      const serverUsage: AssetUsage | undefined = e?.body?.usage;
+      if (!confirmInUse && e?.code === 'ASSET_IN_USE' && Array.isArray(serverUsage?.playlists)) {
+        if (serverUsage.protectedEmergency) {
+          await alertProtectedEmergency();
+          return;
+        }
+        if (usageInUse(serverUsage)) {
+          setInUseBlock({ asset: a, usage: serverUsage });
+          return;
+        }
+      }
       clog.error('upload', 'Delete failed', { id: a.id, msg: e?.message });
       await appAlert({
         title: "Couldn't delete this asset",
@@ -633,13 +661,7 @@ export default function AssetsPage() {
     const usage = await loadUsage(a.id);
 
     if (usage?.protectedEmergency) {
-      await appAlert({
-        title: 'Protected emergency content',
-        message:
-          'This asset is protected emergency content and cannot be removed here. Open Emergency settings to review it.',
-        tone: 'warn',
-        confirmLabel: 'OK',
-      });
+      await alertProtectedEmergency();
       return;
     }
     if (usageInUse(usage)) {
@@ -657,7 +679,9 @@ export default function AssetsPage() {
     });
     if (!ok) return;
 
-    await deleteConfirmedAsset(a);
+    // Neither of those dialogs showed any usage (one said there is none, the
+    // other that it is unknown), so this is NOT an in-use confirmation.
+    await deleteAssetNow(a, false);
   };
 
   const handleBulkDelete = async () => {
@@ -682,9 +706,16 @@ export default function AssetsPage() {
     // order so the final delete sees that it removed the last item.
     for (const id of ids) {
       try {
-        await deleteAsset.mutateAsync(id);
+        // The dialog above is the in-use warning for the whole selection
+        // ("Assets used in playlists will be removed from those playlists"),
+        // so each delete carries the confirmation the server requires.
+        await deleteAsset.mutateAsync({ id, confirmInUse: true });
       } catch (e: any) {
-        if (e?.code === 'ASSET_IN_PROTECTED_PLAYLIST' || e?.code === 'ASSET_IN_SCREEN_EMERGENCY_CONTENT') protectedIds.push(id);
+        if (
+          e?.code === 'ASSET_IN_PROTECTED_PLAYLIST' ||
+          e?.code === 'ASSET_IN_SCREEN_EMERGENCY_CONTENT' ||
+          e?.code === 'ASSET_IN_EMERGENCY_CONTENT'
+        ) protectedIds.push(id);
         const msg = e?.message || 'Unknown error';
         failures.push({ id, msg });
         clog.error('upload', 'Delete failed', { id, msg });
@@ -2443,7 +2474,9 @@ export default function AssetsPage() {
               onDelete={() => {
                 const a = inUseBlock.asset;
                 setInUseBlock(null);
-                void deleteConfirmedAsset(a);
+                // The operator just saw where it is used and chose Delete:
+                // the one place a single delete carries the confirmation.
+                void deleteAssetNow(a, true);
               }}
             />
           </div>

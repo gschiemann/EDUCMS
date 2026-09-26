@@ -1086,11 +1086,28 @@ export function useReorderPlaylistItems() {
   });
 }
 
+/**
+ * What a delete hook takes: the id, or the id plus `confirmInUse` (2026-09-26).
+ * The API deletes an in-use asset or a published playlist ONLY with
+ * `?confirm=in-use`, and answers 409 ASSET_IN_USE / PLAYLIST_PUBLISHED (with
+ * the usage) without it. Pass `confirmInUse: true` only from a dialog that
+ * showed the operator that usage and that they confirmed.
+ */
+export type InUseDeleteTarget = string | { id: string; confirmInUse?: boolean };
+
+export function inUseDeletePath(base: string, target: InUseDeleteTarget): string {
+  const { id, confirmInUse } = typeof target === 'string' ? { id: target, confirmInUse: false } : target;
+  return `${base}/${id}${confirmInUse ? '?confirm=in-use' : ''}`;
+}
+
+const inUseDeleteId = (target: InUseDeleteTarget) => (typeof target === 'string' ? target : target.id);
+
 export function useDeletePlaylist() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => apiFetch(`/playlists/${id}`, { method: 'DELETE' }),
-    onMutate: async (id) => {
+    mutationFn: (target: InUseDeleteTarget) => apiFetch(inUseDeletePath('/playlists', target), { method: 'DELETE' }),
+    onMutate: async (target) => {
+      const id = inUseDeleteId(target);
       await qc.cancelQueries({ queryKey: ['playlists'] });
       const prev = qc.getQueryData<any>(['playlists']);
       qc.setQueryData<any>(['playlists'], (old: any) => {
@@ -1611,8 +1628,10 @@ function restoreAssetCaches(qc: QueryClient, prev: Array<[readonly unknown[], un
 export function useDeleteAsset() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => apiFetch(`/assets/${id}`, { method: 'DELETE' }),
-    onMutate: async (id) => {
+    // In-use confirmation: see InUseDeleteTarget.
+    mutationFn: (target: InUseDeleteTarget) => apiFetch(inUseDeletePath('/assets', target), { method: 'DELETE' }),
+    onMutate: async (target) => {
+      const id = inUseDeleteId(target);
       await qc.cancelQueries({ queryKey: ['assets'] });
       const prev = patchAssetCaches(qc, (assets) => assets.filter((a: any) => a?.id !== id));
       return { prev };

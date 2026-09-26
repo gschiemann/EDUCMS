@@ -6,6 +6,11 @@
  * rules bind both: an unreachable usage endpoint is UNKNOWN, never zero and
  * never "unused". Protected emergency content remains undeletable.
  *
+ * Since 2026-09-26 the server deletes an in-use asset only with
+ * `?confirm=in-use` (409 ASSET_IN_USE + the usage otherwise), so the page
+ * sends `confirmInUse: true` ONLY after the operator confirmed a warning that
+ * disclosed the usage: the in-use block's Delete, or the bulk warning.
+ *
  * Every case below is exercised through the real page.
  */
 
@@ -41,7 +46,20 @@ const PROTECTED: AssetUsage = { playlists: [], totals: { playlists: 0, screensRe
 // Per-test knobs.
 let usageState: { data?: AssetUsage; isLoading: boolean; isError: boolean } = { data: undefined, isLoading: false, isError: true };
 let preflight: () => Promise<AssetUsage> = () => Promise.reject(new Error('no usage endpoint'));
-let deleteImpl: (id: string) => Promise<unknown> = () => Promise.resolve({});
+type DeleteArg = { id: string; confirmInUse: boolean };
+let deleteImpl: (arg: DeleteArg) => Promise<unknown> = () => Promise.resolve({});
+
+/** What apiFetch throws for the server's 409 ASSET_IN_USE (status + code + parsed body). */
+function assetInUse409(usage?: AssetUsage) {
+  const body: Record<string, unknown> = {
+    error: true,
+    code: 'ASSET_IN_USE',
+    message: 'This asset is in 3 playlists reaching 8 screens, so it was not deleted. Refresh the page and delete it again to confirm, or remove it from those playlists first.',
+    confirmQuery: 'confirm=in-use',
+  };
+  if (usage) body.usage = usage;
+  return Object.assign(new Error(body.message as string), { status: 409, code: 'ASSET_IN_USE', body });
+}
 
 const query = (data: unknown) => () => ({ data, isLoading: false, isError: false, isFetching: false, refetch: jest.fn() });
 const mutation = () => ({ mutateAsync: jest.fn().mockResolvedValue({}), mutate: jest.fn(), isPending: false });
@@ -56,7 +74,7 @@ jest.mock('@/hooks/use-api', () => {
     useAssetFolders: query([]),
     useAssetUsage: () => ({ ...usageState, refetch: jest.fn() }),
     useAddWebUrl: mutation,
-    useDeleteAsset: () => ({ mutateAsync: (id: string) => deleteImpl(id), mutate: jest.fn(), isPending: false }),
+    useDeleteAsset: () => ({ mutateAsync: (arg: DeleteArg) => deleteImpl(arg), mutate: jest.fn(), isPending: false }),
     useCreateAssetFolder: mutation,
     useRenameAssetFolder: mutation,
     useDeleteAssetFolder: mutation,
@@ -251,7 +269,10 @@ describe('Deletion safety (§16)', () => {
     await act(async () => {
       fireEvent.click(within(block).getByRole('button', { name: 'Delete asset' }));
     });
-    expect(deleted).toHaveBeenCalledWith('a1');
+    // The operator saw the usage and chose Delete: the one single-asset path
+    // that carries the in-use confirmation.
+    expect(deleted).toHaveBeenCalledTimes(1);
+    expect(deleted).toHaveBeenCalledWith({ id: 'a1', confirmInUse: true });
   });
 
   it('IN USE: "Review usage" lands the operator in that asset’s detail usage section', async () => {
@@ -297,5 +318,152 @@ describe('Deletion safety (§16)', () => {
     });
     await waitFor(() => expect(appAlert).toHaveBeenCalled());
     expect(rtl.queryByTestId('asset-in-use-block')).not.toBeInTheDocument();
+  });
+});
+
+describe('In-use confirmation — sent only after a warning that showed the usage (2026-09-26)', () => {
+  async function clickDelete() {
+    render(<AssetsPage />);
+    fireEvent.click(rtl.getByRole('button', { name: 'More actions for Recovery-Lounge-August.jpg' }));
+    await act(async () => {
+      fireEvent.click(rtl.getByRole('menuitem', { name: 'Delete…' }));
+    });
+  }
+
+  it('KNOWN-unused: the confirmed delete goes WITHOUT the in-use confirmation', async () => {
+    preflight = () => Promise.resolve(UNUSED);
+    appConfirm.mockResolvedValue(true);
+    const deleted = jest.fn().mockResolvedValue({});
+    deleteImpl = deleted;
+    await clickDelete();
+    await waitFor(() => expect(deleted).toHaveBeenCalled());
+    expect(deleted).toHaveBeenCalledWith({ id: 'a1', confirmInUse: false });
+  });
+
+  it('UNKNOWN usage: "we couldn\'t check" is not an in-use confirmation either', async () => {
+    preflight = () => Promise.reject(new Error('503'));
+    appConfirm.mockResolvedValue(true);
+    const deleted = jest.fn().mockResolvedValue({});
+    deleteImpl = deleted;
+    await clickDelete();
+    await waitFor(() => expect(deleted).toHaveBeenCalled());
+    expect(deleted).toHaveBeenCalledWith({ id: 'a1', confirmInUse: false });
+  });
+
+  it('a server ASSET_IN_USE 409 behind a stale pre-flight opens the in-use warning with the SERVER usage; only its Delete confirms', async () => {
+    preflight = () => Promise.resolve(UNUSED);
+    appConfirm.mockResolvedValue(true);
+    const deleted = jest.fn()
+      .mockRejectedValueOnce(assetInUse409(USED))
+      .mockResolvedValueOnce({});
+    deleteImpl = deleted;
+    await clickDelete();
+    const block = await rtl.findByTestId('asset-in-use-block');
+    expect(block).toHaveTextContent('It appears in 3 playlists reaching 8 screens');
+    expect(within(block).getByText('Summer Strength')).toBeInTheDocument();
+    expect(deleted).toHaveBeenCalledTimes(1);
+    expect(deleted).toHaveBeenLastCalledWith({ id: 'a1', confirmInUse: false });
+    expect(appAlert).not.toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.click(within(block).getByRole('button', { name: 'Delete asset' }));
+    });
+    expect(deleted).toHaveBeenCalledTimes(2);
+    expect(deleted).toHaveBeenLastCalledWith({ id: 'a1', confirmInUse: true });
+    expect(rtl.queryByTestId('asset-in-use-block')).not.toBeInTheDocument();
+  });
+
+  it('Cancel on that warning sends nothing more', async () => {
+    preflight = () => Promise.reject(new Error('503'));
+    appConfirm.mockResolvedValue(true);
+    const deleted = jest.fn().mockRejectedValueOnce(assetInUse409(USED));
+    deleteImpl = deleted;
+    await clickDelete();
+    const block = await rtl.findByTestId('asset-in-use-block');
+    fireEvent.click(within(block).getByRole('button', { name: 'Cancel' }));
+    expect(rtl.queryByTestId('asset-in-use-block')).not.toBeInTheDocument();
+    expect(deleted).toHaveBeenCalledTimes(1);
+  });
+
+  it('a server usage that turns out to be protected emergency content: the protected notice, never a delete offer', async () => {
+    preflight = () => Promise.resolve(UNUSED);
+    appConfirm.mockResolvedValue(true);
+    const deleted = jest.fn().mockRejectedValueOnce(assetInUse409({ ...USED, protectedEmergency: true }));
+    deleteImpl = deleted;
+    await clickDelete();
+    await waitFor(() => expect(appAlert).toHaveBeenCalled());
+    expect(appAlert.mock.calls[0][0].title).toBe('Protected emergency content');
+    expect(rtl.queryByTestId('asset-in-use-block')).not.toBeInTheDocument();
+    expect(deleted).toHaveBeenCalledTimes(1);
+  });
+
+  it('a 409 ASSET_IN_USE with no usage summary: the server sentence, and no confirmed retry', async () => {
+    preflight = () => Promise.resolve(UNUSED);
+    appConfirm.mockResolvedValue(true);
+    const deleted = jest.fn().mockRejectedValueOnce(assetInUse409());
+    deleteImpl = deleted;
+    await clickDelete();
+    await waitFor(() => expect(appAlert).toHaveBeenCalled());
+    expect(appAlert.mock.calls[0][0]).toMatchObject({
+      title: "Couldn't delete this asset",
+      message: expect.stringContaining('so it was not deleted'),
+    });
+    expect(rtl.queryByTestId('asset-in-use-block')).not.toBeInTheDocument();
+    expect(deleted).toHaveBeenCalledTimes(1);
+  });
+
+  it('a refusal of the CONFIRMED delete (emergency content) is reported, never answered with another confirmation', async () => {
+    preflight = () => Promise.resolve(USED);
+    const deleted = jest.fn().mockRejectedValueOnce(
+      Object.assign(new Error('This file is emergency content.'), { status: 409, code: 'ASSET_IN_EMERGENCY_CONTENT' }),
+    );
+    deleteImpl = deleted;
+    await clickDelete();
+    const block = await rtl.findByTestId('asset-in-use-block');
+    await act(async () => {
+      fireEvent.click(within(block).getByRole('button', { name: 'Delete asset' }));
+    });
+    await waitFor(() => expect(appAlert).toHaveBeenCalled());
+    expect(appAlert.mock.calls[0][0]).toMatchObject({ title: "Couldn't delete this asset", message: 'This file is emergency content.' });
+    expect(deleted).toHaveBeenCalledTimes(1);
+    expect(deleted).toHaveBeenCalledWith({ id: 'a1', confirmInUse: true });
+  });
+
+  describe('bulk delete', () => {
+    function selectAndDelete() {
+      render(<AssetsPage />);
+      fireEvent.click(rtl.getByRole('button', { name: 'Select Recovery-Lounge-August.jpg' }));
+      return act(async () => {
+        fireEvent.click(within(rtl.getByTestId('asset-bulk-bar')).getByRole('button', { name: /Delete…/ }));
+      });
+    }
+
+    it('its warning names the in-use consequence, and each delete then carries the confirmation', async () => {
+      appConfirm.mockResolvedValue(true);
+      const deleted = jest.fn().mockResolvedValue({});
+      deleteImpl = deleted;
+      await selectAndDelete();
+      await waitFor(() => expect(deleted).toHaveBeenCalled());
+      expect(appConfirm.mock.calls[0][0].message).toContain('Assets used in playlists will be removed from those playlists.');
+      expect(deleted).toHaveBeenCalledWith({ id: 'a1', confirmInUse: true });
+    });
+
+    it('a cancelled bulk warning sends nothing', async () => {
+      appConfirm.mockResolvedValue(false);
+      const deleted = jest.fn().mockResolvedValue({});
+      deleteImpl = deleted;
+      await selectAndDelete();
+      await waitFor(() => expect(appConfirm).toHaveBeenCalled());
+      expect(deleted).not.toHaveBeenCalled();
+    });
+
+    it('an emergency refusal (ASSET_IN_EMERGENCY_CONTENT) is reported as protected content that was kept', async () => {
+      appConfirm.mockResolvedValue(true);
+      deleteImpl = () =>
+        Promise.reject(Object.assign(new Error('This file is emergency content.'), { status: 409, code: 'ASSET_IN_EMERGENCY_CONTENT' }));
+      await selectAndDelete();
+      await waitFor(() => expect(appAlert).toHaveBeenCalled());
+      expect(appAlert.mock.calls[0][0]).toMatchObject({ title: 'Some assets were kept' });
+      expect(appAlert.mock.calls[0][0].message).toBe('0 of 1 deleted. 1 is protected emergency content and was kept. ');
+    });
   });
 });
