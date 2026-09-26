@@ -1,5 +1,6 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards, UseFilters, Request, HttpException, HttpStatus, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards, UseFilters, Request, HttpException, HttpStatus, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { MediaPublicationService, type RuleTarget } from '../schedules/media-publication.service';
 import { recordPushDeployment } from '../screens/deployment-record';
 import { RedisService } from '../realtime/redis.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
@@ -49,7 +50,38 @@ export class PlaylistsController {
     private readonly redisService: RedisService,
     private readonly signer: WebsocketSignerService,
     private readonly distribution: PlaylistDistributionService,
+    /**
+     * THE INVARIANT (2026-09-26): every path that makes a Schedule row active
+     * goes through MediaPublicationService.prepare first. The Play-everywhere
+     * and per-screen doors below used to switch rules straight on, which is
+     * how a paused 1080p screen was handed the 4K original again.
+     */
+    @Optional() private readonly mediaPublication?: MediaPublicationService,
   ) {}
+
+  /**
+   * Hold the given parked rules that need a screen-sized playback copy: the
+   * sweep activates them when the copy lands (rule 16). Claim-guarded, so a
+   * rule that a concurrent door already moved is left alone. Returns the ids
+   * held; the caller activates the rest with `pendingMedia: false` in its
+   * predicate, which excludes exactly these.
+   */
+  private async holdRulesNeedingPlaybackCopy(
+    tx: any,
+    tenantId: string,
+    playlistId: string,
+    parked: RuleTarget[],
+    waiting: Set<string>,
+  ): Promise<string[]> {
+    const held = parked.map((r) => r.id).filter((id) => waiting.has(id));
+    if (held.length) {
+      await tx.schedule.updateMany({
+        where: { id: { in: held }, tenantId, playlistId, isActive: false, pendingMedia: false },
+        data: { pendingMedia: true, pendingMediaError: null },
+      });
+    }
+    return held;
+  }
 
   private async notifySync(tenantId: string) {
     try {
@@ -935,15 +967,35 @@ export class PlaylistsController {
         }, HttpStatus.CONFLICT);
       }
     }
-    const result = await this.prisma.client.schedule.updateMany({
-      // The predicate is the concurrency guard: a worker could queue a copy
-      // after the read above. A generic "Play" must never activate it early.
-      where: { playlistId: id, tenantId: req.user.tenantId, ...(body.active ? { pendingMedia: false } : {}) },
-      // Pausing also cancels an in-flight publish. Otherwise the background
-      // sweep would reactivate the rule after the operator stopped it.
-      data: body.active
-        ? { isActive: true }
-        : { isActive: false, pendingMedia: false, pendingMediaError: null },
+    // The rules this call would switch ON, each asked whether its screens can
+    // decode the playlist at native size. A rule whose target needs a 1080p
+    // copy is HELD as pendingMedia and the sweep publishes it when the copy
+    // lands — exactly what a fresh publish through POST /schedules does.
+    // Answered before the write so a refused copy (503) changes nothing.
+    const parked: RuleTarget[] = body.active
+      ? await this.prisma.client.schedule.findMany({
+          where: { playlistId: id, tenantId: req.user.tenantId, isActive: false, pendingMedia: false },
+          select: { id: true, screenId: true, screenGroupId: true },
+        })
+      : [];
+    const waiting = body.active && this.mediaPublication && parked.length
+      ? await this.mediaPublication.prepareRules(req.user.tenantId, id, parked)
+      : new Set<string>();
+    const { result, held } = await this.prisma.client.$transaction(async (tx) => {
+      const held = body.active
+        ? await this.holdRulesNeedingPlaybackCopy(tx, req.user.tenantId, id, parked, waiting)
+        : [];
+      const result = await tx.schedule.updateMany({
+        // The predicate is the concurrency guard: a worker could queue a copy
+        // after the read above. A generic "Play" must never activate it early.
+        where: { playlistId: id, tenantId: req.user.tenantId, ...(body.active ? { pendingMedia: false } : {}) },
+        // Pausing also cancels an in-flight publish. Otherwise the background
+        // sweep would reactivate the rule after the operator stopped it.
+        data: body.active
+          ? { isActive: true }
+          : { isActive: false, pendingMedia: false, pendingMediaError: null },
+      });
+      return { result, held };
     });
     // Turning a playlist's schedules off takes its content OFF the wall —
     // the same class of change SCHEDULE_TOGGLED already audits one schedule
@@ -952,6 +1004,7 @@ export class PlaylistsController {
       name: playlist.name,
       active: !!body.active,
       scheduleCount: result.count,
+      heldForPlaybackCopy: held.length,
     });
     // Nudge the players so they re-fetch the manifest immediately
     // instead of waiting for the next 5-10s poll — same pattern as
@@ -966,26 +1019,62 @@ export class PlaylistsController {
     // never blocks the primary toggle.
     let cascadedLocations = 0;
     let cascadedSchedules = 0;
+    let cascadedHeld = 0;
     try {
       const copies = await this.prisma.client.playlist.findMany({
         where: { sourcePlaylistId: id, tenant: { parentId: req.user.tenantId } },
         select: { id: true, tenantId: true },
       });
-      if (copies.length) {
-        const casc = await this.prisma.client.schedule.updateMany({
-          where: { playlistId: { in: copies.map((c) => c.id) }, ...(body.active ? { pendingMedia: false } : {}) },
-          data: body.active
-            ? { isActive: true }
-            : { isActive: false, pendingMedia: false, pendingMediaError: null },
-        });
-        cascadedSchedules = casc.count;
-        const tenantIds = Array.from(new Set(copies.map((c) => c.tenantId)));
-        cascadedLocations = tenantIds.length;
-        for (const tid of tenantIds) this.notifySync(tid);
+      const tenantIds = new Set<string>();
+      // Location by location — a copy's rules target the CHILD's screens, so
+      // each copy is asked the same question as the source above, in its own
+      // tenant. One failing location never blocks the others.
+      for (const copy of copies) {
+        try {
+          const copyParked: RuleTarget[] = body.active
+            ? await this.prisma.client.schedule.findMany({
+                where: { playlistId: copy.id, tenantId: copy.tenantId, isActive: false, pendingMedia: false },
+                select: { id: true, screenId: true, screenGroupId: true },
+              })
+            : [];
+          const copyWaiting = body.active && this.mediaPublication && copyParked.length
+            ? await this.mediaPublication.prepareRules(copy.tenantId, copy.id, copyParked)
+            : new Set<string>();
+          const casc = await this.prisma.client.$transaction(async (tx) => {
+            const held = body.active
+              ? await this.holdRulesNeedingPlaybackCopy(tx, copy.tenantId, copy.id, copyParked, copyWaiting)
+              : [];
+            const flipped = await tx.schedule.updateMany({
+              where: { playlistId: copy.id, tenantId: copy.tenantId, ...(body.active ? { pendingMedia: false } : {}) },
+              data: body.active
+                ? { isActive: true }
+                : { isActive: false, pendingMedia: false, pendingMediaError: null },
+            });
+            return { count: flipped.count, held: held.length };
+          });
+          cascadedSchedules += casc.count;
+          cascadedHeld += casc.held;
+          tenantIds.add(copy.tenantId);
+        } catch (e: any) {
+          this.auditLogger.warn(
+            `setActive cascade to copy ${copy.id} (tenant ${copy.tenantId}) failed: ${e?.message ?? e}`,
+          );
+        }
       }
+      cascadedLocations = tenantIds.size;
+      for (const tid of tenantIds) this.notifySync(tid);
     } catch { /* cascade is best-effort; primary toggle already succeeded */ }
 
-    return { count: result.count, active: !!body.active, cascadedLocations, cascadedSchedules };
+    return {
+      count: result.count,
+      active: !!body.active,
+      cascadedLocations,
+      cascadedSchedules,
+      // Rules held for a 1080p playback copy; the sweep publishes them when it
+      // lands. The dashboard reads the rules themselves (PREPARING 1080P).
+      heldForPlaybackCopy: held.length,
+      cascadedHeldForPlaybackCopy: cascadedHeld,
+    };
   }
 
   /**

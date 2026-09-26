@@ -163,8 +163,10 @@ describe('PlaylistsController — audit coverage', () => {
     const { controller, client } = makePlaylistController();
     client.playlist.findMany.mockResolvedValueOnce([{ id: 'child-pl', tenantId: 'child-tenant' }]);
     await controller.setActive(req as any, 'pl1', { active: true } as any);
+    // Per copy, in ITS tenant (2026-09-26 — each location is asked whether its
+    // screens need a playback copy first); the pendingMedia guard is kept.
     expect(client.schedule.updateMany).toHaveBeenCalledWith({
-      where: { playlistId: { in: ['child-pl'] }, pendingMedia: false },
+      where: { playlistId: 'child-pl', tenantId: 'child-tenant', pendingMedia: false },
       data: { isActive: true },
     });
   });
