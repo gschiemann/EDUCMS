@@ -347,6 +347,7 @@ describe('detail drawer (§10 / §14)', () => {
               ipAddress: '10.20.30.40',
               pairedAt: '2026-08-01T15:00:00.000Z',
               lastCacheReport: { playlist: { count: 12, bytes: 480 * 1024 * 1024 }, emergency: { count: 3, bytes: 2_400_000 } },
+              lastCacheReportAt: new Date(NOW - 10_000).toISOString(),
             }
           : s,
       ),
@@ -952,4 +953,3 @@ function stagedRect(top: number): DOMRect {
     width: height, height, x: right - height, y: top, toJSON: () => ({}),
   } as DOMRect;
 }
-
