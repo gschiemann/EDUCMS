@@ -40,6 +40,10 @@ class FakeCache {
     const url = typeof req === 'string' ? req : req.url;
     const bytes = new Uint8Array(await res.arrayBuffer());
     this.entries.set(url, { status: res.status, headers: [...res.headers.entries()], bytes });
+    // Real Cache Storage is disk IO: the write lands, then the promise settles
+    // a turn later. Without this hop two overlapping puts + reads could never
+    // interleave here the way they do on a device (the cross-body test needs it).
+    await new Promise((r) => setTimeout(r, 0));
   }
   async delete(req: Request | string) {
     const url = typeof req === 'string' ? req : req.url;
@@ -418,6 +422,52 @@ describe('sw-player large-asset staging', () => {
     expect(reply2).toMatchObject({ ok: true, failures: 0, count: 1, pending: [] });
     expect(server2.calls).toHaveLength(1);
     expect(Buffer.from(w2.cacheNamed(w2.hooks.PLAYLIST_CACHE).entries.get(url)!.bytes).equals(Buffer.from(good))).toBe(true);
+  });
+
+  it('two overlapping chunk events for ONE URL at different offsets never cross bodies (per-offset temp key)', async () => {
+    const w = loadWorker();
+    const file = randomBytes(2 * MiB);
+    // A fetch whose bodies we close by hand, so the two events interleave
+    // exactly the way a reloaded page racing its predecessor does: chunk B's
+    // body lands first, then chunk A's.
+    const controllers: Array<{ start: number; ctl: ReadableStreamDefaultController<Uint8Array> }> = [];
+    w.setFetch(async (input: Request | string) => {
+      const req = typeof input === 'string' ? new Request(input) : input;
+      const m = /^bytes=(\d+)-(\d+)$/.exec(req.headers.get('range') || '')!;
+      const start = Number(m[1]);
+      const end = Number(m[2]);
+      const body = new ReadableStream<Uint8Array>({ start(ctl) { controllers.push({ start, ctl }); } });
+      return new Response(body, { status: 206, headers: {
+        'content-type': 'video/mp4', 'content-length': String(end - start + 1), 'content-range': `bytes ${start}-${end}/${file.length}`,
+      } });
+    });
+    const asset = { url: URL_4K, sha256: sha256Hex(file), size: file.length };
+    const a = w.send({ type: 'PRECACHE_CHUNK', ...asset, offset: 0, chunkBytes: MiB });
+    const b = w.send({ type: 'PRECACHE_CHUNK', ...asset, offset: MiB, chunkBytes: MiB });
+    // Both fetches are in flight before either body has a byte.
+    for (let i = 0; i < 20 && controllers.length < 2; i++) await new Promise((r) => setTimeout(r, 5));
+    expect(controllers.map((c) => c.start).sort((x, y) => x - y)).toEqual([0, MiB]);
+    const finish = (start: number) => {
+      const c = controllers.find((x) => x.start === start)!;
+      c.ctl.enqueue(file.slice(start, start + MiB));
+      c.ctl.close();
+    };
+    // A's body lands first, B's a moment later — so B's temp write settles
+    // between A's temp write and A's read-back. With ONE temp key per URL
+    // (the pre-fix code) A then copies B's bytes under A's range.
+    finish(0);
+    finish(MiB);
+    expect((await a).ok && (await b).ok).toBe(true);
+    const staging = w.cacheNamed(w.hooks.STAGING_CACHE);
+    const chunkA = [...staging.entries.entries()].find(([k]) => k.endsWith(`/0-${MiB}`))![1];
+    const chunkB = [...staging.entries.entries()].find(([k]) => k.endsWith(`/${MiB}-${MiB}`))![1];
+    expect(Buffer.from(chunkA.bytes).equals(Buffer.from(file.slice(0, MiB)))).toBe(true);
+    expect(Buffer.from(chunkB.bytes).equals(Buffer.from(file.slice(MiB, 2 * MiB)))).toBe(true);
+    // No temp entry survives, and nothing but the two ranges is counted.
+    expect([...staging.entries.keys()].some((k) => k.includes('/tmp'))).toBe(false);
+    w.setFetch(rangeFetch({ file, calls: [] }));
+    const verify = await w.send({ type: 'PRECACHE_VERIFY', url: URL_4K, sha256: asset.sha256 });
+    expect(verify).toMatchObject({ ok: true, verified: true });
   });
 
   it('the incremental SHA-256 matches node:crypto across update boundaries', () => {

@@ -1050,9 +1050,16 @@ async function answerPort(event, work) {
  * landed (a body that ended early must never masquerade as a full chunk), then
  * copy it under its byte-range key. `Response.blob()` on a cache-backed body is
  * a handle in Chromium, not a read, so this is a disk-to-disk copy of a few MB.
+ *
+ * The temp entry is keyed by OFFSET (`tmp-<start>`), never one per URL: two
+ * chunk events for the same URL at different offsets can overlap (a reloaded
+ * page racing its predecessor), and a shared temp key let the second body
+ * overwrite the first mid-flight — chunk A then copied chunk B's bytes under
+ * A's range. `parseStagedChunkPath` still ignores every `tmp-*` entry, so a
+ * temp body can never be counted as staged.
  */
 async function storeStagedChunk(staging, url, start, res, contentType) {
-  const tmpKey = new Request(`${stagePrefixFor(url)}tmp`);
+  const tmpKey = new Request(`${stagePrefixFor(url)}tmp-${start}`);
   await staging.put(tmpKey, new Response(res.body, { status: 200, headers: { 'content-type': contentType } }));
   const tmp = await staging.match(tmpKey);
   const blob = tmp ? await tmp.blob() : null;
