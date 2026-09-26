@@ -4,7 +4,8 @@
  * with `?confirm=in-use`; the hooks add it for `{ id, confirmInUse: true }`
  * and for nothing else, and the optimistic removal keys on the id either way.
  */
-import { render, act } from '@testing-library/react';
+import * as React from 'react';
+import { renderHook, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const apiFetch = jest.fn();
@@ -16,17 +17,11 @@ import { inUseDeletePath, useDeleteAsset, useDeletePlaylist } from '../use-api';
 
 function mount<T>(useHook: () => T) {
   const qc = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
-  let result!: T;
-  function Inner() {
-    result = useHook();
-    return null;
-  }
-  render(
-    <QueryClientProvider client={qc}>
-      <Inner />
-    </QueryClientProvider>,
+  const wrapper = ({ children }: { children: React.ReactNode }) => (
+    <QueryClientProvider client={qc}>{children}</QueryClientProvider>
   );
-  return { qc, get result() { return result; } };
+  const { result } = renderHook(useHook, { wrapper });
+  return { qc, get result() { return result.current; } };
 }
 
 beforeEach(() => {

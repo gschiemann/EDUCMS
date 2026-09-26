@@ -265,9 +265,9 @@ export default function PlaylistsPage() {
    */
   const handleRemove = useCallback(async (row: PlaylistSummaryRow) => {
     const ruleCount = schedules.filter((s) => s.playlistId === row.id).length;
-    const failed = (err: any) => appAlert({
+    const failed = (err: unknown) => appAlert({
       title: "Couldn't remove playlist",
-      message: err?.message || 'The server rejected the request. Refresh and try again.',
+      message: (err as { message?: string } | null)?.message || 'The server rejected the request. Refresh and try again.',
       tone: 'danger',
     });
     const decision = removePlaylistCopy(row, ruleCount);
@@ -298,7 +298,7 @@ export default function PlaylistsPage() {
       if (!confirmed) return;
       try {
         await deletePlaylist.mutateAsync({ id: row.id, confirmInUse: true });
-      } catch (again: any) {
+      } catch (again) {
         await failed(again);
       }
     }

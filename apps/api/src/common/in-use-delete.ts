@@ -24,6 +24,7 @@ import {
   HttpException,
   HttpStatus,
 } from '@nestjs/common';
+import type { Response } from 'express';
 
 /** The only `?confirm=` value that authorises deleting content still in use. */
 export const IN_USE_DELETE_CONFIRMATION = 'in-use';
@@ -82,7 +83,7 @@ export class InUseDeleteUnconfirmed<Facts> extends Error {
 @Catch(InUseDeleteConflict)
 export class InUseDeleteConflictFilter implements ExceptionFilter {
   catch(exception: InUseDeleteConflict, host: ArgumentsHost) {
-    const res = host.switchToHttp().getResponse();
+    const res = host.switchToHttp().getResponse<Response>();
     const payload = exception.getResponse() as InUseDeletePayload;
     if (res && !res.headersSent) {
       res.status(exception.getStatus()).json({
