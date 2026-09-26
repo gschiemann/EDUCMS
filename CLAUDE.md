@@ -455,35 +455,61 @@ A reliable player continuously proves FOUR SEPARATE FACTS — never let one stan
     open tab or an API client can never delete live content silently. The flag
     never overrides an emergency refusal.
 
-17. **A big file reaches the player cache in short, verified, resumable steps —
-    never in one service-worker event and never through a whole-body digest**
+17. **A big file downloads WHOLE, in short verified resumable steps, and only
+    THEN plays — never streamed from origin, never a lower-resolution stand-in**
     (2026-09-26, the 4K cache-fill incident: `docs/research/2026-09-26-4k-cache-fill/`).
-    The the customer 4K screen 4K screen reported 0 cached files for hours and dropped
-    121 of 264 frames streaming its 141 MB clip from origin. Two limits in
+    The customer's 4K screen reported 0 cached files for hours and dropped 121 of
+    264 frames streaming its 141 MB clip from origin. Two limits in
     `sw-player.js` explained the empty cache, and both scale with file size:
     `fetchAndStore` verified SHA-256 with `res.clone().arrayBuffer()` (the whole
     body in worker memory — an OOM on a 1–2 GB WebView), and the whole playlist
     downloaded under ONE `PRECACHE_PLAYLIST` `waitUntil`, which Chromium kills
-    after five minutes (`kRequestTimeout`, KILL_ON_TIMEOUT). Rules:
+    after five minutes (`kRequestTimeout`, KILL_ON_TIMEOUT). The first fix
+    (`bdb3f59a`) also played the 1080p rendition as a stand-in until the 4K file
+    cached; **Greg rejected the stand-in the same day** ("a screen never plays a
+    lower-resolution stand-in and then switches up — it downloads the whole native
+    file, THEN plays it"), `93fa9ef7` removed `fallback_url/hash/size` from the
+    manifest and the player's fallback path was deleted. Rules:
     (a) an asset ≥ 8 MiB is acked as `pending` and the PAGE drives it through
     `PRECACHE_CHUNK` (one Range request ≤ 32 MiB, aborted at 240 s, staged by
-    byte range, resume free) → `PRECACHE_VERIFY` (streamed SHA-256) →
-    `PRECACHE_ASSEMBLE` (disk→disk into one entry); no unverified byte ever
-    lands under the real URL; (b) the playlist precache passes the manifest
-    `asset_hash` for non-image assets — without it a video was a null-hash
-    entry re-downloaded every 24 h; (c) retries run on the 15 s tick +
-    `online` through `PlaylistCacheRetryPolicy`, never only on a manifest
-    apply (unchanged polls are 304s); (d) a >1080p screen's manifest item
-    carries the 1080p rendition as `fallback_url/hash/size` and the player
-    plays it until the native file is CONFIRMED cached (`mediaSourceChoice.ts`),
-    then moves up at the next mount or the loop wrap — 4K is never streamed
-    from origin when a smaller copy exists; (e) the emergency tier
-    (`precacheEmergency`) was deliberately left on the old path — routing it
-    through staging needs emergency sign-off. The vm-loaded worker test
-    (`sw-large-asset-cache.test.ts`, node environment) is the regression
-    gate: keep it green, and never put a large fetch back inside a single
-    message event. Same wave: deletion of an asset or playlist now runs the
-    shared `emergency-content-use.ts` check (tenant panic defaults, per-screen
+    byte range under a per-offset temp key, resume free) → `PRECACHE_VERIFY`
+    (streamed SHA-256) → `PRECACHE_ASSEMBLE` (disk→disk into one entry, explicit
+    target tier); no unverified byte ever lands under the real URL;
+    (b) the playlist precache passes the manifest `asset_hash` for non-image
+    assets — without it a video was a null-hash entry re-downloaded every 24 h;
+    (c) retries run on the 15 s tick + `online` through
+    `PlaylistCacheRetryPolicy`, never only on a manifest apply (unchanged polls
+    are 304s); (d) **readiness-gated playback** (`mediaReadiness.ts`, pure,
+    tested per shape): a LARGE item — the worker's own rule, ≥ 8 MiB or a video
+    URL with no size, and the test vm-loads the worker to prove both sides agree
+    — is never mounted (not even as the hidden next-up) until its native bytes
+    are on disk (`CACHE_LOOKUP` `present`, or landed by the drive). Free-run: the
+    monotonic counter is re-aimed at the first playable slot and every advance
+    steps to the next playable one, so ready items rotate while the rest
+    download; one ready item is a solo slide. Sync (`syncMode='locked'`): the
+    timeline slot is NEVER moved — an unready slot is HELD (the screen keeps its
+    last shown slide) so on-screen stays f(manifest, syncedNow). A new playlist
+    with nothing ready is DEFERRED while regular content is on glass
+    (`decidePlaylistCommit`; its files ride `keepUrls` so the worker's prune
+    cannot evict what is still playing) and goes up from the readiness effect
+    when the first file lands; first boot shows the splash with the real
+    download (bytes, percent, file) and proves `idle:content-downloading`,
+    never `pl:`. A player with no service worker / a failed registration
+    (`cacheDrive: 'unavailable'`) streams everything — never stranded; an
+    emergency playlist is exempt (rule 11). Small files mount at once as before.
+    (e) **adoption, never re-download**: an entry cached before digests were
+    stored is `adoptable` — `PRECACHE_ADOPT` streams the CACHED bytes through
+    the incremental SHA-256 in its own event (small files inline in
+    `fetchAndStore`) and a match writes the meta rows; a mismatch changes
+    nothing and the verified download replaces the entry on assemble. A screen
+    is never taken off a file it is playing to re-verify it: a present-but-
+    unverified entry counts as ready. (f) the emergency tier
+    (`precacheEmergency`) keeps every file below 8 MiB on its old inline path;
+    see (g) once the large-file lane lands. The vm-loaded worker test
+    (`sw-large-asset-cache.test.ts`, node environment) is the regression gate:
+    keep it green, and never put a large fetch back inside a single message
+    event. Same wave: deletion of an asset or playlist now runs the shared
+    `emergency-content-use.ts` check (tenant panic defaults, per-screen
     emergency playlists, live overrides and messages — not just `isProtected`)
     inside the transaction, fail-closed; the media-publication sweep is
     leader-leased and never re-activates a row stamped with an error.
@@ -1755,7 +1781,7 @@ The page renders inside the brand shell — same chrome, same palette, same font
 
 ---
 
-**Last Updated:** 2026-09-26 — Player Reliability rule 17: a big file reaches the player cache in short, verified, resumable steps (chunked Range staging in `sw-player.js`, streamed SHA-256, page-driven, retry on a tick, 1080p fallback while the 4K primary caches — the the customer 4K screen 4K cache-fill incident, `docs/research/2026-09-26-4k-cache-fill/`); the shared emergency-content check now guards asset and playlist deletion (a Codex ba1a8ed regression); the media-publication sweep is leader-leased and ignores errored rows. Previous stamp, 2026-09-24 — an MP4 whose index sits at the end is now re-muxed to fast start automatically: losslessly, original kept, never for emergency content (`VIDEO_FASTSTART_REMUX_DISABLED` row). Earlier the same day — video encode grading: every upload is ffprobe'd (probe version 2), graded against the kiosk-safe target in `@cms/api-types` and warned about in the Media Library, the playlist editor and the New Playlist wizard; legacy videos are graded by the `VIDEO_PROBE_AUTOHEAL_DISABLED` cron or on demand; the player's dropped-frame sample lands on `Screen.lastVideoReport` (migration `20260924120000_screen_video_playback`) so the screen Overview can say whether the last clip stuttered. Previous stamp, 2026-09-23 — Railway config-as-code is deprecated (cutoff 2026-12-01): the root `railway.json` lost its `build` section, the API's dashboard mirrors it, and a second service (`renderer`) is wired through the Dockerfile-path setting + `RAILWAY_DOCKERFILE_PATH`. Previous stamp, 2026-09-22 — AI models are catalog DATA that upgrade themselves daily, AI on our key is metered in dollars against an allowance per paired screen (`AI_INCLUDED_USD_*`, `AI_MODEL_SYNC_DISABLED` rows), and our key is now per-vendor with per-job routes and a one-hop failover (`OPENAI_API_KEY` / `GEMINI_API_KEY` row — board design prefers GPT-6 Sol). Previous stamp, 2026-09-19 — added the "a schema change ships a MIGRATION FILE" rules under Database Commands: production runs `prisma migrate deploy` at boot (it has since 2026-05-04), `db:push` is local-only, and the 2026-09-16 fleet incident was a schema change with no migration file — now a CI gate (`schema-has-migration`). Previous stamp, 2026-09-14 — repo back to PUBLIC (cost: Actions spending limit + halved runners), `LICENSE` = source-available notice, rule #5 rewritten. Previous stamp, 2026-09-13 — template-builder rules from the pre-Codex audit: selection is a chrome overlay (never hoist a zone's z-index), an idle hotspot press must still drag, canvas frame sizing in `canvas-frame-style.ts`, presets carry no literal countdown dates; plus the harness + sandbox Playwright config pointers. Previous stamp, 2026-09-12 — added the Meta (`INSTAGRAM_APP_ID/SECRET`, `META_APP_ID/SECRET`) and Google Reviews env rows: the four "Coming soon" Apps tiles are real integrations now, dormant until those keys exist. Previous stamp, 2026-09-11 — corrected the Template System section, which was wrong by an
+**Last Updated:** 2026-09-26 — Player Reliability rule 17 rewritten to what ships: a big file downloads WHOLE in chunked, verified, resumable steps and only THEN plays — readiness-gated playback (`mediaReadiness.ts`; free-run skips an unready slot, a synced group HOLDS it; a new playlist with nothing ready is deferred behind the content on glass), NO 1080p stand-in (Greg's rule, the `bdb3f59a` fallback path deleted), legacy cache entries adopted by hashing on disk instead of re-downloaded — the customer's 4K cache-fill incident, `docs/research/2026-09-26-4k-cache-fill/`; the shared emergency-content check now guards asset and playlist deletion (a Codex ba1a8ed regression); the media-publication sweep is leader-leased and ignores errored rows. Previous stamp, 2026-09-24 — an MP4 whose index sits at the end is now re-muxed to fast start automatically: losslessly, original kept, never for emergency content (`VIDEO_FASTSTART_REMUX_DISABLED` row). Earlier the same day — video encode grading: every upload is ffprobe'd (probe version 2), graded against the kiosk-safe target in `@cms/api-types` and warned about in the Media Library, the playlist editor and the New Playlist wizard; legacy videos are graded by the `VIDEO_PROBE_AUTOHEAL_DISABLED` cron or on demand; the player's dropped-frame sample lands on `Screen.lastVideoReport` (migration `20260924120000_screen_video_playback`) so the screen Overview can say whether the last clip stuttered. Previous stamp, 2026-09-23 — Railway config-as-code is deprecated (cutoff 2026-12-01): the root `railway.json` lost its `build` section, the API's dashboard mirrors it, and a second service (`renderer`) is wired through the Dockerfile-path setting + `RAILWAY_DOCKERFILE_PATH`. Previous stamp, 2026-09-22 — AI models are catalog DATA that upgrade themselves daily, AI on our key is metered in dollars against an allowance per paired screen (`AI_INCLUDED_USD_*`, `AI_MODEL_SYNC_DISABLED` rows), and our key is now per-vendor with per-job routes and a one-hop failover (`OPENAI_API_KEY` / `GEMINI_API_KEY` row — board design prefers GPT-6 Sol). Previous stamp, 2026-09-19 — added the "a schema change ships a MIGRATION FILE" rules under Database Commands: production runs `prisma migrate deploy` at boot (it has since 2026-05-04), `db:push` is local-only, and the 2026-09-16 fleet incident was a schema change with no migration file — now a CI gate (`schema-has-migration`). Previous stamp, 2026-09-14 — repo back to PUBLIC (cost: Actions spending limit + halved runners), `LICENSE` = source-available notice, rule #5 rewritten. Previous stamp, 2026-09-13 — template-builder rules from the pre-Codex audit: selection is a chrome overlay (never hoist a zone's z-index), an idle hotspot press must still drag, canvas frame sizing in `canvas-frame-style.ts`, presets carry no literal countdown dates; plus the harness + sandbox Playwright config pointers. Previous stamp, 2026-09-12 — added the Meta (`INSTAGRAM_APP_ID/SECRET`, `META_APP_ID/SECRET`) and Google Reviews env rows: the four "Coming soon" Apps tiles are real integrations now, dormant until those keys exist. Previous stamp, 2026-09-11 — corrected the Template System section, which was wrong by an
 order of magnitude in the file every agent and auditor reads first: **17 → 459** system presets
 (across SEVEN preset files, not one) and **~107 → 250** EXTERNAL_HTML boards (across five
 subdirectories, not four — `school/` was missing entirely). Widened the click-to-edit sweep from
