@@ -40,7 +40,9 @@
  * <video src=…> stay completely unaware of caching.
  *
  * The page communicates via postMessage:
- *   { type: 'PRECACHE_PLAYLIST',  assets: [{url,sha256?,size?}] }
+ *   { type: 'PRECACHE_PLAYLIST',  assets: [{url,sha256?,size?}], keepUrls?: [url] }
+ *       — `keepUrls` = files still on glass while this set's large files
+ *         download; spared by the prune (readiness-gated playback, 2026-09-26).
  *   { type: 'PRECACHE_EMERGENCY', assets: [{url,sha256?,size?}], setHash }
  *   { type: 'PRECACHE_SHELL',     routes?: string[], extra?: string[] }
  *                                                     → PRECACHE_SHELL_DONE
@@ -52,7 +54,7 @@
  *       — the large-asset staging protocol (2026-09-26); see the block
  *         above precachePlaylist. PRECACHE_PLAYLIST acks `pending` for
  *         files it will not download inside its own event.
- *   { type: 'CACHE_LOOKUP', urls: [{ url, sha256 }] }  (port ack → { cached })
+ *   { type: 'CACHE_LOOKUP', urls: [{ url, sha256 }] }  (port ack → { cached, present })
  *   { type: 'STATUS_REQUEST' }                         → STATUS_REPLY
  *   { type: 'CLEAR_CACHE',        tier: 'playlist'|'emergency'|'shell'|'all' }
  */
@@ -462,7 +464,7 @@ self.addEventListener('message', (event) => {
     if (ackPort) {
       try { ackPort.postMessage({ started: true }); } catch (_e) { /* page may have reloaded */ }
     }
-    event.waitUntil(precachePlaylist(msg.assets || [], msg.softCapBytes || DEFAULT_SOFT_CAP_BYTES, ackPort).catch((error) => {
+    event.waitUntil(precachePlaylist(msg.assets || [], msg.softCapBytes || DEFAULT_SOFT_CAP_BYTES, ackPort, msg.keepUrls).catch((error) => {
       console.warn('[sw-player] playlist cache failed', { reason: error && error.name || 'unknown' });
       if (ackPort) {
         try { ackPort.postMessage({ ok: false, failures: (msg.assets || []).length, count: (msg.assets || []).length }); } catch (_e) { /* page may have reloaded */ }
@@ -908,10 +910,28 @@ async function isCachedCurrent(asset, cache, meta) {
   return storedHash.toLowerCase() === String(asset.sha256).toLowerCase();
 }
 
+/** An entry exists in either tier: the fetch handler serves it from disk as-is. */
+async function isPresent(url, plCache, emCache) {
+  const req = new Request(url, { mode: 'cors', credentials: 'omit' });
+  if (await emCache.match(req, { ignoreSearch: true })) return true;
+  return !!(await plCache.match(req, { ignoreSearch: true }));
+}
+
+/**
+ * `cached` = present AND current (digest verified, or no digest to check);
+ * `present` = an entry the fetch handler would serve right now, digest or
+ * not (2026-09-26, readiness-gated playback). A legacy entry stored before
+ * this worker kept digests is present-but-not-current: the page may play it
+ * while the drive adopts or replaces it. No hashing here — a lookup answers
+ * in milliseconds, whatever the file size.
+ */
 async function cacheLookup(msg) {
   const list = Array.isArray(msg && msg.urls) ? msg.urls : [];
-  const [cache, meta] = await Promise.all([caches.open(PLAYLIST_CACHE), caches.open(META_CACHE)]);
+  const [cache, meta, emCache] = await Promise.all([
+    caches.open(PLAYLIST_CACHE), caches.open(META_CACHE), caches.open(EMERGENCY_CACHE),
+  ]);
   const cached = {};
+  const present = {};
   for (const entry of list) {
     const asset = typeof entry === 'string' ? { url: entry } : entry;
     if (!asset || !asset.url) continue;
@@ -920,8 +940,13 @@ async function cacheLookup(msg) {
     } catch (_e) {
       cached[asset.url] = false;
     }
+    try {
+      present[asset.url] = cached[asset.url] || await isPresent(asset.url, cache, emCache);
+    } catch (_e) {
+      present[asset.url] = cached[asset.url];
+    }
   }
-  return { ok: true, cached };
+  return { ok: true, cached, present };
 }
 
 /** Reply on the message's port; a thrown error becomes an honest `{ ok: false }`. */
@@ -1306,16 +1331,26 @@ class Sha256 {
 }
 
 // ─── Pre-cache a list of playlist assets, evicting LRU over the soft cap ───
-async function precachePlaylist(assets, softCapBytes, ackPort) {
+async function precachePlaylist(assets, softCapBytes, ackPort, keepUrls) {
   const cache = await caches.open(PLAYLIST_CACHE);
   const meta = await caches.open(META_CACHE);
   const liveUrls = new Set(assets.map((a) => normalizeUrl(a.url)));
+  // Readiness-gated playback (2026-09-26): the page names the files still ON
+  // GLASS while this manifest's large files download. They are outside the
+  // live set, so the prune below would delete them mid-play — and a large
+  // clip that leaves the cache silently starts streaming from origin, the
+  // exact thing the gate forbids. Spared here; reclaimed at the next push
+  // that no longer names them (and by the soft cap, oldest first).
+  const keep = new Set();
+  for (const u of Array.isArray(keepUrls) ? keepUrls : []) {
+    if (typeof u === 'string' && u) keep.add(normalizeUrl(u));
+  }
 
   // 1. Evict entries no longer referenced by the live manifest (LRU within
   // the new manifest scope).
   const existing = await cache.keys();
   for (const req of existing) {
-    if (!liveUrls.has(normalizeUrl(req.url))) {
+    if (!liveUrls.has(normalizeUrl(req.url)) && !keep.has(normalizeUrl(req.url))) {
       await cache.delete(req);
       await meta.delete(metaKey(req.url));
       await meta.delete(sizeMetaKey(req.url));
@@ -1324,7 +1359,7 @@ async function precachePlaylist(assets, softCapBytes, ackPort) {
   }
 
   // 1b. Half-downloaded files for URLs that left the manifest are dead weight.
-  try { await purgeStagingExcept(liveUrls); } catch (_e) { /* best-effort */ }
+  try { await purgeStagingExcept(new Set([...liveUrls, ...keep])); } catch (_e) { /* best-effort */ }
 
   // 2. Pre-fetch missing assets, respecting hash changes. Emit a
   //    progress event per completed asset so the splash can show a

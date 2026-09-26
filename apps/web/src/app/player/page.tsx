@@ -150,6 +150,20 @@ import {
   type PlaylistCacheAsset,
 } from './offline-cache';
 import { PlaylistCacheRetryPolicy } from './playlistCacheRetryPolicy';
+// Readiness-gated playback (2026-09-26): a large file is never mounted or
+// streamed before its native bytes are on disk — download the whole file,
+// THEN play it. Pure module; the shapes are tested in mediaReadiness.test.ts.
+import {
+  countDistinctPlayable,
+  decidePlaylistCommit,
+  isLargeMedia,
+  nextPlayableCounter,
+  readyItemIds,
+  resolveActiveCounter,
+  resolveActiveSlot,
+  type CacheDriveState,
+  type ReadinessItem,
+} from './mediaReadiness';
 import { appConfirm, appAlert } from '@/components/ui/app-dialog';
 // 2026-05-29 — Sentry crash reporting for the player / renderer. Sentry is
 // initialized in apps/web/sentry.client.config.ts and is GATED on
@@ -810,6 +824,35 @@ function readCachedManifest(): { at: number; m: any } | null {
     const raw = localStorage.getItem(LS_MANIFEST_CACHE);
     return raw ? JSON.parse(raw) : null;
   } catch { return null; }
+}
+
+/**
+ * The mime type a manifest item plays as. The API always sets `mime_type`
+ * now; the URL-extension guess is for legacy manifests / older payloads
+ * (a URL asset is text/html, a PDF is application/pdf, else image) — the
+ * same rule the playlist transform has always applied.
+ */
+function manifestItemMime(item: { mime_type?: string | null; url: string }): string {
+  if (item.mime_type) return String(item.mime_type);
+  const url = String(item.url || '');
+  if (url.match(/\.(mp4|webm|mov|m4v)$/i)) return 'video/mp4';
+  if (url.match(/\.(pdf)$/i)) return 'application/pdf';
+  if (url.match(/^https?:\/\//i) && !url.match(/\.(jpe?g|png|gif|webp|svg|avif)$/i)) return 'text/html';
+  return 'image/jpeg';
+}
+
+/**
+ * The URL a slide mounts for a manifest file — and therefore the URL the
+ * service worker caches it under and the page's readiness reads it by.
+ * Images ride the CDN edge proxy (resolveAssetUrl, a no-op until
+ * NEXT_PUBLIC_ASSET_CDN is set); video / web / pdf stay on the raw origin URL
+ * so the worker's Range cache keys on it. ONE definition, used by the
+ * precache list, the readiness gate and the render, so the three can never
+ * disagree about which bytes a slide is waiting for.
+ */
+function playbackUrlFor(fileUrl: string, mimeType: string | null | undefined): string {
+  const abs = fileUrl.startsWith('http') ? fileUrl : `${getApiRoot()}${fileUrl}`;
+  return mimeType && String(mimeType).startsWith('image/') ? resolveAssetUrl(abs) : abs;
 }
 
 /**
@@ -3894,6 +3937,11 @@ function PlayerPage() {
     enabled: false, trimMs: 0, groupId: null,
   });
   const syncActiveRef = useRef<boolean>(false);
+  // Render-visible mirror of syncActiveRef (2026-09-26, readiness-gated
+  // playback): the render must know whether the slot is the conductor's —
+  // a synced screen HOLDS an unready slot, a free-running one skips it — and
+  // a ref cannot re-render. Written only when the value changes.
+  const [syncLocked, setSyncLocked] = useState<boolean>(false);
   const syncPosRef = useRef<TimelinePosition | null>(null);
   const syncStatsRef = useRef<{ lastFlipErrMs: number | null; flipErrEwmaMs: number | null }>({
     lastFlipErrMs: null, flipErrEwmaMs: null,
@@ -4637,13 +4685,117 @@ function PlayerPage() {
   // WITHOUT a fresh manifest apply: an unchanged manifest poll is a 304, and
   // before this a failed download was only reconsidered on a full apply — a
   // screen could stream its 4K clip from origin for the rest of the session.
-  const playlistCacheAssetsRef = useRef<{ setHash: string; assets: PlaylistCacheAsset[] } | null>(null);
+  const playlistCacheAssetsRef = useRef<{ setHash: string; assets: PlaylistCacheAsset[]; keepUrls?: string[] } | null>(null);
   const playlistCacheRetryRef = useRef(new PlaylistCacheRetryPolicy());
   const playlistCacheAbortRef = useRef<AbortController | null>(null);
-  const startPlaylistPrecacheRef = useRef<(setHash: string, assets: PlaylistCacheAsset[]) => void>(() => {});
+  const startPlaylistPrecacheRef = useRef<(setHash: string, assets: PlaylistCacheAsset[], keepUrls?: string[]) => void>(() => {});
   // Stable keys (stableManifestUrlKey) of media the worker confirmed on disk.
   // State, not a ref: the render reads it to decide which items may play.
   const [cachedMediaKeys, setCachedMediaKeys] = useState<ReadonlySet<string>>(() => new Set());
+  const cachedMediaKeysRef = useRef<ReadonlySet<string>>(cachedMediaKeys);
+  useEffect(() => { cachedMediaKeysRef.current = cachedMediaKeys; }, [cachedMediaKeys]);
+  // ── Readiness-gated playback (2026-09-26) ─────────────────────────────
+  // Whether this player HAS an offline cache to wait for. 'unavailable' (no
+  // service worker / Cache API, or a registration that failed) means every
+  // item plays by streaming — a player without a cache is never stranded.
+  // 'unknown' lasts the few ms until the registration answers.
+  const [cacheDrive, setCacheDrive] = useState<CacheDriveState>('unknown');
+  const cacheDriveRef = useRef<CacheDriveState>('unknown');
+  useEffect(() => { cacheDriveRef.current = cacheDrive; }, [cacheDrive]);
+  // The large file the page is driving into the cache right now — feeds the
+  // splash's real download bar while nothing is ready to play.
+  const [largeDownload, setLargeDownload] = useState<{ name: string; bytesLoaded: number; bytesTotal: number | null } | null>(null);
+  // A media playlist the manifest delivered while NONE of its items was
+  // ready (every file large and still downloading). What is on glass stays
+  // until one of them lands; the commit runs from the readiness effect below.
+  type PendingPlaylistCommit = {
+    sig: string;
+    name: string;
+    items: any[];
+    isEmergency: boolean;
+    readiness: ReadinessItem[];
+  };
+  const pendingPlaylistCommitRef = useRef<PendingPlaylistCommit | null>(null);
+
+  // Memoized sorted playlist + item-validity check.
+  const isTemplate = !!playlist?.template;
+  const sorted = useMemo(
+    () => (playlist && !isTemplate ? [...(playlist.items || [])].sort((a: any, b: any) => a.sequenceOrder - b.sequenceOrder) : []),
+    [playlist, isTemplate],
+  );
+  const isItemValid = useCallback((item: any) => {
+    if (!item || (!item.daysOfWeek && !item.timeStart && !item.timeEnd)) return true;
+    const now = new Date();
+    if (item.daysOfWeek && !item.daysOfWeek.includes(['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][now.getDay()])) return false;
+    if (item.timeStart && item.timeEnd) {
+      const [sh, sm] = item.timeStart.split(':').map(Number);
+      const [eh, em] = item.timeEnd.split(':').map(Number);
+      const currentMins = now.getHours() * 60 + now.getMinutes();
+      if (currentMins < (sh * 60 + sm) || currentMins > (eh * 60 + em)) return false;
+    }
+    return true;
+  }, []);
+
+  // ── The readiness gate (2026-09-26) ───────────────────────────────────
+  // Which items may be mounted right now (mediaReadiness.ts). An emergency
+  // playlist is exempt — life-safety content shows at once, streamed if it
+  // must be (rule 11: the alert decision precedes everything, including a
+  // download). Everything else: a large file waits for its native bytes.
+  const readinessItems = useMemo<ReadinessItem[]>(
+    () => sorted.map((item: any) => ({
+      id: String(item.id),
+      large: isLargeMedia({
+        url: playbackUrlFor(item.asset?.fileUrl || '', item.asset?.mimeType),
+        sizeBytes: item.asset?.sizeBytes ?? null,
+      }),
+      cacheKey: stableManifestUrlKey(playbackUrlFor(item.asset?.fileUrl || '', item.asset?.mimeType)),
+    })),
+    [sorted],
+  );
+  const readyIds = useMemo<ReadonlySet<string>>(
+    () => (playlist?.isEmergency
+      ? new Set(readinessItems.map((r) => r.id))
+      : readyItemIds(readinessItems, cacheDrive, cachedMediaKeys)),
+    [playlist?.isEmergency, readinessItems, cacheDrive, cachedMediaKeys],
+  );
+  const readyAt = useCallback(
+    (index: number) => { const it = sorted[index]; return !!it && readyIds.has(String(it.id)); },
+    [sorted, readyIds],
+  );
+  const playableAt = useCallback(
+    (index: number) => readyAt(index) && isItemValid(sorted[index]),
+    [sorted, readyAt, isItemValid],
+  );
+  const activeSlot = useMemo(
+    () => resolveActiveSlot({ counter: currentIndex, n: sorted.length, syncLocked, playable: playableAt, ready: readyAt }),
+    [currentIndex, sorted.length, syncLocked, playableAt, readyAt],
+  );
+  // The slide a synced screen keeps on glass while its timeline slot is held
+  // (an unready file must not be mounted; skipping would break the group's
+  // phase — on-screen = f(manifest, syncedNow)). Null until something shows.
+  const [lastShownIndex, setLastShownIndex] = useState<number | null>(null);
+  useEffect(() => {
+    if (activeSlot.activeIndex !== null && !activeSlot.held) setLastShownIndex(activeSlot.activeIndex);
+  }, [activeSlot]);
+  const displayIndex: number | null = activeSlot.held
+    ? (lastShownIndex !== null && lastShownIndex < sorted.length && readyAt(lastShownIndex) ? lastShownIndex : null)
+    : activeSlot.activeIndex;
+  // Free-run only: the monotonic counter converges onto the slot the render
+  // chose (a new playlist can clamp it onto a file still downloading; the
+  // daypart can close the current slot). Under sync the conductor owns it.
+  useEffect(() => {
+    if (syncLocked || !sorted.length) return;
+    const resolved = resolveActiveCounter(currentIndex, sorted.length, playableAt);
+    if (resolved !== null && resolved !== currentIndex) setCurrentIndex(resolved);
+  }, [currentIndex, sorted.length, syncLocked, playableAt]);
+  // The refs the 500 ms heartbeat and the slide callbacks read — they must
+  // never restart on a readiness change, and never see a stale gate.
+  const playableAtRef = useRef<(index: number) => boolean>(() => true);
+  useEffect(() => { playableAtRef.current = playableAt; }, [playableAt]);
+  /** Free-run advance to the next PLAYABLE slot; the same slot when nothing else is. */
+  const advanceSlide = useCallback(() => {
+    setCurrentIndex((prev) => nextPlayableCounter(prev, sortedItemsRef.current.length, playableAtRef.current));
+  }, []);
   // Signature of the current playlist items + template so applyManifest
   // can short-circuit when the manifest poll returned the same content
   // we're already rendering. Without this, setPlaylist(new obj) +
@@ -4721,8 +4873,14 @@ function PlayerPage() {
   // Register the offline-cache Service Worker on mount. Safe no-op when
   // SW isn't supported (older browsers, in-page test runners, etc).
   useEffect(() => {
-    if (!isSwSupported()) return;
-    registerOfflineCache().then(() => {
+    if (!isSwSupported()) {
+      setCacheDrive('unavailable'); // nothing can land on disk: every item streams
+      return;
+    }
+    registerOfflineCache().then((reg) => {
+      // A registration that failed is the same as no worker at all — hold
+      // nothing for a cache that will never fill.
+      setCacheDrive(reg ? 'ready' : 'unavailable');
       // Ask for current status as soon as the worker activates.
       getCacheStatus().then(setCacheStatus).catch(() => {});
     });
@@ -4805,7 +4963,14 @@ function PlayerPage() {
     // The OS may evict CacheStorage after a successful push. A confirmed
     // empty playlist tier invalidates our in-memory "already cached" mark;
     // the next manifest poll will restore it instead of streaming forever.
-    if (cacheStatus.playlist?.count === 0) lastPlaylistSetHashRef.current = '';
+    if (cacheStatus.playlist?.count === 0) {
+      lastPlaylistSetHashRef.current = '';
+      // Readiness reads from the same fact: with the tier empty nothing is on
+      // disk, so a large item must go back to waiting (never stream it).
+      // While a drive is in flight the tier is legitimately empty until the
+      // file assembles — the drive's own marks are the truth then.
+      if (!playlistCacheInFlightRef.current) setCachedMediaKeys((prev) => (prev.size ? new Set() : prev));
+    }
     cacheReportRef.current = {
       playlist: {
         count: cacheStatus.playlist?.count ?? 0,
@@ -4892,6 +5057,12 @@ function PlayerPage() {
     if (!emergencyOn && allAssetsFailed && !playbackStopped) {
       kind = 'idle';
       sig = 'idle:content-unavailable';
+    } else if (!emergencyOn && !playbackStopped && activeSlot.waitingForDownload && !(playlist as any)?.template) {
+      // Readiness-gated playback (2026-09-26): nothing is on glass because
+      // the scheduled file is still downloading. Never `pl:` — a held item is
+      // not playing, and the dashboard must not read it as content proven.
+      kind = 'idle';
+      sig = 'idle:content-downloading';
     } else if (!emergencyOn && !!playlist && !playbackStopped && !mediaReady && !(playlist as any)?.template) {
       sig = 'idle:content-loading';
     }
@@ -4908,7 +5079,7 @@ function PlayerPage() {
       sig = `paused:${currentPlaylistSigRef.current || (playlist as any)?.id || 'unknown'}`;
     }
     renderStateRef.current = { rendering, sig: sig.slice(0, 128), kind };
-  }, [phase, playlist, playbackStopped, activeEmergency, allAssetsFailed, mediaReady]);
+  }, [phase, playlist, playbackStopped, activeEmergency, allAssetsFailed, mediaReady, activeSlot.waitingForDownload]);
 
   // The rAF paint counter. One loop for the lifetime of the page; it only
   // advances when the compositor paints. We DON'T gate the loop on
@@ -5652,6 +5823,27 @@ function PlayerPage() {
   // fallback, WS/SSE SYNC, manual sync, retry timers) and the last response
   // to ARRIVE won — even when it was the oldest. Serialized, a stale
   // in-flight response can never overwrite a newer one.
+  // Put a media playlist on glass (2026-09-26). ONE writer for the sig, the
+  // emergency flag, the playlist state and the index — called straight from
+  // applyManifest when a file is ready, or from the readiness effect once a
+  // deferred playlist's first file lands. State setters and refs only, so the
+  // identity is stable for the life of the page.
+  const commitMediaPlaylist = useCallback((commit: PendingPlaylistCommit) => {
+    // Fix #2 (2026-05-04) — clamp instead of reset when the playlist size
+    // didn't shrink past the current index. If the operator ADDED items at
+    // the end (length grew), we can keep going from where we are. If they
+    // REMOVED items past our index, wrap to 0.
+    const oldHasItems = currentPlaylistSigRef.current !== '';
+    currentPlaylistSigRef.current = commit.sig;
+    contentIsEmergencyRef.current = commit.isEmergency;
+    setPlaylist({ name: commit.name, items: commit.items, isEmergency: commit.isEmergency });
+    // Only reset to 0 on FIRST playlist load (no prior items). After that,
+    // just clamp to the new length to avoid the "jolt back to slide 1 on
+    // every poll" symptom. (If that slot's file is still downloading the
+    // readiness gate re-aims the counter at the first ready one.)
+    setCurrentIndex((prev) => (!oldHasItems ? 0 : prev % commit.items.length));
+  }, []);
+
   const fetchContentInner = useCallback(async () => {
     if (!screenId) return;
 
@@ -6087,13 +6279,9 @@ function PlayerPage() {
               // no-op until NEXT_PUBLIC_ASSET_CDN is set, so the non-CDN case
               // is byte-for-byte unchanged. Video/web/pdf stay raw so the SW
               // Range cache keeps keying on the origin URL.
-              const absUrl = u.startsWith('http') ? u : `${getApiRoot()}${u}`;
-              const isImage = item.mime_type
-                ? String(item.mime_type).startsWith('image/')
-                : (!u.match(/\.(mp4|webm|mov|m4v)$/i)
-                  && !u.match(/\.(pdf)$/i)
-                  && !(u.match(/^https?:\/\//i) && !u.match(/\.(jpe?g|png|gif|webp|svg|avif)$/i)));
-              const playbackUrl = isImage ? resolveAssetUrl(absUrl) : absUrl;
+              const mime = manifestItemMime(item);
+              const isImage = mime.startsWith('image/');
+              const playbackUrl = playbackUrlFor(u, mime);
               // A known size lets the SW avoid cloning a 100+ MB 4K response
               // just to discover its length after writing the cache entry.
               const size = Number.isSafeInteger(item.asset_size) && item.asset_size > 0
@@ -6118,10 +6306,20 @@ function PlayerPage() {
         if (playlistAssets.length > 0) {
           // Stable hash of the URL set so re-pushes are skipped when nothing changed.
           const setHash = playlistAssetKeys.sort().join('|');
+          // Readiness-gated playback (2026-09-26): the content ON GLASS stays
+          // there until the new files are ready, so its files must survive
+          // the worker's prune of everything outside the new manifest — or a
+          // large clip still playing would silently start streaming from
+          // origin the moment it left the cache. They are reclaimed at the
+          // next manifest change (and by the soft cap), never mid-play.
+          const onGlass: any[] = Array.isArray(playlistRef.current?.items) ? playlistRef.current.items : [];
+          const keepUrls = onGlass
+            .map((it: any) => playbackUrlFor(String(it?.asset?.fileUrl || ''), it?.asset?.mimeType))
+            .filter((url: string) => /^https?:\/\//i.test(url));
           // One entry point for the cache drive (2026-09-26): it latches the set
           // only on a confirmed `ok`, backs off on failure, and the 15 s tick
           // below re-drives it without waiting for another manifest apply.
-          startPlaylistPrecacheRef.current(setHash, playlistAssets);
+          startPlaylistPrecacheRef.current(setHash, playlistAssets, keepUrls);
         }
       } catch { /* defensive — SW push failures must never break playback */ }
 
@@ -6272,6 +6470,9 @@ function PlayerPage() {
             setPlaylist({ name: templateWinner.template.name || 'Template Content', template: templateWinner.template, items: [] });
             setCurrentIndex(0);
           }
+          // A template takeover applies at once; a media playlist deferred
+          // for its download is no longer what the server wants on glass.
+          pendingPlaylistCommitRef.current = null;
           return true;
         }
         const combinedItems: any[] = [];
@@ -6316,12 +6517,13 @@ function PlayerPage() {
                 // what the player was doing exclusively before — that's
                 // why URL assets (text/html) and PDF assets (application/
                 // pdf) silently rendered as broken <img>s and the screen
-                // froze on the splash.
-                mimeType: item.mime_type
-                  ?? (item.url.match(/\.(mp4|webm|mov|m4v)$/i) ? 'video/mp4'
-                    : item.url.match(/\.(pdf)$/i) ? 'application/pdf'
-                    : item.url.match(/^https?:\/\//i) && !item.url.match(/\.(jpe?g|png|gif|webp|svg|avif)$/i) ? 'text/html'
-                    : 'image/jpeg'),
+                // froze on the splash. (manifestItemMime — shared with the
+                // precache list so the two agree on the playback URL.)
+                mimeType: manifestItemMime(item),
+                // The file's byte size, when the manifest knows it: the
+                // readiness gate uses it to tell a large file (staged by the
+                // worker, held until on disk) from a small one.
+                sizeBytes: Number.isSafeInteger(item.asset_size) && item.asset_size > 0 ? item.asset_size as number : null,
               },
             });
           });
@@ -6365,34 +6567,57 @@ function PlayerPage() {
               return `${i.sequenceOrder}|${i.durationMs}|${stable}|${i.contentVersion}`;
             })
             .join('||');
+          const isEmergencyContent = manifest.isEmergency === true;
           if (newSig === currentPlaylistSigRef.current) {
             // Same content, but the emergency FLAG may have flipped (e.g. a
             // tenant whose everyday playlist doubles as its panic playlist).
-            contentIsEmergencyRef.current = manifest.isEmergency === true;
+            contentIsEmergencyRef.current = isEmergencyContent;
+            // The readiness gate reads the flag off the playlist state (an
+            // emergency playlist is exempt from the download hold).
+            setPlaylist((prev: any) => (prev && prev.isEmergency !== isEmergencyContent ? { ...prev, isEmergency: isEmergencyContent } : prev));
+            // The manifest is back on what is on glass — a deferred newer
+            // playlist, if any, is no longer wanted.
+            pendingPlaylistCommitRef.current = null;
             return true; // identical content — keep index + playlist as-is
           }
-          // Fix #2 — clamp instead of reset when the playlist size
-          // didn't shrink past the current index. If the operator
-          // ADDED items at the end (length grew), we can keep going
-          // from where we are. If they REMOVED items past our index,
-          // wrap to 0.
-          const oldHasItems = currentPlaylistSigRef.current !== '';
-          currentPlaylistSigRef.current = newSig;
-          contentIsEmergencyRef.current = manifest.isEmergency === true;
-          setPlaylist({
+          const commit: PendingPlaylistCommit = {
+            sig: newSig,
             name: manifest.playlists.length > 1 ? 'Scheduled Content (Combined)' : manifest.playlists[0].name || 'Scheduled Content',
             items: combinedItems,
+            isEmergency: isEmergencyContent,
+            readiness: combinedItems.map((it: any) => ({
+              id: String(it.id),
+              large: isLargeMedia({ url: playbackUrlFor(it.asset.fileUrl, it.asset.mimeType), sizeBytes: it.asset.sizeBytes }),
+              cacheKey: stableManifestUrlKey(playbackUrlFor(it.asset.fileUrl, it.asset.mimeType)),
+            })),
+          };
+          // ── Readiness-gated playback (2026-09-26): keep the glass ────────
+          // If NOTHING in the new playlist is ready (every file large and
+          // still downloading) and regular content is on glass, that content
+          // stays until one of the new files lands — the readiness effect
+          // commits the deferred playlist then. An emergency playlist is
+          // never deferred (rule 11), and emergency content on glass is never
+          // kept in place of an all-clear's regular content.
+          const decision = decidePlaylistCommit({
+            isEmergency: isEmergencyContent,
+            anyReady: readyItemIds(commit.readiness, cacheDriveRef.current, cachedMediaKeysRef.current).size > 0,
+            regularContentOnGlass: currentPlaylistSigRef.current !== '' && !contentIsEmergencyRef.current,
           });
-          // Only reset to 0 on FIRST playlist load (no prior items).
-          // After that, just clamp to the new length to avoid the
-          // "jolt back to slide 1 on every poll" symptom.
-          setCurrentIndex((prev) => {
-            if (!oldHasItems) return 0;
-            return prev % combinedItems.length;
-          });
+          if (decision === 'defer') {
+            if (pendingPlaylistCommitRef.current?.sig !== newSig) {
+              console.log('[Player] new content is still downloading — keeping the current content on glass until a file is ready');
+            }
+            pendingPlaylistCommitRef.current = commit;
+            return true;
+          }
+          pendingPlaylistCommitRef.current = null;
+          commitMediaPlaylist(commit);
           return true;
         }
       }
+      // Empty manifest: a deferred playlist would now be content the server
+      // no longer schedules — drop it with everything else below.
+      pendingPlaylistCommitRef.current = null;
       // Empty manifest path — only bother resetting state if we weren't
       // already in the empty state. Prevents the same-signature loop
       // above from missing this case.
@@ -8680,6 +8905,9 @@ function PlayerPage() {
       .map((i: any) => `${i.sequenceOrder}|${i.durationMs}|${i.manifestKey || i.id}|${i.contentVersion || ''}`)
       .join('||');
   }, [playlist]);
+  // A held sync slot keeps the LAST SHOWN slide on glass — of THIS item set.
+  // A different set means that index names different content: forget it.
+  useEffect(() => { setLastShownIndex(null); }, [playlistItemsSig]);
 
   // Refs the heartbeat reads — kept fresh by the render-time mirror below.
   const slideStartedAtRef = useRef<number>(Date.now());
@@ -8776,21 +9004,14 @@ function PlayerPage() {
       const item = sorted[idx];
       if (!item) return;
 
-      // If the current slide is invalid (daypart filter), skip forward
-      // to the next valid one immediately.
-      if (!isItemValid(item)) {
-        let nextIndex = idx;
-        let found = false;
-        for (let i = 0; i < sorted.length; i++) {
-          nextIndex = (nextIndex + 1) % sorted.length;
-          if (isItemValid(sorted[nextIndex])) {
-            found = true;
-            break;
-          }
-        }
-        if (found && nextIndex !== idx) {
-          setCurrentIndex(nextIndex);
-        }
+      // If the current slide is not playable — the daypart filter closed
+      // it, or (readiness-gated playback, 2026-09-26) its file is still
+      // downloading — move to the next playable one immediately. The
+      // counter is monotonic: aim it forward, never reset it.
+      const playable = (i: number) => isItemValid(sorted[i]) && playableAtRef.current(i);
+      if (!playable(idx)) {
+        const resolved = resolveActiveCounter(currentIndexRef.current, sorted.length, playable);
+        if (resolved !== null && resolved !== currentIndexRef.current) setCurrentIndex(resolved);
         return;
       }
 
@@ -8813,9 +9034,10 @@ function PlayerPage() {
       //
       // Fix: when there's only one distinct item, the slide IS the
       // playlist — never advance. Same logic the video path uses
-      // for solo-video playlists (isSoloPlaylist below).
-      const distinctIds = new Set(sorted.map((s: any) => s.id || s.assetId));
-      if (distinctIds.size <= 1) return;
+      // for solo-video playlists (isSoloPlaylist below). Counted over
+      // the PLAYABLE items (2026-09-26): one ready image beside a video
+      // that is still downloading is a solo slide until the video lands.
+      if (countDistinctPlayable(sorted, playable) <= 1) return;
 
       const duration = item.durationMs || 10000;
       const elapsed = Date.now() - slideStartedAtRef.current;
@@ -8841,7 +9063,9 @@ function PlayerPage() {
           hardCacheBustingReload();
           return;
         }
-        setCurrentIndex((prev) => prev + 1);
+        // Next PLAYABLE slot — a file still downloading is stepped over,
+        // never mounted (readiness-gated playback, 2026-09-26).
+        setCurrentIndex((prev) => nextPlayableCounter(prev, sorted.length, playable));
       }
     }, 500);
 
@@ -8874,8 +9098,15 @@ function PlayerPage() {
   // conductor can jump multiple items forward (or effectively "rewind" by
   // forward-wrap), which the legacy elapsed-timer could never do.
   useEffect(() => {
+    // The ref is what every tick/servo reads; the state mirror is what the
+    // render reads (hold-vs-skip for an unready slot). Written on change only.
+    const setSyncActive = (active: boolean) => {
+      if (syncActiveRef.current === active) return;
+      syncActiveRef.current = active;
+      setSyncLocked(active);
+    };
     if (phase !== 'playing' || !syncEnabled) {
-      syncActiveRef.current = false;
+      setSyncActive(false);
       return;
     }
     const SYNC_MAX_UNCERTAINTY_MS = 80;
@@ -8888,26 +9119,26 @@ function PlayerPage() {
       const clock = syncClockRef.current;
       const sorted = sortedItemsRef.current;
       if (!clock || !sorted.length) {
-        syncActiveRef.current = false;
+        setSyncActive(false);
         return;
       }
       const mono = performance.now();
       if (!clock.isLocked(mono, SYNC_MAX_UNCERTAINTY_MS)) {
-        syncActiveRef.current = false;
+        setSyncActive(false);
         return;
       }
       const serverNow = clock.now(mono);
       if (serverNow === null) {
-        syncActiveRef.current = false;
+        setSyncActive(false);
         return;
       }
       const t = serverNow + syncConfigRef.current.trimMs;
       const posNow = resolveTimeline(sorted, t);
       if (!posNow) {
-        syncActiveRef.current = false;
+        setSyncActive(false);
         return;
       }
-      syncActiveRef.current = true;
+      setSyncActive(true);
       syncPosRef.current = posNow; // video servo + HUD + telemetry read this
       // Support/test observability: current sync state on window (mutated
       // in place — no allocation churn). The Playwright two-screen harness
@@ -8990,7 +9221,7 @@ function PlayerPage() {
     return () => {
       stopped = true;
       cancelAnimationFrame(raf);
-      syncActiveRef.current = false;
+      setSyncActive(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, playlistItemsSig, syncEnabled]);
@@ -9389,24 +9620,9 @@ function PlayerPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Memoized sorted playlist + item-validity check.
-  const isTemplate = !!playlist?.template;
-  const sorted = useMemo(
-    () => (playlist && !isTemplate ? [...(playlist.items || [])].sort((a: any, b: any) => a.sequenceOrder - b.sequenceOrder) : []),
-    [playlist, isTemplate],
-  );
-  const isItemValid = useCallback((item: any) => {
-    if (!item || (!item.daysOfWeek && !item.timeStart && !item.timeEnd)) return true;
-    const now = new Date();
-    if (item.daysOfWeek && !item.daysOfWeek.includes(['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][now.getDay()])) return false;
-    if (item.timeStart && item.timeEnd) {
-      const [sh, sm] = item.timeStart.split(':').map(Number);
-      const [eh, em] = item.timeEnd.split(':').map(Number);
-      const currentMins = now.getHours() * 60 + now.getMinutes();
-      if (currentMins < (sh * 60 + sm) || currentMins > (eh * 60 + em)) return false;
-    }
-    return true;
-  }, []);
+  // (isTemplate / sorted / isItemValid moved up next to the readiness gate —
+  // the render-proof effect reads the gate's verdict and hooks must be
+  // declared in one order, so the playlist memo lives above it now.)
 
   // 2026-07-01 — all-assets-failed tracker (blank-screen class b). See the
   // allAssetsFailed state declaration above for the full rationale. These
@@ -9438,8 +9654,8 @@ function PlayerPage() {
   // page-driven chunk protocol (offline-cache.ts); this latches the asset
   // set only on a confirmed `ok`, backs off on failure, and records which
   // URLs are on disk so the video slides can prefer a cached native file.
-  const startPlaylistPrecache = useCallback((setHash: string, assets: PlaylistCacheAsset[]) => {
-    playlistCacheAssetsRef.current = { setHash, assets };
+  const startPlaylistPrecache = useCallback((setHash: string, assets: PlaylistCacheAsset[], keepUrls?: string[]) => {
+    playlistCacheAssetsRef.current = { setHash, assets, keepUrls };
     if (lastPlaylistSetHashRef.current === setHash) return; // everything confirmed cached
     if (playlistCacheInFlightRef.current === setHash) return; // this very set is in flight
     if (playlistCacheInFlightRef.current) playlistCacheAbortRef.current?.abort(); // a newer manifest wins
@@ -9457,17 +9673,29 @@ function PlayerPage() {
       }
       return next ?? prev;
     });
-    // What is already on disk decides which file a slide mounts right now.
+    // What is already on disk may play right now — including a legacy entry
+    // the worker has not verified against the manifest digest yet: it is
+    // adopted in place (or replaced) by the drive below, and a screen is
+    // never taken off a file it is already playing just to re-verify it.
     void lookupCached(assets).then((found) => {
-      if (found) markCached(assets.filter((a) => found[a.url] === true).map((a) => a.url));
+      if (found) markCached(assets.filter((a) => found[a.url]?.present === true).map((a) => a.url));
     }).catch(() => { /* unknown ≠ not cached; the drive below still runs */ });
     setLoadProgress({ phase: 'assets', loaded: 0, total: assets.length });
+    setLargeDownload(null);
     void precachePlaylist(assets, undefined, {
       signal: controller.signal,
+      keepUrls,
       onAssetCached: (url) => markCached([url]),
+      // The real download bar for the splash while nothing is ready to play.
+      onProgress: (p) => setLargeDownload({
+        name: p.url.split('?')[0].split('/').pop() || 'video',
+        bytesLoaded: p.bytesLoaded,
+        bytesTotal: p.bytesTotal,
+      }),
     }).then((result) => {
       if (playlistCacheInFlightRef.current !== setHash) return; // superseded
       playlistCacheInFlightRef.current = '';
+      setLargeDownload(null);
       if (result.ok) {
         lastPlaylistSetHashRef.current = setHash;
         playlistCacheRetryRef.current.recordSuccess();
@@ -9485,12 +9713,26 @@ function PlayerPage() {
     }).catch(() => {
       if (playlistCacheInFlightRef.current !== setHash) return;
       playlistCacheInFlightRef.current = '';
+      setLargeDownload(null);
       playlistCacheRetryRef.current.recordFailure(Date.now());
     });
   }, []);
   useEffect(() => {
     startPlaylistPrecacheRef.current = startPlaylistPrecache;
   }, [startPlaylistPrecache]);
+
+  // A playlist deferred because none of its files was ready (readiness-gated
+  // playback, 2026-09-26) goes on glass the moment one of them is — the cache
+  // facts are the only trigger; no manifest poll is needed (304s never
+  // re-enter applyManifest).
+  useEffect(() => {
+    const pending = pendingPlaylistCommitRef.current;
+    if (!pending) return;
+    if (readyItemIds(pending.readiness, cacheDrive, cachedMediaKeys).size === 0) return;
+    pendingPlaylistCommitRef.current = null;
+    console.log('[Player] a file of the deferred playlist is ready — putting it on glass');
+    commitMediaPlaylist(pending);
+  }, [cacheDrive, cachedMediaKeys, commitMediaPlaylist]);
 
   // The retry tick — deliberately independent of manifest applies: an
   // unchanged manifest poll is a 304 and never re-enters applyManifest, which
@@ -9502,7 +9744,7 @@ function PlayerPage() {
       const last = playlistCacheAssetsRef.current;
       if (!last || lastPlaylistSetHashRef.current === last.setHash || playlistCacheInFlightRef.current) return;
       if (!playlistCacheRetryRef.current.isDue(Date.now())) return;
-      startPlaylistPrecacheRef.current(last.setHash, last.assets);
+      startPlaylistPrecacheRef.current(last.setHash, last.assets, last.keepUrls);
     };
     const t = setInterval(attempt, 15_000);
     const onOnline = () => { playlistCacheRetryRef.current.expedite(); attempt(); };
@@ -10461,7 +10703,10 @@ function PlayerPage() {
   // (sceneTick / idleResetTimerRef / sorted / isItemValid /
   // markItemFailed / markItemSucceeded hooks were moved above the early
   // returns to satisfy the Rules of Hooks.)
-  const currentItem = sorted.length && isItemValid(sorted[currentIndex % sorted.length]) ? sorted[currentIndex % sorted.length] : null;
+  // The slot the readiness gate chose (mediaReadiness.ts): under free-run the
+  // first PLAYABLE slot from the counter; under sync the timeline's slot, or
+  // the last shown slide while that slot's file is still downloading.
+  const currentItem = displayIndex !== null && isItemValid(sorted[displayIndex]) ? sorted[displayIndex] : null;
   const isVideo = currentItem?.asset?.mimeType?.startsWith('video/');
   const fileUrl = currentItem?.asset?.fileUrl || '';
   const rawResolvedUrl = fileUrl.startsWith('http') ? fileUrl : `${getApiRoot()}${fileUrl}`;
@@ -11183,7 +11428,11 @@ function PlayerPage() {
           }}
         >
           {sorted.map((item, index) => {
-            const isActive = index === (currentIndex % sorted.length);
+            const isActive = index === displayIndex;
+            // Readiness-gated playback (2026-09-26): a large file whose
+            // native bytes are not on disk is NOT mounted — not active, not
+            // hidden next-up — because a mounted <video>/<img> streams.
+            const ready = readyIds.has(String(item.id));
             const mime = item.asset?.mimeType || '';
             const isVid = mime.startsWith('video/');
             // Web pages (text/html) and PDFs both render as <iframe>.
@@ -11221,8 +11470,11 @@ function PlayerPage() {
             // placeholder. preload=auto only fires when isVid &&
             // (isActive || isNext) so we don't waste bandwidth
             // pre-fetching every video in a long playlist.
-            const nextIndex = sorted.length > 0 ? (currentIndex + 1) % sorted.length : -1;
-            const isNext = sorted.length > 1 && index === nextIndex;
+            // The next-up slot is the next PLAYABLE one (free-run) or the
+            // timeline's next slot when it is ready (sync) — never an
+            // unready file, which must not be pre-mounted either.
+            const isNext = activeSlot.nextIndex !== null && index === activeSlot.nextIndex;
+            if (!ready) return null;
             // Render video for active OR next-up so the next clip
             // is already decoded by the time it becomes active.
             if (isVid && !isActive && !isNext) return null;
@@ -11259,8 +11511,9 @@ function PlayerPage() {
               // Detection: count how many DISTINCT items the playlist
               // has. 1 distinct item = solo, regardless of how many
               // sequence-order copies there are.
-              const distinctItemCount = new Set(sorted.map((s: any) => s.id || s.assetId)).size;
-              const isSoloPlaylist = distinctItemCount <= 1;
+              // Counted over the PLAYABLE items (2026-09-26): the one video
+              // that is ready loops natively until the next file lands.
+              const isSoloPlaylist = countDistinctPlayable(sorted, playableAt) <= 1;
               // The native file, always (2026-09-26, Greg — no 1080p stand-in).
               const videoSrc = resUrl;
               return (
@@ -11285,12 +11538,12 @@ function PlayerPage() {
                   // the whole group re-converges at the next boundary;
                   // the failure still feeds the all-failed tracker).
                   onEnded={() => {
-                    if (!syncActiveRef.current) setCurrentIndex(prev => prev + 1);
+                    if (!syncActiveRef.current) advanceSlide();
                   }}
                   onError={() => {
                     console.warn('[Player] video error, skipping:', videoSrc);
                     markItemFailed(item.id);
-                    if (!syncActiveRef.current) setCurrentIndex(prev => prev + 1);
+                    if (!syncActiveRef.current) advanceSlide();
                   }}
                   onPlaying={markItemSucceeded}
                   syncItemIndex={index}
@@ -11373,7 +11626,7 @@ function PlayerPage() {
                     onError={() => {
                       console.warn('[Player] iframe error, skipping:', iframeSrc);
                       markItemFailed(item.id);
-                      setCurrentIndex(prev => prev + 1);
+                      advanceSlide();
                     }}
                   />
                 );
@@ -11417,7 +11670,7 @@ function PlayerPage() {
                 onError={() => {
                   console.warn('[Player] iframe error, skipping:', iframeSrc);
                   markItemFailed(item.id);
-                  setCurrentIndex(prev => prev + 1);
+                  advanceSlide();
                 }}
               />;
             }
@@ -11447,7 +11700,7 @@ function PlayerPage() {
                 onError={() => {
                   console.warn('[Player] image error, skipping:', resUrl);
                   markItemFailed(item.id);
-                  if (isActive) setCurrentIndex(prev => prev + 1);
+                  if (isActive) advanceSlide();
                 }}
               />
             );
@@ -11874,6 +12127,83 @@ function PlayerPage() {
                     ? 'Use your remote’s Home button to return to the launcher.'
                     : 'Content is held. Resume to go back to playback.'}
                 </p>
+              </>
+            ) : activeSlot.waitingForDownload ? (
+              // Readiness-gated playback (2026-09-26, Greg: "download the
+              // whole file, THEN play it"): the scheduled file is large and
+              // its native bytes are not on this screen yet. Nothing is
+              // mounted or streamed until they are — this is the honest
+              // state, with the real download underneath, never a
+              // lower-resolution stand-in. First boot / new screen only:
+              // a screen that already had content keeps it (applyManifest
+              // defers the new playlist until one of its files is ready).
+              <>
+                <div
+                  className="w-24 h-24 rounded-[2rem] bg-gradient-to-br from-indigo-100 to-indigo-50 shadow-[inset_0_4px_20px_rgb(0,0,0,0.05)] flex items-center justify-center mb-6 ring-4 ring-white"
+                  style={{
+                    width: 'calc(min(96px, max(48px, calc(var(--led-w, 1024px) * 0.075))) * var(--splash-k, 1))',
+                    height: 'calc(min(96px, max(48px, calc(var(--led-w, 1024px) * 0.075))) * var(--splash-k, 1))',
+                    borderRadius: 'calc(min(32px, max(12px, calc(var(--led-w, 1024px) * 0.025))) * var(--splash-k, 1))',
+                    background: 'linear-gradient(135deg, #e0e7ff 0%, #eef2ff 100%)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    marginBottom: 'calc(min(24px, max(8px, calc(var(--led-w, 1024px) * 0.018))) * var(--splash-k, 1))',
+                    boxShadow: 'inset 0 4px 20px rgba(0,0,0,0.05), 0 0 0 4px white',
+                  }}
+                >
+                  <Download className="w-12 h-12 text-indigo-500" style={{ width: 'calc(min(48px, max(24px, calc(var(--led-w, 1024px) * 0.04))) * var(--splash-k, 1))', height: 'calc(min(48px, max(24px, calc(var(--led-w, 1024px) * 0.04))) * var(--splash-k, 1))', color: '#6366f1' }} />
+                </div>
+                <h1
+                  className="text-4xl font-extrabold text-slate-800 tracking-tight"
+                  style={{ fontSize: 'calc(min(36px, max(16px, calc(var(--led-w, 1024px) * 0.028))) * var(--splash-k, 1))', fontWeight: 800, color: '#1e293b', letterSpacing: '-0.025em', margin: 0, textAlign: 'center', lineHeight: 1.15 }}
+                >
+                  Downloading content
+                </h1>
+                <p
+                  data-download-hold=""
+                  className="text-lg font-medium text-slate-500 mt-2 mb-4 text-center"
+                  style={{ fontSize: 'calc(min(18px, max(10px, calc(var(--led-w, 1024px) * 0.014))) * var(--splash-k, 1))', fontWeight: 500, color: '#64748b', marginTop: 'calc(8px * var(--splash-k, 1))', marginBottom: 'calc(min(16px, max(6px, calc(var(--led-w, 1024px) * 0.012))) * var(--splash-k, 1))', textAlign: 'center', lineHeight: 1.3 }}
+                >
+                  {largeDownload && largeDownload.bytesTotal
+                    ? `${largeDownload.name} — ${Math.min(100, Math.floor((largeDownload.bytesLoaded / largeDownload.bytesTotal) * 100))}% (${formatBytes(largeDownload.bytesLoaded)} of ${formatBytes(largeDownload.bytesTotal)})`
+                    : largeDownload
+                      ? `${largeDownload.name} — ${formatBytes(largeDownload.bytesLoaded)} so far`
+                      : 'Playback starts the moment the file is complete on this screen.'}
+                </p>
+                {largeDownload && largeDownload.bytesTotal ? (
+                  <div
+                    role="progressbar"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={Math.min(100, Math.floor((largeDownload.bytesLoaded / largeDownload.bytesTotal) * 100))}
+                    aria-label="Download progress"
+                    style={{
+                      width: 'calc(min(480px, max(160px, calc(var(--led-w, 1024px) * 0.4))) * var(--splash-k, 1))',
+                      height: 'calc(10px * var(--splash-k, 1))',
+                      background: '#e2e8f0',
+                      borderRadius: 999,
+                      overflow: 'hidden',
+                      marginBottom: 'calc(min(32px, max(8px, calc(var(--led-w, 1024px) * 0.024))) * var(--splash-k, 1))',
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: `${Math.min(100, Math.floor((largeDownload.bytesLoaded / largeDownload.bytesTotal) * 100))}%`,
+                        height: '100%',
+                        background: '#6366f1',
+                        borderRadius: 999,
+                        transition: 'width 400ms ease-out',
+                      }}
+                    />
+                  </div>
+                ) : null}
+                {loadProgress?.lastError ? (
+                  <p
+                    className="text-sm text-slate-400 mb-6 text-center"
+                    style={{ fontSize: 'calc(min(14px, max(9px, calc(var(--led-w, 1024px) * 0.011))) * var(--splash-k, 1))', color: '#94a3b8', margin: 0, marginBottom: 'calc(min(24px, max(6px, calc(var(--led-w, 1024px) * 0.018))) * var(--splash-k, 1))', textAlign: 'center' }}
+                  >
+                    {loadProgress.lastError}
+                  </p>
+                ) : null}
               </>
             ) : (
               <>

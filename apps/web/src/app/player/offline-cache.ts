@@ -31,7 +31,23 @@ export type PlaylistCacheOptions = {
   onAssetCached?: (url: string) => void;
   /** Bytes staged so far for the large file being fetched right now. */
   onProgress?: (progress: PlaylistCacheProgress) => void;
+  /**
+   * URLs the worker must NOT prune even though they are outside this asset
+   * set — the content still on glass while the new files download
+   * (readiness-gated playback, 2026-09-26). Reclaimed at the next push.
+   */
+  keepUrls?: string[];
 };
+
+/**
+ * What the worker knows about one URL (CACHE_LOOKUP). `present` = an entry
+ * exists in the playlist or emergency tier, so the fetch handler serves it
+ * from disk right now; `current` = present AND its stored digest matches the
+ * manifest's (or the manifest carries none). A legacy entry cached before the
+ * worker stored digests is present-but-not-current: playable, and adopted
+ * or replaced by the drive without ever taking it off the glass.
+ */
+export type CacheLookupState = { present: boolean; current: boolean };
 
 // ── Large-asset staging, page side (2026-09-26, 4K cache-fill incident) ─────
 // The worker refuses to download a big file inside PRECACHE_PLAYLIST (Chromium
@@ -244,7 +260,7 @@ export async function precachePlaylist(
   // that never acks is given 15 s; a current one gets five minutes for its
   // small-asset pass (large files are not fetched inside this event).
   const first = await askWorker(
-    sw, { type: 'PRECACHE_PLAYLIST', assets, softCapBytes }, 15_000, () => 5 * 60_000,
+    sw, { type: 'PRECACHE_PLAYLIST', assets, softCapBytes, keepUrls: opts?.keepUrls }, 15_000, () => 5 * 60_000,
   );
   if (!first || typeof first.ok !== 'boolean') return { ok: false };
   const count = typeof first.count === 'number' ? first.count : assets.length;
@@ -266,11 +282,13 @@ export async function precachePlaylist(
 }
 
 /**
- * Which of these URLs are in the playlist cache right now (and, when a digest
- * is given, verified against it). `null` when the worker cannot answer — the
- * caller must treat that as unknown, never as "not cached".
+ * Which of these URLs are on disk right now — `present` (served from the
+ * cache as-is) and `current` (present AND verified against the given
+ * digest). `null` when the worker cannot answer — the caller must treat that
+ * as unknown, never as "not cached". An older worker that answers only
+ * `cached` is read as present === current.
  */
-export async function lookupCached(assets: PlaylistCacheAsset[]): Promise<Record<string, boolean> | null> {
+export async function lookupCached(assets: PlaylistCacheAsset[]): Promise<Record<string, CacheLookupState> | null> {
   const sw = await activeWorker();
   if (!sw || !assets?.length) return null;
   const reply = await askWorker(sw, {
@@ -278,8 +296,12 @@ export async function lookupCached(assets: PlaylistCacheAsset[]): Promise<Record
     urls: assets.map((a) => ({ url: a.url, sha256: a.sha256 ?? null })),
   }, LOOKUP_ACK_TIMEOUT_MS);
   if (!reply || reply.ok !== true || !reply.cached || typeof reply.cached !== 'object') return null;
-  const out: Record<string, boolean> = {};
-  for (const [url, value] of Object.entries(reply.cached as Record<string, unknown>)) out[url] = value === true;
+  const present = reply.present && typeof reply.present === 'object' ? reply.present as Record<string, unknown> : null;
+  const out: Record<string, CacheLookupState> = {};
+  for (const [url, value] of Object.entries(reply.cached as Record<string, unknown>)) {
+    const current = value === true;
+    out[url] = { current, present: present ? present[url] === true || current : current };
+  }
   return out;
 }
 

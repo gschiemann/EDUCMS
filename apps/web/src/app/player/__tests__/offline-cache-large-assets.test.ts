@@ -162,11 +162,25 @@ describe('player offline-cache large-asset orchestration', () => {
     expect(sent.filter((m) => m.type === 'PRECACHE_CHUNK')).toHaveLength(1);
   });
 
-  it('lookupCached maps the worker answer and treats no reply as unknown', async () => {
-    answerWith((m) => (m.type === 'CACHE_LOOKUP' ? { ok: true, cached: { 'https://a/x.mp4': true, 'https://a/y.mp4': false } } : undefined));
-    await expect(lookupCached([{ url: 'https://a/x.mp4', sha256: 'ab'.repeat(32) }, { url: 'https://a/y.mp4' }]))
-      .resolves.toEqual({ 'https://a/x.mp4': true, 'https://a/y.mp4': false });
-    expect(sent[0]).toEqual({ type: 'CACHE_LOOKUP', urls: [{ url: 'https://a/x.mp4', sha256: 'ab'.repeat(32) }, { url: 'https://a/y.mp4', sha256: null }] });
+  it('lookupCached maps the worker answer (present vs current) and treats no reply as unknown', async () => {
+    answerWith((m) => (m.type === 'CACHE_LOOKUP'
+      ? {
+          ok: true,
+          cached: { 'https://a/x.mp4': true, 'https://a/y.mp4': false, 'https://a/legacy.mp4': false },
+          present: { 'https://a/x.mp4': true, 'https://a/y.mp4': false, 'https://a/legacy.mp4': true },
+        }
+      : undefined));
+    await expect(lookupCached([{ url: 'https://a/x.mp4', sha256: 'ab'.repeat(32) }, { url: 'https://a/y.mp4' }, { url: 'https://a/legacy.mp4', sha256: 'cd'.repeat(32) }]))
+      .resolves.toEqual({
+        'https://a/x.mp4': { present: true, current: true },
+        'https://a/y.mp4': { present: false, current: false },
+        // On disk but never digest-verified: playable now, adopted by the drive.
+        'https://a/legacy.mp4': { present: true, current: false },
+      });
+    expect(sent[0]).toEqual({ type: 'CACHE_LOOKUP', urls: [{ url: 'https://a/x.mp4', sha256: 'ab'.repeat(32) }, { url: 'https://a/y.mp4', sha256: null }, { url: 'https://a/legacy.mp4', sha256: 'cd'.repeat(32) }] });
+    // An older worker answers `cached` only: present is read as current.
+    answerWith((m) => (m.type === 'CACHE_LOOKUP' ? { ok: true, cached: { 'https://a/x.mp4': true } } : undefined));
+    await expect(lookupCached([{ url: 'https://a/x.mp4' }])).resolves.toEqual({ 'https://a/x.mp4': { present: true, current: true } });
     jest.useFakeTimers();
     try {
       answerWith(() => undefined);
