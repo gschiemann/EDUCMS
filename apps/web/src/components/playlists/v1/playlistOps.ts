@@ -1461,15 +1461,30 @@ export interface RemoveDecision {
   title: string;
   message: string;
   confirmLabel: string;
+  /**
+   * The copy said the playlist is published (rules, screens or copies).
+   * Confirming THIS dialog is what lets the caller send `?confirm=in-use`;
+   * the server refuses a published delete without it (2026-09-26).
+   */
+  inUse: boolean;
 }
 
-export function removePlaylistCopy(row: PlaylistSummaryRow, ruleCount: number): RemoveDecision {
+export function removePlaylistCopy(
+  row: PlaylistSummaryRow,
+  ruleCount: number,
+  /**
+   * The server's exact count of other locations holding a copy (from a 409
+   * PLAYLIST_PUBLISHED `reach.copies`). Without it the count is inferred from
+   * `reach.locations`, which is all the library knows.
+   */
+  opts: { copies?: number } = {},
+): RemoveDecision {
   // Copies at other locations count as published (2026-09-26 review finding):
   // the server deletes every location's copy and its rules along with the
   // parent, and `ruleCount` / `reach.screens` only see THIS tenant's rows — a
   // district playlist published only to its schools used to read "not
   // published anywhere" right before taking 12 school screens off air.
-  const otherLocations = row.reach.locations > 1 ? row.reach.locations - 1 : 0;
+  const otherLocations = opts.copies ?? (row.reach.locations > 1 ? row.reach.locations - 1 : 0);
   if (ruleCount > 0 || row.reach.screens > 0 || otherLocations > 0) {
     const bits = [
       `${ruleCount} ${ruleCount === 1 ? 'rule' : 'rules'}`,
@@ -1483,6 +1498,7 @@ export function removePlaylistCopy(row: PlaylistSummaryRow, ruleCount: number): 
       title: `Delete published playlist “${row.name}”?`,
       message: `${bits.join(' · ')}\n\nDeleting it also removes its publishing rules.${copies} Affected screens use another available schedule or their default content. This cannot be undone.`,
       confirmLabel: 'Delete playlist and rules',
+      inUse: true,
     };
   }
   return {
@@ -1490,5 +1506,37 @@ export function removePlaylistCopy(row: PlaylistSummaryRow, ruleCount: number): 
     // No trash exists server-side — never promise a 30-day restore (§20.3).
     message: 'This playlist is not published anywhere. Removing it deletes it permanently — it cannot be restored.',
     confirmLabel: 'Remove permanently',
+    inUse: false,
   };
+}
+
+/**
+ * The published warning rebuilt from a 409 PLAYLIST_PUBLISHED `reach`
+ * (`{ rules, screens, locations, copies }`) — the server saw publishing this
+ * page did not (rules not loaded yet, copies at other locations). Null when
+ * the answer carries no usable reach, or reach that does not add up to
+ * "published": then there is nothing honest to confirm, and the caller must
+ * not send `?confirm=in-use`.
+ */
+export function removePlaylistCopyFromServer(
+  row: PlaylistSummaryRow,
+  ruleCount: number,
+  reach: unknown,
+): RemoveDecision | null {
+  if (!reach || typeof reach !== 'object') return null;
+  const r = reach as Record<string, unknown>;
+  const count = (v: unknown) => (typeof v === 'number' && Number.isInteger(v) && v >= 0 ? v : null);
+  const decision = removePlaylistCopy(
+    {
+      ...row,
+      reach: {
+        ...row.reach,
+        screens: count(r.screens) ?? row.reach.screens,
+        locations: count(r.locations) ?? row.reach.locations,
+      },
+    },
+    count(r.rules) ?? ruleCount,
+    { copies: count(r.copies) ?? undefined },
+  );
+  return decision.inUse ? decision : null;
 }

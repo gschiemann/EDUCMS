@@ -52,7 +52,7 @@ import {
 import { PlaylistLibraryV1 } from '@/components/playlists/v1/PlaylistLibraryV1';
 import type { TemplateLookupEntry } from '@/components/playlists/PlaylistPreviewThumb';
 import {
-  buildPlaylistRow, pauseEverywhereCopy, removePlaylistCopy,
+  buildPlaylistRow, pauseEverywhereCopy, removePlaylistCopy, removePlaylistCopyFromServer,
   type OpsGroupRef, type OpsScheduleRef, type OpsScreenRef, type PlaylistSummaryRow,
 } from '@/components/playlists/v1/playlistOps';
 
@@ -252,9 +252,24 @@ export default function PlaylistsPage() {
     [router, schoolId],
   );
 
-  /** Warn about affected publishing rules before the atomic server delete. */
+  /**
+   * Warn about affected publishing rules before the atomic server delete.
+   *
+   * The server deletes a published playlist only with `?confirm=in-use`
+   * (2026-09-26), so the request carries it ONLY when the dialog the operator
+   * just confirmed said the playlist is published. When this page thought it
+   * was not (rules not loaded yet, copies at locations this tenant cannot
+   * see), the server keeps it and answers 409 PLAYLIST_PUBLISHED with its
+   * reach, and the operator gets the published warning with the server's
+   * numbers before anything is deleted.
+   */
   const handleRemove = useCallback(async (row: PlaylistSummaryRow) => {
     const ruleCount = schedules.filter((s) => s.playlistId === row.id).length;
+    const failed = (err: any) => appAlert({
+      title: "Couldn't remove playlist",
+      message: err?.message || 'The server rejected the request. Refresh and try again.',
+      tone: 'danger',
+    });
     const decision = removePlaylistCopy(row, ruleCount);
     const ok = await appConfirm({
       title: decision.title,
@@ -264,13 +279,28 @@ export default function PlaylistsPage() {
     });
     if (!ok) return;
     try {
-      await deletePlaylist.mutateAsync(row.id);
+      await deletePlaylist.mutateAsync({ id: row.id, confirmInUse: decision.inUse });
+      return;
     } catch (err: any) {
-      await appAlert({
-        title: "Couldn't remove playlist",
-        message: err?.message || 'The server rejected the request. Refresh and try again.',
+      const serverDecision = !decision.inUse && err?.code === 'PLAYLIST_PUBLISHED'
+        ? removePlaylistCopyFromServer(row, ruleCount, err?.body?.reach)
+        : null;
+      if (!serverDecision) {
+        await failed(err);
+        return;
+      }
+      const confirmed = await appConfirm({
+        title: serverDecision.title,
+        message: serverDecision.message,
+        confirmLabel: serverDecision.confirmLabel,
         tone: 'danger',
       });
+      if (!confirmed) return;
+      try {
+        await deletePlaylist.mutateAsync({ id: row.id, confirmInUse: true });
+      } catch (again: any) {
+        await failed(again);
+      }
     }
   }, [schedules, deletePlaylist]);
 

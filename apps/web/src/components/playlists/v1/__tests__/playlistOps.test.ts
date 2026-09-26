@@ -30,6 +30,7 @@ import {
   needsAttention,
   pauseEverywhereCopy,
   removePlaylistCopy,
+  removePlaylistCopyFromServer,
   resolveTargetScreenIds,
   summarizeDelivery,
   summarizeDeliveryPayload,
@@ -574,6 +575,75 @@ describe('high-consequence confirmations', () => {
       1,
     );
     expect(r.message).not.toMatch(/copies at/);
+  });
+
+  // 2026-09-26 — the server deletes a published playlist only with
+  // ?confirm=in-use, and the page sends it only when THIS dialog said so.
+  it('says whether its copy disclosed publishing — the in-use confirmation rides on that', () => {
+    const pub = removePlaylistCopy({ name: 'Lobby', reach: { screens: 2, groups: 0, locations: 1 } } as PlaylistSummaryRow, 1);
+    expect(pub.inUse).toBe(true);
+    const copiesOnly = removePlaylistCopy({ name: 'Fall', reach: { screens: 0, groups: 0, locations: 4 } } as PlaylistSummaryRow, 0);
+    expect(copiesOnly.inUse).toBe(true);
+    const unpublished = removePlaylistCopy({ name: 'Draft', reach: { screens: 0, groups: 0, locations: 0 } } as PlaylistSummaryRow, 0);
+    expect(unpublished.inUse).toBe(false);
+    expect(unpublished.confirmLabel).toBe('Remove permanently');
+  });
+
+  it("takes the server's exact copy count over the reach.locations estimate", () => {
+    // A district with its own rules on its own screens plus copies at 3 schools.
+    const r = removePlaylistCopy(
+      { name: 'Fall', reach: { screens: 5, groups: 0, locations: 4 } } as PlaylistSummaryRow,
+      2,
+      { copies: 3 },
+    );
+    expect(r.message).toMatch(/copies at 3 other locations/);
+    // …and a group reaching another location's screens is not a copy.
+    const noCopies = removePlaylistCopy(
+      { name: 'Hall', reach: { screens: 5, groups: 1, locations: 2 } } as PlaylistSummaryRow,
+      1,
+      { copies: 0 },
+    );
+    expect(noCopies.message).not.toMatch(/copies at/);
+    expect(noCopies.inUse).toBe(true);
+  });
+});
+
+describe('the published warning rebuilt from a 409 PLAYLIST_PUBLISHED', () => {
+  const row = { name: 'Fall Fundraiser', reach: { screens: 0, groups: 0, locations: 0 } } as PlaylistSummaryRow;
+
+  it('uses the server reach — the numbers this page could not see', () => {
+    const d = removePlaylistCopyFromServer(row, 0, { rules: 4, screens: 12, locations: 4, copies: 3 });
+    expect(d).not.toBeNull();
+    expect(d!.inUse).toBe(true);
+    expect(d!.title).toBe('Delete published playlist “Fall Fundraiser”?');
+    expect(d!.message).toContain('4 rules · 12 screens · 4 locations');
+    expect(d!.message).toMatch(/copies at 3 other locations, including any rules those locations added/);
+    expect(d!.confirmLabel).toBe('Delete playlist and rules');
+  });
+
+  it('a copy with no rules anywhere is still published', () => {
+    const d = removePlaylistCopyFromServer(row, 0, { rules: 0, screens: 0, locations: 2, copies: 1 });
+    expect(d?.inUse).toBe(true);
+    expect(d?.message).toMatch(/copies at 1 other location,/);
+  });
+
+  it('counts it could not read fall back to what the page knows', () => {
+    const d = removePlaylistCopyFromServer(
+      { ...row, reach: { screens: 3, groups: 0, locations: 1 } } as PlaylistSummaryRow,
+      2,
+      { rules: null, screens: null, locations: null, copies: 1 },
+    );
+    expect(d?.message).toContain('2 rules · 3 screens');
+    expect(d?.message).toMatch(/copies at 1 other location/);
+  });
+
+  it.each([
+    ['no reach at all', undefined],
+    ['a non-object reach', 'published'],
+    ['a reach that is not published', { rules: 0, screens: 0, locations: 1, copies: 0 }],
+    ['garbage counts', { rules: -1, screens: 'many', locations: 1.5, copies: NaN }],
+  ])('%s → null: nothing honest to confirm', (_label, reach) => {
+    expect(removePlaylistCopyFromServer(row, 0, reach)).toBeNull();
   });
 });
 
