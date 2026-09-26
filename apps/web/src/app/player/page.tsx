@@ -150,7 +150,6 @@ import {
   type PlaylistCacheAsset,
 } from './offline-cache';
 import { PlaylistCacheRetryPolicy } from './playlistCacheRetryPolicy';
-import { chooseVideoSourceKind, isLoopWrap, upgradeAvailable, type VideoSourceKind } from './mediaSourceChoice';
 import { appConfirm, appAlert } from '@/components/ui/app-dialog';
 // 2026-05-29 — Sentry crash reporting for the player / renderer. Sentry is
 // initialized in apps/web/sentry.client.config.ts and is GATED on
@@ -1490,8 +1489,6 @@ function PlayerVideoSlide({
   syncActiveRef,
   syncPosRef,
   syncItemCount,
-  upgradeReady,
-  onLoopWrap,
 }: {
   src: string;
   isActive: boolean;
@@ -1499,14 +1496,6 @@ function PlayerVideoSlide({
   isSoloPlaylist: boolean;
   onEnded: () => void;
   onError: () => void;
-  /**
-   * 2026-09-26 — this slide is on its 1080p fallback and the native file is
-   * now in the cache. At the next loop wrap the slide tells the parent
-   * (onLoopWrap), which re-decides the file and remounts it — at a moment
-   * the viewer already sees restart. Never mid-clip.
-   */
-  upgradeReady?: boolean;
-  onLoopWrap?: () => void;
   /**
    * Frame-locked sync (2026-07-28) — when these are provided AND the
    * conductor is locked AND this slide is the timeline's current item,
@@ -1696,35 +1685,6 @@ function PlayerVideoSlide({
     // onError/src/isMuted are stable-in-behavior parent closures; keying on
     // the item identity (videoKey) resets the detector per slide.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isActive, videoKey]);
-
-  // ── Fallback → native file at the loop wrap (2026-09-26) ──────────────
-  // A solo playlist loops natively and never re-mounts, so a slide that
-  // started on the 1080p fallback would never pick up the 4K file once it
-  // cached. A looping <video> restarts without `ended`; currentTime jumping
-  // back to the start is the wrap. At that instant the parent is told and
-  // remounts the slide on the native file (mediaSourceChoice.ts).
-  const upgradeReadyRef = useRef(!!upgradeReady);
-  useEffect(() => { upgradeReadyRef.current = !!upgradeReady; }, [upgradeReady]);
-  const onLoopWrapRef = useRef(onLoopWrap);
-  useEffect(() => { onLoopWrapRef.current = onLoopWrap; }, [onLoopWrap]);
-  useEffect(() => {
-    const v = videoRef.current;
-    if (!isActive || !v) return;
-    let lastTimeS = 0;
-    let fired = false;
-    const onTime = () => {
-      const nowS = v.currentTime;
-      if (!fired && upgradeReadyRef.current && isLoopWrap(lastTimeS, nowS)) {
-        fired = true;
-        onLoopWrapRef.current?.();
-      }
-      lastTimeS = nowS;
-    };
-    v.addEventListener('timeupdate', onTime);
-    return () => v.removeEventListener('timeupdate', onTime);
-    // Keyed on the slide identity like the other element effects; the
-    // callback and readiness flag are read through refs.
   }, [isActive, videoKey]);
 
   // ─── Frame-locked sync: preroll + measured start lead (tier-1) ─────
@@ -4681,9 +4641,8 @@ function PlayerPage() {
   const playlistCacheRetryRef = useRef(new PlaylistCacheRetryPolicy());
   const playlistCacheAbortRef = useRef<AbortController | null>(null);
   const startPlaylistPrecacheRef = useRef<(setHash: string, assets: PlaylistCacheAsset[]) => void>(() => {});
-  // Stable keys (stableManifestUrlKey) of media the worker confirmed cached.
-  // State, not a ref: the video slides read it during render to prefer a
-  // cached native file over its 1080p fallback (mediaSourceChoice.ts).
+  // Stable keys (stableManifestUrlKey) of media the worker confirmed on disk.
+  // State, not a ref: the render reads it to decide which items may play.
   const [cachedMediaKeys, setCachedMediaKeys] = useState<ReadonlySet<string>>(() => new Set());
   // Signature of the current playlist items + template so applyManifest
   // can short-circuit when the manifest poll returned the same content
@@ -6146,21 +6105,9 @@ function PlayerPage() {
               // the CDN proxy, which may re-encode them, so they carry none.
               const sha256 = !isImage && typeof item.asset_hash === 'string' && /^[0-9a-f]{64}$/i.test(item.asset_hash)
                 ? item.asset_hash.toLowerCase() : undefined;
-              // A >1080p screen's video may carry its 1080p copy as a fallback
-              // (mediaSourceChoice.ts). List the SMALL file first: this list is
-              // the download order, and the copy is what plays until the native
-              // file has landed.
-              const fbUrl = !isImage && typeof item.fallback_url === 'string' && item.fallback_url ? item.fallback_url : null;
-              if (fbUrl && !urls.has(fbUrl)) {
-                urls.add(fbUrl);
-                const fbAbs = fbUrl.startsWith('http') ? fbUrl : `${getApiRoot()}${fbUrl}`;
-                const fbSize = Number.isSafeInteger(item.fallback_size) && item.fallback_size > 0
-                  ? item.fallback_size as number : undefined;
-                const fbHash = typeof item.fallback_hash === 'string' && /^[0-9a-f]{64}$/i.test(item.fallback_hash)
-                  ? item.fallback_hash.toLowerCase() : undefined;
-                playlistAssets.push({ url: fbAbs, ...(fbSize ? { size: fbSize } : {}), ...(fbHash ? { sha256: fbHash } : {}) });
-                playlistAssetKeys.push(stableManifestUrlKey(fbAbs));
-              }
+              // ONLY the native file (2026-09-26, Greg): no 1080p stand-in is
+              // listed, downloaded or played — a screen downloads the whole
+              // native file, then plays it.
               playlistAssets.push({ url: playbackUrl, ...(size ? { size } : {}), ...(sha256 ? { sha256 } : {}) });
               // Item ids do not change when a transcode swaps the media URL.
               // The cache identity must follow the bytes the player renders.
@@ -6363,9 +6310,6 @@ function PlayerPage() {
               muted: item.muted,
               asset: {
                 fileUrl: item.url,
-                // 2026-09-26 — the 1080p copy a >1080p screen may play until
-                // its native file is in the cache (mediaSourceChoice.ts).
-                fallbackUrl: typeof item.fallback_url === 'string' && item.fallback_url ? item.fallback_url : null,
                 // Use the manifest's mime_type when available (always set
                 // by the API now). Fall back to URL-extension guessing
                 // only for legacy manifests / older payloads, which is
@@ -9566,45 +9510,6 @@ function PlayerPage() {
     return () => { clearInterval(t); window.removeEventListener('online', onOnline); };
   }, []);
 
-  // ── Which file each video slide mounts (2026-09-26) ───────────────────
-  // Pinned per slide while it is on glass (a swap mid-clip would restart
-  // it). The ACTIVE slide keeps its pin; every other slide is re-decided from
-  // the cache facts each time the index moves, so a hidden next-up slide
-  // remounts on the native file as soon as it lands. A solo loop never
-  // changes index — its slide asks to be re-decided at its wrap instead.
-  const [videoSourceKinds, setVideoSourceKinds] = useState<Record<string, VideoSourceKind>>({});
-  useEffect(() => {
-    setVideoSourceKinds((prev) => {
-      const next: Record<string, VideoSourceKind> = {};
-      if (sorted.length) {
-        const activeId = sorted[currentIndex % sorted.length]?.id as string | undefined;
-        const nextId = sorted.length > 1 ? sorted[(currentIndex + 1) % sorted.length]?.id as string | undefined : undefined;
-        type SlideLike = { id?: string; asset?: { fileUrl?: string; fallbackUrl?: string | null } };
-        for (const id of [activeId, nextId]) {
-          if (!id) continue;
-          const item = (sorted as SlideLike[]).find((s) => s.id === id);
-          if (!item) continue;
-          const fileUrl: string = item.asset?.fileUrl || '';
-          const primaryKey = stableManifestUrlKey(fileUrl.startsWith('http') ? fileUrl : `${getApiRoot()}${fileUrl}`);
-          next[id] = id === activeId && prev[id]
-            ? prev[id]
-            : chooseVideoSourceKind({ primaryCached: cachedMediaKeys.has(primaryKey), hasFallback: !!item.asset?.fallbackUrl });
-        }
-      }
-      const prevKeys = Object.keys(prev);
-      const same = prevKeys.length === Object.keys(next).length && prevKeys.every((k) => prev[k] === next[k]);
-      return same ? prev : next;
-    });
-  }, [sorted, currentIndex, cachedMediaKeys]);
-  const forgetVideoSourceKind = useCallback((itemId: string) => {
-    setVideoSourceKinds((prev) => {
-      if (!(itemId in prev)) return prev;
-      const next = { ...prev };
-      delete next[itemId];
-      return next;
-    });
-  }, []);
-
   // Native Android URL overlay. For asset playlists containing URL
   // items, a modern APK renders the upstream site in a second top-level
   // WebView while this React player stays mounted underneath. Browser
@@ -11356,27 +11261,13 @@ function PlayerPage() {
               // sequence-order copies there are.
               const distinctItemCount = new Set(sorted.map((s: any) => s.id || s.assetId)).size;
               const isSoloPlaylist = distinctItemCount <= 1;
-              // 2026-09-26 — which file: the native one from the cache, else the
-              // 1080p fallback while the native file is still downloading (the
-              // 4K stream from origin is what stuttered). The pin lives in
-              // videoSourceKinds; a first render before the pin lands decides
-              // the same way, so nothing flickers.
-              const fallbackRaw: string | null = item.asset?.fallbackUrl || null;
-              const fallbackAbs = fallbackRaw
-                ? (fallbackRaw.startsWith('http') ? fallbackRaw : `${getApiRoot()}${fallbackRaw}`)
-                : null;
-              const primaryCached = cachedMediaKeys.has(stableManifestUrlKey(rawResUrl));
-              const sourceKind: VideoSourceKind = videoSourceKinds[item.id]
-                ?? chooseVideoSourceKind({ primaryCached, hasFallback: !!fallbackAbs });
-              const videoSrc = sourceKind === 'fallback' && fallbackAbs ? fallbackAbs : resUrl;
-              const slideKey = `${item.id}:${sourceKind}`;
+              // The native file, always (2026-09-26, Greg — no 1080p stand-in).
+              const videoSrc = resUrl;
               return (
                 <PlayerVideoSlide
-                  key={slideKey}
-                  videoKey={slideKey}
+                  key={item.id}
+                  videoKey={item.id}
                   src={videoSrc}
-                  upgradeReady={upgradeAvailable({ kind: sourceKind, primaryCached, hasFallback: !!fallbackAbs })}
-                  onLoopWrap={() => forgetVideoSourceKind(item.id)}
                   isActive={isActive}
                   classes={classes}
                   isSoloPlaylist={isSoloPlaylist}

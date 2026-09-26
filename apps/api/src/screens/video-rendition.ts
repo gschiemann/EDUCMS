@@ -46,20 +46,7 @@ export function selectVideoFile(
   return validRendition(asset.processingMeta) ?? primary;
 }
 
-/**
- * The 1080p copy a screen that was given the NATIVE video may play until that
- * file is in its cache (2026-09-26). A 4K clip streamed from origin is what
- * stuttered on the field 4K screen while its cache was still empty; the
- * copy streams fine and caches in seconds, and the player moves up to the
- * native file at the next mount once it has landed. Video only — an image
- * needs no such bridge — and never the file that was already selected.
- */
-export function selectFallbackVideoFile(
-  asset: ManifestVideoAsset,
-  selected: SelectedVideoFile,
-): SelectedVideoFile | null {
-  if (!asset.mimeType || !/^video\//i.test(asset.mimeType)) return null;
-  const rendition = validRendition(asset.processingMeta);
-  if (!rendition || rendition.url === selected.url) return null;
-  return rendition;
-}
+// A >1080p screen gets ONLY its native file. `selectFallbackVideoFile` (the
+// 1080p copy as a stand-in until the native file cached, bdb3f59a) was removed
+// on 2026-09-26: a screen never plays a lower-resolution stand-in and then
+// switches up — it downloads the whole native file, then plays it (Greg).
