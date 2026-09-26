@@ -1335,19 +1335,12 @@ export class PlaylistsController {
           message: `This playlist (or one of its location copies) is emergency content: ${emergencyUse}. Change the emergency settings first.`,
         }, HttpStatus.CONFLICT);
       }
-      // Published — a publishing rule on the playlist or on a copy, or a copy
-      // at another location — and nobody confirmed it: keep everything
-      // (2026-09-26). Decided after the emergency refusals and inside the
-      // transaction, like the delete itself.
-      let published = copies.length > 0;
-      for (const target of targets) {
-        if (published) break;
-        published = !!(await tx.schedule.findFirst({
-          where: { tenantId: target.tenantId, playlistId: target.id },
-          select: { id: true },
-        }));
-      }
-      if (published && !inUseConfirmed) {
+      // Published — a copy at another location, or a publishing rule (paused
+      // ones too) on the playlist or a copy — and nobody confirmed it: keep
+      // everything (2026-09-26). Decided after the emergency refusals, inside
+      // the transaction, on the very rows the delete would remove; nothing
+      // has been written when either refusal fires.
+      if (copies.length > 0 && !inUseConfirmed) {
         throw new InUseDeleteUnconfirmed({ copies });
       }
       for (const target of targets) {
@@ -1358,6 +1351,10 @@ export class PlaylistsController {
             startTime: true, endTime: true, isActive: true,
           },
         });
+        if (attachedSchedules.length > 0 && !inUseConfirmed) {
+          throw new InUseDeleteUnconfirmed({ copies });
+        }
+        const published = copies.length > 0 || attachedSchedules.length > 0;
         // Every deleted copy gets a forensic row in its own tenant. A failed
         // audit rolls the entire cross-location delete back.
         await tx.auditLog.create({
