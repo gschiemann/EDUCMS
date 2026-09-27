@@ -603,8 +603,15 @@ export default function ScorekeeperPadPage() {
 
   return (
     <Shell>
+      {/* K12-F16 — a phone held sideways (the `short-land:` variant, the same
+          query as hooks/use-short-landscape): two panes, no page scroll. LEFT
+          (the aside): who and what — the chip, the connection truth, the
+          score, the clock and Undo — never scrolled away by a tap. RIGHT:
+          the controls, scrolling on their own. Portrait stacks the two. */}
+      <div className="short-land:grid short-land:h-[100dvh] short-land:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] short-land:overflow-hidden">
+      <div data-testid="pad-aside" className="short-land:overflow-y-auto short-land:border-r short-land:border-slate-800 short-land:pb-3">
       {/* header — game identity, the connection-aware chip, the link's scope */}
-      <header className="px-4 pb-2 pt-4">
+      <header className="px-4 pb-2 pt-4 short-land:pt-2">
         <div className="flex items-center justify-between">
           <div className="min-w-0 truncate text-sm font-black text-white">
             {data.homeTeam} <span className="text-slate-500">{t('vs')}</span> {data.awayTeam}
@@ -751,7 +758,9 @@ export default function ScorekeeperPadPage() {
       </section>
 
       {lastAction && <PadUndoCard label={lastAction.label} disabled={disabled} onUndo={undo} />}
+      </div>
 
+      <div data-testid="pad-controls" className="short-land:overflow-y-auto short-land:pb-6">
       {/* score pads */}
       {caps.has('score') && increments.length > 0 && (
         <section className="mx-4 mt-3 grid grid-cols-2 gap-3" data-testid="pad-score">
@@ -846,7 +855,9 @@ export default function ScorekeeperPadPage() {
         />
       )}
       {def && caps.has('cue') && <PadCueSection def={def} disabled={disabled} send={send} />}
-      <div className="pb-8" />
+      <div className="pb-8 short-land:pb-2" />
+      </div>
+      </div>
     </Shell>
   );
 }
@@ -889,9 +900,19 @@ function PadStaleBanner({ state }: { state: LinkState }) {
   );
 }
 
-/** Solid dark shell — no backdrop-blur anywhere (mobile perf standard). */
+/** Solid dark shell — no backdrop-blur anywhere (mobile perf standard). On a
+ *  phone held sideways the panes own the scrolling and clear the notch. */
 function Shell({ children }: { children: React.ReactNode }) {
-  return <div className="min-h-screen bg-slate-950 pb-6">{children}</div>;
+  return (
+    // Sideways, the pad is pinned to the viewport (physical longhand sides,
+    // never `inset`): `min-h-screen` is 100vh — the LARGE viewport on a phone
+    // (browser bars hidden) — and the root layout's 384 px backdrop is taller
+    // than a 360 px landscape screen, either of which would let the whole
+    // page scroll under the two panes.
+    <div className="min-h-screen bg-slate-950 pb-6 short-land:fixed short-land:top-0 short-land:right-0 short-land:bottom-0 short-land:left-0 short-land:min-h-0 short-land:pb-0 short-land:pl-[env(safe-area-inset-left)] short-land:pr-[env(safe-area-inset-right)]">
+      {children}
+    </div>
+  );
 }
 
 function ScoreCol({ label, color, score }: { label: string; color: string; score: string }) {
