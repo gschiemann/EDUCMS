@@ -1401,7 +1401,7 @@ function RunMode({
             </div>
             {/* Phase-2 SHARE — the no-login scorekeeper pad link (mint-on-open,
                 QR + copy + revoke; server-enforced limited controls). */}
-            <ShareConsoleLink gameId={gameId} />
+            <ShareConsoleLink gameId={gameId} sport={g.sport} />
             {/* Inputs-wave GUIDED — the vendor-box counterpart: guided
                 Sportzcast/Scorebird/generic score-feed setup with live
                 first-packet status (same card as Setup → External score feed). */}
