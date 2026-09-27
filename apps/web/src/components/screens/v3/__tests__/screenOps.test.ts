@@ -1283,10 +1283,11 @@ describe('downloads + idle proofs on the row, the Overview and the Delivery card
       expect(delivery({ lastRenderedHash: 'pl:x', ...snapshot({}, 10 * MIN) }).line).toMatch(/^Nothing waiting\./);
     });
 
-    it('"Content unavailable" says why, and the waiting states do not claim "Nothing waiting"', () => {
+    it('"Content unavailable" says so, and the waiting states do not claim "Nothing waiting"', () => {
       const u = delivery({ lastRenderedHash: 'idle:content-unavailable' });
       expect(u.state).toBe('unknown');
-      expect(u.line).toMatch(/none of the scheduled files would load/);
+      expect(u.line).toBe('Content unavailable');
+      expect(u.message).toEqual({ key: 'screens.contentState.unavailable' });
       for (const hash of ['idle:connecting', 'idle:content-loading']) {
         expect(delivery({ lastRenderedHash: hash }).line).toBe('Waiting for the screen to confirm its picture.');
       }

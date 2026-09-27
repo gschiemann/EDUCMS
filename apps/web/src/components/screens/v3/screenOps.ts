@@ -1205,7 +1205,8 @@ export function deriveDelivery(screen: OpsScreen, status: StatusDescriptor, now:
     return { state: 'pending', line: status.label, ...(status.messages?.label ? { message: status.messages.label } : {}) };
   }
   if (status.key === 'content-unavailable') {
-    return { state: 'unknown', line: status.detail, ...(status.messages?.detail ? { message: status.messages.detail } : {}) };
+    // The short fact only — the content card above carries the explanation.
+    return { state: 'unknown', line: status.label, ...(status.messages?.label ? { message: status.messages.label } : {}) };
   }
   if (status.key === 'connecting' || status.key === 'content-loading') {
     return { state: 'pending', line: 'Waiting for the screen to confirm its picture.' };
