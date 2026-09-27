@@ -155,10 +155,26 @@ describe('SWIM_RELAY_EXCHANGE', () => {
     expect(container.textContent).toContain('EXCHANGE');
   });
 
-  it('flags a negative exchange time as DQ', () => {
+  // K12-F26 (2026-09-27): this used to assert that the SAMPLE's negative
+  // exchange ("-0.04") printed "DQ" — the board ruling on a takeoff by
+  // itself. A takeoff is the officials' call (and a pad reading inside the
+  // allowed tolerance is no early takeoff), so DQ now appears only on a leg
+  // marked disqualified. swim-relay-no-auto-dq.test.tsx covers both surfaces.
+  it('shows DQ only on a leg marked disqualified — never from the exchange time alone', () => {
+    const { container } = renderWidget('SWIM_RELAY_EXCHANGE', {
+      legs: [
+        { legName: 'Leg 1', swimmer: 'A. LEE', split: '', cumulative: '', exchange: '-0.04' },
+        { legName: 'Leg 2', swimmer: 'B. CRUZ', split: '', cumulative: '', exchange: '-0.10', dq: true },
+      ],
+    });
+    expect(container.textContent).toContain('-0.04');
+    expect(container.textContent).not.toContain('-0.04 DQ');
+    expect(container.textContent).toContain('-0.10 DQ');
+  });
+
+  it('the builder sample shows no DQ at all', () => {
     const { container } = renderWidget('SWIM_RELAY_EXCHANGE');
-    // Sample leg 3 carries exchange "-0.04" — an illegal early takeoff.
-    expect(container.textContent).toContain('DQ');
+    expect(container.textContent).not.toMatch(/\bDQ\b/);
   });
 
   it('honors an operator-set header override and custom legs', () => {
