@@ -221,7 +221,7 @@ describe('K12 launch acceptance — the 21 audit probes', () => {
 
   // Owner: A2 (F07) — HALFTIME freezes the game clock.
   // (K12-21 below; the A1 probes follow the audit's 21.)
-  it.failing('K12-21 halftime status freezes the game clock', async () => {
+  it('K12-21 halftime status freezes the game clock', async () => {
     const { service } = setup(); const g: any = await newGame(service, 'basketball');
     await service.clockAction(TENANT, g.id, { action: 'start' });
     await service.setStatus(TENANT, g.id, { status: 'HALFTIME' });

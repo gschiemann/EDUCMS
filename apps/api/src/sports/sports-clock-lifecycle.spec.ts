@@ -295,3 +295,91 @@ describe('K12-F06 — the football play clock runs on its own', () => {
     expect(bad).toBeInstanceOf(BadRequestException);
   });
 });
+
+describe('K12-F07 — timeouts, halftime and the final stop every clock at one reading', () => {
+  /** A water-polo game with a running game clock, shot clock and exclusion. */
+  async function runningWaterPolo() {
+    const h = setup();
+    const g: any = await newGame(h.service, 'water_polo');
+    await h.service.setPenalties(TENANT, g.id, { action: 'add', team: 'away', lenSec: 20, player: '7' });
+    await h.service.clockAction(TENANT, g.id, { action: 'start' }); // arms the 30 s shot clock
+    return { ...h, g };
+  }
+
+  it('a timeout freezes the game clock, the shot clock and the penalty box together, and one start resumes them', async () => {
+    const { service, g } = await runningWaterPolo();
+    at(5_000);
+    await service.callTimeout(TENANT, g.id, { team: 'home' });
+    expect(g.clockRunning).toBe(false);
+    expect(g.clockMs).toBe(8 * 60_000 - 5_000);
+    expect(g.stats.shotClock).toMatchObject({ ms: 25_000, running: false });
+    expect(g.stats.penalties[0]).toMatchObject({ ms: 15_000, running: false });
+    expect(g.stats.homeTimeouts).toBe(2);
+
+    at(65_000); // the timeout lasts a minute; nothing may move
+    await service.clockAction(TENANT, g.id, { action: 'start' });
+    at(68_000);
+    await service.clockAction(TENANT, g.id, { action: 'pause' });
+    expect(g.clockMs).toBe(8 * 60_000 - 8_000);
+    expect(g.stats.shotClock).toMatchObject({ ms: 22_000, running: false });
+    expect(g.stats.penalties[0]).toMatchObject({ ms: 12_000, running: false });
+  });
+
+  it('halftime freezes every running clock at its current reading in the same write', async () => {
+    const { service, g, game } = await runningWaterPolo();
+    at(5_000);
+    const writesBefore = game.rows[0].version;
+    await service.setStatus(TENANT, g.id, { status: 'HALFTIME' });
+    expect(g.version).toBe(writesBefore + 1); // one compare-and-swap write
+    expect(g.status).toBe('HALFTIME');
+    expect({ ms: g.clockMs, running: g.clockRunning }).toEqual({ ms: 8 * 60_000 - 5_000, running: false });
+    expect(g.stats.shotClock).toMatchObject({ ms: 25_000, running: false });
+    expect(g.stats.penalties[0]).toMatchObject({ ms: 15_000, running: false });
+    // Ten minutes of halftime pass; nothing moves.
+    at(605_000);
+    const board: any = await service.getBoard(g.id);
+    expect({ ms: board.clockMs, running: board.clockRunning }).toEqual({ ms: 8 * 60_000 - 5_000, running: false });
+    // Back to LIVE: nothing starts on its own; one start resumes all of them.
+    await service.setStatus(TENANT, g.id, { status: 'LIVE' });
+    expect(g.clockRunning).toBe(false);
+    await service.clockAction(TENANT, g.id, { action: 'start' });
+    at(607_000);
+    await service.clockAction(TENANT, g.id, { action: 'pause' });
+    expect(g.clockMs).toBe(8 * 60_000 - 7_000);
+    expect(g.stats.shotClock.ms).toBe(23_000);
+    expect(g.stats.penalties[0].ms).toBe(13_000);
+  });
+
+  it('halftime freezes a running football play clock too', async () => {
+    const { service } = setup();
+    const g: any = await newGame(service, 'football');
+    await service.clockAction(TENANT, g.id, { action: 'start' });
+    await service.setPlayClock(TENANT, g.id, { action: 'reset', value: 40 });
+    at(4_000);
+    await service.setStatus(TENANT, g.id, { status: 'HALFTIME' });
+    expect(g.stats.playClock).toMatchObject({ ms: 36_000, running: false });
+    expect(g.clockMs).toBe(12 * 60_000 - 4_000);
+  });
+
+  it('the final freezes the clock at the reading it had, not the one it was last started from', async () => {
+    const { service } = setup();
+    const g: any = await newGame(service, 'basketball');
+    await service.clockAction(TENANT, g.id, { action: 'start' });
+    at(30_000);
+    await service.setStatus(TENANT, g.id, { status: 'FINAL' });
+    expect({ ms: g.clockMs, running: g.clockRunning }).toEqual({ ms: 450_000, running: false });
+    expect(g.stats.shotClock).toMatchObject({ ms: 0, running: false });
+    expect(new Date(g.endedAt).getTime()).toBe(T0 + 30_000);
+  });
+
+  it('a timeout during a stoppage debits the bank and moves no clock', async () => {
+    const { service } = setup();
+    const g: any = await newGame(service, 'water_polo');
+    await service.clockAction(TENANT, g.id, { action: 'set', ms: 90_000 });
+    at(10_000);
+    await service.callTimeout(TENANT, g.id, { team: 'away' });
+    expect({ ms: g.clockMs, running: g.clockRunning }).toEqual({ ms: 90_000, running: false });
+    expect(g.stats.awayTimeouts).toBe(2);
+    expect(g.stats.shotClock).toBeUndefined();
+  });
+});

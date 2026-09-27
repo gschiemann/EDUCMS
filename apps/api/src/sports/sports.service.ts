@@ -3520,6 +3520,33 @@ export class SportsService {
   }
 
   /**
+   * K12-F07 — the patch that stops EVERY clock of a game at its current
+   * reading, anchored on one instant: the game clock (with the penalty box and
+   * the shot clock it carries — clockTransition 'pause') and the football
+   * play clock, which runs on its own and so is frozen separately. For the
+   * phase changes that stop all play (halftime, the final).
+   */
+  private freezeAllClocks(game: GameRow, now: Date): Record<string, unknown> {
+    const def = this.sportOf(game.sport);
+    const out: Record<string, unknown> =
+      def.clock.type === 'none' ? {} : this.clockTransition(game, def, 'pause', 0, now).data;
+    const base = (out.stats ?? game.stats) as unknown;
+    const stats: Record<string, unknown> | null =
+      base && typeof base === 'object' && !Array.isArray(base) ? { ...(base as Record<string, unknown>) } : null;
+    const pc = stats?.playClock;
+    if (stats && pc && typeof pc === 'object' && (pc as Record<string, unknown>).running) {
+      stats.playClock = {
+        ...(pc as Record<string, unknown>),
+        ms: projectCountdownMs(pc as Record<string, unknown>, now.getTime()),
+        at: now.toISOString(),
+        running: false,
+      };
+      out.stats = stats;
+    }
+    return out;
+  }
+
+  /**
    * The possession / shot clock — a second countdown beside the game clock
    * (basketball, water polo, lacrosse). Stored in Game.stats.shotClock
    * `{ len, ms, at, running }` (no schema column); every surface projects it
@@ -5498,12 +5525,17 @@ export class SportsService {
       // second cinematic. Leaving FINAL is refused by the lock in
       // runGameCommand (409 GAME_FINAL) — only reopenGame does that.
       if (game.status === 'FINAL' && status === 'FINAL') return game;
+      const now = new Date();
       const data: Record<string, unknown> = { status };
-      if (status === 'LIVE' && !game.startedAt) data.startedAt = new Date();
-      if (status === 'FINAL') {
-        data.endedAt = new Date();
-        data.clockRunning = false;
-      }
+      if (status === 'LIVE' && !game.startedAt) data.startedAt = now;
+      // K12-F07 — halftime and the final are stoppages: every clock that is
+      // running freezes at its CURRENT reading, in this same write — the game
+      // clock, the shot clock, the penalty box and the football play clock.
+      // HALFTIME used to leave the game clock running through the break, and
+      // FINAL stopped it without projecting it, so the board jumped back to
+      // the reading it had when it was last started.
+      if (status === 'HALFTIME' || status === 'FINAL') Object.assign(data, this.freezeAllClocks(game, now));
+      if (status === 'FINAL') data.endedAt = now;
       const updated = await scope.write(data);
       await scope.event('STATUS', { status, prevStatus: game.status, change: scope.change() });
 
