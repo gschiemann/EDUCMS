@@ -70,6 +70,31 @@ describe('useDraftField', () => {
     expect(onCommit).toHaveBeenCalledWith('Westside');
   });
 
+  it('Enter commits once even when no real blur follows, and a later blur adds nothing', () => {
+    // A synthetic focus (fireEvent) leaves the element unfocused, so the
+    // blur() Enter calls dispatches nothing — the commit must not depend on it.
+    const onCommit = jest.fn();
+    render(<Field live="Central" onCommit={onCommit} />);
+    fireEvent.focus(input());
+    fireEvent.change(input(), { target: { value: 'Sha Carri' } });
+    fireEvent.keyDown(input(), { key: 'Enter' });
+    expect(onCommit).toHaveBeenCalledTimes(1);
+    expect(onCommit).toHaveBeenCalledWith('Sha Carri');
+    fireEvent.blur(input());
+    expect(onCommit).toHaveBeenCalledTimes(1);
+  });
+
+  it('Escape writes nothing even when no real blur follows', () => {
+    const onCommit = jest.fn();
+    render(<Field live="Central" onCommit={onCommit} />);
+    fireEvent.focus(input());
+    fireEvent.change(input(), { target: { value: 'Oops' } });
+    fireEvent.keyDown(input(), { key: 'Escape' });
+    expect(input().value).toBe('Central');
+    fireEvent.blur(input());
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
   it('keys other than Enter / Escape neither commit nor cancel', () => {
     const onCommit = jest.fn();
     render(<Field live="7" onCommit={onCommit} />);
