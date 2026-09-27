@@ -38,7 +38,11 @@ describe('K12-F05 — the shot clock keeps the configuration the table chose', (
     const { service, client } = setup();
     const g: any = await newGame(service, 'basketball');
     await service.setShotClock(TENANT, g.id, { action: 'configure', value: 0 });
-    expect(g.stats.shotClock).toMatchObject({ len: 0, running: false, off: true });
+    expect(g.stats.shotClock).toMatchObject({
+      len: 0,
+      running: false,
+      off: true,
+    });
 
     await service.clockAction(TENANT, g.id, { action: 'start' });
     at(4_000);
@@ -46,7 +50,11 @@ describe('K12-F05 — the shot clock keeps the configuration the table chose', (
     await service.clockAction(TENANT, g.id, { action: 'start' });
     await service.callTimeout(TENANT, g.id, { team: 'home' });
     await service.setSegment(TENANT, g.id, { segment: 2 });
-    expect(g.stats.shotClock).toMatchObject({ len: 0, running: false, off: true });
+    expect(g.stats.shotClock).toMatchObject({
+      len: 0,
+      running: false,
+      off: true,
+    });
 
     // A reload / another replica: a fresh service over the same rows.
     const reloaded = new SportsService(
@@ -66,7 +74,11 @@ describe('K12-F05 — the shot clock keeps the configuration the table chose', (
     const g: any = await newGame(service, 'basketball');
     await service.setShotClock(TENANT, g.id, { action: 'configure', value: 0 });
     const before = JSON.stringify(g.stats.shotClock);
-    for (const dto of [{ action: 'start' }, { action: 'stop' }, { action: 'reset', value: 14 }]) {
+    for (const dto of [
+      { action: 'start' },
+      { action: 'stop' },
+      { action: 'reset', value: 14 },
+    ]) {
       const err = await rejection(service.setShotClock(TENANT, g.id, dto));
       expect(err).toBeInstanceOf(ConflictException);
       expect(err.getResponse()).toMatchObject({ code: 'SHOT_CLOCK_OFF' });
@@ -77,7 +89,15 @@ describe('K12-F05 — the shot clock keeps the configuration the table chose', (
   it('a legacy OFF row (length 0, written before the marker existed) is still OFF', async () => {
     const { service } = setup();
     const g: any = await newGame(service, 'basketball');
-    g.stats = { ...g.stats, shotClock: { len: 0, ms: 0, at: new Date(T0).toISOString(), running: false } };
+    g.stats = {
+      ...g.stats,
+      shotClock: {
+        len: 0,
+        ms: 0,
+        at: new Date(T0).toISOString(),
+        running: false,
+      },
+    };
     await service.clockAction(TENANT, g.id, { action: 'start' });
     expect(g.stats.shotClock.len).toBe(0);
   });
@@ -85,17 +105,32 @@ describe('K12-F05 — the shot clock keeps the configuration the table chose', (
   it('a configured 35 s clock stays 35 s across a period change, a timeout and resets', async () => {
     const { service } = setup();
     const g: any = await newGame(service, 'basketball');
-    await service.setShotClock(TENANT, g.id, { action: 'configure', value: 35 });
+    await service.setShotClock(TENANT, g.id, {
+      action: 'configure',
+      value: 35,
+    });
     await service.setSegment(TENANT, g.id, { segment: 2 });
-    expect(g.stats.shotClock).toMatchObject({ len: 35, ms: 35_000, running: false });
+    expect(g.stats.shotClock).toMatchObject({
+      len: 35,
+      ms: 35_000,
+      running: false,
+    });
 
     await service.clockAction(TENANT, g.id, { action: 'start' });
     at(6_000);
     await service.callTimeout(TENANT, g.id, { team: 'away' });
-    expect(g.stats.shotClock).toMatchObject({ len: 35, ms: 29_000, running: false });
+    expect(g.stats.shotClock).toMatchObject({
+      len: 35,
+      ms: 29_000,
+      running: false,
+    });
 
     await service.setShotClock(TENANT, g.id, { action: 'reset' });
-    expect(g.stats.shotClock).toMatchObject({ len: 35, ms: 35_000, running: false });
+    expect(g.stats.shotClock).toMatchObject({
+      len: 35,
+      ms: 35_000,
+      running: false,
+    });
     await service.setShotClock(TENANT, g.id, { action: 'reset', value: 20 });
     expect(g.stats.shotClock).toMatchObject({ len: 35, ms: 20_000 });
 
@@ -106,7 +141,10 @@ describe('K12-F05 — the shot clock keeps the configuration the table chose', (
   it('undoing a period change gives back the shot clock the period change reset', async () => {
     const { service, gameEvent } = setup();
     const g: any = await newGame(service, 'basketball');
-    await service.setShotClock(TENANT, g.id, { action: 'configure', value: 35 });
+    await service.setShotClock(TENANT, g.id, {
+      action: 'configure',
+      value: 35,
+    });
     await service.setShotClock(TENANT, g.id, { action: 'reset', value: 12 });
     await service.setSegment(TENANT, g.id, { segment: 2 });
     expect(g.stats.shotClock.ms).toBe(35_000);
@@ -119,11 +157,22 @@ describe('K12-F05 — the shot clock keeps the configuration the table chose', (
   it('refuses an unsupported length visibly instead of turning the clock off', async () => {
     const { service } = setup();
     const g: any = await newGame(service, 'basketball');
-    await service.setShotClock(TENANT, g.id, { action: 'configure', value: 35 });
+    await service.setShotClock(TENANT, g.id, {
+      action: 'configure',
+      value: 35,
+    });
     for (const value of [70, 25, -1, 35.5, undefined]) {
-      const err = await rejection(service.setShotClock(TENANT, g.id, { action: 'configure', value } as any));
+      const err = await rejection(
+        service.setShotClock(TENANT, g.id, {
+          action: 'configure',
+          value,
+        } as any),
+      );
       expect(err).toBeInstanceOf(BadRequestException);
-      expect(err.getResponse()).toMatchObject({ code: 'SHOT_CLOCK_LENGTH_UNSUPPORTED', allowed: [0, 24, 30, 35] });
+      expect(err.getResponse()).toMatchObject({
+        code: 'SHOT_CLOCK_LENGTH_UNSUPPORTED',
+        allowed: [0, 24, 30, 35],
+      });
     }
     expect(g.stats.shotClock.len).toBe(35);
   });
@@ -131,10 +180,18 @@ describe('K12-F05 — the shot clock keeps the configuration the table chose', (
   it('refuses a reset above the configured length', async () => {
     const { service } = setup();
     const g: any = await newGame(service, 'basketball');
-    await service.setShotClock(TENANT, g.id, { action: 'configure', value: 24 });
+    await service.setShotClock(TENANT, g.id, {
+      action: 'configure',
+      value: 24,
+    });
     for (const value of [30, 0, 3.5]) {
-      const err = await rejection(service.setShotClock(TENANT, g.id, { action: 'reset', value }));
-      expect(err.getResponse()).toMatchObject({ code: 'SHOT_CLOCK_RESET_INVALID', max: 24 });
+      const err = await rejection(
+        service.setShotClock(TENANT, g.id, { action: 'reset', value }),
+      );
+      expect(err.getResponse()).toMatchObject({
+        code: 'SHOT_CLOCK_RESET_INVALID',
+        max: 24,
+      });
     }
     await service.setShotClock(TENANT, g.id, { action: 'reset', value: 14 });
     expect(g.stats.shotClock).toMatchObject({ len: 24, ms: 14_000 });
@@ -143,7 +200,9 @@ describe('K12-F05 — the shot clock keeps the configuration the table chose', (
   it('refuses a shot clock on a sport that has none', async () => {
     const { service } = setup();
     const g: any = await newGame(service, 'football');
-    const err = await rejection(service.setShotClock(TENANT, g.id, { action: 'configure', value: 24 }));
+    const err = await rejection(
+      service.setShotClock(TENANT, g.id, { action: 'configure', value: 24 }),
+    );
     expect(err.getResponse()).toMatchObject({ code: 'SHOT_CLOCK_UNSUPPORTED' });
     expect(g.stats.shotClock).toBeUndefined();
   });
@@ -152,20 +211,31 @@ describe('K12-F05 — the shot clock keeps the configuration the table chose', (
     const { service } = setup();
     const g: any = await newGame(service, 'water_polo');
     await service.clockAction(TENANT, g.id, { action: 'start' });
-    expect(g.stats.shotClock).toMatchObject({ len: 30, ms: 30_000, running: true });
+    expect(g.stats.shotClock).toMatchObject({
+      len: 30,
+      ms: 30_000,
+      running: true,
+    });
   });
 
   it('a never-configured shot clock takes a direct reset at the sport default length', async () => {
     const { service } = setup();
     const g: any = await newGame(service, 'basketball');
     await service.setShotClock(TENANT, g.id, { action: 'reset', value: 14 });
-    expect(g.stats.shotClock).toMatchObject({ len: 24, ms: 14_000, running: false });
+    expect(g.stats.shotClock).toMatchObject({
+      len: 24,
+      ms: 14_000,
+      running: false,
+    });
   });
 
   it('a reset never reads above the time left in the period', async () => {
     const { service } = setup();
     const g: any = await newGame(service, 'basketball');
-    await service.setShotClock(TENANT, g.id, { action: 'configure', value: 35 });
+    await service.setShotClock(TENANT, g.id, {
+      action: 'configure',
+      value: 35,
+    });
     await service.clockAction(TENANT, g.id, { action: 'set', ms: 9_000 });
     await service.setShotClock(TENANT, g.id, { action: 'reset' });
     expect(g.stats.shotClock.ms).toBe(9_000);
@@ -193,7 +263,11 @@ describe('K12-F06 — the football play clock runs on its own', () => {
     await service.setPlayClock(TENANT, g.id, { action: 'stop' });
     expect(g.stats.playClock).toMatchObject({ ms: 28_000, running: false });
     // The snap: the game clock starts; the play clock is set to 40, parked.
-    await service.setPlayClock(TENANT, g.id, { action: 'reset', value: 40, run: false });
+    await service.setPlayClock(TENANT, g.id, {
+      action: 'reset',
+      value: 40,
+      run: false,
+    });
     await service.clockAction(TENANT, g.id, { action: 'start' });
     at(24_000);
     await service.clockAction(TENANT, g.id, { action: 'pause' });
@@ -238,7 +312,11 @@ describe('K12-F06 — the football play clock runs on its own', () => {
     await service.clockAction(TENANT, g.id, { action: 'start' });
     at(2_000);
     await service.clockAction(TENANT, g.id, { action: 'pause' }); // the flag
-    await service.setPlayClock(TENANT, g.id, { action: 'reset', value: 25, run: false });
+    await service.setPlayClock(TENANT, g.id, {
+      action: 'reset',
+      value: 25,
+      run: false,
+    });
     at(40_000);
     expect(g.stats.playClock).toMatchObject({ ms: 25_000, running: false });
     await service.setPlayClock(TENANT, g.id, { action: 'start' });
@@ -251,9 +329,16 @@ describe('K12-F06 — the football play clock runs on its own', () => {
   it('overtime is untimed, and the play clock still runs there on its 25 count', async () => {
     const { service } = setup();
     const g: any = await newGame(service, 'football');
-    await service.setPlayClock(TENANT, g.id, { action: 'reset', value: 40, run: false });
+    await service.setPlayClock(TENANT, g.id, {
+      action: 'reset',
+      value: 40,
+      run: false,
+    });
     await service.setSegment(TENANT, g.id, { segment: 5 });
-    expect({ clock: g.clockMs, running: g.clockRunning }).toEqual({ clock: 0, running: false });
+    expect({ clock: g.clockMs, running: g.clockRunning }).toEqual({
+      clock: 0,
+      running: false,
+    });
     expect(g.stats.playClock).toMatchObject({ ms: 25_000, running: false });
     await service.setPlayClock(TENANT, g.id, { action: 'start' });
     at(9_000);
@@ -267,7 +352,11 @@ describe('K12-F06 — the football play clock runs on its own', () => {
     await service.clockAction(TENANT, g.id, { action: 'set', ms: 30_000 });
     await service.clockAction(TENANT, g.id, { action: 'start' });
     await service.setPlayClock(TENANT, g.id, { action: 'reset', value: 40 });
-    expect(g.stats.playClock).toMatchObject({ ms: 40_000, running: false, off: true });
+    expect(g.stats.playClock).toMatchObject({
+      ms: 40_000,
+      running: false,
+      off: true,
+    });
     // A 25 count fits in the 30 s left, so it runs and is on again.
     await service.setPlayClock(TENANT, g.id, { action: 'reset', value: 25 });
     expect(g.stats.playClock).toMatchObject({ ms: 25_000, running: true });
@@ -282,15 +371,26 @@ describe('K12-F06 — the football play clock runs on its own', () => {
     const { service } = setup();
     const g: any = await newGame(service, 'football');
     for (const value of [30, 60, 0, 24.5]) {
-      const err = await rejection(service.setPlayClock(TENANT, g.id, { action: 'reset', value }));
-      expect(err.getResponse()).toMatchObject({ code: 'PLAY_CLOCK_RESET_INVALID', allowed: [40, 25] });
+      const err = await rejection(
+        service.setPlayClock(TENANT, g.id, { action: 'reset', value }),
+      );
+      expect(err.getResponse()).toMatchObject({
+        code: 'PLAY_CLOCK_RESET_INVALID',
+        allowed: [40, 25],
+      });
     }
     const b: any = await newGame(service, 'basketball');
-    const err = await rejection(service.setPlayClock(TENANT, b.id, { action: 'start' }));
+    const err = await rejection(
+      service.setPlayClock(TENANT, b.id, { action: 'start' }),
+    );
     expect(err.getResponse()).toMatchObject({ code: 'PLAY_CLOCK_UNSUPPORTED' });
     expect(b.stats.playClock).toBeUndefined();
     const bad = await rejection(
-      service.setPlayClock(TENANT, g.id, { action: 'reset', value: 40, run: 'yes' } as any),
+      service.setPlayClock(TENANT, g.id, {
+        action: 'reset',
+        value: 40,
+        run: 'yes',
+      } as any),
     );
     expect(bad).toBeInstanceOf(BadRequestException);
   });
@@ -301,7 +401,12 @@ describe('K12-F07 — timeouts, halftime and the final stop every clock at one r
   async function runningWaterPolo() {
     const h = setup();
     const g: any = await newGame(h.service, 'water_polo');
-    await h.service.setPenalties(TENANT, g.id, { action: 'add', team: 'away', lenSec: 20, player: '7' });
+    await h.service.setPenalties(TENANT, g.id, {
+      action: 'add',
+      team: 'away',
+      lenSec: 20,
+      player: '7',
+    });
     await h.service.clockAction(TENANT, g.id, { action: 'start' }); // arms the 30 s shot clock
     return { ...h, g };
   }
@@ -332,13 +437,19 @@ describe('K12-F07 — timeouts, halftime and the final stop every clock at one r
     await service.setStatus(TENANT, g.id, { status: 'HALFTIME' });
     expect(g.version).toBe(writesBefore + 1); // one compare-and-swap write
     expect(g.status).toBe('HALFTIME');
-    expect({ ms: g.clockMs, running: g.clockRunning }).toEqual({ ms: 8 * 60_000 - 5_000, running: false });
+    expect({ ms: g.clockMs, running: g.clockRunning }).toEqual({
+      ms: 8 * 60_000 - 5_000,
+      running: false,
+    });
     expect(g.stats.shotClock).toMatchObject({ ms: 25_000, running: false });
     expect(g.stats.penalties[0]).toMatchObject({ ms: 15_000, running: false });
     // Ten minutes of halftime pass; nothing moves.
     at(605_000);
     const board: any = await service.getBoard(g.id);
-    expect({ ms: board.clockMs, running: board.clockRunning }).toEqual({ ms: 8 * 60_000 - 5_000, running: false });
+    expect({ ms: board.clockMs, running: board.clockRunning }).toEqual({
+      ms: 8 * 60_000 - 5_000,
+      running: false,
+    });
     // Back to LIVE: nothing starts on its own; one start resumes all of them.
     await service.setStatus(TENANT, g.id, { status: 'LIVE' });
     expect(g.clockRunning).toBe(false);
@@ -367,7 +478,10 @@ describe('K12-F07 — timeouts, halftime and the final stop every clock at one r
     await service.clockAction(TENANT, g.id, { action: 'start' });
     at(30_000);
     await service.setStatus(TENANT, g.id, { status: 'FINAL' });
-    expect({ ms: g.clockMs, running: g.clockRunning }).toEqual({ ms: 450_000, running: false });
+    expect({ ms: g.clockMs, running: g.clockRunning }).toEqual({
+      ms: 450_000,
+      running: false,
+    });
     expect(g.stats.shotClock).toMatchObject({ ms: 0, running: false });
     expect(new Date(g.endedAt).getTime()).toBe(T0 + 30_000);
   });
@@ -378,14 +492,18 @@ describe('K12-F07 — timeouts, halftime and the final stop every clock at one r
     await service.clockAction(TENANT, g.id, { action: 'set', ms: 90_000 });
     at(10_000);
     await service.callTimeout(TENANT, g.id, { team: 'away' });
-    expect({ ms: g.clockMs, running: g.clockRunning }).toEqual({ ms: 90_000, running: false });
+    expect({ ms: g.clockMs, running: g.clockRunning }).toEqual({
+      ms: 90_000,
+      running: false,
+    });
     expect(g.stats.awayTimeouts).toBe(2);
     expect(g.stats.shotClock).toBeUndefined();
   });
 });
 
 describe('K12-F08 — an expired period holds until the table advances it', () => {
-  const horns = (rows: any[]) => rows.filter((e) => e.type === 'CUE' && e.payload?.key === 'horn');
+  const horns = (rows: any[]) =>
+    rows.filter((e) => e.type === 'CUE' && e.payload?.key === 'horn');
 
   async function liveBasketball(h = setup()) {
     const g: any = await newGame(h.service, 'basketball');
@@ -399,22 +517,41 @@ describe('K12-F08 — an expired period holds until the table advances it', () =
     await service.clockAction(TENANT, g.id, { action: 'set', ms: 3_000 });
     await service.clockAction(TENANT, g.id, { action: 'start' });
     at(4_000);
-    expect(await service.autoAdvanceExpiredClocks()).toEqual({ found: 1, changed: 1 });
-    expect({ segment: g.segment, clock: g.clockMs, running: g.clockRunning, fouls: g.stats.homeFouls })
-      .toEqual({ segment: 1, clock: 0, running: false, fouls: 4 });
+    expect(await service.autoAdvanceExpiredClocks()).toEqual({
+      found: 1,
+      changed: 1,
+    });
+    expect({
+      segment: g.segment,
+      clock: g.clockMs,
+      running: g.clockRunning,
+      fouls: g.stats.homeFouls,
+    }).toEqual({ segment: 1, clock: 0, running: false, fouls: 4 });
     expect(horns(gameEvent.rows)).toHaveLength(1);
     expect(horns(gameEvent.rows)[0].payload.segmentLabel).toBe('Q1');
-    const expired = gameEvent.rows.filter((e: any) => e.type === 'CLOCK' && e.payload.action === 'expired');
+    const expired = gameEvent.rows.filter(
+      (e: any) => e.type === 'CLOCK' && e.payload.action === 'expired',
+    );
     expect(expired).toHaveLength(1);
-    expect(expired[0].payload).toMatchObject({ auto: true, segment: 1, clockMs: 0 });
+    expect(expired[0].payload).toMatchObject({
+      auto: true,
+      segment: 1,
+      clockMs: 0,
+    });
 
     // Later sweeps see a stopped clock: nothing more happens.
     at(60_000);
-    expect(await service.autoAdvanceExpiredClocks()).toEqual({ found: 0, changed: 0 });
+    expect(await service.autoAdvanceExpiredClocks()).toEqual({
+      found: 0,
+      changed: 0,
+    });
     expect(horns(gameEvent.rows)).toHaveLength(1);
 
     await service.setSegment(TENANT, g.id, { segment: 2 });
-    expect({ segment: g.segment, clock: g.clockMs }).toEqual({ segment: 2, clock: 8 * 60_000 });
+    expect({ segment: g.segment, clock: g.clockMs }).toEqual({
+      segment: 2,
+      clock: 8 * 60_000,
+    });
   });
 
   it('every clock stops at the instant the period ended, not at the late sweep tick', async () => {
@@ -423,11 +560,19 @@ describe('K12-F08 — an expired period holds until the table advances it', () =
     await service.setStatus(TENANT, g.id, { status: 'LIVE' });
     await service.clockAction(TENANT, g.id, { action: 'set', ms: 5_000 });
     await service.clockAction(TENANT, g.id, { action: 'start' });
-    await service.setPenalties(TENANT, g.id, { action: 'add', team: 'home', lenSec: 120, player: '9' });
+    await service.setPenalties(TENANT, g.id, {
+      action: 'add',
+      team: 'home',
+      lenSec: 120,
+      player: '9',
+    });
     // The period ends at +5 s; the sweep only runs at +8 s (a lease failover).
     at(8_000);
     await service.autoAdvanceExpiredClocks();
-    expect({ clock: g.clockMs, running: g.clockRunning }).toEqual({ clock: 0, running: false });
+    expect({ clock: g.clockMs, running: g.clockRunning }).toEqual({
+      clock: 0,
+      running: false,
+    });
     expect(new Date(g.clockUpdatedAt).getTime()).toBe(T0 + 5_000);
     // The player served 5 s of the minor, not 8 — 1:55 carries into P2.
     expect(g.stats.penalties[0]).toMatchObject({ ms: 115_000, running: false });
@@ -442,8 +587,11 @@ describe('K12-F08 — an expired period holds until the table advances it', () =
     await service.clockAction(TENANT, g.id, { action: 'start' });
     at(61_000 + 900);
     await service.autoAdvanceExpiredClocks();
-    expect({ segment: g.segment, clock: g.clockMs, running: g.clockRunning })
-      .toEqual({ segment: 1, clock: 42 * 60_000, running: false });
+    expect({
+      segment: g.segment,
+      clock: g.clockMs,
+      running: g.clockRunning,
+    }).toEqual({ segment: 1, clock: 42 * 60_000, running: false });
   });
 
   it('a correction the table makes after the hold stands, in the same period, with no second horn', async () => {
@@ -454,8 +602,11 @@ describe('K12-F08 — an expired period holds until the table advances it', () =
     await service.autoAdvanceExpiredClocks();
     // The officials put 0.3 s back on the clock.
     await service.clockAction(TENANT, g.id, { action: 'set', ms: 300 });
-    expect({ segment: g.segment, clock: g.clockMs, running: g.clockRunning })
-      .toEqual({ segment: 1, clock: 300, running: false });
+    expect({
+      segment: g.segment,
+      clock: g.clockMs,
+      running: g.clockRunning,
+    }).toEqual({ segment: 1, clock: 300, running: false });
     at(20_000);
     await service.autoAdvanceExpiredClocks();
     expect(horns(gameEvent.rows)).toHaveLength(1);
@@ -479,47 +630,66 @@ describe('K12-F08 — an expired period holds until the table advances it', () =
       if (row && row.clockRunning && reads <= 2) await barrier;
       return row ? { ...row } : row;
     };
-    const [a, b] = await Promise.all([service.autoAdvanceExpiredClocks(), service.autoAdvanceExpiredClocks()]);
+    const [a, b] = await Promise.all([
+      service.autoAdvanceExpiredClocks(),
+      service.autoAdvanceExpiredClocks(),
+    ]);
     game.findFirst = liveFindFirst;
     expect(reads).toBeGreaterThanOrEqual(2); // both really read the running clock
     expect(a.changed + b.changed).toBe(1);
     expect(horns(gameEvent.rows)).toHaveLength(1);
-    expect(gameEvent.rows.filter((e: any) => e.type === 'CLOCK' && e.payload.action === 'expired')).toHaveLength(1);
-    expect({ segment: g.segment, clock: g.clockMs, running: g.clockRunning })
-      .toEqual({ segment: 1, clock: 0, running: false });
+    expect(
+      gameEvent.rows.filter(
+        (e: any) => e.type === 'CLOCK' && e.payload.action === 'expired',
+      ),
+    ).toHaveLength(1);
+    expect({
+      segment: g.segment,
+      clock: g.clockMs,
+      running: g.clockRunning,
+    }).toEqual({ segment: 1, clock: 0, running: false });
   });
 
   it('a clock that has run out does not start again; an untimed period has no clock to start', async () => {
     const { service, g } = await liveBasketball();
     await service.clockAction(TENANT, g.id, { action: 'set', ms: 0 });
-    const err = await rejection(service.clockAction(TENANT, g.id, { action: 'start' }));
+    const err = await rejection(
+      service.clockAction(TENANT, g.id, { action: 'start' }),
+    );
     expect(err.getResponse()).toMatchObject({ code: 'CLOCK_EXPIRED' });
     expect(g.clockRunning).toBe(false);
 
     const f: any = await newGame(service, 'football');
     await service.setSegment(TENANT, f.id, { segment: 5 });
-    const ot = await rejection(service.clockAction(TENANT, f.id, { action: 'start' }));
+    const ot = await rejection(
+      service.clockAction(TENANT, f.id, { action: 'start' }),
+    );
     expect(ot.getResponse()).toMatchObject({ code: 'CLOCK_UNTIMED_PERIOD' });
     // Resetting an untimed period leaves it at 0:00 (it used to put 12:00 up).
     await service.clockAction(TENANT, f.id, { action: 'reset' });
     expect(f.clockMs).toBe(0);
   });
 
-  it('the last regulation period holds the same way — overtime or the final stays the table\'s call', async () => {
+  it("the last regulation period holds the same way — overtime or the final stays the table's call", async () => {
     const { service, gameEvent, g } = await liveBasketball();
     await service.setSegment(TENANT, g.id, { segment: 4 });
     await service.clockAction(TENANT, g.id, { action: 'set', ms: 500 });
     await service.clockAction(TENANT, g.id, { action: 'start' });
     at(1_000);
     await service.autoAdvanceExpiredClocks();
-    expect({ segment: g.segment, clock: g.clockMs, running: g.clockRunning, status: g.status })
-      .toEqual({ segment: 4, clock: 0, running: false, status: 'LIVE' });
+    expect({
+      segment: g.segment,
+      clock: g.clockMs,
+      running: g.clockRunning,
+      status: g.status,
+    }).toEqual({ segment: 4, clock: 0, running: false, status: 'LIVE' });
     expect(horns(gameEvent.rows)[0].payload.segmentLabel).toBe('Q4');
   });
 });
 
 describe('K12-F14 — feed snapshots are applied in order, with honest time', () => {
-  const horns = (rows: any[]) => rows.filter((e) => e.type === 'CUE' && e.payload?.key === 'horn');
+  const horns = (rows: any[]) =>
+    rows.filter((e) => e.type === 'CUE' && e.payload?.key === 'horn');
 
   it('a boolean-only "still running" packet keeps the projected reading (the clock never jumps back)', async () => {
     const { service } = setup();
@@ -528,18 +698,29 @@ describe('K12-F14 — feed snapshots are applied in order, with honest time', ()
     await service.clockAction(TENANT, g.id, { action: 'start' });
     at(10_000);
     await service.ingestByFeed(g.id, { clockRunning: true });
-    expect({ ms: g.clockMs, running: g.clockRunning }).toEqual({ ms: 50_000, running: true });
+    expect({ ms: g.clockMs, running: g.clockRunning }).toEqual({
+      ms: 50_000,
+      running: true,
+    });
     expect(new Date(g.clockUpdatedAt).getTime()).toBe(T0 + 10_000);
   });
 
   it('a boolean-only stop freezes the shot clock and the penalty box at their current readings too', async () => {
     const { service } = setup();
     const g: any = await newGame(service, 'water_polo');
-    await service.setPenalties(TENANT, g.id, { action: 'add', team: 'home', lenSec: 20, player: '4' });
+    await service.setPenalties(TENANT, g.id, {
+      action: 'add',
+      team: 'home',
+      lenSec: 20,
+      player: '4',
+    });
     await service.clockAction(TENANT, g.id, { action: 'start' });
     at(6_000);
     await service.ingestByFeed(g.id, { clockRunning: false });
-    expect({ ms: g.clockMs, running: g.clockRunning }).toEqual({ ms: 8 * 60_000 - 6_000, running: false });
+    expect({ ms: g.clockMs, running: g.clockRunning }).toEqual({
+      ms: 8 * 60_000 - 6_000,
+      running: false,
+    });
     expect(g.stats.shotClock).toMatchObject({ ms: 24_000, running: false });
     expect(g.stats.penalties[0]).toMatchObject({ ms: 14_000, running: false });
   });
@@ -547,44 +728,95 @@ describe('K12-F14 — feed snapshots are applied in order, with honest time', ()
   it('an older snapshot never overwrites a newer one; the next in order applies', async () => {
     const { service } = setup();
     const g: any = await newGame(service, 'basketball');
-    const a = await service.ingestFeedPacket(g.id, { session: 'box-1', seq: 5, homeScore: 10 });
+    const a = await service.ingestFeedPacket(g.id, {
+      session: 'box-1',
+      seq: 5,
+      homeScore: 10,
+    });
     expect(a.accepted).toBe(true);
-    const late = await service.ingestFeedPacket(g.id, { session: 'box-1', seq: 4, homeScore: 8 });
+    const late = await service.ingestFeedPacket(g.id, {
+      session: 'box-1',
+      seq: 4,
+      homeScore: 8,
+    });
     expect(late).toMatchObject({ accepted: false, reason: 'stale-sequence' });
-    const replay = await service.ingestFeedPacket(g.id, { session: 'box-1', seq: 5, homeScore: 8 });
+    const replay = await service.ingestFeedPacket(g.id, {
+      session: 'box-1',
+      seq: 5,
+      homeScore: 8,
+    });
     expect(replay).toMatchObject({ accepted: false, reason: 'stale-sequence' });
     expect(g.homeScore).toBe(10);
-    await service.ingestFeedPacket(g.id, { session: 'box-1', seq: 6, homeScore: 12 });
+    await service.ingestFeedPacket(g.id, {
+      session: 'box-1',
+      seq: 6,
+      homeScore: 12,
+    });
     expect(g.homeScore).toBe(12);
   });
 
   it('a delayed clock snapshot cannot roll the clock back', async () => {
     const { service } = setup();
     const g: any = await newGame(service, 'basketball');
-    await service.ingestFeedPacket(g.id, { session: 's', seq: 2, clockMs: 300_000, clockRunning: true });
+    await service.ingestFeedPacket(g.id, {
+      session: 's',
+      seq: 2,
+      clockMs: 300_000,
+      clockRunning: true,
+    });
     at(1_000);
-    const r = await service.ingestFeedPacket(g.id, { session: 's', seq: 1, clockMs: 301_000, clockRunning: true });
+    const r = await service.ingestFeedPacket(g.id, {
+      session: 's',
+      seq: 1,
+      clockMs: 301_000,
+      clockRunning: true,
+    });
     expect(r.accepted).toBe(false);
-    expect({ ms: g.clockMs, at: new Date(g.clockUpdatedAt).getTime() }).toEqual({ ms: 300_000, at: T0 });
+    expect({ ms: g.clockMs, at: new Date(g.clockUpdatedAt).getTime() }).toEqual(
+      { ms: 300_000, at: T0 },
+    );
   });
 
   it('switching sources: a new session takes over and the old session can never come back', async () => {
     const { service } = setup();
     const g: any = await newGame(service, 'basketball');
-    await service.ingestFeedPacket(g.id, { session: 'old-box', seq: 100, homeScore: 20 });
-    await service.ingestFeedPacket(g.id, { session: 'new-box', seq: 1, homeScore: 22 });
+    await service.ingestFeedPacket(g.id, {
+      session: 'old-box',
+      seq: 100,
+      homeScore: 20,
+    });
+    await service.ingestFeedPacket(g.id, {
+      session: 'new-box',
+      seq: 1,
+      homeScore: 22,
+    });
     expect(g.homeScore).toBe(22);
-    const straggler = await service.ingestFeedPacket(g.id, { session: 'old-box', seq: 101, homeScore: 20 });
-    expect(straggler).toMatchObject({ accepted: false, reason: 'retired-session' });
+    const straggler = await service.ingestFeedPacket(g.id, {
+      session: 'old-box',
+      seq: 101,
+      homeScore: 20,
+    });
+    expect(straggler).toMatchObject({
+      accepted: false,
+      reason: 'retired-session',
+    });
     expect(g.homeScore).toBe(22);
   });
 
   it('disconnect and recover: the same session carries on from its next number', async () => {
     const { service } = setup();
     const g: any = await newGame(service, 'basketball');
-    await service.ingestFeedPacket(g.id, { session: 'box', seq: 7, homeScore: 5 });
+    await service.ingestFeedPacket(g.id, {
+      session: 'box',
+      seq: 7,
+      homeScore: 5,
+    });
     at(90_000); // a minute and a half with no packets
-    const back = await service.ingestFeedPacket(g.id, { session: 'box', seq: 8, homeScore: 7 });
+    const back = await service.ingestFeedPacket(g.id, {
+      session: 'box',
+      seq: 8,
+      homeScore: 7,
+    });
     expect(back.accepted).toBe(true);
     expect(g.homeScore).toBe(7);
   });
@@ -593,13 +825,27 @@ describe('K12-F14 — feed snapshots are applied in order, with honest time', ()
     const { service } = setup();
     const g: any = await newGame(service, 'basketball');
     await service.ingestFeedPacket(g.id, { eventId: 'evt-1', homeScore: 3 });
-    const dup = await service.ingestFeedPacket(g.id, { eventId: 'evt-1', homeScore: 3 });
+    const dup = await service.ingestFeedPacket(g.id, {
+      eventId: 'evt-1',
+      homeScore: 3,
+    });
     expect(dup).toMatchObject({ accepted: false, reason: 'duplicate-event' });
 
     const t = Date.parse('2026-09-27T18:00:05Z');
-    await service.ingestFeedPacket(g.id, { session: 'clockless', occurredAt: t, awayScore: 4 });
-    const older = await service.ingestFeedPacket(g.id, { session: 'clockless', occurredAt: t - 500, awayScore: 1 });
-    expect(older).toMatchObject({ accepted: false, reason: 'stale-observation' });
+    await service.ingestFeedPacket(g.id, {
+      session: 'clockless',
+      occurredAt: t,
+      awayScore: 4,
+    });
+    const older = await service.ingestFeedPacket(g.id, {
+      session: 'clockless',
+      occurredAt: t - 500,
+      awayScore: 1,
+    });
+    expect(older).toMatchObject({
+      accepted: false,
+      reason: 'stale-observation',
+    });
     expect(g.awayScore).toBe(4);
   });
 
@@ -625,7 +871,9 @@ describe('K12-F14 — feed snapshots are applied in order, with honest time', ()
     ]) {
       const err = await rejection(service.ingestFeedPacket(g.id, bad as any));
       expect(err).toBeInstanceOf(BadRequestException);
-      expect(err.getResponse()).toMatchObject({ code: 'FEED_ENVELOPE_INVALID' });
+      expect(err.getResponse()).toMatchObject({
+        code: 'FEED_ENVELOPE_INVALID',
+      });
     }
   });
 
@@ -633,32 +881,79 @@ describe('K12-F14 — feed snapshots are applied in order, with honest time', ()
     const { service, gameEvent } = setup();
     const g: any = await newGame(service, 'basketball');
     await service.setStatus(TENANT, g.id, { status: 'LIVE' });
-    await service.ingestFeedPacket(g.id, { session: 'b', seq: 1, clockMs: 400, clockRunning: true });
+    await service.ingestFeedPacket(g.id, {
+      session: 'b',
+      seq: 1,
+      clockMs: 400,
+      clockRunning: true,
+    });
     at(700);
     // The console's own clock reached zero and it still says "running".
-    await service.ingestFeedPacket(g.id, { session: 'b', seq: 2, clockMs: 0, clockRunning: true });
-    expect({ segment: g.segment, ms: g.clockMs, running: g.clockRunning }).toEqual({ segment: 1, ms: 0, running: false });
+    await service.ingestFeedPacket(g.id, {
+      session: 'b',
+      seq: 2,
+      clockMs: 0,
+      clockRunning: true,
+    });
+    expect({
+      segment: g.segment,
+      ms: g.clockMs,
+      running: g.clockRunning,
+    }).toEqual({ segment: 1, ms: 0, running: false });
     expect(horns(gameEvent.rows)).toHaveLength(1);
-    await service.ingestFeedPacket(g.id, { session: 'b', seq: 3, clockMs: 0, clockRunning: true });
-    await service.ingestFeedPacket(g.id, { session: 'b', seq: 4, clockMs: 0, clockRunning: false });
+    await service.ingestFeedPacket(g.id, {
+      session: 'b',
+      seq: 3,
+      clockMs: 0,
+      clockRunning: true,
+    });
+    await service.ingestFeedPacket(g.id, {
+      session: 'b',
+      seq: 4,
+      clockMs: 0,
+      clockRunning: false,
+    });
     expect(horns(gameEvent.rows)).toHaveLength(1);
-    expect(await service.autoAdvanceExpiredClocks()).toEqual({ found: 0, changed: 0 });
+    expect(await service.autoAdvanceExpiredClocks()).toEqual({
+      found: 0,
+      changed: 0,
+    });
   });
 
   it('CTS: an older snapshot never rolls the overlay back, and a goal is celebrated once', async () => {
     const { service, gameEvent } = setup();
     const g: any = await newGame(service, 'soccer');
     const auth = { tenantId: null, source: 'cts-feed' };
-    expect(await service.ingestCtsSnapshot(g.id, { session: 'bridge', seq: 1, homeScore: 0 }, auth))
-      .toEqual({ ok: true, accepted: true });
-    await service.ingestCtsSnapshot(g.id, { session: 'bridge', seq: 3, homeScore: 1 }, auth);
+    expect(
+      await service.ingestCtsSnapshot(
+        g.id,
+        { session: 'bridge', seq: 1, homeScore: 0 },
+        auth,
+      ),
+    ).toEqual({ ok: true, accepted: true });
+    await service.ingestCtsSnapshot(
+      g.id,
+      { session: 'bridge', seq: 3, homeScore: 1 },
+      auth,
+    );
     // seq 2 was the pre-goal packet, delivered late.
-    expect(await service.ingestCtsSnapshot(g.id, { session: 'bridge', seq: 2, homeScore: 0 }, auth))
-      .toEqual({ ok: true, accepted: false, reason: 'stale-sequence' });
-    await service.ingestCtsSnapshot(g.id, { session: 'bridge', seq: 4, homeScore: 1 }, auth);
+    expect(
+      await service.ingestCtsSnapshot(
+        g.id,
+        { session: 'bridge', seq: 2, homeScore: 0 },
+        auth,
+      ),
+    ).toEqual({ ok: true, accepted: false, reason: 'stale-sequence' });
+    await service.ingestCtsSnapshot(
+      g.id,
+      { session: 'bridge', seq: 4, homeScore: 1 },
+      auth,
+    );
     expect(g.homeScore).toBe(1);
     expect(g.stats.cts.homeScore).toBe(1);
-    const goals = gameEvent.rows.filter((e: any) => e.type === 'CUE' && e.payload?.key === 'goal');
+    const goals = gameEvent.rows.filter(
+      (e: any) => e.type === 'CUE' && e.payload?.key === 'goal',
+    );
     expect(goals).toHaveLength(1);
   });
 });
@@ -688,11 +983,16 @@ describe('K12-F17 — one server clock for every anchor and every sample', () =>
     const board: any = await service.getBoard(g.id);
     expect(board.serverTime).toBe(T0 + 130_000);
     // What any surface computes from the payload alone:
-    const shown = board.clockMs - (board.serverTime - new Date(board.clockUpdatedAt).getTime());
+    const shown =
+      board.clockMs -
+      (board.serverTime - new Date(board.clockUpdatedAt).getTime());
     expect(shown).toBe(470_000);
     await service.clockAction(TENANT, g.id, { action: 'pause' });
     expect(g.clockMs).toBe(470_000);
-    expect(g.stats.shotClock).toMatchObject({ ms: 14_000, at: new Date(T0 + 130_000).toISOString() });
+    expect(g.stats.shotClock).toMatchObject({
+      ms: 14_000,
+      at: new Date(T0 + 130_000).toISOString(),
+    });
   });
 
   it('the operator console gets a server-clock sample with the game', async () => {

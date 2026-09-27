@@ -235,17 +235,25 @@ pgDescribe('K12 acceptance on real Postgres', () => {
     ]);
     expect(a.changed + b.changed).toBe(1);
     const row = await prisma.game.findUnique({ where: { id: g.id } });
-    expect({ segment: row!.segment, clockMs: row!.clockMs, running: row!.clockRunning }).toEqual({
+    expect({
+      segment: row!.segment,
+      clockMs: row!.clockMs,
+      running: row!.clockRunning,
+    }).toEqual({
       segment: 1,
       clockMs: 0,
       running: false,
     });
     const events = await prisma.gameEvent.findMany({ where: { gameId: g.id } });
     const horns = events.filter(
-      (e) => e.type === 'CUE' && (e.payload as Record<string, unknown>).key === 'horn',
+      (e) =>
+        e.type === 'CUE' &&
+        (e.payload as Record<string, unknown>).key === 'horn',
     );
     const expiries = events.filter(
-      (e) => e.type === 'CLOCK' && (e.payload as Record<string, unknown>).action === 'expired',
+      (e) =>
+        e.type === 'CLOCK' &&
+        (e.payload as Record<string, unknown>).action === 'expired',
     );
     expect(horns).toHaveLength(1);
     expect(expiries).toHaveLength(1);

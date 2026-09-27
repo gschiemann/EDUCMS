@@ -260,7 +260,12 @@ export const TRACKED_COLUMNS = [
  */
 function isMachineStatsKey(key: string): boolean {
   // `feedCursor` — the feed packet-ordering cursor (feed-order.ts, K12-F14).
-  return key === 'feed' || key === 'cts' || key === 'feedCursor' || key.startsWith('swimAuditAt:');
+  return (
+    key === 'feed' ||
+    key === 'cts' ||
+    key === 'feedCursor' ||
+    key.startsWith('swimAuditAt:')
+  );
 }
 
 /** Marks a stats key that did not exist on that side of the change. */
