@@ -14,6 +14,7 @@ import { Search, ChevronRight, MapPin } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { settingsHref, visibleSections, type SettingsSectionDefinition } from './registry';
 import { useSettingsShell, type SettingsSearchItem } from './SettingsShellContext';
+import { useTenantCopy } from '@/hooks/use-tenant-copy';
 
 interface PaletteResult {
   key: string;
@@ -51,7 +52,8 @@ export function SettingsCommandPalette({
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  const sections = useMemo(() => visibleSections(role), [role]);
+  const { vertical } = useTenantCopy();
+  const sections = useMemo(() => visibleSections(role, vertical), [role, vertical]);
 
   const results = useMemo<PaletteResult[]>(() => {
     const q = query.trim().toLowerCase();

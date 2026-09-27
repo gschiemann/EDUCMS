@@ -72,6 +72,8 @@ const IMPACT_RANK: Record<SettingsSectionId, number> = {
   developer: 8,
   security: 9,
   overview: 10,
+  // K-12 launch, lane B3 — student privacy on public screens.
+  sports: 11,
 };
 
 interface AttentionItem {
@@ -187,7 +189,7 @@ export function SettingsOverviewPage() {
     };
   }, [statusBySection, setSectionStatus]);
 
-  const shortcuts = visibleSections(role).filter((s) => s.id !== 'overview');
+  const shortcuts = visibleSections(role, copy.vertical).filter((s) => s.id !== 'overview');
 
   const readinessBusy = readiness.isLoading || readiness.isFetching;
   const verdict = readiness.data?.verdict;

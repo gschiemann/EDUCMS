@@ -1019,7 +1019,11 @@ export function CtsAnnouncementWidget({ config }: { config?: AnnouncementCfg }) 
           for (const [side, list, teamName] of ([['home', home, homeTeam], ['away', away, awayTeam]] as const)) {
             const p = list[i];
             if (!p) continue;
-            const name = p.name || 'PLAYER';
+            // A school's public board may carry no name (K-12 launch, lane
+            // B3 — withheld until the school confirms its directory-
+            // information policy): the line then reads "NOW IN · #7", never
+            // a made-up "PLAYER".
+            const name = (p.name || '').trim();
             const last = name.split(' ').slice(-1)[0] || name;
             out.push({
               text: applyTemplate(tpls.perPlayer, {
@@ -1029,7 +1033,9 @@ export function CtsAnnouncementWidget({ config }: { config?: AnnouncementCfg }) 
                 nameLast: last.toUpperCase(),
                 position: (p.position || '').toUpperCase(),
                 team: teamName,
-              }),
+              })
+                .replace(/\s+/g, ' ')
+                .trim(),
               durationMs: dur,
             });
           }

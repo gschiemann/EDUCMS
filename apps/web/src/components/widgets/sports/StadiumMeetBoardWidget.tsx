@@ -266,6 +266,18 @@ function isDqMark(mark: string): boolean {
   return m === 'DQ' || m === 'SCR' || m === 'NS';
 }
 
+/**
+ * The leader as a sentence subject. A school's public board may carry no
+ * student name at all (K-12 launch, lane B3 — the name is withheld until the
+ * school confirms its directory-information policy): name the LANE instead of
+ * leaving " LEADS THE FIELD" with no subject.
+ */
+export function publicLeaderLabel(r: { name?: string | null; lane?: number | null }): string {
+  const name = (r.name || '').trim();
+  if (name) return name.toUpperCase();
+  return typeof r.lane === 'number' && r.lane > 0 ? `LANE ${r.lane}` : 'THE LEADER';
+}
+
 export interface StadiumMeetBoardCfg extends BaseCfg {
   /** v1 'broadcast', v2 'duel', and v3 'chase' are all implemented — the
    *  three Stadium Lane designs Greg approved 2026-07-03. Named
@@ -624,7 +636,7 @@ function StadiumDuelScene({
   const scoreGap = homeScore != null && awayScore != null ? Math.abs(homeScore - awayScore) : null;
   const leadingSide = scoreGap != null && homeScore! !== awayScore! ? (homeScore! > awayScore! ? (homeTeam || 'HOME') : (awayTeam || 'AWAY')) : null;
   const liveClause = leader
-    ? `${(leader.name || '').toUpperCase()} LEADS THE FIELD${leadingSide && scoreGap ? ` · ${leadingSide.toUpperCase()} LEADS BY ${scoreGap}` : ''}`
+    ? `${publicLeaderLabel(leader)} LEADS THE FIELD${leadingSide && scoreGap ? ` · ${leadingSide.toUpperCase()} LEADS BY ${scoreGap}` : ''}`
     : (leadingSide && scoreGap ? `${leadingSide.toUpperCase()} LEADS BY ${scoreGap}` : 'RESULTS UPDATING');
 
   return (
@@ -827,8 +839,8 @@ function StadiumChaseScene({
   const progressPct = chaseReady ? Math.max(0, Math.min(100, (recordMs! / leaderMs!) * 100)) : null;
   const gapLine = chaseReady
     ? (leaderMs! <= recordMs!
-        ? `${(leader!.name || '').toUpperCase()} SET A NEW RECORD`
-        : `${(leader!.name || '').toUpperCase()} FINISHED ${formatDeltaMs(leaderMs! - recordMs!)} OFF THE RECORD`)
+        ? `${publicLeaderLabel(leader!)} SET A NEW RECORD`
+        : `${publicLeaderLabel(leader!)} FINISHED ${formatDeltaMs(leaderMs! - recordMs!)} OFF THE RECORD`)
     : null;
 
   const scoreGap = homeScore != null && awayScore != null ? homeScore - awayScore : null;

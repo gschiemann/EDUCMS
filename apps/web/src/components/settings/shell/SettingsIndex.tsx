@@ -18,6 +18,7 @@ import {
   type SettingsSectionId,
 } from './registry';
 import { useSettingsShell } from './SettingsShellContext';
+import { useTenantCopy } from '@/hooks/use-tenant-copy';
 
 export function SettingsIndex({
   schoolId,
@@ -35,7 +36,8 @@ export function SettingsIndex({
 }) {
   const t = useTranslations();
   const { statuses, navigate } = useSettingsShell();
-  const sections = visibleSections(role);
+  const { vertical } = useTenantCopy();
+  const sections = visibleSections(role, vertical);
 
   const groups = SETTINGS_GROUP_ORDER.map((g) => ({
     id: g,

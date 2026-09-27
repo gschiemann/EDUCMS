@@ -643,6 +643,10 @@
         "security": {
           "label": "My security",
           "description": "Password and two-factor setup for your own account."
+        },
+        "sports": {
+          "label": "Sports",
+          "description": "Game day, including what public screens may show about students."
         }
       },
       "scopePersonal": "Personal account",
@@ -3128,5 +3132,63 @@
     "clockEntryHint": "Type the exact time left: minutes and seconds (7:42), or seconds and tenths (4.3, 0.3).",
     "readStale": "Lost contact with the game: the last update was {seconds} s ago. The clocks here are held until the connection is back.",
     "readStaleNever": "Can't reach the game yet. The clocks here are held until it answers."
+  },
+  "studentPrivacy": {
+    "title": "Student information on public screens",
+    "subtitle": "Scoreboards, ribbons, scorebugs and shared athlete pages are public. Decide what they may show about your students.",
+    "howItWorks": "At a school, public screens show teams, jersey numbers, scores and stats — but no student names and no photos — until an administrator confirms the statements below. A family's directory opt-out always hides that student.",
+    "notLegalAdvice": "This is not legal advice. Check each statement against your district's own FERPA directory-information notice and media-release policy before you confirm it.",
+    "banner": "Student names and photos are hidden on public screens until an admin confirms your directory-information policy.",
+    "bannerAction": "Review the policy",
+    "photosBanner": "Student photos stay hidden on public screens until an admin confirms your photo-release policy.",
+    "names": {
+      "heading": "Student names",
+      "shown": "Shown on public screens",
+      "hidden": "Hidden on public screens"
+    },
+    "photos": {
+      "heading": "Student photos",
+      "shown": "Shown only for students marked \"Photo release on file\"",
+      "hidden": "Hidden on public screens"
+    },
+    "source": {
+      "none": "Nobody has confirmed this yet.",
+      "self": "Confirmed here by {who} on {date}.",
+      "parent": "Confirmed by {org} ({who}, {date}).",
+      "selfHidden": "Hidden here by {who} on {date}.",
+      "parentHidden": "Hidden by {org} for all of its locations."
+    },
+    "statementLabel": "Statement to confirm",
+    "statement": {
+      "names": "Our annual FERPA notice designates athletes' names and participation in officially recognized sports as directory information, and we record every family's directory-information opt-out in VenueOS before a student's name is shown on a public screen.",
+      "photos": "We have a signed photo / media release on file for every student we mark \"Photo release on file\" in VenueOS, and only those students' photos may be shown on a public screen."
+    },
+    "confirmCheck": "I confirm this statement is true for {org}.",
+    "confirm": "Confirm",
+    "revoke": "Withdraw confirmation",
+    "hide": "Hide at this location",
+    "unhide": "Stop hiding at this location",
+    "needsReconfirm": "The statement changed since it was confirmed. Read it and confirm again.",
+    "readOnly": "Only a school or district administrator can change this.",
+    "someone": "an administrator",
+    "saving": "Saving",
+    "error": "Could not save — try again.",
+    "servesMinors": {
+      "label": "Our athletes include minors (under 18)",
+      "help": "Turn this on for youth teams. Public screens then follow the same rules as a school: no names or photos until confirmed."
+    },
+    "perStudent": {
+      "heading": "Individual students",
+      "help": "In each game's roster, mark a student \"Directory opt-out — never display\" when the family opted out, and \"Photo release on file\" once you hold a signed release. A roster CSV can carry an opt_out column."
+    },
+    "ferpaLink": "Our FERPA commitments",
+    "roster": {
+      "optOut": "Directory opt-out — never display",
+      "photoRelease": "Photo release on file",
+      "adminOnly": "Only an administrator can record a photo release or clear an opt-out.",
+      "optedOutNote": "Never shown on public screens",
+      "policyNote": "Your school's policy hides students' names and photos on public screens. These switches can only hide more.",
+      "policyPhotosNote": "Your school's policy hides students' photos on public screens. These switches can only hide more."
+    }
   }
 }

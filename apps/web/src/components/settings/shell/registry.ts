@@ -21,6 +21,7 @@ import {
   CreditCard,
   Code2,
   Lock,
+  Trophy,
 } from 'lucide-react';
 
 export type SettingsGroup = 'workspace' | 'operations' | 'access' | 'account';
@@ -31,6 +32,7 @@ export type SettingsSectionId =
   | 'locations'
   | 'brand'
   | 'emergency'
+  | 'sports'
   | 'player'
   | 'integrations'
   | 'people'
@@ -76,6 +78,11 @@ export interface SettingsSectionDefinition {
   scopes: readonly SettingsScope[];
   /** Roles that see the section in the index. Never the auth policy. */
   roles: readonly SettingsRole[];
+  /**
+   * Verticals whose index lists the section (absent = every vertical). A
+   * presentation filter like `roles`: the route itself stays reachable.
+   */
+  verticals?: readonly string[];
 }
 
 export const SETTINGS_SECTIONS: readonly SettingsSectionDefinition[] = [
@@ -138,6 +145,22 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDefinition[] = [
     keywords: ['lockdown', 'weather', 'fire', 'fire alarm', 'evacuation', 'evacuate', 'security alert', 'panic', 'floor plan', 'drill', 'alert', 'readiness'],
     scopes: ['organization', 'location'],
     roles: ALL_ROLES,
+  },
+  {
+    // 2026-09-27 — K-12 sports launch, lane B3: what public screens may show
+    // about students (the school's FERPA directory-information and photo-
+    // release attestations). Schools and sports venues only.
+    id: 'sports',
+    labelKey: 'sports',
+    descriptionKey: 'sports',
+    group: 'operations',
+    icon: Trophy,
+    path: 'sports',
+    matches: ['sports'],
+    keywords: ['student privacy', 'ferpa', 'directory information', 'photo release', 'media release', 'opt-out', 'opt out', 'roster', 'names', 'photos', 'minors', 'scoreboard', 'game day'],
+    scopes: ['organization', 'location'],
+    roles: ALL_ROLES,
+    verticals: ['K12', 'SPORTS'],
   },
   {
     id: 'player',
@@ -244,9 +267,15 @@ export function sectionForPathname(pathname: string): SettingsSectionDefinition 
   return SETTINGS_SECTIONS.find((s) => s.matches.includes(seg)) ?? null;
 }
 
-export function visibleSections(role: string | null | undefined): SettingsSectionDefinition[] {
+export function visibleSections(
+  role: string | null | undefined,
+  vertical?: string | null,
+): SettingsSectionDefinition[] {
   if (!role) return [];
   return SETTINGS_SECTIONS.filter(
-    (s) => !PENDING_SECTION_IDS.has(s.id) && (s.roles as readonly string[]).includes(role),
+    (s) =>
+      !PENDING_SECTION_IDS.has(s.id) &&
+      (s.roles as readonly string[]).includes(role) &&
+      (!vertical || !s.verticals || s.verticals.includes(vertical)),
   );
 }

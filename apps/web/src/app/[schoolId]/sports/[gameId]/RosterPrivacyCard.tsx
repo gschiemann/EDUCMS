@@ -21,6 +21,7 @@ import { useTranslations } from 'next-intl';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ShieldCheck, Loader2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
+import { useStudentPrivacy } from '@/hooks/use-student-privacy';
 
 export interface RosterPrivacy {
   names: 'full' | 'last' | 'hidden';
@@ -37,6 +38,18 @@ const samePolicy = (a: RosterPrivacy, b: RosterPrivacy) =>
 
 export function RosterPrivacyCard({ gameId }: { gameId: string }) {
   const t = useTranslations('sportsTemplates.privacy');
+  const tp = useTranslations('studentPrivacy.roster');
+  // K-12 launch, lane B3 — the school's own policy. These per-game switches
+  // can only hide MORE than it (the API AND-s them together), so say so when
+  // the school's policy is the stricter one.
+  const { data: school } = useStudentPrivacy();
+  const schoolNote = school?.applies
+    ? !school.names.allowed
+      ? tp('policyNote')
+      : !school.photos.allowed
+        ? tp('policyPhotosNote')
+        : null
+    : null;
   const qc = useQueryClient();
   const key = ['sports', 'roster-privacy', gameId];
   const { data, isLoading } = useQuery<RosterPrivacy>({
@@ -101,6 +114,11 @@ export function RosterPrivacyCard({ gameId }: { gameId: string }) {
         {t('help')}{' '}
         <Link href="/ferpa" className="underline text-indigo-600">{t('ferpaLink')}</Link>
       </p>
+      {schoolNote && (
+        <p className="text-[11px] font-medium text-amber-800 mb-2" data-testid="roster-privacy-school-note">
+          {schoolNote}
+        </p>
+      )}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <label className="flex items-center gap-2 text-xs text-slate-600">
           {t('names')}

@@ -13,6 +13,7 @@
  */
 
 import { useRef, useState } from 'react';
+import { useParams } from 'next/navigation';
 import { UserPlus, Upload, Pencil, Trash2, Loader2, X, ImageIcon, Download, Link2, Check, Share2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,6 +23,11 @@ import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { apiFetch } from '@/lib/api-client';
 import { isFeatureEnabled, FLAGS } from '@/lib/feature-flags';
 import { RosterPrivacyCard } from './RosterPrivacyCard';
+// K-12 launch, lane B3 — student privacy on public screens.
+import { StudentFlagControls } from '@/components/sports/StudentFlagControls';
+import { StudentPrivacyBanner } from '@/components/sports/StudentPrivacyBanner';
+import { useStudentPrivacy } from '@/hooks/use-student-privacy';
+import { useUIStore } from '@/store/ui-store';
 
 type Editing =
   | { mode: 'add'; team: 'home' | 'away' }
@@ -41,6 +47,14 @@ export function RosterPanel({
 }) {
   const { data, isLoading } = useGameRoster(gameId);
   const m = useRosterMutations(gameId);
+  const schoolId = String(useParams()?.schoolId ?? '');
+  // The per-student flags appear only where the student-privacy policy
+  // applies (a school, or a tenant that serves minors).
+  const { data: studentPolicy } = useStudentPrivacy();
+  const role = useUIStore((s) => s.user?.role);
+  const studentFlags = studentPolicy?.applies
+    ? { isAdmin: role === 'DISTRICT_ADMIN' || role === 'SCHOOL_ADMIN' }
+    : null;
   const [editing, setEditing] = useState<Editing>(null);
   const [csvBusy, setCsvBusy] = useState(false);
   const [csvMsg, setCsvMsg] = useState('');
@@ -144,6 +158,9 @@ export function RosterPanel({
       </p>
       {csvMsg && <p className="text-xs text-slate-500 mb-3">{csvMsg}</p>}
 
+      {/* K-12 launch, lane B3 — the school's policy, when it hides students. */}
+      <StudentPrivacyBanner schoolId={schoolId} className="mb-3" />
+
       {/* K-12 launch audit F38 — what the PUBLIC board shows about players. */}
       <RosterPrivacyCard gameId={gameId} />
 
@@ -152,6 +169,7 @@ export function RosterPanel({
           gameId={gameId}
           label={homeTeam || 'Home'}
           players={home}
+          studentFlags={studentFlags}
           onAdd={() => setEditing({ mode: 'add', team: 'home' })}
           onEdit={(p) => setEditing({ mode: 'edit', player: p })}
           onDelete={(p) => m.remove.mutate(p.id)}
@@ -160,6 +178,7 @@ export function RosterPanel({
           gameId={gameId}
           label={awayTeam || 'Away'}
           players={away}
+          studentFlags={studentFlags}
           onAdd={() => setEditing({ mode: 'add', team: 'away' })}
           onEdit={(p) => setEditing({ mode: 'edit', player: p })}
           onDelete={(p) => m.remove.mutate(p.id)}
@@ -191,6 +210,7 @@ function TeamColumn({
   gameId,
   label,
   players,
+  studentFlags,
   onAdd,
   onEdit,
   onDelete,
@@ -198,6 +218,8 @@ function TeamColumn({
   gameId: string;
   label: string;
   players: RosterPlayer[];
+  /** Set when the student-privacy policy applies — renders the per-student flags. */
+  studentFlags: { isAdmin: boolean } | null;
   onAdd: () => void;
   onEdit: (p: RosterPlayer) => void;
   onDelete: (p: RosterPlayer) => void;
@@ -223,6 +245,7 @@ function TeamColumn({
               key={p.id}
               gameId={gameId}
               player={p}
+              studentFlags={studentFlags}
               onEdit={() => onEdit(p)}
               onDelete={() => onDelete(p)}
             />
@@ -236,11 +259,13 @@ function TeamColumn({
 function PlayerRow({
   gameId,
   player,
+  studentFlags,
   onEdit,
   onDelete,
 }: {
   gameId: string;
   player: RosterPlayer;
+  studentFlags: { isAdmin: boolean } | null;
   onEdit: () => void;
   onDelete: () => void;
 }) {
@@ -279,6 +304,15 @@ function PlayerRow({
             </span>
           )}
         </div>
+        {studentFlags && (
+          <StudentFlagControls
+            gameId={gameId}
+            playerId={player.id}
+            directoryOptOut={!!player.directoryOptOut}
+            photoRelease={!!player.photoRelease}
+            isAdmin={studentFlags.isAdmin}
+          />
+        )}
       </div>
       {isFeatureEnabled(FLAGS.SPORTS_PLAYER_STATS) && (
         <LinkAthleteButton gameId={gameId} player={player} />

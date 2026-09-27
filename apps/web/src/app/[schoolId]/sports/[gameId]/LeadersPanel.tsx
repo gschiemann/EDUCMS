@@ -87,10 +87,17 @@ export function LeadersPanel({
   const teamName = (team: 'home' | 'away') =>
     team === 'away' ? awayTeam || 'Away' : homeTeam || 'Home';
 
+  // The leaders come from the PUBLIC board payload, so at a school that has
+  // not confirmed its directory-information policy the name is withheld (K-12
+  // launch, lane B3). The spotlight then carries the jersey number — the
+  // server would refuse an empty title.
+  const spotlightTitle = (name: string | null | undefined, number: string | null | undefined, team: 'home' | 'away') =>
+    (name || '').trim() || (number ? `#${number}` : teamName(team));
+
   const spotlightLeader = (l: Leader) =>
     ctl.spotlight.mutate({
       visible: true,
-      title: l.playerName,
+      title: spotlightTitle(l.playerName, l.playerNumber, l.team),
       photoUrl: l.photoUrl || undefined,
       subtitle:
         [l.playerNumber ? `#${l.playerNumber}` : null, teamName(l.team)]
@@ -102,7 +109,7 @@ export function LeadersPanel({
   const spotlightPotg = (p: NonNullable<PlayerOfGame>) =>
     ctl.spotlight.mutate({
       visible: true,
-      title: p.name,
+      title: spotlightTitle(p.name, p.number, p.team),
       photoUrl: p.photoUrl || undefined,
       subtitle:
         [p.number ? `#${p.number}` : null, teamName(p.team)].filter(Boolean).join(' · ') ||

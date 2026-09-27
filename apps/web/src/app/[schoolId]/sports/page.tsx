@@ -26,6 +26,9 @@ import { AssetPicker } from '@/components/assets/AssetPicker';
 import { filterRelevantTemplates } from '@/lib/template-relevance';
 import { formatGameWhen, orderGames } from './game-list';
 import { ResultsScopeNote, ResultsScopeTag } from '@/components/sports/ResultsScopeNote';
+// K-12 launch, lane B3 — "Student names and photos are hidden on public
+// screens until an admin confirms your directory-information policy."
+import { StudentPrivacyBanner } from '@/components/sports/StudentPrivacyBanner';
 // Inputs-wave SCHED — client-boundary kickoff conversion (zone-less
 // datetime-local → ISO with timezone; see scheduled-at.ts).
 import { datetimeLocalToIso } from './scheduled-at';
@@ -152,6 +155,10 @@ function SportsHub() {
           </Button>
         </div>
       </div>
+
+      {/* K-12 launch, lane B3 — shown only while the school's policy hides
+          students on public screens (StudentPrivacyBanner decides). */}
+      <StudentPrivacyBanner schoolId={schoolId} className="mb-6" />
 
       {/* game list — LIVE first, then upcoming, then a collapsed Past section */}
       {isLoading ? (

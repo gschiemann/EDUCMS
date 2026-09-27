@@ -5649,6 +5649,10 @@ export interface RosterPlayer {
   /** Persistent athlete this appearance is linked to (season/career rollup).
    *  null = unlinked one-off. Set by the link route or auto-link at import. */
   personId?: string | null;
+  /** K-12 launch, lane B3 — the flags the PUBLIC view applies (a linked
+   *  athlete's count): the family opted out / a photo release is on file. */
+  directoryOptOut?: boolean;
+  photoRelease?: boolean;
 }
 
 export function useGameRoster(gameId: string | undefined) {

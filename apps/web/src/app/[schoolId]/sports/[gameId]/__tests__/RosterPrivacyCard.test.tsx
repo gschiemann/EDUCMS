@@ -9,8 +9,13 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const apiFetch = jest.fn();
+// K-12 launch, lane B3: the card also reads the SCHOOL's student-privacy
+// policy. It is answered here, off to the side, so `apiFetch` keeps counting
+// only the per-game setting's calls these tests are about.
+let schoolPolicy: unknown = { applies: false, names: { allowed: true }, photos: { allowed: true } };
 jest.mock('@/lib/api-client', () => ({
-  apiFetch: (...args: unknown[]) => apiFetch(...args),
+  apiFetch: (...args: unknown[]) =>
+    args[0] === '/sports/student-privacy' ? Promise.resolve(schoolPolicy) : apiFetch(...args),
 }));
 jest.mock('next/link', () => ({
   __esModule: true,
@@ -32,6 +37,7 @@ const ALL_ON = { names: 'full', numbers: true, photos: true, positions: true, st
 
 beforeEach(() => {
   apiFetch.mockReset();
+  schoolPolicy = { applies: false, names: { allowed: true }, photos: { allowed: true } };
 });
 
 it('loads the game\'s current setting', async () => {
@@ -92,4 +98,25 @@ it('points staff at the district\'s FERPA directory-information policy', async (
   apiFetch.mockResolvedValueOnce(ALL_ON);
   mount();
   expect(screen.getByRole('link', { name: 'Our FERPA commitments' })).toHaveAttribute('href', '/ferpa');
+});
+
+// K-12 launch, lane B3 — the per-game switches can only hide MORE than the
+// school's own policy; when the school's policy is the stricter one, the card
+// says so instead of implying "Full name" would show a name.
+it("says when the school's policy hides students — the switches can only hide more", async () => {
+  schoolPolicy = { applies: true, names: { allowed: false }, photos: { allowed: false } };
+  apiFetch.mockResolvedValueOnce(ALL_ON);
+  mount();
+  await waitFor(() =>
+    expect(screen.getByTestId('roster-privacy-school-note')).toHaveTextContent(
+      "Your school's policy hides students' names and photos on public screens. These switches can only hide more.",
+    ),
+  );
+});
+
+it('says nothing extra at a venue the policy does not apply to', async () => {
+  apiFetch.mockResolvedValueOnce(ALL_ON);
+  mount();
+  await waitFor(() => expect(screen.getByText('Showing everything on the roster')).toBeInTheDocument());
+  expect(screen.queryByTestId('roster-privacy-school-note')).toBeNull();
 });

@@ -643,6 +643,10 @@
         "security": {
           "label": "Mi seguridad",
           "description": "Contraseña y verificación en dos pasos de tu propia cuenta."
+        },
+        "sports": {
+          "label": "Deportes",
+          "description": "Día de partido, incluido lo que las pantallas públicas pueden mostrar sobre los estudiantes."
         }
       },
       "scopePersonal": "Cuenta personal",
@@ -3128,5 +3132,63 @@
     "clockEntryHint": "Escriba el tiempo exacto que queda: minutos y segundos (7:42), o segundos y décimas (4.3, 0.3).",
     "readStale": "Se perdió el contacto con el partido: la última actualización fue hace {seconds} s. Los relojes aquí se detienen hasta que vuelva la conexión.",
     "readStaleNever": "Todavía no se puede conectar con el partido. Los relojes aquí se detienen hasta que responda."
+  },
+  "studentPrivacy": {
+    "title": "Información de estudiantes en pantallas públicas",
+    "subtitle": "Los marcadores, las cintas, los marcadores de transmisión y las páginas de atletas compartidas son públicos. Decida qué pueden mostrar sobre sus estudiantes.",
+    "howItWorks": "En una escuela, las pantallas públicas muestran equipos, números de camiseta, marcadores y estadísticas, pero ningún nombre ni foto de estudiantes, hasta que un administrador confirme las declaraciones de abajo. La exclusión de información de directorio de una familia siempre oculta a ese estudiante.",
+    "notLegalAdvice": "Esto no es asesoría legal. Compare cada declaración con el aviso de información de directorio de FERPA y la política de autorización de imágenes de su distrito antes de confirmarla.",
+    "banner": "Los nombres y las fotos de los estudiantes están ocultos en las pantallas públicas hasta que un administrador confirme su política de información de directorio.",
+    "bannerAction": "Revisar la política",
+    "photosBanner": "Las fotos de los estudiantes siguen ocultas en las pantallas públicas hasta que un administrador confirme su política de autorización de fotos.",
+    "names": {
+      "heading": "Nombres de estudiantes",
+      "shown": "Se muestran en pantallas públicas",
+      "hidden": "Ocultos en pantallas públicas"
+    },
+    "photos": {
+      "heading": "Fotos de estudiantes",
+      "shown": "Se muestran solo para estudiantes marcados con \"Autorización de foto archivada\"",
+      "hidden": "Ocultas en pantallas públicas"
+    },
+    "source": {
+      "none": "Nadie lo ha confirmado todavía.",
+      "self": "Confirmado aquí por {who} el {date}.",
+      "parent": "Confirmado por {org} ({who}, {date}).",
+      "selfHidden": "Oculto aquí por {who} el {date}.",
+      "parentHidden": "Oculto por {org} para todas sus ubicaciones."
+    },
+    "statementLabel": "Declaración para confirmar",
+    "statement": {
+      "names": "Nuestro aviso anual de FERPA designa los nombres de los atletas y su participación en deportes reconocidos oficialmente como información de directorio, y registramos en VenueOS la exclusión de información de directorio de cada familia antes de mostrar el nombre de un estudiante en una pantalla pública.",
+      "photos": "Tenemos archivada una autorización firmada de fotos / medios para cada estudiante que marcamos con \"Autorización de foto archivada\" en VenueOS, y solo las fotos de esos estudiantes pueden mostrarse en una pantalla pública."
+    },
+    "confirmCheck": "Confirmo que esta declaración es verdadera para {org}.",
+    "confirm": "Confirmar",
+    "revoke": "Retirar la confirmación",
+    "hide": "Ocultar en esta ubicación",
+    "unhide": "Dejar de ocultar en esta ubicación",
+    "needsReconfirm": "La declaración cambió desde que se confirmó. Léala y confírmela de nuevo.",
+    "readOnly": "Solo un administrador de la escuela o del distrito puede cambiar esto.",
+    "someone": "un administrador",
+    "saving": "Guardando",
+    "error": "No se pudo guardar; inténtelo de nuevo.",
+    "servesMinors": {
+      "label": "Nuestros atletas incluyen menores de edad (menores de 18 años)",
+      "help": "Actívelo para equipos juveniles. Las pantallas públicas seguirán entonces las mismas reglas que una escuela: ni nombres ni fotos hasta confirmarlo."
+    },
+    "perStudent": {
+      "heading": "Estudiantes individuales",
+      "help": "En la lista de cada partido, marque a un estudiante con \"Exclusión de directorio: nunca mostrar\" cuando la familia lo haya solicitado, y con \"Autorización de foto archivada\" cuando tenga una autorización firmada. Un CSV de la lista puede incluir una columna opt_out."
+    },
+    "ferpaLink": "Nuestros compromisos con FERPA",
+    "roster": {
+      "optOut": "Exclusión de directorio: nunca mostrar",
+      "photoRelease": "Autorización de foto archivada",
+      "adminOnly": "Solo un administrador puede registrar una autorización de foto o quitar una exclusión.",
+      "optedOutNote": "Nunca se muestra en pantallas públicas",
+      "policyNote": "La política de su escuela oculta los nombres y las fotos de los estudiantes en las pantallas públicas. Estos interruptores solo pueden ocultar más.",
+      "policyPhotosNote": "La política de su escuela oculta las fotos de los estudiantes en las pantallas públicas. Estos interruptores solo pueden ocultar más."
+    }
   }
 }
