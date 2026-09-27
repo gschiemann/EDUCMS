@@ -4,6 +4,10 @@
  */
 import {
   consoleTokenGameId,
+  consoleTokenRole,
+  readSubClock,
+  projectSubClockMs,
+  fmtSubClockSec,
   consoleShareUrl,
   padIncrements,
   projectClockMs,
@@ -31,6 +35,61 @@ describe('consoleTokenGameId — client-side shape parse', () => {
     expect(consoleTokenGameId(`${GAME}.x.1.2.${MAC}`)).toBeNull(); // non-numeric ver
     expect(consoleTokenGameId(`${GAME}.0.1.2.${MAC.slice(0, 31)}`)).toBeNull(); // short mac
     expect(consoleTokenGameId(`bad:id.0.1.2.${MAC}`)).toBeNull(); // charset
+  });
+});
+
+describe('role links (K12-F16) — the 6-part shape', () => {
+  it('parses the gameId and role from a role link', () => {
+    const tok = `${GAME}.0.1754000000.86400.timer.${MAC}`;
+    expect(consoleTokenGameId(tok)).toBe(GAME);
+    expect(consoleTokenRole(tok)).toBe('timer');
+  });
+
+  it('a pre-role link has role null', () => {
+    expect(consoleTokenRole(`${GAME}.0.1754000000.86400.${MAC}`)).toBeNull();
+  });
+
+  it('an unknown role word is not token-shaped', () => {
+    const tok = `${GAME}.0.1754000000.86400.admin.${MAC}`;
+    expect(consoleTokenGameId(tok)).toBeNull();
+    expect(consoleTokenRole(tok)).toBeNull();
+    expect(consoleTokenGameId(`${GAME}.0.1754000000.86400.timer.extra.${MAC}`)).toBeNull();
+  });
+});
+
+describe('readSubClock / projectSubClockMs — shot and play clock readouts', () => {
+  const at = new Date(1_754_000_000_000).toISOString();
+
+  it('reads a stored clock and tolerates garbage', () => {
+    expect(readSubClock({ len: 35, ms: 35_000, running: false, at })).toEqual({
+      len: 35,
+      ms: 35_000,
+      running: false,
+      at,
+    });
+    expect(readSubClock(null)).toBeNull();
+    expect(readSubClock('x')).toBeNull();
+    expect(readSubClock({ ms: -5, running: 'yes' })).toEqual({ ms: 0, running: false, at: null, len: 0 });
+  });
+
+  it('a running clock counts down from its anchor, skew-corrected, clamped at 0', () => {
+    const clock = { len: 30, ms: 30_000, running: true, at };
+    const t = 1_754_000_000_000;
+    expect(projectSubClockMs(clock, 0, t + 4_000)).toBe(26_000);
+    // local clock 2 s behind the server
+    expect(projectSubClockMs(clock, 2_000, t + 4_000)).toBe(24_000);
+    expect(projectSubClockMs(clock, 0, t + 99_000)).toBe(0);
+  });
+
+  it('a stopped clock or a bad anchor reads the stored value', () => {
+    expect(projectSubClockMs({ len: 30, ms: 12_000, running: false, at }, 0, 9e12)).toBe(12_000);
+    expect(projectSubClockMs({ len: 30, ms: 12_000, running: true, at: null }, 0, 9e12)).toBe(12_000);
+  });
+
+  it('whole-second readout uses ceil (0.4 s reads 1)', () => {
+    expect(fmtSubClockSec(400)).toBe('1');
+    expect(fmtSubClockSec(0)).toBe('0');
+    expect(fmtSubClockSec(24_000)).toBe('24');
   });
 });
 

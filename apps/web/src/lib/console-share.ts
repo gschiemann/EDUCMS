@@ -18,24 +18,94 @@ import {
   type ClockType,
 } from '@cms/api-types';
 
+import { isConsoleRole, type ConsoleRole } from '@cms/api-types';
+
 /**
- * The gameId embedded in a console share token, or null when the string
- * is not even console-token-shaped. CLIENT-side mirror of the API's
- * parseConsoleTokenGameId (apps/api/src/sports/sports-console-token.ts):
- * token shape is `<gameId>.<ver>.<iatSec>.<ttlSec>.<mac32hex>`, gameId is
- * a UUID-charset id. NO cryptographic meaning — the pad only uses this to
- * know which PUBLIC board endpoint to poll; every mutation is verified
- * server-side against the real MAC + live version.
+ * Split a console token, shape-only. Two shapes (the API's
+ * sports-console-token.ts is the authority):
+ *   pre-role  `<gameId>.<ver>.<iatSec>.<ttlSec>.<mac32hex>`
+ *   role      `<gameId>.<ver>.<iatSec>.<ttlSec>.<role>.<mac32hex>` (K12-F16)
  */
-export function consoleTokenGameId(token: unknown): string | null {
+function splitToken(token: unknown): { gameId: string; role: ConsoleRole | null } | null {
   if (typeof token !== 'string') return null;
   const parts = token.split('.');
-  if (parts.length !== 5) return null;
+  let role: ConsoleRole | null = null;
+  if (parts.length === 6) {
+    const r = parts[4];
+    if (!isConsoleRole(r)) return null;
+    role = r;
+  } else if (parts.length !== 5) {
+    return null;
+  }
   const gameId = parts[0];
   if (!gameId || !/^[A-Za-z0-9-]+$/.test(gameId)) return null;
   if (!/^\d+$/.test(parts[1]) || !/^\d+$/.test(parts[2]) || !/^\d+$/.test(parts[3])) return null;
-  if (parts[4].length !== 32) return null;
-  return gameId;
+  if (parts[parts.length - 1].length !== 32) return null;
+  return { gameId, role };
+}
+
+/**
+ * The gameId embedded in a console share token, or null when the string
+ * is not even console-token-shaped. CLIENT-side mirror of the API's
+ * parseConsoleTokenGameId (apps/api/src/sports/sports-console-token.ts).
+ * NO cryptographic meaning — the pad only uses this to know which PUBLIC
+ * board endpoint to poll; every mutation is verified server-side against
+ * the real MAC + live version.
+ */
+export function consoleTokenGameId(token: unknown): string | null {
+  const parsed = splitToken(token);
+  return parsed ? parsed.gameId : null;
+}
+
+/**
+ * The role word a link carries (null for a pre-role link). DISPLAY ONLY —
+ * what the pad may actually do comes from the server's session response,
+ * and every route re-checks it.
+ */
+export function consoleTokenRole(token: unknown): ConsoleRole | null {
+  const parsed = splitToken(token);
+  return parsed ? parsed.role : null;
+}
+
+/** A shot / play clock as the board payload stores it (`stats.shotClock`,
+ *  `stats.playClock`): a reading `ms` taken at `at`, counting down while
+ *  `running`. `len` is the shot clock's configured length (0 = off). */
+export interface PadSubClock {
+  ms: number;
+  running: boolean;
+  at: string | null;
+  len: number;
+}
+
+/** Read a stored sub-clock, or null when the game has none. */
+export function readSubClock(v: unknown): PadSubClock | null {
+  if (!v || typeof v !== 'object') return null;
+  const o = v as Record<string, unknown>;
+  const ms = typeof o.ms === 'number' && isFinite(o.ms) ? Math.max(0, o.ms) : 0;
+  const len = typeof o.len === 'number' && isFinite(o.len) ? Math.max(0, o.len) : 0;
+  return {
+    ms,
+    running: o.running === true,
+    at: typeof o.at === 'string' ? o.at : null,
+    len,
+  };
+}
+
+/**
+ * Live reading of a sub-clock at `nowMs` (local clock), corrected by the same
+ * server skew the game clock uses (`serverTime − receivedAt`). Counts DOWN and
+ * clamps at 0; a stopped clock or an unparseable anchor reads its stored ms.
+ */
+export function projectSubClockMs(clock: PadSubClock, skewMs: number, nowMs: number): number {
+  if (!clock.running) return clock.ms;
+  const at = clock.at ? new Date(clock.at).getTime() : NaN;
+  if (!isFinite(at)) return clock.ms;
+  return Math.max(0, clock.ms - (nowMs + skewMs - at));
+}
+
+/** Whole seconds for a shot / play clock readout (ceil — 0.4 s reads 1). */
+export function fmtSubClockSec(ms: number): string {
+  return String(Math.max(0, Math.ceil(ms / 1000)));
 }
 
 /** The /console/<token> URL for a given web origin. */
