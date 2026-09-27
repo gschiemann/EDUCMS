@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { SportsService } from './sports.service';
+import { type CommandInput, resolveCommandContext } from './game-command';
 import {
   ROSTER_PRIVACY_EVENT,
   parseRosterPrivacy,
@@ -35,32 +36,47 @@ export class SportsRosterPrivacyService {
     return parseRosterPrivacy(latest?.payload);
   }
 
+  /**
+   * K12-F34 (the A1 convention for a non-command game action): the event
+   * and its immutable audit row commit TOGETHER or not at all, and both name
+   * the actor — who decided what the public may see about students, and
+   * when.
+   */
   async set(
     tenantId: string,
     gameId: string,
-    userId: string | null,
+    actor: CommandInput,
     body: unknown,
   ): Promise<RosterPrivacy> {
     await this.sports.assertGameOwned(tenantId, gameId);
     const policy = parseRosterPrivacy(body);
-    await this.prisma.client.gameEvent.create({
-      data: {
-        gameId,
-        type: ROSTER_PRIVACY_EVENT,
-        payload: policy as unknown as object,
-      },
-    });
-    // Who decided what the public may see about students, and when —
-    // immutable, like every other privileged sports action.
-    await this.prisma.client.auditLog.create({
-      data: {
-        tenantId,
-        userId: userId ?? null,
-        action: 'SPORTS_ROSTER_PRIVACY_SET',
-        targetType: 'Game',
-        targetId: gameId,
-        details: JSON.stringify(policy),
-      },
+    const ctx = resolveCommandContext(actor);
+    const userId =
+      ctx.actor.kind === 'user' ? (ctx.actor.userId ?? null) : null;
+    await this.prisma.client.$transaction(async (tx: any) => {
+      const ev = await tx.gameEvent.create({
+        data: {
+          gameId,
+          type: ROSTER_PRIVACY_EVENT,
+          payload: policy as unknown as object,
+          actorType: ctx.actor.kind,
+          actorUserId: userId,
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          tenantId,
+          userId,
+          action: 'SPORTS_ROSTER_PRIVACY_SET',
+          targetType: 'Game',
+          targetId: gameId,
+          details: JSON.stringify({
+            ...policy,
+            eventId: ev.id,
+            actor: { type: ctx.actor.kind, ref: ctx.actor.ref ?? null },
+          }),
+        },
+      });
     });
     // The public board payload is memoised for at most 1 s
     // (SportsService.BOARD_CACHE_TTL_MS), so the change reaches every

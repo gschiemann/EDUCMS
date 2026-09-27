@@ -197,7 +197,19 @@ function setup() {
     template: makeTable(),
   };
   const client: any = { ...tables };
-  client.$transaction = async (fn: (tx: unknown) => unknown) => fn(client);
+  // Inserts made inside a transaction that throws are rolled back, so
+  // "the event and its audit row commit together or not at all" is testable.
+  client.$transaction = async (fn: (tx: unknown) => unknown) => {
+    const sizes = Object.entries(tables).map(
+      ([k, t]) => [k, t.rows.length] as const,
+    );
+    try {
+      return await fn(client);
+    } catch (err) {
+      for (const [k, n] of sizes) (tables as any)[k].rows.length = n;
+      throw err;
+    }
+  };
   const prisma = { client };
   const sports = new SportsService(
     prisma as any,
@@ -310,6 +322,8 @@ describe('F38 — the setting is tenant-scoped, sanitised and audited', () => {
       (r) => r.type === ROSTER_PRIVACY_EVENT,
     );
     expect(ev.payload).toEqual(policy);
+    // K12-F34: the event names who produced it.
+    expect(ev).toMatchObject({ actorType: 'user', actorUserId: 'user-9' });
     const audit = s.tables.auditLog.rows.find(
       (r) => r.action === 'SPORTS_ROSTER_PRIVACY_SET',
     );
@@ -319,6 +333,47 @@ describe('F38 — the setting is tenant-scoped, sanitised and audited', () => {
       targetType: 'Game',
       targetId: g.id,
     });
+    expect(JSON.parse(audit.details)).toMatchObject({
+      ...policy,
+      eventId: ev.id,
+      actor: { type: 'user', ref: null },
+    });
+  });
+
+  it('an API-key call is attributed to the key as well as the user', async () => {
+    const s = setup();
+    const g = await gameWithRoster(s);
+    await s.privacy.set(
+      TENANT,
+      g.id,
+      { actor: { kind: 'user', userId: 'user-9', ref: 'api-key:k1' } },
+      { photos: false },
+    );
+    const audit = s.tables.auditLog.rows.find(
+      (r) => r.action === 'SPORTS_ROSTER_PRIVACY_SET',
+    );
+    expect(JSON.parse(audit.details).actor).toEqual({
+      type: 'user',
+      ref: 'api-key:k1',
+    });
+  });
+
+  it('if the audit row cannot be written, the setting does not change (one transaction)', async () => {
+    const s = setup();
+    const g = await gameWithRoster(s);
+    const create = s.tables.auditLog.create;
+    s.tables.auditLog.create = async () => {
+      throw new Error('audit storage down');
+    };
+    await expect(
+      s.privacy.set(TENANT, g.id, 'user-9', { names: 'hidden' }),
+    ).rejects.toThrow('audit storage down');
+    s.tables.auditLog.create = create;
+    expect(
+      s.tables.gameEvent.rows.some((r) => r.type === ROSTER_PRIVACY_EVENT),
+    ).toBe(false);
+    const { payload } = await fresh(s, g.id);
+    expect(payload.roster[0].name).toBe('Jordan Lee');
   });
 
   it('another tenant can neither read nor change it (404, nothing written)', async () => {

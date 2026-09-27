@@ -12,6 +12,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
 import { SportsRosterPrivacyService } from './sports-roster-privacy.service';
+import { userActor } from './game-command';
 
 /**
  * What a PUBLIC board shows about a game's players (K-12 launch audit F38):
@@ -46,6 +47,6 @@ export class SportsRosterPrivacyController {
     AppRole.CONTRIBUTOR,
   )
   set(@Request() req: any, @Param('id') id: string, @Body() body: unknown) {
-    return this.privacy.set(req.user.tenantId, id, req.user.id ?? null, body);
+    return this.privacy.set(req.user.tenantId, id, userActor(req), body);
   }
 }
