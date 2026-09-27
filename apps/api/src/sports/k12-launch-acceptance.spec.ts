@@ -41,7 +41,7 @@ describe('K12 launch acceptance — the 21 audit probes', () => {
   });
 
   // Owner: A2 (F05) — a configured shot-clock length survives a period change.
-  it.failing('K12-03 configured 35-second basketball shot clock survives period advance', async () => {
+  it('K12-03 configured 35-second basketball shot clock survives period advance', async () => {
     const { service } = setup(); const g: any = await newGame(service, 'basketball');
     await service.setShotClock(TENANT, g.id, { action: 'configure', value: 35 });
     await service.setSegment(TENANT, g.id, { segment: 2 });
@@ -200,7 +200,7 @@ describe('K12 launch acceptance — the 21 audit probes', () => {
   });
 
   // Owner: A2 (F05) — an explicit OFF survives starting the game clock.
-  it.failing('K12-19 explicitly disabling shot clock survives starting the game clock', async () => {
+  it('K12-19 explicitly disabling shot clock survives starting the game clock', async () => {
     const { service } = setup(); const g: any = await newGame(service, 'basketball');
     await service.setShotClock(TENANT, g.id, { action: 'configure', value: 0 });
     await service.clockAction(TENANT, g.id, { action: 'start' });

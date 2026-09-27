@@ -37,7 +37,7 @@ import {
 import { celebrationSrc, celebrationLiveDataFromCue } from '@/lib/celebration-assets';
 import { useParams } from 'next/navigation';
 import { API_URL } from '@/lib/api-url';
-import { findSport, formatScore } from '@cms/api-types';
+import { findSport, formatScore, shotClockDisplayLen } from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
 // 2026-06-15 sports-pro polish — shared crowd-surface motion primitives
 // (score-pop on change, ambient idle drift) + vector sport/possession marks.
@@ -904,13 +904,12 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
   const [shotMs, setShotMs] = useState(0);
   const scRaw = (data.stats as Record<string, unknown> | undefined)?.shotClock;
   const sc = scRaw && typeof scRaw === 'object' ? (scRaw as Record<string, unknown>) : null;
-  // 2026-06-15 — the CTS feed now derives stats.shotClock per-side (cts-merge)
-  // but often WITHOUT `len`. When a shot-clock object IS present but carries no
-  // length, fall back to the sport's configured full length so the ring/digits
-  // still render on a live CTS basketball / water-polo game. Operator-armed
-  // games (which set `len`) are unchanged. No object present → stays hidden.
-  const scLen = Number(sc?.len) || 0;
-  const shotLen = sc ? (scLen > 0 ? scLen : Number(def.shotClock?.full) || 0) : 0;
+  // 2026-06-15 — the CTS feed derives stats.shotClock per-side (cts-merge),
+  // often WITHOUT `len`: the sport's full length stands in so the digits
+  // still render on a live CTS game. K12-F05 — a shot clock the table
+  // switched OFF is hidden, the same answer every surface gets from
+  // shotClockDisplayLen. No object present → stays hidden.
+  const shotLen = shotClockDisplayLen(def, data.stats);
   const shotAnchorMs = Math.max(0, Number(sc?.ms) || 0);
   const shotAnchorAt = String(sc?.at || '');
   const shotRunning = !!sc?.running;
@@ -3906,8 +3905,8 @@ export function PortraitBoardScene({ data, def }: { data: BoardData; def: SportD
   const [shotMs, setShotMs] = useState(0);
   const scRaw = (data.stats as Record<string, unknown> | undefined)?.shotClock;
   const sc = scRaw && typeof scRaw === 'object' ? (scRaw as Record<string, unknown>) : null;
-  const scLen = Number(sc?.len) || 0;
-  const shotLen = sc ? (scLen > 0 ? scLen : Number((def as any).shotClock?.full) || 0) : 0;
+  // K12-F05 — hidden when the table switched it OFF (shotClockDisplayLen).
+  const shotLen = shotClockDisplayLen(def, data.stats);
   const shotAnchorMs = Math.max(0, Number(sc?.ms) || 0);
   const shotAnchorAt = String(sc?.at || '');
   const shotRunning = !!sc?.running;

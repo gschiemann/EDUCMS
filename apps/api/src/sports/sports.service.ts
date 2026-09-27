@@ -31,6 +31,10 @@ import {
   STRUCTURED_STAT_KEYS,
   sanitizeStructuredStat,
   sanitizeResults,
+  // K-12 lane A2 — the shared clock contract (packages/api-types/src/sports-clock.ts).
+  projectCountdownMs,
+  projectGameClockMs,
+  shotClockMode,
 } from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
 import { SPONSOR_SPOT_SECONDS } from './sponsor.constants';
@@ -3516,11 +3520,25 @@ export class SportsService {
   }
 
   /**
-   * Basketball shot clock — a second countdown, independent of the
-   * game clock. Level-aware: Pro 24s, College 30s, HS 35s, or Off.
-   * Stored in Game.stats JSON under `shotClock` (no schema column);
-   * every surface projects it from the anchor like the game clock.
-   * `configure` sets the length; start / stop / reset run it.
+   * The possession / shot clock — a second countdown beside the game clock
+   * (basketball, water polo, lacrosse). Stored in Game.stats.shotClock
+   * `{ len, ms, at, running }` (no schema column); every surface projects it
+   * from its anchor like the game clock.
+   *
+   * K12-F05 — the table's configuration is never changed behind its back:
+   *   - `configure 0` switches it OFF, and OFF survives every start, pause,
+   *     timeout, period change, clock expiry and reload (it used to become
+   *     24 s the next time the game clock started);
+   *   - a configured length (35 s) is the length every reset returns to,
+   *     period boundaries included (a period advance used to reset it to the
+   *     sport's 24 s default);
+   *   - an unsupported length, a reset above the configured length, a shot
+   *     clock on a sport that has none, or a start / stop / reset while it
+   *     is OFF is REFUSED with a reason — never silently turned into OFF or
+   *     clamped.
+   * A shot clock that was never configured ('unset') still arms itself at
+   * the sport's default the first time it is needed, so nobody has to find a
+   * setup step before tip-off.
    */
   async setShotClock(
     tenantId: string,
@@ -3533,7 +3551,7 @@ export class SportsService {
       throw new BadRequestException('action must be configure | start | stop | reset');
     }
     return this.runGameCommand(tenantId, id, `shot-clock.${action}`, actor, dto, (scope) =>
-      scope.write({ stats: this.shotClockPatch(scope.before, action, dto.value) }),
+      scope.write({ stats: this.shotClockPatch(scope.before, action, dto.value, new Date()) }),
     );
   }
 
@@ -3542,94 +3560,107 @@ export class SportsService {
     game: GameRow,
     action: string,
     value: number | undefined,
+    now: Date,
   ): Record<string, unknown> {
+    const def = this.sportOf(game.sport);
+    const cfg = def.shotClock;
+    if (!cfg) {
+      throw new BadRequestException({
+        code: 'SHOT_CLOCK_UNSUPPORTED',
+        message: `${def.name} has no shot clock.`,
+      });
+    }
     const stats: Record<string, unknown> =
       game.stats && typeof game.stats === 'object'
         ? { ...(game.stats as Record<string, unknown>) }
         : {};
-    const prev: Record<string, unknown> =
-      stats.shotClock && typeof stats.shotClock === 'object'
-        ? (stats.shotClock as Record<string, unknown>)
-        : {};
-    let len = Number(prev.len) || 0;
-    let ms = Math.max(0, Number(prev.ms) || 0);
-    let running = !!prev.running;
+    const mode = shotClockMode(stats);
+    const nowIso = now.toISOString();
 
-    // The live reading, projected from the prior anchor.
-    const live = (): number => {
-      if (!running) return ms;
-      const at = new Date(String(prev.at || '')).getTime();
-      if (!Number.isFinite(at)) return ms;
-      return Math.max(0, ms - (Date.now() - at));
-    };
-
-    // 2026-05-27 — Honor the sport's shot-clock options (lacrosse uses
-    // 60/80s, water polo 20/30s). Previously hardcoded to the basketball
-    // set, which silently turned the shot clock OFF when an operator
-    // picked 60s for lacrosse or 20s for water polo.
-    const sportDef = this.sportOf(game.sport);
-    const allowedOptions = sportDef.shotClock?.options ?? [0, 24, 30, 35];
-    switch (action) {
-      case 'configure': {
-        // value = shot-clock length in seconds — must be one of the
-        // sport's configured options.
-        const v = Math.round(Number(value));
-        len = allowedOptions.includes(v) ? v : 0;
-        ms = len * 1000;
-        running = false;
-        break;
+    if (action === 'configure') {
+      // value = the length in seconds — one of the sport's published
+      // options (lacrosse 60/80/90, water polo 20/30, basketball 24/30/35),
+      // 0 = off. Anything else is refused: an unsupported pick used to
+      // become OFF without a word.
+      const v = Number(value);
+      if (!Number.isInteger(v) || !cfg.options.includes(v)) {
+        throw new BadRequestException({
+          code: 'SHOT_CLOCK_LENGTH_UNSUPPORTED',
+          message: `A ${def.name.toLowerCase()} shot clock can be ${cfg.options
+            .map((o) => (o === 0 ? 'off' : `${o} seconds`))
+            .join(', ')}.`,
+          allowed: cfg.options,
+        });
       }
+      if (v === 0) {
+        // OFF is a real, persisted state, marked so it can never be taken
+        // for "never configured" and re-armed by the next game-clock start.
+        stats.shotClock = { len: 0, ms: 0, at: nowIso, running: false, off: true };
+        return stats;
+      }
+      stats.shotClock = {
+        len: v,
+        ms: this.clampShotToGameClock(game, def, v * 1000, now),
+        at: nowIso,
+        running: false,
+      };
+      return stats;
+    }
+
+    if (mode === 'off') {
+      throw new ConflictException({
+        code: 'SHOT_CLOCK_OFF',
+        message: 'The shot clock is off for this game. Turn it on in Setup first.',
+      });
+    }
+    // Never configured → it runs at the sport's default length, the same
+    // default the first game-clock start arms it with.
+    const prev = mode === 'on' ? (stats.shotClock as Record<string, unknown>) : null;
+    const len = prev ? Number(prev.len) : cfg.full;
+    let ms = prev ? projectCountdownMs(prev, now.getTime()) : len * 1000;
+    let running = prev ? !!prev.running : false;
+    switch (action) {
       case 'start':
-        if (len <= 0) throw new BadRequestException('Shot clock is off');
-        ms = live();
         running = true;
         break;
       case 'stop':
-        ms = live();
         running = false;
         break;
       case 'reset': {
-        // value = seconds to reset to (full length, or a partial reset
-        // like 14s for basketball offensive rebound). Bounded by the
-        // configured length so the clock can't reset beyond `len`.
-        const v = Math.round(Number(value));
-        const sec = Number.isFinite(v) && v > 0 ? v : len;
-        ms = Math.min(sec, len || sec) * 1000;
-        // 2026-05-27 — operator bug 51494dff: "when I click the 20 or
-        // 30 second time clock reset it auto starts even if the game
-        // clock is stopped or paused, that break the rule that time
-        // clock and game clock are in sync always".
-        //
-        // Old behavior: `running = len > 0` — reset ALWAYS auto-started
-        // the shot clock if a length was configured, regardless of game
-        // state. Wrong for every sport: in basketball / water polo /
-        // lacrosse / hockey, the shot clock is supposed to start when
-        // the BALL goes live (= game clock starts), not when the ref
-        // resets the value. Resetting during a dead ball + auto-running
-        // sent the bug-filer's water polo clock counting down while
-        // the period clock sat at the timeout.
-        //
-        // New behavior: shot clock auto-runs after reset ONLY when the
-        // game clock is currently running. If game clock is paused,
-        // the shot clock parks at the new value and waits — it'll
-        // start when the operator starts the game clock (a separate
-        // wiring change in /clock 'start' could also kick this if we
-        // want auto-sync on start, but that's a Phase 2 lift). Honors
-        // Greg's "in sync always" rule.
-        running = game.clockRunning && len > 0;
+        // value = the seconds to reset to: the full length or a partial
+        // reset (14 after a basketball offensive rebound). Omitted = full.
+        const v = value === undefined || value === null ? len : Number(value);
+        if (!Number.isInteger(v) || v < 1 || v > len) {
+          throw new BadRequestException({
+            code: 'SHOT_CLOCK_RESET_INVALID',
+            message: `A shot-clock reset must be a whole number of seconds from 1 to ${len}.`,
+            max: len,
+          });
+        }
+        ms = v * 1000;
+        // 2026-05-27 (operator bug 51494dff): a reset runs on its own only
+        // while the GAME clock is running. During a dead ball it parks at the
+        // new value and starts with the game clock.
+        running = !!game.clockRunning;
         break;
       }
     }
+    stats.shotClock = {
+      len,
+      ms: this.clampShotToGameClock(game, def, ms, now),
+      at: nowIso,
+      running,
+    };
+    return stats;
+  }
 
-    // T2-10 / Invariant #6: clamp shot clock to the live game clock so
-    // it can never read higher than the remaining game time.
-    const liveGameClockMs = this.liveClockMs(game);
-    if (liveGameClockMs >= 0) {
-      ms = Math.min(ms, liveGameClockMs);
-    }
-
-    const shotClock = { len, ms, at: new Date().toISOString(), running };
-    return { ...stats, shotClock };
+  /**
+   * T2-10 / Invariant #6 — a shot clock never reads above the time left in
+   * the period ("0:08 left in Q4, shot clock still showing 24").
+   */
+  private clampShotToGameClock(game: GameRow, def: SportDefinition, ms: number, now: Date): number {
+    if (def.clock.type !== 'countdown') return ms;
+    return Math.min(ms, projectGameClockMs(game, def.clock.type, now.getTime()));
   }
 
   /**
@@ -3770,28 +3801,26 @@ export class SportsService {
     if (!clockMutated) return null;
     if (!rawStats || typeof rawStats !== 'object') return null;
     const stats = { ...(rawStats as Record<string, unknown>) };
-    const prev = (stats.shotClock && typeof stats.shotClock === 'object')
-      ? (stats.shotClock as Record<string, unknown>)
-      : null;
-    const len = Number(prev?.len) || 0;
-    if (len <= 0) {
-      // 2026-06-16 — AUTO-ARM an unconfigured shot clock to the sport's full
-      // length when the game clock STARTS. This was the root cause of "the
-      // shot clock doesn't start": a fresh game's shotClock sits at len=0
-      // until the operator hunts down a 'configure' step, so Start was a
-      // silent no-op and the clock never appeared. Now starting the game
-      // clock arms it automatically (basketball 24s, water polo 30s, lacrosse
-      // 80s, …) and clamps it to the game-clock remaining. Pausing while
-      // unconfigured stays a clean no-op (shot clock genuinely OFF).
+    const mode = shotClockMode(stats);
+    // K12-F05 — a shot clock the table switched OFF stays off: nothing to
+    // slave, and never re-armed (it used to come back at 24 s here).
+    if (mode === 'off') return null;
+    if (mode === 'unset') {
+      // 2026-06-16 — AUTO-ARM a NEVER-CONFIGURED shot clock to the sport's
+      // full length when the game clock STARTS ("the shot clock doesn't
+      // start": a fresh game had no shot clock until the operator found a
+      // 'configure' step). Clamped to the game clock remaining. Pausing an
+      // unconfigured clock stays a clean no-op.
       if (running && shotClockFull && shotClockFull > 0) {
         let armed = shotClockFull * 1000;
         if (gameClockMs !== undefined && gameClockMs >= 0) armed = Math.min(armed, gameClockMs);
         stats.shotClock = { len: shotClockFull, ms: armed, at: now.toISOString(), running: true };
         return stats;
       }
-      return null; // shot clock OFF for this sport — nothing to slave
+      return null;
     }
-    if (!prev) return null; // unreachable once len>0; narrows the type for TS
+    const prev = stats.shotClock as Record<string, unknown>;
+    const len = Number(prev.len);
     // Project current live ms from the prior anchor (same math as
     // setShotClock + the UI projection in RunShotClockMini).
     let ms = Math.max(0, Number(prev.ms) || 0);
@@ -4439,29 +4468,23 @@ export class SportsService {
       if (Object.keys(statDeltas).length > 0) {
         mergedStats = { ...mergedStats, ...statDeltas };
       }
-      if (shotClockReset && def.shotClock) {
-        const fullMs = def.shotClock.full * 1000;
-        // Clamp shot clock to the (just-reset) game clock — both start at
-        // their segment-start values, so this is a no-op in normal play but
-        // keeps the invariant clean (Invariant #6 from the clock state doc).
+      if (shotClockReset && def.shotClock && shotClockMode(mergedStats) === 'on') {
+        // K12-F05 — reset to the length THIS game runs (35 s stays 35 s; it
+        // used to become the sport's 24 s default here). An OFF or
+        // never-configured shot clock is left exactly as it is.
+        const len = Number((mergedStats.shotClock as Record<string, unknown>).len);
+        // Clamp to the (just-reset) game clock — both start at their
+        // segment-start values, so this is a no-op in normal play but keeps
+        // Invariant #6 (never above the time left in the period).
         const gameClockMs = data.clockMs !== undefined
           ? Number(data.clockMs)
           : this.segmentStartMs(def, game.stats, segment);
-        const clampedMs = Math.min(fullMs, gameClockMs);
-        const prevShotClock =
-          mergedStats.shotClock && typeof mergedStats.shotClock === 'object'
-            ? (mergedStats.shotClock as Record<string, unknown>)
-            : {};
-        const len = Number(prevShotClock.len) || 0;
-        if (len > 0) {
-          // Only reset if a shot clock length is configured.
-          mergedStats.shotClock = {
-            len,
-            ms: clampedMs,
-            at: now.toISOString(),
-            running: false,
-          };
-        }
+        mergedStats.shotClock = {
+          len,
+          ms: Math.min(len * 1000, gameClockMs),
+          at: now.toISOString(),
+          running: false,
+        };
       }
       // T2-7: football play-clock reset to 40s on quarter advance.
       if (def.key === 'football' && mergedStats.playClock) {
@@ -4699,22 +4722,15 @@ export class SportsService {
       if (Object.keys(autoStatDeltas).length > 0) {
         autoStats = { ...autoStats, ...autoStatDeltas };
       }
-      if (autoShotReset && def.shotClock) {
-        const fullMs = def.shotClock.full * 1000;
-        const clampedMs = Math.min(fullMs, segmentClockMs);
-        const prevSC =
-          autoStats.shotClock && typeof autoStats.shotClock === 'object'
-            ? (autoStats.shotClock as Record<string, unknown>)
-            : {};
-        const len = Number(prevSC.len) || 0;
-        if (len > 0) {
-          autoStats.shotClock = {
-            len,
-            ms: clampedMs,
-            at: now.toISOString(),
-            running: false,
-          };
-        }
+      if (autoShotReset && def.shotClock && shotClockMode(autoStats) === 'on') {
+        // K12-F05 — the configured length, never the sport default.
+        const len = Number((autoStats.shotClock as Record<string, unknown>).len);
+        autoStats.shotClock = {
+          len,
+          ms: Math.min(len * 1000, segmentClockMs),
+          at: now.toISOString(),
+          running: false,
+        };
       }
       // T2-7: football play-clock reset on auto-advance.
       if (playClockPatch && typeof playClockPatch === 'object') {

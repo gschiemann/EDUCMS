@@ -219,3 +219,22 @@ export function shotClockMode(stats: unknown): ShotClockMode {
   const len = Number((sc as Record<string, unknown>).len);
   return Number.isFinite(len) && len > 0 ? 'on' : 'off';
 }
+
+/**
+ * The shot-clock length a DISPLAY shows, 0 = hide it. The configured length;
+ * a clock reported by a CTS console without a length rides the sport's
+ * default (its digits still show); a clock the table switched OFF, no clock
+ * at all, or a sport without one is hidden. Every surface (board, ribbon,
+ * scorebug) asks this one question, so OFF means OFF on all of them.
+ */
+export function shotClockDisplayLen(
+  def: SportDefinition | null | undefined,
+  stats: unknown,
+): number {
+  const sc = statsRecord(stats).shotClock;
+  if (!def?.shotClock || !sc || typeof sc !== 'object' || Array.isArray(sc)) return 0;
+  const entry = sc as Record<string, unknown>;
+  if (entry.off === true) return 0;
+  const len = Number(entry.len);
+  return Number.isFinite(len) && len > 0 ? len : def.shotClock.full;
+}

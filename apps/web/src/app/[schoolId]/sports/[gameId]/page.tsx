@@ -80,7 +80,7 @@ import {
 // Inputs-wave SCHED — client-boundary kickoff conversion (zone-less
 // datetime-local → ISO with timezone) + the auto-push preview math.
 import { datetimeLocalToIso, autoPushMoment } from '../scheduled-at';
-import { findSport, formatScore, parseScoreInput, PLAYER_STATS, sanitizeResults } from '@cms/api-types';
+import { findSport, formatScore, parseScoreInput, PLAYER_STATS, sanitizeResults, shotClockMode } from '@cms/api-types';
 import type { SportDefinition, MeetResult, ResultEntry as ApiResultEntry } from '@cms/api-types';
 import { computeCtsStatus, type CtsStatus } from '@/lib/cts-merge';
 import QRCode from 'qrcode';
@@ -3342,8 +3342,15 @@ function RunShotClockMini({
     }
   }
   const sec = Math.max(0, Math.ceil(liveMs / 1000));
-  const fullSec = def.shotClock?.full ?? 30;
-  const shortSec = def.shotClock?.short ?? 20;
+  // K12-F05 — the resets are THIS game's length (a 35-second game resets to
+  // 35, not the sport's 24) and the short reset only when it is shorter; the
+  // API refuses a reset above the configured length. A shot clock the table
+  // switched OFF shows no controls (the Setup picker says Off).
+  if (shotClockMode(stats) === 'off') return null;
+  const configured = Number(sc.len) || 0;
+  const fullSec = configured > 0 ? configured : def.shotClock?.full ?? 30;
+  const shortCfg = def.shotClock?.short ?? 0;
+  const shortSec = shortCfg > 0 && shortCfg < fullSec ? shortCfg : null;
   return (
     // Shot-clock controls bumped to the 44px touch floor (2026-06-15
     // console-UX P0) — reset-to-full / reset-to-short / start-stop are all
@@ -3361,14 +3368,16 @@ function RunShotClockMini({
       >
         {fullSec}
       </button>
-      <button
-        type="button"
-        onClick={() => ctl.shotClock.mutate({ action: 'reset', value: shortSec })}
-        className="min-h-[44px] min-w-[44px] px-2.5 rounded-lg bg-slate-700 hover:bg-slate-600 active:bg-slate-500 text-white text-sm font-bold"
-        title={`Reset to ${shortSec}`}
-      >
-        {shortSec}
-      </button>
+      {shortSec !== null && (
+        <button
+          type="button"
+          onClick={() => ctl.shotClock.mutate({ action: 'reset', value: shortSec })}
+          className="min-h-[44px] min-w-[44px] px-2.5 rounded-lg bg-slate-700 hover:bg-slate-600 active:bg-slate-500 text-white text-sm font-bold"
+          title={`Reset to ${shortSec}`}
+        >
+          {shortSec}
+        </button>
+      )}
       <button
         type="button"
         onClick={() => ctl.shotClock.mutate({ action: shotRunning ? 'stop' : 'start' })}
@@ -6455,13 +6464,13 @@ function ShotClockSetup({
   // basketball set so an undefined config never empties the picker.
   const opts = config?.options ?? [0, 24, 30, 35];
   const OPTS = opts.map((v) => ({ v, label: v === 0 ? 'Off' : `${v}s`, hint: HINTS[v] ?? `${v}s shot clock.` }));
-  // item J (2026-06-16) — a custom length for leagues whose shot clock isn't
-  // one of the presets. The configure mutation already accepts any value;
-  // this just exposes it. A non-preset live value counts as "custom".
+  // K12-F05 — the lengths are the sport's published options, nothing else.
+  // The "Custom" field that used to sit here (item J, 2026-06-16) never
+  // worked: the API turned any non-option length into OFF without a word,
+  // and it now refuses one (SHOT_CLOCK_LENGTH_UNSUPPORTED). A league length
+  // such as the 2027 boys-lacrosse 70 s state option belongs in the sport's
+  // rules profile (lane A3), which adds it to these options.
   const isCustom = len > 0 && !opts.includes(len);
-  const [custom, setCustom] = useState(isCustom ? String(len) : '');
-  const customNum = Math.round(Number(custom));
-  const customValid = Number.isFinite(customNum) && customNum >= 1 && customNum <= 90;
   return (
     <div>
       <p className="text-xs text-slate-400 mb-2">
@@ -6484,33 +6493,6 @@ function ShotClockSetup({
             {o.label}
           </button>
         ))}
-      </div>
-      {/* item J — custom length. Shows the active custom value highlighted. */}
-      <div className="mt-2 flex items-center gap-2">
-        <span className="text-[11px] font-semibold text-slate-500 shrink-0">Custom</span>
-        <input
-          type="number"
-          min={1}
-          max={90}
-          value={custom}
-          onChange={(e) => setCustom(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && customValid) ctl.shotClock.mutate({ action: 'configure', value: customNum });
-          }}
-          placeholder="sec"
-          className="w-20 px-2 py-1.5 text-sm bg-white border border-slate-300 rounded-md text-slate-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-        />
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={!customValid || customNum === len}
-          onClick={() => ctl.shotClock.mutate({ action: 'configure', value: customNum })}
-        >
-          Set
-        </Button>
-        {isCustom && (
-          <span className="text-[11px] font-semibold text-indigo-600">Using {len}s</span>
-        )}
       </div>
       <p className="mt-2 text-[11px] text-slate-400">
         {isCustom ? `${len}s custom shot clock.` : OPTS.find((o) => o.v === len)?.hint}

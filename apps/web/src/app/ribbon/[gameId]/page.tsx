@@ -80,6 +80,7 @@ import {
   ribbonSpeedMultiplier,
   ribbonScoreRepeatCount,
   formatScore,
+  shotClockDisplayLen,
 } from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
 import {
@@ -1870,10 +1871,9 @@ function useRibbonShotClock(
   }, [sc, running, anchorMs, at, data.serverTime]);
 
   if (!sc) return null;
-  // Falls back to def.shotClock.full when `len` is missing (per the brief) —
-  // lets us suppress a board that's only ever shown a 0-length parked clock.
-  const len = Number(sc.len) || def.shotClock?.full || 0;
-  if (len <= 0 && anchorMs <= 0) return null;
+  // K12-F05 — the one display rule every surface shares: a clock switched
+  // OFF is hidden; a CTS clock with no length rides the sport default.
+  if (shotClockDisplayLen(def, data.stats) <= 0) return null;
   const secs = ms / 1000;
   let text: string;
   if (ms >= 60000) {

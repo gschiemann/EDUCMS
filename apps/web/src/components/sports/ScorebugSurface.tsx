@@ -54,7 +54,7 @@ import {
 } from '@/components/sports/score-motion';
 import { SportMark } from '@/components/sports/SportGlyph';
 import { API_URL } from '@/lib/api-url';
-import { findSport, formatScore } from '@cms/api-types';
+import { findSport, formatScore, shotClockDisplayLen } from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
 
 // ── types ──────────────────────────────────────────────────────
@@ -564,11 +564,17 @@ export interface ScorebugBugProps {
  * has no shot clock / it's off, so the bug hides it. Identical math to the big
  * board's shot-clock effect — single source of truth, no drift.
  */
-function useShotClock(view: BoardData | null): { ms: number; len: number } {
+function useShotClock(
+  view: BoardData | null,
+  def: SportDefinition | undefined,
+): { ms: number; len: number } {
   const [ms, setMs] = useState(0);
   const scRaw = (view?.stats as Record<string, unknown> | undefined)?.shotClock;
   const sc = scRaw && typeof scRaw === 'object' ? (scRaw as Record<string, unknown>) : null;
-  const len = Number(sc?.len) || 0;
+  // K12-F05 — the display rule every surface shares: hidden when switched
+  // OFF; a CTS clock with no length rides the sport default (the scorebug
+  // used to hide those while the board showed them).
+  const len = shotClockDisplayLen(def, view?.stats);
   const anchorMs = Math.max(0, Number(sc?.ms) || 0);
   const anchorAt = String(sc?.at || '');
   const running = !!sc?.running;
@@ -1197,7 +1203,7 @@ export function ScorebugBug({
   // Shot clock — read from the CTS-populated stats.shotClock anchor, length
   // falls back to the sport's configured full reset. Only shot-clock sports
   // (def.shotClock present) with an armed clock (len > 0) render it.
-  const { ms: shotMs, len: shotLen } = useShotClock(view);
+  const { ms: shotMs, len: shotLen } = useShotClock(view, def);
   const showShotClock = !!def.shotClock && shotLen > 0;
   // Score-pop — animate the digit on every change (board/ribbon parity).
   const homeFlip = useScoreFlip(view.homeScore);

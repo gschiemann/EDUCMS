@@ -15,6 +15,7 @@ import {
   parseClockEntry,
   projectCountdownMs,
   projectGameClockMs,
+  shotClockDisplayLen,
   shotClockMode,
 } from './sports-clock';
 
@@ -174,5 +175,15 @@ describe('shotClockMode (K12-F05)', () => {
     expect(shotClockMode({ shotClock: { len: 0, ms: 0, running: false } })).toBe('off');
     expect(shotClockMode({ shotClock: { len: 0, off: true } })).toBe('off');
     expect(shotClockMode({ shotClock: { len: 35, ms: 35_000 } })).toBe('on');
+  });
+
+  it('what a display shows: configured length, CTS default, hidden when OFF / absent / unsupported', () => {
+    expect(shotClockDisplayLen(basketball, { shotClock: { len: 35, ms: 1 } })).toBe(35);
+    // A CTS console reported a shot clock but no length → the sport default.
+    expect(shotClockDisplayLen(basketball, { shotClock: { ms: 12_000, running: true } })).toBe(24);
+    expect(shotClockDisplayLen(basketball, { shotClock: { len: 0, off: true } })).toBe(0);
+    expect(shotClockDisplayLen(basketball, {})).toBe(0);
+    expect(shotClockDisplayLen(football, { shotClock: { len: 24 } })).toBe(0);
+    expect(shotClockDisplayLen(undefined, { shotClock: { len: 24 } })).toBe(0);
   });
 });
