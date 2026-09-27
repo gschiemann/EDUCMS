@@ -81,7 +81,7 @@ function eventTone(ev: GameEventRow): string {
  * `sport` lets the SCORE rows render decimal totals for judged sports
  * (gymnastics / cheer) — the stored homeScore/awayScore are scaled ints.
  */
-function eventSummary(ev: GameEventRow, sport?: string): string {
+export function eventSummary(ev: GameEventRow, sport?: string): string {
   const p = ev.payload;
   const def = findSport(sport);
   const fmt = (v: unknown) =>

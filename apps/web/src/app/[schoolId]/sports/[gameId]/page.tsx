@@ -94,6 +94,7 @@ import {
   projectGameClockMs,
   sanitizeResults,
   shotClockMode,
+  sportHasTeamTimeoutStats,
 } from '@cms/api-types';
 import type { SportDefinition, MeetResult, ResultEntry as ApiResultEntry } from '@cms/api-types';
 import { computeCtsStatus, type CtsStatus } from '@/lib/cts-merge';
@@ -130,6 +131,8 @@ import { SurfaceHealthPills } from './SurfaceHealthPills';
 import { AssetPicker } from '@/components/assets/AssetPicker';
 import { RecentEventsBar } from './RecentEventsBar';
 import { LanePadSection, isLaneMeetSport } from './LanePadSection';
+import { PhoneRunTrays } from './PhoneRunTrays';
+import { basketballBonus, shotClockResets } from '@/lib/sports-stat-rows';
 
 // ── constants ──────────────────────────────────────────────────
 
@@ -513,7 +516,13 @@ function GameControl() {
     // vh would over-claim and clip during scroll. We don't subtract the
     // SuperAdminBanner because it only renders for SUPER_ADMIN — for
     // every customer-facing operator the chrome is exactly 64px.
-    <div className="-m-4 sm:-m-6 md:-m-8 -mb-24 md:-mb-8 flex flex-col h-[calc(100dvh-64px)] overflow-hidden bg-white">
+    //
+    // K12-F15 (phones): the fixed MobileTabBar (56 px + 1 px border + the iOS
+    // home-indicator inset) sat ON TOP of this console's bottom edge — the
+    // event log / undo strip docked there was hidden under it. Below md the
+    // console now reserves exactly that height, so its last row ends above
+    // the tab bar. md+ has no tab bar and is unchanged.
+    <div className="-m-4 sm:-m-6 md:-m-8 -mb-24 md:-mb-8 flex flex-col h-[calc(100dvh-64px)] overflow-hidden bg-white pb-[calc(57px+env(safe-area-inset-bottom))] md:pb-0">
 
       {/* 2026-05-27 — Top toolbar + mode tabs MERGED into one row.
           Operator: "what is stream overlay, score feed do? if we
@@ -1445,7 +1454,11 @@ function RunMode({
         // bottom split is byte-identical. (2026-06-21 — "take up the entire
         // display, no wasted space"; operator picked the no-tabs scrolling deck.)
         <div className="flex flex-col flex-1 min-h-0 overflow-y-auto md:contents">
-          <div ref={scoreFitRef} className="overflow-y-auto md:flex-1 md:min-h-0">
+          {/* K12-F15: `shrink-0` below md — this block sits in the phone's one
+              scrolling deck, and as a shrinkable overflow child it was being
+              squeezed to ~40 px, clipping the score mirror to its HOME/AWAY
+              labels (audit phone capture). md+ is unchanged. */}
+          <div ref={scoreFitRef} className="shrink-0 overflow-y-auto md:shrink md:flex-1 md:min-h-0">
             {showScoreboard && (
               // relative wrapper so the celebration overlay can sit ON the
               // interactive scoreboard — the operator sees a fired cue play
@@ -1516,7 +1529,12 @@ function RunMode({
               collapsible roster + cues + sport tray. Moving the ribbon out of
               the scrolling region is what lets the scoreboard AND the ribbon
               both stay on screen without scrolling. (2026-06-16 operator fb) */}
-          <div className="shrink-0">
+          {/* K12-F15 — on a phone this cluster is part of the one scrolling
+              deck, and GAME OPERATIONS come first: dock → the phone trays
+              (clock, shot clock, possession, team stats, penalties, undo) →
+              the sport tray → cues → roster → ribbon preview. CSS `order`
+              does it (max-md only); desktop keeps its DOM order exactly. */}
+          <div className="shrink-0 flex flex-col md:block">
             {/* Phone-only thumb dock — the hot actions (HOME score · clock ·
                 AWAY score + segment/reset) always in the thumb zone so the
                 operator runs the game one-handed without scrolling. First in
@@ -1524,31 +1542,58 @@ function RunMode({
                 secondary bars below overflow. Desktop unaffected (md:hidden).
                 (2026-06-21 — "run the game from an iPhone") */}
             {showScoreboard && (
-              <MobileScoreDock
-                g={g}
-                def={def}
-                liveMs={liveMs}
-                homeColor={homeColor}
-                awayColor={awayColor}
-                ctl={ctl}
-              />
+              <div className="max-md:order-1">
+                <MobileScoreDock
+                  g={g}
+                  def={def}
+                  liveMs={liveMs}
+                  homeColor={homeColor}
+                  awayColor={awayColor}
+                  ctl={ctl}
+                />
+              </div>
             )}
-            {showRibbonPreview && <RunRibbonPreview gameId={gameId} />}
+            {/* Phone-only: every desktop Run control the dock does not carry
+                (K12-F15). Renders nothing at md and up. */}
+            {showScoreboard && (
+              <div className="max-md:order-2">
+                <PhoneRunTrays
+                  gameId={gameId}
+                  g={g}
+                  def={def}
+                  liveMs={liveMs}
+                  homeColor={homeColor}
+                  awayColor={awayColor}
+                  ctl={ctl}
+                  penaltyCount={penaltyCount}
+                  onPenalties={onPenalties}
+                />
+              </div>
+            )}
+            {showRibbonPreview && (
+              <div className="max-md:order-6">
+                <RunRibbonPreview gameId={gameId} />
+              </div>
+            )}
             {showRosterBar && (
-              <RunInlineRosterBar
-                gameId={gameId}
-                g={g}
-                def={def}
-                ctl={ctl}
-                homeColor={homeColor}
-                awayColor={awayColor}
-              />
+              <div className="max-md:order-5">
+                <RunInlineRosterBar
+                  gameId={gameId}
+                  g={g}
+                  def={def}
+                  ctl={ctl}
+                  homeColor={homeColor}
+                  awayColor={awayColor}
+                />
+              </div>
             )}
             {showInlineCues && (
-              <RunInlineCuesBar gameId={gameId} g={g} def={def} ctl={ctl} />
+              <div className="max-md:order-4">
+                <RunInlineCuesBar gameId={gameId} g={g} def={def} ctl={ctl} />
+              </div>
             )}
             {showBottomTray && (
-              <div className="flex flex-wrap items-stretch gap-2 px-4 py-3 border-t border-slate-200 bg-slate-50">
+              <div className="max-md:order-3 flex flex-wrap items-stretch gap-2 px-4 py-3 border-t border-slate-200 bg-slate-50">
                 {isBaseballSoftball && (
                   <>
                     <BaseTrayBall
@@ -2045,6 +2090,10 @@ function MobileScoreMirror({
 }) {
   const running = !!g.clockRunning;
   const hasClock = def.clock.type !== 'none';
+  // Judged totals read "195.825" — a 48 px numeral would overflow a 360 px
+  // column, so they get the smaller size. (K12-F15)
+  const scoreSize =
+    typeof def.scoreDecimals === 'number' && def.scoreDecimals > 0 ? 'text-2xl' : 'text-5xl';
   return (
     <div className="md:hidden flex items-stretch gap-2 text-white">
       {/* HOME */}
@@ -2054,10 +2103,12 @@ function MobileScoreMirror({
           {g.homeTeam || '—'}
         </span>
         <span
-          className="mt-0.5 text-5xl font-black tabular-nums leading-none"
+          className={`mt-0.5 ${scoreSize} font-black tabular-nums leading-none`}
           style={{ color: homeColor }}
         >
-          {g.homeScore ?? 0}
+          {/* formatScore: a judged sport stores a SCALED total (195.825 →
+              195825) — the raw column would read 195825 here. (K12-F15) */}
+          {formatScore(def, g.homeScore ?? 0)}
         </span>
       </div>
       {/* CLOCK + SEGMENT */}
@@ -2082,10 +2133,10 @@ function MobileScoreMirror({
           {g.awayTeam || '—'}
         </span>
         <span
-          className="mt-0.5 text-5xl font-black tabular-nums leading-none"
+          className={`mt-0.5 ${scoreSize} font-black tabular-nums leading-none`}
           style={{ color: awayColor }}
         >
-          {g.awayScore ?? 0}
+          {formatScore(def, g.awayScore ?? 0)}
         </span>
       </div>
     </div>
@@ -2128,9 +2179,13 @@ function MobileScoreDock({
   const hasClock = def.clock.type !== 'none';
   const increments = def.score.increments || [];
   const isInning = def.segment.name === 'Inning';
-  // Judged / leaderboard sports have no +N increments — they use the results
-  // grid, not a tap-to-score dock. Render nothing rather than an empty column.
-  if (!increments.length) return null;
+  // K12-F15 — a judged sport stores a SCALED total (gymnastics 195.825 →
+  // 195825), so its +1/+5/+10 would add 0.001. The phone gets the desktop
+  // tile's typed total instead of chips.
+  const judged = typeof def.scoreDecimals === 'number' && def.scoreDecimals > 0;
+  // Leaderboard sports with no increments use the results grid, not a
+  // tap-to-score dock. Render nothing rather than an empty column.
+  if (!increments.length && !judged) return null;
 
   const TeamCol = ({
     side,
@@ -2149,9 +2204,13 @@ function MobileScoreDock({
           {side === 'home' ? 'HOME' : 'AWAY'}
         </span>
         <span className="text-base font-black tabular-nums" style={{ color }}>
-          {score ?? 0}
+          {formatScore(def, score ?? 0)}
         </span>
       </div>
+      {judged ? (
+        <DockJudgedTotal def={def} side={side} team={team} color={color} score={score ?? 0} ctl={ctl} />
+      ) : (
+      <>
       <div className="flex flex-wrap gap-1.5">
         {increments.map((inc) => (
           <button
@@ -2174,38 +2233,41 @@ function MobileScoreDock({
       >
         −1
       </button>
+      </>
+      )}
     </div>
   );
 
   return (
-    <div
-      className="md:hidden border-t-2 border-slate-800 bg-slate-950 px-2 pt-2"
-      style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 0.5rem)' }}
-    >
+    // K12-F15: the Run view now ends above the MobileTabBar (which carries
+    // the safe-area inset itself), so the dock needs no inset of its own.
+    <div className="md:hidden border-t-2 border-slate-800 bg-slate-950 px-2 pt-2 pb-2">
       <div className="grid grid-cols-[1fr_auto_1fr] items-stretch gap-2">
         <TeamCol side="home" team={g.homeTeam} color={homeColor} score={g.homeScore} />
 
-        {/* CENTRE — segment ± / clock / Start-Stop / reset */}
+        {/* CENTRE — segment ± / clock / Start-Stop / reset. The segment label
+            sits ABOVE its −/+ chips so both chips can be 44 px without
+            widening the column past a 360 px screen. (K12-F15) */}
         <div className="flex min-w-[116px] flex-col items-center gap-1.5">
-          <div className="flex items-center gap-1">
+          <span className="text-center text-xs font-black uppercase tracking-widest text-amber-400">
+            {segmentText(def, g)}
+          </span>
+          <div className="flex items-center gap-1.5">
             <HoldChip
               label="−"
               ariaLabel="Previous segment"
               onConfirm={() =>
                 isInning ? retreatBaseballHalf(def, g, ctl) : ctl.segment.mutate({ delta: -1 })
               }
-              className="flex min-h-[36px] min-w-[36px] items-center justify-center rounded-lg border border-slate-700 bg-slate-800 text-lg font-bold text-slate-300 active:bg-slate-600"
+              className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-slate-700 bg-slate-800 text-lg font-bold text-slate-300 active:bg-slate-600"
             />
-            <span className="min-w-[52px] text-center text-xs font-black uppercase tracking-widest text-amber-400">
-              {segmentText(def, g)}
-            </span>
             <HoldChip
               label="+"
               ariaLabel="Next segment"
               onConfirm={() =>
                 isInning ? advanceBaseballHalf(def, g, ctl) : ctl.segment.mutate({ delta: 1 })
               }
-              className="flex min-h-[36px] min-w-[36px] items-center justify-center rounded-lg border border-slate-700 bg-slate-800 text-lg font-bold text-slate-300 active:bg-slate-600"
+              className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-slate-700 bg-slate-800 text-lg font-bold text-slate-300 active:bg-slate-600"
             />
           </div>
           {hasClock ? (
@@ -2238,14 +2300,16 @@ function MobileScoreDock({
               <HoldChip
                 ariaLabel="Reset clock to segment start"
                 onConfirm={() => ctl.clock.mutate({ action: 'reset' })}
-                className="flex min-h-[36px] w-full items-center justify-center rounded-lg border border-slate-700 bg-slate-800 text-slate-400 active:bg-slate-600"
+                className="flex min-h-[44px] w-full items-center justify-center rounded-lg border border-slate-700 bg-slate-800 text-slate-400 active:bg-slate-600"
               >
                 <RotateCcw className="h-4 w-4" />
               </HoldChip>
             </>
-          ) : (
-            // Clockless sports (e.g. volleyball/tennis sets) — the centre column
-            // offers timeouts instead of a clock so the dock isn't half-empty.
+          ) : sportHasTeamTimeoutStats(def) ? (
+            // Clockless sports — the centre column offers timeouts instead of
+            // a clock, but ONLY where the sport declares timeout stats: the
+            // API refuses /timeout for every other sport, so for volleyball /
+            // baseball / pickleball these were guaranteed dead taps. (K12-F15)
             <div className="flex w-full flex-col gap-1.5">
               <button
                 type="button"
@@ -2262,7 +2326,7 @@ function MobileScoreDock({
                 Timeout · Away
               </button>
             </div>
-          )}
+          ) : null}
         </div>
 
         <TeamCol side="away" team={g.awayTeam} color={awayColor} score={g.awayScore} />
@@ -2336,6 +2400,63 @@ function PeriodOverBanner({
         </button>
       )}
     </div>
+  );
+}
+
+/** Phone dock entry for a judged sport's team total (gymnastics 195.825,
+ *  cheer 285.5) — the desktop ScoreTile's typed-total field, sized for a
+ *  thumb. A top-level component so its draft survives the dock re-rendering
+ *  on every clock tick. (K12-F15) */
+function DockJudgedTotal({
+  def,
+  side,
+  team,
+  color,
+  score,
+  ctl,
+}: {
+  def: SportDefinition;
+  side: 'home' | 'away';
+  team: string;
+  color: string;
+  score: number;
+  ctl: ReturnType<typeof useGameControl>;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  // Escape must discard: the blur it triggers runs before the state update
+  // lands, so the cancel travels in a ref, not in `draft`.
+  const cancelled = useRef(false);
+  const live = formatScore(def, score);
+  const commit = () => {
+    const text = (draft ?? '').trim();
+    setDraft(null);
+    if (cancelled.current) {
+      cancelled.current = false;
+      return;
+    }
+    if (text === '' || text === live) return;
+    const scaled = parseScoreInput(def, text);
+    ctl.score.mutate(side === 'home' ? { homeScore: scaled } : { awayScore: scaled });
+  };
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      value={draft ?? live}
+      onFocus={() => setDraft(live)}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur();
+        if (e.key === 'Escape') {
+          cancelled.current = true;
+          e.currentTarget.blur();
+        }
+      }}
+      aria-label={`${team || (side === 'home' ? 'Home' : 'Away')} total`}
+      className="min-h-[56px] w-full min-w-0 rounded-xl border-2 bg-slate-900 text-center text-xl font-black tabular-nums text-white outline-none focus:border-amber-500"
+      style={{ borderColor: color }}
+    />
   );
 }
 
@@ -3077,14 +3198,9 @@ function ScoreTile({
             // reading the board. (audit P2). Console is not a player surface, so
             // Tailwind utilities are fine here.
             const isFoulStat = s.key.toLowerCase().endsWith('fouls');
-            const bonusBadge =
-              def.key === 'basketball' && isFoulStat
-                ? value >= 10
-                  ? 'DOUBLE BONUS'
-                  : value >= 7
-                    ? 'BONUS'
-                    : null
-                : null;
+            // One threshold source for the desktop tile, the phone tray and
+            // the volunteer pad (lib/sports-stat-rows — K12-F04 moves it).
+            const bonusBadge = isFoulStat ? basketballBonus(def, value) : null;
             const BonusChip = bonusBadge ? (
               <span
                 className="ml-1.5 px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[9px] font-black uppercase tracking-wider border border-amber-500/40"
@@ -3433,12 +3549,12 @@ function RunShotClockMini({
   // K12-F05 — the resets are THIS game's length (a 35-second game resets to
   // 35, not the sport's 24) and the short reset only when it is shorter; the
   // API refuses a reset above the configured length. A shot clock the table
-  // switched OFF shows no controls (the Setup picker says Off).
-  if (shotClockMode(stats) === 'off') return null;
-  const configured = Number(sc.len) || 0;
-  const fullSec = configured > 0 ? configured : def.shotClock?.full ?? 30;
-  const shortCfg = def.shotClock?.short ?? 0;
-  const shortSec = shortCfg > 0 && shortCfg < fullSec ? shortCfg : null;
+  // switched OFF shows no controls (the Setup picker says Off). One helper
+  // (sports-stat-rows shotClockResets) drives this and the phone tray.
+  const resets = shotClockResets(def, stats);
+  if (!resets) return null;
+  const fullSec = resets.full;
+  const shortSec = resets.short;
   return (
     // Shot-clock controls bumped to the 44px touch floor (2026-06-15
     // console-UX P0) — reset-to-full / reset-to-short / start-stop are all

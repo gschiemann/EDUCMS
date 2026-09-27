@@ -16,7 +16,7 @@
  *
  * Pure: no React, no DOM.
  */
-import type { SportDefinition, SportStatField } from '@cms/api-types';
+import { shotClockMode, type SportDefinition, type SportStatField } from '@cms/api-types';
 
 export type TeamStatKind = 'timeouts' | 'fouls' | 'counter' | 'rideTime' | 'text';
 
@@ -103,7 +103,9 @@ export function basketballBonus(
  * runs (the configured `stats.shotClock.len` — a 35-second NFHS game resets to
  * 35, not to the sport default), falling back to the sport's default before
  * the clock is first armed; SHORT is the sport's short reset when it is
- * shorter (basketball 14, water polo 20, lacrosse 60), else null.
+ * shorter (basketball 14, water polo 20, lacrosse 60), else null. A shot
+ * clock the table switched OFF (K12-F05 — OFF is a kept state, and the API
+ * refuses every reset while it is off) has no reset buttons at all: null.
  */
 export function shotClockResets(
   def: SportDefinition | null | undefined,
@@ -111,6 +113,7 @@ export function shotClockResets(
 ): { full: number; short: number | null } | null {
   const sc = def?.shotClock;
   if (!sc) return null;
+  if (shotClockMode(stats) === 'off') return null;
   const stored = stats && stats.shotClock && typeof stats.shotClock === 'object'
     ? (stats.shotClock as Record<string, unknown>)
     : null;
