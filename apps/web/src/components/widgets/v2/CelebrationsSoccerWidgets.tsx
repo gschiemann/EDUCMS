@@ -68,7 +68,7 @@ export function CelSoccerGoalWidget({ config, live = true, height = 480 }: Widge
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#22c55e', textColor: '#fff', accentColor: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const scorer = c.scorer ?? 'MESSI';
+  const scorer = c.scorer ?? 'SCORER';
   const minute = c.minute ?? "63'";
   const score = c.score ?? '2-1';
   const sparkDur = animDurationSec(r.anim.speed, 2);
@@ -137,7 +137,7 @@ export function CelSoccerHatTrickWidget({ config, live = true, height = 480 }: W
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#ce1141', textColor: '#fff', accentColor: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'HAALAND';
+  const player = c.player ?? 'PLAYER';
   const goals = c.goals ?? ["12'", "38'", "81'"];
   const drop = `${animDurationSec(r.anim.speed, 0.5)}s`;
   const sparkDur = animDurationSec(r.anim.speed, 2);
@@ -200,7 +200,7 @@ export function CelSoccerGolazoWidget({ config, live = true, height = 480 }: Wid
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#0a0a0a', textColor: '#fff', accentColor: '#ffd23a', accentColor2: '#dc2626', highlightColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'BELLINGHAM';
+  const player = c.player ?? 'PLAYER';
   const kind = c.kind ?? 'BICYCLE KICK';
   const pulse = `${animDurationSec(r.anim.speed, 1)}s`;
   const punch = `${animDurationSec(r.anim.speed, 0.6)}s`;
@@ -267,7 +267,7 @@ export function CelSoccerRedCardWidget({ config, live = true, height = 480 }: Wi
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#dc2626', textColor: '#fff', accentColor: '#fff', highlightColor: '#fff', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'RAMOS';
+  const player = c.player ?? 'PLAYER';
   const number = c.number ?? '4';
   const reason = c.reason ?? '2nd yellow';
   const blink = `${animDurationSec(r.anim.speed, 0.5)}s`;
@@ -318,7 +318,7 @@ export function CelSoccerPenaltySaveWidget({ config, live = true, height = 480 }
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#001a14', textColor: '#fff', accentColor: '#22d39b', highlightColor: '#22d39b', ...c.style });
   const animOn = r.anim.on && live;
-  const goalie = c.goalie ?? 'COURTOIS';
+  const goalie = c.goalie ?? 'GOALIE';
   const burst = `${animDurationSec(r.anim.speed, 0.5)}s`;
   const blink = `${animDurationSec(r.anim.speed, 0.4)}s`;
   const sparkDur = animDurationSec(r.anim.speed, 2);
@@ -392,7 +392,7 @@ export function CelSoccerFreeKickWidget({ config, live = true, height = 480 }: W
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#0d2226', textColor: '#fff', accentColor: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'BECKHAM';
+  const player = c.player ?? 'PLAYER';
   const distance = c.distance ?? '28 YD';
   const swoosh = `${animDurationSec(r.anim.speed, 2)}s`;
 

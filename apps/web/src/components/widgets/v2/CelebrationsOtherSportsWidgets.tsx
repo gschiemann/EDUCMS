@@ -187,7 +187,7 @@ export interface BbHomeRunRetroCfg extends BaseCfg {
 export function BbHomeRunRetroWidget({ config, live = true, height = 480 }: WidgetProps<BbHomeRunRetroCfg>) {
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#0d3a1a', textColor: '#ffd23a', accentColor: '#fff', borderColor: '#ffd23a', ...c.style });
-  const player = c.player ?? 'BENCH';
+  const player = c.player ?? 'PLAYER';
   const distance = c.distance ?? '418 FT';
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
   const wide = isWide(width, mh);
@@ -230,7 +230,7 @@ export function BbHomeRunNeonWidget({ config, live = true, height = 480 }: Widge
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#0a0014', textColor: '#ff00ff', accentColor: '#00ffff', borderColor: '#ff00ff', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'OHTANI';
+  const player = c.player ?? 'PLAYER';
   const distance = c.distance ?? '462 FT';
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
   const wide = isWide(width, mh);
@@ -277,7 +277,7 @@ export function BbStrikeoutNeonWidget({ config, live = true, height = 480 }: Wid
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#0a0014', textColor: '#00ffff', accentColor: '#ff00ff', borderColor: '#00ffff', ...c.style });
   const animOn = r.anim.on && live;
-  const pitcher = c.pitcher ?? 'SKENES';
+  const pitcher = c.pitcher ?? 'PITCHER';
   const kCount = c.kCount ?? 13;
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
@@ -328,7 +328,7 @@ export function FbTouchdownNeonWidget({ config, live = true, height = 480 }: Wid
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#0a0014', textColor: '#ff00ff', accentColor: '#00ffff', borderColor: '#ff00ff', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'MAHOMES';
+  const player = c.player ?? 'PLAYER';
   const distance = c.distance ?? '48 YD';
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
@@ -377,7 +377,7 @@ export interface FbTouchdownRetroCfg extends BaseCfg {
 export function FbTouchdownRetroWidget({ config, live = true, height = 480 }: WidgetProps<FbTouchdownRetroCfg>) {
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#1a0d00', textColor: '#d4a36a', accentColor: '#ffd23a', borderColor: '#d4a36a', ...c.style });
-  const player = c.player ?? 'PAYTON';
+  const player = c.player ?? 'PLAYER';
   const distance = c.distance ?? '12 YD';
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
@@ -422,7 +422,7 @@ export function BkThreeNeonWidget({ config, live = true, height = 480 }: WidgetP
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#0a0014', textColor: '#00ffff', accentColor: '#ffd23a', borderColor: '#00ffff', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'CURRY';
+  const player = c.player ?? 'PLAYER';
   const threeCount = c.threeCount ?? 9;
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
@@ -465,7 +465,7 @@ export function BkThreeRetroWidget({ config, live = true, height = 480 }: Widget
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#000', textColor: '#fff', accentColor: '#ffd23a', borderColor: '#dc2626', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'BIRD';
+  const player = c.player ?? 'PLAYER';
   const threeCount = c.threeCount ?? 5;
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
@@ -509,7 +509,7 @@ export function HkGoalNeonWidget({ config, live = true, height = 480 }: WidgetPr
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#0a0014', textColor: '#ff00aa', accentColor: '#00ffff', borderColor: '#ff00aa', ...c.style });
   const animOn = r.anim.on && live;
-  const scorer = c.scorer ?? 'PASTRNAK';
+  const scorer = c.scorer ?? 'SCORER';
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
   const wide = isWide(width, mh);
@@ -552,7 +552,7 @@ export interface HkGoalRetroCfg extends BaseCfg {
 export function HkGoalRetroWidget({ config, live = true, height = 480 }: WidgetProps<HkGoalRetroCfg>) {
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#1a0d05', textColor: '#ffd23a', accentColor: '#dc2626', borderColor: '#ffd23a', ...c.style });
-  const scorer = c.scorer ?? 'HOWE';
+  const scorer = c.scorer ?? 'SCORER';
   const period = c.period ?? 2;
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
@@ -595,7 +595,7 @@ export interface ScGoalRetroCfg extends BaseCfg {
 export function ScGoalRetroWidget({ config, live = true, height = 480 }: WidgetProps<ScGoalRetroCfg>) {
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#0a3a0d', textColor: '#fff', accentColor: '#ffd23a', borderColor: '#fff', ...c.style });
-  const scorer = c.scorer ?? 'PELÉ';
+  const scorer = c.scorer ?? 'SCORER';
   const minute = c.minute ?? "42'";
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
@@ -641,7 +641,7 @@ export function ScGoalNeonWidget({ config, live = true, height = 480 }: WidgetPr
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#0a0014', textColor: '#00ff66', accentColor: '#ff00aa', borderColor: '#00ff66', ...c.style });
   const animOn = r.anim.on && live;
-  const scorer = c.scorer ?? 'MBAPPÉ';
+  const scorer = c.scorer ?? 'SCORER';
   const minute = c.minute ?? "90'+3";
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
@@ -684,7 +684,7 @@ export function TnAceWidget({ config, live = true, height = 480 }: WidgetProps<T
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#0a4a8a', textColor: '#fff', accentColor: '#ffd23a', borderColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'ALCARAZ';
+  const player = c.player ?? 'PLAYER';
   const speed = c.speed ?? '141 MPH';
   const aces = c.aces ?? 8;
 
@@ -737,7 +737,7 @@ export function TnAceNeonWidget({ config, live = true, height = 480 }: WidgetPro
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#0a0014', textColor: '#00ffff', accentColor: '#ff00ff', borderColor: '#00ffff', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'SINNER';
+  const player = c.player ?? 'PLAYER';
   const speed = c.speed ?? '138 MPH';
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
@@ -783,7 +783,7 @@ export function TnBreakPointWidget({ config, live = true, height = 480 }: Widget
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#dc2626', textColor: '#fff', accentColor: '#ffd23a', borderColor: '#fff', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'SWIATEK';
+  const player = c.player ?? 'PLAYER';
   const set = c.set ?? 1;
   const score = c.score ?? '4-3';
 
@@ -831,7 +831,7 @@ export function TnMatchPointWidget({ config, live = true, height = 480 }: Widget
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#000', textColor: '#ffd23a', accentColor: '#fff', borderColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'DJOKOVIC';
+  const player = c.player ?? 'PLAYER';
   const score = c.score ?? '40-30';
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
@@ -872,7 +872,7 @@ export function TnWinnerWidget({ config, live = true, height = 480 }: WidgetProp
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#0a4a8a', textColor: '#fff', accentColor: '#ffd23a', borderColor: '#fff', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'GAUFF';
+  const player = c.player ?? 'PLAYER';
   const shot = c.shot ?? 'FOREHAND';
   const winners = c.winners ?? 24;
 
@@ -922,7 +922,7 @@ export function LxGoalWidget({ config, live = true, height = 480 }: WidgetProps<
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#003a14', textColor: '#fff', accentColor: '#ffd23a', borderColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const scorer = c.scorer ?? 'RAMBO';
+  const scorer = c.scorer ?? 'SCORER';
   const number = c.number ?? '1';
   const score = c.score ?? '8-6';
 
@@ -970,7 +970,7 @@ export function LxBehindTheBackWidget({ config, live = true, height = 480 }: Wid
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#1a0008', textColor: '#fff', accentColor: '#ffd23a', borderColor: '#dc2626', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'GAIT';
+  const player = c.player ?? 'PLAYER';
   const distance = c.distance ?? '10 YD';
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
@@ -1014,7 +1014,7 @@ export interface LxBigSaveCfg extends BaseCfg {
 export function LxBigSaveWidget({ config, live = true, height = 480 }: WidgetProps<LxBigSaveCfg>) {
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#001a0a', textColor: '#22d39b', accentColor: '#fff', borderColor: '#22d39b', ...c.style });
-  const goalie = c.goalie ?? 'GAUDET';
+  const goalie = c.goalie ?? 'GOALIE';
   const saves = c.saves ?? 11;
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
@@ -1057,7 +1057,7 @@ export function LxFaceoffWidget({ config, live = true, height = 480 }: WidgetPro
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#1a1500', textColor: '#ffd23a', accentColor: '#22c55e', borderColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? "O'CONNOR";
+  const player = c.player ?? 'PLAYER';
   const winPct = c.winPct ?? 78;
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
@@ -1109,7 +1109,7 @@ export function WrPinWidget({ config, live = true, height = 480 }: WidgetProps<W
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#0a0a0a', textColor: '#fff', accentColor: '#dc2626', borderColor: '#dc2626', ...c.style });
   const animOn = r.anim.on && live;
-  const winner = c.winner ?? 'JORDAN BURROUGHS';
+  const winner = c.winner ?? 'WINNER';
   const weight = c.weight ?? '74 KG';
   const time = c.time ?? '1:47';
 
@@ -1162,7 +1162,7 @@ export function WrTakedownWidget({ config, live = true, height = 480 }: WidgetPr
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#0d0a00', textColor: '#ffd23a', accentColor: '#dc2626', borderColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const wrestler = c.wrestler ?? 'TAYLOR';
+  const wrestler = c.wrestler ?? 'WRESTLER';
   const score = c.score ?? '7-2';
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
@@ -1207,7 +1207,7 @@ export interface WrNearFallCfg extends BaseCfg {
 export function WrNearFallWidget({ config, live = true, height = 480 }: WidgetProps<WrNearFallCfg>) {
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#1a0008', textColor: '#dc2626', accentColor: '#fff', borderColor: '#dc2626', ...c.style });
-  const wrestler = c.wrestler ?? 'STEVESON';
+  const wrestler = c.wrestler ?? 'WRESTLER';
   const points = c.points ?? 4;
   const score = c.score ?? '11-2';
 
@@ -1251,7 +1251,7 @@ export function WrTechFallWidget({ config, live = true, height = 480 }: WidgetPr
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#1a1500', textColor: '#ffd23a', accentColor: '#dc2626', borderColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const winner = c.winner ?? 'DAKE';
+  const winner = c.winner ?? 'WINNER';
   const lead = c.lead ?? '17-2';
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
@@ -1301,7 +1301,7 @@ export function GfAceWidget({ config, live = true, height = 480 }: WidgetProps<G
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#0d3a1a', textColor: '#ffd23a', accentColor: '#fff', borderColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'WOODS';
+  const player = c.player ?? 'PLAYER';
   const hole = c.hole ?? 7;
   const yards = c.yards ?? 165;
 
@@ -1353,7 +1353,7 @@ export interface GfEagleCfg extends BaseCfg {
 export function GfEagleWidget({ config, live = true, height = 480 }: WidgetProps<GfEagleCfg>) {
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#0a2d14', textColor: '#fff', accentColor: '#ffd23a', borderColor: '#fff', ...c.style });
-  const player = c.player ?? 'SCHEFFLER';
+  const player = c.player ?? 'PLAYER';
   const score = c.score ?? '-7';
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
@@ -1396,7 +1396,7 @@ export interface GfBirdieCfg extends BaseCfg {
 export function GfBirdieWidget({ config, live = true, height = 480 }: WidgetProps<GfBirdieCfg>) {
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#0a4a24', textColor: '#ffd23a', accentColor: '#fff', borderColor: '#ffd23a', ...c.style });
-  const player = c.player ?? 'MORIKAWA';
+  const player = c.player ?? 'PLAYER';
   const hole = c.hole ?? 5;
   const score = c.score ?? '-3';
 
@@ -1445,7 +1445,7 @@ export function BxKnockoutWidget({ config, live = true, height = 480 }: WidgetPr
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#1a0008', textColor: '#fff', accentColor: '#ffd23a', borderColor: '#dc2626', ...c.style });
   const animOn = r.anim.on && live;
-  const winner = c.winner ?? 'FURY';
+  const winner = c.winner ?? 'WINNER';
   const round = c.round ?? 4;
   const time = c.time ?? '2:31';
 
@@ -1492,7 +1492,7 @@ export interface BxTkoCfg extends BaseCfg {
 export function BxTkoWidget({ config, live = true, height = 480 }: WidgetProps<BxTkoCfg>) {
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#0a0008', textColor: '#ffd23a', accentColor: '#dc2626', borderColor: '#ffd23a', ...c.style });
-  const winner = c.winner ?? 'USYK';
+  const winner = c.winner ?? 'WINNER';
   const round = c.round ?? 6;
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
@@ -1536,7 +1536,7 @@ export function BxKnockdownWidget({ config, live = true, height = 480 }: WidgetP
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#1a0008', textColor: '#dc2626', accentColor: '#ffd23a', borderColor: '#dc2626', ...c.style });
   const animOn = r.anim.on && live;
-  const winner = c.winner ?? 'CANELO';
+  const winner = c.winner ?? 'WINNER';
   const round = c.round ?? 3;
   const count = c.count ?? 7;
 
@@ -1587,8 +1587,8 @@ export function BxEndOfRoundWidget({ config, live = true, height = 480 }: Widget
   const r = resolveStyle({ bgColor: '#1a0d00', textColor: '#ffd23a', accentColor: '#fff', borderColor: '#ffd23a', ...c.style });
   const round = c.round ?? 6;
   const boxers = [
-    { n: c.p1 ?? 'CANELO', v: c.p1Punches ?? 48 },
-    { n: c.p2 ?? 'BIVOL', v: c.p2Punches ?? 31 },
+    { n: c.p1 ?? 'RED CORNER', v: c.p1Punches ?? 48 },
+    { n: c.p2 ?? 'BLUE CORNER', v: c.p2Punches ?? 31 },
   ];
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
@@ -1648,10 +1648,10 @@ export function TrWorldRecordWidget({ config, live = true, height = 480 }: Widge
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#000', textColor: '#ffd23a', accentColor: '#fff', borderColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const athlete = c.athlete ?? 'BOLT';
+  const athlete = c.athlete ?? 'ATHLETE';
   const event = c.event ?? '100M';
   const time = c.time ?? '9.58s';
-  const country = c.country ?? 'JAM';
+  const country = c.country ?? 'USA';
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
   const wide = isWide(width, mh);
@@ -1703,9 +1703,9 @@ export function TrFinishWidget({ config, live = true, height = 480 }: WidgetProp
   const animOn = r.anim.on && live;
   const event = c.event ?? '400M FINAL';
   const top: TrFinishEntry[] = c.top ?? [
-    { pos: 1, name: 'WARHOLM', country: 'NOR', time: '45.94' },
-    { pos: 2, name: 'BENJAMIN', country: 'USA', time: '46.17' },
-    { pos: 3, name: 'DOS SANTOS', country: 'BRA', time: '46.72' },
+    { pos: 1, name: 'EAGLES', country: 'EAG', time: '45.94' },
+    { pos: 2, name: 'TIGERS', country: 'TIG', time: '46.17' },
+    { pos: 3, name: 'HAWKS', country: 'HAW', time: '46.72' },
   ];
   const medals = ['#ffd23a', '#9aa3b2', '#cd7f32'];
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
@@ -1764,7 +1764,7 @@ export function TrPersonalBestWidget({ config, live = true, height = 480 }: Widg
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#001a08', textColor: '#22c55e', accentColor: '#fff', borderColor: '#22c55e', ...c.style });
   const animOn = r.anim.on && live;
-  const athlete = c.athlete ?? 'RICHARDSON';
+  const athlete = c.athlete ?? 'ATHLETE';
   const event = c.event ?? '100M';
   const time = c.time ?? '10.65';
   const delta = c.delta ?? '-0.18';
@@ -1818,7 +1818,7 @@ export function SwRecordWidget({ config, live = true, height = 480 }: WidgetProp
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#02143d', textColor: '#fff', accentColor: '#ffd23a', borderColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const athlete = c.athlete ?? 'LEDECKY';
+  const athlete = c.athlete ?? 'ATHLETE';
   const event = c.event ?? '1500M';
   const time = c.time ?? '15:20.48';
 
@@ -1865,9 +1865,9 @@ export function SwFinishWidget({ config, live = true, height = 480 }: WidgetProp
   const r = resolveStyle({ bgColor: '#02143d', textColor: '#fff', accentColor: '#ffd23a', borderColor: '#fff', ...c.style });
   const event = c.event ?? '100M FREE';
   const top: SwFinishEntry[] = c.top ?? [
-    { lane: 4, name: 'DRESSEL', time: '47.02' },
-    { lane: 5, name: 'CHALMERS', time: '47.51' },
-    { lane: 3, name: 'BRUSEMI', time: '47.78' },
+    { lane: 4, name: 'EAGLES', time: '47.02' },
+    { lane: 5, name: 'TIGERS', time: '47.51' },
+    { lane: 3, name: 'HAWKS', time: '47.78' },
   ];
   const medals = ['#ffd23a', '#9aa3b2', '#cd7f32'];
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
@@ -1923,7 +1923,7 @@ export interface SwSplitCfg extends BaseCfg {
 export function SwSplitWidget({ config, live = true, height = 480 }: WidgetProps<SwSplitCfg>) {
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#0a4a8a', textColor: '#fff', accentColor: '#22c55e', borderColor: '#ffd23a', ...c.style });
-  const athlete = c.athlete ?? 'PHELPS';
+  const athlete = c.athlete ?? 'ATHLETE';
   const split = c.split ?? '1:55.31';
   const vsWR = c.vsWR ?? '-0.42';
   const lap = c.lap ?? 3;

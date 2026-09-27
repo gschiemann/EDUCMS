@@ -49,8 +49,8 @@ export function CelHockeyGoalWidget({ config, live = true, height = 480 }: Widge
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#ce1141', textColor: '#fff', accentColor: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const scorer = c.scorer ?? 'MCDAVID';
-  const assists = (c.assists ?? ['DRAISAITL', 'NUGENT-HOPKINS']).join(' · ');
+  const scorer = c.scorer ?? 'SCORER';
+  const assists = (c.assists ?? ['#11', '#27']).join(' · ');
   const score = c.score ?? '3-1';
   const pulse = `${animDurationSec(r.anim.speed, 0.5)}s`;
   const shake = `${animDurationSec(r.anim.speed, 0.5)}s`;
@@ -113,7 +113,7 @@ export function CelHockeyHatTrickWidget({ config, live = true, height = 480 }: W
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#1a0008', textColor: '#fff', accentColor: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'OVECHKIN';
+  const player = c.player ?? 'PLAYER';
   const burst = `${animDurationSec(r.anim.speed, 0.6)}s`;
   const sparkDur = animDurationSec(r.anim.speed, 2);
 
@@ -178,7 +178,7 @@ export function CelHockeyPowerPlayWidget({ config, live = true, height = 480 }: 
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#ce1141', textColor: '#fff', accentColor: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const scorer = c.scorer ?? 'MATTHEWS';
+  const scorer = c.scorer ?? 'SCORER';
   const strength = c.strength ?? '5-on-4';
   const score = c.score ?? '2-1';
 
@@ -236,7 +236,7 @@ export function CelHockeyShortyWidget({ config, live = true, height = 480 }: Wid
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#001a3a', textColor: '#fff', accentColor: '#22d39b', highlightColor: '#22d39b', ...c.style });
   const animOn = r.anim.on && live;
-  const scorer = c.scorer ?? 'POINT';
+  const scorer = c.scorer ?? 'SCORER';
   const strength = c.strength ?? '4-on-5';
   const sweep = `${animDurationSec(r.anim.speed, 2)}s`;
 
@@ -297,7 +297,7 @@ export function CelHockeyBigSaveWidget({ config, live = true, height = 480 }: Wi
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#001a14', textColor: '#fff', accentColor: '#22d39b', highlightColor: '#22d39b', ...c.style });
   const animOn = r.anim.on && live;
-  const goalie = c.goalie ?? 'SHESTERKIN';
+  const goalie = c.goalie ?? 'GOALIE';
   const saves = c.saves ?? 28;
   const burst = `${animDurationSec(r.anim.speed, 0.5)}s`;
 
@@ -356,7 +356,7 @@ export function CelHockeyEmptyNetWidget({ config, live = true, height = 480 }: W
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#ce1141', textColor: '#fff', accentColor: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const scorer = c.scorer ?? 'BARKOV';
+  const scorer = c.scorer ?? 'SCORER';
   const finalScore = c.finalScore ?? '4-2';
   const sparkDur = animDurationSec(r.anim.speed, 2);
 

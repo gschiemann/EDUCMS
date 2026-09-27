@@ -70,7 +70,7 @@ export function CelBaseballStrikeoutWidget({ config, live = true, height = 480 }
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#0a0a0a', accentColor: '#dc2626', highlightColor: '#dc2626', ...c.style });
   const animOn = r.anim.on && live;
-  const pitcher = c.pitcher ?? 'BURNES';
+  const pitcher = c.pitcher ?? 'PITCHER';
   const k = c.kCount ?? 11;
   const team = c.team ?? 'starting rotation';
   const spin = `${animDurationSec(r.anim.speed, 1.8)}s`;
@@ -175,7 +175,7 @@ export function CelBaseballHomeRunWidget({ config, live = true, height = 480 }: 
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#ce1141', accentColor: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'TUCKER';
+  const player = c.player ?? 'PLAYER';
   const distance = c.distance ?? '418 FT';
   const velo = c.exitVelo ?? '108 MPH EXIT VELOCITY';
   const swoosh = `${animDurationSec(r.anim.speed, 1.5)}s`;
@@ -262,7 +262,7 @@ export function CelBaseballGrandSlamWidget({ config, live = true, height = 480 }
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#5e0612', accentColor: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'DEVERS';
+  const player = c.player ?? 'PLAYER';
   const score = c.score ?? '7-2';
   const punch = `${animDurationSec(r.anim.speed, 0.6)}s`;
   const blink = `${animDurationSec(r.anim.speed, 0.8)}s`;
@@ -347,7 +347,7 @@ export function CelBaseballNoHitterWidget({ config, live = true, height = 480 }:
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#0a0a0a', accentColor: '#22c55e', highlightColor: '#ffffff', ...c.style });
   const animOn = r.anim.on && live;
-  const pitcher = c.pitcher ?? 'KERSHAW';
+  const pitcher = c.pitcher ?? 'PITCHER';
   const inning = c.inning ?? 9;
   const glow = `${animDurationSec(r.anim.speed, 2)}s`;
   const pulse = `${animDurationSec(r.anim.speed, 2)}s`;
@@ -416,7 +416,7 @@ export function CelBaseballStolenBaseWidget({ config, live = true, height = 480 
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#001a08', accentColor: '#22c55e', highlightColor: '#22c55e', ...c.style });
   const animOn = r.anim.on && live;
-  const runner = c.runner ?? 'WITT JR.';
+  const runner = c.runner ?? 'RUNNER';
   const base = c.base ?? '2ND';
   const seasonSb = c.seasonSb ?? 14;
   const sweep = `${animDurationSec(r.anim.speed, 2.4)}s`;
@@ -487,7 +487,7 @@ export function CelBaseballDoublePlayWidget({ config, live = true, height = 480 
   const r = resolveStyle({ bgColor: '#0a1a30', accentColor: '#22d39b', highlightColor: '#22d39b', ...c.style });
   const animOn = r.anim.on && live;
   const combo = c.combo ?? '6-4-3';
-  const players = c.players ?? ['LINDOR', 'ALBIES', 'OLSON'];
+  const players = c.players ?? ['SS', '2B', '1B'];
   const swoosh = `${animDurationSec(r.anim.speed, 2)}s`;
   const slide = `${animDurationSec(r.anim.speed, 0.4)}s`;
   const parts = combo.split('-');
@@ -629,8 +629,8 @@ export function CelBaseballWalkOffWidget({ config, live = true, height = 480 }: 
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#dc2626', accentColor: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const teamName = c.teamName ?? 'BULLS';
-  const hero = c.hero ?? 'JUDGE';
+  const teamName = c.teamName ?? 'HOME TEAM';
+  const hero = c.hero ?? 'PLAYER';
   const score = c.finalScore ?? '5-4';
   const innings = c.innings ?? 11;
   const fly = `${animDurationSec(r.anim.speed, 4)}s`;

@@ -81,7 +81,7 @@ export function CelFootballTouchdownWidget({ config, live = true, height = 480 }
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#003594', accentColor: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'BARKLEY';
+  const player = c.player ?? 'PLAYER';
   const distance = c.distance ?? '67 YD';
   const score = c.score ?? '21-14';
   const sparkDur = animDurationSec(r.anim.speed, 2);
@@ -144,7 +144,7 @@ export function CelFootballPickSixWidget({ config, live = true, height = 480 }: 
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#1a0008', accentColor: '#dc2626', highlightColor: '#dc2626', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'RAMSEY';
+  const player = c.player ?? 'PLAYER';
   const distance = c.distance ?? '42 YD RETURN';
   const slide = `${animDurationSec(r.anim.speed, 0.5)}s`;
   const arrowDur = `${animDurationSec(r.anim.speed, 2)}s`;
@@ -204,7 +204,7 @@ export function CelFootballFieldGoalWidget({ config, live = true, height = 480 }
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#0a1a14', accentColor: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const kicker = c.kicker ?? 'BUTKER';
+  const kicker = c.kicker ?? 'KICKER';
   const distance = c.distance ?? '52 YD';
   const fly = `${animDurationSec(r.anim.speed, 2)}s`;
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
@@ -279,7 +279,7 @@ export function CelFootballSackWidget({ config, live = true, height = 480 }: Wid
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#1a0d0d', accentColor: '#dc2626', highlightColor: '#dc2626', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'PARSONS';
+  const player = c.player ?? 'PLAYER';
   const sacks = c.sacks ?? 9.5;
   const shake = `${animDurationSec(r.anim.speed, 0.5)}s`;
   const pulse = `${animDurationSec(r.anim.speed, 0.6)}s`;
@@ -398,7 +398,7 @@ export function CelFootballInterceptionWidget({ config, live = true, height = 48
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#0a0008', accentColor: '#22c55e', highlightColor: '#22c55e', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'PEPPERS';
+  const player = c.player ?? 'PLAYER';
   const count = c.count ?? 5;
   const arrowDur = `${animDurationSec(r.anim.speed, 2.4)}s`;
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
@@ -505,7 +505,7 @@ export function CelFootballFumbleRecoveryWidget({ config, live = true, height = 
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#001a0a', accentColor: '#22c55e', highlightColor: '#22c55e', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'BOSA';
+  const player = c.player ?? 'PLAYER';
   const arrowDur = `${animDurationSec(r.anim.speed, 1.8)}s`;
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
   const wide = isWide(width, mh);

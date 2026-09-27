@@ -52,7 +52,7 @@ export function CelBasketballThreeWidget({ config, live = true, height = 480 }: 
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#0b0c0e', accentColor: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'CURRY';
+  const player = c.player ?? 'PLAYER';
   const threesTonight = c.threesTonight ?? 7;
   const pulse = `${animDurationSec(r.anim.speed, 1)}s`;
   const swoosh = `${animDurationSec(r.anim.speed, 1.5)}s`;
@@ -134,7 +134,7 @@ export function CelBasketballDunkWidget({ config, live = true, height = 480 }: W
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#0a0a0a', accentColor: '#dc6a1d', highlightColor: '#dc6a1d', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'GIANNIS';
+  const player = c.player ?? 'PLAYER';
   const kind = c.kind ?? 'POSTER';
   const burst = `${animDurationSec(r.anim.speed, 0.5)}s`;
   const sparkDur = animDurationSec(r.anim.speed, 2);
@@ -224,7 +224,7 @@ export function CelBasketballBuzzerWidget({ config, live = true, height = 480 }:
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#dc2626', accentColor: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'BOOKER';
+  const player = c.player ?? 'PLAYER';
   const clock = c.clock ?? '0.4';
   const kind = c.kind ?? 'GAME WINNER';
   const thump = `${animDurationSec(r.anim.speed, 0.4)}s`;
@@ -295,7 +295,7 @@ export function CelBasketballBlockWidget({ config, live = true, height = 480 }: 
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#001a0a', accentColor: '#22c55e', highlightColor: '#22c55e', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'EMBIID';
+  const player = c.player ?? 'PLAYER';
   const blocks = c.blocksTonight ?? 3;
   const burst = `${animDurationSec(r.anim.speed, 0.5)}s`;
   const pulse = `${animDurationSec(r.anim.speed, 0.5)}s`;
@@ -373,7 +373,7 @@ export function CelBasketballStealWidget({ config, live = true, height = 480 }: 
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#001a08', accentColor: '#22c55e', highlightColor: '#22c55e', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'GILGEOUS';
+  const player = c.player ?? 'PLAYER';
   const steals = c.stealsTonight ?? 4;
   const sweep = `${animDurationSec(r.anim.speed, 1.4)}s`;
 
@@ -440,8 +440,8 @@ export function CelBasketballAlleyOopWidget({ config, live = true, height = 480 
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#0a0a0a', accentColor: '#dc6a1d', accentColor2: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const passer = c.passer ?? 'DONCIC';
-  const dunker = c.dunker ?? 'IRVING';
+  const passer = c.passer ?? 'PASSER';
+  const dunker = c.dunker ?? 'SHOOTER';
   const pulse = `${animDurationSec(r.anim.speed, 0.7)}s`;
   const swoosh = `${animDurationSec(r.anim.speed, 1.6)}s`;
   const sparkDur = animDurationSec(r.anim.speed, 2);
@@ -516,7 +516,7 @@ export function CelBasketballAndOneWidget({ config, live = true, height = 480 }:
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#1a0e00', accentColor: '#ffd23a', accentColor2: '#dc6a1d', highlightColor: '#dc6a1d', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'TATUM';
+  const player = c.player ?? 'PLAYER';
   const thump = `${animDurationSec(r.anim.speed, 0.5)}s`;
   const pulse = `${animDurationSec(r.anim.speed, 0.6)}s`;
 
@@ -583,7 +583,7 @@ export function CelBasketballTripleDoubleWidget({ config, live = true, height = 
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#0d0820', accentColor: '#7c3aed', highlightColor: '#7c3aed', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'JOKIC';
+  const player = c.player ?? 'PLAYER';
   const line = c.line ?? '24 PTS · 12 REB · 13 AST';
   const count = c.careerCount ?? 18;
   const slide = `${animDurationSec(r.anim.speed, 0.6)}s`;
