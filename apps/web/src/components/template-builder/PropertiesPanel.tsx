@@ -47,6 +47,8 @@ import {
   patchPath,
   venueHasModes,
 } from './sports-venue-editor';
+import { FanCamTextField } from './FanCamTextField';
+import { FAN_CAM_TEXT_KEYS, FAN_CAM_VARIANT_ID } from '@cms/api-types';
 import {
   ctsFieldsByGroup,
   ctsFieldLabel,
@@ -9710,6 +9712,16 @@ function SportsVenueEditor({
         out.push(<div key={k} className="pt-2 text-[10px] font-bold text-indigo-500 uppercase tracking-widest border-b border-slate-200">{tv(f.label)}</div>);
         return;
       case 'text':
+        // K-12 launch, lane B3 — the Fan Cam's words refuse a "KISS CAM" where
+        // students are on screen and offer school-safe titles.
+        if (variant === FAN_CAM_VARIANT_ID && (FAN_CAM_TEXT_KEYS as readonly string[]).includes(f.key)) {
+          out.push(
+            <div key={k} data-field-section={f.key}>
+              <FanCamTextField label={tv(f.label)} value={str(f.key)} placeholder={f.placeholder} presets={f.key === 'kind'} onChange={(v) => set(f.key, v === '' ? undefined : v)} />
+            </div>,
+          );
+          return;
+        }
         out.push(
           <div key={k} data-field-section={f.key.split('.')[0]}>
             {f.multiline ? (

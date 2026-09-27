@@ -1040,3 +1040,8 @@ export * from './video-encode';
 // the attestation wording + version and the settings contract, shared so the
 // API (which enforces it) and the dashboard (which asks) never disagree.
 export * from './student-privacy';
+
+// Fan Cam words where students are on screen (K-12 sports launch, 2026-09-27)
+// — one rule for the API (refuses the save) and the builder (refuses the
+// keystroke and offers school-safe titles).
+export * from './fan-cam';

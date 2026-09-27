@@ -56,6 +56,9 @@ import { ZodValidationPipe } from '../security/zod-validation.pipe';
 // INJ-003 — write-time scheme/SSRF gate for URL-bearing zone config
 // (WEBPAGE / EXTERNAL_HTML / STREAMING). See zone-url-guard.ts.
 import { assertZoneUrlsSafe } from './zone-url-guard';
+// K-12 launch, lane B3 — a Fan Cam may not ask for a kiss where students are
+// on screen. See fan-cam-guard.ts.
+import { assertFanCamTextSchoolSafe } from './fan-cam-guard';
 // M0-6 — version-restore fidelity: a snapshot zone carries every persisted
 // column (sceneId included, defaultConfig as the stored JSON string). See
 // version-snapshot.ts for why restoring used to lose both.
@@ -1323,6 +1326,11 @@ export class TemplatesController {
       // template is not live yet, but it is one publish away, and the
       // config written here is never re-validated on the way to a screen.
       assertZoneUrlsSafe(body.zones);
+      await assertFanCamTextSchoolSafe(
+        this.prisma.client,
+        req.user.tenantId,
+        body.zones,
+      );
     }
 
     // Derive orientation from dimensions if not explicitly set
@@ -3091,6 +3099,11 @@ export class TemplatesController {
     // is persisted verbatim a few lines below, so this is the only place a
     // `javascript:` / `data:` iframe src can be stopped server-side.
     assertZoneUrlsSafe(body.zones);
+    await assertFanCamTextSchoolSafe(
+      this.prisma.client,
+      req.user.tenantId,
+      body.zones,
+    );
 
     // Phase D2.5 — guard sceneId references. The atomic replace below
     // would happily insert sceneIds that don't belong to this template
@@ -3353,6 +3366,11 @@ export class TemplatesController {
     // screen. (Snapshot rows carry defaultConfig as a JSON string; the
     // guard handles both shapes.)
     assertZoneUrlsSafe(snapshotZones);
+    await assertFanCamTextSchoolSafe(
+      this.prisma.client,
+      req.user.tenantId,
+      snapshotZones as Array<{ defaultConfig?: unknown }>,
+    );
 
     // M0-6 — the read-back is the LAST operation, and it has to be indexed
     // as such. This was `const [, , restored] = …`, i.e. position 2, which

@@ -2,6 +2,8 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
+import { useTranslations } from 'next-intl';
+import { FAN_CAM_TITLE_NOT_SCHOOL_SAFE } from '@cms/api-types';
 import {
   Plus, Layers, Settings2, Keyboard, Undo2, Redo2, ZoomIn, ZoomOut, Grid3x3, Magnet, Ruler,
   Palette, Image as ImageIcon, X, Paintbrush,
@@ -111,6 +113,22 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
   const saveInFlightRef = useRef(false);
   const saveRequestedRef = useRef<{ overwrite?: boolean } | null>(null);
   const [saveError, setSaveError] = useState<string>();
+  // K-12 launch, lane B3 — a refused save names what to fix, in the
+  // operator's language, when the API says why (the Fan Cam's words where
+  // students are on screen; templates/fan-cam-guard.ts). Anything else keeps
+  // the server's own message.
+  const tSports = useTranslations('sportsTemplates');
+  const saveErrorText = useCallback(
+    (err: unknown): string => {
+      const e = err as { code?: string; body?: { titles?: unknown } } | null;
+      if (e?.code === FAN_CAM_TITLE_NOT_SCHOOL_SAFE) {
+        const titles = Array.isArray(e.body?.titles) ? e.body.titles : [];
+        return tSports('venue.camSaveRefused', { text: String(titles[0] ?? '') });
+      }
+      return err instanceof Error ? err.message : String(err);
+    },
+    [tSports],
+  );
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -488,13 +506,13 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
         return;
       }
       setSaveStatus('error');
-      setSaveError(err instanceof Error ? err.message : String(err));
+      setSaveError(saveErrorText(err));
     } finally {
       saveInFlightRef.current = false;
       const again = saveRequestedRef.current;
       if (again) { saveRequestedRef.current = null; void handleSaveRef.current?.(again); }
     }
-  }, [template.id, updateTemplate, updateZonesApi, markClean, onSaved, setServerUpdatedAt]);
+  }, [template.id, updateTemplate, updateZonesApi, markClean, onSaved, setServerUpdatedAt, saveErrorText]);
 
   // E3 (CRUSH Wave E, 2026-07-03) — "Put on a screen" from inside the
   // editor. The template ALWAYS has a real server id by the time
@@ -644,11 +662,11 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
         });
         return;
       }
-      setSaveError(err instanceof Error ? err.message : String(err));
+      setSaveError(saveErrorText(err));
     } finally {
       setRestoringVersionId(null);
     }
-  }, [template.id, init, restoreVersion, onSaved]);
+  }, [template.id, init, restoreVersion, onSaved, saveErrorText]);
 
   // C2 — "Overwrite": the operator has seen the conflict and explicitly
   // chooses to blind-write their version anyway. Retries handleSave
@@ -801,9 +819,9 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
       }
     } catch (err) {
       setSaveStatus('error');
-      setSaveError(err instanceof Error ? err.message : String(err));
+      setSaveError(saveErrorText(err));
     }
-  }, [createTemplate, updateTemplate, updateZonesApi, router, routeParams]);
+  }, [createTemplate, updateTemplate, updateZonesApi, router, routeParams, saveErrorText]);
 
   // Starter/system templates can't be overwritten — editing them forks the
   // operator's OWN editable copy (carrying every in-progress edit from the
