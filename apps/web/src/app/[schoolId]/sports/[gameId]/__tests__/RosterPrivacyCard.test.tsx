@@ -66,6 +66,28 @@ it('names can be hidden entirely', async () => {
   expect(JSON.parse(apiFetch.mock.calls[1][1].body)).toMatchObject({ names: 'hidden' });
 });
 
+// Found on the real stack (Playwright uncheck() saw the box not move): the
+// switch has to move the moment it is clicked, not a tick later when the
+// query cache catches up.
+it('a switch moves immediately, before the save answers', async () => {
+  apiFetch.mockResolvedValueOnce(ALL_ON);
+  mount();
+  await waitFor(() => expect(screen.getByRole('checkbox', { name: 'Photos' })).toBeChecked());
+  apiFetch.mockReturnValueOnce(new Promise(() => undefined)); // the PATCH never answers
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Photos' }));
+  expect(screen.getByRole('checkbox', { name: 'Photos' })).not.toBeChecked();
+});
+
+it('a failed save puts the switch back to what is really saved and says so', async () => {
+  apiFetch.mockResolvedValueOnce(ALL_ON);
+  mount();
+  await waitFor(() => expect(screen.getByRole('checkbox', { name: 'Photos' })).toBeChecked());
+  apiFetch.mockRejectedValueOnce(new Error('offline'));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Photos' }));
+  await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Could not save — try again'));
+  expect(screen.getByRole('checkbox', { name: 'Photos' })).toBeChecked();
+});
+
 it('points staff at the district\'s FERPA directory-information policy', async () => {
   apiFetch.mockResolvedValueOnce(ALL_ON);
   mount();

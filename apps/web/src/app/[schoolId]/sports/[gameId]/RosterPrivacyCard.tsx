@@ -15,6 +15,7 @@
  * game-day toggles on this page. No timers, no polling.
  */
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -31,6 +32,9 @@ export interface RosterPrivacy {
 
 const DEFAULTS: RosterPrivacy = { names: 'full', numbers: true, photos: true, positions: true, stats: true };
 
+const samePolicy = (a: RosterPrivacy, b: RosterPrivacy) =>
+  a.names === b.names && a.numbers === b.numbers && a.photos === b.photos && a.positions === b.positions && a.stats === b.stats;
+
 export function RosterPrivacyCard({ gameId }: { gameId: string }) {
   const t = useTranslations('sportsTemplates.privacy');
   const qc = useQueryClient();
@@ -40,26 +44,36 @@ export function RosterPrivacyCard({ gameId }: { gameId: string }) {
     queryFn: () => apiFetch<RosterPrivacy>(`/sports/games/${gameId}/roster-privacy`),
     staleTime: 60_000,
   });
+  // The operator's choice shows the moment it is made. These are controlled
+  // inputs: a checkbox whose value only arrives through the query cache
+  // (notified on a later tick) is snapped back by the browser first — found
+  // on the real stack, where Playwright's uncheck() saw the box not move.
+  // `pending` covers the gap until the saved setting comes back; a failed
+  // save drops it, so the switches return to what is really saved.
+  const [pending, setPending] = useState<RosterPrivacy | null>(null);
+  if (pending && data && samePolicy(pending, data)) setPending(null);
   const save = useMutation({
     mutationFn: (next: RosterPrivacy) =>
       apiFetch<RosterPrivacy>(`/sports/games/${gameId}/roster-privacy`, {
         method: 'PATCH',
         body: JSON.stringify(next),
       }),
-    onMutate: async (next) => {
-      await qc.cancelQueries({ queryKey: key });
-      const prev = qc.getQueryData<RosterPrivacy>(key);
-      qc.setQueryData(key, next);
-      return { prev };
+    onError: () => setPending(null),
+    onSuccess: (saved, sent) => {
+      qc.setQueryData(key, saved);
+      // The answer to the LATEST change shows what the server saved; an
+      // answer to an earlier, already-superseded change leaves the newer
+      // choice on screen.
+      setPending((cur) => (cur && samePolicy(cur, sent) ? saved : cur));
     },
-    onError: (_e, _next, ctx) => {
-      if (ctx?.prev) qc.setQueryData(key, ctx.prev);
-    },
-    onSuccess: (saved) => qc.setQueryData(key, saved),
   });
 
-  const p = data ?? DEFAULTS;
-  const set = (patch: Partial<RosterPrivacy>) => save.mutate({ ...p, ...patch });
+  const p = pending ?? data ?? DEFAULTS;
+  const set = (patch: Partial<RosterPrivacy>) => {
+    const next = { ...p, ...patch };
+    setPending(next);
+    save.mutate(next);
+  };
   const restricted = p.names !== 'full' || !p.numbers || !p.photos || !p.positions || !p.stats;
 
   const toggle = (k: 'numbers' | 'photos' | 'positions' | 'stats', label: string) => (
