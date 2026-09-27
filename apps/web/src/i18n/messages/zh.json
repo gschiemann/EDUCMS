@@ -2846,5 +2846,9 @@
     "storageRefused": "存储服务拒绝了该文件。请重试，或导出为 MP4（H.264）。",
     "cancelled": "上传已取消。",
     "storageFull": "此文件需要 {need}；您的 {total} 仅剩 {left} — 请删除不用的媒体或添加屏幕。"
+  },
+  "sportsConsole": {
+    "reopenPrompt": "为什么要重新开启这场已结束的比赛？该原因将与您的姓名一起记录。",
+    "reopenReasonShort": "请输入至少 5 个字符的原因以重新开启比赛。"
   }
 }

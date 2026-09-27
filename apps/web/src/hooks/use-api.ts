@@ -5137,6 +5137,13 @@ export function useGameControl(gameId: string) {
       sendGameCommand(`/sports/games/${gameId}/status`, 'PATCH', body),
     onSuccess: writeBack,
   });
+  // K12-F13 (2026-09-26): a FINAL game is locked server-side; the audited
+  // reopen (reason required) is the only way back to live scoring.
+  const reopen = useMutation({
+    mutationFn: (body: { reason: string }) =>
+      sendGameCommand(`/sports/games/${gameId}/reopen`, 'POST', body),
+    onSuccess: writeBack,
+  });
   const cue = useMutation({
     // key → a built-in sport celebration; cueId → an operator cue-deck
     // cue. target → which surfaces play it (BOARD / RIBBON / ALL).
@@ -5407,6 +5414,7 @@ export function useGameControl(gameId: string) {
     segment,
     stats,
     status,
+    reopen,
     cue,
     spotlight,
     ribbon,

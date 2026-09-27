@@ -977,6 +977,14 @@ const MATRIX: Case[] = [
     build: buildSports,
     invoke: (c, req) => c.deleteGame(req, 'game-b'),
   },
+  {
+    // K12-F13 (2026-09-26): reopening a FINAL result is a correction of an
+    // official record — never reachable across tenants.
+    name: 'sports: reopen another tenant\'s final game',
+    controller: SportsController, handler: 'reopen', op: 'write',
+    build: buildSports,
+    invoke: (c, req) => c.reopen(req, 'game-b', { reason: 'cross-tenant attempt' }),
+  },
 
   // ── Branding (SEC-009 finish, 2026-09-05 — was a dated TODO) ──────────
   {

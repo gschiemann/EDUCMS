@@ -2846,5 +2846,9 @@
     "storageRefused": "Storage refused the file. Try again, or export it as MP4 (H.264).",
     "cancelled": "Upload cancelled.",
     "storageFull": "This file needs {need}; {left} of your {total} is left — delete unused media or add screens."
+  },
+  "sportsConsole": {
+    "reopenPrompt": "Why are you reopening this final game? This reason is recorded with your name.",
+    "reopenReasonShort": "Please enter a reason of at least 5 characters to reopen the game."
   }
 }

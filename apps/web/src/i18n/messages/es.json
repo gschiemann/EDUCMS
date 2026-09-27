@@ -2846,5 +2846,9 @@
     "storageRefused": "El almacenamiento rechazó el archivo. Inténtalo de nuevo o expórtalo como MP4 (H.264).",
     "cancelled": "Subida cancelada.",
     "storageFull": "Este archivo necesita {need}; te quedan {left} de tus {total} — elimina contenido que no uses o añade pantallas."
+  },
+  "sportsConsole": {
+    "reopenPrompt": "¿Por qué reabre este partido finalizado? El motivo queda registrado con su nombre.",
+    "reopenReasonShort": "Escriba un motivo de al menos 5 caracteres para reabrir el partido."
   }
 }

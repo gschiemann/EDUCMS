@@ -418,6 +418,28 @@ export class SportsController {
   }
 
   /**
+   * K12-F13 — reopen a FINAL game for a correction. The only way out of the
+   * FINAL lock: a reason is required and lands on the event trail and the
+   * immutable audit log with the actor. Same roles that can end a game; the
+   * scorekeeper share link cannot (it has no route here).
+   */
+  @Post('games/:id/reopen')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  reopen(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { reason?: string; commandId?: string },
+  ) {
+    const { dto, ctx } = userCommand(req, body);
+    return this.sports.reopenGame(req.user.tenantId, id, dto, ctx);
+  }
+
+  /**
    * External score ingestion — accepts a pushed game state from a
    * console tap-off box or a league-feed adapter. Any subset of fields
    * may be provided; omitted fields are left unchanged. Clock fields

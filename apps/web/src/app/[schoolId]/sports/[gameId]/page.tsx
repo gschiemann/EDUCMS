@@ -18,6 +18,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { useQueryClient } from '@tanstack/react-query';
 import { useConsoleFit, FIT, type FitTier } from './use-console-fit';
 import { RunMoreMenu, OnAirBar } from './RunMoreMenu';
@@ -7741,6 +7742,7 @@ function RunStatusControl({
 }) {
   const status = String(g?.status || 'SCHEDULED');
   const go = (s: string) => ctl.status.mutate({ status: s });
+  const tConsole = useTranslations('sportsConsole');
   const META: Record<string, { label: string; chip: string; dot: string }> = {
     SCHEDULED: { label: 'Scheduled', chip: 'bg-slate-100 text-slate-600 border-slate-200', dot: 'bg-slate-400' },
     PRE_GAME: { label: 'Pre-game', chip: 'bg-amber-50 text-amber-700 border-amber-200', dot: 'bg-amber-500' },
@@ -7786,10 +7788,20 @@ function RunStatusControl({
         {status === 'FINAL' && (
           // Reopening a finalized game resumes live scoring — deliberate, so
           // hold-to-confirm like the other significant transitions (review nit).
+          // K12-F13 (2026-09-26): a FINAL game is locked server-side, so this
+          // goes through the audited reopen, which records the reason.
           <HoldChip
             label="Reopen game"
             ariaLabel="Reopen game — hold to confirm; resumes live scoring"
-            onConfirm={() => go('LIVE')}
+            onConfirm={() => {
+              const reason = window.prompt(tConsole('reopenPrompt'));
+              if (reason === null) return; // cancelled
+              if (reason.trim().length < 5) {
+                window.alert(tConsole('reopenReasonShort'));
+                return;
+              }
+              ctl.reopen.mutate({ reason: reason.trim() });
+            }}
             className={`${btn} border-slate-300 text-slate-600 hover:bg-slate-100`}
           />
         )}

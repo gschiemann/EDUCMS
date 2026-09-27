@@ -161,6 +161,21 @@ class GameVersionConflict extends Error {
 /** How many times a command re-runs after losing a compare-and-swap. */
 const MAX_COMMAND_ATTEMPTS = 5;
 
+/**
+ * K12-F13 — the only commands a FINAL game accepts: the audited reopen, and a
+ * repeated "end game" (a no-op). Everything else answers 409 GAME_FINAL.
+ * Presentation that does not change the result (cues, overlays, scenes, the
+ * ribbon, team names/colours) is not a game command and stays available.
+ */
+const FINAL_ALLOWED_COMMANDS: ReadonlySet<string> = new Set(['game.reopen', 'status.final']);
+
+/** Is this the FINAL lock's refusal? */
+function isGameFinalRefusal(err: unknown): boolean {
+  if (!(err instanceof ConflictException)) return false;
+  const body = err.getResponse() as { code?: unknown } | string;
+  return typeof body === 'object' && body?.code === 'GAME_FINAL';
+}
+
 /** Everything a command body can do inside its transaction. */
 interface GameCommandScope {
   readonly tx: any;
@@ -503,6 +518,15 @@ export class SportsService {
                     }
                     return this.replayedResponse(prior.response, read) as R;
                   }
+                }
+                // K12-F13 — a FINAL game is locked. A late phone tap, a queued
+                // op or a feed replay cannot change an official result; the one
+                // way back is the named, audited reopen (reopenGame).
+                if (read.status === 'FINAL' && !FINAL_ALLOWED_COMMANDS.has(kind)) {
+                  throw new ConflictException({
+                    code: 'GAME_FINAL',
+                    message: 'This game is final. Reopen it to make a correction.',
+                  });
                 }
                 // A queued command made in one period must not land in another
                 // (stale-queue reconciliation, K12-F10): the client sends the
@@ -2536,6 +2560,7 @@ export class SportsService {
     },
   ) {
     const game = await this.owned(tenantId, gameId);
+    this.assertBoxScoreEditable(game);
     const name = this.cleanText(dto.name, 80);
     if (!name) throw new BadRequestException('Player name is required.');
     const team = this.cleanTeam(dto.team);
@@ -2563,14 +2588,29 @@ export class SportsService {
     return created;
   }
 
+  /**
+   * K12-F13 — a FINAL game's box score is part of its official result (and
+   * of the season totals rolled up from it), so adding, removing or
+   * re-scoring a player needs the same reopen as any other correction.
+   * Cosmetic roster edits (name, number, position, photo) stay open.
+   */
+  private assertBoxScoreEditable(game: { status?: string | null }): void {
+    if (game.status === 'FINAL') {
+      throw new ConflictException({
+        code: 'GAME_FINAL',
+        message: 'This game is final. Reopen it to correct its box score.',
+      });
+    }
+  }
+
   /** Resolve a player within a tenant-owned game, or 404. */
   private async ownedPlayer(tenantId: string, gameId: string, playerId: string) {
-    await this.owned(tenantId, gameId);
+    const game = await this.owned(tenantId, gameId);
     const player = await this.prisma.client.rosterPlayer.findFirst({
       where: { id: playerId, gameId, tenantId },
     });
     if (!player) throw new NotFoundException('Player not found');
-    return player;
+    return { player, game };
   }
 
   /** Edit a player — only the keys present in the dto are touched. */
@@ -2583,7 +2623,8 @@ export class SportsService {
       position?: string; photoUrl?: string; stats?: unknown;
     },
   ) {
-    await this.ownedPlayer(tenantId, gameId, playerId);
+    const { game } = await this.ownedPlayer(tenantId, gameId, playerId);
+    if (dto.stats !== undefined || dto.team !== undefined) this.assertBoxScoreEditable(game);
     const data: Record<string, unknown> = {};
     if (dto.team !== undefined) data.team = this.cleanTeam(dto.team);
     if (dto.name !== undefined) {
@@ -2600,7 +2641,8 @@ export class SportsService {
 
   /** Remove a player from the roster. */
   async deletePlayer(tenantId: string, gameId: string, playerId: string) {
-    await this.ownedPlayer(tenantId, gameId, playerId);
+    const { game } = await this.ownedPlayer(tenantId, gameId, playerId);
+    this.assertBoxScoreEditable(game);
     await this.prisma.client.rosterPlayer.delete({ where: { id: playerId, tenantId } });
     return { deleted: true };
   }
@@ -2684,6 +2726,7 @@ export class SportsService {
 
   async importRosterCsv(tenantId: string, gameId: string, csvText: string) {
     const game = await this.owned(tenantId, gameId);
+    this.assertBoxScoreEditable(game);
     const lines = String(csvText || '')
       .split(/\r?\n/)
       .map((l) => l.trim())
@@ -5074,6 +5117,10 @@ export class SportsService {
     }
     return this.runGameCommand(tenantId, id, `status.${status.toLowerCase()}`, actor, dto, async (scope) => {
       const game = scope.before;
+      // A repeated "end game" on a FINAL game changes nothing and fires no
+      // second cinematic. Leaving FINAL is refused by the lock in
+      // runGameCommand (409 GAME_FINAL) — only reopenGame does that.
+      if (game.status === 'FINAL' && status === 'FINAL') return game;
       const data: Record<string, unknown> = { status };
       if (status === 'LIVE' && !game.startedAt) data.startedAt = new Date();
       if (status === 'FINAL') {
@@ -5118,6 +5165,48 @@ export class SportsService {
         scope.after(() => this.finalizeStatsAfterFinal(tenantId, id, updated.homeTeamId));
         scope.after(() => this.onGameFinal(tenantId, id));
       }
+      return updated;
+    });
+  }
+
+  /**
+   * K12-F13 — reopen a FINAL game for a correction: the one, named, audited
+   * way out of the FINAL lock. Requires a reason (kept on the STATUS event and
+   * the SPORTS_GAME_REOPENED audit row with the actor). The game returns to
+   * LIVE with no cinematic; the scorer corrects it with the ordinary controls
+   * (each one attributed) and ends it again, which re-rolls the player stats
+   * for the corrected result (K12-F39).
+   */
+  async reopenGame(
+    tenantId: string,
+    id: string,
+    dto: { reason?: unknown },
+    actor?: CommandInput,
+  ) {
+    const reason = typeof dto?.reason === 'string' ? dto.reason.trim().slice(0, 500) : '';
+    if (reason.length < 5) {
+      throw new BadRequestException({
+        code: 'REOPEN_REASON_REQUIRED',
+        message: 'Say why the final result is being reopened (at least 5 characters).',
+      });
+    }
+    return this.runGameCommand(tenantId, id, 'game.reopen', actor, { reason }, async (scope) => {
+      const game = scope.before;
+      if (game.status !== 'FINAL') {
+        throw new ConflictException({
+          code: 'GAME_NOT_FINAL',
+          message: 'Only a final game can be reopened.',
+        });
+      }
+      const updated = await scope.write({ status: 'LIVE', endedAt: null });
+      const change = scope.change();
+      await scope.event('STATUS', { status: 'LIVE', prevStatus: 'FINAL', reopened: true, reason, change });
+      scope.audit('SPORTS_GAME_REOPENED', {
+        reason,
+        finalScore: { home: game.homeScore, away: game.awayScore },
+        revisionBefore: game.version,
+        revisionAfter: updated.version,
+      });
       return updated;
     });
   }
@@ -6519,257 +6608,264 @@ export class SportsService {
     const actor: CommandInput = auth.actorUserId
       ? { actor: { kind: 'user', userId: auth.actorUserId } }
       : feedActor('cts');
-    await this.runGameCommand(gate.tenantId, gameId, 'feed.cts', actor, null, async (scope) => {
-      const tx = scope.tx;
-      const game = scope.before;
-      let prevScores = { homeScore: game.homeScore, awayScore: game.awayScore };
-      let scoreChanged = false;
-      let segmentChanged = false;
-      let clockRunChanged = false;
-      let horn = false;
-      let wantsAudit = false;
-      let reconnect = false;
-      let syntheticNext: GameRow = game;
-      const prevStats: Record<string, unknown> =
-        game.stats && typeof game.stats === 'object'
-          ? { ...(game.stats as Record<string, unknown>) }
-          : {};
-      const prevCts: Record<string, unknown> =
-        prevStats.cts && typeof prevStats.cts === 'object'
-          ? (prevStats.cts as Record<string, unknown>)
-          : {};
+    try {
+      await this.runGameCommand(gate.tenantId, gameId, 'feed.cts', actor, null, async (scope) => {
+        const tx = scope.tx;
+        const game = scope.before;
+        let prevScores = { homeScore: game.homeScore, awayScore: game.awayScore };
+        let scoreChanged = false;
+        let segmentChanged = false;
+        let clockRunChanged = false;
+        let horn = false;
+        let wantsAudit = false;
+        let reconnect = false;
+        let syntheticNext: GameRow = game;
+        const prevStats: Record<string, unknown> =
+          game.stats && typeof game.stats === 'object'
+            ? { ...(game.stats as Record<string, unknown>) }
+            : {};
+        const prevCts: Record<string, unknown> =
+          prevStats.cts && typeof prevStats.cts === 'object'
+            ? (prevStats.cts as Record<string, unknown>)
+            : {};
 
-      const nowIso = new Date().toISOString();
-      const nextCts: Record<string, unknown> = {
-        ...prevCts,
-        ...cleaned,
-        lastUpdateAt: nowIso,
-      };
+        const nowIso = new Date().toISOString();
+        const nextCts: Record<string, unknown> = {
+          ...prevCts,
+          ...cleaned,
+          lastUpdateAt: nowIso,
+        };
 
-      // What changed forensically? Score / segment / clockRunning / horn
-      // are the audit-worthy transitions; clockMs ticks are not.
-      const lastAuditAt =
-        typeof prevCts.lastAuditAt === 'string' ? Date.parse(prevCts.lastAuditAt) : 0;
-      reconnect =
-        !Number.isFinite(Date.parse(String(prevCts.lastUpdateAt))) ||
-        Date.now() - Date.parse(String(prevCts.lastUpdateAt)) > 5000;
-      scoreChanged =
-        (cleaned.homeScore !== undefined && cleaned.homeScore !== prevCts.homeScore) ||
-        (cleaned.awayScore !== undefined && cleaned.awayScore !== prevCts.awayScore);
-      segmentChanged =
-        cleaned.segment !== undefined && cleaned.segment !== prevCts.segment;
-      clockRunChanged =
-        cleaned.clockRunning !== undefined && cleaned.clockRunning !== prevCts.clockRunning;
-      horn = cleaned.horn === true && !prevCts.horn;
-      // Audit cap: at most one audit row per 1s of forensically uninteresting
-      // updates (clock-only ticks). Score / segment / horn / reconnect always
-      // audit immediately.
-      wantsAudit =
-        reconnect || scoreChanged || segmentChanged || clockRunChanged || horn ||
-        Date.now() - (Number.isFinite(lastAuditAt) ? lastAuditAt : 0) > 60_000;
-      if (wantsAudit) {
-        nextCts.lastAuditAt = nowIso;
-      }
-
-      // "All the same rules apply if we are doing it or the integration is
-      // doing it." (Greg's rule) — fire the same side-effect chain the
-      // operator-path helpers run, scoped to what actually changed.
-      //
-      // NOTE — write-through contract (revised 2026-06-12, sports-venue audit
-      // P0): SCORE and SEGMENT now write THROUGH to the operator columns
-      // (homeScore/awayScore/segment) when the console reports a change,
-      // guarded by a 15s manual-override window (a recent operator SCORE
-      // event wins until the console's value next changes). Why the old
-      // overlay-only design was a game-night bug, twice over:
-      //   1. When the CTS feed dropped, the 5s render freshness window
-      //      expired and every public surface reverted to the operator
-      //      columns — which still said 0-0 from pre-game. The crowd saw the
-      //      wrong score within seconds of a serial hiccup.
-      //   2. AUTO celebrations compute deltas vs the operator columns; since
-      //      CTS never moved them, goal #2 arrived as delta=2 (no water-polo
-      //      cue matches) and auto-celebration silently died after goal #1.
-      // CLOCK columns (clockMs/clockRunning) intentionally REMAIN overlay-
-      // only: the 5 Hz tick stays out of the columns, and the penalty-box /
-      // shot-clock sync helpers below already consume the CTS-reported
-      // running state directly.
-
-      // Prev scores come from OPERATOR columns, not from stats.cts, so the
-      // delta math is consistent with adjustScore/setScore. Read from THIS
-      // fresh row, not the pre-tx `gate` read, so a retry compares against
-      // the state it's actually merging on top of.
-      prevScores = { homeScore: game.homeScore, awayScore: game.awayScore };
-      const now = new Date();
-
-      // Build the merged stats write so we do a single DB update.
-      // Clock-running transition: slave the penalty box and shot clock —
-      // same helper chain clockAction uses, same "clockMutated = true" flag.
-      // The stats.feed liveness stamp (guided-setup pill, Inputs-wave GUIDED)
-      // rides this SAME write — the blob is being rewritten anyway, so the
-      // stamp costs nothing and stays inside the Serializable tx. Every later
-      // re-spread below ({ ...mergedStatsForWrite, … }) preserves it.
-      let mergedStatsForWrite: Record<string, unknown> = {
-        ...prevStats,
-        cts: nextCts,
-        feed: this.feedStamp('cts', true),
-      };
-
-      // T2-1: merge CTS exclusions into stats.penalties (top-level, source:'cts')
-      // so the existing penalty-box render path can consume them alongside
-      // operator-entered penalties.  We replace only the 'cts'-sourced slots;
-      // operator-entered penalties (source != 'cts') are preserved.
-      if (cleaned.homeExclusions !== undefined || cleaned.awayExclusions !== undefined) {
-        const prevPenalties = Array.isArray(mergedStatsForWrite.penalties)
-          ? (mergedStatsForWrite.penalties as unknown[]).filter(
-              (p) => p && typeof p === 'object' && (p as Record<string, unknown>).source !== 'cts',
-            )
-          : [];
-        const ctsPenalties: unknown[] = [];
-        if (cleaned.homeExclusions) {
-          cleaned.homeExclusions.forEach((slot, i) => {
-            if (slot && (slot.playerJersey > 0 || slot.secondsRemaining > 0)) {
-              ctsPenalties.push({
-                source: 'cts',
-                team: 'home',
-                slot: i,
-                playerJersey: slot.playerJersey,
-                secondsRemaining: slot.secondsRemaining,
-              });
-            }
-          });
+        // What changed forensically? Score / segment / clockRunning / horn
+        // are the audit-worthy transitions; clockMs ticks are not.
+        const lastAuditAt =
+          typeof prevCts.lastAuditAt === 'string' ? Date.parse(prevCts.lastAuditAt) : 0;
+        reconnect =
+          !Number.isFinite(Date.parse(String(prevCts.lastUpdateAt))) ||
+          Date.now() - Date.parse(String(prevCts.lastUpdateAt)) > 5000;
+        scoreChanged =
+          (cleaned.homeScore !== undefined && cleaned.homeScore !== prevCts.homeScore) ||
+          (cleaned.awayScore !== undefined && cleaned.awayScore !== prevCts.awayScore);
+        segmentChanged =
+          cleaned.segment !== undefined && cleaned.segment !== prevCts.segment;
+        clockRunChanged =
+          cleaned.clockRunning !== undefined && cleaned.clockRunning !== prevCts.clockRunning;
+        horn = cleaned.horn === true && !prevCts.horn;
+        // Audit cap: at most one audit row per 1s of forensically uninteresting
+        // updates (clock-only ticks). Score / segment / horn / reconnect always
+        // audit immediately.
+        wantsAudit =
+          reconnect || scoreChanged || segmentChanged || clockRunChanged || horn ||
+          Date.now() - (Number.isFinite(lastAuditAt) ? lastAuditAt : 0) > 60_000;
+        if (wantsAudit) {
+          nextCts.lastAuditAt = nowIso;
         }
-        if (cleaned.awayExclusions) {
-          cleaned.awayExclusions.forEach((slot, i) => {
-            if (slot && (slot.playerJersey > 0 || slot.secondsRemaining > 0)) {
-              ctsPenalties.push({
-                source: 'cts',
-                team: 'away',
-                slot: i,
-                playerJersey: slot.playerJersey,
-                secondsRemaining: slot.secondsRemaining,
-              });
-            }
-          });
+
+        // "All the same rules apply if we are doing it or the integration is
+        // doing it." (Greg's rule) — fire the same side-effect chain the
+        // operator-path helpers run, scoped to what actually changed.
+        //
+        // NOTE — write-through contract (revised 2026-06-12, sports-venue audit
+        // P0): SCORE and SEGMENT now write THROUGH to the operator columns
+        // (homeScore/awayScore/segment) when the console reports a change,
+        // guarded by a 15s manual-override window (a recent operator SCORE
+        // event wins until the console's value next changes). Why the old
+        // overlay-only design was a game-night bug, twice over:
+        //   1. When the CTS feed dropped, the 5s render freshness window
+        //      expired and every public surface reverted to the operator
+        //      columns — which still said 0-0 from pre-game. The crowd saw the
+        //      wrong score within seconds of a serial hiccup.
+        //   2. AUTO celebrations compute deltas vs the operator columns; since
+        //      CTS never moved them, goal #2 arrived as delta=2 (no water-polo
+        //      cue matches) and auto-celebration silently died after goal #1.
+        // CLOCK columns (clockMs/clockRunning) intentionally REMAIN overlay-
+        // only: the 5 Hz tick stays out of the columns, and the penalty-box /
+        // shot-clock sync helpers below already consume the CTS-reported
+        // running state directly.
+
+        // Prev scores come from OPERATOR columns, not from stats.cts, so the
+        // delta math is consistent with adjustScore/setScore. Read from THIS
+        // fresh row, not the pre-tx `gate` read, so a retry compares against
+        // the state it's actually merging on top of.
+        prevScores = { homeScore: game.homeScore, awayScore: game.awayScore };
+        const now = new Date();
+
+        // Build the merged stats write so we do a single DB update.
+        // Clock-running transition: slave the penalty box and shot clock —
+        // same helper chain clockAction uses, same "clockMutated = true" flag.
+        // The stats.feed liveness stamp (guided-setup pill, Inputs-wave GUIDED)
+        // rides this SAME write — the blob is being rewritten anyway, so the
+        // stamp costs nothing and stays inside the Serializable tx. Every later
+        // re-spread below ({ ...mergedStatsForWrite, … }) preserves it.
+        let mergedStatsForWrite: Record<string, unknown> = {
+          ...prevStats,
+          cts: nextCts,
+          feed: this.feedStamp('cts', true),
+        };
+
+        // T2-1: merge CTS exclusions into stats.penalties (top-level, source:'cts')
+        // so the existing penalty-box render path can consume them alongside
+        // operator-entered penalties.  We replace only the 'cts'-sourced slots;
+        // operator-entered penalties (source != 'cts') are preserved.
+        if (cleaned.homeExclusions !== undefined || cleaned.awayExclusions !== undefined) {
+          const prevPenalties = Array.isArray(mergedStatsForWrite.penalties)
+            ? (mergedStatsForWrite.penalties as unknown[]).filter(
+                (p) => p && typeof p === 'object' && (p as Record<string, unknown>).source !== 'cts',
+              )
+            : [];
+          const ctsPenalties: unknown[] = [];
+          if (cleaned.homeExclusions) {
+            cleaned.homeExclusions.forEach((slot, i) => {
+              if (slot && (slot.playerJersey > 0 || slot.secondsRemaining > 0)) {
+                ctsPenalties.push({
+                  source: 'cts',
+                  team: 'home',
+                  slot: i,
+                  playerJersey: slot.playerJersey,
+                  secondsRemaining: slot.secondsRemaining,
+                });
+              }
+            });
+          }
+          if (cleaned.awayExclusions) {
+            cleaned.awayExclusions.forEach((slot, i) => {
+              if (slot && (slot.playerJersey > 0 || slot.secondsRemaining > 0)) {
+                ctsPenalties.push({
+                  source: 'cts',
+                  team: 'away',
+                  slot: i,
+                  playerJersey: slot.playerJersey,
+                  secondsRemaining: slot.secondsRemaining,
+                });
+              }
+            });
+          }
+          mergedStatsForWrite = {
+            ...mergedStatsForWrite,
+            penalties: [...prevPenalties, ...ctsPenalties],
+            cts: nextCts,
+          };
         }
-        mergedStatsForWrite = {
-          ...mergedStatsForWrite,
-          penalties: [...prevPenalties, ...ctsPenalties],
-          cts: nextCts,
-        };
-      }
 
-      // T2-1: merge CTS timeouts into stats.homeTimeouts / awayTimeouts.
-      // Only overwrites when CTS is the source so operator adjustments
-      // are not stomped when these fields are absent from the snapshot.
-      if (cleaned.homeTimeoutsRemaining !== undefined) {
-        mergedStatsForWrite = {
-          ...mergedStatsForWrite,
-          homeTimeouts: cleaned.homeTimeoutsRemaining,
-          cts: nextCts,
-        };
-      }
-      if (cleaned.awayTimeoutsRemaining !== undefined) {
-        mergedStatsForWrite = {
-          ...mergedStatsForWrite,
-          awayTimeouts: cleaned.awayTimeoutsRemaining,
-          cts: nextCts,
-        };
-      }
+        // T2-1: merge CTS timeouts into stats.homeTimeouts / awayTimeouts.
+        // Only overwrites when CTS is the source so operator adjustments
+        // are not stomped when these fields are absent from the snapshot.
+        if (cleaned.homeTimeoutsRemaining !== undefined) {
+          mergedStatsForWrite = {
+            ...mergedStatsForWrite,
+            homeTimeouts: cleaned.homeTimeoutsRemaining,
+            cts: nextCts,
+          };
+        }
+        if (cleaned.awayTimeoutsRemaining !== undefined) {
+          mergedStatsForWrite = {
+            ...mergedStatsForWrite,
+            awayTimeouts: cleaned.awayTimeoutsRemaining,
+            cts: nextCts,
+          };
+        }
 
-      if (clockRunChanged && cleaned.clockRunning !== undefined) {
-        const running = cleaned.clockRunning;
-        let synced = this.syncPenaltiesToClock(mergedStatsForWrite, running, now);
-        const base = synced ?? mergedStatsForWrite;
-        // T2-10: pass the CTS-reported game clock for clamping (Invariant #6).
-        const ctsGameClockMs = cleaned.clockMs !== undefined ? Number(cleaned.clockMs) : undefined;
-        const shotSynced = this.syncShotClockToGameClock(base, true, running, now, ctsGameClockMs);
-        if (shotSynced) synced = shotSynced;
-        if (synced) mergedStatsForWrite = { ...mergedStatsForWrite, ...synced, cts: nextCts };
-      }
+        if (clockRunChanged && cleaned.clockRunning !== undefined) {
+          const running = cleaned.clockRunning;
+          let synced = this.syncPenaltiesToClock(mergedStatsForWrite, running, now);
+          const base = synced ?? mergedStatsForWrite;
+          // T2-10: pass the CTS-reported game clock for clamping (Invariant #6).
+          const ctsGameClockMs = cleaned.clockMs !== undefined ? Number(cleaned.clockMs) : undefined;
+          const shotSynced = this.syncShotClockToGameClock(base, true, running, now, ctsGameClockMs);
+          if (shotSynced) synced = shotSynced;
+          if (synced) mergedStatsForWrite = { ...mergedStatsForWrite, ...synced, cts: nextCts };
+        }
 
-      // 2026-06-12 P0 — score/segment write-through (see contract note above).
-      // Guard: a manual operator SCORE within the last 15s wins; the console
-      // re-asserts on its NEXT score change, so a typo-fix sticks until the
-      // real score moves again. Read through `tx` so this guard's view of
-      // recent GameEvents is consistent with the same serializable snapshot
-      // the stats merge is using.
-      const columnWrites: Record<string, unknown> = {};
-      if (scoreChanged) {
-        let manualOverride = false;
-        try {
-          const lastScore = await tx.gameEvent.findFirst({
-            where: {
-              gameId,
-              type: 'SCORE',
-              createdAt: { gte: new Date(Date.now() - 15_000) },
-            },
-            orderBy: { createdAt: 'desc' },
+        // 2026-06-12 P0 — score/segment write-through (see contract note above).
+        // Guard: a manual operator SCORE within the last 15s wins; the console
+        // re-asserts on its NEXT score change, so a typo-fix sticks until the
+        // real score moves again. Read through `tx` so this guard's view of
+        // recent GameEvents is consistent with the same serializable snapshot
+        // the stats merge is using.
+        const columnWrites: Record<string, unknown> = {};
+        if (scoreChanged) {
+          let manualOverride = false;
+          try {
+            const lastScore = await tx.gameEvent.findFirst({
+              where: {
+                gameId,
+                type: 'SCORE',
+                createdAt: { gte: new Date(Date.now() - 15_000) },
+              },
+              orderBy: { createdAt: 'desc' },
+            });
+            const p = lastScore?.payload as { source?: unknown; team?: unknown } | null;
+            manualOverride = !!lastScore && p?.source !== 'cts' && p?.team !== 'cts';
+          } catch { /* guard is best-effort — write-through proceeds */ }
+          if (!manualOverride) {
+            if (cleaned.homeScore !== undefined) columnWrites.homeScore = cleaned.homeScore;
+            if (cleaned.awayScore !== undefined) columnWrites.awayScore = cleaned.awayScore;
+          } else {
+            this.logger.debug(
+              `cts write-through deferred for game ${gameId}: manual score within guard window`,
+            );
+          }
+        }
+        if (segmentChanged && cleaned.segment !== undefined) {
+          columnWrites.segment = cleaned.segment;
+        }
+
+        // The row the celebration compares against: the fresh read with the
+        // console's scores applied (before any operator-override deferral).
+        syntheticNext = {
+          ...game,
+          homeScore: cleaned.homeScore !== undefined ? cleaned.homeScore : game.homeScore,
+          awayScore: cleaned.awayScore !== undefined ? cleaned.awayScore : game.awayScore,
+        };
+
+        await scope.write({ stats: mergedStatsForWrite, ...columnWrites });
+        // Deliberately NO wakeClockSweep() here (refuter P2, Phase-2 CLOCK):
+        // CTS clock state lives in the stats JSON (`cts` sub-object) — this
+        // path never writes the Game.clockMs/clockRunning COLUMNS the
+        // auto-advance sweep queries, so a wake buys nothing while a 5 Hz
+        // snapshot stream would permanently defeat the sweep's idle-skip.
+
+        // Score GameEvent + AUTO celebration — same paper trail as
+        // adjustScore. Only when the CTS-reported score differs from the prior
+        // CTS value, so a 5 Hz re-send of the same score records nothing.
+        if (scoreChanged) {
+          await scope.event('SCORE', {
+            team: 'cts',
+            homeScore: syntheticNext.homeScore,
+            awayScore: syntheticNext.awayScore,
+            source: 'cts',
+            change: scope.change(),
           });
-          const p = lastScore?.payload as { source?: unknown; team?: unknown } | null;
-          manualOverride = !!lastScore && p?.source !== 'cts' && p?.team !== 'cts';
-        } catch { /* guard is best-effort — write-through proceeds */ }
-        if (!manualOverride) {
-          if (cleaned.homeScore !== undefined) columnWrites.homeScore = cleaned.homeScore;
-          if (cleaned.awayScore !== undefined) columnWrites.awayScore = cleaned.awayScore;
-        } else {
-          this.logger.debug(
-            `cts write-through deferred for game ${gameId}: manual score within guard window`,
+          await this.autoCelebrateInCommand(
+            scope,
+            prevScores,
+            syntheticNext,
+            { home: cleaned.homeScore !== undefined, away: cleaned.awayScore !== undefined },
+            'feed',
           );
         }
-      }
-      if (segmentChanged && cleaned.segment !== undefined) {
-        columnWrites.segment = cleaned.segment;
-      }
-
-      // The row the celebration compares against: the fresh read with the
-      // console's scores applied (before any operator-override deferral).
-      syntheticNext = {
-        ...game,
-        homeScore: cleaned.homeScore !== undefined ? cleaned.homeScore : game.homeScore,
-        awayScore: cleaned.awayScore !== undefined ? cleaned.awayScore : game.awayScore,
-      };
-
-      await scope.write({ stats: mergedStatsForWrite, ...columnWrites });
-      // Deliberately NO wakeClockSweep() here (refuter P2, Phase-2 CLOCK):
-      // CTS clock state lives in the stats JSON (`cts` sub-object) — this
-      // path never writes the Game.clockMs/clockRunning COLUMNS the
-      // auto-advance sweep queries, so a wake buys nothing while a 5 Hz
-      // snapshot stream would permanently defeat the sweep's idle-skip.
-
-      // Score GameEvent + AUTO celebration — same paper trail as
-      // adjustScore. Only when the CTS-reported score differs from the prior
-      // CTS value, so a 5 Hz re-send of the same score records nothing.
-      if (scoreChanged) {
-        await scope.event('SCORE', {
-          team: 'cts',
-          homeScore: syntheticNext.homeScore,
-          awayScore: syntheticNext.awayScore,
-          source: 'cts',
-          change: scope.change(),
-        });
-        await this.autoCelebrateInCommand(
-          scope,
-          prevScores,
-          syntheticNext,
-          { home: cleaned.homeScore !== undefined, away: cleaned.awayScore !== undefined },
-          'feed',
-        );
-      }
-      // Segment GameEvent — same paper trail as setSegment.
-      if (segmentChanged && cleaned.segment !== undefined) {
-        await scope.event('SEGMENT', { segment: cleaned.segment, source: 'cts' });
-      }
-      if (wantsAudit) {
-        scope.audit('CTS_SNAPSHOT_INGEST', {
-          source: auth.source || 'cts',
-          reconnect,
-          scoreChanged,
-          segmentChanged,
-          clockRunChanged,
-          horn,
-          snapshot: cleaned,
-        });
-      }
-    }, { gate });
+        // Segment GameEvent — same paper trail as setSegment.
+        if (segmentChanged && cleaned.segment !== undefined) {
+          await scope.event('SEGMENT', { segment: cleaned.segment, source: 'cts' });
+        }
+        if (wantsAudit) {
+          scope.audit('CTS_SNAPSHOT_INGEST', {
+            source: auth.source || 'cts',
+            reconnect,
+            scoreChanged,
+            segmentChanged,
+            clockRunChanged,
+            horn,
+            snapshot: cleaned,
+          });
+        }
+      }, { gate });
+    } catch (err) {
+      // K12-F13: a FINAL game takes no feed data. A console that keeps
+      // streaming after the final horn is told so, not errored at 5 Hz.
+      if (isGameFinalRefusal(err)) return { ok: true, accepted: false, reason: 'game is final' };
+      throw err;
+    }
 
     return { ok: true, accepted: true };
   }
@@ -6875,61 +6971,68 @@ export class SportsService {
     const actor: CommandInput = auth.actorUserId
       ? { actor: { kind: 'user', userId: auth.actorUserId } }
       : feedActor('swim');
-    await this.runGameCommand(gate.tenantId, gameId, 'feed.swim', actor, null, async (scope) => {
-      const game = scope.before;
-      let wantsAudit = false;
-      let placesChanged = false;
-      const prevStats: Record<string, unknown> =
-        game.stats && typeof game.stats === 'object' ? { ...(game.stats as Record<string, unknown>) } : {};
-      const prevResults = sanitizeResults(prevStats.results);
-      const mergedResults = mergeSwimResult(prevResults, fresh);
-      const sanitized = sanitizeResults(mergedResults as unknown);
+    try {
+      await this.runGameCommand(gate.tenantId, gameId, 'feed.swim', actor, null, async (scope) => {
+        const game = scope.before;
+        let wantsAudit = false;
+        let placesChanged = false;
+        const prevStats: Record<string, unknown> =
+          game.stats && typeof game.stats === 'object' ? { ...(game.stats as Record<string, unknown>) } : {};
+        const prevResults = sanitizeResults(prevStats.results);
+        const mergedResults = mergeSwimResult(prevResults, fresh);
+        const sanitized = sanitizeResults(mergedResults as unknown);
 
-      // stats.feed liveness stamp (guided-setup pill, Inputs-wave GUIDED) —
-      // rides the existing single merged write, inside the Serializable tx.
-      const nextStats: Record<string, unknown> = {
-        ...prevStats,
-        results: sanitized,
-        feed: this.feedStamp('swim', true),
-      };
+        // stats.feed liveness stamp (guided-setup pill, Inputs-wave GUIDED) —
+        // rides the existing single merged write, inside the Serializable tx.
+        const nextStats: Record<string, unknown> = {
+          ...prevStats,
+          results: sanitized,
+          feed: this.feedStamp('swim', true),
+        };
 
-      // Team score (dual meets, report A7 module 0x0D) folds into the same
-      // homeTimeouts-style scalar convention ingestCtsSnapshot uses for its
-      // T2-1 fields — a plain scalar pair on stats, not a new structured key.
-      const teamScore = extractSwimTeamScore(snapshot);
-      if (teamScore) {
-        nextStats.swimHomeScore = teamScore.homeScore;
-        nextStats.swimAwayScore = teamScore.awayScore;
-      }
+        // Team score (dual meets, report A7 module 0x0D) folds into the same
+        // homeTimeouts-style scalar convention ingestCtsSnapshot uses for its
+        // T2-1 fields — a plain scalar pair on stats, not a new structured key.
+        const teamScore = extractSwimTeamScore(snapshot);
+        if (teamScore) {
+          nextStats.swimHomeScore = teamScore.homeScore;
+          nextStats.swimAwayScore = teamScore.awayScore;
+        }
 
-      // Sampled audit — mirrors ingestCtsSnapshot's cadence discipline (a
-      // 5-10Hz timing feed would otherwise flood AuditLog). Audit-worthy:
-      // a new/changed event-heat header, any place change (someone
-      // finished), or at most once per 60s otherwise.
-      const prevEventHeat = prevResults.find((r) => r.event === fresh.event);
-      placesChanged =
-        !prevEventHeat ||
-        prevEventHeat.entries.length !== fresh.entries.length ||
-        fresh.entries.some((e, i) => prevEventHeat.entries[i]?.place !== e.place || prevEventHeat.entries[i]?.mark !== e.mark);
-      const prevAuditKey = `swimAuditAt:${fresh.event}`;
-      const lastAuditAt = typeof prevStats[prevAuditKey] === 'number' ? (prevStats[prevAuditKey] as number) : 0;
-      wantsAudit = placesChanged || Date.now() - lastAuditAt > 60_000;
-      if (wantsAudit) {
-        // Stamp the audit-cadence marker into the SAME write.
-        nextStats[prevAuditKey] = Date.now();
-      }
+        // Sampled audit — mirrors ingestCtsSnapshot's cadence discipline (a
+        // 5-10Hz timing feed would otherwise flood AuditLog). Audit-worthy:
+        // a new/changed event-heat header, any place change (someone
+        // finished), or at most once per 60s otherwise.
+        const prevEventHeat = prevResults.find((r) => r.event === fresh.event);
+        placesChanged =
+          !prevEventHeat ||
+          prevEventHeat.entries.length !== fresh.entries.length ||
+          fresh.entries.some((e, i) => prevEventHeat.entries[i]?.place !== e.place || prevEventHeat.entries[i]?.mark !== e.mark);
+        const prevAuditKey = `swimAuditAt:${fresh.event}`;
+        const lastAuditAt = typeof prevStats[prevAuditKey] === 'number' ? (prevStats[prevAuditKey] as number) : 0;
+        wantsAudit = placesChanged || Date.now() - lastAuditAt > 60_000;
+        if (wantsAudit) {
+          // Stamp the audit-cadence marker into the SAME write.
+          nextStats[prevAuditKey] = Date.now();
+        }
 
-      await scope.write({ stats: nextStats });
-      if (wantsAudit) {
-        scope.audit('SWIM_TIMING_SNAPSHOT_INGEST', {
-          source: auth.source || 'swim-timing-feed',
-          event: fresh.event,
-          placesChanged,
-          laneCount,
-          rosterJoined: rosterEntries.length,
-        });
-      }
-    }, { gate });
+        await scope.write({ stats: nextStats });
+        if (wantsAudit) {
+          scope.audit('SWIM_TIMING_SNAPSHOT_INGEST', {
+            source: auth.source || 'swim-timing-feed',
+            event: fresh.event,
+            placesChanged,
+            laneCount,
+            rosterJoined: rosterEntries.length,
+          });
+        }
+      }, { gate });
+    } catch (err) {
+      // K12-F13: a FINAL game takes no feed data. A console that keeps
+      // streaming after the final horn is told so, not errored at 5 Hz.
+      if (isGameFinalRefusal(err)) return { ok: true, accepted: false, reason: 'game is final' };
+      throw err;
+    }
 
     return { ok: true, accepted: true };
   }

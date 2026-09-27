@@ -106,7 +106,7 @@ describe('K12 launch acceptance — the 21 audit probes', () => {
   });
 
   // Owner: A1 (F13).
-  it.failing('K12-10 a late normal score tap cannot mutate a finalized game', async () => {
+  it('K12-10 a late normal score tap cannot mutate a finalized game', async () => {
     const { service } = setup(); const g: any = await newGame(service, 'basketball');
     await service.setScore(TENANT, g.id, { homeScore: 10 });
     await service.setStatus(TENANT, g.id, { status: 'FINAL' });
@@ -220,10 +220,43 @@ describe('K12 launch acceptance — the 21 audit probes', () => {
   });
 
   // Owner: A2 (F07) — HALFTIME freezes the game clock.
+  // (K12-21 below; the A1 probes follow the audit's 21.)
   it.failing('K12-21 halftime status freezes the game clock', async () => {
     const { service } = setup(); const g: any = await newGame(service, 'basketball');
     await service.clockAction(TENANT, g.id, { action: 'start' });
     await service.setStatus(TENANT, g.id, { status: 'HALFTIME' });
     expect(g.clockRunning).toBe(false);
+  });
+});
+
+/**
+ * Probes added by lane A1 (2026-09-26) for acceptance the audit named but did
+ * not script: the reopen-after-FINAL flow (F13), command replay (F10) and the
+ * screen-claim race (F35). Same style: expected-correct behaviour on the real
+ * SportsService.
+ */
+describe('K12 launch acceptance — lane A1 additions', () => {
+  // F13: FINAL locks the result; the audited reopen is the one way back.
+  it('K12-22 a FINAL game rejects a late tap, then reopens with a reason and takes the correction', async () => {
+    const { service, auditLog } = setup(); const g: any = await newGame(service, 'basketball');
+    await service.setScore(TENANT, g.id, { homeScore: 40, awayScore: 38 });
+    await service.setStatus(TENANT, g.id, { status: 'FINAL' });
+    await service.adjustScore(TENANT, g.id, { team: 'away', delta: 3 }).catch(() => undefined);
+    expect({ status: g.status, away: g.awayScore }).toEqual({ status: 'FINAL', away: 38 });
+    await service.reopenGame(TENANT, g.id, { reason: 'Last three-pointer missed' }, 'admin-1');
+    await service.adjustScore(TENANT, g.id, { team: 'away', delta: 3 }, 'admin-1');
+    await service.setStatus(TENANT, g.id, { status: 'FINAL' }, 'admin-1');
+    expect({ status: g.status, away: g.awayScore }).toEqual({ status: 'FINAL', away: 41 });
+    expect(auditLog.rows.some((a: any) => a.action === 'SPORTS_GAME_REOPENED' && a.userId === 'admin-1')).toBe(true);
+  });
+
+  // F10: a +2 whose response was lost, retried and replayed, is +2 once.
+  it('K12-23 a replayed command id applies exactly once', async () => {
+    const { service } = setup(); const g: any = await newGame(service, 'basketball');
+    const ctx = { commandId: 'cmd-k12-23-000001' };
+    await service.adjustScore(TENANT, g.id, { team: 'home', delta: 2 }, ctx);
+    await service.adjustScore(TENANT, g.id, { team: 'home', delta: 2 }, ctx);
+    await service.adjustScore(TENANT, g.id, { team: 'home', delta: 2 }, ctx);
+    expect(g.homeScore).toBe(2);
   });
 });
