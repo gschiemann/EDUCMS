@@ -22,7 +22,10 @@ export type { ConsoleAction, ConsoleScope };
  * something in that sport (@cms/api-types consoleScopeMintable) — a clock
  * operator needs a clock, a shot-clock operator a shot or play clock.
  */
-export function consoleScopeOffered(scope: ConsoleScope, sportKey: string | null | undefined): boolean {
+export function consoleScopeOffered(
+  scope: ConsoleScope,
+  sportKey: string | null | undefined,
+): boolean {
   return consoleScopeMintable(scope, findSport(sportKey));
 }
 
@@ -195,13 +198,18 @@ export interface MintConsoleTokenOpts {
 }
 
 /** Mint a console share token: `<gameId>.<ver>.<iat>.<ttl>.<mac>`. */
-export function makeConsoleToken(gameId: string, opts: MintConsoleTokenOpts = {}): string {
+export function makeConsoleToken(
+  gameId: string,
+  opts: MintConsoleTokenOpts = {},
+): string {
   if (!gameId || !GAME_ID_RE.test(gameId)) {
     throw new Error('makeConsoleToken: invalid gameId');
   }
   const ver = normVersion(opts.version);
   const requested =
-    typeof opts.ttlSeconds === 'number' && Number.isFinite(opts.ttlSeconds) && opts.ttlSeconds > 0
+    typeof opts.ttlSeconds === 'number' &&
+    Number.isFinite(opts.ttlSeconds) &&
+    opts.ttlSeconds > 0
       ? Math.floor(opts.ttlSeconds)
       : DEFAULT_CONSOLE_TOKEN_TTL_SEC;
   const ttlSec = Math.min(
@@ -227,7 +235,8 @@ export function parseConsoleTokenGameId(token: unknown): string | null {
   if (parts.length !== 5) return null;
   const [gameId, vStr, iatStr, ttlStr, mac] = parts;
   if (!gameId || !GAME_ID_RE.test(gameId)) return null;
-  if (!/^\d+$/.test(vStr) || !/^\d+$/.test(iatStr) || !/^\d+$/.test(ttlStr)) return null;
+  if (!/^\d+$/.test(vStr) || !/^\d+$/.test(iatStr) || !/^\d+$/.test(ttlStr))
+    return null;
   if (mac.length !== MAC_HEX_LEN) return null;
   return gameId;
 }
@@ -271,7 +280,8 @@ export function verifyConsoleTokenScope(
   if (parts.length !== 5) return null;
   const [tokGameId, vStr, iatStr, ttlStr, mac] = parts;
   if (tokGameId !== gameId || !GAME_ID_RE.test(tokGameId)) return null;
-  if (!/^\d+$/.test(vStr) || !/^\d+$/.test(iatStr) || !/^\d+$/.test(ttlStr)) return null;
+  if (!/^\d+$/.test(vStr) || !/^\d+$/.test(iatStr) || !/^\d+$/.test(ttlStr))
+    return null;
   if (mac.length !== MAC_HEX_LEN) return null;
 
   const tokVer = Number(vStr);
@@ -287,7 +297,10 @@ export function verifyConsoleTokenScope(
 
   let matched: ConsoleScope | null = null;
   for (const scope of CONSOLE_SCOPES) {
-    if (safeEqHex(consoleMac(tokGameId, tokVer, iatSec, ttlSec, scope), mac) && matched === null) {
+    if (
+      safeEqHex(consoleMac(tokGameId, tokVer, iatSec, ttlSec, scope), mac) &&
+      matched === null
+    ) {
       matched = scope;
     }
   }

@@ -1,6 +1,13 @@
 import {
-  Controller, Get, Post, Patch, Param, Body, Req,
-  HttpException, HttpStatus,
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Param,
+  Body,
+  Req,
+  HttpException,
+  HttpStatus,
 } from '@nestjs/common';
 import type { Request } from 'express';
 import {
@@ -130,12 +137,18 @@ export class SportsConsoleController {
    * game's window). A missing game and a bad token return the SAME 401 — no
    * game-existence oracle.
    */
-  private async authorize(token: string, req: Request, action?: ConsoleAction): Promise<{
+  private async authorize(
+    token: string,
+    req: Request,
+    action?: ConsoleAction,
+  ): Promise<{
     gameId: string;
     tenantId: string;
     scope: ConsoleScope;
     allows: ConsoleAction[];
-    meta: NonNullable<Awaited<ReturnType<SportsService['getConsoleShareMeta']>>>;
+    meta: NonNullable<
+      Awaited<ReturnType<SportsService['getConsoleShareMeta']>>
+    >;
   }> {
     const gameId = parseConsoleTokenGameId(token);
     if (!gameId) this.throwInvalid();
@@ -148,7 +161,9 @@ export class SportsConsoleController {
     );
     if (ipLimited) this.throwRateLimited();
     const meta = await this.sports.getConsoleShareMeta(gameId);
-    const scope = meta ? verifyConsoleTokenScope(gameId, token, meta.consoleTokenVersion) : null;
+    const scope = meta
+      ? verifyConsoleTokenScope(gameId, token, meta.consoleTokenVersion)
+      : null;
     if (!meta || !scope) {
       this.throwInvalid();
     }
@@ -176,13 +191,23 @@ export class SportsConsoleController {
     return { gameId, tenantId: meta.tenantId, scope, allows, meta };
   }
 
-  private throwRejected(code: string, message: string, extra?: Record<string, unknown>): never {
-    throw new HttpException({ code, message, ...(extra || {}) }, HttpStatus.BAD_REQUEST);
+  private throwRejected(
+    code: string,
+    message: string,
+    extra?: Record<string, unknown>,
+  ): never {
+    throw new HttpException(
+      { code, message, ...(extra || {}) },
+      HttpStatus.BAD_REQUEST,
+    );
   }
 
   private throwRateLimited(): never {
     throw new HttpException(
-      { code: 'SPORTS_CONSOLE_RATE_LIMITED', message: 'Console rate limit exceeded' },
+      {
+        code: 'SPORTS_CONSOLE_RATE_LIMITED',
+        message: 'Console rate limit exceeded',
+      },
       HttpStatus.TOO_MANY_REQUESTS,
     );
   }
@@ -191,7 +216,8 @@ export class SportsConsoleController {
     throw new HttpException(
       {
         code: 'SPORTS_CONSOLE_TOKEN_INVALID',
-        message: 'This scorekeeper link is invalid, expired, or has been revoked.',
+        message:
+          'This scorekeeper link is invalid, expired, or has been revoked.',
       },
       HttpStatus.UNAUTHORIZED,
     );
@@ -232,7 +258,13 @@ export class SportsConsoleController {
   @Patch(':token/score')
   async score(
     @Param('token') token: string,
-    @Body() body: { team?: string; delta?: number; homeScore?: number; awayScore?: number },
+    @Body()
+    body: {
+      team?: string;
+      delta?: number;
+      homeScore?: number;
+      awayScore?: number;
+    },
     @Req() req: Request,
   ) {
     const { gameId, tenantId } = await this.authorize(token, req, 'score');
@@ -303,7 +335,12 @@ export class SportsConsoleController {
     if (typeof raw.cueId === 'string') dto.cueId = raw.cueId;
     if (raw.team === 'home' || raw.team === 'away') dto.team = raw.team;
     // K12-F34: attributed to this issued link, like every other console action.
-    return this.sports.fireCue(tenantId, gameId, dto, consoleCommand(token, {}).ctx);
+    return this.sports.fireCue(
+      tenantId,
+      gameId,
+      dto,
+      consoleCommand(token, {}).ctx,
+    );
   }
 
   // ── K12-F16 volunteer duties ───────────────────────────────────────
@@ -321,18 +358,28 @@ export class SportsConsoleController {
     @Body() body: { action?: string; value?: number },
     @Req() req: Request,
   ) {
-    const { gameId, tenantId, meta } = await this.authorize(token, req, 'shotClock');
+    const { gameId, tenantId, meta } = await this.authorize(
+      token,
+      req,
+      'shotClock',
+    );
     const { dto: raw, ctx } = consoleCommand(token, body);
     const action = raw.action;
     if (action !== 'start' && action !== 'stop' && action !== 'reset') {
-      this.throwRejected('SPORTS_CONSOLE_BAD_ACTION', 'action must be start | stop | reset');
+      this.throwRejected(
+        'SPORTS_CONSOLE_BAD_ACTION',
+        'action must be start | stop | reset',
+      );
     }
     const dto: { action: string; value?: number } = { action };
     if (action === 'reset' && raw.value !== undefined) {
       const max = consoleShotClockMaxSec(findSport(meta.sport));
       const v = raw.value;
       if (typeof v !== 'number' || !Number.isInteger(v) || v < 1 || v > max) {
-        this.throwRejected('SPORTS_CONSOLE_BAD_VALUE', `reset value must be 1-${max} seconds`);
+        this.throwRejected(
+          'SPORTS_CONSOLE_BAD_VALUE',
+          `reset value must be 1-${max} seconds`,
+        );
       }
       dto.value = v;
     }
@@ -351,17 +398,27 @@ export class SportsConsoleController {
     @Body() body: { action?: string; value?: number; run?: boolean },
     @Req() req: Request,
   ) {
-    const { gameId, tenantId, meta } = await this.authorize(token, req, 'playClock');
+    const { gameId, tenantId, meta } = await this.authorize(
+      token,
+      req,
+      'playClock',
+    );
     const { dto: raw, ctx } = consoleCommand(token, body);
     const action = raw.action;
     if (action !== 'start' && action !== 'stop' && action !== 'reset') {
-      this.throwRejected('SPORTS_CONSOLE_BAD_ACTION', 'action must be start | stop | reset');
+      this.throwRejected(
+        'SPORTS_CONSOLE_BAD_ACTION',
+        'action must be start | stop | reset',
+      );
     }
     const dto: { action: string; value?: number; run?: boolean } = { action };
     if (action === 'reset') {
       if (raw.value !== undefined) {
         const allowed = consolePlayClockResets(findSport(meta.sport));
-        if (typeof raw.value !== 'number' || allowed.indexOf(raw.value) === -1) {
+        if (
+          typeof raw.value !== 'number' ||
+          allowed.indexOf(raw.value) === -1
+        ) {
           this.throwRejected(
             'SPORTS_CONSOLE_BAD_VALUE',
             `the play clock resets to ${allowed.join(' or ')} seconds`,
@@ -371,7 +428,10 @@ export class SportsConsoleController {
       }
       if (raw.run !== undefined) {
         if (typeof raw.run !== 'boolean') {
-          this.throwRejected('SPORTS_CONSOLE_BAD_VALUE', 'run must be true or false');
+          this.throwRejected(
+            'SPORTS_CONSOLE_BAD_VALUE',
+            'run must be true or false',
+          );
         }
         dto.run = raw.run;
       }
@@ -392,7 +452,11 @@ export class SportsConsoleController {
     @Body() body: { stats?: unknown },
     @Req() req: Request,
   ) {
-    const { gameId, tenantId, meta } = await this.authorize(token, req, 'stats');
+    const { gameId, tenantId, meta } = await this.authorize(
+      token,
+      req,
+      'stats',
+    );
     const { dto, ctx } = consoleCommand(token, body);
     const checked = validateConsoleStats(findSport(meta.sport), dto.stats);
     if (!checked.ok) {
@@ -402,7 +466,12 @@ export class SportsConsoleController {
         { rejected: checked.rejected },
       );
     }
-    return this.sports.updateStats(tenantId, gameId, { stats: checked.stats }, ctx);
+    return this.sports.updateStats(
+      tenantId,
+      gameId,
+      { stats: checked.stats },
+      ctx,
+    );
   }
 
   /** Possession arrow — the same typed-column write + event + audit row the
@@ -417,7 +486,10 @@ export class SportsConsoleController {
     const { dto, ctx } = consoleCommand(token, body);
     const team = dto.team;
     if (team !== 'home' && team !== 'away') {
-      this.throwRejected('SPORTS_CONSOLE_BAD_VALUE', 'team must be home | away');
+      this.throwRejected(
+        'SPORTS_CONSOLE_BAD_VALUE',
+        'team must be home | away',
+      );
     }
     return this.sports.setPossession(tenantId, gameId, { team }, ctx);
   }
@@ -445,20 +517,33 @@ export class SportsConsoleController {
     },
     @Req() req: Request,
   ) {
-    const { gameId, tenantId, meta } = await this.authorize(token, req, 'penalties');
+    const { gameId, tenantId, meta } = await this.authorize(
+      token,
+      req,
+      'penalties',
+    );
     const { dto: raw, ctx } = consoleCommand(token, body);
     if (raw.action === 'add') {
       if (raw.team !== 'home' && raw.team !== 'away') {
-        this.throwRejected('SPORTS_CONSOLE_BAD_VALUE', 'team must be home | away');
+        this.throwRejected(
+          'SPORTS_CONSOLE_BAD_VALUE',
+          'team must be home | away',
+        );
       }
       const def = findSport(meta.sport);
       const preset = consolePenaltyPreset(def, raw.lenSec, raw.label);
       if (!preset) {
-        this.throwRejected('SPORTS_CONSOLE_BAD_VALUE', 'penalty must be one of the sport presets');
+        this.throwRejected(
+          'SPORTS_CONSOLE_BAD_VALUE',
+          'penalty must be one of the sport presets',
+        );
       }
       const player = typeof raw.player === 'string' ? raw.player : '';
       if (player !== '' && !/^\d{1,3}$/.test(player)) {
-        this.throwRejected('SPORTS_CONSOLE_BAD_VALUE', 'player must be a jersey number');
+        this.throwRejected(
+          'SPORTS_CONSOLE_BAD_VALUE',
+          'player must be a jersey number',
+        );
       }
       const dto: {
         action: 'add';
@@ -467,8 +552,15 @@ export class SportsConsoleController {
         label: string;
         player: string;
         exclusion?: boolean;
-      } = { action: 'add', team: raw.team, lenSec: preset.sec, label: preset.label, player };
-      if (raw.exclusion === true && def?.key === 'water_polo') dto.exclusion = true;
+      } = {
+        action: 'add',
+        team: raw.team,
+        lenSec: preset.sec,
+        label: preset.label,
+        player,
+      };
+      if (raw.exclusion === true && def?.key === 'water_polo')
+        dto.exclusion = true;
       return this.sports.setPenalties(tenantId, gameId, dto, ctx);
     }
     if (raw.action === 'remove') {
@@ -476,9 +568,17 @@ export class SportsConsoleController {
       if (typeof pid !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(pid)) {
         this.throwRejected('SPORTS_CONSOLE_BAD_VALUE', 'penaltyId required');
       }
-      return this.sports.setPenalties(tenantId, gameId, { action: 'remove', penaltyId: pid }, ctx);
+      return this.sports.setPenalties(
+        tenantId,
+        gameId,
+        { action: 'remove', penaltyId: pid },
+        ctx,
+      );
     }
-    this.throwRejected('SPORTS_CONSOLE_BAD_ACTION', 'action must be add | remove');
+    this.throwRejected(
+      'SPORTS_CONSOLE_BAD_ACTION',
+      'action must be add | remove',
+    );
   }
 
   /**
@@ -501,8 +601,16 @@ export class SportsConsoleController {
     const { gameId, tenantId } = await this.authorize(token, req);
     const target = (body || {}).undoOf;
     if (!isValidCommandId(target)) {
-      this.throwRejected('SPORTS_CONSOLE_BAD_VALUE', 'undoOf must be the command id of the action to undo');
+      this.throwRejected(
+        'SPORTS_CONSOLE_BAD_VALUE',
+        'undoOf must be the command id of the action to undo',
+      );
     }
-    return this.sports.undoConsoleAction(tenantId, gameId, target, consoleCommand(token, {}).ctx);
+    return this.sports.undoConsoleAction(
+      tenantId,
+      gameId,
+      target,
+      consoleCommand(token, {}).ctx,
+    );
   }
 }

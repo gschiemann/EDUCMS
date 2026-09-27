@@ -96,7 +96,9 @@ describe('sports console token', () => {
         .update(`console:${GAME}:0:${freshIat}:${ttl}`)
         .digest('hex')
         .slice(0, 32);
-      expect(verifyConsoleToken(GAME, `${GAME}.0.${freshIat}.${ttl}.${freshMac}`, 0)).toBe(true);
+      expect(
+        verifyConsoleToken(GAME, `${GAME}.0.${freshIat}.${ttl}.${freshMac}`, 0),
+      ).toBe(true);
     });
 
     it('a ttl of 0 never verifies, even with a valid MAC', () => {
@@ -106,7 +108,9 @@ describe('sports console token', () => {
         .update(`console:${GAME}:0:${iat}:0`)
         .digest('hex')
         .slice(0, 32);
-      expect(verifyConsoleToken(GAME, `${GAME}.0.${iat}.0.${mac}`, 0)).toBe(false);
+      expect(verifyConsoleToken(GAME, `${GAME}.0.${iat}.0.${mac}`, 0)).toBe(
+        false,
+      );
     });
 
     it('an over-cap ttl never verifies, even with a valid MAC', () => {
@@ -117,17 +121,23 @@ describe('sports console token', () => {
         .update(`console:${GAME}:0:${iat}:${ttl}`)
         .digest('hex')
         .slice(0, 32);
-      expect(verifyConsoleToken(GAME, `${GAME}.0.${iat}.${ttl}.${mac}`, 0)).toBe(false);
+      expect(
+        verifyConsoleToken(GAME, `${GAME}.0.${iat}.${ttl}.${mac}`, 0),
+      ).toBe(false);
     });
 
     it('mint clamps ttl into [MIN, MAX] and defaults to 24h', () => {
-      expect(Number(makeConsoleToken(GAME, { ttlSeconds: 1 }).split('.')[3])).toBe(
-        MIN_CONSOLE_TOKEN_TTL_SEC,
-      );
       expect(
-        Number(makeConsoleToken(GAME, { ttlSeconds: 999_999_999 }).split('.')[3]),
+        Number(makeConsoleToken(GAME, { ttlSeconds: 1 }).split('.')[3]),
+      ).toBe(MIN_CONSOLE_TOKEN_TTL_SEC);
+      expect(
+        Number(
+          makeConsoleToken(GAME, { ttlSeconds: 999_999_999 }).split('.')[3],
+        ),
       ).toBe(MAX_CONSOLE_TOKEN_TTL_SEC);
-      expect(Number(makeConsoleToken(GAME).split('.')[3])).toBe(DEFAULT_CONSOLE_TOKEN_TTL_SEC);
+      expect(Number(makeConsoleToken(GAME).split('.')[3])).toBe(
+        DEFAULT_CONSOLE_TOKEN_TTL_SEC,
+      );
     });
   });
 
@@ -137,17 +147,29 @@ describe('sports console token', () => {
       const [gid, ver, iat, ttl, mac] = tok.split('.');
       const other = 'b4e2c3d5-6789-4bcd-8eef-000000000002';
       // Retarget the game.
-      expect(verifyConsoleToken(other, [other, ver, iat, ttl, mac].join('.'), 2)).toBe(false);
+      expect(
+        verifyConsoleToken(other, [other, ver, iat, ttl, mac].join('.'), 2),
+      ).toBe(false);
       // Dodge revocation by rewriting the version.
-      expect(verifyConsoleToken(GAME, [gid, '3', iat, ttl, mac].join('.'), 3)).toBe(false);
+      expect(
+        verifyConsoleToken(GAME, [gid, '3', iat, ttl, mac].join('.'), 3),
+      ).toBe(false);
       // Extend life by rewriting iat or ttl.
       expect(
-        verifyConsoleToken(GAME, [gid, ver, String(Number(iat) + 9999), ttl, mac].join('.'), 2),
+        verifyConsoleToken(
+          GAME,
+          [gid, ver, String(Number(iat) + 9999), ttl, mac].join('.'),
+          2,
+        ),
       ).toBe(false);
-      expect(verifyConsoleToken(GAME, [gid, ver, iat, '604800', mac].join('.'), 2)).toBe(false);
+      expect(
+        verifyConsoleToken(GAME, [gid, ver, iat, '604800', mac].join('.'), 2),
+      ).toBe(false);
       // Flip one MAC nibble.
       const flipped = (mac[0] === 'a' ? 'b' : 'a') + mac.slice(1);
-      expect(verifyConsoleToken(GAME, [gid, ver, iat, ttl, flipped].join('.'), 2)).toBe(false);
+      expect(
+        verifyConsoleToken(GAME, [gid, ver, iat, ttl, flipped].join('.'), 2),
+      ).toBe(false);
     });
 
     it('rejects malformed shapes outright', () => {
@@ -155,8 +177,12 @@ describe('sports console token', () => {
       expect(verifyConsoleToken(GAME, null, 0)).toBe(false);
       expect(verifyConsoleToken(GAME, 'not-a-token', 0)).toBe(false);
       expect(verifyConsoleToken(GAME, `${GAME}.0.1.2`, 0)).toBe(false); // 4 parts
-      expect(verifyConsoleToken(GAME, `${GAME}.x.1.2.${'0'.repeat(32)}`, 0)).toBe(false);
-      expect(verifyConsoleToken(GAME, `${GAME}.0.1.2.${'0'.repeat(31)}`, 0)).toBe(false);
+      expect(
+        verifyConsoleToken(GAME, `${GAME}.x.1.2.${'0'.repeat(32)}`, 0),
+      ).toBe(false);
+      expect(
+        verifyConsoleToken(GAME, `${GAME}.0.1.2.${'0'.repeat(31)}`, 0),
+      ).toBe(false);
     });
   });
 
@@ -177,7 +203,10 @@ describe('sports console token', () => {
     });
 
     it('a console token is NEVER accepted as a feed token', () => {
-      const consoleTok = makeConsoleToken(GAME, { version: 0, ttlSeconds: 3600 });
+      const consoleTok = makeConsoleToken(GAME, {
+        version: 0,
+        ttlSeconds: 3600,
+      });
       expect(verifyConsoleToken(GAME, consoleTok, 0)).toBe(true);
       expect(verifyFeedToken(GAME, consoleTok, 0)).toBe(false);
     });
@@ -210,7 +239,13 @@ describe('sports console token', () => {
         .update(`console:${GAME}:0:${iat}:3600`)
         .digest('hex')
         .slice(0, 32);
-      expect(verifyConsoleToken(GAME, `${GAME}.0.${iat}.3600.${consolePurposeMac}`, 0)).toBe(true);
+      expect(
+        verifyConsoleToken(
+          GAME,
+          `${GAME}.0.${iat}.3600.${consolePurposeMac}`,
+          0,
+        ),
+      ).toBe(true);
     });
   });
 
@@ -224,10 +259,16 @@ describe('sports console token', () => {
       expect(parseConsoleTokenGameId('')).toBeNull();
       expect(parseConsoleTokenGameId(makeFeedToken(GAME))).toBeNull(); // bare
       expect(
-        parseConsoleTokenGameId(makeFeedToken(GAME, { version: 1, ttlSeconds: 60 })),
+        parseConsoleTokenGameId(
+          makeFeedToken(GAME, { version: 1, ttlSeconds: 60 }),
+        ),
       ).toBeNull(); // 4-part structured
-      expect(parseConsoleTokenGameId(`${GAME}.x.1.2.${'0'.repeat(32)}`)).toBeNull();
-      expect(parseConsoleTokenGameId(`bad:id.0.1.2.${'0'.repeat(32)}`)).toBeNull();
+      expect(
+        parseConsoleTokenGameId(`${GAME}.x.1.2.${'0'.repeat(32)}`),
+      ).toBeNull();
+      expect(
+        parseConsoleTokenGameId(`bad:id.0.1.2.${'0'.repeat(32)}`),
+      ).toBeNull();
     });
   });
 
@@ -257,16 +298,22 @@ describe('sports console token', () => {
         .update(`console:${g}:${v}:${iat}:${ttl}`)
         .digest('hex')
         .slice(0, 32);
-      expect(verifyConsoleTokenScope(GAME, `${g}.${v}.${iat}.${ttl}.${forged}`, 0)).toBeNull();
+      expect(
+        verifyConsoleTokenScope(GAME, `${g}.${v}.${iat}.${ttl}.${forged}`, 0),
+      ).toBeNull();
       // Flipping one MAC character never lands on another scope.
       const flipped = mac.slice(0, -1) + (mac.endsWith('0') ? '1' : '0');
-      expect(verifyConsoleTokenScope(GAME, `${g}.${v}.${iat}.${ttl}.${flipped}`, 0)).toBeNull();
+      expect(
+        verifyConsoleTokenScope(GAME, `${g}.${v}.${iat}.${ttl}.${flipped}`, 0),
+      ).toBeNull();
     });
 
     it('revocation, expiry and game binding apply to every scope', () => {
       const tok = makeConsoleToken(GAME, { version: 1, scope: 'timer' });
       expect(verifyConsoleTokenScope(GAME, tok, 2)).toBeNull();
-      expect(verifyConsoleTokenScope('a3d1b2c4-5678-4abc-9def-000000000002', tok, 1)).toBeNull();
+      expect(
+        verifyConsoleTokenScope('a3d1b2c4-5678-4abc-9def-000000000002', tok, 1),
+      ).toBeNull();
       const realNow = Date.now;
       Date.now = () => realNow() + (DEFAULT_CONSOLE_TOKEN_TTL_SEC + 5) * 1000;
       try {
@@ -277,16 +324,50 @@ describe('sports console token', () => {
     });
 
     it('the allow table (@cms/api-types): full is the frozen original five; the volunteer duties ride only on newer scopes', () => {
-      expect([...CONSOLE_SCOPES]).toEqual(['full', 'table', 'scorer', 'timer', 'shot', 'presentation']);
-      expect([...CONSOLE_SCOPE_ALLOWS.full].sort()).toEqual(['clock', 'cue', 'score', 'segment', 'timeout']);
-      expect([...CONSOLE_SCOPE_ALLOWS.table].sort()).toEqual(
-        ['clock', 'cue', 'penalties', 'playClock', 'possession', 'score', 'segment', 'shotClock', 'stats', 'timeout'],
-      );
-      expect([...CONSOLE_SCOPE_ALLOWS.scorer].sort()).toEqual(
-        ['cue', 'penalties', 'possession', 'score', 'stats', 'timeout'],
-      );
-      expect([...CONSOLE_SCOPE_ALLOWS.timer].sort()).toEqual(['clock', 'segment', 'timeout']);
-      expect([...CONSOLE_SCOPE_ALLOWS.shot].sort()).toEqual(['playClock', 'shotClock']);
+      expect([...CONSOLE_SCOPES]).toEqual([
+        'full',
+        'table',
+        'scorer',
+        'timer',
+        'shot',
+        'presentation',
+      ]);
+      expect([...CONSOLE_SCOPE_ALLOWS.full].sort()).toEqual([
+        'clock',
+        'cue',
+        'score',
+        'segment',
+        'timeout',
+      ]);
+      expect([...CONSOLE_SCOPE_ALLOWS.table].sort()).toEqual([
+        'clock',
+        'cue',
+        'penalties',
+        'playClock',
+        'possession',
+        'score',
+        'segment',
+        'shotClock',
+        'stats',
+        'timeout',
+      ]);
+      expect([...CONSOLE_SCOPE_ALLOWS.scorer].sort()).toEqual([
+        'cue',
+        'penalties',
+        'possession',
+        'score',
+        'stats',
+        'timeout',
+      ]);
+      expect([...CONSOLE_SCOPE_ALLOWS.timer].sort()).toEqual([
+        'clock',
+        'segment',
+        'timeout',
+      ]);
+      expect([...CONSOLE_SCOPE_ALLOWS.shot].sort()).toEqual([
+        'playClock',
+        'shotClock',
+      ]);
       expect([...CONSOLE_SCOPE_ALLOWS.presentation]).toEqual(['cue']);
     });
 
@@ -294,23 +375,55 @@ describe('sports console token', () => {
       const secret = process.env.SPORTS_CONSOLE_SECRET as string;
       const iat = Math.floor(Date.now() / 1000);
       const macFor = (input: string) =>
-        crypto.createHmac('sha256', secret).update(input).digest('hex').slice(0, 32);
+        crypto
+          .createHmac('sha256', secret)
+          .update(input)
+          .digest('hex')
+          .slice(0, 32);
       const base = `console:${GAME}:0:${iat}:3600`;
       // Positive control: the documented inputs verify as exactly their scope.
-      expect(verifyConsoleTokenScope(GAME, `${GAME}.0.${iat}.3600.${macFor(base)}`, 0)).toBe('full');
+      expect(
+        verifyConsoleTokenScope(
+          GAME,
+          `${GAME}.0.${iat}.3600.${macFor(base)}`,
+          0,
+        ),
+      ).toBe('full');
       for (const scope of CONSOLE_SCOPES.filter((s) => s !== 'full')) {
-        expect(verifyConsoleTokenScope(GAME, `${GAME}.0.${iat}.3600.${macFor(`${base}:${scope}`)}`, 0)).toBe(scope);
+        expect(
+          verifyConsoleTokenScope(
+            GAME,
+            `${GAME}.0.${iat}.3600.${macFor(`${base}:${scope}`)}`,
+            0,
+          ),
+        ).toBe(scope);
       }
       // A scope name outside the table, signed with the REAL secret, is nothing.
       for (const bogus of ['admin', 'status', 'table ', 'TABLE', 'full']) {
-        expect(verifyConsoleTokenScope(GAME, `${GAME}.0.${iat}.3600.${macFor(`${base}:${bogus}`)}`, 0)).toBeNull();
+        expect(
+          verifyConsoleTokenScope(
+            GAME,
+            `${GAME}.0.${iat}.3600.${macFor(`${base}:${bogus}`)}`,
+            0,
+          ),
+        ).toBeNull();
       }
       // The retired lane-B1 prototype (a readable role in a 6-part token under
       // a "console-role:" purpose) never verifies and never even parses.
       const b1Mac = macFor(`console-role:${GAME}:0:${iat}:3600:table`);
-      expect(verifyConsoleTokenScope(GAME, `${GAME}.0.${iat}.3600.${b1Mac}`, 0)).toBeNull();
-      expect(verifyConsoleTokenScope(GAME, `${GAME}.0.${iat}.3600.table.${b1Mac}`, 0)).toBeNull();
-      expect(parseConsoleTokenGameId(`${GAME}.0.${iat}.3600.table.${b1Mac}`)).toBeNull();
+      expect(
+        verifyConsoleTokenScope(GAME, `${GAME}.0.${iat}.3600.${b1Mac}`, 0),
+      ).toBeNull();
+      expect(
+        verifyConsoleTokenScope(
+          GAME,
+          `${GAME}.0.${iat}.3600.table.${b1Mac}`,
+          0,
+        ),
+      ).toBeNull();
+      expect(
+        parseConsoleTokenGameId(`${GAME}.0.${iat}.3600.table.${b1Mac}`),
+      ).toBeNull();
     });
 
     it('a scope cannot be added to a token as text: a 6th field is refused outright', () => {

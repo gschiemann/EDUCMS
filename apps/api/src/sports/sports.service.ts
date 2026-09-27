@@ -7930,9 +7930,12 @@ export class SportsService {
     actor: CommandInput,
   ) {
     const ctx = resolveCommandContext(actor);
-    const linkRef = ctx.actor.kind === 'console' && ctx.actor.ref ? ctx.actor.ref : null;
+    const linkRef =
+      ctx.actor.kind === 'console' && ctx.actor.ref ? ctx.actor.ref : null;
     if (!linkRef) {
-      throw new BadRequestException('Only a scorekeeper link undoes its own action here');
+      throw new BadRequestException(
+        'Only a scorekeeper link undoes its own action here',
+      );
     }
     await this.owned(tenantId, gameId);
     const receipt = await this.prisma.client.gameCommand.findFirst({
@@ -7964,7 +7967,8 @@ export class SportsService {
     if (!latest || latest.commandId !== targetCommandId) {
       throw new ConflictException({
         code: 'CONSOLE_UNDO_NOT_LATEST',
-        message: 'This link made another change after that one. Only its latest change can be undone here.',
+        message:
+          'This link made another change after that one. Only its latest change can be undone here.',
       });
     }
     const events = await this.prisma.client.gameEvent.findMany({
