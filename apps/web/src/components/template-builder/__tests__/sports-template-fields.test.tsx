@@ -70,3 +70,55 @@ describe('F28 — HS / College / Pro live scoreboard can be bound and styled', (
     expect(lastCfg(updateZone)).toMatchObject({ tier: 'pro' });
   });
 });
+
+describe('F29 — Main Scoreboard: live values are explicit, overrides are marked and removable', () => {
+  it('live mode: an unset game fact reads "From the game" and nothing is written by mounting or by one stray click', () => {
+    const updateZone = jest.fn();
+    mountFields({ variant: 'scoreboard-main', gameId: 'g-live' }, updateZone);
+    expect(screen.getAllByText(/From the game/).length).toBeGreaterThan(5);
+    // The old panel rendered a "Home score" box showing 0 that wrote on first touch.
+    expect(screen.queryByLabelText('Home score')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Override Home score' }));
+    expect(updateZone).not.toHaveBeenCalled();
+    // Only typing a value writes the override.
+    fireEvent.change(screen.getByLabelText('Home score'), { target: { value: '12' } });
+    expect(lastCfg(updateZone)).toMatchObject({ homeScore: 12 });
+  });
+
+  it('an override is badged and "Use live value" removes it', () => {
+    const updateZone = jest.fn();
+    mountFields({ variant: 'scoreboard-main', gameId: 'g-live', homeScore: 9 }, updateZone);
+    expect(screen.getByText('Overrides the live value')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Use the live value for Home score' }));
+    const cfg = lastCfg(updateZone);
+    expect('homeScore' in cfg && cfg.homeScore === undefined).toBe(true);
+  });
+
+  it('binding a game clears every typed game fact (so the live score shows) and keeps team branding', () => {
+    const updateZone = jest.fn();
+    mountFields({ variant: 'scoreboard-main', homeScore: 9, awayScore: 3, clock: '1:00', homeName: 'LIONS' }, updateZone);
+    fireEvent.change(screen.getByRole('combobox', { name: /bind to game/i }), { target: { value: 'g-live' } });
+    const cfg = lastCfg(updateZone);
+    expect(cfg.gameId).toBe('g-live');
+    expect(cfg.homeScore).toBeUndefined();
+    expect(cfg.awayScore).toBeUndefined();
+    expect(cfg.clock).toBeUndefined();
+    expect(cfg.homeName).toBe('LIONS');
+    expect(screen.getByRole('status')).toHaveTextContent('Cleared 3 typed values so the live game shows.');
+  });
+
+  it('manual mode: plain fields, no game binding, no live badges', () => {
+    mountFields({ variant: 'scoreboard-main', dataMode: 'manual' }, jest.fn());
+    expect(screen.queryByRole('combobox', { name: /bind to game/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/From the game/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Home score')).toBeInTheDocument();
+    expect(screen.getByText(/never reads a game and never shows LIVE/)).toBeInTheDocument();
+  });
+
+  it('switching the source writes config.dataMode', () => {
+    const updateZone = jest.fn();
+    mountFields({ variant: 'scoreboard-main' }, updateZone);
+    fireEvent.change(screen.getByRole('combobox', { name: 'Where the numbers come from' }), { target: { value: 'manual' } });
+    expect(lastCfg(updateZone)).toMatchObject({ dataMode: 'manual' });
+  });
+});

@@ -2780,7 +2780,52 @@
       "pro": "Professional"
     },
     "bannerText": "Banner text",
-    "boundHint": "Leave it unbound to follow the game this layout is assigned to. On any other screen it shows dashes until a game is bound — never a made-up score."
+    "boundHint": "Leave it unbound to follow the game this layout is assigned to. On any other screen it shows dashes until a game is bound — never a made-up score.",
+    "source": {
+      "label": "Where the numbers come from",
+      "live": "Live game",
+      "manual": "Manual — I type every value",
+      "liveHint": "Scores, clock and period come from the bound game. Anything you override below is marked, and one tap puts it back to live.",
+      "manualHint": "A hand-typed board. It never reads a game and never shows LIVE."
+    },
+    "override": {
+      "fromGame": "From the game",
+      "override": "Override",
+      "overrideField": "Override {field}",
+      "active": "Overrides the live value",
+      "typeToOverride": "Type a value to override the game",
+      "useLive": "Use live value",
+      "useLiveField": "Use the live value for {field}",
+      "placeholderLive": "Type to override"
+    },
+    "bindCleared": "{count, plural, one {Cleared # typed value} other {Cleared # typed values}} so the live game shows.",
+    "section": {
+      "game": "Game values",
+      "teams": "Teams"
+    },
+    "fields": {
+      "accent": "Accent (trim)",
+      "homeScore": "Home score",
+      "awayScore": "Away score",
+      "clock": "Clock",
+      "period": "Period",
+      "possession": "Possession",
+      "possessionNone": "None",
+      "home": "Home",
+      "away": "Away",
+      "shotClock": "Shot clock (seconds)",
+      "homeFouls": "Home fouls",
+      "awayFouls": "Away fouls",
+      "homeTimeouts": "Home timeouts left",
+      "awayTimeouts": "Away timeouts left",
+      "status": "Status",
+      "homeName": "Home team name",
+      "awayName": "Away team name",
+      "homeColor": "Home color",
+      "awayColor": "Away color",
+      "homeLogo": "Home logo",
+      "awayLogo": "Away logo"
+    }
   },
   "posBind": {
     "fieldPrice": "Price",

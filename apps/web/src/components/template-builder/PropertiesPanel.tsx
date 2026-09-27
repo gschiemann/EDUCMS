@@ -33,6 +33,12 @@ import { ALL_V2_WIDGETS } from '@/components/widgets/v2/registry';
 // in the orchestrator's Properties editor.
 import { CTS_CUE_LABELS as CTS_CUE_LABELS_LOCAL } from '@/components/widgets/sports/CtsRibbonWidgets';
 import {
+  clearFactOverridesPatch,
+  isSetValue,
+  overriddenFacts,
+  type MainScoreboardFactKey,
+} from '@/components/widgets/sports/scoreboard-sources';
+import {
   ctsFieldsByGroup,
   ctsFieldLabel,
   defaultCtsField,
@@ -3768,27 +3774,13 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
         // game; a live Game still wins over these at render time). 2026-05-29:
         // operator "make sure its editable" — type names/scores/colors here.
         if (sbVariant === 'scoreboard-main') {
-          // Sports Wave S2-2 (2026-07-02) — "Bind to game" picker, above
-          // the hand-typed fields since binding is the primary path; the
-          // hand-typed overrides below still win at render time even
-          // when a game is bound (MainScoreboardWidget's `pick()`).
-          fields.push(<GameBindField key="gameId" value={cfg.gameId || ''} onChange={(v) => setField({ gameId: v })} />);
-          fields.push(<TextField key="bannerText" label="Banner text" value={cfg.bannerText ?? ''} placeholder="GAME NIGHT" onChange={(v) => setField({ bannerText: v })} />);
-          fields.push(
-            <div key="homeName" data-field-section="homeName">
-              <TextField label="Home team" value={cfg.homeName ?? ''} placeholder="EAGLES (blank = live game)" onChange={(v) => setField({ homeName: v })} />
-            </div>,
-          );
-          fields.push(<TextField key="awayName" label="Away team" value={cfg.awayName ?? ''} placeholder="TIGERS (blank = live game)" onChange={(v) => setField({ awayName: v })} />);
-          fields.push(<NumField key="homeScore" id="sb-homeScore" label="Home score" value={typeof cfg.homeScore === 'number' ? cfg.homeScore : 0} onChange={(v) => setField({ homeScore: v })} min={0} max={999} step={1} />);
-          fields.push(<NumField key="awayScore" id="sb-awayScore" label="Away score" value={typeof cfg.awayScore === 'number' ? cfg.awayScore : 0} onChange={(v) => setField({ awayScore: v })} min={0} max={999} step={1} />);
-          fields.push(<ColorField key="homeColor" label="Home color" value={cfg.homeColor || '#1e3a8a'} onChange={(v) => setField({ homeColor: v })} />);
-          fields.push(<ColorField key="awayColor" label="Away color" value={cfg.awayColor || '#b91c1c'} onChange={(v) => setField({ awayColor: v })} />);
-          fields.push(<ColorField key="sbAccent" label="Accent (gold trim)" value={cfg.accentColor || '#fbbf24'} onChange={(v) => setField({ accentColor: v })} />);
-          fields.push(<TextField key="period" label="Period" value={cfg.period ?? ''} placeholder="auto from game (e.g. QUARTER 3)" onChange={(v) => setField({ period: v })} />);
-          fields.push(<TextField key="clock" label="Clock" value={cfg.clock ?? ''} placeholder="auto from game (e.g. 7:42)" onChange={(v) => setField({ clock: v })} />);
-          fields.push(<AssetPickerField key="homeLogoUrl" label="Home logo" value={cfg.homeLogoUrl || ''} kind="image" onChange={(v) => setField({ homeLogoUrl: v })} />);
-          fields.push(<AssetPickerField key="awayLogoUrl" label="Away logo" value={cfg.awayLogoUrl || ''} kind="image" onChange={(v) => setField({ awayLogoUrl: v })} />);
+          // K-12 launch audit F29 (2026-09-27) — explicit source modes. The
+          // old fields here were plain inputs that WON over the bound game
+          // at render time (MainScoreboardWidget's `pick()`), and the score
+          // boxes showed 0 when unset and wrote on first touch: a preview
+          // score silently masked the real one after binding. See
+          // `MainScoreboardFields` + widgets/sports/scoreboard-sources.ts.
+          fields.push(<MainScoreboardFields key="main-sb" cfg={cfg} setField={setField} />);
           break;
         }
         // Sports Wave S2-2 (2026-07-02) — RibbonScoreboardWidget /
@@ -9025,10 +9017,14 @@ function TextField({ label, value, placeholder, onChange, onFocus }: { label: st
   // so nested/rapid focus doesn't push extra snapshots.
   const beginTransaction = useBuilderStore((s) => s.beginTransaction);
   const endTransaction = useBuilderStore((s) => s.endTransaction);
+  // Label ↔ input association (same fix SelectField got in the 2026-08-24
+  // a11y wave): screen readers announce the field, getByLabelText finds it.
+  const inputId = useId();
   return (
     <div>
-      <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">{label}</label>
+      <label htmlFor={inputId} className="block text-[10px] font-semibold text-slate-500 mb-1.5">{label}</label>
       <input
+        id={inputId}
         type="text"
         value={local}
         placeholder={placeholder}
@@ -9365,6 +9361,197 @@ function SportsTierFields({
         onChange={(v) => setField({ bannerText: v })}
       />
       <p className="text-[10px] text-slate-400 px-0.5">{t('boundHint')}</p>
+    </div>
+  );
+}
+
+/**
+ * One field whose value can come from the bound game (K-12 launch audit F29).
+ *
+ *   sourced && unset  → "● From the game" + an Override button — nothing is
+ *                       written until the operator types, so a stray click
+ *                       can never mask the live value;
+ *   sourced && set    → the input, badged "Overrides the live value", with
+ *                       "Use live value" to clear it;
+ *   !sourced          → the plain input (a manual board, or a presentation
+ *                       field that has no live source).
+ */
+function SourcedField({
+  label,
+  sourced,
+  isSet,
+  onClear,
+  children,
+}: {
+  label: string;
+  sourced: boolean;
+  isSet: boolean;
+  onClear: () => void;
+  children: React.ReactNode;
+}) {
+  const t = useTranslations('sportsTemplates');
+  const [editing, setEditing] = useState(false);
+  if (!sourced) return <>{children}</>;
+  if (!isSet && !editing) {
+    return (
+      <div data-sourced-field="live" className="flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50/60 px-3 py-2">
+        <div className="min-w-0">
+          <div className="text-[10px] font-semibold text-slate-500">{label}</div>
+          <div className="text-[11px] font-medium text-emerald-700">● {t('override.fromGame')}</div>
+        </div>
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          aria-label={t('override.overrideField', { field: label })}
+          className="shrink-0 px-2.5 py-1 rounded-md border border-slate-200 bg-white text-[11px] font-semibold text-slate-600 hover:border-amber-300 hover:text-amber-700"
+        >
+          {t('override.override')}
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div data-sourced-field={isSet ? 'override' : 'editing'} className="rounded-lg border border-amber-300 bg-amber-50/70 p-2 space-y-1.5">
+      {children}
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-bold text-amber-800">
+          {isSet ? t('override.active') : t('override.typeToOverride')}
+        </span>
+        <button
+          type="button"
+          onClick={() => { onClear(); setEditing(false); }}
+          aria-label={t('override.useLiveField', { field: label })}
+          className="px-2.5 py-1 rounded-md border border-amber-300 bg-white text-[11px] font-semibold text-amber-800 hover:bg-amber-100"
+        >
+          {t('override.useLive')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Parse a typed number: '' clears (undefined), anything else must be finite. */
+function parseTypedNumber(v: string): number | undefined {
+  const s = v.trim();
+  if (!s) return undefined;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+/**
+ * Main Scoreboard (`scoreboard-main`) — explicit source modes (audit F29).
+ * Live (default): Bind to game + every game fact "from the game" unless
+ * explicitly overridden; binding clears the fact overrides so a sample score
+ * typed while laying the board out can never mask the real one. Manual: a
+ * hand-typed board, every value an ordinary field.
+ */
+function MainScoreboardFields({
+  cfg,
+  setField,
+}: {
+  cfg: Record<string, any>;
+  setField: (patch: Record<string, any>) => void;
+}) {
+  const t = useTranslations('sportsTemplates');
+  const manual = cfg.dataMode === 'manual';
+  const live = !manual;
+  const [cleared, setCleared] = useState(0);
+  const has = (k: string) => isSetValue(cfg[k]);
+  const clear = (k: string) => () => setField({ [k]: undefined });
+  const numText = (k: string) => (typeof cfg[k] === 'number' ? String(cfg[k]) : '');
+
+  const numberFact = (k: MainScoreboardFactKey, label: string) => (
+    <SourcedField key={k} label={label} sourced={live} isSet={has(k)} onClear={clear(k)}>
+      <TextField label={label} value={numText(k)} placeholder={manual ? '0' : t('override.placeholderLive')} onChange={(v) => setField({ [k]: parseTypedNumber(v) })} />
+    </SourcedField>
+  );
+  const textFact = (k: MainScoreboardFactKey, label: string, placeholder: string) => (
+    <SourcedField key={k} label={label} sourced={live} isSet={has(k)} onClear={clear(k)}>
+      <TextField label={label} value={cfg[k] ?? ''} placeholder={placeholder} onChange={(v) => setField({ [k]: v === '' ? undefined : v })} />
+    </SourcedField>
+  );
+
+  return (
+    <div className="space-y-3">
+      <SelectField
+        label={t('source.label')}
+        value={manual ? 'manual' : 'live'}
+        options={[
+          ['live', t('source.live')],
+          ['manual', t('source.manual')],
+        ]}
+        onChange={(v) => setField({ dataMode: v === 'manual' ? 'manual' : 'live' })}
+      />
+      <p className="text-[10px] text-slate-400 px-0.5">{manual ? t('source.manualHint') : t('source.liveHint')}</p>
+      {live && (
+        <>
+          <GameBindField
+            value={cfg.gameId || ''}
+            onChange={(v) => {
+              const n = v ? overriddenFacts(cfg).length : 0;
+              setCleared(n);
+              setField({ gameId: v, ...(v ? clearFactOverridesPatch() : {}) });
+            }}
+          />
+          {cleared > 0 && (
+            <p role="status" className="text-[11px] font-medium text-emerald-700 px-0.5">{t('bindCleared', { count: cleared })}</p>
+          )}
+        </>
+      )}
+      <div data-field-section="bannerText">
+        <TextField label={t('bannerText')} value={cfg.bannerText ?? ''} placeholder="GAME NIGHT" onChange={(v) => setField({ bannerText: v })} />
+      </div>
+      <ColorField label={t('fields.accent')} value={cfg.accentColor || '#fbbf24'} onChange={(v) => setField({ accentColor: v })} />
+
+      <div className="pt-2 text-[10px] font-bold text-indigo-500 uppercase tracking-widest border-b border-slate-200">{t('section.game')}</div>
+      {numberFact('homeScore', t('fields.homeScore'))}
+      {numberFact('awayScore', t('fields.awayScore'))}
+      {textFact('clock', t('fields.clock'), '7:42')}
+      {textFact('period', t('fields.period'), 'QUARTER 3')}
+      <SourcedField label={t('fields.possession')} sourced={live} isSet={has('possession')} onClear={clear('possession')}>
+        <SelectField
+          label={t('fields.possession')}
+          value={String(cfg.possession || '')}
+          options={[
+            ['', t('fields.possessionNone')],
+            ['home', t('fields.home')],
+            ['away', t('fields.away')],
+          ]}
+          onChange={(v) => setField({ possession: v === '' ? undefined : v })}
+        />
+      </SourcedField>
+      {numberFact('shotClock', t('fields.shotClock'))}
+      {numberFact('homeFouls', t('fields.homeFouls'))}
+      {numberFact('awayFouls', t('fields.awayFouls'))}
+      {numberFact('homeTimeouts', t('fields.homeTimeouts'))}
+      {numberFact('awayTimeouts', t('fields.awayTimeouts'))}
+      {live && has('status') && (
+        <SourcedField label={t('fields.status')} sourced isSet onClear={clear('status')}>
+          <TextField label={t('fields.status')} value={String(cfg.status)} onChange={(v) => setField({ status: v === '' ? undefined : v })} />
+        </SourcedField>
+      )}
+
+      <div className="pt-2 text-[10px] font-bold text-indigo-500 uppercase tracking-widest border-b border-slate-200">{t('section.teams')}</div>
+      <div data-field-section="homeName">
+        <SourcedField label={t('fields.homeName')} sourced={live} isSet={has('homeName')} onClear={clear('homeName')}>
+          <TextField label={t('fields.homeName')} value={cfg.homeName ?? ''} placeholder="EAGLES" onChange={(v) => setField({ homeName: v === '' ? undefined : v })} />
+        </SourcedField>
+      </div>
+      <SourcedField label={t('fields.awayName')} sourced={live} isSet={has('awayName')} onClear={clear('awayName')}>
+        <TextField label={t('fields.awayName')} value={cfg.awayName ?? ''} placeholder="TIGERS" onChange={(v) => setField({ awayName: v === '' ? undefined : v })} />
+      </SourcedField>
+      <SourcedField label={t('fields.homeColor')} sourced={live} isSet={has('homeColor')} onClear={clear('homeColor')}>
+        <ColorField label={t('fields.homeColor')} value={cfg.homeColor || '#1e3a8a'} onChange={(v) => setField({ homeColor: v })} />
+      </SourcedField>
+      <SourcedField label={t('fields.awayColor')} sourced={live} isSet={has('awayColor')} onClear={clear('awayColor')}>
+        <ColorField label={t('fields.awayColor')} value={cfg.awayColor || '#b91c1c'} onChange={(v) => setField({ awayColor: v })} />
+      </SourcedField>
+      <SourcedField label={t('fields.homeLogo')} sourced={live} isSet={has('homeLogoUrl')} onClear={clear('homeLogoUrl')}>
+        <AssetPickerField label={t('fields.homeLogo')} value={cfg.homeLogoUrl || ''} kind="image" onChange={(v) => setField({ homeLogoUrl: v || undefined })} />
+      </SourcedField>
+      <SourcedField label={t('fields.awayLogo')} sourced={live} isSet={has('awayLogoUrl')} onClear={clear('awayLogoUrl')}>
+        <AssetPickerField label={t('fields.awayLogo')} value={cfg.awayLogoUrl || ''} kind="image" onChange={(v) => setField({ awayLogoUrl: v || undefined })} />
+      </SourcedField>
     </div>
   );
 }

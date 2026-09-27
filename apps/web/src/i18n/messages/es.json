@@ -2780,7 +2780,52 @@
       "pro": "Profesional"
     },
     "bannerText": "Texto del encabezado",
-    "boundHint": "Déjelo sin vincular para que siga el partido al que está asignado este diseño. En cualquier otra pantalla muestra guiones hasta que se vincule un partido; nunca un marcador inventado."
+    "boundHint": "Déjelo sin vincular para que siga el partido al que está asignado este diseño. En cualquier otra pantalla muestra guiones hasta que se vincule un partido; nunca un marcador inventado.",
+    "source": {
+      "label": "De dónde vienen los números",
+      "live": "Partido en vivo",
+      "manual": "Manual: escribo cada valor",
+      "liveHint": "El marcador, el reloj y el periodo vienen del partido vinculado. Todo lo que sobrescriba abajo queda marcado y con un toque vuelve a los datos en vivo.",
+      "manualHint": "Un marcador escrito a mano. Nunca lee un partido y nunca muestra EN VIVO."
+    },
+    "override": {
+      "fromGame": "Del partido",
+      "override": "Sobrescribir",
+      "overrideField": "Sobrescribir {field}",
+      "active": "Sobrescribe el valor en vivo",
+      "typeToOverride": "Escriba un valor para sobrescribir el partido",
+      "useLive": "Usar valor en vivo",
+      "useLiveField": "Usar el valor en vivo para {field}",
+      "placeholderLive": "Escriba para sobrescribir"
+    },
+    "bindCleared": "{count, plural, one {Se borró # valor escrito} other {Se borraron # valores escritos}} para que se vea el partido en vivo.",
+    "section": {
+      "game": "Valores del partido",
+      "teams": "Equipos"
+    },
+    "fields": {
+      "accent": "Acento (borde)",
+      "homeScore": "Puntos local",
+      "awayScore": "Puntos visitante",
+      "clock": "Reloj",
+      "period": "Periodo",
+      "possession": "Posesión",
+      "possessionNone": "Ninguna",
+      "home": "Local",
+      "away": "Visitante",
+      "shotClock": "Reloj de tiro (segundos)",
+      "homeFouls": "Faltas local",
+      "awayFouls": "Faltas visitante",
+      "homeTimeouts": "Tiempos muertos local",
+      "awayTimeouts": "Tiempos muertos visitante",
+      "status": "Estado",
+      "homeName": "Nombre del equipo local",
+      "awayName": "Nombre del equipo visitante",
+      "homeColor": "Color local",
+      "awayColor": "Color visitante",
+      "homeLogo": "Logotipo local",
+      "awayLogo": "Logotipo visitante"
+    }
   },
   "posBind": {
     "fieldPrice": "Precio",

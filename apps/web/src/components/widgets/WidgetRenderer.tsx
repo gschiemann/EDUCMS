@@ -770,7 +770,10 @@ export function WidgetPreview(props: {
   // per-zone gameId.
   const gameId = typeof cfg.gameId === 'string' ? cfg.gameId.trim() : '';
   const hasAmbientProvider = useHasAmbientGameProvider();
-  const wrapInGameProvider = !!gameId && !hasAmbientProvider && GAME_STATE_WIDGET_TYPES.has(widgetType);
+  // A zone switched to a hand-typed board (`dataMode: 'manual'`, K-12 launch
+  // audit F29) never reads a game, so a gameId left over from live mode must
+  // not keep a 750 ms poll running on the player for data nobody renders.
+  const wrapInGameProvider = !!gameId && !hasAmbientProvider && GAME_STATE_WIDGET_TYPES.has(widgetType) && cfg.dataMode !== 'manual';
 
   // Both wraps are independent and compose — a real player rendering a
   // gameId-bound zone gets BOTH: the RenderSurfaceContext (irrelevant

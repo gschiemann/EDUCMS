@@ -2780,7 +2780,52 @@
       "pro": "职业"
     },
     "bannerText": "横幅文字",
-    "boundHint": "不绑定时，它会跟随此布局所分配的比赛。在其他屏幕上，绑定比赛之前只显示短横线——绝不显示编造的比分。"
+    "boundHint": "不绑定时，它会跟随此布局所分配的比赛。在其他屏幕上，绑定比赛之前只显示短横线——绝不显示编造的比分。",
+    "source": {
+      "label": "数字来源",
+      "live": "实时比赛",
+      "manual": "手动——每个数值都由我输入",
+      "liveHint": "比分、计时和节次来自已绑定的比赛。您在下方覆盖的任何内容都会被标记，点一下即可恢复实时数据。",
+      "manualHint": "手动输入的记分牌。它从不读取比赛，也从不显示“直播”。"
+    },
+    "override": {
+      "fromGame": "来自比赛",
+      "override": "覆盖",
+      "overrideField": "覆盖{field}",
+      "active": "正在覆盖实时数值",
+      "typeToOverride": "输入数值以覆盖比赛数据",
+      "useLive": "使用实时数值",
+      "useLiveField": "{field}使用实时数值",
+      "placeholderLive": "输入以覆盖"
+    },
+    "bindCleared": "已清除 {count, plural, other {# 个手动输入的数值}}，以显示实时比赛。",
+    "section": {
+      "game": "比赛数值",
+      "teams": "球队"
+    },
+    "fields": {
+      "accent": "强调色（边框）",
+      "homeScore": "主队得分",
+      "awayScore": "客队得分",
+      "clock": "计时",
+      "period": "节次",
+      "possession": "球权",
+      "possessionNone": "无",
+      "home": "主队",
+      "away": "客队",
+      "shotClock": "进攻计时（秒）",
+      "homeFouls": "主队犯规",
+      "awayFouls": "客队犯规",
+      "homeTimeouts": "主队剩余暂停",
+      "awayTimeouts": "客队剩余暂停",
+      "status": "状态",
+      "homeName": "主队名称",
+      "awayName": "客队名称",
+      "homeColor": "主队颜色",
+      "awayColor": "客队颜色",
+      "homeLogo": "主队标志",
+      "awayLogo": "客队标志"
+    }
   },
   "posBind": {
     "fieldPrice": "价格",

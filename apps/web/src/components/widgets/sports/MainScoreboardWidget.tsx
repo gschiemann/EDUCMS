@@ -39,7 +39,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { findSport, formatScore } from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
-import { useGameState, fmtClock, type GameSnapshot } from './GameStateContext';
+import { useGameState, useRenderSurface, fmtClock, type GameSnapshot } from './GameStateContext';
+import { overriddenFacts } from './scoreboard-sources';
 import { FitOneLine } from './FitOneLine';
 import { liveNeutral } from './cts-fields';
 import type { BaseCfg, WidgetProps } from '../v2/_shared/types';
@@ -164,11 +165,30 @@ export interface MainScoreboardCfg extends BaseCfg {
   awayTimeouts?: number;
   status?: string;
   hideWordmark?: boolean;
+  /**
+   * Where the numbers come from (audit F29). 'live' (default): the bound
+   * game, with any typed game fact shown in the builder as an explicit
+   * override. 'manual': a hand-typed board that never reads a game and
+   * never claims to be live.
+   */
+  dataMode?: 'live' | 'manual';
 }
+
+/** A manual board on a real screen: like a provider with no data — unset
+ *  values read neutral, never the sample, and no "bind a game" callout. */
+const MANUAL_PUBLIC = { snapshot: null, liveClockMs: 0 };
 
 export function MainScoreboardWidget({ config, live = true }: WidgetProps<MainScoreboardCfg>) {
   const c = config ?? {};
-  const state = useGameState();
+  const ambient = useGameState();
+  const surface = useRenderSurface();
+  // F29 — an explicit source mode. A manual board never reads a game: on a
+  // real screen it behaves like "provider, no data" (unset → neutral), in
+  // the builder like "no provider" (unset → the stamped sample).
+  const manual = c.dataMode === 'manual';
+  const state = manual ? (surface === 'player' ? MANUAL_PUBLIC : null) : ambient;
+  // Builder-only: typed game facts that are masking the live game right now.
+  const overrides = surface !== 'player' ? overriddenFacts(c as Record<string, unknown>) : [];
 
   const [sampleMs, setSampleMs] = useState(SAMPLE.clockMs);
   const [sampleShot, setSampleShot] = useState(14);
@@ -236,7 +256,7 @@ export function MainScoreboardWidget({ config, live = true }: WidgetProps<MainSc
   const homeLogoUrl = pick(c.homeLogoUrl, snap.homeLogoUrl);
   const awayLogoUrl = pick(c.awayLogoUrl, snap.awayLogoUrl);
   const status = String(pick(c.status, snap.status));
-  const isLive = status === 'LIVE' && live !== false && !isLiveNoData;
+  const isLive = !manual && status === 'LIVE' && live !== false && !isLiveNoData;
   const periodText = pick(c.period, isLiveNoData ? NEUTRAL : segmentLabel(def, snap));
   const clockText = pick(c.clock, hasClock ? (isLiveNoData ? liveNeutral('clock') : fmtClock(clockMs)) : '');
   const clockUrgent = !c.clock && !isLiveNoData && hasClock && snap.clockRunning && clockMs > 0 && clockMs < 60_000;
@@ -461,7 +481,7 @@ export function MainScoreboardWidget({ config, live = true }: WidgetProps<MainSc
             operator can lay out the board. A real screen ALWAYS has at
             least the phantom-unbound state (RenderSurfaceProvider
             surface="player"), so this can never show there. */}
-        {state == null && (
+        {state == null && !(manual && c.homeScore !== undefined && c.awayScore !== undefined && !!c.homeName && !!c.awayName) && (
           <div style={{ position: 'absolute', bottom: 24, right: 32, background: 'rgba(0,0,0,0.55)', color: '#facc15', fontWeight: 800, fontSize: 20, letterSpacing: 4, padding: '6px 16px', borderRadius: 8, border: '1px solid rgba(250,204,21,0.4)', zIndex: 5 }}>
             SAMPLE
           </div>
@@ -474,7 +494,16 @@ export function MainScoreboardWidget({ config, live = true }: WidgetProps<MainSc
             of silently looking broken. Never shown in the builder (the
             self-playing SAMPLE renders there instead) or once a real
             game/snapshot arrives. */}
-        {isLiveNoData && (
+        {/* F29 — builder-only: say plainly that typed values are hiding the
+            live game, so a preview score can never mask the real one
+            silently. The panel badges each one with "Use live value". */}
+        {overrides.length > 0 && (
+          <div data-sb-override-chip="" style={{ position: 'absolute', top: 24, left: 32, background: 'rgba(120,53,15,0.92)', color: '#fde68a', fontWeight: 800, fontSize: 20, letterSpacing: 3, padding: '6px 16px', borderRadius: 8, border: '1px solid rgba(253,230,138,0.5)', zIndex: 7 }}>
+            {overrides.length === 1 ? '1 VALUE OVERRIDES LIVE' : `${overrides.length} VALUES OVERRIDE LIVE`}
+          </div>
+        )}
+
+        {isLiveNoData && !manual && (
           <div
             style={{
               position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
