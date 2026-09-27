@@ -128,6 +128,36 @@ export interface TelemetryVideoReport {
   stalledMs?: number;
 }
 
+/**
+ * The large file this screen is downloading RIGHT NOW (2026-09-27, download
+ * visibility). A file ≥ 8 MiB plays only once it is completely on disk
+ * (readiness-gated playback, CLAUDE.md player rule 17). Until it is, the glass
+ * shows either the "Downloading content" splash (nothing else to show) or the
+ * PREVIOUS content, with the new playlist held back — and the dashboard could
+ * tell neither from "nothing scheduled". It rides inside the cache report on
+ * the routine tick: no new request, no new endpoint, no new column.
+ *
+ * A LIVENESS-GRADE fact, never a render proof (player rule 5): it says the
+ * page runs and bytes arrive, nothing about a painted frame.
+ *
+ * ⚠️ `cache` is a `strictObject` on the server: the API that accepts this key
+ * ships before the bundle that sends it, and if a report carrying it is still
+ * refused the page stops sending it for the rest of its session
+ * (`downloadReportRefused`) so liveness and render proof keep landing.
+ */
+export interface TelemetryDownloadReport {
+  /** The file's name — the last path segment of its URL, capped. */
+  file: string;
+  bytesLoaded: number;
+  /** Omitted until the player knows the file's size — never sent as 0. */
+  bytesTotal?: number;
+  /** A NEW playlist is held back while the previous content stays on glass. */
+  deferredCommit: boolean;
+}
+
+/** The server's cap is 256; the name is shown to an operator, 120 is plenty. */
+export const DOWNLOAD_FILE_MAX_CHARS = 120;
+
 export interface TelemetryBody {
   versions?: {
     player?: string;
@@ -143,7 +173,11 @@ export interface TelemetryBody {
      */
     bundleId?: string;
   };
-  cache?: { playlist?: TelemetryCacheTier; emergency?: TelemetryCacheTier };
+  cache?: {
+    playlist?: TelemetryCacheTier;
+    emergency?: TelemetryCacheTier;
+    downloading?: TelemetryDownloadReport;
+  };
   render?: TelemetryRenderBlock;
   refreshAckMs?: number;
   capsHash?: string;
@@ -353,6 +387,21 @@ export interface TelemetryBodyInput {
   /** The last video's playback sample (dropped frames, and rebuffer pauses
    *  when counted), when there is a new one to report. */
   video?: TelemetryVideoReport | null;
+  /**
+   * The large file downloading right now, if any (2026-09-27). Rides inside
+   * `cache`, so it is sent only together with the cache tiers — a report
+   * never carries a download without the counters it belongs beside.
+   */
+  download?: DownloadSnapshotInput | null;
+}
+
+/** What the page knows about its download (its `largeDownload` state) + the hold. */
+export interface DownloadSnapshotInput {
+  name: string | null | undefined;
+  bytesLoaded: number;
+  bytesTotal: number | null | undefined;
+  /** `pendingPlaylistCommitRef.current !== null` — the previous content is held on glass. */
+  deferredCommit: boolean;
 }
 
 /**
@@ -390,6 +439,8 @@ export function buildTelemetryBody(input: TelemetryBodyInput): TelemetryBody {
     body.cache = {};
     if (input.cache.playlist) body.cache.playlist = tier(input.cache.playlist);
     if (input.cache.emergency) body.cache.emergency = tier(input.cache.emergency);
+    const downloading = buildDownloadReport(input.download);
+    if (downloading) body.cache.downloading = downloading;
   }
 
   if (input.render) body.render = input.render;
@@ -435,6 +486,45 @@ function videoReport(v: TelemetryVideoReport): TelemetryVideoReport {
   const stalledMs = bounded(v.stalledMs, VIDEO_MAX_STALLED_MS);
   if (stalledMs !== null) out.stalledMs = stalledMs;
   return out;
+}
+
+/**
+ * The download snapshot as the server's strict schema accepts it, or null to
+ * send none. Only the four documented keys; the name capped; counts as
+ * non-negative ints; the size omitted until it is known (never 0); and never
+ * more bytes than the file has — the dashboard divides the two.
+ */
+export function buildDownloadReport(
+  input: DownloadSnapshotInput | null | undefined,
+): TelemetryDownloadReport | null {
+  if (!input) return null;
+  const loaded = input.bytesLoaded;
+  if (typeof loaded !== 'number' || !Number.isFinite(loaded) || loaded < 0) return null;
+  const totalRaw = input.bytesTotal;
+  const total =
+    typeof totalRaw === 'number' && Number.isFinite(totalRaw) && totalRaw > 0
+      ? Math.min(Math.floor(totalRaw), Number.MAX_SAFE_INTEGER)
+      : null;
+  const bytesLoaded = Math.min(Math.floor(loaded), total ?? Number.MAX_SAFE_INTEGER);
+  const out: TelemetryDownloadReport = {
+    file: String(input.name ?? '').trim().slice(0, DOWNLOAD_FILE_MAX_CHARS),
+    bytesLoaded,
+    deferredCommit: input.deferredCommit === true,
+  };
+  if (total !== null) out.bytesTotal = total;
+  return out;
+}
+
+/**
+ * Should the page stop sending the download snapshot for the rest of its
+ * session? Yes when the server answered 400 to a report that CARRIED one: an
+ * API from before the snapshot existed rejects the whole strict body, and
+ * every report after it would fail the same way — losing liveness and render
+ * proof along with the progress. Dropping the optional block is the self-heal;
+ * a 400 that persists without it was never about the snapshot.
+ */
+export function downloadReportRefused(status: number | null, sent: TelemetryBody): boolean {
+  return status === 400 && !!sent.cache?.downloading;
 }
 
 /** Only the two counters, only as non-negative ints — the server's schema

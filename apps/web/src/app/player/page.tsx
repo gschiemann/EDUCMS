@@ -104,6 +104,7 @@ import { readOwnBundleSha, readOwnBundleId, normalizeBundleSha } from './bundleS
 import {
   buildRenderBlock,
   buildTelemetryBody,
+  downloadReportRefused,
   initialTelemetryDelayMs,
   nextTelemetryDelayMs,
   outcomeFromStatus,
@@ -4711,6 +4712,11 @@ function PlayerPage() {
   // The large file the page is driving into the cache right now — feeds the
   // splash's real download bar while nothing is ready to play.
   const [largeDownload, setLargeDownload] = useState<{ name: string; bytesLoaded: number; bytesTotal: number | null } | null>(null);
+  // The same fact for the telemetry tick, which cannot read state (2026-09-27):
+  // the dashboard shows this download's progress from the cache report.
+  // Telemetry only — nothing here decides what plays.
+  const largeDownloadRef = useRef(largeDownload);
+  useEffect(() => { largeDownloadRef.current = largeDownload; }, [largeDownload]);
   // A media playlist the manifest delivered while NONE of its items was
   // ready (every file large and still downloading). What is on glass stays
   // until one of them lands; the commit runs from the readiness effect below.
@@ -7088,6 +7094,10 @@ function PlayerPage() {
   // heartbeat that reads it (a mount-once closure needs the const to exist
   // first). This effect is its only writer.
   const telemetryTickRef = useRef<(() => void) | null>(null);
+  // False once the API refused a report that carried the download snapshot
+  // (an API from before it existed) — see `downloadReportRefused`. For the
+  // rest of this page's life the snapshot is simply not sent.
+  const downloadReportAllowedRef = useRef(true);
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (isPreviewMode()) return; // preview tabs don't report
@@ -7152,6 +7162,17 @@ function PlayerPage() {
         // The last video's dropped-frame sample, when there is a new one
         // (2026-09-24). At most one per report; the server keeps the latest.
         video: videoQualityTracker.take(nowMs),
+        // The large file downloading right now, and whether the previous
+        // content is held on glass meanwhile (2026-09-27). Rides inside the
+        // cache block; the dashboard reads it as download progress.
+        download: downloadReportAllowedRef.current && largeDownloadRef.current
+          ? {
+              name: largeDownloadRef.current.name,
+              bytesLoaded: largeDownloadRef.current.bytesLoaded,
+              bytesTotal: largeDownloadRef.current.bytesTotal,
+              deferredCommit: pendingPlaylistCommitRef.current !== null,
+            }
+          : null,
       });
 
       let status: number | null = null;
@@ -7183,6 +7204,13 @@ function PlayerPage() {
       }
       if (cancelled) return;
 
+      if (downloadReportRefused(status, body)) {
+        // The API predates the snapshot and 400'd the whole strict body. Stop
+        // sending it; the fast retry below goes out without it, so liveness
+        // and render proof land on the next attempt.
+        downloadReportAllowedRef.current = false;
+        console.warn('[Player] the server refused the download progress report — not sending it again this session');
+      }
       const outcome = outcomeFromStatus(status);
       if (outcome === 'ok') {
         telemetryLastPostAtRef.current = nowMs;

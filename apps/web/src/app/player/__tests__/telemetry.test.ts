@@ -18,15 +18,18 @@
  */
 
 import {
+  DOWNLOAD_FILE_MAX_CHARS,
   IDLE_PROOF_INTERVAL_MS,
   TELEMETRY_INTERVAL_MS,
   TELEMETRY_MAX_INTERVAL_MS,
   TELEMETRY_MIN_INTERVAL_MS,
   TELEMETRY_MIN_POST_GAP_MS,
   TELEMETRY_RETRY_MS,
+  buildDownloadReport,
   buildRenderBlock,
   buildTelemetryBody,
   clampTelemetryInterval,
+  downloadReportRefused,
   nextTelemetryDelayMs,
   outcomeFromStatus,
   initialTelemetryDelayMs,
@@ -323,6 +326,77 @@ describe('body assembly', () => {
     expect(body.cache).toEqual({
       playlist: { count: 4, bytes: 100 },
       emergency: { count: 0, bytes: 20 },
+    });
+  });
+
+  // ── The download snapshot (2026-09-27) ───────────────────────────────
+  // A file ≥ 8 MiB plays only once it is completely on the screen (rule 17);
+  // meanwhile the dashboard reads this to say "Downloading new content · 62 %
+  // of 141 MB" instead of "nothing scheduled". Every key is checked by a
+  // strict server schema, so the builder is the gate.
+  describe('cache.downloading', () => {
+    const tiers = { playlist: { count: 3, bytes: 100 }, emergency: { count: 1, bytes: 5 } };
+
+    it('rides inside the cache block with exactly the four documented keys', () => {
+      const body = buildTelemetryBody({
+        cache: tiers,
+        download: { name: 'RIOT%20promo.mp4', bytesLoaded: 87_000_000.6, bytesTotal: 141_000_000, deferredCommit: true },
+      });
+      expect(body.cache).toEqual({
+        ...tiers,
+        downloading: { file: 'RIOT%20promo.mp4', bytesLoaded: 87_000_000, bytesTotal: 141_000_000, deferredCommit: true },
+      });
+      expect(Object.keys(body.cache!.downloading!).sort()).toEqual(['bytesLoaded', 'bytesTotal', 'deferredCommit', 'file']);
+    });
+
+    it('omits the size until it is known — never sends 0, a negative or garbage', () => {
+      for (const bytesTotal of [null, undefined, 0, -5, Number.NaN, Infinity]) {
+        const d = buildTelemetryBody({ cache: tiers, download: { name: 'a.mp4', bytesLoaded: 10, bytesTotal, deferredCommit: false } })
+          .cache!.downloading!;
+        expect(d).toEqual({ file: 'a.mp4', bytesLoaded: 10, deferredCommit: false });
+        expect(d).not.toHaveProperty('bytesTotal');
+      }
+    });
+
+    it('never reports more bytes than the file has, and caps the name', () => {
+      const d = buildTelemetryBody({
+        cache: tiers,
+        download: { name: `  ${'x'.repeat(300)}  `, bytesLoaded: 900, bytesTotal: 500, deferredCommit: false },
+      }).cache!.downloading!;
+      expect(d.bytesLoaded).toBe(500);
+      expect(d.file).toHaveLength(DOWNLOAD_FILE_MAX_CHARS);
+    });
+
+    it('a snapshot with no usable byte count is not sent at all', () => {
+      for (const bytesLoaded of [-1, Number.NaN, Infinity, '10' as unknown as number]) {
+        const body = buildTelemetryBody({ cache: tiers, download: { name: 'a.mp4', bytesLoaded, bytesTotal: 10, deferredCommit: false } });
+        expect(body.cache).toEqual(tiers);
+      }
+    });
+
+    it('no download → no key; a download never travels without the cache counters it sits beside', () => {
+      expect(buildTelemetryBody({ cache: tiers, download: null }).cache).toEqual(tiers);
+      expect(buildTelemetryBody({ cache: tiers }).cache).not.toHaveProperty('downloading');
+      const alone = buildTelemetryBody({ download: { name: 'a.mp4', bytesLoaded: 1, bytesTotal: 2, deferredCommit: false } });
+      expect(alone).toEqual({});
+    });
+
+    it('buildDownloadReport treats only an explicit true as a hold', () => {
+      for (const deferredCommit of [false, undefined, 'true', 1] as unknown[]) {
+        expect(buildDownloadReport({ name: 'a', bytesLoaded: 1, bytesTotal: 2, deferredCommit: deferredCommit as boolean })!.deferredCommit).toBe(false);
+      }
+      expect(buildDownloadReport(null)).toBeNull();
+    });
+
+    it('a 400 to a report that CARRIED the snapshot drops it for the session; nothing else does', () => {
+      const withIt = buildTelemetryBody({ cache: tiers, download: { name: 'a', bytesLoaded: 1, bytesTotal: 2, deferredCommit: false } });
+      const without = buildTelemetryBody({ cache: tiers });
+      // An API from before the snapshot 400s the WHOLE strict body — liveness
+      // and render proof with it — so the optional block has to go.
+      expect(downloadReportRefused(400, withIt)).toBe(true);
+      // A 400 without it was never about it; other failures are transient.
+      expect(downloadReportRefused(400, without)).toBe(false);
+      for (const status of [200, 401, 429, 500, null]) expect(downloadReportRefused(status, withIt)).toBe(false);
     });
   });
 
