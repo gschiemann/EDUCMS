@@ -44,17 +44,23 @@
  *       — `keepUrls` = files still on glass while this set's large files
  *         download; spared by the prune (readiness-gated playback, 2026-09-26).
  *   { type: 'PRECACHE_EMERGENCY', assets: [{url,sha256?,size?}], setHash }
+ *       — acks { ok, failures, count, pending }. A file ≥ 8 MiB is `pending`
+ *         (2026-09-26): the page drives it through the chunk protocol with
+ *         tier: 'emergency' into EMERGENCY_CACHE, then re-sends this message
+ *         so the set-hash commits on the pass that finds everything cached.
  *   { type: 'PRECACHE_SHELL',     routes?: string[], extra?: string[] }
  *                                                     → PRECACHE_SHELL_DONE
  *     `extra` = same-origin /_next/static paths the PAGE is running on but
  *     the route HTML does not name — i.e. dynamically imported chunks.
- *   { type: 'PRECACHE_CHUNK', url, sha256, size, offset, chunkBytes } (port ack)
- *   { type: 'PRECACHE_VERIFY', url, sha256 }            (port ack)
- *   { type: 'PRECACHE_ASSEMBLE', url, sha256 }          (port ack)
+ *   { type: 'PRECACHE_CHUNK', url, sha256, size, offset, chunkBytes, tier? } (port ack)
+ *   { type: 'PRECACHE_VERIFY', url, sha256, tier? }     (port ack)
+ *   { type: 'PRECACHE_ASSEMBLE', url, sha256, tier? }   (port ack)
  *       — the large-asset staging protocol (2026-09-26); see the block
  *         above precachePlaylist. PRECACHE_PLAYLIST acks `pending` for
- *         files it will not download inside its own event.
- *   { type: 'PRECACHE_ADOPT', url, sha256 }             (port ack)
+ *         files it will not download inside its own event. `tier` is
+ *         'playlist' (default) or 'emergency': separate staging namespace,
+ *         and assemble targets that tier's cache. Anything else is refused.
+ *   { type: 'PRECACHE_ADOPT', url, sha256, tier? }      (port ack)
  *       — hash a cached entry ON DISK against the manifest digest and, on a
  *         match, record it (a legacy entry from before digests were stored
  *         is adopted, not re-downloaded). Mismatch → the normal download.
@@ -482,19 +488,25 @@ self.addEventListener('message', (event) => {
     event.waitUntil(precacheEmergency(msg.assets || [], msg.setHash || '', ackPort));
   } else if (msg.type === 'PRECACHE_SHELL') {
     event.waitUntil(precacheAppShell(msg.routes, msg.extra));
-  } else if (msg.type === 'PRECACHE_CHUNK') {
+  } else if (msg.type === 'PRECACHE_CHUNK' || msg.type === 'PRECACHE_VERIFY'
+    || msg.type === 'PRECACHE_ASSEMBLE' || msg.type === 'PRECACHE_ADOPT') {
     // Large-asset staging (2026-09-26). Each of these is its OWN message
     // event on purpose: Chromium stops a worker whose event runs past five
     // minutes, so a big file is fetched as short, separately-timed steps that
-    // the page drives — see the staging block above precachePlaylist.
-    event.waitUntil(answerPort(event, () => stageChunk(msg)));
-  } else if (msg.type === 'PRECACHE_VERIFY') {
-    event.waitUntil(answerPort(event, () => verifyStaged(msg)));
-  } else if (msg.type === 'PRECACHE_ASSEMBLE') {
-    event.waitUntil(answerPort(event, () => assembleStaged(msg)));
-  } else if (msg.type === 'PRECACHE_ADOPT') {
-    // Hash a legacy cached entry on disk against the manifest digest (2026-09-26).
-    event.waitUntil(answerPort(event, () => adoptCached(msg, { cacheName: PLAYLIST_CACHE })));
+    // the page drives — see the staging block above precachePlaylist. Every
+    // step names its tier (absent = playlist); an unknown tier is refused
+    // rather than guessed — an emergency file must never land in the wrong
+    // cache, and a playlist file must never be promoted into the
+    // never-evict tier.
+    const tier = tierFromMessage(msg);
+    event.waitUntil(answerPort(event, async () => {
+      if (!tier) return { ok: false, reason: 'bad-request' };
+      if (msg.type === 'PRECACHE_CHUNK') return stageChunk(msg, tier);
+      if (msg.type === 'PRECACHE_VERIFY') return verifyStaged(msg, tier);
+      if (msg.type === 'PRECACHE_ASSEMBLE') return assembleStaged(msg, tier);
+      // Hash a legacy cached entry on disk against the manifest digest.
+      return adoptCached(msg, tier);
+    }));
   } else if (msg.type === 'CACHE_LOOKUP') {
     event.waitUntil(answerPort(event, () => cacheLookup(msg)));
   } else if (msg.type === 'STATUS_REQUEST') {
@@ -762,8 +774,10 @@ async function precacheAppShell(routes, extra) {
 // No unverified byte ever lands under the real URL. A kill mid-way costs one
 // chunk, never the whole file. Memory stays at one stream buffer.
 //
-// The emergency tier is deliberately NOT routed through this path — its
-// never-evict rules live in precacheEmergency and are a separate sign-off.
+// The emergency tier (Greg signed off, 2026-09-26) uses the same protocol for
+// files ≥ LARGE_ASSET_BYTES only — under its own staging namespace and into
+// EMERGENCY_CACHE (tier: 'emergency'); everything smaller stays on the
+// inline precacheEmergency path exactly as before.
 
 const LARGE_ASSET_BYTES = 8 * 1024 * 1024;
 const CHUNK_BYTES_DEFAULT = 8 * 1024 * 1024;
@@ -774,6 +788,33 @@ const CHUNK_FETCH_TIMEOUT_MS = 240 * 1000;
 const STAGE_PREFIX = '/__edu_stage__/';
 const STAGE_INFO_PREFIX = '/__edu_stage_info__/';
 const STAGE_OK_PREFIX = '/__edu_stage_ok__/';
+// ─── Tiers of the staging protocol (2026-09-26, emergency large files) ─────
+// Every chunk / verify / assemble / adopt step names its TIER. The two tiers
+// stage under SEPARATE namespaces so `precachePlaylist`'s prune of staging
+// for URLs outside the manifest can never touch a half-downloaded emergency
+// file (and vice versa), and `assembleStaged` writes into the tier's own
+// cache — never the playlist tier by default for an emergency file.
+const PLAYLIST_TIER = Object.freeze({
+  name: 'playlist',
+  cacheName: PLAYLIST_CACHE,
+  stagePrefix: STAGE_PREFIX,
+  infoPrefix: STAGE_INFO_PREFIX,
+  okPrefix: STAGE_OK_PREFIX,
+});
+const EMERGENCY_TIER = Object.freeze({
+  name: 'emergency',
+  cacheName: EMERGENCY_CACHE,
+  stagePrefix: '/__edu_stage_em__/',
+  infoPrefix: '/__edu_stage_em_info__/',
+  okPrefix: '/__edu_stage_em_ok__/',
+});
+/** The tier a page message names. Absent = playlist (older pages); anything unknown = refused. */
+function tierFromMessage(msg) {
+  const raw = msg && msg.tier;
+  if (raw === undefined || raw === null || raw === '' || raw === 'playlist') return PLAYLIST_TIER;
+  if (raw === 'emergency') return EMERGENCY_TIER;
+  return null;
+}
 const VIDEO_URL_RE = /\.(mp4|m4v|mov|webm|mkv)(\?|#|$)/i;
 // In-flight chunk fetches, so two overlapping requests for the same range
 // (a reloaded page racing its predecessor) never write the same entry twice.
@@ -789,17 +830,17 @@ function isLargeAsset(asset) {
 function stageEncodedKey(url) {
   return encodeURIComponent(stableKey(url));
 }
-function stagePrefixFor(url) {
-  return `${STAGE_PREFIX}${stageEncodedKey(url)}/`;
+function stagePrefixFor(url, tier) {
+  return `${tier.stagePrefix}${stageEncodedKey(url)}/`;
 }
-function stageChunkKey(url, start, length) {
-  return new Request(`${stagePrefixFor(url)}${start}-${length}`);
+function stageChunkKey(tier, url, start, length) {
+  return new Request(`${stagePrefixFor(url, tier)}${start}-${length}`);
 }
-function stageInfoKey(url) {
-  return new Request(`${STAGE_INFO_PREFIX}${stageEncodedKey(url)}`);
+function stageInfoKey(url, tier) {
+  return new Request(`${tier.infoPrefix}${stageEncodedKey(url)}`);
 }
-function stageOkKey(url) {
-  return new Request(`${STAGE_OK_PREFIX}${stageEncodedKey(url)}`);
+function stageOkKey(url, tier) {
+  return new Request(`${tier.okPrefix}${stageEncodedKey(url)}`);
 }
 
 /** `bytes a-b/total` (total may be `*`). null when absent, unreadable (CORS) or malformed. */
@@ -845,8 +886,8 @@ function parseStagedChunkPath(pathname, prefix) {
   return { start, length };
 }
 
-async function listStagedChunks(staging, url) {
-  const prefix = stagePrefixFor(url);
+async function listStagedChunks(staging, url, tier) {
+  const prefix = stagePrefixFor(url, tier);
   const keys = await staging.keys();
   const out = [];
   for (const req of keys) {
@@ -858,9 +899,9 @@ async function listStagedChunks(staging, url) {
   return out;
 }
 
-async function readStageInfo(staging, url) {
+async function readStageInfo(staging, url, tier) {
   try {
-    const res = await staging.match(stageInfoKey(url));
+    const res = await staging.match(stageInfoKey(url, tier));
     if (!res) return null;
     const info = await res.json();
     return info && typeof info === 'object' ? info : null;
@@ -869,27 +910,31 @@ async function readStageInfo(staging, url) {
   }
 }
 
-async function writeStageInfo(staging, url, info) {
+async function writeStageInfo(staging, url, info, tier) {
   await staging.put(
-    stageInfoKey(url),
+    stageInfoKey(url, tier),
     new Response(JSON.stringify(info), { headers: { 'content-type': 'application/json' } }),
   );
 }
 
-async function purgeStaging(staging, url) {
-  const prefix = stagePrefixFor(url);
+async function purgeStaging(staging, url, tier) {
+  const prefix = stagePrefixFor(url, tier);
   const keys = await staging.keys();
   for (const req of keys) {
     let pathname;
     try { pathname = new URL(req.url).pathname; } catch (_e) { continue; }
     if (pathname.startsWith(prefix)) await staging.delete(req);
   }
-  await staging.delete(stageInfoKey(url));
-  await staging.delete(stageOkKey(url));
+  await staging.delete(stageInfoKey(url, tier));
+  await staging.delete(stageOkKey(url, tier));
 }
 
-/** Drop staging for every URL that is not in the live manifest set. */
-async function purgeStagingExcept(liveStableUrls) {
+/**
+ * Drop THIS TIER's staging for every URL that is not in its live set. Tier-
+ * scoped by construction: the playlist prune walks only the playlist
+ * namespace, so a half-downloaded emergency file is never its business.
+ */
+async function purgeStagingExcept(liveStableUrls, tier) {
   const staging = await caches.open(STAGING_CACHE);
   const keep = new Set();
   for (const u of liveStableUrls) keep.add(encodeURIComponent(u));
@@ -898,9 +943,9 @@ async function purgeStagingExcept(liveStableUrls) {
     let pathname;
     try { pathname = new URL(req.url).pathname; } catch (_e) { continue; }
     let encoded = null;
-    if (pathname.startsWith(STAGE_PREFIX)) encoded = pathname.slice(STAGE_PREFIX.length).split('/')[0];
-    else if (pathname.startsWith(STAGE_INFO_PREFIX)) encoded = pathname.slice(STAGE_INFO_PREFIX.length);
-    else if (pathname.startsWith(STAGE_OK_PREFIX)) encoded = pathname.slice(STAGE_OK_PREFIX.length);
+    if (pathname.startsWith(tier.stagePrefix)) encoded = pathname.slice(tier.stagePrefix.length).split('/')[0];
+    else if (pathname.startsWith(tier.infoPrefix)) encoded = pathname.slice(tier.infoPrefix.length);
+    else if (pathname.startsWith(tier.okPrefix)) encoded = pathname.slice(tier.okPrefix.length);
     if (encoded !== null && !keep.has(encoded)) await staging.delete(req);
   }
 }
@@ -1058,8 +1103,8 @@ async function answerPort(event, work) {
  * A's range. `parseStagedChunkPath` still ignores every `tmp-*` entry, so a
  * temp body can never be counted as staged.
  */
-async function storeStagedChunk(staging, url, start, res, contentType) {
-  const tmpKey = new Request(`${stagePrefixFor(url)}tmp-${start}`);
+async function storeStagedChunk(staging, url, start, res, contentType, tier) {
+  const tmpKey = new Request(`${stagePrefixFor(url, tier)}tmp-${start}`);
   await staging.put(tmpKey, new Response(res.body, { status: 200, headers: { 'content-type': contentType } }));
   const tmp = await staging.match(tmpKey);
   const blob = tmp ? await tmp.blob() : null;
@@ -1069,14 +1114,14 @@ async function storeStagedChunk(staging, url, start, res, contentType) {
     throw new Error('empty-chunk');
   }
   await staging.put(
-    stageChunkKey(url, start, length),
+    stageChunkKey(tier, url, start, length),
     new Response(blob, { status: 200, headers: { 'content-type': contentType, 'content-length': String(length) } }),
   );
   await staging.delete(tmpKey);
   return length;
 }
 
-async function stageChunk(msg) {
+async function stageChunk(msg, tier) {
   const url = msg && typeof msg.url === 'string' ? msg.url : '';
   if (!url) return { ok: false, reason: 'bad-request' };
   const offset = Number.isSafeInteger(msg.offset) && msg.offset >= 0 ? msg.offset : 0;
@@ -1084,16 +1129,16 @@ async function stageChunk(msg) {
     Number.isSafeInteger(msg.chunkBytes) && msg.chunkBytes > 0 ? msg.chunkBytes : CHUNK_BYTES_DEFAULT));
   const knownSize = Number.isSafeInteger(msg.size) && msg.size > 0 ? msg.size : null;
   const staging = await caches.open(STAGING_CACHE);
-  const info = await readStageInfo(staging, url);
+  const info = await readStageInfo(staging, url, tier);
   if (info && knownSize !== null && info.total && info.total !== knownSize) {
     // The manifest now describes a different file than the one we started.
-    await purgeStaging(staging, url);
+    await purgeStaging(staging, url, tier);
     return { ok: false, reason: 'size-mismatch', offset };
   }
   let total = info && Number.isSafeInteger(info.total) && info.total > 0 ? info.total : knownSize;
 
   // Resume: a chunk already staged at this offset needs no network.
-  const have = await listStagedChunks(staging, url);
+  const have = await listStagedChunks(staging, url, tier);
   const existing = have.filter((c) => c.start === offset).sort((a, b) => b.length - a.length)[0];
   if (existing) {
     const next = offset + existing.length;
@@ -1121,15 +1166,15 @@ async function stageChunk(msg) {
       // Past the end. With no total announced yet, a contiguous run up to this
       // offset IS the whole file (an exact multiple of the chunk size).
       if (total === null && offset > 0 && contiguousLayout(have, offset).ok) {
-        await writeStageInfo(staging, url, { ...(info || {}), total: offset });
+        await writeStageInfo(staging, url, { ...(info || {}), total: offset }, tier);
         return { ok: true, offset, nextOffset: offset, total: offset, complete: true, staged: true };
       }
-      await purgeStaging(staging, url);
+      await purgeStaging(staging, url, tier);
       return { ok: false, reason: 'range-not-satisfiable', offset };
     }
     if (res.status === 200 && offset !== 0) {
       // The server ignored Range. Only a from-zero request can use a full body.
-      await purgeStaging(staging, url);
+      await purgeStaging(staging, url, tier);
       return { ok: false, reason: 'range-unsupported', offset };
     }
     if (res.status !== 206 && res.status !== 200) {
@@ -1138,7 +1183,7 @@ async function stageChunk(msg) {
     const contentType = res.headers.get('content-type') || (info && info.contentType) || 'application/octet-stream';
     const lastModified = res.headers.get('last-modified') || '';
     if (info && info.lastModified && lastModified && info.lastModified !== lastModified) {
-      await purgeStaging(staging, url);
+      await purgeStaging(staging, url, tier);
       return { ok: false, reason: 'source-changed', offset };
     }
     let expected = null;
@@ -1146,12 +1191,12 @@ async function stageChunk(msg) {
       const cr = parseContentRange(res.headers.get('content-range'));
       if (cr) {
         if (cr.start !== offset) {
-          await purgeStaging(staging, url);
+          await purgeStaging(staging, url, tier);
           return { ok: false, reason: 'range-mismatch', offset };
         }
         if (cr.total !== null) {
           if (total !== null && cr.total !== total) {
-            await purgeStaging(staging, url);
+            await purgeStaging(staging, url, tier);
             return { ok: false, reason: 'size-mismatch', offset };
           }
           total = cr.total;
@@ -1165,7 +1210,7 @@ async function stageChunk(msg) {
       const cl = Number(res.headers.get('content-length') || 0);
       if (cl > 0) {
         if (total !== null && cl !== total) {
-          await purgeStaging(staging, url);
+          await purgeStaging(staging, url, tier);
           return { ok: false, reason: 'size-mismatch', offset };
         }
         total = cl;
@@ -1174,7 +1219,7 @@ async function stageChunk(msg) {
     }
     let stored;
     try {
-      stored = await storeStagedChunk(staging, url, offset, res, contentType);
+      stored = await storeStagedChunk(staging, url, offset, res, contentType, tier);
     } catch (e) {
       return { ok: false, reason: e && e.name === 'AbortError' ? 'fetch-timeout' : 'truncated', offset };
     }
@@ -1182,7 +1227,7 @@ async function stageChunk(msg) {
       if (res.status === 206 && total === null && stored < expected) {
         total = offset + stored; // short final chunk with no total announced
       } else {
-        await staging.delete(stageChunkKey(url, offset, stored));
+        await staging.delete(stageChunkKey(tier, url, offset, stored));
         return { ok: false, reason: 'truncated', offset };
       }
     }
@@ -1191,12 +1236,12 @@ async function stageChunk(msg) {
       else if (stored < want) total = offset + stored; // short chunk = end of file
     }
     if (total !== null && offset + stored > total) {
-      await purgeStaging(staging, url);
+      await purgeStaging(staging, url, tier);
       return { ok: false, reason: 'size-mismatch', offset };
     }
     const nextInfo = { total, contentType, lastModified: lastModified || (info && info.lastModified) || '' };
     if (!info || info.total !== nextInfo.total || info.contentType !== nextInfo.contentType || info.lastModified !== nextInfo.lastModified) {
-      await writeStageInfo(staging, url, nextInfo);
+      await writeStageInfo(staging, url, nextInfo, tier);
     }
     const next = offset + stored;
     return { ok: true, offset, nextOffset: next, total, complete: total !== null && next >= total };
@@ -1219,54 +1264,54 @@ function isSha256Hex(value) {
   return typeof value === 'string' && /^[0-9a-f]{64}$/i.test(value);
 }
 
-async function verifyStaged(msg) {
+async function verifyStaged(msg, tier) {
   const url = msg && typeof msg.url === 'string' ? msg.url : '';
   if (!url) return { ok: false, reason: 'bad-request' };
   const expected = isSha256Hex(msg.sha256) ? msg.sha256.toLowerCase() : null;
   const staging = await caches.open(STAGING_CACHE);
-  const info = await readStageInfo(staging, url);
+  const info = await readStageInfo(staging, url, tier);
   const total = info && Number.isSafeInteger(info.total) && info.total > 0 ? info.total : null;
-  const layout = contiguousLayout(await listStagedChunks(staging, url), total);
+  const layout = contiguousLayout(await listStagedChunks(staging, url, tier), total);
   if (!layout.ok) return { ok: false, reason: 'incomplete', nextOffset: layout.nextOffset, total };
   if (expected) {
     const hasher = new Sha256();
     for (const c of layout.chunks) {
-      const res = await staging.match(stageChunkKey(url, c.start, c.length));
+      const res = await staging.match(stageChunkKey(tier, url, c.start, c.length));
       if (!res || !res.body) return { ok: false, reason: 'incomplete', nextOffset: c.start, total };
       await pumpStream(res.body, (bytes) => hasher.update(bytes));
     }
     if (hasher.digestHex() !== expected) {
       // Wrong bytes must never be promoted, and never be reused either.
-      await purgeStaging(staging, url);
+      await purgeStaging(staging, url, tier);
       console.warn('[sw-player] staged download failed SHA-256, discarded', { url });
       return { ok: false, reason: 'sha256-mismatch' };
     }
   }
   await staging.put(
-    stageOkKey(url),
+    stageOkKey(url, tier),
     new Response(JSON.stringify({ sha256: expected, total: layout.total }), { headers: { 'content-type': 'application/json' } }),
   );
   return { ok: true, total: layout.total, verified: !!expected };
 }
 
-async function assembleStaged(msg) {
+async function assembleStaged(msg, tier) {
   const url = msg && typeof msg.url === 'string' ? msg.url : '';
   if (!url) return { ok: false, reason: 'bad-request' };
   const expected = isSha256Hex(msg.sha256) ? msg.sha256.toLowerCase() : null;
   const staging = await caches.open(STAGING_CACHE);
   let marker = null;
   try {
-    const okRes = await staging.match(stageOkKey(url));
+    const okRes = await staging.match(stageOkKey(url, tier));
     marker = okRes ? await okRes.json() : null;
   } catch (_e) { marker = null; }
   // Only bytes PRECACHE_VERIFY passed for THIS digest may become the served file.
   if (!marker || !Number.isSafeInteger(marker.total) || (expected && marker.sha256 !== expected) || (!expected && marker.sha256)) {
     return { ok: false, reason: 'not-verified' };
   }
-  const info = await readStageInfo(staging, url);
-  const layout = contiguousLayout(await listStagedChunks(staging, url), marker.total);
+  const info = await readStageInfo(staging, url, tier);
+  const layout = contiguousLayout(await listStagedChunks(staging, url, tier), marker.total);
   if (!layout.ok) return { ok: false, reason: 'incomplete', nextOffset: layout.nextOffset, total: marker.total };
-  const [cache, meta] = await Promise.all([caches.open(PLAYLIST_CACHE), caches.open(META_CACHE)]);
+  const [cache, meta] = await Promise.all([caches.open(tier.cacheName), caches.open(META_CACHE)]);
   const parts = layout.chunks;
   let index = 0;
   let reader = null;
@@ -1277,7 +1322,7 @@ async function assembleStaged(msg) {
           if (index >= parts.length) { controller.close(); return; }
           const part = parts[index];
           index += 1;
-          const res = await staging.match(stageChunkKey(url, part.start, part.length));
+          const res = await staging.match(stageChunkKey(tier, url, part.start, part.length));
           if (!res || !res.body) throw new Error('chunk-missing');
           reader = res.body.getReader();
         }
@@ -1309,7 +1354,7 @@ async function assembleStaged(msg) {
   try {
     await meta.put(storedAtMetaKey(url), new Response(String(Date.now()), { headers: { 'content-type': 'text/plain' } }));
   } catch (_e) { /* meta write best-effort */ }
-  await purgeStaging(staging, url);
+  await purgeStaging(staging, url, tier);
   return { ok: true, total: layout.total };
 }
 
@@ -1447,7 +1492,8 @@ async function precachePlaylist(assets, softCapBytes, ackPort, keepUrls) {
   }
 
   // 1b. Half-downloaded files for URLs that left the manifest are dead weight.
-  try { await purgeStagingExcept(new Set([...liveUrls, ...keep])); } catch (_e) { /* best-effort */ }
+  // Playlist namespace only — an emergency file mid-download is not touched.
+  try { await purgeStagingExcept(new Set([...liveUrls, ...keep]), PLAYLIST_TIER); } catch (_e) { /* best-effort */ }
 
   // 2. Pre-fetch missing assets, respecting hash changes. Emit a
   //    progress event per completed asset so the splash can show a
@@ -1547,18 +1593,40 @@ async function precacheEmergency(assets, setHash, ackPort) {
       SIZE_BY_URL.delete(normalizeUrl(req.url));
     }
   }
+  // Half-downloaded emergency files for URLs that left the set — the
+  // emergency namespace only; a playlist file mid-download is not touched.
+  try { await purgeStagingExcept(liveUrls, EMERGENCY_TIER); } catch (_e) { /* best-effort */ }
 
   // Fetch + store. Track success per asset so we can decide whether to
   // commit the set-hash. Emit per-asset progress for the splash bar.
+  //
+  // LARGE emergency files (2026-09-26, Greg signed off): a file at or above
+  // LARGE_ASSET_BYTES is never fetched inside this event either — the same
+  // five-minute event budget and whole-body digest that emptied the playlist
+  // tier apply here. It is reported `pending` and the page drives it through
+  // the chunk protocol with tier 'emergency' into THIS cache. Everything
+  // below the line stays byte-for-byte on fetchAndStore. Rule 11 holds: a
+  // null-hash emergency file already in the cache is current and is never
+  // re-fetched ("cached means current" — cachedDigestState says 'current'
+  // for an entry with no digest to check).
   let loaded = 0;
   let failures = 0;
+  const pending = [];
   for (const asset of assets) {
-    // F4 (2026-08-30): the EMERGENCY tier opts OUT of the 24h null-hash
-    // revalidation — with no hash to verify, a refetch through a captive
-    // portal could REPLACE good alert media with a portal page. For this
-    // tier "cached means current" stays the rule; server-side rotation of
-    // the asset URL is the refresh mechanism.
-    const ok = await fetchAndStore(asset, cache, meta, { boundedRevalidation: false });
+    let ok = true;
+    if (isLargeAsset(asset)) {
+      const state = await cachedDigestState(asset, cache, meta);
+      if (state !== 'current') {
+        pending.push({ url: asset.url, sha256: asset.sha256 || null, size: asset.size || null, adoptable: state === 'adoptable' });
+      }
+    } else {
+      // F4 (2026-08-30): the EMERGENCY tier opts OUT of the 24h null-hash
+      // revalidation — with no hash to verify, a refetch through a captive
+      // portal could REPLACE good alert media with a portal page. For this
+      // tier "cached means current" stays the rule; server-side rotation of
+      // the asset URL is the refresh mechanism.
+      ok = await fetchAndStore(asset, cache, meta, { boundedRevalidation: false });
+    }
     if (!ok) failures += 1;
     loaded += 1;
     await broadcast({
@@ -1572,8 +1640,10 @@ async function precacheEmergency(assets, setHash, ackPort) {
 
   // Only commit the set-hash if every asset is verified in cache. Verifying
   // by re-checking cache.match() catches the edge case where fetchAndStore
-  // returned true but the entry was evicted between then and now.
-  let allCached = failures === 0;
+  // returned true but the entry was evicted between then and now. A large
+  // file the page still has to drive is not cached yet by definition — the
+  // page re-sends this message once it has landed, and THAT pass commits.
+  let allCached = failures === 0 && pending.length === 0;
   if (allCached) {
     for (const asset of assets) {
       if (!asset?.url) continue;
@@ -1605,16 +1675,18 @@ async function precacheEmergency(assets, setHash, ackPort) {
     totalBytes: total,
     complete: allCached,
     failures,
+    pending: pending.length,
   });
 
   // FIX (player-014): ack the page-side caller via the MessageChannel
   // port so the page commits its lastEmergencySetHashRef ONLY when we
   // confirm allCached. Without this ack the page used to optimistically
   // commit the ref before the SW finished, and a partial-download path
-  // would short-circuit the next 5-min retry forever.
+  // would short-circuit the next 5-min retry forever. `pending` names the
+  // large files the page must drive (tier 'emergency') before re-sending.
   if (ackPort) {
     try {
-      ackPort.postMessage({ ok: allCached, failures, count: assets.length });
+      ackPort.postMessage({ ok: allCached, failures, count: assets.length, pending });
     } catch (e) {
       // Port may have been closed by the page (rare). Best-effort.
     }
@@ -1958,6 +2030,9 @@ if (typeof self !== 'undefined') {
     CHUNK_FETCH_TIMEOUT_MS: CHUNK_FETCH_TIMEOUT_MS,
     STAGING_CACHE: STAGING_CACHE,
     PLAYLIST_CACHE: PLAYLIST_CACHE,
+    EMERGENCY_CACHE: EMERGENCY_CACHE,
     META_CACHE: META_CACHE,
+    PLAYLIST_TIER: PLAYLIST_TIER,
+    EMERGENCY_TIER: EMERGENCY_TIER,
   });
 }

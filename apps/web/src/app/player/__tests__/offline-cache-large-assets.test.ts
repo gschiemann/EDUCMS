@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- vm / fake-worker harness: replies are untyped by design */
 import { getServiceWorkerContainer } from '@/lib/safe-service-worker';
-import { lookupCached, precachePlaylist, quarantinedDigestCount } from '../offline-cache';
+import { lookupCached, precacheEmergency, precachePlaylist, quarantinedDigestCount } from '../offline-cache';
 import { __resetDigestQuarantineForTests } from '../digestQuarantine';
 
 // Its own file on purpose: offline-cache.ts memoises the service-worker
@@ -186,6 +186,82 @@ describe('player offline-cache large-asset orchestration', () => {
     sent.length = 0;
     await precachePlaylist([{ url, sha256: 'ab'.repeat(32), size }]);
     expect(sent.some((m) => m.type === 'PRECACHE_CHUNK')).toBe(true); // it tried again
+  });
+
+  // ── Emergency tier, large files (2026-09-26, Greg signed off) ─────────
+  // `ok: true` means FULL success and nothing less: every pending large file
+  // driven (with tier 'emergency' on every step) AND the worker's confirm pass
+  // found the whole set cached. The page commits lastEmergencySetHashRef on
+  // exactly that `ok` (player-014), so a large file that did not land leaves
+  // the set uncommitted and the next sync resumes it.
+  describe('precacheEmergency', () => {
+    const EM = 'https://cdn.example.com/lockdown-4k.mp4';
+    const size = 9 * MiB;
+    const assets = [{ url: 'https://cdn.example.com/lockdown.png', sha256: 'aa'.repeat(32), size: 1000 }, { url: EM, sha256: 'bb'.repeat(32), size }];
+
+    it('drives a pending large file with tier emergency on every step, then re-pushes; ok only from the confirm pass', async () => {
+      let pushes = 0;
+      answerWith((m) => {
+        switch (m.type) {
+          case 'PRECACHE_EMERGENCY':
+            pushes += 1;
+            return pushes === 1
+              ? { ok: false, failures: 0, count: 2, pending: [{ url: EM, sha256: 'bb'.repeat(32), size, adoptable: false }] }
+              : { ok: true, failures: 0, count: 2, pending: [] };
+          case 'PRECACHE_CHUNK': return { ok: true, offset: m.offset, nextOffset: Math.min(size, m.offset + m.chunkBytes), total: size, complete: m.offset + m.chunkBytes >= size };
+          case 'PRECACHE_VERIFY': return { ok: true, total: size, verified: true };
+          case 'PRECACHE_ASSEMBLE': return { ok: true, total: size };
+          default: return { ok: false, reason: 'unexpected' };
+        }
+      });
+      await expect(precacheEmergency(assets, 'set-1')).resolves.toEqual({ ok: true, failures: 0, count: 2, pending: 0 });
+      expect(sent.map((m) => m.type)).toEqual([
+        'PRECACHE_EMERGENCY', 'PRECACHE_CHUNK', 'PRECACHE_CHUNK', 'PRECACHE_VERIFY', 'PRECACHE_ASSEMBLE', 'PRECACHE_EMERGENCY',
+      ]);
+      // Every staging step names the emergency tier — never the playlist default.
+      for (const m of sent.filter((x) => x.type !== 'PRECACHE_EMERGENCY')) expect(m.tier).toBe('emergency');
+      expect(sent[0]).toEqual({ type: 'PRECACHE_EMERGENCY', assets, setHash: 'set-1' });
+      expect(sent[5]).toEqual({ type: 'PRECACHE_EMERGENCY', assets, setHash: 'set-1' });
+    });
+
+    it('a large file that did not land: ok false, NO confirm pass — the set stays uncommitted for the next sync to resume', async () => {
+      answerWith((m) => {
+        switch (m.type) {
+          case 'PRECACHE_EMERGENCY': return { ok: false, failures: 0, count: 2, pending: [{ url: EM, sha256: 'bb'.repeat(32), size, adoptable: false }] };
+          case 'PRECACHE_CHUNK': return { ok: false, reason: 'source-changed', offset: 0 };
+          default: return { ok: false, reason: 'unexpected' };
+        }
+      });
+      await expect(precacheEmergency(assets, 'set-1')).resolves.toEqual({ ok: false, failures: 1, count: 2, pending: 1 });
+      expect(sent.filter((m) => m.type === 'PRECACHE_EMERGENCY')).toHaveLength(1);
+    });
+
+    it('a confirm pass that still says not-ok is not-ok (a small file failed meanwhile): never a false full success', async () => {
+      let pushes = 0;
+      answerWith((m) => {
+        switch (m.type) {
+          case 'PRECACHE_EMERGENCY':
+            pushes += 1;
+            return pushes === 1
+              ? { ok: false, failures: 0, count: 2, pending: [{ url: EM, sha256: 'bb'.repeat(32), size, adoptable: true }] }
+              : { ok: false, failures: 1, count: 2, pending: [] };
+          case 'PRECACHE_ADOPT': return { ok: true, adopted: true, total: size };
+          default: return { ok: false, reason: 'unexpected' };
+        }
+      });
+      await expect(precacheEmergency(assets, 'set-1')).resolves.toEqual({ ok: false, failures: 1, count: 2, pending: 0 });
+      expect(sent.map((m) => m.type)).toEqual(['PRECACHE_EMERGENCY', 'PRECACHE_ADOPT', 'PRECACHE_EMERGENCY']);
+      expect(sent[1]).toEqual({ type: 'PRECACHE_ADOPT', url: EM, sha256: 'bb'.repeat(32), tier: 'emergency' });
+    });
+
+    it('nothing pending (small files only, or an older worker with no pending field): one pass, the ack as-is', async () => {
+      answerWith((m) => (m.type === 'PRECACHE_EMERGENCY' ? { ok: true, failures: 0, count: 1 } : undefined));
+      await expect(precacheEmergency([assets[0]], 'set-2')).resolves.toEqual({ ok: true, failures: 0, count: 1 });
+      expect(sent).toHaveLength(1);
+      answerWith((m) => (m.type === 'PRECACHE_EMERGENCY' ? { ok: false, failures: 1, count: 1, pending: [] } : undefined));
+      await expect(precacheEmergency([assets[0]], 'set-2')).resolves.toEqual({ ok: false, failures: 1, count: 1 });
+      expect(sent).toHaveLength(2);
+    });
   });
 
   it('a worker with nothing pending settles on its own answer', async () => {

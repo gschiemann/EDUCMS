@@ -23,6 +23,7 @@ import { TouchOverlay, TouchNavOverlay } from '@/components/player/TouchOverlay'
 // the `message` prop.
 import { EmergencyOverlay, type EmergencyMessageView } from '@/components/player/EmergencyOverlay';
 import { reconcileStrandedEmergency } from './emergencyReconcile';
+import { cachedManifestWouldClearLiveAlert } from './emergencyInterlock';
 // 2026-08-01 security wave — pure guard modules (no React/DOM) so each is
 // unit-tested without mounting this page.
 //   trustGuards — R-01: the `?api=` / localStorage API-root override is the
@@ -4676,6 +4677,11 @@ function PlayerPage() {
   // re-paired or the token re-issued.
   const [unsignedWsTokenWarning, setUnsignedWsTokenWarning] = useState<boolean>(false);
   const lastEmergencySetHashRef = useRef<string>('');
+  // One emergency-tier push at a time (2026-09-26): a large alert file is now
+  // driven chunk by chunk from the page, which can outlast the 15-minute
+  // sync interval on a slow link. A second overlapping drive would race the
+  // first at the same offsets ('busy' answers) for nothing.
+  const emergencyCacheInFlightRef = useRef<boolean>(false);
   // HIGH-5: track the last set of playlist asset URLs we pushed to the SW.
   // Equal hash = no-op skip; saves a postMessage + SW work on every poll.
   const lastPlaylistSetHashRef = useRef<string>('');
@@ -4924,10 +4930,11 @@ function PlayerPage() {
         }));
       } else if (msg.type === 'PRECACHE_PLAYLIST_DONE' && (msg.failures ?? 0) > 0) {
         setLoadProgress((prev) => prev ? { ...prev, lastError: 'Content download failed; retrying', retrying: (prev.retrying ?? 0) + 1 } : prev);
-      } else if (msg.type === 'PRECACHE_PLAYLIST_DONE' && (msg.pending ?? 0) > 0) {
+      } else if ((msg.type === 'PRECACHE_PLAYLIST_DONE' || msg.type === 'PRECACHE_EMERGENCY_DONE') && (msg.pending ?? 0) > 0) {
         // The worker handed the big files back to the page (large-asset
-        // staging, 2026-09-26). Not an error, and not "ready" either: the
-        // page's precache orchestration flips the bar to ready when they land.
+        // staging, 2026-09-26; the emergency tier since the same day). Not an
+        // error, and not "ready" either: the page's precache orchestration
+        // flips the bar to ready when they land.
       } else if (msg.type === 'PRECACHE_PLAYLIST_DONE' || msg.type === 'PRECACHE_EMERGENCY_DONE') {
         // Keep a brief "ready" state so the bar hits 100% before
         // KioskSplash unmounts on phase flip to 'playing'.
@@ -5429,12 +5436,22 @@ function PlayerPage() {
       // (belt + braces); refusing HERE also keeps lastEmergencySetHashRef
       // uncommitted so a later real payload retries normally.
       if (!Array.isArray(data.assets) || data.assets.length === 0) return;
-      const ack = await precacheEmergency(data.assets, data.setHash || '');
+      if (emergencyCacheInFlightRef.current) return; // a large alert file is still being driven
+      emergencyCacheInFlightRef.current = true;
+      let ack: { ok: boolean; failures?: number; count?: number; pending?: number };
+      try {
+        ack = await precacheEmergency(data.assets, data.setHash || '');
+      } finally {
+        emergencyCacheInFlightRef.current = false;
+      }
+      // Commits ONLY on full success: `ok` is the worker's confirm pass that
+      // found every file — the large ones driven chunk by chunk included —
+      // in the never-evict tier (player-001 / player-014, unchanged).
       if (ack.ok) {
         lastEmergencySetHashRef.current = data.setHash || '';
         console.log(`[Player] Emergency pre-cache push: ${data.assets?.length || 0} assets, ${formatBytes(data.totalBytes || 0)}`);
       } else {
-        console.warn(`[Player] Emergency pre-cache partial (${ack.failures ?? '?'} failures of ${ack.count ?? data.assets?.length ?? 0}) — leaving ref uncommitted so next 5-min sync retries`);
+        console.warn(`[Player] Emergency pre-cache partial (${ack.failures ?? '?'} failures of ${ack.count ?? data.assets?.length ?? 0}${ack.pending ? `, ${ack.pending} large file(s) still downloading` : ''}) — leaving ref uncommitted so the next sync retries`);
       }
     } catch (e) {
       // Best-effort; emergency play still works from network if push fails.
@@ -5935,7 +5952,10 @@ function PlayerPage() {
       // during an outage cannot clear a live alert. Previously this was
       // safe only because both stores shared one writer path; now it is a
       // stated, guarded rule.
-      const cachedNormalWouldClearLiveAlert = fromCache && !em && !!activeEmergencyRef.current;
+      // The decision itself lives in emergencyInterlock.ts (pure, tested).
+      const cachedNormalWouldClearLiveAlert = cachedManifestWouldClearLiveAlert({
+        fromCache, manifestHasEmergency: !!em, liveAlertOnGlass: !!activeEmergencyRef.current,
+      });
       if (cachedNormalWouldClearLiveAlert) {
         console.warn('[Player] cached (offline) manifest carries no emergency — keeping the live alert; only the server clears it');
       } else {

@@ -48,6 +48,12 @@ export type PlaylistCacheOptions = {
    * (readiness-gated playback, 2026-09-26). Reclaimed at the next push.
    */
   keepUrls?: string[];
+  /**
+   * Which cache tier the chunk protocol stages for and assembles into.
+   * Omitted = playlist (the wire stays identical for older workers);
+   * 'emergency' = the never-evict tier, its own staging namespace.
+   */
+  tier?: 'emergency';
 };
 
 /**
@@ -153,11 +159,16 @@ function isFatalChunkReason(reason: unknown): boolean {
  * pass runs. True when the worker now counts it current; false (mismatch,
  * gone, old worker) means the normal verified download takes over.
  */
-async function adoptCachedAsset(sw: ServiceWorker, asset: PlaylistCacheAsset): Promise<boolean> {
+async function adoptCachedAsset(sw: ServiceWorker, asset: PlaylistCacheAsset, tier?: 'emergency'): Promise<boolean> {
   const sha256 = typeof asset.sha256 === 'string' && asset.sha256 ? asset.sha256 : null;
   if (!sha256) return false;
-  const reply = await askWorker(sw, { type: 'PRECACHE_ADOPT', url: asset.url, sha256 }, STEP_ACK_TIMEOUT_MS);
+  const reply = await askWorker(sw, { type: 'PRECACHE_ADOPT', url: asset.url, sha256, ...tierField(tier) }, STEP_ACK_TIMEOUT_MS);
   return !!reply && reply.ok === true;
+}
+
+/** The `tier` wire field — present only for the emergency tier so the playlist wire is unchanged. */
+function tierField(tier?: 'emergency'): { tier?: 'emergency' } {
+  return tier ? { tier } : {};
 }
 
 /**
@@ -185,9 +196,10 @@ async function downloadLargeAsset(
   }
   // Bytes already on disk are hashed there first — a legacy entry is adopted,
   // not re-downloaded (141 MB on the field 4K screen, for bytes it had).
+  const tier = tierField(opts?.tier);
   if (asset.adoptable && sha256) {
     if (opts?.signal?.aborted) return 'aborted';
-    if (await adoptCachedAsset(sw, asset)) return true;
+    if (await adoptCachedAsset(sw, asset, opts?.tier)) return true;
   }
   let offset = 0;
   let chunkBytes = CHUNK_BYTES_START;
@@ -207,7 +219,7 @@ async function downloadLargeAsset(
   for (let step = 0; step < MAX_CHUNK_STEPS; step++) {
     if (opts?.signal?.aborted) return 'aborted';
     const reply = await askWorker(sw, {
-      type: 'PRECACHE_CHUNK', url: asset.url, sha256, size, offset, chunkBytes,
+      type: 'PRECACHE_CHUNK', url: asset.url, sha256, size, offset, chunkBytes, ...tier,
     }, CHUNK_ACK_TIMEOUT_MS);
     if (!reply || reply.ok !== true) {
       if (isFatalChunkReason(reply?.reason)) return false;
@@ -227,7 +239,7 @@ async function downloadLargeAsset(
     if (reply.complete !== true) continue;
 
     if (opts?.signal?.aborted) return 'aborted';
-    const verified = await askWorker(sw, { type: 'PRECACHE_VERIFY', url: asset.url, sha256 }, STEP_ACK_TIMEOUT_MS);
+    const verified = await askWorker(sw, { type: 'PRECACHE_VERIFY', url: asset.url, sha256, ...tier }, STEP_ACK_TIMEOUT_MS);
     if (!verified || verified.ok !== true) {
       if (verified?.reason === 'incomplete' && typeof verified.nextOffset === 'number') {
         offset = verified.nextOffset;
@@ -242,7 +254,7 @@ async function downloadLargeAsset(
       return false;
     }
     if (opts?.signal?.aborted) return 'aborted';
-    const assembled = await askWorker(sw, { type: 'PRECACHE_ASSEMBLE', url: asset.url, sha256 }, STEP_ACK_TIMEOUT_MS);
+    const assembled = await askWorker(sw, { type: 'PRECACHE_ASSEMBLE', url: asset.url, sha256, ...tier }, STEP_ACK_TIMEOUT_MS);
     if (!assembled || assembled.ok !== true) {
       if (assembled?.reason === 'incomplete' && typeof assembled.nextOffset === 'number') {
         offset = assembled.nextOffset;
@@ -350,6 +362,49 @@ export async function lookupCached(assets: PlaylistCacheAsset[]): Promise<Record
   return out;
 }
 
+export type EmergencyCacheResult = { ok: boolean; failures?: number; count?: number; pending?: number };
+
+/** One PRECACHE_EMERGENCY round trip: the worker's inline pass over the set. */
+async function pushEmergencySet(
+  sw: ServiceWorker,
+  assets: Array<{ url: string; sha256?: string | null; size?: number | null }>,
+  setHash: string | undefined,
+): Promise<{ ok: boolean; failures?: number; count?: number; pending: PlaylistCacheAsset[] }> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const channel = new MessageChannel();
+    const finish = (result: { ok: boolean; failures?: number; count?: number; pending: PlaylistCacheAsset[] }) => {
+      if (settled) return;
+      settled = true;
+      try { channel.port1.close(); } catch { /* noop */ }
+      resolve(result);
+    };
+    channel.port1.onmessage = (ev: MessageEvent) => {
+      const data = ev?.data;
+      if (data && typeof data === 'object' && typeof data.ok === 'boolean') {
+        const pending: PlaylistCacheAsset[] = Array.isArray(data.pending)
+          ? (data.pending as unknown[])
+              .filter((p): p is PlaylistCacheAsset => !!p && typeof (p as PlaylistCacheAsset).url === 'string')
+              .map((p) => ({ ...p, adoptable: p.adoptable === true }))
+          : [];
+        finish({ ok: data.ok, failures: data.failures, count: data.count, pending });
+      } else {
+        finish({ ok: false, pending: [] });
+      }
+    };
+    try {
+      sw.postMessage({ type: 'PRECACHE_EMERGENCY', assets, setHash }, [channel.port2]);
+    } catch {
+      finish({ ok: false, pending: [] });
+      return;
+    }
+    // Watchdog: emergency precache for very large sets shouldn't hang
+    // the page-side commit logic. 60 s is generous; if the SW is still
+    // running it'll continue downloading and the next sync retries.
+    setTimeout(() => finish({ ok: false, pending: [] }), 60_000);
+  });
+}
+
 /**
  * Push every emergency-tier asset URL — never evicted by the SW.
  *
@@ -359,43 +414,42 @@ export async function lookupCached(assets: PlaylistCacheAsset[]): Promise<Record
  * Caller uses this to decide whether to commit a "last pushed" ref —
  * if `ok: false`, the next periodic sync should retry the full push.
  *
+ * LARGE emergency files (2026-09-26, Greg signed off): the worker never
+ * downloads a file ≥ 8 MiB inside its own event — it hands it back as
+ * `pending` and this function drives it through the chunk protocol with
+ * tier 'emergency' (its own staging namespace, assembled into the
+ * never-evict cache), then re-sends the set so the worker's confirm pass
+ * finds everything cached and commits the set-hash. `ok: true` therefore
+ * still means FULL success and nothing less: a large file that did not land
+ * leaves the set uncommitted (its staged chunks survive, so the next sync
+ * resumes rather than restarts). Files below 8 MiB take the inline path
+ * byte-for-byte as before.
+ *
  * Resolves with `{ ok: false }` if SW is unsupported / inactive so
  * callers fall through the same retry path as a real partial.
  */
 export async function precacheEmergency(
-  assets: Array<{ url: string; sha256?: string; size?: number }>,
+  assets: Array<{ url: string; sha256?: string | null; size?: number | null }>,
   setHash?: string,
-): Promise<{ ok: boolean; failures?: number; count?: number }> {
+): Promise<EmergencyCacheResult> {
   const sw = await activeWorker();
   if (!sw || !assets) return { ok: false };
-  return new Promise((resolve) => {
-    let settled = false;
-    const channel = new MessageChannel();
-    const finish = (result: { ok: boolean; failures?: number; count?: number }) => {
-      if (settled) return;
-      settled = true;
-      try { channel.port1.close(); } catch { /* noop */ }
-      resolve(result);
-    };
-    channel.port1.onmessage = (ev: MessageEvent) => {
-      const data = ev?.data;
-      if (data && typeof data === 'object' && typeof data.ok === 'boolean') {
-        finish({ ok: data.ok, failures: data.failures, count: data.count });
-      } else {
-        finish({ ok: false });
-      }
-    };
-    try {
-      sw.postMessage({ type: 'PRECACHE_EMERGENCY', assets, setHash }, [channel.port2]);
-    } catch (e) {
-      finish({ ok: false });
-      return;
-    }
-    // Watchdog: emergency precache for very large sets shouldn't hang
-    // the page-side commit logic. 60 s is generous; if the SW is still
-    // running it'll continue downloading and the next 5-min sync retries.
-    setTimeout(() => finish({ ok: false }), 60_000);
-  });
+  const first = await pushEmergencySet(sw, assets, setHash);
+  if (first.ok || first.pending.length === 0) {
+    return { ok: first.ok, failures: first.failures, count: first.count };
+  }
+  let failures = typeof first.failures === 'number' ? first.failures : 0;
+  for (const asset of first.pending) {
+    const landed = await downloadLargeAsset(sw, asset, { tier: 'emergency' });
+    if (landed !== true) failures += 1;
+  }
+  if (failures > 0) {
+    return { ok: false, failures, count: first.count, pending: first.pending.length };
+  }
+  // Every large file is in the never-evict tier now: the confirm pass sees a
+  // fully cached set and commits the set-hash — the only pass that may.
+  const confirm = await pushEmergencySet(sw, assets, setHash);
+  return { ok: confirm.ok, failures: confirm.failures, count: confirm.count, pending: confirm.pending.length };
 }
 
 /**
