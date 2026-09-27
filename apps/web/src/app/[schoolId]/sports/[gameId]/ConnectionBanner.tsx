@@ -102,7 +102,7 @@ export function ConnectionBanner({ gameId }: { gameId: string }) {
             type="button"
             onClick={() => getGameOpQueue(gameId).clearRejection()}
             aria-label="Dismiss"
-            className="shrink-0 rounded px-2 py-0.5 max-md:min-h-[44px] max-md:px-3 text-xs font-black uppercase tracking-wide bg-red-800 hover:bg-red-900 text-white"
+            className="shrink-0 rounded px-2 py-0.5 max-md:min-h-[44px] short-land:min-h-[44px] max-md:px-3 short-land:px-3 text-xs font-black uppercase tracking-wide bg-red-800 hover:bg-red-900 text-white"
           >
             Dismiss
           </button>

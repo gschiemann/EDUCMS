@@ -1,7 +1,9 @@
 /**
  * K-12 launch program, register row K12-F15 — the phone Run view carries
- * EVERY control the desktop Run view has, at 360 / 390 / 430 px, in a real
- * browser (chromium + webkit projects).
+ * EVERY control the desktop Run view has, at 360 / 390 / 430 px upright and
+ * at 844 × 390 / 740 × 360 held sideways, in a real browser (chromium +
+ * webkit projects). Plus the desktop typed fields: Escape cancels, never
+ * saves.
  *
  * Audit evidence this pins shut (docs/research/2026-09-23-k12-sports-
  * readiness-audit, verified-console-phone-webkit.png): at 390 px the desktop
@@ -15,7 +17,11 @@
  *   - every visible button / input / link inside the game console is at
  *     least 44 × 44 px (the phone touch floor);
  *   - the timeout / foul / possession / shot-reset / exact-time / undo /
- *     penalty scenarios send the SAME API calls the desktop controls send.
+ *     penalty scenarios send the SAME API calls the desktop controls send,
+ *     each carrying a durable command id (K12-F10);
+ *   - sideways, the score and the clock stay on screen while the controls
+ *     scroll (K12-F15 landscape);
+ *   - Escape on a typed field restores the old value and sends nothing.
  *
  * Every API call is intercepted (the suite's contract — see
  * apps/web/playwright.config.ts); nothing here touches a database. Set
@@ -26,9 +32,14 @@ import { test, expect, type BrowserContext, type Page } from '@playwright/test';
 const SCHOOL = 'e2e-school';
 const GAME = 'e2e-phone-run-000000000001';
 const WIDTHS = [360, 390, 430] as const;
+const LANDSCAPE = [
+  { width: 844, height: 390 },
+  { width: 740, height: 360 },
+] as const;
 const SHOTS = process.env.E2E_SHOTS_DIR || '';
+const COMMAND_ID = /^cmd-[0-9a-f]{32}$/;
 
-type Write = { method: string; path: string; body: unknown };
+type Write = { method: string; path: string; body: Record<string, unknown> };
 
 function gameFor(sport: string) {
   const now = new Date().toISOString();
@@ -105,7 +116,7 @@ async function mockConsole(context: BrowserContext, sport: string, writes: Write
     const json = (body: unknown, status = 200) =>
       route.fulfill({ status, contentType: 'application/json', headers, body: JSON.stringify(body) });
     if (req.method() !== 'GET') {
-      writes.push({ method: req.method(), path, body: req.postDataJSON() });
+      writes.push({ method: req.method(), path, body: (req.postDataJSON() || {}) as Record<string, unknown> });
       return json(state);
     }
     if (path === `/sports/games/${GAME}` || path === `/sports/board/${GAME}`) {
@@ -164,7 +175,9 @@ async function expectTouchTargets(page: Page) {
       if (r.width === 0 || r.height === 0 || cs.visibility === 'hidden' || cs.display === 'none') continue;
       if (r.width < 44 || r.height < 44) {
         const name = ((el as HTMLElement).innerText || el.getAttribute('aria-label') || '').trim().slice(0, 30);
-        out.push(`${name} ${Math.round(r.width)}×${Math.round(r.height)}`);
+        // Name the nearest test id too, so a failure says WHERE the control lives.
+        const host = el.parentElement?.closest('[data-testid]')?.getAttribute('data-testid') || '?';
+        out.push(`${name} ${Math.round(r.width)}×${Math.round(r.height)} in ${host}`);
       }
     }
     return out;
@@ -228,27 +241,45 @@ test.describe('K12-F15 — phone Run view parity', () => {
     const trays = page.getByTestId('phone-run-trays');
 
     await trays.getByRole('button', { name: /timeout — westview wolves/i }).click();
-    await expect.poll(() => writes.find((w) => w.path.endsWith('/timeout'))?.body).toEqual({ team: 'away' });
+    await expect.poll(() => writes.find((w) => w.path.endsWith('/timeout'))?.body).toMatchObject({ team: 'away' });
 
     await trays.getByRole('button', { name: /increase central comets fouls/i }).click();
-    await expect.poll(() => writes.find((w) => w.path.endsWith('/stats'))?.body).toEqual({ stats: { homeFouls: 6 } });
+    await expect.poll(() => writes.find((w) => w.path.endsWith('/stats'))?.body).toMatchObject({ stats: { homeFouls: 6 } });
 
     await trays.getByTestId('phone-possession-tray').getByRole('button', { name: /westview wolves/i }).click();
-    await expect.poll(() => writes.find((w) => w.path.endsWith('/possession'))?.body).toEqual({ team: 'away' });
+    await expect.poll(() => writes.find((w) => w.path.endsWith('/possession'))?.body).toMatchObject({ team: 'away' });
 
     // The game runs a 35-second shot clock — the reset is 35, not the sport's 24.
     await trays.getByRole('button', { name: /reset the shot clock to 35/i }).click();
     await expect
       .poll(() => writes.find((w) => w.path.endsWith('/shot-clock'))?.body)
-      .toEqual({ action: 'reset', value: 35 });
+      .toMatchObject({ action: 'reset', value: 35 });
 
     await trays.getByRole('button', { name: 'Set time' }).click();
     const field = trays.getByRole('textbox', { name: /exact game clock time/i });
     await field.fill('0:30');
     await trays.getByRole('button', { name: 'Set', exact: true }).click();
     await expect
-      .poll(() => writes.filter((w) => w.path.endsWith('/clock')).map((w) => w.body))
-      .toContainEqual({ action: 'set', ms: 30_000 });
+      .poll(() => writes.find((w) => w.path.endsWith('/clock'))?.body)
+      .toMatchObject({ action: 'set', ms: 30_000 });
+
+    // Tenths are typable in the final seconds (K12-F17): "4.3".
+    await trays.getByRole('button', { name: 'Set time' }).click();
+    await trays.getByRole('textbox', { name: /exact game clock time/i }).fill('4.3');
+    await trays.getByRole('button', { name: 'Set', exact: true }).click();
+    await expect
+      .poll(() => writes.filter((w) => w.path.endsWith('/clock')).map((w) => w.body.ms))
+      .toContain(4300);
+
+    // Escape throws a typed time away.
+    const clockWrites = writes.filter((w) => w.path.endsWith('/clock')).length;
+    await trays.getByRole('button', { name: 'Set time' }).click();
+    const typed = trays.getByRole('textbox', { name: /exact game clock time/i });
+    await typed.fill('9:59');
+    await typed.press('Escape');
+    await expect(typed).toHaveCount(0);
+    await page.waitForTimeout(400);
+    expect(writes.filter((w) => w.path.endsWith('/clock')).length).toBe(clockWrites);
 
     // Undo is deliberate on a phone: the first tap arms, the second sends.
     const undo = trays.getByTestId('phone-last-change').getByRole('button');
@@ -257,6 +288,13 @@ test.describe('K12-F15 — phone Run view parity', () => {
     expect(writes.some((w) => w.path.includes('/undo'))).toBe(false);
     await undo.click();
     await expect.poll(() => writes.some((w) => w.path === `/sports/games/${GAME}/events/ev1/undo`)).toBe(true);
+
+    // Every operator write carries its durable command id (K12-F10). An
+    // event undo is keyed by the event it reverses (single-use server-side,
+    // K12-F09), so it needs none.
+    for (const w of writes.filter((x) => !x.path.endsWith('/undo'))) {
+      expect(String(w.body.commandId), `${w.method} ${w.path}`).toMatch(COMMAND_ID);
+    }
   });
 
   test('hockey at 390 px: the penalty box is one tap from the phone trays', async ({ page, context }) => {
@@ -285,6 +323,106 @@ test.describe('K12-F15 — phone Run view parity', () => {
     const home = page.getByRole('textbox', { name: /central comets total/i });
     await home.fill('195.825');
     await home.press('Enter');
-    await expect.poll(() => writes.find((w) => w.path.endsWith('/score'))?.body).toEqual({ homeScore: 195825 });
+    await expect.poll(() => writes.find((w) => w.path.endsWith('/score'))?.body).toMatchObject({ homeScore: 195825 });
+  });
+});
+
+/** Is this element fully inside the viewport? Returns its box. */
+async function inView(page: Page, testId: string) {
+  const box = await page.getByTestId(testId).first().boundingBox();
+  const vp = page.viewportSize()!;
+  expect(box, `${testId} is rendered`).not.toBeNull();
+  expect(box!.y, `${testId} top`).toBeGreaterThanOrEqual(0);
+  expect(box!.y + box!.height, `${testId} bottom`).toBeLessThanOrEqual(vp.height + 1);
+  expect(box!.x + box!.width, `${testId} right`).toBeLessThanOrEqual(vp.width + 1);
+  return box!;
+}
+
+test.describe('K12-F15 — the Run view on a phone held sideways', () => {
+  test.describe.configure({ timeout: 120_000 });
+
+  for (const size of LANDSCAPE) {
+    for (const sport of ['basketball', 'football', 'hockey']) {
+      test(`${sport} at ${size.width}×${size.height}: score and clock pinned, controls scroll, 44 px targets`, async ({
+        page,
+        context,
+      }) => {
+        await mockConsole(context, sport, []);
+        await page.setViewportSize(size);
+        await page.goto(`/${SCHOOL}/sports/${GAME}`);
+        await expect(page.getByTestId('run-landscape')).toBeVisible({ timeout: 60_000 });
+
+        // The two scores and the clock are fully on screen…
+        const home = await inView(page, 'dock-score-home');
+        await inView(page, 'dock-score-away');
+        await inView(page, 'dock-clock');
+        // …and stay put while the controls pane scrolls to its end.
+        const controls = page.getByTestId('run-landscape-controls');
+        const scrollable = await controls.evaluate((el) => el.scrollHeight - el.clientHeight);
+        await controls.evaluate((el) => {
+          el.scrollTop = el.scrollHeight;
+        });
+        const after = await inView(page, 'dock-score-home');
+        expect(Math.abs(after.y - home.y)).toBeLessThanOrEqual(1);
+        await inView(page, 'dock-clock');
+        // The controls really do scroll on their own when they overflow.
+        if (scrollable > 0) {
+          expect(await controls.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+        }
+
+        await expectNoHorizontalOverflow(page);
+        await expectTouchTargets(page);
+        if (SHOTS) {
+          await controls.evaluate((el) => {
+            el.scrollTop = 0;
+          });
+          await page.screenshot({
+            path: `${SHOTS}/run-${sport}-${test.info().project.name}-${size.width}x${size.height}.png`,
+          });
+        }
+      });
+    }
+  }
+});
+
+test.describe('K12-F15 — desktop typed fields: Escape cancels, never saves', () => {
+  test.describe.configure({ timeout: 120_000 });
+
+  test('gymnastics judged total and Current Apparatus at 1280 px', async ({ page, context }) => {
+    const writes: Write[] = [];
+    await mockConsole(context, 'gymnastics', writes);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(`/${SCHOOL}/sports/${GAME}`);
+    const total = page.getByRole('textbox', { name: 'Home team total' });
+    await expect(total).toBeVisible({ timeout: 60_000 });
+
+    // The judged total: Escape restores the live value and writes nothing.
+    const before = await total.inputValue();
+    await total.fill('199.500');
+    await total.press('Escape');
+    await expect(total).toHaveValue(before);
+    // Current Apparatus (a game-scope text field): same contract.
+    const apparatus = page.getByRole('textbox', { name: /current apparatus/i });
+    await apparatus.fill('Vault');
+    await apparatus.press('Escape');
+    await expect(apparatus).toHaveValue('');
+    await page.waitForTimeout(500);
+    expect(writes).toEqual([]);
+
+    // Enter commits once; tapping into a field and out writes nothing.
+    await total.fill('195.825');
+    await total.press('Enter');
+    await expect
+      .poll(() => writes.filter((w) => w.path.endsWith('/score')).map((w) => w.body))
+      .toEqual([expect.objectContaining({ homeScore: 195825 })]);
+    await apparatus.fill('Beam');
+    await apparatus.press('Enter');
+    await expect
+      .poll(() => writes.filter((w) => w.path.endsWith('/stats')).map((w) => w.body))
+      .toEqual([expect.objectContaining({ stats: { currentApparatus: 'Beam' } })]);
+    await apparatus.focus();
+    await apparatus.blur();
+    await page.waitForTimeout(300);
+    expect(writes.filter((w) => w.path.endsWith('/stats')).length).toBe(1);
   });
 });

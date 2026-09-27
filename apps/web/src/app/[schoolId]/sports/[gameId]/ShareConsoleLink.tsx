@@ -224,7 +224,7 @@ export function ShareConsoleLink({ gameId, sport }: { gameId: string; sport?: st
           <button
             type="button"
             onClick={() => void mint(scope)}
-            className="ml-2 min-h-[36px] max-md:min-h-[44px] rounded-md bg-slate-100 px-2 py-1 text-[12px] font-bold text-slate-700 hover:bg-slate-200"
+            className="ml-2 min-h-[36px] max-md:min-h-[44px] short-land:min-h-[44px] rounded-md bg-slate-100 px-2 py-1 text-[12px] font-bold text-slate-700 hover:bg-slate-200"
           >
             {t('retry')}
           </button>
@@ -237,7 +237,7 @@ export function ShareConsoleLink({ gameId, sport }: { gameId: string; sport?: st
           <button
             type="button"
             onClick={() => void mint(scope)}
-            className="ml-2 min-h-[36px] max-md:min-h-[44px] rounded-md bg-indigo-50 px-2 py-1 text-[12px] font-bold text-indigo-700 hover:bg-indigo-100"
+            className="ml-2 min-h-[36px] max-md:min-h-[44px] short-land:min-h-[44px] rounded-md bg-indigo-50 px-2 py-1 text-[12px] font-bold text-indigo-700 hover:bg-indigo-100"
           >
             {t('createNew')}
           </button>
@@ -281,7 +281,7 @@ export function ShareConsoleLink({ gameId, sport }: { gameId: string; sport?: st
                       /* clipboard blocked (insecure ctx) — QR still works */
                     }
                   }}
-                  className="inline-flex min-h-[36px] max-md:min-h-[44px] items-center gap-1.5 rounded-lg bg-indigo-50 px-2.5 py-1 text-[12px] font-bold text-indigo-700 hover:bg-indigo-100"
+                  className="inline-flex min-h-[36px] max-md:min-h-[44px] short-land:min-h-[44px] items-center gap-1.5 rounded-lg bg-indigo-50 px-2.5 py-1 text-[12px] font-bold text-indigo-700 hover:bg-indigo-100"
                 >
                   {copied ? (
                     <>
@@ -298,14 +298,14 @@ export function ShareConsoleLink({ gameId, sport }: { gameId: string; sport?: st
                     <button
                       type="button"
                       onClick={revoke}
-                      className="min-h-[36px] max-md:min-h-[44px] rounded-lg bg-red-600 px-2.5 py-1 text-[12px] font-bold text-white hover:bg-red-700"
+                      className="min-h-[36px] max-md:min-h-[44px] short-land:min-h-[44px] rounded-lg bg-red-600 px-2.5 py-1 text-[12px] font-bold text-white hover:bg-red-700"
                     >
                       {t('revokeAll')}
                     </button>
                     <button
                       type="button"
                       onClick={() => setConfirming(false)}
-                      className="min-h-[36px] max-md:min-h-[44px] rounded-lg px-2 py-1 text-[12px] font-semibold text-slate-500 hover:bg-slate-100"
+                      className="min-h-[36px] max-md:min-h-[44px] short-land:min-h-[44px] rounded-lg px-2 py-1 text-[12px] font-semibold text-slate-500 hover:bg-slate-100"
                     >
                       {t('keep')}
                     </button>
@@ -314,7 +314,7 @@ export function ShareConsoleLink({ gameId, sport }: { gameId: string; sport?: st
                   <button
                     type="button"
                     onClick={() => setConfirming(true)}
-                    className="min-h-[36px] max-md:min-h-[44px] rounded-lg px-2.5 py-1 text-[12px] font-bold text-red-600 hover:bg-red-50"
+                    className="min-h-[36px] max-md:min-h-[44px] short-land:min-h-[44px] rounded-lg px-2.5 py-1 text-[12px] font-bold text-red-600 hover:bg-red-50"
                   >
                     {t('revoke')}
                   </button>

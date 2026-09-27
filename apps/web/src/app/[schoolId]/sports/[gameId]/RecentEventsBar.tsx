@@ -201,7 +201,7 @@ export function RecentEventsBar({ gameId, sport }: { gameId: string; sport?: str
         </div>
         <button
           onClick={() => setCollapsed((c) => !c)}
-          className="flex items-center justify-center rounded p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 max-md:min-h-[44px] max-md:min-w-[44px]"
+          className="flex items-center justify-center rounded p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 max-md:min-h-[44px] short-land:min-h-[44px] max-md:min-w-[44px] short-land:min-w-[44px]"
           title={collapsed ? 'Show event log' : 'Hide event log'}
           aria-label={collapsed ? 'Expand event log' : 'Collapse event log'}
         >
@@ -266,7 +266,7 @@ export function RecentEventsBar({ gameId, sport }: { gameId: string; sport?: str
                     <button
                       disabled={!!undoingId}
                       onClick={() => handleUndo(ev.id)}
-                      className="absolute right-1 top-1 flex items-center justify-center rounded bg-white px-1 py-0.5 text-[10px] font-semibold text-indigo-500 opacity-0 shadow-sm ring-1 ring-slate-200 transition-opacity hover:text-indigo-700 focus:opacity-100 group-hover:opacity-100 disabled:opacity-40 [@media(hover:none)]:opacity-100 max-md:static max-md:mt-1.5 max-md:min-h-[44px] max-md:text-xs max-md:opacity-100 max-md:disabled:opacity-40"
+                      className="absolute right-1 top-1 flex items-center justify-center rounded bg-white px-1 py-0.5 text-[10px] font-semibold text-indigo-500 opacity-0 shadow-sm ring-1 ring-slate-200 transition-opacity hover:text-indigo-700 focus:opacity-100 group-hover:opacity-100 disabled:opacity-40 [@media(hover:none)]:opacity-100 max-md:static short-land:static max-md:mt-1.5 short-land:mt-1.5 max-md:min-h-[44px] short-land:min-h-[44px] max-md:text-xs short-land:text-xs max-md:opacity-100 short-land:opacity-100 max-md:disabled:opacity-40 short-land:disabled:opacity-40"
                       title="Undo this action"
                       aria-label={`Undo: ${summary}`}
                     >

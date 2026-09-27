@@ -529,7 +529,7 @@ function GameControl() {
       // Below sm the label hides, leaving a 16 px unnamed arrow: give it a
       // name and a 44 px target on phones. (K12-F15)
       aria-label={tPhone('backToGames')}
-      className="flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-900 shrink-0 max-md:min-h-[44px] max-md:min-w-[44px] max-md:justify-center short-land:min-h-[44px] short-land:min-w-[44px]"
+      className="flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-900 shrink-0 max-md:min-h-[44px] max-md:min-w-[44px] short-land:min-w-[44px] max-md:justify-center short-land:justify-center short-land:min-h-[44px] short-land:min-w-[44px]"
     >
       <ArrowLeft className="h-4 w-4" />
       <span className="hidden sm:inline">Game Day</span>
@@ -3024,7 +3024,7 @@ function GameScopeText({
         onBlur={field.onBlur}
         onKeyDown={field.onKeyDown}
         placeholder="—"
-        className="h-9 max-md:h-11 min-w-[140px] rounded-lg border border-slate-700 bg-slate-900 px-2.5 text-sm font-bold text-white outline-none focus:border-indigo-500"
+        className="h-9 max-md:h-11 short-land:h-11 min-w-[140px] rounded-lg border border-slate-700 bg-slate-900 px-2.5 text-sm font-bold text-white outline-none focus:border-indigo-500"
       />
     </label>
   );
@@ -3052,7 +3052,7 @@ function GameScopeToggle({
       type="button"
       onClick={() => onSet(cur === side ? '' : side)}
       aria-pressed={cur === side}
-      className={`h-9 max-md:h-11 px-3 rounded-lg text-sm font-black transition-colors border ${
+      className={`h-9 max-md:h-11 short-land:h-11 px-3 rounded-lg text-sm font-black transition-colors border ${
         cur === side
           ? 'bg-indigo-600 text-white border-indigo-700'
           : 'bg-slate-900 text-slate-400 border-slate-700 hover:bg-slate-800'
@@ -3764,7 +3764,7 @@ function RunRibbonPreview({ gameId }: { gameId: string }) {
         <button
           type="button"
           onClick={() => setHidden(false)}
-          className="text-[11px] font-bold uppercase tracking-wider text-slate-500 hover:text-slate-800 max-md:min-h-[44px] max-md:px-2"
+          className="text-[11px] font-bold uppercase tracking-wider text-slate-500 hover:text-slate-800 max-md:min-h-[44px] short-land:min-h-[44px] max-md:px-2 short-land:px-2"
         >
           ▾ Show ribbon preview
         </button>
@@ -3780,7 +3780,7 @@ function RunRibbonPreview({ gameId }: { gameId: string }) {
         <button
           type="button"
           onClick={() => setHidden(true)}
-          className="text-[10px] font-bold uppercase tracking-wider text-slate-400 hover:text-white max-md:min-h-[44px] max-md:min-w-[44px] max-md:px-2"
+          className="text-[10px] font-bold uppercase tracking-wider text-slate-400 hover:text-white max-md:min-h-[44px] short-land:min-h-[44px] max-md:min-w-[44px] short-land:min-w-[44px] max-md:px-2 short-land:px-2"
         >
           ▴ Hide
         </button>
@@ -3906,7 +3906,7 @@ function RunInlineRosterBar({
                 onClick={() => setActivePlayer(p)}
                 disabled={ctl.spotlight.isPending || ctl.cue.isPending}
                 title={onAir ? 'On air — tap for actions' : `Tap to spotlight or celebrate ${p.name}`}
-                className={`flex items-center gap-2 rounded-lg border py-1 pl-1 pr-2 max-md:min-h-[44px] text-left transition-colors disabled:opacity-50 ${
+                className={`flex items-center gap-2 rounded-lg border py-1 pl-1 pr-2 max-md:min-h-[44px] short-land:min-h-[44px] text-left transition-colors disabled:opacity-50 ${
                   onAir
                     ? 'border-amber-400 bg-amber-50 ring-2 ring-amber-300'
                     : 'border-slate-200 bg-white hover:bg-slate-50'
@@ -3948,7 +3948,7 @@ function RunInlineRosterBar({
         type="button"
         onClick={() => setExpanded((v) => !v)}
         aria-expanded={expanded}
-        className="flex w-full items-center gap-2 px-4 py-2 max-md:min-h-[44px] text-left transition-colors hover:bg-slate-100/70"
+        className="flex w-full items-center gap-2 px-4 py-2 max-md:min-h-[44px] short-land:min-h-[44px] text-left transition-colors hover:bg-slate-100/70"
       >
         <svg
           className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${expanded ? 'rotate-90' : ''}`}
@@ -4345,8 +4345,8 @@ function RunInlineCuesBar({
                 className={
                   // max-md: 44 px touch floor on phones (K12-F15).
                   active
-                    ? 'px-2.5 py-0.5 max-md:min-h-[44px] max-md:px-3.5 text-[10px] font-black uppercase tracking-wide rounded-full bg-indigo-600 text-white border border-indigo-600 transition-colors shrink-0'
-                    : 'px-2.5 py-0.5 max-md:min-h-[44px] max-md:px-3.5 text-[10px] font-bold uppercase tracking-wide rounded-full bg-white text-indigo-600 border border-indigo-300 hover:bg-indigo-100 transition-colors shrink-0'
+                    ? 'px-2.5 py-0.5 max-md:min-h-[44px] short-land:min-h-[44px] max-md:px-3.5 short-land:px-3.5 text-[10px] font-black uppercase tracking-wide rounded-full bg-indigo-600 text-white border border-indigo-600 transition-colors shrink-0'
+                    : 'px-2.5 py-0.5 max-md:min-h-[44px] short-land:min-h-[44px] max-md:px-3.5 short-land:px-3.5 text-[10px] font-bold uppercase tracking-wide rounded-full bg-white text-indigo-600 border border-indigo-300 hover:bg-indigo-100 transition-colors shrink-0'
                 }
                 style={{ marginRight: 4 }}
               >
@@ -4395,8 +4395,8 @@ function RunInlineCuesBar({
                 }
                 className={
                   justFired
-                    ? 'flex items-center gap-1 rounded-md bg-indigo-600 text-white px-3 py-1.5 max-md:min-h-[44px] font-bold text-xs ring-2 ring-indigo-300 transition-colors shrink-0'
-                    : 'flex items-center gap-1 rounded-md bg-white border border-indigo-300 px-3 py-1.5 max-md:min-h-[44px] font-bold text-xs text-indigo-700 hover:bg-indigo-100 transition-colors shrink-0 disabled:opacity-50'
+                    ? 'flex items-center gap-1 rounded-md bg-indigo-600 text-white px-3 py-1.5 max-md:min-h-[44px] short-land:min-h-[44px] font-bold text-xs ring-2 ring-indigo-300 transition-colors shrink-0'
+                    : 'flex items-center gap-1 rounded-md bg-white border border-indigo-300 px-3 py-1.5 max-md:min-h-[44px] short-land:min-h-[44px] font-bold text-xs text-indigo-700 hover:bg-indigo-100 transition-colors shrink-0 disabled:opacity-50'
                 }
               >
                 <span>{c.emoji}</span>
@@ -4920,7 +4920,7 @@ function StatNumberField({
           disabled={cur <= min}
           aria-label={`Decrease ${label}`}
           title={`−1 ${label}`}
-          className="h-8 w-8 max-md:h-11 max-md:w-11 rounded-lg text-slate-500 text-xl font-bold leading-none hover:bg-slate-100 active:bg-slate-200 disabled:opacity-25"
+          className="h-8 w-8 max-md:h-11 short-land:h-11 max-md:w-11 short-land:w-11 rounded-lg text-slate-500 text-xl font-bold leading-none hover:bg-slate-100 active:bg-slate-200 disabled:opacity-25"
         >
           −
         </button>
@@ -4934,7 +4934,7 @@ function StatNumberField({
           onKeyDown={field.onKeyDown}
           placeholder="—"
           title="Tap to type a value"
-          className="w-10 max-md:h-11 max-md:w-12 bg-transparent text-center text-lg font-black text-slate-900 tabular-nums leading-tight outline-none"
+          className="w-10 max-md:h-11 short-land:h-11 max-md:w-12 short-land:w-12 bg-transparent text-center text-lg font-black text-slate-900 tabular-nums leading-tight outline-none"
         />
         <button
           type="button"
@@ -4942,7 +4942,7 @@ function StatNumberField({
           disabled={cur >= max}
           aria-label={`Increase ${label}`}
           title={`+1 ${label}`}
-          className="h-8 w-8 max-md:h-11 max-md:w-11 rounded-lg text-slate-500 text-xl font-bold leading-none hover:bg-slate-100 active:bg-slate-200 disabled:opacity-25"
+          className="h-8 w-8 max-md:h-11 short-land:h-11 max-md:w-11 short-land:w-11 rounded-lg text-slate-500 text-xl font-bold leading-none hover:bg-slate-100 active:bg-slate-200 disabled:opacity-25"
         >
           +
         </button>
@@ -5042,7 +5042,7 @@ function PossessionToggle({
       type="button"
       onClick={() => onSet(key)}
       aria-pressed={v === key}
-      className={`rounded-md px-2 py-0.5 max-md:min-h-[44px] max-md:px-3 text-xs font-black transition-colors ${
+      className={`rounded-md px-2 py-0.5 max-md:min-h-[44px] short-land:min-h-[44px] max-md:px-3 short-land:px-3 text-xs font-black transition-colors ${
         v === key ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-100'
       }`}
     >
@@ -5119,7 +5119,7 @@ function CompactDownControl({ value, onSet }: { value: number; onSet: (n: number
           type="button"
           onClick={() => onSet(i + 1)}
           aria-pressed={i + 1 === d}
-          className={`rounded-md px-1.5 py-0.5 max-md:min-h-[44px] max-md:min-w-[44px] text-xs font-black transition-colors ${
+          className={`rounded-md px-1.5 py-0.5 max-md:min-h-[44px] short-land:min-h-[44px] max-md:min-w-[44px] short-land:min-w-[44px] text-xs font-black transition-colors ${
             i + 1 === d
               ? 'bg-indigo-600 text-white'
               : 'text-slate-500 hover:bg-slate-100'
