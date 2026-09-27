@@ -540,6 +540,14 @@ describe('the public board — a school that confirmed nothing shows no student'
     const b = await w.board(g.id);
     expect(b.stats.currentDiver).toBe('');
     expect(b.stats.diveCode).toBe('105B');
+    const xc = await newGame(w.service, 'cross_country');
+    await w.service.updateStats(
+      TENANT,
+      xc.id,
+      { stats: { leadRunner: 'Taylor Brooks' } },
+      'user-1',
+    );
+    expect((await w.board(xc.id)).stats.leadRunner).toBe('');
   });
 });
 
@@ -644,6 +652,293 @@ describe('the public board — after the school confirms', () => {
     await w.gamePrivacy.set(TENANT, g.id, 'user-1', {});
     await w.privacy.setCategory(TENANT, ADMIN, 'names', 'revoke');
     expect((await w.board(g.id)).roster[0].name).toBe('');
+  });
+});
+
+/**
+ * A family's opt-out beats a confirmed school on EVERY public output — each
+ * case confirms names AND photos first, so the student beside the opted-out
+ * one shows by name: the opt-out, not the default, is what hides them.
+ */
+describe("the public board — a family's opt-out wins on every output", () => {
+  const RILEY = {
+    name: 'Riley Chen',
+    number: '5',
+    position: 'F',
+    stats: { PTS: '8', REB: '2' },
+  };
+
+  async function schoolConfirmed(w: ReturnType<typeof world>) {
+    await w.privacy.setCategory(TENANT, ADMIN, 'names', 'confirm', V);
+    await w.privacy.setCategory(TENANT, ADMIN, 'photos', 'confirm', V);
+  }
+  async function optOut(
+    w: ReturnType<typeof world>,
+    gameId: string,
+    playerId: string,
+  ) {
+    await w.privacy.setStudentFlags(TENANT, gameId, playerId, ADMIN, {
+      photoRelease: true,
+    });
+    await w.privacy.setStudentFlags(TENANT, gameId, playerId, EDITOR, {
+      directoryOptOut: true,
+    });
+  }
+  async function basketballPair(w: ReturnType<typeof world>) {
+    const g = await basketballWithJordan(w);
+    w.addPlayer(g.id, { id: 'p-riley', ...RILEY });
+    await schoolConfirmed(w);
+    await optOut(w, g.id, 'p-jordan');
+    return g;
+  }
+
+  it('leaders and player of the game', async () => {
+    const w = world('K12');
+    const g = await basketballPair(w);
+    const b = await w.board(g.id);
+    expect(b.leaders?.length).toBeGreaterThan(0);
+    for (const l of b.leaders) expect(l.playerName).not.toBe('Jordan Lee');
+    expect(b.playerOfGame).toMatchObject({
+      name: '',
+      photoUrl: null,
+      number: '3',
+    });
+    expect(b.roster.find((p: any) => p.number === '5').name).toBe('Riley Chen');
+    expect(text(b)).not.toContain('Jordan');
+    expect(text(b)).not.toContain(PHOTO);
+  });
+
+  it('pre-game intro lineup', async () => {
+    const w = world('K12');
+    const g = await basketballPair(w);
+    await w.service.firePregameIntro(TENANT, g.id, { team: 'home' }, 'user-1');
+    const intro = (await w.board(g.id)).cues.find(
+      (c: any) => c.key === 'pregame-intro',
+    );
+    const byNumber = Object.fromEntries(
+      intro.lineup.map((p: any) => [p.number, p]),
+    );
+    expect(byNumber['3']).toMatchObject({ name: '', photoUrl: '' });
+    expect(byNumber['5'].name).toBe('Riley Chen');
+  });
+
+  it('a celebration naming the scorer', async () => {
+    const w = world('K12');
+    const g = await basketballPair(w);
+    await w.service.fireCue(
+      TENANT,
+      g.id,
+      {
+        key: 'threePointer',
+        team: 'home',
+        scorerName: 'Jordan Lee',
+        scorerNumber: '3',
+        scorerPhotoUrl: PHOTO,
+        scorerId: 'p-jordan',
+      },
+      'user-1',
+    );
+    await w.service.fireCue(
+      TENANT,
+      g.id,
+      {
+        key: 'dunk',
+        team: 'home',
+        scorerName: 'Riley Chen',
+        scorerNumber: '5',
+        scorerId: 'p-riley',
+      },
+      'user-1',
+    );
+    const b = await w.board(g.id);
+    expect(b.cues.find((c: any) => c.key === 'threePointer')).toMatchObject({
+      scorerName: null,
+      scorerPhotoUrl: null,
+      scorerNumber: '3',
+    });
+    expect(b.cues.find((c: any) => c.key === 'dunk').scorerName).toBe(
+      'Riley Chen',
+    );
+    expect(text(b)).not.toContain('Jordan');
+    expect(text(b)).not.toContain(PHOTO);
+  });
+
+  it('the spotlight', async () => {
+    const w = world('K12');
+    const g = await basketballPair(w);
+    await w.service.setSpotlight(
+      TENANT,
+      g.id,
+      { title: 'Jordan Lee', photoUrl: PHOTO, subtitle: '#3 · G' },
+      'user-1',
+    );
+    const b = await w.board(g.id);
+    expect(b.spotlight).toMatchObject({ title: '#3', photoUrl: null });
+    expect(text(b)).not.toContain('Jordan');
+  });
+
+  it('typed meet results', async () => {
+    const w = world('K12');
+    const g = await newGame(w.service, 'swimming');
+    w.addPlayer(g.id, { id: 'p-maya', name: 'Maya Patel', number: '11' });
+    w.addPlayer(g.id, { id: 'p-nia', name: 'Nia Ross', number: '12' });
+    await schoolConfirmed(w);
+    await optOut(w, g.id, 'p-maya');
+    await w.service.updateStats(
+      TENANT,
+      g.id,
+      {
+        stats: {
+          results: [
+            {
+              event: '100 Free',
+              entries: [
+                { place: 1, name: 'Maya Patel', team: 'home', mark: '52.10' },
+                { place: 2, name: 'Nia Ross', team: 'home', mark: '53.04' },
+              ],
+            },
+          ],
+        },
+      },
+      'user-1',
+    );
+    const entries = (await w.board(g.id)).stats.results[0].entries;
+    expect(entries.map((e: any) => e.name)).toEqual(['', 'Nia Ross']);
+    expect(entries.map((e: any) => e.mark)).toEqual(['52.10', '53.04']);
+  });
+
+  it('the swim feed lane → name join', async () => {
+    const w = world('K12');
+    const g = await newGame(w.service, 'swimming');
+    w.addPlayer(g.id, {
+      id: 'p-maya',
+      name: 'Maya Patel',
+      number: '11',
+      stats: { lane: 4 },
+    });
+    w.addPlayer(g.id, {
+      id: 'p-nia',
+      name: 'Nia Ross',
+      number: '12',
+      stats: { lane: 5 },
+    });
+    await schoolConfirmed(w);
+    await optOut(w, g.id, 'p-maya');
+    const lane = (n: number, place: number, seconds: number) => ({
+      lane: n,
+      place,
+      minutes: 0,
+      seconds,
+      hundredths: 10,
+      display: `${seconds}.10`,
+      blank: false,
+    });
+    const snapshot: SwimTimingSnapshot = {
+      lanes: { 4: lane(4, 1, 52), 5: lane(5, 2, 53) },
+      splits: {},
+      eventHeat: { eventNumber: 3, heat: 1 },
+      teamScore: null,
+      receivedAt: Date.now(),
+    };
+    await w.service.ingestSwimTimingSnapshot(g.id, snapshot, {
+      source: 'test',
+    });
+    const shown = (await w.board(g.id)).stats.results[0].entries;
+    const byLane = Object.fromEntries(shown.map((e: any) => [e.lane, e]));
+    expect(byLane[4]).toMatchObject({ name: '', mark: '52.10' });
+    expect(byLane[5].name).toBe('Nia Ross');
+  });
+
+  it('foul and exclusion rows', async () => {
+    const w = world('K12');
+    const g = await newGame(w.service, 'water_polo');
+    w.addPlayer(g.id, {
+      id: 'p-sam',
+      team: 'away',
+      name: 'Sam Rivera',
+      number: '7',
+    });
+    w.addPlayer(g.id, {
+      id: 'p-ari',
+      team: 'home',
+      name: 'Ari Cole',
+      number: '12',
+    });
+    await schoolConfirmed(w);
+    await optOut(w, g.id, 'p-sam');
+    await w.service.updateStats(
+      TENANT,
+      g.id,
+      {
+        stats: {
+          playerExclusions: [
+            { team: 'away', jersey: 7, name: 'Sam Rivera', count: 2 },
+            { team: 'home', jersey: 12, name: 'Ari Cole', count: 1 },
+          ],
+          playerFouls: [
+            { team: 'away', jersey: 7, name: 'Sam Rivera', fouls: 3 },
+          ],
+        },
+      },
+      'user-1',
+    );
+    const b = await w.board(g.id);
+    expect(b.stats.playerExclusions.map((r: any) => r.name)).toEqual([
+      '',
+      'Ari Cole',
+    ]);
+    expect(b.stats.playerFouls[0]).toMatchObject({
+      name: '',
+      jersey: 7,
+      fouls: 3,
+    });
+    expect(text(b)).not.toContain('Sam Rivera');
+  });
+
+  it('the diver name stat', async () => {
+    const w = world('K12');
+    const g = await newGame(w.service, 'diving');
+    w.addPlayer(g.id, { id: 'p-taylor', name: 'Taylor Brooks', number: '4' });
+    w.addPlayer(g.id, { id: 'p-jamie', name: 'Jamie Fox', number: '9' });
+    await schoolConfirmed(w);
+    await optOut(w, g.id, 'p-taylor');
+    await w.service.updateStats(
+      TENANT,
+      g.id,
+      { stats: { currentDiver: 'Taylor Brooks' } },
+      'user-1',
+    );
+    expect((await w.board(g.id)).stats.currentDiver).toBe('');
+    await w.service.updateStats(
+      TENANT,
+      g.id,
+      { stats: { currentDiver: 'Jamie Fox' } },
+      'user-1',
+    );
+    expect((await w.board(g.id)).stats.currentDiver).toBe('Jamie Fox');
+  });
+
+  it('the lead runner name stat', async () => {
+    const w = world('K12');
+    const g = await newGame(w.service, 'cross_country');
+    w.addPlayer(g.id, { id: 'p-taylor', name: 'Taylor Brooks', number: '4' });
+    w.addPlayer(g.id, { id: 'p-jamie', name: 'Jamie Fox', number: '9' });
+    await schoolConfirmed(w);
+    await optOut(w, g.id, 'p-taylor');
+    await w.service.updateStats(
+      TENANT,
+      g.id,
+      { stats: { leadRunner: 'Taylor Brooks' } },
+      'user-1',
+    );
+    expect((await w.board(g.id)).stats.leadRunner).toBe('');
+    await w.service.updateStats(
+      TENANT,
+      g.id,
+      { stats: { leadRunner: 'Jamie Fox' } },
+      'user-1',
+    );
+    expect((await w.board(g.id)).stats.leadRunner).toBe('Jamie Fox');
   });
 });
 
