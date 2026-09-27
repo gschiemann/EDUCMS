@@ -10,138 +10,8 @@
  * Why a node environment: jsdom has no Response/ReadableStream, and these
  * are the objects whose streaming behaviour the fix depends on.
  */
-/* eslint-disable @typescript-eslint/no-explicit-any -- vm / fake-worker harness: replies are untyped by design */
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { createContext, runInContext } from 'node:vm';
-import { createHash, randomBytes } from 'node:crypto';
-
-const ORIGIN = 'https://venue-os.app';
-const SW_SOURCE = readFileSync(resolve(__dirname, '../../../../public/sw-player.js'), 'utf8');
-const MiB = 1024 * 1024;
-
-type Stored = { status: number; headers: [string, string][]; bytes: Uint8Array };
-
-class FakeCache {
-  entries = new Map<string, Stored>();
-  async keys() { return [...this.entries.keys()].map((u) => new Request(u)); }
-  async match(req: Request | string, opts?: { ignoreSearch?: boolean }) {
-    const url = typeof req === 'string' ? req : req.url;
-    let key: string | undefined = this.entries.has(url) ? url : undefined;
-    if (!key && opts?.ignoreSearch) {
-      const stripped = url.split('?')[0];
-      key = [...this.entries.keys()].find((k) => k.split('?')[0] === stripped);
-    }
-    if (!key) return undefined;
-    const e = this.entries.get(key)!;
-    return new Response(e.bytes.slice(), { status: e.status, headers: e.headers });
-  }
-  async put(req: Request | string, res: Response) {
-    const url = typeof req === 'string' ? req : req.url;
-    const bytes = new Uint8Array(await res.arrayBuffer());
-    this.entries.set(url, { status: res.status, headers: [...res.headers.entries()], bytes });
-    // Real Cache Storage is disk IO: the write lands, then the promise settles
-    // a turn later. Without this hop two overlapping puts + reads could never
-    // interleave here the way they do on a device (the cross-body test needs it).
-    await new Promise((r) => setTimeout(r, 0));
-  }
-  async delete(req: Request | string) {
-    const url = typeof req === 'string' ? req : req.url;
-    return this.entries.delete(url);
-  }
-}
-
-type RangeServer = {
-  file: Uint8Array;
-  ignoreRange?: boolean;
-  exposeContentRange?: boolean;
-  lastModified?: string;
-  calls: Array<{ range: string | null }>;
-  status?: number;
-};
-
-function rangeFetch(server: RangeServer) {
-  return async (input: Request | string, init?: { signal?: AbortSignal }) => {
-    const req = typeof input === 'string' ? new Request(input, init) : input;
-    const range = req.headers.get('range');
-    server.calls.push({ range });
-    if (server.status) return new Response(null, { status: server.status });
-    const headers: Record<string, string> = { 'content-type': 'video/mp4' };
-    if (server.lastModified) headers['last-modified'] = server.lastModified;
-    const m = range ? /^bytes=(\d+)-(\d*)$/.exec(range) : null;
-    if (!m || server.ignoreRange) {
-      headers['content-length'] = String(server.file.length);
-      return new Response(server.file.slice(), { status: 200, headers });
-    }
-    const start = Number(m[1]);
-    if (start >= server.file.length) {
-      return new Response(null, { status: 416, headers: { 'content-range': `bytes */${server.file.length}` } });
-    }
-    const end = Math.min(m[2] === '' ? server.file.length - 1 : Number(m[2]), server.file.length - 1);
-    const body = server.file.slice(start, end + 1);
-    headers['content-length'] = String(body.length);
-    if (server.exposeContentRange !== false) headers['content-range'] = `bytes ${start}-${end}/${server.file.length}`;
-    return new Response(body, { status: 206, headers });
-  };
-}
-
-function sha256Hex(bytes: Uint8Array): string {
-  return createHash('sha256').update(bytes).digest('hex');
-}
-
-function loadWorker() {
-  const handlers: Record<string, (event: any) => void> = {};
-  const cacheMap = new Map<string, FakeCache>();
-  const caches = { open: async (name: string) => { if (!cacheMap.has(name)) cacheMap.set(name, new FakeCache()); return cacheMap.get(name)!; } };
-  // The worker builds relative Requests ("/__edu_meta__/…") against its own
-  // origin; Node's Request needs them absolute.
-  class CtxRequest extends Request {
-    constructor(input: any, init?: any) {
-      super(typeof input === 'string' && input.startsWith('/') ? ORIGIN + input : input, init);
-    }
-  }
-  const self: any = {
-    location: { origin: ORIGIN },
-    addEventListener: (type: string, handler: (event: any) => void) => { handlers[type] = handler; },
-    clients: { matchAll: async () => [] },
-  };
-  self.self = self;
-  const context: any = createContext({
-    self, caches, console, URL, Request: CtxRequest, Response, Headers, Blob, ReadableStream,
-    crypto, AbortController, setTimeout, clearTimeout, Map, Set, Date, JSON, Math, Number,
-    TextEncoder, TextDecoder, fetch: () => { throw new Error('fetch not configured'); },
-  });
-  runInContext(SW_SOURCE, context);
-  const hooks = self.__swTestHooks;
-  // PRECACHE_PLAYLIST acks `{ started: true }` first and its result second;
-  // every other message answers once. Resolve on the real reply.
-  const send = (data: Record<string, unknown>) => new Promise<any>((resolvePort) => {
-    handlers.message({
-      data,
-      ports: [{ postMessage: (reply: any) => { if (!(reply && reply.started === true)) resolvePort(reply); } }],
-      waitUntil: () => undefined,
-    });
-  });
-  const cacheNamed = (name: string) => cacheMap.get(name) ?? new FakeCache();
-  return { context, hooks, send, cacheNamed, setFetch: (fn: unknown) => { context.fetch = fn; } };
-}
-
-/** Exactly what offline-cache.ts does: chunks until complete, verify, assemble. */
-async function drive(worker: ReturnType<typeof loadWorker>, asset: { url: string; sha256: string | null; size: number | null }, chunkBytes: number) {
-  const steps: any[] = [];
-  let offset = 0;
-  for (let i = 0; i < 64; i++) {
-    const reply = await worker.send({ type: 'PRECACHE_CHUNK', ...asset, offset, chunkBytes });
-    steps.push(reply);
-    if (!reply.ok) return { steps, verify: null, assemble: null };
-    offset = reply.nextOffset;
-    if (reply.complete) break;
-  }
-  const verify = await worker.send({ type: 'PRECACHE_VERIFY', url: asset.url, sha256: asset.sha256 });
-  if (!verify.ok) return { steps, verify, assemble: null };
-  const assemble = await worker.send({ type: 'PRECACHE_ASSEMBLE', url: asset.url, sha256: asset.sha256 });
-  return { steps, verify, assemble };
-}
+import { randomBytes } from 'node:crypto';
+import { drive, loadWorker, rangeFetch, sha256Hex, MiB, ORIGIN, type RangeServer } from './swHarness';
 
 describe('sw-player large-asset staging', () => {
   const URL_4K = 'https://cdn.example.com/storage/v1/object/public/assets/t1/4k.mp4?token=abc';
@@ -157,7 +27,7 @@ describe('sw-player large-asset staging', () => {
     expect(reply).toMatchObject({ ok: false, failures: 0, count: 2 });
     expect(reply.pending).toEqual([{ url: URL_4K, sha256: 'a'.repeat(64), size: 141_245_550, adoptable: false }]);
     // Only the small image was fetched — one plain request, no Range.
-    expect(server.calls).toEqual([{ range: null }]);
+    expect(server.calls.map((c) => c.range)).toEqual([null]);
     expect(w.hooks.isLargeAsset({ url: 'https://x/y.mp4' })).toBe(true); // unknown size, video URL
     expect(w.hooks.isLargeAsset({ url: 'https://x/y.jpg' })).toBe(false);
     expect(w.hooks.isLargeAsset({ url: 'https://x/y.jpg', size: w.hooks.LARGE_ASSET_BYTES })).toBe(true);
@@ -331,18 +201,13 @@ describe('sw-player large-asset staging', () => {
   // the manifest's new sha256 made `isCachedCurrent` say no and the whole
   // file was fetched again (141 MB on the field 4K screen, for bytes it had).
 
-  /** Put bytes straight into a tier the way the old worker did: no meta rows at all. */
-  async function seedLegacyEntry(w: ReturnType<typeof loadWorker>, cacheName: string, url: string, bytes: Uint8Array) {
-    const cache = await (w.context.caches as { open: (n: string) => Promise<FakeCache> }).open(cacheName);
-    await cache.put(url, new Response(bytes.slice(), { status: 200, headers: { 'content-type': 'video/mp4' } }));
-  }
 
   it('a legacy LARGE entry is reported adoptable and PRECACHE_ADOPT verifies it on disk — no fetch', async () => {
     const w = loadWorker();
     const file = randomBytes(w.hooks.LARGE_ASSET_BYTES + 11); // large: staged, never fetched inline
     const server: RangeServer = { file, calls: [] };
     w.setFetch(rangeFetch(server));
-    await seedLegacyEntry(w, w.hooks.PLAYLIST_CACHE, URL_4K, file);
+    await w.seedLegacyEntry(w.hooks.PLAYLIST_CACHE, URL_4K, file);
     const asset = { url: URL_4K, sha256: sha256Hex(file), size: file.length };
 
     const first = await w.send({ type: 'PRECACHE_PLAYLIST', assets: [asset] });
@@ -378,7 +243,7 @@ describe('sw-player large-asset staging', () => {
     const fresh = randomBytes(w.hooks.LARGE_ASSET_BYTES + 5);
     const server: RangeServer = { file: fresh, calls: [] };
     w.setFetch(rangeFetch(server));
-    await seedLegacyEntry(w, w.hooks.PLAYLIST_CACHE, URL_4K, stale);
+    await w.seedLegacyEntry(w.hooks.PLAYLIST_CACHE, URL_4K, stale);
     const asset = { url: URL_4K, sha256: sha256Hex(fresh), size: fresh.length };
     // The push hands it back as adoptable — the page tries the on-disk hash first.
     const first = await w.send({ type: 'PRECACHE_PLAYLIST', assets: [asset] });
@@ -407,7 +272,7 @@ describe('sw-player large-asset staging', () => {
     const url = 'https://cdn.example.com/small.jpg';
     const server: RangeServer = { file: good, calls: [] };
     w.setFetch(rangeFetch(server));
-    await seedLegacyEntry(w, w.hooks.PLAYLIST_CACHE, url, good);
+    await w.seedLegacyEntry(w.hooks.PLAYLIST_CACHE, url, good);
     const reply = await w.send({ type: 'PRECACHE_PLAYLIST', assets: [{ url, sha256: sha256Hex(good), size: good.length }] });
     expect(reply).toMatchObject({ ok: true, failures: 0, count: 1, pending: [] });
     expect(server.calls).toHaveLength(0);
@@ -417,7 +282,7 @@ describe('sw-player large-asset staging', () => {
     const stale = randomBytes(64 * 1024);
     const server2: RangeServer = { file: good, calls: [] };
     w2.setFetch(rangeFetch(server2));
-    await seedLegacyEntry(w2, w2.hooks.PLAYLIST_CACHE, url, stale);
+    await w2.seedLegacyEntry(w2.hooks.PLAYLIST_CACHE, url, stale);
     const reply2 = await w2.send({ type: 'PRECACHE_PLAYLIST', assets: [{ url, sha256: sha256Hex(good), size: good.length }] });
     expect(reply2).toMatchObject({ ok: true, failures: 0, count: 1, pending: [] });
     expect(server2.calls).toHaveLength(1);
