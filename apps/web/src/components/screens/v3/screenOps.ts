@@ -26,19 +26,30 @@
  *   • "Reported content" is what the PLAYER said, never physical proof.
  *   • There is no Downloaded step: `Screen.lastCacheReport` is a
  *     service-worker asset-COVERAGE report (`{playlist:{count,bytes},
- *     emergency:{count,bytes}}`, apps/api/src/screens/screens.controller.ts
- *     `reportCacheStatus`) — it carries no revision identity, so it cannot
- *     acknowledge a specific deployment. §10 says omit rather than infer.
+ *     emergency:{count,bytes}}`, apps/api/src/telemetry/cache-report.ts) — it
+ *     carries no revision identity, so it cannot acknowledge a specific
+ *     deployment. §10 says omit rather than infer. Its `downloading` snapshot
+ *     (2026-09-27) is a different fact: a file downloading RIGHT NOW, shown as
+ *     progress only while fresh (`contentDownload.ts`), never as a milestone.
  *   • Physical display is always 'not-instrumented'.
  */
 
 import {
   deriveRenderTrustGrade,
-  IDLE_PROOF_PREFIX,
+  idleProofKind,
   PAUSED_PROOF_PREFIX,
   type RenderHealth,
   type RenderTrustGrade,
 } from '../renderTrust';
+import {
+  copy,
+  deriveContentDownload,
+  downloadLine,
+  fmtBytes,
+  liveDownload,
+  type ContentDownload,
+  type OpsMessage,
+} from '../contentDownload';
 import { deriveBundleSkew, type BundleSkewVariant } from '../bundleSkew';
 import { contentBehindCause } from '@/components/dashboard/district/fleetCommand';
 import { isWindowOpen } from '@/app/player/scheduleWindow';
@@ -110,7 +121,13 @@ export interface OpsScreen {
   /** Facts for the Overview's Device card (2026-09-24). All optional; a missing one is simply not shown. */
   ipAddress?: string | null;
   pairedAt?: string | null;
-  lastCacheReport?: { playlist?: { count?: number; bytes?: number }; emergency?: { count?: number; bytes?: number } } | null;
+  lastCacheReport?: {
+    playlist?: { count?: number; bytes?: number };
+    emergency?: { count?: number; bytes?: number };
+    /** The file downloading right now (2026-09-27) — read only through
+     *  `contentDownload.ts`, which validates it and grades its freshness. */
+    downloading?: unknown;
+  } | null;
   lastCacheReportAt?: string | null;
   lastCrashAt?: string | null;
   lastCrashMessage?: string | null;
@@ -180,6 +197,7 @@ export const STATUS_ORDER = [
   'alert-unconfirmed', // emergency on glass, server contact lost
   'not-painting', // reachable, no confirmed picture
   'media-stalled', // video frame frozen, watchdog recovering
+  'content-unavailable', // reachable, but none of the scheduled files would load
   'offline', // heartbeat stale
   'revoked', // access removed — cannot be told anything
   'content-behind', // an update was SENT and the screen has not confirmed it
@@ -188,8 +206,12 @@ export const STATUS_ORDER = [
   'repair-required', // credential downgraded
   'pending', // paired but has never checked in
   'confirming', // brief self-healing render gap
+  'downloading', // nothing on glass yet: the new file is downloading
+  'showing-previous', // previous content on glass while the new file downloads
   'stale-chronic', // documented long absence of picture proof
   'paused', // alive, content scheduled, paused on the screen by an operator
+  'connecting', // alive, still fetching its schedule
+  'content-loading', // alive, opening the first item of its schedule
   'idle', // alive, nothing scheduled
   'unknown', // no evidence capability
   'current', // earned positive evidence
@@ -220,6 +242,12 @@ export interface StatusDescriptor {
   needsAttention: boolean;
   /** Longer plain-English explanation for the tooltip / drawer banner. */
   detail: string;
+  /**
+   * The same lines as catalogue references (2026-09-27), present on the
+   * states added with download visibility. Components render
+   * `t(key, values)` when a reference exists and the English above otherwise.
+   */
+  messages?: { label?: OpsMessage; evidence?: OpsMessage; detail?: OpsMessage };
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -305,6 +333,13 @@ export interface DeriveStatusInput {
  * write from an unproven credential — so missing proof on a downgraded
  * screen is the credential, not the picture, and reporting it as a render
  * fault sent operators to the panel for a problem fixed from this page.
+ *
+ * 2026-09-27 — the idle proofs are read for what they say (renderTrust.ts
+ * `idleProofKind`): "Content unavailable" is a rank-2 fact (online, none of
+ * the scheduled files load); downloading, connecting and loading are calm.
+ * A FRESH download snapshot (`contentDownload.ts`) adds progress to the calm
+ * tier only — it is liveness, never a picture, so it can never talk a stale
+ * render proof out of its alarm.
  */
 export function deriveScreenStatus({
   screen,
@@ -360,6 +395,24 @@ export function deriveScreenStatus({
       needsAttention: true,
       detail:
         'The screen is alive, but its current video has not advanced. The player is recovering on its own — reload, then skip the item.',
+    };
+  }
+  // 2026-09-27 — the player's "Content unavailable" card (`idle:content-
+  // unavailable`): every scheduled file failed to load. It used to read
+  // "Screen on · nothing scheduled", which is false twice over.
+  if (grade === 'content-unavailable') {
+    const label = copy('screens.contentState.unavailable');
+    const detail = copy('screens.contentState.unavailableDetail');
+    // No age: the idle lane reports every five minutes, so the proof's age
+    // would only say where in that cycle we are — not how long it has failed.
+    return {
+      key: 'content-unavailable',
+      tone: 'bad',
+      label: label.en,
+      action: 'Troubleshoot',
+      needsAttention: true,
+      detail: detail.en,
+      messages: { label: label.message, detail: detail.message },
     };
   }
 
@@ -551,6 +604,73 @@ export function deriveScreenStatus({
         'Someone paused playback on the screen itself (remote: Back, then Stop). The scheduled content is still assigned and plays again as soon as Resume is pressed on the screen.',
     };
   }
+
+  // ── Downloads (2026-09-27) ──────────────────────────────────────────
+  // Only here, in the calm tier, and only over a FRESH proof (every alarm
+  // above has already returned): the snapshot proves bytes are arriving,
+  // not that anything is painted. It is also fresher than an idle proof —
+  // the idle lane posts every five minutes, the cache report every minute —
+  // so over any idle reading it says what the screen is doing right now.
+  const download = liveDownload(deriveContentDownload(screen, now));
+  const idleFamily = grade === 'idle' || grade === 'connecting' || grade === 'content-loading' || grade === 'unknown';
+  const fileEvidence = (d: ContentDownload | null) => (d?.fileName ? { evidence: d.fileName } : {});
+  if (download?.state === 'held' && (grade === 'painting' || grade === 'downloading' || idleFamily)) {
+    // The previous content stays on glass until the new file is complete.
+    const label = downloadLine('showing-previous', download);
+    const detail = copy('screens.contentState.showingPreviousDetail');
+    return {
+      key: 'showing-previous',
+      tone: 'neutral',
+      label: label.en,
+      ...fileEvidence(download),
+      action: 'View',
+      needsAttention: false,
+      detail: detail.en,
+      messages: { label: label.message, detail: detail.message },
+    };
+  }
+  if (grade === 'downloading' || (download && idleFamily)) {
+    // Nothing on glass to keep: the player's own download splash. Progress
+    // only from a fresh snapshot; the proof alone says "downloading".
+    const label = downloadLine('downloading', download);
+    const detail = copy('screens.contentState.downloadingDetail');
+    return {
+      key: 'downloading',
+      tone: 'neutral',
+      label: label.en,
+      ...fileEvidence(download),
+      action: 'View',
+      needsAttention: false,
+      detail: detail.en,
+      messages: { label: label.message, detail: detail.message },
+    };
+  }
+  if (grade === 'connecting') {
+    const label = copy('screens.contentState.connecting');
+    const detail = copy('screens.contentState.connectingDetail');
+    return {
+      key: 'connecting',
+      tone: 'neutral',
+      label: label.en,
+      action: 'View',
+      needsAttention: false,
+      detail: detail.en,
+      messages: { label: label.message, detail: detail.message },
+    };
+  }
+  if (grade === 'content-loading') {
+    const label = copy('screens.contentState.loading');
+    const detail = copy('screens.contentState.loadingDetail');
+    return {
+      key: 'content-loading',
+      tone: 'neutral',
+      label: label.en,
+      action: 'View',
+      needsAttention: false,
+      detail: detail.en,
+      messages: { label: label.message, detail: detail.message },
+    };
+  }
   if (grade === 'idle') {
     return {
       key: 'idle',
@@ -572,11 +692,15 @@ export function deriveScreenStatus({
         'This screen’s player app is too old to confirm its picture, or it just paired. Not a failure — update the player app to get picture confirmations.',
     };
   }
+  // The new content is on glass and another of its files is still
+  // downloading behind it: still Current, and the row says so underneath.
+  const background = download?.state === 'downloading' ? downloadLine('background', download) : null;
   return {
     key: 'current',
     tone: 'ok',
     label: 'Current',
     age: compactAge(msOf(screen.lastRenderedAt), now),
+    ...(background ? { evidence: background.en, messages: { evidence: background.message } } : {}),
     action: 'View',
     needsAttention: false,
     // 2026-09-01 (Codex truth audit): this used to say "confirmed the
@@ -822,6 +946,10 @@ export type ReportedState =
   | 'paused' // paused on the screen itself
   | 'stalled' // the current video is not advancing; the player is recovering
   | 'emergency' // an alert is on the glass
+  | 'downloading' // nothing on glass yet: the new file is downloading (2026-09-27)
+  | 'held' // the previous content stays on glass while the new file downloads
+  | 'unavailable' // the player's "Content unavailable" card — no scheduled file loads
+  | 'loading' // the schedule is picked up; the first item is opening
   | 'unknown'; // offline, or no proof at all
 
 export interface ReportedContent {
@@ -832,6 +960,16 @@ export interface ReportedContent {
   detail?: string;
   /** The player APP's version — a separate fact, never dressed up as content. */
   app: { state: 'current' | 'updating' | 'unknown'; line: string | null };
+  /** The line / detail as catalogue references, on the states added 2026-09-27. */
+  messages?: { line?: OpsMessage; detail?: OpsMessage };
+  /**
+   * A FRESH download the player reported, when one is in flight (never a
+   * stale one). On 'downloading' / 'held' it is the story; on a playing
+   * state it is a file still downloading behind the content on glass.
+   */
+  download?: ContentDownload | null;
+  /** That background download's line, when the content itself is playing. */
+  downloadLine?: { en: string; message: OpsMessage } | null;
 }
 
 function deriveAppVersion(
@@ -915,7 +1053,55 @@ export function deriveReportedContent(
       app,
     };
   }
-  if (proof.startsWith(IDLE_PROOF_PREFIX)) {
+
+  // ── What the idle proofs and the download snapshot say (2026-09-27) ──
+  const idleKind = idleProofKind(proof);
+  const download = liveDownload(deriveContentDownload(screen, now));
+  const said = (
+    state: ReportedState,
+    line: { en: string; message: OpsMessage },
+    detail: { en: string; message: OpsMessage },
+    withDownload?: ContentDownload | null,
+  ): ReportedContent => ({
+    state,
+    line: line.en,
+    detail: detail.en,
+    app,
+    messages: { line: line.message, detail: detail.message },
+    ...(withDownload ? { download: withDownload } : {}),
+  });
+  if (idleKind === 'unavailable') {
+    return said('unavailable', copy('screens.contentState.unavailable'), copy('screens.contentState.unavailableDetail'));
+  }
+  // A fresh snapshot outranks an idle proof (a minute old at most, against up
+  // to five), and a hold outranks the old content's own proof: the player is
+  // saying the NEW content is waiting behind what is on glass.
+  if (download?.state === 'held') {
+    return said(
+      'held',
+      downloadLine('showing-previous', download),
+      copy('screens.contentState.showingPreviousDetail'),
+      download,
+    );
+  }
+  if (idleKind === 'downloading' || (download && (idleKind !== null || !proof))) {
+    return said(
+      'downloading',
+      downloadLine('downloading', download),
+      copy('screens.contentState.downloadingDetail'),
+      download,
+    );
+  }
+  if (idleKind === 'loading') {
+    return said('loading', copy('screens.contentState.loading'), copy('screens.contentState.loadingDetail'));
+  }
+  // A file still downloading behind content that plays: the content line
+  // below stands, and the card adds this one.
+  const background = download ? downloadLine('background', download) : null;
+  const withBackground = (r: ReportedContent): ReportedContent =>
+    background ? { ...r, download, downloadLine: background } : r;
+
+  if (idleKind !== null) {
     if (scheduled && !expected?.windowClosed) {
       return {
         state: 'behind',
@@ -938,9 +1124,9 @@ export function deriveReportedContent(
   if (proof.startsWith('tpl:')) {
     const boardId = proof.slice('tpl:'.length).split(':')[0];
     if (expected?.templateId && boardId === expected.templateId) {
-      return { state: 'confirmed', line: `Playing ${scheduled}`, detail: dated('The board on the glass is the one you scheduled.'), app };
+      return withBackground({ state: 'confirmed', line: `Playing ${scheduled}`, detail: dated('The board on the glass is the one you scheduled.'), app });
     }
-    return {
+    return withBackground({
       state: 'playing',
       line: 'Playing a board',
       detail: dated(
@@ -949,13 +1135,13 @@ export function deriveReportedContent(
           : 'Nothing is scheduled for this screen, yet a board is playing.',
       ),
       app,
-    };
+    });
   }
   if (proof.startsWith('pl:')) {
     if (renderProofMatches(expected?.renderSignature ?? null, proof)) {
-      return { state: 'confirmed', line: `Playing ${scheduled}`, detail: dated('Item for item, what you scheduled.'), app };
+      return withBackground({ state: 'confirmed', line: `Playing ${scheduled}`, detail: dated('Item for item, what you scheduled.'), app });
     }
-    return {
+    return withBackground({
       state: 'playing',
       line: 'Playing a playlist',
       detail: dated(
@@ -964,17 +1150,17 @@ export function deriveReportedContent(
           : 'Nothing is scheduled for this screen, yet a playlist is playing.',
       ),
       app,
-    };
+    });
   }
   // A dated proof in a shape this dashboard does not know (an older bundle),
   // or none at all. Say exactly that.
   if (confirmedAgo) {
-    return {
+    return withBackground({
       state: 'playing',
       line: 'Showing content',
       detail: `The screen confirmed a picture ${confirmedAgo} ago, but this player version does not say what it is showing.`,
       app,
-    };
+    });
   }
   return { state: 'unknown', line: 'No picture confirmation yet', detail: 'The player has not reported what it is showing.', app };
 }
@@ -990,12 +1176,15 @@ export function deriveReportedContent(
  * user". The facts it drew are still here, as prose an operator can read: is
  * an update outstanding, and when did the screen last confirm a picture. The
  * §15 rule stands — no Downloaded milestone is invented, and nothing here
- * claims to have seen the panel.
+ * claims to have seen the panel. A download IN FLIGHT (2026-09-27) is not a
+ * milestone: it is the one thing still waiting, said with its live progress.
  */
 export interface Delivery {
   state: 'ok' | 'pending' | 'unknown';
   /** One plain sentence. */
   line: string;
+  /** The same sentence as a catalogue reference, on the 2026-09-27 states. */
+  message?: OpsMessage;
 }
 
 export function deriveDelivery(screen: OpsScreen, status: StatusDescriptor, now: number): Delivery {
@@ -1009,6 +1198,22 @@ export function deriveDelivery(screen: OpsScreen, status: StatusDescriptor, now:
       state: 'pending',
       line: `An update was sent ${wordyAge(pendingMs, now) ?? 'a moment'} ago and the screen hasn’t confirmed it yet.`,
     };
+  }
+  // ── 2026-09-27: what the screen said about its content, read honestly ──
+  // A download in flight is what is still waiting — never "Nothing waiting".
+  if (status.key === 'downloading' || status.key === 'showing-previous') {
+    return { state: 'pending', line: status.label, ...(status.messages?.label ? { message: status.messages.label } : {}) };
+  }
+  if (status.key === 'content-unavailable') {
+    return { state: 'unknown', line: status.detail, ...(status.messages?.detail ? { message: status.messages.detail } : {}) };
+  }
+  if (status.key === 'connecting' || status.key === 'content-loading') {
+    return { state: 'pending', line: 'Waiting for the screen to confirm its picture.' };
+  }
+  const background = status.key === 'current' ? liveDownload(deriveContentDownload(screen, now)) : null;
+  if (background?.state === 'downloading') {
+    const line = downloadLine('background', background);
+    return { state: 'pending', line: line.en, message: line.message };
   }
   // A screen on an older app build is still showing its content and still
   // confirming pictures; the app updates itself, so that is not a delivery gap.
@@ -1077,8 +1282,10 @@ export function deriveRecovery(input: {
   }
   if (ackedAtMs != null) {
     // Acknowledged. Only a fresh picture confirmation completes it (a paused
-    // screen still confirms its own picture — the pause is the operator's).
-    if (status.key === 'current' || status.key === 'idle' || status.key === 'paused') {
+    // screen still confirms its own picture — the pause is the operator's;
+    // one showing its previous content while new content downloads confirms
+    // that picture too).
+    if (status.key === 'current' || status.key === 'idle' || status.key === 'paused' || status.key === 'showing-previous') {
       return {
         state: 'recovered',
         heading: 'Recovered',
@@ -1113,6 +1320,11 @@ export interface OpsRow {
   reported: ReportedContent;
   /** The last video's dropped-frame verdict, or null when the player never sent one. */
   video: VideoPlayback | null;
+  /**
+   * What the screen says about the file it is downloading (2026-09-27), or
+   * null. May be 'stale' — callers show progress only through `liveDownload`.
+   */
+  download: ContentDownload | null;
   /** Sort key — lower is worse. */
   rank: number;
 }
@@ -1301,6 +1513,7 @@ export function buildScreenOps(input: {
       // Matched against the schedule, so a row can say "Playing <name>".
       reported: deriveReportedContent(screen, deployedSha, now, deployedBundleId, expected),
       video: deriveVideoPlayback(screen, now),
+      download: deriveContentDownload(screen, now),
       rank: STATUS_RANK[status.key],
     };
   });
@@ -1521,14 +1734,10 @@ export interface DeviceFact {
   tone?: 'warn';
 }
 
-/** "48.8 MB" / "1.2 GB" / "640 KB" — for the on-device cache row. */
-export function fmtBytes(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
-  if (bytes < 1024) return `${Math.round(bytes)} B`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${Math.round((bytes / (1024 * 1024)) * 10) / 10} MB`;
-  return `${Math.round((bytes / (1024 * 1024 * 1024)) * 100) / 100} GB`;
-}
+/** "48.8 MB" / "1.2 GB" / "640 KB" — for the on-device cache row. Lives in
+ *  `contentDownload.ts` since 2026-09-27 so the download line speaks the same
+ *  byte vocabulary without an import cycle; re-exported for existing callers. */
+export { fmtBytes };
 
 /** "3840×2160" / "1920x1080" → "3840 × 2160"; anything else passes through trimmed. */
 function prettyResolution(raw: string): string {

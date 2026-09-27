@@ -24,6 +24,15 @@
  *                  REVOKED badge already owns that message; a second
  *                  neutral-or-alarming line next to it would double-alarm.
  *
+ * 2026-09-27 — the idle proofs say what they are (renderTrust.ts
+ * `idleProofKind`) instead of all reading "nothing scheduled yet":
+ *   downloading          — calm sky: the new file is downloading, with its
+ *                          progress when a fresh snapshot is passed in
+ *   content-unavailable  — rose: every scheduled file failed to load
+ *   content-loading / connecting — calm sky, nothing claimed beyond that
+ * and a painting screen whose NEW content is held behind the old while it
+ * downloads says so instead of the unqualified green.
+ *
  * No live ticker: `verifiedAgo` is a pre-formatted string the caller
  * computes once at render (page.tsx's own `timeAgo(screen.lastRenderedAt)`
  * — the same helper already used for the row's `lastPingAt` chip), so the
@@ -32,8 +41,10 @@
  * cadence, which is what advances the displayed age.
  */
 
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Download } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { deriveRenderTrustGrade, type RenderHealth } from './renderTrust';
+import { copy, downloadLine, liveDownload, type ContentDownload, type OpsMessage } from './contentDownload';
 
 export function RenderTrustChip({
   status,
@@ -44,6 +55,7 @@ export function RenderTrustChip({
   lastRenderedAtMs,
   lastRenderedHash,
   authState,
+  download,
 }: {
   /** Live-computed Screen.status (ONLINE / OFFLINE / PENDING / REVOKED). */
   status?: string | null;
@@ -65,7 +77,14 @@ export function RenderTrustChip({
   /** `Screen.authState` — server-stamped credential verdict (2026-08-30);
    *  'REPAIR_REQUIRED' outranks the green states. */
   authState?: string | null;
+  /**
+   * What the screen says it is downloading (`deriveContentDownload`,
+   * 2026-09-27). Only a FRESH one adds progress; a stale one is ignored.
+   */
+  download?: ContentDownload | null;
 }) {
+  const t = useTranslations();
+  const say = (m: { en: string; message: OpsMessage }) => t(m.message.key, m.message.values);
   const variant = deriveRenderTrustGrade({
     status,
     renderHealth,
@@ -74,6 +93,7 @@ export function RenderTrustChip({
     lastRenderedHash,
     authState,
   });
+  const live = liveDownload(download);
 
   if (variant === 'offline') return null;
 
@@ -130,6 +150,22 @@ export function RenderTrustChip({
     );
   }
 
+  // ── THE PREVIOUS CONTENT, HELD WHILE THE NEW DOWNLOADS (2026-09-27) ──
+  // The picture is real — it is the OLD content. The new playlist waits for
+  // its file to be whole on the screen. Green would say "your content is on
+  // the glass", and the content the operator just published is not.
+  if (variant === 'painting' && live?.state === 'held') {
+    return (
+      <span
+        className="inline-flex items-center gap-1 text-[10px] font-semibold px-2.5 py-1 rounded-lg bg-sky-50 text-sky-700"
+        title={say(copy('screens.contentState.showingPreviousDetail'))}
+      >
+        <Download className="w-3 h-3 shrink-0" aria-hidden="true" />
+        {say(downloadLine('showing-previous', live))}{verifiedAgo ? ` · ${verifiedAgo}` : ''}
+      </span>
+    );
+  }
+
   if (variant === 'painting') {
     return (
       <span
@@ -141,6 +177,46 @@ export function RenderTrustChip({
         }
       >
         Showing content ✓{verifiedAgo ? ` · checked ${verifiedAgo}` : ''}
+      </span>
+    );
+  }
+
+  // ── THE PLAYER'S OWN STATES, SAID FOR WHAT THEY ARE (2026-09-27) ───
+  // Each used to fall into "nothing scheduled yet" below. None is green: none
+  // proves the operator's content is on the glass.
+  if (variant === 'content-unavailable') {
+    return (
+      <span
+        className="inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-lg bg-rose-50 text-rose-700"
+        title={say(copy('screens.contentState.unavailableDetail'))}
+      >
+        <AlertTriangle className="w-3 h-3 shrink-0" aria-hidden="true" />
+        {say(copy('screens.contentState.unavailable'))}{verifiedAgo ? ` · ${verifiedAgo}` : ''}
+      </span>
+    );
+  }
+  if (variant === 'downloading' || ((variant === 'idle' || variant === 'connecting' || variant === 'content-loading') && live)) {
+    // The splash's own download, or a fresher snapshot over an older idle proof.
+    const held = live?.state === 'held';
+    return (
+      <span
+        className="inline-flex items-center gap-1 text-[10px] font-semibold px-2.5 py-1 rounded-lg bg-sky-50 text-sky-700"
+        title={say(copy(held ? 'screens.contentState.showingPreviousDetail' : 'screens.contentState.downloadingDetail'))}
+      >
+        <Download className="w-3 h-3 shrink-0" aria-hidden="true" />
+        {say(downloadLine(held ? 'showing-previous' : 'downloading', live))}{verifiedAgo ? ` · ${verifiedAgo}` : ''}
+      </span>
+    );
+  }
+  if (variant === 'content-loading' || variant === 'connecting') {
+    const loading = variant === 'content-loading';
+    return (
+      <span
+        className="text-[10px] font-semibold px-2.5 py-1 rounded-lg bg-sky-50 text-sky-700"
+        title={say(copy(loading ? 'screens.contentState.loadingDetail' : 'screens.contentState.connectingDetail'))}
+      >
+        {say(copy(loading ? 'screens.contentState.loading' : 'screens.contentState.connecting'))}
+        {verifiedAgo ? ` · ${verifiedAgo}` : ''}
       </span>
     );
   }

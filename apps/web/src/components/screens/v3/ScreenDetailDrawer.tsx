@@ -44,10 +44,12 @@ import {
 } from '@/hooks/use-api';
 import { eventCopy } from '@/components/dashboard/district/screenEventCopy';
 import { appConfirm } from '@/components/ui/app-dialog';
+import { useTranslations } from 'next-intl';
 import {
   compactAge, contentStatusLine, deriveDelivery, deriveDeviceFacts, deriveRecovery, msOf, wordyAge,
   type Delivery, type OpsRow, type ReportedState, type SyncStatus, type VideoPlaybackGrade,
 } from './screenOps';
+import type { OpsMessage } from '../contentDownload';
 import { ExpectedThumb } from './ExpectedThumb';
 
 /**
@@ -108,6 +110,11 @@ const REPORTED_TONE: Record<ReportedState, { wrap: string; ink: string }> = {
   paused: { wrap: 'border-slate-200', ink: 'text-slate-700' },
   stalled: { wrap: 'border-amber-200 bg-amber-50/40', ink: 'text-amber-800' },
   emergency: { wrap: 'border-rose-200 bg-rose-50/40', ink: 'text-rose-800' },
+  // 2026-09-27 — never green: none of these is the operator's content confirmed.
+  downloading: { wrap: 'border-sky-200 bg-sky-50/40', ink: 'text-sky-800' },
+  held: { wrap: 'border-sky-200 bg-sky-50/40', ink: 'text-sky-800' },
+  unavailable: { wrap: 'border-rose-200 bg-rose-50/40', ink: 'text-rose-800' },
+  loading: { wrap: 'border-slate-200', ink: 'text-slate-700' },
   unknown: { wrap: 'border-slate-200', ink: 'text-slate-500' },
 };
 
@@ -204,6 +211,9 @@ export function ScreenDetailDrawer({
 }: ScreenDetailDrawerProps) {
   useOverlayLock(); // mounts only while open — hides the mobile tab bar
   const { screen, status, expected, reported, video } = row;
+  // Catalogue lines for the states added 2026-09-27; the module's English otherwise.
+  const t = useTranslations();
+  const text = (en: string | undefined, m?: OpsMessage): string => (m ? t(m.key, m.values) : en ?? '');
   const [tab, setTab] = useState<DrawerTab>(initialTab);
   const panelRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -538,7 +548,7 @@ export function ScreenDetailDrawer({
             <div className={`mt-3 rounded-xl border px-3 py-2 flex items-start gap-2 ${toneClasses(status.tone)}`}>
               <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" aria-hidden />
               <p className="text-[12.5px] font-bold min-w-0">
-                {status.label}
+                {text(status.label, status.messages?.label)}
                 {status.age ? ` · ${wordyAge(
                   status.key === 'offline' ? msOf(screen.lastPingAt)
                     : status.key === 'content-behind' ? msOf(screen.pendingRefreshAt)
@@ -617,10 +627,45 @@ export function ScreenDetailDrawer({
                       {expected.name ?? 'Nothing scheduled'}
                     </p>
                     <p className={`mt-0.5 text-[12px] font-bold leading-snug break-words ${REPORTED_TONE[reported.state].ink}`}>
-                      {contentStatusLine(reported)}
+                      {text(contentStatusLine(reported), reported.messages?.line)}
                     </p>
+                    {/* The download itself (2026-09-27): only a FRESH one ever
+                        reaches here (`liveDownload`), so a bar never shows a
+                        number the screen stopped reporting. The file name is
+                        the player's own; no ETA — nothing here measures a rate. */}
+                    {reported.download && (reported.state === 'downloading' || reported.state === 'held' || reported.downloadLine) && (
+                      <div className="mt-1.5" data-testid="screen-content-download" data-download-state={reported.download.state}>
+                        {reported.downloadLine && (
+                          <p className="text-[11px] font-bold leading-snug text-sky-800 break-words">
+                            {text(reported.downloadLine.en, reported.downloadLine.message)}
+                          </p>
+                        )}
+                        {reported.download.percent !== null && (
+                          <div
+                            role="progressbar"
+                            aria-valuemin={0}
+                            aria-valuemax={100}
+                            aria-valuenow={reported.download.percent}
+                            aria-label={text(contentStatusLine(reported), reported.messages?.line)}
+                            className="mt-1 h-1.5 rounded-full bg-sky-100 overflow-hidden"
+                          >
+                            <div
+                              className="h-full rounded-full bg-sky-500"
+                              style={{ width: `${reported.download.percent}%` }}
+                            />
+                          </div>
+                        )}
+                        {reported.download.fileName && (
+                          <p className="mt-1 text-[10.5px] font-semibold text-slate-500 leading-snug break-all">
+                            {reported.download.fileName}
+                          </p>
+                        )}
+                      </div>
+                    )}
                     {reported.detail && (
-                      <p className="mt-1 text-[10.5px] font-semibold text-slate-500 leading-snug">{reported.detail}</p>
+                      <p className="mt-1 text-[10.5px] font-semibold text-slate-500 leading-snug">
+                        {text(reported.detail, reported.messages?.detail)}
+                      </p>
                     )}
                     {(expected.viaGroup || expected.windowClosed) && (
                       <p className="mt-1 text-[10.5px] font-semibold text-slate-400 leading-snug">
@@ -709,7 +754,7 @@ export function ScreenDetailDrawer({
                 <DeliveryDot state={delivery.state} />
                 <div className="min-w-0">
                   <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Delivery</p>
-                  <p className="mt-0.5 text-[12.5px] font-semibold text-slate-700 leading-snug">{delivery.line}</p>
+                  <p className="mt-0.5 text-[12.5px] font-semibold text-slate-700 leading-snug">{text(delivery.line, delivery.message)}</p>
                 </div>
               </div>
 
@@ -732,8 +777,10 @@ export function ScreenDetailDrawer({
                 </div>
               )}
 
-              {!status.needsAttention && (
-                <p className="text-[12px] font-semibold text-slate-500 leading-snug">{status.detail}</p>
+              {/* Not twice: the download states explain themselves in the
+                  content card above with this very sentence. */}
+              {!status.needsAttention && status.detail !== reported.detail && (
+                <p className="text-[12px] font-semibold text-slate-500 leading-snug">{text(status.detail, status.messages?.detail)}</p>
               )}
             </div>
           )}

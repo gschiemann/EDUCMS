@@ -8,7 +8,7 @@
  * an alarm, and an unreachable screen must defer entirely to its existing
  * offline treatment (no double-alarm).
  */
-import { deriveRenderTrust, RENDER_STALE_AFTER_MS } from '../renderTrust';
+import { deriveRenderTrust, deriveRenderTrustGrade, idleProofKind, RENDER_STALE_AFTER_MS } from '../renderTrust';
 
 const ONLINE = { status: 'ONLINE' };
 
@@ -180,9 +180,19 @@ describe('deriveRenderTrustGrade — idle proof', () => {
       deriveRenderTrustGrade({
         status: 'ONLINE',
         renderHealth: 'OK',
-        lastRenderedHash: 'idle:connecting',
+        lastRenderedHash: 'idle:playing',
       }),
     ).toBe('idle');
+    // 2026-09-27: the player's pre-content phases are their own reading —
+    // "nothing scheduled" was never established while it is still connecting.
+    // Still never painting.
+    expect(
+      deriveRenderTrustGrade({
+        status: 'ONLINE',
+        renderHealth: 'OK',
+        lastRenderedHash: 'idle:connecting',
+      }),
+    ).toBe('connecting');
   });
 
   it('a fresh CONTENT proof still reads painting', () => {
@@ -474,5 +484,63 @@ describe('deriveRenderTrustGrade — unconfirmed alert (unconfirmed|em: prefix)'
         lastRenderedHash: 'unconfirmed|em:x',
       }),
     ).toBe('not-painting');
+  });
+});
+
+// ── 2026-09-27: every idle proof the player emits, read for what it says ──
+//
+// Every `idle:` proof used to grade 'idle' and read "Screen on · nothing
+// scheduled yet". That is false for the download splash and for the
+// "Content unavailable" card (player rule 10: copy states what the evidence
+// proves). These pin the full list the player emits (page.tsx, the
+// render-proof effect) — and that NONE of them can ever read green.
+describe('idleProofKind + the idle grades (2026-09-27)', () => {
+  const NOW = 1_800_000_000_000;
+  const fresh = (hash: string) =>
+    deriveRenderTrustGrade({ status: 'ONLINE', renderHealth: 'OK', lastRenderedHash: hash, lastRenderedAtMs: NOW - 60_000, nowMs: NOW });
+
+  it('maps every signature the player emits', () => {
+    expect(idleProofKind('idle:content-downloading')).toBe('downloading');
+    expect(idleProofKind('idle:content-unavailable')).toBe('unavailable');
+    expect(idleProofKind('idle:content-loading')).toBe('loading');
+    for (const phase of ['connecting', 'registering', 'pairing', 'offline']) {
+      expect(idleProofKind(`idle:${phase}`)).toBe('connecting');
+    }
+    expect(idleProofKind('idle:playing')).toBe('nothing-scheduled');
+  });
+
+  it('an unknown suffix keeps the old reading; a non-idle proof is not idle at all', () => {
+    expect(idleProofKind('idle:something-a-future-player-says')).toBe('nothing-scheduled');
+    expect(idleProofKind('idle:')).toBe('nothing-scheduled');
+    for (const other of ['pl:0|10|a', 'tpl:x', 'paused:pl:x', 'em:lockdown', 'stall|pl:x', '', null, undefined]) {
+      expect(idleProofKind(other)).toBeNull();
+    }
+  });
+
+  it('a FRESH proof grades as what it says — and none of them is painting', () => {
+    expect(fresh('idle:content-downloading')).toBe('downloading');
+    expect(fresh('idle:content-unavailable')).toBe('content-unavailable');
+    expect(fresh('idle:content-loading')).toBe('content-loading');
+    expect(fresh('idle:connecting')).toBe('connecting');
+    expect(fresh('idle:playing')).toBe('idle');
+    expect(fresh('idle:boot')).toBe('idle');
+  });
+
+  it('a STALE one still grades through the staleness ladder — a wedged splash is still wedged', () => {
+    for (const hash of ['idle:content-downloading', 'idle:content-unavailable', 'idle:content-loading', 'idle:connecting']) {
+      const wedged = (ageMs: number) => ({
+        status: 'ONLINE', renderHealth: 'STALE' as const, renderStale: true,
+        lastRenderedHash: hash, lastRenderedAtMs: NOW - ageMs, nowMs: NOW,
+      });
+      expect(deriveRenderTrustGrade(wedged(2 * 60_000))).toBe('checking');
+      expect(deriveRenderTrustGrade(wedged(30 * 60_000))).toBe('not-painting');
+    }
+  });
+
+  it('offline and a downgraded credential still outrank every idle reading', () => {
+    expect(deriveRenderTrustGrade({ status: 'OFFLINE', renderHealth: 'OK', lastRenderedHash: 'idle:content-downloading' })).toBe('offline');
+    expect(
+      deriveRenderTrustGrade({ status: 'ONLINE', renderHealth: 'OK', lastRenderedHash: 'idle:content-unavailable', authState: 'REPAIR_REQUIRED' }),
+    ).toBe('repair-required');
   });
 });

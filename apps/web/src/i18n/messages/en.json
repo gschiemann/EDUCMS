@@ -1692,7 +1692,25 @@
       "levelUnknown": "This screen doesn’t report its current level, so the slider sets an absolute value — not an adjustment from where it is now.",
       "pickADay": "Pick at least one day. To stop a screen turning itself off, delete the schedule instead."
     },
-    "setLocation": "Set address"
+    "setLocation": "Set address",
+    "contentState": {
+      "downloading": "Downloading new content",
+      "downloadingProgress": "Downloading new content · {percent}% of {size}",
+      "downloadingSoFar": "Downloading new content · {loaded} so far",
+      "downloadingDetail": "The new file is downloading to this screen. It starts playing the moment the whole file is on the screen.",
+      "showingPrevious": "Still showing previous content",
+      "showingPreviousProgress": "Still showing previous content · new content {percent}% of {size}",
+      "showingPreviousSoFar": "Still showing previous content · new content {loaded} so far",
+      "showingPreviousDetail": "New content is downloading to this screen. It keeps playing what it had until the whole new file is on the screen, then switches over.",
+      "backgroundProgress": "Downloading another file · {percent}% of {size}",
+      "backgroundSoFar": "Downloading another file · {loaded} so far",
+      "unavailable": "Content unavailable",
+      "unavailableDetail": "The screen is on, but none of the scheduled files would load, so it shows its “Content unavailable” card and tries again every 30 seconds on its own. If it stays this way, check the files in the playlist.",
+      "loading": "Loading content",
+      "loadingDetail": "The screen picked up its schedule and is opening the first item.",
+      "connecting": "Screen on · connecting",
+      "connectingDetail": "The screen is on and still fetching its schedule, so it shows its waiting screen for now."
+    }
   },
   "assetsLib": {
     "title": "Media Library",
@@ -1984,7 +2002,12 @@
     "windowCancelMessage": "This cancels the 1080p copy being prepared for {pending, plural, one {# screen} other {# screens}} and pauses this schedule on {count, plural, one {# screen} other {# screens}}.",
     "deleteScheduleCancelsCopy": "It also cancels the 1080p copy being prepared.",
     "fleetPending": "{count, plural, one {# screen} other {# screens}} preparing a 1080p copy",
-    "fleetPendingNote": "A screen preparing a 1080p copy keeps what it shows now and starts this playlist automatically when the copy is ready."
+    "fleetPendingNote": "A screen preparing a 1080p copy keeps what it shows now and starts this playlist automatically when the copy is ready.",
+    "deliveryDownloadOne": "{name} · {percent}% of {size}",
+    "deliveryDownloadOneSoFar": "{name} · {loaded} so far",
+    "deliveryHeldOne": "{name} · new content {percent}% of {size}",
+    "deliveryHeldOneSoFar": "{name} · new content {loaded} so far",
+    "deliveryDownloadMany": "on {count} of {screens} screens"
   },
   "brandingCard": {
     "loading": "Loading…",

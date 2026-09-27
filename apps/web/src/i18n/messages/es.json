@@ -1692,7 +1692,25 @@
       "levelUnknown": "Esta pantalla no informa su nivel actual, por lo que el control establece un valor absoluto, no un ajuste desde donde está ahora.",
       "pickADay": "Elige al menos un día. Para que una pantalla deje de apagarse sola, elimina el horario."
     },
-    "setLocation": "Añadir dirección"
+    "setLocation": "Añadir dirección",
+    "contentState": {
+      "downloading": "Descargando contenido nuevo",
+      "downloadingProgress": "Descargando contenido nuevo · {percent} % de {size}",
+      "downloadingSoFar": "Descargando contenido nuevo · {loaded} hasta ahora",
+      "downloadingDetail": "El archivo nuevo se está descargando en esta pantalla. Empieza a reproducirse en cuanto el archivo completo esté en la pantalla.",
+      "showingPrevious": "Sigue mostrando el contenido anterior",
+      "showingPreviousProgress": "Sigue mostrando el contenido anterior · contenido nuevo {percent} % de {size}",
+      "showingPreviousSoFar": "Sigue mostrando el contenido anterior · contenido nuevo {loaded} hasta ahora",
+      "showingPreviousDetail": "Se está descargando contenido nuevo en esta pantalla. Sigue reproduciendo lo que tenía hasta que el archivo nuevo completo esté en la pantalla y entonces cambia.",
+      "backgroundProgress": "Descargando otro archivo · {percent} % de {size}",
+      "backgroundSoFar": "Descargando otro archivo · {loaded} hasta ahora",
+      "unavailable": "Contenido no disponible",
+      "unavailableDetail": "La pantalla está encendida, pero ninguno de los archivos programados se pudo cargar, así que muestra su aviso de “Contenido no disponible” y vuelve a intentarlo cada 30 segundos por sí sola. Si sigue así, revisa los archivos de la lista de reproducción.",
+      "loading": "Cargando contenido",
+      "loadingDetail": "La pantalla recibió su programación y está abriendo el primer elemento.",
+      "connecting": "Pantalla encendida · conectando",
+      "connectingDetail": "La pantalla está encendida y todavía está obteniendo su programación, así que por ahora muestra su pantalla de espera."
+    }
   },
   "assetsLib": {
     "title": "Biblioteca de medios",
@@ -1984,7 +2002,12 @@
     "windowCancelMessage": "Esto cancela la copia 1080p que se está preparando para {pending, plural, one {# pantalla} other {# pantallas}} y pausa esta programación en {count, plural, one {# pantalla} other {# pantallas}}.",
     "deleteScheduleCancelsCopy": "También cancela la copia 1080p que se está preparando.",
     "fleetPending": "{count, plural, one {# pantalla preparando} other {# pantallas preparando}} una copia 1080p",
-    "fleetPendingNote": "Una pantalla que prepara una copia 1080p conserva lo que muestra ahora e inicia esta lista automáticamente cuando la copia esté lista."
+    "fleetPendingNote": "Una pantalla que prepara una copia 1080p conserva lo que muestra ahora e inicia esta lista automáticamente cuando la copia esté lista.",
+    "deliveryDownloadOne": "{name} · {percent} % de {size}",
+    "deliveryDownloadOneSoFar": "{name} · {loaded} hasta ahora",
+    "deliveryHeldOne": "{name} · contenido nuevo {percent} % de {size}",
+    "deliveryHeldOneSoFar": "{name} · contenido nuevo {loaded} hasta ahora",
+    "deliveryDownloadMany": "en {count} de {screens} pantallas"
   },
   "brandingCard": {
     "loading": "Cargando…",

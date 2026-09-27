@@ -1102,3 +1102,214 @@ describe('deriveDeviceFacts', () => {
     expect(fact({ lastCrashAt: new Date(NOW - 45 * 24 * 60 * MIN).toISOString() }, 'crash')).toBeUndefined();
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════
+// 2026-09-27 — download visibility + every idle proof read honestly
+// ═══════════════════════════════════════════════════════════════════
+//
+// A file ≥ 8 MiB plays only once it is whole on the screen (player rule 17).
+// Meanwhile the glass shows the download splash (`idle:content-downloading`)
+// or KEEPS the previous content with the new playlist held back — and this
+// page said "nothing scheduled" / "Current". The player now reports the
+// download inside its cache report; these pin what each shape says.
+describe('downloads + idle proofs on the row, the Overview and the Delivery card (2026-09-27)', () => {
+  const MB = 1024 * 1024;
+  const SIZE = 141 * MB;
+  const AT_62 = Math.ceil(SIZE * 0.62);
+  const snapshot = (over: Record<string, unknown> = {}, ageMs = 20_000) => ({
+    lastCacheReport: {
+      playlist: { count: 2, bytes: 10 },
+      downloading: { file: 'RIOT%20promo%204K.mp4', bytesLoaded: AT_62, bytesTotal: SIZE, deferredCommit: false, ...over },
+    } as OpsScreen['lastCacheReport'],
+    lastCacheReportAt: new Date(NOW - ageMs).toISOString(),
+  });
+  const NOTHING_ON_GLASS = 'Downloading new content · 62% of 141 MB';
+  const HELD = 'Still showing previous content · new content 62% of 141 MB';
+
+  describe('the row (deriveScreenStatus)', () => {
+    it('downloading, nothing on glass → the progress, calm, never green, never "nothing scheduled"', () => {
+      const s = status({ lastRenderedHash: 'idle:content-downloading', ...snapshot() });
+      expect(s.key).toBe('downloading');
+      expect(s.label).toBe(NOTHING_ON_GLASS);
+      expect(s.evidence).toBe('RIOT promo 4K.mp4');
+      expect(s.tone).toBe('neutral');
+      expect(s.needsAttention).toBe(false);
+      expect(s.action).toBe('View');
+      expect(s.messages?.label).toEqual({
+        key: 'screens.contentState.downloadingProgress',
+        values: { percent: 62, size: '141 MB' },
+      });
+    });
+
+    it('held → "Still showing previous content · new content 62% of 141 MB" over the OLD content\'s own proof', () => {
+      const s = status({ lastRenderedHash: 'pl:0|10000|old-item', ...snapshot({ deferredCommit: true }) });
+      expect(s.key).toBe('showing-previous');
+      expect(s.label).toBe(HELD);
+      expect(s.tone).toBe('neutral');
+      expect(s.tone).not.toBe('ok');
+      expect(s.needsAttention).toBe(false);
+    });
+
+    it('stale snapshot → never shown as progress: the proof alone speaks', () => {
+      const old = snapshot({ deferredCommit: true }, 10 * MIN);
+      // Over content: plain Current, no invented hold.
+      const onContent = status({ lastRenderedHash: 'pl:0|10000|old-item', ...old });
+      expect(onContent.key).toBe('current');
+      expect(onContent.evidence).toBeUndefined();
+      // Over the download splash: "downloading", with no number.
+      const onSplash = status({ lastRenderedHash: 'idle:content-downloading', ...snapshot({}, 10 * MIN) });
+      expect(onSplash.key).toBe('downloading');
+      expect(onSplash.label).toBe('Downloading new content');
+      expect(onSplash.label).not.toMatch(/\d/);
+      expect(onSplash.evidence).toBeUndefined();
+    });
+
+    it('none → exactly as before', () => {
+      expect(status({ lastRenderedHash: 'pl:0|10000|x' }).key).toBe('current');
+      expect(status({ lastRenderedHash: 'idle:playing' }).label).toBe('Screen on · nothing scheduled');
+    });
+
+    it('a fresh snapshot is fresher than an idle proof (five-minute lane) — it says what is happening now', () => {
+      for (const hash of ['idle:connecting', 'idle:playing', 'idle:content-loading']) {
+        const s = status({ lastRenderedHash: hash, ...snapshot() });
+        expect(s.key).toBe('downloading');
+        expect(s.label).toBe(NOTHING_ON_GLASS);
+      }
+    });
+
+    it('A DOWNLOAD NEVER TALKS A STALE PROOF OUT OF ITS ALARM — it is liveness, not a picture (rule 5)', () => {
+      const frozen = { renderHealth: 'STALE' as const, renderStale: true, lastRenderedAt: new Date(NOW - 20 * MIN).toISOString() };
+      expect(status({ ...frozen, lastRenderedHash: 'idle:content-downloading', ...snapshot() }).key).toBe('not-painting');
+      expect(status({ ...frozen, lastRenderedHash: 'pl:x', ...snapshot({ deferredCommit: true }) }).key).toBe('not-painting');
+      const reloading = { renderHealth: 'STALE' as const, renderStale: true, lastRenderedAt: new Date(NOW - 2 * MIN).toISOString() };
+      expect(status({ ...reloading, lastRenderedHash: 'pl:x', ...snapshot() }).key).toBe('confirming');
+    });
+
+    it('an operator pause and a pending update still outrank a download', () => {
+      expect(status({ lastRenderedHash: 'paused:pl:x', ...snapshot() }).key).toBe('paused');
+      expect(status({ lastRenderedHash: 'idle:content-downloading', pendingRefreshAt: new Date(NOW - MIN).toISOString(), ...snapshot() }).key)
+        .toBe('content-behind');
+    });
+
+    it('the new content plays and another of its files downloads → Current, with the download underneath', () => {
+      const s = status({ lastRenderedHash: 'pl:0|10000|new-item', ...snapshot() });
+      expect(s.key).toBe('current');
+      expect(s.evidence).toBe('Downloading another file · 62% of 141 MB');
+      expect(s.messages?.evidence?.key).toBe('screens.contentState.backgroundProgress');
+    });
+
+    it('"Content unavailable" is a problem: red, in Needs attention, never "nothing scheduled"', () => {
+      const s = status({ lastRenderedHash: 'idle:content-unavailable' });
+      expect(s.key).toBe('content-unavailable');
+      expect(s.label).toBe('Content unavailable');
+      expect(s.tone).toBe('bad');
+      expect(s.needsAttention).toBe(true);
+      expect(s.action).toBe('Troubleshoot');
+      expect(s.detail).toMatch(/none of the scheduled files would load/);
+      // It sits with the other online-but-no-content-on-glass alarms.
+      expect(STATUS_ORDER.indexOf('content-unavailable')).toBeLessThan(STATUS_ORDER.indexOf('offline'));
+      expect(STATUS_ORDER.indexOf('content-unavailable')).toBeGreaterThan(STATUS_ORDER.indexOf('media-stalled'));
+    });
+
+    it('connecting and loading say what they are, calmly', () => {
+      const c = status({ lastRenderedHash: 'idle:connecting' });
+      expect(c).toMatchObject({ key: 'connecting', label: 'Screen on · connecting', tone: 'neutral', needsAttention: false });
+      const l = status({ lastRenderedHash: 'idle:content-loading' });
+      expect(l).toMatchObject({ key: 'content-loading', label: 'Loading content', tone: 'neutral', needsAttention: false });
+    });
+
+    it('an OFFLINE screen\'s last snapshot is history, not a download', () => {
+      const s = status({ status: 'OFFLINE', lastPingAt: new Date(NOW - 20 * MIN).toISOString(), ...snapshot() });
+      expect(s.key).toBe('offline');
+    });
+  });
+
+  describe('the Overview content card (deriveReportedContent)', () => {
+    const reported = (over: Partial<OpsScreen>) => deriveReportedContent(scr(over), SHA, NOW);
+
+    it('downloading → the line, the explanation, and the fresh download for the bar', () => {
+      const r = reported({ lastRenderedHash: 'idle:content-downloading', ...snapshot() });
+      expect(r.state).toBe('downloading');
+      expect(r.line).toBe(NOTHING_ON_GLASS);
+      expect(r.detail).toMatch(/starts playing the moment the whole file is on the screen/);
+      expect(r.download).toMatchObject({ state: 'downloading', percent: 62, fileName: 'RIOT promo 4K.mp4' });
+      expect(contentStatusLine(r)).toBe(NOTHING_ON_GLASS);
+    });
+
+    it('held → "Still showing previous content", even over a proof that matches nothing new', () => {
+      const r = reported({ lastRenderedHash: 'pl:0|10000|old-item', ...snapshot({ deferredCommit: true }) });
+      expect(r.state).toBe('held');
+      expect(r.line).toBe(HELD);
+      expect(r.download?.state).toBe('held');
+    });
+
+    it('stale → no download on the card and no number in the line', () => {
+      const r = reported({ lastRenderedHash: 'idle:content-downloading', ...snapshot({}, 10 * MIN) });
+      expect(r.state).toBe('downloading');
+      expect(r.line).toBe('Downloading new content');
+      expect(r.download).toBeUndefined();
+      const held = reported({ lastRenderedHash: 'pl:x', ...snapshot({ deferredCommit: true }, 10 * MIN) });
+      expect(held.state).toBe('playing');
+      expect(held.download).toBeUndefined();
+    });
+
+    it('unavailable and loading are named for what they are', () => {
+      expect(reported({ lastRenderedHash: 'idle:content-unavailable' })).toMatchObject({ state: 'unavailable', line: 'Content unavailable' });
+      expect(reported({ lastRenderedHash: 'idle:content-loading' })).toMatchObject({ state: 'loading', line: 'Loading content' });
+    });
+
+    it('a file downloading behind content that plays: the content line stands, the download rides beside it', () => {
+      const r = reported({ lastRenderedHash: 'pl:0|10000|x', ...snapshot() });
+      expect(r.state).toBe('playing');
+      expect(r.line).toBe('Playing a playlist');
+      expect(r.downloadLine?.en).toBe('Downloading another file · 62% of 141 MB');
+      expect(r.download?.percent).toBe(62);
+    });
+  });
+
+  describe('the Delivery card (deriveDelivery)', () => {
+    const delivery = (over: Partial<OpsScreen>) => deriveDelivery(scr(over), status(over), NOW);
+
+    it('a download in flight is what is still waiting — never "Nothing waiting"', () => {
+      const d = delivery({ lastRenderedHash: 'idle:content-downloading', ...snapshot() });
+      expect(d).toMatchObject({ state: 'pending', line: NOTHING_ON_GLASS });
+      expect(d.message?.key).toBe('screens.contentState.downloadingProgress');
+      expect(delivery({ lastRenderedHash: 'pl:x', ...snapshot({ deferredCommit: true }) })).toMatchObject({ state: 'pending', line: HELD });
+      const bg = delivery({ lastRenderedHash: 'pl:x', ...snapshot() });
+      expect(bg).toMatchObject({ state: 'pending', line: 'Downloading another file · 62% of 141 MB' });
+    });
+
+    it('stale or no snapshot → exactly as before', () => {
+      expect(delivery({ lastRenderedHash: 'pl:x', ...snapshot({}, 10 * MIN) }).line).toMatch(/^Nothing waiting\./);
+    });
+
+    it('"Content unavailable" says why, and the waiting states do not claim "Nothing waiting"', () => {
+      const u = delivery({ lastRenderedHash: 'idle:content-unavailable' });
+      expect(u.state).toBe('unknown');
+      expect(u.line).toMatch(/none of the scheduled files would load/);
+      for (const hash of ['idle:connecting', 'idle:content-loading']) {
+        expect(delivery({ lastRenderedHash: hash }).line).toBe('Waiting for the screen to confirm its picture.');
+      }
+    });
+  });
+
+  it('buildScreenOps carries the download on every row — stale included, for the caller to withhold', () => {
+    const ops = buildScreenOps({
+      screens: [
+        scr({ id: 'a', lastRenderedHash: 'idle:content-downloading', ...snapshot() }),
+        scr({ id: 'b', ...snapshot({}, 10 * MIN) }),
+        scr({ id: 'c' }),
+      ],
+      schedules: [],
+      playlists: [],
+      deployedSha: SHA,
+      now: NOW,
+    });
+    const byId = new Map(ops.rows.map((r) => [r.screen.id, r]));
+    expect(byId.get('a')!.download?.state).toBe('downloading');
+    expect(byId.get('b')!.download?.state).toBe('stale');
+    expect(byId.get('c')!.download).toBeNull();
+    // A downloading screen is not an exception.
+    expect(matchesFilter(byId.get('a')!, 'attention')).toBe(false);
+  });
+});

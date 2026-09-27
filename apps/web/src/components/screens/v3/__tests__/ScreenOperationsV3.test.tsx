@@ -730,6 +730,88 @@ describe('states (§13)', () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════
+// 2026-09-27 — a screen that is downloading content says so, on the row and
+// in the Overview. A large file plays only once it is whole on the screen
+// (player rule 17); these rows used to read "nothing scheduled" / "Current".
+describe('download visibility (2026-09-27)', () => {
+  const MB = 1024 * 1024;
+  const SIZE = 141 * MB;
+  const snapshot = (over: Record<string, unknown> = {}, ageMs = 20_000) => ({
+    lastCacheReport: {
+      playlist: { count: 2, bytes: 10 },
+      downloading: { file: 'Promo%204K.mp4', bytesLoaded: Math.ceil(SIZE * 0.62), bytesTotal: SIZE, deferredCommit: false, ...over },
+    } as OpsScreen['lastCacheReport'],
+    lastCacheReportAt: new Date(NOW - ageMs).toISOString(),
+  });
+  const fleet = (over: Record<string, Partial<OpsScreen>>) => FLEET.map((s) => (over[s.id] ? { ...s, ...over[s.id] } : s));
+  const desktopRow = (name: string) =>
+    within(rtl.getByTestId('screens-desktop')).getAllByRole('button', { name })[0].closest('tr') as HTMLElement;
+
+  it('the row: nothing on glass → the live progress and the file; previous content held → says so', () => {
+    renderPage({
+      screens: fleet({
+        hen1: { lastRenderedHash: 'idle:content-downloading', ...snapshot() },
+        hen2: { lastRenderedHash: 'pl:0|10000|old', ...snapshot({ deferredCommit: true }) },
+      }),
+    });
+    const lobby = desktopRow('Henderson Lobby');
+    const lobbyStatus = within(lobby).getByText('Downloading new content · 62% of 141 MB').closest('td') as HTMLElement;
+    expect(within(lobbyStatus).getByText('Promo 4K.mp4')).toBeInTheDocument();
+    // The STATUS cell. (The Content column beside it says what is scheduled,
+    // which for this group is genuinely nothing.)
+    expect(lobbyStatus).not.toHaveTextContent(/nothing scheduled/i);
+    const cardio = desktopRow('Henderson Cardio');
+    const cardioStatus = within(cardio).getByText('Still showing previous content · new content 62% of 141 MB').closest('td') as HTMLElement;
+    expect(cardioStatus).not.toHaveTextContent(/^Current/);
+  });
+
+  it('a stale snapshot is never shown as progress', () => {
+    renderPage({
+      screens: fleet({
+        hen1: { lastRenderedHash: 'idle:content-downloading', ...snapshot({}, 10 * MIN) },
+        hen2: { lastRenderedHash: 'pl:0|10000|old', ...snapshot({ deferredCommit: true }, 10 * MIN) },
+      }),
+    });
+    const lobby = desktopRow('Henderson Lobby');
+    expect(within(lobby).getByText('Downloading new content')).toBeInTheDocument();
+    expect(within(lobby).queryByText(/62%/)).not.toBeInTheDocument();
+    expect(within(desktopRow('Henderson Cardio')).queryByText(/Still showing previous content/)).not.toBeInTheDocument();
+  });
+
+  it('"Content unavailable" is its own row status, never "nothing scheduled"', () => {
+    renderPage({ screens: fleet({ hen1: { lastRenderedHash: 'idle:content-unavailable' } }) });
+    const lobby = desktopRow('Henderson Lobby');
+    const statusCell = within(lobby).getByText('Content unavailable').closest('td') as HTMLElement;
+    expect(statusCell).not.toHaveTextContent(/nothing scheduled/i);
+  });
+
+  it('the Overview: the content card carries the line, a real progress bar and the file; Delivery says what is waiting', () => {
+    renderPage({ screens: fleet({ hen1: { lastRenderedHash: 'idle:content-downloading', ...snapshot() } }) });
+    fireEvent.click(within(rtl.getByTestId('screens-desktop')).getAllByRole('button', { name: 'Henderson Lobby' })[0]);
+    const dialog = rtl.getByRole('dialog');
+    const card = within(dialog).getByTestId('screen-content-card');
+    expect(card).toHaveAttribute('data-reported-state', 'downloading');
+    expect(within(card).getByText('Downloading new content · 62% of 141 MB')).toBeInTheDocument();
+    expect(within(card).getByRole('progressbar')).toHaveAttribute('aria-valuenow', '62');
+    expect(within(card).getByText('Promo 4K.mp4')).toBeInTheDocument();
+    expect(within(card).getByText(/starts playing the moment the whole file is on the screen/)).toBeInTheDocument();
+    // The Delivery card: the download is what is waiting, never "Nothing waiting".
+    expect(within(dialog).getAllByText('Downloading new content · 62% of 141 MB').length).toBe(2);
+    expect(within(dialog).queryByText(/Nothing waiting/)).not.toBeInTheDocument();
+    // …and the explanation is said once, not twice.
+    expect(within(dialog).getAllByText(/starts playing the moment the whole file is on the screen/).length).toBe(1);
+  });
+
+  it('the Overview with a stale snapshot shows no bar and no number', () => {
+    renderPage({ screens: fleet({ hen1: { lastRenderedHash: 'idle:content-downloading', ...snapshot({}, 10 * MIN) } }) });
+    fireEvent.click(within(rtl.getByTestId('screens-desktop')).getAllByRole('button', { name: 'Henderson Lobby' })[0]);
+    const dialog = rtl.getByRole('dialog');
+    expect(within(dialog).queryByRole('progressbar')).not.toBeInTheDocument();
+    expect(within(dialog).queryByText(/62%/)).not.toBeInTheDocument();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
 /**
  * A control must never be enabled for a role the API will answer with 403.
  *

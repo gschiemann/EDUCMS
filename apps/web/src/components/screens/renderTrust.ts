@@ -110,6 +110,47 @@ export interface RenderTrustInput {
 
 /** Prefix the player stamps on a liveness-only (no operator content) proof. */
 export const IDLE_PROOF_PREFIX = 'idle:';
+
+/**
+ * What an idle proof actually says (2026-09-27). Every `idle:` proof used to
+ * read "Screen on · nothing scheduled yet" — false for most of them. The
+ * player (apps/web/src/app/player/page.tsx, the render-proof effect) emits:
+ *
+ *   idle:content-downloading → 'downloading'  the scheduled file is large and
+ *                              still downloading; nothing plays until it is
+ *                              whole on the screen (player rule 17)
+ *   idle:content-unavailable → 'unavailable'  its "Content unavailable" card:
+ *                              every scheduled file failed to load
+ *   idle:content-loading     → 'loading'      a playlist is applied and its
+ *                              first item has not reported loaded yet
+ *   idle:connecting (and the other pre-content phases: registering, pairing,
+ *   offline)                 → 'connecting'   still fetching its schedule
+ *   idle:playing             → 'nothing-scheduled'  applied a schedule with
+ *                              nothing to play (or its window is closed)
+ *
+ * An unrecognised suffix keeps the pre-2026-09-27 reading, 'nothing-scheduled',
+ * so a future player's new state degrades to exactly what it said before.
+ */
+export type IdleProofKind = 'downloading' | 'unavailable' | 'loading' | 'connecting' | 'nothing-scheduled';
+
+export function idleProofKind(hash: string | null | undefined): IdleProofKind | null {
+  if (typeof hash !== 'string' || !hash.startsWith(IDLE_PROOF_PREFIX)) return null;
+  switch (hash.slice(IDLE_PROOF_PREFIX.length)) {
+    case 'content-downloading':
+      return 'downloading';
+    case 'content-unavailable':
+      return 'unavailable';
+    case 'content-loading':
+      return 'loading';
+    case 'connecting':
+    case 'registering':
+    case 'pairing':
+    case 'offline':
+      return 'connecting';
+    default:
+      return 'nothing-scheduled';
+  }
+}
 /**
  * Prefix the player stamps while an OPERATOR has paused playback on the
  * screen itself (remote: Back → Stop) with content still scheduled
@@ -187,6 +228,23 @@ export type RenderTrustGrade =
    * different fact from both "showing your content" and "we have no idea".
    */
   | 'idle'
+  /**
+   * Painting its own "Downloading content" splash (2026-09-27,
+   * `idle:content-downloading`): the scheduled file is large and plays only
+   * once it is whole on the screen. Alive, and not an alarm — but neither
+   * "nothing scheduled" nor green.
+   */
+  | 'downloading'
+  /**
+   * Painting its own "Content unavailable" card (2026-09-27,
+   * `idle:content-unavailable`): every scheduled file failed to load. The
+   * operator's content is NOT on the glass — a real problem, never green.
+   */
+  | 'content-unavailable'
+  /** A playlist is applied and its first item is still opening (`idle:content-loading`). */
+  | 'content-loading'
+  /** Still fetching its schedule — `idle:connecting` and the other pre-content phases. */
+  | 'connecting'
   /**
    * Painting its own waiting screen because an OPERATOR paused playback on
    * the screen itself, with content still scheduled (2026-09-01, TC22 field
@@ -276,17 +334,27 @@ export function deriveRenderTrustGrade(
   if (input.authState === 'REPAIR_REQUIRED' && base !== 'offline') {
     return 'repair-required';
   }
-  // A FRESH proof that is tagged idle is 'idle', never 'painting'. Only the
-  // green state is reinterpreted: a STALE idle proof still grades through
-  // the staleness ladder below, because a panel that stopped painting its
-  // own waiting screen is exactly as wedged as one that stopped painting a
-  // playlist.
-  if (
-    base === 'painting' &&
-    typeof input.lastRenderedHash === 'string' &&
-    input.lastRenderedHash.startsWith(IDLE_PROOF_PREFIX)
-  ) {
-    return 'idle';
+  // A FRESH proof that is tagged idle is never 'painting' — and since
+  // 2026-09-27 it grades as what it SAYS (`idleProofKind`), not uniformly as
+  // "nothing scheduled". Only the green state is reinterpreted: a STALE idle
+  // proof still grades through the staleness ladder below, because a panel
+  // that stopped painting its own waiting screen is exactly as wedged as one
+  // that stopped painting a playlist.
+  if (base === 'painting') {
+    switch (idleProofKind(input.lastRenderedHash)) {
+      case 'unavailable':
+        return 'content-unavailable';
+      case 'downloading':
+        return 'downloading';
+      case 'loading':
+        return 'content-loading';
+      case 'connecting':
+        return 'connecting';
+      case 'nothing-scheduled':
+        return 'idle';
+      default:
+        break; // not an idle proof
+    }
   }
   // Same rule for an operator pause: only a FRESH proof is reinterpreted; a
   // stale paused proof grades through the staleness ladder like any other.

@@ -718,7 +718,14 @@ export function deriveCurrentPictureState(screen: OpsScreenRef, nowMs: number): 
     authState: screen.authState,
     nowMs,
   });
-  if (grade === 'idle' || grade === 'paused' || grade === 'repair-required' || grade === 'media-stalled' || grade === 'alert-unconfirmed') {
+  // Every idle proof was one 'idle' grade until 2026-09-27 (renderTrust.ts
+  // `idleProofKind` now tells them apart); none of them is this playlist
+  // playing, so each keeps that grade's reading here.
+  if (
+    grade === 'idle' || grade === 'connecting' || grade === 'content-loading' || grade === 'content-unavailable' ||
+    grade === 'downloading' || grade === 'paused' || grade === 'repair-required' || grade === 'media-stalled' ||
+    grade === 'alert-unconfirmed'
+  ) {
     return 'issue';
   }
   if (grade === 'not-painting' || grade === 'checking' || grade === 'stale-chronic') return 'stale';

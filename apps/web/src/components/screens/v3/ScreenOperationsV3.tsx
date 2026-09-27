@@ -23,8 +23,10 @@
 import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  AlertCircle, AlertTriangle, Building2, CheckCircle2, ChevronDown, ChevronRight, Clock, Loader2, MapPin, Monitor, MoreVertical, Plus, RefreshCw, Search, Wifi, X, List as ListIcon, Map as MapIcon, Info,
+  AlertCircle, AlertTriangle, Building2, CheckCircle2, ChevronDown, ChevronRight, Clock, Download, Loader2, MapPin, Monitor, MoreVertical, Plus, RefreshCw, Search, Wifi, X, List as ListIcon, Map as MapIcon, Info,
 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
+import type { OpsMessage } from '../contentDownload';
 import {
   useCreateScreenGroup, useDeleteScreenGroup, useForceApkUpdate, useRefreshWeb,
   useUpdateScreenGroup, useUploadFloorPlan,
@@ -78,8 +80,10 @@ function statusToneClasses(tone: string) {
   }
 }
 
-function StatusIcon({ tone }: { tone: string }) {
+function StatusIcon({ tone, statusKey }: { tone: string; statusKey?: string }) {
   const cls = `w-4 h-4 shrink-0 ${statusToneClasses(tone)}`;
+  // A download in flight reads as one at a glance (2026-09-27).
+  if (statusKey === 'downloading' || statusKey === 'showing-previous') return <Download className={cls} aria-hidden />;
   if (tone === 'bad') return <AlertCircle className={cls} aria-hidden />;
   if (tone === 'warn') return <AlertTriangle className={cls} aria-hidden />;
   if (tone === 'ok') return <CheckCircle2 className={cls} aria-hidden />;
@@ -229,6 +233,10 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
   // One clock read per render. No timer is added: the page's existing 10s
   // fleet poll is what advances these ages (mobile-perf standard).
   const now = props.now ?? Date.now();
+  // The states added 2026-09-27 carry catalogue references; everything else
+  // is still the module's English.
+  const t = useTranslations();
+  const text = (en: string | undefined, m?: OpsMessage): string => (m ? t(m.key, m.values) : en ?? '');
 
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<FilterKey>(deepLinkFilter ?? 'all');
@@ -944,14 +952,14 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                               </td>
                               <td className="px-3 py-3.5">
                                 <div className="flex items-start gap-2 min-w-0">
-                                  <StatusIcon tone={row.status.tone} />
+                                  <StatusIcon tone={row.status.tone} statusKey={row.status.key} />
                                   <span className="min-w-0">
                                     <span className={`block text-[12.5px] font-bold leading-5 ${statusToneClasses(row.status.tone)}`}>
-                                      {row.status.label}{row.status.age ? ` · ${row.status.age}` : ''}
+                                      {text(row.status.label, row.status.messages?.label)}{row.status.age ? ` · ${row.status.age}` : ''}
                                     </span>
                                     {row.status.evidence && (
                                       <span className="block text-[11.5px] font-semibold text-slate-400 truncate">
-                                        {row.status.evidence}
+                                        {text(row.status.evidence, row.status.messages?.evidence)}
                                       </span>
                                     )}
                                   </span>
@@ -1106,7 +1114,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                                     <div className="min-w-0 flex-1">
                                       <p className="text-[14px] font-bold text-slate-900 truncate">{s.name || 'Unnamed screen'}</p>
                                       <p className={`mt-0.5 text-[12.5px] font-bold ${statusToneClasses(row.status.tone)}`}>
-                                        {row.status.label}{row.status.age ? ` · ${row.status.age}` : ''}
+                                        {text(row.status.label, row.status.messages?.label)}{row.status.age ? ` · ${row.status.age}` : ''}
                                       </p>
                                       <p className="mt-0.5 text-[11.5px] font-semibold text-slate-400 truncate">
                                         {row.expected.name ?? 'Nothing scheduled'} · {lc.primary}

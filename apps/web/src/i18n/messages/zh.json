@@ -1692,7 +1692,25 @@
       "levelUnknown": "该屏幕不会上报当前级别，因此滑块设置的是绝对值，而非在当前值基础上调整。",
       "pickADay": "请至少选择一天。若要让屏幕不再自动关闭，请删除该时间表。"
     },
-    "setLocation": "设置地址"
+    "setLocation": "设置地址",
+    "contentState": {
+      "downloading": "正在下载新内容",
+      "downloadingProgress": "正在下载新内容 · 已完成 {percent}%（共 {size}）",
+      "downloadingSoFar": "正在下载新内容 · 已下载 {loaded}",
+      "downloadingDetail": "新文件正在下载到这块屏幕。整个文件下载到屏幕后会立即开始播放。",
+      "showingPrevious": "仍在显示之前的内容",
+      "showingPreviousProgress": "仍在显示之前的内容 · 新内容已完成 {percent}%（共 {size}）",
+      "showingPreviousSoFar": "仍在显示之前的内容 · 新内容已下载 {loaded}",
+      "showingPreviousDetail": "新内容正在下载到这块屏幕。整个新文件下载完成之前，屏幕会继续播放原来的内容，完成后再切换。",
+      "backgroundProgress": "正在下载另一个文件 · 已完成 {percent}%（共 {size}）",
+      "backgroundSoFar": "正在下载另一个文件 · 已下载 {loaded}",
+      "unavailable": "内容不可用",
+      "unavailableDetail": "屏幕已开启，但排定的文件都无法加载，因此显示“内容不可用”提示，并每 30 秒自动重试一次。如果一直如此，请检查播放列表中的文件。",
+      "loading": "正在加载内容",
+      "loadingDetail": "屏幕已获取排程，正在打开第一个项目。",
+      "connecting": "屏幕已开启 · 正在连接",
+      "connectingDetail": "屏幕已开启，仍在获取排程，因此暂时显示等待画面。"
+    }
   },
   "assetsLib": {
     "title": "媒体库",
@@ -1984,7 +2002,12 @@
     "windowCancelMessage": "这将取消为 {pending, plural, other {# 块屏幕}}准备的 1080p 副本，并在 {count, plural, other {# 块屏幕}}上暂停此排期。",
     "deleteScheduleCancelsCopy": "这也会取消正在准备的 1080p 副本。",
     "fleetPending": "{count, plural, other {# 块屏幕}}正在准备 1080p 副本",
-    "fleetPendingNote": "正在准备 1080p 副本的屏幕会保持当前显示内容，副本就绪后自动开始播放此播放列表。"
+    "fleetPendingNote": "正在准备 1080p 副本的屏幕会保持当前显示内容，副本就绪后自动开始播放此播放列表。",
+    "deliveryDownloadOne": "{name} · 已完成 {percent}%（共 {size}）",
+    "deliveryDownloadOneSoFar": "{name} · 已下载 {loaded}",
+    "deliveryHeldOne": "{name} · 新内容已完成 {percent}%（共 {size}）",
+    "deliveryHeldOneSoFar": "{name} · 新内容已下载 {loaded}",
+    "deliveryDownloadMany": "{screens} 块屏幕中的 {count} 块"
   },
   "brandingCard": {
     "loading": "加载中…",
