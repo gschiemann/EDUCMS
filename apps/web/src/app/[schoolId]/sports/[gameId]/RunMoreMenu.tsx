@@ -27,6 +27,7 @@
  * a transient overlay (not always-mounted chrome), opened on demand.
  */
 import { ReactNode, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import {
   MoreHorizontal,
   Radio,
@@ -120,6 +121,7 @@ export function RunMoreMenu({
   onShortcuts: () => void;
   screensNub: ReactNode;
 }) {
+  const tNav = useTranslations('nav');
   const [open, setOpen] = useState(false);
   const close = () => setOpen(false);
   const run = (fn: () => void) => () => {
@@ -135,7 +137,9 @@ export function RunMoreMenu({
         aria-haspopup="menu"
         aria-expanded={open}
         title="Everything else — scenes, roles, surfaces, sharing"
-        className="flex items-center gap-1.5 min-h-[40px] px-3 rounded-lg border border-slate-200 bg-slate-50 text-[13px] font-bold text-slate-700 hover:bg-slate-100 hover:border-slate-300 transition-colors shrink-0"
+        // Below sm only the icon shows, so the button needs its own name.
+        aria-label={tNav('more')}
+        className="flex items-center justify-center gap-1.5 min-h-[40px] max-md:min-h-[44px] max-md:min-w-[44px] px-3 rounded-lg border border-slate-200 bg-slate-50 text-[13px] font-bold text-slate-700 hover:bg-slate-100 hover:border-slate-300 transition-colors shrink-0"
       >
         <MoreHorizontal className="h-[18px] w-[18px]" />
         <span className="hidden sm:inline">More</span>
@@ -298,7 +302,7 @@ export function OnAirBar({ show }: { show: ReturnType<typeof useShowControl> }) 
         type="button"
         onClick={show.backToLive}
         title="Return the board to the live scoreboard"
-        className="min-h-[40px] px-3 rounded-full text-[13px] font-bold bg-red-600 text-white hover:bg-red-500 transition-colors shrink-0 flex items-center gap-1.5"
+        className="min-h-[40px] max-md:min-h-[44px] px-3 rounded-full text-[13px] font-bold bg-red-600 text-white hover:bg-red-500 transition-colors shrink-0 flex items-center gap-1.5"
       >
         <Radio className="h-4 w-4" />
         Back to live
@@ -311,7 +315,7 @@ export function OnAirBar({ show }: { show: ReturnType<typeof useShowControl> }) 
           type="button"
           onClick={show.hold}
           title="Keep this scene on the board until you tap Back to live"
-          className="ml-auto min-h-[36px] px-2.5 rounded-lg bg-white border border-red-200 text-red-700 text-[12px] font-bold hover:border-red-400 flex items-center gap-1 shrink-0"
+          className="ml-auto min-h-[36px] max-md:min-h-[44px] px-2.5 rounded-lg bg-white border border-red-200 text-red-700 text-[12px] font-bold hover:border-red-400 flex items-center gap-1 shrink-0"
         >
           <Pause className="h-3.5 w-3.5" /> Hold
         </button>
@@ -321,7 +325,7 @@ export function OnAirBar({ show }: { show: ReturnType<typeof useShowControl> }) 
           type="button"
           onClick={show.extend}
           title="Add 20 seconds to the on-air time"
-          className="min-h-[36px] px-2.5 rounded-lg bg-white border border-red-200 text-red-700 text-[12px] font-bold hover:border-red-400 flex items-center gap-1 shrink-0"
+          className="min-h-[36px] max-md:min-h-[44px] px-2.5 rounded-lg bg-white border border-red-200 text-red-700 text-[12px] font-bold hover:border-red-400 flex items-center gap-1 shrink-0"
         >
           <Plus className="h-3.5 w-3.5" /> 20s
         </button>

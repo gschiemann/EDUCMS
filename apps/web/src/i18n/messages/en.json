@@ -3226,7 +3226,6 @@
     "undo": "Undo",
     "undoConfirm": "Tap again to undo",
     "undoing": "Undoing…",
-    "undoLast": "Undo last",
     "clock": "Game clock",
     "minusSecond": "−1s",
     "plusSecond": "+1s",
@@ -3242,6 +3241,7 @@
     "shotStop": "Stop the shot clock",
     "start": "Start",
     "stop": "Stop",
-    "possession": "Possession"
+    "possession": "Possession",
+    "backToGames": "Back to Game Day"
   }
 }

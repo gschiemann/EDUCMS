@@ -3226,7 +3226,6 @@
     "undo": "撤销",
     "undoConfirm": "再点一次以撤销",
     "undoing": "正在撤销…",
-    "undoLast": "撤销上一步",
     "clock": "比赛计时",
     "minusSecond": "−1 秒",
     "plusSecond": "+1 秒",
@@ -3242,6 +3241,7 @@
     "shotStop": "停止进攻计时",
     "start": "开始",
     "stop": "停止",
-    "possession": "球权"
+    "possession": "球权",
+    "backToGames": "返回比赛日"
   }
 }

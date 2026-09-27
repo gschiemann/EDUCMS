@@ -22,7 +22,7 @@
  * prior convention and stay trivially Chromium-83-safe.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ChevronDown, ChevronUp, RotateCcw, Loader2, ScrollText } from 'lucide-react';
 import { useGameEvents, useUndoGameEvent, type GameEventRow } from '@/hooks/use-api';
 import { findSport, formatScore } from '@cms/api-types';
@@ -156,6 +156,15 @@ export function eventSummary(ev: GameEventRow, sport?: string): string {
 
 export function RecentEventsBar({ gameId, sport }: { gameId: string; sport?: string }) {
   const [collapsed, setCollapsed] = useState(false);
+  // K12-F15 — on a phone this strip sits OUTSIDE the scrolling deck, so every
+  // pixel it holds is taken from the game controls; the latest change + Undo
+  // already rides in the phone trays. Start collapsed there (one tap opens
+  // it). After mount, never during render, so SSR and hydration agree.
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.matchMedia?.('(max-width: 767px)').matches) {
+      setCollapsed(true);
+    }
+  }, []);
   const { data: events, isLoading } = useGameEvents(gameId);
   const undo = useUndoGameEvent(gameId);
   const [undoingId, setUndoingId] = useState<string | null>(null);
@@ -192,7 +201,7 @@ export function RecentEventsBar({ gameId, sport }: { gameId: string; sport?: str
         </div>
         <button
           onClick={() => setCollapsed((c) => !c)}
-          className="flex items-center rounded p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+          className="flex items-center justify-center rounded p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 max-md:min-h-[44px] max-md:min-w-[44px]"
           title={collapsed ? 'Show event log' : 'Hide event log'}
           aria-label={collapsed ? 'Expand event log' : 'Collapse event log'}
         >
@@ -249,12 +258,15 @@ export function RecentEventsBar({ gameId, sport }: { gameId: string; sport?: str
                     {summary}
                   </span>
 
-                  {/* hover-to-undo (undoable rows only) */}
+                  {/* hover-to-undo (undoable rows only). K12-F15: a touch
+                      screen has no hover, so there the button is always
+                      shown — and on a phone it drops into the chip's flow
+                      as a full 44 px target instead of a 19 px overlay. */}
                   {ev.undoable && (
                     <button
                       disabled={!!undoingId}
                       onClick={() => handleUndo(ev.id)}
-                      className="absolute right-1 top-1 flex items-center rounded bg-white px-1 py-0.5 text-[10px] font-semibold text-indigo-500 opacity-0 shadow-sm ring-1 ring-slate-200 transition-opacity hover:text-indigo-700 focus:opacity-100 group-hover:opacity-100 disabled:opacity-40"
+                      className="absolute right-1 top-1 flex items-center justify-center rounded bg-white px-1 py-0.5 text-[10px] font-semibold text-indigo-500 opacity-0 shadow-sm ring-1 ring-slate-200 transition-opacity hover:text-indigo-700 focus:opacity-100 group-hover:opacity-100 disabled:opacity-40 [@media(hover:none)]:opacity-100 max-md:static max-md:mt-1.5 max-md:min-h-[44px] max-md:text-xs max-md:opacity-100 max-md:disabled:opacity-40"
                       title="Undo this action"
                       aria-label={`Undo: ${summary}`}
                     >

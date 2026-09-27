@@ -3226,7 +3226,6 @@
     "undo": "Deshacer",
     "undoConfirm": "Toca otra vez para deshacer",
     "undoing": "Deshaciendo…",
-    "undoLast": "Deshacer el último",
     "clock": "Reloj del partido",
     "minusSecond": "−1 s",
     "plusSecond": "+1 s",
@@ -3242,6 +3241,7 @@
     "shotStop": "Detener el reloj de posesión",
     "start": "Iniciar",
     "stop": "Detener",
-    "possession": "Posesión"
+    "possession": "Posesión",
+    "backToGames": "Volver a la jornada deportiva"
   }
 }

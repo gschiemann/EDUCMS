@@ -46,10 +46,14 @@ export function RunCommandBar({
 }) {
   const chip = STATUS_CHIP[status] || STATUS_CHIP.SCHEDULED;
   return (
-    <div className="flex items-center gap-2 px-3 sm:px-4 py-2 border-b border-slate-200 bg-white shrink-0 overflow-x-auto">
+    // K12-F15 — below md the bar WRAPS instead of scrolling sideways: at
+    // 390 px "End game" was cut in half and More sat off-screen inside a
+    // horizontal scroller nobody knows to swipe. The actions drop to a
+    // second line when they do not fit; md+ keeps the single-row scroller.
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 px-3 sm:px-4 py-2 border-b border-slate-200 bg-white shrink-0 md:flex-nowrap md:overflow-x-auto">
       {/* Identity + live status chip — one chip, glanceable game state. */}
-      <div className="flex items-center gap-2 shrink-0 min-w-0">
-        <span className="text-[13px] font-bold text-slate-900 truncate max-w-[160px] sm:max-w-[260px]" title={gameName}>
+      <div className="flex items-center gap-2 min-w-0 max-md:max-w-full md:shrink-0">
+        <span className="text-[13px] font-bold text-slate-900 truncate min-w-0 max-w-[160px] sm:max-w-[260px]" title={gameName}>
           {gameName}
         </span>
         <span
@@ -64,7 +68,7 @@ export function RunCommandBar({
       {/* Right cluster: the only live-essential actions — game-state
           transitions for the current status, and the single More affordance
           for everything else. */}
-      <div className="ml-auto flex items-center gap-1.5 shrink-0">
+      <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5 md:shrink-0 md:flex-nowrap">
         {statusButtons}
         {moreMenu}
       </div>
