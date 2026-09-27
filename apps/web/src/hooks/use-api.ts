@@ -27,6 +27,7 @@ import {
   type GameOp,
   type GameOpKind,
 } from '@/lib/game-op-queue';
+import { attachOpQueueReplay } from '@/lib/game-op-replay';
 import { conciergeUrlReferenceBody } from '@/lib/concierge-designer-assets';
 // K12-F17 — the page's shared server clock (sports console reads feed it).
 import { serverClock } from '@/lib/server-clock';
@@ -4707,21 +4708,11 @@ export function useDuplicateGame() {
 
 // ── Trust wave Domain C (2026-08-06) — offline op replay wiring ─────
 // Network-failed score/clock/segment/stats writes land in the per-game
-// GameOpQueue (lib/game-op-queue.ts); this block replays them. ONE
-// controller per game no matter how many components mount useGameControl
-// (page.tsx ×3 + CueLaunchpad + Leaders/Ribbon panels all do): the first
-// mount attaches the listeners + queue subscription, the last unmount
-// tears them down. Mobile perf standard: the 5s retry timer exists ONLY
-// while (queue non-empty AND document visible) — zero timers when the
-// queue is empty or the tab is hidden.
-
-type GameOpReplayController = {
-  refs: number;
-  onDrained: () => void;
-  timer: ReturnType<typeof setTimeout> | null;
-  teardown: () => void;
-};
-const gameOpReplayControllers = new Map<string, GameOpReplayController>();
+// GameOpQueue (lib/game-op-queue.ts); lib/game-op-replay.ts replays them
+// (shared with the volunteer pad since K12-F16). ONE controller per game no
+// matter how many components mount useGameControl (page.tsx ×3 +
+// CueLaunchpad + Leaders/Ribbon panels all do). Mobile perf standard: the 5s
+// retry timer exists ONLY while (queue non-empty AND document visible).
 
 /**
  * K12-F10 (2026-09-26) — send one game-control command with a durable
@@ -4783,87 +4774,13 @@ function makeGameOpSender(gameId: string) {
 }
 
 function attachGameOpReplay(gameId: string, qc: QueryClient): () => void {
-  if (typeof window === 'undefined') return () => {};
-  let ctl = gameOpReplayControllers.get(gameId);
-  if (!ctl) {
-    const q = getGameOpQueue(gameId);
-    const sender = makeGameOpSender(gameId);
-    const clearTimer = () => {
-      const c = gameOpReplayControllers.get(gameId);
-      if (c && c.timer !== null) {
-        clearTimeout(c.timer);
-        c.timer = null;
-      }
-    };
-    const schedule = () => {
-      const c = gameOpReplayControllers.get(gameId);
-      if (!c || c.timer !== null) return;
-      if (q.size() === 0 || document.visibilityState !== 'visible') return;
-      c.timer = setTimeout(() => {
-        const cc = gameOpReplayControllers.get(gameId);
-        if (cc) cc.timer = null;
-        void attempt();
-      }, 5_000);
-    };
-    const attempt = async () => {
-      clearTimer();
-      const c = gameOpReplayControllers.get(gameId);
-      if (!c || q.size() === 0) return;
-      const { sent, remaining } = await q.replay(sender);
-      const after = gameOpReplayControllers.get(gameId);
-      if (!after) return;
-      if (remaining > 0) {
-        schedule(); // partial / still failing — self-chained 5s retry
-        return;
-      }
+  return attachOpQueueReplay(gameId, getGameOpQueue(gameId), makeGameOpSender(gameId), {
+    onReplayed: ({ remaining }) => {
       // Drained — reconcile the console to server truth (the replayed
       // deltas + anything a co-operator did while this tablet was out).
-      if (sent > 0) after.onDrained();
-    };
-    const onOnline = () => {
-      void attempt();
-    };
-    const onVisibility = () => {
-      if (document.visibilityState === 'visible') void attempt();
-      else clearTimer(); // no timers in a hidden tab
-    };
-    const unsubscribe = q.subscribe(() => {
-      if (q.size() === 0) clearTimer();
-      else if (!q.getSnapshot().replaying) schedule();
-    });
-    window.addEventListener('online', onOnline);
-    document.addEventListener('visibilitychange', onVisibility);
-    ctl = {
-      refs: 0,
-      onDrained: () => {},
-      timer: null,
-      teardown: () => {
-        clearTimer();
-        unsubscribe();
-        window.removeEventListener('online', onOnline);
-        document.removeEventListener('visibilitychange', onVisibility);
-      },
-    };
-    gameOpReplayControllers.set(gameId, ctl);
-    // Ops persisted across a mid-game console-tab reload replay right away.
-    if (q.size() > 0) void attempt();
-  }
-  ctl.refs += 1;
-  ctl.onDrained = () => {
-    qc.invalidateQueries({ queryKey: ['sports-game', gameId] });
-  };
-  let released = false;
-  return () => {
-    if (released) return;
-    released = true;
-    const c = gameOpReplayControllers.get(gameId);
-    if (!c) return;
-    c.refs -= 1;
-    if (c.refs <= 0) {
-      c.teardown();
-      gameOpReplayControllers.delete(gameId);
-    }
-  };
+      if (remaining === 0) qc.invalidateQueries({ queryKey: ['sports-game', gameId] });
+    },
+  });
 }
 
 /**
