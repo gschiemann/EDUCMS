@@ -64,14 +64,36 @@ import {
 } from './sports-stats.service';
 import { FeatureFlagsService, FLAGS } from '../feature-flags/feature-flags.service';
 import { withDbRetry } from '../prisma/with-db-retry';
+import type { Game } from '@cms/database';
+import {
+  type CommandInput,
+  type ResolvedCommandContext,
+  type StateChange,
+  SYSTEM_CLOCK_ACTOR,
+  boundedForAudit,
+  diffState,
+  feedActor,
+  resolveCommandContext,
+} from './game-command';
 
 /**
  * VenueOS Sports — Sprint 13. The game engine service.
  *
- * Every game mutation does two things, in order:
- *   1. update the `games` row (the system-of-record),
- *   2. append a `game_events` row (the append-only forensic log +
- *      the celebration-cue feed the board page polls).
+ * Every game-control mutation is ONE COMMAND run by `runGameCommand`
+ * (K-12 launch program, lane A1, 2026-09-26). Inside one database
+ * transaction it:
+ *   1. re-reads the game (tenant-scoped) and refuses a FINAL game unless the
+ *      command is allowed there (K12-F13);
+ *   2. updates the `games` row ONLY where `version` still equals the version
+ *      it read, bumping it — a writer holding a stale read matches nothing and
+ *      the whole command re-runs on the fresh row (K12-F12);
+ *   3. appends its `game_events` rows (the forensic log + the celebration-cue
+ *      feed the board polls), attributed to the command's actor (K12-F34);
+ *   4. writes the command's AuditLog row (K12-F34) and, when the client sent a
+ *      command id, the durable receipt a replay answers from (K12-F10).
+ * All of it commits together or none of it does (K12-F11). Side effects that
+ * are not rows — board-cache invalidation, the SYNC nudge, the FINAL hook —
+ * run after the commit.
  *
  * Real-time delivery is the 750ms polling path on the public board
  * endpoint (with a 1s in-memory cache + per-write invalidation). There
@@ -119,6 +141,48 @@ type AutoPushConfig = {
   savedState: AutoPushSavedScreen[] | null;
   pushedAt: string | null;
 };
+
+/** A Game row as the engine reads it (Prisma returns every column). */
+type GameRow = Game;
+
+/**
+ * A command's compare-and-swap write matched nothing: another writer changed
+ * the game (bumped its version) after this command read it. The runner
+ * re-runs the whole command against the fresh row.
+ */
+class GameVersionConflict extends Error {
+  constructor() {
+    super('game changed underneath this command');
+  }
+}
+
+/** How many times a command re-runs after losing a compare-and-swap. */
+const MAX_COMMAND_ATTEMPTS = 5;
+
+/** Everything a command body can do inside its transaction. */
+interface GameCommandScope {
+  readonly tx: any;
+  readonly ctx: ResolvedCommandContext;
+  readonly kind: string;
+  /** The game as read inside this transaction, before any write. */
+  readonly before: GameRow;
+  /** The game after this command's latest write (=== before until it writes). */
+  current(): GameRow;
+  /** Compare-and-swap update of the game row; bumps `version`. */
+  write(data: Record<string, unknown>): Promise<GameRow>;
+  /** Append a GameEvent inside the transaction. */
+  event(
+    type: string,
+    payload: Record<string, unknown>,
+    opts?: { derived?: boolean },
+  ): Promise<{ id: string; createdAt: Date }>;
+  /** Every tracked field this command has changed so far (the undo record). */
+  change(): StateChange;
+  /** Write an AuditLog row inside the transaction (after the body). */
+  audit(action: string, details?: Record<string, unknown>): void;
+  /** Run after COMMIT (fail-open). Not run for a rolled-back attempt. */
+  after(fn: () => unknown): void;
+}
 
 /**
  * Board-payload normalization (2026-07-12 world-class audit, football P1):
@@ -356,92 +420,184 @@ export class SportsService {
   }
 
   /**
-   * Sports-stats-race fix (2026-07-03, verified data race): serializes every
-   * read-modify-write on `Game.stats` for a given game.
+   * Run ONE game-control command (K-12 launch program, lane A1 — K12-F11 /
+   * F12; see the class header for the whole contract).
    *
-   * THE BUG this closes: `Game.stats` is a single JSON blob mutated by
-   * whole-blob read-modify-write from BOTH the operator's PATCH
-   * (`updateStats`) AND the ~5Hz CTS/swim-timing feed ingest
-   * (`ingestCtsSnapshot` / `ingestSwimTimingSnapshot`), plus the
-   * set-sport/segment-advance paths (`applySetWin`, `setSegment`). Two
-   * writers racing on the same row each read the SAME `{penalties:[]}`,
-   * one commits `[P1]`, and the other's stale-read write erases it —
-   * observed window ~200ms, wide open on the flagship CTS + water-polo
-   * path. This is the classic lost-update anomaly; `UPDATE ... SET
-   * stats = $1 WHERE id = $2` gives Postgres no way to know the write
-   * depends on a value that changed underneath it.
+   * THE BUGS this closes. Game state is one row whose `stats` is a single JSON
+   * blob, and commands read-modify-write it: the operator's taps, the ~5 Hz
+   * CTS / swim / score feeds, the clock-expiry sweep. The 2026-07-03 stats-race
+   * fix (withStatsTx, Serializable) covered five of those writers; everything
+   * else still wrote whole blobs or absolute scores from a stale read — a clock
+   * start erased a foul booked a moment earlier (K12-17), setting HOME's score
+   * rewrote AWAY's from before a concurrent point (K12-18) — and every command
+   * wrote its GameEvent / AuditLog in separate statements AFTER the state
+   * write, so a failed event insert left the score changed with no record of
+   * it (K12-11).
    *
-   * THE FIX: every writer re-reads the game FRESH *inside* a
-   * `Serializable` transaction, and hands that fresh row to its own
-   * merge logic (unchanged) via `mutate`. Under SERIALIZABLE, if two
-   * transactions' read/write sets conflict, PostgreSQL's SSI aborts the
-   * loser with a 40001 (Prisma P2034) instead of silently letting a
-   * stale write land. `withDbRetry` (already used for the identical
-   * seat-claim race in `screens.controller.ts`'s `pair()` — see the
-   * P2-B comment there) treats P2034 as transient and re-runs the WHOLE
-   * thunk — including the fresh read — so the retry sees the winner's
-   * committed write and merges on top of it instead of clobbering it.
-   * A non-transient error (validation, NotFound) is not P2034 and is
-   * re-thrown immediately, no wasted retry.
+   * THE FIX, per attempt, in one transaction:
+   *   - re-read the game with the tenant predicate (a moved/foreign row reads
+   *     nothing → NotFound);
+   *   - `scope.write()` updates `WHERE id AND tenantId AND version = <read>`
+   *     and bumps `version`. If another writer committed in between, that
+   *     matches nothing (Prisma P2025) → GameVersionConflict → the WHOLE
+   *     command re-runs against the fresh row (up to MAX_COMMAND_ATTEMPTS),
+   *     so the loser merges on top of the winner instead of erasing it;
+   *   - events / audit rows go through the SAME `tx`, so they commit with the
+   *     state change or not at all;
+   *   - `scope.after()` hooks run only after COMMIT.
+   * An explicit compare-and-swap works at READ COMMITTED and cannot be defeated
+   * by a writer the old Serializable helper did not wrap; transient pool
+   * errors are still retried by withDbRetry.
    *
-   * `mutate` receives the transaction client (`tx`) and the freshly
-   * re-read game row, and returns the Prisma `data` patch to write (the
-   * SAME shape each caller already built by hand) — merge/derivation
-   * logic is untouched, only the read+write now happen atomically
-   * against a fresh snapshot instead of a stale pre-transaction read.
-   * Returns `{ game: freshGameReadInsideTx, updated: writeResult }` so
-   * callers that need the pre-write snapshot for a diff (oldValues,
-   * prevScores, etc.) get one that is guaranteed consistent with the
-   * write that actually landed — not the possibly-stale row read before
-   * the transaction opened.
+   * SEC-009 (2026-09-05, carried over from withStatsTx): `tenantId` rides BOTH
+   * the in-transaction read and the write. The outer `owned()` gate runs first
+   * (a foreign or missing game 404s before a transaction opens); the two PUBLIC
+   * feed-token ingests pass the row their token-authorized gate resolved, and
+   * there the predicate asserts the row has not moved tenants since.
    */
-  /*
-   * SEC-009 (2026-09-05) — `tenantId` is a REQUIRED parameter, and it rides
-   * BOTH the in-transaction re-read and the write.
-   *
-   * This helper is called from ~7 sites and every one of them had already
-   * authorized the game (`owned(tenantId, gameId)` or an equivalent gate) —
-   * but that check lived in a DIFFERENT statement from the write, so it proved
-   * nothing about the row this `UPDATE` actually touched. One caller that
-   * forgot the pre-check, or a refactor that moved it, would have silently
-   * removed the tenant boundary from every sports write at once. Now the
-   * boundary is in the query: a mismatched tenant reads nothing and throws
-   * NotFound rather than mutating a foreign game.
-   *
-   * The two PUBLIC feed-token ingests (`ingestCtsSnapshot`,
-   * `ingestSwimTimingSnapshot`) have no operator session, so they pass the
-   * tenantId RESOLVED FROM the game row their own token-authorized gate read.
-   * There, the predicate is a consistency assertion (the row has not moved
-   * tenants between gate and merge), not the primary control — the token MAC
-   * over gameId + feedTokenVersion is. That is stated at those call sites.
-   */
-  private async withStatsTx<D extends Record<string, unknown>>(
+  private async runGameCommand<R>(
     tenantId: string,
     gameId: string,
-    label: string,
-    mutate: (tx: any, game: any) => Promise<D> | D,
-  ): Promise<{ game: any; updated: any }> {
-    return withDbRetry(
-      () =>
-        this.prisma.client.$transaction(
-          async (tx: any) => {
-            const fresh = await tx.game.findUnique({ where: { id: gameId, tenantId } });
-            if (!fresh) throw new NotFoundException('Game not found');
-            const data = await mutate(tx, fresh);
-            const updated = await tx.game.update({ where: { id: gameId, tenantId }, data });
-            return { game: fresh, updated };
-          },
-          {
-            isolationLevel: 'Serializable',
-            // Same headroom as the seat-claim tx (screens.controller.ts
-            // pair()) — Supabase pgbouncer + SERIALIZABLE can occasionally
-            // push past the 5s default on first connection.
-            timeout: 20000,
-            maxWait: 10000,
-          },
-        ),
-      { label },
-    );
+    kind: string,
+    input: CommandInput,
+    body: (scope: GameCommandScope) => Promise<R>,
+    opts: { gate?: GameRow | null; label?: string } = {},
+  ): Promise<R> {
+    const ctx = resolveCommandContext(input);
+    if (!opts.gate) await this.owned(tenantId, gameId);
+    const label = opts.label ?? `sports.${kind}`;
+
+    for (let attempt = 1; ; attempt++) {
+      const afterHooks: Array<() => unknown> = [];
+      try {
+        const value = await withDbRetry(
+          () =>
+            this.prisma.client.$transaction(
+              async (tx: any) => {
+                afterHooks.length = 0;
+                const read: GameRow | null = await tx.game.findFirst({
+                  where: { id: gameId, tenantId },
+                });
+                if (!read) throw new NotFoundException('Game not found');
+                // A private copy: the command's `before` (and the undo record
+                // diffed from it) must not change when the row object the
+                // client handed back is updated by this command's own write.
+                const before: GameRow = {
+                  ...read,
+                  stats: read.stats && typeof read.stats === 'object' ? structuredClone(read.stats) : read.stats,
+                };
+                const scope = this.makeCommandScope(tx, ctx, kind, before, afterHooks);
+                const result = await body(scope);
+                await scope.flush();
+                return result;
+              },
+              // Same headroom withStatsTx carried: the first statement on a
+              // cold Supavisor connection can outlast Prisma's 5 s default.
+              { timeout: 20000, maxWait: 10000 },
+            ),
+          { label },
+        );
+        for (const hook of afterHooks) {
+          try {
+            await hook();
+          } catch (err) {
+            this.logger.warn(
+              `${label}: post-commit step failed (non-fatal) game=${gameId}: ${
+                err instanceof Error ? err.message : String(err)
+              }`,
+            );
+          }
+        }
+        return value;
+      } catch (err) {
+        if (err instanceof GameVersionConflict && attempt < MAX_COMMAND_ATTEMPTS) continue;
+        if (err instanceof GameVersionConflict) {
+          throw new ConflictException({
+            code: 'GAME_BUSY',
+            message: 'The game kept changing while this was being applied. Try again.',
+          });
+        }
+        throw err;
+      }
+    }
+  }
+
+  /** The scope object handed to a command body (see GameCommandScope). */
+  private makeCommandScope(
+    tx: any,
+    ctx: ResolvedCommandContext,
+    kind: string,
+    before: GameRow,
+    afterHooks: Array<() => unknown>,
+  ): GameCommandScope & { flush(): Promise<void> } {
+    let current: GameRow = before;
+    const audits: Array<{ action: string; details: Record<string, unknown> }> = [];
+    const tenantId: string = before.tenantId;
+    const gameId: string = before.id;
+    const service = this;
+    // Postgres CURRENT_TIMESTAMP is fixed for a whole transaction, so every
+    // event of one command would tie on created_at and the undo rail would
+    // list them in random order. Stamp each one explicitly, strictly
+    // increasing, in the order the command wrote them.
+    let lastEventAt = 0;
+    const nextEventAt = () => {
+      lastEventAt = Math.max(Date.now(), lastEventAt + 1);
+      return new Date(lastEventAt);
+    };
+    return {
+      tx,
+      ctx,
+      kind,
+      before,
+      current: () => current,
+      async write(data: Record<string, unknown>) {
+        // `version` is a NOT NULL column, so a real row always carries a number;
+        // the guard only lets pre-revision test doubles (rows with no version)
+        // run unchanged.
+        const expected = typeof current.version === 'number' ? current.version : null;
+        const where: Record<string, unknown> =
+          expected === null ? { id: gameId, tenantId } : { id: gameId, tenantId, version: expected };
+        try {
+          current = await tx.game.update({
+            where,
+            data: { ...data, version: (expected ?? 0) + 1 },
+          });
+        } catch (err) {
+          if ((err as { code?: string } | null)?.code === 'P2025') throw new GameVersionConflict();
+          throw err;
+        }
+        return current;
+      },
+      async event(type, payload, eventOpts) {
+        const body = eventOpts?.derived ? { ...payload, derived: true } : payload;
+        return tx.gameEvent.create({
+          data: { gameId, type, payload: body as any, createdAt: nextEventAt() },
+        });
+      },
+      change: () => diffState(before, current),
+      audit(action, details = {}) {
+        audits.push({ action, details });
+      },
+      after(fn) {
+        afterHooks.push(fn);
+      },
+      async flush() {
+        for (const a of audits) {
+          await tx.auditLog.create({
+            data: {
+              tenantId,
+              userId: ctx.actor.kind === 'user' ? ctx.actor.userId ?? null : null,
+              action: a.action,
+              targetType: 'Game',
+              targetId: gameId,
+              details: JSON.stringify(boundedForAudit(a.details)),
+            },
+          });
+        }
+        // Every committed command changes what a board shows.
+        afterHooks.unshift(() => service.invalidateBoardCache(gameId));
+      },
+    };
   }
 
   // ── feed-token revocation (Sprint 13) ─────────────────────────
@@ -592,10 +748,10 @@ export class SportsService {
   //   - POST board/:id/feed                → source 'feed'  (ingest(), stampFeed)
   //   - POST board/:id/cts-snapshot        → source 'cts'   (ingestCtsSnapshot)
   //   - POST board/:id/swim-timing-snapshot→ source 'swim'  (ingestSwimTimingSnapshot)
-  // The cts/swim stamps ride their EXISTING withStatsTx whole-blob writes
-  // (zero extra writes, zero extra race surface). The generic /feed path
-  // stamps via the throttle below — including on its no-op early-return, so
-  // an idle-but-connected vendor heartbeat never looks dead on the pill.
+  // Every stamp rides the ingest command's own compare-and-swap write (zero
+  // extra writes, zero extra race surface). The generic /feed path stamps via
+  // the throttle below — including on its no-op early-return, so an
+  // idle-but-connected vendor heartbeat never looks dead on the pill.
   // The stamp changes at most once per FEED_STAMP_MIN_INTERVAL_MS on the
   // /feed path, so the board ETag (which hashes stats) is bumped at most
   // every 5s by an otherwise-idle feed — bounded, and irrelevant during
@@ -624,37 +780,6 @@ export class SportsService {
     const t = Date.parse(String((f as Record<string, unknown>).lastPacketAt));
     if (!Number.isFinite(t)) return true;
     return now - t > SportsService.FEED_STAMP_MIN_INTERVAL_MS;
-  }
-
-  /**
-   * Dedicated small stats write for the /feed NO-OP case (nothing to apply,
-   * so there is no existing update to fold the stamp into). Runs inside
-   * withStatsTx (Serializable + retry) because `Game.stats` is the contended
-   * blob the 5 Hz CTS/swim ingests also RMW — a plain read-modify-write here
-   * would reopen the exact lost-update race withStatsTx exists to close.
-   * Throttled via feedStampDue on the caller's already-read row (`statsHint`)
-   * so at most one such write lands per FEED_STAMP_MIN_INTERVAL_MS.
-   * Best-effort: a liveness stamp must never fail the vendor's ingest call.
-   */
-  private async stampFeedLiveness(
-    tenantId: string,
-    gameId: string,
-    source: 'feed' | 'cts' | 'swim',
-    accepted: boolean,
-    statsHint: unknown,
-  ): Promise<void> {
-    if (!this.feedStampDue(statsHint, Date.now())) return;
-    try {
-      await this.withStatsTx(tenantId, gameId, 'sports.stampFeedLiveness', (_tx, fresh) => {
-        const prev: Record<string, unknown> =
-          fresh.stats && typeof fresh.stats === 'object'
-            ? { ...(fresh.stats as Record<string, unknown>) }
-            : {};
-        return { stats: { ...prev, feed: this.feedStamp(source, accepted) } as any };
-      });
-    } catch {
-      // Best-effort — see doc comment.
-    }
   }
 
   // ── scorekeeper console share-link (Phase-2 Domain SHARE) ─────
@@ -2529,123 +2654,202 @@ export class SportsService {
     tenantId: string,
     id: string,
     dto: { team?: string; delta?: number },
-    actorUserId?: string,
+    actor?: CommandInput,
     opts?: { suppressAutoFinal?: boolean },
   ) {
-    const game = await this.owned(tenantId, id);
     const team = dto.team === 'away' ? 'away' : 'home';
     const delta = Number(dto.delta);
     if (!Number.isFinite(delta) || !Number.isInteger(delta)) {
       throw new BadRequestException('delta must be an integer');
     }
-    // Audit-Fix 1: snapshot prev scores BEFORE the mutation as primitives —
-    // the auto-celebrate delta must compare pre- vs post-update values,
-    // never alias the same mutable row object.
-    const prevScores = { homeScore: game.homeScore, awayScore: game.awayScore };
-    // Atomic increment — two operators tapping a score button in the
-    // same instant can't lose a point (a read-modify-write would).
-    let updated = await this.prisma.client.game.update({
-      where: { id, tenantId },
-      data:
-        team === 'home'
-          ? { homeScore: { increment: delta } }
-          : { awayScore: { increment: delta } },
-    });
-    // A score never goes below zero (e.g. a −1 correction at 0). Clamp
-    // atomically + conditionally: `updateMany` with a `< 0` filter only
-    // fires if the score is STILL negative at write time, so a
-    // concurrent increment that already pushed it positive can't be
-    // clobbered back to zero by this operator's stale read.
-    const raw = team === 'home' ? updated.homeScore : updated.awayScore;
-    if (raw < 0) {
-      const clamp = await this.prisma.client.game.updateMany({
-        // SEC-009: `updateMany` is outside the static gate's method set, but
-        // it is the same class of write — scope it like every other one.
-        where:
-          team === 'home'
-            ? { id, tenantId, homeScore: { lt: 0 } }
-            : { id, tenantId, awayScore: { lt: 0 } },
-        data: team === 'home' ? { homeScore: 0 } : { awayScore: 0 },
+    // Scorekeeper share-link boundary (refuter P2, Phase-2 SHARE): a console
+    // tap may credit a winning set, but FINAL stays operator-only — the game
+    // HOLDS at LIVE with the set majority on the board until the operator
+    // ends it.
+    const holdFinal = opts?.suppressAutoFinal === true;
+    return this.runGameCommand(tenantId, id, 'score.adjust', actor, async (scope) => {
+      const game = scope.before;
+      const def = this.sportOf(game.sport);
+      const col = team === 'home' ? 'homeScore' : 'awayScore';
+      const prevScores = {
+        homeScore: Number(game.homeScore) || 0,
+        awayScore: Number(game.awayScore) || 0,
+      };
+      // A score never goes below zero. What the tap ACTUALLY changed is what
+      // gets written, recorded and (later) undone — a −1 at 0 changes nothing,
+      // so undoing it can never award a point (K12-08).
+      const nextScore = Math.max(0, prevScores[col] + delta);
+      const applied = nextScore - prevScores[col];
+      const point = { ...prevScores, [col]: nextScore };
+
+      // Volleyball / pickleball: the set-win threshold is evaluated on THIS
+      // command's fresh state and lands in the SAME write, so two winning taps
+      // racing each other can only credit one set (K12-F12) and undoing the
+      // winning point restores score, set count and period together (K12-06).
+      const setWin = this.evaluateSetWin(def, game, point.homeScore, point.awayScore, holdFinal);
+      const updated = await scope.write(
+        setWin ? setWin.data : { [col]: { increment: applied } },
+      );
+      await scope.event('SCORE', {
+        team,
+        delta,
+        appliedDelta: applied,
+        homeScore: point.homeScore,
+        awayScore: point.awayScore,
+        prevHomeScore: prevScores.homeScore,
+        prevAwayScore: prevScores.awayScore,
+        change: scope.change(),
       });
-      if (clamp.count > 0) {
-        const fresh = await this.prisma.client.game.findUnique({ where: { id, tenantId } });
-        if (fresh) updated = fresh;
-      }
-    }
-    await this.record(id, 'SCORE', {
-      team,
-      delta,
-      homeScore: updated.homeScore,
-      awayScore: updated.awayScore,
-      // Undo rail: prev state so the inverse can be synthesized without
-      // a DB read at undo time.
-      prevHomeScore: prevScores.homeScore,
-      prevAwayScore: prevScores.awayScore,
+      // Audit-Fix 1: a manual quick-button fires the same AUTO celebration a
+      // feed would, off the post-point score (before any set reset).
+      await this.autoCelebrateInCommand(
+        scope,
+        prevScores,
+        { ...updated, ...point },
+        { home: team === 'home', away: team === 'away' },
+        'manual',
+      );
+      if (setWin) await this.recordSetWin(scope, def, setWin, updated);
+      return updated;
     });
-    // Audit-Fix 1: the +7 button (and every other manual quick-button) now
-    // fires AUTO celebrations — same path the feed uses. Without this, the
-    // operator taps +7 on the dashboard, the score jumps 14→21, and
-    // NOTHING animates. Translate (team, delta) into the (homeScore |
-    // awayScore) shape maybeAutoCelebrate consumes so the delta arithmetic
-    // matches the feed path. Source is attributed in the AuditLog row.
-    try {
-      const cueDto: { homeScore?: number; awayScore?: number } =
-        team === 'home' ? { homeScore: updated.homeScore } : { awayScore: updated.awayScore };
-      await this.maybeAutoCelebrate(id, prevScores, updated, cueDto, {
-        source: 'manual',
-        actorUserId,
-      });
-    } catch (e) {
-      this.logger.debug(`auto-celebrate skipped for game ${id}: ${(e as Error).message}`);
-    }
-    // Sport rules: volleyball / pickleball set-and-match scoring runs
-    // off the rally score the moment a team reaches the set target.
-    const def = this.sportOf((updated as any).sport);
-    if (def.key === 'volleyball' || def.key === 'pickleball') {
-      return this.applySetWin(tenantId, updated, def, opts);
-    }
-    return updated;
   }
 
-  /** Set both scores outright (operator typo fix). */
+  /** Set one or both scores outright (operator typo fix). */
   async setScore(
     tenantId: string,
     id: string,
     dto: { homeScore?: number; awayScore?: number },
-    actorUserId?: string,
+    actor?: CommandInput,
   ) {
-    const game = await this.owned(tenantId, id);
-    const clamp = (v: unknown, fallback: number) => {
-      const n = Number(v);
-      return Number.isFinite(n) && Number.isInteger(n) && n >= 0 ? n : fallback;
-    };
-    const homeScore = clamp(dto.homeScore, game.homeScore);
-    const awayScore = clamp(dto.awayScore, game.awayScore);
-
-    // Audit-Fix 1: snapshot prev scores BEFORE the mutation so a manual
-    // set fires the same AUTO celebration path as the feed.
-    const prevScores = { homeScore: game.homeScore, awayScore: game.awayScore };
-
-    const updated = await this.prisma.client.game.update({
-      where: { id, tenantId },
-      data: { homeScore, awayScore },
-    });
-    await this.record(id, 'SCORE', { team: 'set', homeScore, awayScore });
-    // Audit-Fix 1: manual score sets also fire AUTO celebrations. Only
-    // fields actually supplied by the operator are marked as "provided" so
-    // a typo-fix that leaves a team untouched doesn't spuriously celebrate.
-    try {
-      const cueDto: { homeScore?: number; awayScore?: number } = {};
-      if (dto.homeScore !== undefined) cueDto.homeScore = homeScore;
-      if (dto.awayScore !== undefined) cueDto.awayScore = awayScore;
-      await this.maybeAutoCelebrate(id, prevScores, updated, cueDto, {
-        source: 'manual',
-        actorUserId,
-      });
-    } catch (e) {
-      this.logger.debug(`auto-celebrate skipped for game ${id}: ${(e as Error).message}`);
+    // Only the columns the operator actually supplied (valid, non-negative
+    // integers) are written. Rewriting the OTHER team's score from this
+    // command's read erased a concurrent point for that team (K12-18).
+    const supplied: { homeScore?: number; awayScore?: number } = {};
+    for (const key of ['homeScore', 'awayScore'] as const) {
+      if (dto[key] === undefined) continue;
+      const n = Number(dto[key]);
+      if (Number.isFinite(n) && Number.isInteger(n) && n >= 0) supplied[key] = n;
     }
-    return updated;
+    return this.runGameCommand(tenantId, id, 'score.set', actor, async (scope) => {
+      const game = scope.before;
+      if (Object.keys(supplied).length === 0) return game;
+      const prevScores = {
+        homeScore: Number(game.homeScore) || 0,
+        awayScore: Number(game.awayScore) || 0,
+      };
+      const updated = await scope.write(supplied);
+      await scope.event('SCORE', {
+        team: 'set',
+        homeScore: updated.homeScore,
+        awayScore: updated.awayScore,
+        prevHomeScore: prevScores.homeScore,
+        prevAwayScore: prevScores.awayScore,
+        change: scope.change(),
+      });
+      // Audit-Fix 1: a manual set fires the same AUTO celebration path as the
+      // feed, for the columns the operator supplied only.
+      await this.autoCelebrateInCommand(
+        scope,
+        prevScores,
+        updated,
+        { home: supplied.homeScore !== undefined, away: supplied.awayScore !== undefined },
+        'manual',
+      );
+      return updated;
+    });
+  }
+
+  /**
+   * Volleyball / pickleball set-and-match rule, evaluated on the post-point
+   * scores of the command being applied. A set is won at its target —
+   * pickleball games to 11, volleyball sets to 25 (the deciding set to 15) —
+   * by a 2-point margin. Winning credits the set, zeroes the rally score and
+   * advances the set; winning the majority ends the match (FINAL), unless
+   * `holdFinal` (console share link), where the set is credited and the game
+   * holds at LIVE. Returns the game patch, or null when no set was won.
+   */
+  private evaluateSetWin(
+    def: SportDefinition,
+    game: GameRow,
+    home: number,
+    away: number,
+    holdFinal: boolean,
+  ): null | {
+    winner: 'home' | 'away';
+    final: boolean;
+    segment: number | null;
+    data: Record<string, unknown>;
+  } {
+    if (def.key !== 'volleyball' && def.key !== 'pickleball') return null;
+    const deciding = game.segment >= def.segment.count;
+    const target = def.key === 'pickleball' ? 11 : deciding ? 15 : 25;
+    let winner: 'home' | 'away' | null = null;
+    if (home >= target && home - away >= 2) winner = 'home';
+    else if (away >= target && away - home >= 2) winner = 'away';
+    if (!winner) return null;
+
+    const n = (v: unknown) => (typeof v === 'number' && isFinite(v) ? v : 0);
+    const isPickle = def.key === 'pickleball';
+    const homeKey = isPickle ? 'homeGames' : 'homeSets';
+    const awayKey = isPickle ? 'awayGames' : 'awaySets';
+    const stats = { ...((game.stats as Record<string, unknown>) || {}) };
+    const wonKey = winner === 'home' ? homeKey : awayKey;
+    stats[wonKey] = n(stats[wonKey]) + 1;
+    // Best-of: volleyball is best-of-5 (need 3 sets), pickleball best-of-3
+    // (need 2 games). majority = ceil((count + 1) / 2).
+    const needed = Math.ceil((def.segment.count + 1) / 2);
+    const matchOver = n(stats[homeKey]) >= needed || n(stats[awayKey]) >= needed;
+
+    const data: Record<string, unknown> = { stats, homeScore: 0, awayScore: 0 };
+    let segment: number | null = null;
+    const final = matchOver && !holdFinal;
+    if (final) {
+      data.status = 'FINAL';
+      data.endedAt = new Date();
+      data.clockRunning = false;
+    } else if (matchOver) {
+      // Set credited; the segment stays put (already the deciding set).
+      segment = game.segment;
+      data.segment = segment;
+    } else {
+      segment = Math.min(def.segment.count, game.segment + 1);
+      data.segment = segment;
+    }
+    return { winner, final, segment, data };
+  }
+
+  /** The event trail of a won set (inside the scoring command's transaction). */
+  private async recordSetWin(
+    scope: GameCommandScope,
+    def: SportDefinition,
+    setWin: NonNullable<ReturnType<SportsService['evaluateSetWin']>>,
+    updated: GameRow,
+  ): Promise<void> {
+    if (setWin.final) {
+      await scope.event('STATUS', { status: 'FINAL', source: 'set-majority' });
+      // Inputs-wave SCHED — the automatic set-majority FINAL runs the same
+      // post-commit hook the operator's setStatus does (fail-open inside).
+      scope.after(() => this.onGameFinal(updated.tenantId, updated.id));
+    } else {
+      await scope.event('SEGMENT', { segment: setWin.segment, source: 'set-win' }, { derived: true });
+    }
+    // T2-10: the sport's 'setWin' celebration.
+    const setWinCue = def.celebrations.find((c) => c.key === 'setWin');
+    if (setWinCue) {
+      await scope.event('CUE', {
+        key: setWinCue.key,
+        label: setWinCue.label,
+        emoji: setWinCue.emoji,
+        target: 'ALL',
+        audioUrl: null,
+        sponsorName: null,
+        sponsorLogoUrl: null,
+        auto: true,
+        team: setWin.winner,
+        source: 'rule',
+        snapshot: this.cueSnapshot(updated),
+      });
+    }
   }
 
   /** Clock control: start | pause | set | reset. */
@@ -2653,24 +2857,77 @@ export class SportsService {
     tenantId: string,
     id: string,
     dto: { action?: string; ms?: number },
+    actor?: CommandInput,
   ) {
-    const game = await this.owned(tenantId, id);
-    const def = this.sportOf(game.sport);
     const action = String(dto.action || '') as ClockAction;
-    const now = new Date();
+    if (!['start', 'pause', 'set', 'reset'].includes(action)) {
+      throw new BadRequestException('action must be start | pause | set | reset');
+    }
+    const setMs = Number(dto.ms);
+    if (action === 'set' && (!Number.isFinite(setMs) || setMs < 0)) {
+      throw new BadRequestException('ms must be a non-negative number');
+    }
+    return this.runGameCommand(tenantId, id, `clock.${action}`, actor, async (scope) => {
+      const game = scope.before;
+      const def = this.sportOf(game.sport);
+      if (action === 'start' && def.clock.type === 'none') {
+        throw new BadRequestException(`${def.name} has no game clock`);
+      }
+      const now = new Date();
+      const t = this.clockTransition(game, def, action, setMs, now);
+      const updated = await scope.write(t.data);
+      await scope.event('CLOCK', {
+        action,
+        clockMs: t.clockMs,
+        clockRunning: t.clockRunning,
+        prevClockMs: game.clockMs,
+        prevClockRunning: game.clockRunning,
+        change: scope.change(),
+      });
 
-    // Capture prev state BEFORE mutation for the undo rail.
-    const prevClockMs = game.clockMs;
-    const prevClockRunning = game.clockRunning;
+      // T2-5: auto-clear a live overlay when the clock starts. Penalty /
+      // injury overlays disappear the moment play resumes; review overlays
+      // are persistent by design and need an explicit clear.
+      if (action === 'start') {
+        const latestOverlay = await scope.tx.gameEvent.findFirst({
+          where: { gameId: id, type: 'LIVE_OVERLAY' },
+          orderBy: { createdAt: 'desc' },
+          select: { id: true, payload: true },
+        });
+        const overlayKind = (latestOverlay?.payload as Record<string, unknown> | undefined)?.kind;
+        if (overlayKind && overlayKind !== 'clear' && overlayKind !== 'review') {
+          await scope.event('LIVE_OVERLAY', { kind: 'clear', auto: true, reason: 'clock-start' });
+        }
+      }
+      // Efficiency #3: a started clock snaps the auto-advance sweep out of
+      // its 30s idle backoff so expiry detection is 1s-fresh.
+      if (t.clockRunning) scope.after(() => wakeClockSweep());
+      return updated;
+    });
+  }
 
-    let clockMs = game.clockMs;
-    let clockRunning = game.clockRunning;
-
+  /**
+   * The game-clock patch for one clock action, computed from ONE read of the
+   * game so the game clock, penalty box, shot clock and play clock are all
+   * re-anchored on the same instant and written in the same statement.
+   *
+   * Penalties slave to the game clock — a whistle that stops the game clock
+   * freezes the whole penalty box; a start resumes it (skipped when the box
+   * is empty). 2026-05-27: the shot clock and (T2-7) the football play clock
+   * also slave to it, on start/pause transitions only — set/reset edit the
+   * game clock alone without touching the possession's shot clock.
+   */
+  private clockTransition(
+    game: GameRow,
+    def: SportDefinition,
+    action: ClockAction,
+    setMs: number,
+    now: Date,
+  ): { data: Record<string, unknown>; clockMs: number; clockRunning: boolean } {
+    let clockMs: number = game.clockMs;
+    let clockRunning: boolean = game.clockRunning;
     switch (action) {
       case 'start':
-        if (def.clock.type === 'none') {
-          throw new BadRequestException(`${def.name} has no game clock`);
-        }
         // Re-anchor at the current reading and let it run.
         clockMs = this.liveClockMs(game);
         clockRunning = true;
@@ -2680,44 +2937,20 @@ export class SportsService {
         clockMs = this.liveClockMs(game);
         clockRunning = false;
         break;
-      case 'set': {
-        const ms = Number(dto.ms);
-        if (!Number.isFinite(ms) || ms < 0) {
-          throw new BadRequestException('ms must be a non-negative number');
-        }
-        clockMs = Math.round(ms);
+      case 'set':
+        clockMs = Math.round(setMs);
         break;
-      }
       case 'reset':
         clockMs = this.segmentStartMs(def, game.stats, game.segment);
         clockRunning = false;
         break;
-      default:
-        throw new BadRequestException('action must be start | pause | set | reset');
     }
-
-    // Penalties slave to the game clock — a whistle that stops the
-    // game clock freezes the whole penalty box; a start resumes it.
-    // Re-anchor every penalty to the new running state (skipped when
-    // the box is empty, so non-penalty sports never touch stats).
-    //
-    // 2026-05-27 — Shot clock ALSO slaves to the game clock. Only on
-    // start/stop transitions (not set/reset/nudge — those edit the
-    // game clock alone without touching the possession's shot clock).
-    // Both syncs read from `game.stats` and chain: the penalty sync
-    // may return a fresh stats object, then the shot-clock sync
-    // mutates that same object so the final UPDATE writes ONE merged
-    // stats row.
-    const data: Record<string, unknown> = {
-      clockMs,
-      clockRunning,
-      clockUpdatedAt: now,
-    };
+    const data: Record<string, unknown> = { clockMs, clockRunning, clockUpdatedAt: now };
     const clockMutated = action === 'start' || action === 'pause';
     let mergedStats = this.syncPenaltiesToClock(game.stats, clockRunning, now);
     const sourceStats = mergedStats || game.stats;
-    // T2-10 / Invariant #6: pass the post-action game clock so the
-    // shot clock is clamped to it (e.g. "0:08 left in Q4" case).
+    // T2-10 / Invariant #6: the shot clock is clamped to the post-action game
+    // clock (the "0:08 left in Q4" case).
     const shotStats = this.syncShotClockToGameClock(
       sourceStats,
       clockMutated,
@@ -2727,7 +2960,6 @@ export class SportsService {
       def.shotClock?.full,
     );
     if (shotStats) mergedStats = shotStats;
-    // T2-7 — Football play clock slaves to game clock (mirrors shot clock).
     const playStats = this.syncPlayClockToGameClock(
       mergedStats || sourceStats,
       def.key,
@@ -2736,45 +2968,8 @@ export class SportsService {
       now,
     );
     if (playStats) mergedStats = playStats;
-    if (mergedStats) data.stats = mergedStats as any;
-
-    const updated = await this.prisma.client.game.update({ where: { id, tenantId }, data });
-    // Efficiency #3: a started clock snaps the auto-advance sweep out of its
-    // 30s idle backoff so expiry detection is 1s-fresh from the first tick.
-    if (clockRunning) wakeClockSweep();
-    await this.record(id, 'CLOCK', {
-      action,
-      clockMs,
-      clockRunning,
-      // Undo rail: prev state for inversion.
-      prevClockMs,
-      prevClockRunning,
-    });
-
-    // T2-5: auto-clear live overlay when the clock starts. Penalty /
-    // injury overlays should disappear the moment play resumes — writing
-    // a clearing LIVE_OVERLAY event here means the board picks it up on
-    // the next 750ms poll without the operator needing to tap "Clear".
-    // Review overlays are NOT auto-cleared (they are persistent by design
-    // and require an explicit clear call).
-    if (action === 'start') {
-      const latestOverlay = await this.prisma.client.gameEvent.findFirst({
-        where: { gameId: id, type: 'LIVE_OVERLAY' },
-        orderBy: { createdAt: 'desc' },
-        select: { id: true, payload: true },
-      });
-      const overlayKind = (latestOverlay?.payload as Record<string, unknown> | undefined)?.kind;
-      if (overlayKind && overlayKind !== 'clear' && overlayKind !== 'review') {
-        // Auto-clear non-persistent overlays — penalty, injury, timeout-banner.
-        await this.record(id, 'LIVE_OVERLAY', {
-          kind: 'clear',
-          auto: true,
-          reason: 'clock-start',
-        });
-      }
-    }
-
-    return updated;
+    if (mergedStats) data.stats = mergedStats;
+    return { data, clockMs, clockRunning };
   }
 
   /**
@@ -2788,9 +2983,23 @@ export class SportsService {
     tenantId: string,
     id: string,
     dto: { action?: string; value?: number },
+    actor?: CommandInput,
   ) {
-    const game = await this.owned(tenantId, id);
     const action = String(dto.action || '');
+    if (!['configure', 'start', 'stop', 'reset'].includes(action)) {
+      throw new BadRequestException('action must be configure | start | stop | reset');
+    }
+    return this.runGameCommand(tenantId, id, `shot-clock.${action}`, actor, (scope) =>
+      scope.write({ stats: this.shotClockPatch(scope.before, action, dto.value) }),
+    );
+  }
+
+  /** The stats blob after one shot-clock action on `game` (see setShotClock). */
+  private shotClockPatch(
+    game: GameRow,
+    action: string,
+    value: number | undefined,
+  ): Record<string, unknown> {
     const stats: Record<string, unknown> =
       game.stats && typeof game.stats === 'object'
         ? { ...(game.stats as Record<string, unknown>) }
@@ -2821,7 +3030,7 @@ export class SportsService {
       case 'configure': {
         // value = shot-clock length in seconds — must be one of the
         // sport's configured options.
-        const v = Math.round(Number(dto.value));
+        const v = Math.round(Number(value));
         len = allowedOptions.includes(v) ? v : 0;
         ms = len * 1000;
         running = false;
@@ -2840,7 +3049,7 @@ export class SportsService {
         // value = seconds to reset to (full length, or a partial reset
         // like 14s for basketball offensive rebound). Bounded by the
         // configured length so the clock can't reset beyond `len`.
-        const v = Math.round(Number(dto.value));
+        const v = Math.round(Number(value));
         const sec = Number.isFinite(v) && v > 0 ? v : len;
         ms = Math.min(sec, len || sec) * 1000;
         // 2026-05-27 — operator bug 51494dff: "when I click the 20 or
@@ -2867,8 +3076,6 @@ export class SportsService {
         running = game.clockRunning && len > 0;
         break;
       }
-      default:
-        throw new BadRequestException('action must be configure | start | stop | reset');
     }
 
     // T2-10 / Invariant #6: clamp shot clock to the live game clock so
@@ -2879,12 +3086,7 @@ export class SportsService {
     }
 
     const shotClock = { len, ms, at: new Date().toISOString(), running };
-    const updated = await this.prisma.client.game.update({
-      where: { id, tenantId },
-      data: { stats: { ...stats, shotClock } as any },
-    });
-    this.invalidateBoardCache(id); // Lane-8 P1: bypasses record()
-    return updated;
+    return { ...stats, shotClock };
   }
 
   /**
@@ -2896,9 +3098,23 @@ export class SportsService {
     tenantId: string,
     id: string,
     dto: { action?: string; value?: number },
+    actor?: CommandInput,
   ) {
-    const game = await this.owned(tenantId, id);
     const action = String(dto.action || '');
+    if (!['start', 'stop', 'reset'].includes(action)) {
+      throw new BadRequestException('action must be start | stop | reset');
+    }
+    return this.runGameCommand(tenantId, id, `play-clock.${action}`, actor, (scope) =>
+      scope.write({ stats: this.playClockPatch(scope.before, action, dto.value) }),
+    );
+  }
+
+  /** The stats blob after one play-clock action on `game` (see setPlayClock). */
+  private playClockPatch(
+    game: GameRow,
+    action: string,
+    value: number | undefined,
+  ): Record<string, unknown> {
     const stats: Record<string, unknown> =
       game.stats && typeof game.stats === 'object'
         ? { ...(game.stats as Record<string, unknown>) }
@@ -2928,23 +3144,16 @@ export class SportsService {
         break;
       case 'reset': {
         // value = seconds to reset to (40 normal, 25 after a stoppage).
-        const v = Math.round(Number(dto.value));
+        const v = Math.round(Number(value));
         const sec = Number.isFinite(v) && v > 0 && v <= 60 ? v : 40;
         ms = sec * 1000;
         running = true;
         break;
       }
-      default:
-        throw new BadRequestException('action must be start | stop | reset');
     }
 
     const playClock = { ms, at: new Date().toISOString(), running };
-    const updated = await this.prisma.client.game.update({
-      where: { id, tenantId },
-      data: { stats: { ...stats, playClock } as any },
-    });
-    this.invalidateBoardCache(id); // Lane-8 P1: bypasses record()
-    return updated;
+    return { ...stats, playClock };
   }
 
   /**
@@ -3344,9 +3553,35 @@ export class SportsService {
       exclusion?: boolean;
       playerName?: string;
     },
+    actor?: CommandInput,
   ) {
-    const game = await this.owned(tenantId, id);
     const action = String(dto.action || '');
+    if (!['add', 'remove', 'clear'].includes(action)) {
+      throw new BadRequestException('action must be add | remove | clear');
+    }
+    return this.runGameCommand(tenantId, id, `penalties.${action}`, actor, async (scope) => {
+      const stats = this.penaltiesPatch(scope.before, action, dto);
+      const updated = await scope.write({ stats });
+      const list = stats.penalties as unknown[];
+      await scope.event('PENALTY', { action, count: list.length });
+      return updated;
+    });
+  }
+
+  /** The stats blob after one penalty-box action on `game` (see setPenalties). */
+  private penaltiesPatch(
+    game: GameRow,
+    action: string,
+    dto: {
+      team?: string;
+      penaltyId?: string;
+      lenSec?: number;
+      label?: string;
+      player?: string;
+      exclusion?: boolean;
+      playerName?: string;
+    },
+  ): Record<string, unknown> {
     const now = new Date();
     // A penalty added while the clock runs starts counting at once;
     // added during a stoppage it waits, frozen, for the next start.
@@ -3432,16 +3667,8 @@ export class SportsService {
       case 'clear':
         list = [];
         break;
-      default:
-        throw new BadRequestException('action must be add | remove | clear');
     }
-
-    const updated = await this.prisma.client.game.update({
-      where: { id, tenantId },
-      data: { stats: { ...baseStats, penalties: list } as any },
-    });
-    await this.record(id, 'PENALTY', { action, count: list.length });
-    return updated;
+    return { ...baseStats, penalties: list };
   }
 
   /**
@@ -3499,48 +3726,38 @@ export class SportsService {
     tenantId: string,
     id: string,
     dto: { segment?: number; delta?: number },
+    actor?: CommandInput,
   ) {
-    // Ownership + input validation outside the tx (cheap; a bad dto
-    // should never be retried by withDbRetry).
-    await this.owned(tenantId, id);
+    // Input validation outside the transaction (cheap; a bad dto must never
+    // be retried).
     if (typeof dto.segment !== 'number' && typeof dto.delta !== 'number') {
       throw new BadRequestException('provide segment or delta');
     }
 
-    // Sports-stats-race fix (2026-07-03): this method merges into
-    // `Game.stats` (segment-reset stat deltas, shot-clock/play-clock
-    // reset, lineScore, and the volleyball/pickleball set-won credit) —
-    // the SAME JSON blob the ~5Hz CTS feed and the operator's stat PATCH
-    // both read-modify-write. The merge (and the prev-state snapshot
-    // used for the undo rail + line-score diff) now runs against a
-    // FRESH read taken inside a Serializable transaction via
-    // `withStatsTx`, so a concurrent CTS/operator write can't be
-    // clobbered by this segment-advance write, and a losing transaction
-    // is retried against the winner's committed state instead of
-    // silently overwriting it. Merge logic below is unchanged.
-    let segment = 0;
-    let prevSegment = 0;
-    let prevClockMs = 0;
-    let zeroedScores = false;
-    let setGameWonKey: string | null = null;
-    let setGameWonVal = 0;
-    let statDeltas: Record<string, unknown> = {};
-    let shotClockReset = false;
-    let mergedStats: Record<string, unknown> = {};
-    let lineScore: Array<{ segment: number; home: number; away: number }> | null = null;
-    let prevHomeScore = 0;
-    let prevAwayScore = 0;
-    // Snapshot of pre-write stats values for the STAT GameEvents' oldValues
-    // below — captured from the SAME fresh read `mutate` used for the
-    // merge (not a stale outer read), so a retry's oldValues stay
-    // consistent with whichever attempt actually committed.
-    let statsBeforeWrite: Record<string, unknown> = {};
-    let shotClockAfterWrite: unknown;
-    let sportDefShotClock: SportDefinition['shotClock'];
-
-    const { updated } = await this.withStatsTx(tenantId, id, 'sports.setSegment', async (tx, game) => {
+    // One command: segment-reset stat deltas, shot/play-clock resets, the
+    // line score and the volleyball/pickleball set credit are all merged
+    // into ONE compare-and-swap write of the fresh row (so a concurrent CTS
+    // or stat write is merged on top of, never erased), and the SEGMENT
+    // event records the whole change so undo restores every side effect
+    // (K12-16). Merge logic is unchanged from the 2026-07-03 stats-race fix.
+    return this.runGameCommand(tenantId, id, 'segment.set', actor, async (scope) => {
+      const tx = scope.tx;
+      const game = scope.before;
+      let segment = 0;
+      let prevSegment = 0;
+      let prevClockMs = 0;
+      let zeroedScores = false;
+      let setGameWonKey: string | null = null;
+      let setGameWonVal = 0;
+      let statDeltas: Record<string, unknown> = {};
+      let shotClockReset = false;
+      let mergedStats: Record<string, unknown> = {};
+      let lineScore: Array<{ segment: number; home: number; away: number }> | null = null;
+      let prevHomeScore = 0;
+      let prevAwayScore = 0;
+      let statsBeforeWrite: Record<string, unknown> = {};
       const def = this.sportOf(game.sport);
-      sportDefShotClock = def.shotClock;
+      const sportDefShotClock = def.shotClock;
       statsBeforeWrite =
         game.stats && typeof game.stats === 'object'
           ? (game.stats as Record<string, unknown>)
@@ -3734,72 +3951,70 @@ export class SportsService {
       if (Object.keys(mergedStats).length > 0) {
         data.stats = mergedStats as any;
       }
-      shotClockAfterWrite = mergedStats.shotClock;
-      return data;
+      const shotClockAfterWrite = mergedStats.shotClock;
+      const updated = await scope.write(data);
+
+      // The SEGMENT event is the command's undo target: it carries the whole
+      // change (period, clock, reset fouls/timeouts, shot/play clocks, line
+      // score, set credit, zeroed rally score). The events after it are the
+      // same change itemised for the forensic log — `derived`, so the undo
+      // rail offers the command once, not piecemeal.
+      await scope.event('SEGMENT', {
+        segment,
+        prevSegment,
+        prevClockMs,
+        change: scope.change(),
+      });
+
+      // LINE SCORE paper trail (board cross-domain contract): only written
+      // when a box-score snapshot was actually produced.
+      if (lineScore) {
+        await scope.event(
+          'STAT',
+          { stats: { lineScore }, source: 'line-score', segment },
+          { derived: true },
+        );
+      }
+      // Volleyball / pickleball next-set: the pre-zero rally tally, plus the
+      // set/game-won credit.
+      if (zeroedScores) {
+        await scope.event(
+          'SCORE',
+          { homeScore: 0, awayScore: 0, prevHomeScore, prevAwayScore, source: 'set-advance', segment },
+          { derived: true },
+        );
+      }
+      if (setGameWonKey) {
+        const oldVal = statsBeforeWrite[setGameWonKey] ?? null;
+        await scope.event(
+          'STAT',
+          {
+            stats: { [setGameWonKey]: setGameWonVal },
+            oldValues: { [setGameWonKey]: oldVal },
+            source: 'set-advance',
+            segment,
+          },
+          { derived: true },
+        );
+      }
+      // T2-10: one STAT event per reset field (forensic detail).
+      for (const [key, newVal] of Object.entries(statDeltas)) {
+        const oldVal = statsBeforeWrite[key] ?? null;
+        await scope.event(
+          'STAT',
+          { stats: { [key]: newVal }, oldValues: { [key]: oldVal }, source: 'segment-reset', segment },
+          { derived: true },
+        );
+      }
+      if (shotClockReset && sportDefShotClock) {
+        await scope.event(
+          'STAT',
+          { stats: { shotClock: shotClockAfterWrite }, source: 'segment-reset', segment },
+          { derived: true },
+        );
+      }
+      return updated;
     });
-
-    await this.record(id, 'SEGMENT', {
-      segment,
-      // Undo rail: prev segment + prev clock so the inverse can restore both.
-      prevSegment,
-      prevClockMs,
-    });
-
-    // LINE SCORE paper trail (board cross-domain contract) — a STAT event
-    // carrying the new lineScore so the per-inning / per-quarter box has a
-    // forensic record and the undo rail can target it. Only written when a
-    // box-score snapshot was actually produced.
-    if (lineScore) {
-      await this.record(id, 'STAT', {
-        stats: { lineScore },
-        source: 'line-score',
-        segment,
-      });
-    }
-
-    // Volleyball / pickleball next-set: record a SCORE event carrying the
-    // pre-zero score so the undo rail can restore the rally tally, plus a
-    // STAT event for the set/game-won credit.
-    if (zeroedScores) {
-      await this.record(id, 'SCORE', {
-        homeScore: 0,
-        awayScore: 0,
-        prevHomeScore,
-        prevAwayScore,
-        source: 'set-advance',
-        segment,
-      });
-    }
-    if (setGameWonKey) {
-      const oldVal = statsBeforeWrite[setGameWonKey] ?? null;
-      await this.record(id, 'STAT', {
-        stats: { [setGameWonKey]: setGameWonVal },
-        oldValues: { [setGameWonKey]: oldVal },
-        source: 'set-advance',
-        segment,
-      });
-    }
-
-    // T2-10: write individual STAT GameEvents for each reset field so the
-    // undo rail can target them independently.
-    for (const [key, newVal] of Object.entries(statDeltas)) {
-      const oldVal = statsBeforeWrite[key] ?? null;
-      await this.record(id, 'STAT', {
-        stats: { [key]: newVal },
-        oldValues: { [key]: oldVal },
-        source: 'segment-reset',
-        segment,
-      });
-    }
-    if (shotClockReset && sportDefShotClock) {
-      await this.record(id, 'STAT', {
-        stats: { shotClock: shotClockAfterWrite },
-        source: 'segment-reset',
-        segment,
-      });
-    }
-
-    return updated;
   }
 
   /**
@@ -3820,169 +4035,204 @@ export class SportsService {
       where: { status: 'LIVE', clockRunning: true },
     });
     let changed = 0;
-    for (const game of games) {
-      const def = findSport(game.sport);
-      if (!def || def.clock.type === 'none') continue;
-      const segMs = def.clock.segmentMs ?? 0;
-      const live = this.liveClockMs(game);
-      // Soccer-fix: a count-up clock (soccer halves) must NOT auto-advance
-      // the instant it hits regulation — stoppage / added time runs WITH
-      // the clock past 40:00. Push the expiry threshold out by the
-      // operator-set `addedTime` (minutes, stored on Game.stats) so the
-      // half only auto-rolls once added time has elapsed too. addedTime=0
-      // (the default) preserves the old behaviour exactly.
-      const addedMs =
-        def.clock.type === 'countup' && game.stats && typeof game.stats === 'object'
-          ? Math.max(0, Number((game.stats as Record<string, unknown>).addedTime) || 0) * 60_000
-          : 0;
-      const expired =
-        def.clock.type === 'countdown' ? live <= 0 : live >= segMs + addedMs;
-      if (!expired) continue;
-
-      const now = new Date();
-      // T2-7 — Football: any clock expiry stops the game clock → reset
-      // the play clock to 40s and freeze it. The syncPlayClockToGameClock
-      // helper handles this but autoAdvanceExpiredClocks writes the game
-      // row directly (no clockAction call), so we build the stats patch here.
-      const playClockPatch = ((): Record<string, unknown> | null => {
-        if (def.key !== 'football') return null;
-        const s = game.stats && typeof game.stats === 'object'
-          ? (game.stats as Record<string, unknown>)
-          : {};
-        if (!s.playClock) return null;
-        return { ...s, playClock: { ms: 40_000, at: now.toISOString(), running: false } };
-      })();
-
-      if (game.segment >= def.segment.count) {
-        // Final regulation segment ended — stop the clock and let the
-        // operator decide overtime / final. Never auto-force OT.
-        const finalData: Record<string, unknown> = {
-          clockRunning: false,
-          clockMs: def.clock.type === 'countdown' ? 0 : segMs,
-          clockUpdatedAt: now,
-        };
-        if (playClockPatch) finalData.stats = playClockPatch as any;
-        await this.prisma.client.game.update({
-          where: { id: game.id, tenantId: game.tenantId },
-          data: finalData,
-        });
-        await this.record(game.id, 'CLOCK', { action: 'expired', clockRunning: false });
-        // T1-5: Horn cue at every clock expiry — fires on both the final
-        // regulation segment (clock stops, operator calls FINAL) and
-        // mid-game segment boundaries (auto-advance path below).
-        await this.record(game.id, 'CUE', {
-          key: 'horn',
-          label: 'Horn',
-          emoji: '📯',
-          target: 'ALL',
-          auto: true,
-          source: 'clock-expired',
-          segmentLabel: this.segmentLabelOf(def, game.segment),
-        });
-      } else {
-        // Roll to the next segment with a fresh, stopped clock.
-        const segment = game.segment + 1;
-        const segmentClockMs = this.segmentStartMs(def, game.stats, segment);
-        const autoData: Record<string, unknown> = {
-          segment,
-          clockMs: segmentClockMs,
-          clockRunning: false,
-          clockUpdatedAt: now,
-        };
-
-        // T2-10: apply per-sport segment-reset rules on auto-advance too.
-        const { statDeltas: autoStatDeltas, shotClockReset: autoShotReset } =
-          this.computeSegmentResets(def, game.stats, segment);
-        let autoStats: Record<string, unknown> =
-          game.stats && typeof game.stats === 'object'
-            ? { ...(game.stats as Record<string, unknown>) }
-            : {};
-        if (Object.keys(autoStatDeltas).length > 0) {
-          autoStats = { ...autoStats, ...autoStatDeltas };
-        }
-        if (autoShotReset && def.shotClock) {
-          const fullMs = def.shotClock.full * 1000;
-          const clampedMs = Math.min(fullMs, segmentClockMs);
-          const prevSC =
-            autoStats.shotClock && typeof autoStats.shotClock === 'object'
-              ? (autoStats.shotClock as Record<string, unknown>)
-              : {};
-          const len = Number(prevSC.len) || 0;
-          if (len > 0) {
-            autoStats.shotClock = {
-              len,
-              ms: clampedMs,
-              at: now.toISOString(),
-              running: false,
-            };
-          }
-        }
-        // T2-7: football play-clock reset on auto-advance.
-        if (playClockPatch && typeof playClockPatch === 'object') {
-          autoStats = { ...autoStats, ...(playClockPatch as Record<string, unknown>) };
-        }
-        // LINE SCORE on the auto-advance path too (football is the only
-        // box-score sport with a clock, so it's the only one that reaches
-        // here). Snapshot the cumulative score at the quarter boundary.
-        const autoLineScore = this.computeLineScore(
-          def,
-          autoStats,
-          game.segment,
-          segment,
-          game.homeScore,
-          game.awayScore,
+    for (const swept of games) {
+      // Cheap pre-check on the swept row; the command re-checks on its own
+      // fresh read, so a clock the operator paused, corrected or advanced a
+      // moment ago is never rolled over from this stale copy (K12-F12).
+      if (!this.clockExpired(swept)) continue;
+      try {
+        const rolled = await this.runGameCommand(
+          swept.tenantId,
+          swept.id,
+          'clock.expire',
+          SYSTEM_CLOCK_ACTOR,
+          (scope) => this.expireClock(scope),
+          { gate: swept },
         );
-        if (autoLineScore) autoStats.lineScore = autoLineScore;
-        if (Object.keys(autoStats).length > 0) {
-          autoData.stats = autoStats as any;
-        }
-
-        await this.prisma.client.game.update({
-          where: { id: game.id, tenantId: game.tenantId },
-          data: autoData,
-        });
-        await this.record(game.id, 'SEGMENT', { segment, auto: true });
-        await this.record(game.id, 'CLOCK', { action: 'auto-advance', clockRunning: false });
-
-        // T2-10: individual STAT events for each reset (undo rail).
-        for (const [key, newVal] of Object.entries(autoStatDeltas)) {
-          const oldVal =
-            game.stats && typeof game.stats === 'object'
-              ? (game.stats as Record<string, unknown>)[key] ?? null
-              : null;
-          await this.record(game.id, 'STAT', {
-            stats: { [key]: newVal },
-            oldValues: { [key]: oldVal },
-            source: 'segment-reset',
-            segment,
-            auto: true,
-          });
-        }
-        if (autoShotReset && def.shotClock) {
-          await this.record(game.id, 'STAT', {
-            stats: { shotClock: autoStats.shotClock },
-            source: 'segment-reset',
-            segment,
-            auto: true,
-          });
-        }
-
-        // T1-5: Horn cue for end-of-period. Carries the OLD segment label
-        // ("Q1 END", "PERIOD 2 END") so the overlay reads correctly — the
-        // segment row has already advanced to `segment` above.
-        await this.record(game.id, 'CUE', {
-          key: 'horn',
-          label: 'Horn',
-          emoji: '📯',
-          target: 'ALL',
-          auto: true,
-          source: 'clock-auto-advance',
-          segmentLabel: this.segmentLabelOf(def, game.segment),
-        });
+        if (rolled) changed += 1;
+      } catch (err) {
+        this.logger.warn(
+          `clock expiry failed (non-fatal) game=${swept.id}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
       }
-      changed += 1;
     }
     return { found: games.length, changed };
+  }
+
+  /**
+   * Has this game's running clock expired? A countdown at 0:00, or a count-up
+   * past its segment length. Soccer-fix: a count-up half must NOT roll the
+   * instant it hits regulation — stoppage / added time runs WITH the clock —
+   * so the threshold moves out by the operator-set `addedTime` minutes.
+   */
+  private clockExpired(game: GameRow): boolean {
+    if (game.status !== 'LIVE' || !game.clockRunning) return false;
+    const def = findSport(game.sport);
+    if (!def || def.clock.type === 'none') return false;
+    const segMs = def.clock.segmentMs ?? 0;
+    const live = this.liveClockMs(game);
+    const addedMs =
+      def.clock.type === 'countup' && game.stats && typeof game.stats === 'object'
+        ? Math.max(0, Number((game.stats as Record<string, unknown>).addedTime) || 0) * 60_000
+        : 0;
+    return def.clock.type === 'countdown' ? live <= 0 : live >= segMs + addedMs;
+  }
+
+  /**
+   * One clock expiry, as a system command on the fresh row. At the final
+   * regulation segment the clock stops (overtime is the operator's call);
+   * otherwise the game rolls to the next segment with a fresh, stopped clock
+   * and the sport's segment resets. Returns false when the fresh row is no
+   * longer an expired running LIVE game.
+   */
+  private async expireClock(scope: GameCommandScope): Promise<boolean> {
+    const game = scope.before;
+    if (!this.clockExpired(game)) return false;
+    const def = this.sportOf(game.sport);
+    const segMs = def.clock.segmentMs ?? 0;
+    const now = new Date();
+    // T2-7 — Football: any clock expiry stops the game clock → reset
+    // the play clock to 40s and freeze it. The syncPlayClockToGameClock
+    // helper handles this but autoAdvanceExpiredClocks writes the game
+    // row directly (no clockAction call), so we build the stats patch here.
+    const playClockPatch = ((): Record<string, unknown> | null => {
+      if (def.key !== 'football') return null;
+      const s = game.stats && typeof game.stats === 'object'
+        ? (game.stats as Record<string, unknown>)
+        : {};
+      if (!s.playClock) return null;
+      return { ...s, playClock: { ms: 40_000, at: now.toISOString(), running: false } };
+    })();
+
+    if (game.segment >= def.segment.count) {
+      // Final regulation segment ended — stop the clock and let the
+      // operator decide overtime / final. Never auto-force OT.
+      const finalData: Record<string, unknown> = {
+        clockRunning: false,
+        clockMs: def.clock.type === 'countdown' ? 0 : segMs,
+        clockUpdatedAt: now,
+      };
+      if (playClockPatch) finalData.stats = playClockPatch as any;
+      await scope.write(finalData);
+      await scope.event('CLOCK', {
+        action: 'expired',
+        clockRunning: false,
+        auto: true,
+        change: scope.change(),
+      });
+      // T1-5: Horn cue at every clock expiry — fires on both the final
+      // regulation segment (clock stops, operator calls FINAL) and
+      // mid-game segment boundaries (auto-advance path below).
+      await scope.event('CUE', {
+        key: 'horn',
+        label: 'Horn',
+        emoji: '📯',
+        target: 'ALL',
+        auto: true,
+        source: 'clock-expired',
+        segmentLabel: this.segmentLabelOf(def, game.segment),
+      });
+    } else {
+      // Roll to the next segment with a fresh, stopped clock.
+      const segment = game.segment + 1;
+      const segmentClockMs = this.segmentStartMs(def, game.stats, segment);
+      const autoData: Record<string, unknown> = {
+        segment,
+        clockMs: segmentClockMs,
+        clockRunning: false,
+        clockUpdatedAt: now,
+      };
+
+      // T2-10: apply per-sport segment-reset rules on auto-advance too.
+      const { statDeltas: autoStatDeltas, shotClockReset: autoShotReset } =
+        this.computeSegmentResets(def, game.stats, segment);
+      let autoStats: Record<string, unknown> =
+        game.stats && typeof game.stats === 'object'
+          ? { ...(game.stats as Record<string, unknown>) }
+          : {};
+      if (Object.keys(autoStatDeltas).length > 0) {
+        autoStats = { ...autoStats, ...autoStatDeltas };
+      }
+      if (autoShotReset && def.shotClock) {
+        const fullMs = def.shotClock.full * 1000;
+        const clampedMs = Math.min(fullMs, segmentClockMs);
+        const prevSC =
+          autoStats.shotClock && typeof autoStats.shotClock === 'object'
+            ? (autoStats.shotClock as Record<string, unknown>)
+            : {};
+        const len = Number(prevSC.len) || 0;
+        if (len > 0) {
+          autoStats.shotClock = {
+            len,
+            ms: clampedMs,
+            at: now.toISOString(),
+            running: false,
+          };
+        }
+      }
+      // T2-7: football play-clock reset on auto-advance.
+      if (playClockPatch && typeof playClockPatch === 'object') {
+        autoStats = { ...autoStats, ...(playClockPatch as Record<string, unknown>) };
+      }
+      // LINE SCORE on the auto-advance path too (football is the only
+      // box-score sport with a clock, so it's the only one that reaches
+      // here). Snapshot the cumulative score at the quarter boundary.
+      const autoLineScore = this.computeLineScore(
+        def,
+        autoStats,
+        game.segment,
+        segment,
+        game.homeScore,
+        game.awayScore,
+      );
+      if (autoLineScore) autoStats.lineScore = autoLineScore;
+      if (Object.keys(autoStats).length > 0) {
+        autoData.stats = autoStats as any;
+      }
+
+      await scope.write(autoData);
+      await scope.event('SEGMENT', { segment, auto: true, change: scope.change() });
+      await scope.event('CLOCK', { action: 'auto-advance', clockRunning: false, auto: true });
+
+      // T2-10: individual STAT events for each reset (forensic detail).
+      for (const [key, newVal] of Object.entries(autoStatDeltas)) {
+        const oldVal =
+          game.stats && typeof game.stats === 'object'
+            ? (game.stats as Record<string, unknown>)[key] ?? null
+            : null;
+        await scope.event('STAT', {
+          stats: { [key]: newVal },
+          oldValues: { [key]: oldVal },
+          source: 'segment-reset',
+          segment,
+          auto: true,
+        });
+      }
+      if (autoShotReset && def.shotClock) {
+        await scope.event('STAT', {
+          stats: { shotClock: autoStats.shotClock },
+          source: 'segment-reset',
+          segment,
+          auto: true,
+        });
+      }
+
+      // T1-5: Horn cue for end-of-period. Carries the OLD segment label
+      // ("Q1 END", "PERIOD 2 END") so the overlay reads correctly — the
+      // segment row has already advanced to `segment` above.
+      await scope.event('CUE', {
+        key: 'horn',
+        label: 'Horn',
+        emoji: '📯',
+        target: 'ALL',
+        auto: true,
+        source: 'clock-auto-advance',
+        segmentLabel: this.segmentLabelOf(def, game.segment),
+      });
+    }
+    return true;
   }
 
   /**
@@ -3998,34 +4248,25 @@ export class SportsService {
     tenantId: string,
     id: string,
     dto: { stats?: Record<string, unknown> },
+    actor?: CommandInput,
   ) {
-    // Ownership + shape validation happen OUTSIDE the tx (cheap, and a
-    // BadRequestException here should never be retried by withDbRetry).
-    await this.owned(tenantId, id);
+    // Shape validation happens OUTSIDE the transaction (cheap, and a
+    // BadRequestException must never be retried).
     if (!dto.stats || typeof dto.stats !== 'object' || Array.isArray(dto.stats)) {
       throw new BadRequestException('stats must be an object');
     }
 
-    // Sports-stats-race fix (2026-07-03): the merge below used to read
-    // `game.stats` from the row fetched by `owned()` ABOVE, before this
-    // request's own processing time elapsed — the exact window the ~5Hz
-    // CTS feed (`ingestCtsSnapshot`) races through. Two concurrent RMWs
-    // reading the same `{penalties:[]}` each write back a full-blob
-    // replacement; whichever commits second erases the other's edit
-    // (e.g. the operator's penalty add clobbered by a stale CTS
-    // snapshot). `withStatsTx` re-reads the game FRESH inside a
-    // Serializable transaction and retries the whole merge on conflict,
-    // so the loser of a race re-reads the winner's committed write
-    // instead of clobbering it. Merge logic below is IDENTICAL to
-    // before — only the read+write now happen atomically.
-    let next: Record<string, unknown> = {};
-    let oldValues: Record<string, unknown> = {};
-    let segmentDelta = 0;
-    let wasStrikeout = false;
-    const wasWalkRef = { current: false };
-    let dataSegment: number | undefined;
-
-    const { updated } = await this.withStatsTx(tenantId, id, 'sports.updateStats', (_tx, freshGame) => {
+    // The merge runs on the fresh in-transaction read and lands as one
+    // compare-and-swap write, so a concurrent CTS snapshot, clock write or
+    // co-operator's stat edit is merged on top of rather than erased
+    // (K12-17). Merge logic is unchanged from the 2026-07-03 stats-race fix.
+    return this.runGameCommand(tenantId, id, 'stats.update', actor, async (scope) => {
+      const freshGame = scope.before;
+      let next: Record<string, unknown> = {};
+      let oldValues: Record<string, unknown> = {};
+      let segmentDelta = 0;
+      let wasStrikeout = false;
+      let dataSegment: number | undefined;
       const def = this.sportOf(freshGame.sport);
       const allowed = new Set(def.stats.map((s) => s.key));
       // 2026-05-27 — Pure-config keys that live on Game.stats JSON but
@@ -4091,7 +4332,9 @@ export class SportsService {
       const postStrikes = typeof next.strikes === 'number' ? next.strikes : 0;
       const postOuts = typeof next.outs === 'number' ? next.outs : 0;
       wasStrikeout = isBaseballSport && preStrikes >= 3 && postStrikes === 0 && postOuts > preOuts;
-      wasWalkRef.current = isBaseballSport && preBalls >= 4 && postStrikes === 0;
+      // (A walk's mechanical effects — count reset, force-advance, forced
+      // run — are the cascade's; the baseball def has no 'walk' celebration.)
+      void preBalls;
 
       const data: Record<string, unknown> = { stats: next as any };
       if (segmentDelta) {
@@ -4108,40 +4351,34 @@ export class SportsService {
         const scoreCol = battingTop ? 'awayScore' : 'homeScore';
         data[scoreCol] = { increment: cascade.runsScored };
       }
-      return data;
-    });
-    const wasWalk = wasWalkRef.current;
+      const updated = await scope.write(data);
 
-    // Include oldValues alongside newValues so the undo rail can restore.
-    await this.record(id, 'STAT', { stats: next, oldValues });
-    if (segmentDelta) await this.record(id, 'SEGMENT', { segment: dataSegment });
-
-    // T2-10: fire celebration CUEs for strikeout. The walk's mechanical
-    // effects (count reset, force-advance, forced run) are handled in the
-    // cascade above; `wasWalk` is detected here only for completeness —
-    // it's intentionally not wired to a CUE since the baseball def has no
-    // 'walk' celebration.
-    void wasWalk; // suppress unused warning
-    if (wasStrikeout) {
-      const def = this.sportOf(updated.sport);
-      const strikeoutCue = def.celebrations.find((c) => c.key === 'strikeout');
-      if (strikeoutCue) {
-        await this.record(id, 'CUE', {
-          key: strikeoutCue.key,
-          label: strikeoutCue.label,
-          emoji: strikeoutCue.emoji,
-          target: 'ALL',
-          audioUrl: null,
-          sponsorName: null,
-          sponsorLogoUrl: null,
-          auto: true,
-          source: 'rule',
-          snapshot: this.cueSnapshot(updated),
-        });
+      // The STAT event is the command's undo target and carries the whole
+      // change — including a cascade's out / half / inning / forced run.
+      await scope.event('STAT', { stats: next, oldValues, change: scope.change() });
+      if (segmentDelta) {
+        await scope.event('SEGMENT', { segment: dataSegment, source: 'count' }, { derived: true });
       }
-    }
-
-    return updated;
+      // T2-10: the strikeout celebration.
+      if (wasStrikeout) {
+        const strikeoutCue = def.celebrations.find((c) => c.key === 'strikeout');
+        if (strikeoutCue) {
+          await scope.event('CUE', {
+            key: strikeoutCue.key,
+            label: strikeoutCue.label,
+            emoji: strikeoutCue.emoji,
+            target: 'ALL',
+            audioUrl: null,
+            sponsorName: null,
+            sponsorLogoUrl: null,
+            auto: true,
+            source: 'rule',
+            snapshot: this.cueSnapshot(updated),
+          });
+        }
+      }
+      return updated;
+    });
   }
 
   /**
@@ -4233,119 +4470,6 @@ export class SportsService {
   }
 
   /**
-   * Volleyball / pickleball set-and-match scoring. A set is won at its
-   * target — pickleball games to 11, volleyball sets to 25 (the
-   * deciding final set to 15) — by a 2-point margin. Winning a set
-   * bumps that team's set count, resets the rally score to 0-0, and
-   * advances to the next set; winning the majority ends the match.
-   */
-  private async applySetWin(
-    // SEC-009: the CALLER's tenant, not `game.tenantId` — the write below must
-    // be bound to the tenant that was authorized at the route, not to whatever
-    // tenant the row it was handed happens to claim.
-    tenantId: string,
-    game: any,
-    def: SportDefinition,
-    opts?: { suppressAutoFinal?: boolean },
-  ): Promise<any> {
-    const h: number = game.homeScore;
-    const a: number = game.awayScore;
-    const deciding = game.segment >= def.segment.count;
-    const target = def.key === 'pickleball' ? 11 : deciding ? 15 : 25;
-    let winner: 'home' | 'away' | null = null;
-    if (h >= target && h - a >= 2) winner = 'home';
-    else if (a >= target && a - h >= 2) winner = 'away';
-    if (!winner) return game;
-
-    const n = (v: unknown) => (typeof v === 'number' && isFinite(v) ? v : 0);
-    const isPickle = def.key === 'pickleball';
-    const homeKey = isPickle ? 'homeGames' : 'homeSets';
-    const awayKey = isPickle ? 'awayGames' : 'awaySets';
-
-    // Sports-stats-race fix (2026-07-03): the set-win credit merges into
-    // `Game.stats` (homeSets/awaySets or homeGames/awayGames), the SAME
-    // JSON blob the ~5Hz CTS feed and the operator's stat PATCH both
-    // read-modify-write. `game` here is the row `adjustScore`/`setScore`
-    // already wrote the new score to — trustworthy for the win-threshold
-    // decision above — but `game.stats` can be stale by the time this
-    // runs. Re-read stats FRESH inside a Serializable tx (via
-    // `withStatsTx`) so a concurrent CTS/operator stats write isn't
-    // clobbered by this set-credit write. Merge logic is unchanged.
-    let matchOver = false;
-    let dataSegment: number | undefined;
-    // Scorekeeper share-link boundary (refuter P2, Phase-2 SHARE): a
-    // console-token mutation may credit the winning set, but the FINAL
-    // transition stays operator-only — the game HOLDS at LIVE (set
-    // majority visible on the board) until the operator ends it.
-    const holdFinal = opts?.suppressAutoFinal === true;
-    const { updated } = await this.withStatsTx(tenantId, game.id, 'sports.applySetWin', (_tx, freshGame) => {
-      const stats = { ...((freshGame.stats as Record<string, unknown>) || {}) };
-      const wonKey = winner === 'home' ? homeKey : awayKey;
-      stats[wonKey] = n(stats[wonKey]) + 1;
-
-      // Best-of: volleyball is best-of-5 (need 3 sets), pickleball
-      // best-of-3 (need 2 games). majority = ceil((count + 1) / 2).
-      const needed = Math.ceil((def.segment.count + 1) / 2);
-      matchOver = n(stats[homeKey]) >= needed || n(stats[awayKey]) >= needed;
-
-      const data: Record<string, unknown> = {
-        stats: stats as any,
-        homeScore: 0,
-        awayScore: 0,
-      };
-      if (matchOver && !holdFinal) {
-        data.status = 'FINAL';
-        data.endedAt = new Date();
-        data.clockRunning = false;
-      } else if (matchOver) {
-        // Set credited; segment stays put (already the deciding set).
-        dataSegment = freshGame.segment;
-        data.segment = dataSegment;
-      } else {
-        dataSegment = Math.min(def.segment.count, freshGame.segment + 1);
-        data.segment = dataSegment;
-      }
-      return data;
-    });
-    await this.record(
-      game.id,
-      matchOver && !holdFinal ? 'STATUS' : 'SEGMENT',
-      matchOver && !holdFinal ? { status: 'FINAL' } : { segment: dataSegment },
-    );
-
-    // Inputs-wave SCHED — the OTHER path that can land FINAL (automatic
-    // set-majority). POST-COMMIT, outside the Serializable withStatsTx
-    // above; fail-open inside onGameFinal. A suppressAutoFinal hold keeps
-    // the game LIVE — no FINAL, so no revert (the operator's later
-    // setStatus is the signal and runs its own hook).
-    if (matchOver && !holdFinal) {
-      await this.onGameFinal(game.tenantId, game.id);
-    }
-
-    // T2-10: fire the 'setWin' celebration CUE — it was dead code before
-    // because applySetWin wrote a SEGMENT/STATUS event but never a CUE.
-    // The sport def for both volleyball and pickleball carries this celebration.
-    const setWinCue = def.celebrations.find((c) => c.key === 'setWin');
-    if (setWinCue) {
-      await this.record(game.id, 'CUE', {
-        key: setWinCue.key,
-        label: setWinCue.label,
-        emoji: setWinCue.emoji,
-        target: 'ALL',
-        audioUrl: null,
-        sponsorName: null,
-        sponsorLogoUrl: null,
-        auto: true,
-        team: winner,
-        source: 'rule',
-        snapshot: this.cueSnapshot(updated),
-      });
-    }
-
-    return updated;
-  }
-
-  /**
    * S1-5 (P2-EndSetMacro, 2026-07-02 sports deep-pass audit): the ONE-TAP
    * "End set/game" macro the operator console fires for volleyball /
    * pickleball, made atomic. The console's `EndSetMacro` used to fire
@@ -4385,11 +4509,9 @@ export class SportsService {
    * atomicity), so this duplicates their write SHAPE deliberately rather
    * than calling them.
    */
-  async endSegmentAtomic(tenantId: string, id: string, actorUserId?: string) {
-    const result = await this.prisma.client.$transaction(async (tx) => {
-      const game = await tx.game.findFirst({ where: { id, tenantId } });
-      if (!game) throw new NotFoundException('Game not found');
-
+  async endSegmentAtomic(tenantId: string, id: string, actor?: CommandInput) {
+    return this.runGameCommand(tenantId, id, 'segment.end', actor, async (scope) => {
+      const game = scope.before;
       const def = this.sportOf(game.sport);
       const home = Number(game.homeScore) || 0;
       const away = Number(game.awayScore) || 0;
@@ -4439,116 +4561,76 @@ export class SportsService {
       const maxSegment = def.segment.overtime ? def.segment.count + 10 : def.segment.count;
       const nextSegment = Math.min(maxSegment, Math.max(1, game.segment + 1));
 
-      const updated = await tx.game.update({
-        where: { id, tenantId },
-        data: {
-          stats: nextStats as any,
-          homeScore: 0,
-          awayScore: 0,
-          segment: nextSegment,
-        },
+      const updated = await scope.write({
+        stats: nextStats,
+        homeScore: 0,
+        awayScore: 0,
+        segment: nextSegment,
       });
 
-      // GameEvent trail — same shapes record() produces for each
-      // individual mutation, so the undo rail / forensic feed reads
-      // this macro identically to the four separate calls it replaces.
+      // GameEvent trail — same shapes the four separate calls it replaces
+      // produced. The SEGMENT event is the macro's undo target (it carries
+      // the whole change); the rest are its itemised, `derived` detail.
       if (setWonKey) {
-        await tx.gameEvent.create({
-          data: {
-            gameId: id,
-            type: 'STAT',
-            payload: {
-              stats: { [setWonKey]: nextStats[setWonKey] },
-              oldValues: { [setWonKey]: prevSetWon },
-              source: 'end-segment-macro',
-            } as any,
-          },
-        });
-      }
-      await tx.gameEvent.create({
-        data: {
-          gameId: id,
-          type: 'SCORE',
-          payload: {
-            team: 'set',
-            homeScore: 0,
-            awayScore: 0,
-            prevHomeScore: home,
-            prevAwayScore: away,
+        await scope.event(
+          'STAT',
+          {
+            stats: { [setWonKey]: nextStats[setWonKey] },
+            oldValues: { [setWonKey]: prevSetWon },
             source: 'end-segment-macro',
-          } as any,
+          },
+          { derived: true },
+        );
+      }
+      await scope.event(
+        'SCORE',
+        {
+          team: 'set',
+          homeScore: 0,
+          awayScore: 0,
+          prevHomeScore: home,
+          prevAwayScore: away,
+          source: 'end-segment-macro',
         },
-      });
-      let cueEventId: string | null = null;
+        { derived: true },
+      );
       if (winCueKey) {
         const cue = def.celebrations.find((c) => c.key === winCueKey)!;
-        const cueEvent = await tx.gameEvent.create({
-          data: {
-            gameId: id,
-            type: 'CUE',
-            payload: {
-              key: cue.key,
-              label: cue.label,
-              emoji: cue.emoji,
-              target: 'ALL',
-              audioUrl: null,
-              sponsorName: null,
-              sponsorLogoUrl: null,
-              auto: false,
-              team: winner,
-              source: 'end-segment-macro',
-              snapshot: this.cueSnapshot(updated),
-            } as any,
-          },
+        const cueEvent = await scope.event('CUE', {
+          key: cue.key,
+          label: cue.label,
+          emoji: cue.emoji,
+          target: 'ALL',
+          audioUrl: null,
+          sponsorName: null,
+          sponsorLogoUrl: null,
+          auto: false,
+          team: winner,
+          source: 'end-segment-macro',
+          snapshot: this.cueSnapshot(updated),
         });
-        cueEventId = cueEvent.id;
-        // AuditLog parity with fireCue()'s manual-cue path — best-effort
-        // (forensics only; never block the macro on an audit-log hiccup).
-        try {
-          await tx.auditLog.create({
-            data: {
-              tenantId,
-              userId: actorUserId || null,
-              action: 'SPORTS_CUE_FIRED',
-              targetType: 'Game',
-              targetId: id,
-              details: JSON.stringify({
-                eventId: cueEventId,
-                key: cue.key,
-                label: cue.label,
-                target: 'ALL',
-                team: winner,
-                hasAudio: false,
-                hasSponsor: false,
-                source: 'end-segment-macro',
-              }),
-            },
-          });
-        } catch {
-          // Same fail-open rationale as fireCue()'s writeAudit — the
-          // GameEvent is already persisted; this is forensics only.
-        }
+        // AuditLog parity with fireCue()'s manual-cue path.
+        scope.audit('SPORTS_CUE_FIRED', {
+          eventId: cueEvent.id,
+          key: cue.key,
+          label: cue.label,
+          target: 'ALL',
+          team: winner,
+          hasAudio: false,
+          hasSponsor: false,
+          source: 'end-segment-macro',
+        });
       }
-      await tx.gameEvent.create({
-        data: {
-          gameId: id,
-          type: 'SEGMENT',
-          payload: {
-            segment: nextSegment,
-            prevSegment: game.segment,
-            prevClockMs: game.clockMs,
-            source: 'end-segment-macro',
-          } as any,
-        },
+      await scope.event('SEGMENT', {
+        segment: nextSegment,
+        prevSegment: game.segment,
+        prevClockMs: game.clockMs,
+        source: 'end-segment-macro',
+        change: scope.change(),
       });
 
       return { updated, ended: true as const };
     });
-
-    // Cache invalidation is a synchronous in-memory Map delete — safe to
-    // run once after commit rather than once per write inside the tx.
-    this.invalidateBoardCache(id);
-    return result;
   }
 
   /**
@@ -4595,7 +4677,7 @@ export class SportsService {
     // staying manual. stampFeed marks packets from this machine path in
     // stats.feed (the guided-setup liveness pill) — the manual admin path
     // must NOT stamp, or an operator edit would masquerade as a vendor feed.
-    return this.ingest(game.tenantId, id, dto, { auto: true, stampFeed: true });
+    return this.ingest(game.tenantId, id, dto, { auto: true, stampFeed: true }, feedActor('feed'));
   }
 
   async ingest(
@@ -4609,159 +4691,151 @@ export class SportsService {
       segment?: number;
     },
     opts: { auto?: boolean; stampFeed?: boolean } = {},
+    actor?: CommandInput,
   ) {
-    const game = await this.owned(tenantId, id);
-    const data: Record<string, unknown> = {};
-    const applied: Record<string, unknown> = {};
+    return this.runGameCommand(tenantId, id, 'feed.ingest', actor, async (scope) => {
+      const game = scope.before;
+      const data: Record<string, unknown> = {};
+      const applied: Record<string, unknown> = {};
 
-    // Scores — clamp to non-negative integers; ignore non-numeric values.
-    if (dto.homeScore !== undefined) {
-      const v = Math.max(0, Math.round(Number(dto.homeScore)));
-      if (Number.isFinite(v)) { data.homeScore = v; applied.homeScore = v; }
-    }
-    if (dto.awayScore !== undefined) {
-      const v = Math.max(0, Math.round(Number(dto.awayScore)));
-      if (Number.isFinite(v)) { data.awayScore = v; applied.awayScore = v; }
-    }
+      // Scores — clamp to non-negative integers; ignore non-numeric values.
+      if (dto.homeScore !== undefined) {
+        const v = Math.max(0, Math.round(Number(dto.homeScore)));
+        if (Number.isFinite(v)) { data.homeScore = v; applied.homeScore = v; }
+      }
+      if (dto.awayScore !== undefined) {
+        const v = Math.max(0, Math.round(Number(dto.awayScore)));
+        if (Number.isFinite(v)) { data.awayScore = v; applied.awayScore = v; }
+      }
 
-    // Segment — clamp to >= 1, and apply the same side effects setSegment
-    // uses: reset the game clock to the segment start and stop it.
-    // Without this, an integration reporting "period 2" leaves the clock
-    // wherever the operator left it — a count-up soccer clock would jump
-    // forward by the entire halftime gap, and a countdown football clock
-    // would carry the Q1 time into Q2.
-    if (dto.segment !== undefined) {
-      const v = Math.max(1, Math.round(Number(dto.segment)));
-      if (Number.isFinite(v) && v !== game.segment) {
-        data.segment = v;
-        applied.segment = v;
-        // Mirror setSegment: reset + stop the clock when segment advances.
-        const def = this.sportOf(game.sport);
-        if (def.clock.type !== 'none') {
-          data.clockMs = this.segmentStartMs(def, game.stats, v);
-          data.clockRunning = false;
-          data.clockUpdatedAt = new Date();
+      // Segment — clamp to >= 1, and apply the same side effects setSegment
+      // uses: reset the game clock to the segment start and stop it.
+      // Without this, an integration reporting "period 2" leaves the clock
+      // wherever the operator left it — a count-up soccer clock would jump
+      // forward by the entire halftime gap, and a countdown football clock
+      // would carry the Q1 time into Q2.
+      if (dto.segment !== undefined) {
+        const v = Math.max(1, Math.round(Number(dto.segment)));
+        if (Number.isFinite(v) && v !== game.segment) {
+          data.segment = v;
+          applied.segment = v;
+          const def = this.sportOf(game.sport);
+          if (def.clock.type !== 'none') {
+            data.clockMs = this.segmentStartMs(def, game.stats, v);
+            data.clockRunning = false;
+            data.clockUpdatedAt = new Date();
+          }
+        } else if (Number.isFinite(v)) {
+          // Same segment — still record it in applied so INGEST log is correct.
+          data.segment = v;
+          applied.segment = v;
         }
-      } else if (Number.isFinite(v)) {
-        // Same segment — still record it in applied so INGEST log is correct.
-        data.segment = v;
-        applied.segment = v;
       }
-    }
 
-    // Clock — re-anchor clockUpdatedAt = now whenever either clock field
-    // is provided, exactly mirroring what the 'set' clock action does.
-    // Additionally, when clockRunning flips (start/stop transition), run
-    // the same helper chain clockAction uses: freeze penalty-box timers and
-    // slave the shot clock — so "all the same rules apply if we are doing
-    // it or the integration is doing it" (Greg's rule, research doc §3).
-    const clockChanged = dto.clockMs !== undefined || dto.clockRunning !== undefined;
-    if (clockChanged) {
-      const now = new Date();
-      if (dto.clockMs !== undefined) {
-        const v = Math.max(0, Math.round(Number(dto.clockMs)));
-        if (Number.isFinite(v)) { data.clockMs = v; applied.clockMs = v; }
+      // Clock — re-anchor clockUpdatedAt = now whenever either clock field
+      // is provided, exactly mirroring what the 'set' clock action does.
+      // When clockRunning flips (start/stop transition), run the same helper
+      // chain clockAction uses: freeze penalty-box timers and slave the shot
+      // clock — "all the same rules apply if we are doing it or the
+      // integration is doing it" (Greg's rule, research doc §3).
+      const clockChanged = dto.clockMs !== undefined || dto.clockRunning !== undefined;
+      if (clockChanged) {
+        const now = new Date();
+        if (dto.clockMs !== undefined) {
+          const v = Math.max(0, Math.round(Number(dto.clockMs)));
+          if (Number.isFinite(v)) { data.clockMs = v; applied.clockMs = v; }
+        }
+        if (dto.clockRunning !== undefined) {
+          data.clockRunning = Boolean(dto.clockRunning);
+          applied.clockRunning = data.clockRunning;
+        }
+        data.clockUpdatedAt = now;
+        applied.clockUpdatedAt = now;
+
+        const runningFlipped =
+          dto.clockRunning !== undefined && dto.clockRunning !== game.clockRunning;
+        if (runningFlipped) {
+          const running = Boolean(dto.clockRunning);
+          let mergedStats = this.syncPenaltiesToClock(game.stats, running, now);
+          const sourceStats = mergedStats ?? game.stats;
+          // T2-10: pass the incoming game clock for clamping (Invariant #6).
+          const ingestClockMs = typeof dto.clockMs === 'number' ? dto.clockMs : game.clockMs;
+          const shotStats = this.syncShotClockToGameClock(sourceStats, true, running, now, ingestClockMs);
+          if (shotStats) mergedStats = shotStats;
+          if (mergedStats) data.stats = mergedStats;
+        }
       }
-      if (dto.clockRunning !== undefined) {
-        data.clockRunning = Boolean(dto.clockRunning);
-        applied.clockRunning = data.clockRunning;
+
+      if (Object.keys(data).length === 0) {
+        // Nothing to apply. For the machine-feed path this is the idle-but-
+        // connected heartbeat (a vendor box POSTing an empty/unchanged body):
+        // the packet itself is liveness proof, so stamp stats.feed (throttled
+        // to one write per FEED_STAMP_MIN_INTERVAL_MS) or the guided-setup
+        // pill would report a healthy feed as dead. accepted:false records
+        // that nothing was applied.
+        if (opts.stampFeed && this.feedStampDue(game.stats, Date.now())) {
+          const prev = game.stats && typeof game.stats === 'object' ? (game.stats as Record<string, unknown>) : {};
+          return scope.write({ stats: { ...prev, feed: this.feedStamp('feed', false) } });
+        }
+        return game;
       }
-      // Always update the anchor timestamp when any clock field changes,
-      // so the board can derive the live clock correctly from the new
-      // (clockMs, clockRunning, clockUpdatedAt) triple.
-      data.clockUpdatedAt = now;
-      applied.clockUpdatedAt = now;
 
-      // Sync helper chain — only on a running-state TRANSITION so that a
-      // bare clockMs 'set' doesn't accidentally flip penalty and shot-clock
-      // running states (same guard clockAction uses for 'set'/'reset').
-      const runningFlipped =
-        dto.clockRunning !== undefined && dto.clockRunning !== game.clockRunning;
-      if (runningFlipped) {
-        const running = Boolean(dto.clockRunning);
-        let mergedStats = this.syncPenaltiesToClock(game.stats, running, now);
-        const sourceStats = mergedStats ?? game.stats;
-        // T2-10: pass the incoming game clock for clamping (Invariant #6).
-        const ingestClockMs = typeof dto.clockMs === 'number' ? dto.clockMs : game.clockMs;
-        const shotStats = this.syncShotClockToGameClock(sourceStats, true, running, now, ingestClockMs);
-        if (shotStats) mergedStats = shotStats;
-        if (mergedStats) data.stats = mergedStats as any;
+      // Machine-feed liveness stamp — folded into THIS write. Only attach a
+      // stats copy when stats is already being written (free) or the previous
+      // stamp is past the throttle window.
+      if (opts.stampFeed && (data.stats !== undefined || this.feedStampDue(game.stats, Date.now()))) {
+        const base = data.stats ?? game.stats;
+        const baseObj: Record<string, unknown> =
+          base && typeof base === 'object' ? { ...(base as Record<string, unknown>) } : {};
+        data.stats = { ...baseObj, feed: this.feedStamp('feed', true) };
       }
-    }
 
-    if (Object.keys(data).length === 0) {
-      // Nothing to apply — return the current game without an operator-column
-      // write. For the machine-feed path this is the idle-but-connected
-      // heartbeat (a vendor box POSTing an empty/unchanged body): the packet
-      // itself is liveness proof, so stamp stats.feed (throttled, via
-      // withStatsTx — see stampFeedLiveness) or the guided-setup pill would
-      // report a healthy feed as dead. accepted:false records that nothing
-      // was applied.
-      if (opts.stampFeed) {
-        await this.stampFeedLiveness(tenantId, id, 'feed', false, game.stats);
+      const prevScores = {
+        homeScore: Number(game.homeScore) || 0,
+        awayScore: Number(game.awayScore) || 0,
+      };
+      const updated = await scope.write(data);
+      // Efficiency #3 counterpart of clockAction's wake: a feed that starts
+      // (or re-anchors) a running clock snaps the auto-advance sweep out of
+      // its 30s idle backoff.
+      if (clockChanged && updated.clockRunning) scope.after(() => wakeClockSweep());
+      await scope.event('INGEST', { ...applied, change: scope.change() });
+
+      // AUTO celebration trigger — only on the machine-feed path, and only
+      // when a score field was actually applied.
+      if (opts.auto && (data.homeScore !== undefined || data.awayScore !== undefined)) {
+        await this.autoCelebrateInCommand(
+          scope,
+          prevScores,
+          updated,
+          { home: data.homeScore !== undefined, away: data.awayScore !== undefined },
+          'feed',
+        );
       }
-      return game;
-    }
-
-    // Machine-feed liveness stamp (guided setup pill) — fold into THIS
-    // update's data so the applied case costs zero extra writes. To keep the
-    // contended-stats exposure bounded (this write is a plain update, not a
-    // withStatsTx — same as the pre-existing runningFlipped merge above), only
-    // attach a stats copy when stats is ALREADY being written (free) or the
-    // previous stamp is past the throttle window; a ≤5s-stale lastPacketAt is
-    // invisible at the pill's granularity.
-    if (opts.stampFeed && (data.stats !== undefined || this.feedStampDue(game.stats, Date.now()))) {
-      const base = data.stats ?? game.stats;
-      const baseObj: Record<string, unknown> =
-        base && typeof base === 'object' ? { ...(base as Record<string, unknown>) } : {};
-      data.stats = { ...baseObj, feed: this.feedStamp('feed', true) } as any;
-    }
-
-    // Capture the prior scores as PRIMITIVES before the write — the delta
-    // must compare pre- vs post-update values and never alias the same
-    // mutable row object.
-    const prevScores = { homeScore: game.homeScore, awayScore: game.awayScore };
-    const updated = await this.prisma.client.game.update({ where: { id, tenantId }, data });
-    // Efficiency #3 counterpart of clockAction's wake: a machine feed that
-    // starts (or re-anchors) a running clock must snap the auto-advance
-    // sweep out of its 30s idle backoff — otherwise a feed-driven segment
-    // could sit expired for up to 30s before the sweep notices. Same gate
-    // as the operator path: clock state was written AND the clock is
-    // running after the write.
-    if (clockChanged && updated.clockRunning) wakeClockSweep();
-    await this.record(id, 'INGEST', applied);
-
-    // AUTO celebration trigger — only on the machine-feed path, and only
-    // when a score field was actually applied. A score INCREASE matching a
-    // celebration's autoPoints fires that celebration for the scoring team.
-    // Best-effort: never let a celebration failure break the score sync.
-    if (opts.auto && (data.homeScore !== undefined || data.awayScore !== undefined)) {
-      try {
-        await this.maybeAutoCelebrate(id, prevScores, updated, dto, { source: 'feed' });
-      } catch (e) {
-        this.logger.debug(`auto-celebrate skipped for game ${id}: ${(e as Error).message}`);
-      }
-    }
-    return updated;
+      return updated;
+    });
   }
 
   /**
-   * The Sprint 13 "AUTO" trigger. For each team whose score the feed just
-   * increased, find the celebration whose `autoPoints` includes the delta
-   * and fire it — routed through the SAME `record(id, 'CUE', …)` shape the
-   * manual launchpad (`fireCue`) uses, so every board / ribbon / scorebug
-   * surface plays it with zero rendering changes. Tagged `{ auto: true,
-   * team }` so the overlay can theme to the scoring side. Honors the
-   * per-game toggle (default ON).
+   * The Sprint 13 "AUTO" trigger, run INSIDE the scoring command. For each
+   * team whose score the command increased (among the columns it was given),
+   * find the celebration whose `autoPoints` includes the delta and fire it —
+   * the same CUE shape the manual launchpad (`fireCue`) writes, so every
+   * board / ribbon / scorebug surface plays it with zero rendering changes.
+   * Tagged `{ auto: true, team }` so the overlay can theme to the scoring
+   * side. Honors the per-game toggle (default ON). Because it runs in the
+   * command's transaction, a retried or replayed score command can never
+   * celebrate twice, and a rolled-back one never celebrates at all.
    */
-  private async maybeAutoCelebrate(
-    id: string,
+  private async autoCelebrateInCommand(
+    scope: GameCommandScope,
     prev: { homeScore: number; awayScore: number },
-    next: any,
-    dto: { homeScore?: number; awayScore?: number },
-    opts: { source?: 'manual' | 'feed'; actorUserId?: string } = {},
+    next: GameRow,
+    provided: { home: boolean; away: boolean },
+    source: 'manual' | 'feed',
   ): Promise<void> {
-    if (!(await this.autoCelebrateEnabled(id))) return;
+    const id = next.id;
+    if (!(await this.autoCelebrateEnabled(id, scope.tx))) return;
 
     let def: SportDefinition;
     try {
@@ -4772,8 +4846,7 @@ export class SportsService {
 
     const hits: Array<{ team: 'home' | 'away'; cue: SportDefinition['celebrations'][number] }> = [];
     for (const team of ['home', 'away'] as const) {
-      const provided = team === 'home' ? dto.homeScore !== undefined : dto.awayScore !== undefined;
-      if (!provided) continue;
+      if (!(team === 'home' ? provided.home : provided.away)) continue;
       const before = team === 'home' ? prev.homeScore : prev.awayScore;
       const after = team === 'home' ? next.homeScore : next.awayScore;
       const delta = after - before;
@@ -4793,10 +4866,10 @@ export class SportsService {
     // within the cinematic window — the named cue always wins; the auto
     // path is the backstop for un-narrated scores, never a second show.
     // Deliberately NOT mutexed: auto-after-auto. Two real goals seconds
-    // apart must BOTH celebrate (the ingest scoreChanged guard + the
-    // board's 6s event-id dedup already kill same-score refires).
+    // apart must BOTH celebrate. Read through `tx`: a command never takes a
+    // second pool connection while it holds one.
     const CELEBRATION_MUTEX_MS = 10_000;
-    const recentCues = await this.prisma.client.gameEvent.findMany({
+    const recentCues = await scope.tx.gameEvent.findMany({
       where: {
         gameId: id,
         type: 'CUE',
@@ -4806,7 +4879,7 @@ export class SportsService {
       take: 8,
     });
     const mutexedTeams = new Set<string>();
-    for (const ev of recentCues) {
+    for (const ev of recentCues as Array<{ payload: unknown }>) {
       const payload = ev.payload as { team?: unknown; auto?: unknown } | null;
       if (payload?.auto === true) continue; // auto fires never mutex real scores
       const evTeam = payload?.team;
@@ -4818,15 +4891,9 @@ export class SportsService {
         `auto-celebrate mutex: suppressed ${hits.length - firable.length} fire(s) for game ${id} (cue within ${CELEBRATION_MUTEX_MS}ms window)`,
       );
     }
-    if (firable.length === 0) return;
-
-    // Audit-Fix 1: AuditLog attribution — 'feed' (machine ingest) or
-    // 'manual' (dashboard quick-buttons / typo-fix). SUPER_ADMIN forensic
-    // review can answer "which sponsor takeover fired off which path".
-    const source: 'manual' | 'feed' = opts.source === 'manual' ? 'manual' : 'feed';
     const snapshot = this.cueSnapshot(next);
     for (const h of firable) {
-      const event = await this.record(id, 'CUE', {
+      const event = await scope.event('CUE', {
         key: h.cue.key,
         label: h.cue.label,
         emoji: h.cue.emoji,
@@ -4839,29 +4906,18 @@ export class SportsService {
         source,
         snapshot,
       });
-      // Lane-8 P1: AUTO cues also get an immutable AuditLog row (forensics).
-      // Audit-Fix 1: manual quick-button auto-fires now record `userId` so
-      // the actor is named; feed auto-fires have no user — machine-to-machine.
-      try {
-        await this.prisma.client.auditLog.create({
-          data: {
-            tenantId: next.tenantId,
-            userId: opts.actorUserId || null,
-            action: 'SPORTS_CUE_FIRED',
-            targetType: 'Game',
-            targetId: id,
-            details: JSON.stringify({
-              eventId: event.id,
-              key: h.cue.key,
-              label: h.cue.label,
-              target: 'ALL',
-              team: h.team,
-              auto: true,
-              source,
-            }),
-          },
-        });
-      } catch { /* best-effort */ }
+      // Lane-8 P1 / Audit-Fix 1: an AUTO cue gets its own AuditLog row,
+      // attributed to the command's actor (an operator for a manual tap, no
+      // user for a machine feed) — in the same transaction as the score.
+      scope.audit('SPORTS_CUE_FIRED', {
+        eventId: event.id,
+        key: h.cue.key,
+        label: h.cue.label,
+        target: 'ALL',
+        team: h.team,
+        auto: true,
+        source,
+      });
     }
   }
 
@@ -4871,12 +4927,12 @@ export class SportsService {
    * none exists). Fails OPEN to the default on any read error so a feed
    * game still gets its show — never blocks the score sync.
    */
-  private async autoCelebrateEnabled(gameId: string): Promise<boolean> {
+  private async autoCelebrateEnabled(gameId: string, client?: any): Promise<boolean> {
     const cached = this.autoCelebrateCache.get(gameId);
     if (cached !== undefined) return cached;
     let enabled = true;
     try {
-      const ev = await this.prisma.client.gameEvent.findFirst({
+      const ev = await (client ?? this.prisma.client).gameEvent.findFirst({
         where: { gameId, type: 'AUTO_CELEBRATE' },
         orderBy: { createdAt: 'desc' },
       });
@@ -4906,108 +4962,96 @@ export class SportsService {
   }
 
   /** Change the game status (SCHEDULED → LIVE → HALFTIME → FINAL …). */
-  async setStatus(tenantId: string, id: string, dto: { status?: string }) {
-    const game = await this.owned(tenantId, id);
+  async setStatus(tenantId: string, id: string, dto: { status?: string }, actor?: CommandInput) {
     const status = String(dto.status || '');
     if (!GAME_STATUSES.includes(status)) {
       throw new BadRequestException(`status must be one of ${GAME_STATUSES.join(', ')}`);
     }
-    const data: Record<string, unknown> = { status };
-    if (status === 'LIVE' && !game.startedAt) data.startedAt = new Date();
-    if (status === 'FINAL') {
-      data.endedAt = new Date();
-      data.clockRunning = false;
-    }
-
-    const updated = await this.prisma.client.game.update({ where: { id, tenantId }, data });
-    await this.record(id, 'STATUS', { status });
-
-    // T1-5: Status-transition cinematics — fire a synthetic CUE event so
-    // every surface (board, ribbon, scorebug) can play a visual/audio cue
-    // instead of silently swapping the scene on the next poll.
-    if (status === 'HALFTIME') {
-      await this.record(id, 'CUE', {
-        key: 'status:halftime',
-        label: 'Halftime',
-        emoji: '🏟️',
-        target: 'ALL',
-        auto: true,
-        source: 'status-transition',
-        snapshot: this.cueSnapshot(updated as Parameters<typeof this.cueSnapshot>[0]),
-      });
-    } else if (status === 'FINAL') {
-      // Determine winner from the freshly-updated row for accurate
-      // snapshot — homeScore / awayScore on `updated` are live.
-      const up = updated as { homeScore: number; awayScore: number } & typeof updated;
-      const cueKey =
-        up.homeScore > up.awayScore
-          ? 'status:final-home'
-          : up.awayScore > up.homeScore
-            ? 'status:final-away'
-            : 'status:final-tie';
-      await this.record(id, 'CUE', {
-        key: cueKey,
-        label: 'Final',
-        emoji: '🏆',
-        target: 'ALL',
-        auto: true,
-        source: 'status-transition',
-        snapshot: this.cueSnapshot(updated as Parameters<typeof this.cueSnapshot>[0]),
-      });
-
-      // PHASE 2 — finalize player stats. POST-COMMIT (the status write +
-      // CUE above have already landed), FAIL-OPEN (a stats/aggregation
-      // error must NEVER block or roll back the operator's "end game"),
-      // and gated behind SPORTS_PLAYER_STATS for this tenant. The engine
-      // roll-up is idempotent (a per-game marker), so a re-FINAL is a
-      // no-op and double-counts nothing.
-      try {
-        const statsOn = await this.flags.isEnabledAsync(
-          FLAGS.SPORTS_PLAYER_STATS,
-          { tenantId },
-        );
-        if (statsOn) {
-          // 2026-06-25 — self-link any unlinked HOME roster players BEFORE the
-          // roll-up. finalizeGameStats only aggregates LINKED rows, so a roster
-          // built any way (not just CSV import) would otherwise accumulate
-          // nothing. This also back-fills pre-existing unlinked rosters
-          // automatically on their next finalize.
-          const linked = await this.autoLinkHomeRoster(
-            tenantId,
-            id,
-            (updated as { homeTeamId?: string | null }).homeTeamId,
-          );
-          if (linked > 0) {
-            this.logger.log(
-              `finalize self-linked ${linked} home roster player(s) game=${id} tenant=${tenantId}`,
-            );
-          }
-          const result = await finalizeGameStats(this.prisma.client, tenantId, id);
-          this.logger.log(
-            `finalizeGameStats game=${id} tenant=${tenantId} aggregated=${result.aggregated}${
-              result.skipped ? ` skipped=${result.skipped}` : ''
-            }`,
-          );
-        }
-      } catch (err) {
-        // Swallow + log — the game is already FINAL; stats are best-effort.
-        this.logger.error(
-          `finalizeGameStats failed (non-fatal) game=${id} tenant=${tenantId}: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
+    return this.runGameCommand(tenantId, id, `status.${status.toLowerCase()}`, actor, async (scope) => {
+      const game = scope.before;
+      const data: Record<string, unknown> = { status };
+      if (status === 'LIVE' && !game.startedAt) data.startedAt = new Date();
+      if (status === 'FINAL') {
+        data.endedAt = new Date();
+        data.clockRunning = false;
       }
+      const updated = await scope.write(data);
+      await scope.event('STATUS', { status, prevStatus: game.status, change: scope.change() });
 
-      // Inputs-wave SCHED — schedule-game-mode FINAL hook. POST-COMMIT
-      // (the status write + CUE above already landed) and entirely
-      // fail-open INSIDE onGameFinal (it never throws), same discipline
-      // as finalizeGameStats above: cancels a still-pending auto-push,
-      // clears an active SCENE (Show-Control slice 4), and reverts an
-      // auto-pushed board to what each screen showed before.
-      await this.onGameFinal(tenantId, id);
+      // T1-5: Status-transition cinematics — a synthetic CUE event so every
+      // surface (board, ribbon, scorebug) can play a visual/audio cue instead
+      // of silently swapping the scene on the next poll.
+      if (status === 'HALFTIME') {
+        await scope.event('CUE', {
+          key: 'status:halftime',
+          label: 'Halftime',
+          emoji: '🏟️',
+          target: 'ALL',
+          auto: true,
+          source: 'status-transition',
+          snapshot: this.cueSnapshot(updated),
+        });
+      } else if (status === 'FINAL') {
+        const cueKey =
+          updated.homeScore > updated.awayScore
+            ? 'status:final-home'
+            : updated.awayScore > updated.homeScore
+              ? 'status:final-away'
+              : 'status:final-tie';
+        await scope.event('CUE', {
+          key: cueKey,
+          label: 'Final',
+          emoji: '🏆',
+          target: 'ALL',
+          auto: true,
+          source: 'status-transition',
+          snapshot: this.cueSnapshot(updated),
+        });
+        // PHASE 2 player-stat roll-up + the schedule-game-mode FINAL hook:
+        // both POST-COMMIT and fail-open — neither may block or roll back
+        // the operator's "end game".
+        scope.after(() => this.finalizeStatsAfterFinal(tenantId, id, updated.homeTeamId));
+        scope.after(() => this.onGameFinal(tenantId, id));
+      }
+      return updated;
+    });
+  }
+
+  /**
+   * PHASE 2 — roll a FINAL game's player stats into the season / career
+   * tables. Gated behind SPORTS_PLAYER_STATS for the tenant; fail-open.
+   */
+  private async finalizeStatsAfterFinal(
+    tenantId: string,
+    id: string,
+    homeTeamId: string | null | undefined,
+  ): Promise<void> {
+    try {
+      const statsOn = await this.flags.isEnabledAsync(FLAGS.SPORTS_PLAYER_STATS, { tenantId });
+      if (!statsOn) return;
+      // 2026-06-25 — self-link any unlinked HOME roster players BEFORE the
+      // roll-up. finalizeGameStats only aggregates LINKED rows, so a roster
+      // built any way (not just CSV import) would otherwise accumulate
+      // nothing. This also back-fills pre-existing unlinked rosters
+      // automatically on their next finalize.
+      const linked = await this.autoLinkHomeRoster(tenantId, id, homeTeamId);
+      if (linked > 0) {
+        this.logger.log(`finalize self-linked ${linked} home roster player(s) game=${id} tenant=${tenantId}`);
+      }
+      const result = await finalizeGameStats(this.prisma.client, tenantId, id);
+      this.logger.log(
+        `finalizeGameStats game=${id} tenant=${tenantId} aggregated=${result.aggregated}${
+          result.skipped ? ` skipped=${result.skipped}` : ''
+        }`,
+      );
+    } catch (err) {
+      // Swallow + log — the game is already FINAL; stats are best-effort.
+      this.logger.error(
+        `finalizeGameStats failed (non-fatal) game=${id} tenant=${tenantId}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
     }
-
-    return updated;
   }
 
   // ── PHASE 2 — persistent season/career stat reads + roster→person link ──
@@ -5482,111 +5526,98 @@ export class SportsService {
     tenantId: string,
     gameId: string,
     dto: { team?: string; type?: string },
-    actorUserId?: string,
+    actor?: CommandInput,
   ) {
     const team: 'home' | 'away' = dto.team === 'away' ? 'away' : 'home';
     const timeoutType = dto.type === 'short' ? 'short' : 'full';
     const statKey = team === 'home' ? 'homeTimeouts' : 'awayTimeouts';
 
-    // Load the game (tenant-scoped, or 404).
-    const game = await this.owned(tenantId, gameId);
-    const def = this.sportOf(game.sport);
+    // ONE command, computed from ONE fresh read: the clock pause (with its
+    // shot-clock / penalty-box slaving), the timeout debit and the football
+    // play-clock reset all land in the same compare-and-swap write. It used
+    // to pause via clockAction and then write back a stats copy read BEFORE
+    // the pause — which restored the running shot clock (K12-20) and could
+    // erase a concurrent stat — and two timeouts racing could both debit
+    // from the same count.
+    return this.runGameCommand(tenantId, gameId, 'timeout.call', actor, async (scope) => {
+      const game = scope.before;
+      const def = this.sportOf(game.sport);
 
-    // Only sports whose definition declares team-timeout stats (football /
-    // basketball / water polo) can call one — for every other sport the
-    // decrement below would compute NaN and persist `null` into the stats
-    // JSON while still pausing the clock (refuter P1, Phase-2 SHARE).
-    if (!def.stats.some((s) => s.key === statKey)) {
-      throw new BadRequestException(`${def.name} has no team timeouts`);
-    }
+      // Only sports whose definition declares team-timeout stats (football /
+      // basketball / water polo) can call one — for every other sport the
+      // decrement would compute NaN and persist `null` into the stats JSON
+      // while still pausing the clock (refuter P1, Phase-2 SHARE).
+      if (!def.stats.some((s) => s.key === statKey)) {
+        throw new BadRequestException(`${def.name} has no team timeouts`);
+      }
+      const statsBefore: Record<string, unknown> =
+        game.stats && typeof game.stats === 'object' ? (game.stats as Record<string, unknown>) : {};
+      const prevRemaining = Number(statsBefore[statKey]);
+      if (Number.isFinite(prevRemaining) && prevRemaining <= 0) {
+        const label = def.stats.find((s) => s.key === statKey)?.label ?? statKey;
+        throw new BadRequestException(
+          `BUG_NO_TIMEOUTS_LEFT: ${team} team has no timeouts remaining (${label} = 0)`,
+        );
+      }
+      const newRemaining = Math.max(0, prevRemaining - 1);
 
-    const currentStats: Record<string, unknown> =
-      game.stats && typeof game.stats === 'object'
-        ? { ...(game.stats as Record<string, unknown>) }
-        : {};
+      const now = new Date();
+      const data: Record<string, unknown> =
+        def.clock.type === 'none' ? {} : this.clockTransition(game, def, 'pause', 0, now).data;
+      const stats: Record<string, unknown> = {
+        ...((data.stats as Record<string, unknown> | undefined) ?? statsBefore),
+      };
+      stats[statKey] = newRemaining;
+      // Football: reset the play clock to 25s + stop it on a timeout.
+      if (def.key === 'football') {
+        const pc: Record<string, unknown> =
+          stats.playClock && typeof stats.playClock === 'object'
+            ? { ...(stats.playClock as Record<string, unknown>) }
+            : {};
+        pc.ms = 25_000;
+        pc.running = false;
+        pc.at = now.toISOString();
+        stats.playClock = pc;
+      }
+      data.stats = stats;
+      const updated = await scope.write(data);
 
-    const prevRemaining = Number(currentStats[statKey]);
-    if (Number.isFinite(prevRemaining) && prevRemaining <= 0) {
-      const label = def.stats.find((s) => s.key === statKey)?.label ?? statKey;
-      throw new BadRequestException(
-        `BUG_NO_TIMEOUTS_LEFT: ${team} team has no timeouts remaining (${label} = 0)`,
-      );
-    }
-    const newRemaining = Math.max(0, prevRemaining - 1);
-    currentStats[statKey] = newRemaining;
-
-    // Football: reset the play clock to 25s + stop it on a timeout.
-    if (def.key === 'football') {
-      const pc: Record<string, unknown> =
-        currentStats.playClock && typeof currentStats.playClock === 'object'
-          ? { ...(currentStats.playClock as Record<string, unknown>) }
-          : {};
-      pc.ms = 25_000;
-      pc.running = false;
-      if (!pc.at) pc.at = new Date().toISOString();
-      currentStats.playClock = pc;
-    }
-
-    // Pause the game clock (this also syncs the shot clock + penalty
-    // box via the existing clockAction pause path).
-    await this.clockAction(tenantId, gameId, { action: 'pause' });
-
-    // Write the decremented timeout count (+ football play-clock reset).
-    await this.prisma.client.game.update({
-      where: { id: gameId, tenantId },
-      data: { stats: currentStats as any },
-    });
-    this.invalidateBoardCache(gameId);
-
-    // TIMEOUT GameEvent — the append-only audit trail.
-    await this.record(gameId, 'TIMEOUT', {
-      team,
-      type: timeoutType,
-      prevTimeoutsRemaining: prevRemaining,
-      newTimeoutsRemaining: newRemaining,
-    });
-
-    // CUE — drives the "TIMEOUT — EASTSIDE 2 LEFT" overlay on every
-    // surface (scoreboard, ribbon, broadcast scorebug).
-    const teamName = team === 'home' ? game.homeTeam : game.awayTeam;
-    await this.record(gameId, 'CUE', {
-      key: 'timeout',
-      label: `Timeout — ${teamName} (${newRemaining} left)`,
-      emoji: '⏱️',
-      target: 'ALL',
-      audioUrl: null,
-      sponsorName: null,
-      sponsorLogoUrl: null,
-      team,
-      custom: false,
-      snapshot: this.cueSnapshot(game),
-    });
-
-    // Immutable AuditLog row.
-    try {
-      await this.prisma.client.auditLog.create({
-        data: {
-          tenantId,
-          userId: actorUserId || null,
-          action: 'SPORTS_TIMEOUT_CALLED',
-          targetType: 'Game',
-          targetId: gameId,
-          details: JSON.stringify({
-            team,
-            type: timeoutType,
-            prevTimeoutsRemaining: prevRemaining,
-            newTimeoutsRemaining: newRemaining,
-          }),
-        },
+      // TIMEOUT GameEvent — the command's undo target and forensic record.
+      await scope.event('TIMEOUT', {
+        team,
+        type: timeoutType,
+        prevTimeoutsRemaining: prevRemaining,
+        newTimeoutsRemaining: newRemaining,
+        change: scope.change(),
       });
-    } catch { /* best-effort */ }
-
-    return {
-      success: true,
-      team,
-      type: timeoutType,
-      timeoutsRemaining: newRemaining,
-    };
+      // CUE — drives the "TIMEOUT — EASTSIDE 2 LEFT" overlay on every
+      // surface (scoreboard, ribbon, broadcast scorebug).
+      const teamName = team === 'home' ? game.homeTeam : game.awayTeam;
+      await scope.event('CUE', {
+        key: 'timeout',
+        label: `Timeout — ${teamName} (${newRemaining} left)`,
+        emoji: '⏱️',
+        target: 'ALL',
+        audioUrl: null,
+        sponsorName: null,
+        sponsorLogoUrl: null,
+        team,
+        custom: false,
+        snapshot: this.cueSnapshot(updated),
+      });
+      scope.audit('SPORTS_TIMEOUT_CALLED', {
+        team,
+        type: timeoutType,
+        prevTimeoutsRemaining: prevRemaining,
+        newTimeoutsRemaining: newRemaining,
+      });
+      return {
+        success: true,
+        team,
+        type: timeoutType,
+        timeoutsRemaining: newRemaining,
+      };
+    });
   }
 
   // ── live-game text overlay (T2-5) ─────────────────────────────
@@ -5831,45 +5862,18 @@ export class SportsService {
     tenantId: string,
     gameId: string,
     dto: { team?: string },
-    actorUserId?: string,
+    actor?: CommandInput,
   ) {
     const team: 'home' | 'away' = dto.team === 'away' ? 'away' : 'home';
-
-    const game = await this.owned(tenantId, gameId);
-    const prevPossession = (game as any).possession as string | null | undefined;
-
-    // Write the new possession to Game.possession (the typed column).
-    await this.prisma.client.game.update({
-      where: { id: gameId, tenantId },
-      data: { possession: team } as any,
+    return this.runGameCommand(tenantId, gameId, 'possession.set', actor, async (scope) => {
+      const game = scope.before;
+      const prevPossession = game.possession ?? null;
+      await scope.write({ possession: team });
+      // Append-only POSSESSION event + audit row, in the same transaction.
+      await scope.event('POSSESSION', { team, prevPossession, change: scope.change() });
+      scope.audit('SPORTS_POSSESSION_SET', { team, prevPossession, sport: game.sport });
+      return { success: true, possession: team };
     });
-    this.invalidateBoardCache(gameId);
-
-    // Append-only POSSESSION event — forensic trail, same pattern as TIMEOUT.
-    await this.record(gameId, 'POSSESSION', {
-      team,
-      prevPossession: prevPossession ?? null,
-    });
-
-    // Immutable AuditLog row.
-    try {
-      await this.prisma.client.auditLog.create({
-        data: {
-          tenantId,
-          userId: actorUserId || null,
-          action: 'SPORTS_POSSESSION_SET',
-          targetType: 'Game',
-          targetId: gameId,
-          details: JSON.stringify({
-            team,
-            prevPossession: prevPossession ?? null,
-            sport: game.sport,
-          }),
-        },
-      });
-    } catch { /* best-effort */ }
-
-    return { success: true, possession: team };
   }
 
   /**
@@ -6394,35 +6398,33 @@ export class SportsService {
       return { ok: true, accepted: false, reason: 'empty snapshot' };
     }
 
-    // Sports-stats-race fix (2026-07-03) — THE flagship bug: this is the
-    // ~5Hz CTS write side of the lost-update race against the operator's
-    // `updateStats` PATCH. Both used to read-modify-write the same
-    // `Game.stats` JSON blob from a plain (non-transactional) read, so
-    // whichever commit landed second silently erased the other's edit
-    // (e.g. an operator's penalty add clobbered by the next CTS tick).
-    // `withStatsTx` re-reads the game FRESH inside a Serializable
-    // transaction on every attempt; a conflicting concurrent writer
-    // aborts one side (Postgres 40001 → Prisma P2034), and `withDbRetry`
-    // re-runs this WHOLE callback — including the fresh read — so the
-    // loser merges on top of the winner's committed write instead of
-    // stomping it. All merge logic below is IDENTICAL to before; only
-    // the read+write are now atomic.
-    let prevScores = { homeScore: gate.homeScore, awayScore: gate.awayScore };
-    let scoreChanged = false;
-    let segmentChanged = false;
-    let clockRunChanged = false;
-    let horn = false;
-    let wantsAudit = false;
-    let reconnect = false;
-    let syntheticNext: any = gate;
-
-    // SEC-009: the merge is bound to the tenant of the game the GATE above
-    // resolved. On the operator path that is the caller's own tenant (the gate
-    // filtered on it); on the PUBLIC feed-token path there is no caller tenant
-    // at all, so this is a consistency assertion — the row may not have moved
-    // tenants between gate and merge — and the token MAC over gameId +
-    // feedTokenVersion stays the actual authorization.
-    await this.withStatsTx(gate.tenantId, gameId, 'sports.ingestCtsSnapshot', async (tx, game) => {
+    // The ~5 Hz CTS write side of the stats race against the operator's
+    // commands: the merge runs on the command's fresh in-transaction read and
+    // lands as one compare-and-swap write, so the loser of a race re-runs on
+    // top of the winner's committed state instead of stomping it. The SCORE /
+    // SEGMENT events, the auto-celebration and the sampled audit row commit in
+    // the SAME transaction (they used to be best-effort writes after it).
+    //
+    // SEC-009: bound to the tenant of the game the GATE above resolved. On
+    // the operator path that is the caller's own tenant (the gate filtered on
+    // it); on the PUBLIC feed-token path there is no caller tenant at all, so
+    // this is a consistency assertion — the row may not have moved tenants
+    // between gate and merge — and the token MAC over gameId + feedTokenVersion
+    // stays the actual authorization.
+    const actor: CommandInput = auth.actorUserId
+      ? { actor: { kind: 'user', userId: auth.actorUserId } }
+      : feedActor('cts');
+    await this.runGameCommand(gate.tenantId, gameId, 'feed.cts', actor, async (scope) => {
+      const tx = scope.tx;
+      const game = scope.before;
+      let prevScores = { homeScore: game.homeScore, awayScore: game.awayScore };
+      let scoreChanged = false;
+      let segmentChanged = false;
+      let clockRunChanged = false;
+      let horn = false;
+      let wantsAudit = false;
+      let reconnect = false;
+      let syntheticNext: GameRow = game;
       const prevStats: Record<string, unknown> =
         game.stats && typeof game.stats === 'object'
           ? { ...(game.stats as Record<string, unknown>) }
@@ -6613,88 +6615,56 @@ export class SportsService {
         columnWrites.segment = cleaned.segment;
       }
 
-      // Synthetic "next" game row for maybeAutoCelebrate (after the tx
-      // commits) — it only reads .homeScore, .awayScore, .sport, .tenantId.
+      // The row the celebration compares against: the fresh read with the
+      // console's scores applied (before any operator-override deferral).
       syntheticNext = {
         ...game,
         homeScore: cleaned.homeScore !== undefined ? cleaned.homeScore : game.homeScore,
         awayScore: cleaned.awayScore !== undefined ? cleaned.awayScore : game.awayScore,
       };
 
-      return { stats: mergedStatsForWrite as any, ...columnWrites };
-    });
-    // Invalidate the board cache so the next /board/:id poll sees this
-    // snapshot instantly. Without this the TTL would mask up to 1s of
-    // CTS data — fine in steady state but jarring at boot.
-    this.invalidateBoardCache(gameId);
+      await scope.write({ stats: mergedStatsForWrite, ...columnWrites });
+      // Deliberately NO wakeClockSweep() here (refuter P2, Phase-2 CLOCK):
+      // CTS clock state lives in the stats JSON (`cts` sub-object) — this
+      // path never writes the Game.clockMs/clockRunning COLUMNS the
+      // auto-advance sweep queries, so a wake buys nothing while a 5 Hz
+      // snapshot stream would permanently defeat the sweep's idle-skip.
 
-    // Deliberately NO wakeClockSweep() here (refuter P2, Phase-2 CLOCK):
-    // CTS clock state lives in the stats JSON (`cts` sub-object) — this
-    // path never writes the Game.clockMs/clockRunning COLUMNS the
-    // auto-advance sweep queries, so a wake buys nothing while a 5 Hz
-    // snapshot stream would permanently defeat the sweep's idle-skip.
-
-    // Score GameEvent + AUTO celebration — same paper trail as adjustScore.
-    // Only fires when the CTS-reported score differs from the prior CTS
-    // value (scoreChanged guard above), so a 5 Hz re-send of the same score
-    // doesn't produce duplicate SCORE events. `syntheticNext` was built
-    // INSIDE the transaction (above) from the fresh row the merge actually
-    // wrote on top of, not the pre-tx `gate` read.
-    if (scoreChanged) {
-      try {
-        await this.record(gameId, 'SCORE', {
+      // Score GameEvent + AUTO celebration — same paper trail as
+      // adjustScore. Only when the CTS-reported score differs from the prior
+      // CTS value, so a 5 Hz re-send of the same score records nothing.
+      if (scoreChanged) {
+        await scope.event('SCORE', {
           team: 'cts',
           homeScore: syntheticNext.homeScore,
           awayScore: syntheticNext.awayScore,
           source: 'cts',
+          change: scope.change(),
         });
-      } catch { /* best-effort */ }
-      try {
-        await this.maybeAutoCelebrate(
-          gameId,
+        await this.autoCelebrateInCommand(
+          scope,
           prevScores,
           syntheticNext,
-          { homeScore: syntheticNext.homeScore, awayScore: syntheticNext.awayScore },
-          { source: 'feed' },
+          { home: cleaned.homeScore !== undefined, away: cleaned.awayScore !== undefined },
+          'feed',
         );
-      } catch (e) {
-        this.logger.debug(`cts auto-celebrate skipped for game ${gameId}: ${(e as Error).message}`);
       }
-    }
-
-    // Segment GameEvent — same paper trail as setSegment.
-    if (segmentChanged && cleaned.segment !== undefined) {
-      try {
-        await this.record(gameId, 'SEGMENT', { segment: cleaned.segment, source: 'cts' });
-      } catch { /* best-effort */ }
-    }
-
-    if (wantsAudit) {
-      try {
-        await this.prisma.client.auditLog.create({
-          data: {
-            tenantId: gate.tenantId,
-            userId: auth.actorUserId || null,
-            action: 'CTS_SNAPSHOT_INGEST',
-            targetType: 'Game',
-            targetId: gameId,
-            details: JSON.stringify({
-              source: auth.source || 'cts',
-              reconnect,
-              scoreChanged,
-              segmentChanged,
-              clockRunChanged,
-              horn,
-              snapshot: cleaned,
-            }),
-          },
+      // Segment GameEvent — same paper trail as setSegment.
+      if (segmentChanged && cleaned.segment !== undefined) {
+        await scope.event('SEGMENT', { segment: cleaned.segment, source: 'cts' });
+      }
+      if (wantsAudit) {
+        scope.audit('CTS_SNAPSHOT_INGEST', {
+          source: auth.source || 'cts',
+          reconnect,
+          scoreChanged,
+          segmentChanged,
+          clockRunChanged,
+          horn,
+          snapshot: cleaned,
         });
-      } catch {
-        // Audit best-effort — never let a logging failure block the
-        // snapshot write. The next snapshot will retry if anything
-        // material happens.
       }
-    }
+    }, { gate });
 
     return { ok: true, accepted: true };
   }
@@ -6788,25 +6758,22 @@ export class SportsService {
     // timer. normalizeSwimSnapshot renders time-or-blank per lane.
     const fresh = normalizeSwimSnapshot(snapshot, rosterEntries);
 
-    // Sports-stats-race fix (2026-07-03): swim timing is the SAME
-    // ~5-10Hz whole-blob RMW pattern as ingestCtsSnapshot, racing against
-    // the operator's Meet-Results edits / `updateStats` PATCH on the same
-    // `Game.stats` blob. Re-read fresh inside a Serializable tx (via
-    // `withStatsTx`) so a concurrent writer can't be clobbered; a
-    // conflict aborts one side and `withDbRetry` re-runs the whole merge
-    // against the winner's committed state. Bonus fix while in here: the
-    // OLD code did the main stats write, then a SEPARATE unguarded
-    // `game.update` a few lines later to stamp the audit-cadence marker
-    // — a second, narrower RMW window on the SAME blob, racing against
-    // anything that landed between the two writes. Folded into ONE
-    // merged write below so there is only ever one write per ingest.
-    let wantsAudit = false;
-    let placesChanged = false;
-
+    // Swim timing is the same ~5-10 Hz whole-blob merge as ingestCtsSnapshot,
+    // racing the operator's Meet-Results edits on the same `Game.stats` blob:
+    // one command, merged on the fresh in-transaction read, ONE compare-and-
+    // swap write (the audit-cadence marker rides it — it used to be a second,
+    // unguarded write), and the sampled audit row in the same transaction.
+    //
     // SEC-009: bound to the tenant of the gate-resolved game — same reasoning
     // as ingestCtsSnapshot above (the feed token, not a caller tenant, is the
     // authorization on the public path).
-    await this.withStatsTx(gate.tenantId, gameId, 'sports.ingestSwimTimingSnapshot', (_tx, game) => {
+    const actor: CommandInput = auth.actorUserId
+      ? { actor: { kind: 'user', userId: auth.actorUserId } }
+      : feedActor('swim');
+    await this.runGameCommand(gate.tenantId, gameId, 'feed.swim', actor, async (scope) => {
+      const game = scope.before;
+      let wantsAudit = false;
+      let placesChanged = false;
       const prevStats: Record<string, unknown> =
         game.stats && typeof game.stats === 'object' ? { ...(game.stats as Record<string, unknown>) } : {};
       const prevResults = sanitizeResults(prevStats.results);
@@ -6843,38 +6810,21 @@ export class SportsService {
       const lastAuditAt = typeof prevStats[prevAuditKey] === 'number' ? (prevStats[prevAuditKey] as number) : 0;
       wantsAudit = placesChanged || Date.now() - lastAuditAt > 60_000;
       if (wantsAudit) {
-        // Stamp the audit-cadence marker into the SAME write (was a
-        // separate unguarded game.update before this fix).
+        // Stamp the audit-cadence marker into the SAME write.
         nextStats[prevAuditKey] = Date.now();
       }
 
-      return { stats: nextStats as any };
-    });
-    this.invalidateBoardCache(gameId);
-
-    if (wantsAudit) {
-      try {
-        await this.prisma.client.auditLog.create({
-          data: {
-            tenantId: gate.tenantId,
-            userId: auth.actorUserId || null,
-            action: 'SWIM_TIMING_SNAPSHOT_INGEST',
-            targetType: 'Game',
-            targetId: gameId,
-            details: JSON.stringify({
-              source: auth.source || 'swim-timing-feed',
-              event: fresh.event,
-              placesChanged,
-              laneCount,
-              rosterJoined: rosterEntries.length,
-            }),
-          },
+      await scope.write({ stats: nextStats });
+      if (wantsAudit) {
+        scope.audit('SWIM_TIMING_SNAPSHOT_INGEST', {
+          source: auth.source || 'swim-timing-feed',
+          event: fresh.event,
+          placesChanged,
+          laneCount,
+          rosterJoined: rosterEntries.length,
         });
-      } catch {
-        // Audit best-effort — never let a logging failure block the
-        // snapshot write.
       }
-    }
+    }, { gate });
 
     return { ok: true, accepted: true };
   }

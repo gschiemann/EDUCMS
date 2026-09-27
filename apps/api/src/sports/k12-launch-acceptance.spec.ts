@@ -96,7 +96,7 @@ describe('K12 launch acceptance — the 21 audit probes', () => {
   });
 
   // Owner: A1 (F09).
-  it.failing('K12-09 an absolute score correction has an undoable before snapshot', async () => {
+  it('K12-09 an absolute score correction has an undoable before snapshot', async () => {
     const { service, gameEvent } = setup(); const g: any = await newGame(service, 'basketball');
     await service.setScore(TENANT, g.id, { homeScore: 10 });
     await service.setScore(TENANT, g.id, { homeScore: 12 });
@@ -115,7 +115,7 @@ describe('K12 launch acceptance — the 21 audit probes', () => {
   });
 
   // Owner: A1 (F11).
-  it.failing('K12-11 score and its event commit atomically if event persistence fails', async () => {
+  it('K12-11 score and its event commit atomically if event persistence fails', async () => {
     const { service, gameEvent, game } = setup(); const g: any = await newGame(service, 'basketball');
     await service.setScore(TENANT, g.id, { homeScore: 10 });
     gameEvent.create = async () => { throw new Error('simulated event persistence failure'); };
@@ -174,7 +174,7 @@ describe('K12 launch acceptance — the 21 audit probes', () => {
   });
 
   // Owner: A1 (F12).
-  it.failing('K12-17 clock update cannot overwrite a concurrent team-foul update', async () => {
+  it('K12-17 clock update cannot overwrite a concurrent team-foul update', async () => {
     const { service, game } = setup(); const g: any = await newGame(service, 'basketball');
     await service.setShotClock(TENANT, g.id, { action: 'configure', value: 35 });
     const update = game.update; let reached!: () => void; let release!: () => void;
@@ -189,7 +189,7 @@ describe('K12 launch acceptance — the 21 audit probes', () => {
   });
 
   // Owner: A1 (F12).
-  it.failing('K12-18 setting one team score cannot overwrite the other teams concurrent point', async () => {
+  it('K12-18 setting one team score cannot overwrite the other teams concurrent point', async () => {
     const { service, game } = setup(); const g: any = await newGame(service, 'basketball');
     const update = game.update; let reached!: () => void; let release!: () => void;
     const blocked = new Promise<void>((r) => (reached = r)); const resume = new Promise<void>((r) => (release = r)); let captured = false;
@@ -207,8 +207,11 @@ describe('K12 launch acceptance — the 21 audit probes', () => {
     expect(g.stats.shotClock.len).toBe(0);
   });
 
-  // Owner: A2 (F07) — timeout stops every applicable clock.
-  it.failing('K12-20 calling timeout freezes the shot clock after the timeout stats write', async () => {
+  // Registered to A2 (F07). Passes since A1's F12 fix: callTimeout is now ONE
+  // command on ONE read, so the timeout debit can no longer write back a stats
+  // copy read before the pause (the stale read that restarted the shot clock).
+  // A2 still owns the rest of F07 (halftime, penalties, finalization).
+  it('K12-20 calling timeout freezes the shot clock after the timeout stats write', async () => {
     const { service } = setup(); const g: any = await newGame(service, 'basketball');
     await service.setShotClock(TENANT, g.id, { action: 'configure', value: 35 });
     await service.clockAction(TENANT, g.id, { action: 'start' });
