@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'async_hooks';
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { prisma } from '@cms/database';
 import {
@@ -25,6 +26,54 @@ import {
  * endpoint already reports degraded DB cleanly — that's the right place for
  * downstream-failure visibility, not a crashloop at boot.
  */
+/**
+ * Did this INTERACTIVE transaction write a model the player manifest reads?
+ * (2026-09-27.) The post-commit bump below used to fire after EVERY
+ * transaction — harmless while transactions were rare, but the sports engine
+ * runs every scorekeeper tap as one (compare-and-swap commands), and each tap
+ * then invalidated the fleet-wide manifest cache: the 2026-07-30 egress
+ * problem, on game nights. The middleware now records, inside the
+ * transaction's own async context, how many queries ran and whether any of
+ * them was a manifest-fed write; the wrapper bumps after COMMIT only when one
+ * was. FAIL-SAFE: a transaction whose scope saw no queries at all (an empty
+ * transaction, or an async context that did not propagate) still bumps, so
+ * correctness never rests on this bookkeeping. Batch `$transaction([...])`
+ * keeps the unconditional bump — its queries are built before the call, so
+ * the scope cannot see them.
+ */
+export interface TxManifestScope {
+  queries: number;
+  manifestWrite: boolean;
+}
+const txManifestScope = new AsyncLocalStorage<TxManifestScope>();
+
+/** Called by the middleware for every query; a no-op outside a transaction scope. */
+export function noteManifestQuery(affectsManifest: boolean): void {
+  const scope = txManifestScope.getStore();
+  if (!scope) return;
+  scope.queries += 1;
+  if (affectsManifest) scope.manifestWrite = true;
+}
+
+/**
+ * Replace `client.$transaction` with the scoped version. `bump` is
+ * bumpManifestContentRev in production (injected for the unit test).
+ */
+export function wrapTransactionForManifestRev(client: any, bump: () => void): void {
+  const transact = client.$transaction.bind(client);
+  client.$transaction = async (...args: any[]) => {
+    if (typeof args[0] !== 'function') {
+      const batchResult = await transact(...args);
+      bump();
+      return batchResult;
+    }
+    const scope: TxManifestScope = { queries: 0, manifestWrite: false };
+    const result = await txManifestScope.run(scope, () => transact(...args));
+    if (scope.manifestWrite || scope.queries === 0) bump();
+    return result;
+  };
+}
+
 @Injectable()
 export class PrismaService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PrismaService.name);
@@ -74,20 +123,16 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
           }
           const result = await next(params);
           if (affectsManifest) bumpManifestContentRev();
+          noteManifestQuery(affectsManifest);
           return result;
         });
         // Middleware next() can resolve for a write inside a transaction
         // before COMMIT. A player poll in that interval can still cache the
-        // old snapshot. Invalidate once more after the transaction resolves.
-        // This covers both batch and interactive Prisma transactions; the
-        // extra bump for a read-only transaction is harmless.
-        const client = this.client as any;
-        const transact = client.$transaction.bind(client);
-        client.$transaction = async (...args: any[]) => {
-          const result = await transact(...args);
-          bumpManifestContentRev();
-          return result;
-        };
+        // old snapshot. Invalidate once more after the transaction resolves —
+        // but only when it wrote a manifest-fed model (see
+        // wrapTransactionForManifestRev: a scorekeeper tap must not flush the
+        // fleet's manifest cache).
+        wrapTransactionForManifestRev(this.client as any, bumpManifestContentRev);
         markManifestRevHookArmed();
         this.logger.log('Manifest content-rev hook armed — mutation-busted manifest cache active');
       } else {
