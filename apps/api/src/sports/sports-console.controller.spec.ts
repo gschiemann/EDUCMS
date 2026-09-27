@@ -218,7 +218,8 @@ describe('SportsConsoleController — delegation with server-resolved tenant', (
       target: 'BOARD',
     } as any, reqFrom());
     expect(sports.fireCue).toHaveBeenCalledTimes(1);
-    expect(sports.fireCue).toHaveBeenCalledWith(TENANT, gameId, { key: 'touchdown', team: 'home' });
+    // K12-F34: the cue is attributed to the issued link (fingerprint only).
+    expect(sports.fireCue).toHaveBeenCalledWith(TENANT, gameId, { key: 'touchdown', team: 'home' }, CONSOLE_CTX);
     const dto = sports.fireCue.mock.calls[0][2];
     expect(Object.keys(dto).sort()).toEqual(['key', 'team']);
   });
@@ -392,11 +393,33 @@ describe('SportsService — mintConsoleShare / revokeConsoleShare', () => {
     const { service, auditLog } = makeService(row);
     const minted = await service.mintConsoleShare(TENANT, gameId);
     const out = await service.revokeConsoleShare(TENANT, gameId, 'user-9');
-    expect(out).toEqual({ success: true, consoleTokenVersion: 1 });
+    // K12-F34: `audited` says whether the revocation's audit row landed.
+    expect(out).toEqual({ success: true, consoleTokenVersion: 1, audited: true });
     // The pre-revocation token is now dead against the live version.
     expect(verifyConsoleToken(gameId, minted.token, row.consoleTokenVersion)).toBe(false);
     const actions = auditLog.create.mock.calls.map((c) => c[0].data.action);
     expect(actions).toContain('SPORTS_CONSOLE_SHARE_REVOKED');
+  });
+
+  it('K12-F34: no audit row, no link — a failed mint audit returns no token', async () => {
+    const gameId = newGameId();
+    const row = { id: gameId, tenantId: TENANT, consoleTokenVersion: 0 };
+    const { service, auditLog } = makeService(row);
+    auditLog.create.mockRejectedValueOnce(new Error('audit storage down'));
+    await expect(service.mintConsoleShare(TENANT, gameId, 'user-9')).rejects.toThrow('audit storage down');
+  });
+
+  it('K12-F34: a revoke still kills the links when its audit write fails, and says so', async () => {
+    const gameId = newGameId();
+    const row = { id: gameId, tenantId: TENANT, consoleTokenVersion: 0 };
+    const { service, auditLog } = makeService(row);
+    const minted = await service.mintConsoleShare(TENANT, gameId);
+    auditLog.create.mockRejectedValueOnce(new Error('audit storage down'));
+    const errors = jest.spyOn((service as any).logger, 'error').mockImplementation(() => undefined);
+    const out = await service.revokeConsoleShare(TENANT, gameId, 'user-9');
+    expect(out).toEqual({ success: true, consoleTokenVersion: 1, audited: false });
+    expect(verifyConsoleToken(gameId, minted.token, row.consoleTokenVersion)).toBe(false);
+    expect(errors).toHaveBeenCalledWith(expect.stringContaining('AUDIT WRITE FAILED for SPORTS_CONSOLE_SHARE_REVOKED'));
   });
 
   it('both are tenant-scoped — a foreign tenant 404s and nothing mutates', async () => {

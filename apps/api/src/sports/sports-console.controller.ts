@@ -242,6 +242,7 @@ export class SportsConsoleController {
     if (typeof raw.key === 'string') dto.key = raw.key;
     if (typeof raw.cueId === 'string') dto.cueId = raw.cueId;
     if (raw.team === 'home' || raw.team === 'away') dto.team = raw.team;
-    return this.sports.fireCue(tenantId, gameId, dto);
+    // K12-F34: attributed to this issued link, like every other console action.
+    return this.sports.fireCue(tenantId, gameId, dto, consoleCommand(token, {}).ctx);
   }
 }

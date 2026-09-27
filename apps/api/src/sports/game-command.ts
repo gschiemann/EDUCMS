@@ -152,6 +152,15 @@ export function userCommand<T extends Record<string, unknown>>(
 }
 
 /**
+ * K12-F34 — the actor of an authed operator action that is not a game-state
+ * command (a cue, a scene, ribbon settings, roster and cue-deck edits): the
+ * JWT user, plus the API key as `api-key:<id>` when a key made the call.
+ */
+export function userActor(req: unknown): GameCommandContext {
+  return { actor: userCommand(req, {}).ctx.actor };
+}
+
+/**
  * A scorekeeper share-link command: the actor is the issued LINK (identified
  * by a fingerprint, never the token), not a person.
  */

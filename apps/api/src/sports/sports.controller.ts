@@ -17,7 +17,7 @@ import { RequireRoles, NoViewerRead } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
 import { SportsService } from './sports.service';
 import { SponsorsService } from './sponsors.service';
-import { userCommand } from './game-command';
+import { userActor, userCommand } from './game-command';
 
 /** Editable fields for one roster player. The service sanitizes every
  *  value — the photo URL is produced by the existing /assets/upload. */
@@ -155,7 +155,7 @@ export class SportsController {
       clockSegmentMs?: number;
     },
   ) {
-    return this.sports.createGame(req.user.tenantId, body);
+    return this.sports.createGame(req.user.tenantId, body, userActor(req));
   }
 
   /** Edit a game's identity — team names, colors, brand logos. */
@@ -185,13 +185,13 @@ export class SportsController {
       scheduledAt?: string | null;
     },
   ) {
-    return this.sports.updateGameDetails(req.user.tenantId, id, body);
+    return this.sports.updateGameDetails(req.user.tenantId, id, body, userActor(req));
   }
 
   @Delete('games/:id')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   deleteGame(@Request() req: any, @Param('id') id: string) {
-    return this.sports.deleteGame(req.user.tenantId, id);
+    return this.sports.deleteGame(req.user.tenantId, id, userActor(req));
   }
 
   /**
@@ -207,7 +207,7 @@ export class SportsController {
     AppRole.CONTRIBUTOR,
   )
   duplicateGame(@Request() req: any, @Param('id') id: string) {
-    return this.sports.duplicateGame(req.user.tenantId, id);
+    return this.sports.duplicateGame(req.user.tenantId, id, userActor(req));
   }
 
   // ── live game control (operators + admins) ────────────────────
@@ -398,7 +398,7 @@ export class SportsController {
       lines?: Array<{ label?: string; value?: string }>;
     },
   ) {
-    return this.sports.setSpotlight(req.user.tenantId, id, body);
+    return this.sports.setSpotlight(req.user.tenantId, id, body, userActor(req));
   }
 
   @Patch('games/:id/status')
@@ -773,7 +773,7 @@ export class SportsController {
       scorerId?: string;
     },
   ) {
-    return this.sports.fireCue(req.user.tenantId, id, body, req?.user?.id);
+    return this.sports.fireCue(req.user.tenantId, id, body, userActor(req));
   }
 
   // ── T2-5: live-game text overlay ─────────────────────────────
@@ -803,7 +803,7 @@ export class SportsController {
       req.user.tenantId,
       id,
       { kind: body?.kind ?? '', payload: body?.payload },
-      req?.user?.id,
+      userActor(req),
     );
   }
 
@@ -820,7 +820,7 @@ export class SportsController {
     AppRole.CONTRIBUTOR,
   )
   clearLiveOverlay(@Request() req: any, @Param('id') id: string) {
-    return this.sports.clearLiveOverlay(req.user.tenantId, id, req?.user?.id);
+    return this.sports.clearLiveOverlay(req.user.tenantId, id, userActor(req));
   }
 
   // ── T3-3: Show Control — recall a full-screen GAMEDAY scene ──────────
@@ -844,7 +844,7 @@ export class SportsController {
       id,
       body?.templateId ?? '',
       body?.holdMs,
-      req?.user?.id,
+      userActor(req),
     );
   }
 
@@ -856,7 +856,7 @@ export class SportsController {
     AppRole.CONTRIBUTOR,
   )
   clearScene(@Request() req: any, @Param('id') id: string) {
-    return this.sports.clearScene(req.user.tenantId, id, req?.user?.id);
+    return this.sports.clearScene(req.user.tenantId, id, userActor(req));
   }
 
   @Post('games/:id/scene/extend')
@@ -871,7 +871,7 @@ export class SportsController {
     @Param('id') id: string,
     @Body() body: { holdMs?: number },
   ) {
-    return this.sports.extendScene(req.user.tenantId, id, body?.holdMs, req?.user?.id);
+    return this.sports.extendScene(req.user.tenantId, id, body?.holdMs, userActor(req));
   }
 
   /** Read the AUTO-celebrate toggle — whether a live score feed should
@@ -902,7 +902,7 @@ export class SportsController {
     @Param('id') id: string,
     @Body() body: { enabled?: boolean },
   ) {
-    return this.sports.setAutoCelebrate(req.user.tenantId, id, body?.enabled);
+    return this.sports.setAutoCelebrate(req.user.tenantId, id, body?.enabled, userActor(req));
   }
 
   /** Set the stadium ribbon's custom message reel — operator-typed
@@ -919,7 +919,7 @@ export class SportsController {
     @Param('id') id: string,
     @Body() body: { messages?: string[] },
   ) {
-    return this.sports.setRibbon(req.user.tenantId, id, body);
+    return this.sports.setRibbon(req.user.tenantId, id, body, userActor(req));
   }
 
   /** Set which content presets ride the stadium ribbon reel — score,
@@ -936,7 +936,7 @@ export class SportsController {
     @Param('id') id: string,
     @Body() body: { presets?: string[] },
   ) {
-    return this.sports.setRibbonPresets(req.user.tenantId, id, body);
+    return this.sports.setRibbonPresets(req.user.tenantId, id, body, userActor(req));
   }
 
   /** Set how fast the stadium ribbon reel scrolls. */
@@ -952,7 +952,7 @@ export class SportsController {
     @Param('id') id: string,
     @Body() body: { speed?: string },
   ) {
-    return this.sports.setRibbonSpeed(req.user.tenantId, id, body);
+    return this.sports.setRibbonSpeed(req.user.tenantId, id, body, userActor(req));
   }
 
   /** Set the ribbon's full-bleed image slides — operator-uploaded
@@ -969,7 +969,7 @@ export class SportsController {
     @Param('id') id: string,
     @Body() body: { slides?: string[] },
   ) {
-    return this.sports.setRibbonSlides(req.user.tenantId, id, body);
+    return this.sports.setRibbonSlides(req.user.tenantId, id, body, userActor(req));
   }
 
   /** Set how many times the score repeats around the stadium ribbon —
@@ -987,7 +987,7 @@ export class SportsController {
     @Param('id') id: string,
     @Body() body: { repeat?: string },
   ) {
-    return this.sports.setRibbonScoreRepeat(req.user.tenantId, id, body);
+    return this.sports.setRibbonScoreRepeat(req.user.tenantId, id, body, userActor(req));
   }
 
   // ── cue deck (custom triggers) ───────────────────────────────
@@ -1012,7 +1012,7 @@ export class SportsController {
     @Request() req: any,
     @Body() body: { name?: string; mediaUrl?: string; color?: string; durationMs?: number ; displayMode?: string },
   ) {
-    return this.sports.createCue(req.user.tenantId, body || {});
+    return this.sports.createCue(req.user.tenantId, body || {}, userActor(req));
   }
 
   /** Edit a custom cue. */
@@ -1023,14 +1023,14 @@ export class SportsController {
     @Param('cueId') cueId: string,
     @Body() body: { name?: string; mediaUrl?: string; color?: string; durationMs?: number ; displayMode?: string },
   ) {
-    return this.sports.updateCue(req.user.tenantId, cueId, body || {});
+    return this.sports.updateCue(req.user.tenantId, cueId, body || {}, userActor(req));
   }
 
   /** Remove a custom cue from the deck. */
   @Delete('cues/:cueId')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   deleteCue(@Request() req: any, @Param('cueId') cueId: string) {
-    return this.sports.deleteCue(req.user.tenantId, cueId);
+    return this.sports.deleteCue(req.user.tenantId, cueId, userActor(req));
   }
 
   // ── scoreboard-to-screen push ────────────────────────────────
@@ -1119,7 +1119,7 @@ export class SportsController {
     @Param('id') id: string,
     @Body() body: { armed?: boolean; screenIds?: string[]; surface?: string },
   ) {
-    return this.sports.setAutoPush(req.user.tenantId, id, body ?? {}, req?.user?.id);
+    return this.sports.setAutoPush(req.user.tenantId, id, body ?? {}, userActor(req));
   }
 
   // ── roster ───────────────────────────────────────────────────
@@ -1150,7 +1150,7 @@ export class SportsController {
     @Param('id') id: string,
     @Body() body: RosterPlayerBody,
   ) {
-    return this.sports.addPlayer(req.user.tenantId, id, body || {});
+    return this.sports.addPlayer(req.user.tenantId, id, body || {}, userActor(req));
   }
 
   /** Bulk-import a roster from CSV text (a header row + player rows). */
@@ -1166,7 +1166,7 @@ export class SportsController {
     @Param('id') id: string,
     @Body() body: { csv?: string },
   ) {
-    return this.sports.importRosterCsv(req.user.tenantId, id, body?.csv || '');
+    return this.sports.importRosterCsv(req.user.tenantId, id, body?.csv || '', userActor(req));
   }
 
   /** Edit one roster player. */
@@ -1183,7 +1183,7 @@ export class SportsController {
     @Param('playerId') playerId: string,
     @Body() body: RosterPlayerBody,
   ) {
-    return this.sports.updatePlayer(req.user.tenantId, id, playerId, body || {});
+    return this.sports.updatePlayer(req.user.tenantId, id, playerId, body || {}, userActor(req));
   }
 
   /** Remove a player from the roster. */
@@ -1199,7 +1199,7 @@ export class SportsController {
     @Param('id') id: string,
     @Param('playerId') playerId: string,
   ) {
-    return this.sports.deletePlayer(req.user.tenantId, id, playerId);
+    return this.sports.deletePlayer(req.user.tenantId, id, playerId, userActor(req));
   }
 
   /**
@@ -1227,7 +1227,7 @@ export class SportsController {
       personId: body?.personId,
       fullName: body?.fullName,
       teamId: body?.teamId,
-    });
+    }, userActor(req));
   }
 
   // ── PHASE 2 — cross-game leaderboards + athlete career ─────────
@@ -1301,7 +1301,7 @@ export class SportsController {
     AppRole.CONTRIBUTOR,
   )
   shareAthlete(@Request() req: any, @Param('id') id: string) {
-    return this.sports.setAthleteShare(req.user.tenantId, id, req?.user?.id);
+    return this.sports.setAthleteShare(req.user.tenantId, id, userActor(req));
   }
 
   /** Turn an athlete's public stats page OFF — the link 404s immediately. */
@@ -1313,7 +1313,7 @@ export class SportsController {
     AppRole.CONTRIBUTOR,
   )
   unshareAthlete(@Request() req: any, @Param('id') id: string) {
-    return this.sports.unsetAthleteShare(req.user.tenantId, id, req?.user?.id);
+    return this.sports.unsetAthleteShare(req.user.tenantId, id, userActor(req));
   }
 
   // ── Undo rail ─────────────────────────────────────────────────
@@ -1375,7 +1375,7 @@ export class SportsController {
       req.user.tenantId,
       id,
       body || {},
-      req?.user?.id,
+      userActor(req),
     );
   }
 

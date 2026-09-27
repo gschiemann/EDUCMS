@@ -71,6 +71,7 @@ import {
   type StateChange,
   SYSTEM_CLOCK_ACTOR,
   boundedForAudit,
+  consoleTokenFingerprint,
   diffState,
   feedActor,
   planUndo,
@@ -195,8 +196,13 @@ interface GameCommandScope {
   ): Promise<{ id: string; createdAt: Date }>;
   /** Every tracked field this command has changed so far (the undo record). */
   change(): StateChange;
-  /** Write an AuditLog row inside the transaction (after the body). */
-  audit(action: string, details?: Record<string, unknown>): void;
+  /**
+   * Write an AuditLog row inside the transaction (after the body). A row
+   * marked `sideEffect` (the auto-celebration a score triggered) records
+   * something the command caused, not the command itself: the command still
+   * gets its own attributed row carrying the state change.
+   */
+  audit(action: string, details?: Record<string, unknown>, opts?: { sideEffect?: boolean }): void;
   /** Run after COMMIT (fail-open). Not run for a rolled-back attempt. */
   after(fn: () => unknown): void;
 }
@@ -659,7 +665,7 @@ export class SportsService {
     afterHooks: Array<() => unknown>,
   ): GameCommandScope & { flush(): Promise<void> } {
     let current: GameRow = before;
-    const audits: Array<{ action: string; details: Record<string, unknown> }> = [];
+    const audits: Array<{ action: string; details: Record<string, unknown>; sideEffect: boolean }> = [];
     const tenantId: string = before.tenantId;
     const gameId: string = before.id;
     const service = this;
@@ -699,17 +705,38 @@ export class SportsService {
       async event(type, payload, eventOpts) {
         const body = eventOpts?.derived ? { ...payload, derived: true } : payload;
         return tx.gameEvent.create({
-          data: { gameId, type, payload: body as any, createdAt: nextEventAt() },
+          data: {
+            gameId,
+            type,
+            payload: body as any,
+            createdAt: nextEventAt(),
+            // K12-F34 — who produced this event, in the same transaction.
+            commandId: ctx.commandId,
+            actorType: ctx.actor.kind,
+            actorUserId: ctx.actor.kind === 'user' ? ctx.actor.userId ?? null : null,
+            revision: typeof current.version === 'number' ? current.version : null,
+          },
         });
       },
       change: () => diffState(before, current),
-      audit(action, details = {}) {
-        audits.push({ action, details });
+      audit(action, details = {}, auditOpts) {
+        audits.push({ action, details, sideEffect: auditOpts?.sideEffect === true });
       },
       after(fn) {
         afterHooks.push(fn);
       },
       async flush() {
+        // K12-F34 — every command a person drives (operator, scorekeeper
+        // link — including an operator pushing a feed payload by hand) or
+        // the server itself drives (clock expiry) leaves an immutable
+        // AuditLog row in its own transaction, even when it wrote no
+        // action-specific row. Machine feeds are attributed on their events
+        // instead (actorType 'feed'): a 5 Hz console must not write five
+        // audit rows a second.
+        const changed = current !== before;
+        if (!audits.some((a) => !a.sideEffect) && changed && ctx.actor.kind !== 'feed') {
+          audits.unshift({ action: 'SPORTS_GAME_COMMAND', details: {}, sideEffect: false });
+        }
         for (const a of audits) {
           await tx.auditLog.create({
             data: {
@@ -718,7 +745,26 @@ export class SportsService {
               action: a.action,
               targetType: 'Game',
               targetId: gameId,
-              details: JSON.stringify(boundedForAudit(a.details)),
+              details: JSON.stringify(
+                boundedForAudit({
+                  ...a.details,
+                  // The attribution every row carries: which command, from
+                  // whom (actor kind + credential reference — a console link
+                  // fingerprint, an API key, a feed, a worker), and the game
+                  // revision it moved from/to.
+                  command: {
+                    kind,
+                    commandId: ctx.commandId,
+                    actorType: ctx.actor.kind,
+                    actorRef: ctx.actor.ref ?? null,
+                    revisionBefore: typeof before.version === 'number' ? before.version : null,
+                    revisionAfter: typeof current.version === 'number' ? current.version : null,
+                  },
+                  change:
+                    a.details.change ??
+                    (changed && !a.sideEffect ? diffState(before, current) : undefined),
+                }),
+              ),
             },
           });
         }
@@ -726,6 +772,106 @@ export class SportsService {
         afterHooks.unshift(() => service.invalidateBoardCache(gameId));
       },
     };
+  }
+
+  /**
+   * K12-F34 — an immutable AuditLog row inside the CALLER's transaction,
+   * attributed to the actor (the user id when a person acted; the actor kind
+   * and credential reference — console-link fingerprint, API key, feed,
+   * worker — ride in `details.actor`).
+   */
+  private auditRow(
+    tx: any,
+    tenantId: string,
+    actor: CommandInput,
+    action: string,
+    targetId: string,
+    details: Record<string, unknown>,
+    targetType = 'Game',
+  ) {
+    const ctx = resolveCommandContext(actor);
+    return tx.auditLog.create({
+      data: {
+        tenantId,
+        userId: ctx.actor.kind === 'user' ? ctx.actor.userId ?? null : null,
+        action,
+        targetType,
+        targetId,
+        details: JSON.stringify(
+          boundedForAudit({ ...details, actor: { type: ctx.actor.kind, ref: ctx.actor.ref ?? null } }),
+        ),
+      },
+    });
+  }
+
+  /**
+   * K12-F34 — a non-command game action (a cue, an overlay, a scene, ribbon
+   * configuration): its GameEvent and its AuditLog row commit TOGETHER, or
+   * neither does. These used to write the event and then a best-effort audit
+   * row that swallowed failures — a record of who did it could silently not
+   * exist.
+   */
+  private async recordAudited(
+    tenantId: string,
+    gameId: string,
+    type: string,
+    payload: Record<string, unknown>,
+    actor: CommandInput,
+    action: string,
+    details: (eventId: string) => Record<string, unknown>,
+  ): Promise<{ id: string; createdAt: Date }> {
+    const ctx = resolveCommandContext(actor);
+    const event = await this.prisma.client.$transaction(async (tx: any) => {
+      const ev = await tx.gameEvent.create({
+        data: {
+          gameId,
+          type,
+          payload: payload as any,
+          actorType: ctx.actor.kind,
+          actorUserId: ctx.actor.kind === 'user' ? ctx.actor.userId ?? null : null,
+        },
+      });
+      await this.auditRow(tx, tenantId, actor, action, gameId, details(ev.id));
+      return ev;
+    });
+    this.invalidateBoardCache(gameId);
+    return event;
+  }
+
+  /**
+   * K12-F34 — the audit row of a credential REVOCATION. The revocation has
+   * already committed (killing a leaked credential must never wait on audit
+   * storage), so a failure here cannot undo it — but it is never swallowed:
+   * it is logged as an error naming the action and returned as `false` so the
+   * caller can tell the operator the record is missing.
+   */
+  private async writeCredentialAudit(row: {
+    tenantId: string;
+    userId: string | null;
+    action: string;
+    gameId: string;
+    details: Record<string, unknown>;
+  }): Promise<boolean> {
+    try {
+      await this.prisma.client.auditLog.create({
+        data: {
+          tenantId: row.tenantId,
+          userId: row.userId,
+          action: row.action,
+          targetType: 'Game',
+          targetId: row.gameId,
+          details: JSON.stringify(row.details),
+        },
+      });
+      return true;
+    } catch (err) {
+      this.logger.error(
+        `AUDIT WRITE FAILED for ${row.action} game=${row.gameId} tenant=${row.tenantId}: ${
+          err instanceof Error ? err.message : String(err)
+        } — the action itself completed`,
+      );
+      return false;
+    }
   }
 
   // ── feed-token revocation (Sprint 13) ─────────────────────────
@@ -774,6 +920,7 @@ export class SportsService {
     feedTokenVersion: number;
     token: string;
     tokenExpiresAt: string;
+    audited: boolean;
   }> {
     // Ownership gate (throws NotFound if the game isn't this tenant's).
     await this.owned(tenantId, gameId);
@@ -786,19 +933,17 @@ export class SportsService {
     const version = updated.feedTokenVersion;
 
     // Immutable AuditLog row — who revoked the feed credential, and the new
-    // version. Best-effort to match the rest of this service's audit writes.
-    try {
-      await this.prisma.client.auditLog.create({
-        data: {
-          tenantId,
-          userId: actorUserId || null,
-          action: 'SPORTS_FEED_TOKEN_REVOKED',
-          targetType: 'Game',
-          targetId: gameId,
-          details: JSON.stringify({ feedTokenVersion: version }),
-        },
-      });
-    } catch { /* best-effort */ }
+    // version. K12-F34: a revocation must never be BLOCKED by audit storage
+    // (killing a leaked credential comes first), so the row is written after
+    // the bump — but a failure is never swallowed silently: it is logged as
+    // an error and reported back (`audited: false`).
+    const audited = await this.writeCredentialAudit({
+      tenantId,
+      userId: actorUserId || null,
+      action: 'SPORTS_FEED_TOKEN_REVOKED',
+      gameId,
+      details: { feedTokenVersion: version },
+    });
 
     // 2026-07-13 (audit W0-01.5): the replacement credential carries a TTL —
     // we no longer issue immortal bearer material anywhere. The operator can
@@ -808,6 +953,7 @@ export class SportsService {
       feedTokenVersion: version,
       token: makeFeedToken(gameId, { version, ttlSeconds: DEFAULT_FEED_TOKEN_TTL_SEC }),
       tokenExpiresAt: new Date(Date.now() + DEFAULT_FEED_TOKEN_TTL_SEC * 1000).toISOString(),
+      audited,
     };
   }
 
@@ -849,20 +995,19 @@ export class SportsService {
     const expiresAt = new Date(Date.now() + tokenTtlSeconds * 1000).toISOString();
 
     // Immutable AuditLog row — who was handed a live feed credential, at
-    // which version, expiring when. Best-effort like every other audit write
-    // in this service. The token itself must NEVER appear here.
-    try {
-      await this.prisma.client.auditLog.create({
-        data: {
-          tenantId,
-          userId: actorUserId || null,
-          action: 'SPORTS_FEED_TOKEN_MINTED',
-          targetType: 'Game',
-          targetId: gameId,
-          details: JSON.stringify({ feedTokenVersion, tokenTtlSeconds, expiresAt }),
-        },
-      });
-    } catch { /* best-effort */ }
+    // which version, expiring when. The token itself must NEVER appear here.
+    // K12-F34: written BEFORE the credential is returned and NOT best-effort
+    // — if the row cannot be written, no credential leaves the server.
+    await this.prisma.client.auditLog.create({
+      data: {
+        tenantId,
+        userId: actorUserId || null,
+        action: 'SPORTS_FEED_TOKEN_MINTED',
+        targetType: 'Game',
+        targetId: gameId,
+        details: JSON.stringify({ feedTokenVersion, tokenTtlSeconds, expiresAt }),
+      },
+    });
 
     return { token, tokenTtlSeconds, expiresAt, feedTokenVersion };
   }
@@ -991,22 +1136,25 @@ export class SportsService {
     const ttlSec = Number(token.split('.')[3]) || DEFAULT_CONSOLE_TOKEN_TTL_SEC;
     const iatSec = Number(token.split('.')[2]) || Math.floor(Date.now() / 1000);
     const expiresAt = new Date((iatSec + ttlSec) * 1000).toISOString();
-    try {
-      await this.prisma.client.auditLog.create({
-        data: {
-          tenantId,
-          userId: actorUserId || null,
-          action: 'SPORTS_CONSOLE_SHARE_MINTED',
-          targetType: 'Game',
-          targetId: gameId,
-          details: JSON.stringify({
-            consoleTokenVersion: version,
-            tokenTtlSeconds: ttlSec,
-            expiresAt,
-          }),
-        },
-      });
-    } catch { /* best-effort */ }
+    // K12-F34: written before the link is returned and NOT best-effort — no
+    // audit row, no link. `linkFingerprint` is how every command this link
+    // later drives (attributed `console-link:<fingerprint>`) is traced back to
+    // who issued it; it is a one-way hash, never the token.
+    await this.prisma.client.auditLog.create({
+      data: {
+        tenantId,
+        userId: actorUserId || null,
+        action: 'SPORTS_CONSOLE_SHARE_MINTED',
+        targetType: 'Game',
+        targetId: gameId,
+        details: JSON.stringify({
+          consoleTokenVersion: version,
+          tokenTtlSeconds: ttlSec,
+          expiresAt,
+          linkFingerprint: consoleTokenFingerprint(token),
+        }),
+      },
+    });
     return {
       success: true,
       token,
@@ -1027,7 +1175,7 @@ export class SportsService {
     tenantId: string,
     gameId: string,
     actorUserId?: string,
-  ): Promise<{ success: true; consoleTokenVersion: number }> {
+  ): Promise<{ success: true; consoleTokenVersion: number; audited: boolean }> {
     await this.owned(tenantId, gameId);
     const updated = await this.prisma.client.game.update({
       where: { id: gameId, tenantId },
@@ -1035,19 +1183,15 @@ export class SportsService {
       select: { consoleTokenVersion: true },
     });
     const version = updated.consoleTokenVersion;
-    try {
-      await this.prisma.client.auditLog.create({
-        data: {
-          tenantId,
-          userId: actorUserId || null,
-          action: 'SPORTS_CONSOLE_SHARE_REVOKED',
-          targetType: 'Game',
-          targetId: gameId,
-          details: JSON.stringify({ consoleTokenVersion: version }),
-        },
-      });
-    } catch { /* best-effort */ }
-    return { success: true, consoleTokenVersion: version };
+    // Revoke first (security); audit strictly after, never silently lost.
+    const audited = await this.writeCredentialAudit({
+      tenantId,
+      userId: actorUserId || null,
+      action: 'SPORTS_CONSOLE_SHARE_REVOKED',
+      gameId,
+      details: { consoleTokenVersion: version },
+    });
+    return { success: true, consoleTokenVersion: version, audited };
   }
 
   // ── reads ────────────────────────────────────────────────────
@@ -1609,6 +1753,7 @@ export class SportsService {
       // silently falls back to the sport default.
       clockSegmentMs?: number;
     },
+    actor?: CommandInput,
   ) {
     const def = this.sportOf(String(dto.sport || ''));
     const homeTeam = String(dto.homeTeam || '').trim();
@@ -1641,28 +1786,37 @@ export class SportsService {
       initialStats.clockSegmentMs = dto.clockSegmentMs;
     }
 
-    return this.prisma.client.game.create({
-      data: {
-        tenantId,
-        sport: def.key,
-        homeTeam: homeTeam.slice(0, 80),
-        awayTeam: awayTeam.slice(0, 80),
-        homeColor: dto.homeColor?.slice(0, 32) || null,
-        awayColor: dto.awayColor?.slice(0, 32) || null,
-        homeLogoUrl: this.cleanLogo(dto.homeLogoUrl),
-        awayLogoUrl: this.cleanLogo(dto.awayLogoUrl),
-        screenGroupId: dto.screenGroupId || null,
-        status,
-        segment: 1,
-        clockMs: this.segmentStartMs(def, initialStats),
-        clockRunning: false,
-        clockUpdatedAt: new Date(),
-        stats: initialStats,
-        scoreboardTemplateId: dto.scoreboardTemplateId || null,
-        ribbonTemplateId: dto.ribbonTemplateId || null,
-        scorebugTemplateId: dto.scorebugTemplateId || null,
-        scheduledAt,
-      },
+    return this.prisma.client.$transaction(async (tx: any) => {
+      const created = await tx.game.create({
+        data: {
+          tenantId,
+          sport: def.key,
+          homeTeam: homeTeam.slice(0, 80),
+          awayTeam: awayTeam.slice(0, 80),
+          homeColor: dto.homeColor?.slice(0, 32) || null,
+          awayColor: dto.awayColor?.slice(0, 32) || null,
+          homeLogoUrl: this.cleanLogo(dto.homeLogoUrl),
+          awayLogoUrl: this.cleanLogo(dto.awayLogoUrl),
+          screenGroupId: dto.screenGroupId || null,
+          status,
+          segment: 1,
+          clockMs: this.segmentStartMs(def, initialStats),
+          clockRunning: false,
+          clockUpdatedAt: new Date(),
+          stats: initialStats,
+          scoreboardTemplateId: dto.scoreboardTemplateId || null,
+          ribbonTemplateId: dto.ribbonTemplateId || null,
+          scorebugTemplateId: dto.scorebugTemplateId || null,
+          scheduledAt,
+        },
+      });
+      await this.auditRow(tx, tenantId, actor, 'SPORTS_GAME_CREATED', created.id, {
+        sport: created.sport,
+        homeTeam: created.homeTeam,
+        awayTeam: created.awayTeam,
+        status: created.status,
+      });
+      return created;
     });
   }
 
@@ -1692,7 +1846,7 @@ export class SportsService {
    * they carry over for free with no copy. Tenant-scoped; additive — no
    * schema change.
    */
-  async duplicateGame(tenantId: string, id: string) {
+  async duplicateGame(tenantId: string, id: string, actor?: CommandInput) {
     const src = await this.owned(tenantId, id);
     const def = this.sportOf(src.sport);
 
@@ -1734,59 +1888,65 @@ export class SportsService {
       initialStats.clockSegmentMs = srcSegmentMs;
     }
 
-    const copy = await this.prisma.client.game.create({
-      data: {
-        tenantId,
-        sport: src.sport,
-        homeTeam: src.homeTeam,
-        awayTeam: src.awayTeam,
-        homeColor: src.homeColor,
-        awayColor: src.awayColor,
-        homeLogoUrl: src.homeLogoUrl,
-        awayLogoUrl: src.awayLogoUrl,
-        screenGroupId: null, // never inherit the source's live screen binding
-        status: 'SCHEDULED',
-        segment: 1,
-        clockMs: this.segmentStartMs(def, initialStats),
-        clockRunning: false,
-        clockUpdatedAt: new Date(),
-        stats: initialStats,
-        scoreboardTemplateId: src.scoreboardTemplateId,
-        ribbonTemplateId: src.ribbonTemplateId,
-        scorebugTemplateId: src.scorebugTemplateId,
-      },
-    });
-
-    // Replay the ribbon config onto the copy (only events that exist).
-    for (const ev of ribbonEvents) {
-      if (ev) {
-        await this.record(copy.id, ev.type, ev.payload as Record<string, unknown>);
-      }
-    }
-
-    // Clone the roster (home + away). Players are per-game; copying
-    // gives the operator the lineup to tweak rather than re-enter it.
-    const roster = await this.prisma.client.rosterPlayer.findMany({
-      where: { gameId: id },
-      orderBy: { sortOrder: 'asc' },
-    });
-    if (roster.length > 0) {
-      await this.prisma.client.rosterPlayer.createMany({
-        data: roster.map((p) => ({
+    return this.prisma.client.$transaction(async (tx: any) => {
+      const copy = await tx.game.create({
+        data: {
           tenantId,
-          gameId: copy.id,
-          team: p.team,
-          name: p.name,
-          number: p.number,
-          position: p.position,
-          photoUrl: p.photoUrl,
-          stats: p.stats as any,
-          sortOrder: p.sortOrder,
-        })),
+          sport: src.sport,
+          homeTeam: src.homeTeam,
+          awayTeam: src.awayTeam,
+          homeColor: src.homeColor,
+          awayColor: src.awayColor,
+          homeLogoUrl: src.homeLogoUrl,
+          awayLogoUrl: src.awayLogoUrl,
+          screenGroupId: null, // never inherit the source's live screen binding
+          status: 'SCHEDULED',
+          segment: 1,
+          clockMs: this.segmentStartMs(def, initialStats),
+          clockRunning: false,
+          clockUpdatedAt: new Date(),
+          stats: initialStats,
+          scoreboardTemplateId: src.scoreboardTemplateId,
+          ribbonTemplateId: src.ribbonTemplateId,
+          scorebugTemplateId: src.scorebugTemplateId,
+        },
       });
-    }
 
-    return copy;
+      // Replay the ribbon config onto the copy (only events that exist).
+      for (const ev of ribbonEvents) {
+        if (ev) {
+          await tx.gameEvent.create({ data: { gameId: copy.id, type: ev.type, payload: ev.payload as any } });
+        }
+      }
+
+      // Clone the roster (home + away). Players are per-game; copying
+      // gives the operator the lineup to tweak rather than re-enter it.
+      const roster = await tx.rosterPlayer.findMany({
+        where: { gameId: id },
+        orderBy: { sortOrder: 'asc' },
+      });
+      if (roster.length > 0) {
+        await tx.rosterPlayer.createMany({
+          data: roster.map((p) => ({
+            tenantId,
+            gameId: copy.id,
+            team: p.team,
+            name: p.name,
+            number: p.number,
+            position: p.position,
+            photoUrl: p.photoUrl,
+            stats: p.stats as any,
+            sortOrder: p.sortOrder,
+          })),
+        });
+      }
+
+      await this.auditRow(tx, tenantId, actor, 'SPORTS_GAME_DUPLICATED', copy.id, {
+        sourceGameId: id,
+        rosterCopied: roster.length,
+      });
+      return copy;
+    });
   }
 
   /**
@@ -1812,6 +1972,7 @@ export class SportsService {
       // clears it back to "no time set."
       scheduledAt?: string | null;
     },
+    actor?: CommandInput,
   ) {
     await this.owned(tenantId, id);
     // Lane-2 P0 ownership check — see assertOwnedGameRefs for rationale.
@@ -1856,7 +2017,14 @@ export class SportsService {
         /* keep autoPushAt untouched */
       }
     }
-    const updated = await this.prisma.client.game.update({ where: { id, tenantId }, data });
+    const updated = await this.prisma.client.$transaction(async (tx: any) => {
+      const row = await tx.game.update({ where: { id, tenantId }, data });
+      await this.auditRow(tx, tenantId, actor, 'SPORTS_GAME_DETAILS_UPDATED', id, {
+        fields: Object.keys(data),
+        values: data,
+      });
+      return row;
+    });
     // Restore the sweep cadence when the fire time moved — an edit to
     // "starts in 8 minutes" must fire within one tick, not one idle window.
     if (data.autoPushAt instanceof Date) wakeScheduleSweep();
@@ -1885,12 +2053,14 @@ export class SportsService {
       subtitle?: string;
       lines?: Array<{ label?: string; value?: string }>;
     },
+    actor?: CommandInput,
   ) {
     await this.owned(tenantId, id);
     if (dto.clear) {
-      const cleared = await this.prisma.client.game.update({
-        where: { id, tenantId },
-        data: { spotlight: {} },
+      const cleared = await this.prisma.client.$transaction(async (tx: any) => {
+        const row = await tx.game.update({ where: { id, tenantId }, data: { spotlight: {} } });
+        await this.auditRow(tx, tenantId, actor, 'SPORTS_SPOTLIGHT_CLEARED', id, {});
+        return row;
       });
       this.invalidateBoardCache(id); // Lane-8 P1: bypasses record()
       return cleared;
@@ -1913,23 +2083,35 @@ export class SportsService {
       subtitle: String(dto.subtitle ?? '').trim().slice(0, 80),
       lines,
     };
-    const updated = await this.prisma.client.game.update({
-      where: { id, tenantId },
-      data: { spotlight: spotlight as any },
+    const updated = await this.prisma.client.$transaction(async (tx: any) => {
+      const row = await tx.game.update({ where: { id, tenantId }, data: { spotlight: spotlight as any } });
+      await this.auditRow(tx, tenantId, actor, 'SPORTS_SPOTLIGHT_SET', id, { spotlight });
+      return row;
     });
     this.invalidateBoardCache(id); // Lane-8 P1: bypasses record()
     return updated;
   }
 
-  async deleteGame(tenantId: string, id: string) {
-    await this.owned(tenantId, id);
-    // Release any screens pushing this game's scoreboard so they fall
-    // back to their scheduled content (the pointer has no FK).
-    await this.prisma.client.screen.updateMany({
-      where: { tenantId, activeBoardGameId: id },
-      data: { activeBoardGameId: null, activeBoardSurface: null },
+  async deleteGame(tenantId: string, id: string, actor?: CommandInput) {
+    const game = await this.owned(tenantId, id);
+    await this.prisma.client.$transaction(async (tx: any) => {
+      // Release any screens pushing this game's scoreboard so they fall
+      // back to their scheduled content (the pointer has no FK).
+      await tx.screen.updateMany({
+        where: { tenantId, activeBoardGameId: id },
+        data: { activeBoardGameId: null, activeBoardSurface: null },
+      });
+      await tx.game.delete({ where: { id, tenantId } }); // cascades events
+      // K12-F34: the game's own event trail goes with it, so the audit row
+      // keeps the result that was deleted.
+      await this.auditRow(tx, tenantId, actor, 'SPORTS_GAME_DELETED', id, {
+        sport: game.sport,
+        homeTeam: game.homeTeam,
+        awayTeam: game.awayTeam,
+        status: game.status,
+        finalScore: { home: game.homeScore, away: game.awayScore },
+      });
     });
-    await this.prisma.client.game.delete({ where: { id, tenantId } }); // cascades events
     return { deleted: true };
   }
 
@@ -2170,28 +2352,41 @@ export class SportsService {
     tenantId: string,
     id: string,
     dto: { armed?: unknown; screenIds?: unknown; surface?: unknown },
-    actorUserId?: string,
+    actor?: CommandInput,
   ) {
     const game = await this.owned(tenantId, id);
-
-    if (dto.armed !== true) {
-      const event = await this.record(id, 'AUTO_PUSH', { armed: false });
-      await this.prisma.client.game.update({ where: { id, tenantId }, data: { autoPushAt: null } });
-      this.autoPushCache.set(id, this.parseAutoPushPayload({ armed: false }));
-      try {
-        await this.prisma.client.auditLog.create({
+    const actorCtx = resolveCommandContext(actor);
+    const previousAutoPushAt = (game as { autoPushAt?: Date | null }).autoPushAt ?? null;
+    // K12-F34: the AUTO_PUSH event, the autoPushAt column and the audit row
+    // commit together (the audit write used to be best-effort, after both).
+    const persist = async (
+      payload: Record<string, unknown>,
+      autoPushAt: Date | null,
+      action: string,
+      details: (eventId: string) => Record<string, unknown>,
+    ) => {
+      await this.prisma.client.$transaction(async (tx: any) => {
+        const ev = await tx.gameEvent.create({
           data: {
-            tenantId,
-            userId: actorUserId || null,
-            action: 'SPORTS_AUTO_PUSH_DISARMED',
-            targetType: 'Game',
-            targetId: id,
-            details: JSON.stringify({ eventId: event.id }),
+            gameId: id,
+            type: 'AUTO_PUSH',
+            payload: payload as any,
+            actorType: actorCtx.actor.kind,
+            actorUserId: actorCtx.actor.kind === 'user' ? actorCtx.actor.userId ?? null : null,
           },
         });
-      } catch {
-        /* best-effort */
-      }
+        await tx.game.update({ where: { id, tenantId }, data: { autoPushAt } });
+        await this.auditRow(tx, tenantId, actor, action, id, details(ev.id));
+      });
+      this.invalidateBoardCache(id);
+    };
+
+    if (dto.armed !== true) {
+      await persist({ armed: false }, null, 'SPORTS_AUTO_PUSH_DISARMED', (eventId) => ({
+        eventId,
+        previousAutoPushAt: previousAutoPushAt ? new Date(previousAutoPushAt).toISOString() : null,
+      }));
+      this.autoPushCache.set(id, this.parseAutoPushPayload({ armed: false }));
       return this.getAutoPush(tenantId, id);
     }
 
@@ -2221,31 +2416,17 @@ export class SportsService {
     const surface = this.cleanSurface(dto.surface);
     const autoPushAt = new Date(scheduledAt.getTime() - AUTO_PUSH_LEAD_MS);
 
-    const event = await this.record(id, 'AUTO_PUSH', { armed: true, screenIds, surface });
-    await this.prisma.client.game.update({ where: { id, tenantId }, data: { autoPushAt } });
+    await persist({ armed: true, screenIds, surface }, autoPushAt, 'SPORTS_AUTO_PUSH_ARMED', (eventId) => ({
+      screenIds,
+      surface,
+      autoPushAt: autoPushAt.toISOString(),
+      previousAutoPushAt: previousAutoPushAt ? new Date(previousAutoPushAt).toISOString() : null,
+      eventId,
+    }));
     this.autoPushCache.set(
       id,
       this.parseAutoPushPayload({ armed: true, screenIds, surface }),
     );
-    try {
-      await this.prisma.client.auditLog.create({
-        data: {
-          tenantId,
-          userId: actorUserId || null,
-          action: 'SPORTS_AUTO_PUSH_ARMED',
-          targetType: 'Game',
-          targetId: id,
-          details: JSON.stringify({
-            screenIds,
-            surface,
-            autoPushAt: autoPushAt.toISOString(),
-            eventId: event.id,
-          }),
-        },
-      });
-    } catch {
-      /* best-effort */
-    }
     // Restore the sweep's cadence immediately — arming close to (or past)
     // kickoff−10 should put the board up within one tick, not one idle
     // window.
@@ -2558,6 +2739,7 @@ export class SportsService {
       team?: string; name?: string; number?: string;
       position?: string; photoUrl?: string; stats?: unknown;
     },
+    actor?: CommandInput,
   ) {
     const game = await this.owned(tenantId, gameId);
     this.assertBoxScoreEditable(game);
@@ -2567,18 +2749,28 @@ export class SportsService {
     const sortOrder = await this.prisma.client.rosterPlayer.count({
       where: { gameId, team },
     });
-    const created = await this.prisma.client.rosterPlayer.create({
-      data: {
-        tenantId,
-        gameId,
-        team,
-        name,
-        number: this.cleanText(dto.number, 8),
-        position: this.cleanText(dto.position, 24),
-        photoUrl: this.cleanText(dto.photoUrl, 2048),
-        stats: this.cleanStats(dto.stats),
-        sortOrder,
-      },
+    const created = await this.prisma.client.$transaction(async (tx: any) => {
+      await this.lockBoxScore(tx, tenantId, gameId);
+      const row = await tx.rosterPlayer.create({
+        data: {
+          tenantId,
+          gameId,
+          team,
+          name,
+          number: this.cleanText(dto.number, 8),
+          position: this.cleanText(dto.position, 24),
+          photoUrl: this.cleanText(dto.photoUrl, 2048),
+          stats: this.cleanStats(dto.stats),
+          sortOrder,
+        },
+      });
+      await this.auditRow(tx, tenantId, actor, 'SPORTS_ROSTER_PLAYER_ADDED', gameId, {
+        playerId: row.id,
+        team: row.team,
+        number: row.number,
+        stats: row.stats,
+      });
+      return row;
     });
     // 2026-06-25 — link the moment a HOME player is added so stats accumulate
     // (and the Share/athlete page works) without a CSV import or hand-linking.
@@ -2596,6 +2788,29 @@ export class SportsService {
    */
   private assertBoxScoreEditable(game: { status?: string | null }): void {
     if (game.status === 'FINAL') {
+      throw new ConflictException({
+        code: 'GAME_FINAL',
+        message: 'This game is final. Reopen it to correct its box score.',
+      });
+    }
+  }
+
+  /**
+   * The race-free half of assertBoxScoreEditable, inside the box-score
+   * edit's own transaction: a conditional write that bumps the game's
+   * revision only while it is NOT final. It takes the game row's lock, so
+   * the edit and a concurrent "end game" serialise — either the edit lands
+   * first (and the FINAL command, whose compare-and-swap now misses, re-reads
+   * and rolls up a box score that includes it) or FINAL lands first and the
+   * edit is refused. A pre-read alone left a window where an edit committed
+   * after the season roll-up had read the roster.
+   */
+  private async lockBoxScore(tx: any, tenantId: string, gameId: string): Promise<void> {
+    const res = await tx.game.updateMany({
+      where: { id: gameId, tenantId, status: { not: 'FINAL' } },
+      data: { version: { increment: 1 } },
+    });
+    if (res.count === 0) {
       throw new ConflictException({
         code: 'GAME_FINAL',
         message: 'This game is final. Reopen it to correct its box score.',
@@ -2622,9 +2837,11 @@ export class SportsService {
       team?: string; name?: string; number?: string;
       position?: string; photoUrl?: string; stats?: unknown;
     },
+    actor?: CommandInput,
   ) {
-    const { game } = await this.ownedPlayer(tenantId, gameId, playerId);
-    if (dto.stats !== undefined || dto.team !== undefined) this.assertBoxScoreEditable(game);
+    const { game, player } = await this.ownedPlayer(tenantId, gameId, playerId);
+    const boxScoreEdit = dto.stats !== undefined || dto.team !== undefined;
+    if (boxScoreEdit) this.assertBoxScoreEditable(game);
     const data: Record<string, unknown> = {};
     if (dto.team !== undefined) data.team = this.cleanTeam(dto.team);
     if (dto.name !== undefined) {
@@ -2636,14 +2853,36 @@ export class SportsService {
     if (dto.position !== undefined) data.position = this.cleanText(dto.position, 24);
     if (dto.photoUrl !== undefined) data.photoUrl = this.cleanText(dto.photoUrl, 2048);
     if (dto.stats !== undefined) data.stats = this.cleanStats(dto.stats);
-    return this.prisma.client.rosterPlayer.update({ where: { id: playerId, tenantId }, data });
+    const before: Record<string, unknown> = {};
+    for (const k of Object.keys(data)) before[k] = (player as Record<string, unknown>)[k] ?? null;
+    return this.prisma.client.$transaction(async (tx: any) => {
+      if (boxScoreEdit) await this.lockBoxScore(tx, tenantId, gameId);
+      const updated = await tx.rosterPlayer.update({ where: { id: playerId, tenantId }, data });
+      await this.auditRow(tx, tenantId, actor, 'SPORTS_ROSTER_PLAYER_UPDATED', gameId, {
+        playerId,
+        fields: Object.keys(data),
+        before,
+        after: data,
+      });
+      return updated;
+    });
   }
 
   /** Remove a player from the roster. */
-  async deletePlayer(tenantId: string, gameId: string, playerId: string) {
-    const { game } = await this.ownedPlayer(tenantId, gameId, playerId);
+  async deletePlayer(tenantId: string, gameId: string, playerId: string, actor?: CommandInput) {
+    const { game, player } = await this.ownedPlayer(tenantId, gameId, playerId);
     this.assertBoxScoreEditable(game);
-    await this.prisma.client.rosterPlayer.delete({ where: { id: playerId, tenantId } });
+    await this.prisma.client.$transaction(async (tx: any) => {
+      await this.lockBoxScore(tx, tenantId, gameId);
+      await tx.rosterPlayer.delete({ where: { id: playerId, tenantId } });
+      // The row is gone, so the audit row keeps what was removed.
+      await this.auditRow(tx, tenantId, actor, 'SPORTS_ROSTER_PLAYER_REMOVED', gameId, {
+        playerId,
+        team: player.team,
+        number: player.number,
+        stats: player.stats,
+      });
+    });
     return { deleted: true };
   }
 
@@ -2724,7 +2963,7 @@ export class SportsService {
     return linked;
   }
 
-  async importRosterCsv(tenantId: string, gameId: string, csvText: string) {
+  async importRosterCsv(tenantId: string, gameId: string, csvText: string, actor?: CommandInput) {
     const game = await this.owned(tenantId, gameId);
     this.assertBoxScoreEditable(game);
     const lines = String(csvText || '')
@@ -2785,7 +3024,16 @@ export class SportsService {
     if (rows.length === 0) {
       throw new BadRequestException('No valid player rows found in the CSV.');
     }
-    await this.prisma.client.rosterPlayer.createMany({ data: rows });
+    await this.prisma.client.$transaction(async (tx: any) => {
+      await this.lockBoxScore(tx, tenantId, gameId);
+      await tx.rosterPlayer.createMany({ data: rows });
+      await this.auditRow(tx, tenantId, actor, 'SPORTS_ROSTER_IMPORTED', gameId, {
+        players: rows.length,
+        home: rows.filter((r) => r.team === 'home').length,
+        away: rows.filter((r) => r.team === 'away').length,
+        statColumns: header.filter((h) => h && !FIELD.has(h)).map((h) => h.toUpperCase()),
+      });
+    });
 
     // S0 (2026-06-22) — auto-link the HOME roster to persistent athletes so
     // season + career stats accumulate without hand-linking every row. Shared
@@ -4767,7 +5015,7 @@ export class SportsService {
           hasAudio: false,
           hasSponsor: false,
           source: 'end-segment-macro',
-        });
+        }, { sideEffect: true });
       }
       await scope.event('SEGMENT', {
         segment: nextSegment,
@@ -5065,7 +5313,7 @@ export class SportsService {
         team: h.team,
         auto: true,
         source,
-      });
+      }, { sideEffect: true });
     }
   }
 
@@ -5101,10 +5349,12 @@ export class SportsService {
 
   /** Flip the AUTO-celebrate toggle. Persists a latest-wins AUTO_CELEBRATE
    *  GameEvent (no migration) and updates the hot-path cache in place. */
-  async setAutoCelebrate(tenantId: string, id: string, enabled: unknown) {
+  async setAutoCelebrate(tenantId: string, id: string, enabled: unknown, actor?: CommandInput) {
     await this.owned(tenantId, id);
     const val = Boolean(enabled);
-    await this.record(id, 'AUTO_CELEBRATE', { enabled: val });
+    const before = await this.autoCelebrateEnabled(id);
+    await this.recordAudited(tenantId, id, 'AUTO_CELEBRATE', { enabled: val }, actor,
+      'SPORTS_AUTO_CELEBRATE_SET', (eventId) => ({ eventId, before, after: val }));
     this.autoCelebrateCache.set(id, val);
     return { enabled: val };
   }
@@ -5283,67 +5533,63 @@ export class SportsService {
    * the console can build the /athlete/:token link. Re-calling rotates the
    * token (orphaning any previously-shared link).
    */
-  async setAthleteShare(tenantId: string, personId: string, actorUserId?: string) {
+  async setAthleteShare(tenantId: string, personId: string, actor?: CommandInput) {
     const person = await this.prisma.client.sportsPerson.findFirst({
       where: { id: personId, tenantId },
       select: { id: true },
     });
     if (!person) throw new NotFoundException('Athlete not found');
     const token = randomUUID().replace(/-/g, '');
-    await this.prisma.client.sportsPerson.update({
-      where: { id: personId, tenantId },
-      data: { isPublic: true, publicShareToken: token },
-    });
-    try {
-      await this.prisma.client.auditLog.create({
-        data: {
-          tenantId,
-          userId: actorUserId || null,
-          action: 'SPORTS_ATHLETE_SHARED',
-          targetType: 'SportsPerson',
-          targetId: personId,
-          details: JSON.stringify({ token }),
-        },
+    // K12-F34: the share and its audit row commit together.
+    await this.prisma.client.$transaction(async (tx: any) => {
+      await tx.sportsPerson.update({
+        where: { id: personId, tenantId },
+        data: { isPublic: true, publicShareToken: token },
       });
-    } catch { /* best-effort */ }
+      await this.auditRow(tx, tenantId, actor, 'SPORTS_ATHLETE_SHARED', personId, { token }, 'SportsPerson');
+    });
     return { shared: true, token };
   }
 
   /** Turn an athlete's public share OFF — the existing link 404s immediately. */
-  async unsetAthleteShare(tenantId: string, personId: string, actorUserId?: string) {
+  async unsetAthleteShare(tenantId: string, personId: string, actor?: CommandInput) {
     const person = await this.prisma.client.sportsPerson.findFirst({
       where: { id: personId, tenantId },
       select: { id: true },
     });
     if (!person) throw new NotFoundException('Athlete not found');
-    await this.prisma.client.sportsPerson.update({
-      where: { id: personId, tenantId },
-      data: { isPublic: false },
-    });
-    try {
-      await this.prisma.client.auditLog.create({
-        data: {
-          tenantId,
-          userId: actorUserId || null,
-          action: 'SPORTS_ATHLETE_UNSHARED',
-          targetType: 'SportsPerson',
-          targetId: personId,
-          details: '{}',
-        },
+    await this.prisma.client.$transaction(async (tx: any) => {
+      await tx.sportsPerson.update({
+        where: { id: personId, tenantId },
+        data: { isPublic: false },
       });
-    } catch { /* best-effort */ }
+      await this.auditRow(tx, tenantId, actor, 'SPORTS_ATHLETE_UNSHARED', personId, {}, 'SportsPerson');
+    });
     return { shared: false };
   }
 
   /** Link a per-game roster row to a persistent SportsPerson. */
-  async linkPlayer(args: {
-    tenantId: string;
-    rosterPlayerId: string;
-    personId?: string;
-    fullName?: string;
-    teamId?: string;
-  }) {
-    return linkRosterPlayerToPerson(this.prisma.client, args);
+  async linkPlayer(
+    args: {
+      tenantId: string;
+      rosterPlayerId: string;
+      personId?: string;
+      fullName?: string;
+      teamId?: string;
+    },
+    actor?: CommandInput,
+  ) {
+    // The link helper runs its own bounded retries, so it cannot share a
+    // transaction; the audit row is written strictly after it and is NOT
+    // best-effort (an error reaches the caller, who can safely retry — a
+    // re-link to the same athlete is idempotent).
+    const linked = await linkRosterPlayerToPerson(this.prisma.client, args);
+    await this.auditRow(this.prisma.client, args.tenantId, actor, 'SPORTS_ROSTER_PLAYER_LINKED', args.rosterPlayerId, {
+      personId: linked.personId,
+      requestedPersonId: args.personId ?? null,
+      teamId: args.teamId ?? null,
+    }, 'RosterPlayer');
+    return linked;
   }
 
   /**
@@ -5487,7 +5733,7 @@ export class SportsService {
        */
       ribbonStrip?: boolean;
     },
-    actorUserId?: string,
+    actor?: CommandInput,
   ) {
     const game = await this.owned(tenantId, id);
     const target = this.cleanCueTarget(dto.target);
@@ -5506,30 +5752,14 @@ export class SportsService {
 
     // Lane-8 P1: mirror every cue-fire into the immutable AuditLog so a
     // game-presentation forensics review can answer "who fired which
-    // sponsor takeover at 7:42 in Q3" — record() only writes a GameEvent
-    // (20s board-feed window), which evaporates after the moment.
+    // sponsor takeover at 7:42 in Q3". K12-F34: the CUE event and its audit
+    // row now commit together (recordAudited) — the audit write used to be
+    // best-effort, so a cue could fire with no record of who fired it.
     const auditDetails = (eventId: string, key: string, label: string) => ({
       eventId, key, label, target, team,
       hasAudio: !!audioUrl,
       hasSponsor: !!(sponsorName || sponsorLogoUrl),
     });
-    const writeAudit = async (eventId: string, key: string, label: string) => {
-      try {
-        await this.prisma.client.auditLog.create({
-          data: {
-            tenantId,
-            userId: actorUserId || null,
-            action: 'SPORTS_CUE_FIRED',
-            targetType: 'Game',
-            targetId: id,
-            details: JSON.stringify(auditDetails(eventId, key, label)),
-          },
-        });
-      } catch {
-        // Best-effort — never let an audit-log failure block a cue from
-        // firing. The GameEvent is already persisted; this is forensics only.
-      }
-    };
 
     // Custom cue — operator-defined trigger from the cue deck.
     if (dto.cueId) {
@@ -5537,7 +5767,7 @@ export class SportsService {
         where: { id: dto.cueId, tenantId },
       });
       if (!cc) throw new BadRequestException('Custom cue not found');
-      const event = await this.record(id, 'CUE', {
+      const event = await this.recordAudited(tenantId, id, 'CUE', {
         key: `custom:${cc.id}`,
         label: cc.name,
         mediaUrl: cc.mediaUrl || null,
@@ -5557,8 +5787,7 @@ export class SportsService {
         scorerPhotoUrl,
         scorerId,
         snapshot: this.cueSnapshot(game),
-      });
-      await writeAudit(event.id, `custom:${cc.id}`, cc.name);
+      }, actor, 'SPORTS_CUE_FIRED', (eventId) => auditDetails(eventId, `custom:${cc.id}`, cc.name));
       return { fired: true, cueId: cc.id, target, eventId: event.id };
     }
 
@@ -5567,7 +5796,7 @@ export class SportsService {
     if (!cue) {
       throw new BadRequestException(`Unknown cue "${dto.key}" for ${def.name}`);
     }
-    const event = await this.record(id, 'CUE', {
+    const event = await this.recordAudited(tenantId, id, 'CUE', {
       key: cue.key,
       label: cue.label,
       emoji: cue.emoji,
@@ -5583,8 +5812,7 @@ export class SportsService {
       scorerPhotoUrl,
       scorerId,
       snapshot: this.cueSnapshot(game),
-    });
-    await writeAudit(event.id, cue.key, cue.label);
+    }, actor, 'SPORTS_CUE_FIRED', (eventId) => auditDetails(eventId, cue.key, cue.label));
     return { fired: true, cue, target, eventId: event.id };
   }
 
@@ -5611,7 +5839,7 @@ export class SportsService {
       slotMs?: number;
       skippable?: boolean;
     },
-    actorUserId?: string,
+    actor?: CommandInput,
   ) {
     const game = await this.owned(tenantId, gameId);
     const team: 'home' | 'away' = dto.team === 'away' ? 'away' : 'home';
@@ -5647,7 +5875,9 @@ export class SportsService {
     // huge bench never permanently blocks the board.
     const totalMs = Math.min(60_000, slotMs * Math.max(1, lineup.length));
 
-    const event = await this.record(gameId, 'CUE', {
+    // Immutable AuditLog so game-presentation forensics can answer "who
+    // started the lineup intro and when" — committed with the CUE event.
+    const event = await this.recordAudited(tenantId, gameId, 'CUE', {
       key: 'pregame-intro',
       label: `${teamName} Starting Lineup`,
       emoji: '🎤',
@@ -5661,30 +5891,13 @@ export class SportsService {
       lineup,
       slotMs,
       snapshot: this.cueSnapshot(game as Parameters<typeof this.cueSnapshot>[0]),
-    });
-
-    // Immutable AuditLog so game-presentation forensics can answer
-    // "who started the lineup intro and when."
-    try {
-      await this.prisma.client.auditLog.create({
-        data: {
-          tenantId,
-          userId: actorUserId ?? null,
-          action: 'SPORTS_PREGAME_INTRO_FIRED',
-          targetType: 'Game',
-          targetId: gameId,
-          details: JSON.stringify({
-            eventId: event.id,
-            team,
-            playerCount: lineup.length,
-            totalMs,
-            hasAudio: !!audioUrl,
-          }),
-        },
-      });
-    } catch {
-      // Best-effort — never let an audit failure block the cue.
-    }
+    }, actor, 'SPORTS_PREGAME_INTRO_FIRED', (eventId) => ({
+      eventId,
+      team,
+      playerCount: lineup.length,
+      totalMs,
+      hasAudio: !!audioUrl,
+    }));
 
     return {
       fired: true,
@@ -5840,7 +6053,7 @@ export class SportsService {
       kind: string;
       payload?: Record<string, unknown>;
     },
-    actorUserId?: string,
+    actor?: CommandInput,
   ) {
     const game = await this.owned(tenantId, id);
 
@@ -5881,25 +6094,12 @@ export class SportsService {
       cleanPayload = { team, remaining };
     }
 
-    const event = await this.record(id, 'LIVE_OVERLAY', {
+    // Audit trail — who triggered what overlay (committed with the event).
+    const event = await this.recordAudited(tenantId, id, 'LIVE_OVERLAY', {
       kind,
       payload: cleanPayload,
       snapshot: this.cueSnapshot(game),
-    });
-
-    // Audit trail — who triggered what overlay.
-    try {
-      await this.prisma.client.auditLog.create({
-        data: {
-          tenantId,
-          userId: actorUserId || null,
-          action: 'SPORTS_LIVE_OVERLAY_FIRED',
-          targetType: 'Game',
-          targetId: id,
-          details: JSON.stringify({ kind, payload: cleanPayload, eventId: event.id }),
-        },
-      });
-    } catch { /* best-effort */ }
+    }, actor, 'SPORTS_LIVE_OVERLAY_FIRED', (eventId) => ({ kind, payload: cleanPayload, eventId }));
 
     return { fired: true, kind, eventId: event.id };
   }
@@ -5909,21 +6109,12 @@ export class SportsService {
    * event with `kind: 'clear'`; the board resolves the latest event
    * so this immediately wins over any prior overlay.
    */
-  async clearLiveOverlay(tenantId: string, id: string, actorUserId?: string) {
+  async clearLiveOverlay(tenantId: string, id: string, actor?: CommandInput) {
     await this.owned(tenantId, id);
-    const event = await this.record(id, 'LIVE_OVERLAY', { kind: 'clear' });
-    try {
-      await this.prisma.client.auditLog.create({
-        data: {
-          tenantId,
-          userId: actorUserId || null,
-          action: 'SPORTS_LIVE_OVERLAY_CLEARED',
-          targetType: 'Game',
-          targetId: id,
-          details: JSON.stringify({ eventId: event.id }),
-        },
-      });
-    } catch { /* best-effort */ }
+    const event = await this.recordAudited(
+      tenantId, id, 'LIVE_OVERLAY', { kind: 'clear' }, actor,
+      'SPORTS_LIVE_OVERLAY_CLEARED', (eventId) => ({ eventId }),
+    );
     return { cleared: true, eventId: event.id };
   }
 
@@ -5953,7 +6144,7 @@ export class SportsService {
     id: string,
     templateId: string,
     holdMs: number | undefined,
-    actorUserId?: string,
+    actor?: CommandInput,
   ) {
     const game = await this.owned(tenantId, id);
     const tpl = (templateId || '').trim();
@@ -5969,38 +6160,20 @@ export class SportsService {
     });
     if (!owned) throw new BadRequestException('Unknown or inaccessible template');
     const expiresAt = Date.now() + this.sceneHoldMs(holdMs);
-    const event = await this.record(id, 'SCENE', { templateId: tpl, expiresAt, holdMode: 'auto' });
-    try {
-      await this.prisma.client.auditLog.create({
-        data: {
-          tenantId,
-          userId: actorUserId || null,
-          action: 'SPORTS_SCENE_RECALLED',
-          targetType: 'Game',
-          targetId: id,
-          details: JSON.stringify({ templateId: tpl, expiresAt, eventId: event.id }),
-        },
-      });
-    } catch { /* best-effort */ }
+    const event = await this.recordAudited(
+      tenantId, id, 'SCENE', { templateId: tpl, expiresAt, holdMode: 'auto' }, actor,
+      'SPORTS_SCENE_RECALLED', (eventId) => ({ templateId: tpl, expiresAt, eventId }),
+    );
     return { recalled: true, templateId: tpl, expiresAt, eventId: event.id };
   }
 
   /** End the active scene now — the board reverts to live on the next poll. */
-  async clearScene(tenantId: string, id: string, actorUserId?: string) {
+  async clearScene(tenantId: string, id: string, actor?: CommandInput) {
     await this.owned(tenantId, id);
-    const event = await this.record(id, 'SCENE', { kind: 'clear' });
-    try {
-      await this.prisma.client.auditLog.create({
-        data: {
-          tenantId,
-          userId: actorUserId || null,
-          action: 'SPORTS_SCENE_CLEARED',
-          targetType: 'Game',
-          targetId: id,
-          details: JSON.stringify({ eventId: event.id }),
-        },
-      });
-    } catch { /* best-effort */ }
+    const event = await this.recordAudited(
+      tenantId, id, 'SCENE', { kind: 'clear' }, actor,
+      'SPORTS_SCENE_CLEARED', (eventId) => ({ eventId }),
+    );
     return { cleared: true, eventId: event.id };
   }
 
@@ -6012,7 +6185,7 @@ export class SportsService {
     tenantId: string,
     id: string,
     holdMs: number | undefined,
-    _actorUserId?: string,
+    actor?: CommandInput,
   ) {
     await this.owned(tenantId, id);
     const latest = await this.prisma.client.gameEvent.findFirst({
@@ -6025,11 +6198,12 @@ export class SportsService {
       return { extended: false };
     }
     const expiresAt = Date.now() + this.sceneHoldMs(holdMs);
-    const event = await this.record(id, 'SCENE', {
-      templateId: p.templateId,
-      expiresAt,
-      holdMode: 'held',
-    });
+    const templateId = p.templateId;
+    const event = await this.recordAudited(
+      tenantId, id, 'SCENE', { templateId, expiresAt, holdMode: 'held' }, actor,
+      'SPORTS_SCENE_EXTENDED',
+      (eventId) => ({ templateId, expiresAt, previousExpiresAt: p.expiresAt ?? null, eventId }),
+    );
     return { extended: true, templateId: p.templateId, expiresAt, eventId: event.id };
   }
 
@@ -6076,7 +6250,7 @@ export class SportsService {
    * clears back to the auto prompts. Stored as a RIBBON GameEvent
    * (latest wins) — no new table, no migration.
    */
-  async setRibbon(tenantId: string, id: string, dto: { messages?: unknown }) {
+  async setRibbon(tenantId: string, id: string, dto: { messages?: unknown }, actor?: CommandInput) {
     await this.owned(tenantId, id);
     const messages = Array.isArray(dto.messages)
       ? dto.messages
@@ -6084,7 +6258,9 @@ export class SportsService {
           .filter((m): m is string => m !== null)
           .slice(0, 30)
       : [];
-    await this.record(id, 'RIBBON', { messages });
+    const before = await this.latestRibbonMessages(id);
+    await this.recordAudited(tenantId, id, 'RIBBON', { messages }, actor, 'SPORTS_RIBBON_MESSAGES_SET',
+      (eventId) => ({ eventId, before, after: messages }));
     return { messages };
   }
 
@@ -6096,11 +6272,13 @@ export class SportsService {
    * on a clockless sport like baseball). Stored as a RIBBON_PRESETS
    * GameEvent (latest wins) — no new table, no migration.
    */
-  async setRibbonPresets(tenantId: string, id: string, dto: { presets?: unknown }) {
+  async setRibbonPresets(tenantId: string, id: string, dto: { presets?: unknown }, actor?: CommandInput) {
     const game = await this.owned(tenantId, id);
     const def = this.sportOf(game.sport);
     const presets = sanitizeRibbonPresets(def, dto.presets);
-    await this.record(id, 'RIBBON_PRESETS', { presets });
+    const before = await this.latestRibbonPresets(id);
+    await this.recordAudited(tenantId, id, 'RIBBON_PRESETS', { presets }, actor, 'SPORTS_RIBBON_PRESETS_SET',
+      (eventId) => ({ eventId, before, after: presets }));
     return { presets };
   }
 
@@ -6109,10 +6287,12 @@ export class SportsService {
    * a known speed (slow / normal / fast / very fast). Stored as a
    * RIBBON_SPEED GameEvent, latest-wins — no table, no migration.
    */
-  async setRibbonSpeed(tenantId: string, id: string, dto: { speed?: unknown }) {
+  async setRibbonSpeed(tenantId: string, id: string, dto: { speed?: unknown }, actor?: CommandInput) {
     await this.owned(tenantId, id);
     const speed = sanitizeRibbonSpeed(dto.speed);
-    await this.record(id, 'RIBBON_SPEED', { speed });
+    const before = await this.latestRibbonSpeed(id);
+    await this.recordAudited(tenantId, id, 'RIBBON_SPEED', { speed }, actor, 'SPORTS_RIBBON_SPEED_SET',
+      (eventId) => ({ eventId, before, after: speed }));
     return { speed };
   }
 
@@ -6122,7 +6302,7 @@ export class SportsService {
    * Each fills the ribbon edge-to-edge as it scrolls past. Stored as
    * a RIBBON_SLIDES GameEvent, latest-wins — no table, no migration.
    */
-  async setRibbonSlides(tenantId: string, id: string, dto: { slides?: unknown }) {
+  async setRibbonSlides(tenantId: string, id: string, dto: { slides?: unknown }, actor?: CommandInput) {
     await this.owned(tenantId, id);
     const slides = Array.isArray(dto.slides)
       ? dto.slides
@@ -6130,7 +6310,9 @@ export class SportsService {
           .filter((s): s is string => s !== null)
           .slice(0, 20)
       : [];
-    await this.record(id, 'RIBBON_SLIDES', { slides });
+    const before = await this.latestRibbonSlides(id);
+    await this.recordAudited(tenantId, id, 'RIBBON_SLIDES', { slides }, actor, 'SPORTS_RIBBON_SLIDES_SET',
+      (eventId) => ({ eventId, before, after: slides }));
     return { slides };
   }
 
@@ -6141,10 +6323,12 @@ export class SportsService {
    * 'auto' lets the ribbon size the count to its own width. Stored as
    * a RIBBON_SCORE GameEvent, latest-wins — no table, no migration.
    */
-  async setRibbonScoreRepeat(tenantId: string, id: string, dto: { repeat?: unknown }) {
+  async setRibbonScoreRepeat(tenantId: string, id: string, dto: { repeat?: unknown }, actor?: CommandInput) {
     await this.owned(tenantId, id);
     const repeat = sanitizeRibbonScoreRepeat(dto.repeat);
-    await this.record(id, 'RIBBON_SCORE', { repeat });
+    const before = await this.latestRibbonScoreRepeat(id);
+    await this.recordAudited(tenantId, id, 'RIBBON_SCORE', { repeat }, actor, 'SPORTS_RIBBON_SCORE_REPEAT_SET',
+      (eventId) => ({ eventId, before, after: repeat }));
     return { repeat };
   }
 
@@ -6169,20 +6353,30 @@ export class SportsService {
   async createCue(
     tenantId: string,
     dto: { name?: string; mediaUrl?: string; color?: string; durationMs?: number; displayMode?: string },
+    actor?: CommandInput,
   ) {
     const name = this.cleanText(dto.name, 60);
     if (!name) throw new BadRequestException('Cue name is required.');
     const sortOrder = await this.prisma.client.customCue.count({ where: { tenantId } });
-    return this.prisma.client.customCue.create({
-      data: {
-        tenantId,
-        name,
-        mediaUrl: this.cleanText(dto.mediaUrl, 2048),
-        color: this.cleanText(dto.color, 32),
-        durationMs: this.cleanDuration(dto.durationMs),
-        displayMode: dto.displayMode === 'takeover' ? 'takeover' : 'overlay',
-        sortOrder,
-      },
+    return this.prisma.client.$transaction(async (tx: any) => {
+      const created = await tx.customCue.create({
+        data: {
+          tenantId,
+          name,
+          mediaUrl: this.cleanText(dto.mediaUrl, 2048),
+          color: this.cleanText(dto.color, 32),
+          durationMs: this.cleanDuration(dto.durationMs),
+          displayMode: dto.displayMode === 'takeover' ? 'takeover' : 'overlay',
+          sortOrder,
+        },
+      });
+      await this.auditRow(tx, tenantId, actor, 'SPORTS_CUE_CREATED', created.id, {
+        name: created.name,
+        mediaUrl: created.mediaUrl,
+        displayMode: created.displayMode,
+        durationMs: created.durationMs,
+      }, 'CustomCue');
+      return created;
     });
   }
 
@@ -6198,8 +6392,9 @@ export class SportsService {
     tenantId: string,
     id: string,
     dto: { name?: string; mediaUrl?: string; color?: string; durationMs?: number; displayMode?: string },
+    actor?: CommandInput,
   ) {
-    await this.ownedCue(tenantId, id);
+    const existing = await this.ownedCue(tenantId, id);
     const data: Record<string, unknown> = {};
     if (dto.name !== undefined) {
       const n = this.cleanText(dto.name, 60);
@@ -6210,13 +6405,25 @@ export class SportsService {
     if (dto.color !== undefined) data.color = this.cleanText(dto.color, 32);
     if (dto.durationMs !== undefined) data.durationMs = this.cleanDuration(dto.durationMs);
     if (dto.displayMode !== undefined) data.displayMode = dto.displayMode === 'takeover' ? 'takeover' : 'overlay';
-    return this.prisma.client.customCue.update({ where: { id, tenantId }, data });
+    const before: Record<string, unknown> = {};
+    for (const k of Object.keys(data)) before[k] = (existing as Record<string, unknown>)[k] ?? null;
+    return this.prisma.client.$transaction(async (tx: any) => {
+      const updated = await tx.customCue.update({ where: { id, tenantId }, data });
+      await this.auditRow(tx, tenantId, actor, 'SPORTS_CUE_UPDATED', id, { before, after: data }, 'CustomCue');
+      return updated;
+    });
   }
 
   /** Remove a custom cue from the deck. */
-  async deleteCue(tenantId: string, id: string) {
-    await this.ownedCue(tenantId, id);
-    await this.prisma.client.customCue.delete({ where: { id, tenantId } });
+  async deleteCue(tenantId: string, id: string, actor?: CommandInput) {
+    const existing = await this.ownedCue(tenantId, id);
+    await this.prisma.client.$transaction(async (tx: any) => {
+      await tx.customCue.delete({ where: { id, tenantId } });
+      await this.auditRow(tx, tenantId, actor, 'SPORTS_CUE_DELETED', id, {
+        name: existing.name,
+        mediaUrl: existing.mediaUrl,
+      }, 'CustomCue');
+    });
     return { deleted: true };
   }
 
