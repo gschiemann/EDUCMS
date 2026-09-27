@@ -447,6 +447,13 @@ A reliable player continuously proves FOUR SEPARATE FACTS — never let one stan
     Playlist deletion removes its rules and direct fleet copies, applies
     fallback per tenant, audits each tenant, then signals SYNC. Protected
     emergency content still cannot be deleted through these regular actions.
+    The warning is enforced by the SERVER (2026-09-26): an in-use asset or a
+    published playlist (any rule, paused too, or a location copy) is deleted only
+    with `?confirm=in-use`, which the dashboard sends only from the warning the
+    operator confirmed; without it the API answers 409 `ASSET_IN_USE` /
+    `PLAYLIST_PUBLISHED` with the usage (`common/in-use-delete.ts`), so an old
+    open tab or an API client can never delete live content silently. The flag
+    never overrides an emergency refusal.
 
 17. **A big file reaches the player cache in short, verified, resumable steps —
     never in one service-worker event and never through a whole-body digest**
