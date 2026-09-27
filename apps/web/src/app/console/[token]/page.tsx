@@ -312,10 +312,12 @@ export default function ScorekeeperPadPage() {
   }, [session]);
 
   // ── the fast clock ticker: 250 ms, only while something is running, the
-  //    picture is LIVE and the tab is visible. While the connection is not
-  //    live the clocks FREEZE at their last known reading — projecting a
-  //    running clock we can no longer see would be a guess. ─────────────
-  const live = link.phase === 'live';
+  //    picture is FRESH and the tab is visible. While the picture is stale
+  //    (lost, or waiting after a return) the clocks FREEZE at their last
+  //    known reading — projecting a running clock we can no longer see would
+  //    be a guess. In `resync` the reads are back, so the picture is fresh
+  //    and ticks; only the controls wait for the volunteer's confirmation. ─
+  const live = link.phase === 'live' || link.phase === 'resync';
   const subRunning = !!(
     (data?.stats?.shotClock as Record<string, unknown> | undefined)?.running ||
     (data?.stats?.playClock as Record<string, unknown> | undefined)?.running ||
