@@ -110,9 +110,11 @@ export function RibbonScoreboardWidget({ config }: { config?: RibbonCfg }) {
   // the crowd. Gate it the same way: on a live surface with no messages/
   // sponsorText configured, render an empty reel (no divider text) instead
   // of the SAMPLE placeholder strings. Builder (no provider) keeps SAMPLE.
-  const hasReelContent = (c.messages && c.messages.length > 0) || !!c.sponsorText;
+  // A blank line the operator just added in the panel is not a message.
+  const messages = Array.isArray(c.messages) ? c.messages.filter((m) => String(m ?? '').trim()) : [];
+  const hasReelContent = messages.length > 0 || !!c.sponsorText;
   const reel = hasReelContent
-    ? (c.messages && c.messages.length ? c.messages : [c.sponsorText || '']).join('     •     ')
+    ? (messages.length ? messages : [c.sponsorText || '']).join('     •     ')
     : (isLiveNoData ? '' : ['YOUR SPONSOR HERE', 'GO TEAM!', 'NEXT HOME GAME FRI 7PM'].join('     •     '));
   const hasClock = def && def.clock.type !== 'none';
   // What the score/abbr/clock/segment show: real on a live feed, sample

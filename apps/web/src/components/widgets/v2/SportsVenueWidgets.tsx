@@ -199,13 +199,16 @@ function useGameView(c: ScoreboardishCfg): GameView {
   // never falls back to the sample; in the builder an untyped manual
   // board shows the stamped sample so the tile is not blank.
   const useDemo = src.kind === 'demo' || (src.isBuilder && !hasTypedTeam(c.home) && !hasTypedTeam(c.away));
+  // The panel writes fouls on the team (`home.fouls`); the flat
+  // `homeFouls` / `awayFouls` keys are the pack's original shape, still read
+  // for zones saved before.
   const home = typedTeamView(
-    { ...c.home, fouls: c.homeFouls ?? c.home?.fouls },
+    { ...c.home, fouls: c.home?.fouls ?? c.homeFouls },
     useDemo ? DEMO_HOME : null,
     'home',
   );
   const away = typedTeamView(
-    { ...c.away, fouls: c.awayFouls ?? c.away?.fouls },
+    { ...c.away, fouls: c.away?.fouls ?? c.awayFouls },
     useDemo ? DEMO_AWAY : null,
     'away',
   );

@@ -39,6 +39,15 @@ import {
   type MainScoreboardFactKey,
 } from '@/components/widgets/sports/scoreboard-sources';
 import {
+  SPORTS_VENUE_EDITOR,
+  SPORTS_VENUE_VARIANTS,
+  TEAM_FACT_FIELDS,
+  TEAM_IDENTITY_FIELDS,
+  getPath,
+  patchPath,
+  venueHasModes,
+} from './sports-venue-editor';
+import {
   ctsFieldsByGroup,
   ctsFieldLabel,
   defaultCtsField,
@@ -2688,6 +2697,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
   // on unrelated meta changes (name / bg / resolution).
   const templateDataSource = useBuilderStore((s) => s.meta.dataSource ?? 'NONE');
   const setTemplateMeta = useBuilderStore((s) => s.setMeta);
+  const tSports = useTranslations('sportsTemplates');
   // Canvas dims for the inline-rewrite "Fit to zone" chip (Slice 1d) — the
   // rewrite endpoint needs the zone's rendered px box to target a length.
   const canvasW = useBuilderStore((s) => s.meta.screenWidth);
@@ -3792,6 +3802,8 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
         // point a ribbon/scorebug zone at a specific game the same way.
         if (sbVariant === 'ribbon-main' || sbVariant === 'scorebug-main') {
           fields.push(<GameBindField key="gameId" value={cfg.gameId || ''} onChange={(v) => setField({ gameId: v })} />);
+          // K-12 launch audit F30 — every other key the renderer reads.
+          fields.push(<RibbonScorebugFields key="ribbon-scorebug" variant={sbVariant} cfg={cfg} setField={setField} />);
           break;
         }
         // ── Phase 1: LIVE DATA mapping section ──
@@ -4105,21 +4117,42 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
               fields.push(<TextField key="gameId" label="Game ID (optional)" value={cfg.gameId || ''} placeholder="auto-detected from /ribbon/:id URL" onChange={(v) => setField({ gameId: v })} />);
               fields.push(<TextField key="autoTierFilter" label="Tier filter (optional, e.g. Title / Gold / Community)" value={cfg.autoTierFilter || ''} placeholder="all tiers" onChange={(v) => setField({ autoTierFilter: v })} />);
             } else {
-              const slotsText = Array.isArray(cfg.slots)
-                ? cfg.slots.map((s: any) => `${s.imageUrl || ''} | ${s.text || ''} | ${s.durationMs ?? 6000}`).join('\n')
-                : '';
-              fields.push(<TextAreaField key="slots" label="Sponsor slots (image URL | text | duration ms — one per line)" value={slotsText} placeholder="https://cdn.example.com/pool-supply.png | POOL SUPPLY CO | 6000&#10; | YOUR SPONSOR HERE | 4500" onChange={(v) => {
-                const parsed = v.split('\n').filter(Boolean).map((line) => {
-                  const [imageUrl = '', text = '', durRaw = ''] = line.split('|').map((s) => s.trim());
-                  const durationMs = parseInt(durRaw, 10);
-                  return {
-                    ...(imageUrl ? { imageUrl } : {}),
-                    ...(text ? { text } : {}),
-                    ...(Number.isFinite(durationMs) && durationMs > 0 ? { durationMs } : {}),
-                  };
-                }).filter((s) => s.imageUrl || s.text);
-                setField({ slots: parsed });
-              }} rows={6} />);
+              // K-12 launch audit F30 — typed rows with an image picker and
+              // add / remove / reorder, replacing the pipe-delimited textarea
+              // ("image URL | text | duration ms — one per line") that no
+              // operator could fill without a spreadsheet mindset. Stored
+              // shape unchanged ({ imageUrl?, text?, durationMs? }[]); the
+              // editor shows seconds.
+              const slotRows = (Array.isArray(cfg.slots) ? cfg.slots : []).map((s: any) => ({
+                imageUrl: s?.imageUrl || '',
+                text: s?.text || '',
+                seconds: typeof s?.durationMs === 'number' && s.durationMs > 0 ? s.durationMs / 1000 : '',
+              }));
+              fields.push(
+                <ListItemsEditor
+                  key="slots"
+                  label={tSports('cts.sponsorSlots')}
+                  itemNoun={tSports('cts.itemSlot')}
+                  value={slotRows}
+                  onChange={(rows) => setField({
+                    slots: rows.map((r) => {
+                      const secs = Number(r.seconds);
+                      const imageUrl = String(r.imageUrl || '').trim();
+                      const text = String(r.text || '').trim();
+                      return {
+                        ...(imageUrl ? { imageUrl } : {}),
+                        ...(text ? { text } : {}),
+                        ...(Number.isFinite(secs) && secs > 0 ? { durationMs: Math.round(secs * 1000) } : {}),
+                      };
+                    }),
+                  })}
+                  fields={[
+                    { key: 'imageUrl', label: tSports('cts.slotImage'), type: 'image' },
+                    { key: 'text', label: tSports('cts.slotText'), placeholder: 'THANK YOU · YOUR SPONSOR' },
+                    { key: 'seconds', label: tSports('cts.seconds'), type: 'number', placeholder: '6' },
+                  ]}
+                />,
+              );
             }
             fields.push(<TextField key="zoneLabel" label="Zone header label (optional)" value={cfg.zoneLabel || ''} placeholder="OUR SPONSORS" onChange={(v) => setField({ zoneLabel: v })} />);
             fields.push(<NumField key="defaultDurationMs" id="cts-sponsor-dur" label="Default slot duration (ms)" value={typeof cfg.defaultDurationMs === 'number' ? cfg.defaultDurationMs : 6000} onChange={(v) => setField({ defaultDurationMs: v })} min={1500} max={60000} step={500} />);
@@ -4146,20 +4179,34 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
               fields.push(<TextField key="tplCloser" label='Closing cheer template' value={tpls.closer ?? "LET'S GO {team}!"} placeholder="LET'S GO {team}!" onChange={(v) => setField({ autoTemplates: { ...tpls, closer: v } })} />);
               fields.push(<NumField key="autoDurationMs" id="cts-ann-auto-dur" label="Per-template dwell (ms)" value={typeof cfg.autoDurationMs === 'number' ? cfg.autoDurationMs : 4000} onChange={(v) => setField({ autoDurationMs: v })} min={1500} max={20000} step={500} />);
             } else {
-              const entriesText = Array.isArray(cfg.entries)
-                ? cfg.entries.map((e: any) => `${e.text || ''} | ${e.durationMs ?? 5000}`).join('\n')
-                : '';
-              fields.push(<TextAreaField key="entries" label="Announcements (text | duration ms — one per line)" value={entriesText} placeholder="STARTING LINEUP — #1, 7, 11, 12 | 6000&#10;PLAYER OF THE WEEK — #7 J. RIVERA | 5000&#10;NEXT MATCH — FRI 7PM | 5000" onChange={(v) => {
-                const parsed = v.split('\n').filter(Boolean).map((line) => {
-                  const [text = '', durRaw = ''] = line.split('|').map((s) => s.trim());
-                  const durationMs = parseInt(durRaw, 10);
-                  return {
-                    text,
-                    ...(Number.isFinite(durationMs) && durationMs > 0 ? { durationMs } : {}),
-                  };
-                }).filter((e) => e.text);
-                setField({ entries: parsed });
-              }} rows={6} />);
+              // K-12 launch audit F30 — typed rows (text + seconds) with add /
+              // remove / reorder, replacing the pipe-delimited textarea. The
+              // stored shape is unchanged ({ text, durationMs? }[]).
+              const entryRows = (Array.isArray(cfg.entries) ? cfg.entries : []).map((e: any) => ({
+                text: e?.text || '',
+                seconds: typeof e?.durationMs === 'number' && e.durationMs > 0 ? e.durationMs / 1000 : '',
+              }));
+              fields.push(
+                <ListItemsEditor
+                  key="entries"
+                  label={tSports('cts.announcements')}
+                  itemNoun={tSports('cts.itemAnnouncement')}
+                  value={entryRows}
+                  onChange={(rows) => setField({
+                    entries: rows.map((r) => {
+                      const secs = Number(r.seconds);
+                      return {
+                        text: String(r.text || ''),
+                        ...(Number.isFinite(secs) && secs > 0 ? { durationMs: Math.round(secs * 1000) } : {}),
+                      };
+                    }),
+                  })}
+                  fields={[
+                    { key: 'text', label: tSports('cts.announcementText'), type: 'textarea', placeholder: 'NEXT HOME MATCH — FRI 7:00 PM' },
+                    { key: 'seconds', label: tSports('cts.seconds'), type: 'number', placeholder: '5' },
+                  ]}
+                />,
+              );
             }
             fields.push(<TextField key="zoneLabel" label="Zone header label (optional)" value={cfg.zoneLabel || ''} placeholder="ANNOUNCEMENTS" onChange={(v) => setField({ zoneLabel: v })} />);
             fields.push(<NumField key="defaultDurationMs" id="cts-ann-dur" label="Default dwell time (ms)" value={typeof cfg.defaultDurationMs === 'number' ? cfg.defaultDurationMs : 5000} onChange={(v) => setField({ defaultDurationMs: v })} min={1500} max={60000} step={500} />);
@@ -4250,6 +4297,14 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       if (sbVariant === 'scoreboard-hs' || sbVariant === 'scoreboard-college' || sbVariant === 'scoreboard-pro') {
         fields.push(<GameBindField key="gameId" value={cfg.gameId || ''} onChange={(v) => setField({ gameId: v })} />);
         fields.push(<SportsTierFields key="sports-tier" cfg={cfg} setField={setField} />);
+        break;
+      }
+      // K-12 launch audit F30 (2026-09-27) — the sports-venue pack (stadium
+      // scoreboard, ribbons, lineup, standings, …) is registered under this
+      // canonical type too, and used to fall through to the legacy literal
+      // fields below, which none of its renderers read.
+      if (SPORTS_VENUE_VARIANTS.has(sbVariant)) {
+        fields.push(<SportsVenueEditor key="sports-venue" variant={sbVariant} cfg={cfg} setField={setField} />);
         break;
       }
       // Legacy generic scoreboard widget — literal fields.
@@ -9552,6 +9607,234 @@ function MainScoreboardFields({
       <SourcedField label={t('fields.awayLogo')} sourced={live} isSet={has('awayLogoUrl')} onClear={clear('awayLogoUrl')}>
         <AssetPickerField label={t('fields.awayLogo')} value={cfg.awayLogoUrl || ''} kind="image" onChange={(v) => setField({ awayLogoUrl: v || undefined })} />
       </SourcedField>
+    </div>
+  );
+}
+
+/**
+ * The sports-venue pack's editor (K-12 launch audit F30) — renders the
+ * per-variant schema in `sports-venue-editor.ts` with this file's own field
+ * components. Every key it writes is one the renderer reads (see the schema
+ * file's header for the bug this replaces).
+ */
+function SportsVenueEditor({
+  variant,
+  cfg,
+  setField,
+}: {
+  variant: string;
+  cfg: Record<string, any>;
+  setField: (patch: Record<string, any>) => void;
+}) {
+  const t = useTranslations('sportsTemplates');
+  const tv = (k: string) => t(`venue.${k}`);
+  const specs = SPORTS_VENUE_EDITOR[variant] || [];
+  const hasModes = venueHasModes(variant);
+  const mode: 'live' | 'manual' = hasModes && cfg.dataMode !== 'manual' ? 'live' : 'manual';
+  const live = hasModes && mode === 'live';
+  const set = (path: string, value: unknown) => setField(patchPath(cfg, path, value));
+  const str = (path: string) => {
+    const v = getPath(cfg, path);
+    return v === undefined || v === null ? '' : String(v);
+  };
+
+  const teamEditor = (key: string, label: string, facts: boolean) => {
+    const team = (getPath(cfg, key) as Record<string, any>) || {};
+    const setTeam = (k: string, v: unknown) => set(key, { ...team, [k]: v });
+    return (
+      <div key={`team-${key}`} className="rounded-lg border border-slate-200 p-2 space-y-2">
+        <div className="text-[11px] font-bold text-slate-600">{tv(label)}</div>
+        {TEAM_IDENTITY_FIELDS.map((f) => {
+          const isSet = isSetValue(team[f.key]);
+          const clear = () => setTeam(f.key, undefined);
+          const input =
+            f.type === 'color' ? (
+              <ColorField label={tv(f.label)} value={String(team[f.key] || '#1e3a8a')} onChange={(v) => setTeam(f.key, v)} />
+            ) : f.type === 'image' ? (
+              <AssetPickerField label={tv(f.label)} kind="image" value={String(team[f.key] || '')} onChange={(v) => setTeam(f.key, v || undefined)} />
+            ) : (
+              <TextField label={tv(f.label)} value={String(team[f.key] ?? '')} placeholder={f.placeholder} onChange={(v) => setTeam(f.key, v === '' ? undefined : v)} />
+            );
+          return (
+            <SourcedField key={f.key} label={tv(f.label)} sourced={live} isSet={isSet} onClear={clear}>
+              {input}
+            </SourcedField>
+          );
+        })}
+        {facts && !live && TEAM_FACT_FIELDS.map((f) => (
+          <TextField
+            key={f.key}
+            label={tv(f.label)}
+            value={team[f.key] === undefined || team[f.key] === null ? '' : String(team[f.key])}
+            placeholder={f.placeholder}
+            onChange={(v) => setTeam(f.key, v === '' ? undefined : (f.key === 'score' || f.key === 'shots') ? v : parseTypedNumber(v))}
+          />
+        ))}
+      </div>
+    );
+  };
+
+  const out: React.ReactNode[] = [];
+  specs.forEach((f, i) => {
+    if (f.only && (!hasModes || f.only !== mode)) return;
+    const k = `${f.kind}-${'key' in f ? f.key : i}`;
+    switch (f.kind) {
+      case 'mode':
+        out.push(
+          <div key={k} className="space-y-1">
+            <SelectField
+              label={t('source.label')}
+              value={mode}
+              options={[['live', t('source.live')], ['manual', t('source.manual')]]}
+              onChange={(v) => setField({ dataMode: v === 'manual' ? 'manual' : 'live' })}
+            />
+            <p className="text-[10px] text-slate-400 px-0.5">{mode === 'manual' ? t('source.manualHint') : tv('liveHint')}</p>
+          </div>,
+        );
+        return;
+      case 'game':
+        out.push(<GameBindField key={k} value={cfg.gameId || ''} onChange={(v) => setField({ gameId: v })} />);
+        return;
+      case 'section':
+        out.push(<div key={k} className="pt-2 text-[10px] font-bold text-indigo-500 uppercase tracking-widest border-b border-slate-200">{tv(f.label)}</div>);
+        return;
+      case 'text':
+        out.push(
+          <div key={k} data-field-section={f.key.split('.')[0]}>
+            {f.multiline ? (
+              <TextAreaField label={tv(f.label)} value={str(f.key)} placeholder={f.placeholder} onChange={(v) => set(f.key, v === '' ? undefined : v)} rows={3} />
+            ) : (
+              <TextField label={tv(f.label)} value={str(f.key)} placeholder={f.placeholder} onChange={(v) => set(f.key, v === '' ? undefined : v)} />
+            )}
+          </div>,
+        );
+        return;
+      case 'number':
+        out.push(<TextField key={k} label={tv(f.label)} value={str(f.key)} placeholder={f.placeholder} onChange={(v) => set(f.key, parseTypedNumber(v))} />);
+        return;
+      case 'color':
+        out.push(<ColorField key={k} label={tv(f.label)} value={str(f.key) || f.fallback} onChange={(v) => set(f.key, v)} />);
+        return;
+      case 'image':
+        out.push(<AssetPickerField key={k} label={tv(f.label)} kind="image" value={str(f.key)} onChange={(v) => set(f.key, v || undefined)} />);
+        return;
+      case 'toggle': {
+        const v = getPath(cfg, f.key);
+        out.push(<ToggleField key={k} label={tv(f.label)} value={v === undefined ? !!f.defaultOn : !!v} onChange={(nv) => set(f.key, nv)} />);
+        return;
+      }
+      case 'select':
+        out.push(
+          <SelectField
+            key={k}
+            label={tv(f.label)}
+            value={str(f.key) || f.fallback}
+            options={f.options.map(([val, lab]) => [val, tv(lab)] as [string, string])}
+            onChange={(v) => set(f.key, v === '' ? undefined : v)}
+          />,
+        );
+        return;
+      case 'team':
+        out.push(teamEditor(f.key, f.label, !!f.facts));
+        return;
+      case 'strings': {
+        const cur = getPath(cfg, f.key);
+        const has = Array.isArray(cur) && cur.length > 0;
+        out.push(
+          <div key={k} data-field-section={f.key} className="space-y-1.5">
+            <StringListEditor label={tv(f.label)} itemNoun={tv(f.item)} value={has ? cur : []} onChange={(v) => set(f.key, v)} />
+            {!has && (
+              <button type="button" onClick={() => set(f.key, f.sample())} className="w-full py-1.5 text-[11px] font-semibold text-slate-600 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200">
+                {tv('useSample')}
+              </button>
+            )}
+          </div>,
+        );
+        return;
+      }
+      case 'rows': {
+        const cur = getPath(cfg, f.key);
+        const stored: Record<string, unknown>[] = Array.isArray(cur) ? (cur as Record<string, unknown>[]) : [];
+        const rows = f.toRow ? stored.map(f.toRow) : stored;
+        const write = (next: Record<string, unknown>[]) => {
+          const value = f.fromRow ? next.map(f.fromRow) : next;
+          const patch = patchPath(cfg, f.key, value);
+          setField(f.stampAsOf ? { ...patch, asOf: new Date().toISOString() } : patch);
+        };
+        out.push(
+          <div key={k} data-field-section={f.key.split('.')[0]} className="space-y-1.5">
+            <ListItemsEditor
+              label={tv(f.label)}
+              help={f.stampAsOf ? tv('asOfHelp') : undefined}
+              itemNoun={tv(f.item)}
+              value={rows}
+              onChange={write}
+              fields={f.fields.map((rf) => ({
+                key: rf.key,
+                label: tv(rf.label),
+                type: rf.type,
+                placeholder: rf.placeholder,
+                options: rf.options?.map(([val, lab]) => [val, tv(lab)] as [string, string]),
+              }))}
+            />
+            {rows.length === 0 && (
+              <button type="button" onClick={() => write(f.sample())} className="w-full py-1.5 text-[11px] font-semibold text-slate-600 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200">
+                {tv('useSample')}
+              </button>
+            )}
+          </div>,
+        );
+        return;
+      }
+    }
+  });
+  return <div className="space-y-3">{out}</div>;
+}
+
+/**
+ * Ribbon Board (live) + Scorebug — the config keys their renderers read
+ * (RibbonScorebugWidgets.tsx) beyond the game binding: the ribbon's own
+ * message reel + background, the scorebug's team-colour overrides, accent
+ * and network label. (Audit F30: these had the binding picker and nothing
+ * else.)
+ */
+function RibbonScorebugFields({
+  variant,
+  cfg,
+  setField,
+}: {
+  variant: 'ribbon-main' | 'scorebug-main';
+  cfg: Record<string, any>;
+  setField: (patch: Record<string, any>) => void;
+}) {
+  const t = useTranslations('sportsTemplates');
+  if (variant === 'ribbon-main') {
+    return (
+      <div className="space-y-3">
+        <div data-field-section="messages">
+          <StringListEditor
+            label={t('venue.ribbonMessages')}
+            help={t('venue.ribbonMessagesHelp')}
+            itemNoun={t('venue.itemMessage')}
+            value={Array.isArray(cfg.messages) ? cfg.messages : []}
+            onChange={(v) => setField({ messages: v })}
+          />
+        </div>
+        <TextField label={t('venue.ribbonSponsorText')} value={cfg.sponsorText ?? ''} placeholder="THANK YOU TO OUR BOOSTER CLUB" onChange={(v) => setField({ sponsorText: v === '' ? undefined : v })} />
+        <ColorField label={t('venue.background')} value={cfg.bgColor || '#05070d'} onChange={(v) => setField({ bgColor: v })} />
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-3">
+      <SourcedField label={t('fields.homeColor')} sourced isSet={isSetValue(cfg.homeColor)} onClear={() => setField({ homeColor: undefined })}>
+        <ColorField label={t('fields.homeColor')} value={cfg.homeColor || '#4f46e5'} onChange={(v) => setField({ homeColor: v })} />
+      </SourcedField>
+      <SourcedField label={t('fields.awayColor')} sourced isSet={isSetValue(cfg.awayColor)} onClear={() => setField({ awayColor: undefined })}>
+        <ColorField label={t('fields.awayColor')} value={cfg.awayColor || '#dc2626'} onChange={(v) => setField({ awayColor: v })} />
+      </SourcedField>
+      <ColorField label={t('fields.accent')} value={cfg.accent || '#fbbf24'} onChange={(v) => setField({ accent: v })} />
+      <TextField label={t('venue.networkLabel')} value={cfg.networkLabel ?? ''} placeholder="EAGLES SPORTS NETWORK" onChange={(v) => setField({ networkLabel: v === '' ? undefined : v })} />
     </div>
   );
 }

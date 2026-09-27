@@ -782,7 +782,10 @@ export function CtsSponsorRotatorWidget({ config }: { config?: SponsorRotatorCfg
       }
       return expanded;
     }
-    if (cfg.slots && cfg.slots.length > 0) return cfg.slots;
+    // A row the operator added but has not filled yet (the Properties panel
+    // keeps it so it can be edited — audit F30) must not rotate in as a blank.
+    const typedSlots = Array.isArray(cfg.slots) ? cfg.slots.filter((s) => s && (s.imageUrl || s.text)) : [];
+    if (typedSlots.length > 0) return typedSlots;
     return isPlayerSurface ? NEUTRAL_SPONSOR_SLOTS : SAMPLE_SPONSORS;
   }, [isAuto, board, cfg.slots, cfg.autoTierFilter, cfg.defaultDurationMs, isPlayerSurface]);
 
@@ -1037,7 +1040,9 @@ export function CtsAnnouncementWidget({ config }: { config?: AnnouncementCfg }) 
       }
       return out.length ? out : (isPlayerSurface ? NEUTRAL_ANNOUNCEMENTS : SAMPLE_ANNOUNCEMENTS);
     }
-    if (cfg.entries && cfg.entries.length > 0) return cfg.entries;
+    // Skip rows added in the panel but not filled in yet (audit F30).
+    const typedEntries = Array.isArray(cfg.entries) ? cfg.entries.filter((e) => e && String(e.text || '').trim()) : [];
+    if (typedEntries.length > 0) return typedEntries;
     return isPlayerSurface ? NEUTRAL_ANNOUNCEMENTS : SAMPLE_ANNOUNCEMENTS;
   }, [isAuto, board, cfg.entries, cfg.autoTemplates, cfg.autoDurationMs, isPlayerSurface]);
 
