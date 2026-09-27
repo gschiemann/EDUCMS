@@ -82,6 +82,9 @@ model Tenant {
   // tables (see the Sports Phase 2 block near the end of this file).
   sportsTeams                     Team[]
   sportsPersons                   SportsPerson[]
+  // 2026-09-27 — K-12 launch, lane B3: the school's student-information
+  // policy for public screens (see StudentPrivacyPolicy).
+  studentPrivacyPolicy            StudentPrivacyPolicy?
   playerSeasonStats               PlayerSeasonStat[]
   playerCareerStats               PlayerCareerStat[]
   statRecords                     StatRecord[]
@@ -3279,6 +3282,21 @@ model RosterPlayer {
   personId String? @map("person_id")
   teamId   String? @map("team_id")
 
+  // 2026-09-27 — K-12 launch program, lane B3 (student privacy on public
+  // screens). Per-student flags, recorded by the school:
+  //   directoryOptOut — the family opted out of directory information: this
+  //                     student's name and photo NEVER reach a public screen,
+  //                     whatever the school's attestation says.
+  //   photoRelease    — a photo / media release is on file: required, per
+  //                     student, before a K-12 school's public screen may show
+  //                     this student's photo.
+  // A row linked to a SportsPerson also honours that person's flags (opt-out
+  // from either wins; the person's photo release is the one that counts) —
+  // see apps/api/src/sports/student-privacy.ts. Both default false: nothing
+  // is released until someone records it.
+  directoryOptOut Boolean @default(false) @map("directory_opt_out")
+  photoRelease    Boolean @default(false) @map("photo_release")
+
   game    Game          @relation(fields: [gameId], references: [id], onDelete: Cascade)
   person  SportsPerson? @relation("PersonAppearances", fields: [personId], references: [id], onDelete: SetNull)
   teamRef Team?         @relation("TeamRosterAppearances", fields: [teamId], references: [id], onDelete: SetNull)
@@ -3642,6 +3660,11 @@ model SportsPerson {
   // isPublic false; rotate = re-issue the token. Both additive + nullable.
   isPublic         Boolean @default(false) @map("is_public")
   publicShareToken String? @unique @map("public_share_token")
+  // 2026-09-27 — K-12 launch, lane B3: the same two per-student flags as
+  // RosterPlayer, on the persistent athlete so they follow the student into
+  // every later game whose roster row links to this person.
+  directoryOptOut  Boolean @default(false) @map("directory_opt_out")
+  photoRelease     Boolean @default(false) @map("photo_release")
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @default(now()) @updatedAt @map("updated_at")
 
@@ -3785,6 +3808,47 @@ model PlayerMilestone {
   @@unique([personId, dedupeKey], name: "person_milestone_dedupe")
   @@index([tenantId, gameId])
   @@map("player_milestones")
+}
+
+// 2026-09-27 — K-12 launch program, lane B3. Greg: "follow the laws, dont show
+// any kids without some legal approval from someone". A school's decision about
+// student information on PUBLIC screens (scoreboards, ribbons, scorebugs, the
+// public athlete page), made explicit and recorded. Design:
+// docs/research/2026-09-24-k12-sports-launch-program/03-STUDENT-PRIVACY-DESIGN.md
+//
+// One row per tenant, created on the first change (absence = nothing decided).
+// Per category (names, photos) a tenant holds one state:
+//   null   — nothing decided here: inherit from the parent (district)
+//   ALLOW  — an admin confirmed the attestation text of `…AttestationVersion`
+//            (names: the annual FERPA notice designates athletes' names and
+//            sports participation as directory information and opt-outs are
+//            recorded in VenueOS; photos: a photo / media release is on file
+//            for every student marked "Photo release on file")
+//   HIDE   — never show here, whatever a parent tenant confirmed (a school
+//            stricter than its district)
+// Resolution walks school → district: any HIDE hides; else any ALLOW (of an
+// accepted version) allows; else HIDDEN — default deny. It applies to K-12
+// tenants and to any tenant that marks `servesMinors`; everyone else keeps the
+// per-game roster switches only. `…SetAt` / `…SetByUserId` name who made the
+// current state and when; every change also writes an immutable AuditLog row.
+model StudentPrivacyPolicy {
+  tenantId                 String    @id @map("tenant_id")
+  /// null = the vertical decides (K12 → yes); true/false = stated by an admin.
+  servesMinors             Boolean?  @map("serves_minors")
+  namesState               String?   @map("names_state")
+  namesSetAt               DateTime? @map("names_set_at")
+  namesSetByUserId         String?   @map("names_set_by_user_id")
+  namesAttestationVersion  String?   @map("names_attestation_version")
+  photosState              String?   @map("photos_state")
+  photosSetAt              DateTime? @map("photos_set_at")
+  photosSetByUserId        String?   @map("photos_set_by_user_id")
+  photosAttestationVersion String?   @map("photos_attestation_version")
+  createdAt                DateTime  @default(now()) @map("created_at")
+  updatedAt                DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("student_privacy_policies")
 }
 
 // Durable revocation backstop (2026-07-10 — external-audit fix).
