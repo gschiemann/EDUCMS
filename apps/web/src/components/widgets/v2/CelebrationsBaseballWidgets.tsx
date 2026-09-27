@@ -20,6 +20,7 @@ import type { CSSProperties } from 'react';
 import { resolveStyle, frameStyle, animDurationSec } from './_shared/styleSystem';
 import type { BaseCfg, WidgetProps } from './_shared/types';
 import { useElementSize } from './_shared/useElementSize';
+import { useCelebrationSample, has, joinParts, withUnit } from './_shared/celebration-sample';
 import { sceneCss } from '../scene-css';
 
 /* ──────────── shared helpers (local; no globals) ──────────── */
@@ -68,11 +69,12 @@ export interface CelBaseballStrikeoutCfg extends BaseCfg {
 
 export function CelBaseballStrikeoutWidget({ config, live = true, height = 480 }: WidgetProps<CelBaseballStrikeoutCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#0a0a0a', accentColor: '#dc2626', highlightColor: '#dc2626', ...c.style });
   const animOn = r.anim.on && live;
-  const pitcher = c.pitcher ?? 'PITCHER';
-  const k = c.kCount ?? 11;
-  const team = c.team ?? 'starting rotation';
+  const pitcher = sample(c.pitcher, 'PITCHER');
+  const k = sample(c.kCount, 11);
+  const team = sample(c.team, 'starting rotation');
   const spin = `${animDurationSec(r.anim.speed, 1.8)}s`;
   const blink = `${animDurationSec(r.anim.speed, 0.6)}s`;
 
@@ -123,7 +125,7 @@ export function CelBaseballStrikeoutWidget({ config, live = true, height = 480 }
           </div>
 
           <div style={{ position: 'absolute', right: '4%', top: '50%', transform: 'translateY(-50%)', textAlign: 'right', paddingLeft: '2%', borderLeft: `4px solid ${r.accent.primary}` }}>
-            <div style={{ color: r.accent.primary, fontSize: px(height, 0.09), letterSpacing: '0.12em', fontWeight: 800, textTransform: 'uppercase' }}>STRIKEOUT · #{k} TONIGHT</div>
+            {has(k) && <div style={{ color: r.accent.primary, fontSize: px(height, 0.09), letterSpacing: '0.12em', fontWeight: 800, textTransform: 'uppercase' }}>STRIKEOUT · #{k} TONIGHT</div>}
             <div style={{ fontSize: px(height, 0.42), lineHeight: 1, marginTop: '2%' }}>{pitcher}</div>
             <div style={{ fontSize: px(height, 0.075), color: '#9aa3b2', fontWeight: 700, marginTop: '2%' }}>{team}</div>
           </div>
@@ -141,7 +143,7 @@ export function CelBaseballStrikeoutWidget({ config, live = true, height = 480 }
             </div>
           )}
           <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <div style={{ color: r.accent.primary, fontSize: px(height, 0.06), letterSpacing: '0.12em', fontWeight: 800, textTransform: 'uppercase', marginBottom: px(height, 0.04) }}>STRIKEOUT · #{k} TONIGHT</div>
+            {has(k) && <div style={{ color: r.accent.primary, fontSize: px(height, 0.06), letterSpacing: '0.12em', fontWeight: 800, textTransform: 'uppercase', marginBottom: px(height, 0.04) }}>STRIKEOUT · #{k} TONIGHT</div>}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {[0, 1, 2].map(i => (
                 <div key={i} style={{
@@ -173,11 +175,12 @@ export interface CelBaseballHomeRunCfg extends BaseCfg {
 
 export function CelBaseballHomeRunWidget({ config, live = true, height = 480 }: WidgetProps<CelBaseballHomeRunCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#ce1141', accentColor: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'PLAYER';
-  const distance = c.distance ?? '418 FT';
-  const velo = c.exitVelo ?? '108 MPH EXIT VELOCITY';
+  const player = sample(c.player, 'PLAYER');
+  const distance = sample(c.distance, '418 FT');
+  const velo = sample(c.exitVelo, '108 MPH EXIT VELOCITY');
   const swoosh = `${animDurationSec(r.anim.speed, 1.5)}s`;
   const slide = `${animDurationSec(r.anim.speed, 0.5)}s`;
   const sparkDur = animDurationSec(r.anim.speed, 2);
@@ -260,10 +263,11 @@ export interface CelBaseballGrandSlamCfg extends BaseCfg {
 
 export function CelBaseballGrandSlamWidget({ config, live = true, height = 480 }: WidgetProps<CelBaseballGrandSlamCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#5e0612', accentColor: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'PLAYER';
-  const score = c.score ?? '7-2';
+  const player = sample(c.player, 'PLAYER');
+  const score = sample(c.score, '7-2');
   const punch = `${animDurationSec(r.anim.speed, 0.6)}s`;
   const blink = `${animDurationSec(r.anim.speed, 0.8)}s`;
   const sparkDur = animDurationSec(r.anim.speed, 2);
@@ -345,10 +349,11 @@ export interface CelBaseballNoHitterCfg extends BaseCfg {
 
 export function CelBaseballNoHitterWidget({ config, live = true, height = 480 }: WidgetProps<CelBaseballNoHitterCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#0a0a0a', accentColor: '#22c55e', highlightColor: '#ffffff', ...c.style });
   const animOn = r.anim.on && live;
-  const pitcher = c.pitcher ?? 'PITCHER';
-  const inning = c.inning ?? 9;
+  const pitcher = sample(c.pitcher, 'PITCHER');
+  const inning = sample(c.inning, 9);
   const glow = `${animDurationSec(r.anim.speed, 2)}s`;
   const pulse = `${animDurationSec(r.anim.speed, 2)}s`;
   const slide = `${animDurationSec(r.anim.speed, 0.7)}s`;
@@ -383,7 +388,7 @@ export function CelBaseballNoHitterWidget({ config, live = true, height = 480 }:
 
           <div style={{ position: 'absolute', right: '4%', top: '50%', transform: 'translateY(-50%)', textAlign: 'right' }}>
             <div style={{ fontSize: px(height, 0.42), lineHeight: 1 }}>{pitcher}</div>
-            <div style={{ color: '#9aa3b2', fontWeight: 700, fontSize: px(height, 0.11), marginTop: '2%' }}>thru {inning} innings</div>
+            {has(inning) && <div style={{ color: '#9aa3b2', fontWeight: 700, fontSize: px(height, 0.11), marginTop: '2%' }}>thru {inning} innings</div>}
           </div>
         </>
       ) : (
@@ -396,7 +401,7 @@ export function CelBaseballNoHitterWidget({ config, live = true, height = 480 }:
               <div style={{ fontSize: px(height, 0.06), letterSpacing: '0.12em', color: '#9aa3b2' }}>HITS</div>
             </div>
             <div style={{ fontSize: px(height, 0.16), lineHeight: 1, marginTop: px(height, 0.045) }}>{pitcher}</div>
-            <div style={{ color: '#9aa3b2', fontWeight: 700, fontSize: px(height, 0.055), marginTop: px(height, 0.02) }}>thru {inning} innings</div>
+            {has(inning) && <div style={{ color: '#9aa3b2', fontWeight: 700, fontSize: px(height, 0.055), marginTop: px(height, 0.02) }}>thru {inning} innings</div>}
           </div>
         </div>
       )}
@@ -414,11 +419,12 @@ export interface CelBaseballStolenBaseCfg extends BaseCfg {
 
 export function CelBaseballStolenBaseWidget({ config, live = true, height = 480 }: WidgetProps<CelBaseballStolenBaseCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#001a08', accentColor: '#22c55e', highlightColor: '#22c55e', ...c.style });
   const animOn = r.anim.on && live;
-  const runner = c.runner ?? 'RUNNER';
-  const base = c.base ?? '2ND';
-  const seasonSb = c.seasonSb ?? 14;
+  const runner = sample(c.runner, 'RUNNER');
+  const base = sample(c.base, '2ND');
+  const seasonSb = sample(c.seasonSb, 14);
   const sweep = `${animDurationSec(r.anim.speed, 2.4)}s`;
   const rise = `${animDurationSec(r.anim.speed, 0.5)}s`;
 
@@ -451,7 +457,7 @@ export function CelBaseballStolenBaseWidget({ config, live = true, height = 480 
 
           <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center' }}>
             <div style={{ fontSize: px(height, 0.42), lineHeight: 1 }}>{runner}</div>
-            <div style={{ color: r.accent.primary, fontSize: px(height, 0.11), marginTop: '2%' }}>{base} BASE</div>
+            {has(base) && <div style={{ color: r.accent.primary, fontSize: px(height, 0.11), marginTop: '2%' }}>{base} BASE</div>}
           </div>
 
           <div style={{ position: 'absolute', right: '4%', top: '50%', transform: 'translateY(-50%)', textAlign: 'right' }}>
@@ -465,7 +471,7 @@ export function CelBaseballStolenBaseWidget({ config, live = true, height = 480 
             <div style={{ color: r.accent.primary, fontSize: px(height, 0.06), letterSpacing: '0.14em' }}>SAFE!</div>
             <div style={{ fontSize: px(height, 0.2), lineHeight: 0.95, letterSpacing: '-0.04em', marginTop: px(height, 0.025) }}>STEAL</div>
             <div style={{ fontSize: px(height, 0.15), lineHeight: 1, marginTop: px(height, 0.04) }}>{runner}</div>
-            <div style={{ color: r.accent.primary, fontSize: px(height, 0.06), marginTop: px(height, 0.02) }}>{base} BASE</div>
+            {has(base) && <div style={{ color: r.accent.primary, fontSize: px(height, 0.06), marginTop: px(height, 0.02) }}>{base} BASE</div>}
             <div style={{ color: r.accent.primary, fontSize: px(height, 0.055), letterSpacing: '0.1em', marginTop: px(height, 0.05) }}>SEASON</div>
             <div style={{ color: r.accent.primary, fontSize: heroSize(width, height), fontFamily: '"JetBrains Mono", ui-monospace, monospace', textShadow: `0 0 60px ${r.accent.highlight}`, lineHeight: 1 }}>{seasonSb}</div>
           </div>
@@ -484,10 +490,11 @@ export interface CelBaseballDoublePlayCfg extends BaseCfg {
 
 export function CelBaseballDoublePlayWidget({ config, live = true, height = 480 }: WidgetProps<CelBaseballDoublePlayCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#0a1a30', accentColor: '#22d39b', highlightColor: '#22d39b', ...c.style });
   const animOn = r.anim.on && live;
-  const combo = c.combo ?? '6-4-3';
-  const players = c.players ?? ['SS', '2B', '1B'];
+  const combo = sample(c.combo, '6-4-3');
+  const players = sample(c.players, ['SS', '2B', '1B']);
   const swoosh = `${animDurationSec(r.anim.speed, 2)}s`;
   const slide = `${animDurationSec(r.anim.speed, 0.4)}s`;
   const parts = combo.split('-');
@@ -557,9 +564,10 @@ export interface CelBaseballTriplePlayCfg extends BaseCfg {
 
 export function CelBaseballTriplePlayWidget({ config, live = true, height = 480 }: WidgetProps<CelBaseballTriplePlayCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#3a0008', accentColor: '#ffd23a', accentColor2: '#dc2626', highlightColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const caption = c.caption ?? '1st in 6 yrs';
+  const caption = sample(c.caption, '1st in 6 yrs');
   const burst = `${animDurationSec(r.anim.speed, 0.5)}s`;
   const punch = `${animDurationSec(r.anim.speed, 0.7)}s`;
   const sparkDur = animDurationSec(r.anim.speed, 2);
@@ -627,12 +635,13 @@ export interface CelBaseballWalkOffCfg extends BaseCfg {
 
 export function CelBaseballWalkOffWidget({ config, live = true, height = 480 }: WidgetProps<CelBaseballWalkOffCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#dc2626', accentColor: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const teamName = c.teamName ?? 'HOME TEAM';
-  const hero = c.hero ?? 'PLAYER';
-  const score = c.finalScore ?? '5-4';
-  const innings = c.innings ?? 11;
+  const teamName = sample(c.teamName, 'HOME TEAM');
+  const hero = sample(c.hero, 'PLAYER');
+  const score = sample(c.finalScore, '5-4');
+  const innings = sample(c.innings, 11);
   const fly = `${animDurationSec(r.anim.speed, 4)}s`;
   const slide = `${animDurationSec(r.anim.speed, 0.6)}s`;
   const sparkDur = animDurationSec(r.anim.speed, 2);
@@ -660,7 +669,7 @@ export function CelBaseballWalkOffWidget({ config, live = true, height = 480 }: 
             <div style={{ animation: animOn ? `celBbWoSlideL ${slide} ease-out` : undefined }}>
               <div style={{ color: r.accent.primary, fontSize: px(height, 0.13), letterSpacing: '0.14em' }}>WALK-OFF WIN</div>
               <div style={{ fontSize: px(height, 0.46), lineHeight: 0.95, textShadow: '0 6px 30px #000', marginTop: '2%' }}>{teamName}</div>
-              <div style={{ fontWeight: 700, fontSize: px(height, 0.1), marginTop: '2%' }}>{innings} INNINGS · {score}</div>
+              {has(joinParts(withUnit(innings, '', ' INNINGS'), score)) && <div style={{ fontWeight: 700, fontSize: px(height, 0.1), marginTop: '2%' }}>{joinParts(withUnit(innings, '', ' INNINGS'), score)}</div>}
             </div>
           </div>
 
@@ -676,7 +685,7 @@ export function CelBaseballWalkOffWidget({ config, live = true, height = 480 }: 
           <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', animation: animOn ? `celBbWoRise ${slide} ease-out both` : undefined }}>
             <div style={{ color: r.accent.primary, fontSize: px(height, 0.07), letterSpacing: '0.14em' }}>WALK-OFF WIN</div>
             <div style={{ fontSize: px(height, 0.2), lineHeight: 0.95, textShadow: '0 6px 30px #000', marginTop: px(height, 0.025) }}>{teamName}</div>
-            <div style={{ fontWeight: 700, fontSize: px(height, 0.06), marginTop: px(height, 0.025) }}>{innings} INNINGS · {score}</div>
+            {has(joinParts(withUnit(innings, '', ' INNINGS'), score)) && <div style={{ fontWeight: 700, fontSize: px(height, 0.06), marginTop: px(height, 0.025) }}>{joinParts(withUnit(innings, '', ' INNINGS'), score)}</div>}
             <div style={{ color: r.accent.primary, fontSize: px(height, 0.06), marginTop: px(height, 0.05) }}>HERO</div>
             <div style={{ color: r.accent.primary, fontSize: heroSize(width, height), lineHeight: 0.9, textShadow: `0 0 50px ${r.accent.highlight}` }}>{hero}</div>
           </div>

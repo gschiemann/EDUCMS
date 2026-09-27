@@ -10,6 +10,7 @@ import React from 'react';
 import { resolveStyle, frameStyle, animDurationSec } from './_shared/styleSystem';
 import type { BaseCfg, WidgetProps } from './_shared/types';
 import { useElementSize } from './_shared/useElementSize';
+import { useCelebrationSample, has, joinParts, withUnit } from './_shared/celebration-sample';
 import { sceneCss } from '../scene-css';
 
 function px(z: number, f: number): number { return Math.max(8, Math.round(z * f)); }
@@ -186,9 +187,10 @@ export interface BbHomeRunRetroCfg extends BaseCfg {
 
 export function BbHomeRunRetroWidget({ config, live = true, height = 480 }: WidgetProps<BbHomeRunRetroCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#0d3a1a', textColor: '#ffd23a', accentColor: '#fff', borderColor: '#ffd23a', ...c.style });
-  const player = c.player ?? 'PLAYER';
-  const distance = c.distance ?? '418 FT';
+  const player = sample(c.player, 'PLAYER');
+  const distance = sample(c.distance, '418 FT');
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
   const wide = isWide(width, mh);
 
@@ -228,10 +230,11 @@ export interface BbHomeRunNeonCfg extends BaseCfg {
 
 export function BbHomeRunNeonWidget({ config, live = true, height = 480 }: WidgetProps<BbHomeRunNeonCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#0a0014', textColor: '#ff00ff', accentColor: '#00ffff', borderColor: '#ff00ff', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'PLAYER';
-  const distance = c.distance ?? '462 FT';
+  const player = sample(c.player, 'PLAYER');
+  const distance = sample(c.distance, '462 FT');
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
   const wide = isWide(width, mh);
 
@@ -275,10 +278,11 @@ export interface BbStrikeoutNeonCfg extends BaseCfg {
 
 export function BbStrikeoutNeonWidget({ config, live = true, height = 480 }: WidgetProps<BbStrikeoutNeonCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#0a0014', textColor: '#00ffff', accentColor: '#ff00ff', borderColor: '#00ffff', ...c.style });
   const animOn = r.anim.on && live;
-  const pitcher = c.pitcher ?? 'PITCHER';
-  const kCount = c.kCount ?? 13;
+  const pitcher = sample(c.pitcher, 'PITCHER');
+  const kCount = sample(c.kCount, 13);
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
   const wide = isWide(width, mh);
@@ -298,7 +302,7 @@ export function BbStrikeoutNeonWidget({ config, live = true, height = 480 }: Wid
             ))}
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ color: '#ff00ff', fontWeight: 800, fontSize: px(height, 48 / 480), letterSpacing: '0.14em', textShadow: '0 0 20px #ff00ff' }}>K · {kCount}</div>
+            {has(kCount) && <div style={{ color: '#ff00ff', fontWeight: 800, fontSize: px(height, 48 / 480), letterSpacing: '0.14em', textShadow: '0 0 20px #ff00ff' }}>K · {kCount}</div>}
             <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 220 / 480), lineHeight: 1 }}>{pitcher}</div>
           </div>
         </div>
@@ -309,7 +313,7 @@ export function BbStrikeoutNeonWidget({ config, live = true, height = 480 }: Wid
               <div key={i} style={{ fontFamily: PJS, fontWeight: 800, fontSize: kHero, lineHeight: 1, color: '#00ffff', textShadow: '0 0 30px #00ffff, 0 0 60px #00ffff, 0 0 120px #ff00ff', marginRight: i === 2 ? 0 : px(mh, 0.04), animation: animOn ? `celOtherBlink 0.5s ${i * 0.18}s infinite` : undefined }}>K</div>
             ))}
           </div>
-          <div style={{ color: '#ff00ff', fontWeight: 800, fontSize: sceneText(width, mh, 0.08, 10), letterSpacing: '0.14em', textShadow: '0 0 20px #ff00ff', marginTop: px(mh, 0.04) }}>K · {kCount}</div>
+          {has(kCount) && <div style={{ color: '#ff00ff', fontWeight: 800, fontSize: sceneText(width, mh, 0.08, 10), letterSpacing: '0.14em', textShadow: '0 0 20px #ff00ff', marginTop: px(mh, 0.04) }}>K · {kCount}</div>}
           <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.13, pitcher.length), lineHeight: 1, color: '#fff', marginTop: px(mh, 0.02) }}>{pitcher}</div>
         </div>
       )}
@@ -326,10 +330,11 @@ export interface FbTouchdownNeonCfg extends BaseCfg {
 
 export function FbTouchdownNeonWidget({ config, live = true, height = 480 }: WidgetProps<FbTouchdownNeonCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#0a0014', textColor: '#ff00ff', accentColor: '#00ffff', borderColor: '#ff00ff', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'PLAYER';
-  const distance = c.distance ?? '48 YD';
+  const player = sample(c.player, 'PLAYER');
+  const distance = sample(c.distance, '48 YD');
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
   const wide = isWide(width, mh);
@@ -349,13 +354,13 @@ export function FbTouchdownNeonWidget({ config, live = true, height = 480 }: Wid
             <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 300 / 480), lineHeight: 0.85, color: '#00ffff', textShadow: '0 0 60px #00ffff, 0 0 120px #00ffff', letterSpacing: '-0.04em' }}>DOWN!</div>
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 220 / 480), color: '#00ffff', textShadow: '0 0 30px #00ffff' }}>+6 · {distance}</div>
+            {has(distance) && <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 220 / 480), color: '#00ffff', textShadow: '0 0 30px #00ffff' }}>+6 · {distance}</div>}
             <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 200 / 480), lineHeight: 1 }}>{player}</div>
           </div>
         </div>
       ) : (
         <div style={sceneWrap}>
-          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneText(width, mh, 0.08, distance.length + 5), color: '#00ffff', textShadow: '0 0 30px #00ffff' }}>+6 · {distance}</div>
+          {has(distance) && <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneText(width, mh, 0.08, distance.length + 5), color: '#00ffff', textShadow: '0 0 30px #00ffff' }}>+6 · {distance}</div>}
           <div style={{ marginTop: px(mh, 0.03) }}>
             <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: hero, lineHeight: 0.86, color: '#ff00ff', textShadow: '0 0 60px #ff00ff, 0 0 120px #ff00ff', letterSpacing: '-0.04em' }}>TOUCH</div>
             <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: hero, lineHeight: 0.86, color: '#00ffff', textShadow: '0 0 60px #00ffff, 0 0 120px #00ffff', letterSpacing: '-0.04em' }}>DOWN!</div>
@@ -376,9 +381,10 @@ export interface FbTouchdownRetroCfg extends BaseCfg {
 
 export function FbTouchdownRetroWidget({ config, live = true, height = 480 }: WidgetProps<FbTouchdownRetroCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#1a0d00', textColor: '#d4a36a', accentColor: '#ffd23a', borderColor: '#d4a36a', ...c.style });
-  const player = c.player ?? 'PLAYER';
-  const distance = c.distance ?? '12 YD';
+  const player = sample(c.player, 'PLAYER');
+  const distance = sample(c.distance, '12 YD');
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
   const wide = isWide(width, mh);
@@ -395,7 +401,7 @@ export function FbTouchdownRetroWidget({ config, live = true, height = 480 }: Wi
             <div style={{ fontFamily: PJS, fontStyle: 'italic', fontWeight: 800, fontSize: px(height, 260 / 480), lineHeight: 0.95, letterSpacing: '-0.04em', textShadow: '0 6px 30px #000' }}>Touchdown.</div>
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontFamily: JBM, fontWeight: 700, fontSize: px(height, 46 / 480), letterSpacing: '0.1em' }}>+6 · {distance}</div>
+            {has(distance) && <div style={{ fontFamily: JBM, fontWeight: 700, fontSize: px(height, 46 / 480), letterSpacing: '0.1em' }}>+6 · {distance}</div>}
             <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 200 / 480), lineHeight: 1, color: '#ffd23a' }}>{player}</div>
           </div>
         </div>
@@ -403,7 +409,7 @@ export function FbTouchdownRetroWidget({ config, live = true, height = 480 }: Wi
         <div style={{ ...sceneWrap, color: '#d4a36a' }}>
           <div style={{ fontWeight: 800, fontSize: sceneText(width, mh, 0.05, 28), letterSpacing: '0.18em', borderTop: '2px solid #d4a36a', borderBottom: '2px solid #d4a36a', padding: `${px(mh, 6 / 480)}px 0` }}>1972 NFL FILMS · ARENA SERIES</div>
           <div style={{ fontFamily: PJS, fontStyle: 'italic', fontWeight: 800, fontSize: sceneHero(width, mh, 0.32, 0.13), lineHeight: 0.95, letterSpacing: '-0.04em', textShadow: '0 6px 30px #000', marginTop: px(mh, 0.04) }}>Touchdown.</div>
-          <div style={{ fontFamily: JBM, fontWeight: 700, fontSize: sceneText(width, mh, 0.08, distance.length + 5), letterSpacing: '0.1em', marginTop: px(mh, 0.035) }}>+6 · {distance}</div>
+          {has(distance) && <div style={{ fontFamily: JBM, fontWeight: 700, fontSize: sceneText(width, mh, 0.08, distance.length + 5), letterSpacing: '0.1em', marginTop: px(mh, 0.035) }}>+6 · {distance}</div>}
           <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.1, player.length), lineHeight: 1, color: '#ffd23a', marginTop: px(mh, 0.02) }}>{player}</div>
         </div>
       )}
@@ -420,10 +426,11 @@ export interface BkThreeNeonCfg extends BaseCfg {
 
 export function BkThreeNeonWidget({ config, live = true, height = 480 }: WidgetProps<BkThreeNeonCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#0a0014', textColor: '#00ffff', accentColor: '#ffd23a', borderColor: '#00ffff', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'PLAYER';
-  const threeCount = c.threeCount ?? 9;
+  const player = sample(c.player, 'PLAYER');
+  const threeCount = sample(c.threeCount, 9);
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
   const wide = isWide(width, mh);
@@ -447,7 +454,7 @@ export function BkThreeNeonWidget({ config, live = true, height = 480 }: WidgetP
           <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneHero(width, mh, 0.36, 0.2), lineHeight: 0.85, color: '#00ffff', textShadow: '0 0 60px #00ffff, 0 0 120px #00ffff, 0 0 200px #ff00ff' }}>3</div>
           <div style={{ color: '#ff00ff', fontWeight: 800, fontSize: sceneText(width, mh, 0.06, 16), letterSpacing: '0.12em', textShadow: '0 0 30px #ff00ff', marginTop: px(mh, 0.025) }}>FROM DOWNTOWN</div>
           <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.13, player.length), lineHeight: 1, color: '#fff', marginTop: px(mh, 0.02) }}>{player}</div>
-          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneText(width, mh, 0.09, 6), color: '#ffd23a', textShadow: '0 0 30px #ffd23a', marginTop: px(mh, 0.02) }}>#{threeCount}</div>
+          {has(threeCount) && <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneText(width, mh, 0.09, 6), color: '#ffd23a', textShadow: '0 0 30px #ffd23a', marginTop: px(mh, 0.02) }}>#{threeCount}</div>}
         </div>
       )}
     </div>
@@ -463,10 +470,11 @@ export interface BkThreeRetroCfg extends BaseCfg {
 
 export function BkThreeRetroWidget({ config, live = true, height = 480 }: WidgetProps<BkThreeRetroCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#000', textColor: '#fff', accentColor: '#ffd23a', borderColor: '#dc2626', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'PLAYER';
-  const threeCount = c.threeCount ?? 5;
+  const player = sample(c.player, 'PLAYER');
+  const threeCount = sample(c.threeCount, 5);
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
   const wide = isWide(width, mh);
@@ -483,7 +491,7 @@ export function BkThreeRetroWidget({ config, live = true, height = 480 }: Widget
             <div style={{ fontFamily: PJS, fontStyle: 'italic', fontWeight: 800, fontSize: px(height, 280 / 480), lineHeight: 0.9, color: '#fff', textShadow: '8px 8px 0 #dc2626' }}>THREE.</div>
           </div>
           <div style={{ textAlign: 'right', transform: 'skewX(-12deg)' }}>
-            <div style={{ background: '#dc2626', color: '#fff', padding: '10px 24px', display: 'inline-block', fontWeight: 800, fontSize: px(height, 42 / 480), letterSpacing: '0.1em' }}>#{threeCount} TONIGHT</div>
+            {has(threeCount) && <div style={{ background: '#dc2626', color: '#fff', padding: '10px 24px', display: 'inline-block', fontWeight: 800, fontSize: px(height, 42 / 480), letterSpacing: '0.1em' }}>#{threeCount} TONIGHT</div>}
             <div style={{ fontFamily: PJS, fontStyle: 'italic', fontWeight: 800, fontSize: px(height, 200 / 480), lineHeight: 1, color: '#ffd23a' }}>{player}</div>
           </div>
         </div>
@@ -492,7 +500,7 @@ export function BkThreeRetroWidget({ config, live = true, height = 480 }: Widget
           <div style={{ background: '#ffd23a', color: '#000', padding: `${px(mh, 8 / 480)}px ${px(mh, 18 / 480)}px`, fontWeight: 800, fontSize: sceneText(width, mh, 0.07, 9), letterSpacing: '0.12em', transform: 'skewX(-12deg)' }}>SPLASH!</div>
           <div style={{ fontFamily: PJS, fontStyle: 'italic', fontWeight: 800, fontSize: sceneHero(width, mh, 0.3, 0.16), lineHeight: 0.9, color: '#fff', textShadow: '8px 8px 0 #dc2626', transform: 'skewX(-12deg)', marginTop: px(mh, 0.03) }}>THREE.</div>
           <div style={{ fontFamily: PJS, fontStyle: 'italic', fontWeight: 800, fontSize: sceneText(width, mh, 0.11, player.length), lineHeight: 1, color: '#ffd23a', transform: 'skewX(-12deg)', marginTop: px(mh, 0.035) }}>{player}</div>
-          <div style={{ background: '#dc2626', color: '#fff', padding: `${px(mh, 6 / 480)}px ${px(mh, 16 / 480)}px`, fontWeight: 800, fontSize: sceneText(width, mh, 0.06, 14), letterSpacing: '0.08em', transform: 'skewX(-12deg)', marginTop: px(mh, 0.02) }}>#{threeCount} TONIGHT</div>
+          {has(threeCount) && <div style={{ background: '#dc2626', color: '#fff', padding: `${px(mh, 6 / 480)}px ${px(mh, 16 / 480)}px`, fontWeight: 800, fontSize: sceneText(width, mh, 0.06, 14), letterSpacing: '0.08em', transform: 'skewX(-12deg)', marginTop: px(mh, 0.02) }}>#{threeCount} TONIGHT</div>}
         </div>
       )}
     </div>
@@ -507,9 +515,10 @@ export interface HkGoalNeonCfg extends BaseCfg {
 
 export function HkGoalNeonWidget({ config, live = true, height = 480 }: WidgetProps<HkGoalNeonCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#0a0014', textColor: '#ff00aa', accentColor: '#00ffff', borderColor: '#ff00aa', ...c.style });
   const animOn = r.anim.on && live;
-  const scorer = c.scorer ?? 'SCORER';
+  const scorer = sample(c.scorer, 'SCORER');
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
   const wide = isWide(width, mh);
@@ -551,9 +560,10 @@ export interface HkGoalRetroCfg extends BaseCfg {
 
 export function HkGoalRetroWidget({ config, live = true, height = 480 }: WidgetProps<HkGoalRetroCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#1a0d05', textColor: '#ffd23a', accentColor: '#dc2626', borderColor: '#ffd23a', ...c.style });
-  const scorer = c.scorer ?? 'SCORER';
-  const period = c.period ?? 2;
+  const scorer = sample(c.scorer, 'SCORER');
+  const period = sample(c.period, 2);
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
   const wide = isWide(width, mh);
@@ -569,7 +579,7 @@ export function HkGoalRetroWidget({ config, live = true, height = 480 }: WidgetP
             <div style={{ marginTop: px(height, 16 / 480) }}><SplitFlap size={200} color="#ffd23a" height={height}>GOAL</SplitFlap></div>
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontFamily: JBM, fontWeight: 700, fontSize: px(height, 44 / 480), letterSpacing: '0.1em' }}>PERIOD {period}</div>
+            {has(period) && <div style={{ fontFamily: JBM, fontWeight: 700, fontSize: px(height, 44 / 480), letterSpacing: '0.1em' }}>PERIOD {period}</div>}
             <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 220 / 480), lineHeight: 1 }}>{scorer}</div>
           </div>
         </div>
@@ -577,7 +587,7 @@ export function HkGoalRetroWidget({ config, live = true, height = 480 }: WidgetP
         <div style={{ ...sceneWrap, color: '#ffd23a' }}>
           <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneText(width, mh, 0.055, 22), letterSpacing: '0.16em', borderBottom: '4px solid #ffd23a', paddingBottom: px(mh, 6 / 480) }}>HE SHOOTS · HE SCORES</div>
           <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneHero(width, mh, 0.28, 0.13), lineHeight: 1, marginTop: px(mh, 0.04) }}>GOAL</div>
-          <div style={{ fontFamily: JBM, fontWeight: 700, fontSize: sceneText(width, mh, 0.07, 10), letterSpacing: '0.1em', marginTop: px(mh, 0.035) }}>PERIOD {period}</div>
+          {has(period) && <div style={{ fontFamily: JBM, fontWeight: 700, fontSize: sceneText(width, mh, 0.07, 10), letterSpacing: '0.1em', marginTop: px(mh, 0.035) }}>PERIOD {period}</div>}
           <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneText(width, mh, 0.11, scorer.length), lineHeight: 1, marginTop: px(mh, 0.02) }}>{scorer}</div>
         </div>
       )}
@@ -594,9 +604,10 @@ export interface ScGoalRetroCfg extends BaseCfg {
 
 export function ScGoalRetroWidget({ config, live = true, height = 480 }: WidgetProps<ScGoalRetroCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#0a3a0d', textColor: '#fff', accentColor: '#ffd23a', borderColor: '#fff', ...c.style });
-  const scorer = c.scorer ?? 'SCORER';
-  const minute = c.minute ?? "42'";
+  const scorer = sample(c.scorer, 'SCORER');
+  const minute = sample(c.minute, "42'");
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
   const wide = isWide(width, mh);
@@ -639,10 +650,11 @@ export interface ScGoalNeonCfg extends BaseCfg {
 
 export function ScGoalNeonWidget({ config, live = true, height = 480 }: WidgetProps<ScGoalNeonCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#0a0014', textColor: '#00ff66', accentColor: '#ff00aa', borderColor: '#00ff66', ...c.style });
   const animOn = r.anim.on && live;
-  const scorer = c.scorer ?? 'SCORER';
-  const minute = c.minute ?? "90'+3";
+  const scorer = sample(c.scorer, 'SCORER');
+  const minute = sample(c.minute, "90'+3");
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
   const wide = isWide(width, mh);
@@ -682,11 +694,12 @@ export interface TnAceCfg extends BaseCfg {
 
 export function TnAceWidget({ config, live = true, height = 480 }: WidgetProps<TnAceCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#0a4a8a', textColor: '#fff', accentColor: '#ffd23a', borderColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'PLAYER';
-  const speed = c.speed ?? '141 MPH';
-  const aces = c.aces ?? 8;
+  const player = sample(c.player, 'PLAYER');
+  const speed = sample(c.speed, '141 MPH');
+  const aces = sample(c.aces, 8);
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
   const wide = isWide(width, mh);
@@ -710,7 +723,7 @@ export function TnAceWidget({ config, live = true, height = 480 }: WidgetProps<T
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 140 / 480), color: '#ffd23a' }}>{speed}</div>
             <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 180 / 480), lineHeight: 1 }}>{player}</div>
-            <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 34 / 480) }}>{aces} aces this match</div>
+            {has(aces) && <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 34 / 480) }}>{aces} aces this match</div>}
           </div>
         </div>
       ) : (
@@ -719,7 +732,7 @@ export function TnAceWidget({ config, live = true, height = 480 }: WidgetProps<T
           <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneHero(width, mh, 0.3, 0.16), lineHeight: 0.9, color: '#ffd23a', textShadow: '0 0 60px #ffd23a', marginTop: px(mh, 0.02) }}>ACE!</div>
           <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.11, player.length), lineHeight: 1, color: '#fff', marginTop: px(mh, 0.035) }}>{player}</div>
           <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneText(width, mh, 0.08, speed.length + 1), color: '#ffd23a', marginTop: px(mh, 0.02) }}>{speed}</div>
-          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.05, 22), marginTop: px(mh, 0.015) }}>{aces} aces this match</div>
+          {has(aces) && <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.05, 22), marginTop: px(mh, 0.015) }}>{aces} aces this match</div>}
         </div>
       )}
     </div>
@@ -735,10 +748,11 @@ export interface TnAceNeonCfg extends BaseCfg {
 
 export function TnAceNeonWidget({ config, live = true, height = 480 }: WidgetProps<TnAceNeonCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#0a0014', textColor: '#00ffff', accentColor: '#ff00ff', borderColor: '#00ffff', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'PLAYER';
-  const speed = c.speed ?? '138 MPH';
+  const player = sample(c.player, 'PLAYER');
+  const speed = sample(c.speed, '138 MPH');
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
   const wide = isWide(width, mh);
@@ -781,11 +795,12 @@ export interface TnBreakPointCfg extends BaseCfg {
 
 export function TnBreakPointWidget({ config, live = true, height = 480 }: WidgetProps<TnBreakPointCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#dc2626', textColor: '#fff', accentColor: '#ffd23a', borderColor: '#fff', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'PLAYER';
-  const set = c.set ?? 1;
-  const score = c.score ?? '4-3';
+  const player = sample(c.player, 'PLAYER');
+  const set = sample(c.set, 1);
+  const score = sample(c.score, '4-3');
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
   const wide = isWide(width, mh);
@@ -802,7 +817,7 @@ export function TnBreakPointWidget({ config, live = true, height = 480 }: Widget
             <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 240 / 480), lineHeight: 0.9, textShadow: '0 0 40px #000' }}>BREAK POINT</div>
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 42 / 480) }}>SET {set}</div>
+            {has(set) && <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 42 / 480) }}>SET {set}</div>}
             <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 200 / 480), lineHeight: 1 }}>{player}</div>
             <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 100 / 480), color: '#ffd23a' }}>{score}</div>
           </div>
@@ -811,7 +826,7 @@ export function TnBreakPointWidget({ config, live = true, height = 480 }: Widget
         <div style={sceneWrap}>
           <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.07, 14), letterSpacing: '0.14em' }}>SERVE BROKEN!</div>
           <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneHero(width, mh, 0.26, 0.12), lineHeight: 0.9, color: '#fff', textShadow: '0 0 40px #000', marginTop: px(mh, 0.025) }}>BREAK POINT</div>
-          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.06, 6), marginTop: px(mh, 0.035) }}>SET {set}</div>
+          {has(set) && <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.06, 6), marginTop: px(mh, 0.035) }}>SET {set}</div>}
           <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.11, player.length), lineHeight: 1, color: '#fff', marginTop: px(mh, 0.015) }}>{player}</div>
           <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneText(width, mh, 0.08, score.length + 1), color: '#ffd23a', marginTop: px(mh, 0.015) }}>{score}</div>
         </div>
@@ -829,10 +844,11 @@ export interface TnMatchPointCfg extends BaseCfg {
 
 export function TnMatchPointWidget({ config, live = true, height = 480 }: WidgetProps<TnMatchPointCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#000', textColor: '#ffd23a', accentColor: '#fff', borderColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'PLAYER';
-  const score = c.score ?? '40-30';
+  const player = sample(c.player, 'PLAYER');
+  const score = sample(c.score, '40-30');
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
   const wide = isWide(width, mh);
@@ -870,11 +886,12 @@ export interface TnWinnerCfg extends BaseCfg {
 
 export function TnWinnerWidget({ config, live = true, height = 480 }: WidgetProps<TnWinnerCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#0a4a8a', textColor: '#fff', accentColor: '#ffd23a', borderColor: '#fff', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'PLAYER';
-  const shot = c.shot ?? 'FOREHAND';
-  const winners = c.winners ?? 24;
+  const player = sample(c.player, 'PLAYER');
+  const shot = sample(c.shot, 'FOREHAND');
+  const winners = sample(c.winners, 24);
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
   const wide = isWide(width, mh);
@@ -890,16 +907,16 @@ export function TnWinnerWidget({ config, live = true, height = 480 }: WidgetProp
       {wide ? (
         <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', color: '#fff' }}>
           <div>
-            <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 54 / 480), letterSpacing: '0.1em' }}>{shot} WINNER</div>
+            {has(shot) && <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 54 / 480), letterSpacing: '0.1em' }}>{shot} WINNER</div>}
             <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 300 / 480), lineHeight: 0.9, color: '#ffd23a', textShadow: '0 0 60px #ffd23a' }}>PAINTED IT.</div>
-            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 140 / 480), lineHeight: 1 }}>{player} · {winners} winners</div>
+            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 140 / 480), lineHeight: 1 }}>{joinParts(player, withUnit(winners, '', ' winners'))}</div>
           </div>
         </div>
       ) : (
         <div style={sceneWrap}>
-          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.07, shot.length + 8), letterSpacing: '0.08em' }}>{shot} WINNER</div>
+          {has(shot) && <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.07, shot.length + 8), letterSpacing: '0.08em' }}>{shot} WINNER</div>}
           <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneHero(width, mh, 0.28, 0.14), lineHeight: 0.9, color: '#ffd23a', textShadow: '0 0 60px #ffd23a', marginTop: px(mh, 0.025) }}>PAINTED IT.</div>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.09, player.length + 12), lineHeight: 1, color: '#fff', marginTop: px(mh, 0.035) }}>{player} · {winners} winners</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.09, player.length + 12), lineHeight: 1, color: '#fff', marginTop: px(mh, 0.035) }}>{joinParts(player, withUnit(winners, '', ' winners'))}</div>
         </div>
       )}
     </div>
@@ -920,11 +937,12 @@ export interface LxGoalCfg extends BaseCfg {
 
 export function LxGoalWidget({ config, live = true, height = 480 }: WidgetProps<LxGoalCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#003a14', textColor: '#fff', accentColor: '#ffd23a', borderColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const scorer = c.scorer ?? 'SCORER';
-  const number = c.number ?? '1';
-  const score = c.score ?? '8-6';
+  const scorer = sample(c.scorer, 'SCORER');
+  const number = sample(c.number, '1');
+  const score = sample(c.score, '8-6');
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
   const wide = isWide(width, mh);
@@ -941,7 +959,7 @@ export function LxGoalWidget({ config, live = true, height = 480 }: WidgetProps<
             <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 54 / 480), letterSpacing: '0.14em' }}>STICKS UP!</div>
             <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 300 / 480), lineHeight: 0.9, color: '#ffd23a', textShadow: '0 0 60px #ffd23a' }}>GOAL!</div>
           </div>
-          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 340 / 480), color: '#ffd23a', textShadow: '0 0 80px #ffd23a' }}>#{number}</div>
+          {has(number) && <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 340 / 480), color: '#ffd23a', textShadow: '0 0 80px #ffd23a' }}>#{number}</div>}
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 200 / 480), lineHeight: 1 }}>{scorer}</div>
             <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 100 / 480), color: '#ffd23a' }}>{score}</div>
@@ -951,7 +969,7 @@ export function LxGoalWidget({ config, live = true, height = 480 }: WidgetProps<
         <div style={sceneWrap}>
           <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.07, 11), letterSpacing: '0.14em' }}>STICKS UP!</div>
           <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneHero(width, mh, 0.3, 0.16), lineHeight: 0.9, color: '#ffd23a', textShadow: '0 0 60px #ffd23a', marginTop: px(mh, 0.02) }}>GOAL!</div>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.11, scorer.length + 5), lineHeight: 1, color: '#fff', marginTop: px(mh, 0.035) }}>#{number} · {scorer}</div>
+          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.11, scorer.length + 5), lineHeight: 1, color: '#fff', marginTop: px(mh, 0.035) }}>{joinParts(withUnit(number, '#'), scorer)}</div>
           <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneText(width, mh, 0.08, score.length + 1), color: '#ffd23a', marginTop: px(mh, 0.015) }}>{score}</div>
         </div>
       )}
@@ -968,10 +986,11 @@ export interface LxBehindTheBackCfg extends BaseCfg {
 
 export function LxBehindTheBackWidget({ config, live = true, height = 480 }: WidgetProps<LxBehindTheBackCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#1a0008', textColor: '#fff', accentColor: '#ffd23a', borderColor: '#dc2626', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'PLAYER';
-  const distance = c.distance ?? '10 YD';
+  const player = sample(c.player, 'PLAYER');
+  const distance = sample(c.distance, '10 YD');
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
   const wide = isWide(width, mh);
@@ -1013,9 +1032,10 @@ export interface LxBigSaveCfg extends BaseCfg {
 
 export function LxBigSaveWidget({ config, live = true, height = 480 }: WidgetProps<LxBigSaveCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#001a0a', textColor: '#22d39b', accentColor: '#fff', borderColor: '#22d39b', ...c.style });
-  const goalie = c.goalie ?? 'GOALIE';
-  const saves = c.saves ?? 11;
+  const goalie = sample(c.goalie, 'GOALIE');
+  const saves = sample(c.saves, 11);
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
   const wide = isWide(width, mh);
@@ -1031,7 +1051,7 @@ export function LxBigSaveWidget({ config, live = true, height = 480 }: WidgetPro
           </div>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 200 / 480), lineHeight: 1 }}>{goalie}</div>
-            <div style={{ color: '#22d39b', fontWeight: 800, fontSize: px(height, 54 / 480) }}>{saves} SAVES TONIGHT</div>
+            {has(saves) && <div style={{ color: '#22d39b', fontWeight: 800, fontSize: px(height, 54 / 480) }}>{saves} SAVES TONIGHT</div>}
           </div>
         </div>
       ) : (
@@ -1039,7 +1059,7 @@ export function LxBigSaveWidget({ config, live = true, height = 480 }: WidgetPro
           <div style={{ color: '#22d39b', fontWeight: 800, fontSize: sceneText(width, mh, 0.07, 11), letterSpacing: '0.14em' }}>STONEWALL!</div>
           <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneHero(width, mh, 0.28, 0.14), lineHeight: 0.9, color: '#22d39b', textShadow: '0 0 60px #22d39b', marginTop: px(mh, 0.025) }}>BIG SAVE</div>
           <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.11, goalie.length), lineHeight: 1, color: '#fff', marginTop: px(mh, 0.035) }}>{goalie}</div>
-          <div style={{ color: '#22d39b', fontWeight: 800, fontSize: sceneText(width, mh, 0.06, 18), marginTop: px(mh, 0.015) }}>{saves} SAVES TONIGHT</div>
+          {has(saves) && <div style={{ color: '#22d39b', fontWeight: 800, fontSize: sceneText(width, mh, 0.06, 18), marginTop: px(mh, 0.015) }}>{saves} SAVES TONIGHT</div>}
         </div>
       )}
     </div>
@@ -1055,10 +1075,11 @@ export interface LxFaceoffCfg extends BaseCfg {
 
 export function LxFaceoffWidget({ config, live = true, height = 480 }: WidgetProps<LxFaceoffCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#1a1500', textColor: '#ffd23a', accentColor: '#22c55e', borderColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'PLAYER';
-  const winPct = c.winPct ?? 78;
+  const player = sample(c.player, 'PLAYER');
+  const winPct = sample(c.winPct, 78);
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
   const wide = isWide(width, mh);
@@ -1074,7 +1095,7 @@ export function LxFaceoffWidget({ config, live = true, height = 480 }: WidgetPro
             <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 60 / 480), letterSpacing: '0.12em' }}>WON THE X!</div>
             <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 240 / 480), lineHeight: 0.9, color: '#ffd23a', textShadow: '0 0 60px #ffd23a' }}>FACE-OFF</div>
           </div>
-          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 240 / 480), color: '#22c55e', textShadow: '0 0 50px #22c55e' }}>{winPct}%</div>
+          {has(winPct) && <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 240 / 480), color: '#22c55e', textShadow: '0 0 50px #22c55e' }}>{winPct}%</div>}
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 200 / 480), lineHeight: 1 }}>{player}</div>
             <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 34 / 480) }}>face-off rate</div>
@@ -1084,7 +1105,7 @@ export function LxFaceoffWidget({ config, live = true, height = 480 }: WidgetPro
         <div style={sceneWrap}>
           <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.07, 11), letterSpacing: '0.12em' }}>WON THE X!</div>
           <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneHero(width, mh, 0.24, 0.12), lineHeight: 0.9, color: '#ffd23a', textShadow: '0 0 60px #ffd23a', marginTop: px(mh, 0.02) }}>FACE-OFF</div>
-          <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneText(width, mh, 0.16, 5), color: '#22c55e', textShadow: '0 0 50px #22c55e', marginTop: px(mh, 0.03) }}>{winPct}%</div>
+          {has(winPct) && <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneText(width, mh, 0.16, 5), color: '#22c55e', textShadow: '0 0 50px #22c55e', marginTop: px(mh, 0.03) }}>{winPct}%</div>}
           <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.1, player.length), lineHeight: 1, color: '#fff', marginTop: px(mh, 0.025) }}>{player}</div>
         </div>
       )}
@@ -1107,11 +1128,12 @@ export interface WrPinCfg extends BaseCfg {
 
 export function WrPinWidget({ config, live = true, height = 480 }: WidgetProps<WrPinCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#0a0a0a', textColor: '#fff', accentColor: '#dc2626', borderColor: '#dc2626', ...c.style });
   const animOn = r.anim.on && live;
-  const winner = c.winner ?? 'WINNER';
-  const weight = c.weight ?? '74 KG';
-  const time = c.time ?? '1:47';
+  const winner = sample(c.winner, 'WINNER');
+  const weight = sample(c.weight, '74 KG');
+  const time = sample(c.time, '1:47');
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
   const wide = isWide(width, mh);
@@ -1130,7 +1152,7 @@ export function WrPinWidget({ config, live = true, height = 480 }: WidgetProps<W
             ))}
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ color: '#dc2626', fontWeight: 800, fontSize: px(height, 60 / 480), letterSpacing: '0.14em' }}>PINNED · {time}</div>
+            {has(time) && <div style={{ color: '#dc2626', fontWeight: 800, fontSize: px(height, 60 / 480), letterSpacing: '0.14em' }}>PINNED · {time}</div>}
             <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 180 / 480), lineHeight: 1 }}>{winner}</div>
             <div style={{ color: '#dc2626', fontWeight: 800, fontSize: px(height, 46 / 480) }}>{weight}</div>
           </div>
@@ -1142,7 +1164,7 @@ export function WrPinWidget({ config, live = true, height = 480 }: WidgetProps<W
               <div key={n} style={{ width: sq, height: sq, borderRadius: 16, background: '#dc2626', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: PJS, fontWeight: 800, fontSize: sq, lineHeight: 1, boxShadow: '0 0 50px #dc2626', marginRight: n === 3 ? 0 : px(mh, 0.03), animation: animOn ? `celOtherBlink 0.4s ${(n - 1) * 0.18}s infinite` : undefined }}>{n}</div>
             ))}
           </div>
-          <div style={{ color: '#dc2626', fontWeight: 800, fontSize: sceneText(width, mh, 0.07, 14), letterSpacing: '0.14em', marginTop: px(mh, 0.035) }}>PINNED · {time}</div>
+          {has(time) && <div style={{ color: '#dc2626', fontWeight: 800, fontSize: sceneText(width, mh, 0.07, 14), letterSpacing: '0.14em', marginTop: px(mh, 0.035) }}>PINNED · {time}</div>}
           <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.12, winner.length), lineHeight: 1, color: '#fff', marginTop: px(mh, 0.02) }}>{winner}</div>
           <div style={{ color: '#dc2626', fontWeight: 800, fontSize: sceneText(width, mh, 0.07, weight.length + 1), marginTop: px(mh, 0.015) }}>{weight}</div>
         </div>
@@ -1160,10 +1182,11 @@ export interface WrTakedownCfg extends BaseCfg {
 
 export function WrTakedownWidget({ config, live = true, height = 480 }: WidgetProps<WrTakedownCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#0d0a00', textColor: '#ffd23a', accentColor: '#dc2626', borderColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const wrestler = c.wrestler ?? 'WRESTLER';
-  const score = c.score ?? '7-2';
+  const wrestler = sample(c.wrestler, 'WRESTLER');
+  const score = sample(c.score, '7-2');
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
   const wide = isWide(width, mh);
@@ -1206,10 +1229,11 @@ export interface WrNearFallCfg extends BaseCfg {
 
 export function WrNearFallWidget({ config, live = true, height = 480 }: WidgetProps<WrNearFallCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#1a0008', textColor: '#dc2626', accentColor: '#fff', borderColor: '#dc2626', ...c.style });
-  const wrestler = c.wrestler ?? 'WRESTLER';
-  const points = c.points ?? 4;
-  const score = c.score ?? '11-2';
+  const wrestler = sample(c.wrestler, 'WRESTLER');
+  const points = sample(c.points, 4);
+  const score = sample(c.score, '11-2');
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
   const wide = isWide(width, mh);
@@ -1221,7 +1245,7 @@ export function WrNearFallWidget({ config, live = true, height = 480 }: WidgetPr
         <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
           <div>
             <div style={{ color: '#dc2626', fontWeight: 800, fontSize: px(height, 54 / 480), letterSpacing: '0.14em' }}>NEAR FALL</div>
-            <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 280 / 480), lineHeight: 0.9, color: '#dc2626', textShadow: '0 0 60px #dc2626' }}>+{points} BACK</div>
+            {has(points) && <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 280 / 480), lineHeight: 0.9, color: '#dc2626', textShadow: '0 0 60px #dc2626' }}>+{points} BACK</div>}
           </div>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 200 / 480), lineHeight: 1 }}>{wrestler}</div>
@@ -1231,7 +1255,7 @@ export function WrNearFallWidget({ config, live = true, height = 480 }: WidgetPr
       ) : (
         <div style={sceneWrap}>
           <div style={{ color: '#dc2626', fontWeight: 800, fontSize: sceneText(width, mh, 0.07, 10), letterSpacing: '0.14em' }}>NEAR FALL</div>
-          <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.2, 9), lineHeight: 0.9, color: '#dc2626', textShadow: '0 0 60px #dc2626', marginTop: px(mh, 0.02) }}>+{points} BACK</div>
+          {has(points) && <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.2, 9), lineHeight: 0.9, color: '#dc2626', textShadow: '0 0 60px #dc2626', marginTop: px(mh, 0.02) }}>+{points} BACK</div>}
           <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.11, wrestler.length), lineHeight: 1, color: '#fff', marginTop: px(mh, 0.035) }}>{wrestler}</div>
           <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneText(width, mh, 0.08, score.length + 1), color: '#dc2626', marginTop: px(mh, 0.015) }}>{score}</div>
         </div>
@@ -1249,10 +1273,11 @@ export interface WrTechFallCfg extends BaseCfg {
 
 export function WrTechFallWidget({ config, live = true, height = 480 }: WidgetProps<WrTechFallCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#1a1500', textColor: '#ffd23a', accentColor: '#dc2626', borderColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const winner = c.winner ?? 'WINNER';
-  const lead = c.lead ?? '17-2';
+  const winner = sample(c.winner, 'WINNER');
+  const lead = sample(c.lead, '17-2');
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
   const wide = isWide(width, mh);
@@ -1299,11 +1324,12 @@ export interface GfAceCfg extends BaseCfg {
 
 export function GfAceWidget({ config, live = true, height = 480 }: WidgetProps<GfAceCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#0d3a1a', textColor: '#ffd23a', accentColor: '#fff', borderColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'PLAYER';
-  const hole = c.hole ?? 7;
-  const yards = c.yards ?? 165;
+  const player = sample(c.player, 'PLAYER');
+  const hole = sample(c.hole, 7);
+  const yards = sample(c.yards, 165);
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
   const wide = isWide(width, mh);
@@ -1326,7 +1352,7 @@ export function GfAceWidget({ config, live = true, height = 480 }: WidgetProps<G
             <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 240 / 480), lineHeight: 0.9, color: '#ffd23a', textShadow: '0 0 80px #ffd23a' }}>HOLE-IN-ONE!</div>
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 46 / 480) }}>HOLE {hole} · {yards} YD</div>
+            {has(joinParts(withUnit(hole, 'HOLE '), withUnit(yards, '', ' YD'))) && <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 46 / 480) }}>{joinParts(withUnit(hole, 'HOLE '), withUnit(yards, '', ' YD'))}</div>}
             <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 240 / 480), lineHeight: 1 }}>{player}</div>
           </div>
         </div>
@@ -1335,7 +1361,7 @@ export function GfAceWidget({ config, live = true, height = 480 }: WidgetProps<G
           <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.07, 15), letterSpacing: '0.14em' }}>NEVER FORGET IT</div>
           <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.21, 12), lineHeight: 0.9, color: '#ffd23a', textShadow: '0 0 80px #ffd23a', marginTop: px(mh, 0.025) }}>HOLE-IN-ONE!</div>
           <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.12, player.length), lineHeight: 1, color: '#fff', marginTop: px(mh, 0.035) }}>{player}</div>
-          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.06, 16), marginTop: px(mh, 0.015) }}>HOLE {hole} · {yards} YD</div>
+          {has(joinParts(withUnit(hole, 'HOLE '), withUnit(yards, '', ' YD'))) && <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.06, 16), marginTop: px(mh, 0.015) }}>{joinParts(withUnit(hole, 'HOLE '), withUnit(yards, '', ' YD'))}</div>}
         </div>
       )}
     </div>
@@ -1352,9 +1378,10 @@ export interface GfEagleCfg extends BaseCfg {
 
 export function GfEagleWidget({ config, live = true, height = 480 }: WidgetProps<GfEagleCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#0a2d14', textColor: '#fff', accentColor: '#ffd23a', borderColor: '#fff', ...c.style });
-  const player = c.player ?? 'PLAYER';
-  const score = c.score ?? '-7';
+  const player = sample(c.player, 'PLAYER');
+  const score = sample(c.score, '-7');
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
   const wide = isWide(width, mh);
@@ -1395,10 +1422,11 @@ export interface GfBirdieCfg extends BaseCfg {
 
 export function GfBirdieWidget({ config, live = true, height = 480 }: WidgetProps<GfBirdieCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#0a4a24', textColor: '#ffd23a', accentColor: '#fff', borderColor: '#ffd23a', ...c.style });
-  const player = c.player ?? 'PLAYER';
-  const hole = c.hole ?? 5;
-  const score = c.score ?? '-3';
+  const player = sample(c.player, 'PLAYER');
+  const hole = sample(c.hole, 5);
+  const score = sample(c.score, '-3');
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
   const wide = isWide(width, mh);
@@ -1414,7 +1442,7 @@ export function GfBirdieWidget({ config, live = true, height = 480 }: WidgetProp
           </div>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 180 / 480), lineHeight: 1 }}>{player}</div>
-            <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 48 / 480) }}>HOLE {hole} · TOURNEY {score}</div>
+            {has(joinParts(withUnit(hole, 'HOLE '), withUnit(score, 'TOURNEY '))) && <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 48 / 480) }}>{joinParts(withUnit(hole, 'HOLE '), withUnit(score, 'TOURNEY '))}</div>}
           </div>
         </div>
       ) : (
@@ -1422,7 +1450,7 @@ export function GfBirdieWidget({ config, live = true, height = 480 }: WidgetProp
           <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.08, 7), letterSpacing: '0.14em' }}>BIRDIE</div>
           <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneHero(width, mh, 0.3, 0.16), color: '#ffd23a', textShadow: '0 0 40px #ffd23a', marginTop: px(mh, 0.02) }}>-1</div>
           <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.11, player.length), lineHeight: 1, color: '#fff', marginTop: px(mh, 0.035) }}>{player}</div>
-          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.06, 22), marginTop: px(mh, 0.015) }}>HOLE {hole} · TOURNEY {score}</div>
+          {has(joinParts(withUnit(hole, 'HOLE '), withUnit(score, 'TOURNEY '))) && <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.06, 22), marginTop: px(mh, 0.015) }}>{joinParts(withUnit(hole, 'HOLE '), withUnit(score, 'TOURNEY '))}</div>}
         </div>
       )}
     </div>
@@ -1443,11 +1471,12 @@ export interface BxKnockoutCfg extends BaseCfg {
 
 export function BxKnockoutWidget({ config, live = true, height = 480 }: WidgetProps<BxKnockoutCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#1a0008', textColor: '#fff', accentColor: '#ffd23a', borderColor: '#dc2626', ...c.style });
   const animOn = r.anim.on && live;
-  const winner = c.winner ?? 'WINNER';
-  const round = c.round ?? 4;
-  const time = c.time ?? '2:31';
+  const winner = sample(c.winner, 'WINNER');
+  const round = sample(c.round, 4);
+  const time = sample(c.time, '2:31');
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
   const wide = isWide(width, mh);
@@ -1464,7 +1493,7 @@ export function BxKnockoutWidget({ config, live = true, height = 480 }: WidgetPr
             <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 380 / 480), lineHeight: 0.85, color: '#dc2626', textShadow: '0 0 80px #dc2626, 0 8px 30px #000', letterSpacing: '-0.04em' }}>KO!</div>
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 46 / 480) }}>RD {round} · {time}</div>
+            {has(joinParts(withUnit(round, 'RD '), time)) && <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 46 / 480) }}>{joinParts(withUnit(round, 'RD '), time)}</div>}
             <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 240 / 480), lineHeight: 1 }}>{winner}</div>
           </div>
         </div>
@@ -1474,7 +1503,7 @@ export function BxKnockoutWidget({ config, live = true, height = 480 }: WidgetPr
             <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.07, 11), letterSpacing: '0.16em' }}>FIGHT OVER</div>
             <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneHero(width, mh, 0.36, 0.2), lineHeight: 0.85, color: '#dc2626', textShadow: '0 0 80px #dc2626, 0 8px 30px #000', letterSpacing: '-0.04em', marginTop: px(mh, 0.02) }}>KO!</div>
           </div>
-          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.07, 14), marginTop: px(mh, 0.035) }}>RD {round} · {time}</div>
+          {has(joinParts(withUnit(round, 'RD '), time)) && <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.07, 14), marginTop: px(mh, 0.035) }}>{joinParts(withUnit(round, 'RD '), time)}</div>}
           <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.12, winner.length), lineHeight: 1, color: '#fff', marginTop: px(mh, 0.015) }}>{winner}</div>
         </div>
       )}
@@ -1491,9 +1520,10 @@ export interface BxTkoCfg extends BaseCfg {
 
 export function BxTkoWidget({ config, live = true, height = 480 }: WidgetProps<BxTkoCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#0a0008', textColor: '#ffd23a', accentColor: '#dc2626', borderColor: '#ffd23a', ...c.style });
-  const winner = c.winner ?? 'WINNER';
-  const round = c.round ?? 6;
+  const winner = sample(c.winner, 'WINNER');
+  const round = sample(c.round, 6);
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
   const wide = isWide(width, mh);
@@ -1508,7 +1538,7 @@ export function BxTkoWidget({ config, live = true, height = 480 }: WidgetProps<B
             <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 320 / 480), lineHeight: 0.9, color: '#ffd23a', textShadow: '0 0 80px #ffd23a' }}>TKO</div>
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 46 / 480) }}>ROUND {round}</div>
+            {has(round) && <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 46 / 480) }}>ROUND {round}</div>}
             <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 220 / 480), lineHeight: 1 }}>{winner}</div>
           </div>
         </div>
@@ -1516,7 +1546,7 @@ export function BxTkoWidget({ config, live = true, height = 480 }: WidgetProps<B
         <div style={sceneWrap}>
           <div style={{ color: '#dc2626', fontWeight: 800, fontSize: sceneText(width, mh, 0.07, 12), letterSpacing: '0.14em' }}>REF STOPS IT</div>
           <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneHero(width, mh, 0.34, 0.18), lineHeight: 0.9, color: '#ffd23a', textShadow: '0 0 80px #ffd23a', marginTop: px(mh, 0.02) }}>TKO</div>
-          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.07, 9), marginTop: px(mh, 0.035) }}>ROUND {round}</div>
+          {has(round) && <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.07, 9), marginTop: px(mh, 0.035) }}>ROUND {round}</div>}
           <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.12, winner.length), lineHeight: 1, color: '#fff', marginTop: px(mh, 0.015) }}>{winner}</div>
         </div>
       )}
@@ -1534,11 +1564,12 @@ export interface BxKnockdownCfg extends BaseCfg {
 
 export function BxKnockdownWidget({ config, live = true, height = 480 }: WidgetProps<BxKnockdownCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#1a0008', textColor: '#dc2626', accentColor: '#ffd23a', borderColor: '#dc2626', ...c.style });
   const animOn = r.anim.on && live;
-  const winner = c.winner ?? 'WINNER';
-  const round = c.round ?? 3;
-  const count = c.count ?? 7;
+  const winner = sample(c.winner, 'WINNER');
+  const round = sample(c.round, 3);
+  const count = sample(c.count, 7);
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
   const wide = isWide(width, mh);
@@ -1555,7 +1586,7 @@ export function BxKnockdownWidget({ config, live = true, height = 480 }: WidgetP
           </div>
           <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 300 / 480), color: '#ffd23a', textShadow: '0 0 60px #ffd23a', animation: animOn ? 'celOtherBassThump 0.5s infinite' : undefined }}>{count}</div>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 46 / 480) }}>RD {round}</div>
+            {has(round) && <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 46 / 480) }}>RD {round}</div>}
             <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 180 / 480), lineHeight: 1 }}>{winner}</div>
           </div>
         </div>
@@ -1565,7 +1596,7 @@ export function BxKnockdownWidget({ config, live = true, height = 480 }: WidgetP
           <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.18, 10), lineHeight: 0.9, color: '#dc2626', textShadow: '0 0 60px #dc2626', marginTop: px(mh, 0.02) }}>KNOCKDOWN</div>
           <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneHero(width, mh, 0.22, 0.14), color: '#ffd23a', textShadow: '0 0 60px #ffd23a', animation: animOn ? 'celOtherBassThump 0.5s infinite' : undefined, marginTop: px(mh, 0.025) }}>{count}</div>
           <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.1, winner.length), lineHeight: 1, color: '#fff', marginTop: px(mh, 0.025) }}>{winner}</div>
-          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.06, 7), marginTop: px(mh, 0.015) }}>RD {round}</div>
+          {has(round) && <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.06, 7), marginTop: px(mh, 0.015) }}>RD {round}</div>}
         </div>
       )}
     </div>
@@ -1584,12 +1615,13 @@ export interface BxEndOfRoundCfg extends BaseCfg {
 
 export function BxEndOfRoundWidget({ config, live = true, height = 480 }: WidgetProps<BxEndOfRoundCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#1a0d00', textColor: '#ffd23a', accentColor: '#fff', borderColor: '#ffd23a', ...c.style });
-  const round = c.round ?? 6;
+  const round = sample(c.round, 6);
   const boxers = [
-    { n: c.p1 ?? 'RED CORNER', v: c.p1Punches ?? 48 },
-    { n: c.p2 ?? 'BLUE CORNER', v: c.p2Punches ?? 31 },
-  ];
+    { n: sample(c.p1, 'RED CORNER'), v: sample(c.p1Punches, 48) },
+    { n: sample(c.p2, 'BLUE CORNER'), v: sample(c.p2Punches, 31) },
+  ].filter((b) => has(b.n) || has(b.v));
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
   const wide = isWide(width, mh);
@@ -1608,20 +1640,20 @@ export function BxEndOfRoundWidget({ config, live = true, height = 480 }: Widget
               <div key={i} style={{ textAlign: 'center', marginLeft: i === 0 ? 0 : px(height, 80 / 480) }}>
                 <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 120 / 480), lineHeight: 1 }}>{b.n}</div>
                 <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 120 / 480), color: '#ffd23a' }}>{b.v}</div>
-                <div style={{ color: '#ffd23a', fontWeight: 700, fontSize: px(height, 24 / 480) }}>PUNCHES LANDED</div>
+                {has(b.v) && <div style={{ color: '#ffd23a', fontWeight: 700, fontSize: px(height, 24 / 480) }}>PUNCHES LANDED</div>}
               </div>
             ))}
           </div>
         </div>
       ) : (
         <div style={sceneWrap}>
-          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.07, 13), letterSpacing: '0.14em' }}>END OF ROUND {round}</div>
+          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.07, 13), letterSpacing: '0.14em' }}>{withUnit(round, 'END OF ROUND ') || 'END OF ROUND'}</div>
           <div style={{ display: 'flex', justifyContent: 'center', marginTop: px(mh, 0.045) }}>
             {boxers.map((b, i) => (
               <div key={i} style={{ textAlign: 'center', marginLeft: i === 0 ? 0 : px(mh, 0.08), display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                 <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.11, b.n.length * 2 + 2), lineHeight: 1, color: '#fff' }}>{b.n}</div>
                 <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneText(width, mh, 0.16, 8), color: '#ffd23a', marginTop: px(mh, 0.01) }}>{b.v}</div>
-                <div style={{ color: '#ffd23a', fontWeight: 700, fontSize: sceneText(width, mh, 0.04, 30), marginTop: px(mh, 0.008) }}>PUNCHES LANDED</div>
+                {has(b.v) && <div style={{ color: '#ffd23a', fontWeight: 700, fontSize: sceneText(width, mh, 0.04, 30), marginTop: px(mh, 0.008) }}>PUNCHES LANDED</div>}
               </div>
             ))}
           </div>
@@ -1646,12 +1678,13 @@ export interface TrWorldRecordCfg extends BaseCfg {
 
 export function TrWorldRecordWidget({ config, live = true, height = 480 }: WidgetProps<TrWorldRecordCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#000', textColor: '#ffd23a', accentColor: '#fff', borderColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const athlete = c.athlete ?? 'ATHLETE';
-  const event = c.event ?? '100M';
-  const time = c.time ?? '9.58s';
-  const country = c.country ?? 'USA';
+  const athlete = sample(c.athlete, 'ATHLETE');
+  const event = sample(c.event, '100M');
+  const time = sample(c.time, '9.58s');
+  const country = sample(c.country, 'USA');
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
   const wide = isWide(width, mh);
@@ -1699,14 +1732,15 @@ export interface TrFinishCfg extends BaseCfg {
 
 export function TrFinishWidget({ config, live = true, height = 480 }: WidgetProps<TrFinishCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#0a0a0a', textColor: '#fff', accentColor: '#ffd23a', borderColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const event = c.event ?? '400M FINAL';
-  const top: TrFinishEntry[] = c.top ?? [
+  const event = sample(c.event, '400M FINAL');
+  const top: TrFinishEntry[] = sample(c.top, [
     { pos: 1, name: 'EAGLES', country: 'EAG', time: '45.94' },
     { pos: 2, name: 'TIGERS', country: 'TIG', time: '46.17' },
     { pos: 3, name: 'HAWKS', country: 'HAW', time: '46.72' },
-  ];
+  ]);
   const medals = ['#ffd23a', '#9aa3b2', '#cd7f32'];
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
   const wide = isWide(width, mh);
@@ -1762,12 +1796,13 @@ export interface TrPersonalBestCfg extends BaseCfg {
 
 export function TrPersonalBestWidget({ config, live = true, height = 480 }: WidgetProps<TrPersonalBestCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#001a08', textColor: '#22c55e', accentColor: '#fff', borderColor: '#22c55e', ...c.style });
   const animOn = r.anim.on && live;
-  const athlete = c.athlete ?? 'ATHLETE';
-  const event = c.event ?? '100M';
-  const time = c.time ?? '10.65';
-  const delta = c.delta ?? '-0.18';
+  const athlete = sample(c.athlete, 'ATHLETE');
+  const event = sample(c.event, '100M');
+  const time = sample(c.time, '10.65');
+  const delta = sample(c.delta, '-0.18');
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
   const wide = isWide(width, mh);
@@ -1816,11 +1851,12 @@ export interface SwRecordCfg extends BaseCfg {
 
 export function SwRecordWidget({ config, live = true, height = 480 }: WidgetProps<SwRecordCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#02143d', textColor: '#fff', accentColor: '#ffd23a', borderColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const athlete = c.athlete ?? 'ATHLETE';
-  const event = c.event ?? '1500M';
-  const time = c.time ?? '15:20.48';
+  const athlete = sample(c.athlete, 'ATHLETE');
+  const event = sample(c.event, '1500M');
+  const time = sample(c.time, '15:20.48');
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
   const wide = isWide(width, mh);
@@ -1862,13 +1898,14 @@ export interface SwFinishCfg extends BaseCfg {
 
 export function SwFinishWidget({ config, live = true, height = 480 }: WidgetProps<SwFinishCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#02143d', textColor: '#fff', accentColor: '#ffd23a', borderColor: '#fff', ...c.style });
-  const event = c.event ?? '100M FREE';
-  const top: SwFinishEntry[] = c.top ?? [
+  const event = sample(c.event, '100M FREE');
+  const top: SwFinishEntry[] = sample(c.top, [
     { lane: 4, name: 'EAGLES', time: '47.02' },
     { lane: 5, name: 'TIGERS', time: '47.51' },
     { lane: 3, name: 'HAWKS', time: '47.78' },
-  ];
+  ]);
   const medals = ['#ffd23a', '#9aa3b2', '#cd7f32'];
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
   const wide = isWide(width, mh);
@@ -1922,11 +1959,12 @@ export interface SwSplitCfg extends BaseCfg {
 
 export function SwSplitWidget({ config, live = true, height = 480 }: WidgetProps<SwSplitCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#0a4a8a', textColor: '#fff', accentColor: '#22c55e', borderColor: '#ffd23a', ...c.style });
-  const athlete = c.athlete ?? 'ATHLETE';
-  const split = c.split ?? '1:55.31';
-  const vsWR = c.vsWR ?? '-0.42';
-  const lap = c.lap ?? 3;
+  const athlete = sample(c.athlete, 'ATHLETE');
+  const split = sample(c.split, '1:55.31');
+  const vsWR = sample(c.vsWR, '-0.42');
+  const lap = sample(c.lap, 3);
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
   const wide = isWide(width, mh);
@@ -1937,7 +1975,7 @@ export function SwSplitWidget({ config, live = true, height = 480 }: WidgetProps
       {wide ? (
         <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: `0 ${px(height, 80 / 480)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
           <div>
-            <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 54 / 480), letterSpacing: '0.14em' }}>LAP {lap} SPLIT</div>
+            {has(lap) && <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: px(height, 54 / 480), letterSpacing: '0.14em' }}>LAP {lap} SPLIT</div>}
             <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: px(height, 160 / 480), lineHeight: 1 }}>{athlete}</div>
           </div>
           <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: px(height, 280 / 480), color: '#ffd23a', textShadow: '0 0 60px #ffd23a' }}>{split}</div>
@@ -1948,7 +1986,7 @@ export function SwSplitWidget({ config, live = true, height = 480 }: WidgetProps
         </div>
       ) : (
         <div style={sceneWrap}>
-          <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.07, 12), letterSpacing: '0.14em' }}>LAP {lap} SPLIT</div>
+          {has(lap) && <div style={{ color: '#ffd23a', fontWeight: 800, fontSize: sceneText(width, mh, 0.07, 12), letterSpacing: '0.14em' }}>LAP {lap} SPLIT</div>}
           <div style={{ fontFamily: PJS, fontWeight: 800, fontSize: sceneText(width, mh, 0.11, athlete.length), lineHeight: 1, color: '#fff', marginTop: px(mh, 0.02) }}>{athlete}</div>
           <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneHero(width, mh, 0.24, 0.14), color: '#ffd23a', textShadow: '0 0 60px #ffd23a', marginTop: px(mh, 0.03) }}>{split}</div>
           <div style={{ color: '#22c55e', fontWeight: 800, fontSize: sceneText(width, mh, 0.06, 11), marginTop: px(mh, 0.025) }}>VS WR PACE</div>
@@ -1994,10 +2032,11 @@ export interface CelHalftimeCfg extends BaseCfg {
 /** ~4 s cinematic: team scores flanking a big HALFTIME headline. */
 export function CelHalftimeWidget({ config }: WidgetProps<CelHalftimeCfg>) {
   const c = config ?? {};
-  const homeTeam  = c.homeTeam  ?? 'EAGLES';
-  const awayTeam  = c.awayTeam  ?? 'HAWKS';
-  const homeScore = c.homeScore ?? 0;
-  const awayScore = c.awayScore ?? 0;
+  const sample = useCelebrationSample();
+  const homeTeam  = sample(c.homeTeam, 'EAGLES');
+  const awayTeam  = sample(c.awayTeam, 'HAWKS');
+  const homeScore = sample(c.homeScore, 0);
+  const awayScore = sample(c.awayScore, 0);
   const homeColor = c.homeColor ?? '#2563eb';
   const awayColor = c.awayColor ?? '#dc2626';
 
@@ -2066,13 +2105,16 @@ export interface CelFinalCfg extends BaseCfg {
 /** ~5 s cinematic: winner pulses with confetti, loser dims. */
 export function CelFinalWidget({ config }: WidgetProps<CelFinalCfg>) {
   const c = config ?? {};
-  const homeTeam  = c.homeTeam  ?? 'EAGLES';
-  const awayTeam  = c.awayTeam  ?? 'HAWKS';
-  const homeScore = c.homeScore ?? 0;
-  const awayScore = c.awayScore ?? 0;
+  const sample = useCelebrationSample();
+  const homeTeam  = sample(c.homeTeam, 'EAGLES');
+  const awayTeam  = sample(c.awayTeam, 'HAWKS');
+  const homeScore = sample(c.homeScore, 0);
+  const awayScore = sample(c.awayScore, 0);
   const homeColor = c.homeColor ?? '#2563eb';
   const awayColor = c.awayColor ?? '#dc2626';
-  const winner    = c.winner    ?? (homeScore > awayScore ? 'home' : awayScore > homeScore ? 'away' : 'tie');
+  // A real screen with no scores entered claims no result at all — not "TIED".
+  const scored    = has(homeScore) && has(awayScore);
+  const winner    = c.winner    ?? (!scored ? 'none' : homeScore > awayScore ? 'home' : awayScore > homeScore ? 'away' : 'tie');
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
   const wide = isWide(width, mh);
@@ -2139,7 +2181,7 @@ export function CelFinalWidget({ config }: WidgetProps<CelFinalCfg>) {
               <div style={{ fontFamily: JBM, fontWeight: 800, fontSize: sceneHero(width, mh, 0.22, 0.14), color: '#fff', textShadow: awayWins ? `0 0 80px ${awayColor}` : 'none' }}>{awayScore}</div>
             </div>
           </div>
-          {winner !== 'tie' && (
+          {(winner === 'home' || winner === 'away') && (
             <div style={{ color: winColor, fontWeight: 800, fontSize: sceneText(width, mh, 0.065, 6), letterSpacing: '0.22em', marginTop: px(mh, 0.04) }}>WINNER</div>
           )}
         </div>
@@ -2163,8 +2205,9 @@ export interface CelHornCfg extends BaseCfg {
  */
 export function CelHornWidget({ config }: WidgetProps<CelHornCfg>) {
   const c = config ?? {};
-  const rawLabel   = String(c.segmentLabel ?? 'Q1').trim().toUpperCase();
-  const segDisplay = rawLabel.endsWith('END') ? rawLabel : `${rawLabel} END`;
+  const sample = useCelebrationSample();
+  const rawLabel   = String(sample(c.segmentLabel, 'Q1')).trim().toUpperCase();
+  const segDisplay = !rawLabel ? '' : rawLabel.endsWith('END') ? rawLabel : `${rawLabel} END`;
 
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
   const wide = isWide(width, mh);
@@ -2252,6 +2295,7 @@ export function CelPregameIntroWidget({
   height = 480,
 }: WidgetProps<CelPregameIntroCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({
     bgColor: '#05070d',
     accentColor: c.teamColor ?? '#fbbf24',
@@ -2260,7 +2304,7 @@ export function CelPregameIntroWidget({
   });
   const animOn = r.anim.on && live;
 
-  const teamName = c.teamName ?? 'HOME';
+  const teamName = sample(c.teamName, 'HOME');
   const accent = c.teamColor ?? r.accent.primary;
   const lineup: PregamePlayer[] = Array.isArray(c.lineup) ? c.lineup : [];
   const slotMs = Math.max(1000, Math.min(10_000, Number(c.slotMs ?? 3500)));
@@ -2404,7 +2448,7 @@ export function CelPregameIntroWidget({
         }}
       >
         <span style={{ fontWeight: 900, fontSize: headerSize, letterSpacing: '0.14em', color: '#05070d' }}>
-          STARTING LINEUP · {teamName.toUpperCase()}
+          {joinParts('STARTING LINEUP', teamName.toUpperCase())}
         </span>
         {/* Player count + current index */}
         {lineup.length > 0 && (

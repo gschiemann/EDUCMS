@@ -16,6 +16,7 @@ import React from 'react';
 import { resolveStyle, frameStyle, animDurationSec } from './_shared/styleSystem';
 import type { BaseCfg, WidgetProps } from './_shared/types';
 import { useElementSize } from './_shared/useElementSize';
+import { useCelebrationSample, has } from './_shared/celebration-sample';
 import { sceneCss } from '../scene-css';
 
 function px(z: number, f: number): number { return Math.max(8, Math.round(z * f)); }
@@ -47,11 +48,12 @@ export interface CelHockeyGoalCfg extends BaseCfg {
 
 export function CelHockeyGoalWidget({ config, live = true, height = 480 }: WidgetProps<CelHockeyGoalCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#ce1141', textColor: '#fff', accentColor: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const scorer = c.scorer ?? 'SCORER';
-  const assists = (c.assists ?? ['#11', '#27']).join(' · ');
-  const score = c.score ?? '3-1';
+  const scorer = sample(c.scorer, 'SCORER');
+  const assists = (sample(c.assists, ['#11', '#27'])).join(' · ');
+  const score = sample(c.score, '3-1');
   const pulse = `${animDurationSec(r.anim.speed, 0.5)}s`;
   const shake = `${animDurationSec(r.anim.speed, 0.5)}s`;
   const sparkDur = animDurationSec(r.anim.speed, 2);
@@ -111,9 +113,10 @@ export interface CelHockeyHatTrickCfg extends BaseCfg { player?: string; }
 
 export function CelHockeyHatTrickWidget({ config, live = true, height = 480 }: WidgetProps<CelHockeyHatTrickCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#1a0008', textColor: '#fff', accentColor: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'PLAYER';
+  const player = sample(c.player, 'PLAYER');
   const burst = `${animDurationSec(r.anim.speed, 0.6)}s`;
   const sparkDur = animDurationSec(r.anim.speed, 2);
 
@@ -176,11 +179,12 @@ export interface CelHockeyPowerPlayCfg extends BaseCfg {
 
 export function CelHockeyPowerPlayWidget({ config, live = true, height = 480 }: WidgetProps<CelHockeyPowerPlayCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#ce1141', textColor: '#fff', accentColor: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const scorer = c.scorer ?? 'SCORER';
-  const strength = c.strength ?? '5-on-4';
-  const score = c.score ?? '2-1';
+  const scorer = sample(c.scorer, 'SCORER');
+  const strength = sample(c.strength, '5-on-4');
+  const score = sample(c.score, '2-1');
 
   const { ref, width, height: measuredH } = useElementSize<HTMLDivElement>();
   const wide = width > 0 ? width / Math.max(measuredH, 1) >= WIDE_RATIO : true;
@@ -234,10 +238,11 @@ export interface CelHockeyShortyCfg extends BaseCfg {
 
 export function CelHockeyShortyWidget({ config, live = true, height = 480 }: WidgetProps<CelHockeyShortyCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#001a3a', textColor: '#fff', accentColor: '#22d39b', highlightColor: '#22d39b', ...c.style });
   const animOn = r.anim.on && live;
-  const scorer = c.scorer ?? 'SCORER';
-  const strength = c.strength ?? '4-on-5';
+  const scorer = sample(c.scorer, 'SCORER');
+  const strength = sample(c.strength, '4-on-5');
   const sweep = `${animDurationSec(r.anim.speed, 2)}s`;
 
   const { ref, width, height: measuredH } = useElementSize<HTMLDivElement>();
@@ -295,10 +300,11 @@ export interface CelHockeyBigSaveCfg extends BaseCfg {
 
 export function CelHockeyBigSaveWidget({ config, live = true, height = 480 }: WidgetProps<CelHockeyBigSaveCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#001a14', textColor: '#fff', accentColor: '#22d39b', highlightColor: '#22d39b', ...c.style });
   const animOn = r.anim.on && live;
-  const goalie = c.goalie ?? 'GOALIE';
-  const saves = c.saves ?? 28;
+  const goalie = sample(c.goalie, 'GOALIE');
+  const saves = sample(c.saves, 28);
   const burst = `${animDurationSec(r.anim.speed, 0.5)}s`;
 
   const { ref, width, height: measuredH } = useElementSize<HTMLDivElement>();
@@ -326,7 +332,7 @@ export function CelHockeyBigSaveWidget({ config, live = true, height = 480 }: Wi
 
           <div style={{ position: 'absolute', right: '4%', top: '50%', transform: 'translateY(-50%)', textAlign: 'right' }}>
             <div style={{ fontSize: px(height, 0.42), lineHeight: 1 }}>{goalie}</div>
-            <div style={{ color: r.accent.primary, fontSize: px(height, 0.096), marginTop: '2%' }}>{saves} SAVES TONIGHT</div>
+            {has(saves) && <div style={{ color: r.accent.primary, fontSize: px(height, 0.096), marginTop: '2%' }}>{saves} SAVES TONIGHT</div>}
           </div>
         </>
       ) : (
@@ -338,7 +344,7 @@ export function CelHockeyBigSaveWidget({ config, live = true, height = 480 }: Wi
           <div style={{ color: r.accent.primary, fontSize: Math.min(measuredH * 0.055, width * 0.04), letterSpacing: '0.1em' }}>NO GOAL!</div>
           <div style={{ fontSize: Math.min(measuredH * 0.34, width * 0.13), lineHeight: 0.95, letterSpacing: '-0.04em', textShadow: `0 0 50px ${r.accent.highlight}`, marginTop: Math.round(measuredH * 0.015) }}>BIG SAVE</div>
           <div style={{ fontSize: Math.min(measuredH * 0.12, width * 0.07), lineHeight: 1, marginTop: Math.round(measuredH * 0.05) }}>{goalie}</div>
-          <div style={{ color: r.accent.primary, fontSize: Math.min(measuredH * 0.05, width * 0.032), marginTop: Math.round(measuredH * 0.02) }}>{saves} SAVES TONIGHT</div>
+          {has(saves) && <div style={{ color: r.accent.primary, fontSize: Math.min(measuredH * 0.05, width * 0.032), marginTop: Math.round(measuredH * 0.02) }}>{saves} SAVES TONIGHT</div>}
         </div>
       )}
     </div>
@@ -354,10 +360,11 @@ export interface CelHockeyEmptyNetCfg extends BaseCfg {
 
 export function CelHockeyEmptyNetWidget({ config, live = true, height = 480 }: WidgetProps<CelHockeyEmptyNetCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#ce1141', textColor: '#fff', accentColor: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const scorer = c.scorer ?? 'SCORER';
-  const finalScore = c.finalScore ?? '4-2';
+  const scorer = sample(c.scorer, 'SCORER');
+  const finalScore = sample(c.finalScore, '4-2');
   const sparkDur = animDurationSec(r.anim.speed, 2);
 
   const { ref, width, height: measuredH } = useElementSize<HTMLDivElement>();

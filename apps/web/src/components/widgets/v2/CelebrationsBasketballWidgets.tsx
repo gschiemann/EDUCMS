@@ -13,6 +13,7 @@ import React from 'react';
 import { resolveStyle, frameStyle, animDurationSec } from './_shared/styleSystem';
 import type { BaseCfg, WidgetProps } from './_shared/types';
 import { useElementSize } from './_shared/useElementSize';
+import { useCelebrationSample, has } from './_shared/celebration-sample';
 import { sceneCss } from '../scene-css';
 
 function px(z: number, f: number): number { return Math.max(8, Math.round(z * f)); }
@@ -50,10 +51,11 @@ export interface CelBasketballThreeCfg extends BaseCfg {
 
 export function CelBasketballThreeWidget({ config, live = true, height = 480 }: WidgetProps<CelBasketballThreeCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#0b0c0e', accentColor: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'PLAYER';
-  const threesTonight = c.threesTonight ?? 7;
+  const player = sample(c.player, 'PLAYER');
+  const threesTonight = sample(c.threesTonight, 7);
   const pulse = `${animDurationSec(r.anim.speed, 1)}s`;
   const swoosh = `${animDurationSec(r.anim.speed, 1.5)}s`;
   const spin = `${animDurationSec(r.anim.speed, 1.5)}s`;
@@ -91,7 +93,7 @@ export function CelBasketballThreeWidget({ config, live = true, height = 480 }: 
           <div style={{ color: r.accent.primary, fontSize: px(boxH, 0.052), letterSpacing: '0.14em', marginTop: hero * 0.14 }}>FROM DOWNTOWN</div>
           <div style={{ color: r.accent.primary, fontSize: hero, lineHeight: 0.9, textShadow: `0 0 80px ${r.accent.highlight}`, marginTop: hero * 0.04 }}>3</div>
           <div style={{ fontSize: px(boxH, 0.12), lineHeight: 1, marginTop: hero * 0.12 }}>{player}</div>
-          <div style={{ color: r.accent.primary, fontSize: px(boxH, 0.05), marginTop: hero * 0.06 }}>{threesTonight} TONIGHT</div>
+          {has(threesTonight) && <div style={{ color: r.accent.primary, fontSize: px(boxH, 0.05), marginTop: hero * 0.06 }}>{threesTonight} TONIGHT</div>}
         </div>
       </div>
     );
@@ -117,7 +119,7 @@ export function CelBasketballThreeWidget({ config, live = true, height = 480 }: 
 
       <div style={{ position: 'absolute', right: '4%', top: '50%', transform: 'translateY(-50%)', textAlign: 'right' }}>
         <div style={{ fontSize: px(height, 0.5), lineHeight: 1 }}>{player}</div>
-        <div style={{ color: r.accent.primary, fontSize: px(height, 0.11), marginTop: '2%' }}>{threesTonight} TONIGHT</div>
+        {has(threesTonight) && <div style={{ color: r.accent.primary, fontSize: px(height, 0.11), marginTop: '2%' }}>{threesTonight} TONIGHT</div>}
       </div>
     </div>
   );
@@ -132,10 +134,11 @@ export interface CelBasketballDunkCfg extends BaseCfg {
 
 export function CelBasketballDunkWidget({ config, live = true, height = 480 }: WidgetProps<CelBasketballDunkCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#0a0a0a', accentColor: '#dc6a1d', highlightColor: '#dc6a1d', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'PLAYER';
-  const kind = c.kind ?? 'POSTER';
+  const player = sample(c.player, 'PLAYER');
+  const kind = sample(c.kind, 'POSTER');
   const burst = `${animDurationSec(r.anim.speed, 0.5)}s`;
   const sparkDur = animDurationSec(r.anim.speed, 2);
 
@@ -169,7 +172,7 @@ export function CelBasketballDunkWidget({ config, live = true, height = 480 }: W
           {rim('100%', '100%')}
         </div>
         <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', animation: animOn ? `celBkDunkBurst ${burst} ease-out both` : undefined }}>
-          <div style={{ color: r.accent.primary, fontSize: px(boxH, 0.06), letterSpacing: '0.14em' }}>{kind}!</div>
+          {has(kind) && <div style={{ color: r.accent.primary, fontSize: px(boxH, 0.06), letterSpacing: '0.14em' }}>{kind}!</div>}
           <div style={{ fontSize: hero, lineHeight: 0.9, letterSpacing: '-0.04em', textShadow: `0 0 60px ${r.accent.highlight}`, marginTop: hero * 0.06 }}>SLAM</div>
           <div style={{ fontSize: px(boxH, 0.12), lineHeight: 1, marginTop: hero * 0.16 }}>{player}</div>
           <div style={{ color: r.accent.primary, fontSize: px(boxH, 0.05), marginTop: hero * 0.06 }}>nothing but rim</div>
@@ -199,7 +202,7 @@ export function CelBasketballDunkWidget({ config, live = true, height = 480 }: W
 
       <div style={{ position: 'absolute', left: '4%', top: '50%', transform: 'translateY(-50%)' }}>
         <div style={{ animation: animOn ? `celBkDunkBurst ${burst} ease-out both` : undefined }}>
-          <div style={{ color: r.accent.primary, fontSize: px(height, 0.13), letterSpacing: '0.14em' }}>{kind}!</div>
+          {has(kind) && <div style={{ color: r.accent.primary, fontSize: px(height, 0.13), letterSpacing: '0.14em' }}>{kind}!</div>}
           <div style={{ fontSize: px(height, 0.62), lineHeight: 0.9, letterSpacing: '-0.04em', textShadow: `0 0 60px ${r.accent.highlight}`, marginTop: '2%' }}>SLAM</div>
         </div>
       </div>
@@ -222,11 +225,12 @@ export interface CelBasketballBuzzerCfg extends BaseCfg {
 
 export function CelBasketballBuzzerWidget({ config, live = true, height = 480 }: WidgetProps<CelBasketballBuzzerCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#dc2626', accentColor: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'PLAYER';
-  const clock = c.clock ?? '0.4';
-  const kind = c.kind ?? 'GAME WINNER';
+  const player = sample(c.player, 'PLAYER');
+  const clock = sample(c.clock, '0.4');
+  const kind = sample(c.kind, 'GAME WINNER');
   const thump = `${animDurationSec(r.anim.speed, 0.4)}s`;
   const sparkDur = animDurationSec(r.anim.speed, 2);
 
@@ -293,10 +297,11 @@ export interface CelBasketballBlockCfg extends BaseCfg {
 
 export function CelBasketballBlockWidget({ config, live = true, height = 480 }: WidgetProps<CelBasketballBlockCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#001a0a', accentColor: '#22c55e', highlightColor: '#22c55e', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'PLAYER';
-  const blocks = c.blocksTonight ?? 3;
+  const player = sample(c.player, 'PLAYER');
+  const blocks = sample(c.blocksTonight, 3);
   const burst = `${animDurationSec(r.anim.speed, 0.5)}s`;
   const pulse = `${animDurationSec(r.anim.speed, 0.5)}s`;
 
@@ -331,7 +336,7 @@ export function CelBasketballBlockWidget({ config, live = true, height = 480 }: 
           <div style={{ color: r.accent.primary, fontSize: px(boxH, 0.06), letterSpacing: '0.14em', marginTop: hero * 0.4 }}>GET THAT OUT!</div>
           <div style={{ fontSize: hero, lineHeight: 0.9, letterSpacing: '-0.04em', textShadow: `0 0 60px ${r.accent.highlight}`, marginTop: hero * 0.06 }}>BLOCK!</div>
           <div style={{ fontSize: px(boxH, 0.12), lineHeight: 1, marginTop: hero * 0.16 }}>{player}</div>
-          <div style={{ color: r.accent.primary, fontSize: px(boxH, 0.048), marginTop: hero * 0.06 }}>{blocks} BLOCKS TONIGHT</div>
+          {has(blocks) && <div style={{ color: r.accent.primary, fontSize: px(boxH, 0.048), marginTop: hero * 0.06 }}>{blocks} BLOCKS TONIGHT</div>}
         </div>
       </div>
     );
@@ -356,7 +361,7 @@ export function CelBasketballBlockWidget({ config, live = true, height = 480 }: 
 
       <div style={{ position: 'absolute', right: '4%', top: '50%', transform: 'translateY(-50%)', textAlign: 'right' }}>
         <div style={{ fontSize: px(height, 0.46), lineHeight: 1 }}>{player}</div>
-        <div style={{ color: r.accent.primary, fontSize: px(height, 0.1), marginTop: '2%' }}>{blocks} BLOCKS TONIGHT</div>
+        {has(blocks) && <div style={{ color: r.accent.primary, fontSize: px(height, 0.1), marginTop: '2%' }}>{blocks} BLOCKS TONIGHT</div>}
       </div>
     </div>
   );
@@ -371,10 +376,11 @@ export interface CelBasketballStealCfg extends BaseCfg {
 
 export function CelBasketballStealWidget({ config, live = true, height = 480 }: WidgetProps<CelBasketballStealCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#001a08', accentColor: '#22c55e', highlightColor: '#22c55e', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'PLAYER';
-  const steals = c.stealsTonight ?? 4;
+  const player = sample(c.player, 'PLAYER');
+  const steals = sample(c.stealsTonight, 4);
   const sweep = `${animDurationSec(r.anim.speed, 1.4)}s`;
 
   const { ref, width, height: boxH } = useElementSize<HTMLDivElement>();
@@ -404,7 +410,7 @@ export function CelBasketballStealWidget({ config, live = true, height = 480 }: 
           <div style={{ color: r.accent.primary, fontSize: px(boxH, 0.06), letterSpacing: '0.14em' }}>PICKED OFF!</div>
           <div style={{ fontSize: hero, lineHeight: 0.95, letterSpacing: '-0.04em', textShadow: `0 0 60px ${r.accent.highlight}`, marginTop: hero * 0.06 }}>STEAL</div>
           <div style={{ fontSize: px(boxH, 0.12), lineHeight: 1, marginTop: hero * 0.16 }}>{player}</div>
-          <div style={{ color: r.accent.primary, fontSize: px(boxH, 0.048), marginTop: hero * 0.06 }}>{steals} STEALS TONIGHT</div>
+          {has(steals) && <div style={{ color: r.accent.primary, fontSize: px(boxH, 0.048), marginTop: hero * 0.06 }}>{steals} STEALS TONIGHT</div>}
         </div>
       </div>
     );
@@ -423,7 +429,7 @@ export function CelBasketballStealWidget({ config, live = true, height = 480 }: 
 
       <div style={{ position: 'absolute', right: '4%', top: '50%', transform: 'translateY(-50%)', textAlign: 'right' }}>
         <div style={{ fontSize: px(height, 0.46), lineHeight: 1 }}>{player}</div>
-        <div style={{ color: r.accent.primary, fontSize: px(height, 0.1), marginTop: '2%' }}>{steals} STEALS TONIGHT</div>
+        {has(steals) && <div style={{ color: r.accent.primary, fontSize: px(height, 0.1), marginTop: '2%' }}>{steals} STEALS TONIGHT</div>}
       </div>
     </div>
   );
@@ -438,10 +444,11 @@ export interface CelBasketballAlleyOopCfg extends BaseCfg {
 
 export function CelBasketballAlleyOopWidget({ config, live = true, height = 480 }: WidgetProps<CelBasketballAlleyOopCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#0a0a0a', accentColor: '#dc6a1d', accentColor2: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const passer = c.passer ?? 'PASSER';
-  const dunker = c.dunker ?? 'SHOOTER';
+  const passer = sample(c.passer, 'PASSER');
+  const dunker = sample(c.dunker, 'SHOOTER');
   const pulse = `${animDurationSec(r.anim.speed, 0.7)}s`;
   const swoosh = `${animDurationSec(r.anim.speed, 1.6)}s`;
   const sparkDur = animDurationSec(r.anim.speed, 2);
@@ -467,10 +474,10 @@ export function CelBasketballAlleyOopWidget({ config, live = true, height = 480 
           <path d="M 900 300 Q 3500 -200 6700 280" stroke={r.accent.primary} strokeWidth="22" strokeDasharray="50 30" fill="none" style={animOn ? { animation: `celBkOopSwoosh ${swoosh} linear infinite` } : undefined} />
         </svg>
         <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', animation: animOn ? `celBkOopPulse ${pulse} ease-in-out infinite` : undefined }}>
-          <div style={{ color: r.accent.highlight, fontSize: px(boxH, 0.045) }}>PASS · {passer}</div>
+          {has(passer) && <div style={{ color: r.accent.highlight, fontSize: px(boxH, 0.045) }}>PASS · {passer}</div>}
           <div style={{ color: r.accent.primary, fontSize: hero, lineHeight: 0.95, textShadow: `0 0 60px ${r.accent.primary}`, marginTop: hero * 0.06 }}>ALLEY</div>
           <div style={{ color: r.accent.highlight, fontSize: hero, lineHeight: 0.95, textShadow: `0 0 60px ${r.accent.highlight}` }}>OOP!</div>
-          <div style={{ color: r.accent.highlight, fontSize: px(boxH, 0.045), marginTop: hero * 0.12 }}>FINISH · {dunker}</div>
+          {has(dunker) && <div style={{ color: r.accent.highlight, fontSize: px(boxH, 0.045), marginTop: hero * 0.12 }}>FINISH · {dunker}</div>}
         </div>
       </div>
     );
@@ -514,9 +521,10 @@ export interface CelBasketballAndOneCfg extends BaseCfg {
 
 export function CelBasketballAndOneWidget({ config, live = true, height = 480 }: WidgetProps<CelBasketballAndOneCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#1a0e00', accentColor: '#ffd23a', accentColor2: '#dc6a1d', highlightColor: '#dc6a1d', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'PLAYER';
+  const player = sample(c.player, 'PLAYER');
   const thump = `${animDurationSec(r.anim.speed, 0.5)}s`;
   const pulse = `${animDurationSec(r.anim.speed, 0.6)}s`;
 
@@ -581,15 +589,16 @@ export interface CelBasketballTripleDoubleCfg extends BaseCfg {
 
 export function CelBasketballTripleDoubleWidget({ config, live = true, height = 480 }: WidgetProps<CelBasketballTripleDoubleCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#0d0820', accentColor: '#7c3aed', highlightColor: '#7c3aed', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'PLAYER';
-  const line = c.line ?? '24 PTS · 12 REB · 13 AST';
-  const count = c.careerCount ?? 18;
+  const player = sample(c.player, 'PLAYER');
+  const line = sample(c.line, '24 PTS · 12 REB · 13 AST');
+  const count = sample(c.careerCount, 18);
   const slide = `${animDurationSec(r.anim.speed, 0.6)}s`;
   const punch = `${animDurationSec(r.anim.speed, 0.5)}s`;
   const sparkDur = animDurationSec(r.anim.speed, 2);
-  const stats = line.split(' · ');
+  const stats = has(line) ? line.split(' · ') : [];
 
   const { ref, width, height: boxH } = useElementSize<HTMLDivElement>();
   const wide = width > 0 ? width / Math.max(boxH, 1) >= WIDE_RATIO : true;
@@ -613,7 +622,7 @@ export function CelBasketballTripleDoubleWidget({ config, live = true, height = 
         <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', animation: animOn ? `celBkTdSlide ${slide} ease-out` : undefined }}>
           <div style={{ color: '#a78bfa', fontSize: px(boxH, 0.052), letterSpacing: '0.14em' }}>TRIPLE-DOUBLE</div>
           <div style={{ fontSize: hero, lineHeight: 1, marginTop: hero * 0.06 }}>{player}</div>
-          <div style={{ color: '#a78bfa', fontSize: px(boxH, 0.046), marginTop: hero * 0.04 }}>career #{count}</div>
+          {has(count) && <div style={{ color: '#a78bfa', fontSize: px(boxH, 0.046), marginTop: hero * 0.04 }}>career #{count}</div>}
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'center', marginTop: hero * 0.22 }}>
             {stats.map((s, i) => {
               const [val, label] = s.split(' ');
@@ -640,7 +649,7 @@ export function CelBasketballTripleDoubleWidget({ config, live = true, height = 
         <div style={{ animation: animOn ? `celBkTdSlide ${slide} ease-out` : undefined }}>
           <div style={{ color: '#a78bfa', fontSize: px(height, 0.1), letterSpacing: '0.14em' }}>TRIPLE-DOUBLE</div>
           <div style={{ fontSize: px(height, 0.46), lineHeight: 1, marginTop: '2%' }}>{player}</div>
-          <div style={{ color: '#a78bfa', fontSize: px(height, 0.096), marginTop: '2%' }}>career #{count}</div>
+          {has(count) && <div style={{ color: '#a78bfa', fontSize: px(height, 0.096), marginTop: '2%' }}>career #{count}</div>}
         </div>
       </div>
 

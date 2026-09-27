@@ -7,6 +7,7 @@ import React from 'react';
 import { resolveStyle, frameStyle, animDurationSec } from './_shared/styleSystem';
 import type { BaseCfg, WidgetProps } from './_shared/types';
 import { useElementSize } from './_shared/useElementSize';
+import { useCelebrationSample, has, withUnit } from './_shared/celebration-sample';
 import { sceneCss } from '../scene-css';
 
 function px(z: number, f: number): number { return Math.max(8, Math.round(z * f)); }
@@ -79,11 +80,12 @@ export interface CelFootballTouchdownCfg extends BaseCfg {
 
 export function CelFootballTouchdownWidget({ config, live = true, height = 480 }: WidgetProps<CelFootballTouchdownCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#003594', accentColor: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'PLAYER';
-  const distance = c.distance ?? '67 YD';
-  const score = c.score ?? '21-14';
+  const player = sample(c.player, 'PLAYER');
+  const distance = sample(c.distance, '67 YD');
+  const score = sample(c.score, '21-14');
   const sparkDur = animDurationSec(r.anim.speed, 2);
   const shakeDur = `${animDurationSec(r.anim.speed, 0.6)}s`;
   const yardDur = `${animDurationSec(r.anim.speed, 4)}s`;
@@ -113,14 +115,14 @@ export function CelFootballTouchdownWidget({ config, live = true, height = 480 }
           </div>
 
           <div style={{ position: 'absolute', right: '4%', top: '50%', transform: 'translateY(-50%)', textAlign: 'right' }}>
-            <div style={{ color: r.accent.primary, fontSize: px(height, 0.11), letterSpacing: '0.06em' }}>+6 · {distance}</div>
+            {has(distance) && <div style={{ color: r.accent.primary, fontSize: px(height, 0.11), letterSpacing: '0.06em' }}>+6 · {distance}</div>}
             <div style={{ fontSize: px(height, 0.46), lineHeight: 1, marginTop: '2%' }}>{player}</div>
             <div style={{ color: r.accent.primary, fontSize: px(height, 0.23), fontFamily: '"JetBrains Mono", ui-monospace, monospace', marginTop: '2%' }}>{score}</div>
           </div>
         </>
       ) : (
         <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
-          <div style={{ color: r.accent.primary, fontSize: sceneText(width, mh, 0.07, distance.length + 4), letterSpacing: '0.08em' }}>+6 · {distance}</div>
+          {has(distance) && <div style={{ color: r.accent.primary, fontSize: sceneText(width, mh, 0.07, distance.length + 4), letterSpacing: '0.08em' }}>+6 · {distance}</div>}
           <div style={{ marginTop: px(mh, 0.03), animation: animOn ? `celFbTdShake ${shakeDur} ease-in-out 1` : undefined }}>
             <div style={{ fontSize: hero, lineHeight: 0.86, letterSpacing: '-0.04em', textShadow: `0 0 80px ${r.accent.highlight}, 0 8px 30px #000` }}>TOUCH</div>
             <div style={{ color: r.accent.primary, fontSize: hero, lineHeight: 0.86, letterSpacing: '-0.04em', textShadow: `0 0 80px ${r.accent.highlight}, 0 8px 30px #000` }}>DOWN!</div>
@@ -142,10 +144,11 @@ export interface CelFootballPickSixCfg extends BaseCfg {
 
 export function CelFootballPickSixWidget({ config, live = true, height = 480 }: WidgetProps<CelFootballPickSixCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#1a0008', accentColor: '#dc2626', highlightColor: '#dc2626', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'PLAYER';
-  const distance = c.distance ?? '42 YD RETURN';
+  const player = sample(c.player, 'PLAYER');
+  const distance = sample(c.distance, '42 YD RETURN');
   const slide = `${animDurationSec(r.anim.speed, 0.5)}s`;
   const arrowDur = `${animDurationSec(r.anim.speed, 2)}s`;
   const yardDur = `${animDurationSec(r.anim.speed, 4)}s`;
@@ -202,10 +205,11 @@ export interface CelFootballFieldGoalCfg extends BaseCfg {
 
 export function CelFootballFieldGoalWidget({ config, live = true, height = 480 }: WidgetProps<CelFootballFieldGoalCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#0a1a14', accentColor: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const kicker = c.kicker ?? 'KICKER';
-  const distance = c.distance ?? '52 YD';
+  const kicker = sample(c.kicker, 'KICKER');
+  const distance = sample(c.distance, '52 YD');
   const fly = `${animDurationSec(r.anim.speed, 2)}s`;
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
   const wide = isWide(width, mh);
@@ -277,17 +281,18 @@ export interface CelFootballSackCfg extends BaseCfg {
 
 export function CelFootballSackWidget({ config, live = true, height = 480 }: WidgetProps<CelFootballSackCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#1a0d0d', accentColor: '#dc2626', highlightColor: '#dc2626', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'PLAYER';
-  const sacks = c.sacks ?? 9.5;
+  const player = sample(c.player, 'PLAYER');
+  const sacks = sample(c.sacks, 9.5);
   const shake = `${animDurationSec(r.anim.speed, 0.5)}s`;
   const pulse = `${animDurationSec(r.anim.speed, 0.6)}s`;
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
   const wide = isWide(width, mh);
   const hero = sceneHero(width, mh);
   const starSize = Math.max(8, Math.round(Math.min(mh * 0.32, width * 0.12)));
-  const seasonLabel = `${sacks} SACKS THIS SEASON`;
+  const seasonLabel = withUnit(sacks, '', ' SACKS THIS SEASON');
 
   return (
     <div ref={ref} style={frameStyle(r)}>
@@ -346,9 +351,10 @@ export interface CelFootballFirstDownCfg extends BaseCfg {
 
 export function CelFootballFirstDownWidget({ config, live = true, height = 480 }: WidgetProps<CelFootballFirstDownCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#003594', accentColor: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const distance = c.distance ?? '14 YD';
+  const distance = sample(c.distance, '14 YD');
   const arrowDur = `${animDurationSec(r.anim.speed, 1.6)}s`;
   const yardDur = `${animDurationSec(r.anim.speed, 3)}s`;
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
@@ -396,16 +402,17 @@ export interface CelFootballInterceptionCfg extends BaseCfg {
 
 export function CelFootballInterceptionWidget({ config, live = true, height = 480 }: WidgetProps<CelFootballInterceptionCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#0a0008', accentColor: '#22c55e', highlightColor: '#22c55e', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'PLAYER';
-  const count = c.count ?? 5;
+  const player = sample(c.player, 'PLAYER');
+  const count = sample(c.count, 5);
   const arrowDur = `${animDurationSec(r.anim.speed, 2.4)}s`;
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
   const wide = isWide(width, mh);
   const hero = sceneHero(width, mh);
   const ballW = Math.max(8, Math.round(Math.min(mh * 0.30, width * 0.13)));
-  const seasonLabel = `${count} INTs THIS SEASON`;
+  const seasonLabel = withUnit(count, '', ' INTs THIS SEASON');
 
   return (
     <div ref={ref} style={frameStyle(r)}>
@@ -503,9 +510,10 @@ export interface CelFootballFumbleCfg extends BaseCfg {
 
 export function CelFootballFumbleRecoveryWidget({ config, live = true, height = 480 }: WidgetProps<CelFootballFumbleCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#001a0a', accentColor: '#22c55e', highlightColor: '#22c55e', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'PLAYER';
+  const player = sample(c.player, 'PLAYER');
   const arrowDur = `${animDurationSec(r.anim.speed, 1.8)}s`;
   const { ref, width, height: mh } = useElementSize<HTMLDivElement>();
   const wide = isWide(width, mh);

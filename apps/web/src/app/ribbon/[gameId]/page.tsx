@@ -2908,13 +2908,17 @@ function buildRibbonStripConfig(
     if (!scorerName) subtitle = 'NO GOAL';
   } else if (key === 'exclusion' || key === 'penalty') {
     title = key === 'penalty' ? 'PENALTY' : 'EXCLUSION';
-    if (!scorerName) subtitle = '20-SECOND PENALTY';
+    // A water-polo exclusion IS twenty seconds; a soccer penalty kick is not
+    // a timed penalty at all (K-12 launch, lane B3 — no made-up facts on a
+    // public screen).
+    if (!scorerName && key === 'exclusion') subtitle = '20-SECOND PENALTY';
   } else if (key === 'powerplay' || key === 'power-play' || key === 'power_play') {
     title = 'POWER PLAY';
     if (!scorerName) subtitle = 'MAN ADVANTAGE';
   } else if (key === 'touchdown' || key === 'td') {
     title = 'TOUCHDOWN!';
-    if (!scorerName) subtitle = '+7';
+    // Six is what a touchdown is worth; the try after it is its own play.
+    if (!scorerName) subtitle = '+6';
   } else if (key === 'fieldgoal' || key === 'field-goal' || key === 'fg') {
     title = 'FIELD GOAL';
     if (!scorerName) subtitle = '+3';

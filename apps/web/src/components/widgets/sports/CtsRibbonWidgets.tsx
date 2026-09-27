@@ -1334,41 +1334,49 @@ import { sceneCss } from '../scene-css';
  * lacrosse goal scene reads correctly on a water-polo ribbon and the
  * operator overrides the scorer / team / score copy via per-cue
  * config (`cueOverrides` below).
+ *
+ * `defaults` carry ONLY what is true the moment the cue fires — an event
+ * word ("END OF PERIOD" on a period-end cue, 0.0 on the buzzer) or an
+ * explicit empty field. Never a role word, a jersey number, a minute, a
+ * distance or a count (K-12 launch, lane B3, 2026-09-27): these scenes
+ * play on real screens, where a field the operator did not fill must read
+ * blank. The scene's own builder sample (`useCelebrationSample`) still
+ * fills a preview in the builder. The live score is injected below.
  */
 const CUE_CATALOG = {
   // ─── Goal / score scenes (best for water polo + soccer + hockey) ─
-  CEL_SOCCER_GOAL: { Component: CelSoccerGoalWidget, label: 'Soccer "GOOOOAL"', defaults: { scorer: 'SCORER', score: '1-0' } },
-  CEL_SOCCER_GOLAZO: { Component: CelSoccerGolazoWidget, label: 'Soccer "GOLAZO"', defaults: { player: 'SCORER', kind: 'WHAT A STRIKE' } },
-  CEL_SOCCER_FREEKICK: { Component: CelSoccerFreeKickWidget, label: 'Soccer Free Kick Goal', defaults: { player: 'SCORER', distance: '25 YD' } },
-  CEL_SOCCER_HATTRICK: { Component: CelSoccerHatTrickWidget, label: 'Soccer Hat Trick', defaults: { player: 'SCORER', goals: ["12'", "38'", "81'"] } },
-  CEL_HOCKEY_GOAL: { Component: CelHockeyGoalWidget, label: 'Hockey GOAL (red lamp)', defaults: { scorer: 'SCORER', assists: [], score: '1-0' } },
-  CEL_HOCKEY_HATTRICK: { Component: CelHockeyHatTrickWidget, label: 'Hockey Hat Trick', defaults: { player: 'SCORER' } },
-  CEL_HOCKEY_POWERPLAY: { Component: CelHockeyPowerPlayWidget, label: 'Hockey Power-Play Goal', defaults: { scorer: 'SCORER', strength: '6-on-5', score: '1-0' } },
-  CEL_HOCKEY_EMPTYNET: { Component: CelHockeyEmptyNetWidget, label: 'Empty Net Goal', defaults: { scorer: 'SCORER', finalScore: '5-3' } },
-  CEL_SC_GOAL_RETRO: { Component: ScGoalRetroWidget, label: 'Soccer Goal · Retro', defaults: { scorer: 'SCORER', minute: "42'" } },
-  CEL_SC_GOAL_NEON: { Component: ScGoalNeonWidget, label: 'Soccer Goal · Neon', defaults: { scorer: 'SCORER', minute: "63'" } },
-  CEL_HK_GOAL_NEON: { Component: HkGoalNeonWidget, label: 'Hockey Goal · Neon', defaults: { scorer: 'SCORER' } },
-  CEL_HK_GOAL_RETRO: { Component: HkGoalRetroWidget, label: 'Hockey Goal · Retro', defaults: { scorer: 'SCORER', period: 1 } },
-  CEL_LX_GOAL: { Component: LxGoalWidget, label: 'Lacrosse Goal', defaults: { scorer: 'SCORER', number: '7', score: '1-0' } },
-  CEL_LX_BEHINDTHEBACK: { Component: LxBehindTheBackWidget, label: 'Behind-the-Back Goal', defaults: { player: 'SCORER', distance: '10 YD' } },
-  CEL_LX_SAVE: { Component: LxBigSaveWidget, label: 'Lacrosse Big Save', defaults: { goalie: 'KEEPER', saves: 1 } },
+  CEL_SOCCER_GOAL: { Component: CelSoccerGoalWidget, label: 'Soccer "GOOOOAL"', defaults: {} },
+  CEL_SOCCER_GOLAZO: { Component: CelSoccerGolazoWidget, label: 'Soccer "GOLAZO"', defaults: { kind: 'WHAT A STRIKE' } },
+  CEL_SOCCER_FREEKICK: { Component: CelSoccerFreeKickWidget, label: 'Soccer Free Kick Goal', defaults: {} },
+  CEL_SOCCER_HATTRICK: { Component: CelSoccerHatTrickWidget, label: 'Soccer Hat Trick', defaults: {} },
+  CEL_HOCKEY_GOAL: { Component: CelHockeyGoalWidget, label: 'Hockey GOAL (red lamp)', defaults: { assists: [] } },
+  CEL_HOCKEY_HATTRICK: { Component: CelHockeyHatTrickWidget, label: 'Hockey Hat Trick', defaults: {} },
+  CEL_HOCKEY_POWERPLAY: { Component: CelHockeyPowerPlayWidget, label: 'Hockey Power-Play Goal', defaults: {} },
+  CEL_HOCKEY_EMPTYNET: { Component: CelHockeyEmptyNetWidget, label: 'Empty Net Goal', defaults: {} },
+  CEL_SC_GOAL_RETRO: { Component: ScGoalRetroWidget, label: 'Soccer Goal · Retro', defaults: {} },
+  CEL_SC_GOAL_NEON: { Component: ScGoalNeonWidget, label: 'Soccer Goal · Neon', defaults: {} },
+  CEL_HK_GOAL_NEON: { Component: HkGoalNeonWidget, label: 'Hockey Goal · Neon', defaults: {} },
+  CEL_HK_GOAL_RETRO: { Component: HkGoalRetroWidget, label: 'Hockey Goal · Retro', defaults: {} },
+  CEL_LX_GOAL: { Component: LxGoalWidget, label: 'Lacrosse Goal', defaults: {} },
+  CEL_LX_BEHINDTHEBACK: { Component: LxBehindTheBackWidget, label: 'Behind-the-Back Goal', defaults: {} },
+  CEL_LX_SAVE: { Component: LxBigSaveWidget, label: 'Lacrosse Big Save', defaults: {} },
   // ─── Baseball / softball scenes (the diamond sports) ────────────
   // Before 2026-06-13 these had NO cinematic in the CTS catalog, so
   // every baseball/softball home-run, grand-slam, strikeout, and
   // double-play fell back to the generic confetti burst. Now they get
   // their bespoke scenes (CelebrationsBaseballWidgets.tsx).
-  CEL_BASEBALL_HOMERUN: { Component: CelBaseballHomeRunWidget, label: 'Baseball HOME RUN', defaults: { player: 'SLUGGER', distance: '418 FT', exitVelo: '108 MPH EXIT VELOCITY' } },
-  CEL_BASEBALL_GRANDSLAM: { Component: CelBaseballGrandSlamWidget, label: 'Baseball GRAND SLAM', defaults: { player: 'SLUGGER', score: '1-0' } },
-  CEL_BASEBALL_STRIKEOUT: { Component: CelBaseballStrikeoutWidget, label: 'Baseball STRIKEOUT', defaults: { pitcher: 'ACE', kCount: 1, team: 'starting rotation' } },
-  CEL_BASEBALL_DOUBLEPLAY: { Component: CelBaseballDoublePlayWidget, label: 'Baseball DOUBLE PLAY', defaults: { combo: '6-4-3', players: ['SS', '2B', '1B'] } },
+  CEL_BASEBALL_HOMERUN: { Component: CelBaseballHomeRunWidget, label: 'Baseball HOME RUN', defaults: {} },
+  CEL_BASEBALL_GRANDSLAM: { Component: CelBaseballGrandSlamWidget, label: 'Baseball GRAND SLAM', defaults: {} },
+  CEL_BASEBALL_STRIKEOUT: { Component: CelBaseballStrikeoutWidget, label: 'Baseball STRIKEOUT', defaults: {} },
+  CEL_BASEBALL_DOUBLEPLAY: { Component: CelBaseballDoublePlayWidget, label: 'Baseball DOUBLE PLAY', defaults: {} },
   // ─── Pickleball / paddle-sport scenes ───────────────────────────
   // Pickleball had ZERO cinematics. It is a paddle/racquet sport with
   // tennis-shaped scoring (serve ace, winner, game/match point), so the
   // tennis scene set reads correctly on a pickleball ribbon. Operator
   // overrides the player/score copy per cue via cueOverrides.
-  CEL_PICKLEBALL_ACE: { Component: TnAceWidget, label: 'Pickleball ACE (serve)', defaults: { player: 'SERVER', speed: '', aces: 1 } },
-  CEL_PICKLEBALL_WINNER: { Component: TnWinnerWidget, label: 'Pickleball WINNER (rally)', defaults: { player: 'PLAYER', shot: 'PUT-AWAY', winners: 1 } },
-  CEL_PICKLEBALL_GAMEWIN: { Component: TnMatchPointWidget, label: 'Pickleball GAME / MATCH POINT', defaults: { player: 'PLAYER', score: '11-9' } },
+  CEL_PICKLEBALL_ACE: { Component: TnAceWidget, label: 'Pickleball ACE (serve)', defaults: { speed: '' } },
+  CEL_PICKLEBALL_WINNER: { Component: TnWinnerWidget, label: 'Pickleball WINNER (rally)', defaults: {} },
+  CEL_PICKLEBALL_GAMEWIN: { Component: TnMatchPointWidget, label: 'Pickleball GAME / MATCH POINT', defaults: {} },
   // ─── Meet sports (track / swim / cross-country / golf) ──────────
   // 2026-06-13 — before today no cinematic existed for ANY meet sport,
   // so firstPlace / newRecord / personalBest / eagle / birdie /
@@ -1381,21 +1389,21 @@ const CUE_CATALOG = {
   // The operator overrides athlete / event / time / player copy per cue
   // via cueOverrides. They read correctly on any meet ribbon — XC reuses
   // the track scenes (same finish-line / record metaphor).
-  CEL_TF_FIRSTPLACE: { Component: TrFinishWidget, label: 'Track/XC · First Place (podium)', defaults: { event: 'FINAL' } },
-  CEL_TF_RECORD: { Component: TrWorldRecordWidget, label: 'Track/XC · New Record', defaults: { athlete: 'ATHLETE', event: 'EVENT', time: '', country: '' } },
-  CEL_TF_PERSONALBEST: { Component: TrPersonalBestWidget, label: 'Track/XC · Personal Best', defaults: { athlete: 'ATHLETE', event: 'EVENT', time: '', delta: '' } },
-  CEL_SW_FIRSTPLACE: { Component: SwFinishWidget, label: 'Swim · First Place (heat)', defaults: { event: 'FINAL' } },
-  CEL_SW_RECORD: { Component: SwRecordWidget, label: 'Swim · New Record', defaults: { athlete: 'ATHLETE', event: 'EVENT', time: '' } },
-  CEL_GOLF_HOLEINONE: { Component: GfAceWidget, label: 'Golf · HOLE-IN-ONE', defaults: { player: 'GOLFER', hole: 1, yards: 0 } },
-  CEL_GOLF_EAGLE: { Component: GfEagleWidget, label: 'Golf · Eagle', defaults: { player: 'GOLFER', hole: 1, score: '' } },
-  CEL_GOLF_BIRDIE: { Component: GfBirdieWidget, label: 'Golf · Birdie', defaults: { player: 'GOLFER', hole: 1, score: '' } },
+  CEL_TF_FIRSTPLACE: { Component: TrFinishWidget, label: 'Track/XC · First Place (podium)', defaults: {} },
+  CEL_TF_RECORD: { Component: TrWorldRecordWidget, label: 'Track/XC · New Record', defaults: { time: '', country: '' } },
+  CEL_TF_PERSONALBEST: { Component: TrPersonalBestWidget, label: 'Track/XC · Personal Best', defaults: { time: '', delta: '' } },
+  CEL_SW_FIRSTPLACE: { Component: SwFinishWidget, label: 'Swim · First Place (heat)', defaults: {} },
+  CEL_SW_RECORD: { Component: SwRecordWidget, label: 'Swim · New Record', defaults: { time: '' } },
+  CEL_GOLF_HOLEINONE: { Component: GfAceWidget, label: 'Golf · HOLE-IN-ONE', defaults: {} },
+  CEL_GOLF_EAGLE: { Component: GfEagleWidget, label: 'Golf · Eagle', defaults: { score: '' } },
+  CEL_GOLF_BIRDIE: { Component: GfBirdieWidget, label: 'Golf · Birdie', defaults: { score: '' } },
   // ─── End-of-period / horn / big-moment scenes ───────────────────
-  CEL_FOOTBALL_TOUCHDOWN: { Component: CelFootballTouchdownWidget, label: 'Football TOUCHDOWN', defaults: { player: 'TEAM', distance: 'END OF PERIOD', score: '' } },
+  CEL_FOOTBALL_TOUCHDOWN: { Component: CelFootballTouchdownWidget, label: 'Football TOUCHDOWN', defaults: { distance: 'END OF PERIOD', score: '' } },
   CEL_FOOTBALL_FIELDGOAL: { Component: CelFootballFieldGoalWidget, label: 'Football Field Goal', defaults: { kicker: '', distance: '' } },
   CEL_BASKETBALL_BUZZER: { Component: CelBasketballBuzzerWidget, label: 'Buzzer Beater', defaults: { player: '', clock: '0.0', kind: 'END OF PERIOD' } },
   // ─── Misc cinematic that work as a general "BIG MOMENT" ─────────
-  CEL_BASKETBALL_THREE: { Component: CelBasketballThreeWidget, label: '3-Pointer (visual reuse)', defaults: { player: 'SCORER', threesTonight: 1 } },
-  CEL_BASKETBALL_DUNK: { Component: CelBasketballDunkWidget, label: 'Slam Dunk (visual reuse)', defaults: { player: 'SCORER', kind: 'POSTER' } },
+  CEL_BASKETBALL_THREE: { Component: CelBasketballThreeWidget, label: '3-Pointer (visual reuse)', defaults: {} },
+  CEL_BASKETBALL_DUNK: { Component: CelBasketballDunkWidget, label: 'Slam Dunk (visual reuse)', defaults: {} },
 } as const;
 
 export type CtsCueId = keyof typeof CUE_CATALOG;
@@ -1429,9 +1437,9 @@ export interface CtsCelebrationOrchestratorCfg {
   awayTeamName?: string;
   homeColor?: string;
   awayColor?: string;
-  /** Per-cue config overrides (deep-merged into the cue defaults).
-   *  Operator uses this to set the scorer text per cue if they want
-   *  something other than the generic "SCORER" placeholder. */
+  /** Per-cue config overrides (merged over the cue defaults). The
+   *  operator uses this to set the scorer text per cue; with none, the
+   *  scene shows no name on a real screen. */
   cueOverrides?: Partial<Record<CtsCueId, Record<string, unknown>>>;
   /** Disable horn-based trigger (rare — most installs want it on). */
   ignoreHorn?: boolean;

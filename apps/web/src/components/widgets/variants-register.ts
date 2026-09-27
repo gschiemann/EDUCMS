@@ -1195,6 +1195,18 @@ const V2_ID_OVERRIDES: Record<string, string> = {
   RETAIL_LOYALTY_QR: 'retail-loyalty-qr-card',
 };
 
+/**
+ * What a freshly dropped celebration is seeded with: its colours and style,
+ * never its sample content (see the comment at the registerVariant call).
+ */
+function celebrationSeed(defaults: Record<string, unknown> | undefined): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(defaults || {})) {
+    if (k === 'style' || /Color$/.test(k)) out[k] = v;
+  }
+  return out;
+}
+
 for (const w of ALL_V2_WIDGETS) {
   const canonicalType = V2_CATEGORY_TO_CANONICAL[w.category];
   if (!canonicalType) {
@@ -1220,7 +1232,15 @@ for (const w of ALL_V2_WIDGETS) {
     // prop-shape at the boundary.
     render: w.Component as ComponentType<ThemeWidgetProps>,
     // Seed defaults so a freshly-dropped zone renders immediately.
-    defaultConfig: w.defaults || {},
+    // K-12 launch, lane B3 (2026-09-27): EXCEPT a celebration's content.
+    // Its registry defaults are SAMPLES ("PLAYER", "7 TONIGHT") that double
+    // as the Properties panel's field list; seeding them saved the sample
+    // into the zone, so a real screen showed it as if someone had typed it.
+    // A dropped celebration now starts with nothing filled in: the builder
+    // still shows the sample (the component's own fallback), a real screen
+    // shows blank (v2/_shared/celebration-sample.ts), and the panel still
+    // lists every field (it reads the registry, not this seed).
+    defaultConfig: canonicalType === 'CELEBRATION' ? celebrationSeed(w.defaults) : w.defaults || {},
     // Business-line scope — VariantPicker hides a vertical-scoped widget
     // from every other vertical's palette (a healthcare widget never
     // shows in a gym, a celebration never lands in a restaurant).

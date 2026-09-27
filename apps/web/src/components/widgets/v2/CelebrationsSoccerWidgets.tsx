@@ -15,6 +15,7 @@ import React from 'react';
 import { resolveStyle, frameStyle, animDurationSec } from './_shared/styleSystem';
 import type { BaseCfg, WidgetProps } from './_shared/types';
 import { useElementSize } from './_shared/useElementSize';
+import { useCelebrationSample, has, withUnit } from './_shared/celebration-sample';
 import { sceneCss } from '../scene-css';
 
 function px(z: number, f: number): number { return Math.max(8, Math.round(z * f)); }
@@ -66,11 +67,12 @@ export interface CelSoccerGoalCfg extends BaseCfg {
 
 export function CelSoccerGoalWidget({ config, live = true, height = 480 }: WidgetProps<CelSoccerGoalCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#22c55e', textColor: '#fff', accentColor: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const scorer = c.scorer ?? 'SCORER';
-  const minute = c.minute ?? "63'";
-  const score = c.score ?? '2-1';
+  const scorer = sample(c.scorer, 'SCORER');
+  const minute = sample(c.minute, "63'");
+  const score = sample(c.score, '2-1');
   const sparkDur = animDurationSec(r.anim.speed, 2);
   const flyDur = `${animDurationSec(r.anim.speed, 8)}s`;
 
@@ -135,10 +137,11 @@ export interface CelSoccerHatTrickCfg extends BaseCfg {
 
 export function CelSoccerHatTrickWidget({ config, live = true, height = 480 }: WidgetProps<CelSoccerHatTrickCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#ce1141', textColor: '#fff', accentColor: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'PLAYER';
-  const goals = c.goals ?? ["12'", "38'", "81'"];
+  const player = sample(c.player, 'PLAYER');
+  const goals = sample(c.goals, ["12'", "38'", "81'"]);
   const drop = `${animDurationSec(r.anim.speed, 0.5)}s`;
   const sparkDur = animDurationSec(r.anim.speed, 2);
 
@@ -198,10 +201,11 @@ export interface CelSoccerGolazoCfg extends BaseCfg {
 
 export function CelSoccerGolazoWidget({ config, live = true, height = 480 }: WidgetProps<CelSoccerGolazoCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#0a0a0a', textColor: '#fff', accentColor: '#ffd23a', accentColor2: '#dc2626', highlightColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'PLAYER';
-  const kind = c.kind ?? 'BICYCLE KICK';
+  const player = sample(c.player, 'PLAYER');
+  const kind = sample(c.kind, 'BICYCLE KICK');
   const pulse = `${animDurationSec(r.anim.speed, 1)}s`;
   const punch = `${animDurationSec(r.anim.speed, 0.6)}s`;
   const sparkDur = animDurationSec(r.anim.speed, 2);
@@ -265,11 +269,12 @@ export interface CelSoccerRedCardCfg extends BaseCfg {
 
 export function CelSoccerRedCardWidget({ config, live = true, height = 480 }: WidgetProps<CelSoccerRedCardCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#dc2626', textColor: '#fff', accentColor: '#fff', highlightColor: '#fff', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'PLAYER';
-  const number = c.number ?? '4';
-  const reason = c.reason ?? '2nd yellow';
+  const player = sample(c.player, 'PLAYER');
+  const number = sample(c.number, '4');
+  const reason = sample(c.reason, '2nd yellow');
   const blink = `${animDurationSec(r.anim.speed, 0.5)}s`;
 
   const { ref, width, height: measH } = useElementSize<HTMLDivElement>();
@@ -292,7 +297,7 @@ export function CelSoccerRedCardWidget({ config, live = true, height = 480 }: Wi
           </div>
 
           <div style={{ position: 'absolute', right: '4%', top: '50%', transform: 'translateY(-50%)', textAlign: 'right' }}>
-            <div style={{ fontFamily: '"JetBrains Mono", ui-monospace, monospace', fontSize: px(h, 0.58), lineHeight: 0.9 }}>#{number}</div>
+            {has(number) && <div style={{ fontFamily: '"JetBrains Mono", ui-monospace, monospace', fontSize: px(h, 0.58), lineHeight: 0.9 }}>#{number}</div>}
             <div style={{ fontSize: px(h, 0.17), lineHeight: 1, marginTop: '2%' }}>{player}</div>
           </div>
         </>
@@ -303,7 +308,7 @@ export function CelSoccerRedCardWidget({ config, live = true, height = 480 }: Wi
           </div>
           <div style={{ fontSize: sceneHero(width, h, 0.26, 0.1), lineHeight: 0.95, letterSpacing: '-0.04em', textShadow: '0 0 60px #000' }}>RED CARD</div>
           <div style={{ fontWeight: 800, fontSize: sceneText(width, h, 0.072, 24), letterSpacing: '0.1em', opacity: 0.9, marginTop: '3%' }}>{reason.toUpperCase()}</div>
-          <div style={{ fontFamily: '"JetBrains Mono", ui-monospace, monospace', fontSize: sceneText(width, h, 0.14, 8), lineHeight: 1, marginTop: '4%' }}>#{number} {player}</div>
+          <div style={{ fontFamily: '"JetBrains Mono", ui-monospace, monospace', fontSize: sceneText(width, h, 0.14, 8), lineHeight: 1, marginTop: '4%' }}>{[withUnit(number, '#'), player].filter(has).join(' ')}</div>
         </div>
       )}
     </div>
@@ -316,9 +321,10 @@ export interface CelSoccerPenSaveCfg extends BaseCfg { goalie?: string; }
 
 export function CelSoccerPenaltySaveWidget({ config, live = true, height = 480 }: WidgetProps<CelSoccerPenSaveCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#001a14', textColor: '#fff', accentColor: '#22d39b', highlightColor: '#22d39b', ...c.style });
   const animOn = r.anim.on && live;
-  const goalie = c.goalie ?? 'GOALIE';
+  const goalie = sample(c.goalie, 'GOALIE');
   const burst = `${animDurationSec(r.anim.speed, 0.5)}s`;
   const blink = `${animDurationSec(r.anim.speed, 0.4)}s`;
   const sparkDur = animDurationSec(r.anim.speed, 2);
@@ -390,10 +396,11 @@ export interface CelSoccerFreeKickCfg extends BaseCfg {
 
 export function CelSoccerFreeKickWidget({ config, live = true, height = 480 }: WidgetProps<CelSoccerFreeKickCfg>) {
   const c = config ?? {};
+  const sample = useCelebrationSample();
   const r = resolveStyle({ bgColor: '#0d2226', textColor: '#fff', accentColor: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
-  const player = c.player ?? 'PLAYER';
-  const distance = c.distance ?? '28 YD';
+  const player = sample(c.player, 'PLAYER');
+  const distance = sample(c.distance, '28 YD');
   const swoosh = `${animDurationSec(r.anim.speed, 2)}s`;
 
   const { ref, width, height: measH } = useElementSize<HTMLDivElement>();
