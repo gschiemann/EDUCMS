@@ -127,11 +127,31 @@ describe('computePlaces', () => {
     expect(placed.find((r) => r.lane === 1)!.computedPlace).toBe(1);
   });
 
-  it('ties resolve stably in lane order (Array.sort stability)', () => {
-    const rows = [row(1, '55.00'), row(2, '55.00')];
+  // K12-F26 (2026-09-27): this used to assert that lane order breaks a tie
+  // (lane 1 = 1st, lane 2 = 2nd on identical times) — a tie-break no
+  // official made, shown on a public board. Equal times now share a place.
+  it('equal times share a place and the next time skips it ("1224")', () => {
+    const rows = [row(1, '55.00'), row(2, '55.00'), row(3, '56.10'), row(4, '54.90')];
     const placed = computePlaces(rows);
-    expect(placed.find((r) => r.lane === 1)!.computedPlace).toBe(1);
-    expect(placed.find((r) => r.lane === 2)!.computedPlace).toBe(2);
+    expect(placed.map((r) => [r.lane, r.computedPlace])).toEqual([
+      [1, 2],
+      [2, 2],
+      [3, 4],
+      [4, 1],
+    ]);
+  });
+
+  it('the same time written two ways is still a tie ("1:08.04" = "68.04")', () => {
+    // 60 + 8.04 is 68.03999999999999 in floating point — still a tie.
+    const rows = [row(1, '0:55.00'), row(2, '55.0'), row(3, '1:08.04'), row(4, '68.04')];
+    const placed = computePlaces(rows);
+    expect(placed.map((r) => r.computedPlace)).toEqual([1, 1, 3, 3]);
+  });
+
+  it('an operator place still separates a tie once the officials rule', () => {
+    const rows = [row(1, '55.00'), row(2, '55.00', { placeOverride: 2 })];
+    const placed = computePlaces(rows);
+    expect(placed.map((r) => r.computedPlace)).toEqual([1, 2]);
   });
 });
 

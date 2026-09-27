@@ -46,8 +46,8 @@
  *
  *   • <SwimRelayExchangeWidget /> (SWIM_RELAY_EXCHANGE, report A4) — a
  *     relay lane's 4 legs: leg name, per-leg split, cumulative time, and
- *     exchange/takeoff time. A negative exchange is an automatic DQ
- *     (illegal early takeoff) — flagged in red.
+ *     exchange/takeoff time, as typed. A leg shows DQ only when the
+ *     operator marks it (the referee's call — K12-F26, 2026-09-27).
  *   • <SwimSplitsPanelWidget />   (SWIM_SPLITS_PANEL, report A8) — the
  *     per-length split table for ONE focused lane: length #, split
  *     (subtractive) + cumulative, with an optional pace-vs-record delta.
@@ -575,8 +575,15 @@ export function DiveLeaderboardWidget({ config }: WidgetProps<DiveLeaderboardCfg
 
 // ════════════════════════════════════════════════════════════════════
 // SWIM_RELAY_EXCHANGE — one relay lane's 4 legs (report A4): leg name,
-// per-leg split, cumulative time, exchange/takeoff time. A negative
-// exchange is an automatic DQ (illegal early takeoff) — flag it in red.
+// per-leg split, cumulative time, exchange/takeoff time.
+//
+// K12-F26 (2026-09-27): this board used to turn ANY negative exchange into
+// "DQ" by itself. A relay takeoff is judged by officials (and a pad
+// reading inside the allowed tolerance is not an early takeoff at all), so
+// a display must never rule on it: the exchange time is shown exactly as
+// typed, and DQ appears only on a leg the operator has marked
+// disqualified — the same rule the swim timing feed follows ("the feed
+// NEVER fabricates a DQ", apps/api/src/sports/swim-timing-feed.ts).
 // Relay-leg data has no home in the MeetResult/ResultEntry contract (no
 // per-leg array field), so this widget's rows are operator-typed config
 // (`legs[]`), same "display-as-typed, no schema change" rule the rest of
@@ -593,9 +600,11 @@ export interface SwimRelayLeg {
   split: string;
   /** cumulative relay time through this leg — free-form ("28.14"). */
   cumulative: string;
-  /** exchange / takeoff reaction time. A leading "-" = illegal early
-   *  takeoff (automatic DQ) — flagged in red. Blank = not yet exchanged. */
+  /** exchange / takeoff reaction time, shown as typed ("0.18", "-0.02").
+   *  Blank = not yet exchanged. Never read as a ruling — see `dq`. */
   exchange: string;
+  /** The referee disqualified this leg. The ONLY thing that shows "DQ". */
+  dq?: boolean;
 }
 
 export interface SwimRelayExchangeCfg extends BaseCfg {
@@ -619,14 +628,9 @@ export interface SwimRelayExchangeCfg extends BaseCfg {
 const SAMPLE_RELAY_LEGS: SwimRelayLeg[] = [
   { legName: 'LEG 1 — BACK', swimmer: 'D. OKAFOR', split: '27.80', cumulative: '27.80', exchange: '0.18' },
   { legName: 'LEG 2 — BREAST', swimmer: 'M. CHEN', split: '31.42', cumulative: '59.22', exchange: '0.21' },
-  { legName: 'LEG 3 — FLY', swimmer: 'T. NGUYEN', split: '28.95', cumulative: '1:28.17', exchange: '-0.04' },
+  { legName: 'LEG 3 — FLY', swimmer: 'T. NGUYEN', split: '28.95', cumulative: '1:28.17', exchange: '0.09' },
   { legName: 'LEG 4 — FREE', swimmer: 'J. RIVERA', split: '26.60', cumulative: '1:54.77', exchange: '' },
 ];
-
-function isIllegalExchange(exchange: string): boolean {
-  const t = exchange.trim();
-  return t.startsWith('-') && t !== '-' && t !== '';
-}
 
 export function SwimRelayExchangeWidget({ config }: WidgetProps<SwimRelayExchangeCfg>) {
   const c = config ?? {};
@@ -702,7 +706,7 @@ export function SwimRelayExchangeWidget({ config }: WidgetProps<SwimRelayExchang
         {/* Leg rows */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {legs.slice(0, 4).map((leg, i) => {
-            const illegal = isIllegalExchange(leg.exchange || '');
+            const dq = leg.dq === true;
             return (
               <div
                 key={`${leg.legName}-${i}`}
@@ -711,7 +715,7 @@ export function SwimRelayExchangeWidget({ config }: WidgetProps<SwimRelayExchang
                   background: i % 2 === 0 ? panelColor : 'transparent',
                   borderRadius: 10, marginTop: 4,
                   paddingLeft: 24, paddingRight: 24,
-                  border: illegal ? '2px solid #ef4444' : '2px solid transparent',
+                  border: dq ? '2px solid #ef4444' : '2px solid transparent',
                 }}
               >
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', minWidth: 0 }}>
@@ -733,8 +737,8 @@ export function SwimRelayExchangeWidget({ config }: WidgetProps<SwimRelayExchang
                   </span>
                 </div>
                 <div style={{ width: 200, textAlign: 'right' }}>
-                  <span style={{ fontFamily: MONO_FONT, fontSize: 28, fontWeight: 800, color: illegal ? '#ef4444' : '#94a3b8', fontVariantNumeric: 'tabular-nums' }}>
-                    {illegal ? `${leg.exchange} DQ` : (leg.exchange || '—')}
+                  <span style={{ fontFamily: MONO_FONT, fontSize: 28, fontWeight: 800, color: dq ? '#ef4444' : '#94a3b8', fontVariantNumeric: 'tabular-nums' }}>
+                    {dq ? `${leg.exchange ? `${leg.exchange} ` : ''}DQ` : (leg.exchange || '—')}
                   </span>
                 </div>
               </div>

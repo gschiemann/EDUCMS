@@ -122,3 +122,26 @@ describe('F29 — Main Scoreboard: live values are explicit, overrides are marke
     expect(lastCfg(updateZone)).toMatchObject({ dataMode: 'manual' });
   });
 });
+
+describe('F26 — the relay exchange panel records the referee’s DQ; the board never infers one', () => {
+  const LEGS = [
+    { legName: 'Leg 1', swimmer: 'A. Lee', split: '27.80', cumulative: '27.80', exchange: '0.18' },
+    { legName: 'Leg 2', swimmer: 'B. Cruz', split: '31.42', cumulative: '59.22', exchange: '-0.02' },
+  ];
+
+  it('says the exchange shows as typed and offers a per-leg DQ switch', () => {
+    mountFields({ legs: LEGS }, jest.fn(), 'SWIM_RELAY_EXCHANGE');
+    expect(screen.getByText(/exchange time shows exactly as typed/i)).toBeInTheDocument();
+    expect(screen.queryByText(/auto-flags/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'leg 2 DQ (referee’s call)' })).not.toBeChecked();
+  });
+
+  it('marking a leg DQ writes dq:true on that leg only', () => {
+    const updateZone = jest.fn();
+    mountFields({ legs: LEGS }, updateZone, 'SWIM_RELAY_EXCHANGE');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'leg 2 DQ (referee’s call)' }));
+    const legs = lastCfg(updateZone).legs as Array<Record<string, unknown>>;
+    expect(legs[1]).toMatchObject({ swimmer: 'B. Cruz', exchange: '-0.02', dq: true });
+    expect(legs[0].dq).toBeUndefined();
+  });
+});

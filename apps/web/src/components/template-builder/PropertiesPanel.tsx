@@ -6034,12 +6034,16 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       fields.push(<TextField key="eventFilter" label="Pin to event (exact name; blank = auto-pick current heat)" value={cfg.eventFilter || ''} placeholder="" onChange={(v) => setField({ eventFilter: v })} />);
       fields.push(<TextField key="teamName" label="Relay team / school name" value={cfg.teamName || ''} placeholder="HOME RELAY A" onChange={(v) => setField({ teamName: v })} />);
       fields.push(<NumField key="laneNumber" id="sre-laneNumber" label="Lane number" value={typeof cfg.laneNumber === 'number' ? cfg.laneNumber : 3} onChange={(v) => setField({ laneNumber: v })} min={1} max={12} step={1} />);
-      fields.push(<ListItemsEditor key="legs" label="Relay legs (exactly 4)" itemNoun="leg" help="Each row is one relay leg. Exchange time with a leading “-” (e.g. -0.04) auto-flags an illegal takeoff / DQ." value={cfg.legs} onChange={(v) => setField({ legs: v })} newItem={{ legName: '', swimmer: '', split: '', cumulative: '', exchange: '' }} fields={[
+      // K12-F26 — the board no longer turns a negative exchange into "DQ"
+      // on its own; a leg shows DQ only when the referee's call is entered
+      // here (the `dq` toggle).
+      fields.push(<ListItemsEditor key="legs" label="Relay legs (exactly 4)" itemNoun="leg" help={tSports('relay.legsHelp')} value={cfg.legs} onChange={(v) => setField({ legs: v })} newItem={{ legName: '', swimmer: '', split: '', cumulative: '', exchange: '', dq: false }} fields={[
         { key: 'legName', label: 'Leg name', type: 'text', placeholder: 'Leg 1 — Back' },
         { key: 'swimmer', label: 'Swimmer', type: 'text', placeholder: 'D. Okafor' },
         { key: 'split', label: 'Split (this leg)', type: 'text', placeholder: '27.80' },
         { key: 'cumulative', label: 'Cumulative time', type: 'text', placeholder: '27.80' },
-        { key: 'exchange', label: 'Exchange / takeoff time', type: 'text', placeholder: '0.18 (or -0.04 for a DQ)' },
+        { key: 'exchange', label: 'Exchange / takeoff time', type: 'text', placeholder: '0.18' },
+        { key: 'dq', label: tSports('relay.dq'), type: 'toggle' },
       ]} />);
       fields.push(<ColorField key="headerColor" label="Header text color" value={cfg.headerColor || '#fbbf24'} onChange={(v) => setField({ headerColor: v })} />);
       fields.push(<ColorField key="textColor" label="Swimmer name color" value={cfg.textColor || '#ffffff'} onChange={(v) => setField({ textColor: v })} />);

@@ -597,7 +597,7 @@ export const SPORTS_TEMPLATE_PRESETS: SystemPreset[] = [
     id: 'sports-swim-lane-board',
     name: '🏊 Swimming Lane Board',
     description:
-      'Live heat board — one row per lane (lane #, swimmer/team, time, place), with a LANE⇄PLACE order toggle in Properties. Bind a meet; resize for any LED.',
+      'Heat board — one row per lane (lane #, swimmer/team, time, place) as entered on the game console or sent by a connected timing console, with a LANE⇄PLACE order toggle in Properties. Bind a meet; resize for any LED.',
     category: 'SCOREBOARD',
     orientation: 'LANDSCAPE',
     screenWidth: 1920,
@@ -617,7 +617,7 @@ export const SPORTS_TEMPLATE_PRESETS: SystemPreset[] = [
     id: 'sports-track-lane-board',
     name: '🏃 Track Lane Board',
     description:
-      'Live heat board for track & field running events — one row per lane (lane #, athlete/team, time, place), with a LANE⇄PLACE order toggle in Properties. Bind a meet; resize for any LED.',
+      'Heat board for track & field running events — one row per lane (lane #, athlete/team, time, place) as entered on the game console, with a LANE⇄PLACE order toggle in Properties. Bind a meet; resize for any LED.',
     category: 'SCOREBOARD',
     orientation: 'LANDSCAPE',
     screenWidth: 1920,
@@ -660,7 +660,7 @@ export const SPORTS_TEMPLATE_PRESETS: SystemPreset[] = [
     id: 'sports-swim-relay-board',
     name: '🏊 Swim Relay Exchange Board',
     description:
-      'One relay lane\'s 4 legs — split, cumulative time, and exchange/takeoff time (illegal takeoffs auto-flag DQ) — with a record/pace reference bar pinned above. Bind a meet; resize for any LED.',
+      'One relay lane\'s 4 legs — split, cumulative time, and exchange/takeoff time as typed (DQ only on a leg you mark disqualified) — with a record/pace reference bar pinned above. Bind a meet; resize for any LED.',
     category: 'SCOREBOARD',
     orientation: 'LANDSCAPE',
     screenWidth: 1920,

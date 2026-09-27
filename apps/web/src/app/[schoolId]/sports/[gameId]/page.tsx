@@ -91,6 +91,10 @@ import { LeadersPanel } from './LeadersPanel';
 // "Award" total and the board's DIVE SCORE readout can never drift apart.
 import { computeDiveScore, keptIndices } from '@/components/widgets/sports/SwimDiveWidgets';
 import { isFeatureEnabled, FLAGS } from '@/lib/feature-flags';
+// K12-F26 — a meet's results area says it is a results display, and ties
+// are never broken by entry order.
+import { competitionPlaces } from '@/lib/meet-places';
+import { ResultsScopeNote } from '@/components/sports/ResultsScopeNote';
 // CtsCuePanel kept in the repo (./CtsCuePanel.tsx) but no longer
 // rendered as its own tab — the existing Celebrations panel inside
 // Run-game mode now drives the CTS orchestrator via the cue feed.
@@ -1457,6 +1461,10 @@ function RunMode({
                 />
               </div>
             )}
+            {/* K12-F26 — a meet sport's results area is a results DISPLAY,
+                not a meet controller: one line above the pad/grid says what
+                stays with the officials. Renders nothing for game sports. */}
+            {showResultsGrid && <ResultsScopeNote sport={def} />}
             {/* Diving judge pad (S3-1, P0-3) — score the CURRENT dive with a
                 real per-judge panel; "Award" feeds both stats.judgeScores
                 (the board's judge chips) and the running-total leaderboard
@@ -6025,11 +6033,14 @@ export function DivingJudgePadSection({
         : [...priorEntries, nextEntry];
     // Re-rank by running total (highest first) — diving has no "place 0
     // means unranked" convention the board needs; every entry always has
-    // a real score once awarded, so place is simply the sort order.
-    const ranked = nextEntries
+    // a real score once awarded. K12-F26: equal totals SHARE a place
+    // (lib/meet-places.ts) — the order divers were entered is not a
+    // tie-break, and breaking one is the referee's call.
+    const sortedEntries = nextEntries
       .slice()
-      .sort((a, b) => (parseFloat(b.mark) || 0) - (parseFloat(a.mark) || 0))
-      .map((e, i) => ({ ...e, place: i + 1 }));
+      .sort((a, b) => (parseFloat(b.mark) || 0) - (parseFloat(a.mark) || 0));
+    const totalPlaces = competitionPlaces(sortedEntries.map((e) => parseFloat(e.mark) || 0), 'higher');
+    const ranked = sortedEntries.map((e, i) => ({ ...e, place: totalPlaces[i] }));
     const nextResults = [...restEvents, { event: roundLabel, order: restEvents.length + 1, entries: ranked }];
 
     ctl.stats.mutate({

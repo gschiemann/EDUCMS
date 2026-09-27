@@ -3001,6 +3001,21 @@
       "restricted": "Las pantallas públicas muestran menos que la lista",
       "saving": "Guardando",
       "error": "No se pudo guardar; inténtelo de nuevo"
+    },
+    "scope": {
+      "tag": "Resultados",
+      "tagHint": "Pantalla de resultados: VenueOS muestra los resultados de este deporte, pero no puntúa la competencia",
+      "title": "Pantalla de resultados",
+      "lead": "VenueOS muestra los resultados que usted ingresa o importa. No dirige la competencia.",
+      "timed": "Los tiempos, lugares, empates, descalificaciones y puntajes por equipo oficiales vienen del sistema de cronometraje o del software de la competencia.",
+      "dive": "El panel de jueces suma las puntuaciones que usted escribe. Los clavados fallidos, las penalizaciones y los empates siguen la hoja oficial del árbitro.",
+      "judged": "Escriba las puntuaciones que publican sus jueces. VenueOS no califica rutinas ni aplica deducciones.",
+      "golf": "Escriba los totales de las tarjetas oficiales. VenueOS no lleva tarjetas hoyo por hoyo ni resuelve empates.",
+      "other": "Los resultados oficiales vienen del sistema de puntuación de la competencia."
+    },
+    "relay": {
+      "legsHelp": "Cada fila es un tramo del relevo. El tiempo de relevo se muestra tal como se escribe. Active DQ solo cuando el árbitro descalifique ese tramo.",
+      "dq": "DQ (decisión del árbitro)"
     }
   },
   "posBind": {

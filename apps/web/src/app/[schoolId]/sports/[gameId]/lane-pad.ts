@@ -26,6 +26,7 @@
  */
 
 import type { MeetResult, ResultEntry } from '@cms/api-types';
+import { competitionPlaces } from '@/lib/meet-places';
 
 /** Lane-pad row — one lane's live entry-in-progress. Superset of
  *  {@link ResultEntry}: `place` is always present (0 = unplaced) and two
@@ -111,12 +112,14 @@ export function parseMarkSeconds(mark: string): number | null {
  */
 export function computePlaces(rows: LaneRow[]): (LaneRow & { computedPlace: number })[] {
   const placeable = rows
-    .map((r, idx) => ({ r, idx }))
-    .filter(({ r }) => !r.dq && !r.scr && !r.placeOverride && parseMarkSeconds(r.mark) !== null)
-    .sort((a, b) => (parseMarkSeconds(a.r.mark) as number) - (parseMarkSeconds(b.r.mark) as number));
+    .map((r, idx) => ({ r, idx, secs: parseMarkSeconds(r.mark) }))
+    .filter(({ r, secs }) => !r.dq && !r.scr && !r.placeOverride && secs !== null);
 
+  // K12-F26: equal times SHARE a place ("1224") — the lane order is not a
+  // tie-break. See lib/meet-places.ts.
+  const places = competitionPlaces(placeable.map((p) => p.secs as number), 'lower');
   const autoPlaceByIdx = new Map<number, number>();
-  placeable.forEach(({ idx }, i) => autoPlaceByIdx.set(idx, i + 1));
+  placeable.forEach(({ idx }, i) => autoPlaceByIdx.set(idx, places[i]));
 
   return rows.map((r, idx) => {
     if (r.placeOverride && r.placeOverride > 0) {

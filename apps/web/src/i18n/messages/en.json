@@ -3001,6 +3001,21 @@
       "restricted": "Public screens show less than the roster",
       "saving": "Saving",
       "error": "Could not save — try again"
+    },
+    "scope": {
+      "tag": "Results",
+      "tagHint": "Results display: VenueOS shows this sport’s results but does not score the meet",
+      "title": "Results display",
+      "lead": "VenueOS shows the results you enter or import. It does not run the meet.",
+      "timed": "Official times, places, ties, DQs and team scores come from your meet’s timing system or meet software.",
+      "dive": "The judge pad adds up the scores you type. Failed dives, penalties and ties follow the referee’s official sheet.",
+      "judged": "Type the scores your judges publish. VenueOS does not judge routines or apply deductions.",
+      "golf": "Type the totals from the official scorecards. VenueOS does not keep hole-by-hole scorecards or settle ties.",
+      "other": "Official results come from your meet’s scoring system."
+    },
+    "relay": {
+      "legsHelp": "Each row is one relay leg. The exchange time shows exactly as typed. Turn on DQ only when the referee disqualifies that leg.",
+      "dq": "DQ (referee’s call)"
     }
   },
   "posBind": {

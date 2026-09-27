@@ -249,6 +249,36 @@ describe('DivingJudgePadSection — Award writes judgeScores + accumulated resul
     expect(byName['R. Tanaka'].place).toBe(2);
   });
 
+  // K12-F26 (2026-09-27): the ranking used to number the sorted list, so
+  // two divers on the same total got 1st and 2nd by entry order — a
+  // tie-break no referee made, shown on the public leaderboard.
+  it('equal running totals share a place — entry order is not a tie-break', async () => {
+    renderJudgePad({
+      results: [{ event: 'Round 1', order: 1, entries: [{ place: 1, name: 'L. Fischer', team: 'away', mark: '48.00' }] }],
+    });
+
+    fireEvent.change(screen.getByPlaceholderText('Diver name'), { target: { value: 'R. Tanaka' } });
+    fireEvent.change(screen.getByPlaceholderText('105B'), { target: { value: '107B' } });
+    fireEvent.change(screen.getByPlaceholderText('2.7'), { target: { value: '2.0' } });
+
+    const cards = screen.getAllByText(/^Judge \d$/).map((el) => el.closest('div')!.parentElement!);
+    const tap = (card: HTMLElement, label: string) => {
+      const btn = Array.from(card.querySelectorAll('button')).find((b) => b.textContent?.trim() === label);
+      if (!btn) throw new Error(`button "${label}" not found`);
+      fireEvent.click(btn);
+    };
+    // 8, 8, 8 → 24 × 2.0 = 48.00 — exactly Fischer's total.
+    tap(cards[0], '8');
+    tap(cards[1], '8');
+    tap(cards[2], '8');
+
+    fireEvent.click(screen.getByRole('button', { name: /Award/i }));
+
+    await waitFor(() => expect(statsPatchCalls().length).toBe(1));
+    const entries = lastPatchBody().stats.results[0].entries as { name: string; place: number }[];
+    expect(entries.map((e) => e.place)).toEqual([1, 1]);
+  });
+
   it('resets the pad (diver/code/DD/scores) after a successful Award', async () => {
     renderJudgePad();
     fireEvent.change(screen.getByPlaceholderText('Diver name'), { target: { value: 'Solo Diver' } });

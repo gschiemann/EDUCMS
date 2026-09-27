@@ -25,6 +25,7 @@ import { SPORTS, findSport, formatScore } from '@cms/api-types';
 import { AssetPicker } from '@/components/assets/AssetPicker';
 import { filterRelevantTemplates } from '@/lib/template-relevance';
 import { formatGameWhen, orderGames } from './game-list';
+import { ResultsScopeNote, ResultsScopeTag } from '@/components/sports/ResultsScopeNote';
 // Inputs-wave SCHED — client-boundary kickoff conversion (zone-less
 // datetime-local → ISO with timezone; see scheduled-at.ts).
 import { datetimeLocalToIso } from './scheduled-at';
@@ -603,6 +604,7 @@ export function CreateGameModal({ onClose, initialPresetTemplate = null }: {
             >
               <span className="text-2xl">{s.emoji}</span>
               <span className="text-[11px] font-medium text-slate-600">{s.name}</span>
+              <ResultsScopeTag sport={s} />
             </button>
           ))}
           {visibleSports.length === 0 && (
@@ -611,6 +613,9 @@ export function CreateGameModal({ onClose, initialPresetTemplate = null }: {
             </p>
           )}
         </div>
+        {/* K12-F26 — a meet sport is a results display, not a meet
+            controller; say so the moment one is picked. */}
+        <ResultsScopeNote sport={def} variant="picker" />
 
         {/* teams */}
         <div className="mt-5 grid grid-cols-2 gap-4">
