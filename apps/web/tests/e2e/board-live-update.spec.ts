@@ -436,3 +436,41 @@ test('clock parity guard: rendered clock matches the parity-rule formatter for t
     expect(expectedClockWindow(parityTenthsClock, remaining, 1_300)).toContain(txt);
   }).toPass({ timeout: 8_000, intervals: [250, 400, 600] });
 });
+
+test('K12-F40: a RUNNING clock holds while the feed is stale, then shows the true reading on recovery', async ({ page }) => {
+  test.setTimeout(90_000);
+  // The shared freshness contract (lib/sports-freshness.ts): while the chip
+  // is up, no clock runs on unconfirmed data — the table may have stopped
+  // it. The first good read releases the hold and the board shows where the
+  // clock REALLY is (it kept running server-side), never a stale guess.
+  const CLOCK_START_MS = 10 * 60_000 + 500;
+  const anchorIso = new Date().toISOString();
+  const anchorEpoch = Date.parse(anchorIso);
+  const mock = await installBoardMock(
+    page,
+    freshState({ clockMs: CLOCK_START_MS, clockRunning: true, clockUpdatedAt: anchorIso }),
+  );
+
+  await page.goto(`/board/${GAME_ID}`);
+  await expect(clockMSS(page)).toBeVisible({ timeout: 45_000 });
+
+  mock.setFailing(true);
+  await expect(chip(page)).toBeVisible({ timeout: 13_000 });
+  // Let the hold settle (it lands with the render that shows the chip),
+  // then the reading must not move for well over a second of wall time.
+  await page.waitForTimeout(300);
+  const held = await readText(clockMSS(page));
+  await page.waitForTimeout(2_500);
+  expect((await readText(clockMSS(page))).txt).toBe(held.txt);
+
+  // Recovery: the chip clears on the first good read and the clock converges
+  // on the TRUE projected reading for this instant.
+  mock.setFailing(false);
+  await expect(chip(page)).toBeHidden({ timeout: 9_000 });
+  await expect(async () => {
+    const { txt, at } = await readText(clockMSS(page));
+    const remaining = CLOCK_START_MS - (at - anchorEpoch);
+    expect(remaining).toBeGreaterThan(65_000); // test invariant: still M:SS
+    expect(expectedClockWindow(parityCeilClock, remaining, 1_300)).toContain(txt);
+  }).toPass({ timeout: 8_000, intervals: [250, 400, 600] });
+});
