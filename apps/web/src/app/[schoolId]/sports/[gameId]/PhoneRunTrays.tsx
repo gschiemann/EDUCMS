@@ -48,6 +48,14 @@ import { scoringSource } from './phone-run';
 
 type Ctl = ReturnType<typeof useGameControl>;
 
+/** The slice of the game record the trays read. */
+export interface TrayGame {
+  homeTeam?: string | null;
+  awayTeam?: string | null;
+  possession?: string | null;
+  stats?: Record<string, unknown> | null;
+}
+
 const TRAY_BTN =
   'flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-slate-700 bg-slate-800 px-3 text-sm font-black text-slate-100 transition-colors active:bg-slate-600 disabled:opacity-40';
 
@@ -84,11 +92,44 @@ function useVisibleTicker(active: boolean, ms: number) {
   }, [active, ms]);
 }
 
+/**
+ * The page's server clock, UNHELD, sampled into state once a second while
+ * the tab is visible. K12-F40: who is driving the game is judged on server
+ * time (a phone clock a few seconds off must not disagree with the boards),
+ * and unheld because it is a measurement that keeps counting while the
+ * console's own reads are stale — the same reading the desktop pills take.
+ * The sample lives in state so render stays pure; a pocketed phone runs no
+ * timer (mobile performance standard).
+ */
+function useServerNowWhileVisible(): number {
+  const [now, setNow] = useState(() => serverClock.unheldNow());
+  useEffect(() => {
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const arm = () => {
+      if (timer === null && document.visibilityState !== 'hidden') {
+        timer = setInterval(() => setNow(serverClock.unheldNow()), 1000);
+      }
+    };
+    const disarm = () => {
+      if (timer !== null) {
+        clearInterval(timer);
+        timer = null;
+      }
+    };
+    const onVis = () => (document.visibilityState === 'hidden' ? disarm() : arm());
+    arm();
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      document.removeEventListener('visibilitychange', onVis);
+      disarm();
+    };
+  }, []);
+  return now;
+}
+
 function SourceLine({ stats }: { stats: Record<string, unknown> }) {
   const t = useTranslations('sportsRunPhone');
-  // Re-evaluated on every render; the console's 4 s game poll re-renders
-  // this while the page is visible, which is enough to flip live → silent.
-  const src = scoringSource(stats, Date.now());
+  const src = scoringSource(stats, useServerNowWhileVisible());
   const text =
     src.kind === 'cts-live'
       ? t('sourceCtsLive')
@@ -291,7 +332,7 @@ function ShotClockTray({ def, stats, ctl }: { def: SportDefinition; stats: Recor
   );
 }
 
-function PossessionTray({ g, ctl }: { g: any; ctl: Ctl }) {
+function PossessionTray({ g, ctl }: { g: TrayGame; ctl: Ctl }) {
   const t = useTranslations('sportsRunPhone');
   const stats: Record<string, unknown> = g.stats || {};
   const cur = String(
@@ -335,7 +376,7 @@ export function PhoneRunTrays({
   landscape = false,
 }: {
   gameId: string;
-  g: any;
+  g: TrayGame;
   def: SportDefinition;
   liveMs: number;
   homeColor: string;
@@ -364,8 +405,8 @@ export function PhoneRunTrays({
       <TeamStatGrid
         def={def}
         stats={stats}
-        homeTeam={g.homeTeam}
-        awayTeam={g.awayTeam}
+        homeTeam={g.homeTeam || ''}
+        awayTeam={g.awayTeam || ''}
         homeColor={homeColor}
         awayColor={awayColor}
         canEdit={() => true}
