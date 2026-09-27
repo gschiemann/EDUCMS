@@ -332,6 +332,7 @@ export function PhoneRunTrays({
   ctl,
   penaltyCount,
   onPenalties,
+  landscape = false,
 }: {
   gameId: string;
   g: any;
@@ -342,6 +343,9 @@ export function PhoneRunTrays({
   ctl: Ctl;
   penaltyCount: number;
   onPenalties: () => void;
+  /** K12-F15 — the controls pane of the landscape phone layout: shown at
+   *  every width (a phone on its side is past `md`). */
+  landscape?: boolean;
 }) {
   const t = useTranslations('sportsRunPhone');
   const stats: Record<string, unknown> = g.stats || {};
@@ -350,7 +354,7 @@ export function PhoneRunTrays({
     <section
       data-testid="phone-run-trays"
       aria-label={t('title')}
-      className="md:hidden flex flex-col gap-3 border-t-2 border-slate-800 bg-slate-950 px-3 py-3 text-white"
+      className={`${landscape ? '' : 'md:hidden border-t-2 border-slate-800 '}flex flex-col gap-3 bg-slate-950 px-3 py-3 text-white`}
     >
       <SourceLine stats={stats} />
       <LastChange gameId={gameId} sport={def.key} />

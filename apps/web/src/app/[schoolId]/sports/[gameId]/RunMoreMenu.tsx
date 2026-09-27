@@ -139,7 +139,7 @@ export function RunMoreMenu({
         title="Everything else — scenes, roles, surfaces, sharing"
         // Below sm only the icon shows, so the button needs its own name.
         aria-label={tNav('more')}
-        className="flex items-center justify-center gap-1.5 min-h-[40px] max-md:min-h-[44px] max-md:min-w-[44px] px-3 rounded-lg border border-slate-200 bg-slate-50 text-[13px] font-bold text-slate-700 hover:bg-slate-100 hover:border-slate-300 transition-colors shrink-0"
+        className="flex items-center justify-center gap-1.5 min-h-[40px] max-md:min-h-[44px] max-md:min-w-[44px] short-land:min-h-[44px] px-3 rounded-lg border border-slate-200 bg-slate-50 text-[13px] font-bold text-slate-700 hover:bg-slate-100 hover:border-slate-300 transition-colors shrink-0"
       >
         <MoreHorizontal className="h-[18px] w-[18px]" />
         <span className="hidden sm:inline">More</span>

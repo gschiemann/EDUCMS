@@ -3,6 +3,10 @@
 @import "shadcn/tailwind.css";
 
 @custom-variant dark (&:is(.dark *));
+/* A phone held sideways (or any short, wide window) — the sports Run view and
+   the volunteer pad switch to a two-pane layout there (K12-F15/F16). Same
+   query as hooks/use-short-landscape.ts. */
+@custom-variant short-land (@media (orientation: landscape) and (max-height: 540px));
 
 @theme inline {
   --color-background: var(--background);

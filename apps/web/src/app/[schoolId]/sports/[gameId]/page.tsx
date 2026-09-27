@@ -28,6 +28,7 @@ import { ConnectionBanner } from './ConnectionBanner';
 import { ShareConsoleLink } from './ShareConsoleLink';
 import { ConnectScoreboardFeed } from './ConnectScoreboardFeed';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import {
   ArrowLeft,
   ExternalLink,
@@ -47,6 +48,7 @@ import {
   Keyboard,
   Copy,
   Upload,
+  ShieldAlert,
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 // Phase-2 Domain CLOCK (2026-08-09): this page's ceil formatter (the
@@ -58,6 +60,9 @@ import { secondsSinceGood, type LinkState } from '@/lib/sports-freshness';
 import { useMarkGoodOnServerRead, useSportsLink } from '@/hooks/use-sports-link';
 import { RoleGate } from '@/components/RoleGate';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
+import { useShortLandscape } from '@/hooks/use-short-landscape';
+import { useAppStore } from '@/lib/store';
+import { hasPanicAuthority } from '@/lib/emergency-capability';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { DateField } from '@/components/ui/date-field';
@@ -249,6 +254,17 @@ function GameControl() {
   const liveMs = useLiveClock(game, def);
 
   const [mode, setMode] = useState<ConsoleMode>('run');
+  // K12-F15 — a phone on its side (hooks/use-short-landscape). The Run view
+  // takes the whole screen there, like a game controller: the dashboard's
+  // sidebar and top bar cost it the width and height it needs, so the console
+  // covers them and registers as an overlay (the tab bar and the floating
+  // bug button step aside). Rotating back restores the normal chrome.
+  const tRoot = useTranslations();
+  const shortLand = useShortLandscape();
+  const immersive = shortLand && mode === 'run';
+  useOverlayLock(immersive);
+  const sessionUser = useAppStore((s) => s.user);
+  const emergencyActive = useAppStore((s) => s.isEmergencyActive);
   const [showCues, setShowCues] = useState(false);
   const [showHighlights, setShowHighlights] = useState(false);
   const [showPenalties, setShowPenalties] = useState(false);
@@ -503,6 +519,47 @@ function GameControl() {
   const displaysReady = !!(g.scoreboardTemplateId || g.ribbonTemplateId);
   const sponsorsReady = Array.isArray(sponsorsList) && sponsorsList.some((s: any) => s?.active);
 
+  // The way back to Game Day: the top row in portrait, the command bar in
+  // landscape (one chrome row there).
+  const backButton = (
+    <button
+      onClick={() => router.push(`/${schoolId}/sports`)}
+      // Below sm the label hides, leaving a 16 px unnamed arrow: give it a
+      // name and a 44 px target on phones. (K12-F15)
+      aria-label={tPhone('backToGames')}
+      className="flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-900 shrink-0 max-md:min-h-[44px] max-md:min-w-[44px] max-md:justify-center short-land:min-h-[44px] short-land:min-w-[44px]"
+    >
+      <ArrowLeft className="h-4 w-4" />
+      <span className="hidden sm:inline">Game Day</span>
+    </button>
+  );
+  // K12-F15 — while the landscape console covers the dashboard chrome, the
+  // emergency door it covered stays reachable in its command bar: the same
+  // capability rule (hasPanicAuthority) and the same door as the phone's top
+  // bar — /panic, the safe trigger surface (3-second hold). Nothing fires here.
+  const emergencyDoor =
+    immersive && hasPanicAuthority(sessionUser) ? (
+      emergencyActive ? (
+        <span
+          data-testid="console-emergency"
+          className="inline-flex items-center gap-1.5 px-3 min-h-[44px] rounded-xl bg-red-600 text-white text-xs font-bold animate-pulse shrink-0"
+        >
+          <ShieldAlert className="w-4 h-4" aria-hidden />
+          {tRoot('emergency.active')}
+        </span>
+      ) : (
+        <Link
+          href={`/panic?schoolId=${schoolId}`}
+          data-testid="console-emergency"
+          aria-label={tRoot('emergency.triggerAria')}
+          className="inline-flex items-center gap-1.5 px-3 min-h-[44px] rounded-xl bg-red-600 hover:bg-red-700 active:bg-red-800 text-white text-xs font-bold shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-red-400 shrink-0"
+        >
+          <ShieldAlert className="w-4 h-4" aria-hidden />
+          {tRoot('emergency.trigger')}
+        </Link>
+      )
+    ) : null;
+
   return (
     // 2026-05-27 — Single pane of glass. DashboardLayout wraps every
     // page in <main className="overflow-y-auto p-4 sm:p-6 md:p-8 pb-24
@@ -525,7 +582,15 @@ function GameControl() {
     // the tab bar. md+ has no tab bar and is unchanged.
     <div
       data-testid="game-console"
-      className="-m-4 sm:-m-6 md:-m-8 -mb-24 md:-mb-8 flex flex-col h-[calc(100dvh-64px)] overflow-hidden bg-white pb-[calc(57px+env(safe-area-inset-bottom))] md:pb-0"
+      data-layout={immersive ? 'landscape' : 'standard'}
+      className={
+        immersive
+          ? // Landscape phone: the whole viewport, above the dashboard chrome
+            // (TopToolbar z-20, Sidebar z-20/40, tab bar z-60 — hidden by the
+            // overlay lock anyway). Physical longhand sides, never `inset`.
+            'fixed top-0 right-0 bottom-0 left-0 z-[65] flex flex-col h-[100dvh] overflow-hidden bg-white pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]'
+          : '-m-4 sm:-m-6 md:-m-8 -mb-24 md:-mb-8 flex flex-col h-[calc(100dvh-64px)] overflow-hidden bg-white pb-[calc(57px+env(safe-area-inset-bottom))] md:pb-0'
+      }
     >
 
       {/* 2026-05-27 — Top toolbar + mode tabs MERGED into one row.
@@ -539,17 +604,9 @@ function GameControl() {
           for the CTS-driven water polo install; the CtsBridge IS the
           score feed. Both endpoints stay in the API so they can be
           re-surfaced when a streaming customer needs them. */}
+      {!immersive && (
       <div className="flex items-center gap-3 px-4 py-2 border-b border-slate-200 bg-white">
-        <button
-          onClick={() => router.push(`/${schoolId}/sports`)}
-          // Below sm the label hides, leaving a 16 px unnamed arrow: give it a
-          // name and a 44 px target on phones. (K12-F15)
-          aria-label={tPhone('backToGames')}
-          className="flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-900 shrink-0 max-md:min-h-[44px] max-md:min-w-[44px] max-md:justify-center"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          <span className="hidden sm:inline">Game Day</span>
-        </button>
+        {backButton}
         {/* 2026-06-26 — the Run game / Set up TAB toggle is gone. Operator:
             "the setup button should be under more as well." Run mode is the
             default; Set up is reached from the More menu. In Set up we show a
@@ -579,6 +636,7 @@ function GameControl() {
           </>
         )}
       </div>
+      )}
 
       {/* Trust wave Domain C — offline/sync/rejection truth strip. In flow
           (like GoLiveBar) so it pushes the console down, never overlapping
@@ -619,11 +677,15 @@ function GameControl() {
                 setShowHighlights(false);
                 setShowPenalties(false);
               }}
+              landscape={immersive}
+              commandBarLeading={immersive ? backButton : undefined}
+              commandBarTrailing={immersive ? emergencyDoor : undefined}
             />
           </div>
           {/* Hidden in show / pa views where the strip would crowd the
-              reduced-control layout. */}
-          {(view === '' || view === 'score') && (
+              reduced-control layout. In landscape it rides at the end of the
+              controls pane instead of taking height from the score. */}
+          {(view === '' || view === 'score') && !immersive && (
             <RecentEventsBar gameId={gameId} sport={(g as any)?.sport} />
           )}
         </div>
@@ -1163,6 +1225,9 @@ function RunMode({
   streamCopied,
   onShortcuts,
   onSetup,
+  landscape = false,
+  commandBarLeading,
+  commandBarTrailing,
 }: {
   gameId: string;
   g: any;
@@ -1179,6 +1244,11 @@ function RunMode({
   streamCopied: boolean;
   onShortcuts: () => void;
   onSetup: () => void;
+  /** K12-F15 — a phone on its side: score + clock pinned left, controls
+   *  scrolling right (see useShortLandscape). */
+  landscape?: boolean;
+  commandBarLeading?: React.ReactNode;
+  commandBarTrailing?: React.ReactNode;
 }) {
   const isBaseballSoftball = def.key === 'baseball' || def.key === 'softball';
   const stats: Record<string, unknown> = g.stats || {};
@@ -1281,6 +1351,104 @@ function RunMode({
   // "Show on board" section inside the More menu and the on-air promote row.
   const show = useShowControl(ctl);
 
+  // The phone thumb dock renders for tap-scored and judged sports; a meet
+  // (no increments) scores in its results grid instead.
+  const dockShown =
+    showScoreboard &&
+    ((def.score.increments || []).length > 0 ||
+      (typeof def.scoreDecimals === 'number' && def.scoreDecimals > 0));
+
+  // K12-F26 — a meet sport's results area is a results DISPLAY, not a meet
+  // controller: one line above the pad/grid says what stays with the
+  // officials. Renders nothing for game sports. Shared by the portrait deck
+  // and the landscape controls pane.
+  const resultsArea = (
+    <>
+      {showResultsGrid && <ResultsScopeNote sport={def} />}
+      {/* Diving judge pad (S3-1, P0-3) — score the CURRENT dive with a
+          real per-judge panel; "Award" feeds both stats.judgeScores
+          (the board's judge chips) and the running-total leaderboard
+          grid immediately below. Diving-only; every other judged
+          sport keeps hand-typing its apparatus/routine score. */}
+      {showResultsGrid && isDiving && (
+        <DivingJudgePadSection gameId={gameId} g={g} def={def} ctl={ctl} />
+      )}
+
+      {/* Meet results / per-apparatus grid. Leaderboard sports have
+          no team-tile scoring worth touching during a meet — finish
+          order IS the scoreboard — so the operator records places
+          + marks here. Gymnastics / cheer use the same grid in a
+          per-apparatus mode (event = apparatus, mark = judged score).
+          LANE sports (swim / track — #271) get the purpose-built lane
+          pad instead: pre-filled rows, roster auto-fill, auto-place,
+          one-tap heat advance. Same showResultsGrid gate, same
+          stats.results contract — just a different editor. */}
+      {showResultsGrid && (
+        isLaneMeet ? (
+          <LanePadSection gameId={gameId} g={g} def={def} ctl={ctl} />
+        ) : (
+          <MeetResultsSection
+            gameId={gameId}
+            g={g}
+            def={def}
+            ctl={ctl}
+            judged={isJudgedResults}
+          />
+        )
+      )}
+    </>
+  );
+
+  // The sport tray (count, player fouls / exclusions, downs + play clock) —
+  // shared by the portrait deck and the landscape controls pane.
+  const sportTray = showBottomTray ? (
+    <>
+      {isBaseballSoftball && (
+        <>
+          <BaseTrayBall
+            stats={stats}
+            onStat={(s) => ctl.stats.mutate({ stats: s })}
+            onAdvanceHalf={() => advanceBaseballHalf(def, g, ctl)}
+          />
+          {/* One-tap home-run macro — picks runs (1-4), applies the
+              score delta to the batting team AND fires the matching
+              cinematic (home run / grand slam). Solves the ambiguous
+              +1/+2/+3 delta that can't auto-celebrate. */}
+          <HomeRunMacro g={g} def={def} ctl={ctl} stats={stats} />
+        </>
+      )}
+      {isBasketball && (
+        <PlayerFoulStepper gameId={gameId} g={g} ctl={ctl} stats={stats} />
+      )}
+      {isWaterPolo && (
+        <PlayerExclusionStepper gameId={gameId} g={g} ctl={ctl} stats={stats} />
+      )}
+      {def.key === 'football' && (
+        <>
+          {/* Down & distance + Ball On + possession — the live
+              football control set. Was dead code (only reachable
+              through the never-rendered TeamZone); now mounted in
+              the operator's bottom tray. (audit: console P0) */}
+          <FootballControls
+            def={def}
+            stats={stats}
+            onStat={(s) => ctl.stats.mutate({ stats: s })}
+            // Read the first-class column first (board/ribbon do the
+            // same), falling back to legacy stats.possession; write
+            // via the dedicated setPossession — same store as the
+            // run-bar arrow chip (2026-07-12 world-class audit P1).
+            possession={String(g.possession ?? stats.possession ?? '')}
+            onPossession={(team) => ctl.setPossession.mutate({ team })}
+          />
+          <PlayClockBtn
+            stats={stats}
+            onAction={(a, v) => ctl.playClock.mutate({ action: a, value: v })}
+          />
+        </>
+      )}
+    </>
+  ) : null;
+
   return (
     <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
 
@@ -1290,6 +1458,9 @@ function RunMode({
           passed in as elements (no circular import; all mutation/role logic is
           unchanged — just regrouped with hierarchy). */}
       <RunCommandBar
+        leading={commandBarLeading}
+        trailing={commandBarTrailing}
+        landscape={landscape}
         gameName={`${g.homeTeam || 'Home'} vs ${g.awayTeam || 'Away'}`}
         status={String(g?.status || 'SCHEDULED')}
         statusButtons={<RunStatusControl g={g} ctl={ctl} embedded />}
@@ -1452,7 +1623,80 @@ function RunMode({
           up/down mid-game. With flex-1 + min-h-0 the scoreboard claims exactly
           the leftover space and the control rows stay pinned + always visible;
           only the scoreboard area itself scrolls, and only if it can't fit. */}
-      {!showPaSpotlight && !showSurfacePreviews && (
+      {/* ── Landscape phone (K12-F15): two panes, no page scroll. LEFT: the
+          thumb dock — both scores, the clock, Start/Stop, the period — pinned
+          so a tap never scrolls the score away. RIGHT: every other control,
+          scrolling on its own (the phone trays, the sport tray, cues, roster,
+          ribbon, run of show). A meet with no tap-scoring has no left pane. */}
+      {!showPaSpotlight && !showSurfacePreviews && landscape && (
+        <div className="flex flex-1 min-h-0 min-w-0" data-testid="run-landscape">
+          {dockShown && (
+            <div
+              data-testid="run-scoreboard"
+              className="relative flex w-[50%] max-w-[480px] shrink-0 flex-col overflow-y-auto border-r-2 border-slate-800 bg-slate-950"
+            >
+              <MobileScoreDock
+                g={g}
+                def={def}
+                liveMs={liveMs}
+                homeColor={homeColor}
+                awayColor={awayColor}
+                ctl={ctl}
+                landscape
+              />
+              <ConsoleScoreboardCelebration
+                gameId={gameId}
+                sport={def.key}
+                pack={
+                  g?.stats?.celebrationPack === 'v2' ||
+                  def.key === 'basketball' ||
+                  def.key === 'water_polo' ||
+                  def.key === 'water-polo'
+                    ? 'v2'
+                    : 'v1'
+                }
+              />
+            </div>
+          )}
+          <div data-testid="run-landscape-controls" className="flex-1 min-w-0 overflow-y-auto bg-slate-950">
+            {resultsArea}
+            {showScoreboard && (
+              <PhoneRunTrays
+                gameId={gameId}
+                g={g}
+                def={def}
+                liveMs={liveMs}
+                homeColor={homeColor}
+                awayColor={awayColor}
+                ctl={ctl}
+                penaltyCount={penaltyCount}
+                onPenalties={onPenalties}
+                landscape
+              />
+            )}
+            {sportTray && (
+              <div className="flex flex-wrap items-stretch gap-2 px-4 py-3 border-t border-slate-200 bg-slate-50">
+                {sportTray}
+              </div>
+            )}
+            {showInlineCues && <RunInlineCuesBar gameId={gameId} g={g} def={def} ctl={ctl} />}
+            {showRosterBar && (
+              <RunInlineRosterBar
+                gameId={gameId}
+                g={g}
+                def={def}
+                ctl={ctl}
+                homeColor={homeColor}
+                awayColor={awayColor}
+              />
+            )}
+            {showRibbonPreview && <RunRibbonPreview gameId={gameId} />}
+            {(view === '' || view === 'score') && <RecentEventsBar gameId={gameId} sport={def.key} />}
+          </div>
+        </div>
+      )}
+
+      {!showPaSpotlight && !showSurfacePreviews && !landscape && (
         // Phone: ONE full-bleed scrolling deck — score+clock at top, then
         // ribbon / roster / cues / tray stacked, with NO dead middle void
         // (nothing is flex-1 on mobile, so the column is content-height and the
@@ -1465,7 +1709,7 @@ function RunMode({
               scrolling deck, and as a shrinkable overflow child it was being
               squeezed to ~40 px, clipping the score mirror to its HOME/AWAY
               labels (audit phone capture). md+ is unchanged. */}
-          <div ref={scoreFitRef} className="shrink-0 overflow-y-auto md:shrink md:flex-1 md:min-h-0">
+          <div ref={scoreFitRef} data-testid="run-scoreboard" className="shrink-0 overflow-y-auto md:shrink md:flex-1 md:min-h-0">
             {showScoreboard && (
               // relative wrapper so the celebration overlay can sit ON the
               // interactive scoreboard — the operator sees a fired cue play
@@ -1494,41 +1738,7 @@ function RunMode({
                 />
               </div>
             )}
-            {/* K12-F26 — a meet sport's results area is a results DISPLAY,
-                not a meet controller: one line above the pad/grid says what
-                stays with the officials. Renders nothing for game sports. */}
-            {showResultsGrid && <ResultsScopeNote sport={def} />}
-            {/* Diving judge pad (S3-1, P0-3) — score the CURRENT dive with a
-                real per-judge panel; "Award" feeds both stats.judgeScores
-                (the board's judge chips) and the running-total leaderboard
-                grid immediately below. Diving-only; every other judged
-                sport keeps hand-typing its apparatus/routine score. */}
-            {showResultsGrid && isDiving && (
-              <DivingJudgePadSection gameId={gameId} g={g} def={def} ctl={ctl} />
-            )}
-
-            {/* Meet results / per-apparatus grid. Leaderboard sports have
-                no team-tile scoring worth touching during a meet — finish
-                order IS the scoreboard — so the operator records places
-                + marks here. Gymnastics / cheer use the same grid in a
-                per-apparatus mode (event = apparatus, mark = judged score).
-                LANE sports (swim / track — #271) get the purpose-built lane
-                pad instead: pre-filled rows, roster auto-fill, auto-place,
-                one-tap heat advance. Same showResultsGrid gate, same
-                stats.results contract — just a different editor. */}
-            {showResultsGrid && (
-              isLaneMeet ? (
-                <LanePadSection gameId={gameId} g={g} def={def} ctl={ctl} />
-              ) : (
-                <MeetResultsSection
-                  gameId={gameId}
-                  g={g}
-                  def={def}
-                  ctl={ctl}
-                  judged={isJudgedResults}
-                />
-              )
-            )}
+            {resultsArea}
           </div>
 
           {/* Pinned bottom (always visible, no scroll): ribbon preview FIRST
@@ -1599,51 +1809,9 @@ function RunMode({
                 <RunInlineCuesBar gameId={gameId} g={g} def={def} ctl={ctl} />
               </div>
             )}
-            {showBottomTray && (
+            {sportTray && (
               <div className="max-md:order-3 flex flex-wrap items-stretch gap-2 px-4 py-3 border-t border-slate-200 bg-slate-50">
-                {isBaseballSoftball && (
-                  <>
-                    <BaseTrayBall
-                      stats={stats}
-                      onStat={(s) => ctl.stats.mutate({ stats: s })}
-                      onAdvanceHalf={() => advanceBaseballHalf(def, g, ctl)}
-                    />
-                    {/* One-tap home-run macro — picks runs (1-4), applies the
-                        score delta to the batting team AND fires the matching
-                        cinematic (home run / grand slam). Solves the ambiguous
-                        +1/+2/+3 delta that can't auto-celebrate. */}
-                    <HomeRunMacro g={g} def={def} ctl={ctl} stats={stats} />
-                  </>
-                )}
-                {isBasketball && (
-                  <PlayerFoulStepper gameId={gameId} g={g} ctl={ctl} stats={stats} />
-                )}
-                {isWaterPolo && (
-                  <PlayerExclusionStepper gameId={gameId} g={g} ctl={ctl} stats={stats} />
-                )}
-                {def.key === 'football' && (
-                  <>
-                    {/* Down & distance + Ball On + possession — the live
-                        football control set. Was dead code (only reachable
-                        through the never-rendered TeamZone); now mounted in
-                        the operator's bottom tray. (audit: console P0) */}
-                    <FootballControls
-                      def={def}
-                      stats={stats}
-                      onStat={(s) => ctl.stats.mutate({ stats: s })}
-                      // Read the first-class column first (board/ribbon do the
-                      // same), falling back to legacy stats.possession; write
-                      // via the dedicated setPossession — same store as the
-                      // run-bar arrow chip (2026-07-12 world-class audit P1).
-                      possession={String(g.possession ?? stats.possession ?? '')}
-                      onPossession={(team) => ctl.setPossession.mutate({ team })}
-                    />
-                    <PlayClockBtn
-                      stats={stats}
-                      onAction={(a, v) => ctl.playClock.mutate({ action: a, value: v })}
-                    />
-                  </>
-                )}
+                {sportTray}
               </div>
             )}
           </div>
@@ -2174,6 +2342,7 @@ function MobileScoreDock({
   homeColor,
   awayColor,
   ctl,
+  landscape = false,
 }: {
   g: any;
   def: SportDefinition;
@@ -2181,6 +2350,9 @@ function MobileScoreDock({
   homeColor: string;
   awayColor: string;
   ctl: ReturnType<typeof useGameControl>;
+  /** K12-F15 — the pinned left pane of the landscape phone layout: shown at
+   *  every width (not md:hidden), with scores and clock sized to be read. */
+  landscape?: boolean;
 }) {
   const running = !!g.clockRunning;
   const hasClock = def.clock.type !== 'none';
@@ -2206,6 +2378,16 @@ function MobileScoreDock({
     score: number;
   }) => (
     <div className="flex min-w-0 flex-col gap-1.5">
+      {landscape ? (
+        <div className="flex min-w-0 flex-col items-center">
+          <span className="max-w-full truncate text-[11px] font-black uppercase tracking-wider" style={{ color }}>
+            {team || (side === 'home' ? 'HOME' : 'AWAY')}
+          </span>
+          <span className="text-4xl font-black leading-none tabular-nums text-white" data-testid={`dock-score-${side}`}>
+            {formatScore(def, score ?? 0)}
+          </span>
+        </div>
+      ) : (
       <div className="flex items-baseline justify-between px-0.5">
         <span className="text-[10px] font-black tracking-widest text-slate-500">
           {side === 'home' ? 'HOME' : 'AWAY'}
@@ -2214,6 +2396,7 @@ function MobileScoreDock({
           {formatScore(def, score ?? 0)}
         </span>
       </div>
+      )}
       {judged ? (
         <DockJudgedTotal def={def} side={side} team={team} color={color} score={score ?? 0} ctl={ctl} />
       ) : (
@@ -2248,7 +2431,14 @@ function MobileScoreDock({
   return (
     // K12-F15: the Run view now ends above the MobileTabBar (which carries
     // the safe-area inset itself), so the dock needs no inset of its own.
-    <div className="md:hidden border-t-2 border-slate-800 bg-slate-950 px-2 pt-2 pb-2">
+    <div
+      data-testid="phone-score-dock"
+      className={
+        landscape
+          ? 'flex flex-1 flex-col justify-center bg-slate-950 px-2 py-2'
+          : 'md:hidden border-t-2 border-slate-800 bg-slate-950 px-2 pt-2 pb-2'
+      }
+    >
       <div className="grid grid-cols-[1fr_auto_1fr] items-stretch gap-2">
         {/* Called, not mounted: TeamCol is re-created every render, and as a
             <Component/> React would remount its subtree each time — wiping
@@ -2283,7 +2473,8 @@ function MobileScoreDock({
           {hasClock ? (
             <>
               <div
-                className={`text-3xl font-black tabular-nums leading-none ${
+                data-testid="dock-clock"
+                className={`${landscape ? 'text-4xl' : 'text-3xl'} font-black tabular-nums leading-none ${
                   running ? 'text-amber-400' : 'text-white'
                 }`}
               >
@@ -7970,7 +8161,7 @@ function RunStatusControl({
   };
   const m = META[status] || META.SCHEDULED;
   // 44 px on phones (K12-F15 touch floor); desktop keeps its 40 px bar.
-  const btn = 'min-h-[40px] max-md:min-h-[44px] px-3.5 py-1.5 rounded-lg text-sm font-bold border transition-colors shrink-0';
+  const btn = 'min-h-[40px] max-md:min-h-[44px] short-land:min-h-[44px] px-3.5 py-1.5 rounded-lg text-sm font-bold border transition-colors shrink-0';
   const buttons = (
       <div className={`flex items-center gap-1.5 shrink-0 ${embedded ? '' : 'ml-auto'}`}>
         {(status === 'SCHEDULED' || status === 'PRE_GAME') && (
