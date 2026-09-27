@@ -757,23 +757,23 @@ function downloading(over: Record<string, unknown> = {}, ageMs = 20_000): Partia
 }
 
 describe('delivery while new content downloads (2026-09-27)', () => {
-  it('the download splash is "Downloading new content · 62% of 141 MB" — never a playback problem', () => {
+  it('the download splash is "Downloading new content · 62% of 141\u00a0MB" — never a playback problem', () => {
     const s = deriveDeliveryFromScreens([screen({ lastRenderedHash: 'idle:content-downloading', ...downloading() })], NOW_MS);
     expect(s.state).toBe('downloading');
     expect(s.tone).toBe('muted');
     expect(s.label).toBe('Downloading new content');
-    expect(s.sub).toBe('Lobby TV · 62% of 141 MB');
+    expect(s.sub).toBe('Lobby TV · 62% of 141\u00a0MB');
     expect(s.messages).toEqual({
       label: { key: 'screens.contentState.downloading' },
-      sub: { key: 'playlistsPage.deliveryDownloadOne', values: { name: 'Lobby TV', percent: 62, size: '141 MB' } },
+      sub: { key: 'playlistsPage.deliveryDownloadOne', values: { name: 'Lobby TV', percent: 62, size: '141\u00a0MB' } },
     });
   });
 
-  it('held: "Still showing previous content · new content 62% of 141 MB" — not "Playback reported"', () => {
+  it('held: "Still showing previous content · new content 62% of 141\u00a0MB" — not "Playback reported"', () => {
     const s = deriveDeliveryFromScreens([screen({ ...downloading({ deferredCommit: true }) })], NOW_MS);
     expect(s.state).toBe('downloading');
     expect(s.label).toBe('Still showing previous content');
-    expect(s.sub).toBe('Lobby TV · new content 62% of 141 MB');
+    expect(s.sub).toBe('Lobby TV · new content 62% of 141\u00a0MB');
     expect(s.label).not.toMatch(/playback reported/i);
   });
 
@@ -800,7 +800,7 @@ describe('delivery while new content downloads (2026-09-27)', () => {
     const s = deriveDeliveryFromScreens([
       screen({ lastRenderedHash: 'idle:content-downloading', ...downloading({ bytesTotal: null, bytesLoaded: 20 * MB }) }),
     ], NOW_MS);
-    expect(s.sub).toBe('Lobby TV · 20 MB so far');
+    expect(s.sub).toBe('Lobby TV · 20\u00a0MB so far');
   });
 
   it('several screens: how many, not a blended percent', () => {

@@ -1123,8 +1123,8 @@ describe('downloads + idle proofs on the row, the Overview and the Delivery card
     } as OpsScreen['lastCacheReport'],
     lastCacheReportAt: new Date(NOW - ageMs).toISOString(),
   });
-  const NOTHING_ON_GLASS = 'Downloading new content · 62% of 141 MB';
-  const HELD = 'Still showing previous content · new content 62% of 141 MB';
+  const NOTHING_ON_GLASS = 'Downloading new content · 62% of 141\u00a0MB';
+  const HELD = 'Still showing previous content · new content 62% of 141\u00a0MB';
 
   describe('the row (deriveScreenStatus)', () => {
     it('downloading, nothing on glass → the progress, calm, never green, never "nothing scheduled"', () => {
@@ -1137,11 +1137,11 @@ describe('downloads + idle proofs on the row, the Overview and the Delivery card
       expect(s.action).toBe('View');
       expect(s.messages?.label).toEqual({
         key: 'screens.contentState.downloadingProgress',
-        values: { percent: 62, size: '141 MB' },
+        values: { percent: 62, size: '141\u00a0MB' },
       });
     });
 
-    it('held → "Still showing previous content · new content 62% of 141 MB" over the OLD content\'s own proof', () => {
+    it('held → "Still showing previous content · new content 62% of 141\u00a0MB" over the OLD content\'s own proof', () => {
       const s = status({ lastRenderedHash: 'pl:0|10000|old-item', ...snapshot({ deferredCommit: true }) });
       expect(s.key).toBe('showing-previous');
       expect(s.label).toBe(HELD);
@@ -1194,7 +1194,7 @@ describe('downloads + idle proofs on the row, the Overview and the Delivery card
     it('the new content plays and another of its files downloads → Current, with the download underneath', () => {
       const s = status({ lastRenderedHash: 'pl:0|10000|new-item', ...snapshot() });
       expect(s.key).toBe('current');
-      expect(s.evidence).toBe('Downloading another file · 62% of 141 MB');
+      expect(s.evidence).toBe('Downloading another file · 62% of 141\u00a0MB');
       expect(s.messages?.evidence?.key).toBe('screens.contentState.backgroundProgress');
     });
 
@@ -1262,7 +1262,7 @@ describe('downloads + idle proofs on the row, the Overview and the Delivery card
       const r = reported({ lastRenderedHash: 'pl:0|10000|x', ...snapshot() });
       expect(r.state).toBe('playing');
       expect(r.line).toBe('Playing a playlist');
-      expect(r.downloadLine?.en).toBe('Downloading another file · 62% of 141 MB');
+      expect(r.downloadLine?.en).toBe('Downloading another file · 62% of 141\u00a0MB');
       expect(r.download?.percent).toBe(62);
     });
   });
@@ -1276,7 +1276,7 @@ describe('downloads + idle proofs on the row, the Overview and the Delivery card
       expect(d.message?.key).toBe('screens.contentState.downloadingProgress');
       expect(delivery({ lastRenderedHash: 'pl:x', ...snapshot({ deferredCommit: true }) })).toMatchObject({ state: 'pending', line: HELD });
       const bg = delivery({ lastRenderedHash: 'pl:x', ...snapshot() });
-      expect(bg).toMatchObject({ state: 'pending', line: 'Downloading another file · 62% of 141 MB' });
+      expect(bg).toMatchObject({ state: 'pending', line: 'Downloading another file · 62% of 141\u00a0MB' });
     });
 
     it('stale or no snapshot → exactly as before', () => {

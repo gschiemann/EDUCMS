@@ -18,6 +18,7 @@ import {
   DOWNLOAD_COPY_EN,
   DOWNLOAD_REPORT_FRESH_MS,
   fmtBytes,
+  fmtSize,
   liveDownload,
   parseDownloadSnapshot,
   type DownloadCopyKey,
@@ -118,23 +119,23 @@ describe('downloadLine — the copy per state', () => {
   const fresh = (over: Record<string, unknown> = {}) =>
     deriveContentDownload(screen({ file: 'a.mp4', bytesLoaded: AT_62, bytesTotal: SIZE, ...over }), NOW);
 
-  it('downloading: "Downloading new content · 62% of 141 MB"', () => {
+  it('downloading: "Downloading new content · 62% of 141\u00a0MB"', () => {
     const line = downloadLine('downloading', fresh());
-    expect(line.en).toBe('Downloading new content · 62% of 141 MB');
-    expect(line.message).toEqual({ key: 'screens.contentState.downloadingProgress', values: { percent: 62, size: '141 MB' } });
+    expect(line.en).toBe('Downloading new content · 62% of 141\u00a0MB');
+    expect(line.message).toEqual({ key: 'screens.contentState.downloadingProgress', values: { percent: 62, size: '141\u00a0MB' } });
   });
 
-  it('held: "Still showing previous content · new content 62% of 141 MB"', () => {
+  it('held: "Still showing previous content · new content 62% of 141\u00a0MB"', () => {
     expect(downloadLine('showing-previous', fresh({ deferredCommit: true })).en).toBe(
-      'Still showing previous content · new content 62% of 141 MB',
+      'Still showing previous content · new content 62% of 141\u00a0MB',
     );
   });
 
   it('no size yet: bytes so far, never a percent', () => {
     const d = deriveContentDownload(screen({ file: 'a.mp4', bytesLoaded: 20 * MB }), NOW);
-    expect(downloadLine('downloading', d).en).toBe('Downloading new content · 20 MB so far');
-    expect(downloadLine('showing-previous', d).en).toBe('Still showing previous content · new content 20 MB so far');
-    expect(downloadLine('background', d).en).toBe('Downloading another file · 20 MB so far');
+    expect(downloadLine('downloading', d).en).toBe('Downloading new content · 20\u00a0MB so far');
+    expect(downloadLine('showing-previous', d).en).toBe('Still showing previous content · new content 20\u00a0MB so far');
+    expect(downloadLine('background', d).en).toBe('Downloading another file · 20\u00a0MB so far');
   });
 
   it('a stale or absent download carries no number at all', () => {
@@ -148,7 +149,16 @@ describe('downloadLine — the copy per state', () => {
   });
 
   it('background: another file of content that already plays', () => {
-    expect(downloadLine('background', fresh()).en).toBe('Downloading another file · 62% of 141 MB');
+    expect(downloadLine('background', fresh()).en).toBe('Downloading another file · 62% of 141\u00a0MB');
+  });
+
+  it('a size never splits from its unit — the line wraps as "62% of" / "141 MB", never "141" / "MB"', () => {
+    expect(fmtSize(SIZE)).toBe('141 MB');
+    for (const kind of ['downloading', 'showing-previous', 'background'] as const) {
+      expect(downloadLine(kind, fresh()).en).not.toMatch(/\d (B|KB|MB|GB)\b/);
+    }
+    // The Device card's vocabulary is untouched.
+    expect(fmtBytes(SIZE)).toBe('141 MB');
   });
 
   it('never predicts: no line anywhere says how long is left', () => {

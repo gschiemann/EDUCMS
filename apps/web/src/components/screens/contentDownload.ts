@@ -173,6 +173,15 @@ export function fmtBytes(bytes: number): string {
   return `${Math.round((bytes / (1024 * 1024 * 1024)) * 100) / 100} GB`;
 }
 
+/**
+ * The same size with a no-break space, for the progress lines: they sit in
+ * narrow status cells and must wrap as "… 62% of" / "141 MB", never as
+ * "… 62% of 141" / "MB".
+ */
+export function fmtSize(bytes: number): string {
+  return fmtBytes(bytes).replace(' ', ' ');
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // Copy
 // ═══════════════════════════════════════════════════════════════════
@@ -240,13 +249,13 @@ export function downloadLine(
   download: ContentDownload | null | undefined,
 ): Copy {
   const d = liveDownload(download);
-  const size = d && d.bytesTotal !== null ? fmtBytes(d.bytesTotal) : null;
+  const size = d && d.bytesTotal !== null ? fmtSize(d.bytesTotal) : null;
   const withTotal = d !== null && d.percent !== null && size !== null;
   if (kind === 'showing-previous') {
     if (!d) return copy('screens.contentState.showingPrevious');
     return withTotal
       ? copy('screens.contentState.showingPreviousProgress', { percent: d.percent as number, size: size as string })
-      : copy('screens.contentState.showingPreviousSoFar', { loaded: fmtBytes(d.bytesLoaded) });
+      : copy('screens.contentState.showingPreviousSoFar', { loaded: fmtSize(d.bytesLoaded) });
   }
   if (kind === 'background') {
     // Callers only ask for this with a fresh download in hand; without one
@@ -254,10 +263,10 @@ export function downloadLine(
     if (!d) return copy('screens.contentState.downloading');
     return withTotal
       ? copy('screens.contentState.backgroundProgress', { percent: d.percent as number, size: size as string })
-      : copy('screens.contentState.backgroundSoFar', { loaded: fmtBytes(d.bytesLoaded) });
+      : copy('screens.contentState.backgroundSoFar', { loaded: fmtSize(d.bytesLoaded) });
   }
   if (!d) return copy('screens.contentState.downloading');
   return withTotal
     ? copy('screens.contentState.downloadingProgress', { percent: d.percent as number, size: size as string })
-    : copy('screens.contentState.downloadingSoFar', { loaded: fmtBytes(d.bytesLoaded) });
+    : copy('screens.contentState.downloadingSoFar', { loaded: fmtSize(d.bytesLoaded) });
 }

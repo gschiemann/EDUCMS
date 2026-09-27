@@ -37,7 +37,7 @@ import { deriveVideoPlayback, type OpsScreen } from '@/components/screens/v3/scr
 import {
   copy,
   deriveContentDownload,
-  fmtBytes,
+  fmtSize,
   liveDownload,
   type ContentDownload,
   type OpsMessage,
@@ -733,11 +733,11 @@ function summarizeDownloading(
     const held = d?.state === 'held';
     if (d && d.percent !== null && d.bytesTotal !== null) {
       sub = copy(held ? 'playlistsPage.deliveryHeldOne' : 'playlistsPage.deliveryDownloadOne', {
-        name: one.name, percent: d.percent, size: fmtBytes(d.bytesTotal),
+        name: one.name, percent: d.percent, size: fmtSize(d.bytesTotal),
       });
     } else if (d) {
       sub = copy(held ? 'playlistsPage.deliveryHeldOneSoFar' : 'playlistsPage.deliveryDownloadOneSoFar', {
-        name: one.name, loaded: fmtBytes(d.bytesLoaded),
+        name: one.name, loaded: fmtSize(d.bytesLoaded),
       });
     } else {
       sub = { en: one.name }; // the proof says "downloading"; no number to claim
