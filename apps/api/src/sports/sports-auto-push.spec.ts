@@ -93,7 +93,18 @@ function setup() {
   const auditLog = makeTable();
   const rosterPlayer = makeTable();
   const template = makeTable();
-  const client: any = { game, gameEvent, screen, auditLog, rosterPlayer, template };
+  // K12-F39: the FINAL command queues its season roll-up (an upsert keyed by
+  // gameId); the roll-up itself is proven in sports-stat-rollup.spec.ts.
+  const gameStatRollup: any = makeTable();
+  gameStatRollup.upsert = async ({ where, create, update }: any) => {
+    const row = gameStatRollup.rows.find((r: any) => r.gameId === where.gameId);
+    if (row) {
+      Object.assign(row, update);
+      return row;
+    }
+    return gameStatRollup.create({ data: create });
+  };
+  const client: any = { game, gameEvent, screen, auditLog, rosterPlayer, template, gameStatRollup };
   client.$transaction = async (fn: (tx: unknown) => unknown) => fn(client);
   // Emulate the claim statement: null every due autoPushAt, return the
   // claimed (id, tenant_id) pairs — exactly what the real UPDATE …

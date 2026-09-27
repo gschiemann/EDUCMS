@@ -2850,6 +2850,8 @@
   "sportsConsole": {
     "reopenPrompt": "为什么要重新开启这场已结束的比赛？该原因将与您的姓名一起记录。",
     "reopenReasonShort": "请输入至少 5 个字符的原因以重新开启比赛。",
-    "screenClaimConflict": "另一个控制台刚刚在 {screens} 上显示了另一场比赛。屏幕列表已刷新，请先检查后再试。"
+    "screenClaimConflict": "另一个控制台刚刚在 {screens} 上显示了另一场比赛。屏幕列表已刷新，请先检查后再试。",
+    "statsRollupPending": "正在更新赛季统计…",
+    "statsRollupFailed": "赛季统计尚未更新，系统将自动重试。"
   }
 }

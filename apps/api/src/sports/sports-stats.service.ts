@@ -362,19 +362,26 @@ export function computePlayerSurfaces(
 //   • Only roster rows WHERE personId != null aggregate. Unlinked rows
 //     (opponents, typos, one-offs) are ignored so they never pollute the
 //     persistent tables.
-//   • IDEMPOTENT: a per-game marker (`game.stats.statsFinalizedAt`),
-//     checked AND set inside the same transaction, makes re-FINAL a
-//     no-op — re-running finalize must NOT double-count.
+//   • DURABLE + CORRECTION-AWARE (K12-F39, 2026-09-26): the FINAL command
+//     queues a `game_stat_rollups` job in its own transaction; the job
+//     records the revision it rolled up and the contribution it applied,
+//     so a retry is a no-op and a corrected result moves the totals by the
+//     difference. (Before: a marker in `game.stats`, set once, so a failed
+//     roll-up was lost and a corrected result was never re-rolled.)
 //   • The whole roll-up runs in ONE `$transaction` wrapped in
 //     `withDbRetry` (transient pool blips retried; logic errors thrown).
-//   • FAIL-OPEN is the CALLER's job (the setStatus hook wraps this in
-//     try/catch so a stats bug never blocks "end game"). This fn may
+//   • FAIL-OPEN is the CALLER's job (the post-commit hook and the retry
+//     sweep record a failure on the job, never on "end game"). This fn may
 //     throw on a real DB error; it's safe to call and validates inputs.
 //
 // The reads (`getStatLeaders` / `getAthleteCareer`) hit the indexed
 // aggregate tables — fast, never the GameEvent stream, never on the poll.
 
-/** Marker key stamped into `Game.stats` once a game's stats are rolled up. */
+/**
+ * Marker key the pre-K12-F39 finalize stamped into `Game.stats` once a game's
+ * stats were rolled up. No longer written (the roll-up job row replaced it);
+ * read only to recognise games rolled up the old way.
+ */
 const STATS_FINALIZED_MARKER = 'statsFinalizedAt';
 
 /**
@@ -607,194 +614,297 @@ export async function linkRosterPlayerToPerson(
 }
 
 /**
- * Finalize a game's player stats: roll each LINKED roster player's
- * per-game COUNTING stats into the persistent season + career aggregates.
- * Called by the setStatus(FINAL) hook (another agent), AFTER the status
- * commit, wrapped by the caller in try/catch (fail-open).
- *
- * Idempotent via the `game.stats.statsFinalizedAt` marker (checked + set
- * inside the same transaction): re-FINAL returns
- * `{ aggregated: 0, skipped: 'already-finalized' }` and double-counts
- * nothing. Multi-replica safe — two concurrent finalizes converge: the
- * first to commit the marker wins, the second sees the marker and no-ops.
- *
- * @returns `{ aggregated }` — count of distinct LINKED players rolled up.
- *          `{ aggregated: 0, skipped }` when nothing was done.
+ * K12-F39 — one counting stat one linked roster row contributed to the
+ * season aggregates in one game. A game's CONTRIBUTION is the list of these;
+ * the roll-up job stores the contribution it applied, so a corrected result
+ * moves the season totals by the difference instead of adding the game twice.
  */
-export async function finalizeGameStats(
+export interface StatContributionEntry {
+  personId: string;
+  teamId: string | null;
+  sport: string;
+  season: string;
+  statKey: string;
+  value: number;
+}
+
+/** Roll-up job states (`game_stat_rollups.state`). */
+export const STAT_ROLLUP_STATE = {
+  /** Queued by the FINAL command; not applied at this revision yet. */
+  PENDING: 'PENDING',
+  /** The season totals include this game at `appliedRevision`. */
+  APPLIED: 'APPLIED',
+  /** The last attempt threw; retried by the sweep with back-off. */
+  FAILED: 'FAILED',
+  /** The game was reopened before its roll-up applied; FINAL re-queues it. */
+  REOPENED: 'REOPENED',
+  /** Player stats are off for the tenant; nothing to roll up. */
+  SKIPPED: 'SKIPPED',
+} as const;
+export type StatRollupState = (typeof STAT_ROLLUP_STATE)[keyof typeof STAT_ROLLUP_STATE];
+
+/**
+ * The counting stats a game's LINKED roster rows contribute. Pure. Rate stats
+ * (AVG, judged scores, PAR, marks) are per-game and never summed; an
+ * unparseable value is skipped, never thrown. Stored keys resolve through the
+ * same alias-aware `rawStat` the live board uses (2026-06-25 parity: CSV and
+ * seed rosters store long lowercased labels, the model carries short codes).
+ */
+export function computeGameContribution(
+  game: { sport: string; startedAt?: Date | null; createdAt?: Date | null },
+  roster: Array<{ personId: string | null; teamId?: string | null; stats: unknown }>,
+): StatContributionEntry[] {
+  const sport = game.sport;
+  const season = deriveSeason(game);
+  const out: StatContributionEntry[] = [];
+  for (const rp of roster) {
+    if (!rp.personId) continue;
+    for (const key of PLAYER_STATS[sport] ?? []) {
+      const sem = statSemantic(sport, key);
+      if (sem?.kind !== 'counting') continue;
+      const rawVal = rawStat(rp.stats, key);
+      if (rawVal == null) continue;
+      const parsed = parseStatValue(rawVal, sem);
+      if (parsed == null) continue;
+      out.push({ personId: rp.personId, teamId: rp.teamId ?? null, sport, season, statKey: key, value: parsed });
+    }
+  }
+  return out;
+}
+
+/** A stored contribution, tolerating anything a JSON column can hold. */
+function readContribution(raw: unknown): StatContributionEntry[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (e): e is StatContributionEntry =>
+      !!e &&
+      typeof e === 'object' &&
+      typeof (e as StatContributionEntry).personId === 'string' &&
+      typeof (e as StatContributionEntry).statKey === 'string' &&
+      typeof (e as StatContributionEntry).sport === 'string' &&
+      typeof (e as StatContributionEntry).season === 'string' &&
+      typeof (e as StatContributionEntry).value === 'number',
+  );
+}
+
+/**
+ * Per season row (person, season, sport, stat): the summed value and how many
+ * roster rows contributed — `gamesPlayed` counts games that contributed to
+ * that stat row, as it always has.
+ */
+function bySeasonRow(entries: StatContributionEntry[]) {
+  const rows = new Map<string, StatContributionEntry & { games: number }>();
+  for (const e of entries) {
+    const k = `${e.personId}|${e.season}|${e.sport}|${e.statKey}`;
+    const cur = rows.get(k);
+    if (cur) {
+      cur.value += e.value;
+      cur.games += 1;
+      if (e.teamId) cur.teamId = e.teamId;
+    } else {
+      rows.set(k, { ...e, games: 1 });
+    }
+  }
+  return rows;
+}
+
+/** A legacy (pre-K12-F39) roll-up stamped this into `Game.stats`. */
+export function hasLegacyFinalizeMarker(stats: unknown): boolean {
+  return (
+    !!stats &&
+    typeof stats === 'object' &&
+    !Array.isArray(stats) &&
+    !!(stats as Record<string, unknown>)[STATS_FINALIZED_MARKER]
+  );
+}
+
+/**
+ * K12-F39 — apply a game's queued season roll-up, exactly once per result
+ * revision.
+ *
+ * The FINAL command queues a `game_stat_rollups` row (PENDING, the revision
+ * to roll up) in its own transaction; this applies it:
+ *   1. CLAIM the job with a conditional write on its attempt counter. The
+ *      write takes the row lock, so two appliers (the post-commit hook on one
+ *      replica, the sweep on another) serialise, and the second's condition
+ *      no longer holds once the first commits — it does nothing.
+ *   2. Compute the game's contribution from its (final, locked) box score.
+ *   3. Move each season row by the DIFFERENCE from the contribution this job
+ *      last applied — atomic increments, never read-modify-write, so two
+ *      games finalizing at once for the same athlete cannot lose an update.
+ *      A row no game contributes to any more is removed. Career rows are
+ *      recomputed as the sum of the athlete's season rows for that sport.
+ *   4. Record the applied revision + contribution; clear the error.
+ * All in ONE transaction: a failure changes no total and leaves the job
+ * PENDING/FAILED for the retry sweep. Re-applying an applied revision is a
+ * no-op; a corrected result (reopen → fix → FINAL) is re-queued at its new
+ * revision and rolls up as a correction.
+ *
+ * A game rolled up by the old marker-based finalize has no job; the reopen
+ * that precedes any correction seeds its baseline (see SportsService). If a
+ * job reaches here with no baseline for such a game, the current box score is
+ * taken as the baseline — never added a second time.
+ */
+export async function applyGameStatRollup(
   prisma: PrismaClient,
   tenantId: string,
   gameId: string,
-): Promise<{ aggregated: number; skipped?: string }> {
-  if (!tenantId) throw new Error('finalizeGameStats: tenantId required');
-  if (!gameId) throw new Error('finalizeGameStats: gameId required');
+): Promise<{ applied: boolean; aggregated: number; revision?: number; skipped?: string }> {
+  if (!tenantId) throw new Error('applyGameStatRollup: tenantId required');
+  if (!gameId) throw new Error('applyGameStatRollup: gameId required');
 
-  return withDbRetry(
-    () =>
-      prisma.$transaction(async (tx) => {
-        // Load the game tenant-scoped. Missing/cross-tenant → skip.
-        const game = await tx.game.findFirst({
-          where: { id: gameId, tenantId },
-          select: {
-            id: true,
-            sport: true,
-            stats: true,
-            startedAt: true,
-            createdAt: true,
-          },
+  return withDbRetry(() => prisma.$transaction(async (tx) => {
+    const job = await tx.gameStatRollup.findFirst({ where: { gameId, tenantId } });
+    if (!job) return { applied: false, aggregated: 0, skipped: 'no-job' };
+    if (job.state === STAT_ROLLUP_STATE.REOPENED || job.state === STAT_ROLLUP_STATE.SKIPPED) {
+      return { applied: false, aggregated: 0, skipped: job.state.toLowerCase() };
+    }
+    if (job.state === STAT_ROLLUP_STATE.APPLIED && job.appliedRevision === job.targetRevision) {
+      return { applied: false, aggregated: 0, skipped: 'already-applied' };
+    }
+
+    // 1 — claim.
+    const claim = await tx.gameStatRollup.updateMany({
+      where: { gameId, tenantId, attempts: job.attempts, targetRevision: job.targetRevision },
+      data: { attempts: { increment: 1 } },
+    });
+    if (claim.count === 0) return { applied: false, aggregated: 0, skipped: 'busy' };
+
+    const game = await tx.game.findFirst({
+      where: { id: gameId, tenantId },
+      select: { id: true, sport: true, status: true, stats: true, startedAt: true, createdAt: true },
+    });
+    if (!game) return { applied: false, aggregated: 0, skipped: 'game-not-found' };
+    if (game.status !== 'FINAL') {
+      // Reopened after it was queued: the box score may be mid-correction.
+      // The next FINAL re-queues it at the corrected revision.
+      await tx.gameStatRollup.update({
+        where: { gameId, tenantId },
+        data: { state: STAT_ROLLUP_STATE.REOPENED },
+      });
+      return { applied: false, aggregated: 0, skipped: 'not-final' };
+    }
+
+    // 2 — the contribution at this revision.
+    const roster = await tx.rosterPlayer.findMany({
+      where: { gameId, tenantId, personId: { not: null } },
+      select: { personId: true, teamId: true, stats: true },
+    });
+    const next = computeGameContribution(game, roster);
+    const legacyBaseline = job.appliedRevision == null && hasLegacyFinalizeMarker(game.stats);
+    const prev = legacyBaseline ? next : readContribution(job.contribution);
+
+    // 3 — season rows move by the difference; careers are re-summed.
+    const before = bySeasonRow(prev);
+    const after = bySeasonRow(next);
+    const careers = new Map<string, { personId: string; statKey: string; sport: string; teamId: string | null }>();
+    for (const key of new Set([...before.keys(), ...after.keys()])) {
+      const b = before.get(key);
+      const a = after.get(key);
+      const dValue = (a?.value ?? 0) - (b?.value ?? 0);
+      const dGames = (a?.games ?? 0) - (b?.games ?? 0);
+      if (dValue === 0 && dGames === 0) continue;
+      const ref = (a ?? b)!;
+      const sem = statSemantic(ref.sport, ref.statKey);
+      const where = {
+        person_season_stat: {
+          personId: ref.personId,
+          season: ref.season,
+          statKey: ref.statKey,
+          sport: ref.sport,
+        },
+        tenantId,
+      };
+      const row = await tx.playerSeasonStat.upsert({
+        where,
+        create: {
+          tenantId,
+          personId: ref.personId,
+          teamId: ref.teamId ?? undefined,
+          sport: ref.sport,
+          season: ref.season,
+          statKey: ref.statKey,
+          statValue: dValue,
+          gamesPlayed: dGames,
+          displayValue: formatStatValue(dValue, sem),
+          lastGameId: gameId,
+        },
+        update: {
+          statValue: { increment: dValue },
+          gamesPlayed: { increment: dGames },
+          lastGameId: gameId,
+          ...(a?.teamId ? { teamId: a.teamId } : {}),
+        },
+      });
+      if (row.gamesPlayed <= 0) {
+        await tx.playerSeasonStat.delete({ where });
+      } else {
+        await tx.playerSeasonStat.update({
+          where,
+          data: { displayValue: formatStatValue(row.statValue, sem) },
         });
-        if (!game) return { aggregated: 0, skipped: 'game-not-found' };
-
-        // ── Idempotency guard (inside the tx) ──
-        const stats =
-          game.stats && typeof game.stats === 'object' && !Array.isArray(game.stats)
-            ? (game.stats as Record<string, unknown>)
-            : {};
-        if (stats[STATS_FINALIZED_MARKER]) {
-          return { aggregated: 0, skipped: 'already-finalized' };
-        }
-
-        const sport = game.sport;
-        const season = deriveSeason(game);
-
-        // Only LINKED roster rows (personId != null) aggregate.
-        const roster = await tx.rosterPlayer.findMany({
-          where: { gameId, tenantId, personId: { not: null } },
-          select: { personId: true, teamId: true, stats: true },
+      }
+      careers.set(`${ref.personId}|${ref.statKey}|${ref.sport}`, {
+        personId: ref.personId,
+        statKey: ref.statKey,
+        sport: ref.sport,
+        teamId: a?.teamId ?? ref.teamId ?? null,
+      });
+    }
+    for (const c of careers.values()) {
+      // Sport-scoped: PLAYER_STATS codes collide across sports (2026-07-04).
+      const seasonRows = await tx.playerSeasonStat.findMany({
+        where: { personId: c.personId, statKey: c.statKey, sport: c.sport, tenantId },
+        select: { statValue: true, gamesPlayed: true },
+      });
+      if (seasonRows.length === 0) {
+        await tx.playerCareerStat.deleteMany({
+          where: { personId: c.personId, statKey: c.statKey, sport: c.sport, tenantId },
         });
+        continue;
+      }
+      const sem = statSemantic(c.sport, c.statKey);
+      const careerValue = seasonRows.reduce((s, r) => s + r.statValue, 0);
+      const careerGames = seasonRows.reduce((s, r) => s + r.gamesPlayed, 0);
+      await tx.playerCareerStat.upsert({
+        where: { person_career_stat: { personId: c.personId, statKey: c.statKey, sport: c.sport }, tenantId },
+        update: {
+          statValue: careerValue,
+          gamesPlayed: careerGames,
+          displayValue: formatStatValue(careerValue, sem),
+          lastGameId: gameId,
+          teamId: c.teamId ?? undefined,
+        },
+        create: {
+          tenantId,
+          personId: c.personId,
+          teamId: c.teamId ?? undefined,
+          sport: c.sport,
+          statKey: c.statKey,
+          statValue: careerValue,
+          gamesPlayed: careerGames,
+          displayValue: formatStatValue(careerValue, sem),
+          lastGameId: gameId,
+        },
+      });
+    }
 
-        let aggregated = 0;
-
-        for (const rp of roster) {
-          const personId = rp.personId;
-          if (!personId) continue; // narrow (where already guards)
-
-          // Build this player's parsed COUNTING deltas for this game.
-          const deltas: Array<{ statKey: string; delta: number; sem?: StatSemantic }> = [];
-          for (const key of PLAYER_STATS[sport] ?? []) {
-            const sem = statSemantic(sport, key);
-            // ONLY counting stats accumulate. Rate stats (AVG, judged
-            // scores, PAR, marks) are per-game — never summed.
-            if (sem?.kind !== 'counting') continue;
-            // Alias-aware read (2026-06-25 parity with the live board): the
-            // model carries SHORT codes (e.g. 'G','A','ST') but CSV/seed
-            // rosters store the LONG lowercased label form ('goals',
-            // 'assists','steals'). A direct `rp.stats[key]` then misses every
-            // stat and career/season totals roll up empty. Route through the
-            // SAME `rawStat` accessor `computePlayerSurfaces` uses so both
-            // surfaces resolve identically. SAFETY: `rawStat` only matches the
-            // key or its own label, never a cross-stat synonym — worst case is
-            // a miss (prior behavior), never another stat's value.
-            const rawVal = rawStat(rp.stats, key);
-            if (rawVal == null) continue;
-            const parsed = parseStatValue(rawVal, sem);
-            if (parsed == null) continue; // unparseable → skip, never throw
-            deltas.push({ statKey: key, delta: parsed, sem });
-          }
-
-          // A linked player with no parseable counting stat this game
-          // still "played" — but with nothing to roll up there's no row
-          // to touch, so they don't count toward `aggregated` and don't
-          // get a gamesPlayed bump (no row exists to bump). This keeps
-          // gamesPlayed = games that contributed to that stat row.
-          if (deltas.length === 0) continue;
-
-          aggregated += 1;
-
-          for (const { statKey, delta, sem } of deltas) {
-            // ── SEASON upsert: ADD the delta ──
-            const existingSeason = await tx.playerSeasonStat.findUnique({
-              where: {
-                person_season_stat: { personId, season, statKey, sport },
-              },
-              select: { statValue: true, gamesPlayed: true },
-            });
-            const newSeasonValue = (existingSeason?.statValue ?? 0) + delta;
-            const newSeasonGames = (existingSeason?.gamesPlayed ?? 0) + 1;
-
-            await tx.playerSeasonStat.upsert({
-              where: {
-                person_season_stat: { personId, season, statKey, sport },
-              },
-              update: {
-                statValue: newSeasonValue,
-                gamesPlayed: newSeasonGames,
-                displayValue: formatStatValue(newSeasonValue, sem),
-                lastGameId: gameId,
-                teamId: rp.teamId ?? undefined,
-              },
-              create: {
-                tenantId,
-                personId,
-                teamId: rp.teamId ?? undefined,
-                sport,
-                season,
-                statKey,
-                statValue: newSeasonValue,
-                gamesPlayed: newSeasonGames,
-                displayValue: formatStatValue(newSeasonValue, sem),
-                lastGameId: gameId,
-              },
-            });
-
-            // ── CAREER recompute: SUM all of this person's season rows
-            //    for this statKey IN THIS SPORT (canonical — converges even if
-            //    a season row is later corrected). MUST be sport-scoped: a
-            //    SportsPerson can play multiple sports whose PLAYER_STATS codes
-            //    collide (AST/PTS/G/A…); without the `sport` filter a multi-sport
-            //    athlete's career total would sum unrelated sports' same-code
-            //    stats into one figure (the same merge the unique-key fix closes
-            //    on the write side). ──
-            const seasonRows = await tx.playerSeasonStat.findMany({
-              where: { personId, statKey, sport },
-              select: { statValue: true, gamesPlayed: true },
-            });
-            const careerValue = seasonRows.reduce((s, r) => s + r.statValue, 0);
-            const careerGames = seasonRows.reduce((s, r) => s + r.gamesPlayed, 0);
-
-            await tx.playerCareerStat.upsert({
-              where: { person_career_stat: { personId, statKey, sport } },
-              update: {
-                statValue: careerValue,
-                gamesPlayed: careerGames,
-                displayValue: formatStatValue(careerValue, sem),
-                lastGameId: gameId,
-                teamId: rp.teamId ?? undefined,
-              },
-              create: {
-                tenantId,
-                personId,
-                teamId: rp.teamId ?? undefined,
-                sport,
-                statKey,
-                statValue: careerValue,
-                gamesPlayed: careerGames,
-                displayValue: formatStatValue(careerValue, sem),
-                lastGameId: gameId,
-              },
-            });
-          }
-        }
-
-        // ── Stamp the idempotency marker (same tx) ──
-        // Merge into the existing stats JSON so we never clobber the
-        // operator's live stat values.
-        // SEC-009: tenant predicate in the WRITE as well as in the game load
-        // at the top of this transaction.
-        await tx.game.update({
-          where: { id: gameId, tenantId },
-          data: {
-            stats: {
-              ...stats,
-              [STATS_FINALIZED_MARKER]: new Date().toISOString(),
-            } as Prisma.InputJsonValue,
-          },
-        });
-
-        return { aggregated };
-      }),
-    { label: 'sports-stats.finalizeGameStats' },
-  );
+    // 4 — record what the totals now hold for this game.
+    await tx.gameStatRollup.update({
+      where: { gameId, tenantId },
+      data: {
+        state: STAT_ROLLUP_STATE.APPLIED,
+        appliedRevision: job.targetRevision,
+        contribution: next as unknown as Prisma.InputJsonValue,
+        lastError: null,
+      },
+    });
+    return {
+      applied: true,
+      aggregated: new Set(next.map((e) => e.personId)).size,
+      revision: job.targetRevision,
+    };
+  }), { label: 'sports-stats.applyGameStatRollup' });
 }
 
 /**

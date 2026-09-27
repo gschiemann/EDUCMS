@@ -69,4 +69,25 @@ describe('GameScheduleService', () => {
     await svc.tick();
     expect(sweep).toHaveBeenCalledTimes(2);
   });
+
+  // K12-F39 — the season-stats roll-up retry sweep rides the same timer.
+  it('rollupTick retries roll-ups on the first tick and every 4th, fail-open, never overlapping', async () => {
+    const rollups = jest.fn().mockResolvedValue({ found: 0, attempted: 0 });
+    const svc = new GameScheduleService({ sweepStatRollups: rollups } as any);
+    for (let i = 0; i < 9; i++) await svc.rollupTick();
+    expect(rollups).toHaveBeenCalledTimes(3); // ticks 1, 5, 9
+
+    rollups.mockRejectedValueOnce(new Error('db down'));
+    for (let i = 0; i < 4; i++) await expect(svc.rollupTick()).resolves.toBeUndefined();
+    expect(rollups).toHaveBeenCalledTimes(4);
+
+    let release!: () => void;
+    rollups.mockImplementationOnce(() => new Promise((r) => (release = () => r({ found: 0, attempted: 0 }))));
+    for (let i = 0; i < 3; i++) await svc.rollupTick();
+    const inFlight = svc.rollupTick(); // tick 17 → sweeps, parks
+    for (let i = 0; i < 8; i++) await svc.rollupTick(); // overlap guard: all no-ops
+    release();
+    await inFlight;
+    expect(rollups).toHaveBeenCalledTimes(5);
+  });
 });

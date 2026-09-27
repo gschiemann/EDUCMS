@@ -2850,6 +2850,8 @@
   "sportsConsole": {
     "reopenPrompt": "Why are you reopening this final game? This reason is recorded with your name.",
     "reopenReasonShort": "Please enter a reason of at least 5 characters to reopen the game.",
-    "screenClaimConflict": "Another console just put a different game on {screens}. The screen list is refreshed, so check it before you try again."
+    "screenClaimConflict": "Another console just put a different game on {screens}. The screen list is refreshed, so check it before you try again.",
+    "statsRollupPending": "Updating season stats…",
+    "statsRollupFailed": "Season stats haven't updated yet. Retrying automatically."
   }
 }

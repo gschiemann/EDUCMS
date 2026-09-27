@@ -36,6 +36,11 @@ export class GameScheduleService implements OnModuleInit, OnModuleDestroy {
   // ≤60s late first-detection cannot miss a kickoff that matters.
   private idleTicksLeft = 0;
   private static readonly IDLE_SWEEP_EVERY_TICKS = 4;
+  // K12-F39 — the season-stats roll-up retry sweep rides this timer on its
+  // own cadence (about once a minute at the default interval).
+  private rollupRunning = false;
+  private rollupTicks = 0;
+  private static readonly ROLLUP_SWEEP_EVERY_TICKS = 4;
 
   constructor(private readonly sports: SportsService) {}
 
@@ -46,7 +51,10 @@ export class GameScheduleService implements OnModuleInit, OnModuleDestroy {
     }
     const intervalMs = Number(process.env.GAME_SCHEDULE_INTERVAL_MS) || 15_000;
     this.logger.log(`GameScheduleService starting (interval=${intervalMs}ms)`);
-    this.timer = setInterval(() => void this.tick(), intervalMs);
+    this.timer = setInterval(() => {
+      void this.tick();
+      void this.rollupTick();
+    }, intervalMs);
     // Don't keep the Node event loop alive on shutdown.
     this.timer.unref?.();
   }
@@ -87,6 +95,27 @@ export class GameScheduleService implements OnModuleInit, OnModuleDestroy {
       this.logger.warn(`game schedule sweep failed: ${e?.message ?? e}`);
     } finally {
       this.running = false;
+    }
+  }
+
+  /**
+   * K12-F39 — retry season-stats roll-ups that a restart interrupted or that
+   * failed (SportsService.sweepStatRollups). Replica-safe on its own: every
+   * apply is claimed on the job row. Public so tests can drive it directly.
+   */
+  async rollupTick(): Promise<void> {
+    if (this.rollupRunning) return;
+    // Runs on the 1st tick after boot, then every Nth.
+    this.rollupTicks += 1;
+    if (this.rollupTicks % GameScheduleService.ROLLUP_SWEEP_EVERY_TICKS !== 1) return;
+    this.rollupRunning = true;
+    try {
+      const { attempted } = await this.sports.sweepStatRollups();
+      if (attempted > 0) this.logger.log(`retried ${attempted} season-stats roll-up(s)`);
+    } catch (e: any) {
+      this.logger.warn(`stat roll-up sweep failed: ${e?.message ?? e}`);
+    } finally {
+      this.rollupRunning = false;
     }
   }
 }

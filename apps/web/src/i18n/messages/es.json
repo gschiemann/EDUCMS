@@ -2850,6 +2850,8 @@
   "sportsConsole": {
     "reopenPrompt": "¿Por qué reabre este partido finalizado? El motivo queda registrado con su nombre.",
     "reopenReasonShort": "Escriba un motivo de al menos 5 caracteres para reabrir el partido.",
-    "screenClaimConflict": "Otra consola acaba de poner otro partido en {screens}. La lista de pantallas se actualizó; revísela antes de volver a intentarlo."
+    "screenClaimConflict": "Otra consola acaba de poner otro partido en {screens}. La lista de pantallas se actualizó; revísela antes de volver a intentarlo.",
+    "statsRollupPending": "Actualizando las estadísticas de la temporada…",
+    "statsRollupFailed": "Las estadísticas de la temporada aún no se han actualizado. Se reintentará automáticamente."
   }
 }

@@ -143,7 +143,20 @@ function setup() {
   // This legacy double does not model the unique key; replay and single-use
   // undo are proven in sports-command-replay.spec.ts / sports-undo.spec.ts.
   const gameCommand = makeTable();
-  const client: any = { game, gameEvent, screen, sponsor, rosterPlayer, customCue, auditLog, template, gameCommand };
+  // K12-F39: the FINAL command queues its season roll-up (an upsert keyed by
+  // gameId); the roll-up itself is proven in sports-stat-rollup.spec.ts.
+  const gameStatRollup: any = makeTable();
+  gameStatRollup.upsert = async ({ where, create, update }: any) => {
+    const row = gameStatRollup.rows.find((r: any) => r.gameId === where.gameId);
+    if (row) {
+      Object.assign(row, update);
+      return row;
+    }
+    return gameStatRollup.create({ data: create });
+  };
+  const client: any = {
+    game, gameEvent, screen, sponsor, rosterPlayer, customCue, auditLog, template, gameCommand, gameStatRollup,
+  };
   // S1-5 (2026-07-02 sports deep-pass audit, P2-EndSetMacro): real
   // rollback-simulating `$transaction`, needed to prove
   // `endSegmentAtomic`'s "all four effects, one tx, failure atomicity"
@@ -157,7 +170,9 @@ function setup() {
   // exercise a failure path); this fake additionally restores state on
   // throw because S1-5's atomicity claim is specifically what's under
   // test here.
-  const TX_TABLES = [game, gameEvent, screen, sponsor, rosterPlayer, customCue, auditLog, template, gameCommand];
+  const TX_TABLES = [
+    game, gameEvent, screen, sponsor, rosterPlayer, customCue, auditLog, template, gameCommand, gameStatRollup,
+  ];
   client.$transaction = async (fn: (tx: unknown) => unknown) => {
     const snapshot = TX_TABLES.map((t) => JSON.parse(JSON.stringify(t.rows)));
     try {

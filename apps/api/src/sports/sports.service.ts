@@ -59,8 +59,11 @@ import {
 // Phase 1-A player-stats engine — PURE leaders + player-of-the-game
 // computed from the roster already in the board payload (no DB query).
 import {
+  STAT_ROLLUP_STATE,
+  applyGameStatRollup,
+  computeGameContribution,
   computePlayerSurfaces,
-  finalizeGameStats,
+  hasLegacyFinalizeMarker,
   getStatLeaders,
   getAthleteCareer,
   getPublicAthleteProfile,
@@ -165,6 +168,11 @@ class GameVersionConflict extends Error {
 
 /** How many times a command re-runs after losing a compare-and-swap. */
 const MAX_COMMAND_ATTEMPTS = 5;
+
+/** K12-F39 — a PENDING roll-up older than this lost its post-commit hook. */
+const STAT_ROLLUP_PENDING_GRACE_MS = 30_000;
+/** K12-F39 — after this many failed attempts a roll-up waits for an administrator. */
+const STAT_ROLLUP_MAX_ATTEMPTS = 50;
 
 /**
  * K12-F13 — the only commands a FINAL game accepts: the audited reopen, and a
@@ -1308,14 +1316,26 @@ export class SportsService {
    */
   async getGame(tenantId: string, id: string) {
     const game = await this.owned(tenantId, id);
-    const [ribbonMessages, ribbonPresets, ribbonSpeed, ribbonSlides, ribbonScoreRepeat] = await Promise.all([
-      this.latestRibbonMessages(id),
-      this.ribbonPresetsFor(id, game.sport),
-      this.latestRibbonSpeed(id),
-      this.latestRibbonSlides(id),
-      this.latestRibbonScoreRepeat(id),
-    ]);
-    return { ...game, ribbonMessages, ribbonPresets, ribbonSpeed, ribbonSlides, ribbonScoreRepeat };
+    const [ribbonMessages, ribbonPresets, ribbonSpeed, ribbonSlides, ribbonScoreRepeat, statRollup] =
+      await Promise.all([
+        this.latestRibbonMessages(id),
+        this.ribbonPresetsFor(id, game.sport),
+        this.latestRibbonSpeed(id),
+        this.latestRibbonSlides(id),
+        this.latestRibbonScoreRepeat(id),
+        // K12-F39 — whether a final game's season roll-up has landed (read
+        // only for FINAL games: the console polls this).
+        game.status === 'FINAL' ? this.statRollupStatus(tenantId, id) : Promise.resolve(null),
+      ]);
+    return {
+      ...game,
+      ribbonMessages,
+      ribbonPresets,
+      ribbonSpeed,
+      ribbonSlides,
+      ribbonScoreRepeat,
+      statRollup,
+    };
   }
 
   // Lane-4 P0 — in-process board cache. The /board/:id endpoint polls at
@@ -3335,6 +3355,9 @@ export class SportsService {
   ): Promise<void> {
     if (setWin.final) {
       await scope.event('STATUS', { status: 'FINAL', source: 'set-majority' });
+      // K12-F39 — a set-majority FINAL is a FINAL: its season roll-up is
+      // queued like the operator's (it used to skip the roll-up entirely).
+      await this.queueStatRollup(scope, updated);
       // Inputs-wave SCHED — the automatic set-majority FINAL runs the same
       // post-commit hook the operator's setStatus does (fail-open inside).
       scope.after(() => this.onGameFinal(updated.tenantId, updated.id));
@@ -5522,10 +5545,11 @@ export class SportsService {
           source: 'status-transition',
           snapshot: this.cueSnapshot(updated),
         });
-        // PHASE 2 player-stat roll-up + the schedule-game-mode FINAL hook:
-        // both POST-COMMIT and fail-open — neither may block or roll back
-        // the operator's "end game".
-        scope.after(() => this.finalizeStatsAfterFinal(tenantId, id, updated.homeTeamId));
+        // K12-F39 — the season roll-up is QUEUED in this transaction (a
+        // crash after commit cannot lose it) and applied after commit; the
+        // schedule-game-mode FINAL hook stays post-commit and fail-open.
+        // Neither may block or roll back the operator's "end game".
+        await this.queueStatRollup(scope, updated);
         scope.after(() => this.onGameFinal(tenantId, id));
       }
       return updated;
@@ -5562,6 +5586,7 @@ export class SportsService {
         });
       }
       const updated = await scope.write({ status: 'LIVE', endedAt: null });
+      await this.holdStatRollupForReopen(scope, game);
       const change = scope.change();
       await scope.event('STATUS', { status: 'LIVE', prevStatus: 'FINAL', reopened: true, reason, change });
       scope.audit('SPORTS_GAME_REOPENED', {
@@ -5578,37 +5603,206 @@ export class SportsService {
    * PHASE 2 — roll a FINAL game's player stats into the season / career
    * tables. Gated behind SPORTS_PLAYER_STATS for the tenant; fail-open.
    */
-  private async finalizeStatsAfterFinal(
+  /**
+   * K12-F39 — queue a final game's season roll-up INSIDE the command that
+   * made it final, at the revision that command produced, then apply it
+   * after commit. A game finalized again after a correction re-queues at the
+   * new revision; the apply moves the season totals by the difference.
+   */
+  private async queueStatRollup(scope: GameCommandScope, updated: GameRow): Promise<void> {
+    const revision = typeof updated.version === 'number' ? updated.version : 0;
+    await scope.tx.gameStatRollup.upsert({
+      where: { gameId: updated.id, tenantId: updated.tenantId },
+      create: {
+        gameId: updated.id,
+        tenantId: updated.tenantId,
+        state: STAT_ROLLUP_STATE.PENDING,
+        targetRevision: revision,
+        contribution: [],
+        attempts: 0,
+      },
+      update: { state: STAT_ROLLUP_STATE.PENDING, targetRevision: revision, lastError: null },
+    });
+    scope.after(() => this.runStatRollup(updated.tenantId, updated.id, updated.homeTeamId));
+  }
+
+  /**
+   * K12-F39 — on reopen: a roll-up that has not applied yet waits for the
+   * next FINAL (it must not roll a half-corrected box score), and a game
+   * rolled up by the old marker-based finalize gets a baseline job holding
+   * what it contributed, so the corrected FINAL moves the totals by the
+   * difference instead of adding the game a second time.
+   */
+  private async holdStatRollupForReopen(scope: GameCommandScope, game: GameRow): Promise<void> {
+    const tx = scope.tx;
+    const job = await tx.gameStatRollup.findFirst({ where: { gameId: game.id, tenantId: game.tenantId } });
+    if (job) {
+      if (job.state === STAT_ROLLUP_STATE.PENDING || job.state === STAT_ROLLUP_STATE.FAILED) {
+        await tx.gameStatRollup.update({
+          where: { gameId: game.id, tenantId: game.tenantId },
+          data: { state: STAT_ROLLUP_STATE.REOPENED },
+        });
+      }
+      return;
+    }
+    if (!hasLegacyFinalizeMarker(game.stats)) return;
+    const roster = await tx.rosterPlayer.findMany({
+      where: { gameId: game.id, tenantId: game.tenantId, personId: { not: null } },
+      select: { personId: true, teamId: true, stats: true },
+    });
+    const revision = typeof game.version === 'number' ? game.version : 0;
+    await tx.gameStatRollup.create({
+      data: {
+        gameId: game.id,
+        tenantId: game.tenantId,
+        state: STAT_ROLLUP_STATE.APPLIED,
+        targetRevision: revision,
+        appliedRevision: revision,
+        contribution: computeGameContribution(game, roster) as any,
+        attempts: 0,
+      },
+    });
+  }
+
+  /**
+   * K12-F39 — apply a queued roll-up (post-commit hook, retry sweep, admin
+   * retry). Fail-open for the caller: a failure is recorded on the job
+   * (FAILED, the error, the attempt) and logged, and the sweep retries it.
+   */
+  private async runStatRollup(
     tenantId: string,
-    id: string,
+    gameId: string,
     homeTeamId: string | null | undefined,
   ): Promise<void> {
     try {
       const statsOn = await this.flags.isEnabledAsync(FLAGS.SPORTS_PLAYER_STATS, { tenantId });
-      if (!statsOn) return;
-      // 2026-06-25 — self-link any unlinked HOME roster players BEFORE the
-      // roll-up. finalizeGameStats only aggregates LINKED rows, so a roster
-      // built any way (not just CSV import) would otherwise accumulate
-      // nothing. This also back-fills pre-existing unlinked rosters
-      // automatically on their next finalize.
-      const linked = await this.autoLinkHomeRoster(tenantId, id, homeTeamId);
-      if (linked > 0) {
-        this.logger.log(`finalize self-linked ${linked} home roster player(s) game=${id} tenant=${tenantId}`);
+      if (!statsOn) {
+        await this.prisma.client.gameStatRollup.updateMany({
+          where: { gameId, tenantId, state: STAT_ROLLUP_STATE.PENDING },
+          data: { state: STAT_ROLLUP_STATE.SKIPPED },
+        });
+        return;
       }
-      const result = await finalizeGameStats(this.prisma.client, tenantId, id);
+      // 2026-06-25 — self-link any unlinked HOME roster players BEFORE the
+      // roll-up, which only aggregates LINKED rows, so a roster built any
+      // way (not just CSV import) accumulates, and pre-existing unlinked
+      // rosters back-fill on their next finalize.
+      const linked = await this.autoLinkHomeRoster(tenantId, gameId, homeTeamId);
+      if (linked > 0) {
+        this.logger.log(`finalize self-linked ${linked} home roster player(s) game=${gameId} tenant=${tenantId}`);
+      }
+      const result = await applyGameStatRollup(this.prisma.client, tenantId, gameId);
       this.logger.log(
-        `finalizeGameStats game=${id} tenant=${tenantId} aggregated=${result.aggregated}${
-          result.skipped ? ` skipped=${result.skipped}` : ''
-        }`,
+        `stat roll-up game=${gameId} tenant=${tenantId} applied=${result.applied} aggregated=${result.aggregated}${
+          result.revision !== undefined ? ` revision=${result.revision}` : ''
+        }${result.skipped ? ` skipped=${result.skipped}` : ''}`,
       );
     } catch (err) {
-      // Swallow + log — the game is already FINAL; stats are best-effort.
-      this.logger.error(
-        `finalizeGameStats failed (non-fatal) game=${id} tenant=${tenantId}: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(`stat roll-up FAILED game=${gameId} tenant=${tenantId} (will retry): ${message}`);
+      try {
+        await this.prisma.client.gameStatRollup.updateMany({
+          where: {
+            gameId,
+            tenantId,
+            state: { in: [STAT_ROLLUP_STATE.PENDING, STAT_ROLLUP_STATE.FAILED] },
+          },
+          data: {
+            state: STAT_ROLLUP_STATE.FAILED,
+            lastError: message.slice(0, 500),
+            attempts: { increment: 1 },
+          },
+        });
+      } catch (markErr) {
+        this.logger.error(
+          `stat roll-up failure could not be recorded game=${gameId}: ${
+            markErr instanceof Error ? markErr.message : String(markErr)
+          }`,
+        );
+      }
     }
+  }
+
+  /**
+   * K12-F39 — the retry sweep (GameScheduleService, about once a minute). A
+   * PENDING job older than STAT_ROLLUP_PENDING_GRACE_MS lost its post-commit
+   * hook (a restart between commit and apply); a FAILED job is retried with
+   * back-off (a minute per attempt, capped at an hour) until
+   * STAT_ROLLUP_MAX_ATTEMPTS, then stays FAILED for an administrator. Every
+   * apply is claimed on the job row, so this is safe on every replica at
+   * once — NO LEADER LEASE, DELIBERATELY: a wedged lease holder must not
+   * stall the season totals, and the claim already makes it exactly-once.
+   */
+  async sweepStatRollups(now = Date.now()): Promise<{ found: number; attempted: number }> {
+    // ten-ok: a cross-tenant worker scan; every row it touches is then
+    // applied through its own tenant-scoped reads and writes.
+    const rows = await this.prisma.client.gameStatRollup.findMany({
+      where: {
+        OR: [
+          { state: STAT_ROLLUP_STATE.PENDING, updatedAt: { lt: new Date(now - STAT_ROLLUP_PENDING_GRACE_MS) } },
+          {
+            state: STAT_ROLLUP_STATE.FAILED,
+            attempts: { lt: STAT_ROLLUP_MAX_ATTEMPTS },
+            updatedAt: { lt: new Date(now - 60_000) },
+          },
+        ],
+      },
+      orderBy: { updatedAt: 'asc' },
+      take: 20,
+      select: { gameId: true, tenantId: true, state: true, attempts: true, updatedAt: true },
+    });
+    let attempted = 0;
+    for (const r of rows) {
+      if (r.state === STAT_ROLLUP_STATE.FAILED) {
+        const backoffMs = Math.min(60, Math.max(1, r.attempts)) * 60_000;
+        if (now - new Date(r.updatedAt).getTime() < backoffMs) continue;
+      }
+      const game = await this.prisma.client.game.findFirst({
+        where: { id: r.gameId, tenantId: r.tenantId },
+        select: { homeTeamId: true },
+      });
+      attempted += 1;
+      await this.runStatRollup(r.tenantId, r.gameId, game?.homeTeamId);
+    }
+    return { found: rows.length, attempted };
+  }
+
+  /** K12-F39 — a final game's roll-up job, as the console shows it. */
+  private async statRollupStatus(tenantId: string, gameId: string) {
+    const job = await this.prisma.client.gameStatRollup.findFirst({
+      where: { gameId, tenantId },
+      select: {
+        state: true,
+        targetRevision: true,
+        appliedRevision: true,
+        attempts: true,
+        lastError: true,
+        updatedAt: true,
+      },
+    });
+    return job ?? null;
+  }
+
+  /**
+   * K12-F39 — an administrator's "try again now" for a failed roll-up (the
+   * sweep retries on its own; this skips the back-off). Audited.
+   */
+  async retryStatRollup(tenantId: string, gameId: string, actor?: CommandInput) {
+    const game = await this.owned(tenantId, gameId);
+    if (game.status !== 'FINAL') {
+      throw new ConflictException({ code: 'GAME_NOT_FINAL', message: 'Only a final game rolls up season stats.' });
+    }
+    await this.prisma.client.$transaction(async (tx: any) => {
+      const res = await tx.gameStatRollup.updateMany({
+        where: { gameId, tenantId, state: STAT_ROLLUP_STATE.FAILED },
+        data: { state: STAT_ROLLUP_STATE.PENDING },
+      });
+      await this.auditRow(tx, tenantId, actor, 'SPORTS_STATS_ROLLUP_RETRIED', gameId, {
+        requeued: res.count > 0,
+      });
+    });
+    await this.runStatRollup(tenantId, gameId, game.homeTeamId);
+    return { statRollup: await this.statRollupStatus(tenantId, gameId) };
   }
 
   // ── PHASE 2 — persistent season/career stat reads + roster→person link ──

@@ -7805,6 +7805,18 @@ function RunStatusControl({
             className={`${btn} border-slate-300 text-slate-600 hover:bg-slate-100`}
           />
         )}
+        {/* K12-F39 — a final game's season-stats roll-up, while it has not
+            landed (the server retries a failed one on its own). */}
+        {status === 'FINAL' && g?.statRollup?.state === 'PENDING' && (
+          <span aria-live="polite" className="text-[11px] text-slate-500 shrink-0">
+            {tConsole('statsRollupPending')}
+          </span>
+        )}
+        {status === 'FINAL' && g?.statRollup?.state === 'FAILED' && (
+          <span aria-live="polite" className="text-[11px] font-semibold text-amber-700 shrink-0">
+            {tConsole('statsRollupFailed')}
+          </span>
+        )}
       </div>
   );
 

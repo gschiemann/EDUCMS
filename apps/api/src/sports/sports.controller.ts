@@ -1090,6 +1090,16 @@ export class SportsController {
     );
   }
 
+  /**
+   * K12-F39 — retry a final game's failed season-stats roll-up now (the
+   * server retries on its own with back-off; this skips the wait).
+   */
+  @Post('games/:id/stats-rollup/retry')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  retryStatRollup(@Request() req: any, @Param('id') id: string) {
+    return this.sports.retryStatRollup(req.user.tenantId, id, userActor(req));
+  }
+
   /** Stop showing this game — on the given screens, or all of them. */
   @Post('games/:id/hide')
   @RequireRoles(
