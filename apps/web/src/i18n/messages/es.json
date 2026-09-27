@@ -3124,6 +3124,7 @@
     "statsRollupFailed": "Las estadísticas de la temporada aún no se han actualizado. Se reintentará automáticamente.",
     "playClockOff": "Reloj de jugada apagado: queda menos tiempo en el cuarto que en la cuenta. Reinícielo para volver a ponerlo en marcha.",
     "periodOver": "Terminó {period}. El reloj se queda así hasta que pase al siguiente periodo.",
-    "periodOverNext": "Siguiente periodo"
+    "periodOverNext": "Siguiente periodo",
+    "clockEntryHint": "Escriba el tiempo exacto que queda: minutos y segundos (7:42), o segundos y décimas (4.3, 0.3)."
   }
 }

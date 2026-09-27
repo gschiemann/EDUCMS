@@ -28,12 +28,15 @@ import {
   type GameOpKind,
 } from '@/lib/game-op-queue';
 import { conciergeUrlReferenceBody } from '@/lib/concierge-designer-assets';
+// K12-F17 — the page's shared server clock (sports console reads feed it).
+import { serverClock } from '@/lib/server-clock';
 import {
   findSport,
   effectiveEmergencyEnabled,
   emergencyEnablementLocked,
   emergencyVerticalStated,
   effectiveMfaEnforced,
+  projectGameClockMs,
 } from '@cms/api-types';
 import type {
   ConciergeReference,
@@ -4598,7 +4601,16 @@ export function useGame(id: string | undefined) {
   );
   return useQuery({
     queryKey: ['sports-game', id],
-    queryFn: () => apiFetch(`/sports/games/${id}`),
+    queryFn: async () => {
+      // K12-F17 — every read is a server-clock sample (the response carries
+      // `serverTime`), timed by its own round trip, so the console projects
+      // the clock from SERVER time, never the device's own clock.
+      const sentAt = serverClock.localNow();
+      const game = await apiFetch(`/sports/games/${id}`);
+      const serverTime = (game as { serverTime?: unknown } | null)?.serverTime;
+      if (typeof serverTime === 'number') serverClock.sample(serverTime, sentAt, serverClock.localNow());
+      return game;
+    },
     enabled: !!id,
     // The operator control surface mirrors live state — poll briskly
     // so a co-operator's edit shows up, but optimistic mutation
@@ -5013,7 +5025,10 @@ export function useGameControl(gameId: string) {
         qc.setQueryData(gameKey, (old: any) => {
           if (!old) return old;
           const def = findSport(old.sport);
-          const now = new Date();
+          // K12-F17 — the optimistic anchor is stamped in SERVER time, the
+          // domain of every anchor the server writes; a device clock two
+          // minutes fast used to make an optimistic pause jump the clock.
+          const now = new Date(serverClock.now());
           switch (body.action) {
             case 'start':
               // Re-anchor at the current reading (unchanged — the clock
@@ -5027,11 +5042,7 @@ export function useGameControl(gameId: string) {
               if (!old.clockRunning || !def || def.clock.type === 'none') {
                 return { ...old, clockRunning: false, clockUpdatedAt: now.toISOString() };
               }
-              const elapsed = now.getTime() - new Date(old.clockUpdatedAt).getTime();
-              const liveMs =
-                def.clock.type === 'countup'
-                  ? old.clockMs + elapsed
-                  : Math.max(0, old.clockMs - elapsed);
+              const liveMs = projectGameClockMs(old, def.clock.type, now.getTime());
               return { ...old, clockMs: liveMs, clockRunning: false, clockUpdatedAt: now.toISOString() };
             }
             case 'set':

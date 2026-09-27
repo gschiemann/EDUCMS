@@ -174,4 +174,9 @@ describe('parsePadClock — the "set clock" input', () => {
     expect(parsePadClock('8:60')).toBeNull();
     expect(parsePadClock('a:bc')).toBeNull();
   });
+  it('K12-F17: takes tenths — the 0.3 s last-second correction', () => {
+    expect(parsePadClock('0.3')).toBe(300);
+    expect(parsePadClock('0:04.3')).toBe(4_300);
+    expect(parsePadClock(':59.9')).toBe(59_900);
+  });
 });

@@ -23,7 +23,8 @@ import { readBoardCache, writeBoardCache } from '@/lib/sports-board-cache';
 // (self-chaining, ETag/304 revalidation, jittered backoff) + the
 // "CONNECTION LOST" staleness chip shown when the feed goes quiet.
 import { startBoardPoll, STALE_FEED_AFTER_MS } from '@/lib/board-poll';
-import { formatGameClock } from '@/lib/game-clock-format';
+import { formatSportClock } from '@/lib/game-clock-format';
+import { serverClock } from '@/lib/server-clock';
 import { ConnectionLostPill } from '@/components/sports/ConnectionLostPill';
 import { applyCtsOverlay } from '@/lib/cts-merge';
 // SEC-007 — signed proof-of-play beacon capability (see lib/sports-beacon.ts).
@@ -37,7 +38,13 @@ import {
 import { celebrationSrc, celebrationLiveDataFromCue } from '@/lib/celebration-assets';
 import { useParams } from 'next/navigation';
 import { API_URL } from '@/lib/api-url';
-import { findSport, formatScore, shotClockDisplayLen } from '@cms/api-types';
+import {
+  findSport,
+  formatScore,
+  projectCountdownMs,
+  projectGameClockMs,
+  shotClockDisplayLen,
+} from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
 // 2026-06-15 sports-pro polish — shared crowd-surface motion primitives
 // (score-pop on change, ambient idle drift) + vector sport/possession marks.
@@ -387,18 +394,13 @@ function PenaltyTimers({
 
   const [live, setLive] = useState<{ id: string; player: string; ms: number }[]>([]);
   useEffect(() => {
-    const skew = serverTime - Date.now(); // local + skew ≈ server
+    // K12-F17 — projected from the page's shared server clock (the poll
+    // feeds it), with the same countdown math every surface uses.
     const project = () => {
+      const now = serverClock.now();
       setLive(
         mine
-          .map((p) => {
-            let ms = p.ms;
-            if (p.running) {
-              const at = new Date(p.at).getTime();
-              if (Number.isFinite(at)) ms = Math.max(0, p.ms - (Date.now() + skew - at));
-            }
-            return { id: p.id, player: p.player, ms };
-          })
+          .map((p) => ({ id: p.id, player: p.player, ms: projectCountdownMs(p, now) }))
           .filter((p) => p.ms > 0),
       );
     };
@@ -878,24 +880,17 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
   const awayFlip = useScoreFlip(data.awayScore);
 
   // Tick the clock locally off the stored anchor. The server never
-  // ticks — clockMs is the reading at clockUpdatedAt; we project it.
+  // ticks — clockMs is the reading at clockUpdatedAt; we project it from
+  // the page's shared SERVER clock (K12-F17: the poll samples it with each
+  // request's round trip; the device's own clock never enters).
   useEffect(() => {
-    const skew = data.serverTime - Date.now(); // local + skew ≈ server
-    const anchorAt = new Date(data.clockUpdatedAt).getTime();
-    const project = () => {
-      if (!data.clockRunning || def.clock.type === 'none') {
-        setClockMs(data.clockMs);
-        return;
-      }
-      const elapsed = Date.now() + skew - anchorAt;
-      if (def.clock.type === 'countup') setClockMs(data.clockMs + elapsed);
-      else setClockMs(Math.max(0, data.clockMs - elapsed));
-    };
+    const project = () =>
+      setClockMs(projectGameClockMs(data, def.clock.type, serverClock.now()));
     project();
     if (!data.clockRunning || def.clock.type === 'none') return;
     const t = setInterval(project, 100);
     return () => clearInterval(t);
-  }, [data.clockMs, data.clockRunning, data.clockUpdatedAt, data.serverTime, def]);
+  }, [data.clockMs, data.clockRunning, data.clockUpdatedAt, def]);
 
   // Shot clock — a second countdown, projected from its own anchor in
   // stats.shotClock the same way as the game clock. Driven by the sport's
@@ -918,20 +913,15 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
       setShotMs(0);
       return;
     }
-    const skew = data.serverTime - Date.now();
-    const at = new Date(shotAnchorAt).getTime();
-    const project = () => {
-      if (!shotRunning || !Number.isFinite(at)) {
-        setShotMs(shotAnchorMs);
-        return;
-      }
-      setShotMs(Math.max(0, shotAnchorMs - (Date.now() + skew - at)));
-    };
+    const project = () =>
+      setShotMs(
+        projectCountdownMs({ ms: shotAnchorMs, at: shotAnchorAt, running: shotRunning }, serverClock.now()),
+      );
     project();
     if (!shotRunning) return;
     const t = setInterval(project, 100);
     return () => clearInterval(t);
-  }, [shotAnchorMs, shotAnchorAt, shotRunning, shotLen, data.serverTime]);
+  }, [shotAnchorMs, shotAnchorAt, shotRunning, shotLen]);
 
   // Football play clock — the 40/25 countdown between snaps,
   // projected from its own anchor in stats.playClock. K12-F06: a count the
@@ -949,20 +939,15 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
       setPlayMs(0);
       return;
     }
-    const skew = data.serverTime - Date.now();
-    const at = new Date(playAnchorAt).getTime();
-    const project = () => {
-      if (!playRunning || !Number.isFinite(at)) {
-        setPlayMs(playAnchorMs);
-        return;
-      }
-      setPlayMs(Math.max(0, playAnchorMs - (Date.now() + skew - at)));
-    };
+    const project = () =>
+      setPlayMs(
+        projectCountdownMs({ ms: playAnchorMs, at: playAnchorAt, running: playRunning }, serverClock.now()),
+      );
     project();
     if (!playRunning) return;
     const t = setInterval(project, 100);
     return () => clearInterval(t);
-  }, [playArmed, playAnchorMs, playAnchorAt, playRunning, data.serverTime]);
+  }, [playArmed, playAnchorMs, playAnchorAt, playRunning]);
 
   const status = STATUS_STYLE[data.status] || STATUS_STYLE.SCHEDULED;
   const homeColor = data.homeColor || DEFAULT_HOME;
@@ -1285,7 +1270,7 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
                 whiteSpace: 'nowrap',
               }}
             >
-              {formatGameClock(clockMs, true)}
+              {formatSportClock(def, clockMs)}
               {addedTimeMin > 0 && (
                 <sup
                   style={{
@@ -3886,22 +3871,16 @@ function CueOverlay({
 // Chromium-83 / NovaStar-Taurus safe: NO `inset` shorthand, NO flex `gap`
 // (margins only), NO backdrop-filter.
 export function PortraitBoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
-  // Game clock — projected from the stored anchor (same math as BoardScene).
+  // Game clock — projected from the stored anchor on the page's shared
+  // server clock (same math as BoardScene, K12-F17).
   const [clockMs, setClockMs] = useState(data.clockMs);
   useEffect(() => {
-    const skew = data.serverTime - Date.now();
-    const anchorAt = new Date(data.clockUpdatedAt).getTime();
-    const project = () => {
-      if (!data.clockRunning || def.clock.type === 'none') { setClockMs(data.clockMs); return; }
-      const elapsed = Date.now() + skew - anchorAt;
-      if (def.clock.type === 'countup') setClockMs(data.clockMs + elapsed);
-      else setClockMs(Math.max(0, data.clockMs - elapsed));
-    };
+    const project = () => setClockMs(projectGameClockMs(data, def.clock.type, serverClock.now()));
     project();
     if (!data.clockRunning || def.clock.type === 'none') return;
     const t = setInterval(project, 100);
     return () => clearInterval(t);
-  }, [data.clockMs, data.clockRunning, data.clockUpdatedAt, data.serverTime, def]);
+  }, [data.clockMs, data.clockRunning, data.clockUpdatedAt, def]);
 
   // Shot clock — projected from stats.shotClock (same math as BoardScene).
   const [shotMs, setShotMs] = useState(0);
@@ -3914,17 +3893,13 @@ export function PortraitBoardScene({ data, def }: { data: BoardData; def: SportD
   const shotRunning = !!sc?.running;
   useEffect(() => {
     if (shotLen <= 0) { setShotMs(0); return; }
-    const skew = data.serverTime - Date.now();
-    const at = new Date(shotAnchorAt).getTime();
-    const project = () => {
-      if (!shotRunning || !Number.isFinite(at)) { setShotMs(shotAnchorMs); return; }
-      setShotMs(Math.max(0, shotAnchorMs - (Date.now() + skew - at)));
-    };
+    const project = () =>
+      setShotMs(projectCountdownMs({ ms: shotAnchorMs, at: shotAnchorAt, running: shotRunning }, serverClock.now()));
     project();
     if (!shotRunning) return;
     const t = setInterval(project, 100);
     return () => clearInterval(t);
-  }, [shotAnchorMs, shotAnchorAt, shotRunning, shotLen, data.serverTime]);
+  }, [shotAnchorMs, shotAnchorAt, shotRunning, shotLen]);
 
   const stats = (data.stats || {}) as Record<string, unknown>;
   const homeColor = data.homeColor || DEFAULT_HOME;
@@ -3995,7 +3970,7 @@ export function PortraitBoardScene({ data, def }: { data: BoardData; def: SportD
         {teamCol('home')}
         <div style={{ width: 320, height: '100%', borderLeft: '1px solid rgba(255,255,255,0.10)', borderRight: '1px solid rgba(255,255,255,0.10)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box', paddingLeft: 8, paddingRight: 8 }}>
           <div style={{ color: '#94a3b8', fontSize: 30, fontWeight: 800, letterSpacing: 4, marginBottom: 30 }}>{segmentLabel(def, data)}</div>
-          {hasClock && <div style={{ color: '#fff', fontSize: 92, fontWeight: 800, lineHeight: 0.9, fontVariantNumeric: 'tabular-nums', marginBottom: showShot ? 40 : 0 }}>{formatGameClock(clockMs, true)}</div>}
+          {hasClock && <div style={{ color: '#fff', fontSize: 92, fontWeight: 800, lineHeight: 0.9, fontVariantNumeric: 'tabular-nums', marginBottom: showShot ? 40 : 0 }}>{formatSportClock(def, clockMs)}</div>}
           {showShot && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
               <div style={{ color: '#f59e0b', fontSize: 66, fontWeight: 800, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{shotSecs}</div>

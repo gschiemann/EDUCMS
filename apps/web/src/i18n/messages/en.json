@@ -3124,6 +3124,7 @@
     "statsRollupFailed": "Season stats haven't updated yet. Retrying automatically.",
     "playClockOff": "Play clock off: there is less time left in the quarter than the count. Reset it to start it again.",
     "periodOver": "{period} is over. The clock stays here until you move to the next period.",
-    "periodOverNext": "Next period"
+    "periodOverNext": "Next period",
+    "clockEntryHint": "Type the exact time left: minutes and seconds (7:42), or seconds and tenths (4.3, 0.3)."
   }
 }

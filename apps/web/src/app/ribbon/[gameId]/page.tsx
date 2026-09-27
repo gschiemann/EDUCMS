@@ -53,7 +53,8 @@ import { readBoardCache, writeBoardCache } from '@/lib/sports-board-cache';
 // (self-chaining, ETag/304 revalidation, jittered backoff) + the
 // "CONNECTION LOST" staleness chip shown when the feed goes quiet.
 import { startBoardPoll, STALE_FEED_AFTER_MS } from '@/lib/board-poll';
-import { formatGameClock } from '@/lib/game-clock-format';
+import { formatSportClock } from '@/lib/game-clock-format';
+import { serverClock } from '@/lib/server-clock';
 import { ConnectionLostPill } from '@/components/sports/ConnectionLostPill';
 import { applyCtsOverlay } from '@/lib/cts-merge';
 // SEC-007 — signed proof-of-play beacon capability (see lib/sports-beacon.ts).
@@ -80,6 +81,8 @@ import {
   ribbonSpeedMultiplier,
   ribbonScoreRepeatCount,
   formatScore,
+  projectCountdownMs,
+  projectGameClockMs,
   shotClockDisplayLen,
 } from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
@@ -384,32 +387,21 @@ function ordinal(n: number): string {
 }
 
 /**
- * The live game clock — projected from the stored anchor with a STABLE
- * skew captured ONCE per poll, then advanced by a 100ms interval. The
- * old pure `liveClockMs` recomputed skew on every call, which cancelled
- * `Date.now()` out and froze the clock between the 750ms polls — the
- * ribbon clock visibly stuttered. This ticks it exact, every 100ms.
+ * The live game clock — projected from the stored anchor on the page's
+ * shared SERVER clock (K12-F17; the poll samples it with each request's
+ * round trip), advanced by a 100ms interval so it ticks smoothly between
+ * the 750ms polls.
  */
 function useLiveClock(data: BoardData | null, def: SportDefinition | undefined): number {
   const [ms, setMs] = useState(0);
   useEffect(() => {
     if (!data || !def) return;
-    const skew = data.serverTime - Date.now();
-    const anchorAt = new Date(data.clockUpdatedAt).getTime();
-    const project = () => {
-      if (!data.clockRunning || def.clock.type === 'none') {
-        setMs(data.clockMs);
-        return;
-      }
-      const elapsed = Date.now() + skew - anchorAt;
-      if (def.clock.type === 'countup') setMs(data.clockMs + elapsed);
-      else setMs(Math.max(0, data.clockMs - elapsed));
-    };
+    const project = () => setMs(projectGameClockMs(data, def.clock.type, serverClock.now()));
     project();
     if (!data.clockRunning || def.clock.type === 'none') return;
     const t = setInterval(project, 100);
     return () => clearInterval(t);
-  }, [data?.clockMs, data?.clockRunning, data?.clockUpdatedAt, data?.serverTime, def]);
+  }, [data?.clockMs, data?.clockRunning, data?.clockUpdatedAt, def]);
   return ms;
 }
 
@@ -1861,14 +1853,16 @@ function useRibbonShotClock(
       setMs(anchorMs);
       return;
     }
-    const skew = data.serverTime - Date.now();
-    const anchorAt = at ? new Date(at).getTime() : Date.now() + skew;
-    const project = () => setMs(Math.max(0, anchorMs - (Date.now() + skew - anchorAt)));
+    // K12-F17 — the page's shared server clock. A reading with no anchor
+    // time counts from when it arrived.
+    const anchorAt = at ? new Date(at).getTime() : serverClock.now();
+    const project = () =>
+      setMs(projectCountdownMs({ ms: anchorMs, at: anchorAt, running: true }, serverClock.now()));
     project();
     const t = setInterval(project, 100);
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sc, running, anchorMs, at, data.serverTime]);
+  }, [sc, running, anchorMs, at]);
 
   if (!sc) return null;
   // K12-F05 — the one display rule every surface shares: a clock switched
@@ -1938,7 +1932,7 @@ function ScoreZone({
   // itself is non-negotiable (the ribbon must never go blank) so it
   // stays rendered regardless.
   const hasClock = def.clock.type !== 'none' && clockOn;
-  const clk = formatGameClock(clockMs, def.clock.type === 'countdown');
+  const clk = formatSportClock(def, clockMs);
   let statusText: string;
   if (live) {
     if (segmentOn && hasClock) statusText = `${seg} · ${clk}`;

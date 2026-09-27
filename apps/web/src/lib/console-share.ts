@@ -11,6 +11,12 @@
  * matching board-poll.ts's discipline even though the pad itself is a
  * phone surface, not a Taurus one.
  */
+import {
+  formatClockReading,
+  parseClockEntry,
+  projectGameClockMs,
+  type ClockType,
+} from '@cms/api-types';
 
 /**
  * The gameId embedded in a console share token, or null when the string
@@ -97,33 +103,26 @@ export function projectClockMs(
   clockType: 'countdown' | 'countup' | 'none' | string,
   nowMs: number,
 ): number {
-  if (!anchor.clockRunning || clockType === 'none') return anchor.clockMs;
-  const anchorAt = anchor.clockUpdatedAt ? new Date(anchor.clockUpdatedAt).getTime() : NaN;
-  if (!isFinite(anchorAt)) return anchor.clockMs;
-  const skew = anchor.serverTime - anchor.receivedAt;
-  const elapsed = nowMs + skew - anchorAt;
-  if (clockType === 'countup') return anchor.clockMs + elapsed;
-  return Math.max(0, anchor.clockMs - elapsed);
+  // K12-F17 — the ONE projection every surface shares (sports-clock.ts),
+  // evaluated at this anchor's server time.
+  const kind: ClockType = clockType === 'countup' ? 'countup' : clockType === 'none' ? 'none' : 'countdown';
+  return projectGameClockMs(anchor, kind, nowMs + (anchor.serverTime - anchor.receivedAt));
 }
 
 /**
- * m:ss with CEIL semantics — a byte-for-byte port of the operator
- * console's fmtClock (the broadcast-convention reference: a countdown at
- * 0.4s reads 0:01 until true zero, never 0:00 with time left — see the
- * 2026-05-27 sync note in [gameId]/page.tsx). Negative input clamps to 0.
+ * m:ss with CEIL semantics — the broadcast convention every surface shares
+ * (a countdown at 0.4s reads 0:01 until true zero, never 0:00 with time
+ * left). Negative input clamps to 0. A surface that knows the sport should
+ * prefer `formatSportClock(def, ms)`, which adds tenths in the final minute
+ * where the sport's boards show them (K12-F17).
  */
 export function fmtPadClock(ms: number): string {
-  const safe = Math.max(0, ms);
-  const totalSec = Math.ceil(safe / 1000);
-  const m = Math.floor(totalSec / 60);
-  const s = totalSec % 60;
-  return `${m}:${String(s).padStart(2, '0')}`;
+  return formatClockReading(ms);
 }
 
-/** `m:ss` → milliseconds, or null when unparseable — the console's
- *  parseClock, ported for the pad's "set clock" input. */
+/** The pad's "set clock" input — the shared exact-time parser (K12-F17):
+ *  m:ss, m:ss.t, :ss.t or ss.t (0.3 is a last-second correction), never an
+ *  ambiguous bare number. Milliseconds, or null. */
 export function parsePadClock(text: string): number | null {
-  const m = text.trim().match(/^(\d{1,3}):([0-5]?\d)$/);
-  if (!m) return null;
-  return (parseInt(m[1], 10) * 60 + parseInt(m[2], 10)) * 1000;
+  return parseClockEntry(text);
 }

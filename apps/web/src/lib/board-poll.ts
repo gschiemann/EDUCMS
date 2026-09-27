@@ -25,7 +25,15 @@
  * Ships to Chromium 83 (NovaStar Taurus): plain fetch + .then only — no
  * AbortSignal.timeout, no structuredClone, no replaceAll/Array.at. Pure
  * DOM-free module (no React) so it unit-tests under fake timers.
+ *
+ * K12-F17 — every good poll is also a SERVER-CLOCK sample: the `serverTime`
+ * of a 200 or the `X-Server-Time` of a 304, with the request's own send /
+ * receive times, goes into the page's shared estimator (server-clock.ts).
+ * Every sports surface on the page then projects its clocks from the same
+ * server "now" — the board, the ribbon, the scorebug and the widgets' poll
+ * all feed one estimate, and the lowest-round-trip sample wins.
  */
+import { serverClock, type ServerClock } from './server-clock';
 
 /** Failure-cadence ladder: after N consecutive failures the next attempt
  *  waits BOARD_POLL_BACKOFF_MS[min(N, len) - 1] (± jitter). */
@@ -65,6 +73,9 @@ export interface BoardPollOptions {
   onServerTime?: (serverTimeMs: number) => void;
   /** Fires after EVERY settled attempt, success or failure. */
   onStatus?: (status: BoardPollStatus) => void;
+  /** The server-clock estimator each good poll samples into (K12-F17).
+   *  Defaults to the page's shared one. */
+  clock?: ServerClock;
 }
 
 /** ±10% jitter, floored at 0 — desynchronizes a fleet on one cadence. */
@@ -79,6 +90,7 @@ function jittered(baseMs: number): number {
  */
 export function startBoardPoll(opts: BoardPollOptions): () => void {
   const { url, intervalMs, onPayload, onServerTime, onStatus } = opts;
+  const clock = opts.clock ?? serverClock;
 
   let stopped = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -115,9 +127,13 @@ export function startBoardPoll(opts: BoardPollOptions): () => void {
   const attempt = () => {
     const headers: Record<string, string> = {};
     if (etag) headers['If-None-Match'] = etag;
+    const sentAt = clock.localNow();
     fetch(url, { cache: 'no-store', headers })
       .then((res) => {
         if (stopped) return;
+        // The server wrote its time into this response before the headers
+        // left — so the round trip ends here, not after the body.
+        const receivedAt = clock.localNow();
         // Header reads must tolerate a Response with no usable `headers`
         // (Jest fetch stubs commonly omit it) — a throw here would register
         // as a failed poll and silently starve the surface of data.
@@ -129,10 +145,11 @@ export function startBoardPoll(opts: BoardPollOptions): () => void {
           // Unchanged body — a good poll. Forward the server clock sample
           // (the whole point of the 304 fast path) and move on.
           settleGood();
-          if (onServerTime) {
-            const raw = readHeader('X-Server-Time');
-            const n = raw == null ? NaN : Number(raw);
-            if (isFinite(n) && n > 0) onServerTime(n);
+          const raw = readHeader('X-Server-Time');
+          const n = raw == null ? NaN : Number(raw);
+          if (isFinite(n) && n > 0) {
+            clock.sample(n, sentAt, receivedAt);
+            if (onServerTime) onServerTime(n);
           }
           report(null, 304);
           schedule();
@@ -151,6 +168,8 @@ export function startBoardPoll(opts: BoardPollOptions): () => void {
           if (stopped) return;
           etag = nextTag;
           settleGood();
+          const st = json && typeof json === 'object' ? (json as { serverTime?: unknown }).serverTime : undefined;
+          if (typeof st === 'number' && isFinite(st) && st > 0) clock.sample(st, sentAt, receivedAt);
           onPayload(json);
           report(null, res.status);
           schedule();

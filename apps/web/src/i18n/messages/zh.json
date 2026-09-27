@@ -3124,6 +3124,7 @@
     "statsRollupFailed": "赛季统计尚未更新，系统将自动重试。",
     "playClockOff": "进攻计时器已关闭：本节剩余时间少于计时读数。重置后即可重新启动。",
     "periodOver": "{period} 已结束。在您进入下一节之前，计时器会停在这里。",
-    "periodOverNext": "下一节"
+    "periodOverNext": "下一节",
+    "clockEntryHint": "输入准确的剩余时间：分:秒（7:42），或秒和十分之一秒（4.3、0.3）。"
   }
 }

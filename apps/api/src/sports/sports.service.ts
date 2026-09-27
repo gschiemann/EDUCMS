@@ -7,12 +7,14 @@ import {
   UnprocessableEntityException,
   forwardRef,
   Inject,
+  Optional,
 } from '@nestjs/common';
 import { createHash, randomUUID } from 'crypto';
 import { wakeClockSweep } from './clock-wake';
 import { wakeScheduleSweep } from './game-schedule-wake';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
+import { TimeSyncService } from '../realtime/time-sync.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
 import { SponsorsService } from './sponsors.service';
 // 2026-05-26 — reused inside getBoard() to resolve the operator-
@@ -33,6 +35,7 @@ import {
   sanitizeResults,
   // K-12 lane A2 — the shared clock contract (packages/api-types/src/sports-clock.ts).
   clockAnchorMs,
+  formatSportClock,
   gameClockExpiryMs,
   isGameClockExpired,
   isUntimedSegment,
@@ -362,7 +365,31 @@ export class SportsService {
     // the board payload. FeatureFlagsModule is @Global() so this
     // resolves without listing it in SportsModule providers.
     private readonly flags: FeatureFlagsService,
+    // K12-F17 — the server clock (RealtimeModule is @Global()). Optional so
+    // a unit test (or a stripped module) runs on the replica's own clock.
+    @Optional() private readonly timeSync?: TimeSyncService,
   ) {}
+
+  // ── the server clock (K12-F17) ─────────────────────────────────
+
+  /**
+   * THE clock every game-clock anchor is written in (`clockUpdatedAt`, the
+   * shot / play / penalty `at`, the feed and CTS liveness stamps) and every
+   * `serverTime` sample a surface projects with is read from: TimeSyncService,
+   * Redis-TIME aligned, so two replicas — and a deploy's old and new
+   * containers — agree to about a millisecond (Frame-Locked Sync rule 3:
+   * never raw Date.now() in a time response). Anchors and samples move to it
+   * TOGETHER, which is the one way to change the clock domain without
+   * injecting the replica-vs-Redis offset into every projected clock. With no
+   * TimeSyncService it is the replica's own clock (single-replica behaviour).
+   */
+  serverTimeMs(): number {
+    return this.timeSync ? this.timeSync.now() : Date.now();
+  }
+
+  private clockNow(): Date {
+    return new Date(this.serverTimeMs());
+  }
 
   // ── helpers ──────────────────────────────────────────────────
 
@@ -416,9 +443,8 @@ export class SportsService {
   }
 
   /**
-   * Compute the live displayed clock for a game. Only used on the
-   * server by `pause` (to re-anchor) — the board page does this itself
-   * every frame so the display is smooth.
+   * The live game-clock reading now, on the server clock — the same shared
+   * projection (sports-clock.ts) every surface runs.
    */
   private liveClockMs(game: {
     clockMs: number;
@@ -426,12 +452,7 @@ export class SportsService {
     clockUpdatedAt: Date;
     sport: string;
   }): number {
-    if (!game.clockRunning) return game.clockMs;
-    const def = this.sportOf(game.sport);
-    const elapsed = Date.now() - new Date(game.clockUpdatedAt).getTime();
-    if (def.clock.type === 'countup') return game.clockMs + elapsed;
-    if (def.clock.type === 'countdown') return Math.max(0, game.clockMs - elapsed);
-    return game.clockMs; // 'none'
+    return projectGameClockMs(game, this.sportOf(game.sport).clock.type, this.serverTimeMs());
   }
 
   /**
@@ -1086,7 +1107,8 @@ export class SportsService {
     source: 'feed' | 'cts' | 'swim',
     accepted: boolean,
   ): Record<string, unknown> {
-    return { lastPacketAt: new Date().toISOString(), source, accepted };
+    // Server clock: the dashboard grades this stamp against `serverTime`.
+    return { lastPacketAt: this.clockNow().toISOString(), source, accepted };
   }
 
   /**
@@ -1372,6 +1394,11 @@ export class SportsService {
       ribbonSlides,
       ribbonScoreRepeat,
       statRollup,
+      // K12-F17 — a server-clock sample, so the operator console projects
+      // the clock from SERVER time (it used to use the device's own clock:
+      // a laptop two minutes fast showed the table a different clock from
+      // the board). Same domain as every anchor — see serverTimeMs().
+      serverTime: this.serverTimeMs(),
     };
   }
 
@@ -1436,14 +1463,12 @@ export class SportsService {
    *     it, so every return overrides it via spread (never mutating the
    *     cached object — it is shared across concurrent pollers).
    *
-   * CLOCK-DOMAIN INVARIANT: serverTime MUST share Game.clockUpdatedAt's
-   * clock domain (raw replica Date.now()) — every clock anchor this value is
-   * subtracted against (`clockUpdatedAt`, written via `new Date()` at every
-   * mutation site) is the raw replica clock, so sampling serverTime from a
-   * different clock (e.g. the Redis-corrected TimeSyncService) injects the
-   * replica-vs-Redis offset straight into the board's projected game clock.
-   * A multi-replica migration moves the anchors + serverTime to
-   * TimeSyncService TOGETHER, never one side alone.
+   * CLOCK-DOMAIN INVARIANT: serverTime MUST share the clock domain of every
+   * anchor it is subtracted against (`clockUpdatedAt`, the shot / play /
+   * penalty `at`, the CTS and feed liveness stamps). K12-F17 moved the
+   * anchors AND this sample to serverTimeMs() (TimeSyncService) together —
+   * one without the other would inject the replica-vs-Redis offset straight
+   * into every projected clock.
    */
   async getBoardWithMeta(id: string): Promise<{ payload: any; etag: string }> {
     const now = Date.now();
@@ -1453,7 +1478,7 @@ export class SportsService {
       hit = { ts: now, payload: fresh, etag: SportsService.boardEtag(fresh) };
       this.boardCache.set(id, hit);
     }
-    const serverTime = Date.now();
+    const serverTime = this.serverTimeMs();
     return { payload: { ...hit.payload, serverTime }, etag: hit.etag };
   }
 
@@ -1654,7 +1679,7 @@ export class SportsService {
       ribbonSlides,
       ribbonScoreRepeat,
       sponsorSpotSeconds: SPONSOR_SPOT_SECONDS,
-      serverTime: Date.now(),
+      serverTime: this.serverTimeMs(),
       // Sprint 13 — operator-picked custom layout IDs. Each route
       // (/board /ribbon /scorebug) checks the matching field and,
       // if non-null, fetches + renders that Template (wrapped in
@@ -1878,7 +1903,7 @@ export class SportsService {
           segment: 1,
           clockMs: this.segmentStartMs(def, initialStats),
           clockRunning: false,
-          clockUpdatedAt: new Date(),
+          clockUpdatedAt: this.clockNow(),
           stats: initialStats,
           scoreboardTemplateId: dto.scoreboardTemplateId || null,
           ribbonTemplateId: dto.ribbonTemplateId || null,
@@ -1980,7 +2005,7 @@ export class SportsService {
           segment: 1,
           clockMs: this.segmentStartMs(def, initialStats),
           clockRunning: false,
-          clockUpdatedAt: new Date(),
+          clockUpdatedAt: this.clockNow(),
           stats: initialStats,
           scoreboardTemplateId: src.scoreboardTemplateId,
           ribbonTemplateId: src.ribbonTemplateId,
@@ -3452,7 +3477,7 @@ export class SportsService {
       if (action === 'start' && def.clock.type === 'none') {
         throw new BadRequestException(`${def.name} has no game clock`);
       }
-      const now = new Date();
+      const now = this.clockNow();
       if (action === 'start') {
         // K12-F08 — a clock that has run out does not start again: the
         // period is held for the table. Starting it would only re-expire it
@@ -3630,7 +3655,7 @@ export class SportsService {
       throw new BadRequestException('action must be configure | start | stop | reset');
     }
     return this.runGameCommand(tenantId, id, `shot-clock.${action}`, actor, dto, (scope) =>
-      scope.write({ stats: this.shotClockPatch(scope.before, action, dto.value, new Date()) }),
+      scope.write({ stats: this.shotClockPatch(scope.before, action, dto.value, this.clockNow()) }),
     );
   }
 
@@ -3778,7 +3803,7 @@ export class SportsService {
     }
     return this.runGameCommand(tenantId, id, `play-clock.${action}`, actor, dto, (scope) =>
       scope.write({
-        stats: this.playClockPatch(scope.before, action, dto.value, dto.run !== false, new Date()),
+        stats: this.playClockPatch(scope.before, action, dto.value, dto.run !== false, this.clockNow()),
       }),
     );
   }
@@ -4210,7 +4235,7 @@ export class SportsService {
       playerName?: string;
     },
   ): Record<string, unknown> {
-    const now = new Date();
+    const now = this.clockNow();
     // A penalty added while the clock runs starts counting at once;
     // added during a stoppage it waits, frozen, for the next start.
     const running = !!game.clockRunning;
@@ -4411,7 +4436,7 @@ export class SportsService {
       // from 0; without re-anchoring here, a running soccer clock would
       // jump forward by the entire halftime gap. 'none' clocks (baseball,
       // volleyball) have no clock to reset.
-      const now = new Date();
+      const now = this.clockNow();
       const data: Record<string, unknown> = { segment };
       if (def.clock.type !== 'none') {
         // Football OT is untimed (possession-based, 1st-and-goal from the
@@ -4700,7 +4725,7 @@ export class SportsService {
    * instant it hits regulation — stoppage / added time runs WITH the clock —
    * so the threshold moves out by the operator-set `addedTime` minutes.
    */
-  private clockExpired(game: GameRow, nowMs: number = Date.now()): boolean {
+  private clockExpired(game: GameRow, nowMs: number = this.serverTimeMs()): boolean {
     if (game.status !== 'LIVE' || !game.clockRunning) return false;
     const def = findSport(game.sport);
     if (!def || def.clock.type === 'none') return false;
@@ -4726,7 +4751,7 @@ export class SportsService {
    */
   private async expireClock(scope: GameCommandScope): Promise<boolean> {
     const game = scope.before;
-    const nowMs = Date.now();
+    const nowMs = this.serverTimeMs();
     if (!this.clockExpired(game, nowMs)) return false;
     const def = this.sportOf(game.sport);
     const limit = gameClockExpiryMs(def, game.stats) ?? 0;
@@ -5251,7 +5276,7 @@ export class SportsService {
     return this.runGameCommand(tenantId, id, 'feed.ingest', actor, dto, async (scope) => {
       const game = scope.before;
       const def = this.sportOf(game.sport);
-      const now = new Date();
+      const now = this.clockNow();
       const nowMs = now.getTime();
 
       let cursor: FeedCursor | null = null;
@@ -5343,7 +5368,7 @@ export class SportsService {
         // to one write per FEED_STAMP_MIN_INTERVAL_MS) or the guided-setup
         // pill would report a healthy feed as dead. A sequenced heartbeat
         // still advances the ordering cursor.
-        const stampDue = !!opts.stampFeed && this.feedStampDue(game.stats, Date.now());
+        const stampDue = !!opts.stampFeed && this.feedStampDue(game.stats, nowMs);
         if (stampDue || cursor) {
           const prev = game.stats && typeof game.stats === 'object' ? (game.stats as Record<string, unknown>) : {};
           const stats: Record<string, unknown> = { ...prev };
@@ -5358,7 +5383,7 @@ export class SportsService {
       // The stamp is attached only when stats is already being written (free)
       // or the previous stamp is past the throttle window; the cursor always.
       const stampNow =
-        !!opts.stampFeed && (data.stats !== undefined || !!cursor || this.feedStampDue(game.stats, Date.now()));
+        !!opts.stampFeed && (data.stats !== undefined || !!cursor || this.feedStampDue(game.stats, nowMs));
       if (stampNow || cursor) {
         const base = data.stats ?? game.stats;
         const baseObj: Record<string, unknown> =
@@ -5576,7 +5601,7 @@ export class SportsService {
       // second cinematic. Leaving FINAL is refused by the lock in
       // runGameCommand (409 GAME_FINAL) — only reopenGame does that.
       if (game.status === 'FINAL' && status === 'FINAL') return game;
-      const now = new Date();
+      const now = this.clockNow();
       const data: Record<string, unknown> = { status };
       if (status === 'LIVE' && !game.startedAt) data.startedAt = now;
       // K12-F07 — halftime and the final are stoppages: every clock that is
@@ -6000,7 +6025,9 @@ export class SportsService {
       const def = this.sportOf(game.sport);
       segmentLabel = this.segmentLabelOf(def, game.segment);
       if (def.clock.type !== 'none') {
-        clockText = this.fmtClockText(this.liveClockMs(game));
+        // K12-F17 — the one display policy every surface uses (a buzzer-
+        // beater cue in the final minute reads "4.3", not "0:04").
+        clockText = formatSportClock(def, this.liveClockMs(game));
       }
     } catch {
       // Unknown sport — the score still snapshots; clock/segment stay blank.
@@ -6015,14 +6042,6 @@ export class SportsService {
       segmentLabel,
       clockText,
     };
-  }
-
-  /** "M:SS" — celebration clock readout. */
-  private fmtClockText(ms: number): string {
-    const safe = Math.max(0, Math.round(ms));
-    const m = Math.floor(safe / 60_000);
-    const s = Math.floor((safe % 60_000) / 1000);
-    return `${m}:${String(s).padStart(2, '0')}`;
   }
 
   /** Short segment label — "Q3", "3RD INN", "SET 2", "OT". */
@@ -6349,7 +6368,7 @@ export class SportsService {
       }
       const newRemaining = Math.max(0, prevRemaining - 1);
 
-      const now = new Date();
+      const now = this.clockNow();
       const data: Record<string, unknown> =
         def.clock.type === 'none' ? {} : this.clockTransition(game, def, 'pause', 0, now).data;
       const stats: Record<string, unknown> = {
@@ -7230,7 +7249,7 @@ export class SportsService {
           ctsCursor = verdict.cursor;
         }
 
-        const nowIso = new Date().toISOString();
+        const nowIso = this.clockNow().toISOString();
         const nextCts: Record<string, unknown> = {
           ...prevCts,
           ...cleaned,
@@ -7244,7 +7263,7 @@ export class SportsService {
           typeof prevCts.lastAuditAt === 'string' ? Date.parse(prevCts.lastAuditAt) : 0;
         reconnect =
           !Number.isFinite(Date.parse(String(prevCts.lastUpdateAt))) ||
-          Date.now() - Date.parse(String(prevCts.lastUpdateAt)) > 5000;
+          this.serverTimeMs() - Date.parse(String(prevCts.lastUpdateAt)) > 5000;
         scoreChanged =
           (cleaned.homeScore !== undefined && cleaned.homeScore !== prevCts.homeScore) ||
           (cleaned.awayScore !== undefined && cleaned.awayScore !== prevCts.awayScore);
@@ -7290,7 +7309,7 @@ export class SportsService {
         // fresh row, not the pre-tx `gate` read, so a retry compares against
         // the state it's actually merging on top of.
         prevScores = { homeScore: game.homeScore, awayScore: game.awayScore };
-        const now = new Date();
+        const now = this.clockNow();
 
         // Build the merged stats write so we do a single DB update.
         // Clock-running transition: slave the penalty box and shot clock —
@@ -7764,7 +7783,7 @@ export class SportsService {
       const payload = (ev.payload as Record<string, unknown>) ?? {};
       const change = payload.change as StateChange;
       const def = this.sportOf(scope.before.sport);
-      const plan = planUndo(change, scope.before, { clock: def.clock.type, now: new Date() });
+      const plan = planUndo(change, scope.before, { clock: def.clock.type, now: this.clockNow() });
       if (!plan.ok) {
         throw new ConflictException({
           code: 'UNDO_CONFLICT',

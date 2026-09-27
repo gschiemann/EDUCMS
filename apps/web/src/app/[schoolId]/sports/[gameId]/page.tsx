@@ -52,7 +52,8 @@ import { apiFetch } from '@/lib/api-client';
 // Phase-2 Domain CLOCK (2026-08-09): this page's ceil formatter (the
 // 046d73aa broadcast-semantics reference) moved verbatim into the
 // shared module so board + ribbon read the identical second.
-import { formatGameClock as fmtClock } from '@/lib/game-clock-format';
+import { formatSportClock } from '@/lib/game-clock-format';
+import { serverClock } from '@/lib/server-clock';
 import { RoleGate } from '@/components/RoleGate';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { Button } from '@/components/ui/button';
@@ -84,8 +85,11 @@ import {
   findSport,
   formatScore,
   isPeriodClockOver,
+  parseClockEntry,
   parseScoreInput,
   PLAYER_STATS,
+  projectCountdownMs,
+  projectGameClockMs,
   sanitizeResults,
   shotClockMode,
 } from '@cms/api-types';
@@ -167,29 +171,21 @@ type ConsoleMode = 'run' | 'setup';
 type ConsoleView = 'score' | 'show' | 'pa' | '';
 
 // ── clock helpers ──────────────────────────────────────────────
-// (fmtClock now imports from @/lib/game-clock-format — see top of file.)
+// K12-F17 — one projection, one display policy, one entry parser, shared
+// with every surface (packages/api-types/src/sports-clock.ts), and one
+// SERVER clock (lib/server-clock.ts; useGame samples it with every read).
 
-function parseClock(text: string): number | null {
-  const m = text.trim().match(/^(\d{1,3}):([0-5]?\d)$/);
-  if (!m) return null;
-  return (parseInt(m[1], 10) * 60 + parseInt(m[2], 10)) * 1000;
-}
+/** The exact-time entry: M:SS, M:SS.t, :SS.t or SS.t — never a bare number. */
+const parseClock = parseClockEntry;
 
-/** Live clock projected from the stored anchor, ticking every 100ms. */
+/** Live clock projected from the stored anchor on SERVER time, ticking every 100ms. */
 function useLiveClock(game: any, def: SportDefinition | undefined): number {
   const [ms, setMs] = useState(0);
   useEffect(() => {
     if (!game || !def) return;
-    const anchorAt = new Date(game.clockUpdatedAt).getTime();
-    const project = () => {
-      if (!game.clockRunning || def.clock.type === 'none') {
-        setMs(game.clockMs);
-        return;
-      }
-      const elapsed = Date.now() - anchorAt;
-      if (def.clock.type === 'countup') setMs(game.clockMs + elapsed);
-      else setMs(Math.max(0, game.clockMs - elapsed));
-    };
+    // The device's own clock never enters: a scorer laptop two minutes
+    // fast used to show the table a different clock from the board.
+    const project = () => setMs(projectGameClockMs(game, def.clock.type, serverClock.now()));
     project();
     if (!game.clockRunning || def.clock.type === 'none') return;
     const t = setInterval(project, 100);
@@ -1799,7 +1795,7 @@ function PaAnnouncerView({
               {def.segment.name} {g.segment}
             </span>
             <span className="text-3xl font-black tabular-nums text-amber-400">
-              {def.clock.type !== 'none' ? fmtClock(liveMs) : '—'}
+              {def.clock.type !== 'none' ? formatSportClock(def, liveMs) : '—'}
             </span>
             {g.clockRunning && (
               <span className="text-[9px] font-black text-emerald-400 animate-pulse mt-0.5">
@@ -1953,14 +1949,24 @@ function PaRosterPicker({
  *
  *  Replaces the old RunLivePreview (side-by-side iframes) — the
  *  ribbon preview moves to its own row below this. */
-/** Manual game-clock entry — type an exact M:SS to set/correct the clock,
+/** Manual game-clock entry — type an exact time to set/correct the clock,
  *  like every pro scoreboard console. We only had ±1s nudges before; the
  *  operator asked to "type exactly how much time left to fix it." Uses the
- *  same `set` action the nudges use; parseClock accepts M:SS … MMM:SS. */
-function ClockTypeIn({ liveMs, onSet }: { liveMs: number; onSet: (ms: number) => void }) {
+ *  same `set` action the nudges use. K12-F17: tenths too — 0:04.3, 4.3 or
+ *  0.3 (the NFHS last-second correction), never an ambiguous bare number. */
+function ClockTypeIn({
+  def,
+  liveMs,
+  onSet,
+}: {
+  def: SportDefinition;
+  liveMs: number;
+  onSet: (ms: number) => void;
+}) {
+  const tConsole = useTranslations('sportsConsole');
   const [open, setOpen] = useState(false);
   const [text, setText] = useState('');
-  const begin = () => { setText(fmtClock(liveMs)); setOpen(true); };
+  const begin = () => { setText(formatSportClock(def, liveMs)); setOpen(true); };
   const commit = () => {
     const ms = parseClock(text);
     if (ms != null) onSet(ms);
@@ -1972,7 +1978,7 @@ function ClockTypeIn({ liveMs, onSet }: { liveMs: number; onSet: (ms: number) =>
         type="button"
         onClick={begin}
         className="min-h-[44px] px-3 rounded-lg bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-300 font-bold text-sm transition-colors border border-slate-700"
-        title="Type an exact time (M:SS) to correct the clock"
+        title={tConsole('clockEntryHint')}
       >
         ⌨ Set time
       </button>
@@ -1991,7 +1997,8 @@ function ClockTypeIn({ liveMs, onSet }: { liveMs: number; onSet: (ms: number) =>
           if (e.key === 'Escape') setOpen(false);
         }}
         placeholder="M:SS"
-        aria-label="Set clock time, minutes colon seconds"
+        aria-label={tConsole('clockEntryHint')}
+        title={tConsole('clockEntryHint')}
         className="w-20 min-h-[44px] text-center text-xl font-black tabular-nums rounded-lg bg-slate-950 border border-amber-500 text-white outline-none"
       />
       <button
@@ -2055,7 +2062,7 @@ function MobileScoreMirror({
               running ? 'text-amber-400' : 'text-white'
             }`}
           >
-            {fmtClock(liveMs)}
+            {formatSportClock(def, liveMs)}
           </span>
         )}
       </div>
@@ -2199,7 +2206,7 @@ function MobileScoreDock({
                   running ? 'text-amber-400' : 'text-white'
                 }`}
               >
-                {fmtClock(liveMs)}
+                {formatSportClock(def, liveMs)}
               </div>
               <button
                 type="button"
@@ -2403,7 +2410,7 @@ function RunInteractiveScoreboard({
                   running ? 'text-amber-400' : 'text-white'
                 }`}
               >
-                {fmtClock(liveMs)}
+                {formatSportClock(def, liveMs)}
               </div>
               {/* Clock controls — start/stop, reset, ±1s. Start/Stop is the
                   primary control so it's the widest; all are ≥44px so the
@@ -2446,8 +2453,9 @@ function RunInteractiveScoreboard({
                 >
                   +1s
                 </button>
-                {/* Manual time entry — type an exact M:SS to correct the clock. */}
+                {/* Manual time entry — an exact time (tenths too) to correct the clock. */}
                 <ClockTypeIn
+                  def={def}
                   liveMs={liveMs}
                   onSet={(ms) => ctl.clock.mutate({ action: 'set', ms })}
                 />
@@ -3382,15 +3390,9 @@ function RunShotClockMini({
   }, [shotRunning]);
 
   // Project the live remaining time when the clock is running so the
-  // 30-second countdown actually ticks. Same projection the live
-  // BoardScene + ribbon scorebug do.
-  let liveMs = storedMs;
-  if (shotRunning) {
-    const at = new Date(String(sc.at || '')).getTime();
-    if (Number.isFinite(at)) {
-      liveMs = Math.max(0, storedMs - (Date.now() - at));
-    }
-  }
+  // 30-second countdown actually ticks — the shared projection, on SERVER
+  // time (K12-F17), exactly what the board shows.
+  const liveMs = projectCountdownMs({ ms: storedMs, at: sc.at, running: shotRunning }, serverClock.now());
   const sec = Math.max(0, Math.ceil(liveMs / 1000));
   // K12-F05 — the resets are THIS game's length (a 35-second game resets to
   // 35, not the sport's 24) and the short reset only when it is shorter; the
@@ -4277,20 +4279,16 @@ type LivePenalty = {
   ms: number;
 };
 
-/** Project every penalty in a game's stats to its live remaining
- *  time. Operator-side — no server-skew correction (a few hundred ms
- *  is invisible on a control surface; the scoreboard projects with
- *  skew correction for the crowd). */
+/** Project every penalty in a game's stats to its live remaining time on
+ *  SERVER time (K12-F17) — the same reading the board shows the crowd; a
+ *  device clock minutes off used to count a player out early or late. */
 function livePenalties(stats: Record<string, unknown>): LivePenalty[] {
   const raw = Array.isArray(stats.penalties) ? (stats.penalties as unknown[]) : [];
+  const now = serverClock.now();
   return raw
     .filter((p): p is Record<string, unknown> => !!p && typeof p === 'object')
     .map((p) => {
-      let ms = Math.max(0, Number(p.ms) || 0);
-      if (p.running) {
-        const at = new Date(String(p.at || '')).getTime();
-        if (Number.isFinite(at)) ms = Math.max(0, ms - (Date.now() - at));
-      }
+      const ms = projectCountdownMs(p, now);
       return {
         id: String(p.id || ''),
         team: p.team === 'away' ? ('away' as const) : ('home' as const),
@@ -6346,14 +6344,9 @@ function ShotClockBtn({
   const running = !!sc.running;
   const [ms, setMs] = useState(0);
   useEffect(() => {
-    const at = new Date(anchorAt).getTime();
-    const project = () => {
-      if (!running || !Number.isFinite(at)) {
-        setMs(anchorMs);
-        return;
-      }
-      setMs(Math.max(0, anchorMs - (Date.now() - at)));
-    };
+    // K12-F17 — server time, the shared projection.
+    const project = () =>
+      setMs(projectCountdownMs({ ms: anchorMs, at: anchorAt, running }, serverClock.now()));
     project();
     if (!running) return;
     const t = setInterval(project, 200);
@@ -6429,14 +6422,9 @@ function PlayClockBtn({
   const running = !!pc.running;
   const [ms, setMs] = useState(anchorMs);
   useEffect(() => {
-    const at = new Date(anchorAt).getTime();
-    const project = () => {
-      if (!running || !Number.isFinite(at)) {
-        setMs(anchorMs);
-        return;
-      }
-      setMs(Math.max(0, anchorMs - (Date.now() - at)));
-    };
+    // K12-F17 — server time, the shared projection.
+    const project = () =>
+      setMs(projectCountdownMs({ ms: anchorMs, at: anchorAt, running }, serverClock.now()));
     project();
     if (!running) return;
     const t = setInterval(project, 200);
@@ -6804,11 +6792,11 @@ function TrayClockBtn({
       ) : (
         <button
           type="button"
-          onClick={() => { setEditing(true); setSetText(fmtClock(liveMs)); }}
+          onClick={() => { setEditing(true); setSetText(formatSportClock(def, liveMs)); }}
           className="h-14 px-3 rounded-xl bg-white border border-slate-200 text-slate-700 font-black text-lg tabular-nums hover:bg-slate-100 transition-colors"
           title="Tap to set clock"
         >
-          {fmtClock(liveMs)}
+          {formatSportClock(def, liveMs)}
         </button>
       )}
     </>

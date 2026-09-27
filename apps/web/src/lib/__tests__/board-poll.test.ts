@@ -278,4 +278,40 @@ describe('startBoardPoll', () => {
     jest.advanceTimersByTime(60_000);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it('K12-F17: every good poll samples the server clock with its own round trip', async () => {
+    // A clock whose local base moves 30 ms between send and receive.
+    let local = 1_000;
+    const samples: Array<[number, number | undefined, number | undefined]> = [];
+    const clock = {
+      localNow: () => local,
+      sample: (s: number, sent?: number, recv?: number) => samples.push([s, sent, recv]),
+      now: () => 0,
+      hasSample: () => samples.length > 0,
+      reset: () => undefined,
+      status: () => ({ hasSample: true, offsetMs: 0, rttMs: null, samples: samples.length }),
+    };
+    let release!: (r: MockResponse) => void;
+    fetchMock.mockImplementationOnce(() => new Promise((res) => { release = res; }));
+    const stop = startBoardPoll({ url: 'http://x/board/1', intervalMs: 750, onPayload: jest.fn(), clock });
+    local += 30;
+    release(makeRes({ etag: 'W/"a"', body: { serverTime: 1_790_000_000_000 } }));
+    await flush();
+    expect(samples).toEqual([[1_790_000_000_000, 1_000, 1_030]]);
+
+    // A 304 carries the sample in X-Server-Time.
+    fetchMock.mockImplementationOnce(() =>
+      Promise.resolve(makeRes({ status: 304, etag: 'W/"a"', serverTime: '1790000000750' })),
+    );
+    jest.advanceTimersByTime(750);
+    await flush();
+    expect(samples[1]).toEqual([1_790_000_000_750, 1_030, 1_030]);
+
+    // A failed poll samples nothing.
+    fetchMock.mockImplementationOnce(() => Promise.resolve(makeRes({ status: 500 })));
+    jest.advanceTimersByTime(750);
+    await flush();
+    expect(samples).toHaveLength(2);
+    stop();
+  });
 });

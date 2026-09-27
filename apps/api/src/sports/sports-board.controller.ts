@@ -223,13 +223,11 @@ export class SportsBoardController {
     // set — the 404 contract is unchanged.
     const { payload, etag } = await this.sports.getBoardWithMeta(id);
     res.setHeader('ETag', etag);
-    // CLOCK-DOMAIN INVARIANT: serverTime MUST share Game.clockUpdatedAt's
-    // clock domain (raw replica Date.now()) — the board subtracts this
-    // sample against clockUpdatedAt anchors written with `new Date()`, so a
-    // Redis-corrected clock here would carry the replica-vs-Redis offset as
-    // game-clock error. A multi-replica migration moves the anchors +
-    // serverTime to TimeSyncService TOGETHER (see getBoardWithMeta).
-    res.setHeader('X-Server-Time', String(Date.now()));
+    // CLOCK-DOMAIN INVARIANT: this sample shares the clock domain of every
+    // anchor the board subtracts it against — both come from
+    // SportsService.serverTimeMs() (TimeSyncService, K12-F17), never the raw
+    // replica clock on one side only (see getBoardWithMeta).
+    res.setHeader('X-Server-Time', String(this.sports.serverTimeMs()));
     res.setHeader('Cache-Control', 'no-cache');
     if (ifNoneMatch && ifNoneMatchHits(ifNoneMatch, etag)) {
       res.status(HttpStatus.NOT_MODIFIED);

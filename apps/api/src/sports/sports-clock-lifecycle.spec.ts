@@ -662,3 +662,70 @@ describe('K12-F14 — feed snapshots are applied in order, with honest time', ()
     expect(goals).toHaveLength(1);
   });
 });
+
+describe('K12-F17 — one server clock for every anchor and every sample', () => {
+  /** A service on a replica whose container clock is 2 minutes behind the
+   *  Redis-aligned server clock (TimeSyncService adds the offset). */
+  function onSkewedReplica(h = setup()) {
+    const timeSync = { now: () => Date.now() + 120_000 };
+    const service = new SportsService(
+      { client: h.client } as any,
+      { publish: async () => undefined } as any,
+      { signMessage: () => ({}) } as any,
+      { listActive: async () => [] } as any,
+      { isEnabledAsync: async () => false } as any,
+      timeSync as any,
+    );
+    return { ...h, service };
+  }
+
+  it('anchors and serverTime share the TimeSyncService clock, so projections are exact', async () => {
+    const { service } = onSkewedReplica();
+    const g: any = await newGame(service, 'basketball');
+    await service.clockAction(TENANT, g.id, { action: 'start' });
+    expect(new Date(g.clockUpdatedAt).getTime()).toBe(T0 + 120_000);
+    at(10_000);
+    const board: any = await service.getBoard(g.id);
+    expect(board.serverTime).toBe(T0 + 130_000);
+    // What any surface computes from the payload alone:
+    const shown = board.clockMs - (board.serverTime - new Date(board.clockUpdatedAt).getTime());
+    expect(shown).toBe(470_000);
+    await service.clockAction(TENANT, g.id, { action: 'pause' });
+    expect(g.clockMs).toBe(470_000);
+    expect(g.stats.shotClock).toMatchObject({ ms: 14_000, at: new Date(T0 + 130_000).toISOString() });
+  });
+
+  it('the operator console gets a server-clock sample with the game', async () => {
+    const { service } = onSkewedReplica();
+    const g: any = await newGame(service, 'basketball');
+    const got: any = await service.getGame(TENANT, g.id);
+    expect(got.serverTime).toBe(T0 + 120_000);
+  });
+
+  it('the expiry sweep judges expiry on the server clock too', async () => {
+    const { service } = onSkewedReplica();
+    const g: any = await newGame(service, 'basketball');
+    await service.setStatus(TENANT, g.id, { status: 'LIVE' });
+    await service.clockAction(TENANT, g.id, { action: 'set', ms: 2_000 });
+    await service.clockAction(TENANT, g.id, { action: 'start' });
+    at(1_000);
+    expect((await service.autoAdvanceExpiredClocks()).changed).toBe(0);
+    at(2_500);
+    expect((await service.autoAdvanceExpiredClocks()).changed).toBe(1);
+    expect(new Date(g.clockUpdatedAt).getTime()).toBe(T0 + 120_000 + 2_000);
+  });
+
+  it('a celebration snapshot formats the clock with the sport display policy', async () => {
+    const { service, gameEvent } = setup();
+    const g: any = await newGame(service, 'basketball');
+    await service.clockAction(TENANT, g.id, { action: 'set', ms: 4_300 });
+    await service.fireCue(TENANT, g.id, { key: 'threePointer' });
+    const cue = gameEvent.rows.filter((e: any) => e.type === 'CUE').pop();
+    expect(cue.payload.snapshot.clockText).toBe('4.3');
+    const f: any = await newGame(service, 'football');
+    await service.clockAction(TENANT, f.id, { action: 'set', ms: 4_300 });
+    await service.fireCue(TENANT, f.id, { key: 'touchdown' });
+    const td = gameEvent.rows.filter((e: any) => e.type === 'CUE').pop();
+    expect(td.payload.snapshot.clockText).toBe('0:05');
+  });
+});

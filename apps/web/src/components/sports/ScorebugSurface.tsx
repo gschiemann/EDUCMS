@@ -54,8 +54,17 @@ import {
 } from '@/components/sports/score-motion';
 import { SportMark } from '@/components/sports/SportGlyph';
 import { API_URL } from '@/lib/api-url';
-import { findSport, formatScore, shotClockDisplayLen } from '@cms/api-types';
+import {
+  findSport,
+  formatClockReading,
+  formatScore,
+  formatSportClock,
+  projectCountdownMs,
+  projectGameClockMs,
+  shotClockDisplayLen,
+} from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
+import { serverClock } from '@/lib/server-clock';
 
 // ── types ──────────────────────────────────────────────────────
 
@@ -203,16 +212,11 @@ export const POS: Record<
 
 // ── helpers ────────────────────────────────────────────────────
 
+/** Legacy export: tenths in the final minute, MM:SS (rounding UP, the
+ *  broadcast convention every surface shares) above it. The scorebug itself
+ *  now formats per sport with `formatSportClock` (K12-F17). */
 export function fmtClock(ms: number): string {
-  const safe = Math.max(0, ms);
-  if (safe >= 60_000) {
-    const m = Math.floor(safe / 60_000);
-    const s = Math.floor((safe % 60_000) / 1000);
-    return `${m}:${String(s).padStart(2, '0')}`;
-  }
-  const s = Math.floor(safe / 1000);
-  const tenths = Math.floor((safe % 1000) / 100);
-  return `${s}.${tenths}`;
+  return formatClockReading(ms, true);
 }
 
 function ordinal(n: number): string {
@@ -392,22 +396,13 @@ export function useLiveClock(
   const [ms, setMs] = useState(0);
   useEffect(() => {
     if (!data || !def) return;
-    const skew = data.serverTime - Date.now();
-    const anchorAt = new Date(data.clockUpdatedAt).getTime();
-    const project = () => {
-      if (!data.clockRunning || def.clock.type === 'none') {
-        setMs(data.clockMs);
-        return;
-      }
-      const elapsed = Date.now() + skew - anchorAt;
-      if (def.clock.type === 'countup') setMs(data.clockMs + elapsed);
-      else setMs(Math.max(0, data.clockMs - elapsed));
-    };
+    // K12-F17 — projected on the page's shared server clock.
+    const project = () => setMs(projectGameClockMs(data, def.clock.type, serverClock.now()));
     project();
     if (!data.clockRunning || def.clock.type === 'none') return;
     const t = setInterval(project, 100);
     return () => clearInterval(t);
-  }, [data?.clockMs, data?.clockRunning, data?.clockUpdatedAt, data?.serverTime, def]);
+  }, [data?.clockMs, data?.clockRunning, data?.clockUpdatedAt, def]);
   return ms;
 }
 
@@ -480,12 +475,16 @@ export function useScorebugData(gameId: string): ScorebugData {
     if (cached) setData(cached);
     const load = async () => {
       try {
+        const sentAt = serverClock.localNow();
         const res = await fetch(`${API_URL}/sports/board/${gameId}`, {
           cache: 'no-store',
         });
+        const receivedAt = serverClock.localNow();
         if (!res.ok) return;
         const json: BoardData = await res.json();
         if (!alive) return;
+        // K12-F17 — this poll feeds the page's shared server clock too.
+        if (typeof json.serverTime === 'number') serverClock.sample(json.serverTime, sentAt, receivedAt);
         setData(json);
         writeBoardCache(gameId, json);
         for (const c of json.cues || []) {
@@ -578,26 +577,19 @@ function useShotClock(
   const anchorMs = Math.max(0, Number(sc?.ms) || 0);
   const anchorAt = String(sc?.at || '');
   const running = !!sc?.running;
-  const serverTime = view?.serverTime || Date.now();
   useEffect(() => {
     if (len <= 0) {
       setMs(0);
       return;
     }
-    const skew = serverTime - Date.now();
-    const at = new Date(anchorAt).getTime();
-    const project = () => {
-      if (!running || !Number.isFinite(at)) {
-        setMs(anchorMs);
-        return;
-      }
-      setMs(Math.max(0, anchorMs - (Date.now() + skew - at)));
-    };
+    // K12-F17 — the page's shared server clock.
+    const project = () =>
+      setMs(projectCountdownMs({ ms: anchorMs, at: anchorAt, running }, serverClock.now()));
     project();
     if (!running) return;
     const t = setInterval(project, 100);
     return () => clearInterval(t);
-  }, [anchorMs, anchorAt, running, len, serverTime]);
+  }, [anchorMs, anchorAt, running, len]);
   return { ms, len };
 }
 
@@ -1325,7 +1317,7 @@ export function ScorebugBug({
                   color: view.clockRunning ? '#fbbf24' : '#e2e8f0',
                 }}
               >
-                {fmtClock(liveMs)}
+                {formatSportClock(def, liveMs)}
               </div>
             )}
             <div
