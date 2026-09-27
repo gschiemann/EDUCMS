@@ -6761,6 +6761,13 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       // refont, and re-background the widget to their team's brand.
       // Every v2 widget routes config.style through resolveStyle(), so
       // these controls take effect live.
+      // K-12 launch audit F28/F30 — the universal Live Data "Scores Board"
+      // (`sports-scoreboard`, canonical LIVE_DATA) has nested game rows the
+      // generic editor below cannot express; it shares the venue schema.
+      if (cfg.variant && SPORTS_VENUE_VARIANTS.has(String(cfg.variant))) {
+        fields.push(<SportsVenueEditor key="sports-venue" variant={String(cfg.variant)} cfg={cfg} setField={setField} />);
+        break;
+      }
       const v2w = cfg.variant ? V2_BY_VARIANT_ID[String(cfg.variant)] : undefined;
       if (v2w) {
         const SHv2 = (k: string, label: string) => (

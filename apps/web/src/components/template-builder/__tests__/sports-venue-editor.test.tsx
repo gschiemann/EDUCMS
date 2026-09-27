@@ -246,6 +246,22 @@ describe('F30 — the venue editor replaces the legacy literal fields', () => {
   });
 });
 
+describe('F30 — the Live Data "Scores Board" routes to the same typed editor', () => {
+  it('LIVE_DATA sports-scoreboard: typed game rows in the renderer\'s nested shape + AS OF', () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const updateZone = jest.fn();
+    render(
+      <QueryClientProvider client={qc}>
+        <ContentFields zone={{ id: 'z1', widgetType: 'LIVE_DATA', defaultConfig: { variant: 'sports-scoreboard' } }} updateZone={updateZone} />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Start from the sample rows' }));
+    const cfg = lastCfg(updateZone);
+    expect(cfg.games[0]).toMatchObject({ away: { name: 'Central', score: 51 }, home: { name: 'Northgate', score: 47 }, status: 'FINAL' });
+    expect(typeof cfg.asOf).toBe('string');
+  });
+});
+
 describe('F30 — Ribbon Board (live) + Scorebug expose what their renderers read', () => {
   it('ribbon-main: message reel, sponsor line, background', () => {
     const updateZone = jest.fn();

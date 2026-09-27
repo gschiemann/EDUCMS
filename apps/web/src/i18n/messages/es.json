@@ -2969,7 +2969,11 @@
       "ribbonMessages": "Mensajes de la cinta",
       "ribbonMessagesHelp": "Se desplazan junto al marcador en vivo. Déjelo vacío para mostrar solo la línea del patrocinador.",
       "ribbonSponsorText": "Línea de patrocinador",
-      "networkLabel": "Etiqueta de la cadena / transmisión"
+      "networkLabel": "Etiqueta de la cadena / transmisión",
+      "league": "Etiqueta de liga / conferencia",
+      "awayName": "Equipo visitante",
+      "homeName": "Equipo local",
+      "venue": "Sede"
     },
     "cts": {
       "sponsorSlots": "Espacios de patrocinadores",

@@ -2969,7 +2969,11 @@
       "ribbonMessages": "条幅信息",
       "ribbonMessagesHelp": "在实时比分旁滚动。留空则只显示赞助商行。",
       "ribbonSponsorText": "赞助商行",
-      "networkLabel": "频道 / 直播标签"
+      "networkLabel": "频道 / 直播标签",
+      "league": "联赛 / 赛区标签",
+      "awayName": "客队",
+      "homeName": "主队",
+      "venue": "场地"
     },
     "cts": {
       "sponsorSlots": "赞助商时段",

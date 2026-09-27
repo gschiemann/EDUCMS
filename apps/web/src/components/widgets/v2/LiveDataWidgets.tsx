@@ -9,6 +9,8 @@ import React from 'react';
 import { resolveStyle, frameStyle, animDurationSec } from './_shared/styleSystem';
 import type { BaseCfg, WidgetProps } from './_shared/types';
 import { sceneCss } from '../scene-css';
+import { useRenderSurface } from '../render-surface';
+import { asOfLabel } from './sports-venue-data';
 
 function px(z: number, f: number, min = 8): number { return Math.max(min, Math.round(z * f)); }
 /**
@@ -21,7 +23,7 @@ function fpx(z: number, f: number): number { return px(z, f, 12); }
 
 /* ════════════════ SPORTS SCOREBOARD ════════════════ */
 
-export interface ScoreTeam { name: string; score: number; logo?: string; }
+export interface ScoreTeam { name: string; score: number | string; logo?: string; }
 export interface ScoreGame {
   status: string;
   clock?: string;
@@ -31,20 +33,34 @@ export interface ScoreGame {
   home: ScoreTeam;
 }
 export interface SportsScoreboardCfg extends BaseCfg {
+  /** Heading (was a hardcoded "LIVE SCOREBOARD"). */
+  title?: string;
   league?: string;
+  /** Legacy — there is no feed to refresh; kept so old zones still parse. */
   refreshSec?: number;
   accent?: string;
   games?: ScoreGame[];
+  /** ISO time the rows were last edited — written by the Properties panel. */
+  asOf?: string;
 }
 
-const DEFAULT_GAMES: ScoreGame[] = [
-  { status: 'LIVE', clock: 'Q3 4:21', away: { name: 'Lakers', score: 78, logo: '#552583' }, home: { name: 'Celtics', score: 82, logo: '#007a33' } },
-  { status: 'LIVE', clock: 'Q2 1:08', away: { name: 'Warriors', score: 54, logo: '#1d428a' }, home: { name: 'Nuggets', score: 49, logo: '#fec524' } },
-  { status: 'FINAL', clock: '', away: { name: 'Heat', score: 102, logo: '#98002e' }, home: { name: 'Knicks', score: 108, logo: '#f58426' } },
-  { status: '7:00 PM', clock: '', away: { name: 'Bucks', score: 0, logo: '#00471b' }, home: { name: 'Sixers', score: 0, logo: '#006bb6' } },
+/**
+ * Builder-only sample (K-12 launch audit F28, 2026-09-27). This board has NO
+ * score feed: it used to render these as a default on every screen under a
+ * pulsing "LIVE SCOREBOARD" header with NBA teams "LIVE" at "Q3 4:21" and a
+ * hardcoded "7:00 PM ET" — invented live scores, in a pack every vertical
+ * (schools included) can drop. Now: the rows the school types, stamped with
+ * the time they were updated; this sample appears only in the builder, stamped
+ * SAMPLE.
+ */
+const DEMO_GAMES: ScoreGame[] = [
+  { status: 'FINAL', clock: '', away: { name: 'Central', score: 51, logo: '#0f766e' }, home: { name: 'Northgate', score: 47, logo: '#1d4ed8' } },
+  { status: 'FINAL', clock: '', away: { name: 'Eastview', score: 38, logo: '#7c3aed' }, home: { name: 'Westfield', score: 44, logo: '#b45309' } },
+  { status: 'HALF', clock: '', away: { name: 'Riverside', score: 22, logo: '#be123c' }, home: { name: 'Lakeview', score: 25, logo: '#0369a1' } },
+  { status: '7:00 PM', clock: '', away: { name: 'Southport', score: 0, logo: '#4d7c0f' }, home: { name: 'Valley', score: 0, logo: '#6d28d9' } },
 ];
 
-function ScoreboardTeam({ name, score, logo, accent, winning, height }: { name: string; score: number; logo?: string; accent: string; winning: boolean; height: number }) {
+function ScoreboardTeam({ name, score, logo, accent, winning, height }: { name: string; score: number | string; logo?: string; accent: string; winning: boolean; height: number }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: `${px(height, 0.011)}px 0` }}>
       <div style={{ display: 'flex', alignItems: 'center' }}>
@@ -56,41 +72,53 @@ function ScoreboardTeam({ name, score, logo, accent, winning, height }: { name: 
   );
 }
 
-export function SportsScoreboardWidget({ config, live = true, height = 480 }: WidgetProps<SportsScoreboardCfg>) {
+export function SportsScoreboardWidget({ config, height = 480 }: WidgetProps<SportsScoreboardCfg>) {
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#11171f', textColor: '#ffd23a', accentColor: '#e7142b', ...c.style });
-  const games = c.games ?? DEFAULT_GAMES;
+  const isBuilder = useRenderSurface() !== 'player';
+  const typed = Array.isArray(c.games) ? c.games.filter((g) => g && g.home && g.away && (String(g.home.name || '').trim() || String(g.away.name || '').trim())) : [];
+  const demo = typed.length === 0 && isBuilder;
+  const games = typed.length ? typed : demo ? DEMO_GAMES : [];
   const accent = c.accent ?? '#ffd23a';
-  const league = c.league ?? 'NBA';
+  const league = (c.league ?? '').trim();
+  const title = (c.title ?? '').trim() || 'SCORES';
+  const asOf = asOfLabel(c.asOf);
 
   return (
     <div style={{ ...frameStyle(r), padding: 0, backgroundColor: '#0b0f15' }}>
       <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: `${px(height, 0.037)}px ${px(height, 0.056)}px`, borderBottom: '1px solid #1f2630' }}>
           <div style={{ display: 'flex', alignItems: 'center' }}>
-            <div style={{ width: px(height, 0.017), height: px(height, 0.017), borderRadius: '50%', background: '#e7142b', boxShadow: '0 0 0 6px #e7142b22', marginRight: px(height, 0.022) }} />
-            <div style={{ color: '#fff', fontWeight: 800, fontSize: fpx(height, 0.043), fontFamily: 'Plus Jakarta Sans', letterSpacing: '-0.02em', marginRight: px(height, 0.022) }}>LIVE SCOREBOARD</div>
-            <div style={{ color: '#8aa', fontSize: fpx(height, 0.022), fontWeight: 600 }}>{league.toUpperCase()}</div>
+            <div data-field="title" style={{ color: '#fff', fontWeight: 800, fontSize: fpx(height, 0.043), fontFamily: 'Plus Jakarta Sans', letterSpacing: '-0.02em', marginRight: px(height, 0.022) }}>{title}</div>
+            {league && <div data-field="league" style={{ color: '#8aa', fontSize: fpx(height, 0.022), fontWeight: 600 }}>{league.toUpperCase()}</div>}
           </div>
-          <div style={{ color: '#8aa', fontSize: fpx(height, 0.022), fontWeight: 600, fontFamily: 'JetBrains Mono' }}>7:00 PM ET</div>
+          {asOf && <div style={{ color: '#8aa', fontSize: fpx(height, 0.022), fontWeight: 600, fontFamily: 'JetBrains Mono' }}>{asOf}</div>}
         </div>
-        <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', padding: px(height, 0.056) }}>
-          {games.slice(0, 4).map((g, i) => (
-            <div key={i} style={{ background: '#11171f', border: '1px solid #1f2630', borderRadius: px(height, 0.017), padding: `${px(height, 0.028)}px ${px(height, 0.033)}px`, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: 0, margin: px(height, 0.014) }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center' }}>
-                  <span style={{ width: px(height, 0.0093), height: px(height, 0.0093), borderRadius: '50%', background: g.status === 'LIVE' ? '#e7142b' : '#445', display: 'inline-block', boxShadow: g.status === 'LIVE' ? '0 0 0 4px #e7142b22' : 'none', marginRight: px(height, 0.011) }} />
-                  <span style={{ color: g.status === 'LIVE' ? '#ff5664' : '#8aa', fontWeight: 700, fontSize: fpx(height, 0.0185), letterSpacing: '0.06em' }}>{g.status}</span>
-                  <span style={{ color: '#8aa', fontWeight: 600, fontSize: fpx(height, 0.0185), marginLeft: px(height, 0.0056) }}>{g.clock || g.kickoff || ''}</span>
+        <div data-field-jump="games" style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', padding: px(height, 0.056) }}>
+          {games.slice(0, 4).map((g, i) => {
+            const as = Number(g.away.score);
+            const hs = Number(g.home.score);
+            return (
+              <div key={i} style={{ background: '#11171f', border: '1px solid #1f2630', borderRadius: px(height, 0.017), padding: `${px(height, 0.028)}px ${px(height, 0.033)}px`, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: 0, margin: px(height, 0.014) }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center' }}>
+                    {/* The school's own status text, as typed. This board has
+                        no feed, so it never decorates a row as live. */}
+                    <span style={{ color: '#8aa', fontWeight: 700, fontSize: fpx(height, 0.0185), letterSpacing: '0.06em' }}>{String(g.status || '').toUpperCase()}</span>
+                    <span style={{ color: '#8aa', fontWeight: 600, fontSize: fpx(height, 0.0185), marginLeft: px(height, 0.0056) }}>{g.clock || g.kickoff || ''}</span>
+                  </div>
+                  <span style={{ color: '#8aa', fontWeight: 600, fontSize: fpx(height, 0.0185) }}>{g.venue || ''}</span>
                 </div>
-                <span style={{ color: '#8aa', fontWeight: 600, fontSize: fpx(height, 0.0185) }}>{g.venue || ''}</span>
+                <ScoreboardTeam name={String(g.away.name || '')} score={g.away.score} logo={g.away.logo} accent={accent} winning={as > hs} height={height} />
+                <ScoreboardTeam name={String(g.home.name || '')} score={g.home.score} logo={g.home.logo} accent={accent} winning={hs > as} height={height} />
               </div>
-              <ScoreboardTeam name={g.away.name} score={g.away.score} logo={g.away.logo} accent={accent} winning={g.away.score > g.home.score} height={height} />
-              <ScoreboardTeam name={g.home.name} score={g.home.score} logo={g.home.logo} accent={accent} winning={g.home.score > g.away.score} height={height} />
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
+      {demo && (
+        <div data-venue-sample="" style={{ position: 'absolute', bottom: px(height, 0.02), right: px(height, 0.025), background: 'rgba(0,0,0,0.62)', color: '#facc15', fontWeight: 800, fontSize: fpx(height, 0.026), letterSpacing: '0.2em', padding: `${px(height, 0.006)}px ${px(height, 0.014)}px`, borderRadius: px(height, 0.008), border: '1px solid rgba(250,204,21,0.45)', pointerEvents: 'none' }}>SAMPLE</div>
+      )}
     </div>
   );
 }

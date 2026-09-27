@@ -110,6 +110,20 @@ const schedule = {
   }),
 };
 
+/** The universal Scores Board (LIVE_DATA `sports-scoreboard`): `logo` is a colour. */
+const scoresBoard = {
+  toRow: (g: Obj): Obj => ({
+    status: g.status ?? '', clock: g.clock ?? '', venue: g.venue ?? '',
+    awayName: o(g.away).name ?? '', awayScore: o(g.away).score ?? '', awayColor: o(g.away).logo ?? '#243042',
+    homeName: o(g.home).name ?? '', homeScore: o(g.home).score ?? '', homeColor: o(g.home).logo ?? '#243042',
+  }),
+  fromRow: (r: Obj): Obj => ({
+    status: r.status ?? '', clock: r.clock ?? '', venue: r.venue ?? '',
+    away: { name: r.awayName ?? '', score: r.awayScore ?? '', logo: r.awayColor ?? '#243042' },
+    home: { name: r.homeName ?? '', score: r.homeScore ?? '', logo: r.homeColor ?? '#243042' },
+  }),
+};
+
 /* ── per-variant schema ── */
 
 export const SPORTS_VENUE_EDITOR: Record<string, VenueFieldSpec[]> = {
@@ -327,6 +341,32 @@ export const SPORTS_VENUE_EDITOR: Record<string, VenueFieldSpec[]> = {
     { kind: 'text', key: 'qrUrl', label: 'qrUrl', placeholder: 'https://' },
     { kind: 'text', key: 'qrTitle', label: 'qrTitle', placeholder: 'Scan for the seating map' },
     { kind: 'text', key: 'qrSubtitle', label: 'qrSubtitle', placeholder: 'Opens on your phone' },
+  ],
+  // The universal Live Data "Scores Board" (canonical LIVE_DATA) — no feed,
+  // so it is a manual score board like the conference scores above.
+  'sports-scoreboard': [
+    { kind: 'text', key: 'title', label: 'title', placeholder: 'SCORES' },
+    { kind: 'text', key: 'league', label: 'league', placeholder: 'CONFERENCE' },
+    {
+      kind: 'rows', key: 'games', label: 'games', item: 'itemGame', stampAsOf: true,
+      fields: [
+        { key: 'awayName', label: 'awayName', placeholder: 'Central' },
+        { key: 'awayScore', label: 'awayScoreRow', placeholder: '51' },
+        { key: 'awayColor', label: 'awayColorRow', type: 'color' },
+        { key: 'homeName', label: 'homeName', placeholder: 'Northgate' },
+        { key: 'homeScore', label: 'homeScoreRow', placeholder: '47' },
+        { key: 'homeColor', label: 'homeColorRow', type: 'color' },
+        { key: 'status', label: 'status', placeholder: 'FINAL' },
+        { key: 'clock', label: 'clock', placeholder: '' },
+        { key: 'venue', label: 'venue', placeholder: 'Central HS' },
+      ],
+      sample: () => [
+        scoresBoard.toRow({ status: 'FINAL', away: { name: 'Central', score: 51, logo: '#0f766e' }, home: { name: 'Northgate', score: 47, logo: '#1d4ed8' } }),
+      ],
+      toRow: scoresBoard.toRow,
+      fromRow: scoresBoard.fromRow,
+    },
+    { kind: 'color', key: 'accent', label: 'accent', fallback: '#ffd23a' },
   ],
   'goal-celebration': [
     ...MODE_AND_GAME,

@@ -634,7 +634,10 @@ export const BACKGROUNDS_WIDGETS: RegisteredWidget[] = [
 const CAT_LIVE_DATA = 'Live Data';
 
 export const LIVE_DATA_WIDGETS: RegisteredWidget[] = [
-  W('SPORTS_SCOREBOARD', CAT_LIVE_DATA, 'Live Scoreboard',  'Multi-game live scoreboard grid for a league',        'universal', Tv,          withMeasuredHeight(LiveSportsScoreboardWidget), { league: 'NBA', accent: '#ffd23a' }),
+  // K-12 launch audit F28 — there is no score feed behind this board; it used
+  // to present hardcoded NBA games as LIVE on every screen. The rows are
+  // the school's own, stamped with when they were updated.
+  W('SPORTS_SCOREBOARD', CAT_LIVE_DATA, 'Scores Board',     'Scores from other games that you enter — stamped with the time you updated them (not a live feed)', 'universal', Tv, withMeasuredHeight(LiveSportsScoreboardWidget), { accent: '#ffd23a' }),
   W('STOCK_TICKER',      CAT_LIVE_DATA, 'Stock Ticker',     'Market tiles plus a scrolling stock ticker band',     'universal', TrendingUp,  withMeasuredHeight(StockTickerWidget),         { exchange: 'NYSE / NASDAQ' }),
   W('CRYPTO_TICKER',     CAT_LIVE_DATA, 'Crypto Ticker',    '24-hour cryptocurrency price board',                  'universal', Coins,       withMeasuredHeight(CryptoTickerWidget),        {}),
   W('NEWS_HEADLINES',    CAT_LIVE_DATA, 'News Headlines',   'Breaking-news headline list from an RSS source',      'universal', Newspaper,   withMeasuredHeight(NewsHeadlinesWidget),       { source: 'AP · Reuters · BBC', accent: '#e7142b' }),

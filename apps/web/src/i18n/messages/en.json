@@ -2969,7 +2969,11 @@
       "ribbonMessages": "Ribbon messages",
       "ribbonMessagesHelp": "Scrolls beside the live score. Leave empty to show only the sponsor line.",
       "ribbonSponsorText": "Sponsor line",
-      "networkLabel": "Network / stream label"
+      "networkLabel": "Network / stream label",
+      "league": "League / conference label",
+      "awayName": "Away team",
+      "homeName": "Home team",
+      "venue": "Venue"
     },
     "cts": {
       "sponsorSlots": "Sponsor slots",

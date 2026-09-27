@@ -256,6 +256,37 @@ describe('F28 — live-capable venue widgets read the bound game', () => {
   });
 });
 
+describe('F28 — the universal Scores Board (Live Data pack) is not a live feed', () => {
+  function renderScores(config: Record<string, unknown>, surface?: 'player') {
+    return render(
+      <div style={{ position: 'relative', width: 1200, height: 480 }}>
+        <WidgetPreview widgetType="LIVE_DATA" config={{ variant: 'sports-scoreboard', ...config }} width={100} height={100} live={surface === 'player'} renderSurface={surface} />
+      </div>,
+    );
+  }
+  it('a real screen with nothing entered: no invented games, no LIVE header, no hardcoded time', () => {
+    // The old seed: { league: 'NBA', accent } — still in zones saved before.
+    const { container } = renderScores({ league: 'NBA', accent: '#ffd23a' }, 'player');
+    const text = container.textContent || '';
+    expect(text).not.toMatch(/lakers|celtics|warriors|LIVE SCOREBOARD|7:00 PM ET|\bLIVE\b/i);
+    expect(container.querySelector('[data-venue-sample]')).toBeNull();
+  });
+  it('the builder shows a school-safe sample, stamped', () => {
+    const { container } = renderScores({ accent: '#ffd23a' });
+    expect(container.textContent).toContain('Northgate');
+    expect(container.querySelector('[data-venue-sample]')).not.toBeNull();
+  });
+  it('typed rows render as typed, with the AS OF stamp', () => {
+    const { container } = renderScores({
+      asOf: new Date().toISOString(),
+      games: [{ status: 'FINAL', away: { name: 'Central', score: 51, logo: '#0f766e' }, home: { name: 'Northgate', score: 47, logo: '#1d4ed8' } }],
+    }, 'player');
+    expect(container.textContent).toContain('Central');
+    expect(container.textContent).toMatch(/AS OF \d{1,2}:\d{2} (AM|PM)/);
+    expect(container.textContent).not.toMatch(/\bLIVE\b/);
+  });
+});
+
 describe('F28 — drift guard for the v2 sports packs', () => {
   // The sports/ drift-catcher (nofake-sweep) only scans components/widgets/
   // sports — which is exactly how this pack and the HS/College/Pro board
