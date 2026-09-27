@@ -31,7 +31,8 @@
 
 import { useEffect, useId, useMemo, useRef, useState, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertTriangle, Check, ChevronLeft, ChevronRight, Clock, Copy, Eye, Grid2X2, ListIcon, MoreHorizontal, Pause, Play, Plus, Search, SlidersHorizontal, Trash2, Upload, Usb, X } from 'lucide-react';
+import { AlertTriangle, Check, ChevronLeft, ChevronRight, Clock, Copy, Download, Eye, Grid2X2, ListIcon, MoreHorizontal, Pause, Play, Plus, Search, SlidersHorizontal, Trash2, Upload, Usb, X } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { PlaylistPreviewThumb, type TemplateLookupEntry } from '@/components/playlists/PlaylistPreviewThumb';
 import {
   activeFilterCount, applyLibrary, buildExceptionBanner, countByStatus, describeContent,
@@ -668,6 +669,7 @@ function DeliveryCell({
   row, derived, onRetry,
 }: { row: PlaylistSummaryRow; derived: boolean; onRetry: () => void }) {
   void derived; // provenance is stated once in the footer, not per row
+  const t = useTranslations();
   if (row.statusLabel === 'PREPARING 1080P') {
     return (
       <div className="flex items-start gap-1.5" data-testid="delivery-cell" data-tone="muted">
@@ -688,16 +690,21 @@ function DeliveryCell({
     );
   }
   const d = row.delivery;
-  const tone = DELIVERY_TONE[d.tone] ?? DELIVERY_TONE.muted;
-  const Icon = d.tone === 'ok' ? Check : d.tone === 'muted' ? Clock : AlertTriangle;
+  // New content still downloading to a screen (2026-09-27): calm, never an
+  // exception — but it reads as the download it is, not as a grey clock.
+  const downloading = d.state === 'downloading';
+  const tone = downloading ? 'text-sky-700' : DELIVERY_TONE[d.tone] ?? DELIVERY_TONE.muted;
+  const Icon = downloading ? Download : d.tone === 'ok' ? Check : d.tone === 'muted' ? Clock : AlertTriangle;
+  const label = d.messages?.label ? t(d.messages.label.key, d.messages.label.values) : d.label;
+  const sub = d.messages?.sub ? t(d.messages.sub.key, d.messages.sub.values) : d.sub;
   return (
-    <div className="flex items-start gap-1.5" data-testid="delivery-cell" data-tone={d.tone}>
+    <div className="flex items-start gap-1.5" data-testid="delivery-cell" data-tone={d.tone} data-state={d.state}>
       <Icon className={`w-4 h-4 shrink-0 mt-0.5 ${tone}`} aria-hidden />
       <div className="min-w-0">
-        <p className={`text-[13px] font-semibold leading-snug ${tone}`}>{d.label}</p>
+        <p className={`text-[13px] font-semibold leading-snug ${tone}`}>{label}</p>
         {/* The count, as a quieter second line. Two short lines read at a
             glance where one ~50-character line wrapped to four and clipped. */}
-        {d.sub && <p className={`text-[12px] leading-snug ${INK_3}`}>{d.sub}</p>}
+        {sub && <p className={`text-[12px] leading-snug ${INK_3}`}>{sub}</p>}
         {d.tone === 'unavailable' && (
           <button type="button" onClick={onRetry} className="text-[12px] font-bold underline text-amber-800">
             Retry delivery status

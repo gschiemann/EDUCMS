@@ -314,6 +314,34 @@ describe('Screens tab — where it plays, and whether it arrived (§15)', () => 
     ).not.toBeInTheDocument();
   });
 
+  it('a screen still downloading the content says so, with its live progress (2026-09-27)', () => {
+    const MB = 1024 * 1024;
+    const snap = (over: Record<string, unknown> = {}, ageMs = 20_000) => ({
+      lastCacheReport: {
+        downloading: { file: 'promo.mp4', bytesLoaded: Math.ceil(141 * MB * 0.62), bytesTotal: 141 * MB, deferredCommit: false, ...over },
+      },
+      lastCacheReportAt: new Date(NOW - ageMs).toISOString(),
+    });
+    const base = { status: 'ONLINE', lastRenderedAt: new Date(NOW - 10_000).toISOString(), renderHealth: 'OK' as const, pushChannel: 'live' as const };
+    const targets: OpsScreenRef[] = [
+      { id: 'a', name: 'Lobby', ...base, lastRenderedHash: 'idle:content-downloading', ...snap() },
+      { id: 'b', name: 'Cafe', ...base, lastRenderedHash: 'pl:old', ...snap({ deferredCommit: true }) },
+      { id: 'c', name: 'Gym', ...base, lastRenderedHash: 'pl:new', ...snap() },
+      { id: 'd', name: 'Stale', ...base, lastRenderedHash: 'pl:new', ...snap({ deferredCommit: true }, 10 * 60_000) },
+    ];
+    mount({ tab: 'screens', targetScreens: targets });
+    const rowOf = (n: string) => screen.getAllByTestId('delivery-row').find((r) => r.textContent?.includes(n))!;
+    expect(rowOf('Lobby').dataset.state).toBe('downloading');
+    expect(within(rowOf('Lobby')).getByTestId('screen-download')).toHaveTextContent('Downloading new content · 62% of 141 MB');
+    expect(rowOf('Cafe').dataset.state).toBe('downloading');
+    expect(within(rowOf('Cafe')).getByTestId('screen-download'))
+      .toHaveTextContent('Still showing previous content · new content 62% of 141 MB');
+    // The new content already plays here; one more of its files downloads.
+    expect(within(rowOf('Gym')).getByTestId('screen-download')).toHaveTextContent('Downloading another file · 62% of 141 MB');
+    // A stale snapshot is never shown as progress.
+    expect(within(rowOf('Stale')).queryByTestId('screen-download')).not.toBeInTheDocument();
+  });
+
   it('grades a stale G43 proof as no picture while the rest are received', () => {
     mount({ tab: 'screens' });
     const rows = screen.getAllByTestId('delivery-row');

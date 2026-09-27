@@ -267,6 +267,38 @@ describe('the delivery column never overclaims (§4.3, §10)', () => {
     expect(text).not.toMatch(/\bDelivered\b/i);
   });
 
+  it('a screen downloading new content reads as the download with its live progress — calm, never an exception (2026-09-27)', () => {
+    const MB = 1024 * 1024;
+    const downloadingTarget = (name: string, state: 'downloading' | 'held'): DeliveryTarget => ({
+      ...target('downloading', name),
+      download: { state, fileName: 'promo.mp4', bytesLoaded: 87 * MB, bytesTotal: 141 * MB, percent: 62 },
+    });
+    mount({
+      rows: [
+        row({ delivery: summarizeDelivery([downloadingTarget('Lobby TV', 'downloading'), target('acknowledged', 'Cafe')]) }),
+        row({ id: 'p2', name: 'Held', delivery: summarizeDelivery([downloadingTarget('Gym', 'held')]) }),
+      ],
+    });
+    const table = screen.getByTestId('playlist-table');
+    const cellOf = (name: string) => {
+      const r = within(table).getAllByTestId('playlist-row').find((el) => el.textContent?.includes(name));
+      if (!r) throw new Error(`no row for ${name}`);
+      return within(r).getByTestId('delivery-cell');
+    };
+    const nothingOnGlass = cellOf('Member Promotions');
+    const held = cellOf('Held');
+    expect(nothingOnGlass).toHaveTextContent('Downloading new content');
+    expect(nothingOnGlass).toHaveTextContent('Lobby TV · 62% of 141 MB');
+    expect(nothingOnGlass.dataset.state).toBe('downloading');
+    expect(nothingOnGlass.dataset.tone).toBe('muted');
+    expect(held).toHaveTextContent('Still showing previous content');
+    expect(held).toHaveTextContent('Gym · new content 62% of 141 MB');
+    expect(held).not.toHaveTextContent(/Playback reported|Update received/);
+    // Expected behaviour, not a problem: no banner, no flagged row.
+    expect(screen.queryByTestId('exception-banner')).not.toBeInTheDocument();
+    expect(screen.getAllByTestId('playlist-row').some((r) => r.dataset.attention === 'true')).toBe(false);
+  });
+
   it('an unpublished row reads Not published, in muted tone', () => {
     mount();
     const cell = within(rowNamed('New Member Orientation')).getByTestId('delivery-cell');

@@ -34,6 +34,14 @@
 import { isWindowOpen, type WindowFields } from '@/app/player/scheduleWindow';
 import { deriveRenderTrustGrade, RENDER_STALE_AFTER_MS } from '@/components/screens/renderTrust';
 import { deriveVideoPlayback, type OpsScreen } from '@/components/screens/v3/screenOps';
+import {
+  copy,
+  deriveContentDownload,
+  fmtBytes,
+  liveDownload,
+  type ContentDownload,
+  type OpsMessage,
+} from '@/components/screens/contentDownload';
 
 // ─────────────────────────────────────────────────────────────────────
 // Vocabulary (§4)
@@ -57,6 +65,10 @@ export type SourceOwnership = 'own' | 'hq';
  *   `no-picture`       — §4.2 RENDER STALE (reachable, no fresh render proof)
  *   `content-mismatch` — §4.2 CONTENT MISMATCH (never emitted today; see the
  *                        header — no expected signature is stored)
+ *   `downloading`      — 2026-09-27: the screen is downloading new content —
+ *                        nothing of it on glass yet, or the previous content
+ *                        held there meanwhile (player rule 17: a large file
+ *                        plays only once it is whole on the screen)
  */
 export type DeliveryTargetState =
   | 'acknowledged'
@@ -65,7 +77,8 @@ export type DeliveryTargetState =
   | 'unknown'
   | 'no-picture'
   | 'playback-issue'
-  | 'content-mismatch';
+  | 'content-mismatch'
+  | 'downloading';
 
 /** Row-level rollup. Adds the two states that only make sense in aggregate. */
 export type DeliverySummaryState = DeliveryTargetState | 'pushing' | 'not-published';
@@ -84,6 +97,10 @@ const TARGET_PRECEDENCE: DeliveryTargetState[] = [
   'not-updated',
   'offline',
   'unknown',
+  // In progress, not a problem: every real problem or doubt above outranks
+  // it, and it outranks the healthy state — "Playback reported" would be
+  // false while the new content is still downloading.
+  'downloading',
   'acknowledged',
 ];
 
@@ -122,6 +139,10 @@ export interface OpsScreenRef {
   pushChannel?: 'live' | 'stale' | 'unknown' | null;
   authState?: string | null;
   sourceTenant?: { id: string; name?: string | null } | null;
+  /** The cache report, for its `downloading` snapshot (2026-09-27) — read
+   *  only through `deriveContentDownload`, which grades its freshness. */
+  lastCacheReport?: unknown;
+  lastCacheReportAt?: string | Date | null;
 }
 
 export interface OpsGroupRef {
@@ -464,9 +485,15 @@ export interface DeliveryTarget {
   ackAt: number | null;
   lastProofAt: string | null;
   /** Current screen health, independent of whether an update was received. */
-  pictureState?: 'reported' | 'issue' | 'stale' | 'unknown' | 'offline';
+  pictureState?: 'reported' | 'issue' | 'stale' | 'unknown' | 'offline' | 'downloading';
   pushChannel: 'live' | 'stale' | 'unknown';
   state: DeliveryTargetState;
+  /**
+   * The FRESH download this screen reported, if any (2026-09-27) — on a
+   * 'downloading' target it is the story; on one reporting playback it is a
+   * file still downloading behind content that plays. Never a stale one.
+   */
+  download?: ContentDownload | null;
 }
 
 export interface DeliveryPayload {
@@ -513,6 +540,11 @@ export interface DeliverySummary {
   total: number;
   /** Screens in the worst state, named — the fleet inbox lesson. */
   worstNames: string[];
+  /**
+   * `label` / `sub` as catalogue references (2026-09-27, the downloading
+   * summary). Components render `t(key, values)` when present.
+   */
+  messages?: { label?: OpsMessage; sub?: OpsMessage };
 }
 
 const NOT_PUBLISHED: DeliverySummary = {
@@ -663,6 +695,8 @@ export function summarizeDelivery(
         clause: `${nameList(worstNames)} has not reported back yet.`,
         acknowledged, total, worstNames,
       };
+    case 'downloading':
+      return summarizeDownloading(targets, { acknowledged, total, worstNames });
     case 'acknowledged':
     default:
       return {
@@ -675,6 +709,53 @@ export function summarizeDelivery(
         acknowledged, total, worstNames: [],
       };
   }
+}
+
+/**
+ * The rollup while new content is still downloading (2026-09-27). Calm —
+ * muted, never green and never an exception: the screens are doing exactly
+ * what they should (player rule 17 plays a large file only once it is whole
+ * on the screen). One screen: its name and live progress. Several: how many.
+ * Progress only ever comes from a FRESH snapshot (`target.download`); with
+ * none the line names the screen and claims no number. No ETA.
+ */
+function summarizeDownloading(
+  targets: DeliveryTarget[],
+  counts: { acknowledged: number; total: number; worstNames: string[] },
+): DeliverySummary {
+  const dl = targets.filter((t) => t.state === 'downloading');
+  const allHeld = dl.length > 0 && dl.every((t) => t.download?.state === 'held');
+  const label = copy(allHeld ? 'screens.contentState.showingPrevious' : 'screens.contentState.downloading');
+  let sub: { en: string; message?: OpsMessage } | null = null;
+  if (dl.length === 1) {
+    const one = dl[0];
+    const d = one.download ?? null;
+    const held = d?.state === 'held';
+    if (d && d.percent !== null && d.bytesTotal !== null) {
+      sub = copy(held ? 'playlistsPage.deliveryHeldOne' : 'playlistsPage.deliveryDownloadOne', {
+        name: one.name, percent: d.percent, size: fmtBytes(d.bytesTotal),
+      });
+    } else if (d) {
+      sub = copy(held ? 'playlistsPage.deliveryHeldOneSoFar' : 'playlistsPage.deliveryDownloadOneSoFar', {
+        name: one.name, loaded: fmtBytes(d.bytesLoaded),
+      });
+    } else {
+      sub = { en: one.name }; // the proof says "downloading"; no number to claim
+    }
+  } else if (dl.length > 1) {
+    sub = copy('playlistsPage.deliveryDownloadMany', { count: dl.length, screens: counts.total });
+  }
+  return {
+    state: 'downloading',
+    tone: 'muted',
+    label: label.en,
+    sub: sub?.en ?? null,
+    // Muted: no exception banner reads these. Nothing is wrong.
+    detail: null,
+    clause: null,
+    ...counts,
+    messages: { label: label.message, ...(sub?.message ? { sub: sub.message } : {}) },
+  };
 }
 
 /** §22.5 host — the API's own payload, mapped through the same rollup. */
@@ -706,9 +787,6 @@ export function deriveCurrentPictureState(screen: OpsScreenRef, nowMs: number): 
   if (screen.status !== 'ONLINE') return 'offline';
 
   const proofMs = toMs(screen.lastRenderedAt);
-  if (proofMs === null || nowMs < proofMs) return 'unknown';
-  if (nowMs - proofMs >= RENDER_STALE_AFTER_MS) return 'stale';
-
   const grade = deriveRenderTrustGrade({
     status: screen.status,
     renderHealth: screen.renderHealth,
@@ -718,13 +796,29 @@ export function deriveCurrentPictureState(screen: OpsScreenRef, nowMs: number): 
     authState: screen.authState,
     nowMs,
   });
-  // Every idle proof was one 'idle' grade until 2026-09-27 (renderTrust.ts
-  // `idleProofKind` now tells them apart); none of them is this playlist
-  // playing, so each keeps that grade's reading here.
+
+  // ── New content downloading (2026-09-27) ─────────────────────────────
+  // Read BEFORE the 90 s check below: that check judges every proof by the
+  // playing window, and the download splash proves on the idle lane (every
+  // five minutes), so it would call a screen that is downloading "no
+  // picture". The grade uses the server's own verdict, which knows the idle
+  // window. A fresh snapshot counts only over a FRESH proof (the grades
+  // below) or none at all — it is liveness, never a picture (player rule 5),
+  // so it can never talk a stale proof out of its "no picture".
+  if (grade === 'downloading') return 'downloading';
+  const download = liveDownload(deriveContentDownload(screen, nowMs));
+  const idleFamily = grade === 'idle' || grade === 'connecting' || grade === 'content-loading' || grade === 'unknown';
+  if (download && (idleFamily || (download.state === 'held' && grade === 'painting'))) return 'downloading';
+
+  if (proofMs === null || nowMs < proofMs) return 'unknown';
+  if (nowMs - proofMs >= RENDER_STALE_AFTER_MS) return 'stale';
+
+  // The player's own states are not this playlist playing. 'connecting' and
+  // 'content-loading' were one 'idle' grade until 2026-09-27; they keep its
+  // reading here, and "Content unavailable" is exactly a playback problem.
   if (
     grade === 'idle' || grade === 'connecting' || grade === 'content-loading' || grade === 'content-unavailable' ||
-    grade === 'downloading' || grade === 'paused' || grade === 'repair-required' || grade === 'media-stalled' ||
-    grade === 'alert-unconfirmed'
+    grade === 'paused' || grade === 'repair-required' || grade === 'media-stalled' || grade === 'alert-unconfirmed'
   ) {
     return 'issue';
   }
@@ -764,14 +858,18 @@ export function overlayCurrentScreenHealth(
     const state = pictureState === 'offline' ? 'offline'
       : pictureState === 'issue' ? 'playback-issue'
         : pictureState === 'stale' ? 'no-picture'
-          : pictureState === 'unknown' && target.state === 'acknowledged' ? 'unknown'
-            : target.state;
+          // Fresh evidence the new content is still downloading outranks an
+          // older receipt, whatever it said.
+          : pictureState === 'downloading' ? 'downloading'
+            : pictureState === 'unknown' && target.state === 'acknowledged' ? 'unknown'
+              : target.state;
     return {
       ...target,
       online: live.online,
       lastProofAt: live.lastProofAt,
       pictureState,
       state,
+      ...(live.download ? { download: live.download } : {}),
     };
   });
 }
@@ -813,6 +911,7 @@ export function deriveTargetsFromScreens(
     const lastProofAt = proofMs === null ? null : new Date(proofMs).toISOString();
 
     const pictureState = deriveCurrentPictureState(s, nowMs);
+    const download = liveDownload(deriveContentDownload(s, nowMs));
     let state: DeliveryTargetState;
     if (pictureState === 'offline') {
       state = 'offline';
@@ -820,6 +919,12 @@ export function deriveTargetsFromScreens(
       state = 'playback-issue';
     } else if (pictureState === 'stale') {
       state = 'no-picture';
+    } else if (pictureState === 'downloading') {
+      // New content is still downloading to this screen (2026-09-27). That is
+      // the fresher, more specific fact than an unechoed push: the screen is
+      // alive and working toward the content, and the operator's move is to
+      // wait for it, not to push again.
+      state = 'downloading';
     } else if (pictureState === 'unknown') {
       state = pending !== null ? 'not-updated' : 'unknown';
     } else if (pending !== null) {
@@ -839,6 +944,7 @@ export function deriveTargetsFromScreens(
       pictureState,
       pushChannel,
       state,
+      ...(download ? { download } : {}),
     };
   });
 }

@@ -30,6 +30,7 @@ import {
   formatDuration,
   isScheduleEligibleNow,
   needsAttention,
+  overlayCurrentScreenHealth,
   pauseEverywhereCopy,
   removePlaylistCopy,
   removePlaylistCopyFromServer,
@@ -735,6 +736,139 @@ describe('formatting helpers', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────
+// 2026-09-27 — new content still downloading to a screen
+// ─────────────────────────────────────────────────────────────────────
+// A file ≥ 8 MiB plays only once it is whole on the screen (player rule 17).
+// Until then the screen shows its download splash or keeps the PREVIOUS
+// content — and this rollup said "playback problem", "no picture" or even
+// "Playback reported". The player now reports the download in its cache
+// report; the rollup says what it says.
+const MB = 1024 * 1024;
+const SIZE = 141 * MB;
+const AT_62 = Math.ceil(SIZE * 0.62);
+function downloading(over: Record<string, unknown> = {}, ageMs = 20_000): Partial<OpsScreenRef> {
+  return {
+    lastCacheReport: {
+      playlist: { count: 1, bytes: 1 },
+      downloading: { file: 'promo.mp4', bytesLoaded: AT_62, bytesTotal: SIZE, deferredCommit: false, ...over },
+    },
+    lastCacheReportAt: new Date(NOW_MS - ageMs).toISOString(),
+  };
+}
+
+describe('delivery while new content downloads (2026-09-27)', () => {
+  it('the download splash is "Downloading new content · 62% of 141 MB" — never a playback problem', () => {
+    const s = deriveDeliveryFromScreens([screen({ lastRenderedHash: 'idle:content-downloading', ...downloading() })], NOW_MS);
+    expect(s.state).toBe('downloading');
+    expect(s.tone).toBe('muted');
+    expect(s.label).toBe('Downloading new content');
+    expect(s.sub).toBe('Lobby TV · 62% of 141 MB');
+    expect(s.messages).toEqual({
+      label: { key: 'screens.contentState.downloading' },
+      sub: { key: 'playlistsPage.deliveryDownloadOne', values: { name: 'Lobby TV', percent: 62, size: '141 MB' } },
+    });
+  });
+
+  it('held: "Still showing previous content · new content 62% of 141 MB" — not "Playback reported"', () => {
+    const s = deriveDeliveryFromScreens([screen({ ...downloading({ deferredCommit: true }) })], NOW_MS);
+    expect(s.state).toBe('downloading');
+    expect(s.label).toBe('Still showing previous content');
+    expect(s.sub).toBe('Lobby TV · new content 62% of 141 MB');
+    expect(s.label).not.toMatch(/playback reported/i);
+  });
+
+  it('the idle lane posts every five minutes: a two-minute-old download proof is still downloading, not "no picture"', () => {
+    const s = deriveDeliveryFromScreens([
+      screen({ lastRenderedHash: 'idle:content-downloading', lastRenderedAt: new Date(NOW_MS - 2 * 60_000).toISOString() }),
+    ], NOW_MS);
+    expect(s.state).toBe('downloading');
+    // No snapshot (an older player bundle): the screen is named, no number is claimed.
+    expect(s.sub).toBe('Lobby TV');
+  });
+
+  it('stale snapshot: never progress — the rollup reads the proof alone', () => {
+    const held = deriveDeliveryFromScreens([screen({ ...downloading({ deferredCommit: true }, 10 * 60_000) })], NOW_MS);
+    expect(held.label).toBe('Playback reported');
+    const splash = deriveDeliveryFromScreens([
+      screen({ lastRenderedHash: 'idle:content-downloading', ...downloading({}, 10 * 60_000) }),
+    ], NOW_MS);
+    expect(splash.state).toBe('downloading');
+    expect(splash.sub).toBe('Lobby TV');
+  });
+
+  it('no size yet: bytes so far, never a percent', () => {
+    const s = deriveDeliveryFromScreens([
+      screen({ lastRenderedHash: 'idle:content-downloading', ...downloading({ bytesTotal: null, bytesLoaded: 20 * MB }) }),
+    ], NOW_MS);
+    expect(s.sub).toBe('Lobby TV · 20 MB so far');
+  });
+
+  it('several screens: how many, not a blended percent', () => {
+    const s = deriveDeliveryFromScreens([
+      screen({ id: 'a', name: 'Lobby TV', lastRenderedHash: 'idle:content-downloading', ...downloading() }),
+      screen({ id: 'b', name: 'Cafe', ...downloading({ deferredCommit: true }) }),
+      screen({ id: 'c', name: 'Gym' }),
+    ], NOW_MS);
+    expect(s.state).toBe('downloading');
+    expect(s.label).toBe('Downloading new content');
+    expect(s.sub).toBe('on 2 of 3 screens');
+    expect(s.worstNames).toEqual(['Lobby TV', 'Cafe']);
+  });
+
+  it('a real problem on another screen still leads; a download outranks only the healthy state', () => {
+    const offline = deriveDeliveryFromScreens([
+      screen({ id: 'a', lastRenderedHash: 'idle:content-downloading', ...downloading() }),
+      screen({ id: 'b', name: 'Cafe', status: 'OFFLINE' }),
+    ], NOW_MS);
+    expect(offline.state).toBe('offline');
+    expect(worstTargetState(['acknowledged', 'downloading'])).toBe('downloading');
+    expect(worstTargetState(['downloading', 'unknown'])).toBe('unknown');
+    expect(worstTargetState(['downloading', 'no-picture'])).toBe('no-picture');
+  });
+
+  it('a download never talks a stale proof out of "no picture" — it is liveness, not a picture', () => {
+    const [t] = deriveTargetsFromScreens([
+      screen({ renderHealth: 'STALE', renderStale: true, lastRenderedAt: new Date(NOW_MS - 20 * 60_000).toISOString(), ...downloading() }),
+    ], NOW_MS);
+    expect(t.state).toBe('no-picture');
+  });
+
+  it('content that plays with one more file downloading still reports playback, and the target carries the download', () => {
+    const [t] = deriveTargetsFromScreens([screen({ ...downloading() })], NOW_MS);
+    expect(t.state).toBe('acknowledged');
+    expect(t.pictureState).toBe('reported');
+    expect(t.download).toMatchObject({ state: 'downloading', percent: 62 });
+    // No download → no key at all (the receipt shape is unchanged).
+    expect(deriveTargetsFromScreens([screen()], NOW_MS)[0]).not.toHaveProperty('download');
+  });
+
+  it('over a stored receipt, a live download is the fresher fact', () => {
+    const receipt = { ...target('not-updated', 'Lobby TV'), screenId: 'sc1' };
+    const [t] = overlayCurrentScreenHealth([receipt], [screen({ lastRenderedHash: 'idle:content-downloading', ...downloading() })], NOW_MS);
+    expect(t.state).toBe('downloading');
+    expect(t.download?.percent).toBe(62);
+  });
+
+  it('"Content unavailable" stays a playback problem', () => {
+    const s = deriveDeliveryFromScreens([screen({ lastRenderedHash: 'idle:content-unavailable', ...downloading() })], NOW_MS);
+    expect(s.state).toBe('playback-issue');
+    expect(s.tone).toBe('bad');
+  });
+
+  it('a downloading playlist is not an exception on the library', () => {
+    const r = buildPlaylistRow({
+      playlist: { id: 'p1', name: 'Promo' },
+      schedules: [sched({ screenId: 'sc1' })],
+      screens: [screen({ lastRenderedHash: 'idle:content-downloading', ...downloading() })],
+      groups: [],
+      now: WED_10AM,
+    });
+    expect(r.delivery.state).toBe('downloading');
+    expect(needsAttention(r)).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
 // THE LANGUAGE GATE (§4.3 + the handoff's documented correction, §10)
 // ─────────────────────────────────────────────────────────────────────
 describe('§4.3 prohibited language', () => {
@@ -758,6 +892,17 @@ describe('§4.3 prohibited language', () => {
     push(DELIVERY_UNAVAILABLE.label); push(DELIVERY_UNAVAILABLE.detail);
     push(DELIVERY_UNAVAILABLE.clause);
     push(deriveDeliveryFromScreens([screen({ id: 'a' })], NOW_MS).label);
+    // 2026-09-27 — every shape the downloading rollup can take.
+    for (const screens of [
+      [screen({ lastRenderedHash: 'idle:content-downloading', ...downloading() })],
+      [screen({ ...downloading({ deferredCommit: true }) })],
+      [screen({ lastRenderedHash: 'idle:content-downloading', ...downloading({ bytesTotal: null }) })],
+      [screen({ lastRenderedHash: 'idle:content-downloading' })],
+      [screen({ id: 'a', lastRenderedHash: 'idle:content-downloading' }), screen({ id: 'b', ...downloading({ deferredCommit: true }) })],
+    ]) {
+      const s = deriveDeliveryFromScreens(screens, NOW_MS);
+      push(s.label); push(s.sub); push(s.detail); push(s.clause);
+    }
 
     for (const s of [
       [] as OpsScheduleRef[],

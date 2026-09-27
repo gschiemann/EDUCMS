@@ -34,12 +34,13 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { AlertTriangle, ArrowLeft, Loader2, Monitor, PauseCircle, PlayCircle, Plus, Power, Settings, Trash2 } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Download, Loader2, Monitor, PauseCircle, PlayCircle, Plus, Power, Settings, Trash2 } from 'lucide-react';
 import {
   deriveTargetsFromScreens, describeReach, exactStamp, timeAgo,
   type DeliveryPayload, type DeliverySummary, type OpsScreenRef, type PlaylistSummaryRow,
   type ScreenPlaybackCopy,
 } from './playlistOps';
+import { downloadLine } from '@/components/screens/contentDownload';
 
 const INK = 'text-[#111A3A]';
 const INK_2 = 'text-[#536181]';
@@ -578,6 +579,27 @@ export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
                   {ev && ev.state === 'no-picture' && (
                     <span className="text-[11px] font-bold text-rose-700 shrink-0">No picture confirmed</span>
                   )}
+                  {/* New content still downloading to this screen (2026-09-27):
+                      nothing of it on glass yet, the previous content held
+                      meanwhile, or — on a screen already playing it — one more
+                      of its files. Live progress only; no ETA. */}
+                  {ev && (ev.state === 'downloading' || (ev.pictureState === 'reported' && ev.download?.state === 'downloading')) && (() => {
+                    const line = downloadLine(
+                      ev.state !== 'downloading' ? 'background' : ev.download?.state === 'held' ? 'showing-previous' : 'downloading',
+                      ev.download,
+                    );
+                    const said = t(line.message.key, line.message.values);
+                    return (
+                      <span
+                        className="inline-flex items-center gap-1 text-[11px] font-bold text-sky-700 min-w-0"
+                        title={said}
+                        data-testid="screen-download"
+                      >
+                        <Download className="w-3 h-3 shrink-0" aria-hidden />
+                        <span className="truncate">{said}</span>
+                      </span>
+                    );
+                  })()}
                   {sc?.pushChannel === 'stale' && (
                     <span className={`text-[11px] ${INK_3} shrink-0`}>Instant commands not arriving</span>
                   )}
