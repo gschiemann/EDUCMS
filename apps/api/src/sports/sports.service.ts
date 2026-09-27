@@ -81,6 +81,14 @@ import { FeatureFlagsService, FLAGS } from '../feature-flags/feature-flags.servi
 import { withDbRetry } from '../prisma/with-db-retry';
 import type { Game } from '@cms/database';
 import {
+  type FeedCursor,
+  cleanFeedEnvelope,
+  hasEnvelope,
+  orderFeedPacket,
+  parseFeedCursor,
+  readFeedCursor,
+} from './feed-order';
+import {
   type CommandInput,
   type ResolvedCommandContext,
   type StateChange,
@@ -163,6 +171,26 @@ type AutoPushConfig = {
 
 /** A Game row as the engine reads it (Prisma returns every column). */
 type GameRow = Game;
+
+/**
+ * One pushed game snapshot (the generic feed and the operator's manual
+ * ingest). Every field is optional. `session` / `seq` / `eventId` /
+ * `occurredAt` are the ordering envelope (feed-order.ts, K12-F14).
+ */
+type FeedIngestDto = {
+  homeScore?: number;
+  awayScore?: number;
+  clockMs?: number;
+  clockRunning?: boolean;
+  segment?: number;
+  session?: string;
+  seq?: number;
+  eventId?: string;
+  occurredAt?: number | string;
+};
+
+/** A snapshot's verdict: applied, or refused by the ordering rules and why. */
+type FeedIngestOutcome = { game: GameRow; accepted: boolean; reason?: string };
 
 /**
  * A command's compare-and-swap write matched nothing: another writer changed
@@ -5145,24 +5173,26 @@ export class SportsService {
    * Feed-authorized ingest: the caller proved possession of the game's feed
    * token (verified in the public board controller), so there's no dashboard
    * session / tenant context. Resolve the game's own tenant, then reuse the
-   * exact same clamped `ingest()` path.
+   * exact same clamped `ingest()` path. Returns the game row (a packet the
+   * ordering rules refused leaves it unchanged — see ingestFeedPacket for
+   * the verdict).
    */
-  async ingestByFeed(
-    id: string,
-    dto: {
-      homeScore?: number;
-      awayScore?: number;
-      clockMs?: number;
-      clockRunning?: boolean;
-      segment?: number;
-    },
-  ) {
+  async ingestByFeed(id: string, dto: FeedIngestDto) {
+    return (await this.ingestFeedPacket(id, dto)).game;
+  }
+
+  /**
+   * The machine-feed ingest WITH its verdict (K12-F14): `accepted: false` and
+   * a reason when the packet was out of order, a straggler from a superseded
+   * session or a duplicate — never applied, never an error the box retries.
+   */
+  async ingestFeedPacket(id: string, dto: FeedIngestDto): Promise<FeedIngestOutcome> {
     // ten-ok: the machine-feed lane. The caller is a vendor scoreboard box
     // holding a game-scoped feed token (already verified by the controller
     // against this game's feedTokenVersion) and has no account, so there is no
     // caller tenant to compare against. This read is the RESOLVER: the tenantId
-    // it returns is what the tenant-scoped `ingest()` below is called with, so
-    // the feed can only ever drive the game its own token names.
+    // it returns is what the tenant-scoped command below is run with, so the
+    // feed can only ever drive the game its own token names.
     const game = await this.prisma.client.game.findUnique({
       where: { id },
       select: { tenantId: true },
@@ -5174,24 +5204,63 @@ export class SportsService {
     // staying manual. stampFeed marks packets from this machine path in
     // stats.feed (the guided-setup liveness pill) — the manual admin path
     // must NOT stamp, or an operator edit would masquerade as a vendor feed.
-    return this.ingest(game.tenantId, id, dto, { auto: true, stampFeed: true }, feedActor('feed'));
+    return this.ingestCommand(game.tenantId, id, dto, { auto: true, stampFeed: true }, feedActor('feed'));
   }
 
   async ingest(
     tenantId: string,
     id: string,
-    dto: {
-      homeScore?: number;
-      awayScore?: number;
-      clockMs?: number;
-      clockRunning?: boolean;
-      segment?: number;
-    },
+    dto: FeedIngestDto,
     opts: { auto?: boolean; stampFeed?: boolean } = {},
     actor?: CommandInput,
   ) {
+    return (await this.ingestCommand(tenantId, id, dto, opts, actor)).game;
+  }
+
+  /**
+   * One pushed snapshot, as one command.
+   *
+   * K12-F14 — ORDER. A snapshot may carry an envelope (session / seq /
+   * eventId / occurredAt — feed-order.ts). One that is older than what the
+   * game already took, a straggler from a session a newer box replaced, or a
+   * repeat is refused before anything is read into the game, so a delayed or
+   * replayed packet can never roll the score or the clock backwards. The
+   * cursor advances in the same compare-and-swap write as the snapshot.
+   *
+   * K12-F14 — HONEST TIME. The clock reading stored is the feed's own reading
+   * when it sent one; otherwise, on a period change, the new period's start;
+   * otherwise — a boolean-only "stopped" / "running" packet — the clock's
+   * CURRENT projected reading. A boolean-only stop used to keep the reading
+   * from when the clock was last started, adding the elapsed time back.
+   *
+   * K12-F08 — a feed never runs a clock that has run out: a snapshot that
+   * would leave a clock running at (or past) its expiry stores it held, and
+   * when that packet is what ended the period the horn sounds once, the same
+   * as the expiry sweep.
+   */
+  private async ingestCommand(
+    tenantId: string,
+    id: string,
+    dto: FeedIngestDto,
+    opts: { auto?: boolean; stampFeed?: boolean },
+    actor: CommandInput,
+  ): Promise<FeedIngestOutcome> {
+    // Validated before the transaction: a malformed envelope is a 400 and
+    // must never be retried.
+    const envelope = cleanFeedEnvelope(dto as Record<string, unknown>);
     return this.runGameCommand(tenantId, id, 'feed.ingest', actor, dto, async (scope) => {
       const game = scope.before;
+      const def = this.sportOf(game.sport);
+      const now = new Date();
+      const nowMs = now.getTime();
+
+      let cursor: FeedCursor | null = null;
+      if (hasEnvelope(envelope)) {
+        const verdict = orderFeedPacket(readFeedCursor(game.stats), envelope);
+        if (!verdict.accept) return { game, accepted: false, reason: verdict.reason };
+        cursor = verdict.cursor;
+      }
+
       const data: Record<string, unknown> = {};
       const applied: Record<string, unknown> = {};
 
@@ -5205,59 +5274,63 @@ export class SportsService {
         if (Number.isFinite(v)) { data.awayScore = v; applied.awayScore = v; }
       }
 
-      // Segment — clamp to >= 1, and apply the same side effects setSegment
-      // uses: reset the game clock to the segment start and stop it.
-      // Without this, an integration reporting "period 2" leaves the clock
-      // wherever the operator left it — a count-up soccer clock would jump
-      // forward by the entire halftime gap, and a countdown football clock
-      // would carry the Q1 time into Q2.
+      // Segment — clamp to >= 1. A new period resets the game clock to the
+      // period start and stops it, as setSegment does (a count-up soccer clock
+      // would otherwise jump forward by the whole halftime gap).
+      let newSegment: number | null = null;
       if (dto.segment !== undefined) {
         const v = Math.max(1, Math.round(Number(dto.segment)));
-        if (Number.isFinite(v) && v !== game.segment) {
+        if (Number.isFinite(v)) {
           data.segment = v;
           applied.segment = v;
-          const def = this.sportOf(game.sport);
-          if (def.clock.type !== 'none') {
-            data.clockMs = this.segmentStartMs(def, game.stats, v);
-            data.clockRunning = false;
-            data.clockUpdatedAt = new Date();
-          }
-        } else if (Number.isFinite(v)) {
-          // Same segment — still record it in applied so INGEST log is correct.
-          data.segment = v;
-          applied.segment = v;
+          if (v !== game.segment) newSegment = v;
         }
       }
 
-      // Clock — re-anchor clockUpdatedAt = now whenever either clock field
-      // is provided, exactly mirroring what the 'set' clock action does.
-      // When clockRunning flips (start/stop transition), run the same helper
-      // chain clockAction uses: freeze penalty-box timers and slave the shot
-      // clock — "all the same rules apply if we are doing it or the
-      // integration is doing it" (Greg's rule, research doc §3).
-      const clockChanged = dto.clockMs !== undefined || dto.clockRunning !== undefined;
-      if (clockChanged) {
-        const now = new Date();
-        if (dto.clockMs !== undefined) {
-          const v = Math.max(0, Math.round(Number(dto.clockMs)));
-          if (Number.isFinite(v)) { data.clockMs = v; applied.clockMs = v; }
+      // Clock — re-anchored at `now` whenever the snapshot says anything about
+      // it. When the running state changes, the same helper chain clockAction
+      // uses freezes / resumes the penalty box and slaves the shot clock —
+      // "all the same rules apply if we are doing it or the integration is
+      // doing it" (Greg's rule, research doc §3).
+      const clockProvided = dto.clockMs !== undefined || dto.clockRunning !== undefined;
+      let endsPeriod = false;
+      if (def.clock.type !== 'none' && (clockProvided || newSegment !== null)) {
+        const feedMs = dto.clockMs !== undefined ? Math.max(0, Math.round(Number(dto.clockMs))) : NaN;
+        let nextMs: number;
+        if (Number.isFinite(feedMs)) {
+          nextMs = feedMs;
+          applied.clockMs = feedMs;
+        } else if (newSegment !== null) {
+          nextMs = isUntimedSegment(def, newSegment) ? 0 : this.segmentStartMs(def, game.stats, newSegment);
+        } else {
+          nextMs = projectGameClockMs(game, def.clock.type, nowMs);
         }
-        if (dto.clockRunning !== undefined) {
-          data.clockRunning = Boolean(dto.clockRunning);
-          applied.clockRunning = data.clockRunning;
+        const wanted =
+          dto.clockRunning !== undefined ? Boolean(dto.clockRunning) : newSegment !== null ? false : game.clockRunning;
+        if (dto.clockRunning !== undefined) applied.clockRunning = wanted;
+        let nextRunning = wanted;
+        if (isGameClockExpired(def, game.stats, nextMs)) {
+          const wasHeld =
+            newSegment === null &&
+            !game.clockRunning &&
+            isGameClockExpired(def, game.stats, projectGameClockMs(game, def.clock.type, nowMs));
+          endsPeriod = game.status === 'LIVE' && (game.clockRunning || wanted) && !wasHeld;
+          if (nextRunning) {
+            nextRunning = false;
+            applied.clockRunning = false;
+          }
+          if (endsPeriod) applied.expired = true;
         }
+        data.clockMs = nextMs;
+        data.clockRunning = nextRunning;
         data.clockUpdatedAt = now;
         applied.clockUpdatedAt = now;
 
-        const runningFlipped =
-          dto.clockRunning !== undefined && dto.clockRunning !== game.clockRunning;
-        if (runningFlipped) {
-          const running = Boolean(dto.clockRunning);
-          let mergedStats = this.syncPenaltiesToClock(game.stats, running, now);
+        if (nextRunning !== game.clockRunning) {
+          let mergedStats = this.syncPenaltiesToClock(game.stats, nextRunning, now);
           const sourceStats = mergedStats ?? game.stats;
-          // T2-10: pass the incoming game clock for clamping (Invariant #6).
-          const ingestClockMs = typeof dto.clockMs === 'number' ? dto.clockMs : game.clockMs;
-          const shotStats = this.syncShotClockToGameClock(sourceStats, true, running, now, ingestClockMs);
+          // T2-10: clamp the shot clock to the new game-clock reading.
+          const shotStats = this.syncShotClockToGameClock(sourceStats, true, nextRunning, now, nextMs);
           if (shotStats) mergedStats = shotStats;
           if (mergedStats) data.stats = mergedStats;
         }
@@ -5268,23 +5341,31 @@ export class SportsService {
         // connected heartbeat (a vendor box POSTing an empty/unchanged body):
         // the packet itself is liveness proof, so stamp stats.feed (throttled
         // to one write per FEED_STAMP_MIN_INTERVAL_MS) or the guided-setup
-        // pill would report a healthy feed as dead. accepted:false records
-        // that nothing was applied.
-        if (opts.stampFeed && this.feedStampDue(game.stats, Date.now())) {
+        // pill would report a healthy feed as dead. A sequenced heartbeat
+        // still advances the ordering cursor.
+        const stampDue = !!opts.stampFeed && this.feedStampDue(game.stats, Date.now());
+        if (stampDue || cursor) {
           const prev = game.stats && typeof game.stats === 'object' ? (game.stats as Record<string, unknown>) : {};
-          return scope.write({ stats: { ...prev, feed: this.feedStamp('feed', false) } });
+          const stats: Record<string, unknown> = { ...prev };
+          if (stampDue) stats.feed = this.feedStamp('feed', false);
+          if (cursor) stats.feedCursor = cursor;
+          return { game: await scope.write({ stats }), accepted: true };
         }
-        return game;
+        return { game, accepted: true };
       }
 
-      // Machine-feed liveness stamp — folded into THIS write. Only attach a
-      // stats copy when stats is already being written (free) or the previous
-      // stamp is past the throttle window.
-      if (opts.stampFeed && (data.stats !== undefined || this.feedStampDue(game.stats, Date.now()))) {
+      // Machine-feed liveness stamp and the ordering cursor ride THIS write.
+      // The stamp is attached only when stats is already being written (free)
+      // or the previous stamp is past the throttle window; the cursor always.
+      const stampNow =
+        !!opts.stampFeed && (data.stats !== undefined || !!cursor || this.feedStampDue(game.stats, Date.now()));
+      if (stampNow || cursor) {
         const base = data.stats ?? game.stats;
         const baseObj: Record<string, unknown> =
           base && typeof base === 'object' ? { ...(base as Record<string, unknown>) } : {};
-        data.stats = { ...baseObj, feed: this.feedStamp('feed', true) };
+        if (stampNow) baseObj.feed = this.feedStamp('feed', true);
+        if (cursor) baseObj.feedCursor = cursor;
+        data.stats = baseObj;
       }
 
       const prevScores = {
@@ -5293,10 +5374,33 @@ export class SportsService {
       };
       const updated = await scope.write(data);
       // Efficiency #3 counterpart of clockAction's wake: a feed that starts
-      // (or re-anchors) a running clock snaps the auto-advance sweep out of
-      // its 30s idle backoff.
-      if (clockChanged && updated.clockRunning) scope.after(() => wakeClockSweep());
-      await scope.event('INGEST', { ...applied, change: scope.change() });
+      // (or re-anchors) a running clock snaps the expiry sweep out of its 30s
+      // idle backoff.
+      if ((clockProvided || newSegment !== null) && updated.clockRunning) scope.after(() => wakeClockSweep());
+      await scope.event('INGEST', {
+        ...applied,
+        ...(hasEnvelope(envelope) ? { envelope } : {}),
+        change: scope.change(),
+      });
+      if (endsPeriod) {
+        await scope.event('CLOCK', {
+          action: 'expired',
+          segment: updated.segment,
+          clockMs: updated.clockMs,
+          clockRunning: false,
+          auto: true,
+          source: 'feed',
+        });
+        await scope.event('CUE', {
+          key: 'horn',
+          label: 'Horn',
+          emoji: '📯',
+          target: 'ALL',
+          auto: true,
+          source: 'clock-expired',
+          segmentLabel: this.segmentLabelOf(def, updated.segment),
+        });
+      }
 
       // AUTO celebration trigger — only on the machine-feed path, and only
       // when a score field was actually applied.
@@ -5309,7 +5413,7 @@ export class SportsService {
           'feed',
         );
       }
-      return updated;
+      return { game: updated, accepted: true };
     });
   }
 
@@ -7047,6 +7151,11 @@ export class SportsService {
     }
 
     const cleaned = this.cleanCtsSnapshot(snapshot);
+    // K12-F14 — the ordering envelope (feed-order.ts). The bridge POSTs at
+    // ~5 Hz with keepalive fetches that can overlap, so an older snapshot can
+    // land after a newer one — it used to roll the overlay back and re-fire a
+    // celebration for a score it had already counted. Malformed → 400.
+    const envelope = cleanFeedEnvelope(snapshot);
     // Sanity bail — if every field is missing the snapshot is junk and
     // we silently drop it (don't bump lastUpdateAt; otherwise a stream
     // of empty snapshots would mask a real CTS outage).
@@ -7086,6 +7195,7 @@ export class SportsService {
     const actor: CommandInput = auth.actorUserId
       ? { actor: { kind: 'user', userId: auth.actorUserId } }
       : feedActor('cts');
+    let refusedAs: string | null = null;
     try {
       await this.runGameCommand(gate.tenantId, gameId, 'feed.cts', actor, null, async (scope) => {
         const tx = scope.tx;
@@ -7107,11 +7217,25 @@ export class SportsService {
             ? (prevStats.cts as Record<string, unknown>)
             : {};
 
+        // K12-F14 — out of order, a straggler from a superseded session, or a
+        // repeat: refused before it touches anything (the CTS cursor lives in
+        // stats.cts.cursor, separate from the generic feed's).
+        let ctsCursor: FeedCursor | null = null;
+        if (hasEnvelope(envelope)) {
+          const verdict = orderFeedPacket(parseFeedCursor(prevCts.cursor), envelope);
+          if (!verdict.accept) {
+            refusedAs = verdict.reason;
+            return;
+          }
+          ctsCursor = verdict.cursor;
+        }
+
         const nowIso = new Date().toISOString();
         const nextCts: Record<string, unknown> = {
           ...prevCts,
           ...cleaned,
           lastUpdateAt: nowIso,
+          ...(ctsCursor ? { cursor: ctsCursor } : {}),
         };
 
         // What changed forensically? Score / segment / clockRunning / horn
@@ -7345,6 +7469,7 @@ export class SportsService {
       throw err;
     }
 
+    if (refusedAs) return { ok: true, accepted: false, reason: refusedAs };
     return { ok: true, accepted: true };
   }
 

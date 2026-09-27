@@ -487,6 +487,17 @@ export function CtsBridge({
   const portRef = useRef<SerialPortLite | null>(null);
   const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
   const disposedRef = useRef<boolean>(false);
+  // K12-F14 — the ordering envelope on every snapshot this bridge POSTs to
+  // the game: one session id per mount (a reloaded kiosk or a replacement box
+  // is a NEW session and takes the game over; its predecessor's stragglers
+  // are refused) and a strictly increasing sequence number, so a keepalive
+  // POST that lands after a newer one can never roll the board back or count
+  // a goal twice. Chromium-83 safe (no crypto.randomUUID).
+  const feedSessionRef = useRef<string>('');
+  if (!feedSessionRef.current) {
+    feedSessionRef.current = `bridge-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  }
+  const feedSeqRef = useRef(0);
 
   // ── Web Serial auto-reconnect (2026-06-12, sports-venue audit P1) ──
   // A kicked/replugged console cable used to kill the bridge until a
@@ -1022,6 +1033,8 @@ export function CtsBridge({
       const awaySc = snap.awayShotClock;
 
       const body: Record<string, unknown> = {
+        session: feedSessionRef.current,
+        seq: ++feedSeqRef.current,
         clockMs: parseCtsClockToMs(snap.clock) ?? undefined,
         clockRunning,
         segment: typeof snap.period === 'number' ? snap.period : undefined,
@@ -1192,6 +1205,8 @@ export function CtsBridge({
               : {};
 
       const body: Record<string, unknown> = {
+        session: feedSessionRef.current, // K12-F14 ordering envelope
+        seq: ++feedSeqRef.current,
         clockMs: parseCtsClockToMs(snap.clock) ?? undefined,
         clockRunning: snap.clockRunning,
         segment: typeof snap.period === 'number' ? snap.period : undefined,

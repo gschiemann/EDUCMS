@@ -466,6 +466,11 @@ export class SportsController {
       clockMs?: number;
       clockRunning?: boolean;
       segment?: number;
+      // K12-F14 ordering envelope (feed-order.ts) — optional.
+      session?: string;
+      seq?: number;
+      eventId?: string;
+      occurredAt?: number | string;
     },
   ) {
     const { dto, ctx } = userCommand(req, body);

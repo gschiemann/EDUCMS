@@ -259,7 +259,8 @@ export const TRACKED_COLUMNS = [
  * conflict with the next heartbeat.
  */
 function isMachineStatsKey(key: string): boolean {
-  return key === 'feed' || key === 'cts' || key.startsWith('swimAuditAt:');
+  // `feedCursor` — the feed packet-ordering cursor (feed-order.ts, K12-F14).
+  return key === 'feed' || key === 'cts' || key === 'feedCursor' || key.startsWith('swimAuditAt:');
 }
 
 /** Marks a stats key that did not exist on that side of the change. */

@@ -517,3 +517,148 @@ describe('K12-F08 — an expired period holds until the table advances it', () =
     expect(horns(gameEvent.rows)[0].payload.segmentLabel).toBe('Q4');
   });
 });
+
+describe('K12-F14 — feed snapshots are applied in order, with honest time', () => {
+  const horns = (rows: any[]) => rows.filter((e) => e.type === 'CUE' && e.payload?.key === 'horn');
+
+  it('a boolean-only "still running" packet keeps the projected reading (the clock never jumps back)', async () => {
+    const { service } = setup();
+    const g: any = await newGame(service, 'basketball');
+    await service.clockAction(TENANT, g.id, { action: 'set', ms: 60_000 });
+    await service.clockAction(TENANT, g.id, { action: 'start' });
+    at(10_000);
+    await service.ingestByFeed(g.id, { clockRunning: true });
+    expect({ ms: g.clockMs, running: g.clockRunning }).toEqual({ ms: 50_000, running: true });
+    expect(new Date(g.clockUpdatedAt).getTime()).toBe(T0 + 10_000);
+  });
+
+  it('a boolean-only stop freezes the shot clock and the penalty box at their current readings too', async () => {
+    const { service } = setup();
+    const g: any = await newGame(service, 'water_polo');
+    await service.setPenalties(TENANT, g.id, { action: 'add', team: 'home', lenSec: 20, player: '4' });
+    await service.clockAction(TENANT, g.id, { action: 'start' });
+    at(6_000);
+    await service.ingestByFeed(g.id, { clockRunning: false });
+    expect({ ms: g.clockMs, running: g.clockRunning }).toEqual({ ms: 8 * 60_000 - 6_000, running: false });
+    expect(g.stats.shotClock).toMatchObject({ ms: 24_000, running: false });
+    expect(g.stats.penalties[0]).toMatchObject({ ms: 14_000, running: false });
+  });
+
+  it('an older snapshot never overwrites a newer one; the next in order applies', async () => {
+    const { service } = setup();
+    const g: any = await newGame(service, 'basketball');
+    const a = await service.ingestFeedPacket(g.id, { session: 'box-1', seq: 5, homeScore: 10 });
+    expect(a.accepted).toBe(true);
+    const late = await service.ingestFeedPacket(g.id, { session: 'box-1', seq: 4, homeScore: 8 });
+    expect(late).toMatchObject({ accepted: false, reason: 'stale-sequence' });
+    const replay = await service.ingestFeedPacket(g.id, { session: 'box-1', seq: 5, homeScore: 8 });
+    expect(replay).toMatchObject({ accepted: false, reason: 'stale-sequence' });
+    expect(g.homeScore).toBe(10);
+    await service.ingestFeedPacket(g.id, { session: 'box-1', seq: 6, homeScore: 12 });
+    expect(g.homeScore).toBe(12);
+  });
+
+  it('a delayed clock snapshot cannot roll the clock back', async () => {
+    const { service } = setup();
+    const g: any = await newGame(service, 'basketball');
+    await service.ingestFeedPacket(g.id, { session: 's', seq: 2, clockMs: 300_000, clockRunning: true });
+    at(1_000);
+    const r = await service.ingestFeedPacket(g.id, { session: 's', seq: 1, clockMs: 301_000, clockRunning: true });
+    expect(r.accepted).toBe(false);
+    expect({ ms: g.clockMs, at: new Date(g.clockUpdatedAt).getTime() }).toEqual({ ms: 300_000, at: T0 });
+  });
+
+  it('switching sources: a new session takes over and the old session can never come back', async () => {
+    const { service } = setup();
+    const g: any = await newGame(service, 'basketball');
+    await service.ingestFeedPacket(g.id, { session: 'old-box', seq: 100, homeScore: 20 });
+    await service.ingestFeedPacket(g.id, { session: 'new-box', seq: 1, homeScore: 22 });
+    expect(g.homeScore).toBe(22);
+    const straggler = await service.ingestFeedPacket(g.id, { session: 'old-box', seq: 101, homeScore: 20 });
+    expect(straggler).toMatchObject({ accepted: false, reason: 'retired-session' });
+    expect(g.homeScore).toBe(22);
+  });
+
+  it('disconnect and recover: the same session carries on from its next number', async () => {
+    const { service } = setup();
+    const g: any = await newGame(service, 'basketball');
+    await service.ingestFeedPacket(g.id, { session: 'box', seq: 7, homeScore: 5 });
+    at(90_000); // a minute and a half with no packets
+    const back = await service.ingestFeedPacket(g.id, { session: 'box', seq: 8, homeScore: 7 });
+    expect(back.accepted).toBe(true);
+    expect(g.homeScore).toBe(7);
+  });
+
+  it('a repeated eventId applies once; occurredAt orders a session that sends no numbers', async () => {
+    const { service } = setup();
+    const g: any = await newGame(service, 'basketball');
+    await service.ingestFeedPacket(g.id, { eventId: 'evt-1', homeScore: 3 });
+    const dup = await service.ingestFeedPacket(g.id, { eventId: 'evt-1', homeScore: 3 });
+    expect(dup).toMatchObject({ accepted: false, reason: 'duplicate-event' });
+
+    const t = Date.parse('2026-09-27T18:00:05Z');
+    await service.ingestFeedPacket(g.id, { session: 'clockless', occurredAt: t, awayScore: 4 });
+    const older = await service.ingestFeedPacket(g.id, { session: 'clockless', occurredAt: t - 500, awayScore: 1 });
+    expect(older).toMatchObject({ accepted: false, reason: 'stale-observation' });
+    expect(g.awayScore).toBe(4);
+  });
+
+  it('an unsequenced legacy feed keeps working exactly as before', async () => {
+    const { service } = setup();
+    const g: any = await newGame(service, 'basketball');
+    await service.ingestByFeed(g.id, { homeScore: 9 });
+    await service.ingestByFeed(g.id, { homeScore: 7 });
+    expect(g.homeScore).toBe(7);
+    expect(g.stats.feedCursor).toBeUndefined();
+  });
+
+  it('refuses a malformed envelope with a reason (FEED_ENVELOPE_INVALID)', async () => {
+    const { service } = setup();
+    const g: any = await newGame(service, 'basketball');
+    for (const bad of [
+      { seq: 3 }, // a counter with no session
+      { session: 'has space' },
+      { session: 's', seq: -1 },
+      { session: 's', seq: 1.5 },
+      { eventId: '' },
+      { occurredAt: 'yesterday' },
+    ]) {
+      const err = await rejection(service.ingestFeedPacket(g.id, bad as any));
+      expect(err).toBeInstanceOf(BadRequestException);
+      expect(err.getResponse()).toMatchObject({ code: 'FEED_ENVELOPE_INVALID' });
+    }
+  });
+
+  it('a feed never runs a clock that has run out; the packet that ends the period sounds the horn once', async () => {
+    const { service, gameEvent } = setup();
+    const g: any = await newGame(service, 'basketball');
+    await service.setStatus(TENANT, g.id, { status: 'LIVE' });
+    await service.ingestFeedPacket(g.id, { session: 'b', seq: 1, clockMs: 400, clockRunning: true });
+    at(700);
+    // The console's own clock reached zero and it still says "running".
+    await service.ingestFeedPacket(g.id, { session: 'b', seq: 2, clockMs: 0, clockRunning: true });
+    expect({ segment: g.segment, ms: g.clockMs, running: g.clockRunning }).toEqual({ segment: 1, ms: 0, running: false });
+    expect(horns(gameEvent.rows)).toHaveLength(1);
+    await service.ingestFeedPacket(g.id, { session: 'b', seq: 3, clockMs: 0, clockRunning: true });
+    await service.ingestFeedPacket(g.id, { session: 'b', seq: 4, clockMs: 0, clockRunning: false });
+    expect(horns(gameEvent.rows)).toHaveLength(1);
+    expect(await service.autoAdvanceExpiredClocks()).toEqual({ found: 0, changed: 0 });
+  });
+
+  it('CTS: an older snapshot never rolls the overlay back, and a goal is celebrated once', async () => {
+    const { service, gameEvent } = setup();
+    const g: any = await newGame(service, 'soccer');
+    const auth = { tenantId: null, source: 'cts-feed' };
+    expect(await service.ingestCtsSnapshot(g.id, { session: 'bridge', seq: 1, homeScore: 0 }, auth))
+      .toEqual({ ok: true, accepted: true });
+    await service.ingestCtsSnapshot(g.id, { session: 'bridge', seq: 3, homeScore: 1 }, auth);
+    // seq 2 was the pre-goal packet, delivered late.
+    expect(await service.ingestCtsSnapshot(g.id, { session: 'bridge', seq: 2, homeScore: 0 }, auth))
+      .toEqual({ ok: true, accepted: false, reason: 'stale-sequence' });
+    await service.ingestCtsSnapshot(g.id, { session: 'bridge', seq: 4, homeScore: 1 }, auth);
+    expect(g.homeScore).toBe(1);
+    expect(g.stats.cts.homeScore).toBe(1);
+    const goals = gameEvent.rows.filter((e: any) => e.type === 'CUE' && e.payload?.key === 'goal');
+    expect(goals).toHaveLength(1);
+  });
+});

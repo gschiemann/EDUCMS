@@ -549,6 +549,14 @@ export class SportsBoardController {
     });
   }
 
+  /**
+   * The generic score feed. K12-F14: a snapshot may carry an ordering
+   * envelope — `session` (one id per box boot), `seq` (increasing within the
+   * session), `eventId`, `occurredAt` (see feed-order.ts). A snapshot that is
+   * older than what the game already took, from a session a newer box
+   * replaced, or a repeat is answered `{ ok: true, accepted: false, reason }`
+   * and changes nothing — a 200, so a box never retries it.
+   */
   @Post(':id/feed')
   async feed(
     @Param('id') id: string,
@@ -561,6 +569,10 @@ export class SportsBoardController {
       clockMs?: number;
       clockRunning?: boolean;
       segment?: number;
+      session?: string;
+      seq?: number;
+      eventId?: string;
+      occurredAt?: number | string;
     },
   ) {
     // Rate-limit BEFORE any work (and before the constant-time token check) so
@@ -587,7 +599,9 @@ export class SportsBoardController {
     const feedVersion = await this.sports.getFeedTokenVersion(id);
     this.assertFeedAuth(id, headerToken, queryToken, feedVersion);
 
-    const applied = await this.sports.ingestByFeed(id, body || {});
-    return { ok: true, applied };
+    const outcome = await this.sports.ingestFeedPacket(id, body || {});
+    return outcome.accepted
+      ? { ok: true, accepted: true, applied: outcome.game }
+      : { ok: true, accepted: false, reason: outcome.reason, applied: outcome.game };
   }
 }

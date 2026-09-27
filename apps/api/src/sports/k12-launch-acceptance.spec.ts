@@ -153,7 +153,7 @@ describe('K12 launch acceptance — the 21 audit probes', () => {
   });
 
   // Owner: A2 (F14) — project the running clock before a boolean-only stop.
-  it.failing('K12-15 boolean-only feed clock stop preserves the current projected reading', async () => {
+  it('K12-15 boolean-only feed clock stop preserves the current projected reading', async () => {
     jest.useFakeTimers(); jest.setSystemTime(new Date('2026-09-23T12:00:00Z'));
     const { service } = setup(); const g: any = await newGame(service, 'basketball');
     await service.clockAction(TENANT, g.id, { action: 'set', ms: 60000 });
