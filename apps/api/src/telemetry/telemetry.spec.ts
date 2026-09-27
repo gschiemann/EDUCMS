@@ -373,6 +373,167 @@ describe('POST /screens/:id/telemetry', () => {
     });
   });
 
+  // ── 3a. THE DOWNLOAD SNAPSHOT (2026-09-27) ────────────────────────────
+  //
+  // A file ≥ 8 MiB plays only once it is completely on the screen (player
+  // rule 17). While it downloads the screen shows its own splash, or keeps
+  // the previous content on glass — and the dashboard had no way to tell
+  // either from "nothing scheduled". The player now says so inside the cache
+  // report it already sends; these pin how the server stores it.
+  describe('cache.downloading', () => {
+    const tiers = {
+      playlist: { count: 2, bytes: 10 },
+      emergency: { count: 1, bytes: 5 },
+    };
+    const snapshot = {
+      file: 'RIOT%20promo%204K.mp4',
+      bytesLoaded: 87_000_000,
+      bytesTotal: 141_000_000,
+      deferredCommit: true,
+    };
+
+    it('stores the snapshot inside lastCacheReport, rebuilt field by field — and busts no manifest cache', async () => {
+      await controller.report(SCREEN_ID, makeReq(), {
+        cache: { ...tiers, downloading: snapshot },
+      });
+      const data = writtenData() as Record<string, unknown>;
+      expect(data.lastCacheReport).toEqual({ ...tiers, downloading: snapshot });
+      expect(data.lastCacheReportAt).toEqual(new Date(NOW));
+      // No new column: the snapshot rides lastCacheReport, which is on the
+      // telemetry-only list, so the fleet's downloads never thrash the cache.
+      const keys = Object.keys(data);
+      expect(keys.filter((k) => !SCREEN_TELEMETRY_ONLY_FIELDS.has(k))).toEqual(
+        [],
+      );
+      expect(shouldBumpManifestRev('Screen', 'update', keys)).toBe(false);
+    });
+
+    it('bounds what it keeps: control characters stripped, the name capped, bytes clamped to the size', async () => {
+      await controller.report(SCREEN_ID, makeReq(), {
+        cache: {
+          ...tiers,
+          downloading: {
+            file: `\u0007clip\u001b[31m${'x'.repeat(200)}`,
+            bytesLoaded: 9_000.9,
+            bytesTotal: 5_000,
+          },
+        },
+      });
+      const stored = (writtenData() as Record<string, unknown>)
+        .lastCacheReport as Record<string, any>;
+      expect(stored.downloading.file).toBe(
+        `clip[31m${'x'.repeat(200)}`.slice(0, 120),
+      );
+      expect(stored.downloading.file).toHaveLength(120);
+      expect(stored.downloading.bytesLoaded).toBe(5_000);
+      expect(stored.downloading.bytesTotal).toBe(5_000);
+      // Absent means "not held" — never invented into a hold.
+      expect(stored.downloading.deferredCommit).toBe(false);
+    });
+
+    it('a size the player does not know yet is stored as null, never as 0', async () => {
+      for (const bytesTotal of [null, undefined, 0]) {
+        jest.clearAllMocks();
+        SCREEN_ID = `screen-${++screenSeq}`;
+        deviceAuth.verifyDeviceForScreen.mockResolvedValue({
+          ok: true,
+          sub: SCREEN_ID,
+          screen: { id: SCREEN_ID, tenantId: 'tenant-xyz' },
+          tenantId: 'tenant-xyz',
+          token: 'fake',
+        });
+        const downloading: Record<string, unknown> = {
+          file: 'a.mp4',
+          bytesLoaded: 1_000,
+        };
+        if (bytesTotal !== undefined) downloading.bytesTotal = bytesTotal;
+        await controller.report(SCREEN_ID, makeReq(), {
+          cache: { ...tiers, downloading },
+        } as never);
+        const stored = (writtenData() as Record<string, unknown>)
+          .lastCacheReport as Record<string, any>;
+        expect(stored.downloading).toEqual({
+          file: 'a.mp4',
+          bytesLoaded: 1_000,
+          bytesTotal: null,
+          deferredCommit: false,
+        });
+      }
+    });
+
+    it('a report that carries a download ALWAYS writes — an identical one inside the 120 s debounce too', async () => {
+      // A slow link can take longer than a tick to finish one chunk, so two
+      // reports in a row can be byte-identical. Debounced, lastCacheReportAt
+      // would lag up to 120 s and the dashboard would call a live download
+      // stale. The 30 s accept floor still bounds the write rate.
+      const body = { cache: { ...tiers, downloading: snapshot } };
+      await controller.report(SCREEN_ID, makeReq(), body);
+      prisma.client.screen.update.mockClear();
+      jest.setSystemTime(NOW + 60_000);
+      await controller.report(SCREEN_ID, makeReq(), body);
+      const second = writtenData() as Record<string, unknown>;
+      expect(second.lastCacheReport).toEqual({
+        ...tiers,
+        downloading: snapshot,
+      });
+      expect(second.lastCacheReportAt).toEqual(new Date(NOW + 60_000));
+    });
+
+    it('when the download ends, the next report writes through at once WITHOUT the snapshot', async () => {
+      await controller.report(SCREEN_ID, makeReq(), {
+        cache: { ...tiers, downloading: snapshot },
+      });
+      prisma.client.screen.update.mockClear();
+      jest.setSystemTime(NOW + 35_000);
+      await controller.report(SCREEN_ID, makeReq(), { cache: tiers });
+      const data = writtenData() as Record<string, unknown>;
+      expect(data.lastCacheReport).toEqual(tiers);
+      expect(data.lastCacheReport).not.toHaveProperty('downloading');
+      expect(data.lastCacheReportAt).toEqual(new Date(NOW + 35_000));
+    });
+
+    it('a report with no download still serializes exactly as before — the fleet keeps debouncing', async () => {
+      await controller.report(SCREEN_ID, makeReq(), { cache: tiers });
+      expect(
+        JSON.stringify(
+          (writtenData() as Record<string, unknown>).lastCacheReport,
+        ),
+      ).toBe(JSON.stringify(tiers));
+      prisma.client.screen.update.mockClear();
+      jest.setSystemTime(NOW + 60_000);
+      await controller.report(SCREEN_ID, makeReq(), { cache: tiers });
+      expect(writtenData()).not.toHaveProperty('lastCacheReport');
+    });
+
+    it.each([
+      ['an unknown key inside the snapshot', { ...snapshot, eta: 30 }],
+      [
+        'a name past the 256-char bound',
+        { ...snapshot, file: 'x'.repeat(257) },
+      ],
+      ['a negative byte count', { ...snapshot, bytesLoaded: -1 }],
+      [
+        'a byte count that is a string',
+        { ...snapshot, bytesLoaded: '87000000' },
+      ],
+      [
+        'a hold flag that is not a boolean',
+        { ...snapshot, deferredCommit: 'yes' },
+      ],
+      ['no byte count at all', { file: 'a.mp4', bytesTotal: 10 }],
+    ])(
+      '400s on %s with ZERO database writes (strict schema)',
+      async (_label, downloading) => {
+        await expect(
+          controller.report(SCREEN_ID, makeReq(), {
+            cache: { ...tiers, downloading },
+          } as never),
+        ).rejects.toMatchObject({ status: 400 });
+        expect(prisma.client.screen.findUnique).not.toHaveBeenCalled();
+        expect(prisma.client.screen.update).not.toHaveBeenCalled();
+      },
+    );
+  });
   it('writes the render-proof columns, including the page-bundle SHA and sync report', async () => {
     await controller.report(SCREEN_ID, makeReq(), {
       versions: { bundleSha: 'DEADBEEF0123456789' },

@@ -97,6 +97,7 @@ import { resolveScreenSync, readSyncActiveTargets, isScreenSyncActive } from './
 // cadence would read the entire healthy fleet as OFFLINE. See online-grace.ts
 // for the derivation and for the detection-speed cost it accepts.
 import { SCREEN_ONLINE_GRACE_MS } from '../telemetry/online-grace';
+import { sanitizeCacheReport } from '../telemetry/cache-report';
 // 2026-08-13 — display control. The manifest's `display` block carries the
 // on/off windows the player arms as LOCAL AlarmManager alarms (a screen with
 // the network cut must still blank at 22:00 and wake at 07:00) plus the
@@ -6661,11 +6662,16 @@ export class ScreensController {
     if (!authResult.ok) {
       throw new HttpException({ code: 'SCREEN_DEVICE_AUTH_REQUIRED', message: `Device auth required (${authResult.reason})` }, HttpStatus.UNAUTHORIZED);
     }
+    // Rebuilt field by field (2026-09-27): this route used to store the body
+    // AS SENT, in a column every dashboard poll reads — and the dashboard now
+    // prints the download snapshot's file name out of it. Same rebuild as the
+    // telemetry route (`telemetry/cache-report.ts`), so the column has one shape.
+    const report = sanitizeCacheReport(body);
     // DB-efficiency (2026-06-15): coalesce the every-30s identical cache report.
     // Same payload within 120s → no DB at all (was ~42% of total DB time). A
     // content change or the 120s window elapsing writes through; the 5-min
     // wedge detector tolerates the gap.
-    const sig = JSON.stringify(body ?? {});
+    const sig = JSON.stringify(report);
     if (shouldSkipCacheReportWrite(id, sig)) return { ok: true };
     // ten-ok: identity-derived — `deviceAuth(req, id)` above proved the
     // credential names THIS screen, and `allowUnpaired` means a pre-claim
@@ -6678,7 +6684,7 @@ export class ScreensController {
       this.prisma.client.screen.update({
         where: { id },
         data: {
-          lastCacheReport: body as any,
+          lastCacheReport: report as any,
           lastCacheReportAt: new Date(),
         },
         // Fire-and-forget telemetry — don't RETURNING the whole 88-column row.

@@ -67,6 +67,15 @@
  *                                     by lastBundleShaAt: same statement,
  *                                     same instant, one timestamp.
  *   cache.playlist / .emergency    → lastCacheReport / At
+ *   cache.downloading              → inside lastCacheReport (2026-09-27): the
+ *                                     large file downloading right now — file
+ *                                     name, bytes so far, size, and whether the
+ *                                     previous content is held on glass. Sent
+ *                                     only while a download is in flight; a
+ *                                     report that carries it always writes
+ *                                     (the dashboard's freshness rule reads
+ *                                     lastCacheReportAt). Rebuilt field by
+ *                                     field in `cache-report.ts`.
  *   render.frames/.hash/.sync      → lastRenderedAt / Frames / Hash,
  *                                     lastSyncReport / At. OMITTED ENTIRELY
  *                                     by the client when its paint counter

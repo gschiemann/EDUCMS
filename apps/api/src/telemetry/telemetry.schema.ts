@@ -39,6 +39,42 @@ const cacheTierSchema = z.strictObject({
   bytes: z.number().finite().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
 });
 
+/**
+ * The large file the player is downloading right now (2026-09-27, download
+ * visibility). A file ≥ 8 MiB plays only once it is completely on disk
+ * (readiness-gated playback, CLAUDE.md player rule 17), so until it is the
+ * screen either shows its own "Downloading content" splash or keeps the
+ * previous content on glass — and before this field the dashboard could not
+ * tell either from "nothing scheduled". Sent only while a download is in
+ * flight; the server keeps it inside `lastCacheReport` (no column of its own).
+ *
+ *   file           — the last path segment of the file's URL (the player caps
+ *                    it at 120 chars; 256 here is headroom, the controller
+ *                    re-caps at 120 and strips control characters)
+ *   bytesLoaded    — bytes staged so far
+ *   bytesTotal     — the file's size, when the player knows it
+ *   deferredCommit — the NEW playlist is held back and the previous content
+ *                    stays on glass until one of its files is complete
+ *
+ * ⚠️ ROLLOUT ORDER — same rule as `versions.bundleId` and `video.stalls`:
+ * `cache` is a `strictObject`, so an API that does not know `downloading`
+ * answers 400 to the WHOLE report. This API ships before the player bundle
+ * that sends it (the player also drops the block for the rest of its session
+ * if a report carrying it is refused — see `telemetry.ts` on the web side).
+ */
+const cacheDownloadingSchema = z.strictObject({
+  file: z.string().max(256),
+  bytesLoaded: z.number().finite().min(0).max(Number.MAX_SAFE_INTEGER),
+  bytesTotal: z
+    .number()
+    .finite()
+    .min(0)
+    .max(Number.MAX_SAFE_INTEGER)
+    .nullable()
+    .optional(),
+  deferredCommit: z.boolean().optional(),
+});
+
 /** Frame-locked sync telemetry — same field set `/render-proof` accepts. */
 const syncSchema = z.strictObject({
   locked: z.boolean().optional(),
@@ -111,6 +147,7 @@ export const screenTelemetrySchema = z.strictObject({
     .strictObject({
       playlist: cacheTierSchema.optional(),
       emergency: cacheTierSchema.optional(),
+      downloading: cacheDownloadingSchema.optional(),
     })
     .optional(),
   render: z

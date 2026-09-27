@@ -22,6 +22,7 @@ import {
   markRenderProofWritten,
 } from '../screens/manifest-hot-cache';
 import { screenTelemetrySchema, TELEMETRY_MAX_BODY_BYTES } from './telemetry.schema';
+import { sanitizeCacheReport } from './cache-report';
 import { TELEMETRY_INTERVAL_MS, type ScreenTelemetryResponse } from './telemetry.types';
 
 /**
@@ -256,13 +257,21 @@ export class TelemetryController {
     // Same content-signature debounce: an identical report inside 120 s
     // writes nothing (this UPDATE was ~42 % of all DB time before the
     // debounce landed), a changed one writes through immediately.
+    //
+    // EXCEPT WHILE A DOWNLOAD IS IN FLIGHT (2026-09-27). The dashboard shows a
+    // download's progress only while `lastCacheReportAt` is younger than about
+    // two telemetry ticks, so that a screen that stopped reporting can never
+    // leave a frozen "62 %" on the row. On a slow link a chunk can take longer
+    // than a tick, the snapshot is then byte-identical, and the debounce would
+    // hold the stamp back for up to 120 s — the dashboard would call a live
+    // download stale. So a report that carries a snapshot always writes. Cost:
+    // one row write per accepted report (the 30 s accept floor still bounds
+    // it) for as long as a download lasts; the first report after it ends no
+    // longer carries the snapshot, differs, and writes through at once.
     if (body.cache) {
-      const report = {
-        playlist: sanitizeTier(body.cache.playlist),
-        emergency: sanitizeTier(body.cache.emergency),
-      };
+      const report = sanitizeCacheReport(body.cache);
       const sig = JSON.stringify(report);
-      if (!shouldSkipCacheReportWrite(screenId, sig)) {
+      if (report.downloading || !shouldSkipCacheReportWrite(screenId, sig)) {
         markCacheReportWritten(screenId, sig);
         data.lastCacheReport = report;
         data.lastCacheReportAt = now;
@@ -500,18 +509,8 @@ function acceptTelemetryPost(screenId: string): boolean {
 }
 
 // ── sanitizers ────────────────────────────────────────────────────────────
-
-/** Clamp a cache tier to two non-negative ints; never store raw client JSON. */
-function sanitizeTier(
-  tier: { count?: number; bytes?: number } | undefined,
-): { count: number; bytes: number } | undefined {
-  if (!tier || typeof tier !== 'object') return undefined;
-  const int = (v: unknown): number =>
-    typeof v === 'number' && Number.isFinite(v) && v >= 0
-      ? Math.min(Math.floor(v), Number.MAX_SAFE_INTEGER)
-      : 0;
-  return { count: int(tier.count), bytes: int(tier.bytes) };
-}
+// The cache report (tiers + download snapshot) is rebuilt in `cache-report.ts`,
+// shared with the legacy `POST /:id/cache-status` so the column has one shape.
 
 /**
  * Page-bundle SHA normalization — byte-identical to the rule
