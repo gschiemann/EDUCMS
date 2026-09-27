@@ -120,6 +120,21 @@ describe('a window with rules held for a 1080p copy', () => {
     // s1 + the two Hallway members wait; the 4K wall plays.
     expect(within(card).getByTestId('window-preparing')).toHaveTextContent('Preparing 1080p copy for 3 screens');
     expect(within(card).queryByText('Paused everywhere')).not.toBeInTheDocument();
+    // A waiting screen is not a paused one (seen live 2026-09-26: the same
+    // screen read "Paused on 1 of 2" AND "Preparing 1080p copy for 1 screen").
+    expect(within(card).queryByText(/Paused on \d+ of/)).not.toBeInTheDocument();
+  });
+
+  it('a genuinely paused screen beside a waiting one is still counted as paused', async () => {
+    SCHEDULES = [
+      base({ id: 'r-lcd', screenId: 's1', isActive: false, pendingMedia: true }),
+      base({ id: 'r-wall', screenId: 's2', isActive: true }),
+      base({ id: 'r-h1', screenId: 's3', isActive: false }),
+    ];
+    await openScheduleTab();
+    const [card] = cards();
+    expect(within(card).getByText('Paused on 1 of 3 screens')).toBeInTheDocument();
+    expect(within(card).getByTestId('window-preparing')).toHaveTextContent('Preparing 1080p copy for 1 screen');
   });
 
   it('its power button is "Stop and cancel publish": confirmed with the count, then every rule is toggled', async () => {

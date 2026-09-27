@@ -1329,11 +1329,15 @@ export default function ClassicPlaylistsPage({
       };
       const activeReached = resolveMarks(activeByWindow.get(e.key) ?? new Set<string>());
       const pendingReached = resolveMarks(pendingByWindow.get(e.key) ?? new Set<string>());
+      // A screen whose copy is preparing is waiting, not paused: it is not
+      // counted in "Paused on N of M" (seen live 2026-09-26 — one held screen
+      // read as both).
+      const pausedReached = new Set([...reached].filter((id) => !activeReached.has(id) && !pendingReached.has(id)));
       return {
         ...e,
         screenCount: reached.size,
         activeScreenCount: activeReached.size,
-        pausedScreenCount: Math.max(0, reached.size - activeReached.size),
+        pausedScreenCount: pausedReached.size,
         // Screens whose 1080p copy is preparing: they start by themselves.
         pendingScreenCount: pendingReached.size,
         pendingCount: e.pendingIds.length,
@@ -2442,7 +2446,7 @@ export default function ClassicPlaylistsPage({
                         <div className="flex items-start justify-between gap-4">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1">
-                              <span className={`w-2 h-2 rounded-full ${win.allActive ? 'bg-emerald-500' : win.anyActive ? 'bg-amber-400' : preparing ? 'bg-indigo-500 animate-pulse' : 'bg-slate-300'}`} title={win.allActive ? 'Running' : win.anyActive ? `Paused on ${win.pausedScreenCount} of ${win.screenCount} screens` : preparing ? t('playlistsPage.preparingCopy') : 'Paused everywhere'} />
+                              <span className={`w-2 h-2 rounded-full ${win.allActive ? 'bg-emerald-500' : win.anyActive && win.pausedScreenCount > 0 ? 'bg-amber-400' : preparing ? 'bg-indigo-500 animate-pulse' : win.anyActive ? 'bg-emerald-500' : 'bg-slate-300'}`} title={win.allActive ? 'Running' : win.anyActive && win.pausedScreenCount > 0 ? `Paused on ${win.pausedScreenCount} of ${win.screenCount} screens` : preparing ? t('playlistsPage.preparingCopy') : win.anyActive ? 'Running' : 'Paused everywhere'} />
                               <CalendarDays className="w-3.5 h-3.5 text-slate-400" />
                               <p className="text-sm font-bold text-slate-700">
                                 {describeDays(sched.daysOfWeek)}
@@ -2506,7 +2510,7 @@ export default function ClassicPlaylistsPage({
                                   said, or the amber dot is the only clue. The
                                   screen-by-screen switches live on the Screens
                                   tab, which is where this points. */}
-                              {!win.allActive && win.anyActive && (
+                              {!win.allActive && win.anyActive && win.pausedScreenCount > 0 && (
                                 <span className="bg-amber-100 text-amber-700 px-2 py-0.5 rounded" title="Turn individual screens back on from the Screens tab.">
                                   Paused on {win.pausedScreenCount} of {win.screenCount} screens
                                 </span>
