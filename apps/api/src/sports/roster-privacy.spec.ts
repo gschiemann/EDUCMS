@@ -195,7 +195,17 @@ function setup() {
     customCue: makeTable(),
     auditLog: makeTable(),
     template: makeTable(),
+    // K-12 launch, lane B3: the board now also reads the tenant's student
+    // privacy policy. These are sports VENUES (not schools), so the per-game
+    // switches alone decide — exactly the behaviour this spec pins. Schools
+    // are covered by student-privacy.spec.ts.
+    tenant: makeTable(),
+    studentPrivacyPolicy: makeTable(),
   };
+  tables.tenant.rows.push(
+    { id: TENANT, name: 'Venue A', vertical: 'SPORTS', parentId: null },
+    { id: OTHER, name: 'Venue B', vertical: 'SPORTS', parentId: null },
+  );
   const client: any = { ...tables };
   // Inserts made inside a transaction that throws are rolled back, so
   // "the event and its audit row commit together or not at all" is testable.

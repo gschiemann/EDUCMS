@@ -104,7 +104,21 @@ import {
   requestHash,
   resolveCommandContext,
 } from './game-command';
-import { ROSTER_PRIVACY_EVENT, parseRosterPrivacy, redactCuePayload, redactPublicRoster } from './roster-privacy';
+import { ROSTER_PRIVACY_EVENT, parseRosterPrivacy } from './roster-privacy';
+// K-12 launch program, lane B3 — the one gate every public output of student
+// names and photos goes through (see ./student-privacy.ts).
+import {
+  StudentDirectory,
+  loadStudentPolicy,
+  publicCuePayload,
+  publicLiveOverlayPayload,
+  publicSpotlight,
+  publicStats,
+  publicStudentView,
+  studentFlags,
+  studentRosterPrivacy,
+  type PublicStudentContext,
+} from './student-privacy';
 
 /**
  * VenueOS Sports — Sprint 13. The game engine service.
@@ -1557,6 +1571,7 @@ export class SportsService {
       ribbonSpeed, ribbonSlides, ribbonScoreRepeat,
       scoreboardTemplate, ribbonTemplate, scorebugTemplate,
       latestLiveOverlayEvent, latestSceneEvent, latestRosterPrivacyEvent,
+      studentPolicy,
     ] = await Promise.all([
       this.prisma.client.gameEvent.findMany({
         where: { gameId: id, type: 'CUE', createdAt: { gte: since } },
@@ -1567,13 +1582,18 @@ export class SportsService {
       // (flightStartAt / flightEndAt) is always applied consistently.
       // Public by design — sponsors exist to be shown on the scoreboard.
       this.sponsorsService.listActive(game.tenantId),
-      // The roster — drives player cards on the ribbon + scoreboard.
+      // The roster — drives player cards on the ribbon + scoreboard. The
+      // per-student privacy flags (and the linked athlete's) are read here so
+      // the public view can apply them; they never leave the server
+      // (publicStudentView strips them).
       this.prisma.client.rosterPlayer.findMany({
         where: { gameId: id },
         orderBy: [{ team: 'asc' }, { sortOrder: 'asc' }, { createdAt: 'asc' }],
         select: {
           id: true, team: true, name: true, number: true,
           position: true, photoUrl: true, stats: true,
+          directoryOptOut: true, photoRelease: true,
+          person: { select: { directoryOptOut: true, photoRelease: true } },
         },
       }),
       // Operator-set ribbon messages — the latest RIBBON event wins.
@@ -1614,11 +1634,22 @@ export class SportsService {
         orderBy: { createdAt: 'desc' },
         select: { payload: true },
       }),
+      // K-12 launch, lane B3: the school's student-information policy (its
+      // own attestation, or its district's). Never throws — an unreadable
+      // policy is a school that has confirmed nothing (fail closed).
+      loadStudentPolicy(this.prisma.client, game.tenantId),
     ]);
     // Applied HERE, inside the cached build, so the payload, its ETag and the
-    // stat leaders computed from `roster` below all see the redacted roster.
+    // stat leaders computed from `roster` below all see the public view. The
+    // game's switches (B2) can only make the school's policy stricter.
     const rosterPrivacy = parseRosterPrivacy(latestRosterPrivacyEvent?.payload);
-    const roster = redactPublicRoster(rosterRaw, rosterPrivacy);
+    const studentCtx: PublicStudentContext = {
+      policy: studentPolicy,
+      game: rosterPrivacy,
+      directory: new StudentDirectory(rosterRaw),
+      teams: [game.homeTeam, game.awayTeam],
+    };
+    const roster = rosterRaw.map((p) => publicStudentView(p, studentPolicy, rosterPrivacy));
 
     // T3-3 Show Control: resolve the latest SCENE with a SERVER-AUTHORITATIVE
     // expiry — the board never even sees an expired scene, so it auto-reverts
@@ -1666,10 +1697,12 @@ export class SportsService {
       // that reads stats.possession sees the SAME value — one source of
       // truth, whichever control wrote it (2026-07-12 world-class audit).
       possession: game.possession ?? null,
-      stats: mirrorPossessionIntoStats(game.stats, game.possession),
-      spotlight: game.spotlight,
+      // Typed meet results, the swim feed's lane→name join, foul / exclusion
+      // rows and the athlete-name stats go through the same gate (B3).
+      stats: publicStats(mirrorPossessionIntoStats(game.stats, game.possession), studentCtx),
+      spotlight: publicSpotlight(game.spotlight, studentCtx),
       cues: cues.map((c) => {
-        const p = redactCuePayload((c.payload as Record<string, unknown>) ?? {}, rosterPrivacy);
+        const p = publicCuePayload((c.payload as Record<string, unknown>) ?? {}, studentCtx);
         return {
           id: c.id,
           ...p,
@@ -1715,7 +1748,7 @@ export class SportsService {
         return {
           id: latestLiveOverlayEvent.id,
           kind: p.kind,
-          payload: p.payload ?? {},
+          payload: publicLiveOverlayPayload(p.payload ?? {}, studentCtx),
           snapshot: p.snapshot ?? {},
           createdAt: latestLiveOverlayEvent.createdAt,
         };
@@ -2048,6 +2081,14 @@ export class SportsService {
             photoUrl: p.photoUrl,
             stats: p.stats as any,
             sortOrder: p.sortOrder,
+            // K-12 launch, lane B3: the same students, so the same privacy
+            // flags — and the same persistent athlete, whose flags follow the
+            // student into every game (a family's opt-out recorded after the
+            // source game was built must still hide them in the copy).
+            directoryOptOut: p.directoryOptOut === true,
+            photoRelease: p.photoRelease === true,
+            personId: p.personId ?? null,
+            teamId: p.teamId ?? null,
           })),
         });
       }
@@ -2938,12 +2979,23 @@ export class SportsService {
     return out;
   }
 
-  /** Every player on a game, home + away, in display order. */
+  /**
+   * Every player on a game, home + away, in display order. K-12 launch, lane
+   * B3: `directoryOptOut` / `photoRelease` are the flags the PUBLIC view
+   * actually applies — an opt-out recorded on the linked athlete counts, and a
+   * linked student's photo release is the athlete's (see studentFlags) — so
+   * the roster manager shows the truth, not just this row's own columns.
+   */
   async listRoster(tenantId: string, gameId: string) {
     await this.owned(tenantId, gameId);
-    return this.prisma.client.rosterPlayer.findMany({
+    const rows = await this.prisma.client.rosterPlayer.findMany({
       where: { gameId },
       orderBy: [{ team: 'asc' }, { sortOrder: 'asc' }, { createdAt: 'asc' }],
+      include: { person: { select: { directoryOptOut: true, photoRelease: true } } },
+    });
+    return rows.map(({ person, ...row }) => {
+      const flags = studentFlags({ ...row, person });
+      return { ...row, directoryOptOut: flags.optOut, photoRelease: flags.photoRelease };
     });
   }
 
@@ -3202,9 +3254,15 @@ export class SportsService {
     const numberIdx = idxOf('number', 'no', '#');
     const posIdx = idxOf('position', 'pos');
     const photoIdx = idxOf('photo', 'photourl', 'photo_url');
+    // K-12 launch, lane B3: a district's SIS export can carry its directory
+    // opt-out list. Only the PROTECTIVE flag is importable — a photo release
+    // is recorded per student by a school administrator, never in bulk.
+    const optOutIdx = idxOf('opt_out', 'optout', 'opt-out', 'directory_opt_out', 'directoryoptout');
+    const isYes = (v: unknown) => /^(y|yes|true|1|x|opted out|opt out)$/i.test(String(v ?? '').trim());
     const FIELD = new Set([
       'team', 'name', 'player', 'number', 'no', '#',
       'position', 'pos', 'photo', 'photourl', 'photo_url',
+      'opt_out', 'optout', 'opt-out', 'directory_opt_out', 'directoryoptout',
     ]);
 
     const [homeCount, awayCount] = await Promise.all([
@@ -3235,6 +3293,7 @@ export class SportsService {
         photoUrl: photoIdx >= 0 ? this.cleanText(cells[photoIdx], 2048) : null,
         stats: this.cleanStats(stats),
         sortOrder: nextOrder[team]++,
+        ...(optOutIdx >= 0 && isYes(cells[optOutIdx]) ? { directoryOptOut: true } : {}),
       });
     }
     if (rows.length === 0) {
@@ -3247,6 +3306,7 @@ export class SportsService {
         players: rows.length,
         home: rows.filter((r) => r.team === 'home').length,
         away: rows.filter((r) => r.team === 'away').length,
+        directoryOptOuts: rows.filter((r) => r.directoryOptOut === true).length,
         statColumns: header.filter((h) => h && !FIELD.has(h)).map((h) => h.toUpperCase()),
       });
     });
@@ -5952,9 +6012,22 @@ export class SportsService {
   async setAthleteShare(tenantId: string, personId: string, actor?: CommandInput) {
     const person = await this.prisma.client.sportsPerson.findFirst({
       where: { id: personId, tenantId },
-      select: { id: true },
+      select: { id: true, directoryOptOut: true, photoRelease: true },
     });
     if (!person) throw new NotFoundException('Athlete not found');
+    // K-12 launch, lane B3 — a public athlete page is a public output of a
+    // student's name. Refuse to create one the school's policy, or the
+    // family's opt-out, keeps off public screens (the page would 404 anyway;
+    // this says why, at the moment the operator asks).
+    const shown = studentRosterPrivacy(studentFlags(person), await loadStudentPolicy(this.prisma.client, tenantId));
+    if (shown.names === 'hidden') {
+      throw new ConflictException({
+        code: 'STUDENT_PRIVACY_BLOCKS_SHARE',
+        message: person.directoryOptOut
+          ? "This student's family opted out of directory information, so their stats page cannot be shared."
+          : 'Student names stay off public pages until an administrator confirms your directory-information policy in Settings → Sports.',
+      });
+    }
     const token = randomUUID().replace(/-/g, '');
     // K12-F34: the share and its audit row commit together.
     await this.prisma.client.$transaction(async (tx: any) => {

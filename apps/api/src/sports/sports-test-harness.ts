@@ -10,7 +10,7 @@ import { makeSportsPrismaFake } from './sports-prisma-fake';
 
 export const TENANT = 'tenant-1';
 
-export function setup(opts: { playerStats?: boolean } = {}) {
+export function setup(opts: { playerStats?: boolean; vertical?: string } = {}) {
   const { client, tables } = makeSportsPrismaFake({
     game: {
       // Mirrors the column defaults in schema.prisma.
@@ -38,6 +38,19 @@ export function setup(opts: { playerStats?: boolean } = {}) {
     template: {},
     playerSeasonStat: { uniques: [['personId', 'season', 'statKey', 'sport']] },
     playerCareerStat: { uniques: [['personId', 'statKey', 'sport']] },
+    // K-12 launch, lane B3: the public board reads the tenant's student
+    // privacy policy. The harness tenant is a sports VENUE by default (the
+    // per-game switches alone decide); pass `vertical: 'K12'` for a school.
+    tenant: {},
+    studentPrivacyPolicy: { pk: 'tenantId' },
+    sportsPerson: {},
+    user: {},
+  });
+  tables.tenant.rows.push({
+    id: TENANT,
+    name: 'Test Tenant',
+    vertical: opts.vertical ?? 'SPORTS',
+    parentId: null,
   });
   tables.template.rows.push(
     { id: 'tmpl-board', tenantId: TENANT, isSystem: false },

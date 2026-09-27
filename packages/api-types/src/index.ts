@@ -1035,3 +1035,8 @@ export * from './template-background';
 // hardware? Shared so the API (which probes) and the dashboard (which warns)
 // can never disagree about what "will stutter on the wall" means.
 export * from './video-encode';
+
+// Student information on public screens (K-12 sports launch, 2026-09-27) —
+// the attestation wording + version and the settings contract, shared so the
+// API (which enforces it) and the dashboard (which asks) never disagree.
+export * from './student-privacy';

@@ -7,6 +7,12 @@ import {
 import type { StatSemantic } from '@cms/api-types';
 import type { PrismaClient, Prisma } from '@cms/database';
 import { withDbRetry } from '../prisma/with-db-retry';
+import {
+  loadStudentPolicy,
+  studentFlags,
+  studentRosterPrivacy,
+  type StudentPrivacyDb,
+} from './student-privacy';
 
 /**
  * VenueOS Sports — Phase 1-A of the player-stats engine.
@@ -515,7 +521,7 @@ export async function linkRosterPlayerToPerson(
     () =>
       prisma.rosterPlayer.findFirst({
         where: { id: rosterPlayerId, tenantId },
-        select: { id: true, name: true, number: true, photoUrl: true, position: true },
+        select: { id: true, name: true, number: true, photoUrl: true, position: true, directoryOptOut: true },
       }),
     { label: 'sports-stats.link.roster.find' },
   );
@@ -551,6 +557,7 @@ export async function linkRosterPlayerToPerson(
         }),
       { label: 'sports-stats.link.roster.update' },
     );
+    await carryOptOutToPerson(prisma, tenantId, person.id, roster.directoryOptOut === true);
     return { personId: person.id };
   }
 
@@ -609,8 +616,33 @@ export async function linkRosterPlayerToPerson(
       }),
     { label: 'sports-stats.link.roster.update2' },
   );
+  await carryOptOutToPerson(prisma, tenantId, person.id, roster.directoryOptOut === true);
 
   return { personId: person.id };
+}
+
+/**
+ * K-12 launch, lane B3 (student privacy). A family's directory opt-out that was
+ * recorded on a roster row follows the student once the row is linked to its
+ * persistent athlete, so every later game hides them too. Only the PROTECTIVE
+ * flag travels this way — a photo release (showing more of a student) is
+ * recorded per student by a school administrator, never inferred from a link.
+ */
+async function carryOptOutToPerson(
+  prisma: PrismaClient,
+  tenantId: string,
+  personId: string,
+  optedOut: boolean,
+): Promise<void> {
+  if (!optedOut) return;
+  await withDbRetry(
+    () =>
+      prisma.sportsPerson.update({
+        where: { id: personId, tenantId },
+        data: { directoryOptOut: true },
+      }),
+    { label: 'sports-stats.link.person.optout' },
+  );
 }
 
 /**
@@ -1193,6 +1225,14 @@ export interface PublicAthleteProfile {
  * unless the athlete exists AND isPublic (operator opted in) — so a revoked or
  * never-shared athlete 404s, and there is no person-id enumeration path. Only
  * the minimal PII the operator chose to share is included.
+ *
+ * K-12 launch, lane B3 — this page is a PUBLIC output of a student's name,
+ * photo and stats, so the school's student-privacy policy applies on every
+ * read (not only when the link was made): at a school that has not confirmed
+ * its directory-information policy, or for a student whose family opted out,
+ * the page 404s like a never-shared one; the photo shows only with the photo
+ * attestation AND the student's own release. Revoking either hides the page on
+ * its next load.
  */
 export async function getPublicAthleteProfile(
   prisma: PrismaClient,
@@ -1206,11 +1246,15 @@ export async function getPublicAthleteProfile(
         select: {
           id: true, tenantId: true, fullName: true, number: true,
           position: true, photoUrl: true, gradYear: true, teamId: true,
+          directoryOptOut: true, photoRelease: true,
         },
       }),
     { label: 'sports-stats.public.person' },
   );
   if (!person) return null;
+  const policy = await loadStudentPolicy(prisma as unknown as StudentPrivacyDb, person.tenantId);
+  const shown = studentRosterPrivacy(studentFlags(person), policy);
+  if (shown.names === 'hidden') return null;
   const [career, gameLog, team] = await Promise.all([
     getAthleteCareer(prisma, { tenantId: person.tenantId, personId: person.id }),
     getAthleteGameLog(prisma, { tenantId: person.tenantId, personId: person.id, limit: 25 }),
@@ -1233,7 +1277,7 @@ export async function getPublicAthleteProfile(
     fullName: person.fullName,
     number: person.number ?? null,
     position: person.position ?? null,
-    photoUrl: person.photoUrl ?? null,
+    photoUrl: shown.photos ? (person.photoUrl ?? null) : null,
     gradYear: person.gradYear ?? null,
     teamName: team?.name ?? null,
     career: career?.career ?? [],

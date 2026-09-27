@@ -9,6 +9,8 @@ import { SponsorsController } from './sponsors.controller';
 import { SponsorsService } from './sponsors.service';
 import { SportsRosterPrivacyController } from './sports-roster-privacy.controller';
 import { SportsRosterPrivacyService } from './sports-roster-privacy.service';
+import { StudentPrivacyController } from './student-privacy.controller';
+import { StudentPrivacyService } from './student-privacy.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
 
 /**
@@ -27,6 +29,7 @@ import { WebsocketSignerService } from '../security/websocket-signer.service';
     SportsConsoleController,
     SponsorsController,
     SportsRosterPrivacyController,
+    StudentPrivacyController,
   ],
   providers: [
     SportsService,
@@ -35,6 +38,7 @@ import { WebsocketSignerService } from '../security/websocket-signer.service';
     SponsorsService,
     WebsocketSignerService,
     SportsRosterPrivacyService,
+    StudentPrivacyService,
   ],
 })
 export class SportsModule {}
