@@ -240,6 +240,17 @@ export interface SportDefinition {
     short: number;
     options: number[];
   };
+  /** The football play clock — the count to the snap, run INDEPENDENTLY of
+   *  the game clock (K12-F06; NFHS 2025 instructions for game and play-clock
+   *  operators: an incomplete pass stops the game clock and starts a 40 s
+   *  play clock). `full` = the count after a normal down (40); `short` = the
+   *  count after an administrative stoppage — a foul, a timeout, a score, a
+   *  measurement, a change of possession, the start of every period (25).
+   *  Omitted = the sport has no play clock and its control is hidden. */
+  playClock?: {
+    full: number;
+    short: number;
+  };
   /**
    * Sports scored by a live panel of judges (diving today; gymnastics/
    * cheer's judged totals are hand-typed directly as the apparatus/routine
@@ -538,6 +549,8 @@ const FOOTBALL: SportDefinition = {
   clock: { type: 'countdown', segmentMs: 12 * 60_000, untimedOvertime: true },
   segment: { name: 'Quarter', count: 4, overtime: true },
   score: { unit: 'points', increments: [1, 2, 3, 6] },
+  // NFHS 40 / 25-second play clock (K12-F06).
+  playClock: { full: 40, short: 25 },
   // T2-10: timeouts reset at halftime (after Q2). Fouls and shot clock N/A.
   segmentReset: {
     homeTimeouts: 'half',

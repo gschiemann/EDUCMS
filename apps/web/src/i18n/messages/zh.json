@@ -3121,6 +3121,7 @@
     "reopenReasonShort": "请输入至少 5 个字符的原因以重新开启比赛。",
     "screenClaimConflict": "另一个控制台刚刚在 {screens} 上显示了另一场比赛。屏幕列表已刷新，请先检查后再试。",
     "statsRollupPending": "正在更新赛季统计…",
-    "statsRollupFailed": "赛季统计尚未更新，系统将自动重试。"
+    "statsRollupFailed": "赛季统计尚未更新，系统将自动重试。",
+    "playClockOff": "进攻计时器已关闭：本节剩余时间少于计时读数。重置后即可重新启动。"
   }
 }

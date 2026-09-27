@@ -171,3 +171,127 @@ describe('K12-F05 — the shot clock keeps the configuration the table chose', (
     expect(g.stats.shotClock.ms).toBe(9_000);
   });
 });
+
+describe('K12-F06 — the football play clock runs on its own', () => {
+  // The sequences are the NFHS 2025 instructions for game and play-clock
+  // operators (docs/research/2026-09-23-k12-sports-readiness-audit/
+  // 05-RULES-SOURCES.md): the game clock and the play clock are two clocks
+  // with their own starts and stops.
+
+  it('incomplete pass: the game clock stops, the 40 s count runs, the snap starts the game clock and parks the count', async () => {
+    const { service } = setup();
+    const g: any = await newGame(service, 'football');
+    await service.clockAction(TENANT, g.id, { action: 'start' });
+    at(5_000);
+    // The pass hits the ground: the game clock stops; the 40 count starts.
+    await service.clockAction(TENANT, g.id, { action: 'pause' });
+    await service.setPlayClock(TENANT, g.id, { action: 'reset', value: 40 });
+    at(17_000);
+    expect(g.clockRunning).toBe(false);
+    expect(g.clockMs).toBe(12 * 60_000 - 5_000);
+    // 12 s of play clock have run while the game clock stood still.
+    await service.setPlayClock(TENANT, g.id, { action: 'stop' });
+    expect(g.stats.playClock).toMatchObject({ ms: 28_000, running: false });
+    // The snap: the game clock starts; the play clock is set to 40, parked.
+    await service.setPlayClock(TENANT, g.id, { action: 'reset', value: 40, run: false });
+    await service.clockAction(TENANT, g.id, { action: 'start' });
+    at(24_000);
+    await service.clockAction(TENANT, g.id, { action: 'pause' });
+    expect(g.stats.playClock).toMatchObject({ ms: 40_000, running: false });
+    expect(g.clockMs).toBe(12 * 60_000 - 5_000 - 7_000);
+  });
+
+  it('out of bounds: pausing the game clock never stops a running count', async () => {
+    const { service } = setup();
+    const g: any = await newGame(service, 'football');
+    await service.clockAction(TENANT, g.id, { action: 'start' });
+    await service.setPlayClock(TENANT, g.id, { action: 'reset', value: 40 });
+    at(3_000);
+    await service.clockAction(TENANT, g.id, { action: 'pause' });
+    at(10_000);
+    expect(g.stats.playClock.running).toBe(true);
+    await service.setPlayClock(TENANT, g.id, { action: 'stop' });
+    expect(g.stats.playClock.ms).toBe(30_000);
+  });
+
+  it('charged timeout: both clocks stop, the count is parked at 25, it starts on the ready signal', async () => {
+    const { service } = setup();
+    const g: any = await newGame(service, 'football');
+    await service.clockAction(TENANT, g.id, { action: 'start' });
+    await service.setPlayClock(TENANT, g.id, { action: 'reset', value: 40 });
+    at(6_000);
+    await service.callTimeout(TENANT, g.id, { team: 'home' });
+    expect(g.clockRunning).toBe(false);
+    expect(g.stats.playClock).toMatchObject({ ms: 25_000, running: false });
+    at(66_000);
+    // Ready for play: the 25 count starts; the game clock waits for the snap.
+    await service.setPlayClock(TENANT, g.id, { action: 'start' });
+    at(76_000);
+    await service.setPlayClock(TENANT, g.id, { action: 'stop' });
+    expect(g.stats.playClock.ms).toBe(15_000);
+    expect(g.clockRunning).toBe(false);
+  });
+
+  it('penalty administration: the count is parked at 25, then run on the ready signal while the game clock stays stopped', async () => {
+    const { service } = setup();
+    const g: any = await newGame(service, 'football');
+    await service.clockAction(TENANT, g.id, { action: 'start' });
+    at(2_000);
+    await service.clockAction(TENANT, g.id, { action: 'pause' }); // the flag
+    await service.setPlayClock(TENANT, g.id, { action: 'reset', value: 25, run: false });
+    at(40_000);
+    expect(g.stats.playClock).toMatchObject({ ms: 25_000, running: false });
+    await service.setPlayClock(TENANT, g.id, { action: 'start' });
+    at(45_000);
+    await service.setPlayClock(TENANT, g.id, { action: 'stop' });
+    expect(g.stats.playClock.ms).toBe(20_000);
+    expect(g.clockRunning).toBe(false);
+  });
+
+  it('overtime is untimed, and the play clock still runs there on its 25 count', async () => {
+    const { service } = setup();
+    const g: any = await newGame(service, 'football');
+    await service.setPlayClock(TENANT, g.id, { action: 'reset', value: 40, run: false });
+    await service.setSegment(TENANT, g.id, { segment: 5 });
+    expect({ clock: g.clockMs, running: g.clockRunning }).toEqual({ clock: 0, running: false });
+    expect(g.stats.playClock).toMatchObject({ ms: 25_000, running: false });
+    await service.setPlayClock(TENANT, g.id, { action: 'start' });
+    at(9_000);
+    await service.setPlayClock(TENANT, g.id, { action: 'stop' });
+    expect(g.stats.playClock.ms).toBe(16_000);
+  });
+
+  it('never shows more time than is left: a count that would start above the running game clock is turned off (NFHS instruction M)', async () => {
+    const { service } = setup();
+    const g: any = await newGame(service, 'football');
+    await service.clockAction(TENANT, g.id, { action: 'set', ms: 30_000 });
+    await service.clockAction(TENANT, g.id, { action: 'start' });
+    await service.setPlayClock(TENANT, g.id, { action: 'reset', value: 40 });
+    expect(g.stats.playClock).toMatchObject({ ms: 40_000, running: false, off: true });
+    // A 25 count fits in the 30 s left, so it runs and is on again.
+    await service.setPlayClock(TENANT, g.id, { action: 'reset', value: 25 });
+    expect(g.stats.playClock).toMatchObject({ ms: 25_000, running: true });
+    expect(g.stats.playClock.off).toBeUndefined();
+    // With the game clock STOPPED (it starts on the snap) the count runs.
+    await service.clockAction(TENANT, g.id, { action: 'pause' });
+    await service.setPlayClock(TENANT, g.id, { action: 'reset', value: 40 });
+    expect(g.stats.playClock).toMatchObject({ ms: 40_000, running: true });
+  });
+
+  it('refuses a reset other than 40 or 25, and a play clock on a sport that has none', async () => {
+    const { service } = setup();
+    const g: any = await newGame(service, 'football');
+    for (const value of [30, 60, 0, 24.5]) {
+      const err = await rejection(service.setPlayClock(TENANT, g.id, { action: 'reset', value }));
+      expect(err.getResponse()).toMatchObject({ code: 'PLAY_CLOCK_RESET_INVALID', allowed: [40, 25] });
+    }
+    const b: any = await newGame(service, 'basketball');
+    const err = await rejection(service.setPlayClock(TENANT, b.id, { action: 'start' }));
+    expect(err.getResponse()).toMatchObject({ code: 'PLAY_CLOCK_UNSUPPORTED' });
+    expect(b.stats.playClock).toBeUndefined();
+    const bad = await rejection(
+      service.setPlayClock(TENANT, g.id, { action: 'reset', value: 40, run: 'yes' } as any),
+    );
+    expect(bad).toBeInstanceOf(BadRequestException);
+  });
+});

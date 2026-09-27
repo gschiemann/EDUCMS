@@ -271,7 +271,8 @@ export class SportsController {
   }
 
   /** Football play clock — start / stop / reset the 40-25 countdown
-   *  between snaps. */
+   *  between snaps, independently of the game clock (K12-F06). `run: false`
+   *  parks a reset (the snap, or a 25 count waiting for the ready signal). */
   @Patch('games/:id/play-clock')
   @RequireRoles(
     AppRole.SUPER_ADMIN,
@@ -282,7 +283,7 @@ export class SportsController {
   playClock(
     @Request() req: any,
     @Param('id') id: string,
-    @Body() body: { action?: string; value?: number },
+    @Body() body: { action?: string; value?: number; run?: boolean },
   ) {
     const { dto, ctx } = userCommand(req, body);
     return this.sports.setPlayClock(req.user.tenantId, id, dto, ctx);

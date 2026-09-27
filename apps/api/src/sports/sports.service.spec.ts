@@ -2225,7 +2225,13 @@ describe('SportsService — undo rail (undoEvent)', () => {
 // Verifies that syncPlayClockToGameClock fires correctly from every call site.
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('T2-7 — football play clock slaved to game clock', () => {
+// K12-F06 (2026-09-27) — this block used to assert the play clock was SLAVED
+// to the game clock (a pause froze it, a start ran it, an expired count reset
+// to 40). That slaving was the defect: an incomplete pass stops the game
+// clock and STARTS a 40 s play clock (NFHS 2025 play-clock instructions). The
+// cases below now assert independence; sports-clock-lifecycle.spec.ts runs
+// the full down-by-down sequences.
+describe('T2-7 / K12-F06 — football play clock is independent of the game clock', () => {
   /**
    * Helper: seed a football game with a configured play clock in stats.
    * Returns the game row AND the service/game table so tests can inspect
@@ -2245,43 +2251,31 @@ describe('T2-7 — football play clock slaved to game clock', () => {
     return g;
   }
 
-  it('game clock pause freezes a running football play clock', async () => {
+  it('game clock pause leaves a running play clock running (incomplete pass → 40 s count)', async () => {
     const { service, game } = setup();
     await footballWithPlayClock(service, game, 35_000, true);
     const g: any = game.rows[0];
+    const before = { ...(game.rows[0].stats as any).playClock };
 
     await service.clockAction(TENANT, g.id, { action: 'pause' });
 
-    const pc = (game.rows[0].stats as any)?.playClock;
-    expect(pc).toBeDefined();
-    expect(pc.running).toBe(false);
-    // ms should be ≤ the original 35s (any elapsed time ticks it down).
-    expect(pc.ms).toBeLessThanOrEqual(35_000);
-    expect(pc.ms).toBeGreaterThanOrEqual(0);
+    expect((game.rows[0].stats as any).playClock).toEqual(before);
   });
 
-  it('game clock start re-anchors and runs a frozen football play clock', async () => {
+  it('game clock start leaves a parked play clock parked (the snap does not run the count)', async () => {
     const { service, game } = setup();
-    // Play clock frozen at 28s (after a stoppage the operator reset it but
-    // hasn't started the game clock yet).
     await footballWithPlayClock(service, game, 28_000, false);
     const g: any = game.rows[0];
-    // Game clock is currently stopped.
     game.rows[0].clockRunning = false;
+    const before = { ...(game.rows[0].stats as any).playClock };
 
     await service.clockAction(TENANT, g.id, { action: 'start' });
 
-    const pc = (game.rows[0].stats as any)?.playClock;
-    expect(pc).toBeDefined();
-    expect(pc.running).toBe(true);
-    // ms should still be ~28s (it was frozen, no elapsed time).
-    expect(pc.ms).toBeLessThanOrEqual(28_000);
-    expect(pc.ms).toBeGreaterThan(0);
+    expect((game.rows[0].stats as any).playClock).toEqual(before);
   });
 
-  it('game clock start with an expired play clock resets to 40s', async () => {
+  it('game clock start leaves a count that reached zero at zero (the table resets it)', async () => {
     const { service, game } = setup();
-    // Play clock already at 0 — operator forgot to reset between plays.
     await footballWithPlayClock(service, game, 0, false);
     const g: any = game.rows[0];
     game.rows[0].clockRunning = false;
@@ -2289,12 +2283,10 @@ describe('T2-7 — football play clock slaved to game clock', () => {
     await service.clockAction(TENANT, g.id, { action: 'start' });
 
     const pc = (game.rows[0].stats as any)?.playClock;
-    expect(pc).toBeDefined();
-    expect(pc.running).toBe(true);
-    expect(pc.ms).toBe(40_000); // auto-reset to the standard fresh-snap duration
+    expect(pc).toMatchObject({ ms: 0, running: false });
   });
 
-  it('segment advance resets the football play clock to 40s (stopped)', async () => {
+  it('segment advance parks the play clock on the 25-second count (NFHS: start of each period)', async () => {
     const { service, game } = setup();
     await footballWithPlayClock(service, game, 22_000, true);
     const g: any = game.rows[0];
@@ -2303,7 +2295,7 @@ describe('T2-7 — football play clock slaved to game clock', () => {
 
     const pc = (game.rows[0].stats as any)?.playClock;
     expect(pc).toBeDefined();
-    expect(pc.ms).toBe(40_000);
+    expect(pc.ms).toBe(25_000);
     expect(pc.running).toBe(false);
   });
 

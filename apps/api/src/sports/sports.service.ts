@@ -32,6 +32,7 @@ import {
   sanitizeStructuredStat,
   sanitizeResults,
   // K-12 lane A2 — the shared clock contract (packages/api-types/src/sports-clock.ts).
+  isUntimedSegment,
   projectCountdownMs,
   projectGameClockMs,
   shotClockMode,
@@ -3455,14 +3456,21 @@ export class SportsService {
 
   /**
    * The game-clock patch for one clock action, computed from ONE read of the
-   * game so the game clock, penalty box, shot clock and play clock are all
-   * re-anchored on the same instant and written in the same statement.
+   * game so the game clock, penalty box and shot clock are all re-anchored on
+   * the same instant and written in the same statement.
    *
    * Penalties slave to the game clock — a whistle that stops the game clock
    * freezes the whole penalty box; a start resumes it (skipped when the box
-   * is empty). 2026-05-27: the shot clock and (T2-7) the football play clock
-   * also slave to it, on start/pause transitions only — set/reset edit the
-   * game clock alone without touching the possession's shot clock.
+   * is empty). 2026-05-27: the shot clock also slaves to it, on start/pause
+   * transitions only — set/reset edit the game clock alone without touching
+   * the possession's shot clock.
+   *
+   * The football PLAY clock does NOT (K12-F06): it runs on its own. An
+   * incomplete pass stops the game clock and starts a 40 s play clock; the
+   * game clock then starts on the snap while the play clock is reset for the
+   * next down (NFHS 2025 instructions for game and play-clock operators).
+   * Slaving it froze the play clock at every incomplete pass — the table
+   * could not run a standard stopped-clock down.
    */
   private clockTransition(
     game: GameRow,
@@ -3507,14 +3515,6 @@ export class SportsService {
       def.shotClock?.full,
     );
     if (shotStats) mergedStats = shotStats;
-    const playStats = this.syncPlayClockToGameClock(
-      mergedStats || sourceStats,
-      def.key,
-      clockMutated,
-      clockRunning,
-      now,
-    );
-    if (playStats) mergedStats = playStats;
     if (mergedStats) data.stats = mergedStats;
     return { data, clockMs, clockRunning };
   }
@@ -3664,22 +3664,43 @@ export class SportsService {
   }
 
   /**
-   * Football play clock — the 40 / 25-second countdown between snaps.
-   * A second clock, independent of the game clock; reset to 40 after a
-   * normal play, 25 after a stoppage. Stored in Game.stats.playClock.
+   * The football play clock — the 40 / 25-second count to the snap, stored
+   * in Game.stats.playClock `{ ms, at, running }`. K12-F06: it is its OWN
+   * clock — start, stop and reset never depend on the game clock, and the
+   * game clock's start / pause / expiry never touch it (see clockTransition).
+   *
+   *   start  — run from the current reading (a count that hit 0 stays at 0
+   *            until the table resets it: NFHS, a delay-of-game count is held
+   *            at zero until the penalty is enforced)
+   *   stop   — freeze at the current reading
+   *   reset  — to 40 (after a normal down) or 25 (after an administrative
+   *            stoppage) — the sport's two presets, nothing else. Runs at
+   *            once unless `run: false` parks it: the snap sets it to 40
+   *            without running, and a 25 count waits for the referee's
+   *            ready-for-play signal.
+   *
+   * NFHS instruction M: a play clock that would START with more time than is
+   * left in the quarter while the game clock is running is turned off, so the
+   * offense is never shown more time than it has. It is stored `off: true`
+   * (not running, hidden on the board) until the next start / reset.
    */
   async setPlayClock(
     tenantId: string,
     id: string,
-    dto: { action?: string; value?: number },
+    dto: { action?: string; value?: number; run?: boolean },
     actor?: CommandInput,
   ) {
     const action = String(dto.action || '');
     if (!['start', 'stop', 'reset'].includes(action)) {
       throw new BadRequestException('action must be start | stop | reset');
     }
+    if (dto.run !== undefined && typeof dto.run !== 'boolean') {
+      throw new BadRequestException('run must be true or false');
+    }
     return this.runGameCommand(tenantId, id, `play-clock.${action}`, actor, dto, (scope) =>
-      scope.write({ stats: this.playClockPatch(scope.before, action, dto.value) }),
+      scope.write({
+        stats: this.playClockPatch(scope.before, action, dto.value, dto.run !== false, new Date()),
+      }),
     );
   }
 
@@ -3688,46 +3709,63 @@ export class SportsService {
     game: GameRow,
     action: string,
     value: number | undefined,
+    run: boolean,
+    now: Date,
   ): Record<string, unknown> {
+    const def = this.sportOf(game.sport);
+    const cfg = def.playClock;
+    if (!cfg) {
+      throw new BadRequestException({
+        code: 'PLAY_CLOCK_UNSUPPORTED',
+        message: `${def.name} has no play clock.`,
+      });
+    }
     const stats: Record<string, unknown> =
       game.stats && typeof game.stats === 'object'
         ? { ...(game.stats as Record<string, unknown>) }
         : {};
-    const prev: Record<string, unknown> =
-      stats.playClock && typeof stats.playClock === 'object'
+    const prev =
+      stats.playClock && typeof stats.playClock === 'object' && !Array.isArray(stats.playClock)
         ? (stats.playClock as Record<string, unknown>)
-        : {};
-    let ms = Math.max(0, Number(prev.ms) || 0);
-    let running = !!prev.running;
-
-    const live = (): number => {
-      if (!running) return ms;
-      const at = new Date(String(prev.at || '')).getTime();
-      if (!Number.isFinite(at)) return ms;
-      return Math.max(0, ms - (Date.now() - at));
-    };
+        : null;
+    let ms = prev ? projectCountdownMs(prev, now.getTime()) : cfg.full * 1000;
+    let running = prev ? !!prev.running : false;
 
     switch (action) {
       case 'start':
-        ms = live();
         running = true;
         break;
       case 'stop':
-        ms = live();
         running = false;
         break;
       case 'reset': {
-        // value = seconds to reset to (40 normal, 25 after a stoppage).
-        const v = Math.round(Number(value));
-        const sec = Number.isFinite(v) && v > 0 && v <= 60 ? v : 40;
-        ms = sec * 1000;
-        running = true;
+        const v = value === undefined || value === null ? cfg.full : Number(value);
+        if (v !== cfg.full && v !== cfg.short) {
+          throw new BadRequestException({
+            code: 'PLAY_CLOCK_RESET_INVALID',
+            message: `The play clock resets to ${cfg.full} or ${cfg.short} seconds.`,
+            allowed: [cfg.full, cfg.short],
+          });
+        }
+        ms = v * 1000;
+        running = run;
         break;
       }
     }
 
-    const playClock = { ms, at: new Date().toISOString(), running };
-    return { ...stats, playClock };
+    const nowIso = now.toISOString();
+    if (running && def.clock.type === 'countdown' && game.clockRunning && !isUntimedSegment(def, game.segment)) {
+      const left = projectGameClockMs(game, def.clock.type, now.getTime());
+      if (ms > left) {
+        stats.playClock = { ms, at: nowIso, running: false, off: true };
+        return stats;
+      }
+    }
+    // A stop leaves a clock the rule turned off still off; any start or
+    // reset re-decides it above.
+    const off = action === 'stop' && prev?.off === true;
+    stats.playClock = off ? { ms, at: nowIso, running, off: true } : { ms, at: nowIso, running };
+    return stats;
   }
 
   /**
@@ -3844,67 +3882,6 @@ export class SportsService {
       at: now.toISOString(),
       running,
     };
-    return stats;
-  }
-
-  /**
-   * T2-7 — Football play clock slaved to the game clock.
-   *
-   * Mirror of syncShotClockToGameClock but for the football 40/25-second
-   * play clock. Only fires when:
-   *   1. clockMutated is true (start/pause transitions — NOT set/reset).
-   *   2. The sport is FOOTBALL (def.key === 'football').
-   *   3. stats.playClock is present (backwards-compat: games without a
-   *      configured play clock are a no-op).
-   *
-   * Behavior:
-   *   - 'pause' (clockMutated, running=false): freeze play clock at its
-   *     current live value. The ref's whistle stops both clocks together.
-   *   - 'start' (clockMutated, running=true): if armed (running was already
-   *     true or ms > 0), re-anchor at the current live value and mark
-   *     running. If the play clock was already at 0, auto-resets to 40s
-   *     (a snap without a prior reset — defensive, not the normal path).
-   *   - After callTimeout the play clock is pre-set to 25s and NOT running;
-   *     the next game-clock start will start it from there (armed = ms > 0).
-   *
-   * `sportKey` is passed in rather than re-loading the sport def so this
-   * helper stays pure (no async, no DB) and shares the caller's def lookup.
-   */
-  private syncPlayClockToGameClock(
-    rawStats: unknown,
-    sportKey: string,
-    clockMutated: boolean,
-    running: boolean,
-    now: Date,
-  ): Record<string, unknown> | null {
-    if (!clockMutated) return null;
-    // Only football has a play clock.
-    if (sportKey !== 'football') return null;
-    if (!rawStats || typeof rawStats !== 'object') return null;
-    const stats = { ...(rawStats as Record<string, unknown>) };
-    const prev = (stats.playClock && typeof stats.playClock === 'object')
-      ? (stats.playClock as Record<string, unknown>)
-      : null;
-    if (!prev) return null; // no play clock configured → no-op
-    // Project current live ms from the prior anchor (same math as setPlayClock).
-    let ms = Math.max(0, Number(prev.ms) || 0);
-    const prevRunning = !!prev.running;
-    if (prevRunning) {
-      const at = new Date(String(prev.at || '')).getTime();
-      if (Number.isFinite(at)) {
-        ms = Math.max(0, ms - (now.getTime() - at));
-      }
-    }
-    if (!running) {
-      // Game clock paused → freeze play clock at current live value.
-      stats.playClock = { ms, at: now.toISOString(), running: false };
-    } else {
-      // Game clock started → re-anchor and run.
-      // If clock has already expired, reset to 40s (the standard fresh-snap
-      // duration). This guards against the operator forgetting to reset.
-      if (ms <= 0) ms = 40_000;
-      stats.playClock = { ms, at: now.toISOString(), running: true };
-    }
     return stats;
   }
 
@@ -4365,9 +4342,7 @@ export class SportsService {
         // zeros it for OT instead of showing a fake quarter clock. Every
         // other countdown sport, and football's regulation quarters, keep
         // the normal segment-start re-anchor. (2026-06-13 audit P2.)
-        const footballOT =
-          def.key === 'football' && segment > def.segment.count;
-        data.clockMs = footballOT
+        data.clockMs = isUntimedSegment(def, segment)
           ? 0
           : this.segmentStartMs(def, game.stats, segment);
         data.clockRunning = false;
@@ -4486,9 +4461,12 @@ export class SportsService {
           running: false,
         };
       }
-      // T2-7: football play-clock reset to 40s on quarter advance.
-      if (def.key === 'football' && mergedStats.playClock) {
-        mergedStats.playClock = { ms: 40_000, at: now.toISOString(), running: false };
+      // K12-F06: a new period starts on the 25-second count, parked until the
+      // referee's ready-for-play signal (NFHS 2025 play-clock instructions:
+      // "the beginning of any period" and every overtime period use 25). It
+      // used to park at 40.
+      if (def.playClock && mergedStats.playClock) {
+        mergedStats.playClock = { ms: def.playClock.short * 1000, at: now.toISOString(), running: false };
       }
       // LINE SCORE (2026-06-13 audit — board cross-domain contract): on a
       // FORWARD advance for baseball/softball (per-inning) and football
@@ -4660,18 +4638,8 @@ export class SportsService {
     const def = this.sportOf(game.sport);
     const segMs = def.clock.segmentMs ?? 0;
     const now = new Date();
-    // T2-7 — Football: any clock expiry stops the game clock → reset
-    // the play clock to 40s and freeze it. The syncPlayClockToGameClock
-    // helper handles this but autoAdvanceExpiredClocks writes the game
-    // row directly (no clockAction call), so we build the stats patch here.
-    const playClockPatch = ((): Record<string, unknown> | null => {
-      if (def.key !== 'football') return null;
-      const s = game.stats && typeof game.stats === 'object'
-        ? (game.stats as Record<string, unknown>)
-        : {};
-      if (!s.playClock) return null;
-      return { ...s, playClock: { ms: 40_000, at: now.toISOString(), running: false } };
-    })();
+    // K12-F06 — the football play clock is not touched: it is its own clock
+    // (a down in progress at 0:00 is played out; the table runs the count).
 
     if (game.segment >= def.segment.count) {
       // Final regulation segment ended — stop the clock and let the
@@ -4681,7 +4649,6 @@ export class SportsService {
         clockMs: def.clock.type === 'countdown' ? 0 : segMs,
         clockUpdatedAt: now,
       };
-      if (playClockPatch) finalData.stats = playClockPatch as any;
       await scope.write(finalData);
       await scope.event('CLOCK', {
         action: 'expired',
@@ -4731,10 +4698,6 @@ export class SportsService {
           at: now.toISOString(),
           running: false,
         };
-      }
-      // T2-7: football play-clock reset on auto-advance.
-      if (playClockPatch && typeof playClockPatch === 'object') {
-        autoStats = { ...autoStats, ...(playClockPatch as Record<string, unknown>) };
       }
       // LINE SCORE on the auto-advance path too (football is the only
       // box-score sport with a clock, so it's the only one that reaches
@@ -6310,16 +6273,10 @@ export class SportsService {
         ...((data.stats as Record<string, unknown> | undefined) ?? statsBefore),
       };
       stats[statKey] = newRemaining;
-      // Football: reset the play clock to 25s + stop it on a timeout.
-      if (def.key === 'football') {
-        const pc: Record<string, unknown> =
-          stats.playClock && typeof stats.playClock === 'object'
-            ? { ...(stats.playClock as Record<string, unknown>) }
-            : {};
-        pc.ms = 25_000;
-        pc.running = false;
-        pc.at = now.toISOString();
-        stats.playClock = pc;
+      // Football: a charged timeout sets the 25-second count, parked until
+      // the referee's ready-for-play signal (NFHS play-clock instructions).
+      if (def.playClock) {
+        stats.playClock = { ms: def.playClock.short * 1000, at: now.toISOString(), running: false };
       }
       data.stats = stats;
       const updated = await scope.write(data);

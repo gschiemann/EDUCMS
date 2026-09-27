@@ -6365,11 +6365,15 @@ function PlayClockBtn({
   stats: Record<string, unknown>;
   onAction: (action: string, value?: number) => void;
 }) {
+  const tConsole = useTranslations('sportsConsole');
   const pc =
     stats && typeof stats.playClock === 'object' && stats.playClock
       ? (stats.playClock as Record<string, unknown>)
       : {};
   const armed = String(pc.at || '') !== '';
+  // K12-F06 — the API turned the count off (NFHS: it would have shown more
+  // time than is left in the quarter). The board hides it; say why here.
+  const off = pc.off === true;
   const anchorMs = Math.max(0, Number(pc.ms) || 0);
   const anchorAt = String(pc.at || '');
   const running = !!pc.running;
@@ -6389,19 +6393,25 @@ function PlayClockBtn({
     return () => clearInterval(t);
   }, [anchorMs, anchorAt, running]);
 
-  const secs = !armed
-    ? '40'
-    : ms <= 5000
-      ? (ms / 1000).toFixed(1)
-      : String(Math.ceil(ms / 1000));
+  const secs = off
+    ? '—'
+    : !armed
+      ? '40'
+      : ms <= 5000
+        ? (ms / 1000).toFixed(1)
+        : String(Math.ceil(ms / 1000));
   return (
     <div className="flex items-stretch gap-1.5 shrink-0">
-      <div className="flex flex-col items-center justify-center px-2.5 h-14 rounded-xl bg-white border border-slate-200">
+      <div
+        className="flex flex-col items-center justify-center px-2.5 h-14 rounded-xl bg-white border border-slate-200"
+        title={off ? tConsole('playClockOff') : undefined}
+      >
         <span className="text-[9px] font-black tracking-widest text-slate-400">PLAY</span>
         <span
           className={`text-xl font-black tabular-nums leading-tight ${
-            armed && ms <= 5000 ? 'text-red-600' : 'text-slate-900'
+            !off && armed && ms <= 5000 ? 'text-red-600' : 'text-slate-900'
           }`}
+          aria-label={off ? tConsole('playClockOff') : undefined}
         >
           {secs}
         </span>

@@ -49,7 +49,7 @@ describe('K12 launch acceptance — the 21 audit probes', () => {
   });
 
   // Owner: A2 (F06) — the play clock is independent of the game clock.
-  it.failing('K12-04 football play clock can continue while game clock is stopped', async () => {
+  it('K12-04 football play clock can continue while game clock is stopped', async () => {
     const { service } = setup(); const g: any = await newGame(service, 'football');
     await service.clockAction(TENANT, g.id, { action: 'start' });
     await service.setPlayClock(TENANT, g.id, { action: 'reset', value: 40 });

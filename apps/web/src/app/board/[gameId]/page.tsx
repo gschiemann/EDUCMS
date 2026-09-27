@@ -934,11 +934,13 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
   }, [shotAnchorMs, shotAnchorAt, shotRunning, shotLen, data.serverTime]);
 
   // Football play clock — the 40/25 countdown between snaps,
-  // projected from its own anchor in stats.playClock.
+  // projected from its own anchor in stats.playClock. K12-F06: a count the
+  // table turned off (NFHS: it would show more time than is left in the
+  // quarter) is hidden, never shown frozen.
   const [playMs, setPlayMs] = useState(0);
   const pcRaw = (data.stats as Record<string, unknown> | undefined)?.playClock;
   const pc = pcRaw && typeof pcRaw === 'object' ? (pcRaw as Record<string, unknown>) : null;
-  const playArmed = !!(pc && String(pc.at || ''));
+  const playArmed = !!(pc && String(pc.at || '') && pc.off !== true);
   const playAnchorMs = Math.max(0, Number(pc?.ms) || 0);
   const playAnchorAt = String(pc?.at || '');
   const playRunning = !!pc?.running;
