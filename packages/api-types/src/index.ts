@@ -989,6 +989,9 @@ export * from './sports';
 // K-12 launch lane A2 (2026-09-27) — THE clock contract: projection from a
 // server time, expiry/hold, tenths display, exact-time entry, shot-clock mode.
 export * from './sports-clock';
+// Volunteer console roles (K12-F16) — the one role → capability table the API
+// enforces and the scorekeeper pad renders from.
+export * from './sports-console-roles';
 export * from './streaming';
 export * from './streaming-presets';
 export * from './billing';
