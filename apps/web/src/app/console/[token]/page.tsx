@@ -2,7 +2,8 @@
 
 /**
  * VenueOS Sports — the PUBLIC scorekeeper pad (Phase-2 Domain SHARE;
- * rebuilt for the K-12 launch program, register row K12-F16).
+ * rebuilt for the K-12 launch program, register row K12-F16, on lane A1's
+ * command engine and lane A2's freshness contract).
  *
  * A student/volunteer opens /console/<token> from a link or QR the operator
  * minted in the game console and gets the controls THEIR LINK'S SCOPE allows
@@ -20,62 +21,71 @@
  *   presentation  — celebrations only
  *   full          — (a link minted before scopes) the original five controls
  *
- * CONNECTION TRUTH (lib/console-pad-link). The audit found this pad still
- * showing a red "LIVE" after 11 seconds of failed board reads, with no
- * warning. Now: "LIVE" only while the last good read is fresh; a stalled
- * read stream becomes a PERSISTENT "connection lost" banner and the controls
- * pause (a tap against a picture you cannot see is how a wrong score reaches
- * the board); when reads return the volunteer confirms the fresh score before
- * the controls work again. Every tap shows while it is being sent, and one
- * that does not land stays on screen, named, until dismissed.
+ * THE COMMAND ENGINE (K12-F10 / F09 / F13, lib/console-pad-commands). Every
+ * tap carries a durable command id; a tap that got no response and is a
+ * score / clock / period / stats change is queued under that id and replayed
+ * by the operator console's own replay controller (lib/game-op-replay) — a
+ * copy that did land is answered from the server's receipt, never applied
+ * twice. Undo is the server's single-use inverse of THIS link's own latest
+ * action. A FINAL game refuses every tap server-side; the pad says so.
+ *
+ * CONNECTION TRUTH (lib/sports-freshness via hooks/use-sports-link — the ONE
+ * contract the board, ribbon, scorebug and operator console share). "LIVE"
+ * only while the last good read is fresh; a stalled read stream is a
+ * PERSISTENT "connection lost" banner, the controls pause and every clock is
+ * HELD at the reading it had (a clock is never run on unconfirmed data);
+ * when reads return the volunteer confirms the fresh picture before the
+ * controls work again (confirmAfterLoss). Clocks project from the page's one
+ * server clock (lib/server-clock, fed by every board poll) and format with
+ * the shared formatter — tenths in the final minute where the sport's boards
+ * show them.
  *
  * Reads ride the PUBLIC board endpoint via the shared hardened poll engine
- * (startBoardPoll — self-chaining, ETag/304, jittered backoff); a 304 still
- * refreshes the clock-skew sample. Mutations are plain fetch (the token in
- * the path IS the credential), one at a time. A 401 anywhere flips to the
- * full-screen "link revoked/expired" message.
+ * (startBoardPoll — self-chaining, ETag/304, jittered backoff); a payload
+ * older than one already shown is never applied (acceptRevision). A 401
+ * anywhere flips to the full-screen "link revoked/expired" message.
  *
  * Mobile perf standard: solid backgrounds only (no backdrop-blur), and
- * NOTHING runs while the tab is hidden — the board poll, the clock ticker
- * and the connection ticker all stop on visibilitychange and resume (with a
- * fresh poll) on return.
+ * NOTHING runs while the tab is hidden — the board poll, the clock ticker,
+ * the freshness ticker and the queue's retry timer all stop on
+ * visibilitychange and resume (with a fresh poll) on return.
  */
 
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { API_URL } from '@/lib/api-url';
 import { startBoardPoll } from '@/lib/board-poll';
 import {
   CONSOLE_ACTIONS,
+  clockShowsTenths,
   consoleAllows,
   findSport,
   formatScore,
+  formatSportClock,
   isConsoleScope,
+  projectGameClockMs,
   type ConsoleAction,
   type ConsoleScope,
 } from '@cms/api-types';
-import {
-  consoleTokenGameId,
-  padIncrements,
-  projectClockMs,
-  fmtPadClock,
-  fmtSubClockSec,
-  projectSubClockMs,
-  readSubClock,
-  type PadClockAnchor,
-} from '@/lib/console-share';
+import { consoleTokenGameId, padIncrements } from '@/lib/console-share';
 import {
   classifyPadFailure,
-  initialPadLink,
-  padChip,
-  padControlsEnabled,
-  padLinkReducer,
-  padSecondsSinceGood,
+  nextLastAction,
+  padQueueKey,
+  padQueueKind,
+  padQueuedPath,
   pushRejected,
   type PadFailure,
+  type PadLastAction,
   type PadRejectedCommand,
-} from '@/lib/console-pad-link';
+  type PadStep,
+} from '@/lib/console-pad-commands';
+import { getGameOpQueue, isNetworkFailure, newCommandId, type GameOp } from '@/lib/game-op-queue';
+import { attachOpQueueReplay } from '@/lib/game-op-replay';
+import { acceptRevision, linkIsLive, secondsSinceGood, type LinkState } from '@/lib/sports-freshness';
+import { noteRevisionShown, useSportsLink } from '@/hooks/use-sports-link';
+import { serverClock } from '@/lib/server-clock';
 import {
   PadClockSection,
   PadCueSection,
@@ -85,9 +95,10 @@ import {
   PadPossessionSection,
   PadSegmentSection,
   PadShotClockSection,
+  PadSubClockReadout,
   PadTeamSection,
+  PadUndoCard,
   type PadSend,
-  type PadStep,
 } from './PadSections';
 
 /** The slice of the public board payload the pad renders. */
@@ -104,26 +115,32 @@ interface PadData {
   clockMs: number;
   clockRunning: boolean;
   clockUpdatedAt: string | null;
-  serverTime: number;
   possession: string;
   stats: Record<string, unknown>;
 }
 
 type SessionState = 'checking' | 'ok' | 'revoked' | 'offline';
 
-/** Catalog key per failure class (lib/console-pad-link classifyPadFailure). */
+/** Catalog key per failure class (lib/console-pad-commands classifyPadFailure). */
 const FAILURE_KEY: Record<PadFailure, string> = {
   offline: 'failedOffline',
   'not-permitted': 'failedNotPermitted',
   'rate-limited': 'failedRateLimited',
+  final: 'failedFinal',
   refused: 'failedRefused',
   server: 'failedServer',
+  'undo-not-latest': 'undoNotLatest',
+  'undo-conflict': 'undoConflict',
+  'undo-gone': 'undoGone',
+  'undo-impossible': 'undoImpossible',
 };
 
 interface Access {
   scope: ConsoleScope;
   allows: ConsoleAction[];
 }
+
+type StepOutcome = 'ok' | 'queued' | 'unknown' | 'refused' | 'revoked';
 
 function num(v: unknown, fallback: number): number {
   return typeof v === 'number' && isFinite(v) ? v : fallback;
@@ -147,25 +164,44 @@ function foldResponse(cur: PadData, j: Record<string, unknown>): PadData {
   };
 }
 
+/** The API error code of a refused request, if it sent one. */
+async function errorCode(res: Response): Promise<string | null> {
+  try {
+    const j = (await res.json()) as Record<string, unknown> | null;
+    return j && typeof j.code === 'string' ? j.code : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function ScorekeeperPadPage() {
   const t = useTranslations('sportsPad');
   const params = useParams<{ token: string }>();
   const token = typeof params?.token === 'string' ? params.token : '';
   const gameId = useMemo(() => consoleTokenGameId(token), [token]);
+  const queueKey = useMemo(() => (gameId ? padQueueKey(gameId, token) : ''), [gameId, token]);
 
   const [session, setSession] = useState<SessionState>('checking');
   const [sessionAttempt, setSessionAttempt] = useState(0);
   const [access, setAccess] = useState<Access | null>(null);
   const [data, setData] = useState<PadData | null>(null);
-  // Local receive-time sample paired with the payload's serverTime — the
-  // skew term of every clock projection (see console-share.projectClockMs).
-  const anchorRef = useRef<PadClockAnchor | null>(null);
-  const [link, dispatchLink] = useReducer(padLinkReducer, 0, () => initialPadLink(Date.now()));
-  const [nowMs, setNowMs] = useState(() => Date.now());
+  // The segment on screen when a tap is made (a queued absolute op replays
+  // with it). A ref, so the async command sender never reads a stale render.
+  const segmentRef = useRef<number | null>(null);
+  useEffect(() => {
+    segmentRef.current = data ? data.segment : null;
+  }, [data]);
+  // K12-F40 — the newest game revision shown; an older payload (another
+  // replica's one-second board cache) is never applied over it.
+  const shownRevision = useRef<number | null>(null);
+  const link = useSportsLink({ confirmAfterLoss: true, holdClocks: true, trackVisibility: true });
+  const [, setTick] = useState(0);
   const [pending, setPending] = useState<string | null>(null);
   const pendingRef = useRef(false);
   const [rejected, setRejected] = useState<PadRejectedCommand[]>([]);
   const rejectSeq = useRef(0);
+  const [lastAction, setLastAction] = useState<PadLastAction | null>(null);
+  const [undone, setUndone] = useState<string | null>(null);
 
   const def = findSport(data?.sport);
   const increments = padIncrements(def);
@@ -212,7 +248,10 @@ export default function ScorekeeperPadPage() {
   }, [token, gameId, sessionAttempt]);
 
   // ── board state poll — only while the session is live AND the tab is
-  //    visible (mobile perf: a pocketed phone runs zero timers). ──────
+  //    visible (mobile perf: a pocketed phone runs zero timers). Every good
+  //    poll (a 200 or a 304) is a good read for the freshness contract and a
+  //    sample for the page's server clock (startBoardPoll feeds it). ──────
+  const markGood = link.markGood;
   useEffect(() => {
     if (session !== 'ok' || !gameId) return;
     let stop: (() => void) | null = null;
@@ -222,9 +261,11 @@ export default function ScorekeeperPadPage() {
         url: `${API_URL}/sports/board/${gameId}`,
         intervalMs: 750,
         onPayload: (payload) => {
-          const p = payload as Partial<PadData> & { serverTime?: number };
-          const receivedAt = Date.now();
-          const next: PadData = {
+          const p = payload as Partial<PadData> & { revision?: unknown; updatedAt?: unknown };
+          if (!acceptRevision(shownRevision.current, p.revision)) return;
+          if (typeof p.revision === 'number') shownRevision.current = p.revision;
+          noteRevisionShown('pad', p);
+          setData({
             sport: String(p.sport || ''),
             status: String(p.status || ''),
             segment: num(p.segment, 1),
@@ -237,7 +278,6 @@ export default function ScorekeeperPadPage() {
             clockMs: num(p.clockMs, 0),
             clockRunning: p.clockRunning === true,
             clockUpdatedAt: typeof p.clockUpdatedAt === 'string' ? p.clockUpdatedAt : null,
-            serverTime: num(p.serverTime, receivedAt),
             possession:
               typeof p.possession === 'string'
                 ? p.possession
@@ -245,23 +285,10 @@ export default function ScorekeeperPadPage() {
                   ? String((p.stats as Record<string, unknown>).possession)
                   : '',
             stats: p.stats && typeof p.stats === 'object' ? (p.stats as Record<string, unknown>) : {},
-          };
-          anchorRef.current = {
-            clockMs: next.clockMs,
-            clockRunning: next.clockRunning,
-            clockUpdatedAt: next.clockUpdatedAt,
-            serverTime: next.serverTime,
-            receivedAt,
-          };
-          setData(next);
-          dispatchLink({ type: 'good', at: receivedAt });
+          });
         },
-        // 304 — nothing changed, but the server clock sample is fresh:
-        // keep the skew honest (board parity) and count it as a good read.
-        onServerTime: (serverTime) => {
-          const receivedAt = Date.now();
-          if (anchorRef.current) anchorRef.current = { ...anchorRef.current, serverTime, receivedAt };
-          dispatchLink({ type: 'good', at: receivedAt });
+        onStatus: (s) => {
+          if (s.online) markGood();
         },
       });
     };
@@ -271,9 +298,7 @@ export default function ScorekeeperPadPage() {
           stop();
           stop = null;
         }
-        dispatchLink({ type: 'hidden', at: Date.now() });
       } else {
-        dispatchLink({ type: 'visible', at: Date.now() });
         startIfVisible();
       }
     };
@@ -283,55 +308,66 @@ export default function ScorekeeperPadPage() {
       document.removeEventListener('visibilitychange', onVisibility);
       if (stop) stop();
     };
-  }, [session, gameId]);
+  }, [session, gameId, markGood]);
 
-  // ── the 1 s connection ticker (visible-only) — decides "lost" and keeps
-  //    the "last update N s ago" copy honest. ──────────────────────────
+  // ── the offline queue: taps that got no response replay under the id
+  //    their first attempt carried, through the console's replay controller.
+  const queue = useMemo(() => (queueKey ? getGameOpQueue(queueKey) : null), [queueKey]);
+  const subscribeQueue = useCallback(
+    (onChange: () => void) => (queue ? queue.subscribe(onChange) : () => {}),
+    [queue],
+  );
+  const readQueue = useCallback(() => (queue ? queue.getSnapshot() : null), [queue]);
+  const queueSnap = useSyncExternalStore(subscribeQueue, readQueue, () => null);
   useEffect(() => {
-    if (session !== 'ok') return;
-    let timer: ReturnType<typeof setInterval> | null = null;
-    const tick = () => {
-      const at = Date.now();
-      dispatchLink({ type: 'tick', at, browserOffline: navigator.onLine === false });
-      setNowMs(at);
-    };
-    const arm = () => {
-      if (timer === null && document.visibilityState !== 'hidden') timer = setInterval(tick, 1000);
-    };
-    const disarm = () => {
-      if (timer !== null) {
-        clearInterval(timer);
-        timer = null;
+    if (!queue || session !== 'ok' || !token) return;
+    const sender = async (op: GameOp): Promise<unknown> => {
+      const body: Record<string, unknown> = { ...op.payload, commandId: op.opId };
+      // An ABSOLUTE op replays with the period it was made in (the server
+      // refuses it in another one); a score delta is a real point whenever.
+      if (op.kind !== 'score' && typeof op.expectedSegment === 'number') body.expectedSegment = op.expectedSegment;
+      const res = await fetch(`${API_URL}/sports/console/${encodeURIComponent(token)}${padQueuedPath(op.kind)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (res.status === 401) {
+        setSession('revoked');
+        return null;
       }
+      // A definitive refusal can never succeed on retry: drop it, and say so.
+      if (res.status >= 400 && res.status < 500) {
+        queue.noteRejection();
+        return null;
+      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json().catch(() => null);
     };
-    const onVisibility = () => (document.visibilityState === 'hidden' ? disarm() : arm());
-    arm();
-    document.addEventListener('visibilitychange', onVisibility);
-    return () => {
-      document.removeEventListener('visibilitychange', onVisibility);
-      disarm();
-    };
-  }, [session]);
+    return attachOpQueueReplay(queueKey, queue, sender, {
+      // The server's latest action for this link is now a replayed one the
+      // pad cannot name: nothing to offer as Undo.
+      onReplayed: () => setLastAction(null),
+    });
+  }, [queue, queueKey, session, token]);
 
-  // ── the fast clock ticker: 250 ms, only while something is running, the
-  //    picture is FRESH and the tab is visible. While the picture is stale
-  //    (lost, or waiting after a return) the clocks FREEZE at their last
-  //    known reading — projecting a running clock we can no longer see would
-  //    be a guess. In `resync` the reads are back, so the picture is fresh
-  //    and ticks; only the controls wait for the volunteer's confirmation. ─
-  const live = link.phase === 'live' || link.phase === 'resync';
+  // ── the clock ticker: re-render while a clock runs and the picture is
+  //    fresh; 100 ms when tenths are on screen, else 250 ms. While stale the
+  //    server clock is HELD (useSportsLink holdClocks), so nothing moves. ──
+  const live = link.state.phase === 'live' || link.state.phase === 'recovering';
   const subRunning = !!(
     (data?.stats?.shotClock as Record<string, unknown> | undefined)?.running ||
     (data?.stats?.playClock as Record<string, unknown> | undefined)?.running ||
-    (Array.isArray(data?.stats?.penalties) && (data?.stats?.penalties as Record<string, unknown>[]).some((p) => p && p.running))
+    (Array.isArray(data?.stats?.penalties) &&
+      (data?.stats?.penalties as Record<string, unknown>[]).some((p) => p && p.running))
   );
   const anyRunning = !!data && (data.clockRunning || subRunning);
+  const tenths = !!data && !!def && data.clockRunning && clockShowsTenths(def, data.clockMs);
   useEffect(() => {
     if (!live || !anyRunning) return;
     let timer: ReturnType<typeof setInterval> | null = null;
     const arm = () => {
       if (timer === null && document.visibilityState !== 'hidden') {
-        timer = setInterval(() => setNowMs(Date.now()), 250);
+        timer = setInterval(() => setTick((n) => (n + 1) % 1_000_000), tenths ? 100 : 250);
       }
     };
     const disarm = () => {
@@ -347,61 +383,162 @@ export default function ScorekeeperPadPage() {
       document.removeEventListener('visibilitychange', onVisibility);
       disarm();
     };
-  }, [live, anyRunning]);
+  }, [live, anyRunning, tenths]);
 
-  // Frozen "now" while not live: the projection stops at the last good read.
-  const projectAt = live ? nowMs : (link.lastGoodAt ?? nowMs);
-  const skewMs = anchorRef.current ? anchorRef.current.serverTime - anchorRef.current.receivedAt : 0;
-  const clockNow =
-    anchorRef.current && def ? projectClockMs(anchorRef.current, def.clock.type, projectAt) : data?.clockMs ?? 0;
+  // "Undone: …" is a confirmation, not an error — it clears itself.
+  useEffect(() => {
+    if (!undone) return;
+    const timer = setTimeout(() => setUndone(null), 4000);
+    return () => clearTimeout(timer);
+  }, [undone]);
 
   // ── commands: one at a time, only against a live picture ─────────
+  const reject = useCallback((label: string, failure: PadFailure, retry?: PadRejectedCommand['retry']) => {
+    rejectSeq.current += 1;
+    const id = rejectSeq.current;
+    setRejected((list) => pushRejected(list, { id, label, failure, at: Date.now(), retry: retry ?? null }));
+  }, []);
+
+  /** Send one request under `commandId`. */
+  const runStep = useCallback(
+    async (label: string, step: PadStep, commandId: string): Promise<StepOutcome> => {
+      let res: Response;
+      try {
+        res = await fetch(`${API_URL}/sports/console/${encodeURIComponent(token)}${step.path}`, {
+          method: step.method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...step.body, commandId }),
+        });
+      } catch (err) {
+        // No response at all: it may or may not have landed. A queue kind
+        // waits in the queue under the SAME id (a copy that landed is
+        // answered from its receipt); anything else is offered back as
+        // "Send again", also under the same id.
+        const kind = padQueueKind(step.kind);
+        if (queue && kind && isNetworkFailure(err)) {
+          queue.enqueue(kind, step.body, { commandId, expectedSegment: segmentRef.current });
+          return 'queued';
+        }
+        reject(label, 'offline', { step, commandId });
+        return 'unknown';
+      }
+      if (res.status === 401) {
+        setSession('revoked');
+        return 'revoked';
+      }
+      if (!res.ok) {
+        reject(label, classifyPadFailure(res.status, await errorCode(res)));
+        return 'refused';
+      }
+      const json = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+      if (json && typeof json === 'object') {
+        if (typeof json.version === 'number') {
+          shownRevision.current = Math.max(shownRevision.current ?? 0, json.version);
+        }
+        setData((cur) => (cur ? foldResponse(cur, json) : cur));
+      }
+      return 'ok';
+    },
+    [token, queue, reject],
+  );
+
   const send = useCallback<PadSend>(
-    (label, path, method, body, next) => {
+    (label, step, next) => {
       if (!token || pendingRef.current) return;
       pendingRef.current = true;
       setPending(label);
-      const fail = (failure: PadFailure) => {
-        rejectSeq.current += 1;
-        const id = rejectSeq.current;
-        setRejected((list) => pushRejected(list, { id, label, failure, at: Date.now() }));
-      };
-      const run = async (step: PadStep): Promise<boolean> => {
-        let res: Response;
-        try {
-          res = await fetch(`${API_URL}/sports/console/${encodeURIComponent(token)}${step.path}`, {
-            method: step.method,
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(step.body),
-          });
-        } catch {
-          fail(classifyPadFailure(null));
-          return false;
-        }
-        if (res.status === 401) {
-          setSession('revoked');
-          return false;
-        }
-        if (!res.ok) {
-          fail(classifyPadFailure(res.status));
-          return false;
-        }
-        const json = (await res.json().catch(() => null)) as Record<string, unknown> | null;
-        if (json && typeof json === 'object') setData((cur) => (cur ? foldResponse(cur, json) : cur));
-        return true;
-      };
+      setUndone(null);
       void (async () => {
         try {
-          const ok = await run({ path, method, body });
-          if (ok && next) await run(next);
+          const firstId = newCommandId();
+          let outcome = await runStep(label, step, firstId);
+          let lastStep = step;
+          let lastId = firstId;
+          if (next) {
+            if (outcome === 'ok') {
+              lastId = newCommandId();
+              lastStep = next;
+              outcome = await runStep(label, next, lastId);
+            } else if (outcome === 'queued' && queue) {
+              // Keep the two halves in order: the second waits behind the first.
+              const kind = padQueueKind(next.kind);
+              if (kind) queue.enqueue(kind, next.body, { commandId: newCommandId(), expectedSegment: segmentRef.current });
+            }
+          }
+          if (outcome !== 'revoked') {
+            const settled = outcome;
+            setLastAction((prev) => nextLastAction(prev, settled, lastStep, lastId, label, !!next));
+          }
         } finally {
           pendingRef.current = false;
           setPending(null);
         }
       })();
     },
-    [token],
+    [token, runStep, queue],
   );
+
+  /** Resend a tap that got no answer, under the SAME command id. */
+  const resend = useCallback(
+    (entry: PadRejectedCommand) => {
+      if (!entry.retry || pendingRef.current) return;
+      const { step, commandId } = entry.retry;
+      setRejected((list) => list.filter((x) => x.id !== entry.id));
+      pendingRef.current = true;
+      setPending(entry.label);
+      void (async () => {
+        try {
+          const outcome = await runStep(entry.label, step, commandId);
+          if (outcome !== 'revoked') {
+            setLastAction((prev) => nextLastAction(prev, outcome, step, commandId, entry.label, false));
+          }
+        } finally {
+          pendingRef.current = false;
+          setPending(null);
+        }
+      })();
+    },
+    [runStep],
+  );
+
+  /** Undo this link's own latest action — once. */
+  const undo = useCallback(() => {
+    const target = lastAction;
+    if (!target || !token || pendingRef.current) return;
+    const label = t('undoLabel', { label: target.label });
+    pendingRef.current = true;
+    setPending(label);
+    void (async () => {
+      try {
+        let res: Response;
+        try {
+          res = await fetch(`${API_URL}/sports/console/${encodeURIComponent(token)}/undo`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ undoOf: target.commandId }),
+          });
+        } catch {
+          // No answer: the undo may or may not have landed. Tapping Undo again
+          // is safe (the server claims it once), so it stays offered.
+          reject(label, 'offline');
+          return;
+        }
+        if (res.status === 401) {
+          setSession('revoked');
+          return;
+        }
+        setLastAction(null);
+        if (!res.ok) {
+          reject(label, classifyPadFailure(res.status, await errorCode(res)));
+          return;
+        }
+        setUndone(target.label);
+      } finally {
+        pendingRef.current = false;
+        setPending(null);
+      }
+    })();
+  }, [lastAction, token, t, reject]);
 
   // ── full-screen terminal states ────────────────────────────────
   if (session === 'revoked') {
@@ -445,28 +582,28 @@ export default function ScorekeeperPadPage() {
     );
   }
 
+  const nowServer = serverClock.now();
+  const clockNow = def ? projectGameClockMs(data, def.clock.type, nowServer) : data.clockMs;
   const caps = new Set<ConsoleAction>(access.allows);
   const final = data.status === 'FINAL';
-  const controlsOn = padControlsEnabled(link) && !final;
+  const controlsOn = linkIsLive(link.state) && !final;
   const disabled = !controlsOn || pending !== null;
   const segName = def?.segment?.name || t('periodFallback');
   const homeColor = data.homeColor || '#38bdf8';
   const awayColor = data.awayColor || '#f472b6';
   const hasClock = !!def && def.clock.type !== 'none';
-  const chip = padChip(link, data.status);
-  const since = padSecondsSinceGood(link, nowMs);
+  const chip = padChip(link.state, data.status);
   const roleKey =
     access.scope === 'full'
       ? 'role.legacy'
       : access.scope === 'shot' && def?.key === 'football'
         ? 'rolePlay'
         : `role.${access.scope}`;
-  const shotSc = def?.shotClock ? readSubClock(data.stats.shotClock) : null;
-  const playSc = def?.key === 'football' ? readSubClock(data.stats.playClock) : null;
+  const queued = queueSnap ? queueSnap.ops.length : 0;
 
   return (
     <Shell>
-      {/* header — game identity, the connection-aware chip, the link's role */}
+      {/* header — game identity, the connection-aware chip, the link's scope */}
       <header className="px-4 pb-2 pt-4">
         <div className="flex items-center justify-between">
           <div className="min-w-0 truncate text-sm font-black text-white">
@@ -478,9 +615,9 @@ export default function ScorekeeperPadPage() {
             className={`ml-2 shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-black uppercase tracking-wider ${
               chip === 'live-game'
                 ? 'bg-red-600 text-white'
-                : chip === 'lost'
+                : chip === 'stale'
                   ? 'bg-amber-400 text-slate-950'
-                  : chip === 'resync'
+                  : chip === 'recovering'
                     ? 'bg-sky-500 text-slate-950'
                     : 'bg-slate-700 text-slate-200'
             }`}
@@ -488,10 +625,12 @@ export default function ScorekeeperPadPage() {
             {chip === 'live-game'
               ? t('chipLive')
               : chip === 'game-status'
-                ? t.has(`status.${data.status}`) ? t(`status.${data.status}`) : data.status || t('chipGame')
-                : chip === 'lost'
+                ? t.has(`status.${data.status}`)
+                  ? t(`status.${data.status}`)
+                  : data.status || t('chipGame')
+                : chip === 'stale'
                   ? t('chipLost')
-                  : chip === 'resync'
+                  : chip === 'recovering'
                     ? t('chipResync')
                     : chip === 'paused'
                       ? t('chipPaused')
@@ -505,40 +644,57 @@ export default function ScorekeeperPadPage() {
 
       {/* PERSISTENT connection state — never a toast. */}
       <div aria-live="polite" role="status">
-        {link.phase === 'lost' && (
-          <div data-testid="pad-lost" className="mx-4 mb-2 rounded-xl border-2 border-amber-400 bg-amber-950 px-3 py-2.5 text-amber-50">
-            <div className="text-sm font-black uppercase tracking-wide">{t('lostTitle')}</div>
-            <p className="mt-1 text-[13px] font-semibold">
-              {since === null ? t('lostNeverBody') : t('lostBody', { seconds: since })}
-            </p>
-          </div>
-        )}
-        {link.phase === 'resync' && (
+        <PadStaleBanner state={link.state} />
+        {link.state.phase === 'recovering' && (
           <div data-testid="pad-resync" className="mx-4 mb-2 rounded-xl border-2 border-sky-400 bg-sky-950 px-3 py-2.5 text-sky-50">
             <div className="text-sm font-black uppercase tracking-wide">{t('resyncTitle')}</div>
             <p className="mt-1 text-[13px] font-semibold">{t('resyncBody')}</p>
             <button
               type="button"
-              onClick={() => dispatchLink({ type: 'confirm', at: Date.now() })}
+              onClick={link.confirm}
               className="mt-2 min-h-[48px] w-full rounded-xl bg-sky-500 text-sm font-black uppercase tracking-wide text-slate-950"
             >
               {t('resyncConfirm')}
             </button>
           </div>
         )}
-        {link.phase === 'connecting' && link.lastGoodAt !== null && (
+        {link.state.phase === 'connecting' && link.state.lastGoodAt !== null && (
           <div className="mx-4 mb-2 rounded-xl bg-slate-800 px-3 py-2 text-[13px] font-bold text-slate-200">
             {t('refreshing')}
           </div>
         )}
-        {final && link.phase === 'live' && (
-          <div className="mx-4 mb-2 rounded-xl bg-slate-800 px-3 py-2 text-[13px] font-bold text-slate-200">
-            {t('finalBody')}
+        {final && (
+          <div data-testid="pad-final" className="mx-4 mb-2 rounded-xl border-2 border-slate-500 bg-slate-800 px-3 py-2.5 text-slate-100">
+            <div className="text-sm font-black uppercase tracking-wide">{t('finalTitle')}</div>
+            <p className="mt-1 text-[13px] font-semibold">{t('finalBody')}</p>
+          </div>
+        )}
+        {queued > 0 && (
+          <div data-testid="pad-queued" className="mx-4 mb-2 rounded-xl bg-amber-400 px-3 py-2 text-[13px] font-bold text-slate-950">
+            {queueSnap?.replaying ? t('queuedSending', { count: queued }) : t('queuedWaiting', { count: queued })}
+          </div>
+        )}
+        {queued === 0 && queueSnap && queueSnap.lastRejectionAt !== null && (
+          <div data-testid="pad-queue-refused" className="mx-4 mb-2 flex items-start gap-2 rounded-xl bg-red-700 px-3 py-2 text-white">
+            <p className="min-w-0 flex-1 self-center text-[13px] font-bold">{t('queuedRefused')}</p>
+            <button
+              type="button"
+              onClick={() => queue?.clearRejection()}
+              aria-label={t('dismiss')}
+              className="min-h-[44px] min-w-[44px] shrink-0 rounded-lg bg-red-900 text-sm font-black"
+            >
+              ✕
+            </button>
           </div>
         )}
         {pending && (
           <div data-testid="pad-pending" className="mx-4 mb-2 rounded-xl bg-slate-800 px-3 py-2 text-[13px] font-bold text-slate-200">
             {t('sending', { label: pending })}
+          </div>
+        )}
+        {undone && (
+          <div data-testid="pad-undone" className="mx-4 mb-2 rounded-xl bg-emerald-700 px-3 py-2 text-[13px] font-bold text-white">
+            {t('undoneBody', { label: undone })}
           </div>
         )}
       </div>
@@ -548,9 +704,17 @@ export default function ScorekeeperPadPage() {
         <ul data-testid="pad-rejected" className="mx-4 mb-2 space-y-2" aria-live="assertive">
           {rejected.map((r) => (
             <li key={r.id} className="flex items-start gap-2 rounded-xl bg-red-700 px-3 py-2 text-white">
-              <p className="min-w-0 flex-1 text-[13px] font-bold">
-                {t(FAILURE_KEY[r.failure], { label: r.label })}
-              </p>
+              <p className="min-w-0 flex-1 self-center text-[13px] font-bold">{t(FAILURE_KEY[r.failure], { label: r.label })}</p>
+              {r.retry && (
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => resend(r)}
+                  className="min-h-[44px] shrink-0 rounded-lg bg-white px-3 text-xs font-black uppercase text-red-800 disabled:opacity-40"
+                >
+                  {t('sendAgain')}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setRejected((list) => list.filter((x) => x.id !== r.id))}
@@ -564,28 +728,20 @@ export default function ScorekeeperPadPage() {
         </ul>
       )}
 
-      {/* scoreboard strip — what the pad last saw, with its age when stale */}
+      {/* scoreboard strip — what the pad last saw, labelled when stale */}
       <section className={`mx-4 rounded-2xl bg-slate-900 p-4 ${live ? '' : 'opacity-70'}`} data-testid="pad-scoreboard">
         <div className="flex items-stretch justify-between">
           <ScoreCol label={data.homeTeam} color={homeColor} score={formatScore(def, data.homeScore)} />
           <div className="flex flex-col items-center justify-center px-2">
             {hasClock && (
-              <div className="font-mono text-3xl font-black tabular-nums text-white">{fmtPadClock(clockNow)}</div>
+              <div className="font-mono text-3xl font-black tabular-nums text-white" data-testid="pad-clock-readout">
+                {formatSportClock(def, clockNow)}
+              </div>
             )}
             <div className="mt-1 text-[11px] font-bold uppercase tracking-wider text-slate-400">
               {segName} {data.segment}
             </div>
-            {(shotSc || playSc) && (
-              <div className="mt-1 font-mono text-lg font-black tabular-nums text-amber-400">
-                {shotSc
-                  ? shotSc.len > 0 || shotSc.ms > 0
-                    ? fmtSubClockSec(projectSubClockMs(shotSc, skewMs, projectAt))
-                    : '—'
-                  : playSc && playSc.at
-                    ? fmtSubClockSec(projectSubClockMs(playSc, skewMs, projectAt))
-                    : '40'}
-              </div>
-            )}
+            {def && <PadSubClockReadout def={def} stats={data.stats} nowMs={nowServer} />}
             {!live && (
               <div className="mt-1 text-[10px] font-black uppercase tracking-widest text-amber-300">{t('lastKnown')}</div>
             )}
@@ -593,6 +749,8 @@ export default function ScorekeeperPadPage() {
           <ScoreCol label={data.awayTeam} color={awayColor} score={formatScore(def, data.awayScore)} />
         </div>
       </section>
+
+      {lastAction && <PadUndoCard label={lastAction.label} disabled={disabled} onUndo={undo} />}
 
       {/* score pads */}
       {caps.has('score') && increments.length > 0 && (
@@ -605,9 +763,11 @@ export default function ScorekeeperPadPage() {
             disabled={disabled}
             minusLabel={t('minusOne', { team: data.homeTeam })}
             onDelta={(delta) =>
-              send(t('cmdScore', { team: data.homeTeam, delta: delta > 0 ? `+${delta}` : `${delta}` }), '/score', 'PATCH', {
-                team: 'home',
-                delta,
+              send(t('cmdScore', { team: data.homeTeam, delta: delta > 0 ? `+${delta}` : `${delta}` }), {
+                kind: 'score',
+                path: '/score',
+                method: 'PATCH',
+                body: { team: 'home', delta },
               })
             }
           />
@@ -619,23 +779,25 @@ export default function ScorekeeperPadPage() {
             disabled={disabled}
             minusLabel={t('minusOne', { team: data.awayTeam })}
             onDelta={(delta) =>
-              send(t('cmdScore', { team: data.awayTeam, delta: delta > 0 ? `+${delta}` : `${delta}` }), '/score', 'PATCH', {
-                team: 'away',
-                delta,
+              send(t('cmdScore', { team: data.awayTeam, delta: delta > 0 ? `+${delta}` : `${delta}` }), {
+                kind: 'score',
+                path: '/score',
+                method: 'PATCH',
+                body: { team: 'away', delta },
               })
             }
           />
         </section>
       )}
 
-      {caps.has('clock') && hasClock && (
-        <PadClockSection running={data.clockRunning} clockNow={clockNow} disabled={disabled} send={send} />
+      {caps.has('clock') && hasClock && def && (
+        <PadClockSection def={def} running={data.clockRunning} clockNow={clockNow} disabled={disabled} send={send} />
       )}
       {caps.has('shotClock') && def && (
-        <PadShotClockSection def={def} stats={data.stats} skewMs={skewMs} nowMs={projectAt} disabled={disabled} send={send} />
+        <PadShotClockSection def={def} stats={data.stats} nowMs={nowServer} disabled={disabled} send={send} />
       )}
       {caps.has('playClock') && def && (
-        <PadPlayClockSection def={def} stats={data.stats} skewMs={skewMs} nowMs={projectAt} disabled={disabled} send={send} />
+        <PadPlayClockSection def={def} stats={data.stats} nowMs={nowServer} disabled={disabled} send={send} />
       )}
       {caps.has('segment') && <PadSegmentSection segName={segName} disabled={disabled} send={send} />}
       {def && (caps.has('stats') || caps.has('timeout')) && (
@@ -678,8 +840,7 @@ export default function ScorekeeperPadPage() {
           stats={data.stats}
           homeTeam={data.homeTeam}
           awayTeam={data.awayTeam}
-          skewMs={skewMs}
-          nowMs={projectAt}
+          nowMs={nowServer}
           disabled={disabled}
           send={send}
         />
@@ -687,6 +848,44 @@ export default function ScorekeeperPadPage() {
       {def && caps.has('cue') && <PadCueSection def={def} disabled={disabled} send={send} />}
       <div className="pb-8" />
     </Shell>
+  );
+}
+
+/**
+ * The single header chip. `live-game` is the ONLY state allowed to read
+ * "LIVE", and only while the link is live AND the game is LIVE; a connected
+ * non-live game shows its status; everything else names the connection
+ * state (the shared contract's phase) instead of the game state.
+ */
+type PadChip = 'live-game' | 'game-status' | LinkState['phase'];
+function padChip(s: LinkState, gameStatus: string): PadChip {
+  if (s.phase === 'live') return gameStatus === 'LIVE' ? 'live-game' : 'game-status';
+  return s.phase;
+}
+
+/**
+ * K12-F40 — while the reads are stale the pad says so, with how long ago the
+ * last good read was. A one-second ticker only while stale (no timer
+ * otherwise); the first frame reads the instant the link went stale.
+ */
+function PadStaleBanner({ state }: { state: LinkState }) {
+  const t = useTranslations('sportsPad');
+  const stale = state.phase === 'stale';
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!stale) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [stale]);
+  if (!stale) return null;
+  const seconds = secondsSinceGood(state, Math.max(now, state.staleSince ?? now));
+  return (
+    <div data-testid="pad-lost" className="mx-4 mb-2 rounded-xl border-2 border-amber-400 bg-amber-950 px-3 py-2.5 text-amber-50">
+      <div className="text-sm font-black uppercase tracking-wide">{t('lostTitle')}</div>
+      <p className="mt-1 text-[13px] font-semibold">
+        {seconds === null ? t('lostNeverBody') : t('lostBody', { seconds })}
+      </p>
+    </div>
   );
 }
 

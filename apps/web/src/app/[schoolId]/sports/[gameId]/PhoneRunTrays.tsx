@@ -22,16 +22,25 @@
  *
  * Every control is ≥ 44×44 px; nothing depends on hover or right-click.
  * The shot-clock readout ticks only while the shot clock runs AND the tab is
- * visible (mobile performance standard: a pocketed phone runs no timers).
+ * visible (mobile performance standard: a pocketed phone runs no timers), and
+ * it reads the page's ONE server clock through the shared projection
+ * (K12-F17 — the same reading the board shows, held while the console's
+ * reads are stale, K12-F40).
  */
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Pause, Play, RotateCcw, Timer } from 'lucide-react';
 import type { SportDefinition } from '@cms/api-types';
-import { sportHasPossessionArrow } from '@cms/api-types';
+import {
+  formatSportClock,
+  parseClockEntry,
+  projectCountdownMs,
+  shotClockDisplayLen,
+  shotClockMode,
+  sportHasPossessionArrow,
+} from '@cms/api-types';
 import { useGameEvents, useUndoGameEvent, type useGameControl } from '@/hooks/use-api';
-import { formatGameClock as fmtClock } from '@/lib/game-clock-format';
-import { parsePadClock, readSubClock, projectSubClockMs, fmtSubClockSec } from '@/lib/console-share';
+import { serverClock } from '@/lib/server-clock';
 import { shotClockResets } from '@/lib/sports-stat-rows';
 import { TeamStatGrid } from '@/components/sports/StatControls';
 import { eventSummary } from './RecentEventsBar';
@@ -147,10 +156,12 @@ function LastChange({ gameId, sport }: { gameId: string; sport: string }) {
   );
 }
 
-function ClockTray({ liveMs, ctl }: { liveMs: number; ctl: Ctl }) {
+function ClockTray({ def, liveMs, ctl }: { def: SportDefinition; liveMs: number; ctl: Ctl }) {
   const t = useTranslations('sportsRunPhone');
   const [editing, setEditing] = useState<string | null>(null);
-  const ms = editing === null ? null : parsePadClock(editing);
+  // The shared exact-time parser (K12-F17): 7:42, 0:04.3, :04.3 or 4.3 —
+  // tenths are typable; a bare number is refused (minutes or seconds?).
+  const ms = editing === null ? null : parseClockEntry(editing);
   return (
     <div data-testid="phone-clock-tray">
       <TrayLabel>{t('clock')}</TrayLabel>
@@ -172,7 +183,7 @@ function ClockTray({ liveMs, ctl }: { liveMs: number; ctl: Ctl }) {
           {t('plusSecond')}
         </button>
         {editing === null ? (
-          <button type="button" className={TRAY_BTN} onClick={() => setEditing(fmtClock(liveMs))}>
+          <button type="button" className={TRAY_BTN} onClick={() => setEditing(formatSportClock(def, liveMs))}>
             {t('setTime')}
           </button>
         ) : (
@@ -180,9 +191,9 @@ function ClockTray({ liveMs, ctl }: { liveMs: number; ctl: Ctl }) {
             <input
               autoFocus
               type="text"
-              inputMode="numeric"
+              inputMode="decimal"
               value={editing}
-              onChange={(e) => setEditing(e.target.value.replace(/[^0-9:]/g, '').slice(0, 6))}
+              onChange={(e) => setEditing(e.target.value.replace(/[^0-9:.]/g, '').slice(0, 8))}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && ms !== null) {
                   ctl.clock.mutate({ action: 'set', ms });
@@ -218,12 +229,22 @@ function ClockTray({ liveMs, ctl }: { liveMs: number; ctl: Ctl }) {
 function ShotClockTray({ def, stats, ctl }: { def: SportDefinition; stats: Record<string, unknown>; ctl: Ctl }) {
   const t = useTranslations('sportsRunPhone');
   const resets = shotClockResets(def, stats);
-  const sc = readSubClock(stats.shotClock);
+  const sc = stats.shotClock && typeof stats.shotClock === 'object' ? (stats.shotClock as Record<string, unknown>) : null;
   const running = !!sc?.running;
   useVisibleTicker(running, 200);
+  // K12-F05 — a shot clock the table switched OFF stays off; say so rather
+  // than showing reset buttons the server refuses.
+  if (shotClockMode(stats) === 'off') {
+    return (
+      <div data-testid="phone-shot-clock-tray">
+        <TrayLabel>{t('shotClock')}</TrayLabel>
+        <p className="text-[13px] font-semibold text-slate-400">{t('shotOff')}</p>
+      </div>
+    );
+  }
   if (!resets) return null;
-  const armed = !!sc && (sc.len > 0 || sc.ms > 0);
-  const liveMs = sc ? projectSubClockMs(sc, 0, Date.now()) : 0;
+  const armed = shotClockDisplayLen(def, stats) > 0;
+  const liveMs = projectCountdownMs(sc, serverClock.now());
   return (
     <div data-testid="phone-shot-clock-tray">
       <TrayLabel>{t('shotClock')}</TrayLabel>
@@ -234,7 +255,7 @@ function ShotClockTray({ def, stats, ctl }: { def: SportDefinition; stats: Recor
           }`}
           aria-live="off"
         >
-          {armed ? fmtSubClockSec(liveMs) : '—'}
+          {armed ? String(Math.max(0, Math.ceil(liveMs / 1000))) : '—'}
         </span>
         <button
           type="button"
@@ -333,7 +354,7 @@ export function PhoneRunTrays({
     >
       <SourceLine stats={stats} />
       <LastChange gameId={gameId} sport={def.key} />
-      {hasClock && <ClockTray liveMs={liveMs} ctl={ctl} />}
+      {hasClock && <ClockTray def={def} liveMs={liveMs} ctl={ctl} />}
       {def.shotClock && <ShotClockTray def={def} stats={stats} ctl={ctl} />}
       {sportHasPossessionArrow(def) && <PossessionTray g={g} ctl={ctl} />}
       <TeamStatGrid

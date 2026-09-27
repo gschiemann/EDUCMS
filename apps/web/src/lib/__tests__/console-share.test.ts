@@ -1,21 +1,12 @@
 /**
  * console-share — pure helpers behind the scorekeeper pad (/console/[token])
  * and the operator's ShareConsoleLink card (Phase-2 Domain SHARE).
+ *
+ * The pad's clocks moved to the shared contract in @cms/api-types (K12-F17 /
+ * F40): the projections, the formatter and the exact-time parser are pinned
+ * by packages/api-types/src/sports-clock.spec.ts, not duplicated here.
  */
-import {
-  consoleTokenGameId,
-  readSubClock,
-  projectSubClockMs,
-  fmtSubClockSec,
-  consoleShareUrl,
-  padIncrements,
-  projectClockMs,
-  fmtPadClock,
-  parsePadClock,
-  sportHasTeamTimeouts,
-  type PadClockAnchor,
-} from '../console-share';
-import { findSport } from '@cms/api-types';
+import { consoleTokenGameId, consoleShareUrl, padIncrements } from '../console-share';
 
 const GAME = 'a3d1b2c4-5678-4abc-9def-000000000001';
 const MAC = '0123456789abcdef0123456789abcdef';
@@ -51,42 +42,6 @@ describe('link scopes (K12-F34 + K12-F16) — never in the token text', () => {
   });
 });
 
-describe('readSubClock / projectSubClockMs — shot and play clock readouts', () => {
-  const at = new Date(1_754_000_000_000).toISOString();
-
-  it('reads a stored clock and tolerates garbage', () => {
-    expect(readSubClock({ len: 35, ms: 35_000, running: false, at })).toEqual({
-      len: 35,
-      ms: 35_000,
-      running: false,
-      at,
-    });
-    expect(readSubClock(null)).toBeNull();
-    expect(readSubClock('x')).toBeNull();
-    expect(readSubClock({ ms: -5, running: 'yes' })).toEqual({ ms: 0, running: false, at: null, len: 0 });
-  });
-
-  it('a running clock counts down from its anchor, skew-corrected, clamped at 0', () => {
-    const clock = { len: 30, ms: 30_000, running: true, at };
-    const t = 1_754_000_000_000;
-    expect(projectSubClockMs(clock, 0, t + 4_000)).toBe(26_000);
-    // local clock 2 s behind the server
-    expect(projectSubClockMs(clock, 2_000, t + 4_000)).toBe(24_000);
-    expect(projectSubClockMs(clock, 0, t + 99_000)).toBe(0);
-  });
-
-  it('a stopped clock or a bad anchor reads the stored value', () => {
-    expect(projectSubClockMs({ len: 30, ms: 12_000, running: false, at }, 0, 9e12)).toBe(12_000);
-    expect(projectSubClockMs({ len: 30, ms: 12_000, running: true, at: null }, 0, 9e12)).toBe(12_000);
-  });
-
-  it('whole-second readout uses ceil (0.4 s reads 1)', () => {
-    expect(fmtSubClockSec(400)).toBe('1');
-    expect(fmtSubClockSec(0)).toBe('0');
-    expect(fmtSubClockSec(24_000)).toBe('24');
-  });
-});
-
 describe('consoleShareUrl', () => {
   it('builds the pad URL from an origin + token', () => {
     expect(consoleShareUrl('https://app.venueos.example', 'tok')).toBe(
@@ -117,119 +72,5 @@ describe('padIncrements — sport-aware quick buttons', () => {
     expect(padIncrements(undefined)).toEqual([1]);
     expect(padIncrements(null)).toEqual([1]);
     expect(padIncrements({})).toEqual([1]);
-  });
-});
-
-describe('sportHasTeamTimeouts — the T.O. button gate (refuter P1)', () => {
-  it('is true for exactly the sports whose defs declare team-timeout stats', () => {
-    // Pinned against the REAL sport definitions so a def change re-decides
-    // the pad automatically: football / basketball / water polo today.
-    expect(sportHasTeamTimeouts(findSport('football'))).toBe(true);
-    expect(sportHasTeamTimeouts(findSport('basketball'))).toBe(true);
-    expect(sportHasTeamTimeouts(findSport('water_polo'))).toBe(true);
-    // The sports the finding named as the NaN path: no timeout stats.
-    expect(sportHasTeamTimeouts(findSport('volleyball'))).toBe(false);
-    expect(sportHasTeamTimeouts(findSport('soccer'))).toBe(false);
-    expect(sportHasTeamTimeouts(findSport('baseball'))).toBe(false);
-  });
-
-  it('is false for missing/unknown defs and malformed stats lists', () => {
-    expect(sportHasTeamTimeouts(undefined)).toBe(false);
-    expect(sportHasTeamTimeouts(null)).toBe(false);
-    expect(sportHasTeamTimeouts({} as never)).toBe(false);
-    expect(sportHasTeamTimeouts({ stats: 'nope' } as never)).toBe(false);
-    expect(sportHasTeamTimeouts({ stats: [{ key: 'down' }] })).toBe(false);
-  });
-});
-
-describe('projectClockMs — the board-parity anchor projection', () => {
-  const base: PadClockAnchor = {
-    clockMs: 480_000, // 8:00
-    clockRunning: true,
-    clockUpdatedAt: new Date(1_754_000_000_000).toISOString(),
-    serverTime: 1_754_000_000_000, // server clock at receive
-    receivedAt: 1_754_000_000_000, // local clock at receive (zero skew)
-  };
-
-  it('a stopped clock returns the stored reading untouched', () => {
-    expect(
-      projectClockMs({ ...base, clockRunning: false }, 'countdown', base.receivedAt + 60_000),
-    ).toBe(480_000);
-  });
-
-  it("a 'none' clock sport returns the stored reading untouched", () => {
-    expect(projectClockMs(base, 'none', base.receivedAt + 60_000)).toBe(480_000);
-  });
-
-  it('countdown: 5s later reads 5s less', () => {
-    expect(projectClockMs(base, 'countdown', base.receivedAt + 5_000)).toBe(475_000);
-  });
-
-  it('countdown clamps at zero (never negative on screen)', () => {
-    expect(projectClockMs(base, 'countdown', base.receivedAt + 999_000)).toBe(0);
-  });
-
-  it('countup: 5s later reads 5s more', () => {
-    expect(projectClockMs(base, 'countup', base.receivedAt + 5_000)).toBe(485_000);
-  });
-
-  it('corrects for client-server skew (local clock 2s behind server)', () => {
-    // Server said 1_754_000_000_000 (== the anchor write instant) at the
-    // moment our local clock read 1_753_999_998_000 → skew +2s. Without
-    // the skew term, "local now − anchorAt" would claim 1s of elapsed
-    // time when truly 3s local have passed; WITH it, local+skew lands in
-    // the server's clock domain and 3s local later projects exactly 3s
-    // off the anchor.
-    const skewed: PadClockAnchor = { ...base, receivedAt: base.serverTime - 2_000 };
-    expect(projectClockMs(skewed, 'countdown', skewed.receivedAt + 3_000)).toBe(477_000);
-  });
-
-  it('an unparseable anchor timestamp falls back to the stored reading', () => {
-    expect(
-      projectClockMs({ ...base, clockUpdatedAt: null }, 'countdown', base.receivedAt + 5_000),
-    ).toBe(480_000);
-    expect(
-      projectClockMs({ ...base, clockUpdatedAt: 'not-a-date' }, 'countdown', base.receivedAt + 5_000),
-    ).toBe(480_000);
-  });
-});
-
-describe('fmtPadClock — CEIL semantics (console-reference parity)', () => {
-  it('renders m:ss', () => {
-    expect(fmtPadClock(480_000)).toBe('8:00');
-    expect(fmtPadClock(61_000)).toBe('1:01');
-  });
-
-  it('a countdown at 0.4s reads 0:01 — NEVER 0:00 with time left', () => {
-    expect(fmtPadClock(400)).toBe('0:01');
-    expect(fmtPadClock(1)).toBe('0:01');
-  });
-
-  it('0:00 only at true zero; negatives clamp', () => {
-    expect(fmtPadClock(0)).toBe('0:00');
-    expect(fmtPadClock(-500)).toBe('0:00');
-  });
-
-  it('59.9s reads 1:00 (ceil), not 0:59', () => {
-    expect(fmtPadClock(59_900)).toBe('1:00');
-  });
-});
-
-describe('parsePadClock — the "set clock" input', () => {
-  it('parses m:ss to milliseconds', () => {
-    expect(parsePadClock('8:00')).toBe(480_000);
-    expect(parsePadClock('0:45')).toBe(45_000);
-    expect(parsePadClock(' 12:30 ')).toBe(750_000);
-  });
-  it('rejects malformed input', () => {
-    expect(parsePadClock('')).toBeNull();
-    expect(parsePadClock('8')).toBeNull();
-    expect(parsePadClock('8:60')).toBeNull();
-    expect(parsePadClock('a:bc')).toBeNull();
-  });
-  it('K12-F17: takes tenths — the 0.3 s last-second correction', () => {
-    expect(parsePadClock('0.3')).toBe(300);
-    expect(parsePadClock('0:04.3')).toBe(4_300);
-    expect(parsePadClock(':59.9')).toBe(59_900);
   });
 });

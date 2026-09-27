@@ -3243,7 +3243,8 @@
     "stop": "Detener",
     "possession": "Posesión",
     "backToGames": "Volver a la jornada deportiva",
-    "judgedTotal": "Total de {team}"
+    "judgedTotal": "Total de {team}",
+    "shotOff": "El reloj de posesión está apagado en este partido (Configuración)."
   },
   "sportsPad": {
     "vs": "vs",
@@ -3284,7 +3285,7 @@
     "refreshing": "Actualizando desde el marcador…",
     "finalBody": "El partido ha terminado. La anotación está cerrada; el operador puede reabrirlo.",
     "sending": "Enviando: {label}…",
-    "failedOffline": "No llegó al servidor: {label}. Revisa el marcador antes de volver a tocar.",
+    "failedOffline": "Sin respuesta del servidor: {label}. Revisa el marcador; puedes enviarlo otra vez, no puede contar dos veces.",
     "failedNotPermitted": "{label}: este enlace no puede hacer eso.",
     "failedRateLimited": "{label}: demasiados toques; espera un momento y vuelve a intentarlo.",
     "failedRefused": "{label}: el servidor rechazó este cambio.",
@@ -3347,7 +3348,25 @@
     "cuesTitle": "Celebraciones",
     "minusSecond": "−1 s",
     "plusSecond": "+1 s",
-    "timeoutsTitle": "Tiempos muertos"
+    "timeoutsTitle": "Tiempos muertos",
+    "failedFinal": "{label}: el partido ha terminado y ya no se puede cambiar nada. El operador puede reabrirlo para corregirlo.",
+    "undoNotLatest": "{label}: este enlace hizo otro cambio después. Aquí solo se puede deshacer su último cambio.",
+    "undoConflict": "{label}: algo cambió en el marcador desde entonces. Pide al operador que lo corrija.",
+    "undoGone": "{label}: ese cambio no se hizo desde este enlace.",
+    "undoImpossible": "{label}: ese cambio no se puede deshacer desde un enlace de anotador.",
+    "undoLabel": "Deshacer {label}",
+    "undoneBody": "Deshecho: {label}",
+    "lastChange": "Último cambio",
+    "undo": "Deshacer",
+    "undoConfirm": "Toca otra vez para deshacer",
+    "sendAgain": "Enviar otra vez",
+    "queuedWaiting": "{count, plural, one {# toque espera} other {# toques esperan}} para enviarse; se envían en cuanto vuelva la conexión.",
+    "queuedSending": "Enviando {count, plural, one {# toque pendiente} other {# toques pendientes}}…",
+    "queuedRefused": "El servidor rechazó un toque que esperaba para enviarse. Revisa el marcador.",
+    "finalTitle": "Final",
+    "clockSetHint": "Escribe minutos y segundos (7:42), o segundos y décimas (4.3).",
+    "shotOff": "El reloj de posesión está apagado en este partido. El operador puede activarlo en Configuración.",
+    "playOff": "Reloj de jugada apagado: queda menos tiempo en el cuarto que en la cuenta. Reinícialo para volver a ponerlo en marcha."
   },
   "sportsShareLink": {
     "title": "Enlaces para voluntarios: sin iniciar sesión",

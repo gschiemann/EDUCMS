@@ -6,12 +6,25 @@
  * passes `send` + `disabled` down. Every section renders only when the link's
  * server-issued `allows` include it, and every control is ≥ 44 px.
  *
+ * Clocks read the page's ONE server clock (`nowMs` = serverClock.now(), held
+ * while the link is stale) through the shared projections and formatter in
+ * @cms/api-types (K12-F17) — the same readings the board shows.
+ *
  * Dark, solid backgrounds (mobile performance standard — no blur).
  */
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import type { ConsoleStatRule, SportDefinition } from '@cms/api-types';
-import { consolePlayClockResets, consoleStatRules } from '@cms/api-types';
+import {
+  consolePlayClockResets,
+  consoleStatRules,
+  formatClockReading,
+  formatSportClock,
+  parseClockEntry,
+  projectCountdownMs,
+  shotClockDisplayLen,
+  shotClockMode,
+} from '@cms/api-types';
 import { Stepper, TeamStatGrid } from '@/components/sports/StatControls';
 import {
   baseballCountPatch,
@@ -20,29 +33,16 @@ import {
   shotClockResets,
   statNumber,
 } from '@/lib/sports-stat-rows';
-import { fmtPadClock, fmtSubClockSec, parsePadClock, projectSubClockMs, readSubClock } from '@/lib/console-share';
-
-/** One request of a console command. */
-export interface PadStep {
-  path: string;
-  method: 'PATCH' | 'POST';
-  body: Record<string, unknown>;
-}
+import type { PadStep } from '@/lib/console-pad-commands';
 
 /**
  * Fire one console command. `label` is what the volunteer sees while it is
- * pending or if it is refused. `next` is an optional second request run only
- * after the first succeeds (the baseball half-inning: clear the count, then
- * advance the inning) — the pad sends one command at a time, so a two-part
- * action must travel as one command.
+ * pending, if it is refused, and on the Undo card. `next` is an optional
+ * second request run only after the first succeeds (the baseball half-inning:
+ * clear the count, then advance the inning) — the pad sends one command at a
+ * time, so a two-part action must travel as one.
  */
-export type PadSend = (
-  label: string,
-  path: string,
-  method: 'PATCH' | 'POST',
-  body: Record<string, unknown>,
-  next?: PadStep,
-) => void;
+export type PadSend = (label: string, step: PadStep, next?: PadStep) => void;
 
 /** A pad button: 48 px tall, solid colour (no overrides needed). */
 export function padBtn(tone = 'bg-slate-800 text-white', textCase = 'uppercase tracking-wide'): string {
@@ -61,7 +61,8 @@ export function PadCard({ title, children, testId }: { title: string; children: 
 }
 
 /** A tap that needs a second tap within 4 s — for actions that reset other
- *  state (next period clears fouls and the clock server-side). */
+ *  state (next period clears fouls and the clock server-side) or that take
+ *  something back (Undo). */
 function ConfirmButton({
   label,
   confirmLabel,
@@ -102,14 +103,82 @@ function ConfirmButton({
   );
 }
 
+/** Whole seconds for a shot / play clock readout (ceil — 0.4 s reads 1). */
+function wholeSeconds(ms: number): string {
+  return String(Math.max(0, Math.ceil(ms / 1000)));
+}
+
+// ── undo ───────────────────────────────────────────────────────────
+
+/**
+ * Undo THIS link's own latest change (the server's single-use inverse,
+ * K12-F09). Two taps, like every take-back on the pad.
+ */
+export function PadUndoCard({ label, disabled, onUndo }: { label: string; disabled: boolean; onUndo: () => void }) {
+  const t = useTranslations('sportsPad');
+  return (
+    <section data-testid="pad-undo" className="mx-4 mt-3 flex items-center gap-3 rounded-2xl bg-slate-900 p-3">
+      <div className="min-w-0 flex-1">
+        <div className="text-[11px] font-black uppercase tracking-wider text-slate-400">{t('lastChange')}</div>
+        <div className="truncate text-sm font-black text-white">{label}</div>
+      </div>
+      <div className="w-36 shrink-0">
+        <ConfirmButton
+          label={t('undo')}
+          confirmLabel={t('undoConfirm')}
+          disabled={disabled}
+          onConfirm={onUndo}
+          className={padBtn('w-full bg-slate-700 text-white')}
+        />
+      </div>
+    </section>
+  );
+}
+
+// ── the scoreboard's secondary clock readout ───────────────────────
+
+/** The shot clock (or the football play clock) under the game clock, as the
+ *  board shows it: hidden when the table switched it off. */
+export function PadSubClockReadout({
+  def,
+  stats,
+  nowMs,
+}: {
+  def: SportDefinition;
+  stats: Record<string, unknown>;
+  nowMs: number;
+}) {
+  let text: string | null = null;
+  if (def.shotClock) {
+    const len = shotClockDisplayLen(def, stats);
+    text = len > 0 ? wholeSeconds(projectCountdownMs(stats.shotClock as Record<string, unknown>, nowMs)) : null;
+  } else if (def.playClock) {
+    const pc = stats.playClock as Record<string, unknown> | undefined;
+    text =
+      !pc || typeof pc !== 'object'
+        ? String(def.playClock.full)
+        : pc.off
+          ? null
+          : wholeSeconds(projectCountdownMs(pc, nowMs));
+  }
+  if (text === null) return null;
+  return (
+    <div className="mt-1 font-mono text-lg font-black tabular-nums text-amber-400" data-testid="pad-subclock">
+      {text}
+    </div>
+  );
+}
+
 // ── game clock ─────────────────────────────────────────────────────
 
 export function PadClockSection({
+  def,
   running,
   clockNow,
   disabled,
   send,
 }: {
+  def: SportDefinition;
   running: boolean;
   clockNow: number;
   disabled: boolean;
@@ -117,18 +186,22 @@ export function PadClockSection({
 }) {
   const t = useTranslations('sportsPad');
   const [edit, setEdit] = useState<string | null>(null);
-  const ms = edit === null ? null : parsePadClock(edit);
+  // The shared exact-time parser (K12-F17): m:ss, m:ss.t, :ss.t or ss.t —
+  // "4.3" is a last-second correction; a bare number is refused.
+  const ms = edit === null ? null : parseClockEntry(edit);
+  const clock = (body: Record<string, unknown>): PadStep => ({ kind: 'clock', path: '/clock', method: 'PATCH', body });
+  const apply = () => {
+    if (ms === null || disabled) return;
+    send(t('cmdClockSet', { time: formatSportClock(def, ms) }), clock({ action: 'set', ms }));
+    setEdit(null);
+  };
   return (
     <PadCard title={t('clockTitle')} testId="pad-clock">
       <div className="flex items-stretch">
         <button
           type="button"
           disabled={disabled}
-          onClick={() =>
-            send(running ? t('clockStop') : t('clockStart'), '/clock', 'PATCH', {
-              action: running ? 'pause' : 'start',
-            })
-          }
+          onClick={() => send(running ? t('clockStop') : t('clockStart'), clock({ action: running ? 'pause' : 'start' }))}
           className={`min-h-[56px] flex-1 rounded-xl text-base font-black uppercase tracking-wide text-white active:opacity-80 disabled:opacity-40 ${
             running ? 'bg-red-600' : 'bg-emerald-600'
           }`}
@@ -142,10 +215,10 @@ export function PadClockSection({
           disabled={disabled}
           aria-label={t('minusSecondLabel')}
           onClick={() =>
-            send(t('cmdClockNudge', { delta: t('minusSecond') }), '/clock', 'PATCH', {
-              action: 'set',
-              ms: Math.max(0, Math.round(clockNow) - 1000),
-            })
+            send(
+              t('cmdClockNudge', { delta: t('minusSecond') }),
+              clock({ action: 'set', ms: Math.max(0, Math.round(clockNow) - 1000) }),
+            )
           }
           className={PAD_BTN}
         >
@@ -156,10 +229,7 @@ export function PadClockSection({
           disabled={disabled}
           aria-label={t('plusSecondLabel')}
           onClick={() =>
-            send(t('cmdClockNudge', { delta: t('plusSecond') }), '/clock', 'PATCH', {
-              action: 'set',
-              ms: Math.round(clockNow) + 1000,
-            })
+            send(t('cmdClockNudge', { delta: t('plusSecond') }), clock({ action: 'set', ms: Math.round(clockNow) + 1000 }))
           }
           className={PAD_BTN}
         >
@@ -168,44 +238,51 @@ export function PadClockSection({
         <button
           type="button"
           disabled={disabled}
-          onClick={() => setEdit(edit === null ? fmtPadClock(clockNow) : null)}
+          onClick={() => setEdit(edit === null ? formatSportClock(def, clockNow) : null)}
           className={PAD_BTN}
         >
           {t('clockSet')}
         </button>
       </div>
       {edit !== null && (
-        <div className="mt-2 flex items-center gap-2">
-          <input
-            autoFocus
-            value={edit}
-            onChange={(e) => setEdit(e.target.value.replace(/[^0-9:]/g, '').slice(0, 6))}
-            inputMode="numeric"
-            placeholder="12:00"
-            aria-label={t('clockSetLabel')}
-            className="min-h-[48px] w-28 rounded-lg border border-slate-600 bg-slate-800 px-3 text-center font-mono text-lg font-bold text-white"
-          />
-          <button
-            type="button"
-            disabled={disabled || ms === null}
-            onClick={() => {
-              if (ms === null) return;
-              send(t('cmdClockSet', { time: fmtPadClock(ms) }), '/clock', 'PATCH', { action: 'set', ms });
-              setEdit(null);
-            }}
-            className="min-h-[48px] flex-1 rounded-lg bg-sky-600 text-sm font-black uppercase tracking-wide text-white disabled:opacity-40"
-          >
-            {t('apply')}
-          </button>
-          <button
-            type="button"
-            onClick={() => setEdit(null)}
-            aria-label={t('cancel')}
-            className="min-h-[48px] min-w-[48px] rounded-lg bg-slate-700 text-sm font-bold text-slate-200"
-          >
-            ✕
-          </button>
-        </div>
+        <>
+          <div className="mt-2 flex items-center gap-2">
+            <input
+              autoFocus
+              value={edit}
+              onChange={(e) => setEdit(e.target.value.replace(/[^0-9:.]/g, '').slice(0, 8))}
+              onKeyDown={(e) => {
+                // Escape cancels — the typed time is never sent. Enter applies.
+                if (e.key === 'Escape') setEdit(null);
+                if (e.key === 'Enter') apply();
+              }}
+              inputMode="decimal"
+              placeholder="12:00"
+              aria-label={t('clockSetLabel')}
+              aria-describedby="pad-clock-hint"
+              className="min-h-[48px] w-28 rounded-lg border border-slate-600 bg-slate-800 px-3 text-center font-mono text-lg font-bold text-white"
+            />
+            <button
+              type="button"
+              disabled={disabled || ms === null}
+              onClick={apply}
+              className="min-h-[48px] flex-1 rounded-lg bg-sky-600 text-sm font-black uppercase tracking-wide text-white disabled:opacity-40"
+            >
+              {t('apply')}
+            </button>
+            <button
+              type="button"
+              onClick={() => setEdit(null)}
+              aria-label={t('cancel')}
+              className="min-h-[48px] min-w-[48px] rounded-lg bg-slate-700 text-sm font-bold text-slate-200"
+            >
+              ✕
+            </button>
+          </div>
+          <p id="pad-clock-hint" className="mt-1.5 text-[11px] font-semibold text-slate-400">
+            {t('clockSetHint')}
+          </p>
+        </>
       )}
     </PadCard>
   );
@@ -216,36 +293,49 @@ export function PadClockSection({
 export function PadShotClockSection({
   def,
   stats,
-  skewMs,
   nowMs,
   disabled,
   send,
 }: {
   def: SportDefinition;
   stats: Record<string, unknown>;
-  skewMs: number;
   nowMs: number;
   disabled: boolean;
   send: PadSend;
 }) {
   const t = useTranslations('sportsPad');
+  if (!def.shotClock) return null;
+  const shot = (body: Record<string, unknown>): PadStep => ({
+    kind: 'shotClock',
+    path: '/shot-clock',
+    method: 'PATCH',
+    body,
+  });
+  // K12-F05 — OFF is the table's decision, kept across the game; the server
+  // refuses every start / stop / reset while it is off. Say so, no buttons.
+  if (shotClockMode(stats) === 'off') {
+    return (
+      <PadCard title={t('shotTitle')} testId="pad-shot-clock">
+        <p className="text-[13px] font-semibold text-slate-300">{t('shotOff')}</p>
+      </PadCard>
+    );
+  }
   const resets = shotClockResets(def, stats);
   if (!resets) return null;
-  const sc = readSubClock(stats.shotClock);
+  const sc = stats.shotClock as Record<string, unknown> | undefined;
   const running = !!sc?.running;
-  const armed = !!sc && (sc.len > 0 || sc.ms > 0);
-  const ms = sc ? projectSubClockMs(sc, skewMs, nowMs) : 0;
+  const armed = shotClockDisplayLen(def, stats) > 0;
   return (
     <PadCard title={t('shotTitle')} testId="pad-shot-clock">
       <div className="flex items-center gap-3">
         <div className="min-w-[72px] text-center font-mono text-5xl font-black tabular-nums text-amber-400">
-          {armed ? fmtSubClockSec(ms) : '—'}
+          {armed ? wholeSeconds(projectCountdownMs(sc, nowMs)) : '—'}
         </div>
         <div className="grid flex-1 grid-cols-2 gap-2">
           <button
             type="button"
             disabled={disabled}
-            onClick={() => send(t('cmdShotReset', { seconds: resets.full }), '/shot-clock', 'PATCH', { action: 'reset', value: resets.full })}
+            onClick={() => send(t('cmdShotReset', { seconds: resets.full }), shot({ action: 'reset', value: resets.full }))}
             className={PAD_BTN}
           >
             {resets.full}
@@ -255,10 +345,7 @@ export function PadShotClockSection({
               type="button"
               disabled={disabled}
               onClick={() =>
-                send(t('cmdShotReset', { seconds: resets.short as number }), '/shot-clock', 'PATCH', {
-                  action: 'reset',
-                  value: resets.short,
-                })
+                send(t('cmdShotReset', { seconds: resets.short as number }), shot({ action: 'reset', value: resets.short }))
               }
               className={PAD_BTN}
             >
@@ -272,11 +359,7 @@ export function PadShotClockSection({
       <button
         type="button"
         disabled={disabled}
-        onClick={() =>
-          send(running ? t('shotStop') : t('shotStart'), '/shot-clock', 'PATCH', {
-            action: running ? 'stop' : 'start',
-          })
-        }
+        onClick={() => send(running ? t('shotStop') : t('shotStart'), shot({ action: running ? 'stop' : 'start' }))}
         className={`mt-2 min-h-[56px] w-full rounded-xl text-base font-black uppercase tracking-wide text-white active:opacity-80 disabled:opacity-40 ${
           running ? 'bg-red-600' : 'bg-emerald-600'
         }`}
@@ -290,27 +373,36 @@ export function PadShotClockSection({
 export function PadPlayClockSection({
   def,
   stats,
-  skewMs,
   nowMs,
   disabled,
   send,
 }: {
   def: SportDefinition;
   stats: Record<string, unknown>;
-  skewMs: number;
   nowMs: number;
   disabled: boolean;
   send: PadSend;
 }) {
   const t = useTranslations('sportsPad');
-  const pc = readSubClock(stats.playClock);
+  const cfg = def.playClock;
+  if (!cfg) return null;
+  const play = (body: Record<string, unknown>): PadStep => ({
+    kind: 'playClock',
+    path: '/play-clock',
+    method: 'PATCH',
+    body,
+  });
+  const pc =
+    stats.playClock && typeof stats.playClock === 'object' ? (stats.playClock as Record<string, unknown>) : null;
   const running = !!pc?.running;
-  const ms = pc ? projectSubClockMs(pc, skewMs, nowMs) : 40_000;
+  // NFHS instruction M (K12-F06): a count longer than the time left in the
+  // quarter is switched off by the server until the next reset.
+  const off = pc?.off === true;
   return (
     <PadCard title={t('playTitle')} testId="pad-play-clock">
       <div className="flex items-center gap-3">
         <div className="min-w-[72px] text-center font-mono text-5xl font-black tabular-nums text-amber-400">
-          {pc && pc.at ? fmtSubClockSec(ms) : '40'}
+          {off ? '—' : pc ? wholeSeconds(projectCountdownMs(pc, nowMs)) : String(cfg.full)}
         </div>
         <div className="grid flex-1 grid-cols-2 gap-2">
           {consolePlayClockResets(def).map((sec) => (
@@ -318,7 +410,7 @@ export function PadPlayClockSection({
               key={sec}
               type="button"
               disabled={disabled}
-              onClick={() => send(t('cmdPlayReset', { seconds: sec }), '/play-clock', 'PATCH', { action: 'reset', value: sec })}
+              onClick={() => send(t('cmdPlayReset', { seconds: sec }), play({ action: 'reset', value: sec }))}
               className={PAD_BTN}
             >
               {sec}
@@ -326,14 +418,11 @@ export function PadPlayClockSection({
           ))}
         </div>
       </div>
+      {off && <p className="mt-2 text-[12px] font-semibold text-amber-300">{t('playOff')}</p>}
       <button
         type="button"
         disabled={disabled}
-        onClick={() =>
-          send(running ? t('playStop') : t('playStart'), '/play-clock', 'PATCH', {
-            action: running ? 'stop' : 'start',
-          })
-        }
+        onClick={() => send(running ? t('playStop') : t('playStart'), play({ action: running ? 'stop' : 'start' }))}
         className={`mt-2 min-h-[56px] w-full rounded-xl text-base font-black uppercase tracking-wide text-white active:opacity-80 disabled:opacity-40 ${
           running ? 'bg-red-600' : 'bg-emerald-600'
         }`}
@@ -356,6 +445,7 @@ export function PadSegmentSection({
   send: PadSend;
 }) {
   const t = useTranslations('sportsPad');
+  const seg = (delta: number): PadStep => ({ kind: 'segment', path: '/segment', method: 'PATCH', body: { delta } });
   return (
     <PadCard title={t('periodTitle')} testId="pad-period">
       <div className="grid grid-cols-2 gap-2">
@@ -363,13 +453,13 @@ export function PadSegmentSection({
           label={t('periodPrev', { segment: segName })}
           confirmLabel={t('tapToConfirm')}
           disabled={disabled}
-          onConfirm={() => send(t('periodPrev', { segment: segName }), '/segment', 'PATCH', { delta: -1 })}
+          onConfirm={() => send(t('periodPrev', { segment: segName }), seg(-1))}
         />
         <ConfirmButton
           label={t('periodNext', { segment: segName })}
           confirmLabel={t('tapToConfirm')}
           disabled={disabled}
-          onConfirm={() => send(t('periodNext', { segment: segName }), '/segment', 'PATCH', { delta: 1 })}
+          onConfirm={() => send(t('periodNext', { segment: segName }), seg(1))}
         />
       </div>
     </PadCard>
@@ -377,6 +467,13 @@ export function PadSegmentSection({
 }
 
 // ── team stats (and timeout calls) ──────────────────────────────────
+
+const statsStep = (patch: Record<string, unknown>): PadStep => ({
+  kind: 'stats',
+  path: '/stats',
+  method: 'PATCH',
+  body: { stats: patch },
+});
 
 export function PadTeamSection({
   def,
@@ -419,11 +516,17 @@ export function PadTeamSection({
         onStat={(patch) => {
           const [key, value] = Object.entries(patch)[0] || [];
           if (!key) return;
-          send(t('cmdStat', { stat: labelOf(key), value: String(value) }), '/stats', 'PATCH', { stats: patch });
+          send(t('cmdStat', { stat: labelOf(key), value: String(value) }), statsStep(patch));
         }}
         onTimeout={
           canTimeout
-            ? (team) => send(t('cmdTimeout', { team: team === 'home' ? homeTeam : awayTeam }), '/timeout', 'POST', { team })
+            ? (team) =>
+                send(t('cmdTimeout', { team: team === 'home' ? homeTeam : awayTeam }), {
+                  kind: 'timeout',
+                  path: '/timeout',
+                  method: 'POST',
+                  body: { team },
+                })
             : undefined
         }
       />
@@ -460,19 +563,12 @@ export function PadGameStatsSection({
   const generic = rules.filter(
     (r) => !(isBaseball && BASEBALL_KEYS.has(r.key)) && !(isFootball && FOOTBALL_KEYS.has(r.key)),
   );
-  const stat = (patch: Record<string, number | string>, label: string) =>
-    send(label, '/stats', 'PATCH', { stats: patch });
+  const stat = (patch: Record<string, number | string>, label: string) => send(label, statsStep(patch));
 
   return (
     <PadCard title={t('gameStatsTitle')} testId="pad-game-stats">
       {isBaseball && (
-        <PadBaseballCount
-          stats={stats}
-          canSegment={canSegment}
-          disabled={disabled}
-          send={send}
-          onStat={stat}
-        />
+        <PadBaseballCount stats={stats} canSegment={canSegment} disabled={disabled} send={send} onStat={stat} />
       )}
       {isFootball && <PadFootballDowns def={def} stats={stats} disabled={disabled} onStat={stat} />}
       {generic.map((r) => (
@@ -615,10 +711,8 @@ function PadBaseballCount({
               const { patch, segmentDelta } = baseballHalfAdvance(stats);
               send(
                 segmentDelta ? t('cmdNextInning') : t('cmdHalf'),
-                '/stats',
-                'PATCH',
-                { stats: patch },
-                segmentDelta ? { path: '/segment', method: 'PATCH', body: { delta: 1 } } : undefined,
+                statsStep(patch),
+                segmentDelta ? { kind: 'segment', path: '/segment', method: 'PATCH', body: { delta: 1 } } : undefined,
               );
             }}
           />
@@ -724,7 +818,14 @@ export function PadPossessionSection({
       type="button"
       disabled={disabled}
       aria-pressed={cur === side}
-      onClick={() => send(t('cmdPossession', { team: name }), '/possession', 'POST', { team: side })}
+      onClick={() =>
+        send(t('cmdPossession', { team: name }), {
+          kind: 'possession',
+          path: '/possession',
+          method: 'POST',
+          body: { team: side },
+        })
+      }
       className={`min-h-[52px] min-w-0 flex-1 truncate rounded-xl px-2 text-sm font-black disabled:opacity-40 ${
         cur === side ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-300'
       }`}
@@ -751,7 +852,6 @@ export function PadPenaltySection({
   stats,
   homeTeam,
   awayTeam,
-  skewMs,
   nowMs,
   disabled,
   send,
@@ -760,7 +860,6 @@ export function PadPenaltySection({
   stats: Record<string, unknown>;
   homeTeam: string;
   awayTeam: string;
-  skewMs: number;
   nowMs: number;
   disabled: boolean;
   send: PadSend;
@@ -770,18 +869,16 @@ export function PadPenaltySection({
   const [player, setPlayer] = useState('');
   const box = def.penaltyBox;
   if (!box) return null;
+  const pen = (body: Record<string, unknown>): PadStep => ({ kind: 'penalties', path: '/penalties', method: 'PATCH', body });
   const raw = Array.isArray(stats.penalties) ? (stats.penalties as Record<string, unknown>[]) : [];
   const live = raw
-    .map((p) => {
-      const sc = readSubClock(p);
-      return {
-        id: String(p.id || ''),
-        team: p.team === 'away' ? ('away' as const) : ('home' as const),
-        label: String(p.label || ''),
-        player: String(p.player || ''),
-        ms: sc ? projectSubClockMs(sc, skewMs, nowMs) : 0,
-      };
-    })
+    .map((p) => ({
+      id: String(p.id || ''),
+      team: p.team === 'away' ? ('away' as const) : ('home' as const),
+      label: String(p.label || ''),
+      player: String(p.player || ''),
+      ms: projectCountdownMs(p, nowMs),
+    }))
     .filter((p) => p.id && p.ms > 0)
     .sort((a, b) => a.ms - b.ms);
   const teamName = (side: 'home' | 'away') => (side === 'home' ? homeTeam : awayTeam);
@@ -798,15 +895,15 @@ export function PadPenaltySection({
                 </div>
                 <div className="text-[11px] font-bold text-slate-400">{p.label}</div>
               </div>
-              <span className="font-mono text-lg font-black tabular-nums text-amber-400">{fmtPadClock(p.ms)}</span>
+              <span className="font-mono text-lg font-black tabular-nums text-amber-400">{formatClockReading(p.ms)}</span>
               <button
                 type="button"
                 disabled={disabled}
                 onClick={() =>
-                  send(t('cmdRelease', { who: `${teamName(p.team)}${p.player ? ` #${p.player}` : ''}` }), '/penalties', 'PATCH', {
-                    action: 'remove',
-                    penaltyId: p.id,
-                  })
+                  send(
+                    t('cmdRelease', { who: `${teamName(p.team)}${p.player ? ` #${p.player}` : ''}` }),
+                    pen({ action: 'remove', penaltyId: p.id }),
+                  )
                 }
                 className="min-h-[44px] rounded-lg bg-slate-700 px-3 text-xs font-black uppercase text-white disabled:opacity-40"
               >
@@ -856,7 +953,7 @@ export function PadPenaltySection({
               // Water polo: an exclusion with a cap number also counts toward
               // the player's three (the operator console's one-tap does this).
               if (def.key === 'water_polo' && player) body.exclusion = true;
-              send(t('cmdPenalty', { team: teamName(team), penalty: preset.label }), '/penalties', 'PATCH', body);
+              send(t('cmdPenalty', { team: teamName(team), penalty: preset.label }), pen(body));
               setPlayer('');
             }}
             className={padBtn('bg-slate-800 text-white', 'normal-case')}
@@ -891,7 +988,7 @@ export function PadCueSection({
             key={c.key}
             type="button"
             disabled={disabled}
-            onClick={() => send(c.label, '/cue', 'POST', { key: c.key })}
+            onClick={() => send(c.label, { kind: 'cue', path: '/cue', method: 'POST', body: { key: c.key } })}
             className="min-h-[64px] rounded-xl bg-slate-800 px-1 text-center active:opacity-80 disabled:opacity-40"
           >
             <div className="text-xl">{c.emoji}</div>

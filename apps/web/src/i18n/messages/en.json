@@ -3243,7 +3243,8 @@
     "stop": "Stop",
     "possession": "Possession",
     "backToGames": "Back to Game Day",
-    "judgedTotal": "{team} total"
+    "judgedTotal": "{team} total",
+    "shotOff": "The shot clock is off for this game (Setup)."
   },
   "sportsPad": {
     "vs": "vs",
@@ -3284,7 +3285,7 @@
     "refreshing": "Updating from the scoreboard…",
     "finalBody": "The game is final. Scoring is closed — the operator can reopen it.",
     "sending": "Sending: {label}…",
-    "failedOffline": "Didn't reach the server: {label}. Check the scoreboard before tapping again.",
+    "failedOffline": "No answer from the server: {label}. Check the scoreboard — you can send it again, it can't count twice.",
     "failedNotPermitted": "{label}: this link can't do that.",
     "failedRateLimited": "{label}: too many taps — wait a moment, then try again.",
     "failedRefused": "{label}: the server refused this change.",
@@ -3347,7 +3348,25 @@
     "cuesTitle": "Celebrations",
     "minusSecond": "−1s",
     "plusSecond": "+1s",
-    "timeoutsTitle": "Timeouts"
+    "timeoutsTitle": "Timeouts",
+    "failedFinal": "{label}: the game is final, so nothing can change. The operator can reopen it for a correction.",
+    "undoNotLatest": "{label}: this link made another change after that one. Only its latest change can be undone here.",
+    "undoConflict": "{label}: something changed on the board since. Ask the operator to correct it.",
+    "undoGone": "{label}: that change was not made from this link.",
+    "undoImpossible": "{label}: that change can't be undone from a scorekeeper link.",
+    "undoLabel": "Undo {label}",
+    "undoneBody": "Undone: {label}",
+    "lastChange": "Last change",
+    "undo": "Undo",
+    "undoConfirm": "Tap again to undo",
+    "sendAgain": "Send again",
+    "queuedWaiting": "{count, plural, one {# tap is waiting} other {# taps are waiting}} to send — they go as soon as the connection is back.",
+    "queuedSending": "Sending {count, plural, one {# waiting tap} other {# waiting taps}}…",
+    "queuedRefused": "The server refused a tap that was waiting to send. Check the score on the board.",
+    "finalTitle": "Final",
+    "clockSetHint": "Type minutes and seconds (7:42), or seconds and tenths (4.3).",
+    "shotOff": "The shot clock is off for this game. The operator can turn it on in Setup.",
+    "playOff": "Play clock off: less time is left in the quarter than the count. Reset it to start it again."
   },
   "sportsShareLink": {
     "title": "Volunteer links — no login",
