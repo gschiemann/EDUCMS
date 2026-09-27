@@ -8100,6 +8100,7 @@ function ScreenPushPanel({ gameId }: { gameId: string }) {
   const { data: screens, isLoading } = useGameScreens(gameId);
   const show = useShowGameOnScreens(gameId);
   const hide = useHideGameFromScreens(gameId);
+  const tConsole = useTranslations('sportsConsole');
 
   const list: any[] = Array.isArray(screens) ? screens : [];
   const showingCount = list.filter((s) => s.showing).length;
@@ -8108,8 +8109,24 @@ function ScreenPushPanel({ gameId }: { gameId: string }) {
   // A screen is owned by one game. Pushing to a screen another game is
   // already using takes an explicit, confirmed take-over (force) — so
   // two operators can't silently overwrite each other's screen.
+  // K12-F35 — another console claimed the screen first (or it changed
+  // hands after the take-over was confirmed): say so; the list refreshes.
+  const onClaimError = (err: unknown) => {
+    const e = err as { code?: string; body?: { screenNames?: string[] } } | null;
+    if (e?.code === 'SCREEN_IN_USE') {
+      window.alert(
+        tConsole('screenClaimConflict', { screens: (e.body?.screenNames ?? []).join(', ') }),
+      );
+    }
+  };
   const pushTo = (
-    s: { id: string; name: string; showingOther?: boolean; otherGame?: string | null },
+    s: {
+      id: string;
+      name: string;
+      showingOther?: boolean;
+      otherGame?: string | null;
+      otherGameId?: string | null;
+    },
     surface: string,
   ) => {
     if (s.showingOther) {
@@ -8118,10 +8135,19 @@ function ScreenPushPanel({ gameId }: { gameId: string }) {
           `Take it over and show THIS game instead?`,
       );
       if (!ok) return;
-      show.mutate({ screenIds: [s.id], surface, force: true });
+      // The take-over is made against the game this operator saw on it.
+      show.mutate(
+        {
+          screenIds: [s.id],
+          surface,
+          force: true,
+          ...(s.otherGameId ? { takeover: { [s.id]: s.otherGameId } } : {}),
+        },
+        { onError: onClaimError },
+      );
       return;
     }
-    show.mutate({ screenIds: [s.id], surface });
+    show.mutate({ screenIds: [s.id], surface }, { onError: onClaimError });
   };
 
   if (isLoading) {

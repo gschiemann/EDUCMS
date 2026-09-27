@@ -2849,6 +2849,7 @@
   },
   "sportsConsole": {
     "reopenPrompt": "¿Por qué reabre este partido finalizado? El motivo queda registrado con su nombre.",
-    "reopenReasonShort": "Escriba un motivo de al menos 5 caracteres para reabrir el partido."
+    "reopenReasonShort": "Escriba un motivo de al menos 5 caracteres para reabrir el partido.",
+    "screenClaimConflict": "Otra consola acaba de poner otro partido en {screens}. La lista de pantallas se actualizó; revísela antes de volver a intentarlo."
   }
 }

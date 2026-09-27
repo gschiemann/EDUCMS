@@ -5533,17 +5533,31 @@ export function useShowGameOnScreens(gameId: string) {
   return useMutation({
     // surface: 'BOARD' (full scoreboard) | 'RIBBON' (LED strip) |
     // 'SCOREBUG' (broadcast overlay) — which display the screen shows.
-    mutationFn: (vars: { screenIds: string[]; surface?: string; force?: boolean }) =>
+    // K12-F35 — `takeover` maps screenId → the game the operator saw (and
+    // confirmed) on it; the server only takes the screen while that game
+    // still owns it.
+    mutationFn: (vars: {
+      screenIds: string[];
+      surface?: string;
+      force?: boolean;
+      takeover?: Record<string, string>;
+    }) =>
       apiFetch(`/sports/games/${gameId}/show`, {
         method: 'POST',
         body: JSON.stringify({
           screenIds: vars.screenIds,
           surface: vars.surface,
           force: vars.force,
+          takeover: vars.takeover,
         }),
       }),
     onSuccess: (data) => {
       if (data) qc.setQueryData(['sports-game-screens', gameId], data);
+    },
+    // A claim that lost a race refreshes the list, so this console shows
+    // who actually has the screen instead of a stale "free".
+    onError: () => {
+      qc.invalidateQueries({ queryKey: ['sports-game-screens', gameId] });
     },
   });
 }

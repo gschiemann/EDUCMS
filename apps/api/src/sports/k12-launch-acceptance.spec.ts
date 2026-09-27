@@ -259,4 +259,47 @@ describe('K12 launch acceptance — lane A1 additions', () => {
     await service.adjustScore(TENANT, g.id, { team: 'home', delta: 2 }, ctx);
     expect(g.homeScore).toBe(2);
   });
+
+  // F35: two consoles claim the same free gym board at the same moment. One
+  // wins; the other gets a visible conflict naming the actual owner, and both
+  // consoles' screen lists show the real assignment.
+  it('K12-24 two simultaneous claims on one screen yield exactly one winner and a visible conflict', async () => {
+    const { service, screen, auditLog } = setup();
+    const a: any = await newGame(service, 'basketball');
+    const b: any = await newGame(service, 'volleyball');
+    screen.rows.push({ id: 'gym-board', name: 'Gym Board', status: 'ONLINE', tenantId: TENANT, activeBoardGameId: null, activeBoardSurface: null });
+    // Simultaneous: both claims read the screen as FREE before either writes.
+    // (The double returns live rows; a database returns snapshots — copy.)
+    const liveFindMany = screen.findMany;
+    let reads = 0;
+    let bothRead!: () => void;
+    const barrier = new Promise<void>((r) => (bothRead = r));
+    screen.findMany = async (args: any) => {
+      const rows = (await liveFindMany(args)).map((r: any) => ({ ...r }));
+      if (++reads === 2) bothRead();
+      await barrier;
+      return rows;
+    };
+    const [ra, rb] = await Promise.allSettled([
+      service.showOnScreens(TENANT, a.id, ['gym-board']),
+      service.showOnScreens(TENANT, b.id, ['gym-board']),
+    ]);
+    const won = [ra, rb].filter((r) => r.status === 'fulfilled');
+    const lost = [ra, rb].filter((r) => r.status === 'rejected') as PromiseRejectedResult[];
+    expect(won).toHaveLength(1);
+    expect(lost).toHaveLength(1);
+    const winner = ra.status === 'fulfilled' ? a.id : b.id;
+    const loser = winner === a.id ? b.id : a.id;
+    expect(lost[0].reason.getStatus()).toBe(409);
+    expect(lost[0].reason.getResponse()).toMatchObject({
+      code: 'SCREEN_IN_USE',
+      conflicts: [{ screenId: 'gym-board', ownerGameId: winner }],
+    });
+    expect(screen.rows[0].activeBoardGameId).toBe(winner);
+    const loserView = await service.listGameScreens(TENANT, loser);
+    expect(loserView[0]).toMatchObject({ showing: false, showingOther: true, otherGameId: winner });
+    const winnerView = await service.listGameScreens(TENANT, winner);
+    expect(winnerView[0]).toMatchObject({ showing: true, showingOther: false });
+    expect(auditLog.rows.filter((r: any) => r.action === 'SPORTS_SCREENS_SHOWN')).toHaveLength(1);
+  });
 });

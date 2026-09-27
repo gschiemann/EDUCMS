@@ -1070,7 +1070,14 @@ export class SportsController {
   showOnScreens(
     @Request() req: any,
     @Param('id') id: string,
-    @Body() body: { screenIds?: string[]; surface?: string; force?: boolean },
+    @Body()
+    body: {
+      screenIds?: string[];
+      surface?: string;
+      force?: boolean;
+      /** K12-F35 — screenId → the game the operator saw (and confirmed) on it. */
+      takeover?: Record<string, string>;
+    },
   ) {
     return this.sports.showOnScreens(
       req.user.tenantId,
@@ -1078,6 +1085,8 @@ export class SportsController {
       body?.screenIds,
       body?.surface,
       body?.force,
+      userActor(req),
+      body?.takeover,
     );
   }
 
@@ -1094,7 +1103,7 @@ export class SportsController {
     @Param('id') id: string,
     @Body() body: { screenIds?: string[] },
   ) {
-    return this.sports.hideFromScreens(req.user.tenantId, id, body?.screenIds);
+    return this.sports.hideFromScreens(req.user.tenantId, id, body?.screenIds, userActor(req));
   }
 
   // ── schedule game mode (Inputs-wave SCHED) ───────────────────

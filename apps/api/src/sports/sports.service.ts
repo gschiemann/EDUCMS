@@ -2183,6 +2183,9 @@ export class SportsService {
         otherGame: showingOther
           ? labelById.get(s.activeBoardGameId as string) ?? 'another game'
           : null,
+        // K12-F35 — the owner a take-over is made against: the console
+        // sends it back, and the claim only succeeds while it still holds.
+        otherGameId: showingOther ? (s.activeBoardGameId as string) : null,
         // The surface this screen renders when it IS showing this game.
         // Null surface on a pushed screen reads as BOARD (back-compat).
         surface:
@@ -2202,26 +2205,103 @@ export class SportsService {
     screenIds: unknown,
     surface?: unknown,
     force?: unknown,
+    actor?: CommandInput,
+    takeover?: unknown,
   ) {
+    await this.claimScreens(tenantId, gameId, screenIds, surface, { force, takeover, actor });
+    return this.listGameScreens(tenantId, gameId);
+  }
+
+  /**
+   * K12-F35 — claim screens for this game, atomically. A screen is owned by
+   * ONE game at a time. Every claim is a compare-and-swap on the owner this
+   * transaction read (`UPDATE … WHERE id AND tenant AND active_board_game_id
+   * = <owner seen>`), all in one transaction: two operators claiming the same
+   * free screen at once get exactly one winner — the loser's write re-checks
+   * the owner after the winner commits, misses, and its whole claim rolls
+   * back with a SCREEN_IN_USE conflict that names the screen and its actual
+   * owner. It used to check ownership and then write unconditionally, so
+   * both could pass the check and the later write silently won.
+   *
+   * Taking a screen from ANOTHER game needs an explicit take-over:
+   * `takeover` maps screenId → the game id the operator saw on it (and
+   * confirmed); the claim only succeeds while that game still owns it, so a
+   * stale confirmation dialog cannot steal a screen that has since changed
+   * hands. `force: true` without a map is the older console's form: a
+   * take-over from whichever game owns the screen at the moment of the
+   * claim. Every claim and every take-over is audited with the previous
+   * owner, in the same transaction. The signed SYNC nudge (and the manifest
+   * fallback behind it) is unchanged.
+   *
+   * Returns what each screen showed before, for the auto-push's revert.
+   */
+  private async claimScreens(
+    tenantId: string,
+    gameId: string,
+    screenIds: unknown,
+    surface: unknown,
+    opts: { force?: unknown; takeover?: unknown; actor?: CommandInput },
+  ): Promise<AutoPushSavedScreen[]> {
     await this.owned(tenantId, gameId);
     const ids = Array.isArray(screenIds)
-      ? screenIds.filter((x): x is string => typeof x === 'string' && x.length > 0)
+      ? [...new Set(screenIds.filter((x): x is string => typeof x === 'string' && x.length > 0))]
       : [];
     if (ids.length === 0) throw new BadRequestException('screenIds is required');
+    const cleanSurface = this.cleanSurface(surface);
+    const takeoverMap: Record<string, string> =
+      opts.takeover && typeof opts.takeover === 'object' && !Array.isArray(opts.takeover)
+        ? Object.fromEntries(
+            Object.entries(opts.takeover as Record<string, unknown>).filter(
+              (e): e is [string, string] => typeof e[1] === 'string' && e[1].length > 0,
+            ),
+          )
+        : {};
+    const legacyForce = opts.force === true && Object.keys(takeoverMap).length === 0;
 
-    // A screen is owned by ONE game at a time. If any target screen is
-    // already showing a DIFFERENT game, refuse — so two operators can
-    // never overwrite each other's screen — unless `force` is set (an
-    // explicit, confirmed take-over from the console).
-    const targets = await this.prisma.client.screen.findMany({
-      where: { id: { in: ids }, tenantId },
-      select: { id: true, name: true, activeBoardGameId: true },
-    });
-    if (force !== true) {
-      const conflicts = targets.filter(
-        (s) => s.activeBoardGameId && s.activeBoardGameId !== gameId,
-      );
+    const claimed = await this.prisma.client.$transaction(async (tx: any) => {
+      const targets: Array<{
+        id: string;
+        name: string;
+        activeBoardGameId: string | null;
+        activeBoardSurface: string | null;
+      }> = await tx.screen.findMany({
+        where: { id: { in: ids }, tenantId },
+        select: { id: true, name: true, activeBoardGameId: true, activeBoardSurface: true },
+      });
+      const conflicts: Array<{ id: string; name: string; ownerGameId: string | null }> = [];
+      const saved: AutoPushSavedScreen[] = [];
+      const takenOver: Array<{ screenId: string; fromGameId: string }> = [];
+      for (const s of targets) {
+        const owner = s.activeBoardGameId ?? null;
+        const prevSurface = s.activeBoardSurface ?? null;
+        if (owner && owner !== gameId) {
+          // Another game's screen: only by an explicit take-over made
+          // against THIS owner.
+          const allowed = legacyForce || takeoverMap[s.id] === owner;
+          if (!allowed) {
+            conflicts.push({ id: s.id, name: s.name, ownerGameId: owner });
+            continue;
+          }
+        }
+        const res = await tx.screen.updateMany({
+          where: { id: s.id, tenantId, activeBoardGameId: owner },
+          data: { activeBoardGameId: gameId, activeBoardSurface: cleanSurface },
+        });
+        if (res.count === 0) {
+          // The owner changed after this transaction read it — a concurrent
+          // claim won. Report who holds it now.
+          const now = await tx.screen.findFirst({
+            where: { id: s.id, tenantId },
+            select: { activeBoardGameId: true },
+          });
+          conflicts.push({ id: s.id, name: s.name, ownerGameId: now?.activeBoardGameId ?? null });
+          continue;
+        }
+        saved.push({ screenId: s.id, prevGameId: owner, prevSurface });
+        if (owner && owner !== gameId) takenOver.push({ screenId: s.id, fromGameId: owner });
+      }
       if (conflicts.length > 0) {
+        // Nothing lands: a push is all of its screens or none of them.
         throw new ConflictException({
           code: 'SCREEN_IN_USE',
           message: `Already showing another game: ${conflicts
@@ -2229,22 +2309,43 @@ export class SportsService {
             .join(', ')}. Take it over to switch.`,
           screenIds: conflicts.map((c) => c.id),
           screenNames: conflicts.map((c) => c.name),
+          conflicts: conflicts.map((c) => ({
+            screenId: c.id,
+            screenName: c.name,
+            ownerGameId: c.ownerGameId,
+          })),
         });
       }
-    }
-
-    await this.prisma.client.screen.updateMany({
-      where: { id: { in: ids }, tenantId },
-      data: { activeBoardGameId: gameId, activeBoardSurface: this.cleanSurface(surface) },
+      if (saved.length > 0) {
+        await this.auditRow(tx, tenantId, opts.actor, 'SPORTS_SCREENS_SHOWN', gameId, {
+          surface: cleanSurface,
+          screens: saved,
+        });
+      }
+      for (const t of takenOver) {
+        await this.auditRow(tx, tenantId, opts.actor, 'SPORTS_SCREEN_TAKEN_OVER', gameId, {
+          screenId: t.screenId,
+          fromGameId: t.fromGameId,
+          toGameId: gameId,
+          surface: cleanSurface,
+          confirmedOwner: takeoverMap[t.screenId] ?? null,
+        });
+      }
+      return saved;
     });
     // Inputs-wave SCHED — players otherwise pick this up on their 30s
     // reconcile poll; the SYNC nudge makes the board land now.
     await this.notifySync(tenantId);
-    return this.listGameScreens(tenantId, gameId);
+    return claimed;
   }
 
   /** Stop showing this game — on a given subset, or every screen. */
-  async hideFromScreens(tenantId: string, gameId: string, screenIds?: unknown) {
+  async hideFromScreens(
+    tenantId: string,
+    gameId: string,
+    screenIds?: unknown,
+    actor?: CommandInput,
+  ) {
     await this.owned(tenantId, gameId);
     const where: Record<string, unknown> = { tenantId, activeBoardGameId: gameId };
     if (Array.isArray(screenIds) && screenIds.length > 0) {
@@ -2252,9 +2353,18 @@ export class SportsService {
         in: screenIds.filter((x): x is string => typeof x === 'string' && x.length > 0),
       };
     }
-    await this.prisma.client.screen.updateMany({
-      where,
-      data: { activeBoardGameId: null, activeBoardSurface: null },
+    // Only screens THIS game owns are released (the owner is in the WHERE),
+    // so a hide can never blank a screen another game has since taken.
+    await this.prisma.client.$transaction(async (tx: any) => {
+      const releasing: Array<{ id: string }> = await tx.screen.findMany({ where, select: { id: true } });
+      if (releasing.length === 0) return;
+      await tx.screen.updateMany({
+        where,
+        data: { activeBoardGameId: null, activeBoardSurface: null },
+      });
+      await this.auditRow(tx, tenantId, actor, 'SPORTS_SCREENS_RELEASED', gameId, {
+        screenIds: releasing.map((r) => r.id),
+      });
     });
     // Inputs-wave SCHED — same nudge as showOnScreens: the screen falls
     // back to its scheduled content now, not at the next 30s reconcile.
@@ -2501,25 +2611,18 @@ export class SportsService {
     });
     if (!game || game.status === 'FINAL') return 'skipped';
 
-    // Capture the pre-push pointer state BEFORE the write so FINAL can put
-    // back exactly what each screen showed. Not idempotent — the exclusive
-    // claim above is what makes a single capture safe.
-    const targets = await this.prisma.client.screen.findMany({
-      where: { id: { in: config.screenIds }, tenantId },
-      select: { id: true, activeBoardGameId: true, activeBoardSurface: true },
-    });
-    const savedState: AutoPushSavedScreen[] = targets.map(
-      (s: { id: string; activeBoardGameId: string | null; activeBoardSurface: string | null }) => ({
-        screenId: s.id,
-        prevGameId: s.activeBoardGameId ?? null,
-        prevSurface: s.activeBoardSurface ?? null,
-      }),
-    );
-
+    // The claim returns exactly what each screen showed when it was
+    // claimed (read in the claim's own transaction), so FINAL can put back
+    // what each screen showed. Not idempotent — the exclusive sweep claim
+    // above is what makes a single capture safe.
+    let savedState: AutoPushSavedScreen[];
     try {
       // force=false ALWAYS — an automation must never steal a screen a
       // co-operator is using (back-to-back games, same gym).
-      await this.showOnScreens(tenantId, gameId, config.screenIds, config.surface, false);
+      savedState = await this.claimScreens(tenantId, gameId, config.screenIds, config.surface, {
+        force: false,
+        actor: { actor: { kind: 'system', ref: 'auto-push' } },
+      });
     } catch (err) {
       if (err instanceof ConflictException) {
         const resp = err.getResponse() as {
@@ -2645,7 +2748,9 @@ export class SportsService {
         const savedScreenIds = saved.map((e) => e.screenId);
         // Scoped to EXACTLY the pushed ids — never undefined, which would
         // also hide the game from screens an operator pushed manually.
-        await this.hideFromScreens(tenantId, gameId, savedScreenIds);
+        await this.hideFromScreens(tenantId, gameId, savedScreenIds, {
+          actor: { kind: 'system', ref: 'auto-push-revert' },
+        });
         // Put back screens whose pre-push pointer was a DIFFERENT game —
         // only when that game still exists in this tenant and is not
         // itself FINAL, and only if the screen is still free (the hide
