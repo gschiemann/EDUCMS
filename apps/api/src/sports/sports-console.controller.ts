@@ -5,7 +5,13 @@ import {
 import type { Request } from 'express';
 import { SportsService } from './sports.service';
 import { consoleCommand } from './game-command';
-import { verifyConsoleToken, parseConsoleTokenGameId } from './sports-console-token';
+import {
+  CONSOLE_SCOPE_ALLOWS,
+  type ConsoleAction,
+  type ConsoleScope,
+  parseConsoleTokenGameId,
+  verifyConsoleTokenScope,
+} from './sports-console-token';
 import { RedisService } from '../realtime/redis.service';
 import { checkIngestLimit } from '../security/ingest-rate-limit';
 import { clientIpFromRequest } from '../security/client-ip';
@@ -31,6 +37,13 @@ import { clientIpFromRequest } from '../security/client-ip';
  *   PATCH :token/segment   — advance / set the period
  *   POST  :token/timeout   — call a team timeout
  *   POST  :token/cue       — fire a celebration cue (key/cueId/team ONLY)
+ *
+ * K12-F34 — a link is minted for ONE job (sports-console-token.ts SCOPES):
+ * `scorer` = score + timeout, `timer` = clock + segment + timeout,
+ * `presentation` = cue, `full` = all five (every pre-scope link). Each route
+ * below checks the verified scope and answers 403 SPORTS_CONSOLE_SCOPE when
+ * the link was not issued for it; `session` returns the scope and the
+ * allowed actions so the pad shows only the controls the link can drive.
  *
  * NOTHING else: no roster, no sponsors, no settings, no templates, no
  * feed credentials, no game create/delete, no status transitions (going
@@ -95,9 +108,10 @@ export class SportsConsoleController {
    * shares one window. A missing game and a bad token return the SAME
    * 401 — no game-existence oracle.
    */
-  private async authorize(token: string, req: Request): Promise<{
+  private async authorize(token: string, req: Request, action?: ConsoleAction): Promise<{
     gameId: string;
     tenantId: string;
+    scope: ConsoleScope;
     meta: NonNullable<Awaited<ReturnType<SportsService['getConsoleShareMeta']>>>;
   }> {
     const gameId = parseConsoleTokenGameId(token);
@@ -111,7 +125,8 @@ export class SportsConsoleController {
     );
     if (ipLimited) this.throwRateLimited();
     const meta = await this.sports.getConsoleShareMeta(gameId);
-    if (!meta || !verifyConsoleToken(gameId, token, meta.consoleTokenVersion)) {
+    const scope = meta ? verifyConsoleTokenScope(gameId, token, meta.consoleTokenVersion) : null;
+    if (!meta || !scope) {
       this.throwInvalid();
     }
     const { limited } = await checkIngestLimit(
@@ -121,7 +136,18 @@ export class SportsConsoleController {
       SportsConsoleController.WINDOW_MS,
     );
     if (limited) this.throwRateLimited();
-    return { gameId, tenantId: meta!.tenantId, meta: meta! };
+    // K12-F34: the scope is the permission; the pad's layout is not.
+    if (action && !CONSOLE_SCOPE_ALLOWS[scope!].includes(action)) {
+      throw new HttpException(
+        {
+          code: 'SPORTS_CONSOLE_SCOPE',
+          message: 'This link was not issued for that control.',
+          scope,
+        },
+        HttpStatus.FORBIDDEN,
+      );
+    }
+    return { gameId, tenantId: meta!.tenantId, scope: scope!, meta: meta! };
   }
 
   private throwRateLimited(): never {
@@ -151,10 +177,12 @@ export class SportsConsoleController {
    */
   @Get(':token/session')
   async session(@Param('token') token: string, @Req() req: Request) {
-    const { gameId, meta } = await this.authorize(token, req);
+    const { gameId, meta, scope } = await this.authorize(token, req);
     return {
       ok: true,
       gameId,
+      scope,
+      allows: CONSOLE_SCOPE_ALLOWS[scope],
       sport: meta.sport,
       status: meta.status,
       homeTeam: meta.homeTeam,
@@ -175,7 +203,7 @@ export class SportsConsoleController {
     @Body() body: { team?: string; delta?: number; homeScore?: number; awayScore?: number },
     @Req() req: Request,
   ) {
-    const { gameId, tenantId } = await this.authorize(token, req);
+    const { gameId, tenantId } = await this.authorize(token, req, 'score');
     // K12-F10/F34: the command id rides the body; the actor is this issued
     // link (a fingerprint of it — never the token itself).
     const { dto, ctx } = consoleCommand(token, body);
@@ -194,7 +222,7 @@ export class SportsConsoleController {
     @Body() body: { action?: string; ms?: number },
     @Req() req: Request,
   ) {
-    const { gameId, tenantId } = await this.authorize(token, req);
+    const { gameId, tenantId } = await this.authorize(token, req, 'clock');
     const { dto, ctx } = consoleCommand(token, body);
     return this.sports.clockAction(tenantId, gameId, dto, ctx);
   }
@@ -206,7 +234,7 @@ export class SportsConsoleController {
     @Body() body: { segment?: number; delta?: number },
     @Req() req: Request,
   ) {
-    const { gameId, tenantId } = await this.authorize(token, req);
+    const { gameId, tenantId } = await this.authorize(token, req, 'segment');
     const { dto, ctx } = consoleCommand(token, body);
     return this.sports.setSegment(tenantId, gameId, dto, ctx);
   }
@@ -218,7 +246,7 @@ export class SportsConsoleController {
     @Body() body: { team?: string; type?: string },
     @Req() req: Request,
   ) {
-    const { gameId, tenantId } = await this.authorize(token, req);
+    const { gameId, tenantId } = await this.authorize(token, req, 'timeout');
     const { dto, ctx } = consoleCommand(token, body);
     return this.sports.callTimeout(tenantId, gameId, dto, ctx);
   }
@@ -236,7 +264,7 @@ export class SportsConsoleController {
     @Body() body: { key?: string; cueId?: string; team?: 'home' | 'away' },
     @Req() req: Request,
   ) {
-    const { gameId, tenantId } = await this.authorize(token, req);
+    const { gameId, tenantId } = await this.authorize(token, req, 'cue');
     const raw = body || {};
     const dto: { key?: string; cueId?: string; team?: 'home' | 'away' } = {};
     if (typeof raw.key === 'string') dto.key = raw.key;

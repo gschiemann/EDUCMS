@@ -29,7 +29,7 @@
 import { HttpException, NotFoundException } from '@nestjs/common';
 import { SportsConsoleController } from './sports-console.controller';
 import { SportsService } from './sports.service';
-import { makeConsoleToken, verifyConsoleToken } from './sports-console-token';
+import { makeConsoleToken, verifyConsoleToken, verifyConsoleTokenScope } from './sports-console-token';
 import { makeFeedToken } from './sports-feed-token';
 import { _resetIngestRateLimitMemoryForTests } from '../security/ingest-rate-limit';
 
@@ -136,6 +136,8 @@ describe('SportsConsoleController — delegation with server-resolved tenant', (
     expect(out).toEqual({
       ok: true,
       gameId,
+      scope: 'full',
+      allows: ['score', 'clock', 'segment', 'timeout', 'cue'],
       sport: 'basketball',
       status: 'LIVE',
       homeTeam: 'Home',
@@ -222,6 +224,67 @@ describe('SportsConsoleController — delegation with server-resolved tenant', (
     expect(sports.fireCue).toHaveBeenCalledWith(TENANT, gameId, { key: 'touchdown', team: 'home' }, CONSOLE_CTX);
     const dto = sports.fireCue.mock.calls[0][2];
     expect(Object.keys(dto).sort()).toEqual(['key', 'team']);
+  });
+});
+
+// K12-F34 — the link's scope is the permission, per route.
+describe('SportsConsoleController — link scopes', () => {
+  async function refused(p: Promise<unknown>) {
+    await expect(p).rejects.toMatchObject({ status: 403 });
+    await p.catch((e: any) => expect(e.getResponse()).toMatchObject({ code: 'SPORTS_CONSOLE_SCOPE' }));
+  }
+
+  it('a SCORER link scores and calls timeouts, but cannot run the clock, change the period or fire a cue', async () => {
+    const gameId = newGameId();
+    const sports = makeSportsMock();
+    const ctl = makeController(sports);
+    const tok = makeConsoleToken(gameId, { version: 0, scope: 'scorer' });
+    await ctl.score(tok, { team: 'home', delta: 2 }, reqFrom());
+    await ctl.timeout(tok, { team: 'home' }, reqFrom());
+    await refused(ctl.clock(tok, { action: 'start' }, reqFrom()));
+    await refused(ctl.segment(tok, { delta: 1 }, reqFrom()));
+    await refused(ctl.cue(tok, { key: 'dunk' }, reqFrom()));
+    expect(sports.adjustScore).toHaveBeenCalledTimes(1);
+    expect(sports.callTimeout).toHaveBeenCalledTimes(1);
+    expect(sports.clockAction).not.toHaveBeenCalled();
+    expect(sports.setSegment).not.toHaveBeenCalled();
+    expect(sports.fireCue).not.toHaveBeenCalled();
+  });
+
+  it('a TIMER link runs the clock and the period, but cannot touch the score', async () => {
+    const gameId = newGameId();
+    const sports = makeSportsMock();
+    const ctl = makeController(sports);
+    const tok = makeConsoleToken(gameId, { version: 0, scope: 'timer' });
+    await ctl.clock(tok, { action: 'start' }, reqFrom());
+    await ctl.segment(tok, { delta: 1 }, reqFrom());
+    await refused(ctl.score(tok, { homeScore: 99 }, reqFrom()));
+    await refused(ctl.cue(tok, { key: 'dunk' }, reqFrom()));
+    expect(sports.clockAction).toHaveBeenCalledTimes(1);
+    expect(sports.setSegment).toHaveBeenCalledTimes(1);
+    expect(sports.setScore).not.toHaveBeenCalled();
+    expect(sports.fireCue).not.toHaveBeenCalled();
+  });
+
+  it('a PRESENTATION link fires cues and nothing else', async () => {
+    const gameId = newGameId();
+    const sports = makeSportsMock();
+    const ctl = makeController(sports);
+    const tok = makeConsoleToken(gameId, { version: 0, scope: 'presentation' });
+    await ctl.cue(tok, { key: 'dunk' }, reqFrom());
+    await refused(ctl.score(tok, { team: 'home', delta: 1 }, reqFrom()));
+    await refused(ctl.timeout(tok, { team: 'home' }, reqFrom()));
+    expect(sports.fireCue).toHaveBeenCalledTimes(1);
+    expect(sports.adjustScore).not.toHaveBeenCalled();
+    expect(sports.callTimeout).not.toHaveBeenCalled();
+  });
+
+  it('session tells the pad what the link may do', async () => {
+    const gameId = newGameId();
+    const ctl = makeController(makeSportsMock());
+    const tok = makeConsoleToken(gameId, { version: 0, scope: 'timer' });
+    const out = await ctl.session(tok, reqFrom());
+    expect(out).toMatchObject({ scope: 'timer', allows: ['clock', 'segment', 'timeout'] });
   });
 });
 
@@ -399,6 +462,16 @@ describe('SportsService — mintConsoleShare / revokeConsoleShare', () => {
     expect(verifyConsoleToken(gameId, minted.token, row.consoleTokenVersion)).toBe(false);
     const actions = auditLog.create.mock.calls.map((c) => c[0].data.action);
     expect(actions).toContain('SPORTS_CONSOLE_SHARE_REVOKED');
+  });
+
+  it('K12-F34: a scoped mint returns the scope, and its audit row records it', async () => {
+    const gameId = newGameId();
+    const row = { id: gameId, tenantId: TENANT, consoleTokenVersion: 0 };
+    const { service, auditLog } = makeService(row);
+    const out = await service.mintConsoleShare(TENANT, gameId, 'user-9', undefined, 'scorer');
+    expect(out.scope).toBe('scorer');
+    expect(verifyConsoleTokenScope(gameId, out.token, 0)).toBe('scorer');
+    expect(JSON.parse(auditLog.create.mock.calls[0][0].data.details).scope).toBe('scorer');
   });
 
   it('K12-F34: no audit row, no link — a failed mint audit returns no token', async () => {

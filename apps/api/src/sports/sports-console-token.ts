@@ -38,6 +38,18 @@ import { requireSecret } from '../security/required-secret';
  *      [MIN, MAX_CONSOLE_TOKEN_TTL_SEC]; verify rejects ttl <= 0 or over the
  *      cap regardless of MAC validity.
  *
+ * SCOPES (K12-F34, 2026-09-26). A link is minted for one job: `scorer`
+ * (score + timeouts), `timer` (clock + period + timeouts), `presentation`
+ * (celebration cues) or `full` (all of them — every link minted before
+ * scopes existed). The layout a volunteer's phone shows is a preference; the
+ * scope is the permission, enforced per route by the public console
+ * controller. The scope is inside the MAC and NOT in the token text: `full`
+ * keeps the original MAC input (so every outstanding link still verifies,
+ * as full), and a scoped link's MAC input gains a `:<scope>` suffix. The
+ * verifier tries the four scopes, so the token shape — and every client
+ * that parses it — is unchanged, and no cleartext field can be edited to
+ * widen a link: a scorer link's MAC matches only the scorer input.
+ *
  * Revocation: Game.consoleTokenVersion (additive column, default 0) is folded
  * into the MAC. Bumping it (DELETE /sports/games/:id/console-share) instantly
  * invalidates every outstanding link for the game. Deliberately a SEPARATE
@@ -85,10 +97,36 @@ function normVersion(version: unknown): number {
 }
 
 /** MAC over (gameId, version, iat, ttl) — distinct "console:" purpose. */
-function consoleMac(gameId: string, ver: number, iatSec: number, ttlSec: number): string {
+/** What one console link may do (K12-F34). `full` = every console route. */
+export const CONSOLE_SCOPES = ['full', 'scorer', 'timer', 'presentation'] as const;
+export type ConsoleScope = (typeof CONSOLE_SCOPES)[number];
+
+export function isConsoleScope(v: unknown): v is ConsoleScope {
+  return typeof v === 'string' && (CONSOLE_SCOPES as readonly string[]).includes(v);
+}
+
+/** The console routes, and which scopes may drive each. */
+export type ConsoleAction = 'score' | 'clock' | 'segment' | 'timeout' | 'cue';
+export const CONSOLE_SCOPE_ALLOWS: Record<ConsoleScope, readonly ConsoleAction[]> = {
+  full: ['score', 'clock', 'segment', 'timeout', 'cue'],
+  scorer: ['score', 'timeout'],
+  timer: ['clock', 'segment', 'timeout'],
+  presentation: ['cue'],
+};
+
+function consoleMac(
+  gameId: string,
+  ver: number,
+  iatSec: number,
+  ttlSec: number,
+  scope: ConsoleScope = 'full',
+): string {
+  // `full` keeps the pre-scope MAC input, so links minted before scopes
+  // existed still verify (as full). Every other scope is bound into the MAC.
+  const input = `console:${gameId}:${ver}:${iatSec}:${ttlSec}`;
   return crypto
     .createHmac('sha256', consoleSecret())
-    .update(`console:${gameId}:${ver}:${iatSec}:${ttlSec}`)
+    .update(scope === 'full' ? input : `${input}:${scope}`)
     .digest('hex')
     .slice(0, MAC_HEX_LEN);
 }
@@ -125,6 +163,8 @@ export interface MintConsoleTokenOpts {
   /** TTL in SECONDS — clamped into [MIN, MAX]. Omitted → the 24h default.
    *  There is NO non-expiring console token (see header comment #3). */
   ttlSeconds?: number;
+  /** K12-F34 — what the link may do (see SCOPES in the header). Default `full`. */
+  scope?: ConsoleScope;
 }
 
 /** Mint a console share token: `<gameId>.<ver>.<iat>.<ttl>.<mac>`. */
@@ -142,7 +182,8 @@ export function makeConsoleToken(gameId: string, opts: MintConsoleTokenOpts = {}
     Math.max(MIN_CONSOLE_TOKEN_TTL_SEC, requested),
   );
   const iatSec = Math.floor(Date.now() / 1000);
-  const mac = consoleMac(gameId, ver, iatSec, ttlSec);
+  const scope: ConsoleScope = isConsoleScope(opts.scope) ? opts.scope : 'full';
+  const mac = consoleMac(gameId, ver, iatSec, ttlSec, scope);
   return `${gameId}.${ver}.${iatSec}.${ttlSec}.${mac}`;
 }
 
@@ -184,24 +225,44 @@ export function verifyConsoleToken(
   token: unknown,
   currentVersion: number = 0,
 ): boolean {
-  if (typeof token !== 'string' || !gameId) return false;
+  return verifyConsoleTokenScope(gameId, token, currentVersion) !== null;
+}
+
+/**
+ * K12-F34 — verify a console token (every rule of verifyConsoleToken) and
+ * return the scope it was minted for, or null when it does not verify. Every
+ * scope's MAC is computed and compared (no early exit), so the check costs
+ * the same whichever scope — if any — matches.
+ */
+export function verifyConsoleTokenScope(
+  gameId: string,
+  token: unknown,
+  currentVersion: number = 0,
+): ConsoleScope | null {
+  if (typeof token !== 'string' || !gameId) return null;
   const parts = token.split('.');
-  if (parts.length !== 5) return false;
+  if (parts.length !== 5) return null;
   const [tokGameId, vStr, iatStr, ttlStr, mac] = parts;
-  if (tokGameId !== gameId || !GAME_ID_RE.test(tokGameId)) return false;
-  if (!/^\d+$/.test(vStr) || !/^\d+$/.test(iatStr) || !/^\d+$/.test(ttlStr)) return false;
-  if (mac.length !== MAC_HEX_LEN) return false;
+  if (tokGameId !== gameId || !GAME_ID_RE.test(tokGameId)) return null;
+  if (!/^\d+$/.test(vStr) || !/^\d+$/.test(iatStr) || !/^\d+$/.test(ttlStr)) return null;
+  if (mac.length !== MAC_HEX_LEN) return null;
 
   const tokVer = Number(vStr);
-  if (tokVer !== normVersion(currentVersion)) return false;
+  if (tokVer !== normVersion(currentVersion)) return null;
 
   const iatSec = Number(iatStr);
   const ttlSec = Number(ttlStr);
   // Always-expiring: ttl 0 (or an over-cap ttl) never verifies, even with a
   // valid MAC — mint can't produce one, and a hand-rolled one is refused.
-  if (ttlSec <= 0 || ttlSec > MAX_CONSOLE_TOKEN_TTL_SEC) return false;
+  if (ttlSec <= 0 || ttlSec > MAX_CONSOLE_TOKEN_TTL_SEC) return null;
   const nowSec = Math.floor(Date.now() / 1000);
-  if (nowSec > iatSec + ttlSec) return false;
+  if (nowSec > iatSec + ttlSec) return null;
 
-  return safeEqHex(consoleMac(tokGameId, tokVer, iatSec, ttlSec), mac);
+  let matched: ConsoleScope | null = null;
+  for (const scope of CONSOLE_SCOPES) {
+    if (safeEqHex(consoleMac(tokGameId, tokVer, iatSec, ttlSec, scope), mac) && matched === null) {
+      matched = scope;
+    }
+  }
+  return matched;
 }

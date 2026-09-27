@@ -2,6 +2,9 @@ import * as crypto from 'crypto';
 import {
   makeConsoleToken,
   verifyConsoleToken,
+  verifyConsoleTokenScope,
+  CONSOLE_SCOPES,
+  CONSOLE_SCOPE_ALLOWS,
   parseConsoleTokenGameId,
   DEFAULT_CONSOLE_TOKEN_TTL_SEC,
   MIN_CONSOLE_TOKEN_TTL_SEC,
@@ -224,6 +227,59 @@ describe('sports console token', () => {
       ).toBeNull(); // 4-part structured
       expect(parseConsoleTokenGameId(`${GAME}.x.1.2.${'0'.repeat(32)}`)).toBeNull();
       expect(parseConsoleTokenGameId(`bad:id.0.1.2.${'0'.repeat(32)}`)).toBeNull();
+    });
+  });
+
+  // K12-F34 — a link is minted for one job; the scope is the permission.
+  describe('scopes', () => {
+    it('each scope round-trips, in the SAME five-part shape every client already parses', () => {
+      for (const scope of CONSOLE_SCOPES) {
+        const tok = makeConsoleToken(GAME, { version: 2, scope });
+        expect(tok.split('.')).toHaveLength(5);
+        expect(parseConsoleTokenGameId(tok)).toBe(GAME);
+        expect(verifyConsoleTokenScope(GAME, tok, 2)).toBe(scope);
+        expect(verifyConsoleToken(GAME, tok, 2)).toBe(true);
+      }
+    });
+
+    it('a link minted before scopes existed (no scope) verifies as full', () => {
+      const tok = makeConsoleToken(GAME, { version: 0 });
+      expect(verifyConsoleTokenScope(GAME, tok, 0)).toBe('full');
+    });
+
+    it('the scope is inside the MAC: no cleartext edit turns a scorer link into anything else', () => {
+      const tok = makeConsoleToken(GAME, { version: 0, scope: 'scorer' });
+      const [g, v, iat, ttl, mac] = tok.split('.');
+      // Hand-rolled "full" MAC for the same fields needs the secret.
+      const forged = crypto
+        .createHmac('sha256', 'not-the-secret')
+        .update(`console:${g}:${v}:${iat}:${ttl}`)
+        .digest('hex')
+        .slice(0, 32);
+      expect(verifyConsoleTokenScope(GAME, `${g}.${v}.${iat}.${ttl}.${forged}`, 0)).toBeNull();
+      // Flipping one MAC character never lands on another scope.
+      const flipped = mac.slice(0, -1) + (mac.endsWith('0') ? '1' : '0');
+      expect(verifyConsoleTokenScope(GAME, `${g}.${v}.${iat}.${ttl}.${flipped}`, 0)).toBeNull();
+    });
+
+    it('revocation, expiry and game binding apply to every scope', () => {
+      const tok = makeConsoleToken(GAME, { version: 1, scope: 'timer' });
+      expect(verifyConsoleTokenScope(GAME, tok, 2)).toBeNull();
+      expect(verifyConsoleTokenScope('a3d1b2c4-5678-4abc-9def-000000000002', tok, 1)).toBeNull();
+      const realNow = Date.now;
+      Date.now = () => realNow() + (DEFAULT_CONSOLE_TOKEN_TTL_SEC + 5) * 1000;
+      try {
+        expect(verifyConsoleTokenScope(GAME, tok, 1)).toBeNull();
+      } finally {
+        Date.now = realNow;
+      }
+    });
+
+    it('the allow table: scorer scores, timer runs the clock, presentation cues, full does all', () => {
+      expect([...CONSOLE_SCOPE_ALLOWS.scorer].sort()).toEqual(['score', 'timeout']);
+      expect([...CONSOLE_SCOPE_ALLOWS.timer].sort()).toEqual(['clock', 'segment', 'timeout']);
+      expect([...CONSOLE_SCOPE_ALLOWS.presentation]).toEqual(['cue']);
+      expect([...CONSOLE_SCOPE_ALLOWS.full].sort()).toEqual(['clock', 'cue', 'score', 'segment', 'timeout']);
     });
   });
 });

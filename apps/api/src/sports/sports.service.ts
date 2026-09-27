@@ -42,7 +42,11 @@ import {
   MIN_FEED_TOKEN_TTL_SEC,
   MAX_FEED_TOKEN_TTL_SEC,
 } from './sports-feed-token';
-import { makeConsoleToken, DEFAULT_CONSOLE_TOKEN_TTL_SEC } from './sports-console-token';
+import {
+  type ConsoleScope,
+  makeConsoleToken,
+  DEFAULT_CONSOLE_TOKEN_TTL_SEC,
+} from './sports-console-token';
 // 2026-07-01 swim/dive DEPTH pass — CTS SWIMMING scoreboard-serial ingest
 // (docs/research/2026-06-30-swim-dive-scoreboards/00-REPORT.md part A7).
 import type { SwimTimingSnapshot } from '@cms/scoreboard-cts';
@@ -1118,12 +1122,14 @@ export class SportsService {
     gameId: string,
     actorUserId?: string,
     ttlSeconds?: number,
+    scope: ConsoleScope = 'full',
   ): Promise<{
     success: true;
     token: string;
     consoleTokenVersion: number;
     tokenTtlSeconds: number;
     expiresAt: string;
+    scope: ConsoleScope;
   }> {
     await this.owned(tenantId, gameId);
     const row = await this.prisma.client.game.findUnique({
@@ -1131,7 +1137,7 @@ export class SportsService {
       select: { consoleTokenVersion: true },
     });
     const version = row?.consoleTokenVersion ?? 0;
-    const token = makeConsoleToken(gameId, { version, ttlSeconds });
+    const token = makeConsoleToken(gameId, { version, ttlSeconds, scope });
     // The REAL ttl after mint's clamp rides inside the token (4th field).
     const ttlSec = Number(token.split('.')[3]) || DEFAULT_CONSOLE_TOKEN_TTL_SEC;
     const iatSec = Number(token.split('.')[2]) || Math.floor(Date.now() / 1000);
@@ -1151,6 +1157,7 @@ export class SportsService {
           consoleTokenVersion: version,
           tokenTtlSeconds: ttlSec,
           expiresAt,
+          scope,
           linkFingerprint: consoleTokenFingerprint(token),
         }),
       },
@@ -1161,6 +1168,7 @@ export class SportsService {
       consoleTokenVersion: version,
       tokenTtlSeconds: ttlSec,
       expiresAt,
+      scope,
     };
   }
 

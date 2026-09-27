@@ -10,6 +10,7 @@ import {
   Request,
   UseGuards,
   NotFoundException,
+  BadRequestException,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
@@ -18,6 +19,7 @@ import { AppRole } from '@cms/database';
 import { SportsService } from './sports.service';
 import { SponsorsService } from './sponsors.service';
 import { userActor, userCommand } from './game-command';
+import { CONSOLE_SCOPES, isConsoleScope } from './sports-console-token';
 
 /** Editable fields for one roster player. The service sanitizes every
  *  value — the photo URL is produced by the existing /assets/upload. */
@@ -649,13 +651,21 @@ export class SportsController {
   async mintConsoleShare(
     @Request() req: any,
     @Param('id') id: string,
-    @Body() body: { ttlSeconds?: number },
+    @Body() body: { ttlSeconds?: number; scope?: string },
   ) {
+    // K12-F34 — which controls the link may drive (default: all of them).
+    if (body?.scope !== undefined && !isConsoleScope(body.scope)) {
+      throw new BadRequestException({
+        code: 'CONSOLE_SCOPE_INVALID',
+        message: `scope must be one of: ${CONSOLE_SCOPES.join(', ')}`,
+      });
+    }
     const minted = await this.sports.mintConsoleShare(
       req.user.tenantId,
       id,
       req?.user?.id,
       typeof body?.ttlSeconds === 'number' ? body.ttlSeconds : undefined,
+      isConsoleScope(body?.scope) ? body.scope : 'full',
     );
     // The scorekeeper link lives on the WEB app, not the API — build it
     // from the dashboard's Origin header (always present on a browser
