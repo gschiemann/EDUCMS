@@ -889,14 +889,16 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
   // ticks — clockMs is the reading at clockUpdatedAt; we project it from
   // the page's shared SERVER clock (K12-F17: the poll samples it with each
   // request's round trip; the device's own clock never enters).
+  const { clockMs: anchorMs, clockRunning, clockUpdatedAt } = data;
   useEffect(() => {
+    const anchor = { clockMs: anchorMs, clockRunning, clockUpdatedAt };
     const project = () =>
-      setClockMs(projectGameClockMs(data, def.clock.type, serverClock.now()));
+      setClockMs(projectGameClockMs(anchor, def.clock.type, serverClock.now()));
     project();
-    if (!data.clockRunning || def.clock.type === 'none') return;
+    if (!clockRunning || def.clock.type === 'none') return;
     const t = setInterval(project, 100);
     return () => clearInterval(t);
-  }, [data.clockMs, data.clockRunning, data.clockUpdatedAt, def]);
+  }, [anchorMs, clockRunning, clockUpdatedAt, def]);
 
   // Shot clock — a second countdown, projected from its own anchor in
   // stats.shotClock the same way as the game clock. Driven by the sport's
@@ -3880,13 +3882,15 @@ export function PortraitBoardScene({ data, def }: { data: BoardData; def: SportD
   // Game clock — projected from the stored anchor on the page's shared
   // server clock (same math as BoardScene, K12-F17).
   const [clockMs, setClockMs] = useState(data.clockMs);
+  const { clockMs: anchorMs, clockRunning, clockUpdatedAt } = data;
   useEffect(() => {
-    const project = () => setClockMs(projectGameClockMs(data, def.clock.type, serverClock.now()));
+    const anchor = { clockMs: anchorMs, clockRunning, clockUpdatedAt };
+    const project = () => setClockMs(projectGameClockMs(anchor, def.clock.type, serverClock.now()));
     project();
-    if (!data.clockRunning || def.clock.type === 'none') return;
+    if (!clockRunning || def.clock.type === 'none') return;
     const t = setInterval(project, 100);
     return () => clearInterval(t);
-  }, [data.clockMs, data.clockRunning, data.clockUpdatedAt, def]);
+  }, [anchorMs, clockRunning, clockUpdatedAt, def]);
 
   // Shot clock — projected from stats.shotClock (same math as BoardScene).
   const [shotMs, setShotMs] = useState(0);

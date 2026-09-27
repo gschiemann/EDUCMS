@@ -400,15 +400,20 @@ export function useLiveClock(
   def: SportDefinition | undefined,
 ): number {
   const [ms, setMs] = useState(0);
+  const present = !!data;
+  const anchorMs = data?.clockMs;
+  const clockRunning = data?.clockRunning;
+  const clockUpdatedAt = data?.clockUpdatedAt;
   useEffect(() => {
-    if (!data || !def) return;
+    if (!present || !def) return;
     // K12-F17 — projected on the page's shared server clock.
-    const project = () => setMs(projectGameClockMs(data, def.clock.type, serverClock.now()));
+    const anchor = { clockMs: anchorMs, clockRunning, clockUpdatedAt };
+    const project = () => setMs(projectGameClockMs(anchor, def.clock.type, serverClock.now()));
     project();
-    if (!data.clockRunning || def.clock.type === 'none') return;
+    if (!clockRunning || def.clock.type === 'none') return;
     const t = setInterval(project, 100);
     return () => clearInterval(t);
-  }, [data?.clockMs, data?.clockRunning, data?.clockUpdatedAt, def]);
+  }, [present, anchorMs, clockRunning, clockUpdatedAt, def]);
   return ms;
 }
 

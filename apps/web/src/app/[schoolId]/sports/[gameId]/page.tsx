@@ -2312,7 +2312,7 @@ function PeriodOverBanner({
   segLabel,
   ctl,
 }: {
-  g: any;
+  g: Parameters<typeof isPeriodClockOver>[1];
   def: SportDefinition;
   segLabel: string;
   ctl: ReturnType<typeof useGameControl>;
