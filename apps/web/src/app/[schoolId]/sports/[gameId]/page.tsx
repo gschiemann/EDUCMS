@@ -1635,7 +1635,7 @@ function RunMode({
           {dockShown && (
             <div
               data-testid="run-scoreboard"
-              className="relative flex w-[50%] max-w-[480px] shrink-0 flex-col overflow-y-auto border-r-2 border-slate-800 bg-slate-950"
+              className="relative flex w-[50%] max-w-[480px] shrink-0 flex-col overflow-y-auto overscroll-contain border-r-2 border-slate-800 bg-slate-950"
             >
               <MobileScoreDock
                 g={g}
@@ -1660,7 +1660,7 @@ function RunMode({
               />
             </div>
           )}
-          <div data-testid="run-landscape-controls" className="flex-1 min-w-0 overflow-y-auto bg-slate-950">
+          <div data-testid="run-landscape-controls" className="flex-1 min-w-0 overflow-y-auto overscroll-contain bg-slate-950">
             {resultsArea}
             {showScoreboard && (
               <PhoneRunTrays

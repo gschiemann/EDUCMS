@@ -609,7 +609,7 @@ export default function ScorekeeperPadPage() {
           score, the clock and Undo — never scrolled away by a tap. RIGHT:
           the controls, scrolling on their own. Portrait stacks the two. */}
       <div className="short-land:grid short-land:h-[100dvh] short-land:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] short-land:overflow-hidden">
-      <div data-testid="pad-aside" className="short-land:overflow-y-auto short-land:border-r short-land:border-slate-800 short-land:pb-3">
+      <div data-testid="pad-aside" className="short-land:overflow-y-auto short-land:overscroll-contain short-land:border-r short-land:border-slate-800 short-land:pb-3">
       {/* header — game identity, the connection-aware chip, the link's scope */}
       <header className="px-4 pb-2 pt-4 short-land:pt-2">
         <div className="flex items-center justify-between">
@@ -760,7 +760,7 @@ export default function ScorekeeperPadPage() {
       {lastAction && <PadUndoCard label={lastAction.label} disabled={disabled} onUndo={undo} />}
       </div>
 
-      <div data-testid="pad-controls" className="short-land:overflow-y-auto short-land:pb-6">
+      <div data-testid="pad-controls" className="short-land:overflow-y-auto short-land:overscroll-contain short-land:pb-6">
       {/* score pads */}
       {caps.has('score') && increments.length > 0 && (
         <section className="mx-4 mt-3 grid grid-cols-2 gap-3" data-testid="pad-score">
