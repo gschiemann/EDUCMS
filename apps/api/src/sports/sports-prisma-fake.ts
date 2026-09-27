@@ -50,7 +50,16 @@ const WRITE_METHODS = new Set([
   'deleteMany',
 ]);
 
-const SCALAR_OPS = new Set(['equals', 'in', 'notIn', 'not', 'gt', 'gte', 'lt', 'lte']);
+const SCALAR_OPS = new Set([
+  'equals',
+  'in',
+  'notIn',
+  'not',
+  'gt',
+  'gte',
+  'lt',
+  'lte',
+]);
 
 export class FakePrismaError extends Error {
   constructor(
@@ -79,7 +88,9 @@ function compare(a: unknown, b: unknown): number {
 }
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
-  return !!v && typeof v === 'object' && !Array.isArray(v) && !(v instanceof Date);
+  return (
+    !!v && typeof v === 'object' && !Array.isArray(v) && !(v instanceof Date)
+  );
 }
 
 function matchScalar(value: unknown, cond: unknown): boolean {
@@ -91,10 +102,12 @@ function matchScalar(value: unknown, cond: unknown): boolean {
         if (!matchScalar(value, c)) return false;
         break;
       case 'in':
-        if (!Array.isArray(c) || !c.some((x) => sameValue(value, x))) return false;
+        if (!Array.isArray(c) || !c.some((x) => sameValue(value, x)))
+          return false;
         break;
       case 'notIn':
-        if (Array.isArray(c) && c.some((x) => sameValue(value, x))) return false;
+        if (Array.isArray(c) && c.some((x) => sameValue(value, x)))
+          return false;
         break;
       case 'not':
         if (matchScalar(value, c)) return false;
@@ -112,7 +125,9 @@ function matchScalar(value: unknown, cond: unknown): boolean {
         if (value == null || !(compare(value, c) <= 0)) return false;
         break;
       default:
-        throw new Error(`sports-prisma-fake: unsupported filter operator "${op}"`);
+        throw new Error(
+          `sports-prisma-fake: unsupported filter operator "${op}"`,
+        );
     }
   }
   return true;
@@ -130,7 +145,8 @@ export function matchWhere(row: Row, where: unknown): boolean {
     }
     if (key === 'OR') {
       const list = Array.isArray(cond) ? cond : [cond];
-      if (list.length > 0 && !list.some((w) => matchWhere(row, w))) return false;
+      if (list.length > 0 && !list.some((w) => matchWhere(row, w)))
+        return false;
       continue;
     }
     if (key === 'NOT') {
@@ -149,8 +165,13 @@ export function matchWhere(row: Row, where: unknown): boolean {
       if (!matchWhere(row, cond)) return false;
       continue;
     }
-    if (isPlainObject(cond) && !Object.keys(cond).every((k) => SCALAR_OPS.has(k))) {
-      throw new Error(`sports-prisma-fake: unsupported relation filter on "${key}"`);
+    if (
+      isPlainObject(cond) &&
+      !Object.keys(cond).every((k) => SCALAR_OPS.has(k))
+    ) {
+      throw new Error(
+        `sports-prisma-fake: unsupported relation filter on "${key}"`,
+      );
     }
     if (!matchScalar(row[key], cond)) return false;
   }
@@ -227,9 +248,13 @@ export function makeSportsPrismaFake(
 
     const assertUnique = (candidate: Row, except?: Row) => {
       for (const key of [[pk], ...uniques]) {
-        if (key.some((c) => candidate[c] === undefined || candidate[c] === null)) continue;
+        if (
+          key.some((c) => candidate[c] === undefined || candidate[c] === null)
+        )
+          continue;
         const clash = rows.find(
-          (r) => r !== except && key.every((c) => sameValue(r[c], candidate[c])),
+          (r) =>
+            r !== except && key.every((c) => sameValue(r[c], candidate[c])),
         );
         if (clash) {
           throw new FakePrismaError(
@@ -303,15 +328,23 @@ export function makeSportsPrismaFake(
       rows,
       updateCalls,
       findFirst: async ({ where, orderBy }: any = {}) =>
-        sortRows(rows.filter((r) => matchWhere(r, where)), orderBy)[0] ?? null,
-      findUnique: async ({ where }: any = {}) => rows.find((r) => matchWhere(r, where)) ?? null,
+        sortRows(
+          rows.filter((r) => matchWhere(r, where)),
+          orderBy,
+        )[0] ?? null,
+      findUnique: async ({ where }: any = {}) =>
+        rows.find((r) => matchWhere(r, where)) ?? null,
       findMany: async ({ where, orderBy, take, skip }: any = {}) => {
-        let out = sortRows(rows.filter((r) => matchWhere(r, where)), orderBy);
+        let out = sortRows(
+          rows.filter((r) => matchWhere(r, where)),
+          orderBy,
+        );
         if (typeof skip === 'number') out = out.slice(skip);
         if (typeof take === 'number') out = out.slice(0, take);
         return out;
       },
-      count: async ({ where }: any = {}) => rows.filter((r) => matchWhere(r, where)).length,
+      count: async ({ where }: any = {}) =>
+        rows.filter((r) => matchWhere(r, where)).length,
       create: async ({ data }: any) => insert(data),
       createMany: async ({ data, skipDuplicates }: any) => {
         const list = Array.isArray(data) ? data : [data];
@@ -321,7 +354,14 @@ export function makeSportsPrismaFake(
             insert(d);
             count++;
           } catch (e) {
-            if (!(skipDuplicates && e instanceof FakePrismaError && e.code === 'P2002')) throw e;
+            if (
+              !(
+                skipDuplicates &&
+                e instanceof FakePrismaError &&
+                e.code === 'P2002'
+              )
+            )
+              throw e;
           }
         }
         return { count };
@@ -354,7 +394,10 @@ export function makeSportsPrismaFake(
       delete: async ({ where }: any) => {
         const row = rows.find((r) => matchWhere(r, where));
         if (!row) {
-          throw new FakePrismaError('P2025', `Record to delete does not exist. [${name}]`);
+          throw new FakePrismaError(
+            'P2025',
+            `Record to delete does not exist. [${name}]`,
+          );
         }
         remove(row);
         return row;
@@ -368,9 +411,11 @@ export function makeSportsPrismaFake(
     return table;
   };
 
-  for (const [name, opts] of Object.entries(spec)) tables[name] = makeTable(name, opts);
+  for (const [name, opts] of Object.entries(spec))
+    tables[name] = makeTable(name, opts);
 
-  const tableFor = (name: string): FakeTable => (tables[name] ??= makeTable(name));
+  const tableFor = (name: string): FakeTable =>
+    (tables[name] ??= makeTable(name));
 
   /**
    * The `tx` client handed to an interactive-transaction callback: every
@@ -386,7 +431,8 @@ export function makeSportsPrismaFake(
           if (typeof prop !== 'string') return undefined;
           if (prop === '$transaction') {
             // A nested transaction joins the outer one (same undo log).
-            return async (arg: any) => (typeof arg === 'function' ? arg(self) : Promise.all(arg));
+            return async (arg: any) =>
+              typeof arg === 'function' ? arg(self) : Promise.all(arg);
           }
           if (prop.startsWith('$')) return (client as any)[prop];
           const table = tableFor(prop);

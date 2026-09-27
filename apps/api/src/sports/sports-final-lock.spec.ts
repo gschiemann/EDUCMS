@@ -27,16 +27,28 @@ function isFinalRefusal(err: unknown) {
 
 describe('K12-F13 — every ordinary control is refused on a FINAL game', () => {
   const CONTROLS: Array<[string, (s: any, id: string) => Promise<unknown>]> = [
-    ['score delta', (s, id) => s.adjustScore(TENANT, id, { team: 'home', delta: 2 })],
+    [
+      'score delta',
+      (s, id) => s.adjustScore(TENANT, id, { team: 'home', delta: 2 }),
+    ],
     ['score correction', (s, id) => s.setScore(TENANT, id, { awayScore: 60 })],
     ['clock', (s, id) => s.clockAction(TENANT, id, { action: 'start' })],
-    ['shot clock', (s, id) => s.setShotClock(TENANT, id, { action: 'configure', value: 35 })],
+    [
+      'shot clock',
+      (s, id) => s.setShotClock(TENANT, id, { action: 'configure', value: 35 }),
+    ],
     ['period', (s, id) => s.setSegment(TENANT, id, { delta: 1 })],
-    ['stats', (s, id) => s.updateStats(TENANT, id, { stats: { homeFouls: 3 } })],
+    [
+      'stats',
+      (s, id) => s.updateStats(TENANT, id, { stats: { homeFouls: 3 } }),
+    ],
     ['timeout', (s, id) => s.callTimeout(TENANT, id, { team: 'home' })],
     ['possession', (s, id) => s.setPossession(TENANT, id, { team: 'away' })],
     ['penalty', (s, id) => s.setPenalties(TENANT, id, { action: 'clear' })],
-    ['status back to LIVE', (s, id) => s.setStatus(TENANT, id, { status: 'LIVE' })],
+    [
+      'status back to LIVE',
+      (s, id) => s.setStatus(TENANT, id, { status: 'LIVE' }),
+    ],
     ['admin ingest', (s, id) => s.ingest(TENANT, id, { homeScore: 99 })],
     ['machine feed', (s, id) => s.ingestByFeed(id, { homeScore: 99 })],
   ];
@@ -48,7 +60,12 @@ describe('K12-F13 — every ordinary control is refused on a FINAL game', () => 
       const err = await run(service, g.id).catch((e: unknown) => e);
       expect(isFinalRefusal(err)).toBe(true);
       const row = game.rows[0];
-      expect({ status: row.status, home: row.homeScore, away: row.awayScore, version: row.version }).toEqual({
+      expect({
+        status: row.status,
+        home: row.homeScore,
+        away: row.awayScore,
+        version: row.version,
+      }).toEqual({
         status: 'FINAL',
         home: 50,
         away: 48,
@@ -60,7 +77,9 @@ describe('K12-F13 — every ordinary control is refused on a FINAL game', () => 
   it('an undo on a FINAL game is refused too (reopen first)', async () => {
     const { service, gameEvent, g } = await finalGame();
     const score = gameEvent.rows.filter((e: any) => e.type === 'SCORE').pop();
-    const err = await service.undoEvent(TENANT, g.id, score.id).catch((e: unknown) => e);
+    const err = await service
+      .undoEvent(TENANT, g.id, score.id)
+      .catch((e: unknown) => e);
     expect(isFinalRefusal(err)).toBe(true);
   });
 
@@ -84,49 +103,90 @@ describe('K12-F13 — every ordinary control is refused on a FINAL game', () => 
   it('box-score changes are locked; cosmetic roster edits and presentation are not', async () => {
     const { service, rosterPlayer, g } = await finalGame();
     // Seed a player directly (the add path is itself locked now).
-    rosterPlayer.rows.push({ id: 'p1', tenantId: TENANT, gameId: g.id, team: 'home', name: 'Sam', stats: { PTS: '12' } });
-    await expect(service.addPlayer(TENANT, g.id, { name: 'Late Add' })).rejects.toBeInstanceOf(ConflictException);
-    await expect(service.updatePlayer(TENANT, g.id, 'p1', { stats: { PTS: '14' } })).rejects.toBeInstanceOf(
-      ConflictException,
-    );
-    await expect(service.deletePlayer(TENANT, g.id, 'p1')).rejects.toBeInstanceOf(ConflictException);
+    rosterPlayer.rows.push({
+      id: 'p1',
+      tenantId: TENANT,
+      gameId: g.id,
+      team: 'home',
+      name: 'Sam',
+      stats: { PTS: '12' },
+    });
+    await expect(
+      service.addPlayer(TENANT, g.id, { name: 'Late Add' }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    await expect(
+      service.updatePlayer(TENANT, g.id, 'p1', { stats: { PTS: '14' } }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    await expect(
+      service.deletePlayer(TENANT, g.id, 'p1'),
+    ).rejects.toBeInstanceOf(ConflictException);
     // Fixing a misspelled name is not a result change.
-    await expect(service.updatePlayer(TENANT, g.id, 'p1', { name: 'Sammy' })).resolves.toBeTruthy();
+    await expect(
+      service.updatePlayer(TENANT, g.id, 'p1', { name: 'Sammy' }),
+    ).resolves.toBeTruthy();
     // A post-game celebration is presentation, not a result.
-    await expect(service.fireCue(TENANT, g.id, { key: 'buzzerBeater' })).resolves.toMatchObject({ fired: true });
+    await expect(
+      service.fireCue(TENANT, g.id, { key: 'buzzerBeater' }),
+    ).resolves.toMatchObject({ fired: true });
   });
 });
 
 describe('K12-F13 — the audited reopen', () => {
   it('requires a reason', async () => {
     const { service, g } = await finalGame();
-    await expect(service.reopenGame(TENANT, g.id, { reason: ' ' })).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      service.reopenGame(TENANT, g.id, { reason: ' ' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('only reopens a FINAL game', async () => {
     const h = setup();
     const g: any = await newGame(h.service, 'basketball');
-    const err = await h.service.reopenGame(TENANT, g.id, { reason: 'scorer error' }).catch((e: unknown) => e);
+    const err = await h.service
+      .reopenGame(TENANT, g.id, { reason: 'scorer error' })
+      .catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ConflictException);
-    expect((err as ConflictException).getResponse()).toMatchObject({ code: 'GAME_NOT_FINAL' });
+    expect((err as ConflictException).getResponse()).toMatchObject({
+      code: 'GAME_NOT_FINAL',
+    });
   });
 
   it('reopen → correct → end again: the corrected result stands, and every step is attributed', async () => {
     const { service, game, gameEvent, auditLog, g } = await finalGame();
-    await service.reopenGame(TENANT, g.id, { reason: 'Away free throw was never entered' }, 'user-admin');
+    await service.reopenGame(
+      TENANT,
+      g.id,
+      { reason: 'Away free throw was never entered' },
+      'user-admin',
+    );
     expect(game.rows[0].status).toBe('LIVE');
     expect(game.rows[0].endedAt).toBeNull();
-    const reopened = gameEvent.rows.filter((e: any) => e.type === 'STATUS' && e.payload.reopened).pop();
-    expect(reopened.payload).toMatchObject({ prevStatus: 'FINAL', reason: 'Away free throw was never entered' });
-    const audit = auditLog.rows.find((a: any) => a.action === 'SPORTS_GAME_REOPENED');
+    const reopened = gameEvent.rows
+      .filter((e: any) => e.type === 'STATUS' && e.payload.reopened)
+      .pop();
+    expect(reopened.payload).toMatchObject({
+      prevStatus: 'FINAL',
+      reason: 'Away free throw was never entered',
+    });
+    const audit = auditLog.rows.find(
+      (a: any) => a.action === 'SPORTS_GAME_REOPENED',
+    );
     expect(audit).toMatchObject({ userId: 'user-admin', targetId: g.id });
     expect(JSON.parse(audit.details)).toMatchObject({
       reason: 'Away free throw was never entered',
       finalScore: { home: 50, away: 48 },
     });
 
-    await service.adjustScore(TENANT, g.id, { team: 'away', delta: 1 }, 'user-admin');
+    await service.adjustScore(
+      TENANT,
+      g.id,
+      { team: 'away', delta: 1 },
+      'user-admin',
+    );
     await service.setStatus(TENANT, g.id, { status: 'FINAL' }, 'user-admin');
-    expect({ status: game.rows[0].status, away: game.rows[0].awayScore }).toEqual({ status: 'FINAL', away: 49 });
+    expect({
+      status: game.rows[0].status,
+      away: game.rows[0].awayScore,
+    }).toEqual({ status: 'FINAL', away: 49 });
   });
 });

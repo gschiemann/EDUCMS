@@ -58,16 +58,27 @@ export interface ResolvedCommandContext {
   expectedSegment: number | null;
 }
 
-export function resolveCommandContext(input: CommandInput): ResolvedCommandContext {
+export function resolveCommandContext(
+  input: CommandInput,
+): ResolvedCommandContext {
   if (typeof input === 'string') {
-    return { actor: { kind: 'user', userId: input }, commandId: null, expectedSegment: null };
+    return {
+      actor: { kind: 'user', userId: input },
+      commandId: null,
+      expectedSegment: null,
+    };
   }
   const actor: GameActor = input?.actor ?? { kind: 'user', userId: null };
   return {
-    actor: { kind: actor.kind, userId: actor.userId ?? null, ref: actor.ref ?? null },
+    actor: {
+      kind: actor.kind,
+      userId: actor.userId ?? null,
+      ref: actor.ref ?? null,
+    },
     commandId: input?.commandId ?? null,
     expectedSegment:
-      typeof input?.expectedSegment === 'number' && Number.isInteger(input.expectedSegment)
+      typeof input?.expectedSegment === 'number' &&
+      Number.isInteger(input.expectedSegment)
         ? input.expectedSegment
         : null,
   };
@@ -87,7 +98,10 @@ export function feedActor(ref: 'feed' | 'cts' | 'swim'): GameCommandContext {
  * tell WHICH issued link did what — never the token itself.
  */
 export function consoleTokenFingerprint(token: string): string {
-  return createHash('sha256').update(`console-link:${token}`).digest('hex').slice(0, 16);
+  return createHash('sha256')
+    .update(`console-link:${token}`)
+    .digest('hex')
+    .slice(0, 16);
 }
 
 // ── transport fields (controller side) ──────────────────────────
@@ -102,8 +116,15 @@ const COMMAND_ID_RE = /^[A-Za-z0-9._:-]{8,100}$/;
  */
 export function splitCommandFields<T extends Record<string, unknown>>(
   body: T | null | undefined,
-): { dto: Omit<T, 'commandId' | 'expectedSegment'>; commandId: string | null; expectedSegment: number | null } {
-  const src = (body && typeof body === 'object' ? body : {}) as Record<string, unknown>;
+): {
+  dto: Omit<T, 'commandId' | 'expectedSegment'>;
+  commandId: string | null;
+  expectedSegment: number | null;
+} {
+  const src = (body && typeof body === 'object' ? body : {}) as Record<
+    string,
+    unknown
+  >;
   const { commandId, expectedSegment, ...dto } = src;
   let id: string | null = null;
   if (commandId !== undefined && commandId !== null) {
@@ -117,7 +138,11 @@ export function splitCommandFields<T extends Record<string, unknown>>(
   }
   let seg: number | null = null;
   if (expectedSegment !== undefined && expectedSegment !== null) {
-    if (typeof expectedSegment !== 'number' || !Number.isInteger(expectedSegment) || expectedSegment < 1) {
+    if (
+      typeof expectedSegment !== 'number' ||
+      !Number.isInteger(expectedSegment) ||
+      expectedSegment < 1
+    ) {
       throw new BadRequestException({
         code: 'EXPECTED_SEGMENT_INVALID',
         message: 'expectedSegment must be a positive integer',
@@ -125,7 +150,11 @@ export function splitCommandFields<T extends Record<string, unknown>>(
     }
     seg = expectedSegment;
   }
-  return { dto: dto as Omit<T, 'commandId' | 'expectedSegment'>, commandId: id, expectedSegment: seg };
+  return {
+    dto: dto as Omit<T, 'commandId' | 'expectedSegment'>,
+    commandId: id,
+    expectedSegment: seg,
+  };
 }
 
 /**
@@ -138,13 +167,18 @@ export function userCommand<T extends Record<string, unknown>>(
   body: T | null | undefined,
 ): { dto: Omit<T, 'commandId' | 'expectedSegment'>; ctx: GameCommandContext } {
   const { dto, commandId, expectedSegment } = splitCommandFields(body);
-  const user = ((req as { user?: Record<string, unknown> } | null)?.user ?? {}) as Record<string, unknown>;
+  const user = ((req as { user?: Record<string, unknown> } | null)?.user ??
+    {}) as Record<string, unknown>;
   const userId = typeof user.id === 'string' ? user.id : null;
   const apiKeyId = typeof user.apiKeyId === 'string' ? user.apiKeyId : null;
   return {
     dto,
     ctx: {
-      actor: { kind: 'user', userId, ref: apiKeyId ? `api-key:${apiKeyId}` : null },
+      actor: {
+        kind: 'user',
+        userId,
+        ref: apiKeyId ? `api-key:${apiKeyId}` : null,
+      },
       commandId,
       expectedSegment,
     },
@@ -172,7 +206,10 @@ export function consoleCommand<T extends Record<string, unknown>>(
   return {
     dto,
     ctx: {
-      actor: { kind: 'console', ref: `console-link:${consoleTokenFingerprint(token)}` },
+      actor: {
+        kind: 'console',
+        ref: `console-link:${consoleTokenFingerprint(token)}`,
+      },
       commandId,
       expectedSegment,
     },
@@ -194,7 +231,9 @@ export function stableStringify(value: unknown): string {
 }
 
 export function requestHash(kind: string, dto: unknown): string {
-  return createHash('sha256').update(`${kind}\n${stableStringify(dto ?? null)}`).digest('hex');
+  return createHash('sha256')
+    .update(`${kind}\n${stableStringify(dto ?? null)}`)
+    .digest('hex');
 }
 
 // ── state change (the undo record) ──────────────────────────────
@@ -227,7 +266,11 @@ function isMachineStatsKey(key: string): boolean {
 export const ABSENT = Object.freeze({ $absent: true });
 
 function isAbsent(v: unknown): boolean {
-  return !!v && typeof v === 'object' && (v as Record<string, unknown>).$absent === true;
+  return (
+    !!v &&
+    typeof v === 'object' &&
+    (v as Record<string, unknown>).$absent === true
+  );
 }
 
 /** before/after of every field a command changed. Keys: a column name, or `stats.<key>`. */
@@ -251,13 +294,18 @@ function statsOf(g: GameLike): Record<string, unknown> {
 }
 
 /** The values of `keys` on a row, in StateChange form. */
-export function readFields(g: GameLike, keys: string[]): Record<string, unknown> {
+export function readFields(
+  g: GameLike,
+  keys: string[],
+): Record<string, unknown> {
   const stats = statsOf(g);
   const out: Record<string, unknown> = {};
   for (const k of keys) {
     if (k.startsWith('stats.')) {
       const sk = k.slice(6);
-      out[k] = Object.prototype.hasOwnProperty.call(stats, sk) ? stats[sk] : ABSENT;
+      out[k] = Object.prototype.hasOwnProperty.call(stats, sk)
+        ? stats[sk]
+        : ABSENT;
     } else {
       out[k] = normColumn(g[k]);
     }
@@ -269,7 +317,11 @@ export function readFields(g: GameLike, keys: string[]): Record<string, unknown>
 export function diffState(before: GameLike, after: GameLike): StateChange {
   const keys: string[] = [];
   for (const c of TRACKED_COLUMNS) {
-    if (stableStringify(normColumn(before[c])) !== stableStringify(normColumn(after[c]))) keys.push(c);
+    if (
+      stableStringify(normColumn(before[c])) !==
+      stableStringify(normColumn(after[c]))
+    )
+      keys.push(c);
   }
   const bs = statsOf(before);
   const as = statsOf(after);
@@ -277,7 +329,8 @@ export function diffState(before: GameLike, after: GameLike): StateChange {
     if (isMachineStatsKey(k)) continue;
     const had = Object.prototype.hasOwnProperty.call(bs, k);
     const has = Object.prototype.hasOwnProperty.call(as, k);
-    if (had !== has || stableStringify(bs[k]) !== stableStringify(as[k])) keys.push(`stats.${k}`);
+    if (had !== has || stableStringify(bs[k]) !== stableStringify(as[k]))
+      keys.push(`stats.${k}`);
   }
   return { before: readFields(before, keys), after: readFields(after, keys) };
 }
@@ -290,7 +343,13 @@ export function isEmptyChange(change: StateChange | null | undefined): boolean {
 
 export type ClockKind = 'countdown' | 'countup' | 'none';
 
-function projectMs(ms: number, anchor: unknown, running: boolean, now: number, kind: ClockKind): number {
+function projectMs(
+  ms: number,
+  anchor: unknown,
+  running: boolean,
+  now: number,
+  kind: ClockKind,
+): number {
   if (!running) return ms;
   const at = new Date(String(anchor ?? '')).getTime();
   if (!Number.isFinite(at)) return ms;
@@ -308,10 +367,19 @@ function projectMs(ms: number, anchor: unknown, running: boolean, now: number, k
 function reanchorStatsValue(key: string, value: unknown, now: Date): unknown {
   const nowMs = now.getTime();
   const iso = now.toISOString();
-  if ((key === 'shotClock' || key === 'playClock') && value && typeof value === 'object' && !Array.isArray(value)) {
+  if (
+    (key === 'shotClock' || key === 'playClock') &&
+    value &&
+    typeof value === 'object' &&
+    !Array.isArray(value)
+  ) {
     const v = value as Record<string, unknown>;
     const ms = Math.max(0, Number(v.ms) || 0);
-    return { ...v, ms: projectMs(ms, v.at, !!v.running, nowMs, 'countdown'), at: iso };
+    return {
+      ...v,
+      ms: projectMs(ms, v.at, !!v.running, nowMs, 'countdown'),
+      at: iso,
+    };
   }
   if (key === 'penalties' && Array.isArray(value)) {
     return value
@@ -319,10 +387,22 @@ function reanchorStatsValue(key: string, value: unknown, now: Date): unknown {
         if (!p || typeof p !== 'object') return p;
         const row = p as Record<string, unknown>;
         if (row.source === 'cts') return row; // console-owned timers keep their own state
-        const ms = projectMs(Math.max(0, Number(row.ms) || 0), row.at, !!row.running, nowMs, 'countdown');
+        const ms = projectMs(
+          Math.max(0, Number(row.ms) || 0),
+          row.at,
+          !!row.running,
+          nowMs,
+          'countdown',
+        );
         return { ...row, ms, at: iso };
       })
-      .filter((p) => !p || typeof p !== 'object' || (p as Record<string, unknown>).source === 'cts' || Number((p as Record<string, unknown>).ms) > 0);
+      .filter(
+        (p) =>
+          !p ||
+          typeof p !== 'object' ||
+          (p as Record<string, unknown>).source === 'cts' ||
+          Number((p as Record<string, unknown>).ms) > 0,
+      );
   }
   return value;
 }
@@ -395,17 +475,30 @@ export function planUndo(
       continue;
     }
     if (k === 'startedAt' || k === 'endedAt') {
-      data[k] = before === null || before === undefined ? null : new Date(String(before));
+      data[k] =
+        before === null || before === undefined
+          ? null
+          : new Date(String(before));
       continue;
     }
     data[k] = before;
   }
   if (touchesClock) {
     const pick = (k: string) =>
-      Object.prototype.hasOwnProperty.call(change.before, k) ? change.before[k] : normColumn(current[k]);
+      Object.prototype.hasOwnProperty.call(change.before, k)
+        ? change.before[k]
+        : normColumn(current[k]);
     const running = !!pick('clockRunning');
     const baseMs = Math.max(0, Number(pick('clockMs')) || 0);
-    data.clockMs = Math.round(projectMs(baseMs, pick('clockUpdatedAt'), running, now.getTime(), opts.clock));
+    data.clockMs = Math.round(
+      projectMs(
+        baseMs,
+        pick('clockUpdatedAt'),
+        running,
+        now.getTime(),
+        opts.clock,
+      ),
+    );
     data.clockRunning = running;
     data.clockUpdatedAt = now;
   }

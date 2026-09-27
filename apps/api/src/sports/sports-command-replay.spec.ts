@@ -23,14 +23,34 @@ describe('K12-F10 — a replayed command is a no-op that returns the original re
   it('commit +2, lose the response, retry: exactly +2, one event, one receipt, the same answer', async () => {
     const { service, game, gameEvent, gameCommand } = setup();
     const g: any = await newGame(service, 'basketball');
-    const ctx = { actor: { kind: 'user' as const, userId: 'u-1' }, commandId: CMD };
+    const ctx = {
+      actor: { kind: 'user' as const, userId: 'u-1' },
+      commandId: CMD,
+    };
 
-    const first: any = await service.adjustScore(TENANT, g.id, { team: 'home', delta: 2 }, ctx);
-    const retry: any = await service.adjustScore(TENANT, g.id, { team: 'home', delta: 2 }, ctx);
-    const replayAgain: any = await service.adjustScore(TENANT, g.id, { team: 'home', delta: 2 }, ctx);
+    const first: any = await service.adjustScore(
+      TENANT,
+      g.id,
+      { team: 'home', delta: 2 },
+      ctx,
+    );
+    const retry: any = await service.adjustScore(
+      TENANT,
+      g.id,
+      { team: 'home', delta: 2 },
+      ctx,
+    );
+    const replayAgain: any = await service.adjustScore(
+      TENANT,
+      g.id,
+      { team: 'home', delta: 2 },
+      ctx,
+    );
 
     expect(game.rows[0].homeScore).toBe(2);
-    expect(gameEvent.rows.filter((e: any) => e.type === 'SCORE')).toHaveLength(1);
+    expect(gameEvent.rows.filter((e: any) => e.type === 'SCORE')).toHaveLength(
+      1,
+    );
     expect(gameCommand.rows).toHaveLength(1);
     // The replay answers exactly what the HTTP layer sent the first time.
     expect(retry).toEqual(JSON.parse(JSON.stringify(first)));
@@ -69,24 +89,38 @@ describe('K12-F10 — a replayed command is a no-op that returns the original re
           createdAt: new Date(),
           response: { from: 'twin' },
         });
-        const err: any = new Error('Unique constraint failed on the fields: (game_id,command_id)');
+        const err: any = new Error(
+          'Unique constraint failed on the fields: (game_id,command_id)',
+        );
         err.code = 'P2002';
         throw err;
       }
       return create(args);
     };
 
-    const answer = await service.adjustScore(TENANT, g.id, { team: 'home', delta: 2 }, { commandId: CMD });
+    const answer = await service.adjustScore(
+      TENANT,
+      g.id,
+      { team: 'home', delta: 2 },
+      { commandId: CMD },
+    );
     expect(answer).toEqual({ from: 'twin' });
     // Our own attempt's effect was rolled back with its transaction.
     expect(game.rows[0].homeScore).toBe(0);
-    expect(gameEvent.rows.filter((e: any) => e.type === 'SCORE')).toHaveLength(0);
+    expect(gameEvent.rows.filter((e: any) => e.type === 'SCORE')).toHaveLength(
+      0,
+    );
   });
 
   it('the same id with a DIFFERENT request is refused (409 COMMAND_ID_REUSED), never answered with another result', async () => {
     const { service, game } = setup();
     const g: any = await newGame(service, 'basketball');
-    await service.adjustScore(TENANT, g.id, { team: 'home', delta: 2 }, { commandId: CMD });
+    await service.adjustScore(
+      TENANT,
+      g.id,
+      { team: 'home', delta: 2 },
+      { commandId: CMD },
+    );
     const err = await service
       .adjustScore(TENANT, g.id, { team: 'home', delta: 3 }, { commandId: CMD })
       .catch((e: unknown) => e);
@@ -99,12 +133,22 @@ describe('K12-F10 — a replayed command is a no-op that returns the original re
     const g: any = await newGame(service, 'basketball');
     await service.setSegment(TENANT, g.id, { segment: 2 });
     const err = await service
-      .updateStats(TENANT, g.id, { stats: { homeFouls: 5 } }, { commandId: CMD, expectedSegment: 1 })
+      .updateStats(
+        TENANT,
+        g.id,
+        { stats: { homeFouls: 5 } },
+        { commandId: CMD, expectedSegment: 1 },
+      )
       .catch((e: unknown) => e);
     expectConflict(err, 'GAME_SEGMENT_CHANGED');
     expect(game.rows[0].stats.homeFouls ?? 0).toBe(0);
     // The same command, made in the period it is replayed in, applies.
-    await service.updateStats(TENANT, g.id, { stats: { homeFouls: 5 } }, { commandId: 'cmd-q2-000000001', expectedSegment: 2 });
+    await service.updateStats(
+      TENANT,
+      g.id,
+      { stats: { homeFouls: 5 } },
+      { commandId: 'cmd-q2-000000001', expectedSegment: 2 },
+    );
     expect(game.rows[0].stats.homeFouls).toBe(5);
   });
 
@@ -123,10 +167,15 @@ describe('K12-F10 — a replayed command is a no-op that returns the original re
   it('the receipt names the actor, the command kind and the revision it moved the game across', async () => {
     const { service, gameCommand } = setup();
     const g: any = await newGame(service, 'basketball');
-    await service.clockAction(TENANT, g.id, { action: 'start' }, {
-      actor: { kind: 'user', userId: 'u-7' },
-      commandId: CMD,
-    });
+    await service.clockAction(
+      TENANT,
+      g.id,
+      { action: 'start' },
+      {
+        actor: { kind: 'user', userId: 'u-7' },
+        commandId: CMD,
+      },
+    );
     expect(gameCommand.rows[0]).toMatchObject({
       tenantId: TENANT,
       gameId: g.id,

@@ -77,5 +77,9 @@ export function setup(opts: { playerStats?: boolean } = {}) {
 }
 
 export async function newGame(service: SportsService, sport = 'football') {
-  return service.createGame(TENANT, { sport, homeTeam: 'Home', awayTeam: 'Away' });
+  return service.createGame(TENANT, {
+    sport,
+    homeTeam: 'Home',
+    awayTeam: 'Away',
+  });
 }

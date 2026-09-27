@@ -45,12 +45,29 @@ function db() {
       createdAt: new Date('2025-11-01T00:00:00Z'),
       ...over,
     });
-  const addPlayer = (gameId: string, personId: string | null, stats: Record<string, string>, teamId: string | null = null) => {
-    const row = { id: `rp-${++rp}`, tenantId: T, gameId, personId, teamId, team: 'home', stats };
+  const addPlayer = (
+    gameId: string,
+    personId: string | null,
+    stats: Record<string, string>,
+    teamId: string | null = null,
+  ) => {
+    const row = {
+      id: `rp-${++rp}`,
+      tenantId: T,
+      gameId,
+      personId,
+      teamId,
+      team: 'home',
+      stats,
+    };
     tables.rosterPlayer.rows.push(row);
     return row;
   };
-  const queue = (gameId: string, revision = 3, over: Record<string, unknown> = {}) =>
+  const queue = (
+    gameId: string,
+    revision = 3,
+    over: Record<string, unknown> = {},
+  ) =>
     tables.gameStatRollup.rows.push({
       gameId,
       tenantId: T,
@@ -65,10 +82,16 @@ function db() {
       ...over,
     });
   const season = (personId: string, statKey: string, s = SEASON) =>
-    tables.playerSeasonStat.rows.find((r: any) => r.personId === personId && r.statKey === statKey && r.season === s);
+    tables.playerSeasonStat.rows.find(
+      (r: any) =>
+        r.personId === personId && r.statKey === statKey && r.season === s,
+    );
   const career = (personId: string, statKey: string) =>
-    tables.playerCareerStat.rows.find((r: any) => r.personId === personId && r.statKey === statKey);
-  const job = (gameId: string) => tables.gameStatRollup.rows.find((r: any) => r.gameId === gameId);
+    tables.playerCareerStat.rows.find(
+      (r: any) => r.personId === personId && r.statKey === statKey,
+    );
+  const job = (gameId: string) =>
+    tables.gameStatRollup.rows.find((r: any) => r.gameId === gameId);
   return { client, tables, addGame, addPlayer, queue, season, career, job };
 }
 
@@ -82,10 +105,22 @@ describe('applyGameStatRollup — the roll-up itself', () => {
 
     const res = await applyGameStatRollup(d.client, T, 'game-1');
     expect(res).toMatchObject({ applied: true, aggregated: 2, revision: 3 });
-    expect(d.season('p-1', 'PTS')).toMatchObject({ statValue: 24, gamesPlayed: 1, displayValue: '24', teamId: 'team-1' });
-    expect(d.career('p-1', 'PTS')).toMatchObject({ statValue: 24, gamesPlayed: 1 });
+    expect(d.season('p-1', 'PTS')).toMatchObject({
+      statValue: 24,
+      gamesPlayed: 1,
+      displayValue: '24',
+      teamId: 'team-1',
+    });
+    expect(d.career('p-1', 'PTS')).toMatchObject({
+      statValue: 24,
+      gamesPlayed: 1,
+    });
     expect(d.season('p-2', 'PTS')?.statValue).toBe(12);
-    expect(d.job('game-1')).toMatchObject({ state: 'APPLIED', appliedRevision: 3, lastError: null });
+    expect(d.job('game-1')).toMatchObject({
+      state: 'APPLIED',
+      appliedRevision: 3,
+      lastError: null,
+    });
     expect(d.job('game-1').contribution).toHaveLength(5);
     // The old marker-in-game.stats is gone: the job row is the record.
     expect(d.tables.game.rows[0].stats).toEqual({});
@@ -101,14 +136,25 @@ describe('applyGameStatRollup — the roll-up itself', () => {
     d.queue('game-2');
     await applyGameStatRollup(d.client, T, 'game-1');
     await applyGameStatRollup(d.client, T, 'game-2');
-    expect(d.season('p-1', 'PTS')).toMatchObject({ statValue: 35, gamesPlayed: 2 });
-    expect(d.career('p-1', 'PTS')).toMatchObject({ statValue: 35, gamesPlayed: 2 });
+    expect(d.season('p-1', 'PTS')).toMatchObject({
+      statValue: 35,
+      gamesPlayed: 2,
+    });
+    expect(d.career('p-1', 'PTS')).toMatchObject({
+      statValue: 35,
+      gamesPlayed: 2,
+    });
   });
 
   it('resolves LONG/lowercase stored keys (CSV/seed rosters) and never mis-reads another stat', async () => {
     const d = db();
     d.addGame('game-1', { sport: 'water_polo' });
-    d.addPlayer('game-1', 'p-1', { goals: '4', assists: '2', steals: '3', drawn: '5' }, 'team-1');
+    d.addPlayer(
+      'game-1',
+      'p-1',
+      { goals: '4', assists: '2', steals: '3', drawn: '5' },
+      'team-1',
+    );
     d.queue('game-1');
     await applyGameStatRollup(d.client, T, 'game-1');
     expect(d.season('p-1', 'G')?.statValue).toBe(4);
@@ -139,7 +185,9 @@ describe('applyGameStatRollup — the roll-up itself', () => {
     expect(res.aggregated).toBe(1);
     expect(d.season('p-1', 'PTS')).toBeUndefined();
     expect(d.season('p-1', 'REB')?.statValue).toBe(7);
-    expect(d.tables.playerSeasonStat.rows.some((r: any) => r.statValue === 99)).toBe(false);
+    expect(
+      d.tables.playerSeasonStat.rows.some((r: any) => r.statValue === 99),
+    ).toBe(false);
   });
 
   it('re-applying an applied revision is a no-op — nothing is counted twice', async () => {
@@ -150,7 +198,10 @@ describe('applyGameStatRollup — the roll-up itself', () => {
     await applyGameStatRollup(d.client, T, 'game-1');
     const again = await applyGameStatRollup(d.client, T, 'game-1');
     expect(again).toMatchObject({ applied: false, skipped: 'already-applied' });
-    expect(d.season('p-1', 'PTS')).toMatchObject({ statValue: 30, gamesPlayed: 1 });
+    expect(d.season('p-1', 'PTS')).toMatchObject({
+      statValue: 30,
+      gamesPlayed: 1,
+    });
     expect(d.career('p-1', 'PTS')?.statValue).toBe(30);
   });
 
@@ -177,13 +228,22 @@ describe('applyGameStatRollup — the roll-up itself', () => {
 
     const res = await applyGameStatRollup(d.client, T, 'game-1');
     expect(res).toMatchObject({ applied: true, revision: 9 });
-    expect(d.season('p-1', 'PTS')).toMatchObject({ statValue: 45, gamesPlayed: 2 }); // 30 + 15
-    expect(d.career('p-1', 'PTS')).toMatchObject({ statValue: 45, gamesPlayed: 2 });
+    expect(d.season('p-1', 'PTS')).toMatchObject({
+      statValue: 45,
+      gamesPlayed: 2,
+    }); // 30 + 15
+    expect(d.career('p-1', 'PTS')).toMatchObject({
+      statValue: 45,
+      gamesPlayed: 2,
+    });
     // Rows no game contributes to any more are removed, not left at 0.
     expect(d.season('p-1', 'REB')).toBeUndefined();
     expect(d.career('p-1', 'REB')).toBeUndefined();
     expect(d.season('p-2', 'PTS')).toBeUndefined();
-    expect(d.job('game-1')).toMatchObject({ state: 'APPLIED', appliedRevision: 9 });
+    expect(d.job('game-1')).toMatchObject({
+      state: 'APPLIED',
+      appliedRevision: 9,
+    });
   });
 
   it('a failure part-way changes NO total and leaves the job to be retried', async () => {
@@ -195,9 +255,15 @@ describe('applyGameStatRollup — the roll-up itself', () => {
     d.tables.playerCareerStat.upsert = async () => {
       throw new Error('simulated storage failure');
     };
-    await expect(applyGameStatRollup(d.client, T, 'game-1')).rejects.toThrow('simulated storage failure');
+    await expect(applyGameStatRollup(d.client, T, 'game-1')).rejects.toThrow(
+      'simulated storage failure',
+    );
     expect(d.tables.playerSeasonStat.rows).toHaveLength(0);
-    expect(d.job('game-1')).toMatchObject({ state: 'PENDING', attempts: 0, appliedRevision: null });
+    expect(d.job('game-1')).toMatchObject({
+      state: 'PENDING',
+      attempts: 0,
+      appliedRevision: null,
+    });
 
     d.tables.playerCareerStat.upsert = realUpsert;
     await applyGameStatRollup(d.client, T, 'game-1');
@@ -230,7 +296,10 @@ describe('applyGameStatRollup — the roll-up itself', () => {
     ]);
     expect(results.filter((r) => r.applied)).toHaveLength(1);
     expect(results.find((r) => !r.applied)).toMatchObject({ skipped: 'busy' });
-    expect(d.season('p-1', 'PTS')).toMatchObject({ statValue: 24, gamesPlayed: 1 });
+    expect(d.season('p-1', 'PTS')).toMatchObject({
+      statValue: 24,
+      gamesPlayed: 1,
+    });
   });
 
   it('a job whose game was reopened meanwhile is held, not applied', async () => {
@@ -246,15 +315,29 @@ describe('applyGameStatRollup — the roll-up itself', () => {
 
   it('a game rolled up by the OLD finalize (marker, no baseline) is never added a second time', async () => {
     const d = db();
-    d.addGame('game-1', { stats: { statsFinalizedAt: '2026-01-01T00:00:00.000Z' } });
+    d.addGame('game-1', {
+      stats: { statsFinalizedAt: '2026-01-01T00:00:00.000Z' },
+    });
     d.addPlayer('game-1', 'p-1', { PTS: '24' });
     d.tables.playerSeasonStat.rows.push({
-      id: 'old', tenantId: T, personId: 'p-1', sport: 'basketball', season: SEASON, statKey: 'PTS',
-      statValue: 24, gamesPlayed: 1, displayValue: '24', teamId: null, lastGameId: 'game-1',
+      id: 'old',
+      tenantId: T,
+      personId: 'p-1',
+      sport: 'basketball',
+      season: SEASON,
+      statKey: 'PTS',
+      statValue: 24,
+      gamesPlayed: 1,
+      displayValue: '24',
+      teamId: null,
+      lastGameId: 'game-1',
     });
     d.queue('game-1');
     await applyGameStatRollup(d.client, T, 'game-1');
-    expect(d.season('p-1', 'PTS')).toMatchObject({ statValue: 24, gamesPlayed: 1 });
+    expect(d.season('p-1', 'PTS')).toMatchObject({
+      statValue: 24,
+      gamesPlayed: 1,
+    });
     expect(d.job('game-1')).toMatchObject({ state: 'APPLIED' });
     expect(d.job('game-1').contribution).toEqual([
       expect.objectContaining({ personId: 'p-1', statKey: 'PTS', value: 24 }),
@@ -266,10 +349,18 @@ describe('applyGameStatRollup — the roll-up itself', () => {
     d.addGame('game-1');
     d.addPlayer('game-1', 'p-1', { PTS: '24' });
     d.queue('game-1');
-    expect(await applyGameStatRollup(d.client, 'other-tenant', 'game-1')).toMatchObject({ applied: false, skipped: 'no-job' });
-    expect(await applyGameStatRollup(d.client, T, 'no-such-game')).toMatchObject({ applied: false, skipped: 'no-job' });
-    await expect(applyGameStatRollup(d.client, '', 'game-1')).rejects.toThrow(/tenantId/);
-    await expect(applyGameStatRollup(d.client, T, '')).rejects.toThrow(/gameId/);
+    expect(
+      await applyGameStatRollup(d.client, 'other-tenant', 'game-1'),
+    ).toMatchObject({ applied: false, skipped: 'no-job' });
+    expect(
+      await applyGameStatRollup(d.client, T, 'no-such-game'),
+    ).toMatchObject({ applied: false, skipped: 'no-job' });
+    await expect(applyGameStatRollup(d.client, '', 'game-1')).rejects.toThrow(
+      /tenantId/,
+    );
+    await expect(applyGameStatRollup(d.client, T, '')).rejects.toThrow(
+      /gameId/,
+    );
     expect(d.tables.playerSeasonStat.rows).toHaveLength(0);
   });
 });
@@ -281,12 +372,22 @@ async function liveGameWithPlayer(pts: string) {
   const h = setup({ playerStats: true });
   const g: any = await newGame(h.service, 'basketball');
   await h.service.setStatus(TENANT, g.id, { status: 'LIVE' });
-  const p: any = await h.service.addPlayer(TENANT, g.id, { name: 'Sam', number: '12', stats: { PTS: pts } });
+  const p: any = await h.service.addPlayer(TENANT, g.id, {
+    name: 'Sam',
+    number: '12',
+    stats: { PTS: pts },
+  });
   h.rosterPlayer.rows.find((r: any) => r.id === p.id).personId = 'person-sam';
   const season = () => deriveSeason(h.game.rows[0]);
   const seasonRow = () =>
-    h.tables.playerSeasonStat.rows.find((r: any) => r.personId === 'person-sam' && r.statKey === 'PTS' && r.season === season());
-  const job = () => h.tables.gameStatRollup.rows.find((r: any) => r.gameId === g.id);
+    h.tables.playerSeasonStat.rows.find(
+      (r: any) =>
+        r.personId === 'person-sam' &&
+        r.statKey === 'PTS' &&
+        r.season === season(),
+    );
+  const job = () =>
+    h.tables.gameStatRollup.rows.find((r: any) => r.gameId === g.id);
   return { ...h, g, p, seasonRow, job };
 }
 
@@ -294,7 +395,10 @@ describe('K12-F39 — the FINAL command queues the roll-up; the engine applies i
   it('FINAL queues the job at the final revision and applies it after commit', async () => {
     const h = await liveGameWithPlayer('24');
     await h.service.setStatus(TENANT, h.g.id, { status: 'FINAL' }, 'admin-1');
-    expect(h.job()).toMatchObject({ state: 'APPLIED', appliedRevision: h.game.rows[0].version });
+    expect(h.job()).toMatchObject({
+      state: 'APPLIED',
+      appliedRevision: h.game.rows[0].version,
+    });
     expect(h.seasonRow()).toMatchObject({ statValue: 24, gamesPlayed: 1 });
     const view: any = await h.service.getGame(TENANT, h.g.id);
     expect(view.statRollup).toMatchObject({ state: 'APPLIED' });
@@ -306,14 +410,22 @@ describe('K12-F39 — the FINAL command queues the roll-up; the engine applies i
     h.tables.playerSeasonStat.upsert = async () => {
       throw new Error('simulated storage failure');
     };
-    const errors = jest.spyOn((h.service as any).logger, 'error').mockImplementation(() => undefined);
+    const errors = jest
+      .spyOn((h.service as any).logger, 'error')
+      .mockImplementation(() => undefined);
 
     // "End game" still succeeds — the roll-up failure is recorded on the job.
     await h.service.setStatus(TENANT, h.g.id, { status: 'FINAL' }, 'admin-1');
     expect(h.game.rows[0].status).toBe('FINAL');
-    expect(h.job()).toMatchObject({ state: 'FAILED', attempts: 1, lastError: 'simulated storage failure' });
+    expect(h.job()).toMatchObject({
+      state: 'FAILED',
+      attempts: 1,
+      lastError: 'simulated storage failure',
+    });
     expect(h.seasonRow()).toBeUndefined();
-    expect(errors).toHaveBeenCalledWith(expect.stringContaining('stat roll-up FAILED'));
+    expect(errors).toHaveBeenCalledWith(
+      expect.stringContaining('stat roll-up FAILED'),
+    );
     const view: any = await h.service.getGame(TENANT, h.g.id);
     expect(view.statRollup).toMatchObject({ state: 'FAILED', attempts: 1 });
 
@@ -350,10 +462,21 @@ describe('K12-F39 — the FINAL command queues the roll-up; the engine applies i
     const firstRevision = h.job().appliedRevision;
     expect(h.seasonRow()?.statValue).toBe(24);
 
-    await h.service.reopenGame(TENANT, h.g.id, { reason: 'Scorebook shows 30 points' }, 'admin-1');
+    await h.service.reopenGame(
+      TENANT,
+      h.g.id,
+      { reason: 'Scorebook shows 30 points' },
+      'admin-1',
+    );
     // While reopened the totals still show the last FINAL result.
     expect(h.seasonRow()?.statValue).toBe(24);
-    await h.service.updatePlayer(TENANT, h.g.id, h.p.id, { stats: { PTS: '30' } }, 'admin-1');
+    await h.service.updatePlayer(
+      TENANT,
+      h.g.id,
+      h.p.id,
+      { stats: { PTS: '30' } },
+      'admin-1',
+    );
     await h.service.setStatus(TENANT, h.g.id, { status: 'FINAL' }, 'admin-1');
 
     expect(h.seasonRow()).toMatchObject({ statValue: 30, gamesPlayed: 1 });
@@ -368,12 +491,23 @@ describe('K12-F39 — the FINAL command queues the roll-up; the engine applies i
     await h.service.setStatus(TENANT, h.g.id, { status: 'FINAL' }, 'admin-1');
     (h.service as any).runStatRollup = realRun;
 
-    await h.service.reopenGame(TENANT, h.g.id, { reason: 'Wrong player credited' }, 'admin-1');
+    await h.service.reopenGame(
+      TENANT,
+      h.g.id,
+      { reason: 'Wrong player credited' },
+      'admin-1',
+    );
     expect(h.job().state).toBe('REOPENED');
     await h.service.sweepStatRollups(Date.now() + 10 * 60_000);
     expect(h.seasonRow()).toBeUndefined();
 
-    await h.service.updatePlayer(TENANT, h.g.id, h.p.id, { stats: { PTS: '18' } }, 'admin-1');
+    await h.service.updatePlayer(
+      TENANT,
+      h.g.id,
+      h.p.id,
+      { stats: { PTS: '18' } },
+      'admin-1',
+    );
     await h.service.setStatus(TENANT, h.g.id, { status: 'FINAL' }, 'admin-1');
     expect(h.seasonRow()).toMatchObject({ statValue: 18, gamesPlayed: 1 });
   });
@@ -385,15 +519,37 @@ describe('K12-F39 — the FINAL command queues the roll-up; the engine applies i
     row.status = 'FINAL';
     row.stats = { ...row.stats, statsFinalizedAt: '2026-05-01T00:00:00.000Z' };
     h.tables.playerSeasonStat.rows.push({
-      id: 'legacy', tenantId: TENANT, personId: 'person-sam', sport: 'basketball', season: deriveSeason(row),
-      statKey: 'PTS', statValue: 24, gamesPlayed: 1, displayValue: '24', teamId: null, lastGameId: h.g.id,
+      id: 'legacy',
+      tenantId: TENANT,
+      personId: 'person-sam',
+      sport: 'basketball',
+      season: deriveSeason(row),
+      statKey: 'PTS',
+      statValue: 24,
+      gamesPlayed: 1,
+      displayValue: '24',
+      teamId: null,
+      lastGameId: h.g.id,
     });
 
-    await h.service.reopenGame(TENANT, h.g.id, { reason: 'Scorebook shows 30 points' }, 'admin-1');
+    await h.service.reopenGame(
+      TENANT,
+      h.g.id,
+      { reason: 'Scorebook shows 30 points' },
+      'admin-1',
+    );
     expect(h.job()).toMatchObject({ state: 'APPLIED' });
-    expect(h.job().contribution).toEqual([expect.objectContaining({ personId: 'person-sam', value: 24 })]);
+    expect(h.job().contribution).toEqual([
+      expect.objectContaining({ personId: 'person-sam', value: 24 }),
+    ]);
 
-    await h.service.updatePlayer(TENANT, h.g.id, h.p.id, { stats: { PTS: '30' } }, 'admin-1');
+    await h.service.updatePlayer(
+      TENANT,
+      h.g.id,
+      h.p.id,
+      { stats: { PTS: '30' } },
+      'admin-1',
+    );
     await h.service.setStatus(TENANT, h.g.id, { status: 'FINAL' }, 'admin-1');
     expect(h.seasonRow()).toMatchObject({ statValue: 30, gamesPlayed: 1 });
   });
@@ -407,7 +563,9 @@ describe('K12-F39 — the FINAL command queues the roll-up; the engine applies i
       await h.service.adjustScore(TENANT, g.id, { team: 'home', delta: 1 });
     }
     expect(h.game.rows[0].status).toBe('FINAL');
-    expect(h.tables.gameStatRollup.rows.find((r: any) => r.gameId === g.id)).toBeDefined();
+    expect(
+      h.tables.gameStatRollup.rows.find((r: any) => r.gameId === g.id),
+    ).toBeDefined();
   });
 
   it('player stats off for the tenant: the job is marked SKIPPED, never retried', async () => {
@@ -425,7 +583,9 @@ describe('K12-F39 — the FINAL command queues the roll-up; the engine applies i
     h.tables.playerSeasonStat.upsert = async () => {
       throw new Error('simulated storage failure');
     };
-    jest.spyOn((h.service as any).logger, 'error').mockImplementation(() => undefined);
+    jest
+      .spyOn((h.service as any).logger, 'error')
+      .mockImplementation(() => undefined);
     await h.service.setStatus(TENANT, h.g.id, { status: 'FINAL' }, 'admin-1');
     expect(h.job().state).toBe('FAILED');
     h.tables.playerSeasonStat.upsert = realUpsert;
@@ -433,7 +593,9 @@ describe('K12-F39 — the FINAL command queues the roll-up; the engine applies i
     const out: any = await h.service.retryStatRollup(TENANT, h.g.id, 'admin-2');
     expect(out.statRollup).toMatchObject({ state: 'APPLIED' });
     expect(h.seasonRow()?.statValue).toBe(24);
-    const audit = h.auditLog.rows.find((r: any) => r.action === 'SPORTS_STATS_ROLLUP_RETRIED');
+    const audit = h.auditLog.rows.find(
+      (r: any) => r.action === 'SPORTS_STATS_ROLLUP_RETRIED',
+    );
     expect(audit).toMatchObject({ userId: 'admin-2', targetId: h.g.id });
   });
 });
@@ -448,7 +610,14 @@ describe('computeGameContribution', () => {
       ],
     );
     expect(entries).toEqual([
-      { personId: 'p-1', teamId: 't', sport: 'basketball', season: SEASON, statKey: 'PTS', value: 10 },
+      {
+        personId: 'p-1',
+        teamId: 't',
+        sport: 'basketball',
+        season: SEASON,
+        statKey: 'PTS',
+        value: 10,
+      },
     ]);
   });
 });
