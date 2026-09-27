@@ -147,7 +147,9 @@ RETAIL_TEMPLATE_PRESETS.forEach((p) => PRESET_VERTICAL.set(p.id, 'RETAIL'));
 // Sports vertical (2026-05-17). Starter set of full-screen celebration
 // scenes + a game-day countdown. Tagged 'SPORTS' so VenueOS Sports
 // tenants finally have a non-empty template gallery; scoreboard +
-// ribbon templates follow once their widget set lands.
+// ribbon templates follow once their widget set lands. (2026-09-27: the
+// whole pack is also K-12 now — see SPORTS_PACK_PRESET_IDS below, which
+// overrides this single tag.)
 SPORTS_TEMPLATE_PRESETS.forEach((p) => PRESET_VERTICAL.set(p.id, 'SPORTS'));
 // Worship vertical (2026-05-28). Houses of worship: welcome/greeting
 // board, service times, sermon-series card, song/hymn board, weekly
@@ -442,6 +444,30 @@ PRESET_VERTICALS.set('preset-kiosk-gym-workout', ['GYM']);
 PRESET_VERTICALS.set('preset-kiosk-bar-jukebox', ['BAR', 'RESTAURANT']);
 PRESET_VERTICALS.set('preset-kiosk-school-frontoffice', ['K12']);
 PRESET_VERTICALS.set('preset-kiosk-vet', ['HEALTHCARE']);
+
+// 2026-09-27 — K-12 sports launch, lane B3. Greg: "make it visible for k-12 as
+// well". The sports pack — the 44 SPORTS_TEMPLATE_PRESETS plus the seven
+// scoreboard / ribbon / scorebug presets that live in the general system file —
+// was SPORTS-only, so a school running its own games got only the built-in
+// /board, /ribbon and /scorebug layouts. Tag the whole pack "SPORTS|K12": a
+// school now sees it, every other vertical still does not. The K-12 gallery
+// keeps it out of "All" and shows it under one "Sports" tab (templates/page.tsx
+// `isSportsPackTemplate`), so the school catalogue is not flooded. The boot
+// metadata sync below migrates the already-seeded "SPORTS" rows on the next
+// deploy, exactly as it did for the dual-tagged QSR / RESTAURANT boards.
+export const SPORTS_PACK_PRESET_IDS: readonly string[] = [
+  ...SPORTS_TEMPLATE_PRESETS.map((p) => p.id),
+  'preset-sb-main',
+  'preset-sb-quick',
+  'preset-main-ribbon',
+  'preset-main-scorebug',
+  'preset-sb-hs',
+  'preset-sb-college',
+  'preset-sb-pro',
+];
+for (const id of SPORTS_PACK_PRESET_IDS) {
+  PRESET_VERTICALS.set(id, ['SPORTS', 'K12']);
+}
 
 /**
  * Resolve the stored `Template.vertical` tag for a preset id. Returns a

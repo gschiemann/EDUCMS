@@ -262,18 +262,32 @@ const CATEGORY_TABS = [
   { key: 'LOBBY',     label: 'Welcome' },
   { key: 'HALLWAY',   label: 'Hallway' },
   { key: 'CAFETERIA', label: 'Cafeteria' },
-  { key: 'ATHLETICS', label: 'Athletics' },
+  { key: 'ATHLETICS', label: 'Sports' },
   { key: 'HOLIDAYS',  label: 'Holidays' },
 ];
 
-// The "Athletics" tab has no presets tagged with the literal 'ATHLETICS'
+/**
+ * A system preset from the SPORTS pack (tagged "SPORTS", or "SPORTS|K12" since
+ * the K-12 sports launch, 2026-09-27). A K-12 school sees the pack ONLY under
+ * its "Sports" tab — never under "All" or another tab — so fifty-one scoreboards,
+ * ribbons and celebrations do not bury the school catalogue. Same rule the
+ * Touch Kiosks tab uses.
+ */
+export function isSportsPackTemplate(t: { isSystem?: boolean; vertical?: string | null }): boolean {
+  if (!t.isSystem || typeof t.vertical !== 'string') return false;
+  return t.vertical.split('|').includes('SPORTS');
+}
+
+// The school "Sports" tab (key ATHLETICS — the label was "Athletics" until the
+// K-12 sports launch) has no presets tagged with the literal 'ATHLETICS'
 // category. The game-day boards (preset-hs-ath-gameday / -standings /
 // -biggame / -broadcast) are tagged 'EVENTS', and the live scoreboards are
-// the SPORTS-vertical 'scoreboard' presets. This predicate gathers the
-// athletics slate so the tab resolves to real boards rather than a blank
-// page. Match on id-prefix / category / name so future athletics boards
-// land here without another code change.
-function isAthleticsPreset(t: { id?: string; name?: string; category?: string }): boolean {
+// the SPORTS pack. This predicate gathers the athletics slate so the tab
+// resolves to real boards rather than a blank page. Match on id-prefix /
+// category / name so future athletics boards land here without another code
+// change.
+export function isAthleticsPreset(t: { id?: string; name?: string; category?: string; isSystem?: boolean; vertical?: string | null }): boolean {
+  if (isSportsPackTemplate(t)) return true;
   const id = (t.id || '').toLowerCase();
   const name = (t.name || '').toLowerCase();
   const cat = (t.category || '').toUpperCase();
@@ -617,6 +631,8 @@ interface Template {
   description?: string;
   category: string;
   schoolLevel?: string;
+  /** The preset's vertical tag — "K12", or a pipe list like "SPORTS|K12". */
+  vertical?: string | null;
   orientation: string;
   screenWidth: number;
   screenHeight: number;
@@ -1956,6 +1972,7 @@ export default function TemplatesPage() {
     SCHOOL_LEVEL_CHIPS.find((c) => c.key === key)?.label || key;
 
   const q = searchQuery.trim().toLowerCase();
+  const sportsPackTabOnly = tenantCopy.vertical === 'K12';
   const filtered = (templates || []).filter((t: Template) => {
     // Hide letterboxed portrait presets — see LETTERBOXED_PORTRAIT_PRESETS
     // header. These render at 2160×3840 but their widget caps the
@@ -1972,6 +1989,10 @@ export default function TemplatesPage() {
     // that.") Every vertical's category set includes a KIOSK tab, so touch
     // stays reachable in all verticals.
     if (t.category === 'KIOSK' && activeCategory !== 'KIOSK') return false;
+    // The sports pack is a school's "Sports" tab and nothing else (K-12 sports
+    // launch, 2026-09-27) — the same rule as the kiosks above. A SPORTS venue
+    // keeps its own Scoreboards / Ribbon / Celebrations tabs.
+    if (sportsPackTabOnly && isSportsPackTemplate(t) && activeCategory !== 'ATHLETICS') return false;
     // ATHLETICS tab — no preset is tagged with the literal 'ATHLETICS'
     // category; the game-day/scoreboard boards live under 'EVENTS' (the
     // 4 `preset-hs-ath-*` stadium boards) plus the SPORTS-vertical

@@ -146,15 +146,31 @@ export function verticalForWidgetType(wt: string): string | null {
   return null;
 }
 
-function variantVisibleForVertical(v: WidgetVariant, vertical: string): boolean {
+/**
+ * Does a widget scoped to `scope` belong in a `vertical` tenant's palette?
+ *
+ * 2026-09-27 — K-12 sports launch, lane B3. Greg: "make it visible for k-12 as
+ * well". A school runs its own games, so the SPORTS pack (scoreboards, score /
+ * clock / period elements, swim and dive boards, the venue pack and the
+ * celebrations) now shows to K-12 too — grouped in the palette's existing
+ * "Game day" and "Celebrations" rows, never mixed into the school rows. Every
+ * other vertical is unchanged: a SPORTS widget still never reaches a
+ * restaurant, a gym or a clinic.
+ */
+export function scopeVisibleToVertical(scope: string, vertical: string): boolean {
+  if (scope === vertical) return true;
+  return scope === 'SPORTS' && vertical === 'K12';
+}
+
+export function variantVisibleForVertical(v: WidgetVariant, vertical: string): boolean {
   // Multi-vertical scoped widgets (a Lunch Menu tagged [K12, QSR, RESTAURANT,
   // HOSPITALITY, BAR, CORPORATE] shows in exactly those and nowhere else).
-  if (v.verticals && v.verticals.length) return v.verticals.includes(vertical);
+  if (v.verticals && v.verticals.length) return v.verticals.some((s) => scopeVisibleToVertical(s, vertical));
   // Single business-line scoped widgets show ONLY in their own vertical.
-  if (v.vertical) return v.vertical === vertical;
+  if (v.vertical) return scopeVisibleToVertical(v.vertical, vertical);
   // Type-name prefix → vertical (catches packs that were never tagged).
   const typeVertical = verticalForWidgetType(v.widgetType);
-  if (typeVertical) return typeVertical === vertical;
+  if (typeVertical) return scopeVisibleToVertical(typeVertical, vertical);
   if (vertical === 'K12') return true;
   if (!v.category) return true; // neutral / no metadata — keep
   return !K12_ONLY_CATEGORIES.has(v.category.toUpperCase());

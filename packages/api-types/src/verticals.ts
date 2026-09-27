@@ -393,7 +393,11 @@ export const VERTICAL_TEMPLATE_CATEGORIES: Record<Vertical, ReadonlyArray<{ key:
     { key: 'LOBBY',     label: 'Welcome' },
     { key: 'HALLWAY',   label: 'Hallway' },
     { key: 'CAFETERIA', label: 'Cafeteria' },
-    { key: 'ATHLETICS', label: 'Athletics' },
+    // 2026-09-27 (K-12 sports launch, lane B3): the school's athletics boards
+    // AND the whole sports pack (live scoreboards, ribbons, scorebugs,
+    // celebrations, sponsors, game day) — one "Sports" tab, the only place a
+    // school sees the sports pack, so the rest of the gallery is not flooded.
+    { key: 'ATHLETICS', label: 'Sports' },
     { key: 'HOLIDAYS',  label: 'Holidays' },
   ],
   GYM: [
