@@ -1,40 +1,55 @@
 /**
- * Volunteer console ROLES — K-12 sports launch program, register row K12-F16.
+ * Scorekeeper-link SCOPES — the ONE permission model of a /console/<token>
+ * link (K-12 sports launch program: K12-F34 scopes from lane A1, K12-F16
+ * volunteer duties from lane B1, unified 2026-09-27).
  *
- * A scorekeeper share link (/console/<token>) used to be one flat capability:
- * score + clock + period + timeouts + cues, for every sport. The audit found
- * two problems with that: a volunteer could not do the jobs the table
- * actually needs (shot clock, play clock, team stats, penalties), and every
- * link could do everything — a clock operator's phone could change the score.
+ * A scorekeeper share link used to be one flat capability: score + clock +
+ * period + timeouts + cues, for every sport. Two things were wrong with that:
+ * a volunteer could not do the jobs a table actually needs (shot clock, play
+ * clock, team fouls, possession, penalties), and every link could do
+ * everything — a clock operator's phone could change the score.
  *
- * This module is the ONE definition both sides read:
- *   - the API (sports-console.controller.ts) ENFORCES it on every request —
- *     the role rides inside the link's HMAC, so it cannot be edited;
- *   - the web pad and the operator's share card RENDER from it.
+ * A link is now minted for ONE job, its SCOPE, and the scope is bound into the
+ * link's MAC (apps/api/src/sports/sports-console-token.ts): it cannot be read
+ * from the token text, edited, or widened. This module is the one table both
+ * sides read:
+ *   - the API (sports-console.controller.ts) ENFORCES it on every request;
+ *   - the web pad and the operator's share sheet RENDER from it.
  *
  * Two filters compose, in this order:
- *   1. the ROLE grants a set of capabilities (a clock operator gets the game
+ *   1. the SCOPE grants a set of actions (a clock operator gets the game
  *      clock, the period and timeouts — never the score);
  *   2. the SPORT removes what it does not have (no shot clock in soccer, no
  *      play clock outside football, no timeouts in volleyball).
  *
- * What a volunteer link can NEVER do, whatever its role (operator-only):
- * change the game status (going FINAL included), roster, sponsors, settings,
- * templates, feed credentials, scenes, and free-text stats that would put
- * arbitrary words on a school's public display (see consoleStatRules).
+ * `full` is every link minted before this model existed, and any mint that
+ * names no scope. It keeps EXACTLY the five controls it was issued with — an
+ * issued credential never gains power silently. The share sheet mints `table`
+ * for "one person runs the whole table".
  *
- * Pure data + functions: no I/O, no DOM. Safe to import from the API, the
- * web app, and tests.
+ * What a link can NEVER do, whatever its scope (operator-only): change the
+ * game status (going FINAL included), reopen a final game, roster, sponsors,
+ * settings, templates, feed credentials, scenes, shot-clock setup, and
+ * free-text stats that would put arbitrary words on a school's public
+ * display (see consoleStatRules). A link can undo only its OWN most recent
+ * action (the console controller's /undo route), never anyone else's.
+ *
+ * Pure data + functions: no I/O, no DOM. Safe to import from the API, the web
+ * app and tests.
  */
 import type { SportDefinition } from './sports';
 
-/** The roles an operator can hand out. */
-export const CONSOLE_ROLES = ['table', 'scorer', 'timer', 'shot'] as const;
-export type ConsoleRole = (typeof CONSOLE_ROLES)[number];
+/** The scopes a link can be minted with. */
+export const CONSOLE_SCOPES = ['full', 'table', 'scorer', 'timer', 'shot', 'presentation'] as const;
+export type ConsoleScope = (typeof CONSOLE_SCOPES)[number];
 
-/** Everything a volunteer link could ever be allowed to do. One capability =
- *  one console route on the API. */
-export const CONSOLE_CAPABILITIES = [
+export function isConsoleScope(v: unknown): v is ConsoleScope {
+  return typeof v === 'string' && (CONSOLE_SCOPES as readonly string[]).indexOf(v) !== -1;
+}
+
+/** Everything a link could ever be allowed to do. One action = one console
+ *  route on the API. There is deliberately no status / final / reopen action. */
+export const CONSOLE_ACTIONS = [
   'score',
   'clock',
   'segment',
@@ -46,41 +61,28 @@ export const CONSOLE_CAPABILITIES = [
   'shotClock',
   'playClock',
 ] as const;
-export type ConsoleCapability = (typeof CONSOLE_CAPABILITIES)[number];
+export type ConsoleAction = (typeof CONSOLE_ACTIONS)[number];
 
-export function isConsoleRole(v: unknown): v is ConsoleRole {
-  return typeof v === 'string' && (CONSOLE_ROLES as readonly string[]).indexOf(v) !== -1;
-}
-
-/**
- * Links minted BEFORE roles existed (5-part tokens) keep exactly the
- * allowlist they were issued under. An issued credential never gains power
- * silently — the new capabilities only ride on links minted with a role.
- */
-export const LEGACY_CONSOLE_CAPABILITIES: readonly ConsoleCapability[] = [
-  'score',
-  'clock',
-  'segment',
-  'timeout',
-  'cue',
-];
-
-/** What each role is issued with, before the sport filter. */
-export const CONSOLE_ROLE_GRANTS: Readonly<Record<ConsoleRole, readonly ConsoleCapability[]>> = {
+/** What each scope is issued with, before the sport filter. */
+export const CONSOLE_SCOPE_ALLOWS: Readonly<Record<ConsoleScope, readonly ConsoleAction[]>> = {
+  // The original five-control link. Frozen: never widened to newer duties.
+  full: ['score', 'clock', 'segment', 'timeout', 'cue'],
   // One volunteer running the whole table (the common small-school case).
-  table: CONSOLE_CAPABILITIES,
-  // Official scorer: points, team stats, fouls, timeouts, possession arrow,
-  // penalties, celebrations. Never the game clock.
+  table: CONSOLE_ACTIONS,
+  // Official scorer: points, timeouts, celebrations, team fouls / stats, the
+  // possession arrow and the penalty box. Never a clock.
   scorer: ['score', 'timeout', 'cue', 'stats', 'possession', 'penalties'],
   // Clock operator: game clock, period, timeouts. Never the score.
   timer: ['clock', 'segment', 'timeout'],
   // Shot-clock / play-clock operator: that clock only.
   shot: ['shotClock', 'playClock'],
+  // Game presentation: celebrations only.
+  presentation: ['cue'],
 };
 
-/** Football is the one sport with a play clock (40 / 25). */
+/** Football's play clock (the count to the snap), from the sport definition. */
 export function sportHasPlayClock(def: SportDefinition | null | undefined): boolean {
-  return !!def && def.key === 'football';
+  return !!def && !!def.playClock;
 }
 
 /** Team-timeout stats declared by the sport (football, basketball, water
@@ -110,9 +112,9 @@ export function sportHasPossessionArrow(def: SportDefinition | null | undefined)
   );
 }
 
-// ── stats a volunteer may write ─────────────────────────────────────
+// ── stats a link may write ──────────────────────────────────────────
 
-/** One sport stat a volunteer link may set through the console. */
+/** One sport stat a link may set through the console. */
 export type ConsoleStatRule =
   | {
       key: string;
@@ -160,7 +162,7 @@ const CASCADE_MAX: Readonly<Record<string, Readonly<Record<string, number>>>> = 
   softball: { outs: 3 },
 };
 
-/** Every sport stat a volunteer link may write, with its value rule. */
+/** Every sport stat a link may write, with its value rule. */
 export function consoleStatRules(def: SportDefinition | null | undefined): ConsoleStatRule[] {
   if (!def || !Array.isArray(def.stats)) return [];
   const out: ConsoleStatRule[] = [];
@@ -179,12 +181,12 @@ export function consoleStatRules(def: SportDefinition | null | undefined): Conso
   return out;
 }
 
-/** Upper bound on keys in one /stats write from a volunteer link. The
- *  baseball half-inning reset is the largest legitimate write (7 keys). */
+/** Upper bound on keys in one /stats write from a link. The baseball
+ *  half-inning reset is the largest legitimate write (7 keys). */
 export const CONSOLE_STATS_MAX_KEYS = 12;
 
 /**
- * Validate a volunteer's stats write. All-or-nothing: one unknown key or one
+ * Validate a link's stats write. All-or-nothing: one unknown key or one
  * out-of-range value refuses the whole write (and names the keys), so the pad
  * can say exactly what was refused instead of half-applying a change.
  */
@@ -230,7 +232,7 @@ export function validateConsoleStats(
 
 // ── penalties / clocks ──────────────────────────────────────────────
 
-/** A penalty a volunteer adds must be one of the sport's presets — label and
+/** A penalty a link adds must be one of the sport's presets — label and
  *  length together (the preset label is what the board shows). */
 export function consolePenaltyPreset(
   def: SportDefinition | null | undefined,
@@ -244,7 +246,8 @@ export function consolePenaltyPreset(
   return null;
 }
 
-/** Largest shot-clock reset a volunteer may send (the sport's longest option). */
+/** Largest shot-clock reset a link may send (the sport's longest option).
+ *  The service refuses anything above the game's CONFIGURED length. */
 export function consoleShotClockMaxSec(def: SportDefinition | null | undefined): number {
   const sc = def?.shotClock;
   if (!sc) return 0;
@@ -253,65 +256,77 @@ export function consoleShotClockMaxSec(def: SportDefinition | null | undefined):
   return max;
 }
 
-/** The play clock's two standard resets (NFHS football: 40 after a play,
- *  25 after an administrative stoppage). */
-export const PLAY_CLOCK_RESETS_SEC: readonly number[] = [40, 25];
-/** The server clamps play-clock resets to this; the console refuses above it. */
-export const PLAY_CLOCK_MAX_SEC = 60;
+/** The play clock's two resets for the sport (NFHS football: 40 after a
+ *  down, 25 after an administrative stoppage) — the only values the service
+ *  accepts. Empty for a sport with no play clock. */
+export function consolePlayClockResets(def: SportDefinition | null | undefined): number[] {
+  const pc = def?.playClock;
+  if (!pc) return [];
+  return [pc.full, pc.short].filter((n) => typeof n === 'number' && n > 0);
+}
 
 // ── what a link can do ──────────────────────────────────────────────
 
-/** Capabilities the SPORT has at all, whatever the role. */
-export function sportConsoleCapabilities(
-  def: SportDefinition | null | undefined,
-): Set<ConsoleCapability> {
-  const caps = new Set<ConsoleCapability>();
-  if (!def) return caps;
+/** Actions the SPORT has at all, whatever the scope. */
+export function sportConsoleActions(def: SportDefinition | null | undefined): Set<ConsoleAction> {
+  const actions = new Set<ConsoleAction>();
+  if (!def) return actions;
   // Quick-score taps only exist for integer sports. A judged sport stores a
   // SCALED total (gymnastics 195.825 → 195825), so its +1/+5/+10 would add
-  // 0.001 — the operator types those totals; a volunteer pad never taps them.
-  if (sportHasQuickScore(def)) caps.add('score');
-  if (def.clock?.type && def.clock.type !== 'none') caps.add('clock');
-  caps.add('segment');
-  if (sportHasTeamTimeoutStats(def)) caps.add('timeout');
-  if (Array.isArray(def.celebrations) && def.celebrations.length > 0) caps.add('cue');
-  if (consoleStatRules(def).length > 0) caps.add('stats');
-  if (sportHasPossessionArrow(def)) caps.add('possession');
+  // 0.001 — the operator types those totals; a link never taps them.
+  if (sportHasQuickScore(def)) actions.add('score');
+  if (def.clock?.type && def.clock.type !== 'none') actions.add('clock');
+  actions.add('segment');
+  if (sportHasTeamTimeoutStats(def)) actions.add('timeout');
+  if (Array.isArray(def.celebrations) && def.celebrations.length > 0) actions.add('cue');
+  if (consoleStatRules(def).length > 0) actions.add('stats');
+  if (sportHasPossessionArrow(def)) actions.add('possession');
   if (def.penaltyBox && Array.isArray(def.penaltyBox.presets) && def.penaltyBox.presets.length > 0) {
-    caps.add('penalties');
+    actions.add('penalties');
   }
-  if (def.shotClock) caps.add('shotClock');
-  if (sportHasPlayClock(def)) caps.add('playClock');
-  return caps;
+  if (def.shotClock) actions.add('shotClock');
+  if (sportHasPlayClock(def)) actions.add('playClock');
+  return actions;
 }
 
 /**
- * What a link may do: its role's grant, intersected with the sport.
- * `role === null` is a pre-role (legacy) link.
+ * What a link may do: its scope's grant, intersected with the sport. This is
+ * the ONE answer — the API checks every route against it and the pad renders
+ * only these controls.
  *
  * Sport-specific rule: in a sport with no game clock (baseball, softball,
  * volleyball, pickleball) there is no clock operator, so the SCORER owns the
  * inning / set counter as well.
  */
-export function consoleCapabilities(
-  role: ConsoleRole | null,
-  def: SportDefinition | null | undefined,
-): ConsoleCapability[] {
-  if (!def) return [];
-  const sport = sportConsoleCapabilities(def);
-  const granted = new Set<ConsoleCapability>(role ? CONSOLE_ROLE_GRANTS[role] : LEGACY_CONSOLE_CAPABILITIES);
-  if (role === 'scorer' && def.clock?.type === 'none') granted.add('segment');
-  return CONSOLE_CAPABILITIES.filter((c) => granted.has(c) && sport.has(c));
+export function consoleAllows(scope: ConsoleScope, def: SportDefinition | null | undefined): ConsoleAction[] {
+  if (!def || !isConsoleScope(scope)) return [];
+  const sport = sportConsoleActions(def);
+  const granted = new Set<ConsoleAction>(CONSOLE_SCOPE_ALLOWS[scope]);
+  if (scope === 'scorer' && def.clock?.type === 'none') granted.add('segment');
+  return CONSOLE_ACTIONS.filter((a) => granted.has(a) && sport.has(a));
 }
 
 /**
- * The roles an operator is offered for this sport. A clock operator needs a
- * clock; a shot-clock operator needs a shot clock or a play clock.
+ * The scopes the operator's share sheet offers for this sport. A clock
+ * operator needs a clock; a shot-clock operator needs a shot clock or a play
+ * clock; a presentation link needs celebrations. `full` is never offered —
+ * it is the frozen original link (`table` is "the whole table").
  */
-export function consoleRolesForSport(def: SportDefinition | null | undefined): ConsoleRole[] {
+export function consoleScopesForSport(def: SportDefinition | null | undefined): ConsoleScope[] {
   if (!def) return [];
-  const roles: ConsoleRole[] = ['table', 'scorer'];
-  if (def.clock?.type && def.clock.type !== 'none') roles.push('timer');
-  if (def.shotClock || sportHasPlayClock(def)) roles.push('shot');
-  return roles;
+  const scopes: ConsoleScope[] = ['table', 'scorer'];
+  if (def.clock?.type && def.clock.type !== 'none') scopes.push('timer');
+  if (def.shotClock || sportHasPlayClock(def)) scopes.push('shot');
+  if (Array.isArray(def.celebrations) && def.celebrations.length > 0) scopes.push('presentation');
+  return scopes;
+}
+
+/**
+ * Whether a link of `scope` may be minted for a game of this sport: `full`
+ * always (it is the mint default), anything else only when the share sheet
+ * would offer it — a link that could do nothing is never handed out.
+ */
+export function consoleScopeMintable(scope: ConsoleScope, def: SportDefinition | null | undefined): boolean {
+  if (scope === 'full') return true;
+  return consoleScopesForSport(def).indexOf(scope) !== -1;
 }

@@ -55,6 +55,7 @@ import {
 } from './sports-feed-token';
 import {
   type ConsoleScope,
+  consoleScopeOffered,
   makeConsoleToken,
   DEFAULT_CONSOLE_TOKEN_TTL_SEC,
 } from './sports-console-token';
@@ -1214,7 +1215,16 @@ export class SportsService {
     expiresAt: string;
     scope: ConsoleScope;
   }> {
-    await this.owned(tenantId, gameId);
+    const game = await this.owned(tenantId, gameId);
+    // K12-F16 — a link that could do nothing for this sport is never handed
+    // out (no clock operator for volleyball, no shot-clock link for soccer).
+    // `full`, the mint default, is always mintable.
+    if (!consoleScopeOffered(scope, game.sport)) {
+      throw new BadRequestException({
+        code: 'CONSOLE_SCOPE_NOT_FOR_SPORT',
+        message: `A "${scope}" scorekeeper link does not apply to this sport.`,
+      });
+    }
     const row = await this.prisma.client.game.findUnique({
       where: { id: gameId, tenantId },
       select: { consoleTokenVersion: true },
@@ -7890,5 +7900,89 @@ export class SportsService {
       });
       return { ok: true, undoOf: eventId, originalType: ev.type };
     });
+  }
+
+  /**
+   * The volunteer pad's Undo (K12-F16, 2026-09-27) — the single-use inverse
+   * (K12-F09) of a scorekeeper LINK's own most recent action.
+   *
+   * A link can only undo what it did itself, and only its latest action:
+   *   - the action is named by the durable command id the pad sent it with;
+   *     its receipt (K12-F10) must say the command came from THIS link. The
+   *     actor ref is the link's fingerprint (K12-F34), derived by the
+   *     controller from the VERIFIED token — the caller cannot choose it;
+   *   - it must be the link's LATEST command (receipts ordered by the game
+   *     revision each produced) — a second phone on the same link, or a pad
+   *     left open, cannot reach back past a newer action from that link;
+   *   - the undo itself IS undoEvent: claimed once under `undo:<eventId>` (a
+   *     second tap is answered from that receipt and changes nothing),
+   *     refused when a later action changed what it touched (409
+   *     UNDO_CONFLICT), refused on a FINAL game (409 GAME_FINAL), and written
+   *     to the event trail + immutable audit log with this link as the actor.
+   * "Not found" and "not this link's" are the same 404, so a link learns
+   * nothing about other links' or the operator's command ids. An action that
+   * wrote no undoable event (a cue, a shot-clock tap) is 422 BUG_NOT_UNDOABLE.
+   */
+  async undoConsoleAction(
+    tenantId: string,
+    gameId: string,
+    targetCommandId: string,
+    actor: CommandInput,
+  ) {
+    const ctx = resolveCommandContext(actor);
+    const linkRef = ctx.actor.kind === 'console' && ctx.actor.ref ? ctx.actor.ref : null;
+    if (!linkRef) {
+      throw new BadRequestException('Only a scorekeeper link undoes its own action here');
+    }
+    await this.owned(tenantId, gameId);
+    const receipt = await this.prisma.client.gameCommand.findFirst({
+      where: { tenantId, gameId, commandId: targetCommandId },
+      select: { commandId: true, kind: true, actorType: true, actorRef: true },
+    });
+    if (
+      !receipt ||
+      receipt.actorType !== 'console' ||
+      receipt.actorRef !== linkRef ||
+      receipt.kind === 'event.undo'
+    ) {
+      throw new NotFoundException({
+        code: 'CONSOLE_UNDO_NOT_FOUND',
+        message: 'That change was not made from this link.',
+      });
+    }
+    const latest = await this.prisma.client.gameCommand.findFirst({
+      where: {
+        tenantId,
+        gameId,
+        actorType: 'console',
+        actorRef: linkRef,
+        kind: { not: 'event.undo' },
+      },
+      orderBy: [{ revisionAfter: 'desc' }, { createdAt: 'desc' }],
+      select: { commandId: true },
+    });
+    if (!latest || latest.commandId !== targetCommandId) {
+      throw new ConflictException({
+        code: 'CONSOLE_UNDO_NOT_LATEST',
+        message: 'This link made another change after that one. Only its latest change can be undone here.',
+      });
+    }
+    const events = await this.prisma.client.gameEvent.findMany({
+      where: { gameId, commandId: targetCommandId },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      select: { id: true, type: true, payload: true },
+    });
+    const primary = events.find(
+      (ev: { type: string; payload: unknown }) =>
+        SportsService.UNDOABLE_EVENT_TYPES.has(ev.type) &&
+        !(ev.payload as Record<string, unknown> | null)?.derived,
+    );
+    if (!primary) {
+      throw new UnprocessableEntityException({
+        code: 'BUG_NOT_UNDOABLE',
+        reason: 'That change cannot be undone from a scorekeeper link.',
+      });
+    }
+    return this.undoEvent(tenantId, gameId, primary.id, actor);
   }
 }

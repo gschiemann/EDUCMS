@@ -5,6 +5,7 @@ import {
   verifyConsoleTokenScope,
   CONSOLE_SCOPES,
   CONSOLE_SCOPE_ALLOWS,
+  consoleScopeOffered,
   parseConsoleTokenGameId,
   DEFAULT_CONSOLE_TOKEN_TTL_SEC,
   MIN_CONSOLE_TOKEN_TTL_SEC,
@@ -275,11 +276,88 @@ describe('sports console token', () => {
       }
     });
 
-    it('the allow table: scorer scores, timer runs the clock, presentation cues, full does all', () => {
-      expect([...CONSOLE_SCOPE_ALLOWS.scorer].sort()).toEqual(['score', 'timeout']);
-      expect([...CONSOLE_SCOPE_ALLOWS.timer].sort()).toEqual(['clock', 'segment', 'timeout']);
-      expect([...CONSOLE_SCOPE_ALLOWS.presentation]).toEqual(['cue']);
+    it('the allow table (@cms/api-types): full is the frozen original five; the volunteer duties ride only on newer scopes', () => {
+      expect([...CONSOLE_SCOPES]).toEqual(['full', 'table', 'scorer', 'timer', 'shot', 'presentation']);
       expect([...CONSOLE_SCOPE_ALLOWS.full].sort()).toEqual(['clock', 'cue', 'score', 'segment', 'timeout']);
+      expect([...CONSOLE_SCOPE_ALLOWS.table].sort()).toEqual(
+        ['clock', 'cue', 'penalties', 'playClock', 'possession', 'score', 'segment', 'shotClock', 'stats', 'timeout'],
+      );
+      expect([...CONSOLE_SCOPE_ALLOWS.scorer].sort()).toEqual(
+        ['cue', 'penalties', 'possession', 'score', 'stats', 'timeout'],
+      );
+      expect([...CONSOLE_SCOPE_ALLOWS.timer].sort()).toEqual(['clock', 'segment', 'timeout']);
+      expect([...CONSOLE_SCOPE_ALLOWS.shot].sort()).toEqual(['playClock', 'shotClock']);
+      expect([...CONSOLE_SCOPE_ALLOWS.presentation]).toEqual(['cue']);
+    });
+
+    it('every scope is bound into the MAC with its own input; a MAC for one scope never verifies as another', () => {
+      const secret = process.env.SPORTS_CONSOLE_SECRET as string;
+      const iat = Math.floor(Date.now() / 1000);
+      const macFor = (input: string) =>
+        crypto.createHmac('sha256', secret).update(input).digest('hex').slice(0, 32);
+      const base = `console:${GAME}:0:${iat}:3600`;
+      // Positive control: the documented inputs verify as exactly their scope.
+      expect(verifyConsoleTokenScope(GAME, `${GAME}.0.${iat}.3600.${macFor(base)}`, 0)).toBe('full');
+      for (const scope of CONSOLE_SCOPES.filter((s) => s !== 'full')) {
+        expect(verifyConsoleTokenScope(GAME, `${GAME}.0.${iat}.3600.${macFor(`${base}:${scope}`)}`, 0)).toBe(scope);
+      }
+      // A scope name outside the table, signed with the REAL secret, is nothing.
+      for (const bogus of ['admin', 'status', 'table ', 'TABLE', 'full']) {
+        expect(verifyConsoleTokenScope(GAME, `${GAME}.0.${iat}.3600.${macFor(`${base}:${bogus}`)}`, 0)).toBeNull();
+      }
+      // The retired lane-B1 prototype (a readable role in a 6-part token under
+      // a "console-role:" purpose) never verifies and never even parses.
+      const b1Mac = macFor(`console-role:${GAME}:0:${iat}:3600:table`);
+      expect(verifyConsoleTokenScope(GAME, `${GAME}.0.${iat}.3600.${b1Mac}`, 0)).toBeNull();
+      expect(verifyConsoleTokenScope(GAME, `${GAME}.0.${iat}.3600.table.${b1Mac}`, 0)).toBeNull();
+      expect(parseConsoleTokenGameId(`${GAME}.0.${iat}.3600.table.${b1Mac}`)).toBeNull();
+    });
+
+    it('a scope cannot be added to a token as text: a 6th field is refused outright', () => {
+      const tok = makeConsoleToken(GAME, { version: 0, scope: 'timer' });
+      const parts = tok.split('.');
+      for (const scope of ['table', 'scorer', 'full']) {
+        const relabelled = [...parts.slice(0, 4), scope, parts[4]].join('.');
+        expect(verifyConsoleTokenScope(GAME, relabelled, 0)).toBeNull();
+        expect(parseConsoleTokenGameId(relabelled)).toBeNull();
+      }
+    });
+
+    it('verification compares EVERY scope in constant time — no early exit, whichever scope (if any) matches', () => {
+      // Spy on the node module object itself (the `import * as` namespace
+      // binding is a read-only getter; the token module reads through it).
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const nodeCrypto = require('crypto') as typeof import('crypto');
+      const spy = jest.spyOn(nodeCrypto, 'timingSafeEqual');
+      try {
+        for (const tok of [
+          makeConsoleToken(GAME, { version: 0 }), // full — the FIRST scope tried
+          makeConsoleToken(GAME, { version: 0, scope: 'presentation' }), // the last
+          (() => {
+            const p = makeConsoleToken(GAME, { version: 0 }).split('.');
+            p[4] = (p[4][0] === 'a' ? 'b' : 'a') + p[4].slice(1);
+            return p.join('.');
+          })(), // no scope at all
+        ]) {
+          spy.mockClear();
+          verifyConsoleTokenScope(GAME, tok, 0);
+          expect(spy).toHaveBeenCalledTimes(CONSOLE_SCOPES.length);
+        }
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    it('consoleScopeOffered follows the sport: full always, no clock operator for volleyball, no shot link for soccer', () => {
+      expect(consoleScopeOffered('full', 'volleyball')).toBe(true);
+      expect(consoleScopeOffered('timer', 'basketball')).toBe(true);
+      expect(consoleScopeOffered('shot', 'basketball')).toBe(true);
+      expect(consoleScopeOffered('shot', 'football')).toBe(true);
+      expect(consoleScopeOffered('table', 'soccer')).toBe(true);
+      expect(consoleScopeOffered('timer', 'volleyball')).toBe(false);
+      expect(consoleScopeOffered('shot', 'soccer')).toBe(false);
+      expect(consoleScopeOffered('scorer', 'no-such-sport')).toBe(false);
+      expect(consoleScopeOffered('full', 'no-such-sport')).toBe(true);
     });
   });
 });

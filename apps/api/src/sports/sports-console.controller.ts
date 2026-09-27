@@ -3,10 +3,17 @@ import {
   HttpException, HttpStatus,
 } from '@nestjs/common';
 import type { Request } from 'express';
-import { SportsService } from './sports.service';
-import { consoleCommand } from './game-command';
 import {
-  CONSOLE_SCOPE_ALLOWS,
+  consoleAllows,
+  consolePenaltyPreset,
+  consolePlayClockResets,
+  consoleShotClockMaxSec,
+  findSport,
+  validateConsoleStats,
+} from '@cms/api-types';
+import { SportsService } from './sports.service';
+import { consoleCommand, isValidCommandId } from './game-command';
+import {
   type ConsoleAction,
   type ConsoleScope,
   parseConsoleTokenGameId,
@@ -31,34 +38,46 @@ import { clientIpFromRequest } from '../security/client-ip';
  * ── THE ALLOWLIST IS THE SECURITY BOUNDARY ─────────────────────────
  * Only the routes on this controller are reachable with a console token:
  *
- *   GET   :token/session   — token validity + the public identity block
- *   PATCH :token/score     — quick-button delta OR absolute set
- *   PATCH :token/clock     — start / pause / set / reset
- *   PATCH :token/segment   — advance / set the period
- *   POST  :token/timeout   — call a team timeout
- *   POST  :token/cue       — fire a celebration cue (key/cueId/team ONLY)
+ *   GET   :token/session     — token validity, the link's scope + what it
+ *                              may do, and the public identity block
+ *   PATCH :token/score       — quick-button delta OR absolute set
+ *   PATCH :token/clock       — start / pause / set / reset
+ *   PATCH :token/segment     — advance / set the period
+ *   POST  :token/timeout     — call a team timeout
+ *   POST  :token/cue         — fire a celebration cue (key/cueId/team ONLY)
+ *   PATCH :token/shot-clock  — start / stop / reset (never configure)
+ *   PATCH :token/play-clock  — football 40 / 25: start / stop / reset
+ *   PATCH :token/stats       — sport stats in @cms/api-types consoleStatRules
+ *   POST  :token/possession  — the possession arrow (basketball / football)
+ *   PATCH :token/penalties   — add a PRESET penalty / release one early
+ *   POST  :token/undo        — undo THIS link's own most recent action, once
  *
- * K12-F34 — a link is minted for ONE job (sports-console-token.ts SCOPES):
- * `scorer` = score + timeout, `timer` = clock + segment + timeout,
- * `presentation` = cue, `full` = all five (every pre-scope link). Each route
- * below checks the verified scope and answers 403 SPORTS_CONSOLE_SCOPE when
- * the link was not issued for it; `session` returns the scope and the
- * allowed actions so the pad shows only the controls the link can drive.
+ * SCOPES (K12-F34 + K12-F16 — ONE permission model). A link is minted for
+ * one job and the scope is inside its MAC (sports-console-token.ts). Every
+ * route names the action it needs; a link may use it only when
+ * consoleAllows(scope, sport) — the ONE table in @cms/api-types
+ * (sports-console-scopes.ts) that the pad also renders from — grants it,
+ * computed from the game's LIVE sport, never from anything the caller sends.
+ * A refused action is 403 SPORTS_CONSOLE_SCOPE (authenticated, not allowed)
+ * — never 401, which the pad reads as "link revoked". A pre-scope link
+ * verifies as `full` and keeps exactly its original five routes.
  *
  * NOTHING else: no roster, no sponsors, no settings, no templates, no
  * feed credentials, no game create/delete, no status transitions (going
- * FINAL stays operator-only), no ribbon config, no scene recall, no undo.
- * Every handler delegates to the SAME SportsService method the authed
- * SportsController uses, so every server-side invariant (atomic score
- * increments + clamp, clock anchor math, celebration mutex/auto-fire,
- * GameEvents + undo rail, stats-race Serializable tx) rides along
- * unchanged. Do NOT add a route here without a security review — the
+ * FINAL, and reopening a FINAL game, stay operator-only), no ribbon config,
+ * no scene recall, no shot-clock setup, no free-text stats, and no undo of
+ * anybody else's action. Every handler delegates to the SAME SportsService
+ * method the authed SportsController uses, through the same command
+ * pipeline (K12-F10/F11: one atomic compare-and-swap command, a durable
+ * command id, the FINAL lock, an event + audit row attributed to this LINK
+ * by fingerprint). Do NOT add a route here without a security review — the
  * controller spec pins the exact method list.
  *
  * The cue body is FILTERED to {key, cueId, team}: the authed cue endpoint
  * also accepts audioUrl / sponsor / scorer fields, which are injection
  * channels (arbitrary media URLs on every venue surface) a leaked
- * volunteer link must not carry.
+ * volunteer link must not carry. The penalty body is filtered the same way
+ * (preset label + length, a jersey number, never a name).
  *
  * Path is `api/v1/sports/console/:token/…` — distinct from the guarded
  * `api/v1/sports/games/:id` and the public read-only `api/v1/sports/
@@ -101,17 +120,21 @@ export class SportsConsoleController {
    * hammerer spends only their own budget, so they can't lock the
    * legitimate volunteer out (refuter P2; the old key was the
    * attacker-suppliable game id); (3) ONE small DB read for
-   * {tenantId, consoleTokenVersion}; (4) constant-time MAC verify against
-   * the live version (bumping the column revokes every link); (5) the
-   * per-game budget, spent ONLY by authenticated taps — the key survives
-   * token rotation, so a leaked link scripted from many addresses still
-   * shares one window. A missing game and a bad token return the SAME
-   * 401 — no game-existence oracle.
+   * {tenantId, consoleTokenVersion, sport}; (4) constant-time MAC verify
+   * against the live version (bumping the column revokes every link) — which
+   * also yields the scope the link was minted for; (5) the per-game budget,
+   * spent ONLY by authenticated taps — the key survives token rotation, so a
+   * leaked link scripted from many addresses still shares one window; (6)
+   * the SCOPE gate — after the MAC (the scope is inside it) and after the
+   * per-game budget (a leaked clock link hammering /score still spends the
+   * game's window). A missing game and a bad token return the SAME 401 — no
+   * game-existence oracle.
    */
   private async authorize(token: string, req: Request, action?: ConsoleAction): Promise<{
     gameId: string;
     tenantId: string;
     scope: ConsoleScope;
+    allows: ConsoleAction[];
     meta: NonNullable<Awaited<ReturnType<SportsService['getConsoleShareMeta']>>>;
   }> {
     const gameId = parseConsoleTokenGameId(token);
@@ -136,18 +159,25 @@ export class SportsConsoleController {
       SportsConsoleController.WINDOW_MS,
     );
     if (limited) this.throwRateLimited();
-    // K12-F34: the scope is the permission; the pad's layout is not.
-    if (action && !CONSOLE_SCOPE_ALLOWS[scope!].includes(action)) {
+    // The scope is the permission; the pad's layout is not. What it grants
+    // is intersected with the game's LIVE sport.
+    const allows = consoleAllows(scope, findSport(meta.sport));
+    if (action && allows.indexOf(action) === -1) {
       throw new HttpException(
         {
           code: 'SPORTS_CONSOLE_SCOPE',
           message: 'This link was not issued for that control.',
           scope,
+          action,
         },
         HttpStatus.FORBIDDEN,
       );
     }
-    return { gameId, tenantId: meta!.tenantId, scope: scope!, meta: meta! };
+    return { gameId, tenantId: meta.tenantId, scope, allows, meta };
+  }
+
+  private throwRejected(code: string, message: string, extra?: Record<string, unknown>): never {
+    throw new HttpException({ code, message, ...(extra || {}) }, HttpStatus.BAD_REQUEST);
   }
 
   private throwRateLimited(): never {
@@ -168,21 +198,23 @@ export class SportsConsoleController {
   }
 
   /**
-   * Token validity probe + the minimal public identity block the pad's
-   * header needs (team names / sport / status — all already public via
-   * GET /sports/board/:id). The pad calls this once on load so a revoked
-   * or expired link shows the friendly full-screen message immediately
-   * instead of on the first rejected tap. Live game STATE is polled from
-   * the public board endpoint, not here.
+   * Token validity probe + the link's scope, what it may do in this sport,
+   * and the minimal public identity block the pad's header needs (team
+   * names / sport / status — all already public via GET /sports/board/:id).
+   * The pad calls this once on load so a revoked or expired link shows the
+   * friendly full-screen message immediately instead of on the first
+   * rejected tap, and so it renders ONLY the controls the link can drive
+   * (display only — every route re-checks server-side). Live game STATE is
+   * polled from the public board endpoint, not here.
    */
   @Get(':token/session')
   async session(@Param('token') token: string, @Req() req: Request) {
-    const { gameId, meta, scope } = await this.authorize(token, req);
+    const { gameId, meta, scope, allows } = await this.authorize(token, req);
     return {
       ok: true,
       gameId,
       scope,
-      allows: CONSOLE_SCOPE_ALLOWS[scope],
+      allows,
       sport: meta.sport,
       status: meta.status,
       homeTeam: meta.homeTeam,
@@ -272,5 +304,205 @@ export class SportsConsoleController {
     if (raw.team === 'home' || raw.team === 'away') dto.team = raw.team;
     // K12-F34: attributed to this issued link, like every other console action.
     return this.sports.fireCue(tenantId, gameId, dto, consoleCommand(token, {}).ctx);
+  }
+
+  // ── K12-F16 volunteer duties ───────────────────────────────────────
+
+  /**
+   * Shot clock — start / stop / reset. `configure` (turning it off or
+   * changing its length) is a setup decision and stays operator-only. A
+   * reset value must be a whole number of seconds no longer than the sport's
+   * longest option; the service then refuses anything above the game's
+   * CONFIGURED length (K12-F05) and refuses every action while it is OFF.
+   */
+  @Patch(':token/shot-clock')
+  async shotClock(
+    @Param('token') token: string,
+    @Body() body: { action?: string; value?: number },
+    @Req() req: Request,
+  ) {
+    const { gameId, tenantId, meta } = await this.authorize(token, req, 'shotClock');
+    const { dto: raw, ctx } = consoleCommand(token, body);
+    const action = raw.action;
+    if (action !== 'start' && action !== 'stop' && action !== 'reset') {
+      this.throwRejected('SPORTS_CONSOLE_BAD_ACTION', 'action must be start | stop | reset');
+    }
+    const dto: { action: string; value?: number } = { action };
+    if (action === 'reset' && raw.value !== undefined) {
+      const max = consoleShotClockMaxSec(findSport(meta.sport));
+      const v = raw.value;
+      if (typeof v !== 'number' || !Number.isInteger(v) || v < 1 || v > max) {
+        this.throwRejected('SPORTS_CONSOLE_BAD_VALUE', `reset value must be 1-${max} seconds`);
+      }
+      dto.value = v;
+    }
+    return this.sports.setShotClock(tenantId, gameId, dto, ctx);
+  }
+
+  /**
+   * Football play clock — start / stop / reset to the sport's two presets
+   * (40 after a down, 25 after an administrative stoppage). `run: false`
+   * parks a reset (the snap, or a 25 count waiting for the ready signal),
+   * exactly as the operator console does (K12-F06).
+   */
+  @Patch(':token/play-clock')
+  async playClock(
+    @Param('token') token: string,
+    @Body() body: { action?: string; value?: number; run?: boolean },
+    @Req() req: Request,
+  ) {
+    const { gameId, tenantId, meta } = await this.authorize(token, req, 'playClock');
+    const { dto: raw, ctx } = consoleCommand(token, body);
+    const action = raw.action;
+    if (action !== 'start' && action !== 'stop' && action !== 'reset') {
+      this.throwRejected('SPORTS_CONSOLE_BAD_ACTION', 'action must be start | stop | reset');
+    }
+    const dto: { action: string; value?: number; run?: boolean } = { action };
+    if (action === 'reset') {
+      if (raw.value !== undefined) {
+        const allowed = consolePlayClockResets(findSport(meta.sport));
+        if (typeof raw.value !== 'number' || allowed.indexOf(raw.value) === -1) {
+          this.throwRejected(
+            'SPORTS_CONSOLE_BAD_VALUE',
+            `the play clock resets to ${allowed.join(' or ')} seconds`,
+          );
+        }
+        dto.value = raw.value;
+      }
+      if (raw.run !== undefined) {
+        if (typeof raw.run !== 'boolean') {
+          this.throwRejected('SPORTS_CONSOLE_BAD_VALUE', 'run must be true or false');
+        }
+        dto.run = raw.run;
+      }
+    }
+    return this.sports.setPlayClock(tenantId, gameId, dto, ctx);
+  }
+
+  /**
+   * Sport stats. All-or-nothing against @cms/api-types validateConsoleStats:
+   * only keys the sport declares, numbers inside their declared range,
+   * closed-set text (inning half, serve). Structured arrays, config keys
+   * (celebration pack, feed, CTS) and free text are refused with the keys
+   * named — the service only ever sees the validated object.
+   */
+  @Patch(':token/stats')
+  async stats(
+    @Param('token') token: string,
+    @Body() body: { stats?: unknown },
+    @Req() req: Request,
+  ) {
+    const { gameId, tenantId, meta } = await this.authorize(token, req, 'stats');
+    const { dto, ctx } = consoleCommand(token, body);
+    const checked = validateConsoleStats(findSport(meta.sport), dto.stats);
+    if (!checked.ok) {
+      this.throwRejected(
+        'SPORTS_CONSOLE_STAT_REJECTED',
+        'This scorekeeper link cannot set those values.',
+        { rejected: checked.rejected },
+      );
+    }
+    return this.sports.updateStats(tenantId, gameId, { stats: checked.stats }, ctx);
+  }
+
+  /** Possession arrow — the same typed-column write + event + audit row the
+   *  operator console uses. */
+  @Post(':token/possession')
+  async possession(
+    @Param('token') token: string,
+    @Body() body: { team?: string },
+    @Req() req: Request,
+  ) {
+    const { gameId, tenantId } = await this.authorize(token, req, 'possession');
+    const { dto, ctx } = consoleCommand(token, body);
+    const team = dto.team;
+    if (team !== 'home' && team !== 'away') {
+      this.throwRejected('SPORTS_CONSOLE_BAD_VALUE', 'team must be home | away');
+    }
+    return this.sports.setPossession(tenantId, gameId, { team }, ctx);
+  }
+
+  /**
+   * Penalty box — add a penalty that matches one of the sport's PRESETS
+   * (label and length together; the label is what the board shows, so a
+   * free-text label would be a message channel), or release one early.
+   * `clear` (empty the whole box) stays operator-only. The jersey is digits
+   * only; the water-polo one-tap exclusion flag is passed through, the
+   * player NAME never is.
+   */
+  @Patch(':token/penalties')
+  async penalties(
+    @Param('token') token: string,
+    @Body()
+    body: {
+      action?: string;
+      team?: string;
+      lenSec?: number;
+      label?: string;
+      player?: string;
+      penaltyId?: string;
+      exclusion?: boolean;
+    },
+    @Req() req: Request,
+  ) {
+    const { gameId, tenantId, meta } = await this.authorize(token, req, 'penalties');
+    const { dto: raw, ctx } = consoleCommand(token, body);
+    if (raw.action === 'add') {
+      if (raw.team !== 'home' && raw.team !== 'away') {
+        this.throwRejected('SPORTS_CONSOLE_BAD_VALUE', 'team must be home | away');
+      }
+      const def = findSport(meta.sport);
+      const preset = consolePenaltyPreset(def, raw.lenSec, raw.label);
+      if (!preset) {
+        this.throwRejected('SPORTS_CONSOLE_BAD_VALUE', 'penalty must be one of the sport presets');
+      }
+      const player = typeof raw.player === 'string' ? raw.player : '';
+      if (player !== '' && !/^\d{1,3}$/.test(player)) {
+        this.throwRejected('SPORTS_CONSOLE_BAD_VALUE', 'player must be a jersey number');
+      }
+      const dto: {
+        action: 'add';
+        team: 'home' | 'away';
+        lenSec: number;
+        label: string;
+        player: string;
+        exclusion?: boolean;
+      } = { action: 'add', team: raw.team, lenSec: preset.sec, label: preset.label, player };
+      if (raw.exclusion === true && def?.key === 'water_polo') dto.exclusion = true;
+      return this.sports.setPenalties(tenantId, gameId, dto, ctx);
+    }
+    if (raw.action === 'remove') {
+      const pid = raw.penaltyId;
+      if (typeof pid !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(pid)) {
+        this.throwRejected('SPORTS_CONSOLE_BAD_VALUE', 'penaltyId required');
+      }
+      return this.sports.setPenalties(tenantId, gameId, { action: 'remove', penaltyId: pid }, ctx);
+    }
+    this.throwRejected('SPORTS_CONSOLE_BAD_ACTION', 'action must be add | remove');
+  }
+
+  /**
+   * Undo — the single-use inverse (K12-F09) of THIS link's own most recent
+   * action, named by the command id the pad sent it with (`undoOf`).
+   * SportsService.undoConsoleAction refuses anything that is not this link's
+   * (the command receipt's actor must be this link's fingerprint — K12-F34),
+   * anything older than the link's latest action, and anything the undo rail
+   * would refuse (a cue, a shot-clock tap, an action a later one overwrote).
+   * A second tap is answered from the first undo's receipt and changes
+   * nothing. No scope check beyond a valid link: a link can only undo what
+   * it was itself allowed to do.
+   */
+  @Post(':token/undo')
+  async undo(
+    @Param('token') token: string,
+    @Body() body: { undoOf?: string },
+    @Req() req: Request,
+  ) {
+    const { gameId, tenantId } = await this.authorize(token, req);
+    const target = (body || {}).undoOf;
+    if (!isValidCommandId(target)) {
+      this.throwRejected('SPORTS_CONSOLE_BAD_VALUE', 'undoOf must be the command id of the action to undo');
+    }
+    return this.sports.undoConsoleAction(tenantId, gameId, target, consoleCommand(token, {}).ctx);
   }
 }

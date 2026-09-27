@@ -109,6 +109,11 @@ export function consoleTokenFingerprint(token: string): string {
 /** Same charset / bounds as the AI-designer idempotency key. */
 const COMMAND_ID_RE = /^[A-Za-z0-9._:-]{8,100}$/;
 
+/** Whether `v` is a well-formed durable command id (see COMMAND_ID_RE). */
+export function isValidCommandId(v: unknown): v is string {
+  return typeof v === 'string' && COMMAND_ID_RE.test(v);
+}
+
 /**
  * Split a request body into the command's own DTO and its transport fields
  * (`commandId`, `expectedSegment`). Malformed transport fields are a 400 —

@@ -1,5 +1,30 @@
 import * as crypto from 'crypto';
+import {
+  CONSOLE_SCOPES,
+  CONSOLE_SCOPE_ALLOWS,
+  consoleScopeMintable,
+  findSport,
+  isConsoleScope,
+  type ConsoleAction,
+  type ConsoleScope,
+} from '@cms/api-types';
 import { requireSecret } from '../security/required-secret';
+
+// The scope table itself lives in @cms/api-types (sports-console-scopes.ts) so
+// the API that enforces it and the pad / share sheet that render it read ONE
+// definition. Re-exported here for the API's existing importers.
+export { CONSOLE_SCOPES, CONSOLE_SCOPE_ALLOWS, isConsoleScope };
+export type { ConsoleAction, ConsoleScope };
+
+/**
+ * Whether an operator may mint a `scope` link for a game of `sportKey`:
+ * `full` always (the mint default), any other scope only when it can do
+ * something in that sport (@cms/api-types consoleScopeMintable) — a clock
+ * operator needs a clock, a shot-clock operator a shot or play clock.
+ */
+export function consoleScopeOffered(scope: ConsoleScope, sportKey: string | null | undefined): boolean {
+  return consoleScopeMintable(scope, findSport(sportKey));
+}
 
 /**
  * Stateless, game-scoped CONSOLE SHARE token — Phase-2 Domain SHARE.
@@ -38,17 +63,31 @@ import { requireSecret } from '../security/required-secret';
  *      [MIN, MAX_CONSOLE_TOKEN_TTL_SEC]; verify rejects ttl <= 0 or over the
  *      cap regardless of MAC validity.
  *
- * SCOPES (K12-F34, 2026-09-26). A link is minted for one job: `scorer`
- * (score + timeouts), `timer` (clock + period + timeouts), `presentation`
- * (celebration cues) or `full` (all of them — every link minted before
- * scopes existed). The layout a volunteer's phone shows is a preference; the
- * scope is the permission, enforced per route by the public console
- * controller. The scope is inside the MAC and NOT in the token text: `full`
- * keeps the original MAC input (so every outstanding link still verifies,
- * as full), and a scoped link's MAC input gains a `:<scope>` suffix. The
- * verifier tries the four scopes, so the token shape — and every client
- * that parses it — is unchanged, and no cleartext field can be edited to
- * widen a link: a scorer link's MAC matches only the scorer input.
+ * SCOPES (K12-F34, 2026-09-26; volunteer duties K12-F16, 2026-09-27). A
+ * link is minted for one job — the scope table is @cms/api-types
+ * sports-console-scopes.ts, the ONE permission model the controller enforces
+ * and the pad renders:
+ *   full          the original five controls (score, clock, period,
+ *                 timeouts, celebrations) — every link minted before scopes
+ *                 existed, and any mint that names no scope. Frozen: it never
+ *                 gains the newer duties.
+ *   table         one volunteer running the whole table (every console route)
+ *   scorer        score, timeouts, celebrations, team stats, possession,
+ *                 penalties (+ the inning / set counter in clockless sports)
+ *   timer         game clock, period, timeouts
+ *   shot          the shot clock / football play clock
+ *   presentation  celebrations only
+ * …each intersected with what the game's sport has. The layout a volunteer's
+ * phone shows is a preference; the scope is the permission, enforced per
+ * route by the public console controller. The scope is inside the MAC and
+ * NOT in the token text: `full` keeps the original MAC input (so every
+ * outstanding link still verifies, as full), and a scoped link's MAC input
+ * gains a `:<scope>` suffix. The verifier tries every scope, so the token
+ * shape — and every client that parses it — is unchanged, and no cleartext
+ * field can be edited to widen a link: a scorer link's MAC matches only the
+ * scorer input. (A 6-part token carrying a readable role was prototyped in
+ * lane B1 and deliberately NOT shipped: one link format, one permission
+ * model.)
  *
  * Revocation: Game.consoleTokenVersion (additive column, default 0) is folded
  * into the MAC. Bumping it (DELETE /sports/games/:id/console-share) instantly
@@ -96,24 +135,12 @@ function normVersion(version: unknown): number {
   return Math.floor(n);
 }
 
-/** MAC over (gameId, version, iat, ttl) — distinct "console:" purpose. */
-/** What one console link may do (K12-F34). `full` = every console route. */
-export const CONSOLE_SCOPES = ['full', 'scorer', 'timer', 'presentation'] as const;
-export type ConsoleScope = (typeof CONSOLE_SCOPES)[number];
-
-export function isConsoleScope(v: unknown): v is ConsoleScope {
-  return typeof v === 'string' && (CONSOLE_SCOPES as readonly string[]).includes(v);
-}
-
-/** The console routes, and which scopes may drive each. */
-export type ConsoleAction = 'score' | 'clock' | 'segment' | 'timeout' | 'cue';
-export const CONSOLE_SCOPE_ALLOWS: Record<ConsoleScope, readonly ConsoleAction[]> = {
-  full: ['score', 'clock', 'segment', 'timeout', 'cue'],
-  scorer: ['score', 'timeout'],
-  timer: ['clock', 'segment', 'timeout'],
-  presentation: ['cue'],
-};
-
+/**
+ * MAC over (gameId, version, iat, ttl[, scope]) — distinct "console:"
+ * purpose. `full` keeps the pre-scope input byte for byte; every other scope
+ * appends `:<scope>` (a scope name never contains ':' and the numeric fields
+ * never do, so no two tuples share an input).
+ */
 function consoleMac(
   gameId: string,
   ver: number,

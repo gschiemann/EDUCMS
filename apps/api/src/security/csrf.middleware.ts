@@ -256,10 +256,16 @@ const EXEMPT_PATHS: Array<(path: string) => boolean> = [
   // an ambient cookie — so CSRF's threat model does not apply. Same
   // argument as the sports /feed + /cts-snapshot exemptions above. The
   // regex enumerates EXACTLY the SportsConsoleController mutation
-  // allowlist (score|clock|segment|timeout|cue) — never a blanket prefix,
-  // so a future route added to the controller does not silently inherit
-  // the exemption without showing up here in review.
-  (p) => /^\/api\/v1\/sports\/console\/[^/]+\/(score|clock|segment|timeout|cue)$/.test(p),
+  // allowlist (score|clock|segment|timeout|cue, plus the K12-F16 volunteer
+  // duties shot-clock|play-clock|stats|possession|penalties, each still
+  // scope-gated in the controller, and undo — a link's own latest action
+  // only) — never a blanket prefix, so a future route added to the
+  // controller does not silently inherit the exemption without showing up
+  // here in review.
+  (p) =>
+    /^\/api\/v1\/sports\/console\/[^/]+\/(score|clock|segment|timeout|cue|shot-clock|play-clock|stats|possession|penalties|undo)$/.test(
+      p,
+    ),
   // POS inbound webhooks (Square + custom-webhook bring-your-own POS).
   // External POS systems POST catalog/inventory/order events here
   // machine-to-machine — no browser, no session cookie — so a CSRF token

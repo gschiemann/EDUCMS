@@ -159,6 +159,19 @@ describe('isCsrfExempt', () => {
     expect(isCsrfExempt('PATCH', `/api/v1/sports/console/${tok}/segment`)).toBe(true);
     expect(isCsrfExempt('POST', `/api/v1/sports/console/${tok}/timeout`)).toBe(true);
     expect(isCsrfExempt('POST', `/api/v1/sports/console/${tok}/cue`)).toBe(true);
+    // K12-F16 volunteer duties — scope-gated in the controller, exempted
+    // one by one here — plus a link's own undo.
+    expect(isCsrfExempt('PATCH', `/api/v1/sports/console/${tok}/shot-clock`)).toBe(true);
+    expect(isCsrfExempt('PATCH', `/api/v1/sports/console/${tok}/play-clock`)).toBe(true);
+    expect(isCsrfExempt('PATCH', `/api/v1/sports/console/${tok}/stats`)).toBe(true);
+    expect(isCsrfExempt('POST', `/api/v1/sports/console/${tok}/possession`)).toBe(true);
+    expect(isCsrfExempt('PATCH', `/api/v1/sports/console/${tok}/penalties`)).toBe(true);
+    expect(isCsrfExempt('POST', `/api/v1/sports/console/${tok}/undo`)).toBe(true);
+    // …and nothing that merely STARTS with an allowlisted word.
+    expect(isCsrfExempt('PATCH', `/api/v1/sports/console/${tok}/stats-bulk`)).toBe(false);
+    expect(isCsrfExempt('POST', `/api/v1/sports/console/${tok}/undo-all`)).toBe(false);
+    expect(isCsrfExempt('POST', `/api/v1/sports/console/${tok}/end-segment`)).toBe(false);
+    expect(isCsrfExempt('POST', `/api/v1/sports/console/${tok}/reopen`)).toBe(false);
     // Sanity — a path outside the enumerated allowlist gains NOTHING from
     // the console prefix (a future route must be exempted explicitly)…
     expect(isCsrfExempt('POST', `/api/v1/sports/console/${tok}/status`)).toBe(false);
