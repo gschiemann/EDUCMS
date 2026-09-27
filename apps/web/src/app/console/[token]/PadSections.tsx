@@ -75,12 +75,12 @@ function ConfirmButton({
   disabled?: boolean;
   className?: string;
 }) {
-  const [armed, setArmed] = useState(false);
+  const [armedState, setArmed] = useState(false);
+  // While disabled (connection lost, command in flight) the button neither
+  // shows nor acts armed; the arm itself still lapses on its 4 s timer.
+  const armed = armedState && !disabled;
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
-  useEffect(() => {
-    if (disabled) setArmed(false);
-  }, [disabled]);
   return (
     <button
       type="button"

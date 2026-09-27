@@ -2250,7 +2250,10 @@ function MobileScoreDock({
     // the safe-area inset itself), so the dock needs no inset of its own.
     <div className="md:hidden border-t-2 border-slate-800 bg-slate-950 px-2 pt-2 pb-2">
       <div className="grid grid-cols-[1fr_auto_1fr] items-stretch gap-2">
-        <TeamCol side="home" team={g.homeTeam} color={homeColor} score={g.homeScore} />
+        {/* Called, not mounted: TeamCol is re-created every render, and as a
+            <Component/> React would remount its subtree each time — wiping
+            the judged-total draft mid-typing on the next poll. (K12-F15) */}
+        {TeamCol({ side: 'home', team: g.homeTeam, color: homeColor, score: g.homeScore })}
 
         {/* CENTRE — segment ± / clock / Start-Stop / reset. The segment label
             sits ABOVE its −/+ chips so both chips can be 44 px without
@@ -2336,7 +2339,7 @@ function MobileScoreDock({
           ) : null}
         </div>
 
-        <TeamCol side="away" team={g.awayTeam} color={awayColor} score={g.awayScore} />
+        {TeamCol({ side: 'away', team: g.awayTeam, color: awayColor, score: g.awayScore })}
       </div>
     </div>
   );
