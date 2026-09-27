@@ -23,6 +23,7 @@ import { useUIStore } from '@/store/ui-store';
 import {
   getGameOpQueue,
   isNetworkFailure,
+  newCommandId,
   type GameOp,
   type GameOpKind,
 } from '@/lib/game-op-queue';
@@ -4710,6 +4711,30 @@ type GameOpReplayController = {
 };
 const gameOpReplayControllers = new Map<string, GameOpReplayController>();
 
+/**
+ * K12-F10 (2026-09-26) — send one game-control command with a durable
+ * `commandId` in its body. apiFetch re-sends a mutation after a network error
+ * with the SAME body (so the same id), and the server answers a repeat of a
+ * committed command from its receipt instead of applying it twice. On
+ * failure the id rides the thrown error, so the offline queue replays the op
+ * under the id its first attempt used — that attempt may have committed.
+ */
+function sendGameCommand<T = any>(path: string, method: string, body: object): Promise<T> {
+  const commandId = newCommandId();
+  return apiFetch<T>(path, { method, body: JSON.stringify({ ...body, commandId }) }).catch(
+    (err: unknown) => {
+      if (err && typeof err === 'object') {
+        try {
+          (err as { commandId?: string }).commandId = commandId;
+        } catch {
+          /* frozen error object — the op will be queued under a fresh id */
+        }
+      }
+      throw err;
+    },
+  );
+}
+
 function makeGameOpSender(gameId: string) {
   return (op: GameOp): Promise<unknown> => {
     const path =
@@ -4720,7 +4745,15 @@ function makeGameOpSender(gameId: string) {
           : op.kind === 'segment'
             ? `/sports/games/${gameId}/segment`
             : `/sports/games/${gameId}/stats`;
-    return apiFetch(path, { method: 'PATCH', body: JSON.stringify(op.payload) }).catch(
+    // The op's id IS the command id (game-op-queue.ts header). An ABSOLUTE op
+    // (clock / segment / stats) replays with the period it was made in, so a
+    // stale Q1 value is refused rather than landed in Q2. Score deltas are
+    // real points whichever period they replay in.
+    const body: Record<string, unknown> = { ...op.payload, commandId: op.opId };
+    if (op.kind !== 'score' && typeof op.expectedSegment === 'number') {
+      body.expectedSegment = op.expectedSegment;
+    }
+    return apiFetch(path, { method: 'PATCH', body: JSON.stringify(body) }).catch(
       (err: unknown) => {
         // A queued op the server DEFINITIVELY rejected (4xx) can never
         // succeed on retry — resolve so replay() drops it instead of
@@ -4866,16 +4899,15 @@ export function useGameControl(gameId: string) {
   };
 
   // ── Trust wave Domain C (2026-08-06) — failed writes must not lie ──
-  // REPLAY-SAFETY TRADEOFF (decided): we only enqueue ops whose request
-  // FAILED to get any response (offline / fetch TypeError / apiFetch's
-  // exhausted-network-retries wrapper — see isNetworkFailure). If the
-  // server responded at all (4xx/5xx) we refetch truth instead of
-  // queueing: a 5xx MAY have been processed before erroring, and
-  // re-sending it would double-count. The rare inverse — "server
-  // processed it but the response was lost in transit" — is accepted and
-  // mitigated by the SYNCED banner telling the operator to verify the
-  // score against the board after a sync. Server-side dedup is
-  // deliberately NOT invented here (the API belongs to another domain).
+  // We only enqueue ops whose request FAILED to get any response (offline /
+  // fetch TypeError / apiFetch's exhausted-network-retries wrapper — see
+  // isNetworkFailure). If the server responded at all (4xx/5xx) we refetch
+  // truth instead of queueing. The case that used to be accepted as a risk —
+  // "the server processed it but the response was lost in transit" — is now
+  // closed server-side (K12-F10, 2026-09-26): the op is queued under the SAME
+  // command id its attempt carried (`err.commandId`, set by sendGameCommand),
+  // so its replay is answered from the server's durable receipt instead of
+  // applied a second time.
   const opQueue = getGameOpQueue(gameId);
   const settleFailure = (
     kind: GameOpKind,
@@ -4886,8 +4918,16 @@ export function useGameControl(gameId: string) {
     if (isNetworkFailure(err)) {
       // The queue WILL apply this op on reconnect, and the
       // ConnectionBanner shows it as queued, so the console reading
-      // stays honest instead of silently phantom.
-      opQueue.enqueue(kind, payload);
+      // stays honest instead of silently phantom. The segment recorded is
+      // the one on screen when the operator tapped — onMutate's PRE-tap
+      // snapshot, since the cache already holds this tap's optimistic value
+      // (absolute ops replay with it).
+      const failedId = (err as { commandId?: unknown } | null)?.commandId;
+      const onScreen = ctx?.prev ?? snapshotGame();
+      opQueue.enqueue(kind, payload, {
+        commandId: typeof failedId === 'string' ? failedId : null,
+        expectedSegment: typeof onScreen?.segment === 'number' ? onScreen.segment : null,
+      });
       // Refuter fix C4 (2026-08-09): once a SCORE DELTA is queued, the
       // useGame display overlay (server truth + pending queued deltas)
       // owns showing it — so REVERSE this tap's optimistic cache
@@ -4934,7 +4974,7 @@ export function useGameControl(gameId: string) {
     // A toast per tap during a mid-game signal drop would be pure noise.
     meta: { suppressGlobalError: true },
     mutationFn: (body: { team?: string; delta?: number; homeScore?: number; awayScore?: number }) =>
-      apiFetch(`/sports/games/${gameId}/score`, { method: 'PATCH', body: JSON.stringify(body) }),
+      sendGameCommand(`/sports/games/${gameId}/score`, 'PATCH', body),
     onMutate: async (body) => {
       await qc.cancelQueries({ queryKey: gameKey });
       const prev = snapshotGame();
@@ -4965,7 +5005,7 @@ export function useGameControl(gameId: string) {
     networkMode: 'always', // C1 — see the score mutation's note
     meta: { suppressGlobalError: true }, // see the score mutation's note
     mutationFn: (body: { action: string; ms?: number }) =>
-      apiFetch(`/sports/games/${gameId}/clock`, { method: 'PATCH', body: JSON.stringify(body) }),
+      sendGameCommand(`/sports/games/${gameId}/clock`, 'PATCH', body),
     onMutate: async (body) => {
       await qc.cancelQueries({ queryKey: gameKey });
       const prev = snapshotGame();
@@ -5034,7 +5074,7 @@ export function useGameControl(gameId: string) {
     networkMode: 'always', // C1 — see the score mutation's note
     meta: { suppressGlobalError: true }, // see the score mutation's note
     mutationFn: (body: { segment?: number; delta?: number }) =>
-      apiFetch(`/sports/games/${gameId}/segment`, { method: 'PATCH', body: JSON.stringify(body) }),
+      sendGameCommand(`/sports/games/${gameId}/segment`, 'PATCH', body),
     onMutate: async (body) => {
       await qc.cancelQueries({ queryKey: gameKey });
       const prev = snapshotGame();
@@ -5070,7 +5110,7 @@ export function useGameControl(gameId: string) {
     networkMode: 'always', // C1 — see the score mutation's note
     meta: { suppressGlobalError: true }, // see the score mutation's note
     mutationFn: (body: { stats: Record<string, unknown> }) =>
-      apiFetch(`/sports/games/${gameId}/stats`, { method: 'PATCH', body: JSON.stringify(body) }),
+      sendGameCommand(`/sports/games/${gameId}/stats`, 'PATCH', body),
     onMutate: async (body) => {
       await qc.cancelQueries({ queryKey: gameKey });
       const prev = snapshotGame();
@@ -5094,7 +5134,7 @@ export function useGameControl(gameId: string) {
   });
   const status = useMutation({
     mutationFn: (body: { status: string }) =>
-      apiFetch(`/sports/games/${gameId}/status`, { method: 'PATCH', body: JSON.stringify(body) }),
+      sendGameCommand(`/sports/games/${gameId}/status`, 'PATCH', body),
     onSuccess: writeBack,
   });
   const cue = useMutation({
@@ -5215,10 +5255,7 @@ export function useGameControl(gameId: string) {
     // waiting for the next poll (otherwise feels like "the button did
     // nothing").
     mutationFn: (body: { action: string; value?: number }) =>
-      apiFetch(`/sports/games/${gameId}/shot-clock`, {
-        method: 'PATCH',
-        body: JSON.stringify(body),
-      }),
+      sendGameCommand(`/sports/games/${gameId}/shot-clock`, 'PATCH', body),
     onSuccess: writeBack,
   });
 
@@ -5226,10 +5263,7 @@ export function useGameControl(gameId: string) {
     // Football play clock — start / stop / reset the 40-25 countdown.
     // Same writeBack rationale as shotClock above.
     mutationFn: (body: { action: string; value?: number }) =>
-      apiFetch(`/sports/games/${gameId}/play-clock`, {
-        method: 'PATCH',
-        body: JSON.stringify(body),
-      }),
+      sendGameCommand(`/sports/games/${gameId}/play-clock`, 'PATCH', body),
     onSuccess: writeBack,
   });
 
@@ -5250,10 +5284,7 @@ export function useGameControl(gameId: string) {
       exclusion?: boolean;
       playerName?: string;
     }) =>
-      apiFetch(`/sports/games/${gameId}/penalties`, {
-        method: 'PATCH',
-        body: JSON.stringify(body),
-      }),
+      sendGameCommand(`/sports/games/${gameId}/penalties`, 'PATCH', body),
     onSuccess: writeBack,
   });
 
@@ -5263,10 +5294,7 @@ export function useGameControl(gameId: string) {
     // the football play clock to 25s. Writes the game back so the
     // timeout pip counter updates instantly on the operator console.
     mutationFn: (body: { team: 'home' | 'away'; type?: 'full' | 'short' }) =>
-      apiFetch(`/sports/games/${gameId}/timeout`, {
-        method: 'POST',
-        body: JSON.stringify(body),
-      }),
+      sendGameCommand(`/sports/games/${gameId}/timeout`, 'POST', body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['sports-game', gameId] }),
   });
 
@@ -5323,7 +5351,7 @@ export function useGameControl(gameId: string) {
   // instant the operator taps, same as every other control here.
   const endSegmentMacro = useMutation({
     mutationFn: () =>
-      apiFetch(`/sports/games/${gameId}/end-segment`, { method: 'POST' }),
+      sendGameCommand(`/sports/games/${gameId}/end-segment`, 'POST', {}),
     onSuccess: (result: any) => {
       if (result?.updated) writeBack(result.updated);
     },
@@ -5362,10 +5390,7 @@ export function useGameControl(gameId: string) {
     // surfaces read Game.possession first and fall back to stats.possession
     // for backward compat.
     mutationFn: (body: { team: 'home' | 'away' }) =>
-      apiFetch(`/sports/games/${gameId}/possession`, {
-        method: 'POST',
-        body: JSON.stringify(body),
-      }),
+      sendGameCommand(`/sports/games/${gameId}/possession`, 'POST', body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['sports-game', gameId] }),
   });
 

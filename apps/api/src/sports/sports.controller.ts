@@ -17,6 +17,7 @@ import { RequireRoles, NoViewerRead } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
 import { SportsService } from './sports.service';
 import { SponsorsService } from './sponsors.service';
+import { userCommand } from './game-command';
 
 /** Editable fields for one roster player. The service sanitizes every
  *  value — the photo URL is produced by the existing /assets/upload. */
@@ -224,10 +225,13 @@ export class SportsController {
     @Body() body: { team?: string; delta?: number; homeScore?: number; awayScore?: number },
   ) {
     // delta present → quick-button increment; otherwise → absolute set.
-    if (typeof body.delta === 'number') {
-      return this.sports.adjustScore(req.user.tenantId, id, body, req?.user?.id);
+    // K12-F10: `commandId` (+ `expectedSegment` on a queued replay) ride the
+    // body; userCommand splits them off and names the actor.
+    const { dto, ctx } = userCommand(req, body);
+    if (typeof dto.delta === 'number') {
+      return this.sports.adjustScore(req.user.tenantId, id, dto, ctx);
     }
-    return this.sports.setScore(req.user.tenantId, id, body, req?.user?.id);
+    return this.sports.setScore(req.user.tenantId, id, dto, ctx);
   }
 
   @Patch('games/:id/clock')
@@ -242,7 +246,8 @@ export class SportsController {
     @Param('id') id: string,
     @Body() body: { action?: string; ms?: number },
   ) {
-    return this.sports.clockAction(req.user.tenantId, id, body);
+    const { dto, ctx } = userCommand(req, body);
+    return this.sports.clockAction(req.user.tenantId, id, dto, ctx);
   }
 
   /** Basketball shot clock — configure the length (24/30/35/off) or
@@ -259,7 +264,8 @@ export class SportsController {
     @Param('id') id: string,
     @Body() body: { action?: string; value?: number },
   ) {
-    return this.sports.setShotClock(req.user.tenantId, id, body);
+    const { dto, ctx } = userCommand(req, body);
+    return this.sports.setShotClock(req.user.tenantId, id, dto, ctx);
   }
 
   /** Football play clock — start / stop / reset the 40-25 countdown
@@ -276,7 +282,8 @@ export class SportsController {
     @Param('id') id: string,
     @Body() body: { action?: string; value?: number },
   ) {
-    return this.sports.setPlayClock(req.user.tenantId, id, body);
+    const { dto, ctx } = userCommand(req, body);
+    return this.sports.setPlayClock(req.user.tenantId, id, dto, ctx);
   }
 
   /** Penalty box — hockey / lacrosse / field hockey / water polo.
@@ -308,7 +315,8 @@ export class SportsController {
       playerName?: string;
     },
   ) {
-    return this.sports.setPenalties(req.user.tenantId, id, body);
+    const { dto, ctx } = userCommand(req, body);
+    return this.sports.setPenalties(req.user.tenantId, id, dto, ctx);
   }
 
   @Patch('games/:id/segment')
@@ -323,7 +331,8 @@ export class SportsController {
     @Param('id') id: string,
     @Body() body: { segment?: number; delta?: number },
   ) {
-    return this.sports.setSegment(req.user.tenantId, id, body);
+    const { dto, ctx } = userCommand(req, body);
+    return this.sports.setSegment(req.user.tenantId, id, dto, ctx);
   }
 
   @Patch('games/:id/stats')
@@ -338,7 +347,8 @@ export class SportsController {
     @Param('id') id: string,
     @Body() body: { stats?: Record<string, unknown> },
   ) {
-    return this.sports.updateStats(req.user.tenantId, id, body);
+    const { dto, ctx } = userCommand(req, body);
+    return this.sports.updateStats(req.user.tenantId, id, dto, ctx);
   }
 
   /**
@@ -358,8 +368,13 @@ export class SportsController {
     AppRole.SCHOOL_ADMIN,
     AppRole.CONTRIBUTOR,
   )
-  endSegment(@Request() req: any, @Param('id') id: string) {
-    return this.sports.endSegmentAtomic(req.user.tenantId, id, req?.user?.id);
+  endSegment(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body?: { commandId?: string },
+  ) {
+    const { ctx } = userCommand(req, body);
+    return this.sports.endSegmentAtomic(req.user.tenantId, id, ctx);
   }
 
   /** Set or clear the broadcast spotlight (featured player / promo). */
@@ -398,7 +413,8 @@ export class SportsController {
     @Param('id') id: string,
     @Body() body: { status?: string },
   ) {
-    return this.sports.setStatus(req.user.tenantId, id, body);
+    const { dto, ctx } = userCommand(req, body);
+    return this.sports.setStatus(req.user.tenantId, id, dto, ctx);
   }
 
   /**
@@ -427,7 +443,8 @@ export class SportsController {
       segment?: number;
     },
   ) {
-    return this.sports.ingest(req.user.tenantId, id, body || {});
+    const { dto, ctx } = userCommand(req, body);
+    return this.sports.ingest(req.user.tenantId, id, dto, {}, ctx);
   }
 
   /**
@@ -668,7 +685,8 @@ export class SportsController {
     @Param('id') id: string,
     @Body() body: { team?: string; type?: string },
   ) {
-    return this.sports.callTimeout(req.user.tenantId, id, body || {}, req?.user?.id);
+    const { dto, ctx } = userCommand(req, body);
+    return this.sports.callTimeout(req.user.tenantId, id, dto, ctx);
   }
 
   /**
@@ -695,7 +713,8 @@ export class SportsController {
     @Param('id') id: string,
     @Body() body: { team?: string },
   ) {
-    return this.sports.setPossession(req.user.tenantId, id, body || {}, req?.user?.id);
+    const { dto, ctx } = userCommand(req, body);
+    return this.sports.setPossession(req.user.tenantId, id, dto, ctx);
   }
 
   /** Fire a cue — a sport celebration (`key`) or a custom cue

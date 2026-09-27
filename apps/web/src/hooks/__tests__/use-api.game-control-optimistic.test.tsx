@@ -450,6 +450,62 @@ describe('useGameControl — offline queue vs server-rejection (Trust wave Domai
   });
 });
 
+describe('useGameControl — durable command ids (K12-F10)', () => {
+  const bodyOf = (call: unknown[]) => JSON.parse(((call[1] as FetchOpts | undefined)?.body) ?? '{}');
+
+  it('every game command carries a fresh commandId; a failed tap is queued under THE SAME id', async () => {
+    // The attempt may have committed with its response lost: replaying it
+    // under the same id is what makes the server answer from its receipt
+    // instead of awarding the basket twice.
+    apiFetch.mockRejectedValue(new TypeError('Failed to fetch'));
+    const { getCtl } = mountGameControl(baseGame({ homeScore: 5 }));
+
+    getCtl().score.mutate({ team: 'home', delta: 2 });
+
+    await waitFor(() => expect(getGameOpQueue(GAME_ID).size()).toBe(1));
+    const sent = bodyOf(apiFetch.mock.calls[0]);
+    expect(sent).toMatchObject({ team: 'home', delta: 2 });
+    expect(sent.commandId).toMatch(/^cmd-[0-9a-f]{32}$/);
+    expect(getGameOpQueue(GAME_ID).peekAll()[0].opId).toBe(sent.commandId);
+  });
+
+  it('two taps get two different ids', async () => {
+    apiFetch.mockResolvedValue(baseGame());
+    const { getCtl } = mountGameControl(baseGame());
+    getCtl().score.mutate({ team: 'home', delta: 1 });
+    getCtl().score.mutate({ team: 'home', delta: 1 });
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(2));
+    expect(bodyOf(apiFetch.mock.calls[0]).commandId).not.toBe(bodyOf(apiFetch.mock.calls[1]).commandId);
+  });
+
+  it('a failed PERIOD advance records the period the operator was in, not the optimistic one', async () => {
+    apiFetch.mockRejectedValue(new TypeError('Failed to fetch'));
+    const { getCtl } = mountGameControl(baseGame({ segment: 1 }));
+    getCtl().segment.mutate({ delta: 1 });
+    await waitFor(() => expect(getGameOpQueue(GAME_ID).size()).toBe(1));
+    expect(getGameOpQueue(GAME_ID).peekAll()[0].expectedSegment).toBe(1);
+  });
+
+  it('replay sends the queued id; an ABSOLUTE op also sends its period, a score delta does not', async () => {
+    // Queue two ops with no network, then let replay run against a server
+    // that answers.
+    const q = getGameOpQueue(GAME_ID);
+    q.enqueue('score', { team: 'away', delta: 3 }, { commandId: 'cmd-queued-score-01', expectedSegment: 2 });
+    q.enqueue('clock', { action: 'pause' }, { commandId: 'cmd-queued-clock-01', expectedSegment: 2 });
+    apiFetch.mockResolvedValue(baseGame());
+    mountGameControl(baseGame());
+
+    await waitFor(() => expect(q.size()).toBe(0));
+    const bodies = apiFetch.mock.calls.map(bodyOf);
+    expect(bodies).toEqual(
+      expect.arrayContaining([
+        { team: 'away', delta: 3, commandId: 'cmd-queued-score-01' },
+        { action: 'pause', commandId: 'cmd-queued-clock-01', expectedSegment: 2 },
+      ]),
+    );
+  });
+});
+
 describe('useGame — queued-delta display overlay (refuter fix C4)', () => {
   /** Mounts the real useGame hook and exposes its latest render result. */
   function mountGame() {

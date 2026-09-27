@@ -128,6 +128,48 @@ export function splitCommandFields<T extends Record<string, unknown>>(
   return { dto: dto as Omit<T, 'commandId' | 'expectedSegment'>, commandId: id, expectedSegment: seg };
 }
 
+/**
+ * An operator route's command: its DTO, plus who sent it (the JWT principal —
+ * a user, or for an API-key request the key, as `api-key:<id>`) and its
+ * transport fields.
+ */
+export function userCommand<T extends Record<string, unknown>>(
+  req: unknown,
+  body: T | null | undefined,
+): { dto: Omit<T, 'commandId' | 'expectedSegment'>; ctx: GameCommandContext } {
+  const { dto, commandId, expectedSegment } = splitCommandFields(body);
+  const user = ((req as { user?: Record<string, unknown> } | null)?.user ?? {}) as Record<string, unknown>;
+  const userId = typeof user.id === 'string' ? user.id : null;
+  const apiKeyId = typeof user.apiKeyId === 'string' ? user.apiKeyId : null;
+  return {
+    dto,
+    ctx: {
+      actor: { kind: 'user', userId, ref: apiKeyId ? `api-key:${apiKeyId}` : null },
+      commandId,
+      expectedSegment,
+    },
+  };
+}
+
+/**
+ * A scorekeeper share-link command: the actor is the issued LINK (identified
+ * by a fingerprint, never the token), not a person.
+ */
+export function consoleCommand<T extends Record<string, unknown>>(
+  token: string,
+  body: T | null | undefined,
+): { dto: Omit<T, 'commandId' | 'expectedSegment'>; ctx: GameCommandContext } {
+  const { dto, commandId, expectedSegment } = splitCommandFields(body);
+  return {
+    dto,
+    ctx: {
+      actor: { kind: 'console', ref: `console-link:${consoleTokenFingerprint(token)}` },
+      commandId,
+      expectedSegment,
+    },
+  };
+}
+
 /** JSON with object keys sorted at every depth — a stable hash input. */
 export function stableStringify(value: unknown): string {
   if (value === undefined) return 'null';

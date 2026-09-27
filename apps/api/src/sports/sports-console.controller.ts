@@ -4,6 +4,7 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { SportsService } from './sports.service';
+import { consoleCommand } from './game-command';
 import { verifyConsoleToken, parseConsoleTokenGameId } from './sports-console-token';
 import { RedisService } from '../realtime/redis.service';
 import { checkIngestLimit } from '../security/ingest-rate-limit';
@@ -175,13 +176,15 @@ export class SportsConsoleController {
     @Req() req: Request,
   ) {
     const { gameId, tenantId } = await this.authorize(token, req);
-    const dto = body || {};
+    // K12-F10/F34: the command id rides the body; the actor is this issued
+    // link (a fingerprint of it — never the token itself).
+    const { dto, ctx } = consoleCommand(token, body);
     if (typeof dto.delta === 'number') {
-      return this.sports.adjustScore(tenantId, gameId, dto, undefined, {
+      return this.sports.adjustScore(tenantId, gameId, dto, ctx, {
         suppressAutoFinal: true,
       });
     }
-    return this.sports.setScore(tenantId, gameId, dto);
+    return this.sports.setScore(tenantId, gameId, dto, ctx);
   }
 
   /** Clock control: start | pause | set | reset. */
@@ -192,7 +195,8 @@ export class SportsConsoleController {
     @Req() req: Request,
   ) {
     const { gameId, tenantId } = await this.authorize(token, req);
-    return this.sports.clockAction(tenantId, gameId, body || {});
+    const { dto, ctx } = consoleCommand(token, body);
+    return this.sports.clockAction(tenantId, gameId, dto, ctx);
   }
 
   /** Segment advance/set — validation lives in SportsService.setSegment. */
@@ -203,7 +207,8 @@ export class SportsConsoleController {
     @Req() req: Request,
   ) {
     const { gameId, tenantId } = await this.authorize(token, req);
-    return this.sports.setSegment(tenantId, gameId, body || {});
+    const { dto, ctx } = consoleCommand(token, body);
+    return this.sports.setSegment(tenantId, gameId, dto, ctx);
   }
 
   /** Team timeout — same atomic decrement + clock pause + TIMEOUT event. */
@@ -214,7 +219,8 @@ export class SportsConsoleController {
     @Req() req: Request,
   ) {
     const { gameId, tenantId } = await this.authorize(token, req);
-    return this.sports.callTimeout(tenantId, gameId, body || {});
+    const { dto, ctx } = consoleCommand(token, body);
+    return this.sports.callTimeout(tenantId, gameId, dto, ctx);
   }
 
   /**

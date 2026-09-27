@@ -73,6 +73,7 @@ import {
   boundedForAudit,
   diffState,
   feedActor,
+  requestHash,
   resolveCommandContext,
 } from './game-command';
 
@@ -460,12 +461,15 @@ export class SportsService {
     gameId: string,
     kind: string,
     input: CommandInput,
+    /** The command's request body — hashed into its receipt (K12-F10). */
+    request: unknown,
     body: (scope: GameCommandScope) => Promise<R>,
     opts: { gate?: GameRow | null; label?: string } = {},
   ): Promise<R> {
     const ctx = resolveCommandContext(input);
     if (!opts.gate) await this.owned(tenantId, gameId);
     const label = opts.label ?? `sports.${kind}`;
+    const hash = ctx.commandId ? requestHash(kind, request ?? null) : null;
 
     for (let attempt = 1; ; attempt++) {
       const afterHooks: Array<() => unknown> = [];
@@ -479,6 +483,38 @@ export class SportsService {
                   where: { id: gameId, tenantId },
                 });
                 if (!read) throw new NotFoundException('Game not found');
+
+                // K12-F10 — a command that already committed is answered from
+                // its durable receipt, with NO second effect. Checked before
+                // anything else so a replay of a command that landed before a
+                // later refusal (a period change, FINAL) still gets its own
+                // original answer instead of that refusal.
+                if (ctx.commandId && hash) {
+                  const prior = await tx.gameCommand.findUnique({
+                    where: { gameId_commandId: { gameId, commandId: ctx.commandId } },
+                  });
+                  if (prior) {
+                    if (prior.requestHash !== hash) {
+                      throw new ConflictException({
+                        code: 'COMMAND_ID_REUSED',
+                        message: 'This command id was already used for a different request.',
+                      });
+                    }
+                    return this.replayedResponse(prior.response, read) as R;
+                  }
+                }
+                // A queued command made in one period must not land in another
+                // (stale-queue reconciliation, K12-F10): the client sends the
+                // segment it saw when it made the command.
+                if (ctx.expectedSegment !== null && read.segment !== ctx.expectedSegment) {
+                  throw new ConflictException({
+                    code: 'GAME_SEGMENT_CHANGED',
+                    message: 'The game moved to another period since this was entered. Check it and enter it again.',
+                    expectedSegment: ctx.expectedSegment,
+                    currentSegment: read.segment,
+                  });
+                }
+
                 // A private copy: the command's `before` (and the undo record
                 // diffed from it) must not change when the row object the
                 // client handed back is updated by this command's own write.
@@ -489,6 +525,9 @@ export class SportsService {
                 const scope = this.makeCommandScope(tx, ctx, kind, before, afterHooks);
                 const result = await body(scope);
                 await scope.flush();
+                if (ctx.commandId && hash) {
+                  await this.writeCommandReceipt(tx, scope, ctx, hash, result);
+                }
                 return result;
               },
               // Same headroom withStatsTx carried: the first statement on a
@@ -520,6 +559,70 @@ export class SportsService {
         throw err;
       }
     }
+  }
+
+  /** Largest command response stored verbatim in a receipt. */
+  private static readonly RECEIPT_RESPONSE_MAX_CHARS = 32_000;
+
+  /**
+   * K12-F10 — write the durable receipt of a command, inside its transaction.
+   * The unique (game_id, command_id) key is what makes replay safe ACROSS
+   * REPLICAS: two concurrent arrivals of one command both reach this insert,
+   * one commits, and the other's P2002 aborts its whole transaction — which
+   * then re-runs, finds this receipt, and answers from it. A command's
+   * original response is kept (JSON-serialised exactly as the HTTP layer
+   * would send it) unless it is unusually large, in which case a replay
+   * answers with the game's current state instead.
+   */
+  private async writeCommandReceipt(
+    tx: any,
+    scope: GameCommandScope,
+    ctx: ResolvedCommandContext,
+    hash: string,
+    result: unknown,
+  ): Promise<void> {
+    let response: unknown = null;
+    try {
+      const text = JSON.stringify(result ?? null);
+      response =
+        text.length <= SportsService.RECEIPT_RESPONSE_MAX_CHARS
+          ? JSON.parse(text)
+          : { $omitted: 'too-large' };
+    } catch {
+      response = { $omitted: 'unserialisable' };
+    }
+    const current = scope.current();
+    try {
+      await tx.gameCommand.create({
+        data: {
+          tenantId: current.tenantId,
+          gameId: current.id,
+          commandId: ctx.commandId,
+          kind: scope.kind,
+          requestHash: hash,
+          actorType: ctx.actor.kind,
+          actorUserId: ctx.actor.kind === 'user' ? ctx.actor.userId ?? null : null,
+          actorRef: ctx.actor.ref ?? null,
+          revisionBefore: typeof scope.before.version === 'number' ? scope.before.version : 0,
+          revisionAfter: typeof current.version === 'number' ? current.version : 0,
+          response: response as any,
+        },
+      });
+    } catch (err) {
+      // A concurrent twin committed the receipt first. This transaction is
+      // now unusable (Postgres aborts it on the failed INSERT), so give up the
+      // attempt: the retry reads the twin's receipt and replays it.
+      if ((err as { code?: string } | null)?.code === 'P2002') throw new GameVersionConflict();
+      throw err;
+    }
+  }
+
+  /** What a replayed command answers: its stored response, or the current game. */
+  private replayedResponse(stored: unknown, current: GameRow): unknown {
+    if (stored && typeof stored === 'object' && '$omitted' in (stored as Record<string, unknown>)) {
+      return current;
+    }
+    return stored;
   }
 
   /** The scope object handed to a command body (see GameCommandScope). */
@@ -2667,7 +2770,7 @@ export class SportsService {
     // HOLDS at LIVE with the set majority on the board until the operator
     // ends it.
     const holdFinal = opts?.suppressAutoFinal === true;
-    return this.runGameCommand(tenantId, id, 'score.adjust', actor, async (scope) => {
+    return this.runGameCommand(tenantId, id, 'score.adjust', actor, dto, async (scope) => {
       const game = scope.before;
       const def = this.sportOf(game.sport);
       const col = team === 'home' ? 'homeScore' : 'awayScore';
@@ -2730,7 +2833,7 @@ export class SportsService {
       const n = Number(dto[key]);
       if (Number.isFinite(n) && Number.isInteger(n) && n >= 0) supplied[key] = n;
     }
-    return this.runGameCommand(tenantId, id, 'score.set', actor, async (scope) => {
+    return this.runGameCommand(tenantId, id, 'score.set', actor, dto, async (scope) => {
       const game = scope.before;
       if (Object.keys(supplied).length === 0) return game;
       const prevScores = {
@@ -2867,7 +2970,7 @@ export class SportsService {
     if (action === 'set' && (!Number.isFinite(setMs) || setMs < 0)) {
       throw new BadRequestException('ms must be a non-negative number');
     }
-    return this.runGameCommand(tenantId, id, `clock.${action}`, actor, async (scope) => {
+    return this.runGameCommand(tenantId, id, `clock.${action}`, actor, dto, async (scope) => {
       const game = scope.before;
       const def = this.sportOf(game.sport);
       if (action === 'start' && def.clock.type === 'none') {
@@ -2989,7 +3092,7 @@ export class SportsService {
     if (!['configure', 'start', 'stop', 'reset'].includes(action)) {
       throw new BadRequestException('action must be configure | start | stop | reset');
     }
-    return this.runGameCommand(tenantId, id, `shot-clock.${action}`, actor, (scope) =>
+    return this.runGameCommand(tenantId, id, `shot-clock.${action}`, actor, dto, (scope) =>
       scope.write({ stats: this.shotClockPatch(scope.before, action, dto.value) }),
     );
   }
@@ -3104,7 +3207,7 @@ export class SportsService {
     if (!['start', 'stop', 'reset'].includes(action)) {
       throw new BadRequestException('action must be start | stop | reset');
     }
-    return this.runGameCommand(tenantId, id, `play-clock.${action}`, actor, (scope) =>
+    return this.runGameCommand(tenantId, id, `play-clock.${action}`, actor, dto, (scope) =>
       scope.write({ stats: this.playClockPatch(scope.before, action, dto.value) }),
     );
   }
@@ -3559,7 +3662,7 @@ export class SportsService {
     if (!['add', 'remove', 'clear'].includes(action)) {
       throw new BadRequestException('action must be add | remove | clear');
     }
-    return this.runGameCommand(tenantId, id, `penalties.${action}`, actor, async (scope) => {
+    return this.runGameCommand(tenantId, id, `penalties.${action}`, actor, dto, async (scope) => {
       const stats = this.penaltiesPatch(scope.before, action, dto);
       const updated = await scope.write({ stats });
       const list = stats.penalties as unknown[];
@@ -3740,7 +3843,7 @@ export class SportsService {
     // or stat write is merged on top of, never erased), and the SEGMENT
     // event records the whole change so undo restores every side effect
     // (K12-16). Merge logic is unchanged from the 2026-07-03 stats-race fix.
-    return this.runGameCommand(tenantId, id, 'segment.set', actor, async (scope) => {
+    return this.runGameCommand(tenantId, id, 'segment.set', actor, dto, async (scope) => {
       const tx = scope.tx;
       const game = scope.before;
       let segment = 0;
@@ -4046,6 +4149,7 @@ export class SportsService {
           swept.id,
           'clock.expire',
           SYSTEM_CLOCK_ACTOR,
+          null,
           (scope) => this.expireClock(scope),
           { gate: swept },
         );
@@ -4260,7 +4364,7 @@ export class SportsService {
     // compare-and-swap write, so a concurrent CTS snapshot, clock write or
     // co-operator's stat edit is merged on top of rather than erased
     // (K12-17). Merge logic is unchanged from the 2026-07-03 stats-race fix.
-    return this.runGameCommand(tenantId, id, 'stats.update', actor, async (scope) => {
+    return this.runGameCommand(tenantId, id, 'stats.update', actor, dto, async (scope) => {
       const freshGame = scope.before;
       let next: Record<string, unknown> = {};
       let oldValues: Record<string, unknown> = {};
@@ -4510,7 +4614,7 @@ export class SportsService {
    * than calling them.
    */
   async endSegmentAtomic(tenantId: string, id: string, actor?: CommandInput) {
-    return this.runGameCommand(tenantId, id, 'segment.end', actor, async (scope) => {
+    return this.runGameCommand(tenantId, id, 'segment.end', actor, null, async (scope) => {
       const game = scope.before;
       const def = this.sportOf(game.sport);
       const home = Number(game.homeScore) || 0;
@@ -4693,7 +4797,7 @@ export class SportsService {
     opts: { auto?: boolean; stampFeed?: boolean } = {},
     actor?: CommandInput,
   ) {
-    return this.runGameCommand(tenantId, id, 'feed.ingest', actor, async (scope) => {
+    return this.runGameCommand(tenantId, id, 'feed.ingest', actor, dto, async (scope) => {
       const game = scope.before;
       const data: Record<string, unknown> = {};
       const applied: Record<string, unknown> = {};
@@ -4967,7 +5071,7 @@ export class SportsService {
     if (!GAME_STATUSES.includes(status)) {
       throw new BadRequestException(`status must be one of ${GAME_STATUSES.join(', ')}`);
     }
-    return this.runGameCommand(tenantId, id, `status.${status.toLowerCase()}`, actor, async (scope) => {
+    return this.runGameCommand(tenantId, id, `status.${status.toLowerCase()}`, actor, dto, async (scope) => {
       const game = scope.before;
       const data: Record<string, unknown> = { status };
       if (status === 'LIVE' && !game.startedAt) data.startedAt = new Date();
@@ -5539,7 +5643,7 @@ export class SportsService {
     // the pause — which restored the running shot clock (K12-20) and could
     // erase a concurrent stat — and two timeouts racing could both debit
     // from the same count.
-    return this.runGameCommand(tenantId, gameId, 'timeout.call', actor, async (scope) => {
+    return this.runGameCommand(tenantId, gameId, 'timeout.call', actor, dto, async (scope) => {
       const game = scope.before;
       const def = this.sportOf(game.sport);
 
@@ -5865,7 +5969,7 @@ export class SportsService {
     actor?: CommandInput,
   ) {
     const team: 'home' | 'away' = dto.team === 'away' ? 'away' : 'home';
-    return this.runGameCommand(tenantId, gameId, 'possession.set', actor, async (scope) => {
+    return this.runGameCommand(tenantId, gameId, 'possession.set', actor, dto, async (scope) => {
       const game = scope.before;
       const prevPossession = game.possession ?? null;
       await scope.write({ possession: team });
@@ -6414,7 +6518,7 @@ export class SportsService {
     const actor: CommandInput = auth.actorUserId
       ? { actor: { kind: 'user', userId: auth.actorUserId } }
       : feedActor('cts');
-    await this.runGameCommand(gate.tenantId, gameId, 'feed.cts', actor, async (scope) => {
+    await this.runGameCommand(gate.tenantId, gameId, 'feed.cts', actor, null, async (scope) => {
       const tx = scope.tx;
       const game = scope.before;
       let prevScores = { homeScore: game.homeScore, awayScore: game.awayScore };
@@ -6770,7 +6874,7 @@ export class SportsService {
     const actor: CommandInput = auth.actorUserId
       ? { actor: { kind: 'user', userId: auth.actorUserId } }
       : feedActor('swim');
-    await this.runGameCommand(gate.tenantId, gameId, 'feed.swim', actor, async (scope) => {
+    await this.runGameCommand(gate.tenantId, gameId, 'feed.swim', actor, null, async (scope) => {
       const game = scope.before;
       let wantsAudit = false;
       let placesChanged = false;

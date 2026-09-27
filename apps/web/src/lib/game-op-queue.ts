@@ -15,27 +15,49 @@
  * triggers, sender) lives with `useGameControl` in hooks/use-api.ts; the
  * banner UI reads `getSnapshot()`/`subscribe()` via useSyncExternalStore.
  *
- * Coalescing mirrors the server's write semantics:
- *  - score  — a DELTA endpoint (atomic increment server-side), so entries
- *             append; consecutive same-team deltas merge into one summed
- *             delta. Absolute sets (typo-fix, no `delta`) never merge.
+ * DURABLE COMMAND IDS (K-12 launch program, K12-F10, 2026-09-26). An op's
+ * `opId` IS the command id the server keys its receipt on. A tap that failed
+ * on the network may still have COMMITTED (the response was lost), so the op
+ * is queued under the SAME id its direct attempt used (`enqueue(..., {
+ * commandId })`): replaying it is then a server-side no-op that returns the
+ * original result, never a second basket.
+ *
+ * Coalescing follows from that:
+ *  - score  — entries are NEVER merged. Summing two taps into one op would
+ *             replay two commands under one id: if only the first had
+ *             committed, the server would answer the merged op from the
+ *             first's receipt and silently drop the second tap.
  *  - clock / segment — absolute latest-wins server-side, so only the
- *             latest queued entry per kind survives.
+ *             latest queued entry per kind survives, under its own id.
  *  - stats  — server shallow-merges `dto.stats` into Game.stats, so the
  *             latest entry survives but folds the superseded entry's
  *             un-sent keys in (dropping them outright would silently lose
  *             e.g. a queued homeFouls bump when a later currentEvent edit
- *             replaced the entry — the exact silent-loss class this wave
- *             kills).
+ *             replaced the entry). A folded entry is a NEW request, so it
+ *             gets a NEW command id (reusing the survivor's would be refused
+ *             server-side as COMMAND_ID_REUSED).
+ *  - expectedSegment — the period the operator was in when the op was made.
+ *             Sent with ABSOLUTE kinds on replay; the server refuses (409
+ *             GAME_SEGMENT_CHANGED) rather than land a Q1 value in Q2.
  */
 
 export type GameOpKind = 'score' | 'clock' | 'segment' | 'stats';
 
 export interface GameOp {
+  /** The durable command id (see the header). */
   opId: string;
   kind: GameOpKind;
   payload: Record<string, unknown>;
   createdAt: number;
+  /** The game's segment when the op was made (absolute kinds replay with it). */
+  expectedSegment?: number | null;
+}
+
+export interface EnqueueOptions {
+  /** The command id the failed direct attempt was sent with. */
+  commandId?: string | null;
+  /** The game's segment when the op was made. */
+  expectedSegment?: number | null;
 }
 
 export interface GameOpQueueSnapshot {
@@ -60,13 +82,23 @@ export interface GameOpStorage {
 
 const OP_KINDS: readonly GameOpKind[] = ['score', 'clock', 'segment', 'stats'];
 
-// Local id generator — timestamp + counter. Deliberately NOT
-// crypto.randomUUID (Chromium-92+; the fleet floor for shared player code
-// is Chromium 83, and uniqueness only needs to hold within one tab).
-let opCounter = 0;
-function nextOpId(): string {
-  opCounter += 1;
-  return `op${Date.now().toString(36)}-${opCounter.toString(36)}`;
+/**
+ * A fresh durable command id. The server keys receipts on (game, id), so ids
+ * must be unique across EVERY device driving the game, not just this tab:
+ * 128 random bits from crypto.getRandomValues (available on the Chromium 83
+ * fleet floor, unlike crypto.randomUUID). The Math.random fallback only runs
+ * where no Web Crypto exists at all.
+ */
+export function newCommandId(): string {
+  const bytes = new Uint8Array(16);
+  try {
+    globalThis.crypto.getRandomValues(bytes);
+  } catch {
+    for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+  }
+  let hex = '';
+  for (const b of bytes) hex += b.toString(16).padStart(2, '0');
+  return `cmd-${hex}`;
 }
 
 /** sessionStorage, guarded — access itself can throw (privacy mode,
@@ -188,32 +220,17 @@ export class GameOpQueue {
     return { home, away };
   }
 
-  enqueue(kind: GameOpKind, payload: Record<string, unknown>): GameOp {
+  enqueue(kind: GameOpKind, payload: Record<string, unknown>, opts: EnqueueOptions = {}): GameOp {
     const ops = this.state.ops.slice();
+    const expectedSegment =
+      typeof opts.expectedSegment === 'number' && Number.isInteger(opts.expectedSegment)
+        ? opts.expectedSegment
+        : null;
+    let opId = opts.commandId || newCommandId();
 
     if (kind === 'score') {
-      const last = ops.length > 0 ? ops[ops.length - 1] : undefined;
-      const delta = payload.delta;
-      const canMerge =
-        !!last &&
-        last.kind === 'score' &&
-        last.opId !== this.inFlightOpId &&
-        typeof delta === 'number' &&
-        typeof last.payload.delta === 'number' &&
-        teamOf(last.payload) === teamOf(payload);
-      if (canMerge && last) {
-        // Summed delta may reach 0 (+1 then −1) — keep the entry anyway; a
-        // 0-delta replays as a server no-op and the invariants stay simple.
-        const merged: GameOp = {
-          ...last,
-          payload: { ...last.payload, delta: (last.payload.delta as number) + (delta as number) },
-        };
-        ops[ops.length - 1] = merged;
-        this.setState({ ops });
-        this.persist();
-        return merged;
-      }
-      const entry: GameOp = { opId: nextOpId(), kind, payload, createdAt: Date.now() };
+      // Every score op is its own command — never merged (see the header).
+      const entry: GameOp = { opId, kind, payload, createdAt: Date.now(), expectedSegment };
       ops.push(entry);
       this.setState({ ops });
       this.persist();
@@ -230,16 +247,18 @@ export class GameOpQueue {
       if (kind === 'stats') {
         const oldStats = ops[idx].payload.stats;
         const newStats = payload.stats;
-        nextPayload = {
-          stats: {
-            ...(oldStats && typeof oldStats === 'object' ? (oldStats as Record<string, unknown>) : {}),
-            ...(newStats && typeof newStats === 'object' ? (newStats as Record<string, unknown>) : {}),
-          },
-        };
+        const oldObj =
+          oldStats && typeof oldStats === 'object' ? (oldStats as Record<string, unknown>) : {};
+        const newObj =
+          newStats && typeof newStats === 'object' ? (newStats as Record<string, unknown>) : {};
+        nextPayload = { stats: { ...oldObj, ...newObj } };
+        // Folding in an un-sent key makes this a different request than the
+        // one sent under `opId` — it needs its own command id.
+        if (Object.keys(oldObj).some((k) => !(k in newObj))) opId = newCommandId();
       }
       ops.splice(idx, 1);
     }
-    const entry: GameOp = { opId: nextOpId(), kind, payload: nextPayload, createdAt: Date.now() };
+    const entry: GameOp = { opId, kind, payload: nextPayload, createdAt: Date.now(), expectedSegment };
     ops.push(entry);
     this.setState({ ops });
     this.persist();

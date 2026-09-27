@@ -9,6 +9,7 @@ import {
   GameOpQueue,
   getGameOpQueue,
   isNetworkFailure,
+  newCommandId,
   __resetGameOpQueues,
   type GameOp,
   type GameOpStorage,
@@ -36,13 +37,20 @@ beforeEach(() => {
 });
 
 describe('coalescing rules', () => {
-  it('merges consecutive same-team score deltas into one summed delta', () => {
+  it('K12-F10: NEVER merges score deltas — each tap replays under its own command id', () => {
+    // Summing taps into one op would replay two commands under ONE id: if the
+    // first had committed (response lost), the server would answer the merged
+    // op from the first's receipt and the second tap would silently vanish.
     const q = new GameOpQueue(GAME_ID, null);
-    q.enqueue('score', { team: 'home', delta: 1 });
-    q.enqueue('score', { team: 'home', delta: 1 });
+    q.enqueue('score', { team: 'home', delta: 1 }, { commandId: 'cmd-tap-0000001' });
+    q.enqueue('score', { team: 'home', delta: 1 }, { commandId: 'cmd-tap-0000002' });
     q.enqueue('score', { team: 'home', delta: 3 });
-    expect(q.size()).toBe(1);
-    expect(q.peekAll()[0].payload).toEqual({ team: 'home', delta: 5 });
+    expect(q.size()).toBe(3);
+    expect(q.peekAll().map((o) => o.payload.delta)).toEqual([1, 1, 3]);
+    expect(q.peekAll()[0].opId).toBe('cmd-tap-0000001');
+    expect(q.peekAll()[1].opId).toBe('cmd-tap-0000002');
+    expect(q.peekAll()[2].opId).toMatch(/^cmd-[0-9a-f]{32}$/);
+    expect(q.pendingScoreDeltas()).toEqual({ home: 5, away: 0 });
   });
 
   it('does NOT merge deltas across different teams', () => {
@@ -89,6 +97,53 @@ describe('coalescing rules', () => {
     expect(q.peekAll()[0].payload).toEqual({
       stats: { homeFouls: 3, currentEvent: '100 Free', half: 'Bottom' },
     });
+  });
+});
+
+describe('K12-F10 — durable command ids on queued ops', () => {
+  it('an op keeps the id its failed attempt was sent with, and its period, across a tab reload', () => {
+    const storage = memStorage();
+    const a = new GameOpQueue(GAME_ID, storage);
+    a.enqueue('clock', { action: 'pause' }, { commandId: 'cmd-attempt-000001', expectedSegment: 2 });
+    const b = new GameOpQueue(GAME_ID, storage);
+    expect(b.peekAll()[0]).toMatchObject({
+      opId: 'cmd-attempt-000001',
+      kind: 'clock',
+      expectedSegment: 2,
+    });
+  });
+
+  it('a latest-wins replacement keeps ITS OWN id (it is exactly the request that was sent)', () => {
+    const q = new GameOpQueue(GAME_ID, null);
+    q.enqueue('segment', { segment: 2 }, { commandId: 'cmd-seg-00000001' });
+    q.enqueue('segment', { segment: 3 }, { commandId: 'cmd-seg-00000002' });
+    expect(q.peekAll().map((o) => o.opId)).toEqual(['cmd-seg-00000002']);
+  });
+
+  it('a stats op that FOLDS in an un-sent key becomes a new request with a NEW id', () => {
+    const q = new GameOpQueue(GAME_ID, null);
+    q.enqueue('stats', { stats: { homeFouls: 3 } }, { commandId: 'cmd-stat-0000001' });
+    q.enqueue('stats', { stats: { awayFouls: 2 } }, { commandId: 'cmd-stat-0000002' });
+    const [op] = q.peekAll();
+    expect(op.payload).toEqual({ stats: { homeFouls: 3, awayFouls: 2 } });
+    // Neither sent id matches this body; reusing one would be refused
+    // server-side as COMMAND_ID_REUSED and lose the folded key.
+    expect(op.opId).not.toBe('cmd-stat-0000001');
+    expect(op.opId).not.toBe('cmd-stat-0000002');
+    expect(op.opId).toMatch(/^cmd-[0-9a-f]{32}$/);
+  });
+
+  it('a stats replacement that only overwrites the same keys keeps its own id', () => {
+    const q = new GameOpQueue(GAME_ID, null);
+    q.enqueue('stats', { stats: { homeFouls: 3 } }, { commandId: 'cmd-stat-0000001' });
+    q.enqueue('stats', { stats: { homeFouls: 4 } }, { commandId: 'cmd-stat-0000002' });
+    expect(q.peekAll()[0]).toMatchObject({ opId: 'cmd-stat-0000002', payload: { stats: { homeFouls: 4 } } });
+  });
+
+  it('newCommandId is 128 random bits, never repeating', () => {
+    const ids = new Set(Array.from({ length: 500 }, () => newCommandId()));
+    expect(ids.size).toBe(500);
+    for (const id of ids) expect(id).toMatch(/^cmd-[0-9a-f]{32}$/);
   });
 });
 

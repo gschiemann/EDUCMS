@@ -119,6 +119,13 @@ describe('SportsConsoleController — allowlist surface', () => {
   });
 });
 
+/** The command context every console route passes: a console actor, no id. */
+const CONSOLE_CTX = expect.objectContaining({
+  actor: expect.objectContaining({ kind: 'console', ref: expect.stringMatching(/^console-link:[0-9a-f]{16}$/) }),
+  commandId: null,
+  expectedSegment: null,
+});
+
 describe('SportsConsoleController — delegation with server-resolved tenant', () => {
   it('session verifies the token and returns the public identity block', async () => {
     const gameId = newGameId();
@@ -147,10 +154,26 @@ describe('SportsConsoleController — delegation with server-resolved tenant', (
       TENANT,
       gameId,
       { team: 'home', delta: 3 },
-      undefined,
+      CONSOLE_CTX,
       { suppressAutoFinal: true },
     );
     expect(sports.setScore).not.toHaveBeenCalled();
+  });
+
+  it('K12-F10/F34: the command id rides through; the actor is the LINK, by fingerprint — never the token', async () => {
+    const gameId = newGameId();
+    const sports = makeSportsMock();
+    const ctl = makeController(sports);
+    const tok = makeConsoleToken(gameId, { version: 0 });
+    await ctl.score(tok, { team: 'away', delta: 2, commandId: 'cmd-console-0001' } as any, reqFrom());
+    const [, , dto, ctx] = sports.adjustScore.mock.calls[0];
+    expect(dto).toEqual({ team: 'away', delta: 2 });
+    expect(ctx.commandId).toBe('cmd-console-0001');
+    expect(ctx.actor.kind).toBe('console');
+    expect(ctx.actor.ref).toMatch(/^console-link:[0-9a-f]{16}$/);
+    // The token (and its MAC) must never be what we record.
+    expect(JSON.stringify(ctx)).not.toContain(tok);
+    expect(JSON.stringify(ctx)).not.toContain(tok.split('.')[4]);
   });
 
   it('score without delta → setScore (absolute typo-fix path)', async () => {
@@ -159,7 +182,7 @@ describe('SportsConsoleController — delegation with server-resolved tenant', (
     const ctl = makeController(sports);
     const tok = makeConsoleToken(gameId, { version: 0 });
     await ctl.score(tok, { homeScore: 21, awayScore: 14 }, reqFrom());
-    expect(sports.setScore).toHaveBeenCalledWith(TENANT, gameId, { homeScore: 21, awayScore: 14 });
+    expect(sports.setScore).toHaveBeenCalledWith(TENANT, gameId, { homeScore: 21, awayScore: 14 }, CONSOLE_CTX);
     expect(sports.adjustScore).not.toHaveBeenCalled();
   });
 
@@ -169,13 +192,13 @@ describe('SportsConsoleController — delegation with server-resolved tenant', (
     const ctl = makeController(sports);
     const tok = makeConsoleToken(gameId, { version: 0 });
     await ctl.clock(tok, { action: 'start' }, reqFrom());
-    expect(sports.clockAction).toHaveBeenCalledWith(TENANT, gameId, { action: 'start' });
+    expect(sports.clockAction).toHaveBeenCalledWith(TENANT, gameId, { action: 'start' }, CONSOLE_CTX);
     await ctl.clock(tok, { action: 'set', ms: 480_000 }, reqFrom());
-    expect(sports.clockAction).toHaveBeenCalledWith(TENANT, gameId, { action: 'set', ms: 480_000 });
+    expect(sports.clockAction).toHaveBeenCalledWith(TENANT, gameId, { action: 'set', ms: 480_000 }, CONSOLE_CTX);
     await ctl.segment(tok, { delta: 1 }, reqFrom());
-    expect(sports.setSegment).toHaveBeenCalledWith(TENANT, gameId, { delta: 1 });
+    expect(sports.setSegment).toHaveBeenCalledWith(TENANT, gameId, { delta: 1 }, CONSOLE_CTX);
     await ctl.timeout(tok, { team: 'away' }, reqFrom());
-    expect(sports.callTimeout).toHaveBeenCalledWith(TENANT, gameId, { team: 'away' });
+    expect(sports.callTimeout).toHaveBeenCalledWith(TENANT, gameId, { team: 'away' }, CONSOLE_CTX);
   });
 
   it('cue forwards ONLY {key, cueId, team} — injection channels stripped', async () => {
