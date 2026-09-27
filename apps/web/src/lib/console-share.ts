@@ -18,53 +18,26 @@ import {
   type ClockType,
 } from '@cms/api-types';
 
-import { isConsoleRole, type ConsoleRole } from '@cms/api-types';
-
-/**
- * Split a console token, shape-only. Two shapes (the API's
- * sports-console-token.ts is the authority):
- *   pre-role  `<gameId>.<ver>.<iatSec>.<ttlSec>.<mac32hex>`
- *   role      `<gameId>.<ver>.<iatSec>.<ttlSec>.<role>.<mac32hex>` (K12-F16)
- */
-function splitToken(token: unknown): { gameId: string; role: ConsoleRole | null } | null {
-  if (typeof token !== 'string') return null;
-  const parts = token.split('.');
-  let role: ConsoleRole | null = null;
-  if (parts.length === 6) {
-    const r = parts[4];
-    if (!isConsoleRole(r)) return null;
-    role = r;
-  } else if (parts.length !== 5) {
-    return null;
-  }
-  const gameId = parts[0];
-  if (!gameId || !/^[A-Za-z0-9-]+$/.test(gameId)) return null;
-  if (!/^\d+$/.test(parts[1]) || !/^\d+$/.test(parts[2]) || !/^\d+$/.test(parts[3])) return null;
-  if (parts[parts.length - 1].length !== 32) return null;
-  return { gameId, role };
-}
-
 /**
  * The gameId embedded in a console share token, or null when the string
  * is not even console-token-shaped. CLIENT-side mirror of the API's
- * parseConsoleTokenGameId (apps/api/src/sports/sports-console-token.ts).
- * NO cryptographic meaning — the pad only uses this to know which PUBLIC
- * board endpoint to poll; every mutation is verified server-side against
- * the real MAC + live version.
+ * parseConsoleTokenGameId (apps/api/src/sports/sports-console-token.ts):
+ * token shape is `<gameId>.<ver>.<iatSec>.<ttlSec>.<mac32hex>`, gameId is
+ * a UUID-charset id. The link's SCOPE is inside the MAC, never in the text
+ * (K12-F34) — what a link may do comes only from the server's /session
+ * answer. NO cryptographic meaning — the pad only uses this to know which
+ * PUBLIC board endpoint to poll; every mutation is verified server-side
+ * against the real MAC + live version.
  */
 export function consoleTokenGameId(token: unknown): string | null {
-  const parsed = splitToken(token);
-  return parsed ? parsed.gameId : null;
-}
-
-/**
- * The role word a link carries (null for a pre-role link). DISPLAY ONLY —
- * what the pad may actually do comes from the server's session response,
- * and every route re-checks it.
- */
-export function consoleTokenRole(token: unknown): ConsoleRole | null {
-  const parsed = splitToken(token);
-  return parsed ? parsed.role : null;
+  if (typeof token !== 'string') return null;
+  const parts = token.split('.');
+  if (parts.length !== 5) return null;
+  const gameId = parts[0];
+  if (!gameId || !/^[A-Za-z0-9-]+$/.test(gameId)) return null;
+  if (!/^\d+$/.test(parts[1]) || !/^\d+$/.test(parts[2]) || !/^\d+$/.test(parts[3])) return null;
+  if (parts[4].length !== 32) return null;
+  return gameId;
 }
 
 /** A shot / play clock as the board payload stores it (`stats.shotClock`,

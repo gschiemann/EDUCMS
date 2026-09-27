@@ -3258,7 +3258,8 @@
       "scorer": "Scorekeeper link — score, timeouts and team stats",
       "timer": "Clock operator link — game clock and periods",
       "shot": "Shot clock link — the shot clock only",
-      "legacy": "Scorekeeper link — limited controls"
+      "legacy": "Scorekeeper link — limited controls",
+      "presentation": "Celebrations link — celebration cues only"
     },
     "rolePlay": "Play clock link — the play clock only",
     "chipLive": "LIVE",
@@ -3356,14 +3357,16 @@
       "table": "Whole table",
       "scorer": "Scorekeeper",
       "timer": "Clock operator",
-      "shot": "Shot clock"
+      "shot": "Shot clock",
+      "presentation": "Celebrations"
     },
     "rolePlay": "Play clock",
     "hint": {
       "table": "Score, clocks, stats, penalties",
       "scorer": "Score, timeouts, team stats",
       "timer": "Game clock and periods",
-      "shot": "Shot clock only"
+      "shot": "Shot clock only",
+      "presentation": "Celebration cues only"
     },
     "hintPlay": "Play clock only",
     "creating": "Creating link…",

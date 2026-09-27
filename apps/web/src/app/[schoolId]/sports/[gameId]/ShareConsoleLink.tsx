@@ -2,30 +2,32 @@
 
 /**
  * ShareConsoleLink — the operator's "hand a volunteer the pad" card
- * (Phase-2 Domain SHARE; role links added for the K-12 launch program,
- * register row K12-F16). Self-contained component + ONE mount line in the
+ * (Phase-2 Domain SHARE; scoped links for the K-12 launch program, register
+ * rows K12-F34 + K12-F16). Self-contained component + ONE mount line in the
  * console page's SEND TO DEVICE sheet (same pattern as ConnectionBanner),
  * sitting under the role-view QR list: those links require a logged-in
  * operator; THIS one is the no-account path — a revocable, always-expiring
  * /console/<token> capability link.
  *
  * WHO IS THE LINK FOR (K12-F16). The operator picks a job — the whole table,
- * the scorekeeper, the clock operator, the shot/play-clock operator — and
- * the minted link carries that role INSIDE its HMAC; the API enforces it on
- * every tap (a clock operator's link cannot change the score). Only the
- * roles the sport has any use for are offered (@cms/api-types
- * consoleRolesForSport — no clock operator for volleyball). Each role's link
- * is minted once per sheet-open and cached, so switching tabs does not
+ * the scorekeeper, the clock operator, the shot/play-clock operator, the
+ * celebrations — and the minted link carries that SCOPE inside its HMAC
+ * (one permission model: @cms/api-types sports-console-scopes.ts); the API
+ * enforces it on every tap (a clock operator's link cannot change the
+ * score). Only the scopes the sport has any use for are offered
+ * (consoleScopesForSport — no clock operator for volleyball). Each scope's
+ * link is minted once per sheet-open and cached, so switching tabs does not
  * spray new credentials.
  *
- * Mint on open: POST /sports/games/:id/console-share { role } issues a fresh
- * token against the game's live consoleTokenVersion (server AuditLogs the
- * mint, with the role) — UNLESS the operator revoked in this tab session,
+ * Mint on open: POST /sports/games/:id/console-share { scope } issues a
+ * fresh token against the game's live consoleTokenVersion (server AuditLogs
+ * the mint, with the scope and the link's fingerprint) — UNLESS the operator
+ * revoked in this tab session,
  * which pins the revoked panel until an explicit "Create a new link" (see
  * revokeFlagKey below). Copy-link + QR (client-side qrcode lib — the token
  * is a WRITE credential and must never round-trip a third-party QR
  * service). Revoke (with confirm) bumps the version server-side, killing
- * EVERY outstanding link for this game, whatever its role.
+ * EVERY outstanding link for this game, whatever its scope.
  */
 
 import { useCallback, useEffect, useState } from 'react';
@@ -33,10 +35,10 @@ import QRCode from 'qrcode';
 import { Check, Copy } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import {
-  consoleRolesForSport,
+  consoleScopesForSport,
   findSport,
-  isConsoleRole,
-  type ConsoleRole,
+  isConsoleScope,
+  type ConsoleScope,
 } from '@cms/api-types';
 import { apiFetch } from '@/lib/api-client';
 import { consoleShareUrl } from '@/lib/console-share';
@@ -46,15 +48,16 @@ interface MintResponse {
   url?: string;
   expiresAt?: string;
   consoleTokenVersion?: number;
-  role?: string | null;
+  scope?: string | null;
 }
 
 interface Minted {
   url: string;
   expiresAt: string | null;
-  /** The role the SERVER put in the link — null when it issued a pre-role
-   *  link (an API from before role links), which the card says plainly. */
-  granted: ConsoleRole | null;
+  /** The scope the SERVER bound into the link. A different answer than the
+   *  one asked for (an API from before scopes issues the original full link)
+   *  is said plainly on the card. */
+  granted: ConsoleScope | null;
 }
 
 /**
@@ -88,26 +91,26 @@ function setRevokeFlag(gameId: string, on: boolean): void {
 export function ShareConsoleLink({ gameId, sport }: { gameId: string; sport?: string }) {
   const t = useTranslations('sportsShareLink');
   const def = findSport(sport);
-  const roles = consoleRolesForSport(def);
-  const offered: ConsoleRole[] = roles.length > 0 ? roles : ['table'];
-  const [role, setRole] = useState<ConsoleRole>(offered[0]);
+  const scopes = consoleScopesForSport(def);
+  const offered: ConsoleScope[] = scopes.length > 0 ? scopes : ['table'];
+  const [scope, setScope] = useState<ConsoleScope>(offered[0]);
   const [state, setState] = useState<'loading' | 'ready' | 'revoked' | 'error'>('loading');
-  const [links, setLinks] = useState<Partial<Record<ConsoleRole, Minted>>>({});
+  const [links, setLinks] = useState<Partial<Record<ConsoleScope, Minted>>>({});
   const [qr, setQr] = useState('');
   const [copied, setCopied] = useState(false);
   const [confirming, setConfirming] = useState(false);
 
-  const current = links[role];
+  const current = links[scope];
 
   const mint = useCallback(
-    async (forRole: ConsoleRole) => {
+    async (forScope: ConsoleScope) => {
       setState('loading');
       setConfirming(false);
       setRevokeFlag(gameId, false);
       try {
         const res = await apiFetch<MintResponse>(`/sports/games/${gameId}/console-share`, {
           method: 'POST',
-          body: JSON.stringify({ role: forRole }),
+          body: JSON.stringify({ scope: forScope }),
         });
         // Prefer the page's own origin (what the operator's phone can reach);
         // the server-built URL is the fallback for odd proxy setups.
@@ -116,13 +119,13 @@ export function ShareConsoleLink({ gameId, sport }: { gameId: string; sport?: st
             ? consoleShareUrl(window.location.origin, res.token)
             : res?.url || '';
         if (!link) throw new Error('mint failed');
-        const grantedRole = res?.role;
+        const grantedScope = res?.scope;
         setLinks((cur) => ({
           ...cur,
-          [forRole]: {
+          [forScope]: {
             url: link,
             expiresAt: res?.expiresAt || null,
-            granted: isConsoleRole(grantedRole) ? grantedRole : null,
+            granted: isConsoleScope(grantedScope) ? grantedScope : null,
           },
         }));
         setState('ready');
@@ -140,14 +143,14 @@ export function ShareConsoleLink({ gameId, sport }: { gameId: string; sport?: st
       setState('revoked');
       return;
     }
-    if (links[role]) {
+    if (links[scope]) {
       setState('ready');
       return;
     }
-    void mint(role);
-    // Mint once per (game, role) — `links` is read, not a trigger.
+    void mint(scope);
+    // Mint once per (game, scope) — `links` is read, not a trigger.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gameId, role, mint]);
+  }, [gameId, scope, mint]);
 
   useEffect(() => {
     const url = current?.url || '';
@@ -175,9 +178,11 @@ export function ShareConsoleLink({ gameId, sport }: { gameId: string; sport?: st
     }
   };
 
-  const roleLabel = (r: ConsoleRole) =>
+  // `full` is never offered here (it is the frozen original link) — every
+  // label below names one of consoleScopesForSport's answers.
+  const roleLabel = (r: ConsoleScope) =>
     r === 'shot' && def?.key === 'football' ? t('rolePlay') : t(`role.${r}`);
-  const roleHint = (r: ConsoleRole) =>
+  const roleHint = (r: ConsoleScope) =>
     r === 'shot' && def?.key === 'football' ? t('hintPlay') : t(`hint.${r}`);
 
   return (
@@ -192,13 +197,13 @@ export function ShareConsoleLink({ gameId, sport }: { gameId: string; sport?: st
             key={r}
             type="button"
             role="radio"
-            aria-checked={role === r}
+            aria-checked={scope === r}
             onClick={() => {
-              setRole(r);
+              setScope(r);
               setCopied(false);
             }}
             className={`flex min-h-[44px] flex-col items-start justify-center rounded-lg border px-2.5 py-1.5 text-left transition-colors ${
-              role === r
+              scope === r
                 ? 'border-indigo-500 bg-indigo-50 text-indigo-800'
                 : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
             }`}
@@ -218,7 +223,7 @@ export function ShareConsoleLink({ gameId, sport }: { gameId: string; sport?: st
           <span className="text-[12px] font-semibold text-red-600">{t('error')}</span>
           <button
             type="button"
-            onClick={() => void mint(role)}
+            onClick={() => void mint(scope)}
             className="ml-2 min-h-[36px] max-md:min-h-[44px] rounded-md bg-slate-100 px-2 py-1 text-[12px] font-bold text-slate-700 hover:bg-slate-200"
           >
             {t('retry')}
@@ -231,7 +236,7 @@ export function ShareConsoleLink({ gameId, sport }: { gameId: string; sport?: st
           <span className="text-[12px] font-semibold text-emerald-700">{t('revokedAll')}</span>
           <button
             type="button"
-            onClick={() => void mint(role)}
+            onClick={() => void mint(scope)}
             className="ml-2 min-h-[36px] max-md:min-h-[44px] rounded-md bg-indigo-50 px-2 py-1 text-[12px] font-bold text-indigo-700 hover:bg-indigo-100"
           >
             {t('createNew')}
@@ -241,7 +246,7 @@ export function ShareConsoleLink({ gameId, sport }: { gameId: string; sport?: st
 
       {state === 'ready' && current && (
         <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50/60 p-2.5">
-          {current.granted !== role && (
+          {current.granted !== scope && (
             <p className="mb-2 text-[11px] font-semibold text-amber-800" role="status">
               {t('roleNotApplied')}
             </p>
@@ -251,7 +256,7 @@ export function ShareConsoleLink({ gameId, sport }: { gameId: string; sport?: st
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={qr}
-                alt={t('qrAlt', { role: roleLabel(role) })}
+                alt={t('qrAlt', { role: roleLabel(scope) })}
                 className="h-[72px] w-[72px] shrink-0 rounded-md bg-white"
               />
             ) : (

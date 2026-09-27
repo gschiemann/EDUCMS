@@ -3258,7 +3258,8 @@
       "scorer": "Enlace de anotador: marcador, tiempos muertos y estadísticas",
       "timer": "Enlace de cronometrador: reloj del partido y periodos",
       "shot": "Enlace del reloj de posesión: solo ese reloj",
-      "legacy": "Enlace de anotador: controles limitados"
+      "legacy": "Enlace de anotador: controles limitados",
+      "presentation": "Enlace de celebraciones: solo las celebraciones"
     },
     "rolePlay": "Enlace del reloj de jugada: solo ese reloj",
     "chipLive": "EN VIVO",
@@ -3356,14 +3357,16 @@
       "table": "Mesa completa",
       "scorer": "Anotador",
       "timer": "Cronometrador",
-      "shot": "Reloj de posesión"
+      "shot": "Reloj de posesión",
+      "presentation": "Celebraciones"
     },
     "rolePlay": "Reloj de jugada",
     "hint": {
       "table": "Marcador, relojes, estadísticas, sanciones",
       "scorer": "Marcador, tiempos muertos, estadísticas",
       "timer": "Reloj del partido y periodos",
-      "shot": "Solo el reloj de posesión"
+      "shot": "Solo el reloj de posesión",
+      "presentation": "Solo las celebraciones"
     },
     "hintPlay": "Solo el reloj de jugada",
     "creating": "Creando enlace…",

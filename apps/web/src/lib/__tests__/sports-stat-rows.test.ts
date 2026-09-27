@@ -92,9 +92,13 @@ describe('shotClockResets — the game’s own length, not the sport default', (
       short: 14,
     });
   });
-  it('before the clock is armed, the sport default', () => {
+  it('before the clock is armed (never configured), the sport default', () => {
     expect(shotClockResets(sport('basketball'), {})).toEqual({ full: 24, short: 14 });
-    expect(shotClockResets(sport('water_polo'), { shotClock: { len: 0 } })).toEqual({ full: 30, short: 20 });
+    expect(shotClockResets(sport('water_polo'), {})).toEqual({ full: 30, short: 20 });
+  });
+  it('a shot clock the table switched OFF has no reset buttons (K12-F05: OFF is a kept state)', () => {
+    expect(shotClockResets(sport('water_polo'), { shotClock: { len: 0, ms: 0, off: true } })).toBeNull();
+    expect(shotClockResets(sport('basketball'), { shotClock: { len: 0 } })).toBeNull();
   });
   it('no short button when the short reset is not shorter; null for a sport with no shot clock', () => {
     expect(shotClockResets(sport('basketball'), { shotClock: { len: 14 } })).toEqual({ full: 14, short: null });

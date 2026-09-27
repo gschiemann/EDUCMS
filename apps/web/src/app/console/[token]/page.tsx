@@ -5,18 +5,20 @@
  * rebuilt for the K-12 launch program, register row K12-F16).
  *
  * A student/volunteer opens /console/<token> from a link or QR the operator
- * minted in the game console and gets the controls THEIR ROLE allows — no
- * tenant account. The limits are enforced SERVER-side: every tap hits the
- * public SportsConsoleController, whose allowlist + game-scoped HMAC token
- * (versioned, always expiring, with the role inside the MAC) is the security
- * boundary; this page is the friendly face and renders from the capability
+ * minted in the game console and gets the controls THEIR LINK'S SCOPE allows
+ * — no tenant account. The limits are enforced SERVER-side: every tap hits
+ * the public SportsConsoleController, whose allowlist + game-scoped HMAC
+ * token (versioned, always expiring, with the scope inside the MAC — one
+ * permission model, @cms/api-types sports-console-scopes.ts) is the security
+ * boundary; this page is the friendly face and renders from the `allows`
  * list the server's /session answers with.
  *
- *   Scorer's table  — everything a volunteer can do
- *   Scorekeeper     — score, timeouts, team stats, possession, penalties, cues
- *   Clock operator  — game clock, period, timeouts
- *   Shot / play clock operator — that clock only
- *   (pre-role link) — the original five controls
+ *   table         — everything a volunteer can do
+ *   scorer        — score, timeouts, team stats, possession, penalties, cues
+ *   timer         — game clock, period, timeouts
+ *   shot          — the shot clock / play clock only
+ *   presentation  — celebrations only
+ *   full          — (a link minted before scopes) the original five controls
  *
  * CONNECTION TRUTH (lib/console-pad-link). The audit found this pad still
  * showing a red "LIVE" after 11 seconds of failed board reads, with no
@@ -45,13 +47,13 @@ import { useTranslations } from 'next-intl';
 import { API_URL } from '@/lib/api-url';
 import { startBoardPoll } from '@/lib/board-poll';
 import {
-  CONSOLE_CAPABILITIES,
-  consoleCapabilities,
+  CONSOLE_ACTIONS,
+  consoleAllows,
   findSport,
   formatScore,
-  isConsoleRole,
-  type ConsoleCapability,
-  type ConsoleRole,
+  isConsoleScope,
+  type ConsoleAction,
+  type ConsoleScope,
 } from '@cms/api-types';
 import {
   consoleTokenGameId,
@@ -119,8 +121,8 @@ const FAILURE_KEY: Record<PadFailure, string> = {
 };
 
 interface Access {
-  role: ConsoleRole | null;
-  capabilities: ConsoleCapability[];
+  scope: ConsoleScope;
+  allows: ConsoleAction[];
 }
 
 function num(v: unknown, fallback: number): number {
@@ -189,16 +191,16 @@ export default function ScorekeeperPadPage() {
         }
         const j = (await res.json().catch(() => ({}))) as Record<string, unknown>;
         if (!alive) return;
-        const role = isConsoleRole(j.role) ? j.role : null;
-        // An API from before role links sends no capability list: fall back
-        // to the pre-role allowlist for this sport (the server re-checks
-        // every tap either way).
-        const caps = Array.isArray(j.capabilities)
-          ? (j.capabilities as unknown[]).filter((c): c is ConsoleCapability =>
-              (CONSOLE_CAPABILITIES as readonly string[]).indexOf(String(c)) !== -1,
+        // The link's scope and what it may do in THIS sport — display only;
+        // the server re-checks every tap against the same table. An answer
+        // without a scope is a link minted before scopes: `full`.
+        const scope: ConsoleScope = isConsoleScope(j.scope) ? j.scope : 'full';
+        const allows = Array.isArray(j.allows)
+          ? (j.allows as unknown[]).filter((c): c is ConsoleAction =>
+              (CONSOLE_ACTIONS as readonly string[]).indexOf(String(c)) !== -1,
             )
-          : consoleCapabilities(null, findSport(typeof j.sport === 'string' ? j.sport : ''));
-        setAccess({ role, capabilities: caps });
+          : consoleAllows(scope, findSport(typeof j.sport === 'string' ? j.sport : ''));
+        setAccess({ scope, allows });
         setSession('ok');
       })
       .catch(() => {
@@ -443,7 +445,7 @@ export default function ScorekeeperPadPage() {
     );
   }
 
-  const caps = new Set(access.capabilities);
+  const caps = new Set<ConsoleAction>(access.allows);
   const final = data.status === 'FINAL';
   const controlsOn = padControlsEnabled(link) && !final;
   const disabled = !controlsOn || pending !== null;
@@ -453,11 +455,12 @@ export default function ScorekeeperPadPage() {
   const hasClock = !!def && def.clock.type !== 'none';
   const chip = padChip(link, data.status);
   const since = padSecondsSinceGood(link, nowMs);
-  const roleKey = access.role
-    ? access.role === 'shot' && def?.key === 'football'
-      ? 'rolePlay'
-      : `role.${access.role}`
-    : 'role.legacy';
+  const roleKey =
+    access.scope === 'full'
+      ? 'role.legacy'
+      : access.scope === 'shot' && def?.key === 'football'
+        ? 'rolePlay'
+        : `role.${access.scope}`;
   const shotSc = def?.shotClock ? readSubClock(data.stats.shotClock) : null;
   const playSc = def?.key === 'football' ? readSubClock(data.stats.playClock) : null;
 
@@ -631,8 +634,8 @@ export default function ScorekeeperPadPage() {
       {caps.has('shotClock') && def && (
         <PadShotClockSection def={def} stats={data.stats} skewMs={skewMs} nowMs={projectAt} disabled={disabled} send={send} />
       )}
-      {caps.has('playClock') && (
-        <PadPlayClockSection stats={data.stats} skewMs={skewMs} nowMs={projectAt} disabled={disabled} send={send} />
+      {caps.has('playClock') && def && (
+        <PadPlayClockSection def={def} stats={data.stats} skewMs={skewMs} nowMs={projectAt} disabled={disabled} send={send} />
       )}
       {caps.has('segment') && <PadSegmentSection segName={segName} disabled={disabled} send={send} />}
       {def && (caps.has('stats') || caps.has('timeout')) && (

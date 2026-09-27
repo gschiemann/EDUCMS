@@ -4,7 +4,6 @@
  */
 import {
   consoleTokenGameId,
-  consoleTokenRole,
   readSubClock,
   projectSubClockMs,
   fmtSubClockSec,
@@ -38,21 +37,16 @@ describe('consoleTokenGameId — client-side shape parse', () => {
   });
 });
 
-describe('role links (K12-F16) — the 6-part shape', () => {
-  it('parses the gameId and role from a role link', () => {
-    const tok = `${GAME}.0.1754000000.86400.timer.${MAC}`;
-    expect(consoleTokenGameId(tok)).toBe(GAME);
-    expect(consoleTokenRole(tok)).toBe('timer');
+describe('link scopes (K12-F34 + K12-F16) — never in the token text', () => {
+  it('a scoped link has the same five-part shape as every other link', () => {
+    // The scope is bound into the MAC server-side; the text never names it.
+    expect(consoleTokenGameId(`${GAME}.0.1754000000.86400.${MAC}`)).toBe(GAME);
   });
 
-  it('a pre-role link has role null', () => {
-    expect(consoleTokenRole(`${GAME}.0.1754000000.86400.${MAC}`)).toBeNull();
-  });
-
-  it('an unknown role word is not token-shaped', () => {
-    const tok = `${GAME}.0.1754000000.86400.admin.${MAC}`;
-    expect(consoleTokenGameId(tok)).toBeNull();
-    expect(consoleTokenRole(tok)).toBeNull();
+  it('a token that names a scope or role as text (the retired 6-part prototype) is not console-shaped', () => {
+    for (const word of ['table', 'timer', 'scorer', 'admin']) {
+      expect(consoleTokenGameId(`${GAME}.0.1754000000.86400.${word}.${MAC}`)).toBeNull();
+    }
     expect(consoleTokenGameId(`${GAME}.0.1754000000.86400.timer.extra.${MAC}`)).toBeNull();
   });
 });

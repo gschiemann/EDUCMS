@@ -4,14 +4,14 @@
  * The volunteer scorekeeper pad's sections (K12-F16). Presentational: the
  * page owns the connection state and the single-flight command sender, and
  * passes `send` + `disabled` down. Every section renders only when the link's
- * server-issued capabilities include it, and every control is ≥ 44 px.
+ * server-issued `allows` include it, and every control is ≥ 44 px.
  *
  * Dark, solid backgrounds (mobile performance standard — no blur).
  */
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import type { ConsoleStatRule, SportDefinition } from '@cms/api-types';
-import { consoleStatRules, PLAY_CLOCK_RESETS_SEC } from '@cms/api-types';
+import { consolePlayClockResets, consoleStatRules } from '@cms/api-types';
 import { Stepper, TeamStatGrid } from '@/components/sports/StatControls';
 import {
   baseballCountPatch,
@@ -288,12 +288,14 @@ export function PadShotClockSection({
 }
 
 export function PadPlayClockSection({
+  def,
   stats,
   skewMs,
   nowMs,
   disabled,
   send,
 }: {
+  def: SportDefinition;
   stats: Record<string, unknown>;
   skewMs: number;
   nowMs: number;
@@ -311,7 +313,7 @@ export function PadPlayClockSection({
           {pc && pc.at ? fmtSubClockSec(ms) : '40'}
         </div>
         <div className="grid flex-1 grid-cols-2 gap-2">
-          {PLAY_CLOCK_RESETS_SEC.map((sec) => (
+          {consolePlayClockResets(def).map((sec) => (
             <button
               key={sec}
               type="button"
