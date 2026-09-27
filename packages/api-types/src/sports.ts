@@ -157,6 +157,15 @@ export interface SportDefinition {
     segmentMs?: number;
     segmentMsOptions?: { label: string; ms: number }[];
     otSegmentMs?: number;
+    /** K12-F17 — the sport's scoreboards show seconds + tenths in the final
+     *  minute of a countdown (basketball, hockey, water polo). Every surface
+     *  formats through `formatSportClock` (sports-clock.ts), so this one flag
+     *  decides it everywhere. Omitted = MM:SS to the end. */
+    tenths?: boolean;
+    /** Overtime periods are played with no game clock (NFHS football: the
+     *  possession-based tiebreaker). The clock is zeroed and stays off past
+     *  the regulation segment count — see `isUntimedSegment`. */
+    untimedOvertime?: boolean;
   };
   /** the period structure — "Quarter" × 4, "Inning" × 7, "Set" × 5 …
    *  `countOptions` — when present, the operator picks the regulation
@@ -524,7 +533,9 @@ const FOOTBALL: SportDefinition = {
   name: 'Football',
   emoji: '🏈',
   mode: 'HEAD_TO_HEAD',
-  clock: { type: 'countdown', segmentMs: 12 * 60_000 },
+  // NFHS overtime is untimed (possession-based): the game clock is zeroed
+  // and stays off for every OT period (K12-F08 / F06 — see isUntimedSegment).
+  clock: { type: 'countdown', segmentMs: 12 * 60_000, untimedOvertime: true },
   segment: { name: 'Quarter', count: 4, overtime: true },
   score: { unit: 'points', increments: [1, 2, 3, 6] },
   // T2-10: timeouts reset at halftime (after Q2). Fouls and shot clock N/A.
@@ -565,7 +576,9 @@ const BASKETBALL: SportDefinition = {
   name: 'Basketball',
   emoji: '🏀',
   mode: 'HEAD_TO_HEAD',
-  clock: { type: 'countdown', segmentMs: 8 * 60_000 },
+  // Tenths in the final minute of every period (K12-F17): the table corrects
+  // to 0.3 s and the board shows 4.3, never 0:05.
+  clock: { type: 'countdown', segmentMs: 8 * 60_000, tenths: true },
   segment: { name: 'Quarter', count: 4, overtime: true },
   score: { unit: 'points', increments: [1, 2, 3] },
   // 24s pro / 30s college; 14s offensive-rebound short reset. HS varies
@@ -777,7 +790,8 @@ const HOCKEY: SportDefinition = {
   name: 'Hockey',
   emoji: '🏒',
   mode: 'HEAD_TO_HEAD',
-  clock: { type: 'countdown', segmentMs: 17 * 60_000 },
+  // Tenths in the final minute (K12-F17).
+  clock: { type: 'countdown', segmentMs: 17 * 60_000, tenths: true },
   segment: { name: 'Period', count: 3, overtime: true },
   score: { unit: 'goals', increments: [1] },
   // T2-10: hockey doesn't have a shot clock by default, but if one is
@@ -905,6 +919,8 @@ const WATER_POLO: SportDefinition = {
     type: 'countdown',
     segmentMs: 8 * 60_000,
     otSegmentMs: 3 * 60_000,
+    // Tenths in the final minute (K12-F17).
+    tenths: true,
     segmentMsOptions: [
       { label: '8:00 — NCAA / World Aquatics', ms: 8 * 60_000 },
       { label: '7:00 — NFHS high school', ms: 7 * 60_000 },

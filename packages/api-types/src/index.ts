@@ -986,6 +986,9 @@ export * from './emergency-enablement';
 export * from './mfa-enforcement';
 // VenueOS Sports — Sprint 13. Sport Engine: SportDefinition + flagship sports.
 export * from './sports';
+// K-12 launch lane A2 (2026-09-27) — THE clock contract: projection from a
+// server time, expiry/hold, tenths display, exact-time entry, shot-clock mode.
+export * from './sports-clock';
 export * from './streaming';
 export * from './streaming-presets';
 export * from './billing';
