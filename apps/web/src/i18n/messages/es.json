@@ -2984,6 +2984,23 @@
       "announcements": "Anuncios",
       "itemAnnouncement": "anuncio",
       "announcementText": "Anuncio"
+    },
+    "privacy": {
+      "title": "Qué muestran las pantallas públicas sobre los jugadores",
+      "help": "Los marcadores, las cintas y los tableros de alineación son públicos. Muestre solo los nombres y fotos de estudiantes que permita la política de información de directorio de su distrito y respete cada exclusión solicitada por las familias.",
+      "ferpaLink": "Nuestros compromisos de FERPA",
+      "names": "Nombres",
+      "namesFull": "Nombre completo",
+      "namesLast": "Solo apellido",
+      "namesHidden": "Ocultos",
+      "numbers": "Números de camiseta",
+      "photos": "Fotos",
+      "positions": "Posiciones",
+      "stats": "Estadísticas",
+      "everything": "Se muestra todo lo de la lista",
+      "restricted": "Las pantallas públicas muestran menos que la lista",
+      "saving": "Guardando",
+      "error": "No se pudo guardar; inténtelo de nuevo"
     }
   },
   "posBind": {

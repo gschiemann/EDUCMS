@@ -21,6 +21,7 @@ import { AssetPicker } from '@/components/assets/AssetPicker';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { apiFetch } from '@/lib/api-client';
 import { isFeatureEnabled, FLAGS } from '@/lib/feature-flags';
+import { RosterPrivacyCard } from './RosterPrivacyCard';
 
 type Editing =
   | { mode: 'add'; team: 'home' | 'away' }
@@ -142,6 +143,9 @@ export function RosterPanel({
         One player per row.
       </p>
       {csvMsg && <p className="text-xs text-slate-500 mb-3">{csvMsg}</p>}
+
+      {/* K-12 launch audit F38 — what the PUBLIC board shows about players. */}
+      <RosterPrivacyCard gameId={gameId} />
 
       <div className="grid md:grid-cols-2 gap-4">
         <TeamColumn

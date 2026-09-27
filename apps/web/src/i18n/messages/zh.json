@@ -2984,6 +2984,23 @@
       "announcements": "公告",
       "itemAnnouncement": "条公告",
       "announcementText": "公告"
+    },
+    "privacy": {
+      "title": "公共屏幕显示哪些球员信息",
+      "help": "记分牌、条幅和首发阵容板都是公开的。只显示您所在学区的名录信息政策允许的学生姓名和照片，并尊重每个家庭的退出选择。",
+      "ferpaLink": "我们的 FERPA 承诺",
+      "names": "姓名",
+      "namesFull": "全名",
+      "namesLast": "仅显示姓",
+      "namesHidden": "隐藏",
+      "numbers": "球衣号码",
+      "photos": "照片",
+      "positions": "位置",
+      "stats": "数据",
+      "everything": "显示名单中的全部信息",
+      "restricted": "公共屏幕显示的信息少于名单",
+      "saving": "正在保存",
+      "error": "无法保存——请重试"
     }
   },
   "posBind": {

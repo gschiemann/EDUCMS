@@ -7,6 +7,8 @@ import { ClockAdvanceService } from './clock-advance.service';
 import { GameScheduleService } from './game-schedule.service';
 import { SponsorsController } from './sponsors.controller';
 import { SponsorsService } from './sponsors.service';
+import { SportsRosterPrivacyController } from './sports-roster-privacy.controller';
+import { SportsRosterPrivacyService } from './sports-roster-privacy.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
 
 /**
@@ -19,7 +21,20 @@ import { WebsocketSignerService } from '../security/websocket-signer.service';
  * Forgetting this crashes Nest at bootstrap before "API listening".
  */
 @Module({
-  controllers: [SportsController, SportsBoardController, SportsConsoleController, SponsorsController],
-  providers: [SportsService, ClockAdvanceService, GameScheduleService, SponsorsService, WebsocketSignerService],
+  controllers: [
+    SportsController,
+    SportsBoardController,
+    SportsConsoleController,
+    SponsorsController,
+    SportsRosterPrivacyController,
+  ],
+  providers: [
+    SportsService,
+    ClockAdvanceService,
+    GameScheduleService,
+    SponsorsService,
+    WebsocketSignerService,
+    SportsRosterPrivacyService,
+  ],
 })
 export class SportsModule {}

@@ -85,6 +85,7 @@ import {
   requestHash,
   resolveCommandContext,
 } from './game-command';
+import { ROSTER_PRIVACY_EVENT, parseRosterPrivacy, redactCuePayload, redactPublicRoster } from './roster-privacy';
 
 /**
  * VenueOS Sports — Sprint 13. The game engine service.
@@ -1487,10 +1488,10 @@ export class SportsService {
     };
 
     const [
-      cues, sponsors, roster, ribbonMessages, ribbonPresets,
+      cues, sponsors, rosterRaw, ribbonMessages, ribbonPresets,
       ribbonSpeed, ribbonSlides, ribbonScoreRepeat,
       scoreboardTemplate, ribbonTemplate, scorebugTemplate,
-      latestLiveOverlayEvent, latestSceneEvent,
+      latestLiveOverlayEvent, latestSceneEvent, latestRosterPrivacyEvent,
     ] = await Promise.all([
       this.prisma.client.gameEvent.findMany({
         where: { gameId: id, type: 'CUE', createdAt: { gte: since } },
@@ -1541,7 +1542,18 @@ export class SportsService {
         orderBy: { createdAt: 'desc' },
         select: { id: true, payload: true, createdAt: true },
       }),
+      // K-12 launch audit F38: the school's public roster visibility,
+      // latest-wins (see ./roster-privacy.ts).
+      this.prisma.client.gameEvent.findFirst({
+        where: { gameId: id, type: ROSTER_PRIVACY_EVENT },
+        orderBy: { createdAt: 'desc' },
+        select: { payload: true },
+      }),
     ]);
+    // Applied HERE, inside the cached build, so the payload, its ETag and the
+    // stat leaders computed from `roster` below all see the redacted roster.
+    const rosterPrivacy = parseRosterPrivacy(latestRosterPrivacyEvent?.payload);
+    const roster = redactPublicRoster(rosterRaw, rosterPrivacy);
 
     // T3-3 Show Control: resolve the latest SCENE with a SERVER-AUTHORITATIVE
     // expiry — the board never even sees an expired scene, so it auto-reverts
@@ -1586,7 +1598,7 @@ export class SportsService {
       stats: mirrorPossessionIntoStats(game.stats, game.possession),
       spotlight: game.spotlight,
       cues: cues.map((c) => {
-        const p = (c.payload as Record<string, unknown>) ?? {};
+        const p = redactCuePayload((c.payload as Record<string, unknown>) ?? {}, rosterPrivacy);
         return {
           id: c.id,
           ...p,
