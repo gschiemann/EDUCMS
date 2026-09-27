@@ -139,7 +139,11 @@ function setup() {
     const ids: string[] | undefined = where?.id?.in;
     return template.rows.filter((r) => (ids ? ids.includes(r.id) : true));
   };
-  const client: any = { game, gameEvent, screen, sponsor, rosterPlayer, customCue, auditLog, template };
+  // K12-F10/F09: command receipts (undo always claims one, as `undo:<eventId>`).
+  // This legacy double does not model the unique key; replay and single-use
+  // undo are proven in sports-command-replay.spec.ts / sports-undo.spec.ts.
+  const gameCommand = makeTable();
+  const client: any = { game, gameEvent, screen, sponsor, rosterPlayer, customCue, auditLog, template, gameCommand };
   // S1-5 (2026-07-02 sports deep-pass audit, P2-EndSetMacro): real
   // rollback-simulating `$transaction`, needed to prove
   // `endSegmentAtomic`'s "all four effects, one tx, failure atomicity"
@@ -153,7 +157,7 @@ function setup() {
   // exercise a failure path); this fake additionally restores state on
   // throw because S1-5's atomicity claim is specifically what's under
   // test here.
-  const TX_TABLES = [game, gameEvent, screen, sponsor, rosterPlayer, customCue, auditLog, template];
+  const TX_TABLES = [game, gameEvent, screen, sponsor, rosterPlayer, customCue, auditLog, template, gameCommand];
   client.$transaction = async (fn: (tx: unknown) => unknown) => {
     const snapshot = TX_TABLES.map((t) => JSON.parse(JSON.stringify(t.rows)));
     try {

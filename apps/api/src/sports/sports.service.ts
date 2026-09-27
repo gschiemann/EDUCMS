@@ -73,6 +73,7 @@ import {
   boundedForAudit,
   diffState,
   feedActor,
+  planUndo,
   requestHash,
   resolveCommandContext,
 } from './game-command';
@@ -3666,7 +3667,7 @@ export class SportsService {
       const stats = this.penaltiesPatch(scope.before, action, dto);
       const updated = await scope.write({ stats });
       const list = stats.penalties as unknown[];
-      await scope.event('PENALTY', { action, count: list.length });
+      await scope.event('PENALTY', { action, count: list.length, change: scope.change() });
       return updated;
     });
   }
@@ -6936,52 +6937,79 @@ export class SportsService {
   // ── Undo rail ─────────────────────────────────────────────────
 
   /**
+   * Event types whose primary event records its command's whole state change
+   * and can therefore be undone as a unit (K12-F09). CUE (already aired),
+   * STATUS (a status transition fires its own cinematics; a FINAL is changed
+   * through reopenGame), INGEST and the ribbon/config types are not.
+   */
+  private static readonly UNDOABLE_EVENT_TYPES: ReadonlySet<string> = new Set([
+    'SCORE', 'CLOCK', 'SEGMENT', 'STAT', 'TIMEOUT', 'POSSESSION', 'PENALTY',
+  ]);
+
+  /**
+   * Why an event cannot be undone, or null when it can. One rule set for the
+   * rail's `undoable` flag and for undoEvent's refusal, so the button the
+   * operator sees and the server's answer can never disagree.
+   */
+  private undoRefusal(
+    ev: { type: string; payload: unknown },
+  ): { code: 'system' | 'undo' | 'type' | 'derived' | 'feed' | 'legacy'; reason: string } | null {
+    const p = (ev.payload as Record<string, unknown>) ?? {};
+    if (p.auto) return { code: 'system', reason: 'System auto-advance events cannot be undone' };
+    if (p.undoOf) return { code: 'undo', reason: 'Undo events cannot themselves be undone' };
+    if (ev.type === 'CUE') {
+      return { code: 'type', reason: 'Cue events cannot be undone (cinematic already aired)' };
+    }
+    if (!SportsService.UNDOABLE_EVENT_TYPES.has(ev.type)) {
+      return { code: 'type', reason: `Event type "${ev.type}" is not undoable` };
+    }
+    if (p.derived) {
+      return { code: 'derived', reason: 'Part of a larger action — undo that action instead' };
+    }
+    if (p.source === 'cts' || p.team === 'cts') {
+      return { code: 'feed', reason: 'Set by the scoreboard feed — correct it at the console' };
+    }
+    const change = p.change as { before?: unknown; after?: unknown } | undefined;
+    if (!change || typeof change.before !== 'object' || typeof change.after !== 'object' || !change.before || !change.after) {
+      return { code: 'legacy', reason: 'Recorded before the undo record existed (pre-2026-09-26)' };
+    }
+    return null;
+  }
+
+  /**
    * Return the most-recent N game events in reverse-chronological
    * order — consumed by the operator's RecentEventsRail component.
-   * Non-undoable types (CUE, PENALTY, INGEST, AUTO_CELEBRATE,
-   * RIBBON, RIBBON_PRESETS, RIBBON_SPEED, RIBBON_SLIDES,
-   * RIBBON_SCORE, STATUS) are included in the log but marked
-   * `undoable: false` so the UI can dim the row.
+   * Every event is listed; `undoable` says whether the rail may offer Undo
+   * (see undoRefusal), and an event already undone is marked `undone`.
    */
   async getEvents(tenantId: string, gameId: string, limit = 25) {
     await this.owned(tenantId, gameId);
     const raw = await this.prisma.client.gameEvent.findMany({
       where: { gameId },
       // Deterministic order for the undo rail. createdAt alone is NOT enough:
-      // several events fired in the same millisecond (a SCORE + its auto CLOCK,
-      // a rapid tap) tie on createdAt, and the DB is then free to return them
-      // in arbitrary order — so events[0] ("most recent", what one-tap undo
-      // acts on) could be the wrong one between requests. The id tiebreak makes
-      // the sequence stable. (GameEvent.id is a random uuid, so this isn't
-      // chronological within a tie — but same-ms events are effectively
-      // simultaneous; what matters is that the order is DETERMINISTIC.)
+      // several events of one command can share a millisecond, and the DB is
+      // then free to return them in arbitrary order — so events[0] ("most
+      // recent", what one-tap undo acts on) could change between requests.
+      // The id tiebreak makes the sequence stable.
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: Math.min(50, Math.max(1, limit)),
     });
-    const UNDOABLE_TYPES = new Set(['SCORE', 'CLOCK', 'SEGMENT', 'STAT']);
-    const NON_UNDOABLE_TYPES = new Set([
-      'CUE', 'PENALTY', 'INGEST', 'AUTO_CELEBRATE',
-      'RIBBON', 'RIBBON_PRESETS', 'RIBBON_SPEED', 'RIBBON_SLIDES',
-      'RIBBON_SCORE', 'STATUS',
-    ]);
+    // An undo is always newer than what it undid, so any undone event in this
+    // window has its UNDO_* event in the window too.
+    const undone = new Set(
+      raw
+        .map((ev) => (ev.payload as Record<string, unknown> | null)?.undoOf)
+        .filter((id): id is string => typeof id === 'string'),
+    );
     return raw.map((ev) => {
       const payload = (ev.payload as Record<string, unknown>) ?? {};
-      const isUndo = Boolean(payload.undoOf);
-      const undoable =
-        UNDOABLE_TYPES.has(ev.type) &&
-        !payload.auto &&           // auto-advance system events are non-undoable
-        !isUndo;                   // undos themselves are non-undoable
-      let nonUndoableReason: string | undefined;
-      if (!undoable) {
-        if (payload.auto) nonUndoableReason = 'system';
-        else if (isUndo) nonUndoableReason = 'undo';
-        else if (NON_UNDOABLE_TYPES.has(ev.type)) nonUndoableReason = 'type';
-      }
+      const refusal = this.undoRefusal(ev);
+      const nonUndoableReason = refusal?.code ?? (undone.has(ev.id) ? 'undone' : undefined);
       return {
         id: ev.id,
         type: ev.type,
         payload,
-        undoable,
+        undoable: nonUndoableReason === undefined,
         nonUndoableReason,
         createdAt: ev.createdAt,
       };
@@ -6989,123 +7017,70 @@ export class SportsService {
   }
 
   /**
-   * Synthesize the inverse of a GameEvent and apply it via the
-   * same existing PATCH paths — so the undo is itself auditable
-   * and applies all the same validation / board-cache invalidation.
+   * Undo ONE command — K12-F09: the single-use inverse of the whole action.
    *
-   * Returns 422 BUG_NOT_UNDOABLE for:
-   *   - CUE events (cinematic already aired)
-   *   - system auto-advance events
-   *   - events that are themselves undos
-   *   - unknown types
+   * THE BUGS this closes. The old rail synthesised an inverse from a couple
+   * of `prev*` fields and re-ran the forward methods: a retried undo
+   * subtracted the points again (K12-07); undoing a −1 clamped at zero
+   * AWARDED a point (K12-08); an absolute correction had no before-snapshot
+   * (K12-09); undoing a clock start left it running (K12-12); undoing a pause
+   * added the elapsed time back (K12-13); undoing a period advance left the
+   * fouls it cleared at zero (K12-16); undoing a set-winning point left the
+   * set credited and the next set on the board (K12-06).
+   *
+   * NOW: every command's primary event records the before/after of every
+   * field it changed (`change`), and the undo restores exactly that
+   * (game-command.ts planUndo), as one command:
+   *   - SINGLE-USE: it is claimed under the deterministic command id
+   *     `undo:<eventId>` — a retried, double-tapped or concurrent undo of the
+   *     same event is answered from that receipt and changes nothing;
+   *   - EXACT when nothing it touched has changed since; clocks are re-anchored
+   *     now (undoing a start gives the elapsed time back, undoing a pause
+   *     resumes as if it never happened);
+   *   - score-only commands undo by DELTA when later scoring moved the same
+   *     columns (what the command actually applied — nothing, for a clamped −1);
+   *   - otherwise 409 UNDO_CONFLICT naming the fields a later action changed,
+   *     rather than overwrite that later action.
+   * Refusals (422 BUG_NOT_UNDOABLE) follow undoRefusal — the same rules the
+   * rail's `undoable` flag shows.
    */
-  async undoEvent(tenantId: string, gameId: string, eventId: string) {
-    await this.owned(tenantId, gameId);
-    const ev = await this.prisma.client.gameEvent.findFirst({
-      where: { id: eventId, gameId },
-    });
-    if (!ev) throw new NotFoundException('Event not found');
-
-    const payload = (ev.payload as Record<string, unknown>) ?? {};
-
-    // Guard: auto-advance, undo-of-undo, or non-undoable types.
-    if (payload.auto) {
-      throw new UnprocessableEntityException({
-        code: 'BUG_NOT_UNDOABLE',
-        reason: 'System auto-advance events cannot be undone',
-      });
-    }
-    if (payload.undoOf) {
-      throw new UnprocessableEntityException({
-        code: 'BUG_NOT_UNDOABLE',
-        reason: 'Undo events cannot themselves be undone',
-      });
-    }
-    if (ev.type === 'CUE') {
-      throw new UnprocessableEntityException({
-        code: 'BUG_NOT_UNDOABLE',
-        reason: 'Cue events cannot be undone (cinematic already aired)',
-      });
-    }
-
-    switch (ev.type) {
-      case 'SCORE': {
-        const team = String(payload.team || 'home');
-        const delta = Number(payload.delta);
-        if (team === 'set' || !Number.isFinite(delta)) {
-          // setScore events: restore via prev snapshots if captured.
-          const prevHome = Number(payload.prevHomeScore);
-          const prevAway = Number(payload.prevAwayScore);
-          if (!Number.isFinite(prevHome) || !Number.isFinite(prevAway)) {
-            throw new UnprocessableEntityException({
-              code: 'BUG_NOT_UNDOABLE',
-              reason: 'Score event lacks prev-state for undo (pre-dates undo rail)',
-            });
-          }
-          await this.setScore(tenantId, gameId, { homeScore: prevHome, awayScore: prevAway });
-        } else {
-          await this.adjustScore(tenantId, gameId, { team, delta: -delta });
-        }
-        break;
+  async undoEvent(tenantId: string, gameId: string, eventId: string, actor?: CommandInput) {
+    if (typeof eventId !== 'string' || !eventId) throw new NotFoundException('Event not found');
+    const base = resolveCommandContext(actor);
+    const ctx: CommandInput = { actor: base.actor, commandId: `undo:${eventId}` };
+    return this.runGameCommand(tenantId, gameId, 'event.undo', ctx, { eventId }, async (scope) => {
+      const ev = await scope.tx.gameEvent.findFirst({ where: { id: eventId, gameId } });
+      if (!ev) throw new NotFoundException('Event not found');
+      const refusal = this.undoRefusal(ev);
+      if (refusal) {
+        throw new UnprocessableEntityException({ code: 'BUG_NOT_UNDOABLE', reason: refusal.reason });
       }
-      case 'CLOCK': {
-        const prevClockMs = Number(payload.prevClockMs);
-        const prevClockRunning = Boolean(payload.prevClockRunning);
-        if (!Number.isFinite(prevClockMs)) {
-          throw new UnprocessableEntityException({
-            code: 'BUG_NOT_UNDOABLE',
-            reason: 'Clock event lacks prev-state for undo (pre-dates undo rail)',
-          });
-        }
-        // Re-anchor clock to the prev snapshot.
-        await this.clockAction(tenantId, gameId, { action: 'set', ms: prevClockMs });
-        if (prevClockRunning) {
-          await this.clockAction(tenantId, gameId, { action: 'start' });
-        }
-        break;
-      }
-      case 'SEGMENT': {
-        const prevSegment = Number(payload.prevSegment);
-        const prevClockMsVal = Number(payload.prevClockMs);
-        if (!Number.isFinite(prevSegment) || !Number.isFinite(prevClockMsVal)) {
-          throw new UnprocessableEntityException({
-            code: 'BUG_NOT_UNDOABLE',
-            reason: 'Segment event lacks prev-state for undo (pre-dates undo rail)',
-          });
-        }
-        // Restore segment (which resets clock to segment-start), then
-        // explicitly set the clock back to the captured prev value.
-        await this.setSegment(tenantId, gameId, { segment: prevSegment });
-        await this.clockAction(tenantId, gameId, { action: 'set', ms: prevClockMsVal });
-        break;
-      }
-      case 'STAT': {
-        const oldValues = payload.oldValues as Record<string, unknown> | undefined;
-        if (!oldValues || typeof oldValues !== 'object') {
-          throw new UnprocessableEntityException({
-            code: 'BUG_NOT_UNDOABLE',
-            reason: 'Stat event lacks oldValues for undo (pre-dates undo rail)',
-          });
-        }
-        await this.updateStats(tenantId, gameId, {
-          stats: oldValues as Record<string, unknown>,
+      const payload = (ev.payload as Record<string, unknown>) ?? {};
+      const change = payload.change as StateChange;
+      const def = this.sportOf(scope.before.sport);
+      const plan = planUndo(change, scope.before, { clock: def.clock.type, now: new Date() });
+      if (!plan.ok) {
+        throw new ConflictException({
+          code: 'UNDO_CONFLICT',
+          message: 'Something changed since that action. Undo the newer actions first.',
+          fields: plan.conflicts,
         });
-        break;
       }
-      default:
-        throw new UnprocessableEntityException({
-          code: 'BUG_NOT_UNDOABLE',
-          reason: `Event type "${ev.type}" is not undoable`,
-        });
-    }
-
-    // Record the inverse as a new GameEvent with undoOf reference so the
-    // undo itself appears in the rail (and is auditable).
-    await this.record(gameId, `UNDO_${ev.type}`, {
-      undoOf: eventId,
-      originalType: ev.type,
+      if (Object.keys(plan.data).length > 0) await scope.write(plan.data);
+      const undoChange = scope.change();
+      await scope.event(`UNDO_${ev.type}`, {
+        undoOf: eventId,
+        originalType: ev.type,
+        mode: plan.mode,
+        change: undoChange,
+      });
+      scope.audit('SPORTS_EVENT_UNDONE', {
+        eventId,
+        originalType: ev.type,
+        mode: plan.mode,
+        change: undoChange,
+      });
+      return { ok: true, undoOf: eventId, originalType: ev.type };
     });
-
-    return { ok: true, undoOf: eventId, originalType: ev.type };
   }
 }

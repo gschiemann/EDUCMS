@@ -1378,6 +1378,8 @@ export class SportsController {
     @Param('id') id: string,
     @Param('eventId') eventId: string,
   ) {
-    return this.sports.undoEvent(req.user.tenantId, id, eventId);
+    // K12-F09: the undo is claimed once, server-side, under `undo:<eventId>`.
+    const { ctx } = userCommand(req, {});
+    return this.sports.undoEvent(req.user.tenantId, id, eventId, ctx);
   }
 }

@@ -65,7 +65,7 @@ describe('K12 launch acceptance — the 21 audit probes', () => {
   });
 
   // Owner: A1 (F09).
-  it.failing('K12-06 undo winning volleyball point restores the previous set and scores', async () => {
+  it('K12-06 undo winning volleyball point restores the previous set and scores', async () => {
     const { service, gameEvent } = setup(); const g: any = await newGame(service, 'volleyball');
     await service.setScore(TENANT, g.id, { homeScore: 24, awayScore: 23 });
     await service.adjustScore(TENANT, g.id, { team: 'home', delta: 1 });
@@ -76,7 +76,7 @@ describe('K12 launch acceptance — the 21 audit probes', () => {
   });
 
   // Owner: A1 (F09).
-  it.failing('K12-07 retrying undo cannot subtract the same points twice', async () => {
+  it('K12-07 retrying undo cannot subtract the same points twice', async () => {
     const { service, gameEvent } = setup(); const g: any = await newGame(service, 'basketball');
     await service.setScore(TENANT, g.id, { homeScore: 10 });
     await service.adjustScore(TENANT, g.id, { team: 'home', delta: 2 });
@@ -87,7 +87,7 @@ describe('K12 launch acceptance — the 21 audit probes', () => {
   });
 
   // Owner: A1 (F09).
-  it.failing('K12-08 undo of a clamped decrement at zero must not award a point', async () => {
+  it('K12-08 undo of a clamped decrement at zero must not award a point', async () => {
     const { service, gameEvent } = setup(); const g: any = await newGame(service, 'basketball');
     await service.adjustScore(TENANT, g.id, { team: 'home', delta: -1 });
     const ev = gameEvent.rows.filter((e: any) => e.type === 'SCORE').pop();
@@ -124,7 +124,7 @@ describe('K12 launch acceptance — the 21 audit probes', () => {
   });
 
   // Owner: A1 (F09).
-  it.failing('K12-12 undo start returns clock to its previously paused state', async () => {
+  it('K12-12 undo start returns clock to its previously paused state', async () => {
     const { service, gameEvent } = setup(); const g: any = await newGame(service, 'basketball');
     await service.clockAction(TENANT, g.id, { action: 'start' });
     const ev = gameEvent.rows.filter((e: any) => e.type === 'CLOCK' && e.payload.action === 'start').pop();
@@ -133,7 +133,7 @@ describe('K12 launch acceptance — the 21 audit probes', () => {
   });
 
   // Owner: A1 (F09).
-  it.failing('K12-13 undo pause restores the live reading rather than adding elapsed time back', async () => {
+  it('K12-13 undo pause restores the live reading rather than adding elapsed time back', async () => {
     jest.useFakeTimers(); jest.setSystemTime(new Date('2026-09-23T12:00:00Z'));
     const { service, gameEvent } = setup(); const g: any = await newGame(service, 'basketball');
     await service.clockAction(TENANT, g.id, { action: 'start' });
@@ -164,7 +164,7 @@ describe('K12 launch acceptance — the 21 audit probes', () => {
   });
 
   // Owner: A1 (F09).
-  it.failing('K12-16 period undo restores the team-foul values that advancing cleared', async () => {
+  it('K12-16 period undo restores the team-foul values that advancing cleared', async () => {
     const { service, gameEvent } = setup(); const g: any = await newGame(service, 'basketball');
     await service.updateStats(TENANT, g.id, { stats: { homeFouls: 4 } });
     await service.setSegment(TENANT, g.id, { segment: 2 });
