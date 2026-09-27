@@ -118,6 +118,19 @@ export default function WidgetLabClient() {
     );
   }
 
+  // ?cfg=<JSON> — merge a config over the variant's defaults (the values an
+  // operator would have typed), and ?surface=player — render as a REAL screen
+  // (RenderSurface 'player': no builder SAMPLE content). Added 2026-09-27 for
+  // the K-12 launch audit's per-variant "edit → publish" visual checks.
+  let extra: Record<string, unknown> = {};
+  try {
+    const raw = params.get('cfg');
+    if (raw) extra = JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return <div data-lab-state="bad-cfg">cfg is not JSON</div>;
+  }
+  const surface = params.get('surface') === 'player' ? 'player' : undefined;
+
   return (
     <div data-lab-state="ready" style={{ margin: 0, background: '#000' }}>
       <div
@@ -126,10 +139,11 @@ export default function WidgetLabClient() {
       >
         <WidgetPreview
           widgetType={String(v.widgetType)}
-          config={bareType ? {} : { ...(v.defaultConfig || {}), variant: v.id }}
+          config={bareType ? extra : { ...(v.defaultConfig || {}), ...extra, variant: v.id }}
           width={100}
           height={100}
           live={live}
+          renderSurface={surface}
         />
       </div>
     </div>

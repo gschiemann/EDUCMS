@@ -58,6 +58,7 @@ import type { BaseCfg, WidgetProps } from './_shared/types';
 import { sceneCss } from '../scene-css';
 import { useGameState, fmtClock, type GameSnapshot } from '../sports/GameStateContext';
 import { useRenderSurface } from '../render-surface';
+import { FitOneLine } from '../sports/FitOneLine';
 import {
   DEMO_AWAY, DEMO_CLOCK, DEMO_COMPARE, DEMO_HOME, DEMO_HOME_GAMES, DEMO_LINEUP,
   DEMO_OOT, DEMO_PERIOD, DEMO_STANDINGS, DEMO_STANDS, DEMO_STATLINE, DEMO_TICKER_SEGMENTS,
@@ -226,13 +227,16 @@ function useGameView(c: ScoreboardishCfg): GameView {
 }
 
 /** Builder-only stamp: the content on this tile is a sample. Never on a real screen. */
-function SampleStamp({ height, show }: { height: number; show: boolean }) {
+function SampleStamp({ height, show, corner = 'br' }: { height: number; show: boolean; corner?: 'br' | 'tr' }) {
   if (!show) return null;
+  const at: React.CSSProperties = corner === 'tr'
+    ? { top: px(height, 0.012), right: px(height, 0.025) }
+    : { bottom: px(height, 0.02), right: px(height, 0.025) };
   return (
     <div
       data-venue-sample=""
       style={{
-        position: 'absolute', bottom: px(height, 0.02), right: px(height, 0.025), zIndex: 20,
+        position: 'absolute', ...at, zIndex: 20,
         background: 'rgba(0,0,0,0.62)', color: '#facc15', fontWeight: 800,
         fontSize: Math.max(10, px(height, 0.026)), letterSpacing: '0.2em',
         padding: `${px(height, 0.006)}px ${px(height, 0.014)}px`, borderRadius: px(height, 0.008),
@@ -247,7 +251,7 @@ function SampleStamp({ height, show }: { height: number; show: boolean }) {
 /** A team badge: the logo when there is one, else the short code on a chip. */
 function TeamMark({ team, size, radius }: { team: VenueTeamView; size: number; radius: number }) {
   return (
-    <div style={{ width: size, height: size, borderRadius: radius, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: team.color, fontWeight: 800, fontSize: Math.round(size * 0.44), overflow: 'hidden', flexShrink: 0 }}>
+    <div style={{ width: size, height: size, borderRadius: radius, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: team.color, fontWeight: 800, fontSize: Math.round(size * (team.code.length > 2 ? 0.36 : 0.44)), overflow: 'hidden', flexShrink: 0 }}>
       {team.logoUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={team.logoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
@@ -366,7 +370,7 @@ export function StadiumScoreboardWidget({ config, height = 480 }: WidgetProps<St
           </div>
         )}
       </div>
-      <SampleStamp height={height} show={gv.demo || sponsorDemo} />
+      <SampleStamp height={height} show={gv.demo || sponsorDemo} corner="tr" />
     </div>
   );
 }
@@ -403,9 +407,9 @@ export function RibbonTickerWidget({ config, live = true, height = 480 }: Widget
     <div style={frameStyle(r)}>
       <style>{sceneCss(`@keyframes svRibbonMarquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }`)}</style>
       <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', alignItems: 'stretch', overflow: 'hidden' }}>
-        <div style={{ width: px(height, 1.5), background: gv.home.color, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'space-around', flexShrink: 0 }}>
-          <span data-field-jump="home.code" style={{ fontWeight: 800, fontSize: px(height, 0.5), letterSpacing: '-0.04em', lineHeight: 1, marginRight: px(height, 0.0625) }}>{gv.home.code}</span>
-          <span style={{ fontWeight: 800, fontSize: px(height, 0.7083), letterSpacing: '-0.04em', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{gv.home.score}</span>
+        <div style={{ width: px(height, 2.4), background: gv.home.color, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'space-around', flexShrink: 0 }}>
+          <span data-field-jump="home.code" style={{ fontWeight: 800, fontSize: px(height, 0.42), letterSpacing: '-0.02em', lineHeight: 1, marginRight: px(height, 0.0625) }}>{gv.home.code}</span>
+          <span style={{ fontWeight: 800, fontSize: px(height, 0.66), letterSpacing: '-0.04em', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{gv.home.score}</span>
         </div>
         <div data-field-jump="segments" style={{ flex: 1, background: '#000', overflow: 'hidden', position: 'relative', display: 'flex', alignItems: 'center' }}>
           {segments.length > 0 && (
@@ -420,9 +424,9 @@ export function RibbonTickerWidget({ config, live = true, height = 480 }: Widget
           {gv.clock && <span style={{ fontWeight: 800, fontSize: px(height, 0.5), letterSpacing: '-0.04em', lineHeight: 1, marginRight: px(height, 0.0833), fontVariantNumeric: 'tabular-nums' }}>{gv.clock}</span>}
           <span style={{ color: '#fff', fontWeight: 800, fontSize: px(height, 0.3542), opacity: 0.55, whiteSpace: 'nowrap' }}>{gv.period}</span>
         </div>
-        <div style={{ width: px(height, 1.5), background: gv.away.color, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'space-around', flexShrink: 0 }}>
-          <span style={{ fontWeight: 800, fontSize: px(height, 0.7083), letterSpacing: '-0.04em', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{gv.away.score}</span>
-          <span data-field-jump="away.code" style={{ fontWeight: 800, fontSize: px(height, 0.5), letterSpacing: '-0.04em', lineHeight: 1 }}>{gv.away.code}</span>
+        <div style={{ width: px(height, 2.4), background: gv.away.color, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'space-around', flexShrink: 0 }}>
+          <span style={{ fontWeight: 800, fontSize: px(height, 0.66), letterSpacing: '-0.04em', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{gv.away.score}</span>
+          <span data-field-jump="away.code" style={{ fontWeight: 800, fontSize: px(height, 0.42), letterSpacing: '-0.02em', lineHeight: 1 }}>{gv.away.code}</span>
         </div>
       </div>
       <SampleStamp height={height} show={gv.demo || (isBuilder && typed.length === 0)} />
@@ -457,22 +461,26 @@ export function RibbonSponsorWidget({ config, height = 480 }: WidgetProps<Ribbon
   return (
     <div style={frameStyle(r)}>
       <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: `0 ${px(height, 0.125)}px`, color: r.font.color, boxSizing: 'border-box' }}>
-        <div style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', minWidth: 0, width: '48%' }}>
           {(c.logoUrl || markText) && (
-            <div style={{ width: px(height, 0.7083), height: px(height, 0.7083), background: '#fff', borderRadius: px(height, 0.05), display: 'flex', alignItems: 'center', justifyContent: 'center', color: bg, fontWeight: 800, fontSize: px(height, 0.2917), marginRight: px(height, 0.1667), overflow: 'hidden', flexShrink: 0 }}>
+            <div style={{ width: px(height, 0.7083), height: px(height, 0.7083), background: '#fff', borderRadius: px(height, 0.05), display: 'flex', alignItems: 'center', justifyContent: 'center', color: bg, fontWeight: 800, fontSize: px(height, markText.length > 2 ? 0.24 : 0.2917), marginRight: px(height, 0.1667), overflow: 'hidden', flexShrink: 0 }}>
               {c.logoUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={c.logoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
               ) : markText}
             </div>
           )}
-          <div style={{ minWidth: 0 }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
             {sponsor && <div data-field="partnerLabel" style={{ fontWeight: 800, fontSize: px(height, 0.1667), letterSpacing: '0.04em', opacity: 0.7 }}>{partner}</div>}
-            <div data-field="sponsor" style={{ fontWeight: 800, fontSize: px(height, 0.625), letterSpacing: '-0.04em', lineHeight: 1, whiteSpace: 'nowrap' }}>{sponsor}</div>
+            <div data-field="sponsor" style={{ height: px(height, 0.64), width: '100%' }}>
+              <FitOneLine maxFontPx={px(height, 0.625)} align="left" style={{ fontWeight: 800, letterSpacing: '-0.04em' }}>{sponsor}</FitOneLine>
+            </div>
           </div>
         </div>
-        <div style={{ textAlign: 'right', minWidth: 0 }}>
-          <div data-field="tagline" style={{ fontWeight: 800, fontSize: px(height, 0.5), letterSpacing: '-0.04em', lineHeight: 1, whiteSpace: 'nowrap' }}>{tagline}</div>
+        <div style={{ textAlign: 'right', minWidth: 0, width: '48%' }}>
+          <div data-field="tagline" style={{ height: px(height, 0.52), width: '100%' }}>
+            <FitOneLine maxFontPx={px(height, 0.5)} align="right" style={{ fontWeight: 800, letterSpacing: '-0.04em' }}>{tagline}</FitOneLine>
+          </div>
           <div data-field="cta" style={{ fontWeight: 700, fontSize: px(height, 0.125), opacity: 0.8, marginTop: px(height, 0.0292) }}>{cta}</div>
         </div>
       </div>
@@ -1051,8 +1059,10 @@ export function SponsorTakeoverWidget({ config, height = 480 }: WidgetProps<Spon
               ) : mark}
             </div>
           )}
-          <div style={{ minWidth: 0 }}>
-            <div data-field="sponsor" style={{ fontWeight: 800, fontSize: px(height, 0.2222), letterSpacing: '-0.04em', lineHeight: 0.95 }}>{sponsor}</div>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div data-field="sponsor" style={{ height: px(height, 0.24), width: '100%' }}>
+              <FitOneLine maxFontPx={px(height, 0.2222)} align="left" style={{ fontWeight: 800, letterSpacing: '-0.04em' }}>{sponsor}</FitOneLine>
+            </div>
             <div data-field="tagline" style={{ fontWeight: 700, fontSize: px(height, 0.0556), opacity: 0.85, marginTop: px(height, 0.0167) }}>{tagline}</div>
           </div>
         </div>
@@ -1293,7 +1303,9 @@ export function GateWayfindingWidget({ config, height = 480 }: WidgetProps<GateW
       <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: px(height, 0.0208), color: r.font.color, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', boxSizing: 'border-box' }}>
         <div>
           {section && <div data-field="sectionLabel" style={{ color: r.accent.primary, fontWeight: 800, fontSize: px(height, 0.0109), letterSpacing: '0.12em' }}>{ownCopy(c.sectionLabel) ?? 'YOUR SECTION'}</div>}
-          <div data-field="section" style={{ fontWeight: 800, fontSize: px(height, 0.0885), lineHeight: 0.9, letterSpacing: '-0.04em' }}>{section}</div>
+          <div data-field="section" style={{ height: px(height, 0.092), width: '100%' }}>
+            <FitOneLine maxFontPx={px(height, 0.0885)} align="left" style={{ fontWeight: 800, letterSpacing: '-0.04em' }}>{section}</FitOneLine>
+          </div>
         </div>
         <div style={{ background: '#11161e', border: `2px solid ${r.accent.primary}`, borderRadius: px(height, 0.00625), padding: px(height, 0.0156), textAlign: 'center', visibility: gate ? 'visible' : 'hidden' }}>
           <div data-field="gateLabel" style={{ color: r.accent.primary, fontWeight: 800, fontSize: px(height, 0.0109), letterSpacing: '0.12em', marginBottom: px(height, 0.0052) }}>{ownCopy(c.gateLabel) ?? 'USE GATE'}</div>
