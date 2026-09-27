@@ -3122,6 +3122,8 @@
     "screenClaimConflict": "另一个控制台刚刚在 {screens} 上显示了另一场比赛。屏幕列表已刷新，请先检查后再试。",
     "statsRollupPending": "正在更新赛季统计…",
     "statsRollupFailed": "赛季统计尚未更新，系统将自动重试。",
-    "playClockOff": "进攻计时器已关闭：本节剩余时间少于计时读数。重置后即可重新启动。"
+    "playClockOff": "进攻计时器已关闭：本节剩余时间少于计时读数。重置后即可重新启动。",
+    "periodOver": "{period} 已结束。在您进入下一节之前，计时器会停在这里。",
+    "periodOverNext": "下一节"
   }
 }

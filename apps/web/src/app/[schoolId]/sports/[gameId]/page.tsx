@@ -80,7 +80,15 @@ import {
 // Inputs-wave SCHED — client-boundary kickoff conversion (zone-less
 // datetime-local → ISO with timezone) + the auto-push preview math.
 import { datetimeLocalToIso, autoPushMoment } from '../scheduled-at';
-import { findSport, formatScore, parseScoreInput, PLAYER_STATS, sanitizeResults, shotClockMode } from '@cms/api-types';
+import {
+  findSport,
+  formatScore,
+  isPeriodClockOver,
+  parseScoreInput,
+  PLAYER_STATS,
+  sanitizeResults,
+  shotClockMode,
+} from '@cms/api-types';
 import type { SportDefinition, MeetResult, ResultEntry as ApiResultEntry } from '@cms/api-types';
 import { computeCtsStatus, type CtsStatus } from '@/lib/cts-merge';
 import QRCode from 'qrcode';
@@ -2247,6 +2255,47 @@ function MobileScoreDock({
   );
 }
 
+/**
+ * K12-F08 — the period's clock ran out and the game is HOLDING at the end of
+ * the period (the server no longer rolls it into the next one). Say so, on
+ * every screen width, and offer the one-tap advance the table now owns. At
+ * the last regulation period (or in overtime) there is no button: whether it
+ * is overtime or the final is the table's call, made with the existing
+ * controls.
+ */
+function PeriodOverBanner({
+  g,
+  def,
+  segLabel,
+  ctl,
+}: {
+  g: any;
+  def: SportDefinition;
+  segLabel: string;
+  ctl: ReturnType<typeof useGameControl>;
+}) {
+  const tConsole = useTranslations('sportsConsole');
+  if (!isPeriodClockOver(def, g)) return null;
+  const canAdvance = Number(g.segment) < def.segment.count;
+  return (
+    <div
+      role="status"
+      className="max-w-6xl mx-auto mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-600 bg-amber-950 px-3 py-2"
+    >
+      <p className="text-sm font-bold text-amber-100">{tConsole('periodOver', { period: segLabel })}</p>
+      {canAdvance && (
+        <button
+          type="button"
+          onClick={() => ctl.segment.mutate({ delta: 1 })}
+          className="min-h-[44px] px-4 rounded-lg bg-amber-400 hover:bg-amber-300 active:bg-amber-500 text-slate-950 font-black text-sm"
+        >
+          {tConsole('periodOverNext')}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function RunInteractiveScoreboard({
   g,
   def,
@@ -2282,6 +2331,7 @@ function RunInteractiveScoreboard({
     (def.key === 'basketball' || def.key === 'football');
   return (
     <div className="bg-black px-3 py-4 border-b-2 border-slate-800">
+      <PeriodOverBanner g={g} def={def} segLabel={segLabel} ctl={ctl} />
       {/* Phone: the full operable tiles below don't fit 3-across, so they're
           desktop-only and the operator GLANCES this compact mirror up top +
           ACTS from the thumb dock pinned at the bottom. (2026-06-21 mobile) */}

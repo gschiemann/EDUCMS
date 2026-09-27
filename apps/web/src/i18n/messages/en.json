@@ -3122,6 +3122,8 @@
     "screenClaimConflict": "Another console just put a different game on {screens}. The screen list is refreshed, so check it before you try again.",
     "statsRollupPending": "Updating season stats…",
     "statsRollupFailed": "Season stats haven't updated yet. Retrying automatically.",
-    "playClockOff": "Play clock off: there is less time left in the quarter than the count. Reset it to start it again."
+    "playClockOff": "Play clock off: there is less time left in the quarter than the count. Reset it to start it again.",
+    "periodOver": "{period} is over. The clock stays here until you move to the next period.",
+    "periodOverNext": "Next period"
   }
 }

@@ -8,6 +8,7 @@
  *   - simultaneous score taps never lose an update (K12-F12)
  *   - one command id sent twice at once applies once (K12-F10)
  *   - two claims on one free screen: exactly one wins (K12-F35 / K12-24)
+ *   - two replicas sweeping one expired clock: one hold, one horn (K12-F08)
  *   - two appliers of one season roll-up: applied once (K12-F39)
  *   - two games rolling up the same athlete at once: nothing lost (K12-F39)
  * Where a race needs both sides to READ before either WRITES, a barrier
@@ -212,6 +213,42 @@ pgDescribe('K12 acceptance on real Postgres', () => {
         },
       }),
     ).toBe(1);
+  });
+
+  it('K12-F08: two replicas sweep one expired clock at the same moment — one hold, one horn', async () => {
+    const g = await newGame();
+    await prisma.game.update({
+      where: { id: g.id },
+      data: {
+        status: 'LIVE',
+        clockMs: 1_000,
+        clockRunning: true,
+        clockUpdatedAt: new Date(Date.now() - 5_000),
+      },
+    });
+    // Two replicas (or one that lost Redis and with it the leader lease):
+    // both commands read the running clock before either writes.
+    const client = racing(prisma, 'game', 'findFirst', barrier(2));
+    const [a, b] = await Promise.all([
+      makeService(client).autoAdvanceExpiredClocks(),
+      makeService(client).autoAdvanceExpiredClocks(),
+    ]);
+    expect(a.changed + b.changed).toBe(1);
+    const row = await prisma.game.findUnique({ where: { id: g.id } });
+    expect({ segment: row!.segment, clockMs: row!.clockMs, running: row!.clockRunning }).toEqual({
+      segment: 1,
+      clockMs: 0,
+      running: false,
+    });
+    const events = await prisma.gameEvent.findMany({ where: { gameId: g.id } });
+    const horns = events.filter(
+      (e) => e.type === 'CUE' && (e.payload as Record<string, unknown>).key === 'horn',
+    );
+    const expiries = events.filter(
+      (e) => e.type === 'CLOCK' && (e.payload as Record<string, unknown>).action === 'expired',
+    );
+    expect(horns).toHaveLength(1);
+    expect(expiries).toHaveLength(1);
   });
 
   /** A FINAL game whose roster credits `personId` with `pts` points, and its queued roll-up. */

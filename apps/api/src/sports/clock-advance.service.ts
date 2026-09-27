@@ -4,14 +4,15 @@ import { consumeClockSweepWake } from './clock-wake';
 import { LEASE, LeaderLeaseService, leadThisTick } from '../realtime/leader-lease.service';
 
 /**
- * VenueOS Sports — automatic game-clock advance.
+ * VenueOS Sports — game-clock expiry.
  *
- * A running game clock that hits 0:00 (countdown) or reaches the
- * segment length (count-up) should roll the scoreboard to the next
- * quarter / period on its own — the operator shouldn't have to babysit
- * it. The server never ticks the clock (it stores an anchor), so a
- * lightweight 1s sweep checks every LIVE game with a running clock and
- * advances the expired ones via SportsService.autoAdvanceExpiredClocks.
+ * A running game clock that hits 0:00 (countdown) or reaches the segment
+ * length plus added time (count-up) must STOP there, in the same period,
+ * with one horn — the period then holds for the table, which advances it
+ * (K12-F08; it used to roll straight into the next quarter). The server
+ * never ticks the clock (it stores an anchor), so a lightweight 1s sweep
+ * checks every LIVE game with a running clock and holds the expired ones
+ * via SportsService.autoAdvanceExpiredClocks.
  *
  * Isolated + best-effort: the query is tiny (only LIVE, clock-running
  * games), it has an overlap guard, and any failure is caught and
@@ -32,7 +33,8 @@ export class ClockAdvanceService implements OnModuleInit, OnModuleDestroy {
   // idle fleet. A clock-start mutation calls wakeClockSweep() to restore the
   // 1s cadence immediately; every other path self-corrects within one idle
   // window — segment lengths are minutes, so a ≤30s late first-detection
-  // cannot miss an expiry that matters.
+  // cannot miss an expiry that matters (and since K12-F08 a late detection
+  // costs nothing: every clock is stopped at the instant the period ended).
   private idleTicksLeft = 0;
   private static readonly IDLE_SWEEP_EVERY_TICKS = 30;
 
@@ -72,11 +74,13 @@ export class ClockAdvanceService implements OnModuleInit, OnModuleDestroy {
 
   private async tick() {
     if (this.running) return; // overlap guard
-    // Leader-leased (2026-09-02 multi-replica wave): autoAdvanceExpiredClocks
-    // is a read-then-write on the game row with no compare-and-swap, and on
-    // every expiry it records a HORN cue. Two replicas ticking the same
-    // second means the horn fires twice in the building and the event log
-    // shows two expiries for one clock. Note the wake signal (clock-wake.ts)
+    // Leader-leased (2026-09-02 multi-replica wave) so one replica does the
+    // sweeping. Correctness no longer rests on the lease: since K12-F08 every
+    // expiry is a compare-and-swap command that re-checks the FRESH row, so
+    // two replicas (or a replica that lost Redis and assumed leadership)
+    // sweeping the same second still produce one hold and one horn — see
+    // sports-clock-lifecycle.spec.ts and k12-launch-acceptance.pg.spec.ts.
+    // The lease just saves the duplicate work. Note the wake signal (clock-wake.ts)
     // is process-local, so a start-clock mutation that lands on a FOLLOWER
     // cannot shorten the leader's idle window — worst case is the ≤30 s
     // first-detection delay the idle-skip comment above already accepts, and
@@ -95,7 +99,7 @@ export class ClockAdvanceService implements OnModuleInit, OnModuleDestroy {
       const { found, changed } = await this.sports.autoAdvanceExpiredClocks();
       this.idleTicksLeft = found === 0 ? ClockAdvanceService.IDLE_SWEEP_EVERY_TICKS - 1 : 0;
       if (changed > 0) {
-        this.logger.log(`auto-advanced ${changed} expired game clock(s)`);
+        this.logger.log(`held ${changed} expired game clock(s) at the end of their period`);
       }
     } catch (e: any) {
       this.logger.warn(`clock auto-advance failed: ${e?.message ?? e}`);

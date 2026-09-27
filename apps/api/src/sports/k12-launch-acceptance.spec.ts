@@ -145,7 +145,7 @@ describe('K12 launch acceptance — the 21 audit probes', () => {
   });
 
   // Owner: A2 (F08) — hold 0:00 in the current period until the table advances.
-  it.failing('K12-14 period expiry holds zero and current quarter until the operator advances', async () => {
+  it('K12-14 period expiry holds zero and current quarter until the operator advances', async () => {
     const { service } = setup(); const g: any = await newGame(service, 'basketball');
     g.status = 'LIVE'; g.clockMs = 0; g.clockRunning = true; g.clockUpdatedAt = new Date();
     await service.autoAdvanceExpiredClocks();

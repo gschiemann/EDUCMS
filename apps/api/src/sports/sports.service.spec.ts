@@ -1331,7 +1331,11 @@ describe('SportsService — legacy EndSetMacro double-credit guard (task #289, 2
   });
 });
 
-describe('SportsService — soccer added-time auto-advance (config+api P1)', () => {
+// K12-F08 (2026-09-27) — these cases asserted that an expired half ROLLED
+// into the next one (segment 2). That was the defect: the period now HOLDS at
+// its end reading until the table advances it. The added-time threshold they
+// pin is unchanged; what happens at the threshold is now a hold.
+describe('SportsService — soccer added-time expiry (config+api P1 / K12-F08 hold)', () => {
   // Helper: stand a soccer game up LIVE with a running count-up clock
   // reading `liveMs`, with `addedTime` minutes configured.
   function liveSoccer(game: any, liveMs: number, addedTime: number) {
@@ -1343,7 +1347,7 @@ describe('SportsService — soccer added-time auto-advance (config+api P1)', () 
     row.stats = { addedTime };
   }
 
-  it('auto-advances the half once regulation passes when no added time is set', async () => {
+  it('holds the half at the end of regulation when no added time is set', async () => {
     const { service, game } = setup();
     const g = await newGame(service, 'soccer'); // 40-min halves
     liveSoccer(game, 40 * 60_000 + 1_000, 0);
@@ -1351,7 +1355,8 @@ describe('SportsService — soccer added-time auto-advance (config+api P1)', () 
     const { found, changed } = await service.autoAdvanceExpiredClocks();
     expect(found).toBe(1);
     expect(changed).toBe(1);
-    expect(game.rows[0].segment).toBe(2);
+    expect(game.rows[0].segment).toBe(1);
+    expect(game.rows[0].clockRunning).toBe(false);
   });
 
   it('does NOT auto-advance during added time (clock runs past regulation)', async () => {
@@ -1365,14 +1370,15 @@ describe('SportsService — soccer added-time auto-advance (config+api P1)', () 
     expect(game.rows[0].segment).toBe(1); // still in the first half
   });
 
-  it('auto-advances once added time has also elapsed', async () => {
+  it('holds once added time has also elapsed', async () => {
     const { service, game } = setup();
     await newGame(service, 'soccer');
     // Past regulation + past the 2 minutes of added time.
     liveSoccer(game, 40 * 60_000 + 2 * 60_000 + 1_000, 2);
     const { changed } = await service.autoAdvanceExpiredClocks();
     expect(changed).toBe(1);
-    expect(game.rows[0].segment).toBe(2);
+    expect(game.rows[0].segment).toBe(1);
+    expect(game.rows[0].clockRunning).toBe(false);
   });
 });
 

@@ -383,3 +383,137 @@ describe('K12-F07 — timeouts, halftime and the final stop every clock at one r
     expect(g.stats.shotClock).toBeUndefined();
   });
 });
+
+describe('K12-F08 — an expired period holds until the table advances it', () => {
+  const horns = (rows: any[]) => rows.filter((e) => e.type === 'CUE' && e.payload?.key === 'horn');
+
+  async function liveBasketball(h = setup()) {
+    const g: any = await newGame(h.service, 'basketball');
+    await h.service.setStatus(TENANT, g.id, { status: 'LIVE' });
+    return { ...h, g };
+  }
+
+  it('0:00 holds in the same quarter with its fouls; one horn; the table advances it', async () => {
+    const { service, gameEvent, g } = await liveBasketball();
+    await service.updateStats(TENANT, g.id, { stats: { homeFouls: 4 } });
+    await service.clockAction(TENANT, g.id, { action: 'set', ms: 3_000 });
+    await service.clockAction(TENANT, g.id, { action: 'start' });
+    at(4_000);
+    expect(await service.autoAdvanceExpiredClocks()).toEqual({ found: 1, changed: 1 });
+    expect({ segment: g.segment, clock: g.clockMs, running: g.clockRunning, fouls: g.stats.homeFouls })
+      .toEqual({ segment: 1, clock: 0, running: false, fouls: 4 });
+    expect(horns(gameEvent.rows)).toHaveLength(1);
+    expect(horns(gameEvent.rows)[0].payload.segmentLabel).toBe('Q1');
+    const expired = gameEvent.rows.filter((e: any) => e.type === 'CLOCK' && e.payload.action === 'expired');
+    expect(expired).toHaveLength(1);
+    expect(expired[0].payload).toMatchObject({ auto: true, segment: 1, clockMs: 0 });
+
+    // Later sweeps see a stopped clock: nothing more happens.
+    at(60_000);
+    expect(await service.autoAdvanceExpiredClocks()).toEqual({ found: 0, changed: 0 });
+    expect(horns(gameEvent.rows)).toHaveLength(1);
+
+    await service.setSegment(TENANT, g.id, { segment: 2 });
+    expect({ segment: g.segment, clock: g.clockMs }).toEqual({ segment: 2, clock: 8 * 60_000 });
+  });
+
+  it('every clock stops at the instant the period ended, not at the late sweep tick', async () => {
+    const { service } = setup();
+    const g: any = await newGame(service, 'hockey');
+    await service.setStatus(TENANT, g.id, { status: 'LIVE' });
+    await service.clockAction(TENANT, g.id, { action: 'set', ms: 5_000 });
+    await service.clockAction(TENANT, g.id, { action: 'start' });
+    await service.setPenalties(TENANT, g.id, { action: 'add', team: 'home', lenSec: 120, player: '9' });
+    // The period ends at +5 s; the sweep only runs at +8 s (a lease failover).
+    at(8_000);
+    await service.autoAdvanceExpiredClocks();
+    expect({ clock: g.clockMs, running: g.clockRunning }).toEqual({ clock: 0, running: false });
+    expect(new Date(g.clockUpdatedAt).getTime()).toBe(T0 + 5_000);
+    // The player served 5 s of the minor, not 8 — 1:55 carries into P2.
+    expect(g.stats.penalties[0]).toMatchObject({ ms: 115_000, running: false });
+  });
+
+  it('a count-up half holds at its length plus added time, exactly', async () => {
+    const { service } = setup();
+    const g: any = await newGame(service, 'soccer');
+    await service.setStatus(TENANT, g.id, { status: 'LIVE' });
+    await service.updateStats(TENANT, g.id, { stats: { addedTime: 2 } });
+    await service.clockAction(TENANT, g.id, { action: 'set', ms: 41 * 60_000 });
+    await service.clockAction(TENANT, g.id, { action: 'start' });
+    at(61_000 + 900);
+    await service.autoAdvanceExpiredClocks();
+    expect({ segment: g.segment, clock: g.clockMs, running: g.clockRunning })
+      .toEqual({ segment: 1, clock: 42 * 60_000, running: false });
+  });
+
+  it('a correction the table makes after the hold stands, in the same period, with no second horn', async () => {
+    const { service, gameEvent, g } = await liveBasketball();
+    await service.clockAction(TENANT, g.id, { action: 'set', ms: 1_000 });
+    await service.clockAction(TENANT, g.id, { action: 'start' });
+    at(1_500);
+    await service.autoAdvanceExpiredClocks();
+    // The officials put 0.3 s back on the clock.
+    await service.clockAction(TENANT, g.id, { action: 'set', ms: 300 });
+    expect({ segment: g.segment, clock: g.clockMs, running: g.clockRunning })
+      .toEqual({ segment: 1, clock: 300, running: false });
+    at(20_000);
+    await service.autoAdvanceExpiredClocks();
+    expect(horns(gameEvent.rows)).toHaveLength(1);
+  });
+
+  it('two replicas sweeping the same expiry at once produce one stop and one horn', async () => {
+    const { service, gameEvent, game, g } = await liveBasketball();
+    await service.clockAction(TENANT, g.id, { action: 'set', ms: 2_000 });
+    await service.clockAction(TENANT, g.id, { action: 'start' });
+    at(3_000);
+    // Both replicas' commands read the running clock before either writes
+    // (a real second replica, or one that kept sweeping after losing Redis
+    // and with it the leader lease).
+    const liveFindFirst = game.findFirst;
+    let reads = 0;
+    let bothRead!: () => void;
+    const barrier = new Promise<void>((r) => (bothRead = r));
+    game.findFirst = async (args: any) => {
+      const row = await liveFindFirst(args);
+      if (row && row.clockRunning && ++reads === 2) bothRead();
+      if (row && row.clockRunning && reads <= 2) await barrier;
+      return row ? { ...row } : row;
+    };
+    const [a, b] = await Promise.all([service.autoAdvanceExpiredClocks(), service.autoAdvanceExpiredClocks()]);
+    game.findFirst = liveFindFirst;
+    expect(reads).toBeGreaterThanOrEqual(2); // both really read the running clock
+    expect(a.changed + b.changed).toBe(1);
+    expect(horns(gameEvent.rows)).toHaveLength(1);
+    expect(gameEvent.rows.filter((e: any) => e.type === 'CLOCK' && e.payload.action === 'expired')).toHaveLength(1);
+    expect({ segment: g.segment, clock: g.clockMs, running: g.clockRunning })
+      .toEqual({ segment: 1, clock: 0, running: false });
+  });
+
+  it('a clock that has run out does not start again; an untimed period has no clock to start', async () => {
+    const { service, g } = await liveBasketball();
+    await service.clockAction(TENANT, g.id, { action: 'set', ms: 0 });
+    const err = await rejection(service.clockAction(TENANT, g.id, { action: 'start' }));
+    expect(err.getResponse()).toMatchObject({ code: 'CLOCK_EXPIRED' });
+    expect(g.clockRunning).toBe(false);
+
+    const f: any = await newGame(service, 'football');
+    await service.setSegment(TENANT, f.id, { segment: 5 });
+    const ot = await rejection(service.clockAction(TENANT, f.id, { action: 'start' }));
+    expect(ot.getResponse()).toMatchObject({ code: 'CLOCK_UNTIMED_PERIOD' });
+    // Resetting an untimed period leaves it at 0:00 (it used to put 12:00 up).
+    await service.clockAction(TENANT, f.id, { action: 'reset' });
+    expect(f.clockMs).toBe(0);
+  });
+
+  it('the last regulation period holds the same way — overtime or the final stays the table\'s call', async () => {
+    const { service, gameEvent, g } = await liveBasketball();
+    await service.setSegment(TENANT, g.id, { segment: 4 });
+    await service.clockAction(TENANT, g.id, { action: 'set', ms: 500 });
+    await service.clockAction(TENANT, g.id, { action: 'start' });
+    at(1_000);
+    await service.autoAdvanceExpiredClocks();
+    expect({ segment: g.segment, clock: g.clockMs, running: g.clockRunning, status: g.status })
+      .toEqual({ segment: 4, clock: 0, running: false, status: 'LIVE' });
+    expect(horns(gameEvent.rows)[0].payload.segmentLabel).toBe('Q4');
+  });
+});

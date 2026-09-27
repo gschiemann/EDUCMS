@@ -32,6 +32,9 @@ import {
   sanitizeStructuredStat,
   sanitizeResults,
   // K-12 lane A2 — the shared clock contract (packages/api-types/src/sports-clock.ts).
+  clockAnchorMs,
+  gameClockExpiryMs,
+  isGameClockExpired,
   isUntimedSegment,
   projectCountdownMs,
   projectGameClockMs,
@@ -3422,6 +3425,24 @@ export class SportsService {
         throw new BadRequestException(`${def.name} has no game clock`);
       }
       const now = new Date();
+      if (action === 'start') {
+        // K12-F08 — a clock that has run out does not start again: the
+        // period is held for the table. Starting it would only re-expire it
+        // on the next sweep and sound the horn a second time.
+        if (isUntimedSegment(def, game.segment)) {
+          throw new ConflictException({
+            code: 'CLOCK_UNTIMED_PERIOD',
+            message: 'This period is untimed, so there is no game clock to start.',
+          });
+        }
+        if (isGameClockExpired(def, game.stats, projectGameClockMs(game, def.clock.type, now.getTime()))) {
+          throw new ConflictException({
+            code: 'CLOCK_EXPIRED',
+            message:
+              'The clock has run out for this period. Set the time left (or add stoppage time), or move to the next period.',
+          });
+        }
+      }
       const t = this.clockTransition(game, def, action, setMs, now);
       const updated = await scope.write(t.data);
       await scope.event('CLOCK', {
@@ -3481,22 +3502,25 @@ export class SportsService {
   ): { data: Record<string, unknown>; clockMs: number; clockRunning: boolean } {
     let clockMs: number = game.clockMs;
     let clockRunning: boolean = game.clockRunning;
+    // Every reading is projected at `now` — the one instant the whole
+    // transition (game clock, penalty box, shot clock) is anchored on.
     switch (action) {
       case 'start':
         // Re-anchor at the current reading and let it run.
-        clockMs = this.liveClockMs(game);
+        clockMs = projectGameClockMs(game, def.clock.type, now.getTime());
         clockRunning = true;
         break;
       case 'pause':
         // Freeze: store the live reading, stop advancing.
-        clockMs = this.liveClockMs(game);
+        clockMs = projectGameClockMs(game, def.clock.type, now.getTime());
         clockRunning = false;
         break;
       case 'set':
         clockMs = Math.round(setMs);
         break;
       case 'reset':
-        clockMs = this.segmentStartMs(def, game.stats, game.segment);
+        // An untimed period (football OT) has no clock to reset to.
+        clockMs = isUntimedSegment(def, game.segment) ? 0 : this.segmentStartMs(def, game.stats, game.segment);
         clockRunning = false;
         break;
     }
@@ -4589,17 +4613,26 @@ export class SportsService {
   }
 
   /**
-   * Auto-advance any LIVE game whose running game-clock has expired —
-   * a countdown clock that hit 0:00, or a count-up clock that reached
-   * the segment length. Called every second by ClockAdvanceService so
-   * the scoreboard rolls to the next quarter / period on its own, with
-   * a fresh stopped clock, instead of the operator doing it by hand.
+   * Stop every LIVE game whose running game clock has run out — a countdown
+   * at 0:00, or a count-up past its segment length (plus added time). Called
+   * every second by ClockAdvanceService.
    *
-   * At the final regulation segment the clock just stops — overtime is
-   * the operator's call; we never auto-force a team into OT. Clockless
-   * sports (baseball, volleyball, pickleball) advance by their own
-   * rules and are skipped. Returns how many LIVE+running games were
-   * found (drives the caller's idle-skip) and how many changed.
+   * K12-F08 — the period HOLDS: the clock stops at its expiry reading in the
+   * SAME period, the horn sounds once, and nothing else changes. Moving to the
+   * next period is the table's decision (setSegment), exactly as the NFHS
+   * timing instructions have the clock operator wait for the Referee to
+   * declare the period over. This used to roll the game straight into the
+   * next quarter with a fresh 8:00 clock and cleared fouls — the crowd never
+   * saw the end state, and a last-second correction or an untimed down had
+   * nowhere to go.
+   *
+   * Safe on two replicas and on a lost leader lease (both replicas sweep when
+   * Redis is down): every expiry is a compare-and-swap command on the fresh
+   * row, so the loser re-reads a clock that is no longer running and does
+   * nothing — one stop, one horn. A correction that lands first (the clock
+   * set back to 0.3 s) is likewise never overwritten. Clockless sports are
+   * skipped. Returns how many LIVE+running games were found (drives the
+   * caller's idle-skip) and how many were stopped.
    */
   async autoAdvanceExpiredClocks(): Promise<{ found: number; changed: number }> {
     const games = await this.prisma.client.game.findMany({
@@ -4639,149 +4672,63 @@ export class SportsService {
    * instant it hits regulation — stoppage / added time runs WITH the clock —
    * so the threshold moves out by the operator-set `addedTime` minutes.
    */
-  private clockExpired(game: GameRow): boolean {
+  private clockExpired(game: GameRow, nowMs: number = Date.now()): boolean {
     if (game.status !== 'LIVE' || !game.clockRunning) return false;
     const def = findSport(game.sport);
     if (!def || def.clock.type === 'none') return false;
-    const segMs = def.clock.segmentMs ?? 0;
-    const live = this.liveClockMs(game);
-    const addedMs =
-      def.clock.type === 'countup' && game.stats && typeof game.stats === 'object'
-        ? Math.max(0, Number((game.stats as Record<string, unknown>).addedTime) || 0) * 60_000
-        : 0;
-    return def.clock.type === 'countdown' ? live <= 0 : live >= segMs + addedMs;
+    return isGameClockExpired(def, game.stats, projectGameClockMs(game, def.clock.type, nowMs));
   }
 
   /**
-   * One clock expiry, as a system command on the fresh row. At the final
-   * regulation segment the clock stops (overtime is the operator's call);
-   * otherwise the game rolls to the next segment with a fresh, stopped clock
-   * and the sport's segment resets. Returns false when the fresh row is no
-   * longer an expired running LIVE game.
+   * One clock expiry, as a system command on the fresh row (K12-F08): the
+   * game HOLDS at the end of the period. Returns false — writing nothing and
+   * sounding no horn — when the fresh row is no longer an expired running
+   * LIVE game (another replica got there first, or the table corrected /
+   * stopped the clock a moment ago).
+   *
+   * Every clock is stopped at the instant the period actually ended (the
+   * anchor plus the time that was left), not at the sweep's tick: the game
+   * clock reads exactly 0:00 (a count-up, its segment length plus added
+   * time), and a penalty or shot clock carries exactly the time it had at
+   * the horn — a sweep that runs late, or a leader-lease failover, costs a
+   * player in the box nothing. The football play clock is its own clock and
+   * is not touched (K12-F06). The segment, the score, fouls, timeouts and
+   * the line score are untouched: those move only when the table advances
+   * the period.
    */
   private async expireClock(scope: GameCommandScope): Promise<boolean> {
     const game = scope.before;
-    if (!this.clockExpired(game)) return false;
+    const nowMs = Date.now();
+    if (!this.clockExpired(game, nowMs)) return false;
     const def = this.sportOf(game.sport);
-    const segMs = def.clock.segmentMs ?? 0;
-    const now = new Date();
-    // K12-F06 — the football play clock is not touched: it is its own clock
-    // (a down in progress at 0:00 is played out; the table runs the count).
-
-    if (game.segment >= def.segment.count) {
-      // Final regulation segment ended — stop the clock and let the
-      // operator decide overtime / final. Never auto-force OT.
-      const finalData: Record<string, unknown> = {
-        clockRunning: false,
-        clockMs: def.clock.type === 'countdown' ? 0 : segMs,
-        clockUpdatedAt: now,
-      };
-      await scope.write(finalData);
-      await scope.event('CLOCK', {
-        action: 'expired',
-        clockRunning: false,
-        auto: true,
-        change: scope.change(),
-      });
-      // T1-5: Horn cue at every clock expiry — fires on both the final
-      // regulation segment (clock stops, operator calls FINAL) and
-      // mid-game segment boundaries (auto-advance path below).
-      await scope.event('CUE', {
-        key: 'horn',
-        label: 'Horn',
-        emoji: '📯',
-        target: 'ALL',
-        auto: true,
-        source: 'clock-expired',
-        segmentLabel: this.segmentLabelOf(def, game.segment),
-      });
-    } else {
-      // Roll to the next segment with a fresh, stopped clock.
-      const segment = game.segment + 1;
-      const segmentClockMs = this.segmentStartMs(def, game.stats, segment);
-      const autoData: Record<string, unknown> = {
-        segment,
-        clockMs: segmentClockMs,
-        clockRunning: false,
-        clockUpdatedAt: now,
-      };
-
-      // T2-10: apply per-sport segment-reset rules on auto-advance too.
-      const { statDeltas: autoStatDeltas, shotClockReset: autoShotReset } =
-        this.computeSegmentResets(def, game.stats, segment);
-      let autoStats: Record<string, unknown> =
-        game.stats && typeof game.stats === 'object'
-          ? { ...(game.stats as Record<string, unknown>) }
-          : {};
-      if (Object.keys(autoStatDeltas).length > 0) {
-        autoStats = { ...autoStats, ...autoStatDeltas };
-      }
-      if (autoShotReset && def.shotClock && shotClockMode(autoStats) === 'on') {
-        // K12-F05 — the configured length, never the sport default.
-        const len = Number((autoStats.shotClock as Record<string, unknown>).len);
-        autoStats.shotClock = {
-          len,
-          ms: Math.min(len * 1000, segmentClockMs),
-          at: now.toISOString(),
-          running: false,
-        };
-      }
-      // LINE SCORE on the auto-advance path too (football is the only
-      // box-score sport with a clock, so it's the only one that reaches
-      // here). Snapshot the cumulative score at the quarter boundary.
-      const autoLineScore = this.computeLineScore(
-        def,
-        autoStats,
-        game.segment,
-        segment,
-        game.homeScore,
-        game.awayScore,
-      );
-      if (autoLineScore) autoStats.lineScore = autoLineScore;
-      if (Object.keys(autoStats).length > 0) {
-        autoData.stats = autoStats as any;
-      }
-
-      await scope.write(autoData);
-      await scope.event('SEGMENT', { segment, auto: true, change: scope.change() });
-      await scope.event('CLOCK', { action: 'auto-advance', clockRunning: false, auto: true });
-
-      // T2-10: individual STAT events for each reset (forensic detail).
-      for (const [key, newVal] of Object.entries(autoStatDeltas)) {
-        const oldVal =
-          game.stats && typeof game.stats === 'object'
-            ? (game.stats as Record<string, unknown>)[key] ?? null
-            : null;
-        await scope.event('STAT', {
-          stats: { [key]: newVal },
-          oldValues: { [key]: oldVal },
-          source: 'segment-reset',
-          segment,
-          auto: true,
-        });
-      }
-      if (autoShotReset && def.shotClock) {
-        await scope.event('STAT', {
-          stats: { shotClock: autoStats.shotClock },
-          source: 'segment-reset',
-          segment,
-          auto: true,
-        });
-      }
-
-      // T1-5: Horn cue for end-of-period. Carries the OLD segment label
-      // ("Q1 END", "PERIOD 2 END") so the overlay reads correctly — the
-      // segment row has already advanced to `segment` above.
-      await scope.event('CUE', {
-        key: 'horn',
-        label: 'Horn',
-        emoji: '📯',
-        target: 'ALL',
-        auto: true,
-        source: 'clock-auto-advance',
-        segmentLabel: this.segmentLabelOf(def, game.segment),
-      });
+    const limit = gameClockExpiryMs(def, game.stats) ?? 0;
+    const anchor = clockAnchorMs(game.clockUpdatedAt);
+    let endedAt = nowMs;
+    if (Number.isFinite(anchor)) {
+      const left = def.clock.type === 'countdown' ? game.clockMs : limit - game.clockMs;
+      endedAt = Math.min(nowMs, anchor + Math.max(0, left));
     }
+    const t = this.clockTransition(game, def, 'pause', 0, new Date(endedAt));
+    await scope.write(t.data);
+    await scope.event('CLOCK', {
+      action: 'expired',
+      segment: game.segment,
+      clockMs: t.clockMs,
+      clockRunning: false,
+      auto: true,
+      change: scope.change(),
+    });
+    // T1-5: the horn, once per expiry — carries the period that just ended
+    // ("Q1") so every surface can say which period is over.
+    await scope.event('CUE', {
+      key: 'horn',
+      label: 'Horn',
+      emoji: '📯',
+      target: 'ALL',
+      auto: true,
+      source: 'clock-expired',
+      segmentLabel: this.segmentLabelOf(def, game.segment),
+    });
     return true;
   }
 
