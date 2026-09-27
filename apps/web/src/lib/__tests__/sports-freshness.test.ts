@@ -6,7 +6,6 @@ import {
   LINK_OFFLINE_STALE_AFTER_MS,
   LINK_STALE_AFTER_MS,
   acceptRevision,
-  authoritativeSource,
   initialLink,
   linkIsLive,
   linkReducer,
@@ -112,17 +111,3 @@ describe('acceptRevision', () => {
   });
 });
 
-describe('authoritativeSource', () => {
-  const now = Date.parse('2026-09-27T18:00:10.000Z');
-  it('a fresh CTS heartbeat, else a fresh machine feed, else the table', () => {
-    expect(authoritativeSource({ cts: { lastUpdateAt: '2026-09-27T18:00:08.000Z' } }, now)).toBe('cts');
-    expect(authoritativeSource({ cts: { lastUpdateAt: '2026-09-27T17:59:00.000Z' } }, now)).toBe('manual');
-    expect(
-      authoritativeSource({ feed: { source: 'feed', accepted: true, lastPacketAt: '2026-09-27T18:00:09.000Z' } }, now),
-    ).toBe('feed');
-    expect(
-      authoritativeSource({ feed: { source: 'feed', accepted: false, lastPacketAt: '2026-09-27T18:00:09.000Z' } }, now),
-    ).toBe('manual');
-    expect(authoritativeSource(null, now)).toBe('manual');
-  });
-});

@@ -30,6 +30,10 @@
  * a poll that lands on the other replica can roll a board back to the score
  * it showed a second ago.
  *
+ * WHO is driving the game (a CTS console, a machine feed, or the table) is
+ * lib/cts-merge.ts's question, not this module's — one answer there too, and
+ * every caller judges it on the server clock.
+ *
  * Pure reducer — no React, no DOM, no timers; every transition is a unit test.
  * Chromium-83 safe.
  */
@@ -132,28 +136,4 @@ export function acceptRevision(shown: number | null | undefined, incoming: unkno
 /** Whole seconds since the last good read, or null when there never was one. */
 export function secondsSinceGood(s: LinkState, now: number): number | null {
   return s.lastGoodAt === null ? null : Math.max(0, Math.floor((now - s.lastGoodAt) / 1000));
-}
-
-/**
- * Who is driving the game right now, from the stats the board payload
- * carries: a CTS console whose heartbeat is fresh, a machine feed whose last
- * packet is fresh, else the operators at the table. `serverNow` in the
- * server's clock (the stamps are written in it).
- */
-export type GameSource = 'cts' | 'feed' | 'manual';
-export const SOURCE_FRESH_MS = 5000;
-
-export function authoritativeSource(stats: unknown, serverNow: number): GameSource {
-  const s = stats && typeof stats === 'object' ? (stats as Record<string, unknown>) : {};
-  const age = (iso: unknown) => {
-    const t = typeof iso === 'string' ? Date.parse(iso) : NaN;
-    return isFinite(t) ? serverNow - t : Infinity;
-  };
-  const cts = s.cts && typeof s.cts === 'object' ? (s.cts as Record<string, unknown>) : null;
-  if (cts && age(cts.lastUpdateAt) < SOURCE_FRESH_MS) return 'cts';
-  const feed = s.feed && typeof s.feed === 'object' ? (s.feed as Record<string, unknown>) : null;
-  if (feed && feed.source === 'feed' && feed.accepted !== false && age(feed.lastPacketAt) < SOURCE_FRESH_MS) {
-    return 'feed';
-  }
-  return 'manual';
 }

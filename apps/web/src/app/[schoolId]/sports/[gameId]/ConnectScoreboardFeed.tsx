@@ -28,6 +28,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Check, Copy, RefreshCw } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { computeFeedStatus, type FeedStatus } from '@/lib/cts-merge';
+import { serverClock } from '@/lib/server-clock';
 
 interface FeedCredentials {
   ingestUrl: string;
@@ -136,14 +137,16 @@ function formatAge(ageMs: number): string {
  * re-renders so the age counts up between polls (CtsConsoleStatus pattern).
  */
 function FeedStatusRow({ stats }: { stats: Record<string, unknown> }) {
-  // Browser clock as the reference — same documented choice as
-  // CtsConsoleStatus: we only care how long ago the server-stamped packet
-  // arrived, and the 20s window absorbs reasonable skew. The clock sample
-  // lives in STATE (updated by the 1 Hz interval) so the render itself
-  // stays pure (react-hooks/purity).
-  const [now, setNow] = useState(() => Date.now());
+  // The page's SERVER clock as the reference (K12-F40, same as
+  // CtsConsoleStatus): the packet stamp is server time, so the age is
+  // measured on server time — an operator laptop that runs fast or slow can
+  // no longer make this pill disagree with the boards. Unheld: a
+  // measurement that keeps counting while the console's reads are stale.
+  // The sample lives in STATE (updated by the 1 Hz interval) so the render
+  // itself stays pure (react-hooks/purity).
+  const [now, setNow] = useState(() => serverClock.unheldNow());
   useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000);
+    const id = setInterval(() => setNow(serverClock.unheldNow()), 1000);
     return () => clearInterval(id);
   }, []);
   const status: FeedStatus = computeFeedStatus(stats, now);

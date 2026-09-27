@@ -7957,21 +7957,19 @@ function GoLiveBar({ g, onLive }: { g: any; onLive: () => void }) {
  * React Query's already-fresh game record via the parent's `stats` prop.
  */
 function CtsConsoleStatus({ stats }: { stats: Record<string, unknown> }) {
-  const [tick, setTick] = useState(0);
+  // K12-F40 — the heartbeat's age on the page's SERVER clock (sampled by
+  // every useGame read): lastUpdateAt is server time, and the boards judge
+  // the same 5 s window on server time, so a laptop clock a few seconds off
+  // can no longer make this pill and the boards disagree about who is the
+  // source. Unheld: a measurement that keeps counting while the console's
+  // own reads are stale. 1 Hz — enough to flip fresh→stale within a second
+  // of the window expiring; the sample lives in state so render stays pure.
+  const [now, setNow] = useState(() => serverClock.unheldNow());
   useEffect(() => {
-    // 1 Hz tick — enough to flip fresh→stale within a second of the
-    // 5 s heartbeat window expiring, cheap enough to never matter.
-    const id = setInterval(() => setTick((n) => n + 1), 1000);
+    const id = setInterval(() => setNow(serverClock.unheldNow()), 1000);
     return () => clearInterval(id);
   }, []);
-  // Use the BROWSER's clock as the "serverTime" reference. The cts
-  // lastUpdateAt is a server timestamp; using Date.now() is correct
-  // because we only care about how long ago the heartbeat arrived.
-  // The 5 s threshold is generous enough to absorb any reasonable
-  // clock skew on the operator's laptop.
-  const status: CtsStatus = computeCtsStatus(stats, Date.now());
-  // intentionally read `tick` so the effect's setState triggers a re-render
-  void tick;
+  const status: CtsStatus = computeCtsStatus(stats, now);
 
   const ring: Record<CtsStatus['kind'], string> = {
     fresh: 'ring-2 ring-green-500 bg-green-50',

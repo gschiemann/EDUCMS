@@ -191,10 +191,9 @@ export interface FeedStatus {
 }
 
 /** Compute the feed pill state. Pure — same inputs, same output. Pass
- *  the caller's clock reference as `serverTime` (the operator console
- *  passes Date.now(), same documented choice as CtsConsoleStatus: we
- *  only care how long ago the server-stamped packet arrived, and the
- *  window absorbs reasonable skew). */
+ *  the caller's clock reference as `serverTime` — the operator console
+ *  passes its SERVER clock (serverClock.unheldNow(), K12-F40, same as
+ *  CtsConsoleStatus), since the packet stamp is server time. */
 export function computeFeedStatus(stats: unknown, serverTime: number): FeedStatus {
   const feed = readFeedStats(stats);
   const source =

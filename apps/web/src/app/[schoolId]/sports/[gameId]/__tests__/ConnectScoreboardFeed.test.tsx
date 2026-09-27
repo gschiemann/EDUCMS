@@ -29,6 +29,7 @@ jest.mock('@/lib/api-client', () => ({
 }));
 
 import { ConnectScoreboardFeed } from '../ConnectScoreboardFeed';
+import { serverClock } from '@/lib/server-clock';
 
 const CREDS = {
   gameId: GAME_ID,
@@ -115,6 +116,29 @@ it('shows Receiving when stats.feed carries a fresh stamp', async () => {
   render(<ConnectScoreboardFeed gameId={GAME_ID} stats={stats} />);
   await screen.findAllByText(tokenRe(CREDS.token));
   expect(screen.getByTestId('feed-status-row')).toHaveTextContent(/Receiving/);
+});
+
+it('K12-F40: judges the stamp on the SERVER clock — a laptop running 30 s fast still reads Receiving', async () => {
+  mockMintOk();
+  // The page's server clock has a sample: the server is 30 s BEHIND this
+  // device. A packet stamped 2 s ago in server time looks 32 s old — past
+  // the 20 s window — to anything that reads the device clock.
+  const t = serverClock.localNow();
+  serverClock.sample(Date.now() - 30_000, t, t);
+  try {
+    const stats = {
+      feed: {
+        lastPacketAt: new Date(serverClock.now() - 2_000).toISOString(),
+        source: 'feed',
+        accepted: true,
+      },
+    };
+    render(<ConnectScoreboardFeed gameId={GAME_ID} stats={stats} />);
+    await screen.findAllByText(tokenRe(CREDS.token));
+    expect(screen.getByTestId('feed-status-row')).toHaveTextContent(/Receiving/);
+  } finally {
+    serverClock.reset();
+  }
 });
 
 it('Regenerate revokes-and-replaces: hits the revoke endpoint, swaps in the fresh token, shows Rotated', async () => {
