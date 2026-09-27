@@ -2,10 +2,12 @@
 /**
  * VenueOS Sports — live scoreboard widget.
  *
- * One widget, every sport. It binds to a game (`config.gameId`), polls
- * the public `/sports/board/:id` feed, and renders a scoreboard whose
- * clock model, period structure, and stat row are ALL driven by the
- * game's SportDefinition (`findSport`). Football shows down/distance,
+ * One widget, every sport. It reads the bound game through the shared
+ * game-state provider (`useGameState` — the ambient game on /board, or
+ * the per-zone provider for a `config.gameId`), and renders a scoreboard
+ * whose clock model, period structure, and stat row are ALL driven by the
+ * game's SportDefinition (`findSport`). With no game it never invents one
+ * on a real screen (see the widget body). Football shows down/distance,
  * baseball balls/strikes/outs, basketball fouls/possession — the engine
  * decides, not per-sport code.
  *
@@ -32,7 +34,7 @@ import { findSport, formatScore } from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
 import type { WidgetProps } from './_shared/types';
 import type { WidgetStyle } from './_shared/styleSystem';
-import { API_URL } from '@/lib/api-url';
+import { useGameState } from '../sports/GameStateContext';
 import { readBoardCache, writeBoardCache } from '@/lib/sports-board-cache';
 import { sceneCss } from '../scene-css';
 
@@ -59,7 +61,9 @@ interface BoardData {
 }
 
 export interface SportsScoreboardCfg {
-  /** The game to display — paste a game id, or leave blank for a sample. */
+  /** The game to display (Properties → Bind to game). Blank = the game this
+   *  layout is assigned to on /board, or neutral dashes on a plain screen —
+   *  never a sample game outside the builder. */
   gameId?: string;
   /** Visual tier: 'hs' | 'college' | 'pro'. */
   tier?: Tier;
@@ -240,7 +244,6 @@ function useScaleToFit(sceneW: number, sceneH: number) {
 // ════════════════════════════════════════════════════════════════════
 export function SportsScoreboardWidget({
   config,
-  live = true,
 }: WidgetProps<SportsScoreboardCfg>) {
   const c = config || {};
   const baseTier = TIERS[c.tier && TIERS[c.tier] ? c.tier : 'hs'];
@@ -252,40 +255,43 @@ export function SportsScoreboardWidget({
     stage: st.bgColor || baseTier.stage,
   };
   const gameId = (c.gameId || '').trim();
-  const preview = !live || !gameId;
 
-  const [data, setData] = useState<BoardData | null>(null);
-  const [simBoard, setSimBoard] = useState<BoardData>(SAMPLE);
-  const [, setTick] = useState(0);
+  // ── Where the numbers come from (K-12 launch audit F28, 2026-09-27) ──
+  // This widget used to run its OWN poll against `config.gameId` and treat
+  // "no gameId" as "preview", so the three system presets that ship it
+  // (`sports-scoreboard-hs|college|pro`, all `gameId: ''`) self-played a
+  // FABRICATED game — ticking clock, scores going up, a pulsing LIVE pill —
+  // on every real screen they were scheduled to. Assigned as a game's own
+  // scoreboard layout it was no better: it ignored the ambient game and
+  // played the sample there too.
+  //
+  // It now reads the one game-state source every other scoreboard widget
+  // reads (`useGameState`): the ambient provider on /board /ribbon
+  // /scorebug, or the per-zone provider WidgetPreview mounts for a bound
+  // `config.gameId`. Three states, never confused:
+  //   • no provider at all     → builder / thumbnail: the self-playing demo,
+  //                              stamped SAMPLE, no LIVE pill.
+  //   • provider, no snapshot  → a real screen with nothing bound (or not
+  //                              loaded yet): neutral dashes, no LIVE pill.
+  //   • provider + snapshot    → the real game.
+  const state = useGameState();
+  const preview = state == null;
+  const snapshot = (state?.snapshot ?? null) as BoardData | null;
 
-  // Poll the public board feed — only on a real screen with a game bound.
+  // Last-known frame for a BOUND zone before its first poll lands (a player
+  // power-cycled mid-game, offline at boot). The cache freezes the clock, so
+  // a stale anchor never projects a wrong running time — the same contract
+  // /board, /ribbon and /scorebug keep.
+  const [cached] = useState<BoardData | null>(() => (gameId && !preview ? readBoardCache<BoardData>(gameId) : null));
   useEffect(() => {
-    if (preview) return;
-    let alive = true;
-    const cached = readBoardCache<BoardData>(gameId);
-    if (cached) setData(cached);
-    const load = async () => {
-      try {
-        const res = await fetch(`${API_URL}/sports/board/${gameId}`, { cache: 'no-store' });
-        if (res.ok && alive) {
-          const json = (await res.json()) as BoardData;
-          setData(json);
-          writeBoardCache(gameId, json);
-        }
-      } catch {
-        /* keep last good frame */
-      }
-    };
-    load();
-    const t = setInterval(load, 750);
-    return () => {
-      alive = false;
-      clearInterval(t);
-    };
-  }, [preview, gameId]);
+    if (gameId && snapshot) writeBoardCache(gameId, snapshot);
+  }, [gameId, snapshot]);
+
+  const [simBoard, setSimBoard] = useState<BoardData>(SAMPLE);
 
   // Preview self-play — the sample ticks down + scores so a tile in the
-  // builder / picker looks alive, not frozen.
+  // builder / picker looks alive, not frozen. Builder only: a real screen
+  // never self-plays (see above).
   useEffect(() => {
     if (!preview) return;
     let b: BoardData = { ...SAMPLE, clockMs: 7 * 60_000 + 42_000, clockRunning: true };
@@ -311,15 +317,14 @@ export function SportsScoreboardWidget({
     return () => clearInterval(id);
   }, [preview]);
 
-  const board: BoardData = preview ? simBoard : data || SAMPLE;
+  const liveBoard: BoardData | null = snapshot ?? cached;
+  const neutral = !preview && !liveBoard;
+  const board: BoardData = preview ? simBoard : (liveBoard ?? NEUTRAL_BOARD);
   const def = findSport(board.sport);
-
-  const tickClock = !preview && !!data && board.clockRunning && !!def && def.clock.type !== 'none';
-  useEffect(() => {
-    if (!tickClock) return;
-    const t = setInterval(() => setTick((n) => n + 1), 250);
-    return () => clearInterval(t);
-  }, [tickClock]);
+  // The provider projects a running clock between polls (and applies the
+  // server-time skew); the cached frame is frozen. Either way the scene is
+  // handed the reading to paint instead of re-projecting it.
+  const clockMsNow = snapshot && state ? state.liveClockMs : board.clockMs;
 
   const { ref, fit } = useScaleToFit(1920, 1080);
 
@@ -349,12 +354,60 @@ export function SportsScoreboardWidget({
             opacity: fit.ready ? 1 : 0,
           }}
         >
-          <HsScene board={board} def={def} tier={tier} bannerText={c.bannerText} live={live} preview={preview} />
+          <HsScene
+            board={board}
+            def={def}
+            tier={tier}
+            bannerText={c.bannerText}
+            preview={preview}
+            neutral={neutral}
+            clockMsNow={clockMsNow}
+          />
+        </div>
+      )}
+      {/* Builder-only stamp: the numbers on this tile are a demo, not a
+          game. Never rendered on a real screen (a provider is always
+          present there — see the state notes above). */}
+      {preview && (
+        <div
+          data-sb-sample-stamp=""
+          style={{
+            position: 'absolute', bottom: 12, right: 14, zIndex: 6,
+            background: 'rgba(0,0,0,0.6)', color: '#facc15', fontWeight: 800,
+            fontSize: 13, letterSpacing: 3, padding: '4px 10px', borderRadius: 6,
+            border: '1px solid rgba(250,204,21,0.45)', fontFamily: DISPLAY_FONT,
+          }}
+        >
+          SAMPLE
         </div>
       )}
     </div>
   );
 }
+
+/** What a real screen shows before a game is bound or its first poll
+ *  lands: team-color-neutral chrome, and every number as a dash (the
+ *  scene paints dashes when `neutral` is set; these values are never
+ *  displayed as numbers). */
+const NEUTRAL_BOARD: BoardData = {
+  id: 'unbound',
+  sport: 'basketball',
+  status: 'SCHEDULED',
+  segment: 1,
+  homeTeam: 'HOME',
+  awayTeam: 'AWAY',
+  homeScore: 0,
+  awayScore: 0,
+  homeColor: '#334155',
+  awayColor: '#334155',
+  homeLogoUrl: null,
+  awayLogoUrl: null,
+  clockMs: 0,
+  clockRunning: false,
+  clockUpdatedAt: new Date(0).toISOString(),
+  stats: {},
+  serverTime: 0,
+};
 
 // ════════════════════════════════════════════════════════════════════
 //  HS SCENE — faithful port of scratch/design/scoreboards/hs.html
@@ -376,23 +429,29 @@ function HsScene({
   def,
   tier,
   bannerText,
-  live,
   preview,
+  neutral,
+  clockMsNow,
 }: {
   board: BoardData;
   def: SportDefinition;
   tier: TierStyle;
   bannerText?: string;
-  live: boolean;
+  /** Builder demo — the self-playing sample (projects its own clock). */
   preview: boolean;
+  /** Real screen, nothing to show yet — every number renders as a dash. */
+  neutral: boolean;
+  /** Clock reading to paint (already projected by the game-state provider). */
+  clockMsNow: number;
 }) {
   const homeColor = board.homeColor || '#1e3a8a';
   const awayColor = board.awayColor || '#b91c1c';
-  const tickClock = !preview && board.clockRunning && def.clock.type !== 'none';
-  const liveMs = liveClockMs(board, def, tickClock);
-  const clockStr = def.clock.type === 'none' ? '' : fmtClock(liveMs);
-  const stats = board.stats || {};
-  const isLive = board.status === 'LIVE';
+  const liveMs = preview ? liveClockMs(board, def, false) : clockMsNow;
+  const clockStr = def.clock.type === 'none' ? '' : neutral ? '—:—' : fmtClock(liveMs);
+  const stats = neutral ? {} : board.stats || {};
+  // The LIVE pill is a claim about a real game: never on the builder demo,
+  // never on a screen that has no game data.
+  const isLive = !preview && !neutral && board.status === 'LIVE';
 
   // Which center modules apply to this sport (drive off real data).
   const shotClock = num(stats.shotClock);
@@ -530,7 +589,7 @@ function HsScene({
       </div>
       <div style={nameStyle('home')}>{(board.homeTeam || 'HOME').toUpperCase()}</div>
       <div style={tagStyle('home')}>HOME</div>
-      <div style={scoreStyle('home')}>{formatScore(def, board.homeScore)}</div>
+      <div style={scoreStyle('home')}>{neutral ? '—' : formatScore(def, board.homeScore)}</div>
 
       {/* AWAY side */}
       <div style={sideBlock('away')} />
@@ -543,7 +602,7 @@ function HsScene({
       </div>
       <div style={nameStyle('away')}>{(board.awayTeam || 'AWAY').toUpperCase()}</div>
       <div style={tagStyle('away')}>AWAY</div>
-      <div style={scoreStyle('away')}>{formatScore(def, board.awayScore)}</div>
+      <div style={scoreStyle('away')}>{neutral ? '—' : formatScore(def, board.awayScore)}</div>
 
       {/* CENTER COLUMN */}
       <div style={{ position: 'absolute', top: 0, left: BLOCK_W, width: 680, height: 1080 }}>
@@ -595,7 +654,7 @@ function HsScene({
             overflow: 'hidden',
           }}
         >
-          {segmentLabel(def, board)}
+          {neutral ? '—' : segmentLabel(def, board)}
         </div>
 
         {/* big clock card */}

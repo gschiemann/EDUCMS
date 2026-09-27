@@ -2772,6 +2772,16 @@
       "untitled": "未命名批次"
     }
   },
+  "sportsTemplates": {
+    "tier": {
+      "label": "记分牌样式",
+      "hs": "高中",
+      "college": "大学",
+      "pro": "职业"
+    },
+    "bannerText": "横幅文字",
+    "boundHint": "不绑定时，它会跟随此布局所分配的比赛。在其他屏幕上，绑定比赛之前只显示短横线——绝不显示编造的比分。"
+  },
   "posBind": {
     "fieldPrice": "价格",
     "fieldName": "名称",

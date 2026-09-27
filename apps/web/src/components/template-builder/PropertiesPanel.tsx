@@ -4249,6 +4249,17 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
         }
         break;
       }
+      // K-12 launch audit F28 (2026-09-27) — the High School / College / Pro
+      // live scoreboards (v2 `scoreboard-hs|college|pro`, the three
+      // `sports-scoreboard-*` system presets) had NO binding control: they
+      // fell through to the legacy literal fields below — status / period /
+      // team names / scores that renderer never reads — so an operator could
+      // neither bind them to a game nor change anything he could see.
+      if (sbVariant === 'scoreboard-hs' || sbVariant === 'scoreboard-college' || sbVariant === 'scoreboard-pro') {
+        fields.push(<GameBindField key="gameId" value={cfg.gameId || ''} onChange={(v) => setField({ gameId: v })} />);
+        fields.push(<SportsTierFields key="sports-tier" cfg={cfg} setField={setField} />);
+        break;
+      }
       // Legacy generic scoreboard widget — literal fields.
       fields.push(<TextField key="status" label="Status" value={cfg.status || ''} placeholder="Tonight" onChange={(v) => setField({ status: v })} />);
       fields.push(<TextField key="period" label="Period / time" value={cfg.period || ''} placeholder="1ST · 8:42" onChange={(v) => setField({ period: v })} />);
@@ -9318,6 +9329,42 @@ function GameBindField({
           ? 'On a real screen, this zone reads THIS game — never the sample, never whatever game the screen might otherwise show.'
           : 'Unbound zones show a sample in the builder and a "bind a game" prompt on a real screen (never invented scores).'}
       </p>
+    </div>
+  );
+}
+
+/**
+ * Look + banner for the HS / College / Pro live scoreboard (v2
+ * `scoreboard-hs|college|pro`). The renderer reads `tier` and `bannerText`;
+ * its brand colours ride the v2 Style section appended after the switch.
+ */
+function SportsTierFields({
+  cfg,
+  setField,
+}: {
+  cfg: Record<string, any>;
+  setField: (patch: Record<string, any>) => void;
+}) {
+  const t = useTranslations('sportsTemplates');
+  return (
+    <div className="space-y-3">
+      <SelectField
+        label={t('tier.label')}
+        value={String(cfg.tier || 'hs')}
+        options={[
+          ['hs', t('tier.hs')],
+          ['college', t('tier.college')],
+          ['pro', t('tier.pro')],
+        ]}
+        onChange={(v) => setField({ tier: v })}
+      />
+      <TextField
+        label={t('bannerText')}
+        value={cfg.bannerText ?? ''}
+        placeholder="GAME NIGHT"
+        onChange={(v) => setField({ bannerText: v })}
+      />
+      <p className="text-[10px] text-slate-400 px-0.5">{t('boundHint')}</p>
     </div>
   );
 }

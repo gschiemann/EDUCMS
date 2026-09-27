@@ -2772,6 +2772,16 @@
       "untitled": "Untitled batch"
     }
   },
+  "sportsTemplates": {
+    "tier": {
+      "label": "Scoreboard look",
+      "hs": "High school",
+      "college": "College",
+      "pro": "Professional"
+    },
+    "bannerText": "Banner text",
+    "boundHint": "Leave it unbound to follow the game this layout is assigned to. On any other screen it shows dashes until a game is bound — never a made-up score."
+  },
   "posBind": {
     "fieldPrice": "Price",
     "fieldName": "Name",

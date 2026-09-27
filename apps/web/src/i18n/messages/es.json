@@ -2772,6 +2772,16 @@
       "untitled": "Lote sin título"
     }
   },
+  "sportsTemplates": {
+    "tier": {
+      "label": "Estilo del marcador",
+      "hs": "Preparatoria",
+      "college": "Universidad",
+      "pro": "Profesional"
+    },
+    "bannerText": "Texto del encabezado",
+    "boundHint": "Déjelo sin vincular para que siga el partido al que está asignado este diseño. En cualquier otra pantalla muestra guiones hasta que se vincule un partido; nunca un marcador inventado."
+  },
   "posBind": {
     "fieldPrice": "Precio",
     "fieldName": "Nombre",
