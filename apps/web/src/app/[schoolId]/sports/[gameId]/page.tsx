@@ -54,6 +54,8 @@ import { apiFetch } from '@/lib/api-client';
 // shared module so board + ribbon read the identical second.
 import { formatSportClock } from '@/lib/game-clock-format';
 import { serverClock } from '@/lib/server-clock';
+import { secondsSinceGood, type LinkState } from '@/lib/sports-freshness';
+import { useMarkGoodOnServerRead, useSportsLink } from '@/hooks/use-sports-link';
 import { RoleGate } from '@/components/RoleGate';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { Button } from '@/components/ui/button';
@@ -234,6 +236,12 @@ function GameControl() {
   const { data: game, isLoading, error } = useGame(gameId);
   const ctl = useGameControl(gameId);
   const def = useMemo(() => (game ? findSport((game as any).sport) : undefined), [game]);
+  // K12-F40 — the same freshness contract as the board: a SERVER read (the
+  // 4 s poll) keeps the link live — never an optimistic tap; none for
+  // STALE_FEED_AFTER_MS while the tab is visible and the console says so and
+  // HOLDS its clocks, instead of running them on a picture that may be old.
+  const link = useSportsLink({ holdClocks: true, trackVisibility: true });
+  useMarkGoodOnServerRead(link.markGood, (game as { serverTime?: unknown } | undefined)?.serverTime);
   const liveMs = useLiveClock(game, def);
 
   const [mode, setMode] = useState<ConsoleMode>('run');
@@ -560,6 +568,7 @@ function GameControl() {
           (like GoLiveBar) so it pushes the console down, never overlapping
           the RunCommandBar controls. */}
       <ConnectionBanner gameId={gameId} />
+      <ReadFreshnessBanner state={link.state} />
 
       {/* ── mode panels ───────────────────────────────────────── */}
 
@@ -2258,6 +2267,33 @@ function MobileScoreDock({
 
         <TeamCol side="away" team={g.awayTeam} color={awayColor} score={g.awayScore} />
       </div>
+    </div>
+  );
+}
+
+/**
+ * K12-F40 — the console's side of the shared freshness contract: while its
+ * reads have gone stale it says so, with how long ago the last good read
+ * was, and its clocks are held (useSportsLink). Queued / refused taps stay
+ * the ConnectionBanner's job; this is about whether the PICTURE is current.
+ */
+function ReadFreshnessBanner({ state }: { state: LinkState }) {
+  const tConsole = useTranslations('sportsConsole');
+  const stale = state.phase === 'stale';
+  // A one-second ticker, and only while stale (no timer otherwise). The
+  // first frame reads the instant the link went stale, so it never says
+  // "0 s" off a `now` left over from an earlier render.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!stale) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [stale]);
+  if (!stale) return null;
+  const seconds = secondsSinceGood(state, Math.max(now, state.staleSince ?? now));
+  return (
+    <div role="alert" className="mx-3 my-2 rounded-lg border border-red-500 bg-red-950 px-3 py-2 text-sm font-bold text-red-100">
+      {seconds === null ? tConsole('readStaleNever') : tConsole('readStale', { seconds })}
     </div>
   );
 }

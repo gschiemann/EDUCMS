@@ -290,6 +290,10 @@ describe('startBoardPoll', () => {
       hasSample: () => samples.length > 0,
       reset: () => undefined,
       status: () => ({ hasSample: true, offsetMs: 0, rttMs: null, samples: samples.length }),
+      hold: () => undefined,
+      release: () => undefined,
+      isHeld: () => false,
+      unheldNow: () => Date.now(),
     };
     let release!: (r: MockResponse) => void;
     fetchMock.mockImplementationOnce(() => new Promise((res) => { release = res; }));

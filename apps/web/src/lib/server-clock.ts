@@ -68,6 +68,20 @@ export interface ServerClock {
   status(): ServerClockStatus;
   /** The local monotonic time base this clock samples against. */
   localNow(): number;
+  /**
+   * K12-F40 — HOLD the clock: until `release()`, `now()` never passes the
+   * instant this was called. A surface whose link went stale holds, so
+   * every clock it projects stops where it stood instead of running on
+   * unconfirmed data; the next good read releases it.
+   */
+  hold(): void;
+  release(): void;
+  isHeld(): boolean;
+  /**
+   * The estimate IGNORING any hold — for measurements (how long ago a
+   * revision was committed), never for anything a viewer sees.
+   */
+  unheldNow(): number;
 }
 
 /** A timed sample never loses to one with no measured round trip. */
@@ -92,6 +106,23 @@ export function createServerClock(
   const wallNow = opts.wallNow ?? (() => Date.now());
   let samples: ServerClockSample[] = [];
   let lastOut = -Infinity;
+  let heldAt: number | null = null;
+
+  const estimateNow = (): number => {
+    const pick = best();
+    if (!pick) return wallNow();
+    const local = localNow();
+    if (Math.abs(wallNow() - local - pick.wallMinusLocal) > DISCONTINUITY_MS) {
+      // The monotonic base paused (the device slept) since the sample:
+      // ride the wall clock with the offset it had, until a fresh sample.
+      lastOut = -Infinity;
+      return wallNow() + pick.offset - pick.wallMinusLocal;
+    }
+    const estimate = local + pick.offset;
+    if (estimate < lastOut && lastOut - estimate < MAX_HOLD_MS) return lastOut;
+    lastOut = estimate;
+    return estimate;
+  };
 
   const best = (): ServerClockSample | null => {
     const nowLocal = localNow();
@@ -125,21 +156,20 @@ export function createServerClock(
       if (samples.length > MAX_SAMPLES) samples = samples.slice(samples.length - MAX_SAMPLES);
     },
     now() {
-      const pick = best();
-      if (!pick) return wallNow();
-      const local = localNow();
-      let estimate: number;
-      if (Math.abs(wallNow() - local - pick.wallMinusLocal) > DISCONTINUITY_MS) {
-        // The monotonic base paused (the device slept) since the sample:
-        // ride the wall clock with the offset it had, until a fresh sample.
-        estimate = wallNow() + pick.offset - pick.wallMinusLocal;
-        lastOut = -Infinity;
-        return estimate;
-      }
-      estimate = local + pick.offset;
-      if (estimate < lastOut && lastOut - estimate < MAX_HOLD_MS) return lastOut;
-      lastOut = estimate;
-      return estimate;
+      const estimate = estimateNow();
+      return heldAt !== null ? Math.min(estimate, heldAt) : estimate;
+    },
+    hold() {
+      if (heldAt === null) heldAt = estimateNow();
+    },
+    release() {
+      heldAt = null;
+    },
+    isHeld() {
+      return heldAt !== null;
+    },
+    unheldNow() {
+      return estimateNow();
     },
     hasSample() {
       return samples.length > 0;
@@ -147,6 +177,7 @@ export function createServerClock(
     reset() {
       samples = [];
       lastOut = -Infinity;
+      heldAt = null;
     },
     status() {
       const pick = best();

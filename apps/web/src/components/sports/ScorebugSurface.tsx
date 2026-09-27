@@ -65,6 +65,9 @@ import {
 } from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
 import { serverClock } from '@/lib/server-clock';
+import { startBoardPoll } from '@/lib/board-poll';
+import { acceptRevision, type LinkPhase } from '@/lib/sports-freshness';
+import { noteRevisionShown, useSportsLink } from '@/hooks/use-sports-link';
 
 // ── types ──────────────────────────────────────────────────────
 
@@ -171,6 +174,9 @@ export interface BoardData {
   stats: Record<string, unknown>;
   cues: Cue[];
   serverTime: number;
+  /** K12-F40 — the game revision this payload shows, and its commit time. */
+  revision?: number;
+  updatedAt?: string;
   // T2-9 — rotating, frequency-capped sponsor looks. Same payload the big
   // board rotates in its footer; the stream renders a slim sponsor strap.
   sponsors?: Sponsor[];
@@ -419,6 +425,8 @@ export interface ScorebugData {
   liveMs: number;
   /** The currently-playing celebration cue, or `null`. */
   activeCue: Cue | null;
+  /** K12-F40 — the shared freshness verdict for this surface's feed. */
+  linkPhase: LinkPhase;
 }
 
 /**
@@ -466,25 +474,33 @@ export function useScorebugData(gameId: string): ScorebugData {
     [],
   );
 
+  // K12-F40 — the same freshness contract as the board and the ribbon: a
+  // good read keeps the link live; without one for STALE_FEED_AFTER_MS every
+  // clock HOLDS where it stood (a broadcast bug never runs a clock on
+  // unconfirmed data), and an OLDER revision than the one shown is never
+  // applied.
+  const link = useSportsLink({ holdClocks: true });
+  const shownRevision = useRef<number | null>(null);
+
   useEffect(() => {
     if (!gameId) return;
-    let alive = true;
     // Cold-boot: seed from the last cached frame so a power-cycle
     // mid-broadcast restores the overlay instantly.
     const cached = readBoardCache<BoardData>(gameId);
     if (cached) setData(cached);
-    const load = async () => {
-      try {
-        const sentAt = serverClock.localNow();
-        const res = await fetch(`${API_URL}/sports/board/${gameId}`, {
-          cache: 'no-store',
-        });
-        const receivedAt = serverClock.localNow();
-        if (!res.ok) return;
-        const json: BoardData = await res.json();
-        if (!alive) return;
-        // K12-F17 — this poll feeds the page's shared server clock too.
-        if (typeof json.serverTime === 'number') serverClock.sample(json.serverTime, sentAt, receivedAt);
+    // The shared hardened poll engine (self-chaining, ETag/304, jittered
+    // backoff, and a server-clock sample per good read) — this surface used
+    // to run its own overlapping setInterval fetch.
+    return startBoardPoll({
+      url: `${API_URL}/sports/board/${gameId}`,
+      intervalMs: POLL_MS,
+      onPayload: (payload) => {
+        const json = payload as BoardData;
+        if (!acceptRevision(shownRevision.current, json.revision)) return;
+        if (typeof json.revision === 'number') {
+          if (json.revision !== shownRevision.current) noteRevisionShown('scorebug', json);
+          shownRevision.current = json.revision;
+        }
         setData(json);
         writeBoardCache(gameId, json);
         for (const c of json.cues || []) {
@@ -510,16 +526,13 @@ export function useScorebugData(gameId: string): ScorebugData {
         }
         firstLoad.current = false;
         pumpCues();
-      } catch {
-        /* keep the last good frame on a transient network error */
-      }
-    };
-    load();
-    const t = setInterval(load, POLL_MS);
-    return () => {
-      alive = false;
-      clearInterval(t);
-    };
+      },
+      onServerTime: (n) => setData((prev) => (prev ? { ...prev, serverTime: n } : prev)),
+      onStatus: (s) => {
+        if (s.online) link.markGood();
+      },
+    });
+    // link.markGood is stable; the poll restarts per game only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameId]);
 
@@ -533,7 +546,7 @@ export function useScorebugData(gameId: string): ScorebugData {
   const view = useMemo(() => (data ? applyCtsOverlay(data) : data), [data]);
   const liveMs = useLiveClock(view, def);
 
-  return { data, def, view, liveMs, activeCue };
+  return { data, def, view, liveMs, activeCue, linkPhase: link.state.phase };
 }
 
 // ── presentational bug ─────────────────────────────────────────

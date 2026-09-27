@@ -52,7 +52,9 @@ import { readBoardCache, writeBoardCache } from '@/lib/sports-board-cache';
 // Trust wave Domain B (2026-08-06) — shared hardened poll engine
 // (self-chaining, ETag/304 revalidation, jittered backoff) + the
 // "CONNECTION LOST" staleness chip shown when the feed goes quiet.
-import { startBoardPoll, STALE_FEED_AFTER_MS } from '@/lib/board-poll';
+import { startBoardPoll } from '@/lib/board-poll';
+import { acceptRevision } from '@/lib/sports-freshness';
+import { noteRevisionShown, useSportsLink } from '@/hooks/use-sports-link';
 import { formatSportClock } from '@/lib/game-clock-format';
 import { serverClock } from '@/lib/server-clock';
 import { ConnectionLostPill } from '@/components/sports/ConnectionLostPill';
@@ -246,6 +248,9 @@ interface BoardData {
   /** Recent celebration cues — the board feed's 20s cue window. */
   cues?: Cue[];
   serverTime: number;
+  /** K12-F40 — the game revision this payload shows, and its commit time. */
+  revision?: number;
+  updatedAt?: string;
   // Sprint 13 — operator-picked custom layouts. NULL → hardcoded
   // ribbon scene below; non-NULL → CustomScoreboardScene rendered
   // here. The same custom-template renderer works for any surface;
@@ -982,28 +987,16 @@ export default function RibbonPage() {
     }
   }, []);
 
-  // Poll health → staleness chip. onStatus fires every ~750ms; the chip
-  // decision changes rarely, so the health sample lands in a ref and a 1s
-  // ticker below derives the boolean (re-rendering only when it flips).
-  //
-  // Refuter fix B2 (2026-08-09): navigator.onLine === false must NEVER set
-  // the chip by itself — Android WebViews on wired-ethernet transports (our
-  // LED controllers) are documented to misreport onLine=false while a
-  // healthy 750ms poll stream keeps updating the strip, which showed
-  // CONNECTION LOST permanently over a live ribbon. Poll health is the
-  // only authority: a misreported offline may only ACCELERATE the verdict
-  // (2s threshold instead of 8s) when polls really have stopped landing.
-  const pollHealth = useRef({ lastGoodAt: Date.now() });
-  const [feedStale, setFeedStale] = useState(false);
-  useEffect(() => {
-    const evalStale = () => {
-      const sinceGood = Date.now() - pollHealth.current.lastGoodAt;
-      const threshold = navigator.onLine === false ? 2000 : STALE_FEED_AFTER_MS;
-      setFeedStale(sinceGood > threshold);
-    };
-    const t = setInterval(evalStale, 1000);
-    return () => clearInterval(t);
-  }, []);
+  // Poll health → staleness chip, through THE freshness contract every live
+  // game surface shares (lib/sports-freshness.ts, K12-F40) — the same
+  // verdict the board reaches, at the same moment: stale after
+  // STALE_FEED_AFTER_MS without a good read, cleared by any good read, and
+  // every clock HOLDS while stale. Refuter fix B2 is part of the contract:
+  // a misreported navigator.onLine may only accelerate the verdict.
+  const link = useSportsLink({ holdClocks: true });
+  const feedStale = link.state.phase === 'stale';
+  // K12-F40 — never apply an OLDER revision than one already shown.
+  const shownRevision = useRef<number | null>(null);
 
   // poll the public board endpoint — through the shared hardened engine
   // (self-chaining so slow responses never overlap, If-None-Match/304
@@ -1021,6 +1014,11 @@ export default function RibbonPage() {
       intervalMs: POLL_MS,
       onPayload: (payload) => {
         const json = payload as BoardData;
+        if (!acceptRevision(shownRevision.current, json.revision)) return;
+        if (typeof json.revision === 'number') {
+          if (json.revision !== shownRevision.current) noteRevisionShown('ribbon', json);
+          shownRevision.current = json.revision;
+        }
         setData(json);
         writeBoardCache(gameId, json);
         // Queue new celebration cues targeted at the ribbon. The first
@@ -1053,14 +1051,13 @@ export default function RibbonPage() {
       onServerTime: (n) =>
         setData((prev) => (prev ? { ...prev, serverTime: n } : prev)),
       onStatus: (s) => {
-        pollHealth.current = { lastGoodAt: s.lastGoodAt };
-        // The chip must clear the INSTANT a good poll lands (200 or 304),
-        // UNCONDITIONALLY — a healthy poll stream always means NO chip,
-        // even when navigator.onLine misreports false (refuter fix B2).
-        // The 1s ticker above only handles the (slow) appear side.
-        if (s.online) setFeedStale(false);
+        // The chip clears the INSTANT a good poll lands (200 or 304),
+        // unconditionally (refuter fix B2).
+        if (s.online) link.markGood();
       },
     });
+    // link.markGood is stable (useCallback); the poll restarts per game only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameId]);
 
   // 2026-06-15 — DOUBLE-FIRE FIX (ribbon surface). RibbonCueOverlay is the

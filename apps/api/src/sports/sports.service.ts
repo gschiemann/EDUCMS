@@ -764,7 +764,9 @@ export class SportsService {
         try {
           current = await tx.game.update({
             where,
-            data: { ...data, version: (expected ?? 0) + 1 },
+            // updatedAt on the SERVER clock (K12-F17): surfaces measure
+            // commit-to-visible against it (K12-F40).
+            data: { ...data, version: (expected ?? 0) + 1, updatedAt: service.clockNow() },
           });
         } catch (err) {
           if ((err as { code?: string } | null)?.code === 'P2025') throw new GameVersionConflict();
@@ -1510,6 +1512,8 @@ export class SportsService {
         // no-op on the board. Ship the column + mirror it into stats below.
         possession: true,
         scoreboardTemplateId: true, ribbonTemplateId: true, scorebugTemplateId: true,
+        // K12-F40 — the revision the payload shows and when it was committed.
+        version: true, updatedAt: true,
       },
     });
     if (!game) throw new NotFoundException('Game not found');
@@ -1636,6 +1640,12 @@ export class SportsService {
 
     const board = {
       id: game.id,
+      // K12-F40 — every surface's freshness contract keys off these: a poll
+      // answered by another replica's one-second board cache can carry an
+      // OLDER state, and surfaces never apply a revision below the one they
+      // show; `updatedAt` (the commit time) measures commit-to-visible.
+      revision: game.version,
+      updatedAt: game.updatedAt,
       sport: game.sport,
       status: game.status,
       segment: game.segment,

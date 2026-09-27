@@ -22,7 +22,9 @@ import { readBoardCache, writeBoardCache } from '@/lib/sports-board-cache';
 // Trust wave Domain B (2026-08-06) — shared hardened poll engine
 // (self-chaining, ETag/304 revalidation, jittered backoff) + the
 // "CONNECTION LOST" staleness chip shown when the feed goes quiet.
-import { startBoardPoll, STALE_FEED_AFTER_MS } from '@/lib/board-poll';
+import { startBoardPoll } from '@/lib/board-poll';
+import { acceptRevision } from '@/lib/sports-freshness';
+import { noteRevisionShown, useSportsLink } from '@/hooks/use-sports-link';
 import { formatSportClock } from '@/lib/game-clock-format';
 import { serverClock } from '@/lib/server-clock';
 import { ConnectionLostPill } from '@/components/sports/ConnectionLostPill';
@@ -169,6 +171,10 @@ export interface BoardData {
   sponsors?: Sponsor[];
   sponsorSpotSeconds?: number;
   serverTime: number;
+  /** K12-F40 — the game revision this payload shows (Game.version) and when
+   *  it was committed. Absent from APIs that predate them. */
+  revision?: number;
+  updatedAt?: string;
   // Sprint 13 — operator-picked custom-template IDs. NULL → fall back
   // to the hardcoded BoardScene below; non-NULL → render
   // CustomScoreboardScene (template-driven) instead.
@@ -4071,28 +4077,22 @@ export default function ScoreboardPage() {
     return () => window.removeEventListener('resize', measure);
   }, []);
 
-  // Poll health → staleness chip. onStatus fires every ~750ms; the chip
-  // decision changes rarely, so the health sample lands in a ref and a 1s
-  // ticker below derives the boolean (re-rendering only when it flips).
+  // Poll health → staleness chip, through THE freshness contract every live
+  // game surface shares (lib/sports-freshness.ts, K12-F40): stale after
+  // STALE_FEED_AFTER_MS without a good read; a good read (200 or 304) clears
+  // it at once; while stale every clock HOLDS where it stood (the table may
+  // have stopped it — a board never runs a clock on unconfirmed data).
   //
-  // Refuter fix B2 (2026-08-09): navigator.onLine === false must NEVER set
-  // the chip by itself — Android WebViews on wired-ethernet transports (our
-  // LED controllers) are documented to misreport onLine=false while a
-  // healthy 750ms poll stream keeps updating the board, which showed
-  // CONNECTION LOST permanently over a live scoreboard. Poll health is the
-  // only authority: a misreported offline may only ACCELERATE the verdict
-  // (2s threshold instead of 8s) when polls really have stopped landing.
-  const pollHealth = useRef({ lastGoodAt: Date.now() });
-  const [feedStale, setFeedStale] = useState(false);
-  useEffect(() => {
-    const evalStale = () => {
-      const sinceGood = Date.now() - pollHealth.current.lastGoodAt;
-      const threshold = navigator.onLine === false ? 2000 : STALE_FEED_AFTER_MS;
-      setFeedStale(sinceGood > threshold);
-    };
-    const t = setInterval(evalStale, 1000);
-    return () => clearInterval(t);
-  }, []);
+  // Refuter fix B2 (2026-08-09) is part of the contract: navigator.onLine
+  // === false must NEVER set the chip by itself — Android WebViews on
+  // wired-ethernet transports (our LED controllers) misreport it while a
+  // healthy 750ms poll stream keeps landing. It may only ACCELERATE the
+  // verdict (2s instead of 8s) when polls really have stopped.
+  const link = useSportsLink({ holdClocks: true });
+  const feedStale = link.state.phase === 'stale';
+  // K12-F40 — the highest game revision shown: a poll answered by another
+  // replica's one-second cache can carry an OLDER state; it is never applied.
+  const shownRevision = useRef<number | null>(null);
 
   // poll the public board endpoint — through the shared hardened engine
   // (self-chaining so slow responses never overlap, If-None-Match/304
@@ -4110,6 +4110,11 @@ export default function ScoreboardPage() {
       intervalMs: POLL_MS,
       onPayload: (payload) => {
         const json = payload as BoardData;
+        if (!acceptRevision(shownRevision.current, json.revision)) return;
+        if (typeof json.revision === 'number') {
+          if (json.revision !== shownRevision.current) noteRevisionShown('board', json);
+          shownRevision.current = json.revision;
+        }
         setData(json);
         setError(null);
         writeBoardCache(gameId, json);
@@ -4144,18 +4149,18 @@ export default function ScoreboardPage() {
       onServerTime: (n) =>
         setData((prev) => (prev ? { ...prev, serverTime: n } : prev)),
       onStatus: (s) => {
-        pollHealth.current = { lastGoodAt: s.lastGoodAt };
         // Error surface (renders only while data is null — cold boot on a
         // bad gameId). Same messages the old inline load() produced.
         if (s.lastError) setError(s.lastHttpStatus === 404 ? 'Game not found' : s.lastError);
         else setError(null);
-        // The chip must clear the INSTANT a good poll lands (200 or 304),
-        // UNCONDITIONALLY — a healthy poll stream always means NO chip,
+        // The chip clears the INSTANT a good poll lands (200 or 304),
+        // unconditionally — a healthy poll stream always means NO chip,
         // even when navigator.onLine misreports false (refuter fix B2).
-        // The 1s ticker above only handles the (slow) appear side.
-        if (s.online) setFeedStale(false);
+        if (s.online) link.markGood();
       },
     });
+    // link.markGood is stable (useCallback); the poll restarts per game only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameId]);
 
   // 2026-06-15 — DOUBLE-FIRE FIX. This board route is the single celebration

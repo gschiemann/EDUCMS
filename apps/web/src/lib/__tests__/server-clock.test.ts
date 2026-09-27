@@ -132,6 +132,27 @@ describe('serverClock', () => {
     expect(clock.now()).toBe(d.server());
   });
 
+  it('K12-F40: hold() stops time where it stood until release()', () => {
+    const d = device();
+    const clock = createServerClock(d);
+    const sent = d.localNow();
+    d.advance(20);
+    clock.sample(d.server() - 10, sent, d.localNow());
+    d.advance(500);
+    const heldAt = d.server();
+    clock.hold();
+    expect(clock.isHeld()).toBe(true);
+    d.advance(9_000);
+    expect(clock.now()).toBe(heldAt);
+    clock.hold(); // a second hold does not move the instant
+    d.advance(1_000);
+    expect(clock.now()).toBe(heldAt);
+    // A measurement still reads the real time while the display is held.
+    expect(clock.unheldNow()).toBe(d.server());
+    clock.release();
+    expect(clock.now()).toBe(d.server());
+  });
+
   it('ignores garbage samples and resets cleanly', () => {
     const d = device();
     const clock = createServerClock(d);

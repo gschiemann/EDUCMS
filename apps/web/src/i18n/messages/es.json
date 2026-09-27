@@ -3125,6 +3125,8 @@
     "playClockOff": "Reloj de jugada apagado: queda menos tiempo en el cuarto que en la cuenta. Reinícielo para volver a ponerlo en marcha.",
     "periodOver": "Terminó {period}. El reloj se queda así hasta que pase al siguiente periodo.",
     "periodOverNext": "Siguiente periodo",
-    "clockEntryHint": "Escriba el tiempo exacto que queda: minutos y segundos (7:42), o segundos y décimas (4.3, 0.3)."
+    "clockEntryHint": "Escriba el tiempo exacto que queda: minutos y segundos (7:42), o segundos y décimas (4.3, 0.3).",
+    "readStale": "Se perdió el contacto con el partido: la última actualización fue hace {seconds} s. Los relojes aquí se detienen hasta que vuelva la conexión.",
+    "readStaleNever": "Todavía no se puede conectar con el partido. Los relojes aquí se detienen hasta que responda."
   }
 }

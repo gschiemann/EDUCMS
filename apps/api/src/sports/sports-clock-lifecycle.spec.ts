@@ -729,3 +729,28 @@ describe('K12-F17 — one server clock for every anchor and every sample', () =>
     expect(td.payload.snapshot.clockText).toBe('0:05');
   });
 });
+
+describe('K12-F40 — the board payload carries what the freshness contract needs', () => {
+  it('revision and commit time, both moving with every committed command', async () => {
+    const { service } = setup();
+    const g: any = await newGame(service, 'basketball');
+    const first: any = await service.getBoard(g.id);
+    expect(first.revision).toBe(0);
+    at(2_000);
+    await service.adjustScore(TENANT, g.id, { team: 'home', delta: 2 });
+    const second: any = await service.getBoard(g.id); // the write invalidated the cache
+    expect(second.revision).toBe(1);
+    expect(new Date(second.updatedAt).getTime()).toBe(T0 + 2_000);
+    expect(second.serverTime).toBe(T0 + 2_000);
+  });
+
+  it('a refused command commits nothing, so the revision does not move', async () => {
+    const { service } = setup();
+    const g: any = await newGame(service, 'basketball');
+    await service.setShotClock(TENANT, g.id, { action: 'configure', value: 0 });
+    const before: any = await service.getBoard(g.id);
+    await rejection(service.setShotClock(TENANT, g.id, { action: 'start' }));
+    const after: any = await service.getBoard(g.id);
+    expect(after.revision).toBe(before.revision);
+  });
+});

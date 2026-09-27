@@ -3125,6 +3125,8 @@
     "playClockOff": "Play clock off: there is less time left in the quarter than the count. Reset it to start it again.",
     "periodOver": "{period} is over. The clock stays here until you move to the next period.",
     "periodOverNext": "Next period",
-    "clockEntryHint": "Type the exact time left: minutes and seconds (7:42), or seconds and tenths (4.3, 0.3)."
+    "clockEntryHint": "Type the exact time left: minutes and seconds (7:42), or seconds and tenths (4.3, 0.3).",
+    "readStale": "Lost contact with the game: the last update was {seconds} s ago. The clocks here are held until the connection is back.",
+    "readStaleNever": "Can't reach the game yet. The clocks here are held until it answers."
   }
 }
