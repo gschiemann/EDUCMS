@@ -210,6 +210,14 @@ export function CustomScoreboardScene({
                 width={z.width}
                 height={z.height}
                 live
+                // /board /ribbon /scorebug are PUBLIC screens (K-12 launch
+                // audit F28, 2026-09-27). Without this they read as the
+                // builder to every widget that asks `useRenderSurface()`,
+                // so a manual-content zone with nothing typed painted its
+                // stamped SAMPLE rows (standings, sponsors, schedules…) on
+                // the crowd-facing board. Game data is unaffected: the
+                // ambient GameStateProvider above still supplies it.
+                renderSurface="player"
               />
             </div>
           ))}

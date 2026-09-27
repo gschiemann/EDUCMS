@@ -833,54 +833,6 @@
       "baselinedOn": "2026-09-11",
       "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). The v2 pack is ~70 variants across school + vertical families and each file carries the fallback 5x (once per variant), so it is its own pass. Priority order set by the operator: fitness first (he is on a GYM tenant), then restaurant/retail/bar — all done; v2 is next."
     },
-    "fabricated-fallback|apps/web/src/components/widgets/v2/SportsVenueWidgets.tsx||| fallback renders array of 5 fabricated record(s)": {
-      "file": "apps/web/src/components/widgets/v2/SportsVenueWidgets.tsx",
-      "check": "fabricated-fallback",
-      "detail": "|| fallback renders array of 5 fabricated record(s)",
-      "count": 3,
-      "baselinedOn": "2026-09-11",
-      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). The v2 pack is ~70 variants across school + vertical families and each file carries the fallback 5x (once per variant), so it is its own pass. Priority order set by the operator: fitness first (he is on a GYM tenant), then restaurant/retail/bar — all done; v2 is next."
-    },
-    "fabricated-fallback|apps/web/src/components/widgets/v2/SportsVenueWidgets.tsx||| fallback renders array of 1 fabricated record(s)": {
-      "file": "apps/web/src/components/widgets/v2/SportsVenueWidgets.tsx",
-      "check": "fabricated-fallback",
-      "detail": "|| fallback renders array of 1 fabricated record(s)",
-      "count": 1,
-      "baselinedOn": "2026-09-11",
-      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). The v2 pack is ~70 variants across school + vertical families and each file carries the fallback 5x (once per variant), so it is its own pass. Priority order set by the operator: fitness first (he is on a GYM tenant), then restaurant/retail/bar — all done; v2 is next."
-    },
-    "fabricated-fallback|apps/web/src/components/widgets/v2/SportsVenueWidgets.tsx||| fallback renders array of 4 fabricated lines": {
-      "file": "apps/web/src/components/widgets/v2/SportsVenueWidgets.tsx",
-      "check": "fabricated-fallback",
-      "detail": "|| fallback renders array of 4 fabricated lines",
-      "count": 1,
-      "baselinedOn": "2026-09-11",
-      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). The v2 pack is ~70 variants across school + vertical families and each file carries the fallback 5x (once per variant), so it is its own pass. Priority order set by the operator: fitness first (he is on a GYM tenant), then restaurant/retail/bar — all done; v2 is next."
-    },
-    "fabricated-fallback|apps/web/src/components/widgets/v2/SportsVenueWidgets.tsx||| fallback renders fabricated paragraph (13 words)": {
-      "file": "apps/web/src/components/widgets/v2/SportsVenueWidgets.tsx",
-      "check": "fabricated-fallback",
-      "detail": "|| fallback renders fabricated paragraph (13 words)",
-      "count": 1,
-      "baselinedOn": "2026-09-11",
-      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). The v2 pack is ~70 variants across school + vertical families and each file carries the fallback 5x (once per variant), so it is its own pass. Priority order set by the operator: fitness first (he is on a GYM tenant), then restaurant/retail/bar — all done; v2 is next."
-    },
-    "fabricated-fallback|apps/web/src/components/widgets/v2/SportsVenueWidgets.tsx||| fallback renders array of 6 fabricated record(s)": {
-      "file": "apps/web/src/components/widgets/v2/SportsVenueWidgets.tsx",
-      "check": "fabricated-fallback",
-      "detail": "|| fallback renders array of 6 fabricated record(s)",
-      "count": 1,
-      "baselinedOn": "2026-09-11",
-      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). The v2 pack is ~70 variants across school + vertical families and each file carries the fallback 5x (once per variant), so it is its own pass. Priority order set by the operator: fitness first (he is on a GYM tenant), then restaurant/retail/bar — all done; v2 is next."
-    },
-    "fabricated-fallback|apps/web/src/components/widgets/v2/SportsVenueWidgets.tsx||| fallback renders fabricated paragraph (12 words)": {
-      "file": "apps/web/src/components/widgets/v2/SportsVenueWidgets.tsx",
-      "check": "fabricated-fallback",
-      "detail": "|| fallback renders fabricated paragraph (12 words)",
-      "count": 1,
-      "baselinedOn": "2026-09-11",
-      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). The v2 pack is ~70 variants across school + vertical families and each file carries the fallback 5x (once per variant), so it is its own pass. Priority order set by the operator: fitness first (he is on a GYM tenant), then restaurant/retail/bar — all done; v2 is next."
-    },
     "fabricated-fallback|apps/web/src/components/widgets/v2/StaffWidgets.tsx|spread fallback renders merged under operator data: fabricated record with 5 prose fields": {
       "file": "apps/web/src/components/widgets/v2/StaffWidgets.tsx",
       "check": "fabricated-fallback",

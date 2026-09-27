@@ -104,6 +104,23 @@ export interface GameSnapshot {
   clockUpdatedAt: string;
   stats: Record<string, unknown>;
   serverTime: number;
+  /**
+   * The game's roster as the PUBLIC board payload carries it (the
+   * `/sports/board/:id` response spreads through `applyCtsOverlay`
+   * untouched). Optional: a snapshot from any other source may omit it,
+   * and the school's public-roster settings may have already removed
+   * names / numbers / photos server-side. Lineup + player-card widgets
+   * read it; nothing else should.
+   */
+  roster?: Array<{
+    id?: string;
+    team?: string;
+    name?: string;
+    number?: string | null;
+    position?: string | null;
+    photoUrl?: string | null;
+    stats?: Record<string, unknown> | null;
+  }> | null;
 }
 
 interface GameStateValue {
