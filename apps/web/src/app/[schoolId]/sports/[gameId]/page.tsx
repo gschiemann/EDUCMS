@@ -61,6 +61,9 @@ import { useMarkGoodOnServerRead, useSportsLink } from '@/hooks/use-sports-link'
 import { RoleGate } from '@/components/RoleGate';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { useShortLandscape } from '@/hooks/use-short-landscape';
+// K12-F15 follow-up — every typed field commits on blur / Enter and CANCELS
+// on Escape (Escape used to save: the blur it caused committed the draft).
+import { useDraftField } from '@/hooks/use-draft-field';
 import { useAppStore } from '@/lib/store';
 import { hasPanicAuthority } from '@/lib/emergency-capability';
 import { Button } from '@/components/ui/button';
@@ -98,7 +101,6 @@ import {
   projectCountdownMs,
   projectGameClockMs,
   sanitizeResults,
-  shotClockMode,
   sportHasTeamTimeoutStats,
 } from '@cms/api-types';
 import type { SportDefinition, MeetResult, ResultEntry as ApiResultEntry } from '@cms/api-types';
@@ -3002,13 +3004,13 @@ function GameScopeText({
   onCommit: (v: string) => void;
 }) {
   const live = value === undefined || value === null ? '' : String(value);
-  const [text, setText] = useState('');
-  const [editing, setEditing] = useState(false);
-  const commit = () => {
-    if (!editing) return;
-    onCommit(text.trim());
-    setEditing(false);
-  };
+  const field = useDraftField(
+    () => live,
+    (text) => {
+      const next = text.trim();
+      if (next !== live) onCommit(next);
+    },
+  );
   return (
     <label className="flex flex-col">
       <span className="text-[9px] font-black tracking-widest text-slate-400 uppercase mb-0.5">
@@ -3016,22 +3018,11 @@ function GameScopeText({
       </span>
       <input
         type="text"
-        value={editing ? text : live}
-        onFocus={() => {
-          setText(live);
-          setEditing(true);
-        }}
-        onChange={(e) => setText(e.target.value)}
-        onBlur={commit}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            commit();
-            e.currentTarget.blur();
-          } else if (e.key === 'Escape') {
-            setEditing(false);
-            e.currentTarget.blur();
-          }
-        }}
+        value={field.draft ?? live}
+        onFocus={field.onFocus}
+        onChange={(e) => field.onChange(e.target.value)}
+        onBlur={field.onBlur}
+        onKeyDown={field.onKeyDown}
         placeholder="—"
         className="h-9 max-md:h-11 min-w-[140px] rounded-lg border border-slate-700 bg-slate-900 px-2.5 text-sm font-bold text-white outline-none focus:border-indigo-500"
       />
@@ -3241,16 +3232,16 @@ function ScoreTile({
   // 285.5) stored as a scaled int. The +/- chips can't reach a decimal,
   // so those sports get an absolute decimal-entry field instead.
   const isJudged = typeof def.scoreDecimals === 'number' && def.scoreDecimals > 0;
-  const [scoreDraft, setScoreDraft] = useState('');
   // When not actively editing, mirror the live score into the field.
-  const [editingScore, setEditingScore] = useState(false);
   const liveScoreText = formatScore(def, score);
-  const commitScore = () => {
-    setEditingScore(false);
-    const text = scoreDraft.trim();
-    if (text === '') return; // empty → leave score unchanged
-    onSetAbsolute?.(parseScoreInput(def, text));
-  };
+  const scoreField = useDraftField(
+    () => liveScoreText,
+    (draft) => {
+      const text = draft.trim();
+      if (text === '' || text === liveScoreText) return; // empty / unchanged → leave the score
+      onSetAbsolute?.(parseScoreInput(def, text));
+    },
+  );
   // 2026-05-27 — Per-team stat rows inside the tile. Operator: "i
   // wanted that integrated into the score boards cleanly some how".
   // Filter the sport-def stats for ones that belong to this side
@@ -3312,18 +3303,11 @@ function ScoreTile({
             type="text"
             inputMode="decimal"
             aria-label={`${side === 'home' ? 'Home' : 'Away'} team total`}
-            value={editingScore ? scoreDraft : liveScoreText}
-            onFocus={() => {
-              setEditingScore(true);
-              setScoreDraft(liveScoreText);
-            }}
-            onChange={(e) => setScoreDraft(e.target.value)}
-            onBlur={commitScore}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                (e.target as HTMLInputElement).blur();
-              }
-            }}
+            value={scoreField.draft ?? liveScoreText}
+            onFocus={scoreField.onFocus}
+            onChange={(e) => scoreField.onChange(e.target.value)}
+            onBlur={scoreField.onBlur}
+            onKeyDown={scoreField.onKeyDown}
             className="min-h-[56px] w-32 rounded-xl bg-slate-800 text-center text-white font-bold text-xl transition-colors border border-slate-700 focus:border-amber-500 focus:outline-none tabular-nums"
             title="Type the team's total score, then Enter"
           />
@@ -3553,32 +3537,21 @@ function SideTeamText({
   onCommit: (v: string) => void;
 }) {
   const live = value === undefined || value === null ? '' : String(value);
-  const [text, setText] = useState('');
-  const [editing, setEditing] = useState(false);
-  const commit = () => {
-    if (!editing) return;
-    onCommit(text.trim());
-    setEditing(false);
-  };
+  const field = useDraftField(
+    () => live,
+    (text) => {
+      const next = text.trim();
+      if (next !== live) onCommit(next);
+    },
+  );
   return (
     <input
       type="text"
-      value={editing ? text : live}
-      onFocus={() => {
-        setText(live);
-        setEditing(true);
-      }}
-      onChange={(e) => setText(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') {
-          commit();
-          e.currentTarget.blur();
-        } else if (e.key === 'Escape') {
-          setEditing(false);
-          e.currentTarget.blur();
-        }
-      }}
+      value={field.draft ?? live}
+      onFocus={field.onFocus}
+      onChange={(e) => field.onChange(e.target.value)}
+      onBlur={field.onBlur}
+      onKeyDown={field.onKeyDown}
       placeholder="—"
       className="min-h-[44px] w-20 rounded-lg bg-slate-800 border border-slate-700 px-2 text-sm font-black text-white tabular-nums text-center outline-none focus:border-indigo-500"
     />
@@ -3597,34 +3570,24 @@ function SideNumberTypeIn({
   max: number;
   onCommit: (n: number) => void;
 }) {
-  const [text, setText] = useState('');
-  const [editing, setEditing] = useState(false);
-  const commit = () => {
-    if (!editing) return;
-    const n = parseInt(text, 10);
-    if (Number.isFinite(n)) onCommit(Math.max(min, Math.min(max, n)));
-    setEditing(false);
-  };
+  const field = useDraftField(
+    () => String(value),
+    (text) => {
+      const n = parseInt(text, 10);
+      if (!Number.isFinite(n)) return;
+      const next = Math.max(min, Math.min(max, n));
+      if (next !== value) onCommit(next);
+    },
+  );
   return (
     <input
       type="text"
       inputMode="numeric"
-      value={editing ? text : String(value)}
-      onFocus={() => {
-        setText(String(value));
-        setEditing(true);
-      }}
-      onChange={(e) => setText(e.target.value.replace(/[^0-9]/g, '').slice(0, 4))}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') {
-          commit();
-          e.currentTarget.blur();
-        } else if (e.key === 'Escape') {
-          setEditing(false);
-          e.currentTarget.blur();
-        }
-      }}
+      value={field.draft ?? String(value)}
+      onFocus={field.onFocus}
+      onChange={(e) => field.onChange(e.target.value.replace(/[^0-9]/g, '').slice(0, 4))}
+      onBlur={field.onBlur}
+      onKeyDown={field.onKeyDown}
       title="Tap to type a correction"
       aria-label="Stat value (tap to type)"
       className="min-h-[44px] w-9 rounded-lg bg-transparent border border-transparent hover:border-slate-700 focus:bg-slate-800 focus:border-indigo-500 px-1 text-base font-black text-white tabular-nums text-center outline-none cursor-text"
@@ -3648,42 +3611,31 @@ function SideRideTime({
     const r = s % 60;
     return `${m}:${String(r).padStart(2, '0')}`;
   };
-  const [text, setText] = useState('');
-  const [editing, setEditing] = useState(false);
-  const commit = () => {
-    if (!editing) return;
-    // Parse "m:ss" or a bare seconds count.
-    const t = text.trim();
-    let secs = 0;
-    if (t.includes(':')) {
-      const [m, s] = t.split(':');
-      secs = (parseInt(m, 10) || 0) * 60 + (parseInt(s, 10) || 0);
-    } else {
-      secs = parseInt(t, 10) || 0;
-    }
-    onCommit(Math.max(0, Math.min(maxSeconds, secs)));
-    setEditing(false);
-  };
+  const field = useDraftField(
+    () => fmt(seconds),
+    (text) => {
+      // Parse "m:ss" or a bare seconds count.
+      const t = text.trim();
+      let secs = 0;
+      if (t.includes(':')) {
+        const [m, s] = t.split(':');
+        secs = (parseInt(m, 10) || 0) * 60 + (parseInt(s, 10) || 0);
+      } else {
+        secs = parseInt(t, 10) || 0;
+      }
+      const next = Math.max(0, Math.min(maxSeconds, secs));
+      if (next !== seconds) onCommit(next);
+    },
+  );
   return (
     <input
       type="text"
       inputMode="numeric"
-      value={editing ? text : fmt(seconds)}
-      onFocus={() => {
-        setText(fmt(seconds));
-        setEditing(true);
-      }}
-      onChange={(e) => setText(e.target.value.replace(/[^0-9:]/g, '').slice(0, 5))}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') {
-          commit();
-          e.currentTarget.blur();
-        } else if (e.key === 'Escape') {
-          setEditing(false);
-          e.currentTarget.blur();
-        }
-      }}
+      value={field.draft ?? fmt(seconds)}
+      onFocus={field.onFocus}
+      onChange={(e) => field.onChange(e.target.value.replace(/[^0-9:]/g, '').slice(0, 5))}
+      onBlur={field.onBlur}
+      onKeyDown={field.onKeyDown}
       placeholder="0:00"
       title="Ride-time advantage (m:ss)"
       className="min-h-[44px] w-16 rounded-lg bg-slate-800 border border-slate-700 px-2 text-sm font-black text-white tabular-nums text-center outline-none focus:border-indigo-500"
@@ -4943,14 +4895,15 @@ function StatNumberField({
   const live =
     value === undefined || value === null || value === '' ? '' : String(value);
   const cur = Number.isFinite(parseInt(live, 10)) ? parseInt(live, 10) : 0;
-  const [text, setText] = useState('');
-  const [editing, setEditing] = useState(false);
-  const commit = () => {
-    if (!editing) return;
-    const n = parseInt(text, 10);
-    if (Number.isFinite(n)) onCommit(Math.max(min, Math.min(max, n)));
-    setEditing(false);
-  };
+  const field = useDraftField(
+    () => live,
+    (text) => {
+      const n = parseInt(text, 10);
+      if (!Number.isFinite(n)) return;
+      const next = Math.max(min, Math.min(max, n));
+      if (String(next) !== live) onCommit(next);
+    },
+  );
   return (
     <div className="flex flex-col items-center bg-white border border-slate-200 rounded-xl px-3 py-1.5">
       <span className="text-[9px] font-black tracking-widest text-slate-400 uppercase">
@@ -4974,22 +4927,11 @@ function StatNumberField({
         <input
           type="text"
           inputMode="numeric"
-          value={editing ? text : live}
-          onFocus={() => {
-            setText(live);
-            setEditing(true);
-          }}
-          onChange={(e) => setText(e.target.value.replace(/[^0-9]/g, '').slice(0, 3))}
-          onBlur={commit}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              commit();
-              e.currentTarget.blur();
-            } else if (e.key === 'Escape') {
-              setEditing(false);
-              e.currentTarget.blur();
-            }
-          }}
+          value={field.draft ?? live}
+          onFocus={field.onFocus}
+          onChange={(e) => field.onChange(e.target.value.replace(/[^0-9]/g, '').slice(0, 3))}
+          onBlur={field.onBlur}
+          onKeyDown={field.onKeyDown}
           placeholder="—"
           title="Tap to type a value"
           className="w-10 max-md:h-11 max-md:w-12 bg-transparent text-center text-lg font-black text-slate-900 tabular-nums leading-tight outline-none"
@@ -5966,31 +5908,19 @@ function ResultsGridTextInput({
   placeholder?: string;
   className?: string;
 }) {
-  const [text, setText] = useState('');
-  const [editing, setEditing] = useState(false);
-  const commit = () => {
-    if (!editing) return;
-    setEditing(false);
-    if (text !== value) onCommit(text);
-  };
+  const field = useDraftField(
+    () => value,
+    (text) => {
+      if (text !== value) onCommit(text);
+    },
+  );
   return (
     <Input
-      value={editing ? text : value}
-      onFocus={() => {
-        setText(value);
-        setEditing(true);
-      }}
-      onChange={(e) => setText(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') {
-          commit();
-          e.currentTarget.blur();
-        } else if (e.key === 'Escape') {
-          setEditing(false);
-          e.currentTarget.blur();
-        }
-      }}
+      value={field.draft ?? value}
+      onFocus={field.onFocus}
+      onChange={(e) => field.onChange(e.target.value)}
+      onBlur={field.onBlur}
+      onKeyDown={field.onKeyDown}
       placeholder={placeholder}
       className={className}
     />
@@ -6021,34 +5951,22 @@ function ResultsGridNumberInput({
   placeholder?: string;
   className?: string;
 }) {
-  const [text, setText] = useState('');
-  const [editing, setEditing] = useState(false);
-  const commit = () => {
-    if (!editing) return;
-    setEditing(false);
-    const digits = text.replace(/[^0-9]/g, '');
-    const next = digits ? Math.max(min, Math.min(max, parseInt(digits, 10))) : undefined;
-    const nextText = next === undefined ? '' : String(next);
-    if (nextText !== value) onCommit(next);
-  };
+  const field = useDraftField(
+    () => value,
+    (text) => {
+      const digits = text.replace(/[^0-9]/g, '');
+      const next = digits ? Math.max(min, Math.min(max, parseInt(digits, 10))) : undefined;
+      const nextText = next === undefined ? '' : String(next);
+      if (nextText !== value) onCommit(next);
+    },
+  );
   return (
     <Input
-      value={editing ? text : value}
-      onFocus={() => {
-        setText(value);
-        setEditing(true);
-      }}
-      onChange={(e) => setText(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') {
-          commit();
-          e.currentTarget.blur();
-        } else if (e.key === 'Escape') {
-          setEditing(false);
-          e.currentTarget.blur();
-        }
-      }}
+      value={field.draft ?? value}
+      onFocus={field.onFocus}
+      onChange={(e) => field.onChange(e.target.value)}
+      onBlur={field.onBlur}
+      onKeyDown={field.onKeyDown}
       inputMode="numeric"
       placeholder={placeholder}
       className={className}

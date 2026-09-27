@@ -87,7 +87,7 @@
  * provisional's own result, not a snapshot from before it landed.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { Plus, Minus, ChevronRight, Undo2, Cable } from 'lucide-react';
@@ -332,6 +332,35 @@ export function LanePadSection({
     if (Object.keys(patch).length > 0) ctl.stats.mutate({ stats: patch });
   };
 
+  // K12-F15 follow-up — Event / Heat commit on blur (Enter blurs, so it
+  // commits ONCE; it used to commit, then commit again on the blur) and
+  // Escape CANCELS: the field goes back to what it held when focused and
+  // nothing is written. The cancel travels in a ref because the blur Escape
+  // causes runs before React applies the restored text.
+  const headerFocusValue = useRef('');
+  const headerCancelled = useRef(false);
+  const headerField = (value: string, set: (v: string) => void) => ({
+    onFocus: () => {
+      headerFocusValue.current = value;
+      headerCancelled.current = false;
+    },
+    onBlur: () => {
+      if (headerCancelled.current) {
+        headerCancelled.current = false;
+        return;
+      }
+      commitEventHeader();
+    },
+    onKeyDown: (e: KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === 'Enter') e.currentTarget.blur();
+      if (e.key === 'Escape') {
+        headerCancelled.current = true;
+        set(headerFocusValue.current);
+        e.currentTarget.blur();
+      }
+    },
+  });
+
   const nextHeat = async () => {
     // #292 — cancel any pending provisional debounce BEFORE building the
     // final result (a timer scheduled a moment ago against THIS heat's
@@ -455,8 +484,7 @@ export function LanePadSection({
               type="text"
               value={eventText}
               onChange={(e) => setEventText(e.target.value)}
-              onBlur={commitEventHeader}
-              onKeyDown={(e) => { if (e.key === 'Enter') { commitEventHeader(); e.currentTarget.blur(); } }}
+              {...headerField(eventText, setEventText)}
               placeholder="100 Free"
               className="min-h-[44px] w-40 rounded-lg border border-slate-700 bg-slate-900 px-2.5 text-sm font-bold text-white outline-none focus:border-indigo-500"
             />
@@ -469,8 +497,7 @@ export function LanePadSection({
                 inputMode="numeric"
                 value={heatText}
                 onChange={(e) => setHeatText(e.target.value)}
-                onBlur={commitEventHeader}
-                onKeyDown={(e) => { if (e.key === 'Enter') { commitEventHeader(); e.currentTarget.blur(); } }}
+                {...headerField(heatText, setHeatText)}
                 placeholder="1"
                 className="min-h-[44px] w-20 rounded-lg border border-slate-700 bg-slate-900 px-2.5 text-sm font-bold text-white outline-none focus:border-indigo-500 text-center"
               />

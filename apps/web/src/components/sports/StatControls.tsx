@@ -13,8 +13,6 @@
  *
  * Dark theme only (both hosts are dark). Solid backgrounds, no blur.
  */
-import { useRef, useState } from 'react';
-import type { KeyboardEvent } from 'react';
 import { useTranslations } from 'next-intl';
 import type { SportDefinition } from '@cms/api-types';
 import {
@@ -25,44 +23,12 @@ import {
   teamStatRows,
   type TeamStatRow,
 } from '@/lib/sports-stat-rows';
+// Draft-while-editing: commits on blur / Enter, DISCARDS on Escape — the one
+// typed-field contract the whole Run view shares (hooks/use-draft-field).
+import { useDraftField } from '@/hooks/use-draft-field';
 
 const STEP_BTN =
   'flex h-11 min-w-[44px] items-center justify-center rounded-lg border border-slate-700 bg-slate-800 text-lg font-bold text-slate-100 transition-colors active:bg-slate-600 disabled:opacity-30';
-
-/**
- * Draft-while-editing for a field that commits on blur / Enter and DISCARDS
- * on Escape. Escape blurs the field, and that blur runs before React applies
- * any state update — so the discard travels in a ref; clearing the draft in
- * state first (the obvious version) still committed the typed value.
- */
-function useDraftField(current: () => string, onCommit: (text: string) => void) {
-  const [draft, setDraft] = useState<string | null>(null);
-  const discard = useRef(false);
-  return {
-    draft,
-    onFocus: () => {
-      discard.current = false;
-      setDraft(current());
-    },
-    onChange: (text: string) => setDraft(text),
-    onBlur: () => {
-      const text = draft;
-      setDraft(null);
-      if (discard.current) {
-        discard.current = false;
-        return;
-      }
-      if (text !== null) onCommit(text);
-    },
-    onKeyDown: (e: KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === 'Enter') e.currentTarget.blur();
-      if (e.key === 'Escape') {
-        discard.current = true;
-        e.currentTarget.blur();
-      }
-    },
-  };
-}
 
 /**
  * − value + with 44 px targets. `typeIn` turns the value into a tap-to-type
