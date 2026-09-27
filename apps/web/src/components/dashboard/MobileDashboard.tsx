@@ -45,6 +45,7 @@ import { MobileFleetCommand } from '@/components/dashboard/mobile/MobileFleetCom
 import { BrandMark } from '@/components/layout/BrandMark';
 import { StarterBoardCard } from '@/components/dashboard/StarterBoardCard';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
+import { showsSportsNav } from '@/lib/sports-nav';
 import { useMobileShell } from '@/lib/mobile-shell-pref';
 import { useAppStore } from '@/lib/store';
 import { hasPanicAuthority } from '@/lib/emergency-capability';
@@ -66,7 +67,7 @@ export function MobileDashboard({ schoolId }: { schoolId: string }) {
   const { shell, loaded: shellLoaded } = useMobileShell();
   const user = useAppStore((s) => s.user);
   const role = user?.role;
-  const { vertical } = useTenantCopy();
+  const tenantCopy = useTenantCopy();
   const { data: tenant } = useTenantStatus();
 
   // Who may READ a fleet. Exactly the three roles on `GET /screens/fleet`'s
@@ -150,7 +151,7 @@ export function MobileDashboard({ schoolId }: { schoolId: string }) {
           orgName={tenant?.name ?? null}
           schedule={scheduleRows}
           can={can}
-          isSportsVertical={vertical === 'SPORTS'}
+          isSportsVertical={showsSportsNav(tenantCopy)}
         />
       );
     }
@@ -183,8 +184,8 @@ function ClassicMobileDashboard({ schoolId }: { schoolId: string }) {
   const isViewer = role === 'RESTRICTED_VIEWER';
   // Sports is a sports-vertical surface — surface a Game Day shortcut
   // only for sports-vertical tenants, matching the desktop Sidebar.
-  const { vertical } = useTenantCopy();
-  const isSportsVertical = vertical === 'SPORTS';
+  // 2026-09-27 — K-12 schools too (K-12 sports launch); see lib/sports-nav.ts.
+  const isSportsVertical = showsSportsNav(useTenantCopy());
   // 2026-05-14 — was `new Date().getHours()` during render which
   // caused a hydration mismatch (React #418). Server "now" hour vs
   // client "now" hour differ across timezones AND across the

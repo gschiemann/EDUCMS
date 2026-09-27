@@ -11,6 +11,7 @@ import { RoleGate } from '../RoleGate';
 import { EmergencyTriggerModal } from '../emergency/EmergencyTriggerModal';
 import { usePendingAssets, useSubmissions, useTenantBranding } from '@/hooks/use-api';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
+import { showsSportsNav } from '@/lib/sports-nav';
 import { useTenantStatus } from '@/hooks/use-api';
 import type { TenantBranding } from '@/lib/branding';
 import { readLogoBackground } from '@/components/branding/logo-backdrop';
@@ -202,7 +203,8 @@ export function Sidebar() {
   // below) — the Sports item appears one render tick after mount.
   // Operator (2026-05-19): "the sports menu should only show when you
   // pick the sports venue type, not the others."
-  const isSportsVertical = mounted && tenantCopyForBrand.vertical === 'SPORTS';
+  // 2026-09-27 — K-12 schools too (K-12 sports launch); see lib/sports-nav.ts.
+  const isSportsVertical = mounted && showsSportsNav(tenantCopyForBrand);
   // Menu & pricing console — the food verticals that run menu/drink boards
   // (QSR / RESTAURANT / BAR) PLUS retail, which uses it as a multi-location
   // price book. Same vertical-gate pattern as Sports above; /menu is still

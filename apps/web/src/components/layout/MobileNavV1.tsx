@@ -13,6 +13,7 @@ import { useAppStore } from '@/lib/store';
 import { useNotifications, usePasskeys } from '@/hooks/use-api';
 import { passkeysSupported } from '@/lib/passkeys';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
+import { showsSportsNav } from '@/lib/sports-nav';
 import { useTranslations } from 'next-intl';
 import { useBottomSheet } from '@/hooks/use-bottom-sheet';
 import { BrandMark } from './BrandMark';
@@ -61,7 +62,8 @@ export function MobileNavV1({ onSwitchShell }: { onSwitchShell: (v: MobileShell)
   const mobileSidebarOpen = useAppStore((s) => s.mobileSidebarOpen);
   const { data: notifications } = useNotifications();
   const unreadCount = notifications?.unreadCount ?? 0;
-  const { vertical } = useTenantCopy();
+  const tenantCopy = useTenantCopy();
+  const { vertical } = tenantCopy;
   const [moreOpen, setMoreOpen] = useState(false);
   const sheetRef = useRef<HTMLDivElement>(null);
   const moreBtnRef = useRef<HTMLButtonElement>(null);
@@ -110,7 +112,8 @@ export function MobileNavV1({ onSwitchShell }: { onSwitchShell: (v: MobileShell)
   const securityBase = base || (user?.tenantSlug ? `/${user.tenantSlug}` : user?.tenantId ? `/${user.tenantId}` : '');
   const isAdmin =
     user?.role === 'SUPER_ADMIN' || user?.role === 'DISTRICT_ADMIN' || user?.role === 'SCHOOL_ADMIN';
-  const isSportsVertical = vertical === 'SPORTS';
+  // 2026-09-27 — K-12 schools too (K-12 sports launch); see lib/sports-nav.ts.
+  const isSportsVertical = showsSportsNav(tenantCopy);
   const isMenuVertical = ['QSR', 'RESTAURANT', 'BAR', 'RETAIL'].includes(vertical);
   const isRetailPricing = vertical === 'RETAIL';
   const isContributor = user?.role === 'CONTRIBUTOR';

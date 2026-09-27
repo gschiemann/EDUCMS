@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils';
 import { useAppStore } from '@/lib/store';
 import { useNotifications } from '@/hooks/use-api';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
+import { showsSportsNav } from '@/lib/sports-nav';
 import { useTranslations } from 'next-intl';
 import { MobileNavV1 } from './MobileNavV1';
 import { BrandMark } from './BrandMark';
@@ -87,7 +88,8 @@ function ClassicMobileTabBar({ onSwitchShell }: { onSwitchShell: (v: MobileShell
   const unreadCount = notifications?.unreadCount ?? 0;
   // Sports is a sports-vertical surface — gate it exactly as the
   // desktop Sidebar does so mobile + desktop nav stay consistent.
-  const { vertical } = useTenantCopy();
+  const tenantCopy = useTenantCopy();
+  const { vertical } = tenantCopy;
   const [moreOpen, setMoreOpen] = useState(false);
 
   // Hide the tab bar on:
@@ -121,7 +123,8 @@ function ClassicMobileTabBar({ onSwitchShell }: { onSwitchShell: (v: MobileShell
     user?.role === 'SUPER_ADMIN' ||
     user?.role === 'DISTRICT_ADMIN' ||
     user?.role === 'SCHOOL_ADMIN';
-  const isSportsVertical = vertical === 'SPORTS';
+  // 2026-09-27 — K-12 schools too (K-12 sports launch); see lib/sports-nav.ts.
+  const isSportsVertical = showsSportsNav(tenantCopy);
   // Menu/pricing console: food verticals (QSR / RESTAURANT / BAR) + retail
   // (price book). Retail relabels it "Pricing" (see below). Mirrors Sidebar.
   const isMenuVertical = ['QSR', 'RESTAURANT', 'BAR', 'RETAIL'].includes(vertical);
