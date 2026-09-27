@@ -142,28 +142,28 @@ export function PadClockSection({
           disabled={disabled}
           aria-label={t('minusSecondLabel')}
           onClick={() =>
-            send(t('cmdClockNudge', { delta: '−1s' }), '/clock', 'PATCH', {
+            send(t('cmdClockNudge', { delta: t('minusSecond') }), '/clock', 'PATCH', {
               action: 'set',
               ms: Math.max(0, Math.round(clockNow) - 1000),
             })
           }
           className={PAD_BTN}
         >
-          −1s
+          {t('minusSecond')}
         </button>
         <button
           type="button"
           disabled={disabled}
           aria-label={t('plusSecondLabel')}
           onClick={() =>
-            send(t('cmdClockNudge', { delta: '+1s' }), '/clock', 'PATCH', {
+            send(t('cmdClockNudge', { delta: t('plusSecond') }), '/clock', 'PATCH', {
               action: 'set',
               ms: Math.round(clockNow) + 1000,
             })
           }
           className={PAD_BTN}
         >
-          +1s
+          {t('plusSecond')}
         </button>
         <button
           type="button"
@@ -403,7 +403,8 @@ export function PadTeamSection({
   const editable = new Set(canStats ? consoleStatRules(def).map((r) => r.key) : []);
   const labelOf = (key: string) => def.stats.find((s) => s.key === key)?.label || key;
   return (
-    <PadCard title={t('teamTitle')} testId="pad-team">
+    // A clock operator sees only the timeout calls here — title it that way.
+    <PadCard title={canStats ? t('teamTitle') : t('timeoutsTitle')} testId="pad-team">
       <TeamStatGrid
         def={def}
         stats={stats}

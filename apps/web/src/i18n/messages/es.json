@@ -3242,7 +3242,8 @@
     "start": "Iniciar",
     "stop": "Detener",
     "possession": "Posesión",
-    "backToGames": "Volver a la jornada deportiva"
+    "backToGames": "Volver a la jornada deportiva",
+    "judgedTotal": "Total de {team}"
   },
   "sportsPad": {
     "vs": "vs",
@@ -3342,7 +3343,10 @@
     "jerseyPlaceholder": "Dorsal (opcional)",
     "jerseyLabel": "Número de dorsal",
     "cmdPenalty": "{team}: {penalty}",
-    "cuesTitle": "Celebraciones"
+    "cuesTitle": "Celebraciones",
+    "minusSecond": "−1 s",
+    "plusSecond": "+1 s",
+    "timeoutsTitle": "Tiempos muertos"
   },
   "sportsShareLink": {
     "title": "Enlaces para voluntarios: sin iniciar sesión",

@@ -2432,6 +2432,7 @@ function DockJudgedTotal({
   score: number;
   ctl: ReturnType<typeof useGameControl>;
 }) {
+  const t = useTranslations('sportsRunPhone');
   const [draft, setDraft] = useState<string | null>(null);
   // Escape must discard: the blur it triggers runs before the state update
   // lands, so the cancel travels in a ref, not in `draft`.
@@ -2463,7 +2464,7 @@ function DockJudgedTotal({
           e.currentTarget.blur();
         }
       }}
-      aria-label={`${team || (side === 'home' ? 'Home' : 'Away')} total`}
+      aria-label={t('judgedTotal', { team: team || (side === 'home' ? t('home') : t('away')) })}
       className="min-h-[56px] w-full min-w-0 rounded-xl border-2 bg-slate-900 text-center text-xl font-black tabular-nums text-white outline-none focus:border-amber-500"
       style={{ borderColor: color }}
     />

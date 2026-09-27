@@ -3242,7 +3242,8 @@
     "start": "Start",
     "stop": "Stop",
     "possession": "Possession",
-    "backToGames": "Back to Game Day"
+    "backToGames": "Back to Game Day",
+    "judgedTotal": "{team} total"
   },
   "sportsPad": {
     "vs": "vs",
@@ -3342,7 +3343,10 @@
     "jerseyPlaceholder": "Jersey # (optional)",
     "jerseyLabel": "Jersey number",
     "cmdPenalty": "{team}: {penalty}",
-    "cuesTitle": "Celebrations"
+    "cuesTitle": "Celebrations",
+    "minusSecond": "−1s",
+    "plusSecond": "+1s",
+    "timeoutsTitle": "Timeouts"
   },
   "sportsShareLink": {
     "title": "Volunteer links — no login",

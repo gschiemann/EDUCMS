@@ -3242,7 +3242,8 @@
     "start": "开始",
     "stop": "停止",
     "possession": "球权",
-    "backToGames": "返回比赛日"
+    "backToGames": "返回比赛日",
+    "judgedTotal": "{team} 总分"
   },
   "sportsPad": {
     "vs": "对",
@@ -3342,7 +3343,10 @@
     "jerseyPlaceholder": "球衣号（可选）",
     "jerseyLabel": "球衣号码",
     "cmdPenalty": "{team}：{penalty}",
-    "cuesTitle": "庆祝动画"
+    "cuesTitle": "庆祝动画",
+    "minusSecond": "−1 秒",
+    "plusSecond": "+1 秒",
+    "timeoutsTitle": "暂停"
   },
   "sportsShareLink": {
     "title": "志愿者链接——无需登录",
