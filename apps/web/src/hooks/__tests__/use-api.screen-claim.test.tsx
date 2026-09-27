@@ -22,16 +22,19 @@ jest.mock('@/lib/api-client', () => ({
 
 import { useShowGameOnScreens } from '../use-api';
 
+type ShowHook = ReturnType<typeof useShowGameOnScreens>;
+
+function Probe({ onHook }: { onHook: (h: ShowHook) => void }) {
+  onHook(useShowGameOnScreens(GAME_ID));
+  return null;
+}
+
 function mount() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-  const out: { show?: ReturnType<typeof useShowGameOnScreens> } = {};
-  function Probe() {
-    out.show = useShowGameOnScreens(GAME_ID);
-    return null;
-  }
+  const out: { show?: ShowHook } = {};
   render(
     <QueryClientProvider client={qc}>
-      <Probe />
+      <Probe onHook={(h) => (out.show = h)} />
     </QueryClientProvider>,
   );
   return { qc, out };

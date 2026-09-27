@@ -4719,7 +4719,7 @@ const gameOpReplayControllers = new Map<string, GameOpReplayController>();
  * failure the id rides the thrown error, so the offline queue replays the op
  * under the id its first attempt used — that attempt may have committed.
  */
-function sendGameCommand<T = any>(path: string, method: string, body: object): Promise<T> {
+function sendGameCommand<T = unknown>(path: string, method: string, body: object): Promise<T> {
   const commandId = newCommandId();
   return apiFetch<T>(path, { method, body: JSON.stringify({ ...body, commandId }) }).catch(
     (err: unknown) => {
