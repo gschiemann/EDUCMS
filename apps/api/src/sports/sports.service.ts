@@ -50,6 +50,9 @@ import {
   parseGameRules,
   rulesProfilesForSport,
   segmentLengthMs,
+  setFormatOf,
+  setWinner,
+  setsToWin,
   shortTimeoutKey,
   snapshotRules,
   sportForGame,
@@ -3746,12 +3749,18 @@ export class SportsService {
 
   /**
    * Volleyball / pickleball set-and-match rule, evaluated on the post-point
-   * scores of the command being applied. A set is won at its target —
-   * pickleball games to 11, volleyball sets to 25 (the deciding set to 15) —
-   * by a 2-point margin. Winning credits the set, zeroes the rally score and
-   * advances the set; winning the majority ends the match (FINAL), unless
-   * `holdFinal` (console share link), where the set is credited and the game
-   * holds at LIVE. Returns the game patch, or null when no set was won.
+   * scores of the command being applied, under the game's own set format
+   * (K12-F19, `setFormat` of its rules profile): a set is won at its target
+   * by the winning margin, or at the cap by any margin — varsity volleyball
+   * 25 (the fifth set 15) by two with no cap; UIL sub-varsity and junior
+   * high 25 by two, capped at 30 [uil-volleyball-rally]; a local pickleball
+   * format's target. Winning credits the set, zeroes the rally score,
+   * refills a per-set timeout bank and advances the set; winning the
+   * majority ends the match (FINAL), unless `holdFinal` (console share link)
+   * or a format whose match never ends itself (UIL junior high: the deciding
+   * set may be played by mutual consent) — the set is credited and the game
+   * holds at LIVE for the table. Returns the game patch, or null when no set
+   * was won.
    */
   private evaluateSetWin(
     def: SportDefinition,
@@ -3766,11 +3775,10 @@ export class SportsService {
     data: Record<string, unknown>;
   } {
     if (def.key !== 'volleyball' && def.key !== 'pickleball') return null;
+    const format = setFormatOf(def);
+    if (!format) return null;
     const deciding = game.segment >= def.segment.count;
-    const target = def.key === 'pickleball' ? 11 : deciding ? 15 : 25;
-    let winner: 'home' | 'away' | null = null;
-    if (home >= target && home - away >= 2) winner = 'home';
-    else if (away >= target && away - home >= 2) winner = 'away';
+    const winner = setWinner(format, deciding, home, away);
     if (!winner) return null;
 
     const n = (v: unknown) => (typeof v === 'number' && isFinite(v) ? v : 0);
@@ -3780,27 +3788,43 @@ export class SportsService {
     const stats = { ...((game.stats as Record<string, unknown>) || {}) };
     const wonKey = winner === 'home' ? homeKey : awayKey;
     stats[wonKey] = n(stats[wonKey]) + 1;
-    // Best-of: volleyball is best-of-5 (need 3 sets), pickleball best-of-3
-    // (need 2 games). majority = ceil((count + 1) / 2).
-    const needed = Math.ceil((def.segment.count + 1) / 2);
+    // Best of N: the majority wins (best of five → three sets).
+    const needed = setsToWin(format);
     const matchOver = n(stats[homeKey]) >= needed || n(stats[awayKey]) >= needed;
 
     const data: Record<string, unknown> = { stats, homeScore: 0, awayScore: 0 };
     let segment: number | null = null;
-    const final = matchOver && !holdFinal;
+    const final = matchOver && !holdFinal && format.autoFinal !== false;
     if (final) {
       data.status = 'FINAL';
       data.endedAt = new Date();
       data.clockRunning = false;
-    } else if (matchOver) {
+    } else if (matchOver && format.autoFinal !== false) {
       // Set credited; the segment stays put (already the deciding set).
       segment = game.segment;
       data.segment = segment;
     } else {
       segment = Math.min(def.segment.count, game.segment + 1);
       data.segment = segment;
+      if (segment !== game.segment) this.refillSetTimeouts(def, stats);
     }
     return { winner, final, segment, data };
+  }
+
+  /**
+   * K12-F19 — a new set refills a per-set timeout bank (volleyball: two per
+   * set [uil-volleyball-rally]). Only for rules whose bank is per set; the
+   * classic rules have none.
+   */
+  private refillSetTimeouts(
+    def: SportDefinition,
+    stats: Record<string, unknown>,
+  ): void {
+    if (def.timeouts?.per !== 'set') return;
+    const allocation = timeoutAllocation(def);
+    for (const key of ['homeTimeouts', 'awayTimeouts'] as const) {
+      if (def.stats.some((s) => s.key === key)) stats[key] = allocation;
+    }
   }
 
   /** The event trail of a won set (inside the scoring command's transaction). */
@@ -5533,6 +5557,10 @@ export class SportsService {
         lastSegment,
         Math.max(1, game.segment + 1),
       );
+      // K12-F19 — the new set starts with a full per-set timeout bank.
+      if (nextSegment !== game.segment) {
+        this.refillSetTimeouts(def, nextStats);
+      }
 
       const updated = await scope.write({
         stats: nextStats,

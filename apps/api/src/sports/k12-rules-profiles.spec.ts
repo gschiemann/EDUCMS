@@ -339,3 +339,226 @@ describe('NFHS basketball — K12-F02 / F03 / F04', () => {
     });
   });
 });
+
+/** Score a rally point. */
+async function point(service: any, id: string, team: 'home' | 'away') {
+  await service.adjustScore(TENANT, id, { team, delta: 1 });
+}
+
+/**
+ * Volleyball — nfhs-volleyball-varsity@2026-27, uil-volleyball-sub-varsity
+ * and uil-volleyball-junior-high (@2026-27). Source: uil-volleyball-rally.
+ * Pickleball — local formats, NOT verified (no listed source).
+ */
+describe('Volleyball / pickleball formats — K12-F19', () => {
+  it('R-VB-1 varsity: sets to 25 by two with no cap, best of five, the fifth set to 15', async () => {
+    // "3 out of 5 to 25 (no cap)", "5th game to 15 (no cap)" [uil-volleyball-rally].
+    const { service } = setup();
+    const g: any = await newGame(service, 'volleyball');
+    await service.setScore(TENANT, g.id, { homeScore: 24, awayScore: 24 });
+    await point(service, g.id, 'home');
+    expect({ set: g.segment, home: g.homeScore }).toEqual({ set: 1, home: 25 });
+    await service.setScore(TENANT, g.id, { homeScore: 31, awayScore: 31 });
+    await point(service, g.id, 'away');
+    await point(service, g.id, 'away');
+    expect({ set: g.segment, awaySets: g.stats.awaySets }).toEqual({
+      set: 2,
+      awaySets: 1,
+    });
+    // To 2-2, then the fifth set is to 15.
+    g.stats = { ...g.stats, homeSets: 2, awaySets: 2 };
+    g.segment = 5;
+    await service.setScore(TENANT, g.id, { homeScore: 14, awayScore: 13 });
+    await point(service, g.id, 'home');
+    expect({ status: g.status, homeSets: g.stats.homeSets }).toEqual({
+      status: 'FINAL',
+      homeSets: 3,
+    });
+  });
+
+  it('R-VB-2 UIL sub-varsity: best of three, 25 by two capped at 30, the third set to 25 as well', async () => {
+    // "2 out of 3 to 25 (cap at 30)", "3rd set to 25 (cap at 30)" [uil-volleyball-rally].
+    const { service } = setup();
+    const g: any = await newGame(
+      service,
+      'volleyball',
+      'uil-volleyball-sub-varsity@2026-27',
+    );
+    await service.setScore(TENANT, g.id, { homeScore: 29, awayScore: 29 });
+    await point(service, g.id, 'home'); // 30-29: the cap
+    expect({ set: g.segment, homeSets: g.stats.homeSets }).toEqual({
+      set: 2,
+      homeSets: 1,
+    });
+    await service.setScore(TENANT, g.id, { homeScore: 0, awayScore: 24 });
+    await point(service, g.id, 'away');
+    expect(g.segment).toBe(3);
+    await service.setScore(TENANT, g.id, { homeScore: 14, awayScore: 13 });
+    await point(service, g.id, 'home'); // 15-13 is not a win in a set to 25
+    expect({ set: g.segment, status: g.status }).toEqual({
+      set: 3,
+      status: 'SCHEDULED',
+    });
+    await service.setScore(TENANT, g.id, { homeScore: 24, awayScore: 20 });
+    await point(service, g.id, 'home');
+    expect({ status: g.status, homeSets: g.stats.homeSets }).toEqual({
+      status: 'FINAL',
+      homeSets: 2,
+    });
+  });
+
+  it('R-VB-3 UIL junior high: 2-0 does not end the match — the deciding set may be played by consent', async () => {
+    // "mutual consent to play deciding sets even after one team wins the
+    // first two games" [uil-volleyball-rally].
+    const { service } = setup();
+    const g: any = await newGame(
+      service,
+      'volleyball',
+      'uil-volleyball-junior-high@2026-27',
+    );
+    for (const set of [1, 2]) {
+      await service.setScore(TENANT, g.id, { homeScore: 24, awayScore: 10 });
+      await point(service, g.id, 'home');
+      expect(g.stats.homeSets).toBe(set);
+    }
+    expect({ status: g.status, set: g.segment }).toEqual({
+      status: 'SCHEDULED',
+      set: 3,
+    });
+    await service.setStatus(TENANT, g.id, { status: 'FINAL' });
+    expect(g.status).toBe('FINAL');
+  });
+
+  it('R-VB-4 two time-outs per set: a third is refused; a new set refills them; undoing the winning point restores all', async () => {
+    // "two time-outs per game" (per set) [uil-volleyball-rally].
+    const { service, gameEvent } = setup();
+    const g: any = await newGame(service, 'volleyball');
+    expect(g.stats).toMatchObject({ homeTimeouts: 2, awayTimeouts: 2 });
+    await service.callTimeout(TENANT, g.id, { team: 'home' });
+    await service.callTimeout(TENANT, g.id, { team: 'home' });
+    const err = await refusal(
+      service.callTimeout(TENANT, g.id, { team: 'home' }),
+    );
+    expect(err).toBeInstanceOf(BadRequestException);
+    await service.setScore(TENANT, g.id, { homeScore: 24, awayScore: 22 });
+    await point(service, g.id, 'home');
+    expect({ set: g.segment, timeouts: g.stats.homeTimeouts }).toEqual({
+      set: 2,
+      timeouts: 2,
+    });
+    const winning = gameEvent.rows
+      .filter((e: any) => e.type === 'SCORE' && e.payload.delta === 1)
+      .pop();
+    await service.undoEvent(TENANT, g.id, winning.id);
+    expect({
+      set: g.segment,
+      home: g.homeScore,
+      sets: g.stats.homeSets ?? 0,
+      timeouts: g.stats.homeTimeouts,
+    }).toEqual({ set: 1, home: 24, sets: 0, timeouts: 0 });
+  });
+
+  it('R-PB-1 a local pickleball format (one game to 15) ends at 15 by two; not verified, and says so', async () => {
+    const { service } = setup();
+    const g: any = await newGame(
+      service,
+      'pickleball',
+      'pickleball-bo1-15@2026-09',
+    );
+    expect(findRulesProfile(g.rulesProfile)!.verification).toBe('not-verified');
+    await service.setScore(TENANT, g.id, { homeScore: 10, awayScore: 9 });
+    await point(service, g.id, 'home'); // 11-9 is not a win in a game to 15
+    expect(g.status).toBe('SCHEDULED');
+    await service.setScore(TENANT, g.id, { homeScore: 14, awayScore: 14 });
+    await point(service, g.id, 'home'); // 15-14: not by two
+    expect(g.status).toBe('SCHEDULED');
+    await point(service, g.id, 'home'); // 16-14
+    expect({ status: g.status, games: g.stats.homeGames }).toEqual({
+      status: 'FINAL',
+      games: 1,
+    });
+  });
+
+  it('R-PB-2 the classic pickleball format (best of three to 11) is unchanged', async () => {
+    const { service } = setup();
+    const g: any = await newGame(service, 'pickleball');
+    expect(g.rulesProfile).toBe(classicRulesKey('pickleball'));
+    await service.setScore(TENANT, g.id, { homeScore: 10, awayScore: 9 });
+    await point(service, g.id, 'home');
+    expect({ game: g.segment, won: g.stats.homeGames }).toEqual({
+      game: 2,
+      won: 1,
+    });
+  });
+});
+
+/**
+ * Boys and girls lacrosse — nfhs-lacrosse-boys@2027 / @2026 and
+ * nfhs-lacrosse-girls@2027. Sources: nfhs-blax-shot-clock-2027,
+ * nfhs-glax-resources.
+ */
+describe('Lacrosse — K12-F24', () => {
+  it('R-LAX-1 boys 2027: the shot clock is OFF unless the state adopted it; then 70 s and nothing else', async () => {
+    // "By state association adoption, a 70-second shot clock … starting
+    // with the 2027 season" [nfhs-blax-shot-clock-2027].
+    const { service } = setup();
+    const g: any = await newGame(service, 'lacrosse');
+    expect(g.rulesProfile).toBe('nfhs-lacrosse-boys@2027');
+    expect(g.stats.shotClock).toMatchObject({ len: 0, off: true });
+    const err = await refusal(
+      service.setShotClock(TENANT, g.id, { action: 'configure', value: 80 }),
+    );
+    expect(err.getResponse()).toMatchObject({
+      code: 'SHOT_CLOCK_LENGTH_UNSUPPORTED',
+      allowed: [0, 70],
+    });
+    await service.setShotClock(TENANT, g.id, {
+      action: 'configure',
+      value: 70,
+    });
+    await service.clockAction(TENANT, g.id, { action: 'start' });
+    await service.setSegment(TENANT, g.id, { segment: 2 });
+    expect(g.stats.shotClock).toMatchObject({ len: 70, ms: 70_000 });
+  });
+
+  it('R-LAX-2 boys 2026: no shot clock at all — the 2027 option is not retroactive', async () => {
+    const { service } = setup();
+    const g: any = await newGame(
+      service,
+      'lacrosse',
+      'nfhs-lacrosse-boys@2026',
+    );
+    const err = await refusal(
+      service.setShotClock(TENANT, g.id, { action: 'configure', value: 70 }),
+    );
+    expect(err.getResponse()).toMatchObject({ code: 'SHOT_CLOCK_UNSUPPORTED' });
+    expect(g.stats.shotClock).toBeUndefined();
+    // …so no shot-clock operator link is handed out for it.
+    await expect(
+      service.mintConsoleShare(TENANT, g.id, 'coach', undefined, 'shot'),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('R-LAX-3 girls 2027: a 90 s possession clock by state adoption, and the card suspensions', async () => {
+    // 90-second possession clock by state adoption; yellow 2:00, red 4:00
+    // [nfhs-glax-resources — 2027 possession clock; timers' Rule 3-7].
+    const { service } = setup();
+    const g: any = await newGame(
+      service,
+      'lacrosse',
+      'nfhs-lacrosse-girls@2027',
+    );
+    const def = sportForGame(g)!;
+    expect(def.shotClock).toMatchObject({
+      full: 90,
+      options: [0, 90],
+      label: 'Possession clock',
+    });
+    expect(def.penaltyBox!.presets.map((p) => p.sec)).toEqual([120, 240, 120]);
+    await service.setShotClock(TENANT, g.id, {
+      action: 'configure',
+      value: 90,
+    });
+    expect(g.stats.shotClock).toMatchObject({ len: 90 });
+  });
+});
