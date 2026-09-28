@@ -9,7 +9,13 @@
  */
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import { SportsService } from './sports.service';
-import { TENANT, newGame, setup } from './sports-test-harness';
+import { TENANT, classic, newGame, setup } from './sports-test-harness';
+// K-12 lane A3: a new game binds its sport's DEFAULT rules profile (NFHS
+// basketball: shot clock OFF unless the state adopted 35 s; NFHS water polo:
+// 7:00 quarters; NFHS soccer: a countdown). The mechanics below were written
+// against the CLASSIC values (a 24 s shot clock that arms itself, 8:00 water
+// polo quarters, a count-up soccer half) and pin the classic profile where
+// those values matter; the profiles themselves are k12-rules-profiles.spec.ts.
 
 const T0 = new Date('2026-09-27T18:00:00.000Z').getTime();
 
@@ -156,7 +162,7 @@ describe('K12-F05 — the shot clock keeps the configuration the table chose', (
 
   it('refuses an unsupported length visibly instead of turning the clock off', async () => {
     const { service } = setup();
-    const g: any = await newGame(service, 'basketball');
+    const g: any = await newGame(service, 'basketball', classic('basketball'));
     await service.setShotClock(TENANT, g.id, {
       action: 'configure',
       value: 35,
@@ -179,7 +185,7 @@ describe('K12-F05 — the shot clock keeps the configuration the table chose', (
 
   it('refuses a reset above the configured length', async () => {
     const { service } = setup();
-    const g: any = await newGame(service, 'basketball');
+    const g: any = await newGame(service, 'basketball', classic('basketball'));
     await service.setShotClock(TENANT, g.id, {
       action: 'configure',
       value: 24,
@@ -220,7 +226,7 @@ describe('K12-F05 — the shot clock keeps the configuration the table chose', (
 
   it('a never-configured shot clock takes a direct reset at the sport default length', async () => {
     const { service } = setup();
-    const g: any = await newGame(service, 'basketball');
+    const g: any = await newGame(service, 'basketball', classic('basketball'));
     await service.setShotClock(TENANT, g.id, { action: 'reset', value: 14 });
     expect(g.stats.shotClock).toMatchObject({
       len: 24,
@@ -400,7 +406,7 @@ describe('K12-F07 — timeouts, halftime and the final stop every clock at one r
   /** A water-polo game with a running game clock, shot clock and exclusion. */
   async function runningWaterPolo() {
     const h = setup();
-    const g: any = await newGame(h.service, 'water_polo');
+    const g: any = await newGame(h.service, 'water_polo', classic('water_polo'));
     await h.service.setPenalties(TENANT, g.id, {
       action: 'add',
       team: 'away',
@@ -580,7 +586,7 @@ describe('K12-F08 — an expired period holds until the table advances it', () =
 
   it('a count-up half holds at its length plus added time, exactly', async () => {
     const { service } = setup();
-    const g: any = await newGame(service, 'soccer');
+    const g: any = await newGame(service, 'soccer', classic('soccer'));
     await service.setStatus(TENANT, g.id, { status: 'LIVE' });
     await service.updateStats(TENANT, g.id, { stats: { addedTime: 2 } });
     await service.clockAction(TENANT, g.id, { action: 'set', ms: 41 * 60_000 });
@@ -707,7 +713,7 @@ describe('K12-F14 — feed snapshots are applied in order, with honest time', ()
 
   it('a boolean-only stop freezes the shot clock and the penalty box at their current readings too', async () => {
     const { service } = setup();
-    const g: any = await newGame(service, 'water_polo');
+    const g: any = await newGame(service, 'water_polo', classic('water_polo'));
     await service.setPenalties(TENANT, g.id, {
       action: 'add',
       team: 'home',
@@ -976,7 +982,7 @@ describe('K12-F17 — one server clock for every anchor and every sample', () =>
 
   it('anchors and serverTime share the TimeSyncService clock, so projections are exact', async () => {
     const { service } = onSkewedReplica();
-    const g: any = await newGame(service, 'basketball');
+    const g: any = await newGame(service, 'basketball', classic('basketball'));
     await service.clockAction(TENANT, g.id, { action: 'start' });
     expect(new Date(g.clockUpdatedAt).getTime()).toBe(T0 + 120_000);
     at(10_000);

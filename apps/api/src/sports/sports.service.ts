@@ -42,8 +42,20 @@ import {
   projectCountdownMs,
   projectGameClockMs,
   shotClockMode,
+  // K-12 lane A3 — the game's bound rules profile (sports-rules.ts).
+  defaultRulesProfile,
+  findRulesProfile,
+  maxSegment,
+  overtimeLabel,
+  parseGameRules,
+  rulesProfilesForSport,
+  segmentLengthMs,
+  shortTimeoutKey,
+  snapshotRules,
+  sportForGame,
+  timeoutAllocation,
 } from '@cms/api-types';
-import type { SportDefinition } from '@cms/api-types';
+import type { RulesProfile, SportDefinition } from '@cms/api-types';
 import { SPONSOR_SPOT_SECONDS } from './sponsor.constants';
 // SEC-007 (2026-09-04) — proof-of-play beacon provenance.
 import { UNATTESTED, type BeaconAttestation } from './beacon-capability';
@@ -83,7 +95,7 @@ import {
 } from './sports-stats.service';
 import { FeatureFlagsService, FLAGS } from '../feature-flags/feature-flags.service';
 import { withDbRetry } from '../prisma/with-db-retry';
-import type { Game } from '@cms/database';
+import type { Game, Prisma } from '@cms/database';
 import {
   type FeedCursor,
   cleanFeedEnvelope,
@@ -408,11 +420,28 @@ export class SportsService {
 
   // ── helpers ──────────────────────────────────────────────────
 
-  /** Resolve the SportDefinition for a game, or 400 if the key is unknown. */
-  private sportOf(sportKey: string): SportDefinition {
-    const def = findSport(sportKey);
+  /**
+   * The SportDefinition a game RUNS, or 400 if the sport key is unknown.
+   *
+   * K12-F01 — for a game (anything carrying `sport` + `rules`) this is the
+   * sport with the game's own bound rules snapshot applied (`sportForGame`,
+   * @cms/api-types sports-rules.ts): NFHS basketball's four-minute overtime,
+   * a volleyball match's format, a lacrosse profile's shot-clock options.
+   * Every engine path reads rules through here, never from the base
+   * catalog, so a later profile version can never reach a bound game. A bare
+   * sport key (a game being created) resolves the base definition.
+   */
+  private sportOf(
+    sportOrGame: string | { sport: string; rules?: unknown },
+  ): SportDefinition {
+    const def =
+      typeof sportOrGame === 'string'
+        ? findSport(sportOrGame)
+        : sportForGame(sportOrGame);
     if (!def) {
-      throw new BadRequestException(`Unknown sport "${sportKey}"`);
+      const key =
+        typeof sportOrGame === 'string' ? sportOrGame : sportOrGame.sport;
+      throw new BadRequestException(`Unknown sport "${key}"`);
     }
     return def;
   }
@@ -426,9 +455,12 @@ export class SportsService {
    *  one of the sport's published options, so a corrupted/foreign value
    *  can never produce a nonsense clock.
    *
-   *  `segment` enables the OT rule: when the sport defines
-   *  `clock.otSegmentMs` and the target segment is past regulation,
-   *  resets use the OT length (water polo OT is 3:00, not another 8:00).
+   *  `segment` enables the overtime rules: past regulation a reset uses the
+   *  rules' overtime length (NFHS basketball 4:00, water polo 3:00) or their
+   *  finite overtime sequence (NFHS wrestling 1:00, 0:30, 0:30, 0:30); a
+   *  profile with per-period lengths (junior-high wrestling 1:00, 1:30, 1:30)
+   *  uses the period's own. One implementation, shared with every surface:
+   *  `segmentLengthMs` (@cms/api-types sports-rules.ts).
    */
   private segmentStartMs(
     def: SportDefinition,
@@ -436,25 +468,7 @@ export class SportsService {
     segment?: number,
   ): number {
     if (def.clock.type !== 'countdown') return 0; // countup starts at 0; "none" has no clock
-    if (
-      typeof segment === 'number' &&
-      def.segment.overtime &&
-      segment > def.segment.count &&
-      typeof def.clock.otSegmentMs === 'number'
-    ) {
-      return def.clock.otSegmentMs;
-    }
-    const override =
-      stats && typeof stats === 'object'
-        ? (stats as Record<string, unknown>).clockSegmentMs
-        : undefined;
-    if (
-      typeof override === 'number' &&
-      def.clock.segmentMsOptions?.some((o) => o.ms === override)
-    ) {
-      return override;
-    }
-    return def.clock.segmentMs ?? 0;
+    return segmentLengthMs(def, stats, segment);
   }
 
   /**
@@ -466,8 +480,14 @@ export class SportsService {
     clockRunning: boolean;
     clockUpdatedAt: Date;
     sport: string;
+    // K12-F01 — the bound rules decide the clock (NFHS soccer counts down).
+    rules?: unknown;
   }): number {
-    return projectGameClockMs(game, this.sportOf(game.sport).clock.type, this.serverTimeMs());
+    return projectGameClockMs(
+      game,
+      this.sportOf(game).clock.type,
+      this.serverTimeMs(),
+    );
   }
 
   /**
@@ -1170,6 +1190,9 @@ export class SportsService {
     status: string;
     homeTeam: string;
     awayTeam: string;
+    // K12-F01 — the game's bound rules: a link's allowed actions, stat
+    // bounds and shot-clock resets come from the rules the game runs.
+    rules: unknown;
   } | null> {
     if (!gameId) return null;
     // ten-ok: identity-derived resolver for the scorekeeper share link. The
@@ -1187,6 +1210,7 @@ export class SportsService {
         status: true,
         homeTeam: true,
         awayTeam: true,
+        rules: true,
       },
     });
     return row ?? null;
@@ -1219,7 +1243,7 @@ export class SportsService {
     // K12-F16 — a link that could do nothing for this sport is never handed
     // out (no clock operator for volleyball, no shot-clock link for soccer).
     // `full`, the mint default, is always mintable.
-    if (!consoleScopeOffered(scope, game.sport)) {
+    if (!consoleScopeOffered(scope, game)) {
       throw new BadRequestException({
         code: 'CONSOLE_SCOPE_NOT_FOR_SPORT',
         message: `A "${scope}" scorekeeper link does not apply to this sport.`,
@@ -1538,6 +1562,12 @@ export class SportsService {
         scoreboardTemplateId: true, ribbonTemplateId: true, scorebugTemplateId: true,
         // K12-F40 — the revision the payload shows and when it was committed.
         version: true, updatedAt: true,
+        // K12-F01 — the game's bound rules: every surface derives its
+        // definition from them (sportForGame), so the board, ribbon and
+        // scorebug show the periods, overtime, bonus and shot clock the game
+        // actually runs.
+        rulesProfile: true,
+        rules: true,
       },
     });
     if (!game) throw new NotFoundException('Game not found');
@@ -1688,6 +1718,10 @@ export class SportsService {
       revision: game.version,
       updatedAt: game.updatedAt,
       sport: game.sport,
+      // K12-F01 — the bound rules (null = classic rules, a game created
+      // before profiles). Static per game, so it never busts the ETag.
+      rulesProfile: game.rulesProfile ?? null,
+      rules: game.rules ?? null,
       status: game.status,
       segment: game.segment,
       homeTeam: game.homeTeam,
@@ -1906,10 +1940,23 @@ export class SportsService {
       // vs 8:00 NCAA). Validated against the sport's options; anything else
       // silently falls back to the sport default.
       clockSegmentMs?: number;
+      // K12-F01 — the rules profile the game binds ('nfhs-basketball@2026-27',
+      // @cms/api-types sports-rules.ts). Absent = the sport's default
+      // profile; an unknown key or another sport's profile is refused.
+      rulesProfile?: string;
+      // K12-F05 / F24 — the shot-clock length a state-option clock starts
+      // at: one of the profile's options, 0 = off. Absent = the profile's
+      // default (OFF for NFHS basketball and lacrosse).
+      shotClockLen?: number;
     },
     actor?: CommandInput,
   ) {
-    const def = this.sportOf(String(dto.sport || ''));
+    const baseDef = this.sportOf(String(dto.sport || ''));
+    // K12-F01 — bind the rules profile NOW: the game stores the resolved
+    // snapshot, and every later command reads the game's own rules.
+    const profile = this.resolveRulesProfile(baseDef.key, dto.rulesProfile);
+    const rules = snapshotRules(profile);
+    const def = this.sportOf({ sport: baseDef.key, rules });
     const homeTeam = String(dto.homeTeam || '').trim();
     const awayTeam = String(dto.awayTeam || '').trim();
     if (!homeTeam || !awayTeam) {
@@ -1920,15 +1967,17 @@ export class SportsService {
     const status = dto.status && GAME_STATUSES.includes(dto.status) ? dto.status : 'SCHEDULED';
     const scheduledAt = this.parseScheduledAt(dto.scheduledAt);
 
-    // Seed per-team timeout counts to their max so the broadcast
-    // timeout pips read full from the opening whistle — an unset
-    // count renders as zero filled pips ("no timeouts left"), which
-    // is wrong before a single timeout has been called.
-    const initialStats: Record<string, number> = {};
-    for (const key of ['homeTimeouts', 'awayTimeouts']) {
-      const field = def.stats.find((s) => s.key === key);
-      if (field && typeof field.max === 'number') initialStats[key] = field.max;
-    }
+    // Seed the starting state the rules call for: full timeout banks (so the
+    // broadcast pips read full from the opening whistle — an unset count
+    // renders as "no timeouts left"), the short-timeout sub-bank, and a
+    // state-option shot clock at the length the table picked (or the
+    // profile's default — OFF for NFHS basketball and lacrosse).
+    const createdAt = this.clockNow();
+    const initialStats = this.rulesStartingStats(
+      def,
+      dto.shotClockLen,
+      createdAt,
+    );
     // Per-game period length (only when it matches a published option) —
     // stored in stats so every later clock reset (segment advance, clock
     // reset, auto-advance, integration ingest) picks it up via
@@ -1945,6 +1994,8 @@ export class SportsService {
         data: {
           tenantId,
           sport: def.key,
+          rulesProfile: profile.key,
+          rules: rules as unknown as Prisma.InputJsonValue,
           homeTeam: homeTeam.slice(0, 80),
           awayTeam: awayTeam.slice(0, 80),
           homeColor: dto.homeColor?.slice(0, 32) || null,
@@ -1956,7 +2007,7 @@ export class SportsService {
           segment: 1,
           clockMs: this.segmentStartMs(def, initialStats),
           clockRunning: false,
-          clockUpdatedAt: this.clockNow(),
+          clockUpdatedAt: createdAt,
           stats: initialStats,
           scoreboardTemplateId: dto.scoreboardTemplateId || null,
           ribbonTemplateId: dto.ribbonTemplateId || null,
@@ -1969,9 +2020,104 @@ export class SportsService {
         homeTeam: created.homeTeam,
         awayTeam: created.awayTeam,
         status: created.status,
+        rulesProfile: profile.key,
       });
       return created;
     });
+  }
+
+  /**
+   * K12-F01 — the rules profile a game binds: the one the table picked, or
+   * the sport's default (@cms/api-types `defaultRulesProfile` — NFHS where a
+   * listed source covers the sport, else its classic rules). A key that is
+   * not a published, selectable profile of THIS sport is refused with the
+   * keys that are.
+   */
+  private resolveRulesProfile(
+    sportKey: string,
+    requested: unknown,
+  ): RulesProfile {
+    if (requested === undefined || requested === null || requested === '') {
+      const fallback = defaultRulesProfile(sportKey);
+      if (!fallback) {
+        throw new BadRequestException(`Unknown sport "${sportKey}"`);
+      }
+      return fallback;
+    }
+    const picked =
+      typeof requested === 'string' ? findRulesProfile(requested) : undefined;
+    if (!picked || picked.sport !== sportKey || !picked.selectable) {
+      throw new BadRequestException({
+        code: 'RULES_PROFILE_UNKNOWN',
+        message: 'That is not a rules profile for this sport.',
+        allowed: rulesProfilesForSport(sportKey).map((p) => p.key),
+      });
+    }
+    return picked;
+  }
+
+  /**
+   * The starting state a game's RULES call for, merged into its stats when it
+   * is created (or, before it starts, re-bound to another profile):
+   *   - every timeout bank full — the profile's full + short allocation
+   *     (NFHS basketball: 5, of which 2 are 30-second), else the classic
+   *     stat maximum (K12-F03);
+   *   - the short-timeout sub-bank, when the profile has short timeouts;
+   *   - a shot clock at the requested length or the profile's default: a
+   *     state-option clock (NFHS basketball 35 s, boys lacrosse 70 s, girls
+   *     lacrosse 90 s) starts OFF unless the table picks it (K12-F05 / F24).
+   *     A length the rules do not offer is refused, never turned into OFF.
+   */
+  private rulesStartingStats(
+    def: SportDefinition,
+    shotClockLen: unknown,
+    now: Date,
+  ): Record<string, unknown> {
+    const stats: Record<string, unknown> = {};
+    for (const side of ['home', 'away'] as const) {
+      const key = side === 'home' ? 'homeTimeouts' : 'awayTimeouts';
+      const field = def.stats.find((s) => s.key === key);
+      if (!field) continue;
+      if (def.timeouts) {
+        stats[key] = timeoutAllocation(def);
+        if (def.timeouts.short > 0) {
+          stats[shortTimeoutKey(side)] = def.timeouts.short;
+        }
+      } else if (typeof field.max === 'number') {
+        stats[key] = field.max;
+      }
+    }
+    const requested =
+      shotClockLen === undefined || shotClockLen === null || shotClockLen === ''
+        ? undefined
+        : Number(shotClockLen);
+    const cfg = def.shotClock;
+    if (!cfg) {
+      if (requested !== undefined && requested !== 0) {
+        throw new BadRequestException({
+          code: 'SHOT_CLOCK_UNSUPPORTED',
+          message: `${def.name} has no shot clock under these rules.`,
+        });
+      }
+      return stats;
+    }
+    const len = requested ?? cfg.defaultLen;
+    if (len === undefined) return stats; // never configured: armed at `full` by the first start
+    if (!Number.isInteger(len) || !cfg.options.includes(len)) {
+      throw new BadRequestException({
+        code: 'SHOT_CLOCK_LENGTH_UNSUPPORTED',
+        message: `Under these rules the shot clock can be ${cfg.options
+          .map((o) => (o === 0 ? 'off' : `${o} seconds`))
+          .join(', ')}.`,
+        allowed: cfg.options,
+      });
+    }
+    const at = now.toISOString();
+    stats.shotClock =
+      len === 0
+        ? { len: 0, ms: 0, at, running: false, off: true }
+        : { len, ms: len * 1000, at, running: false };
+    return stats;
   }
 
   /**
@@ -2002,7 +2148,7 @@ export class SportsService {
    */
   async duplicateGame(tenantId: string, id: string, actor?: CommandInput) {
     const src = await this.owned(tenantId, id);
-    const def = this.sportOf(src.sport);
+    const def = this.sportOf(src);
 
     // Latest-wins ribbon config rows on the source (any may be absent).
     const ribbonTypes = [
@@ -2021,13 +2167,19 @@ export class SportsService {
       ),
     );
 
-    // Seed timeouts fresh from the sport (mirrors createGame) so the
-    // copy opens with full timeout pips, not the source's depleted count.
-    const initialStats: Record<string, number> = {};
-    for (const key of ['homeTimeouts', 'awayTimeouts']) {
-      const field = def.stats.find((s) => s.key === key);
-      if (field && typeof field.max === 'number') initialStats[key] = field.max;
-    }
+    // K12-F01 — the copy runs the SAME rules as the source: its profile key
+    // and its stored snapshot, verbatim (a source created before profiles
+    // stays on the classic rules; the table can switch the copy before it
+    // starts). Its starting state is seeded from those rules like createGame
+    // — full timeout banks, not the source's depleted count — and the
+    // source's shot-clock choice carries over (a state that adopted the 35 s
+    // clock plays every game of the week with it).
+    const srcRules = parseGameRules(src.rules, src.sport);
+    const initialStats = this.rulesStartingStats(
+      def,
+      this.keptShotClockLen(def, src.stats),
+      this.clockNow(),
+    );
     // Carry the source's per-game period length (part of the reusable
     // presentation setup — a 7:00 HS water polo game duplicates to
     // another 7:00 game). Same validation as createGame.
@@ -2047,6 +2199,12 @@ export class SportsService {
         data: {
           tenantId,
           sport: src.sport,
+          rulesProfile: srcRules
+            ? (src.rulesProfile ?? srcRules.profile)
+            : null,
+          rules: srcRules
+            ? (srcRules as unknown as Prisma.InputJsonValue)
+            : undefined,
           homeTeam: src.homeTeam,
           awayTeam: src.awayTeam,
           homeColor: src.homeColor,
@@ -2106,9 +2264,121 @@ export class SportsService {
       await this.auditRow(tx, tenantId, actor, 'SPORTS_GAME_DUPLICATED', copy.id, {
         sourceGameId: id,
         rosterCopied: roster.length,
+        rulesProfile: srcRules ? srcRules.profile : null,
       });
       return copy;
     });
+  }
+
+  /** The statuses in which a game's rules may still be changed (K12-F01). */
+  private static readonly RULES_OPEN_STATUSES: ReadonlySet<string> = new Set([
+    'SCHEDULED',
+    'PRE_GAME',
+  ]);
+
+  /**
+   * K12-F01 — switch a game that has NOT STARTED to another rules profile:
+   * the explicit, audited way a game scheduled before profiles existed (or
+   * set up under the wrong level) moves onto the rules it will be played
+   * under. Nothing migrates a game silently. Refused once the game is LIVE,
+   * at HALFTIME or FINAL (409 RULES_LOCKED): a game in progress or a finished
+   * result never changes rules.
+   *
+   * The starting state is re-seeded from the new rules — full timeout banks,
+   * the short-timeout sub-bank, the shot clock (the requested length, else
+   * the table's current choice when the new rules still offer it, else the
+   * new default) — and, while the game is still at the opening whistle, the
+   * clock. Scores, rosters and presentation are untouched.
+   */
+  async setRulesProfile(
+    tenantId: string,
+    id: string,
+    dto: { rulesProfile?: string; shotClockLen?: number },
+    actor?: CommandInput,
+  ) {
+    if (typeof dto.rulesProfile !== 'string' || !dto.rulesProfile) {
+      throw new BadRequestException('rulesProfile is required');
+    }
+    return this.runGameCommand(
+      tenantId,
+      id,
+      'rules.set',
+      actor,
+      dto,
+      async (scope) => {
+        const game = scope.before;
+        if (!SportsService.RULES_OPEN_STATUSES.has(game.status)) {
+          throw new ConflictException({
+            code: 'RULES_LOCKED',
+            message: 'The rules are fixed once a game has started.',
+          });
+        }
+        const profile = this.resolveRulesProfile(game.sport, dto.rulesProfile);
+        const rules = snapshotRules(profile);
+        const def = this.sportOf({ sport: game.sport, rules });
+        const current: Record<string, unknown> =
+          game.stats && typeof game.stats === 'object'
+            ? { ...(game.stats as Record<string, unknown>) }
+            : {};
+        // Keep the table's shot-clock choice when the new rules still offer it.
+        const shotLen = dto.shotClockLen ?? this.keptShotClockLen(def, current);
+        const now = this.clockNow();
+        const seeded = this.rulesStartingStats(def, shotLen, now);
+        const stats: Record<string, unknown> = { ...current, ...seeded };
+        // Blocks the new rules do not have leave with the old rules.
+        if (!(def.timeouts && def.timeouts.short > 0)) {
+          delete stats.homeShortTimeouts;
+          delete stats.awayShortTimeouts;
+        }
+        if (!def.shotClock || seeded.shotClock === undefined) {
+          delete stats.shotClock;
+        }
+        if (!def.stats.some((s) => s.key === 'homeTimeouts')) {
+          delete stats.homeTimeouts;
+          delete stats.awayTimeouts;
+        }
+        const data: Record<string, unknown> = {
+          rulesProfile: profile.key,
+          rules,
+          stats,
+        };
+        // A game still at the opening whistle starts from the new length.
+        if (
+          !game.clockRunning &&
+          game.segment === 1 &&
+          def.clock.type !== 'none'
+        ) {
+          data.clockMs = this.segmentStartMs(def, stats, 1);
+          data.clockUpdatedAt = now;
+        }
+        const updated = await scope.write(data);
+        await scope.event('RULES', {
+          from: game.rulesProfile ?? null,
+          to: profile.key,
+          label: profile.label,
+        });
+        scope.audit('SPORTS_GAME_RULES_SET', {
+          from: game.rulesProfile ?? null,
+          to: profile.key,
+          verification: profile.verification,
+        });
+        return updated;
+      },
+    );
+  }
+
+  /** The table's current shot-clock length, when `def`'s rules still offer it. */
+  private keptShotClockLen(
+    def: SportDefinition,
+    stats: unknown,
+  ): number | undefined {
+    if (!def.shotClock) return undefined;
+    const mode = shotClockMode(stats);
+    if (mode === 'unset') return undefined;
+    const entry = (stats as Record<string, unknown>).shotClock;
+    const len =
+      mode === 'off' ? 0 : Number((entry as Record<string, unknown>).len);
+    return def.shotClock.options.includes(len) ? len : undefined;
   }
 
   /**
@@ -3350,7 +3620,7 @@ export class SportsService {
     const holdFinal = opts?.suppressAutoFinal === true;
     return this.runGameCommand(tenantId, id, 'score.adjust', actor, dto, async (scope) => {
       const game = scope.before;
-      const def = this.sportOf(game.sport);
+      const def = this.sportOf(game);
       const col = team === 'home' ? 'homeScore' : 'awayScore';
       const prevScores = {
         homeScore: Number(game.homeScore) || 0,
@@ -3553,7 +3823,7 @@ export class SportsService {
     }
     return this.runGameCommand(tenantId, id, `clock.${action}`, actor, dto, async (scope) => {
       const game = scope.before;
-      const def = this.sportOf(game.sport);
+      const def = this.sportOf(game);
       if (action === 'start' && def.clock.type === 'none') {
         throw new BadRequestException(`${def.name} has no game clock`);
       }
@@ -3684,7 +3954,7 @@ export class SportsService {
    * phase changes that stop all play (halftime, the final).
    */
   private freezeAllClocks(game: GameRow, now: Date): Record<string, unknown> {
-    const def = this.sportOf(game.sport);
+    const def = this.sportOf(game);
     const out: Record<string, unknown> =
       def.clock.type === 'none' ? {} : this.clockTransition(game, def, 'pause', 0, now).data;
     const base = (out.stats ?? game.stats) as unknown;
@@ -3746,7 +4016,7 @@ export class SportsService {
     value: number | undefined,
     now: Date,
   ): Record<string, unknown> {
-    const def = this.sportOf(game.sport);
+    const def = this.sportOf(game);
     const cfg = def.shotClock;
     if (!cfg) {
       throw new BadRequestException({
@@ -3896,7 +4166,7 @@ export class SportsService {
     run: boolean,
     now: Date,
   ): Record<string, unknown> {
-    const def = this.sportOf(game.sport);
+    const def = this.sportOf(game);
     const cfg = def.playClock;
     if (!cfg) {
       throw new BadRequestException({
@@ -4364,7 +4634,7 @@ export class SportsService {
         // never drift. The manual PlayerExclusionStepper stays the
         // correction path (it SETs absolute counts, so no double-count).
         if (dto.exclusion === true && jerseyStr) {
-          const def = this.sportOf(game.sport);
+          const def = this.sportOf(game);
           if (def.key === 'water_polo') {
             const jersey = Number(jerseyStr);
             const name = String(dto.playerName || '').slice(0, 40) || undefined;
@@ -4489,7 +4759,7 @@ export class SportsService {
       let prevHomeScore = 0;
       let prevAwayScore = 0;
       let statsBeforeWrite: Record<string, unknown> = {};
-      const def = this.sportOf(game.sport);
+      const def = this.sportOf(game);
       const sportDefShotClock = def.shotClock;
       statsBeforeWrite =
         game.stats && typeof game.stats === 'object'
@@ -4507,8 +4777,10 @@ export class SportsService {
         segment = game.segment + Math.round(dto.delta);
       }
       // Allow overtime segments past the regulation count when the sport
-      // supports OT; otherwise clamp to [1, count].
-      const max = def.segment.overtime ? def.segment.count + 10 : def.segment.count;
+      // supports OT — as many as its rules allow (NFHS wrestling: four, K12-F23;
+      // NFHS soccer: two, K12-F22; else the engine's cap of ten) — otherwise
+      // clamp to [1, count].
+      const max = maxSegment(def);
       segment = Math.min(max, Math.max(1, segment));
 
       // Advancing the segment resets the clock to the segment start and
@@ -4807,7 +5079,8 @@ export class SportsService {
    */
   private clockExpired(game: GameRow, nowMs: number = this.serverTimeMs()): boolean {
     if (game.status !== 'LIVE' || !game.clockRunning) return false;
-    const def = findSport(game.sport);
+    // K12-F01 — the game's own rules (a bound NFHS soccer game counts down).
+    const def = sportForGame(game);
     if (!def || def.clock.type === 'none') return false;
     return isGameClockExpired(def, game.stats, projectGameClockMs(game, def.clock.type, nowMs));
   }
@@ -4833,7 +5106,7 @@ export class SportsService {
     const game = scope.before;
     const nowMs = this.serverTimeMs();
     if (!this.clockExpired(game, nowMs)) return false;
-    const def = this.sportOf(game.sport);
+    const def = this.sportOf(game);
     const limit = gameClockExpiryMs(def, game.stats) ?? 0;
     const anchor = clockAnchorMs(game.clockUpdatedAt);
     let endedAt = nowMs;
@@ -4897,7 +5170,7 @@ export class SportsService {
       let segmentDelta = 0;
       let wasStrikeout = false;
       let dataSegment: number | undefined;
-      const def = this.sportOf(freshGame.sport);
+      const def = this.sportOf(freshGame);
       const allowed = new Set(def.stats.map((s) => s.key));
       // 2026-05-27 — Pure-config keys that live on Game.stats JSON but
       // aren't sport stats (no +/- chips on the scoreboard tile). Each
@@ -4968,7 +5241,7 @@ export class SportsService {
 
       const data: Record<string, unknown> = { stats: next as any };
       if (segmentDelta) {
-        const max = def.segment.overtime ? def.segment.count + 10 : def.segment.count;
+        const max = maxSegment(def);
         dataSegment = Math.min(max, freshGame.segment + segmentDelta);
         data.segment = dataSegment;
       }
@@ -5142,7 +5415,7 @@ export class SportsService {
   async endSegmentAtomic(tenantId: string, id: string, actor?: CommandInput) {
     return this.runGameCommand(tenantId, id, 'segment.end', actor, null, async (scope) => {
       const game = scope.before;
-      const def = this.sportOf(game.sport);
+      const def = this.sportOf(game);
       const home = Number(game.homeScore) || 0;
       const away = Number(game.awayScore) || 0;
       if (home === away) {
@@ -5188,8 +5461,11 @@ export class SportsService {
 
       // Effect 4: advance the segment — clamp to [1, count(+OT)], the
       // same bound `setSegment` enforces.
-      const maxSegment = def.segment.overtime ? def.segment.count + 10 : def.segment.count;
-      const nextSegment = Math.min(maxSegment, Math.max(1, game.segment + 1));
+      const lastSegment = maxSegment(def);
+      const nextSegment = Math.min(
+        lastSegment,
+        Math.max(1, game.segment + 1),
+      );
 
       const updated = await scope.write({
         stats: nextStats,
@@ -5355,7 +5631,7 @@ export class SportsService {
     const envelope = cleanFeedEnvelope(dto as Record<string, unknown>);
     return this.runGameCommand(tenantId, id, 'feed.ingest', actor, dto, async (scope) => {
       const game = scope.before;
-      const def = this.sportOf(game.sport);
+      const def = this.sportOf(game);
       const now = this.clockNow();
       const nowMs = now.getTime();
 
@@ -5545,7 +5821,7 @@ export class SportsService {
 
     let def: SportDefinition;
     try {
-      def = this.sportOf(next.sport);
+      def = this.sportOf(next);
     } catch {
       return; // unknown sport — nothing to map a delta to
     }
@@ -6101,6 +6377,8 @@ export class SportsService {
    */
   private cueSnapshot(game: {
     sport: string;
+    // K12-F01 — the bound rules name the period ("SV", "OT") and the clock.
+    rules?: unknown;
     homeTeam: string;
     awayTeam: string;
     homeScore: number;
@@ -6115,7 +6393,7 @@ export class SportsService {
     let segmentLabel = '';
     let clockText = '';
     try {
-      const def = this.sportOf(game.sport);
+      const def = this.sportOf(game);
       segmentLabel = this.segmentLabelOf(def, game.segment);
       if (def.clock.type !== 'none') {
         // K12-F17 — the one display policy every surface uses (a buzzer-
@@ -6150,8 +6428,9 @@ export class SportsService {
     if (n > def.segment.count) {
       if (name === 'Inning') return `${this.ordinal(n)} INN`;
       if (def.mode === 'LEADERBOARD' || def.segment.overtime === false) return 'F';
-      const ot = n - def.segment.count;
-      return ot > 1 ? `OT${ot}` : 'OT';
+      // The rules' own overtime names (NFHS wrestling SV / TB1 / TB2 / UTB,
+      // K12-F23), else OT / OT2 / OT3 — the shared helper every surface uses.
+      return overtimeLabel(def, n) ?? 'OT';
     }
     if (name === 'Quarter') return `Q${n}`;
     if (name === 'Period') return `P${n}`;
@@ -6284,7 +6563,7 @@ export class SportsService {
       return { fired: true, cueId: cc.id, target, eventId: event.id };
     }
 
-    const def = this.sportOf(game.sport);
+    const def = this.sportOf(game);
     const cue = def.celebrations.find((c) => c.key === dto.key);
     if (!cue) {
       throw new BadRequestException(`Unknown cue "${dto.key}" for ${def.name}`);
@@ -6441,7 +6720,7 @@ export class SportsService {
     // from the same count.
     return this.runGameCommand(tenantId, gameId, 'timeout.call', actor, dto, async (scope) => {
       const game = scope.before;
-      const def = this.sportOf(game.sport);
+      const def = this.sportOf(game);
 
       // Only sports whose definition declares team-timeout stats (football /
       // basketball / water polo) can call one — for every other sport the
@@ -6761,7 +7040,7 @@ export class SportsService {
    */
   async setRibbonPresets(tenantId: string, id: string, dto: { presets?: unknown }, actor?: CommandInput) {
     const game = await this.owned(tenantId, id);
-    const def = this.sportOf(game.sport);
+    const def = this.sportOf(game);
     const presets = sanitizeRibbonPresets(def, dto.presets);
     const before = await this.latestRibbonPresets(id);
     await this.recordAudited(tenantId, id, 'RIBBON_PRESETS', { presets }, actor, 'SPORTS_RIBBON_PRESETS_SET',
@@ -7875,7 +8154,7 @@ export class SportsService {
       }
       const payload = (ev.payload as Record<string, unknown>) ?? {};
       const change = payload.change as StateChange;
-      const def = this.sportOf(scope.before.sport);
+      const def = this.sportOf(scope.before);
       const plan = planUndo(change, scope.before, { clock: def.clock.type, now: this.clockNow() });
       if (!plan.ok) {
         throw new ConflictException({

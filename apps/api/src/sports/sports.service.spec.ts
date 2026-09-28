@@ -7,7 +7,7 @@
  * bounding, cues, and the scoreboard-to-screen push. No DB required.
  */
 import { BadRequestException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
-import { SPORT_DEFINITIONS } from '@cms/api-types';
+import { SPORT_DEFINITIONS, classicRulesKey } from '@cms/api-types';
 import { SportsService } from './sports.service';
 import {
   verifyFeedToken,
@@ -201,8 +201,19 @@ function setup() {
   return { service, game, gameEvent, screen, sponsor, rosterPlayer, customCue, auditLog, redis, signer };
 }
 
-async function newGame(service: SportsService, sport = 'football') {
-  return service.createGame(TENANT, { sport, homeTeam: 'Home', awayTeam: 'Away' });
+/**
+ * A new game on its sport's DEFAULT rules profile (K-12 lane A3), or on
+ * `rulesProfile` — the specs below that exercise CLASSIC values (a count-up
+ * soccer half with added time, an 8:00 water-polo quarter) pin
+ * `classicRulesKey(sport)`, the rules every game created before profiles runs.
+ */
+async function newGame(service: SportsService, sport = 'football', rulesProfile?: string) {
+  return service.createGame(TENANT, {
+    sport,
+    homeTeam: 'Home',
+    awayTeam: 'Away',
+    ...(rulesProfile ? { rulesProfile } : {}),
+  });
 }
 
 // ── tests ──────────────────────────────────────────────────────
@@ -233,7 +244,7 @@ describe('SportsService — createGame', () => {
 
   it('initializes count-up and no-clock sports at 0', async () => {
     const { service } = setup();
-    expect((await newGame(service, 'soccer')).clockMs).toBe(0);
+    expect((await newGame(service, 'soccer', classicRulesKey('soccer'))).clockMs).toBe(0);
     expect((await newGame(service, 'baseball')).clockMs).toBe(0);
   });
 });
@@ -417,7 +428,7 @@ describe('SportsService — clock', () => {
 describe('SportsService — setSegment', () => {
   it('re-anchors a COUNT-UP clock when the segment advances (soccer fix)', async () => {
     const { service } = setup();
-    const g = await newGame(service, 'soccer');
+    const g = await newGame(service, 'soccer', classicRulesKey('soccer'));
     await service.clockAction(TENANT, g.id, { action: 'set', ms: 120_000 });
     const advanced = await service.setSegment(TENANT, g.id, { delta: 1 });
     expect(advanced.segment).toBe(2);
@@ -1349,7 +1360,7 @@ describe('SportsService — soccer added-time expiry (config+api P1 / K12-F08 ho
 
   it('holds the half at the end of regulation when no added time is set', async () => {
     const { service, game } = setup();
-    const g = await newGame(service, 'soccer'); // 40-min halves
+    const g = await newGame(service, 'soccer', classicRulesKey('soccer')); // 40-min halves
     liveSoccer(game, 40 * 60_000 + 1_000, 0);
     expect(g.segment).toBe(1);
     const { found, changed } = await service.autoAdvanceExpiredClocks();
@@ -1361,7 +1372,7 @@ describe('SportsService — soccer added-time expiry (config+api P1 / K12-F08 ho
 
   it('does NOT auto-advance during added time (clock runs past regulation)', async () => {
     const { service, game } = setup();
-    await newGame(service, 'soccer');
+    await newGame(service, 'soccer', classicRulesKey('soccer'));
     // 1 minute past regulation, 3 minutes of added time configured.
     liveSoccer(game, 40 * 60_000 + 60_000, 3);
     const { found, changed } = await service.autoAdvanceExpiredClocks();
@@ -1372,7 +1383,7 @@ describe('SportsService — soccer added-time expiry (config+api P1 / K12-F08 ho
 
   it('holds once added time has also elapsed', async () => {
     const { service, game } = setup();
-    await newGame(service, 'soccer');
+    await newGame(service, 'soccer', classicRulesKey('soccer'));
     // Past regulation + past the 2 minutes of added time.
     liveSoccer(game, 40 * 60_000 + 2 * 60_000 + 1_000, 2);
     const { changed } = await service.autoAdvanceExpiredClocks();
@@ -2882,8 +2893,9 @@ describe('SportsService — per-game period length (water polo 7:00 HS)', () => 
       homeTeam: 'Home',
       awayTeam: 'Away',
       clockSegmentMs: 123_456,
+      rulesProfile: classicRulesKey('water_polo'),
     });
-    expect(g.clockMs).toBe(8 * 60_000); // sport default
+    expect(g.clockMs).toBe(8 * 60_000); // sport default (classic rules; NFHS water polo defaults to 7:00)
     expect((g.stats as any).clockSegmentMs).toBeUndefined();
   });
 

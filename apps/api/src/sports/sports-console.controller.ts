@@ -15,7 +15,7 @@ import {
   consolePenaltyPreset,
   consolePlayClockResets,
   consoleShotClockMaxSec,
-  findSport,
+  sportForGame,
   validateConsoleStats,
 } from '@cms/api-types';
 import { SportsService } from './sports.service';
@@ -176,7 +176,7 @@ export class SportsConsoleController {
     if (limited) this.throwRateLimited();
     // The scope is the permission; the pad's layout is not. What it grants
     // is intersected with the game's LIVE sport.
-    const allows = consoleAllows(scope, findSport(meta.sport));
+    const allows = consoleAllows(scope, sportForGame(meta));
     if (action && allows.indexOf(action) === -1) {
       throw new HttpException(
         {
@@ -373,7 +373,7 @@ export class SportsConsoleController {
     }
     const dto: { action: string; value?: number } = { action };
     if (action === 'reset' && raw.value !== undefined) {
-      const max = consoleShotClockMaxSec(findSport(meta.sport));
+      const max = consoleShotClockMaxSec(sportForGame(meta));
       const v = raw.value;
       if (typeof v !== 'number' || !Number.isInteger(v) || v < 1 || v > max) {
         this.throwRejected(
@@ -414,7 +414,7 @@ export class SportsConsoleController {
     const dto: { action: string; value?: number; run?: boolean } = { action };
     if (action === 'reset') {
       if (raw.value !== undefined) {
-        const allowed = consolePlayClockResets(findSport(meta.sport));
+        const allowed = consolePlayClockResets(sportForGame(meta));
         if (
           typeof raw.value !== 'number' ||
           allowed.indexOf(raw.value) === -1
@@ -458,7 +458,7 @@ export class SportsConsoleController {
       'stats',
     );
     const { dto, ctx } = consoleCommand(token, body);
-    const checked = validateConsoleStats(findSport(meta.sport), dto.stats);
+    const checked = validateConsoleStats(sportForGame(meta), dto.stats);
     if (!checked.ok) {
       this.throwRejected(
         'SPORTS_CONSOLE_STAT_REJECTED',
@@ -530,7 +530,7 @@ export class SportsConsoleController {
           'team must be home | away',
         );
       }
-      const def = findSport(meta.sport);
+      const def = sportForGame(meta);
       const preset = consolePenaltyPreset(def, raw.lenSec, raw.label);
       if (!preset) {
         this.throwRejected(

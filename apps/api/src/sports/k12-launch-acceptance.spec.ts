@@ -23,8 +23,11 @@ import { TENANT, setup, newGame } from './sports-test-harness';
 afterEach(() => jest.useRealTimers());
 
 describe('K12 launch acceptance — the 21 audit probes', () => {
-  // Owner: A3 (F03, NFHS basketball rules profile) — timeouts are per GAME.
-  it.failing('K12-01 basketball does not replenish the game timeout bank at halftime', async () => {
+  // Owner: A3 (F03) — fixed 2026-09-27: a new basketball game binds the NFHS
+  // rules profile (nfhs-basketball@2026-27), whose time-out bank is per GAME
+  // (three 60 s + two 30 s, never refilled at halftime — 2025-26 NCAA/NFHS
+  // comparison, NFHS column; 05-RULES-SOURCES.md).
+  it('K12-01 basketball does not replenish the game timeout bank at halftime', async () => {
     const { service } = setup(); const g: any = await newGame(service, 'basketball');
     await service.updateStats(TENANT, g.id, { stats: { homeTimeouts: 1 } });
     await service.setSegment(TENANT, g.id, { segment: 3 });
@@ -57,8 +60,11 @@ describe('K12 launch acceptance — the 21 audit probes', () => {
     expect(g.stats.playClock.running).toBe(true);
   });
 
-  // Owner: A3 (F24) — 2027 state-option boys lacrosse 70 s shot clock.
-  it.failing('K12-05 2027 boys lacrosse can configure the state-option 70-second clock', async () => {
+  // Owner: A3 (F24) — fixed 2026-09-27: a new lacrosse game binds
+  // nfhs-lacrosse-boys@2027, whose shot clock is OFF or the state-option
+  // 70 s (NFHS, 2026-08-13: by state adoption from the 2027 season;
+  // 05-RULES-SOURCES.md). A 2026 game (nfhs-lacrosse-boys@2026) has none.
+  it('K12-05 2027 boys lacrosse can configure the state-option 70-second clock', async () => {
     const { service } = setup(); const g: any = await newGame(service, 'lacrosse');
     await service.setShotClock(TENANT, g.id, { action: 'configure', value: 70 });
     expect(g.stats.shotClock.len).toBe(70);

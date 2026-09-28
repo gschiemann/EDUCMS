@@ -9,7 +9,7 @@
  */
 import { SportsConsoleController } from './sports-console.controller';
 import { consoleTokenFingerprint, userCommand } from './game-command';
-import { TENANT, setup, newGame } from './sports-test-harness';
+import { TENANT, classic, setup, newGame } from './sports-test-harness';
 import { _resetIngestRateLimitMemoryForTests } from '../security/ingest-rate-limit';
 
 beforeAll(() => {
@@ -31,9 +31,10 @@ const req = () => {
 async function world(
   sport = 'basketball',
   scope: 'table' | 'scorer' | 'timer' | 'shot' = 'table',
+  rulesProfile?: string,
 ) {
   const h = setup();
-  const g: any = await newGame(h.service, sport);
+  const g: any = await newGame(h.service, sport, rulesProfile);
   const ctl = new SportsConsoleController(h.service, {
     publisher: null,
   } as any);
@@ -229,7 +230,9 @@ describe('K12-F16 — a link undoes its own latest action, once', () => {
   });
 
   it('an action that wrote no undoable event (a shot-clock tap) is 422 — the same reason the rail gives', async () => {
-    const w = await world('basketball', 'shot');
+    // Classic rules: a shot clock that is on without a setup step, with the
+    // 14 s partial reset (an NFHS game starts with its state-option clock OFF).
+    const w = await world('basketball', 'shot', classic('basketball'));
     await w.ctl.shotClock(
       w.link,
       { action: 'reset', value: 14, commandId: 'cmd-pad-000040' } as any,

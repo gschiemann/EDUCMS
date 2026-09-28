@@ -5,6 +5,7 @@
  * no jest globals on purpose: this file is inside src/, so the app build
  * compiles it (the same arrangement as tenant-isolation/two-tenant-prisma.ts).
  */
+import { classicRulesKey } from '@cms/api-types';
 import { SportsService } from './sports.service';
 import { makeSportsPrismaFake } from './sports-prisma-fake';
 
@@ -89,10 +90,30 @@ export function setup(opts: { playerStats?: boolean; vertical?: string } = {}) {
   };
 }
 
-export async function newGame(service: SportsService, sport = 'football') {
+/**
+ * A new game. With no `rulesProfile` it binds the sport's DEFAULT rules
+ * profile (K-12 lane A3 — NFHS where a listed source covers the sport), the
+ * same as a table that picks nothing at setup.
+ */
+export async function newGame(
+  service: SportsService,
+  sport = 'football',
+  rulesProfile?: string,
+) {
   return service.createGame(TENANT, {
     sport,
     homeTeam: 'Home',
     awayTeam: 'Away',
+    ...(rulesProfile ? { rulesProfile } : {}),
   });
+}
+
+/**
+ * The CLASSIC rules profile of a sport — the base definition unchanged, what
+ * every game created before rules profiles runs. Specs of engine MECHANICS
+ * written against those values (a 24 s shot clock that arms itself, a
+ * count-up soccer half, an 8:00 water-polo quarter) pin it explicitly.
+ */
+export function classic(sport: string): string {
+  return classicRulesKey(sport);
 }

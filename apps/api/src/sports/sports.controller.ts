@@ -155,9 +155,36 @@ export class SportsController {
       // for sports that publish clock.segmentMsOptions (water polo 7:00 HS
       // vs 8:00 NCAA). Validated in the service against the sport's options.
       clockSegmentMs?: number;
+      // K12-F01 — the rules profile to bind ('nfhs-basketball@2026-27');
+      // absent = the sport's default. Validated in the service.
+      rulesProfile?: string;
+      // K12-F05 / F24 — a state-option shot clock's starting length (0 = off).
+      shotClockLen?: number;
     },
   ) {
     return this.sports.createGame(req.user.tenantId, body, userActor(req));
+  }
+
+  /**
+   * K12-F01 — switch a game that has not started to another rules profile
+   * (409 RULES_LOCKED once it is live). Same roles as editing the game; an
+   * audited game command, never the scorekeeper link's.
+   */
+  @Post('games/:id/rules')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  setRulesProfile(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body()
+    body: { rulesProfile?: string; shotClockLen?: number; commandId?: string },
+  ) {
+    const { dto, ctx } = userCommand(req, body);
+    return this.sports.setRulesProfile(req.user.tenantId, id, dto, ctx);
   }
 
   /** Edit a game's identity — team names, colors, brand logos. */

@@ -5,6 +5,7 @@ import {
   consoleScopeMintable,
   findSport,
   isConsoleScope,
+  sportForGame,
   type ConsoleAction,
   type ConsoleScope,
 } from '@cms/api-types';
@@ -21,12 +22,24 @@ export type { ConsoleAction, ConsoleScope };
  * `full` always (the mint default), any other scope only when it can do
  * something in that sport (@cms/api-types consoleScopeMintable) — a clock
  * operator needs a clock, a shot-clock operator a shot or play clock.
+ *
+ * K12-F01 — pass the GAME (sport + bound rules) whenever there is one: the
+ * rules decide, e.g. a 2026 boys-lacrosse game has no shot clock to operate.
+ * A bare sport key reads the sport's classic definition.
  */
 export function consoleScopeOffered(
   scope: ConsoleScope,
-  sportKey: string | null | undefined,
+  sportOrGame:
+    | string
+    | { sport?: string | null; rules?: unknown }
+    | null
+    | undefined,
 ): boolean {
-  return consoleScopeMintable(scope, findSport(sportKey));
+  const def =
+    sportOrGame && typeof sportOrGame === 'object'
+      ? sportForGame(sportOrGame)
+      : findSport(sportOrGame);
+  return consoleScopeMintable(scope, def);
 }
 
 /**
