@@ -290,6 +290,11 @@ export const PLAYER_RELEASE_SHA_PINS: Readonly<Record<string, string>> = {
   // apps/player/HARDWARE-QUALIFICATION.md). Digest of the gh-downloaded release
   // asset, run 35604747042.
   '1.1.18': 'd5dca74b22160432621722779496c40d17c2a63303a7650d668354f7f6ca0059',
+  // v1.1.19 — Website Tabs native site view (default-deny site lock, follows a
+  // site's own sign-in across domains, touch relay). Released 2026-09-28 under
+  // a hardware-qualification OVERRIDE. Digest of the gh-downloaded release
+  // asset, run 36445942514.
+  '1.1.19': '0452d55a5211ef6ccc24d0d9b75f552aa05872d7426779f9c2d5e99cca5d25a1',
 };
 
 /**
