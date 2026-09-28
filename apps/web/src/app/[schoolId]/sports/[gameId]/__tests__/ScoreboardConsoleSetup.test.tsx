@@ -9,6 +9,8 @@ import type { ScoreboardConsoleView } from '@/hooks/use-api';
 
 const apiFetch = jest.fn();
 jest.mock('@/lib/api-client', () => ({ apiFetch: (...args: unknown[]) => apiFetch(...args) }));
+const appConfirm = jest.fn();
+jest.mock('@/components/ui/app-dialog', () => ({ appConfirm: (...args: unknown[]) => appConfirm(...args) }));
 
 import { ScoreboardConsoleSetup } from '../ScoreboardConsoleSetup';
 
@@ -59,7 +61,10 @@ function mount(stats: Record<string, unknown> = {}) {
   );
 }
 
-beforeEach(() => apiFetch.mockReset());
+beforeEach(() => {
+  apiFetch.mockReset();
+  appConfirm.mockReset();
+});
 
 it('a sport no console decodes says so — no model picker, no default sport', async () => {
   apiFetch.mockResolvedValueOnce(view({ sport: 'volleyball', sportName: 'Volleyball', supported: false, models: MODELS.map((m) => ({ ...m, supported: false })) }));
@@ -151,4 +156,32 @@ it('Disconnect sends DELETE', async () => {
     expect(apiFetch.mock.calls.some((c) => c[0] === '/sports/games/g1/scoreboard-console' && c[1]?.method === 'DELETE')).toBe(true),
   );
   expect(await screen.findByTestId('scoreboard-console-model')).toBeInTheDocument();
+});
+
+it('a screen that reads the console for ANOTHER game moves only after the operator confirms', async () => {
+  apiFetch.mockResolvedValueOnce(view());
+  mount();
+  fireEvent.change(await screen.findByTestId('scoreboard-console-model'), { target: { value: 'daktronics-allsport' } });
+  fireEvent.change(screen.getByTestId('scoreboard-console-screen'), { target: { value: 'box-2' } });
+
+  // Declined: nothing is sent.
+  appConfirm.mockResolvedValueOnce(false);
+  fireEvent.click(screen.getByTestId('scoreboard-console-connect'));
+  await waitFor(() => expect(appConfirm).toHaveBeenCalledTimes(1));
+  expect(appConfirm.mock.calls[0][0].message).toBe(
+    "Field box reads the console for Hawks vs Owls. Moving it here stops that game's console data.",
+  );
+  expect(apiFetch).toHaveBeenCalledTimes(1);
+
+  // Confirmed: the bind says so explicitly.
+  appConfirm.mockResolvedValueOnce(true);
+  apiFetch.mockResolvedValueOnce(view({ binding: bound({ screenId: 'box-2', screenName: 'Field box', screenOnline: false }) }));
+  fireEvent.click(screen.getByTestId('scoreboard-console-connect'));
+  await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(2));
+  expect(JSON.parse(apiFetch.mock.calls[1][1].body)).toEqual({
+    screenId: 'box-2',
+    consoleProfile: 'daktronics-allsport',
+    takeover: true,
+  });
+  expect(await screen.findByTestId('scoreboard-console-state')).toHaveAttribute('data-state', 'box-offline');
 });

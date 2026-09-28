@@ -26,6 +26,7 @@ import {
   useUnbindScoreboardConsole,
   type ScoreboardConsoleView,
 } from '@/hooks/use-api';
+import { appConfirm } from '@/components/ui/app-dialog';
 import { serverClock } from '@/lib/server-clock';
 import { scoreboardConsoleState } from '@/lib/scoreboard-console-state';
 
@@ -86,6 +87,8 @@ export function ScoreboardConsoleSetup({
         return t('errorFinal');
       case 'SCOREBOARD_CONSOLE_NO_PREVIEW':
         return t('errorNoPreview');
+      case 'SCOREBOARD_CONSOLE_SCREEN_TAKEN':
+        return t('errorTaken');
       default:
         return t('errorGeneric');
     }
@@ -101,6 +104,24 @@ export function ScoreboardConsoleSetup({
 
   const offered = data.models.filter((m) => m.supported);
   const b = data.binding;
+
+  // K12-F35's rule for screen pushes, here too: a screen that reads the
+  // console for ANOTHER game moves only after the operator says so.
+  const connect = async () => {
+    const chosen = data.screens.find((s) => s.id === screenId);
+    let takeover = false;
+    if (chosen?.otherGame) {
+      const ok = await appConfirm({
+        title: t('takeoverTitle'),
+        message: t('takeoverMessage', { screen: chosen.name, game: chosen.otherGame.label }),
+        confirmLabel: t('takeoverConfirm'),
+        tone: 'warn',
+      });
+      if (!ok) return;
+      takeover = true;
+    }
+    bind.mutate({ screenId, consoleProfile: model, ...(takeover ? { takeover: true } : {}) });
+  };
 
   return (
     <div data-testid="scoreboard-console-setup">
@@ -165,7 +186,7 @@ export function ScoreboardConsoleSetup({
           <button
             type="button"
             disabled={!model || !screenId || bind.isPending}
-            onClick={() => bind.mutate({ screenId, consoleProfile: model })}
+            onClick={() => void connect()}
             data-testid="scoreboard-console-connect"
             className="min-h-[36px] rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-40"
           >

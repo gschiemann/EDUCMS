@@ -5685,7 +5685,7 @@ export function useBindScoreboardConsole(gameId: string) {
   return useMutation({
     // The setup card prints the server's reason next to the button.
     meta: { suppressGlobalError: true },
-    mutationFn: (vars: { screenId: string; consoleProfile: string }) =>
+    mutationFn: (vars: { screenId: string; consoleProfile: string; takeover?: boolean }) =>
       scoreboardConsoleMutation(gameId, '', 'POST')(vars),
     onSuccess: (data) => {
       if (data) qc.setQueryData(['sports-scoreboard-console', gameId], data);

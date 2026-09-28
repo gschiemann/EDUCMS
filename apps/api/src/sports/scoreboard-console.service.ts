@@ -373,7 +373,7 @@ export class ScoreboardConsoleService {
   async bind(
     tenantId: string,
     gameId: string,
-    body: { screenId?: unknown; consoleProfile?: unknown },
+    body: { screenId?: unknown; consoleProfile?: unknown; takeover?: unknown },
     userId: string | null,
   ): Promise<ScoreboardConsoleView> {
     const game = await this.ownedGame(tenantId, gameId);
@@ -405,6 +405,24 @@ export class ScoreboardConsoleService {
     if (!target) throw new NotFoundException('Screen not found');
 
     const previousOnTarget = readScoreboardConsoleBinding(target.config);
+    // K12-F35's rule for screen pushes, applied to consoles: a box that reads
+    // the console for ANOTHER game moves only on an explicit take-over — one
+    // wrong pick must not silently cut another live game's console feed. A
+    // binding to a game that no longer exists is not an owner.
+    if (previousOnTarget && previousOnTarget.gameId !== gameId) {
+      const other = await this.prisma.client.game.findFirst({
+        where: { id: previousOnTarget.gameId, tenantId },
+        select: { homeTeam: true, awayTeam: true },
+      });
+      if (other && body?.takeover !== true) {
+        throw new ConflictException({
+          code: 'SCOREBOARD_CONSOLE_SCREEN_TAKEN',
+          message: `${target.name} reads the console for another game.`,
+          otherGameId: previousOnTarget.gameId,
+          otherGame: `${other.homeTeam} vs ${other.awayTeam}`,
+        });
+      }
+    }
     const released = screens.filter(
       (s) =>
         s.id !== target.id &&

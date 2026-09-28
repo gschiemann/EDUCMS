@@ -3550,7 +3550,11 @@
     "ageSeconds": "hace {seconds} s",
     "ageMinutes": "hace {minutes} min",
     "durationSeconds": "{seconds} s",
-    "durationMinutes": "{minutes} min"
+    "durationMinutes": "{minutes} min",
+    "takeoverTitle": "¿Mover la consola de esta pantalla?",
+    "takeoverMessage": "{screen} lee la consola para {game}. Si la mueves aquí, ese partido deja de recibir los datos de la consola.",
+    "takeoverConfirm": "Moverla aquí",
+    "errorTaken": "Esa pantalla ahora lee la consola para otro partido; elige de nuevo."
   },
   "consoleBridge": {
     "title": "Consola del marcador",

@@ -43,7 +43,11 @@ export class ScoreboardConsoleController {
     return this.consoles.view(req.user.tenantId, id);
   }
 
-  /** Body: `{ screenId, consoleProfile }`. */
+  /**
+   * Body: `{ screenId, consoleProfile, takeover? }` — `takeover: true` moves a
+   * screen that reads the console for another game (409
+   * SCOREBOARD_CONSOLE_SCREEN_TAKEN without it).
+   */
   @Post('games/:id/scoreboard-console')
   @RequireRoles(
     AppRole.SUPER_ADMIN,
@@ -54,7 +58,8 @@ export class ScoreboardConsoleController {
   bind(
     @Request() req: OperatorRequest,
     @Param('id') id: string,
-    @Body() body: { screenId?: string; consoleProfile?: string },
+    @Body()
+    body: { screenId?: string; consoleProfile?: string; takeover?: boolean },
   ) {
     return this.consoles.bind(
       req.user.tenantId,

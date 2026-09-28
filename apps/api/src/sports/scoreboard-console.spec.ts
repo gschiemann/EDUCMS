@@ -338,11 +338,33 @@ describe('binding a console to a game (SBC-1..3)', () => {
       'g-bball',
     );
     expect(screens[1].config.wiring).toEqual({ rs232_1: 'cts' }); // other config kept
-    // Change sport: the same box now reads the baseball game.
+    // Change sport: the same box moves to the baseball game — only on an
+    // explicit take-over, because it reads the basketball game's console.
+    await expect(
+      svc.bind(
+        T,
+        'g-base',
+        { screenId: 'box-2', consoleProfile: 'daktronics-allsport' },
+        'u2',
+      ),
+    ).rejects.toMatchObject({
+      response: {
+        code: 'SCOREBOARD_CONSOLE_SCREEN_TAKEN',
+        otherGameId: 'g-bball',
+        otherGame: 'Lions vs Bears',
+      },
+    });
+    expect(readScoreboardConsoleBinding(screens[1].config)?.gameId).toBe(
+      'g-bball',
+    );
     const view = await svc.bind(
       T,
       'g-base',
-      { screenId: 'box-2', consoleProfile: 'daktronics-allsport' },
+      {
+        screenId: 'box-2',
+        consoleProfile: 'daktronics-allsport',
+        takeover: true,
+      },
       'u2',
     );
     expect(view.binding?.decoderSport).toBe('baseball');
