@@ -71,7 +71,7 @@ describe('builder surface', () => {
     expect(screen.getByTestId('website-tabs-status')).toHaveAttribute('data-embed', 'ok');
     expect(document.querySelector('iframe')).toBeNull();
     fireEvent.click(screen.getByTestId('website-tab-c'));
-    expect(screen.getByTestId('website-tabs-status')).toHaveTextContent('Needs our app');
+    expect(screen.getByTestId('website-tabs-status')).toHaveTextContent(/Can.t preview here/);
   });
 });
 

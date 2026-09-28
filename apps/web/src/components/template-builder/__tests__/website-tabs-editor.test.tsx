@@ -76,7 +76,7 @@ describe('WEBSITE_TABS — paste a URL, the tab fills itself in', () => {
       embed: 'blocked',
     });
     expect(screen.getByDisplayValue('Lincoln High')).toBeInTheDocument();
-    expect(screen.getByText(/Needs our app/)).toBeInTheDocument();
+    expect(screen.getByText(/Can.t preview here/)).toBeInTheDocument();
     expect(screen.getByText(/still show on screens running the VenueOS player app/)).toBeInTheDocument();
   });
 

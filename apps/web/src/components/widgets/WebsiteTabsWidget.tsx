@@ -61,19 +61,19 @@ import {
 const STATUS_COPY: Record<'en' | 'es' | 'zh', Record<'ok' | 'blocked' | 'unreachable' | 'unknown', string>> = {
   en: {
     ok: 'Loads on screens',
-    blocked: 'Needs our app — this site blocks embedding',
+    blocked: 'Can’t preview here — it shows on screens running the VenueOS app',
     unreachable: "Can't reach this site",
     unknown: 'Not checked yet',
   },
   es: {
     ok: 'Se muestra en las pantallas',
-    blocked: 'Necesita nuestra app: este sitio bloquea la inserción',
+    blocked: 'No se puede previsualizar aquí: se muestra en pantallas con la app VenueOS',
     unreachable: 'No se puede acceder a este sitio',
     unknown: 'Aún no comprobado',
   },
   zh: {
     ok: '可在屏幕上显示',
-    blocked: '需要我们的应用——此网站禁止嵌入',
+    blocked: '此处无法预览——在运行 VenueOS 应用的屏幕上正常显示',
     unreachable: '无法访问此网站',
     unknown: '尚未检查',
   },
@@ -115,6 +115,7 @@ function TabButton({
   style,
   ariaLabel,
   role,
+  iconOnly,
 }: {
   label: string;
   iconUrl?: string;
@@ -127,6 +128,8 @@ function TabButton({
   style: CSSProperties;
   ariaLabel?: string;
   role: 'tab' | 'button';
+  /** Home: a compact house glyph, not a site-style tab (2026-09-28). */
+  iconOnly?: boolean;
 }) {
   const [iconBroken, setIconBroken] = useState(false);
   return (
@@ -152,7 +155,7 @@ function TabButton({
           justifyContent: 'center',
           width: '1.6em',
           height: '1.6em',
-          marginRight: '0.55em',
+          marginRight: iconOnly ? 0 : '0.55em',
           borderRadius: '0.35em',
           overflow: 'hidden',
           background: 'rgba(255,255,255,0.14)',
@@ -170,15 +173,23 @@ function TabButton({
             onError={() => setIconBroken(true)}
             style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
           />
+        ) : iconOnly ? (
+          '⌂'
         ) : (
           tabInitials(label)
         )}
       </span>
       <span
         style={{
-          whiteSpace: 'nowrap',
+          // Two lines, never "Wikipe…" (2026-09-28). -webkit-line-clamp works in
+          // Chromium 83+, WebKit and Firefox 68+.
+          display: iconOnly ? 'none' : '-webkit-box',
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: 'vertical',
+          whiteSpace: 'normal',
           overflow: 'hidden',
-          textOverflow: 'ellipsis',
+          overflowWrap: 'break-word',
+          lineHeight: 1.1,
           minWidth: 0,
         }}
       >
@@ -453,7 +464,9 @@ export function WebsiteTabsWidget({ config, live }: { config: unknown; live?: bo
   const barBg = cfg.barColor || 'var(--brand-primary, #0f172a)';
   const activeBg = cfg.activeColor || 'var(--brand-accent, #f59e0b)';
   const ink = cfg.textColor || cfg.color || 'var(--brand-primary-ink, #ffffff)';
-  const labelSize: string | number = typeof cfg.fontSize === 'number' && cfg.fontSize > 0 ? cfg.fontSize : 'clamp(16px, 1.55vw, 26px)';
+  // More tabs → a slightly smaller default label so every name stays readable.
+  const autoLabelSize = tabs.length <= 4 ? 'clamp(16px, 1.55vw, 26px)' : tabs.length <= 6 ? 'clamp(14px, 1.3vw, 22px)' : 'clamp(12px, 1.1vw, 19px)';
+  const labelSize: string | number = typeof cfg.fontSize === 'number' && cfg.fontSize > 0 ? cfg.fontSize : autoLabelSize;
   const barAtTop = cfg.barPosition === 'top';
 
   const tabStyle = (isActive: boolean): CSSProperties => ({
@@ -531,7 +544,8 @@ export function WebsiteTabsWidget({ config, live }: { config: unknown; live?: bo
           }}
           testId="website-tabs-home"
           ariaLabel={copy.home}
-          style={{ ...tabStyle(false), marginRight: '0.9em', minWidth: '5.5em' }}
+          iconOnly
+          style={{ ...tabStyle(false), marginRight: '0.9em', minWidth: 0, padding: '0.55em 0.8em' }}
         />
       )}
       {tabs.map((t) => (
@@ -616,7 +630,9 @@ export function WebsiteTabsWidget({ config, live }: { config: unknown; live?: bo
             )}
           </div>
           <div style={{ fontSize: 'clamp(16px, 2.4vw, 40px)', fontWeight: 800, lineHeight: 1.1 }}>{active.name}</div>
-          <div style={{ fontSize: 'clamp(11px, 1.1vw, 18px)', opacity: 0.6, marginTop: '0.5em', wordBreak: 'break-all' }}>{active.url}</div>
+          <div style={{ fontSize: 'clamp(11px, 1.1vw, 18px)', opacity: 0.6, marginTop: '0.5em', wordBreak: 'break-all' }}>{isLive ? active.url : (
+            <a href={active.url} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'underline' }}>{active.url} ↗</a>
+          )}</div>
           <div
             data-testid="website-tabs-status"
             data-embed={active.embed ?? 'unknown'}

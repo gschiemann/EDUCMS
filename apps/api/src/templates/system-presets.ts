@@ -3215,7 +3215,7 @@ const RAW_SYSTEM_PRESETS: SystemPreset[] = [
           { id: 'google', name: 'Google', url: 'https://www.google.com/', iconUrl: 'https://www.google.com/favicon.ico', embed: 'blocked', signIn: 'none' },
         ],
         barPosition: 'top',
-        showHome: true,
+        showHome: false,
         idleReturnSec: 120,
         idleWarnSec: 10,
         incognito: true,
