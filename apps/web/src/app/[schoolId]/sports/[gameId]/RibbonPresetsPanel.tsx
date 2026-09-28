@@ -18,8 +18,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Loader2 } from 'lucide-react';
 import { useGame, useGameControl } from '@/hooks/use-api';
 import {
-  findSport,
   ribbonPresetCatalog,
+  sportForGame,
   RIBBON_SPEEDS,
   RIBBON_SCORE_REPEATS,
 } from '@cms/api-types';
@@ -47,8 +47,10 @@ export function RibbonPresetsPanel({ gameId }: { gameId: string }) {
   const { data: game } = useGame(gameId);
   const ctl = useGameControl(gameId);
 
+  // K12-F01 — the game's own rules (an NFHS soccer game's clock counts
+  // down, so its tile says so).
   const def = useMemo(
-    () => findSport((game as { sport?: string } | undefined)?.sport),
+    () => sportForGame(game as { sport?: string; rules?: unknown } | undefined),
     [game],
   );
   const catalog = useMemo(() => (def ? ribbonPresetCatalog(def) : []), [def]);
