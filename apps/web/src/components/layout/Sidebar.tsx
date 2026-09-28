@@ -131,10 +131,22 @@ export function Sidebar() {
   // back to VenueOS default by clearing the state. Errors are handled
   // by useTenantBranding's retry config so we don't need a catch.
   useEffect(() => {
-    if (brandingFromQuery && userTenantId) {
+    if (!userTenantId) return;
+    if (brandingFromQuery) {
       setBranding(brandingFromQuery);
       try {
         localStorage.setItem(BRAND_LS_PREFIX + userTenantId, JSON.stringify(brandingFromQuery));
+      } catch {}
+    } else if (brandingFromQuery === null) {
+      // Resolved, and the tenant has NO branding row: never adopted, or just
+      // reset. The comment above always said "clear the state" — the code only
+      // handled the non-null side, so after a reset the header kept painting the
+      // OLD brand it had read from this browser's localStorage copy (which
+      // nothing removed either) until a second reload. `undefined` is "still
+      // loading / errored" and must not clear anything.
+      setBranding(null);
+      try {
+        localStorage.removeItem(BRAND_LS_PREFIX + userTenantId);
       } catch {}
     }
   }, [brandingFromQuery, userTenantId]);

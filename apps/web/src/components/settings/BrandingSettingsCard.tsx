@@ -111,7 +111,10 @@ export function BrandingSettingsCard({
           const toRemove: string[] = [];
           for (let i = 0; i < localStorage.length; i++) {
             const k = localStorage.key(i);
-            if (k && k.startsWith('edu-cms-branding-scan-cache-v1')) {
+            // The wizard's scan cache AND the saved copy of the brand itself
+            // (per-tenant + legacy key). The reload below repaints from that
+            // copy first, so leaving it put the OLD logo back after a reset.
+            if (k && (k.startsWith('edu-cms-branding-scan-cache-v1') || k.startsWith('edu-cms-branding-cache-v1'))) {
               toRemove.push(k);
             }
           }

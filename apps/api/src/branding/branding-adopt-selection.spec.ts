@@ -67,10 +67,29 @@ const OTHER_MARK_SVG =
 
 const PNG_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]);
 
+/** The branding-logos bucket's `allowed_mime_types`, read from production on
+ *  2026-09-28. It has `image/x-icon` but NOT `image/vnd.microsoft.icon` — the
+ *  spelling Brookfield's server sends — which is what refused the "B". A mock
+ *  that accepts any type let that pass; this one refuses like the real thing. */
+const BUCKET_ALLOWED = new Set([
+  'image/svg+xml',
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+  'image/x-icon',
+  'image/bmp',
+]);
+
 function makeStorageMock() {
   const mock = {
     upload: jest.fn(async (path: string) => `https://sb.test/assets/${path}`),
-    uploadLogo: jest.fn(async (path: string) => `https://sb.test/branding-logos/${path}`),
+    uploadLogo: jest.fn(async (path: string, _buf?: unknown, contentType?: string) => {
+      if (contentType && !BUCKET_ALLOWED.has(contentType)) {
+        throw new Error(`Storage upload failed (415): mime type ${contentType} is not supported`);
+      }
+      return `https://sb.test/branding-logos/${path}`;
+    }),
   };
   return { storage: mock as unknown as SupabaseStorageService, mock };
 }
@@ -210,11 +229,18 @@ describe('adopt — BUG 2: the cross-candidate vector scan must not out-vote a p
     expect(mock.uploadLogo).toHaveBeenCalledTimes(1);
   });
 
-  it('falls back to the vector scan when the PIN cannot be rehosted (recovery preserved)', async () => {
-    // Cloudflare-style block on the pinned URL.
+  it('NEVER swaps in a different logo when the PIN cannot be rehosted — the old logo stays and the operator is told', async () => {
+    // Cloudflare-style block on the pinned URL, with a DIFFERENT vector mark
+    // sitting in the same list. This used to store that other mark and report
+    // SUCCESS (2026-09-28: the Brookfield "B" became the wordmark).
     safeFetchMock.mockResolvedValue({ status: 403, body: Buffer.from('nope'), contentType: 'text/html', finalUrl: 'x' });
-    const { storage } = makeStorageMock();
+    const { storage, mock } = makeStorageMock();
     const { prisma } = makePrismaMock();
+    (prisma as any).client.tenantBranding.findUnique = jest.fn(async () => ({
+      palette: null,
+      logoUrl: 'https://sb.test/branding-logos/branding/tenant-1/logo-previous.png',
+      logoSvgInline: null,
+    }));
     const controller = makeController(storage, prisma);
 
     const result = await controller.adopt(req, {
@@ -227,8 +253,9 @@ describe('adopt — BUG 2: the cross-candidate vector scan must not out-vote a p
       palette: { primary: '#c2185b' },
     } as any);
 
-    // The operator still ends up with a working logo rather than none.
-    expect(result.branding.logoUrl).toMatch(/\.svg$/);
+    expect(mock.uploadLogo).not.toHaveBeenCalled(); // the OTHER mark was NOT stored
+    expect(result.branding.logoUrl).toContain('logo-previous.png');
+    expect(String(result.logoWarning)).toMatch(/could not fetch/i);
   });
 
   it('an uploaded file still beats every scraped candidate AND the pin', async () => {
@@ -409,5 +436,149 @@ describe('adopt — a logo it could not fetch must NOT be reported as success', 
 
     expect(result.branding.logoUrl).toContain('sb.test');
     expect(result.logoWarning ?? null).toBeNull();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
+describe('adopt — the operator\'s pick is exactly what gets stored (Brookfield "B", 2026-09-28)', () => {
+  /** A 4×4 32-bit .ico (one DIB frame) — the shape of Brookfield's favicon. */
+  function tinyIco32(): Buffer {
+    const w = 4;
+    const h = 4;
+    const header = Buffer.alloc(40);
+    header.writeUInt32LE(40, 0);
+    header.writeInt32LE(w, 4);
+    header.writeInt32LE(h * 2, 8);
+    header.writeUInt16LE(1, 12);
+    header.writeUInt16LE(32, 14);
+    const xor = Buffer.alloc(w * h * 4);
+    for (let i = 0; i < w * h; i++) {
+      xor[i * 4] = 0x4e; // B  (navy 002a4e, BGRA)
+      xor[i * 4 + 1] = 0x2a;
+      xor[i * 4 + 2] = 0x00;
+      xor[i * 4 + 3] = 0xff;
+    }
+    const mask = Buffer.alloc(4 * h);
+    const dib = Buffer.concat([header, xor, mask]);
+    const dir = Buffer.alloc(22);
+    dir.writeUInt16LE(1, 2);
+    dir.writeUInt16LE(1, 4);
+    dir[6] = w;
+    dir[7] = h;
+    dir.writeUInt16LE(1, 10);
+    dir.writeUInt16LE(32, 12);
+    dir.writeUInt32LE(dib.length, 14);
+    dir.writeUInt32LE(22, 18);
+    return Buffer.concat([dir, dib]);
+  }
+
+  const wordmark = { url: 'https://www.brookfieldresidential.com/brookfieldlogo.svg?iar=0', kind: 'img-logo', score: 101, isSvg: true };
+  const favicon = { url: 'https://www.brookfieldresidential.com/favicon.ico', kind: 'icon', score: 70 };
+
+  it('a favicon served as image/vnd.microsoft.icon is stored as a PNG — and that IS the pick', async () => {
+    safeFetchMock.mockImplementation(async (url: string) => ({
+      status: 200,
+      body: tinyIco32(),
+      contentType: 'image/vnd.microsoft.icon',
+      finalUrl: url,
+    }));
+    const { storage, mock } = makeStorageMock();
+    const { prisma } = makePrismaMock();
+    const controller = makeController(storage, prisma);
+
+    const result = await controller.adopt(req, {
+      sourceUrl: 'https://www.brookfieldresidential.com/new-homes/california',
+      logos: [wordmark, favicon],
+      logoOverride: { url: favicon.url },
+      palette: { primary: '#012a5e' },
+    } as any);
+
+    expect(mock.uploadLogo).toHaveBeenCalledTimes(1);
+    const [path, body, contentType] = mock.uploadLogo.mock.calls[0];
+    expect(contentType).toBe('image/png');
+    expect(path).toMatch(/logo-[0-9a-f]{12}\.png$/);
+    expect(Buffer.from(body as Buffer).subarray(0, 4).toString('hex')).toBe('89504e47'); // real PNG bytes
+    expect(result.branding.logoUrl).toMatch(/\.png$/);
+    expect(result.branding.logoUrl).not.toContain('svg'); // not the wordmark
+    expect(result.logoWarning ?? null).toBeNull();
+  });
+
+  it('a raster pick clears the PREVIOUS brand\'s inline SVG instead of leaving it on the row', async () => {
+    mockRasterFetchOk();
+    const { storage } = makeStorageMock();
+    const { prisma, upsert } = makePrismaMock();
+    const controller = makeController(storage, prisma);
+
+    await controller.adopt(req, {
+      sourceUrl: 'https://acmelotus.com',
+      logos: [{ url: 'https://acmelotus.com/img/lotus-mark.png', kind: 'img-logo', score: 80 }],
+      logoOverride: { url: 'https://acmelotus.com/img/lotus-mark.png' },
+      palette: { primary: '#c2185b' },
+    } as any);
+
+    // `undefined` would mean "leave the old SVG in place"; null clears it.
+    expect(upsert.mock.calls[0][0].update.logoSvgInline).toBeNull();
+  });
+
+  it('when NO logo could be produced at all, the stored inline SVG is left alone', async () => {
+    safeFetchMock.mockImplementation(async () => {
+      throw new Error('Fetch timed out');
+    });
+    const { storage } = makeStorageMock();
+    const { prisma, upsert } = makePrismaMock();
+    (prisma as any).client.tenantBranding.findUnique = jest.fn(async () => ({
+      palette: null,
+      logoUrl: 'https://sb.test/branding-logos/branding/tenant-1/logo-previous.svg',
+      logoSvgInline: OTHER_MARK_SVG,
+    }));
+    const controller = makeController(storage, prisma);
+
+    const result = await controller.adopt(req, {
+      sourceUrl: 'https://acmelotus.com',
+      logos: [favicon],
+      logoOverride: { url: favicon.url },
+      palette: { primary: '#c2185b' },
+    } as any);
+
+    expect(result.branding.logoUrl).toContain('logo-previous.svg');
+    expect(upsert.mock.calls[0][0].update.logoSvgInline).toBe(OTHER_MARK_SVG);
+  });
+
+  it('with nothing stored yet AND an unreachable pick: no substitute logo, and the operator is told', async () => {
+    safeFetchMock.mockResolvedValue({ status: 403, body: Buffer.from('nope'), contentType: 'text/html', finalUrl: 'x' });
+    const { storage, mock } = makeStorageMock();
+    const { prisma } = makePrismaMock();
+    const controller = makeController(storage, prisma);
+
+    const result = await controller.adopt(req, {
+      sourceUrl: 'https://www.brookfieldresidential.com',
+      logos: [wordmark, favicon],
+      logoOverride: { url: favicon.url },
+      palette: { primary: '#012a5e' },
+    } as any);
+
+    expect(mock.uploadLogo).not.toHaveBeenCalled();
+    expect(result.branding.logoUrl ?? null).toBeNull();
+    expect(String(result.logoWarning)).toMatch(/no logo was set/i);
+  });
+
+  it('an inline SVG is stored under a CONTENT-ADDRESSED name, so a new logo is a new URL', async () => {
+    const { storage, mock } = makeStorageMock();
+    const { prisma } = makePrismaMock();
+    const controller = makeController(storage, prisma);
+
+    const svgB = OTHER_MARK_SVG.replace('e60023', '002a4e');
+    for (const svg of [OTHER_MARK_SVG, svgB]) {
+      await controller.adopt(req, {
+        sourceUrl: 'https://acmelotus.com',
+        logos: [{ url: '', kind: 'svg-inline', score: 90, isSvg: true, svgInline: svg }],
+        logoOverride: { url: '', svgInline: svg },
+        palette: { primary: '#c2185b' },
+      } as any);
+    }
+    const [first, second] = mock.uploadLogo.mock.calls.map((c) => c[0] as string);
+    expect(first).toMatch(/logo-[0-9a-f]{12}\.svg$/);
+    expect(second).toMatch(/logo-[0-9a-f]{12}\.svg$/);
+    expect(second).not.toBe(first); // a fixed `logo.svg` + a one-year cache = the old logo forever
   });
 });

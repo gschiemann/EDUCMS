@@ -26,6 +26,10 @@ jest.mock('next/navigation', () => ({
   usePathname: () => '/school-1/dashboard',
   useParams: () => ({ schoolId: 'school-1' }),
 }));
+// What `useTenantBranding()` currently answers. `undefined` = the query has not
+// resolved (a cold tab: the localStorage layer paints first); `null` = it
+// resolved and the tenant has NO branding row; an object = a brand.
+let mockBrandingData: unknown = undefined;
 // Wholesale mock — every hook any component under test reaches for. Extend
 // this list rather than weakening an assertion when a component grows a hook.
 jest.mock('@/hooks/use-api', () => ({
@@ -33,7 +37,7 @@ jest.mock('@/hooks/use-api', () => ({
   usePasskeys: () => ({ data: undefined }),
   usePendingAssets: () => ({ data: [] }),
   useSubmissions: () => ({ data: [] }),
-  useTenantBranding: () => ({ data: null }),
+  useTenantBranding: () => ({ data: mockBrandingData }),
   useTenantStatus: () => ({ data: { name: 'Iron Peak' } }),
   useNotifications: () => ({ data: { unreadCount: 0 } }),
 }));
@@ -77,6 +81,7 @@ function brand() {
 }
 
 beforeEach(() => {
+  mockBrandingData = undefined;
   window.localStorage.clear();
   seedUser();
 });
@@ -196,5 +201,34 @@ describe('the bottom tab bar paints its active state with the brand', () => {
     const indicator = active.querySelector('span[aria-hidden]')!;
     expect(indicator.className).toMatch(/bg-indigo-\d00/);
     expect(container.querySelector('[class*="bg-slate-900"]')).toBeNull();
+  });
+});
+
+describe('reset to default — the sidebar must not keep the OLD brand (Greg, 2026-09-28)', () => {
+  // "even when i reset back to default it keeps the old logo". The header read
+  // its brand from this browser's localStorage copy, and when /branding/me came
+  // back with NO row the effect that was meant to clear it only handled the
+  // non-null side — so the old logo stayed until a second reload.
+  it('drops the old logo when the server says the tenant has no branding', () => {
+    seedUser();
+    brand(); // the copy left in localStorage by the previous brand
+    const { rerender } = render(<Sidebar />);
+    expect(document.querySelector('img[src="https://cdn.test/iron-peak.png"]')).not.toBeNull();
+
+    // Reset → /branding/me resolves to null.
+    act(() => { mockBrandingData = null; });
+    rerender(<Sidebar />);
+
+    expect(document.querySelector('img[src="https://cdn.test/iron-peak.png"]')).toBeNull();
+    expect(window.localStorage.getItem(LS_KEY)).toBeNull(); // and the saved copy is gone
+  });
+
+  it('a query that has NOT resolved yet clears nothing (the cold-tab paint stays)', () => {
+    seedUser();
+    brand();
+    mockBrandingData = undefined;
+    render(<Sidebar />);
+    expect(document.querySelector('img[src="https://cdn.test/iron-peak.png"]')).not.toBeNull();
+    expect(window.localStorage.getItem(LS_KEY)).not.toBeNull();
   });
 });

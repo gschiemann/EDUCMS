@@ -186,3 +186,19 @@ describe('sizing', () => {
     expect(chip.className).toMatch(/overflow-hidden/);
   });
 });
+
+describe('reset to default (Greg, 2026-09-28: "it keeps the old logo")', () => {
+  it('drops the logo it read from localStorage when the app announces the brand was cleared', () => {
+    seedBranding({ displayName: 'Iron Peak', logoUrl: 'https://cdn.test/logo.png' });
+    render(<BrandMark />);
+    expect(document.querySelector('img')).toHaveAttribute('src', 'https://cdn.test/logo.png');
+
+    // BrandStyleInjector dispatches this when /branding/me resolves to no row.
+    act(() => {
+      window.dispatchEvent(new CustomEvent('branding:cleared'));
+    });
+
+    expect(document.querySelector('img')).toBeNull();
+    expect(screen.getByTestId('brandmark-default')).toBeInTheDocument();
+  });
+});

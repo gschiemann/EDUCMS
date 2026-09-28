@@ -124,10 +124,17 @@ export function useBrandIdentity(): BrandIdentity {
       const detail = (e as CustomEvent<Record<string, unknown>>).detail;
       if (detail) setCached(detail);
     };
+    // The server says this tenant has NO branding (reset to default): drop the
+    // localStorage-derived copy. `snapshot ?? cached` falls through to `cached`
+    // whenever the live value is null, so without this a reset kept drawing the
+    // old logo for the rest of the page's life.
+    const onCleared = () => setCached(null);
     window.addEventListener('branding:update', onUpdate as EventListener);
+    window.addEventListener('branding:cleared', onCleared);
     window.addEventListener('storage', read);
     return () => {
       window.removeEventListener('branding:update', onUpdate as EventListener);
+      window.removeEventListener('branding:cleared', onCleared);
       window.removeEventListener('storage', read);
     };
   }, [tenantId]);

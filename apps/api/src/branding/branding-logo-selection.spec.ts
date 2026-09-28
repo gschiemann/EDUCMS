@@ -323,3 +323,51 @@ describe('scrape() — only a HEADER mark pushes the site icon aside (2026-09-22
     expect(touch!.score).toBeLessThanOrEqual(mark!.score * 0.9);
   });
 });
+
+describe('scrape() — an .ico candidate is analysed like any other mark (Brookfield "B", 2026-09-28)', () => {
+  /** A 4×4 32-bit .ico, every pixel navy 002a4e — a dark mark like Brookfield's "B". */
+  function navyIco(): Buffer {
+    const w = 4;
+    const h = 4;
+    const header = Buffer.alloc(40);
+    header.writeUInt32LE(40, 0);
+    header.writeInt32LE(w, 4);
+    header.writeInt32LE(h * 2, 8);
+    header.writeUInt16LE(1, 12);
+    header.writeUInt16LE(32, 14);
+    const xor = Buffer.alloc(w * h * 4);
+    for (let i = 0; i < w * h; i++) {
+      xor[i * 4] = 0x4e;
+      xor[i * 4 + 1] = 0x2a;
+      xor[i * 4 + 2] = 0x00;
+      xor[i * 4 + 3] = 0xff;
+    }
+    const dib = Buffer.concat([header, xor, Buffer.alloc(4 * h)]);
+    const dir = Buffer.alloc(22);
+    dir.writeUInt16LE(1, 2);
+    dir.writeUInt16LE(1, 4);
+    dir[6] = w;
+    dir[7] = h;
+    dir.writeUInt16LE(1, 10);
+    dir.writeUInt16LE(32, 12);
+    dir.writeUInt32LE(dib.length, 14);
+    dir.writeUInt32LE(22, 18);
+    return Buffer.concat([dir, dib]);
+  }
+
+  it('reads its colour and suggests a backdrop a DARK mark can be seen on — not the `primary` guess', async () => {
+    routeFetch({
+      'https://acmelotus.com/favicon.ico': { body: navyIco(), contentType: 'image/vnd.microsoft.icon' },
+    });
+    const svc = new BrandingScraperService();
+    const preview = await svc.scrape(SITE, 4000);
+
+    const icon = preview.logos.find((l) => l.url === 'https://acmelotus.com/favicon.ico');
+    expect(icon).toBeTruthy();
+    // Before: never fetched (".ico … sharp can't read them"), so no colours and
+    // no suggestion — the wizard kept the top candidate's `primary` chip and a
+    // navy B was drawn on a navy tile.
+    expect(icon!.brandColors?.[0]).toBe('#002a4e');
+    expect(icon!.logoBackground).toBe('transparent');
+  });
+});

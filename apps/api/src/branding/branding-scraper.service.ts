@@ -18,6 +18,7 @@ import postcss from 'postcss';
 import valueParser from 'postcss-value-parser';
 
 import { safeFetch, SsrfError } from './safe-fetch';
+import { icoToPng, isIco } from './logo-image';
 import { parseColor, derivePalette, contrastRatio, wcagGrade, relativeLuminance, DerivedPalette, ContrastReport } from './color-utils';
 import { matchGoogleFont, buildGoogleFontsUrl } from './google-fonts';
 import {
@@ -1477,8 +1478,11 @@ export class BrandingScraperService {
         continue;
       }
       if (!cand.url || fetched >= MAX_FETCHES) continue;
-      // .ico/.icns are browser-tab icons; sharp can't read them anyway.
-      if (/\.(ico|icns)(\?|#|$)/i.test(cand.url)) continue;
+      // .icns is a macOS icon bundle sharp can't read. An .ico CAN be read (see
+      // logo-image.ts) and must be: an un-analysed candidate has no colours and
+      // no backdrop suggestion, so picking Brookfield's navy "B" left the
+      // wizard on the top candidate's `primary` chip — navy on navy, invisible.
+      if (/\.icns(\?|#|$)/i.test(cand.url)) continue;
       fetched++;
       jobs.push(this.analyzeOneLogo(cand, deadline, remaining));
     }
@@ -1527,7 +1531,15 @@ export class BrandingScraperService {
       // --experimental-vm-modules") — and since every failure here is
       // swallowed by design, a lazy import would have degraded raster
       // analysis to a silent no-op in every test run.
-      const img = sharp(res.body, { failOn: 'none' });
+      // An .ico is decoded to its native-size PNG first (no upscaling: the real
+      // pixel size is what the photo checks below should see).
+      let bytes = res.body;
+      if (isIco(bytes)) {
+        const png = await icoToPng(bytes, { minEdge: 0 });
+        if (!png) return;
+        bytes = png;
+      }
+      const img = sharp(bytes, { failOn: 'none' });
       const meta = await img.metadata();
 
       // Real-dimension photo demotion. The declared width/height attribute

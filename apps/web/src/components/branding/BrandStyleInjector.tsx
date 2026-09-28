@@ -137,6 +137,10 @@ export function BrandStyleInjector() {
     } else {
       try { localStorage.removeItem(key); } catch {}
       applyBrandDefault();
+      // Removing the localStorage copy does not reach components that already
+      // read it into state (`storage` events only fire in OTHER tabs). Tell them
+      // this tenant has no branding, or they keep the old logo until a reload.
+      window.dispatchEvent(new CustomEvent('branding:cleared'));
     }
   }, [brandingFromQuery, isSuccess, isError, tenantId, user]);
 

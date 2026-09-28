@@ -146,7 +146,8 @@ describe('BrandingController.adopt — SVG survives adopt via the logo bucket (t
     expect(mock.uploadLogo).toHaveBeenCalledTimes(1);
     const [path, , contentType] = mock.uploadLogo.mock.calls[0];
     expect(contentType).toBe('image/svg+xml');
-    expect(path).toMatch(/logo\.svg$/);
+    // Content-addressed (never a fixed `logo.svg`): storage caches a name for a year.
+    expect(path).toMatch(/logo-[0-9a-f]{12}\.svg$/);
 
     // The persisted row's logoUrl must be the SVG object, not a raster.
     expect(upsert).toHaveBeenCalledTimes(1);
@@ -155,22 +156,23 @@ describe('BrandingController.adopt — SVG survives adopt via the logo bucket (t
     expect(result.branding.logoSvgInline).toContain('<path');
   });
 
-  it('vector-preservation fallback (raster pinned ahead of a real SVG) also routes through uploadLogo', async () => {
+  it('vector-preservation fallback (NO pin: raster first in the list, a real SVG behind it) also routes through uploadLogo', async () => {
     const { storage, mock } = makeStorageMock();
     const { prisma } = makePrismaMock();
     const controller = makeController(storage, prisma);
 
-    // Operator/client pinned a raster og:image as candidate #0; the real
-    // vector sits behind it. Adopt must still find + preserve the vector
-    // (select-vector-logo.ts), and the rehost of that vector must go to the
-    // SVG-capable bucket.
+    // A raster og:image is candidate #0 and NO pin was sent (the template /
+    // "adopt what you found" path); the real vector sits behind it. Adopt must
+    // still find + preserve the vector (select-vector-logo.ts), and the rehost
+    // of that vector must go to the SVG-capable bucket. (With an explicit pin
+    // the operator's pick is never swapped for a vector — see
+    // branding-adopt-selection.spec.ts, "a pick is never substituted".)
     const result = await controller.adopt(req, {
       sourceUrl: 'https://dominos.com',
       logos: [
         { url: 'https://dominos.com/og-image.png', kind: 'og', score: 60, isSvg: false },
         { url: '', kind: 'svg-inline', score: 90, isSvg: true, svgInline: VALID_SVG },
       ],
-      logoOverride: { url: 'https://dominos.com/og-image.png' }, // client pinned the raster
       palette: { primary: '#e8112d' },
     } as any);
 

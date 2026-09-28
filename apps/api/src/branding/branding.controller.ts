@@ -42,6 +42,7 @@ import { safeFetch, SsrfError } from './safe-fetch';
 import { derivePalette, parseColor, ensureContrast, contrastRatio, bestTextOn, deriveReadableShades, readableShadeAdjustments, ContrastReport } from './color-utils';
 import { sanitizeLogoSvg } from './sanitize-svg';
 import { selectVectorLogo } from './select-vector-logo';
+import { normalizeLogoImage } from './logo-image';
 import { isLogoBackground, resolveStoredLogoBackground } from './logo-colors';
 
 import { createHash } from 'crypto';
@@ -264,7 +265,17 @@ export class BrandingController {
       }
     }
 
-    if (!logoUrl) {
+    // ── A PICK IS NEVER SUBSTITUTED (2026-09-28, Greg's Brookfield demo) ──
+    //
+    // "it should do exactly what i pick every single time." He picked
+    // Brookfield's "B"; the pin failed to store (Storage refused the icon's
+    // MIME type) and everything below quietly saved the site's first vector
+    // candidate — the wordmark — instead, reporting SUCCESS. The scans that
+    // follow exist for an adopt WITHOUT a pin ("adopt what you found": the
+    // template path, a straight scrape). With a pin, a logo we could not store
+    // means the operator's current logo stays and they are TOLD — never a
+    // different mark than the one they chose.
+    if (!logoUrl && !hasPinnedLogo) {
       const vector = await this.pickVectorLogoCandidate(
         body.logos,
         `branding/${tenantId}`,
@@ -280,7 +291,7 @@ export class BrandingController {
     // Also try the raster logoUrl as a fallback OR primary (when no vector
     // candidate existed). If logoUrl is already set from the SVG/vector
     // branch, skip — the vector wins.
-    if (!logoUrl && chosenLogo) {
+    if (!logoUrl && !hasPinnedLogo && chosenLogo) {
       try {
         logoUrl = await this.rehostUrl(chosenLogo, `branding/${tenantId}/logo`);
       } catch (e: any) {
@@ -317,13 +328,19 @@ export class BrandingController {
         }
       } catch { /* best-effort */ }
     }
+    // A pick that could not be stored and nothing to fall back on: still say so
+    // (the tenant is left on the product mark, which is honest — and warned).
+    if (!logoUrl && hasPinnedLogo && !logoWarning) {
+      logoWarning =
+        'We could not fetch that logo from the site, so no logo was set. Upload the image file instead.';
+    }
 
     // If the SVG was rejected AND we had other logo candidates, try
     // them in score order. The client's logoOverride may have pinned
     // the bad one — fall back to the next best candidate on the server
     // so branding still succeeds without a re-scrape.
-    if (!logoUrl && Array.isArray(body.logos)) {
-      // Skip whatever we already tried (the pin, or candidate #0) rather
+    if (!logoUrl && !hasPinnedLogo && Array.isArray(body.logos)) {
+      // Skip whatever we already tried (candidate #0) rather
       // than blindly slicing off index 0 — with a pin, index 0 is a
       // candidate we have NOT tried yet and deserves a turn.
       const alreadyTried = new Set<string>([chosenLogo || '']);
@@ -426,7 +443,11 @@ export class BrandingController {
         displayName: body.displayName ?? null,
         tagline: body.tagline ?? null,
         logoUrl: logoUrl ?? undefined,
-        logoSvgInline: logoSvgInline ?? undefined,
+        // A NEW logo replaces the inline SVG too: a raster pick has none (null),
+        // and `?? undefined` used to leave the PREVIOUS brand's SVG on the row
+        // for every surface that prefers inline markup. Untouched only when no
+        // logo was produced at all.
+        logoSvgInline: logoUrl ? logoSvgInline : undefined,
         faviconUrl: faviconUrl ?? undefined,
         ogImageUrl: ogImageUrl ?? undefined,
         palette: palette as any,
@@ -724,13 +745,13 @@ export class BrandingController {
         if (buf.byteLength > 2 * 1024 * 1024) {
           throw new HttpException({ code: 'BRANDING_LOGO_TOO_LARGE', message: 'Logo too large (max 2MB)' }, HttpStatus.BAD_REQUEST);
         }
-        const ext = mimeType.split('/')[1].split('+')[0].replace(/[^a-z0-9]/gi, '') || 'png';
-        const hash = createHash('sha256').update(buf).digest('hex').slice(0, 12);
-        const path = `branding/${tenantId}/manual-${hash}.${ext}`;
+        const img = await normalizeLogoImage(buf, mimeType);
+        const hash = createHash('sha256').update(img.body).digest('hex').slice(0, 12);
+        const path = `branding/${tenantId}/manual-${hash}.${img.ext}`;
         // uploadLogo (not upload) — task #223. The general `assets` bucket
         // doesn't allow image/svg+xml; this error message explicitly offers
         // SVG below, so it must land in the branding-logos bucket.
-        logoUrl = await this.storage.uploadLogo(path, buf, mimeType);
+        logoUrl = await this.storage.uploadLogo(path, img.body, img.contentType);
       } catch (e: any) {
         this.logger.warn(`Manual logo upload failed for tenant ${tenantId}: ${e?.message}`);
         throw new HttpException({ code: 'BRANDING_LOGO_UPLOAD_FAILED', message: `Logo upload failed: ${e?.message}` }, HttpStatus.BAD_REQUEST);
@@ -742,19 +763,19 @@ export class BrandingController {
         if (r.status < 200 || r.status >= 300) {
           throw new Error(`image URL returned HTTP ${r.status}`);
         }
-        if (/\.(ico|icns)(\?|#|$)/i.test(body.logoUrl)) {
-          throw new Error('favicon URLs are too small to use as logos — paste a full-size image URL');
-        }
         if (!looksLikeImage(r.body, r.contentType)) {
           throw new Error('that URL did not return an image — paste a direct link to a PNG/JPG/SVG');
         }
-        const ext = extFromContentType(r.contentType) || extFromUrl(body.logoUrl) || 'png';
-        const hash = createHash('sha256').update(r.body).digest('hex').slice(0, 12);
-        const path = `branding/${tenantId}/manual-${hash}.${ext}`;
+        // Whatever the operator pastes is what they get: icons are converted to
+        // PNG (a favicon URL used to be refused here while the wizard offered
+        // the same file as a pickable logo).
+        const img = await normalizeLogoImage(r.body, r.contentType);
+        const hash = createHash('sha256').update(img.body).digest('hex').slice(0, 12);
+        const path = `branding/${tenantId}/manual-${hash}.${img.ext}`;
         // uploadLogo (not upload) — task #223, same reasoning as the data-URL
         // branch above: a pasted `.svg` URL must land in the branding-logos
         // bucket, which allows image/svg+xml.
-        logoUrl = await this.storage.uploadLogo(path, r.body, r.contentType || 'application/octet-stream');
+        logoUrl = await this.storage.uploadLogo(path, img.body, img.contentType);
       } catch (e: any) {
         this.logger.warn(`Manual logo URL rehost failed for tenant ${tenantId}: ${e?.message}`);
         throw new HttpException({ code: 'BRANDING_LOGO_URL_FETCH_FAILED', message: `Logo URL fetch failed: ${e?.message}` }, HttpStatus.BAD_REQUEST);
@@ -1209,10 +1230,14 @@ export class BrandingController {
         `rehost: ${sourceUrl.slice(0, 80)} is not an image (content-type=${r.contentType || '?'}, ${r.body.length}B)`,
       );
     }
-    const ext = extFromContentType(r.contentType) || extFromUrl(sourceUrl) || 'bin';
-    const hash = createHash('sha256').update(r.body).digest('hex').slice(0, 12);
-    const path = `${keyPrefix}-${hash}.${ext}`;
-    return this.storage.uploadLogo(path, r.body, r.contentType || 'application/octet-stream');
+    // The FORMAT comes from the bytes, never from the server's Content-Type:
+    // Brookfield serves its "B" favicon as `image/vnd.microsoft.icon`, which the
+    // bucket's allow-list refuses (it has `image/x-icon`), so the pick failed.
+    // Icons become PNGs; every type stored is one the bucket allows.
+    const img = await normalizeLogoImage(r.body, r.contentType);
+    const hash = createHash('sha256').update(img.body).digest('hex').slice(0, 12);
+    const path = `${keyPrefix}-${hash}.${img.ext}`;
+    return this.storage.uploadLogo(path, img.body, img.contentType);
   }
 
   /** Decode a `data:image/...;base64,...` logo (the wizard's "upload your own
@@ -1228,14 +1253,27 @@ export class BrandingController {
     if (buf.byteLength === 0) throw new Error('empty image');
     if (buf.byteLength > 2 * 1024 * 1024) throw new Error('logo too large (max 2MB)');
     if (!looksLikeImage(buf, mimeType)) throw new Error('decoded bytes are not an image');
-    const ext = (mimeType.split('/')[1] || 'png').split('+')[0].replace(/[^a-z0-9]/gi, '') || 'png';
-    const hash = createHash('sha256').update(buf).digest('hex').slice(0, 12);
-    const path = `branding/${tenantId}/logo-upload-${hash}.${ext}`;
-    return this.storage.uploadLogo(path, buf, mimeType);
+    // Same rule as rehostUrl: the bytes decide the format (an `.ico` or a
+    // `image/jpg`-labelled JPEG would otherwise be refused by the bucket).
+    const img = await normalizeLogoImage(buf, mimeType);
+    const hash = createHash('sha256').update(img.body).digest('hex').slice(0, 12);
+    const path = `branding/${tenantId}/logo-upload-${hash}.${img.ext}`;
+    return this.storage.uploadLogo(path, img.body, img.contentType);
   }
 
+  /**
+   * Store inline-SVG markup as a logo file. The name is CONTENT-ADDRESSED
+   * (`…/logo-<hash>.svg`), never a fixed `…/logo.svg`: storage sends
+   * `cache-control: max-age=31536000` on the premise that a name never changes
+   * its bytes, so overwriting one fixed name left every browser and CDN edge
+   * that had already loaded it showing the PREVIOUS logo for up to a year —
+   * "I picked the new logo and it kept the old one" (Greg, 2026-09-28).
+   */
   private async rehost(content: string, path: string, contentType: string): Promise<string> {
-    return this.storage.uploadLogo(path, Buffer.from(content, 'utf-8'), contentType);
+    const body = Buffer.from(content, 'utf-8');
+    const hash = createHash('sha256').update(body).digest('hex').slice(0, 12);
+    const addressed = path.replace(/(\.[a-z0-9]+)$/i, `-${hash}$1`);
+    return this.storage.uploadLogo(addressed, body, contentType);
   }
 
   /**
@@ -1519,22 +1557,6 @@ function looksLikeImage(buf: Buffer, contentType?: string | null): boolean {
   const head = b.toString('utf8', 0, Math.min(b.length, 512)).trim().toLowerCase();
   if (head.startsWith('<?xml') || head.includes('<svg')) return true; // SVG / XML
   return false;
-}
-
-function extFromContentType(ct: string): string | null {
-  const lower = ct.toLowerCase();
-  if (lower.includes('svg')) return 'svg';
-  if (lower.includes('png')) return 'png';
-  if (lower.includes('jpeg') || lower.includes('jpg')) return 'jpg';
-  if (lower.includes('webp')) return 'webp';
-  if (lower.includes('gif')) return 'gif';
-  if (lower.includes('x-icon') || lower.includes('vnd.microsoft.icon')) return 'ico';
-  return null;
-}
-
-function extFromUrl(u: string): string | null {
-  const m = u.match(/\.(svg|png|jpe?g|webp|gif|ico)(?:\?|$)/i);
-  return m ? m[1].toLowerCase() : null;
 }
 
 // Shape of the /adopt body — deliberately loose; the client passes back
