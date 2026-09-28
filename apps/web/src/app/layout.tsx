@@ -147,7 +147,13 @@ export default function RootLayout({
                 default palette + wordmark. Only authed routes
                 ([schoolId]/*, /onboarding/*, /settings/*) re-skin. */}
             <main className="w-full min-h-screen relative flex flex-col">
-              <div className="absolute top-0 inset-x-0 h-96 bg-gradient-to-b from-indigo-50 to-transparent pointer-events-none -z-10" />
+              {/* Decorative top wash. `max-h-full` caps it at <main>'s own
+                  height: at a fixed 384 px it ran past the bottom of a
+                  360 px-tall window (a phone held sideways), so the whole
+                  document scrolled 24 px over the pinned scorekeeper pad
+                  and console. Physical sides, not `inset-x-0` — this node
+                  is in every route's DOM, the Chromium-83 player included. */}
+              <div className="absolute top-0 left-0 right-0 h-96 max-h-full bg-gradient-to-b from-indigo-50 to-transparent pointer-events-none -z-10" />
               {children}
             </main>
             {/* Toggle with Ctrl+Shift+L (Cmd+Shift+L on macOS). Zero

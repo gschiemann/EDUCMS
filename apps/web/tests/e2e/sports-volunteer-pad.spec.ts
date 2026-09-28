@@ -241,9 +241,10 @@ async function expectPhoneLayout(page: Page) {
 
 /** Sideways: nothing scrolls sideways, the score and clock sit fully on
  *  screen and stay there — whether the document or the controls pane is
- *  scrolled. (The pad is pinned to the viewport; the root layout's 384 px
- *  decorative backdrop still makes a 360 px-tall document scroll 24 px, which
- *  must move nothing on the pad.) */
+ *  scrolled. The pad is pinned to the viewport, and the document itself no
+ *  longer scrolls either: the root layout's decorative backdrop was a fixed
+ *  384 px and ran 24 px past a 360 px-tall window (lane B4 capped it at the
+ *  page's height). */
 async function expectLandscapeLayout(page: Page) {
   const inView = async (testId: string) => {
     const box = await page.getByTestId(testId).boundingBox();
@@ -257,6 +258,10 @@ async function expectLandscapeLayout(page: Page) {
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
   );
   expect(sideways, 'the page does not scroll sideways').toBeLessThanOrEqual(1);
+  const downward = await page.evaluate(
+    () => document.documentElement.scrollHeight - document.documentElement.clientHeight,
+  );
+  expect(downward, 'the page does not scroll up and down either').toBeLessThanOrEqual(1);
   const before = await inView('pad-scoreboard');
   await inView('pad-clock-readout');
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
