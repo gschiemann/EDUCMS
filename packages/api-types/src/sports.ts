@@ -136,6 +136,70 @@ export interface SegmentResetRules {
   shotClock?: boolean;
 }
 
+/**
+ * K12-F02 / F04 — the team-foul rules of a rules profile (sports-rules.ts).
+ * Absent on a definition = the classic engine rules (fouls reset at every
+ * segment boundary, the old 7 / 10 bonus lamp).
+ */
+export interface TeamFoulRules {
+  /** A team is IN THE BONUS (shoots free throws) once the OPPONENT has this
+   *  many team fouls in the current period. */
+  bonusAt: number;
+  /** A second threshold (the old "double bonus"); absent = there is none. */
+  doubleBonusAt?: number;
+  /** Overtime continues the last regulation period's team-foul count
+   *  instead of starting from zero. */
+  carryIntoOvertime: boolean;
+  /** Scoreboards never show a team-foul number above this; the stored
+   *  count itself is never capped. Absent = no cap. */
+  displayCap?: number;
+}
+
+/**
+ * K12-F03 / F19 / F25 — a rules profile's timeout banks. `homeTimeouts` /
+ * `awayTimeouts` hold how many a team has LEFT in total (what every board
+ * shows); when the profile also has short timeouts, `homeShortTimeouts` /
+ * `awayShortTimeouts` hold how many of those are short ones. Absent on a
+ * definition = the classic single count.
+ */
+export interface TimeoutRules {
+  /** Full (long) timeouts per team in the bank. */
+  full: number;
+  /** Short timeouts per team in the bank (0 = the profile has one kind). */
+  short: number;
+  /** Length of a full / short timeout, seconds (for labels and timers). */
+  fullSec?: number;
+  shortSec?: number;
+  /** What one bank covers: the whole game, each half, or each set. */
+  per: 'game' | 'half' | 'set';
+  /** Full timeouts added for each overtime period entered; unused ones
+   *  carry over. */
+  overtimeFull?: number;
+}
+
+/**
+ * K12-F19 — the set/game format of a set-scored sport (volleyball,
+ * pickleball). `bestOf` equals the definition's `segment.count`.
+ */
+export interface SetFormatRules {
+  /** 5 = best of five (first to three sets). */
+  bestOf: number;
+  /** Points to win a set. */
+  target: number;
+  /** Points to win the deciding (last possible) set. */
+  decidingTarget: number;
+  /** Winning margin (2 = win by two). */
+  winBy: number;
+  /** The first side to reach this many points wins the set by any margin
+   *  (a "cap"); absent = no cap. */
+  cap?: number;
+  decidingCap?: number;
+  /** false = winning the majority of sets does NOT end the match by itself;
+   *  the table ends it (a junior-high match that plays every set). Absent =
+   *  true. */
+  autoFinal?: boolean;
+}
+
 export interface SportDefinition {
   key: string;
   name: string;
@@ -166,13 +230,32 @@ export interface SportDefinition {
      *  possession-based tiebreaker). The clock is zeroed and stays off past
      *  the regulation segment count — see `isUntimedSegment`. */
     untimedOvertime?: boolean;
+    /** K12-F23 — per-period regulation lengths when the periods differ
+     *  (KSHSAA 7th/8th-grade wrestling: 1:00, 1:30, 1:30). Index 0 is
+     *  period 1. Wins over `segmentMs` for regulation periods. */
+    periodMs?: number[];
+    /** K12-F23 — a FINITE overtime sequence with its own lengths (NFHS
+     *  wrestling: 1:00 sudden victory, then 0:30, 0:30, 0:30). Wins over
+     *  `otSegmentMs`; `segment.maxOvertime` should equal its length. */
+    overtimeMs?: number[];
   };
   /** the period structure — "Quarter" × 4, "Inning" × 7, "Set" × 5 …
    *  `countOptions` — when present, the operator picks the regulation
    *  segment count at setup (e.g. golf 9-hole vs 18-hole HS matches).
    *  `count` is the default; the chosen value is stored per-game and
    *  the surfaces clamp / label off it. Omitted = the count is fixed. */
-  segment: { name: string; count: number; overtime: boolean; countOptions?: number[] };
+  segment: {
+    name: string;
+    count: number;
+    overtime: boolean;
+    countOptions?: number[];
+    /** How many overtime periods the rules allow; absent = the engine's cap
+     *  of 10 (K12-F22 / F23). */
+    maxOvertime?: number;
+    /** Names of the overtime periods in order — 'SV', 'TB1', 'TB2', 'UTB'
+     *  for NFHS wrestling (K12-F23). Absent = OT, OT2, OT3 … */
+    overtimeLabels?: string[];
+  };
   /** score unit + the increments the control offers as quick buttons */
   score: { unit: string; increments: number[] };
   /**
@@ -237,8 +320,15 @@ export interface SportDefinition {
    *  no shot clock — the console then hides the shot-clock controls. */
   shotClock?: {
     full: number;
+    /** The partial reset; 0 = the rules have none (NFHS basketball). */
     short: number;
     options: number[];
+    /** What the table calls it — 'Possession clock' in girls lacrosse. */
+    label?: string;
+    /** K12-F05 / F24 — the length a NEW game starts with: 0 = OFF (a clock
+     *  used only where the state association adopted it); absent = never
+     *  configured, armed at `full` by the first game-clock start. */
+    defaultLen?: number;
   };
   /** The football play clock — the count to the snap, run INDEPENDENTLY of
    *  the game clock (K12-F06; NFHS 2025 instructions for game and play-clock
@@ -267,6 +357,18 @@ export interface SportDefinition {
     defaultCount: number;
     options: number[];
   };
+  /** K12-F02 / F04 — team-foul bonus rules (a rules profile sets them). */
+  teamFouls?: TeamFoulRules;
+  /** K12-F03 / F19 / F25 — timeout banks (a rules profile sets them). */
+  timeouts?: TimeoutRules;
+  /** K12-F19 — set / game format of a set-scored sport. */
+  setFormat?: SetFormatRules;
+  /**
+   * K12-F01 — the rules profile this definition was built from (see
+   * sports-rules.ts `sportForGame`). Absent = the base definition below,
+   * the classic rules a game with no bound profile runs.
+   */
+  rulesProfile?: { key: string; label: string };
 }
 
 export type GameStatus = 'SCHEDULED' | 'PRE_GAME' | 'LIVE' | 'HALFTIME' | 'FINAL';
@@ -594,8 +696,13 @@ const BASKETBALL: SportDefinition = {
   clock: { type: 'countdown', segmentMs: 8 * 60_000, tenths: true },
   segment: { name: 'Quarter', count: 4, overtime: true },
   score: { unit: 'points', increments: [1, 2, 3] },
-  // 24s pro / 30s college; 14s offensive-rebound short reset. HS varies
-  // (35s where adopted, or off).
+  // CLASSIC rules (K12-F01): what a game with no bound rules profile runs —
+  // a pro-style 24 s shot clock (14 s short reset), fouls reset every period
+  // including overtime, timeouts refilled at halftime, 8:00 overtime. These
+  // are NOT the NFHS rules: a new high-school game binds
+  // `nfhs-basketball@2026-27` (sports-rules.ts) — four-minute overtime, Q4
+  // team fouls carried into overtime, timeouts per GAME, the bonus from the
+  // fifth team foul of each quarter, a state-adopted 35 s shot clock.
   shotClock: { full: 24, short: 14, options: [0, 24, 30, 35] },
   // T2-10: fouls reset every period; timeouts reset at halftime (after Q2).
   // Shot clock resets to configured full length at every period boundary.
@@ -735,6 +842,10 @@ const VOLLEYBALL: SportDefinition = {
   clock: { type: 'none' },
   segment: { name: 'Set', count: 5, overtime: false },
   score: { unit: 'points', increments: [1] },
+  // The classic match format (best of five, 25-point sets, deciding set to
+  // 15, win by two, no cap). K12-F19: a rules profile can set another —
+  // sub-varsity / junior-high best of three with a 30-point cap.
+  setFormat: { bestOf: 5, target: 25, decidingTarget: 15, winBy: 2 },
   stats: [
     { key: 'homeSets', label: 'Home Sets Won', scope: 'home', type: 'number', min: 0, max: 3 },
     { key: 'awaySets', label: 'Away Sets Won', scope: 'away', type: 'number', min: 0, max: 3 },
@@ -988,6 +1099,10 @@ const PICKLEBALL: SportDefinition = {
   clock: { type: 'none' },
   segment: { name: 'Game', count: 3, overtime: false },
   score: { unit: 'points', increments: [1] },
+  // The classic format: best of three games to 11, win by two. K12-F19:
+  // pickleball is not an NFHS sport — a rules profile names the local format
+  // (one game to 15 or 21, best of three to 15), never a national one.
+  setFormat: { bestOf: 3, target: 11, decidingTarget: 11, winBy: 2 },
   stats: [
     { key: 'homeGames', label: 'Home Games Won', scope: 'home', type: 'number', min: 0, max: 2 },
     { key: 'awayGames', label: 'Away Games Won', scope: 'away', type: 'number', min: 0, max: 2 },
@@ -1284,6 +1399,14 @@ const COMPETITIVE_CHEER: SportDefinition = {
  * here (DEPRECATED, see the const above) purely so `findSport` resolves it
  * for games created before the 2026-07-01 swim/dive split — it is NOT in
  * the `SPORTS` picker array below.
+ *
+ * K12-F01 — these are the CLASSIC rules: what a game with no bound rules
+ * profile runs, exactly as before profiles existed. Rule values here are
+ * pinned (sports-rules.spec.ts fingerprints the classic profiles built from
+ * them): a rules change ships as a new profile version in sports-rules.ts,
+ * never as an edit here — an edit here would silently change every game
+ * created before profiles existed. A game's effective definition is
+ * `sportForGame(game)` (sports-rules.ts), not `findSport(game.sport)`.
  */
 export const SPORT_DEFINITIONS: Record<string, SportDefinition> = {
   football: FOOTBALL,

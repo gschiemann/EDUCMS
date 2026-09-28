@@ -992,6 +992,10 @@ export * from './sports-clock';
 // Scorekeeper-link scopes (K12-F34 + K12-F16) — the one scope → action table
 // the API enforces and the volunteer pad + share sheet render from.
 export * from './sports-console-scopes';
+// K-12 launch lane A3 (2026-09-27) — versioned rules profiles bound to each
+// game (NFHS basketball, volleyball formats, lacrosse shot clocks, …) and the
+// shared rule helpers (bonus, timeout banks, set format, overtime labels).
+export * from './sports-rules';
 export * from './streaming';
 export * from './streaming-presets';
 export * from './billing';

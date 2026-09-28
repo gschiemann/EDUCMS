@@ -3219,6 +3219,18 @@ model Game {
   // it — no command reads-then-writes those columns.
   version Int @default(0)
 
+  // 2026-09-27 — K-12 launch program, lane A3 (K12-F01). The versioned rules
+  // profile the game runs ('nfhs-basketball@2026-27') and the SNAPSHOT of
+  // every rule value it runs (@cms/api-types sports-rules.ts `GameRules`:
+  // periods, overtime, timeout banks, team-foul bonus, shot-clock options, set
+  // format). Written when the game is created — or, before it starts, by the
+  // audited rules change — and never by a game command, so publishing a new
+  // profile version can never rewrite a game in progress or a finished
+  // result. NULL = created before rules profiles existed: the game runs the
+  // classic base definition, exactly as it always did.
+  rulesProfile String? @map("rules_profile")
+  rules        Json?
+
   tenant     Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   events     GameEvent[]
   roster     RosterPlayer[]
