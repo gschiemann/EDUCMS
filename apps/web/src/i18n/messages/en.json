@@ -3452,5 +3452,14 @@
     "pitchCountNote": "The pitch count is a number for the scoreboard only — it does not check pitch limits or rest days. Your state's pitch-count rules decide who may pitch.",
     "bonusOwnFouls": "These team fouls put the other team in the bonus.",
     "gameCanEnd": "Home leads in the bottom of inning {inning} — the game is over once the umpire calls it. Then hold End game."
+  },
+  "sportsResult": {
+    "unitSets": "sets",
+    "unitGames": "games",
+    "unitTeamPoints": "team points",
+    "lowScoreWins": "low score wins",
+    "finalWon": "Final: {team} won {score}",
+    "finalTie": "Final: tied {score}",
+    "finalNone": "Final: no result was recorded"
   }
 }

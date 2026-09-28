@@ -3452,5 +3452,14 @@
     "pitchCountNote": "El conteo de lanzamientos es solo un número para el marcador: no verifica límites de lanzamientos ni días de descanso. Las reglas de su estado deciden quién puede lanzar.",
     "bonusOwnFouls": "Estas faltas de equipo ponen al rival en bonus.",
     "gameCanEnd": "El local va ganando en la parte baja de la entrada {inning}: el partido termina cuando lo declare el ampáyer. Entonces mantenga pulsado «End game» (Terminar partido)."
+  },
+  "sportsResult": {
+    "unitSets": "sets",
+    "unitGames": "juegos",
+    "unitTeamPoints": "puntos de equipo",
+    "lowScoreWins": "gana el puntaje más bajo",
+    "finalWon": "Final: ganó {team} {score}",
+    "finalTie": "Final: empate {score}",
+    "finalNone": "Final: no se registró un resultado"
   }
 }

@@ -121,6 +121,9 @@ interface MockGameState {
   clockUpdatedAt: string;
   segment: number;
   status: string;
+  /** Defaults to basketball / {} — the K12-F18 final uses volleyball. */
+  sport?: string;
+  stats?: Record<string, unknown>;
 }
 
 interface BoardMock {
@@ -145,7 +148,7 @@ interface BoardMock {
 function boardPayload(s: MockGameState): BoardData {
   return {
     id: GAME_ID,
-    sport: 'basketball',
+    sport: s.sport ?? 'basketball',
     status: s.status,
     segment: s.segment,
     homeTeam: 'Central Comets',
@@ -159,7 +162,7 @@ function boardPayload(s: MockGameState): BoardData {
     clockMs: s.clockMs,
     clockRunning: s.clockRunning,
     clockUpdatedAt: s.clockUpdatedAt,
-    stats: {},
+    stats: s.stats ?? {},
     cues: [],
     serverTime: Date.now(),
   };
@@ -473,4 +476,59 @@ test('K12-F40: a RUNNING clock holds while the feed is stale, then shows the tru
     expect(remaining).toBeGreaterThan(65_000); // test invariant: still M:SS
     expect(expectedClockWindow(parityCeilClock, remaining, 1_300)).toContain(txt);
   }).toPass({ timeout: 8_000, intervals: [250, 400, 600] });
+});
+
+test('K12-F18: a volleyball 3–1 FINAL crowns the sets winner on the board, the ribbon and the scorebug — never "0–0 TIE"', async ({ page }) => {
+  test.setTimeout(120_000);
+  // The audit's reproduction: the last set's point zeroed the rally columns,
+  // so homeScore / awayScore read 0–0 while the match is 3 sets to 1.
+  const matchStats = {
+    homeSets: 3,
+    awaySets: 1,
+    serving: 'home',
+    setScores: [
+      { home: 25, away: 20 },
+      { home: 22, away: 25 },
+      { home: 25, away: 18 },
+      { home: 25, away: 23 },
+    ],
+  };
+  const mock = await installBoardMock(
+    page,
+    freshState({ sport: 'volleyball', status: 'FINAL', homeScore: 0, awayScore: 0, segment: 4, clockMs: 0, stats: matchStats }),
+  );
+
+  // ── the board's final scene
+  await page.goto(`/board/${GAME_ID}`);
+  await expect(page.getByText('WINNER', { exact: true })).toBeVisible({ timeout: 45_000 });
+  await expect(page.getByText('CENTRAL COMETS', { exact: true })).toBeVisible();
+  await expect(page.getByText('3', { exact: true })).toBeVisible();
+  await expect(page.getByText('1', { exact: true })).toBeVisible();
+  await expect(page.getByText('TIE', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('0', { exact: true })).toHaveCount(0);
+  // What the numbers count, and the match set by set.
+  const caption = page.getByTestId('final-result-caption');
+  await expect(caption).toContainText('sets');
+  await expect(caption).toContainText('25–20');
+  await expect(caption).toContainText('25–23');
+
+  // ── a corrected final (reopened, the fourth set re-scored, ended again
+  // 2–3): the board crowns the other team on the next poll.
+  mock.mutate({ stats: { homeSets: 2, awaySets: 3, serving: 'away' } });
+  await expect(page.getByText('WESTVIEW WOLVES', { exact: true })).toBeVisible({ timeout: 4_000 });
+  await expect(page.getByText('CENTRAL COMETS', { exact: true })).toHaveCount(0);
+  mock.mutate({ stats: matchStats });
+
+  // ── the ribbon: FINAL, the sets, never the zeroed columns
+  await page.goto(`/ribbon/${GAME_ID}`);
+  await expect(page.getByText('FINAL', { exact: true }).first()).toBeVisible({ timeout: 45_000 });
+  await expect(page.getByText('3', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('1', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('0', { exact: true })).toHaveCount(0);
+
+  // ── the broadcast scorebug
+  await page.goto(`/scorebug/${GAME_ID}`);
+  await expect(page.getByText('3', { exact: true }).first()).toBeVisible({ timeout: 45_000 });
+  await expect(page.getByText('1', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('0', { exact: true })).toHaveCount(0);
 });

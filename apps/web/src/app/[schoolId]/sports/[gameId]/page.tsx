@@ -93,6 +93,7 @@ import {
 import { datetimeLocalToIso, autoPushMoment } from '../scheduled-at';
 import {
   findSport,
+  gameResult,
   overtimeLabel,
   sportForGame,
   timeoutBanks,
@@ -144,6 +145,7 @@ import { LanePadSection, isLaneMeetSport } from './LanePadSection';
 import { PhoneRunTrays } from './PhoneRunTrays';
 import { basketballBonus, shotClockResets } from '@/lib/sports-stat-rows';
 import { GameRulesCard, InningGameOverHint } from '@/components/sports/RulesProfile';
+import { finalSummary } from '@/lib/sports-result-labels';
 
 // ── constants ──────────────────────────────────────────────────
 
@@ -8127,6 +8129,12 @@ function RunStatusControl({
   const status = String(g?.status || 'SCHEDULED');
   const go = (s: string) => ctl.status.mutate({ status: s });
   const tConsole = useTranslations('sportsConsole');
+  const tResult = useTranslations('sportsResult');
+  // K12-F18 — the result the screens announce, in one line: the sport's
+  // result model (a volleyball match's sets, a dual's team points, golf's low
+  // score), never the rally columns a set sport zeroes at the last point.
+  const finalLine =
+    status === 'FINAL' && g ? finalSummary(tResult, gameResult(g), { home: g.homeTeam, away: g.awayTeam }) : '';
   const META: Record<string, { label: string; chip: string; dot: string }> = {
     SCHEDULED: { label: 'Scheduled', chip: 'bg-slate-100 text-slate-600 border-slate-200', dot: 'bg-slate-400' },
     PRE_GAME: { label: 'Pre-game', chip: 'bg-amber-50 text-amber-700 border-amber-200', dot: 'bg-amber-500' },
@@ -8169,6 +8177,15 @@ function RunStatusControl({
               className={`${btn} border-red-200 text-red-700 hover:bg-red-50`}
             />
           </>
+        )}
+        {finalLine && (
+          <span
+            aria-live="polite"
+            data-testid="final-result-line"
+            className="text-[12px] font-bold text-slate-700 shrink-0 max-w-[40ch] truncate"
+          >
+            {finalLine}
+          </span>
         )}
         {status === 'FINAL' && (
           // Reopening a finalized game resumes live scoring — deliberate, so

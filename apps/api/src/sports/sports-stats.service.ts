@@ -3,6 +3,7 @@ import {
   STAT_SEMANTICS,
   statSemantic,
   parseStatValue,
+  gameResult,
 } from '@cms/api-types';
 import type { StatSemantic } from '@cms/api-types';
 import type { PrismaClient, Prisma } from '@cms/database';
@@ -1174,6 +1175,9 @@ export async function getAthleteGameLog(
         select: {
           id: true, sport: true, homeTeam: true, awayTeam: true,
           homeScore: true, awayScore: true, startedAt: true, createdAt: true,
+          // K12-F18 — the W / L / T comes from the sport's result model
+          // (gameResult), which needs the status, the stats and the rules.
+          status: true, stats: true, rules: true,
         },
       }),
     { label: 'sports-stats.gamelog.games' },
@@ -1184,13 +1188,18 @@ export async function getAthleteGameLog(
     const g = gameById.get(r.gameId);
     if (!g) continue;
     const homeAway: 'home' | 'away' = r.team === 'away' ? 'away' : 'home';
-    const teamScore = homeAway === 'home' ? g.homeScore : g.awayScore;
-    const oppScore = homeAway === 'home' ? g.awayScore : g.homeScore;
     const opponent = (homeAway === 'home' ? g.awayTeam : g.homeTeam) ?? '';
+    // K12-F18 — the sport's RESULT, never the raw columns: a volleyball
+    // match is its sets (its columns end 0–0), a wrestling dual its team
+    // points, golf / cross-country the LOWER total. The totals shown beside
+    // the W / L are the ones that decided it. A game still in play has no
+    // W / L / T yet, and a FINAL that recorded nothing has none either.
+    const res = gameResult(g);
+    const teamScore = homeAway === 'home' ? res.home : res.away;
+    const oppScore = homeAway === 'home' ? res.away : res.home;
     let result: 'W' | 'L' | 'T' | null = null;
-    if (typeof teamScore === 'number' && typeof oppScore === 'number') {
-      result = teamScore > oppScore ? 'W' : teamScore < oppScore ? 'L' : 'T';
-    }
+    if (res.outcome === 'tie') result = 'T';
+    else if (res.winner) result = res.winner === homeAway ? 'W' : 'L';
     const d = g.startedAt ?? g.createdAt ?? null;
     out.push({
       gameId: r.gameId,

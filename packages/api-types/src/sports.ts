@@ -294,6 +294,14 @@ export interface SportDefinition {
     awayKey: string;
     increments: number[];
   };
+  /**
+   * K12-F18 — the LOWER team total wins: stroke-play golf (fewest strokes)
+   * and cross-country (fewest finish-place points). Absent = the higher
+   * score wins. Every surface reads the winner through `gameResult`
+   * (sports-result.ts), which also reads a set sport's sets (`setFormat`)
+   * and a dual's team points (`teamScore`) — never the raw score columns.
+   */
+  lowScoreWins?: boolean;
   stats: SportStatField[];
   celebrations: SportCelebration[];
   /**
@@ -1300,6 +1308,8 @@ const CROSS_COUNTRY: SportDefinition = {
   // wins — but the scoreboard shows accumulated points). Increments
   // reflect typical scoring: positions 1-5 score for the team.
   score: { unit: 'points', increments: [1, 2, 3, 4, 5] },
+  // K12-F18 — the lowest team total wins (see gameResult).
+  lowScoreWins: true,
   stats: [
     { key: 'finishers', label: 'Finishers', scope: 'game', type: 'number', min: 0, max: 999 },
     { key: 'leadRunner', label: 'Lead Runner', scope: 'game', type: 'text' },
@@ -1354,6 +1364,8 @@ const GOLF: SportDefinition = {
   // Golf scoring: strokes relative to par. Increments represent
   // single-stroke changes as players report in.
   score: { unit: 'strokes', increments: [1] },
+  // K12-F18 — stroke play: the fewest strokes wins (see gameResult).
+  lowScoreWins: true,
   stats: [
     { key: 'currentHole', label: 'Current Hole', scope: 'game', type: 'number', min: 1, max: 18 },
     { key: 'homePar', label: 'Home vs Par', scope: 'home', type: 'text' },

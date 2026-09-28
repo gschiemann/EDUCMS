@@ -60,6 +60,11 @@ import {
   teamFoulRules,
   timeoutAllocation,
   timeoutBanks,
+  // K-12 lane A4 — THE result of a game (sports-result.ts, K12-F18).
+  SET_SCORES_KEY,
+  appendSetScore,
+  finalCueKey,
+  gameResult,
 } from '@cms/api-types';
 import type { RulesProfile, SportDefinition } from '@cms/api-types';
 import { SPONSOR_SPOT_SECONDS } from './sponsor.constants';
@@ -3810,6 +3815,10 @@ export class SportsService {
     const stats = { ...((game.stats as Record<string, unknown>) || {}) };
     const wonKey = winner === 'home' ? homeKey : awayKey;
     stats[wonKey] = n(stats[wonKey]) + 1;
+    // K12-F18 — keep the set's final points (the rally score is zeroed
+    // below): the final board prints the match set by set. Same write as the
+    // credit, so undoing the winning point takes both back.
+    stats[SET_SCORES_KEY] = appendSetScore(game.stats, home, away);
     // Best of N: the majority wins (best of five → three sets).
     const needed = setsToWin(format);
     const matchOver = n(stats[homeKey]) >= needed || n(stats[awayKey]) >= needed;
@@ -3884,6 +3893,49 @@ export class SportsService {
         snapshot: this.cueSnapshot(updated),
       });
     }
+    // K12-F18 — a match the set majority ended announces its result like
+    // every other FINAL (it used to end with the set cue alone).
+    if (setWin.final) await scope.event('CUE', this.finalResultCue(updated, 'set-majority'));
+  }
+
+  /**
+   * K12-F18 — the FINAL cue: its key, the score line it freezes and a copy of
+   * the result all come from gameResult (@cms/api-types sports-result.ts) —
+   * the sport's result model under the game's own rules. A 3–1 volleyball
+   * match whose rally columns were zeroed announces 3–1 for home; it used to
+   * compare the zeroed columns and announce "tied". A result with no deciding
+   * totals is `status:final-none`, never a tie.
+   */
+  private finalResultCue(game: GameRow, source: string): Record<string, unknown> {
+    const result = gameResult(game);
+    const snapshot = this.cueSnapshot(game);
+    snapshot.homeScore = result.home;
+    snapshot.awayScore = result.away;
+    // "3–1 · SET 4" would read as the fourth set's score: a sets or dual
+    // total carries no period or clock beside it.
+    if (result.basis === 'sets' || result.basis === 'team-points') {
+      snapshot.segmentLabel = '';
+      snapshot.clockText = '';
+    }
+    return {
+      key: finalCueKey(result),
+      label: 'Final',
+      emoji: '🏆',
+      target: 'ALL',
+      auto: true,
+      source,
+      snapshot,
+      result: {
+        basis: result.basis,
+        outcome: result.outcome,
+        winner: result.winner,
+        home: result.home,
+        away: result.away,
+        homeText: result.homeText,
+        awayText: result.awayText,
+        revision: result.revision,
+      },
+    };
   }
 
   /** Clock control: start | pause | set | reset. */
@@ -5057,9 +5109,11 @@ export class SportsService {
         if (lineScore) mergedStats.lineScore = lineScore;
       }
       // Volleyball / pickleball: credit the just-finished set/game to its
-      // leader (computed above) into the merged stats write.
+      // leader (computed above) into the merged stats write — with the points
+      // it ended on (K12-F18: the final board prints the match set by set).
       if (setGameWonKey) {
         mergedStats[setGameWonKey] = setGameWonVal;
+        mergedStats[SET_SCORES_KEY] = appendSetScore(game.stats, prevHomeScore, prevAwayScore);
       }
       if (Object.keys(mergedStats).length > 0) {
         data.stats = mergedStats as any;
@@ -5570,6 +5624,8 @@ export class SportsService {
         // replaces the client's 4 mutations byte-for-byte, not
         // setSegment's different rule).
         nextStats[setWonKey] = curWon + 1;
+        // K12-F18 — the set's final points, kept for the final board.
+        nextStats[SET_SCORES_KEY] = appendSetScore(currentStats, home, away);
       }
 
       // Effect 4: advance the segment — clamp to [1, count(+OT)], the
@@ -6102,21 +6158,9 @@ export class SportsService {
           snapshot: this.cueSnapshot(updated),
         });
       } else if (status === 'FINAL') {
-        const cueKey =
-          updated.homeScore > updated.awayScore
-            ? 'status:final-home'
-            : updated.awayScore > updated.homeScore
-              ? 'status:final-away'
-              : 'status:final-tie';
-        await scope.event('CUE', {
-          key: cueKey,
-          label: 'Final',
-          emoji: '🏆',
-          target: 'ALL',
-          auto: true,
-          source: 'status-transition',
-          snapshot: this.cueSnapshot(updated),
-        });
+        // K12-F18 — the final cue announces the sport's RESULT (sets, a dual's
+        // team points, the low score), never a comparison of the raw columns.
+        await scope.event('CUE', this.finalResultCue(updated, 'status-transition'));
         // K12-F39 — the season roll-up is QUEUED in this transaction (a
         // crash after commit cannot lose it) and applied after commit; the
         // schedule-game-mode FINAL hook stays post-commit and fail-open.

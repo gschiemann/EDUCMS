@@ -79,6 +79,7 @@ import {
 import { SportMark, PossessionGlyph, ServeGlyph } from '@/components/sports/SportGlyph';
 import {
   findSport,
+  gameResult,
   overtimeLabel,
   sportForGame,
   teamBonus,
@@ -1957,8 +1958,11 @@ function ScoreZone({
   // basketball score never overflows the zone. For judged sports the
   // DISPLAYED total carries decimals (gymnastics "195.825"), so size
   // off the formatted strings — not the raw scaled int.
-  const homeScoreText = formatScore(def, data.homeScore);
-  const awayScoreText = formatScore(def, data.awayScore);
+  // K12-F18 — at FINAL the anchor shows the sport's RESULT (a volleyball
+  // match's sets, a dual's team points), never the zeroed rally columns.
+  const finalResult = data.status === 'FINAL' ? gameResult(data) : null;
+  const homeScoreText = finalResult ? finalResult.homeText : formatScore(def, data.homeScore);
+  const awayScoreText = finalResult ? finalResult.awayText : formatScore(def, data.awayScore);
   const digits = Math.max(1, homeScoreText.length, awayScoreText.length);
   const u = Math.min(h * 1.35, w / (1.02 + 0.51 * digits));
   const score = Math.round(u * 0.4);
@@ -2693,11 +2697,15 @@ function LookUnit({
   // the result at a glance from anywhere in the venue. Style follows the
   // prompt/situational look: same font weight, ribbon-height sizing,
   // accent gold on the result label, team colors on the scores.
+  // K12-F18 — the numbers and the winner's colour are the sport's RESULT
+  // (gameResult): a volleyball match's sets, a dual's team points, golf's
+  // low score — never the raw columns (a 3–1 match used to read 0–0 here).
   if (look.kind === 'final') {
     const homeColor = data.homeColor || DEFAULT_HOME;
     const awayColor = data.awayColor || DEFAULT_AWAY;
-    const homeWon = data.homeScore > data.awayScore;
-    const awayWon = data.awayScore > data.homeScore;
+    const result = gameResult(data);
+    const homeWon = result.winner === 'home';
+    const awayWon = result.winner === 'away';
     return (
       <div style={{ display: 'flex', alignItems: 'center', whiteSpace: 'nowrap' }}>
         <span
@@ -2730,7 +2738,7 @@ function LookUnit({
             marginLeft: cu * 0.12,
           }}
         >
-          {formatScore(def, data.homeScore)}
+          {result.homeText}
         </span>
         <span
           style={{
@@ -2752,7 +2760,7 @@ function LookUnit({
             marginRight: cu * 0.12,
           }}
         >
-          {formatScore(def, data.awayScore)}
+          {result.awayText}
         </span>
         <span
           style={{
@@ -2952,6 +2960,9 @@ function buildRibbonStripConfig(
   } else if (key === 'status:final-tie') {
     title = 'FINAL';
     subtitle = 'TIED · GAME OVER';
+  } else if (key === 'status:final-none') {
+    // K12-F18 — a final that recorded no result: announce the end, never a tie.
+    title = 'FINAL';
   } else if (key === 'horn') {
     // segmentLabel lives at top-level of the CUE payload (not in snapshot)
     // because the horn fires at clock-expiry before the segment rolls.

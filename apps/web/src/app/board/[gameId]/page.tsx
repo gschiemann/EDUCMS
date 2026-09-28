@@ -43,6 +43,7 @@ import { useParams } from 'next/navigation';
 import { API_URL } from '@/lib/api-url';
 import {
   findSport,
+  gameResult,
   overtimeLabel,
   sportForGame,
   formatClockReading,
@@ -52,6 +53,8 @@ import {
   shotClockDisplayLen,
 } from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
+import { useTranslations } from 'next-intl';
+import { RESULT_UNIT_KEY } from '@/lib/sports-result-labels';
 // 2026-06-15 sports-pro polish — shared crowd-surface motion primitives
 // (score-pop on change, ambient idle drift) + vector sport/possession marks.
 // All transform/opacity-only keyframes → Chromium-83 (NovaStar Taurus) safe.
@@ -264,18 +267,15 @@ function ordinal(n: number): string {
 
 /** Low-score-wins sports: in cross country the team with the LOWEST point
  *  total wins (fewest finish-position points), and in stroke-play golf the
- *  fewest strokes wins. On those boards the leader is the team with the
- *  SMALLER score, so the winner-highlight comparison must invert.
- *  (The audit's preferred home for this is a `lowerWins` flag on
- *  SportDefinition in packages/api-types; that file is owned by another
- *  domain, so the board derives it from the sport key here — same effect,
- *  in-scope.) */
+ *  fewest strokes wins. K12-F18 — read from the definition's own
+ *  `lowScoreWins` (packages/api-types), the flag gameResult decides on. */
 function isLowerWins(def: SportDefinition): boolean {
-  return def.key === 'cross_country' || def.key === 'golf';
+  return def.lowScoreWins === true;
 }
 
-/** Which side is currently leading — honoring low-score-wins sports.
- *  Returns null on a tie or before the game has a meaningful score. */
+/** Which side leads on the NUMBERS THIS SCENE SHOWS (the live score
+ *  columns) — honoring low-score-wins sports. Null on a tie. A game's RESULT
+ *  (sets, a dual's team points) is gameResult's, never this. */
 function leadingSide(def: SportDefinition, home: number, away: number): 'home' | 'away' | null {
   if (home === away) return null;
   const homeAhead = isLowerWins(def) ? home < away : home > away;
@@ -1953,7 +1953,9 @@ function LeaderboardScene({ data, def }: { data: BoardData; def: SportDefinition
   const homeColor = data.homeColor || DEFAULT_HOME;
   const awayColor = data.awayColor || DEFAULT_AWAY;
   const { eyebrow, headline } = meetContext(def, data);
-  const lead = leadingSide(def, data.homeScore, data.awayScore);
+  // K12-F18 — the meet's leader from its result model (a low-score sport's
+  // empty total cannot lead), the same one the final scene crowns.
+  const lead = gameResult(data).leader;
   const lowerWins = isLowerWins(def);
 
   // Per-side meet detail line (right under each team's points), built from
@@ -3072,16 +3074,29 @@ function HalftimeScene({ data, def }: { data: BoardData; def: SportDefinition })
 /** FINAL — score with winner cinematic; tie = no winner accent.
  *  2026-06-15 sports-pro polish: a clear WINNER treatment — champion glow +
  *  slow confetti tinted to the winner, a "WINNER" star banner over the
- *  winning team, and the score highlighted (the emotional peak). Honors
- *  low-score-wins sports (XC / golf) so the right side is crowned. */
+ *  winning team, and the score highlighted (the emotional peak).
+ *
+ *  K12-F18 — the scene shows the sport's RESULT (gameResult, @cms/api-types
+ *  sports-result.ts), never the raw score columns: a volleyball match is its
+ *  SETS (the rally columns end 0–0 — this scene used to read "0–0 TIE" for a
+ *  3–1 match), a wrestling dual its TEAM points, golf / cross-country the
+ *  LOWER total. TIE only for a real tie; a final that recorded nothing
+ *  ('none') crowns nobody and claims no tie. */
 function FinalScene({ data, def }: { data: BoardData; def: SportDefinition }) {
+  const t = useTranslations('sportsResult');
   const homeColor = data.homeColor || DEFAULT_HOME;
   const awayColor = data.awayColor || DEFAULT_AWAY;
-  const tie = data.homeScore === data.awayScore;
-  // leadingSide honors low-score-wins sports; at FINAL the leader IS the winner.
-  const winSide = tie ? null : leadingSide(def, data.homeScore, data.awayScore);
+  const result = gameResult(data);
+  const tie = result.outcome === 'tie';
+  const winSide = result.winner;
   const homeWins = winSide === 'home';
   const awayWins = winSide === 'away';
+  // What the two big numbers count, when it is not the score shown all game —
+  // and the match set by set when the engine kept it.
+  const caption = [
+    result.unit ? t(RESULT_UNIT_KEY[result.unit]) : result.basis === 'low-score' ? t('lowScoreWins') : '',
+    result.sets.map((st) => `${st.home}–${st.away}`).join('  ·  '),
+  ].filter(Boolean);
   const winColor = homeWins ? homeColor : awayWins ? awayColor : '#fbbf24';
   const winName = homeWins ? data.homeTeam : awayWins ? data.awayTeam : '';
   return (
@@ -3098,11 +3113,12 @@ function FinalScene({ data, def }: { data: BoardData; def: SportDefinition }) {
         overflow: 'hidden',
       }}
     >
-      {/* Champion cinematic — only when there's a winner (a tie shows none).
+      {/* Champion cinematic — only when there's a winner (a tie, or a final
+          that recorded nothing, shows none).
           A slow winner-tinted glow breath + slow continuous confetti, behind
           all content (zIndex 0). transform/opacity-only → Taurus + WebKit safe.
           pointerEvents:none + aria-hidden so it never affects layout or a11y. */}
-      {!tie && (
+      {winSide && (
         <div
           aria-hidden
           style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 0, overflow: 'hidden', pointerEvents: 'none' }}
@@ -3194,7 +3210,7 @@ function FinalScene({ data, def }: { data: BoardData; def: SportDefinition }) {
       >
         {/* WINNER champion banner — top-centered, winner-tinted, with a
             twinkling star. Only shown when there's a winner (tie → omitted). */}
-        {!tie && winName && (
+        {winSide && winName && (
           <div
             style={{
               position: 'absolute',
@@ -3287,8 +3303,8 @@ function FinalScene({ data, def }: { data: BoardData; def: SportDefinition }) {
 
         <BigTeamBlock
           name={data.homeTeam}
-          score={data.homeScore}
-          scoreText={formatScore(def, data.homeScore)}
+          score={result.home}
+          scoreText={result.homeText}
           logoUrl={data.homeLogoUrl}
           color={homeColor}
           showScore
@@ -3329,13 +3345,36 @@ function FinalScene({ data, def }: { data: BoardData; def: SportDefinition }) {
 
         <BigTeamBlock
           name={data.awayTeam}
-          score={data.awayScore}
-          scoreText={formatScore(def, data.awayScore)}
+          score={result.away}
+          scoreText={result.awayText}
           logoUrl={data.awayLogoUrl}
           color={awayColor}
           showScore
           accent={awayWins}
         />
+
+        {/* K12-F18 — what the numbers count (SETS / GAMES / TEAM POINTS, or
+            that the low score wins) and the match set by set. */}
+        {caption.length > 0 && (
+          <div
+            data-testid="final-result-caption"
+            style={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              bottom: 26,
+              textAlign: 'center',
+              fontSize: 30,
+              fontWeight: 800,
+              letterSpacing: 4,
+              textTransform: 'uppercase',
+              color: '#94a3b8',
+              fontVariantNumeric: 'tabular-nums',
+            }}
+          >
+            {caption.join('   ·   ')}
+          </div>
+        )}
       </div>
 
       {/* footer */}
@@ -3885,6 +3924,11 @@ export function PortraitBoardScene({ data, def }: { data: BoardData; def: SportD
   const hasClock = def.clock.type !== 'none';
   const showShot = shotLen > 0;
   const st = STATUS_STYLE[data.status] || STATUS_STYLE.SCHEDULED;
+  // K12-F18 — at FINAL the big numbers are the sport's RESULT (sets won, a
+  // dual's team points), never the zeroed rally columns; the loser's dims.
+  const t = useTranslations('sportsResult');
+  const result = data.status === 'FINAL' ? gameResult(data) : null;
+  const resultUnit = result?.unit ? RESULT_UNIT_KEY[result.unit] : null;
   const sportTitle = String(data.sport || '').replace(/[_-]+/g, ' ').toUpperCase();
   const num = (k: string): number => { const v = Number(stats[k]); return Number.isFinite(v) ? v : 0; };
 
@@ -3920,7 +3964,14 @@ export function PortraitBoardScene({ data, def }: { data: BoardData; def: SportD
           <div style={{ color: '#fff', fontSize: 34, fontWeight: 800, textAlign: 'center', lineHeight: 1.02, maxWidth: 296, letterSpacing: -0.5 }}>{name || (side === 'home' ? 'HOME' : 'AWAY')}</div>
           <div style={{ color, fontSize: 18, fontWeight: 800, letterSpacing: 4, marginTop: 12 }}>{side === 'home' ? 'HOME' : 'AWAY'}</div>
         </div>
-        <div style={{ position: 'relative', color: '#fff', fontSize: 150, fontWeight: 800, lineHeight: 0.85, fontVariantNumeric: 'tabular-nums' }}>{formatScore(def, score)}</div>
+        <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', opacity: result?.winner && result.winner !== side ? 0.55 : 1 }}>
+          <div style={{ color: '#fff', fontSize: 150, fontWeight: 800, lineHeight: 0.85, fontVariantNumeric: 'tabular-nums' }}>
+            {result ? (side === 'home' ? result.homeText : result.awayText) : formatScore(def, score)}
+          </div>
+          {resultUnit && (
+            <div style={{ color: '#94a3b8', fontSize: 22, fontWeight: 800, letterSpacing: 3, textTransform: 'uppercase', marginTop: 14 }}>{t(resultUnit)}</div>
+          )}
+        </div>
         <div style={{ position: 'relative', width: '100%', paddingLeft: 30, paddingRight: 30, boxSizing: 'border-box' }}>
           {r.map((row) => (
             <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', borderTop: '1px solid rgba(255,255,255,0.12)', paddingTop: 12, paddingBottom: 12 }}>

@@ -25,10 +25,13 @@ import {
   SPORTS,
   findSport,
   formatScore,
+  gameResult,
   rulesProfilesForSport,
   snapshotRules,
   sportForGame,
 } from '@cms/api-types';
+import { useTranslations } from 'next-intl';
+import { RESULT_UNIT_KEY } from '@/lib/sports-result-labels';
 import { AssetPicker } from '@/components/assets/AssetPicker';
 import { filterRelevantTemplates } from '@/lib/template-relevance';
 import { formatGameWhen, orderGames } from './game-list';
@@ -274,6 +277,11 @@ function GameCard({
   const def = findSport(g.sport);
   const isLive = g.status === 'LIVE' || g.status === 'HALFTIME';
   const when = g.scheduledAt ? formatGameWhen(g.scheduledAt) : '';
+  const tResult = useTranslations('sportsResult');
+  // K12-F18 — a FINAL card shows the sport's RESULT: a volleyball match's
+  // sets (its rally columns end 0–0), a dual's team points.
+  const result = g.status === 'FINAL' ? gameResult(g) : null;
+  const resultUnit = result?.unit ? tResult(RESULT_UNIT_KEY[result.unit]) : null;
   return (
     <div className="rounded-2xl bg-white ring-1 ring-slate-200 p-5 hover:ring-indigo-300 transition-all">
       <div className="flex items-start justify-between">
@@ -321,8 +329,15 @@ function GameCard({
           <div className="text-base font-bold text-slate-900 truncate">{g.homeTeam}</div>
           <div className="text-xs text-slate-400">Home</div>
         </div>
-        <div className="px-4 text-3xl font-black text-slate-900 tabular-nums">
-          {formatScore(def, g.homeScore)} <span className="text-slate-300">–</span> {formatScore(def, g.awayScore)}
+        <div className="px-4 text-center">
+          <div className="text-3xl font-black text-slate-900 tabular-nums">
+            {result ? result.homeText : formatScore(def, g.homeScore)}{' '}
+            <span className="text-slate-300">–</span>{' '}
+            {result ? result.awayText : formatScore(def, g.awayScore)}
+          </div>
+          {resultUnit && (
+            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{resultUnit}</div>
+          )}
         </div>
         <div className="flex-1 text-right">
           <div className="text-base font-bold text-slate-900 truncate">{g.awayTeam}</div>

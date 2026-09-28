@@ -3452,5 +3452,14 @@
     "pitchCountNote": "投球数只是记分牌上的数字——不会检查投球上限或休息天数。由本州的投球数规定决定谁可以投球。",
     "bonusOwnFouls": "本队的全队犯规已让对方进入罚球状态。",
     "gameCanEnd": "主队在第 {inning} 局下半局领先——裁判宣布后比赛即结束。届时请长按“End game”（结束比赛）。"
+  },
+  "sportsResult": {
+    "unitSets": "局",
+    "unitGames": "局",
+    "unitTeamPoints": "团体分",
+    "lowScoreWins": "低分获胜",
+    "finalWon": "终场：{team} 以 {score} 获胜",
+    "finalTie": "终场：{score} 平局",
+    "finalNone": "终场：未记录比赛结果"
   }
 }

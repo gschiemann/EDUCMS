@@ -56,6 +56,7 @@ import { SportMark } from '@/components/sports/SportGlyph';
 import { API_URL } from '@/lib/api-url';
 import {
   findSport,
+  gameResult,
   overtimeLabel,
   sportForGame,
   formatClockReading,
@@ -1219,9 +1220,14 @@ export function ScorebugBug({
   // (def.shotClock present) with an armed clock (len > 0) render it.
   const { ms: shotMs, len: shotLen } = useShotClock(view, def);
   const showShotClock = !!def.shotClock && shotLen > 0;
+  // K12-F18 — at FINAL the bug shows the sport's RESULT (a volleyball
+  // match's sets, a dual's team points), never the zeroed rally columns.
+  const finalResult = view.status === 'FINAL' ? gameResult(view) : null;
+  const homeShown = finalResult ? finalResult.home : view.homeScore;
+  const awayShown = finalResult ? finalResult.away : view.awayScore;
   // Score-pop — animate the digit on every change (board/ribbon parity).
-  const homeFlip = useScoreFlip(view.homeScore);
-  const awayFlip = useScoreFlip(view.awayScore);
+  const homeFlip = useScoreFlip(homeShown);
+  const awayFlip = useScoreFlip(awayShown);
 
   return (
     <>
@@ -1309,8 +1315,8 @@ export function ScorebugBug({
         >
           <TeamBlock
             code={teamCode(view.homeTeam, homeOverride)}
-            score={view.homeScore}
-            scoreText={formatScore(def, view.homeScore)}
+            score={homeShown}
+            scoreText={finalResult ? finalResult.homeText : formatScore(def, view.homeScore)}
             color={homeColor}
             logoUrl={view.homeLogoUrl}
             side="home"
@@ -1413,8 +1419,8 @@ export function ScorebugBug({
 
           <TeamBlock
             code={teamCode(view.awayTeam, awayOverride)}
-            score={view.awayScore}
-            scoreText={formatScore(def, view.awayScore)}
+            score={awayShown}
+            scoreText={finalResult ? finalResult.awayText : formatScore(def, view.awayScore)}
             color={awayColor}
             logoUrl={view.awayLogoUrl}
             side="away"

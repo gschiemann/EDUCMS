@@ -996,6 +996,10 @@ export * from './sports-console-scopes';
 // game (NFHS basketball, volleyball formats, lacrosse shot clocks, …) and the
 // shared rule helpers (bonus, timeout banks, set format, overtime labels).
 export * from './sports-rules';
+// K-12 launch lane A4 (K12-F18) — THE result of a game: the winner from the
+// sport's result model (sets, dual team points, low score), never from the
+// raw score columns. Every surface that names a winner reads it.
+export * from './sports-result';
 export * from './streaming';
 export * from './streaming-presets';
 export * from './billing';
