@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Cloud, CloudRain, Sun, Wind, Calendar as CalendarIcon, Info } from 'lucide-react';
-import { useLiveWeather } from '../use-live-weather';
+import { useLiveWeather, withDegrees } from '../use-live-weather';
+import { SampleStamp } from '../v2/_shared/live-data-truth';
 import { sceneCss } from '../scene-css';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -109,7 +110,9 @@ export function LobbyWelcomeWeather({ config, compact }: { config: any; compact?
   // picks the right Lucide icon by condition keyword.
   const live = useLiveWeather(config);
   const condLower = live.condition.toLowerCase();
-  const Icon = condLower.includes('rain') ? CloudRain
+  // No reading on a real screen → no condition art (the sun was a claim).
+  const Icon = !live.available ? null
+    : condLower.includes('rain') ? CloudRain
     : condLower.includes('cloud') ? Cloud
     : condLower.includes('wind') ? Wind
     : Sun;
@@ -126,19 +129,20 @@ export function LobbyWelcomeWeather({ config, compact }: { config: any; compact?
       containerType: 'size'
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '3cqi' }}>
-        <Icon color={iconColor} size="30cqh" />
+        {Icon && <Icon color={iconColor} size="30cqh" />}
         <div style={{
           fontSize: 'clamp(2rem, 25cqh, 6rem)',
           fontWeight: 300,
           color: '#1e293b',
           fontFamily: '"Inter", sans-serif'
         }}>
-          {live.temp}°
+          {withDegrees(live.temp)}
         </div>
       </div>
       <div style={{ fontSize: 'clamp(1rem, 6cqh, 2rem)', color: '#475569', marginTop: '2cqh', fontWeight: 500 }}>
         {live.condition}
       </div>
+      {live.sample && <SampleStamp />}
     </div>
   );
 }

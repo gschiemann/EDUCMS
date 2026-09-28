@@ -531,6 +531,7 @@ import {
 // signal the no-fake-data guard needs). See GameStateContext.tsx's
 // file-header comment and the WidgetPreview wrapper below.
 import { GameStateProvider, RenderSurfaceProvider, useHasAmbientGameProvider } from './sports/GameStateContext';
+import { useRenderSurface } from './render-surface';
 // Countdown helpers (recurring period support — used by every Countdown variant)
 import { resolveCountdownTarget } from './countdown-utils';
 import { toCssTextStyleMap } from './text-style-contract';
@@ -5017,14 +5018,21 @@ export function RSSWidget({ config, compact }: { config: any; compact: boolean }
   const maxItems = config.maxItems || 5;
   const feedUrl = (config.feedUrl || '').trim();
   const live = useLiveRssFeed(feedUrl, maxItems);
+  const realScreen = useRenderSurface() === 'player';
 
   // Sample data shows ONLY when there's no feed configured, or the feed is
   // configured but hasn't produced a first successful load yet (honest
   // "connecting…" state, never silently substituted once real data exists —
   // stale-while-error in the hook means `live.items` stays populated with
   // the LAST GOOD fetch through any later transient failure).
+  //
+  // …and ONLY in the builder (lane B4, 2026-09-27). "Board Meeting
+  // Highlights: Budget Approved" used to sit on a school's real screen under
+  // a small "Sample headlines" label until a feed was set or loaded. A real
+  // screen now shows the feed's own headlines, "Connecting…" while the first
+  // load is out, or that the feed could not load — never a made-up headline.
   const usingSample = !feedUrl || live.items === null;
-  const items: FeedItem[] = usingSample ? RSS_SAMPLE_ITEMS.slice(0, maxItems) : live.items!;
+  const items: FeedItem[] = usingSample ? (realScreen ? [] : RSS_SAMPLE_ITEMS.slice(0, maxItems)) : live.items!;
   const headerTitle = !usingSample && live.title ? live.title : 'News Feed';
 
   return (
@@ -5039,10 +5047,10 @@ export function RSSWidget({ config, compact }: { config: any; compact: boolean }
       </div>
       {feedUrl && live.error && usingSample && (
         <div style={{ padding: '2% 4%', fontSize: compact ? '0.28em' : '0.36em', color: '#c2410c', background: '#fff1e6' }}>
-          Couldn&apos;t load this feed yet — showing sample headlines.
+          {realScreen ? <>Couldn&apos;t load this feed yet.</> : <>Couldn&apos;t load this feed yet — showing sample headlines.</>}
         </div>
       )}
-      {usingSample && (
+      {usingSample && (!realScreen || (!!feedUrl && !live.error)) && (
         <div style={{ padding: '2% 4% 0', fontSize: compact ? '0.28em' : '0.34em', color: '#c2833f', fontWeight: 600, textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>
           {feedUrl ? 'Connecting…' : 'Sample headlines'}
         </div>

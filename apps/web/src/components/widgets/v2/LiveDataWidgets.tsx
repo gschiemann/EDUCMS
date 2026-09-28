@@ -2,8 +2,13 @@
 /**
  * VenueOS · Live Data widgets — universal across every vertical.
  * Ported 1:1 from industry-widget-pack/lib/widgets-live-data.jsx.
- * "Live data" is rendered from `config` fields with sample defaults —
- * no network calls; the real fetch happens server-side per widget.
+ *
+ * Nothing here fetches anything: every board renders from `config`. The
+ * header used to say the opposite ("the real fetch happens server-side per
+ * widget") and the boards backed it up with sample quotes, prices, headlines
+ * and readings on every real screen. Lane B4 (2026-09-27): a real screen shows
+ * only what the template holds, else an honest dash; the sample appears only
+ * in the builder, stamped SAMPLE — see `_shared/live-data-truth.tsx`.
  */
 import React from 'react';
 import { resolveStyle, frameStyle, animDurationSec } from './_shared/styleSystem';
@@ -11,6 +16,7 @@ import type { BaseCfg, WidgetProps } from './_shared/types';
 import { sceneCss } from '../scene-css';
 import { useRenderSurface } from '../render-surface';
 import { asOfLabel } from './sports-venue-data';
+import { LIVE_DATA_SEEDED_LABELS, NothingTyped, SampleStamp, numberOf as num, ownLabel, textOf as text, typedRows, useRealScreen } from './_shared/live-data-truth';
 
 function px(z: number, f: number, min = 8): number { return Math.max(min, Math.round(z * f)); }
 /**
@@ -144,10 +150,19 @@ const DEFAULT_STOCKS: StockSymbol[] = [
   { symbol: 'JPM', price: 251.07, change: -0.93, pct: -0.37 },
 ];
 
+/** Quotes held in the template (from JSON / an AI draft) — never the sample. */
+function stockRows(value: unknown): StockSymbol[] {
+  return typedRows<Record<string, unknown>>(value, (s) => text(s.symbol) !== '' && num(s.price) !== undefined)
+    .map((s) => ({ symbol: text(s.symbol), price: num(s.price) as number, change: num(s.change) ?? 0, pct: num(s.pct) ?? 0 }));
+}
+
 export function StockTickerWidget({ config, live = true, height = 480 }: WidgetProps<StockTickerCfg>) {
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#0a0d12', textColor: '#22d39b', accentColor: '#22d39b', ...c.style });
-  const symbols = c.symbols ?? DEFAULT_STOCKS;
+  const realScreen = useRealScreen();
+  const typed = stockRows(c.symbols);
+  const demo = typed.length === 0 && !realScreen;
+  const symbols = typed.length ? typed : demo ? DEFAULT_STOCKS : [];
   const exchange = c.exchange ?? 'NYSE / NASDAQ';
   const scrollDur = animDurationSec(r.anim.speed, 30);
 
@@ -157,36 +172,42 @@ export function StockTickerWidget({ config, live = true, height = 480 }: WidgetP
       <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ padding: `${px(height, 0.044)}px ${px(height, 0.056)}px ${px(height, 0.022)}px` }}>
           <div style={{ fontFamily: 'Plus Jakarta Sans', color: '#fff', fontSize: fpx(height, 0.05), fontWeight: 800, letterSpacing: '-0.02em' }}>Markets</div>
-          <div style={{ color: '#7d8a98', fontSize: fpx(height, 0.022), fontWeight: 600, marginTop: px(height, 0.0074) }}>{exchange} · delayed 15 min</div>
+          {/* Was "{exchange} · delayed 15 min" — nothing fetches a quote. */}
+          <div style={{ color: '#7d8a98', fontSize: fpx(height, 0.022), fontWeight: 600, marginTop: px(height, 0.0074) }}>{exchange}</div>
         </div>
-        <div style={{ flex: 1, padding: `${px(height, 0.028)}px ${px(height, 0.056)}px ${px(height, 0.037)}px`, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)' }}>
-          {symbols.slice(0, 8).map((s, i) => {
-            const up = s.change >= 0;
-            return (
-              <div key={i} style={{ background: '#11161e', border: '1px solid #1d2530', borderRadius: px(height, 0.013), padding: `${px(height, 0.02)}px ${px(height, 0.022)}px`, margin: px(height, 0.011) }}>
-                <div style={{ color: '#7d8a98', fontWeight: 600, fontSize: fpx(height, 0.0167), letterSpacing: '0.08em' }}>{s.symbol}</div>
-                <div style={{ color: '#fff', fontWeight: 700, fontSize: fpx(height, 0.039), fontFamily: 'JetBrains Mono', marginTop: px(height, 0.0056) }}>{s.price.toFixed(2)}</div>
-                <div style={{ display: 'flex', alignItems: 'center', marginTop: px(height, 0.0056), color: up ? '#22d39b' : '#ff5664', fontWeight: 700, fontSize: fpx(height, 0.0204) }}>
-                  <span style={{ marginRight: px(height, 0.0074) }}>{up ? '▲' : '▼'}</span>
-                  <span style={{ marginRight: px(height, 0.0074) }}>{up ? '+' : ''}{s.change.toFixed(2)}</span>
-                  <span style={{ opacity: .7 }}>({up ? '+' : ''}{s.pct.toFixed(2)}%)</span>
+        {symbols.length === 0 ? <NothingTyped color="#7d8a98" height={height} /> : (
+          <div style={{ flex: 1, padding: `${px(height, 0.028)}px ${px(height, 0.056)}px ${px(height, 0.037)}px`, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)' }}>
+            {symbols.slice(0, 8).map((s, i) => {
+              const up = s.change >= 0;
+              return (
+                <div key={i} style={{ background: '#11161e', border: '1px solid #1d2530', borderRadius: px(height, 0.013), padding: `${px(height, 0.02)}px ${px(height, 0.022)}px`, margin: px(height, 0.011) }}>
+                  <div style={{ color: '#7d8a98', fontWeight: 600, fontSize: fpx(height, 0.0167), letterSpacing: '0.08em' }}>{s.symbol}</div>
+                  <div style={{ color: '#fff', fontWeight: 700, fontSize: fpx(height, 0.039), fontFamily: 'JetBrains Mono', marginTop: px(height, 0.0056) }}>{s.price.toFixed(2)}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', marginTop: px(height, 0.0056), color: up ? '#22d39b' : '#ff5664', fontWeight: 700, fontSize: fpx(height, 0.0204) }}>
+                    <span style={{ marginRight: px(height, 0.0074) }}>{up ? '▲' : '▼'}</span>
+                    <span style={{ marginRight: px(height, 0.0074) }}>{up ? '+' : ''}{s.change.toFixed(2)}</span>
+                    <span style={{ opacity: .7 }}>({up ? '+' : ''}{s.pct.toFixed(2)}%)</span>
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
-        {/* Scrolling band */}
-        <div style={{ height: px(height, 0.074), borderTop: '1px solid #1d2530', background: '#0f141c', display: 'flex', alignItems: 'center', overflow: 'hidden' }}>
-          <div style={{ display: 'flex', whiteSpace: 'nowrap', willChange: 'transform', animation: live ? `ldw_tickerScroll ${scrollDur}s linear infinite` : 'none' }}>
-            {[...symbols, ...symbols].map((s, i) => (
-              <span key={i} style={{ color: '#cfd8e3', fontSize: fpx(height, 0.022), fontWeight: 600, fontFamily: 'JetBrains Mono', marginRight: px(height, 0.056) }}>
-                <span>{s.symbol} </span><span style={{ marginLeft: px(height, 0.0074), marginRight: px(height, 0.0074) }}>{s.price.toFixed(2)}</span>
-                <span style={{ color: s.change >= 0 ? '#22d39b' : '#ff5664' }}>{s.change >= 0 ? '+' : ''}{s.pct.toFixed(2)}%</span>
-              </span>
-            ))}
+              );
+            })}
           </div>
-        </div>
+        )}
+        {/* Scrolling band */}
+        {symbols.length > 0 && (
+          <div style={{ height: px(height, 0.074), borderTop: '1px solid #1d2530', background: '#0f141c', display: 'flex', alignItems: 'center', overflow: 'hidden' }}>
+            <div style={{ display: 'flex', whiteSpace: 'nowrap', willChange: 'transform', animation: live ? `ldw_tickerScroll ${scrollDur}s linear infinite` : 'none' }}>
+              {[...symbols, ...symbols].map((s, i) => (
+                <span key={i} style={{ color: '#cfd8e3', fontSize: fpx(height, 0.022), fontWeight: 600, fontFamily: 'JetBrains Mono', marginRight: px(height, 0.056) }}>
+                  <span>{s.symbol} </span><span style={{ marginLeft: px(height, 0.0074), marginRight: px(height, 0.0074) }}>{s.price.toFixed(2)}</span>
+                  <span style={{ color: s.change >= 0 ? '#22d39b' : '#ff5664' }}>{s.change >= 0 ? '+' : ''}{s.pct.toFixed(2)}%</span>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
+      {demo && <SampleStamp height={height} />}
     </div>
   );
 }
@@ -209,18 +230,28 @@ const DEFAULT_COINS: CryptoCoin[] = [
   { name: 'Cardano', symbol: 'ADA', price: 1.04, pct: -0.94, color: '#0033ad' },
 ];
 
+/** Coins held in the template — never the sample. */
+function coinRows(value: unknown): CryptoCoin[] {
+  return typedRows<Record<string, unknown>>(value, (s) => (text(s.name) !== '' || text(s.symbol) !== '') && num(s.price) !== undefined)
+    .map((s) => ({ name: text(s.name) || text(s.symbol), symbol: text(s.symbol) || text(s.name), price: num(s.price) as number, pct: num(s.pct) ?? 0, color: text(s.color) || '#243042' }));
+}
+
 export function CryptoTickerWidget({ config, live = true, height = 480 }: WidgetProps<CryptoTickerCfg>) {
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#11141c', textColor: '#f7931a', accentColor: '#22d39b', ...c.style });
-  const coins = c.coins ?? DEFAULT_COINS;
+  const realScreen = useRealScreen();
+  const typed = coinRows(c.coins);
+  const demo = typed.length === 0 && !realScreen;
+  const coins = typed.length ? typed : demo ? DEFAULT_COINS : [];
 
   return (
     <div style={{ ...frameStyle(r), padding: 0, backgroundColor: '#08090c' }}>
       <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: px(height, 0.056), display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ color: '#fff', fontFamily: 'Plus Jakarta Sans', fontWeight: 800, fontSize: fpx(height, 0.05), letterSpacing: '-0.02em' }}>Crypto · 24h</div>
-          <div style={{ color: '#9aa3b2', fontSize: fpx(height, 0.0204), fontWeight: 600 }}>via CoinGecko</div>
+          {/* A "via CoinGecko" credit stood here — nothing calls CoinGecko. */}
         </div>
+        {coins.length === 0 ? <NothingTyped color="#9aa3b2" height={height} /> : (
         <div style={{ flex: 1, marginTop: px(height, 0.033), display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
           {coins.slice(0, 6).map((coin, i) => {
             const up = coin.pct >= 0;
@@ -241,7 +272,9 @@ export function CryptoTickerWidget({ config, live = true, height = 480 }: Widget
             );
           })}
         </div>
+        )}
       </div>
+      {demo && <SampleStamp height={height} />}
     </div>
   );
 }
@@ -266,23 +299,36 @@ const DEFAULT_NEWS: NewsItem[] = [
   { cat: 'LOCAL', time: '3 hr ago', headline: 'Springfield breaks ground on new community center' },
 ];
 
+/** Headlines held in the template — never the sample. */
+function newsRows(value: unknown): NewsItem[] {
+  return typedRows<Record<string, unknown>>(value, (n) => text(n.headline) !== '')
+    .map((n) => ({ cat: text(n.cat), time: text(n.time), headline: text(n.headline) }));
+}
+
 export function NewsHeadlinesWidget({ config, live = true, height = 480 }: WidgetProps<NewsHeadlinesCfg>) {
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#0d1018', textColor: '#e7142b', accentColor: '#e7142b', ...c.style });
-  const items = c.items ?? DEFAULT_NEWS;
+  const realScreen = useRealScreen();
+  const typed = newsRows(c.items);
+  // The wire-service credit was SEEDED into every dropped zone; on a real
+  // screen it names a source only when someone typed their own.
+  const typedSource = ownLabel(c.source, LIVE_DATA_SEEDED_LABELS.newsSource);
+  const demo = !realScreen && (typed.length === 0 || typedSource === undefined);
+  const items = typed.length ? typed : realScreen ? [] : DEFAULT_NEWS;
   const accent = c.accent ?? '#e7142b';
-  const source = c.source ?? 'AP · Reuters · BBC';
+  const source = typedSource ?? (realScreen ? '' : LIVE_DATA_SEEDED_LABELS.newsSource);
 
   return (
     <div style={{ ...frameStyle(r), padding: 0, backgroundColor: '#0d1018' }}>
       <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: `${px(height, 0.037)}px ${px(height, 0.056)}px`, borderBottom: '2px solid #1c2230' }}>
           <div style={{ display: 'flex', alignItems: 'center' }}>
-            <div style={{ background: accent, color: '#fff', padding: `${px(height, 0.0093)}px ${px(height, 0.0167)}px`, borderRadius: px(height, 0.0056), fontWeight: 800, fontFamily: 'Plus Jakarta Sans', fontSize: fpx(height, 0.028), letterSpacing: '0.04em', marginRight: px(height, 0.022) }}>BREAKING</div>
+            {items.length > 0 && <div style={{ background: accent, color: '#fff', padding: `${px(height, 0.0093)}px ${px(height, 0.0167)}px`, borderRadius: px(height, 0.0056), fontWeight: 800, fontFamily: 'Plus Jakarta Sans', fontSize: fpx(height, 0.028), letterSpacing: '0.04em', marginRight: px(height, 0.022) }}>BREAKING</div>}
             <div style={{ color: '#fff', fontWeight: 800, fontSize: fpx(height, 0.043), fontFamily: 'Plus Jakarta Sans', letterSpacing: '-0.02em' }}>Top Headlines</div>
           </div>
           <div style={{ color: '#8a93a4', fontSize: fpx(height, 0.022), fontWeight: 600 }}>{source}</div>
         </div>
+        {items.length === 0 ? <NothingTyped color="#8a93a4" height={height} /> : (
         <div style={{ flex: 1, padding: `${px(height, 0.037)}px ${px(height, 0.056)}px`, display: 'flex', flexDirection: 'column', justifyContent: 'space-evenly' }}>
           {items.slice(0, 5).map((n, i) => (
             <div key={i} style={{ display: 'flex', alignItems: 'flex-start' }}>
@@ -298,7 +344,9 @@ export function NewsHeadlinesWidget({ config, live = true, height = 480 }: Widge
             </div>
           ))}
         </div>
+        )}
       </div>
+      {demo && <SampleStamp height={height} />}
     </div>
   );
 }
@@ -330,11 +378,56 @@ function Pollutant({ label, val, unit, height }: { label: string; val: number; u
   );
 }
 
+/**
+ * The reading every dropped Air Quality zone used to be SEEDED with. A zone
+ * that still holds exactly these five numbers was never touched — no one
+ * types that reading — so a real screen treats it as nothing entered.
+ */
+const AIR_SAMPLE = { aqi: 62, pm25: 14, pm10: 28, o3: 52, no2: 12 } as const;
+const AIR_SAMPLE_LOCATION = 'Springfield, IL';
+
+function isSeededAirReading(c: AirQualityCfg): boolean {
+  return c.aqi === AIR_SAMPLE.aqi && c.pm25 === AIR_SAMPLE.pm25 && c.pm10 === AIR_SAMPLE.pm10
+    && c.o3 === AIR_SAMPLE.o3 && c.no2 === AIR_SAMPLE.no2;
+}
+
 export function AirQualityWidget({ config, live = true, height = 480 }: WidgetProps<AirQualityCfg>) {
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#0a0d12', textColor: '#22c55e', accentColor: '#22c55e', ...c.style });
-  const aqi = c.aqi ?? 62;
-  const location = c.location ?? 'Springfield, IL';
+  const realScreen = useRealScreen();
+  const seeded = isSeededAirReading(c);
+  const reading = (v: unknown): number | undefined => (seeded ? undefined : num(v));
+  // Nothing measures air here: a real screen shows the reading someone
+  // entered, field by field, or a dash. The builder fills each field that is
+  // still empty with the sample — the value its Properties field displays —
+  // and stamps the tile SAMPLE while any of them is on show.
+  const typed = {
+    aqi: reading(c.aqi), pm25: reading(c.pm25), pm10: reading(c.pm10), o3: reading(c.o3), no2: reading(c.no2),
+    location: ownLabel(c.location, AIR_SAMPLE_LOCATION),
+  };
+  const demo = !realScreen && Object.values(typed).some((v) => v === undefined);
+  const aqi = typed.aqi ?? (realScreen ? undefined : AIR_SAMPLE.aqi);
+  const pollutant = (v: number | undefined, sample: number): number | undefined => v ?? (realScreen ? undefined : sample);
+  const pollutants = [
+    { label: 'PM2.5', val: pollutant(typed.pm25, AIR_SAMPLE.pm25), unit: 'µg/m³' },
+    { label: 'PM10', val: pollutant(typed.pm10, AIR_SAMPLE.pm10), unit: 'µg/m³' },
+    { label: 'O₃', val: pollutant(typed.o3, AIR_SAMPLE.o3), unit: 'ppb' },
+    { label: 'NO₂', val: pollutant(typed.no2, AIR_SAMPLE.no2), unit: 'ppb' },
+  ].filter((p): p is { label: string; val: number; unit: string } => p.val !== undefined);
+  const location = typed.location ?? (realScreen ? '' : AIR_SAMPLE_LOCATION);
+  if (aqi === undefined) {
+    return (
+      <div style={{ ...frameStyle(r), padding: 0, backgroundColor: '#0a0d12' }}>
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: px(height, 0.056), display: 'flex', flexDirection: 'column' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ color: '#fff', fontFamily: 'Plus Jakarta Sans', fontSize: fpx(height, 0.05), fontWeight: 800, letterSpacing: '-0.02em' }}>Air Quality</div>
+            <div style={{ color: '#8a93a4', fontSize: fpx(height, 0.022), fontWeight: 600 }}>{location}</div>
+          </div>
+          <NothingTyped color="#8a93a4" height={height} />
+        </div>
+      </div>
+    );
+  }
   const band = aqi <= 50 ? { color: '#22c55e', t: 'Good', sub: 'Air quality is satisfactory' }
     : aqi <= 100 ? { color: '#eab308', t: 'Moderate', sub: 'Acceptable for most people' }
       : aqi <= 150 ? { color: '#f97316', t: 'Unhealthy SG', sub: 'Sensitive groups limit exposure' }
@@ -361,15 +454,13 @@ export function AirQualityWidget({ config, live = true, height = 480 }: WidgetPr
             <div>
               <div style={{ color: '#fff', fontWeight: 700, fontSize: fpx(height, 0.043), lineHeight: 1.1, maxWidth: px(height, 0.556) }}>{band.sub}</div>
               <div style={{ marginTop: px(height, 0.028), display: 'flex', flexDirection: 'column' }}>
-                <Pollutant label="PM2.5" val={c.pm25 ?? 14} unit="µg/m³" height={height} />
-                <Pollutant label="PM10" val={c.pm10 ?? 28} unit="µg/m³" height={height} />
-                <Pollutant label="O₃" val={c.o3 ?? 52} unit="ppb" height={height} />
-                <Pollutant label="NO₂" val={c.no2 ?? 12} unit="ppb" height={height} />
+                {pollutants.map((p) => <Pollutant key={p.label} label={p.label} val={p.val} unit={p.unit} height={height} />)}
               </div>
             </div>
           </div>
         </div>
       </div>
+      {demo && <SampleStamp height={height} />}
     </div>
   );
 }
@@ -469,22 +560,29 @@ const DEFAULT_FX: FxPair[] = [
   { code: 'MXN', name: 'Mexican Peso', flag: '🇲🇽', rate: 17.6824, delta: -0.043 },
 ];
 
+/** Rates held in the template — never the sample. */
+function fxRows(value: unknown): FxPair[] {
+  return typedRows<Record<string, unknown>>(value, (p) => text(p.code) !== '' && num(p.rate) !== undefined)
+    .map((p) => ({ code: text(p.code), name: text(p.name), flag: text(p.flag), rate: num(p.rate) as number, delta: num(p.delta) ?? 0 }));
+}
+
 export function FxRatesWidget({ config, live = true, height = 480 }: WidgetProps<FxRatesCfg>) {
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#0d1018', textColor: '#22d39b', accentColor: '#22d39b', ...c.style });
+  const realScreen = useRealScreen();
   const base = c.base ?? 'USD';
-  const pairs = c.pairs ?? DEFAULT_FX;
+  const typed = fxRows(c.pairs);
+  const demo = typed.length === 0 && !realScreen;
+  const pairs = typed.length ? typed : demo ? DEFAULT_FX : [];
 
   return (
     <div style={{ ...frameStyle(r), padding: 0, backgroundColor: '#0d1018' }}>
       <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: px(height, 0.056), display: 'flex', flexDirection: 'column' }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-          <div>
-            <div style={{ color: '#fff', fontFamily: 'Plus Jakarta Sans', fontSize: fpx(height, 0.05), fontWeight: 800, letterSpacing: '-0.02em' }}>FX · 1 {base} =</div>
-            <div style={{ color: '#8a93a4', fontSize: fpx(height, 0.0204), fontWeight: 600, marginTop: px(height, 0.0056) }}>Mid-market · refreshed every 5 min</div>
-          </div>
-          <div style={{ color: '#8a93a4', fontSize: fpx(height, 0.0204), fontWeight: 600 }}>via Wise / OpenExchangeRates</div>
-        </div>
+        {/* "Mid-market · refreshed every 5 min" and "via Wise / OpenExchangeRates"
+            stood in this header. Nothing refreshes a rate and neither service
+            is called: the rates are whatever the template holds. */}
+        <div style={{ color: '#fff', fontFamily: 'Plus Jakarta Sans', fontSize: fpx(height, 0.05), fontWeight: 800, letterSpacing: '-0.02em' }}>FX · 1 {base} =</div>
+        {pairs.length === 0 ? <NothingTyped color="#8a93a4" height={height} /> : (
         <div style={{ flex: 1, marginTop: px(height, 0.033), display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
           {pairs.slice(0, 8).map((p, i) => {
             const up = p.delta >= 0;
@@ -505,7 +603,9 @@ export function FxRatesWidget({ config, live = true, height = 480 }: WidgetProps
             );
           })}
         </div>
+        )}
       </div>
+      {demo && <SampleStamp height={height} />}
     </div>
   );
 }
@@ -526,19 +626,34 @@ const DEFAULT_CAMS: TrafficCam[] = [
   { name: 'I-10 EB · La Cienega', note: 'Mid-Wilshire · 3 lanes open', status: 'CLEAR', tint: '#2a4032' },
 ];
 
+/** Camera tiles held in the template — never the sample. */
+function camRows(value: unknown): TrafficCam[] {
+  return typedRows<Record<string, unknown>>(value, (cam) => text(cam.name) !== '')
+    .map((cam) => ({ name: text(cam.name), note: text(cam.note), status: text(cam.status).toUpperCase(), tint: text(cam.tint) || undefined }));
+}
+
 export function TrafficCamWidget({ config, live = true, height = 480 }: WidgetProps<TrafficCamCfg>) {
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#0e1320', textColor: '#22c55e', accentColor: '#dc2626', ...c.style });
-  const cams = c.cams ?? DEFAULT_CAMS;
-  const city = c.city ?? 'I-5 Corridor';
+  const realScreen = useRealScreen();
+  const typed = camRows(c.cams);
+  // The Los Angeles / San Diego tiles and their HEAVY / SLOW / CLEAR states
+  // are invented. They used to show on every real screen (labelled "Sample
+  // data" in small type); now only in the builder.
+  const sampleCams = typed.length === 0 && !realScreen;
+  const cams = typed.length ? typed : sampleCams ? DEFAULT_CAMS : [];
+  const typedCity = ownLabel(c.city, LIVE_DATA_SEEDED_LABELS.trafficCity);
+  const city = typedCity ?? (realScreen ? '' : LIVE_DATA_SEEDED_LABELS.trafficCity);
+  const demo = sampleCams || (!realScreen && typedCity === undefined);
 
   return (
     <div style={{ ...frameStyle(r), padding: 0, backgroundColor: '#080a0d' }}>
       <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: px(height, 0.056), display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-          <div style={{ color: '#fff', fontFamily: 'Plus Jakarta Sans', fontWeight: 800, fontSize: fpx(height, 0.05), letterSpacing: '-0.02em' }}>Traffic · {city}</div>
-          <div style={{ color: '#9aa3b2', fontSize: fpx(height, 0.0204), fontWeight: 600 }}>Sample data</div>
+          <div style={{ color: '#fff', fontFamily: 'Plus Jakarta Sans', fontWeight: 800, fontSize: fpx(height, 0.05), letterSpacing: '-0.02em' }}>{city ? `Traffic · ${city}` : 'Traffic'}</div>
+          {demo && <div data-live-data-sample="" style={{ color: '#9aa3b2', fontSize: fpx(height, 0.0204), fontWeight: 600 }}>Sample data</div>}
         </div>
+        {cams.length === 0 ? <NothingTyped color="#9aa3b2" height={height} /> : (
         <div style={{ flex: 1, marginTop: px(height, 0.033), display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
           {cams.slice(0, 4).map((cam, i) => (
             <div key={i} style={{ position: 'relative', borderRadius: px(height, 0.013), overflow: 'hidden', border: '1px solid #1c2230', background: `linear-gradient(135deg,${cam.tint || '#243046'},#0e1320)`, margin: px(height, 0.011) }}>
@@ -548,12 +663,13 @@ export function TrafficCamWidget({ config, live = true, height = 480 }: WidgetPr
                   <div style={{ color: '#fff', fontWeight: 700, fontSize: fpx(height, 0.026) }}>{cam.name}</div>
                   <div style={{ color: '#cfd8e3', fontSize: fpx(height, 0.0185), fontWeight: 600 }}>{cam.note}</div>
                 </div>
-                <div style={{ background: cam.status === 'HEAVY' ? '#dc2626' : cam.status === 'SLOW' ? '#f59e0b' : '#22c55e', color: '#fff', fontWeight: 800, fontSize: fpx(height, 0.0167), padding: `${px(height, 0.0074)}px ${px(height, 0.013)}px`, borderRadius: px(height, 0.0074), letterSpacing: '0.04em' }}>{cam.status}</div>
+                {cam.status && <div style={{ background: cam.status === 'HEAVY' ? '#dc2626' : cam.status === 'SLOW' ? '#f59e0b' : '#22c55e', color: '#fff', fontWeight: 800, fontSize: fpx(height, 0.0167), padding: `${px(height, 0.0074)}px ${px(height, 0.013)}px`, borderRadius: px(height, 0.0074), letterSpacing: '0.04em' }}>{cam.status}</div>}
               </div>
-              <div style={{ position: 'absolute', top: px(height, 0.0167), left: px(height, 0.0167), color: '#cfd8e3', fontWeight: 700, fontSize: fpx(height, 0.0148), background: '#0006', padding: `${px(height, 0.0037)}px ${px(height, 0.0093)}px`, borderRadius: px(height, 0.0056), letterSpacing: '0.04em' }}>SAMPLE</div>
+              {sampleCams && <div style={{ position: 'absolute', top: px(height, 0.0167), left: px(height, 0.0167), color: '#cfd8e3', fontWeight: 700, fontSize: fpx(height, 0.0148), background: '#0006', padding: `${px(height, 0.0037)}px ${px(height, 0.0093)}px`, borderRadius: px(height, 0.0056), letterSpacing: '0.04em' }}>SAMPLE</div>}
             </div>
           ))}
         </div>
+        )}
       </div>
     </div>
   );

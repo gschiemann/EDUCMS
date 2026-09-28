@@ -23,7 +23,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { resolveCountdownTarget, calendarDaysUntil } from '../countdown-utils';
-import { useLiveWeather } from '../use-live-weather';
+import { useLiveWeather, withDegrees } from '../use-live-weather';
+import { SampleStamp } from '../v2/_shared/live-data-truth';
 import { sceneCss } from '../scene-css';
 
 // ─────────────────────────────────────────────────────────────────
@@ -221,8 +222,8 @@ export function RainbowAnimatedWeather({ config }: { config: any }) {
   const live = useLiveWeather(config);
   const overrideTemp = config.weatherTemp || config.temp;
   const overrideDesc = config.weatherDesc || config.desc;
-  const temp = overrideTemp || `${live.temp}°`;
-  const desc = overrideDesc || `~ ${live.condition.toLowerCase()} ~`;
+  const temp = overrideTemp || withDegrees(live.temp);
+  const desc = overrideDesc || (live.condition ? `~ ${live.condition.toLowerCase()} ~` : '');
   return (
     <ScaleWrap naturalW={320} naturalH={340}>
       <GlobalAnimations />
@@ -248,6 +249,7 @@ export function RainbowAnimatedWeather({ config }: { config: any }) {
           }}>{temp}</div>
         </div>
         <div style={{ fontFamily: "'Caveat', cursive", fontWeight: 700, fontSize: 52, color: '#78350f', marginTop: 18, textAlign: 'center', textShadow: '0 2px 0 rgba(255,255,255,.7)' }}>{desc}</div>
+        {live.sample && (!overrideTemp || !overrideDesc) && <SampleStamp />}
       </div>
     </ScaleWrap>
   );

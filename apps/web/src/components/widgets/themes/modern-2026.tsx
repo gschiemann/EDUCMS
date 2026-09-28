@@ -14,7 +14,8 @@
 
 import { useEffect, useState } from 'react';
 import { calendarDaysUntil, resolveCountdownTarget } from '../countdown-utils';
-import { useLiveWeather } from '../use-live-weather';
+import { useLiveWeather, withDegrees } from '../use-live-weather';
+import { SampleStamp } from '../v2/_shared/live-data-truth';
 import { sceneCss } from '../scene-css';
 
 const FONT_DISPLAY = "var(--font-fredoka), ui-rounded, 'Arial Rounded MT Bold', system-ui, sans-serif";
@@ -742,7 +743,7 @@ export function WeatherHero({ config }: { config: any }) {
   const live = useLiveWeather(config);
   const temp = live.temp;
   const cond = live.condition;
-  const loc = live.locationName || config.location || 'Springfield';
+  const loc = live.locationName || config.location || (live.sample ? 'Springfield' : '');
   const icon = live.icon;
   return (
     <div className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden flex flex-col justify-center" style={{
@@ -756,11 +757,12 @@ export function WeatherHero({ config }: { config: any }) {
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: '0.9em', fontWeight: 700, opacity: 0.85, letterSpacing: '0.1em', textTransform: 'uppercase' }}>{loc}</div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.1em' }}>
-            <span style={{ fontSize: '4em', fontWeight: 700, lineHeight: 0.95, letterSpacing: '-0.04em' }}>{temp}°</span>
+            <span style={{ fontSize: '4em', fontWeight: 700, lineHeight: 0.95, letterSpacing: '-0.04em' }}>{withDegrees(temp)}</span>
           </div>
           <div style={{ fontSize: '1.1em', fontWeight: 600, opacity: 0.9, marginTop: '0.1em' }}>{cond}</div>
         </div>
       </div>
+      {live.sample && <SampleStamp />}
     </div>
   );
 }
@@ -770,7 +772,7 @@ export function WeatherGlass({ config }: { config: any }) {
   const live = useLiveWeather(config);
   const temp = live.temp;
   const cond = live.condition;
-  const loc = live.locationName || config.location || 'Springfield';
+  const loc = live.locationName || config.location || (live.sample ? 'Springfield' : '');
   const icon = live.icon;
   return (
     <div className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden flex items-center" style={{
@@ -785,9 +787,10 @@ export function WeatherGlass({ config }: { config: any }) {
         <div style={{ fontSize: '3em', fontWeight: 800, lineHeight: 0.95, letterSpacing: '-0.04em',
           background: `linear-gradient(135deg, ${C.indigo}, ${C.pink})`,
           WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text', color: 'transparent',
-        }}>{temp}°</div>
-        <div style={{ fontSize: '0.95em', fontWeight: 600, color: C.inkSoft }}>{cond} · {loc}</div>
+        }}>{withDegrees(temp)}</div>
+        <div style={{ fontSize: '0.95em', fontWeight: 600, color: C.inkSoft }}>{[cond, loc].filter(Boolean).join(' · ')}</div>
       </div>
+      {live.sample && <SampleStamp />}
     </div>
   );
 }

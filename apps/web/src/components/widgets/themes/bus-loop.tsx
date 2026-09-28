@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Clock, Calendar, AlertTriangle, CloudRain, Sun, Cloud, Snowflake, Bus } from 'lucide-react';
-import { useLiveWeather } from '../use-live-weather';
+import { useLiveWeather, withDegrees } from '../use-live-weather';
+import { SampleStamp } from '../v2/_shared/live-data-truth';
 import { sceneCss } from '../scene-css';
 
 const BL = {
@@ -118,9 +119,11 @@ export function BusLoopWeather({ config, compact }: { config: any; compact?: boo
   const live = useLiveWeather(config);
   const t = live.temp;
   const c = live.condition.toLowerCase();
-  let Icon = Sun;
+  // No reading on a real screen → no condition art (the sun was a claim).
+  let Icon: typeof Sun | null = live.available ? Sun : null;
   let color = BL.yellow;
-  if (c.includes('rain')) { Icon = CloudRain; color = '#60a5fa'; }
+  if (!live.available) { /* nothing to draw */ }
+  else if (c.includes('rain')) { Icon = CloudRain; color = '#60a5fa'; }
   else if (c.includes('cloud')) { Icon = Cloud; color = '#94a3b8'; }
   else if (c.includes('snow')) { Icon = Snowflake; color = '#FFF'; }
 
@@ -133,14 +136,15 @@ export function BusLoopWeather({ config, compact }: { config: any; compact?: boo
       containerType: 'size'
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '4cqi' }}>
-        <Icon style={{ color, width: '15cqh', height: '15cqh', filter: `drop-shadow(0 0 10px ${color})` }} />
+        {Icon && <Icon style={{ color, width: '15cqh', height: '15cqh', filter: `drop-shadow(0 0 10px ${color})` }} />}
         <span style={{ fontFamily: BL_DISPLAY, fontSize: 'clamp(2rem, 20cqh, 8rem)', color: '#fff', fontWeight: 900 }}>
-          {t}°
+          {withDegrees(t)}
         </span>
       </div>
       <span data-field="location" style={{ fontFamily: BL_FONT, fontSize: 'clamp(0.8rem, 6cqh, 2rem)', color: BL.textMuted, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: '2cqh', whiteSpace: 'pre-wrap' as const }}>
-        {config.location || 'Springfield'}
+        {config.location || (live.sample ? 'Springfield' : '')}
       </span>
+      {live.sample && <SampleStamp />}
     </div>
   );
 }

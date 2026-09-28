@@ -2,12 +2,18 @@
 /**
  * VenueOS · Transit / Airport widgets — Departures Board, Flight Status,
  * Transit Departures, Parking Availability.
+ *
+ * None of these is connected to a flight, transit or parking feed. They
+ * render what the template holds; the SFO / Embarcadero sample boards show
+ * only in the builder, stamped SAMPLE, and a real screen with nothing entered
+ * shows a dash (lane B4, 2026-09-27 — `_shared/live-data-truth.tsx`).
  */
 import React from 'react';
 import { resolveStyle, frameStyle, animDurationSec } from './_shared/styleSystem';
 import type { BaseCfg, WidgetProps } from './_shared/types';
 import { useNowTick } from './_shared/useNowTick';
 import { configFreshness, formatInZone } from '@/lib/time-truth';
+import { LIVE_DATA_SEEDED_LABELS, NothingTyped, SampleStamp, numberOf as num, ownLabel, textOf as text, typedRows, useRealScreen } from './_shared/live-data-truth';
 
 function px(z: number, f: number): number { return Math.max(8, Math.round(z * f)); }
 
@@ -60,11 +66,22 @@ function statusColor(status: string): string {
   return '#e8a01e';
 }
 
+/** Departures held in the template — never the sample. */
+function flightRows(value: unknown): FlightRow[] {
+  return typedRows<Record<string, unknown>>(value, (f) => text(f.flight) !== '' || text(f.dest) !== '')
+    .map((f) => ({ flight: text(f.flight), time: text(f.time), dest: text(f.dest), gate: text(f.gate), status: text(f.status).toUpperCase(), note: text(f.note) }));
+}
+
 export function DeparturesBoardWidget({ config, live = true, height = 480 }: WidgetProps<DeparturesBoardCfg>) {
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#0b0b0b', textColor: '#e8a01e', accentColor: '#ffeb3b', ...c.style });
-  const rows: FlightRow[] = c.flights ?? DEPARTURES_FLIGHTS;
+  const realScreen = useRealScreen();
+  const typed = flightRows(c.flights);
+  const rows: FlightRow[] = typed.length ? typed : realScreen ? [] : DEPARTURES_FLIGHTS;
   const visible = rows.slice(0, 8);
+  const typedAirport = ownLabel(c.airport, LIVE_DATA_SEEDED_LABELS.departuresAirport);
+  const airport = typedAirport ?? (realScreen ? '' : LIVE_DATA_SEEDED_LABELS.departuresAirport);
+  const demo = !realScreen && (typed.length === 0 || typedAirport === undefined);
   const gridCols = '180px 240px 1.4fr 200px 200px 200px';
   const now = useNowTick(30_000, live);
 
@@ -74,10 +91,11 @@ export function DeparturesBoardWidget({ config, live = true, height = 480 }: Wid
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
           <div>
             <div style={{ color: '#e8a01e', fontWeight: 800, fontSize: px(height, 0.0593), letterSpacing: '-0.02em' }}>DEPARTURES</div>
-            <div style={{ color: '#e8a01e88', fontSize: px(height, 0.0222), fontWeight: 600, letterSpacing: '0.08em' }}>{(c.airport || 'SFO · TERMINAL 2').toUpperCase()}</div>
+            <div style={{ color: '#e8a01e88', fontSize: px(height, 0.0222), fontWeight: 600, letterSpacing: '0.08em' }}>{airport.toUpperCase()}</div>
           </div>
           <div style={{ color: '#e8a01e', fontWeight: 700, fontSize: px(height, 0.0593) }}>{nowHM(now, c.timezone)}</div>
         </div>
+        {visible.length === 0 ? <NothingTyped color="#9a7619" height={height} /> : (
         <div style={{ flex: 1, marginTop: px(height, 0.0278), background: '#000', border: '1px solid #1a1a1a', borderRadius: px(height, 0.013), padding: px(height, 0.0222), color: '#e8a01e' }}>
           <div style={{ display: 'grid', gridTemplateColumns: gridCols, padding: `${px(height, 0.0111)}px 0`, borderBottom: '1px solid #2a2105', color: '#9a7619', fontWeight: 600, fontSize: px(height, 0.0204), letterSpacing: '0.06em' }}>
             <div style={{ marginRight: px(height, 0.0167) }}>FLIGHT</div>
@@ -108,7 +126,9 @@ export function DeparturesBoardWidget({ config, live = true, height = 480 }: Wid
             </div>
           ))}
         </div>
+        )}
       </div>
+      {demo && <SampleStamp height={height} />}
     </div>
   );
 }
@@ -149,35 +169,76 @@ function FlightKV({ label, val, height }: { label: string; val: string; height: 
   );
 }
 
+/**
+ * The flight every dropped Flight Status zone used to be SEEDED with — and the
+ * builder's sample. A zone that still holds exactly this was never touched.
+ */
+const FLIGHT_SAMPLE = {
+  flight: 'UA 504', from: 'SFO', fromCity: 'San Francisco', to: 'JFK', toCity: 'New York',
+  depTime: '14:30', arrTime: '22:52', status: 'ON TIME', gate: 'B07', board: '13:50',
+  terminal: '2', aircraft: 'Boeing 737-900',
+} as const;
+type FlightField = keyof typeof FLIGHT_SAMPLE;
+const FLIGHT_FIELDS = Object.keys(FLIGHT_SAMPLE) as FlightField[];
+
+function isSeededFlight(c: FlightStatusHeroCfg): boolean {
+  return FLIGHT_FIELDS.every((k) => c[k] === FLIGHT_SAMPLE[k]);
+}
+
 export function FlightStatusHeroWidget({ config, live = true, height = 480 }: WidgetProps<FlightStatusHeroCfg>) {
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#040608', textColor: '#fff', accentColor: '#e8a01e', ...c.style });
+  const realScreen = useRealScreen();
+  const seeded = isSeededFlight(c);
+  const typed = (k: FlightField): string => (seeded ? '' : text(c[k]));
+  const anyTyped = FLIGHT_FIELDS.some((k) => typed(k) !== '');
+  // No flight feed exists. A real screen shows the fields someone entered and
+  // a dash for the rest; the builder fills each empty field with the sample
+  // (the value its Properties field displays) and stamps it SAMPLE.
+  const demo = !realScreen && FLIGHT_FIELDS.some((k) => typed(k) === '');
+  const v = (k: FlightField): string => typed(k) || (realScreen ? '—' : FLIGHT_SAMPLE[k]);
+  // "United Airlines" and "5h 22m · 2,576 mi" describe the SAMPLE flight and
+  // nothing else — no field sets them, so they never sit beside a typed one.
+  const sampleFlight = !realScreen && typed('flight') === '';
+  const sampleLeg = !realScreen && (['from', 'to', 'depTime', 'arrTime'] as FlightField[]).every((k) => typed(k) === '');
+  const status = typed('status') || (realScreen ? '' : FLIGHT_SAMPLE.status);
+
+  if (realScreen && !anyTyped) {
+    return (
+      <div style={frameStyle(r)}>
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', flexDirection: 'column' }}>
+          <NothingTyped color="#9aa3b2" height={height} />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={frameStyle(r)}>
       <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: px(height, 0.0741), display: 'flex', flexDirection: 'column', justifyContent: 'space-between', color: '#fff' }}>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'baseline' }}>
-            <div style={{ fontWeight: 800, fontSize: px(height, 0.0741), letterSpacing: '-0.02em', marginRight: px(height, 0.0222) }}>{c.flight || 'UA 504'}</div>
-            <div style={{ color: '#9aa3b2', fontWeight: 600, fontSize: px(height, 0.0296) }}>United Airlines</div>
+            <div style={{ fontWeight: 800, fontSize: px(height, 0.0741), letterSpacing: '-0.02em', marginRight: px(height, 0.0222) }}>{v('flight')}</div>
+            {sampleFlight && <div style={{ color: '#9aa3b2', fontWeight: 600, fontSize: px(height, 0.0296) }}>United Airlines</div>}
           </div>
-          <div style={{ background: '#22c55e', color: '#0b0c0e', padding: `${px(height, 0.013)}px ${px(height, 0.0222)}px`, borderRadius: px(height, 0.0093), fontWeight: 800, fontSize: px(height, 0.0278), letterSpacing: '0.04em' }}>{c.status || 'ON TIME'}</div>
+          {status && <div style={{ background: '#22c55e', color: '#0b0c0e', padding: `${px(height, 0.013)}px ${px(height, 0.0222)}px`, borderRadius: px(height, 0.0093), fontWeight: 800, fontSize: px(height, 0.0278), letterSpacing: '0.04em' }}>{status}</div>}
         </div>
         <div style={{ display: 'flex', alignItems: 'center' }}>
-          <FlightAirport code={c.from || 'SFO'} city={c.fromCity || 'San Francisco'} time={c.depTime || '14:30'} height={height} />
+          <FlightAirport code={v('from')} city={typed('fromCity') || (realScreen ? '' : FLIGHT_SAMPLE.fromCity)} time={v('depTime')} height={height} />
           <div style={{ flex: 1, height: 2, background: 'linear-gradient(to right, #9aa3b2, #9aa3b2 50%, transparent 50%)', backgroundSize: '18px 2px', position: 'relative', marginLeft: px(height, 0.037), marginRight: px(height, 0.037) }}>
             <div style={{ position: 'absolute', top: px(height, -0.0463), left: '45%', fontSize: px(height, 0.0741), transform: 'rotate(90deg)' }}>{'✈'}</div>
-            <div style={{ position: 'absolute', bottom: px(height, -0.0407), left: '40%', color: '#9aa3b2', fontSize: px(height, 0.0222), fontWeight: 600 }}>5h 22m · 2,576 mi</div>
+            {sampleLeg && <div style={{ position: 'absolute', bottom: px(height, -0.0407), left: '40%', color: '#9aa3b2', fontSize: px(height, 0.0222), fontWeight: 600 }}>5h 22m · 2,576 mi</div>}
           </div>
-          <FlightAirport code={c.to || 'JFK'} city={c.toCity || 'New York'} time={c.arrTime || '22:52'} height={height} />
+          <FlightAirport code={v('to')} city={typed('toCity') || (realScreen ? '' : FLIGHT_SAMPLE.toCity)} time={v('arrTime')} height={height} />
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)' }}>
-          <div style={{ marginRight: px(height, 0.0278) }}><FlightKV label="Gate" val={c.gate || 'B07'} height={height} /></div>
-          <div style={{ marginRight: px(height, 0.0278) }}><FlightKV label="Boarding" val={c.board || '13:50'} height={height} /></div>
-          <div style={{ marginRight: px(height, 0.0278) }}><FlightKV label="Terminal" val={c.terminal || '2'} height={height} /></div>
-          <div><FlightKV label="Aircraft" val={c.aircraft || 'Boeing 737-900'} height={height} /></div>
+          <div style={{ marginRight: px(height, 0.0278) }}><FlightKV label="Gate" val={v('gate')} height={height} /></div>
+          <div style={{ marginRight: px(height, 0.0278) }}><FlightKV label="Boarding" val={v('board')} height={height} /></div>
+          <div style={{ marginRight: px(height, 0.0278) }}><FlightKV label="Terminal" val={v('terminal')} height={height} /></div>
+          <div><FlightKV label="Aircraft" val={v('aircraft')} height={height} /></div>
         </div>
       </div>
+      {demo && <SampleStamp height={height} />}
     </div>
   );
 }
@@ -209,11 +270,28 @@ const TRANSIT_LINES: TransitLine[] = [
   { line: 'M', color: '#008248', toward: 'San Francisco State', platform: 'Outbound · Pl. 2', minutes: [12, 28, 42] },
 ];
 
+/** Lines held in the template — never the sample. */
+function transitRows(value: unknown): TransitLine[] {
+  return typedRows<Record<string, unknown>>(value, (l) => text(l.line) !== '' || text(l.toward) !== '')
+    .map((l) => ({
+      line: text(l.line),
+      color: text(l.color) || '#475569',
+      toward: text(l.toward),
+      platform: text(l.platform),
+      minutes: (Array.isArray(l.minutes) ? l.minutes : []).map(num).filter((m): m is number => m !== undefined),
+    }));
+}
+
 export function TransitDeparturesWidget({ config, live = true, height = 480 }: WidgetProps<TransitDeparturesCfg>) {
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#fff', textColor: '#0b0c0e', accentColor: '#dc2626', ...c.style });
-  const lines: TransitLine[] = c.lines ?? TRANSIT_LINES;
+  const realScreen = useRealScreen();
+  const typed = transitRows(c.lines);
+  const lines: TransitLine[] = typed.length ? typed : realScreen ? [] : TRANSIT_LINES;
   const visible = lines.slice(0, 6);
+  const typedStation = ownLabel(c.station, LIVE_DATA_SEEDED_LABELS.transitStation);
+  const station = typedStation ?? (realScreen ? '' : LIVE_DATA_SEEDED_LABELS.transitStation);
+  const demo = !realScreen && (typed.length === 0 || typedStation === undefined);
   const now = useNowTick(30_000, live);
 
   return (
@@ -221,11 +299,12 @@ export function TransitDeparturesWidget({ config, live = true, height = 480 }: W
       <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: px(height, 0.0556), display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
           <div>
-            <div style={{ color: '#74767d', fontWeight: 700, fontSize: px(height, 0.0241), letterSpacing: '0.08em' }}>NEXT TRAINS · {(c.station || 'EMBARCADERO').toUpperCase()}</div>
+            <div style={{ color: '#74767d', fontWeight: 700, fontSize: px(height, 0.0241), letterSpacing: '0.08em' }}>{station ? `NEXT TRAINS · ${station.toUpperCase()}` : 'NEXT TRAINS'}</div>
             <div style={{ color: '#0b0c0e', fontWeight: 800, fontSize: px(height, 0.0815), letterSpacing: '-0.02em' }}>Departures</div>
           </div>
           <div style={{ color: '#0b0c0e', fontWeight: 700, fontSize: px(height, 0.0444) }}>{nowHM(now, c.timezone)}</div>
         </div>
+        {visible.length === 0 ? <NothingTyped color="#74767d" height={height} /> : (
         <div style={{ flex: 1, marginTop: px(height, 0.0278), display: 'flex', flexDirection: 'column' }}>
           {visible.map((l, i) => (
             <div
@@ -257,7 +336,9 @@ export function TransitDeparturesWidget({ config, live = true, height = 480 }: W
             </div>
           ))}
         </div>
+        )}
       </div>
+      {demo && <SampleStamp height={height} />}
     </div>
   );
 }
@@ -299,11 +380,22 @@ const PARKING_LOTS: ParkingLot[] = [
  * and it is relative to a clock that keeps moving — so a stale board reads
  * "Updated 3h ago" and an unstamped one says nothing at all.
  */
+/** Lots held in the template — never the sample. A lot needs a capacity. */
+function parkingRows(value: unknown): ParkingLot[] {
+  return typedRows<Record<string, unknown>>(value, (l) => text(l.name) !== '' && (num(l.total) ?? 0) > 0 && num(l.avail) !== undefined)
+    .map((l) => ({ name: text(l.name), note: text(l.note), total: num(l.total) as number, avail: Math.max(0, num(l.avail) as number), rate: text(l.rate) }));
+}
+
 export function ParkingAvailabilityWidget({ config, live = true, height = 480 }: WidgetProps<ParkingAvailabilityCfg>) {
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#11161e', textColor: '#fff', accentColor: '#22c55e', ...c.style });
-  const lots: ParkingLot[] = c.lots ?? PARKING_LOTS;
+  const realScreen = useRealScreen();
+  const typed = parkingRows(c.lots);
+  const lots: ParkingLot[] = typed.length ? typed : realScreen ? [] : PARKING_LOTS;
   const visible = lots.slice(0, 4);
+  const typedFacility = ownLabel(c.facility, LIVE_DATA_SEEDED_LABELS.parkingFacility);
+  const facility = typedFacility ?? (realScreen ? '' : LIVE_DATA_SEEDED_LABELS.parkingFacility);
+  const demo = !realScreen && (typed.length === 0 || typedFacility === undefined);
   const now = useNowTick(30_000, live);
   const freshness = configFreshness(c, now);
 
@@ -312,11 +404,12 @@ export function ParkingAvailabilityWidget({ config, live = true, height = 480 }:
       <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: px(height, 0.0556), display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', color: '#fff' }}>
           <div>
-            <div style={{ color: '#74767d', fontSize: px(height, 0.0241), fontWeight: 700, letterSpacing: '0.06em' }}>PARKING · {(c.facility || 'SFO TERMINAL 2').toUpperCase()}</div>
+            <div style={{ color: '#74767d', fontSize: px(height, 0.0241), fontWeight: 700, letterSpacing: '0.06em' }}>{facility ? `PARKING · ${facility.toUpperCase()}` : 'PARKING'}</div>
             <div style={{ fontWeight: 800, fontSize: px(height, 0.0815), letterSpacing: '-0.02em' }}>Available spaces</div>
           </div>
-          <div style={{ color: '#74767d', fontSize: px(height, 0.0222), fontWeight: 600 }}>{freshness ? `Updated ${freshness}` : ''}</div>
+          <div style={{ color: '#74767d', fontSize: px(height, 0.0222), fontWeight: 600 }}>{freshness && typed.length ? `Updated ${freshness}` : ''}</div>
         </div>
+        {visible.length === 0 ? <NothingTyped color="#74767d" height={height} /> : (
         <div style={{ flex: 1, marginTop: px(height, 0.0278), display: 'grid', gridTemplateColumns: 'repeat(2,1fr)' }}>
           {visible.map((l, i) => {
             const pct = l.avail / l.total;
@@ -355,7 +448,9 @@ export function ParkingAvailabilityWidget({ config, live = true, height = 480 }:
             );
           })}
         </div>
+        )}
       </div>
+      {demo && <SampleStamp height={height} />}
     </div>
   );
 }

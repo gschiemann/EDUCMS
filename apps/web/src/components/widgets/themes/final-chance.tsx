@@ -12,7 +12,8 @@
  */
 
 import { useEffect, useState } from 'react';
-import { useLiveWeather } from '../use-live-weather';
+import { useLiveWeather, withDegrees } from '../use-live-weather';
+import { SampleStamp } from '../v2/_shared/live-data-truth';
 import { sceneCss } from '../scene-css';
 
 // ─── Palette ────────────────────────────────────────────────────────────
@@ -212,10 +213,12 @@ export function FinalChanceWeather({ config }: { config: any }) {
   const live = useLiveWeather(config);
   const temp = live.temp;
   const cond = live.condition;
-  const loc  = config.location || 'Springfield';
-  const hi   = config.high || 78;
-  const lo   = config.low || 64;
-  const icon = cond.toLowerCase().includes('rain') ? '🌧️' : cond.toLowerCase().includes('cloud') ? '⛅' : cond.toLowerCase().includes('snow') ? '❄️' : '☀️';
+  // Springfield / H 78 / L 64 are the builder's sample — they used to sit
+  // under a live temperature on real screens too.
+  const loc  = config.location || (live.sample ? 'Springfield' : live.locationName);
+  const hi   = live.sample ? Number(config.high || 78) : live.high;
+  const lo   = live.sample ? Number(config.low || 64) : live.low;
+  const icon = !live.available ? '' : cond.toLowerCase().includes('rain') ? '🌧️' : cond.toLowerCase().includes('cloud') ? '⛅' : cond.toLowerCase().includes('snow') ? '❄️' : '☀️';
   return (
     <GlassCard accent={FC.pink} emojis={[
       { e: '🌈', top: '6%', left: '85%', size: '1.6em', anim: 'fc-bounce-big' },
@@ -225,13 +228,14 @@ export function FinalChanceWeather({ config }: { config: any }) {
         <div style={{ fontSize: '4.5em', lineHeight: 1, filter: 'drop-shadow(0 6px 16px rgba(0,0,0,0.4))', animation: 'fc-bounce-big 4s ease-in-out infinite' }}>{icon}</div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.2em' }}>
-            <span style={{ fontSize: '4em', fontWeight: 700, lineHeight: 0.9, color: FC.ink, letterSpacing: '-0.03em' }}>{temp}°</span>
-            <span style={{ fontSize: '1.4em', fontWeight: 600, color: FC.gold }}>F</span>
+            <span style={{ fontSize: '4em', fontWeight: 700, lineHeight: 0.9, color: FC.ink, letterSpacing: '-0.03em' }}>{withDegrees(temp)}</span>
+            {live.available && <span style={{ fontSize: '1.4em', fontWeight: 600, color: FC.gold }}>F</span>}
           </div>
           <div style={{ fontSize: '1.4em', fontWeight: 600, color: FC.inkSoft, marginTop: '0.15em' }}>{cond}</div>
-          <div style={{ fontSize: '1em', fontWeight: 500, color: FC.inkMute, marginTop: '0.2em' }}>📍 {loc}  •  H {hi}° / L {lo}°</div>
+          {live.available && <div style={{ fontSize: '1em', fontWeight: 500, color: FC.inkMute, marginTop: '0.2em' }}>{loc ? `📍 ${loc}  •  ` : ''}H {withDegrees(hi)} / L {withDegrees(lo)}</div>}
         </div>
       </div>
+      {live.sample && <SampleStamp />}
     </GlassCard>
   );
 }

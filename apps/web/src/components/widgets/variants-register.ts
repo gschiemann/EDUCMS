@@ -1207,6 +1207,25 @@ function celebrationSeed(defaults: Record<string, unknown> | undefined): Record<
   return out;
 }
 
+/**
+ * What a freshly dropped Live Data / Transit board is seeded with: its look
+ * and its display settings (accent, 12/24-hour, base currency, exchange
+ * label), never its sample content. Lane B4 (2026-09-27): the seed used to
+ * save "Springfield, IL · AQI 62", "SFO · TERMINAL 2", flight UA 504 and a
+ * wire-service credit into every new zone, where a real screen showed them as
+ * if someone had entered them. The builder still shows the sample (stamped
+ * SAMPLE — v2/_shared/live-data-truth.tsx) and the Properties panel still
+ * lists every field (it reads the registry, not this seed).
+ */
+const LIVE_DATA_SETTING_KEYS = new Set(['style', 'accent', 'hour12', 'base', 'units', 'timezone', 'exchange']);
+function liveDataSeed(defaults: Record<string, unknown> | undefined): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(defaults || {})) {
+    if (LIVE_DATA_SETTING_KEYS.has(k) || /Color$/.test(k)) out[k] = v;
+  }
+  return out;
+}
+
 for (const w of ALL_V2_WIDGETS) {
   const canonicalType = V2_CATEGORY_TO_CANONICAL[w.category];
   if (!canonicalType) {
@@ -1240,7 +1259,9 @@ for (const w of ALL_V2_WIDGETS) {
     // still shows the sample (the component's own fallback), a real screen
     // shows blank (v2/_shared/celebration-sample.ts), and the panel still
     // lists every field (it reads the registry, not this seed).
-    defaultConfig: canonicalType === 'CELEBRATION' ? celebrationSeed(w.defaults) : w.defaults || {},
+    defaultConfig: canonicalType === 'CELEBRATION' ? celebrationSeed(w.defaults)
+      : canonicalType === 'LIVE_DATA' ? liveDataSeed(w.defaults)
+      : w.defaults || {},
     // Business-line scope — VariantPicker hides a vertical-scoped widget
     // from every other vertical's palette (a healthcare widget never
     // shows in a gym, a celebration never lands in a restaurant).

@@ -19,7 +19,8 @@
 
 import { useEffect, useState } from 'react';
 import { resolveCountdownTarget } from '../countdown-utils';
-import { useLiveWeather } from '../use-live-weather';
+import { useLiveWeather, withDegrees } from '../use-live-weather';
+import { SampleStamp } from '../v2/_shared/live-data-truth';
 import { sceneCss } from '../scene-css';
 import { useElementSize } from '../v2/_shared/useElementSize';
 
@@ -508,7 +509,7 @@ export function DinerChalkboardWeather({ config }: { config: any }) {
   const live = useLiveWeather(config);
   const temp = live.temp;
   const cond = live.condition;
-  const icon = cond.toLowerCase().includes('rain') ? '🌧️' : cond.toLowerCase().includes('cloud') ? '⛅' : cond.toLowerCase().includes('snow') ? '❄️' : '☀️';
+  const icon = !live.available ? '' : cond.toLowerCase().includes('rain') ? '🌧️' : cond.toLowerCase().includes('cloud') ? '⛅' : cond.toLowerCase().includes('snow') ? '❄️' : '☀️';
   return (
     <div ref={ref} className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '6%', fontSize: rootEm(width, height, 0.1, 0.08) }}>
       <div style={{
@@ -521,9 +522,10 @@ export function DinerChalkboardWeather({ config }: { config: any }) {
         textShadow: `1px 1px 0 rgba(0,0,0,0.2)`, padding: '4%',
       }}>
         <div style={{ fontSize: '2.4em', lineHeight: 1, filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))' }}>{icon}</div>
-        <div style={{ fontSize: '2.2em', fontWeight: 700, lineHeight: 1, marginTop: '0.1em' }}>{temp}°</div>
+        <div style={{ fontSize: '2.2em', fontWeight: 700, lineHeight: 1, marginTop: '0.1em' }}>{withDegrees(temp)}</div>
         <div style={{ fontSize: '1.1em', fontWeight: 600, opacity: 0.85, marginTop: '0.05em' }}>{cond}</div>
       </div>
+      {live.sample && <SampleStamp />}
     </div>
   );
 }

@@ -25,7 +25,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { EditableText } from './EditableText';
 import { calendarDaysUntil, resolveCountdownTarget } from '../countdown-utils';
-import { useLiveWeather } from '../use-live-weather';
+import { useLiveWeather, withDegrees } from '../use-live-weather';
+import { SampleStamp } from '../v2/_shared/live-data-truth';
 import { sceneCss } from '../scene-css';
 
 // ─── Palette pulled from the scene illustration ─────────────────────────
@@ -550,9 +551,10 @@ export function BackToSchoolWeather({ config }: { config: any }) {
         padding: '4%',
       }}>
         <div style={{ fontSize: '2.6em', lineHeight: 1, filter: 'drop-shadow(0 3px 6px rgba(0,0,0,0.3))' }}>{icon}</div>
-        <div style={{ fontSize: '2.4em', fontWeight: 700, lineHeight: 1, marginTop: '0.1em' }}>{temp}°</div>
+        <div style={{ fontSize: '2.4em', fontWeight: 700, lineHeight: 1, marginTop: '0.1em' }}>{withDegrees(temp)}</div>
         <div style={{ fontSize: '1.2em', fontWeight: 600, opacity: 0.92, marginTop: '0.05em' }}>{cond}</div>
       </div>
+      {live.sample && <SampleStamp />}
     </div>
   );
 }

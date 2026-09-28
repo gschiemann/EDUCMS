@@ -34,21 +34,48 @@
  * The condition string is derived from weather.weatherCode via the
  * WMO bucket helper. Override (config.condition) wins over live if
  * set so demo/drill scenarios still work.
+ *
+ * ── A REAL SCREEN NEVER SHOWS THE SAMPLE (lane B4, 2026-09-27) ──────
+ * With no location, or a location whose fetch failed, every themed variant
+ * used to paint "72° Sunny" — on the lobby screen, as the current weather.
+ * Now, under `RenderSurfaceProvider surface="player"`, a missing reading is
+ * a dash (`temp`/`high`/`low` = '—', `condition`/`icon` = '') and
+ * `available` is false so a variant can drop its condition art. The builder
+ * keeps the 72° sample so a tile is never blank, and says so: `sample` is
+ * true there and the variants stamp it SAMPLE. A refresh that fails keeps
+ * the last good reading for up to an hour, then lets it go — a reading from
+ * this morning is not the weather now.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { fetchWeather, getWMO } from './weather-api';
+import { useRenderSurface } from './render-surface';
+
+/** What a missing number reads as on a real screen. */
+export const NO_READING = '—';
+/** How long a reading survives failed refreshes before the screen lets it go. */
+export const WEATHER_HOLD_MS = 60 * 60 * 1000;
 
 export interface LiveWeatherResult {
-  temp: number;
-  high: number;
-  low: number;
+  /** A number, or '—' on a real screen with no reading. */
+  temp: number | string;
+  high: number | string;
+  low: number | string;
   condition: string;
   icon: string;
   locationName: string;
   unit: '°F' | '°C';
   loading: boolean;
   source: 'live' | 'override' | 'default';
+  /** A reading (live or typed) is on show — false only on a real screen with none. */
+  available: boolean;
+  /** The builder is showing the 72° sample (no location, or its fetch failed). */
+  sample: boolean;
+}
+
+/** "72°" for a reading, the bare dash for none — never "—°". */
+export function withDegrees(t: number | string): string {
+  return typeof t === 'number' ? `${t}°` : t;
 }
 
 /** Map a WMO code → emoji for variants that want a quick glyph. */
@@ -66,60 +93,83 @@ function emojiForCode(code: number | null | undefined): string {
 }
 
 export function useLiveWeather(config: any): LiveWeatherResult {
+  const realScreen = useRenderSurface() === 'player';
   const location = (config?.location || config?.zipCode || '').trim();
   const isCelsius = ['celsius', 'metric', 'c'].includes(String(config?.units || '').toLowerCase());
   const unit: '°F' | '°C' = isCelsius ? '°C' : '°F';
   const [weather, setWeather] = useState<any>(null);
   const [loading, setLoading] = useState(!!location);
+  // When the reading on show last arrived — a failed refresh keeps it only
+  // while it is younger than WEATHER_HOLD_MS.
+  const goodAt = useRef(0);
 
   useEffect(() => {
+    // A new location owes nothing to the old one's reading.
+    goodAt.current = 0;
     if (!location) { setLoading(false); setWeather(null); return; }
     let cancelled = false;
     setLoading(true);
+    const take = (data: Awaited<ReturnType<typeof fetchWeather>>) => {
+      if (cancelled) return;
+      if (data) {
+        goodAt.current = Date.now();
+        setWeather(data);
+      } else if (Date.now() - goodAt.current > WEATHER_HOLD_MS) {
+        setWeather(null);
+      }
+    };
     fetchWeather(location, isCelsius).then((data) => {
       if (cancelled) return;
-      setWeather(data);
+      take(data);
       setLoading(false);
     });
     // Refresh every 15 minutes (matches the legacy widget cadence).
     const t = setInterval(() => {
-      fetchWeather(location, isCelsius).then((data) => {
-        if (!cancelled) setWeather(data);
-      });
+      fetchWeather(location, isCelsius).then(take);
     }, 15 * 60 * 1000);
     return () => { cancelled = true; clearInterval(t); };
   }, [location, isCelsius]);
 
   // Resolve each field. Operator's explicit override wins over live;
-  // live wins over hard defaults. Source flag tells the variant
-  // whether to show a "demo data" indicator if it wants to.
+  // live wins over the sample, and the sample never reaches a real screen.
+  const given = (v: unknown) => v != null && v !== '';
   const overrideTemp = (config?.tempF ?? config?.staticTemp);
   const liveTemp = weather?.temp;
-  const temp = overrideTemp != null && overrideTemp !== ''
+  const hasOverride = given(overrideTemp);
+  const available = hasOverride || liveTemp != null;
+  const temp: number | string = hasOverride
     ? Number(overrideTemp)
-    : (liveTemp != null ? liveTemp : 72);
+    : (liveTemp != null ? liveTemp : realScreen ? NO_READING : 72);
 
   const overrideHigh = config?.high;
-  const high = overrideHigh != null && overrideHigh !== ''
+  const high: number | string = given(overrideHigh)
     ? Number(overrideHigh)
     : (weather?.high ?? temp);
 
   const overrideLow = config?.low;
-  const low = overrideLow != null && overrideLow !== ''
+  const low: number | string = given(overrideLow)
     ? Number(overrideLow)
     : (weather?.low ?? temp);
 
   const overrideCondition = (config?.condition || config?.staticDesc || '').trim();
-  let condition = overrideCondition || (weather?.weatherCode != null ? getWMO(weather.weatherCode).label : 'Sunny');
+  const condition = overrideCondition
+    || (weather?.weatherCode != null ? getWMO(weather.weatherCode).label : realScreen ? '' : 'Sunny');
 
+  // The icon states a condition, so a real screen draws one only for a real
+  // weather code (or an icon someone chose) — never the sample's sun.
   const overrideIcon = (config?.staticIcon || '').trim();
-  const icon = overrideIcon || emojiForCode(weather?.weatherCode);
+  const icon = overrideIcon
+    || (weather?.weatherCode != null || !realScreen ? emojiForCode(weather?.weatherCode) : '');
 
   const locationName = weather?.locationName || location || '';
 
   let source: 'live' | 'override' | 'default' = 'default';
-  if (overrideTemp != null && overrideTemp !== '') source = 'override';
+  if (hasOverride) source = 'override';
   else if (weather) source = 'live';
 
-  return { temp, high, low, condition, icon, locationName, unit, loading, source };
+  return {
+    temp, high, low, condition, icon, locationName, unit, loading, source,
+    available: available || !realScreen,
+    sample: !realScreen && !available,
+  };
 }

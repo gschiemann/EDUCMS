@@ -20,7 +20,8 @@ import { useEffect, useState } from 'react';
 // 2026-05-03 — operator: no military time anywhere. Format the time half
 // of "Period 1: 8:00 - 8:50" lines through the shared 12-hour helper.
 import { formatTime12 } from '@/lib/format-time';
-import { useLiveWeather } from '../use-live-weather';
+import { useLiveWeather, withDegrees } from '../use-live-weather';
+import { SampleStamp } from '../v2/_shared/live-data-truth';
 import { sceneCss } from '../scene-css';
 import { useElementSize } from '../v2/_shared/useElementSize';
 
@@ -403,7 +404,7 @@ export function MSHallWeather({ config }: { config: any }) {
   const live = useLiveWeather(config);
   const temp = live.temp;
   const cond = live.condition;
-  const icon = cond.toLowerCase().includes('rain') ? '🌧️' : cond.toLowerCase().includes('cloud') ? '⛅' : '☀️';
+  const icon = !live.available ? '' : cond.toLowerCase().includes('rain') ? '🌧️' : cond.toLowerCase().includes('cloud') ? '⛅' : '☀️';
   const { ref, width, height } = useElementSize<HTMLDivElement>();
   // Was `min(15cqw, 1em)` — the `1em` arm always won because nothing sets a
   // font-size above a widget, so "Sunny" painted at 16px on a 4K wall.
@@ -425,7 +426,7 @@ export function MSHallWeather({ config }: { config: any }) {
         <div style={{ position: 'absolute', top: '6px', left: '50%', transform: 'translateX(-50%)', width: '20%', height: '4px', background: '#222', borderRadius: '4px' }} />
         
         <div style={{ fontSize: '2.5em', lineHeight: 1, filter: 'drop-shadow(0 2px 8px rgba(255,255,255,0.2))' }}>{icon}</div>
-        <div style={{ fontSize: '2.2em', fontWeight: 300, lineHeight: 1.1, marginTop: '5%' }}>{temp}°</div>
+        <div style={{ fontSize: '2.2em', fontWeight: 300, lineHeight: 1.1, marginTop: '5%' }}>{withDegrees(temp)}</div>
         <div style={{ fontSize: '1em', fontWeight: 500, color: '#AAA' }}>{cond}</div>
         
         {/* Magnet/Tape */}
@@ -438,6 +439,7 @@ export function MSHallWeather({ config }: { config: any }) {
           <div style={{ width: '14px', height: '14px', borderRadius: '50%', background: '#C0392B' }} />
         </div>
       </div>
+      {live.sample && <SampleStamp />}
     </div>
   );
 }
