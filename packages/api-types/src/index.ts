@@ -1000,6 +1000,9 @@ export * from './sports-rules';
 // sport's result model (sets, dual team points, low score), never from the
 // raw score columns. Every surface that names a winner reads it.
 export * from './sports-result';
+// K-12 launch lane A4 (K12-F37) — the postgame hold: how long a pushed board
+// keeps the final result up before the screens return to their schedule.
+export * from './sports-postgame';
 export * from './streaming';
 export * from './streaming-presets';
 export * from './billing';

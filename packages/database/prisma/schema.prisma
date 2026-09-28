@@ -3199,12 +3199,15 @@ model Game {
 
   // 2026-08-10 — Inputs-wave SCHED: schedule game mode. When the operator
   // arms auto-push, this is the moment the board goes up on the selected
-  // screens: scheduledAt − 10 minutes (baked default, no knob). NULL means
-  // "nothing pending" — not armed, already pushed, cancelled at FINAL, or
+  // screens: scheduledAt − 10 minutes (baked default, no knob). 2026-09-27
+  // (K12-F37): once the game is FINAL it is instead the moment its postgame
+  // hold ends and those screens go back to their schedule (the return time
+  // also rides the AUTO_PUSH event as `returnAt`). NULL means "nothing
+  // pending" — not armed, already pushed and not holding, returned, or
   // disarmed. The GameScheduleService sweep claims due rows by atomically
   // nulling this column (UPDATE … RETURNING — replica-safe, like the
   // webhook-retry worker), so a value survives only until it fires. Which
-  // screens/surface (and the saved state to restore at FINAL) rides a
+  // screens/surface (and the saved state to restore after the game) rides a
   // latest-wins AUTO_PUSH GameEvent. Nullable → purely additive.
   autoPushAt DateTime? @map("auto_push_at")
 

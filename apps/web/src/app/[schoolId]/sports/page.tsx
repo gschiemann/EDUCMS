@@ -296,8 +296,10 @@ function GameCard({
                 <Clock className="h-3 w-3" />
                 {when}
                 {/* Inputs-wave SCHED — a pending auto-push (Game.autoPushAt
-                    set) rides the same list payload: no extra fetch. */}
-                {g.autoPushAt && (
+                    set) rides the same list payload: no extra fetch. On a
+                    FINAL game the column is the postgame hold's return
+                    time (K12-F37), not a board about to go up. */}
+                {g.autoPushAt && g.status !== 'FINAL' && (
                   <span
                     className="inline-flex items-center text-[9px] font-black tracking-widest text-indigo-700 bg-indigo-50 border border-indigo-200 px-1 py-px rounded"
                     title="Schedule game mode — the board goes up automatically 10 minutes before start"

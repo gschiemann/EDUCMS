@@ -9,7 +9,7 @@
  * zoned ISO form the client now sends). Same in-memory Prisma fake shape
  * as sports.service.spec.ts — no DB required.
  */
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { SportsService } from './sports.service';
 
 // ── in-memory Prisma fake (sports.service.spec.ts pattern) ─────
@@ -124,14 +124,18 @@ function setup() {
   const signer = { signMessage: jest.fn(() => ({ eventId: 'e', signature: 's' })) };
   const sponsorsService = { listActive: jest.fn().mockResolvedValue([]) };
   const flags = { isEnabledAsync: jest.fn().mockResolvedValue(false) };
-  const service = new SportsService(
-    prisma as any,
-    redis as any,
-    signer as any,
-    sponsorsService as any,
-    flags as any,
-  );
-  return { service, game, gameEvent, screen, auditLog, redis, signer, rawCalls };
+  const makeService = () =>
+    new SportsService(
+      prisma as any,
+      redis as any,
+      signer as any,
+      sponsorsService as any,
+      flags as any,
+    );
+  const service = makeService();
+  // `makeService` — a second process over the SAME database (a restart, or
+  // another replica): fresh in-memory caches, nothing carried over.
+  return { service, makeService, game, gameEvent, screen, auditLog, redis, signer, rawCalls };
 }
 
 const KICKOFF = () => new Date(Date.now() + 60 * 60_000); // an hour out
@@ -280,7 +284,7 @@ describe('SportsService — sweepDueAutoPushes', () => {
     redis.publish.mockClear();
 
     const res = await service.sweepDueAutoPushes();
-    expect(res).toEqual({ found: 1, pushed: 1, blocked: 0 });
+    expect(res).toEqual({ found: 1, pushed: 1, blocked: 0, returned: 0 });
     // Claim consumed the fire time; screens now show the board.
     expect(game.rows.find((r) => r.id === g.id).autoPushAt).toBeNull();
     expect(screen.rows.find((s) => s.id === 's1').activeBoardGameId).toBe(g.id);
@@ -339,21 +343,27 @@ describe('SportsService — sweepDueAutoPushes', () => {
     row.status = 'FINAL';
 
     const res = await service.sweepDueAutoPushes();
-    expect(res).toEqual({ found: 1, pushed: 0, blocked: 0 });
+    expect(res).toEqual({ found: 1, pushed: 0, blocked: 0, returned: 0 });
     expect(screen.rows.find((s) => s.id === 's1').activeBoardGameId).toBeNull();
   });
 });
 
-// ── auto-revert at FINAL ───────────────────────────────────────
+// ── the screens go back at FINAL (a postgame hold of 0) ────────
+//
+// K12-F37 — a pushed game now HOLDS its final result on those screens for
+// its postgame hold (default POSTGAME_HOLD_DEFAULT_MINUTES; the next describe
+// block). A hold of 0 is the old instant return, so these specs of the return
+// MECHANICS (exactly the pushed screens, restoring pointers, disarm, both
+// FINAL paths) pick 0 and keep proving them.
 
-describe('SportsService — onGameFinal revert', () => {
-  /** Arm + fire the sweep so the game has a REAL completed push. */
-  async function armAndPush(ctx: ReturnType<typeof setup>, g: any, screenIds: string[]) {
-    await ctx.service.setAutoPush(TENANT, g.id, { armed: true, screenIds });
-    ctx.game.rows.find((r) => r.id === g.id).autoPushAt = new Date(Date.now() - 1000);
-    await ctx.service.sweepDueAutoPushes();
-  }
+/** Arm + fire the sweep so the game has a REAL completed push. */
+async function armAndPush(ctx: ReturnType<typeof setup>, g: any, screenIds: string[], holdMin?: number) {
+  await ctx.service.setAutoPush(TENANT, g.id, { armed: true, screenIds, ...(holdMin === undefined ? {} : { holdMin }) });
+  ctx.game.rows.find((r) => r.id === g.id).autoPushAt = new Date(Date.now() - 1000);
+  await ctx.service.sweepDueAutoPushes();
+}
 
+describe('SportsService — onGameFinal revert (postgame hold 0)', () => {
   it('setStatus FINAL reverts EXACTLY the pushed screens and disarms', async () => {
     const ctx = setup();
     const { service, screen, auditLog } = ctx;
@@ -363,7 +373,7 @@ describe('SportsService — onGameFinal revert', () => {
     // s3 was pushed MANUALLY (not part of the armed set) — the revert must
     // never touch it.
     seedScreen(screen, 's3', { activeBoardGameId: g.id, activeBoardSurface: 'BOARD' });
-    await armAndPush(ctx, g, ['s1', 's2']);
+    await armAndPush(ctx, g, ['s1', 's2'], 0);
 
     await service.setStatus(TENANT, g.id, { status: 'FINAL' });
     expect(screen.rows.find((s) => s.id === 's1').activeBoardGameId).toBeNull();
@@ -395,6 +405,7 @@ describe('SportsService — onGameFinal revert', () => {
         armed: true,
         screenIds: ['s1', 's2'],
         surface: 'BOARD',
+        holdMin: 0,
         pushedAt: new Date().toISOString(),
         savedState: [
           { screenId: 's1', prevGameId: prevLive.id, prevSurface: 'RIBBON' },
@@ -450,7 +461,7 @@ describe('SportsService — onGameFinal revert', () => {
     const { service, game, screen } = ctx;
     const g: any = await newGame(service, { sport: 'volleyball', scheduledAt: KICKOFF().toISOString() });
     seedScreen(screen, 's1');
-    await armAndPush(ctx, g, ['s1']);
+    await armAndPush(ctx, g, ['s1'], 0);
     expect(screen.rows.find((s) => s.id === 's1').activeBoardGameId).toBe(g.id);
     // Two sets already won; 24-10 in the third — one rally from the match.
     const row = game.rows.find((r) => r.id === g.id);
@@ -477,7 +488,7 @@ describe('SportsService — onGameFinal revert', () => {
     const { service, game, screen } = ctx;
     const g: any = await newGame(service, { sport: 'volleyball', scheduledAt: KICKOFF().toISOString() });
     seedScreen(screen, 's1');
-    await armAndPush(ctx, g, ['s1']);
+    await armAndPush(ctx, g, ['s1'], 0);
     const row = game.rows.find((r) => r.id === g.id);
     row.status = 'LIVE';
     row.stats = { homeSets: 2, awaySets: 0 };
@@ -489,5 +500,146 @@ describe('SportsService — onGameFinal revert', () => {
     expect(screen.rows.find((s) => s.id === 's1').activeBoardGameId).toBeNull();
     const cfg: any = await service.getAutoPush(TENANT, g.id);
     expect(cfg.armed).toBe(false);
+  });
+});
+
+// ── K12-F37 — the postgame hold ────────────────────────────────
+
+describe('K12-F37 — the final result stays up for the postgame hold, then the screens return', () => {
+  /** A finished game whose board was auto-pushed to s1 (hold as given). */
+  async function finishedOnAir(holdMin?: number) {
+    const ctx = setup();
+    const g: any = await newGame(ctx.service, { scheduledAt: KICKOFF().toISOString() });
+    seedScreen(ctx.screen, 's1');
+    await armAndPush(ctx, g, ['s1'], holdMin);
+    await ctx.service.setStatus(TENANT, g.id, { status: 'FINAL' });
+    const row = () => ctx.game.rows.find((r) => r.id === g.id);
+    const onAir = () => ctx.screen.rows.find((sc) => sc.id === 's1').activeBoardGameId === g.id;
+    /** Let the hold run out, the way the clock would. */
+    const expire = () => {
+      row().autoPushAt = new Date(Date.now() - 1000);
+    };
+    return { ...ctx, g, row, onAir, expire };
+  }
+
+  it('F37-1 a FINAL keeps the result on the pushed screens for the default hold, not an instant cut', async () => {
+    const t0 = Date.now();
+    const { service, g, row, onAir, auditLog } = await finishedOnAir();
+    expect(onAir()).toBe(true);
+    const due = row().autoPushAt.getTime() - t0;
+    expect(due).toBeGreaterThanOrEqual(10 * 60_000 - 1000);
+    expect(due).toBeLessThanOrEqual(10 * 60_000 + 5000);
+    const cfg: any = await service.getAutoPush(TENANT, g.id);
+    expect(cfg).toMatchObject({ armed: true, holdMin: 10 });
+    expect(cfg.returnAt).toBe(row().autoPushAt.toISOString());
+    const held = auditLog.rows.find((a) => a.action === 'SPORTS_POSTGAME_HOLD');
+    expect(JSON.parse(held.details)).toMatchObject({ screenIds: ['s1'], holdMin: 10 });
+    // Nothing is due yet: the sweep leaves the result up.
+    expect((await service.sweepDueAutoPushes()).found).toBe(0);
+    expect(onAir()).toBe(true);
+  });
+
+  it('F37-2 when the hold runs out the sweep gives the screens back and ends schedule game mode', async () => {
+    const { service, g, onAir, expire, auditLog } = await finishedOnAir(5);
+    expire();
+    expect(await service.sweepDueAutoPushes()).toEqual({ found: 1, pushed: 0, blocked: 0, returned: 1 });
+    expect(onAir()).toBe(false);
+    const reverted = auditLog.rows.find((a) => a.action === 'SPORTS_AUTO_REVERTED');
+    expect(JSON.parse(reverted.details)).toMatchObject({ screenIds: ['s1'], reason: 'hold-ended' });
+    expect(((await service.getAutoPush(TENANT, g.id)) as any).armed).toBe(false);
+  });
+
+  it('F37-3 a restart during the hold loses nothing: another process returns the screens on time', async () => {
+    const { makeService, onAir, expire } = await finishedOnAir(15);
+    const restarted = makeService();
+    expect((await restarted.sweepDueAutoPushes()).found).toBe(0);
+    expect(onAir()).toBe(true);
+    expire();
+    expect((await restarted.sweepDueAutoPushes()).returned).toBe(1);
+    expect(onAir()).toBe(false);
+  });
+
+  it('F37-4 "Return screens now" returns them once, attributed; the sweep then has nothing to do', async () => {
+    const { service, g, row, onAir, auditLog } = await finishedOnAir();
+    expect(await service.returnPostgameScreens(TENANT, g.id, 'user-7')).toEqual({ returned: true });
+    expect(onAir()).toBe(false);
+    expect(row().autoPushAt).toBeNull();
+    const who = auditLog.rows.find((a) => a.action === 'SPORTS_POSTGAME_RETURNED');
+    expect(who.userId).toBe('user-7');
+    expect(JSON.parse(who.details)).toMatchObject({ why: 'returned-early', screenIds: ['s1'] });
+    // A second tap, and the sweep, find nothing held.
+    expect(await service.returnPostgameScreens(TENANT, g.id, 'user-7')).toEqual({ returned: false });
+    expect((await service.sweepDueAutoPushes()).found).toBe(0);
+  });
+
+  it('F37-5 a correction during the hold keeps the board up; the corrected final starts a fresh hold', async () => {
+    const { service, g, row, onAir, gameEvent, auditLog } = await finishedOnAir();
+    await service.reopenGame(TENANT, g.id, { reason: 'Wrong final score entered' }, 'user-7');
+    expect(row().status).toBe('LIVE');
+    expect(row().autoPushAt).toBeNull();
+    expect(onAir()).toBe(true);
+    const latest = [...gameEvent.rows].filter((e) => e.type === 'AUTO_PUSH').pop();
+    expect(latest.payload.returnAt).toBeUndefined();
+    expect(latest.payload.pushedAt).toBeTruthy();
+    const reopened = auditLog.rows.find((a) => a.action === 'SPORTS_GAME_REOPENED');
+    expect(JSON.parse(reopened.details).postgameHoldCancelled).toBe(true);
+    // A sweep claim that raced the reopen (it claimed the hold, the reopen
+    // committed, then it read the reopened game's config) neither returns
+    // the screens nor pushes a second time over the saved state.
+    const savedBefore = JSON.stringify(latest.payload.savedState);
+    row().autoPushAt = new Date(Date.now() - 1000);
+    expect(await service.sweepDueAutoPushes()).toEqual({ found: 1, pushed: 0, blocked: 0, returned: 0 });
+    expect(onAir()).toBe(true);
+    const after = [...gameEvent.rows].filter((e) => e.type === 'AUTO_PUSH').pop();
+    expect(JSON.stringify(after.payload.savedState)).toBe(savedBefore);
+    // Ended again: a new hold from the new final.
+    await service.setStatus(TENANT, g.id, { status: 'FINAL' });
+    expect(onAir()).toBe(true);
+    expect(row().autoPushAt).toBeInstanceOf(Date);
+  });
+
+  it('F37-6 changing the hold during the hold moves the return; one already run out returns now', async () => {
+    const { service, g, row, onAir } = await finishedOnAir(30);
+    const endedAt = new Date(row().endedAt).getTime();
+    await service.setAutoPush(TENANT, g.id, { holdMin: 60 });
+    expect(row().autoPushAt.getTime()).toBe(endedAt + 60 * 60_000);
+    expect(onAir()).toBe(true);
+    // The game ended 20 minutes ago; a 15-minute hold has already run out.
+    row().endedAt = new Date(Date.now() - 20 * 60_000);
+    await service.setAutoPush(TENANT, g.id, { holdMin: 15 });
+    expect(onAir()).toBe(false);
+    expect(row().autoPushAt).toBeNull();
+  });
+
+  it('F37-7 turning schedule game mode off during the hold gives the screens back now', async () => {
+    const { service, g, onAir, auditLog } = await finishedOnAir();
+    await service.setAutoPush(TENANT, g.id, { armed: false }, 'user-7');
+    expect(onAir()).toBe(false);
+    const who = auditLog.rows.find((a) => a.action === 'SPORTS_POSTGAME_RETURNED');
+    expect(JSON.parse(who.details).why).toBe('disarmed');
+  });
+
+  it('F37-8 the hold is validated, kept across a re-arm, and a finished game cannot be re-armed', async () => {
+    const ctx = setup();
+    const g: any = await newGame(ctx.service, { scheduledAt: KICKOFF().toISOString() });
+    seedScreen(ctx.screen, 's1');
+    seedScreen(ctx.screen, 's2');
+    await expect(
+      ctx.service.setAutoPush(TENANT, g.id, { armed: true, screenIds: ['s1'], holdMin: 7 }),
+    ).rejects.toThrow(BadRequestException);
+    await expect(ctx.service.setAutoPush(TENANT, g.id, { holdMin: 5 })).rejects.toThrow(BadRequestException);
+    await ctx.service.setAutoPush(TENANT, g.id, { armed: true, screenIds: ['s1'], holdMin: 30 });
+    // A changed screen list keeps the hold.
+    await ctx.service.setAutoPush(TENANT, g.id, { armed: true, screenIds: ['s1', 's2'] });
+    expect(((await ctx.service.getAutoPush(TENANT, g.id)) as any).holdMin).toBe(30);
+    // … and so does the sweep's push record.
+    ctx.game.rows.find((r) => r.id === g.id).autoPushAt = new Date(Date.now() - 1000);
+    await ctx.service.sweepDueAutoPushes();
+    const pushed = [...ctx.gameEvent.rows].filter((e) => e.type === 'AUTO_PUSH').pop();
+    expect(pushed.payload).toMatchObject({ holdMin: 30, pushedAt: expect.any(String) });
+    await ctx.service.setStatus(TENANT, g.id, { status: 'FINAL' });
+    await expect(
+      ctx.service.setAutoPush(TENANT, g.id, { armed: true, screenIds: ['s1'] }),
+    ).rejects.toThrow(ConflictException);
   });
 });

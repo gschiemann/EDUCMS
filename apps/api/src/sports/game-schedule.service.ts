@@ -8,9 +8,12 @@ import { consumeScheduleSweepWake } from './game-schedule-wake';
  * An operator who armed a game's auto-push shouldn't have to be at a
  * keyboard at kickoff minus ten: this sweep finds games whose
  * `autoPushAt` has arrived and puts their board on the selected screens
- * via SportsService.sweepDueAutoPushes. The claim is a single atomic
- * UPDATE … SET auto_push_at = NULL … RETURNING (webhook-retry pattern),
- * so two replicas can never double-fire the same game.
+ * via SportsService.sweepDueAutoPushes — or, for a finished game whose
+ * postgame hold has run out (K12-F37: `autoPushAt` then carries the return
+ * time), gives those screens back to their schedule. The claim is a single
+ * atomic UPDATE … SET auto_push_at = NULL … RETURNING (webhook-retry
+ * pattern), so two replicas can never double-fire the same game, and a
+ * restart during a hold loses nothing: the return time is in the row.
  *
  * Isolated + best-effort, modeled on ClockAdvanceService: the query is
  * tiny (an indexed auto_push_at <= NOW() scan), it has an overlap guard,
@@ -86,11 +89,14 @@ export class GameScheduleService implements OnModuleInit, OnModuleDestroy {
     }
     this.running = true;
     try {
-      const { found, pushed, blocked } = await this.sports.sweepDueAutoPushes();
+      const { found, pushed, blocked, returned } = await this.sports.sweepDueAutoPushes();
       this.idleTicksLeft = found === 0 ? GameScheduleService.IDLE_SWEEP_EVERY_TICKS - 1 : 0;
       if (pushed > 0 || blocked > 0) {
         this.logger.log(`auto-pushed ${pushed} game board(s)${blocked ? `, ${blocked} blocked (screen in use)` : ''}`);
       }
+      // K12-F37 — postgame holds that ran out: those screens are back on
+      // their schedule.
+      if (returned > 0) this.logger.log(`returned ${returned} game's screens after the postgame hold`);
     } catch (e: any) {
       this.logger.warn(`game schedule sweep failed: ${e?.message ?? e}`);
     } finally {

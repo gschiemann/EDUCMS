@@ -3461,5 +3461,18 @@
     "finalWon": "Final: ganó {team} {score}",
     "finalTie": "Final: empate {score}",
     "finalNone": "Final: no se registró un resultado"
+  },
+  "sportsPostgame": {
+    "holdLabel": "Después del final, mantener el resultado durante",
+    "holdNone": "nada (vuelve de inmediato a la programación)",
+    "holdMinutes": "{minutes, plural, one {# minuto} other {# minutos}}",
+    "boardUp": "El marcador está en pantalla.",
+    "boardGoesUp": "El marcador sale en pantalla a las {time}.",
+    "afterFinalHold": "Después del final se mantiene {minutes, plural, one {# minuto} other {# minutos}} y luego las pantallas vuelven a su programación.",
+    "afterFinalNow": "Al terminar el partido, las pantallas vuelven a su programación.",
+    "holdingUntil": "En pantallas hasta las {time}",
+    "returnNow": "Devolver las pantallas ahora",
+    "returning": "Devolviendo…",
+    "returnFailed": "No se pudieron devolver las pantallas. Inténtalo de nuevo."
   }
 }

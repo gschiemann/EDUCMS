@@ -65,6 +65,10 @@ import {
   appendSetScore,
   finalCueKey,
   gameResult,
+  // K-12 lane A4 — the postgame hold (sports-postgame.ts, K12-F37).
+  POSTGAME_HOLD_OPTIONS_MINUTES,
+  cleanPostgameHoldMinutes,
+  postgameHoldMinutes,
 } from '@cms/api-types';
 import type { RulesProfile, SportDefinition } from '@cms/api-types';
 import { SPONSOR_SPOT_SECONDS } from './sponsor.constants';
@@ -210,6 +214,13 @@ type AutoPushConfig = {
   surface: 'BOARD' | 'RIBBON' | 'SCOREBUG';
   savedState: AutoPushSavedScreen[] | null;
   pushedAt: string | null;
+  /** K12-F37 — the postgame hold the table picked, minutes (null = the
+   *  default, POSTGAME_HOLD_DEFAULT_MINUTES). */
+  holdMin: number | null;
+  /** K12-F37 — set while a finished game holds its result on the pushed
+   *  screens: when the schedule sweep returns them (ISO). Game.autoPushAt
+   *  carries the same instant as the sweep's claim predicate. */
+  returnAt: string | null;
 };
 
 /** A Game row as the engine reads it (Prisma returns every column). */
@@ -2890,6 +2901,21 @@ export class SportsService {
       surface: this.cleanSurface(p.surface),
       savedState,
       pushedAt: typeof p.pushedAt === 'string' ? p.pushedAt : null,
+      holdMin: cleanPostgameHoldMinutes(p.holdMin),
+      returnAt: typeof p.returnAt === 'string' ? p.returnAt : null,
+    };
+  }
+
+  /** The AUTO_PUSH event payload of a config (the latest-wins record). */
+  private autoPushPayload(config: AutoPushConfig): Record<string, unknown> {
+    return {
+      armed: config.armed,
+      screenIds: config.screenIds,
+      surface: config.surface,
+      ...(config.savedState ? { savedState: config.savedState } : {}),
+      ...(config.pushedAt ? { pushedAt: config.pushedAt } : {}),
+      ...(config.holdMin !== null ? { holdMin: config.holdMin } : {}),
+      ...(config.returnAt ? { returnAt: config.returnAt } : {}),
     };
   }
 
@@ -2943,6 +2969,12 @@ export class SportsService {
       autoPushAt: (game as { autoPushAt?: Date | null }).autoPushAt ?? null,
       pushedAt: armed && config ? config.pushedAt : null,
       leadMs: AUTO_PUSH_LEAD_MS,
+      // K12-F37 — how long the final result stays up after the game, the
+      // choices the card offers, and (during that hold) when the screens go
+      // back to their schedule.
+      holdMin: postgameHoldMinutes(config?.holdMin),
+      holdOptions: POSTGAME_HOLD_OPTIONS_MINUTES,
+      returnAt: armed && config ? config.returnAt : null,
     };
   }
 
@@ -2957,17 +2989,26 @@ export class SportsService {
   async setAutoPush(
     tenantId: string,
     id: string,
-    dto: { armed?: unknown; screenIds?: unknown; surface?: unknown },
+    dto: { armed?: unknown; screenIds?: unknown; surface?: unknown; holdMin?: unknown },
     actor?: CommandInput,
   ) {
     const game = await this.owned(tenantId, id);
     const actorCtx = resolveCommandContext(actor);
     const previousAutoPushAt = (game as { autoPushAt?: Date | null }).autoPushAt ?? null;
+    // K12-F37 — the postgame hold, when this request names one.
+    const holdMin = dto.holdMin === undefined ? undefined : cleanPostgameHoldMinutes(dto.holdMin);
+    if (holdMin === null) {
+      throw new BadRequestException({
+        code: 'POSTGAME_HOLD_INVALID',
+        message: `Keep the final result up for one of: ${POSTGAME_HOLD_OPTIONS_MINUTES.join(', ')} minutes.`,
+      });
+    }
     // K12-F34: the AUTO_PUSH event, the autoPushAt column and the audit row
     // commit together (the audit write used to be best-effort, after both).
+    // `autoPushAt: undefined` leaves the column as it is.
     const persist = async (
       payload: Record<string, unknown>,
-      autoPushAt: Date | null,
+      autoPushAt: Date | null | undefined,
       action: string,
       details: (eventId: string) => Record<string, unknown>,
     ) => {
@@ -2981,13 +3022,58 @@ export class SportsService {
             actorUserId: actorCtx.actor.kind === 'user' ? actorCtx.actor.userId ?? null : null,
           },
         });
-        await tx.game.update({ where: { id, tenantId }, data: { autoPushAt } });
+        if (autoPushAt !== undefined) await tx.game.update({ where: { id, tenantId }, data: { autoPushAt } });
         await this.auditRow(tx, tenantId, actor, action, id, details(ev.id));
       });
       this.invalidateBoardCache(id);
     };
 
+    // K12-F37 — a new postgame hold on its own (the card's "keep the final
+    // up for" choice), keeping everything else about the armed config. During
+    // the hold itself it moves the return: the new length counts from the end
+    // of the game, and one that has already run out returns the screens now.
+    if (dto.armed === undefined && holdMin !== undefined) {
+      const config = await this.latestAutoPush(id, { fresh: true });
+      if (!config?.armed) {
+        throw new BadRequestException({
+          code: 'AUTO_PUSH_NOT_ARMED',
+          message: 'Turn on schedule game mode first.',
+        });
+      }
+      let returnAt = config.returnAt;
+      let column: Date | undefined;
+      if (returnAt && game.status === 'FINAL') {
+        const endedMs = game.endedAt ? new Date(game.endedAt).getTime() : this.serverTimeMs();
+        const at = endedMs + holdMin * 60_000;
+        if (at <= this.serverTimeMs()) {
+          const next = { ...config, holdMin };
+          this.autoPushCache.set(id, next);
+          await this.returnPostgameScreens(tenantId, id, actor, 'hold-shortened', next);
+          return this.getAutoPush(tenantId, id);
+        }
+        returnAt = new Date(at).toISOString();
+        column = new Date(at);
+      }
+      const next: AutoPushConfig = { ...config, holdMin, returnAt };
+      await persist(this.autoPushPayload(next), column, 'SPORTS_POSTGAME_HOLD_SET', (eventId) => ({
+        eventId,
+        holdMin,
+        previousHoldMin: config.holdMin,
+        returnAt,
+      }));
+      this.autoPushCache.set(id, next);
+      if (column) wakeScheduleSweep();
+      return this.getAutoPush(tenantId, id);
+    }
+
     if (dto.armed !== true) {
+      // K12-F37 — turning schedule game mode off while a finished game holds
+      // its result gives the screens back to their schedule now; leaving
+      // them on a stale final with no return scheduled would strand them.
+      if (game.status === 'FINAL' && previousAutoPushAt) {
+        await this.returnPostgameScreens(tenantId, id, actor, 'disarmed');
+        return this.getAutoPush(tenantId, id);
+      }
       await persist({ armed: false }, null, 'SPORTS_AUTO_PUSH_DISARMED', (eventId) => ({
         eventId,
         previousAutoPushAt: previousAutoPushAt ? new Date(previousAutoPushAt).toISOString() : null,
@@ -2996,6 +3082,14 @@ export class SportsService {
       return this.getAutoPush(tenantId, id);
     }
 
+    // K12-F37 — a finished game has nothing to put up, and re-arming it would
+    // overwrite the config its postgame hold returns the screens from.
+    if (game.status === 'FINAL') {
+      throw new ConflictException({
+        code: 'AUTO_PUSH_GAME_FINAL',
+        message: 'This game is over. Reopen it to put its board up again.',
+      });
+    }
     const scheduledAt = game.scheduledAt ? new Date(game.scheduledAt) : null;
     if (!scheduledAt || Number.isNaN(scheduledAt.getTime())) {
       throw new BadRequestException(
@@ -3022,17 +3116,25 @@ export class SportsService {
     const surface = this.cleanSurface(dto.surface);
     const autoPushAt = new Date(scheduledAt.getTime() - AUTO_PUSH_LEAD_MS);
 
-    await persist({ armed: true, screenIds, surface }, autoPushAt, 'SPORTS_AUTO_PUSH_ARMED', (eventId) => ({
+    // K12-F37 — the postgame hold rides the armed config: this request's
+    // choice, else the one the game already had (re-arming with a changed
+    // screen list keeps it), else the default at FINAL.
+    const keptHold = holdMin ?? (await this.latestAutoPush(id, { fresh: true }))?.holdMin ?? null;
+    const armedPayload: Record<string, unknown> = {
+      armed: true,
       screenIds,
       surface,
+      ...(keptHold !== null ? { holdMin: keptHold } : {}),
+    };
+    await persist(armedPayload, autoPushAt, 'SPORTS_AUTO_PUSH_ARMED', (eventId) => ({
+      screenIds,
+      surface,
+      holdMin: keptHold,
       autoPushAt: autoPushAt.toISOString(),
       previousAutoPushAt: previousAutoPushAt ? new Date(previousAutoPushAt).toISOString() : null,
       eventId,
     }));
-    this.autoPushCache.set(
-      id,
-      this.parseAutoPushPayload({ armed: true, screenIds, surface }),
-    );
+    this.autoPushCache.set(id, this.parseAutoPushPayload(armedPayload));
     // Restore the sweep's cadence immediately — arming close to (or past)
     // kickoff−10 should put the board up within one tick, not one idle
     // window.
@@ -3054,7 +3156,7 @@ export class SportsService {
    * Fail-open PER GAME: one bad game (vanished screens, conflicting
    * operator, DB hiccup) must never kill the pass for the others.
    */
-  async sweepDueAutoPushes(): Promise<{ found: number; pushed: number; blocked: number }> {
+  async sweepDueAutoPushes(): Promise<{ found: number; pushed: number; blocked: number; returned: number }> {
     const due = await this.prisma.client.$queryRaw<Array<{ id: string; tenant_id: string }>>`
       UPDATE "games"
          SET "auto_push_at" = NULL
@@ -3064,11 +3166,13 @@ export class SportsService {
     `;
     let pushed = 0;
     let blocked = 0;
+    let returned = 0;
     for (const row of due ?? []) {
       try {
         const outcome = await this.executeAutoPush(row.tenant_id, row.id);
         if (outcome === 'pushed') pushed++;
         else if (outcome === 'blocked') blocked++;
+        else if (outcome === 'returned') returned++;
       } catch (err) {
         this.logger.warn(
           `auto-push failed (non-fatal) game=${row.id} tenant=${row.tenant_id}: ${
@@ -3077,14 +3181,17 @@ export class SportsService {
         );
       }
     }
-    return { found: due?.length ?? 0, pushed, blocked };
+    return { found: due?.length ?? 0, pushed, blocked, returned };
   }
 
-  /** Push one CLAIMED game's board to its armed screens. */
+  /**
+   * Act on one CLAIMED game: put its board up on its armed screens, or —
+   * K12-F37 — end its postgame hold and give the screens back.
+   */
   private async executeAutoPush(
     tenantId: string,
     gameId: string,
-  ): Promise<'pushed' | 'blocked' | 'skipped'> {
+  ): Promise<'pushed' | 'blocked' | 'returned' | 'skipped'> {
     // Fresh config read — see latestAutoPush: arming may have happened on
     // another process, and a stale screen list here pushes to the wrong
     // screens.
@@ -3097,7 +3204,22 @@ export class SportsService {
       where: { id: gameId, tenantId },
       select: { status: true },
     });
-    if (!game || game.status === 'FINAL') return 'skipped';
+    if (!game) return 'skipped';
+    // K12-F37 — the claim was a postgame hold running out. A game reopened
+    // for a correction since then keeps its board (the reopen cancelled the
+    // hold; the next final starts a new one).
+    if (config.returnAt) {
+      if (game.status !== 'FINAL') return 'skipped';
+      await this.returnPushedScreens(tenantId, gameId, config, 'hold-ended');
+      return 'returned';
+    }
+    if (game.status === 'FINAL') return 'skipped';
+    // This arming's push already completed (a re-arm writes a config with no
+    // pushedAt): a claim now is a stale one — a hold that a correction
+    // cancelled while the sweep held its claim — never a second push, which
+    // would re-capture the saved state and lose what the screens showed
+    // before the game.
+    if (config.pushedAt) return 'skipped';
 
     // The claim returns exactly what each screen showed when it was
     // claimed (read in the claim's own transaction), so FINAL can put back
@@ -3150,20 +3272,10 @@ export class SportsService {
     // latest-wins record. savedState + pushedAt together are the FINAL
     // hook's "a push actually completed" signal.
     const pushedAt = new Date().toISOString();
-    await this.record(gameId, 'AUTO_PUSH', {
-      armed: true,
-      screenIds: config.screenIds,
-      surface: config.surface,
-      savedState,
-      pushedAt,
-    });
-    this.autoPushCache.set(gameId, {
-      armed: true,
-      screenIds: config.screenIds,
-      surface: config.surface,
-      savedState,
-      pushedAt,
-    });
+    // The table's postgame hold (K12-F37) rides along unchanged.
+    const pushed: AutoPushConfig = { ...config, armed: true, savedState, pushedAt, returnAt: null };
+    await this.record(gameId, 'AUTO_PUSH', this.autoPushPayload(pushed));
+    this.autoPushCache.set(gameId, pushed);
     try {
       await this.prisma.client.auditLog.create({
         data: {
@@ -3194,11 +3306,17 @@ export class SportsService {
    *   1. Cancel a still-pending auto-push (a game ended before its own
    *      kickoff−10 must not have its board go UP afterwards).
    *   2. Show-Control slice 4 — clear any ACTIVE recalled SCENE (a
-   *      halftime/sponsor scene must not outlive the game).
-   *   3. If the armed config shows a completed push, revert it: hide the
-   *      board from EXACTLY the pushed screens, restore any screen whose
-   *      pre-push pointer was a different still-unfinished game, audit,
-   *      and disarm.
+   *      halftime/sponsor scene must not cover the final result).
+   *   3. K12-F37 — if the armed config shows a completed push, HOLD the
+   *      final result on those screens for the game's postgame hold
+   *      (default POSTGAME_HOLD_DEFAULT_MINUTES; the table picks it on the
+   *      schedule-game-mode card): the return time rides Game.autoPushAt, so
+   *      the schedule sweep — on any replica, after any restart — gives the
+   *      screens back when it arrives (returnPushedScreens). A hold of 0 gives
+   *      them back now, which is all this step did before: the final board
+   *      and the winning cue were cut the moment the game ended.
+   *   Emergency precedence is unchanged: a screen's manifest serves an alert
+   *   before any scoreboard, hold or not.
    */
   private async onGameFinal(tenantId: string, gameId: string): Promise<void> {
     try {
@@ -3227,61 +3345,44 @@ export class SportsService {
         (!sceneExpiresAt || Date.now() < sceneExpiresAt);
       if (sceneActive) await this.record(gameId, 'SCENE', { kind: 'clear' });
 
-      // 3 — revert a completed auto-push. Fresh read: the push may have
+      // 3 — the pushed screens (K12-F37). Fresh read: the push may have
       // happened on another process.
       const config = await this.latestAutoPush(gameId, { fresh: true });
       if (!config?.armed) return;
-      const saved = config.savedState ?? [];
-      if (config.pushedAt && saved.length > 0) {
-        const savedScreenIds = saved.map((e) => e.screenId);
-        // Scoped to EXACTLY the pushed ids — never undefined, which would
-        // also hide the game from screens an operator pushed manually.
-        await this.hideFromScreens(tenantId, gameId, savedScreenIds, {
-          actor: { kind: 'system', ref: 'auto-push-revert' },
-        });
-        // Put back screens whose pre-push pointer was a DIFFERENT game —
-        // only when that game still exists in this tenant and is not
-        // itself FINAL, and only if the screen is still free (the hide
-        // above just cleared it; a concurrent operator take-over is never
-        // clobbered).
-        const restored: Array<{ screenId: string; gameId: string }> = [];
-        for (const e of saved) {
-          if (!e.prevGameId || e.prevGameId === gameId) continue;
-          const prev = await this.prisma.client.game.findFirst({
-            where: { id: e.prevGameId, tenantId },
-            select: { id: true, status: true },
+      const holdMin = postgameHoldMinutes(config.holdMin);
+      if (config.pushedAt && (config.savedState ?? []).length > 0 && holdMin > 0) {
+        const returnAt = new Date(this.serverTimeMs() + holdMin * 60_000);
+        const next: AutoPushConfig = { ...config, returnAt: returnAt.toISOString() };
+        const held = await this.prisma.client.$transaction(async (tx: any) => {
+          // Only while the game is still final: a reopen that raced this
+          // post-commit hook keeps its board with no return pending.
+          const res = await tx.game.updateMany({
+            where: { id: gameId, tenantId, status: 'FINAL' },
+            data: { autoPushAt: returnAt },
           });
-          if (!prev || prev.status === 'FINAL') continue;
-          const res = await this.prisma.client.screen.updateMany({
-            where: { id: e.screenId, tenantId, activeBoardGameId: null },
-            data: { activeBoardGameId: e.prevGameId, activeBoardSurface: e.prevSurface },
+          if (res.count === 0) return false;
+          await tx.gameEvent.create({
+            data: { gameId, type: 'AUTO_PUSH', payload: this.autoPushPayload(next) as any, actorType: 'system' },
           });
-          if (res.count > 0) restored.push({ screenId: e.screenId, gameId: e.prevGameId });
-        }
-        // The hide's SYNC fired before the restores landed — nudge again
-        // so a restored screen doesn't sit on scheduled content for 30s.
-        if (restored.length > 0) await this.notifySync(tenantId);
-        try {
-          await this.prisma.client.auditLog.create({
+          await tx.auditLog.create({
             data: {
               tenantId,
               userId: null, // machine action — the FINAL transition
-              action: 'SPORTS_AUTO_REVERTED',
+              action: 'SPORTS_POSTGAME_HOLD',
               targetType: 'Game',
               targetId: gameId,
-              details: JSON.stringify({ screenIds: savedScreenIds, restored }),
+              details: JSON.stringify({ screenIds: config.screenIds, holdMin, returnAt: next.returnAt }),
             },
           });
-        } catch {
-          /* best-effort */
+          return true;
+        });
+        if (held) {
+          this.autoPushCache.set(gameId, next);
+          wakeScheduleSweep();
         }
+        return;
       }
-      // Disarm — FINAL always ends schedule game mode, pushed or not. The
-      // AUTO_PUSH event trail (armed:false after a pushedAt record) is the
-      // forensic record for the machine disarm; SPORTS_AUTO_PUSH_DISARMED
-      // stays reserved for the operator's own action.
-      await this.record(gameId, 'AUTO_PUSH', { armed: false });
-      this.autoPushCache.set(gameId, this.parseAutoPushPayload({ armed: false }));
+      await this.returnPushedScreens(tenantId, gameId, config, 'final');
     } catch (err) {
       this.logger.error(
         `onGameFinal failed (non-fatal) game=${gameId} tenant=${tenantId}: ${
@@ -3289,6 +3390,118 @@ export class SportsService {
         }`,
       );
     }
+  }
+
+  /**
+   * Give a game's pushed screens back to their schedule and end schedule
+   * game mode: hide the board from EXACTLY the pushed screens, restore any
+   * screen whose pre-push pointer was a different still-unfinished game,
+   * audit, disarm. What the FINAL transition did at once before the
+   * postgame hold (K12-F37) — now at the end of the hold, on the table's
+   * "Return screens now", or at once for a hold of 0.
+   */
+  private async returnPushedScreens(
+    tenantId: string,
+    gameId: string,
+    config: AutoPushConfig,
+    reason: 'final' | 'hold-ended' | 'returned-early' | 'hold-shortened' | 'disarmed',
+  ): Promise<void> {
+    const saved = config.savedState ?? [];
+    if (config.pushedAt && saved.length > 0) {
+      const savedScreenIds = saved.map((e) => e.screenId);
+      // Scoped to EXACTLY the pushed ids — never undefined, which would
+      // also hide the game from screens an operator pushed manually.
+      await this.hideFromScreens(tenantId, gameId, savedScreenIds, {
+        actor: { kind: 'system', ref: 'auto-push-revert' },
+      });
+      // Put back screens whose pre-push pointer was a DIFFERENT game —
+      // only when that game still exists in this tenant and is not
+      // itself FINAL, and only if the screen is still free (the hide
+      // above just cleared it; a concurrent operator take-over is never
+      // clobbered).
+      const restored: Array<{ screenId: string; gameId: string }> = [];
+      for (const e of saved) {
+        if (!e.prevGameId || e.prevGameId === gameId) continue;
+        const prev = await this.prisma.client.game.findFirst({
+          where: { id: e.prevGameId, tenantId },
+          select: { id: true, status: true },
+        });
+        if (!prev || prev.status === 'FINAL') continue;
+        const res = await this.prisma.client.screen.updateMany({
+          where: { id: e.screenId, tenantId, activeBoardGameId: null },
+          data: { activeBoardGameId: e.prevGameId, activeBoardSurface: e.prevSurface },
+        });
+        if (res.count > 0) restored.push({ screenId: e.screenId, gameId: e.prevGameId });
+      }
+      // The hide's SYNC fired before the restores landed — nudge again
+      // so a restored screen doesn't sit on scheduled content for 30s.
+      if (restored.length > 0) await this.notifySync(tenantId);
+      try {
+        await this.prisma.client.auditLog.create({
+          data: {
+            tenantId,
+            userId: null, // machine action — a person's request is audited by its caller
+            action: 'SPORTS_AUTO_REVERTED',
+            targetType: 'Game',
+            targetId: gameId,
+            details: JSON.stringify({ screenIds: savedScreenIds, restored, reason }),
+          },
+        });
+      } catch {
+        /* best-effort */
+      }
+    }
+    // Disarm — the end of a game always ends schedule game mode, pushed or
+    // not. The AUTO_PUSH event trail (armed:false after a pushedAt record)
+    // is the forensic record for the machine disarm; SPORTS_AUTO_PUSH_DISARMED
+    // stays reserved for the operator's own action.
+    await this.record(gameId, 'AUTO_PUSH', { armed: false });
+    this.autoPushCache.set(gameId, this.parseAutoPushPayload({ armed: false }));
+  }
+
+  /**
+   * K12-F37 — end a finished game's postgame hold now: the table's "Return
+   * screens now", turning schedule game mode off during the hold, or a
+   * shorter hold that has already run out. The pending return is CLAIMED
+   * (Game.autoPushAt → null, only while the game is final) in the same
+   * transaction as the attributed audit row, so the sweep and a second tap
+   * can never return the screens twice and the record of who did it cannot
+   * be lost. Nothing pending → nothing to return (`returned: false`).
+   */
+  async returnPostgameScreens(
+    tenantId: string,
+    id: string,
+    actor?: CommandInput,
+    why: 'returned-early' | 'hold-shortened' | 'disarmed' = 'returned-early',
+    known?: AutoPushConfig,
+  ): Promise<{ returned: boolean }> {
+    await this.owned(tenantId, id);
+    const config = known ?? (await this.latestAutoPush(id, { fresh: true }));
+    const claimed: boolean = await this.prisma.client.$transaction(async (tx: any) => {
+      const res = await tx.game.updateMany({
+        where: { id, tenantId, status: 'FINAL', autoPushAt: { not: null } },
+        data: { autoPushAt: null },
+      });
+      if (res.count === 0) return false;
+      await this.auditRow(tx, tenantId, actor, 'SPORTS_POSTGAME_RETURNED', id, {
+        why,
+        screenIds: config?.screenIds ?? [],
+        returnAt: config?.returnAt ?? null,
+      });
+      return true;
+    });
+    if (claimed && config?.armed) {
+      await this.returnPushedScreens(tenantId, id, config, why);
+      return { returned: true };
+    }
+    // Turning the mode off still turns it off when there was nothing to return.
+    if (why === 'disarmed') {
+      await this.recordAudited(tenantId, id, 'AUTO_PUSH', { armed: false }, actor, 'SPORTS_AUTO_PUSH_DISARMED', (eventId) => ({
+        eventId,
+      }));
+      this.autoPushCache.set(id, this.parseAutoPushPayload({ armed: false }));
+    }
+    return { returned: false };
   }
 
   // ── roster ───────────────────────────────────────────────────
@@ -6201,13 +6414,41 @@ export class SportsService {
           message: 'Only a final game can be reopened.',
         });
       }
-      const updated = await scope.write({ status: 'LIVE', endedAt: null });
+      // K12-F37 — a correction during the postgame hold keeps the board up:
+      // the pending return (Game.autoPushAt, set only by the hold once a game
+      // is final) is cancelled here, and the corrected game's own final starts
+      // a fresh hold.
+      const cancelsHold = !!game.autoPushAt;
+      const updated = await scope.write({
+        status: 'LIVE',
+        endedAt: null,
+        ...(cancelsHold ? { autoPushAt: null } : {}),
+      });
       await this.holdStatRollupForReopen(scope, game);
       const change = scope.change();
       await scope.event('STATUS', { status: 'LIVE', prevStatus: 'FINAL', reopened: true, reason, change });
+      if (cancelsHold) {
+        const latest = await scope.tx.gameEvent.findFirst({
+          where: { gameId: id, type: 'AUTO_PUSH' },
+          orderBy: { createdAt: 'desc' },
+        });
+        const kept: AutoPushConfig = { ...this.parseAutoPushPayload(latest?.payload), returnAt: null };
+        await scope.event('AUTO_PUSH', this.autoPushPayload(kept), { derived: true });
+        scope.after(() => this.autoPushCache.set(id, kept));
+      }
+      // K12-F18 — the result being reopened, as the sport decides it (a
+      // volleyball match's sets; its rally columns read 0–0).
+      const finalResult = gameResult(game);
       scope.audit('SPORTS_GAME_REOPENED', {
         reason,
         finalScore: { home: game.homeScore, away: game.awayScore },
+        finalResult: {
+          basis: finalResult.basis,
+          outcome: finalResult.outcome,
+          home: finalResult.home,
+          away: finalResult.away,
+        },
+        postgameHoldCancelled: cancelsHold,
         revisionBefore: game.version,
         revisionAfter: updated.version,
       });

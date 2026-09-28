@@ -1151,7 +1151,8 @@ export class SportsController {
 
   // ── schedule game mode (Inputs-wave SCHED) ───────────────────
   // Auto-push the game's board to the armed screens 10 minutes before
-  // scheduledAt (baked lead, no knob), auto-revert at FINAL.
+  // scheduledAt (baked lead, no knob); after FINAL the result holds for the
+  // game's postgame hold (K12-F37), then the screens return to their schedule.
 
   /** Read the schedule-game-mode config — armed state, target screens/
    *  surface, pending fire time, and whether the board is already up. */
@@ -1166,9 +1167,10 @@ export class SportsController {
     return this.sports.getAutoPush(req.user.tenantId, id);
   }
 
-  /** Arm (armed:true + screenIds [+ surface]) or disarm (armed:false)
-   *  schedule game mode. Arming requires the game time to be set — the
-   *  board goes up 10 minutes before it. */
+  /** Arm (armed:true + screenIds [+ surface] [+ holdMin]) or disarm
+   *  (armed:false) schedule game mode; `holdMin` alone changes the postgame
+   *  hold (K12-F37). Arming requires the game time to be set — the board
+   *  goes up 10 minutes before it. */
   @Post('games/:id/auto-push')
   @RequireRoles(
     AppRole.SUPER_ADMIN,
@@ -1179,9 +1181,22 @@ export class SportsController {
   setAutoPush(
     @Request() req: any,
     @Param('id') id: string,
-    @Body() body: { armed?: boolean; screenIds?: string[]; surface?: string },
+    @Body() body: { armed?: boolean; screenIds?: string[]; surface?: string; holdMin?: number },
   ) {
     return this.sports.setAutoPush(req.user.tenantId, id, body ?? {}, userActor(req));
+  }
+
+  /** K12-F37 — end a finished game's postgame hold now: the pushed screens
+   *  go back to their schedule. Audited; a no-op when nothing is held. */
+  @Post('games/:id/postgame/return')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  returnPostgameScreens(@Request() req: any, @Param('id') id: string) {
+    return this.sports.returnPostgameScreens(req.user.tenantId, id, userActor(req));
   }
 
   // ── roster ───────────────────────────────────────────────────

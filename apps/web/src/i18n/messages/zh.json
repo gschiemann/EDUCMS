@@ -3461,5 +3461,18 @@
     "finalWon": "终场：{team} 以 {score} 获胜",
     "finalTie": "终场：{score} 平局",
     "finalNone": "终场：未记录比赛结果"
+  },
+  "sportsPostgame": {
+    "holdLabel": "比赛结束后，结果保留",
+    "holdNone": "不保留（立即恢复日程内容）",
+    "holdMinutes": "{minutes, plural, other {# 分钟}}",
+    "boardUp": "记分牌已上屏。",
+    "boardGoesUp": "记分牌将于 {time} 上屏。",
+    "afterFinalHold": "比赛结束后，结果保留 {minutes, plural, other {# 分钟}}，然后屏幕恢复日程内容。",
+    "afterFinalNow": "比赛结束后，屏幕立即恢复日程内容。",
+    "holdingUntil": "屏幕保留至 {time}",
+    "returnNow": "立即恢复屏幕",
+    "returning": "正在恢复…",
+    "returnFailed": "无法恢复屏幕，请重试。"
   }
 }

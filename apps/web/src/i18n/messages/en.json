@@ -3461,5 +3461,18 @@
     "finalWon": "Final: {team} won {score}",
     "finalTie": "Final: tied {score}",
     "finalNone": "Final: no result was recorded"
+  },
+  "sportsPostgame": {
+    "holdLabel": "After the final, keep the result up for",
+    "holdNone": "no time (straight back to the schedule)",
+    "holdMinutes": "{minutes, plural, one {# minute} other {# minutes}}",
+    "boardUp": "The board is up.",
+    "boardGoesUp": "The board goes up at {time}.",
+    "afterFinalHold": "After the final it stays up {minutes, plural, one {# minute} other {# minutes}}, then the screens go back to their schedule.",
+    "afterFinalNow": "When the game ends, the screens go back to their schedule.",
+    "holdingUntil": "On screens until {time}",
+    "returnNow": "Return screens now",
+    "returning": "Returning…",
+    "returnFailed": "Couldn't return the screens. Try again."
   }
 }

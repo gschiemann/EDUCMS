@@ -5555,6 +5555,12 @@ export interface AutoPushConfig {
   pushedAt: string | null;
   /** The server's baked lead (ms before scheduledAt) — drives UI copy. */
   leadMs: number;
+  /** K12-F37 — how long the final result stays up after the game, minutes
+   *  (the game's own pick, else the default), and the choices offered. */
+  holdMin?: number;
+  holdOptions?: number[];
+  /** K12-F37 — during the hold: when the screens go back (ISO). */
+  returnAt?: string | null;
 }
 
 export function useAutoPush(gameId: string | undefined) {
@@ -5575,7 +5581,7 @@ export function useSetAutoPush(gameId: string) {
     // The auto-push panel already prints the server's message inline under
     // the surface picker — don't tell the scorekeeper twice mid-game.
     meta: { suppressGlobalError: true },
-    mutationFn: (vars: { armed: boolean; screenIds?: string[]; surface?: string }) =>
+    mutationFn: (vars: { armed?: boolean; screenIds?: string[]; surface?: string; holdMin?: number }) =>
       apiFetch(`/sports/games/${gameId}/auto-push`, {
         method: 'POST',
         body: JSON.stringify(vars),
@@ -5586,6 +5592,30 @@ export function useSetAutoPush(gameId: string) {
       // it) — refresh both game caches.
       qc.invalidateQueries({ queryKey: ['sports-game', gameId] });
       qc.invalidateQueries({ queryKey: ['sports-games'] });
+    },
+  });
+}
+
+/**
+ * K12-F37 — end a finished game's postgame hold now: the screens it was
+ * pushed to go back to their schedule. Audited server-side; answers
+ * `{ returned: false }` when nothing is held any more.
+ */
+export function useReturnPostgameScreens(gameId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    // The console prints the failure next to the button.
+    meta: { suppressGlobalError: true },
+    mutationFn: () =>
+      apiFetch<{ returned: boolean }>(`/sports/games/${gameId}/postgame/return`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['sports-auto-push', gameId] });
+      qc.invalidateQueries({ queryKey: ['sports-game', gameId] });
+      qc.invalidateQueries({ queryKey: ['sports-games'] });
+      qc.invalidateQueries({ queryKey: ['sports-game-screens', gameId] });
     },
   });
 }

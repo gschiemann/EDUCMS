@@ -85,6 +85,7 @@ import {
   useUpdateGameDetails,
   useAutoPush,
   useSetAutoPush,
+  useReturnPostgameScreens,
   type SponsorInput,
   type RosterPlayer,
 } from '@/hooks/use-api';
@@ -92,6 +93,8 @@ import {
 // datetime-local → ISO with timezone) + the auto-push preview math.
 import { datetimeLocalToIso, autoPushMoment } from '../scheduled-at';
 import {
+  POSTGAME_HOLD_DEFAULT_MINUTES,
+  POSTGAME_HOLD_OPTIONS_MINUTES,
   findSport,
   gameResult,
   overtimeLabel,
@@ -7894,7 +7897,12 @@ function ScheduledAtField({
  * "When is it?" field: pick the screens, flip it on, and the board goes up
  * there 10 minutes before the game time (baked lead — no knob; the number
  * comes from the API's `leadMs` so copy can't drift) and comes back down
- * automatically at final, restoring whatever each screen showed before.
+ * automatically after the game, restoring whatever each screen showed before.
+ *
+ * K12-F37 — "after the game" is the postgame HOLD the card now asks for: the
+ * final result stays up for that long (default POSTGAME_HOLD_DEFAULT_MINUTES,
+ * 0 = straight back), then the screens return. The console's game-state strip
+ * shows the hold at FINAL with a "Return screens now" button.
  *
  * Mobile-perf: NO new pollers. The screen list rides the SAME
  * ['sports-game-screens', gameId] query ScreenPushPanel already polls
@@ -7912,9 +7920,15 @@ function AutoPushCard({
   const { data: screens } = useGameScreens(gameId);
   const set = useSetAutoPush(gameId);
 
+  const tPost = useTranslations('sportsPostgame');
   const list: any[] = Array.isArray(screens) ? screens : [];
   const armed = cfg?.armed === true;
   const pushed = armed && !!cfg?.pushedAt;
+  // K12-F37 — the postgame hold: picked here before arming (sent with the
+  // arm), else the game's stored one, else the default.
+  const [holdPick, setHoldPick] = useState<number | null>(null);
+  const holdOptions = cfg?.holdOptions ?? POSTGAME_HOLD_OPTIONS_MINUTES;
+  const hold = holdPick ?? cfg?.holdMin ?? POSTGAME_HOLD_DEFAULT_MINUTES;
 
   // Local selection, hydrated ONCE from the stored config so a re-render
   // (or the shared screens poll) never clobbers the operator mid-pick.
@@ -7937,7 +7951,14 @@ function AutoPushCard({
   /** Arm (or re-arm with a changed selection) — latest-wins on the API. */
   const arm = (screenIds: string[], surf: 'BOARD' | 'RIBBON') => {
     if (screenIds.length === 0) return;
-    set.mutate({ armed: true, screenIds, surface: surf });
+    set.mutate({ armed: true, screenIds, surface: surf, holdMin: hold });
+  };
+
+  /** K12-F37 — a new hold applies at once while armed (the API keeps the
+   *  rest of the armed config); before arming it rides the arm. */
+  const pickHold = (minutes: number) => {
+    setHoldPick(minutes);
+    if (armed) set.mutate({ holdMin: minutes });
   };
 
   const toggleArmed = () => {
@@ -7998,12 +8019,11 @@ function AutoPushCard({
         </button>
       </div>
 
-      {/* Live preview — plain English, browser zone (the operator's). */}
+      {/* Live preview — plain words, browser zone (the operator's). */}
       {pushAt ? (
         <p className="text-xs text-slate-500 mt-1.5">
-          {pushed
-            ? 'The board is up — it comes back down automatically at final.'
-            : `Board goes up at ${timeFmt(pushAt)} · reverts at final`}
+          {pushed ? tPost('boardUp') : tPost('boardGoesUp', { time: timeFmt(pushAt) })}{' '}
+          {hold > 0 ? tPost('afterFinalHold', { minutes: hold }) : tPost('afterFinalNow')}
         </p>
       ) : (
         <p className="text-xs text-slate-400 mt-1.5">
@@ -8064,6 +8084,24 @@ function AutoPushCard({
               onClick={() => pickSurface('RIBBON')}
             />
           </div>
+
+          {/* K12-F37 — how long the final result stays up after the game. */}
+          <label className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-600">
+            <span>{tPost('holdLabel')}</span>
+            <select
+              value={hold}
+              disabled={set.isPending}
+              onChange={(e) => pickHold(Number(e.target.value))}
+              data-testid="postgame-hold"
+              className="min-h-[36px] rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700"
+            >
+              {holdOptions.map((m) => (
+                <option key={m} value={m}>
+                  {m === 0 ? tPost('holdNone') : tPost('holdMinutes', { minutes: m })}
+                </option>
+              ))}
+            </select>
+          </label>
         </>
       )}
 
@@ -8135,6 +8173,12 @@ function RunStatusControl({
   // score), never the rally columns a set sport zeroes at the last point.
   const finalLine =
     status === 'FINAL' && g ? finalSummary(tResult, gameResult(g), { home: g.homeTeam, away: g.awayTeam }) : '';
+  // K12-F37 — a finished game's postgame hold: Game.autoPushAt is then the
+  // moment the pushed screens go back to their schedule (it rides the
+  // existing 4 s game poll — no new poller).
+  const tPost = useTranslations('sportsPostgame');
+  const returnNow = useReturnPostgameScreens(String(g?.id || ''));
+  const holdUntil = status === 'FINAL' && g?.autoPushAt ? new Date(g.autoPushAt) : null;
   const META: Record<string, { label: string; chip: string; dot: string }> = {
     SCHEDULED: { label: 'Scheduled', chip: 'bg-slate-100 text-slate-600 border-slate-200', dot: 'bg-slate-400' },
     PRE_GAME: { label: 'Pre-game', chip: 'bg-amber-50 text-amber-700 border-amber-200', dot: 'bg-amber-500' },
@@ -8186,6 +8230,28 @@ function RunStatusControl({
           >
             {finalLine}
           </span>
+        )}
+        {holdUntil && !Number.isNaN(holdUntil.getTime()) && (
+          <>
+            <span className="text-[11px] font-semibold text-slate-500 shrink-0" data-testid="postgame-hold-until">
+              {tPost('holdingUntil', {
+                time: holdUntil.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }),
+              })}
+            </span>
+            <button
+              type="button"
+              onClick={() => returnNow.mutate()}
+              disabled={returnNow.isPending}
+              className={`${btn} border-slate-300 text-slate-700 hover:bg-slate-100 disabled:opacity-50`}
+            >
+              {returnNow.isPending ? tPost('returning') : tPost('returnNow')}
+            </button>
+            {returnNow.isError && (
+              <span role="alert" className="text-[11px] font-semibold text-rose-600 shrink-0">
+                {tPost('returnFailed')}
+              </span>
+            )}
+          </>
         )}
         {status === 'FINAL' && (
           // Reopening a finalized game resumes live scoring — deliberate, so
