@@ -1713,7 +1713,10 @@
       "loading": "Cargando contenido",
       "loadingDetail": "La pantalla recibió su programación y está abriendo el primer elemento.",
       "connecting": "Pantalla encendida · conectando",
-      "connectingDetail": "La pantalla está encendida y todavía está obteniendo su programación, así que por ahora muestra su pantalla de espera."
+      "connectingDetail": "La pantalla está encendida y todavía está obteniendo su programación, así que por ahora muestra su pantalla de espera.",
+      "syncing": "Sincronizando",
+      "syncingEvidence": "Actualización enviada — esperando la confirmación de la pantalla",
+      "syncingDetail": "Se envió una actualización a esta pantalla hace un momento. Se recarga en unos segundos y confirma en cuanto vuelve a estar lista. Si pasado uno o dos minutos no ha confirmado, pasa a “Content behind” y ofrece Resync."
     }
   },
   "assetsLib": {

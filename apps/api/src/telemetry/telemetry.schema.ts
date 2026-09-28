@@ -120,6 +120,16 @@ const videoSchema = z.strictObject({
   stalledMs: z.number().finite().min(0).max(86_400_000).optional(),
 });
 
+/**
+ * `POST /screens/:id/refresh-ack` — the ENTIRE body. One number: the exact
+ * `refreshRequestedAt` value (ms) the page acted on. Value identity, never a
+ * clock comparison (player rule 6).
+ */
+export const REFRESH_ACK_MAX_BODY_BYTES = 1024;
+export const refreshAckSchema = z.strictObject({
+  refreshAckMs: z.number().finite().min(0).max(8_640_000_000_000_000),
+});
+
 export const screenTelemetrySchema = z.strictObject({
   versions: z
     .strictObject({

@@ -27,6 +27,7 @@ import {
   sanitizeVideoReport,
   TELEMETRY_COLUMNS,
   TELEMETRY_MIN_ACCEPT_INTERVAL_MS,
+  REFRESH_ACK_MIN_ACCEPT_INTERVAL_MS,
 } from './telemetry.controller';
 import { TELEMETRY_MAX_BODY_BYTES } from './telemetry.schema';
 import { SCREEN_ONLINE_GRACE_MS } from './online-grace';
@@ -859,5 +860,132 @@ describe('POST /screens/:id/telemetry', () => {
       (k) => !SCREEN_TELEMETRY_ONLY_FIELDS.has(k),
     );
     expect(bustable).toEqual(['pendingRefreshAt']);
+  });
+});
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// POST /screens/:id/refresh-ack — the immediate confirmation (2026-09-28)
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Greg pressed Resync: the screen reloaded in 8 s, the dashboard said "Content
+// behind" for 72. The confirmation rode the routine telemetry post, which the
+// server refuses inside 30 s per screen — and a just-reloaded page always posts
+// first thing. These tests pin the dedicated route that cannot be starved.
+describe('POST /screens/:id/refresh-ack', () => {
+  let controller: TelemetryController;
+  let prisma: any;
+  const redis: any = { sismember: jest.fn(async () => false) };
+  let screenId = 'ack-0';
+  let seq = 0;
+  const pendingAt = new Date(NOW - 20_000);
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.useFakeTimers().setSystemTime(NOW);
+    screenId = `ack-${++seq}`;
+    resetManifestCacheForTests();
+    resetTelemetryStateForTests();
+    deviceAuth.verifyDeviceForScreen.mockResolvedValue({
+      ok: true,
+      sub: screenId,
+      screen: { id: screenId, tenantId: 'tenant-xyz' },
+      tenantId: 'tenant-xyz',
+      token: 'fake',
+    });
+    prisma = {
+      client: {
+        screen: {
+          findUnique: jest.fn(async () => ({ id: screenId, tenantId: 'tenant-xyz', pendingRefreshAt: pendingAt })),
+          update: jest.fn(async () => ({ id: screenId })),
+        },
+        screenEvent: { create: jest.fn(async () => ({ id: 'ev-1' })) },
+      },
+    };
+    controller = new TelemetryController(prisma, redis);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('a matching value clears the pending refresh at once, busts the manifest cache, and records the timeline row', async () => {
+    const out = await controller.refreshAck(screenId, makeReq(), { refreshAckMs: pendingAt.getTime() });
+    expect(out).toEqual({ ok: true, refreshAcked: true });
+    expect(prisma.client.screen.update).toHaveBeenCalledTimes(1);
+    const { data, where } = prisma.client.screen.update.mock.calls[0][0];
+    expect(where).toEqual({ id: screenId });
+    expect(data).toEqual({ pendingRefreshAt: null });
+    // Clearing the command IS manifest content: it must invalidate.
+    expect(shouldBumpManifestRev('Screen', 'update', Object.keys(data))).toBe(true);
+    expect(prisma.client.screenEvent.create).toHaveBeenCalledWith({
+      data: { screenId, tenantId: 'tenant-xyz', kind: 'refresh-acked', detail: { valueMs: pendingAt.getTime() } },
+    });
+  });
+
+  it('a NON-matching value never clears it — value identity, not a clock comparison', async () => {
+    // A device whose clock runs minutes ahead reports a LATER value; an
+    // inequality would call that "newer, therefore done".
+    for (const off of [120_000, -120_000, 1]) {
+      const out = await controller.refreshAck(screenId, makeReq(), { refreshAckMs: pendingAt.getTime() + off });
+      expect(out).toEqual({ ok: true, refreshAcked: false });
+      jest.setSystemTime(Date.now() + REFRESH_ACK_MIN_ACCEPT_INTERVAL_MS + 1);
+    }
+    expect(prisma.client.screen.update).not.toHaveBeenCalled();
+    expect(prisma.client.screenEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('nothing pending → no write (a repeated ack is harmless)', async () => {
+    prisma.client.screen.findUnique.mockResolvedValue({ id: screenId, tenantId: 'tenant-xyz', pendingRefreshAt: null });
+    const out = await controller.refreshAck(screenId, makeReq(), { refreshAckMs: pendingAt.getTime() });
+    expect(out).toEqual({ ok: true, refreshAcked: false });
+    expect(prisma.client.screen.update).not.toHaveBeenCalled();
+  });
+
+  it('401s a caller that cannot prove it is this screen — before any database work', async () => {
+    deviceAuth.verifyDeviceForScreen.mockResolvedValue({ ok: false, reason: 'no_auth' });
+    await expect(controller.refreshAck(screenId, makeReq(), { refreshAckMs: 1 })).rejects.toMatchObject({ status: 401 });
+    expect(prisma.client.screen.findUnique).not.toHaveBeenCalled();
+    expect(prisma.client.screen.update).not.toHaveBeenCalled();
+  });
+
+  it('400s a body that is not exactly { refreshAckMs: number }', async () => {
+    for (const bad of [{}, { refreshAckMs: 'soon' }, { refreshAckMs: -1 }, { refreshAckMs: 1, extra: true }, null]) {
+      await expect(controller.refreshAck(screenId, makeReq(), bad)).rejects.toMatchObject({ status: 400 });
+    }
+    await expect(
+      controller.refreshAck(screenId, makeReq({ 'content-length': '5000' }), { refreshAckMs: 1 }),
+    ).rejects.toMatchObject({ status: 413 });
+    expect(prisma.client.screen.update).not.toHaveBeenCalled();
+  });
+
+  it('is NOT starved by the 30 s telemetry floor: an ack right after an accepted telemetry post still lands', async () => {
+    // The whole bug: a reloaded page posts telemetry first (accepted), then its
+    // confirmation moments later — under the old design that second thing was a
+    // 429 on the same 30 s floor. The dedicated route has its own spacing.
+    await controller.report(screenId, makeReq(), {});
+    jest.setSystemTime(NOW + 3_000); // 3 s later, far inside the 30 s telemetry floor
+    await expect(controller.report(screenId, makeReq(), {})).rejects.toMatchObject({ status: 429 });
+    const out = await controller.refreshAck(screenId, makeReq(), { refreshAckMs: pendingAt.getTime() });
+    expect(out.refreshAcked).toBe(true);
+  });
+
+  it('bounds a looping device: a second ack inside the spacing is a 429, and lands again after it', async () => {
+    await controller.refreshAck(screenId, makeReq(), { refreshAckMs: 1 });
+    await expect(controller.refreshAck(screenId, makeReq(), { refreshAckMs: 1 })).rejects.toMatchObject({ status: 429 });
+    jest.setSystemTime(NOW + REFRESH_ACK_MIN_ACCEPT_INTERVAL_MS + 1);
+    await expect(controller.refreshAck(screenId, makeReq(), { refreshAckMs: 1 })).resolves.toMatchObject({ ok: true });
+  });
+
+  it('404s an unknown screen', async () => {
+    prisma.client.screen.findUnique.mockResolvedValue(null);
+    await expect(controller.refreshAck(screenId, makeReq(), { refreshAckMs: 1 })).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('a failed timeline row never turns a completed ack into an error', async () => {
+    prisma.client.screenEvent.create.mockRejectedValue(new Error('timeline down'));
+    await expect(
+      controller.refreshAck(screenId, makeReq(), { refreshAckMs: pendingAt.getTime() }),
+    ).resolves.toEqual({ ok: true, refreshAcked: true });
   });
 });

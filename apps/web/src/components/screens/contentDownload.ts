@@ -213,6 +213,10 @@ export const DOWNLOAD_COPY_EN = {
   'screens.contentState.connecting': 'Screen on · connecting',
   'screens.contentState.connectingDetail':
     'The screen is on and still fetching its schedule, so it shows its waiting screen for now.',
+  'screens.contentState.syncing': 'Syncing',
+  'screens.contentState.syncingEvidence': 'Update sent — waiting for the screen to confirm',
+  'screens.contentState.syncingDetail':
+    'An update was sent to this screen a moment ago. It reloads within a few seconds and confirms as soon as it is back. If it has not confirmed after a minute or two this turns into “Content behind” and offers Resync.',
   'playlistsPage.deliveryDownloadOne': '{name} · {percent}% of {size}',
   'playlistsPage.deliveryDownloadOneSoFar': '{name} · {loaded} so far',
   'playlistsPage.deliveryHeldOne': '{name} · new content {percent}% of {size}',

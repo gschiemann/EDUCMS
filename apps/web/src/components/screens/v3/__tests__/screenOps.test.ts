@@ -106,6 +106,44 @@ describe('deriveScreenStatus — §9 taxonomy', () => {
     expect(s.needsAttention).toBe(true);
   });
 
+  // Greg, 2026-09-28: pressed Resync and the row went red "Content behind · 6s ·
+  // Needs attention" while the screen was already reloading. An update still
+  // inside its normal confirmation window is Syncing, not a fault.
+  it('an update sent seconds ago → Syncing (calm, no attention, no Resync) — NOT red Content behind', () => {
+    const s = status({ pendingRefreshAt: new Date(NOW - 6_000).toISOString() });
+    expect(s.key).toBe('syncing');
+    expect(s.label).toBe('Syncing');
+    expect(s.tone).toBe('neutral');
+    expect(s.needsAttention).toBe(false);
+    expect(s.action).toBe('View');
+    expect(s.age).toBe('6s');
+    expect(s.evidence).toBe('Update sent — waiting for the screen to confirm');
+  });
+
+  it('…and turns into red Content behind (Resync) once the confirmation window has genuinely passed', () => {
+    const inside = status({ pendingRefreshAt: new Date(NOW - 89_000).toISOString() });
+    expect(inside.key).toBe('syncing');
+    const outside = status({ pendingRefreshAt: new Date(NOW - 91_000).toISOString() });
+    expect(outside.key).toBe('content-behind');
+    expect(outside.tone).toBe('bad');
+    expect(outside.needsAttention).toBe(true);
+    expect(outside.action).toBe('Resync');
+  });
+
+  it('a push stamped in the FUTURE (a skewed clock) is never treated as inside the window', () => {
+    const s = status({ pendingRefreshAt: new Date(NOW + 5 * MIN).toISOString() });
+    expect(s.key).toBe('content-behind');
+  });
+
+  it('a syncing screen stays out of the attention set and the Content-behind chip', () => {
+    const ops = buildScreenOps({
+      screens: [scr({ id: 'a', pendingRefreshAt: new Date(NOW - 10_000).toISOString() })],
+      schedules: [], playlists: [], deployedSha: SHA, now: NOW,
+    });
+    expect(ops.totals.attention).toBe(0);
+    expect(ops.chips.find((c) => c.key === 'content-behind')?.count ?? 0).toBe(0);
+  });
+
   it('unacknowledged refresh → Content behind · 18m (red, Resync)', () => {
     const s = status({ pendingRefreshAt: new Date(NOW - 18 * MIN).toISOString() });
     expect(s.key).toBe('content-behind');
@@ -717,8 +755,45 @@ describe('buildScreenOps', () => {
     expect(build({ selectedScreenId: 'hen1' }).autoExpanded.has('hen')).toBe(true);
   });
 
-  it('orders groups worst-first and parks the ungrouped bucket among equals', () => {
-    expect(build().groups.map((g) => g.id)).toEqual([UNGROUPED_ID, 'sac', 'hen']);
+  it('orders groups ALPHABETICALLY and parks the ungrouped bucket last', () => {
+    // RIOT Henderson < RIOT Sacramento; "Not in a group" is not a real group.
+    expect(build().groups.map((g) => g.id)).toEqual(['hen', 'sac', UNGROUPED_ID]);
+  });
+
+  // Greg, 2026-09-28: "why does the sort order of the screen groups keep
+  // bouncing around? make them just stay in alphabetical order". Groups used to
+  // sort by their WORST screen's status, so any status flip re-ordered the page.
+  it('the group order does NOT move when a screen changes status', () => {
+    const healthy = build().groups.map((g) => g.id);
+    // Henderson (first alphabetically) goes offline — under the old rule that
+    // floated it to the top, and here it is already there; so also break the
+    // LAST group's screen, which the old rule would have promoted.
+    const worse = buildScreenOps({
+      screens: fleet().map((s) =>
+        s.id === 'hen1' ? { ...s, status: 'OFFLINE' as const, lastPingAt: new Date(NOW - 5 * 3600_000).toISOString() } : s,
+      ),
+      schedules: [], playlists: [], deployedSha: SHA, now: NOW,
+    }).groups.map((g) => g.id);
+    const flipped = buildScreenOps({
+      screens: fleet().map((s) =>
+        s.id === 'g43' ? { ...s, pendingRefreshAt: null } : s.id === 'loose' ? { ...s, status: 'ONLINE' as const, lastPingAt: new Date(NOW - 8_000).toISOString() } : s,
+      ),
+      schedules: [], playlists: [], deployedSha: SHA, now: NOW,
+    }).groups.map((g) => g.id);
+    expect(worse).toEqual(healthy);
+    expect(flipped).toEqual(healthy);
+  });
+
+  it('sorts names case-insensitively with numbers in natural order, and never swaps two same-named groups', () => {
+    const named = (id: string, name: string) =>
+      scr({ id: `s-${id}`, name: `Screen ${id}`, screenGroupId: id, screenGroup: { id, name } });
+    const ops = buildScreenOps({
+      screens: [named('g3', 'hall 10'), named('g1', 'Hall 2'), named('g4', 'apple'), named('g9', 'Zoo'), named('g6', 'Twin'), named('g5', 'Twin')],
+      schedules: [], playlists: [], deployedSha: SHA, now: NOW,
+    });
+    expect(ops.groups.map((g) => g.name)).toEqual(['apple', 'Hall 2', 'hall 10', 'Twin', 'Twin', 'Zoo']);
+    // The two "Twin" groups always come out in id order.
+    expect(ops.groups.map((g) => g.id)).toEqual(['g4', 'g1', 'g3', 'g5', 'g6', 'g9']);
   });
 
   it('a healthy group carries one quiet summary', () => {
@@ -1187,8 +1262,11 @@ describe('downloads + idle proofs on the row, the Overview and the Delivery card
 
     it('an operator pause and a pending update still outrank a download', () => {
       expect(status({ lastRenderedHash: 'paused:pl:x', ...snapshot() }).key).toBe('paused');
-      expect(status({ lastRenderedHash: 'idle:content-downloading', pendingRefreshAt: new Date(NOW - MIN).toISOString(), ...snapshot() }).key)
+      expect(status({ lastRenderedHash: 'idle:content-downloading', pendingRefreshAt: new Date(NOW - 5 * MIN).toISOString(), ...snapshot() }).key)
         .toBe('content-behind');
+      // A push still inside its confirmation window outranks it too — as Syncing.
+      expect(status({ lastRenderedHash: 'idle:content-downloading', pendingRefreshAt: new Date(NOW - 20_000).toISOString(), ...snapshot() }).key)
+        .toBe('syncing');
     });
 
     it('the new content plays and another of its files downloads → Current, with the download underneath', () => {

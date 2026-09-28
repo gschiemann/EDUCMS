@@ -202,6 +202,14 @@ const DEVICE_AUTH_SITES: DeviceAuthSite[] = [
     why: 'Same posture as render-proof and cache-status: a spoofable telemetry channel could mask a real outage for any screen in the fleet.',
   },
   {
+    file: 'telemetry/telemetry.controller.ts',
+    fn: 'refreshAck',
+    routes: ['POST /api/v1/screens/:id/refresh-ack'],
+    unpaired: 'allowed',
+    unprovenAllowed: false,
+    why: 'Clears Screen.pendingRefreshAt — the durable "reload yourself" command — on the strength of the screen saying it ran it. A credential minted from a fingerprint alone could otherwise cancel a recovery command a wedged screen never received (the dashboard would then show it as confirmed).',
+  },
+  {
     file: 'player-logs/player-logs.controller.ts',
     fn: 'verifyDevice',
     routes: ['POST /api/v1/player-logs/:screenId'],

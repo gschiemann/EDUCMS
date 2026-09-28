@@ -174,6 +174,12 @@ import {
   type ReadinessItem,
 } from './mediaReadiness';
 import { findSlideImage, isImageLoaded } from './slideLoaded';
+import {
+  markRefreshAckReported,
+  readReportedRefreshAck,
+  refreshAckDelayMs,
+  refreshAckToReport,
+} from './refreshAckReport';
 import { appConfirm, appAlert } from '@/components/ui/app-dialog';
 // 2026-05-29 — Sentry crash reporting for the player / renderer. Sentry is
 // initialized in apps/web/sentry.client.config.ts and is GATED on
@@ -7307,6 +7313,62 @@ function PlayerPage() {
       if (timer) clearTimeout(timer);
     };
   }, [screenId, handleHeartbeatOta, takeRenderProof, commitRenderProof]);
+
+  // ── Report a durable-REFRESH confirmation the moment we are back ───────
+  //
+  // 2026-09-28 (Greg: "i would have thought a resync checks and reports back
+  // right away"). The screen reloads within seconds of a Resync, but its ack —
+  // the exact `refreshRequestedAt` value it acted on, persisted BEFORE the
+  // reload — was only reported inside the routine telemetry post, which the
+  // server refuses inside 30 s per screen. A reloaded page posts first thing
+  // and, when its pre-reload post was recent, that 429 threw the ack away and
+  // the retry was a minute later: reload at +8 s, confirmation at +72 s, and a
+  // red "Content behind" on the dashboard throughout. `POST …/refresh-ack` has
+  // its own accept spacing, so the telemetry floor cannot starve it. The
+  // telemetry post still carries the value (idempotent — either path alone is
+  // enough), and a short ladder rides out a credential still being exchanged.
+  useEffect(() => {
+    if (isPreviewMode() || !screenId) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const attempt = async (n: number) => {
+      if (cancelled) return;
+      const value = refreshAckToReport(readRefreshAck(), readReportedRefreshAck());
+      if (value === null) return; // nothing to say, or already said
+      const token = getDeviceToken();
+      let answered = false;
+      if (token) {
+        try {
+          const { res } = await fetchJsonBounded(
+            `${getApiRoot()}/api/v1/screens/${screenId}/refresh-ack`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify({ refreshAckMs: value }),
+            },
+            8_000,
+          );
+          // Any 2xx is an answer — `refreshAcked:false` means the flag was
+          // already clear or was for a different command, and re-sending the
+          // same value cannot change that.
+          answered = res.ok;
+        } catch { /* offline / 401 / 429 — the ladder retries */ }
+      }
+      if (cancelled) return;
+      if (answered) {
+        markRefreshAckReported(value);
+        return;
+      }
+      const next = refreshAckDelayMs(n + 1);
+      if (next !== null) timer = setTimeout(() => { void attempt(n + 1); }, next);
+    };
+    const first = refreshAckDelayMs(0);
+    if (first !== null) timer = setTimeout(() => { void attempt(0); }, first);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [screenId]);
 
   // ── Content changed → bring the next report forward, don't add one ─────
   //

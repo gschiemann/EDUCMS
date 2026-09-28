@@ -202,6 +202,7 @@ export const STATUS_ORDER = [
   'revoked', // access removed — cannot be told anything
   'content-behind', // an update was SENT and the screen has not confirmed it
   'push-delayed', // live push degraded, polling backstop carrying it
+  'syncing', // an update was sent moments ago; inside the normal confirmation window
   'app-updating', // playing correctly, on an older page bundle, self-healing
   'repair-required', // credential downgraded
   'pending', // paired but has never checked in
@@ -307,6 +308,15 @@ export interface DeriveStatusInput {
   deployedBundleId?: string | null;
   now: number;
 }
+
+/**
+ * How long an operator's update may go unconfirmed before the row calls it a
+ * problem. The screen itself reloads in seconds; what takes time is the
+ * confirmation it reports afterwards — up to ~70 s on a player build that
+ * predates the immediate confirmation (2026-09-28) — so 90 s covers that with
+ * slack and a genuinely stuck screen still goes red within two minutes.
+ */
+export const PUSH_CONFIRM_GRACE_MS = 90_000;
 
 /**
  * Collapse every independent truth about one screen into the single
@@ -484,6 +494,33 @@ export function deriveScreenStatus({
   );
   if (cause === 'push-unacked') {
     const pendingMs = msOf(screen.pendingRefreshAt);
+    // ── A push that is still inside its normal confirmation window is not a
+    // fault (Greg, 2026-09-28). He pressed Resync and the row went red —
+    // "Content behind · 6s · Needs attention" — while the screen was already
+    // reloading: it reloads within seconds, but the confirmation is a report
+    // the screen makes AFTER it is back, and until it lands there is nothing
+    // to show. A stale-looking red row seconds after the operator's own click
+    // reads as "it failed". Say what is true — sent, waiting — and only turn
+    // red once the window has genuinely passed.
+    if (pendingMs != null) {
+      const sinceMs = now - pendingMs;
+      if (sinceMs >= 0 && sinceMs < PUSH_CONFIRM_GRACE_MS) {
+        const label = copy('screens.contentState.syncing');
+        const evidence = copy('screens.contentState.syncingEvidence');
+        const detail = copy('screens.contentState.syncingDetail');
+        return {
+          key: 'syncing',
+          tone: 'neutral',
+          label: label.en,
+          age: compactAge(pendingMs, now),
+          evidence: evidence.en,
+          action: 'View',
+          needsAttention: false,
+          detail: detail.en,
+          messages: { label: label.message, evidence: evidence.message, detail: detail.message },
+        };
+      }
+    }
     return {
       key: 'content-behind',
       tone: 'bad',
@@ -1569,13 +1606,23 @@ export function buildScreenOps(input: {
       lastContactMs,
     };
   });
+  // ALPHABETICAL, and nothing else (Greg, 2026-09-28: "why does the sort order
+  // of the screen groups keep bouncing around? make them just stay in
+  // alphabetical order"). Groups used to sort by their WORST screen's status
+  // rank, so every status flip — a screen going Loading → Playing, a resync, a
+  // brief offline — re-ordered the whole page under the operator's hands. Order
+  // is a navigation aid and must hold still; urgency is carried by each header's
+  // "N need attention" count and the Needs-attention filter. Case- and
+  // accent-insensitive, numbers in natural order ("Hall 2" before "Hall 10"),
+  // id as the final tie-break so two same-named groups can never swap places.
+  // "Not in a group" is not a real group, so it always parks last.
   groups.sort((a, b) => {
-    // Ungrouped parks last among equals so named groups read first.
-    if (a.rank !== b.rank) return a.rank - b.rank;
     const aU = a.id === UNGROUPED_ID ? 1 : 0;
     const bU = b.id === UNGROUPED_ID ? 1 : 0;
     if (aU !== bU) return aU - bU;
-    return a.name.localeCompare(b.name);
+    const byName = a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true });
+    if (byName !== 0) return byName;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
   });
 
   // Default expansion (2026-09-14, twice): first "show the groups like we did

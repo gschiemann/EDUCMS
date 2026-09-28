@@ -21,7 +21,12 @@ import {
   shouldSkipRenderProofWrite,
   markRenderProofWritten,
 } from '../screens/manifest-hot-cache';
-import { screenTelemetrySchema, TELEMETRY_MAX_BODY_BYTES } from './telemetry.schema';
+import {
+  refreshAckSchema,
+  REFRESH_ACK_MAX_BODY_BYTES,
+  screenTelemetrySchema,
+  TELEMETRY_MAX_BODY_BYTES,
+} from './telemetry.schema';
 import { sanitizeCacheReport } from './cache-report';
 import { TELEMETRY_INTERVAL_MS, type ScreenTelemetryResponse } from './telemetry.types';
 
@@ -85,6 +90,129 @@ export class TelemetryController {
     private readonly prisma: PrismaService,
     private readonly redisService: RedisService,
   ) {}
+
+  /**
+   * POST /api/v1/screens/:id/refresh-ack — "I did it", right now.
+   *
+   * Why a route of its own (2026-09-28, Greg: "i would have thought a resync
+   * checks and reports back right away"). A resync reloads the screen within
+   * seconds, but the CONFIRMATION used to ride the routine telemetry post, and
+   * that post is limited to one per 30 s per screen (gate 4 above). A page that
+   * has just reloaded forgets when it last posted, sends its first report at
+   * once, and — when the pre-reload post was under 30 s old — is refused with
+   * a 429 that also throws away the ack inside it; the retry is a full minute
+   * later. Measured on a real screen: reload at +8 s, confirmation at +72 s,
+   * and the dashboard called the screen "Content behind" the whole time.
+   *
+   * This route carries only the ack, so it has its own — much shorter — accept
+   * spacing and can never be starved by the telemetry floor. Semantics are
+   * IDENTICAL to the ack inside a telemetry post (which still carries it, so an
+   * older or offline-then-back page still confirms): the flag clears only when
+   * the value matches the pending one exactly, the write busts the per-screen
+   * manifest cache (it is manifest content), and the timeline gets its row.
+   */
+  @Post(':id/refresh-ack')
+  @Throttle({ default: { limit: 600, ttl: 60_000 } })
+  async refreshAck(
+    @Param('id') id: string,
+    @Req() req: ExpressReq,
+    @Body() rawBody: unknown,
+  ): Promise<{ ok: true; refreshAcked: boolean }> {
+    const declared = Number(req?.headers?.['content-length'] ?? NaN);
+    if (Number.isFinite(declared) && declared > REFRESH_ACK_MAX_BODY_BYTES) {
+      throw new HttpException(
+        { code: 'REFRESH_ACK_BODY_TOO_LARGE', message: 'Body exceeds 1 KB' },
+        HttpStatus.PAYLOAD_TOO_LARGE,
+      );
+    }
+    const parsed = refreshAckSchema.safeParse(rawBody ?? {});
+    if (!parsed.success) {
+      throw new HttpException(
+        { code: 'REFRESH_ACK_BODY_INVALID', message: 'Body failed validation' },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    // Same device-auth posture as telemetry: an unpaired screen is refreshed
+    // too, and an UNPROVEN credential (minted from a fingerprint alone) is
+    // refused — a spoofable ack channel could clear a command a screen never ran.
+    const auth = await verifyDeviceForScreen(
+      { prisma: this.prisma, redis: this.redisService },
+      req,
+      id,
+      { allowUnpaired: true },
+    );
+    if (!auth.ok) {
+      throw new HttpException(
+        {
+          code: 'SCREEN_DEVICE_AUTH_REQUIRED',
+          message: `Device auth required (${auth.reason})`,
+        },
+        HttpStatus.UNAUTHORIZED,
+      );
+    }
+    // The CREDENTIAL's screen id, never the path param.
+    const screenId = auth.sub;
+    if (!acceptRefreshAck(screenId)) {
+      throw new HttpException(
+        { code: 'REFRESH_ACK_TOO_FREQUENT', message: 'Acknowledgements are limited to one per 2 s per screen' },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    const screen = await withDbRetry(
+      () =>
+        // ten-ok: self-scoped device read — the credential above was verified
+        // against THIS screen id; the row's own tenantId scopes the timeline row.
+        this.prisma.client.screen.findUnique({
+          where: { id: screenId },
+          select: { id: true, tenantId: true, pendingRefreshAt: true },
+        }),
+      { label: 'screen.find[refresh-ack]' },
+    );
+    if (!screen) {
+      throw new HttpException(
+        { code: 'SCREEN_NOT_FOUND', message: 'Not found' },
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    const refreshAckMs = Math.floor(parsed.data.refreshAckMs);
+    // VALUE IDENTITY, never a clock comparison (player rule 6).
+    const refreshAcked =
+      screen.pendingRefreshAt !== null &&
+      new Date(screen.pendingRefreshAt).getTime() === refreshAckMs;
+    if (!refreshAcked) return { ok: true, refreshAcked: false };
+
+    await withDbRetry(
+      () =>
+        // ten-ok: self-scoped device write — same screen id the credential
+        // proved. `pendingRefreshAt` is manifest content, so this write MUST
+        // bust the per-screen manifest cache; it is deliberately NOT one of
+        // SCREEN_TELEMETRY_ONLY_FIELDS, so the mutation hook does.
+        this.prisma.client.screen.update({
+          where: { id: screenId },
+          data: { pendingRefreshAt: null },
+          select: { id: true },
+        }),
+      { label: 'screen.update[refresh-ack]' },
+    );
+    if (screen.tenantId) {
+      try {
+        await this.prisma.client.screenEvent.create({
+          data: {
+            screenId,
+            // Tenant scoping comes from the LIVE ROW, never from a claim.
+            tenantId: screen.tenantId,
+            kind: 'refresh-acked',
+            detail: { valueMs: refreshAckMs },
+          },
+        });
+      } catch {
+        /* timeline best-effort — the command already completed */
+      }
+    }
+    return { ok: true, refreshAcked: true };
+  }
 
   /**
    * IP-keyed net. Sized exactly like `/render-proof`'s cap and for the same
@@ -496,6 +624,26 @@ function assertColumnsAllowed(data: Record<string, unknown>): void {
 export const TELEMETRY_MIN_ACCEPT_INTERVAL_MS = 30_000;
 const lastAccepted = new Map<string, number>();
 
+/**
+ * Minimum spacing between ACCEPTED refresh acknowledgements for one screen. An
+ * ack happens once per refresh command, so this only has to stop a looping
+ * device; 2 s still lets the player's short retry ladder through.
+ */
+export const REFRESH_ACK_MIN_ACCEPT_INTERVAL_MS = 2_000;
+const lastAckAccepted = new Map<string, number>();
+
+function acceptRefreshAck(screenId: string): boolean {
+  const prev = lastAckAccepted.get(screenId);
+  const now = Date.now();
+  if (prev !== undefined && now - prev < REFRESH_ACK_MIN_ACCEPT_INTERVAL_MS) return false;
+  lastAckAccepted.set(screenId, now);
+  if (lastAckAccepted.size > 50_000) {
+    const oldest = lastAckAccepted.keys().next().value;
+    if (oldest) lastAckAccepted.delete(oldest);
+  }
+  return true;
+}
+
 function acceptTelemetryPost(screenId: string): boolean {
   const prev = lastAccepted.get(screenId);
   const now = Date.now();
@@ -607,4 +755,5 @@ function capsHashChanged(screenId: string, hash: string | undefined): boolean {
 export function resetTelemetryStateForTests(): void {
   capsHashes.clear();
   lastAccepted.clear();
+  lastAckAccepted.clear();
 }

@@ -1713,7 +1713,10 @@
       "loading": "正在加载内容",
       "loadingDetail": "屏幕已获取排程，正在打开第一个项目。",
       "connecting": "屏幕已开启 · 正在连接",
-      "connectingDetail": "屏幕已开启，仍在获取排程，因此暂时显示等待画面。"
+      "connectingDetail": "屏幕已开启，仍在获取排程，因此暂时显示等待画面。",
+      "syncing": "正在同步",
+      "syncingEvidence": "更新已发送 — 等待屏幕确认",
+      "syncingDetail": "刚刚向这块屏幕发送了更新。屏幕会在几秒内重新加载，并在恢复后立即确认。如果一两分钟后仍未确认，状态会变为“Content behind”，并提供 Resync 操作。"
     }
   },
   "assetsLib": {

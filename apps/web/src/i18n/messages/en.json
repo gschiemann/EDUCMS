@@ -1713,7 +1713,10 @@
       "loading": "Loading content",
       "loadingDetail": "The screen picked up its schedule and is opening the first item.",
       "connecting": "Screen on · connecting",
-      "connectingDetail": "The screen is on and still fetching its schedule, so it shows its waiting screen for now."
+      "connectingDetail": "The screen is on and still fetching its schedule, so it shows its waiting screen for now.",
+      "syncing": "Syncing",
+      "syncingEvidence": "Update sent — waiting for the screen to confirm",
+      "syncingDetail": "An update was sent to this screen a moment ago. It reloads within a few seconds and confirms as soon as it is back. If it has not confirmed after a minute or two this turns into “Content behind” and offers Resync."
     }
   },
   "assetsLib": {
