@@ -339,6 +339,8 @@ export function WebsiteTabsEditor({ cfg, setField }: { cfg: Record<string, unkno
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const lastIdleRef = useRef(norm.idleReturnSec > 0 ? norm.idleReturnSec : 120);
+
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
   const onDragEnd = (e: DragEndEvent) => {
     const { active, over } = e;
@@ -356,15 +358,13 @@ export function WebsiteTabsEditor({ cfg, setField }: { cfg: Record<string, unkno
     }
   };
 
-  const idleOptions: Array<[string, string]> = [
-    ['0', t('idleNever')],
-    ['60', t('idleMin', { n: 1 })],
-    ['120', t('idleMin', { n: 2 })],
-    ['300', t('idleMin', { n: 5 })],
-    ['600', t('idleMin', { n: 10 })],
-  ];
-  const idleValue = String(norm.idleReturnSec);
-  const idleSelectValue = idleOptions.some(([v]) => v === idleValue) ? idleValue : '120';
+  // "Go back to the first site" is an on/off choice; "After" is how long.
+  // A value that is not in the list (set elsewhere) is shown as itself,
+  // never silently as 2 minutes.
+  const idleOn = norm.idleReturnSec > 0;
+  const idleSteps = [30, 60, 120, 180, 300, 600, 900, 1800, 3600];
+  const idleChoices = idleOn && !idleSteps.includes(norm.idleReturnSec) ? [...idleSteps, norm.idleReturnSec].sort((a, b) => a - b) : idleSteps;
+  const idleLabel = (sec: number) => (sec < 60 ? t('idleSec', { n: sec }) : t('idleMin', { n: Math.round(sec / 60) }));
 
   return (
     <div className="space-y-3" data-testid="website-tabs-editor">
@@ -447,22 +447,36 @@ export function WebsiteTabsEditor({ cfg, setField }: { cfg: Record<string, unkno
       <Toggle label={t('showHome')} value={norm.showHome} onChange={(v) => setField({ showHome: v })} testId="wt-show-home" />
 
       <div className={SECTION}>{t('sectionIdle')}</div>
-      <Row label={t('idleReturn')}>
-        <select
-          value={idleSelectValue}
-          onChange={(e) => setField({ idleReturnSec: Number(e.target.value) })}
-          aria-label={t('idleReturn')}
-          data-testid="wt-idle"
-          className="w-full px-2 py-1 text-xs rounded border border-slate-200 bg-white"
-        >
-          {idleOptions.map(([v, label]) => (
-            <option key={v} value={v}>
-              {label}
-            </option>
-          ))}
-        </select>
-      </Row>
-      {norm.idleReturnSec > 0 && <p className="text-[10px] text-slate-400 px-0.5">{t('idleWarnNote')}</p>}
+      <Toggle
+        label={t('idleToggle')}
+        value={idleOn}
+        onChange={(v) => setField({ idleReturnSec: v ? lastIdleRef.current : 0 })}
+        testId="wt-idle-on"
+      />
+      {idleOn && (
+        <>
+          <Row label={t('idleReturn')}>
+            <select
+              value={String(norm.idleReturnSec)}
+              onChange={(e) => {
+                const sec = Number(e.target.value);
+                lastIdleRef.current = sec;
+                setField({ idleReturnSec: sec });
+              }}
+              aria-label={t('idleReturn')}
+              data-testid="wt-idle"
+              className="w-full px-2 py-1 text-xs rounded border border-slate-200 bg-white"
+            >
+              {idleChoices.map((sec) => (
+                <option key={sec} value={String(sec)}>
+                  {idleLabel(sec)}
+                </option>
+              ))}
+            </select>
+          </Row>
+          <p className="text-[10px] text-slate-400 px-0.5">{t('idleWarnNote')}</p>
+        </>
+      )}
       <Toggle label={t('incognito')} value={norm.incognito} onChange={(v) => setField({ incognito: v })} testId="wt-incognito" />
       <p className="text-[10px] text-slate-500 px-0.5" data-testid="wt-incognito-help">
         {norm.incognito ? t('incognitoOn') : t('incognitoOff')}

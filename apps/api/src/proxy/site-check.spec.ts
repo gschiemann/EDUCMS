@@ -18,6 +18,7 @@ import {
 import {
   checkSite,
   extractSiteMeta,
+  looksLikeSignIn,
   normalizeSiteUrl,
   parseEmbedPolicy,
 } from './site-check';
@@ -288,6 +289,49 @@ describe('checkSite — a result the panel can show, never a throw', () => {
     expect(JSON.stringify(r)).not.toContain('10.0.0.5');
   });
 
+  it('a sign-in redirect loop is "needs the app", never "can\'t reach" (demo.medpower.org)', async () => {
+    const r = await checkSite(
+      'https://demo.medpower.org',
+      failing(new SsrfError('Too many redirects')),
+    );
+    expect(r).toMatchObject({
+      ok: false,
+      embed: 'blocked',
+      reason: 'sign-in',
+      finalUrl: null,
+      name: null,
+    });
+  });
+
+  it('a redirect to a sign-in page on another host never becomes the tab URL, name or icon', async () => {
+    const r = await checkSite(
+      'https://portal.district.example',
+      answering({
+        finalUrl:
+          'https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=1&redirect_uri=https%3A%2F%2Fportal.district.example%2Fcb&state=once',
+        headers: { 'x-frame-options': 'DENY' },
+        body: Buffer.from('<html><head><title>Sign in to your account</title></head></html>'),
+      }),
+    );
+    expect(r).toMatchObject({
+      ok: true,
+      finalUrl: null,
+      embed: 'blocked',
+      reason: 'sign-in',
+      name: 'portal.district.example',
+      iconUrl: 'https://portal.district.example/favicon.ico',
+    });
+  });
+
+  it('an ordinary redirect to another host is still reported, so the panel can adopt it', async () => {
+    const r = await checkSite(
+      'https://bit.ly/menu',
+      answering({ finalUrl: 'https://menus.example/today' }),
+    );
+    expect(r.finalUrl).toBe('https://menus.example/today');
+    expect(r.reason).toBeNull();
+  });
+
   it('too large and network failures are named, and never thrown', async () => {
     const big = await checkSite(
       'https://example.com',
@@ -324,5 +368,28 @@ describe('checkSite — a result the panel can show, never a throw', () => {
       name: 'example.com',
       iconUrl: 'https://example.com/favicon.ico',
     });
+  });
+});
+
+describe('looksLikeSignIn — a page the tab must never adopt as its URL', () => {
+  it('knows OAuth / OIDC, SAML and sign-in paths', () => {
+    expect(
+      looksLikeSignIn(
+        'https://login.learn.medpower.com/authorize?client_id=r4&redirect_uri=https%3A%2F%2Fdemo.medpower.org%2F',
+      ),
+    ).toBe(true);
+    expect(
+      looksLikeSignIn('https://idp.example/x?client_id=1&response_type=code'),
+    ).toBe(true);
+    expect(looksLikeSignIn('https://idp.example/sso?SAMLRequest=abc')).toBe(true);
+    expect(looksLikeSignIn('https://login.learn.medpower.com/u/login/identifier?state=x')).toBe(true);
+    expect(looksLikeSignIn('https://accounts.google.com/v3/signin/identifier')).toBe(true);
+  });
+
+  it('leaves ordinary pages alone', () => {
+    expect(looksLikeSignIn('https://menus.example/today')).toBe(false);
+    expect(looksLikeSignIn('https://example.com/?client_id=1')).toBe(false);
+    expect(looksLikeSignIn('https://example.com/blog/logins-explained')).toBe(false);
+    expect(looksLikeSignIn('not a url')).toBe(false);
   });
 });

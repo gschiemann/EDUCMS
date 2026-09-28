@@ -21,7 +21,9 @@
  *     its own origin and can sign in, but can NEVER navigate the top page
  *     (no `allow-top-navigation`) and can never open a popup (no
  *     `allow-popups`). A site whose headers refuse framing gets the honest
- *     card: "This site can only be shown on screens running the VenueOS app".
+ *     card: "This site can only be shown on screens running the VenueOS app"
+ *     — or, on OUR app with an APK older than 1.1.19, "This site needs the
+ *     newest VenueOS app" (Greg saw the install copy on a screen that HAD it).
  *
  * ── WIDGET TRUTH (§19 / widget-truth.test) ────────────────────────────
  * Unconfigured in the builder → the named next action ("Paste your first
@@ -41,7 +43,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
 import { sceneCss } from './scene-css';
-import { nativeFire, nativeHas } from '@/app/player/nativeBridge';
+import { hasNativeBridge, nativeFire, nativeHas } from '@/app/player/nativeBridge';
 import { WidgetEmptyState } from './WidgetEmptyState';
 import {
   buildHidePayload,
@@ -224,6 +226,9 @@ export function WebsiteTabsWidget({ config, live }: { config: unknown; live?: bo
   // manifest-less channel it answers from KNOWN_METHODS + the UA floor
   // (nativeBridge.ts), so an older APK simply gets the iframe fallback.
   const native = useMemo(() => isLive && nativeHas('webTabsShow') && nativeHas('webTabsHide'), [isLive]);
+  // Our app, but an APK without the native site view (older than 1.1.19):
+  // the honest card there is "update the app", not "install the app".
+  const inApp = useMemo(() => isLive && hasNativeBridge(), [isLive]);
   const sessionKey = useRef<string>('');
   if (!sessionKey.current) {
     sessionSeq += 1;
@@ -385,23 +390,26 @@ export function WebsiteTabsWidget({ config, live }: { config: unknown; live?: bo
   useEffect(() => {
     if (!plan) return;
     armIdle();
-    // The APK relays touches inside the native site view; the iframe path
-    // cannot see inside a cross-origin frame, so a frame that HOLDS focus is
-    // read as "someone is using it" on a 5 s tick.
+    // The APK relays every touch inside the native site view. The iframe path
+    // cannot see inside a cross-origin frame; its one signal is a tap INTO
+    // the site (this page losing focus to the frame). Focus merely STAYING in
+    // the frame is not use — a visitor who walked away leaves it there, and
+    // that kiosk must still go back to the first site. What the frame hides
+    // (reading, tapping links), the "Still there?" warning covers.
     const onNativeActivity = () => noteActivity();
     window.addEventListener('edu:webtabs-activity', onNativeActivity);
-    const poll = native
-      ? null
-      : setInterval(() => {
-          const el = document.activeElement;
-          if (el && el.tagName === 'IFRAME' && contentRef.current?.contains(el) && document.hasFocus()) {
-            noteActivity();
-          }
-        }, 5000);
+    const onBlur = () => {
+      // activeElement settles after the blur event.
+      setTimeout(() => {
+        const el = document.activeElement;
+        if (el && el.tagName === 'IFRAME' && contentRef.current?.contains(el)) noteActivity();
+      }, 0);
+    };
+    if (!native) window.addEventListener('blur', onBlur);
     return () => {
       clearTimers();
       window.removeEventListener('edu:webtabs-activity', onNativeActivity);
-      if (poll) clearInterval(poll);
+      if (!native) window.removeEventListener('blur', onBlur);
     };
     // armIdle/noteActivity are stable per plan; re-arming on every render
     // would restart the idle clock on every paint.
@@ -574,6 +582,69 @@ export function WebsiteTabsWidget({ config, live }: { config: unknown; live?: bo
     </div>
   );
 
+  // With the native site view up, the content box is under the APK's WebView,
+  // so a warning drawn there is invisible and the kiosk would jump back
+  // unannounced. It rides over the tab bar instead.
+  const barWarning =
+    isLive && warning && native ? (
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        aria-label={copy.stillThere}
+        data-testid="website-tabs-idle-warning"
+        data-placement="bar"
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '0 0.8em',
+          boxSizing: 'border-box',
+          background: '#0f172a',
+          color: '#f8fafc',
+          fontSize: labelSize,
+          zIndex: 5,
+        }}
+      >
+        <span style={{ fontWeight: 900, marginRight: '0.7em', whiteSpace: 'nowrap' }}>{copy.stillThere}</span>
+        <span style={{ opacity: 0.85, marginRight: '1em', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {fillCopy(copy.returningIn, { n: secondsLeft })}
+        </span>
+        <button
+          type="button"
+          ref={stillHereRef}
+          className="wt-tab"
+          data-testid="website-tabs-still-here"
+          onClick={() => noteActivity()}
+          style={{
+            flexShrink: 0,
+            minHeight: 56,
+            padding: '0.4em 1.2em',
+            borderRadius: 999,
+            border: 0,
+            background: activeBg,
+            color: ink,
+            fontSize: 'inherit',
+            fontWeight: 800,
+            cursor: 'pointer',
+            outline: 'none',
+          }}
+        >
+          {copy.yesImHere}
+        </button>
+      </div>
+    ) : null;
+  const barBlock = (
+    <div style={{ position: 'relative', flexShrink: 0 }}>
+      {bar}
+      {barWarning}
+    </div>
+  );
+
   const status = active ? STATUS_COPY[lk][active.embed ?? 'unknown'] : '';
 
   const content = (
@@ -695,8 +766,10 @@ export function WebsiteTabsWidget({ config, live }: { config: unknown; live?: bo
             color: '#f8fafc',
           }}
         >
-          <div style={{ fontSize: 'clamp(20px, 2.6vw, 44px)', fontWeight: 800, lineHeight: 1.15, maxWidth: '22em' }}>{copy.blockedTitle}</div>
-          <div style={{ fontSize: 'clamp(14px, 1.4vw, 24px)', opacity: 0.75, marginTop: '1em', maxWidth: '32em' }}>{copy.blockedBody}</div>
+          <div data-reason={inApp ? 'app-update' : 'needs-app'} style={{ fontSize: 'clamp(20px, 2.6vw, 44px)', fontWeight: 800, lineHeight: 1.15, maxWidth: '22em' }}>
+            {inApp ? copy.updateTitle : copy.blockedTitle}
+          </div>
+          <div style={{ fontSize: 'clamp(14px, 1.4vw, 24px)', opacity: 0.75, marginTop: '1em', maxWidth: '32em' }}>{inApp ? copy.updateBody : copy.blockedBody}</div>
         </div>
       )}
 
@@ -743,7 +816,7 @@ export function WebsiteTabsWidget({ config, live }: { config: unknown; live?: bo
         />
       )}
 
-      {isLive && warning && (
+      {isLive && warning && !native && (
         <div
           role="alertdialog"
           aria-modal="true"
@@ -818,9 +891,9 @@ export function WebsiteTabsWidget({ config, live }: { config: unknown; live?: bo
         overflow: 'hidden',
       }}
     >
-      {barAtTop ? bar : null}
+      {barAtTop ? barBlock : null}
       {content}
-      {barAtTop ? null : bar}
+      {barAtTop ? null : barBlock}
     </div>
   );
 }

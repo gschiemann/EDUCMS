@@ -244,6 +244,9 @@ export interface ViewerCopy {
   returningIn: string;
   blockedTitle: string;
   blockedBody: string;
+  /** Our app, but a version without the native site view (older than 1.1.19). */
+  updateTitle: string;
+  updateBody: string;
   onlyTheseSitesTitle: string;
   onlyTheseSitesBody: string;
   backLabel: string;
@@ -261,6 +264,8 @@ const COPY: Record<'en' | 'es' | 'zh', ViewerCopy> = {
     returningIn: 'Returning to the first site in {n} s',
     blockedTitle: 'This site can only be shown on screens running the VenueOS app',
     blockedBody: 'It does not allow being embedded in a web page. Install the VenueOS player app on this screen to show it.',
+    updateTitle: 'This site needs the newest VenueOS app',
+    updateBody: "This screen's app is out of date. Once it updates, this site shows here.",
     onlyTheseSitesTitle: 'This kiosk only shows these sites',
     onlyTheseSitesBody: 'Tap a tab to keep browsing.',
     backLabel: 'Back',
@@ -276,6 +281,8 @@ const COPY: Record<'en' | 'es' | 'zh', ViewerCopy> = {
     returningIn: 'Volviendo al primer sitio en {n} s',
     blockedTitle: 'Este sitio solo puede mostrarse en pantallas con la app VenueOS',
     blockedBody: 'No permite insertarse en una página web. Instale la app de reproducción VenueOS en esta pantalla para mostrarlo.',
+    updateTitle: 'Este sitio necesita la versión más reciente de la app VenueOS',
+    updateBody: 'La app de esta pantalla está desactualizada. Cuando se actualice, este sitio se mostrará aquí.',
     onlyTheseSitesTitle: 'Este quiosco solo muestra estos sitios',
     onlyTheseSitesBody: 'Toque una pestaña para seguir navegando.',
     backLabel: 'Atrás',
@@ -291,6 +298,8 @@ const COPY: Record<'en' | 'es' | 'zh', ViewerCopy> = {
     returningIn: '{n} 秒后返回第一个网站',
     blockedTitle: '此网站只能在运行 VenueOS 应用的屏幕上显示',
     blockedBody: '该网站不允许嵌入网页。请在此屏幕上安装 VenueOS 播放器应用以显示它。',
+    updateTitle: '此网站需要最新版 VenueOS 应用',
+    updateBody: '此屏幕上的应用版本过旧。更新后，此网站将在这里显示。',
     onlyTheseSitesTitle: '此信息亭只显示这些网站',
     onlyTheseSitesBody: '点击一个标签继续浏览。',
     backLabel: '返回',

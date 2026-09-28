@@ -138,6 +138,28 @@ describe('browser player (no native bridge)', () => {
     expect(screen.getByTestId('website-tab-b')).toHaveAttribute('aria-selected', 'true');
   });
 
+  it('focus left inside the site frame does not keep a walked-away kiosk from going back', () => {
+    jest.useFakeTimers();
+    // Longer than the old 5 s "focus is still in the frame" tick, which kept
+    // an abandoned kiosk on its site (and its sign-in) forever.
+    mount({ ...TABS, idleReturnSec: 12 }, true);
+    fireEvent.click(screen.getByTestId('website-tab-b'));
+    // The visitor tapped into the site (focus moved to the frame), then left.
+    const frame = screen.getByTestId('website-tabs-frame') as HTMLIFrameElement;
+    frame.focus();
+    act(() => {
+      window.dispatchEvent(new Event('blur'));
+      jest.advanceTimersByTime(12_500);
+    });
+    expect(screen.getByTestId('website-tab-a')).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('the "needs the app" card in a plain browser says install, not update', () => {
+    mount(TABS, true);
+    fireEvent.click(screen.getByTestId('website-tab-c'));
+    expect(screen.getByTestId('website-tabs-blocked').querySelector('[data-reason]')).toHaveAttribute('data-reason', 'needs-app');
+  });
+
   it('an untouched kiosk on Home never flashes the warning', () => {
     jest.useFakeTimers();
     mount(TABS, true);
@@ -241,6 +263,43 @@ describe('our app (native channel advertising the methods)', () => {
     mount(TABS, true);
     fireEvent.keyDown(screen.getByTestId('website-tab-a'), { key: 'ArrowDown' });
     expect(JSON.parse(String(calls('webTabsShow').slice(-1)[0].args[0])).focus).toBe(true);
+  });
+
+  it('an older APK (our app, no native site view) says UPDATE the app, not install it', () => {
+    install(['heartbeat', 'showUrlOverlay']);
+    mount(TABS, true);
+    fireEvent.click(screen.getByTestId('website-tab-c'));
+    const card = screen.getByTestId('website-tabs-blocked');
+    expect(card.querySelector('[data-reason]')).toHaveAttribute('data-reason', 'app-update');
+    expect(card).toHaveTextContent('This site needs the newest VenueOS app');
+  });
+
+  it('the "Still there?" warning rides over the tab bar, where the native site view cannot cover it', () => {
+    jest.useFakeTimers();
+    install(['webTabsShow', 'webTabsHide']);
+    mount(TABS, true);
+    fireEvent.click(screen.getByTestId('website-tab-b'));
+    act(() => {
+      jest.advanceTimersByTime(2_000);
+    });
+    const warning = screen.getByTestId('website-tabs-idle-warning');
+    expect(warning).toHaveAttribute('data-placement', 'bar');
+    expect(screen.getByTestId('website-tabs-content').contains(warning)).toBe(false);
+  });
+
+  it('a touch inside the native site (relayed by the APK) keeps the visitor on their site', () => {
+    jest.useFakeTimers();
+    install(['webTabsShow', 'webTabsHide']);
+    mount(TABS, true);
+    fireEvent.click(screen.getByTestId('website-tab-b'));
+    for (let i = 0; i < 4; i++) {
+      act(() => {
+        jest.advanceTimersByTime(1_500);
+        window.dispatchEvent(new CustomEvent('edu:webtabs-activity'));
+      });
+    }
+    expect(screen.queryByTestId('website-tabs-idle-warning')).toBeNull();
+    expect(screen.getByTestId('website-tab-b')).toHaveAttribute('aria-selected', 'true');
   });
 
   it('an APK that does not advertise the methods gets the iframe fallback and no webTabs post', () => {

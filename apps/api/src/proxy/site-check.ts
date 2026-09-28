@@ -50,6 +50,8 @@ export type SiteCheckReason =
   | 'too-large'
   | 'network'
   | 'invalid-url'
+  /** The site sends an anonymous visitor to a sign-in page (see `looksLikeSignIn`). */
+  | 'sign-in'
   | null;
 
 export interface SiteCheckResult {
@@ -329,6 +331,35 @@ export interface SiteCheckDeps {
  * headers, read the head. Never throws — every failure is a result the panel
  * can show in plain words.
  */
+/**
+ * A sign-in page: an OAuth 2 / OpenID Connect authorization request
+ * (`client_id` with `redirect_uri` or `response_type`), a SAML request, or a
+ * sign-in path. Pure; unit-tested.
+ */
+export function looksLikeSignIn(raw: string): boolean {
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    return false;
+  }
+  const q = u.searchParams;
+  if (q.has('client_id') && (q.has('redirect_uri') || q.has('response_type')))
+    return true;
+  if (q.has('SAMLRequest')) return true;
+  return /\/(authorize|oauth2?|saml2?|sso|login|signin|sign-in)(\/|$)/i.test(
+    u.pathname,
+  );
+}
+
+function hostOf(raw: string): string | null {
+  try {
+    return new URL(raw).hostname.toLowerCase().replace(/^www\./, '');
+  } catch {
+    return null;
+  }
+}
+
 export async function checkSite(
   raw: unknown,
   deps: SiteCheckDeps = { fetch: safeFetch },
@@ -355,6 +386,13 @@ export async function checkSite(
       accept: 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.5',
     });
   } catch (e) {
+    // More hops than safeFetch follows is, in practice, a site bouncing an
+    // anonymous visitor through its sign-in — demo.medpower.org answers four
+    // 302s through an Auth0 domain and, with no cookie jar, loops. Every hop
+    // answered, so "can't reach" is false; and sign-in pages refuse framing,
+    // so the honest verdict is the app-only one.
+    if (e instanceof SsrfError && /too many redirects/i.test(e.message))
+      return { ...base, embed: 'blocked', reason: 'sign-in' };
     if (e instanceof SsrfError) return { ...base, reason: 'blocked-host' };
     if (e instanceof FetchTooLargeError)
       return { ...base, reason: 'too-large' };
@@ -384,6 +422,23 @@ export async function checkSite(
         iconUrl: absoluteHttpUrl('/favicon.ico', finalUrl),
       };
   const policy = parseEmbedPolicy(res.headers);
+  // Redirected to a sign-in page on ANOTHER host: report the verdict of the
+  // page the screen would land on, but never offer the sign-in URL (one-time
+  // state, the identity provider's host) as the tab's URL, name or icon —
+  // the panel adopts a cross-host finalUrl as the stored URL.
+  if (hostOf(finalUrl) !== hostOf(url) && looksLikeSignIn(finalUrl)) {
+    return {
+      ok: true,
+      url,
+      finalUrl: null,
+      status,
+      name: hostAsName(url),
+      iconUrl: absoluteHttpUrl('/favicon.ico', url),
+      embed: policy.embed,
+      reason: 'sign-in',
+      contentType,
+    };
+  }
   return {
     ok: true,
     url,
