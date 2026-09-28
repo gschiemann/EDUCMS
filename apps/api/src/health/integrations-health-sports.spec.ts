@@ -1,5 +1,8 @@
 import { SCORE_SOURCES } from '@cms/api-types';
-import { IntegrationsHealthController, type IntegrationRow } from './integrations-health.controller';
+import {
+  IntegrationsHealthController,
+  type IntegrationRow,
+} from './integrations-health.controller';
 
 /**
  * K12-F33 — the Integrations page's sports rows say what each score source
@@ -10,18 +13,30 @@ import { IntegrationsHealthController, type IntegrationRow } from './integration
  * working or connected.
  */
 function controller(gameCount: number) {
-  const prisma = { client: { game: { count: jest.fn(async () => gameCount) } } } as any;
-  return new IntegrationsHealthController(prisma, {} as any, {} as any, {} as any);
+  const prisma = {
+    client: { game: { count: jest.fn(async () => gameCount) } },
+  } as any;
+  return new IntegrationsHealthController(
+    prisma,
+    {} as any,
+    {} as any,
+    {} as any,
+  );
 }
 
 async function sportsRows(gameCount = 0): Promise<IntegrationRow[]> {
-  return (controller(gameCount) as any).probeSports('tenant-1', '2026-09-27T12:00:00.000Z');
+  return (controller(gameCount) as any).probeSports(
+    'tenant-1',
+    '2026-09-27T12:00:00.000Z',
+  );
 }
 
 describe('sports integration rows (K12-F33)', () => {
   it('one row per score source, in the list order', async () => {
     const rows = await sportsRows();
-    expect(rows.map((r) => r.id)).toEqual(SCORE_SOURCES.map((s) => `sports-${s.id}`));
+    expect(rows.map((r) => r.id)).toEqual(
+      SCORE_SOURCES.map((s) => `sports-${s.id}`),
+    );
     expect(rows.every((r) => r.category === 'sports')).toBe(true);
   });
 
@@ -46,12 +61,20 @@ describe('sports integration rows (K12-F33)', () => {
       expect(row.message).toMatch(/any other sport is refused/);
     }
     expect(cts.message).toMatch(/Water Polo only/);
-    expect(dak.message).toMatch(/Football, Basketball, Baseball, Softball only/);
+    expect(dak.message).toMatch(
+      /Football, Basketball, Baseball, Softball only/,
+    );
   });
 
   it('a provider with no connector is unavailable, and nothing unbuilt says connected or working', async () => {
     const rows = await sportsRows(3);
-    for (const id of ['genius-sports', 'sportradar', 'maxpreps', 'gamechanger', 'nfhs-network']) {
+    for (const id of [
+      'genius-sports',
+      'sportradar',
+      'maxpreps',
+      'gamechanger',
+      'nfhs-network',
+    ]) {
       const row = rows.find((r) => r.id === `sports-${id}`)!;
       expect(row.status).toBe('COMING_SOON');
       expect(row.message).toMatch(/^Not available — no .* connector exists/);

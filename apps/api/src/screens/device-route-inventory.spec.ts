@@ -228,6 +228,14 @@ const DEVICE_AUTH_SITES: DeviceAuthSite[] = [
     unprovenAllowed: false,
     why: 'SEC-007. Mints a SECONDARY credential — a 30-minute proof-of-play beacon capability whose rows are billed to sponsors as measured evidence. A fingerprint must never be exchangeable for that. Refusal is not a lockout: the caller still gets an UNVERIFIED capability, so the board keeps reporting and the report labels those counts as not-proof.',
   },
+  {
+    file: 'sports/scoreboard-console.service.ts',
+    fn: 'ingest',
+    routes: ['POST /api/v1/sports/scoreboard-console/:screenId/snapshot'],
+    unpaired: 'refused',
+    unprovenAllowed: false,
+    why: 'K12-F32. Drives a live game — score, period, clock — from a scoreboard console at up to 5 Hz, for the one game an operator bound this PAIRED screen to. It replaced a feed token carried in the kiosk URL. A fingerprint-minted credential must never drive a public scoreboard, and an unpaired box has no game to feed.',
+  },
 ];
 
 /**

@@ -884,7 +884,7 @@ export class IntegrationsHealthController {
           row(
             src,
             'READY',
-            `Generic feed — ${sportsOf(src)}. Each game has a signed URL + token (Setup → External score feed); the SENDER is yours: a vendor's HTTP push, a relay or a script posting our JSON.`,
+            `Generic feed — ${sportsOf(src)}. Each game has a signed URL + token (Set up game → External score feed); the SENDER is yours: a vendor's HTTP push, a relay or a script posting our JSON.`,
             { configurePath: '/sports' },
           ),
         );
@@ -893,7 +893,7 @@ export class IntegrationsHealthController {
           row(
             src,
             'READY',
-            `Through the generic feed — no native ${src.name} adapter. Setup recipe in each game's console (Setup → External score feed): point ${src.name}'s HTTP push (or a relay you run) at the game's feed URL + token.`,
+            `Through the generic feed — no native ${src.name} adapter. Setup recipe in each game's console (Set up game → External score feed): point ${src.name}'s HTTP push (or a relay you run) at the game's feed URL + token.`,
             { configurePath: '/sports' },
           ),
         );
@@ -902,7 +902,7 @@ export class IntegrationsHealthController {
           row(
             src,
             'NOT_CONFIGURED',
-            `Experimental hardware — ${sportsOf(src)} only. A VenueOS box wired to the console reads it (Setup → Scoreboard console in a game). Not yet confirmed on a real console; any other sport is refused.`,
+            `Experimental hardware — ${sportsOf(src)} only. A VenueOS box wired to the console reads it (a game's Set up game → Scoreboard console). Not yet confirmed on a real console; any other sport is refused.`,
             { configurePath: '/sports' },
           ),
         );

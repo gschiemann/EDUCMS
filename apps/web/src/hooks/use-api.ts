@@ -5597,6 +5597,125 @@ export function useSetAutoPush(gameId: string) {
 }
 
 /**
+ * K12-F32 — scoreboard console setup for one game (Setup → Scoreboard
+ * console): which screen (the box wired to the console) reads which console
+ * model, what it is sending right now (the preview the operator confirms),
+ * and the box's own report on its serial link. Mirrors
+ * apps/api/src/sports/scoreboard-console.service.ts ScoreboardConsoleView.
+ */
+export interface ScoreboardConsoleView {
+  gameId: string;
+  sport: string;
+  sportName: string;
+  final: boolean;
+  supported: boolean;
+  models: Array<{ id: string; label: string; source: string; supported: boolean; supportedSportNames: string[] }>;
+  screens: Array<{
+    id: string;
+    name: string;
+    online: boolean;
+    consoleProfile: string | null;
+    otherGame: { id: string; label: string } | null;
+  }>;
+  binding: null | {
+    screenId: string;
+    screenName: string;
+    screenOnline: boolean;
+    consoleProfile: string | null;
+    modelLabel: string | null;
+    decoderSport: string | null;
+    supportedSportNames: string[];
+    boundAt: string;
+    confirmedAt: string | null;
+  };
+  preview: null | {
+    receivedAt: string;
+    screenId: string;
+    decoderSport: string;
+    clockMs: number | null;
+    clockRunning: boolean | null;
+    segment: number | null;
+    homeScore: number | null;
+    awayScore: number | null;
+  };
+  link: null | {
+    reportedAt: string;
+    status: 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error';
+    bytes: number;
+    goodFrames: number | null;
+    badFrames: number | null;
+    native: boolean;
+  };
+  serverTime: number;
+}
+
+/**
+ * Polls ONLY while a console is bound AND the Setup view is open (the card is
+ * mounted there alone) — every 2 s before the operator confirms (the preview
+ * is the thing being watched), every 5 s after. Visible-tab polling only
+ * (mobile-perf standard): no background refetch.
+ */
+export function useScoreboardConsole(gameId: string | undefined) {
+  return useQuery<ScoreboardConsoleView>({
+    queryKey: ['sports-scoreboard-console', gameId],
+    queryFn: () => apiFetch(`/sports/games/${gameId}/scoreboard-console`),
+    enabled: !!gameId,
+    refetchInterval: (q) => {
+      const b = q.state.data?.binding;
+      if (!b) return false;
+      return b.confirmedAt ? 5_000 : 2_000;
+    },
+  });
+}
+
+function scoreboardConsoleMutation(
+  gameId: string,
+  path: string,
+  method: 'POST' | 'DELETE',
+) {
+  return (body?: unknown) =>
+    apiFetch<ScoreboardConsoleView>(`/sports/games/${gameId}/scoreboard-console${path}`, {
+      method,
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    });
+}
+
+export function useBindScoreboardConsole(gameId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    // The setup card prints the server's reason next to the button.
+    meta: { suppressGlobalError: true },
+    mutationFn: (vars: { screenId: string; consoleProfile: string }) =>
+      scoreboardConsoleMutation(gameId, '', 'POST')(vars),
+    onSuccess: (data) => {
+      if (data) qc.setQueryData(['sports-scoreboard-console', gameId], data);
+    },
+  });
+}
+
+export function useConfirmScoreboardConsole(gameId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    meta: { suppressGlobalError: true },
+    mutationFn: () => scoreboardConsoleMutation(gameId, '/confirm', 'POST')({}),
+    onSuccess: (data) => {
+      if (data) qc.setQueryData(['sports-scoreboard-console', gameId], data);
+    },
+  });
+}
+
+export function useUnbindScoreboardConsole(gameId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    meta: { suppressGlobalError: true },
+    mutationFn: () => scoreboardConsoleMutation(gameId, '', 'DELETE')(),
+    onSuccess: (data) => {
+      if (data) qc.setQueryData(['sports-scoreboard-console', gameId], data);
+    },
+  });
+}
+
+/**
  * K12-F36 — a game's automatic-celebration settings: on / off, which of the
  * sport's automatic cues fire (`off` lists the quiet ones), the cooldown
  * between two, and what the sport offers. Read fresh by every scoring command

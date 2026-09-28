@@ -27,6 +27,7 @@ import { RunCommandBar } from './RunCommandBar';
 import { ConnectionBanner } from './ConnectionBanner';
 import { ShareConsoleLink } from './ShareConsoleLink';
 import { ConnectScoreboardFeed } from './ConnectScoreboardFeed';
+import { ScoreboardConsoleSetup } from './ScoreboardConsoleSetup';
 import { AutoCelebrateSettings } from './AutoCelebrateSettings';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -112,7 +113,6 @@ import {
   sportHasTeamTimeoutStats,
 } from '@cms/api-types';
 import type { SportDefinition, MeetResult, ResultEntry as ApiResultEntry } from '@cms/api-types';
-import { computeCtsStatus, type CtsStatus } from '@/lib/cts-merge';
 import QRCode from 'qrcode';
 import { RosterPanel } from './RosterPanel';
 import { LeadersPanel } from './LeadersPanel';
@@ -1019,25 +1019,15 @@ function GameControl() {
                   </div>
                 )}
 
-                {/* CTS console status — is the scoreboard console
-                    broadcasting? Auto-refreshes 1 Hz from the game
-                    record; no extra fetch. */}
-                <div>
-                  <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-2">
-                    CTS scoreboard console
-                  </p>
-                  {/* item K (2026-06-16) — plain-English explainer so a non-CTS
-                      venue isn't staring at a cryptic status pill. */}
-                  <p className="text-xs text-slate-400 mb-2">
-                    Optional. If you have a physical scoreboard console (a CTS box) wired
-                    to VenueOS, it feeds live score &amp; clock here automatically — no
-                    typing. Most venues leave this off and run the game from this screen;
-                    the pill below just shows whether a console is currently sending.
-                  </p>
-                  <CtsConsoleStatus
-                    stats={(g.stats as Record<string, unknown> | undefined) || {}}
-                  />
-                </div>
+                {/* K12-F32 — scoreboard console setup: pick the console
+                    model (only ones that decode this sport) and the screen
+                    wired to it, preview what it sends, confirm. Replaces the
+                    "CTS scoreboard console" pill whose only instruction was a
+                    kiosk URL carrying a feed token. */}
+                <ScoreboardConsoleSetup
+                  gameId={gameId}
+                  stats={(g.stats as Record<string, unknown> | undefined) || {}}
+                />
 
                 {/* External score feed — the generic HMAC ingest path.
                     Inputs-wave GUIDED (2026-08-10): the bare "Copy feed
@@ -8336,72 +8326,6 @@ function GoLiveBar({ g, onLive }: { g: any; onLive: () => void }) {
       >
         {pre ? '● Go Live' : 'Open Run console →'}
       </button>
-    </div>
-  );
-}
-
-/**
- * 2026-05-27 — CTS feed status pill. Reads `Game.stats.cts.lastUpdateAt`
- * (written by the API when the CTS bridge POSTs a snapshot) and renders
- * one of three states. Reuses the same freshness math as the public
- * surfaces (apps/web/src/lib/cts-merge.ts) so the operator's pill and
- * the rendered scoreboard never disagree about who is the source of
- * truth.
- *
- * Polls 1 Hz internally so the pill flips to "stale" the moment a CTS
- * outage exceeds the 5 s window. No network call — it re-reads from
- * React Query's already-fresh game record via the parent's `stats` prop.
- */
-function CtsConsoleStatus({ stats }: { stats: Record<string, unknown> }) {
-  // K12-F40 — the heartbeat's age on the page's SERVER clock (sampled by
-  // every useGame read): lastUpdateAt is server time, and the boards judge
-  // the same 5 s window on server time, so a laptop clock a few seconds off
-  // can no longer make this pill and the boards disagree about who is the
-  // source. Unheld: a measurement that keeps counting while the console's
-  // own reads are stale. 1 Hz — enough to flip fresh→stale within a second
-  // of the window expiring; the sample lives in state so render stays pure.
-  const [now, setNow] = useState(() => serverClock.unheldNow());
-  useEffect(() => {
-    const id = setInterval(() => setNow(serverClock.unheldNow()), 1000);
-    return () => clearInterval(id);
-  }, []);
-  const status: CtsStatus = computeCtsStatus(stats, now);
-
-  const ring: Record<CtsStatus['kind'], string> = {
-    fresh: 'ring-2 ring-green-500 bg-green-50',
-    stale: 'ring-2 ring-amber-400 bg-amber-50',
-    never: 'ring-1 ring-slate-300 bg-slate-50',
-  };
-  const dot: Record<CtsStatus['kind'], string> = {
-    fresh: 'bg-green-500 animate-pulse',
-    stale: 'bg-amber-500',
-    never: 'bg-slate-400',
-  };
-  const text: Record<CtsStatus['kind'], string> = {
-    fresh: 'text-green-900',
-    stale: 'text-amber-900',
-    never: 'text-slate-600',
-  };
-  const ageText =
-    status.kind === 'fresh' && status.ageMs !== null
-      ? `${Math.max(0, Math.round(status.ageMs / 1000))}s ago`
-      : status.kind === 'stale' && status.ageMs !== null
-        ? `${Math.max(0, Math.round(status.ageMs / 1000))}s ago`
-        : null;
-
-  return (
-    <div className={`flex items-center gap-3 rounded-xl px-4 py-3 ${ring[status.kind]}`}>
-      <span className={`inline-block h-3 w-3 rounded-full ${dot[status.kind]}`} />
-      <div className="min-w-0 flex-1">
-        <div className={`text-sm font-bold ${text[status.kind]}`}>{status.label}</div>
-        <div className="mt-0.5 text-[11px] text-slate-500">
-          {status.kind === 'fresh'
-            ? `Scoreboard + ribbon are reading from the CTS console${ageText ? ` · last snapshot ${ageText}` : ''}.`
-            : status.kind === 'stale'
-              ? `No CTS snapshot in the last 5 s${ageText ? ` (${ageText})` : ''} — your manual chips win.`
-              : 'Open a player kiosk with ?cts=1&game=<id>&feedToken=<token> to start the live feed.'}
-        </div>
-      </div>
     </div>
   );
 }

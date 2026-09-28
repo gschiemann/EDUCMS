@@ -12,6 +12,12 @@ import { SportsRosterPrivacyService } from './sports-roster-privacy.service';
 import { StudentPrivacyController } from './student-privacy.controller';
 import { StudentPrivacyService } from './student-privacy.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
+// K12-F32 — scoreboard console setup (operator) + the box's device ingest.
+import {
+  ScoreboardConsoleController,
+  ScoreboardConsoleDeviceController,
+} from './scoreboard-console.controller';
+import { ScoreboardConsoleService } from './scoreboard-console.service';
 
 /**
  * VenueOS Sports — Sprint 13. The Sport Engine module.
@@ -30,6 +36,8 @@ import { WebsocketSignerService } from '../security/websocket-signer.service';
     SponsorsController,
     SportsRosterPrivacyController,
     StudentPrivacyController,
+    ScoreboardConsoleController,
+    ScoreboardConsoleDeviceController,
   ],
   providers: [
     SportsService,
@@ -39,6 +47,7 @@ import { WebsocketSignerService } from '../security/websocket-signer.service';
     WebsocketSignerService,
     SportsRosterPrivacyService,
     StudentPrivacyService,
+    ScoreboardConsoleService,
   ],
 })
 export class SportsModule {}

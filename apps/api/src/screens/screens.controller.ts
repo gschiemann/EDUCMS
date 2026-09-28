@@ -112,6 +112,8 @@ import { buildDisplayManifestBlock } from '../display/display-manifest';
 // branch (emergency / sports / normal) so the player applies the
 // out1 / out2 lamp + horn states regardless of which path served it.
 import { readGpioState } from './gpio.service';
+// K12-F32 — a scoreboard console bound to a game rides the manifest.
+import { scoreboardConsoleManifestBlock } from '../sports/scoreboard-console';
 // 2026-05-27 round 2 — auto-detect hardwareModel from the userAgent
 // the player sends on /register. Closes the loop on the pair-modal
 // strip (commit f293f99): operator no longer types a hardware model,
@@ -393,6 +395,33 @@ export const REGISTER_FP_COOLDOWN_MS = 5 * 1000; // 5 seconds (was 60 s, was 15 
 // with a 60s eviction sweep inside the handler.
 // Exported for unit-test access only — do not use outside this module.
 export const _gameStateRateMap = new Map<string, number>();
+
+/** K12-F32 — `{ scoreboardConsole }` for a bound box, `{}` otherwise. */
+function scoreboardConsoleBlockField(config: unknown): Record<string, unknown> {
+  const block = scoreboardConsoleManifestBlock(config);
+  return block ? { scoreboardConsole: block } : {};
+}
+
+/**
+ * K12-F32 — the board branch's console fields: wiring and console model when
+ * the screen has them, plus the binding. `{}` for an ordinary board screen.
+ */
+function scoreboardConsoleManifestFields(
+  config: unknown,
+): Record<string, unknown> {
+  const c =
+    config && typeof config === 'object' && !Array.isArray(config)
+      ? (config as Record<string, unknown>)
+      : null;
+  if (!c) return {};
+  return {
+    ...(c.wiring && typeof c.wiring === 'object' ? { wiring: c.wiring } : {}),
+    ...(typeof c.consoleProfile === 'string'
+      ? { consoleProfile: c.consoleProfile }
+      : {}),
+    ...scoreboardConsoleBlockField(config),
+  };
+}
 
 @Controller('api/v1/screens')
 export class ScreensController {
@@ -5987,6 +6016,12 @@ export class ScreensController {
             boardGame,
             (screen as any).activeBoardSurface,
           ),
+          // K12-F32 — a box wired to a scoreboard console keeps its serial
+          // wiring, console model and game binding while it SHOWS a board:
+          // this branch used to drop all three, so a pushed box re-read its
+          // console as the default CTS Gen 6. Emitted only when set, so every
+          // other board screen's payload (and ETag) is unchanged.
+          ...scoreboardConsoleManifestFields((screen as any).config),
         };
         // 2026-07-02 (efficiency #2 pre-req) — hash the WHOLE payload minus
         // the per-request timestamp, not just playlists. A playlists-only
@@ -6280,6 +6315,9 @@ export class ScreensController {
         // part of the verbatim-replayed cached body, and DisplaySchedule is
         // in MANIFEST_FED_MODELS, so an edit busts the entry.
         display: displayBlock,
+        // K12-F32 — a console box often has nothing scheduled: it still has
+        // to learn which game its console feeds. Absent unless bound.
+        ...scoreboardConsoleBlockField((screen as any).config),
         // Same contract as the full body above: a face waiting for an
         // assignment is still a face, and the splash is a real rendering
         // surface (2026-08-24). Absent on every ordinary screen.
@@ -6528,6 +6566,10 @@ export class ScreensController {
         && typeof (screen as any).config.consoleProfile === 'string')
         ? (screen as any).config.consoleProfile
         : null,
+      // K12-F32 — the game this box's scoreboard console feeds, with the
+      // decoder for that game's sport (or null: this console cannot read it).
+      // Absent unless bound, so no other screen's ETag moves.
+      ...scoreboardConsoleBlockField((screen as any).config),
       // 2026-05-27 — surface the chosen hardware model so the player /
       // KioskSplash can gate hardware-specific UI:
       //  - Suppresses the "LED canvas not set" banner on LCD-driven

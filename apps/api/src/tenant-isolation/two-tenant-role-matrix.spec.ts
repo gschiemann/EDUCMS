@@ -65,6 +65,8 @@ import { ScreensController } from '../screens/screens.controller';
 import { SportsController } from '../sports/sports.controller';
 import { SportsService } from '../sports/sports.service';
 import { SponsorsService } from '../sports/sponsors.service';
+import { ScoreboardConsoleController } from '../sports/scoreboard-console.controller';
+import { ScoreboardConsoleService } from '../sports/scoreboard-console.service';
 import { BrandingController } from '../branding/branding.controller';
 import { AnalyticsController } from '../analytics/analytics.controller';
 import { AiKeyController } from '../ai/ai-key.controller';
@@ -457,6 +459,12 @@ function buildSports(prisma: any) {
   const sponsors = new SponsorsService(prisma);
   const sports = new SportsService(prisma, stubRedis, stubSigner, sponsors, stubFlags);
   return new SportsController(sports, sponsors);
+}
+
+/** K12-F32 — the scoreboard console setup reads the game AND writes a screen. */
+function buildScoreboardConsole(prisma: any) {
+  const sports = { serverTimeMs: () => Date.now(), ingestCtsSnapshot: jest.fn() } as any;
+  return new ScoreboardConsoleController(new ScoreboardConsoleService(prisma, stubRedis, sports, stubSigner));
 }
 
 // Collaborators for the controllers that closed the dated-TODO gaps below.
@@ -984,6 +992,39 @@ const MATRIX: Case[] = [
     controller: SportsController, handler: 'reopen', op: 'write',
     build: buildSports,
     invoke: (c, req) => c.reopen(req, 'game-b', { reason: 'cross-tenant attempt' }),
+  },
+  // K12-F32 (2026-09-27) — a scoreboard console binding makes a SCREEN's
+  // device credential a writer of a GAME, so both halves are tenant-checked:
+  // neither another tenant's game nor another tenant's screen can be named.
+  {
+    name: 'sports: read another tenant\'s scoreboard console setup',
+    controller: ScoreboardConsoleController, handler: 'view', op: 'read',
+    build: buildScoreboardConsole,
+    invoke: (c, req) => c.view(req, 'game-b'),
+  },
+  {
+    name: 'sports: bind a scoreboard console to another tenant\'s game',
+    controller: ScoreboardConsoleController, handler: 'bind', op: 'write',
+    build: buildScoreboardConsole,
+    invoke: (c, req) => c.bind(req, 'game-b', { screenId: 'scr-a', consoleProfile: 'daktronics-allsport' }),
+  },
+  {
+    name: 'sports: point my game\'s console at another tenant\'s screen',
+    controller: ScoreboardConsoleController, handler: 'bind', op: 'write',
+    build: buildScoreboardConsole,
+    invoke: (c, req) => c.bind(req, 'game-a', { screenId: 'scr-b', consoleProfile: 'daktronics-allsport' }),
+  },
+  {
+    name: 'sports: confirm another tenant\'s scoreboard console',
+    controller: ScoreboardConsoleController, handler: 'confirm', op: 'write',
+    build: buildScoreboardConsole,
+    invoke: (c, req) => c.confirm(req, 'game-b'),
+  },
+  {
+    name: 'sports: disconnect another tenant\'s scoreboard console',
+    controller: ScoreboardConsoleController, handler: 'unbind', op: 'delete',
+    build: buildScoreboardConsole,
+    invoke: (c, req) => c.unbind(req, 'game-b'),
   },
 
   // ── Branding (SEC-009 finish, 2026-09-05 — was a dated TODO) ──────────
