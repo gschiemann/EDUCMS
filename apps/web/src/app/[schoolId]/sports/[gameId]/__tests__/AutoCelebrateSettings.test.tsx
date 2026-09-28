@@ -66,3 +66,11 @@ it('a sport with no automatic cue says so instead of offering switches', async (
   await waitFor(() => expect(screen.getByText(/No scoring play in this sport celebrates by itself/)).toBeInTheDocument());
   expect(screen.queryByRole('checkbox')).toBeNull();
 });
+
+it('an API from before the settings existed (`{ enabled }` only) renders nothing instead of crashing Setup', async () => {
+  apiFetch.mockResolvedValueOnce({ enabled: true });
+  const { container } = mount();
+  await waitFor(() => expect(apiFetch).toHaveBeenCalledWith('/sports/games/g1/auto-celebrate'));
+  await new Promise((r) => setTimeout(r, 50));
+  expect(container).toBeEmptyDOMElement();
+});

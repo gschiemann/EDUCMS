@@ -17,7 +17,11 @@ export function AutoCelebrateSettings({ gameId }: { gameId: string }) {
   const t = useTranslations('sportsCelebrate');
   const { data } = useAutoCelebrate(gameId);
   const set = useSetAutoCelebrate(gameId);
-  if (!data) return null;
+  // An API from before K12-F36 answers `{ enabled }` only (the web can deploy
+  // ahead of the API): show nothing rather than take the Setup view down.
+  if (!data || !Array.isArray(data.available) || !Array.isArray(data.off) || !Array.isArray(data.cooldownOptions)) {
+    return null;
+  }
 
   const on = data.enabled;
   const busy = set.isPending;
