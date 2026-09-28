@@ -40,6 +40,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
+import { sceneCss } from './scene-css';
 import { nativeFire, nativeHas } from '@/app/player/nativeBridge';
 import { WidgetEmptyState } from './WidgetEmptyState';
 import {
@@ -513,7 +514,7 @@ export function WebsiteTabsWidget({ config, live }: { config: unknown; live?: bo
         // Chromium-83-safe: the ring uses :focus (no :focus-visible).
       }}
     >
-      <style>{`.wt-tab:focus{box-shadow:0 0 0 4px ${ink} , 0 0 0 7px rgba(0,0,0,0.35)!important}.wt-tab:active{transform:scale(0.97)}`}</style>
+      <style>{sceneCss(`.wt-tab:focus{box-shadow:0 0 0 4px ${ink} , 0 0 0 7px rgba(0,0,0,0.35)!important}.wt-tab:active{transform:scale(0.97)}`)}</style>
       {cfg.showHome && homeId && (
         <TabButton
           role="button"

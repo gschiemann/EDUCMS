@@ -105,7 +105,7 @@ class WebTabsWiringTest {
     // ─── 2. the gate classification ─────────────────────────────────────
 
     @Test
-    fun `webTabsShow is class 1 (gated, two arities); webTabsHide is class 2 (never gated)`() {
+    fun `webTabsShow is class 1 (gated, two arities), webTabsHide is class 2 (never gated)`() {
         assertTrue(BridgeNonce.GATED_METHODS.contains("webTabsShow"))
         assertFalse(BridgeNonce.GATED_METHODS.contains("webTabsHide"))
         val src = webAppBridge
