@@ -718,10 +718,13 @@ export const useBuilderStore = create<BuilderState>((rawSet, get) => {
     // TOUCH_CIRCLE, etc.) all canonicalize to widgetType='TOUCH_POINT'
     // with their variant carried in defaultConfig. The seedDefault
     // switch above already sets the variant key.
+    const isTouchTile = widgetType.startsWith('TOUCH_');
     // 2026-09-28 — Website Tabs is a touch surface too: dropping it turns the
-    // template's touch mode on, same as any TOUCH_ tile. (It is NOT a
-    // `TOUCH_` type — that prefix canonicalises to TOUCH_POINT.)
-    const isTouchTile = widgetType.startsWith('TOUCH_') || widgetType === 'WEBSITE_TABS';
+    // template's touch mode on, same as any TOUCH_ tile — but it is NOT a
+    // touch TILE: it is the whole screen, so it must not take the 15×15
+    // hotspot drop size below. (Nor is it a `TOUCH_` type — that prefix
+    // canonicalises to TOUCH_POINT.)
+    const enablesTouch = isTouchTile || widgetType === 'WEBSITE_TABS';
     const canonical = canonicalWidgetType(widgetType);
     // A full-canvas drop (Website Tabs asks for 100×100 through drop-sizes)
     // belongs at the origin; the stagger above would push it off the canvas
@@ -774,7 +777,7 @@ export const useBuilderStore = create<BuilderState>((rawSet, get) => {
       // template's touch mode. The big "Make this template
       // interactive" CTA in Properties becomes superfluous once
       // widgets carry the intent themselves.
-      ...(isTouchTile && !get().isTouchEnabled ? { isTouchEnabled: true } : {}),
+      ...(enablesTouch && !get().isTouchEnabled ? { isTouchEnabled: true } : {}),
     });
     return id;
   },
