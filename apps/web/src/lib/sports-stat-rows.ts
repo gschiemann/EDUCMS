@@ -16,7 +16,12 @@
  *
  * Pure: no React, no DOM.
  */
-import { shotClockMode, type SportDefinition, type SportStatField } from '@cms/api-types';
+import {
+  foulsReachBonus,
+  shotClockMode,
+  type SportDefinition,
+  type SportStatField,
+} from '@cms/api-types';
 
 export type TeamStatKind = 'timeouts' | 'fouls' | 'counter' | 'rideTime' | 'text';
 
@@ -82,20 +87,20 @@ export function teamStatRows(def: SportDefinition | null | undefined): TeamStatR
 }
 
 /**
- * Basketball team-foul bonus badge — the SAME thresholds the board, ribbon
- * and desktop tile use today (≥7 BONUS, ≥10 DOUBLE BONUS). Register row
- * K12-F04 (NFHS: bonus from the 5th team foul of each quarter, no
- * one-and-one) changes these through the rules profile; keep every console
- * surface on this one function so it moves them all at once.
+ * Basketball team-foul badge on a TEAM'S OWN fouls row (the scorer's view):
+ * whether this many team fouls has put the OPPONENT in the bonus. The
+ * threshold is the game's rules profile (K12-F04 — NFHS: the 5th team foul
+ * of each quarter, no one-and-one; the classic rules keep 7 / 10), shared
+ * with every board through `foulsReachBonus` / `teamBonus`
+ * (@cms/api-types sports-rules.ts). Pass the game's definition
+ * (`sportForGame(game)`), never `findSport(game.sport)`.
  */
 export function basketballBonus(
   def: SportDefinition | null | undefined,
   fouls: number,
 ): 'BONUS' | 'DOUBLE BONUS' | null {
   if (!def || def.key !== 'basketball') return null;
-  if (fouls >= 10) return 'DOUBLE BONUS';
-  if (fouls >= 7) return 'BONUS';
-  return null;
+  return foulsReachBonus(def, fouls);
 }
 
 /**

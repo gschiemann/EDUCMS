@@ -3401,5 +3401,51 @@
     "revoke": "撤销…",
     "revokeAll": "撤销全部链接",
     "keep": "保留"
+  },
+  "sportsRules": {
+    "title": "规则",
+    "pick": "本场比赛的规则",
+    "verification": {
+      "sourceChecked": "已对照已发布的规则核对——请在赛季开始前请正式记分员确认。",
+      "partial": "已部分对照已发布的规则核对——少数设置仍需正式记分员确认。",
+      "notVerified": "此项运动的规则尚未核实——记分牌可以使用，但请与裁判核对设置。"
+    },
+    "level": {
+      "varsity": "校队",
+      "sub-varsity": "二线队",
+      "junior-high": "初中",
+      "any": "所有级别"
+    },
+    "division": {
+      "boys": "男子",
+      "girls": "女子"
+    },
+    "variant": {
+      "classic": "经典记分牌规则",
+      "quarters": "四节制",
+      "no-shot-clock": "无进攻计时",
+      "bo1-15": "一局 15 分",
+      "bo1-21": "一局 21 分",
+      "bo3-15": "三局两胜，每局 15 分"
+    },
+    "localFormat": "本地赛制",
+    "shotClock": {
+      "label": "进攻计时",
+      "possessionLabel": "控球计时",
+      "off": "关闭",
+      "seconds": "{seconds} 秒",
+      "stateOption": "仅在本州协会采用时使用。"
+    },
+    "legacy": "本场比赛创建于规则配置之前，使用经典记分牌规则。",
+    "change": "更改规则",
+    "changing": "正在更改…",
+    "changeFailed": "无法更改规则。",
+    "locked": "比赛开始后规则即固定。",
+    "timeoutKind": "{seconds} 秒暂停",
+    "timeoutFullKind": "完整暂停",
+    "timeoutsBreakdown": "剩余 {full} 次完整暂停 · {short} 次短暂停",
+    "pitchCountShort": "仅计数——不检查资格",
+    "pitchCountNote": "投球数只是记分牌上的数字——不会检查投球上限或休息天数。由本州的投球数规定决定谁可以投球。",
+    "bonusOwnFouls": "本队的全队犯规已让对方进入罚球状态。"
   }
 }

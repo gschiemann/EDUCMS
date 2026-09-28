@@ -3,7 +3,7 @@
  * (K12-F15 / F16) — pinned against the REAL sport definitions so a def
  * change re-decides both surfaces, exactly as it re-decides the desktop tile.
  */
-import { findSport, SPORTS } from '@cms/api-types';
+import { findRulesProfile, findSport, snapshotRules, sportForGame, SPORTS } from '@cms/api-types';
 import {
   baseballCountPatch,
   baseballHalfAdvance,
@@ -76,12 +76,27 @@ describe('teamStatRows', () => {
 });
 
 describe('basketballBonus — one source for every console surface', () => {
-  it('uses the same thresholds as the desktop tile today', () => {
+  it('a classic game keeps the classic thresholds (7 / 10)', () => {
     const bb = sport('basketball');
     expect(basketballBonus(bb, 6)).toBeNull();
     expect(basketballBonus(bb, 7)).toBe('BONUS');
     expect(basketballBonus(bb, 10)).toBe('DOUBLE BONUS');
     expect(basketballBonus(sport('water_polo'), 12)).toBeNull();
+  });
+
+  it('an NFHS game: the fifth team foul of the quarter, no double bonus (K12-F04)', () => {
+    const nfhs = sportForGame({
+      sport: 'basketball',
+      rules: snapshotRules(findRulesProfile('nfhs-basketball@2026-27')!),
+    });
+    expect(basketballBonus(nfhs, 4)).toBeNull();
+    expect(basketballBonus(nfhs, 5)).toBe('BONUS');
+    expect(basketballBonus(nfhs, 10)).toBe('BONUS');
+    // NFHS has no partial shot-clock reset: one FULL reset button only.
+    expect(shotClockResets(nfhs, { shotClock: { len: 35, ms: 9_000 } })).toEqual({
+      full: 35,
+      short: null,
+    });
   });
 });
 

@@ -37,7 +37,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { findSport, formatScore } from '@cms/api-types';
+import { formatScore, overtimeLabel, sportForGame } from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
 import { useGameState, useRenderSurface, fmtClock, type GameSnapshot } from './GameStateContext';
 import { overriddenFacts } from './scoreboard-sources';
@@ -63,8 +63,9 @@ function segmentLabel(def: SportDefinition, snap: GameSnapshot): string {
     return `${half ? half + ' ' : ''}${ordinal(n)}`;
   }
   if (n > def.segment.count) {
-    const ot = n - def.segment.count;
-    return ot > 1 ? `OT${ot}` : 'OT';
+    // The rules' own overtime names (NFHS wrestling: SV / TB1 /
+    // TB2 / UTB), else OT / OT2 — the shared helper (K12-F23).
+    return overtimeLabel(def, n) ?? 'OT';
   }
   return `${def.segment.name.toUpperCase()} ${n}`;
 }
@@ -203,7 +204,7 @@ export function MainScoreboardWidget({ config, live = true }: WidgetProps<MainSc
 
   const snap = state?.snapshot ?? SAMPLE;
   const clockMs = state?.snapshot ? state.liveClockMs : sampleMs;
-  const def = findSport(snap.sport);
+  const def = sportForGame(snap);
   const { ref, scale } = useScaleToFit(1920, 1080);
 
   if (!def) {

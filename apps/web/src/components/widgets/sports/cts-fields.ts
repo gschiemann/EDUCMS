@@ -386,7 +386,7 @@ export function resolveCtsField(
       return fmtClock(liveClockMs, !!opts?.showTenths);
     // Period — sport-aware label ("Q3", "Inning 5", "Set 2").
     case 'segment':
-      return fmtSegment(snapshot.sport, snapshot.segment);
+      return fmtSegment(snapshot.sport, snapshot.segment, snapshot.rules);
     // Team scores — judged sports (gymnastics / cheer) store a SCALED
     // int and display with decimals (195.825); integer sports are
     // unchanged (formatScore is String(n)).

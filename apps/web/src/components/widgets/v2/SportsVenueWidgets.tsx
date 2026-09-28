@@ -50,7 +50,7 @@
  * (CLAUDE.md rule #10, all three variants).
  */
 import React, { useEffect, useState } from 'react';
-import { findSport, formatScore } from '@cms/api-types';
+import { formatScore, overtimeLabel, sportForGame } from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
 import { resolveStyle, frameStyle, animDurationSec } from './_shared/styleSystem';
 import type { ResolvedStyle } from './_shared/styleSystem';
@@ -116,8 +116,9 @@ function periodLabel(def: SportDefinition | undefined, snap: GameSnapshot): stri
     return `${half === 'bottom' ? 'BOT' : 'TOP'} ${ordinal(n)}`;
   }
   if (n > def.segment.count) {
-    const ot = n - def.segment.count;
-    return ot > 1 ? `OT${ot}` : 'OT';
+    // The rules' own overtime names (NFHS wrestling: SV / TB1 /
+    // TB2 / UTB), else OT / OT2 — the shared helper (K12-F23).
+    return overtimeLabel(def, n) ?? 'OT';
   }
   switch (def.segment.name) {
     case 'Quarter': return `Q${n}`;
@@ -166,7 +167,7 @@ function useGameView(c: ScoreboardishCfg): GameView {
   const src = useVenueSource(c.dataMode);
   if (src.kind === 'live' && src.snap) {
     const snap = src.snap;
-    const def = findSport(snap.sport);
+    const def = sportForGame(snap);
     const fmt = (n: number) => formatScore(def, n);
     const stats = snap.stats || {};
     const hasClock = !!def && def.clock.type !== 'none';
@@ -565,7 +566,7 @@ export function PlayerCardWidget({ config, height = 480 }: WidgetProps<PlayerCar
   let demo = false;
   if (src.kind === 'live' && src.snap) {
     const snap = src.snap;
-    const def = findSport(snap.sport);
+    const def = sportForGame(snap);
     team = liveTeamView(snap, side, c.player?.team, (n) => formatScore(def, n));
     const hit = findRosterPlayer(snap.roster, side, c.number);
     if (hit) {
@@ -659,7 +660,7 @@ export function StartingLineupWidget({ config, height = 480 }: WidgetProps<Start
   let demo = false;
   if (src.kind === 'live' && src.snap) {
     const snap = src.snap;
-    const def = findSport(snap.sport);
+    const def = sportForGame(snap);
     team = liveTeamView(snap, side, c.team, (n) => formatScore(def, n));
     const count = typeof c.count === 'number' && c.count > 0 ? c.count : defaultLineupCount(snap.sport);
     players = lineupFromRoster(snap.roster, side, count);
@@ -733,7 +734,7 @@ export function StatComparisonWidget({ config, height = 480 }: WidgetProps<StatC
   const typedRows = Array.isArray(c.stats) ? c.stats.filter((s) => s && ownCopy(s.label)) : [];
   if (src.kind === 'live' && src.snap) {
     const snap = src.snap;
-    const def = findSport(snap.sport);
+    const def = sportForGame(snap);
     const fmt = (n: number) => formatScore(def, n);
     home = liveTeamView(snap, 'home', c.home, fmt);
     away = liveTeamView(snap, 'away', c.away, fmt);

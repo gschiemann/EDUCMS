@@ -93,6 +93,9 @@ import {
 import { datetimeLocalToIso, autoPushMoment } from '../scheduled-at';
 import {
   findSport,
+  overtimeLabel,
+  sportForGame,
+  timeoutBanks,
   formatScore,
   isPeriodClockOver,
   parseClockEntry,
@@ -140,6 +143,7 @@ import { RecentEventsBar } from './RecentEventsBar';
 import { LanePadSection, isLaneMeetSport } from './LanePadSection';
 import { PhoneRunTrays } from './PhoneRunTrays';
 import { basketballBonus, shotClockResets } from '@/lib/sports-stat-rows';
+import { GameRulesCard } from '@/components/sports/RulesProfile';
 
 // ── constants ──────────────────────────────────────────────────
 
@@ -246,7 +250,7 @@ function GameControl() {
 
   const { data: game, isLoading, error } = useGame(gameId);
   const ctl = useGameControl(gameId);
-  const def = useMemo(() => (game ? findSport((game as any).sport) : undefined), [game]);
+  const def = useMemo(() => (game ? sportForGame(game as any) : undefined), [game]);
   // K12-F40 — the same freshness contract as the board: a SERVER read (the
   // 4 s poll) keeps the link live — never an optimistic tap; none for
   // STALE_FEED_AFTER_MS while the tab is visible and the console says so and
@@ -777,6 +781,10 @@ function GameControl() {
                 <span className="font-semibold text-slate-500">More → Set up game</span>.
               </p>
               <ScheduledAtField gameId={gameId} scheduledAt={g.scheduledAt ?? null} />
+              {/* K12-F01 / F27 — the rules this game is bound to, what they
+                  were checked against, and (before it starts) the audited
+                  switch. */}
+              <GameRulesCard gameId={gameId} game={g} />
               {/* Inputs-wave SCHED — schedule game mode: the board goes up
                   on the picked screens 10 minutes before the game time and
                   comes back down automatically at final. */}
@@ -1574,7 +1582,7 @@ function RunMode({
             </div>
             {/* Phase-2 SHARE — the no-login scorekeeper pad link (mint-on-open,
                 QR + copy + revoke; server-enforced limited controls). */}
-            <ShareConsoleLink gameId={gameId} sport={g.sport} />
+            <ShareConsoleLink gameId={gameId} sport={g.sport} rules={g.rules} />
             {/* Inputs-wave GUIDED — the vendor-box counterpart: guided
                 Sportzcast/Scorebird/generic score-feed setup with live
                 first-packet status (same card as Setup → External score feed). */}
@@ -2724,7 +2732,7 @@ function RunInteractiveScoreboard({
           def={def}
           stats={stats}
           onStat={(s) => ctl.stats.mutate({ stats: s })}
-          onTimeout={() => ctl.callTimeout.mutate({ team: 'home' })}
+          onTimeout={(type) => ctl.callTimeout.mutate({ team: 'home', type })}
           tier={tier}
         />
 
@@ -2857,7 +2865,7 @@ function RunInteractiveScoreboard({
           def={def}
           stats={stats}
           onStat={(s) => ctl.stats.mutate({ stats: s })}
-          onTimeout={() => ctl.callTimeout.mutate({ team: 'away' })}
+          onTimeout={(type) => ctl.callTimeout.mutate({ team: 'away', type })}
           tier={tier}
         />
       </div>
@@ -3228,6 +3236,11 @@ function ScoreTile({
   onTimeout?: (type?: 'full' | 'short') => void;
   tier?: FitTier;
 }) {
+  // K12-F03 / F04 — the game's own rules (def = sportForGame(game)): full and
+  // short timeout banks, and what a team-foul count means.
+  const tRules = useTranslations('sportsRules');
+  const shortTimeouts = !!def.timeouts && def.timeouts.short > 0;
+  const banks = timeoutBanks(def, side, stats);
   // Judged sports carry a decimal team total (gymnastics 195.825, cheer
   // 285.5) stored as a scaled int. The +/- chips can't reach a decimal,
   // so those sports get an absolute decimal-entry field instead.
@@ -3390,7 +3403,7 @@ function ScoreTile({
             const BonusChip = bonusBadge ? (
               <span
                 className="ml-1.5 px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[9px] font-black uppercase tracking-wider border border-amber-500/40"
-                title="Team is in the bonus — opponent shoots free throws on the next foul"
+                title={tRules('bonusOwnFouls')}
               >
                 {bonusBadge}
               </span>
@@ -3423,11 +3436,23 @@ function ScoreTile({
             if (wideRange) {
               const canDec = value > min;
               const canInc = value < max;
+              // K12-F21 — a pitch count is a number for the scoreboard, never
+              // an eligibility decision (each state sets its own limits and
+              // rest days — NFHS, 05-RULES-SOURCES.md). Say so on the row.
+              const isPitchCount = s.key.endsWith('PitchCount');
               return (
                 <div key={s.key} className="flex items-center justify-between text-xs">
                   <span className="font-black uppercase tracking-widest text-slate-500 text-[10px] flex items-center">
                     {shortLabel(s.label)}
                     {BonusChip}
+                    {isPitchCount && (
+                      <span
+                        className="ml-1.5 normal-case tracking-normal font-semibold text-slate-400"
+                        title={tRules('pitchCountNote')}
+                      >
+                        · {tRules('pitchCountShort')}
+                      </span>
+                    )}
                   </span>
                   <div className="flex items-center gap-1.5">
                     <button
@@ -3477,7 +3502,7 @@ function ScoreTile({
                       elsewhere on the page (shot-clock reset, etc.). Sized to
                       the 44px touch floor. Disabled when no timeouts remain.
                       (2026-06-15 console-UX P0) */}
-                  {isTimeoutStat && onTimeout && (
+                  {isTimeoutStat && onTimeout && !shortTimeouts && (
                     <button
                       type="button"
                       onClick={() => onTimeout()}
@@ -3487,6 +3512,34 @@ function ScoreTile({
                     >
                       T.O.
                     </button>
+                  )}
+                  {/* K12-F03 — rules with full AND short timeouts (NFHS
+                      basketball: three 60 s + two 30 s per game) get one
+                      chip per kind, so the table debits the bank the
+                      official signalled. */}
+                  {isTimeoutStat && onTimeout && shortTimeouts && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => onTimeout('full')}
+                        disabled={banks.full <= 0}
+                        className="min-h-[44px] px-2.5 rounded-lg bg-amber-800 hover:bg-amber-700 text-amber-200 text-xs font-black border border-amber-700 disabled:opacity-30 disabled:cursor-not-allowed tabular-nums"
+                        title={tRules('timeoutFullKind')}
+                        aria-label={`${tRules('timeoutFullKind')} — ${team}`}
+                      >
+                        {def.timeouts?.fullSec ?? 60}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onTimeout('short')}
+                        disabled={banks.short <= 0}
+                        className="min-h-[44px] px-2.5 rounded-lg bg-amber-900 hover:bg-amber-800 text-amber-200 text-xs font-black border border-amber-700 disabled:opacity-30 disabled:cursor-not-allowed tabular-nums"
+                        title={tRules('timeoutKind', { seconds: def.timeouts?.shortSec ?? 30 })}
+                        aria-label={`${tRules('timeoutKind', { seconds: def.timeouts?.shortSec ?? 30 })} — ${team}`}
+                      >
+                        {def.timeouts?.shortSec ?? 30}
+                      </button>
+                    </>
                   )}
                   {/* Per-team stat steppers — ≥44px so two adjacent ones can't
                       be mis-tapped with a wet finger during live play. */}
@@ -7107,8 +7160,9 @@ function segmentText(def: SportDefinition, g: any): string {
     if (def.mode === 'LEADERBOARD' || def.segment.overtime === false) {
       return `${def.segment.name} ${Math.min(n, def.segment.count)}`;
     }
-    const ot = n - def.segment.count;
-    return ot > 1 ? `OT${ot}` : 'OT';
+    // The rules' own overtime names (NFHS wrestling: SV / TB1 /
+    // TB2 / UTB), else OT / OT2 — the shared helper (K12-F23).
+    return overtimeLabel(def, n) ?? 'OT';
   }
   return `${def.segment.name} ${n}`;
 }

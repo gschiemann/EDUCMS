@@ -21,11 +21,19 @@ import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { useGames, useCreateGame, useDeleteGame, useDuplicateGame, useScrapeBranding, useTemplates } from '@/hooks/use-api';
 import { appConfirm } from '@/components/ui/app-dialog';
 import { DateTimeField } from '@/components/ui/date-time-field';
-import { SPORTS, findSport, formatScore } from '@cms/api-types';
+import {
+  SPORTS,
+  findSport,
+  formatScore,
+  rulesProfilesForSport,
+  snapshotRules,
+  sportForGame,
+} from '@cms/api-types';
 import { AssetPicker } from '@/components/assets/AssetPicker';
 import { filterRelevantTemplates } from '@/lib/template-relevance';
 import { formatGameWhen, orderGames } from './game-list';
 import { ResultsScopeNote, ResultsScopeTag } from '@/components/sports/ResultsScopeNote';
+import { RulesProfilePicker } from '@/components/sports/RulesProfile';
 // K-12 launch, lane B3 — "Student names and photos are hidden on public
 // screens until an admin confirms your directory-information policy."
 import { StudentPrivacyBanner } from '@/components/sports/StudentPrivacyBanner';
@@ -437,6 +445,11 @@ export function CreateGameModal({ onClose, initialPresetTemplate = null }: {
   // changes. Stored per-game — every clock reset honors it, so a HS
   // operator never hand-sets 7:00 four times a game.
   const [clockSegmentMs, setClockSegmentMs] = useState('');
+  // K12-F01 — the rules profile the game binds ('' = the sport's default)
+  // and, for a state-option shot clock, the length this state uses
+  // (undefined = the profile's default: OFF). Both reset with the sport.
+  const [rulesProfile, setRulesProfile] = useState('');
+  const [shotClockLen, setShotClockLen] = useState<number | undefined>(undefined);
   // Sports Wave S4-3 (P2) — sport search, only shown once the grid gets
   // big enough to need it (>8 sports). No new setting: purely a filter
   // over the existing SPORTS list.
@@ -493,7 +506,14 @@ export function CreateGameModal({ onClose, initialPresetTemplate = null }: {
     }
   };
 
-  const def = useMemo(() => findSport(sport), [sport]);
+  // The definition the NEW game will run: its sport under the picked rules
+  // profile (sportForGame) — a 7:00 NFHS water-polo quarter is the default
+  // pick, soccer quarters read "Quarter".
+  const def = useMemo(() => {
+    const profiles = rulesProfilesForSport(sport);
+    const picked = profiles.find((p) => p.key === rulesProfile) ?? profiles[0];
+    return picked ? sportForGame({ sport, rules: snapshotRules(picked) }) : findSport(sport);
+  }, [sport, rulesProfile]);
 
   const submit = async () => {
     if (!homeTeam.trim() || !awayTeam.trim()) {
@@ -522,6 +542,10 @@ export function CreateGameModal({ onClose, initialPresetTemplate = null }: {
         // Regulation period length pick (only sent when it differs from
         // the sport default — the server validates against the options).
         clockSegmentMs: clockSegmentMs ? Number(clockSegmentMs) : undefined,
+        // K12-F01 — the picked rules profile ('' = the sport's default) and
+        // a state-option shot clock's length (undefined = off by default).
+        rulesProfile: rulesProfile || undefined,
+        shotClockLen,
       });
       // Remember this home team so the next New Game pre-fills it.
       try {
@@ -602,6 +626,8 @@ export function CreateGameModal({ onClose, initialPresetTemplate = null }: {
                 // Period length is sport-specific — never carry a water
                 // polo 7:00 pick onto another sport.
                 setClockSegmentMs('');
+                setRulesProfile('');
+                setShotClockLen(undefined);
               }}
               className={`flex flex-col items-center gap-1 rounded-xl border-2 py-2.5 transition-colors ${
                 sport === s.key
@@ -623,6 +649,19 @@ export function CreateGameModal({ onClose, initialPresetTemplate = null }: {
         {/* K12-F26 — a meet sport is a results display, not a meet
             controller; say so the moment one is picked. */}
         <ResultsScopeNote sport={def} variant="picker" />
+        {/* K12-F01 / F27 — the rules this game is played under, what they
+            were checked against ("rules not verified" said plainly), and a
+            state-option shot clock's choice. */}
+        <RulesProfilePicker
+          sport={sport}
+          value={rulesProfile}
+          onChange={(key) => {
+            setRulesProfile(key);
+            setClockSegmentMs('');
+          }}
+          shotClockLen={shotClockLen}
+          onShotClockLen={setShotClockLen}
+        />
 
         {/* teams */}
         <div className="mt-5 grid grid-cols-2 gap-4">

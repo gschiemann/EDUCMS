@@ -16,7 +16,7 @@
  * / hairline) and a height `h` that the situational sizing scales off.
  */
 import type { CSSProperties, ReactNode } from 'react';
-import type { SportDefinition } from '@cms/api-types';
+import { displayTeamFouls, teamBonus, type SportDefinition } from '@cms/api-types';
 import { sceneCss } from '../../scene-css';
 
 function px(zoneH: number, f: number): number {
@@ -440,34 +440,55 @@ export function SituationalRow({ def, stats, h, accent, ink, dim, hairline }: Ro
       </>
     );
   } else if (def.key === 'basketball') {
-    // ── Basketball — per-team timeouts + bonus, possession arrow ──
+    // ── Basketball — per-team fouls, timeouts left + bonus, possession ──
+    // K12-F04: a team's BONUS lamp is decided by its OPPONENT's team fouls
+    // this period, under the game's own rules (NFHS: the fifth — `teamBonus`,
+    // @cms/api-types sports-rules.ts); the old lamp lit at 7 / 10 beside the
+    // team that committed the fouls. FOULS (capped as the rules display them)
+    // and TOL (time-outs left) are labelled numbers, not bare dots.
     const poss = side(stats.possession);
-    const bonus = (f: number) => (f >= 10 ? 'DOUBLE BONUS' : f >= 7 ? 'BONUS' : null);
-    const TeamSit = ({ to, b, alignR }: { to: number; b: string | null; alignR?: boolean }) => (
-      <span
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          flexDirection: alignR ? 'row-reverse' : 'row',
-        }}
-      >
-        <Pips n={5} filled={to} color={accent} dim={dim} size={px(h, 0.04)} />
-        {b && (
-          <span
-            style={{
-              fontSize: px(h, 0.05),
-              fontWeight: 900,
-              color: '#f59e0b',
-              letterSpacing: 1,
-              marginLeft: alignR ? undefined : px(h, 0.03),
-              marginRight: alignR ? px(h, 0.03) : undefined,
-            }}
-          >
-            {b}
+    const teamSit = (team: 'home' | 'away', alignR = false) => {
+      const b = teamBonus(def, team, stats);
+      const foulKey = team === 'home' ? 'homeFouls' : 'awayFouls';
+      const fouls = displayTeamFouls(def, num(stats[foulKey]));
+      const to = num(stats[team === 'home' ? 'homeTimeouts' : 'awayTimeouts']);
+      const label: CSSProperties = {
+        fontSize: px(h, 0.045),
+        fontWeight: 900,
+        color: dim,
+        letterSpacing: 1,
+        marginLeft: alignR ? px(h, 0.03) : undefined,
+        marginRight: alignR ? undefined : px(h, 0.03),
+      };
+      return (
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            flexDirection: alignR ? 'row-reverse' : 'row',
+          }}
+        >
+          <span style={label}>
+            FOULS <span style={{ color: ink }}>{fouls}</span>
           </span>
-        )}
-      </span>
-    );
+          <span style={label}>
+            TOL <span style={{ color: ink }}>{to}</span>
+          </span>
+          {b && (
+            <span
+              style={{
+                fontSize: px(h, 0.05),
+                fontWeight: 900,
+                color: '#f59e0b',
+                letterSpacing: 1,
+              }}
+            >
+              {b}
+            </span>
+          )}
+        </span>
+      );
+    };
     // Foul-trouble surface — players at 4+ personal fouls (one away from
     // fouling out at the HS 5-foul limit). Reads the structured
     // stats.playerFouls contract the console writes; renders nothing
@@ -478,11 +499,11 @@ export function SituationalRow({ def, stats, h, accent, ink, dim, hairline }: Ro
       .slice(0, 4);
     content = (
       <>
-        <TeamSit to={num(stats.homeTimeouts)} b={bonus(num(stats.homeFouls))} />
+        {teamSit('home')}
         <span style={{ fontSize: px(h, 0.055), fontWeight: 900, color: accent, letterSpacing: 1 }}>
           {poss === 'home' ? '◀ ' : ''}POSS{poss === 'away' ? ' ▶' : ''}
         </span>
-        <TeamSit to={num(stats.awayTimeouts)} b={bonus(num(stats.awayFouls))} alignR />
+        {teamSit('away', true)}
         {inTrouble.length > 0 && (
           <span style={{ display: 'inline-flex', alignItems: 'center' }}>
             <span

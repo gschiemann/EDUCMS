@@ -84,7 +84,7 @@ import { API_URL } from '@/lib/api-url';
 // loop behaves identically to /board and /ribbon under load + outage.
 import { startBoardPoll } from '@/lib/board-poll';
 import { applyCtsOverlay } from '@/lib/cts-merge';
-import { findSport } from '@cms/api-types';
+import { overtimeLabel, sportForGame } from '@cms/api-types';
 
 export interface GameSnapshot {
   id: string;
@@ -104,6 +104,15 @@ export interface GameSnapshot {
   clockUpdatedAt: string;
   stats: Record<string, unknown>;
   serverTime: number;
+  /**
+   * K12-F01 — the rules profile the game runs and its rules snapshot, as the
+   * public board payload carries them. Every widget derives the game's
+   * definition with `sportForGame(snapshot)` (@cms/api-types sports-rules.ts)
+   * — NFHS soccer counts down, NFHS wrestling names its overtime periods.
+   * Absent / null = a game created before profiles (the classic rules).
+   */
+  rulesProfile?: string | null;
+  rules?: unknown;
   /**
    * The game's roster as the PUBLIC board payload carries it (the
    * `/sports/board/:id` response spreads through `applyCtsOverlay`
@@ -194,7 +203,7 @@ export function GameStateProvider({
   // smoothly between polls instead of jumping every 750ms.
   useEffect(() => {
     if (!snapshot) return;
-    const def = findSport(snapshot.sport);
+    const def = sportForGame(snapshot);
     const updatedAt = new Date(snapshot.clockUpdatedAt).getTime();
     const drift = snapshot.serverTime ? Date.now() - snapshot.serverTime : 0;
     const projectClock = () => {
@@ -293,10 +302,16 @@ export function fmtClock(ms: number, showTenths = false): string {
   return `${m}:${pad(s)}`;
 }
 
-/** Sport-aware segment label — "Q3", "Inning 5 ▲", "Set 2", "1st Half", etc. */
-export function fmtSegment(sport: string, segment: number): string {
-  const def = findSport(sport);
+/**
+ * Sport-aware segment label — "Q3", "Inning 5 ▲", "Set 2", "1st Half", etc.
+ * Pass the game's `rules` (K12-F01): an overtime period reads the rules' own
+ * name — "OT", "OT2", or NFHS wrestling's "SV" / "TB1" / "TB2" / "UTB".
+ */
+export function fmtSegment(sport: string, segment: number, rules?: unknown): string {
+  const def = sportForGame({ sport, rules });
   if (!def) return `Period ${segment}`;
+  const ot = def.segment.name === 'Inning' ? null : overtimeLabel(def, segment);
+  if (ot) return ot;
   const name = def.segment?.name ?? 'Period';
   // Common short forms.
   switch (name) {

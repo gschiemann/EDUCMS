@@ -207,6 +207,7 @@ export function TeamStatGrid({
   disabled,
 }: TeamStatGridProps) {
   const t = useTranslations('sportsControls');
+  const tRules = useTranslations('sportsRules');
   const usable = (row: TeamStatRow) =>
     [row.home, row.away].some(
       (f) => !!f && (canEdit(f.key) || (row.kind === 'timeouts' && !!onTimeout)),
@@ -325,6 +326,13 @@ export function TeamStatGrid({
       {rows.map((row) => (
         <div key={row.id} role="group" aria-label={row.label} className="mt-3">
           <div className="mb-1 text-[11px] font-black uppercase tracking-widest text-slate-400">{row.label}</div>
+          {/* K12-F21 — a pitch count is a scoreboard number, never an
+              eligibility decision (each state sets its own limits). */}
+          {row.id === 'PitchCount' && (
+            <p className="mb-1 text-[11px] text-slate-500" title={tRules('pitchCountNote')}>
+              {tRules('pitchCountShort')}
+            </p>
+          )}
           <div className="grid grid-cols-2 gap-2">
             <div className="min-w-0">{cell(row, 'home')}</div>
             <div className="min-w-0">{cell(row, 'away')}</div>

@@ -42,6 +42,8 @@ import { useParams } from 'next/navigation';
 import { API_URL } from '@/lib/api-url';
 import {
   findSport,
+  overtimeLabel,
+  sportForGame,
   formatScore,
   projectCountdownMs,
   projectGameClockMs,
@@ -335,8 +337,9 @@ function segmentLabel(def: SportDefinition, data: BoardData): string {
   if (n > def.segment.count) {
     // Only period/quarter/half sports that declare overtime roll to OT.
     if (def.segment.overtime) {
-      const ot = n - def.segment.count;
-      return ot > 1 ? `OT${ot}` : 'OT';
+      // The rules' own overtime names (NFHS wrestling: SV / TB1 /
+      // TB2 / UTB), else OT / OT2 — the shared helper (K12-F23).
+      return overtimeLabel(def, n) ?? 'OT';
     }
     // A LEADERBOARD / non-overtime sport that somehow overflowed its
     // segment count — show the literal segment, never a bogus "OT".
@@ -4181,7 +4184,7 @@ export default function ScoreboardPage() {
     return () => { w.__VENUEOS_SURFACE_HANDLES_CUES = false; };
   }, []);
 
-  const def = useMemo(() => (data ? findSport(data.sport) : undefined), [data]);
+  const def = useMemo(() => (data ? sportForGame(data) : undefined), [data]);
   const scale = Math.min(vp.w / 1920, vp.h / 1080);
 
   // Sprint 13 — CTS source-of-truth merge. When a CTS console is

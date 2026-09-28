@@ -3401,5 +3401,51 @@
     "revoke": "Revocar…",
     "revokeAll": "Revocar todos los enlaces",
     "keep": "Conservar"
+  },
+  "sportsRules": {
+    "title": "Reglas",
+    "pick": "Reglas de este partido",
+    "verification": {
+      "sourceChecked": "Verificadas con las reglas publicadas: pida a su anotador oficial que las confirme antes de la temporada.",
+      "partial": "Verificadas en parte con las reglas publicadas: algunos ajustes aún necesitan la confirmación de su anotador oficial.",
+      "notVerified": "Reglas no verificadas para este deporte: el marcador funciona, pero revise sus ajustes con sus árbitros."
+    },
+    "level": {
+      "varsity": "Primer equipo",
+      "sub-varsity": "Equipo reserva",
+      "junior-high": "Secundaria",
+      "any": "Todos los niveles"
+    },
+    "division": {
+      "boys": "Varonil",
+      "girls": "Femenil"
+    },
+    "variant": {
+      "classic": "Reglas clásicas del marcador",
+      "quarters": "Cuatro cuartos",
+      "no-shot-clock": "Sin reloj de posesión",
+      "bo1-15": "Un juego a 15",
+      "bo1-21": "Un juego a 21",
+      "bo3-15": "Al mejor de 3 juegos a 15"
+    },
+    "localFormat": "Formato local",
+    "shotClock": {
+      "label": "Reloj de posesión",
+      "possessionLabel": "Reloj de posesión del balón",
+      "off": "Apagado",
+      "seconds": "{seconds} segundos",
+      "stateOption": "Úselo solo si su asociación estatal lo adoptó."
+    },
+    "legacy": "Este partido se creó antes de los perfiles de reglas y usa las reglas clásicas del marcador.",
+    "change": "Cambiar las reglas",
+    "changing": "Cambiando…",
+    "changeFailed": "No se pudieron cambiar las reglas.",
+    "locked": "Las reglas quedan fijas una vez que empieza el partido.",
+    "timeoutKind": "Tiempo muerto de {seconds} segundos",
+    "timeoutFullKind": "Tiempo muerto completo",
+    "timeoutsBreakdown": "Quedan {full} completos · {short} cortos",
+    "pitchCountShort": "Solo conteo: no verifica la elegibilidad",
+    "pitchCountNote": "El conteo de lanzamientos es solo un número para el marcador: no verifica límites de lanzamientos ni días de descanso. Las reglas de su estado deciden quién puede lanzar.",
+    "bonusOwnFouls": "Estas faltas de equipo ponen al rival en bonus."
   }
 }

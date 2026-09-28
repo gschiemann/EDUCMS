@@ -36,7 +36,7 @@ import { Check, Copy } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import {
   consoleScopesForSport,
-  findSport,
+  sportForGame,
   isConsoleScope,
   type ConsoleScope,
 } from '@cms/api-types';
@@ -88,9 +88,19 @@ function setRevokeFlag(gameId: string, on: boolean): void {
   }
 }
 
-export function ShareConsoleLink({ gameId, sport }: { gameId: string; sport?: string }) {
+export function ShareConsoleLink({
+  gameId,
+  sport,
+  rules,
+}: {
+  gameId: string;
+  sport?: string;
+  /** K12-F01 — the game's rules: which duties a link can have (a 2026
+   *  boys-lacrosse game has no shot clock to operate). */
+  rules?: unknown;
+}) {
   const t = useTranslations('sportsShareLink');
-  const def = findSport(sport);
+  const def = sportForGame({ sport, rules });
   const scopes = consoleScopesForSport(def);
   const offered: ConsoleScope[] = scopes.length > 0 ? scopes : ['table'];
   const [scope, setScope] = useState<ConsoleScope>(offered[0]);

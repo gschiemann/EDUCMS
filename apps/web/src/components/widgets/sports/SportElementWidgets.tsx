@@ -30,6 +30,7 @@
  */
 
 import React from 'react';
+import { foulsReachBonus, sportForGame, teamBonus } from '@cms/api-types';
 import { useGameState, useRenderSurface, type GameSnapshot } from './GameStateContext';
 import { FitOneLine, FitBox } from './FitOneLine';
 import { deriveCtsField } from './cts-fields';
@@ -466,17 +467,25 @@ export function AddedTimeWidget({ config }: { config: ElCfg }) {
 // ── Bonus / double-bonus lamp (basketball) ───────────────────────────
 export function BonusLampWidget({ config }: { config: ElCfg }) {
   const s = useGameState();
-  const team = config.team ?? 'home';
-  const key = config.statKey ?? (team === 'away' ? 'awayFouls' : 'homeFouls');
-  // Sample fouls=8 (lit BONUS) only in the builder (s == null). On a live
-  // surface (s != null) the lamp follows the real foul count and stays
-  // DIM until a real value crosses the bonus threshold — never a
-  // fabricated lit lamp.
-  const fouls = Number(s?.snapshot?.stats?.[key] ?? (s != null ? 0 : 8));
-  const bonus = fouls >= 7;
-  const dbl = fouls >= 10;
+  const team: 'home' | 'away' = config.team === 'away' ? 'away' : 'home';
+  // K12-F04 — the lamp of `team` lights when that team is IN THE BONUS: its
+  // OPPONENT's team fouls this period have reached the count of the game's
+  // own rules (NFHS: five; `teamBonus`, @cms/api-types sports-rules.ts).
+  // It used to light at 7 / 10 of the team's OWN fouls — the wrong team, and
+  // the pre-2023 thresholds. An explicit `statKey` still reads that one count.
+  // The builder (s == null) shows the lit sample; a live surface stays DIM
+  // until a real count reaches the bonus — never a fabricated lit lamp.
+  const snap = s?.snapshot ?? null;
+  const def = snap ? sportForGame(snap) : undefined;
+  const stats = snap?.stats ?? {};
+  const level = !snap
+    ? null
+    : config.statKey
+      ? foulsReachBonus(def, Number(stats[config.statKey] ?? 0))
+      : teamBonus(def, team, stats);
+  const dbl = level === 'DOUBLE BONUS';
   const onColor = dbl ? '#ef4444' : '#fbbf24';
-  const lit = bonus || s == null;
+  const lit = level !== null || s == null;
   return (
     <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent', overflow: 'hidden', opacity: lit ? 1 : 0.18 }}>
       <FitBox

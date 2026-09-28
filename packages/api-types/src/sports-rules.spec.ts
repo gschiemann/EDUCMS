@@ -57,7 +57,7 @@ function fingerprint(rules: GameRules): string {
  * add its line here. Labels are not pinned (they are presentation).
  */
 const PUBLISHED: Record<string, string> = {
-  'nfhs-basketball@2026-27': '2c378ab56d51ae8c',
+  'nfhs-basketball@2026-27': 'f30fd8854cb1c6a0',
   'nfhs-football@2025': '20ccb46d2c61ce63',
   'nfhs-baseball@2027': 'e787bdf6d2899220',
   'nfhs-softball@2027': '9e8e9a1f3cb6ab56',
@@ -173,6 +173,9 @@ describe('a game runs its own snapshot (F01)', () => {
     expect(def.clock.otSegmentMs).toBe(240_000);
     expect(def.teamFouls?.bonusAt).toBe(5);
     expect(sportForGame(game)).toBe(def);
+    // A board re-parses the same rules on every poll: same definition object.
+    const reparsed = { sport: 'basketball', rules: JSON.parse(JSON.stringify(game.rules)) };
+    expect(sportForGame(reparsed)).toBe(def);
     expect(gameRulesInfo(game)).toMatchObject({ key: 'nfhs-basketball@2026-27', verification: 'partial' });
   });
 

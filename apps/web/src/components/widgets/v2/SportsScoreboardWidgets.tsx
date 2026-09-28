@@ -30,7 +30,7 @@
  */
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { findSport, formatScore } from '@cms/api-types';
+import { formatScore, overtimeLabel, sportForGame } from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
 import type { WidgetProps } from './_shared/types';
 import type { WidgetStyle } from './_shared/styleSystem';
@@ -184,8 +184,9 @@ function segmentLabel(def: SportDefinition, b: BoardData): string {
     return `${half ? half + ' ' : ''}${ordinal(n)}`;
   }
   if (n > def.segment.count) {
-    const ot = n - def.segment.count;
-    return ot > 1 ? `OT${ot}` : 'OT';
+    // The rules' own overtime names (NFHS wrestling: SV / TB1 /
+    // TB2 / UTB), else OT / OT2 — the shared helper (K12-F23).
+    return overtimeLabel(def, n) ?? 'OT';
   }
   return `${def.segment.name.toUpperCase()} ${n}`;
 }
@@ -320,7 +321,7 @@ export function SportsScoreboardWidget({
   const liveBoard: BoardData | null = snapshot ?? cached;
   const neutral = !preview && !liveBoard;
   const board: BoardData = preview ? simBoard : (liveBoard ?? NEUTRAL_BOARD);
-  const def = findSport(board.sport);
+  const def = sportForGame(board);
   // The provider projects a running clock between polls (and applies the
   // server-time skew); the cached frame is frozen. Either way the scene is
   // handed the reading to paint instead of re-projecting it.

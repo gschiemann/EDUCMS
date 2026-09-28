@@ -79,6 +79,9 @@ import {
 import { SportMark, PossessionGlyph, ServeGlyph } from '@/components/sports/SportGlyph';
 import {
   findSport,
+  overtimeLabel,
+  sportForGame,
+  teamBonus,
   defaultRibbonPresets,
   ribbonSpeedMultiplier,
   ribbonScoreRepeatCount,
@@ -369,8 +372,9 @@ function segmentLabel(def: SportDefinition, data: BoardData): string {
     // other non-overtime segment sports (golf, meet events) clamp to the last
     // segment label instead of mislabeling it overtime.
     if (def.segment.overtime) {
-      const ot = n - def.segment.count;
-      return ot > 1 ? `OT${ot}` : 'OT';
+      // The rules' own overtime names (NFHS wrestling: SV / TB1 /
+      // TB2 / UTB), else OT / OT2 — the shared helper (K12-F23).
+      return overtimeLabel(def, n) ?? 'OT';
     }
     return `${def.segment.name.toUpperCase()} ${def.segment.count}`;
   }
@@ -523,10 +527,12 @@ function ribbonSituational(def: SportDefinition, stats: Record<string, unknown>)
   // Basketball — team bonus + possession arrow + foul-trouble (players
   // at 4+ personal fouls, the broadcast "FOUL TROUBLE: #23 (4)" line).
   if (def.key === 'basketball') {
-    const bonus = (f: number) => (f >= 10 ? 'DOUBLE BONUS' : f >= 7 ? 'BONUS' : null);
+    // K12-F04 — a team is in the bonus when its OPPONENT has reached the
+    // rules' foul count this period (NFHS: five) — `teamBonus`, the one rule
+    // every surface shares; `def` is the game's own (sportForGame).
     const parts: string[] = [];
-    const hb = bonus(num(stats.homeFouls));
-    const ab = bonus(num(stats.awayFouls));
+    const hb = teamBonus(def, 'home', stats);
+    const ab = teamBonus(def, 'away', stats);
     if (hb) parts.push(`HOME ${hb}`);
     if (ab) parts.push(`AWAY ${ab}`);
     const poss = side(stats.possession);
@@ -1075,7 +1081,7 @@ export default function RibbonPage() {
     return () => { w.__VENUEOS_SURFACE_HANDLES_CUES = false; };
   }, []);
 
-  const def = useMemo(() => (data ? findSport(data.sport) : undefined), [data]);
+  const def = useMemo(() => (data ? sportForGame(data) : undefined), [data]);
 
   // Sprint 13 — CTS source-of-truth merge. When the CTS console is
   // broadcasting fresh data (Game.stats.cts.lastUpdateAt within 5 s of

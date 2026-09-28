@@ -488,8 +488,11 @@ const NFHS_BASKETBALL_2026_27 = profile({
     // Three 60-second and two 30-second time-outs [ncaa-nfhs-bb-2025-26];
     // plus one 60-second per overtime period (see `unverified`).
     timeouts: { full: 3, short: 2, fullSec: 60, shortSec: 30, per: 'game', overtimeFull: 1 },
-    // The TOTAL left (5 at tip-off) can grow by one per overtime period.
-    stats: { limits: { homeTimeouts: { max: 15 }, awayTimeouts: { max: 15 } } },
+    // The TOTAL left (5 at tip-off) grows by one per overtime period; the
+    // stepper allows up to 8 by hand (a small-range control, so the console
+    // keeps its one-tap timeout chip). The engine's overtime additions are
+    // never capped by it.
+    stats: { limits: { homeTimeouts: { max: 8 }, awayTimeouts: { max: 8 } } },
   },
 });
 
@@ -1159,8 +1162,13 @@ export function applyGameRules(base: SportDefinition, rules: GameRules): SportDe
 }
 
 // Memo: one definition object per snapshot object, so a surface that asks
-// every render gets a stable reference (and pays for the merge once).
+// every render gets a stable reference (and pays for the merge once) — and
+// one per snapshot CONTENT, so a board that re-parses the same rules on
+// every poll still gets the same definition object (effects keyed on it do
+// not re-run every 750 ms).
 const effectiveCache = new WeakMap<object, SportDefinition>();
+const contentCache = new Map<string, SportDefinition>();
+const CONTENT_CACHE_MAX = 64;
 
 /**
  * K12-F01 — THE definition a game runs: its sport with its bound rules
@@ -1178,7 +1186,18 @@ export function sportForGame(
   const hit = effectiveCache.get(raw);
   if (hit) return hit;
   const rules = parseGameRules(raw, base.key);
-  const def = rules ? applyGameRules(base, rules) : base;
+  let def = base;
+  if (rules) {
+    const key = `${base.key}|${JSON.stringify(rules)}`;
+    const same = contentCache.get(key);
+    if (same) {
+      def = same;
+    } else {
+      def = applyGameRules(base, rules);
+      if (contentCache.size >= CONTENT_CACHE_MAX) contentCache.clear();
+      contentCache.set(key, def);
+    }
+  }
   effectiveCache.set(raw, def);
   return def;
 }

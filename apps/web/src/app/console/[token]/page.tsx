@@ -62,6 +62,7 @@ import {
   consoleAllows,
   findSport,
   formatScore,
+  sportForGame,
   formatSportClock,
   isConsoleScope,
   projectGameClockMs,
@@ -117,6 +118,8 @@ interface PadData {
   clockUpdatedAt: string | null;
   possession: string;
   stats: Record<string, unknown>;
+  /** K12-F01 — the game's rules snapshot (null = classic rules). */
+  rules: unknown;
 }
 
 type SessionState = 'checking' | 'ok' | 'revoked' | 'offline';
@@ -203,7 +206,9 @@ export default function ScorekeeperPadPage() {
   const [lastAction, setLastAction] = useState<PadLastAction | null>(null);
   const [undone, setUndone] = useState<string | null>(null);
 
-  const def = findSport(data?.sport);
+  // K12-F01 — the game's own rules (sportForGame): a pad's controls, stat
+  // bounds and shot-clock resets follow the rules the game runs.
+  const def = data ? sportForGame(data) : undefined;
   const increments = padIncrements(def);
 
   // ── session probe: is this link alive, and what may it do? ──────
@@ -285,6 +290,7 @@ export default function ScorekeeperPadPage() {
                   ? String((p.stats as Record<string, unknown>).possession)
                   : '',
             stats: p.stats && typeof p.stats === 'object' ? (p.stats as Record<string, unknown>) : {},
+            rules: (payload as { rules?: unknown }).rules ?? null,
           });
         },
         onStatus: (s) => {

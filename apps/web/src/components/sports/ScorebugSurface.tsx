@@ -56,6 +56,8 @@ import { SportMark } from '@/components/sports/SportGlyph';
 import { API_URL } from '@/lib/api-url';
 import {
   findSport,
+  overtimeLabel,
+  sportForGame,
   formatClockReading,
   formatScore,
   formatSportClock,
@@ -243,8 +245,9 @@ export function segmentLabel(def: SportDefinition, data: BoardData): string {
     // Period/Quarter/Half overtime sports → "OT"/"2OT". Non-overtime segment
     // sports (golf holes, meet events) clamp instead of mislabeling overtime.
     if (def.segment.overtime) {
-      const ot = n - def.segment.count;
-      return ot > 1 ? `OT${ot}` : 'OT';
+      // The rules' own overtime names (NFHS wrestling: SV / TB1 /
+      // TB2 / UTB), else OT / OT2 — the shared helper (K12-F23).
+      return overtimeLabel(def, n) ?? 'OT';
     }
     return `${def.segment.name.toUpperCase()} ${def.segment.count}`;
   }
@@ -541,7 +544,7 @@ export function useScorebugData(gameId: string): ScorebugData {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameId]);
 
-  const def = useMemo(() => (data ? findSport(data.sport) : undefined), [data]);
+  const def = useMemo(() => (data ? sportForGame(data) : undefined), [data]);
 
   // 2026-05-27 — CTS source-of-truth merge (apps/web/src/lib/cts-merge.ts).
   // When the CTS console is broadcasting fresh snapshots into the

@@ -3401,5 +3401,51 @@
     "revoke": "Revoke…",
     "revokeAll": "Revoke all links",
     "keep": "Keep"
+  },
+  "sportsRules": {
+    "title": "Rules",
+    "pick": "Rules for this game",
+    "verification": {
+      "sourceChecked": "Checked against the published rules — have your official scorer confirm them before the season.",
+      "partial": "Partly checked against the published rules — a few settings still need your official scorer's confirmation.",
+      "notVerified": "Rules not verified for this sport — the scoreboard works, but check its settings with your officials."
+    },
+    "level": {
+      "varsity": "Varsity",
+      "sub-varsity": "Sub-varsity",
+      "junior-high": "Junior high",
+      "any": "All levels"
+    },
+    "division": {
+      "boys": "Boys",
+      "girls": "Girls"
+    },
+    "variant": {
+      "classic": "Classic scoreboard rules",
+      "quarters": "Four quarters",
+      "no-shot-clock": "No shot clock",
+      "bo1-15": "One game to 15",
+      "bo1-21": "One game to 21",
+      "bo3-15": "Best of 3 games to 15"
+    },
+    "localFormat": "Local format",
+    "shotClock": {
+      "label": "Shot clock",
+      "possessionLabel": "Possession clock",
+      "off": "Off",
+      "seconds": "{seconds} seconds",
+      "stateOption": "Use it only if your state association adopted it."
+    },
+    "legacy": "This game was created before rules profiles and runs the classic scoreboard rules.",
+    "change": "Change the rules",
+    "changing": "Changing…",
+    "changeFailed": "Could not change the rules.",
+    "locked": "The rules are fixed once the game has started.",
+    "timeoutKind": "{seconds}-second timeout",
+    "timeoutFullKind": "Full timeout",
+    "timeoutsBreakdown": "{full} full · {short} short left",
+    "pitchCountShort": "Count only — not an eligibility check",
+    "pitchCountNote": "The pitch count is a number for the scoreboard only — it does not check pitch limits or rest days. Your state's pitch-count rules decide who may pitch.",
+    "bonusOwnFouls": "These team fouls put the other team in the bonus."
   }
 }

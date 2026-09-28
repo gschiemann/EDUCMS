@@ -34,7 +34,7 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { findSport, formatScore } from '@cms/api-types';
+import { formatScore, sportForGame } from '@cms/api-types';
 import { useGameState, fmtClock, fmtSegment, type GameSnapshot } from './GameStateContext';
 import { liveNeutral } from './cts-fields';
 import { FitOneLine } from './FitOneLine';
@@ -96,7 +96,7 @@ export function RibbonScoreboardWidget({ config }: { config?: RibbonCfg }) {
   const isLiveNoData = s != null && !s.snapshot;
   const snap = s?.snapshot ?? SAMPLE;
   const clockMs = s?.snapshot ? s.liveClockMs : SAMPLE.clockMs;
-  const def = findSport(snap.sport);
+  const def = sportForGame(snap);
   const { ref, h } = useMeasuredHeight();
   const px = (f: number) => Math.max(8, Math.round((h || 192) * f));
 
@@ -124,7 +124,7 @@ export function RibbonScoreboardWidget({ config }: { config?: RibbonCfg }) {
   const homeAbbrText = isLiveNoData ? liveNeutral('value') : abbr(snap.homeTeam);
   const awayAbbrText = isLiveNoData ? liveNeutral('value') : abbr(snap.awayTeam);
   const clockText = isLiveNoData ? liveNeutral('clock') : fmtClock(clockMs);
-  const segmentText = isLiveNoData ? '' : (def ? fmtSegment(snap.sport, snap.segment) : '');
+  const segmentText = isLiveNoData ? '' : (def ? fmtSegment(snap.sport, snap.segment, snap.rules) : '');
 
   const TeamChip = ({ abbrText, scoreText, color, side }: { abbrText: string; scoreText: string; color: string; side: 'l' | 'r' }) => (
     <div style={{ display: 'flex', alignItems: 'center', height: '100%' }}>
@@ -195,7 +195,7 @@ export function ScorebugWidget({ config }: { config?: ScorebugCfg }) {
   const isLiveNoData = s != null && !s.snapshot;
   const snap = s?.snapshot ?? SAMPLE;
   const clockMs = s?.snapshot ? s.liveClockMs : SAMPLE.clockMs;
-  const def = findSport(snap.sport);
+  const def = sportForGame(snap);
   const { ref, scale } = useScaleToFit(NAT_W, NAT_H);
 
   const homeColor = c.homeColor || snap.homeColor || '#4f46e5';
@@ -209,7 +209,7 @@ export function ScorebugWidget({ config }: { config?: ScorebugCfg }) {
   const homeAbbrText = isLiveNoData ? liveNeutral('value') : abbr(snap.homeTeam);
   const awayAbbrText = isLiveNoData ? liveNeutral('value') : abbr(snap.awayTeam);
   const clockText = isLiveNoData ? liveNeutral('clock') : fmtClock(clockMs);
-  const segmentText = isLiveNoData ? '' : (def ? fmtSegment(snap.sport, snap.segment) : '');
+  const segmentText = isLiveNoData ? '' : (def ? fmtSegment(snap.sport, snap.segment, snap.rules) : '');
   // sport situational line (compact) — suppressed on a live board with no data.
   let sit = '';
   if (!isLiveNoData && def?.key === 'football') { const d = snap.stats?.down, dist = snap.stats?.distance; if (d) sit = `${['','1ST','2ND','3RD','4TH'][Number(d)] || ''} & ${Number(dist) === 0 ? 'GOAL' : (dist ?? '')}`; }

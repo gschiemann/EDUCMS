@@ -32,12 +32,14 @@ import { conciergeUrlReferenceBody } from '@/lib/concierge-designer-assets';
 // K12-F17 — the page's shared server clock (sports console reads feed it).
 import { serverClock } from '@/lib/server-clock';
 import {
-  findSport,
   effectiveEmergencyEnabled,
   emergencyEnablementLocked,
   emergencyVerticalStated,
   effectiveMfaEnforced,
+  maxSegment,
   projectGameClockMs,
+  segmentLengthMs,
+  sportForGame,
 } from '@cms/api-types';
 import type {
   ConciergeReference,
@@ -4645,6 +4647,10 @@ export function useCreateGame() {
       // Per-game regulation period length (water polo 7:00 HS vs 8:00
       // NCAA) — only offered when the sport publishes segmentMsOptions.
       clockSegmentMs?: number;
+      // K12-F01 — the rules profile to bind (absent = the sport's default).
+      rulesProfile?: string;
+      // K12-F05 / F24 — a state-option shot clock's starting length (0 = off).
+      shotClockLen?: number;
     }) => apiFetch('/sports/games', { method: 'POST', body: JSON.stringify(data) }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['sports-games'] }),
   });
@@ -4684,6 +4690,23 @@ export function useUpdateGameDetails(gameId: string | undefined) {
       scheduledAt?: string | null;
     }) => apiFetch(`/sports/games/${gameId}`, { method: 'PATCH', body: JSON.stringify(data) }),
     onSuccess: (game: any) => {
+      if (game?.id) qc.setQueryData(['sports-game', game.id], game);
+      qc.invalidateQueries({ queryKey: ['sports-games'] });
+    },
+  });
+}
+
+/**
+ * K12-F01 — switch a game that has NOT started to another rules profile
+ * (`POST /sports/games/:id/rules`; the API answers 409 RULES_LOCKED once the
+ * game is live). The response is the updated game, rules snapshot included.
+ */
+export function useSetGameRules(gameId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { rulesProfile: string; shotClockLen?: number }) =>
+      apiFetch(`/sports/games/${gameId}/rules`, { method: 'POST', body: JSON.stringify(data) }),
+    onSuccess: (game: { id?: string } | null) => {
       if (game?.id) qc.setQueryData(['sports-game', game.id], game);
       qc.invalidateQueries({ queryKey: ['sports-games'] });
     },
@@ -4941,7 +4964,8 @@ export function useGameControl(gameId: string) {
       if (prev) {
         qc.setQueryData(gameKey, (old: any) => {
           if (!old) return old;
-          const def = findSport(old.sport);
+          // K12-F01 — the game's own rules (sportForGame), not the base sport.
+          const def = sportForGame(old);
           // K12-F17 — the optimistic anchor is stamped in SERVER time, the
           // domain of every anchor the server writes; a device clock two
           // minutes fast used to make an optimistic pause jump the clock.
@@ -4966,17 +4990,14 @@ export function useGameControl(gameId: string) {
               if (typeof body.ms !== 'number' || body.ms < 0) return old;
               return { ...old, clockMs: Math.round(body.ms), clockUpdatedAt: now.toISOString() };
             case 'reset': {
-              // segmentStartMs: countdown → its configured segment length;
-              // countup/none → 0. Mirrors the server's segmentStartMs,
-              // including the per-game stats.clockSegmentMs override (7:00
-              // HS water polo) so the optimistic reset doesn't flash 8:00.
-              const override = old?.stats?.clockSegmentMs;
+              // segmentStartMs: countdown → the period's length under the
+              // game's own rules (K12-F01 — the same shared
+              // `segmentLengthMs` the server runs: a 4:00 NFHS overtime, a
+              // wrestling tiebreaker, the per-game stats.clockSegmentMs pick
+              // like 7:00 water polo); countup/none → 0.
               const startMs =
                 def && def.clock.type === 'countdown'
-                  ? (typeof override === 'number' &&
-                     def.clock.segmentMsOptions?.some((o: { ms: number }) => o.ms === override)
-                      ? override
-                      : def.clock.segmentMs ?? 0)
+                  ? segmentLengthMs(def, old?.stats, old.segment)
                   : 0;
               return { ...old, clockMs: startMs, clockRunning: false, clockUpdatedAt: now.toISOString() };
             }
@@ -5009,12 +5030,12 @@ export function useGameControl(gameId: string) {
       if (prev) {
         qc.setQueryData(gameKey, (old: any) => {
           if (!old) return old;
-          const def = findSport(old.sport);
+          const def = sportForGame(old);
           let next = typeof body.segment === 'number' ? Math.round(body.segment) : old.segment;
           if (typeof body.delta === 'number') next = old.segment + Math.round(body.delta);
           if (def) {
-            const max = def.segment.overtime ? def.segment.count + 10 : def.segment.count;
-            next = Math.min(max, Math.max(1, next));
+            // The overtime periods the game's rules allow (maxSegment).
+            next = Math.min(maxSegment(def), Math.max(1, next));
           }
           // Deliberately conservative: the server also resets the clock,
           // zeroes/credits set-and-game scores, and snapshots the line
