@@ -69,8 +69,16 @@
  * no CSS, no `inset`/`gap`/`backdrop-filter`.
  */
 
-import { fmtClock, fmtSegment, type GameSnapshot } from './GameStateContext';
-import { findSport, formatScore } from '@cms/api-types';
+import { fmtSegment, type GameSnapshot } from './GameStateContext';
+import {
+  findSport,
+  formatScore,
+  formatSportClock,
+  projectCountdownMs,
+  shotClockDisplayLen,
+  sportForGame,
+} from '@cms/api-types';
+import { formatShotClockReading } from '@/lib/game-clock-format';
 
 /** Optgroup buckets, in display order. */
 export type CtsFieldGroup =
@@ -323,21 +331,41 @@ interface ShotClockEntry {
   running?: boolean;
   len?: number;
   at?: string;
+  /** K12-F05 — the table switched it OFF. */
+  off?: boolean;
 }
 interface ExclusionEntry {
   playerJersey?: number;
   secondsRemaining?: number;
 }
 
-/** Format a shot-clock entry to a short string ("24", "4.5", ""). */
-function fmtShotClock(sc: ShotClockEntry | null | undefined): string {
+/**
+ * Format a shot-clock entry to a short string ("24", "4.5", "0.0", "").
+ *
+ * K12-F17 — the reading is PROJECTED at `nowMs` (the provider's server-clock
+ * instant) with the shared countdown projection; it used to print the
+ * anchor's stored `ms`, so a running clock stood still between polls. The
+ * digits are the /board route's (`formatShotClockReading`). `shown` = the
+ * caller already decided the clock is on display (the combined clock asks
+ * `shotClockDisplayLen`, as every surface does); a per-side clock that is
+ * switched off, parked or expired reads blank, matching the physical board.
+ */
+function fmtShotClock(
+  sc: ShotClockEntry | null | undefined,
+  nowMs: number | undefined,
+  shown = false,
+): string {
   if (!sc || typeof sc !== 'object') return '';
-  const ms = Math.max(0, Number(sc.ms) || 0);
-  // Parked / expired reads blank, matching the physical board.
-  const len = Number(sc.len) || 0;
-  if (len <= 0 && ms <= 0) return '';
-  if (ms <= 0) return '0';
-  return ms <= 5000 ? (ms / 1000).toFixed(1) : String(Math.ceil(ms / 1000));
+  const ms =
+    typeof nowMs === 'number' && Number.isFinite(nowMs)
+      ? projectCountdownMs(sc, nowMs)
+      : Math.max(0, Number(sc.ms) || 0);
+  if (!shown) {
+    if (sc.off === true) return '';
+    const len = Number(sc.len) || 0;
+    if (len <= 0 && ms <= 0) return '';
+  }
+  return formatShotClockReading(ms);
 }
 
 /** Format an exclusion array ("#7 12s", or "—" when the box is empty). */
@@ -363,6 +391,9 @@ function fmtExclusions(arr: (ExclusionEntry | null)[] | null | undefined): strin
  *                     applyCtsOverlay), or null in builder/thumbnail mode
  * @param liveClockMs  the projected game clock (the provider ticks it)
  * @param key          the real CTS field key (cfg.ctsField ?? default)
+ * @param opts.nowMs   the provider's server-clock instant (`state.nowMs`) —
+ *                     shot clocks are projected at it (K12-F17). Omitted:
+ *                     the stored anchor reading.
  * @returns            the string the widget renders, or null when there
  *                     is no live snapshot OR the field is empty — the
  *                     caller then falls back to cfg.placeholder.
@@ -373,7 +404,7 @@ export function resolveCtsField(
   snapshot: GameSnapshot | null | undefined,
   liveClockMs: number,
   key: string | undefined | null,
-  opts?: { showTenths?: boolean },
+  opts?: { nowMs?: number },
 ): string | null {
   if (!snapshot || !key) return null;
   const def = CTS_FIELD_BY_KEY[key];
@@ -381,9 +412,13 @@ export function resolveCtsField(
 
   switch (key) {
     // Clock — always projected from liveClockMs (the provider ticks it
-    // forward from the CTS anchor), never the stale snapshot.clockMs.
+    // forward from the CTS anchor), never the stale snapshot.clockMs. THE
+    // formatter (K12-F17): the /board route's digits for the same instant —
+    // MM:SS rounding up, tenths only in a tenths sport's final minute (the
+    // sport's rule, from the game's rules profile; there is no per-widget
+    // tenths switch any more).
     case 'clock':
-      return fmtClock(liveClockMs, !!opts?.showTenths);
+      return formatSportClock(sportForGame(snapshot), liveClockMs);
     // Period — sport-aware label ("Q3", "Inning 5", "Set 2").
     case 'segment':
       return fmtSegment(snapshot.sport, snapshot.segment, snapshot.rules);
@@ -400,11 +435,15 @@ export function resolveCtsField(
     }
     // Shot clocks — short countdown string.
     case 'homeShotClock':
-      return fmtShotClock(stats.homeShotClock as ShotClockEntry);
+      return fmtShotClock(stats.homeShotClock as ShotClockEntry, opts?.nowMs);
     case 'awayShotClock':
-      return fmtShotClock(stats.awayShotClock as ShotClockEntry);
+      return fmtShotClock(stats.awayShotClock as ShotClockEntry, opts?.nowMs);
     case 'shotClock':
-      return fmtShotClock(stats.shotClock as ShotClockEntry);
+      // The combined clock asks the one question every surface asks
+      // (K12-F05): switched OFF, absent, or no shot clock in this sport →
+      // blank, exactly when the /board route hides it.
+      if (shotClockDisplayLen(sportForGame(snapshot), stats) <= 0) return '';
+      return fmtShotClock(stats.shotClock as ShotClockEntry, opts?.nowMs, true);
     // Exclusions — penalty-box summary string.
     case 'homeExclusions':
       return fmtExclusions(stats.homeExclusions as (ExclusionEntry | null)[]);

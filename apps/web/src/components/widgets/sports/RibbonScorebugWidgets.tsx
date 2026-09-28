@@ -34,8 +34,8 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { formatScore, sportForGame } from '@cms/api-types';
-import { useGameState, fmtClock, fmtSegment, type GameSnapshot } from './GameStateContext';
+import { formatScore, formatSportClock, sportForGame } from '@cms/api-types';
+import { useGameState, fmtSegment, type GameSnapshot } from './GameStateContext';
 import { liveNeutral } from './cts-fields';
 import { FitOneLine } from './FitOneLine';
 import { sceneCss } from '../scene-css';
@@ -123,7 +123,8 @@ export function RibbonScoreboardWidget({ config }: { config?: RibbonCfg }) {
   const awayScoreText = isLiveNoData ? liveNeutral('value') : formatScore(def, snap.awayScore);
   const homeAbbrText = isLiveNoData ? liveNeutral('value') : abbr(snap.homeTeam);
   const awayAbbrText = isLiveNoData ? liveNeutral('value') : abbr(snap.awayTeam);
-  const clockText = isLiveNoData ? liveNeutral('clock') : fmtClock(clockMs);
+  // THE formatter (K12-F17) — the /board route's digits for the same instant.
+  const clockText = isLiveNoData ? liveNeutral('clock') : formatSportClock(def, clockMs);
   const segmentText = isLiveNoData ? '' : (def ? fmtSegment(snap.sport, snap.segment, snap.rules) : '');
 
   const TeamChip = ({ abbrText, scoreText, color, side }: { abbrText: string; scoreText: string; color: string; side: 'l' | 'r' }) => (
@@ -208,7 +209,8 @@ export function ScorebugWidget({ config }: { config?: ScorebugCfg }) {
   const awayScoreText = isLiveNoData ? liveNeutral('value') : formatScore(def, snap.awayScore);
   const homeAbbrText = isLiveNoData ? liveNeutral('value') : abbr(snap.homeTeam);
   const awayAbbrText = isLiveNoData ? liveNeutral('value') : abbr(snap.awayTeam);
-  const clockText = isLiveNoData ? liveNeutral('clock') : fmtClock(clockMs);
+  // THE formatter (K12-F17) — the /board route's digits for the same instant.
+  const clockText = isLiveNoData ? liveNeutral('clock') : formatSportClock(def, clockMs);
   const segmentText = isLiveNoData ? '' : (def ? fmtSegment(snap.sport, snap.segment, snap.rules) : '');
   // sport situational line (compact) — suppressed on a live board with no data.
   let sit = '';

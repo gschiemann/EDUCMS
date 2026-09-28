@@ -25,7 +25,8 @@ import { readBoardCache, writeBoardCache } from '@/lib/sports-board-cache';
 import { startBoardPoll } from '@/lib/board-poll';
 import { acceptRevision } from '@/lib/sports-freshness';
 import { noteRevisionShown, useSportsLink } from '@/hooks/use-sports-link';
-import { formatSportClock } from '@/lib/game-clock-format';
+import { formatShotClockReading, formatSportClock } from '@/lib/game-clock-format';
+import { penaltyAnchors, powerPlay } from '@/lib/sports-penalty-box';
 import { serverClock } from '@/lib/server-clock';
 import { ConnectionLostPill } from '@/components/sports/ConnectionLostPill';
 import { applyCtsOverlay } from '@/lib/cts-merge';
@@ -44,6 +45,7 @@ import {
   findSport,
   overtimeLabel,
   sportForGame,
+  formatClockReading,
   formatScore,
   projectCountdownMs,
   projectGameClockMs,
@@ -242,10 +244,9 @@ const POLL_MS = 750;
 /** Penalty-clock format — always MM:SS, ceil to the second so the
  *  box still reads "0:01" right up to the instant it expires. */
 function fmtPenalty(ms: number): string {
-  const total = Math.ceil(Math.max(0, ms) / 1000);
-  const m = Math.floor(total / 60);
-  const s = total % 60;
-  return `${m}:${String(s).padStart(2, '0')}`;
+  // The game clock's MM:SS, rounding up — the same digits the penalty-box
+  // widgets paint (K12-F17: one formatter).
+  return formatClockReading(ms, false);
 }
 
 /** First word of a team name, upper-cased, capped — a clean short
@@ -292,30 +293,9 @@ function hasPenaltyBox(def: SportDefinition): boolean {
   );
 }
 
-/** Derive the man-advantage from the live penalties array — the team with
- *  FEWER players in the box is "on the power play" (audit P2). Counts only
- *  active penalties (running, or frozen-at-stoppage but not expired). The
- *  team WITH the advantage is the one whose opponent has more boxed players;
- *  the differential gives 5-on-4 / 5-on-3 strength. Returns null at even
- *  strength. */
-function powerPlay(
-  stats: Record<string, unknown> | undefined,
-): { team: 'home' | 'away'; diff: number } | null {
-  const raw = stats && Array.isArray(stats.penalties) ? (stats.penalties as unknown[]) : [];
-  let home = 0;
-  let away = 0;
-  for (const p of raw) {
-    if (!p || typeof p !== 'object') continue;
-    const rec = p as Record<string, unknown>;
-    // A penalty still counts toward the box until its remaining ms hits 0.
-    if ((Number(rec.ms) || 0) <= 0) continue;
-    if (rec.team === 'home') home += 1;
-    else if (rec.team === 'away') away += 1;
-  }
-  if (home === away) return null;
-  // FEWER boxed players ⇒ that team is up a skater (on the power play).
-  return home < away ? { team: 'home', diff: away - home } : { team: 'away', diff: home - away };
-}
+// `powerPlay` (the man-advantage from the live penalties) lives in
+// lib/sports-penalty-box.ts since 2026-09-27, shared with the penalty-box
+// widgets so a widget board and this board count the same box.
 
 function segmentLabel(def: SportDefinition, data: BoardData): string {
   const n = data.segment;
@@ -383,20 +363,9 @@ function PenaltyTimers({
   serverTime: number;
   color: string;
 }) {
-  const raw = stats && Array.isArray(stats.penalties) ? (stats.penalties as unknown[]) : [];
-  const mine = raw
-    .filter(
-      (p): p is Record<string, unknown> =>
-        !!p && typeof p === 'object' && (p as Record<string, unknown>).team === team,
-    )
-    .map((p) => ({
-      id: String(p.id || ''),
-      player: String(p.player || ''),
-      ms: Math.max(0, Number(p.ms) || 0),
-      at: String(p.at || ''),
-      running: !!p.running,
-    }))
-    .filter((p) => p.id);
+  // One team's anchors — the same rows the penalty-box widgets read
+  // (lib/sports-penalty-box.ts).
+  const mine = penaltyAnchors(stats, team);
   // A stable key so the projection effect only re-subscribes when the
   // penalty anchors actually change, not on every poll.
   const key = JSON.stringify(mine.map((p) => [p.id, p.ms, p.at, p.running]));
@@ -1373,7 +1342,7 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
                   color: shotMs <= 5000 ? '#ef4444' : '#e2e8f0',
                 }}
               >
-                {shotMs <= 5000 ? (shotMs / 1000).toFixed(1) : Math.ceil(shotMs / 1000)}
+                {formatShotClockReading(shotMs)}
               </span>
             </div>
           )}
@@ -1430,11 +1399,7 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
                   color: playArmed && playMs <= 5000 ? '#ef4444' : '#e2e8f0',
                 }}
               >
-                {!playArmed
-                  ? 40
-                  : playMs <= 5000
-                    ? (playMs / 1000).toFixed(1)
-                    : Math.ceil(playMs / 1000)}
+                {!playArmed ? 40 : formatShotClockReading(playMs)}
               </span>
             </div>
           )}

@@ -8,7 +8,7 @@
  * zero, never "0:00" with time left), and tenths mode below 60s keeps
  * the board/ribbon truncation behavior (floor seconds, floor tenths).
  */
-import { formatGameClock } from '../game-clock-format';
+import { formatGameClock, formatShotClockReading } from '../game-clock-format';
 
 /** The console's OLD local fmtClock, verbatim — the reference the
  *  shared formatter must never drift from in MM:SS mode. */
@@ -119,5 +119,33 @@ describe('formatGameClock — console-reference parity table (MM:SS mode)', () =
     for (let ms = 0; ms <= 300_000; ms += 7) {
       expect(formatGameClock(ms)).toBe(consoleReferenceFmtClock(ms));
     }
+  });
+});
+
+describe('formatShotClockReading — the shot / play clock digits every surface paints (K12-F17)', () => {
+  /** The /board route's inline digits before they moved here, verbatim. */
+  const boardReference = (ms: number) => (ms <= 5000 ? (ms / 1000).toFixed(1) : Math.ceil(ms / 1000));
+
+  it.each([
+    [24_000, '24'],
+    [23_100, '24'],
+    [5_001, '6'],
+    [5_000, '5.0'],
+    [4_400, '4.4'],
+    [100, '0.1'],
+    [0, '0.0'],
+  ])('%ims → %s', (ms, expected) => {
+    expect(formatShotClockReading(ms)).toBe(expected);
+  });
+
+  it('never diverges from the board\'s old inline math across 0–35 s', () => {
+    for (let ms = 0; ms <= 35_000; ms += 7) {
+      expect(formatShotClockReading(ms)).toBe(String(boardReference(ms)));
+    }
+  });
+
+  it('garbage reads as an expired clock, never NaN', () => {
+    expect(formatShotClockReading(Number.NaN)).toBe('0.0');
+    expect(formatShotClockReading(-300)).toBe('0.0');
   });
 });

@@ -26,3 +26,19 @@ export { formatSportClock } from '@cms/api-types';
 export function formatGameClock(ms: number, showTenths = false): string {
   return formatClockReading(ms, showTenths);
 }
+
+/** Below this a shot / play clock shows tenths ("4.3"). */
+export const SHOT_CLOCK_TENTHS_AT_MS = 5000;
+
+/**
+ * THE digits of a shot clock or a football play clock — what the /board
+ * route and the scorebug paint, and (K12-F17, 2026-09-27) every sport
+ * widget too, so a widget board can never read a different second from the
+ * board: whole seconds rounding UP ("24", "6"), and tenths in the final five
+ * seconds ("4.3", "0.0"). Callers decide whether the clock is shown at all
+ * (`shotClockDisplayLen`, the play clock's `off` flag).
+ */
+export function formatShotClockReading(ms: number): string {
+  const safe = Math.max(0, Number.isFinite(ms) ? ms : 0);
+  return safe <= SHOT_CLOCK_TENTHS_AT_MS ? (safe / 1000).toFixed(1) : String(Math.ceil(safe / 1000));
+}

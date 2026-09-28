@@ -30,11 +30,12 @@
  */
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { formatScore, overtimeLabel, sportForGame } from '@cms/api-types';
+import { formatScore, formatSportClock, overtimeLabel, shotClockDisplayLen, sportForGame } from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
 import type { WidgetProps } from './_shared/types';
 import type { WidgetStyle } from './_shared/styleSystem';
-import { useGameState } from '../sports/GameStateContext';
+import { formatShotClockReading, SHOT_CLOCK_TENTHS_AT_MS } from '@/lib/game-clock-format';
+import { subClockMs, useGameState } from '../sports/GameStateContext';
 import { readBoardCache, writeBoardCache } from '@/lib/sports-board-cache';
 import { sceneCss } from '../scene-css';
 
@@ -156,22 +157,11 @@ const DISPLAY_FONT =
   "var(--font-fredoka), 'Fredoka', 'Baloo 2', system-ui, sans-serif";
 
 // ── helpers ────────────────────────────────────────────────────────
-function fmtClock(ms: number): string {
-  const safe = Math.max(0, ms);
-  if (safe >= 60_000) {
-    const m = Math.floor(safe / 60_000);
-    const s = Math.floor((safe % 60_000) / 1000);
-    return `${m}:${String(s).padStart(2, '0')}`;
-  }
-  return `${Math.floor(safe / 1000)}.${Math.floor((safe % 1000) / 100)}`;
-}
-function liveClockMs(b: BoardData, def: SportDefinition, ticking: boolean): number {
-  if (!ticking || !b.clockRunning || def.clock.type === 'none') return b.clockMs;
-  const skew = b.serverTime - Date.now();
-  const elapsed = Date.now() + skew - new Date(b.clockUpdatedAt).getTime();
-  if (def.clock.type === 'countup') return b.clockMs + elapsed;
-  return Math.max(0, b.clockMs - elapsed);
-}
+// This widget carried its own `fmtClock` (tenths in the final minute of EVERY
+// sport, floor-rounded MM:SS) and its own skewed projection — so it could read
+// a different clock from the /board route for the same instant. K12-F17
+// (2026-09-27): the provider projects on the shared server clock and the scene
+// paints `formatSportClock` / `formatShotClockReading`, the board's digits.
 function ordinal(n: number): string {
   const s = ['TH', 'ST', 'ND', 'RD'];
   const v = n % 100;
@@ -322,10 +312,34 @@ export function SportsScoreboardWidget({
   const neutral = !preview && !liveBoard;
   const board: BoardData = preview ? simBoard : (liveBoard ?? NEUTRAL_BOARD);
   const def = sportForGame(board);
-  // The provider projects a running clock between polls (and applies the
-  // server-time skew); the cached frame is frozen. Either way the scene is
-  // handed the reading to paint instead of re-projecting it.
+  // The provider projects a running clock between polls on the page's shared
+  // server clock (held while its link is stale); the cached frame is frozen.
+  // Either way the scene is handed the reading to paint instead of
+  // re-projecting it.
   const clockMsNow = snapshot && state ? state.liveClockMs : board.clockMs;
+
+  // The shot clock the /board route shows (K12-F05 / F17): only when
+  // `shotClockDisplayLen` says so — switched OFF means hidden — projected at
+  // the provider's instant, in the board's digits. It used to read
+  // `Number(stats.shotClock)`, an anchor OBJECT (NaN), so a live game's coin
+  // never showed. The cached frame stays frozen at its anchor reading; the
+  // builder demo keeps its self-playing whole seconds.
+  let shotText: string | null = null;
+  let shotUrgent = false;
+  if (preview) {
+    const n = num((board.stats || {}).shotClock);
+    shotText = n > 0 ? String(n) : null;
+  } else if (liveBoard && def && shotClockDisplayLen(def, liveBoard.stats) > 0) {
+    const anchor = (liveBoard.stats || {}).shotClock as { ms?: unknown } | undefined;
+    const ms = snapshot && state ? subClockMs(state, anchor) : Math.max(0, Number(anchor?.ms) || 0);
+    shotText = formatShotClockReading(ms);
+    shotUrgent = ms <= SHOT_CLOCK_TENTHS_AT_MS;
+  }
+
+  // K12-F40 — the LIVE pill claims the picture is live right now: only a
+  // LIVE link may make that claim. A cached frame (connecting) or a stale
+  // poll (every clock held) keeps the pill down.
+  const linkLive = state?.link === 'live';
 
   const { ref, fit } = useScaleToFit(1920, 1080);
 
@@ -363,6 +377,9 @@ export function SportsScoreboardWidget({
             preview={preview}
             neutral={neutral}
             clockMsNow={clockMsNow}
+            shotText={shotText}
+            shotUrgent={shotUrgent}
+            linkLive={linkLive}
           />
         </div>
       )}
@@ -433,6 +450,9 @@ function HsScene({
   preview,
   neutral,
   clockMsNow,
+  shotText,
+  shotUrgent,
+  linkLive,
 }: {
   board: BoardData;
   def: SportDefinition;
@@ -444,19 +464,26 @@ function HsScene({
   neutral: boolean;
   /** Clock reading to paint (already projected by the game-state provider). */
   clockMsNow: number;
+  /** Shot-clock digits to paint, or null when the shot clock is hidden. */
+  shotText: string | null;
+  /** The shot clock is in its final five seconds. */
+  shotUrgent: boolean;
+  /** The provider's link is LIVE (the only state that may claim LIVE). */
+  linkLive: boolean;
 }) {
   const homeColor = board.homeColor || '#1e3a8a';
   const awayColor = board.awayColor || '#b91c1c';
-  const liveMs = preview ? liveClockMs(board, def, false) : clockMsNow;
-  const clockStr = def.clock.type === 'none' ? '' : neutral ? '—:—' : fmtClock(liveMs);
+  const liveMs = preview ? board.clockMs : clockMsNow;
+  // THE formatter (K12-F17) — the /board route's digits for the same instant.
+  const clockStr = def.clock.type === 'none' ? '' : neutral ? '—:—' : formatSportClock(def, liveMs);
   const stats = neutral ? {} : board.stats || {};
   // The LIVE pill is a claim about a real game: never on the builder demo,
-  // never on a screen that has no game data.
-  const isLive = !preview && !neutral && board.status === 'LIVE';
+  // never on a screen that has no game data, never while the link is not
+  // LIVE (K12-F40).
+  const isLive = !preview && !neutral && board.status === 'LIVE' && linkLive;
 
   // Which center modules apply to this sport (drive off real data).
-  const shotClock = num(stats.shotClock);
-  const hasShot = 'shotClock' in stats && shotClock > 0;
+  const hasShot = !neutral && shotText !== null;
   const poss = sideOf(stats.possession);
   const hasFouls = 'homeFouls' in stats || 'awayFouls' in stats;
   const hasTimeouts = 'homeTimeouts' in stats || 'awayTimeouts' in stats;
@@ -730,7 +757,7 @@ function HsScene({
               boxShadow: '0 12px 28px rgba(0,0,0,0.5)',
             }}
           >
-            <span style={{ fontWeight: 800, fontSize: 92, lineHeight: 0.9, color: '#fff' }}>{shotClock}</span>
+            <span data-sb-shot="" data-urgent={shotUrgent ? '' : undefined} style={{ fontWeight: 800, fontSize: 92, lineHeight: 0.9, color: '#fff' }}>{shotText}</span>
             <span style={{ fontWeight: 600, fontSize: 26, letterSpacing: 2, color: '#ffe2e2', marginTop: 2 }}>SHOT</span>
           </div>
         )}

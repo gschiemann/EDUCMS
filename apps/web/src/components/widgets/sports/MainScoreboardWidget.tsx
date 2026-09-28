@@ -37,9 +37,10 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { formatScore, overtimeLabel, sportForGame } from '@cms/api-types';
+import { formatScore, formatSportClock, overtimeLabel, shotClockDisplayLen, sportForGame } from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
-import { useGameState, useRenderSurface, fmtClock, type GameSnapshot } from './GameStateContext';
+import { formatShotClockReading } from '@/lib/game-clock-format';
+import { subClockMs, useGameState, useRenderSurface, type GameSnapshot, type GameStateValue } from './GameStateContext';
 import { overriddenFacts } from './scoreboard-sources';
 import { FitOneLine } from './FitOneLine';
 import { liveNeutral } from './cts-fields';
@@ -177,7 +178,7 @@ export interface MainScoreboardCfg extends BaseCfg {
 
 /** A manual board on a real screen: like a provider with no data — unset
  *  values read neutral, never the sample, and no "bind a game" callout. */
-const MANUAL_PUBLIC = { snapshot: null, liveClockMs: 0 };
+const MANUAL_PUBLIC: GameStateValue = { snapshot: null, liveClockMs: 0, nowMs: 0, link: 'connecting' };
 
 export function MainScoreboardWidget({ config, live = true }: WidgetProps<MainScoreboardCfg>) {
   const c = config ?? {};
@@ -257,22 +258,35 @@ export function MainScoreboardWidget({ config, live = true }: WidgetProps<MainSc
   const homeLogoUrl = pick(c.homeLogoUrl, snap.homeLogoUrl);
   const awayLogoUrl = pick(c.awayLogoUrl, snap.awayLogoUrl);
   const status = String(pick(c.status, snap.status));
-  const isLive = !manual && status === 'LIVE' && live !== false && !isLiveNoData;
+  // K12-F40 — the LIVE flag is a claim that this picture is live right now:
+  // only a LIVE link may make it. While the poll is stale (every clock held)
+  // or still connecting, the flag stays down. The builder (state == null)
+  // keeps its sample flag.
+  const linkLive = state == null || state.link === 'live';
+  const isLive = !manual && status === 'LIVE' && live !== false && !isLiveNoData && linkLive;
   const periodText = pick(c.period, isLiveNoData ? NEUTRAL : segmentLabel(def, snap));
-  const clockText = pick(c.clock, hasClock ? (isLiveNoData ? liveNeutral('clock') : fmtClock(clockMs)) : '');
+  // THE formatter (K12-F17) — the /board route's digits for the same instant.
+  const clockText = pick(c.clock, hasClock ? (isLiveNoData ? liveNeutral('clock') : formatSportClock(def, clockMs)) : '');
   const clockUrgent = !c.clock && !isLiveNoData && hasClock && snap.clockRunning && clockMs > 0 && clockMs < 60_000;
 
-  // Shot clock: live value when present, sample only in the builder,
-  // hidden on a live surface with no data (handled by hasShot below).
-  const shotClock = pick(c.shotClock, state?.snapshot ? num(stats.shotClock) : sampleShot);
-  // Show the shot coin for: an operator override, a live shotClock, or
-  // the builder sample — but NOT a live board with no data (would show
-  // the fabricated sample 14). `num(NEUTRAL)` is 0, so even if it slips
-  // through, `shotClock > 0` would gate it; the explicit guard is clearer.
+  // Shot clock. The live one is the /board route's: shown exactly when
+  // `shotClockDisplayLen` says so (K12-F05 — switched OFF means hidden),
+  // projected at the provider's server-clock instant and painted with the
+  // board's digits (K12-F17). It used to read `Number(stats.shotClock)` —
+  // an anchor OBJECT, so NaN — and the coin never showed on a live game.
+  // An operator override (typed number) wins; the sample only in the
+  // builder; a live board with no data shows no coin (never the sample 14).
+  const hasOverrideShot = c.shotClock !== undefined && c.shotClock !== null && (c.shotClock as unknown) !== '';
+  const liveShotShown = !!state?.snapshot && shotClockDisplayLen(def, stats) > 0;
+  const liveShotMs = liveShotShown ? subClockMs(state, stats.shotClock) : 0;
+  const shotClock = hasOverrideShot
+    ? String(c.shotClock)
+    : state?.snapshot
+      ? formatShotClockReading(liveShotMs)
+      : String(sampleShot);
   const hasShot =
-    (c.shotClock !== undefined || 'shotClock' in stats || (!state?.snapshot && !isLiveNoData)) &&
-    shotClock > 0 &&
-    hasClock;
+    hasClock &&
+    (hasOverrideShot ? num(c.shotClock) > 0 : state?.snapshot ? liveShotShown : !isLiveNoData && sampleShot > 0);
   const poss = sideOf(pick(c.possession, stats.possession));
   const hasFouls = c.homeFouls !== undefined || c.awayFouls !== undefined || 'homeFouls' in stats || 'awayFouls' in stats;
   const hasTimeouts = c.homeTimeouts !== undefined || c.awayTimeouts !== undefined || 'homeTimeouts' in stats || 'awayTimeouts' in stats;

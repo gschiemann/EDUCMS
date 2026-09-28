@@ -63,9 +63,10 @@ interface ScoreConfig extends BaseConfig {
   showLogo?: boolean; // render the team logo to the left of the score
 }
 
-interface ClockConfig extends BaseConfig {
-  showTenths?: boolean; // show ".T" on the last minute (basketball / wrestling)
-}
+// (`showTenths` is gone, K12-F17: whether a clock shows tenths is the SPORT's
+//  rule — the final minute of a tenths sport — so a widget and the /board
+//  route can never read differently. Old zones that saved it are ignored.)
+type ClockConfig = BaseConfig;
 
 interface SegmentConfig extends BaseConfig {
   // No extra options yet — the segment text is sport-aware.
@@ -146,7 +147,7 @@ export function ScoreHomeWidget({ config }: { config: ScoreConfig }) {
   // Bind to the operator-picked CTS field (default homeScore). Back-compat:
   // derive from legacy cfg.team/cfg.statKey when cfg.ctsField is absent.
   const key = deriveCtsField('SCORE_HOME', config) ?? 'homeScore';
-  const resolved = resolveCtsField(state?.snapshot, state?.liveClockMs ?? 0, key);
+  const resolved = resolveCtsField(state?.snapshot, state?.liveClockMs ?? 0, key, { nowMs: state?.nowMs });
   // Live surface (provider present) with no value → neutral "—", never
   // the fabricated sample. Builder (no provider) → keep the sample.
   const display = displayOrNeutral(state != null, resolved, config.placeholder ?? '24');
@@ -190,7 +191,7 @@ export function ScoreHomeWidget({ config }: { config: ScoreConfig }) {
 export function ScoreAwayWidget({ config }: { config: ScoreConfig }) {
   const state = useGameState();
   const key = deriveCtsField('SCORE_AWAY', config) ?? 'awayScore';
-  const resolved = resolveCtsField(state?.snapshot, state?.liveClockMs ?? 0, key);
+  const resolved = resolveCtsField(state?.snapshot, state?.liveClockMs ?? 0, key, { nowMs: state?.nowMs });
   const display = displayOrNeutral(state != null, resolved, config.placeholder ?? '21');
 
   if (config.showLogo || config.showName) {
@@ -236,9 +237,7 @@ export function GameClockWidget({ config }: { config: ClockConfig }) {
   // Default field 'clock'; an operator who re-points this to e.g. a shot
   // clock gets that value instead (the binding is real, not cosmetic).
   const key = deriveCtsField('GAME_CLOCK', config) ?? 'clock';
-  const resolved = resolveCtsField(state?.snapshot, state?.liveClockMs ?? 0, key, {
-    showTenths: !!config.showTenths,
-  });
+  const resolved = resolveCtsField(state?.snapshot, state?.liveClockMs ?? 0, key, { nowMs: state?.nowMs });
   // Live surface with no clock → "—:—", never the sample "07:42".
   const display = displayOrNeutral(state != null, resolved, config.placeholder ?? '07:42', 'clock');
   return <FitValue config={config}>{display}</FitValue>;
@@ -249,7 +248,7 @@ export function GameClockWidget({ config }: { config: ClockConfig }) {
 export function GameSegmentWidget({ config }: { config: SegmentConfig }) {
   const state = useGameState();
   const key = deriveCtsField('GAME_SEGMENT', config) ?? 'segment';
-  const resolved = resolveCtsField(state?.snapshot, state?.liveClockMs ?? 0, key);
+  const resolved = resolveCtsField(state?.snapshot, state?.liveClockMs ?? 0, key, { nowMs: state?.nowMs });
   // Live surface with no segment → "—", never the sample "Q3".
   const display = displayOrNeutral(state != null, resolved, config.placeholder ?? 'Q3');
   return <FitValue config={config}>{display}</FitValue>;
@@ -269,7 +268,7 @@ export function GameStatWidget({ config }: { config: StatConfig }) {
   const isLive = state != null;
   let display: string;
   if (config.ctsField) {
-    const resolved = resolveCtsField(state?.snapshot, state?.liveClockMs ?? 0, config.ctsField);
+    const resolved = resolveCtsField(state?.snapshot, state?.liveClockMs ?? 0, config.ctsField, { nowMs: state?.nowMs });
     display = displayOrNeutral(isLive, resolved, config.placeholder ?? '—');
   } else {
     const key = config.statKey ?? 'down';

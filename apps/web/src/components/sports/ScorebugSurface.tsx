@@ -67,6 +67,7 @@ import {
 } from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
 import { serverClock } from '@/lib/server-clock';
+import { formatShotClockReading } from '@/lib/game-clock-format';
 import { startBoardPoll } from '@/lib/board-poll';
 import { acceptRevision, type LinkPhase } from '@/lib/sports-freshness';
 import { noteRevisionShown, useSportsLink } from '@/hooks/use-sports-link';
@@ -1386,7 +1387,7 @@ export function ScorebugBug({
                     color: shotMs <= 5000 ? '#ef4444' : '#e2e8f0',
                   }}
                 >
-                  {shotMs <= 5000 ? (shotMs / 1000).toFixed(1) : Math.ceil(shotMs / 1000)}
+                  {formatShotClockReading(shotMs)}
                 </span>
               </div>
             )}

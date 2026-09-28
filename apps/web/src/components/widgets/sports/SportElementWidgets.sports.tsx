@@ -28,8 +28,10 @@
  */
 
 import React from 'react';
-import { useGameState, useRenderSurface } from './GameStateContext';
-import { elRoot, useSubClock, type ElCfg } from './SportElementWidgets';
+import { formatClockReading } from '@cms/api-types';
+import { penaltyAnchors, powerPlay } from '@/lib/sports-penalty-box';
+import { subClockMs, useGameState, useRenderSurface } from './GameStateContext';
+import { elRoot, type ElCfg } from './SportElementWidgets';
 import { FitOneLine, FitBox } from './FitOneLine';
 
 function stat(s: ReturnType<typeof useGameState>, key: string): unknown {
@@ -221,53 +223,56 @@ export function PitchSpeedWidget({ config }: { config: ElCfg }) {
 
 // ════════════════ HOCKEY / LACROSSE / WATER POLO ════════════════
 
-function PenaltyRow({ p, serverTime, color }: { p: any; serverTime?: number; color: string }) {
-  const ms = useSubClock(p, serverTime);
-  const m = Math.floor(ms / 60000);
-  const sec = Math.floor((ms % 60000) / 1000);
+function PenaltyRow({ player, ms, color }: { player: string; ms: number; color: string }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.18em' }}>
-      <span style={{ background: color, color: '#fff', borderRadius: 3, padding: '0 0.35em', fontWeight: 900, fontSize: '0.7em', marginRight: '0.4em' }}>#{p.player ?? '—'}</span>
-      <span style={{ fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{m}:{String(sec).padStart(2, '0')}</span>
+      <span style={{ background: color, color: '#fff', borderRadius: 3, padding: '0 0.35em', fontWeight: 900, fontSize: '0.7em', marginRight: '0.4em' }}>#{player || '—'}</span>
+      {/* The game clock's MM:SS, rounding up — the /board route's digits. */}
+      <span style={{ fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{formatClockReading(ms, false)}</span>
     </div>
   );
 }
 
+/** Builder-only sample row (#17, 1:35). Never on a real screen. */
+const SAMPLE_PENALTY = { id: 'sample', player: '17', ms: 95000 };
+
 export function PenaltyBoxWidget({ config }: { config: ElCfg }) {
   // Multi-row list with em sub-sizing — complex layout, not a simple text overflow case.
   const s = useGameState();
-  const team = config.team ?? 'home';
-  const all = stat(s, 'penalties');
-  // Sample penalty (#17) only in the builder (s == null). Live surface
-  // with no penalty data → empty box (the widget renders nothing) — never
-  // a fabricated player in the penalty box.
-  const penalties: any[] = Array.isArray(all)
-    ? all.filter((p) => (p?.team ?? 'home') === team)
-    : (s != null ? [] : [{ player: 17, ms: 95000, at: new Date().toISOString(), running: false }]);
+  const team = config.team === 'away' ? 'away' : 'home';
+  // The box the /board route shows (lib/sports-penalty-box.ts): this side's
+  // addressable rows, each projected at the provider's server-clock instant,
+  // an expired one gone. Sample penalty (#17) only in the builder (s ==
+  // null); a live surface with nothing in the box renders nothing — never a
+  // fabricated player in the penalty box.
+  const rows = s != null
+    ? penaltyAnchors(s.snapshot?.stats, team)
+        .map((p) => ({ id: p.id, player: p.player, ms: subClockMs(s, p) }))
+        .filter((p) => p.ms > 0)
+    : [SAMPLE_PENALTY];
   const color = (team === 'away' ? s?.snapshot?.awayColor : s?.snapshot?.homeColor) || config.accentColor || '#dc2626';
-  if (penalties.length === 0) return <div style={elRoot(config, { backgroundColor: 'transparent' })} />;
+  if (rows.length === 0) return <div style={elRoot(config, { backgroundColor: 'transparent' })} />;
   return (
     <div style={elRoot(config, { backgroundColor: 'transparent', flexDirection: 'column', alignItems: config.align === 'right' ? 'flex-end' : 'flex-start' })}>
-      {penalties.slice(0, 3).map((p, i) => <PenaltyRow key={i} p={p} serverTime={s?.snapshot?.serverTime} color={color} />)}
+      {rows.slice(0, 3).map((p) => <PenaltyRow key={p.id} player={p.player} ms={p.ms} color={color} />)}
     </div>
   );
 }
 
 export function PowerPlayBadgeWidget({ config }: { config: ElCfg }) {
   const s = useGameState();
-  const all = Array.isArray(stat(s, 'penalties')) ? (stat(s, 'penalties') as any[]) : [];
-  const homeP = all.filter((p) => (p?.team ?? 'home') === 'home').length;
-  const awayP = all.filter((p) => (p?.team ?? 'home') === 'away').length;
   const team = config.team ?? 'home';
-  const myP = team === 'home' ? homeP : awayP;
-  const oppP = team === 'home' ? awayP : homeP;
+  // The man-advantage the /board route shows (lib/sports-penalty-box.ts):
+  // only penalties with time left count, only on a real side — an expired
+  // row no longer makes a POWER PLAY here while the board says even strength.
+  const pp = s != null ? powerPlay(s.snapshot?.stats) : null;
   let label = ''; let bg = '';
   // Sample "POWER PLAY" only in the builder (s == null). On a live surface
   // the badge follows the real penalty counts and stays hidden until a
   // genuine power-play / kill exists — never a fabricated badge.
   if (s == null) { label = 'POWER PLAY'; bg = '#22c55e'; }
-  else if (oppP > myP) { label = `POWER PLAY${oppP - myP > 1 ? ` ${myP}-on-${myP + (oppP - myP)}` : ''}`; bg = '#22c55e'; }
-  else if (myP > oppP) { label = 'PENALTY KILL'; bg = '#f59e0b'; }
+  else if (pp && pp.team === team) { label = `POWER PLAY${pp.diff > 1 ? ` · UP ${pp.diff}` : ''}`; bg = '#22c55e'; }
+  else if (pp) { label = 'PENALTY KILL'; bg = '#f59e0b'; }
   if (!label) return <div style={elRoot(config, { backgroundColor: 'transparent' })} />;
   return (
     <div style={{ width: '100%', height: '100%', background: 'transparent', overflow: 'hidden' }}>
@@ -433,7 +438,9 @@ export function StatPairWidget({ config }: { config: ElCfg }) {
 export function RidingTimeWidget({ config }: { config: ElCfg }) {
   const s = useGameState();
   const raw = stat(s, config.statKey ?? 'ridingTime') as any;
-  const ms = useSubClock(raw && raw.at ? raw : null, s?.snapshot?.serverTime);
+  // The shared projection at the provider's server-clock instant (held while
+  // the link is stale) — no clock of its own.
+  const ms = raw && raw.at ? subClockMs(s, raw) : 0;
   // Builder (s == null) → sample 1:12. Live surface → the real riding
   // time (0:00 until a real anchor arrives — never the fabricated sample).
   const shown = s != null ? ms : 72000;

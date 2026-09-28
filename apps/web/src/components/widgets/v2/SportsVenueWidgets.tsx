@@ -50,13 +50,13 @@
  * (CLAUDE.md rule #10, all three variants).
  */
 import React, { useEffect, useState } from 'react';
-import { formatScore, overtimeLabel, sportForGame } from '@cms/api-types';
+import { formatScore, formatSportClock, overtimeLabel, sportForGame } from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
 import { resolveStyle, frameStyle, animDurationSec } from './_shared/styleSystem';
 import type { ResolvedStyle } from './_shared/styleSystem';
 import type { BaseCfg, WidgetProps } from './_shared/types';
 import { sceneCss } from '../scene-css';
-import { useGameState, fmtClock, type GameSnapshot } from '../sports/GameStateContext';
+import { useGameState, type GameSnapshot } from '../sports/GameStateContext';
 import { useRenderSurface } from '../render-surface';
 import { FitOneLine } from '../sports/FitOneLine';
 import {
@@ -174,7 +174,8 @@ function useGameView(c: ScoreboardishCfg): GameView {
     return {
       home: liveTeamView(snap, 'home', c.home, fmt),
       away: liveTeamView(snap, 'away', c.away, fmt),
-      clock: hasClock ? fmtClock(src.clockMs) : '',
+      // THE formatter (K12-F17) — the /board route's digits for the same instant.
+      clock: hasClock && def ? formatSportClock(def, src.clockMs) : '',
       period: periodLabel(def, snap),
       possession: sideOf((snap as { possession?: unknown }).possession ?? stats.possession),
       // Only an explicit engine flag lights a bonus lamp here — the

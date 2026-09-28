@@ -30,8 +30,9 @@
  */
 
 import React from 'react';
-import { foulsReachBonus, sportForGame, teamBonus } from '@cms/api-types';
-import { useGameState, useRenderSurface, type GameSnapshot } from './GameStateContext';
+import { foulsReachBonus, shotClockDisplayLen, sportForGame, teamBonus } from '@cms/api-types';
+import { formatShotClockReading, SHOT_CLOCK_TENTHS_AT_MS } from '@/lib/game-clock-format';
+import { subClockMs, useGameState, useRenderSurface, type GameSnapshot } from './GameStateContext';
 import { FitOneLine, FitBox } from './FitOneLine';
 import { deriveCtsField } from './cts-fields';
 import { sceneCss } from '../scene-css';
@@ -120,24 +121,11 @@ export function elRoot(cfg: ElCfg, extra?: React.CSSProperties): React.CSSProper
   };
 }
 
-/** Project a sub-clock anchor ({ ms, at, running }) forward locally. */
-export function useSubClock(anchor: { ms?: number; at?: string; running?: boolean } | null | undefined, serverTime?: number) {
-  const [ms, setMs] = React.useState<number>(anchor?.ms ?? 0);
-  React.useEffect(() => {
-    if (!anchor) { setMs(0); return; }
-    const skew = serverTime ? Date.now() - serverTime : 0;
-    const at = anchor.at ? new Date(anchor.at).getTime() : 0;
-    const project = () => {
-      if (!anchor.running || !at) { setMs(Math.max(0, anchor.ms ?? 0)); return; }
-      setMs(Math.max(0, (anchor.ms ?? 0) - (Date.now() - at - skew)));
-    };
-    project();
-    if (!anchor.running) return;
-    const id = setInterval(project, 100);
-    return () => clearInterval(id);
-  }, [anchor?.ms, anchor?.at, anchor?.running, serverTime]);
-  return ms;
-}
+// Sub-clocks (shot clock, play clock, penalty timers, riding time) used to be
+// projected here by `useSubClock` — the device's own clock with a crude skew,
+// one timer per widget. K12-F17 (2026-09-27): they are `subClockMs(state,
+// anchor)` now (GameStateContext) — the shared projection, at the provider's
+// one server-clock instant, held while the link is stale.
 
 export function teamOf(snap: GameSnapshot | null | undefined, team: 'home' | 'away') {
   // Builder/thumbnail (no live snapshot) → sample names so logo
@@ -286,7 +274,13 @@ const STATUS: Record<string, { label: string; bg: string; pulse?: boolean }> = {
 export function GameStatusWidget({ config, live = true }: { config: ElCfg; live?: boolean }) {
   const s = useGameState();
   const st = STATUS[s?.snapshot?.status ?? 'LIVE'] || STATUS.SCHEDULED;
-  const pulse = !!st.pulse && live !== false;
+  // The pulsing dot says "live right now" — a claim only a LIVE link may make
+  // (K12-F40). While the widget's poll is stale (or still connecting) the
+  // pill keeps the game's status, without the pulse. The builder (s == null)
+  // keeps its sample pulse.
+  const linkLive = s == null || s.link === 'live';
+  const pulse = !!st.pulse && live !== false && linkLive;
+  const dot = !!st.pulse && linkLive;
   return (
     <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent', overflow: 'hidden' }}>
       {pulse && <style>{sceneCss(`@keyframes sbStatusPulse{0%,100%{opacity:1}50%{opacity:.6}}`)}</style>}
@@ -296,7 +290,7 @@ export function GameStatusWidget({ config, live = true }: { config: ElCfg; live?
         style={{ color: config.color ?? '#ffffff', fontFamily: config.fontFamily ?? 'Inter, system-ui, sans-serif', letterSpacing: config.letterSpacing != null ? `${config.letterSpacing}px` : undefined }}
       >
         <div style={{ display: 'flex', alignItems: 'center', background: config.accentColor ?? st.bg, padding: '0.35em 0.8em', borderRadius: 999, fontWeight: 900, letterSpacing: 3, animation: pulse ? 'sbStatusPulse 1.6s ease-in-out infinite' : undefined }}>
-          {st.pulse && <span style={{ width: '0.5em', height: '0.5em', borderRadius: 999, background: '#fff', marginRight: '0.45em', display: 'inline-block' }} />}
+          {dot && <span style={{ width: '0.5em', height: '0.5em', borderRadius: 999, background: '#fff', marginRight: '0.45em', display: 'inline-block' }} />}
           {config.label ?? st.label}
         </div>
       </FitBox>
@@ -382,10 +376,17 @@ export function PossessionBallWidget({ config }: { config: ElCfg }) {
 export function PlayClockWidget({ config }: { config: ElCfg }) {
   const s = useGameState();
   const raw = s?.snapshot?.stats?.playClock as any;
-  const armed = !!(raw && raw.at);
-  const ms = useSubClock(armed ? raw : null, s?.snapshot?.serverTime);
-  const secs = !armed ? 40 : ms <= 5000 ? (ms / 1000).toFixed(1) : Math.ceil(ms / 1000);
-  const danger = armed && ms <= 5000;
+  // The /board route's rule (K12-F06): a play clock with an anchor that the
+  // table has not switched OFF is armed; anything else reads the idle "40".
+  const armed = !!(raw && raw.at && raw.off !== true);
+  // A real screen with no game data shows nothing — never the sample "40".
+  if (s != null && !s.snapshot) {
+    return <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent' }} />;
+  }
+  // THE projection at the provider's instant, THE digits the board paints.
+  const ms = armed ? subClockMs(s, raw) : 0;
+  const secs = !armed ? '40' : formatShotClockReading(ms);
+  const danger = armed && ms <= SHOT_CLOCK_TENTHS_AT_MS;
   return (
     <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent', overflow: 'hidden' }}>
       <FitBox
@@ -409,21 +410,29 @@ export function ShotClockWidget({ config }: { config: ElCfg }) {
   // per-side CTS shot clock (homeShotClock / awayShotClock). All three are
   // anchor objects {ms,len,at,running} the sub-clock projects forward.
   const field = deriveCtsField('sb-shot-clock', config) ?? 'shotClock';
-  const stats = s?.snapshot?.stats as Record<string, unknown> | undefined;
+  const snap = s?.snapshot ?? null;
+  const stats = snap?.stats as Record<string, unknown> | undefined;
   const raw = (stats?.[field] ?? stats?.shotClock) as any;
-  const len = Number(raw?.len) || 0;
-  // Armed = has a configured length (operator/basketball one-clock) OR a
-  // per-side CTS anchor (homeShotClock/awayShotClock carry ms+at but no
-  // len). Without this, a fresh per-side CTS shot clock would be hidden.
-  const armed = len > 0 || !!(raw && raw.at && (Number(raw.ms) > 0 || raw.running));
-  const ms = useSubClock(armed ? raw : null, s?.snapshot?.serverTime);
+  // The combined shot clock asks the one question every surface asks
+  // (K12-F05 `shotClockDisplayLen`): switched OFF, absent, or a sport with no
+  // shot clock → hidden, exactly when the /board route hides it. A per-side
+  // CTS clock (homeShotClock / awayShotClock carry ms + at, no len) has no
+  // board counterpart: it shows while it carries a reading.
+  const combined = !stats?.[field] || field === 'shotClock';
+  const armed = !snap
+    ? false
+    : combined
+      ? shotClockDisplayLen(sportForGame(snap), stats) > 0
+      : !!(raw && raw.at && raw.off !== true && (Number(raw.ms) > 0 || raw.running));
   // Live surface = provider mounted (s != null). On a live board with no
   // shot-clock armed, render nothing — never the fabricated sample "24".
   // The sample only shows in the builder/thumbnail (s == null).
   if (!armed && s != null) {
     return <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent' }} />;
   }
-  const display = !armed ? '24' : ms <= 5000 ? (ms / 1000).toFixed(1) : Math.ceil(ms / 1000);
+  // THE projection at the provider's instant, THE digits the board paints.
+  const ms = armed ? subClockMs(s, raw) : 0;
+  const display = !armed ? '24' : formatShotClockReading(ms);
   return (
     <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent', overflow: 'hidden' }}>
       <FitBox
@@ -433,7 +442,7 @@ export function ShotClockWidget({ config }: { config: ElCfg }) {
       >
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
           {config.label !== '' && <div style={{ fontSize: '0.28em', fontWeight: 800, letterSpacing: 3, color: '#64748b' }}>{config.label ?? 'SHOT'}</div>}
-          <div style={{ fontWeight: 900, color: (s?.snapshot && ms <= 5000) ? '#ef4444' : (config.color ?? '#e2e8f0') }}>{display}</div>
+          <div style={{ fontWeight: 900, color: (armed && ms <= SHOT_CLOCK_TENTHS_AT_MS) ? '#ef4444' : (config.color ?? '#e2e8f0') }}>{display}</div>
         </div>
       </FitBox>
     </div>

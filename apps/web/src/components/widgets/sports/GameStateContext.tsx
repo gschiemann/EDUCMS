@@ -75,6 +75,32 @@
  * CustomScoreboardScene, or the new per-zone `config.gameId` binding in
  * WidgetRenderer's WidgetPreview) always wins — the phantom fallback only
  * activates when there is truly no provider anywhere above the widget.
+ *
+ * ── The clock contract (K-12 sports launch, K12-F17 + F40, 2026-09-27) ──
+ * The widgets used to do their own clock math: the device's own clock
+ * with a crude skew, a floor-rounding formatter, tenths whenever a widget
+ * felt like it, and no freshness at all — so a widget board and the /board
+ * route could read different seconds for the same instant, and a widget
+ * kept running a clock the table may have stopped while its poll was dead.
+ * The provider now runs the SAME contract as /board, /ribbon and /scorebug:
+ *   • ONE server clock (lib/server-clock.ts). The poll samples it; every
+ *     clock projects from `serverClock.now()`, never `Date.now()`.
+ *   • ONE projection (@cms/api-types sports-clock.ts): the game clock via
+ *     `projectGameClockMs`, every secondary countdown (shot clock, play
+ *     clock, penalty timers) via `projectCountdownMs`, all at the one
+ *     instant the provider hands out as `nowMs` — so every widget under a
+ *     provider projects from the same moment in the same render.
+ *   • ONE formatter: `formatSportClock(def, ms)` for the game clock (MM:SS
+ *     rounding up; tenths only in a tenths sport's final minute) and
+ *     `formatShotClockReading` (lib/game-clock-format.ts) for shot / play
+ *     clocks — the digits the /board route paints.
+ *   • ONE freshness contract (lib/sports-freshness.ts via useSportsLink):
+ *     stale after 8 s without a good read, and while stale every clock
+ *     HOLDS where it stood (the page's server clock is held with this
+ *     provider's own hold, so it never releases another link's). `link`
+ *     says which phase it is in; only 'live' may claim LIVE.
+ *   • NEVER an older revision: a payload whose game revision is older than
+ *     one already shown (another replica's one-second cache) is dropped.
  */
 
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -84,7 +110,13 @@ import { API_URL } from '@/lib/api-url';
 // loop behaves identically to /board and /ribbon under load + outage.
 import { startBoardPoll } from '@/lib/board-poll';
 import { applyCtsOverlay } from '@/lib/cts-merge';
-import { overtimeLabel, sportForGame } from '@cms/api-types';
+// K12-F17 / F40 — the same server clock, projection and freshness contract
+// the /board, /ribbon and /scorebug routes run (see "The clock contract"
+// above).
+import { serverClock } from '@/lib/server-clock';
+import { acceptRevision, type LinkPhase } from '@/lib/sports-freshness';
+import { noteRevisionShown, useSportsLink } from '@/hooks/use-sports-link';
+import { overtimeLabel, projectCountdownMs, projectGameClockMs, sportForGame } from '@cms/api-types';
 
 export interface GameSnapshot {
   id: string;
@@ -114,6 +146,13 @@ export interface GameSnapshot {
   rulesProfile?: string | null;
   rules?: unknown;
   /**
+   * K12-F40 — the game revision this payload shows (Game.version) and when it
+   * was committed. A payload OLDER than one already shown is never applied.
+   * Absent from APIs that predate revisions (then every payload applies).
+   */
+  revision?: number;
+  updatedAt?: string;
+  /**
    * The game's roster as the PUBLIC board payload carries it (the
    * `/sports/board/:id` response spreads through `applyCtsOverlay`
    * untouched). Optional: a snapshot from any other source may omit it,
@@ -132,15 +171,58 @@ export interface GameSnapshot {
   }> | null;
 }
 
-interface GameStateValue {
+export interface GameStateValue {
   snapshot: GameSnapshot | null;
-  /** Clock value already projected forward from the snapshot anchor — ready to render. */
+  /**
+   * The game clock at `nowMs` — THE projection (`projectGameClockMs`) of the
+   * snapshot's anchor on the page's server clock. Ready to format with
+   * `formatSportClock`.
+   */
   liveClockMs: number;
+  /**
+   * K12-F17 — the server-clock instant this provider projects every clock at.
+   * Secondary countdowns (shot clock, play clock, penalty timers) project at
+   * it too: `projectCountdownMs(anchor, nowMs)` (see `subClockMs`). It ticks
+   * ten times a second while any clock of the game runs and HOLDS while the
+   * link is stale (K12-F40). 0 when there is no game.
+   */
+  nowMs: number;
+  /**
+   * K12-F40 — this provider's link, the same phases every live surface uses:
+   * connecting · live · stale · recovering · paused. Only `'live'` may claim
+   * to be live (a LIVE pill, a pulsing dot).
+   */
+  link: LinkPhase;
 }
 
 const GameStateContext = createContext<GameStateValue | null>(null);
 
 const POLL_MS = 750;
+/** The /board route's clock cadence — tenths need ten frames a second. */
+const CLOCK_TICK_MS = 100;
+
+function isRunningAnchor(v: unknown): boolean {
+  return !!v && typeof v === 'object' && (v as { running?: unknown }).running === true;
+}
+
+/**
+ * Does any clock of this game run right now — the game clock, or any
+ * secondary countdown anchor in its stats (a shot clock, a play clock that
+ * runs while the game clock is stopped, a penalty timer)? Only then does the
+ * provider tick; a stopped board costs no timer.
+ */
+export function hasRunningClock(snapshot: GameSnapshot | null | undefined): boolean {
+  if (!snapshot) return false;
+  if (snapshot.clockRunning) return true;
+  const stats = snapshot.stats;
+  if (!stats || typeof stats !== 'object') return false;
+  for (const key of Object.keys(stats)) {
+    const v = (stats as Record<string, unknown>)[key];
+    if (isRunningAnchor(v)) return true;
+    if (Array.isArray(v) && v.some(isRunningAnchor)) return true;
+  }
+  return false;
+}
 
 export function GameStateProvider({
   gameId,
@@ -157,9 +239,6 @@ export function GameStateProvider({
   const [snapshot, setSnapshot] = useState<GameSnapshot | null>(
     () => (initial ? applyCtsOverlay(initial) : null),
   );
-  const [liveClockMs, setLiveClockMs] = useState<number>(
-    () => (initial ? applyCtsOverlay(initial).clockMs : 0),
-  );
 
   // Last RAW (pre-overlay) snapshot — kept so a 304's server-time sample
   // can re-run the CTS freshness merge against un-overlaid fields.
@@ -167,18 +246,42 @@ export function GameStateProvider({
   // values in place as if they were operator inputs.
   const rawSnapshot = useRef<GameSnapshot | null>(initial ?? null);
 
+  // K12-F40 — the newest game revision shown, and for WHICH game: revisions
+  // are per game, so a zone re-bound to another game starts over.
+  const shown = useRef<{ gameId: string; revision: number } | null>(
+    initial && typeof initial.revision === 'number' ? { gameId, revision: initial.revision } : null,
+  );
+
+  // K12-F40 — the freshness contract. A good read (200 or 304) keeps the
+  // link live; eight seconds without one and it goes stale, and every clock
+  // under this provider HOLDS where it stood until the next good read. The
+  // hold is this provider's own (server-clock.ts), so it never releases the
+  // /board route's hold or another zone's.
+  const link = useSportsLink({ holdClocks: true });
+  const markGood = link.markGood;
+
   // Poll the un-authed scoreboard endpoint at the same 750ms cadence
   // the /board/[gameId] page uses, so a template-driven board stays
   // perfectly in sync with cues / score changes / clock toggles — now
   // through the shared hardened engine (self-chaining so slow responses
   // never overlap, If-None-Match/304 revalidation when the API offers
-  // an ETag, jittered 1.5/3/5s backoff; see lib/board-poll.ts).
+  // an ETag, jittered 1.5/3/5s backoff; see lib/board-poll.ts). Every good
+  // poll also samples the page's server clock (K12-F17).
   useEffect(() => {
     return startBoardPoll({
       url: `${API_URL}/sports/board/${encodeURIComponent(gameId)}`,
       intervalMs: POLL_MS,
       onPayload: (payload) => {
         const json = payload as GameSnapshot;
+        // Never apply an OLDER revision than one already shown — another
+        // API replica's one-second board cache can answer with the score of
+        // a second ago (the /board route's rule, lib/sports-freshness.ts).
+        const prev = shown.current && shown.current.gameId === gameId ? shown.current.revision : null;
+        if (!acceptRevision(prev, json.revision)) return;
+        if (typeof json.revision === 'number') {
+          if (json.revision !== prev) noteRevisionShown('widgets', json);
+          shown.current = { gameId, revision: json.revision };
+        }
         rawSnapshot.current = json;
         // Same CTS source-of-truth merge the board/ribbon/scorebug run:
         // fresh CTS heartbeat → its score/clock/segment/shot-clock/
@@ -186,8 +289,8 @@ export function GameStateProvider({
         setSnapshot(applyCtsOverlay(json));
       },
       // 304 — body unchanged; advance serverTime on the RAW snapshot and
-      // re-merge, so CTS freshness keeps decaying honestly (and the clock
-      // skew anchor stays current) across a long 304 run.
+      // re-merge, so CTS freshness keeps decaying honestly across a long
+      // 304 run. (The server-clock sample itself is taken by the engine.)
       onServerTime: (n) => {
         const raw = rawSnapshot.current;
         if (!raw) return;
@@ -195,40 +298,50 @@ export function GameStateProvider({
         rawSnapshot.current = next;
         setSnapshot(applyCtsOverlay(next));
       },
+      // A good read — a 200 OR a 304 — keeps the link live.
+      onStatus: (s) => {
+        if (s.online) markGood();
+      },
     });
-  }, [gameId]);
+  }, [gameId, markGood]);
 
-  // Clock projection — clockMs is the reading at clockUpdatedAt.
-  // While clockRunning, advance/decrement locally so the clock ticks
-  // smoothly between polls instead of jumping every 750ms.
+  // THE instant every clock under this provider is projected at: the page's
+  // server clock (never the device's), re-read ten times a second while any
+  // clock of the game runs. While the link is stale the server clock is held,
+  // so this stands still — and so does every clock projected from it.
+  const [nowMs, setNowMs] = useState<number>(() => serverClock.now());
   useEffect(() => {
     if (!snapshot) return;
-    const def = sportForGame(snapshot);
-    const updatedAt = new Date(snapshot.clockUpdatedAt).getTime();
-    const drift = snapshot.serverTime ? Date.now() - snapshot.serverTime : 0;
-    const projectClock = () => {
-      if (!snapshot.clockRunning) {
-        setLiveClockMs(snapshot.clockMs);
-        return;
-      }
-      const elapsed = Date.now() - updatedAt - drift;
-      if (!def || def.clock.type === 'countup') {
-        setLiveClockMs(snapshot.clockMs + Math.max(0, elapsed));
-      } else {
-        setLiveClockMs(Math.max(0, snapshot.clockMs - Math.max(0, elapsed)));
-      }
-    };
-    projectClock();
-    const id = setInterval(projectClock, 100);
+    const tick = () => setNowMs(serverClock.now());
+    tick();
+    if (!hasRunningClock(snapshot)) return;
+    const id = setInterval(tick, CLOCK_TICK_MS);
     return () => clearInterval(id);
   }, [snapshot]);
 
+  // The game's own definition, rules profile included (K12-F01) — the same
+  // lookup the /board route uses. An unknown sport runs no clock ('none'):
+  // a reading nobody can define is shown as stored, never invented.
+  const def = useMemo(() => (snapshot ? sportForGame(snapshot) : undefined), [snapshot]);
+  const liveClockMs = snapshot ? projectGameClockMs(snapshot, def ? def.clock.type : 'none', nowMs) : 0;
+
+  const phase = link.state.phase;
   const value = useMemo<GameStateValue>(
-    () => ({ snapshot, liveClockMs }),
-    [snapshot, liveClockMs],
+    () => ({ snapshot, liveClockMs, nowMs, link: phase }),
+    [snapshot, liveClockMs, nowMs, phase],
   );
 
   return <GameStateContext.Provider value={value}>{children}</GameStateContext.Provider>;
+}
+
+/**
+ * A secondary countdown — a shot clock, a play clock, one penalty timer, all
+ * stored as `{ ms, at, running }` — at the provider's instant, with THE
+ * projection every surface uses. 0 with no provider or no anchor.
+ */
+export function subClockMs(state: GameStateValue | null | undefined, anchor: unknown): number {
+  if (!state || !anchor || typeof anchor !== 'object') return 0;
+  return projectCountdownMs(anchor as { ms?: unknown; at?: unknown; running?: unknown }, state.nowMs);
 }
 
 /**
@@ -255,7 +368,8 @@ import { useRenderSurface } from '../render-surface';
 // key effects off `state`/`state?.snapshot` via referential checks don't
 // see a "new" phantom state every render. Represents "on a real screen,
 // but no game is bound to this widget/zone yet."
-const PHANTOM_UNBOUND_STATE: GameStateValue = { snapshot: null, liveClockMs: 0 };
+// No game, so no link: 'connecting' claims nothing (never 'live').
+const PHANTOM_UNBOUND_STATE: GameStateValue = { snapshot: null, liveClockMs: 0, nowMs: 0, link: 'connecting' };
 
 export function useGameState(): GameStateValue | null {
   const ambient = useContext(GameStateContext);
@@ -288,19 +402,10 @@ export function useHasAmbientGameProvider(): boolean {
   return useContext(GameStateContext) != null;
 }
 
-/** Convert raw ms into "MM:SS" or "M:SS.t" depending on the sport's clock. */
-export function fmtClock(ms: number, showTenths = false): string {
-  if (!Number.isFinite(ms) || ms < 0) ms = 0;
-  const total = Math.floor(ms / 1000);
-  const m = Math.floor(total / 60);
-  const s = total % 60;
-  const pad = (n: number) => n.toString().padStart(2, '0');
-  if (showTenths) {
-    const t = Math.floor((ms % 1000) / 100);
-    return `${m}:${pad(s)}.${t}`;
-  }
-  return `${m}:${pad(s)}`;
-}
+// `fmtClock` (floor MM:SS, tenths on request) is GONE (K12-F17, 2026-09-27):
+// it made a widget read 7:41 where the /board route read 7:42 for the same
+// instant. Every game clock is `formatSportClock(def, ms)` (@cms/api-types),
+// every shot / play clock `formatShotClockReading(ms)` (lib/game-clock-format).
 
 /**
  * Sport-aware segment label — "Q3", "Inning 5 ▲", "Set 2", "1st Half", etc.
