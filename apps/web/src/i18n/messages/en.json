@@ -3474,5 +3474,17 @@
     "returnNow": "Return screens now",
     "returning": "Returning…",
     "returnFailed": "Couldn't return the screens. Try again."
+  },
+  "sportsCelebrate": {
+    "title": "Automatic celebrations",
+    "intro": "A scoring play fires its celebration by itself. A typed score correction never does, and Undo takes the celebration back.",
+    "toggle": "Celebrate scoring plays automatically",
+    "whichLabel": "Which plays celebrate",
+    "points": "{list} points",
+    "cooldownLabel": "Time between automatic celebrations",
+    "cooldownNone": "none — every scoring play",
+    "cooldownSeconds": "{seconds, plural, one {# second} other {# seconds}}",
+    "noneForSport": "No scoring play in this sport celebrates by itself — fire celebrations from the launchpad.",
+    "saveFailed": "Couldn't save. Try again."
   }
 }

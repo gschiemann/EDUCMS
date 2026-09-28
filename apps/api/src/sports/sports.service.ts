@@ -69,6 +69,16 @@ import {
   POSTGAME_HOLD_OPTIONS_MINUTES,
   cleanPostgameHoldMinutes,
   postgameHoldMinutes,
+  // K-12 lane A4 — celebrations from a scoring play (sports-celebrations.ts, K12-F36).
+  CELEBRATION_COOLDOWN_OPTIONS_SEC,
+  CELEBRATION_NARRATION_WINDOW_MS,
+  autoCelebrations,
+  celebrationForPlay,
+  celebrationSettingsPayload,
+  parseCelebrationSettings,
+  scoringPlaysOf,
+  type CelebrationSettings,
+  type ScoringPlay,
 } from '@cms/api-types';
 import type { RulesProfile, SportDefinition } from '@cms/api-types';
 import { SPONSOR_SPOT_SECONDS } from './sponsor.constants';
@@ -385,13 +395,11 @@ const CTS_CUE_DEDUP_MS = 2_000;
 export class SportsService {
   private readonly logger = new Logger(SportsService.name);
 
-  // Per-game AUTO-celebrate toggle cache. Default ON; hydrated once per
-  // gameId from the latest AUTO_CELEBRATE GameEvent on first feed touch,
-  // then updated in place by setAutoCelebrate. Keeps the feed hot path
-  // (ingest, 1-10 pushes/sec) from re-reading the toggle on every push.
-  // Per-process — a single Railway instance; a cold start re-hydrates from
-  // the persisted event, so an operator's OFF survives a restart.
-  private readonly autoCelebrateCache = new Map<string, boolean>();
+  // K12-F36 — the automatic-celebration settings are NOT cached per process
+  // any more: a per-process copy let one replica keep celebrating after the
+  // table switched it off on another. They are read fresh, inside the
+  // scoring command's transaction, and only when a scoring play exists — so
+  // a 5 Hz feed pays nothing for the packets that score nothing.
 
   // Inputs-wave SCHED — per-game schedule-game-mode (auto-push) config
   // cache. Hydrated once per gameId from the latest AUTO_PUSH GameEvent,
@@ -950,9 +958,13 @@ export class SportsService {
     actor: CommandInput,
     action: string,
     details: (eventId: string) => Record<string, unknown>,
+    /** K12-F36 — stamp the game revision the action was taken at (a cue
+     *  fired between two scoring plays is ordered by it, not by clocks). */
+    opts: { stampRevision?: boolean } = {},
   ): Promise<{ id: string; createdAt: Date }> {
     const ctx = resolveCommandContext(actor);
     const event = await this.prisma.client.$transaction(async (tx: any) => {
+      const revision = opts.stampRevision ? await this.gameRevision(tx, tenantId, gameId) : undefined;
       const ev = await tx.gameEvent.create({
         data: {
           gameId,
@@ -960,6 +972,7 @@ export class SportsService {
           payload: payload as any,
           actorType: ctx.actor.kind,
           actorUserId: ctx.actor.kind === 'user' ? ctx.actor.userId ?? null : null,
+          ...(revision !== undefined ? { revision } : {}),
         },
       });
       await this.auditRow(tx, tenantId, actor, action, gameId, details(ev.id));
@@ -967,6 +980,12 @@ export class SportsService {
     });
     this.invalidateBoardCache(gameId);
     return event;
+  }
+
+  /** K12-F36 — the game's current revision (Game.version), read in `tx`. */
+  private async gameRevision(tx: any, tenantId: string, gameId: string): Promise<number | null> {
+    const row = await tx.game.findFirst({ where: { id: gameId, tenantId }, select: { version: true } });
+    return typeof row?.version === 'number' ? row.version : null;
   }
 
   /**
@@ -1631,14 +1650,16 @@ export class SportsService {
     };
 
     const [
-      cues, sponsors, rosterRaw, ribbonMessages, ribbonPresets,
+      cueEvents, sponsors, rosterRaw, ribbonMessages, ribbonPresets,
       ribbonSpeed, ribbonSlides, ribbonScoreRepeat,
       scoreboardTemplate, ribbonTemplate, scorebugTemplate,
       latestLiveOverlayEvent, latestSceneEvent, latestRosterPrivacyEvent,
       studentPolicy,
     ] = await Promise.all([
+      // K12-F36 — CUE_CANCEL rides the same read (and the same window): a
+      // cue an undo withdrew, or a named cue replaced, is cut on every surface.
       this.prisma.client.gameEvent.findMany({
-        where: { gameId: id, type: 'CUE', createdAt: { gte: since } },
+        where: { gameId: id, type: { in: ['CUE', 'CUE_CANCEL'] }, createdAt: { gte: since } },
         orderBy: { createdAt: 'asc' },
       }),
       // Active, in-flight sponsors for the board's banner slot — routed
@@ -1714,6 +1735,15 @@ export class SportsService {
       teams: [game.homeTeam, game.awayTeam],
     };
     const roster = rosterRaw.map((p) => publicStudentView(p, studentPolicy, rosterPrivacy));
+    const cues = cueEvents.filter((e: { type: string }) => e.type === 'CUE');
+    const cueCancels = cueEvents
+      .filter((e: { type: string }) => e.type === 'CUE_CANCEL')
+      .map((e: { id: string; payload: unknown; createdAt: Date }) => ({
+        id: e.id,
+        cancels: String((e.payload as { cancels?: unknown } | null)?.cancels ?? ''),
+        createdAt: e.createdAt,
+      }))
+      .filter((c: { cancels: string }) => c.cancels);
 
     // T3-3 Show Control: resolve the latest SCENE with a SERVER-AUTHORITATIVE
     // expiry — the board never even sees an expired scene, so it auto-reverts
@@ -1809,6 +1839,10 @@ export class SportsService {
           createdAt: c.createdAt,
         };
       }),
+      // K12-F36 — cues withdrawn (an undo) or replaced (a named cue for the
+      // same play): surfaces cut them if playing and drop them if queued.
+      // Only present when there is one, so every other payload is unchanged.
+      ...(cueCancels.length > 0 ? { cueCancels } : {}),
       sponsors,
       roster,
       ribbonMessages,
@@ -2922,8 +2956,7 @@ export class SportsService {
   /**
    * The game's current schedule-game-mode config. Reads the in-memory
    * cache; on a miss, hydrates ONCE from the latest AUTO_PUSH GameEvent
-   * (null when the game was never armed) — the autoCelebrateEnabled
-   * pattern. `fresh: true` bypasses the cache for writers that must never
+   * (null when the game was never armed). `fresh: true` bypasses the cache for writers that must never
    * act on a stale copy (the sweep, the FINAL hook, a scheduledAt edit):
    * arming may have happened on another process, and a stale screen list
    * would push to — or revert — the wrong screens.
@@ -3918,7 +3951,10 @@ export class SportsService {
       const updated = await scope.write(
         setWin ? setWin.data : { [col]: { increment: applied } },
       );
-      await scope.event('SCORE', {
+      // K12-F36 — the tap IS the scoring play (what it actually applied: a −1,
+      // or a +1 clamped to nothing, scores no play).
+      const plays: ScoringPlay[] = applied > 0 ? [{ team, points: applied }] : [];
+      const scoreEvent = await scope.event('SCORE', {
         team,
         delta,
         appliedDelta: applied,
@@ -3926,27 +3962,27 @@ export class SportsService {
         awayScore: point.awayScore,
         prevHomeScore: prevScores.homeScore,
         prevAwayScore: prevScores.awayScore,
+        plays,
         change: scope.change(),
       });
       // Audit-Fix 1: a manual quick-button fires the same AUTO celebration a
       // feed would, off the post-point score (before any set reset).
-      await this.autoCelebrateInCommand(
-        scope,
-        prevScores,
-        { ...updated, ...point },
-        { home: team === 'home', away: team === 'away' },
-        'manual',
-      );
-      if (setWin) await this.recordSetWin(scope, def, setWin, updated);
+      await this.celebratePlays(scope, plays, { ...updated, ...point }, 'manual', scoreEvent.id);
+      if (setWin) await this.recordSetWin(scope, def, setWin, updated, scoreEvent.id);
       return updated;
     });
   }
 
-  /** Set one or both scores outright (operator typo fix). */
+  /**
+   * Set one or both scores outright (operator typo fix). K12-F36 — a
+   * CORRECTION, not a scoring play: it never celebrates (a typo fixed from 10
+   * to 13 used to fire the three-pointer cue) unless the table says the new
+   * total was a play (`celebrate: true`).
+   */
   async setScore(
     tenantId: string,
     id: string,
-    dto: { homeScore?: number; awayScore?: number },
+    dto: { homeScore?: number; awayScore?: number; celebrate?: boolean },
     actor?: CommandInput,
   ) {
     // Only the columns the operator actually supplied (valid, non-negative
@@ -3966,23 +4002,25 @@ export class SportsService {
         awayScore: Number(game.awayScore) || 0,
       };
       const updated = await scope.write(supplied);
-      await scope.event('SCORE', {
+      const plays: ScoringPlay[] =
+        dto.celebrate === true
+          ? this.playsFromScores(prevScores, updated, {
+              home: supplied.homeScore !== undefined,
+              away: supplied.awayScore !== undefined,
+            })
+          : [];
+      const scoreEvent = await scope.event('SCORE', {
         team: 'set',
         homeScore: updated.homeScore,
         awayScore: updated.awayScore,
         prevHomeScore: prevScores.homeScore,
         prevAwayScore: prevScores.awayScore,
+        // K12-F36 — labelled: a correction is never celebrated by accident.
+        correction: plays.length === 0,
+        plays,
         change: scope.change(),
       });
-      // Audit-Fix 1: a manual set fires the same AUTO celebration path as the
-      // feed, for the columns the operator supplied only.
-      await this.autoCelebrateInCommand(
-        scope,
-        prevScores,
-        updated,
-        { home: supplied.homeScore !== undefined, away: supplied.awayScore !== undefined },
-        'manual',
-      );
+      await this.celebratePlays(scope, plays, updated, 'manual', scoreEvent.id);
       return updated;
     });
   }
@@ -4077,6 +4115,8 @@ export class SportsService {
     def: SportDefinition,
     setWin: NonNullable<ReturnType<SportsService['evaluateSetWin']>>,
     updated: GameRow,
+    /** The scoring event that won the set: its undo withdraws these cues (K12-F36). */
+    causedBy: string,
   ): Promise<void> {
     if (setWin.final) {
       await scope.event('STATUS', { status: 'FINAL', source: 'set-majority' });
@@ -4103,12 +4143,13 @@ export class SportsService {
         auto: true,
         team: setWin.winner,
         source: 'rule',
+        causedBy,
         snapshot: this.cueSnapshot(updated),
       });
     }
     // K12-F18 — a match the set majority ended announces its result like
     // every other FINAL (it used to end with the set cue alone).
-    if (setWin.final) await scope.event('CUE', this.finalResultCue(updated, 'set-majority'));
+    if (setWin.final) await scope.event('CUE', { ...this.finalResultCue(updated, 'set-majority'), causedBy });
   }
 
   /**
@@ -5638,7 +5679,7 @@ export class SportsService {
 
       // The STAT event is the command's undo target and carries the whole
       // change — including a cascade's out / half / inning / forced run.
-      await scope.event('STAT', { stats: next, oldValues, change: scope.change() });
+      const statEvent = await scope.event('STAT', { stats: next, oldValues, change: scope.change() });
       if (segmentDelta) {
         await scope.event('SEGMENT', { segment: dataSegment, source: 'count' }, { derived: true });
       }
@@ -5656,6 +5697,8 @@ export class SportsService {
             sponsorLogoUrl: null,
             auto: true,
             source: 'rule',
+            // K12-F36 — undoing the pitch withdraws its strikeout cue.
+            causedBy: statEvent.id,
             snapshot: this.cueSnapshot(updated),
           });
         }
@@ -6144,9 +6187,19 @@ export class SportsService {
       // (or re-anchors) a running clock snaps the expiry sweep out of its 30s
       // idle backoff.
       if ((clockProvided || newSegment !== null) && updated.clockRunning) scope.after(() => wakeClockSweep());
-      await scope.event('INGEST', {
+      // K12-F36 — a machine feed reports scores, not plays: its higher score
+      // for a team IS that team's play. The operator's hand-pushed ingest
+      // (no `auto`) celebrates nothing, as before.
+      const plays: ScoringPlay[] = opts.auto
+        ? this.playsFromScores(prevScores, updated, {
+            home: data.homeScore !== undefined,
+            away: data.awayScore !== undefined,
+          })
+        : [];
+      const ingestEvent = await scope.event('INGEST', {
         ...applied,
         ...(hasEnvelope(envelope) ? { envelope } : {}),
+        ...(plays.length > 0 ? { plays } : {}),
         change: scope.change(),
       });
       if (endsPeriod) {
@@ -6170,97 +6223,129 @@ export class SportsService {
       }
 
       // AUTO celebration trigger — only on the machine-feed path, and only
-      // when a score field was actually applied.
-      if (opts.auto && (data.homeScore !== undefined || data.awayScore !== undefined)) {
-        await this.autoCelebrateInCommand(
-          scope,
-          prevScores,
-          updated,
-          { home: data.homeScore !== undefined, away: data.awayScore !== undefined },
-          'feed',
-        );
-      }
+      // for a play the packet actually reported.
+      await this.celebratePlays(scope, plays, updated, 'feed', ingestEvent.id);
       return { game: updated, accepted: true };
     });
   }
 
   /**
-   * The Sprint 13 "AUTO" trigger, run INSIDE the scoring command. For each
-   * team whose score the command increased (among the columns it was given),
-   * find the celebration whose `autoPoints` includes the delta and fire it —
-   * the same CUE shape the manual launchpad (`fireCue`) writes, so every
-   * board / ribbon / scorebug surface plays it with zero rendering changes.
-   * Tagged `{ auto: true, team }` so the overlay can theme to the scoring
-   * side. Honors the per-game toggle (default ON). Because it runs in the
-   * command's transaction, a retried or replayed score command can never
-   * celebrate twice, and a rolled-back one never celebrates at all.
+   * K12-F36 — the scoring plays between two score readings, for the columns
+   * the command was given: a side whose score went UP scored a play worth the
+   * difference. For a scoring REPORT (a feed, a console) that difference is
+   * the only play there is; a quick-button tap records its own play instead.
    */
-  private async autoCelebrateInCommand(
-    scope: GameCommandScope,
+  private playsFromScores(
     prev: { homeScore: number; awayScore: number },
-    next: GameRow,
+    next: { homeScore: number; awayScore: number },
     provided: { home: boolean; away: boolean },
-    source: 'manual' | 'feed',
-  ): Promise<void> {
-    const id = next.id;
-    if (!(await this.autoCelebrateEnabled(id, scope.tx))) return;
-
-    let def: SportDefinition;
-    try {
-      def = this.sportOf(next);
-    } catch {
-      return; // unknown sport — nothing to map a delta to
-    }
-
-    const hits: Array<{ team: 'home' | 'away'; cue: SportDefinition['celebrations'][number] }> = [];
+  ): ScoringPlay[] {
+    const plays: ScoringPlay[] = [];
     for (const team of ['home', 'away'] as const) {
       if (!(team === 'home' ? provided.home : provided.away)) continue;
-      const before = team === 'home' ? prev.homeScore : prev.awayScore;
-      const after = team === 'home' ? next.homeScore : next.awayScore;
-      const delta = after - before;
-      if (delta <= 0) continue; // only score INCREASES fire; corrections don't
-      const cue = def.celebrations.find(
-        (c) => Array.isArray(c.autoPoints) && c.autoPoints.includes(delta),
-      );
-      if (cue) hits.push({ team, cue });
+      const points =
+        (team === 'home' ? Number(next.homeScore) : Number(next.awayScore)) -
+        (team === 'home' ? prev.homeScore : prev.awayScore);
+      if (Number.isInteger(points) && points > 0) plays.push({ team, points });
     }
+    return plays;
+  }
+
+  /**
+   * K12-F36 — the Sprint 13 "AUTO" trigger, run INSIDE the scoring command
+   * that recorded `plays` (in the event `scoringEventId`).
+   *
+   * Each play fires the sport's automatic cue for its points
+   * (`celebrationForPlay`) — the same CUE shape the launchpad writes, tagged
+   * `{ auto: true, team }` and naming its play (`play.eventId`), so an undo
+   * of that event can withdraw it and a replayed command (answered from its
+   * receipt) can never fire it twice. Decided on the table's settings, read
+   * fresh in this transaction on every replica:
+   *   - off, or this cue switched off → quiet;
+   *   - the COOLDOWN: another automatic celebration fired within it → quiet;
+   *   - NARRATION: an operator fired a named cue for this team within
+   *     CELEBRATION_NARRATION_WINDOW_MS and no scoring play by the team has
+   *     happened since — that cue was this play's ("tap GOAL, pick the
+   *     scorer, then +1") → quiet, ONCE: the next play celebrates again. The
+   *     old rule silenced every automatic cue of the team for ten seconds,
+   *     a second real score included. Auto-after-auto was never silenced and
+   *     still is not: two goals seconds apart both celebrate (cooldown 0).
+   * A rolled-back command celebrates nothing: it is all one transaction.
+   */
+  private async celebratePlays(
+    scope: GameCommandScope,
+    plays: ScoringPlay[],
+    row: GameRow,
+    source: 'manual' | 'feed',
+    scoringEventId: string,
+  ): Promise<void> {
+    if (plays.length === 0) return;
+    const gameId = row.id;
+    const settings = await this.readCelebrationSettings(gameId, scope.tx);
+    if (!settings.auto) return;
+    let def: SportDefinition;
+    try {
+      def = this.sportOf(row);
+    } catch {
+      return; // unknown sport — nothing to map a play to
+    }
+    const hits = plays.flatMap((play) => {
+      const cue = celebrationForPlay(def, play.points, settings);
+      return cue ? [{ play, cue }] : [];
+    });
     if (hits.length === 0) return;
 
-    // Celebration mutex (2026-06-12, operator-reported double-fire): the
-    // designed scorer flow is "tap cue → pick player → fire (named
-    // cinematic) → tap +1 to record the score" — and the +1 then auto-fired
-    // a SECOND, unnamed GOAL cinematic for the same team. Suppress an AUTO
-    // fire when an OPERATOR-FIRED (non-auto) cue for the same team landed
-    // within the cinematic window — the named cue always wins; the auto
-    // path is the backstop for un-narrated scores, never a second show.
-    // Deliberately NOT mutexed: auto-after-auto. Two real goals seconds
-    // apart must BOTH celebrate. Read through `tx`: a command never takes a
-    // second pool connection while it holds one.
-    const CELEBRATION_MUTEX_MS = 10_000;
-    const recentCues = await scope.tx.gameEvent.findMany({
-      where: {
-        gameId: id,
-        type: 'CUE',
-        createdAt: { gte: new Date(Date.now() - CELEBRATION_MUTEX_MS) },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 8,
-    });
-    const mutexedTeams = new Set<string>();
-    for (const ev of recentCues as Array<{ payload: unknown }>) {
-      const payload = ev.payload as { team?: unknown; auto?: unknown } | null;
-      if (payload?.auto === true) continue; // auto fires never mutex real scores
-      const evTeam = payload?.team;
-      if (evTeam === 'home' || evTeam === 'away') mutexedTeams.add(evTeam);
+    // Read through `tx`: a command never takes a second pool connection
+    // while it holds one. One read covers the cooldown and the narration.
+    const nowMs = Date.now();
+    const windowMs = Math.max(CELEBRATION_NARRATION_WINDOW_MS, settings.cooldownSec * 1000);
+    const recent: Array<{ id: string; type: string; payload: unknown; createdAt: Date; revision?: unknown }> =
+      await scope.tx.gameEvent.findMany({
+        where: {
+          gameId,
+          type: { in: ['CUE', 'SCORE', 'INGEST'] },
+          createdAt: { gte: new Date(nowMs - windowMs) },
+        },
+        orderBy: { createdAt: 'asc' },
+      });
+    const payloadOf = (e: { payload: unknown }) => (e.payload ?? {}) as Record<string, unknown>;
+    const at = (e: { createdAt: Date }) => new Date(e.createdAt).getTime();
+    // Is event `e` later than event `m`? By the game revision each was
+    // written at when both carry one (a command's events share the revision
+    // it produced; a cue records the revision it was fired at) — never two
+    // clocks, the API's and the database's. By time for rows from before.
+    const later = (e: { revision?: unknown; createdAt: Date }, m: { revision?: unknown; createdAt: Date }) =>
+      typeof e.revision === 'number' && typeof m.revision === 'number' ? e.revision > m.revision : at(e) >= at(m);
+
+    if (settings.cooldownSec > 0) {
+      const lastAuto = recent.filter((e) => e.type === 'CUE' && payloadOf(e).auto === true && payloadOf(e).play).pop();
+      if (lastAuto && nowMs - at(lastAuto) < settings.cooldownSec * 1000) {
+        this.logger.debug(`auto-celebrate cooldown: game ${gameId} celebrated ${nowMs - at(lastAuto)} ms ago`);
+        return;
+      }
     }
-    const firable = hits.filter((h) => !mutexedTeams.has(h.team));
-    if (firable.length < hits.length) {
-      this.logger.debug(
-        `auto-celebrate mutex: suppressed ${hits.length - firable.length} fire(s) for game ${id} (cue within ${CELEBRATION_MUTEX_MS}ms window)`,
-      );
-    }
-    const snapshot = this.cueSnapshot(next);
-    for (const h of firable) {
+
+    const narrated = (team: 'home' | 'away') =>
+      recent.some((m) => {
+        const p = payloadOf(m);
+        if (m.type !== 'CUE' || p.auto === true || p.team !== team || p.replaces) return false;
+        if (nowMs - at(m) > CELEBRATION_NARRATION_WINDOW_MS) return false;
+        // Unclaimed: no scoring play by this team since the named cue.
+        return !recent.some(
+          (e) =>
+            (e.type === 'SCORE' || e.type === 'INGEST') &&
+            e.id !== scoringEventId &&
+            later(e, m) &&
+            scoringPlaysOf(e.payload).some((pl) => pl.team === team),
+        );
+      });
+
+    const snapshot = this.cueSnapshot(row);
+    for (const h of hits) {
+      if (narrated(h.play.team)) {
+        this.logger.debug(`auto-celebrate: ${h.play.team}'s play in game ${gameId} was narrated by a named cue`);
+        continue;
+      }
       const event = await scope.event('CUE', {
         key: h.cue.key,
         label: h.cue.label,
@@ -6270,8 +6355,9 @@ export class SportsService {
         sponsorName: null,
         sponsorLogoUrl: null,
         auto: true,
-        team: h.team,
+        team: h.play.team,
         source,
+        play: { eventId: scoringEventId, team: h.play.team, points: h.play.points },
         snapshot,
       });
       // Lane-8 P1 / Audit-Fix 1: an AUTO cue gets its own AuditLog row,
@@ -6282,53 +6368,97 @@ export class SportsService {
         key: h.cue.key,
         label: h.cue.label,
         target: 'ALL',
-        team: h.team,
+        team: h.play.team,
         auto: true,
         source,
+        playEventId: scoringEventId,
       }, { sideEffect: true });
     }
   }
 
   /**
-   * Per-game AUTO-celebrate toggle. Reads the in-memory cache; on a miss,
-   * hydrates ONCE from the latest AUTO_CELEBRATE GameEvent (default ON when
-   * none exists). Fails OPEN to the default on any read error so a feed
-   * game still gets its show — never blocks the score sync.
+   * K12-F36 — the table's automatic-celebration settings: the latest
+   * AUTO_CELEBRATE event (default: on, every cue, no cooldown). Read fresh on
+   * every call — through the caller's transaction on the scoring path — so
+   * every replica applies the same settings the moment they change. Fails
+   * OPEN to the default on a read error so a feed game still gets its show.
    */
-  private async autoCelebrateEnabled(gameId: string, client?: any): Promise<boolean> {
-    const cached = this.autoCelebrateCache.get(gameId);
-    if (cached !== undefined) return cached;
-    let enabled = true;
+  private async readCelebrationSettings(gameId: string, client?: any): Promise<CelebrationSettings> {
     try {
       const ev = await (client ?? this.prisma.client).gameEvent.findFirst({
         where: { gameId, type: 'AUTO_CELEBRATE' },
         orderBy: { createdAt: 'desc' },
       });
-      const payload = ev?.payload as { enabled?: unknown } | null;
-      if (payload && typeof payload.enabled === 'boolean') enabled = payload.enabled;
+      return parseCelebrationSettings(ev?.payload);
     } catch {
-      /* fail open to default ON */
+      return parseCelebrationSettings(undefined);
     }
-    this.autoCelebrateCache.set(gameId, enabled);
-    return enabled;
   }
 
-  /** Read the current AUTO-celebrate toggle for a game (tenant-scoped). */
+  /** What the console's celebration settings card shows. */
+  private celebrationSettingsView(def: SportDefinition | null, settings: CelebrationSettings) {
+    return {
+      enabled: settings.auto,
+      off: settings.off,
+      cooldownSec: settings.cooldownSec,
+      cooldownOptions: CELEBRATION_COOLDOWN_OPTIONS_SEC,
+      // The sport's cues a play can fire by itself, and for how many points.
+      available: autoCelebrations(def).map((c) => ({
+        key: c.key,
+        label: c.label,
+        emoji: c.emoji,
+        points: c.autoPoints ?? [],
+      })),
+    };
+  }
+
+  /** Read a game's automatic-celebration settings (tenant-scoped). */
   async getAutoCelebrate(tenantId: string, id: string) {
-    await this.owned(tenantId, id);
-    return { enabled: await this.autoCelebrateEnabled(id) };
+    const game = await this.owned(tenantId, id);
+    const settings = await this.readCelebrationSettings(id);
+    return this.celebrationSettingsView(sportForGame(game) ?? null, settings);
   }
 
-  /** Flip the AUTO-celebrate toggle. Persists a latest-wins AUTO_CELEBRATE
-   *  GameEvent (no migration) and updates the hot-path cache in place. */
-  async setAutoCelebrate(tenantId: string, id: string, enabled: unknown, actor?: CommandInput) {
-    await this.owned(tenantId, id);
-    const val = Boolean(enabled);
-    const before = await this.autoCelebrateEnabled(id);
-    await this.recordAudited(tenantId, id, 'AUTO_CELEBRATE', { enabled: val }, actor,
-      'SPORTS_AUTO_CELEBRATE_SET', (eventId) => ({ eventId, before, after: val }));
-    this.autoCelebrateCache.set(id, val);
-    return { enabled: val };
+  /**
+   * Change a game's automatic-celebration settings: `enabled` (on / off),
+   * `off` (the sport's cues that stay quiet), `cooldownSec` (one of
+   * CELEBRATION_COOLDOWN_OPTIONS_SEC). Any subset; the rest is kept. A bare
+   * boolean is the old on/off switch. Persisted as a latest-wins
+   * AUTO_CELEBRATE event with its audit row in one transaction.
+   */
+  async setAutoCelebrate(tenantId: string, id: string, input: unknown, actor?: CommandInput) {
+    const game = await this.owned(tenantId, id);
+    const def = sportForGame(game) ?? null;
+    const before = await this.readCelebrationSettings(id);
+    const dto: Record<string, unknown> =
+      typeof input === 'boolean' ? { enabled: input } : input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
+    const next: CelebrationSettings = { ...before };
+    if (dto.enabled !== undefined) next.auto = Boolean(dto.enabled);
+    if (dto.off !== undefined) {
+      if (!Array.isArray(dto.off)) throw new BadRequestException('off must be a list of celebration keys');
+      const known = new Set(autoCelebrations(def).map((c) => c.key));
+      next.off = [...new Set(dto.off.filter((k): k is string => typeof k === 'string' && known.has(k)))];
+    }
+    if (dto.cooldownSec !== undefined) {
+      const cd = Number(dto.cooldownSec);
+      if (!CELEBRATION_COOLDOWN_OPTIONS_SEC.includes(cd)) {
+        throw new BadRequestException({
+          code: 'CELEBRATION_COOLDOWN_INVALID',
+          message: `The cooldown must be one of: ${CELEBRATION_COOLDOWN_OPTIONS_SEC.join(', ')} seconds.`,
+        });
+      }
+      next.cooldownSec = cd;
+    }
+    // `before` / `after` stay the on/off switch (the audit contract the
+    // forensic reads rely on); the whole settings ride beside them.
+    await this.recordAudited(tenantId, id, 'AUTO_CELEBRATE', celebrationSettingsPayload(next), actor,
+      'SPORTS_AUTO_CELEBRATE_SET', (eventId) => ({
+        eventId,
+        before: before.auto,
+        after: next.auto,
+        settings: { before, after: next },
+      }));
+    return this.celebrationSettingsView(def, next);
   }
 
   /** Change the game status (SCHEDULED → LIVE → HALFTIME → FINAL …). */
@@ -6961,7 +7091,9 @@ export class SportsService {
         scorerPhotoUrl,
         scorerId,
         snapshot: this.cueSnapshot(game),
-      }, actor, 'SPORTS_CUE_FIRED', (eventId) => auditDetails(eventId, `custom:${cc.id}`, cc.name));
+      }, actor, 'SPORTS_CUE_FIRED', (eventId) => auditDetails(eventId, `custom:${cc.id}`, cc.name), {
+        stampRevision: true,
+      });
       return { fired: true, cueId: cc.id, target, eventId: event.id };
     }
 
@@ -6970,24 +7102,95 @@ export class SportsService {
     if (!cue) {
       throw new BadRequestException(`Unknown cue "${dto.key}" for ${def.name}`);
     }
-    const event = await this.recordAudited(tenantId, id, 'CUE', {
-      key: cue.key,
-      label: cue.label,
-      emoji: cue.emoji,
-      target,
-      // T2-6: ribbon-strip mode — tight 2.5s crawl instead of 4500ms takeover.
-      ...(ribbonStrip ? { ribbonStrip: true } : {}),
-      audioUrl,
-      sponsorName,
-      sponsorLogoUrl,
-      team,
-      scorerName,
-      scorerNumber,
-      scorerPhotoUrl,
-      scorerId,
-      snapshot: this.cueSnapshot(game),
-    }, actor, 'SPORTS_CUE_FIRED', (eventId) => auditDetails(eventId, cue.key, cue.label));
+    // K12-F36 — a named cue fired just AFTER the automatic celebration of its
+    // team's latest play (the scorer picked the player once the goal was in)
+    // REPLACES it: the automatic one is cut on every surface and the named
+    // one plays — one celebration per play. (Fired BEFORE the play, the named
+    // cue narrates it instead and the play stays quiet: celebratePlays.)
+    const ctx = resolveCommandContext(actor);
+    const event = await this.prisma.client.$transaction(async (tx: any) => {
+      // The revision this cue was fired at orders it against scoring plays
+      // (celebratePlays' narration rule) without trusting two clocks.
+      const revision = await this.gameRevision(tx, tenantId, id);
+      const replaces = team ? await this.autoCueToReplace(tx, id, team) : null;
+      if (replaces) {
+        await tx.gameEvent.create({
+          data: {
+            gameId: id,
+            type: 'CUE_CANCEL',
+            payload: { cancels: replaces, reason: 'replaced' } as any,
+            actorType: ctx.actor.kind,
+            actorUserId: ctx.actor.kind === 'user' ? ctx.actor.userId ?? null : null,
+          },
+        });
+      }
+      const ev = await tx.gameEvent.create({
+        data: {
+          gameId: id,
+          type: 'CUE',
+          payload: {
+            key: cue.key,
+            label: cue.label,
+            emoji: cue.emoji,
+            target,
+            // T2-6: ribbon-strip mode — tight 2.5s crawl instead of 4500ms takeover.
+            ...(ribbonStrip ? { ribbonStrip: true } : {}),
+            audioUrl,
+            sponsorName,
+            sponsorLogoUrl,
+            team,
+            scorerName,
+            scorerNumber,
+            scorerPhotoUrl,
+            scorerId,
+            ...(replaces ? { replaces } : {}),
+            snapshot: this.cueSnapshot(game),
+          } as any,
+          actorType: ctx.actor.kind,
+          actorUserId: ctx.actor.kind === 'user' ? ctx.actor.userId ?? null : null,
+          revision,
+        },
+      });
+      await this.auditRow(tx, tenantId, actor, 'SPORTS_CUE_FIRED', id, {
+        ...auditDetails(ev.id, cue.key, cue.label),
+        ...(replaces ? { replaces } : {}),
+      });
+      return ev;
+    });
+    this.invalidateBoardCache(id);
     return { fired: true, cue, target, eventId: event.id };
+  }
+
+  /**
+   * K12-F36 — the automatic celebration a named cue for `team` replaces: the
+   * one of the team's LATEST scoring play, fired within
+   * CELEBRATION_NARRATION_WINDOW_MS, not already cancelled or replaced. Null
+   * when there is none (the named cue then simply plays).
+   */
+  private async autoCueToReplace(tx: any, gameId: string, team: 'home' | 'away'): Promise<string | null> {
+    const recent: Array<{ id: string; type: string; payload: unknown }> = await tx.gameEvent.findMany({
+      where: {
+        gameId,
+        type: { in: ['CUE', 'CUE_CANCEL', 'SCORE', 'INGEST'] },
+        createdAt: { gte: new Date(Date.now() - CELEBRATION_NARRATION_WINDOW_MS) },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    const payloadOf = (e: { payload: unknown }) => (e.payload ?? {}) as Record<string, any>;
+    const auto = recent
+      .filter((e) => e.type === 'CUE' && payloadOf(e).auto === true && payloadOf(e).play && payloadOf(e).team === team)
+      .pop();
+    if (!auto) return null;
+    const lastPlay = recent
+      .filter((e) => (e.type === 'SCORE' || e.type === 'INGEST') && scoringPlaysOf(e.payload).some((pl) => pl.team === team))
+      .pop();
+    if (!lastPlay || lastPlay.id !== payloadOf(auto).play.eventId) return null;
+    const handled = recent.some(
+      (e) =>
+        (e.type === 'CUE_CANCEL' && payloadOf(e).cancels === auto.id) ||
+        (e.type === 'CUE' && payloadOf(e).replaces === auto.id),
+    );
+    return handled ? null : auto.id;
   }
 
   /**
@@ -8262,20 +8465,20 @@ export class SportsService {
         // adjustScore. Only when the CTS-reported score differs from the prior
         // CTS value, so a 5 Hz re-send of the same score records nothing.
         if (scoreChanged) {
-          await scope.event('SCORE', {
+          // K12-F36 — the console's higher score for a team is that team's play.
+          const plays = this.playsFromScores(prevScores, syntheticNext, {
+            home: cleaned.homeScore !== undefined,
+            away: cleaned.awayScore !== undefined,
+          });
+          const scoreEvent = await scope.event('SCORE', {
             team: 'cts',
             homeScore: syntheticNext.homeScore,
             awayScore: syntheticNext.awayScore,
             source: 'cts',
+            plays,
             change: scope.change(),
           });
-          await this.autoCelebrateInCommand(
-            scope,
-            prevScores,
-            syntheticNext,
-            { home: cleaned.homeScore !== undefined, away: cleaned.awayScore !== undefined },
-            'feed',
-          );
+          await this.celebratePlays(scope, plays, syntheticNext, 'feed', scoreEvent.id);
         }
         // Segment GameEvent — same paper trail as setSegment.
         if (segmentChanged && cleaned.segment !== undefined) {
@@ -8611,6 +8814,20 @@ export class SportsService {
         mode: plan.mode,
         change: undoChange,
       });
+      // K12-F36 — an undo never celebrates, and it WITHDRAWS what the undone
+      // action fired: every cue that names it (an automatic celebration's
+      // `play`, a set-win / final / strikeout cue's `causedBy`) is cancelled,
+      // and every surface drops or cuts it — a mistaken +3 undone a second
+      // later no longer plays its three-pointer cinematic to the end.
+      const fired = await scope.tx.gameEvent.findMany({
+        where: { gameId, type: 'CUE', createdAt: { gte: new Date(Date.now() - CUE_FEED_WINDOW_MS) } },
+      });
+      for (const c of fired as Array<{ id: string; payload: unknown }>) {
+        const cp = (c.payload ?? {}) as { causedBy?: unknown; play?: { eventId?: unknown } };
+        if (cp.causedBy === eventId || cp.play?.eventId === eventId) {
+          await scope.event('CUE_CANCEL', { cancels: c.id, reason: 'undo' }, { derived: true });
+        }
+      }
       scope.audit('SPORTS_EVENT_UNDONE', {
         eventId,
         originalType: ev.type,

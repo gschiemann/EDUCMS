@@ -27,6 +27,7 @@ import { RunCommandBar } from './RunCommandBar';
 import { ConnectionBanner } from './ConnectionBanner';
 import { ShareConsoleLink } from './ShareConsoleLink';
 import { ConnectScoreboardFeed } from './ConnectScoreboardFeed';
+import { AutoCelebrateSettings } from './AutoCelebrateSettings';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -999,6 +1000,10 @@ function GameControl() {
                   </p>
                   <PresentationSettingsSection gameId={gameId} def={def} ctl={ctl} />
                 </div>
+
+                {/* K12-F36 — which scoring plays celebrate by themselves, and
+                    how often. */}
+                <AutoCelebrateSettings gameId={gameId} />
 
                 {/* Shot clock — only for sports that have one */}
                 {def.shotClock && (

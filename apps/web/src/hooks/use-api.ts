@@ -5597,6 +5597,46 @@ export function useSetAutoPush(gameId: string) {
 }
 
 /**
+ * K12-F36 — a game's automatic-celebration settings: on / off, which of the
+ * sport's automatic cues fire (`off` lists the quiet ones), the cooldown
+ * between two, and what the sport offers. Read fresh by every scoring command
+ * on the server, so a change here applies on every replica at once.
+ */
+export interface AutoCelebrateSettings {
+  enabled: boolean;
+  off: string[];
+  cooldownSec: number;
+  cooldownOptions: number[];
+  available: Array<{ key: string; label: string; emoji: string; points: number[] }>;
+}
+
+export function useAutoCelebrate(gameId: string | undefined) {
+  return useQuery<AutoCelebrateSettings>({
+    queryKey: ['sports-auto-celebrate', gameId],
+    queryFn: () => apiFetch(`/sports/games/${gameId}/auto-celebrate`),
+    enabled: !!gameId,
+    // No refetchInterval (mobile perf standard): the settings change only
+    // through this console's own mutation, which writes the cache.
+  });
+}
+
+export function useSetAutoCelebrate(gameId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    // The settings card prints its own error line.
+    meta: { suppressGlobalError: true },
+    mutationFn: (vars: { enabled?: boolean; off?: string[]; cooldownSec?: number }) =>
+      apiFetch<AutoCelebrateSettings>(`/sports/games/${gameId}/auto-celebrate`, {
+        method: 'POST',
+        body: JSON.stringify(vars),
+      }),
+    onSuccess: (data) => {
+      if (data) qc.setQueryData(['sports-auto-celebrate', gameId], data);
+    },
+  });
+}
+
+/**
  * K12-F37 — end a finished game's postgame hold now: the screens it was
  * pushed to go back to their schedule. Audited server-side; answers
  * `{ returned: false }` when nothing is held any more.

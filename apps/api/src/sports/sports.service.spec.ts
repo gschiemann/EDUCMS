@@ -44,10 +44,17 @@ function makeTable(defaults: Record<string, any> = {}) {
   const rows: any[] = [];
   const updateCalls: any[] = [];
   let seq = 0;
-  return {
+  // Strictly increasing createdAt (the real DB never ties the latest-wins
+  // reads below; `new Date()` twice in one millisecond does).
+  const base = Date.now();
+  const stamp = () => new Date(Math.max(Date.now(), base + seq));
+  const table = {
     rows,
     updateCalls,
-    findFirst: async ({ where }: any = {}) => rows.find((r) => matches(r, where)) ?? null,
+    // K12-F36 — honors `orderBy` like Prisma (it returned the FIRST match,
+    // which made every latest-wins read — AUTO_CELEBRATE, AUTO_PUSH — see the
+    // OLDEST row; a per-process cache in the service used to hide that).
+    findFirst: async (args: any = {}) => (await table.findMany({ ...args, take: 1 }))[0] ?? null,
     findUnique: async ({ where }: any = {}) => rows.find((r) => matches(r, where)) ?? null,
     findMany: async ({ where, orderBy, take, skip }: any = {}) => {
       let out = rows.filter((r) => matches(r, where || {}));
@@ -78,15 +85,19 @@ function makeTable(defaults: Record<string, any> = {}) {
     },
     count: async ({ where }: any = {}) => rows.filter((r) => matches(r, where || {})).length,
     create: async ({ data }: any) => {
-      const row = { id: `id-${++seq}`, createdAt: new Date(), updatedAt: new Date(), ...defaults, ...data };
+      ++seq;
+      const at = stamp();
+      const row = { id: `id-${seq}`, createdAt: at, updatedAt: at, ...defaults, ...data };
       rows.push(row);
       return row;
     },
     createMany: async ({ data }: any) => {
       const arr = Array.isArray(data) ? data : [data];
-      arr.forEach((d) =>
-        rows.push({ id: `id-${++seq}`, createdAt: new Date(), updatedAt: new Date(), ...defaults, ...d }),
-      );
+      arr.forEach((d) => {
+        ++seq;
+        const at = stamp();
+        rows.push({ id: `id-${seq}`, createdAt: at, updatedAt: at, ...defaults, ...d });
+      });
       return { count: arr.length };
     },
     update: async ({ where, data }: any) => {
@@ -107,6 +118,7 @@ function makeTable(defaults: Record<string, any> = {}) {
       return {};
     },
   };
+  return table;
 }
 
 const TENANT = 'tenant-1';
@@ -1665,10 +1677,19 @@ describe('SportsService — AUTO celebration on score feed', () => {
     expect(cues(gameEvent)).toHaveLength(0);
   });
 
-  it('MANUAL setScore fires the matching celebration when a team\'s score jumps', async () => {
+  // K12-F36 (2026-09-27) — a typed score is a CORRECTION, not a scoring
+  // play: it used to fire the cue its difference happened to match (a typo
+  // fixed from 10 to 13 fired "Three!"). It celebrates only when the table
+  // says the new total was a play.
+  it('MANUAL setScore is a correction: quiet, labelled — it celebrates only when marked a play', async () => {
     const { service, gameEvent } = setup();
     const g: any = await newGame(service, 'basketball');
     await service.setScore(TENANT, g.id, { homeScore: 3, awayScore: 0 }, 'user-1');
+    expect(cues(gameEvent)).toHaveLength(0);
+    const corrected = gameEvent.rows.filter((e: any) => e.type === 'SCORE').pop();
+    expect(corrected.payload).toMatchObject({ team: 'set', correction: true, plays: [] });
+
+    await service.setScore(TENANT, g.id, { homeScore: 6, celebrate: true }, 'user-1');
     const fired = cues(gameEvent);
     expect(fired).toHaveLength(1);
     expect(fired[0].key).toBe('threePointer');

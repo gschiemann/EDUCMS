@@ -124,6 +124,9 @@ interface MockGameState {
   /** Defaults to basketball / {} — the K12-F18 final uses volleyball. */
   sport?: string;
   stats?: Record<string, unknown>;
+  /** The cue feed (K12-F36 withdrawal test). */
+  cues?: BoardData['cues'];
+  cueCancels?: BoardData['cueCancels'];
 }
 
 interface BoardMock {
@@ -163,7 +166,8 @@ function boardPayload(s: MockGameState): BoardData {
     clockRunning: s.clockRunning,
     clockUpdatedAt: s.clockUpdatedAt,
     stats: s.stats ?? {},
-    cues: [],
+    cues: s.cues ?? [],
+    ...(s.cueCancels ? { cueCancels: s.cueCancels } : {}),
     serverTime: Date.now(),
   };
 }
@@ -531,4 +535,26 @@ test('K12-F18: a volleyball 3–1 FINAL crowns the sets winner on the board, the
   await expect(page.getByText('3', { exact: true }).first()).toBeVisible({ timeout: 45_000 });
   await expect(page.getByText('1', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('0', { exact: true })).toHaveCount(0);
+});
+
+test('K12-F36: a celebration the engine withdraws (an undo) is cut on the board, not played to the end', async ({ page }) => {
+  test.setTimeout(90_000);
+  const mock = await installBoardMock(page, freshState());
+  await page.goto(`/board/${GAME_ID}`);
+  await expect(page.getByText('17', { exact: true })).toBeVisible({ timeout: 45_000 });
+
+  // A scoring play's celebration lands (a plain text cue: no cinematic is
+  // mapped for this key, so the overlay's own words are on glass).
+  const at = new Date().toISOString();
+  const played = { id: 'cue-1', key: 'e2eCheer', label: 'Nice play', target: 'ALL' as const, auto: true, team: 'home', audioUrl: null, sponsorName: null, sponsorLogoUrl: null, createdAt: at };
+  mock.mutate({ cues: [played] });
+  const overlay = page.getByText('NICE PLAY', { exact: true });
+  await expect(overlay).toBeVisible({ timeout: 3_000 });
+
+  // The scorer undoes the play: the engine withdraws its cue. The board cuts
+  // it within a poll — far inside the 4.8 s it would otherwise hold.
+  const cutAt = Date.now();
+  mock.mutate({ cues: [played], cueCancels: [{ id: 'x-1', cancels: 'cue-1' }] });
+  await expect(overlay).toBeHidden({ timeout: 2_500 });
+  expect(Date.now() - cutAt).toBeLessThan(4_000);
 });

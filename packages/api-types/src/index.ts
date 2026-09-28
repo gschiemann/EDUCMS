@@ -1003,6 +1003,9 @@ export * from './sports-result';
 // K-12 launch lane A4 (K12-F37) — the postgame hold: how long a pushed board
 // keeps the final result up before the screens return to their schedule.
 export * from './sports-postgame';
+// K-12 launch lane A4 (K12-F36) — automatic celebrations fire from a scoring
+// play, once, under the table's shared settings; never from a correction.
+export * from './sports-celebrations';
 export * from './streaming';
 export * from './streaming-presets';
 export * from './billing';

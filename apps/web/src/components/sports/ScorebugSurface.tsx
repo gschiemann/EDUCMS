@@ -54,6 +54,7 @@ import {
 } from '@/components/sports/score-motion';
 import { SportMark } from '@/components/sports/SportGlyph';
 import { API_URL } from '@/lib/api-url';
+import { admitCues, newCueFeedState, type CueCancelRow } from '@/lib/cue-feed';
 import {
   findSport,
   gameResult,
@@ -177,6 +178,8 @@ export interface BoardData {
   clockUpdatedAt: string;
   stats: Record<string, unknown>;
   cues: Cue[];
+  /** K12-F36 — cues withdrawn or replaced (absent when there are none). */
+  cueCancels?: CueCancelRow[];
   serverTime: number;
   /** K12-F40 — the game revision this payload shows, and its commit time. */
   revision?: number;
@@ -452,15 +455,14 @@ export function useScorebugData(gameId: string): ScorebugData {
 
   // cue playback
   const [activeCue, setActiveCue] = useState<Cue | null>(null);
-  const seenCues = useRef<Set<string>>(new Set());
   const cueQueue = useRef<Cue[]>([]);
   const firstLoad = useRef(true);
   const playing = useRef(false);
-  // 2026-06-05 — same auto+manual double-fire coalesce the board/ribbon use:
-  // one goal can emit two celebration CUEs (auto carries `team`, the manual
-  // player fire usually has `team:null`). Match on KEY with a team-wildcard
-  // (empty matches any) within 6s so the overlay celebrates once.
-  const lastCueSig = useRef<{ key: string; team: string; t: number }>({ key: '', team: '', t: 0 });
+  // Handled cues + the same-moment coalesce the board and ribbon use — one
+  // admission rule for every sports surface (lib/cue-feed.ts).
+  const cueFeed = useRef(newCueFeedState());
+  // K12-F36 — the id of the cue on the bug, so a withdrawal can cut it.
+  const activeCueId = useRef<string | null>(null);
   const cueTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const pumpCues = () => {
@@ -468,12 +470,27 @@ export function useScorebugData(gameId: string): ScorebugData {
     const next = cueQueue.current.shift();
     if (!next) return;
     playing.current = true;
+    activeCueId.current = next.id;
     setActiveCue(next);
     cueTimer.current = setTimeout(() => {
       setActiveCue(null);
+      activeCueId.current = null;
       playing.current = false;
       pumpCues();
     }, 3600);
+  };
+
+  // K12-F36 — cues withdrawn by the engine (an undo, or a named cue that
+  // replaced this automatic one): drop from the queue, cut the one playing.
+  const withdrawCues = (ids: string[]) => {
+    const gone = new Set(ids);
+    cueQueue.current = cueQueue.current.filter((q) => !gone.has(q.id));
+    if (activeCueId.current && gone.has(activeCueId.current)) {
+      if (cueTimer.current) clearTimeout(cueTimer.current);
+      setActiveCue(null);
+      activeCueId.current = null;
+      playing.current = false;
+    }
   };
 
   // Cancel a pending cue timer on unmount.
@@ -513,27 +530,15 @@ export function useScorebugData(gameId: string): ScorebugData {
         }
         setData(json);
         writeBoardCache(gameId, json);
-        for (const c of json.cues || []) {
-          if (seenCues.current.has(c.id)) continue;
-          seenCues.current.add(c.id);
-          // Skip cues targeted only at the ribbon, and the first poll's
-          // already-happened cues.
-          if (firstLoad.current || !cuePlaysHere(c.target)) continue;
-          // Coalesce the auto+manual double of one scoring moment: same KEY,
-          // team-wildcard (empty matches any), 6s window.
-          const ck = String(c.key || '');
-          const ctm = String(c.team || '');
-          const nowMs = Date.now();
-          const lc = lastCueSig.current;
-          const isDup =
-            ck !== '' &&
-            lc.key === ck &&
-            (!lc.team || !ctm || lc.team === ctm) &&
-            nowMs - lc.t < 6000;
-          if (isDup) continue;
-          lastCueSig.current = { key: ck, team: ctm, t: nowMs };
-          cueQueue.current.push(c);
-        }
+        // Skip cues targeted only at the ribbon, and the first poll's
+        // already-happened cues (lib/cue-feed.ts).
+        const { queue, cancelled } = admitCues(cueFeed.current, json, {
+          first: firstLoad.current,
+          playsHere: cuePlaysHere,
+          now: Date.now(),
+        });
+        if (cancelled.length > 0) withdrawCues(cancelled);
+        cueQueue.current.push(...queue);
         firstLoad.current = false;
         pumpCues();
       },

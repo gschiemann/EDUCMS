@@ -19,6 +19,7 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { readBoardCache, writeBoardCache } from '@/lib/sports-board-cache';
+import { admitCues, newCueFeedState, type CueCancelRow } from '@/lib/cue-feed';
 // Trust wave Domain B (2026-08-06) — shared hardened poll engine
 // (self-chaining, ETag/304 revalidation, jittered backoff) + the
 // "CONNECTION LOST" staleness chip shown when the feed goes quiet.
@@ -175,6 +176,9 @@ export interface BoardData {
   stats: Record<string, unknown>;
   spotlight?: Spotlight | null;
   cues: Cue[];
+  /** K12-F36 — cues withdrawn (an undo) or replaced (a named cue for the
+   *  same play); absent when there are none. */
+  cueCancels?: CueCancelRow[];
   sponsors?: Sponsor[];
   sponsorSpotSeconds?: number;
   serverTime: number;
@@ -4025,20 +4029,15 @@ export default function ScoreboardPage() {
 
   // cue playback
   const [activeCue, setActiveCue] = useState<Cue | null>(null);
-  const seenCues = useRef<Set<string>>(new Set());
   const cueQueue = useRef<Cue[]>([]);
   const firstLoad = useRef(true);
   const playing = useRef(false);
-  // 2026-06-05 (v2) — coalesce duplicate celebration cues from ONE scoring
-  // moment. A single goal can emit TWO CUE events: the auto-celebrate (which
-  // ALWAYS carries `team`) and a manual player-attributed fire (whose `team`
-  // is usually null — the operator fired it from the cue/player picker). The
-  // v1 sig `key|team` therefore never matched (`goal|home` vs `goal|`), so
-  // both still played. Fix: match on the cue KEY with a team-WILDCARD (an
-  // empty team matches any) inside a window wide enough to cover the human
-  // delay of picking the scorer. A genuine home-THEN-away of the same key
-  // (both teams set AND different) still plays twice.
-  const lastCueSig = useRef<{ key: string; team: string; t: number }>({ key: '', team: '', t: 0 });
+  // Which cues were already handled, and the same-moment coalesce (a single
+  // goal's automatic cue + the named one fired for it play once) — the ONE
+  // admission rule every sports surface shares (lib/cue-feed.ts).
+  const cueFeed = useRef(newCueFeedState());
+  // K12-F36 — the id of the cue on screen, so a withdrawal can cut it.
+  const activeCueId = useRef<string | null>(null);
   const cueTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Audio ref for celebration sounds — holds the current Audio object
   // so we can pause + release it when the cue ends or on unmount.
@@ -4056,6 +4055,7 @@ export default function ScoreboardPage() {
     const next = cueQueue.current.shift();
     if (!next) return;
     playing.current = true;
+    activeCueId.current = next.id;
     setActiveCue(next);
     // Start audio best-effort — never let a failure interrupt playback.
     if (next.audioUrl && !next.mediaUrl) {
@@ -4080,9 +4080,25 @@ export default function ScoreboardPage() {
     cueTimer.current = setTimeout(() => {
       stopCueAudio();
       setActiveCue(null);
+      activeCueId.current = null;
       playing.current = false;
       pumpCues();
     }, holdMs);
+  };
+
+  // K12-F36 — cues withdrawn by the engine (an undo, or a named cue that
+  // replaced this automatic one): drop them from the queue, cut the one
+  // playing, and move on.
+  const withdrawCues = (ids: string[]) => {
+    const gone = new Set(ids);
+    cueQueue.current = cueQueue.current.filter((q) => !gone.has(q.id));
+    if (activeCueId.current && gone.has(activeCueId.current)) {
+      if (cueTimer.current) clearTimeout(cueTimer.current);
+      stopCueAudio();
+      setActiveCue(null);
+      activeCueId.current = null;
+      playing.current = false;
+    }
   };
 
   // Cancel a pending cue timer + audio on unmount (kiosk route reloads).
@@ -4142,28 +4158,15 @@ export default function ScoreboardPage() {
         setError(null);
         writeBoardCache(gameId, json);
 
-        for (const c of json.cues || []) {
-          if (seenCues.current.has(c.id)) continue;
-          seenCues.current.add(c.id);
-          // The very first poll's cues already happened before the
-          // board opened — record them as seen but don't replay.
-          // Skip cues targeted only at the ribbon.
-          if (firstLoad.current || !cuePlaysHere(c.target)) continue;
-          // Drop the auto+manual duplicate of one scoring moment (see the
-          // lastCueSig comment above): same KEY, team-wildcard, 6s window.
-          const ck = String(c.key || '');
-          const ctm = String(c.team || '');
-          const nowMs = Date.now();
-          const lc = lastCueSig.current;
-          const isDup =
-            ck !== '' &&
-            lc.key === ck &&
-            (!lc.team || !ctm || lc.team === ctm) &&
-            nowMs - lc.t < 6000;
-          if (isDup) continue;
-          lastCueSig.current = { key: ck, team: ctm, t: nowMs };
-          cueQueue.current.push(c);
-        }
+        // The very first poll's cues already happened before the board
+        // opened — recorded, never replayed; ribbon-only cues are skipped.
+        const { queue, cancelled } = admitCues(cueFeed.current, json, {
+          first: firstLoad.current,
+          playsHere: cuePlaysHere,
+          now: Date.now(),
+        });
+        if (cancelled.length > 0) withdrawCues(cancelled);
+        cueQueue.current.push(...queue);
         firstLoad.current = false;
         pumpCues();
       },

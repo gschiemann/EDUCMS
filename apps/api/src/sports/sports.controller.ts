@@ -917,8 +917,8 @@ export class SportsController {
     return this.sports.extendScene(req.user.tenantId, id, body?.holdMs, userActor(req));
   }
 
-  /** Read the AUTO-celebrate toggle — whether a live score feed should
-   *  auto-fire the matching celebration on a score jump. */
+  /** Read the automatic-celebration settings (K12-F36): on / off, which of
+   *  the sport's automatic cues fire, the cooldown, and the choices. */
   @Get('games/:id/auto-celebrate')
   @RequireRoles(
     AppRole.SUPER_ADMIN,
@@ -930,9 +930,10 @@ export class SportsController {
     return this.sports.getAutoCelebrate(req.user.tenantId, id);
   }
 
-  /** Flip the AUTO-celebrate toggle for a game. When on (default), a live
-   *  score feed reporting a standout score jump (touchdown, three-pointer,
-   *  goal, grand slam) auto-fires that celebration on every surface. */
+  /** Change the automatic-celebration settings (K12-F36) — any subset of
+   *  `enabled`, `off` (cue keys that stay quiet), `cooldownSec`. When on
+   *  (default), a scoring play worth a standout cue (touchdown, three-pointer,
+   *  goal, grand slam) fires it on every surface; a typed correction never. */
   @Post('games/:id/auto-celebrate')
   @RequireRoles(
     AppRole.SUPER_ADMIN,
@@ -943,9 +944,9 @@ export class SportsController {
   setAutoCelebrate(
     @Request() req: any,
     @Param('id') id: string,
-    @Body() body: { enabled?: boolean },
+    @Body() body: { enabled?: boolean; off?: string[]; cooldownSec?: number },
   ) {
-    return this.sports.setAutoCelebrate(req.user.tenantId, id, body?.enabled, userActor(req));
+    return this.sports.setAutoCelebrate(req.user.tenantId, id, body ?? {}, userActor(req));
   }
 
   /** Set the stadium ribbon's custom message reel — operator-typed

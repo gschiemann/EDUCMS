@@ -3474,5 +3474,17 @@
     "returnNow": "Devolver las pantallas ahora",
     "returning": "Devolviendo…",
     "returnFailed": "No se pudieron devolver las pantallas. Inténtalo de nuevo."
+  },
+  "sportsCelebrate": {
+    "title": "Celebraciones automáticas",
+    "intro": "Una jugada que anota lanza su celebración sola. Una corrección del marcador escrita a mano nunca lo hace, y Deshacer retira la celebración.",
+    "toggle": "Celebrar las anotaciones automáticamente",
+    "whichLabel": "Qué jugadas se celebran",
+    "points": "{list} puntos",
+    "cooldownLabel": "Tiempo entre celebraciones automáticas",
+    "cooldownNone": "ninguno: cada anotación",
+    "cooldownSeconds": "{seconds, plural, one {# segundo} other {# segundos}}",
+    "noneForSport": "En este deporte ninguna anotación se celebra sola: lanza las celebraciones desde el panel.",
+    "saveFailed": "No se pudo guardar. Inténtalo de nuevo."
   }
 }

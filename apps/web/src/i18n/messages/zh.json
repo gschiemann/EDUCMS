@@ -3474,5 +3474,17 @@
     "returnNow": "立即恢复屏幕",
     "returning": "正在恢复…",
     "returnFailed": "无法恢复屏幕，请重试。"
+  },
+  "sportsCelebrate": {
+    "title": "自动庆祝",
+    "intro": "得分时会自动播放对应的庆祝动画。手动输入的比分更正不会触发，撤销操作会收回庆祝。",
+    "toggle": "得分时自动庆祝",
+    "whichLabel": "哪些得分会庆祝",
+    "points": "{list} 分",
+    "cooldownLabel": "两次自动庆祝之间的间隔",
+    "cooldownNone": "无——每次得分都庆祝",
+    "cooldownSeconds": "{seconds, plural, other {# 秒}}",
+    "noneForSport": "此项目的得分不会自动庆祝——请从庆祝面板手动播放。",
+    "saveFailed": "无法保存，请重试。"
   }
 }
