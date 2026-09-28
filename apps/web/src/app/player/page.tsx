@@ -4028,6 +4028,13 @@ function PlayerPage() {
   // the 5-min dashboard timeout + buffer) — if the install actually
   // succeeds the kiosk reboots, which clears all React state anyway.
   const [otaProgress, setOtaProgress] = useState<{ startedAt: number; bridgeAvailable: boolean } | null>(null);
+  // The server OTA state's `at` in hand when the current update attempt
+  // began. A state still carrying that `at` is the PREVIOUS check's answer:
+  // Greg pressed "Install now" and "Already up to date" flashed before the
+  // install ran (2026-09-28). Compared by VALUE, never by clock — signage
+  // boxes run minutes of skew. `undefined` = no attempt in flight.
+  const otaBaselineAtRef = useRef<string | null | undefined>(undefined);
+  const serverOtaAtRef = useRef<string | null>(null);
   // 2026-04-29 — REAL OTA state from server (driven by APK's
   // OtaUpdateWorker POSTing to /ota-state at each phase). The splash
   // banner uses this when present; falls back to elapsed-time stage
@@ -4063,6 +4070,7 @@ function PlayerPage() {
     if (!data) return;
 
     if (data.ota && data.ota.state) {
+      serverOtaAtRef.current = data.ota.at || null;
       // Sprint 11 Phase A — heartbeat-diff guard.
       // Operator (2026-05-12): WebSocket reconnects after Railway
       // redeploys caused visible UI flashes because EVERY heartbeat
@@ -4138,11 +4146,17 @@ function PlayerPage() {
         // down on its own (same pattern as the INSTALLED dismissal
         // above; longer dwell so someone standing at the panel can
         // actually read it).
-        if (data.ota.state === 'UP_TO_DATE') {
+        // …but only for THIS attempt's answer. The previous check's
+        // UP_TO_DATE (same `at` as when the attempt began) would otherwise
+        // take the banner down in the middle of the install it started.
+        const answersThisAttempt =
+          otaBaselineAtRef.current === undefined || (data.ota.at || null) !== otaBaselineAtRef.current;
+        if (data.ota.state === 'UP_TO_DATE' && answersThisAttempt) {
           setTimeout(() => setOtaProgress(null), 12_000);
         }
       }
     } else {
+      serverOtaAtRef.current = null;
       setServerOtaState(null);
     }
 
@@ -4162,6 +4176,7 @@ function PlayerPage() {
 
     otaPollKeyRef.current = pendingKey;
     otaPollFireRef.current = now;
+    otaBaselineAtRef.current = serverOtaAtRef.current;
     console.log(`[OTA poll] ${source} detected forceUpdatePending=true, firing bridge.checkForUpdates`);
     try {
       const bridgeAvailable = nativeHas('checkForUpdates');
@@ -10167,6 +10182,7 @@ function PlayerPage() {
     // check did. The call itself is fire-and-forget here — we don't use
     // the returned versionName on this path.
     const bridgeAvailable = nativeHas('checkForUpdates');
+    otaBaselineAtRef.current = serverOtaAtRef.current;
     setOtaProgress({ startedAt: Date.now(), bridgeAvailable });
     if (bridgeAvailable) {
       // 2026-08-25 — "Install now" on the splash is a person at the panel,
@@ -12708,9 +12724,16 @@ function PlayerPage() {
                 // the APK POSTs CHECKING → DOWNLOADING (with %)
                 // → VERIFYING → INSTALLING → INSTALLED at each
                 // phase; we surface those exactly.
-                const realState = serverOtaState?.state;
-                const realProgress = serverOtaState?.progress;
-                const realMsg = serverOtaState?.message;
+                // The previous check's answer (same `at` as when this attempt
+                // began) is not this attempt's stage — fall back to the
+                // elapsed-time estimate until the worker reports.
+                const staleAnswer =
+                  !!serverOtaState &&
+                  otaBaselineAtRef.current !== undefined &&
+                  (serverOtaState.at ?? null) === otaBaselineAtRef.current;
+                const realState = staleAnswer ? undefined : serverOtaState?.state;
+                const realProgress = staleAnswer ? undefined : serverOtaState?.progress;
+                const realMsg = staleAnswer ? undefined : serverOtaState?.message;
                 let stage: { emoji: string; label: string; pct?: number };
                 if (realState) {
                   const verLabel = latestApkVersion ? ` v${latestApkVersion}` : '';
@@ -12897,6 +12920,7 @@ function PlayerPage() {
                       // AND-002 — sync probe so the overlay copy is right
                       // on this tick; the call itself is fire-and-forget.
                       const bridgeAvailable = nativeHas('checkForUpdates');
+                      otaBaselineAtRef.current = serverOtaAtRef.current;
                       setOtaProgress({ startedAt: Date.now(), bridgeAvailable });
                       if (bridgeAvailable) {
                         // 2026-08-25 — the operator is standing at the
