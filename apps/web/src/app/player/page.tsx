@@ -173,6 +173,7 @@ import {
   type CacheDriveState,
   type ReadinessItem,
 } from './mediaReadiness';
+import { findSlideImage, isImageLoaded } from './slideLoaded';
 import { appConfirm, appAlert } from '@/components/ui/app-dialog';
 // 2026-05-29 — Sentry crash reporting for the player / renderer. Sentry is
 // initialized in apps/web/sentry.client.config.ts and is GATED on
@@ -9024,6 +9025,24 @@ function PlayerPage() {
     setMediaReady(false);
   }, [currentIndex, playlistItemsSig]);
 
+  // ── "Loading content" on a screen that IS playing (2026-09-28) ─────────
+  // The reset above is right for a video or a web page — they remount when
+  // their slide comes round and report themselves (`onPlaying` / `onLoad`).
+  // An IMAGE does not: every image of the playlist is mounted at once and only
+  // its opacity changes, so after the first advance each one is already loaded
+  // and never fires `load` again. `mediaReady` then stayed false for the rest
+  // of the show, the render proof said `idle:content-loading`, and the whole
+  // fleet's image slideshows read "Loading content" on the dashboard (commit
+  // 12d65e8dd, 2026-09-24, introduced the flag). Ask the browser instead: the
+  // slide on glass is ready when ITS picture is decoded. Declared AFTER the
+  // reset so, within one commit, this wins over the `false` above.
+  useEffect(() => {
+    if (displayIndex === null) return;
+    const it: any = sorted[displayIndex];
+    if (!it || !String(it.asset?.mimeType || '').startsWith('image/')) return;
+    if (isImageLoaded(findSlideImage(String(it.id)))) setMediaReady(true);
+  }, [displayIndex, currentIndex, playlistItemsSig, sorted]);
+
   // Clear the all-broken-assets failure tracker whenever the manifest
   // delivers a genuinely different item set (republish, edit, or a fresh
   // playlist after the outage that caused the failures is fixed). A
@@ -9894,7 +9913,14 @@ function PlayerPage() {
       return;
     }
 
-    nativeFire('showUrlOverlay', url);
+    // A website slide on the APK's native viewer renders only a black
+    // placeholder here, so nothing on this page ever fires `load` for it and
+    // `mediaReady` stayed false for as long as the site was on glass — "Loading
+    // content" on the dashboard (2026-09-28). What this page CAN honestly say is
+    // that the slide was handed to the viewer; the viewer does not report page
+    // load back yet, so this is "requested", exactly as `pl:` was before the
+    // readiness flag existed.
+    if (nativeFire('showUrlOverlay', url)) setMediaReady(true);
   }, [activeEmergency, currentIndex, isItemValid, phase, playbackStopped, sorted]);
 
   // 2026-09-28 — Website Tabs' native site view is a TOP-LEVEL Android
@@ -11803,6 +11829,7 @@ function PlayerPage() {
               <img
                 key={item.id}
                 src={resUrl}
+                data-slide-id={String(item.id)}
                 alt=""
                 className={classes}
                 // 2026-06-26 — auto-fit: stretch the image to exactly fill the
