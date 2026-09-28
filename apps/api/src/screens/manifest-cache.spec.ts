@@ -41,6 +41,33 @@ describe('shouldBumpManifestRev (Prisma mutation hook decision)', () => {
     expect(shouldBumpManifestRev('Screen', undefined, null)).toBe(false);
   });
 
+  // ── 2026-09-27 (lane B4): who is hidden feeds the manifest ───────────────
+  // A student name typed into a template is blanked while the school's policy
+  // hides that rostered student — so a policy change, a roster name or a
+  // family's opt-out must bust the cache. A per-player STAT tap must not.
+  it('busts on student-privacy policy writes and on roster / athlete name or opt-out changes', () => {
+    expect(shouldBumpManifestRev('StudentPrivacyPolicy', 'upsert', null)).toBe(true);
+    expect(shouldBumpManifestRev('StudentPrivacyPolicy', 'update', ['namesState'])).toBe(true);
+    expect(shouldBumpManifestRev('RosterPlayer', 'create', null)).toBe(true);
+    expect(shouldBumpManifestRev('RosterPlayer', 'createMany', null)).toBe(true);
+    expect(shouldBumpManifestRev('RosterPlayer', 'delete', null)).toBe(true);
+    expect(shouldBumpManifestRev('RosterPlayer', 'update', ['name'])).toBe(true);
+    expect(shouldBumpManifestRev('RosterPlayer', 'update', ['directoryOptOut'])).toBe(true);
+    expect(shouldBumpManifestRev('RosterPlayer', 'update', ['personId', 'teamId'])).toBe(true);
+    expect(shouldBumpManifestRev('SportsPerson', 'update', ['lastName'])).toBe(true);
+    expect(shouldBumpManifestRev('SportsPerson', 'update', ['directoryOptOut'])).toBe(true);
+    // Unknown shape → bust (correctness-safe polarity).
+    expect(shouldBumpManifestRev('RosterPlayer', 'update', null)).toBe(true);
+  });
+
+  it('never busts on a roster STAT tap or other non-name roster / athlete columns', () => {
+    expect(shouldBumpManifestRev('RosterPlayer', 'update', ['stats'])).toBe(false);
+    expect(shouldBumpManifestRev('RosterPlayer', 'updateMany', ['stats'])).toBe(false);
+    expect(shouldBumpManifestRev('RosterPlayer', 'update', ['number', 'position', 'photoUrl', 'sortOrder'])).toBe(false);
+    expect(shouldBumpManifestRev('RosterPlayer', 'update', ['photoRelease'])).toBe(false);
+    expect(shouldBumpManifestRev('SportsPerson', 'update', ['isPublic', 'publicShareToken'])).toBe(false);
+  });
+
   it('skips Screen updates that touch ONLY telemetry columns', () => {
     // The manifest endpoint's own lastPingAt touch — the write that would
     // otherwise bust the cache every 25s and zero out the saving.

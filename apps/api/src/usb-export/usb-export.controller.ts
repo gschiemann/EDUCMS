@@ -39,6 +39,7 @@ import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
 import { safeFetch } from '../branding/safe-fetch';
+import { redactTypedStudentNames } from '../sports/typed-student-names';
 
 interface BundleBody {
   screenId?: string;
@@ -475,6 +476,21 @@ export class UsbExportController {
 
     const playlists: ManifestPlaylist[] = [];
     for (const p of playlistsRaw) playlists.push(await processPlaylist(p));
+    // K-12 sports launch, lane B4 — a USB bundle is a real screen too: a
+    // student name TYPED into a template field is blanked when the school's
+    // student-privacy policy hides it, exactly as in the live manifest
+    // (sports/typed-student-names.ts). The emergency boards below are left
+    // byte-for-byte alone — they carry no typed-name fields.
+    {
+      const redactedTemplates = await redactTypedStudentNames(
+        this.prisma.client as any,
+        tenant.id,
+        playlists.map((p) => p.template ?? null),
+      );
+      playlists.forEach((p, i) => {
+        if (p.template) p.template = redactedTemplates[i] ?? undefined;
+      });
+    }
     const emergencyPlaylists: ManifestPlaylist[] = [];
     for (const p of emergencyRaw) emergencyPlaylists.push(await processPlaylist(p));
 

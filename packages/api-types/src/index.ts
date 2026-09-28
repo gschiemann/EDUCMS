@@ -1052,3 +1052,9 @@ export * from './student-privacy';
 // — one rule for the API (refuses the save) and the builder (refuses the
 // keystroke and offers school-safe titles).
 export * from './fan-cam';
+
+// Student names TYPED into templates (K-12 sports launch, lane B4, 2026-09-27)
+// — the one list of fields a typed name can live in, so the API (which blanks
+// a hidden student's name on every real-screen output) and the builder (which
+// warns on those fields) never disagree.
+export * from './student-name-fields';

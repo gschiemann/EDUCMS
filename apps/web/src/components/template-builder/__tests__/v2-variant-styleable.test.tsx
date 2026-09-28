@@ -18,6 +18,7 @@
  * file is mounted; drive the actual surface).
  */
 import { render, screen, fireEvent } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ContentFields } from '../PropertiesPanel';
 
 // Same probe-silencer the other §19 suites use: the builder mounts AI
@@ -182,11 +183,16 @@ describe('§19 — no duplicate/competing controls, and no regression off the v2
   it('a v2 variant that already reached default: (celebration) still has its Style section', () => {
     // Regression guard for the hoist itself — these used to be the ONLY v2
     // widgets with a Style section, and must not have lost it.
+    // A celebration's person fields carry the student-name notice (lane B4),
+    // which reads the location's student-privacy policy — so, like the real
+    // builder, this panel needs a query client.
     render(
-      <ContentFields
-        zone={makeZone('CELEBRATION', { variant: 'cel-football-touchdown' })}
-        updateZone={jest.fn()}
-      />,
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <ContentFields
+          zone={makeZone('CELEBRATION', { variant: 'cel-football-touchdown' })}
+          updateZone={jest.fn()}
+        />
+      </QueryClientProvider>,
     );
     expect(screen.getByLabelText('Background color')).toBeTruthy();
     expect(selectFor('Gradient wash')).toBeTruthy();

@@ -156,6 +156,11 @@ import { mintStreamTicket } from './stream-ticket';
 // `resolveAncestorEmergencyState` below and `emergency/tenant-hierarchy.ts`.
 import { MAX_TENANT_TREE_DEPTH } from '../emergency/tenant-hierarchy';
 import { ADMIN_ROLES_FOR_SCREEN_SECRETS } from '../security/screen-secrets';
+// K-12 sports launch, lane B4 (2026-09-27): a student name TYPED into a
+// template (a relay leg, a CTS announcement, a player card…) is blanked on the
+// screen when the school's student-privacy policy hides it — B3's rule, the
+// shared list of typed-name fields.
+import { redactTypedStudentNames } from '../sports/typed-student-names';
 
 const PAIRING_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
@@ -6412,6 +6417,27 @@ export class ScreensController {
       });})
     });
     });
+
+    // K-12 sports launch, lane B4 — typed student names. A name an operator
+    // TYPED into a template field (relay legs, CTS announcements, venue
+    // player / lineup / scorer fields, celebrations) never passed the
+    // student-privacy gate. Blank every such value that is a rostered student
+    // the school's policy hides (default-deny until it confirms its
+    // directory-information policy; a family's opt-out always). Runs INSIDE
+    // the cached build and BEFORE contentRev, so the ETag, the cache and the
+    // player's apply-signature all carry the redacted content; a roster,
+    // athlete or policy write bumps the cache (manifest-hot-cache.ts). No
+    // query at all unless a zone carries a typed-name value.
+    {
+      const redactedTemplates = await redactTypedStudentNames(
+        this.prisma.client as any,
+        screen.tenantId,
+        (dynamicPlaylists as any[]).map((pl) => pl.template ?? null),
+      );
+      (dynamicPlaylists as any[]).forEach((pl, i) => {
+        if (pl.template) pl.template = redactedTemplates[i];
+      });
+    }
 
     // 2026-08-30 (reliability W1-7 / audit P0-4) — content revision. The
     // player's template apply-signature used to be just `tpl:<id|name>`, so

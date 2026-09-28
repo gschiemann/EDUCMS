@@ -48,6 +48,9 @@ import {
   venueHasModes,
 } from './sports-venue-editor';
 import { FanCamTextField } from './FanCamTextField';
+// K-12 sports launch, lane B4 — "don't type student names here" on the fields
+// whose typed names the API blanks on screens while a school's names are hidden.
+import { StudentNameNotice, studentNameNoticePlacer } from './StudentNameNotice';
 import { FAN_CAM_TEXT_KEYS, FAN_CAM_VARIANT_ID } from '@cms/api-types';
 import {
   ctsFieldsByGroup,
@@ -4188,6 +4191,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
                 text: e?.text || '',
                 seconds: typeof e?.durationMs === 'number' && e.durationMs > 0 ? e.durationMs / 1000 : '',
               }));
+              fields.push(<StudentNameNotice key="student-name-notice" />);
               fields.push(
                 <ListItemsEditor
                   key="entries"
@@ -6039,6 +6043,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       // K12-F26 — the board no longer turns a negative exchange into "DQ"
       // on its own; a leg shows DQ only when the referee's call is entered
       // here (the `dq` toggle).
+      fields.push(<StudentNameNotice key="student-name-notice" />);
       fields.push(<ListItemsEditor key="legs" label="Relay legs (exactly 4)" itemNoun="leg" help={tSports('relay.legsHelp')} value={cfg.legs} onChange={(v) => setField({ legs: v })} newItem={{ legName: '', swimmer: '', split: '', cumulative: '', exchange: '', dq: false }} fields={[
         { key: 'legName', label: 'Leg name', type: 'text', placeholder: 'Leg 1 — Back' },
         { key: 'swimmer', label: 'Swimmer', type: 'text', placeholder: 'D. Okafor' },
@@ -6060,6 +6065,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       fields.push(<GameBindField key="gameId" value={cfg.gameId || ''} onChange={(v) => setField({ gameId: v })} />);
       fields.push(<TextField key="headerText" label="Header text (blank = auto from the live event)" value={cfg.headerText || ''} placeholder="EVENT 12 — BOYS 100 FREESTYLE" onChange={(v) => setField({ headerText: v })} />);
       fields.push(<TextField key="eventFilter" label="Pin to event (exact name; blank = auto-pick current heat)" value={cfg.eventFilter || ''} placeholder="" onChange={(v) => setField({ eventFilter: v })} />);
+      fields.push(<StudentNameNotice key="student-name-notice" />);
       fields.push(<TextField key="swimmerName" label="Swimmer name" value={cfg.swimmerName || ''} placeholder="D. Okafor" onChange={(v) => setField({ swimmerName: v })} />);
       fields.push(<NumField key="laneNumber" id="ssp-laneNumber" label="Lane number (0 = hide)" value={typeof cfg.laneNumber === 'number' ? cfg.laneNumber : 3} onChange={(v) => setField({ laneNumber: v })} min={0} max={12} step={1} />);
       fields.push(<ToggleField key="showPaceDelta" label="Show vs.-pace delta column" value={cfg.showPaceDelta !== false} onChange={(v) => setField({ showPaceDelta: v })} />);
@@ -6079,6 +6085,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
     case 'SWIM_RECORD_LINE': {
       fields.push(<TextField key="recordType" label="Record type" value={cfg.recordType || ''} placeholder="POOL RECORD / WR / AR / NR / MEET" onChange={(v) => setField({ recordType: v })} />);
       fields.push(<TextField key="recordTime" label="Record time" value={cfg.recordTime || ''} placeholder="48.42" onChange={(v) => setField({ recordTime: v })} />);
+      fields.push(<StudentNameNotice key="student-name-notice" />);
       fields.push(<TextField key="recordHolder" label="Record holder (name, year)" value={cfg.recordHolder || ''} placeholder="D. Okafor, 2024" onChange={(v) => setField({ recordHolder: v })} />);
       fields.push(<TextField key="liveTime" label="Live/finish time (blank = hide)" value={cfg.liveTime || ''} placeholder="48.20" onChange={(v) => setField({ liveTime: v })} />);
       fields.push(<TextField key="liveDelta" label="Live pace delta (leading “-” = ahead, “+” = behind)" value={cfg.liveDelta || ''} placeholder="-0.22" onChange={(v) => setField({ liveDelta: v })} />);
@@ -6092,6 +6099,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
     }
     case 'DIVE_JUDGES_PANEL': {
       fields.push(<GameBindField key="gameId" value={cfg.gameId || ''} onChange={(v) => setField({ gameId: v })} />);
+      fields.push(<StudentNameNotice key="student-name-notice" />);
       fields.push(<TextField key="diverName" label="Diver name (override — live surfaces read the console's current dive)" value={cfg.diverName || ''} placeholder="A. Washington" onChange={(v) => setField({ diverName: v })} />);
       fields.push(<TextField key="diveCode" label="Dive code (override)" value={cfg.diveCode || ''} placeholder="305C" onChange={(v) => setField({ diveCode: v })} />);
       fields.push(<TextField key="diveGroup" label="Dive group / description" value={cfg.diveGroup || ''} placeholder="Reverse 1½ Somersault Tuck" onChange={(v) => setField({ diveGroup: v })} />);
@@ -6133,6 +6141,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       // half of the footer bar, never a fabricated sample on a real board).
       fields.push(<TextField key="recordLabel" label="Record label (e.g. “POOL RECORD”; blank omits the record chase)" value={cfg.recordLabel || ''} placeholder="POOL RECORD" onChange={(v) => setField({ recordLabel: v })} />);
       fields.push(<TextField key="recordValue" label="Record time" value={cfg.recordValue || ''} placeholder="50.84" onChange={(v) => setField({ recordValue: v })} />);
+      fields.push(<StudentNameNotice key="student-name-notice" />);
       fields.push(<TextField key="recordHolder" label="Record holder + year" value={cfg.recordHolder || ''} placeholder="A. Washington 2024" onChange={(v) => setField({ recordHolder: v })} />);
       fields.push(<TextField key="recordDelta" label="Off-the-pace note (optional)" value={cfg.recordDelta || ''} placeholder="1.06 off the pace" onChange={(v) => setField({ recordDelta: v })} />);
       // Sponsor slot — same "no field in the data model" rule; both blank
@@ -6802,7 +6811,12 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
           !/emoji|video|color/i.test(k);
         if (contentKeys.length > 0) {
           fields.push(SHv2('content', 'Content'));
+          // Lane B4 — a celebration's player / scorer / pitcher… fields carry
+          // "don't type student names here" while a school's names are hidden.
+          const studentNotice = studentNameNoticePlacer(zone.widgetType, cfg);
           for (const key of contentKeys) {
+            const notice = studentNotice(key);
+            if (notice) fields.push(notice);
             const dv = defs[key];
             const cur = cfg[key];
             if (Array.isArray(dv) && isImageKey(key)) {
@@ -9688,9 +9702,17 @@ function SportsVenueEditor({
   };
 
   const out: React.ReactNode[] = [];
+  // Lane B4 — "don't type student names here" right before the first field
+  // whose typed names the API blanks on screens (player / lineup / scorer /
+  // shoutout / ticker lines).
+  const studentNotice = studentNameNoticePlacer(null, { ...cfg, variant });
   specs.forEach((f, i) => {
     if (f.only && (!hasModes || f.only !== mode)) return;
     const k = `${f.kind}-${'key' in f ? f.key : i}`;
+    if ('key' in f) {
+      const notice = studentNotice(f.key);
+      if (notice) out.push(notice);
+    }
     switch (f.kind) {
       case 'mode':
         out.push(
@@ -9834,6 +9856,7 @@ function RibbonScorebugFields({
   if (variant === 'ribbon-main') {
     return (
       <div className="space-y-3">
+        <StudentNameNotice />
         <div data-field-section="messages">
           <StringListEditor
             label={t('venue.ribbonMessages')}

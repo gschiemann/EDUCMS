@@ -3198,6 +3198,10 @@
       "optedOutNote": "Nunca se muestra en pantallas públicas",
       "policyNote": "La política de su escuela oculta los nombres y las fotos de los estudiantes en las pantallas públicas. Estos interruptores solo pueden ocultar más.",
       "policyPhotosNote": "La política de su escuela oculta las fotos de los estudiantes en las pantallas públicas. Estos interruptores solo pueden ocultar más."
+    },
+    "typedNames": {
+      "warning": "No escriba nombres de estudiantes aquí: su escuela no ha confirmado su política de información de directorio.",
+      "detail": "En sus pantallas, un nombre que coincida con un estudiante de sus listas se deja en blanco."
     }
   },
   "sportsControls": {

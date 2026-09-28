@@ -3198,6 +3198,10 @@
       "optedOutNote": "Never shown on public screens",
       "policyNote": "Your school's policy hides students' names and photos on public screens. These switches can only hide more.",
       "policyPhotosNote": "Your school's policy hides students' photos on public screens. These switches can only hide more."
+    },
+    "typedNames": {
+      "warning": "Don't type student names here — your school hasn't confirmed its directory-information policy.",
+      "detail": "On your screens, a name that matches a student on your rosters is left blank."
     }
   },
   "sportsControls": {

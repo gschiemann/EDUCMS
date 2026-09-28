@@ -138,6 +138,8 @@ import {
   studentRosterPrivacy,
   type PublicStudentContext,
 } from './student-privacy';
+// Lane B4 — the same gate for student names TYPED into the bundled layouts.
+import { redactTypedStudentNames } from './typed-student-names';
 
 /**
  * VenueOS Sports — Sprint 13. The game engine service.
@@ -1715,6 +1717,26 @@ export class SportsService {
       }
     }
 
+    // K-12 sports launch, lane B4 — student names TYPED into the layouts this
+    // payload bundles (relay legs, CTS announcements, venue player / lineup /
+    // scorer fields, celebrations). The gate above never saw them: blank every
+    // such value that is a rostered student of this tenant the school's
+    // policy hides (./typed-student-names.ts — B3's rule, applied to the
+    // shared list of typed-name fields). Inside the cached build, so the ETag
+    // covers it. No query unless a zone carries a typed-name value.
+    const [
+      publicScoreboardTemplate,
+      publicRibbonTemplate,
+      publicScorebugTemplate,
+      publicSceneTemplate,
+    ] = await redactTypedStudentNames(this.prisma.client as any, game.tenantId, [
+      scoreboardTemplate as any,
+      ribbonTemplate as any,
+      scorebugTemplate as any,
+      (scene?.template ?? null) as any,
+    ]);
+    if (scene) scene = { ...scene, template: publicSceneTemplate };
+
     const board = {
       id: game.id,
       // K12-F40 — every surface's freshness contract keys off these: a poll
@@ -1792,9 +1814,9 @@ export class SportsService {
       // authenticated fetch to /api/v1/templates/:id. CustomScoreboardScene
       // reads these instead of hitting the auth-gated endpoint. Tenant-
       // scope already enforced above (system OR same-tenant only).
-      scoreboardTemplate,
-      ribbonTemplate,
-      scorebugTemplate,
+      scoreboardTemplate: publicScoreboardTemplate ?? null,
+      ribbonTemplate: publicRibbonTemplate ?? null,
+      scorebugTemplate: publicScorebugTemplate ?? null,
       // T2-5: active live-game text overlay (null = none).
       // `kind: 'clear'` means the last overlay was explicitly dismissed —
       // the frontend treats that as null. Any other kind is the live overlay.

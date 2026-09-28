@@ -233,7 +233,30 @@ export const MANIFEST_FED_MODELS = new Set([
     // indistinguishable from a broken feature.
     'DisplaySchedule',
     'DisplayVendorRecipe',
+    // Student privacy on typed names (K-12 sports launch, lane B4,
+    // 2026-09-27). The manifest blanks a student name TYPED into a template
+    // when the school's policy hides that rostered student
+    // (sports/typed-student-names.ts), so WHO is hidden feeds the payload: the
+    // school's policy, the roster, the athletes. A school revoking its
+    // attestation or a family opting out must reach the screens on the next
+    // poll, not after the 30-minute armed TTL. Roster and athlete writes only
+    // bust when they touch a NAME or an opt-out (see
+    // STUDENT_NAME_INDEX_FIELDS) — a scorekeeper's per-player stat tap
+    // rewrites RosterPlayer.stats and must never flush the fleet's cache.
+    'StudentPrivacyPolicy',
+    'RosterPlayer',
+    'SportsPerson',
 ]);
+
+/**
+ * The columns of the roster / athlete models that decide which typed names a
+ * screen hides. An update touching none of them (stats, jersey, photo, sort
+ * order…) leaves every manifest byte-identical and must not bust the cache.
+ */
+export const STUDENT_NAME_INDEX_FIELDS: Readonly<Record<string, ReadonlySet<string>>> = {
+    RosterPlayer: new Set(['name', 'directoryOptOut', 'personId', 'tenantId']),
+    SportsPerson: new Set(['fullName', 'firstName', 'lastName', 'directoryOptOut', 'tenantId']),
+};
 
 /** Every Prisma action that can change rows. */
 export const MANIFEST_MUTATING_ACTIONS = new Set([
@@ -510,6 +533,18 @@ export function shouldBumpManifestRev(
         updateDataKeys !== null &&
         updateDataKeys.length > 0 &&
         updateDataKeys.every((k) => SCREEN_TELEMETRY_ONLY_FIELDS.has(k))
+    ) {
+        return false;
+    }
+    // Roster / athlete updates bust only when they change a name or an
+    // opt-out (lane B4). Unknown data shapes bust (correctness-safe default).
+    const nameIndex = STUDENT_NAME_INDEX_FIELDS[model];
+    if (
+        nameIndex &&
+        (action === 'update' || action === 'updateMany') &&
+        updateDataKeys !== null &&
+        updateDataKeys.length > 0 &&
+        !updateDataKeys.some((k) => nameIndex.has(k))
     ) {
         return false;
     }
