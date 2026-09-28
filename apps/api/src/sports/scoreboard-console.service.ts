@@ -3,7 +3,6 @@ import {
   HttpException,
   HttpStatus,
   Injectable,
-  Logger,
   NotFoundException,
   BadRequestException,
   UnauthorizedException,
@@ -166,7 +165,6 @@ export interface ScoreboardConsoleView {
  */
 @Injectable()
 export class ScoreboardConsoleService {
-  private readonly logger = new Logger(ScoreboardConsoleService.name);
   private readonly ephemeral: ConsoleEphemeralStore;
   private readonly bindingCache = new Map<
     string,
