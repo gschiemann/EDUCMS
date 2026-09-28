@@ -1975,6 +1975,12 @@ class MainActivity : ComponentActivity() {
         if (event != null) {
             runCatching { setupCornerHold.onTouch(event) }
                 .onFailure { PlayerLogger.w("SetupCeremony", "corner gesture threw: ${it.message}") }
+            // Website Tabs (2026-09-28): a touch that lands in the native site
+            // view is invisible to the player page, whose idle clock would
+            // send a visitor mid-browse back to the first tab. Observed here
+            // (never consumed — same rule as the corner gesture) and relayed,
+            // throttled, as a DOM event the widget listens for.
+            if (webTabsActive && event.actionMasked == MotionEvent.ACTION_DOWN) relayWebTabsActivity()
         }
         return super.dispatchTouchEvent(event)
     }
@@ -3055,13 +3061,11 @@ class MainActivity : ComponentActivity() {
         if (WebViewFeature.isFeatureSupported(WebViewFeature.SAFE_BROWSING_ENABLE)) {
             WebSettingsCompat.setSafeBrowsingEnabled(wv.settings, true)
         }
-        // A touch inside the site is "someone is using the kiosk": relay it to
-        // the player page (throttled) so the Website Tabs idle clock resets.
-        // Returning false keeps the touch flowing to the page.
-        wv.setOnTouchListener { _, ev ->
-            if (ev.actionMasked == MotionEvent.ACTION_DOWN) relayWebTabsActivity()
-            false
-        }
+        // (A touch inside the site is relayed to the player page from the
+        // Activity's dispatchTouchEvent — observed, never consumed — so the
+        // Website Tabs idle clock resets. Not a View.OnTouchListener: that
+        // trips the ClickableViewAccessibility lint and would need a
+        // performClick override on a WebView.)
 
         wv.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {

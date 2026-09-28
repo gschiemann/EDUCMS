@@ -169,6 +169,14 @@ class WebTabsWiringTest {
         assertTrue("file access must stay off", block.contains("allowFileAccess = false"))
         assertTrue("content access must stay off", block.contains("allowContentAccess = false"))
         assertTrue("popups must open in the same view", block.contains("setSupportMultipleWindows(false)"))
+        // The touch relay is observed from the Activity's dispatchTouchEvent
+        // (never consumed), not a View.OnTouchListener on the WebView.
+        assertFalse("no OnTouchListener on the overlay (ClickableViewAccessibility)", block.contains("setOnTouchListener"))
+        val src = mainActivity
+        assertTrue(
+            "the site view's touches must reach the idle clock",
+            src.contains("if (webTabsActive && event.actionMasked == MotionEvent.ACTION_DOWN) relayWebTabsActivity()"),
+        )
     }
 
     @Test
