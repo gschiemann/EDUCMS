@@ -188,6 +188,11 @@ PRESET_VERTICAL.set('preset-sb-college', 'SPORTS');
 PRESET_VERTICAL.set('preset-sb-pro', 'SPORTS');
 // Interactive touch kiosks (2026-06-03) — multi-vertical, see PRESET_VERTICALS
 // below (declared after this point, so the dual-tags live there).
+// Website Tabs (2026-09-28) is the one kiosk that belongs to EVERY vertical:
+// "paste your sites" is as much a QSR / gym / church need as a K-12 one, so
+// it carries the universal tag and surfaces under every gallery's Touch
+// Kiosks tab (and only there — templates/page.tsx keeps KIOSK out of "All").
+PRESET_VERTICAL.set('preset-kiosk-website-tabs', 'ALL');
 
 // 2026-05-16 — the 70-template industry signage pack (preset-sig-*)
 // lives INSIDE SYSTEM_TEMPLATE_PRESETS so it shares the seeder, which
@@ -687,6 +692,10 @@ async function reconcileSystemPresets(
             bgColor: preset.bgColor,
             bgGradient: preset.bgGradient,
             bgImage: (preset as any).bgImage ?? null,
+            // A preset that IS a touch kiosk (Website Tabs) seeds the flag, so
+            // "Use this template" opens the builder in touch mode. Every other
+            // preset leaves the column at its default (false).
+            ...(preset.isTouchEnabled === true ? { isTouchEnabled: true } : {}),
             isSystem: true,
             // Audit W0-08: a quarantined board is seeded ARCHIVED, never
             // ACTIVE — "source exists" must not mean "published to customers."
@@ -746,7 +755,7 @@ async function reconcileSystemPresets(
           isSystem: true,
           id: { in: ALL_PRESETS.map((p) => p.id) },
         },
-        select: { id: true, name: true, category: true, schoolLevel: true, description: true, vertical: true } as any,
+        select: { id: true, name: true, category: true, schoolLevel: true, description: true, vertical: true, isTouchEnabled: true } as any,
       });
       // One map lookup per row instead of a scan of ALL_PRESETS per row. The
       // first preset with an id wins, exactly like the `Array.find` it replaced.
@@ -781,6 +790,12 @@ async function reconcileSystemPresets(
         // tenants without a hand-rolled migration.
         const srcVertical = resolvePresetVerticalTag(src.id);
         if (srcVertical !== row.vertical) patch.vertical = srcVertical;
+        // Website Tabs (2026-09-28): a preset that declares itself a touch
+        // kiosk keeps that flag on its row across deploys, so a row seeded
+        // before the flag existed migrates on the next boot. One direction
+        // only — a preset that stops declaring it never turns a row OFF here,
+        // because the flag is also the operator-visible "touch mode" switch.
+        if (src.isTouchEnabled === true && row.isTouchEnabled !== true) patch.isTouchEnabled = true;
         if (Object.keys(patch).length > 0) {
           // ten-ok: system-preset seeder — these rows are `isSystem: true` and carry NO
           // tenant (Template.tenantId is null on the shared catalogue), so there is no

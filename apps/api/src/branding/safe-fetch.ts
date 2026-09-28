@@ -449,10 +449,28 @@ export async function safeFetchPost(
  * the Location header the same way — at most 3 redirects — so an
  * attacker can't have us chase into 169.254.* metadata endpoints.
  */
+export interface SafeFetchResult {
+  body: Buffer;
+  contentType: string;
+  finalUrl: string;
+  status: number;
+  /**
+   * The FINAL response's headers, lower-cased by node:http (2026-09-28, Website
+   * Tabs). Added so the site check can read `x-frame-options` /
+   * `content-security-policy` — the two headers that decide whether a page can
+   * be framed at all — without a second fetch. Additive: every existing caller
+   * reads `body` / `contentType` / `status` and ignores this. Spec mocks that
+   * return the old four-field shape still type-check at their call sites
+   * because they cast; the site check itself treats a missing map as "no
+   * headers", never as "allowed".
+   */
+  headers: http.IncomingHttpHeaders;
+}
+
 export async function safeFetch(
   rawUrl: string,
   opts: SafeFetchOptions = {},
-): Promise<{ body: Buffer; contentType: string; finalUrl: string; status: number }> {
+): Promise<SafeFetchResult> {
   const {
     maxBytes = 5 * 1024 * 1024,
     timeoutMs = 8000,
@@ -577,5 +595,6 @@ export async function safeFetch(
     contentType: String(result.headers['content-type'] || 'application/octet-stream'),
     finalUrl: url.toString(),
     status: result.status,
+    headers: result.headers,
   };
 }

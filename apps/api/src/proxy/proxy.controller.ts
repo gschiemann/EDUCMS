@@ -22,6 +22,7 @@ import {
   resolveParentOrigins,
   OPAQUE_STORAGE_POLYFILL,
 } from './spatial-nav-shim';
+import { checkSite, SITE_CHECK_MAX_URL_LENGTH, type SiteCheckResult } from './site-check';
 
 /**
  * The proxied frame is now rendered with `sandbox="allow-scripts
@@ -973,5 +974,46 @@ window.addEventListener('load',function(){
       expiresAt: minted.expiresAt,
       ttlMs: minted.ttlMs,
     };
+  }
+
+  /**
+   * Website Tabs — ONE paste, three answers (2026-09-28).
+   *
+   * `POST site-check { url }` → the site's name, its icon, and whether a
+   * browser may frame it (`embed: 'ok' | 'blocked' | 'unreachable'`). The
+   * Website Tabs panel calls this the moment the operator pastes a URL so the
+   * tab fills itself in; "blocked" is not an error — it is the honest label
+   * for a site that only shows on screens running our app, where the native
+   * WebView is not subject to X-Frame-Options.
+   *
+   * AUTHENTICATED (`JwtAuthGuard`) and rate-limited: this fetches an
+   * operator-chosen page through `safeFetch`, and an unauthenticated version
+   * would be a free "does this host answer" oracle. Never throws for a bad
+   * site — see `checkSite`; a 400 here means the BODY was not a URL at all.
+   */
+  @Post('site-check')
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { ttl: 60_000, limit: 30 } })
+  async siteCheck(@Body() body: { url?: unknown }): Promise<SiteCheckResult> {
+    const raw = typeof body?.url === 'string' ? body.url.trim() : '';
+    if (!raw) {
+      throw new HttpException(
+        { code: 'PROXY_URL_REQUIRED', message: 'Missing url' },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    if (raw.length > SITE_CHECK_MAX_URL_LENGTH) {
+      throw new HttpException(
+        { code: 'PROXY_URL_TOO_LONG', message: 'URL too long' },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    const result = await checkSite(raw);
+    if (result.reason === 'blocked-host') {
+      // Same posture as `proxyWeb` (SDE-01): the log gets the detail, the
+      // caller gets a uniform "no".
+      this.logger.warn(`[site-check] refused upstream: ${result.url.slice(0, 120)}`);
+    }
+    return result;
   }
 }

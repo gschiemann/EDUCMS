@@ -2769,6 +2769,13 @@ export class TemplatesController {
         bgImage: source.bgImage,
         bgGradient: source.bgGradient,
         brandKit: (source as any).brandKit ?? brand.brandKit ?? undefined,
+        // Website Tabs (2026-09-28): a touch kiosk stays a touch kiosk when it
+        // is duplicated ("Use this template" on the Touch Kiosks tab IS a
+        // duplicate). These two were dropped before, so every kiosk preset
+        // opened in the builder as passive signage with its tap actions
+        // hidden behind "enable touch on the template first".
+        isTouchEnabled: source.isTouchEnabled === true,
+        ...(typeof source.idleResetMs === 'number' ? { idleResetMs: source.idleResetMs } : {}),
         createdById: req.user.id,
         zones: {
           create: source.zones.map((z) => {

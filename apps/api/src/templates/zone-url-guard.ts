@@ -84,6 +84,14 @@ export const URL_BEARING_ZONE_ARRAY_FIELDS: Readonly<
   Record<string, ReadonlyArray<{ field: string; key: string }>>
 > = {
   STREAMING: [{ field: 'playbackUrlVariants', key: 'url' }],
+  // Website Tabs (2026-09-28): every tab's `url` becomes a top-level
+  // navigation in a native WebView (our app) or an iframe `src` (browser
+  // players), and `iconUrl` is an `<img src>` in the tab bar. Same gate as
+  // WEBPAGE — scheme / SSRF, never a host allowlist.
+  WEBSITE_TABS: [
+    { field: 'tabs', key: 'url' },
+    { field: 'tabs', key: 'iconUrl' },
+  ],
 };
 
 /** `scheme:` prefix per RFC 3986 — the only thing that can make a URL non-relative. */

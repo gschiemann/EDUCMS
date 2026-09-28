@@ -30,6 +30,12 @@ export interface SystemPreset {
   bgColor?: string;       // solid color fallback — e.g. '#ffffff'
   bgGradient?: string;    // any valid CSS `background:` value (supports layered backgrounds + SVG data URIs)
   bgImage?: string;       // URL to a single background image
+  // Website Tabs (2026-09-28): a preset that is a TOUCH kiosk by nature
+  // seeds `Template.isTouchEnabled = true` (the seeder passes it through and
+  // re-syncs it on boot), so "Use this template" lands in the builder with
+  // touch mode already on and the player treats it as interactive. Optional;
+  // every other preset is passive signage and leaves it unset.
+  isTouchEnabled?: boolean;
   zones: Array<{
     name: string;
     widgetType: string;
@@ -3183,6 +3189,39 @@ const RAW_SYSTEM_PRESETS: SystemPreset[] = [
   // attract reset, and touch handling — fully interactive inside the iframe.
   // Resolution-independent (--u=1vmin) so the same file is balanced landscape
   // OR portrait; the declared 1920×1080 is just the gallery design canvas.
+
+  // ── Website Tabs (2026-09-28) ─────────────────────────────────────────
+  // Greg: "customers want to push multiple sites and give tabs to flip thru
+  // but still lock those sites on the screen … make it dumb simple." ONE
+  // React zone (WEBSITE_TABS), no HTML board: the operator pastes URLs in
+  // Properties, each tab names and icons itself, and the screen locks to
+  // exactly those sites (native WebView allowlist on our app, sandboxed
+  // frames on browser players). The three sample tabs are real public sites
+  // whose framing status the panel re-checks the first time it opens; Google
+  // is deliberately there as the "needs our app" example.
+  {
+    id: 'preset-kiosk-website-tabs',
+    name: '🌐 Touch Kiosk — Website Tabs',
+    description: 'Paste the websites you want on this screen; each becomes a big finger-sized tab. Visitors tap to switch, the screen never leaves those sites, and it returns to the first tab (signing out, if you choose) after 2 minutes idle. Works on touch screens.',
+    category: 'KIOSK', orientation: 'LANDSCAPE',
+    screenWidth: 1920, screenHeight: 1080, bgColor: '#0f172a',
+    isTouchEnabled: true,
+    zones: [{
+      name: 'Website Tabs', widgetType: 'WEBSITE_TABS', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0,
+      defaultConfig: {
+        tabs: [
+          { id: 'wiki', name: 'Wikipedia', url: 'https://www.wikipedia.org/', iconUrl: 'https://www.wikipedia.org/static/apple-touch/wikipedia.png', embed: 'ok', signIn: 'none' },
+          { id: 'weather', name: 'Weather', url: 'https://www.weather.gov/', iconUrl: 'https://www.weather.gov/favicon.ico', embed: 'unknown', signIn: 'none' },
+          { id: 'google', name: 'Google', url: 'https://www.google.com/', iconUrl: 'https://www.google.com/favicon.ico', embed: 'blocked', signIn: 'none' },
+        ],
+        barPosition: 'top',
+        showHome: true,
+        idleReturnSec: 120,
+        idleWarnSec: 10,
+        incognito: true,
+      },
+    }],
+  },
   {
     id: 'preset-kiosk-realestate',
     name: '🏢 Touch Kiosk — Commercial Leasing',

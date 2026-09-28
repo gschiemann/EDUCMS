@@ -232,6 +232,32 @@ describe('zone-url-guard — STREAMING carries THREE dereferenced URL fields', (
   });
 });
 
+describe('zone-url-guard — WEBSITE_TABS: every tab is a top-level navigation on a kiosk', () => {
+  const tabsZone = (tabs: unknown[]) => [
+    { name: 'Sites', widgetType: 'WEBSITE_TABS', x: 0, y: 0, width: 100, height: 100, defaultConfig: { tabs } },
+  ];
+
+  it('guards tabs[].url and tabs[].iconUrl', () => {
+    expect(() => assertZoneUrlsSafe(tabsZone([{ name: 'Home', url: 'javascript:alert(document.cookie)' }]))).toThrow(HttpException);
+    expect(() =>
+      assertZoneUrlsSafe(tabsZone([{ name: 'Home', url: 'https://district.example', iconUrl: 'data:image/svg+xml,<svg onload=alert(1)>' }])),
+    ).toThrow(HttpException);
+    expect(() => assertZoneUrlsSafe(tabsZone([{ name: 'Intranet', url: 'https://10.0.0.5/admin' }]))).toThrow(HttpException);
+  });
+
+  it('a clean tab list — bare domains included, as the panel auto-prefixes them — is accepted', () => {
+    expect(() =>
+      assertZoneUrlsSafe(
+        tabsZone([
+          { name: 'District', url: 'https://district.example', iconUrl: 'https://district.example/favicon.ico' },
+          { name: 'Lunch', url: 'lunch.example/menu' },
+          { name: 'No icon yet', url: 'https://weather.example', iconUrl: '' },
+        ]),
+      ),
+    ).not.toThrow();
+  });
+});
+
 describe('zone-url-guard — single-value helper', () => {
   it('ignores non-strings and empties, throws on hostile', () => {
     expect(() => assertZoneUrlValueSafe('z', 'url', null)).not.toThrow();
