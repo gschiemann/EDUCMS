@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common';
-import { QUARANTINED_BOARD_URLS } from '@cms/api-types';
+import { QUARANTINED_BOARD_URLS, VERTICALS } from '@cms/api-types';
 import type { PrismaService } from '../prisma/prisma.service';
 import { SYSTEM_TEMPLATE_PRESETS } from './system-presets';
 import { FITNESS_TEMPLATE_PRESETS } from './fitness-presets';
@@ -188,11 +188,9 @@ PRESET_VERTICAL.set('preset-sb-college', 'SPORTS');
 PRESET_VERTICAL.set('preset-sb-pro', 'SPORTS');
 // Interactive touch kiosks (2026-06-03) — multi-vertical, see PRESET_VERTICALS
 // below (declared after this point, so the dual-tags live there).
-// Website Tabs (2026-09-28) is the one kiosk that belongs to EVERY vertical:
-// "paste your sites" is as much a QSR / gym / church need as a K-12 one, so
-// it carries the universal tag and surfaces under every gallery's Touch
-// Kiosks tab (and only there — templates/page.tsx keeps KIOSK out of "All").
-PRESET_VERTICAL.set('preset-kiosk-website-tabs', 'ALL');
+// Website Tabs (2026-09-28) belongs to every vertical — it is tagged with
+// the explicit VERTICALS list in PRESET_VERTICALS below (the universal 'ALL'
+// tier is over for kiosks; kiosk-vertical-scoping.spec.ts).
 
 // 2026-05-16 — the 70-template industry signage pack (preset-sig-*)
 // lives INSIDE SYSTEM_TEMPLATE_PRESETS so it shares the seeder, which
@@ -434,6 +432,12 @@ PRESET_VERTICALS.set('preset-kiosk-food', ['QSR', 'RESTAURANT']);
 PRESET_VERTICALS.set('preset-kiosk-realestate', ['CORPORATE', 'HOSPITALITY']);
 PRESET_VERTICALS.set('preset-kiosk-museum', ['HOSPITALITY', 'CORPORATE', 'K12']);
 PRESET_VERTICALS.set('preset-kiosk-office', ['CORPORATE']);
+// Website Tabs (2026-09-28, Greg: "only for touch screens right now… a touch
+// template where they can easily just enter multiple URLs"): "paste your
+// sites" is as much a QSR / gym / church need as a K-12 one, so it is
+// tagged with EVERY vertical explicitly — never the retired 'ALL' tier. It
+// surfaces under each gallery's Touch Kiosks tab only.
+PRESET_VERTICALS.set('preset-kiosk-website-tabs', [...VERTICALS]);
 PRESET_VERTICALS.set('preset-kiosk-gym', ['GYM']);
 PRESET_VERTICALS.set('preset-kiosk-school', ['K12']);
 PRESET_VERTICALS.set('preset-kiosk-qsr', ['QSR']);

@@ -48,6 +48,7 @@ describe('touch-kiosk vertical scoping', () => {
         'preset-kiosk-museum-quest',
         'preset-kiosk-school', // Campus Hub
         'preset-kiosk-school-frontoffice',
+        'preset-kiosk-website-tabs', // Website Tabs — every vertical, incl. schools (Greg 2026-09-28)
       ].sort(),
     );
   });

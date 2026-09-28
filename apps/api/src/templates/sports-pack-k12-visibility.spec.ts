@@ -75,8 +75,12 @@ describe('sports pack — visible to K-12 as well as SPORTS', () => {
 
   it('nothing outside the pack changed tag because of it', () => {
     const pack = new Set(SPORTS_PACK_PRESET_IDS);
+    // Website Tabs (2026-09-28) is deliberately tagged with EVERY vertical —
+    // a decision of its own, not a side effect of the sports pack. Exempted
+    // by id so any OTHER preset gaining SPORTS still fails here.
+    const deliberatelyEveryVertical = new Set(['preset-kiosk-website-tabs']);
     const leaked = ALL_PRESETS.map((p) => p.id)
-      .filter((id) => !pack.has(id))
+      .filter((id) => !pack.has(id) && !deliberatelyEveryVertical.has(id))
       .filter((id) =>
         resolvePresetVerticalTag(id).split('|').includes('SPORTS'),
       );
