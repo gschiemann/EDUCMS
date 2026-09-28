@@ -1742,3 +1742,136 @@ export function removePlaylistCopyFromServer(
   );
   return decision.inUse ? decision : null;
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// Removing SEVERAL playlists at once (2026-09-28)
+// ─────────────────────────────────────────────────────────────────────
+
+export interface RemoveManyDecision {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  /**
+   * The ids this confirmation told the operator are PUBLISHED. Only these are
+   * sent `?confirm=in-use` (the server refuses to delete a published playlist
+   * without it), so a playlist the operator was told was unpublished can never
+   * be deleted as a published one — it comes back 409 and is reported instead.
+   */
+  inUseIds: Set<string>;
+  publishedCount: number;
+}
+
+/** How many names the confirmation lists before "…and N more". */
+export const REMOVE_MANY_NAMES_SHOWN = 6;
+
+/**
+ * The confirmation for removing several playlists in one go. Says what is about
+ * to happen with real numbers — and, like the single-playlist dialog, never
+ * promises a way back (there is no trash server-side).
+ *
+ * Published playlists are counted with the SAME test `removePlaylistCopy` uses,
+ * so one playlist reads the same whether it is removed alone or in a batch. The
+ * screen count is the UNION of the published playlists' screens — two playlists
+ * on the same screen are one screen affected, not two.
+ */
+export function removePlaylistsCopy(
+  rows: PlaylistSummaryRow[],
+  ruleCountOf: (id: string) => number,
+): RemoveManyDecision {
+  const inUseIds = new Set<string>();
+  const screens = new Set<string>();
+  let rules = 0;
+  for (const row of rows) {
+    const ruleCount = ruleCountOf(row.id);
+    if (!removePlaylistCopy(row, ruleCount).inUse) continue;
+    inUseIds.add(row.id);
+    rules += ruleCount;
+    for (const id of row.targetScreenIds ?? []) screens.add(id);
+  }
+  const n = rows.length;
+  const p = inUseIds.size;
+
+  const shown = rows.slice(0, REMOVE_MANY_NAMES_SHOWN).map((r) => `• ${r.name}`);
+  const more = n > REMOVE_MANY_NAMES_SHOWN ? [`…and ${n - REMOVE_MANY_NAMES_SHOWN} more`] : [];
+
+  const published =
+    p === 0
+      ? 'None of them is published anywhere.'
+      : `${p === n ? (n === 2 ? 'Both are' : `All ${n} are`) : `${p} of them ${p === 1 ? 'is' : 'are'}`} published` +
+        ` (${rules} ${rules === 1 ? 'rule' : 'rules'}${screens.size > 0 ? ` · ${screens.size} ${screens.size === 1 ? 'screen' : 'screens'}` : ''}).` +
+        ' Removing a published playlist also removes its publishing rules; the screens it was on use another available schedule or their default content.';
+
+  return {
+    title: `Remove ${n} playlists?`,
+    message: `${[...shown, ...more].join('\n')}\n\n${published}\n\nThis deletes them permanently — it cannot be restored.`,
+    confirmLabel: p > 0 ? `Delete ${n} playlists` : `Remove ${n} permanently`,
+    inUseIds,
+    publishedCount: p,
+  };
+}
+
+export interface RemoveManyFailure {
+  id: string;
+  name: string;
+  /** Why, in words an operator can act on. */
+  reason: string;
+  /** The server saw publishing this page did not — it must be reviewed on its own. */
+  becamePublished: boolean;
+}
+
+export interface RemoveManyResult {
+  removed: string[];
+  failed: RemoveManyFailure[];
+}
+
+/**
+ * Delete playlists ONE AT A TIME, in order, and keep going when one fails — a
+ * bad row must not strand the ones behind it, and the operator must hear about
+ * every one that did not go. Sequential on purpose: each delete re-applies
+ * screen fallback and signals a sync server-side, and a burst of parallel
+ * deletes racing those would be a needless way to find out they conflict.
+ *
+ * `deleteOne` is injected so this is testable without a network; the page hands
+ * it the real request.
+ */
+export async function removePlaylistsSequentially(
+  rows: PlaylistSummaryRow[],
+  inUseIds: ReadonlySet<string>,
+  deleteOne: (id: string, confirmInUse: boolean) => Promise<unknown>,
+): Promise<RemoveManyResult> {
+  const removed: string[] = [];
+  const failed: RemoveManyFailure[] = [];
+  for (const row of rows) {
+    try {
+      await deleteOne(row.id, inUseIds.has(row.id));
+      removed.push(row.id);
+    } catch (err) {
+      const e = err as { code?: string; message?: string } | null;
+      const becamePublished = e?.code === 'PLAYLIST_PUBLISHED';
+      failed.push({
+        id: row.id,
+        name: row.name,
+        becamePublished,
+        reason: becamePublished
+          ? 'it turned out to be published — remove it on its own to see what it affects'
+          : e?.message || 'the server rejected the request',
+      });
+    }
+  }
+  return { removed, failed };
+}
+
+/** The follow-up the operator reads when not everything went. Null when all went. */
+export function describeRemoveManyOutcome(
+  total: number,
+  result: RemoveManyResult,
+): { title: string; message: string } | null {
+  if (result.failed.length === 0) return null;
+  const lines = result.failed.slice(0, 6).map((f) => `• ${f.name} — ${f.reason}`);
+  if (result.failed.length > 6) lines.push(`…and ${result.failed.length - 6} more`);
+  return {
+    title: `Removed ${result.removed.length} of ${total} playlists`,
+    message:
+      `${result.failed.length} ${result.failed.length === 1 ? 'was' : 'were'} not removed and ${result.failed.length === 1 ? 'is' : 'are'} still in your library:\n\n${lines.join('\n')}`,
+  };
+}

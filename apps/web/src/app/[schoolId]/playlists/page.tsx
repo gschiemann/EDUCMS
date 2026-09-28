@@ -35,7 +35,7 @@ import { Loader2 } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
 import { normalizeVertical } from '@cms/api-types';
 import {
-  useCreatePlaylist, useDeletePlaylist, useFleet, usePlaylists, usePlaylistSummary,
+  useCreatePlaylist, useDeletePlaylist, useDeletePlaylistsBatch, useFleet, usePlaylists, usePlaylistSummary,
   useReorderPlaylistItems, useSchedules, useScreenGroups, useScreens, useSetPlaylistActive,
   useTemplates,
 } from '@/hooks/use-api';
@@ -52,7 +52,8 @@ import {
 import { PlaylistLibraryV1 } from '@/components/playlists/v1/PlaylistLibraryV1';
 import type { TemplateLookupEntry } from '@/components/playlists/PlaylistPreviewThumb';
 import {
-  buildPlaylistRow, pauseEverywhereCopy, removePlaylistCopy, removePlaylistCopyFromServer,
+  buildPlaylistRow, describeRemoveManyOutcome, pauseEverywhereCopy, removePlaylistCopy, removePlaylistCopyFromServer,
+  removePlaylistsCopy,
   type OpsGroupRef, type OpsScheduleRef, type OpsScreenRef, type PlaylistSummaryRow,
 } from '@/components/playlists/v1/playlistOps';
 
@@ -131,6 +132,7 @@ export default function PlaylistsPage() {
   const summaryQuery = usePlaylistSummary();
   const fleetQuery = useFleet({ enabled: canFleetPublish });
   const deletePlaylist = useDeletePlaylist();
+  const deletePlaylistsBatch = useDeletePlaylistsBatch();
   const createPlaylist = useCreatePlaylist();
   const saveItems = useReorderPlaylistItems();
 
@@ -304,6 +306,38 @@ export default function PlaylistsPage() {
     }
   }, [schedules, deletePlaylist]);
 
+  /**
+   * Remove several playlists at once (Greg, 2026-09-28).
+   *
+   * One confirmation that says what is about to go — which of them are
+   * published, and how many rules and screens that touches — then the deletes
+   * run one at a time and keep going past a failure. The server's rule is
+   * unchanged: a published playlist is deleted only with `?confirm=in-use`,
+   * which is sent ONLY for the playlists the dialog just called published; one
+   * this page thought was not, that the server says is, comes back 409 and is
+   * reported by name rather than deleted behind the operator's back.
+   *
+   * The lists refresh ONCE at the end (the single-delete hook refreshes three
+   * lists per playlist — ten deletes would have been thirty refetches).
+   */
+  const handleRemoveMany = useCallback(async (targets: PlaylistSummaryRow[]) => {
+    if (targets.length === 0) return;
+    // One playlist reads exactly as it always did.
+    if (targets.length === 1) { await handleRemove(targets[0]); return; }
+    const ruleCountOf = (id: string) => schedules.filter((s) => s.playlistId === id).length;
+    const decision = removePlaylistsCopy(targets, ruleCountOf);
+    const ok = await appConfirm({
+      title: decision.title,
+      message: decision.message,
+      confirmLabel: decision.confirmLabel,
+      tone: 'danger',
+    });
+    if (!ok) return;
+    const result = await deletePlaylistsBatch.mutateAsync({ rows: targets, inUseIds: decision.inUseIds });
+    const outcome = describeRemoveManyOutcome(targets.length, result);
+    if (outcome) await appAlert({ ...outcome, tone: 'warn' });
+  }, [schedules, handleRemove, deletePlaylistsBatch]);
+
   /** §8.4 — Duplicate. Creates a real copy (name, template, ordered items). */
   const handleDuplicate = useCallback(async (id: string) => {
     const source = playlists.find((p) => p.id === id);
@@ -400,6 +434,7 @@ export default function PlaylistsPage() {
         onDuplicate={handleDuplicate}
         onExport={(id) => { void runUsbExport(id); }}
         onRemove={handleRemove}
+        onRemoveMany={handleRemoveMany}
         onPublishToLocations={isHQ ? (id: string) => { setPublishToLocationsId(id); setPublishToLocationsOpen(true); } : undefined}
         onSubmitForReview={(id) => openWorkspace(id)}
         onSetActive={(row, next) => { void handleSetActive(row, next); }}

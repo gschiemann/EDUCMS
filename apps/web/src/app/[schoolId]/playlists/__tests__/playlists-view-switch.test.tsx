@@ -45,6 +45,7 @@ jest.mock('@/hooks/use-api', () => ({
   usePlaylistSummary: query(null),
   useFleet: query({ root: null, locations: [], stats: {}, screens: [] }),
   useDeletePlaylist: mutation,
+  useDeletePlaylistsBatch: mutation,
   useCreatePlaylist: mutation,
   useReorderPlaylistItems: mutation,
 }));

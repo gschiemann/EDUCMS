@@ -39,6 +39,8 @@ const mutation = () => ({ mutateAsync: jest.fn().mockResolvedValue({ id: 'new' }
 
 type DeleteArg = { id: string; confirmInUse: boolean };
 let deleteImpl: jest.Mock<Promise<unknown>, [DeleteArg]>;
+type BatchArg = { rows: Array<{ id: string; name: string }>; inUseIds: Set<string> };
+let batchImpl: jest.Mock<Promise<unknown>, [BatchArg]>;
 
 jest.mock('@/hooks/use-api', () => ({
   usePlaylists: query(PLAYLISTS),
@@ -51,6 +53,7 @@ jest.mock('@/hooks/use-api', () => ({
   useFleet: query({ root: null, locations: [], stats: {}, screens: [] }),
   useDeletePlaylist: () => ({ mutateAsync: (arg: DeleteArg) => deleteImpl(arg), mutate: jest.fn(), isPending: false }),
   useCreatePlaylist: mutation,
+  useDeletePlaylistsBatch: () => ({ mutateAsync: (arg: BatchArg) => batchImpl(arg), mutate: jest.fn(), isPending: false }),
   useReorderPlaylistItems: mutation,
 }));
 
@@ -99,6 +102,7 @@ async function remove(name: string) {
 beforeEach(() => {
   window.history.replaceState(null, '', '/demo/playlists');
   deleteImpl = jest.fn().mockResolvedValue({ deleted: true });
+  batchImpl = jest.fn().mockResolvedValue({ removed: ['p1', 'p2'], failed: [] });
   appConfirm.mockReset().mockResolvedValue(true);
   appAlert.mockReset().mockResolvedValue(undefined);
 });
@@ -195,5 +199,78 @@ describe('removing a playlist — the in-use confirmation', () => {
     await waitFor(() => expect(appAlert).toHaveBeenCalled());
     expect(appAlert.mock.calls[0][0]).toMatchObject({ title: "Couldn't remove playlist", message: 'Network down' });
     expect(deleteImpl).toHaveBeenCalledTimes(2);
+  });
+});
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Removing several at once (Greg, 2026-09-28)
+// ─────────────────────────────────────────────────────────────────────
+describe('removing SEVERAL playlists at once — through the real page', () => {
+  function checkRow(name: string) {
+    const row = screen.getAllByTestId('playlist-row').find((r) => r.textContent?.includes(name));
+    if (!row) throw new Error(`no row for ${name}`);
+    fireEvent.click(within(row).getByRole('checkbox', { name: `Select ${name}` }));
+  }
+  async function clickBulkRemove() {
+    await act(async () => {
+      fireEvent.click(within(screen.getByTestId('bulk-bar')).getByTestId('bulk-remove'));
+    });
+  }
+
+  it('one confirmation that says what will go, then ONE batch — published ids flagged for the server\'s confirmation', async () => {
+    render(<PlaylistsPage />);
+    checkRow('Member Promotions'); // published: it has a rule
+    checkRow('Fall Fundraiser'); // not published
+    expect(within(screen.getByTestId('bulk-bar')).getByTestId('bulk-count')).toHaveTextContent('2 selected');
+    await clickBulkRemove();
+
+    expect(appConfirm).toHaveBeenCalledTimes(1);
+    const dialog = appConfirm.mock.calls[0][0];
+    expect(dialog).toMatchObject({ title: 'Remove 2 playlists?', confirmLabel: 'Delete 2 playlists', tone: 'danger' });
+    expect(dialog.message).toContain('• Member Promotions');
+    expect(dialog.message).toContain('• Fall Fundraiser');
+    expect(dialog.message).toContain('1 of them is published');
+
+    await waitFor(() => expect(batchImpl).toHaveBeenCalledTimes(1));
+    const arg = batchImpl.mock.calls[0][0];
+    expect(arg.rows.map((r) => r.id).sort()).toEqual(['p1', 'p2']);
+    expect([...arg.inUseIds]).toEqual(['p1']); // ONLY the one the dialog called published
+    expect(deleteImpl).not.toHaveBeenCalled(); // never the per-playlist path
+    expect(appAlert).not.toHaveBeenCalled(); // everything went: nothing to report
+  });
+
+  it('cancelling the confirmation deletes nothing and keeps the selection', async () => {
+    appConfirm.mockResolvedValue(false);
+    render(<PlaylistsPage />);
+    checkRow('Member Promotions');
+    checkRow('Fall Fundraiser');
+    await clickBulkRemove();
+    expect(batchImpl).not.toHaveBeenCalled();
+    expect(within(screen.getByTestId('bulk-bar')).getByTestId('bulk-count')).toHaveTextContent('2 selected');
+  });
+
+  it('when some could not be removed, says how many went and names each that did not', async () => {
+    batchImpl.mockResolvedValue({
+      removed: ['p1'],
+      failed: [{ id: 'p2', name: 'Fall Fundraiser', reason: 'it turned out to be published — remove it on its own to see what it affects', becamePublished: true }],
+    });
+    render(<PlaylistsPage />);
+    checkRow('Member Promotions');
+    checkRow('Fall Fundraiser');
+    await clickBulkRemove();
+    await waitFor(() => expect(appAlert).toHaveBeenCalledTimes(1));
+    expect(appAlert.mock.calls[0][0]).toMatchObject({ title: 'Removed 1 of 2 playlists', tone: 'warn' });
+    expect(appAlert.mock.calls[0][0].message).toContain('• Fall Fundraiser — it turned out to be published');
+  });
+
+  it('ONE checked playlist reads exactly like removing it from its own menu', async () => {
+    render(<PlaylistsPage />);
+    checkRow('Fall Fundraiser');
+    await clickBulkRemove();
+    await waitFor(() => expect(deleteImpl).toHaveBeenCalled());
+    expect(appConfirm.mock.calls[0][0]).toMatchObject({ title: 'Remove “Fall Fundraiser”?', confirmLabel: 'Remove permanently' });
+    expect(deleteImpl).toHaveBeenCalledWith({ id: 'p2', confirmInUse: false });
+    expect(batchImpl).not.toHaveBeenCalled();
   });
 });

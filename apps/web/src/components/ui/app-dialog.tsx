@@ -414,7 +414,7 @@ export function AppDialogHost() {
             serves) drop that `:not()` rule entirely and keep the plain focus
             ring, so the 2026-05-13 remote-highlight contract still holds. */}
         <div className="px-4 md:px-6 pb-5 pt-2 bg-slate-50/40">
-          <div className="flex flex-col-reverse gap-2 md:grid md:grid-flow-col md:auto-cols-fr md:w-max md:ml-auto">
+          <div className="flex flex-col-reverse gap-2 md:grid md:grid-flow-col md:auto-cols-fr md:w-max md:max-w-full md:ml-auto">
           {current.kind !== 'alert' && (
             <button
               ref={cancelBtnRef}

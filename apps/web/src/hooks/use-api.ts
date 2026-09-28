@@ -15,6 +15,7 @@ import type {
   RegistrationResponseJSON,
 } from '@simplewebauthn/browser';
 import { apiFetch } from '@/lib/api-client';
+import { removePlaylistsSequentially, type PlaylistSummaryRow } from '@/components/playlists/v1/playlistOps';
 import { API_URL } from '@/lib/api-url';
 // The job poll's "this id is gone" rule (the page settles on the same rule).
 // designer-jobs.ts imports only TYPES from this module, so there is no runtime cycle.
@@ -1126,6 +1127,30 @@ export function useDeletePlaylist() {
     onError: (_e, _id, ctx) => {
       if (ctx?.prev !== undefined) qc.setQueryData(['playlists'], ctx.prev);
     },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['playlists'] });
+      qc.invalidateQueries({ queryKey: ['schedules'] });
+      qc.invalidateQueries({ queryKey: ['screens'] });
+    },
+  });
+}
+
+/**
+ * Remove SEVERAL playlists in one operation (Greg, 2026-09-28). Deletes run one
+ * at a time and keep going past a failure — see `removePlaylistsSequentially` —
+ * and the three lists refresh ONCE at the end: `useDeletePlaylist` refreshes
+ * playlists, schedules and screens after every single delete, so ten of them
+ * would have been thirty refetches, and the screens list is the big one.
+ * Resolves with `{ removed, failed }`; it only rejects if the request layer
+ * itself throws something the loop could not attribute to one playlist.
+ */
+export function useDeletePlaylistsBatch() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { rows: PlaylistSummaryRow[]; inUseIds: ReadonlySet<string> }) =>
+      removePlaylistsSequentially(input.rows, input.inUseIds, (id, confirmInUse) =>
+        apiFetch(inUseDeletePath('/playlists', { id, confirmInUse }), { method: 'DELETE' }),
+      ),
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ['playlists'] });
       qc.invalidateQueries({ queryKey: ['schedules'] });

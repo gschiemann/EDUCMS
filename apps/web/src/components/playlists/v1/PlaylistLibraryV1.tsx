@@ -29,7 +29,7 @@
  * list (§26 — static thumbnails only).
  */
 
-import { useEffect, useId, useMemo, useRef, useState, useLayoutEffect } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertTriangle, Check, ChevronLeft, ChevronRight, Clock, Copy, Download, Eye, Grid2X2, ListIcon, MoreHorizontal, Pause, Play, Plus, Search, SlidersHorizontal, Trash2, Upload, Usb, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
@@ -81,6 +81,13 @@ export interface PlaylistLibraryV1Props {
   onDuplicate: (id: string) => void;
   onExport: (id: string) => void;
   onRemove: (row: PlaylistSummaryRow) => void;
+  /**
+   * Remove several playlists at once (Greg, 2026-09-28: "the ability to check
+   * multiple playlists and delete them all at once would be great"). Present →
+   * every row gets a checkbox and a bar appears once something is checked. The
+   * page owns the confirmation and the deletes; this only says WHICH rows.
+   */
+  onRemoveMany?: (rows: PlaylistSummaryRow[]) => Promise<void> | void;
   onPublishToLocations?: (id: string) => void;
   onSubmitForReview?: (id: string) => void;
   isViewer: boolean;
@@ -107,8 +114,55 @@ export interface PlaylistLibraryV1Props {
   onSetActive?: (row: PlaylistSummaryRow, next: boolean) => void;
 }
 
+/** What the checkboxes need — undefined when selection is off (viewer, or no bulk handler). */
+export interface SelectionApi {
+  selected: ReadonlySet<string>;
+  toggle: (id: string) => void;
+  /** State of the header checkbox: every row on this page, some, or none. */
+  pageState: 'none' | 'some' | 'all';
+  togglePage: () => void;
+  /** A bulk removal is running — controls stand down. */
+  busy: boolean;
+}
+
+/**
+ * The selection checkbox. A <label> around it (44 px on a phone) is the hit
+ * area, and both label and input are on PLAYLIST_CONTROL's list, so a click on
+ * either never falls through to the row's "click anywhere opens the playlist".
+ */
+function SelectBox({
+  checked, indeterminate, label, onChange, disabled, testId, compact,
+}: {
+  checked: boolean;
+  indeterminate?: boolean;
+  label: string;
+  onChange: () => void;
+  disabled?: boolean;
+  testId?: string;
+  /** 24 px hit area (the WCAG 2.2 minimum) — for the table, where width is spoken for. */
+  compact?: boolean;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => { if (ref.current) ref.current.indeterminate = !!indeterminate && !checked; }, [indeterminate, checked]);
+  return (
+    <label className={`flex items-center justify-center cursor-pointer ${compact ? 'w-6 h-6' : 'w-11 h-11 md:w-9 md:h-9'}`}>
+      <input
+        ref={ref}
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={onChange}
+        aria-label={label}
+        data-testid={testId}
+        className="h-4 w-4 rounded border-slate-300 cursor-pointer"
+        style={{ accentColor: 'var(--brand-primary, #3515E8)' }}
+      />
+    </label>
+  );
+}
+
 /** Everything a row needs, minus the collection it belongs to. */
-type RowContext = Omit<PlaylistLibraryV1Props, 'rows'>;
+type RowContext = Omit<PlaylistLibraryV1Props, 'rows'> & { selection?: SelectionApi };
 
 export function PlaylistLibraryV1(props: PlaylistLibraryV1Props) {
   const { rows, loading, error, isViewer } = props;
@@ -144,8 +198,59 @@ export function PlaylistLibraryV1(props: PlaylistLibraryV1Props) {
   const filtersActive = activeFilterCount(filters);
   const clearAll = () => { setFilters(EMPTY_FILTERS); setSearch(''); setTab('all'); };
 
+  // ── Selection (bulk remove) ────────────────────────────────────────────
+  // ALWAYS a subset of what is visible right now. A checked playlist that a
+  // filter, a search or a deletion has since hidden must never stay checked
+  // out of sight and be removed by a bulk action the operator believes covers
+  // only what they can see.
+  const selectable = !!props.onRemoveMany && !isViewer;
+  const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  useEffect(() => {
+    setSelected((prev) => {
+      if (prev.size === 0) return prev;
+      const visibleIds = new Set(visible.map((r) => r.id));
+      const next = new Set<string>();
+      prev.forEach((id) => { if (visibleIds.has(id)) next.add(id); });
+      return next.size === prev.size ? prev : next;
+    });
+  }, [visible]);
+  const selectedRows = useMemo(() => visible.filter((r) => selected.has(r.id)), [visible, selected]);
+  const pageIds = useMemo(() => paged.map((r) => r.id), [paged]);
+  const pageSelectedCount = pageIds.filter((id) => selected.has(id)).length;
+  const pageState: SelectionApi['pageState'] =
+    pageSelectedCount === 0 ? 'none' : pageSelectedCount === pageIds.length ? 'all' : 'some';
+  const toggleSelected = useCallback((id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+  const togglePageSelected = useCallback(() => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      const allOn = pageIds.length > 0 && pageIds.every((id) => next.has(id));
+      for (const id of pageIds) { if (allOn) next.delete(id); else next.add(id); }
+      return next;
+    });
+  }, [pageIds]);
+  const selectAllVisible = () => setSelected(new Set(visible.map((r) => r.id)));
+  const clearSelection = () => setSelected(new Set());
+  const removeSelected = async () => {
+    if (!props.onRemoveMany || selectedRows.length === 0 || bulkBusy) return;
+    setBulkBusy(true);
+    try { await props.onRemoveMany(selectedRows); } finally { setBulkBusy(false); }
+  };
+
   // Rows are passed per-view (paged); everything else flows down untouched.
-  const { rows: _allRows, ...rowContext } = props;
+  const { rows: _allRows, ...baseContext } = props;
+  const rowContext: RowContext = {
+    ...baseContext,
+    selection: selectable
+      ? { selected, toggle: toggleSelected, pageState, togglePage: togglePageSelected, busy: bulkBusy }
+      : undefined,
+  };
 
   return (
     <div className="space-y-4">
@@ -325,6 +430,49 @@ export function PlaylistLibraryV1(props: PlaylistLibraryV1Props) {
             className="sm:hidden mt-2.5 w-full h-11 rounded-[10px] border border-amber-300 bg-white text-[13px] font-bold text-amber-800"
           >
             Review delivery
+          </button>
+        </div>
+      )}
+
+      {/* ── Bulk bar — only while something is checked ── */}
+      {selectable && selectedRows.length > 0 && !error && (
+        <div
+          role="region"
+          aria-label="Bulk actions"
+          data-testid="bulk-bar"
+          className={`sticky top-2 z-20 flex items-center gap-3 flex-wrap rounded-[12px] border px-4 py-2.5 shadow-sm bg-[#F0ECFF] border-[#D9D0FF]`}
+        >
+          <span className={`text-[13px] font-bold ${INK}`} aria-live="polite" data-testid="bulk-count">
+            {selectedRows.length} selected
+          </span>
+          {visible.length > selectedRows.length && (
+            <button
+              type="button"
+              onClick={selectAllVisible}
+              disabled={bulkBusy}
+              className="text-[13px] font-semibold underline underline-offset-2 disabled:opacity-50"
+              style={{ color: 'var(--brand-primary, #3515E8)' }}
+            >
+              Select all {visible.length}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={clearSelection}
+            disabled={bulkBusy}
+            className={`text-[13px] font-semibold ${INK_2} hover:underline disabled:opacity-50`}
+          >
+            Clear
+          </button>
+          <button
+            type="button"
+            onClick={() => { void removeSelected(); }}
+            disabled={bulkBusy}
+            data-testid="bulk-remove"
+            className="ml-auto inline-flex items-center gap-2 h-9 px-4 rounded-[10px] text-[13px] font-bold text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-60 disabled:cursor-wait"
+          >
+            <Trash2 className="w-4 h-4" aria-hidden />
+            {bulkBusy ? 'Removing…' : `Remove ${selectedRows.length}…`}
           </button>
         </div>
       )}
@@ -529,7 +677,22 @@ function ListView({ rows, ...p }: { rows: PlaylistSummaryRow[] } & RowContext) {
                   scope="col"
                   className={`text-left px-4 py-3 text-[11px] font-bold uppercase tracking-wide whitespace-nowrap ${w} ${INK_3}`}
                 >
-                  {h}
+                  {h === 'Playlist' && p.selection ? (
+                    <span className="flex items-center gap-1.5">
+                      <span className="-my-1">
+                        <SelectBox
+                          compact
+                          checked={p.selection.pageState === 'all'}
+                          indeterminate={p.selection.pageState === 'some'}
+                          label="Select every playlist on this page"
+                          onChange={p.selection.togglePage}
+                          disabled={p.selection.busy}
+                          testId="select-page"
+                        />
+                      </span>
+                      {h}
+                    </span>
+                  ) : h}
                 </th>
               ))}
               <th scope="col" className="px-4 py-3 sticky right-0 bg-white"><span className="sr-only">Actions</span></th>
@@ -556,12 +719,28 @@ function Row({ row, ...p }: { row: PlaylistSummaryRow } & RowContext) {
       className={`group cursor-pointer border-b last:border-b-0 ${HAIRLINE} ${attention ? 'bg-amber-50/60' : 'hover:bg-slate-50/70'} transition-colors`}
       data-testid="playlist-row"
       data-attention={attention ? 'true' : 'false'}
+      data-selected={p.selection?.selected.has(row.id) ? 'true' : 'false'}
       onClick={openOnSurfaceClick(() => p.onOpen(row.id))}
     >
       <td className="px-4 py-3">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-[96px] h-[54px] shrink-0 rounded-md overflow-hidden bg-slate-100 border border-slate-200/70">
+          {/* The checkbox is a chip on the thumbnail, not a column of its own:
+              the table already scrolls sideways under ~1440px and a column
+              costs 48px of Delivery — the one Greg keeps saying he cannot read
+              (2026-09-16). Same chip the grid cards use. */}
+          <div className="relative w-[96px] h-[54px] shrink-0 rounded-md overflow-hidden bg-slate-100 border border-slate-200/70">
             {raw ? <PlaylistPreviewThumb playlist={raw} templateLookup={p.templateLookup} size="tile" /> : null}
+            {p.selection && (
+              <div className="absolute top-0.5 left-0.5 rounded-md bg-white/90 shadow-sm">
+                <SelectBox
+                  compact
+                  checked={p.selection.selected.has(row.id)}
+                  label={`Select ${row.name}`}
+                  onChange={() => p.selection!.toggle(row.id)}
+                  disabled={p.selection.busy}
+                />
+              </div>
+            )}
           </div>
           <div className="min-w-0">
             {/* The accessible primary target. The row is NOT a button
@@ -728,6 +907,16 @@ function CompactCard({ row, ...p }: { row: PlaylistSummaryRow } & RowContext) {
       data-testid="playlist-card-compact"
     >
       <div className="flex items-start gap-3">
+        {p.selection && (
+          <div className="-ml-2 -mt-1.5 shrink-0">
+            <SelectBox
+              checked={p.selection.selected.has(row.id)}
+              label={`Select ${row.name}`}
+              onChange={() => p.selection!.toggle(row.id)}
+              disabled={p.selection.busy}
+            />
+          </div>
+        )}
         <PreviewOpener
           onOpen={() => p.onOpen(row.id)}
           className="w-[84px] h-[47px] shrink-0 rounded-md overflow-hidden bg-slate-100 border border-slate-200/70"
@@ -794,12 +983,24 @@ function GridView({ rows, ...p }: { rows: PlaylistSummaryRow[] } & RowContext) {
             className={`rounded-[12px] overflow-hidden flex flex-col h-[290px] ${SURFACE} ${attention ? 'border-amber-200 bg-amber-50/50' : ''}`}
             data-testid="playlist-card-grid"
           >
-            <PreviewOpener
-              onOpen={() => p.onOpen(row.id)}
-              className="h-[132px] w-full bg-slate-100 overflow-hidden shrink-0"
-            >
-              {raw ? <PlaylistPreviewThumb playlist={raw} templateLookup={p.templateLookup} size="tile" /> : null}
-            </PreviewOpener>
+            <div className="relative shrink-0">
+              <PreviewOpener
+                onOpen={() => p.onOpen(row.id)}
+                className="h-[132px] w-full bg-slate-100 overflow-hidden shrink-0"
+              >
+                {raw ? <PlaylistPreviewThumb playlist={raw} templateLookup={p.templateLookup} size="tile" /> : null}
+              </PreviewOpener>
+              {p.selection && (
+                <div className="absolute top-1 left-1 rounded-lg bg-white/90 shadow-sm">
+                  <SelectBox
+                    checked={p.selection.selected.has(row.id)}
+                    label={`Select ${row.name}`}
+                    onChange={() => p.selection!.toggle(row.id)}
+                    disabled={p.selection.busy}
+                  />
+                </div>
+              )}
+            </div>
             <div className="p-3 flex-1 flex flex-col min-h-0">
               <div className="flex items-start justify-between gap-2">
                 <button

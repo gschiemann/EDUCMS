@@ -34,6 +34,10 @@ import {
   pauseEverywhereCopy,
   removePlaylistCopy,
   removePlaylistCopyFromServer,
+  removePlaylistsCopy,
+  removePlaylistsSequentially,
+  describeRemoveManyOutcome,
+  REMOVE_MANY_NAMES_SHOWN,
   resolveTargetScreenIds,
   summarizeDelivery,
   summarizeDeliveryPayload,
@@ -931,6 +935,20 @@ describe('§4.3 prohibited language', () => {
       );
       push(d.title); push(d.message); push(d.confirmLabel);
     }
+    // 2026-09-28 — removing several at once: every shape its copy can take.
+    const many = (n: number, published: number): PlaylistSummaryRow[] => Array.from({ length: n }, (_, i) => ({
+      id: `m${i}`, name: `List ${i}`, targetScreenIds: [`s${i}`],
+      reach: { screens: i < published ? 2 : 0, groups: 0, locations: 0 },
+    }) as unknown as PlaylistSummaryRow);
+    for (const [n, pub] of [[2, 0], [2, 1], [2, 2], [3, 3], [9, 4], [9, 0]] as const) {
+      const d = removePlaylistsCopy(many(n, pub), (id) => (Number(id.slice(1)) < pub ? 2 : 0));
+      push(d.title); push(d.message); push(d.confirmLabel);
+    }
+    const partial = describeRemoveManyOutcome(9, {
+      removed: ['a'],
+      failed: Array.from({ length: 8 }, (_, i) => ({ id: `f${i}`, name: `F${i}`, reason: 'the server rejected the request', becamePublished: i === 0 })),
+    });
+    push(partial?.title); push(partial?.message);
 
     const banner = buildExceptionBanner([{
       id: 'x', name: 'Lobby Promotions', kind: 'media', itemCount: 1, durationMs: 0,
@@ -978,5 +996,124 @@ describe('§4.3 prohibited language', () => {
     for (const s of strings) {
       expect(s).not.toMatch(/manifest|\back\b|painting|render[- ]proof/i);
     }
+  });
+});
+
+
+// ═══════════════════════════════════════════════════════════════════
+// Removing several playlists at once (Greg, 2026-09-28)
+// ═══════════════════════════════════════════════════════════════════
+
+describe('removePlaylistsCopy — the bulk confirmation', () => {
+  const row = (id: string, name: string, over: Partial<PlaylistSummaryRow> = {}): PlaylistSummaryRow =>
+    ({
+      id, name, targetScreenIds: [], reach: { screens: 0, groups: 0, locations: 0 }, ...over,
+    }) as unknown as PlaylistSummaryRow;
+
+  it('none published: names them, says so, promises no way back', () => {
+    const d = removePlaylistsCopy([row('a', 'Freese'), row('b', 'Old promo')], () => 0);
+    expect(d.title).toBe('Remove 2 playlists?');
+    expect(d.message).toContain('• Freese');
+    expect(d.message).toContain('• Old promo');
+    expect(d.message).toContain('None of them is published anywhere.');
+    expect(d.message).toMatch(/cannot be restored/i);
+    expect(d.message).not.toMatch(/30 days|trash|recoverable/i);
+    expect(d.confirmLabel).toBe('Remove 2 permanently');
+    expect(d.publishedCount).toBe(0);
+    expect(d.inUseIds.size).toBe(0);
+  });
+
+  it('published ones are counted, use the SAME test as the single dialog, and are the only ids flagged in-use', () => {
+    const published = row('p', 'Menu', { reach: { screens: 3, groups: 0, locations: 0 }, targetScreenIds: ['s1', 's2', 's3'] });
+    const loose = row('q', 'Scratch');
+    // Rules but no reach here still reads as published (the single dialog agrees).
+    const ruled = row('r', 'Rules only');
+    const d = removePlaylistsCopy([published, loose, ruled], (id) => (id === 'p' ? 2 : id === 'r' ? 1 : 0));
+    expect([...d.inUseIds].sort()).toEqual(['p', 'r']);
+    expect(d.publishedCount).toBe(2);
+    expect(d.message).toContain('2 of them are published (3 rules · 3 screens).');
+    expect(d.message).toMatch(/removes its publishing rules/);
+    expect(d.confirmLabel).toBe('Delete 3 playlists');
+    // Agreement with the single-playlist rule, row by row.
+    for (const r of [published, loose, ruled]) {
+      const single = removePlaylistCopy(r, r.id === 'p' ? 2 : r.id === 'r' ? 1 : 0).inUse;
+      expect(d.inUseIds.has(r.id)).toBe(single);
+    }
+  });
+
+  it('two playlists on the SAME screen are one screen affected, not two', () => {
+    const a = row('a', 'A', { reach: { screens: 1, groups: 0, locations: 0 }, targetScreenIds: ['shared'] });
+    const b = row('b', 'B', { reach: { screens: 1, groups: 0, locations: 0 }, targetScreenIds: ['shared'] });
+    const d = removePlaylistsCopy([a, b], () => 1);
+    expect(d.message).toContain('Both are published (2 rules · 1 screen).');
+  });
+
+  it('a long selection lists the first few and counts the rest', () => {
+    const rows = Array.from({ length: 10 }, (_, i) => row(`x${i}`, `Playlist ${i}`));
+    const d = removePlaylistsCopy(rows, () => 0);
+    expect(d.title).toBe('Remove 10 playlists?');
+    expect(d.message.split('\n').filter((l) => l.startsWith('• '))).toHaveLength(REMOVE_MANY_NAMES_SHOWN);
+    expect(d.message).toContain(`…and ${10 - REMOVE_MANY_NAMES_SHOWN} more`);
+  });
+});
+
+describe('removePlaylistsSequentially', () => {
+  const rows = ['a', 'b', 'c', 'd'].map((id) => ({ id, name: id.toUpperCase() }) as unknown as PlaylistSummaryRow);
+
+  it('deletes in order, one at a time, sending ?confirm=in-use only for the ids the dialog called published', async () => {
+    const calls: Array<[string, boolean]> = [];
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const out = await removePlaylistsSequentially(rows, new Set(['b', 'd']), async (id, confirmInUse) => {
+      inFlight++;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await Promise.resolve();
+      calls.push([id, confirmInUse]);
+      inFlight--;
+    });
+    expect(calls).toEqual([['a', false], ['b', true], ['c', false], ['d', true]]);
+    expect(maxInFlight).toBe(1);
+    expect(out).toEqual({ removed: ['a', 'b', 'c', 'd'], failed: [] });
+  });
+
+  it('a failure never strands the ones behind it, and is reported by name', async () => {
+    const out = await removePlaylistsSequentially(rows, new Set(), async (id) => {
+      if (id === 'b') throw Object.assign(new Error('Protected'), { code: 'PLAYLIST_PROTECTED' });
+      if (id === 'c') throw Object.assign(new Error('x'), { code: 'PLAYLIST_PUBLISHED' });
+    });
+    expect(out.removed).toEqual(['a', 'd']);
+    expect(out.failed.map((f) => f.id)).toEqual(['b', 'c']);
+    expect(out.failed[0]).toMatchObject({ name: 'B', reason: 'Protected', becamePublished: false });
+    expect(out.failed[1]).toMatchObject({ name: 'C', becamePublished: true });
+    expect(out.failed[1].reason).toMatch(/turned out to be published/);
+  });
+
+  it('a playlist the dialog called UNPUBLISHED that the server says is published is never deleted as published', async () => {
+    const sent: Array<[string, boolean]> = [];
+    await removePlaylistsSequentially(rows.slice(0, 1), new Set(), async (id, confirmInUse) => {
+      sent.push([id, confirmInUse]);
+      throw Object.assign(new Error('published'), { code: 'PLAYLIST_PUBLISHED' });
+    });
+    expect(sent).toEqual([['a', false]]); // one attempt, without the flag — never retried with it
+  });
+});
+
+describe('describeRemoveManyOutcome', () => {
+  it('says nothing when everything went', () => {
+    expect(describeRemoveManyOutcome(3, { removed: ['a', 'b', 'c'], failed: [] })).toBeNull();
+  });
+
+  it('says how many went, and names each that did not', () => {
+    const o = describeRemoveManyOutcome(3, {
+      removed: ['a'],
+      failed: [
+        { id: 'b', name: 'B', reason: 'Protected', becamePublished: false },
+        { id: 'c', name: 'C', reason: 'the server rejected the request', becamePublished: false },
+      ],
+    })!;
+    expect(o.title).toBe('Removed 1 of 3 playlists');
+    expect(o.message).toContain('2 were not removed and are still in your library');
+    expect(o.message).toContain('• B — Protected');
+    expect(o.message).toContain('• C — the server rejected the request');
   });
 });

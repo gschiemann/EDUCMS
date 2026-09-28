@@ -661,3 +661,100 @@ describe('stop / start a playlist without opening it', () => {
     expect(screen.queryByRole('button', { name: /^Stop |^Start / })).not.toBeInTheDocument();
   });
 });
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Bulk select + remove (Greg, 2026-09-28: "the ability to check multiple
+// playlists and delete them all at once would be great")
+// ─────────────────────────────────────────────────────────────────────
+describe('bulk selection', () => {
+  const tableRow = (name: string) => rowNamed(name);
+  const box = (name: string) => within(tableRow(name)).getByRole('checkbox', { name: `Select ${name}` });
+  const many = (n: number): PlaylistSummaryRow[] =>
+    Array.from({ length: n }, (_, i) => row({ id: `m${i}`, name: `Playlist ${String(i).padStart(2, '0')}`, searchText: `playlist ${i}` }));
+
+  it('offers no checkboxes without a bulk handler, and none to a viewer', () => {
+    const { unmount } = mount();
+    expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
+    unmount();
+    mount({ onRemoveMany: jest.fn(), isViewer: true });
+    expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
+  });
+
+  it('checking rows shows the bar with the count; Clear empties it', () => {
+    mount({ onRemoveMany: jest.fn() });
+    expect(screen.queryByTestId('bulk-bar')).toBeNull();
+    fireEvent.click(box('Member Promotions'));
+    fireEvent.click(box('Club Welcome'));
+    expect(screen.getByTestId('bulk-count')).toHaveTextContent('2 selected');
+    expect(screen.getByTestId('bulk-remove')).toHaveTextContent('Remove 2…');
+    expect(tableRow('Member Promotions')).toHaveAttribute('data-selected', 'true');
+    fireEvent.click(within(screen.getByTestId('bulk-bar')).getByRole('button', { name: 'Clear' }));
+    expect(screen.queryByTestId('bulk-bar')).toBeNull();
+    expect(tableRow('Member Promotions')).toHaveAttribute('data-selected', 'false');
+  });
+
+  it('a click on a checkbox never opens the playlist', () => {
+    const { props } = mount({ onRemoveMany: jest.fn() });
+    fireEvent.click(box('Member Promotions'));
+    expect(props.onOpen).not.toHaveBeenCalled();
+  });
+
+  it('the header checkbox selects the page; the bar offers Select all across pages', () => {
+    const rows = many(14); // PAGE_SIZE is 12
+    mount({ rows, rawById: new Map(rows.map((r) => [r.id, { id: r.id, name: r.name, items: [] }])), onRemoveMany: jest.fn() });
+    fireEvent.click(screen.getByTestId('select-page'));
+    expect(screen.getByTestId('bulk-count')).toHaveTextContent('12 selected');
+    fireEvent.click(within(screen.getByTestId('bulk-bar')).getByRole('button', { name: 'Select all 14' }));
+    expect(screen.getByTestId('bulk-count')).toHaveTextContent('14 selected');
+    expect(within(screen.getByTestId('bulk-bar')).queryByRole('button', { name: /Select all/ })).toBeNull();
+    // Header checkbox again on a full page deselects that page.
+    fireEvent.click(screen.getByTestId('select-page'));
+    expect(screen.getByTestId('bulk-count')).toHaveTextContent('2 selected');
+  });
+
+  it('a checked playlist that a filter hides is DROPPED — a bulk action only ever covers what is on screen', async () => {
+    const onRemoveMany = jest.fn();
+    mount({ onRemoveMany });
+    fireEvent.click(box('Class Schedule')); // SCHEDULED
+    fireEvent.click(box('Member Promotions')); // ACTIVE
+    expect(screen.getByTestId('bulk-count')).toHaveTextContent('2 selected');
+    fireEvent.click(screen.getByRole('tab', { name: /^Active/ })); // hides Class Schedule
+    expect(screen.getByTestId('bulk-count')).toHaveTextContent('1 selected');
+    await React.act(async () => { fireEvent.click(screen.getByTestId('bulk-remove')); });
+    expect(onRemoveMany).toHaveBeenCalledTimes(1);
+    expect(onRemoveMany.mock.calls[0][0].map((r: PlaylistSummaryRow) => r.name)).toEqual(['Member Promotions']);
+  });
+
+  it('hands the page the checked rows in the order they are LISTED, not the order they were checked', async () => {
+    const now = Date.now();
+    const rows = [
+      row({ id: 'o1', name: 'Oldest', searchText: 'oldest', updatedAt: new Date(now - 3 * 3_600_000).toISOString() }),
+      row({ id: 'o2', name: 'Middle', searchText: 'middle', updatedAt: new Date(now - 2 * 3_600_000).toISOString() }),
+      row({ id: 'o3', name: 'Newest', searchText: 'newest', updatedAt: new Date(now - 1 * 3_600_000).toISOString() }),
+    ];
+    const onRemoveMany = jest.fn();
+    mount({ rows, rawById: new Map(rows.map((r) => [r.id, { id: r.id, name: r.name, items: [] }])), onRemoveMany });
+    fireEvent.click(box('Oldest')); // checked first …
+    fireEvent.click(box('Newest')); // … and last; the list shows newest first
+    await React.act(async () => { fireEvent.click(screen.getByTestId('bulk-remove')); });
+    expect(onRemoveMany.mock.calls[0][0].map((r: PlaylistSummaryRow) => r.name)).toEqual(['Newest', 'Oldest']);
+  });
+
+  it('while a removal runs the controls stand down; when it ends the bar is back to normal', async () => {
+    let finish: () => void = () => {};
+    const onRemoveMany = jest.fn(() => new Promise<void>((res) => { finish = res; }));
+    mount({ onRemoveMany });
+    fireEvent.click(box('Member Promotions'));
+    fireEvent.click(screen.getByTestId('bulk-remove'));
+    const btn = await screen.findByRole('button', { name: /Removing…/ });
+    expect(btn).toBeDisabled();
+    expect(box('Member Promotions')).toBeDisabled();
+    // A second click while busy must not start a second removal.
+    fireEvent.click(btn);
+    expect(onRemoveMany).toHaveBeenCalledTimes(1);
+    await React.act(async () => { finish(); });
+    expect(screen.getByTestId('bulk-remove')).toHaveTextContent('Remove 1…');
+    expect(screen.getByTestId('bulk-remove')).not.toBeDisabled();
+  });
+});
