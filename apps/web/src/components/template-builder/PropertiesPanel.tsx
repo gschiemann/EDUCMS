@@ -48,6 +48,7 @@ import {
   venueHasModes,
 } from './sports-venue-editor';
 import { FanCamTextField } from './FanCamTextField';
+import { WebsiteTabsEditor } from './WebsiteTabsEditor';
 // K-12 sports launch, lane B4 — "don't type student names here" on the fields
 // whose typed names the API blanks on screens while a school's names are hidden.
 import { StudentNameNotice, studentNameNoticePlacer } from './StudentNameNotice';
@@ -6720,6 +6721,15 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
         { key: 'bgColor', label: 'Button color', type: 'color' },
         { key: 'color', label: 'Label color', type: 'color' },
       ]} />);
+      break;
+    }
+    // 2026-09-28 — Website Tabs. The whole panel is ONE component: paste a
+    // URL → name + icon + "loads / needs our app / can't reach" fill in from
+    // the API's site check; drag / rename / remove; plain-words settings.
+    // The universal Text-style block below still applies (tab labels honour
+    // fontFamily / fontSize / color).
+    case 'WEBSITE_TABS': {
+      fields.push(<WebsiteTabsEditor key="website-tabs" cfg={cfg} setField={setField} />);
       break;
     }
     case 'ON_SCREEN_KEYBOARD': {

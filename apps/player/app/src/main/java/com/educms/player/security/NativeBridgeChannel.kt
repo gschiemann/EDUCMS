@@ -181,6 +181,18 @@ object NativeBridgeChannel {
         "bootProof",
         "registerAttempt",
         "registerResult",
+        // ── WEBSITE TABS (2026-09-28) ─────────────────────────────────────
+        // The kiosk's "paste your sites" template. `webTabsShow(json)` lays
+        // the overlay WebView over the widget's measured bounds with the tabs'
+        // default-deny host allowlist; `webTabsHide(json)` takes it down and,
+        // with `{wipe:true}`, signs the sites out. THREE-FILE ATOMIC CHANGE:
+        // this array, the web's NATIVE_VOID_METHODS, and the dispatch arms
+        // below. The web side feature-detects (`nativeHas`) and renders a
+        // sandboxed-iframe fallback on an older APK; these two are also
+        // excluded from the web's KNOWN_METHODS until the fleet floor
+        // includes this build (player rule 9). See WebTabsPolicy.
+        "webTabsShow",
+        "webTabsHide",
         // value-returning (Promise-based on the web side)
         "deviceInfo",
         // 2026-08-13 — `probeDisplay` had a dispatch arm but was MISSING
@@ -650,6 +662,13 @@ object NativeBridgeChannel {
             "bootProof" -> { bridge.bootProof(); null }
             "registerAttempt" -> { bridge.registerAttempt(); null }
             "registerResult" -> { bridge.registerResult(strAt(args, 0)); null }
+            // 2026-09-28 — Website Tabs. `webTabsShow` is nonce-gated on the
+            // legacy surface (it puts a site on the glass, like showUrlOverlay),
+            // so the channel hands it the nonce like every other gated method;
+            // the JSON is validated natively in WebTabsPolicy.parseShowRequest.
+            // `webTabsHide` is recovery direction and ungated.
+            "webTabsShow" -> { bridge.webTabsShow(bridge.channelNonce(), strAt(args, 0)); null }
+            "webTabsHide" -> { bridge.webTabsHide(strAt(args, 0)); null }
             "deviceInfo" -> bridge.deviceInfo()
             "probeDisplay" -> bridge.probeDisplay()
             "displayCapabilities" -> bridge.displayCapabilities()

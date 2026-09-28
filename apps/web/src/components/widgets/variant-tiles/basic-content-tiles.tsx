@@ -275,6 +275,51 @@ export function WebpageTile() {
   );
 }
 
+/* ── WEBSITE TABS ────────────────────────────────────────────────────── */
+/**
+ * A dark tab bar with three finger-sized tabs (one lit) over a page — the
+ * thing the operator gets after pasting three sites. Reads as "a browser with
+ * big tabs and no address bar", which is exactly what it is.
+ */
+export function WebsiteTabsTile() {
+  const tab = (left: string, width: string, lit: boolean) => (
+    <div
+      style={{
+        position: 'absolute',
+        top: '4.5%',
+        left,
+        width,
+        height: '15%',
+        borderRadius: '0.16em',
+        background: lit ? '#f59e0b' : 'rgba(255,255,255,0.14)',
+      }}
+    >
+      <div style={{ position: 'absolute', top: '22%', left: '8%', width: '18%', height: '56%', borderRadius: '0.08em', background: lit ? 'rgba(0,0,0,0.25)' : 'rgba(255,255,255,0.35)' }} />
+      <div style={{ position: 'absolute', top: '36%', left: '32%', width: '56%', height: '28%', borderRadius: 999, background: lit ? 'rgba(0,0,0,0.35)' : 'rgba(255,255,255,0.55)' }} />
+    </div>
+  );
+  return (
+    <Frame bg="#e2e8f0">
+      {/* the tab bar */}
+      <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '24%', background: '#0f172a' }} />
+      {tab('3%', '13%', false)}
+      {tab('18%', '26%', true)}
+      {tab('46%', '26%', false)}
+      {tab('74%', '23%', false)}
+      {/* the page under it */}
+      <div style={{ position: 'absolute', top: '24%', left: 0, width: '100%', height: '76%', background: '#ffffff' }} />
+      <div style={{ position: 'absolute', top: '31%', left: '6%', width: '30%', height: '7%', borderRadius: '0.14em', background: '#f59e0b' }} />
+      <div style={{ position: 'absolute', top: '33%', left: '44%', width: '18%', height: '4%', borderRadius: 999, background: '#cbd5e1' }} />
+      <div style={{ position: 'absolute', top: '33%', left: '66%', width: '18%', height: '4%', borderRadius: 999, background: '#cbd5e1' }} />
+      <div style={{ position: 'absolute', top: '46%', left: '6%', width: '52%', height: '34%', borderRadius: '0.18em', background: 'linear-gradient(135deg,#bae6fd,#e0f2fe)' }} />
+      <div style={{ position: 'absolute', top: '48%', left: '62%', width: '32%', height: '5%', borderRadius: 999, background: '#e2e8f0' }} />
+      <div style={{ position: 'absolute', top: '57%', left: '62%', width: '28%', height: '5%', borderRadius: 999, background: '#e2e8f0' }} />
+      <div style={{ position: 'absolute', top: '66%', left: '62%', width: '22%', height: '5%', borderRadius: 999, background: '#e2e8f0' }} />
+      <div style={{ position: 'absolute', top: '86%', left: '6%', width: '88%', height: '5%', borderRadius: 999, background: '#f1f5f9' }} />
+    </Frame>
+  );
+}
+
 /* ── SIGNAGE TEMPLATE ────────────────────────────────────────────────── */
 /**
  * A finished BOARD — header with a logo mark, a hero photo, two content cards

@@ -579,18 +579,19 @@ export function dispatchTouchAction(
         try { console.warn('[touch] open-url rejected — not http(s)/tel/mailto:', target); } catch {}
         return;
       }
-      if (action.openInNewTab) {
-        window.open(target, '_blank', 'noopener,noreferrer');
-      } else {
-        // Default to in-place overlay — kiosks rarely have a browser
-        // chrome to receive a new tab. The 'edu:touch-overlay' event
-        // is consumed by the player's overlay layer.
-        window.dispatchEvent(
-          new CustomEvent('edu:touch-overlay', {
-            detail: { kind: 'iframe', url: target },
-          }),
-        );
-      }
+      // 2026-09-28 — `openInNewTab` used to `window.open(target, '_blank')`,
+      // which on a kiosk ESCAPES the locked screen: the visitor lands in the
+      // device's browser with an address bar and no way back to the
+      // template. A screen never opens a new tab. The flag is kept in the
+      // config shape for old rows and now means the same as the default:
+      // the in-place overlay (native URL overlay on our app, the framed
+      // overlay with a Close bar elsewhere), consumed by the player's
+      // overlay layer, which returns to the template on Close / idle.
+      window.dispatchEvent(
+        new CustomEvent('edu:touch-overlay', {
+          detail: { kind: 'iframe', url: target },
+        }),
+      );
       return;
     }
     case 'play-video': {
@@ -708,7 +709,14 @@ export function dispatchTouchAction(
         try { console.warn('[touch] url (legacy) rejected — not http(s)/tel/mailto:', target); } catch {}
         return;
       }
-      window.open(target, '_blank', 'noopener,noreferrer');
+      // 2026-09-28 — was `window.open(target, '_blank')`: the Touch Menu /
+      // Touch Button `url` action handed a kiosk visitor the device browser.
+      // Same in-place overlay as open-url; never a new tab on a screen.
+      window.dispatchEvent(
+        new CustomEvent('edu:touch-overlay', {
+          detail: { kind: 'iframe', url: target },
+        }),
+      );
       return;
     }
     case 'navigate':
@@ -9428,6 +9436,22 @@ function PlayerPage() {
     return () => window.removeEventListener('message', onKioskAction);
   }, [screenId, tenantId]);
 
+  // 2026-09-28 — a Touch Menu / Touch Button `url` action. The widget used to
+  // `window.open` it (a kiosk escape); it now publishes `edu:touch-url` and
+  // THIS turns it into the same in-place overlay every other tap uses,
+  // through the one dispatcher (scheme gate, tel:/mailto: hand-off, idle-reset
+  // broadcast included). The builder has no listener, so a preview click is
+  // inert there.
+  useEffect(() => {
+    const onTouchUrl = (e: Event) => {
+      const url = (e as CustomEvent<{ url?: unknown }>).detail?.url;
+      if (typeof url !== 'string' || !url) return;
+      dispatchTouchAction({ type: 'open-url', target: url }, { screenId, tenantId, zoneId: 'touch-url' });
+    };
+    window.addEventListener('edu:touch-url', onTouchUrl as EventListener);
+    return () => window.removeEventListener('edu:touch-url', onTouchUrl as EventListener);
+  }, [screenId, tenantId]);
+
   // Phase D5 — when the playlist swaps to a new template, the stale
   // currentSceneId (a scene id from the PREVIOUS template) silently
   // filters out every zone in the new template (no scene ids match).
@@ -9857,6 +9881,19 @@ function PlayerPage() {
 
     nativeFire('showUrlOverlay', url);
   }, [activeEmergency, currentIndex, isItemValid, phase, playbackStopped, sorted]);
+
+  // 2026-09-28 — Website Tabs' native site view is a TOP-LEVEL Android
+  // WebView laid over this page, so an alert or the operator's Stop surface
+  // painted underneath it would be covered until the widget unmounts. The
+  // widget hides it on unmount (which the emergency branch causes), and this
+  // page-level belt fires the same hide the instant either state is raised —
+  // player rule 11: the alert never waits on a widget lifecycle. Fire-and-
+  // forget; `nativeHas` keeps it off APKs that predate the method.
+  useEffect(() => {
+    if (!activeEmergency && !playbackStopped) return;
+    if (!nativeHas('webTabsHide')) return;
+    nativeFire('webTabsHide', JSON.stringify({ v: 1, wipe: false }));
+  }, [activeEmergency, playbackStopped]);
 
   // Shared splash resolution string — used by all three pre-content phases.
   // Gated on bootMounted (NOT `typeof window`): the server pass and the
@@ -10831,7 +10868,10 @@ function PlayerPage() {
     // template" flag: cursor visible, clicks pass through to the
     // iframe / zone, and only the remote's Back/Exit key brings up
     // the Stop overlay (already wired through edu-show-stop-overlay).
-    const hasWebpageZone = zones.some((z: any) => z.widgetType === 'WEBPAGE');
+    // 2026-09-28 — Website Tabs is interactive by definition (visitors tap
+    // the tabs and browse the site), so it takes the same bucket even on a
+    // template whose touch flag was never set.
+    const hasWebpageZone = zones.some((z: any) => z.widgetType === 'WEBPAGE' || z.widgetType === 'WEBSITE_TABS');
     const isInteractive = isTouchTemplate || hasWebpageZone;
 
     // Stop splash short-circuit before rendering template widgets

@@ -24,6 +24,10 @@ export type WidgetType =
   // 2026-05-16 — self-contained HTML signage / HS templates, rendered
   // in a sandboxed iframe by ExternalHtmlWidget (cfg.url + cfg.brand).
   | 'EXTERNAL_HTML'
+  // 2026-09-28 — Website Tabs: a finger-sized tab bar over N operator-pasted
+  // sites, locked to those sites (native WebView allowlist on our app,
+  // sandboxed frames elsewhere). WebsiteTabsWidget.tsx.
+  | 'WEBSITE_TABS'
   // Touch (Sprint 4 placeholders)
   | 'TOUCH_BUTTON' | 'TOUCH_MENU' | 'ROOM_FINDER' | 'ON_SCREEN_KEYBOARD'
   | 'WAYFINDING_MAP' | 'QUICK_POLL'

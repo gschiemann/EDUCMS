@@ -54,6 +54,9 @@ class HostileFrameBridgeTest {
         onSetDeviceToken = { effects.record("setDeviceToken") },
         onShowUrlOverlay = { effects.record("showUrlOverlay") },
         onHideUrlOverlay = { effects.record("hideUrlOverlay") },
+        // Website Tabs (2026-09-28): show is class 1 (gated), hide is class 2.
+        onWebTabsShow = { effects.record("webTabsShow") },
+        onWebTabsHide = { effects.record("webTabsHide") },
         onOpenSettingsForManager = { effects.record("openSettingsForManager") },
         onSetOrientation = { effects.record("setOrientation") },
         onWebHeartbeat = { effects.record("heartbeat") },
@@ -85,6 +88,7 @@ class HostileFrameBridgeTest {
         b.getRecentLogs()
         b.uploadDiagnostics()
         b.openSettingsForManager()
+        b.webTabsShow("""{"v":1,"url":"https://evil.example/fake-lockdown"}""")
         // 2. the nonce-bearing arity with a value it does not have
         b.unpair(guess)
         b.exitToDeviceHome(guess)
@@ -97,6 +101,7 @@ class HostileFrameBridgeTest {
         b.getRecentLogs(guess)
         b.uploadDiagnostics(guess)
         b.openSettingsForManager(guess)
+        b.webTabsShow(guess, """{"v":1,"url":"https://evil.example/fake-lockdown"}""")
     }
 
     @Test
@@ -157,6 +162,7 @@ class HostileFrameBridgeTest {
         b.getRecentLogs(n)
         b.uploadDiagnostics(n)
         b.openSettingsForManager(n)
+        b.webTabsShow(n, """{"v":1,"url":"https://district.example/"}""")
 
         assertEquals(
             listOf(
@@ -171,6 +177,7 @@ class HostileFrameBridgeTest {
                 "getRecentLogs",
                 "uploadDiagnostics",
                 "openSettingsForManager",
+                "webTabsShow",
             ),
             effects.fired,
         )
@@ -199,8 +206,12 @@ class HostileFrameBridgeTest {
         b.reload()
         b.hideUrlOverlay()
         b.heartbeat()
+        // Website Tabs: taking the site view down must work from any frame
+        // on any device — a pinned overlay with no way down is the worse
+        // failure (see WebAppBridge.webTabsHide).
+        b.webTabsHide("""{"v":1,"wipe":false}""")
 
-        assertEquals(listOf("reload", "hideUrlOverlay", "heartbeat"), effects.fired)
+        assertEquals(listOf("reload", "hideUrlOverlay", "heartbeat", "webTabsHide"), effects.fired)
     }
 
     /**

@@ -596,9 +596,13 @@ describe('SEC-002 — the legacy nonce prefix', () => {
       'displayEmergencyHold',
       'displayApply',
       'displaySetSchedule',
+      // Website Tabs: taking the site view DOWN is recovery direction.
+      'webTabsHide',
     ]) {
       expect(gated.has(m)).toBe(false);
     }
+    // …and the one that puts a site UP is gated, like showUrlOverlay.
+    expect(gated.has('webTabsShow')).toBe(true);
   });
 });
 
@@ -632,8 +636,11 @@ describe('method tables stay in sync with the APK', () => {
     // Android-9 Goodview boot-proof wave added `bootProof`,
     // `registerAttempt` and `registerResult` — the three facts that let the
     // APK tell "the shell loaded" apart from "the player is running", which
-    // an HTTP 200 + onPageFinished provably cannot.
-    expect(all).toHaveLength(30);
+    // an HTTP 200 + onPageFinished provably cannot. → 32 on 2026-09-28
+    // (Website Tabs, next APK ≥ 1.1.19): `webTabsShow` lays the native site
+    // WebView over the widget's measured bounds with a default-deny host
+    // allowlist, `webTabsHide` takes it down and can sign the sites out.
+    expect(all).toHaveLength(32);
   });
 
   /**

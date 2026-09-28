@@ -100,6 +100,16 @@ class WebAppBridge(
     private val onSetDeviceToken: (token: String) -> Unit = {},
     private val onShowUrlOverlay: (url: String) -> Unit,
     private val onHideUrlOverlay: () -> Unit,
+    /**
+     * Website Tabs (2026-09-28) — `(showRequestJson)`. Lays the overlay
+     * WebView over the bounds the widget measured, switches its URL, and
+     * installs the tabs' host allowlist; MainActivity.showWebTabs parses it
+     * through [com.educms.player.webtabs.WebTabsPolicy]. Defaulted so every
+     * preview / test bridge keeps constructing.
+     */
+    private val onWebTabsShow: (json: String) -> Unit = {},
+    /** Website Tabs — `(hideRequestJson)`: take the site view down, `{wipe:true}` signs the sites out. */
+    private val onWebTabsHide: (json: String) -> Unit = {},
     private val onOpenSettingsForManager: () -> Unit,
     /**
      * v1.0.58 — web-side liveness heartbeat. Called every 60 s from
@@ -1076,6 +1086,63 @@ class WebAppBridge(
             onHideUrlOverlay()
         } catch (ex: Exception) {
             PlayerLogger.w("WebAppBridge", "hideUrlOverlay failed: ${ex.message}")
+        }
+    }
+
+    /**
+     * Website Tabs (2026-09-28) — put a site up in the overlay WebView, laid out
+     * over the bounds the widget measured, locked to the tabs' hosts.
+     *
+     * ⚠️ NONCE-GATED (SEC-002), for exactly [showUrlOverlay]'s reason: it puts
+     * arbitrary web content on the glass, and on the every-frame legacy
+     * surface a hostile board could otherwise cover the player with a page
+     * of its choosing. The payload is validated natively
+     * ([com.educms.player.webtabs.WebTabsPolicy.parseShowRequest]) — scheme,
+     * bounds, a non-empty allowlist the start URL belongs to — and the
+     * WebView it lands in carries no bridge at all, so the worst a caller
+     * who HAS the nonce can do is what the operator configured.
+     */
+    @JavascriptInterface
+    fun webTabsShow(json: String) {
+        if (!gate("webTabsShow", null)) return
+        webTabsShowImpl(json)
+    }
+
+    /** Nonce-bearing form — see [BridgeNonce]. */
+    @JavascriptInterface
+    fun webTabsShow(nonce: String, json: String) {
+        if (!gate("webTabsShow", nonce)) return
+        webTabsShowImpl(json)
+    }
+
+    private fun webTabsShowImpl(json: String) {
+        try {
+            onWebTabsShow(json)
+        } catch (ex: Exception) {
+            PlayerLogger.w("WebAppBridge", "webTabsShow failed: ${ex.message}")
+        }
+    }
+
+    /**
+     * Website Tabs — take the site view down; `{"wipe":true}` also signs the
+     * sites out (cookies + site storage).
+     *
+     * ⚠️ DELIBERATELY NOT NONCE-GATED, like [hideUrlOverlay]: recovery
+     * direction. A screen that changes template, raises an alert or stops
+     * playback must be able to remove the overlay from ANY state, including
+     * a panel whose nonce never arms — otherwise a site could stay pinned over
+     * the player with no way back. The wipe rides along ungated because the
+     * player page itself keeps nothing in cookies (its credential is a
+     * localStorage token this never touches), so the most a hostile frame can
+     * do with it is sign the kiosk's sites out — a nuisance, not an escape or
+     * an exfiltration.
+     */
+    @JavascriptInterface
+    fun webTabsHide(json: String) {
+        try {
+            onWebTabsHide(json)
+        } catch (ex: Exception) {
+            PlayerLogger.w("WebAppBridge", "webTabsHide failed: ${ex.message}")
         }
     }
 

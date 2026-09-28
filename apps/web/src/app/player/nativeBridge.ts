@@ -199,6 +199,24 @@ export const NATIVE_VOID_METHODS = [
   'bootProof',
   'registerAttempt',
   'registerResult',
+  // ── WEBSITE TABS (2026-09-28, next APK ≥ 1.1.19) ─────────────────────
+  // The kiosk's "paste your sites" template. `webTabsShow(json)` lays the
+  // native site WebView over the exact device-pixel bounds the widget
+  // measured, switches its URL on a tab tap, and carries the default-deny
+  // host allowlist + the incognito flag (`website-tabs-config.ts`
+  // `WebTabsShowPayload`). `webTabsHide(json)` takes it down and, with
+  // `{wipe:true}`, signs the sites out (cookies + site storage) — the idle
+  // return on a public kiosk. THREE-FILE ATOMIC CHANGE with the Kotlin
+  // METHODS array + dispatch arms and the drift-guard canary count.
+  // Deliberately EXCLUDED from KNOWN_METHODS below (rule 9): a
+  // manifest-less channel WebView could be a 1.1.18 APK whose gate would
+  // drop the post silently; `nativeHas` answers false there and the widget
+  // renders its sandboxed-iframe fallback instead of a blank site area.
+  // `webTabsShow` is nonce-gated on the legacy surface (it puts arbitrary
+  // content on the glass, like showUrlOverlay); `webTabsHide` is recovery
+  // direction and is not.
+  'webTabsShow',
+  'webTabsHide',
 ] as const;
 
 /**
@@ -254,12 +272,18 @@ const KNOWN_METHODS: readonly string[] = [
   // 2026-09-02 — the three boot-proof methods are excluded on the same
   // rule and for the same reason (a manifest-less channel could be 1.1.12).
   // Remove them from this filter only when the fleet floor is ≥1.1.13.
+  //
+  // 2026-09-28 — the two Website Tabs methods are excluded on the same rule
+  // (a manifest-less channel could be 1.1.18, which has no such arms).
+  // Remove them from this filter only when the fleet floor is ≥1.1.19.
 ].filter(
   (m) =>
     m !== 'heartbeatV2' &&
     m !== 'bootProof' &&
     m !== 'registerAttempt' &&
-    m !== 'registerResult',
+    m !== 'registerResult' &&
+    m !== 'webTabsShow' &&
+    m !== 'webTabsHide',
 );
 
 /**
@@ -286,6 +310,11 @@ const METHOD_FLOORS: Readonly<Record<string, readonly [number, number, number]>>
   bootProof: [1, 1, 13],
   registerAttempt: [1, 1, 13],
   registerResult: [1, 1, 13],
+  // Website Tabs ships in the first APK cut after 1.1.18. If the lead
+  // releases it under a later number the floor still holds (≥); if a 1.1.19
+  // is ever cut WITHOUT these arms, raise this before that tag.
+  webTabsShow: [1, 1, 19],
+  webTabsHide: [1, 1, 19],
 };
 
 /** `EduCmsPlayer/1.1.16` → [1, 1, 16]; anything else → null. */
@@ -391,6 +420,9 @@ const LEGACY_NONCE_GATED_METHODS: readonly string[] = [
   'showUrlOverlay',
   'unpair',
   'uploadDiagnostics',
+  // 2026-09-28 — puts an arbitrary site on the glass, exactly like
+  // showUrlOverlay; gated for the same reason. `webTabsHide` is not.
+  'webTabsShow',
 ];
 
 /** Exported for the drift guard only. */

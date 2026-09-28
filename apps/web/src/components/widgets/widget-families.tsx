@@ -876,6 +876,7 @@ export const WebpageTile = lazyWidget<ThemeWidgetProps>(loadVariantTilesBasicCon
 export const ImageBasicTile = lazyWidget<ThemeWidgetProps>(loadVariantTilesBasicContentTiles, 'ImageBasicTile');
 export const ImageCarouselBasicTile = lazyWidget<ThemeWidgetProps>(loadVariantTilesBasicContentTiles, 'ImageCarouselBasicTile');
 export const ExternalHtmlTile = lazyWidget<ThemeWidgetProps>(loadVariantTilesBasicContentTiles, 'ExternalHtmlTile');
+export const WebsiteTabsTile = lazyWidget<ThemeWidgetProps>(loadVariantTilesBasicContentTiles, 'WebsiteTabsTile');
 
 // 2026-05-25 monetize-audit — the one ad-network we can integrate
 // without partnership sign-off. Drops a rotating sponsor banner that

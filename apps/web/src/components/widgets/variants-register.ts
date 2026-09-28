@@ -23,7 +23,7 @@ import { lazyWidget } from './lazy-widget';
 import {
   // → ./variant-tiles/basic-content-tiles
   VideoBasicTile, VideoCarouselTile, WebpageTile, ImageBasicTile, ImageCarouselBasicTile,
-  ExternalHtmlTile,
+  ExternalHtmlTile, WebsiteTabsTile,
   // → ./themes/back-to-school
   BackToSchoolClock, BackToSchoolText, BackToSchoolAnnouncement, BackToSchoolCalendar,
   BackToSchoolStaff, BackToSchoolCountdown, BackToSchoolLogo, BackToSchoolTicker,
@@ -416,6 +416,19 @@ registerVariant({
   description: 'Embed any URL. Set the URL + auto-refresh in Properties.',
   category: 'MODERN',
   render: WebpageTile,
+  previewOnly: true,
+});
+// 2026-09-28 — Website Tabs (Greg: "push multiple sites and give tabs to flip
+// thru but still lock those sites on the screen … make it dumb simple"). One
+// tile; the operator pastes the sites in Properties and each names + icons
+// itself. Canvas renders through WidgetRenderer's WEBSITE_TABS case.
+registerVariant({
+  id: 'website-tabs-basic',
+  widgetType: 'WEBSITE_TABS',
+  name: 'Website Tabs',
+  description: 'Paste a few websites; visitors flip between them with big tabs and can never leave those sites. For touch screens.',
+  category: 'MODERN',
+  render: WebsiteTabsTile,
   previewOnly: true,
 });
 // 2026-05-16 — one tile for all 78 industry-signage / HS templates.

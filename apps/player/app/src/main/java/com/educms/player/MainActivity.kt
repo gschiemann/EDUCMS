@@ -11,17 +11,22 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.util.Log
+import android.view.Gravity
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.webkit.ConsoleMessage
+import android.webkit.CookieManager
 import android.webkit.PermissionRequest
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
+import android.webkit.WebStorage
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.FrameLayout
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.core.view.ViewCompat
@@ -51,6 +56,7 @@ import com.educms.player.security.HostAllowlist
 import com.educms.player.security.LockTaskController
 import com.educms.player.security.NativeBridgeChannel
 import com.educms.player.watchdog.ContentWatchdogPolicy
+import com.educms.player.webtabs.WebTabsPolicy
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -69,6 +75,21 @@ class MainActivity : ComponentActivity() {
     private val deviceStore by lazy { DeviceStore(applicationContext) }
     private lateinit var recovery: NetworkRecoveryController
     private var urlOverlayCurrentUrl: String? = null
+
+    // ── Website Tabs (2026-09-28) — the overlay WebView's second OWNER ──────
+    // While `webTabsActive`, `urlOverlayView` belongs to the Website Tabs
+    // widget: it is laid out over the site area the widget measured, locked
+    // to `webTabsAllowHosts`, and the plain URL-asset `hideUrlOverlay()` path
+    // must not touch it (the page fires that hide on every template apply).
+    // `webTabsAllowHosts` is read on the WebView's own thread by the
+    // navigation policy, hence @Volatile. See WebTabsPolicy for the rules.
+    @Volatile private var webTabsActive: Boolean = false
+    @Volatile private var webTabsAllowHosts: List<String>? = null
+    @Volatile private var webTabsCopy: WebTabsPolicy.Copy = WebTabsPolicy.Copy.FALLBACK
+    private var webTabsIncognito: Boolean = true
+    /** Every origin the site view navigated to — the sign-out's per-origin storage wipe list. */
+    private val webTabsVisitedOrigins = LinkedHashSet<String>()
+    private var webTabsLastActivityRelayMs: Long = 0L
 
     /**
      * SECONDARY FACES (2026-09-16, double-sided displays).
@@ -506,6 +527,8 @@ class MainActivity : ComponentActivity() {
          * a pre-commit `evaluateJavascript` is dropped on the floor.
          */
         private const val BRIDGE_NONCE_RETRY_MS = 250L
+        /** Website Tabs: at most one activity relay into the player page per this interval. */
+        private const val WEB_TABS_ACTIVITY_RELAY_MS = 3_000L
         private const val BRIDGE_NONCE_RETRY_MAX = 24
 
         /** How often to check freshness. 2 minutes. */
@@ -1580,6 +1603,25 @@ class MainActivity : ComponentActivity() {
                     PlayerLogger.i("MainActivity", "back-press while the boot diagnostic is up — leaving it to the card")
                     return
                 }
+                // Website Tabs (2026-09-28): Back inside a site goes back
+                // WITHIN the site first; with no history left it hands the
+                // remote back to the player page's tab bar (the parked
+                // control); only from there does a further Back reach the
+                // Stop/Exit surface below. Every press does something the
+                // visitor can see — rule 15.
+                if (webTabsActive && urlOverlayView.visibility == View.VISIBLE) {
+                    relayWebTabsActivity()
+                    if (urlOverlayView.canGoBack()) {
+                        PlayerLogger.i("MainActivity", "back-press: web tabs site history")
+                        urlOverlayView.goBack()
+                        return
+                    }
+                    if (urlOverlayView.hasFocus()) {
+                        PlayerLogger.i("MainActivity", "back-press: leaving the web tabs site for the tab bar")
+                        webView.requestFocus()
+                        return
+                    }
+                }
                 // Tell the web player to show its Stop/Exit overlay.
                 // The bridge method already exists for the dashboard's
                 // "Stop screen" action; we just trigger it locally.
@@ -2510,6 +2552,22 @@ class MainActivity : ComponentActivity() {
                 onHideUrlOverlay = {
                     runOnUiThread { hideUrlOverlay() }
                 },
+                // Website Tabs (2026-09-28). The JSON is parsed and validated
+                // on the UI thread by WebTabsPolicy; a payload this build does
+                // not understand is refused loudly, never guessed at.
+                onWebTabsShow = { json ->
+                    runOnUiThread {
+                        val req = WebTabsPolicy.parseShowRequest(json)
+                        if (req == null) {
+                            PlayerLogger.w("MainActivity", "webTabsShow REFUSED — unparseable or invalid request (${json.length} chars)")
+                        } else {
+                            showWebTabs(req)
+                        }
+                    }
+                },
+                onWebTabsHide = { json ->
+                    runOnUiThread { hideWebTabs(WebTabsPolicy.parseHideRequest(json).wipe) }
+                },
                 // 2026-05-06 (v1.0.51) — operator: ".49 OTA upgrade
                 // still doesn't fucking work, i set the manager to
                 // that permission manually and it still doesnt work".
@@ -2981,13 +3039,69 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        // Website Tabs (2026-09-28) — the two things a third-party page must
+        // never do from this view: pull a file onto the device, and be given
+        // a native surface. Downloads are refused outright (the listener is
+        // the only way to receive them, and it does nothing); this WebView
+        // gets NO `addJavascriptInterface`, NO `addWebMessageListener` and NO
+        // document-start script — `WebTabsWiringTest` pins that as a source
+        // fact. Safe Browsing on where the WebView supports it.
+        wv.setDownloadListener { url, _, _, mimetype, _ ->
+            PlayerLogger.w(
+                "MainActivity",
+                "URL overlay REFUSED a download (${mimetype ?: "?"}) from ${HostAllowlist.describe(url)}",
+            )
+        }
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.SAFE_BROWSING_ENABLE)) {
+            WebSettingsCompat.setSafeBrowsingEnabled(wv.settings, true)
+        }
+        // A touch inside the site is "someone is using the kiosk": relay it to
+        // the player page (throttled) so the Website Tabs idle clock resets.
+        // Returning false keeps the touch flowing to the page.
+        wv.setOnTouchListener { _, ev ->
+            if (ev.actionMasked == MotionEvent.ACTION_DOWN) relayWebTabsActivity()
+            false
+        }
+
         wv.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                return false
+                val url = request.url?.toString()
+                // Non-web schemes never load in this view — for Website Tabs
+                // AND for the plain URL-asset overlay, which used to let an
+                // `intent:` / `file:` / `content:` link through. `about:blank`
+                // is ours (we load it to clear the view).
+                if (!WebTabsPolicy.isNavigableScheme(url)) {
+                    PlayerLogger.w("MainActivity", "URL overlay BLOCKED a non-web navigation: ${HostAllowlist.describe(url)}")
+                    return true
+                }
+                // Sub-frames (a site's own embeds, its login iframe, its ads)
+                // are part of the page, not a navigation off it.
+                if (!request.isForMainFrame) return false
+                // Plain URL asset (no Website Tabs session): unchanged — the
+                // operator chose the site, it may navigate freely.
+                val allow = webTabsAllowHosts ?: return false
+                if (WebTabsPolicy.isAllowedNavigation(url, allow)) return false
+                // DEFAULT DENY. The kiosk never leaves the tabs' sites; the
+                // visitor gets a page that says so, with a Back.
+                PlayerLogger.i("MainActivity", "web tabs BLOCKED a navigation off the tabs' sites: ${HostAllowlist.describe(url)}")
+                view.loadDataWithBaseURL(null, WebTabsPolicy.blockedPageHtml(webTabsCopy), "text/html", "utf-8", null)
+                return true
+            }
+
+            override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
+                super.onReceivedError(view, request, error)
+                if (!request.isForMainFrame || !webTabsActive) return
+                // Chromium's own "Webpage not available" interstitial is not a
+                // kiosk surface; paint the widget's localised copy instead.
+                PlayerLogger.w("MainActivity", "web tabs main-frame error ${error.errorCode} on ${HostAllowlist.describe(request.url?.toString())}")
+                view.loadDataWithBaseURL(null, WebTabsPolicy.offlinePageHtml(webTabsCopy), "text/html", "utf-8", null)
             }
 
             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                 PlayerLogger.i("MainActivity", "URL overlay page started: ${url ?: "(unknown)"}")
+                // Remember every origin the site view reaches, for the sign-out's
+                // per-origin storage wipe (WebTabsPolicy.wipeOriginsFor).
+                if (webTabsActive) WebTabsPolicy.originOf(url)?.let { webTabsVisitedOrigins.add(it) }
                 super.onPageStarted(view, url, favicon)
             }
 
@@ -3027,6 +3141,11 @@ class MainActivity : ComponentActivity() {
             )
             return
         }
+        // Website Tabs (2026-09-28): a URL asset taking the glass ends any
+        // Website Tabs session — the content changed under it. Sign the sites
+        // out if that session was incognito, and give the view its full-screen
+        // layout back before the asset loads into it.
+        if (webTabsActive) endWebTabsSession(wipe = webTabsIncognito)
         if (urlOverlayCurrentUrl == cleanUrl && urlOverlayView.visibility == View.VISIBLE) {
             return
         }
@@ -3060,6 +3179,15 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun hideUrlOverlay() {
+        // Website Tabs (2026-09-28): while the widget owns the view, the
+        // URL-asset hide is not ours to honour — the player page fires it on
+        // every template apply (its URL-overlay effect hides whenever the
+        // current item is not an html asset), and it would blank the kiosk's
+        // site mid-tap. The widget takes its view down through webTabsHide.
+        if (webTabsActive) {
+            PlayerLogger.i("MainActivity", "hideUrlOverlay ignored — Website Tabs owns the overlay")
+            return
+        }
         if (urlOverlayView.visibility != View.VISIBLE && urlOverlayCurrentUrl == null) return
         PlayerLogger.i("MainActivity", "Hiding URL overlay")
         urlOverlayCurrentUrl = null
@@ -3074,6 +3202,170 @@ class MainActivity : ComponentActivity() {
         if (::recovery.isInitialized && recovery.isActive()) {
             PlayerLogger.i("MainActivity", "Recovery still active — re-showing overlay after URL dismissed")
             binding.recoveryOverlay.visibility = View.VISIBLE
+        }
+    }
+
+    // ─── Website Tabs (2026-09-28) ───────────────────────────────────────
+    //
+    // The widget (apps/web/src/components/widgets/WebsiteTabsWidget.tsx)
+    // measures its site area in device pixels and asks for the overlay
+    // WebView to be laid out over exactly that rectangle, under / above the
+    // tab bar it renders itself in the player page. Same WebView as the URL
+    // asset overlay; a second OWNER (see the fields), not a second view.
+    // Every rule the view enforces lives in WebTabsPolicy and is unit-tested.
+
+    /** `webTabsShow` — parsed and validated by [WebTabsPolicy.parseShowRequest]. */
+    private fun showWebTabs(req: WebTabsPolicy.ShowRequest) {
+        // Defence in depth on the ONE call that loads a URL into this view.
+        if (!HostAllowlist.isSafeWebUrl(req.url) || !WebTabsPolicy.isAllowedNavigation(req.url, req.allowHosts)) {
+            PlayerLogger.w("MainActivity", "webTabsShow REFUSED — start URL not inside its own allowlist: ${HostAllowlist.describe(req.url)}")
+            return
+        }
+        val wasActive = webTabsActive
+        val urlChanged = urlOverlayCurrentUrl != req.url
+        webTabsActive = true
+        webTabsAllowHosts = req.allowHosts
+        webTabsCopy = req.copy
+        webTabsIncognito = req.incognito
+        applyWebTabsBounds(req.bounds)
+        // A third-party page over the player never downgrades to mixed
+        // content; the plain URL-asset overlay keeps its compatibility mode.
+        urlOverlayView.settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+        if (!wasActive || urlChanged) {
+            PlayerLogger.i(
+                "MainActivity",
+                "web tabs: showing ${HostAllowlist.describe(req.url)} in ${req.bounds.width}x${req.bounds.height}@${req.bounds.left},${req.bounds.top} " +
+                    "(hosts=${req.allowHosts.size}, incognito=${req.incognito})",
+            )
+            urlOverlayCurrentUrl = req.url
+            WebTabsPolicy.originOf(req.url)?.let { webTabsVisitedOrigins.add(it) }
+            urlOverlayView.loadUrl(req.url)
+        }
+        urlOverlayView.visibility = View.VISIBLE
+        urlOverlayView.bringToFront()
+        // Unlike the URL asset overlay, focus stays with the player page (its
+        // tab bar is the remote's parked control) UNLESS the widget asked for
+        // it — a D-pad user pressing "into the site". Back hands it back.
+        if (req.focus) urlOverlayView.requestFocus()
+        binding.managerGateOverlay.bringToFront()
+        if (binding.recoveryOverlay.visibility == View.VISIBLE) {
+            PlayerLogger.i("MainActivity", "Suppressing recovery overlay — a Website Tabs site is in front")
+        }
+        binding.recoveryOverlay.visibility = View.GONE
+    }
+
+    /** `webTabsHide` — take the site view down; `wipe` signs the sites out first. */
+    private fun hideWebTabs(wipe: Boolean) {
+        if (!webTabsActive) {
+            // Already down (an alert or Stop took it first) — a requested
+            // sign-out still runs, so an idle return never leaves a login
+            // behind because of ordering.
+            if (wipe) wipeWebTabsSession()
+            return
+        }
+        endWebTabsSession(wipe)
+        if (::recovery.isInitialized && recovery.isActive()) {
+            PlayerLogger.i("MainActivity", "Recovery still active — re-showing overlay after Website Tabs dismissed")
+            binding.recoveryOverlay.visibility = View.VISIBLE
+        }
+    }
+
+    /** The teardown both `hideWebTabs` and a URL asset taking over share. */
+    private fun endWebTabsSession(wipe: Boolean) {
+        PlayerLogger.i("MainActivity", "web tabs: ending session (wipe=$wipe)")
+        webTabsActive = false
+        webTabsAllowHosts = null
+        if (wipe) wipeWebTabsSession()
+        urlOverlayCurrentUrl = null
+        urlOverlayView.stopLoading()
+        urlOverlayView.loadUrl("about:blank")
+        urlOverlayView.visibility = View.GONE
+        urlOverlayView.settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+        restoreUrlOverlayLayout()
+        // Give the remote back to the player page's tab bar / escape surface.
+        webView.requestFocus()
+    }
+
+    /**
+     * SIGN OUT. Runs while the last page is still current so its own storage
+     * clears as that origin, then every visited origin's quota storage, then
+     * cookies (process-wide on Android — the player page keeps none; its
+     * credential is a localStorage token this never touches), cache, history
+     * and form data. `WebStorage.deleteAllData()` is deliberately NOT used:
+     * it would erase the player's own localStorage, credential included.
+     */
+    private fun wipeWebTabsSession() {
+        try {
+            urlOverlayView.evaluateJavascript(WebTabsPolicy.WIPE_PAGE_STORAGE_JS, null)
+        } catch (t: Throwable) {
+            PlayerLogger.w("MainActivity", "web tabs: in-page storage clear failed: ${t.message}")
+        }
+        val origins = WebTabsPolicy.wipeOriginsFor(webTabsAllowHosts ?: emptyList(), webTabsVisitedOrigins)
+        try {
+            val storage = WebStorage.getInstance()
+            for (o in origins) storage.deleteOrigin(o)
+        } catch (t: Throwable) {
+            PlayerLogger.w("MainActivity", "web tabs: per-origin storage wipe failed: ${t.message}")
+        }
+        try {
+            val cm = CookieManager.getInstance()
+            cm.removeSessionCookies(null)
+            cm.removeAllCookies(null)
+            cm.flush()
+        } catch (t: Throwable) {
+            PlayerLogger.w("MainActivity", "web tabs: cookie wipe failed: ${t.message}")
+        }
+        try {
+            urlOverlayView.clearCache(true)
+            urlOverlayView.clearHistory()
+            urlOverlayView.clearFormData()
+            urlOverlayView.clearSslPreferences()
+        } catch (t: Throwable) {
+            PlayerLogger.w("MainActivity", "web tabs: view clear failed: ${t.message}")
+        }
+        PlayerLogger.i("MainActivity", "web tabs: signed out (${origins.size} origin(s), cookies, cache, history)")
+        webTabsVisitedOrigins.clear()
+    }
+
+    /** Lay the overlay over the widget's site area (device pixels, clamped to the window). */
+    private fun applyWebTabsBounds(b: WebTabsPolicy.Bounds) {
+        val root = binding.root
+        val maxW = if (root.width > 0) root.width else b.left + b.width
+        val maxH = if (root.height > 0) root.height else b.top + b.height
+        val left = b.left.coerceIn(0, maxOf(0, maxW - 1))
+        val top = b.top.coerceIn(0, maxOf(0, maxH - 1))
+        val width = b.width.coerceIn(1, maxOf(1, maxW - left))
+        val height = b.height.coerceIn(1, maxOf(1, maxH - top))
+        val lp = FrameLayout.LayoutParams(width, height)
+        lp.gravity = Gravity.TOP or Gravity.START
+        lp.leftMargin = left
+        lp.topMargin = top
+        urlOverlayView.layoutParams = lp
+    }
+
+    /** Back to the full-screen layout the URL asset overlay expects. */
+    private fun restoreUrlOverlayLayout() {
+        val lp = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+        urlOverlayView.layoutParams = lp
+    }
+
+    /**
+     * A touch or key inside the native site view is invisible to the player
+     * page, whose Website Tabs idle clock would otherwise send a visitor
+     * mid-browse back to the first tab. Relay it as a DOM event, throttled.
+     */
+    private fun relayWebTabsActivity() {
+        if (!webTabsActive) return
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - webTabsLastActivityRelayMs < WEB_TABS_ACTIVITY_RELAY_MS) return
+        webTabsLastActivityRelayMs = now
+        try {
+            webView.evaluateJavascript(
+                "window.dispatchEvent(new CustomEvent('edu:webtabs-activity'))",
+                null,
+            )
+        } catch (t: Throwable) {
+            PlayerLogger.w("MainActivity", "web tabs: activity relay failed: ${t.message}")
         }
     }
 
@@ -4239,6 +4531,10 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        // Website Tabs (2026-09-28): a remote key while a site is up is
+        // activity the player page cannot see; relay it so the idle clock
+        // does not send a remote user back to the first tab mid-browse.
+        if (webTabsActive) relayWebTabsActivity()
         // Operator (2026-04-27): "im trying to use the goodview remote
         // control but the enter button and back button do nothing."
         // Cause: this method previously returned `true` for every key

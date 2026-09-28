@@ -207,7 +207,13 @@ export function TouchOverlay({
       <button
         type="button"
         onClick={onClose}
-        className="absolute top-6 right-6 w-12 h-12 rounded-full bg-white/15 hover:bg-white/25 text-white flex items-center justify-center backdrop-blur-sm transition-colors"
+        // 2026-09-28 (player rule 15) — a Touch Menu link now opens HERE
+        // instead of escaping to the device browser, so this is the way back
+        // for a remote-only kiosk: park focus on Close the moment the overlay
+        // is up, with a ring OEM ROMs cannot strip (`:focus`, not
+        // `:focus-visible` — Chromium 83).
+        autoFocus
+        className="absolute top-6 right-6 w-12 h-12 rounded-full bg-white/15 hover:bg-white/25 text-white flex items-center justify-center backdrop-blur-sm transition-colors focus:outline-none focus:ring-4 focus:ring-white/80"
         aria-label="Close"
       >
         <XIcon className="w-6 h-6" />

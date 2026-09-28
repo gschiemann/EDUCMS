@@ -5,6 +5,10 @@ import { QrCodeWidget, type QrCodeConfig } from './QrCodeWidget';
 // lazy chunk) because SOCIAL_FEED is dispatched from the player's own type
 // switch, and the player must never wait on a chunk to paint a zone.
 import { SocialFeedWidget, SocialFeedTile } from './SocialFeedWidget';
+// 2026-09-28 — Website Tabs. Static for the same reason as SOCIAL_FEED: it is
+// dispatched from the type switch below, and a kiosk must never wait on a
+// chunk to paint the tab bar its visitors are about to touch.
+import { WebsiteTabsWidget } from './WebsiteTabsWidget';
 import { buildQrPayload } from './qr-payload';
 import { GoogleReviewsWidget, type GoogleReviewsConfig } from './GoogleReviewsWidget';
 import { withMeasuredHeight } from './v2/_shared/measured';
@@ -1076,6 +1080,10 @@ function WidgetTypeDispatch({ widgetType, config, width, height, live, freeze, o
     case 'MUSIC_PLAYER':    return <MusicPlayerWidget config={cfg} live={live} />;
     case 'LOGO':         return <LogoWidget config={cfg} />;
     case 'WEBPAGE':      return <WebpageWidget config={cfg} live={live} />;
+    // 2026-09-28 — Website Tabs: N pasted sites behind a finger-sized tab
+    // bar, locked to those sites. Native WebView on our app, sandboxed
+    // iframes elsewhere; the builder gets a preview card, never a frame.
+    case 'WEBSITE_TABS': return <WebsiteTabsWidget config={cfg} live={live} />;
     // 2026-05-16 — EXTERNAL_HTML: a self-contained HTML template
     // (3840×2160 signage / HS-district pack) served from our own
     // /public/templates/ tree. ONE widget type backs ALL ~78 of
@@ -5721,14 +5729,22 @@ export interface TouchAction {
 
 // Fire a touch action. On the player this dispatches a CustomEvent that the
 // player runtime listens for; anywhere else we log + no-op (widgets render the
-// same in the builder preview). Navigate/show are scene-level; 'url' opens a
-// link in a new tab.
+// same in the builder preview). Navigate/show are scene-level.
+//
+// 'url' (2026-09-28): this used to `window.open(target, '_blank')`, which on a
+// kiosk ESCAPES the locked screen — a Touch Menu link handed the visitor the
+// device's browser, with no way back to the template. It now publishes
+// `edu:touch-url`; the PLAYER (app/player/page.tsx) turns that into its
+// in-place overlay (the native URL overlay on our app, the framed overlay
+// with a Close bar elsewhere) through the same dispatcher every other touch
+// action uses. The builder preview has no listener, so a click there does
+// nothing — it never should have opened the operator's browser either.
 export function fireTouchAction(action: TouchAction | null | undefined) {
   if (!action || !action.type) return;
   try {
-    if (action.type === 'url' && action.target) {
-      if (typeof window !== 'undefined') {
-        window.open(action.target, '_blank', 'noopener,noreferrer');
+    if (action.type === 'url') {
+      if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function' && action.target) {
+        window.dispatchEvent(new CustomEvent('edu:touch-url', { detail: { url: action.target } }));
       }
       return;
     }

@@ -311,6 +311,11 @@ class BridgeNonce(
             "showUrlOverlay",
             "unpair",
             "uploadDiagnostics",
+            // 2026-09-28 — Website Tabs. Puts an arbitrary site on the glass in
+            // the overlay WebView, exactly showUrlOverlay's class-1 shape.
+            // Its partner `webTabsHide` is class 2 (recovery direction) and
+            // deliberately absent here — see WebAppBridge.webTabsHide.
+            "webTabsShow",
         )
 
         /** The refusal a value-returning gated method hands back. */

@@ -91,6 +91,32 @@ describe('dispatchTouchAction — open-url http(s) still routes to the in-place 
     window.removeEventListener('edu:touch-overlay', overlaySpy);
   });
 
+  it('openInNewTab NEVER opens a browser tab on a kiosk — it is the same in-place overlay (2026-09-28)', () => {
+    const openSpy = jest.spyOn(window, 'open').mockImplementation(() => null);
+    const overlaySpy = jest.fn();
+    window.addEventListener('edu:touch-overlay', overlaySpy);
+    dispatchTouchAction({ type: 'open-url', target: 'https://example.com/menu', openInNewTab: true }, CTX);
+    expect(openSpy).not.toHaveBeenCalled();
+    expect(overlaySpy).toHaveBeenCalledTimes(1);
+    expect((overlaySpy.mock.calls[0][0] as CustomEvent).detail).toEqual({ kind: 'iframe', url: 'https://example.com/menu' });
+    window.removeEventListener('edu:touch-overlay', overlaySpy);
+    openSpy.mockRestore();
+  });
+
+  it('the legacy `url` action (Touch Menu / Touch Button) stays inside the kiosk too', () => {
+    const openSpy = jest.spyOn(window, 'open').mockImplementation(() => null);
+    const overlaySpy = jest.fn();
+    window.addEventListener('edu:touch-overlay', overlaySpy);
+    dispatchTouchAction({ type: 'url', target: 'https://example.com/' }, CTX);
+    expect(openSpy).not.toHaveBeenCalled();
+    expect((overlaySpy.mock.calls[0][0] as CustomEvent).detail).toEqual({ kind: 'iframe', url: 'https://example.com/' });
+    // …and the scheme gate still holds for it.
+    dispatchTouchAction({ type: 'url', target: 'javascript:alert(1)' }, CTX);
+    expect(overlaySpy).toHaveBeenCalledTimes(1);
+    window.removeEventListener('edu:touch-overlay', overlaySpy);
+    openSpy.mockRestore();
+  });
+
   it('every tap broadcasts edu:touch-action (idle-reset + analytics)', () => {
     const actionSpy = jest.fn();
     window.addEventListener('edu:touch-action', actionSpy);

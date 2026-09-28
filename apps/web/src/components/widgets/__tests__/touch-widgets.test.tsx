@@ -39,6 +39,22 @@ describe('TOUCH_BUTTON', () => {
     window.removeEventListener('edu:touch-action', spy);
   });
 
+  it('a `url` action NEVER opens a browser tab — it publishes edu:touch-url for the player (2026-09-28)', () => {
+    // window.open on a kiosk hands the visitor the device browser with no
+    // way back to the template. The player turns edu:touch-url into its
+    // in-place overlay; the builder preview has no listener and stays put.
+    const openSpy = jest.spyOn(window, 'open').mockImplementation(() => null);
+    const urlSpy = jest.fn();
+    window.addEventListener('edu:touch-url', urlSpy);
+    renderWidget('TOUCH_BUTTON', { label: 'Menu', action: { type: 'url', target: 'https://example.com/menu' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+    expect(openSpy).not.toHaveBeenCalled();
+    expect(urlSpy).toHaveBeenCalledTimes(1);
+    expect((urlSpy.mock.calls[0][0] as CustomEvent).detail).toEqual({ url: 'https://example.com/menu' });
+    window.removeEventListener('edu:touch-url', urlSpy);
+    openSpy.mockRestore();
+  });
+
   it('enforces WCAG min-width/height on the pressable', () => {
     renderWidget('TOUCH_BUTTON', { label: 'Tap' });
     const btn = screen.getByRole('button', { name: 'Tap' });

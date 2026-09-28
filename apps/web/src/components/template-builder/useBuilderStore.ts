@@ -23,6 +23,10 @@ export function seedDefaultConfig(type: string): Record<string, any> {
       case 'RICH_TEXT':         return { content: 'Click to edit text' };
       case 'ANNOUNCEMENT':      return { message: 'Click to edit announcement' };
       case 'WEBPAGE':           return { url: 'https://example.com' };
+      // 2026-09-28 — Website Tabs starts EMPTY on purpose: the canvas shows
+      // "Paste your first website" and the panel does the rest. A sample
+      // site here would be a site the operator never asked for on a kiosk.
+      case 'WEBSITE_TABS':      return { tabs: [], barPosition: 'top', showHome: true, idleReturnSec: 120, idleWarnSec: 10, incognito: true };
       case 'TICKER':            return { messages: ['Click to edit ticker messages'] };
       case 'COUNTDOWN':         return { label: 'Countdown', targetDate: '' };
       case 'STAFF_SPOTLIGHT':   return { staffName: 'Staff Name', role: 'Role' };
@@ -543,7 +547,8 @@ export const useBuilderStore = create<BuilderState>((rawSet, get) => {
     const zone = prev.zones.find((z) => z.id === id);
     if (!zone) return;
     const canonical = canonicalWidgetType(widgetType);
-    const isTouchTile = widgetType.startsWith('TOUCH_');
+    // Website Tabs flips touch mode on exactly like a TOUCH_ tile (see addZone).
+    const isTouchTile = widgetType.startsWith('TOUCH_') || widgetType === 'WEBSITE_TABS';
     // The zone's NAME is the operator's if they renamed it; auto-generated
     // names ("Clock 3", and the seeded placeholder) must follow the widget or
     // the layers panel ends up labelling a photo "Clock 3" forever.
@@ -713,8 +718,16 @@ export const useBuilderStore = create<BuilderState>((rawSet, get) => {
     // TOUCH_CIRCLE, etc.) all canonicalize to widgetType='TOUCH_POINT'
     // with their variant carried in defaultConfig. The seedDefault
     // switch above already sets the variant key.
-    const isTouchTile = widgetType.startsWith('TOUCH_');
+    // 2026-09-28 — Website Tabs is a touch surface too: dropping it turns the
+    // template's touch mode on, same as any TOUCH_ tile. (It is NOT a
+    // `TOUCH_` type — that prefix canonicalises to TOUCH_POINT.)
+    const isTouchTile = widgetType.startsWith('TOUCH_') || widgetType === 'WEBSITE_TABS';
     const canonical = canonicalWidgetType(widgetType);
+    // A full-canvas drop (Website Tabs asks for 100×100 through drop-sizes)
+    // belongs at the origin; the stagger above would push it off the canvas
+    // and clampZone would then shrink it.
+    if (w >= 100) x = 0;
+    if (h >= 100) y = 0;
     // Phase D2.5 — new zones inherit the currently-active scene so the
     // operator's mental model holds: "I clicked Add while editing
     // Scene B, the new widget belongs to Scene B." Shared zones (those

@@ -408,6 +408,14 @@ WIDGET_META['TOUCH_POINT'] = {
   icon: Hand,
   desc: 'Interactive tap target — visual selected via the variant on defaultConfig',
 };
+// 2026-09-28 — Website Tabs. Registered explicitly (not through WIDGET_GROUPS,
+// which no rendered surface reads) so the layers panel / Properties chip
+// say "Website Tabs" rather than the raw type.
+WIDGET_META['WEBSITE_TABS'] = {
+  label: 'Website Tabs',
+  icon: Globe,
+  desc: 'Big tabs over the websites you paste — visitors flip between them and can never leave those sites',
+};
 
 export function widgetLabel(type: string): string {
   return WIDGET_META[type]?.label ?? type;
@@ -424,6 +432,7 @@ export const ZONE_COLORS: Record<string, { bg: string; border: string; text: str
   IMAGE_CAROUSEL:  { bg: '#f0f9ff', border: '#93c5fd', text: '#1d4ed8', accent: '#3b82f6' },
   PLAYLIST:        { bg: '#f5f3ff', border: '#c4b5fd', text: '#6d28d9', accent: '#8b5cf6' },
   WEBPAGE:         { bg: '#ecfdf5', border: '#6ee7b7', text: '#047857', accent: '#10b981' },
+  WEBSITE_TABS:    { bg: '#f0f9ff', border: '#7dd3fc', text: '#0369a1', accent: '#0ea5e9' },
   TEXT:            { bg: '#f8fafc', border: '#cbd5e1', text: '#334155', accent: '#64748b' },
   RICH_TEXT:       { bg: '#f8fafc', border: '#cbd5e1', text: '#334155', accent: '#64748b' },
   RSS_FEED:        { bg: '#fff7ed', border: '#fdba74', text: '#c2410c', accent: '#f97316' },

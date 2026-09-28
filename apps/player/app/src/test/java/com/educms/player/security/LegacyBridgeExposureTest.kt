@@ -385,11 +385,14 @@ class LegacyBridgeExposureTest {
             .find(channel)?.groupValues?.get(1)
         Assume.assumeTrue("METHODS block not found", block != null)
         val names = Regex(""""([A-Za-z0-9_]+)"""").findAll(block!!).map { it.groupValues[1] }.toList()
+        // 30 → 32 on 2026-09-28: Website Tabs added `webTabsShow` / `webTabsHide`
+        // through the full three-file contract (web tables + canary in the same
+        // commit; see WebTabsWiringTest for the wiring half).
         assertEquals(
             "NativeBridgeChannel.METHODS changed size. SEC-002 must not add a method NAME — " +
                 "if this is a deliberate new method, update the web tables and the canary " +
                 "count in nativeBridge.test.ts in the SAME commit (CLAUDE.md player rule 9).",
-            30,
+            32,
             names.size,
         )
     }
