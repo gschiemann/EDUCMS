@@ -132,6 +132,13 @@ class WebTabsWiringTest {
 
     // ─── 4. ⚠️ THE BOUNDARY: the third-party WebView reaches no native surface ──
 
+    /** Source with comments removed — a scan must judge CODE, not the comments that explain it. */
+    private fun codeOnly(src: String): String = src
+        .replace(Regex("""/\*[\s\S]*?\*/"""), "")
+        .lines()
+        .filterNot { it.trimStart().startsWith("//") }
+        .joinToString("\n")
+
     private fun overlayConfigBlock(): String {
         val src = mainActivity
         val start = src.indexOf("private fun configureUrlOverlay(")
@@ -143,7 +150,7 @@ class WebTabsWiringTest {
 
     @Test
     fun `the overlay WebView gets no JavaScript bridge of any kind`() {
-        val block = overlayConfigBlock()
+        val block = codeOnly(overlayConfigBlock())
         for (surface in listOf("addJavascriptInterface", "addWebMessageListener", "addDocumentStartJavaScript", "NativeBridgeChannel.attach", "attachLegacyCompatShim")) {
             assertFalse("the third-party overlay WebView must never get $surface", block.contains(surface))
         }
@@ -153,7 +160,7 @@ class WebTabsWiringTest {
         assertTrue(block.contains("SpatialNavigation.inject("))
         // The whole Activity calls addJavascriptInterface exactly once — on the
         // player WebView's legacy path — and never on urlOverlayView.
-        val src = mainActivity
+        val src = codeOnly(mainActivity)
         assertEquals(1, Regex("""\.addJavascriptInterface\(""").findAll(src).count())
         assertFalse(src.contains("urlOverlayView.addJavascriptInterface"))
     }
@@ -197,7 +204,7 @@ class WebTabsWiringTest {
         assertTrue(wipe.contains("WebTabsPolicy.WIPE_PAGE_STORAGE_JS"))
         assertFalse(
             "WebStorage.deleteAllData() erases EVERY origin's localStorage — the player's device credential included (player rule 3)",
-            src.contains("deleteAllData("),
+            codeOnly(src).contains("deleteAllData("),
         )
     }
 }

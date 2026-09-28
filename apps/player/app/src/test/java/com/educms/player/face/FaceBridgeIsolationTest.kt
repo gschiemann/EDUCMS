@@ -92,7 +92,10 @@ class FaceBridgeIsolationTest {
                 "method NAME — a new name has to stay out of KNOWN_METHODS until the fleet floor " +
                 "includes the APK that implements it, or manifest-less channel devices lose the " +
                 "call silently (CLAUDE.md player rule 9).",
-            30,
+            // 30 -> 32 (2026-09-28): Website Tabs added webTabsShow + webTabsHide through the
+            // full three-file contract, both kept out of KNOWN_METHODS until the fleet floor
+            // includes the APK that implements them.
+            32,
             names.size,
         )
         assertFalse("a face-specific bridge method appeared", names.any { it.startsWith("face") })

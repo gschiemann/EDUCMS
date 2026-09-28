@@ -171,8 +171,10 @@ object WebTabsPolicy {
         if (raw == null) return null
         var h = raw.trim().lowercase()
         if (h.isEmpty()) return null
-        if (h.endsWith(".")) h = h.dropLast(1)
+        // www. first, THEN the trailing dot: the other order turned "www." into the
+        // host "www" (WebTabsPolicyTest caught it).
         if (h.startsWith("www.")) h = h.removePrefix("www.")
+        if (h.endsWith(".")) h = h.dropLast(1)
         if (h.isEmpty()) return null
         if (!HOST_PATTERN.matches(h)) return null
         return h

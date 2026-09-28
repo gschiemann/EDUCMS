@@ -149,6 +149,7 @@ class BridgeNonceTest {
                 "showUrlOverlay",
                 "unpair",
                 "uploadDiagnostics",
+                "webTabsShow",
             ),
             BridgeNonce.GATED_METHODS,
         )
