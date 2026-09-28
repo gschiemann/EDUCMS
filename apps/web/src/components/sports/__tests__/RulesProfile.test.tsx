@@ -11,7 +11,7 @@ import {
   snapshotRules,
   sportForGame,
 } from '@cms/api-types';
-import { GameRulesCard, RulesProfilePicker } from '../RulesProfile';
+import { GameRulesCard, InningGameOverHint, RulesProfilePicker } from '../RulesProfile';
 import { SituationalRow } from '../../widgets/v2/_shared/sports-situational';
 
 function picker(sport: string, value = '') {
@@ -91,6 +91,36 @@ describe('GameRulesCard (console Setup)', () => {
     expect(card).toHaveTextContent('UIL · Junior high · 2026-27');
     expect(card).toHaveTextContent('The rules are fixed once the game has started.');
     expect(screen.queryByRole('button', { name: 'Change the rules' })).toBeNull();
+  });
+});
+
+describe('InningGameOverHint — K12-F20', () => {
+  const nfhs = sportForGame({
+    sport: 'baseball',
+    rules: snapshotRules(findRulesProfile('nfhs-baseball@2027')!),
+  });
+
+  it('home leading in the bottom of the 7th: the game is over once the umpire calls it', () => {
+    render(
+      <InningGameOverHint
+        def={nfhs}
+        game={{ segment: 7, homeScore: 4, awayScore: 3, stats: { half: 'Bottom' } }}
+      />,
+    );
+    expect(screen.getByTestId('inning-game-over-hint')).toHaveTextContent(
+      'Home leads in the bottom of inning 7',
+    );
+  });
+
+  it('no hint in the top half, before the 7th, or on a tie', () => {
+    const { container } = render(
+      <>
+        <InningGameOverHint def={nfhs} game={{ segment: 7, homeScore: 4, awayScore: 3, stats: { half: 'Top' } }} />
+        <InningGameOverHint def={nfhs} game={{ segment: 6, homeScore: 4, awayScore: 3, stats: { half: 'Bottom' } }} />
+        <InningGameOverHint def={nfhs} game={{ segment: 7, homeScore: 3, awayScore: 3, stats: { half: 'Bottom' } }} />
+      </>,
+    );
+    expect(container).toBeEmptyDOMElement();
   });
 });
 

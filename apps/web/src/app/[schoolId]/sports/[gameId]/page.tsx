@@ -143,7 +143,7 @@ import { RecentEventsBar } from './RecentEventsBar';
 import { LanePadSection, isLaneMeetSport } from './LanePadSection';
 import { PhoneRunTrays } from './PhoneRunTrays';
 import { basketballBonus, shotClockResets } from '@/lib/sports-stat-rows';
-import { GameRulesCard } from '@/components/sports/RulesProfile';
+import { GameRulesCard, InningGameOverHint } from '@/components/sports/RulesProfile';
 
 // ── constants ──────────────────────────────────────────────────
 
@@ -1415,6 +1415,9 @@ function RunMode({
     <>
       {isBaseballSoftball && (
         <>
+          {/* K12-F20 — home leads in the bottom of the 7th (or later): the
+              game is over; the table ends it when the umpire calls it. */}
+          <InningGameOverHint def={def} game={g} />
           <BaseTrayBall
             stats={stats}
             onStat={(s) => ctl.stats.mutate({ stats: s })}

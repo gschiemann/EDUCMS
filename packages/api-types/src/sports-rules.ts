@@ -1382,6 +1382,30 @@ export function setFormatOf(def: SportDefinition | null | undefined): SetFormatR
   return def?.setFormat ?? null;
 }
 
+/**
+ * K12-F20 — baseball / softball: the home team LEADS in the bottom half of
+ * the last regulation inning or of an extra inning, so the game is over — it
+ * either did not need to bat (it led after the top) or it has just taken the
+ * lead (a walk-off). A regulation game is seven innings, shortened when the
+ * home team needs none or only part of its last half [nfhs-baseball-rules,
+ * Rule 4-2-2]. A HINT for the table only: the umpire ends the game, and run
+ * rules, suspensions and forfeits are the state association's.
+ */
+export function inningGameCanEnd(
+  def: SportDefinition | null | undefined,
+  game: { segment?: unknown; homeScore?: unknown; awayScore?: unknown; stats?: unknown },
+): boolean {
+  if (!def || def.segment.name !== 'Inning') return false;
+  const segment = Number(game.segment);
+  const half = String((isRecord(game.stats) ? game.stats.half : '') ?? '').toLowerCase();
+  return (
+    Number.isFinite(segment) &&
+    segment >= def.segment.count &&
+    half.startsWith('b') &&
+    Number(game.homeScore) > Number(game.awayScore)
+  );
+}
+
 /** Sets (games) a side needs to win the match. */
 export function setsToWin(format: SetFormatRules): number {
   return Math.floor(format.bestOf / 2) + 1;
@@ -1408,9 +1432,4 @@ export function setWinner(
     if (away >= cap && -lead >= 1) return 'away';
   }
   return null;
-}
-
-/** The label a table uses for the sport's shot / possession clock. */
-export function shotClockLabel(def: SportDefinition | null | undefined): string {
-  return def?.shotClock?.label ?? 'Shot clock';
 }

@@ -24,6 +24,7 @@ import { useId, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import {
   gameRulesInfo,
+  inningGameCanEnd,
   rulesProfilesForSport,
   snapshotRules,
   sportForGame,
@@ -167,6 +168,32 @@ export function RulesProfilePicker({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * K12-F20 — baseball / softball: when the home team leads in the bottom of
+ * the last regulation inning (or an extra one), the game is over — it did not
+ * need to bat, or it just walked off. A hint for the table; the umpire ends
+ * the game (`inningGameCanEnd`, @cms/api-types sports-rules.ts).
+ */
+export function InningGameOverHint({
+  def,
+  game,
+}: {
+  def: SportDefinition | undefined;
+  game: { segment?: unknown; homeScore?: unknown; awayScore?: unknown; stats?: unknown };
+}) {
+  const t = useTranslations('sportsRules');
+  if (!inningGameCanEnd(def, game)) return null;
+  return (
+    <p
+      role="status"
+      data-testid="inning-game-over-hint"
+      className="w-full rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-[13px] font-semibold text-emerald-900"
+    >
+      {t('gameCanEnd', { inning: Number(game.segment) })}
+    </p>
   );
 }
 

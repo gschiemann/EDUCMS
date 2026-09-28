@@ -3446,6 +3446,7 @@
     "timeoutsBreakdown": "Quedan {full} completos · {short} cortos",
     "pitchCountShort": "Solo conteo: no verifica la elegibilidad",
     "pitchCountNote": "El conteo de lanzamientos es solo un número para el marcador: no verifica límites de lanzamientos ni días de descanso. Las reglas de su estado deciden quién puede lanzar.",
-    "bonusOwnFouls": "Estas faltas de equipo ponen al rival en bonus."
+    "bonusOwnFouls": "Estas faltas de equipo ponen al rival en bonus.",
+    "gameCanEnd": "El local va ganando en la parte baja de la entrada {inning}: el partido termina cuando lo declare el ampáyer. Entonces mantenga pulsado «End game» (Terminar partido)."
   }
 }

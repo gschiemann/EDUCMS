@@ -15,6 +15,7 @@ import {
   findRulesProfile,
   foulsReachBonus,
   gameRulesInfo,
+  inningGameCanEnd,
   maxSegment,
   overtimeLabel,
   parseGameRules,
@@ -249,6 +250,20 @@ describe('shared rule helpers', () => {
     expect(timeoutBanks(bb, 'home', { homeTimeouts: 4, homeShortTimeouts: 1 })).toEqual({ total: 4, full: 3, short: 1 });
     expect(timeoutBanks(bb, 'home', { homeTimeouts: 1, homeShortTimeouts: 2 })).toEqual({ total: 1, full: 0, short: 1 });
     expect(timeoutBanks(SPORT_DEFINITIONS.basketball, 'home', { homeTimeouts: 3 })).toEqual({ total: 3, full: 3, short: 0 });
+  });
+
+  it('baseball: the home team leading in the bottom of the 7th (or later) ends the game — a hint (F20)', () => {
+    const base = def('nfhs-baseball@2027');
+    const at = (segment: number, half: string, home: number, away: number) =>
+      inningGameCanEnd(base, { segment, homeScore: home, awayScore: away, stats: { half } });
+    expect(at(7, 'Bottom', 3, 2)).toBe(true); // led after the top: no bottom needed
+    expect(at(9, 'Bot', 5, 4)).toBe(true); // walk-off in extras
+    expect(at(7, 'Top', 3, 2)).toBe(false);
+    expect(at(6, 'Bottom', 3, 2)).toBe(false);
+    expect(at(7, 'Bottom', 2, 2)).toBe(false);
+    // The classic nine-inning game waits for the 9th.
+    expect(inningGameCanEnd(SPORT_DEFINITIONS.baseball, { segment: 7, homeScore: 3, awayScore: 2, stats: { half: 'Bottom' } })).toBe(false);
+    expect(inningGameCanEnd(def('nfhs-basketball@2026-27'), { segment: 7, homeScore: 3, awayScore: 2 })).toBe(false);
   });
 
   it('set winners: target by two, deciding set, cap (F19)', () => {
