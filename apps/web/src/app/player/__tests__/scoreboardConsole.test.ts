@@ -6,6 +6,7 @@
  */
 import {
   bridgeMountPlan,
+  managedAnswerFor,
   parseScoreboardConsoleBlock,
   resolveDecoderSport,
   sameConsoleBinding,
@@ -122,5 +123,26 @@ describe('resolveDecoderSport — no football fallback', () => {
 
   it('legacy CTS keeps its one table (water polo) — unchanged for the pilot install', () => {
     expect(resolveDecoderSport({ decoder: 'cts', profile: 'cts-gen6', managed: null, explicit: null })).toBe('water-polo');
+  });
+});
+
+describe('managedAnswerFor — only a definitive answer changes the box’s panel', () => {
+  it('reads the console endpoint’s answers', () => {
+    expect(managedAnswerFor(200, { ok: true, accepted: false, preview: true })).toBe('preview');
+    expect(managedAnswerFor(200, { ok: true, accepted: true })).toBe('live');
+    expect(managedAnswerFor(200, { ok: true, accepted: false, reason: 'game is final' })).toBe('final');
+    expect(managedAnswerFor(409, { code: 'CONSOLE_DECODER_MISMATCH' })).toBe('mismatch');
+    expect(managedAnswerFor(409, { code: 'CONSOLE_NOT_BOUND' })).toBe('notBound');
+    expect(managedAnswerFor(409, { code: 'CONSOLE_GAME_GONE' })).toBe('gameGone');
+    expect(managedAnswerFor(409, { code: 'CONSOLE_SPORT_UNSUPPORTED' })).toBe('unsupported');
+  });
+
+  it('a heartbeat, a blip or a renewing credential leaves the last state standing', () => {
+    expect(managedAnswerFor(200, { ok: true, accepted: false, reason: 'heartbeat' })).toBeNull();
+    expect(managedAnswerFor(200, { ok: true, accepted: false, reason: 'out-of-order' })).toBeNull();
+    expect(managedAnswerFor(401, { code: 'SCREEN_DEVICE_AUTH_REQUIRED' })).toBeNull();
+    expect(managedAnswerFor(429, null)).toBeNull();
+    expect(managedAnswerFor(503, null)).toBeNull();
+    expect(managedAnswerFor(409, { code: 'SOMETHING_ELSE' })).toBeNull();
   });
 });

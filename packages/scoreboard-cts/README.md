@@ -22,13 +22,21 @@ anything but water polo on a CTS console) is refused — never decoded with
 another sport's table.
 
 The player-side bridge (`apps/web/src/components/player/CtsBridge.tsx`)
-picks a profile via the `consoleProfile` prop / `?consoleProfile=` query
-param (`cts-gen6` | `daktronics-allsport`) — that single switch chooses
-BOTH the serial open() settings AND the parser. Both decoders emit the
-same normalized snapshot fields (`clock` / `homeScore` / `awayScore` /
-`period` / `clockRunning` / `horn` + sport-specific extensions) so the
-server / board / ribbon / scorebug surfaces never care which console
-produced the data.
+picks a profile, and that single switch chooses BOTH the serial open()
+settings AND the parser. **Since K12-F32 (2026-09-27) it is set up from the
+game, not a URL:** in the game's console, Set up game → Scoreboard console
+binds the screen wired to the console, with its model, to that game; the
+manifest carries the binding and the decoder table for the game's sport
+(`consoleDecoderFor` in `@cms/api-types`), the bridge posts with the
+screen's device credential, and the operator confirms a preview before the
+console drives the game. There is no default sport: a Daktronics console
+used to be decoded as football when nothing said otherwise. The old
+`?cts=1&game=…&feedToken=…` / `?consoleProfile=` / `?dakSport=` kiosk URL
+still works for an existing install (and a manifest binding wins over it).
+Both decoders emit the same normalized snapshot fields (`clock` /
+`homeScore` / `awayScore` / `period` / `clockRunning` / `horn` +
+sport-specific extensions) so the server / board / ribbon / scorebug
+surfaces never care which console produced the data.
 
 The CTS path (everything below) is unchanged.
 

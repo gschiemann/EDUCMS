@@ -109,6 +109,40 @@ export function bridgeMountPlan(input: {
   return { mount: false };
 }
 
+/** What the console endpoint last said about this box's packets. */
+export type ManagedAnswer = 'preview' | 'live' | 'final' | 'mismatch' | 'notBound' | 'gameGone' | 'unsupported';
+
+/**
+ * What the console endpoint's answer means for the box's panel. Only a
+ * DEFINITIVE answer changes it: a heartbeat, a transient failure (network,
+ * a 401 while the device credential renews, 429, 5xx) or an out-of-order
+ * refusal leaves the last state standing — the panel never flaps on a blip.
+ */
+export function managedAnswerFor(status: number, body: Record<string, unknown> | null): ManagedAnswer | null {
+  if (status >= 200 && status < 300) {
+    if (!body || body.reason === 'heartbeat') return null;
+    if (body.preview === true) return 'preview';
+    if (body.accepted === true) return 'live';
+    if (body.reason === 'game is final') return 'final';
+    return null;
+  }
+  if (status === 409) {
+    switch (body?.code) {
+      case 'CONSOLE_DECODER_MISMATCH':
+        return 'mismatch';
+      case 'CONSOLE_NOT_BOUND':
+        return 'notBound';
+      case 'CONSOLE_GAME_GONE':
+        return 'gameGone';
+      case 'CONSOLE_SPORT_UNSUPPORTED':
+        return 'unsupported';
+      default:
+        return null;
+    }
+  }
+  return null;
+}
+
 /**
  * Which decoder table the bridge reads with. MANAGED: exactly the manifest's
  * (server-computed from the game's sport) — null means "cannot read this

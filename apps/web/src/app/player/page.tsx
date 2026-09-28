@@ -119,13 +119,20 @@ import { getServiceWorkerContainer, isServiceWorkerAvailable } from '../../lib/s
 // Pure modules (no React/DOM) so the math is unit-tested without mounting this page.
 import { SyncClock } from './sync/syncClock';
 import { resolveTimeline, advanceCounterTo, videoTargetMs, type TimelinePosition } from './sync/syncTimeline';
-// Sprint 13 — Colorado Time Systems (CTS) System 6/Gen 6 scoreboard
-// bridge. Mounts on the player page when the URL carries `?cts=1` (so
-// regular signage screens never see the bridge UI). The bridge reads
-// the CTS console via Web Serial on the Beelink mini PC, parses the
-// scoreboard protocol, and POSTs each game-state snapshot to the API
-// for signed-WS fan-out. See packages/scoreboard-cts/README.md.
+// Sprint 13 — scoreboard console bridge (CTS / Daktronics serial). Mounts
+// when the manifest binds this screen to a game (K12-F32 — set up in the
+// game's console, no URL), or on the legacy `?cts=1` kiosk URL; regular
+// signage screens never see it. It reads the console over Web Serial or the
+// APK's native serial bridge, decodes with the table for the game's sport,
+// and POSTs each snapshot to the API. See packages/scoreboard-cts/README.md.
 import { CtsBridge } from '@/components/player/CtsBridge';
+// K12-F32 — a scoreboard console bound to a game through the manifest.
+import {
+  bridgeMountPlan,
+  parseScoreboardConsoleBlock,
+  sameConsoleBinding,
+  type ManagedConsoleBinding,
+} from './scoreboardConsole';
 // P0-3 — the renderer graph, behind a dynamic import. `LazyPlayerZoneWidget`
 // renders one zone (error boundary + WidgetPreview) and only ever appears
 // inside the Suspense boundary around the zone list;
@@ -3033,6 +3040,13 @@ function PlayerPage() {
   const [manifestConsoleProfile, setManifestConsoleProfile] = useState<
     'cts-gen6' | 'cts-gen7' | 'cts-wttc' | 'daktronics-allsport' | undefined
   >(undefined);
+
+  // K12-F32 — the game this box's scoreboard console feeds, from the
+  // manifest's `scoreboardConsole` block (set in the game's console: Set up
+  // game → Scoreboard console). Present → the bridge mounts in MANAGED mode:
+  // no kiosk URL, no feed token, the decoder for the game's sport.
+  const [manifestScoreboardConsole, setManifestScoreboardConsole] =
+    useState<ManagedConsoleBinding | null>(null);
 
   // Tag <body> with data-player-route so the debug pill in globals.css
   // ONLY appears on the kiosk player, NEVER on the dashboard. Operator
@@ -6137,6 +6151,13 @@ function PlayerPage() {
           ? (cpRaw as 'cts-gen6' | 'cts-gen7' | 'cts-wttc' | 'daktronics-allsport')
           : undefined;
         if (cp !== manifestConsoleProfile) setManifestConsoleProfile(cp);
+      }
+      // K12-F32 — the scoreboard console binding. An EMERGENCY manifest never
+      // changes it: that branch carries no console fields, and a drill must
+      // not unmount a live game's console bridge (and remount it after).
+      if (manifest.isEmergency !== true) {
+        const nextConsole = parseScoreboardConsoleBlock(manifest.scoreboardConsole);
+        setManifestScoreboardConsole((prev) => (sameConsoleBinding(prev, nextConsole) ? prev : nextConsole));
       }
       // 2026-07-28 — frame-locked multi-screen sync config. Allow-list
       // validated like wiring/consoleProfile above. Parsed only when the
@@ -13238,33 +13259,54 @@ function PlayerPage() {
           onTenantEmergencyHint={onTenantEmergencyHint}
         />
       )}
-      {/* Sprint 13 — CTS scoreboard bridge. Mounted only when:
-        *   - URL carries ?cts=1 (operator opt-in; regular kiosks
-        *     never see the panel)
-        *   - The screen is paired (screenId + tenantId both set, so
-        *     a device token exists for the POST)
+      {/* Sprint 13 — scoreboard console bridge (CTS / Daktronics serial).
         *
-        * 2026-05-27 — gameId binding. When the operator opens the
-        * player with `?cts=1&game=<gameId>&feedToken=<token>` the
-        * bridge persists every snapshot to `Game.stats.cts` so the
-        * /board /ribbon /scorebug surfaces read CTS as the SOURCE OF
-        * TRUTH (see apps/web/src/lib/cts-merge.ts). Without those two
-        * params the bridge falls back to its legacy transient
-        * WS-broadcast path for the in-page CtsScoreboard widget.
+        * K12-F32 (2026-09-27) — mounted from the MANIFEST when an operator
+        * bound this screen to a game (Set up game → Scoreboard console): the
+        * bridge decodes with the table for that game's sport (never a
+        * default), posts with this screen's DEVICE credential, and holds its
+        * data as a preview until the operator confirms it. Nothing in a URL.
         *
-        * The bridge handles Web Serial detection internally — on
-        * Safari / Firefox / Chromium 83 it renders nothing. */}
-      {tenantId && screenId && qp('cts') === '1' && (
-        <CtsBridge
-          screenId={screenId}
-          apiRoot={getApiRoot()}
-          deviceToken={getDeviceToken()}
-          gameId={qp('game') || null}
-          feedToken={qp('feedToken') || null}
-          wiring={manifestWiring || undefined}
-          consoleProfile={manifestConsoleProfile}
-        />
-      )}
+        * LEGACY — `?cts=1[&game=<id>&feedToken=<token>]` still mounts it,
+        * unchanged, so an existing pilot install keeps working until it is
+        * set up the new way; a manifest binding always wins over the URL.
+        *
+        * Both need a paired screen (screenId + tenantId). The bridge hides
+        * itself where Web Serial / the native serial bridge is missing
+        * (Safari, Firefox, Chromium 83). */}
+      {tenantId && screenId && (() => {
+        const plan = bridgeMountPlan({
+          binding: manifestScoreboardConsole,
+          urlCts: qp('cts'),
+          urlGame: qp('game'),
+          urlFeedToken: qp('feedToken'),
+        });
+        if (!plan.mount) return null;
+        return plan.mode === 'managed' ? (
+          <CtsBridge
+            key={`managed:${plan.binding.gameId}:${plan.binding.consoleProfile ?? ''}:${plan.binding.decoderSport ?? ''}`}
+            screenId={screenId}
+            apiRoot={getApiRoot()}
+            deviceToken={getDeviceToken()}
+            getDeviceToken={getDeviceToken}
+            managed={plan.binding}
+            gameId={plan.binding.gameId}
+            wiring={manifestWiring || undefined}
+            consoleProfile={plan.binding.consoleProfile ?? undefined}
+            compact
+          />
+        ) : (
+          <CtsBridge
+            screenId={screenId}
+            apiRoot={getApiRoot()}
+            deviceToken={getDeviceToken()}
+            gameId={plan.gameId}
+            feedToken={plan.feedToken}
+            wiring={manifestWiring || undefined}
+            consoleProfile={manifestConsoleProfile}
+          />
+        );
+      })()}
     </div>
   );
 }

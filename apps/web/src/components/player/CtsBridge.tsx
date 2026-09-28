@@ -43,6 +43,17 @@
  *     The pending snapshot is always the LATEST one (last-wins),
  *     so we never POST stale data.
  *
+ * K12-F32 (2026-09-27) — MANAGED mode. When the manifest binds this screen
+ * to a game (the game's console: Set up game → Scoreboard console), the
+ * page mounts the bridge with `managed`: the decoder table is the one the
+ * server computed from the GAME'S sport (never a default — the old
+ * Daktronics fallback decoded any console as football), every snapshot and
+ * a 5 s link heartbeat go to `POST /sports/scoreboard-console/:screenId/
+ * snapshot` with this screen's DEVICE credential (no feed token, nothing
+ * in a URL), and the server holds them as a preview until the operator
+ * confirms. Once confirmed and reading, the panel hides itself — it is on a
+ * public screen. The legacy `?cts=1&game=&feedToken=` mode is unchanged.
+ *
  * NOT in scope for v1:
  *   - Auto-celebration cue triggering on goal-delta detection.
  *     Belongs in the ScoreSource state machine (Sprint 13 Phase 4).
@@ -52,6 +63,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import {
   CtsWireParser,
   MockCtsFeed,
@@ -67,6 +79,14 @@ import {
   type SerialSettings,
 } from '@cms/scoreboard-cts';
 import { parseCtsClockToMs } from '@/lib/cts-merge';
+// K12-F32 — the manifest binding, the decoder with no default sport, and
+// what the console endpoint's answer means for the panel.
+import {
+  managedAnswerFor,
+  resolveDecoderSport,
+  type ManagedAnswer,
+  type ManagedConsoleBinding,
+} from '@/app/player/scoreboardConsole';
 // AND-002 — the ONLY sanctioned way to reach the Android APK. Prefers the
 // origin-scoped `EduCmsNativeChannel`, falls back to the legacy
 // `window.EduCmsNative` object. See nativeBridge.ts for why, and for the
@@ -202,6 +222,11 @@ function b64ToBytes(b64: string): Uint8Array {
 //
 // Latest-snapshot-wins during the throttle window.
 const POST_THROTTLE_MS = 200;
+
+// K12-F32 — MANAGED mode: when nothing else was posted for this long, the
+// bridge posts its link report on its own, so the game's setup card can say
+// whether the port is open and bytes arrive (and when a cable goes).
+const MANAGED_HEARTBEAT_MS = 5_000;
 
 /**
  * 2026-05-27 — Stream Deck text-line parser.
@@ -370,9 +395,19 @@ export interface CtsBridgeProps {
   consoleProfile?: ConsoleProfileId;
   /** 2026-05-29 — for the Daktronics profile, which sport's RTD field
    *  map to decode against (football | basketball | baseball). Ignored
-   *  by the CTS profile (CTS is water polo only). Defaults to
-   *  'football'; can also be set via `?dakSport=` URL query param. */
+   *  by the CTS profile (CTS is water polo only). Legacy mode only; can
+   *  also be set via `?dakSport=`. K12-F32: there is NO default any more —
+   *  it used to be 'football', which decoded a basketball or baseball
+   *  console with football's byte offsets. With no sport the bridge
+   *  decodes nothing and says so. */
   daktronicsSport?: DaktronicsSport;
+  /** K12-F32 — the manifest's binding of this screen to a game. Set →
+   *  MANAGED mode (see the header). Its console model and decoder table
+   *  win over every prop and URL parameter. */
+  managed?: ManagedConsoleBinding | null;
+  /** K12-F32 — reads the device credential at POST time (it renews
+   *  hourly); falls back to `deviceToken`. */
+  getDeviceToken?: () => string | null;
   /** Compact mode: skip debug JSON pretty-print + last-bytes counter. */
   compact?: boolean;
 }
@@ -386,8 +421,11 @@ export function CtsBridge({
   wiring,
   consoleProfile,
   daktronicsSport,
+  managed = null,
+  getDeviceToken,
   compact = false,
 }: CtsBridgeProps) {
+  const t = useTranslations('consoleBridge');
   // Resolve the wiring with the legacy single-port default.
   const rs232_1Role: 'cts' | 'streamdeck' | 'aux' | 'off' =
     wiring?.rs232_1 ?? 'cts';
@@ -398,11 +436,13 @@ export function CtsBridge({
   // default 'cts-gen6'). The profile carries the serial settings AND
   // tells us which decoder to drive. Resolved once per render; the
   // value is stable for a given install.
-  const profileId: string | null | undefined =
-    consoleProfile ??
-    (typeof window !== 'undefined'
-      ? new URLSearchParams(window.location.search).get('consoleProfile')
-      : null);
+  // K12-F32 — MANAGED: the model on the binding, and nothing else.
+  const profileId: string | null | undefined = managed
+    ? managed.consoleProfile
+    : consoleProfile ??
+      (typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search).get('consoleProfile')
+        : null);
   const profile: ConsoleProfile = resolveConsoleProfile(profileId);
   const isDaktronics = profile.decoder === 'daktronics';
   // Hold the profile's serial settings in a ref so the connection-
@@ -421,12 +461,34 @@ export function CtsBridge({
   // without taking a dep on the new-every-render profile object.
   const defaultTtyRef = useRef<string>(profile.defaultTty);
   defaultTtyRef.current = profile.defaultTty;
-  // Sport for the Daktronics decoder (prop > query param > 'football').
-  const dakSport: DaktronicsSport =
+  // K12-F32 — the decoder table. MANAGED: exactly the server's (from the
+  // game's sport); LEGACY: an explicit sport (prop > `?dakSport=`) the
+  // parser carries. No default: a console with no table for the sport is
+  // not decoded at all, and the panel says why.
+  const explicitDakSport =
     daktronicsSport ??
-    (((typeof window !== 'undefined'
+    (typeof window !== 'undefined'
       ? new URLSearchParams(window.location.search).get('dakSport')
-      : null) as DaktronicsSport | null) || 'football');
+      : null);
+  const decoderSport = resolveDecoderSport({
+    decoder: profile.decoder,
+    profile: profile.id,
+    managed,
+    explicit: isDaktronics ? explicitDakSport : null,
+  });
+  const dakSport: DaktronicsSport | null =
+    isDaktronics && decoderSport ? (decoderSport as DaktronicsSport) : null;
+  const decodeBlocked: 'noModel' | 'unsupported' | 'needsGame' | null = managed
+    ? !managed.consoleProfile
+      ? 'noModel'
+      : !decoderSport
+        ? 'unsupported'
+        : null
+    : isDaktronics && !dakSport
+      ? 'needsGame'
+      : null;
+  // What the console endpoint last said about this box's packets.
+  const [managedAnswer, setManagedAnswer] = useState<ManagedAnswer | null>(null);
   const [supported, setSupported] = useState<boolean | null>(null);
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -619,7 +681,11 @@ export function CtsBridge({
   // independent (cue text is the same regardless of which scoreboard
   // console is on the other port).
   useEffect(() => {
-    if (isDaktronics) {
+    if (decodeBlocked) {
+      // K12-F32 — no table for this sport (or no model): decode nothing.
+      parserRef.current = null;
+      dakParserRef.current = null;
+    } else if (isDaktronics && dakSport) {
       dakParserRef.current = new DaktronicsParser({ sport: dakSport });
       parserRef.current = null;
     } else {
@@ -639,7 +705,7 @@ export function CtsBridge({
       streamDeckLines1Ref.current = null;
       streamDeckLines2Ref.current = null;
     };
-  }, [isDaktronics, dakSport, profile.wire]);
+  }, [isDaktronics, dakSport, profile.wire, decodeBlocked]);
 
   /**
    * 2026-05-27 — dispatch a Stream Deck command via the same
@@ -959,6 +1025,77 @@ export function CtsBridge({
     };
   }, [nativeMode, status]);
 
+  // K12-F32 — MANAGED: every post (a snapshot or a bare link heartbeat)
+  // goes to the console endpoint with this screen's DEVICE credential, read
+  // fresh at post time, plus the decoder it used and the port's own report.
+  // The server refuses a table that is not the game's (409), so a stale
+  // binding can never put another sport's numbers on a board.
+  const lastManagedPostAtRef = useRef<number>(0);
+  const linkRef = useRef<{ status: Status; bytes: number; native: boolean }>({
+    status: 'idle',
+    bytes: 0,
+    native: false,
+  });
+  linkRef.current = { status, bytes: bytesRead, native: nativeMode };
+  const postManaged = async (payload: Record<string, unknown>): Promise<void> => {
+    if (!managed || decodeBlocked || !decoderSport) return;
+    const token = (getDeviceToken ? getDeviceToken() : null) ?? deviceToken ?? null;
+    if (!token) return;
+    lastManagedPostAtRef.current = Date.now();
+    const frames = dakParserRef.current ? dakParserRef.current.getFrameStats() : null;
+    try {
+      const res = await fetch(
+        `${apiRoot}/api/v1/sports/scoreboard-console/${encodeURIComponent(screenId)}/snapshot`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            ...payload,
+            decoder: profile.decoder,
+            decoderSport,
+            link: {
+              ...linkRef.current,
+              goodFrames: frames ? frames.good : null,
+              badFrames: frames ? frames.bad : null,
+            },
+          }),
+          keepalive: true,
+        },
+      );
+      setPostCount((n) => n + 1);
+      setPostLastStatus(`${res.status}`);
+      let out: Record<string, unknown> | null = null;
+      try {
+        out = (await res.json()) as Record<string, unknown>;
+      } catch {
+        out = null;
+      }
+      const answer = managedAnswerFor(res.status, out);
+      if (answer) setManagedAnswer(answer);
+    } catch (e) {
+      setPostLastStatus(`err: ${(e as Error).message}`);
+    }
+  };
+  const postManagedRef = useRef(postManaged);
+  postManagedRef.current = postManaged;
+
+  // K12-F32 — the link heartbeat (MANAGED only, and only while there is a
+  // table to decode with): the box's word about its port, every 5 s when
+  // no snapshot went out, so "detect" and reconnect health are visible in
+  // the game's console. Stops with the component.
+  const isManaged = !!managed;
+  useEffect(() => {
+    if (!isManaged || decodeBlocked) return;
+    const id = setInterval(() => {
+      if (Date.now() - lastManagedPostAtRef.current < MANAGED_HEARTBEAT_MS - 500) return;
+      void postManagedRef.current({});
+    }, MANAGED_HEARTBEAT_MS);
+    return () => clearInterval(id);
+  }, [isManaged, decodeBlocked]);
+
   // POST the latest snapshot to the API. Latest-wins throttled at
   // POST_THROTTLE_MS. Uses keepalive: true so a tab close mid-POST
   // doesn't lose the final state.
@@ -989,7 +1126,7 @@ export function CtsBridge({
 
     // gameId mode — persist to Game.stats.cts via the public board
     // endpoint, authenticated with the HMAC feed token.
-    if (gameId && feedToken) {
+    if (managed || (gameId && feedToken)) {
       // T2-1: Cadence-based clockRunning derivation.
       //
       // The CTS protocol has no explicit "clock running" bit.  The
@@ -1075,6 +1212,12 @@ export function CtsBridge({
             ? snap.awayTimeoutsRemaining
             : undefined,
       };
+      // K12-F32 — MANAGED: the device-authenticated console endpoint.
+      if (managed) {
+        await postManagedRef.current(body);
+        return;
+      }
+      if (!gameId || !feedToken) return;
       try {
         const res = await fetch(
           `${apiRoot}/api/v1/sports/board/${encodeURIComponent(gameId)}/cts-snapshot`,
@@ -1117,7 +1260,7 @@ export function CtsBridge({
     } catch (e) {
       setPostLastStatus(`err: ${(e as Error).message}`);
     }
-  }, [apiRoot, deviceToken, screenId, gameId, feedToken]);
+  }, [apiRoot, deviceToken, screenId, gameId, feedToken, managed]);
 
   const schedulePost = useCallback(
     (snap: CtsFullSnapshot) => {
@@ -1146,7 +1289,9 @@ export function CtsBridge({
       schedulePost(snap);
     });
     return unsub;
-  }, [schedulePost]);
+    // The parser is re-created when the decoder changes (init effect above,
+    // declared first so it runs first) — re-subscribe to the new one.
+  }, [schedulePost, isDaktronics, dakSport, profile.wire, decodeBlocked]);
 
   // 2026-05-29 — POST a Daktronics snapshot. Maps the normalized
   // DaktronicsSnapshot onto the SAME body shape the CTS path posts, so
@@ -1166,7 +1311,7 @@ export function CtsBridge({
     pendingDakSnapshotRef.current = null;
     lastDakPostAtRef.current = Date.now();
 
-    if (gameId && feedToken) {
+    if (managed || (gameId && feedToken)) {
       // Sport-specific extension blob, kept under a namespaced key so
       // the server can store it in stats without colliding with CTS's
       // water-polo fields.
@@ -1229,6 +1374,12 @@ export function CtsBridge({
         sport: snap.sport,
         daktronics: sportExtra,
       };
+      // K12-F32 — MANAGED: the device-authenticated console endpoint.
+      if (managed) {
+        await postManagedRef.current(body);
+        return;
+      }
+      if (!gameId || !feedToken) return;
       try {
         const res = await fetch(
           `${apiRoot}/api/v1/sports/board/${encodeURIComponent(gameId)}/cts-snapshot`,
@@ -1269,7 +1420,7 @@ export function CtsBridge({
     } catch (e) {
       setPostLastStatus(`err: ${(e as Error).message}`);
     }
-  }, [apiRoot, deviceToken, screenId, gameId, feedToken]);
+  }, [apiRoot, deviceToken, screenId, gameId, feedToken, managed]);
 
   const scheduleDakPost = useCallback(
     (snap: DaktronicsSnapshot) => {
@@ -1296,7 +1447,7 @@ export function CtsBridge({
       scheduleDakPost(snap);
     });
     return unsub;
-  }, [scheduleDakPost]);
+  }, [scheduleDakPost, isDaktronics, dakSport, profile.wire, decodeBlocked]);
 
   // Read loop: pump bytes from the port's readable stream through
   // the role router (CTS parser / Stream Deck lines / aux logger).
@@ -1591,6 +1742,40 @@ export function CtsBridge({
   if (supported === null) return null;
   if (supported === false) return null;
 
+  // K12-F32 — MANAGED and working (confirmed, reading, nothing refused):
+  // nothing on the glass. This screen is often the public ribbon itself.
+  const managedHealthy =
+    !!managed &&
+    managed.confirmed &&
+    !decodeBlocked &&
+    (nativeMode || status === 'connected' || reconnectArmed) &&
+    (managedAnswer === null || managedAnswer === 'live' || managedAnswer === 'preview');
+  if (managedHealthy) return null;
+
+  // What this panel owes the person standing at the box, in their language.
+  const supportedNames = managed ? managed.supportedSportNames.join(', ') || '—' : '—';
+  const bridgeMessage: string | null = managed
+    ? decodeBlocked === 'noModel'
+      ? t('noModel')
+      : decodeBlocked === 'unsupported' || managedAnswer === 'unsupported'
+        ? t('sportUnsupported', { sports: supportedNames, sport: managed.sportName })
+        : managedAnswer === 'mismatch'
+          ? t('refusedMismatch')
+          : managedAnswer === 'notBound'
+            ? t('refusedNotBound')
+            : managedAnswer === 'gameGone'
+              ? t('refusedGameGone')
+              : managedAnswer === 'final'
+                ? t('gameFinal')
+                : !nativeMode && status !== 'connected'
+                  ? t('connectHint')
+                  : managed.confirmed || managedAnswer === 'live'
+                    ? t('live', { sport: managed.sportName })
+                    : t('preview')
+    : decodeBlocked === 'needsGame'
+      ? t('needsGame')
+      : null;
+
   // Cross-browser-safe panel — fixed corner, low z-index so emergency
   // overlay still wins. Inline styles to dodge any global CSS that
   // might collide. No CSS shorthand position / flex gap (Chromium 83
@@ -1638,13 +1823,24 @@ export function CtsBridge({
           }}
         />
         <strong style={{ marginRight: 8 }}>
-          {isDaktronics ? `Daktronics (${dakSport})` : 'CTS'} Bridge{nativeMode ? ' · ECBox' : ''}{gameId && feedToken ? ' · game' : ''}
+          {managed ? `${t('title')} · ` : ''}
+          {isDaktronics ? `Daktronics (${dakSport ?? '—'})` : 'CTS'} Bridge{nativeMode ? ' · ECBox' : ''}{managed || (gameId && feedToken) ? ' · game' : ''}
         </strong>
         <span style={{ opacity: 0.7 }}>
           P1:{rs232_1Role} {status}
           {reconnectArmed ? ' · auto-reconnect armed' : ''}
         </span>
       </div>
+
+      {/* K12-F32 — what the console endpoint / the binding says. */}
+      {bridgeMessage && (
+        <div
+          data-testid="cts-bridge-message"
+          style={{ marginBottom: 6, fontSize: 12, color: '#fde68a', lineHeight: 1.4 }}
+        >
+          {bridgeMessage}
+        </div>
+      )}
 
       {/* 2026-05-27 — EP6N port 2 status row. Only renders when the
           operator wired port 2 to a non-off role. Mirrors the port 1
@@ -1817,7 +2013,7 @@ export function CtsBridge({
           the CTS parser, so the button only shows on the CTS profile.
           A Daktronics sample-game script is a future add (would feed
           MockDaktronicsFeed instead). */}
-      {!isDaktronics && status !== 'connected' && !simRunning && (
+      {!managed && !isDaktronics && status !== 'connected' && !simRunning && (
         <button
           type="button"
           onClick={onStartSim}

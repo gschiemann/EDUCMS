@@ -11,6 +11,18 @@
 > for the existing water polo install, for budget pilots, and for
 > legacy deployments.
 
+> **2026-09-27 (K12-F32) — binding a console to a game needs no URL.**
+> Pair the box as a screen, then in the game's console open **Set up game
+> → Scoreboard console**: pick the console model (only models that decode
+> the game's sport are offered) and this screen, press **Connect console**,
+> compare the preview with the scoreboard, and press **Looks right — use
+> the console**. The box learns its game and decoder from its manifest and
+> posts with its own device credential — never put a feed token in a
+> kiosk URL again. The serial overrides below (`?ctsTty=`, `?ctsBaud=`,
+> `?ctsParity=` …) remain install-tech escape hatches for odd hardware;
+> they carry no credential. The console is EXPERIMENTAL until it passes
+> the hardware gate (G03) at a real venue.
+
 ---
 
 This is the one-box water-polo ribbon stack. Reads CTS Gen 6 RS232

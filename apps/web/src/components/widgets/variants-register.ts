@@ -1379,7 +1379,9 @@ registerVariant({
   id: 'scoreboard-cts-ribbon',
   widgetType: 'SCOREBOARD',
   name: 'Water Polo Ribbon (CTS)',
-  description: 'Live ribbon scoreboard fed by a Colorado Time Systems (CTS) System 6 / Gen 6 console. Plug the USB-RS232 dongle in, open the player with ?cts=1, click Connect once — every clock tick / goal / exclusion shows up here.',
+  // K12-F32 — setup lives in the game's console now; it used to say "open the
+  // player with ?cts=1" (and the feed token rode that URL).
+  description: 'Live ribbon scoreboard fed by a Colorado Time Systems (CTS) water-polo console (experimental). Wire the console to a VenueOS box, then set it up in the game: Set up game → Scoreboard console — no URL to edit. Every clock tick / goal / exclusion shows up here.',
   category: 'SPORTS',
   render: CtsScoreboard as any,
   vertical: 'SPORTS',
