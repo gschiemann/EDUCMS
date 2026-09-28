@@ -89,6 +89,8 @@ class MainActivity : ComponentActivity() {
     private var webTabsIncognito: Boolean = true
     /** Every origin the site view navigated to — the sign-out's per-origin storage wipe list. */
     private val webTabsVisitedOrigins = LinkedHashSet<String>()
+    /** Hosts a site's own sign-in took the view to this session — see WebTabsPolicy.decideNavigation. */
+    private val webTabsLearnedHosts: MutableSet<String> = java.util.Collections.synchronizedSet(LinkedHashSet<String>())
     private var webTabsLastActivityRelayMs: Long = 0L
 
     /**
@@ -3084,7 +3086,19 @@ class MainActivity : ComponentActivity() {
                 // Plain URL asset (no Website Tabs session): unchanged — the
                 // operator chose the site, it may navigate freely.
                 val allow = webTabsAllowHosts ?: return false
-                if (WebTabsPolicy.isAllowedNavigation(url, allow)) return false
+                // v1.1.19: the tabs' sites, plus wherever the SITE ITSELF takes
+                // the view to sign in (a redirect, its own script, an OAuth
+                // request back to the tabs) — never a visitor's tap elsewhere.
+                when (WebTabsPolicy.decideNavigation(url, allow, webTabsLearnedHosts, request.isRedirect, request.hasGesture())) {
+                    WebTabsPolicy.NavDecision.ALLOW -> return false
+                    WebTabsPolicy.NavDecision.ALLOW_AND_LEARN -> {
+                        WebTabsPolicy.hostOf(url)?.let { webTabsLearnedHosts.add(it) }
+                        val how = if (request.isRedirect) "redirect" else if (!request.hasGesture()) "site script" else "sign-in request"
+                        PlayerLogger.i("MainActivity", "web tabs: following the site's sign-in ($how) to ${HostAllowlist.describe(url)}")
+                        return false
+                    }
+                    WebTabsPolicy.NavDecision.BLOCK -> Unit
+                }
                 // DEFAULT DENY. The kiosk never leaves the tabs' sites; the
                 // visitor gets a page that says so, with a Back.
                 PlayerLogger.i("MainActivity", "web tabs BLOCKED a navigation off the tabs' sites: ${HostAllowlist.describe(url)}")
@@ -3227,6 +3241,8 @@ class MainActivity : ComponentActivity() {
         }
         val wasActive = webTabsActive
         val urlChanged = urlOverlayCurrentUrl != req.url
+        // A NEW session starts with no remembered sign-in hosts.
+        if (!wasActive) webTabsLearnedHosts.clear()
         webTabsActive = true
         webTabsAllowHosts = req.allowHosts
         webTabsCopy = req.copy
@@ -3279,6 +3295,8 @@ class MainActivity : ComponentActivity() {
         PlayerLogger.i("MainActivity", "web tabs: ending session (wipe=$wipe)")
         webTabsActive = false
         webTabsAllowHosts = null
+        // The sign-in hosts the site took us to are forgotten with the session.
+        webTabsLearnedHosts.clear()
         if (wipe) wipeWebTabsSession()
         urlOverlayCurrentUrl = null
         urlOverlayView.stopLoading()

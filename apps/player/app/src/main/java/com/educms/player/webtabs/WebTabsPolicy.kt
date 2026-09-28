@@ -223,6 +223,88 @@ object WebTabsPolicy {
         return false
     }
 
+    /** What the site view does with one main-frame navigation during a session. */
+    enum class NavDecision { ALLOW, ALLOW_AND_LEARN, BLOCK }
+
+    /** A session never remembers more sign-in hosts than this; past it, off-list navigations block. */
+    const val MAX_LEARNED_HOSTS = 12
+
+    /**
+     * SIGN-IN FOLLOWING (v1.1.19). A site behind a sign-in sends the visitor
+     * to its sign-in page on ANOTHER domain and back — demo.medpower.org →
+     * login.learn.medpower.com → learn.medpower.org, every hop a server
+     * redirect. Plain default-deny refused the first hop, so the kiosk showed
+     * the blocked page where a laptop shows the login.
+     *
+     * The line is WHO is navigating:
+     *  • the site itself — a server redirect, or its own script with no tap
+     *    behind it — may go to another `https` host, and that host is
+     *    remembered for the rest of the session so the sign-in page's own
+     *    links and forms keep working;
+     *  • a tap on "Sign in with …" that is an OAuth / OpenID Connect request
+     *    whose `redirect_uri` comes back to the tabs' sites, likewise;
+     *  • a visitor's tap on any other link off the tabs' sites: BLOCKED.
+     * The caller forgets the remembered hosts when the session ends (idle
+     * return, hide, sign-out), and never learns more than [MAX_LEARNED_HOSTS].
+     */
+    fun decideNavigation(
+        url: String?,
+        allowHosts: List<String>,
+        learnedHosts: Collection<String>,
+        isRedirect: Boolean,
+        hasGesture: Boolean,
+    ): NavDecision {
+        if (isAllowedNavigation(url, allowHosts)) return NavDecision.ALLOW
+        val host = hostOf(url) ?: return NavDecision.BLOCK
+        if (learnedHosts.contains(host)) return NavDecision.ALLOW
+        // Only an encrypted page is ever learned.
+        if (parse(url)?.scheme?.lowercase() != "https") return NavDecision.BLOCK
+        if (learnedHosts.size >= MAX_LEARNED_HOSTS) return NavDecision.BLOCK
+        if (isRedirect || !hasGesture) return NavDecision.ALLOW_AND_LEARN
+        if (isSignInRequest(url, allowHosts, learnedHosts)) return NavDecision.ALLOW_AND_LEARN
+        return NavDecision.BLOCK
+    }
+
+    /**
+     * An OAuth 2 / OpenID Connect authorization request (`client_id` plus a
+     * `redirect_uri`) whose `redirect_uri` returns to one of the tabs' sites
+     * or to a host this session already learned.
+     */
+    fun isSignInRequest(url: String?, allowHosts: List<String>, learnedHosts: Collection<String>): Boolean {
+        val query = parse(url)?.rawQuery ?: return false
+        val params = parseQuery(query)
+        if (params["client_id"].isNullOrBlank()) return false
+        val back = params["redirect_uri"] ?: return false
+        if (isAllowedNavigation(back, allowHosts)) return true
+        val backHost = hostOf(back) ?: return false
+        return learnedHosts.contains(backHost)
+    }
+
+    /** The lower-cased host of a web URL, trailing dot dropped; null for anything else. */
+    fun hostOf(url: String?): String? {
+        if (!isWebUrl(url)) return null
+        return parse(url)?.host?.lowercase()?.trimEnd('.')
+    }
+
+    private fun parseQuery(raw: String): Map<String, String> {
+        val out = HashMap<String, String>()
+        for (pair in raw.split('&')) {
+            if (pair.isEmpty()) continue
+            val i = pair.indexOf('=')
+            val key = decodeQueryPart(if (i < 0) pair else pair.substring(0, i)) ?: continue
+            val value = decodeQueryPart(if (i < 0) "" else pair.substring(i + 1)) ?: continue
+            if (!out.containsKey(key)) out[key] = value
+        }
+        return out
+    }
+
+    private fun decodeQueryPart(s: String): String? =
+        try {
+            java.net.URLDecoder.decode(s, "UTF-8")
+        } catch (_: Exception) {
+            null
+        }
+
     /**
      * The origins whose quota storage (IndexedDB, Cache Storage, WebSQL) a
      * sign-out clears through `WebStorage.deleteOrigin` — `https://` and

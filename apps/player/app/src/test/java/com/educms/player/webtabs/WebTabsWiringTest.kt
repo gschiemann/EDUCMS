@@ -166,12 +166,31 @@ class WebTabsWiringTest {
     }
 
     @Test
+    fun `the sign-in hosts a session learned are forgotten when it ends or restarts`() {
+        val src = codeOnly(mainActivity)
+        val end = src.substringAfter("private fun endWebTabsSession(", "")
+        assertTrue("endWebTabsSession not found", end.isNotEmpty())
+        assertTrue(
+            "endWebTabsSession must clear webTabsLearnedHosts",
+            end.substringBefore("private fun ").contains("webTabsLearnedHosts.clear()"),
+        )
+        val show = src.substringAfter("private fun showWebTabs(", "").substringBefore("private fun ")
+        assertTrue("a new session must start with no learned hosts", show.contains("if (!wasActive) webTabsLearnedHosts.clear()"))
+    }
+
+    @Test
     fun `the overlay refuses downloads, non-web schemes, and consults the allowlist for main-frame navigations`() {
         val block = overlayConfigBlock()
         assertTrue("no download listener — a site could pull a file onto the kiosk", block.contains("setDownloadListener"))
         assertTrue(block.contains("WebTabsPolicy.isNavigableScheme(url)"))
         assertTrue(block.contains("request.isForMainFrame"))
-        assertTrue(block.contains("WebTabsPolicy.isAllowedNavigation(url, allow)"))
+        // v1.1.19: the decision is the pure, unit-tested sign-in-aware rule, fed
+        // WHO is navigating (redirect / gesture) and the session's learned hosts.
+        assertTrue(
+            "main-frame navigations must go through WebTabsPolicy.decideNavigation",
+            block.contains("WebTabsPolicy.decideNavigation(url, allow, webTabsLearnedHosts, request.isRedirect, request.hasGesture())"),
+        )
+        assertTrue("a learned sign-in host must be remembered", block.contains("webTabsLearnedHosts.add("))
         assertTrue("a blocked navigation must show the blocked page, not a blank", block.contains("WebTabsPolicy.blockedPageHtml("))
         assertTrue("file access must stay off", block.contains("allowFileAccess = false"))
         assertTrue("content access must stay off", block.contains("allowContentAccess = false"))
