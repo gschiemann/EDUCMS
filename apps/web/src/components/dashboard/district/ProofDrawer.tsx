@@ -29,6 +29,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, ChevronDown, ChevronRight, Loader2, X } from 'lucide-react';
 import { RenderTrustChip } from '@/components/screens/RenderTrustChip';
+import { deriveContentDownload } from '@/components/screens/contentDownload';
 import { useRefreshWeb, useScreenEvents, type DeploymentRow } from '@/hooks/use-api';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { eventCopy } from './screenEventCopy';
@@ -40,6 +41,19 @@ export interface ProofDrawerScreen {
   status: string;
   renderHealth?: 'OK' | 'STALE' | 'UNKNOWN' | null;
   renderStale?: boolean | null;
+  /**
+   * The last render proof (2026-09-27, lane B4). Its `idle:` kind says what
+   * the glass is doing ("downloading", "content unavailable", "connecting"…)
+   * and its age grades a stale proof — without them every stale screen read
+   * as the red alarm and every idle one as unqualified green.
+   */
+  lastRenderedAt?: string | null;
+  lastRenderedHash?: string | null;
+  /** Server-stamped credential verdict — 'REPAIR_REQUIRED' outranks green. */
+  authState?: string | null;
+  /** The cache report + its stamp: the download in flight (DV), when fresh. */
+  lastCacheReport?: unknown;
+  lastCacheReportAt?: string | null;
   /** Outstanding refresh value — compared by IDENTITY to the deployment's. */
   pendingRefreshAtMs?: number | null;
   /** Location this screen belongs to (fleet row's sourceTenant name). */
@@ -160,6 +174,31 @@ function isWaiting(s: ProofDrawerScreen, valueMs: number): boolean {
   return s.pendingRefreshAtMs != null && s.pendingRefreshAtMs === valueMs;
 }
 
+/** Parsed time of an API timestamp, or null — an unparseable stamp proves nothing. */
+function msOf(v: string | null | undefined): number | null {
+  if (!v) return null;
+  const t = Date.parse(v);
+  return Number.isFinite(t) ? t : null;
+}
+
+/** Full human datetime for the chip's tooltip (the Screens page's wording). */
+function fullDateTime(ms: number): string {
+  return new Date(ms).toLocaleString(undefined, {
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: 'numeric', minute: '2-digit', second: '2-digit',
+  });
+}
+
+/**
+ * One clock read per render of the drawer. No timer is added: the fleet
+ * payload's own refresh (useFleet) re-renders the drawer, and that is what
+ * advances the ages and the download snapshot's freshness — the same rule
+ * the Screens page follows (mobile-perf standard).
+ */
+function readClock(): number {
+  return Date.now();
+}
+
 /** How long "Sent ✓" stands before the button offers itself again. */
 const SENT_CONFIRM_MS = 3000;
 
@@ -205,13 +244,22 @@ function PushAgainButton({ screenId }: { screenId: string }) {
   );
 }
 
-function ScreenRow({ screen, valueMs }: { screen: ProofDrawerScreen; valueMs: number }) {
+function ScreenRow({ screen, valueMs, now }: { screen: ProofDrawerScreen; valueMs: number; now: number }) {
   const [open, setOpen] = useState(false);
   // Dormant until the operator asks — a collapsed row costs no request, and
   // there is no polling on this surface at all.
   const events = useScreenEvents(open ? screen.id : null);
   const waiting = isWaiting(screen, valueMs);
   const Chevron = open ? ChevronDown : ChevronRight;
+  // Lane B4 (2026-09-27) — the chip gets everything it grades with, the same
+  // inputs the Screens page hands it, so "Downloading new content · 62% of
+  // 141 MB", "Content unavailable", "Re-pair required" and "Confirming
+  // picture…" show here too. Graded at render — this surface has no timer.
+  const renderedAtMs = msOf(screen.lastRenderedAt);
+  const download = deriveContentDownload(
+    { status: screen.status, lastCacheReport: screen.lastCacheReport, lastCacheReportAt: screen.lastCacheReportAt ?? null },
+    now,
+  );
 
   return (
     <li className="border-t border-slate-100 first:border-t-0">
@@ -233,6 +281,12 @@ function ScreenRow({ screen, valueMs }: { screen: ProofDrawerScreen; valueMs: nu
               status={screen.status}
               renderHealth={screen.renderHealth ?? null}
               renderStale={screen.renderStale ?? null}
+              lastRenderedAtMs={renderedAtMs}
+              lastRenderedHash={screen.lastRenderedHash ?? null}
+              authState={screen.authState ?? null}
+              verifiedAgo={renderedAtMs !== null ? timeAgo(renderedAtMs) : null}
+              verifiedFull={renderedAtMs !== null ? fullDateTime(renderedAtMs) : null}
+              download={download}
             />
             <span
               className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg ${
@@ -277,6 +331,7 @@ export function ProofDrawer({
   screens,
   locationNoun,
   onClose,
+  now: nowProp,
 }: {
   deployment: DeploymentRow;
   /** The screens this drawer can name — today, the ones still waiting. */
@@ -284,7 +339,10 @@ export function ProofDrawer({
   /** Vertical-aware location nouns, e.g. { one: 'gym', many: 'gyms' }. */
   locationNoun: { one: string; many: string };
   onClose: () => void;
+  /** The clock the rows are graded against (tests inject it). */
+  now?: number;
 }) {
+  const now = nowProp ?? readClock();
   useOverlayLock(); // mounts only while open — hides the mobile tab bar
   const panelRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -378,7 +436,7 @@ export function ProofDrawer({
                   </div>
                   <ul>
                     {rows.map((s) => (
-                      <ScreenRow key={s.id} screen={s} valueMs={deployment.valueMs} />
+                      <ScreenRow key={s.id} screen={s} valueMs={deployment.valueMs} now={now} />
                     ))}
                   </ul>
                 </div>

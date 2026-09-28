@@ -944,6 +944,14 @@ export function FleetCommandCenter({
         status: s.status,
         renderHealth: s.renderHealth ?? null,
         renderStale: s.renderStale ?? null,
+        // Lane B4 (2026-09-27) — everything the render-trust chip needs to say
+        // what the screen is actually doing: the proof (its idle kind, its
+        // age), the credential verdict, and the download in flight.
+        lastRenderedAt: s.lastRenderedAt ?? null,
+        lastRenderedHash: s.lastRenderedHash ?? null,
+        authState: s.authState ?? null,
+        lastCacheReport: s.lastCacheReport ?? null,
+        lastCacheReportAt: s.lastCacheReportAt ?? null,
         pendingRefreshAtMs: s.pendingRefreshAtMs ?? null,
         locationName: s.sourceTenant?.name ?? '',
       }));

@@ -628,6 +628,23 @@ describe('FleetCommandCenter · deployment banner', () => {
     // The rest are counted, never guessed at: 6 targets − 1 nameable.
     expect(rtl.getByText('Confirmed or superseded (5)')).toBeInTheDocument();
   });
+
+  it('the drawer hands each screen\'s proof and download to its chip (lane B4): a downloading screen says so, with progress', () => {
+    const MB141 = 141 * 1024 * 1024;
+    const fresh = new Date(Date.now() - 20_000).toISOString();
+    const waiting = scr('west', {
+      name: 'Studio A',
+      pendingRefreshAtMs: VALUE,
+      lastRenderedAt: fresh,
+      lastRenderedHash: 'idle:content-downloading',
+      lastCacheReport: { downloading: { file: 'promo.mp4', bytesLoaded: Math.ceil(MB141 * 0.62), bytesTotal: MB141, deferredCommit: false } },
+      lastCacheReportAt: fresh,
+    });
+    renderCard({ deployments: [dep()] }, { ...fleet, screens: [waiting] });
+    fireEvent.click(within(banner()!).getByText('View screens'));
+    const drawer = rtl.getByRole('dialog');
+    expect(within(drawer).getByText(/Downloading new content · 62% of 141\sMB/)).toBeInTheDocument();
+  });
 });
 
 // ─── Today's Schedule card (took the convergence card's slot) ────────

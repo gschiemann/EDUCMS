@@ -3110,6 +3110,22 @@ export interface FleetScreen {
   pendingRefreshAtMs?: number | null;
   refreshAckMs?: number | null;
   /**
+   * The last render proof (2026-09-03 — the API has sent these since; the
+   * type now says so). The proof's `idle:` prefix tells "downloading" /
+   * "content unavailable" / "nothing scheduled" apart (renderTrust.ts), and
+   * its time grades a stale proof (checking / alarm / chronic).
+   */
+  lastRenderedAt?: string | null;
+  lastRenderedHash?: string | null;
+  /**
+   * When `lastCacheReport` arrived (2026-09-27, lane B4): its `downloading`
+   * snapshot is progress only while fresh (contentDownload.ts). Optional — a
+   * payload from before the API sent it grades every snapshot stale.
+   */
+  lastCacheReportAt?: string | null;
+  /** Server-stamped credential verdict — 'REPAIR_REQUIRED' outranks green. */
+  authState?: string | null;
+  /**
    * Delivery path: an instant channel, or the ~10s check-in backstop.
    * The payload has always carried it (screens.controller `fleet()`); it was
    * only ever read through a cast, which is exactly how a field like this

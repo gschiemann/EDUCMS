@@ -57,8 +57,13 @@ export interface FleetCommandScreen {
   lastBundleId?: string | null;
   pendingRefreshAtMs?: number | null;
   refreshAckMs?: number | null;
-  /** Offline emergency tier as the screen last reported it (never-evict). */
-  lastCacheReport?: { emergency?: { count?: number } } | null;
+  /** Offline emergency tier as the screen last reported it (never-evict),
+   *  plus the large download in flight (DV, 2026-09-27) as `downloading`. */
+  lastCacheReport?: { emergency?: { count?: number }; downloading?: unknown } | null;
+  /** When that report arrived — a download snapshot is progress only while fresh. */
+  lastCacheReportAt?: string | null;
+  /** Server-stamped credential verdict (2026-08-30). */
+  authState?: string | null;
   /** Last heartbeat — the only thing that can date an offline screen. */
   lastPingAt?: string | null;
   sourceTenant: { id: string; name: string; slug: string } | null;
@@ -238,9 +243,8 @@ function pingMs(s: Pick<FleetCommandScreen, 'lastPingAt'>): number | null {
 /**
  * Render grade, called with the SAME context the district rollup uses so the
  * per-screen rows can never name a screen the rollup's own counter doesn't
- * count. (The extra fields are absent from FleetCommandScreen's declared
- * shape but present on real fleet rows; absent reads as null, which is the
- * pre-existing behavior.)
+ * count. (`authState` reached this read only through a cast until the fleet
+ * payload carried it — 2026-09-27; absent still reads as null.)
  */
 function gradeOf(s: FleetCommandScreen) {
   return deriveRenderTrustGrade({
@@ -249,7 +253,7 @@ function gradeOf(s: FleetCommandScreen) {
     renderStale: s.renderStale ?? null,
     lastRenderedAtMs: s.lastRenderedAt ? new Date(s.lastRenderedAt).getTime() : null,
     lastRenderedHash: s.lastRenderedHash ?? null,
-    authState: (s as any).authState ?? null,
+    authState: s.authState ?? null,
   });
 }
 

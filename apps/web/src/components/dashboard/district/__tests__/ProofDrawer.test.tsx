@@ -237,3 +237,72 @@ describe('ProofDrawer', () => {
     expect(onClose).toHaveBeenCalledTimes(2);
   });
 });
+
+/**
+ * Lane B4 (2026-09-27) — the drawer is the only mount of the render-trust
+ * chip, and it used to hand it three of its inputs: every download, every
+ * "content unavailable", every re-pair and every stale proof read as either
+ * the plain green or the red alarm. The chip now gets what the Screens page
+ * gives it.
+ */
+describe('ProofDrawer — the chip says what each screen is doing', () => {
+  const MB141 = 141 * 1024 * 1024;
+  const fresh = () => new Date(Date.now() - 20_000).toISOString();
+  const row = (over: Partial<ProofDrawerScreen>): ProofDrawerScreen => ({
+    id: 'sx', name: 'Lobby', status: 'ONLINE', renderHealth: 'OK', renderStale: false,
+    pendingRefreshAtMs: VALUE, locationName: 'Peak West', ...over,
+  });
+  const downloading = (deferredCommit: boolean) => ({
+    downloading: { file: 'promo%20night.mp4', bytesLoaded: Math.ceil(MB141 * 0.62), bytesTotal: MB141, deferredCommit },
+  });
+
+  it('a screen downloading its first content: "Downloading new content · 62% of 141 MB"', () => {
+    renderDrawer({
+      screens: [row({ lastRenderedAt: fresh(), lastRenderedHash: 'idle:content-downloading', lastCacheReport: downloading(false), lastCacheReportAt: fresh() })],
+    });
+    expect(rtl.getByText(/Downloading new content · 62% of 141\sMB/)).toBeInTheDocument();
+    expect(rtl.queryByText(/Showing content ✓/)).toBeNull();
+  });
+
+  it('new content held behind the previous one: "Still showing previous content · new content 62% of 141 MB"', () => {
+    renderDrawer({
+      screens: [row({ lastRenderedAt: fresh(), lastRenderedHash: 'pl:abc', lastCacheReport: downloading(true), lastCacheReportAt: fresh() })],
+    });
+    expect(rtl.getByText(/Still showing previous content · new content 62% of 141\sMB/)).toBeInTheDocument();
+  });
+
+  it('a snapshot too old to be progress shows no numbers', () => {
+    renderDrawer({
+      screens: [row({
+        lastRenderedAt: fresh(), lastRenderedHash: 'idle:content-downloading',
+        lastCacheReport: downloading(false), lastCacheReportAt: new Date(Date.now() - 10 * 60_000).toISOString(),
+      })],
+    });
+    expect(rtl.getByText(/Downloading new content · 20s ago/)).toBeInTheDocument();
+    expect(rtl.queryByText(/62%/)).toBeNull();
+  });
+
+  it('every scheduled file failed: "Content unavailable"', () => {
+    renderDrawer({ screens: [row({ lastRenderedAt: fresh(), lastRenderedHash: 'idle:content-unavailable' })] });
+    expect(rtl.getByText(/Content unavailable · 20s ago/)).toBeInTheDocument();
+  });
+
+  it('a screen on downgraded credentials reads "Re-pair required", never plain green', () => {
+    renderDrawer({ screens: [row({ lastRenderedAt: fresh(), lastRenderedHash: 'pl:abc', authState: 'REPAIR_REQUIRED' })] });
+    expect(rtl.getByText(/Re-pair required/)).toBeInTheDocument();
+    expect(rtl.queryByText(/Showing content ✓/)).toBeNull();
+  });
+
+  it('a proof that went quiet a minute ago is "Confirming picture…", not the red alarm', () => {
+    renderDrawer({
+      screens: [row({ renderHealth: 'STALE', renderStale: true, lastRenderedAt: new Date(Date.now() - 60_000).toISOString(), lastRenderedHash: 'pl:abc' })],
+    });
+    expect(rtl.getByText(/Confirming picture/)).toBeInTheDocument();
+    expect(rtl.queryByText(/still responds/)).toBeNull();
+  });
+
+  it('a painting screen carries its check time', () => {
+    renderDrawer({ screens: [row({ lastRenderedAt: fresh(), lastRenderedHash: 'pl:abc' })] });
+    expect(rtl.getByText(/Showing content ✓ · checked 20s ago/)).toBeInTheDocument();
+  });
+});

@@ -2439,6 +2439,16 @@ export class ScreensController {
         screenGroup: (s as any).screenGroup ?? null,
         lastPingAt: s.lastPingAt,
         lastCacheReport: (s as any).lastCacheReport ?? null,
+        // 2026-09-27 (lane B4) — when that report arrived. The download
+        // snapshot inside it (`downloading`, DV) is progress only while it is
+        // fresh; without its stamp the district ProofDrawer could never show
+        // "Downloading new content · 62% of 141 MB" — a snapshot with no date
+        // grades stale by design (contentDownload.ts).
+        lastCacheReportAt: (s as any).lastCacheReportAt ?? null,
+        // …and the server-stamped credential verdict, which GET /screens
+        // already carries: a screen painting on downgraded 1-hour tokens must
+        // read "Re-pair required" in the fleet views too, never a plain green.
+        authState: (s as any).authState ?? null,
         // Same three fields GET /screens carries per row, so a fleet-wide
         // consumer can derive render-trust with the SAME deriveRenderTrust()
         // helper the Screens list uses (apps/web/src/components/screens/

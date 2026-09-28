@@ -73,6 +73,33 @@ describe('ScreensController.fleet — HQ roll-up', () => {
     expect(s2.status).toBe('OFFLINE'); // stale heartbeat → offline
   });
 
+  it('carries what the district ProofDrawer needs to say what a screen is doing: the download report stamp and the credential verdict', async () => {
+    const now = Date.now();
+    const corp = T('corp', 'Corporate', 'corp');
+    const reportAt = new Date(now - 20_000);
+    const screens = [
+      {
+        id: 's1', name: 'Lobby', status: 'ONLINE', tenantId: 'corp', lastPingAt: new Date(now),
+        latitude: null, longitude: null,
+        lastRenderedAt: new Date(now - 5_000), lastRenderedHash: 'idle:content-downloading',
+        lastCacheReport: { playlist: { count: 1 }, downloading: { file: 'promo.mp4', bytesLoaded: 62, bytesTotal: 100, deferredCommit: false } },
+        lastCacheReportAt: reportAt,
+        authState: 'REPAIR_REQUIRED',
+      },
+      { id: 's2', name: 'Gym', status: 'ONLINE', tenantId: 'corp', lastPingAt: new Date(now), latitude: null, longitude: null },
+    ];
+    const { c } = makeController({ self: corp, children: [], screens });
+    const out: any = await c.fleet(req('corp'), res());
+    const s1 = out.screens.find((x: any) => x.id === 's1');
+    expect(s1.lastCacheReportAt).toBe(reportAt);
+    expect(s1.lastCacheReport.downloading).toMatchObject({ file: 'promo.mp4', bytesLoaded: 62 });
+    expect(s1.authState).toBe('REPAIR_REQUIRED');
+    expect(s1.lastRenderedHash).toBe('idle:content-downloading');
+    const s2 = out.screens.find((x: any) => x.id === 's2');
+    expect(s2.lastCacheReportAt).toBeNull();
+    expect(s2.authState).toBeNull();
+  });
+
   it('a leaf location (no children) sees only its own screens', async () => {
     const leaf = T('loc-a', 'Austin', 'austin');
     const screens = [{ id: 's1', name: 'x', status: 'ONLINE', tenantId: 'loc-a', lastPingAt: new Date(), latitude: null, longitude: null }];
