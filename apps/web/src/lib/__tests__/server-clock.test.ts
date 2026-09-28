@@ -153,6 +153,60 @@ describe('serverClock', () => {
     expect(clock.now()).toBe(d.server());
   });
 
+  it('K12-F40: holds are per owner — one link recovering never releases another link\'s hold', () => {
+    const d = device();
+    const clock = createServerClock(d);
+    const sent = d.localNow();
+    d.advance(20);
+    clock.sample(d.server() - 10, sent, d.localNow());
+    const board = {};
+    const widgets = {};
+
+    d.advance(1_000);
+    const boardHeldAt = d.server();
+    clock.hold(board); // the /board poll went stale first
+    d.advance(700);
+    clock.hold(widgets); // …then the widgets' provider
+    d.advance(5_000);
+    expect(clock.now()).toBe(boardHeldAt); // the EARLIEST hold wins
+
+    // The widgets' poll recovers first: the board is still stale, so the
+    // clock must not run.
+    clock.release(widgets);
+    expect(clock.isHeld()).toBe(true);
+    d.advance(2_000);
+    expect(clock.now()).toBe(boardHeldAt);
+
+    // Releasing an owner that holds nothing (or releasing twice) is harmless.
+    clock.release(widgets);
+    clock.release();
+    expect(clock.now()).toBe(boardHeldAt);
+
+    clock.release(board);
+    expect(clock.isHeld()).toBe(false);
+    expect(clock.now()).toBe(d.server());
+  });
+
+  it('K12-F40: a later hold never moves the clock backwards when an earlier one ends', () => {
+    const d = device();
+    const clock = createServerClock(d);
+    const sent = d.localNow();
+    d.advance(20);
+    clock.sample(d.server() - 10, sent, d.localNow());
+    const a = {};
+    const b = {};
+    clock.hold(a);
+    const aAt = clock.now();
+    d.advance(3_000);
+    clock.hold(b); // held 3 s later
+    const bAt = d.server();
+    d.advance(3_000);
+    expect(clock.now()).toBe(aAt);
+    clock.release(a);
+    expect(clock.now()).toBe(bAt); // forward to b's instant — never back
+    expect(clock.now()).toBeGreaterThanOrEqual(aAt);
+  });
+
   it('ignores garbage samples and resets cleanly', () => {
     const d = device();
     const clock = createServerClock(d);

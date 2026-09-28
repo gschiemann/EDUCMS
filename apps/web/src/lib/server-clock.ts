@@ -73,9 +73,18 @@ export interface ServerClock {
    * instant this was called. A surface whose link went stale holds, so
    * every clock it projects stops where it stood instead of running on
    * unconfirmed data; the next good read releases it.
+   *
+   * Holds are per OWNER (default: one shared owner). A page can carry more
+   * than one live link — the /board route's own poll and the sport widgets'
+   * GameStateProvider, or several game-bound zones on one player — and each
+   * holds and releases only its own: one link recovering (or unmounting)
+   * never releases a hold another stale link still needs. `now()` stops at
+   * the EARLIEST instant any owner holds, so every clock on the page stops
+   * together and never moves backwards when one hold ends.
    */
-  hold(): void;
-  release(): void;
+  hold(owner?: object): void;
+  release(owner?: object): void;
+  /** Is ANY owner holding? */
   isHeld(): boolean;
   /**
    * The estimate IGNORING any hold — for measurements (how long ago a
@@ -93,6 +102,8 @@ const MAX_SAMPLES = 8;
 const DISCONTINUITY_MS = 1_000;
 /** Backwards moves smaller than this are held (jitter); larger are applied. */
 const MAX_HOLD_MS = 1_000;
+/** The owner of a `hold()` / `release()` called without one. */
+const DEFAULT_HOLD_OWNER: object = {};
 
 function defaultLocalNow(): number {
   const perf = typeof performance !== 'undefined' ? performance : undefined;
@@ -106,7 +117,9 @@ export function createServerClock(
   const wallNow = opts.wallNow ?? (() => Date.now());
   let samples: ServerClockSample[] = [];
   let lastOut = -Infinity;
-  let heldAt: number | null = null;
+  // K12-F40 — one held instant per owner (see `hold`). Map: insertion order
+  // is irrelevant, only the earliest instant counts.
+  const holds = new Map<object, number>();
 
   const estimateNow = (): number => {
     const pick = best();
@@ -157,16 +170,22 @@ export function createServerClock(
     },
     now() {
       const estimate = estimateNow();
-      return heldAt !== null ? Math.min(estimate, heldAt) : estimate;
+      if (holds.size === 0) return estimate;
+      let out = estimate;
+      holds.forEach((at) => {
+        if (at < out) out = at;
+      });
+      return out;
     },
-    hold() {
-      if (heldAt === null) heldAt = estimateNow();
+    hold(owner = DEFAULT_HOLD_OWNER) {
+      // A second hold by the same owner does not move its instant.
+      if (!holds.has(owner)) holds.set(owner, estimateNow());
     },
-    release() {
-      heldAt = null;
+    release(owner = DEFAULT_HOLD_OWNER) {
+      holds.delete(owner);
     },
     isHeld() {
-      return heldAt !== null;
+      return holds.size > 0;
     },
     unheldNow() {
       return estimateNow();
@@ -177,7 +196,7 @@ export function createServerClock(
     reset() {
       samples = [];
       lastOut = -Infinity;
-      heldAt = null;
+      holds.clear();
     },
     status() {
       const pick = best();

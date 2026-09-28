@@ -70,13 +70,21 @@ export function useSportsLink(
     return () => document.removeEventListener('visibilitychange', onVisibility);
   }, [trackVisibility, dispatch]);
 
+  // This link's OWN hold: a page can run several links (the /board poll and
+  // its sport widgets' provider, several game-bound zones on one player), and
+  // one of them recovering or unmounting must never release a hold another
+  // stale link still needs (server-clock.ts: holds are per owner).
+  const holdOwner = useRef<object>({});
   useEffect(() => {
     if (!holdClocks) return;
-    if (state.phase === 'stale') serverClock.hold();
-    else serverClock.release();
+    if (state.phase === 'stale') serverClock.hold(holdOwner.current);
+    else serverClock.release(holdOwner.current);
   }, [holdClocks, state.phase]);
-  useEffect(() => () => {
-    if (holdClocks) serverClock.release();
+  useEffect(() => {
+    const owner = holdOwner.current;
+    return () => {
+      if (holdClocks) serverClock.release(owner);
+    };
   }, [holdClocks]);
 
   const markGood = useCallback(() => dispatch({ type: 'good', at: Date.now() }), [dispatch]);

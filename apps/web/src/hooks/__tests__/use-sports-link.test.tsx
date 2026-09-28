@@ -69,6 +69,54 @@ describe('useSportsLink', () => {
     act(() => setVisibility('visible'));
   });
 
+  it('two links on one page: one recovering or unmounting never releases the other\'s hold', () => {
+    const page = renderHook(() => useSportsLink({ holdClocks: true }));
+    const widgets = renderHook(() => useSportsLink({ holdClocks: true }));
+    act(() => {
+      page.result.current.markGood();
+      widgets.result.current.markGood();
+    });
+    act(() => {
+      jest.advanceTimersByTime(9_100);
+    });
+    expect(page.result.current.state.phase).toBe('stale');
+    expect(widgets.result.current.state.phase).toBe('stale');
+    const held = serverClock.now();
+
+    // The widgets' poll comes back first; the page's is still out.
+    act(() => widgets.result.current.markGood());
+    expect(widgets.result.current.state.phase).toBe('live');
+    expect(serverClock.isHeld()).toBe(true);
+    act(() => {
+      jest.advanceTimersByTime(500);
+    });
+    expect(serverClock.now()).toBe(held);
+
+    // …and a link that is torn down (a zone unbound) leaves the page's hold alone.
+    widgets.unmount();
+    expect(serverClock.isHeld()).toBe(true);
+
+    act(() => page.result.current.markGood());
+    expect(serverClock.isHeld()).toBe(false);
+    page.unmount();
+  });
+
+  it('a link that mounts while another is stale does not release it', () => {
+    const page = renderHook(() => useSportsLink({ holdClocks: true }));
+    act(() => page.result.current.markGood());
+    act(() => {
+      jest.advanceTimersByTime(9_100);
+    });
+    expect(serverClock.isHeld()).toBe(true);
+    // A provider mounting now starts 'connecting' — its effect releases ITS
+    // hold (none), never the page's.
+    const late = renderHook(() => useSportsLink({ holdClocks: true }));
+    expect(late.result.current.state.phase).toBe('connecting');
+    expect(serverClock.isHeld()).toBe(true);
+    late.unmount();
+    page.unmount();
+  });
+
   it('releases a held clock when the surface unmounts', () => {
     const { result, unmount } = renderHook(() => useSportsLink({ holdClocks: true }));
     act(() => {
