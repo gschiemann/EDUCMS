@@ -53,7 +53,10 @@ import {
   shortTimeoutKey,
   snapshotRules,
   sportForGame,
+  teamBonus,
+  teamFoulRules,
   timeoutAllocation,
+  timeoutBanks,
 } from '@cms/api-types';
 import type { RulesProfile, SportDefinition } from '@cms/api-types';
 import { SPONSOR_SPOT_SECONDS } from './sponsor.constants';
@@ -1742,8 +1745,15 @@ export class SportsService {
       // truth, whichever control wrote it (2026-07-12 world-class audit).
       possession: game.possession ?? null,
       // Typed meet results, the swim feed's lane→name join, foul / exclusion
-      // rows and the athlete-name stats go through the same gate (B3).
-      stats: publicStats(mirrorPossessionIntoStats(game.stats, game.possession), studentCtx),
+      // rows and the athlete-name stats go through the same gate (B3). The
+      // bonus lamps are added from the game's own rules (K12-F04).
+      stats: this.withBonusLamps(
+        game,
+        publicStats(
+          mirrorPossessionIntoStats(game.stats, game.possession),
+          studentCtx,
+        ),
+      ),
       spotlight: publicSpotlight(game.spotlight, studentCtx),
       cues: cues.map((c) => {
         const p = publicCuePayload((c.payload as Record<string, unknown>) ?? {}, studentCtx);
@@ -1833,6 +1843,30 @@ export class SportsService {
     }
 
     return board;
+  }
+
+  /**
+   * K12-F04 — the bonus lamps of a public stats blob, decided by the game's
+   * OWN rules (`teamBonus`, @cms/api-types sports-rules.ts): `homeBonus` is
+   * true when HOME shoots bonus free throws — i.e. when AWAY has reached the
+   * bonus foul count this period (NFHS: five [nfhs-bb-changes-2023-24]). The
+   * surfaces light a lamp from these flags, never from thresholds of their
+   * own. A sport that keeps no team fouls is returned untouched.
+   */
+  private withBonusLamps(
+    game: { sport: string; rules?: unknown },
+    stats: unknown,
+  ): unknown {
+    const def = sportForGame(game);
+    if (!teamFoulRules(def) || !stats || typeof stats !== 'object') {
+      return stats;
+    }
+    const s = stats as Record<string, unknown>;
+    return {
+      ...s,
+      homeBonus: teamBonus(def, 'home', s) !== null,
+      awayBonus: teamBonus(def, 'away', s) !== null,
+    };
   }
 
   // ── writes ───────────────────────────────────────────────────
@@ -4390,11 +4424,15 @@ export class SportsService {
    * @param def       The sport definition (carries segmentReset).
    * @param rawStats  Current Game.stats (JSON blob, may be null).
    * @param newSegment The segment index we're advancing TO (1-based).
+   * @param prevSegment The segment the game is leaving (K12-F02 / F03: the
+   *                  rules profile's foul carry and overtime timeouts depend
+   *                  on the direction and on which boundary is crossed).
    */
   private computeSegmentResets(
-    def: import('@cms/api-types').SportDefinition,
+    def: SportDefinition,
     rawStats: unknown,
     newSegment: number,
+    prevSegment: number,
   ): { statDeltas: Record<string, unknown>; shotClockReset: boolean } {
     const rules = def.segmentReset;
     const statDeltas: Record<string, unknown> = {};
@@ -4405,38 +4443,62 @@ export class SportsService {
       rawStats && typeof rawStats === 'object'
         ? (rawStats as Record<string, unknown>)
         : {};
+    const count = def.segment.count;
+    const forward = newSegment > prevSegment;
 
-    // Foul resets — every segment boundary.
-    if (rules.homeFouls && (stats.homeFouls ?? 0) !== 0) {
+    // Team fouls. Classic rules: back to zero at every segment change. Under
+    // a rules profile's team-foul rules (K12-F02): back to zero only when the
+    // game moves FORWARD into a new regulation period — NFHS basketball
+    // resets at the end of the first, second and third quarters — and never
+    // on the way into, or between, overtime periods, which continue the
+    // fourth quarter's count [ncaa-nfhs-bb-2025-26; kshsaa-bb-table-2026 in
+    // @cms/api-types RULES_SOURCES]. A move back is a correction: its fouls
+    // come back through undo, never through a reset.
+    const fouls = def.teamFouls;
+    const resetFouls = !fouls
+      ? true
+      : forward && (!fouls.carryIntoOvertime || prevSegment < count);
+    if (resetFouls && rules.homeFouls && (stats.homeFouls ?? 0) !== 0) {
       statDeltas.homeFouls = 0;
     }
-    if (rules.awayFouls && (stats.awayFouls ?? 0) !== 0) {
+    if (resetFouls && rules.awayFouls && (stats.awayFouls ?? 0) !== 0) {
       statDeltas.awayFouls = 0;
     }
 
-    // Timeout resets — 'segment' = always; 'half' = only at the halfway
-    // boundary (after segment count/2 in a 4-quarter sport that's after Q2).
-    const halfPoint = Math.floor(def.segment.count / 2);
+    // Timeout banks — 'segment' = refilled at every boundary (volleyball: two
+    // per set); 'half' = only at the halfway boundary (football: after Q2);
+    // 'never' = one bank for the whole game (NFHS basketball, K12-F03 — no
+    // halftime refill). A refill is the rules' allocation (full + short),
+    // else the classic stat maximum.
+    const halfPoint = Math.floor(count / 2);
     const atHalf = newSegment === halfPoint + 1; // advancing INTO the second half
-    const maxTimeouts = (key: 'homeTimeouts' | 'awayTimeouts'): number => {
-      const field = def.stats.find((f) => f.key === key);
-      return field?.max ?? 3;
-    };
-
-    if (rules.homeTimeouts === 'segment') {
-      const fullVal = maxTimeouts('homeTimeouts');
-      if ((stats.homeTimeouts ?? fullVal) !== fullVal) statDeltas.homeTimeouts = fullVal;
-    } else if (rules.homeTimeouts === 'half' && atHalf) {
-      const fullVal = maxTimeouts('homeTimeouts');
-      if ((stats.homeTimeouts ?? fullVal) !== fullVal) statDeltas.homeTimeouts = fullVal;
+    const allocation = timeoutAllocation(def);
+    const shortBank =
+      def.timeouts && def.timeouts.short > 0 ? def.timeouts.short : 0;
+    for (const side of ['home', 'away'] as const) {
+      const key = side === 'home' ? 'homeTimeouts' : 'awayTimeouts';
+      const policy = side === 'home' ? rules.homeTimeouts : rules.awayTimeouts;
+      if (policy !== 'segment' && !(policy === 'half' && atHalf)) continue;
+      if ((stats[key] ?? allocation) !== allocation) {
+        statDeltas[key] = allocation;
+      }
+      const shortKey = shortTimeoutKey(side);
+      if (shortBank > 0 && (stats[shortKey] ?? shortBank) !== shortBank) {
+        statDeltas[shortKey] = shortBank;
+      }
     }
-
-    if (rules.awayTimeouts === 'segment') {
-      const fullVal = maxTimeouts('awayTimeouts');
-      if ((stats.awayTimeouts ?? fullVal) !== fullVal) statDeltas.awayTimeouts = fullVal;
-    } else if (rules.awayTimeouts === 'half' && atHalf) {
-      const fullVal = maxTimeouts('awayTimeouts');
-      if ((stats.awayTimeouts ?? fullVal) !== fullVal) statDeltas.awayTimeouts = fullVal;
+    // Overtime timeouts (K12-F03): every overtime period entered adds the
+    // rules' `overtimeFull` to each team's bank; unused ones carry over.
+    const otFull = def.timeouts?.overtimeFull ?? 0;
+    const hasTimeouts = def.stats.some((f) => f.key === 'homeTimeouts');
+    if (otFull > 0 && hasTimeouts && forward && newSegment > count) {
+      const entered = newSegment - Math.max(prevSegment, count);
+      for (const key of ['homeTimeouts', 'awayTimeouts'] as const) {
+        const current = statDeltas[key] ?? stats[key];
+        const left =
+          typeof current === 'number' && isFinite(current) ? current : 0;
+        statDeltas[key] = left + entered * otFull;
+      }
     }
 
     // Shot clock reset flag — the caller handles the actual anchor update
@@ -4889,7 +4951,12 @@ export class SportsService {
       // complementary: T2-10 handles homeFouls/awayFouls/timeouts/shot
       // clock per SportDefinition; T2-7 specifically resets the football
       // play clock to 40s on quarter advance.
-      const resets = this.computeSegmentResets(def, game.stats, segment);
+      const resets = this.computeSegmentResets(
+        def,
+        game.stats,
+        segment,
+        prevSegment,
+      );
       statDeltas = resets.statDeltas;
       shotClockReset = resets.shotClockReset;
       mergedStats =
@@ -6708,7 +6775,6 @@ export class SportsService {
     actor?: CommandInput,
   ) {
     const team: 'home' | 'away' = dto.team === 'away' ? 'away' : 'home';
-    const timeoutType = dto.type === 'short' ? 'short' : 'full';
     const statKey = team === 'home' ? 'homeTimeouts' : 'awayTimeouts';
 
     // ONE command, computed from ONE fresh read: the clock pause (with its
@@ -6738,6 +6804,30 @@ export class SportsService {
           `BUG_NO_TIMEOUTS_LEFT: ${team} team has no timeouts remaining (${label} = 0)`,
         );
       }
+      // K12-F03 — under a rules profile with full AND short timeouts (NFHS
+      // basketball: three 60 s + two 30 s per game [ncaa-nfhs-bb-2025-26]),
+      // the timeout comes out of the bank the official signalled. No `type` =
+      // a full one while the team has one, else a short one. The total left
+      // (what every board shows) always drops by one.
+      const banks = timeoutBanks(def, team, statsBefore);
+      const shortBank = !!def.timeouts && def.timeouts.short > 0;
+      let timeoutType: 'full' | 'short' =
+        dto.type === 'short' ? 'short' : 'full';
+      if (shortBank && dto.type === undefined && banks.full <= 0) {
+        timeoutType = 'short';
+      }
+      const left = timeoutType === 'short' ? banks.short : banks.full;
+      if (shortBank && left <= 0) {
+        throw new BadRequestException({
+          code: 'NO_TIMEOUTS_OF_KIND_LEFT',
+          message: `The ${team} team has no ${
+            timeoutType === 'short' ? '30-second' : 'full'
+          } timeouts left.`,
+          kind: timeoutType,
+          full: banks.full,
+          short: banks.short,
+        });
+      }
       const newRemaining = Math.max(0, prevRemaining - 1);
 
       const now = this.clockNow();
@@ -6747,6 +6837,10 @@ export class SportsService {
         ...((data.stats as Record<string, unknown> | undefined) ?? statsBefore),
       };
       stats[statKey] = newRemaining;
+      if (shortBank) {
+        stats[shortTimeoutKey(team)] =
+          timeoutType === 'short' ? banks.short - 1 : banks.short;
+      }
       // Football: a charged timeout sets the 25-second count, parked until
       // the referee's ready-for-play signal (NFHS play-clock instructions).
       if (def.playClock) {
@@ -6756,11 +6850,18 @@ export class SportsService {
       const updated = await scope.write(data);
 
       // TIMEOUT GameEvent — the command's undo target and forensic record.
+      const shortLeft = shortBank
+        ? {
+            prevShortRemaining: banks.short,
+            newShortRemaining: stats[shortTimeoutKey(team)],
+          }
+        : {};
       await scope.event('TIMEOUT', {
         team,
         type: timeoutType,
         prevTimeoutsRemaining: prevRemaining,
         newTimeoutsRemaining: newRemaining,
+        ...shortLeft,
         change: scope.change(),
       });
       // CUE — drives the "TIMEOUT — EASTSIDE 2 LEFT" overlay on every
@@ -6783,12 +6884,16 @@ export class SportsService {
         type: timeoutType,
         prevTimeoutsRemaining: prevRemaining,
         newTimeoutsRemaining: newRemaining,
+        ...shortLeft,
       });
       return {
         success: true,
         team,
         type: timeoutType,
         timeoutsRemaining: newRemaining,
+        ...(shortBank
+          ? { shortTimeoutsRemaining: stats[shortTimeoutKey(team)] }
+          : {}),
       };
     });
   }

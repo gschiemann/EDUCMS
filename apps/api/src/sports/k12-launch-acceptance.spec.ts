@@ -34,8 +34,11 @@ describe('K12 launch acceptance — the 21 audit probes', () => {
     expect(g.stats.homeTimeouts).toBe(1);
   });
 
-  // Owner: A3 (F02) — 4:00 OT and Q4 team fouls carry into overtime.
-  it.failing('K12-02 basketball overtime uses four minutes and carries Q4 team fouls', async () => {
+  // Owner: A3 (F02) — fixed 2026-09-27: under nfhs-basketball@2026-27 an
+  // overtime period is four minutes and continues the fourth quarter's team
+  // fouls (2025-26 NCAA/NFHS comparison, NFHS column: team fouls reset at the
+  // end of Q1-Q3; KSHSAA timer/scorer guidelines; 05-RULES-SOURCES.md).
+  it('K12-02 basketball overtime uses four minutes and carries Q4 team fouls', async () => {
     const { service } = setup(); const g: any = await newGame(service, 'basketball');
     await service.setSegment(TENANT, g.id, { segment: 4 });
     await service.updateStats(TENANT, g.id, { stats: { homeFouls: 5 } });
