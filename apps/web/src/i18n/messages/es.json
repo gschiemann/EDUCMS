@@ -3486,5 +3486,19 @@
     "cooldownSeconds": "{seconds, plural, one {# segundo} other {# segundos}}",
     "noneForSport": "En este deporte ninguna anotación se celebra sola: lanza las celebraciones desde el panel.",
     "saveFailed": "No se pudo guardar. Inténtalo de nuevo."
+  },
+  "sportsFeed": {
+    "title": "Fuente de marcador externa (genérica)",
+    "intro": "Cualquier sistema que pueda enviar una solicitud web puede enviar aquí el marcador, el reloj y el periodo de este partido. El emisor es tuyo: el envío HTTP de tu proveedor de marcador, un relé o un script sencillo.",
+    "vendorNote": "No existe una conexión nativa con Sportzcast ni con Scorebird. Son instrucciones para que su envío HTTP (o un relé que tú operes) mande nuestro JSON; no aparece nada como recibido hasta que llegan paquetes.",
+    "statusWaiting": "Esperando el primer paquete…",
+    "statusReceiving": "Recibiendo: {age}",
+    "statusReceivingVia": "Recibiendo desde {via}: {age}",
+    "statusSilent": "Sin paquetes: el último {age}",
+    "viaConsole": "una consola de marcador",
+    "viaSwim": "el cronometraje de natación",
+    "ageSeconds": "hace {seconds} s",
+    "ageMinutes": "hace {minutes} min",
+    "developerDesc": "De dónde vienen los marcadores: la consola o un enlace de teléfono, una fuente firmada genérica que envía tu sistema, consolas de marcador experimentales. No existe ningún conector de datos de ligas."
   }
 }

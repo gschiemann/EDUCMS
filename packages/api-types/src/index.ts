@@ -1006,6 +1006,10 @@ export * from './sports-postgame';
 // K-12 launch lane A4 (K12-F36) — automatic celebrations fire from a scoring
 // play, once, under the table's shared settings; never from a correction.
 export * from './sports-celebrations';
+// K-12 launch lane A4 (K12-F33 / F32) — where a game's score can come from,
+// said truthfully (manual, generic feed, experimental hardware, unavailable),
+// and which console decodes which sport — never a default one.
+export * from './sports-sources';
 export * from './streaming';
 export * from './streaming-presets';
 export * from './billing';

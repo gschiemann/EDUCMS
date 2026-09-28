@@ -3486,5 +3486,19 @@
     "cooldownSeconds": "{seconds, plural, one {# second} other {# seconds}}",
     "noneForSport": "No scoring play in this sport celebrates by itself — fire celebrations from the launchpad.",
     "saveFailed": "Couldn't save. Try again."
+  },
+  "sportsFeed": {
+    "title": "External score feed (generic)",
+    "intro": "Anything that can send a web request can push this game's score, clock and period here. The sender is yours: your scoreboard vendor's HTTP push, a relay or a small script.",
+    "vendorNote": "There is no native Sportzcast or Scorebird connection. These are setup instructions for their HTTP push (or a relay you run) to send our JSON — nothing shows as receiving until packets arrive.",
+    "statusWaiting": "Waiting for first packet…",
+    "statusReceiving": "Receiving — {age}",
+    "statusReceivingVia": "Receiving from {via} — {age}",
+    "statusSilent": "No packets — the last one {age}",
+    "viaConsole": "a scoreboard console",
+    "viaSwim": "swim timing",
+    "ageSeconds": "{seconds} s ago",
+    "ageMinutes": "{minutes} min ago",
+    "developerDesc": "Where scores come from: the console or a phone link, a generic signed feed your system sends, experimental scoreboard consoles. No league-data connector exists."
   }
 }

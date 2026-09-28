@@ -107,6 +107,14 @@ const CLAIM_PHRASES = [
   { re: /99\.9\d*\s?%|uptime (guarantee|SLA)/i, capability: 'uptime-sla', label: 'uptime SLA' },
   // POS provider names (proper-noun case — avoids "toast notifications" etc).
   { re: /\bToast\b|\bClover\b/, capability: 'pos-connectors', label: 'POS connectors' },
+  // Sports score sources (K12-F33, 2026-09-27) — @cms/api-types sports-sources.ts.
+  // Hardware consoles are EXPERIMENTAL and the league connectors / NFHS overlay
+  // are NOT_BUILT, so any public mention of them reds CI until that changes;
+  // Sportzcast / Scorebird are recipe cards on the verified generic feed.
+  { re: /\bDaktronics\b|Colorado Time Systems|\bCTS (?:console|scoreboard)\b/i, capability: 'sports-hardware-console', label: 'scoreboard console integration' },
+  { re: /\bSportzcast\b|\bScorebird\b/i, capability: 'sports-vendor-feed-recipes', label: 'Sportzcast / Scorebird feed setup' },
+  { re: /Genius Sports|\bSportradar\b|\bMaxPreps\b|\bGameChanger\b/i, capability: 'sports-league-data-connectors', label: 'league data connectors' },
+  { re: /NFHS Network/i, capability: 'nfhs-network-overlay', label: 'NFHS Network overlay' },
 ];
 
 /** Scan public surfaces for claim phrases lacking a claimable capability.

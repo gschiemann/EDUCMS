@@ -90,6 +90,8 @@ interface CategoryMeta {
   id: string;
   label: string;
   description: string;
+  /** A translated description (catalog key), when there is one. */
+  descriptionKey?: string;
   Icon: React.ComponentType<{ className?: string }>;
   defaultOpen: boolean;
 }
@@ -107,7 +109,8 @@ const CATEGORY_META: CategoryMeta[] = [
   { id: 'payments',       label: 'Payments (Stripe)',       description: 'Checkout, Customer Portal, Invoices, webhook idempotency.',              Icon: CreditCard,      defaultOpen: false },
   { id: 'communications', label: 'Communications',          description: 'Email / SMS / push for invites, password resets, and emergency outputs.', Icon: Mail,           defaultOpen: false },
   { id: 'design-import',  label: 'Design imports',          description: 'Drop a PDF / image now; Canva Connect + Slides + Figma queued behind partner approval.', Icon: FileImage, defaultOpen: false },
-  { id: 'sports',         label: 'Sports data',             description: 'Sport Engine (manual entry today) — Daktronics / Sportzcast / Genius queued.', Icon: Trophy,      defaultOpen: false },
+  // K12-F33 — said the way @cms/api-types sports-sources.ts classifies it.
+  { id: 'sports',         label: 'Sports data',             description: '', descriptionKey: 'sportsFeed.developerDesc', Icon: Trophy,      defaultOpen: false },
   { id: 'monetize',       label: 'Monetize (ads)',          description: 'House-only ad slots today; programmatic DOOH SSPs sales-led.',          Icon: Megaphone,       defaultOpen: false },
 ];
 
@@ -415,7 +418,9 @@ function TestIntegrationsContent() {
                       {summary.comingSoon > 0 && ` / ${summary.comingSoon} coming soon`})
                     </span>
                   </h2>
-                  <p className="text-[11px] text-slate-500 mt-0.5">{cat.description}</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    {cat.descriptionKey ? t(cat.descriptionKey) : cat.description}
+                  </p>
                 </div>
               </div>
               {open ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}

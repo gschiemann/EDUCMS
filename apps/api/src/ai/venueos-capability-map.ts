@@ -276,9 +276,13 @@ export const INTEGRATION_VOCABULARY: IntegrationCapability[] = [
     requires: 'sponsor rows configured. Sports-vertical only.',
   },
   {
-    name: 'Live scores / clock (CTS)',
-    does: 'A live scoreboard — score, game clock, period — driven by a Daktronics/CTS console or operator phone.',
-    requires: 'a connected score feed on a /board or /ribbon surface. Sports-vertical only.',
+    // K12-F33 — said the way @cms/api-types sports-sources.ts classifies it:
+    // the console / a phone always; a signed feed whose sender is the venue's;
+    // two EXPERIMENTAL scoreboard consoles with a short sport list.
+    name: 'Live scores / clock',
+    does: "A live scoreboard — score, game clock, period — run from the game console or a scorekeeper phone link, or pushed by the venue's own system through our signed score feed. A Daktronics All Sport (football, basketball, baseball, softball) or CTS (water polo) console can feed it through an EXPERIMENTAL bridge box — never promise console support for another sport or as certified.",
+    requires:
+      'a game in Sports shown on a /board or /ribbon surface. Sports-vertical only.',
   },
   {
     name: 'Live stream',

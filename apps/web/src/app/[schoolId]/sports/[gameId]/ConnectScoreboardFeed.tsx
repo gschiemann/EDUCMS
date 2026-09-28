@@ -25,6 +25,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { Check, Copy, RefreshCw } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { computeFeedStatus, type FeedStatus } from '@/lib/cts-merge';
@@ -124,11 +125,6 @@ function buildCopyBlock(c: FeedCredentials): string {
   );
 }
 
-function formatAge(ageMs: number): string {
-  const s = Math.max(0, Math.round(ageMs / 1000));
-  if (s < 60) return `${s}s ago`;
-  return `${Math.floor(s / 60)}m ago`;
-}
 
 /**
  * Live status row — `Waiting for first packet…` / `Receiving — Xs ago` /
@@ -137,6 +133,7 @@ function formatAge(ageMs: number): string {
  * re-renders so the age counts up between polls (CtsConsoleStatus pattern).
  */
 function FeedStatusRow({ stats }: { stats: Record<string, unknown> }) {
+  const t = useTranslations('sportsFeed');
   // The page's SERVER clock as the reference (K12-F40, same as
   // CtsConsoleStatus): the packet stamp is server time, so the age is
   // measured on server time — an operator laptop that runs fast or slow can
@@ -161,18 +158,19 @@ function FeedStatusRow({ stats }: { stats: Record<string, unknown> }) {
     stale: 'ring-1 ring-amber-300 bg-amber-50 text-amber-900',
     never: 'ring-1 ring-slate-200 bg-slate-50 text-slate-600',
   };
-  const via =
-    status.source === 'cts'
-      ? ' (via CTS console)'
-      : status.source === 'swim'
-        ? ' (via swim timing)'
-        : '';
+  // K12-F33 — the console path serves CTS AND Daktronics consoles, so it is
+  // named for what it is ("a scoreboard console"), not for one brand.
+  const via = status.source === 'cts' ? t('viaConsole') : status.source === 'swim' ? t('viaSwim') : null;
+  const secs = Math.max(0, Math.round((status.ageMs ?? 0) / 1000));
+  const age = secs < 60 ? t('ageSeconds', { seconds: secs }) : t('ageMinutes', { minutes: Math.floor(secs / 60) });
   const text =
     status.kind === 'never'
-      ? 'Waiting for first packet…'
+      ? t('statusWaiting')
       : status.kind === 'fresh'
-        ? `Receiving${via}${status.ageMs !== null ? ` — ${formatAge(status.ageMs)}` : ''}`
-        : `No packets${status.ageMs !== null ? ` — last one ${formatAge(status.ageMs)}` : ''}`;
+        ? via
+          ? t('statusReceivingVia', { via, age })
+          : t('statusReceiving', { age })
+        : t('statusSilent', { age });
 
   return (
     <div
@@ -198,6 +196,7 @@ export function ConnectScoreboardFeed({
   const [copied, setCopied] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [rotatedNow, setRotatedNow] = useState(false);
+  const t = useTranslations('sportsFeed');
 
   const mint = useCallback(async () => {
     setState('loading');
@@ -281,14 +280,11 @@ export function ConnectScoreboardFeed({
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-3">
-      <div className="text-[13px] font-bold text-slate-900">
-        Scoreboard feed — Sportzcast / Scorebird / anything
-      </div>
-      <p className="mt-0.5 text-[11px] text-slate-500">
-        Point your score box at this game and the live score &amp; clock flow in
-        machine-to-machine — no login on the sending side. Pick your vendor for
-        step-by-step instructions.
-      </p>
+      {/* K12-F33 — says what this is: OUR generic signed feed, whose sender
+          is the venue's. It used to be titled as if Sportzcast / Scorebird
+          were connected natively. */}
+      <div className="text-[13px] font-bold text-slate-900">{t('title')}</div>
+      <p className="mt-0.5 text-[11px] text-slate-500">{t('intro')}</p>
 
       {/* Vendor recipe chips — swap ONLY the instruction text. */}
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -308,10 +304,8 @@ export function ConnectScoreboardFeed({
           </button>
         ))}
       </div>
-      <p className="mt-1.5 text-[10px] text-slate-400">
-        Every vendor uses the same VenueOS score feed (one URL + one token) —
-        these are setup instructions for your vendor&apos;s HTTP push, not a
-        separate per-vendor connection.
+      <p className="mt-1.5 text-[10px] text-slate-400" data-testid="feed-vendor-note">
+        {t('vendorNote')}
       </p>
 
       <ol className="mt-2 list-decimal space-y-1 pl-4 text-[11px] leading-snug text-slate-600">

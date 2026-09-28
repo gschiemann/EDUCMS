@@ -8,8 +8,18 @@ settings + decoder:
 
 | Console | Decoder | Serial | Sports | Status |
 |---|---|---|---|---|
-| **Colorado Time Systems** System 6 / Gen 6 | `CtsParser` | 9600 / 8 / **EVEN** / 1, 1/4" jack | water polo | shipped |
-| **Daktronics All Sport** 5000 / 5500 / 3000 (Enhanced RTD) | `DaktronicsParser` | 19200 / 8 / **NONE** / 1, Port Expander | football, basketball, baseball/softball | **new** |
+| **Colorado Time Systems** System 6 / Gen 6 | `CtsParser` | 9600 / 8 / **EVEN** / 1, 1/4" jack | water polo | experimental |
+| **Daktronics All Sport** 5000 / 5500 / 3000 (Enhanced RTD) | `DaktronicsParser` | 19200 / 8 / **NONE** / 1, Port Expander | football, basketball, baseball/softball | experimental |
+
+**Status, said truthfully (K12-F33, 2026-09-27):** both decoders run, and
+neither has been confirmed against the real console at a customer venue
+(hardware gate G03) — the product labels them "experimental" and never
+"certified". The sports each console may drive, and the decoder table per
+sport, live in ONE place: `SCORE_SOURCES` / `consoleDecoderFor` in
+`@cms/api-types` (`packages/api-types/src/sports-sources.ts`). A sport with
+no table there (soccer, volleyball, wrestling … on a Daktronics console;
+anything but water polo on a CTS console) is refused — never decoded with
+another sport's table.
 
 The player-side bridge (`apps/web/src/components/player/CtsBridge.tsx`)
 picks a profile via the `consoleProfile` prop / `?consoleProfile=` query

@@ -303,7 +303,8 @@ const RULES: ProviderRule[] = [
   // YouTube/Twitch are real public EMBEDS today (no per-tenant auth) —
   // added via the Webpage/Video widget in the template editor, so they're
   // AVAILABLE and route there. NFHS is a paid-subscription overlay with no
-  // connector → COMING_SOON.
+  // connector → COMING_SOON status; the reason says "not available" (K12-F33,
+  // nobody is building it — capability nfhs-network-overlay is NOT_BUILT).
   {
     id: 'youtube',
     name: 'YouTube Live',
@@ -334,7 +335,8 @@ const RULES: ProviderRule[] = [
     blurb: 'High-school sports live-stream overlay for SPORTS-vertical tenants.',
     status: 'COMING_SOON',
     connectHref: null,
-    comingSoonReason: 'Coming soon — NFHS Network overlay in development (requires an active NFHS subscription).',
+    comingSoonReason:
+      'Not available — there is no NFHS Network connector. The broadcast scorebug works as a browser source in any streaming tool.',
     signals: [
       { pattern: /\bnfhsnetwork\.com\b/i, weight: 0.8, label: 'NFHS Network link' },
     ],
@@ -492,10 +494,13 @@ const RULES: ProviderRule[] = [
   },
 
   // ─── Sports data (no connector yet) ────────────────────────────────
-  // NOTE: live SCORE feeds (Daktronics RS485, water-polo path) ARE real,
-  // but they're wired through the Sports console / hardware bridge, not the
-  // Concierge URL/description discovery flow. MaxPreps schedule scraping has
-  // no connector → COMING_SOON.
+  // NOTE (K12-F33): live SCORE sources are classified in @cms/api-types
+  // sports-sources.ts — the console and the signed generic feed work; the CTS
+  // (water polo) and Daktronics All Sport (football / basketball / baseball /
+  // softball) consoles are EXPERIMENTAL hardware set up per game, not through
+  // this Concierge flow. MaxPreps has no connector, and nobody is building one
+  // → COMING_SOON status, but the reason says "not available", never "in
+  // development".
   {
     id: 'maxpreps',
     name: 'MaxPreps',
@@ -503,7 +508,8 @@ const RULES: ProviderRule[] = [
     blurb: 'High-school athletic schedules + standings from MaxPreps.',
     status: 'COMING_SOON',
     connectHref: null,
-    comingSoonReason: 'Coming soon — MaxPreps schedule sync in development. Build a schedule board manually today.',
+    comingSoonReason:
+      'Not available — there is no MaxPreps connector. Build a schedule board manually today.',
     signals: [
       { pattern: /\bmaxpreps\.com\b/i, weight: 0.8, label: 'MaxPreps link' },
     ],

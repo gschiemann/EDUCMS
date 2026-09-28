@@ -52,7 +52,12 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
-import { POS_PROVIDERS } from '@cms/api-types';
+import {
+  POS_PROVIDERS,
+  SCORE_SOURCES,
+  findSport,
+  type ScoreSource,
+} from '@cms/api-types';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { StripeService } from '../billing/stripe.service';
@@ -823,9 +828,18 @@ export class IntegrationsHealthController {
 
   // ─── SPORTS DATA ─────────────────────────────────────────────────
 
+  /**
+   * K12-F33 — every sports row comes from the ONE score-source list
+   * (@cms/api-types sports-sources.ts), the list the game console labels its
+   * setup from, and each says what KIND of source it is and which sports it
+   * drives: the console and the generic feed are READY; a scoreboard console
+   * is experimental hardware (NOT_CONFIGURED here: it is set up per game, on
+   * a screen, and has no hardware certification); a provider with no
+   * connector is COMING_SOON — never shown as working. These rows used to say
+   * "6 flagship sports", "Daktronics — coming soon" (a decoder ships) and
+   * "Sprint 13 Phase 4" for connectors nobody is building.
+   */
   private async probeSports(tenantId: string, checkedAt: string): Promise<IntegrationRow[]> {
-    // Manual-entry scoring (phone control) is shipped. Console tap-off
-    // and league feeds are Sprint 13 Phases 3-4 — not built yet.
     let hasGames = false;
     try {
       const count = await ((this.prisma.client as any).game).count({ where: { tenantId } });
@@ -833,74 +847,76 @@ export class IntegrationsHealthController {
     } catch {
       // Sports tables not present on this deploy.
     }
-    return [
-      {
-        id: 'sports-manual-entry',
-        name: 'Manual scoreboard (phone control)',
-        category: 'sports',
-        status: 'READY',
-        message: hasGames
-          ? 'Sports engine live, at least one Game record exists. Phone control + 6 flagship sport definitions.'
-          : 'Sports engine wired up — no games created yet. Go to /sports to start a game.',
-        latencyMs: null,
-        checkedAt,
-        presetId: 'sports-gameday-countdown',
-        verticalHint: 'SPORTS',
-      },
-      {
-        id: 'sports-daktronics',
-        name: 'Daktronics All Sport console tap-off',
-        category: 'sports',
-        status: 'COMING_SOON',
-        message: 'Sprint 13 Phase 4 — small box reads existing Daktronics All Sport console serial output and publishes live clock + score.',
-        latencyMs: null,
-        checkedAt,
-      },
-      {
-        // Inputs-wave GUIDED (2026-08-10): flipped off COMING_SOON in the
-        // same commit that ships the guided setup card. HONESTY: this is the
-        // shipped generic HMAC score feed (POST /sports/board/:id/feed) with
-        // per-vendor RECIPE instructions in each game console — NOT a native
-        // Sportzcast/Scorebird protocol adapter (none exists in the codebase).
-        id: 'sports-sportzcast',
-        name: 'Sportzcast / Scorebird',
-        category: 'sports',
-        status: 'READY',
-        message: hasGames
-          ? 'Guided setup lives in each game console (Setup → External score feed): vendor recipe cards walk you through pointing a Sportzcast/Scorebird push at the game\'s score-feed URL + token. Uses the generic HMAC feed — instructions per vendor, not a native protocol adapter.'
-          : 'Ready — create a game, then open its console (Setup → External score feed) for the guided Sportzcast/Scorebird setup card. Uses the generic HMAC feed — instructions per vendor, not a native protocol adapter.',
-        latencyMs: null,
-        checkedAt,
-        configurePath: '/sports',
-      },
-      {
-        id: 'sports-genius',
-        name: 'Genius Sports / Sportradar',
-        category: 'sports',
-        status: 'COMING_SOON',
-        message: 'Sprint 13 Phase 4 — league push feed for stats overlays. 20-30s lag, never used for the live clock.',
-        latencyMs: null,
-        checkedAt,
-      },
-      {
-        id: 'sports-maxpreps',
-        name: 'MaxPreps',
-        category: 'sports',
-        status: 'COMING_SOON',
-        message: 'Sprint 13 Phase 4 — HS-friendly stats source.',
-        latencyMs: null,
-        checkedAt,
-      },
-      {
-        id: 'sports-gamechanger',
-        name: 'GameChanger',
-        category: 'sports',
-        status: 'COMING_SOON',
-        message: 'Sprint 13 Phase 4 — baseball / softball score source.',
-        latencyMs: null,
-        checkedAt,
-      },
-    ];
+    const sportsOf = (src: ScoreSource) =>
+      src.sports === 'all'
+        ? 'every sport'
+        : src.sports.map((k) => findSport(k)?.name ?? k).join(', ');
+    const row = (
+      src: ScoreSource,
+      status: IntegrationStatus,
+      message: string,
+      extra: Partial<IntegrationRow> = {},
+    ): IntegrationRow => ({
+      id: `sports-${src.id}`,
+      name: src.name,
+      category: 'sports',
+      status,
+      message,
+      latencyMs: null,
+      checkedAt,
+      ...extra,
+    });
+    const rows: IntegrationRow[] = [];
+    for (const src of SCORE_SOURCES) {
+      if (src.kind === 'manual') {
+        rows.push(
+          row(
+            src,
+            'READY',
+            hasGames
+              ? `Working — run any game (${sportsOf(src)}) from its console or a scorekeeper link.`
+              : `Working — create a game in Sports to run it (${sportsOf(src)}) from its console or a scorekeeper link.`,
+            { presetId: 'sports-gameday-countdown', verticalHint: 'SPORTS' },
+          ),
+        );
+      } else if (src.id === 'generic-feed') {
+        rows.push(
+          row(
+            src,
+            'READY',
+            `Generic feed — ${sportsOf(src)}. Each game has a signed URL + token (Setup → External score feed); the SENDER is yours: a vendor's HTTP push, a relay or a script posting our JSON.`,
+            { configurePath: '/sports' },
+          ),
+        );
+      } else if (src.kind === 'generic-feed') {
+        rows.push(
+          row(
+            src,
+            'READY',
+            `Through the generic feed — no native ${src.name} adapter. Setup recipe in each game's console (Setup → External score feed): point ${src.name}'s HTTP push (or a relay you run) at the game's feed URL + token.`,
+            { configurePath: '/sports' },
+          ),
+        );
+      } else if (src.kind === 'experimental-hardware') {
+        rows.push(
+          row(
+            src,
+            'NOT_CONFIGURED',
+            `Experimental hardware — ${sportsOf(src)} only. A VenueOS box wired to the console reads it (Setup → Scoreboard console in a game). Not yet confirmed on a real console; any other sport is refused.`,
+            { configurePath: '/sports' },
+          ),
+        );
+      } else {
+        rows.push(
+          row(
+            src,
+            'COMING_SOON',
+            `Not available — no ${src.name} connector exists. Nothing connects to it today.`,
+          ),
+        );
+      }
+    }
+    return rows;
   }
 
   // ─── MONETIZE ────────────────────────────────────────────────────

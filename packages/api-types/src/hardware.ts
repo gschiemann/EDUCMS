@@ -273,8 +273,10 @@ export const HARDWARE_IO_UPSELLS: HardwareIoUpsell[] = [
   {
     id: 'cts-rs232-1',
     title: 'Hook up a CTS Gen 6 console (RS232 #1)',
+    // K12-F33 — experimental, and only for the sports the decoders carry
+    // (@cms/api-types sports-sources.ts).
     blurb:
-      'Read the existing Daktronics All Sport / CTS Gen 6 scoring console via RS232 #1. Live game clock straight off the wall console.',
+      'Experimental: read a CTS Gen 6 (water polo) or Daktronics All Sport (football, basketball, baseball, softball) scoring console via RS232 #1. Not yet confirmed on a real console at your venue.',
     configureHref: null,
     docHref: '/docs/ECBOX3576_CTS_SETUP.md',
     models: ['goodview-ep6n', 'goodview-ecbox3576'],

@@ -3486,5 +3486,19 @@
     "cooldownSeconds": "{seconds, plural, other {# 秒}}",
     "noneForSport": "此项目的得分不会自动庆祝——请从庆祝面板手动播放。",
     "saveFailed": "无法保存，请重试。"
+  },
+  "sportsFeed": {
+    "title": "外部比分数据源（通用）",
+    "intro": "任何能发送网络请求的系统都可以将本场比赛的比分、计时和节次推送到这里。发送方由你负责：记分牌供应商的 HTTP 推送、中继程序或一个小脚本。",
+    "vendorNote": "目前没有与 Sportzcast 或 Scorebird 的原生连接。以下是让其 HTTP 推送（或你运行的中继程序）发送我们 JSON 的设置说明——在收到数据包之前不会显示为“正在接收”。",
+    "statusWaiting": "正在等待第一个数据包…",
+    "statusReceiving": "正在接收——{age}",
+    "statusReceivingVia": "正在从{via}接收——{age}",
+    "statusSilent": "没有数据包——最后一个{age}",
+    "viaConsole": "记分控制台",
+    "viaSwim": "游泳计时",
+    "ageSeconds": "{seconds} 秒前",
+    "ageMinutes": "{minutes} 分钟前",
+    "developerDesc": "比分来源：控制台或手机链接、由你的系统发送的通用签名数据源、实验性记分控制台。目前没有任何联赛数据连接器。"
   }
 }

@@ -83,6 +83,30 @@ it('mints on open and renders URL + token + waiting status (the 30s happy path)'
   expect(screen.getByRole('button', { name: /copy url \+ token/i })).toBeInTheDocument();
 });
 
+it('K12-F33: says what it is — a generic feed whose sender is yours, no native vendor connection', async () => {
+  mockMintOk();
+  render(<ConnectScoreboardFeed gameId={GAME_ID} stats={{}} />);
+  await screen.findAllByText(tokenRe(CREDS.token));
+  expect(screen.getByText('External score feed (generic)')).toBeInTheDocument();
+  expect(screen.getByText(/The sender is yours/)).toBeInTheDocument();
+  expect(screen.getByTestId('feed-vendor-note')).toHaveTextContent(
+    /no native Sportzcast or Scorebird connection/,
+  );
+  // The old title claimed the vendors as if they were connected natively.
+  expect(screen.queryByText(/Sportzcast \/ Scorebird \/ anything/)).not.toBeInTheDocument();
+});
+
+it('K12-F33: a console-sourced packet is named for what it is, not one brand', async () => {
+  mockMintOk();
+  const stats = {
+    feed: { lastPacketAt: new Date(Date.now() - 3_000).toISOString(), source: 'cts', accepted: true },
+  };
+  render(<ConnectScoreboardFeed gameId={GAME_ID} stats={stats} />);
+  await screen.findAllByText(tokenRe(CREDS.token));
+  expect(screen.getByTestId('feed-status-row')).toHaveTextContent(/Receiving from a scoreboard console/);
+  expect(screen.getByTestId('feed-status-row')).not.toHaveTextContent(/CTS/);
+});
+
 it('vendor chips swap ONLY the instructions — the credential stays identical', async () => {
   mockMintOk();
   render(<ConnectScoreboardFeed gameId={GAME_ID} stats={{}} />);
