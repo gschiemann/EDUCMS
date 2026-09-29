@@ -187,6 +187,7 @@ import { itemContentSigInput } from './contentSig';
 import { loopBoundaryTracker, NativeWrapDetector, type FrameMeta, type RvfcVideoElement } from './loopBoundary';
 import { SeamlessLoopVideo } from './SeamlessLoopVideo';
 import { pickLoopBackend } from './loopEligibility';
+import { collapseIdenticalVideoCopies } from './collapseCopies';
 import { bootCheck as loopGuardBootCheck, isBlocked as loopIsBlocked } from './loopGuard';
 import { appConfirm, appAlert } from '@/components/ui/app-dialog';
 // 2026-05-29 — Sentry crash reporting for the player / renderer. Sentry is
@@ -4831,10 +4832,26 @@ function PlayerPage() {
 
   // Memoized sorted playlist + item-validity check.
   const isTemplate = !!playlist?.template;
-  const sorted = useMemo(
-    () => (playlist && !isTemplate ? [...(playlist.items || [])].sort((a: any, b: any) => a.sequenceOrder - b.sequenceOrder) : []),
-    [playlist, isTemplate],
-  );
+  // 2026-09-29 (Cleveland): on a screen the manifest switched to the two-deck loop,
+  // N copies of ONE video are one video that repeats — a loop of three items
+  // ended every lap in a fade through black (collapseCopies.ts). Only those
+  // screens; never under frame-locked sync (the timeline counts items) or for an
+  // emergency playlist.
+  const collapseCopiesForLoop =
+    !syncLocked &&
+    !playlist?.isEmergency &&
+    (() => {
+      // Same precedence as pickLoopBackend: a `?loop=` bench override beats the manifest.
+      let url: string | null = null;
+      try { url = new URLSearchParams(window.location.search).get('loop'); } catch { /* SSR */ }
+      return (url === 'twodeck' || url === 'native' ? url : playbackLoopMode) === 'twodeck';
+    })();
+  const sorted = useMemo(() => {
+    const ordered = playlist && !isTemplate
+      ? [...(playlist.items || [])].sort((a: any, b: any) => a.sequenceOrder - b.sequenceOrder)
+      : [];
+    return collapseCopiesForLoop ? [...collapseIdenticalVideoCopies(ordered)] : ordered;
+  }, [playlist, isTemplate, collapseCopiesForLoop]);
   const isItemValid = useCallback((item: any) => {
     if (!item || (!item.daysOfWeek && !item.timeStart && !item.timeEnd)) return true;
     const now = new Date();

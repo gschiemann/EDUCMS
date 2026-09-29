@@ -78,6 +78,36 @@ test.describe('solo video repeat', () => {
     expect(t2).not.toBe(t1);
   });
 
+  // RIOT Cleveland: the operator added ONE video three times to work around the hitch. Three items
+  // are three slides, and every lap ended in a cut to black and a one-second fade up. On a screen the
+  // manifest switched to the two-deck loop that playlist is ONE video that repeats.
+  test('two-deck: the same clip added three times is ONE seamless loop — one slide, two elements, hand-offs lap after lap', async ({ page }) => {
+    test.setTimeout(120_000);
+    await bootMockPlayer(page, { tag: 'loop-copies', kind: 'video', videoCopies: 3, playback: { loopMode: 'twodeck' } });
+    await expect(page.locator('[data-loop-backend="twodeck"]')).toBeAttached({ timeout: 40_000 });
+    await expect.poll(async () => (await snap(page))?.swaps ?? 0, { timeout: 60_000, intervals: [250] }).toBeGreaterThanOrEqual(3);
+    const dom = await page.evaluate(() => ({
+      slides: document.querySelectorAll('[data-loop-backend="twodeck"]').length,
+      videos: document.querySelectorAll('video').length,
+      decks: document.querySelectorAll('[data-loop-deck]').length,
+    }));
+    // ONE slide holding two elements — no hidden next-up copy, no third decoder.
+    expect(dom).toEqual({ slides: 1, videos: 2, decks: 2 });
+    const s = (await snap(page))!;
+    expect(s.backend).toBe('twodeck');
+    expect(s.fallbacks).toBe(0);
+    expect(s.maxHoldMs).toBeLessThan(300);
+  });
+
+  test('a screen that was NOT switched to two-deck keeps its three slides exactly as before', async ({ page }) => {
+    test.setTimeout(90_000);
+    await bootMockPlayer(page, { tag: 'loop-copies-native', kind: 'video', videoCopies: 3 });
+    await expect(page.locator('video').first()).toBeAttached({ timeout: 40_000 });
+    await expect(page.locator('[data-loop-backend="twodeck"]')).toHaveCount(0);
+    // The active copy plus the hidden next-up copy — the pre-existing multi-item behaviour, untouched.
+    await expect.poll(() => page.locator('video').count(), { timeout: 20_000 }).toBeGreaterThanOrEqual(2);
+  });
+
   test('two-deck: a standby that cannot load is abandoned on its own — native loop keeps playing, the device is blocked', async ({ page }) => {
     test.setTimeout(120_000);
     const videoRequests = { count: 0 };

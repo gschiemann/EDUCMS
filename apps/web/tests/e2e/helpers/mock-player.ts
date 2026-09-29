@@ -36,21 +36,20 @@ export function playerIds(tag: string) {
 
 export type MockKind = 'images' | 'website' | 'video';
 
-export function playerManifest(screenId: string, kind: MockKind, playback?: { loopMode: string }) {
+export function playerManifest(screenId: string, kind: MockKind, playback?: { loopMode: string }, copies = 1) {
   const items =
     kind === 'video'
-      ? [
-          {
-            item_id: 'item-video',
-            asset_id: 'asset-video',
-            url: 'http://api.invalid/assets/loop-clip.webm',
-            duration_ms: 2500,
-            sequence: 0,
-            mime_type: 'video/webm',
-            transition_type: 'NONE',
-            muted: true,
-          },
-        ]
+      ? // `copies` > 1 is the same clip added several times (RIOT Cleveland's playlist).
+        Array.from({ length: Math.max(1, copies) }, (_, i) => ({
+          item_id: i === 0 ? 'item-video' : `item-video-${i + 1}`,
+          asset_id: 'asset-video',
+          url: 'http://api.invalid/assets/loop-clip.webm',
+          duration_ms: 2500,
+          sequence: i,
+          mime_type: 'video/webm',
+          transition_type: i === 0 ? 'NONE' : 'FADE',
+          muted: true,
+        }))
       : kind === 'images'
       ? Array.from({ length: 3 }, (_, i) => ({
           item_id: `item-${i}`,
@@ -110,6 +109,8 @@ export interface BootOptions {
   videoFailAfterFirst?: number;
   /** For kind 'video': how many requests the clip has had. */
   videoRequests?: { count: number };
+  /** For kind 'video': the SAME clip added this many times (default 1). */
+  videoCopies?: number;
   /** localStorage seeded BEFORE the page's scripts run (e.g. a persisted refresh ack). */
   storage?: Record<string, string>;
   /** HTTP statuses `POST …/refresh-ack` answers with, in order; the last one repeats. Default [200]. */
@@ -214,7 +215,7 @@ export async function bootMockPlayer(page: Page, opts: BootOptions): Promise<Boo
   await page.route('**/api/v1/screens/register', (route) =>
     ok(route, { paired: true, screenId: id.screenId, name: `Proof ${tag}`, deviceToken: id.deviceToken }),
   );
-  await page.route(`**/api/v1/screens/${id.screenId}/manifest`, (route) => ok(route, playerManifest(id.screenId, kind, opts.playback)));
+  await page.route(`**/api/v1/screens/${id.screenId}/manifest`, (route) => ok(route, playerManifest(id.screenId, kind, opts.playback, opts.videoCopies)));
   await page.route(`**/api/v1/screens/${id.screenId}/emergency-assets`, (route) =>
     ok(route, { assets: [], setHash: 'empty-fake-hash' }),
   );
