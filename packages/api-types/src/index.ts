@@ -242,6 +242,15 @@ export type MediaAlertInput = z.infer<typeof MediaAlertInputSchema>;
 
 export const EmailString = z
   .string()
+  // NORMALIZED AT THE BOUNDARY (2026-09-29): trim, lowercase, THEN validate.
+  // Every account is stored lowercase and every credential service already
+  // lowercases what it is given — except LOGIN, which looked the typed address
+  // up as-is. "Grant.Hale@e-arc.com" was therefore an unknown account at login
+  // while password reset for the very same address worked, so a customer could
+  // reset his password and still never get in. One shape for every credential
+  // endpoint, one rule. (The password is NOT normalized — see PasswordString.)
+  .trim()
+  .toLowerCase()
   .min(3)
   .max(254) // RFC 5321 envelope max
   .email({ message: 'Invalid email address' });
