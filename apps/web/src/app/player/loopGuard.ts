@@ -128,5 +128,9 @@ export function writeLeadMs(kv: KV, ms: number): void {
 
 /** Failure reasons that mean "this device cannot do it" (block for a day), versus a one-off. */
 export function isDeviceShapedFailure(reason: string): boolean {
-  return /^(standby-error|standby-not-ready|standby-setup-failed|handoff-timeout|play-rejected|play-threw)$/.test(reason);
+  // `degraded-playback` is the post-swap frame-rate check (loopDecks.ts degrade()): the
+  // second element presented a fraction of the first one's rate — a second decoder
+  // that is not a real one. Without it here, an undone hand-off would be tried, and
+  // undone, again on every mount.
+  return /^(standby-error|standby-not-ready|standby-setup-failed|handoff-timeout|play-rejected|play-threw|degraded-playback)$/.test(reason);
 }

@@ -112,6 +112,10 @@ class FakeDeck implements DeckLike {
   cancelVideoFrameCallback(id: number) {
     this.rvfc.delete(id);
   }
+  /** How many frame callbacks are registered on this element right now. */
+  get pendingRvfc() {
+    return this.rvfc.size;
+  }
   removeAttribute(name: string) {
     if (name === 'src') this.src = '';
   }
@@ -230,6 +234,17 @@ describe('LoopDeckEngine', () => {
     expect(r.fallbacks).toEqual([]);
   });
 
+  it('never leaves a stale frame-watch chain behind: after every hand-off the new active element has exactly one', () => {
+    const r = rig();
+    for (let lap = 0; lap < 5; lap++) {
+      r.w.advance(3_100);
+      const active = r.engine.activeIndex === 0 ? r.d0 : r.d1;
+      const other = r.engine.activeIndex === 0 ? r.d1 : r.d0;
+      expect(active.pendingRvfc).toBe(1);
+      expect(other.pendingRvfc).toBeLessThanOrEqual(1); // at most its own parking callback
+    }
+  });
+
   it('measures the seam: after the first laps the hold and the skipped content are within about a frame', () => {
     const r = rig();
     r.w.advance(20_000);
@@ -308,6 +323,47 @@ describe('LoopDeckEngine', () => {
     await Promise.resolve();
     expect(r.reveals).toEqual([]);
     expect(r.fallbacks[0][0]).toMatch(/play-rejected|handoff-timeout/);
+  });
+
+  it('does not give a struggling decoder a second job: an active element that cannot keep up is left alone', () => {
+    const r = rig({ fps: 8 }, {}); // the picture is already arriving at 8 fps
+    r.w.advance(20_000);
+    expect(r.fallbacks).toEqual([['not-keeping-up', false]]); // a state, not a verdict on the device: no block
+    expect(r.reveals).toEqual([]);
+    expect(r.engine.mode).toBe('native');
+    expect(r.d1.src).toBe(''); // the standby was released, not left holding a decoder
+    expect(r.d0.loop).toBe(true);
+  });
+
+  it('a slow but healthy clip (15 fps) is not mistaken for a struggling decoder', () => {
+    const r = rig({ fps: 15 }, { fps: 15 });
+    r.w.advance(40_000);
+    expect(r.fallbacks).toEqual([]);
+    expect(r.reveals.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('undoes a hand-off whose new element presents far fewer frames — the picture goes BACK to the healthy one', () => {
+    // Deck 1 is the "second decoder that turned out to be software": 6 fps against deck 0's 30.
+    const r = rig({}, { fps: 6 });
+    r.w.advance(15_000);
+    expect(r.reveals[0]).toEqual([1, 0]); // it did hand off to deck 1…
+    expect(r.reveals[1]).toEqual([0, 1]); // …noticed within a few seconds, and handed back
+    expect(r.fallbacks).toEqual([['degraded-playback', true]]); // and blocks the device
+    expect(r.engine.mode).toBe('native');
+    expect(r.engine.activeIndex).toBe(0);
+    expect(r.d0.paused).toBe(false); // the healthy element is playing again
+    expect(r.d0.loop).toBe(true);
+    expect(r.d1.src).toBe(''); // the bad decoder is released
+    const presentedThen = r.d0.presented;
+    r.w.advance(1_000);
+    expect(r.d0.presented).toBeGreaterThan(presentedThen); // and frames are actually flowing
+  });
+
+  it('a healthy hand-off is left alone (the rate check does not fire on 30 fps)', () => {
+    const r = rig();
+    r.w.advance(30_000);
+    expect(r.fallbacks).toEqual([]);
+    expect(r.reveals.length).toBeGreaterThanOrEqual(8);
   });
 
   it('a clip too short to prepare for is never handed off — it just loops', () => {

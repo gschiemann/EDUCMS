@@ -99,6 +99,18 @@ export interface LoopOptions {
   minDurationS?: number;
   /** First guess at the resume latency, before one is measured (ms). */
   defaultLeadMs?: number;
+  /**
+   * Do not arm when the active element's frames arrive slower than this
+   * (ms/frame): a decoder already struggling must not be given a second job.
+   * 100 ms (10 fps), deliberately loose — a 24 fps clip on a 60 Hz panel is
+   * presented 3 vsyncs, 2 vsyncs, 3, 2 (50 / 33 ms), so the measured median can
+   * sit right at 50 ms on a perfectly healthy decoder.
+   */
+  maxArmPeriodMs?: number;
+  /** After a hand-off, the new element must present at least this fraction of the pre-hand-off frame rate. */
+  minRateAfterSwap?: number;
+  /** How long after a hand-off to measure that rate (ms), after a settling gap. */
+  rateWindowMs?: number;
 }
 
 export const LOOP_DEFAULTS: Required<LoopOptions> = {
@@ -107,6 +119,9 @@ export const LOOP_DEFAULTS: Required<LoopOptions> = {
   maxHandoffFailures: 2,
   minDurationS: 2,
   defaultLeadMs: 120,
+  maxArmPeriodMs: 100,
+  minRateAfterSwap: 0.6,
+  rateWindowMs: 2_000,
 };
 
 type State =
@@ -127,16 +142,23 @@ export class LoopDeckEngine {
   /** True once the lead is a MEASUREMENT (this session's or a stored one), not the first guess. */
   private leadMeasured: boolean;
   private failures = 0;
+  /** The frame period measured on the OLD element just before a hand-off. */
+  private baselinePeriodMs = DEFAULT_FRAME_PERIOD_MS;
+  /** Post-hand-off frame-rate check on the NEW element (null when not measuring). */
+  private rateWatch: { settleAt: number; t0: number | null; f0: number | null } | null = null;
   private destroyed = false;
 
-  // active-deck tracking
-  private activeRvfc: number | null = null;
+  // active-deck tracking — a frame callback belongs to the ELEMENT that made it
+  // (ids are per element), and each chain carries a generation so a stale one can
+  // never keep running after the active element changes.
+  private activeRvfc: { deck: 0 | 1; id: number } | null = null;
+  private watchGen = 0;
   private lastActive: RvfcMeta | null = null;
   private fireTimer: number | null = null;
 
   // standby tracking
   private standbyParked = false;
-  private standbyRvfc: number | null = null;
+  private standbyRvfc: { deck: 0 | 1; id: number } | null = null;
   private readyTimer: number | null = null;
   private handoffTimer: number | null = null;
   private playCalledAt = 0;
@@ -251,6 +273,7 @@ export class LoopDeckEngine {
     if (s.readyState < HAVE_CURRENT_DATA) return;
     if (Math.abs(s.currentTime) > 0.1) return; // not at the start yet (a seek still in flight)
     if (this.standbyRvfc !== null) return;
+    const sIdx: 0 | 1 = this.active === 0 ? 1 : 0;
     let settled = false;
     const done = () => {
       if (settled) return;
@@ -270,7 +293,7 @@ export class LoopDeckEngine {
     };
     // A paused element presents its first frame once; if the browser never
     // fires the callback for a paused element, do not wait forever for it.
-    this.standbyRvfc = s.requestVideoFrameCallback(() => done());
+    this.standbyRvfc = { deck: sIdx, id: s.requestVideoFrameCallback(() => done()) };
     this.env.setTimeout(done, 400);
   }
 
@@ -286,20 +309,25 @@ export class LoopDeckEngine {
   // ─── watching the active element ────────────────────────────────────────
 
   private watchActive(): void {
-    const a = this.decks[this.active];
+    const idx = this.active;
+    const a = this.decks[idx];
+    const gen = ++this.watchGen;
     const onFrame = (_now: number, meta: RvfcMeta) => {
+      if (gen !== this.watchGen || this.destroyed) return; // a stale chain ends here
       this.activeRvfc = null;
-      if (this.destroyed) return;
       this.period.push({
         mediaTime: meta.mediaTime,
         expectedDisplayTime: meta.expectedDisplayTime,
         presentedFrames: meta.presentedFrames,
       });
       this.lastActive = meta;
+      this.checkRateAfterSwap(meta);
       this.considerHandoff(meta);
-      if (!this.destroyed) this.activeRvfc = a.requestVideoFrameCallback(onFrame);
+      if (gen === this.watchGen && !this.destroyed && this.state !== 'native') {
+        this.activeRvfc = { deck: idx, id: a.requestVideoFrameCallback(onFrame) };
+      }
     };
-    this.activeRvfc = a.requestVideoFrameCallback(onFrame);
+    this.activeRvfc = { deck: idx, id: a.requestVideoFrameCallback(onFrame) };
   }
 
   private periodMs(): number {
@@ -312,6 +340,13 @@ export class LoopDeckEngine {
     const a = this.decks[this.active];
     const dur = a.duration;
     if (!Number.isFinite(dur) || dur < this.opts.minDurationS) return;
+    // A decoder that is already not keeping up (a big file on a weak box) must not
+    // be given a second job: two would be worse than one. Not the device's fault
+    // forever — the file or the moment may be — so this does not block the path.
+    if (this.periodMs() > this.opts.maxArmPeriodMs) {
+      this.giveUp('not-keeping-up', false);
+      return;
+    }
     // When the last frame will have finished displaying — the instant a
     // seamless repeat would show frame 0 again.
     const tSeamless = meta.expectedDisplayTime + (dur - meta.mediaTime) * 1000;
@@ -360,12 +395,16 @@ export class LoopDeckEngine {
       this.abandonHandoff('play-threw');
       return;
     }
-    this.standbyRvfc = s.requestVideoFrameCallback((_n, meta) => {
-      // The first frame PRESENTED after play() — not the parked frame (its
-      // media time is still ~0 and the element was paused, so this callback is
-      // only ever for a frame produced by resuming).
-      finish(meta);
-    });
+    const sIdx: 0 | 1 = this.active === 0 ? 1 : 0;
+    this.standbyRvfc = {
+      deck: sIdx,
+      id: s.requestVideoFrameCallback((_n, meta) => {
+        // The first frame PRESENTED after play() — not the parked frame (its
+        // media time is still ~0 and the element was paused, so this callback is
+        // only ever for a frame produced by resuming).
+        finish(meta);
+      }),
+    };
     this.handoffTimer = this.env.setTimeout(() => {
       this.handoffTimer = null;
       if (!settled) {
@@ -394,6 +433,7 @@ export class LoopDeckEngine {
       skip = Math.max(0, -late) + Math.max(0, bMeta.mediaTime) * 1000;
     }
 
+    this.baselinePeriodMs = this.periodMs();
     // Roles swap. `loop` moves with them: the new active element keeps the
     // native-loop safety net; the old one must not wrap on its own.
     this.active = next;
@@ -412,6 +452,11 @@ export class LoopDeckEngine {
       this.leadMeasured = true;
       this.env.saveLeadMs(this.leadMs);
     }
+
+    // The new element must keep up. A second decoder that turned out to be
+    // software (or starved) presents a fraction of the rate; a hand-off to it is
+    // worse than the native seam, so it is measured and undone (see degrade()).
+    this.rateWatch = { settleAt: this.env.now() + 500, t0: null, f0: null };
 
     // Move the frame-watch to the new active element, drop the old, re-park it.
     this.cancelActiveRvfc();
@@ -442,6 +487,65 @@ export class LoopDeckEngine {
     // native loop, so the picture is fine meanwhile.
     for (const off of this.listeners.splice(0)) off();
     this.prepareStandby(true);
+  }
+
+  // ─── did the hand-off leave the picture worse? ──────────────────────────
+
+  private checkRateAfterSwap(meta: RvfcMeta): void {
+    const w = this.rateWatch;
+    if (!w || this.destroyed || this.state === 'native') return;
+    const now = this.env.now();
+    if (now < w.settleAt || meta.presentedFrames === undefined) return;
+    if (w.t0 === null || w.f0 === null) {
+      w.t0 = now;
+      w.f0 = meta.presentedFrames;
+      return;
+    }
+    const dt = now - w.t0;
+    if (dt < this.opts.rateWindowMs) return;
+    this.rateWatch = null; // one verdict per hand-off
+    const fps = ((meta.presentedFrames - w.f0) * 1000) / dt;
+    const base = 1000 / this.baselinePeriodMs;
+    if (Number.isFinite(fps) && Number.isFinite(base) && fps < base * this.opts.minRateAfterSwap) {
+      this.degrade(`degraded-playback`);
+    }
+  }
+
+  /**
+   * The element the hand-off gave the glass to is presenting far fewer frames
+   * than the one before it did: the second decoder is not a real one. Undo it —
+   * hand the picture BACK to the element that had the hardware decoder, release
+   * the bad one, and stay on the native loop. The device is blocked, because the
+   * next lap would only do it again.
+   */
+  private degrade(reason: string): void {
+    if (this.destroyed || this.state === 'native') return;
+    const bad = this.active;
+    const good: 0 | 1 = bad === 0 ? 1 : 0;
+    const g = this.decks[good];
+    const b = this.decks[bad];
+    this.clearTimers();
+    this.cancelStandbyRvfc();
+    this.cancelActiveRvfc();
+    for (const off of this.listeners.splice(0)) off();
+    try {
+      g.loop = true;
+      g.muted = true;
+      g.currentTime = 0; // it was re-parked here after the hand-off
+      const p = g.play();
+      if (p && typeof (p as Promise<void>).catch === 'function') (p as Promise<void>).catch(() => { /* the stall watchdog owns it */ });
+    } catch { /* noop */ }
+    this.active = good;
+    this.cb.onReveal(good, bad);
+    try {
+      b.pause();
+      b.removeAttribute('src');
+      b.load(); // release the bad decoder
+    } catch { /* noop */ }
+    this.state = 'native';
+    this.rateWatch = null;
+    this.cb.log?.(`two-deck undone: ${reason}`);
+    this.cb.onFallback(reason, true);
   }
 
   // ─── giving up ──────────────────────────────────────────────────────────
@@ -475,9 +579,10 @@ export class LoopDeckEngine {
   }
 
   private cancelActiveRvfc(): void {
+    this.watchGen += 1; // ends the running chain even if its callback is already queued
     if (this.activeRvfc !== null) {
       try {
-        this.decks[this.active].cancelVideoFrameCallback(this.activeRvfc);
+        this.decks[this.activeRvfc.deck].cancelVideoFrameCallback(this.activeRvfc.id);
       } catch { /* noop */ }
       this.activeRvfc = null;
     }
@@ -486,25 +591,15 @@ export class LoopDeckEngine {
   private cancelStandbyRvfc(): void {
     if (this.standbyRvfc !== null) {
       try {
-        this.standby().cancelVideoFrameCallback(this.standbyRvfc);
+        this.decks[this.standbyRvfc.deck].cancelVideoFrameCallback(this.standbyRvfc.id);
       } catch { /* noop */ }
       this.standbyRvfc = null;
     }
   }
 
   private cancelRvfcs(): void {
-    // Cancel on BOTH decks: after a swap the ids belong to whichever element made them.
-    for (const d of this.decks) {
-      for (const id of [this.activeRvfc, this.standbyRvfc]) {
-        if (id !== null) {
-          try {
-            d.cancelVideoFrameCallback(id);
-          } catch { /* noop */ }
-        }
-      }
-    }
-    this.activeRvfc = null;
-    this.standbyRvfc = null;
+    this.cancelActiveRvfc();
+    this.cancelStandbyRvfc();
   }
 }
 

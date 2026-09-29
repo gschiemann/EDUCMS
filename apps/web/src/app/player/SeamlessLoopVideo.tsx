@@ -154,6 +154,9 @@ export function SeamlessLoopVideo({
       if (standbyTimer === null) standbyTimer = window.setTimeout(startEngine, STANDBY_DELAY_MS);
     };
     d0.addEventListener('playing', onFirstPlaying, { once: true });
+    // Already playing when this effect (re)runs — the `playing` event will not
+    // fire again, and the engine must not wait for it forever.
+    if (!d0.paused && d0.readyState >= 3) onFirstPlaying();
 
     // ── errors: the ACTIVE element's failure is the item's failure ──────────
     const onDeckError = (idx: 0 | 1) => () => {

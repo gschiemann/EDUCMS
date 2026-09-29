@@ -97,7 +97,8 @@ describe('lead + failure classification', () => {
     expect(readLeadMs(kv)).toBeNull();
   });
   it('device-shaped failures block; a one-off does not', () => {
-    for (const r of ['standby-error', 'standby-not-ready', 'handoff-timeout', 'play-rejected', 'standby-setup-failed', 'play-threw']) expect(isDeviceShapedFailure(r)).toBe(true);
-    for (const r of ['stalled', 'unmounted', 'x']) expect(isDeviceShapedFailure(r)).toBe(false);
+    for (const r of ['standby-error', 'standby-not-ready', 'handoff-timeout', 'play-rejected', 'standby-setup-failed', 'play-threw', 'degraded-playback']) expect(isDeviceShapedFailure(r)).toBe(true);
+    // 'not-keeping-up' is a state of the file or the moment, not a verdict on the device.
+    for (const r of ['stalled', 'unmounted', 'not-keeping-up', 'x']) expect(isDeviceShapedFailure(r)).toBe(false);
   });
 });
