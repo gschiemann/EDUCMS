@@ -42,7 +42,11 @@ const SCREENS = [{ id: 's1', name: 'G43', status: 'ONLINE', screenGroupId: null,
 const SCHEDULES = [{ id: 'sc1', playlistId: 'p1', screenId: 's1', screenGroupId: null, isActive: true, startTime: new Date(Date.now() - 86_400_000).toISOString() }];
 
 /** A signed-in operator, and every request the page makes answered here (no real ids or tokens — the repo is public). */
-async function openLibrary(page: Page, deleteRequests: Array<{ id: string; confirm: string | null }>) {
+async function openLibrary(
+  page: Page,
+  deleteRequests: Array<{ id: string; confirm: string | null }>,
+  opts: { deleteDelayMs?: number } = {},
+) {
   const cors = (route: Route, fn: () => unknown) =>
     route.request().method() === 'OPTIONS' ? route.fulfill({ status: 204, headers: CORS, body: '' }) : fn();
   const json = (route: Route, body: unknown, status = 200) =>
@@ -64,11 +68,13 @@ async function openLibrary(page: Page, deleteRequests: Array<{ id: string; confi
   await page.route('**/api/v1/templates', (r) => json(r, []));
   await page.route('**/api/v1/assets**', (r) => json(r, []));
   await page.route('**/api/v1/playlists', (r) => json(r, PLAYLISTS.filter((p) => !removed.has(p.id))));
-  await page.route(/\/api\/v1\/playlists\/p\d+(\?.*)?$/, (r) => {
+  await page.route(/\/api\/v1\/playlists\/p\d+(\?.*)?$/, async (r) => {
     if (r.request().method() !== 'DELETE') return json(r, {});
     const url = new URL(r.request().url());
     const id = url.pathname.split('/').pop()!;
     deleteRequests.push({ id, confirm: url.searchParams.get('confirm') });
+    // The real server takes ~1.2 s per delete (screen fallback + a sync signal).
+    if (opts.deleteDelayMs) await new Promise((res) => setTimeout(res, opts.deleteDelayMs));
     removed.add(id);
     return json(r, { deleted: true });
   });
@@ -105,7 +111,7 @@ test.describe('playlists library — bulk select and remove', () => {
   test('check three, remove them: one confirmation that fits its card, one delete each in list order, selection cleared', async ({ page }) => {
     test.setTimeout(120_000);
     const deletes: Array<{ id: string; confirm: string | null }> = [];
-    await openLibrary(page, deletes);
+    await openLibrary(page, deletes, { deleteDelayMs: 1_500 }); // a slow server: 3 deletes take ~4.5 s
 
     const rows = page.getByTestId('playlist-row');
     const box = (name: string) => rows.filter({ hasText: name }).first().getByRole('checkbox', { name: `Select ${name}` });
@@ -134,7 +140,11 @@ test.describe('playlists library — bulk select and remove', () => {
     expect(clipped).toEqual([]);
 
     await dialog.getByRole('button', { name: 'Delete 3 playlists' }).click();
-    await expect.poll(() => deletes.length, { timeout: 10_000 }).toBe(3);
+    // The rows leave the list AT ONCE — before the first slow delete has answered — and the
+    // deletes finish in the background ("clear the playlist as soon as i click delete").
+    await expect(rows).toHaveCount(3, { timeout: 1_200 });
+    expect(deletes.length).toBeLessThan(3);
+    await expect.poll(() => deletes.length, { timeout: 15_000 }).toBe(3);
     expect(deletes.map((d) => d.id)).toEqual(['p1', 'p3', 'p5']); // Freese, Fall Fundraiser, Class Schedule — list order
     // Only the published one is sent with the server's in-use confirmation.
     expect(deletes.map((d) => [d.id, d.confirm])).toEqual([['p1', 'in-use'], ['p3', null], ['p5', null]]);

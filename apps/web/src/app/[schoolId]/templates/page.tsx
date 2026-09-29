@@ -945,6 +945,7 @@ export default function TemplatesPage() {
   // §11.3 — the impact dialog for an in-use template. Holds the server's
   // 409 payload so the operator sees real reach, never an invented number.
   const [usageImpact, setUsageImpact] = useState<TemplateUsageImpact | null>(null);
+  const [forceDeleting, setForceDeleting] = useState(false);
   // §10.2 — "Browse ready-made" from the empty onboarding row scrolls to
   // the catalog rather than navigating away from the page they're on.
   const readyMadeRef = useRef<HTMLElement | null>(null);
@@ -990,7 +991,9 @@ export default function TemplatesPage() {
   const createFromPreset = useCreateFromPreset();
   const updateTemplate = useUpdateTemplate();
   const duplicateTemplate = useDuplicateTemplate();
-  const deleteTemplate = useDeleteTemplate();
+  // Every failure is answered here (impact dialog for a 409, an alert for the rest),
+  // so the global red toast stays out of it.
+  const deleteTemplate = useDeleteTemplate({ suppressGlobalError: true });
   const generateTouch = useGenerateTouchTemplate();
   const generateCandidates = useGenerateTouchCandidates();
   const createFromCandidate = useCreateFromCandidate();
@@ -3684,15 +3687,49 @@ export default function TemplatesPage() {
       {usageImpact && (
         <TemplateUsageImpactDialog
           impact={usageImpact}
-          onClose={() => setUsageImpact(null)}
+          deleting={forceDeleting}
+          onClose={() => { if (!forceDeleting) setUsageImpact(null); }}
           onReviewUsage={() => {
-            // "Review usage" opens the template's own full-screen preview,
-            // whose action tray carries the usage summary and every safe
-            // next step (§8.2). The operator lands on the thing itself
-            // instead of a dead-ended warning.
+            // Review takes the operator to the PLAYLIST that uses the layout
+            // (Greg, 2026-09-28: it used to open the template itself, which is
+            // the one place that cannot show where it is used). With several,
+            // the first; every name in the dialog opens its own. A server that
+            // sent no playlist list leaves nothing to open, so that one case
+            // keeps the old landing — the template's preview and usage summary.
+            const first = usageImpact.playlists[0];
+            if (first) {
+              setUsageImpact(null);
+              router.push(`/${params?.schoolId ?? ''}/playlists/${first.id}`);
+              return;
+            }
             const t = (templates || []).find((x: Template) => x.id === usageImpact.template.id);
             setUsageImpact(null);
             if (t) setPreviewTemplate(t);
+          }}
+          onOpenPlaylist={(id) => {
+            setUsageImpact(null);
+            router.push(`/${params?.schoolId ?? ''}/playlists/${id}`);
+          }}
+          onDeleteAnyway={async () => {
+            // The warning WAS the confirmation: this is the operator choosing
+            // to delete it anyway. The server unlinks the layout from those
+            // playlists (they fall back to the next layout), audits it, and
+            // refuses outright if an emergency playlist uses it.
+            const target = usageImpact.template;
+            setForceDeleting(true);
+            try {
+              await deleteTemplate.mutateAsync({ id: target.id, force: true });
+              setUsageImpact(null);
+              toast.success(`Deleted “${target.name}”`);
+            } catch (err: unknown) {
+              setUsageImpact(null);
+              await appAlert({
+                title: 'Couldn’t delete this template',
+                message: (err as { message?: string } | null)?.message || 'Something went wrong deleting this template. Please try again.',
+              });
+            } finally {
+              setForceDeleting(false);
+            }
           }}
         />
       )}
@@ -3874,24 +3911,34 @@ export function TemplateListView({
  * What the operator sees when they try to remove a template that other
  * things depend on.
  *
- * The single most important design decision on this page is that this
- * dialog has NO destructive button. §11.3: "The safe path is `Review
- * usage`, not an emphasized `Delete anyway`." The flow it replaced read a
- * cached playlist count off the list payload, pre-armed a red "Delete
- * anyway", and let one click unlink a layout from every playlist using it
- * — a live signage change nobody had chosen, decided by an operator who
- * had been handed a number and a red button in the same breath.
+ * §11.3 first made this dialog Review-only ("the safe path is Review, not
+ * an emphasized Delete anyway"), because the flow before it read a CACHED
+ * playlist count and pre-armed a red button. Greg changed that on 2026-09-28
+ * ("just give a warning and let me delete it and then keep the review button
+ * but take me to the playlist"): this dialog IS the warning now, and it
+ * carries the delete. What survives of §11.3 is that nothing is pre-armed —
+ * the dialog only opens after the SERVER said the layout is in use and named
+ * where, Review (which changes nothing) holds the focus, and Delete anyway is
+ * a separate, deliberate click. Review goes to the playlist that uses the
+ * layout, not to the layout.
  *
  * Everything printed here comes from the server's 409. When the server
  * doesn't send a figure, this says nothing about it rather than printing
  * a zero it cannot prove.
  */
 export function TemplateUsageImpactDialog({
-  impact, onClose, onReviewUsage,
+  impact, onClose, onReviewUsage, onDeleteAnyway, onOpenPlaylist, deleting,
 }: {
   impact: TemplateUsageImpact;
   onClose: () => void;
+  /** Takes the operator to a playlist that uses the layout. */
   onReviewUsage: () => void;
+  /** The operator, told what it touches, choosing to delete it anyway. */
+  onDeleteAnyway: () => void;
+  /** Opens one named playlist. */
+  onOpenPlaylist?: (playlistId: string) => void;
+  /** The forced delete is in flight — both actions stand down. */
+  deleting?: boolean;
 }) {
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const primaryRef = useRef<HTMLButtonElement | null>(null);
@@ -3968,15 +4015,29 @@ export function TemplateUsageImpactDialog({
 
         <div id="tpl-impact-body" className="mt-3 space-y-2">
           <p className="text-[13px] text-slate-600">
-            Removing it could change what those screens display.
+            {impact.playlists.length === 1
+              ? 'Deleting it takes this layout off that playlist — it falls back to its next layout, so what its screens display can change.'
+              : 'Deleting it takes this layout off these playlists — they fall back to their next layout, so what their screens display can change.'}
           </p>
           {impact.playlists.length > 0 && (
             <ul className="max-h-32 space-y-1 overflow-y-auto rounded-lg bg-slate-50 p-2.5">
-              {impact.playlists.map((p) => (
-                <li key={p.id} className="truncate text-[12px] font-medium text-slate-600">
-                  {(p.name || 'Untitled').replace(/\s+/g, ' ').trim() || 'Untitled'}
-                </li>
-              ))}
+              {impact.playlists.map((p) => {
+                const name = (p.name || 'Untitled').replace(/\s+/g, ' ').trim() || 'Untitled';
+                return (
+                  <li key={p.id} className="truncate text-[12px] font-medium text-slate-600">
+                    {onOpenPlaylist ? (
+                      <button
+                        type="button"
+                        onClick={() => onOpenPlaylist(p.id)}
+                        disabled={deleting}
+                        className="max-w-full truncate text-left underline-offset-2 hover:underline disabled:opacity-60"
+                      >
+                        {name}
+                      </button>
+                    ) : name}
+                  </li>
+                );
+              })}
             </ul>
           )}
           {impact.playlists.length === 0 && impact.message && (
@@ -3985,22 +4046,34 @@ export function TemplateUsageImpactDialog({
           )}
         </div>
 
-        <div className="mt-4 flex justify-end gap-2">
+        <div className="mt-4 flex flex-wrap justify-end gap-2">
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex min-h-10 items-center rounded-lg border border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-600 hover:border-slate-300"
+            disabled={deleting}
+            className="inline-flex min-h-10 items-center rounded-lg border border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-600 hover:border-slate-300 disabled:opacity-60"
           >
             Cancel
           </button>
+          {/* Review stays the focused action: Enter lands on the one that
+              changes nothing. The delete is one deliberate click away. */}
           <button
             ref={primaryRef}
             type="button"
             onClick={onReviewUsage}
-            className="inline-flex min-h-10 items-center rounded-lg px-4 text-[13px] font-bold text-white"
+            disabled={deleting}
+            className="inline-flex min-h-10 items-center rounded-lg px-4 text-[13px] font-bold text-white disabled:opacity-60"
             style={{ backgroundColor: 'var(--brand-primary, #4f46e5)' }}
           >
-            Review usage
+            Review
+          </button>
+          <button
+            type="button"
+            onClick={onDeleteAnyway}
+            disabled={deleting}
+            className="inline-flex min-h-10 items-center rounded-lg bg-rose-600 px-4 text-[13px] font-bold text-white hover:bg-rose-700 disabled:cursor-wait disabled:opacity-60"
+          >
+            {deleting ? 'Deleting…' : 'Delete anyway'}
           </button>
         </div>
       </div>

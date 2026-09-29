@@ -93,6 +93,7 @@ import {
 } from '@cms/api-types';
 // AI DESIGNER BACKGROUND JOBS (2026-09-23) — generation as a persisted, replayable job.
 import { HttpCode, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { playlistEmergencyUse, type EmergencyUseDb } from '../emergency/emergency-content-use';
 import { DesignerJobsService, type DesignerJobStatus, type DesignerJobView } from './designer-jobs/designer-jobs.service';
 import { buildDesignerJobRequest, replayableRequest } from './designer-jobs/designer-job-request';
 // AI board HISTORY (2026-09-23) — the list of finished batches (GET generate-designer/jobs).
@@ -3514,6 +3515,31 @@ export class TemplatesController {
               screensReached: screens.size,
               locations: locations.size,
             },
+          },
+          HttpStatus.CONFLICT,
+        );
+      }
+      // An informed "delete anyway" is fine for signage. It is NEVER fine for the
+      // alert pipeline: a layout an emergency playlist renders through must not be
+      // unlinked from it (2026-09-28 — the gallery now offers Delete anyway on the
+      // warning, so this closes the one way that button could reach a lockdown
+      // screen). Same shared check that guards asset and playlist deletion, and it
+      // fails CLOSED: a check that cannot run refuses.
+      const refs = await this.prisma.client.playlist.findMany({
+        where: { templateId: id, tenantId: req.user.tenantId },
+        select: { id: true },
+      });
+      const emergencyUse = await playlistEmergencyUse(
+        this.prisma.client as unknown as EmergencyUseDb,
+        refs.map((p) => p.id),
+      );
+      if (emergencyUse) {
+        throw new HttpException(
+          {
+            code: 'TEMPLATE_EMERGENCY_IN_USE',
+            message:
+              'This layout is used by an emergency playlist, so it can’t be deleted. ' +
+              'Take it off that playlist first — emergency content is never changed from here.',
           },
           HttpStatus.CONFLICT,
         );

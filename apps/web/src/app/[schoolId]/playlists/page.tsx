@@ -33,6 +33,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import { normalizeVertical } from '@cms/api-types';
 import {
   useCreatePlaylist, useDeletePlaylist, useDeletePlaylistsBatch, useFleet, usePlaylists, usePlaylistSummary,
@@ -333,9 +334,31 @@ export default function PlaylistsPage() {
       tone: 'danger',
     });
     if (!ok) return;
-    const result = await deletePlaylistsBatch.mutateAsync({ rows: targets, inUseIds: decision.inUseIds });
-    const outcome = describeRemoveManyOutcome(targets.length, result);
-    if (outcome) await appAlert({ ...outcome, tone: 'warn' });
+    // NOT awaited (Greg, 2026-09-28): the hook takes the rows off the list the
+    // moment this fires and the deletes finish in the background, so a dozen
+    // playlists no longer hold the screen for ~15 s. A toast says it is under
+    // way and when it is done; anything that did not go is named in a dialog.
+    const n = targets.length;
+    const toastId = toast.loading(`Removing ${n} playlists…`);
+    void deletePlaylistsBatch
+      .mutateAsync({ rows: targets, inUseIds: decision.inUseIds })
+      .then(async (result) => {
+        const outcome = describeRemoveManyOutcome(n, result);
+        if (!outcome) {
+          toast.success(`Removed ${n} playlists`, { id: toastId });
+          return;
+        }
+        toast.dismiss(toastId);
+        await appAlert({ ...outcome, tone: 'warn' });
+      })
+      .catch(async (err: unknown) => {
+        toast.dismiss(toastId);
+        await appAlert({
+          title: 'Couldn’t remove the playlists',
+          message: (err as { message?: string } | null)?.message || 'Something went wrong. Refresh the page to see which ones were removed.',
+          tone: 'warn',
+        });
+      });
   }, [schedules, handleRemove, deletePlaylistsBatch]);
 
   /** §8.4 — Duplicate. Creates a real copy (name, template, ordered items). */

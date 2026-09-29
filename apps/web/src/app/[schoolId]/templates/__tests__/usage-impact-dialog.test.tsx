@@ -1,23 +1,19 @@
 /**
- * Templates Gallery — Calm v1 · §11.3, the in-use impact dialog.
+ * Templates Gallery — the in-use impact dialog (Calm v1 §11.3, revised
+ * 2026-09-28).
  *
- * This is the deletion-safety half of the wave, and its central assertion
- * is a NEGATIVE one: this dialog has no destructive button.
- *
- * What it replaced: the gallery read a cached playlist count off the list
- * payload, and — before the server had said anything — opened a
- * confirmation whose primary button was a red "Delete anyway". One click
- * unlinked a layout from every playlist that used it. The operator was
- * handed a number and a red button in the same breath, and the screens
- * changed.
- *
- * Calm v1 §11.3: "The safe path is `Review usage`, not an emphasized
- * `Delete anyway`." Every figure printed here comes from the server's
- * 409 — when the server doesn't send one, the dialog says nothing about
- * it rather than printing a zero it can't prove.
+ * §11.3 made this Review-only. Greg reversed that: "just give a warning and
+ * let me delete it and then keep the review button but take me to the
+ * playlist" — so the dialog is the warning, it can delete, and Review goes to
+ * the PLAYLIST that uses the layout. What is kept from §11.3: nothing is
+ * pre-armed (the dialog opens only after the server said the layout is in use
+ * and where), the focused action is the one that changes nothing, and every
+ * figure printed comes from the server's 409 — when the server doesn't send
+ * one the dialog says nothing about it rather than printing a zero it can't
+ * prove.
  */
 
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
 import { TemplateUsageImpactDialog } from '../page';
 
 function impact(over: Record<string, unknown> = {}) {
@@ -33,42 +29,69 @@ function impact(over: Record<string, unknown> = {}) {
   } as any;
 }
 
-function mount(over: Record<string, unknown> = {}, handlers: Record<string, jest.Mock> = {}) {
+function mount(over: Record<string, unknown> = {}, handlers: Record<string, jest.Mock> = {}, extra: Record<string, unknown> = {}) {
   const onClose = handlers.onClose || jest.fn();
   const onReviewUsage = handlers.onReviewUsage || jest.fn();
-  render(<TemplateUsageImpactDialog impact={impact(over)} onClose={onClose} onReviewUsage={onReviewUsage} />);
-  return { onClose, onReviewUsage };
+  const onDeleteAnyway = handlers.onDeleteAnyway || jest.fn();
+  const onOpenPlaylist = handlers.onOpenPlaylist || jest.fn();
+  render(
+    <TemplateUsageImpactDialog
+      impact={impact(over)}
+      onClose={onClose}
+      onReviewUsage={onReviewUsage}
+      onDeleteAnyway={onDeleteAnyway}
+      onOpenPlaylist={onOpenPlaylist}
+      {...extra}
+    />,
+  );
+  return { onClose, onReviewUsage, onDeleteAnyway, onOpenPlaylist };
 }
 
-describe('§11.3 — the impact dialog offers no destructive path', () => {
-  it('has NO delete / delete-anyway / remove button of any kind', () => {
+const footer = () => {
+  const dialog = screen.getByRole('alertdialog');
+  return ['Cancel', 'Review', 'Delete anyway', 'Deleting…'].flatMap((n) => within(dialog).queryAllByRole('button', { name: n }));
+};
+
+describe('the impact dialog: a warning that can delete, and a Review that goes to the playlist', () => {
+  it('offers Cancel, Review and Delete anyway — in that order', () => {
     mount();
-    expect(screen.queryByRole('button', { name: /delete/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /remove/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /anyway/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /trash/i })).not.toBeInTheDocument();
+    expect(footer().map((b) => b.textContent?.trim())).toEqual(['Cancel', 'Review', 'Delete anyway']);
   });
 
-  it('offers exactly two actions: Review usage (primary) and Cancel', () => {
+  it('Review is the focused action, so Enter lands on the one that changes nothing', async () => {
     mount();
-    const buttons = screen.getAllByRole('button').map((b) => b.textContent?.trim());
-    expect(buttons).toEqual(['Cancel', 'Review usage']);
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Review' })));
   });
 
-  it('Review usage is the focused action when the dialog opens', () => {
-    mount();
-    // The safe path is what a keyboard operator's Enter lands on.
-    expect(screen.getByRole('button', { name: 'Review usage' })).toBeInTheDocument();
-  });
-
-  it('Review usage fires its handler; Cancel closes', () => {
-    const onReviewUsage = jest.fn();
-    const onClose = jest.fn();
-    mount({}, { onReviewUsage, onClose });
-    fireEvent.click(screen.getByRole('button', { name: 'Review usage' }));
-    expect(onReviewUsage).toHaveBeenCalledTimes(1);
+  it('each button fires exactly its own handler', () => {
+    const h = mount();
+    fireEvent.click(screen.getByRole('button', { name: 'Review' }));
+    expect(h.onReviewUsage).toHaveBeenCalledTimes(1);
+    expect(h.onDeleteAnyway).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Delete anyway' }));
+    expect(h.onDeleteAnyway).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(h.onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('every listed playlist opens ITSELF', () => {
+    const h = mount();
+    fireEvent.click(screen.getByRole('button', { name: 'Front Desk' }));
+    expect(h.onOpenPlaylist).toHaveBeenCalledWith('p2');
+    fireEvent.click(screen.getByRole('button', { name: 'Morning Loop' }));
+    expect(h.onOpenPlaylist).toHaveBeenLastCalledWith('p1');
+  });
+
+  it('says what deleting does to those playlists, in the singular and the plural', () => {
+    mount({ playlists: [{ id: 'p1', name: 'Morning Loop' }] });
+    expect(screen.getByText(/takes this layout off that playlist — it falls back to its next layout/)).toBeInTheDocument();
+  });
+
+  it('while the delete runs, every action stands down and the button says so', () => {
+    mount({}, {}, { deleting: true });
+    for (const b of footer()) expect(b).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Deleting…' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Morning Loop' })).toBeDisabled();
   });
 
   it('Escape closes it (§14)', () => {

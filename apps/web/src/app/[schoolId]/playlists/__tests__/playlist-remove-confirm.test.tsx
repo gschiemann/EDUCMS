@@ -240,6 +240,27 @@ describe('removing SEVERAL playlists at once — through the real page', () => {
     expect(appAlert).not.toHaveBeenCalled(); // everything went: nothing to report
   });
 
+  it('does not hold the screen while the deletes run: the bar is free again with the batch still pending', async () => {
+    // Greg, 2026-09-28: "it takes like 15 seconds to delete 12 playlist … finish in the background".
+    let finish: (v: unknown) => void = () => {};
+    batchImpl.mockImplementation(() => new Promise((res) => { finish = res; }));
+    render(<PlaylistsPage />);
+    checkRow('Member Promotions');
+    checkRow('Fall Fundraiser');
+    await clickBulkRemove();
+    await waitFor(() => expect(batchImpl).toHaveBeenCalledTimes(1));
+    // The batch has NOT finished; the handler already has.
+    expect(within(screen.getByTestId('bulk-bar')).getByTestId('bulk-remove')).not.toBeDisabled();
+    expect(within(screen.getByTestId('bulk-bar')).getByTestId('bulk-remove')).toHaveTextContent('Remove 2…');
+    expect(appAlert).not.toHaveBeenCalled();
+    // …and when it does finish with a failure, the failure is still reported.
+    await act(async () => {
+      finish({ removed: ['p1'], failed: [{ id: 'p2', name: 'Fall Fundraiser', reason: 'the server said no', becamePublished: false }] });
+    });
+    await waitFor(() => expect(appAlert).toHaveBeenCalledTimes(1));
+    expect(appAlert.mock.calls[0][0]).toMatchObject({ title: 'Removed 1 of 2 playlists' });
+  });
+
   it('cancelling the confirmation deletes nothing and keeps the selection', async () => {
     appConfirm.mockResolvedValue(false);
     render(<PlaylistsPage />);

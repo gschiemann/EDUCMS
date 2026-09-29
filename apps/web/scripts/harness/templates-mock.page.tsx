@@ -258,6 +258,7 @@ export default function TemplatesMockPage() {
           }}
           onClose={() => {}}
           onReviewUsage={() => {}}
+          onDeleteAnyway={() => {}}
         />
       )}
     </div>

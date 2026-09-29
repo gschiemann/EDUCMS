@@ -1151,6 +1151,21 @@ export function useDeletePlaylistsBatch() {
       removePlaylistsSequentially(input.rows, input.inUseIds, (id, confirmInUse) =>
         apiFetch(inUseDeletePath('/playlists', { id, confirmInUse }), { method: 'DELETE' }),
       ),
+    // The rows leave the list the moment the operator confirms; the deletes then
+    // run in the background (Greg, 2026-09-28: "it takes like 15 seconds to
+    // delete 12 playlists, clear the playlist as soon as i click delete and
+    // finish in the background"). Each delete is ~1.2 s server-side — it
+    // re-applies screen fallback and signals a sync — and they are sequential on
+    // purpose, so a dozen is ~15 s of waiting for nothing. No snapshot/rollback:
+    // `onSettled` refetches from the server, so a playlist that could NOT be
+    // removed comes back on its own (and the page names it).
+    onMutate: async (input) => {
+      await qc.cancelQueries({ queryKey: ['playlists'] });
+      const gone = new Set(input.rows.map((r) => r.id));
+      for (const [key, val] of qc.getQueriesData<unknown>({ queryKey: ['playlists'] })) {
+        if (Array.isArray(val)) qc.setQueryData(key, val.filter((p: { id?: string } | null) => !gone.has(p?.id ?? '')));
+      }
+    },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ['playlists'] });
       qc.invalidateQueries({ queryKey: ['schedules'] });
@@ -2190,9 +2205,14 @@ export function useRestoreTemplateVersion() {
   });
 }
 
-export function useDeleteTemplate() {
+export function useDeleteTemplate(opts: { suppressGlobalError?: boolean } = {}) {
   const qc = useQueryClient();
   return useMutation({
+    // A caller that answers every failure itself (the gallery: a TEMPLATE_IN_USE
+    // 409 opens the impact dialog, anything else an alert) opts out of the global
+    // red error toast — otherwise the expected 409 also fires "This layout is
+    // assigned to 2 playlists…" as if the delete had broken (seen 2026-09-28).
+    meta: opts.suppressGlobalError ? { suppressGlobalError: true } : undefined,
     // Accepts a bare id (back-compat) OR { id, force } — force=true asks the
     // server to unlink the template from any playlists and delete anyway (the
     // gallery's "Delete anyway" confirm after a TEMPLATE_IN_USE 409).
