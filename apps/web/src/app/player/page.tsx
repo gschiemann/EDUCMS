@@ -180,6 +180,7 @@ import {
   refreshAckDelayMs,
   refreshAckToReport,
 } from './refreshAckReport';
+import { itemContentSigInput } from './contentSig';
 import { appConfirm, appAlert } from '@/components/ui/app-dialog';
 // 2026-05-29 — Sentry crash reporting for the player / renderer. Sentry is
 // initialized in apps/web/sentry.client.config.ts and is GATED on
@@ -6570,8 +6571,10 @@ function PlayerPage() {
               // Fold in the served bytes' identity so a changed URL/hash
               // actually remounts the video instead of returning "same
               // playlist" with the old URL for up to an entire session.
+              // ...and the TRANSITION: a transition-only edit used to leave this
+              // (and so newSig) unchanged and was discarded as "same playlist".
               contentVersion: hashContentSig(
-                `${item.asset_hash || stableManifestUrlKey(item.url)}|${item.muted ?? ''}`,
+                itemContentSigInput(item, stableManifestUrlKey(item.url)),
               ),
               durationMs: item.duration_ms,
               sequenceOrder: item.sequence ?? itemIndex,
