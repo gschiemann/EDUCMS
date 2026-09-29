@@ -453,7 +453,16 @@ export class TelemetryController {
     // screen that played no video keeps its last sample.
     const videoReport = sanitizeVideoReport(body.video);
     if (videoReport) {
-      data.lastVideoReport = { ...videoReport, at: now.toISOString() };
+      // The seam report (4c) rides INSIDE this JSON, so replacing it whole would
+      // erase the seam the next time a frame sample lands — and a sample lands
+      // every minute of playback while the seam lands once a lap. Carried over
+      // while it still describes the same clip.
+      const carried = carriedLoopBlock(screen.lastVideoReport, videoReport.url);
+      data.lastVideoReport = {
+        ...videoReport,
+        at: now.toISOString(),
+        ...(carried ? { loop: carried } : {}),
+      };
       data.lastVideoReportAt = now;
     }
 
@@ -748,6 +757,34 @@ export function sanitizeVideoReport(
   const stalledMs = int(v.stalledMs, 86_400_000);
   if (stalledMs !== null) out.stalledMs = stalledMs;
   return out;
+}
+
+/**
+ * The stored seam report, to carry across a fresh frame sample that is about to
+ * replace the stored sample it rides inside (2026-09-29: the first version of
+ * this feature replaced `lastVideoReport` whole, so on every screen that kept
+ * reporting frame samples the seam block was gone within a minute — the
+ * dashboard and the baseline query both read `loop: null` for a player that had
+ * measured a dozen laps).
+ *
+ * A seam belongs to a CLIP. When the fresh sample names a different file than
+ * the stored one, the old seam is dropped rather than attributed to the new
+ * clip; the next lap of the new clip sends its own. When either side names no
+ * file there is nothing to contradict it, so it is kept (its own `at` says how
+ * old it is).
+ */
+export function carriedLoopBlock(
+  stored: unknown,
+  freshUrl: unknown,
+): Record<string, unknown> | null {
+  if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return null;
+  const s = stored as Record<string, unknown>;
+  const loop = s.loop;
+  if (!loop || typeof loop !== 'object' || Array.isArray(loop)) return null;
+  if (typeof s.url === 'string' && s.url && typeof freshUrl === 'string' && freshUrl && s.url !== freshUrl) {
+    return null;
+  }
+  return loop as Record<string, unknown>;
 }
 
 /**

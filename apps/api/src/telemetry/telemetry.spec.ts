@@ -26,6 +26,7 @@ import {
   resetTelemetryStateForTests,
   sanitizeVideoReport,
   sanitizeLoopBoundary,
+  carriedLoopBlock,
   TELEMETRY_COLUMNS,
   TELEMETRY_MIN_ACCEPT_INTERVAL_MS,
   REFRESH_ACK_MIN_ACCEPT_INTERVAL_MS,
@@ -311,10 +312,60 @@ describe('POST /screens/:id/telemetry', () => {
       expect(data).not.toHaveProperty('lastVideoReportAt');
     });
 
-    it('a report without it leaves a stored loop block alone', async () => {
+    it('a report with neither a frame sample nor a seam does not touch lastVideoReport at all', async () => {
       await controller.report(SCREEN_ID, makeReq(), { refreshAckMs: 1 });
       const d = writtenData();
       expect(d === null || !('lastVideoReport' in d)).toBe(true);
+    });
+
+    // The sample lands every minute of playback, the seam once a lap. Replacing
+    // the stored JSON whole (the first version) erased the seam within a minute
+    // on every screen that kept playing — the field showed `loop: null` for a
+    // player that had measured a dozen laps.
+    describe('a fresh frame sample does not erase the stored seam', () => {
+      const CLIP = 'https://cdn/x/clip.mp4';
+      const storedLoop = { backend: 'native', evidence: 'rvfc', boundaries: 5, maxHoldMs: 300, at: '2026-09-29T12:05:00.000Z' };
+      const stored = (over: Record<string, unknown> = {}) =>
+        baseRow({ lastVideoReport: { url: CLIP, totalFrames: 2000, droppedFrames: 5, at: '2026-09-29T12:04:00.000Z', loop: storedLoop, ...over } });
+
+      it('the SAME clip keeps it, with its own `at` untouched', async () => {
+        prisma.client.screen.findUnique.mockResolvedValue(stored());
+        await controller.report(SCREEN_ID, makeReq(), { video: { url: CLIP, totalFrames: 2100, droppedFrames: 6 } });
+        const data = writtenData() as Record<string, any>;
+        expect(data.lastVideoReport).toMatchObject({ url: CLIP, totalFrames: 2100, at: new Date(NOW).toISOString() });
+        expect(data.lastVideoReport.loop).toEqual(storedLoop);
+      });
+
+      it('a DIFFERENT clip drops it — the old file\'s seam is never attributed to the new one', async () => {
+        prisma.client.screen.findUnique.mockResolvedValue(stored());
+        await controller.report(SCREEN_ID, makeReq(), { video: { url: 'https://cdn/x/other.mp4', totalFrames: 2100, droppedFrames: 6 } });
+        expect(writtenData()!.lastVideoReport).not.toHaveProperty('loop');
+      });
+
+      it('a seam in the SAME report wins over the carried one', async () => {
+        prisma.client.screen.findUnique.mockResolvedValue(stored());
+        await controller.report(SCREEN_ID, makeReq(), { video: { url: CLIP, totalFrames: 2100, droppedFrames: 6 }, loop });
+        const data = writtenData() as Record<string, any>;
+        expect(data.lastVideoReport.loop).toMatchObject({ boundaries: 7, at: new Date(NOW).toISOString() });
+      });
+
+      it('a screen that never measured a seam gets no loop key invented', async () => {
+        prisma.client.screen.findUnique.mockResolvedValue(baseRow({ lastVideoReport: { url: CLIP, totalFrames: 2000, droppedFrames: 5 } }));
+        await controller.report(SCREEN_ID, makeReq(), { video: { url: CLIP, totalFrames: 2100, droppedFrames: 6 } });
+        expect(writtenData()!.lastVideoReport).not.toHaveProperty('loop');
+      });
+
+      it('carriedLoopBlock: only a real object survives; a missing url on either side cannot contradict it', () => {
+        expect(carriedLoopBlock(null, CLIP)).toBeNull();
+        expect(carriedLoopBlock('junk', CLIP)).toBeNull();
+        expect(carriedLoopBlock([], CLIP)).toBeNull();
+        expect(carriedLoopBlock({ url: CLIP, loop: 'x' }, CLIP)).toBeNull();
+        expect(carriedLoopBlock({ url: CLIP, loop: [1] }, CLIP)).toBeNull();
+        expect(carriedLoopBlock({ url: CLIP, loop: storedLoop }, CLIP)).toBe(storedLoop);
+        expect(carriedLoopBlock({ loop: storedLoop }, CLIP)).toBe(storedLoop); // stored sample names no file
+        expect(carriedLoopBlock({ url: CLIP, loop: storedLoop }, undefined)).toBe(storedLoop); // fresh names none
+        expect(carriedLoopBlock({ url: CLIP, loop: storedLoop }, 'https://cdn/x/other.mp4')).toBeNull();
+      });
     });
 
     it('the schema is strict: an unknown key, a bad backend or an out-of-range number is a 400', async () => {
