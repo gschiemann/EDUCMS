@@ -14,7 +14,21 @@
  *   `all`                — every screen
  *   `id1,id2,…`          — exactly those screens (a staged rollout)
  * Anything else — including a typo — reads as `off`, the direction a
- * misconfiguration has to fail here. The value is part of the hashed manifest,
+ * misconfiguration has to fail here.
+ *
+ * MEASURED ON REAL HARDWARE (2026-09-29, `lastVideoReport.loop`) — why this is a
+ * per-screen switch and not `all`:
+ *   - Amlogic T982 / Android 13 / WebView 101 (Brookfield "M43", 4K clip): the
+ *     hand-off works. Native loop seam held 156-200 ms every lap; two-deck: first
+ *     lap after a page load 1009 ms (cold decoder), then hold 0 ms with the resume
+ *     lead still converging (skip <= 600 ms, shrinking).
+ *   - Amlogic T982 / Android 11 / WebView 95 (RIOT Cleveland "Pro Series 86\"",
+ *     1080p clip): the SECOND <video> `play()`ed while the first plays stays at
+ *     t=0 (readyState 4, not paused) for the whole 1.5 s window, twice in a row —
+ *     `fallbackReason: handoff-timeout:rs4p0t0`. That platform runs ONE hardware
+ *     decode session; the engine gave up by itself, blocked the path for 24 h and
+ *     left the native loop playing. It is the safety net working, not a failure.
+ * The value is part of the hashed manifest,
  * so a change reaches a screen on its next poll after the API restarts (Railway
  * restarts the API on a variable change, which also clears the in-process
  * manifest cache).
