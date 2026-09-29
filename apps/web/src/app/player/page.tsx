@@ -122,6 +122,7 @@ import { getServiceWorkerContainer, isServiceWorkerAvailable } from '../../lib/s
 // Pure modules (no React/DOM) so the math is unit-tested without mounting this page.
 import { SyncClock } from './sync/syncClock';
 import { resolveTimeline, advanceCounterTo, videoTargetMs, type TimelinePosition } from './sync/syncTimeline';
+import { createVideoServoState, servoDecide, servoSeekLanded } from './sync/videoServo';
 // Sprint 13 — scoreboard console bridge (CTS / Daktronics serial). Mounts
 // when the manifest binds this screen to a game (K12-F32 — set up in the
 // game's console, no URL), or on the legacy `?cts=1` kiosk URL; regular
@@ -1895,6 +1896,13 @@ function PlayerVideoSlide({
       };
       rvfcId = (v as any).requestVideoFrameCallback(onFrame);
     }
+    // Seek decisions live in sync/videoServo.ts (2026-09-29): never while a seek is
+    // in flight, a MEASURED seek lead, and hard seeks given up for ten minutes
+    // when they keep failing to land — the old blind 80 ms-lead seek looped
+    // forever on slow-seeking panels and froze the picture.
+    const servoState = createVideoServoState();
+    const onSeeked = () => servoSeekLanded(servoState, performance.now());
+    v.addEventListener('seeked', onSeeked);
     const servo = setInterval(() => {
       if (stopped) return;
       const pos = syncPosRef.current;
@@ -1913,22 +1921,23 @@ function PlayerVideoSlide({
         err = err > 0 ? err - fileDurMs : err + fileDurMs;
       }
       if (!Number.isFinite(err)) return;
-      if (Math.abs(err) > 400) {
-        try {
-          let seekMs = target + 80; // static seek-latency lead
-          if (fileDurMs && seekMs >= fileDurMs) seekMs -= fileDurMs;
-          v.currentTime = Math.max(0, seekMs) / 1000;
-        } catch { /* not seekable yet — next tick retries */ }
-        if (v.playbackRate !== 1) v.playbackRate = 1;
-      } else if (Math.abs(err) > 12) {
-        v.playbackRate = 1 + Math.max(-0.04, Math.min(0.04, err / 2000));
-      } else if (v.playbackRate !== 1) {
-        v.playbackRate = 1;
+      const action = servoDecide(servoState, { nowMs: performance.now(), errMs: err, targetMs: target, fileDurMs, seeking: v.seeking });
+      if (servoState.justBlocked) {
+        servoState.justBlocked = false;
+        console.warn(`[Player Sync] this screen's seeks keep landing late (lead ${Math.round(servoState.leadMs)} ms) — hard seeks paused 10 min; chasing with playback rate only so the picture keeps moving`);
       }
+      if (action.kind === 'hold') return;
+      if (action.kind === 'seek') {
+        try { v.currentTime = action.toMs / 1000; } catch { /* not seekable yet — next tick retries */ }
+        if (v.playbackRate !== 1) v.playbackRate = 1;
+        return;
+      }
+      if (v.playbackRate !== action.rate) v.playbackRate = action.rate;
     }, 250);
     return () => {
       stopped = true;
       clearInterval(servo);
+      v.removeEventListener('seeked', onSeeked);
       if (hasRvfc && rvfcId !== null) {
         try { (v as any).cancelVideoFrameCallback(rvfcId); } catch { /* noop */ }
       }
