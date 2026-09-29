@@ -4769,7 +4769,17 @@ export class ScreensController {
     return { ...updated, contentMode: mode };
   }
 
+  // ─── ADMIN: Delete a screen ───
+  // 2026-09-29: this route carried NO guard for ten days. The 2026-09-19
+  // double-sided-displays commit inserted `setFaceContentMode` between the
+  // `@UseGuards` line and `@Delete(':id')`, so the guard stayed with the moved
+  // comment block and this handler lost it: `req.user` was never set, and every
+  // delete died on `req.user.tenantId` with a 500 — nobody could remove a
+  // screen (RIOT Cleveland: "Screen Issue Won't Resolve. Trying to remove and
+  // add again."). `route-guard-inventory.spec.ts` now fails any route that
+  // declares @RequireRoles without the JWT guard.
   @Delete(':id')
+  @UseGuards(JwtAuthGuard, RbacGuard)
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   async remove(@Request() req: any, @Param('id') id: string) {
     const screen = await this.prisma.client.screen.findFirst({
