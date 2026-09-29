@@ -8,6 +8,8 @@
  * stalls the page boot with no errors), the realtime one auto-AUTH_OKs.
  */
 import type { Page, Route } from '@playwright/test';
+import fs from 'node:fs';
+import path from 'node:path';
 
 const SLOT_MS = 1_200;
 
@@ -32,9 +34,24 @@ export function playerIds(tag: string) {
   };
 }
 
-export function playerManifest(screenId: string, kind: 'images' | 'website') {
+export type MockKind = 'images' | 'website' | 'video';
+
+export function playerManifest(screenId: string, kind: MockKind, playback?: { loopMode: string }) {
   const items =
-    kind === 'images'
+    kind === 'video'
+      ? [
+          {
+            item_id: 'item-video',
+            asset_id: 'asset-video',
+            url: 'http://api.invalid/assets/loop-clip.webm',
+            duration_ms: 2500,
+            sequence: 0,
+            mime_type: 'video/webm',
+            transition_type: 'NONE',
+            muted: true,
+          },
+        ]
+      : kind === 'images'
       ? Array.from({ length: 3 }, (_, i) => ({
           item_id: `item-${i}`,
           asset_id: `asset-${i}`,
@@ -65,13 +82,14 @@ export function playerManifest(screenId: string, kind: 'images' | 'website') {
     generatedAt: new Date().toISOString(),
     isEmergency: false,
     orientation: 'LANDSCAPE',
+    ...(playback ? { playback } : {}),
     canvasW: null,
     canvasH: null,
     repeats: 1,
     playlists: [
       {
         id: 'pl-proof',
-        name: kind === 'images' ? 'Scan slideshow' : 'Website',
+        name: kind === 'images' ? 'Scan slideshow' : kind === 'video' ? 'Solo video' : 'Website',
         schedule: { daysOfWeek: null, timeStart: null, timeEnd: null, mutedOverride: null },
         items,
       },
@@ -85,7 +103,13 @@ export interface Posted {
 
 export interface BootOptions {
   tag: string;
-  kind: 'images' | 'website';
+  kind: MockKind;
+  /** The manifest's `playback` block (per-screen switches), e.g. `{ loopMode: 'twodeck' }`. */
+  playback?: { loopMode: string };
+  /** For kind 'video': answer every request for the clip AFTER the first with this status (a standby that cannot load). */
+  videoFailAfterFirst?: number;
+  /** For kind 'video': how many requests the clip has had. */
+  videoRequests?: { count: number };
   /** localStorage seeded BEFORE the page's scripts run (e.g. a persisted refresh ack). */
   storage?: Record<string, string>;
   /** HTTP statuses `POST …/refresh-ack` answers with, in order; the last one repeats. Default [200]. */
@@ -190,7 +214,7 @@ export async function bootMockPlayer(page: Page, opts: BootOptions): Promise<Boo
   await page.route('**/api/v1/screens/register', (route) =>
     ok(route, { paired: true, screenId: id.screenId, name: `Proof ${tag}`, deviceToken: id.deviceToken }),
   );
-  await page.route(`**/api/v1/screens/${id.screenId}/manifest`, (route) => ok(route, playerManifest(id.screenId, kind)));
+  await page.route(`**/api/v1/screens/${id.screenId}/manifest`, (route) => ok(route, playerManifest(id.screenId, kind, opts.playback)));
   await page.route(`**/api/v1/screens/${id.screenId}/emergency-assets`, (route) =>
     ok(route, { assets: [], setHash: 'empty-fake-hash' }),
   );
@@ -217,6 +241,27 @@ export async function bootMockPlayer(page: Page, opts: BootOptions): Promise<Boo
   await page.route('**/assets/slide-*.png', (route) =>
     route.fulfill({ status: 200, contentType: 'image/png', body: PNG_1PX }),
   );
+
+  // The clip, served with Range support (a <video> seeks and re-requests).
+  if (kind === 'video') {
+    const clip = fs.readFileSync(path.join(__dirname, '..', 'fixtures', 'loop-clip.webm'));
+    await page.route('**/assets/loop-clip.webm', (route) => {
+      const n = (opts.videoRequests ? ++opts.videoRequests.count : 0);
+      if (opts.videoFailAfterFirst && opts.videoRequests && n > 1) {
+        return route.fulfill({ status: opts.videoFailAfterFirst, headers: { 'Access-Control-Allow-Origin': '*' }, body: '' });
+      }
+      const range = /^bytes=(\d*)-(\d*)$/.exec(route.request().headers()['range'] || '');
+      const cors = { 'Access-Control-Allow-Origin': '*', 'Accept-Ranges': 'bytes', 'Content-Type': 'video/webm' };
+      if (!range) return route.fulfill({ status: 200, headers: { ...cors, 'Content-Length': String(clip.length) }, body: clip });
+      const start = range[1] === '' ? 0 : Number(range[1]);
+      const end = range[2] === '' ? clip.length - 1 : Math.min(Number(range[2]), clip.length - 1);
+      return route.fulfill({
+        status: 206,
+        headers: { ...cors, 'Content-Range': `bytes ${start}-${end}/${clip.length}`, 'Content-Length': String(end - start + 1) },
+        body: clip.subarray(start, end + 1),
+      });
+    });
+  }
 
   const statuses = opts.refreshAckStatuses && opts.refreshAckStatuses.length ? opts.refreshAckStatuses : [200];
   await page.route(`**/api/v1/screens/${id.screenId}/refresh-ack`, async (route) => {

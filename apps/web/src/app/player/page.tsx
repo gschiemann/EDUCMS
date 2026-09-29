@@ -105,6 +105,7 @@ import {
   buildRenderBlock,
   buildTelemetryBody,
   downloadReportRefused,
+  loopReportRefused,
   initialTelemetryDelayMs,
   nextTelemetryDelayMs,
   outcomeFromStatus,
@@ -181,6 +182,10 @@ import {
   refreshAckToReport,
 } from './refreshAckReport';
 import { itemContentSigInput } from './contentSig';
+import { loopBoundaryTracker, NativeWrapDetector, type FrameMeta, type RvfcVideoElement } from './loopBoundary';
+import { SeamlessLoopVideo } from './SeamlessLoopVideo';
+import { pickLoopBackend } from './loopEligibility';
+import { bootCheck as loopGuardBootCheck, isBlocked as loopIsBlocked } from './loopGuard';
 import { appConfirm, appAlert } from '@/components/ui/app-dialog';
 // 2026-05-29 — Sentry crash reporting for the player / renderer. Sentry is
 // initialized in apps/web/sentry.client.config.ts and is GATED on
@@ -1674,6 +1679,50 @@ function PlayerVideoSlide({
     // `src` is fixed for the life of a slide (key={videoKey} remounts per item).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isActive, videoKey]);
+
+  // Loop-boundary probe (2026-09-29, video-loop audit F1/F2). A solo video's
+  // native `loop` is a seek back to 0 — on an Android WebView the decoder
+  // restarts and the picture can hold for hundreds of ms — and nothing could
+  // SEE it: the quality tracker above ignores `waiting` during a seek, which is
+  // exactly what a loop is. This measures the seam from
+  // requestVideoFrameCallback timing (a frame reached the compositor — not a
+  // camera on the panel) and feeds the telemetry `loop` block. Observer only:
+  // no timer, no network, nothing that advances content. Skipped under
+  // frame-locked sync, where the servo's own seeks would look like wraps.
+  useEffect(() => {
+    if (!isActive || !isSoloPlaylist) return;
+    const v = videoRef.current as RvfcVideoElement | null;
+    if (!v || typeof v.requestVideoFrameCallback !== 'function') return;
+    const det = new NativeWrapDetector();
+    let id: number | null = null;
+    let stopped = false;
+    const onFrame = (_now: number, meta: FrameMeta) => {
+      if (stopped) return;
+      if (syncActiveRef?.current) {
+        det.reset();
+      } else if (meta && typeof meta.mediaTime === 'number' && typeof meta.expectedDisplayTime === 'number') {
+        const ev = det.onFrame(
+          {
+            mediaTime: meta.mediaTime,
+            expectedDisplayTime: meta.expectedDisplayTime,
+            presentedFrames: typeof meta.presentedFrames === 'number' ? meta.presentedFrames : undefined,
+          },
+          v.duration,
+        );
+        if (ev) loopBoundaryTracker.record(ev);
+      }
+      id = v.requestVideoFrameCallback!(onFrame);
+    };
+    id = v.requestVideoFrameCallback(onFrame);
+    return () => {
+      stopped = true;
+      if (id !== null) {
+        try { v.cancelVideoFrameCallback?.(id); } catch { /* noop */ }
+      }
+    };
+    // Keyed on the slide's identity, like the tracker above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive, isSoloPlaylist, videoKey]);
 
   // 2026-05-05 — recover from autoplay-with-sound block on first user
   // gesture. Chrome's policy says any document-wide click / keydown /
@@ -3990,6 +4039,10 @@ function PlayerPage() {
   );
   const syncRenderLeadSavedAtRef = useRef<number>(0);
   const [syncEnabled, setSyncEnabled] = useState(false);
+  // 2026-09-29 — per-screen playback switch from the manifest (`playback.loopMode`):
+  // how a SOLO, muted video repeats. null = the manifest did not say (older
+  // API) → the native loop, exactly as before. See loopEligibility.ts.
+  const [playbackLoopMode, setPlaybackLoopMode] = useState<'native' | 'twodeck' | null>(null);
   // Tier-3 camera calibration (2026-07-28): the dashboard wizard remotely
   // flips group screens into a full-screen synced flash pattern
   // (CALIBRATE_FLASH signed device message) so a phone camera can measure
@@ -6213,6 +6266,12 @@ function PlayerPage() {
         }
         setSyncEnabled(enabled);
       }
+      // 2026-09-29 — per-screen playback switches. Absent on an older API
+      // and on the emergency branch → keep what we have (default: native).
+      if (manifest.playback && typeof manifest.playback === 'object') {
+        const lm = (manifest.playback as { loopMode?: unknown }).loopMode;
+        setPlaybackLoopMode(lm === 'twodeck' || lm === 'native' ? lm : null);
+      }
       // ── DISPLAY CONTROL — install the on/off schedule + vendor recipe ──
       //
       // This is the ONLY delivery path for the feature's headline capability.
@@ -7152,6 +7211,15 @@ function PlayerPage() {
   // (an API from before it existed) — see `downloadReportRefused`. For the
   // rest of this page's life the snapshot is simply not sent.
   const downloadReportAllowedRef = useRef(true);
+  // Same rule for the loop-boundary block (2026-09-29): False once the API
+  // 400'd a report that carried it (an API from before it existed).
+  const loopReportAllowedRef = useRef(true);
+  // Two-deck loop circuit breaker (2026-09-29): a boot that finds the running
+  // marker means the last session died — two short ones in a row block the
+  // path for a day (loopGuard.ts). Once per page load, before any slide's engine.
+  useEffect(() => {
+    try { loopGuardBootCheck(window.localStorage, Date.now()); } catch { /* storage unreadable */ }
+  }, []);
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (isPreviewMode()) return; // preview tabs don't report
@@ -7216,6 +7284,9 @@ function PlayerPage() {
         // The last video's dropped-frame sample, when there is a new one
         // (2026-09-24). At most one per report; the server keeps the latest.
         video: videoQualityTracker.take(nowMs),
+        // What this screen measured at a solo video's loop seam (2026-09-29);
+        // sent only when a boundary was observed since the last report.
+        loop: loopReportAllowedRef.current ? loopBoundaryTracker.take() : null,
         // The large file downloading right now, and whether the previous
         // content is held on glass meanwhile (2026-09-27). Rides inside the
         // cache block; the dashboard reads it as download progress.
@@ -7258,6 +7329,10 @@ function PlayerPage() {
       }
       if (cancelled) return;
 
+      if (loopReportRefused(status, body)) {
+        loopReportAllowedRef.current = false;
+        console.warn('[Player] the server refused the loop-boundary report — not sending it again this session');
+      }
       if (downloadReportRefused(status, body)) {
         // The API predates the snapshot and 400'd the whole strict body. Stop
         // sending it; the fast retry below goes out without it, so liveness
@@ -11732,6 +11807,40 @@ function PlayerPage() {
               const isSoloPlaylist = countDistinctPlayable(sorted, playableAt) <= 1;
               // The native file, always (2026-09-26, Greg — no 1080p stand-in).
               const videoSrc = resUrl;
+              // 2026-09-29 (video-loop audit F1): a solo, MUTED video can repeat by
+              // hand-off between two prepared elements instead of the browser's seek.
+              // Only when the manifest asks for it AND every condition holds
+              // (loopEligibility.ts); everything else keeps the single element and
+              // the native loop. Emergency content never takes this path.
+              const loopChoice = pickLoopBackend({
+                loopMode: playbackLoopMode,
+                urlOverride: (() => { try { return new URLSearchParams(window.location.search).get('loop'); } catch { return null; } })(),
+                isSolo: isSoloPlaylist,
+                muted: (item as { muted?: boolean | null }).muted !== false,
+                syncActive: syncActiveRef.current,
+                isEmergency: playlist?.isEmergency === true,
+                isMov: /\.mov(\?|$)/i.test(videoSrc),
+                hasRvfc: typeof HTMLVideoElement !== 'undefined' && 'requestVideoFrameCallback' in HTMLVideoElement.prototype,
+                blocked: (() => { try { return loopIsBlocked(window.localStorage, Date.now()); } catch { return false; } })(),
+                isPreview: isPreviewMode(),
+              });
+              if (loopChoice.backend === 'twodeck') {
+                return (
+                  <SeamlessLoopVideo
+                    key={item.id}
+                    videoKey={item.id}
+                    src={videoSrc}
+                    isActive={isActive}
+                    classes={classes}
+                    onPlaying={markItemSucceeded}
+                    onError={() => {
+                      console.warn('[Player] video error, skipping:', videoSrc);
+                      markItemFailed(item.id);
+                      if (!syncActiveRef.current) advanceSlide();
+                    }}
+                  />
+                );
+              }
               return (
                 <PlayerVideoSlide
                   key={item.id}

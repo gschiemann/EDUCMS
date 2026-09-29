@@ -33,8 +33,7 @@ import {
   nextTelemetryDelayMs,
   outcomeFromStatus,
   initialTelemetryDelayMs,
-  shouldPostEarly,
-} from '../telemetry';
+  shouldPostEarly, loopReportRefused } from '../telemetry';
 
 const NOW = 1_700_000_000_000;
 
@@ -473,5 +472,46 @@ describe('body assembly', () => {
       'render',
       'versions',
     ]);
+  });
+});
+
+
+describe('loop boundary block (2026-09-29)', () => {
+  const snap = { backend: 'native' as const, boundaries: 7, maxHoldMs: 412.9, p95HoldMs: 380.2, lastHoldMs: 301, maxSkipMs: 0 };
+
+  it('is sent with its evidence, floored, when the tracker has a summary', () => {
+    const body = buildTelemetryBody({ loop: snap } as never);
+    expect(body.loop).toEqual({ backend: 'native', evidence: 'rvfc', boundaries: 7, maxHoldMs: 412, p95HoldMs: 380, lastHoldMs: 301, maxSkipMs: 0 });
+  });
+
+  it('is ABSENT — never zeroed — when there is nothing to say', () => {
+    expect('loop' in buildTelemetryBody({} as never)).toBe(false);
+    expect('loop' in buildTelemetryBody({ loop: null } as never)).toBe(false);
+  });
+
+  it('clamps to the server\'s bounds and drops garbage, because one bad value 400s the whole report', () => {
+    const body = buildTelemetryBody({ loop: { ...snap, maxHoldMs: 9e9, p95HoldMs: Number.NaN, lastHoldMs: -4, fallbackReason: '  ' + 'x'.repeat(100) } } as never);
+    expect(body.loop!.maxHoldMs).toBe(600_000);
+    expect(body.loop!.p95HoldMs).toBe(0);
+    expect(body.loop!.lastHoldMs).toBe(0);
+    expect(body.loop!.fallbackReason).toHaveLength(64);
+    expect('loop' in buildTelemetryBody({ loop: { ...snap, backend: 'mse' } } as never)).toBe(false);
+    expect('loop' in buildTelemetryBody({ loop: { ...snap, boundaries: Number.NaN } } as never)).toBe(false);
+  });
+
+  it('carries swaps / fallbacks / reason only when present', () => {
+    const body = buildTelemetryBody({ loop: { ...snap, backend: 'twodeck', swaps: 12.6, fallbacks: 1, fallbackReason: 'standby-not-ready' } } as never);
+    expect(body.loop).toMatchObject({ backend: 'twodeck', swaps: 12, fallbacks: 1, fallbackReason: 'standby-not-ready' });
+    expect(buildTelemetryBody({ loop: snap } as never).loop).not.toHaveProperty('swaps');
+  });
+
+  it('loopReportRefused: only a 400 to a report that carried it', () => {
+    const withLoop = buildTelemetryBody({ loop: snap } as never);
+    const without = buildTelemetryBody({} as never);
+    expect(loopReportRefused(400, withLoop)).toBe(true);
+    expect(loopReportRefused(400, without)).toBe(false);
+    expect(loopReportRefused(429, withLoop)).toBe(false);
+    expect(loopReportRefused(null, withLoop)).toBe(false);
+    expect(loopReportRefused(200, withLoop)).toBe(false);
   });
 });

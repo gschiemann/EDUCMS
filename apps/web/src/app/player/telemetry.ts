@@ -129,6 +129,27 @@ export interface TelemetryVideoReport {
 }
 
 /**
+ * Loop-boundary quality (2026-09-29, video-loop audit F1/F2): what THIS screen
+ * measured at the seam where a solo video starts over — see `loopBoundary.ts`.
+ * `evidence` is always `rvfc`: a frame reached the compositor; not a camera on
+ * the panel. ⚠️ `strictObject` on the server: the API that accepts `loop` ships
+ * BEFORE the bundle that sends it, and if a report carrying it is still refused
+ * the page stops sending it for the rest of its session (`loopReportRefused`).
+ */
+export interface TelemetryLoopReport {
+  backend: 'native' | 'twodeck';
+  evidence: 'rvfc';
+  boundaries: number;
+  maxHoldMs: number;
+  p95HoldMs: number;
+  lastHoldMs: number;
+  maxSkipMs: number;
+  swaps?: number;
+  fallbacks?: number;
+  fallbackReason?: string;
+}
+
+/**
  * The large file this screen is downloading RIGHT NOW (2026-09-27, download
  * visibility). A file ≥ 8 MiB plays only once it is completely on disk
  * (readiness-gated playback, CLAUDE.md player rule 17). Until it is, the glass
@@ -182,6 +203,7 @@ export interface TelemetryBody {
   refreshAckMs?: number;
   capsHash?: string;
   video?: TelemetryVideoReport;
+  loop?: TelemetryLoopReport;
 }
 
 /**
@@ -387,6 +409,8 @@ export interface TelemetryBodyInput {
   /** The last video's playback sample (dropped frames, and rebuffer pauses
    *  when counted), when there is a new one to report. */
   video?: TelemetryVideoReport | null;
+  /** The loop-boundary summary, when a boundary was observed since the last one (2026-09-29). */
+  loop?: Omit<TelemetryLoopReport, 'evidence'> | null;
   /**
    * The large file downloading right now, if any (2026-09-27). Rides inside
    * `cache`, so it is sent only together with the cache tiers — a report
@@ -454,7 +478,56 @@ export function buildTelemetryBody(input: TelemetryBodyInput): TelemetryBody {
 
   if (input.video) body.video = videoReport(input.video);
 
+  if (input.loop) {
+    const l = loopReport(input.loop);
+    if (l) body.loop = l;
+  }
+
   return body;
+}
+
+/** The server's bounds on the loop-boundary numbers (`telemetry.schema.ts`). */
+const LOOP_MAX_MS = 600_000;
+const LOOP_MAX_COUNT = 1_000_000_000;
+
+/**
+ * The loop block as the server's strict schema accepts it — every number
+ * floored and CLAMPED (one value past a bound 400s the WHOLE report, liveness
+ * and render proof with it), only the documented keys, the reason capped.
+ * Null when there is nothing usable to say.
+ */
+function loopReport(l: Omit<TelemetryLoopReport, 'evidence'>): TelemetryLoopReport | null {
+  if (l.backend !== 'native' && l.backend !== 'twodeck') return null;
+  const n = (v: unknown, hi: number): number | null =>
+    typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.min(Math.floor(v), hi) : null;
+  const boundaries = n(l.boundaries, LOOP_MAX_COUNT);
+  if (boundaries === null) return null;
+  const out: TelemetryLoopReport = {
+    backend: l.backend,
+    evidence: 'rvfc',
+    boundaries,
+    maxHoldMs: n(l.maxHoldMs, LOOP_MAX_MS) ?? 0,
+    p95HoldMs: n(l.p95HoldMs, LOOP_MAX_MS) ?? 0,
+    lastHoldMs: n(l.lastHoldMs, LOOP_MAX_MS) ?? 0,
+    maxSkipMs: n(l.maxSkipMs, LOOP_MAX_MS) ?? 0,
+  };
+  const swaps = n(l.swaps, LOOP_MAX_COUNT);
+  if (swaps !== null) out.swaps = swaps;
+  const fallbacks = n(l.fallbacks, LOOP_MAX_COUNT);
+  if (fallbacks !== null) out.fallbacks = fallbacks;
+  if (typeof l.fallbackReason === 'string' && l.fallbackReason.trim()) {
+    out.fallbackReason = l.fallbackReason.trim().slice(0, 64);
+  }
+  return out;
+}
+
+/**
+ * True when the API 400'd a report that carried the loop block — an API from
+ * before it existed refusing the whole strict body. The page then stops sending
+ * it for the rest of the session and the fast retry lands liveness and proof.
+ */
+export function loopReportRefused(status: number | null, sent: TelemetryBody): boolean {
+  return status === 400 && !!sent.loop;
 }
 
 /** The server's bounds on the rebuffer counters (`telemetry.schema.ts`). */
