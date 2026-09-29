@@ -33,7 +33,7 @@ import {
   nextTelemetryDelayMs,
   outcomeFromStatus,
   initialTelemetryDelayMs,
-  shouldPostEarly, loopReportRefused } from '../telemetry';
+  shouldPostEarly, loopReportRefused, loopReportDue, LOOP_REPORT_RETRY_MS } from '../telemetry';
 
 const NOW = 1_700_000_000_000;
 
@@ -503,6 +503,15 @@ describe('loop boundary block (2026-09-29)', () => {
     const body = buildTelemetryBody({ loop: { ...snap, backend: 'twodeck', swaps: 12.6, fallbacks: 1, fallbackReason: 'standby-not-ready' } } as never);
     expect(body.loop).toMatchObject({ backend: 'twodeck', swaps: 12, fallbacks: 1, fallbackReason: 'standby-not-ready' });
     expect(buildTelemetryBody({ loop: snap } as never).loop).not.toHaveProperty('swaps');
+  });
+
+  it('after a refusal the block is held back for a window — not for the session — then due again', () => {
+    expect(loopReportDue(1_000, 0)).toBe(true); // never refused
+    const until = 1_000 + LOOP_REPORT_RETRY_MS;
+    expect(loopReportDue(1_001, until)).toBe(false);
+    expect(loopReportDue(until - 1, until)).toBe(false);
+    expect(loopReportDue(until, until)).toBe(true); // the API had time to catch up
+    expect(LOOP_REPORT_RETRY_MS).toBe(600_000);
   });
 
   it('loopReportRefused: only a 400 to a report that carried it', () => {

@@ -522,9 +522,24 @@ function loopReport(l: Omit<TelemetryLoopReport, 'evidence'>): TelemetryLoopRepo
 }
 
 /**
+ * How long the page stops sending the loop block after the API refused one
+ * (2026-09-29). NOT the rest of the session: a refusal usually means the API
+ * half of a rollout has not landed yet (a queued deploy — Railway had an
+ * incident the day this shipped), and a session that gives up for good would
+ * report nothing until its next reload, possibly hours. Ten minutes rides out
+ * a slow deploy and costs at most one refused report per window.
+ */
+export const LOOP_REPORT_RETRY_MS = 10 * 60_000;
+
+/** May the loop block go out now? (`blockedUntilMs` is 0 until a refusal.) */
+export function loopReportDue(nowMs: number, blockedUntilMs: number): boolean {
+  return !(nowMs < blockedUntilMs);
+}
+
+/**
  * True when the API 400'd a report that carried the loop block — an API from
  * before it existed refusing the whole strict body. The page then stops sending
- * it for the rest of the session and the fast retry lands liveness and proof.
+ * it for `LOOP_REPORT_RETRY_MS`, and the fast retry lands liveness and proof.
  */
 export function loopReportRefused(status: number | null, sent: TelemetryBody): boolean {
   return status === 400 && !!sent.loop;

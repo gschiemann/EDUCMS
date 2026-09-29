@@ -106,6 +106,8 @@ import {
   buildTelemetryBody,
   downloadReportRefused,
   loopReportRefused,
+  loopReportDue,
+  LOOP_REPORT_RETRY_MS,
   initialTelemetryDelayMs,
   nextTelemetryDelayMs,
   outcomeFromStatus,
@@ -7211,9 +7213,10 @@ function PlayerPage() {
   // (an API from before it existed) — see `downloadReportRefused`. For the
   // rest of this page's life the snapshot is simply not sent.
   const downloadReportAllowedRef = useRef(true);
-  // Same rule for the loop-boundary block (2026-09-29): False once the API
-  // 400'd a report that carried it (an API from before it existed).
-  const loopReportAllowedRef = useRef(true);
+  // Same rule for the loop-boundary block (2026-09-29), but TIME-LIMITED: after
+  // the API 400'd a report that carried it (an API half of a rollout not landed
+  // yet) the block is held back for LOOP_REPORT_RETRY_MS, then tried again.
+  const loopReportBlockedUntilRef = useRef(0);
   // Two-deck loop circuit breaker (2026-09-29): a boot that finds the running
   // marker means the last session died — two short ones in a row block the
   // path for a day (loopGuard.ts). Once per page load, before any slide's engine.
@@ -7286,7 +7289,7 @@ function PlayerPage() {
         video: videoQualityTracker.take(nowMs),
         // What this screen measured at a solo video's loop seam (2026-09-29);
         // sent only when a boundary was observed since the last report.
-        loop: loopReportAllowedRef.current ? loopBoundaryTracker.take() : null,
+        loop: loopReportDue(nowMs, loopReportBlockedUntilRef.current) ? loopBoundaryTracker.take() : null,
         // The large file downloading right now, and whether the previous
         // content is held on glass meanwhile (2026-09-27). Rides inside the
         // cache block; the dashboard reads it as download progress.
@@ -7330,8 +7333,8 @@ function PlayerPage() {
       if (cancelled) return;
 
       if (loopReportRefused(status, body)) {
-        loopReportAllowedRef.current = false;
-        console.warn('[Player] the server refused the loop-boundary report — not sending it again this session');
+        loopReportBlockedUntilRef.current = nowMs + LOOP_REPORT_RETRY_MS;
+        console.warn('[Player] the server refused the loop-boundary report — holding it back for 10 minutes');
       }
       if (downloadReportRefused(status, body)) {
         // The API predates the snapshot and 400'd the whole strict body. Stop
