@@ -6,10 +6,10 @@
  * the manifest builder and both fleet lists call `resolveScreenSync` /
  * `isScreenSyncActive` and can never disagree with each other.
  *
- * The case that matters most to a live wall is
- * "a locked group with no sync-on playlist is STILL synced" — that is the
- * guarantee that this deploy does not unlock the three groups that are locked
- * in production today, with no migration run and no data touched.
+ * 2026-09-29: the PLAYLIST is the only switch. A group still carrying the
+ * legacy syncMode='locked' locks nothing — the operator could not clear that
+ * flag (its UI was removed 09-16), so it kept screens synced after he turned the
+ * playlist's sync off ("nothing changes").
  */
 
 import {
@@ -36,18 +36,12 @@ describe('resolveScreenSync — who is frame-locked, and why', () => {
     expect(resolveScreenSync({})).toEqual({ enabled: false, source: 'off' });
   });
 
-  // ── The back-compatibility guarantee ────────────────────────────────────
-  it('a group still on the legacy locked flag stays synced with NO playlist flag set', () => {
+  // ── The playlist is the only switch (2026-09-29) ─────────────────────────
+  it('a group still on the legacy locked flag does NOT lock its screens when no playlist asks for sync', () => {
     expect(
       resolveScreenSync({ groupSyncMode: 'locked', scheduledPlaylistSync: [false, false] }),
-    ).toEqual({ enabled: true, source: 'group-legacy' });
-  });
-
-  it('the legacy flag needs no schedule information at all to keep a wall locked', () => {
-    expect(resolveScreenSync({ groupSyncMode: 'locked' })).toEqual({
-      enabled: true,
-      source: 'group-legacy',
-    });
+    ).toEqual({ enabled: false, source: 'off' });
+    expect(resolveScreenSync({ groupSyncMode: 'locked' })).toEqual({ enabled: false, source: 'off' });
   });
 
   it("'off' and null group modes do not lock anything", () => {
@@ -69,9 +63,7 @@ describe('resolveScreenSync — who is frame-locked, and why', () => {
     });
   });
 
-  it('the playlist answer wins over the legacy group flag when both say lock', () => {
-    // Same outcome either way; the SOURCE is what tells an operator (and the
-    // data-move doc) that this group no longer needs its legacy flag.
+  it('a sync-on playlist locks a screen whatever its group says', () => {
     expect(
       resolveScreenSync({ groupSyncMode: 'locked', scheduledPlaylistSync: [true] }),
     ).toEqual({ enabled: true, source: 'playlist' });
@@ -111,10 +103,10 @@ describe('isScreenSyncActive — the fleet-list twin of the same rule', () => {
     expect(isScreenSyncActive({ id: 'solo', screenGroupId: null }, t)).toBe(true);
   });
 
-  it('a legacy locked group keeps every one of its screens active with no targets at all', () => {
+  it('a legacy locked group locks none of its screens when no sync-on playlist reaches them', () => {
     expect(
       isScreenSyncActive({ id: 's1', screenGroupId: 'g1', groupSyncMode: 'locked' }, targets()),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it('a group can now be PART synced — the shape the group flag could not express', () => {
@@ -157,8 +149,7 @@ describe('readSyncActiveTargets — one query, and it never throws', () => {
   });
 
   it('a read failure degrades to "no playlist targets", never an exception', async () => {
-    // A fleet list must still render; the caller then falls back to the legacy
-    // group flag alone, which is the pre-change behaviour.
+    // A fleet list must still render; it then shows no screen as locked.
     const findMany = jest.fn(async () => {
       throw new Error('pooler blip');
     });

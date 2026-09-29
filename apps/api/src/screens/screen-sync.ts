@@ -9,30 +9,30 @@
  * a claim about a filing cabinet. Frame-lock is a property of the CONTENT an
  * operator wants mirrored, so it now lives on `Playlist.syncPlayback`.
  *
- * ── THE RULE ────────────────────────────────────────────────────────────
+ * ── THE RULE (2026-09-29: the playlist is the ONLY switch) ─────────────
  *
  *   enabled = ANY playlist scheduled onto this screen right now has
  *             syncPlayback === true
- *          OR this screen's group still carries the legacy syncMode='locked'
  *
- * Two decisions worth stating out loud, because both are load-bearing:
+ * The group flag is gone from the rule. Until 2026-09-29 a group still carrying
+ * the legacy syncMode='locked' ALSO locked its screens — and the UI that could
+ * set or clear that flag had been removed on 09-16, so an operator could not turn
+ * it off: Greg flipped the playlist's sync on and off and "nothing changes",
+ * because Brookfield's "Tesoro Neighborhood" group kept every screen locked. His
+ * rule, verbatim: "there should only be sync at the playlist level not at the
+ * screen group level". The only groups still carrying the flag were three of his
+ * own (Tesoro, Allora, Mint); no customer depended on it. `groupSyncMode` is still
+ * accepted as an input so callers need not change, and it is IGNORED.
  *
- * 1. **ANY, not ALL.** An operator turns sync on for the playlist they want
- *    mirrored. A sync-off APPEND row (a ticker, a house ad) must not veto it —
- *    "all" would mean adding a ticker silently unlocks a video wall. The
- *    server cannot do better than a rule over the candidate set: which
- *    playlist is showing at this instant is decided ON THE DEVICE, against
- *    its own clock, from the day/time windows in the manifest
- *    (screens.controller `applyManifest` selection). A per-playlist decision
- *    would be a PLAYER change, and every already-deployed bundle would ignore
- *    it — see docs/research/2026-09-15-sync-to-playlists/01-SYNC-CODE-MAP.md §3.
- *
- * 2. **The legacy group arm is an OR, and it is why this deploy is safe.**
- *    A group sitting at syncMode='locked' keeps `enabled: true` on its very
- *    next poll with NO migration run, no backfill, no data touched. The data
- *    move (02-DATA-MIGRATION.md) is a cleanup that moves INTENT; correctness
- *    never depended on it having happened. The group value is read-only now —
- *    the UI that could set it is gone — so this arm can only ever shrink.
+ * **ANY, not ALL** — load-bearing. An operator turns sync on for the playlist
+ * they want mirrored. A sync-off APPEND row (a ticker, a house ad) must not veto
+ * it — "all" would mean adding a ticker silently unlocks a video wall. The server
+ * cannot do better than a rule over the candidate set: which playlist is showing
+ * at this instant is decided ON THE DEVICE, against its own clock, from the
+ * day/time windows in the manifest (screens.controller `applyManifest`
+ * selection). A per-playlist decision would be a PLAYER change, and every
+ * already-deployed bundle would ignore it — see
+ * docs/research/2026-09-15-sync-to-playlists/01-SYNC-CODE-MAP.md §3.
  *
  * The manifest block this feeds stays `{enabled, groupId, trimMs}`, so no
  * player changes and the frame-lock invariant is untouched: while sync is
@@ -41,7 +41,7 @@
  */
 
 /** Where a screen's frame-lock came from. Surfaced for logs + tests, never to the player. */
-export type SyncSource = 'playlist' | 'group-legacy' | 'off';
+export type SyncSource = 'playlist' | 'off';
 
 export interface ScreenSyncResolution {
   enabled: boolean;
@@ -49,7 +49,7 @@ export interface ScreenSyncResolution {
 }
 
 export interface ScreenSyncInputs {
-  /** `ScreenGroup.syncMode` for this screen's group; null/absent when it has none. */
+  /** IGNORED since 2026-09-29 — sync is decided by the playlist alone. Kept so callers need not change. */
   groupSyncMode?: string | null;
   /**
    * `Playlist.syncPlayback` for EVERY playlist scheduled onto this screen in
@@ -66,8 +66,7 @@ export interface ScreenSyncInputs {
 export function resolveScreenSync(inputs: ScreenSyncInputs): ScreenSyncResolution {
   const byPlaylist = (inputs.scheduledPlaylistSync ?? []).some((on) => on === true);
   if (byPlaylist) return { enabled: true, source: 'playlist' };
-  // LEGACY FALLBACK — see the header. Read-only: no surface writes syncMode.
-  if ((inputs.groupSyncMode ?? null) === 'locked') return { enabled: true, source: 'group-legacy' };
+  // No group arm: see the header. A group's legacy syncMode locks nothing.
   return { enabled: false, source: 'off' };
 }
 
@@ -110,8 +109,7 @@ interface ScheduleReader {
  * vanishes from under an operator mid-calibration.
  *
  * NEVER THROWS. A fleet list must render even if this read blips; the caller
- * then falls back to the legacy group arm alone, which is the pre-change
- * behaviour.
+ * then shows no screen as locked for that render.
  */
 export async function readSyncActiveTargets(
   prisma: ScheduleReader,
