@@ -479,6 +479,10 @@ describe('body assembly', () => {
 describe('loop boundary block (2026-09-29)', () => {
   const snap = { backend: 'native' as const, boundaries: 7, maxHoldMs: 412.9, p95HoldMs: 380.2, lastHoldMs: 301, maxSkipMs: 0 };
 
+  it('sends continuous timing as compositor evidence', () => {
+    expect(buildTelemetryBody({ loop: { ...snap, backend: 'continuous' } }).loop).toMatchObject({ backend: 'continuous', evidence: 'rvfc' });
+  });
+
   it('is sent with its evidence, floored, when the tracker has a summary', () => {
     const body = buildTelemetryBody({ loop: snap } as never);
     expect(body.loop).toEqual({ backend: 'native', evidence: 'rvfc', boundaries: 7, maxHoldMs: 412, p95HoldMs: 380, lastHoldMs: 301, maxSkipMs: 0 });

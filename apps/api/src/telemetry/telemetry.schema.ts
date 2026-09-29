@@ -134,7 +134,7 @@ const videoSchema = z.strictObject({
  */
 const loopBoundarySchema = z.strictObject({
   /** `native` = the browser's own loop (a seek); `twodeck` = a prepared second element takes over. */
-  backend: z.enum(['native', 'twodeck']),
+  backend: z.enum(['native', 'twodeck', 'continuous']),
   evidence: z.enum(['rvfc']),
   /** Boundaries observed in the window. */
   boundaries: z.number().finite().min(0).max(1_000_000_000),

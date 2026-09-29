@@ -281,6 +281,11 @@ describe('POST /screens/:id/telemetry', () => {
       maxSkipMs: 0,
     };
 
+    it('accepts and persists the continuous backend through strict validation', async () => {
+      await controller.report(SCREEN_ID, makeReq(), { loop: { ...loop, backend: 'continuous' } });
+      expect((writtenData() as Record<string, any>).lastVideoReport.loop).toMatchObject({ backend: 'continuous', boundaries: 7, evidence: 'rvfc' });
+    });
+
     it('is stored inside lastVideoReport.loop next to this tick\'s frame sample, with its own `at`', async () => {
       await controller.report(SCREEN_ID, makeReq(), {
         video: { url: 'https://cdn/x/clip.mp4', totalFrames: 2249, droppedFrames: 6 },

@@ -1,6 +1,12 @@
 import { resolveLoopMode, resolvePlaybackConfig } from './playback-config';
 
 describe('resolveLoopMode', () => {
+  it('continuous is restricted to named screens, wins over two-deck, and never accepts all', () => {
+    const env = { PLAYER_LOOP_CONTINUOUS: ' canary ', PLAYER_LOOP_TWODECK: 'all' };
+    expect(resolveLoopMode('canary', env)).toBe('continuous');
+    expect(resolveLoopMode('other', env)).toBe('twodeck');
+    expect(resolveLoopMode('other', { PLAYER_LOOP_CONTINUOUS: 'all' })).toBe('native');
+  });
   const S = '45d5eccc-a64c-4855-93ef-a79dbed2cd34';
   it('is native for everyone unless the switch is on', () => {
     expect(resolveLoopMode(S, {})).toBe('native');

@@ -47,7 +47,7 @@ export interface BoundaryEvent {
   holdMs: number;
   /** Content trimmed by a hand-off, ms (≥ 0). */
   skipMs: number;
-  backend: 'native' | 'twodeck';
+  backend: 'native' | 'twodeck' | 'continuous';
 }
 
 export const DEFAULT_FRAME_PERIOD_MS = 1000 / 30;
@@ -142,9 +142,30 @@ export class NativeWrapDetector {
   }
 }
 
+/** Continuous playback crosses an advancing timestamp boundary, never wraps
+ * currentTime. Count only adjacent observed cycles; missed callbacks are still
+ * corrected by the element's presented-frame counter.
+ */
+export class ContinuousBoundaryDetector {
+  private prev: FrameMeta | null = null;
+  private readonly period = new FramePeriodEstimator();
+  constructor(private readonly durationTicks: number, private readonly timescale: number) {}
+  onFrame(m: FrameMeta): BoundaryEvent | null {
+    const p = this.prev;
+    this.prev = m;
+    const cycle = (time: number) => Math.floor((time * this.timescale + 0.5) / this.durationTicks);
+    let event: BoundaryEvent | null = null;
+    if (p && cycle(m.mediaTime) === cycle(p.mediaTime) + 1) {
+      event = { backend: 'continuous', holdMs: holdBetween(p, m, this.period.periodMs()), skipMs: 0 };
+    }
+    this.period.push(m);
+    return event;
+  }
+}
+
 /** The report the telemetry tick ships (`telemetry.ts` → `loop`). */
 export interface LoopBoundarySnapshot {
-  backend: 'native' | 'twodeck';
+  backend: 'native' | 'twodeck' | 'continuous';
   boundaries: number;
   maxHoldMs: number;
   p95HoldMs: number;
@@ -165,7 +186,7 @@ export interface LoopBoundarySnapshot {
 export class LoopBoundaryTracker {
   private holds: number[] = [];
   private skips: number[] = [];
-  private backend: 'native' | 'twodeck' = 'native';
+  private backend: 'native' | 'twodeck' | 'continuous' = 'native';
   private fresh = 0;
   private total = 0;
   private swaps = 0;
@@ -174,8 +195,15 @@ export class LoopBoundaryTracker {
 
   constructor(private readonly capacity = 120) {}
 
-  setBackend(b: 'native' | 'twodeck'): void {
+  setBackend(b: 'native' | 'twodeck' | 'continuous'): void {
     this.backend = b;
+  }
+
+  /** A source/backend adoption starts a new measured session. Native seams
+   * during preparation must not be reported as continuous-stream seams. */
+  startSession(b: 'native' | 'twodeck' | 'continuous'): void {
+    this.backend = b; this.holds = []; this.skips = [];
+    this.fresh = 0; this.total = 0; this.swaps = 0; this.fallbacks = 0; this.reason = undefined;
   }
 
   record(e: BoundaryEvent): void {

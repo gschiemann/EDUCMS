@@ -137,7 +137,7 @@ export interface TelemetryVideoReport {
  * the page stops sending it for the rest of its session (`loopReportRefused`).
  */
 export interface TelemetryLoopReport {
-  backend: 'native' | 'twodeck';
+  backend: 'native' | 'twodeck' | 'continuous';
   evidence: 'rvfc';
   boundaries: number;
   maxHoldMs: number;
@@ -497,7 +497,7 @@ const LOOP_MAX_COUNT = 1_000_000_000;
  * Null when there is nothing usable to say.
  */
 function loopReport(l: Omit<TelemetryLoopReport, 'evidence'>): TelemetryLoopReport | null {
-  if (l.backend !== 'native' && l.backend !== 'twodeck') return null;
+  if (l.backend !== 'native' && l.backend !== 'twodeck' && l.backend !== 'continuous') return null;
   const n = (v: unknown, hi: number): number | null =>
     typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.min(Math.floor(v), hi) : null;
   const boundaries = n(l.boundaries, LOOP_MAX_COUNT);

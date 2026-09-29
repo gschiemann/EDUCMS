@@ -9,6 +9,7 @@
  */
 import type { Page, Route } from '@playwright/test';
 import fs from 'node:fs';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 
 const SLOT_MS = 1_200;
@@ -36,17 +37,18 @@ export function playerIds(tag: string) {
 
 export type MockKind = 'images' | 'website' | 'video';
 
-export function playerManifest(screenId: string, kind: MockKind, playback?: { loopMode: string }, copies = 1) {
+export function playerManifest(screenId: string, kind: MockKind, playback?: { loopMode: string }, copies = 1, mp4 = false) {
   const items =
     kind === 'video'
       ? // `copies` > 1 is the same clip added several times (RIOT Cleveland's playlist).
         Array.from({ length: Math.max(1, copies) }, (_, i) => ({
           item_id: i === 0 ? 'item-video' : `item-video-${i + 1}`,
           asset_id: 'asset-video',
-          url: 'http://api.invalid/assets/loop-clip.webm',
+          url: 'http://api.invalid/assets/loop-clip.' + (mp4 ? 'mp4' : 'webm'),
+          ...(mp4 ? { asset_hash: createHash('sha256').update(fs.readFileSync(path.join(__dirname, '..', 'fixtures', 'loop-clip.mp4'))).digest('hex') } : {}),
           duration_ms: 2500,
           sequence: i,
-          mime_type: 'video/webm',
+          mime_type: mp4 ? 'video/mp4' : 'video/webm',
           transition_type: i === 0 ? 'NONE' : 'FADE',
           muted: true,
         }))
@@ -111,6 +113,7 @@ export interface BootOptions {
   videoRequests?: { count: number };
   /** For kind 'video': the SAME clip added this many times (default 1). */
   videoCopies?: number;
+  videoMp4?: boolean;
   /** localStorage seeded BEFORE the page's scripts run (e.g. a persisted refresh ack). */
   storage?: Record<string, string>;
   /** HTTP statuses `POST …/refresh-ack` answers with, in order; the last one repeats. Default [200]. */
@@ -215,7 +218,7 @@ export async function bootMockPlayer(page: Page, opts: BootOptions): Promise<Boo
   await page.route('**/api/v1/screens/register', (route) =>
     ok(route, { paired: true, screenId: id.screenId, name: `Proof ${tag}`, deviceToken: id.deviceToken }),
   );
-  await page.route(`**/api/v1/screens/${id.screenId}/manifest`, (route) => ok(route, playerManifest(id.screenId, kind, opts.playback, opts.videoCopies)));
+  await page.route(`**/api/v1/screens/${id.screenId}/manifest`, (route) => ok(route, playerManifest(id.screenId, kind, opts.playback, opts.videoCopies, opts.videoMp4)));
   await page.route(`**/api/v1/screens/${id.screenId}/emergency-assets`, (route) =>
     ok(route, { assets: [], setHash: 'empty-fake-hash' }),
   );
@@ -245,14 +248,14 @@ export async function bootMockPlayer(page: Page, opts: BootOptions): Promise<Boo
 
   // The clip, served with Range support (a <video> seeks and re-requests).
   if (kind === 'video') {
-    const clip = fs.readFileSync(path.join(__dirname, '..', 'fixtures', 'loop-clip.webm'));
-    await page.route('**/assets/loop-clip.webm', (route) => {
+    const clip = fs.readFileSync(path.join(__dirname, '..', 'fixtures', 'loop-clip.' + (opts.videoMp4 ? 'mp4' : 'webm')));
+    await page.route('**/assets/loop-clip.' + (opts.videoMp4 ? 'mp4' : 'webm'), (route) => {
       const n = (opts.videoRequests ? ++opts.videoRequests.count : 0);
       if (opts.videoFailAfterFirst && opts.videoRequests && n > 1) {
         return route.fulfill({ status: opts.videoFailAfterFirst, headers: { 'Access-Control-Allow-Origin': '*' }, body: '' });
       }
       const range = /^bytes=(\d*)-(\d*)$/.exec(route.request().headers()['range'] || '');
-      const cors = { 'Access-Control-Allow-Origin': '*', 'Accept-Ranges': 'bytes', 'Content-Type': 'video/webm' };
+      const cors = { 'Access-Control-Allow-Origin': '*', 'Accept-Ranges': 'bytes', 'Content-Type': opts.videoMp4 ? 'video/mp4' : 'video/webm' };
       if (!range) return route.fulfill({ status: 200, headers: { ...cors, 'Content-Length': String(clip.length) }, body: clip });
       const start = range[1] === '' ? 0 : Number(range[1]);
       const end = range[2] === '' ? clip.length - 1 : Math.min(Number(range[2]), clip.length - 1);

@@ -9,7 +9,7 @@
  * that a second element cannot carry sound, cannot follow a shared clock, and
  * must never sit between an alert and the glass.
  */
-export type LoopBackend = 'native' | 'twodeck';
+export type LoopBackend = 'native' | 'twodeck' | 'continuous';
 
 export interface LoopEligibilityInput {
   /** `manifest.playback.loopMode` — absent on an older API. */
@@ -30,6 +30,8 @@ export interface LoopEligibilityInput {
   hasRvfc: boolean;
   /** The device gave up on two-deck recently (`loopGuard`). */
   blocked: boolean;
+  /** Continuous mode requires MP4, MSE and a manifest digest. */
+  continuousCapable?: boolean;
   /** The dashboard's "open in browser" preview. */
   isPreview: boolean;
 }
@@ -41,12 +43,12 @@ export interface LoopChoice {
 }
 
 function asMode(v: string | null | undefined): LoopBackend | null {
-  return v === 'twodeck' || v === 'native' ? v : null;
+  return v === 'twodeck' || v === 'native' || v === 'continuous' ? v : null;
 }
 
 export function pickLoopBackend(i: LoopEligibilityInput): LoopChoice {
   const requested = asMode(i.urlOverride) ?? asMode(i.loopMode) ?? 'native';
-  if (requested !== 'twodeck') return { backend: 'native', reason: 'not-requested' };
+  if (requested === 'native') return { backend: 'native', reason: 'not-requested' };
   if (i.isPreview) return { backend: 'native', reason: 'preview' };
   if (i.isEmergency) return { backend: 'native', reason: 'emergency' };
   if (!i.isSolo) return { backend: 'native', reason: 'not-solo' };
@@ -54,6 +56,9 @@ export function pickLoopBackend(i: LoopEligibilityInput): LoopChoice {
   if (i.syncActive) return { backend: 'native', reason: 'sync-active' };
   if (i.isMov) return { backend: 'native', reason: 'mov-source' };
   if (!i.hasRvfc) return { backend: 'native', reason: 'no-rvfc' };
+  if (requested === 'continuous') {
+    return i.continuousCapable ? { backend: 'continuous', reason: 'requested' } : { backend: 'native', reason: 'continuous-unsupported' };
+  }
   if (i.blocked) return { backend: 'native', reason: 'blocked' };
   return { backend: 'twodeck', reason: 'requested' };
 }

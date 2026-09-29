@@ -796,7 +796,7 @@ export function carriedLoopBlock(
 export function sanitizeLoopBoundary(loop: unknown): Record<string, unknown> | null {
   if (!loop || typeof loop !== 'object') return null;
   const l = loop as Record<string, unknown>;
-  const backend = l.backend === 'native' || l.backend === 'twodeck' ? l.backend : null;
+  const backend = l.backend === 'native' || l.backend === 'twodeck' || l.backend === 'continuous' ? l.backend : null;
   if (!backend) return null;
   const num = (x: unknown, hi: number): number | null =>
     typeof x === 'number' && Number.isFinite(x) && x >= 0 ? Math.min(Math.floor(x), hi) : null;

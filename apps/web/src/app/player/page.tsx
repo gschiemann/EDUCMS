@@ -186,6 +186,7 @@ import {
 } from './refreshAckReport';
 import { itemContentSigInput } from './contentSig';
 import { loopBoundaryTracker, NativeWrapDetector, type FrameMeta, type RvfcVideoElement } from './loopBoundary';
+import { ContinuousLoopVideo } from './ContinuousLoopVideo';
 import { SeamlessLoopVideo } from './SeamlessLoopVideo';
 import { pickLoopBackend } from './loopEligibility';
 import { collapseIdenticalVideoCopies } from './collapseCopies';
@@ -4054,7 +4055,7 @@ function PlayerPage() {
   // 2026-09-29 — per-screen playback switch from the manifest (`playback.loopMode`):
   // how a SOLO, muted video repeats. null = the manifest did not say (older
   // API) → the native loop, exactly as before. See loopEligibility.ts.
-  const [playbackLoopMode, setPlaybackLoopMode] = useState<'native' | 'twodeck' | null>(null);
+  const [playbackLoopMode, setPlaybackLoopMode] = useState<'native' | 'twodeck' | 'continuous' | null>(null);
   // Tier-3 camera calibration (2026-07-28): the dashboard wizard remotely
   // flips group screens into a full-screen synced flash pattern
   // (CALIBRATE_FLASH signed device message) so a phone camera can measure
@@ -6295,7 +6296,7 @@ function PlayerPage() {
       // and on the emergency branch → keep what we have (default: native).
       if (manifest.playback && typeof manifest.playback === 'object') {
         const lm = (manifest.playback as { loopMode?: unknown }).loopMode;
-        setPlaybackLoopMode(lm === 'twodeck' || lm === 'native' ? lm : null);
+        setPlaybackLoopMode(lm === 'twodeck' || lm === 'native' || lm === 'continuous' ? lm : null);
       }
       // ── DISPLAY CONTROL — install the on/off schedule + vendor recipe ──
       //
@@ -6687,6 +6688,7 @@ function PlayerPage() {
                 // The file's byte size, when the manifest knows it: the
                 // readiness gate uses it to tell a large file (staged by the
                 // worker, held until on disk) from a small one.
+                fileHash: typeof item.asset_hash === 'string' ? item.asset_hash : null,
                 sizeBytes: Number.isSafeInteger(item.asset_size) && item.asset_size > 0 ? item.asset_size as number : null,
               },
             });
@@ -11834,11 +11836,12 @@ function PlayerPage() {
               // The native file, always (2026-09-26, Greg — no 1080p stand-in).
               const videoSrc = resUrl;
               // 2026-09-29 (video-loop audit F1): a solo, MUTED video can repeat by
-              // hand-off between two prepared elements instead of the browser's seek.
+              // hand-off between two elements, or one advancing MSE stream, without a repeat seek.
               // Only when the manifest asks for it AND every condition holds
               // (loopEligibility.ts); everything else keeps the single element and
               // the native loop. Emergency content never takes this path.
               const loopChoice = pickLoopBackend({
+                continuousCapable: typeof MediaSource !== 'undefined' && /\.mp4(\?|$)/i.test(videoSrc) && /^[a-f0-9]{64}$/i.test(item.asset?.fileHash ?? ''),
                 loopMode: playbackLoopMode,
                 urlOverride: (() => { try { return new URLSearchParams(window.location.search).get('loop'); } catch { return null; } })(),
                 isSolo: isSoloPlaylist,
@@ -11850,6 +11853,14 @@ function PlayerPage() {
                 blocked: (() => { try { return loopIsBlocked(window.localStorage, Date.now()); } catch { return false; } })(),
                 isPreview: isPreviewMode(),
               });
+              if (loopChoice.backend === 'continuous') {
+                return <ContinuousLoopVideo key={item.id} videoKey={item.id} src={videoSrc}
+                  sourceHash={item.asset.fileHash.toLowerCase()} isActive={isActive} classes={classes}
+                  onPlaying={markItemSucceeded} onError={() => {
+                    markItemFailed(item.id);
+                    if (!syncActiveRef.current) advanceSlide();
+                  }} />;
+              }
               if (loopChoice.backend === 'twodeck') {
                 return (
                   <SeamlessLoopVideo
