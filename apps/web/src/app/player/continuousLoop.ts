@@ -9,6 +9,27 @@ export function cycleOffset(cycle: number, p: Pick<LoopPackage, 'durationTicks' 
   return (ticks - p.firstPts) / p.timescale;
 }
 
+/** MSE removal extends to the next random-access point. A fixed now-minus-8
+ * cut can therefore remove the playing GOP when keyframes are farther apart.
+ * Stop one source tick BEFORE a retained keyframe at/before the history target,
+ * so floating-point rounding cannot push removal into the following GOP.
+ * https://www.w3.org/TR/media-source-2/#sourcebuffer-coded-frame-removal
+ */
+export function pruneEnd(nowS: number, p: Pick<LoopPackage, 'durationTicks' | 'timescale' | 'keyframeTicks'>): number {
+  if (!Number.isFinite(nowS) || nowS <= 8) return 0;
+  const targetTicks = Math.floor((nowS - 8) * p.timescale);
+  if (!Number.isSafeInteger(targetTicks)) throw new Error('timeline-overflow');
+  const cycle = Math.floor(targetTicks / p.durationTicks);
+  const within = targetTicks - cycle * p.durationTicks;
+  let lo = 0; let hi = p.keyframeTicks.length;
+  while (lo + 1 < hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (p.keyframeTicks[mid] <= within) lo = mid;
+    else hi = mid;
+  }
+  return Math.max(0, cycle * p.durationTicks + p.keyframeTicks[lo] - 1) / p.timescale;
+}
+
 function sourceEvent(target: EventTarget, event: string, signal: AbortSignal, action: () => void): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => { clear(); reject(new Error('mse-operation-timeout')); }, 15_000);
@@ -46,8 +67,8 @@ export function startContinuousLoop(video: HTMLVideoElement, p: LoopPackage, par
     while (!signal.aborted) {
       if (video.error || source.readyState !== 'open') throw new Error('mse-playback');
       const now = video.currentTime;
-      if (now - 8 >= pruned + 2) {
-        const removeTo = now - 8;
+      const removeTo = pruneEnd(now, p);
+      if (removeTo - pruned >= 2) {
         await mutate(() => buffer.remove(0, removeTo));
         pruned = removeTo;
       }

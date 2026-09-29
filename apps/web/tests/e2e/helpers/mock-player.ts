@@ -37,7 +37,7 @@ export function playerIds(tag: string) {
 
 export type MockKind = 'images' | 'website' | 'video';
 
-export function playerManifest(screenId: string, kind: MockKind, playback?: { loopMode: string }, copies = 1, mp4 = false) {
+export function playerManifest(screenId: string, kind: MockKind, playback?: { loopMode: string }, copies = 1, mp4 = false, mp4Fixture = 'loop-clip.mp4') {
   const items =
     kind === 'video'
       ? // `copies` > 1 is the same clip added several times (RIOT Cleveland's playlist).
@@ -45,7 +45,7 @@ export function playerManifest(screenId: string, kind: MockKind, playback?: { lo
           item_id: i === 0 ? 'item-video' : `item-video-${i + 1}`,
           asset_id: 'asset-video',
           url: 'http://api.invalid/assets/loop-clip.' + (mp4 ? 'mp4' : 'webm'),
-          ...(mp4 ? { asset_hash: createHash('sha256').update(fs.readFileSync(path.join(__dirname, '..', 'fixtures', 'loop-clip.mp4'))).digest('hex') } : {}),
+          ...(mp4 ? { asset_hash: createHash('sha256').update(fs.readFileSync(path.join(__dirname, '..', 'fixtures', mp4Fixture))).digest('hex') } : {}),
           duration_ms: 2500,
           sequence: i,
           mime_type: mp4 ? 'video/mp4' : 'video/webm',
@@ -114,6 +114,8 @@ export interface BootOptions {
   /** For kind 'video': the SAME clip added this many times (default 1). */
   videoCopies?: number;
   videoMp4?: boolean;
+  /** A synthetic MP4 fixture, used consistently for its manifest digest and bytes. */
+  videoMp4Fixture?: string;
   /** localStorage seeded BEFORE the page's scripts run (e.g. a persisted refresh ack). */
   storage?: Record<string, string>;
   /** HTTP statuses `POST …/refresh-ack` answers with, in order; the last one repeats. Default [200]. */
@@ -218,7 +220,7 @@ export async function bootMockPlayer(page: Page, opts: BootOptions): Promise<Boo
   await page.route('**/api/v1/screens/register', (route) =>
     ok(route, { paired: true, screenId: id.screenId, name: `Proof ${tag}`, deviceToken: id.deviceToken }),
   );
-  await page.route(`**/api/v1/screens/${id.screenId}/manifest`, (route) => ok(route, playerManifest(id.screenId, kind, opts.playback, opts.videoCopies, opts.videoMp4)));
+  await page.route(`**/api/v1/screens/${id.screenId}/manifest`, (route) => ok(route, playerManifest(id.screenId, kind, opts.playback, opts.videoCopies, opts.videoMp4, opts.videoMp4Fixture)));
   await page.route(`**/api/v1/screens/${id.screenId}/emergency-assets`, (route) =>
     ok(route, { assets: [], setHash: 'empty-fake-hash' }),
   );
@@ -248,7 +250,7 @@ export async function bootMockPlayer(page: Page, opts: BootOptions): Promise<Boo
 
   // The clip, served with Range support (a <video> seeks and re-requests).
   if (kind === 'video') {
-    const clip = fs.readFileSync(path.join(__dirname, '..', 'fixtures', 'loop-clip.' + (opts.videoMp4 ? 'mp4' : 'webm')));
+    const clip = fs.readFileSync(path.join(__dirname, '..', 'fixtures', opts.videoMp4 ? (opts.videoMp4Fixture ?? 'loop-clip.mp4') : 'loop-clip.webm'));
     await page.route('**/assets/loop-clip.' + (opts.videoMp4 ? 'mp4' : 'webm'), (route) => {
       const n = (opts.videoRequests ? ++opts.videoRequests.count : 0);
       if (opts.videoFailAfterFirst && opts.videoRequests && n > 1) {
@@ -280,4 +282,3 @@ export async function bootMockPlayer(page: Page, opts: BootOptions): Promise<Boo
   await page.goto('/player?fp=' + id.fingerprint);
   return { telemetry, refreshAcks };
 }
-

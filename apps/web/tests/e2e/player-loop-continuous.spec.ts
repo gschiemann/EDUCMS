@@ -3,9 +3,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { bootMockPlayer } from './helpers/mock-player';
+import { continuousGuardKey } from '../../src/app/player/continuousLoopRevision';
 
-async function seedVerifiedVideo(page: Page) {
-    const clip = fs.readFileSync(path.join(__dirname, 'fixtures', 'loop-clip.mp4'));
+async function seedVerifiedVideo(page: Page, fixture = 'loop-clip.mp4') {
+    const clip = fs.readFileSync(path.join(__dirname, 'fixtures', fixture));
     const hash = createHash('sha256').update(clip).digest('hex');
     await page.addInitScript(async ({ base64, hash }) => {
       const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
@@ -21,6 +22,24 @@ async function seedVerifiedVideo(page: Page) {
 test.describe('one-stream continuous video', () => {
   test.use({ serviceWorkers: 'allow' });
   test.skip(({ browserName }) => browserName !== 'chromium', 'H.264/MSE qualification starts on Chromium');
+  test('a 250-frame GOP retains the playing frames during eviction and across repeated cycles', async ({ page }) => {
+    test.setTimeout(90_000);
+    await seedVerifiedVideo(page, 'loop-long-gop.mp4');
+    await bootMockPlayer(page, { tag: 'continuous-long-gop', kind: 'video', videoMp4: true,
+      videoMp4Fixture: 'loop-long-gop.mp4', playback: { loopMode: 'continuous' } });
+    await expect(page.locator('video[data-loop-backend="continuous"]')).toBeAttached({ timeout: 60_000 });
+    await expect.poll(() => page.evaluate(() => document.querySelector('video')?.currentTime ?? 0), { timeout: 65_000 }).toBeGreaterThan(45);
+    const state = await page.evaluate(() => {
+      const v = document.querySelector('video')!;
+      return { backend: v.dataset.loopBackend, paused: v.paused, currentTime: v.currentTime,
+        inBuffer: Array.from({ length: v.buffered.length }, (_, i) => [v.buffered.start(i), v.buffered.end(i)])
+          .some(([start, end]) => start <= v.currentTime && end > v.currentTime) };
+    });
+    expect(state).toMatchObject({ backend: 'continuous', paused: false, inBuffer: true });
+    const snap = await page.evaluate(() => (window as unknown as { __eduLoopBoundary: () => { boundaries: number; fallbacks: number } }).__eduLoopBoundary());
+    expect(snap.boundaries).toBeGreaterThanOrEqual(2);
+    expect(snap.fallbacks).toBe(0);
+  });
   test('one element advances across repeats without seeks or source changes and continues offline', async ({ page, context }) => {
     test.setTimeout(120_000);
     await seedVerifiedVideo(page);
@@ -69,12 +88,13 @@ test.describe('one-stream continuous video', () => {
     });
     await expect(page.locator('video[data-loop-backend="native"]')).toBeAttached({ timeout: 30_000 });
     await expect.poll(() => page.evaluate(() => (window as unknown as { __eduLoopBoundary: () => { fallbacks: number } }).__eduLoopBoundary()?.fallbacks ?? 0)).toBe(1);
-    const until = await page.evaluate(hash => Number(localStorage.getItem(`continuous:${hash}:edu_loop_twodeck_blocked_until`)), hash);
+    const blockKey = continuousGuardKey(hash, 'edu_loop_twodeck_blocked_until');
+    const until = await page.evaluate(key => Number(localStorage.getItem(key)), blockKey);
     expect(until).toBeGreaterThan(Date.now() + 23 * 3600_000);
     await expect.poll(() => page.evaluate(() => !!document.querySelector('video')?.loop && !document.querySelector('video')?.paused)).toBe(true);
     await page.reload();
     await expect(page.locator('video[data-loop-backend="native"]')).toBeAttached({ timeout: 40_000 });
-    expect(await page.evaluate(hash => Number(localStorage.getItem(`continuous:${hash}:edu_loop_twodeck_blocked_until`)), hash)).toBe(until);
+    expect(await page.evaluate(key => Number(localStorage.getItem(key)), blockKey)).toBe(until);
     await expect.poll(() => page.evaluate(() => (window as unknown as { __eduLoopBoundary: () => { fallbackReason: string } }).__eduLoopBoundary()?.fallbackReason)).toBe('continuous:blocked');
   });
 

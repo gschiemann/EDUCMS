@@ -1,5 +1,6 @@
-import { sampleTimeline, restoreSampleTiming } from '../continuousLoopPackage';
-import { cycleOffset } from '../continuousLoop';
+import { sampleTimeline, restoreSampleTiming, validLoopPackage, type LoopPackage } from '../continuousLoopPackage';
+import { cycleOffset, pruneEnd } from '../continuousLoop';
+import { CONTINUOUS_LOOP_REVISION, continuousGuardKey } from '../continuousLoopRevision';
 import { ContinuousBoundaryDetector } from '../loopBoundary';
 import { pickLoopBackend } from '../loopEligibility';
 
@@ -48,4 +49,44 @@ test('one-stream mode is separate from the failed two-decoder block; sync, sound
   for (const change of [{ syncActive: true }, { muted: false }, { isEmergency: true }, { continuousCapable: false }]) {
     expect(pickLoopBackend({ ...input, ...change }).backend).toBe('native');
   }
+});
+
+test('removal never reaches the playing GOP with the real Brookfield 250-frame keyframe interval', () => {
+  const p = { durationTicks: 3000, timescale: 30, keyframeTicks: Array.from({ length: 12 }, (_, i) => i * 250) };
+  // At 16.1 s the old cut at 8.1 s extends to the next keyframe at 16.667 s,
+  // deleting the playing frame. The corrected engine has not pruned yet.
+  expect(pruneEnd(16.1, p)).toBe(0);
+  expect(pruneEnd(17, p)).toBe(249 / 30);
+  for (let ticks = 0; ticks < 9000; ticks += 7) {
+    const now = ticks / p.timescale;
+    const cut = pruneEnd(now, p);
+    if (!cut) continue;
+    const cycle = Math.floor(cut / 100);
+    const retained = [...p.keyframeTicks.map(t => cycle * 100 + t / 30), (cycle + 1) * 100].find(t => t >= cut)!;
+    expect(retained).toBeLessThanOrEqual(now - 8 + 1 / 30);
+    expect(retained).toBeLessThan(now);
+  }
+});
+
+test('keyframe retention handles irregular GOPs, cycle boundaries and rational frame rates', () => {
+  const p = { durationTicks: 300300, timescale: 30000, keyframeTicks: [0, 60060, 225225] };
+  expect(pruneEnd(9, p)).toBe(0);
+  expect(pruneEnd(11, p)).toBe(60059 / 30000);
+  expect(pruneEnd(18.51, p)).toBe(300299 / 30000);
+  const now = 1_000_000 * 10.01 + 9;
+  expect(pruneEnd(now, p)).toBe((1_000_000 * 300300 - 1) / 30000);
+});
+
+test('cached packages require current keyframe metadata and a failed older engine does not block the repair', () => {
+  const hash = 'a'.repeat(64);
+  const fragment = { key: `/__venueos_loop__/v${CONTINUOUS_LOOP_REVISION}/${hash}/0`, bytes: 20, sha256: hash, endTicks: 60 };
+  const p: LoopPackage = { version: CONTINUOUS_LOOP_REVISION, sourceHash: hash, mime: 'video/mp4; codecs="avc1.640028"', timescale: 30,
+    durationTicks: 60, firstPts: 2, init: { ...fragment, endTicks: 0 }, fragments: [fragment], keyframeTicks: [0, 30] };
+  expect(validLoopPackage(p, hash)).toBe(true);
+  for (const keyframeTicks of [undefined, [], [1, 30], [0, 30, 20], [0, 60]]) {
+    expect(validLoopPackage({ ...p, keyframeTicks } as LoopPackage, hash)).toBe(false);
+  }
+  expect(validLoopPackage({ ...p, version: 1 } as unknown as LoopPackage, hash)).toBe(false);
+  expect(continuousGuardKey(hash, 'blocked')).not.toBe(`continuous:${hash}:blocked`);
+  expect(continuousGuardKey(hash, 'blocked')).toBe(continuousGuardKey(hash, 'blocked'));
 });

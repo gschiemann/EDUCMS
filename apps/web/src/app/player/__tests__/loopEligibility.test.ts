@@ -37,4 +37,24 @@ describe('pickLoopBackend', () => {
   it('emergency content is refused even when a bench override asks for two-deck', () => {
     expect(pickLoopBackend({ ...ok, urlOverride: 'twodeck', isEmergency: true }).backend).toBe('native');
   });
+
+  it('uses the fleet continuous request only on an eligible MP4 player', () => {
+    const continuous = { ...ok, loopMode: 'continuous', continuousCapable: true };
+    expect(pickLoopBackend(continuous)).toEqual({ backend: 'continuous', reason: 'requested' });
+    expect(pickLoopBackend({ ...continuous, continuousCapable: false })).toEqual({ backend: 'native', reason: 'continuous-unsupported' });
+    expect(pickLoopBackend({ ...continuous, continuousCapable: undefined }).backend).toBe('native');
+    expect(pickLoopBackend({ ...continuous, urlOverride: 'native' }).backend).toBe('native');
+  });
+
+  it.each([
+    [{ isEmergency: true }, 'emergency'],
+    [{ syncActive: true }, 'sync-active'],
+    [{ muted: false }, 'has-audio'],
+    [{ isSolo: false }, 'not-solo'],
+    [{ hasRvfc: false }, 'no-rvfc'],
+    [{ isMov: true }, 'mov-source'],
+    [{ isPreview: true }, 'preview'],
+  ] as const)('the fleet continuous request preserves the %s gate', (override, reason) => {
+    expect(pickLoopBackend({ ...ok, loopMode: 'continuous', continuousCapable: true, ...override })).toEqual({ backend: 'native', reason });
+  });
 });

@@ -9,6 +9,7 @@ import { ContinuousBoundaryDetector, NativeWrapDetector, loopBoundaryTracker, ty
 import { bootCheck, blockFor, isBlocked, markAlive, markStarted, markStopped, type KV } from './loopGuard';
 import { videoQualityTracker } from './videoQuality';
 import { createMediaStallDetector, setActiveMediaStalled } from './mediaStallWatchdog';
+import { continuousGuardKey } from './continuousLoopRevision';
 
 interface Props {
   src: string; sourceHash: string; videoKey: string; isActive: boolean; classes: string;
@@ -18,7 +19,7 @@ interface Props {
 function scopedStorage(hash: string): KV | null {
   try {
     const store = window.localStorage;
-    const key = (k: string) => `continuous:${hash}:${k}`;
+    const key = (k: string) => continuousGuardKey(hash, k);
     return { getItem: k => store.getItem(key(k)), setItem: (k, v) => store.setItem(key(k), v), removeItem: k => store.removeItem(key(k)) };
   } catch { return null; }
 }

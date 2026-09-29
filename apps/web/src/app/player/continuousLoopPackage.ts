@@ -4,18 +4,21 @@
  */
 import type { Sample, Track } from 'mp4box';
 import { lookupCached } from './offline-cache';
+import { CONTINUOUS_LOOP_REVISION } from './continuousLoopRevision';
 
 export const LOOP_CACHE = 'venueos-continuous-loop-v1';
 const READ_BYTES = 1024 * 1024;
 export const MAX_FRAGMENT_BYTES = 8 * 1024 * 1024;
 const MAX_SOURCE_BYTES = 1024 * 1024 * 1024;
-const ROOT = '/__venueos_loop__/v1/';
+const ROOT = `/__venueos_loop__/v${CONTINUOUS_LOOP_REVISION}/`;
 
 export interface LoopFragment { key: string; bytes: number; sha256: string; endTicks: number }
 export interface LoopPackage {
-  version: 1; sourceHash: string; mime: string; timescale: number;
+  version: typeof CONTINUOUS_LOOP_REVISION; sourceHash: string; mime: string; timescale: number;
   durationTicks: number; firstPts: number; init: LoopFragment;
   fragments: LoopFragment[];
+  /** Presentation ticks relative to firstPts, sorted; required for safe eviction. */
+  keyframeTicks: number[];
 }
 
 export function checkAbort(signal: AbortSignal): void {
@@ -92,9 +95,11 @@ function validFragment(f: LoopFragment, hash: string): boolean {
 }
 
 export function validLoopPackage(p: LoopPackage, hash: string): boolean {
-  return p?.version === 1 && p.sourceHash === hash && /^video\/mp4; codecs="avc[13]\.[a-fA-F0-9]{6}"$/.test(p.mime) &&
+  return p?.version === CONTINUOUS_LOOP_REVISION && p.sourceHash === hash && /^video\/mp4; codecs="avc[13]\.[a-fA-F0-9]{6}"$/.test(p.mime) &&
     Number.isSafeInteger(p.timescale) && p.timescale > 0 && Number.isSafeInteger(p.firstPts) &&
     Number.isSafeInteger(p.durationTicks) && p.durationTicks > 0 && p.durationTicks / p.timescale <= 600 &&
+    Array.isArray(p.keyframeTicks) && p.keyframeTicks.length > 0 && p.keyframeTicks.length <= 100_000 && p.keyframeTicks[0] === 0 &&
+    p.keyframeTicks.every((t, i) => Number.isSafeInteger(t) && t >= 0 && t < p.durationTicks && (i === 0 || t > p.keyframeTicks[i - 1])) &&
     validFragment(p.init, hash) && Array.isArray(p.fragments) && p.fragments.length > 0 && p.fragments.length <= 10_000 &&
     p.fragments.every(f => validFragment(f, hash) && f.endTicks <= p.durationTicks) &&
     Math.max(...p.fragments.map(f => f.endTicks)) === p.durationTicks;
@@ -213,7 +218,9 @@ async function prepare(src: string, sourceHash: string, signal: AbortSignal): Pr
       trak.boxes = (trak.boxes ?? []).filter(b => b.type !== 'edts');
       delete trak.edts;
       const init = file.initializeSegmentation('per-track')[0].buffer;
-      packageData = { version: 1, sourceHash, mime, timescale: track.timescale, ...timeline,
+      const keyframeTicks = samples.filter(s => s.is_sync).map(s => s.cts - timeline!.firstPts).sort((a, b) => a - b);
+      if (keyframeTicks[0] !== 0) throw new Error('unsupported-first-keyframe');
+      packageData = { version: CONTINUOUS_LOOP_REVISION, sourceHash, mime, timescale: track.timescale, ...timeline, keyframeTicks,
         init: { key: '', bytes: 0, sha256: '', endTicks: 0 }, fragments: [] };
       const target = packageData;
       writes.push(save(`${prefix}init`, init, 0).then(f => { target.init = f; }));
