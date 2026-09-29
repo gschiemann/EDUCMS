@@ -121,6 +121,37 @@ const videoSchema = z.strictObject({
 });
 
 /**
+ * Loop-boundary quality (2026-09-29, video-loop audit F1/F2). What the player
+ * MEASURED at the seam where a solo video starts over: how long the picture was
+ * held past one frame period (`hold`) and how much of the opening/closing was
+ * trimmed by a hand-off (`skip`), over a bounded window of recent boundaries.
+ * Evidence is `requestVideoFrameCallback` — a frame reached the compositor, not
+ * a camera pointed at the panel — so the dashboard must word it that way.
+ *
+ * ⚠️ ROLLOUT ORDER — same rule as `video.stalls`: this is a `strictObject`, so
+ * an API that does not know `loop` answers 400 to the WHOLE report. This API
+ * ships before the player bundle that sends it.
+ */
+const loopBoundarySchema = z.strictObject({
+  /** `native` = the browser's own loop (a seek); `twodeck` = a prepared second element takes over. */
+  backend: z.enum(['native', 'twodeck']),
+  evidence: z.enum(['rvfc']),
+  /** Boundaries observed in the window. */
+  boundaries: z.number().finite().min(0).max(1_000_000_000),
+  /** Worst / 95th-percentile / latest hold past one frame period, ms. */
+  maxHoldMs: z.number().finite().min(0).max(600_000),
+  p95HoldMs: z.number().finite().min(0).max(600_000),
+  lastHoldMs: z.number().finite().min(0).max(600_000),
+  /** Worst content trimmed by a hand-off (two-deck only; 0 for native), ms. */
+  maxSkipMs: z.number().finite().min(0).max(600_000),
+  /** Hand-offs completed / times the two-deck path gave up. */
+  swaps: z.number().finite().min(0).max(1_000_000_000).optional(),
+  fallbacks: z.number().finite().min(0).max(1_000_000_000).optional(),
+  /** Why the two-deck path is not in use on this screen, when it is not. */
+  fallbackReason: z.string().max(64).optional(),
+});
+
+/**
  * `POST /screens/:id/refresh-ack` — the ENTIRE body. One number: the exact
  * `refreshRequestedAt` value (ms) the page acted on. Value identity, never a
  * clock comparison (player rule 6).
@@ -171,6 +202,7 @@ export const screenTelemetrySchema = z.strictObject({
   refreshAckMs: z.number().finite().min(0).optional(),
   capsHash: z.string().max(64).optional(),
   video: videoSchema.optional(),
+  loop: loopBoundarySchema.optional(),
 });
 
 export type ScreenTelemetryBody = z.infer<typeof screenTelemetrySchema>;

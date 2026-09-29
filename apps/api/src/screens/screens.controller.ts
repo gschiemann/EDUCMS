@@ -90,6 +90,7 @@ import { orderSchedulesForManifest } from './effective-schedule';
 // Playlist.syncPlayback. One rule, shared by the manifest and the fleet list,
 // so they can never disagree about who is frame-locked.
 import { resolveScreenSync, readSyncActiveTargets, isScreenSyncActive } from './screen-sync';
+import { resolvePlaybackConfig } from './playback-config';
 // 2026-09-02 (efficiency program P0-1) — the ONLINE grace is now paired with
 // the unified telemetry cadence and lives in ONE place that documents the
 // relationship. It was three inline `35 * 1000` literals sized for a 30 s
@@ -6660,6 +6661,10 @@ export class ScreensController {
       // never move this hash). Read display-manifest.ts's header before
       // adding a field here — the same rule that governs `sync` above.
       display: displayBlock,
+      // 2026-09-29 — per-screen playback switches (how a solo muted video
+      // repeats). Deterministic per screen + env, so it is safe in the hashed
+      // payload; old players ignore the key. See playback-config.ts.
+      playback: resolvePlaybackConfig((screen as any).id),
       playlists: dynamicPlaylists
     };
 

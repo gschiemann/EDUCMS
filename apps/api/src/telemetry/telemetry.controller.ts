@@ -316,6 +316,8 @@ export class TelemetryController {
             lastOtaMessage: true,
             lastOtaAt: true,
             displayCapabilitiesAt: true,
+            // Only read to MERGE a loop-boundary block into it (below).
+            lastVideoReport: true,
           },
         }),
       { label: 'screen.findUnique[telemetry]' },
@@ -453,6 +455,24 @@ export class TelemetryController {
     if (videoReport) {
       data.lastVideoReport = { ...videoReport, at: now.toISOString() };
       data.lastVideoReportAt = now;
+    }
+
+    // ── 4c. LOOP BOUNDARY (2026-09-29) ──────────────────────────────────
+    // What the player measured at the seam where a solo video starts over.
+    // Rides INSIDE `lastVideoReport` (`.loop`) so it needs no column: merged
+    // into this tick's fresh sample when there is one, else into the stored
+    // one — a short clip never reaches the 150-frame sample threshold and
+    // would otherwise never report its seam at all. Its `at` is its own.
+    const loopReport = sanitizeLoopBoundary(body.loop);
+    if (loopReport) {
+      const base =
+        (data.lastVideoReport as Record<string, unknown> | undefined) ??
+        (screen.lastVideoReport && typeof screen.lastVideoReport === 'object' && !Array.isArray(screen.lastVideoReport)
+          ? (screen.lastVideoReport as Record<string, unknown>)
+          : {});
+      data.lastVideoReport = { ...base, loop: { ...loopReport, at: now.toISOString() } };
+      // `lastVideoReportAt` is left alone when only the seam moved: it dates
+      // the FRAME sample, and the dashboard reads its age.
     }
 
     // ── 5. DURABLE-REFRESH ACK (was: render-proof's refreshAckMs) ───────
@@ -727,6 +747,36 @@ export function sanitizeVideoReport(
   if (stalls !== null) out.stalls = stalls;
   const stalledMs = int(v.stalledMs, 86_400_000);
   if (stalledMs !== null) out.stalledMs = stalledMs;
+  return out;
+}
+
+/**
+ * The loop-boundary block as the server stores it: only the documented keys,
+ * every number clamped to the schema's range and floored to whole ms — one
+ * value outside it would 400 the WHOLE report, and this is a measurement, so a
+ * garbage figure is dropped rather than stored. Null when nothing usable was sent.
+ */
+export function sanitizeLoopBoundary(loop: unknown): Record<string, unknown> | null {
+  if (!loop || typeof loop !== 'object') return null;
+  const l = loop as Record<string, unknown>;
+  const backend = l.backend === 'native' || l.backend === 'twodeck' ? l.backend : null;
+  if (!backend) return null;
+  const num = (x: unknown, hi: number): number | null =>
+    typeof x === 'number' && Number.isFinite(x) && x >= 0 ? Math.min(Math.floor(x), hi) : null;
+  const boundaries = num(l.boundaries, 1_000_000_000);
+  if (boundaries === null) return null;
+  const out: Record<string, unknown> = { backend, evidence: 'rvfc', boundaries };
+  for (const k of ['maxHoldMs', 'p95HoldMs', 'lastHoldMs', 'maxSkipMs'] as const) {
+    const v = num(l[k], 600_000);
+    if (v !== null) out[k] = v;
+  }
+  for (const k of ['swaps', 'fallbacks'] as const) {
+    const v = num(l[k], 1_000_000_000);
+    if (v !== null) out[k] = v;
+  }
+  if (typeof l.fallbackReason === 'string' && l.fallbackReason.trim()) {
+    out.fallbackReason = l.fallbackReason.trim().slice(0, 64);
+  }
   return out;
 }
 

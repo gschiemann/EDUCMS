@@ -25,6 +25,7 @@ import {
   TelemetryController,
   resetTelemetryStateForTests,
   sanitizeVideoReport,
+  sanitizeLoopBoundary,
   TELEMETRY_COLUMNS,
   TELEMETRY_MIN_ACCEPT_INTERVAL_MS,
   REFRESH_ACK_MIN_ACCEPT_INTERVAL_MS,
@@ -265,6 +266,84 @@ describe('POST /screens/:id/telemetry', () => {
       ).rejects.toMatchObject({ status: 400 });
     }
     expect(writtenData()).toBeNull();
+  });
+
+  // ── 4c. LOOP BOUNDARY (2026-09-29) ────────────────────────────────────
+  describe('loop boundary', () => {
+    const loop = {
+      backend: 'native',
+      evidence: 'rvfc',
+      boundaries: 7,
+      maxHoldMs: 412.9,
+      p95HoldMs: 380.2,
+      lastHoldMs: 301,
+      maxSkipMs: 0,
+    };
+
+    it('is stored inside lastVideoReport.loop next to this tick\'s frame sample, with its own `at`', async () => {
+      await controller.report(SCREEN_ID, makeReq(), {
+        video: { url: 'https://cdn/x/clip.mp4', totalFrames: 2249, droppedFrames: 6 },
+        loop,
+      });
+      const data = writtenData() as Record<string, any>;
+      expect(data.lastVideoReport).toMatchObject({ url: 'https://cdn/x/clip.mp4', totalFrames: 2249 });
+      expect(data.lastVideoReport.loop).toEqual({
+        backend: 'native',
+        evidence: 'rvfc',
+        boundaries: 7,
+        maxHoldMs: 412,
+        p95HoldMs: 380,
+        lastHoldMs: 301,
+        maxSkipMs: 0,
+        at: new Date(NOW).toISOString(),
+      });
+    });
+
+    it('a seam-only report (a short clip never reaches the 150-frame sample) merges into the STORED sample and leaves its age alone', async () => {
+      prisma.client.screen.findUnique.mockResolvedValue(
+        baseRow({ lastVideoReport: { url: 'https://cdn/x/clip.mp4', totalFrames: 2249, droppedFrames: 6, at: '2026-09-29T12:00:00.000Z' } }),
+      );
+      await controller.report(SCREEN_ID, makeReq(), { loop });
+      const data = writtenData() as Record<string, any>;
+      expect(data.lastVideoReport).toMatchObject({ url: 'https://cdn/x/clip.mp4', totalFrames: 2249, at: '2026-09-29T12:00:00.000Z' });
+      expect(data.lastVideoReport.loop.boundaries).toBe(7);
+      // It dates the FRAME sample; a seam-only tick must not make that look fresh.
+      expect(data).not.toHaveProperty('lastVideoReportAt');
+    });
+
+    it('a report without it leaves a stored loop block alone', async () => {
+      await controller.report(SCREEN_ID, makeReq(), { refreshAckMs: 1 });
+      const d = writtenData();
+      expect(d === null || !('lastVideoReport' in d)).toBe(true);
+    });
+
+    it('the schema is strict: an unknown key, a bad backend or an out-of-range number is a 400', async () => {
+      for (const bad of [
+        { ...loop, extra: 1 },
+        { ...loop, backend: 'mse' },
+        { ...loop, maxHoldMs: 700_000 },
+        { ...loop, boundaries: -1 },
+        { ...loop, evidence: 'camera' },
+        { backend: 'native' },
+      ]) {
+        jest.clearAllMocks();
+        await expect(controller.report(SCREEN_ID, makeReq(), { loop: bad as never })).rejects.toMatchObject({ status: 400 });
+      }
+    });
+
+    it('sanitizeLoopBoundary floors, clamps and drops what it cannot use', () => {
+      expect(sanitizeLoopBoundary({ ...loop, fallbackReason: '  decoder-limit  ', swaps: 12.7, fallbacks: 1 })).toEqual({
+        backend: 'native', evidence: 'rvfc', boundaries: 7,
+        maxHoldMs: 412, p95HoldMs: 380, lastHoldMs: 301, maxSkipMs: 0,
+        swaps: 12, fallbacks: 1, fallbackReason: 'decoder-limit',
+      });
+      expect(sanitizeLoopBoundary({ ...loop, maxHoldMs: 9e9 })).toMatchObject({ maxHoldMs: 600_000 });
+      const junk = sanitizeLoopBoundary({ ...loop, maxHoldMs: Number.NaN, p95HoldMs: -3, lastHoldMs: '9' }) as Record<string, unknown>;
+      for (const k of ['maxHoldMs', 'p95HoldMs', 'lastHoldMs']) expect(junk).not.toHaveProperty(k);
+      expect(sanitizeLoopBoundary(null)).toBeNull();
+      expect(sanitizeLoopBoundary({ ...loop, backend: 'x' })).toBeNull();
+      expect(sanitizeLoopBoundary({ backend: 'twodeck', boundaries: 'many' })).toBeNull();
+    });
   });
 
   it('sanitizeVideoReport keeps the rebuffer counters only as bounded non-negative ints, and only when sent', () => {
