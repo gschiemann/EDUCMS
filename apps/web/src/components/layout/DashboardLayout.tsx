@@ -168,8 +168,10 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           tabIndex={-1}
           className={cn(
             // pb-24 on mobile reserves room for MobileTabBar's 56px height
-            // + safe-area-inset. md:pb-8 drops the extra padding once the
-            // sidebar takes over and the tab bar is hidden.
+            // + safe-area-inset. On desktop the tab bar is gone but the bug
+            // button (fixed, bottom-6, 36px) is not: md:pb-20 lets the last
+            // row of any page scroll CLEAR of it. At md:pb-8 it sat on top of
+            // the playlists page's "next page" arrow (Greg, 2026-09-28).
             //
             // z-index intentionally NOT set here (was z-10). Setting a
             // z-index on <main> creates a stacking context which traps
@@ -182,7 +184,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             // they correctly win over TopToolbar (z-20). The decorative
             // blobs use -z-0 and still paint behind page content via DOM
             // order (they precede main in the tree) so nothing regresses.
-            "flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 pb-24 md:pb-8 transition-all duration-300 relative",
+            "flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 pb-24 md:pb-20 transition-all duration-300 relative",
             // outline-none: we programmatically focus #main-content on load/nav
             // (the two-click-bug fix) — never show a focus ring for that.
             "outline-none focus:outline-none",

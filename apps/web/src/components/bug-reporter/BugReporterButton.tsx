@@ -127,11 +127,12 @@ export function BugReporterButton() {
           // bar (h-56px + safe-area). On desktop it lifts to bottom-6.
           // Only rendered when `overlayOpenCount === 0` (see showFab) so it
           // never floats over another modal/sheet footer or the emergency
-          // overlay.
-          className="fixed right-4 bottom-24 md:bottom-6 md:right-6 z-[70] inline-flex items-center gap-2 px-3.5 py-2.5 rounded-full bg-slate-900 text-white shadow-lg hover:bg-slate-700 transition-colors text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-2"
+          // overlay. ICON ONLY (2026-09-28, Greg): the "Report bug" pill sat
+          // on top of the playlist page numbers; a 36px icon takes a third of
+          // the room. The accessible name + tooltip carry the words.
+          className="fixed right-4 bottom-24 md:bottom-6 md:right-6 z-[70] inline-flex items-center justify-center w-9 h-9 rounded-full bg-slate-900 text-white shadow-lg hover:bg-slate-700 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-2"
         >
           <Bug className="w-4 h-4" aria-hidden />
-          <span className="hidden sm:inline">Report bug</span>
         </button>
       )}
       {open && (
