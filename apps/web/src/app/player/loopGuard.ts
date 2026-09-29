@@ -132,5 +132,6 @@ export function isDeviceShapedFailure(reason: string): boolean {
   // second element presented a fraction of the first one's rate — a second decoder
   // that is not a real one. Without it here, an undone hand-off would be tried, and
   // undone, again on every mount.
-  return /^(standby-error|standby-not-ready|standby-setup-failed|handoff-timeout|play-rejected|play-threw|degraded-playback)$/.test(reason);
+  // A reason may carry detail after a colon (`standby-not-ready:rs1p1t0`); only the head names the failure.
+  return /^(standby-error|standby-not-ready|standby-setup-failed|handoff-timeout|play-rejected|play-threw|degraded-playback)$/.test(reason.split(':')[0]);
 }

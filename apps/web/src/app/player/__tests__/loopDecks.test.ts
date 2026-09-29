@@ -305,14 +305,14 @@ describe('LoopDeckEngine', () => {
     r.w.advance(4_900);
     expect(r.fallbacks).toEqual([]);
     r.w.advance(200);
-    expect(r.fallbacks).toEqual([['standby-not-ready', true]]);
+    expect(r.fallbacks).toEqual([[expect.stringMatching(/^standby-not-ready:rs\dp\dt-?\d+$/), true]]); // and says what state the standby was in
   });
 
   it('a hand-off whose first frame never comes is abandoned; a second failure gives up for good', () => {
     const r = rig({}, { playStalls: true }, { handoffTimeoutMs: 800 });
     r.w.advance(25_000);
     expect(r.reveals).toEqual([]); // it NEVER reveals a frame it has not seen
-    expect(r.fallbacks).toEqual([['handoff-timeout', true]]);
+    expect(r.fallbacks).toEqual([[expect.stringMatching(/^handoff-timeout:rs\dp\dt-?\d+$/), true]]);
     expect(r.engine.mode).toBe('native');
     expect(r.d0.wraps).toBeGreaterThan(0);
   });

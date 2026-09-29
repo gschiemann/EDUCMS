@@ -220,6 +220,21 @@ export class LoopDeckEngine {
     return this.decks[this.active === 0 ? 1 : 0];
   }
 
+  /**
+   * The standby's state, for a give-up reason that has to explain itself from a
+   * dashboard row: `rs` readyState, `p` paused, `t` media time in ms. The first
+   * run on real hardware answers "did the browser ever decode the parked frame?"
+   * from this and nothing else (a paused element some WebViews never fill).
+   */
+  private standbyDetail(): string {
+    const s = this.standby();
+    try {
+      return `rs${s.readyState}p${s.paused ? 1 : 0}t${Math.round((Number(s.currentTime) || 0) * 1000)}`;
+    } catch {
+      return 'gone';
+    }
+  }
+
   private prepareStandby(reuseLoaded = false): void {
     if (this.destroyed || this.state === 'native') return;
     this.state = 'preparing';
@@ -255,7 +270,7 @@ export class LoopDeckEngine {
 
     this.readyTimer = this.env.setTimeout(() => {
       this.readyTimer = null;
-      if (!this.standbyParked) this.giveUp('standby-not-ready', true);
+      if (!this.standbyParked) this.giveUp(`standby-not-ready:${this.standbyDetail()}`, true);
     }, this.opts.standbyReadyMs);
 
     if (hasError()) {
@@ -409,7 +424,7 @@ export class LoopDeckEngine {
       this.handoffTimer = null;
       if (!settled) {
         settled = true;
-        this.abandonHandoff('handoff-timeout');
+        this.abandonHandoff(`handoff-timeout:${this.standbyDetail()}`);
       }
     }, this.opts.handoffTimeoutMs);
   }

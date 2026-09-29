@@ -98,6 +98,10 @@ describe('lead + failure classification', () => {
   });
   it('device-shaped failures block; a one-off does not', () => {
     for (const r of ['standby-error', 'standby-not-ready', 'handoff-timeout', 'play-rejected', 'standby-setup-failed', 'play-threw', 'degraded-playback']) expect(isDeviceShapedFailure(r)).toBe(true);
+    // A reason may carry detail after a colon; only its head names the failure.
+    expect(isDeviceShapedFailure('standby-not-ready:rs1p1t0')).toBe(true);
+    expect(isDeviceShapedFailure('handoff-timeout:rs2p0t12')).toBe(true);
+    expect(isDeviceShapedFailure('not-keeping-up:rs4')).toBe(false);
     // 'not-keeping-up' is a state of the file or the moment, not a verdict on the device.
     for (const r of ['stalled', 'unmounted', 'not-keeping-up', 'x']) expect(isDeviceShapedFailure(r)).toBe(false);
   });
