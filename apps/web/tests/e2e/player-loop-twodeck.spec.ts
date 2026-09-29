@@ -99,13 +99,21 @@ test.describe('solo video repeat', () => {
     expect(s.maxHoldMs).toBeLessThan(300);
   });
 
-  test('a screen that was NOT switched to two-deck keeps its three slides exactly as before', async ({ page }) => {
+  // Every screen — not only the two-deck ones — plays N copies of one video as ONE video: one slide,
+  // one decoder, the native loop (and the native seam measured), no cut to black between laps.
+  test('a screen on the native loop plays the same clip added three times as ONE video, not three slides', async ({ page }) => {
     test.setTimeout(90_000);
     await bootMockPlayer(page, { tag: 'loop-copies-native', kind: 'video', videoCopies: 3 });
     await expect(page.locator('video').first()).toBeAttached({ timeout: 40_000 });
     await expect(page.locator('[data-loop-backend="twodeck"]')).toHaveCount(0);
-    // The active copy plus the hidden next-up copy — the pre-existing multi-item behaviour, untouched.
-    await expect.poll(() => page.locator('video').count(), { timeout: 20_000 }).toBeGreaterThanOrEqual(2);
+    // ONE <video> — no hidden next-up copy of the same file beside it.
+    await expect.poll(() => page.locator('video').count(), { timeout: 20_000 }).toBe(1);
+    // It loops natively and the native probe measures the seam (it only runs for a solo video).
+    await expect.poll(async () => (await snap(page))?.boundaries ?? 0, { timeout: 30_000, intervals: [500] }).toBeGreaterThanOrEqual(1);
+    const s = (await snap(page))!;
+    expect(s.backend).toBe('native');
+    const looping = await page.evaluate(() => (document.querySelector('video') as HTMLVideoElement).loop);
+    expect(looping).toBe(true);
   });
 
   test('two-deck: a standby that cannot load is abandoned on its own — native loop keeps playing, the device is blocked', async ({ page }) => {

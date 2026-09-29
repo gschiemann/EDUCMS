@@ -4832,20 +4832,17 @@ function PlayerPage() {
 
   // Memoized sorted playlist + item-validity check.
   const isTemplate = !!playlist?.template;
-  // 2026-09-29 (Cleveland): on a screen the manifest switched to the two-deck loop,
-  // N copies of ONE video are one video that repeats — a loop of three items
-  // ended every lap in a fade through black (collapseCopies.ts). Only those
-  // screens; never under frame-locked sync (the timeline counts items) or for an
-  // emergency playlist.
-  const collapseCopiesForLoop =
-    !syncLocked &&
-    !playlist?.isEmergency &&
-    (() => {
-      // Same precedence as pickLoopBackend: a `?loop=` bench override beats the manifest.
-      let url: string | null = null;
-      try { url = new URLSearchParams(window.location.search).get('loop'); } catch { /* SSR */ }
-      return (url === 'twodeck' || url === 'native' ? url : playbackLoopMode) === 'twodeck';
-    })();
+  // 2026-09-29 (RIOT Cleveland, both screens): N copies of ONE video are one
+  // video that repeats. Three items are three slides, and a loop of three ended
+  // every lap in a cut to black and a one-second fade up (the outgoing copy
+  // unmounts the instant the next is active — audit F4) while the player held a
+  // second, hidden copy of the SAME file decoding beside the first: two
+  // hardware decoders for one picture, on boxes that were never meant to run
+  // two. Collapsed here, before anything else looks at the list, so every later
+  // rule (solo, native loop, two-deck hand-off, readiness, the seam probe) sees
+  // the operator's intent (collapseCopies.ts). Never under frame-locked sync (the
+  // timeline counts items) and never for an emergency playlist.
+  const collapseCopiesForLoop = !syncLocked && !playlist?.isEmergency;
   const sorted = useMemo(() => {
     const ordered = playlist && !isTemplate
       ? [...(playlist.items || [])].sort((a: any, b: any) => a.sequenceOrder - b.sequenceOrder)

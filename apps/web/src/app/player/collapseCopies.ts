@@ -2,19 +2,19 @@
  * collapseCopies — a playlist that is the SAME video added more than once is one
  * video that repeats.
  *
- * Cleveland (2026-09-29): the operator had a video that hitched at the loop point
- * and added it three times. The player counts a "solo" playlist by ITEM id, so
- * three items are three slides, and every lap ended the way a change between
- * different clips ends: the outgoing copy unmounts the instant the next is
- * active (audit F4) and the incoming copy fades up from black over a second. The
- * picture cut to black at the seam — a worse hitch than the one being worked
- * around.
+ * RIOT Cleveland (2026-09-29): the operator had a video that hitched at the loop
+ * point and added it three times (their second screen, the Video Wall, was set up
+ * the same way). The player counts a "solo" playlist by ITEM id, so three items
+ * are three slides, and every lap ended the way a change between different clips
+ * ends: the outgoing copy unmounts the instant the next is active (audit F4) and
+ * the incoming copy fades up from black over a second — a cut to black at the
+ * seam, worse than the hitch being worked around. Meanwhile the next-up copy sat
+ * hidden and decoding beside the first: two hardware decoders for one picture.
  *
- * On a screen the manifest has switched to the two-deck loop (the only screens
- * whose behaviour this touches — see `PLAYER_LOOP_TWODECK`), such a playlist is
- * collapsed to its first item before anything else looks at it. Every rule that
- * follows — solo, native loop, two-deck hand-off, readiness — then sees the
- * operator's intent: one video, repeating.
+ * Every screen collapses such a playlist to its first item before anything else
+ * looks at it (`page.tsx`, the `sorted` memo), so every rule that follows —
+ * solo, native loop, two-deck hand-off, readiness, the seam probe — sees the
+ * operator's intent: one video, repeating, one decoder.
  *
  * Deliberately narrow, because a wrong collapse drops content:
  *   - EVERY item is a video of the same file (a single image or a second clip
