@@ -41,7 +41,7 @@ export function VideoOptimizationNote({
         aria-live="polite"
       >
         <Loader2 className="w-3 h-3 animate-spin" aria-hidden />
-        {pct !== null ? t('optimizingPct', { pct }) : t('optimizing')}
+        {o.status === 'queued' ? t('optimizationQueued') : pct !== null ? t('optimizingPct', { pct }) : t('optimizationChecking')}
       </span>
     );
   }

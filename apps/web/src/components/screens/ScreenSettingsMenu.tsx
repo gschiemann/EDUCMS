@@ -1556,26 +1556,26 @@ export function ScreenSettingsSections({
                     ? `Player v${currentVersion} is current · Manager v${currentManagerVersion} → v${latestManagerVersion}`
                     : `${currentVersion ? `v${currentVersion} installed` : 'No Player version reported yet'} — updates are manual-only`;
             return (
-              <button
-                type="button"
-                data-testid="apk-push"
-                onClick={onPushApk}
-                disabled={displayReadOnly || pending || stillWaiting || (upToDate === true && !pushed && !managerStale)}
-                className="w-full flex items-center gap-3 px-3.5 py-3 text-left text-xs hover:bg-slate-50 disabled:opacity-80 disabled:cursor-not-allowed border-b border-slate-100"
-                title={upToDate === true && managerStale
-                  ? `This screen's player app is already on v${currentVersion} — only the companion Manager app (v${currentManagerVersion} → v${latestManagerVersion}) will update. Content keeps playing; the Manager upgrade is held until the player is idle.`
-                  : upToDate === true && !pushed
-                    ? 'Already on the latest version'
-                    : 'Tells this kiosk to download + install the latest APK on its next check-in'}
-              >
+              <div className="w-full flex items-center gap-3 p-3.5 rounded-xl border border-slate-200 bg-slate-50/60 text-xs mb-3" data-testid="apk-update-status">
                 {stageIcon}
                 <span className="flex-1 min-w-0">
                   <span className={`block ${stageColor}`}>{stageLabel}</span>
-                  {subline && (
-                    <span className="block text-[10px] font-normal text-slate-400 mt-0.5">{subline}</span>
-                  )}
+                  {subline && <span className="block text-[10px] font-normal text-slate-500 mt-0.5">{subline}</span>}
                 </span>
-              </button>
+                {(upToDate !== true || managerStale) && (
+                  <button
+                    type="button"
+                    data-testid="apk-push"
+                    aria-label={stageLabel}
+                    onClick={onPushApk}
+                    disabled={displayReadOnly || pending || stillWaiting}
+                    className="shrink-0 min-h-11 px-4 py-2 rounded-lg border border-indigo-700 bg-indigo-600 text-white font-bold hover:bg-indigo-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title={managerStale && upToDate === true ? 'Update the companion Manager app. The player is current.' : 'Download and install the latest player app on this screen'}
+                  >
+                    {pending || stillWaiting ? 'Updating…' : ['error', 'timeout'].includes(effectiveStage) ? 'Retry update' : 'Push update'}
+                  </button>
+                )}
+              </div>
             );
           })()}
 

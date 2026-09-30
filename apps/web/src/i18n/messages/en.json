@@ -1845,6 +1845,8 @@
     "supportedCopy": "Images, video, audio and PDF · video up to {video}",
     "fileTooLargeFor": "File exceeds {max} (this one is {size})",
     "optimizing": "Optimizing for screens…",
+    "optimizationQueued": "Waiting for screen compatibility check…",
+    "optimizationChecking": "Checking screen compatibility…",
     "optimizingPct": "Optimizing for screens… {pct}%",
     "labelScreenVersion": "Screen version",
     "playbackCopyReady": "Optional 1080p copy for smaller screens · {width} × {height} · {size}. 4K screens use the 4K version.",

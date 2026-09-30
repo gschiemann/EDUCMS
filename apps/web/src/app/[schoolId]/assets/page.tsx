@@ -59,6 +59,7 @@ import { AiImageModal, useAiImageAvailable } from '@/components/ai/AiImageGenera
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { transformedImageUrl } from '@/lib/asset-image';
 import { assetDownloadUrl } from '@/lib/asset-download';
+import { apiFetch, getApiUrl } from '@/lib/api-client';
 import { AssetEncodeBadge, VideoEncodeCard } from '@/components/assets/VideoEncode';
 import { useEncodeTarget } from '@/hooks/use-encode-target';
 import { encodeSuggestions, encodeWarnings, encodeNotes, describeEncodeReason, isVideoMime, libraryPollMs, type VideoEncodeState } from '@/lib/video-encode-copy';
@@ -350,6 +351,8 @@ export default function AssetsPage() {
   const [webUrl, setWebUrl] = useState('');
   const [selectedAsset, setSelectedAsset] = useState<any>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [downloadPending, setDownloadPending] = useState(false);
+  const downloadPendingRef = useRef(false);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   // "Generate image with AI" is a row in the Add asset menu, but its modal is
   // mounted at PAGE level (see the JSX below the header). It used to live
@@ -1105,6 +1108,39 @@ export default function AssetsPage() {
     }
   };
 
+  const downloadSelectedAssets = async () => {
+    if (downloadPendingRef.current || !selectedIds.length) return;
+    const ids = [...selectedIds];
+    if (ids.length === 1) {
+      // Selection survives filters; use the loaded library, not its visible
+      // subset. A multi-file ZIP always asks the API for ALL selected IDs.
+      const asset = assets.find(a => a.id === ids[0]);
+      if (asset) downloadAsset(asset);
+      else toast.error('Refresh the library and select the file again.');
+      return;
+    }
+    downloadPendingRef.current = true;
+    setDownloadPending(true);
+    try {
+      const grant = await apiFetch<{ ticket: string; filename: string }>('/assets/download-archive', {
+        method: 'POST', body: JSON.stringify({ assetIds: ids }),
+      });
+      if (!/^[A-Za-z0-9_-]{43}$/.test(grant.ticket)) throw new Error('Could not prepare the ZIP download.');
+      const link = document.createElement('a');
+      link.href = `${getApiUrl().replace(/\/$/, '')}/assets/download-archive/${grant.ticket}`;
+      link.download = grant.filename;
+      link.rel = 'noreferrer';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not prepare the ZIP download.');
+    } finally {
+      downloadPendingRef.current = false;
+      setDownloadPending(false);
+    }
+  };
+
   const copyAssetLink = async (a: any) => {
     const url = absoluteUrl(a);
     try {
@@ -1698,12 +1734,8 @@ export default function AssetsPage() {
         deleteDisabledReason={deleteDeniedReason}
         onCreatePlaylist={() => startPlaylistFrom(selectedIds)}
         onMoveToFolder={() => setShowFolderPicker('bulk-move')}
-        onDownload={() => {
-          // No archive endpoint exists, so this is N staggered downloads —
-          // the browser may still ask the operator to allow multiple files.
-          const rows = filtered.filter((a: any) => selectedIds.includes(a.id));
-          rows.forEach((a: any, i: number) => setTimeout(() => downloadAsset(a), i * 350));
-        }}
+        downloadPending={downloadPending}
+        onDownload={downloadSelectedAssets}
         onDelete={handleBulkDelete}
         onClear={() => setSelectedIds([])}
       />

@@ -66,7 +66,10 @@ export interface OpsScreen {
   name?: string | null;
   status?: string | null;
   screenGroupId?: string | null;
-  screenGroup?: { id: string; name: string; syncMode?: string | null } | null;
+  screenGroup?: { id: string; name: string; address?: string | null; syncMode?: string | null } | null;
+  address?: string | null;
+  effectiveAddress?: string | null;
+  geoSource?: 'screen' | 'group' | 'tenant' | 'none';
   /**
    * 2026-09-16 — server-derived "this screen is frame-locked right now", from
    * `Playlist.syncPlayback` on whatever it is scheduled (plus the legacy group

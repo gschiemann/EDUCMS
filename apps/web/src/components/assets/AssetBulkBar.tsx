@@ -16,7 +16,7 @@
  * bar (§19) with 44px targets.
  */
 
-import { Download, FolderInput, ListPlus, Trash2, X } from 'lucide-react';
+import { Download, FolderInput, ListPlus, Loader2, Trash2, X } from 'lucide-react';
 
 export function AssetBulkBar({
   count,
@@ -24,6 +24,7 @@ export function AssetBulkBar({
   disabledReason,
   deleteDisabled,
   deleteDisabledReason,
+  downloadPending,
   onCreatePlaylist,
   onMoveToFolder,
   onDownload,
@@ -44,6 +45,7 @@ export function AssetBulkBar({
    */
   deleteDisabled?: boolean;
   deleteDisabledReason?: string;
+  downloadPending?: boolean;
   onCreatePlaylist: () => void;
   onMoveToFolder: () => void;
   onDownload: () => void;
@@ -86,9 +88,12 @@ export function AssetBulkBar({
       <button
         type="button"
         onClick={onDownload}
+        disabled={downloadPending}
+        aria-busy={downloadPending}
         className="min-h-11 sm:min-h-0 px-3 py-2 rounded-lg bg-white border border-indigo-200 hover:bg-indigo-100 text-indigo-800 text-xs font-bold flex items-center gap-1.5"
       >
-        <Download className="w-3.5 h-3.5" /> Download
+        {downloadPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden /> : <Download className="w-3.5 h-3.5" aria-hidden />}
+        {downloadPending ? 'Preparing ZIP…' : count > 1 ? 'Download ZIP' : 'Download'}
       </button>
 
       <button
@@ -98,7 +103,7 @@ export function AssetBulkBar({
         onClick={onDelete}
         className="min-h-11 sm:min-h-0 px-3 py-2 rounded-lg bg-white border border-rose-200 hover:bg-rose-50 text-rose-700 text-xs font-bold flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
       >
-        <Trash2 className="w-3.5 h-3.5" /> Delete…
+        <Trash2 className="w-3.5 h-3.5" /> Delete
       </button>
 
       <button

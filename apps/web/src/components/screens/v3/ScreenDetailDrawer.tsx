@@ -174,7 +174,7 @@ export interface ScreenDetailDrawerProps {
    */
   canControl: boolean;
   /** Groups this screen can be moved between. */
-  groups: Array<{ id: string; name: string }>;
+  groups: Array<{ id: string; name: string; address?: string | null }>;
   now: number;
   initialTab?: DrawerTab;
   onClose: () => void;
@@ -211,6 +211,9 @@ export function ScreenDetailDrawer({
 }: ScreenDetailDrawerProps) {
   useOverlayLock(); // mounts only while open — hides the mobile tab bar
   const { screen, status, expected, reported, video } = row;
+  const groupAddress = groups.find(group => group.id === screen.screenGroupId)?.address ?? screen.screenGroup?.address;
+  const locationAddress = screen.effectiveAddress ?? screen.address ?? groupAddress;
+  const inheritedLocation = !screen.address && !!locationAddress;
   // Catalogue lines for the states added 2026-09-27; the module's English otherwise.
   const t = useTranslations();
   const text = (en: string | undefined, m?: OpsMessage): string => (m ? t(m.key, m.values) : en ?? '');
@@ -460,10 +463,6 @@ export function ScreenDetailDrawer({
       onSuccess: () => { setAnnouncement('Screen removed.'); onChanged?.(); onClose(); },
     });
   };
-
-  const isBrowserPlayer =
-    !(screen.osInfo || '').toLowerCase().includes('android') &&
-    (screen.hardwareModel ?? '') !== 'generic-android';
 
   return (
     <div className="fixed top-0 right-0 bottom-0 left-0 z-[9999]" onKeyDown={onKeyDown}>
@@ -847,40 +846,6 @@ export function ScreenDetailDrawer({
               )}
 
               <section>
-                <SectionLabel hint="Nothing here interrupts what is on the screen.">Safe</SectionLabel>
-                <div className="space-y-2">
-                  <button
-                    type="button"
-                    onClick={fireResync}
-                    disabled={!canControl || refreshWeb.isPending || sent}
-                    className="w-full flex items-center gap-3 px-3.5 py-3 rounded-xl border border-slate-200 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
-                  >
-                    <RefreshCw className="w-4 h-4 text-slate-400 shrink-0" aria-hidden />
-                    <span className="flex-1 min-w-0">
-                      {sent ? 'Request sent ✓' : 'Resync content'}
-                      <span className="block text-[11px] font-semibold text-slate-400 mt-0.5">
-                        Tells this screen to pick up the published content.
-                      </span>
-                    </span>
-                  </button>
-                  <a
-                    href={previewHref}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="w-full flex items-center gap-3 px-3.5 py-3 rounded-xl border border-slate-200 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50"
-                  >
-                    <ExternalLink className="w-4 h-4 text-slate-400 shrink-0" aria-hidden />
-                    <span className="flex-1 min-w-0">
-                      Open live preview
-                      <span className="block text-[11px] font-semibold text-slate-400 mt-0.5">
-                        Opens this screen’s player in a browser tab.
-                      </span>
-                    </span>
-                  </a>
-                </div>
-              </section>
-
-              <section>
                 <SectionLabel hint="Changes what this screen does, reversibly.">Configuration</SectionLabel>
                 <label htmlFor="v3-drawer-name" className="block text-[11px] font-bold text-slate-500 mb-1">
                   Screen name
@@ -930,8 +895,9 @@ export function ScreenDetailDrawer({
                     <div className="flex-1 min-w-0">
                       <p className="text-[11px] font-bold text-slate-500">Location</p>
                       <p className="text-[12.5px] font-semibold text-slate-700 truncate">
-                        {(screen as any).address || 'No address yet — the group or location address places it on the map'}
+                        {locationAddress || 'No address set'}
                       </p>
+                      {inheritedLocation && <p className="text-[11px] text-slate-500">{screen.geoSource === 'tenant' ? 'From account location' : 'From group address'}</p>}
                     </div>
                     <button
                       type="button"
@@ -939,7 +905,7 @@ export function ScreenDetailDrawer({
                       disabled={!canControl}
                       className="px-3 py-2 rounded-lg border border-slate-200 text-[12px] font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                     >
-                      {(screen as any).address ? 'Change' : 'Set location'}
+                      {screen.address ? 'Change' : inheritedLocation ? 'Override' : 'Set location'}
                     </button>
                   </div>
                 )}
@@ -954,8 +920,8 @@ export function ScreenDetailDrawer({
                   cannot drift and there is no second list to keep in step:
                   app update, orientation, LED canvas, console profile, sync
                   trim, display + power, first-boot setup, device details.
-                  Quick actions are off — the Safe section above already
-                  offers preview and refresh with fuller copy. */}
+                  Quick actions are off — the sticky footer already
+                  offers preview and resync. */}
               <ScreenSettingsSections
                 screen={screen as any}
                 capabilitySource={null}

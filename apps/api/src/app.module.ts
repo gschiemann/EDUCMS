@@ -17,6 +17,8 @@ import { ScreenGroupsController } from './screen-groups/screen-groups.controller
 import { SchedulesController } from './schedules/schedules.controller';
 import { AssetsController } from './assets/assets.controller';
 import { AssetFilesController } from './assets/asset-files.controller';
+import { AssetArchivesController } from './assets/asset-archives.controller';
+import { AssetArchivesService } from './assets/asset-archives.service';
 import { TemplatesController } from './templates/templates.controller';
 import { TenantsController } from './tenants/tenants.controller';
 import { ProxyController } from './proxy/proxy.controller';
@@ -262,6 +264,7 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     SchedulesController,
     AssetsController,
     AssetFilesController,
+    AssetArchivesController,
     TemplatesController,
     TenantsController,
     ProxyController,
@@ -295,6 +298,7 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     FleetPulseSamplerCron,
     AssetSanitizerService,
     SupabaseStorageService,
+    AssetArchivesService,
     StorageWatchdogService,
     // 2026-08-05 — in-app infra self-monitoring (DB/Redis/WS-signer every
     // 5 min → PLATFORM_ALERT_EMAILS on transition). Replaces the external

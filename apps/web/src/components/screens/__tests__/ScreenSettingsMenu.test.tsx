@@ -167,8 +167,8 @@ describe('player app row', () => {
     expect(rtl.getByText('Player v1.1.11 is current · Manager v1.0.23 → v1.0.24')).toBeInTheDocument();
     // …and the tooltip says the player is already current, so nobody reads the
     // button as a pointless re-push of the player.
-    expect(push.getAttribute('title')).toMatch(/player app is already on v1\.1\.11/i);
-    expect(push.getAttribute('title')).toMatch(/only the companion Manager app/i);
+    expect(push.getAttribute('title')).toMatch(/player is current/i);
+    expect(push.getAttribute('title')).toMatch(/companion Manager app/i);
 
     // Same transport as every other push — CHECK_FOR_UPDATES via onPushApk.
     fireEvent.click(push);

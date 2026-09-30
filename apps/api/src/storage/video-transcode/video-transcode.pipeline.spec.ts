@@ -459,6 +459,14 @@ describe('VideoTranscodePipeline — never worse', () => {
     });
   });
 
+  it('re-uploading an optimized 1080p MP4 checks compatibility without encoding or swapping it again', async () => {
+    const optimal = { ...OUT_2160, width: 1920, height: 1080, bitRate: 8_000_000, fps: 30 };
+    const t = build({ asset: videoAsset(), emergency: false, outBytes: 1, outProbe: optimal, runOk: true, inProbe: optimal });
+    expect(await t.pipeline.process(job())).toMatchObject({ status: 'skipped', reason: 'already-optimal' });
+    expect(t.runner.transcode).not.toHaveBeenCalled();
+    expect(t.prisma.client.asset.updateMany.mock.calls.some(([args]: any) => 'fileUrl' in args.data)).toBe(false);
+  });
+
   it('an already optimized 4K source keeps its primary file while attempting a 1080p copy', async () => {
     const optimal = { ...OUT_2160, bitRate: 12_000_000, fps: 30 };
     const t = build({

@@ -123,6 +123,10 @@ function lastContact(row: OpsRow, now: number): { primary: string; secondary: st
   return { primary, secondary, title: fullDateTime(ms) };
 }
 
+function GroupAddress({ address }: { address?: string | null }) {
+  return <span className="text-[11.5px] text-slate-500 min-w-0 truncate" title={address || undefined}>{address?.trim() || 'No group address'}</span>;
+}
+
 export interface ScreenOperationsV3Props {
   screens: OpsScreen[];
   groups: Array<{
@@ -493,7 +497,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
         <button type="button" disabled={!canControl}
           onClick={() => { setGroupMenu(null); onSetGroupLocation({ id: g.id, name: g.name, address: src?.address ?? null }); }}
           className={`${item} border-t border-slate-100`}>
-          Set group address
+          {src?.address?.trim() ? 'Edit group address' : 'Set group address'}
         </button>
         <button type="button" disabled={!canControl}
           onClick={() => { setGroupMenu(null); onPairScreen(g.id); }}
@@ -846,6 +850,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                                 <>
                                   <Building2 className="w-4 h-4 text-slate-400 shrink-0" aria-hidden />
                                   <h3 id={`screen-group-${g.id}-name`} className="text-[13.5px] font-bold text-slate-800 truncate">{g.name}</h3>
+                                  <GroupAddress address={groups.find(group => group.id === g.id)?.address} />
                                   <span className="text-[12px] font-semibold text-slate-400 shrink-0">({g.rows.length})</span>
                                 </>
                               )}
@@ -1045,6 +1050,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                         <div className="flex items-center gap-2 min-w-0 flex-1 pl-8">
                           <Building2 className="w-4 h-4 text-slate-400 shrink-0" aria-hidden />
                           <h3 id={`screen-group-${g.id}-name`} className="text-[13.5px] font-bold text-slate-800 truncate">{g.name}</h3>
+                          <GroupAddress address={groups.find(group => group.id === g.id)?.address} />
                           <span className="text-[12px] font-semibold text-slate-400 shrink-0">(0)</span>
                         </div>
                         <span className="text-[12.5px] font-semibold text-slate-400 shrink-0">No screens yet</span>
@@ -1086,7 +1092,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                           className="w-full min-h-11 px-4 py-3 flex items-center gap-2 text-left"
                         >
                           {expanded ? <ChevronDown className="w-4 h-4 text-slate-400" aria-hidden /> : <ChevronRight className="w-4 h-4 text-slate-400" aria-hidden />}
-                          <span className="text-[13.5px] font-bold text-slate-800 flex-1 min-w-0 truncate">{g.name}</span>
+                          <span className="flex-1 min-w-0"><span className="block text-[13.5px] font-bold text-slate-800 truncate">{g.name}</span><GroupAddress address={groups.find(group => group.id === g.id)?.address} /></span>
                           <span className={`text-[11.5px] font-bold ${g.attention > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
                             {g.attention > 0 ? `${g.attention} need${g.attention === 1 ? 's' : ''} action` : 'All good'}
                           </span>
@@ -1146,7 +1152,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                   {emptyGroups.map((g) => (
                     <li key={g.id} style={GROUP_ROW_STYLE} className={`${GROUP_CARD_CLASS} px-4 py-3 flex items-center gap-2`} data-testid="empty-group">
                       <Building2 className="w-4 h-4 text-slate-400 shrink-0" aria-hidden />
-                      <span className="text-[13.5px] font-bold text-slate-800 flex-1 min-w-0 truncate">{g.name}</span>
+                      <span className="flex-1 min-w-0"><span className="block text-[13.5px] font-bold text-slate-800 truncate">{g.name}</span><GroupAddress address={groups.find(group => group.id === g.id)?.address} /></span>
                       <span className="text-[11.5px] font-semibold text-slate-400">No screens yet</span>
                       <div className="relative inline-block">
                         <button
@@ -1221,7 +1227,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
           placeName={selectedRow.screen.screenGroup?.name ?? 'Not in a group'}
           previewHref={buildPreviewHref(selectedRow.screen)}
           canControl={canControl}
-          groups={groups.map((g) => ({ id: g.id, name: g.name }))}
+          groups={groups}
           now={now}
           initialTab={drawerTab}
           onClose={() => setSelectedId(null)}

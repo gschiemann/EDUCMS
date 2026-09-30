@@ -412,7 +412,9 @@ describe('detail drawer (§10 / §14)', () => {
   it('groups the Settings tab by risk and keeps the display/restart panel reachable', async () => {
     const dialog = open();
     fireEvent.click(within(dialog).getByRole('tab', { name: 'Settings' }));
-    expect(within(dialog).getByText('Safe')).toBeInTheDocument();
+    expect(within(dialog).queryByText('Safe')).not.toBeInTheDocument();
+    expect(within(dialog).getAllByRole('button', { name: /^Resync content/ })).toHaveLength(1);
+    expect(within(dialog).getAllByRole('link', { name: 'Open live preview' })).toHaveLength(1);
     expect(within(dialog).getByText('Configuration')).toBeInTheDocument();
     expect(within(dialog).getByText('Disruptive')).toBeInTheDocument();
     expect(await within(dialog).findByTestId('display-controls')).toBeInTheDocument();
@@ -425,14 +427,16 @@ describe('detail drawer (§10 / §14)', () => {
    * old escape hatch to a second surface is gone.
    */
   it('carries every setting the separate popover used to own, on this tab', async () => {
-    const dialog = open();
+    renderPage({ screens: FLEET.map(screen => ({ ...screen, osInfo: 'Android 11', playerVersion: '1.1.0' })) });
+    fireEvent.click(within(rtl.getByTestId('screens-desktop')).getAllByRole('button', { name: 'G43' })[0]);
+    const dialog = rtl.getByRole('dialog');
     fireEvent.click(within(dialog).getByRole('tab', { name: 'Settings' }));
     // The shared sections load lazily; wait for the first of them.
     expect(await within(dialog).findByTestId('display-controls')).toBeInTheDocument();
     // Orientation — was duplicated here and in the popover; now one control.
     expect(within(dialog).getByRole('button', { name: 'Portrait' })).toBeInTheDocument();
     // The app-update control, with the popover's real push reporting behind it.
-    expect(within(dialog).getByText(/Player/i)).toBeInTheDocument();
+    expect(await within(dialog).findByTestId('apk-push')).toBeInTheDocument();
     // Device details — the read-only diagnostics drawer.
     expect(within(dialog).getByRole('button', { name: /Device details/i })).toBeInTheDocument();
   });
@@ -909,9 +913,9 @@ describe('write gates match the API’s @RequireRoles', () => {
 
     it('gates both of the drawer’s resync buttons', () => {
       const dialog = openDrawer(canControl);
-      // The Settings tab and the sticky footer each carry the same command.
+      // The sticky footer is the only copy of the command.
       const resyncs = within(dialog).getAllByRole('button', { name: /Resync content/ });
-      expect(resyncs).toHaveLength(2);
+      expect(resyncs).toHaveLength(1);
       resyncs.forEach(check);
     });
 
@@ -919,7 +923,7 @@ describe('write gates match the API’s @RequireRoles', () => {
       const dialog = openDrawer(canControl);
       // Reading is never gated: the live preview link and the History tab stay
       // open to anyone who can see the screen at all.
-      // The Settings tab and the sticky footer each carry it.
+      // The sticky footer carries it.
       expect(within(dialog).getAllByRole('link', { name: /Open live preview/ }).length).toBeGreaterThan(0);
       expect(within(dialog).getByRole('tab', { name: 'History' })).toBeEnabled();
     });
@@ -1035,3 +1039,34 @@ function stagedRect(top: number): DOMRect {
     width: height, height, x: right - height, y: top, toJSON: () => ({}),
   } as DOMRect;
 }
+
+
+describe('location details agree with the fleet map', () => {
+  const address = '100 Market Street, Sacramento, CA';
+  it('shows the saved group address and offers Edit group address', () => {
+    renderPage({ groups: [{ ...SAC, address }, HEN] });
+    expect(rtl.getAllByText(address).length).toBeGreaterThan(0);
+    fireEvent.click(rtl.getByRole('button', { name: 'More actions for RIOT Sacramento' }));
+    expect(rtl.getByRole('button', { name: 'Edit group address' })).toBeEnabled();
+    expect(rtl.queryByRole('button', { name: 'Set group address' })).not.toBeInTheDocument();
+  });
+  it('shows the inherited group address in screen Settings without storing a screen override', () => {
+    updateScreenMutate.mockClear();
+    renderPage({ groups: [{ ...SAC, address }, HEN], onSetScreenLocation: jest.fn() });
+    fireEvent.click(within(rtl.getByTestId('screens-desktop')).getAllByRole('button', { name: 'G43' })[0]);
+    const dialog = rtl.getByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('tab', { name: 'Settings' }));
+    expect(within(dialog).getByText(address)).toBeInTheDocument();
+    expect(within(dialog).getByText('From group address')).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Override' })).toBeEnabled();
+    expect(updateScreenMutate).not.toHaveBeenCalled();
+  });
+  it('uses the API effective address, including an account location', () => {
+    renderPage({ screens: [scr({ id: 'located', name: 'Located', effectiveAddress: address, geoSource: 'tenant' })], onSetScreenLocation: jest.fn() });
+    fireEvent.click(within(rtl.getByTestId('screens-desktop')).getByRole('button', { name: 'Located' }));
+    const dialog = rtl.getByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('tab', { name: 'Settings' }));
+    expect(within(dialog).getByText(address)).toBeInTheDocument();
+    expect(within(dialog).getByText('From account location')).toBeInTheDocument();
+  });
+});

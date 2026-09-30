@@ -371,7 +371,7 @@ describe('Media Library v1 — selection bar (§13)', () => {
     expect(within(bar).getByRole('button', { name: /Create playlist/ })).toBeInTheDocument();
     expect(within(bar).getByRole('button', { name: /Move to folder/ })).toBeInTheDocument();
     expect(within(bar).getByRole('button', { name: /Download/ })).toBeInTheDocument();
-    expect(within(bar).getByRole('button', { name: /Delete…/ })).toBeInTheDocument();
+    expect(within(bar).getByRole('button', { name: 'Delete' })).toBeInTheDocument();
     expect(within(bar).queryByRole('button', { name: /More/ })).not.toBeInTheDocument();
   });
 
@@ -629,7 +629,7 @@ describe('Media Library v1 — deletion is admin-only', () => {
       check(rtl.getByRole('menuitem', { name: /Delete folder/ }));
 
       const bar = openBulkBar();
-      check(within(bar).getByRole('button', { name: /Delete…/ }));
+      check(within(bar).getByRole('button', { name: 'Delete' }));
 
       openDetail();
       check(rtl.getByRole('button', { name: /Delete asset/ }));
