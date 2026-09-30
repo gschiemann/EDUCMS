@@ -295,6 +295,10 @@ export const PLAYER_RELEASE_SHA_PINS: Readonly<Record<string, string>> = {
   // a hardware-qualification OVERRIDE. Digest of the gh-downloaded release
   // asset, run 36445942514.
   '1.1.19': '0452d55a5211ef6ccc24d0d9b75f552aa05872d7426779f9c2d5e99cca5d25a1',
+  // v1.1.20 — renderer replacement, bounded recovery and persistent diagnostics.
+  // User-authorized hardware hotfix override; signed release run 36666062476.
+  // Verified against both the GitHub asset and the CMS /player/apk/latest bytes.
+  '1.1.20': '0486fa3e2d087a46773afff56dcac1cf753d13169629d3042fee03aa206b72a6',
 };
 
 /**

@@ -113,13 +113,30 @@ patched versions within the existing package majors; the lock resolves 1.1.21,
 maintainer's [nested-group advisory](https://github.com/juliangruber/brace-expansion/security/advisories/GHSA-qhr7-859c-m2p7)
 and [comma-parser advisory](https://github.com/juliangruber/brace-expansion/security/advisories/GHSA-6j4f-fj2g-mc7p).
 
-The native package version is intentionally not bumped ahead of a release tag.
-No new APK release, OTA rollout or hardware PASS is claimed here. Follow
-`apps/player/HARDWARE-QUALIFICATION.md` and `docs/player/HARDWARE-QUAL-CHECKLIST.md`;
-a fresh release must be physically qualified or use an explicitly authorized,
-logged hotfix override. Include the newly observed rk3328/Android-11 class in the
-matrix before its release. An offline device still needs power/network restored
-before it can receive any web refresh or APK command.
+Player **1.1.20 / versionCode 10120** is published from tag `player-v1.1.20`
+at commit `98a1be16b922c9a17d58714003f29ddd588b1656`. The signed APK build
+([run 36666062476](https://github.com/gschiemann/EDUCMS/actions/runs/36666062476))
+and all seven CI/security jobs
+([run 36666062321](https://github.com/gschiemann/EDUCMS/actions/runs/36666062321))
+passed. The APK is not debuggable and retains the 1.1.19 signing certificate,
+so existing installations can upgrade without uninstalling. Manager stays 1.0.24.
+
+The GitHub artifact and the CMS `GET /api/v1/player/apk/latest` download both
+hash to `0486fa3e2d087a46773afff56dcac1cf753d13169629d3042fee03aa206b72a6`.
+That digest is pinned in `release-policy.ts`. The same immutable artifact and
+digest sidecar are mirrored into the private `apks` bucket. The CMS's Settings
+→ Player & offline → Download APK and screen-connection download links already
+use the automatic release catalogue; they now resolve to 1.1.20.
+
+Physical hardware qualification remains **pending**. The user explicitly
+authorized this recovery hotfix after the release requirement was explained;
+`HARDWARE-QUALIFICATION.md` records 63 OVERRIDE entries with operator CX and
+the reason "User-authorized Cleveland renderer recovery hotfix; bench tests
+passed, on-screen qualification pending". The required matrix now includes
+rk3328/Android 11. No physical PASS or fleet installation is inferred from
+publication or automated checks. An offline device still needs power/network
+restored before receiving any web refresh or APK command. Device Owner provisioning
+requires the manufacturer's support and is not granted by installing this APK.
 
 For field validation, restore the disconnected box, capture its OS/WebView and
 exit diagnostics, run the same original file alone before multi-video playlists,
