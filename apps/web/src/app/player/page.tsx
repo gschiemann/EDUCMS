@@ -11867,7 +11867,7 @@ function PlayerPage() {
             if (isWeb && !isActive) return null;
 
             // Compute physics class limits
-            const trans = conservativeNormalPlayback || (isVid && !playlist?.isEmergency) ? 'NONE' : item.transitionType || 'FADE';
+            const trans = conservativeNormalPlayback || (isVid && !playlist?.isEmergency && !syncLocked) ? 'NONE' : item.transitionType || 'FADE';
             let classes = "absolute top-0 right-0 bottom-0 left-0 w-full h-full object-fill transition-all duration-[1000ms] ease-in-out ";
             if (trans === 'FADE') classes += isActive ? "opacity-100 z-10" : "opacity-0 z-0";
             else if (trans === 'SLIDE_LEFT') classes += isActive ? "translate-x-0 z-10" : "translate-x-full z-0";

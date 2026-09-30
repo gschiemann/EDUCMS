@@ -98,6 +98,25 @@ it('reuses exactly two surfaces through three different files and a wrap', () =>
   engine.destroy();
 });
 
+it('keeps the picture playing muted when browser audio autoplay is rejected and retries only on a gesture or audio change', async () => {
+  const { a, cb, engine } = setup();
+  engine.update(source('A', false), source('B'));
+  a.play.mockRejectedValueOnce(new Error('audio autoplay denied'));
+  a.frame();
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(a.video.muted).toBe(true);
+  expect(a.state.paused).toBe(false);
+  expect(cb.error).not.toHaveBeenCalled();
+  const calls = a.play.mock.calls.length;
+  engine.update(source('A', false), source('B'));
+  expect(a.play).toHaveBeenCalledTimes(calls);
+  engine.enableRequestedAudio();
+  expect(a.video.muted).toBe(false);
+  expect(a.play).toHaveBeenCalledTimes(calls + 1);
+  engine.destroy();
+});
+
 it('advances only once for the active file ending; standby ended events do not advance', () => {
   const { a, b, cb, engine } = setup();
   engine.update(source('A'), source('B')); a.frame();

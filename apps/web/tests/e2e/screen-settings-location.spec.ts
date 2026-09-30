@@ -46,12 +46,35 @@ async function openScreens(page: Page) {
 test('group headers show saved addresses and menus distinguish Set from Edit', async ({ page }) => {
   await openScreens(page);
   await expect(page.getByText(ADDRESS, { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('(2)', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('(0)', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'More actions for Allora Neighborhood', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Edit group address', exact: true })).toBeVisible();
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'More actions for No location yet', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Set group address', exact: true })).toBeVisible();
   await expect(page.getByText('No group address').first()).toBeVisible();
+});
+
+test('an acknowledged resync is captured in Content without duplicate delivery or an indefinite spinner', async ({ page }, info) => {
+  await openScreens(page);
+  await page.route('**/api/v1/screens/DH43/events**', route => route.fulfill({
+    contentType: 'application/json',
+    headers: { 'Access-Control-Allow-Origin': new URL(page.url()).origin, 'Access-Control-Allow-Credentials': 'true' },
+    body: JSON.stringify({ events: [{ id: 'ack-one', kind: 'refresh-acked', createdAt: new Date(Date.now() - 60_000).toISOString() }] }),
+  }));
+  await page.getByRole('button', { name: 'DH43', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByTestId('screen-content-card')).toBeVisible();
+  await expect(dialog.getByText('Delivery', { exact: true })).toHaveCount(0);
+  await expect(dialog.getByText('Update confirmed', { exact: true })).toHaveCount(0);
+  await expect(dialog.getByTestId('screen-content-update')).toHaveCount(0);
+  await expect(dialog.locator('svg.animate-spin')).toHaveCount(0);
+  await expect.poll(async () => {
+    const box = await dialog.getByTestId('screen-content-card').boundingBox();
+    return !!box && box.x + box.width <= page.viewportSize()!.width;
+  }).toBe(true);
+  await page.screenshot({ path: info.outputPath('screen-overview-content.png'), fullPage: true });
 });
 
 test('Settings inherits the group address and offers one clear update action', async ({ page }, info) => {

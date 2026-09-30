@@ -182,11 +182,20 @@ describe('every row carries its own remove + settings buttons, visible without h
 
   it('the gear opens the slide settings for its row', () => {
     render(<PlaylistsPage embedPlaylistId="p1" embedSection="content" />);
-    const gear = within(rowOf('Halftime.mp4')).getByRole('button', { name: 'Slide settings' });
+    const gear = within(rowOf('Season Tickets.png')).getByRole('button', { name: 'Slide settings' });
     expect(gear).toHaveAttribute('aria-expanded', 'false');
     fireEvent.click(gear);
     expect(gear).toHaveAttribute('aria-expanded', 'true');
-    expect(within(cardOf('Halftime.mp4')).getByLabelText('Slide Transition Effect')).toBeInTheDocument();
+    expect(within(cardOf('Season Tickets.png')).getByLabelText('Slide Transition Effect')).toBeInTheDocument();
+  });
+
+  it('video settings retain audio controls and explain direct switching without an unsupported transition selector', () => {
+    render(<PlaylistsPage embedPlaylistId="p1" embedSection="content" />);
+    fireEvent.click(within(rowOf('Halftime.mp4')).getByRole('button', { name: 'Slide settings' }));
+    const video = within(cardOf('Halftime.mp4'));
+    expect(video.queryByLabelText('Slide Transition Effect')).not.toBeInTheDocument();
+    expect(video.getByText('Videos switch directly when the next frame is ready.')).toBeInTheDocument();
+    expect(video.getByRole('button', { name: /Muted \(no audio\)/ })).toBeInTheDocument();
   });
 
   it('a viewer sees the trash, disabled', () => {

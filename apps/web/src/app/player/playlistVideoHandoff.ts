@@ -72,9 +72,10 @@ export class PlaylistVideoHandoff {
     if (this.disposed) return;
     this.next = next;
     if (same(active, this.desired)) {
+      const audioChanged = active.muted !== this.desired?.muted;
       this.desired = active;
       if (this.shown === this.target && this.shown !== null) {
-        this.decks[this.shown].muted = active.muted;
+        if (audioChanged) this.applyAudio(this.decks[this.shown], active.muted);
         this.prepareNext();
       }
       return;
@@ -103,7 +104,7 @@ export class PlaylistVideoHandoff {
       const previous = this.shown === null ? null : this.decks[this.shown];
       if (previous && previous !== v) { previous.pause(); previous.muted = true; previous.style.zIndex = '0'; }
       v.style.zIndex = '1';
-      v.muted = active.muted;
+      this.applyAudio(v, active.muted);
       this.shown = index;
       this.pendingSince = null;
       this.cb.present(v, active, previous);
@@ -181,6 +182,22 @@ export class PlaylistVideoHandoff {
     const gen = this.generation;
     try { const p = v.play(); p?.catch(() => { if (!this.disposed && gen === this.generation) failed(); }); }
     catch { failed(); }
+  }
+
+  /** Browsers can pause an autoplaying video when it becomes audible. Keep
+   * its picture moving silently if audio permission is denied; a gesture
+   * may retry later. Android kiosks allow the requested audio normally. */
+  private applyAudio(v: Deck, muted: boolean) {
+    v.muted = muted;
+    if (!muted) this.play(v, () => {
+      v.muted = true;
+      this.play(v, () => this.failCurrent());
+    });
+  }
+
+  enableRequestedAudio() {
+    const v = this.activeVideo;
+    if (v && this.hasPicture && this.desired?.muted === false && v.muted) this.applyAudio(v, false);
   }
 
   /** rVFC is a compositor frame, unlike play()/playing or buffered bytes.

@@ -82,13 +82,7 @@ export function PlaylistVideoDeck(props: PlaylistVideoDeckProps) {
       }
     }, 4_000);
     const pageHide = () => { if (kv) markStopped(kv); };
-    const unmute = () => {
-      const v = handoff.activeVideo;
-      if (v && handoff.hasPicture && handoff.source?.muted === false && v.muted) {
-        v.muted = false;
-        void v.play().catch(() => { v.muted = true; });
-      }
-    };
+    const unmute = () => handoff.enableRequestedAudio();
     window.addEventListener('pagehide', pageHide);
     document.addEventListener('pointerdown', unmute);
     document.addEventListener('keydown', unmute);
