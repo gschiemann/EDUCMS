@@ -433,7 +433,7 @@ describe('In-use confirmation — sent only after a warning that showed the usag
       render(<AssetsPage />);
       fireEvent.click(rtl.getByRole('button', { name: 'Select Recovery-Lounge-August.jpg' }));
       return act(async () => {
-        fireEvent.click(within(rtl.getByTestId('asset-bulk-bar')).getByRole('button', { name: /Delete…/ }));
+        fireEvent.click(within(rtl.getByTestId('asset-bulk-bar')).getByRole('button', { name: /^Delete$/ }));
       });
     }
 

@@ -118,6 +118,9 @@ export interface BootOptions {
   videoMp4Fixture?: string;
   /** localStorage seeded BEFORE the page's scripts run (e.g. a persisted refresh ack). */
   storage?: Record<string, string>;
+  /** Normal-playlist integration fixtures; defaults leave existing scenarios unchanged. */
+  manifest?: ReturnType<typeof playerManifest>;
+  videoFixtures?: Record<string, string>;
   /** HTTP statuses `POST …/refresh-ack` answers with, in order; the last one repeats. Default [200]. */
   refreshAckStatuses?: number[];
 }
@@ -220,7 +223,7 @@ export async function bootMockPlayer(page: Page, opts: BootOptions): Promise<Boo
   await page.route('**/api/v1/screens/register', (route) =>
     ok(route, { paired: true, screenId: id.screenId, name: `Proof ${tag}`, deviceToken: id.deviceToken }),
   );
-  await page.route(`**/api/v1/screens/${id.screenId}/manifest`, (route) => ok(route, playerManifest(id.screenId, kind, opts.playback, opts.videoCopies, opts.videoMp4, opts.videoMp4Fixture)));
+  await page.route(`**/api/v1/screens/${id.screenId}/manifest`, (route) => ok(route, opts.manifest ?? playerManifest(id.screenId, kind, opts.playback, opts.videoCopies, opts.videoMp4, opts.videoMp4Fixture)));
   await page.route(`**/api/v1/screens/${id.screenId}/emergency-assets`, (route) =>
     ok(route, { assets: [], setHash: 'empty-fake-hash' }),
   );
@@ -266,6 +269,18 @@ export async function bootMockPlayer(page: Page, opts: BootOptions): Promise<Boo
         headers: { ...cors, 'Content-Range': `bytes ${start}-${end}/${clip.length}`, 'Content-Length': String(end - start + 1) },
         body: clip.subarray(start, end + 1),
       });
+    });
+  }
+
+  for (const [url, fixture] of Object.entries(opts.videoFixtures ?? {})) {
+    const clip = fs.readFileSync(path.join(__dirname, '..', 'fixtures', fixture));
+    await page.route(url, route => {
+      const headers = { 'Access-Control-Allow-Origin': '*', 'Accept-Ranges': 'bytes', 'Content-Type': 'video/mp4' };
+      const range = /^bytes=(\d*)-(\d*)$/.exec(route.request().headers()['range'] || '');
+      if (!range) return route.fulfill({ status: 200, headers: { ...headers, 'Content-Length': String(clip.length) }, body: clip });
+      const start = Number(range[1] || 0);
+      const end = range[2] ? Math.min(Number(range[2]), clip.length - 1) : clip.length - 1;
+      return route.fulfill({ status: 206, headers: { ...headers, 'Content-Range': `bytes ${start}-${end}/${clip.length}`, 'Content-Length': String(end - start + 1) }, body: clip.subarray(start, end + 1) });
     });
   }
 

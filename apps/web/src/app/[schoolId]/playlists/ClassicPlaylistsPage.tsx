@@ -222,7 +222,7 @@ function PickerTileThumb({ asset }: { asset: any }) {
   );
 }
 
-function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSelected, onToggle, isViewer }: any) {
+function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSelected, onToggle, isViewer, isEmergencyContent }: any) {
   const t = useTranslations();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
   const [showSettings, setShowSettings] = useState(false);
@@ -413,7 +413,7 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSel
               them to a player, so a slide "scheduled" here played all day
               anyway. Scheduling belongs to the playlist, in its own tab. The
               columns stay on the row; nothing writes them now. */}
-          <div>
+          {(!item.asset?.mimeType?.startsWith('video/') || isEmergencyContent) && <div>
             <label htmlFor={`transition-${item.id}`} className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2 block">{t('playlistsPage.transitionEffect')}</label>
             <select
               id={`transition-${item.id}`}
@@ -428,7 +428,8 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSel
               <option value="SLIDE_UP">{t('playlistsPage.transSlideUp')}</option>
               <option value="SLIDE_DOWN">{t('playlistsPage.transSlideDown')}</option>
             </select>
-          </div>
+          </div>}
+          {item.asset?.mimeType?.startsWith('video/') && !isEmergencyContent && <p className="text-xs text-slate-600">Videos switch directly when the next frame is ready.</p>}
 
           {/* 2026-05-05 — per-video audio toggle. Only shown for video
               items because images and webpages don't have an audio
@@ -2356,7 +2357,7 @@ export default function ClassicPlaylistsPage({
                     <SortableContext items={localItems.map((s: any) => s.id)} strategy={verticalListSortingStrategy}>
                       <div className="space-y-2">
                         {localItems.map((item: any, i: number) => (
-                          <SortableItem key={item.id} item={item} index={i} onRemove={handleRemove} onDurationChange={handleDuration} onUpdate={handleUpdateItem} isSelected={selectedItemIds.has(item.id)} onToggle={handleToggleSelect} isViewer={isViewer} />
+                          <SortableItem isEmergencyContent={selectedPlaylist.isProtected || selectedPlaylist.isEmergency} key={item.id} item={item} index={i} onRemove={handleRemove} onDurationChange={handleDuration} onUpdate={handleUpdateItem} isSelected={selectedItemIds.has(item.id)} onToggle={handleToggleSelect} isViewer={isViewer} />
                         ))}
                       </div>
                     </SortableContext>

@@ -851,7 +851,6 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                                   <Building2 className="w-4 h-4 text-slate-400 shrink-0" aria-hidden />
                                   <h3 id={`screen-group-${g.id}-name`} className="text-[13.5px] font-bold text-slate-800 truncate">{g.name}</h3>
                                   <GroupAddress address={groups.find(group => group.id === g.id)?.address} />
-                                  <span className="text-[12px] font-semibold text-slate-400 shrink-0">({g.rows.length})</span>
                                 </>
                               )}
                             </div>
@@ -1051,7 +1050,6 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                           <Building2 className="w-4 h-4 text-slate-400 shrink-0" aria-hidden />
                           <h3 id={`screen-group-${g.id}-name`} className="text-[13.5px] font-bold text-slate-800 truncate">{g.name}</h3>
                           <GroupAddress address={groups.find(group => group.id === g.id)?.address} />
-                          <span className="text-[12px] font-semibold text-slate-400 shrink-0">(0)</span>
                         </div>
                         <span className="text-[12.5px] font-semibold text-slate-400 shrink-0">No screens yet</span>
                           {/* 2026-09-14 (Greg): "just hide pair and add screen under the dots". */}

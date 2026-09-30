@@ -15,14 +15,10 @@
  *     be matched, and a plain "as reported by the player" line under both
  *     cards. It is never dressed up as a capture, and the Scheduled
  *     thumbnail is always labelled as what you scheduled.
- *   • Delivery is ONE sentence (`deriveDelivery`): whether an update is
- *     outstanding and when the screen last confirmed a picture. It replaced a
- *     Sent → Rendered → Physical display stepper on 2026-09-24 (Greg: "wtf is
- *     how far update got … doesnt make sense to an average user"). No
- *     "Downloaded" milestone is invented — none exists to prove — and nothing
- *     here claims to have seen the panel.
- *   • The recovery card only appears while a real command is outstanding,
- *     and no timer can promote it to success.
+ *   • Delivery and resync status live in that same Content card. A command
+ *     acknowledgement is distinct from proof of the scheduled content, but
+ *     never gets its own indefinite spinner. The reported content detail
+ *     continues to explain missing or stale confirmation.
  *
  * Dashboard surface (not player/widget), so CSS gap is fine. No backdrop
  * blur anywhere — a solid scrim reads the same and costs nothing on every
@@ -33,7 +29,7 @@ import dynamic from 'next/dynamic';
 import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import {
-  AlertTriangle, ArrowRight, CheckCircle2, ChevronRight, CircleDashed, Clock,
+  AlertTriangle, ArrowRight, ChevronRight,
   ExternalLink, Loader2, RefreshCw, Settings2, ShieldCheck, Trash2, Wifi, WifiOff, X,
 } from 'lucide-react';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
@@ -46,8 +42,8 @@ import { eventCopy } from '@/components/dashboard/district/screenEventCopy';
 import { appConfirm } from '@/components/ui/app-dialog';
 import { useTranslations } from 'next-intl';
 import {
-  compactAge, contentStatusLine, deriveDelivery, deriveDeviceFacts, deriveRecovery, msOf, wordyAge,
-  type Delivery, type OpsRow, type ReportedState, type SyncStatus, type VideoPlaybackGrade,
+  compactAge, contentStatusLine, deriveDeviceFacts, deriveRecovery, msOf, wordyAge,
+  type OpsRow, type ReportedState, type SyncStatus, type VideoPlaybackGrade,
 } from './screenOps';
 import type { OpsMessage } from '../contentDownload';
 import { ExpectedThumb } from './ExpectedThumb';
@@ -117,28 +113,6 @@ const REPORTED_TONE: Record<ReportedState, { wrap: string; ink: string }> = {
   loading: { wrap: 'border-slate-200', ink: 'text-slate-700' },
   unknown: { wrap: 'border-slate-200', ink: 'text-slate-500' },
 };
-
-function DeliveryDot({ state }: { state: Delivery['state'] }) {
-  if (state === 'ok') {
-    return (
-      <span className="w-7 h-7 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0">
-        <CheckCircle2 className="w-4 h-4" aria-hidden />
-      </span>
-    );
-  }
-  if (state === 'pending') {
-    return (
-      <span className="w-7 h-7 rounded-full bg-amber-500 text-white flex items-center justify-center shrink-0">
-        <Clock className="w-4 h-4" aria-hidden />
-      </span>
-    );
-  }
-  return (
-    <span className="w-7 h-7 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center shrink-0">
-      <CircleDashed className="w-4 h-4" aria-hidden />
-    </span>
-  );
-}
 
 function SectionLabel({ children, hint }: { children: React.ReactNode; hint?: string }) {
   return (
@@ -348,7 +322,6 @@ export function ScreenDetailDrawer({
   };
 
   const online = screen.status === 'ONLINE';
-  const delivery = useMemo(() => deriveDelivery(screen, status, now), [screen, status, now]);
   const deviceFacts = useMemo(() => deriveDeviceFacts(screen, reported.app, now), [screen, reported.app, now]);
   const ackedAtMs = useMemo(() => {
     const ev = events.data?.events?.find((e) => e.kind === 'refresh-acked');
@@ -683,6 +656,11 @@ export function ScreenDetailDrawer({
                     )}
                   </div>
                 </div>
+                {recovery && ['sending', 'accepted', 'waiting-ack'].includes(recovery.state) && (
+                  <p className="mt-2 text-[11px] font-semibold text-slate-600 leading-snug" data-testid="screen-content-update">
+                    {recovery.body}
+                  </p>
+                )}
                 {/* Last video (2026-09-24): the player's own dropped-frame
                     count for the clip it last played. Read beside the file's
                     grade in the Media Library: a clean file that stutters
@@ -748,39 +726,6 @@ export function ScreenDetailDrawer({
                 </div>
               )}
 
-              {/* Delivery — one sentence (2026-09-24), not a stepper. */}
-              <div className="rounded-xl border border-slate-200 p-3.5 flex items-start gap-3">
-                <DeliveryDot state={delivery.state} />
-                <div className="min-w-0">
-                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Delivery</p>
-                  <p className="mt-0.5 text-[12.5px] font-semibold text-slate-700 leading-snug">{text(delivery.line, delivery.message)}</p>
-                </div>
-              </div>
-
-              {/* Recovery — only while something is genuinely in flight. */}
-              {recovery && (
-                <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 flex items-start gap-3">
-                  {recovery.state === 'recovered' ? (
-                    <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" aria-hidden />
-                  ) : (
-                    <Loader2
-                      className="w-5 h-5 shrink-0 animate-spin motion-reduce:animate-none"
-                      style={{ color: 'var(--brand-primary, #4f46e5)' }}
-                      aria-hidden
-                    />
-                  )}
-                  <div className="min-w-0">
-                    <p className="text-[13px] font-bold text-slate-800">{recovery.heading}</p>
-                    <p className="text-[11.5px] font-semibold text-slate-500 leading-snug mt-0.5">{recovery.body}</p>
-                  </div>
-                </div>
-              )}
-
-              {/* Not twice: the download states explain themselves in the
-                  content card above with this very sentence. */}
-              {!status.needsAttention && status.detail !== reported.detail && (
-                <p className="text-[12px] font-semibold text-slate-500 leading-snug">{text(status.detail, status.messages?.detail)}</p>
-              )}
             </div>
           )}
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo, Component, Suspense, ReactNode } from 'react';
+import { PlaylistVideoDeck } from './PlaylistVideoDeck';
 import { fitSplashK } from './splashFit';
 import { healPatternCss } from '@/lib/pattern-css';
 // ⚠️ NOTHING in this file's STATIC import list may pull in the widget /
@@ -4934,6 +4935,11 @@ function PlayerPage() {
     [playlist?.isEmergency, sorted, safetyClock]);
   const conservativeNormalPlayback = useMemo(() => !playlist?.isEmergency && playbackSafety().conservative(safetyClock),
     [playlist?.isEmergency, safetyClock]);
+  // Latch the two-decoder guard for this playlist session. A standby failure
+  // falls back inside the deck; it must not restart the active file mid-play.
+  const playlistDeckAllowed = useMemo(() => !playlist?.isEmergency && !syncLocked && !conservativeNormalPlayback &&
+    (() => { try { return !loopIsBlocked(window.localStorage, Date.now()); } catch { return true; } })(),
+    [playlist?.id, playlist?.isEmergency, syncLocked, conservativeNormalPlayback]);
 
   // Record ONLY normal video startup. A failed renderer leaves this breadcrumb
   // behind; clean navigation/unmount clears it. Proof requires decoded frames.
@@ -11070,6 +11076,13 @@ function PlayerPage() {
   // the last shown slide while that slot's file is still downloading.
   const currentItem = displayIndex !== null && isItemValid(sorted[displayIndex]) ? sorted[displayIndex] : null;
   const isVideo = currentItem?.asset?.mimeType?.startsWith('video/');
+  const useVideoPlaylistDeck = playlistDeckAllowed && !syncActiveRef.current &&
+    !!currentItem && countDistinctPlayable(sorted, playableAt) > 1 &&
+    sorted.every(item => item.asset?.mimeType?.startsWith('video/'));
+  const playlistVideoSource = (item: (typeof sorted)[number]) => {
+    const url = item.asset?.fileUrl || '';
+    return { id: String(item.id), src: url.startsWith('http') ? url : `${getApiRoot()}${url}`, muted: item.muted !== false };
+  };
   const fileUrl = currentItem?.asset?.fileUrl || '';
   const rawResolvedUrl = fileUrl.startsWith('http') ? fileUrl : `${getApiRoot()}${fileUrl}`;
   // audit §2 P0-4 — route IMAGES through the asset CDN edge proxy so repeat
@@ -11792,7 +11805,13 @@ function PlayerPage() {
             pointerEvents: isPlaylistInteractive ? undefined : 'none',
           }}
         >
-          {sorted.map((item, index) => {
+          {useVideoPlaylistDeck && currentItem ? (
+            <PlaylistVideoDeck key={playlist?.id ?? 'video-playlist'} active={playlistVideoSource(currentItem)}
+              next={activeSlot.nextIndex !== null ? playlistVideoSource(sorted[activeSlot.nextIndex]) : null}
+              onPlaying={markItemSucceeded}
+              onEnded={() => { if (!syncActiveRef.current) advanceSlide(); }}
+              onError={id => { markItemFailed(id); if (!syncActiveRef.current) advanceSlide(); }} />
+          ) : sorted.map((item, index) => {
             const isActive = index === displayIndex;
             // Readiness-gated playback (2026-09-26): a large file whose
             // native bytes are not on disk is NOT mounted — not active, not
@@ -11848,7 +11867,7 @@ function PlayerPage() {
             if (isWeb && !isActive) return null;
 
             // Compute physics class limits
-            const trans = conservativeNormalPlayback ? 'NONE' : item.transitionType || 'FADE';
+            const trans = conservativeNormalPlayback || (isVid && !playlist?.isEmergency) ? 'NONE' : item.transitionType || 'FADE';
             let classes = "absolute top-0 right-0 bottom-0 left-0 w-full h-full object-fill transition-all duration-[1000ms] ease-in-out ";
             if (trans === 'FADE') classes += isActive ? "opacity-100 z-10" : "opacity-0 z-0";
             else if (trans === 'SLIDE_LEFT') classes += isActive ? "translate-x-0 z-10" : "translate-x-full z-0";

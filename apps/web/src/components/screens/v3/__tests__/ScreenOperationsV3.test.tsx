@@ -363,10 +363,12 @@ describe('detail drawer (§10 / §14)', () => {
     expect(within(card).getByText('Content 12 files (480 MB) · Alerts 3 files (2.3 MB)')).toBeInTheDocument();
   });
 
-  it('delivery is one plain sentence — no stepper, no Downloaded, no "Physical display"', () => {
+  it('content owns delivery status — no separate card or indefinite spinner', () => {
     const dialog = open();
-    expect(within(dialog).getByText('Delivery')).toBeInTheDocument();
-    expect(within(dialog).getByText(/An update was sent .* ago and the screen hasn’t confirmed it yet\./)).toBeInTheDocument();
+    expect(within(dialog).queryByText('Delivery')).not.toBeInTheDocument();
+    const content = within(dialog).getByTestId('screen-content-card');
+    expect(within(content).getByText(/Request recorded .* ago; waiting for this screen to confirm it\./)).toBeInTheDocument();
+    expect(content.querySelector('.animate-spin')).toBeNull();
     expect(within(dialog).queryByText('How far the update got')).not.toBeInTheDocument();
     expect(within(dialog).queryByText('Physical display')).not.toBeInTheDocument();
     expect(within(dialog).queryByText('Downloaded')).not.toBeInTheDocument();
@@ -375,7 +377,7 @@ describe('detail drawer (§10 / §14)', () => {
 
   it('shows the recovery card only from a real outstanding command', () => {
     const dialog = open();
-    expect(within(dialog).getByText('Resync in progress')).toBeInTheDocument();
+    expect(within(within(dialog).getByTestId('screen-content-card')).getByTestId('screen-content-update')).toBeInTheDocument();
     // Never claims a milestone the player did not emit.
     expect(within(dialog).queryByText(/fetched/i)).not.toBeInTheDocument();
   });
@@ -789,7 +791,7 @@ describe('download visibility (2026-09-27)', () => {
     expect(statusCell).not.toHaveTextContent(/nothing scheduled/i);
   });
 
-  it('the Overview: the content card carries the line, a real progress bar and the file; Delivery says what is waiting', () => {
+  it('the Overview: one content card carries download status, progress and the file', () => {
     renderPage({ screens: fleet({ hen1: { lastRenderedHash: 'idle:content-downloading', ...snapshot() } }) });
     fireEvent.click(within(rtl.getByTestId('screens-desktop')).getAllByRole('button', { name: 'Henderson Lobby' })[0]);
     const dialog = rtl.getByRole('dialog');
@@ -800,7 +802,7 @@ describe('download visibility (2026-09-27)', () => {
     expect(within(card).getByText('Promo 4K.mp4')).toBeInTheDocument();
     expect(within(card).getByText(/starts playing the moment the whole file is on the screen/)).toBeInTheDocument();
     // The Delivery card: the download is what is waiting, never "Nothing waiting".
-    expect(within(dialog).getAllByText('Downloading new content · 62% of 141 MB').length).toBe(2);
+    expect(within(dialog).getAllByText('Downloading new content · 62% of 141 MB').length).toBe(1);
     expect(within(dialog).queryByText(/Nothing waiting/)).not.toBeInTheDocument();
     // …and the explanation is said once, not twice.
     expect(within(dialog).getAllByText(/starts playing the moment the whole file is on the screen/).length).toBe(1);

@@ -20,7 +20,7 @@ let files: Server;
 let fileOrigin: string;
 let archiveBytes: Buffer;
 const test = base.extend({
-  proxy: async ({}, use) => { await use({ server: fileOrigin, bypass: 'localhost,127.0.0.1' }); },
+  proxy: async ({}, provideProxy) => { await provideProxy({ server: fileOrigin, bypass: 'localhost,127.0.0.1' }); },
 });
 
 test.beforeAll(async () => {
