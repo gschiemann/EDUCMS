@@ -35,6 +35,11 @@ regexes = [
   '''(?:0123456789abcdef){4}''',
   # SHA-256 of the empty string — a well-known constant used in sync tests.
   '''e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855''',
+  # Player 1.1.20's public APK SHA-256 (release asset 599977037). Verified
+  # independently from GitHub and the CMS download. It appeared in the
+  # release report in commit 710a8f8a; exclude that exact public value from
+  # history scans, without exempting the report or other 64-hex literals.
+  '''0486fa3e2d087a46773afff56dcac1cf753d13169629d3042fee03aa206b72a6''',
 ]
 # 2026-08-03 — APK provenance digests are 64-hex and therefore INDISTINGUISHABLE
 # from a 256-bit signing key by regex or entropy (this rule fired on the real

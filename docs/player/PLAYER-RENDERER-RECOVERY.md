@@ -122,8 +122,8 @@ passed. The APK is not debuggable and retains the 1.1.19 signing certificate,
 so existing installations can upgrade without uninstalling. Manager stays 1.0.24.
 
 The GitHub artifact and the CMS `GET /api/v1/player/apk/latest` download both
-hash to `0486fa3e2d087a46773afff56dcac1cf753d13169629d3042fee03aa206b72a6`.
-That digest is pinned in `release-policy.ts`. The same immutable artifact and
+match the 1.1.20 SHA-256 pin in `apps/api/src/player-ota/release-policy.ts`.
+The same immutable artifact and
 digest sidecar are mirrored into the private `apks` bucket. The CMS's Settings
 → Player & offline → Download APK and screen-connection download links already
 use the automatic release catalogue; they now resolve to 1.1.20.
