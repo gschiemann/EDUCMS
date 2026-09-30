@@ -106,6 +106,13 @@ The GitHub security scan uses the documented official registry fallback order so
 an ECR HTTP 429 cannot silently prevent scanning. Scan severity and blocking
 behavior are unchanged. See [Trivy database configuration](https://trivy.dev/docs/latest/configuration/db/).
 
+Once scanning ran, it found two high-severity `brace-expansion` advisories in
+the API image's application dependency tree. The root overrides now require
+patched versions within the existing package majors; the lock resolves 1.1.21,
+2.1.7 and 5.0.12. No vulnerability waiver or scan downgrade was added. See the
+maintainer's [nested-group advisory](https://github.com/juliangruber/brace-expansion/security/advisories/GHSA-qhr7-859c-m2p7)
+and [comma-parser advisory](https://github.com/juliangruber/brace-expansion/security/advisories/GHSA-6j4f-fj2g-mc7p).
+
 The native package version is intentionally not bumped ahead of a release tag.
 No new APK release, OTA rollout or hardware PASS is claimed here. Follow
 `apps/player/HARDWARE-QUALIFICATION.md` and `docs/player/HARDWARE-QUAL-CHECKLIST.md`;
