@@ -72,6 +72,14 @@ settings, onboarding, inherited locations, update controls, and consolidated
 Content status. The ZIP regression downloads one archive and checks all three
 file entries and bytes in both browsers.
 
+Linux Playwright WebKit uses WPE, which has an upstream bug that renders image
+attachments instead of firing a download event (Playwright issue 34076). On that
+test platform only, the single-file HTTP fixture serves the same PNG bytes as
+`application/octet-stream`; filename, saved bytes, attachment behavior and staying
+in the library are still asserted. Chromium and macOS Safari retain the PNG MIME
+type. This changes no production download headers. CI failure reports use the
+web app's actual report directory and distinct browser artifact names.
+
 These tests establish browser behavior, not physical qualification on every old
 Android or 4K decoder. Mixed-media handoffs and seamless audio are not promised by
 this implementation. Existing single-video continuous looping remains unchanged.

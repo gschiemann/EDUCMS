@@ -23,7 +23,7 @@ const test = base.extend({
   proxy: async ({}, provideProxy) => { await provideProxy({ server: fileOrigin, bypass: 'localhost,127.0.0.1' }); },
 });
 
-test.beforeAll(async () => {
+test.beforeAll(async ({ browserName }) => {
   const zip = new JSZip();
   THREE.forEach(asset => zip.file(asset.originalName, PNG));
   archiveBytes = await zip.generateAsync({ type: 'nodebuffer' });
@@ -34,7 +34,12 @@ test.beforeAll(async () => {
       return res.end(archiveBytes);
     }
     const download = new URL(req.url!, 'http://localhost').searchParams.get('download');
-    res.setHeader('Content-Type', 'image/png');
+    // WPE's Linux embedder renders image attachments instead of downloading
+    // them (https://github.com/microsoft/playwright/issues/34076). Exercise the
+    // same native attachment/filename/byte assertions with an opaque MIME type
+    // there. Chromium and macOS Safari still receive the real PNG MIME type.
+    const wpeImageAttachment = download !== null && browserName === 'webkit' && process.platform === 'linux';
+    res.setHeader('Content-Type', wpeImageAttachment ? 'application/octet-stream' : 'image/png');
     if (download !== null) res.setHeader('Content-Disposition', `attachment; filename="welcome.png"; filename*=UTF-8''${encodeURIComponent(download)}`);
     res.end(PNG);
   });
