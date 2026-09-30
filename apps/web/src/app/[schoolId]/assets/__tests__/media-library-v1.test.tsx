@@ -301,6 +301,22 @@ describe('Media Library v1 — the calm default view', () => {
 });
 
 describe('Media Library v1 — the overflow menu (§11)', () => {
+  it('Download requests a storage attachment and does not open a preview tab', () => {
+    assetsResponse = [ASSET({ fileUrl: 'https://project.supabase.co/storage/v1/object/public/assets/tenant/a1.jpg' })];
+    const click = jest.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      expect(new URL(this.href).searchParams.get('download')).toBe('Recovery-Lounge-August.jpg');
+      expect(this.target).toBe('');
+    });
+    try {
+      mount();
+      fireEvent.click(rtl.getByRole('button', { name: 'More actions for Recovery-Lounge-August.jpg' }));
+      fireEvent.click(rtl.getByRole('menuitem', { name: 'Download' }));
+      expect(click).toHaveBeenCalledTimes(1);
+    } finally {
+      click.mockRestore();
+    }
+  });
+
   it('offers the six management actions, with delete separated and last', () => {
     mount();
     fireEvent.click(rtl.getByRole('button', { name: 'More actions for Recovery-Lounge-August.jpg' }));

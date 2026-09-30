@@ -58,6 +58,7 @@ import { AssetUsageSection, AssetInUseBlock } from '@/components/assets/AssetUsa
 import { AiImageModal, useAiImageAvailable } from '@/components/ai/AiImageGenerateButton';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { transformedImageUrl } from '@/lib/asset-image';
+import { assetDownloadUrl } from '@/lib/asset-download';
 import { AssetEncodeBadge, VideoEncodeCard } from '@/components/assets/VideoEncode';
 import { useEncodeTarget } from '@/hooks/use-encode-target';
 import { encodeSuggestions, encodeWarnings, encodeNotes, describeEncodeReason, isVideoMime, libraryPollMs, type VideoEncodeState } from '@/lib/video-encode-copy';
@@ -1090,14 +1091,18 @@ export default function AssetsPage() {
   };
 
   const downloadAsset = (a: any) => {
-    const link = document.createElement('a');
-    link.href = absoluteUrl(a);
-    link.download = assetName(a);
-    link.target = '_blank';
-    link.rel = 'noreferrer';
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
+    try {
+      const { url, filename } = assetDownloadUrl(a, apiBase);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      link.rel = 'noreferrer';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not download this asset.');
+    }
   };
 
   const copyAssetLink = async (a: any) => {

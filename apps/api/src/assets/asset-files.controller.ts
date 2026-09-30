@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Res } from '@nestjs/common';
+import { Controller, Get, Param, Query, Res } from '@nestjs/common';
 import { SkipThrottle } from '@nestjs/throttler';
 import type { Response } from 'express';
 import { existsSync } from 'fs';
@@ -15,7 +15,7 @@ const UPLOAD_DIR = process.env.UPLOAD_DIR || (process.env.NODE_ENV === 'producti
 @SkipThrottle()
 export class AssetFilesController {
   @Get(':filename')
-  serveFile(@Param('filename') filename: string, @Res() res: Response) {
+  serveFile(@Param('filename') filename: string, @Res() res: Response, @Query('download') downloadName?: string) {
     // Sanitize filename to prevent path traversal
     const safe = filename.replace(/[^a-zA-Z0-9._-]/g, '');
     // Lane-1 P1 fix: the strip leaves bare `..`/`.`/`` intact (regex passes
@@ -43,6 +43,13 @@ export class AssetFilesController {
     // re-download cycle on a 1-day-only header. Same value as
     // supabase-storage.service.ts:212.
     res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    if (downloadName !== undefined) {
+      if (typeof downloadName !== 'string') return res.status(400).json({ error: 'Invalid download filename' });
+      // Express generates and escapes Content-Disposition, including Unicode
+      // filenames. This name never participates in locating the stored file.
+      const attachmentName = downloadName.replace(/[\u0000-\u001f\u007f/\\]/g, '_').trim() || safe;
+      return res.download(filePath, attachmentName);
+    }
     return res.sendFile(filePath);
   }
 }
