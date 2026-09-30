@@ -62,6 +62,7 @@ Full per-check procedure, pass criteria and ADB captures:
 | `goodview-t982-a13` | REQUIRED | Goodview M43 | Amlogic t982 / Android 13 |
 | `maxhub-l55vec-a13` | REQUIRED | MAXHUB L55VEC | Android 13 |
 | `rockchip-rk3288-a7` | REQUIRED | TC22, TC32, SAR55, Mobile A-Frame boxes, **Goodview DH43 (double-sided)** | Rockchip rk3288 / Android 7.1.2 |
+| `rockchip-rk3328-a11` | REQUIRED | RIOT Cleveland Video Wall: X80 / rk3328_box | Rockchip rk3328 / Android 11 / WebView 101 |
 | `novastar-taurus-rk356x-a11` | REQUIRED | NovaStar Taurus LED controllers: LED Poster 1, LED Poster 2 | Rockchip rk356x / Android 11 / Chromium 83 WebView |
 | `goodview-lcd-a9` | REQUIRED | Goodview LCD, exact SKU pending its next capability report — the "Connecting…" incident unit | Android 9 / Chrome-83 WebView |
 | `generic-android-emulator` | OPTIONAL | Android emulator / dev handset | any |

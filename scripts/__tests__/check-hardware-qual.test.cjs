@@ -222,7 +222,10 @@ test('recordOverride marks the missing cells, logs the debt, and satisfies the g
     reason: 'prod incident hotfix',
     date: '2026-09-02',
   });
-  assert.equal(res.missing.length, 54); // 6 REQUIRED classes x 9 checks
+  // The seeded release has six required rows (nine checks each); the
+  // subsequently discovered X80 class is reported as one missing whole row.
+  assert.equal(res.missing.length, 55);
+  assert.ok(res.missing.some((m) => m.class === 'rockchip-rk3328-a11' && m.check === '(all)'));
   assert.equal(evaluate(res.text, 'player', '1.1.12').ok, true);
   // The debt is visible, grouped, and attributed.
   assert.match(res.text, /\| 2026-09-02 \| player \| 1\.1\.12 \| GS \|/);
@@ -343,6 +346,7 @@ test('the real matrix parses and declares the whole production fleet as REQUIRED
     'goodview-t982-a13',
     'maxhub-l55vec-a13',
     'rockchip-rk3288-a7',
+    'rockchip-rk3328-a11',
     'novastar-taurus-rk356x-a11',
     'goodview-lcd-a9',
   ]) {
