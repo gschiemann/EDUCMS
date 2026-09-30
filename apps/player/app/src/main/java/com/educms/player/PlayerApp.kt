@@ -48,6 +48,7 @@ class PlayerApp : Application() {
         // Callers that invoke PlayerLogger.uploadRecent(...) pass the screen
         // fingerprint explicitly — no need for a static Context holder.
         PlayerLogger.init(applicationContext)
+        ProcessExitDiagnostics.recordPreviousExit(applicationContext)
 
         // ⚠️ AND-001 (2026-08-01) — self-heal before ANY background job
         // reads `api_root`. That pref is written by the `setBootstrap` JS

@@ -119,6 +119,7 @@ class NetworkRecoveryController(
     private val mainHandler = Handler(Looper.getMainLooper())
 
     // ── main-thread-only state (C-P1-4). Never touch these off-main. ──
+    private var earliestReloadAtMs: Long = 0
     private var loop: Job? = null
     private var attempt: Int = 0
     private var lastError: String? = null
@@ -227,7 +228,8 @@ class NetworkRecoveryController(
      * main-thread today, but `onRenderProcessGone` and the bridge are not
      * contractually so, and this is the entry point that mutates `loop`.
      */
-    fun onError(label: String) = onMain {
+    fun onError(label: String, minimumDelayMs: Long = 0) = onMain {
+        earliestReloadAtMs = maxOf(earliestReloadAtMs, android.os.SystemClock.elapsedRealtime() + minimumDelayMs.coerceIn(0, 60_000))
         lastError = label
         if (loop?.isActive == true) {
             // Already recovering — just refresh the overlay copy.
@@ -321,6 +323,10 @@ class NetworkRecoveryController(
                 val health = probeHealth()
                 if (health.error != null) lastError = health.error
                 if (health.ok) {
+                    // A network-up notification may restart probes, but cannot bypass renderer backoff.
+                    val rendererWait = earliestReloadAtMs - android.os.SystemClock.elapsedRealtime()
+                    if (rendererWait > 0) delay(rendererWait)
+                    earliestReloadAtMs = 0
                     PlayerLogger.i(TAG, "Health probe succeeded on attempt $attempt — reloading player")
                     // Overlay stays up briefly with "reloading…" to
                     // explain the WebView jump.

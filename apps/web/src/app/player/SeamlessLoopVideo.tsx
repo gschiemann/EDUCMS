@@ -1,4 +1,5 @@
 "use client";
+import { decodedFrameCount } from './playbackSafety';
 
 /**
  * SeamlessLoopVideo — a solo, MUTED video that repeats by HAND-OFF instead of by
@@ -175,6 +176,7 @@ export function SeamlessLoopVideo({
       const v = decks[activeIdx.current];
       const verdict = detector.sample(Date.now(), {
         currentTimeMs: v.currentTime * 1000,
+        decodedFrames: decodedFrameCount(v),
         paused: v.paused,
         ended: v.ended,
         seeking: v.seeking,

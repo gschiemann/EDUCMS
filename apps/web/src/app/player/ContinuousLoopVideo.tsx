@@ -1,4 +1,5 @@
 "use client";
+import { decodedFrameCount } from './playbackSafety';
 
 /** Muted, unsynced solo MP4. Preparation reads only verified local bytes.
  * The same element plays normally during preparation, then adopts ONE MSE
@@ -113,7 +114,7 @@ export function ContinuousLoopVideo({ src, sourceHash, videoKey, isActive, class
     const detector = createMediaStallDetector();
     let recoveries = 0;
     const watchdog = setInterval(() => {
-      const result = detector.sample(Date.now(), { currentTimeMs: video.currentTime * 1000,
+      const result = detector.sample(Date.now(), { currentTimeMs: video.currentTime * 1000, decodedFrames: decodedFrameCount(video),
         paused: video.paused, seeking: video.seeking, ended: video.ended });
       setActiveMediaStalled(detector.isStalled());
       if (result !== 'stalled') return;

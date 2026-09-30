@@ -67,6 +67,7 @@ import { fetchJsonBounded, headersStatusOf } from './fetchTimeout';
 // document rAF keeps painting, so the render proof stayed green on a frozen
 // frame forever (1.1.6 audit P0-5). Pure detector + a page-level flag the
 // proof signature consumes.
+import { playbackSafety, decodedFrameCount } from './playbackSafety';
 import { createMediaStallDetector, setActiveMediaStalled, isActiveMediaStalled } from './mediaStallWatchdog';
 // 2026-08-30 deep audit B-P0-1/2/3 — wrap-aware schedule windows + the
 // window-edge signature that busts the 304 identity when a window opens or
@@ -1554,6 +1555,7 @@ function SyncHud({
 }
 
 function PlayerVideoSlide({
+  trackDecodedFrames = false,
   src,
   isActive,
   classes,
@@ -1568,6 +1570,7 @@ function PlayerVideoSlide({
   syncPosRef,
   syncItemCount,
 }: {
+  trackDecodedFrames?: boolean;
   src: string;
   isActive: boolean;
   classes: string;
@@ -1777,6 +1780,7 @@ function PlayerVideoSlide({
     const t = setInterval(() => {
       const verdict = detector.sample(Date.now(), {
         currentTimeMs: v.currentTime * 1000,
+        decodedFrames: trackDecodedFrames ? decodedFrameCount(v) : undefined,
         paused: v.paused,
         ended: v.ended,
         seeking: v.seeking,
@@ -1807,7 +1811,7 @@ function PlayerVideoSlide({
     // onError/src/isMuted are stable-in-behavior parent closures; keying on
     // the item identity (videoKey) resets the detector per slide.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isActive, videoKey]);
+  }, [isActive, videoKey, trackDecodedFrames]);
 
   // ─── Frame-locked sync: preroll + measured start lead (tier-1) ─────
   // This slide is mounted-hidden as the timeline's NEXT item (parent
@@ -4888,11 +4892,20 @@ function PlayerPage() {
     })),
     [sorted],
   );
+  const [safetyClock, setSafetyClock] = useState(() => Date.now());
+  useEffect(() => {
+    if (playlist?.isEmergency) return;
+    const tick = setInterval(() => setSafetyClock(Date.now()), 60_000);
+    return () => clearInterval(tick);
+  }, [playlist?.isEmergency]);
   const readyIds = useMemo<ReadonlySet<string>>(
     () => (playlist?.isEmergency
       ? new Set(readinessItems.map((r) => r.id))
-      : readyItemIds(readinessItems, cacheDrive, cachedMediaKeys)),
-    [playlist?.isEmergency, readinessItems, cacheDrive, cachedMediaKeys],
+      : new Set([...readyItemIds(readinessItems, cacheDrive, cachedMediaKeys)].filter(id => {
+          const item = sorted.find(candidate => String(candidate.id) === id);
+          return !item?.asset || !playbackSafety().blocked(item.asset.fileUrl || '', item.asset.fileHash, safetyClock);
+        }))),
+    [playlist?.isEmergency, readinessItems, cacheDrive, cachedMediaKeys, sorted, safetyClock],
   );
   const readyAt = useCallback(
     (index: number) => { const it = sorted[index]; return !!it && readyIds.has(String(it.id)); },
@@ -4916,6 +4929,39 @@ function PlayerPage() {
   const displayIndex: number | null = activeSlot.held
     ? (lastShownIndex !== null && lastShownIndex < sorted.length && readyAt(lastShownIndex) ? lastShownIndex : null)
     : activeSlot.activeIndex;
+  const normalFilesSetAside = useMemo(() => !playlist?.isEmergency && sorted.length > 0 &&
+    sorted.every(item => item.asset && playbackSafety().blocked(item.asset.fileUrl || '', item.asset.fileHash, safetyClock)),
+    [playlist?.isEmergency, sorted, safetyClock]);
+  const conservativeNormalPlayback = useMemo(() => !playlist?.isEmergency && playbackSafety().conservative(safetyClock),
+    [playlist?.isEmergency, safetyClock]);
+
+  // Record ONLY normal video startup. A failed renderer leaves this breadcrumb
+  // behind; clean navigation/unmount clears it. Proof requires decoded frames.
+  useEffect(() => {
+    if (playlist?.isEmergency || displayIndex === null) return;
+    const item = sorted[displayIndex];
+    if (!item?.asset?.mimeType?.startsWith('video/')) return;
+    const finish = playbackSafety().begin(item.asset.fileUrl || '', item.asset.fileHash, 'start', Date.now());
+    let firstProgressAt = 0;
+    let lastFrames = -1;
+    let progresses = 0;
+    const tick = setInterval(() => {
+      if (document.hidden) return;
+      const videos = [...document.querySelectorAll<HTMLVideoElement>('video')].filter(video => !video.paused && !video.ended);
+      const frames = videos.reduce((sum, video) => sum + (decodedFrameCount(video) ?? 0), 0);
+      if (frames > 0 && frames !== lastFrames) {
+        lastFrames = frames;
+        progresses += 1;
+        if (!firstProgressAt) firstProgressAt = Date.now();
+        if (progresses >= 3 && Date.now() - firstProgressAt >= 30_000) {
+          finish();
+          clearInterval(tick);
+        }
+      }
+    }, 1_000);
+    return () => { clearInterval(tick); finish(); };
+  }, [playlist?.isEmergency, displayIndex, sorted]);
+
   // Free-run only: the monotonic counter converges onto the slot the render
   // chose (a new playlist can clamp it onto a file still downloading; the
   // daypart can close the current slot). Under sync the conductor owns it.
@@ -11733,7 +11779,7 @@ function PlayerPage() {
         }
       }}
     >
-      {currentItem && !playbackStopped && !allAssetsFailed ? (
+      {currentItem && !playbackStopped && !allAssetsFailed && !normalFilesSetAside ? (
         <div
           className={`relative w-full h-full flex items-center justify-center ${isPlaylistInteractive ? '' : 'pointer-events-none'}`}
           style={{
@@ -11792,7 +11838,7 @@ function PlayerPage() {
             // The next-up slot is the next PLAYABLE one (free-run) or the
             // timeline's next slot when it is ready (sync) — never an
             // unready file, which must not be pre-mounted either.
-            const isNext = activeSlot.nextIndex !== null && index === activeSlot.nextIndex;
+            const isNext = !conservativeNormalPlayback && activeSlot.nextIndex !== null && index === activeSlot.nextIndex;
             if (!ready) return null;
             // Render video for active OR next-up so the next clip
             // is already decoded by the time it becomes active.
@@ -11802,7 +11848,7 @@ function PlayerPage() {
             if (isWeb && !isActive) return null;
 
             // Compute physics class limits
-            const trans = item.transitionType || 'FADE';
+            const trans = conservativeNormalPlayback ? 'NONE' : item.transitionType || 'FADE';
             let classes = "absolute top-0 right-0 bottom-0 left-0 w-full h-full object-fill transition-all duration-[1000ms] ease-in-out ";
             if (trans === 'FADE') classes += isActive ? "opacity-100 z-10" : "opacity-0 z-0";
             else if (trans === 'SLIDE_LEFT') classes += isActive ? "translate-x-0 z-10" : "translate-x-full z-0";
@@ -11842,8 +11888,8 @@ function PlayerPage() {
               // the native loop. Emergency content never takes this path.
               const loopChoice = pickLoopBackend({
                 continuousCapable: typeof MediaSource !== 'undefined' && /\.mp4(\?|$)/i.test(videoSrc) && /^[a-f0-9]{64}$/i.test(item.asset?.fileHash ?? ''),
-                loopMode: playbackLoopMode,
-                urlOverride: (() => { try { return new URLSearchParams(window.location.search).get('loop'); } catch { return null; } })(),
+                loopMode: conservativeNormalPlayback ? 'native' : playbackLoopMode,
+                urlOverride: (() => { try { return conservativeNormalPlayback ? 'native' : new URLSearchParams(window.location.search).get('loop'); } catch { return null; } })(),
                 isSolo: isSoloPlaylist,
                 muted: (item as { muted?: boolean | null }).muted !== false,
                 syncActive: syncActiveRef.current,
@@ -11880,6 +11926,7 @@ function PlayerPage() {
               }
               return (
                 <PlayerVideoSlide
+                  trackDecodedFrames={!playlist?.isEmergency}
                   key={item.id}
                   videoKey={item.id}
                   src={videoSrc}
@@ -12356,7 +12403,7 @@ function PlayerPage() {
                 Pre-pair splash (KioskSplash mode='pairing') still
                 separate — there's no good way to mash a 6-char code
                 into this layout and we want the code to be the hero. */}
-            {allAssetsFailed ? (
+            {allAssetsFailed || normalFilesSetAside ? (
               // 2026-07-01 — LAUNCH-SPRINT player deep pass, blank-screen
               // class (b): every item in the live playlist has failed to
               // load (bulk Supabase outage, stale signed URLs after a

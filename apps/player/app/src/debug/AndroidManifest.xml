@@ -35,4 +35,7 @@
 
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
 
+    <application>
+        <activity android:name=".RendererRecoveryTestActivity" android:exported="false" />
+    </application>
 </manifest>

@@ -31,6 +31,7 @@ import {
   Logger,
   BadRequestException,
 } from '@nestjs/common';
+import { createHash } from 'crypto';
 import { Throttle } from '@nestjs/throttler';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
@@ -192,6 +193,10 @@ export class PlayerLogsController {
     //
     // For Phase-2 full retention we'll write the raw log to Supabase
     // object storage (separate bucket, not AuditLog).
+    // The JVM crash handler never sees an isolated WebView renderer death.
+    // Native recovery writes these bounded, timestamped markers to disk.
+    const recoveryLines = rawBody.split('\n').filter(line =>
+      /PLAYER_RENDERER_TERMINATED|PLAYER_PLAYBACK_FAILURE|PLAYER_PROCESS_EXIT/.test(line)).slice(-32);
     const looksLikeCrash =
       /FATAL EXCEPTION|FATAL\b|E\/AndroidRuntime|java\.lang\.\w+Exception|kotlin\.\w+Exception|OutOfMemoryError|StackOverflowError|ANR in|Process .* died|signal 11|SIGSEGV/i
         .test(rawBody);
@@ -205,37 +210,43 @@ export class PlayerLogsController {
     // into the immutable forensic log. Unverified uploads still succeed
     // (early-boot / unpaired diagnostics keep working); they are logged to
     // the console only, exactly like a routine heartbeat.
-    if (looksLikeCrash && jwtSub !== null) {
-      const detailsJson = JSON.stringify({
-        source: 'android_apk',
-        screenId: attributedScreenId,
-        jwtVerified: jwtSub !== null,
-        bodyBytes: Buffer.byteLength(rawBody, 'utf8'),
-        truncated: rawBody.length > DETAILS_TRUNCATE,
-        crashDetected: true,
-        log: logTail,
-      });
+    let rows = 0;
+    if (jwtSub !== null) {
       try {
-        await this.prisma.client.auditLog.create({
-          data: {
-            tenantId,
-            userId: null,
-            action: 'PLAYER_DIAGNOSTICS_CRASH',
-            targetType: 'Screen',
-            targetId: attributedScreenId,
-            details: detailsJson,
-          },
-        });
+        for (const line of recoveryLines) {
+          const recoveryEventId = createHash('sha256').update(line).digest('hex');
+          const action = 'PLAYER_RECOVERY_EVENT';
+          const previous = await this.prisma.client.auditLog.findFirst({
+            where: { tenantId, targetId: attributedScreenId, action,
+              details: { contains: `"recoveryEventId":"${recoveryEventId}"` } },
+            select: { id: true },
+          });
+          if (previous) continue;
+          await this.prisma.client.auditLog.create({
+            data: { tenantId, userId: null, action, targetType: 'Screen', targetId: attributedScreenId,
+              details: JSON.stringify({ source: 'android_apk', screenId: attributedScreenId,
+                jwtVerified: true, recoveryEventId, crashDetected: false, log: line.slice(0, 1024) }) },
+          });
+          rows += 1;
+        }
+        // A simultaneous host fatal exception must not be swallowed just because
+        // a renderer event in the same rotating log was already uploaded.
+        if (looksLikeCrash) {
+          await this.prisma.client.auditLog.create({
+            data: { tenantId, userId: null, action: 'PLAYER_DIAGNOSTICS_CRASH',
+              targetType: 'Screen', targetId: attributedScreenId,
+              details: JSON.stringify({ source: 'android_apk', screenId: attributedScreenId,
+                jwtVerified: true, bodyBytes: Buffer.byteLength(rawBody, 'utf8'),
+                truncated: rawBody.length > DETAILS_TRUNCATE, crashDetected: true, log: logTail }) },
+          });
+          rows += 1;
+        }
       } catch (err) {
-        this.logger.error(`Failed to write PLAYER_DIAGNOSTICS_CRASH AuditLog for screen ${attributedScreenId}: ${(err as Error).message}`);
-        return { stored: false, rows: 0 };
+        this.logger.error(`Player diagnostics persistence failed for screen ${attributedScreenId}: ${(err as Error).message}`);
+        return { stored: false, rows };
       }
-      this.logger.warn(
-        `PLAYER_DIAGNOSTICS_CRASH stored for screen=${attributedScreenId} ` +
-        `tenant=${tenantId} bytes=${Buffer.byteLength(rawBody, 'utf8')}`,
-      );
-      return { stored: true, rows: 1 };
     }
+    if (rows > 0 || recoveryLines.length > 0 && jwtSub !== null) return { stored: true, rows };
 
     // Routine heartbeat — log to console only. The body is bounded at
     // 1 MB and we already truncated for storage; the console line just

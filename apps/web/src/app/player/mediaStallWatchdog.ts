@@ -36,6 +36,8 @@
 
 export interface MediaSample {
   currentTimeMs: number;
+  /** When supported, frame output must advance even if the clock advances. */
+  decodedFrames?: number;
   paused: boolean;
   ended: boolean;
   seeking: boolean;
@@ -61,11 +63,13 @@ export function createMediaStallDetector(
   stallAfterMs: number = MEDIA_STALL_AFTER_MS,
 ): MediaStallDetector {
   let lastTimeMs: number | null = null;
+  let lastFrames: number | undefined;
   let lastProgressAtMs = 0;
   let stalled = false;
 
   const reset = () => {
     lastTimeMs = null;
+    lastFrames = undefined;
     lastProgressAtMs = 0;
     stalled = false;
   };
@@ -80,7 +84,10 @@ export function createMediaStallDetector(
         reset();
         return 'idle';
       }
-      if (lastTimeMs === null || s.currentTimeMs !== lastTimeMs) {
+      const progressed = s.decodedFrames !== undefined && lastFrames !== undefined
+        ? s.decodedFrames !== lastFrames : s.currentTimeMs !== lastTimeMs;
+      lastFrames = s.decodedFrames;
+      if (lastTimeMs === null || progressed) {
         lastTimeMs = s.currentTimeMs;
         lastProgressAtMs = nowMs;
         stalled = false;

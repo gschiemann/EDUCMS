@@ -83,3 +83,19 @@ describe('page-level stall flag', () => {
     setActiveMediaStalled(false);
   });
 });
+
+describe('decoded video output', () => {
+  it('detects frozen decoder output even when the media clock advances', () => {
+    const detector = createMediaStallDetector();
+    expect(detector.sample(0, { ...playing(100), decodedFrames: 40 })).toBe('ok');
+    expect(detector.sample(5_000, { ...playing(5000), decodedFrames: 40 })).toBe('ok');
+    expect(detector.sample(13_000, { ...playing(13000), decodedFrames: 40 })).toBe('stalled');
+    expect(detector.sample(14_000, { ...playing(14000), decodedFrames: 41 })).toBe('ok');
+  });
+  it('allows normal loop wraps, decoder resets and paused media', () => {
+    const detector = createMediaStallDetector();
+    detector.sample(0, { ...playing(10000), decodedFrames: 300 });
+    expect(detector.sample(13_000, { ...playing(0), decodedFrames: 1 })).toBe('ok');
+    expect(detector.sample(26_000, { ...playing(0), decodedFrames: 1, paused: true })).toBe('idle');
+  });
+});

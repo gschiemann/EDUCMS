@@ -11,6 +11,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebSettings
 import android.webkit.WebView
+import com.educms.player.RendererRecovery
 import com.educms.player.BuildConfig
 import com.educms.player.SafePlayerWebViewClient
 import com.educms.player.WebAppBridge
@@ -130,6 +131,8 @@ class FacePlayerHost(
     // ─── PER-FACE state. Every field here is a field MainActivity holds
     //     exactly one of. That is the point.
 
+    private val rendererRecovery = RendererRecovery(activity, "face-$faceIndex")
+    private var rendererReload: Runnable? = null
     private var webView: WebView? = null
     private var client: SafePlayerWebViewClient? = null
     private var bridge: WebAppBridge? = null
@@ -234,17 +237,26 @@ class FacePlayerHost(
         )
 
         val faceClient = SafePlayerWebViewClient(
-            onRendererGone = {
-                // A face's renderer dying must not touch the primary. The
-                // face recovers itself, on its own cooldown.
-                PlayerLogger.w(TAG, "face $faceIndex renderer crashed — reloading this face only")
-                reload("renderer crashed")
+            onRendererGone = { failed, didCrash ->
+                if (!destroyed && failed === webView) {
+                    val (fresh, delayMs) = rendererRecovery.replace(failed, didCrash)
+                    webView = fresh
+                    configureWebView(fresh)
+                    lastSuccessfulLoadAtMs = 0L
+                    webHeartbeatEverReceived = false
+                    setRecoveryVisible(true)
+                    rendererReload?.let { watchdogHandler.removeCallbacks(it) }
+                    val retry = Runnable { if (!destroyed && webView === fresh) reload("renderer replaced") }
+                    rendererReload = retry
+                    watchdogHandler.postDelayed(retry, delayMs)
+                }
             },
             onMainFrameError = { label ->
                 PlayerLogger.w(TAG, "face $faceIndex main-frame error: $label")
                 setRecoveryVisible(true)
             },
             onPageFinishedOk = {
+                if (wv !== webView || destroyed) return@SafePlayerWebViewClient
                 lastSuccessfulLoadAtMs = SystemClock.elapsedRealtime()
                 watchdogConsecutiveFailures = 0
                 setRecoveryVisible(false)
@@ -366,13 +378,16 @@ class FacePlayerHost(
             PlayerLogger.w(TAG, "face $faceIndex openSettingsForManager() — refused; a box ceremony")
         },
         onWebHeartbeat = {
-            // ⚠️ THIS FACE'S counter, never the Activity's. A face refreshing
-            // `MainActivity.lastSuccessfulLoadAtMs` would certify a wedged
-            // primary as fresh — the bug this class exists to prevent.
-            lastSuccessfulLoadAtMs = SystemClock.elapsedRealtime()
-            if (!webHeartbeatEverReceived) {
-                webHeartbeatEverReceived = true
-                PlayerLogger.i(TAG, "face $faceIndex: JS proven live")
+            activity.runOnUiThread {
+                if (destroyed || nonce !== faceNonce) return@runOnUiThread
+                // ⚠️ THIS FACE'S counter, never the Activity's. A face refreshing
+                // `MainActivity.lastSuccessfulLoadAtMs` would certify a wedged
+                // primary as fresh — the bug this class exists to prevent.
+                lastSuccessfulLoadAtMs = SystemClock.elapsedRealtime()
+                if (!webHeartbeatEverReceived) {
+                    webHeartbeatEverReceived = true
+                    PlayerLogger.i(TAG, "face $faceIndex: JS proven live")
+                }
             }
         },
         // Recorded, not acted on: the syncOk-driven content watchdog stays a
@@ -444,6 +459,7 @@ class FacePlayerHost(
             .appendQueryParameter("client", "android")
             .appendQueryParameter("v", BuildConfig.VERSION_NAME)
             .appendQueryParameter("vc", BuildConfig.VERSION_CODE.toString())
+            .apply { if (rendererRecovery.recentlyFailed()) appendQueryParameter("recoveredRenderer", rendererRecovery.safeUntil().toString()) }
             // ⚠️ NO `w` / `h` ON A FACE (2026-09-19, verifier 08-G7). The primary
             // passes its panel size and the web pin script turns that into
             // `--led-w`, which the page reads as "an LED canvas is pinned — never
@@ -598,6 +614,8 @@ class FacePlayerHost(
     fun destroy() {
         if (destroyed) return
         destroyed = true
+        rendererReload?.let { watchdogHandler.removeCallbacks(it) }
+        rendererReload = null
         watchdogHandler.removeCallbacks(watchdogTicker)
         holdReported = false
         val wv = webView

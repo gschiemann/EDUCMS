@@ -27,7 +27,7 @@ import java.io.FileInputStream
  * /api/v1/health on a backoff and reloads the player when it's healthy.
  */
 class SafePlayerWebViewClient(
-    private val onRendererGone: () -> Unit,
+    private val onRendererGone: (WebView, Boolean) -> Unit,
     /** Called on main thread for any main-frame load failure. */
     private val onMainFrameError: ((label: String) -> Unit)? = null,
     /** Called on main thread when the page finishes loading successfully. */
@@ -296,7 +296,7 @@ class SafePlayerWebViewClient(
     @RequiresApi(Build.VERSION_CODES.O)
     override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
         Log.e("PlayerWeb", "renderer gone — didCrash=${detail.didCrash()}")
-        onRendererGone()
+        onRendererGone(view, detail.didCrash())
         return true // we handled it; don't crash the host process
     }
 }

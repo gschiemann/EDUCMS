@@ -1,4 +1,5 @@
 import { getServiceWorkerContainer, isServiceWorkerAvailable } from '../../lib/safe-service-worker';
+import { playbackSafety } from './playbackSafety';
 import { digestQuarantine } from './digestQuarantine';
 /**
  * Offline-cache client — talks to /sw-player.js. Used by the player to:
@@ -199,7 +200,10 @@ async function downloadLargeAsset(
   const tier = tierField(opts?.tier);
   if (asset.adoptable && sha256) {
     if (opts?.signal?.aborted) return 'aborted';
-    if (await adoptCachedAsset(sw, asset, opts?.tier)) return true;
+    const finishAdopt = opts?.tier === 'emergency' ? null : playbackSafety().begin(asset.url, sha256, 'verify', Date.now());
+    const adopted = await adoptCachedAsset(sw, asset, opts?.tier);
+    finishAdopt?.();
+    if (adopted) return true;
   }
   let offset = 0;
   let chunkBytes = CHUNK_BYTES_START;
@@ -239,7 +243,9 @@ async function downloadLargeAsset(
     if (reply.complete !== true) continue;
 
     if (opts?.signal?.aborted) return 'aborted';
+    const finishVerify = opts?.tier === 'emergency' ? null : playbackSafety().begin(asset.url, sha256, 'verify', Date.now());
     const verified = await askWorker(sw, { type: 'PRECACHE_VERIFY', url: asset.url, sha256, ...tier }, STEP_ACK_TIMEOUT_MS);
+    finishVerify?.();
     if (!verified || verified.ok !== true) {
       if (verified?.reason === 'incomplete' && typeof verified.nextOffset === 'number') {
         offset = verified.nextOffset;
@@ -254,7 +260,9 @@ async function downloadLargeAsset(
       return false;
     }
     if (opts?.signal?.aborted) return 'aborted';
+    const finishAssemble = opts?.tier === 'emergency' ? null : playbackSafety().begin(asset.url, sha256, 'assemble', Date.now());
     const assembled = await askWorker(sw, { type: 'PRECACHE_ASSEMBLE', url: asset.url, sha256, ...tier }, STEP_ACK_TIMEOUT_MS);
+    finishAssemble?.();
     if (!assembled || assembled.ok !== true) {
       if (assembled?.reason === 'incomplete' && typeof assembled.nextOffset === 'number') {
         offset = assembled.nextOffset;
@@ -313,15 +321,18 @@ export async function precachePlaylist(
 ): Promise<PlaylistCacheResult> {
   const sw = await activeWorker();
   if (!sw || !assets?.length) return { ok: false };
+  const allowed = assets.filter(asset => !playbackSafety().blocked(asset.url, asset.sha256, Date.now()));
+  const blockedCount = assets.length - allowed.length;
+  if (!allowed.length) return { ok: false, failures: blockedCount, count: assets.length };
   // The worker acks `{ started: true }` first, then the result. An older worker
   // that never acks is given 15 s; a current one gets five minutes for its
   // small-asset pass (large files are not fetched inside this event).
   const first = await askWorker(
-    sw, { type: 'PRECACHE_PLAYLIST', assets, softCapBytes, keepUrls: opts?.keepUrls }, 15_000, () => 5 * 60_000,
+    sw, { type: 'PRECACHE_PLAYLIST', assets: allowed, softCapBytes, keepUrls: opts?.keepUrls }, 15_000, () => 5 * 60_000,
   );
   if (!first || typeof first.ok !== 'boolean') return { ok: false };
   const count = typeof first.count === 'number' ? first.count : assets.length;
-  let failures = typeof first.failures === 'number' ? first.failures : 0;
+  let failures = (typeof first.failures === 'number' ? first.failures : 0) + blockedCount;
   const pending: PlaylistCacheAsset[] = Array.isArray(first.pending)
     ? (first.pending as unknown[])
         .filter((p): p is PlaylistCacheAsset => !!p && typeof (p as PlaylistCacheAsset).url === 'string')
@@ -330,7 +341,13 @@ export async function precachePlaylist(
   if (pending.length === 0) return { ok: first.ok && failures === 0, failures, count };
   for (const asset of pending) {
     if (opts?.signal?.aborted) return { ok: false, failures, count, aborted: true };
+    if (playbackSafety().blocked(asset.url, asset.sha256, Date.now())) {
+      failures += 1;
+      continue;
+    }
+    const finishDownload = playbackSafety().begin(asset.url, asset.sha256, 'download', Date.now());
     const outcome = await downloadLargeAsset(sw, asset, opts);
+    finishDownload();
     if (outcome === 'aborted') return { ok: false, failures, count, aborted: true };
     if (outcome) opts?.onAssetCached?.(asset.url);
     else failures += 1;

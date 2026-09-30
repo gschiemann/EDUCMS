@@ -70,6 +70,10 @@ import kotlinx.coroutines.withContext
 class MainActivity : ComponentActivity() {
 
     private lateinit var binding: ActivityMainBinding
+    private val primaryRendererRecovery by lazy { RendererRecovery(this, "primary") }
+    private val overlayRendererRecovery by lazy { RendererRecovery(this, "url-overlay") }
+    private var overlayLastStartedUrl: String? = null
+    private var lastPlaybackFailureLogAtMs = 0L
     private lateinit var webView: WebView
     private lateinit var urlOverlayView: WebView
     private val deviceStore by lazy { DeviceStore(applicationContext) }
@@ -2652,28 +2656,31 @@ class MainActivity : ComponentActivity() {
                 // get set ONCE at boot, never refreshes during
                 // continuous playback.
                 onWebHeartbeat = {
-                    val now = android.os.SystemClock.elapsedRealtime()
-                    val first = lastSuccessfulLoadAtMs == 0L
-                    lastSuccessfulLoadAtMs = now
-                    if (first) {
-                        PlayerLogger.i(
-                            "MainActivity",
-                            "Web heartbeat: first tick received — watchdog freshness reset",
-                        )
-                    }
-                    // C-P1-3 — THE proof that our JavaScript actually ran,
-                    // which no page-load callback can give (an error
-                    // document and an abort both finish "cleanly"). This is
-                    // what arms lock task; see webHeartbeatEverReceived.
-                    if (!webHeartbeatEverReceived) {
-                        webHeartbeatEverReceived = true
-                        PlayerLogger.i(
-                            "MainActivity",
-                            "Web heartbeat: JS proven live — lock task may now engage",
-                        )
-                        // The bridge runs on a WebView JS thread;
-                        // startLockTask() must be called from the main one.
-                        runOnUiThread { maybeEngageLockTask("first web heartbeat") }
+                    runOnUiThread {
+                        if (wv !== webView) return@runOnUiThread
+                        val now = android.os.SystemClock.elapsedRealtime()
+                        val first = lastSuccessfulLoadAtMs == 0L
+                        lastSuccessfulLoadAtMs = now
+                        if (first) {
+                            PlayerLogger.i(
+                                "MainActivity",
+                                "Web heartbeat: first tick received — watchdog freshness reset",
+                            )
+                        }
+                        // C-P1-3 — THE proof that our JavaScript actually ran,
+                        // which no page-load callback can give (an error
+                        // document and an abort both finish "cleanly"). This is
+                        // what arms lock task; see webHeartbeatEverReceived.
+                        if (!webHeartbeatEverReceived) {
+                            webHeartbeatEverReceived = true
+                            PlayerLogger.i(
+                                "MainActivity",
+                                "Web heartbeat: JS proven live — lock task may now engage",
+                            )
+                            // The bridge runs on a WebView JS thread;
+                            // startLockTask() must be called from the main one.
+                            runOnUiThread { maybeEngageLockTask("first web heartbeat") }
+                        }
                     }
                 },
                 // 2026-08-30 (W2-4) — the content-aware half. The bridge
@@ -2683,6 +2690,7 @@ class MainActivity : ComponentActivity() {
                 // means the page didn't say — recorded as unknown, which
                 // neither refreshes nor disarms. See ContentWatchdogPolicy.
                 onWebHeartbeatV2 = { syncOk ->
+                    if (wv !== webView) return@WebAppBridge
                     val now = android.os.SystemClock.elapsedRealtime()
                     // C-P0-1 — `syncOk` alone cannot tell "the credential
                     // is dead" from "the internet is out"; both fail the
@@ -2875,6 +2883,16 @@ class MainActivity : ComponentActivity() {
         wv.webChromeClient = object : WebChromeClient() {
             override fun onConsoleMessage(cm: ConsoleMessage): Boolean {
                 Log.d("PlayerWeb", "${cm.messageLevel()}: ${cm.message()} @${cm.sourceId()}:${cm.lineNumber()}")
+                val now = android.os.SystemClock.elapsedRealtime()
+                if ((cm.messageLevel() == ConsoleMessage.MessageLevel.WARNING || cm.messageLevel() == ConsoleMessage.MessageLevel.ERROR) &&
+                    cm.message().startsWith("[Player]") &&
+                    Regex("stalled|failed|fallback|checksum", RegexOption.IGNORE_CASE).containsMatchIn(cm.message()) &&
+                    now - lastPlaybackFailureLogAtMs >= 60_000) {
+                    lastPlaybackFailureLogAtMs = now
+                    val safe = cm.message().replace(Regex("https?://\\S+"), "[media-url]")
+                        .replace(Regex("eyJ[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+"), "[credential]").take(512)
+                    PlayerLogger.w("PlayerWeb", "PLAYER_PLAYBACK_FAILURE $safe")
+                }
                 return true
             }
             override fun onPermissionRequest(request: PermissionRequest) {
@@ -2883,35 +2901,27 @@ class MainActivity : ComponentActivity() {
         }
 
         val client = SafePlayerWebViewClient(
-            onRendererGone = {
-                Log.w("Player", "WebView renderer crashed — handing to recovery")
-                // C-P2-9 — ONE actor drives the reload.
-                //
-                // This used to kick the recovery loop AND fire its own
-                // loadPlayer, so a renderer crash queued TWO navigations:
-                // ours immediately, and the recovery loop's the moment its
-                // first /health probe came back (typically ~3 s later,
-                // straight through the first one). The recovery loop is
-                // the better actor — it waits for the server to actually
-                // be up, and it shows the operator the "Reconnecting…"
-                // overlay meanwhile instead of a black screen — so it owns
-                // the reload and we do not race it.
-                //
-                // The direct load survives ONLY as the no-recovery
-                // fallback: if the controller was never constructed there
-                // is no other actor, and doing nothing would leave a dead
-                // renderer on the wall forever.
-                playerWebViewClient?.markNextFinishAborted()
-                if (::recovery.isInitialized) {
-                    recovery.onError("Renderer crashed")
-                } else {
-                    lifecycleScope.launch {
-                        loadPlayer(resolveDeviceToken())
+            onRendererGone = { failed, didCrash ->
+                if (failed === webView) {
+                    bridgeNonceRetry?.let { failed.removeCallbacks(it) }
+                    bridgeNonceRetry = null
+                    val (fresh, delayMs) = primaryRendererRecovery.replace(failed, didCrash)
+                    webView = fresh
+                    binding = ActivityMainBinding.bind(binding.root)
+                    configureWebView(fresh)
+                    webHeartbeatEverReceived = false
+                    lastSuccessfulLoadAtMs = 0L
+                    if (::recovery.isInitialized) {
+                        recovery.onError("Renderer terminated; restarting playback", delayMs)
+                    } else {
+                        fresh.postDelayed({
+                            if (!isDestroyed && webView === fresh) lifecycleScope.launch { loadPlayer(resolveDeviceToken()) }
+                        }, delayMs)
                     }
                 }
             },
             onMainFrameError = { label ->
-                if (::recovery.isInitialized) recovery.onError(label)
+                if (wv === webView && ::recovery.isInitialized) recovery.onError(label)
             },
             // SEC-002 — re-deliver the bridge nonce into the top frame on
             // the WebViews that cannot take a document-start script. Only
@@ -2924,6 +2934,7 @@ class MainActivity : ComponentActivity() {
             // rather than a single shot. See [bridgeNonceRetriesLeft].
             onMainFrameDocument = { view, _ -> pumpBridgeNonceDelivery(view) },
             onPageFinishedOk = {
+                if (wv !== webView) return@SafePlayerWebViewClient
                 lastSuccessfulLoadAtMs = android.os.SystemClock.elapsedRealtime()
                 if (::recovery.isInitialized) recovery.onPageLoaded()
                 watchdogConsecutiveFailures = 0
@@ -2972,6 +2983,7 @@ class MainActivity : ComponentActivity() {
      * never run our JS.
      */
     private fun pumpBridgeNonceDelivery(view: WebView) {
+        if (view !== webView) return
         val n = bridgeNonce ?: return
         if (!bridgeNonceNeedsEval) return
         bridgeNonceRetry?.let { view.removeCallbacks(it) }
@@ -3070,6 +3082,28 @@ class MainActivity : ComponentActivity() {
         // performClick override on a WebView.)
 
         wv.webViewClient = object : WebViewClient() {
+            @androidx.annotation.RequiresApi(Build.VERSION_CODES.O)
+            override fun onRenderProcessGone(view: WebView, detail: android.webkit.RenderProcessGoneDetail): Boolean {
+                if (view === urlOverlayView) {
+                    val previousVisibility = view.visibility
+                    val previousUrl = overlayLastStartedUrl
+                    val (fresh, delayMs) = overlayRendererRecovery.replace(view, detail.didCrash())
+                    urlOverlayView = fresh
+                    binding = ActivityMainBinding.bind(binding.root)
+                    configureUrlOverlay(fresh)
+                    fresh.visibility = previousVisibility
+                    // The overlay remains bridge-free and retains its navigation policy.
+                    if (webTabsActive) fresh.settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                    fresh.postDelayed({
+                        if (!isDestroyed && urlOverlayView === fresh && fresh.visibility == View.VISIBLE &&
+                            HostAllowlist.isSafeWebUrl(previousUrl ?: "") &&
+                            (webTabsAllowHosts == null || WebTabsPolicy.decideNavigation(previousUrl, webTabsAllowHosts!!, webTabsLearnedHosts, false, false) != WebTabsPolicy.NavDecision.BLOCK)) {
+                            fresh.loadUrl(previousUrl!!)
+                        }
+                    }, delayMs)
+                }
+                return true
+            }
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val url = request.url?.toString()
                 // Non-web schemes never load in this view — for Website Tabs
@@ -3117,6 +3151,7 @@ class MainActivity : ComponentActivity() {
 
             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                 PlayerLogger.i("MainActivity", "URL overlay page started: ${url ?: "(unknown)"}")
+                overlayLastStartedUrl = url
                 // Remember every origin the site view reaches, for the sign-out's
                 // per-origin storage wipe (WebTabsPolicy.wipeOriginsFor).
                 if (webTabsActive) WebTabsPolicy.originOf(url)?.let { webTabsVisitedOrigins.add(it) }
@@ -3502,6 +3537,7 @@ class MainActivity : ComponentActivity() {
         // Without this, dashboard chip stayed at the last-known
         // Manager version forever after the operator uninstalled it.
         builder.appendQueryParameter("mv", managerVersion ?: "")
+        if (primaryRendererRecovery.recentlyFailed()) builder.appendQueryParameter("recoveredRenderer", primaryRendererRecovery.safeUntil().toString())
         if (androidId.isNotBlank()) {
             // Prefix so the web player can tell an APK-provided fp from a
             // browser-generated one in logs / device cards.
