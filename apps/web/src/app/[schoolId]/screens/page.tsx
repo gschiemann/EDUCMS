@@ -23,10 +23,11 @@ import {
   useUpdateScreenGroup, useUpdateScreenLocation,
 } from '@/hooks/use-api';
 import { apiFetch } from '@/lib/api-client';
+import { useBranding } from '@/lib/branding-context';
 import { useUIStore } from '@/store/ui-store';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { useDeployedBundle } from '@/hooks/use-deployed-bundle';
-import { ScreenMapClient } from '@/components/screens/ScreenMapClient';
+import { ScreenLocationAtlas } from '@/components/screens/ScreenLocationAtlas';
 import { ReturnToFleetBanner } from '@/components/screens/ReturnToFleetBanner';
 import { ScreenLocationModal } from '@/components/screens/ScreenLocationModal';
 import type { DisplayScheduleTargetRef } from '@/components/screens/DisplayScheduleModal';
@@ -68,6 +69,7 @@ function orientationFromResolution(res?: string | null): 'portrait' | 'landscape
 
 export default function ScreensPage() {
   const t = useTranslations();
+  const branding = useBranding();
   const userRole = useUIStore((s) => s.user?.role);
   const authToken = useUIStore((s) => s.token);
   // Mirrors the API's own @RequireRoles set for display control — a control a
@@ -251,26 +253,9 @@ export default function ScreensPage() {
         onOpenDisplaySchedule={(target) => setDisplayScheduleTarget(target)}
         onChanged={refetchAll}
         buildPreviewHref={buildPreviewHref}
-        renderMap={(visible) => (
-          <div className="bg-white rounded-2xl border border-slate-200 p-4 space-y-3">
-            <p className="text-xs font-semibold text-slate-500">
-              Every location, its groups, and the screens in them. Pin colours show live status — screens on an alert pulse red.
-            </p>
-            <ScreenMapClient
-              screens={visible.map((s: any) => ({
-                id: s.id, name: s.name, status: s.status,
-                latitude: s.effectiveLatitude ?? s.latitude,
-                longitude: s.effectiveLongitude ?? s.longitude,
-                address: s.effectiveAddress ?? s.address,
-                geoSource: s.geoSource,
-                lastPingAt: s.lastPingAt,
-                lastCacheReport: s.lastCacheReport,
-                screenGroupId: s.screenGroupId ?? null,
-                screenGroupName: s.screenGroup?.name ?? null,
-              }))}
-              groups={groups}
-            />
-          </div>
+        renderMap={(visible, navigation) => (
+          <ScreenLocationAtlas screens={visible} rows={navigation.rows} groups={groups}
+            logoUrl={branding?.logoUrl ?? null} onOpenScreen={navigation.onOpenScreen} onList={navigation.onList} />
         )}
         floorSlot={<FloorPlansView embedded />}
         connectSlot={

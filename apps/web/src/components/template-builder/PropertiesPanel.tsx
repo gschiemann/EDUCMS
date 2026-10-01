@@ -4404,9 +4404,9 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       const currentMs = cfg.intervalMs || cfg.rotateMs || (cfg.intervalSec ? cfg.intervalSec * 1000 : 5000);
       const currentSec = Math.max(1, Math.round(currentMs / 1000));
       fields.push(<TextField key="title" label="Caption" value={cfg.title || ''} placeholder="Photo Gallery" onChange={(v) => setField({ title: v })} />);
-      fields.push(<TextField key="intervalSec" label="Show each photo for (seconds)" value={String(currentSec)} placeholder="5" onChange={(v) => { const s = Math.max(1, parseInt(v) || 5); const ms = s * 1000; setField({ intervalSec: s, intervalMs: ms, rotateMs: ms }); }} />);
-      fields.push(<SelectField key="transition" label="Transition between photos" value={cfg.transition || 'fade'} options={[['fade','Fade'],['slide-left','Slide left'],['slide-right','Slide right'],['slide-up','Slide up'],['zoom','Zoom in'],['cut','Cut (no animation)']]} onChange={(v) => setField({ transition: v })} />);
-      fields.push(<SelectField key="fitMode" label="Image fit" value={cfg.fitMode || 'cover'} options={[['cover','Fill (crop)'],['contain','Fit (no crop)']]} onChange={(v) => setField({ fitMode: v })} />);
+      fields.push(<PhotoPlaybackFields key="playback" seconds={String(currentSec)} transition={cfg.transition || 'fade'} fit={cfg.fitMode || 'cover'}
+        onSeconds={(v) => { const seconds = Math.max(1, parseInt(v) || 5); setField({ intervalSec: seconds, intervalMs: seconds * 1000, rotateMs: seconds * 1000 }); }}
+        onTransition={(transition) => setField({ transition })} onFit={(fitMode) => setField({ fitMode })} />);
       // v2 PHOTO_* widgets read `c.photos: { url, caption }[]` — mirror
       // the asset url list into the structured shape so v2 carousel
       // variants render the same images plus an empty caption (which
@@ -8064,7 +8064,8 @@ function ExternalHtmlTextEditor({
     if (Array.isArray(v)) return v.filter((x) => typeof x === 'string' && x.trim());
     if (nativeCarousels) {
       try {
-        return JSON.parse(discoveredFields?.find((f) => f.key === `media.${key}.slides`)?.defaultText || '[]') as string[];
+        const value = JSON.parse(textOverrides[`media.${key}.slides`] ?? discoveredFields?.find((f) => f.key === `media.${key}.slides`)?.defaultText ?? '[]');
+        return Array.isArray(value) ? value.filter((url): url is string => typeof url === 'string' && !!url.trim()) : [];
       } catch { return []; }
     }
     return [];
@@ -8160,6 +8161,7 @@ function ExternalHtmlTextEditor({
   const mediaSlotKeys = new Set<string>([
     ...discoveredImages.map((i) => i.key),
     ...discoveredVideos.map((v) => v.key),
+    ...(nativeCarousels ? discoveredImages.filter((img) => /\.qr$/.test(img.key)).map((img) => img.key.replace(/\.qr$/, '.url')) : []),
   ]);
 
   // Group by sectionKey so a 70-field template (QSR drive-thru) shows
@@ -8234,13 +8236,22 @@ function ExternalHtmlTextEditor({
     const next = { ...textOverrides };
     for (const [k, v] of Object.entries(patch)) {
       const dflt = cfgDefaults[k] ?? '';
-      if (!v || v === dflt) delete next[k];
+      if (v === dflt || (!v && !(nativeCarousels && /^media\..+\.alt$/.test(k)))) delete next[k];
       else next[k] = v;
     }
     setField({ textOverrides: Object.keys(next).length ? next : undefined });
   };
   const cfgVal = (k: string, fb = ''): string => (textOverrides[k] ?? cfgDefaults[k] ?? fb);
   const cfgOn = (k: string, fb = 'yes'): boolean => !BOARD_OFFISH.test(cfgVal(k, fb) || fb);
+  const nativeImageRotates = (key: string): boolean => {
+    if (!cfgOn('carousel.autoplay')) return false;
+    const mode = textOverrides[`media.${key}.mode`];
+    if (mode !== undefined) return mode === 'carousel';
+    // The adapter automatically rotates an uploaded list unless the operator
+    // explicitly selected single-image mode. Reflect that same rule here.
+    if (key in imageOverrides) return imageList(key).length > 1;
+    return cfgVal(`media.${key}.mode`, 'carousel') === 'carousel';
+  };
   const clockStyle: 'live12' | 'live24' | 'fixed' =
     /^(manual|static)$/i.test(cfgVal('clock.mode', 'live')) ? 'fixed'
       : BOARD_OFFISH.test(cfgVal('clock.hour12', 'yes')) ? 'live24' : 'live12';
@@ -8283,10 +8294,11 @@ function ExternalHtmlTextEditor({
   const setImageList = (key: string, list: string[]) => {
     const clean = list.map((x) => (x || '').trim()).filter(Boolean);
     const next = { ...imageOverrides };
-    if (clean.length === 0) delete next[key];
+    if (clean.length === 0 && !nativeCarousels) delete next[key];
+    else if (clean.length === 0) next[key] = [];
     else if (clean.length === 1) next[key] = clean[0];
     else next[key] = clean;
-    setField({ imageOverrides: Object.keys(next).length ? next : undefined });
+    setField({ imageOverrides: Object.keys(next).length ? next : undefined, ...(nativeCarousels ? { textOverrides: { ...textOverrides, [`media.${key}.slides`]: JSON.stringify(clean) } } : {}) });
   };
   const setVideoOverride = (key: string, value: string) => {
     const next = { ...videoOverrides };
@@ -8417,6 +8429,14 @@ function ExternalHtmlTextEditor({
           <div className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest border-b border-slate-200 pb-1">
             Images
           </div>
+      {nativeCarousels && hasCfg('carousel.intervalSeconds') && (
+        <div className="space-y-2 pb-3 border-b border-slate-200">
+          <div className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest border-b border-slate-200 pb-1">Photo playback</div>
+          <PhotoPlaybackFields seconds={cfgVal('carousel.intervalSeconds', '7')} transition={cfgVal('carousel.transition', 'fade')}
+            onSeconds={(value) => setCfgMany({ 'carousel.intervalSeconds': String(Math.max(1, parseInt(value) || 7)) })}
+            onTransition={(value) => setCfgMany({ 'carousel.transition': value })} />
+        </div>
+      )}
           {discoveredImages.map((img) => {
             // A QR slot (key contains "qr", e.g. scan.qr / product.qr) gets the
             // paste-a-URL → auto-generate control, plus the normal picker as a
@@ -8430,39 +8450,41 @@ function ExternalHtmlTextEditor({
                 onClickCapture={() => pingHighlight(img.key)}
                 className="space-y-2"
               >
-                {isQr && (
+                {isQr && !nativeCarousels && (
                   <QrUrlField
                     label={`${img.label} — from a link`}
                     value={imageList(img.key)[0] || ''}
                     onChange={(v) => setImageOverride(img.key, v)}
                   />
                 )}
-                <AssetPickerField
-                  label={isQr ? 'Or pick a QR image' : img.aspect ? `${img.label} (${img.aspect})` : img.label}
-                  kind="image"
-                  value={imageList(img.key)[0] || ''}
-                  onChange={(v) => setImageList(img.key, [v, ...imageList(img.key).slice(1)])}
-                />
-                {nativeCarousels && !isQr && (
+                {nativeCarousels && isQr ? (
+                  <TextField label="QR destination URL" value={textOverrides[img.key.replace(/\.qr$/, '.url')] ?? discoveredFields.find(field => field.key === img.key.replace(/\.qr$/, '.url'))?.defaultText ?? ''}
+                    onChange={(value) => { const key = img.key.replace(/\.qr$/, '.url'); setOverride(key, value, discoveredFields.find(field => field.key === key)?.defaultText ?? ''); }} />
+                ) : nativeCarousels && !/logo/i.test(img.key) ? (
                   <>
-                    <SettingSelect label="Playback" value={cfgVal(`media.${img.key}.mode`, imageList(img.key).length > 1 ? 'carousel' : 'single')} options={[['single', 'Single image'], ['carousel', 'Carousel']]} onChange={(v) => setCfgMany({ [`media.${img.key}.mode`]: v })} />
-                    <SettingSelect label="Fit" value={cfgVal(`media.${img.key}.fit`, '') || (img.key === 'home.plan' || /logo/.test(img.key) ? 'contain' : 'cover')} options={[['cover', 'Fill frame'], ['contain', 'Show whole image'], ['fill', 'Stretch']]} onChange={(v) => setCfgMany({ [`media.${img.key}.fit`]: v })} />
-                    <TextField label="Alternative text" value={cfgVal(`media.${img.key}.alt`, '')} onChange={(v) => setCfgMany({ [`media.${img.key}.alt`]: v })} />
-                    <SettingSelect label="Image focus" value={cfgVal(`media.${img.key}.position`, 'center')} options={[['center', 'Center'], ['left center', 'Left'], ['right center', 'Right'], ['center top', 'Top'], ['center bottom', 'Bottom']]} onChange={(v) => setCfgMany({ [`media.${img.key}.position`]: v })} />
-                    {imageList(img.key).length > 1 && imageList(img.key).map((_, index) => (
-                      <div key={`order-${index}`} className="flex items-center gap-2 text-xs">
-                        <span>Slide {index + 1}</span>
-                        <button type="button" disabled={index === 0} aria-label={`Move slide ${index + 1} earlier in ${img.label}`} onClick={() => { const urls = imageList(img.key).slice(); [urls[index - 1], urls[index]] = [urls[index], urls[index - 1]]; setImageList(img.key, urls); }} className="disabled:opacity-30">↑</button>
-                        <button type="button" disabled={index === imageList(img.key).length - 1} aria-label={`Move slide ${index + 1} later in ${img.label}`} onClick={() => { const urls = imageList(img.key).slice(); [urls[index + 1], urls[index]] = [urls[index], urls[index + 1]]; setImageList(img.key, urls); }} className="disabled:opacity-30">↓</button>
-                        <button type="button" aria-label={`Remove slide ${index + 1} from ${img.label}`} onClick={() => setImageList(img.key, imageList(img.key).filter((_, n) => n !== index))}>Remove</button>
-                      </div>
-                    ))}
+                    <AssetListPickerField label={img.label} kind="image" value={imageList(img.key)} onChange={(urls) => setImageList(img.key, urls)} />
+                    <SelectField label="Image fit" value={cfgVal(`media.${img.key}.fit`, '') || (img.key === 'home.plan' ? 'contain' : 'cover')}
+                      options={PHOTO_FIT_OPTIONS} onChange={(value) => setCfgMany({ [`media.${img.key}.fit`]: value })} />
+                    {imageList(img.key).length > 1 && <ToggleField label="Rotate photos" value={nativeImageRotates(img.key)} onChange={(rotate) => setCfgMany({ [`media.${img.key}.mode`]: rotate ? 'carousel' : 'single', ...(rotate ? { 'carousel.autoplay': 'yes' } : {}) })} />}
                   </>
+                ) : (
+                  <AssetPickerField
+                    label={isQr ? 'Or pick a QR image' : img.aspect ? `${img.label} (${img.aspect})` : img.label}
+                    kind="image" value={imageList(img.key)[0] || ''}
+                    onChange={(value) => setImageList(img.key, [value, ...imageList(img.key).slice(1)])} />
                 )}
+                {nativeCarousels && !isQr && <details className="text-[11px] text-slate-500">
+                  <summary className="cursor-pointer font-semibold">Advanced image settings</summary>
+                  <div className="mt-2 space-y-2">
+                    {/logo/i.test(img.key) && <SelectField label="Image fit" value={cfgVal(`media.${img.key}.fit`, '') || 'contain'} options={PHOTO_FIT_OPTIONS} onChange={(value) => setCfgMany({ [`media.${img.key}.fit`]: value })} />}
+                    <TextField label="Alt text (for screen readers)" value={cfgVal(`media.${img.key}.alt`, '')} onChange={(value) => setCfgMany({ [`media.${img.key}.alt`]: value })} />
+                    <SelectField label="Image focus" value={cfgVal(`media.${img.key}.position`, '')} options={[[ '', 'Template focus' ], [ 'center', 'Center' ], [ 'left center', 'Left' ], [ 'right center', 'Right' ], [ 'center top', 'Top' ], [ 'center bottom', 'Bottom' ]]} onChange={(value) => setCfgMany({ [`media.${img.key}.position`]: value })} />
+                  </div>
+                </details>}
                 {/* A slot takes a LIST if the operator wants one — the board
                     rotates through it. QR codes are excluded: a rotating QR is
                     a QR nobody can scan. */}
-                {!isQr && imageList(img.key).slice(1).map((url, i) => (
+                {!nativeCarousels && !isQr && imageList(img.key).slice(1).map((url, i) => (
                   <div key={`${img.key}-extra-${i}`} className="flex items-end gap-1.5">
                     <div className="flex-1 min-w-0">
                       <AssetPickerField
@@ -8486,7 +8508,7 @@ function ExternalHtmlTextEditor({
                     </button>
                   </div>
                 ))}
-                {!isQr && imageList(img.key).length > 0 && (
+                {!nativeCarousels && !isQr && imageList(img.key).length > 0 && (
                   <button
                     type="button"
                     onClick={() => setAddImageSlot(img.key)}
@@ -8540,16 +8562,15 @@ function ExternalHtmlTextEditor({
           )}
         </div>
       )}
-      {hasCfg('carousel.intervalSeconds') && (
+      {!nativeCarousels && hasCfg('carousel.intervalSeconds') && (
         <div className="rounded-xl border border-slate-200 bg-white/70 p-3 space-y-2">
           <div className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest border-b border-slate-200 pb-1">
             Slideshow
           </div>
           <SettingCheck label="Rotate slides automatically" checked={cfgOn('carousel.autoplay')} onChange={(on) => setCfgMany({ 'carousel.autoplay': on ? 'yes' : 'no' })} />
           <SettingNumber label="Seconds per slide" value={cfgVal('carousel.intervalSeconds', '6')} min={3} max={30} onChange={(v) => setCfgMany({ 'carousel.intervalSeconds': v })} />
-          {nativeCarousels && <SettingSelect label="Transition" value={cfgVal('carousel.transition', 'fade')} options={[['fade', 'Fade'], ['slide-left', 'Slide left'], ['slide-right', 'Slide right'], ['slide-up', 'Slide up'], ['zoom', 'Zoom'], ['cut', 'Cut']]} onChange={(v) => setCfgMany({ 'carousel.transition': v })} />}
-          {!nativeCarousels && <SettingSelect label="Start on slide" value={cfgVal('carousel.initialIndex', '1')} options={[['1', 'Slide 1'], ['2', 'Slide 2'], ['3', 'Slide 3']]} onChange={(v) => setCfgMany({ 'carousel.initialIndex': v })} />}
-          {!nativeCarousels && <SettingCheck label="Show the slide buttons" checked={cfgOn('carousel.showProgress')} onChange={(on) => setCfgMany({ 'carousel.showProgress': on ? 'yes' : 'no' })} />}
+          <SettingSelect label="Start on slide" value={cfgVal('carousel.initialIndex', '1')} options={[['1', 'Slide 1'], ['2', 'Slide 2'], ['3', 'Slide 3']]} onChange={(v) => setCfgMany({ 'carousel.initialIndex': v })} />
+          <SettingCheck label="Show the slide buttons" checked={cfgOn('carousel.showProgress')} onChange={(on) => setCfgMany({ 'carousel.showProgress': on ? 'yes' : 'no' })} />
           {hasCfg('media.fit') && (
             <>
               <SettingSelect label="Photo crop" value={cfgVal('media.fit', 'cover')} options={[['cover', 'Fill the frame (crops edges)'], ['contain', 'Show the whole photo (may letterbox)']]} onChange={(v) => setCfgMany({ 'media.fit': v })} />
@@ -10931,6 +10952,21 @@ function AssetPickerField({ label, value, onChange, kind }: { label: string; val
       )}
     </div>
   );
+}
+
+const PHOTO_TRANSITION_OPTIONS: [string, string][] = [['fade', 'Fade'], ['slide-left', 'Slide left'], ['slide-right', 'Slide right'], ['slide-up', 'Slide up'], ['zoom', 'Zoom in'], ['cut', 'Cut (no animation)']];
+const PHOTO_FIT_OPTIONS: [string, string][] = [['cover', 'Fill (crop)'], ['contain', 'Fit (no crop)']];
+
+/** The same playback controls for native widgets and packaged template galleries. */
+function PhotoPlaybackFields({ seconds, transition, fit, onSeconds, onTransition, onFit }: {
+  seconds: string; transition: string; fit?: string;
+  onSeconds: (value: string) => void; onTransition: (value: string) => void; onFit?: (value: string) => void;
+}) {
+  return <div className="space-y-2">
+    <TextField label="Show each photo for (seconds)" value={seconds} placeholder="5" onChange={onSeconds} />
+    <SelectField label="Transition between photos" value={transition} options={PHOTO_TRANSITION_OPTIONS} onChange={onTransition} />
+    {fit !== undefined && onFit && <SelectField label="Image fit" value={fit} options={PHOTO_FIT_OPTIONS} onChange={onFit} />}
+  </div>;
 }
 
 // Multi-asset list — used by IMAGE_CAROUSEL and VIDEO_CAROUSEL.

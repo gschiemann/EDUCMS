@@ -168,7 +168,7 @@ export interface ScreenOperationsV3Props {
    * Map view. Receives the SAME rows the list would show, so search and the
    * filter chip mean the same thing on both surfaces (§5).
    */
-  renderMap?: (screens: OpsScreen[]) => React.ReactNode;
+  renderMap?: (screens: OpsScreen[], navigation: { rows: OpsRow[]; onOpenScreen: (id: string) => void; onList: () => void }) => React.ReactNode;
   floorSlot?: React.ReactNode;
   /**
    * The device-first "Connect a screen" how-to. Opened from the (i) beside
@@ -741,7 +741,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
           </div>
 
           {/* Map view — the same rows the list would show, as pins (§5). */}
-          {viewMode === 'map' && renderMap?.(visibleGroups.flatMap((g) => g.rows.map((r) => r.screen)))}
+          {viewMode === 'map' && renderMap?.(visibleGroups.flatMap((g) => g.rows.map((r) => r.screen)), { rows: visibleGroups.flatMap(g => g.rows), onOpenScreen: id => { setSelectedId(id); setDrawerTab('overview'); }, onList: () => onViewMode('list') })}
 
           {/* ─── The fleet (§8) ──────────────────────────────── */}
           {viewMode === 'list' && (

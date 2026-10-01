@@ -994,6 +994,53 @@ export class TemplatesController {
     return { byTemplate };
   }
 
+  /** Fresh deletion impact; this route reads only and never attempts a delete. */
+  @Get(':id/usage')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+  )
+  async deletionUsage(
+    @Request() req: { user: { tenantId: string } },
+    @Param('id') id: string,
+  ) {
+    const tenantId = req.user.tenantId as string;
+    const template = await this.prisma.client.template.findFirst({
+      where: { id, tenantId },
+      select: { id: true },
+    });
+    if (!template)
+      throw new HttpException(
+        { code: 'TEMPLATE_NOT_FOUND', message: 'Not found' },
+        HttpStatus.NOT_FOUND,
+      );
+    const refs = await this.prisma.client.playlist.findMany({
+      where: { templateId: id, tenantId },
+      select: { id: true, name: true },
+    });
+    const ids = refs.map((p) => p.id);
+    const { byPlaylist } = await this.playlistReach(ids);
+    const screens = new Set<string>();
+    const locations = new Set<string>();
+    for (const reach of byPlaylist.values()) {
+      for (const screen of reach.screens) screens.add(screen);
+      for (const location of reach.tenants) locations.add(location);
+    }
+    return {
+      playlists: refs.slice(0, 6),
+      total: refs.length,
+      screensReached: screens.size,
+      locations: locations.size,
+      protectedEmergency:
+        ids.length > 0 &&
+        !!(await playlistEmergencyUse(
+          this.prisma.client as unknown as EmergencyUseDb,
+          ids,
+        )),
+    };
+  }
+
   @Get(':id')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
   async get(@Request() req: any, @Param('id') id: string) {

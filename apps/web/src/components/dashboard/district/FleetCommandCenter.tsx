@@ -64,7 +64,7 @@ import { filterScorecards } from './districtRollup';
 import { ProofDrawer, timeAgo, type ProofDrawerScreen } from './ProofDrawer';
 import { computeUptime, type DisplayScheduleRow } from './uptime';
 import { UptimeCard } from './UptimeCard';
-import { ScreenMapClient } from '@/components/screens/ScreenMapClient';
+import { LocationMapSurface, LocationMapFilters } from '@/components/screens/LocationMapSurface';
 // Type-only — erased at compile time, so the dashboard bundle still reaches
 // Leaflet exclusively through the ssr:false dynamic import above.
 import type { LocationPin } from '@/components/screens/ScreenMap';
@@ -200,14 +200,6 @@ const ATLAS_FILTERS: Array<{ key: AtlasFilterKey; label: string; dot?: string; I
   { key: 'push', label: 'Push issues', dot: '#f43f5e' },
   { key: 'emergency', label: 'Emergency gaps', Icon: ShieldAlert },
 ];
-
-/**
- * Fit padding for the 372 px selected-location panel floating over the map's
- * right edge, plus the filter chips above it. Module-level because the map's
- * auto-fit holds a ResizeObserver keyed on this prop's identity — a fresh
- * array literal every render would tear it down and rebuild it every poll.
- */
-const ATLAS_FIT_PAD_BOTTOM_RIGHT: [number, number] = [400, 130];
 
 /** Does this location belong in the chip's slice? */
 function matchesAtlasFilter(row: LocationRow, key: AtlasFilterKey): boolean {
@@ -1580,8 +1572,9 @@ export function FleetCommandCenter({
                   the whole difference between "a map feature" and an atlas.
                   Panels sit above Leaflet's panes (z-[1000] > .leaflet-pane's
                   400) and the map keeps panning behind them. */}
-              <div className="relative rounded-2xl border border-slate-200 overflow-hidden bg-slate-100">
-                {mappableTotal === 0 ? (
+              <LocationMapSurface
+                locationPins={locationPins} total={mappableTotal} onLocationClick={selectLocation} panTo={panTarget}
+                empty={(
                   <div className="h-[60vh] min-h-[380px] flex flex-col items-center justify-center text-center px-6">
                     <MapPin className="w-8 h-8 text-slate-300" aria-hidden />
                     <p className="mt-3 text-sm font-bold text-slate-600">No addresses on the map yet.</p>
@@ -1590,58 +1583,12 @@ export function FleetCommandCenter({
                       gets its own pin here, with its logo and its screen health.
                     </p>
                   </div>
-                ) : (
-                  <ScreenMapClient
-                    screens={[]}
-                    renderSidebar={false}
-                    locationPins={locationPins}
-                    onLocationClick={selectLocation}
-                    panTo={panTarget}
-                    // The mock gives the map most of the page. min-h keeps it
-                    // usable on a short laptop; max-h stops a 4K monitor
-                    // turning it into a mile of tiles.
-                    heightClass="h-[72vh] min-h-[520px] max-h-[900px]"
-                    fitPadBottomRight={ATLAS_FIT_PAD_BOTTOM_RIGHT}
-                  />
                 )}
+              >
 
                 {/* ── Filter chips, floating top-right (mock parity) ──── */}
                 {mappableTotal > 0 && (
-                  <div
-                    className="absolute top-3 right-3 z-[1000] flex items-center gap-1.5 flex-wrap justify-end max-w-[calc(100%-1.5rem)]"
-                    role="radiogroup"
-                    aria-label="Filter locations on the map"
-                  >
-                    {ATLAS_FILTERS.map(({ key, label, dot, Icon }) => {
-                      const on = atlasFilter === key;
-                      return (
-                        <button
-                          key={key}
-                          type="button"
-                          role="radio"
-                          aria-checked={on}
-                          onClick={() => setAtlasFilter(key)}
-                          className="inline-flex items-center gap-1.5 rounded-full pl-3 pr-3.5 py-1.5 text-[11.5px] font-bold bg-white shadow-[0_2px_10px_rgba(15,23,42,0.12)] border"
-                          style={
-                            on
-                              ? {
-                                  borderColor: 'var(--brand-primary, #4f46e5)',
-                                  color: 'var(--brand-primary, #4f46e5)',
-                                  boxShadow: '0 2px 10px rgba(15,23,42,0.12), 0 0 0 1px var(--brand-primary, #4f46e5) inset',
-                                }
-                              : { borderColor: '#e2e8f0', color: '#334155' }
-                          }
-                        >
-                          {Icon
-                            ? <Icon className="w-3.5 h-3.5 shrink-0 text-rose-500" aria-hidden />
-                            : dot
-                              ? <span className="w-2 h-2 rounded-full shrink-0" style={{ background: dot }} aria-hidden />
-                              : null}
-                          {label}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <LocationMapFilters filters={ATLAS_FILTERS} selected={atlasFilter} onChange={setAtlasFilter} />
                 )}
 
                 {/* No pins matched the chip. The map stays put and stays
@@ -1667,7 +1614,7 @@ export function FleetCommandCenter({
                     // action footer ends up underneath it — verification
                     // caught exactly that: "Open screen" was on screen and
                     // un-clickable.
-                    className={`absolute top-3 left-3 z-[1000] w-[304px] max-w-[calc(100%-1.5rem)] ${
+                    className={`absolute top-[60px] lg:top-3 left-3 z-[1000] w-[304px] max-w-[calc(100%-1.5rem)] ${
                       unmappedLocations.length > 0 ? 'max-h-[calc(100%-14rem)]' : 'max-h-[calc(100%-1.5rem)]'
                     } bg-white rounded-2xl border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.14)] overflow-hidden flex flex-col`}
                     role="group"
@@ -1802,7 +1749,7 @@ export function FleetCommandCenter({
                   const mine = screensByTenant.get(selectedLocation.tenantId) ?? [];
                   return (
                     <div
-                      className="absolute top-[60px] right-3 z-[1000] w-[372px] max-w-[calc(100%-1.5rem)] max-h-[calc(100%-4.75rem)] bg-white rounded-2xl border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.16)] overflow-hidden flex flex-col"
+                      className="absolute top-[60px] lg:top-[60px] right-3 z-[1000] w-[372px] max-w-[calc(100%-1.5rem)] max-h-[calc(100%-4.75rem)] bg-white rounded-2xl border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.16)] overflow-hidden flex flex-col"
                       role="group"
                       aria-label={`${selectedLocation.name} details`}
                     >
@@ -2019,7 +1966,7 @@ export function FleetCommandCenter({
                     truths so nobody reads a green ring as proof of a picture. */}
                 {mappableTotal > 0 && (
                   <div
-                    className="absolute bottom-3 right-3 z-[1000] max-w-[calc(100%-1.5rem)] bg-white rounded-2xl border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.14)] px-4 py-3"
+                    className="hidden lg:block absolute bottom-3 right-3 z-[1000] max-w-[calc(100%-1.5rem)] bg-white rounded-2xl border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.14)] px-4 py-3"
                     role="group"
                     aria-label="Online ≠ current"
                   >
@@ -2041,7 +1988,7 @@ export function FleetCommandCenter({
                     </div>
                   </div>
                 )}
-              </div>
+              </LocationMapSurface>
             </div>
           ) : (
             <>

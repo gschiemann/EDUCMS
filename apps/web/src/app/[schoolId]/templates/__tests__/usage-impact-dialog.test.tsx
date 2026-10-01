@@ -1,17 +1,4 @@
-/**
- * Templates Gallery — the in-use impact dialog (Calm v1 §11.3, revised
- * 2026-09-28).
- *
- * §11.3 made this Review-only. Greg reversed that: "just give a warning and
- * let me delete it and then keep the review button but take me to the
- * playlist" — so the dialog is the warning, it can delete, and Review goes to
- * the PLAYLIST that uses the layout. What is kept from §11.3: nothing is
- * pre-armed (the dialog opens only after the server said the layout is in use
- * and where), the focused action is the one that changes nothing, and every
- * figure printed comes from the server's 409 — when the server doesn't send
- * one the dialog says nothing about it rather than printing a zero it can't
- * prove.
- */
+/** Fresh usage is shown in the first confirmation; errors remain inside it. */
 
 import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
 import { TemplateUsageImpactDialog } from '../page';
@@ -143,5 +130,43 @@ describe('§11.3 — it states the server\'s reach, and only the server\'s reach
     const dialog = screen.getByRole('alertdialog');
     expect(dialog).toHaveAttribute('aria-modal', 'true');
     expect(dialog).toHaveAccessibleName(/Club Welcome/);
+  });
+});
+
+
+describe('the first confirmation checks before enabling Delete', () => {
+  it('keeps Delete disabled while usage is loading and still permits Cancel', () => {
+    mount({ playlists: [], inUse: false }, {}, { checking: true });
+    expect(screen.getByText('Checking where this template is used…')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Delete template' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: 'Review' })).not.toBeInTheDocument();
+  });
+
+  it('unused templates need only Cancel and Delete', () => {
+    mount({ playlists: [], total: 0, inUse: false });
+    expect(screen.getByRole('button', { name: 'Delete template' })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: 'Review' })).not.toBeInTheDocument();
+  });
+
+  it('reports total usage even when playlist names are capped', () => {
+    mount({ total: 8 });
+    expect(screen.getByText('8 playlists · 3 screens · 1 location')).toBeInTheDocument();
+    expect(screen.getByText('And 6 more playlists.')).toBeInTheDocument();
+  });
+
+  it('protected content cannot be deleted', () => {
+    mount({ protectedEmergency: true });
+    expect(screen.getByText(/used by emergency content and can’t be deleted here/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Delete anyway' })).toBeDisabled();
+  });
+
+  it('a failed usage read offers an inline retry and cannot arm Delete', () => {
+    const onRetry = jest.fn();
+    mount({ playlists: [], inUse: false }, {}, { error: 'Usage unavailable', canDelete: false, onRetry });
+    expect(screen.getByRole('alert')).toHaveTextContent('Usage unavailable');
+    expect(screen.getByRole('button', { name: 'Delete template' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Check again' }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
   });
 });

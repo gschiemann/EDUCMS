@@ -18,6 +18,7 @@ import { render, screen as rtl, act } from '@testing-library/react';
 // ── Everything the page reaches for, stubbed at the boundary ────────
 jest.mock('next/navigation', () => ({ useParams: () => ({ schoolId: 'demo' }) }));
 jest.mock('qrcode', () => ({ toDataURL: jest.fn(async () => 'data:image/png;base64,') }));
+jest.mock('@/lib/branding-context', () => ({ useBranding: () => ({ logoUrl: 'https://cdn.example/brookfield.png' }) }));
 jest.mock('@/lib/api-client', () => ({ apiFetch: jest.fn(async () => ({})) }));
 let mockRole = 'SCHOOL_ADMIN';
 jest.mock('@/store/ui-store', () => ({
@@ -44,7 +45,7 @@ jest.mock('@/hooks/use-api', () => ({
     isLoading: false, isError: false,
   }),
 }));
-jest.mock('@/components/screens/ScreenMapClient', () => ({ ScreenMapClient: () => <div /> }));
+jest.mock('@/components/screens/ScreenLocationAtlas', () => ({ ScreenLocationAtlas: (props: any) => <div data-testid="screen-map" data-logo={props.logoUrl ?? ''} /> }));
 jest.mock('@/components/screens/ReturnToFleetBanner', () => ({ ReturnToFleetBanner: () => null }));
 jest.mock('@/components/screens/ScreenLocationModal', () => ({ ScreenLocationModal: () => null }));
 jest.mock('@/components/screens/FloorPlansView', () => ({ FloorPlansView: () => <div /> }));
@@ -58,7 +59,7 @@ const mockV3Props: any[] = [];
 jest.mock('@/components/screens/v3/ScreenOperationsV3', () => ({
   ScreenOperationsV3: (props: any) => {
     mockV3Props.push(props);
-    return <div data-testid="v3-screens" />;
+    return <div data-testid="v3-screens">{props.renderMap([], { rows: [], onOpenScreen: jest.fn(), onList: jest.fn() })}</div>;
   },
 }));
 
@@ -95,6 +96,7 @@ describe('Screens page', () => {
     installStorage(null);
     render(<ScreensPage />);
     expect(rtl.getByTestId('v3-screens')).toBeInTheDocument();
+    expect(rtl.getByTestId('screen-map')).toHaveAttribute('data-logo', 'https://cdn.example/brookfield.png');
   });
 
   it('consumes ?screen= and ?filter= for v3, leaving a clean URL', () => {

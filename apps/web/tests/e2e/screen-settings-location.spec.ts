@@ -1,18 +1,27 @@
 import { test, expect, type Page } from '@playwright/test';
 
 const ADDRESS = '100 Market Street, Sacramento, CA';
-const GROUP = { id: 'group-one', name: 'Allora Neighborhood', address: ADDRESS };
+const GROUP = { id: 'group-one', name: 'Allora Neighborhood', address: ADDRESS, latitude: 38.58, longitude: -121.49 };
+const LOGO = 'http://localhost:3000/test-brookfield-logo.svg';
 const USER = { id: 'screen-settings-user', email: 'screens@example.com', role: 'SCHOOL_ADMIN', tenantId: 'e2e-settings', canTriggerPanic: false };
 const token = `e30.${Buffer.from(JSON.stringify({ sub: USER.id, exp: 4102444800 })).toString('base64url')}.test`;
 const SCREENS = ['DH43', 'L55VEC'].map((name, i) => ({
   id: name, name, status: 'ONLINE', screenGroupId: GROUP.id, screenGroup: GROUP,
-  address: null, effectiveAddress: ADDRESS, geoSource: 'group',
+  address: null, effectiveAddress: ADDRESS, geoSource: 'group', effectiveLatitude: GROUP.latitude, effectiveLongitude: GROUP.longitude,
   osInfo: 'Android 11', hardwareModel: 'goodview-ep6n',
   playerVersion: i === 0 ? '1.1.17' : '1.1.20', managerVersion: '1.0.24',
   lastPingAt: new Date().toISOString(), authState: 'PROVEN',
 }));
 
 async function openScreens(page: Page) {
+  await page.route('**/test-brookfield-logo.svg', route => route.fulfill({
+    contentType: 'image/svg+xml',
+    body: '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="#063051"/><text x="20" y="80" fill="white" font-size="85" font-family="sans-serif">B</text></svg>',
+  }));
+  // Keep map verification independent of the public tile service.
+  await page.route('https://tile.openstreetmap.org/**', route => route.fulfill({
+    contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jWZkAAAAASUVORK5CYII=', 'base64'),
+  }));
   await page.addInitScript(({ user, token }) => {
     sessionStorage.setItem('edu_cms_token', token);
     sessionStorage.setItem('edu_cms_user', JSON.stringify(user));
@@ -21,7 +30,7 @@ async function openScreens(page: Page) {
   await page.route(/^http:\/\/api\.invalid\//, async route => {
     const path = new URL(route.request().url()).pathname.replace('/api/v1', '');
     const bodies: Record<string, unknown> = {
-      '/auth/me': USER, '/users/me': USER,
+      '/auth/me': USER, '/users/me': USER, '/branding/me': { logoUrl: LOGO },
       '/tenants': [{ id: USER.tenantId, name: 'Screen settings', slug: USER.tenantId }],
       '/tenants/accessible': [{ id: USER.tenantId, name: 'Screen settings', slug: USER.tenantId }],
       '/screens': SCREENS,
@@ -40,7 +49,7 @@ async function openScreens(page: Page) {
     return route.fulfill({ contentType: 'application/json', headers, body: JSON.stringify(body) });
   });
   await page.goto('/e2e-settings/screens');
-  await expect(page.getByRole('button', { name: 'DH43', exact: true })).toBeVisible();
+  await expect(page.locator(':text-is("DH43"):visible').first()).toBeVisible();
 }
 
 test('group headers show saved addresses and menus distinguish Set from Edit', async ({ page }) => {
@@ -95,4 +104,59 @@ test('Settings inherits the group address and offers one clear update action', a
   await dialog.getByRole('tab', { name: 'Settings', exact: true }).click();
   await expect(dialog.getByText('Player app v1.1.20 — up to date')).toBeVisible();
   await expect(dialog.getByTestId('apk-push')).toHaveCount(0);
+});
+
+
+test('Map uses account branding for a shared group location and opens its equipment', async ({ page }, info) => {
+  await openScreens(page);
+  await page.getByRole('tab', { name: 'Map', exact: true }).click();
+  const pin = page.getByRole('img', { name: /^Allora Neighborhood —/ });
+  await expect(pin).toBeVisible();
+  await expect(pin).toHaveCount(1); // two devices at one address, one physical location
+  const logo = pin.locator('img.venueos-locpin-logo');
+  await expect(logo).toHaveAttribute('src', LOGO);
+  await expect.poll(() => logo.evaluate(img => (img as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+  await pin.click();
+  // Same floating navigation, filters and zoom controls as the corporate dashboard.
+  await expect(page.getByRole('group', { name: 'Location navigation' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Zoom in', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Zoom out', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Fit all locations', exact: true })).toBeVisible();
+  await expect(page.getByRole('group', { name: 'Allora Neighborhood details' })).toBeVisible();
+  await expect(page.getByText('DH43', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('L55VEC', { exact: true }).first()).toBeVisible();
+  await expect.poll(() => logo.evaluate(img => (img as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+  await page.screenshot({ path: info.outputPath('screen-map-logo.png'), fullPage: true });
+  await logo.evaluate(img => img.dispatchEvent(new Event('error')));
+  await expect(pin.locator('img')).toHaveCount(0);
+  await expect(pin.locator('.venueos-locpin-initials')).toHaveText('AN');
+});
+
+test('map navigation filters keep the map visible and location equipment opens screen details', async ({ page }) => {
+  await openScreens(page);
+  await page.getByRole('tab', { name: 'Map', exact: true }).click();
+  await page.getByRole('radio', { name: 'Offline', exact: true }).click();
+  await expect(page.getByText('No locations match this filter.')).toBeVisible();
+  await expect(page.getByTestId('location-map-surface').locator('.leaflet-container')).toBeVisible();
+  await page.getByRole('radio', { name: 'All', exact: true }).click();
+  await page.getByRole('group', { name: 'Location navigation' }).getByRole('button', { name: 'Allora Neighborhood', exact: true }).click();
+  await page.getByRole('group', { name: 'Allora Neighborhood details' }).getByRole('button', { name: /^DH43/ }).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.getByRole('dialog')).toContainText('DH43');
+});
+
+test('mobile map location navigation stays inside the viewport', async ({ page }, info) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openScreens(page);
+  await page.getByRole('tab', { name: 'Map', exact: true }).click();
+  await page.getByRole('group', { name: 'Location navigation' }).getByRole('button', { name: 'Allora Neighborhood', exact: true }).click();
+  const details = page.getByRole('group', { name: 'Allora Neighborhood details' });
+  await expect(details).toBeVisible();
+  const box = await details.boundingBox();
+  const filters = await page.getByRole('radiogroup', { name: 'Filter locations on the map' }).boundingBox();
+  expect(filters!.y + filters!.height).toBeLessThanOrEqual(box!.y);
+  expect(box!.x).toBeGreaterThanOrEqual(0);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(390);
+  await expect(details.getByRole('button', { name: /^DH43/ })).toBeVisible();
+  await page.screenshot({ path: info.outputPath('mobile-location-map.png'), fullPage: true });
 });

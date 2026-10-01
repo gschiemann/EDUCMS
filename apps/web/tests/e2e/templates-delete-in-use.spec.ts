@@ -1,13 +1,6 @@
 /**
- * Deleting a template that a playlist uses (Greg, 2026-09-28): "it says its in
- * use and asks to review but then takes me into the template and not the
- * playlist where its in use ... just give a warning and let me delete it and
- * then keep the review button but take me to the playlist".
- *
- * Real dashboard route, every API call mocked, Chromium and WebKit (the
- * operator runs Safari). The server's answer is the real contract: DELETE
- * /templates/:id → 409 TEMPLATE_IN_USE naming the playlists, and the same
- * DELETE with ?force=true → 200.
+ * One delete confirmation: GET fresh usage before enabling Delete, then one
+ * informed DELETE. Real dashboard with mocked APIs, Chromium and WebKit.
  */
 import { test, expect, type Page, type Route } from '@playwright/test';
 
@@ -41,7 +34,15 @@ const USED_BY = [
   { id: 'pl-desk', name: 'Front Desk' },
 ];
 
-async function open(page: Page, calls: string[]) {
+type Scenario = {
+  unused?: boolean;
+  protected?: boolean;
+  usageFailsOnce?: boolean;
+  usageGate?: Promise<void>;
+  concurrentUse?: boolean;
+  deleteFails?: boolean;
+};
+async function open(page: Page, calls: string[], scenario: Scenario = {}) {
   const cors = (route: Route, fn: () => unknown) =>
     route.request().method() === 'OPTIONS' ? route.fulfill({ status: 204, headers: CORS, body: '' }) : fn();
   const json = (route: Route, body: unknown, status = 200) =>
@@ -60,11 +61,26 @@ async function open(page: Page, calls: string[]) {
   await page.route('**/api/v1/assets**', (r) => json(r, []));
   await page.route(/\/api\/v1\/templates(\?.*)?$/, (r) => json(r, deleted ? [] : [TEMPLATE]));
   await page.route('**/api/v1/templates/usage-summary', (r) => json(r, {}));
+  let usageReads = 0;
+  await page.route('**/api/v1/templates/tpl-club/usage', async (r) => {
+    if (r.request().method() === 'OPTIONS') return json(r, {});
+    usageReads += 1;
+    await scenario.usageGate;
+    if (scenario.usageFailsOnce && usageReads === 1) return json(r, { message: 'Usage unavailable' }, 500);
+    return json(r, {
+      playlists: scenario.unused ? [] : USED_BY,
+      total: scenario.unused ? 0 : 2,
+      screensReached: scenario.unused ? 0 : 3,
+      locations: scenario.unused ? 0 : 1,
+      protectedEmergency: scenario.protected ?? false,
+    });
+  });
   await page.route(/\/api\/v1\/templates\/tpl-club(\?.*)?$/, (r) => {
     if (r.request().method() !== 'DELETE') return json(r, TEMPLATE);
     const force = new URL(r.request().url()).searchParams.get('force');
     calls.push(force ? `DELETE force=${force}` : 'DELETE');
-    if (force !== 'true') {
+    if (scenario.deleteFails) return json(r, { message: 'Could not delete this template.' }, 500);
+    if ((!scenario.unused || scenario.concurrentUse) && force !== 'true') {
       return json(r, {
         code: 'TEMPLATE_IN_USE',
         message: 'This layout is assigned to 2 playlists (“Morning Loop”, “Front Desk”). Deleting removes it from them — they fall back to the next layout.',
@@ -94,13 +110,12 @@ async function open(page: Page, calls: string[]) {
 async function chooseDelete(page: Page) {
   await page.getByRole('button', { name: /more actions for club welcome/i }).first().click();
   await page.getByRole('menuitem', { name: 'Delete template' }).click();
-  const confirm = page.getByRole('dialog');
-  await confirm.getByRole('button', { name: 'Delete template' }).click();
   await page.getByRole('alertdialog').waitFor({ state: 'visible', timeout: 10_000 });
+  await expect(page.getByRole('dialog')).toHaveCount(0);
 }
 
 test.describe('deleting a template that playlists use', () => {
-  test('warns, names the playlists, and Review goes to THE PLAYLIST — not the template', async ({ page }) => {
+  test('warns, names the playlists, and Review goes to THE PLAYLIST — not the template', async ({ page }, info) => {
     test.setTimeout(120_000);
     const calls: string[] = [];
     await open(page, calls);
@@ -112,9 +127,10 @@ test.describe('deleting a template that playlists use', () => {
     await expect(dialog.getByRole('button', { name: 'Review' })).toBeVisible();
     await expect(dialog.getByRole('button', { name: 'Delete anyway' })).toBeVisible();
 
+    await page.screenshot({ path: info.outputPath('template-one-confirmation.png'), fullPage: true });
     await dialog.getByRole('button', { name: 'Review' }).click();
     await expect(page).toHaveURL(new RegExp(`/${SCHOOL_ID}/playlists/pl-morning`));
-    expect(calls).toEqual(['DELETE']); // the warning changed nothing
+    expect(calls).toEqual([]); // checking and Review change nothing
   });
 
   test('a listed playlist opens itself', async ({ page }) => {
@@ -132,7 +148,7 @@ test.describe('deleting a template that playlists use', () => {
     await chooseDelete(page);
     await page.getByRole('alertdialog').getByRole('button', { name: 'Delete anyway' }).click();
     await expect(page.getByRole('alertdialog')).toHaveCount(0);
-    await expect.poll(() => calls, { timeout: 10_000 }).toEqual(['DELETE', 'DELETE force=true']);
+    await expect.poll(() => calls, { timeout: 10_000 }).toEqual(['DELETE force=true']);
     await expect(page.getByRole('button', { name: /more actions for club welcome/i })).toHaveCount(0);
   });
 
@@ -143,7 +159,96 @@ test.describe('deleting a template that playlists use', () => {
     await chooseDelete(page);
     await page.getByRole('alertdialog').getByRole('button', { name: 'Cancel' }).click();
     await expect(page.getByRole('alertdialog')).toHaveCount(0);
-    expect(calls).toEqual(['DELETE']);
+    expect(calls).toEqual([]);
     await expect(page.getByRole('button', { name: /more actions for club welcome/i }).first()).toBeVisible();
+  });
+});
+
+
+test.describe('first confirmation usage and failure handling', () => {
+  test.setTimeout(120_000);
+
+  test('unused template deletes with one confirmation and no force', async ({ page }) => {
+    const calls: string[] = [];
+    await open(page, calls, { unused: true });
+    await chooseDelete(page);
+    const dialog = page.getByRole('alertdialog');
+    await expect(dialog.getByRole('button', { name: 'Delete template' })).toBeEnabled();
+    expect(calls).toEqual([]);
+    await dialog.getByRole('button', { name: 'Delete template' }).click();
+    await expect(dialog).toHaveCount(0);
+    expect(calls).toEqual(['DELETE']);
+  });
+
+  test('usage check keeps Delete disabled; cancelling ignores the late answer', async ({ page }) => {
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const calls: string[] = [];
+    await open(page, calls, { usageGate: gate });
+    await chooseDelete(page);
+    const dialog = page.getByRole('alertdialog');
+    await expect(dialog).toContainText('Checking where this template is used');
+    await expect(dialog.getByRole('button', { name: 'Delete template' })).toBeDisabled();
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    const response = page.waitForResponse('**/templates/tpl-club/usage');
+    release();
+    await response;
+    await expect(dialog).toHaveCount(0);
+    expect(calls).toEqual([]);
+  });
+
+  test('usage read failure retries inside the same dialog', async ({ page }) => {
+    const calls: string[] = [];
+    await open(page, calls, { usageFailsOnce: true });
+    await chooseDelete(page);
+    const dialog = page.getByRole('alertdialog');
+    await expect(dialog.getByRole('alert')).toContainText('Usage unavailable');
+    await expect(dialog.getByRole('button', { name: 'Delete template' })).toBeDisabled();
+    await dialog.evaluate(el => el.setAttribute('data-original-dialog', 'yes'));
+    await dialog.getByRole('button', { name: 'Check again' }).click();
+    await expect(dialog.getByRole('button', { name: 'Delete anyway' })).toBeEnabled();
+    await expect(dialog).toHaveAttribute('data-original-dialog', 'yes');
+    expect(calls).toEqual([]);
+  });
+
+  test('protected use is disclosed before the first Delete click', async ({ page }) => {
+    const calls: string[] = [];
+    await open(page, calls, { protected: true });
+    await chooseDelete(page);
+    const dialog = page.getByRole('alertdialog');
+    await expect(dialog).toContainText('used by emergency content');
+    await expect(dialog.getByRole('button', { name: 'Delete anyway' })).toBeDisabled();
+    expect(calls).toEqual([]);
+  });
+
+  test('usage added after the read updates the existing warning without silently forcing', async ({ page }) => {
+    const calls: string[] = [];
+    await open(page, calls, { unused: true, concurrentUse: true });
+    await chooseDelete(page);
+    const dialog = page.getByRole('alertdialog');
+    await expect(dialog.getByRole('button', { name: 'Delete template' })).toBeEnabled();
+    await dialog.evaluate(el => el.setAttribute('data-original-dialog', 'yes'));
+    await dialog.getByRole('button', { name: 'Delete template' }).click();
+    await expect(dialog).toContainText('Usage changed while this confirmation was open');
+    await expect(dialog).toHaveAttribute('data-original-dialog', 'yes');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    expect(calls).toEqual(['DELETE']);
+    await dialog.getByRole('button', { name: 'Delete anyway' }).click();
+    await expect(dialog).toHaveCount(0);
+    expect(calls).toEqual(['DELETE', 'DELETE force=true']);
+  });
+
+  test('delete failures stay inside the same confirmation', async ({ page }) => {
+    const calls: string[] = [];
+    await open(page, calls, { deleteFails: true });
+    await chooseDelete(page);
+    const dialog = page.getByRole('alertdialog');
+    await expect(dialog.getByRole('button', { name: 'Delete anyway' })).toBeEnabled();
+    await dialog.evaluate(el => el.setAttribute('data-original-dialog', 'yes'));
+    await dialog.getByRole('button', { name: 'Delete anyway' }).click();
+    await expect(dialog.getByRole('alert')).toContainText('Could not delete');
+    await expect(dialog).toHaveAttribute('data-original-dialog', 'yes');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    expect(calls).toEqual(['DELETE force=true']);
   });
 });
