@@ -22,7 +22,7 @@ const catalog = JSON.parse(
   ),
 ) as Array<{ id: string; url: string; orientation: string }>;
 
-async function openBuilder(page: Page) {
+async function openBuilder(page: Page, portrait = false) {
   const user = {
     id: "homebuilder-user",
     email: "homebuilder@example.com",
@@ -35,8 +35,8 @@ async function openBuilder(page: Page) {
     name: "Model tour",
     tenantId: SCHOOL,
     isSystem: false,
-    screenWidth: 3840,
-    screenHeight: 2160,
+    screenWidth: portrait ? 2160 : 3840,
+    screenHeight: portrait ? 3840 : 2160,
     bgColor: "#fff",
     scenes: [],
     zones: [
@@ -65,6 +65,8 @@ async function openBuilder(page: Page) {
       headers: CORS,
       body: JSON.stringify(body),
     });
+  let savedConfig: Record<string, unknown> | null = null;
+  const currentTemplate = () => ({ ...tpl, zones: tpl.zones.map(z => ({ ...z, defaultConfig: savedConfig ?? z.defaultConfig })) });
   await page.route(/^http:\/\/api\.invalid\//, (route) => {
     if (route.request().method() === "OPTIONS")
       return route.fulfill({ status: 204, headers: CORS });
@@ -72,13 +74,18 @@ async function openBuilder(page: Page) {
       "/api/v1",
       "",
     );
+    if (endpoint === "/templates/homebuilder-board/zones" && route.request().method() === "PUT") {
+      const payload = route.request().postDataJSON();
+      savedConfig = payload.zones[0].defaultConfig;
+      return json(route, currentTemplate());
+    }
     const body =
       endpoint === "/auth/me"
         ? user
         : endpoint === "/branding/me"
           ? {}
           : endpoint.startsWith("/templates/homebuilder-board")
-            ? tpl
+            ? currentTemplate()
             : endpoint === "/templates"
               ? [tpl]
               : endpoint.startsWith("/tenants")
@@ -100,7 +107,7 @@ async function openBuilder(page: Page) {
     .contentFrame();
   await expect(
     frame.locator('[data-imgslot="tour.image"] img').last(),
-  ).toBeVisible();
+  ).toBeVisible({ timeout: 20_000 });
   await frame.locator('[data-imgslot="tour.image"]').click();
   await expect(
     page
@@ -197,6 +204,45 @@ test("standard controls change the actual template preview, including reorder, f
     )
     .toBe("none");
 });
+
+for (const portrait of [false, true]) {
+  test("canvas text moves, deletes, restores and saves independently of its scene (" + (portrait ? "portrait" : "landscape") + ")", async ({ page }, info) => {
+    const frame = await openBuilder(page, portrait);
+    await expect(frame.locator("html")).toHaveAttribute("data-educms-layout-edit", "");
+    const caption = frame.locator('[data-field="tour.photoCaption"]');
+    await expect(caption).toBeVisible();
+    const before = (await caption.boundingBox())!;
+    await page.mouse.move(before.x + before.width / 2, before.y + before.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(before.x + before.width / 2 + 40, before.y + before.height / 2 - 15, { steps: 12 });
+    await page.mouse.up();
+    await expect.poll(async () => Math.round((await caption.boundingBox())!.x - before.x)).toBeGreaterThan(35);
+    await expect.poll(async () => Math.round((await caption.boundingBox())!.y - before.y)).toBeLessThan(-10);
+    const bar = page.locator('[data-builder-bottom-bar]');
+    await bar.getByRole('button', { name: 'Undo (Ctrl/⌘+Z)', exact: true }).click();
+    await expect.poll(async () => Math.abs((await caption.boundingBox())!.x - before.x)).toBeLessThan(2);
+    await bar.getByRole('button', { name: 'Redo (Ctrl/⌘+Y)', exact: true }).click();
+    await expect.poll(async () => (await caption.boundingBox())!.x - before.x).toBeGreaterThan(35);
+    await caption.click();
+    await bar.getByRole('button', { name: 'Delete text element', exact: true }).click();
+    await expect(caption).not.toBeVisible();
+    await expect(frame.locator('.stage')).toHaveCount(1);
+    await expect(frame.locator('[data-field="tour.title"]')).toBeVisible();
+    const saving = page.waitForRequest(r => r.url().endsWith('/templates/homebuilder-board/zones') && r.method() === 'PUT');
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    const payload = (await saving).postDataJSON();
+    expect(payload.zones).toHaveLength(1);
+    expect(payload.zones[0].defaultConfig._styles['tour.photoCaption']).toMatchObject({ hidden: true, offsetX: expect.any(Number), offsetY: expect.any(Number) });
+    await expect(page.getByRole('button', { name: 'Saved · Put on a screen', exact: true })).toBeVisible();
+    await page.reload();
+    await expect(page.locator('[data-edit-field="tour.photoCaption"]')).toBeVisible({ timeout: 20_000 });
+    await expect(caption).not.toBeVisible();
+    await page.locator('[data-edit-field="tour.photoCaption"]').getByRole('button', { name: /^Restore / }).click();
+    await expect(caption).toBeVisible();
+    await expect.poll(async () => (await caption.boundingBox())!.x - before.x).toBeGreaterThan(35);
+    await page.screenshot({ path: info.outputPath('canvas-text-moved-' + (portrait ? 'portrait' : 'landscape') + '.png'), fullPage: true });
+  });
+}
 
 test("all newly installed designs paint photos, logos and floor plans in the real opaque-origin sandbox", async ({
   page,

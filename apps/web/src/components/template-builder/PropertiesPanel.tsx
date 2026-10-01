@@ -7427,6 +7427,8 @@ type FieldStyle = {
   strikethrough?: boolean;
   /** `true` hides the targeted field (`display:none`); false/absent shows it. */
   hidden?: boolean;
+  offsetX?: number;
+  offsetY?: number;
 };
 type FieldStyleMap = Record<string, FieldStyle>;
 
@@ -8706,6 +8708,7 @@ function ExternalHtmlTextEditor({
                       <RotateCcw className="w-3 h-3" /> Reset
                     </button>
                   )}
+                  {(!nativeCarousels || !f.key.startsWith("theme.")) && (
                   <button
                     type="button"
                     onClick={(e) => { e.stopPropagation(); toggleFieldHidden(f.key); }}
@@ -8714,13 +8717,18 @@ function ExternalHtmlTextEditor({
                         ? 'text-amber-700 bg-amber-100 hover:bg-amber-200'
                         : 'text-slate-400 hover:bg-slate-100 hover:text-slate-600'
                     }`}
-                    title={isHidden ? 'Hidden on the board — click to show' : 'Hide this element on the board'}
-                    aria-label={isHidden ? `Show ${label}` : `Hide ${label}`}
+                    title={isHidden ? 'Removed from the board — click to restore' : 'Remove this text element from the board'}
+                    aria-label={isHidden ? `Restore ${label}` : nativeCarousels ? `Delete ${label}` : `Hide ${label}`}
                     aria-pressed={isHidden}
                   >
                     {isHidden ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                    {isHidden ? 'Hidden' : ''}
+                    {isHidden ? 'Restore' : nativeCarousels ? 'Delete' : ''}
                   </button>
+                  )}
+                  {nativeCarousels && (styles[f.key]?.offsetX || styles[f.key]?.offsetY) ? (
+                    <button type="button" onClick={() => setStylesMap({ ...styles, [f.key]: { ...styles[f.key], offsetX: 0, offsetY: 0 } })}
+                      className="text-[10px] font-medium px-1.5 py-0.5 rounded-md text-slate-500 hover:bg-slate-100" aria-label={`Reset ${label} position`}>Reset position</button>
+                  ) : null}
                 </div>
                 {f.isShortish ? (
                   <StyleableField

@@ -547,7 +547,7 @@ function DeliveryAndContent({ schoolId }: { schoolId: string }) {
         <h4 className="text-[12px] font-medium text-slate-500 mb-2">
           {t('settings.cc.emergency.content.criticalGroup')}
         </h4>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,260px),1fr))] gap-3">
           {CRITICAL_TYPES.map(({ kind, accent }) => (
             <PanicContentEditor
               key={kind}
@@ -561,7 +561,7 @@ function DeliveryAndContent({ schoolId }: { schoolId: string }) {
         <h4 className="text-[12px] font-medium text-slate-500 mt-5 mb-2">
           {t('settings.cc.emergency.content.awarenessGroup')}
         </h4>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,260px),1fr))] gap-3">
           {AWARENESS_TYPES.map(({ kind, accent }) => (
             <PanicContentEditor
               key={kind}

@@ -84,6 +84,7 @@ export default function ScreensPage() {
 
 
   // ── deep links, read once and stripped (§7 + the dashboard's link) ──
+  const [deepLinkGroupId, setDeepLinkGroupId] = useState<string | null>(null);
   const [deepLinkScreenId, setDeepLinkScreenId] = useState<string | null>(null);
   const [deepLinkFilter, setDeepLinkFilter] = useState<FilterKey | null>(null);
   const [viewMode, setViewMode] = useState<ScreensViewMode>('list');
@@ -92,6 +93,8 @@ export default function ScreensPage() {
     try {
       const sp = new URLSearchParams(window.location.search);
       const id = sp.get('screen');
+      const groupId = sp.get('group');
+      if (groupId) { setDeepLinkGroupId(groupId); setViewMode('list'); }
       // `?filter=attention` — how a dashboard exception link asks this page to
       // land on the problem set (handoff §7). Tell the lead before dashboard
       // links adopt it; nothing links here with it yet.
@@ -102,12 +105,13 @@ export default function ScreensPage() {
         setDeepLinkFilter(f);
       }
       if (id) setDeepLinkScreenId(id);
-      if (!id && !f && !v) return;
+      if (!id && !f && !v && !groupId) return;
       // The screen id is consumed by whichever surface renders; strip only
       // what we've taken so back/refresh never re-opens a drawer.
       sp.delete('filter');
       sp.delete('view');
       sp.delete('screen');
+      sp.delete('group');
       const qs = sp.toString();
       window.history.replaceState(null, '', window.location.pathname + (qs ? `?${qs}` : ''));
     } catch { /* malformed URL — the list still renders */ }
@@ -242,6 +246,7 @@ export default function ScreensPage() {
         canControl={canControlDisplay}
         viewMode={viewMode}
         onViewMode={setViewMode}
+        deepLinkGroupId={deepLinkGroupId}
         deepLinkScreenId={deepLinkScreenId}
         deepLinkFilter={deepLinkFilter}
         onPairScreen={(groupId) => {

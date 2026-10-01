@@ -245,7 +245,10 @@ function buildLocationIcon(pin: LocationPin): L.DivIcon {
       width: '32px',
       height: '32px',
       objectFit: 'contain',
-      borderRadius: '9999px',
+      // The round status disc must not clip square/tall artwork.
+      // Keep the logo rectangular and give its full silhouette breathing room.
+      padding: '4px',
+      boxSizing: 'border-box',
       background: '#fff',
       display: 'block',
       maxWidth: 'none',
@@ -381,6 +384,20 @@ function LocationPinLayer({
 
 /** Marker → tone, for the cluster bubble's worst-case color. Module scope. */
 const locationToneMap = new WeakMap<L.Marker, LocationPin['tone']>();
+
+/** Leaflet focuses its container on mouse-down. In the dashboard's scroll
+ * pane, focus() scrolls the entire map before mouse-up and loses the pin click.
+ * Focus first without scrolling, while retaining Leaflet's keyboard controls. */
+function PreserveMapClickPosition() {
+  const map = useMap();
+  useEffect(() => {
+    const container = map.getContainer();
+    const focus = () => container.focus({ preventScroll: true });
+    container.addEventListener('mousedown', focus, true);
+    return () => container.removeEventListener('mousedown', focus, true);
+  }, [map]);
+  return null;
+}
 
 /**
  * Run one fit against the CURRENT container size.
@@ -1263,6 +1280,7 @@ export function ScreenMap({
             )}
             <FlyToTarget target={flyTarget} nonce={flyNonce} />
             <PanTo target={panTo ?? null} />
+            <PreserveMapClickPosition />
             {onMapClick && <MapClickHandler onMapClick={onMapClick} />}
           </MapContainer>
         </div>

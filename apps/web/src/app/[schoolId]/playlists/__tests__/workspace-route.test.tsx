@@ -126,6 +126,16 @@ describe('the detail view is a real address (§6.8)', () => {
     expect(screen.getByTestId('delivery-table')).toBeInTheDocument();
   });
 
+  it('a template handoff opens the screen picker over Content and consumes its intent', () => {
+    setUrl('?addScreens=1&keep=yes');
+    renderWorkspace();
+    expect(screen.getByRole('tab', { name: 'Content' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('dialog', { name: 'Add screens' })).toBeInTheDocument();
+    expect(window.location.search).toBe('?keep=yes');
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('dialog', { name: 'Add screens' })).not.toBeInTheDocument();
+  });
+
   it('direct navigation to ?tab=schedule opens Schedule', () => {
     setUrl('?tab=schedule');
     renderWorkspace();

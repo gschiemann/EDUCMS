@@ -110,8 +110,7 @@ export default function PlaylistsPage() {
   }, []);
 
   // §5 — Templates' "Put on a screen" express lane (?publishPlaylist=<id>).
-  // v1 sends it straight to that playlist's Publishing tab, which is the same
-  // destination with a durable URL.
+  // Keep older handoff links working: load its Content workspace and picker.
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const sp = new URLSearchParams(window.location.search);
@@ -120,7 +119,7 @@ export default function PlaylistsPage() {
     sp.delete('publishPlaylist');
     const qs = sp.toString();
     window.history.replaceState(null, '', window.location.pathname + (qs ? `?${qs}` : ''));
-    router.push(`/${schoolId}/playlists/${wantId}?tab=schedule`);
+    router.push(`/${schoolId}/playlists/${encodeURIComponent(wantId)}?addScreens=1`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

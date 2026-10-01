@@ -148,3 +148,26 @@ test.describe('Settings → Emergency', () => {
     expect(overflow).toBeLessThanOrEqual(1);
   });
 });
+
+for (const width of [1280, 1440, 390]) {
+  test('orientation tabs stay within every alert content card at ' + width, async ({ page }, info) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await mockApi(page, { vertical: 'GYM', emergencyEnabled: true, locked: false });
+    await page.goto(PAGE_URL);
+    const tabs = page.getByRole('tablist', { name: 'Emergency content orientation' });
+    await expect(tabs).toHaveCount(6);
+    for (const tablist of await tabs.all()) {
+      await tablist.scrollIntoViewIfNeeded();
+      const contained = await tablist.evaluate(el => {
+        const card = el.closest('[data-alert-content-card]')!.getBoundingClientRect();
+        return el.scrollWidth <= el.clientWidth && [el, ...Array.from(el.children)].every(child => {
+          const box = child.getBoundingClientRect();
+          return child.scrollWidth <= child.clientWidth && box.left >= card.left && box.right <= card.right && box.top >= card.top && box.bottom <= card.bottom;
+        });
+      });
+      expect(contained).toBe(true);
+      await expect(tablist.getByRole('tab', { name: /Portrait/ })).toBeVisible();
+    }
+    await page.screenshot({ path: info.outputPath('alert-orientation-contained-' + width + '.png'), fullPage: true });
+  });
+}

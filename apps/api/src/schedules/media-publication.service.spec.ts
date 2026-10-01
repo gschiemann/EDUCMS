@@ -83,6 +83,32 @@ describe('media publication gate', () => {
     expect(h.tx.auditLog.create).toHaveBeenCalled();
   });
 
+  it.each([[1182, 1330], [1330, 1182]])('publishes an already-compressed %i×%i image to the three-panel LED canvas', async (width, height) => {
+    // Field failure: neither side exceeds 1920, but the short side exceeds
+    // 1080. A square upload cap used to skip resizing and fail publication.
+    const source = await sharp({ create: { width, height, channels: 3, background: '#225588' } })
+      .png({ compressionLevel: 9, palette: true }).toBuffer();
+    const fileUrl = 'https://example.com/storage/v1/object/public/assets/tenant/poster.png';
+    const h = setup({ id: 'asset-poster', mimeType: 'image/png', fileUrl, fileSize: source.length,
+      processingMeta: { processedDimensions: { w: width, h: height } } });
+    h.storage.extractPath.mockReturnValue('tenant/poster.png');
+    h.storage.download.mockResolvedValue(source);
+    h.prisma.client.screen.findMany.mockResolvedValue([{ resolution: '1920×1080', canvasW: 960, canvasH: 1080 }]);
+    expect(await h.service.prepare('tenant', 'playlist-1', 'poster-1')).toBe(false);
+    const rendition = h.tx.asset.updateMany.mock.calls[0][0].data.processingMeta.renditions['1080p'];
+    expect(Math.max(rendition.width, rendition.height)).toBeLessThanOrEqual(1920);
+    expect(Math.min(rendition.width, rendition.height)).toBeLessThanOrEqual(1080);
+    expect(rendition.width / rendition.height).toBeCloseTo(width / height, 2);
+    const uploaded = h.storage.upload.mock.calls[0][1] as Buffer;
+    const decoded = await sharp(uploaded).metadata();
+    expect(decoded.width).toBe(rendition.width);
+    expect(decoded.height).toBe(rendition.height);
+    // Keep the original asset and the pinned canvas; only add an audited copy.
+    expect(h.tx.asset.updateMany.mock.calls[0][0].data.fileUrl).toBeUndefined();
+    expect(h.tx.screen.updateMany).not.toHaveBeenCalled();
+    expect(h.tx.auditLog.create).toHaveBeenCalled();
+  });
+
   it('keeps the old schedule active and reports a failed encode', async () => {
     const h = setup();
     h.prisma.client.schedule.findMany.mockResolvedValueOnce([{

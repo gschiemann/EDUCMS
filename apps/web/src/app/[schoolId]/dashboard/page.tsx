@@ -919,7 +919,7 @@ export default function DashboardPage() {
                 return (
                   <Link
                     key={site.id}
-                    href={`${tenantBase}/screens`}
+                    href={`${tenantBase}/screens?group=${encodeURIComponent(site.id === '_unassigned' ? '__ungrouped__' : site.id)}`}
                     className="px-5 py-3 grid grid-cols-12 gap-3 items-center hover:bg-slate-50 transition-colors group"
                   >
                     <div className="col-span-5 min-w-0 flex items-center gap-2.5">

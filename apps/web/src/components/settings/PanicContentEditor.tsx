@@ -139,14 +139,14 @@ export function PanicContentEditor({ kind, label, accent, hint }: Props) {
   const anyConfigured = landscapeCount > 0 || portraitCount > 0;
 
   return (
-    <div className={`p-3 rounded-xl border ${a.border} ${a.bg} flex flex-col gap-2`}>
+    <div data-alert-content-card={kind} className={`min-w-0 p-3 rounded-xl border ${a.border} ${a.bg} flex flex-col gap-2`}>
       <div>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className={`w-3 h-3 rounded-full ${a.dot}`} />
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <div className={`w-3 h-3 shrink-0 rounded-full ${a.dot}`} />
             <h3 className="text-sm font-bold text-slate-800">{label}</h3>
           </div>
-          <span className={`text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 ${anyConfigured ? 'text-emerald-600' : 'text-amber-600'}`}>
+          <span className={`text-[10px] font-bold uppercase tracking-wider shrink-0 flex items-center gap-1 ${anyConfigured ? 'text-emerald-600' : 'text-amber-600'}`}>
             {anyConfigured ? <ShieldCheck className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
             {anyConfigured ? `${landscapeCount}L · ${portraitCount}P` : 'No content'}
           </span>
@@ -159,34 +159,34 @@ export function PanicContentEditor({ kind, label, accent, hint }: Props) {
           emergency trigger time (and falls back to the other if
           only one is configured), so this toggle is just an authoring
           switch; operators don't choose "which one to send." */}
-      <div className="inline-flex bg-white border border-slate-200 rounded-lg p-0.5 text-[11px] self-start" role="tablist" aria-label="Emergency content orientation">
+      <div className="grid grid-cols-2 w-full min-w-0 bg-white border border-slate-200 rounded-lg p-0.5 text-[10px]" role="tablist" aria-label="Emergency content orientation">
         <button
           type="button"
           role="tab"
           aria-selected={orientation === 'landscape'}
           onClick={() => setOrientation('landscape')}
-          className={`px-2.5 py-1 rounded-md flex items-center gap-1.5 font-bold transition-colors ${
+          className={`min-w-0 px-1.5 py-1 rounded-md flex items-center justify-center gap-1 font-bold transition-colors ${
             orientation === 'landscape'
               ? 'bg-slate-800 text-white'
               : 'text-slate-500 hover:text-slate-800'
           }`}
         >
-          <Monitor className="w-3 h-3" /> Landscape
-          <span className={`ml-1 px-1 rounded ${landscapeCount > 0 ? (orientation === 'landscape' ? 'bg-white/20' : 'bg-emerald-100 text-emerald-700') : 'bg-slate-100 text-slate-400'}`}>{landscapeCount}</span>
+          <Monitor className="w-3 h-3 shrink-0" /><span className="min-w-0 truncate">Landscape</span>
+          <span className={`shrink-0 px-1 rounded ${landscapeCount > 0 ? (orientation === 'landscape' ? 'bg-white/20' : 'bg-emerald-100 text-emerald-700') : 'bg-slate-100 text-slate-400'}`}>{landscapeCount}</span>
         </button>
         <button
           type="button"
           role="tab"
           aria-selected={orientation === 'portrait'}
           onClick={() => setOrientation('portrait')}
-          className={`px-2.5 py-1 rounded-md flex items-center gap-1.5 font-bold transition-colors ${
+          className={`min-w-0 px-1.5 py-1 rounded-md flex items-center justify-center gap-1 font-bold transition-colors ${
             orientation === 'portrait'
               ? 'bg-slate-800 text-white'
               : 'text-slate-500 hover:text-slate-800'
           }`}
         >
-          <Smartphone className="w-3 h-3" /> Portrait
-          <span className={`ml-1 px-1 rounded ${portraitCount > 0 ? (orientation === 'portrait' ? 'bg-white/20' : 'bg-emerald-100 text-emerald-700') : 'bg-slate-100 text-slate-400'}`}>{portraitCount}</span>
+          <Smartphone className="w-3 h-3 shrink-0" /><span className="min-w-0 truncate">Portrait</span>
+          <span className={`shrink-0 px-1 rounded ${portraitCount > 0 ? (orientation === 'portrait' ? 'bg-white/20' : 'bg-emerald-100 text-emerald-700') : 'bg-slate-100 text-slate-400'}`}>{portraitCount}</span>
         </button>
       </div>
 

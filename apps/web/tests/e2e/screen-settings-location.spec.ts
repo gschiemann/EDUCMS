@@ -13,7 +13,7 @@ const SCREENS = ['DH43', 'L55VEC'].map((name, i) => ({
   lastPingAt: new Date().toISOString(), authState: 'PROVEN',
 }));
 
-async function openScreens(page: Page) {
+async function openScreens(page: Page, suffix = "") {
   await page.route('**/test-brookfield-logo.svg', route => route.fulfill({
     contentType: 'image/svg+xml',
     body: '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="#063051"/><text x="20" y="80" fill="white" font-size="85" font-family="sans-serif">B</text></svg>',
@@ -48,7 +48,7 @@ async function openScreens(page: Page) {
           : bodies[path] ?? [];
     return route.fulfill({ contentType: 'application/json', headers, body: JSON.stringify(body) });
   });
-  await page.goto('/e2e-settings/screens');
+  await page.goto('/e2e-settings/screens' + suffix);
   await expect(page.locator(':text-is("DH43"):visible').first()).toBeVisible();
 }
 
@@ -116,7 +116,19 @@ test('Map uses account branding for a shared group location and opens its equipm
   const logo = pin.locator('img.venueos-locpin-logo');
   await expect(logo).toHaveAttribute('src', LOGO);
   await expect.poll(() => logo.evaluate(img => (img as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+  // The map performs its initial fit after its CSS/container size settles.
+  let previous = '', stable = 0;
+  await expect.poll(async () => {
+    const b = await pin.boundingBox();
+    const current = b ? [b.x, b.y, b.width, b.height].map(Math.round).join(',') : '';
+    stable = current && current === previous ? stable + 1 : 0; previous = current;
+    return stable >= 3;
+  }, { timeout: 10_000, intervals: [100] }).toBe(true);
+  const before = await pin.boundingBox();
   await pin.click();
+  const after = await pin.boundingBox();
+  // Focusing Leaflet must not scroll the dashboard pane during the click.
+  expect(Math.abs(after!.y - before!.y)).toBeLessThan(2);
   // Same floating navigation, filters and zoom controls as the corporate dashboard.
   await expect(page.getByRole('group', { name: 'Location navigation' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Zoom in', exact: true })).toBeVisible();
@@ -160,3 +172,26 @@ test('mobile map location navigation stays inside the viewport', async ({ page }
   await expect(details.getByRole('button', { name: /^DH43/ })).toBeVisible();
   await page.screenshot({ path: info.outputPath('mobile-location-map.png'), fullPage: true });
 });
+
+for (const width of [1440, 390]) {
+  test('dashboard group links expand the exact group at viewport ' + width, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1000 });
+    if (width === 1440) {
+      await openScreens(page);
+      await page.goto('/e2e-settings/dashboard');
+      const site = page.getByRole('link', { name: /^Allora Neighborhood/ });
+      await expect(site).toHaveAttribute('href', '/e2e-settings/screens?group=group-one');
+      await site.click();
+    } else {
+      // Mobile has a separate compact dashboard without a Sites table. The
+      // same shared deep link must still open its responsive group list.
+      await openScreens(page, '?group=group-one');
+    }
+    const group = page.locator('[data-screen-group="group-one"]:visible');
+    await expect(group).toBeVisible();
+    await expect(group.getByRole('button', { expanded: true }).first()).toBeVisible();
+    await expect(group.getByText('DH43', { exact: true })).toBeVisible();
+    await expect.poll(() => group.evaluate(el => { const box = el.getBoundingClientRect(); return box.top < innerHeight && box.bottom > 0; })).toBe(true);
+    await expect(page).not.toHaveURL(/group=/);
+  });
+}

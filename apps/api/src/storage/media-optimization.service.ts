@@ -157,6 +157,7 @@ export class MediaOptimizationService {
     mimeType: string,
     ext: string,
     maxDimension = UPLOAD_IMAGE_MAX_DIM,
+    maxShortDimension = maxDimension,
   ): Promise<OptimizedMedia> {
     const passthrough = (): OptimizedMedia => ({
       buffer,
@@ -177,18 +178,23 @@ export class MediaOptimizationService {
       const origH = typeof meta.height === 'number' ? meta.height : undefined;
       const originalDimensions = origW && origH ? { w: origW, h: origH } : undefined;
 
-      // Only resize when the longest dimension is over the cap; otherwise
-      // we just re-encode (still strips EXIF, still re-compresses).
+      // Uploads cap both sides equally. Playback copies also bound the short
+      // side: 1182×1330 fits a 1920px square but not a 1080×1920 panel.
       const needsResize =
         typeof origW === 'number' &&
         typeof origH === 'number' &&
-        Math.max(origW, origH) > maxDimension;
+        (Math.max(origW, origH) > maxDimension ||
+          Math.min(origW, origH) > maxShortDimension);
 
       let pipeline = sharp(buffer, { failOn: 'none' }).rotate();
       if (needsResize) {
+        // rotate() bakes EXIF into pixels before resize, so use the resulting
+        // orientation for the rectangle (orientations 5–8 swap the axes).
+        const swapsAxes = typeof meta.orientation === 'number' && meta.orientation >= 5;
+        const portrait = swapsAxes ? origW! > origH! : origH! > origW!;
         pipeline = pipeline.resize({
-          width: maxDimension,
-          height: maxDimension,
+          width: portrait ? maxShortDimension : maxDimension,
+          height: portrait ? maxDimension : maxShortDimension,
           fit: 'inside',
           withoutEnlargement: true,
         });

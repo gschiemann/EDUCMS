@@ -153,10 +153,10 @@ describe('§5 — the ?newPlaylist=1 contract', () => {
 
 // ─────────────────────────────────────────────────────────────────────
 describe('§5 — Templates’ ?publishPlaylist= express lane', () => {
-  it('lands on that playlist’s Schedule tab, with a durable URL', () => {
+  it('opens that playlist’s Content workspace and screen picker', () => {
     setUrl('?publishPlaylist=p1');
     render(<PlaylistsPage />);
-    expect(push).toHaveBeenCalledWith('/demo/playlists/p1?tab=schedule');
+    expect(push).toHaveBeenCalledWith('/demo/playlists/p1?addScreens=1');
     expect(window.location.search).toBe('');
   });
 });

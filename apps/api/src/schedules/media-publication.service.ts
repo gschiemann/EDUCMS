@@ -162,9 +162,10 @@ export class MediaPublicationService implements OnModuleInit, OnModuleDestroy {
     const actual = await sharp(source).metadata();
     if (actual.width && actual.height && Math.max(actual.width, actual.height) <= 1920 &&
         Math.min(actual.width, actual.height) <= 1080) return;
-    const result = await this.mediaOpt.optimizeImageForUpload(source, asset.mimeType, extname(path), 1920);
+    const result = await this.mediaOpt.optimizeImageForUpload(source, asset.mimeType, extname(path), 1920, 1080);
     if (!result.optimized || !result.processedDimensions ||
-        Math.max(result.processedDimensions.w, result.processedDimensions.h) > 1920) {
+        Math.max(result.processedDimensions.w, result.processedDimensions.h) > 1920 ||
+        Math.min(result.processedDimensions.w, result.processedDimensions.h) > 1080) {
       throw new Error('The 1080p image copy could not be prepared. Publishing was not started.');
     }
     const outputPath = `${tenantId}/optimized/renditions/${randomUUID()}${result.ext}`;

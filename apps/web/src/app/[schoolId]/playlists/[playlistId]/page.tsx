@@ -161,6 +161,17 @@ export default function PlaylistWorkspacePage() {
   const groups = useMemo(() => ((groupsQuery.data as OpsGroupRef[] | undefined) ?? []), [groupsQuery.data]);
 
   const playlist = useMemo(() => playlists.find((p) => p.id === playlistId), [playlists, playlistId]);
+  // Template “Put on a screen” opens Content with the existing screen picker.
+  // Consume once after the actual playlist and signed-in user have loaded.
+  useEffect(() => {
+    if (!playlist || !currentUser || typeof window === 'undefined') return;
+    const sp = new URLSearchParams(window.location.search);
+    if (sp.get('addScreens') !== '1') return;
+    sp.delete('addScreens');
+    const qs = sp.toString();
+    window.history.replaceState(null, '', window.location.pathname + (qs ? `?${qs}` : ''));
+    if (!isViewer && !playlist.isProtected && !playlist.isEmergency) setAddScreensOpen(true);
+  }, [playlist, currentUser, isViewer]);
   const mySchedules = useMemo(
     () => schedules.filter((s) => s.playlistId === playlistId),
     [schedules, playlistId],

@@ -187,6 +187,8 @@ export interface ScreenOperationsV3Props {
   buildPreviewHref: (screen: OpsScreen) => string;
   /** One-shot deep link: open THIS screen's drawer (`?screen=<id>`). */
   deepLinkScreenId?: string | null;
+  /** Dashboard site row: expand and scroll to this group after data arrives. */
+  deepLinkGroupId?: string | null;
   /** One-shot deep link: preselect a filter chip (`?filter=attention`). */
   deepLinkFilter?: FilterKey | null;
   /** Pinned clock — tests and the design harness inject a fixed instant. */
@@ -232,7 +234,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
     isLoading, isError, onRetry, canControl, viewMode, onViewMode,
     renderMap, floorSlot, connectSlot, onPairScreen, onSetScreenLocation, onSetGroupLocation, onOpenDisplaySchedule,
     onChanged, buildPreviewHref,
-    deepLinkScreenId, deepLinkFilter,
+    deepLinkScreenId, deepLinkFilter, deepLinkGroupId,
   } = props;
   // One clock read per render. No timer is added: the page's existing 10s
   // fleet poll is what advances these ages (mobile-perf standard).
@@ -411,6 +413,30 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
       .map((g) => ({ ...g, rows: g.rows.filter((r) => matchesFilter(r, filter) && matchesQuery(r, normalized)) }))
       .filter((g) => g.rows.length > 0);
   }, [ops.groups, filtering, filter, normalized]);
+
+  const groupLinkApplied = useRef<string | null>(null);
+  const groupLinkScroll = useRef<string | null>(null);
+  useEffect(() => {
+    if (!deepLinkGroupId || groupLinkApplied.current === deepLinkGroupId || isLoading || isError) return;
+    if (!ops.groups.some(g => g.id === deepLinkGroupId) && !groups.some(g => g.id === deepLinkGroupId)) return;
+    groupLinkApplied.current = deepLinkGroupId;
+    groupLinkScroll.current = deepLinkGroupId;
+    setQuery(''); setFilter('all');
+    setManualExpand(m => ({ ...m, [deepLinkGroupId]: true }));
+    if (viewMode !== 'list') onViewMode('list');
+  }, [deepLinkGroupId, isLoading, isError, ops.groups, groups, viewMode, onViewMode]);
+  useEffect(() => {
+    if (!groupLinkScroll.current || viewMode !== 'list') return;
+    const frame = requestAnimationFrame(() => {
+      const el = Array.from(document.querySelectorAll<HTMLElement>('[data-screen-group]'))
+        .find(node => node.dataset.screenGroup === groupLinkScroll.current && node.getClientRects().length > 0);
+      if (!el) return;
+      el.scrollIntoView({ block: 'center', behavior: 'auto' });
+      el.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
+      groupLinkScroll.current = null;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [viewMode, visibleGroups, manualExpand]);
 
   const visibleCount = visibleGroups.reduce((n, g) => n + g.rows.length, 0);
   const selectedRow = selectedId ? ops.rows.find((r) => r.screen.id === selectedId) ?? null : null;
@@ -817,7 +843,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                       ? new Date(g.lastContactMs).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', second: '2-digit' })
                       : '—';
                     return (
-                      <section key={g.id} id={`screen-group-${g.id}`} aria-labelledby={`screen-group-${g.id}-name`} className={GROUP_CARD_CLASS}>
+                      <section key={g.id} data-screen-group={g.id} id={`screen-group-${g.id}`} aria-labelledby={`screen-group-${g.id}-name`} className={GROUP_CARD_CLASS}>
                         {/* ── Group bar ── */}
                         <div style={GROUP_ROW_STYLE} className="flex items-center gap-3 px-5 py-2.5">
                           <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -1044,7 +1070,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                     );
                   })}
                   {emptyGroups.map((g) => (
-                    <section key={g.id} id={`screen-group-${g.id}`} aria-labelledby={`screen-group-${g.id}-name`} className={GROUP_CARD_CLASS} data-testid="empty-group">
+                    <section key={g.id} data-screen-group={g.id} id={`screen-group-${g.id}`} aria-labelledby={`screen-group-${g.id}-name`} className={GROUP_CARD_CLASS} data-testid="empty-group">
                       <div style={GROUP_ROW_STYLE} className="flex items-center gap-3 px-5 py-2.5">
                         <div className="flex items-center gap-2 min-w-0 flex-1 pl-8">
                           <Building2 className="w-4 h-4 text-slate-400 shrink-0" aria-hidden />
@@ -1081,7 +1107,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                   {visibleGroups.map((g) => {
                     const expanded = isExpanded(g);
                     return (
-                      <li key={g.id} className={GROUP_CARD_CLASS}>
+                      <li key={g.id} data-screen-group={g.id} className={GROUP_CARD_CLASS}>
                         <button
                           type="button"
                           aria-expanded={expanded}

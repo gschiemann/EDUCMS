@@ -29,6 +29,7 @@ import { OPEN_WIDGET_LIBRARY_EVENT, type OpenWidgetLibraryDetail } from './make-
 import { resolveDropSize } from './drop-sizes';
 import { BuilderToolbar } from './BuilderToolbar';
 import { BuilderCanvas } from './BuilderCanvas';
+import { ExternalBoardFieldBridge, deleteSelectedBoardField, nudgeSelectedBoardField } from './ExternalBoardFieldBridge';
 import { CanvasContextMenu } from './CanvasContextMenu';
 // WidgetPalette.tsx deleted 2026-05-12 — was imported but never rendered.
 // The widgets-panel tab renders VariantPicker (see line where panel ===
@@ -977,7 +978,7 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
 
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedIds.length > 0) {
         e.preventDefault();
-        removeSelected();
+        if (!deleteSelectedBoardField()) removeSelected();
         return;
       }
 
@@ -1005,6 +1006,7 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
         const step = e.shiftKey ? 10 : (e.altKey ? 0.1 : 1);
         const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
         const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
+        if (nudgeSelectedBoardField(dx, dy)) return;
         const state = useBuilderStore.getState();
         state.beginTransaction();
         updateZones(selectedIds, (z) => ({ x: z.x + dx, y: z.y + dy }));
@@ -1469,6 +1471,7 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
               duplicate / delete + zoom / grid / undo). Two surfaces now:
               left panel + this bottom bar. */}
           <BuilderCanvas />
+          <ExternalBoardFieldBridge />
           {!previewMode && <BuilderBottomBar />}
           {/* A6 — right-click context menu on zones + canvas. Shares the
               shell's ⌘C/⌘V clipboard so both surfaces stay in sync. */}
@@ -1857,8 +1860,8 @@ function BuilderBottomBar() {
           button says so rather than no-op'ing. The Lock toggle is the
           control immediately to its left. */}
       {smallBtn(
-        selectedZone.locked ? 'Locked — unlock to delete' : 'Delete (Del)',
-        () => removeSelected(),
+        selectedZone.locked ? 'Locked — unlock to delete' : wt === 'EXTERNAL_HTML' && activeFieldName ? 'Delete text element' : 'Delete (Del)',
+        () => { if (!deleteSelectedBoardField()) removeSelected(); },
         <Trash2 className="w-3.5 h-3.5" />,
         true,
         false,

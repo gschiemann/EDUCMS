@@ -252,3 +252,33 @@ test.describe('first confirmation usage and failure handling', () => {
     expect(calls).toEqual(['DELETE force=true']);
   });
 });
+
+
+test('Put on a screen loads its template playlist and opens the screen picker over Content', async ({ page }, info) => {
+  await open(page, []);
+  const playlist = { id: 'pl-created', name: TEMPLATE.name, templateId: TEMPLATE.id, template: TEMPLATE, items: [], isActive: true, createdAt: TEMPLATE.createdAt, updatedAt: TEMPLATE.updatedAt };
+  const creates: unknown[] = [];
+  const scheduleWrites: unknown[] = [];
+  const json = (route: Route, body: unknown) => route.fulfill({ status: 200, headers: CORS, contentType: 'application/json', body: JSON.stringify(body) });
+  await page.route('**/api/v1/playlists', route => {
+    if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers: CORS });
+    if (route.request().method() === 'POST') { creates.push(route.request().postDataJSON()); return json(route, playlist); }
+    return json(route, [playlist]);
+  });
+  await page.route('**/api/v1/screen-groups', route => json(route, []));
+  await page.route('**/api/v1/screens', route => json(route, [{ id: 's-demo', name: 'Demo screen', status: 'ONLINE', resolution: '1920x1080', orientation: 'LANDSCAPE' }]));
+  await page.route('**/api/v1/schedules', route => { if (route.request().method() === 'POST') scheduleWrites.push(route.request().postDataJSON()); return json(route, []); });
+  await page.getByRole('button', { name: /more actions for club welcome/i }).first().click();
+  await page.getByRole('menuitem', { name: 'Put on a screen' }).click();
+  await expect(page).toHaveURL(new RegExp(`/${SCHOOL_ID}/playlists/pl-created$`));
+  const picker = page.getByRole('dialog', { name: 'Add screens' });
+  await expect(picker).toBeVisible();
+  await expect(picker).toContainText('Demo screen');
+  await expect(page.getByRole('tab', { name: 'Content', exact: true })).toHaveAttribute('aria-selected', 'true');
+  expect(creates).toEqual([{ name: TEMPLATE.name, templateId: TEMPLATE.id }]);
+  expect(scheduleWrites).toEqual([]);
+  await page.screenshot({ path: info.outputPath('template-screen-picker.png'), fullPage: true });
+  await picker.getByRole('button', { name: 'Cancel' }).click();
+  await expect(page.getByRole('heading', { name: TEMPLATE.name, exact: true }).last()).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Edit Template' })).toBeVisible();
+});

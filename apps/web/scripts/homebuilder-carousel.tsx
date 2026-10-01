@@ -1,5 +1,6 @@
 import { createRoot } from "react-dom/client";
 import { NativeImageCarousel } from "../src/components/widgets/NativeImageCarousel";
+import { initTextLayout } from "./homebuilder-text-layout";
 
 // Adapter only: timing, transitions and media rendering are the app's widget.
 // Preserve the approved cinematic copy layering when reduced motion removes
@@ -156,6 +157,7 @@ function decode(raw: string | null) {
 }
 const params = new URLSearchParams(location.search);
 const text = decode(params.get("text"));
+initTextLayout(decode(params.get("textStyles")));
 for (const [key, value] of Object.entries(text))
   if (key.startsWith("media.") || key.startsWith("carousel."))
     write(key, String(value));

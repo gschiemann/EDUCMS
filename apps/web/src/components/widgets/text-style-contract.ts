@@ -62,6 +62,8 @@ export interface CssTextStyle {
   textAlign?: 'left' | 'center' | 'right' | 'justify';
   lineHeight?: number;
   hidden?: boolean;
+  offsetX?: number;
+  offsetY?: number;
 }
 
 /** What `bold: true` means in CSS. One number, one place. */
@@ -173,6 +175,10 @@ export function toCssTextStyle(style: unknown): CssTextStyle {
   if (textAlign) out.textAlign = textAlign;
 
   if (typeof s.lineHeight === 'number' && Number.isFinite(s.lineHeight)) out.lineHeight = s.lineHeight;
+
+  for (const key of ['offsetX', 'offsetY'] as const) {
+    if (typeof s[key] === 'number' && Number.isFinite(s[key])) out[key] = Math.max(-16000, Math.min(16000, s[key]));
+  }
 
   const hidden = resolveHidden(s);
   if (hidden != null) out.hidden = hidden;

@@ -8,8 +8,8 @@
 // site (the in-editor toolbar, E3) without duplicating the mutation /
 // navigation logic. Behavior is unchanged: spin up a template-backed
 // playlist (one DB row, no item wiring — a template playlist references
-// the template), then hand off to the playlists page's existing
-// Publish-to-Screens sheet via `?publishPlaylist=`. Works identically on
+// the template), then hand off to the playlist's existing
+// playlist Content workspace with its screen picker open. Works identically on
 // desktop and mobile; no new API surface.
 import { useCallback, useState } from 'react';
 import { useCreatePlaylist } from '@/hooks/use-api';
@@ -24,8 +24,7 @@ export interface PutOnScreenTarget {
 /**
  * Returns `{ putOnScreen, puttingOnScreenId }`. `putOnScreen(target)`
  * creates a one-item playlist from `target` and full-navigates to the
- * playlists page with `?publishPlaylist=<id>` so the operator lands
- * directly on the Publish-to-Screens sheet — no forms, no extra clicks.
+ * playlist Content workspace with its template loaded and Add screens open.
  *
  * `disabled` (e.g. RESTRICTED_VIEWER, or "nothing to publish yet") mirrors
  * the gallery's `isViewer` guard — pass the caller's own read-only check.
@@ -45,12 +44,10 @@ export function usePutOnScreen(schoolId: string | undefined, disabled?: boolean)
       });
       const playlistId = (created as { id?: string } | undefined)?.id;
       if (!playlistId) throw new Error('Playlist was created without an id.');
-      // Hand off to the playlists page, which auto-selects this playlist and
-      // opens its Publish-to-Screens sheet (see the ?publishPlaylist= handler
-      // there). Full nav (not router.push) matches the builder-open pattern and
-      // guarantees the playlists page mounts fresh with the param.
+      // Open the created playlist with its template selected, and immediately
+      // offer the existing screen picker. No schedule is written by navigation.
       window.location.href =
-        `/${schoolId ?? ''}/playlists?publishPlaylist=${encodeURIComponent(playlistId)}`;
+        `/${schoolId ?? ''}/playlists/${encodeURIComponent(playlistId)}?addScreens=1`;
     } catch (err) {
       setPuttingOnScreenId(null);
       await appAlert({

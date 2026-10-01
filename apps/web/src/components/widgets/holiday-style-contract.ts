@@ -19,6 +19,9 @@ export interface HolidayTextStyle {
   backgroundColor?: string;
   visibility?: 'visible' | 'hidden';
   hidden?: boolean;
+  /** Authored-pixel offsets for individual text in native HTML boards. */
+  offsetX?: number;
+  offsetY?: number;
   /** Canonical BuilderBottomBar aliases. */
   bold?: boolean;
   italic?: boolean;
