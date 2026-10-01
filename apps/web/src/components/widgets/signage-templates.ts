@@ -17,6 +17,20 @@ export interface SignageTemplate {
 }
 
 export const SIGNAGE_TEMPLATES: SignageTemplate[] = [
+  {"id": "preset-sig-corporate-13", "name": "Corporate \u00b7 Homebuilder \u00b7 Welcome \u00b7 Cinematic", "url": "/templates/signage/corporate/homebuilder/01-welcome-cinematic.html", "group": "Corporate"},
+  {"id": "preset-sig-corporate-14", "name": "Corporate \u00b7 Homebuilder \u00b7 Welcome \u00b7 Editorial", "url": "/templates/signage/corporate/homebuilder/02-welcome-editorial.html", "group": "Corporate"},
+  {"id": "preset-sig-corporate-15", "name": "Corporate \u00b7 Homebuilder \u00b7 Welcome \u00b7 Gallery", "url": "/templates/signage/corporate/homebuilder/03-welcome-gallery.html", "group": "Corporate"},
+  {"id": "preset-sig-corporate-16", "name": "Corporate \u00b7 Homebuilder \u00b7 Home \u00b7 Floor Plans", "url": "/templates/signage/corporate/homebuilder/04-home-plan.html", "group": "Corporate"},
+  {"id": "preset-sig-corporate-17", "name": "Corporate \u00b7 Homebuilder \u00b7 Home \u00b7 Availability", "url": "/templates/signage/corporate/homebuilder/05-home-availability.html", "group": "Corporate"},
+  {"id": "preset-sig-corporate-18", "name": "Corporate \u00b7 Homebuilder \u00b7 Community \u00b7 Story", "url": "/templates/signage/corporate/homebuilder/06-community-story.html", "group": "Corporate"},
+  {"id": "preset-sig-corporate-19", "name": "Corporate \u00b7 Homebuilder \u00b7 Tour \u00b7 Takeaway", "url": "/templates/signage/corporate/homebuilder/07-tour-takeaway.html", "group": "Corporate"},
+  {"id": "preset-sig-corporate-13-portrait", "name": "Corporate \u00b7 Homebuilder \u00b7 Welcome \u00b7 Cinematic \u2014 Portrait", "url": "/templates/signage/corporate/homebuilder/portrait/01-welcome-cinematic.html", "group": "Corporate"},
+  {"id": "preset-sig-corporate-14-portrait", "name": "Corporate \u00b7 Homebuilder \u00b7 Welcome \u00b7 Editorial \u2014 Portrait", "url": "/templates/signage/corporate/homebuilder/portrait/02-welcome-editorial.html", "group": "Corporate"},
+  {"id": "preset-sig-corporate-15-portrait", "name": "Corporate \u00b7 Homebuilder \u00b7 Welcome \u00b7 Gallery \u2014 Portrait", "url": "/templates/signage/corporate/homebuilder/portrait/03-welcome-gallery.html", "group": "Corporate"},
+  {"id": "preset-sig-corporate-16-portrait", "name": "Corporate \u00b7 Homebuilder \u00b7 Home \u00b7 Floor Plans \u2014 Portrait", "url": "/templates/signage/corporate/homebuilder/portrait/04-home-plan.html", "group": "Corporate"},
+  {"id": "preset-sig-corporate-17-portrait", "name": "Corporate \u00b7 Homebuilder \u00b7 Home \u00b7 Availability \u2014 Portrait", "url": "/templates/signage/corporate/homebuilder/portrait/05-home-availability.html", "group": "Corporate"},
+  {"id": "preset-sig-corporate-18-portrait", "name": "Corporate \u00b7 Homebuilder \u00b7 Community \u00b7 Story \u2014 Portrait", "url": "/templates/signage/corporate/homebuilder/portrait/06-community-story.html", "group": "Corporate"},
+  {"id": "preset-sig-corporate-19-portrait", "name": "Corporate \u00b7 Homebuilder \u00b7 Tour \u00b7 Takeaway \u2014 Portrait", "url": "/templates/signage/corporate/homebuilder/portrait/07-tour-takeaway.html", "group": "Corporate"},
   { id: "preset-school-hs-campus-pulse-01", name: "Campus Pulse · Campus Magazine", group: "High School · Campus Pulse", url: "/templates/school/campus-pulse/01-campus-magazine.html" },
   { id: "preset-school-hs-campus-pulse-02", name: "Campus Pulse · Digital Signal", group: "High School · Campus Pulse", url: "/templates/school/campus-pulse/02-digital-signal.html" },
   { id: "preset-school-hs-campus-pulse-03", name: "Campus Pulse · Neo Yearbook", group: "High School · Campus Pulse", url: "/templates/school/campus-pulse/03-neo-yearbook.html" },

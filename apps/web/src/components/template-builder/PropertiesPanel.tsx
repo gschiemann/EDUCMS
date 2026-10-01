@@ -7808,6 +7808,8 @@ function ExternalHtmlTextEditor({
   // AI Designer boards carry their HTML INLINE (cfg.html, srcdoc) — no url to
   // fetch. Discover fields from that string directly; static boards fetch url.
   const inlineHtml = typeof cfg?.html === 'string' ? cfg.html.trim() : '';
+  const [nativeCarousels, setNativeCarousels] = useState(false);
+  const [addImageSlot, setAddImageSlot] = useState<string | null>(null);
   // discoveredFields: ordered list of {key, defaultText, sectionKey}
   // null = still loading, [] = no fields (or fetch failed gracefully).
   const [discoveredFields, setDiscoveredFields] = useState<
@@ -7859,6 +7861,7 @@ function ExternalHtmlTextEditor({
         }
         try {
           const doc = new DOMParser().parseFromString(html, 'text/html');
+          setNativeCarousels(doc.documentElement.dataset.nativeCarousels === 'true');
           const seen = new Set<string>();
           const out: Array<{ key: string; defaultText: string; sectionKey: string; isShortish: boolean }> = [];
           const nodes = doc.querySelectorAll('[data-field]');
@@ -8058,7 +8061,13 @@ function ExternalHtmlTextEditor({
   const imageList = (key: string): string[] => {
     const v = imageOverrides[key];
     if (typeof v === 'string') return v ? [v] : [];
-    return Array.isArray(v) ? v.filter((x) => typeof x === 'string' && x.trim()) : [];
+    if (Array.isArray(v)) return v.filter((x) => typeof x === 'string' && x.trim());
+    if (nativeCarousels) {
+      try {
+        return JSON.parse(discoveredFields?.find((f) => f.key === `media.${key}.slides`)?.defaultText || '[]') as string[];
+      } catch { return []; }
+    }
+    return [];
   };
   const videoOverrides: Record<string, string> =
     (cfg?.videoOverrides && typeof cfg.videoOverrides === 'object') ? cfg.videoOverrides : {};
@@ -8175,7 +8184,7 @@ function ExternalHtmlTextEditor({
   for (const sec of Object.keys(sections)) {
     const kept: typeof discoveredFields = [];
     for (const f of sections[sec]) {
-      if (BOARD_CONFIG_KEYS.has(f.key)) cfgDefaults[f.key] = f.defaultText;
+      if (BOARD_CONFIG_KEYS.has(f.key) || (nativeCarousels && (/^media\..+\.(slides|mode|fit|position|alt)$/.test(f.key) || f.key === 'carousel.transition'))) cfgDefaults[f.key] = f.defaultText;
       else kept.push(f);
     }
     if (kept.length) sections[sec] = kept;
@@ -8395,6 +8404,10 @@ function ExternalHtmlTextEditor({
           ))}
         </div>
       )}
+      {addImageSlot && <AssetLibraryModal kind="image" multi onPick={(url) => { setImageList(addImageSlot, [...imageList(addImageSlot), url]); setAddImageSlot(null); }} onPickMulti={(urls) => {
+        setImageList(addImageSlot, [...imageList(addImageSlot), ...urls]);
+        setAddImageSlot(null);
+      }} onClose={() => setAddImageSlot(null)} />}
       {/* G3 — image slots. Rendered first so a hero photo is the operator's
           top edit. AssetPickerField supports both the asset library AND a
           pasted URL (its built-in URL input), satisfying the §19 "asset
@@ -8430,6 +8443,22 @@ function ExternalHtmlTextEditor({
                   value={imageList(img.key)[0] || ''}
                   onChange={(v) => setImageList(img.key, [v, ...imageList(img.key).slice(1)])}
                 />
+                {nativeCarousels && !isQr && (
+                  <>
+                    <SettingSelect label="Playback" value={cfgVal(`media.${img.key}.mode`, imageList(img.key).length > 1 ? 'carousel' : 'single')} options={[['single', 'Single image'], ['carousel', 'Carousel']]} onChange={(v) => setCfgMany({ [`media.${img.key}.mode`]: v })} />
+                    <SettingSelect label="Fit" value={cfgVal(`media.${img.key}.fit`, '') || (img.key === 'home.plan' || /logo/.test(img.key) ? 'contain' : 'cover')} options={[['cover', 'Fill frame'], ['contain', 'Show whole image'], ['fill', 'Stretch']]} onChange={(v) => setCfgMany({ [`media.${img.key}.fit`]: v })} />
+                    <TextField label="Alternative text" value={cfgVal(`media.${img.key}.alt`, '')} onChange={(v) => setCfgMany({ [`media.${img.key}.alt`]: v })} />
+                    <SettingSelect label="Image focus" value={cfgVal(`media.${img.key}.position`, 'center')} options={[['center', 'Center'], ['left center', 'Left'], ['right center', 'Right'], ['center top', 'Top'], ['center bottom', 'Bottom']]} onChange={(v) => setCfgMany({ [`media.${img.key}.position`]: v })} />
+                    {imageList(img.key).length > 1 && imageList(img.key).map((_, index) => (
+                      <div key={`order-${index}`} className="flex items-center gap-2 text-xs">
+                        <span>Slide {index + 1}</span>
+                        <button type="button" disabled={index === 0} aria-label={`Move slide ${index + 1} earlier in ${img.label}`} onClick={() => { const urls = imageList(img.key).slice(); [urls[index - 1], urls[index]] = [urls[index], urls[index - 1]]; setImageList(img.key, urls); }} className="disabled:opacity-30">↑</button>
+                        <button type="button" disabled={index === imageList(img.key).length - 1} aria-label={`Move slide ${index + 1} later in ${img.label}`} onClick={() => { const urls = imageList(img.key).slice(); [urls[index + 1], urls[index]] = [urls[index], urls[index + 1]]; setImageList(img.key, urls); }} className="disabled:opacity-30">↓</button>
+                        <button type="button" aria-label={`Remove slide ${index + 1} from ${img.label}`} onClick={() => setImageList(img.key, imageList(img.key).filter((_, n) => n !== index))}>Remove</button>
+                      </div>
+                    ))}
+                  </>
+                )}
                 {/* A slot takes a LIST if the operator wants one — the board
                     rotates through it. QR codes are excluded: a rotating QR is
                     a QR nobody can scan. */}
@@ -8460,7 +8489,7 @@ function ExternalHtmlTextEditor({
                 {!isQr && imageList(img.key).length > 0 && (
                   <button
                     type="button"
-                    onClick={() => setImageList(img.key, [...imageList(img.key), ''])}
+                    onClick={() => setAddImageSlot(img.key)}
                     className="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-600 hover:underline"
                   >
                     <Plus className="w-3 h-3" /> Add another image
@@ -8518,8 +8547,9 @@ function ExternalHtmlTextEditor({
           </div>
           <SettingCheck label="Rotate slides automatically" checked={cfgOn('carousel.autoplay')} onChange={(on) => setCfgMany({ 'carousel.autoplay': on ? 'yes' : 'no' })} />
           <SettingNumber label="Seconds per slide" value={cfgVal('carousel.intervalSeconds', '6')} min={3} max={30} onChange={(v) => setCfgMany({ 'carousel.intervalSeconds': v })} />
-          <SettingSelect label="Start on slide" value={cfgVal('carousel.initialIndex', '1')} options={[['1', 'Slide 1'], ['2', 'Slide 2'], ['3', 'Slide 3']]} onChange={(v) => setCfgMany({ 'carousel.initialIndex': v })} />
-          <SettingCheck label="Show the slide buttons" checked={cfgOn('carousel.showProgress')} onChange={(on) => setCfgMany({ 'carousel.showProgress': on ? 'yes' : 'no' })} />
+          {nativeCarousels && <SettingSelect label="Transition" value={cfgVal('carousel.transition', 'fade')} options={[['fade', 'Fade'], ['slide-left', 'Slide left'], ['slide-right', 'Slide right'], ['slide-up', 'Slide up'], ['zoom', 'Zoom'], ['cut', 'Cut']]} onChange={(v) => setCfgMany({ 'carousel.transition': v })} />}
+          {!nativeCarousels && <SettingSelect label="Start on slide" value={cfgVal('carousel.initialIndex', '1')} options={[['1', 'Slide 1'], ['2', 'Slide 2'], ['3', 'Slide 3']]} onChange={(v) => setCfgMany({ 'carousel.initialIndex': v })} />}
+          {!nativeCarousels && <SettingCheck label="Show the slide buttons" checked={cfgOn('carousel.showProgress')} onChange={(on) => setCfgMany({ 'carousel.showProgress': on ? 'yes' : 'no' })} />}
           {hasCfg('media.fit') && (
             <>
               <SettingSelect label="Photo crop" value={cfgVal('media.fit', 'cover')} options={[['cover', 'Fill the frame (crops edges)'], ['contain', 'Show the whole photo (may letterbox)']]} onChange={(v) => setCfgMany({ 'media.fit': v })} />
@@ -11478,7 +11508,7 @@ function TabButton({ label, active, onClick }: { label: string; active: boolean;
 
 function resolveAssetUrl(url: string): string {
   if (!url) return '';
-  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) return url;
+  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:') || url.startsWith('/templates/')) return url;
   const base = (typeof window !== 'undefined' && process.env.NEXT_PUBLIC_API_URL)
     ? process.env.NEXT_PUBLIC_API_URL.replace('/api/v1', '')
     : 'http://localhost:8080';

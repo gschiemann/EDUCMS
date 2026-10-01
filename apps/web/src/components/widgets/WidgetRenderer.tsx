@@ -540,6 +540,7 @@ import { useRenderSurface } from './render-surface';
 import { resolveCountdownTarget } from './countdown-utils';
 import { toCssTextStyleMap } from './text-style-contract';
 import { sceneCss } from './scene-css';
+import { NativeImageCarousel } from './NativeImageCarousel';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // THEME SYSTEM
@@ -3399,37 +3400,16 @@ function ImageCarouselWidget({ config }: { config: any }) {
   // The new PropertiesPanel writes intervalSec + intervalMs + rotateMs
   // simultaneously; old configs only have ms.
   const urls = (config.urls || config.assetUrls || []) as string[];
-  const [idx, setIdx] = useState(0);
   const interval = config.intervalSec
     ? config.intervalSec * 1000
     : (config.intervalMs || config.rotateMs || 5000);
-  const transition: TransitionKind = config.transition || 'fade';
-
-  useEffect(() => {
-    if (urls.length < 2) return;
-    const t = setInterval(() => setIdx(i => (i + 1) % urls.length), interval);
-    return () => clearInterval(t);
-  }, [urls.length, interval]);
-
   if (urls.length > 0) {
-    return (
-      <div className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden">
-        <CarouselSlide
-          key={idx}
-          mediaKind="image"
-          url={resolveUrl(urls[idx % urls.length])}
-          fitMode={config.fitMode || 'contain'}
-          transition={transition}
-        />
-        {urls.length > 1 && (
-          <div className="absolute bottom-[5%] left-1/2 -translate-x-1/2 flex gap-1 z-10">
-            {urls.map((_: string, i: number) => (
-              <div key={i} style={{ width: 6, height: 6, borderRadius: 99, background: i === idx % urls.length ? 'white' : 'rgba(255,255,255,0.4)', transition: 'background 0.3s' }} />
-            ))}
-          </div>
-        )}
-      </div>
-    );
+    return <NativeImageCarousel config={{
+      urls: urls.map((url) => resolveUrl(url)), intervalMs: interval,
+      transition: config.transition || 'fade', fitMode: config.fitMode || 'contain',
+      objectPosition: config.objectPosition, alt: config.alt,
+      paused: config.paused, showIndicators: config.showIndicators,
+    }} />;
   }
 
   return (
