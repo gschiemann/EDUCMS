@@ -23,6 +23,15 @@ describe('physical location logo pins', () => {
     expect(pins[0]).toMatchObject({ name: group.name, logoUrl: null, initials: 'TN', tone: 'warn' });
   });
 
+  it('names a shared location by its groups, without replacing the separate address', () => {
+    const second = { ...group, id: 'g2', name: 'Allora Neighborhood' };
+    const stores = deriveStores([...devices, { ...devices[0], id: 'other', screenGroupId: second.id, status: 'OFFLINE' }], false, [group, second]);
+    expect(storeLocationPins(stores, null, null)[0].name).toBe('Allora Neighborhood + 1 group');
+    expect(stores[0].label).toBe('3193 Red Feather Wy');
+    expect(stores[0].groups.map(g => g.name)).toEqual(expect.arrayContaining([group.name, second.name]));
+    expect(storeLocationPins([{ ...stores[0], groups: [...stores[0].groups].reverse() }], null, null)[0].name).toBe('Allora Neighborhood + 1 group');
+  });
+
   it('retains the map classification when a screen is offline or an alert is active', () => {
     const offline = deriveStores([{ ...devices[0], status: 'OFFLINE' }, devices[1]], false, [group]);
     expect(storeLocationPins(offline, null, null)[0].tone).toBe('warn');

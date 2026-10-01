@@ -50,6 +50,8 @@ import {
 } from '@/hooks/use-api';
 import { useUIStore } from '@/store/ui-store';
 import { clog } from '@/lib/client-logger';
+import { FolderDeleteDialog } from '@/components/assets/FolderDeleteDialog';
+import type { AssetDeleteResult } from '@/lib/asset-bulk-delete';
 import { FolderPicker } from '@/components/assets/FolderPicker';
 import { PdfHoverThumb } from '@/components/assets/PdfHoverThumb';
 import { AssetActionsMenu, buildAssetMenuActions } from '@/components/assets/AssetActionsMenu';
@@ -351,6 +353,12 @@ export default function AssetsPage() {
   const [webUrl, setWebUrl] = useState('');
   const [selectedAsset, setSelectedAsset] = useState<any>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectingAll, setSelectingAll] = useState(false);
+  const [allSelected, setAllSelected] = useState(false);
+  const selectionRequest = useRef(0);
+  const [deletingCount, setDeletingCount] = useState(0);
+  const deletePending = useRef(false);
+  const [folderDelete, setFolderDelete] = useState<{ id: string; name: string } | null>(null);
   const [downloadPending, setDownloadPending] = useState(false);
   const downloadPendingRef = useRef(false);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
@@ -576,17 +584,36 @@ export default function AssetsPage() {
     setRenameValue('');
   };
 
-  const handleDeleteFolder = async (id: string) => {
-    const ok = await appConfirm({
-      title: t('assetsLib.deleteFolderTitle'),
-      message: t('assetsLib.deleteFolderMsg'),
-      tone: 'warn',
-      confirmLabel: t('assetsLib.deleteFolder'),
-    });
-    if (ok) {
-      await deleteFolderMut.mutateAsync(id);
-      if (currentFolderId === id) setCurrentFolderId(null);
-    }
+  const handleDeleteFolder = (id: string) => {
+    if (deletePending.current) return;
+    const folder = allFolders.find((value: { id: string }) => value.id === id);
+    if (folder) setFolderDelete({ id, name: folder.name });
+  };
+
+  const deleteFolderSelection = async (assetIds: string[] | null) => {
+    const folder = folderDelete;
+    if (!folder || deletePending.current) return;
+    setFolderDelete(null);
+    deletePending.current = true;
+    setDeletingCount(assetIds?.length || 1);
+    try {
+      if (assetIds?.length) {
+        const reply = await deleteAsset.mutateAsync({ ids: assetIds, confirmInUse: true });
+        const failed = ((reply?.results || []) as AssetDeleteResult[]).filter(item => !item.deleted);
+        if (failed.length) {
+          await appAlert({ title: 'Some files and their folder were kept', message: `${assetIds.length - failed.length} files deleted. ${failed.length} ${failed.length === 1 ? 'file was' : 'files were'} kept or could not be confirmed. ${failed[0].message || ''}`, tone: 'warn' });
+          return;
+        }
+      }
+      if (assetIds !== null) {
+        await apiFetch(`/assets/folders/${encodeURIComponent(folder.id)}?mode=empty-tree`, { method: 'DELETE', _noRetry: true });
+        void queryClient.invalidateQueries({ queryKey: ['asset-folders'] });
+      } else await deleteFolderMut.mutateAsync(folder.id);
+      if (currentFolderId === folder.id) setCurrentFolderId(null);
+      void queryClient.invalidateQueries({ queryKey: ['assets'] });
+    } catch (error) {
+      await appAlert({ title: 'Could not remove the folder', message: (error as Error).message || 'Refresh and try again. Any files still present are kept.', tone: 'warn' });
+    } finally { deletePending.current = false; setDeletingCount(0); }
   };
 
   const handleMoveAssetToFolder = async (assetId: string, folderId: string | null) => {
@@ -700,48 +727,24 @@ export default function AssetsPage() {
     });
     if (!ok) return;
 
-    // Track which deletes fail so we can surface a user-visible error
-    // instead of just console.error (the old behavior swallowed every
-    // 409 silently and the operator thought the delete succeeded).
-    const failures: Array<{ id: string; msg: string }> = [];
-    const protectedIds: string[] = [];
+    if (deletePending.current) return;
     const ids = [...selectedIds];
-    // Consecutive deletions can empty the same playlist. Process them in
-    // order so the final delete sees that it removed the last item.
-    for (const id of ids) {
-      try {
-        // The dialog above is the in-use warning for the whole selection
-        // ("Assets used in playlists will be removed from those playlists"),
-        // so each delete carries the confirmation the server requires.
-        await deleteAsset.mutateAsync({ id, confirmInUse: true });
-      } catch (e: any) {
-        if (
-          e?.code === 'ASSET_IN_PROTECTED_PLAYLIST' ||
-          e?.code === 'ASSET_IN_SCREEN_EMERGENCY_CONTENT' ||
-          e?.code === 'ASSET_IN_EMERGENCY_CONTENT'
-        ) protectedIds.push(id);
-        const msg = e?.message || 'Unknown error';
-        failures.push({ id, msg });
-        clog.error('upload', 'Delete failed', { id, msg });
-      }
-    }
+    deletePending.current = true;
+    setDeletingCount(ids.length);
     setSelectedIds([]);
-    queryClient.invalidateQueries({ queryKey: ['assets'] });
-    if (failures.length > 0) {
-      // §13 — every bulk operation reports success/failure, and protected
-      // emergency content gets a specific explanation.
-      await appAlert({
-        title: 'Some assets were kept',
-        message:
-          `${ids.length - failures.length} of ${ids.length} deleted. ` +
-          (protectedIds.length > 0
-            ? `${protectedIds.length} ${protectedIds.length === 1 ? 'is' : 'are'} protected emergency content and ${protectedIds.length === 1 ? 'was' : 'were'} kept. `
-            : '') +
-          (failures.length > protectedIds.length ? `First error: "${failures[0].msg}"` : ''),
-        tone: 'warn',
-        confirmLabel: 'OK',
-      });
-    }
+    try {
+      const reply = await deleteAsset.mutateAsync({ ids, confirmInUse: true });
+      const failures = ((reply?.results || []) as AssetDeleteResult[]).filter(item => !item.deleted);
+      if (failures.length) {
+        setSelectedIds(current => [...new Set([...current, ...failures.map(item => item.id)])]);
+        const protectedCount = failures.filter(item => item.code?.startsWith('ASSET_IN_') && item.code !== 'ASSET_IN_USE').length;
+        await appAlert({ title: 'Some assets were kept', message: `${ids.length - failures.length} of ${ids.length} deleted. ` +
+          (protectedCount ? `${protectedCount} ${protectedCount === 1 ? "is" : "are"} protected emergency content and ${protectedCount === 1 ? "was" : "were"} kept. ` : '') + (failures[0].message || ''), tone: 'warn', confirmLabel: 'OK' });
+      }
+    } catch (error) {
+      setSelectedIds(current => [...new Set([...current, ...ids])]);
+      await appAlert({ title: "Couldn't confirm deletion", message: (error as Error).message || 'Refresh the library to check which files remain.', tone: 'warn' });
+    } finally { deletePending.current = false; setDeletingCount(0); }
   };
 
   // Bulk-move handler — fed by the searchable FolderPicker. Replaces
@@ -1010,6 +1013,30 @@ export default function AssetsPage() {
     return sorted;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assets, currentFolderId, filter, sort, searchLower, folderNameById]);
+
+  useEffect(() => { selectionRequest.current++; setAllSelected(false); setSelectingAll(false); }, [currentFolderId, filter, searchLower]);
+
+  const selectAllFiles = async () => {
+    if (selectingAll || deletePending.current) return;
+    if (allSelected && selectedIds.length) { setSelectedIds([]); setAllSelected(false); return; }
+    const request = ++selectionRequest.current;
+    setSelectingAll(true);
+    try {
+      const ids = new Set<string>();
+      let skip = 0;
+      for (;;) {
+        const result = normalizeAssetList(await apiFetch(`/assets?take=1000&skip=${skip}`));
+        for (const asset of result.assets) {
+          if ((currentFolderId === null || asset.folderId === currentFolderId) && (filter === 'all' || getAssetType(asset.mimeType) === filter) && matchesSearch(asset)) ids.add(asset.id);
+        }
+        skip += result.assets.length;
+        if (!result.assets.length || (result.total !== null ? skip >= result.total : result.assets.length < 1000)) break;
+      }
+      if (request === selectionRequest.current) { setSelectedIds([...ids]); setAllSelected(true); }
+    } catch (error) {
+      toast.error((error as Error).message || 'Could not select all files. Please try again.');
+    } finally { if (request === selectionRequest.current) setSelectingAll(false); }
+  };
 
   // §7 — chip counts must describe the COMPLETE library, so they only
   // render once we know we hold it. The All chip can always show the true
@@ -1642,6 +1669,9 @@ export default function AssetsPage() {
         </div>
 
         <div className="flex gap-2 items-center lg:shrink-0">
+          <button type="button" onClick={() => void selectAllFiles()} disabled={selectingAll || deletingCount > 0 || libraryTotal === 0} className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 py-2 text-[11px] font-semibold text-slate-700 disabled:opacity-50">
+            {selectingAll ? 'Selecting…' : allSelected && selectedIds.length > 0 ? 'Clear selection' : 'Select all'}
+          </button>
           <label className="sr-only" htmlFor="assets-sort">Sort files</label>
           <select
             id="assets-sort"
@@ -1726,11 +1756,13 @@ export default function AssetsPage() {
       )}
 
       {/* ── Selection bar (§13) — contextual, never in the header ────── */}
+      {deletingCount > 0 && <p role="status" className="rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-800">Deleting {deletingCount} {deletingCount === 1 ? 'file' : 'files'}… You can keep browsing.</p>}
+
       <AssetBulkBar
         count={selectedIds.length}
         disabled={isViewer}
         disabledReason={readOnlyReason}
-        deleteDisabled={!canDelete}
+        deleteDisabled={!canDelete || deletingCount > 0}
         deleteDisabledReason={deleteDeniedReason}
         onCreatePlaylist={() => startPlaylistFrom(selectedIds)}
         onMoveToFolder={() => setShowFolderPicker('bulk-move')}
@@ -2493,6 +2525,8 @@ export default function AssetsPage() {
           </div>
         </div>
       )}
+
+      {folderDelete && <FolderDeleteDialog folder={folderDelete} onCancel={() => setFolderDelete(null)} onConfirm={ids => { void deleteFolderSelection(ids); }} />}
 
       {/* ── In-use deletion warning (§16) ────────────────────────────── */}
       {inUseBlock && (

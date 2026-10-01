@@ -36,7 +36,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { AlertTriangle, ArrowLeft, Download, Loader2, Monitor, PauseCircle, PlayCircle, Plus, Power, Settings, Trash2 } from 'lucide-react';
 import {
-  deriveTargetsFromScreens, describeReach, exactStamp, timeAgo,
+  deriveTargetsFromScreens, describeReach, exactStamp, isUpdateInFlight, timeAgo,
   type DeliveryPayload, type DeliverySummary, type OpsScreenRef, type PlaylistSummaryRow,
   type ScreenPlaybackCopy,
 } from './playlistOps';
@@ -175,6 +175,11 @@ export interface PlaylistWorkspaceProps {
 }
 
 export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNowMs(Date.now()), 15_000);
+    return () => clearInterval(timer);
+  }, []);
   const { row, tab } = props;
   const t = useTranslations();
   // Delivery evidence per screen, keyed for the Screens tab's cards. The list
@@ -182,7 +187,7 @@ export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
   // about itself — dropping that was how the G43 "not received" signal briefly
   // disappeared from the one tab that exists to show it.
   const evidenceById = new Map(
-    deriveTargetsFromScreens(props.targetScreens).map((t) => [t.screenId, t]),
+    deriveTargetsFromScreens(props.targetScreens, nowMs).map((t) => [t.screenId, t]),
   );
   const screenById = new Map(props.targetScreens.map((s) => [s.id, s]));
   /**
@@ -574,7 +579,9 @@ export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
                       getting the content still says so, which is the whole
                       reason this tab exists. */}
                   {ev && ev.state === 'not-updated' && (
-                    <span className="text-[11px] font-bold text-amber-700 shrink-0">Not received</span>
+                    <span className={`text-[11px] font-bold shrink-0 ${isUpdateInFlight(sc, nowMs) ? INK_3 : 'text-amber-700'}`}>
+                      {isUpdateInFlight(sc, nowMs) ? 'Sending update' : 'Not received'}
+                    </span>
                   )}
                   {ev && ev.state === 'no-picture' && (
                     <span className="text-[11px] font-bold text-rose-700 shrink-0">No picture confirmed</span>

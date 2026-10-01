@@ -251,7 +251,7 @@ describe('removing SEVERAL playlists at once — through the real page', () => {
     await waitFor(() => expect(batchImpl).toHaveBeenCalledTimes(1));
     // The batch has NOT finished; the handler already has.
     expect(within(screen.getByTestId('bulk-bar')).getByTestId('bulk-remove')).not.toBeDisabled();
-    expect(within(screen.getByTestId('bulk-bar')).getByTestId('bulk-remove')).toHaveTextContent('Remove 2…');
+    expect(within(screen.getByTestId('bulk-bar')).getByTestId('bulk-remove')).toHaveTextContent('Remove 2');
     expect(appAlert).not.toHaveBeenCalled();
     // …and when it does finish with a failure, the failure is still reported.
     await act(async () => {

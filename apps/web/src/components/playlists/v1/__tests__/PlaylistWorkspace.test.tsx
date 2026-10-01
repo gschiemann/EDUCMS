@@ -16,7 +16,7 @@
  */
 
 import * as React from 'react';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent, within, act } from '@testing-library/react';
 import { PlaylistWorkspace, type PlaylistWorkspaceProps } from '../PlaylistWorkspace';
 import {
   summarizeDelivery, deriveDeliveryFromScreens, DELIVERY_UNAVAILABLE, pauseEverywhereCopy,
@@ -605,5 +605,34 @@ describe('Pause everywhere (§19.2)', () => {
   it('still offers nothing to a viewer, or with no publishing rule', () => {
     mount({ row: { ...ROW, scheduleState: 'PAUSED', statusLabel: 'PAUSED' }, isViewer: true });
     expect(screen.queryByRole('button', { name: /Play everywhere/ })).not.toBeInTheDocument();
+  });
+});
+
+// A pending update gets neutral progress; the same unacknowledged request
+// still needs attention once its delivery period expires.
+describe('screen delivery startup labels', () => {
+  it('shows Sending update while a fresh request waits for its first report', () => {
+    const fresh = { ...SCREENS[0], pendingRefreshAt: new Date(Date.now() - 10_000).toISOString(), refreshAckMs: null, lastRenderedAt: null, lastRenderedHash: null };
+    mount({ tab: 'screens', targetScreens: [fresh] });
+    expect(screen.getByText('Sending update')).toBeInTheDocument();
+    expect(screen.queryByText('Not received')).not.toBeInTheDocument();
+  });
+  it('expires the neutral delivery label without needing another screen response', () => {
+    jest.useFakeTimers();
+    try {
+      const fresh = { ...SCREENS[0], pendingRefreshAt: new Date(Date.now() - 10_000).toISOString(), refreshAckMs: null };
+      mount({ tab: 'screens', targetScreens: [fresh] });
+      expect(screen.getByText('Sending update')).toBeInTheDocument();
+      act(() => { jest.advanceTimersByTime(120_000); });
+      // Its last report has also expired: surface that real lack of evidence.
+      expect(screen.getByText('No picture confirmed')).toBeInTheDocument();
+      expect(screen.queryByText('Sending update')).not.toBeInTheDocument();
+    } finally { jest.useRealTimers(); }
+  });
+  it('keeps Not received for an expired, unacknowledged request', () => {
+    const expired = { ...SCREENS[0], refreshAckMs: null };
+    mount({ tab: 'screens', targetScreens: [expired] });
+    expect(screen.getByText('Not received')).toBeInTheDocument();
+    expect(screen.queryByText('Sending update')).not.toBeInTheDocument();
   });
 });

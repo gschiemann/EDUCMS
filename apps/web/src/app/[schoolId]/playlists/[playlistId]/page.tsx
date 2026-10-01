@@ -36,7 +36,7 @@ import { AddScreensDialog } from '@/components/playlists/v1/PlaylistDialogs';
 import {
   buildPlaylistRow, deriveDeliveryFromScreens, derivePlaybackCopyStates, describeScreenConflicts, findScreenConflicts,
   pauseEverywhereCopy, resolveTargetScreenIds,
-  summarizeDelivery, summarizeDeliveryPayload, overlayCurrentScreenHealth, DELIVERY_UNAVAILABLE,
+  summarizeDelivery, summarizeDeliveryPayload, overlayCurrentScreenHealth, DELIVERY_UNAVAILABLE, PUSH_GRACE_MS,
   type OpsGroupRef, type OpsScheduleRef, type OpsScreenRef,
 } from '@/components/playlists/v1/playlistOps';
 
@@ -365,7 +365,8 @@ export default function PlaylistWorkspacePage() {
   const deliveryFailed = deliveryQuery.isFetched && deliveryQuery.data == null;
   const deliverySummary = useMemo(() => {
     if (deliveryAnswered && deliveryQuery.data?.latest) {
-      return summarizeDelivery(overlayCurrentScreenHealth(deliveryQuery.data.latest.targets, targetScreens));
+      const latest = deliveryQuery.data.latest;
+      return summarizeDelivery(overlayCurrentScreenHealth(latest.targets, targetScreens), { pushing: latest.acknowledged < latest.targetCount && Date.now() - new Date(latest.createdAt).getTime() < PUSH_GRACE_MS });
     }
     if (deliveryFailed) return DELIVERY_UNAVAILABLE;
     return targetScreens.length > 0

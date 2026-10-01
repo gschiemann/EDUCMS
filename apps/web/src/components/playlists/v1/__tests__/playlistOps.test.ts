@@ -1117,3 +1117,42 @@ describe('describeRemoveManyOutcome', () => {
     expect(o.message).toContain('• C — the server rejected the request');
   });
 });
+
+
+describe('startup is progress, and warnings require current evidence', () => {
+  it.each(['idle:connecting', 'idle:content-loading', 'idle:playing'])('%s is neutral before the first content frame', hash => {
+    const summary = deriveDeliveryFromScreens([screen({ lastRenderedHash: hash })], NOW_MS);
+    expect(summary.state).toBe('unknown');
+    expect(summary.tone).toBe('muted');
+  });
+  it('a fresh request cannot inherit an older unavailable-content report', () => {
+    const summary = deriveDeliveryFromScreens([screen({ lastRenderedHash: 'idle:content-unavailable', pendingRefreshAt: new Date(NOW_MS - 5000).toISOString() })], NOW_MS);
+    expect(summary.state).toBe('pushing');
+    expect(summary.tone).toBe('muted');
+    expect(summary.detail).toBeNull();
+    expect(summary.clause).toBeNull();
+  });
+  it('an explicit failure reported after the new request still needs attention', () => {
+    const summary = deriveDeliveryFromScreens([screen({ lastRenderedHash: 'idle:content-unavailable', pendingRefreshAt: new Date(NOW_MS - 30000).toISOString() })], NOW_MS);
+    expect(summary.state).toBe('playback-issue');
+    expect(summary.tone).toBe('bad');
+  });
+  it('an update still waiting after two minutes is actionable', () => {
+    const summary = deriveDeliveryFromScreens([screen({ lastRenderedHash: 'idle:content-loading', pendingRefreshAt: new Date(NOW_MS - 120000).toISOString() })], NOW_MS);
+    expect(summary.state).toBe('not-updated');
+    expect(summary.tone).toBe('warn');
+  });
+  it('an offline device is not hidden by another device starting', () => {
+    const summary = deriveDeliveryFromScreens([
+      screen({ id: 'offline', status: 'OFFLINE' }),
+      screen({ id: 'starting', lastRenderedHash: 'idle:content-loading', pendingRefreshAt: new Date(NOW_MS - 5000).toISOString() }),
+    ], NOW_MS);
+    expect(summary.state).toBe('offline');
+    expect(summary.tone).toBe('warn');
+  });
+  it('a playlist scheduled for the future does not inherit the current screen playback fault', () => {
+    const row = buildPlaylistRow({ playlist: { id: 'p1' }, schedules: [sched({ screenId: 'sc1', startTime: new Date(NOW_MS + 86400000).toISOString() })], screens: [screen({ lastRenderedHash: 'idle:content-unavailable' })], groups: [], now: WED_10AM });
+    expect(row.scheduleState).toBe('SCHEDULED');
+    expect(needsAttention(row)).toBe(false);
+  });
+});

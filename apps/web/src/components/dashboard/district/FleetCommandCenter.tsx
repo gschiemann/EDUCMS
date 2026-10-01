@@ -37,6 +37,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import { ExpectedThumb } from '@/components/screens/v3/ExpectedThumb';
+import type { ExpectedContent } from '@/components/screens/v3/screenOps';
 import {
   AlertCircle, AlertTriangle, ArrowRight, Building2, Calendar, CheckCircle2, ChevronDown,
   ChevronUp, CloudOff, CreditCard, FileCheck2, Inbox, Info, KeyRound, ListVideo, Loader2, MapPin,
@@ -437,6 +439,7 @@ export interface FleetScheduleRow {
   isActive: boolean;
   /** First image in the playlist, or null for a video/template playlist. */
   previewUrl: string | null;
+  preview?: Pick<ExpectedContent, 'name' | 'thumbnailUrl' | 'thumbnailKind' | 'thumbnailTint' | 'posterUrl' | 'templatePreview'>;
   /** Majority orientation of the target screens — shapes the preview tile. */
   portrait: boolean;
   /** The playlist behind the row — the row opens its editor (2026-09-14). */
@@ -1370,22 +1373,7 @@ export function FleetCommandCenter({
                 const inner = (
                 <>
                   <span className={`w-1 h-9 rounded-full shrink-0 ${row.isActive ? 'bg-emerald-500' : 'bg-slate-200'}`} aria-hidden />
-                  {/* Square-cornered like a real panel, shaped to the target
-                      screens’ orientation. A video/template playlist gets a
-                      quiet icon tile — never a fake frame. */}
-                  {row.previewUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={row.previewUrl}
-                      alt=""
-                      loading="lazy"
-                      className={`${row.portrait ? 'w-7 h-11' : 'w-[54px] h-8'} object-cover border border-slate-300 shrink-0`}
-                    />
-                  ) : (
-                    <span className={`${row.portrait ? 'w-7 h-11' : 'w-[54px] h-8'} bg-slate-100 border border-slate-300 flex items-center justify-center shrink-0`}>
-                      <ListVideo className="w-3.5 h-3.5 text-slate-400" aria-hidden />
-                    </span>
-                  )}
+                  <ExpectedThumb expected={row.preview ?? { name: row.name, thumbnailUrl: row.previewUrl, thumbnailKind: row.previewUrl ? 'still' : 'none', thumbnailTint: null, posterUrl: null }} className={`${row.portrait ? 'w-7 h-11' : 'w-[54px] h-8'} border border-slate-300 shrink-0`} rounded="rounded-none" />
                   <span className="min-w-0 flex-1">
                     <span className="block text-[12.5px] font-bold text-slate-900 truncate">{row.name}</span>
                     <span className="block text-[11px] font-semibold text-slate-400 truncate" title={row.deviceLine}>

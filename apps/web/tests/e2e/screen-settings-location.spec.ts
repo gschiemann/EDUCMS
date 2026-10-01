@@ -13,7 +13,7 @@ const SCREENS = ['DH43', 'L55VEC'].map((name, i) => ({
   lastPingAt: new Date().toISOString(), authState: 'PROVEN',
 }));
 
-async function openScreens(page: Page, suffix = "") {
+async function openScreens(page: Page, suffix = "", sharedAddress = false) {
   await page.route('**/test-brookfield-logo.svg', route => route.fulfill({
     contentType: 'image/svg+xml',
     body: '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="#063051"/><text x="20" y="80" fill="white" font-size="85" font-family="sans-serif">B</text></svg>',
@@ -33,8 +33,8 @@ async function openScreens(page: Page, suffix = "") {
       '/auth/me': USER, '/users/me': USER, '/branding/me': { logoUrl: LOGO },
       '/tenants': [{ id: USER.tenantId, name: 'Screen settings', slug: USER.tenantId }],
       '/tenants/accessible': [{ id: USER.tenantId, name: 'Screen settings', slug: USER.tenantId }],
-      '/screens': SCREENS,
-      '/screen-groups': [GROUP, { id: 'group-empty', name: 'No location yet', address: null }],
+      '/screens': sharedAddress ? SCREENS.map((screen, i) => i ? { ...screen, screenGroupId: 'group-shared', screenGroup: { ...GROUP, id: 'group-shared', name: 'Tesoro Neighborhood' } } : screen) : SCREENS,
+      '/screen-groups': [GROUP, ...(sharedAddress ? [{ ...GROUP, id: 'group-shared', name: 'Tesoro Neighborhood' }] : []), { id: 'group-empty', name: 'No location yet', address: null }],
       '/schedules': [], '/playlists': [],
       '/player/latest-version': { versionName: '1.1.20', versionCode: 10120, managerVersionName: '1.0.24' },
       '/screens/hardware-catalog': { models: [] },
@@ -195,3 +195,16 @@ for (const width of [1440, 390]) {
     await expect(page).not.toHaveURL(/group=/);
   });
 }
+
+
+test('groups sharing an address keep named pin and detail headings with the address underneath', async ({ page }, info) => {
+  await openScreens(page, '', true);
+  await page.getByRole('tab', { name: 'Map', exact: true }).click();
+  await page.getByRole('group', { name: 'Location navigation' }).getByRole('button', { name: 'Allora Neighborhood + 1 group', exact: true }).click();
+  const details = page.getByRole('group', { name: 'Allora Neighborhood + 1 group details' });
+  await expect(details.getByText('Allora Neighborhood + 1 group', { exact: true })).toBeVisible();
+  await expect(details.getByRole('heading', { name: 'Allora Neighborhood', exact: true })).toBeVisible();
+  await expect(details.getByRole('heading', { name: 'Tesoro Neighborhood', exact: true })).toBeVisible();
+  await expect(details.getByText(ADDRESS, { exact: true })).toBeVisible();
+  await page.screenshot({ path: info.outputPath('shared-location-names.png'), fullPage: true });
+});

@@ -595,7 +595,8 @@ export class PlaylistsController {
           select: {
             id: true, name: true, screenWidth: true, screenHeight: true, category: true,
             bgColor: true, bgGradient: true, bgImage: true,
-            zones: { select: { widgetType: true, defaultConfig: true } },
+            zones: { select: { id: true, widgetType: true, defaultConfig: true, x: true, y: true, width: true, height: true, zIndex: true, sceneId: true }, orderBy: { sortOrder: 'asc' } },
+            scenes: { select: { id: true }, orderBy: { sortOrder: 'asc' }, take: 1 },
           },
         },
         createdBy: { select: { id: true, email: true } },
@@ -665,7 +666,8 @@ export class PlaylistsController {
           select: {
             id: true, name: true, screenWidth: true, screenHeight: true, category: true,
             bgColor: true, bgGradient: true, bgImage: true,
-            zones: { select: { widgetType: true, defaultConfig: true } },
+            zones: { select: { id: true, widgetType: true, defaultConfig: true, x: true, y: true, width: true, height: true, zIndex: true, sceneId: true }, orderBy: { sortOrder: 'asc' } },
+            scenes: { select: { id: true }, orderBy: { sortOrder: 'asc' }, take: 1 },
           },
         },
         createdBy: { select: { id: true, email: true } },

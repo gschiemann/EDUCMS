@@ -265,11 +265,53 @@ export function PlaylistLibraryV1(props: PlaylistLibraryV1Props) {
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+      {selectable && selectedRows.length > 0 && !error && (
+        <div
+          role="region"
+          aria-label="Bulk actions"
+          data-testid="bulk-bar"
+          className="flex items-center justify-end gap-3 flex-wrap"
+        >
+          <span className={`text-[13px] font-bold ${INK}`} aria-live="polite" data-testid="bulk-count">
+            {selectedRows.length} selected
+          </span>
+          {visible.length > selectedRows.length && (
+            <button
+              type="button"
+              onClick={selectAllVisible}
+              disabled={bulkBusy}
+              className="text-[13px] font-semibold underline underline-offset-2 disabled:opacity-50"
+              style={{ color: 'var(--brand-primary, #3515E8)' }}
+            >
+              Select all {visible.length}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={clearSelection}
+            disabled={bulkBusy}
+            className={`text-[13px] font-semibold ${INK_2} hover:underline disabled:opacity-50`}
+          >
+            Clear
+          </button>
+          <button
+            type="button"
+            onClick={() => { void removeSelected(); }}
+            disabled={bulkBusy}
+            data-testid="bulk-remove"
+            className="shrink-0 whitespace-nowrap inline-flex items-center gap-2 h-9 px-4 rounded-[10px] text-[13px] font-bold text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-60 disabled:cursor-wait"
+          >
+            <Trash2 className="w-4 h-4" aria-hidden />
+            {bulkBusy ? 'Removing' : `Remove ${selectedRows.length}`}
+          </button>
+        </div>
+      )}
+
           {/* Greg, 2026-09-16: "no need for the publish to gyms button, ill go
               select the playlist i want and then publish it". A header button
               has no row to carry, so it could only ever open the sheet asking
               "Choose a playlist" — the row's own menu entry is the path. */}
-          <button
+          {(!selectable || selectedRows.length === 0 || error) && <button
             type="button"
             onClick={props.onNew}
             disabled={isViewer}
@@ -279,7 +321,7 @@ export function PlaylistLibraryV1(props: PlaylistLibraryV1Props) {
           >
             <Plus className="w-4 h-4" aria-hidden />
             New playlist
-          </button>
+          </button>}
         </div>
       </div>
 
@@ -430,49 +472,6 @@ export function PlaylistLibraryV1(props: PlaylistLibraryV1Props) {
             className="sm:hidden mt-2.5 w-full h-11 rounded-[10px] border border-amber-300 bg-white text-[13px] font-bold text-amber-800"
           >
             Review delivery
-          </button>
-        </div>
-      )}
-
-      {/* ── Bulk bar — only while something is checked ── */}
-      {selectable && selectedRows.length > 0 && !error && (
-        <div
-          role="region"
-          aria-label="Bulk actions"
-          data-testid="bulk-bar"
-          className={`sticky top-2 z-20 flex items-center gap-3 flex-wrap rounded-[12px] border px-4 py-2.5 shadow-sm bg-[#F0ECFF] border-[#D9D0FF]`}
-        >
-          <span className={`text-[13px] font-bold ${INK}`} aria-live="polite" data-testid="bulk-count">
-            {selectedRows.length} selected
-          </span>
-          {visible.length > selectedRows.length && (
-            <button
-              type="button"
-              onClick={selectAllVisible}
-              disabled={bulkBusy}
-              className="text-[13px] font-semibold underline underline-offset-2 disabled:opacity-50"
-              style={{ color: 'var(--brand-primary, #3515E8)' }}
-            >
-              Select all {visible.length}
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={clearSelection}
-            disabled={bulkBusy}
-            className={`text-[13px] font-semibold ${INK_2} hover:underline disabled:opacity-50`}
-          >
-            Clear
-          </button>
-          <button
-            type="button"
-            onClick={() => { void removeSelected(); }}
-            disabled={bulkBusy}
-            data-testid="bulk-remove"
-            className="ml-auto inline-flex items-center gap-2 h-9 px-4 rounded-[10px] text-[13px] font-bold text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-60 disabled:cursor-wait"
-          >
-            <Trash2 className="w-4 h-4" aria-hidden />
-            {bulkBusy ? 'Removing…' : `Remove ${selectedRows.length}…`}
           </button>
         </div>
       )}

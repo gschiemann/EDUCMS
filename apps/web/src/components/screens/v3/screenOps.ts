@@ -54,6 +54,7 @@ import { deriveBundleSkew, type BundleSkewVariant } from '../bundleSkew';
 import { contentBehindCause } from '@/components/dashboard/district/fleetCommand';
 import { isWindowOpen } from '@/app/player/scheduleWindow';
 import { templatePosterUrl } from '@/lib/template-poster';
+import { templatePreviewOf, type TemplatePreview } from '@/lib/template-preview';
 import { HARDWARE_CATALOG, resolveHardwareModel } from '@cms/api-types';
 
 // ═══════════════════════════════════════════════════════════════════
@@ -181,7 +182,9 @@ export interface OpsPlaylist {
     bgColor?: string | null;
     bgGradient?: string | null;
     bgImage?: string | null;
-    zones?: Array<{ widgetType: string; defaultConfig?: unknown }> | null;
+    screenWidth?: number | null;
+    screenHeight?: number | null;
+    zones?: Array<{ widgetType: string; defaultConfig?: unknown; x?: number; y?: number; width?: number; height?: number; zIndex?: number | null }> | null;
   } | null;
 }
 
@@ -783,6 +786,7 @@ export interface ExpectedContent {
   /** An EXPECTED preview of that playlist, never a capture of the glass.
    *  `thumbnailKind` says what it actually is so the UI never implies a
    *  poster of a board is a photograph of the screen. */
+  templatePreview?: TemplatePreview | null;
   thumbnailUrl: string | null;
   thumbnailKind: ExpectedThumbnailKind;
   /** Paintable background of a board we have no poster for — last resort so a
@@ -908,6 +912,7 @@ export function deriveExpectedContent(
     playlistId: winner.playlistId ?? pl?.id ?? null,
     templateId: pl?.template?.id ?? null,
     renderSignature: playlistRenderSignature(pl),
+    templatePreview: preview.templatePreview,
     thumbnailUrl: preview.url,
     thumbnailKind: preview.kind,
     thumbnailTint: preview.tint,
@@ -933,7 +938,9 @@ export function deriveExpectedContent(
  */
 export function previewOf(
   pl: OpsPlaylist | undefined,
-): { url: string | null; kind: ExpectedThumbnailKind; tint: string | null; posterUrl: string | null } {
+): { url: string | null; kind: ExpectedThumbnailKind; tint: string | null; posterUrl: string | null; templatePreview?: TemplatePreview | null } {
+  const templatePreview = templatePreviewOf(pl?.template);
+  if (templatePreview) return { url: templatePosterUrl(pl?.template?.zones), kind: 'board', tint: null, posterUrl: null, templatePreview };
   const items = pl?.items ?? [];
   const still = items.find((i) => i.asset?.fileUrl && (i.asset.mimeType ?? '').startsWith('image/'))?.asset?.fileUrl;
   if (still) return { url: still, kind: 'still', tint: null, posterUrl: null };

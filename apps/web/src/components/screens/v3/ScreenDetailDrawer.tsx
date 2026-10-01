@@ -651,7 +651,7 @@ export function ScreenDetailDrawer({
                     )}
                     {expected.thumbnailKind === 'board' && (
                       <p className="mt-1 text-[10px] font-semibold text-slate-400 leading-snug">
-                        The board&apos;s own look — brand or text changes you made are not shown here.
+                        {expected.templatePreview ? 'Preview of the saved template.' : "The board’s own look — brand or text changes you made are not shown here."}
                       </p>
                     )}
                   </div>

@@ -48,7 +48,7 @@ describe.each([
     ['{ confirmInUse: false }', { id: 'x1', confirmInUse: false }, `${base}/x1`],
     ['{ confirmInUse: true }', { id: 'x1', confirmInUse: true }, `${base}/x1?confirm=in-use`],
   ])('%s', async (_label, arg, path) => {
-    const h = mount(useHook);
+    const h = mount(() => useHook());
     await act(async () => {
       await h.result.mutateAsync(arg as never);
     });
@@ -93,4 +93,29 @@ describe('the optimistic removal keys on the id, and a refusal puts the row back
     });
     expect(h.qc.getQueryData(['assets'])).toEqual([{ id: 'a1' }, { id: 'a2' }]);
   });
+});
+
+
+it('bulk removal updates paged and legacy caches together, restoring only files the server kept', async () => {
+  let settle!: (value: unknown) => void;
+  apiFetch.mockImplementationOnce(() => new Promise(resolve => { settle = resolve; }));
+  const h = mount(useDeleteAsset);
+  const rows = [{ id: 'a1' }, { id: 'a2' }, { id: 'a3' }];
+  h.qc.setQueryData(['assets'], rows);
+  h.qc.setQueryData(['assets', 'page', 'all'], { assets: rows, total: 3 });
+  const invalidate = jest.spyOn(h.qc, 'invalidateQueries');
+  let pending!: Promise<unknown>;
+  await act(async () => {
+    pending = h.result.mutateAsync({ ids: ['a1', 'a2'], confirmInUse: true });
+    await Promise.resolve();
+  });
+  expect(h.qc.getQueryData(['assets'])).toEqual([{ id: 'a3' }]);
+  expect(h.qc.getQueryData(['assets', 'page', 'all'])).toEqual({ assets: [{ id: 'a3' }], total: 1 });
+  await act(async () => {
+    settle({ results: [{ id: 'a1', deleted: true }, { id: 'a2', deleted: false, code: 'ASSET_IN_EMERGENCY_CONTENT' }] });
+    await pending;
+  });
+  expect(h.qc.getQueryData(['assets'])).toEqual([{ id: 'a2' }, { id: 'a3' }]);
+  expect(h.qc.getQueryData(['assets', 'page', 'all'])).toEqual({ assets: [{ id: 'a2' }, { id: 'a3' }], total: 2 });
+  expect(invalidate.mock.calls.map(([arg]) => arg?.queryKey)).toEqual([['assets'], ['playlists'], ['schedules'], ['screens']]);
 });

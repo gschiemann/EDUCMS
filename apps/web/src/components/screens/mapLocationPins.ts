@@ -1,11 +1,17 @@
 import type { Store } from './mapStores';
 import type { LocationPin } from './ScreenMap';
 
+/** A shared address remains one physical pin, with its groups named first. */
+export function storeLocationName(store: Store): string {
+  const names = [...new Set(store.groups.filter(group => group.id && group.name.trim()).map(group => group.name.trim()))].sort((a, b) => a.localeCompare(b));
+  if (!names.length) return store.label;
+  return names.length === 1 ? names[0] : `${names[0]} + ${names.length - 1} ${names.length === 2 ? 'group' : 'groups'}`;
+}
+
 /** The Screens map uses the same locations as its rail and the active account's brand. */
 export function storeLocationPins(stores: Store[], logoUrl: string | null, selectedKey: string | null): LocationPin[] {
   return stores.map(store => {
-    const name = store.groups.length === 1 && store.groups[0].id
-      ? store.groups[0].name : store.label;
+    const name = storeLocationName(store);
     const words = name.trim().split(/\s+/).filter(Boolean);
     return {
       id: store.key, name, lat: store.lat, lng: store.lng,

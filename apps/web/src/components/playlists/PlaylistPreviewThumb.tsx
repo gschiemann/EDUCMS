@@ -71,6 +71,7 @@ import { ScaledTemplateThumbnail } from '@/components/templates/ScaledTemplateTh
 import { PdfHoverThumb } from '@/components/assets/PdfHoverThumb';
 import { transformedImageUrl } from '@/lib/asset-image';
 import { VideoPreviewThumb, assetPosterUrl } from './VideoPreviewThumb';
+import { templatePreviewOf } from '@/lib/template-preview';
 
 const apiBase = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1').replace('/api/v1', '');
 
@@ -430,7 +431,7 @@ export function PlaylistPreviewThumb({ playlist, templateLookup, size = 'tile', 
   // ── Template playlist ─────────────────────────────────────────
   if (isTemplate) {
     const tid = playlist.template?.id;
-    const entry = tid ? templateLookup?.[tid] : undefined;
+    const entry = templatePreviewOf(playlist.template) || (tid ? templateLookup?.[tid] : undefined);
 
     // Tile mode at full quality — render the actual layout zones
     // via ScaledTemplateThumbnail. The component IO-gates its own

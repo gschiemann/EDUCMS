@@ -444,7 +444,7 @@ describe('In-use confirmation — sent only after a warning that showed the usag
       await selectAndDelete();
       await waitFor(() => expect(deleted).toHaveBeenCalled());
       expect(appConfirm.mock.calls[0][0].message).toContain('Assets used in playlists will be removed from those playlists.');
-      expect(deleted).toHaveBeenCalledWith({ id: 'a1', confirmInUse: true });
+      expect(deleted).toHaveBeenCalledWith({ ids: ['a1'], confirmInUse: true });
     });
 
     it('a cancelled bulk warning sends nothing', async () => {
@@ -459,11 +459,11 @@ describe('In-use confirmation — sent only after a warning that showed the usag
     it('an emergency refusal (ASSET_IN_EMERGENCY_CONTENT) is reported as protected content that was kept', async () => {
       appConfirm.mockResolvedValue(true);
       deleteImpl = () =>
-        Promise.reject(Object.assign(new Error('This file is emergency content.'), { status: 409, code: 'ASSET_IN_EMERGENCY_CONTENT' }));
+        Promise.resolve({ results: [{ id: 'a1', deleted: false, code: 'ASSET_IN_EMERGENCY_CONTENT', message: 'This file is emergency content.' }] });
       await selectAndDelete();
       await waitFor(() => expect(appAlert).toHaveBeenCalled());
       expect(appAlert.mock.calls[0][0]).toMatchObject({ title: 'Some assets were kept' });
-      expect(appAlert.mock.calls[0][0].message).toBe('0 of 1 deleted. 1 is protected emergency content and was kept. ');
+      expect(appAlert.mock.calls[0][0].message).toBe('0 of 1 deleted. 1 is protected emergency content and was kept. This file is emergency content.');
     });
   });
 });

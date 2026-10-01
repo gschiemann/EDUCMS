@@ -1,3 +1,4 @@
+import { AssetDeleteBatch, folderSubtreeIds } from './asset-delete-batch';
 import {
   Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards, Request,
   UseInterceptors, UploadedFile, HttpException, HttpStatus, Optional, UseFilters,
@@ -278,6 +279,8 @@ const SCREEN_EMERGENCY_ASSET_SELECT = SCREEN_EMERGENCY_ASSET_FIELDS.reduce<Recor
 @UseGuards(JwtAuthGuard, RbacGuard)
 export class AssetsController {
   private readonly logger = new Logger(AssetsController.name);
+
+  private readonly deletionBatch = new AssetDeleteBatch();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -2096,6 +2099,19 @@ export class AssetsController {
    * delete (ba1a8ed) or an API-key client gets. Emergency refusals come first
    * and the confirmation never overrides them. See common/in-use-delete.ts.
    */
+  @Post('bulk-delete')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async removeBatch(
+    @Request() req: { user: { id: string; tenantId: string; role: string } },
+    @Body() body: { ids?: unknown },
+    @Query('confirm') confirm?: string,
+  ) {
+    // Every file still passes the existing tenant, emergency, usage,
+    // serializable-transaction, fallback, audit and shared-storage checks.
+    const results = await this.deletionBatch.run(body?.ids, id => this.remove(req, id, confirm));
+    return { results };
+  }
+
   @Delete(':id')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   @UseFilters(InUseDeleteConflictFilter)
@@ -2598,27 +2614,50 @@ export class AssetsController {
     });
   }
 
+  @Get('folders/:folderId/deletion-summary')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async folderDeletionSummary(@Request() req: { user: { tenantId: string } }, @Param('folderId') folderId: string) {
+    const folders = await this.prisma.client.assetFolder.findMany({
+      where: { tenantId: req.user.tenantId }, select: { id: true, name: true, parentId: true },
+    });
+    const folder = folders.find(f => f.id === folderId);
+    if (!folder) throw new HttpException({ code: 'ASSET_FOLDER_NOT_FOUND', message: 'Folder not found' }, HttpStatus.NOT_FOUND);
+    const ids = folderSubtreeIds(folders, folderId);
+    const assets = await this.prisma.client.asset.findMany({
+      where: { tenantId: req.user.tenantId, folderId: { in: ids } }, select: { id: true },
+    });
+    return { name: folder.name, assetIds: assets.map(a => a.id), folders: ids.length };
+  }
+
   @Delete('folders/:folderId')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
-  async deleteFolder(@Request() req: any, @Param('folderId') folderId: string) {
-    const folder = await this.prisma.client.assetFolder.findFirst({
-      where: { id: folderId, tenantId: req.user.tenantId },
-    });
-    if (!folder) throw new HttpException({ code: 'ASSET_FOLDER_NOT_FOUND', message: 'Folder not found' }, HttpStatus.NOT_FOUND);
-
-    // Move all assets in this folder to root
-    await this.prisma.client.asset.updateMany({
-      where: { folderId, tenantId: req.user.tenantId },
-      data: { folderId: null },
-    });
-
-    // Move child folders to parent
-    await this.prisma.client.assetFolder.updateMany({
-      where: { parentId: folderId, tenantId: req.user.tenantId },
-      data: { parentId: folder.parentId },
-    });
-
-    await this.prisma.client.assetFolder.delete({ where: { id: folderId, tenantId: req.user.tenantId } });
-    return { deleted: true };
+  async deleteFolder(
+    @Request() req: { user: { id: string; tenantId: string } },
+    @Param('folderId') folderId: string,
+    @Query('mode') mode?: string,
+  ) {
+    if (mode !== undefined && mode !== 'empty-tree') throw new HttpException({ message: 'Invalid folder deletion mode.' }, HttpStatus.BAD_REQUEST);
+    return withDbRetry(() => this.prisma.client.$transaction(async tx => {
+      const folder = await tx.assetFolder.findFirst({ where: { id: folderId, tenantId: req.user.tenantId } });
+      if (!folder) throw new HttpException({ code: 'ASSET_FOLDER_NOT_FOUND', message: 'Folder not found' }, HttpStatus.NOT_FOUND);
+      let removedFolderIds = [folderId];
+      if (mode === 'empty-tree') {
+        const folders = await tx.assetFolder.findMany({ where: { tenantId: req.user.tenantId }, select: { id: true, parentId: true } });
+        removedFolderIds = folderSubtreeIds(folders, folderId);
+        const remaining = await tx.asset.count({ where: { tenantId: req.user.tenantId, folderId: { in: removedFolderIds } } });
+        if (remaining) throw new HttpException({ code: 'FOLDER_CONTENTS_KEPT', message: 'The folder was kept because some files remain. Protected files or new uploads are never removed without their own checks.' }, HttpStatus.CONFLICT);
+        await tx.assetFolder.deleteMany({ where: { tenantId: req.user.tenantId, id: { in: removedFolderIds } } });
+      } else {
+        await tx.asset.updateMany({ where: { folderId, tenantId: req.user.tenantId }, data: { folderId: null } });
+        await tx.assetFolder.updateMany({ where: { parentId: folderId, tenantId: req.user.tenantId }, data: { parentId: folder.parentId } });
+        await tx.assetFolder.delete({ where: { id: folderId, tenantId: req.user.tenantId } });
+      }
+      await tx.auditLog.create({ data: {
+        tenantId: req.user.tenantId, userId: req.user.id, action: 'ASSET_FOLDER_DELETED',
+        targetType: 'AssetFolder', targetId: folderId,
+        details: JSON.stringify({ mode: mode || 'keep-files', removedFolderIds }),
+      } });
+      return { deleted: true };
+    }, { isolationLevel: 'Serializable', timeout: 20000, maxWait: 10000 }), { label: 'assets.deleteFolder', logger: this.logger });
   }
 }

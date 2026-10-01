@@ -19,13 +19,14 @@
 import React, { useState } from 'react';
 import type { ExpectedContent } from './screenOps';
 import { VideoPreviewThumb } from '@/components/playlists/VideoPreviewThumb';
+import { TemplateContentThumb } from '@/components/templates/TemplateContentThumb';
 
 export function ExpectedThumb({
   expected,
   className = '',
   rounded = 'rounded-md',
 }: {
-  expected: Pick<ExpectedContent, 'thumbnailUrl' | 'thumbnailKind' | 'thumbnailTint' | 'name' | 'posterUrl'>;
+  expected: Pick<ExpectedContent, 'thumbnailUrl' | 'thumbnailKind' | 'thumbnailTint' | 'name' | 'posterUrl' | 'templatePreview'>;
   className?: string;
   rounded?: string;
 }) {
@@ -34,6 +35,10 @@ export function ExpectedThumb({
   const [failed, setFailed] = useState(false);
   const base = `${className} ${rounded} bg-slate-100 overflow-hidden`;
   const of = expected.name ? ` of ${expected.name}` : '';
+
+  if (expected.templatePreview) {
+    return <span className={`${base} block`}><TemplateContentThumb template={expected.templatePreview} name={expected.name} /></span>;
+  }
 
   if (expected.thumbnailUrl && !failed) {
     if (expected.thumbnailKind === 'frame') {

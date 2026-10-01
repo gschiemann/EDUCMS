@@ -687,7 +687,7 @@ describe('bulk selection', () => {
     fireEvent.click(box('Member Promotions'));
     fireEvent.click(box('Club Welcome'));
     expect(screen.getByTestId('bulk-count')).toHaveTextContent('2 selected');
-    expect(screen.getByTestId('bulk-remove')).toHaveTextContent('Remove 2…');
+    expect(screen.getByTestId('bulk-remove')).toHaveTextContent('Remove 2');
     expect(tableRow('Member Promotions')).toHaveAttribute('data-selected', 'true');
     fireEvent.click(within(screen.getByTestId('bulk-bar')).getByRole('button', { name: 'Clear' }));
     expect(screen.queryByTestId('bulk-bar')).toBeNull();
@@ -747,14 +747,14 @@ describe('bulk selection', () => {
     mount({ onRemoveMany });
     fireEvent.click(box('Member Promotions'));
     fireEvent.click(screen.getByTestId('bulk-remove'));
-    const btn = await screen.findByRole('button', { name: /Removing…/ });
+    const btn = await screen.findByRole('button', { name: /Removing/ });
     expect(btn).toBeDisabled();
     expect(box('Member Promotions')).toBeDisabled();
     // A second click while busy must not start a second removal.
     fireEvent.click(btn);
     expect(onRemoveMany).toHaveBeenCalledTimes(1);
     await React.act(async () => { finish(); });
-    expect(screen.getByTestId('bulk-remove')).toHaveTextContent('Remove 1…');
+    expect(screen.getByTestId('bulk-remove')).toHaveTextContent('Remove 1');
     expect(screen.getByTestId('bulk-remove')).not.toBeDisabled();
   });
 });

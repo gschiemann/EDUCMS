@@ -855,12 +855,13 @@ describe('previewOf — the expected picture of a playlist', () => {
     { widgetType: 'EXTERNAL_HTML', defaultConfig: { url: '/templates/signage/gym/leaderboard.html' } },
   ];
 
-  it('prefers the playlist own still over the board it is laid onto', () => {
+  it('shows the saved board composition when a template also holds media', () => {
     const out = previewOf({
       id: 'p', items: [{ asset: { fileUrl: '/a.png', mimeType: 'image/png' } }],
       template: { id: 't', zones: boardZones },
     });
-    expect(out).toEqual({ url: '/a.png', kind: 'still', tint: null, posterUrl: null });
+    expect(out.kind).toBe('board');
+    expect(out.templatePreview?.zones[0].defaultConfig).toEqual(boardZones[0].defaultConfig);
   });
 
   it('previews a video-only playlist with the video itself, carrying its poster frame when the API cut one', () => {
@@ -887,12 +888,14 @@ describe('previewOf — the expected picture of a playlist', () => {
     expect(out.kind).toBe('board');
   });
 
-  it('falls back to the template own background when no poster exists', () => {
+  it('renders saved zones when no static poster exists', () => {
     const out = previewOf({
       id: 'p', items: [],
       template: { id: 't', zones: [{ widgetType: 'CLOCK' }], bgGradient: 'linear-gradient(#fff,#000)' },
     });
-    expect(out).toEqual({ url: null, kind: 'tint', tint: 'linear-gradient(#fff,#000)', posterUrl: null });
+    expect(out.kind).toBe('board');
+    expect(out.templatePreview?.zones[0].widgetType).toBe('CLOCK');
+    expect(out.templatePreview?.bgGradient).toBe('linear-gradient(#fff,#000)');
   });
 
   it('wraps a bare background image url so it is usable as a CSS value', () => {

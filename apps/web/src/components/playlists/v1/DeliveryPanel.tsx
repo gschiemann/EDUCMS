@@ -26,9 +26,10 @@
  * not receive.
  */
 
+import { useEffect, useState } from 'react';
 import { AlertTriangle, ExternalLink, Loader2, RefreshCw, WifiOff } from 'lucide-react';
 import {
-  deriveDeliveryFromScreens, deriveTargetsFromScreens, exactStamp, summarizeDelivery,
+  deriveDeliveryFromScreens, deriveTargetsFromScreens, exactStamp, isUpdateInFlight, summarizeDelivery,
   summarizeDeliveryPayload, overlayCurrentScreenHealth, PUSH_GRACE_MS, timeAgo,
   type DeliveryPayload, type DeliverySummary, type DeliveryTarget, type OpsScreenRef,
 } from './playlistOps';
@@ -77,6 +78,11 @@ export interface DeliveryPanelProps {
 
 export function DeliveryPanel(props: DeliveryPanelProps) {
   const { payload, derived, targetScreens, loading } = props;
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNowMs(Date.now()), 15_000);
+    return () => clearInterval(timer);
+  }, []);
 
   if (loading) {
     return (
@@ -96,12 +102,12 @@ export function DeliveryPanel(props: DeliveryPanelProps) {
   // sources, opposite claims — Greg's screenshot, 2026-09-16.
   const apiAnswered = !derived && payload != null && payload.latest != null;
   const targets: DeliveryTarget[] = apiAnswered && payload?.latest
-    ? overlayCurrentScreenHealth(payload.latest.targets, targetScreens)
-    : deriveTargetsFromScreens(targetScreens);
+    ? overlayCurrentScreenHealth(payload.latest.targets, targetScreens, nowMs)
+    : deriveTargetsFromScreens(targetScreens, nowMs);
   const summary: DeliverySummary = apiAnswered
     ? summarizeDelivery(targets, { pushing: !!payload?.latest &&
         payload.latest.acknowledged < payload.latest.targetCount &&
-        Date.now() - new Date(payload.latest.createdAt).getTime() < PUSH_GRACE_MS &&
+        nowMs - new Date(payload.latest.createdAt).getTime() < PUSH_GRACE_MS &&
         !targets.some((t) => t.state === 'playback-issue' || t.state === 'no-picture') })
     : derived
       ? (targetScreens.length > 0
@@ -111,7 +117,7 @@ export function DeliveryPanel(props: DeliveryPanelProps) {
         // pushed. Calling summarizeDelivery raw skipped it, so this panel could
         // claim a deployment that never happened — the exact overclaim §4.3
         // exists to prevent. The route and the library row both use the wrapper.
-        ? deriveDeliveryFromScreens(targetScreens)
+        ? deriveDeliveryFromScreens(targetScreens, nowMs)
         : summarizeDelivery([]))
       : summarizeDeliveryPayload(null); // read failed → §22.5
 
@@ -194,7 +200,8 @@ export function DeliveryPanel(props: DeliveryPanelProps) {
               <tbody>
                 {targets.map((t) => {
                   const sc = screenById.get(t.screenId);
-                  const bad = t.state !== 'acknowledged';
+                  const sending = t.state === 'not-updated' && isUpdateInFlight(sc, nowMs);
+                  const bad = t.state !== 'acknowledged' && !sending;
                   return (
                     <tr
                       key={t.screenId}
@@ -240,7 +247,9 @@ export function DeliveryPanel(props: DeliveryPanelProps) {
                         {t.ackAt ? (
                           <span className="text-[13px] text-emerald-700 font-semibold">Received</span>
                         ) : t.state === 'not-updated' ? (
-                          <span className="text-[13px] text-amber-800 font-semibold">Not received</span>
+                          <span className={`text-[13px] font-semibold ${sending ? INK_3 : 'text-amber-800'}`}>
+                            {sending ? 'Sending update' : 'Not received'}
+                          </span>
                         ) : t.state === 'offline' ? (
                           <span className={`text-[13px] ${INK_3}`}>Cannot be reached</span>
                         ) : (

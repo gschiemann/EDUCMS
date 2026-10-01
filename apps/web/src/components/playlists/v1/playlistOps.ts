@@ -619,17 +619,18 @@ export function summarizeDelivery(
     byState.set(t.state, list);
   }
 
-  const worst = worstTargetState(targets.map((t) => t.state));
+  const problems = opts.pushing ? targets.filter(t => t.state === 'offline' || t.state === 'playback-issue' || t.state === 'no-picture' || t.state === 'content-mismatch') : [];
+  const worst = worstTargetState((problems.length ? problems : targets).map((t) => t.state));
   const worstNames = worst ? (byState.get(worst) ?? []) : [];
 
-  if (opts.pushing && worst !== 'acknowledged') {
+  if (opts.pushing && (worst === 'not-updated' || worst === 'unknown')) {
     return {
       state: 'pushing',
-      tone: 'warn',
+      tone: 'muted',
       label: 'Sending update',
       sub: `${acknowledged} of ${total} received`,
-      detail: 'The update has been requested; targets have not all reported back yet.',
-      clause: `${total - acknowledged} of ${total} screens have not reported back yet.`,
+      detail: null,
+      clause: null,
       acknowledged, total, worstNames,
     };
   }
@@ -689,7 +690,7 @@ export function summarizeDelivery(
         state: 'unknown',
         tone: 'muted',
         label: worstNames.length === total
-          ? `No update requested on ${total} ${total === 1 ? 'screen' : 'screens'}`
+          ? 'Waiting for playback report'
           : `${nameList(worstNames)} has not reported back`,
         detail: 'These screens have not reported enough to confirm the update.',
         clause: `${nameList(worstNames)} has not reported back yet.`,
@@ -810,6 +811,11 @@ export function deriveCurrentPictureState(screen: OpsScreenRef, nowMs: number): 
   const idleFamily = grade === 'idle' || grade === 'connecting' || grade === 'content-loading' || grade === 'unknown';
   if (download && (idleFamily || (download.state === 'held' && grade === 'painting'))) return 'downloading';
 
+  // A first frame has not arrived yet. These proofs describe startup, not a
+  // failed video. An outstanding request that exceeds its grace period is
+  // handled by the delivery deadline below; never invent a picture here.
+  if (grade === 'idle' || grade === 'connecting' || grade === 'content-loading') return 'unknown';
+
   if (proofMs === null || nowMs < proofMs) return 'unknown';
   if (nowMs - proofMs >= RENDER_STALE_AFTER_MS) return 'stale';
 
@@ -817,7 +823,7 @@ export function deriveCurrentPictureState(screen: OpsScreenRef, nowMs: number): 
   // 'content-loading' were one 'idle' grade until 2026-09-27; they keep its
   // reading here, and "Content unavailable" is exactly a playback problem.
   if (
-    grade === 'idle' || grade === 'connecting' || grade === 'content-loading' || grade === 'content-unavailable' ||
+    grade === 'content-unavailable' ||
     grade === 'paused' || grade === 'repair-required' || grade === 'media-stalled' || grade === 'alert-unconfirmed'
   ) {
     return 'issue';
@@ -910,7 +916,14 @@ export function deriveTargetsFromScreens(
     const pushChannel = s.pushChannel ?? 'unknown';
     const lastProofAt = proofMs === null ? null : new Date(proofMs).toISOString();
 
-    const pictureState = deriveCurrentPictureState(s, nowMs);
+    let pictureState = deriveCurrentPictureState(s, nowMs);
+    // Reports from before a new request cannot diagnose that new content.
+    // Keep offline/credential faults visible and expire this grace normally.
+    const awaitingFirstReport = online && s.authState !== 'REPAIR_REQUIRED' && pending !== null
+      && nowMs >= pending && nowMs - pending < PUSH_GRACE_MS
+      && (proofMs === null || proofMs < pending)
+      && (!s.lastRenderedHash || s.lastRenderedHash.startsWith('pl:') || s.lastRenderedHash.startsWith('idle:'));
+    if (awaitingFirstReport) pictureState = 'unknown';
     const download = liveDownload(deriveContentDownload(s, nowMs));
     let state: DeliveryTargetState;
     if (pictureState === 'offline') {
@@ -949,6 +962,13 @@ export function deriveTargetsFromScreens(
   });
 }
 
+/** A new request is still within its bounded, neutral delivery period. */
+export function isUpdateInFlight(screen: OpsScreenRef | undefined, nowMs: number = Date.now()): boolean {
+  if (!screen || screen.status !== 'ONLINE' || screen.authState === 'REPAIR_REQUIRED') return false;
+  const pending = toMs(screen.pendingRefreshAt);
+  return pending !== null && nowMs >= pending && nowMs - pending < PUSH_GRACE_MS;
+}
+
 /**
  * The derived rollup used by the LIST while `GET /playlists/:id/delivery` is
  * unavailable. Same shape, same precedence, same vocabulary — just built from
@@ -960,12 +980,9 @@ export function deriveDeliveryFromScreens(
 ): DeliverySummary {
   if (targetScreens.length === 0) return NOT_PUBLISHED;
   const targets = deriveTargetsFromScreens(targetScreens, nowMs);
-  const pushing = targets.some((t) => {
-    if (t.state !== 'not-updated') return false;
-    const screen = targetScreens.find((s) => s.id === t.screenId);
-    const pending = toMs(screen?.pendingRefreshAt);
-    return pending !== null && nowMs - pending < PUSH_GRACE_MS;
-  });
+  const waiting = targets.filter(t => t.state === 'not-updated');
+  const pushing = waiting.length > 0 && waiting.every((t) =>
+    isUpdateInFlight(targetScreens.find((s) => s.id === t.screenId), nowMs));
   const summary = summarizeDelivery(targets, { pushing });
   if (summary.state === 'acknowledged') {
     // Nothing was pushed here — the evidence is a fresh render proof, so say
@@ -1061,7 +1078,7 @@ export function buildPlaylistRow(input: BuildRowInput): PlaylistSummaryRow {
   // claim about it. A paused one is not on those screens; an unpublished one
   // has no screens at all. Neither inherits the health of the targets it used
   // to reach.
-  const eligible = state.state === 'ACTIVE' || state.state === 'SCHEDULED';
+  const eligible = state.state === 'ACTIVE';
   const delivery = input.delivery
     ?? (!eligible
       ? (targetScreenIds.length > 0 ? NOT_PLAYING : NOT_PUBLISHED)

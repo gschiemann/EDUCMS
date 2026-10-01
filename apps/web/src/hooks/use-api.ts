@@ -1,3 +1,4 @@
+import { deleteAssetsInBatches, isBulkAssetDelete, type BulkAssetDeleteTarget } from '@/lib/asset-bulk-delete';
 import { useCallback, useEffect, useState } from 'react';
 import {
   useQuery,
@@ -1682,15 +1683,21 @@ export function useDeleteAsset() {
   const qc = useQueryClient();
   return useMutation({
     // In-use confirmation: see InUseDeleteTarget.
-    mutationFn: (target: InUseDeleteTarget) => apiFetch(inUseDeletePath('/assets', target), { method: 'DELETE' }),
+    mutationFn: (target: InUseDeleteTarget | BulkAssetDeleteTarget) => isBulkAssetDelete(target) ? deleteAssetsInBatches(target) : apiFetch(inUseDeletePath('/assets', target), { method: 'DELETE' }),
     onMutate: async (target) => {
-      const id = inUseDeleteId(target);
+      const ids = new Set(isBulkAssetDelete(target) ? target.ids : [inUseDeleteId(target)]);
       await qc.cancelQueries({ queryKey: ['assets'] });
-      const prev = patchAssetCaches(qc, (assets) => assets.filter((a: any) => a?.id !== id));
+      const prev = patchAssetCaches(qc, (assets) => assets.filter((a: any) => !ids.has(a?.id)));
       return { prev };
     },
     onError: (_e, _id, ctx) => {
       restoreAssetCaches(qc, ctx?.prev as any);
+    },
+    onSuccess: (data, target, ctx) => {
+      if (!isBulkAssetDelete(target) || !ctx?.prev) return;
+      const deleted = new Set<string>((data?.results || []).filter((result: { deleted: boolean }) => result.deleted).map((result: { id: string }) => result.id));
+      restoreAssetCaches(qc, ctx.prev);
+      patchAssetCaches(qc, assets => assets.filter((asset: { id: string }) => !deleted.has(asset.id)));
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ['assets'] });

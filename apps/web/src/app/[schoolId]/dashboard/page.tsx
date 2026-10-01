@@ -47,6 +47,8 @@ import { usePathname, useParams } from 'next/navigation';
 import { useEffect, useState, useMemo } from 'react';
 import { useTranslations } from 'next-intl';
 import { transformedImageUrl } from '@/lib/asset-image';
+import { previewOf } from '@/components/screens/v3/screenOps';
+import { ExpectedThumb } from '@/components/screens/v3/ExpectedThumb';
 
 export default function DashboardPage() {
   const t = useTranslations();
@@ -428,10 +430,7 @@ export default function DashboardPage() {
       groupedSchedules.map((g: any) => {
         const sched = g.sched;
         const pl = playlistById[sched.playlistId];
-        const previewUrl =
-          (pl?.items || []).find(
-            (it: any) => it?.asset?.mimeType?.startsWith('image/') && it?.asset?.fileUrl,
-          )?.asset?.fileUrl ?? null;
+        const preview = previewOf(pl);
         return {
           key: g.key as string,
           name: (pl?.name || sched.name || 'Untitled schedule') as string,
@@ -442,7 +441,8 @@ export default function DashboardPage() {
           timeStart: (sched.timeStart || '') as string,
           timeEnd: (sched.timeEnd || '') as string,
           isActive: nowHM >= (sched.timeStart || '00:00') && nowHM <= (sched.timeEnd || '23:59'),
-          previewUrl,
+          previewUrl: preview.url,
+          preview: { name: pl?.name || sched.name || null, thumbnailUrl: preview.url, thumbnailKind: preview.kind, thumbnailTint: preview.tint, posterUrl: preview.posterUrl, templatePreview: preview.templatePreview },
           portrait: !!g.portrait,
           playlistId: (sched.playlistId as string | undefined) || null,
         };
@@ -1005,33 +1005,14 @@ export default function DashboardPage() {
                 const sched = g.sched;
                 const pl = playlistById[sched.playlistId];
                 const isActive = nowHM >= (sched.timeStart || '00:00') && nowHM <= (sched.timeEnd || '23:59');
-                // Preview of what's actually playing: first image item of the
-                // playlist, shaped to the TARGET screens' orientation and
-                // square-cornered like a real panel (2026-08-31 operator ask).
-                // Video/template playlists get a quiet icon tile — never a
-                // fake frame.
-                const previewUrl = (pl?.items || []).find(
-                  (it: any) => it?.asset?.mimeType?.startsWith('image/') && it?.asset?.fileUrl,
-                )?.asset?.fileUrl ?? null;
+                const preview = previewOf(pl);
                 const thumbDims = g.portrait ? 'w-9 h-14' : 'w-[72px] h-11';
                 const deviceLine = g.devices.slice(0, 3).join(' · ')
                   + (g.devices.length > 3 ? ` · +${g.devices.length - 3} more` : '');
                 return (
                   <div key={g.key} className="px-5 py-3 flex items-center gap-3">
                     <div className={`w-1 h-10 rounded-full shrink-0 ${isActive ? 'bg-emerald-500' : 'bg-slate-200'}`} />
-                    {previewUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={previewUrl}
-                        alt=""
-                        className={`${thumbDims} object-cover border border-slate-300 shrink-0`}
-                        loading="lazy"
-                      />
-                    ) : (
-                      <div className={`${thumbDims} bg-slate-100 border border-slate-300 flex items-center justify-center shrink-0`}>
-                        <ListVideo className="w-4 h-4 text-slate-400" aria-hidden />
-                      </div>
-                    )}
+                    <ExpectedThumb expected={{ name: pl?.name || sched.name || null, thumbnailUrl: preview.url, thumbnailKind: preview.kind, thumbnailTint: preview.tint, posterUrl: preview.posterUrl, templatePreview: preview.templatePreview }} className={`${thumbDims} border border-slate-300 shrink-0`} rounded="rounded-none" />
                     <div className="w-16 text-[11px] font-mono font-semibold text-slate-500 shrink-0">
                       {sched.timeStart || 'All day'}
                       <div className="text-slate-400">{sched.timeEnd || ''}</div>
