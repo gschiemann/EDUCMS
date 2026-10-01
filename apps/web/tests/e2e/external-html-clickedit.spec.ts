@@ -53,6 +53,11 @@ import path from 'path';
  */
 
 const BOARDS = [
+  // Approved homebuilder packs: each collection and orientation is a family.
+  '/templates/signage/corporate/homebuilder/01-welcome-cinematic.html',
+  '/templates/signage/corporate/homebuilder/portrait/01-welcome-cinematic.html',
+  '/templates/custom/brookfield/01-welcome-cinematic.html',
+  '/templates/custom/brookfield/portrait/01-welcome-cinematic.html',
   '/templates/hs/varsity.html',
   // Flagship rebuilds + React→EXTERNAL_HTML conversions (2026-06-08 designer batch).
   '/templates/hs/broadcast.html',

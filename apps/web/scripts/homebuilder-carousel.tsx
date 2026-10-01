@@ -2,6 +2,14 @@ import { createRoot } from 'react-dom/client';
 import { NativeImageCarousel } from '../src/components/widgets/NativeImageCarousel';
 
 // Adapter only: timing, transitions and media rendering are the app's widget.
+// Keep the cinematic copy above media when reduced motion removes the
+// reveal's stacking context. The footer remains above the copy panel.
+const cinematicIntro = document.querySelector<HTMLElement>('.cinematic .intro');
+if (cinematicIntro) {
+  cinematicIntro.style.zIndex = '1';
+  const footer = document.querySelector<HTMLElement>('.cinematic .footer');
+  if (footer) footer.style.zIndex = '2';
+}
 const slots = Array.from(document.querySelectorAll<HTMLElement>('[data-imgslot]'));
 const roots = new Map<HTMLElement, ReturnType<typeof createRoot>>();
 const defaults = new Map<HTMLElement, { fit: string; position: string }>();
@@ -21,7 +29,7 @@ function sync() {
     if (legacy.__eduRot) { clearInterval(legacy.__eduRot); delete legacy.__eduRot; }
     if (!defaults.has(el)) {
       const style = getComputedStyle(el);
-      defaults.set(el, { fit: style.backgroundSize, position: style.backgroundPosition });
+      defaults.set(el, { fit: /logo|qr/.test(key) || style.backgroundSize === 'contain' ? 'contain' : 'cover', position: style.backgroundPosition });
     }
     const urls = sources(key);
     if (!urls.length) return; // A text wordmark remains editable text until replaced.

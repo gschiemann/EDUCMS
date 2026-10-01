@@ -60,7 +60,7 @@ it('a board with a list offers a count, starting at what it ships', async () => 
 
 it('a board with no list offers no count', async () => {
   mount(BOARD_NO_LIST);
-  await waitFor(() => expect(screen.getByText(/Story/i)).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByRole('textbox', { name: 'Story · Headline' })).toBeInTheDocument());
   expect(screen.queryByText(/How many/i)).not.toBeInTheDocument();
 });
 

@@ -35,6 +35,8 @@ fs.mkdirSync(output,{recursive:true});
    const frame=page.frames().find(f=>f!==page.mainFrame());
    await frame.waitForSelector('[data-native-image-carousel]');
    await frame.evaluate(()=>document.fonts.ready);
+   // Let the board's reveal and gallery freeze settle before capture.
+   await frame.waitForFunction(() => Array.from(document.querySelectorAll('.line-reveal')).every(e => Number(getComputedStyle(e).opacity) === 1));
    await page.waitForTimeout(180);
    const proof=await frame.evaluate(()=>({
     origin:location.origin,portrait:document.querySelector('.stage').classList.contains('portrait'),
@@ -42,8 +44,9 @@ fs.mkdirSync(output,{recursive:true});
     images:Array.from(document.querySelectorAll('[data-native-image-carousel] img')).every(i=>i.complete&&i.naturalWidth>0),
     clipped:Array.from(document.querySelectorAll('.stage [data-fit]')).filter(e=>e.offsetWidth&&e.offsetHeight&&e.scrollWidth>e.clientWidth+3).map(e=>e.dataset.field),
     native:document.querySelectorAll('[data-native-image-carousel]').length,
+    logosContained:Array.from(document.querySelectorAll('[data-imgslot*="logo"] img')).every(i=>getComputedStyle(i).objectFit==='contain'),
    }));
-   assert.equal(proof.portrait,portrait,record.id);assert.equal(proof.images,true,record.id+' image load');assert.equal(proof.clipped.length,0,record.id+' clipping '+proof.clipped);assert.equal(errors.length,0,errors.join('\n'));
+   assert.equal(proof.logosContained,true,record.id+' logo fit');assert.equal(proof.portrait,portrait,record.id);assert.equal(proof.images,true,record.id+' image load');assert.equal(proof.clipped.length,0,record.id+' clipping '+proof.clipped);assert.equal(errors.length,0,errors.join('\n'));
    const dest=path.join(root,'apps/web/public/templates/_thumbs',record.url.slice('/templates/'.length).replace(/\.html$/,'.png'));
    if(name==='chromium'){fs.mkdirSync(path.dirname(dest),{recursive:true});await page.screenshot({path:dest});provenance[record.url.slice('/templates/'.length).replace(/\.html$/,'')]=record.sha256.slice(0,16);}
    if(record.url.endsWith('04-home-plan.html')||record.url.endsWith('01-welcome-cinematic.html'))await page.screenshot({path:path.join(output,name+'-'+record.id+'.png')});

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, type CSSProperties } from 'react';
+import { sceneCss } from './scene-css';
 
 /** The IMAGE_CAROUSEL media renderer, shared by native zones and HTML boards. */
 type NativeCarouselConfig = {
@@ -40,7 +41,7 @@ function ImageCarouselPlayback({ config }: { config: NativeCarouselConfig }) {
   const animated = transition !== 'cut' && transition !== 'none' && !(step === 0 && config.noEntrance);
   return (
     <div data-native-image-carousel data-carousel-index={index} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', overflow: 'hidden' }}>
-      <style>{`
+      <style>{sceneCss(`
         @keyframes cms-native-carousel-fade { from {opacity:0} to {opacity:1} }
         @keyframes cms-native-carousel-out { from {opacity:1} to {opacity:0} }
         @keyframes cms-native-carousel-slide-left { from {transform:translateX(100%);opacity:0} to {transform:none;opacity:1} }
@@ -48,7 +49,7 @@ function ImageCarouselPlayback({ config }: { config: NativeCarouselConfig }) {
         @keyframes cms-native-carousel-slide-up { from {transform:translateY(100%);opacity:0} to {transform:none;opacity:1} }
         @keyframes cms-native-carousel-zoom { from {transform:scale(.92);opacity:0} to {transform:none;opacity:1} }
         @media (prefers-reduced-motion:reduce) { [data-native-image-carousel] img { animation:none !important; } }
-      `}</style>
+      `)}</style>
       {/* The outgoing image remains underneath so fade is a crossfade. */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img key={`previous:${step}`} src={urls[previous]} alt="" aria-hidden="true" style={{ ...imageStyle, opacity: 0, ...(step > 0 && animated ? { animation: 'cms-native-carousel-out 600ms cubic-bezier(.22,1,.36,1) both' } : {}) }} />
@@ -57,8 +58,8 @@ function ImageCarouselPlayback({ config }: { config: NativeCarouselConfig }) {
         animation: `cms-native-carousel-${transition === 'slide' ? 'slide-left' : transition} 600ms cubic-bezier(.22,1,.36,1) both`,
       } : {}) }} />
       {config.showIndicators !== false && urls.length > 1 && (
-        <div aria-hidden="true" style={{ position: 'absolute', bottom: '5%', left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 4 }}>
-          {urls.map((_, i) => <div key={i} style={{ width: 6, height: 6, borderRadius: 99, background: i === index ? 'white' : 'rgba(255,255,255,.4)' }} />)}
+        <div aria-hidden="true" style={{ position: 'absolute', bottom: '5%', left: '50%', transform: 'translateX(-50%)', display: 'flex' }}>
+          {urls.map((_, i) => <div key={i} style={{ width: 6, height: 6, marginLeft: i === 0 ? 0 : 4, borderRadius: 99, background: i === index ? 'white' : 'rgba(255,255,255,.4)' }} />)}
         </div>
       )}
     </div>
