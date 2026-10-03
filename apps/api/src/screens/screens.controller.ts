@@ -146,7 +146,11 @@ import {
   setDeviceCredentialSharedStore,
   publishDeviceCredentialState,
 } from './device-auth';
-import { revokeScreenCredentials, rotateScreenCredentialEpoch } from './device-credentials';
+import {
+  revokeScreenCredentials,
+  rotateScreenCredentialEpoch,
+  rotatedWithinRotationWindow,
+} from './device-credentials';
 // 2026-09-08 (school-security audit item 3 / internal F-D) — the
 // per-fingerprint admission floor for `GET /screens/status/:fp`. Composes with
 // the global per-IP throttler and the P0-7 per-device key; read that file's
@@ -1037,7 +1041,15 @@ export class ScreensController {
         // "two parties cannot both hold the current credential, and the
         // fork is visible."
         let issuedEpoch = Number((existing as any).credentialEpoch ?? 0) || 0;
-        if (priorStatus === 'valid' || priorStatus === 'unproven-restorable') {
+        // 2026-10-03: a proven register inside the rotation window mints on
+        // the CURRENT epoch — one rotation per reload burst, not one per page
+        // load (see CREDENTIAL_ROTATION_MIN_INTERVAL_MS). `valid` ONLY: the
+        // operator-repair restore below must still rotate (its one-shot
+        // guarantee is the rotation itself).
+        const rotationSkipped =
+          priorStatus === 'valid' &&
+          rotatedWithinRotationWindow((existing as any).credentialEpochRotatedAt);
+        if ((priorStatus === 'valid' && !rotationSkipped) || priorStatus === 'unproven-restorable') {
           try {
             issuedEpoch = await rotateScreenCredentialEpoch(
               { prisma: this.prisma, redis: this.redisService },
@@ -1046,6 +1058,10 @@ export class ScreensController {
           } catch {
             /* rotation is best-effort: never fail a live kiosk's boot on it */
           }
+        } else if (rotationSkipped) {
+          // Same as the grace branch: no new epoch, and drop any cached
+          // snapshot so this device's next request reads the live row.
+          invalidateDeviceCredentialCache(existing.id);
         } else if (priorStatus === 'valid-grace') {
           // B-P1-6 (2026-08-30): a grace-window register is a duplicate of a
           // rotation that ALREADY happened — mint on the CURRENT epoch and
@@ -1077,6 +1093,9 @@ export class ScreensController {
                 issuedTtl,
                 credentialEpoch: issuedEpoch,
                 requiresRePair,
+                // Forensics: "each register rotates" used to be inferable from
+                // the epoch alone; with the rotation window it is not.
+                ...(rotationSkipped ? { rotationSkipped: 'rotated-within-window' } : {}),
                 ip: clientIpFromRequest(req),
                 fingerprint: body.deviceFingerprint.slice(0, 24),
               }),

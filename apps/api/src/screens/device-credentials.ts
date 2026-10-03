@@ -191,6 +191,52 @@ export async function revokeScreenCredentials(
 }
 
 /**
+ * At most one PROVEN-renewal rotation per screen per this window (2026-10-03).
+ *
+ * Every page load registers, and a register that presents the current epoch
+ * used to rotate unconditionally. An operator Resync reloads a screen TWICE
+ * (the pushed REFRESH_WEB, then the durable `refreshRequestedAt` the first
+ * boot finds in its manifest) and a stale credential snapshot can add a 401
+ * recovery register — so one refresh cost two or three rotations seconds
+ * apart, and a Resync plus a wedge refresh cost four in 46 s. The grace
+ * window covers exactly ONE epoch, so any token store on the device that
+ * missed two of those writes (a write lost to a process death, the native
+ * copy, a second page instance) presented current-2: `stale`, a 1-hour
+ * unproven token, "re-pair required" — and a person had to restore trust
+ * because a kiosk was reloaded.
+ *
+ * Inside the window a proven register mints on the CURRENT epoch instead,
+ * exactly like the grace path. That collapses a burst into one rotation,
+ * and costs DT-02 nothing: only a party that already holds the current
+ * epoch can be in this branch, so nobody new gains it; the first proven
+ * register after the window rotates as before; `isEpochAcceptable` and the
+ * 24 h grace are unchanged, so a superseded or stolen older token is
+ * refused exactly as before. DEVAUTH-01 is untouched: the window applies to
+ * the `valid` verdict only — never to `unproven-restorable` (whose one-shot
+ * guarantee IS its rotation), `stale`, `expired` or a fingerprint alone.
+ *
+ * Kept short on purpose: `credentialEpochRotatedAt` doubles as the wedge
+ * detector's "just booted" signal (bootGraceWhere, 3 min), so a boot inside
+ * this window keeps the grace of the rotation before it — at least
+ * 3 min − 60 s.
+ */
+export const CREDENTIAL_ROTATION_MIN_INTERVAL_MS = 60_000;
+
+/** Did this screen's credential rotate inside the rotation window? */
+export function rotatedWithinRotationWindow(
+  rotatedAt: Date | string | null | undefined,
+  now: number = Date.now(),
+): boolean {
+  if (!rotatedAt) return false;
+  const at = new Date(rotatedAt).getTime();
+  if (!Number.isFinite(at)) return false;
+  const age = now - at;
+  // A rotation stamped in the future (clock skew between replicas and the
+  // database) is not "recent": fail toward rotating, today's behaviour.
+  return age >= 0 && age < CREDENTIAL_ROTATION_MIN_INTERVAL_MS;
+}
+
+/**
  * Rotate WITHOUT the revocation semantics: used by `/screens/register`
  * when a kiosk proves possession of its current credential and receives a
  * fresh one (DT-02 refresh-token rotation). Same counter, no REVOKED
