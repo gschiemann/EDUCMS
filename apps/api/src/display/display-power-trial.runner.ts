@@ -9,7 +9,9 @@
  *
  *   DISPLAY_POWER_TRIAL_ONCE=<screenId>|<wakeAfterSeconds>|<nonce>
  *
- * and the API runs that trial once, 90 s after it boots (screens need a moment
+ * (or `<screenId>|on|<nonce>` for a hard POWER_ON — the recovery direction: it
+ * re-asserts the panel's wake path, restores its screen timeout and makes it
+ * report its state again) and the API runs that once, 90 s after it boots (screens need a moment
  * to reconnect their push channel to a new container). It goes through the
  * SAME `applyAction` gate as the HTTP door — emergency interlock included — and
  * its audit row carries the nonce, which is what makes it once: a restart or a
@@ -23,7 +25,8 @@ import { DisplayService } from './display.service';
 
 export interface PowerTrialOnce {
   screenId: string;
-  wakeAfterMs: number;
+  /** The trial's dead-man wake window; `null` means "send POWER_ON" instead of a trial. */
+  wakeAfterMs: number | null;
   nonce: string;
 }
 
@@ -34,8 +37,8 @@ export function parsePowerTrialOnce(raw: string | undefined): PowerTrialOnce | n
   const parts = (raw ?? '').trim().split('|');
   if (parts.length !== 3) return null;
   const [screenId, seconds, nonce] = parts.map((p) => p.trim());
-  if (!UUID.test(screenId) || !/^\d{1,3}$/.test(seconds) || !/^[a-z0-9-]{4,40}$/i.test(nonce)) return null;
-  return { screenId, wakeAfterMs: Number(seconds) * 1000, nonce };
+  if (!UUID.test(screenId) || !/^(\d{1,3}|on)$/.test(seconds) || !/^[a-z0-9-]{4,40}$/i.test(nonce)) return null;
+  return { screenId, wakeAfterMs: seconds === 'on' ? null : Number(seconds) * 1000, nonce };
 }
 
 /** The marker the audit row carries, and the idempotency check looks for. */
@@ -84,9 +87,9 @@ export class DisplayPowerTrialRunner implements OnApplicationBootstrap {
         screenId: screen.id,
         tenantId: screen.tenantId,
         userId: null,
-        action: 'POWER_OFF',
-        revertAfterMs: trial.wakeAfterMs,
-        powerTrial: true,
+        ...(trial.wakeAfterMs === null
+          ? { action: 'POWER_ON' as const }
+          : { action: 'POWER_OFF' as const, revertAfterMs: trial.wakeAfterMs, powerTrial: true }),
         reason,
         capabilities: screen.displayCapabilities ?? null,
         lastPushConnectedAt: screen.lastPushConnectedAt ?? null,

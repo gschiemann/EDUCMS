@@ -33,6 +33,16 @@ describe('DISPLAY_POWER_TRIAL_ONCE', () => {
     }));
   });
 
+  it('`on` sends a hard POWER_ON — no trial flag, no wake window', async () => {
+    expect(parsePowerTrialOnce(`${SCREEN}|on|wake-1`)).toEqual({ screenId: SCREEN, wakeAfterMs: null, nonce: 'wake-1' });
+    const { runner, display } = build(null, row);
+    await expect(runner.runOnce({ screenId: SCREEN, wakeAfterMs: null, nonce: 'wake-1' })).resolves.toBe('ran');
+    const sent = display.applyAction.mock.calls[0][0];
+    expect(sent).toMatchObject({ action: 'POWER_ON', reason: powerTrialReason('wake-1') });
+    expect(sent.powerTrial).toBeUndefined();
+    expect(sent.revertAfterMs).toBeUndefined();
+  });
+
   it('does nothing when that nonce already has an audit row (a restart, a second replica)', async () => {
     const { runner, display } = build({ id: 'audit-1' }, row);
     await expect(runner.runOnce(trial)).resolves.toBe('already-ran');
