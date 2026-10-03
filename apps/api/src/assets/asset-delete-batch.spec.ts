@@ -69,13 +69,20 @@ it.each([[], Array(21).fill('one'), [''], ['one', 2], null])(
 
 it('calls the unchanged guarded deletion with the same tenant actor and explicit confirmation', async () => {
   const api = controller({});
-  const remove = jest.spyOn(api, 'remove').mockResolvedValue({ deleted: true });
+  // The single DELETE and the batch share one guarded path (deleteAsset);
+  // only where the SYNC is published differs.
+  const guarded = jest
+    .spyOn(api as unknown as { deleteAsset: (...args: unknown[]) => Promise<unknown> }, 'deleteAsset')
+    .mockResolvedValue({ deleted: true });
   await api.removeBatch(req, { ids: ['one', 'two'] }, 'in-use');
-  expect(remove).toHaveBeenCalledWith(req, 'one', 'in-use');
-  expect(remove).toHaveBeenCalledWith(req, 'two', 'in-use');
-  remove.mockClear();
+  expect(guarded).toHaveBeenCalledWith(req, 'one', 'in-use', expect.any(Function));
+  expect(guarded).toHaveBeenCalledWith(req, 'two', 'in-use', expect.any(Function));
+  guarded.mockClear();
   await api.removeBatch(req, { ids: ['one'] });
-  expect(remove).toHaveBeenCalledWith(req, 'one', undefined);
+  expect(guarded).toHaveBeenCalledWith(req, 'one', undefined, expect.any(Function));
+  guarded.mockClear();
+  await api.remove(req, 'one', 'in-use');
+  expect(guarded).toHaveBeenCalledWith(req, 'one', 'in-use', expect.any(Function));
 });
 
 it('does not leak an unexpected database error in the batch receipt', async () => {

@@ -405,3 +405,61 @@ describe('DELETE /assets/:id — an in-use asset needs ?confirm=in-use', () => {
     });
   });
 });
+
+// Bulk delete (2026-10-03): every file goes through the same guarded delete,
+// and the tenant's screens get ONE SYNC per request — not one per file.
+describe('POST /assets/bulk-delete — one SYNC per request', () => {
+  const inUse = () => ({
+    items: [{ playlistId: 'p1' }],
+    playlists: [{ id: 'p1', name: 'Summer Strength', isProtected: false, templateId: null }],
+    remainingItems: 1,
+  });
+
+  it('three in-use deletes send one SYNC, after the last delete committed', async () => {
+    const { controller, prisma, redis } = makeController(inUse());
+    const out = await controller.removeBatch(req, { ids: ['a1', 'a2', 'a3'] }, 'in-use');
+    expect(out.results.every((r) => r.deleted)).toBe(true);
+    expect(prisma.client.asset.delete).toHaveBeenCalledTimes(3);
+    expect(prisma.client.auditLog.create).toHaveBeenCalledTimes(3);
+    expect(redis.publish).toHaveBeenCalledTimes(1);
+    expect(redis.publish).toHaveBeenCalledWith('tenant:t1', expect.objectContaining({ type: 'SYNC' }));
+    const lastDelete = Math.max(...prisma.client.asset.delete.mock.invocationCallOrder);
+    expect(redis.publish.mock.invocationCallOrder[0]).toBeGreaterThan(lastDelete);
+  });
+
+  it('a batch that changed no playlist sends none', async () => {
+    const { controller, redis } = makeController({ items: [] });
+    const out = await controller.removeBatch(req, { ids: ['a1', 'a2'] });
+    expect(out.results.every((r) => r.deleted)).toBe(true);
+    expect(redis.publish).not.toHaveBeenCalled();
+  });
+
+  it('unconfirmed in-use deletes are refused per file, and nothing is synced', async () => {
+    const { controller, prisma, redis } = makeController(inUse());
+    const out = await controller.removeBatch(req, { ids: ['a1', 'a2'] });
+    expect(out.results).toEqual([
+      expect.objectContaining({ id: 'a1', deleted: false, code: 'ASSET_IN_USE' }),
+      expect.objectContaining({ id: 'a2', deleted: false, code: 'ASSET_IN_USE' }),
+    ]);
+    expect(prisma.client.asset.delete).not.toHaveBeenCalled();
+    expect(redis.publish).not.toHaveBeenCalled();
+  });
+
+  it('emergency content is refused in a batch too, even with the confirmation', async () => {
+    const { controller, prisma, redis } = makeController({ ...inUse(), tenantEmergency: { id: 't1' } });
+    const out = await controller.removeBatch(req, { ids: ['a1'] }, 'in-use');
+    expect(out.results[0]).toMatchObject({ deleted: false, code: 'ASSET_IN_EMERGENCY_CONTENT' });
+    expect(prisma.client.asset.delete).not.toHaveBeenCalled();
+    expect(redis.publish).not.toHaveBeenCalled();
+  });
+
+  it('the single DELETE still syncs right after its commit, before the stored file is removed', async () => {
+    const { controller, storage, redis } = makeController(inUse());
+    storage.extractPath.mockReturnValue('t1/a1.jpg');
+    storage.delete.mockResolvedValue(undefined);
+    await controller.remove(req, 'a1', 'in-use');
+    expect(redis.publish).toHaveBeenCalledTimes(1);
+    expect(storage.delete).toHaveBeenCalledWith('t1/a1.jpg');
+    expect(redis.publish.mock.invocationCallOrder[0]).toBeLessThan(storage.delete.mock.invocationCallOrder[0]);
+  });
+});

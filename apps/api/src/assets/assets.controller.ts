@@ -2107,8 +2107,21 @@ export class AssetsController {
     @Query('confirm') confirm?: string,
   ) {
     // Every file still passes the existing tenant, emergency, usage,
-    // serializable-transaction, fallback, audit and shared-storage checks.
-    const results = await this.deletionBatch.run(body?.ids, id => this.remove(req, id, confirm));
+    // serializable-transaction, fallback, audit and shared-storage checks —
+    // it is the same deleteAsset() the single DELETE runs.
+    //
+    // ONE tenant-wide SYNC per request, after the batch (2026-10-03). Each
+    // in-use delete used to publish its own, so a 200-file folder delete sent
+    // up to 200 SYNCs to every screen in the tenant. The screens need one:
+    // the manifest they refetch already reflects every committed delete.
+    let removedPlaylistItems = 0;
+    const results = await this.deletionBatch.run(body?.ids, id =>
+      this.deleteAsset(req, id, confirm, (removed) => {
+        removedPlaylistItems += removed;
+        return Promise.resolve();
+      }));
+    const deleted = results.filter((r) => r.deleted).length;
+    await this.syncAfterAssetDelete(req.user.tenantId, removedPlaylistItems, `batch (${deleted} deleted)`);
     return { results };
   }
 
@@ -2119,6 +2132,37 @@ export class AssetsController {
     @Request() req: { user: { id: string; tenantId: string; role: string } },
     @Param('id') id: string,
     @Query('confirm') confirm?: string,
+  ) {
+    // Single delete: its SYNC goes out right after the commit, before the
+    // stored file is cleaned up — exactly as before the batch shared this.
+    return this.deleteAsset(req, id, confirm, (removed) =>
+      this.syncAfterAssetDelete(req.user.tenantId, removed, id));
+  }
+
+  /** Tell the tenant's screens to refetch, when a delete changed a playlist. */
+  private async syncAfterAssetDelete(tenantId: string, removedPlaylistItems: number, what: string) {
+    if (removedPlaylistItems && this.redisService && this.signer) {
+      try {
+        await this.redisService.publish(
+          `tenant:${tenantId}`,
+          this.signer.signMessage('SYNC', { source: 'asset_delete' }),
+        );
+      } catch (e) {
+        this.logger.warn(`SYNC publish failed after asset delete ${what}; screens will converge via manifest polling: ${(e as Error)?.message ?? e}`);
+      }
+    }
+  }
+
+  /**
+   * The guarded deletion behind both DELETE /assets/:id and the batch.
+   * `afterCommit` runs once the transaction has committed and before the
+   * stored file is cleaned up, with the number of playlist items removed.
+   */
+  private async deleteAsset(
+    req: { user: { id: string; tenantId: string; role: string } },
+    id: string,
+    confirm: string | undefined,
+    afterCommit: (removedPlaylistItems: number) => Promise<void>,
   ) {
     const inUseConfirmed = isInUseDeleteConfirmed(confirm);
     const asset = await this.prisma.client.asset.findFirst({
@@ -2254,16 +2298,7 @@ export class AssetsController {
       throw e;
     });
 
-    if (changed.removedPlaylistItems && this.redisService && this.signer) {
-      try {
-        await this.redisService.publish(
-          `tenant:${req.user.tenantId}`,
-          this.signer.signMessage('SYNC', { source: 'asset_delete' }),
-        );
-      } catch (e) {
-        this.logger.warn(`SYNC publish failed after asset delete ${id}; screens will converge via manifest polling: ${(e as Error)?.message ?? e}`);
-      }
-    }
+    await afterCommit(changed.removedPlaylistItems);
 
     // Delete the stored file — only when this row is the LAST holder of it,
     // and only inside this tenant's own folder (2026-09-24, found during the
