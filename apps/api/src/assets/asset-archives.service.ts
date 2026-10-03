@@ -19,9 +19,26 @@ import type { AuditActorFields } from '../audit/audit-actor';
 
 export const ARCHIVE_MAX_BYTES = 2 ** 31 - 1024 * 1024;
 const PREPARE_MS = 30_000;
-const DOWNLOAD_MS = 20 * 60_000;
+/**
+ * The hosting proxy (Railway) cuts a response at 15 minutes even while data
+ * flows. Stop at 14 so the download ends on our own clean error and the lease
+ * is released by us, not by a cut we never see coming.
+ */
+export const ARCHIVE_DOWNLOAD_MS = 14 * 60_000;
+/**
+ * A running download's lease (the tenant key and its global slot) lives this
+ * long, and is renewed every ARCHIVE_LEASE_REFRESH_MS while bytes flow. It used
+ * to be set to 25 minutes when the download started and released only in
+ * `finally`, so a container killed mid-download (every deploy) locked that
+ * tenant out — and with two of them, every tenant — for 25 minutes.
+ */
+export const ARCHIVE_LEASE_TTL_SECONDS = 60;
+export const ARCHIVE_LEASE_REFRESH_MS = 20_000;
 const PREFIX = 'asset-archive:{downloads}:';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const TICKET = /^[A-Za-z0-9_-]{43}$/;
+const EXPIRED =
+  'This ZIP download has expired or already started. Select the files and download again.';
 const keys = (tenant: string, slot: number) => [
   PREFIX + 'tenant:' + tenant,
   PREFIX + 'slot:' + slot,
@@ -31,11 +48,13 @@ const ticketKey = (ticket: string) =>
 const ACQUIRE = `if redis.call('EXISTS',KEYS[1])==1 or redis.call('EXISTS',KEYS[2])==1 then return 0 end
 redis.call('SET',KEYS[1],ARGV[1],'EX',120); redis.call('SET',KEYS[2],ARGV[1],'EX',120); return 1`;
 const RELEASE = `for _,key in ipairs(KEYS) do if redis.call('GET',key)==ARGV[1] then redis.call('DEL',key) end end return 1`;
+// Extends only keys this download still owns; returns how many it renewed.
+const REFRESH = `local n=0 for _,key in ipairs(KEYS) do if redis.call('GET',key)==ARGV[1] then redis.call('EXPIRE',key,ARGV[2]) n=n+1 end end return n`;
 const CONSUME = `local data=redis.call('GET',KEYS[1]); if not data then return nil end
 redis.call('DEL',KEYS[1]); local grant=cjson.decode(data)
 local tenant='${PREFIX}tenant:'..grant.tenantId; local slot='${PREFIX}slot:'..grant.slot
 if redis.call('GET',tenant)~=grant.owner or redis.call('GET',slot)~=grant.owner then return nil end
-redis.call('EXPIRE',tenant,1500); redis.call('EXPIRE',slot,1500); return data`;
+redis.call('EXPIRE',tenant,ARGV[1]); redis.call('EXPIRE',slot,ARGV[1]); return data`;
 
 type FileRow = {
   id: string;
@@ -126,9 +145,42 @@ export class AssetArchivesService {
     return ids.map((id) => byId.get(id)!);
   }
 
+  /**
+   * Files in another tenant's folder that this selection may still read.
+   *
+   * Fleet distribution gives a location its own asset row whose `fileUrl`
+   * points at the PARENT's object (playlist-distribution.service.ts), so a
+   * location's library legitimately holds files outside its own folder. Such a
+   * file is readable here only under the rule media-publication.service.ts
+   * applies to the same copies: the tenant whose folder holds it must still
+   * have a row serving exactly this URL. One query for the whole selection.
+   * The caller's OWN rows were already selected by its tenant id (rows()), so
+   * this never widens which asset ids a tenant can name.
+   */
+  private async sharedFiles(
+    tenantId: string,
+    rows: FileRow[],
+  ): Promise<Set<string>> {
+    const foreign = rows.flatMap((row) => {
+      const object = this.storage.parseObjectUrl(row.fileUrl);
+      const owner =
+        object?.bucket === 'assets' ? object.path.split('/')[0] : undefined;
+      return owner && owner !== tenantId && UUID.test(owner)
+        ? [{ tenantId: owner, fileUrl: row.fileUrl }]
+        : [];
+    });
+    if (!foreign.length) return new Set();
+    const held = await this.prisma.client.asset.findMany({
+      where: { OR: foreign },
+      select: { fileUrl: true },
+    });
+    return new Set(held.map((row) => row.fileUrl));
+  }
+
   private source(
     row: FileRow,
     tenantId: string,
+    shared: ReadonlySet<string>,
   ): { url: string } | { path: string } {
     if (row.mimeType === 'text/html')
       throw new BadRequestException(
@@ -150,7 +202,7 @@ export class AssetArchivesService {
     if (
       !object ||
       object.bucket !== 'assets' ||
-      !object.path.startsWith(tenantId + '/') ||
+      !(object.path.startsWith(tenantId + '/') || shared.has(row.fileUrl)) ||
       object.path
         .split('/')
         .some((p) => !p || p === '..' || p === '.' || p.includes('\\'))
@@ -206,12 +258,13 @@ export class AssetArchivesService {
     };
     const signal = AbortSignal.timeout(PREPARE_MS);
     try {
+      const shared = await this.sharedFiles(tenantId, rows);
       // Verify every selected object BEFORE authorizing an archive, with at
       // most four metadata requests and a 30-second overall preparation budget.
       for (let offset = 0; offset < rows.length; offset += 4) {
         const batch = await Promise.all(
           rows.slice(offset, offset + 4).map(async (row, i) => {
-            const source = this.source(row, tenantId);
+            const source = this.source(row, tenantId, shared);
             let size: number;
             if ('path' in source) {
               const stat = await fs.stat(source.path);
@@ -271,30 +324,79 @@ export class AssetArchivesService {
     }
   }
 
-  async download(ticket: string, response: Response) {
-    if (!/^[A-Za-z0-9_-]{43}$/.test(ticket))
-      throw new NotFoundException(
-        'This ZIP download has expired. Select the files and download again.',
-      );
+  /**
+   * HEAD on the ticket link. Express answers HEAD with the GET handler, and
+   * that handler SPENDS the single-use ticket — so a web filter, proxy or
+   * download manager probing the link first left the real GET a 404. This
+   * peeks at the grant (one Redis GET) and never consumes or leases anything.
+   */
+  async head(ticket: string, response: Response) {
+    if (!TICKET.test(ticket)) throw new NotFoundException(EXPIRED);
     let data: unknown;
     try {
-      data = await this.cache().eval(CONSUME, 1, ticketKey(ticket));
+      data = await this.cache().get(ticketKey(ticket));
     } catch {
       throw new ServiceUnavailableException(
         'ZIP downloads are temporarily unavailable. Please try again.',
       );
     }
-    if (typeof data !== 'string')
+    if (typeof data !== 'string') throw new NotFoundException(EXPIRED);
+    const grant = JSON.parse(data) as Grant;
+    response.setHeader('Content-Type', 'application/zip');
+    response.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${grant.filename}"`,
+    );
+    response.setHeader('Cache-Control', 'private, no-store');
+    response.setHeader('Referrer-Policy', 'no-referrer');
+    response.status(200).end();
+  }
+
+  async download(ticket: string, response: Response) {
+    if (!TICKET.test(ticket))
       throw new NotFoundException(
-        'This ZIP download has expired or already started. Select the files and download again.',
+        'This ZIP download has expired. Select the files and download again.',
       );
+    let data: unknown;
+    try {
+      data = await this.cache().eval(
+        CONSUME,
+        1,
+        ticketKey(ticket),
+        ARCHIVE_LEASE_TTL_SECONDS,
+      );
+    } catch {
+      throw new ServiceUnavailableException(
+        'ZIP downloads are temporarily unavailable. Please try again.',
+      );
+    }
+    if (typeof data !== 'string') throw new NotFoundException(EXPIRED);
     const grant = JSON.parse(data) as Grant;
     const abort = new AbortController();
     const timeout = setTimeout(
       () => abort.abort(new Error('ZIP download timed out')),
-      DOWNLOAD_MS,
+      ARCHIVE_DOWNLOAD_MS,
     );
     timeout.unref();
+    // Renew the short lease only while bytes are actually moving: a dead
+    // container stops renewing and frees the tenant within a minute, and so
+    // does a client that stopped reading.
+    let total = 0;
+    let renewedAt = 0;
+    const lease = setInterval(() => {
+      if (total === renewedAt) return;
+      renewedAt = total;
+      void this.redis.publisher
+        ?.eval(
+          REFRESH,
+          2,
+          ...keys(grant.tenantId, grant.slot),
+          grant.owner,
+          ARCHIVE_LEASE_TTL_SECONDS,
+        )
+        .catch(() => undefined);
+    }, ARCHIVE_LEASE_REFRESH_MS);
+    lease.unref();
     const inputs: Readable[] = [];
     let output: Readable | undefined;
     const close = () => {
@@ -316,13 +418,16 @@ export class AssetArchivesService {
         grant.tenantId,
         grant.entries.map((entry) => entry.id),
       );
-      const sources = rows.map((row, i) => {
+      rows.forEach((row, i) => {
         if (row.fileUrl !== grant.entries[i].fileUrl)
           throw new ConflictException(
             'A selected file changed. Prepare the ZIP again.',
           );
-        return this.source(row, grant.tenantId);
       });
+      const shared = await this.sharedFiles(grant.tenantId, rows);
+      const sources = rows.map((row) =>
+        this.source(row, grant.tenantId, shared),
+      );
       await this.prisma.client.auditLog.create({
         data: {
           tenantId: grant.tenantId,
@@ -336,7 +441,6 @@ export class AssetArchivesService {
         },
       });
       const zip = new JSZip();
-      let total = 0;
       grant.entries.forEach((entry, i) => {
         const source = sources[i];
         // JSZip resumes each input in turn. No video is buffered in RAM and
@@ -373,6 +477,12 @@ export class AssetArchivesService {
           })(),
           { objectMode: false, highWaterMark: 64 * 1024 },
         );
+        // jszip 3.10.1 (NodejsStreamInputAdapter) STORES an error that arrives
+        // while it has this input paused for backpressure — and Readable.from
+        // keeps reading ahead while paused, so a storage reset or a size check
+        // usually lands exactly then — and never reports it: the response
+        // just stops until the proxy cuts it. Fail the whole download instead.
+        input.on('error', (error) => abort.abort(error));
         inputs.push(input);
         zip.file(entry.name, input);
       });
@@ -392,6 +502,7 @@ export class AssetArchivesService {
       await pipeline(output, response);
     } finally {
       clearTimeout(timeout);
+      clearInterval(lease);
       response.off('close', close);
       abort.signal.removeEventListener('abort', stop);
       abort.abort();

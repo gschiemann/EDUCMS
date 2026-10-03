@@ -4,12 +4,13 @@ import {
   Get,
   Param,
   Post,
+  Req,
   Request,
   Res,
   UseGuards,
 } from '@nestjs/common';
 import { AppRole } from '@cms/database';
-import type { Response } from 'express';
+import type { Request as ExpressRequest, Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
@@ -43,8 +44,15 @@ export class AssetArchivesController {
   // Browser attachment requests cannot send the session's Authorization
   // header. This consumes a 60-second, single-use random capability issued
   // by the guarded POST; it never accepts file URLs or a user JWT in a URL.
+  // Express routes HEAD to this GET handler; a HEAD only peeks (a filter or
+  // download manager probing the link must not spend the ticket).
   @Get(':ticket')
-  download(@Param('ticket') ticket: string, @Res() res: Response) {
+  download(
+    @Param('ticket') ticket: string,
+    @Req() req: ExpressRequest,
+    @Res() res: Response,
+  ) {
+    if (req.method === 'HEAD') return this.archives.head(ticket, res);
     return this.archives.download(ticket, res);
   }
 }
