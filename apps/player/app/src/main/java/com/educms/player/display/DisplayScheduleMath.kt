@@ -171,6 +171,53 @@ object DisplayScheduleMath {
         return ScheduleTransition(at, on)
     }
 
+    /**
+     * The most recent instant at or before [atMs] where the desired state
+     * actually CHANGED, plus the state from then on — the mirror image of
+     * [nextTransitionAfter].
+     *
+     * USER STANDBY (2026-10-03, player 1.1.21). The owner's rule is
+     * "respect the remote, but a schedule overrides it when it hits its on
+     * or off trigger". Last command wins, so the question is never "is the
+     * schedule on right now?" — an ON window that opened at 07:00 says
+     * nothing about a screen somebody turned off at 10:00. It is "did the
+     * schedule's ON trigger fire AFTER the person's off?", which needs the
+     * TIME of the latest trigger. That is this.
+     *
+     * Unlike [nextTransitionAfter], a boundary that changes nothing (the
+     * start of a window that overlaps one already running) is NOT returned:
+     * it is not the moment the schedule turned the screen on.
+     *
+     * @return null when there are no schedules or nothing changed inside
+     *   [lookbackDays] — both read as "no trigger", never as "on".
+     */
+    fun lastTransitionAtOrBefore(
+        schedules: List<DisplaySchedule>,
+        atMs: Long,
+        lookbackDays: Int = 8,
+    ): ScheduleTransition? {
+        if (schedules.isEmpty()) return null
+        val candidates = mutableSetOf<Long>()
+        schedules.forEach { schedule ->
+            val zone = zoneOf(schedule.timezone)
+            // One extra day back: a midnight-crossing window that started
+            // before the lookback can still END inside it.
+            for (dayOffset in -(lookbackDays + 1)..0) {
+                val start = instantOnDay(zone, atMs, dayOffset, schedule.onMinuteOfDay) ?: continue
+                if (dowOf(zone, start) !in schedule.daysOfWeek) continue
+                val end = windowEnd(zone, atMs, dayOffset, schedule)
+                if (start <= atMs) candidates += start
+                if (end <= atMs) candidates += end
+            }
+        }
+        for (candidate in candidates.sortedDescending()) {
+            val after = desiredOnAt(schedules, candidate) ?: return null
+            val before = desiredOnAt(schedules, candidate - 1) ?: return null
+            if (after != before) return ScheduleTransition(candidate, after)
+        }
+        return null
+    }
+
     // ─── internals ──────────────────────────────────────────────────
 
     /**
