@@ -126,6 +126,14 @@ class NetworkRecoveryController(
     private var overlayShowing: Boolean = false
 
     /**
+     * P1-2 (2026-10-03 review) — the running [loop] is a RENDERER wait, not a
+     * health-probe loop. A network-up kick must not turn it into one (that
+     * would bypass the renderer backoff), and a stray load error must not
+     * overwrite its copy.
+     */
+    private var rendererWait: Boolean = false
+
+    /**
      * C-P0-1 — does this box currently have a usable uplink?
      *
      * Written ONLY by the network callback below (a binder thread), read
@@ -232,14 +240,73 @@ class NetworkRecoveryController(
         earliestReloadAtMs = maxOf(earliestReloadAtMs, android.os.SystemClock.elapsedRealtime() + minimumDelayMs.coerceIn(0, 60_000))
         lastError = label
         if (loop?.isActive == true) {
-            // Already recovering — just refresh the overlay copy.
-            pushOverlayState()
+            // Already recovering — just refresh the overlay copy (a renderer
+            // wait keeps its own copy; it reloads on its own clock).
+            if (!rendererWait) pushOverlayState()
             return@onMain
         }
         PlayerLogger.w(TAG, "Recovery loop starting — $label")
         attempt = 0
         startLoop()
     }
+
+    /**
+     * P1-2 (2026-10-03 review) — the WebView's RENDERER died and was replaced.
+     *
+     * This is not a network failure and it is no longer treated as one. The
+     * old path sent it through [onError], whose loop reloads only after
+     * `/health` answers `"status":"ok"` — so a renderer death while Redis was
+     * degraded (`/health` says "degraded") or the uplink was down left the
+     * screen blank until the staleness watchdog, 2–4 minutes later. The player
+     * page and its cached manifest are built to boot OFFLINE, so the gate buys
+     * nothing here: the fresh WebView is reloaded after [delayMs] (the
+     * renderer backoff — about a second during an alert, see
+     * [RendererRecoveryPolicy.reloadDelayMs]) whatever `/health` says.
+     *
+     * A main-frame LOAD error after that reload still goes through [onError]
+     * and keeps the health gate — that is where it earns its keep.
+     *
+     * Copy states what the evidence proves (player rule 10): the display
+     * process stopped and we are restarting it. Nothing here claims the
+     * server is unreachable.
+     */
+    fun onRendererGone(label: String, delayMs: Long, emergencyHeld: Boolean) = onMain {
+        lastError = label
+        cancelLoop()
+        rendererWait = true
+        // The renderer wait is its own clock; a later network error starts
+        // from zero instead of inheriting this delay.
+        earliestReloadAtMs = 0
+        overlayShowing = true
+        val waitMs = delayMs.coerceIn(0L, 60_000L)
+        PlayerLogger.w(TAG, "Renderer replaced — reloading in ${waitMs}ms, no /health gate ($label)")
+        loop = scope.launch {
+            var remaining = waitMs
+            while (remaining > 0) {
+                pushRendererState(remaining, emergencyHeld)
+                val step = minOf(1_000L, remaining)
+                delay(step)
+                remaining -= step
+            }
+            rendererWait = false
+            onShowOverlay(
+                OverlayState(
+                    title = RENDERER_TITLE,
+                    sub = if (emergencyHeld) "An alert is active — reloading it now" else "Reloading the player…",
+                    errorLabel = lastError,
+                    attempt = attempt,
+                ),
+            )
+            onReloadRequested()
+        }
+    }
+
+    /**
+     * Is a renderer reload pending? MainActivity's staleness watchdog reads
+     * this so it never fires a second navigation over the renderer wait.
+     * Main thread only, like the rest of the loop state.
+     */
+    fun isRendererReloadPending(): Boolean = rendererWait && loop?.isActive == true
 
     /** Called by MainActivity once the WebView reports a successful page load. */
     fun onPageLoaded() = onMain {
@@ -248,6 +315,7 @@ class NetworkRecoveryController(
         }
         attempt = 0
         lastError = null
+        rendererWait = false
         cancelLoop()
         if (overlayShowing) {
             overlayShowing = false
@@ -295,6 +363,7 @@ class NetworkRecoveryController(
 
     private fun startLoop() {
         cancelLoop()
+        rendererWait = false
         showOverlay()
         // C-P1-4 — `scope` is Dispatchers.Main, so every line of this body
         // that touches attempt / lastError / the overlay runs on the one
@@ -365,6 +434,9 @@ class NetworkRecoveryController(
      *  this off the main looper; it mutates `attempt` and `loop`. */
     private fun triggerImmediateProbeOnMain() {
         if (loop?.isActive != true) return
+        // P1-2 — a renderer wait is not a probe loop: the network coming back
+        // must not convert it into one and skip the renderer backoff.
+        if (rendererWait) return
         // Cancel current wait and restart with attempt unchanged so the
         // overlay doesn't reset its counter. Cheapest way: cancel and
         // re-launch — startLoop() bumps attempt by 1, so we decrement
@@ -377,6 +449,17 @@ class NetworkRecoveryController(
         if (overlayShowing) return
         overlayShowing = true
         pushOverlayState()
+    }
+
+    /** P1-2 — the renderer wait's own copy: what died, and when we reload. */
+    private fun pushRendererState(remainingMs: Long, emergencyHeld: Boolean) {
+        val seconds = ((remainingMs + 999) / 1000).coerceAtLeast(1)
+        val sub = if (emergencyHeld) {
+            "An alert is active — reloading it in ${seconds}s"
+        } else {
+            "The display process stopped · restarting in ${seconds}s"
+        }
+        onShowOverlay(OverlayState(RENDERER_TITLE, sub, lastError, attempt))
     }
 
     private fun pushOverlayState(secondsUntilNext: Int? = null) {
@@ -522,5 +605,8 @@ class NetworkRecoveryController(
     companion object {
         private const val TAG = "PlayerRecovery"
         private const val MAX_BACKOFF_MS = 60_000L
+
+        /** P1-2 — renderer-specific title; never "Reconnecting to server…". */
+        const val RENDERER_TITLE = "Restarting the player…"
     }
 }

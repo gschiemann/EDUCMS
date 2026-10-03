@@ -316,20 +316,29 @@ class MainActivity : ComponentActivity() {
             // STRIKE and the reload; it never marks the page healthy.
             val loadInFlight = lastLoadStartedAtMs != 0L &&
                 (nowMs - lastLoadStartedAtMs) < LOAD_GRACE_MS
+            // P1-2 — a renderer was just replaced and its reload is pending
+            // on the renderer clock (≤ 60 s). Firing our own navigation now
+            // would race it (two navigations) and skip its backoff. Bounded,
+            // so a wedged screen is still struck on the next tick.
+            val rendererReloadPending = ::recovery.isInitialized && recovery.isRendererReloadPending()
 
             // If we've been past the timeout AND the recovery overlay
             // isn't already running its own loop, force-reload. The
             // recovery controller will pick up the resulting load
             // event (success or error) and resume normal flow.
-            if (stale && loadInFlight) {
+            if (stale && (loadInFlight || rendererReloadPending)) {
                 // Deliberately neither strike nor reset: the page has not
                 // proven itself, but we have not given it its chance yet
                 // either. The next tick past the grace window judges it.
                 PlayerLogger.d(
                     "MainActivity",
-                    "Watchdog: page is stale but a load started " +
-                        "${(nowMs - lastLoadStartedAtMs) / 1000}s ago — inside the " +
-                        "${LOAD_GRACE_MS / 1000}s grace, not striking",
+                    if (rendererReloadPending) {
+                        "Watchdog: page is stale but a renderer reload is pending — not striking"
+                    } else {
+                        "Watchdog: page is stale but a load started " +
+                            "${(nowMs - lastLoadStartedAtMs) / 1000}s ago — inside the " +
+                            "${LOAD_GRACE_MS / 1000}s grace, not striking"
+                    },
                 )
             } else if (stale) {
                 watchdogConsecutiveFailures += 1
@@ -3026,7 +3035,15 @@ class MainActivity : ComponentActivity() {
                     webHeartbeatEverReceived = false
                     lastSuccessfulLoadAtMs = 0L
                     if (::recovery.isInitialized) {
-                        recovery.onError("Renderer terminated; restarting playback", delayMs)
+                        // P1-2 — a renderer death reloads on the renderer
+                        // clock, NOT behind the /health gate: the page boots
+                        // offline from its own cache, and the gate left the
+                        // glass blank whenever Redis or the uplink was down.
+                        recovery.onRendererGone(
+                            if (didCrash) "Display process crashed" else "Display process stopped by the system",
+                            delayMs,
+                            runCatching { DisplayEmergency.isHeld(applicationContext) }.getOrDefault(false),
+                        )
                     } else {
                         fresh.postDelayed({
                             if (!isDestroyed && webView === fresh) lifecycleScope.launch { loadPlayer(resolveDeviceToken()) }
