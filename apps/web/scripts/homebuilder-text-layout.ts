@@ -3,9 +3,13 @@
 export function initTextLayout(initialStyles: Record<string, unknown>) {
   const stage = document.querySelector<HTMLElement>(".stage");
   if (!stage) return;
-  const fields = Array.from(stage.querySelectorAll<HTMLElement>("[data-field]"))
-    .filter(el => !el.closest("[hidden],[data-controls]") && !el.hasAttribute("data-imgslot"));
-  const keys = [...new Set(fields.map(el => el.dataset.field!))];
+  function collectFields() {
+    return Array.from(stage!.querySelectorAll<HTMLElement>("[data-field]"))
+      .filter(el => !el.closest("[data-controls]") && !el.hasAttribute("data-imgslot") &&
+        (!el.closest("[hidden]") || !!el.closest("[data-page]")));
+  }
+  let fields = collectFields();
+  let keys = [...new Set(fields.map(el => el.dataset.field!))];
   const authored = new Map<HTMLElement, { value: string; priority: string; base: string }>();
   let styles: Record<string, Record<string, unknown>> = {};
   let editing = false;
@@ -139,4 +143,17 @@ export function initTextLayout(initialStyles: Record<string, unknown>) {
   }, true);
   apply(initialStyles);
   announce();
+  // Kiosk sections, detail dialogs and repeatable rows share the same tools.
+  // Refresh identities when their DOM changes, retaining saved field offsets.
+  new MutationObserver(() => {
+    const next = collectFields();
+    if (next.length === fields.length && next.every((el, i) => el === fields[i])) return;
+    fields = next;
+    keys = [...new Set(fields.map(el => el.dataset.field!))];
+    fields.forEach(el => {
+      const p = point(el);
+      if (p.x || p.y || authored.has(el)) transform(el, p.x, p.y);
+    });
+    announce();
+  }).observe(stage, { subtree: true, childList: true, attributes: true, attributeFilter: ["hidden", "data-field"] });
 }

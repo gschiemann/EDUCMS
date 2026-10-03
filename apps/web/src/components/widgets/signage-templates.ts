@@ -4,6 +4,7 @@
 // and its template dropdown in the builder Properties panel.
 
 import { QUARANTINED_BOARD_URLS } from '@cms/api-types';
+import { COMMERCIAL_REAL_ESTATE_CATALOG } from './commercial-real-estate-catalog';
 
 export interface SignageTemplate {
   /** matches the system-presets.ts preset id */
@@ -17,6 +18,7 @@ export interface SignageTemplate {
 }
 
 export const SIGNAGE_TEMPLATES: SignageTemplate[] = [
+  ...COMMERCIAL_REAL_ESTATE_CATALOG,
   {"id": "preset-sig-corporate-13", "name": "Corporate \u00b7 Homebuilder \u00b7 Welcome \u00b7 Cinematic", "url": "/templates/signage/corporate/homebuilder/01-welcome-cinematic.html", "group": "Corporate"},
   {"id": "preset-sig-corporate-14", "name": "Corporate \u00b7 Homebuilder \u00b7 Welcome \u00b7 Editorial", "url": "/templates/signage/corporate/homebuilder/02-welcome-editorial.html", "group": "Corporate"},
   {"id": "preset-sig-corporate-15", "name": "Corporate \u00b7 Homebuilder \u00b7 Welcome \u00b7 Gallery", "url": "/templates/signage/corporate/homebuilder/03-welcome-gallery.html", "group": "Corporate"},

@@ -1,0 +1,12 @@
+{
+  "reviewed": "2026-10-03",
+  "photographyUse": "Illustrative template defaults, not photographs of the fictional sample properties. Replace with approved property media.",
+  "sources": {
+    "jll-logo.png": "https://www.jll.com/content/dam/jll-com-phoenix/base-logo.png",
+    "source-sans-3.woff2": "https://www.jll.com/etc.clientlibs/jll-com-phoenix/clientlibs/clientlib-site/resources/fonts/source-sans-3-latin.woff2",
+    "office.jpg": "https://s7d1.scene7.com/is/image/joneslanglasalle/25-collection-industries?wid=2400&qlt=85&fmt=jpg",
+    "lobby.jpg": "https://images.unsplash.com/photo-1497366811353-6870744d04b2?auto=format&fit=crop&w=2400&q=85",
+    "workspace.jpg": "https://s7d1.scene7.com/is/image/joneslanglasalle/25-lens-future-of-spaces?wid=2000&qlt=85&fmt=jpg",
+    "industrial.jpg": "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=2400&q=85"
+  }
+}

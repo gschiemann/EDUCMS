@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { SYSTEM_TEMPLATE_PRESETS } from '../../../apps/api/src/templates/system-presets';
+import { COMMERCIAL_REAL_ESTATE_TEMPLATE_PRESETS } from '../../../apps/api/src/templates/commercial-real-estate-presets';
 // Phase 2 sports stats: the global milestone catalog. Imported raw via the
 // same relative-source pattern the system-presets import uses (tsx resolves
 // the TS directly — no dependency on @cms/api-types' built dist/).
@@ -216,7 +217,8 @@ async function main() {
   // Re-create each system preset by id. The earlier deleteMany already
   // cleared the old system rows; this loop just recreates them.
   // Custom (tenant-built) templates are NOT touched.
-  for (const preset of SYSTEM_TEMPLATE_PRESETS) {
+  const seedPresets = [...SYSTEM_TEMPLATE_PRESETS, ...COMMERCIAL_REAL_ESTATE_TEMPLATE_PRESETS];
+  for (const preset of seedPresets) {
     await prisma.template.create({
       data: {
         id: preset.id,
@@ -225,6 +227,7 @@ async function main() {
         category: preset.category,
         orientation: preset.orientation,
         schoolLevel: preset.schoolLevel ?? 'UNIVERSAL',
+        ...(COMMERCIAL_REAL_ESTATE_TEMPLATE_PRESETS.includes(preset) ? { vertical: 'CORPORATE', isTouchEnabled: preset.category === 'KIOSK', idleResetMs: 120000 } : {}),
         screenWidth: preset.screenWidth,
         screenHeight: preset.screenHeight,
         bgColor: preset.bgColor,
@@ -250,7 +253,7 @@ async function main() {
     });
   }
 
-  console.log(`  Templates: ${SYSTEM_TEMPLATE_PRESETS.length} system presets seeded`);
+  console.log(`  Templates: ${seedPresets.length} system presets seeded`);
 
   // ─────────────────────────────────────────────────────
   // Seed global stat-milestone definitions (Phase 2 sports)

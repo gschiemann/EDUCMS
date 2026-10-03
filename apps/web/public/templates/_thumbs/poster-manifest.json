@@ -280,5 +280,21 @@
   "custom/brookfield/portrait/04-home-plan": "de4584735aa6a82d",
   "custom/brookfield/portrait/05-home-availability": "3be1556b2c7a8189",
   "custom/brookfield/portrait/06-community-story": "4bf3d5bdc3bf7d2b",
-  "custom/brookfield/portrait/07-tour-takeaway": "9931435ad8f84e5c"
+  "custom/brookfield/portrait/07-tour-takeaway": "9931435ad8f84e5c",
+  "signage/corporate/commercial-real-estate/01-property-overview": "09ddc58f433626cb",
+  "signage/corporate/commercial-real-estate/02-amenity-collection": "0138cd857b0d3e17",
+  "signage/corporate/commercial-real-estate/03-floor-plans-availability": "fcdb99c51e613aaa",
+  "signage/corporate/commercial-real-estate/04-location-connectivity": "c5c63e6e0289697e",
+  "signage/corporate/commercial-real-estate/05-industrial-specifications": "545f8c348207b609",
+  "signage/corporate/commercial-real-estate/06-investment-offering": "b91ebb200c320dcd",
+  "kiosk/commercial-real-estate/07-guided-property-tour": "e1c45951a894c99a",
+  "kiosk/commercial-real-estate/08-property-finder": "f17097e74c57038c",
+  "custom/jll-commercial-real-estate/01-property-overview": "25acef9e4adc0651",
+  "custom/jll-commercial-real-estate/02-amenity-collection": "77274be28a0f3e2f",
+  "custom/jll-commercial-real-estate/03-floor-plans-availability": "32b2d240376a000f",
+  "custom/jll-commercial-real-estate/04-location-connectivity": "7ba26b2114bb38e8",
+  "custom/jll-commercial-real-estate/05-industrial-specifications": "b9962fc4e90ad7cb",
+  "custom/jll-commercial-real-estate/06-investment-offering": "5e8db1703c7fa37f",
+  "custom/jll-commercial-real-estate/07-guided-property-tour": "f8b983e5b97fc1cc",
+  "custom/jll-commercial-real-estate/08-property-finder": "8bc0ebf264c1ae6d"
 }

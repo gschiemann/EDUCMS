@@ -8,6 +8,7 @@ import { BAR_TEMPLATE_PRESETS } from './bar-presets';
 import { RETAIL_TEMPLATE_PRESETS } from './retail-presets';
 import { SPORTS_TEMPLATE_PRESETS } from './sports-presets';
 import { WORSHIP_TEMPLATE_PRESETS } from './worship-presets';
+import { COMMERCIAL_REAL_ESTATE_TEMPLATE_PRESETS } from './commercial-real-estate-presets';
 
 // Fitness presets live in their own file so the EDU pack stays
 // uncontaminated. At seed time we tag each row with the vertical it
@@ -24,6 +25,7 @@ export const ALL_PRESETS = [
   ...RETAIL_TEMPLATE_PRESETS,
   ...SPORTS_TEMPLATE_PRESETS,
   ...WORSHIP_TEMPLATE_PRESETS,
+  ...COMMERCIAL_REAL_ESTATE_TEMPLATE_PRESETS,
 ];
 
 // ─── Interim quarantine denylist (2026-07-13, audit W0-08) ───
@@ -129,6 +131,9 @@ SYSTEM_TEMPLATE_PRESETS.forEach((p) => PRESET_VERTICAL.set(p.id, 'K12'));
 // with Tenant.vertical = 'FITNESS' (if any) keep working — adding
 // 'GYM' is purely additive on the seed side.
 FITNESS_TEMPLATE_PRESETS.forEach((p) => PRESET_VERTICAL.set(p.id, 'GYM'));
+// The commercial property pack uses the existing Corporate vertical. JLL
+// customer versions are installed separately with tenant ownership.
+COMMERCIAL_REAL_ESTATE_TEMPLATE_PRESETS.forEach((p) => PRESET_VERTICAL.set(p.id, 'CORPORATE'));
 // Restaurant / QSR vertical (2026-05-02 launch). Quick-service menu
 // boards, drive-thru displays, loyalty boards, wait-time displays.
 // Tagged with vertical='QSR' so QSR-tenant catalogs surface them and
@@ -700,6 +705,7 @@ async function reconcileSystemPresets(
             // "Use this template" opens the builder in touch mode. Every other
             // preset leaves the column at its default (false).
             ...(preset.isTouchEnabled === true ? { isTouchEnabled: true } : {}),
+            ...(preset.idleResetMs != null ? { idleResetMs: preset.idleResetMs } : {}),
             isSystem: true,
             // Audit W0-08: a quarantined board is seeded ARCHIVED, never
             // ACTIVE — "source exists" must not mean "published to customers."
