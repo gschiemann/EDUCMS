@@ -2803,6 +2803,9 @@ class MainActivity : ComponentActivity() {
                         val now = android.os.SystemClock.elapsedRealtime()
                         val first = lastSuccessfulLoadAtMs == 0L
                         lastSuccessfulLoadAtMs = now
+                        // P1-4 — five unbroken minutes of these after a
+                        // renderer replacement earn a fresh strike count.
+                        primaryRendererRecovery.onHealthyHeartbeat()
                         if (first) {
                             PlayerLogger.i(
                                 "MainActivity",

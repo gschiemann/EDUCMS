@@ -17,6 +17,23 @@ class RendererRecovery(context: Context, private val slot: String) {
 
     fun recentlyFailed(): Boolean = policy.recentlyFailed(System.currentTimeMillis())
 
+    /**
+     * P1-4 — the page in this slot heartbeated. After five unbroken minutes
+     * of that following a replacement, the strike count resets (and is
+     * persisted, since a process restart re-reads it). UI thread, like
+     * [replace].
+     */
+    fun onHealthyHeartbeat() {
+        if (policy.onHealthyHeartbeat(System.currentTimeMillis())) {
+            prefs.edit().putInt("$slot.failures", 0).apply()
+            PlayerLogger.i(
+                "RendererRecovery",
+                "slot=$slot healthy for ${RendererRecoveryPolicy.HEALTHY_DECAY_MS / 60_000} min " +
+                    "after a replacement — strike count reset",
+            )
+        }
+    }
+
     /** Must run synchronously inside onRenderProcessGone, on the UI thread. */
     fun replace(failed: WebView, didCrash: Boolean): Pair<WebView, Long> {
         val parent = checkNotNull(failed.parent as? ViewGroup) { "Renderer slot detached" }

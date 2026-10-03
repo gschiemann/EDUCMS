@@ -390,6 +390,8 @@ class FacePlayerHost(
                 // `MainActivity.lastSuccessfulLoadAtMs` would certify a wedged
                 // primary as fresh — the bug this class exists to prevent.
                 lastSuccessfulLoadAtMs = SystemClock.elapsedRealtime()
+                // P1-4 — this face's OWN strike count decays on its OWN beats.
+                rendererRecovery.onHealthyHeartbeat()
                 if (!webHeartbeatEverReceived) {
                     webHeartbeatEverReceived = true
                     PlayerLogger.i(TAG, "face $faceIndex: JS proven live")

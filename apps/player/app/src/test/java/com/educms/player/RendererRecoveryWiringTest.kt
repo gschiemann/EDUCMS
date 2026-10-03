@@ -100,6 +100,26 @@ class RendererRecoveryWiringTest {
         assertTrue(face.contains("RendererRecoveryPolicy.reloadDelayMs(delayMs, emergencyHeld)"))
     }
 
+    // ─── P1-4: heartbeats decay the strike count ────────────────────
+
+    @Test
+    fun `P1-4 the primary's and each face's heartbeats feed their own slot`() {
+        val src = main
+        val beat = src.substring(src.indexOf("onWebHeartbeat = {"), src.indexOf("onWebHeartbeatV2 ="))
+        assertTrue(beat.contains("if (wv !== webView) return@runOnUiThread"))
+        assertTrue(
+            "the primary's beat must decay the primary slot, after the stale-view check",
+            beat.indexOf("primaryRendererRecovery.onHealthyHeartbeat()") > beat.indexOf("if (wv !== webView)"),
+        )
+        val face = code(read("src/main/java/com/educms/player/face/FacePlayerHost.kt"))
+        val faceBeat = face.substring(face.indexOf("onWebHeartbeat = {"), face.indexOf("onWebHeartbeatV2 ="))
+        assertTrue(faceBeat.contains("rendererRecovery.onHealthyHeartbeat()"))
+        assertTrue(
+            "a face only counts its OWN beats",
+            faceBeat.indexOf("rendererRecovery.onHealthyHeartbeat()") > faceBeat.indexOf("nonce !== faceNonce"),
+        )
+    }
+
     // ─── P1-3: one serial reader per Activity ───────────────────────
 
     @Test
