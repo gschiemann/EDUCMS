@@ -746,6 +746,7 @@ export class DisplayService {
             trial: true,
             verdict,
             revertAfterMs: typeof revert === 'number' ? revert : null,
+            reason: opts.reason ?? null,
           },
         });
         throw new DisplayActionUnsupportedError(

@@ -24,6 +24,7 @@ import { WebsocketSignerService } from '../security/websocket-signer.service';
 import { DisplayVendorRecipesController } from './display-recipes.controller';
 import { DisplaySchedulesController } from './display-schedules.controller';
 import { DisplayController } from './display.controller';
+import { DisplayPowerTrialRunner } from './display-power-trial.runner';
 import { DisplayService } from './display.service';
 
 @Module({
@@ -32,7 +33,7 @@ import { DisplayService } from './display.service';
     DisplaySchedulesController,
     DisplayVendorRecipesController,
   ],
-  providers: [DisplayService, WebsocketSignerService],
+  providers: [DisplayService, WebsocketSignerService, DisplayPowerTrialRunner],
   exports: [DisplayService],
 })
 export class DisplayModule {}
