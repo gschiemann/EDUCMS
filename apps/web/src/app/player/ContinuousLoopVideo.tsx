@@ -49,6 +49,10 @@ export function ContinuousLoopVideo({ src, sourceHash, videoKey, isActive, class
       if (disposed || fellBack) return;
       fellBack = true;
       console.warn('[Player] continuous loop fallback:', reason);
+      // The fallback is final for this mount: stop preparing too. A package that
+      // finished AFTER this point used to start the stream anyway — on a mount
+      // that had already recorded the fallback and could no longer undo a failure.
+      life.abort();
       engine?.dispose(); engine = undefined;
       continuous = null;
       native.reset();
@@ -95,9 +99,9 @@ export function ContinuousLoopVideo({ src, sourceHash, videoKey, isActive, class
         const [{ prepareLoopPackage }, { startContinuousLoop }] = await Promise.all([
           import('./continuousLoopPackage'), import('./continuousLoop'),
         ]);
-        if (disposed) return;
+        if (disposed || fellBack) return;
         const p = await prepareLoopPackage(src, sourceHash, life.signal);
-        if (disposed) return;
+        if (disposed || fellBack) return;
         continuous = new ContinuousBoundaryDetector(p.durationTicks, p.timescale);
         engine = startContinuousLoop(video, p, life.signal);
         video.dataset.loopBackend = 'continuous';
@@ -118,7 +122,13 @@ export function ContinuousLoopVideo({ src, sourceHash, videoKey, isActive, class
         paused: video.paused, seeking: video.seeking, ended: video.ended });
       setActiveMediaStalled(detector.isStalled());
       if (result !== 'stalled') return;
-      if (!fellBack) { fallback('clock-stalled'); return; }
+      // The detector reports an episode ONCE. With the stream running, the
+      // fallback itself restarts the element on the original file. While still
+      // preparing, the element is already on the original file and the fallback
+      // does not touch it — so that one report must also recover it, or nothing
+      // ever does.
+      if (engine && !fellBack) { fallback('clock-stalled'); return; }
+      if (!fellBack) fallback('clock-stalled');
       if (++recoveries === 1) { video.load(); video.play().catch(() => undefined); }
       else callbacks.current.onError();
     }, 4000);
