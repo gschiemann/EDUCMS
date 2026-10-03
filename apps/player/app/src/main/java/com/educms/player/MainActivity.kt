@@ -1192,6 +1192,41 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
+     * 2026-10-03 (1.1.21) — A NATIVE BLANK COVERS A LIVE WEBSITE TOO.
+     *
+     * The website a playlist shows (`showUrlOverlay`) and the Website Tabs
+     * site (`showWebTabs`) are a second WebView, `urlOverlayView`, laid over
+     * the player — and both show paths `bringToFront()` it. A blackout raised
+     * BEFORE a site came up was therefore buried under the site the moment it
+     * showed: the panel was "blanked" with a live website on it. (The page's
+     * own soft blank was fixed on the web side in 8f260fc0; this is the APK's
+     * blackout view.)
+     *
+     * So every path that raises a site view re-raises a VISIBLE blackout above
+     * it, last. The software dim needs no such thing: it is the window's
+     * `screenBrightness`, a WINDOW attribute that already applies to every
+     * view in the window, site views included.
+     *
+     * ⚠️ An alert still punches through: the decision is
+     * [DisplayEmergency.blackoutCoversSiteViews], which never raises a
+     * blackout while a hold is active — and the enforce path has already
+     * hidden it.
+     */
+    private fun keepBlackoutAboveSiteViews(why: String) {
+        runCatching {
+            val view = displayBlackoutView ?: return@runCatching
+            val raise = DisplayEmergency.blackoutCoversSiteViews(
+                blackoutVisible = view.visibility == View.VISIBLE,
+                held = DisplayEmergency.isHeld(applicationContext),
+            )
+            if (raise) {
+                view.bringToFront()
+                PlayerLogger.i("DisplayWindow", "blackout kept above the site view ($why)")
+            }
+        }.onFailure { PlayerLogger.w("DisplayWindow", "keepBlackoutAboveSiteViews failed: ${it.message}") }
+    }
+
+    /**
      * Re-assert the wake flags. onCreate sets these ONCE; adding a flag
      * that is already set does not re-trigger a wake, so we clear and
      * re-add. Deprecated in favour of setTurnScreenOn() on API 27+, but
@@ -3171,6 +3206,7 @@ class MainActivity : ComponentActivity() {
                     binding = ActivityMainBinding.bind(binding.root)
                     configureUrlOverlay(fresh)
                     fresh.visibility = previousVisibility
+                    keepBlackoutAboveSiteViews("url-overlay renderer replaced")
                     // The overlay remains bridge-free and retains its navigation policy.
                     if (webTabsActive) fresh.settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
                     fresh.postDelayed({
@@ -3293,6 +3329,8 @@ class MainActivity : ComponentActivity() {
         // the URL page. (2026-05-20)
         urlOverlayView.requestFocus()
         binding.managerGateOverlay.bringToFront()
+        // 1.1.21 — LAST: a native blank stays over the site it just buried.
+        keepBlackoutAboveSiteViews("showUrlOverlay")
         // 2026-05-19 (v1.0.71) — was: binding.recoveryOverlay.bringToFront()
         // Removed. Intent was to keep the recovery overlay on top of the
         // URL iframe, but Taurus's WebView hardware-accel layer punches
@@ -3382,6 +3420,8 @@ class MainActivity : ComponentActivity() {
         // it — a D-pad user pressing "into the site". Back hands it back.
         if (req.focus) urlOverlayView.requestFocus()
         binding.managerGateOverlay.bringToFront()
+        // 1.1.21 — LAST: a native blank stays over the site it just buried.
+        keepBlackoutAboveSiteViews("webTabsShow")
         if (binding.recoveryOverlay.visibility == View.VISIBLE) {
             PlayerLogger.i("MainActivity", "Suppressing recovery overlay — a Website Tabs site is in front")
         }

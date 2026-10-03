@@ -403,6 +403,16 @@ object DisplayEmergency {
     internal fun blocksKeepScreenOff(held: Boolean, on: Boolean): Boolean = held && !on
 
     /**
+     * Must a visible blackout be raised back above a website view that has
+     * just come to the front (2026-10-03, 1.1.21)? Yes — a blank has to
+     * cover a live site too — EXCEPT while an alert is held: the blackout
+     * must never be raised over an alert, and the enforce path has already
+     * hidden it.
+     */
+    internal fun blackoutCoversSiteViews(blackoutVisible: Boolean, held: Boolean): Boolean =
+        blackoutVisible && !held
+
+    /**
      * Engage or release the hold.
      *
      * The persisted flag is written BEFORE the screen is driven, so a
