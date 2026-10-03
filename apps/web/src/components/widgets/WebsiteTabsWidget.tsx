@@ -44,6 +44,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
 import { sceneCss } from './scene-css';
 import { hasNativeBridge, nativeFire, nativeHas } from '@/app/player/nativeBridge';
+import { DISPLAY_BLANK_EVENT, isDisplayBlanked } from '@/app/player/displayBlankSignal';
 import { WidgetEmptyState } from './WidgetEmptyState';
 import {
   buildHidePayload,
@@ -251,6 +252,9 @@ export function WebsiteTabsWidget({ config, live }: { config: unknown; live?: bo
   const sendShow = useCallback(
     (opts?: { focus?: boolean; force?: boolean }) => {
       if (!native || !active) return;
+      // The screen is blanked (dashboard Off / the on-off schedule): the native
+      // site view sits ABOVE the page's black cover, so it must stay down.
+      if (isDisplayBlanked()) return;
       const bounds = measureBounds();
       if (!bounds) return;
       const payload = buildShowPayload({
@@ -294,6 +298,17 @@ export function WebsiteTabsWidget({ config, live }: { config: unknown; live?: bo
       window.removeEventListener('resize', onResize);
     };
   }, [native, sendShow]);
+  // A blank takes the site down without signing anyone out; the wake puts it
+  // back. (An alert or Stop unmounts this widget instead — see the effect below.)
+  useEffect(() => {
+    if (!native) return;
+    const onBlank = (e: Event) => {
+      if ((e as CustomEvent<{ on?: boolean }>).detail?.on) sendHide(false);
+      else sendShow({ force: true });
+    };
+    window.addEventListener(DISPLAY_BLANK_EVENT, onBlank);
+    return () => window.removeEventListener(DISPLAY_BLANK_EVENT, onBlank);
+  }, [native, sendHide, sendShow]);
   useEffect(() => {
     if (!native) return;
     const wipeOnLeave = cfg.incognito;

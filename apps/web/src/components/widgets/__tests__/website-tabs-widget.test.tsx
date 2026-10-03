@@ -18,6 +18,7 @@
  * move it.
  */
 import { act, fireEvent, render, screen, cleanup } from '@testing-library/react';
+import { publishDisplayBlank } from '@/app/player/displayBlankSignal';
 import { WidgetPreview } from '../WidgetRenderer';
 
 class FakeResizeObserver {
@@ -248,6 +249,36 @@ describe('our app (native channel advertising the methods)', () => {
     const hides = calls('webTabsHide');
     expect(hides).toHaveLength(1);
     expect(JSON.parse(String(hides[0].args[0]))).toEqual({ v: 1, wipe: true });
+  });
+
+  // 2026-10-03 — "when a website is published to a screen, it ignores the blank
+  // and wake functions". The page's black cover is painted UNDER this native
+  // view, so a blank has to take the view down and a wake has to put it back.
+  it('a blank hides the native site without signing anyone out; the wake shows it again', () => {
+    install(['webTabsShow', 'webTabsHide']);
+    mount(TABS, true);
+    const shownBefore = calls('webTabsShow').length;
+    act(() => publishDisplayBlank(true));
+    const hides = calls('webTabsHide');
+    expect(hides).toHaveLength(1);
+    expect(JSON.parse(String(hides[0].args[0]))).toEqual({ v: 1, wipe: false });
+    // Nothing re-shows it while the screen is off — not a resize, not a tab tap.
+    act(() => { window.dispatchEvent(new Event('resize')); });
+    fireEvent.click(screen.getByTestId('website-tab-b'));
+    expect(calls('webTabsShow')).toHaveLength(shownBefore);
+    act(() => publishDisplayBlank(false));
+    const after = calls('webTabsShow');
+    expect(after.length).toBe(shownBefore + 1);
+    expect(JSON.parse(String(after[after.length - 1].args[0])).url).toBe('https://lunch.example/menu');
+  });
+
+  it('a widget that mounts while the screen is blanked does not put a site on the glass', () => {
+    install(['webTabsShow', 'webTabsHide']);
+    act(() => publishDisplayBlank(true));
+    mount(TABS, true);
+    expect(calls('webTabsShow')).toHaveLength(0);
+    act(() => publishDisplayBlank(false));
+    expect(calls('webTabsShow').length).toBeGreaterThanOrEqual(1);
   });
 
   it('a blocked-embed tab is still shown natively (the WebView is not subject to X-Frame-Options)', () => {

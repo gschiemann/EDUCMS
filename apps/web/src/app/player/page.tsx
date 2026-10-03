@@ -187,6 +187,7 @@ import {
   refreshAckToReport,
 } from './refreshAckReport';
 import { itemContentSigInput } from './contentSig';
+import { nativeWebsiteTarget, publishDisplayBlank } from './displayBlankSignal';
 import { loopBoundaryTracker, NativeWrapDetector, type FrameMeta, type RvfcVideoElement } from './loopBoundary';
 import { ContinuousLoopVideo } from './ContinuousLoopVideo';
 import { SeamlessLoopVideo } from './SeamlessLoopVideo';
@@ -10138,20 +10139,20 @@ function PlayerPage() {
       nativeFire('hideUrlOverlay');
     };
 
-    if (phase !== 'playing' || playbackStopped || activeEmergency || sorted.length === 0) {
-      hide();
-      return;
-    }
-
-    const current = sorted[currentIndex % sorted.length];
-    if (!isItemValid(current) || current?.asset?.mimeType !== 'text/html') {
-      hide();
-      return;
-    }
-
-    const fileUrl = current?.asset?.fileUrl || '';
-    const url = fileUrl.startsWith('http') ? fileUrl : `${getApiRoot()}${fileUrl}`;
-    if (!/^https?:\/\//i.test(url)) {
+    // One decision, tested per reason (displayBlankSignal.ts). `softBlank` is
+    // the 2026-10-03 one: the black cover is painted in THIS page, underneath
+    // the native site view, so a blanked screen kept showing the website.
+    const current = sorted.length ? sorted[currentIndex % sorted.length] : null;
+    const url = nativeWebsiteTarget({
+      playing: phase === 'playing',
+      playbackStopped,
+      emergency: !!activeEmergency,
+      blanked: softBlank,
+      item: current,
+      itemValid: !!current && isItemValid(current),
+      apiRoot: getApiRoot(),
+    });
+    if (!url) {
       hide();
       return;
     }
@@ -10164,7 +10165,7 @@ function PlayerPage() {
     // load back yet, so this is "requested", exactly as `pl:` was before the
     // readiness flag existed.
     if (nativeFire('showUrlOverlay', url)) setMediaReady(true);
-  }, [activeEmergency, currentIndex, isItemValid, phase, playbackStopped, sorted]);
+  }, [activeEmergency, currentIndex, isItemValid, phase, playbackStopped, softBlank, sorted]);
 
   // 2026-09-28 — Website Tabs' native site view is a TOP-LEVEL Android
   // WebView laid over this page, so an alert or the operator's Stop surface
@@ -10174,10 +10175,14 @@ function PlayerPage() {
   // player rule 11: the alert never waits on a widget lifecycle. Fire-and-
   // forget; `nativeHas` keeps it off APKs that predate the method.
   useEffect(() => {
-    if (!activeEmergency && !playbackStopped) return;
+    if (!activeEmergency && !playbackStopped && !softBlank) return;
     if (!nativeHas('webTabsHide')) return;
     nativeFire('webTabsHide', JSON.stringify({ v: 1, wipe: false }));
-  }, [activeEmergency, playbackStopped]);
+  }, [activeEmergency, playbackStopped, softBlank]);
+  // …and unlike an alert or Stop, a blank does not unmount the widget, so
+  // nothing would put the site back on wake. Website Tabs listens for this
+  // (displayBlankSignal.ts): hidden while blanked, shown again when it lifts.
+  useEffect(() => { publishDisplayBlank(softBlank); }, [softBlank]);
 
   // Shared splash resolution string — used by all three pre-content phases.
   // Gated on bootMounted (NOT `typeof window`): the server pass and the
