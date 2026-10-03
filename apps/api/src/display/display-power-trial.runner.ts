@@ -63,12 +63,7 @@ export class DisplayPowerTrialRunner implements OnApplicationBootstrap {
   /** Public for the spec. Returns what happened, in one word. */
   async runOnce(trial: PowerTrialOnce): Promise<'ran' | 'already-ran' | 'no-screen' | 'refused'> {
     const reason = powerTrialReason(trial.nonce);
-    const seen = await this.prisma.client.auditLog.findFirst({
-      where: { targetId: trial.screenId, details: { contains: `nonce=${trial.nonce}` } },
-      select: { id: true },
-    });
-    if (seen) return 'already-ran';
-
+    // ten-ok: system actor with no request tenant — the screen id comes from the deploy configuration set by platform staff, and everything below is scoped to the tenant THIS row names.
     const screen = await this.prisma.client.screen.findUnique({
       where: { id: trial.screenId },
       select: { id: true, tenantId: true, displayCapabilities: true, lastPushConnectedAt: true },
@@ -77,6 +72,12 @@ export class DisplayPowerTrialRunner implements OnApplicationBootstrap {
       this.logger.warn(`power trial: screen ${trial.screenId} not found`);
       return 'no-screen';
     }
+    const seen = await this.prisma.client.auditLog.findFirst({
+      where: { tenantId: screen.tenantId, targetId: screen.id, details: { contains: `nonce=${trial.nonce}` } },
+      select: { id: true },
+    });
+    if (seen) return 'already-ran';
+
     const emergencyHold = await resolveEmergencyHold(this.prisma, { id: screen.id, tenantId: screen.tenantId });
     try {
       const result = await this.display.applyAction({

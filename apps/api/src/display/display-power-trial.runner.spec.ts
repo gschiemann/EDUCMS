@@ -24,7 +24,7 @@ describe('DISPLAY_POWER_TRIAL_ONCE', () => {
     const { runner, display, prisma } = build(null, row);
     await expect(runner.runOnce(trial)).resolves.toBe('ran');
     expect(prisma.client.auditLog.findFirst).toHaveBeenCalledWith(expect.objectContaining({
-      where: { targetId: SCREEN, details: { contains: 'nonce=trial-1' } },
+      where: { tenantId: 't1', targetId: SCREEN, details: { contains: 'nonce=trial-1' } },
     }));
     expect(display.applyAction).toHaveBeenCalledTimes(1);
     expect(display.applyAction).toHaveBeenCalledWith(expect.objectContaining({
