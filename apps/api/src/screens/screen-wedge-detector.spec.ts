@@ -77,3 +77,30 @@ describe('ScreenWedgeDetectorCron.decide', () => {
     expect(d.action).toBe('fire');
   });
 });
+
+/**
+ * POST-BOOT GRACE (2026-10-03). The candidate query excludes a screen that
+ * re-registered within the grace: its staleness predates the boot it just
+ * finished. A screen that never rotated its credential is still a candidate.
+ */
+describe('ScreenWedgeDetectorCron.bootGraceWhere', () => {
+  const now = 1_800_000_000_000;
+  const where = ScreenWedgeDetectorCron.bootGraceWhere(now);
+  const isCandidate = (rotatedAt: Date | null) =>
+    rotatedAt === null ? where.OR.some((c) => c.credentialEpochRotatedAt === null) : rotatedAt < where.OR[1].credentialEpochRotatedAt.lt;
+
+  it('leaves a screen alone for three minutes after it boots (the 39-second reload)', () => {
+    expect(isCandidate(new Date(now - 39_000))).toBe(false);
+    expect(isCandidate(new Date(now - ScreenWedgeDetectorCron.BOOT_GRACE_MS + 1))).toBe(false);
+  });
+
+  it('still grades a screen that booted longer ago, and one that never rotated', () => {
+    expect(isCandidate(new Date(now - ScreenWedgeDetectorCron.BOOT_GRACE_MS - 1))).toBe(true);
+    expect(isCandidate(new Date(now - 29 * 60_000))).toBe(true);
+    expect(isCandidate(null)).toBe(true);
+  });
+
+  it('the grace is shorter than the cache-stale threshold, so a real wedge is still caught on the next sweep', () => {
+    expect(ScreenWedgeDetectorCron.BOOT_GRACE_MS).toBeLessThan(5 * 60_000);
+  });
+});

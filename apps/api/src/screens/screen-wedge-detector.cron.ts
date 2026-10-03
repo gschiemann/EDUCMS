@@ -103,6 +103,33 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
    *  Gives the player time to reload + start posting cache reports. */
   private static readonly RECOVERY_COOLDOWN_MS = 15 * 60_000;
 
+  /** How long after a (re)boot a screen is left alone. */
+  static readonly BOOT_GRACE_MS = 3 * 60_000;
+
+  /**
+   * POST-BOOT GRACE (2026-10-03, RIOT Cleveland "Video Wall" forensics).
+   *
+   * A screen that re-registered moments ago has just (re)loaded its page. Its
+   * cache report and render proof are stale FROM BEFORE that boot, and its
+   * first fresh ones are still due — so it looks exactly like a wedge. On
+   * 2026-09-29 this detector reloaded a box 39 seconds after it had booted and
+   * threw away the 64 MB download it had just resumed, on a ~1 Mbps link.
+   *
+   * `credentialEpochRotatedAt` moves on every proven register, i.e. every page
+   * boot. A screen that has never rotated (`null`) is not excused: it is
+   * graded on its staleness alone, as before.
+   */
+  static bootGraceWhere(nowMs: number): {
+    OR: [{ credentialEpochRotatedAt: null }, { credentialEpochRotatedAt: { lt: Date } }];
+  } {
+    return {
+      OR: [
+        { credentialEpochRotatedAt: null },
+        { credentialEpochRotatedAt: { lt: new Date(nowMs - ScreenWedgeDetectorCron.BOOT_GRACE_MS) } },
+      ],
+    };
+  }
+
   /** The web runtime is dead-or-lying if last_rendered_at is older than
    *  this. Render-proof POSTs every 30 s while playing and every 5 min
    *  idle, so 10 min = at least two missed idle proofs. This catches the
@@ -267,6 +294,8 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
             ],
           },
         ],
+        // POST-BOOT GRACE (2026-10-03) — see bootGraceWhere().
+        AND: [ScreenWedgeDetectorCron.bootGraceWhere(now)],
         // Don't compete with an in-flight OTA. force_apk_update_pending_at
         // means the operator just clicked "Push APK update" — the player
         // will reboot when the install finishes; firing REFRESH_WEB on
