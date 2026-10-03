@@ -9,6 +9,9 @@ import android.os.SystemClock
 import android.util.Log
 import com.educms.player.MainActivity
 import com.educms.player.heartbeat.HeartbeatService
+import com.educms.player.logging.PlayerLogger
+import com.educms.player.standby.RelaunchMode
+import com.educms.player.standby.UserStandby
 
 /**
  * AlarmManager-backed watchdog that nudges MainActivity + HeartbeatService
@@ -69,6 +72,29 @@ class WatchdogReceiver : android.content.BroadcastReceiver() {
         if (intent.action != Watchdog.ACTION_TICK) return
         Log.i("Watchdog", "Tick — ensuring services + activity are alive")
         HeartbeatService.ensureRunning(ctx)
+        // ── USER STANDBY (2026-10-03, player 1.1.21) ──────────────────
+        // THIS TICK WAS THE BUG: it started MainActivity every 15 minutes,
+        // and an Activity that carries turn-screen-on turns the panel on when
+        // it is started, so a person's remote power-off lasted at most 15
+        // minutes. Now, while a person has the panel off:
+        //   • the tick keeps the standby CPU lock fresh (the page must stay
+        //     reachable by an alert) and catches a schedule ON trigger an
+        //     alarm missed;
+        //   • an ALIVE Activity is left alone — nothing to recover;
+        //   • a DEAD one is still started, dark: its onCreate leaves the wake
+        //     flags disarmed, so the page runs and can take an alert while the
+        //     panel stays off.
+        val app = ctx.applicationContext
+        runCatching { UserStandby.onWatchdogTick(app) }
+            .onFailure { Log.w("Watchdog", "user-standby tick failed: ${it.message}") }
+        val mode = UserStandby.relaunchMode(app)
+        if (mode == RelaunchMode.SKIP) {
+            PlayerLogger.i("Watchdog", "Tick — a person has this panel off and the player is alive; not relaunching")
+            return
+        }
+        if (mode == RelaunchMode.DARK) {
+            PlayerLogger.i("Watchdog", "Tick — panel off by a person and the player is gone; relaunching it dark")
+        }
         // Only re-launch the activity if it's been idle for a while; otherwise
         // we'd steal focus. Best-effort — Android 10+ background launch
         // restrictions might block this, but on rooted Taurus / Device-Owner

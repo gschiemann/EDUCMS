@@ -687,6 +687,32 @@ class MainActivity : ComponentActivity() {
         var isInForeground: Boolean = false
             private set
 
+        // ─── USER STANDBY (2026-10-03, player 1.1.21) — two more facts ──
+        //
+        // [com.educms.player.standby.UserStandby] needs to know (a) whether
+        // the player was ON THE GLASS when the panel went off — a person's
+        // remote-off is only "user standby" if it turned off OUR content —
+        // and (b) whether an Activity instance exists at all, so a relaunch
+        // path in standby can tell "nothing to recover" (skip) from "the page
+        // is gone and must run dark so an alert can still reach it".
+
+        /**
+         * `elapsedRealtime` of the last onPause that happened BECAUSE the
+         * panel went to sleep (it was already non-interactive); 0 = none.
+         * The ACTION_SCREEN_OFF broadcast can land just after that pause.
+         */
+        @Volatile
+        @JvmStatic
+        var lastPausedBySleepAtMs: Long = 0L
+            private set
+
+        private val liveInstances = java.util.concurrent.atomic.AtomicInteger(0)
+
+        /** Is a MainActivity instance alive (created, not yet destroyed)? */
+        @JvmStatic
+        val isAlive: Boolean
+            get() = liveInstances.get() > 0
+
         // ─── 2026-09-01 (TC22 F1): the SECOND fact ──────────────────
         //
         // "MainActivity is not resumed" has two causes that need opposite
@@ -1182,14 +1208,57 @@ class MainActivity : ComponentActivity() {
                     WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
                     WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD,
             )
+            // Every caller of this hook is a deliberate wake (a WAKE command or
+            // the emergency enforce) and has already ended any user standby, so
+            // the API-27 half of the arming comes back with the flag.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) setTurnScreenOn(true)
             if (::binding.isInitialized) binding.root.keepScreenOn = true
             PlayerLogger.i("DisplayWindow", "wake requested via window flags")
         }.onFailure { PlayerLogger.w("DisplayWindow", "requestScreenWake failed: ${it.message}") }
     }
 
+    /**
+     * USER STANDBY (2026-10-03, player 1.1.21) — arm or disarm this Activity's
+     * power to turn the panel on when it is started or shown.
+     *
+     * Two switches, because Android has two: the window flag
+     * `FLAG_TURN_SCREEN_ON` (every API level) and, on API 27+, the Activity's
+     * own `setTurnScreenOn`, which overrides the manifest's
+     * `android:turnScreenOn="true"`. While a person has the panel off, both are
+     * DOWN — so no relaunch of this Activity, by anyone, can wake it. Waking is
+     * then only done on purpose: an alert or a WAKE command pokes the panel
+     * with a wake lock that needs no window, and re-arms these on the way.
+     */
+    @Suppress("DEPRECATION")
+    private fun armTurnScreenOn(armed: Boolean, why: String) {
+        runCatching {
+            if (armed) {
+                window.addFlags(WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON)
+            } else {
+                window.clearFlags(WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) setTurnScreenOn(armed)
+            if (!armed) {
+                PlayerLogger.i("UserStandby", "turn-screen-on DISARMED ($why) — a relaunch cannot wake the panel")
+            }
+        }.onFailure { PlayerLogger.w("UserStandby", "armTurnScreenOn($armed) failed: ${it.message}") }
+    }
+
+    /**
+     * Held as a STRONG field because UserStandby keeps only a WeakReference —
+     * same reason as [displayHooks]. Transitions can be reported from the
+     * bridge thread (a WAKE command), so the window work hops to the UI thread.
+     */
+    private val standbyListener = com.educms.player.standby.UserStandby.Listener { active ->
+        runOnUiThread {
+            if (!isDestroyed) armTurnScreenOn(!active, if (active) "user standby began" else "user standby ended")
+        }
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        liveInstances.incrementAndGet()
         PlayerLogger.i("MainActivity", "onCreate — ${Build.MANUFACTURER} ${Build.MODEL} SDK ${Build.VERSION.SDK_INT}")
         // 2026-05-07 (v1.0.52) — device beacon. Diagnostic-only logging
         // expanded so support can answer "what's the kiosk's actual
@@ -1283,7 +1352,17 @@ class MainActivity : ComponentActivity() {
 
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED)
-        window.addFlags(WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON)
+        // USER STANDBY (2026-10-03) — the turn-screen-on flag is the ONE thing
+        // that lets a relaunch (our Watchdog, the post-OTA rungs, the Manager
+        // companion, an OEM launcher) turn a panel on. A new instance created
+        // while a person has the panel off — process death, OTA — must not
+        // arm it, and must disarm the manifest's `android:turnScreenOn` before
+        // the window's first relayout (which is after this onCreate).
+        armTurnScreenOn(
+            !com.educms.player.standby.UserStandby.isActive(applicationContext),
+            "onCreate",
+        )
+        com.educms.player.standby.UserStandby.setListener(standbyListener)
         window.addFlags(WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD)
 
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -3700,6 +3779,11 @@ class MainActivity : ComponentActivity() {
         // See the companion's [isInForeground] — the only proof a post-OTA
         // relaunch actually landed on the glass.
         isInForeground = true
+        // USER STANDBY — resumed with the panel lit means whatever turned it
+        // back on (a person, an alert, the schedule) has ended the standby;
+        // this catches a SCREEN_ON broadcast that never reached us.
+        runCatching { com.educms.player.standby.UserStandby.onActivityResumed(applicationContext) }
+            .onFailure { PlayerLogger.w("UserStandby", "onActivityResumed failed: ${it.message}") }
         webView.onResume()
         if (::urlOverlayView.isInitialized) {
             urlOverlayView.onResume()
@@ -3844,6 +3928,14 @@ class MainActivity : ComponentActivity() {
     override fun onPause() {
         isInForeground = false
         isResumedForLockTask = false
+        // USER STANDBY — a pause taken while the panel is already
+        // non-interactive is the SLEEP pausing us: the player was on the
+        // glass when the panel went off. UserStandby reads this when the
+        // ACTION_SCREEN_OFF broadcast lands a moment later.
+        lastPausedBySleepAtMs = runCatching {
+            val pm = getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
+            if (pm != null && !pm.isInteractive) android.os.SystemClock.elapsedRealtime() else 0L
+        }.getOrDefault(0L)
         // We deliberately DON'T stopLockTask here — the activity should keep
         // its pinned state while the OS swaps focus (e.g. notification panel
         // attempts). Only release on destroy / explicit unpair.
@@ -3857,6 +3949,8 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        liveInstances.decrementAndGet()
+        runCatching { com.educms.player.standby.UserStandby.clearListener(standbyListener) }
         webView.stopLoading()
         if (::urlOverlayView.isInitialized) {
             urlOverlayView.stopLoading()

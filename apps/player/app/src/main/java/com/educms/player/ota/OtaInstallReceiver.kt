@@ -70,6 +70,19 @@ class OtaInstallReceiver : BroadcastReceiver() {
                     targetPackageOf(intent),
                     installedVersionCodeOf(context, targetPackageOf(intent)),
                 )
+                // USER STANDBY (2026-10-03, player 1.1.21) — a person has this
+                // panel off. Nobody is there to tap Install, and the trampoline
+                // would start MainActivity, which is how a panel gets woken.
+                // The confirmation stays STAGED; the next update check or a
+                // person turning the panel back on gets it raised again.
+                if (com.educms.player.standby.UserStandby.isActive(context)) {
+                    PlayerLogger.i(
+                        TAG,
+                        "PENDING_USER_ACTION while a person has the panel off (user standby) — " +
+                            "confirmation staged, not raised",
+                    )
+                    return
+                }
                 val trampoline = Intent(context, com.educms.player.MainActivity::class.java).apply {
                     action = ACTION_LAUNCH_INSTALL_PROMPT
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
@@ -150,6 +163,26 @@ class OtaInstallReceiver : BroadcastReceiver() {
     }
 
     private fun relaunchSelf(context: Context) {
+        // USER STANDBY (2026-10-03, player 1.1.21) — never wake a panel a
+        // person turned off. An alive player needs nothing; a dead one is
+        // started once, dark (its onCreate leaves the wake flags disarmed).
+        when (com.educms.player.standby.UserStandby.relaunchMode(context)) {
+            com.educms.player.standby.RelaunchMode.SKIP -> {
+                PlayerLogger.i(TAG, "post-install relaunch skipped — user standby, the player is alive")
+                return
+            }
+            com.educms.player.standby.RelaunchMode.DARK -> {
+                runCatching {
+                    context.packageManager.getLaunchIntentForPackage(context.packageName)?.let { launch ->
+                        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                        context.startActivity(launch)
+                        PlayerLogger.i(TAG, "post-install relaunch in user standby — player started dark")
+                    }
+                }.onFailure { PlayerLogger.w(TAG, "dark relaunch failed: ${it.message}") }
+                return
+            }
+            com.educms.player.standby.RelaunchMode.NORMAL -> Unit
+        }
         for (attempt in 0..7) {
             // TC22 F1 — eight `startActivity` calls, one per second, is the
             // loudest of the relaunch actors and it ran completely blind. If

@@ -78,6 +78,12 @@ class PlayerApp : Application() {
         UsbCacheIndex.reload(this)
         HeartbeatService.ensureRunning(this)
         Watchdog.arm(this)
+        // 2026-10-03 (1.1.21) — USER STANDBY. Listens for the panel going off
+        // and on (only a runtime receiver can), and restores a standby that
+        // outlived a process death. Application-scoped: the Activity can be
+        // gone while a person has the panel off. Never throws.
+        runCatching { com.educms.player.standby.UserStandby.install(this) }
+            .onFailure { PlayerLogger.w("PlayerApp", "user standby install failed: ${it.message}") }
         scheduleOtaWorker()
         startManagerHeartbeat()
         installCrashHandler()

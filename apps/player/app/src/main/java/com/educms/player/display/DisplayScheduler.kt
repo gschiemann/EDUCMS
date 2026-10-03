@@ -8,6 +8,8 @@ import android.content.Intent
 import android.os.Build
 import androidx.annotation.RequiresApi
 import com.educms.player.logging.PlayerLogger
+import com.educms.player.standby.UserStandby
+import com.educms.player.standby.UserStandbyPolicy
 
 /**
  * On-device execution of the display schedule.
@@ -64,10 +66,17 @@ object DisplayScheduler {
      */
     fun applyDesiredNow(ctx: Context) {
         val app = ctx.applicationContext
-        val schedules = DisplayConfigStore.load(app).schedules
+        val config = DisplayConfigStore.load(app)
+        // USER STANDBY (2026-10-03) — a person's remote-off yields to the
+        // schedule's ON trigger, but only to one that came AFTER it. Checked
+        // first, and over BOTH arrays: on most of the fleet the windows are
+        // the page's soft ones, which this device may never blank but must
+        // still answer at their ON trigger.
+        endStandbyIfScheduleTriggered(app, config)
+        val schedules = config.schedules
         val desiredOn = DisplayScheduleMath.desiredOnAt(schedules, System.currentTimeMillis())
         if (desiredOn == null) {
-            PlayerLogger.i(TAG, "no active schedules — leaving the screen alone")
+            PlayerLogger.i(TAG, "no hard schedules — leaving the screen alone")
             return
         }
         val currentlyBlanked = DisplayPrefs.blanked(app)
@@ -95,12 +104,55 @@ object DisplayScheduler {
         DisplayControlRegistry.apply(app, action, revertAfterMs = null)
     }
 
+    /**
+     * USER STANDBY (2026-10-03, player 1.1.21) — "respect the remote, but a
+     * schedule overrides it when it hits its on or off trigger".
+     *
+     * A person turned the panel off with the remote. Last command wins: if the
+     * schedule's latest real transition is an ON that fired AFTER that off,
+     * the schedule spoke last — end the standby and WAKE the panel. An ON
+     * window that was already running when the person pressed power changes
+     * nothing (see [UserStandbyPolicy.scheduleEndsStandby]).
+     *
+     * Comparing timestamps rather than reacting to "the alarm fired" is what
+     * makes this hold up on a real box: a late alarm, a missed alarm (the
+     * Watchdog tick re-asks) and a process that died across the trigger all
+     * reach the same answer.
+     *
+     * Both arrays count. `wakeOnlySchedules` are the page's soft windows,
+     * forwarded so this device can answer their ON trigger — it never blanks
+     * for them (the soft path never drives panel power; see DisplayConfig).
+     *
+     * @return true when this call ended a standby and woke the panel.
+     */
+    fun endStandbyIfScheduleTriggered(
+        ctx: Context,
+        config: DisplayConfig = DisplayConfigStore.load(ctx.applicationContext),
+    ): Boolean {
+        val app = ctx.applicationContext
+        val record = UserStandby.activeRecord(app) ?: return false
+        val windows = config.schedules + config.wakeOnlySchedules
+        val last = DisplayScheduleMath.lastTransitionAtOrBefore(windows, System.currentTimeMillis())
+        if (!UserStandbyPolicy.scheduleEndsStandby(record, last)) return false
+        PlayerLogger.w(
+            TAG,
+            "the on/off schedule's ON trigger (${(System.currentTimeMillis() - last!!.atMs) / 1000}s ago) " +
+                "came after the remote turned this panel off — the schedule wins, waking it",
+        )
+        UserStandby.end(app, "the on/off schedule's ON trigger")
+        DisplayControlRegistry.apply(app, DisplayAction.Wake, revertAfterMs = null)
+        return true
+    }
+
     /** Arm exactly one alarm, at the next schedule boundary. */
     fun arm(ctx: Context) {
         val app = ctx.applicationContext
         val am = app.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
         val pi = tickIntent(app)
-        val schedules = DisplayConfigStore.load(app).schedules
+        val config = DisplayConfigStore.load(app)
+        // Wake-only windows arm the alarm too: their ON trigger is the moment
+        // a remote-slept panel must come back (endStandbyIfScheduleTriggered).
+        val schedules = config.schedules + config.wakeOnlySchedules
         if (schedules.isEmpty()) {
             runCatching { am.cancel(pi) }
             PlayerLogger.i(TAG, "no schedules — alarm cancelled")

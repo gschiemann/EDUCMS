@@ -587,6 +587,14 @@ object DisplayEmergency {
      */
     fun enforceNow(ctx: Context, quiet: Boolean = false) {
         val app = ctx.applicationContext
+        // ⚠️ USER STANDBY (2026-10-03) — AN ALERT OUTRANKS THE REMOTE. A person
+        // may have powered this panel off; the alert ends that standby FIRST,
+        // which re-arms MainActivity's wake flags before the hooks below run.
+        // Nothing on this path ever ASKS whether a standby is in force — it
+        // only ends one — so standby can never sit between an alert and the
+        // glass. Cheap and silent when no standby exists (every re-raise).
+        runCatching { com.educms.player.standby.UserStandby.end(app, "an emergency alert") }
+            .onFailure { PlayerLogger.e(TAG, "could not end a user standby for the alert", it) }
         // Read the mirror BEFORE we correct it: this is the only place
         // that can tell "routine re-assert" from "a blank raced the hold
         // and won", and the two want very different log levels.
@@ -674,5 +682,17 @@ internal object ScreenWakeLock {
             lock.acquire(HOLD_MS)
             PlayerLogger.i(TAG, "screen wake lock acquired for ${HOLD_MS}ms")
         }.onFailure { PlayerLogger.w(TAG, "could not poke the screen awake: ${it.message}") }
+    }
+
+    /**
+     * [pokeScreen], only when the panel is actually asleep — for a WAKE
+     * whose provider can otherwise only re-flag a window (the software
+     * floor). Fails toward poking: an unreadable power state wakes.
+     */
+    fun pokeScreenIfAsleep(ctx: Context) {
+        val interactive = runCatching {
+            (ctx.applicationContext.getSystemService(Context.POWER_SERVICE) as? PowerManager)?.isInteractive
+        }.getOrNull()
+        if (interactive != true) pokeScreen(ctx)
     }
 }

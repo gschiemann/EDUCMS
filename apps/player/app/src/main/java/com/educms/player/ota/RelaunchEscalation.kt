@@ -169,6 +169,35 @@ object RelaunchEscalation {
                 )
                 return
             }
+            // USER STANDBY (2026-10-03, player 1.1.21) — a person turned this
+            // panel off with the remote. The escalation below PROVES a launch
+            // by onResume, which a dark panel never reaches, and its last rung
+            // is a full-screen-intent notification — which turns the panel
+            // on. So in standby: an alive player is left alone, and a dead one
+            // (this is usually the first boot of an OTA'd process) is started
+            // ONCE, dark, with no proof and no escalation — its onCreate
+            // leaves the wake flags disarmed, so the page runs and can still
+            // take an alert while the panel stays off.
+            when (com.educms.player.standby.UserStandby.relaunchMode(ctx)) {
+                com.educms.player.standby.RelaunchMode.SKIP -> {
+                    PlayerLogger.i(
+                        TAG,
+                        "relaunch attempt from $source skipped — a person has this panel off " +
+                            "(user standby) and the player is alive",
+                    )
+                    return
+                }
+                com.educms.player.standby.RelaunchMode.DARK -> {
+                    PlayerLogger.i(
+                        TAG,
+                        "relaunch from $source in user standby — starting the player dark " +
+                            "(no wake, no escalation)",
+                    )
+                    launchNow(ctx, "$source/standby-dark")
+                    return
+                }
+                com.educms.player.standby.RelaunchMode.NORMAL -> Unit
+            }
             if (chainInFlight) {
                 PlayerLogger.i(TAG, "relaunch attempt from $source skipped — a chain is already in flight")
                 return

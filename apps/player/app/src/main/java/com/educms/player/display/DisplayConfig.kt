@@ -117,6 +117,23 @@ data class DisplayConfig(
     val recipes: List<VendorRecipeEntry> = emptyList(),
     /** Human-readable notes about what we refused, for the ops report. */
     val warnings: List<String> = emptyList(),
+    /**
+     * USER STANDBY (2026-10-03, player 1.1.21) — the page's SOFT on/off
+     * windows, forwarded by the web player as `wakeOnlySchedules`.
+     *
+     * The server routes a panel whose power is not proven onto the page's
+     * soft overlay (`display.softSchedules`), and that overlay cannot turn a
+     * panel back on after a person powered it off with the remote. These
+     * rows exist so this device can answer the soft schedule's ON TRIGGER:
+     * [DisplayScheduler.endStandbyIfScheduleTriggered] wakes a remote-slept
+     * panel when one of them turns on after the person's off.
+     *
+     * ⚠️ WAKE-ONLY, BY CONSTRUCTION. Nothing ever BLANKS for these rows —
+     * `DisplayScheduler.applyDesiredNow` levels the panel from [schedules]
+     * alone — so the 2026-08-25 rule (a soft window never drives panel power
+     * off) is untouched. An older APK drops the key (org.json ignores it).
+     */
+    val wakeOnlySchedules: List<DisplaySchedule> = emptyList(),
 ) {
     /**
      * The highest-priority recipe whose `match` block fits this box, or
@@ -168,6 +185,10 @@ object DisplayConfigParser {
             if (it.has("minSafePercent")) it.optInt("minSafePercent", -1).takeIf { p -> p in 0..100 } else null
         }
 
+        // Same row rules as `schedules` (a malformed row is dropped, never
+        // guessed), but these can only ever WAKE — see DisplayConfig.
+        val wakeOnly = parseSchedules(root.optJSONArray("wakeOnlySchedules"), defaultTz, warnings)
+
         return DisplayConfig(
             version = root.optInt("version", 1),
             schedules = schedules,
@@ -175,6 +196,7 @@ object DisplayConfigParser {
             serverMinSafeBrightnessPercent = serverMinSafe,
             recipes = parseRecipes(root, warnings),
             warnings = warnings,
+            wakeOnlySchedules = wakeOnly,
         )
     }
 
@@ -476,6 +498,7 @@ object DisplayConfigStore {
         PlayerLogger.i(
             TAG,
             "display config saved — ${parsed.schedules.size} schedule(s), " +
+                "${parsed.wakeOnlySchedules.size} wake-only window(s), " +
                 "${parsed.recipes.size} vendor recipe(s) in the catalog " +
                 "[${parsed.recipes.joinToString(",") { it.vendorId }}], ${parsed.warnings.size} warning(s)",
         )

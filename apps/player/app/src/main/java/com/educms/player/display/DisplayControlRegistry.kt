@@ -2,6 +2,7 @@ package com.educms.player.display
 
 import android.content.Context
 import com.educms.player.logging.PlayerLogger
+import com.educms.player.standby.UserStandby
 
 /**
  * Resolves each [Capability] to exactly ONE provider, once, and caches
@@ -132,6 +133,19 @@ object DisplayControlRegistry {
             return ActionResult.Failed(why, EMERGENCY_HOLD_ID)
         }
 
+        // ── USER STANDBY (2026-10-03, player 1.1.21) ──
+        // A WAKE is a deliberate "be visible" — the dashboard's Turn on (it
+        // reaches this device as WAKE), the schedule's ON trigger, a dead-man
+        // restore — so it ends a person's remote standby before the provider
+        // turns the panel on. A BLANK is OURS: it is recorded BEFORE the
+        // provider runs, so the ACTION_SCREEN_OFF a device-admin lock fires at
+        // once is never mistaken for somebody's remote.
+        when (action) {
+            DisplayAction.Wake -> UserStandby.end(app, "a WAKE command")
+            DisplayAction.Blank -> UserStandby.noteOwnBlank()
+            else -> Unit
+        }
+
         val chain = CHAINS[action.capability].orEmpty()
         val provider = resolve(app)[action.capability]
             ?: return ActionResult.Unsupported("this device exposes no ${action.capability} control").also {
@@ -224,6 +238,14 @@ object DisplayControlRegistry {
                 // on from a Context — a live window is not required.
                 ScreenWakeLock.pokeScreen(app)
             }.onFailure { PlayerLogger.w(TAG, "software wake backstop failed: ${it.message}") }
+        } else if (action == DisplayAction.Wake) {
+            // USER STANDBY (2026-10-03) — the software floor's WAKE only
+            // re-flags the window, and a window cannot turn on a panel the OS
+            // has already put to sleep (a person's remote-off, an OS timeout).
+            // Before this, Turn on did nothing to a remote-slept panel whose
+            // WAKE resolved to software-dim.
+            runCatching { ScreenWakeLock.pokeScreenIfAsleep(app) }
+                .onFailure { PlayerLogger.w(TAG, "software-dim wake poke failed: ${it.message}") }
         }
 
         if (result.ok) recordState(app, action)
