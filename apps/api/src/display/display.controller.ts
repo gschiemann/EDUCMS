@@ -298,6 +298,19 @@ export class DisplayController {
       );
     }
 
+    // POWER TRIAL (2026-10-03): platform staff only. The body schema is
+    // passthrough, so `trial` is read here rather than added to the shared
+    // schema — it is not part of the operator contract and the dashboard
+    // never sends it. Anyone else asking is refused outright, not ignored:
+    // silently downgrading a trial to a normal POWER_OFF would hide the ask.
+    const powerTrial = (body as { trial?: unknown }).trial === true;
+    if (powerTrial && req.user?.role !== AppRole.SUPER_ADMIN) {
+      throw new HttpException(
+        { code: 'DISPLAY_POWER_TRIAL_FORBIDDEN', message: 'A power trial can only be run by platform staff.' },
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
     const screen = await this.loadOperatorScreen(screenId, req);
     if (!screen.tenantId || typeof screen.tenantId !== 'string') {
       throw new HttpException(
@@ -330,6 +343,7 @@ export class DisplayController {
         revertAfterMs: body.revertAfterMs,
         allowBlack: body.allowBlack,
         reason: body.reason,
+        powerTrial,
         capabilities: screen.displayCapabilities ?? null,
         // DELIVERY HONESTY (2026-08-25). Off the row we already loaded — no
         // extra query. This is the server's only evidence that a WS/SSE

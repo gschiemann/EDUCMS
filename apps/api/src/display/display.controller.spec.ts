@@ -308,6 +308,25 @@ describe('DisplayController', () => {
       });
     });
 
+    // POWER TRIAL (2026-10-03): platform staff only, and never silently downgraded.
+    it('403s a power trial from anyone but platform staff, before any screen lookup', async () => {
+      await expect(
+        controller.control(SCREEN_A, adminReq(), { action: 'POWER_OFF', revertAfterMs: 60_000, trial: true } as any),
+      ).rejects.toMatchObject({ status: HttpStatus.FORBIDDEN });
+      expect(prisma.client.screen.findFirst).not.toHaveBeenCalled();
+      expect(display.applyAction).not.toHaveBeenCalled();
+    });
+
+    it('passes a power trial through for SUPER_ADMIN, and no trial flag for an ordinary request', async () => {
+      prisma.client.screen.findFirst.mockResolvedValue(screenRow(FULL_VERDICT));
+      display.applyAction.mockResolvedValue({ success: true, action: 'POWER_OFF' });
+      const root = { user: { id: 'root', role: AppRole.SUPER_ADMIN, tenantId: TENANT_B } };
+      await controller.control(SCREEN_A, root, { action: 'POWER_OFF', revertAfterMs: 60_000, trial: true } as any);
+      expect(display.applyAction).toHaveBeenLastCalledWith(expect.objectContaining({ powerTrial: true, revertAfterMs: 60_000 }));
+      await controller.control(SCREEN_A, root, { action: 'POWER_OFF', revertAfterMs: 60_000 } as any);
+      expect(display.applyAction).toHaveBeenLastCalledWith(expect.objectContaining({ powerTrial: false }));
+    });
+
     it('refuses a session with no tenant at all', async () => {
       await expect(
         controller.getCapabilities(SCREEN_A, {

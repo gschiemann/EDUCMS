@@ -84,6 +84,7 @@ import {
   MIN_SAFE_BRIGHTNESS_PERCENT,
   clampBrightnessPercent,
   displayActionSupport,
+  type DisplayActionSupport,
   isBrightnessMechanismProven,
   normalizeVerdict,
   readStoredDisplayVerdict,
@@ -100,6 +101,13 @@ import { WebsocketSignerService } from '../security/websocket-signer.service';
 import { invalidateManifestCache } from '../screens/manifest-hot-cache';
 import { invalidateDisplayManifestBlock } from './display-manifest';
 import type { EmergencyHoldResult } from './display-emergency-hold';
+
+/** The one mechanism a power trial may exercise: the OS's own screen-off timeout. */
+export const POWER_TRIAL_MECHANISM = 'screen-timeout';
+/** A trial's dead-man wake window. Short enough to watch, long enough to really sleep. */
+export const POWER_TRIAL_MIN_REVERT_MS = 30_000;
+export const POWER_TRIAL_MAX_REVERT_MS = 5 * 60_000;
+export const DISPLAY_POWER_TRIAL_REFUSED_CODE = 'DISPLAY_POWER_TRIAL_REFUSED';
 
 /** AuditLog action strings. SCREAMING_SNAKE, matching the screens module. */
 export const DISPLAY_AUDIT_ACTIONS = {
@@ -624,6 +632,13 @@ export class DisplayService {
      * controller always passes it.
      */
     emergencyHold?: EmergencyHoldResult;
+    /**
+     * POWER TRIAL (2026-10-03). Platform staff trying a hard power-off on a
+     * mechanism that is not yet on the proven allowlist. The CONTROLLER
+     * decides who may ask; this method decides what a trial may be (see the
+     * block in the body). Only meaningful with action POWER_OFF.
+     */
+    powerTrial?: boolean;
   }): Promise<ApplyActionResult> {
     const { screenId, tenantId, userId, action } = opts;
     const verdict = verdictFromStored(opts.capabilities);
@@ -701,10 +716,53 @@ export class DisplayService {
     // nothing left for a per-shape guard to protect. Do NOT reinstate it —
     // reinstating it would refuse a SOFT blank, i.e. refuse a black <div>.
 
-    const support = displayActionSupport(action, verdict, {
-      percent: opts.percent,
-      allowBlack: opts.allowBlack === true,
-    });
+    // ── POWER TRIAL (2026-10-03) ─────────────────────────────────────────
+    // Hard POWER_OFF is allowlisted to mechanisms PROVEN to round-trip on
+    // real glass, and the only way a mechanism becomes proven is to try it.
+    // A trial is that attempt, bounded so it cannot strand a panel by itself:
+    //   • the timeout-sleep mechanism ONLY. The admin-lock family is what
+    //     latched two panels on 2026-08-25 and stays refused here too;
+    //   • a short dead-man window is MANDATORY — the device arms its own
+    //     wake before it sleeps, so a lost WS frame cannot leave it dark;
+    //   • the emergency interlock above has already run, unchanged.
+    // It is audited as a trial, refusal or not.
+    const powerTrial = opts.powerTrial === true && action === 'POWER_OFF';
+    if (powerTrial) {
+      const revert = opts.revertAfterMs;
+      const windowOk =
+        typeof revert === 'number' &&
+        revert >= POWER_TRIAL_MIN_REVERT_MS &&
+        revert <= POWER_TRIAL_MAX_REVERT_MS;
+      if (verdict?.screenBlank !== POWER_TRIAL_MECHANISM || !windowOk) {
+        await this.writeAudit({
+          action: DISPLAY_AUDIT_ACTIONS.CONTROL,
+          screenId,
+          tenantId,
+          userId,
+          details: {
+            requested: action,
+            outcome: 'refused',
+            code: DISPLAY_POWER_TRIAL_REFUSED_CODE,
+            trial: true,
+            verdict,
+            revertAfterMs: typeof revert === 'number' ? revert : null,
+          },
+        });
+        throw new DisplayActionUnsupportedError(
+          DISPLAY_POWER_TRIAL_REFUSED_CODE,
+          `A power trial runs only on the ${POWER_TRIAL_MECHANISM} mechanism and must carry a wake-up window ` +
+            `(revertAfterMs) between ${POWER_TRIAL_MIN_REVERT_MS / 1000} and ${POWER_TRIAL_MAX_REVERT_MS / 1000} seconds.`,
+          { action, verdict },
+        );
+      }
+    }
+
+    const support: DisplayActionSupport = powerTrial
+      ? { supported: true, mechanism: POWER_TRIAL_MECHANISM, note: 'trial' }
+      : displayActionSupport(action, verdict, {
+          percent: opts.percent,
+          allowBlack: opts.allowBlack === true,
+        });
 
     if (!support.supported) {
       // Audit the REFUSAL too. "The operator tried to reboot a screen that
@@ -852,6 +910,7 @@ export class DisplayService {
         allowBlack: opts.allowBlack === true,
         revertAfterMs,
         reason: opts.reason ?? null,
+        ...(powerTrial ? { trial: true } : {}),
       },
     });
 

@@ -267,6 +267,68 @@ describe('DisplayService', () => {
     ).toBe('device-admin');
   });
 
+  // ── POWER TRIAL (2026-10-03) ─────────────────────────────────────────
+  // The only way a hard-power mechanism becomes "proven" is to try it on real
+  // glass. A trial is that attempt: timeout-sleep only, with a mandatory short
+  // dead-man wake, audited as a trial.
+  describe('power trial', () => {
+    const GUQ_VERDICT = { ...G43_VERDICT, screenBlank: 'screen-timeout' };
+
+    it('without a trial, POWER_OFF on the timeout-sleep mechanism is still refused (control)', async () => {
+      await expect(
+        apply({ action: 'POWER_OFF', capabilities: stored(GUQ_VERDICT), revertAfterMs: 60_000 }),
+      ).rejects.toMatchObject({ code: 'DISPLAY_ACTION_UNSUPPORTED' });
+      expect(redis.publish).not.toHaveBeenCalled();
+    });
+
+    it('dispatches a HARD blank with the dead-man window, and audits it as a trial', async () => {
+      const result = await apply({
+        action: 'POWER_OFF', capabilities: stored(GUQ_VERDICT), revertAfterMs: 60_000, powerTrial: true,
+      });
+      expect(result.mechanism).toBe('screen-timeout');
+      const payload = signer.signMessage.mock.calls[0][1];
+      expect(payload).toMatchObject({ action: 'BLANK', hard: true, revertAfterMs: 60_000 });
+      const details = JSON.parse(prisma.client.auditLog.create.mock.calls[0][0].data.details);
+      expect(details).toMatchObject({ requested: 'POWER_OFF', trial: true, mechanism: 'screen-timeout', revertAfterMs: 60_000 });
+    });
+
+    it('refuses a trial on the admin-lock family — the mechanism that latched two panels', async () => {
+      await expect(
+        apply({ action: 'POWER_OFF', capabilities: stored(G43_VERDICT), revertAfterMs: 60_000, powerTrial: true }),
+      ).rejects.toMatchObject({ code: 'DISPLAY_POWER_TRIAL_REFUSED' });
+      expect(redis.publish).not.toHaveBeenCalled();
+      const details = JSON.parse(prisma.client.auditLog.create.mock.calls[0][0].data.details);
+      expect(details).toMatchObject({ outcome: 'refused', trial: true });
+    });
+
+    it.each([undefined, 5_000, 6 * 60_000])('refuses a trial whose wake-up window is %s ms', async (revertAfterMs) => {
+      await expect(
+        apply({ action: 'POWER_OFF', capabilities: stored(GUQ_VERDICT), revertAfterMs, powerTrial: true }),
+      ).rejects.toMatchObject({ code: 'DISPLAY_POWER_TRIAL_REFUSED' });
+      expect(redis.publish).not.toHaveBeenCalled();
+    });
+
+    it('refuses a trial on a screen that has never reported, and during an emergency hold', async () => {
+      await expect(
+        apply({ action: 'POWER_OFF', capabilities: null, revertAfterMs: 60_000, powerTrial: true }),
+      ).rejects.toMatchObject({ code: 'DISPLAY_POWER_TRIAL_REFUSED' });
+      await expect(
+        apply({
+          action: 'POWER_OFF', capabilities: stored(GUQ_VERDICT), revertAfterMs: 60_000, powerTrial: true,
+          emergencyHold: { active: true, source: 'tenant' },
+        }),
+      ).rejects.toMatchObject({ code: 'DISPLAY_EMERGENCY_HOLD' });
+      expect(redis.publish).not.toHaveBeenCalled();
+    });
+
+    it('the flag means nothing on any other action', async () => {
+      const result = await apply({ action: 'BLANK', capabilities: stored(GUQ_VERDICT), powerTrial: true });
+      expect(result.mechanism).toBe('web-overlay');
+      const details = JSON.parse(prisma.client.auditLog.create.mock.calls[0][0].data.details);
+      expect(details.trial).toBeUndefined();
+    });
+  });
+
   it('refuses REBOOT on a box without device owner, under its OWN code', async () => {
     // NO-DEVICE-OWNER PIVOT: this is the shape of the whole fleet today, so
     // the refusal must read as a product fact an operator can act on, not as
