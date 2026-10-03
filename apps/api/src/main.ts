@@ -27,6 +27,7 @@ import {
   SessionRedisClient,
   createRedisSessionStore,
 } from './security/redis-session.store';
+import { mountPlayerLogsBodyParser } from './player-logs/player-logs-body';
 
 // Last-resort crash guards. ioredis, Prisma, and passport-saml can all
 // surface unhandled rejections on network flaps; we'd rather log than
@@ -169,6 +170,13 @@ async function bootstrap() {
     /^\/api\/v1\/screens\/[^/]+\/telemetry\/?$/,
     expressBody.json({ limit: '32kb' }),
   );
+
+  // Player diagnostics upload (2026-10-03). The APK posts its log as
+  // `text/plain`; with only the JSON/form parsers below, Express 5 left the
+  // body undefined and every upload was stored as empty. Route-scoped text
+  // parser, 1 MB, mounted BEFORE the global json() for the same reason as the
+  // mounts above. See player-logs-body.ts (the HTTP spec mounts the same one).
+  mountPlayerLogsBodyParser(app);
 
   app.use(expressBody.json({ limit: '5mb' }));
   app.use(expressBody.urlencoded({ limit: '5mb', extended: true }));

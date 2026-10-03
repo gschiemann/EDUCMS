@@ -18,7 +18,14 @@
  *
  * Rate limiting: @Throttle({ default: { limit: 6, ttl: 60_000 } }) —
  * 6 uploads per minute per IP. A runaway crash loop could otherwise
- * flood the database with PLAYER_DIAGNOSTICS rows.
+ * flood the database with PLAYER_DIAGNOSTICS rows. Since 2026-10-03 the
+ * rows themselves are capped too (player-logs-limits.ts): 8 per upload and
+ * 24 per screen per hour, with a Redis claim per event instead of a
+ * `details LIKE` scan per line.
+ *
+ * Body: `text/plain`, parsed by the route-scoped parser in
+ * player-logs-body.ts, which main.ts mounts before the global JSON parser.
+ * Until 2026-10-03 nothing parsed it, so every upload arrived empty.
  */
 
 import {
@@ -41,6 +48,13 @@ import type { Request } from 'express';
 // implementation, which additionally enforces the revocation list, the
 // REVOKED status and the credential epoch.
 import { verifyDeviceForScreen } from '../screens/device-auth';
+import {
+  DiagnosticsLimiter,
+  MAX_AUDIT_ROWS_PER_UPLOAD,
+  recoverySeenKey,
+  type DiagnosticsRedis,
+} from './player-logs-limits';
+import { auditLine, auditTail } from './player-logs-redact';
 
 /** Maximum log body accepted (1 MB). Enforced before DB write. */
 const MAX_BODY_BYTES = 1_048_576;
@@ -48,14 +62,25 @@ const MAX_BODY_BYTES = 1_048_576;
 /** Maximum characters stored in AuditLog.details (10 KB). */
 const DETAILS_TRUNCATE = 10_240;
 
+/** Maximum characters of one recovery marker line stored. */
+const RECOVERY_LINE_MAX = 1024;
+
+/** Newest recovery marker lines examined per upload. */
+const MAX_RECOVERY_CANDIDATES = 32;
+
 @Controller('api/v1/player-logs')
 export class PlayerLogsController {
   private readonly logger = new Logger('PlayerLogs');
+  private readonly limits: DiagnosticsLimiter;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly redisService: RedisService,
-  ) {}
+  ) {
+    this.limits = new DiagnosticsLimiter(
+      () => (this.redisService?.publisher ?? null) as unknown as DiagnosticsRedis | null,
+    );
+  }
 
   /**
    * Verify a device credential bound to `screenId`.
@@ -117,12 +142,12 @@ export class PlayerLogsController {
   async ingestLog(
     @Param('screenId') screenId: string,
     @Req() req: Request,
-  ): Promise<{ stored: boolean; rows: number }> {
-    // Collect raw body. Express is configured with bodyParser.text() or
-    // bodyParser.raw() for this content type in main.ts; if neither is
-    // present the body will be undefined and we store an empty payload.
-    // We check size here rather than relying on body-parser limit so the
-    // endpoint is safe regardless of global parser config.
+  ): Promise<{ stored: boolean; rows: number; capped?: true }> {
+    // Collect raw body. main.ts mounts a text parser for this route
+    // (player-logs-body.ts); a content type it does not claim leaves the
+    // body undefined and we store an empty payload. We check size here
+    // rather than relying on body-parser limit so the endpoint is safe
+    // regardless of global parser config.
     let rawBody: string;
     if (typeof req.body === 'string') {
       rawBody = req.body;
@@ -170,11 +195,6 @@ export class PlayerLogsController {
     const UNRESOLVED_TENANT = 'unresolved';
     const tenantId: string = verified?.tenantId ?? UNRESOLVED_TENANT;
 
-    // Truncate to DETAILS_TRUNCATE chars before potential write.
-    const logTail = rawBody.length > DETAILS_TRUNCATE
-      ? rawBody.slice(rawBody.length - DETAILS_TRUNCATE) // keep tail (most recent)
-      : rawBody;
-
     // Pre-launch audit-spam fix (2026-04-27). Operator: "no extra api
     // calls or audits like we see happening in the audit section with
     // screens writing logs over and over."
@@ -196,7 +216,8 @@ export class PlayerLogsController {
     // The JVM crash handler never sees an isolated WebView renderer death.
     // Native recovery writes these bounded, timestamped markers to disk.
     const recoveryLines = rawBody.split('\n').filter(line =>
-      /PLAYER_RENDERER_TERMINATED|PLAYER_PLAYBACK_FAILURE|PLAYER_PROCESS_EXIT/.test(line)).slice(-32);
+      /PLAYER_RENDERER_TERMINATED|PLAYER_PLAYBACK_FAILURE|PLAYER_PROCESS_EXIT/.test(line))
+      .slice(-MAX_RECOVERY_CANDIDATES);
     const looksLikeCrash =
       /FATAL EXCEPTION|FATAL\b|E\/AndroidRuntime|java\.lang\.\w+Exception|kotlin\.\w+Exception|OutOfMemoryError|StackOverflowError|ANR in|Process .* died|signal 11|SIGSEGV/i
         .test(rawBody);
@@ -210,43 +231,14 @@ export class PlayerLogsController {
     // into the immutable forensic log. Unverified uploads still succeed
     // (early-boot / unpaired diagnostics keep working); they are logged to
     // the console only, exactly like a routine heartbeat.
-    let rows = 0;
-    if (jwtSub !== null) {
-      try {
-        for (const line of recoveryLines) {
-          const recoveryEventId = createHash('sha256').update(line).digest('hex');
-          const action = 'PLAYER_RECOVERY_EVENT';
-          const previous = await this.prisma.client.auditLog.findFirst({
-            where: { tenantId, targetId: attributedScreenId, action,
-              details: { contains: `"recoveryEventId":"${recoveryEventId}"` } },
-            select: { id: true },
-          });
-          if (previous) continue;
-          await this.prisma.client.auditLog.create({
-            data: { tenantId, userId: null, action, targetType: 'Screen', targetId: attributedScreenId,
-              details: JSON.stringify({ source: 'android_apk', screenId: attributedScreenId,
-                jwtVerified: true, recoveryEventId, crashDetected: false, log: line.slice(0, 1024) }) },
-          });
-          rows += 1;
-        }
-        // A simultaneous host fatal exception must not be swallowed just because
-        // a renderer event in the same rotating log was already uploaded.
-        if (looksLikeCrash) {
-          await this.prisma.client.auditLog.create({
-            data: { tenantId, userId: null, action: 'PLAYER_DIAGNOSTICS_CRASH',
-              targetType: 'Screen', targetId: attributedScreenId,
-              details: JSON.stringify({ source: 'android_apk', screenId: attributedScreenId,
-                jwtVerified: true, bodyBytes: Buffer.byteLength(rawBody, 'utf8'),
-                truncated: rawBody.length > DETAILS_TRUNCATE, crashDetected: true, log: logTail }) },
-          });
-          rows += 1;
-        }
-      } catch (err) {
-        this.logger.error(`Player diagnostics persistence failed for screen ${attributedScreenId}: ${(err as Error).message}`);
-        return { stored: false, rows };
-      }
+    if (jwtSub !== null && (recoveryLines.length > 0 || looksLikeCrash)) {
+      const outcome = await this.persistVerified(
+        tenantId, attributedScreenId, rawBody, recoveryLines, looksLikeCrash,
+      );
+      return outcome.capped
+        ? { stored: outcome.stored, rows: outcome.rows, capped: true }
+        : { stored: outcome.stored, rows: outcome.rows };
     }
-    if (rows > 0 || recoveryLines.length > 0 && jwtSub !== null) return { stored: true, rows };
 
     // Routine heartbeat — log to console only. The body is bounded at
     // 1 MB and we already truncated for storage; the console line just
@@ -259,5 +251,92 @@ export class PlayerLogsController {
     );
 
     return { stored: true, rows: 0 };
+  }
+
+  /**
+   * Write a verified device's recovery events and crash record (2026-10-03).
+   *
+   *   - Dedupe: a Redis claim per event (`SET NX EX`) replaces the
+   *     `details LIKE` scan; Redis unavailable → "not seen".
+   *   - At most MAX_AUDIT_ROWS_PER_UPLOAD rows, one of them kept for the
+   *     crash record so a burst of renderer markers can never crowd out a
+   *     simultaneous JVM fatal exception; at most
+   *     MAX_AUDIT_ROWS_PER_SCREEN_HOUR per screen per hour.
+   *   - Under a cap the NEWEST events win; they are still written in log
+   *     order. A claim whose row is not written is given back, so a later
+   *     upload records it.
+   *   - Stored text is redacted (player-logs-redact.ts) and held to the same
+   *     bounds as before: 1 024 characters per recovery line, 10 KB of tail
+   *     for a crash record.
+   */
+  private async persistVerified(
+    tenantId: string,
+    screenId: string,
+    rawBody: string,
+    recoveryLines: string[],
+    looksLikeCrash: boolean,
+  ): Promise<{ stored: boolean; rows: number; capped: boolean }> {
+    const recoveryBudget = MAX_AUDIT_ROWS_PER_UPLOAD - (looksLikeCrash ? 1 : 0);
+    const claimed: Array<{ line: string; recoveryEventId: string; key: string }> = [];
+    for (let i = recoveryLines.length - 1; i >= 0 && claimed.length < recoveryBudget; i--) {
+      const line = recoveryLines[i];
+      const recoveryEventId = createHash('sha256').update(line).digest('hex');
+      const key = recoverySeenKey(tenantId, screenId, recoveryEventId);
+      if (await this.limits.claimNew(key)) claimed.push({ line, recoveryEventId, key });
+    }
+    // Unseen markers beyond the per-upload budget were never claimed, so the
+    // next upload records them. `capped` reports the HOURLY cap only.
+    let capped = false;
+
+    const wanted = claimed.length + (looksLikeCrash ? 1 : 0);
+    const granted = await this.limits.reserve(screenId, wanted);
+    const writeCrash = looksLikeCrash && granted > 0;
+    const keep = Math.max(0, granted - (writeCrash ? 1 : 0));
+    if (granted < wanted) {
+      capped = true;
+      for (const dropped of claimed.slice(keep)) await this.limits.release(dropped.key);
+      this.logger.warn(
+        `PLAYER_DIAGNOSTICS hourly cap reached for screen ${screenId}: ` +
+        `${wanted - granted} of ${wanted} audit rows not written`,
+      );
+    }
+    // Newest first was the claim order; write in log order.
+    const toWrite = claimed.slice(0, keep).reverse();
+
+    let rows = 0;
+    for (let i = 0; i < toWrite.length; i++) {
+      const { line, recoveryEventId } = toWrite[i];
+      try {
+        await this.prisma.client.auditLog.create({
+          data: { tenantId, userId: null, action: 'PLAYER_RECOVERY_EVENT', targetType: 'Screen', targetId: screenId,
+            details: JSON.stringify({ source: 'android_apk', screenId,
+              jwtVerified: true, recoveryEventId, crashDetected: false, log: auditLine(line, RECOVERY_LINE_MAX) }) },
+        });
+        rows += 1;
+      } catch (err) {
+        for (const unwritten of toWrite.slice(i)) await this.limits.release(unwritten.key);
+        this.logger.error(`Player diagnostics persistence failed for screen ${screenId}: ${(err as Error).message}`);
+        return { stored: false, rows, capped };
+      }
+    }
+    // A simultaneous host fatal exception must not be swallowed just because
+    // a renderer event in the same rotating log was already uploaded.
+    if (writeCrash) {
+      try {
+        await this.prisma.client.auditLog.create({
+          data: { tenantId, userId: null, action: 'PLAYER_DIAGNOSTICS_CRASH',
+            targetType: 'Screen', targetId: screenId,
+            details: JSON.stringify({ source: 'android_apk', screenId,
+              jwtVerified: true, bodyBytes: Buffer.byteLength(rawBody, 'utf8'),
+              truncated: rawBody.length > DETAILS_TRUNCATE, crashDetected: true,
+              log: auditTail(rawBody, DETAILS_TRUNCATE) }) },
+        });
+        rows += 1;
+      } catch (err) {
+        this.logger.error(`Player diagnostics persistence failed for screen ${screenId}: ${(err as Error).message}`);
+        return { stored: false, rows, capped };
+      }
+    }
+    return { stored: true, rows, capped };
   }
 }
