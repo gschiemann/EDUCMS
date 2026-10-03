@@ -100,6 +100,38 @@ class RendererRecoveryWiringTest {
         assertTrue(face.contains("RendererRecoveryPolicy.reloadDelayMs(delayMs, emergencyHeld)"))
     }
 
+    // ─── P1-3: one serial reader per Activity ───────────────────────
+
+    @Test
+    fun `P1-3 one Activity-level serial bridge that reads the CURRENT WebView`() {
+        val src = main
+        assertTrue(
+            "exactly one SerialPortBridge construction in MainActivity",
+            Regex("SerialPortBridge\\(").findAll(src).count() == 1,
+        )
+        val configure = member(src, "private fun configureWebView(")
+        assertFalse(
+            "configureWebView runs again on every renderer replacement — it must not build a bridge",
+            configure.contains("SerialPortBridge("),
+        )
+        assertTrue(configure.contains("ctsSerial = ctsSerialBridge"))
+        assertTrue(
+            "getWebView must return the CURRENT field, not a captured view",
+            src.contains("getWebView = { if (::webView.isInitialized && !isDestroyed) webView else null }"),
+        )
+        assertTrue(member(src, "override fun onDestroy(").contains("ctsSerialBridge.disconnect()"))
+    }
+
+    @Test
+    fun `P1-3 serial bytes go through the main looper and resolve the view when delivered`() {
+        val bridge = code(read("src/main/java/com/educms/player/serial/SerialPortBridge.kt"))
+        val post = member(bridge, "private fun postBytesToWebView(")
+        assertTrue(post.contains("mainHandler.post {"))
+        val resolveAt = post.indexOf("getWebView()")
+        assertTrue("the view must be resolved INSIDE the posted block", resolveAt > post.indexOf("mainHandler.post {"))
+        assertFalse("never post to a captured WebView's own queue", post.contains("wv.post"))
+    }
+
     @Test
     fun `P1-2 the staleness watchdog does not race a pending renderer reload`() {
         val src = main

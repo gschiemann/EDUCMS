@@ -1,5 +1,7 @@
 package com.educms.player.serial
 
+import android.os.Handler
+import android.os.Looper
 import android.util.Base64
 import android.webkit.WebView
 import com.educms.player.logging.PlayerLogger
@@ -89,9 +91,15 @@ import kotlin.concurrent.thread
  * decode in <0.1ms per chunk).
  */
 class SerialPortBridge(
+    /**
+     * Read when bytes are DELIVERED, on the main thread — so it must answer
+     * the Activity's CURRENT WebView field, never one captured at
+     * construction (P1-3: a renderer replacement swaps the view).
+     */
     private val getWebView: () -> WebView?,
 ) {
     private val tag = "CtsSerial"
+    private val mainHandler = Handler(Looper.getMainLooper())
     private val running = AtomicBoolean(false)
     @Volatile private var stream: FileInputStream? = null
     @Volatile private var devicePath: String = ""
@@ -320,19 +328,29 @@ class SerialPortBridge(
     /**
      * Marshal the bytes back to JS via the WebView. Has to run on the
      * UI thread because WebView APIs are not thread-safe.
+     *
+     * ⚠️ P1-3 (2026-10-03 review) — through the MAIN LOOPER, and the WebView
+     * is resolved when the post RUNS, not when the bytes were read. This used
+     * to capture the view on the reader thread and `wv.post{}` to it: after a
+     * renderer replacement that view is destroyed and detached, its run queue
+     * never drains, and every chunk piled up there until the app ran out of
+     * memory (~1 KB/s at 9600 baud). Now a replaced view simply stops being
+     * the target and the next chunk lands on the live page.
      */
     private fun postBytesToWebView(base64: String) {
-        val wv = getWebView() ?: return
-        wv.post {
+        mainHandler.post {
+            val wv = getWebView() ?: return@post
             // Single string literal; base64 has no quotes / backslashes
             // so we don't need to escape further. The JS layer's
             // `window.__ctsSerialBytes` is registered by CtsBridge.tsx
             // on mount; if it isn't present (e.g. operator opened a
             // non-CTS page), the call is a harmless no-op.
-            wv.evaluateJavascript(
-                "if(window.__ctsSerialBytes)window.__ctsSerialBytes('$base64');",
-                null,
-            )
+            runCatching {
+                wv.evaluateJavascript(
+                    "if(window.__ctsSerialBytes)window.__ctsSerialBytes('$base64');",
+                    null,
+                )
+            }.onFailure { lastError = "deliver failed: ${it.javaClass.simpleName}" }
         }
     }
 

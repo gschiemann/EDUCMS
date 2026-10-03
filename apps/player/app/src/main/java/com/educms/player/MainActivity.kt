@@ -70,6 +70,25 @@ import kotlinx.coroutines.withContext
 class MainActivity : ComponentActivity() {
 
     private lateinit var binding: ActivityMainBinding
+
+    /**
+     * P1-3 (2026-10-03 review) — THE native CTS serial bridge, one per
+     * Activity.
+     *
+     * It was built inside `configureWebView`, so every renderer replacement
+     * made a SECOND bridge while the first kept `running` with its reader
+     * thread on the same tty: the reloaded page's CtsBridge auto-connect
+     * opened the port again, two threads split the byte stream (torn frames,
+     * a wrong or stalled scoreboard), and the orphan posted every chunk to a
+     * destroyed WebView's run queue until the app ran out of memory. One
+     * bridge per Activity means the reloaded page's connect() answers
+     * `already_open` — exactly what 1.1.19 did — and `getWebView` returns the
+     * CURRENT `webView` field when bytes are delivered, so they always reach
+     * the live page. Disconnected in onDestroy.
+     */
+    private val ctsSerialBridge = com.educms.player.serial.SerialPortBridge(
+        getWebView = { if (::webView.isInitialized && !isDestroyed) webView else null },
+    )
     private val primaryRendererRecovery by lazy { RendererRecovery(this, "primary") }
     private val overlayRendererRecovery by lazy { RendererRecovery(this, "url-overlay") }
     private var overlayLastStartedUrl: String? = null
@@ -2877,15 +2896,11 @@ class MainActivity : ComponentActivity() {
                     }
                 },
                 // Sprint 13 Phase 2 — native CTS serial bridge for
-                // Goodview ECBox3576 deployments. Single shared
-                // SerialPortBridge instance per Activity (one tty per
-                // box for v1; multi-port boxes can swap in a manager
-                // class later). The bridge holds a weak reference to
-                // the WebView so it can push bytes back to JS via
-                // window.__ctsSerialBytes(base64).
-                ctsSerial = com.educms.player.serial.SerialPortBridge(
-                    getWebView = { wv },
-                ),
+                // Goodview ECBox3576 deployments. ONE SerialPortBridge per
+                // ACTIVITY — see [ctsSerialBridge]; never one per WebView
+                // (P1-3: a renderer replacement used to build a second
+                // reader on the same tty here and orphan the first).
+                ctsSerial = ctsSerialBridge,
                 // 2026-08-13 — display CONTROL (volume / brightness /
                 // blank / wake / reboot + the on-device on-off
                 // schedule). Every argument is validated natively inside
@@ -4012,6 +4027,10 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         liveInstances.decrementAndGet()
         runCatching { com.educms.player.standby.UserStandby.clearListener(standbyListener) }
+        // P1-3 — close the tty and stop the reader with the Activity; the next
+        // instance builds its own bridge and must find the port free.
+        runCatching { ctsSerialBridge.disconnect() }
+            .onFailure { PlayerLogger.w("MainActivity", "serial bridge disconnect failed: ${it.message}") }
         webView.stopLoading()
         if (::urlOverlayView.isInitialized) {
             urlOverlayView.stopLoading()
