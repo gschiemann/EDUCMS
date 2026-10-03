@@ -30,6 +30,7 @@ import {
   type OpsSchedule,
   type OpsScreen,
   previewOf,
+  imageUrlOfPreview,
   syncStatusFor,
 } from '../screenOps';
 
@@ -1393,5 +1394,98 @@ describe('downloads + idle proofs on the row, the Overview and the Delivery card
     expect(byId.get('c')!.download).toBeNull();
     // A downloading screen is not an exception.
     expect(matchesFilter(byId.get('a')!, 'attention')).toBe(false);
+  });
+});
+
+describe('previewOf — what a playlist looks like on a screen row, the dashboard and the screen card', () => {
+  const image = (fileUrl: string, sequenceOrder?: number) => ({ sequenceOrder, asset: { fileUrl, mimeType: 'image/png' } });
+  const site = (fileUrl: string) => ({ asset: { fileUrl, mimeType: 'text/html' } });
+  const video = (fileUrl: string) => ({ asset: { fileUrl, mimeType: 'video/mp4' } });
+
+  it('previews a website-only playlist as a website rather than an empty tile', () => {
+    expect(previewOf({ id: 'website', items: [site('https://example.test/homes')] })).toEqual({ url: 'https://example.test/homes', kind: 'website', tint: null, posterUrl: null });
+  });
+
+  it('a website\'s address is the STORED string — the screenshot key the Media Library already warmed', () => {
+    expect(previewOf({ id: 'w', items: [site('https://www.example.test')] }).url).toBe('https://www.example.test');
+  });
+
+  it('a website outranks nothing: a playlist\'s images, then its video, come first', () => {
+    expect(previewOf({ id: 'p', items: [site('https://example.test'), image('/a.png')] }).kind).toBe('still');
+    expect(previewOf({ id: 'p', items: [site('https://example.test'), video('/v.mp4')] }).kind).toBe('frame');
+  });
+
+  it('a website with no address is not a preview', () => {
+    expect(previewOf({ id: 'p', items: [{ asset: { fileUrl: null, mimeType: 'text/html' } }] }).kind).toBe('none');
+  });
+
+  describe('several images', () => {
+    it('lists every image, in the order they PLAY (sequenceOrder), and the first is the still', () => {
+      const out = previewOf({ id: 'p', items: [image('/third.png', 2), image('/first.png', 0), image('/second.png', 1)] });
+      expect(out.kind).toBe('still');
+      expect(out.url).toBe('/first.png');
+      expect(out.frames).toEqual([{ url: '/first.png' }, { url: '/second.png' }, { url: '/third.png' }]);
+    });
+
+    it('falls back to position when an item carries no sequenceOrder — the same rule the render proof signs by', () => {
+      const out = previewOf({ id: 'p', items: [image('/a.png'), image('/b.png'), image('/c.png')] });
+      expect(out.frames?.map((f) => f.url)).toEqual(['/a.png', '/b.png', '/c.png']);
+    });
+
+    it('keeps array order between equal sequenceOrders (stable)', () => {
+      const out = previewOf({ id: 'p', items: [image('/x.png', 1), image('/y.png', 1), image('/z.png', 0)] });
+      expect(out.frames?.map((f) => f.url)).toEqual(['/z.png', '/x.png', '/y.png']);
+    });
+
+    it('skips non-images and images with no address; the rest still walk', () => {
+      const out = previewOf({ id: 'p', items: [video('/v.mp4'), site('https://example.test'), image('/a.png'), { asset: { fileUrl: '', mimeType: 'image/png' } }, image('/b.png')] });
+      expect(out.frames?.map((f) => f.url)).toEqual(['/a.png', '/b.png']);
+    });
+
+    it('one image is a plain still: no frames to walk', () => {
+      const out = previewOf({ id: 'p', items: [image('/only.png')] });
+      expect(out).toEqual({ url: '/only.png', kind: 'still', tint: null, posterUrl: null });
+      expect('frames' in out).toBe(false);
+    });
+
+    it('never mutates the playlist it was handed', () => {
+      const items = [image('/b.png', 1), image('/a.png', 0)];
+      const playlist = { id: 'p', items };
+      previewOf(playlist);
+      expect(playlist.items.map((i) => i.asset.fileUrl)).toEqual(['/b.png', '/a.png']);
+    });
+  });
+
+  it('deriveExpectedContent hands the walk to the screen row and the screen card', () => {
+    const pl: OpsPlaylist = { id: 'pl', name: 'Lobby slides', items: [image('/a.png', 0), image('/b.png', 1)] };
+    const screen = scr({});
+    const out = deriveExpectedContent(
+      screen,
+      [{ id: 'sc', playlistId: 'pl', screenId: screen.id, isActive: true, mode: 'replace', priority: 0, startTime: new Date(NOW - 3600_000).toISOString(), playlist: { id: 'pl', name: 'Lobby slides' } }],
+      new Map([[pl.id, pl]]),
+      NOW,
+    );
+    expect(out.thumbnailKind).toBe('still');
+    expect(out.thumbnailFrames).toEqual([{ url: '/a.png' }, { url: '/b.png' }]);
+  });
+});
+
+describe('imageUrlOfPreview — only a picture an <img> can draw', () => {
+  it.each([
+    ['still', '/a.png', '/a.png'],
+    ['board', '/templates/_thumbs/a.png', '/templates/_thumbs/a.png'],
+    ['website', 'https://example.test', null], // a page, not a picture
+    ['frame', '/clip.mp4', null], // a video file, not a picture
+    ['tint', null, null],
+    ['none', null, null],
+  ] as const)('%s → %s', (kind, url, expected) => {
+    expect(imageUrlOfPreview({ url, kind })).toBe(expected);
+  });
+
+  it('works on whatever previewOf returns, for every kind of playlist', () => {
+    expect(imageUrlOfPreview(previewOf({ id: 'p', items: [{ asset: { fileUrl: '/a.png', mimeType: 'image/png' } }] }))).toBe('/a.png');
+    expect(imageUrlOfPreview(previewOf({ id: 'p', items: [{ asset: { fileUrl: 'https://example.test', mimeType: 'text/html' } }] }))).toBeNull();
+    expect(imageUrlOfPreview(previewOf({ id: 'p', items: [{ asset: { fileUrl: '/v.mp4', mimeType: 'video/mp4' } }] }))).toBeNull();
+    expect(imageUrlOfPreview(previewOf(undefined))).toBeNull();
   });
 });

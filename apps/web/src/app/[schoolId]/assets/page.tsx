@@ -34,6 +34,8 @@
  * off a generated thumbnail.
  */
 
+import { WebsitePreviewThumb } from '@/components/assets/WebsitePreviewThumb';
+import { websitePreviewUrl } from '@/lib/website-preview';
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
@@ -1065,8 +1067,13 @@ export default function AssetsPage() {
     // placeholder while it warms — the second hit has the real
     // screenshot. We don't cache it ourselves; the browser + CDN
     // handle that for us.
+    //
+    // The URL comes from the one shared builder: the same string as before
+    // for a public site, and null — so the tile falls to the globe — for a
+    // URL that must not be handed to a third party (credentials, localhost,
+    // a private-network host). See lib/website-preview.ts.
     if (a.mimeType === 'text/html' && a.fileUrl) {
-      return `https://s.wordpress.com/mshots/v1/${encodeURIComponent(a.fileUrl)}?w=640&h=360`;
+      return websitePreviewUrl(a.fileUrl);
     }
     if (!a.mimeType?.startsWith('image/') && !a.mimeType?.startsWith('video/')) return null;
     const raw = a.fileUrl?.startsWith('http') ? a.fileUrl : `${apiBase}${a.fileUrl}`;
@@ -2021,6 +2028,8 @@ export default function AssetsPage() {
                         onMouseEnter={(e) => { try { e.currentTarget.play(); } catch { /* ignore */ } }}
                         onMouseLeave={(e) => { try { e.currentTarget.pause(); e.currentTarget.currentTime = 0.1; } catch {} }}
                       />
+                    ) : a.mimeType === 'text/html' && a.fileUrl ? (
+                      <WebsitePreviewThumb url={a.fileUrl} name={name} className="w-full h-full" />
                     ) : thumb ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
@@ -2133,6 +2142,8 @@ export default function AssetsPage() {
                         <span className="w-11 h-11 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center overflow-hidden shrink-0">
                           {thumb && isVideo(a) ? (
                             <video src={`${thumb}#t=0.1`} muted playsInline preload="metadata" className="w-full h-full object-cover" />
+                          ) : a.mimeType === 'text/html' && a.fileUrl ? (
+                            <WebsitePreviewThumb url={a.fileUrl} name={name} className="w-full h-full" />
                           ) : thumb ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img src={thumb} alt="" className="w-full h-full object-cover" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />

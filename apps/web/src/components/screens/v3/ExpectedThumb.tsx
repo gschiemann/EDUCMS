@@ -17,8 +17,10 @@
  */
 
 import React, { useState } from 'react';
+import { WebsitePreviewThumb } from '@/components/assets/WebsitePreviewThumb';
 import type { ExpectedContent } from './screenOps';
 import { VideoPreviewThumb } from '@/components/playlists/VideoPreviewThumb';
+import { ImageSequenceThumb } from '@/components/playlists/ImageSequenceThumb';
 import { TemplateContentThumb } from '@/components/templates/TemplateContentThumb';
 
 export function ExpectedThumb({
@@ -26,7 +28,7 @@ export function ExpectedThumb({
   className = '',
   rounded = 'rounded-md',
 }: {
-  expected: Pick<ExpectedContent, 'thumbnailUrl' | 'thumbnailKind' | 'thumbnailTint' | 'name' | 'posterUrl' | 'templatePreview'>;
+  expected: Pick<ExpectedContent, 'thumbnailUrl' | 'thumbnailKind' | 'thumbnailTint' | 'name' | 'posterUrl' | 'templatePreview' | 'thumbnailFrames'>;
   className?: string;
   rounded?: string;
 }) {
@@ -38,6 +40,17 @@ export function ExpectedThumb({
 
   if (expected.templatePreview) {
     return <span className={`${base} block`}><TemplateContentThumb template={expected.templatePreview} name={expected.name} /></span>;
+  }
+
+  // A website: the page's real screenshot (the address is NOT an image URL).
+  if (expected.thumbnailKind === 'website' && expected.thumbnailUrl) {
+    return <WebsitePreviewThumb url={expected.thumbnailUrl} name={expected.name} className={base} />;
+  }
+
+  // Several images: the first at rest; on an intentional mouse/pen hover, a calm
+  // walk through them (see ImageSequenceThumb — nothing moves at rest).
+  if (expected.thumbnailKind === 'still' && (expected.thumbnailFrames?.length ?? 0) > 1) {
+    return <ImageSequenceThumb frames={expected.thumbnailFrames!} name={expected.name} className={base} />;
   }
 
   if (expected.thumbnailUrl && !failed) {
@@ -65,7 +78,10 @@ export function ExpectedThumb({
             ? `Scheduled board${of} — the template's own look`
             : `First slide${of}`
         }
-        className={`${base} object-cover`}
+        // The whole picture, letterboxed — never cropped to fill (the owner's
+        // standing rule for previews; this was object-cover, which cut a
+        // portrait slide down to a landscape-shaped slice).
+        className={`${base} object-contain`}
         onError={() => setFailed(true)}
       />
     );

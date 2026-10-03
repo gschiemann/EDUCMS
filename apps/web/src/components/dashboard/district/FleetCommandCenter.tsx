@@ -38,6 +38,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { ExpectedThumb } from '@/components/screens/v3/ExpectedThumb';
+import { WebsitePreviewThumb } from '@/components/assets/WebsitePreviewThumb';
 import type { ExpectedContent } from '@/components/screens/v3/screenOps';
 import {
   AlertCircle, AlertTriangle, ArrowRight, Building2, Calendar, CheckCircle2, ChevronDown,
@@ -437,9 +438,11 @@ export interface FleetScheduleRow {
   timeStart: string;
   timeEnd: string;
   isActive: boolean;
-  /** First image in the playlist, or null for a video/template playlist. */
+  /** First image in the playlist (or a board's poster), or null. An IMAGE
+   *  address only: a website's address or a video file is not something an
+   *  <img> can draw, and arrives in `preview` instead. */
   previewUrl: string | null;
-  preview?: Pick<ExpectedContent, 'name' | 'thumbnailUrl' | 'thumbnailKind' | 'thumbnailTint' | 'posterUrl' | 'templatePreview'>;
+  preview?: Pick<ExpectedContent, 'name' | 'thumbnailUrl' | 'thumbnailKind' | 'thumbnailTint' | 'posterUrl' | 'templatePreview' | 'thumbnailFrames'>;
   /** Majority orientation of the target screens — shapes the preview tile. */
   portrait: boolean;
   /** The playlist behind the row — the row opens its editor (2026-09-14). */
@@ -866,15 +869,20 @@ export function FleetCommandCenter({
    * them). Every other tile gets a brand plate: honest about being a label,
    * not a picture of the glass.
    */
-  const previewForScreen = (s: FleetResponse['screens'][number]): string | null => {
+  const previewForScreen = (s: FleetResponse['screens'][number]): { url: string; website: boolean; name: string } | null => {
     if (!fleet.root?.id || s.sourceTenant?.id !== fleet.root.id) return null;
+    const websiteOf = (r: FleetScheduleRow) => (r.preview?.thumbnailKind === 'website' ? r.preview.thumbnailUrl : null);
     const hit = scheduleRows.find(
       (r) =>
         r.isActive
-        && !!r.previewUrl
+        && (!!r.previewUrl || !!websiteOf(r))
         && r.deviceLine.split(' · ').some((part) => part === s.name || part === 'All screens'),
     );
-    return hit?.previewUrl ?? null;
+    if (!hit) return null;
+    // A website's tile is its screenshot; everything else is the image address.
+    return hit.previewUrl
+      ? { url: hit.previewUrl, website: false, name: hit.name }
+      : { url: websiteOf(hit)!, website: true, name: hit.name };
   };
 
   // ── Deployment record ─────────────────────────────────────────────
@@ -1861,9 +1869,11 @@ export function FleetCommandCenter({
                                     className="text-left min-w-0"
                                   >
                                     <span className="block aspect-video rounded-lg overflow-hidden border border-slate-200 relative bg-slate-100">
-                                      {preview ? (
+                                      {preview?.website ? (
+                                        <WebsitePreviewThumb url={preview.url} name={preview.name} className="w-full h-full" />
+                                      ) : preview ? (
                                         // eslint-disable-next-line @next/next/no-img-element
-                                        <img src={preview} alt="" loading="lazy" className="w-full h-full object-cover" />
+                                        <img src={preview.url} alt="" loading="lazy" className="w-full h-full object-contain" />
                                       ) : (
                                         // NEVER a fake screenshot: a brand-tinted
                                         // plate says "this is the screen", not

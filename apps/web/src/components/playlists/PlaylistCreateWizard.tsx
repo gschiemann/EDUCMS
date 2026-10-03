@@ -146,6 +146,7 @@ import { appConfirm, appAlert } from '@/components/ui/app-dialog';
 import { describeScreenConflicts, findScreenConflicts } from '@/components/playlists/v1/playlistOps';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { transformedImageUrl } from '@/lib/asset-image';
+import { websitePreviewUrl } from '@/lib/website-preview';
 import { AssetPreviewOverlay } from './AssetPreviewOverlay';
 import { assetPosterUrl } from './VideoPreviewThumb';
 import { AssetEncodeBadge } from '@/components/assets/VideoEncode';
@@ -224,8 +225,11 @@ interface Props {
 
 function assetThumbUrl(asset: any, width = 320): string | null {
   if (!asset) return null;
+  // The shared builder (lib/website-preview.ts): the same string as before for
+  // a public site; null — so the picker tile draws its globe — for a URL that
+  // must not be handed to a third party.
   if (asset.mimeType === 'text/html' && asset.fileUrl) {
-    return `https://s.wordpress.com/mshots/v1/${encodeURIComponent(asset.fileUrl)}?w=640&h=360`;
+    return websitePreviewUrl(asset.fileUrl);
   }
   if (!asset.mimeType?.startsWith('image/') && !asset.mimeType?.startsWith('video/')) {
     return null;

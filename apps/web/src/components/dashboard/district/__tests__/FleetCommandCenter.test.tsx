@@ -1112,3 +1112,58 @@ describe('activityStamp — day-aware timestamps (operator: "this shit need date
     expect(activityStamp(new Date('2026-08-28T08:32:00').getTime(), now)).toMatch(/^Aug 28 · /);
   });
 });
+
+// ─── The map's screen tiles: a picture only where one can be drawn ──────
+// Greg's ask is that a website shows a real screenshot everywhere a thumbnail
+// appears. The tile used to hand `previewUrl` to an <img>, so the moment a
+// website's ADDRESS could reach that field it would have drawn a broken image
+// (a video file always did). The field is now image-only; a website arrives as
+// a structured preview and is drawn as its screenshot.
+describe('the atlas panel’s screen tiles', () => {
+  const tileRow = (over: Partial<FleetScheduleRow>): FleetScheduleRow => schedRow({ name: 'Front desk board', deviceLine: 'No picture', isActive: true, ...over });
+  const openHq = (rows: FleetScheduleRow[]) => {
+    const clickPin = renderAtlas({ schedule: rows });
+    act(() => clickPin('hq'));
+    return within(rtl.getByRole('group', { name: 'Iron Peak HQ details' }));
+  };
+  const tile = (panel: ReturnType<typeof openHq>) => panel.getByTitle('No picture — open this screen');
+  const previewOfKind = (thumbnailKind: 'still' | 'website' | 'frame', thumbnailUrl: string) => ({
+    name: 'Front desk board', thumbnailUrl, thumbnailKind, thumbnailTint: null, posterUrl: null,
+  });
+
+  it('an image playlist is its first image', () => {
+    const url = 'https://cdn.example.test/a.png';
+    const panel = openHq([tileRow({ previewUrl: url, preview: previewOfKind('still', url) })]);
+    expect(tile(panel).querySelector('img')).toHaveAttribute('src', url);
+  });
+
+  it('a website playlist is the page’s real screenshot — not the address in an <img>', () => {
+    const panel = openHq([tileRow({ previewUrl: null, preview: previewOfKind('website', 'https://www.example.test') })]);
+    const img = tile(panel).querySelector('img')!;
+    expect(img).toHaveAttribute('src', `https://s.wordpress.com/mshots/v1/${encodeURIComponent('https://www.example.test')}?w=640&h=360`);
+    expect(img).toHaveAccessibleName('Website preview of Front desk board');
+  });
+
+  it('a website that must not be sent (private network) is the brand plate, never a request', () => {
+    const panel = openHq([tileRow({ previewUrl: null, preview: previewOfKind('website', 'http://10.0.0.5/menu') })]);
+    // The tile is the labelled globe — no screenshot <img> was ever created.
+    expect(tile(panel).querySelector('img')).toBeNull();
+    expect(tile(panel)).toHaveTextContent('No picture');
+  });
+
+  it('a video keeps the brand plate — an honest label, not a fake screenshot', () => {
+    const panel = openHq([tileRow({ previewUrl: null, preview: previewOfKind('frame', '/clip.mp4') })]);
+    expect(tile(panel).querySelector('img')).toBeNull();
+    expect(tile(panel).querySelector('video')).toBeNull();
+    expect(tile(panel)).toHaveTextContent('No picture');
+  });
+
+  it('only a live schedule row that names this screen (or all of them) is a preview', () => {
+    const website = previewOfKind('website', 'https://www.example.test');
+    const panel = openHq([
+      tileRow({ isActive: false, preview: website }), // not live
+      tileRow({ deviceLine: 'Some other screen', preview: website }), // not this screen
+    ]);
+    expect(tile(panel).querySelector('img')).toBeNull();
+  });
+});

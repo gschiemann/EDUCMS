@@ -13,7 +13,10 @@
  *
  * What this component renders, per playlist type:
  *
- *   - Template playlist  → ScaledTemplateThumbnail of the layout
+ *   - Template playlist  → The saved artwork of the layout, framed
+ *                          exactly as before; an intentional mouse/pen
+ *                          hover runs the template live on top of it
+ *                          (TemplateContentThumb).
  *                          (zones come from the templates list query
  *                          via the lookup map prop). Falls back to a
  *                          LayoutTemplate icon when the template
@@ -28,6 +31,13 @@
  *                          Pauses when the element scrolls offscreen
  *                          (IntersectionObserver) to avoid burning
  *                          CPU on a list scrolled past.
+ *                          THIS IS THE ONE PREVIEW THAT MOVES AT REST —
+ *                          7 s a frame, 900 ms fade — and it is exactly
+ *                          what it was before the hover previews
+ *                          (ImageSequenceThumb on the dashboard and
+ *                          screens, TemplateContentThumb here) were
+ *                          added: the owner's standing rule is that
+ *                          nothing else moves until the pointer is on it.
  *
  *   - Video playlist     → first video's poster frame (Asset.posterUrl)
  *                          as an <img>; a mouse hovering the tile plays
@@ -67,10 +77,11 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { LayoutTemplate, Image as ImageIcon, Video, Globe, Music, Layers, Play, File, FileText } from 'lucide-react';
-import { ScaledTemplateThumbnail } from '@/components/templates/ScaledTemplateThumbnail';
+import { TemplateContentThumb } from '@/components/templates/TemplateContentThumb';
 import { PdfHoverThumb } from '@/components/assets/PdfHoverThumb';
 import { transformedImageUrl } from '@/lib/asset-image';
 import { VideoPreviewThumb, assetPosterUrl } from './VideoPreviewThumb';
+import { WebsitePreviewThumb } from '@/components/assets/WebsitePreviewThumb';
 import { templatePreviewOf } from '@/lib/template-preview';
 
 const apiBase = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1').replace('/api/v1', '');
@@ -173,9 +184,9 @@ export function derivePlaylistContentLabel(playlist: any): PlaylistContentLabel 
  */
 function thumbUrlFor(asset: any, width = 320): string | null {
   if (!asset) return null;
-  if (asset.mimeType === 'text/html' && asset.fileUrl) {
-    return `https://s.wordpress.com/mshots/v1/${encodeURIComponent(asset.fileUrl)}?w=640&h=360`;
-  }
+  // A website (text/html) is NOT built here: StaticAssetFrame hands it to the
+  // shared WebsitePreviewThumb, which owns the screenshot URL (and the refusal
+  // of credential / private-network URLs) and the "warming" retry.
   if (
     !asset.mimeType?.startsWith('image/') &&
     !asset.mimeType?.startsWith('video/')
@@ -193,6 +204,9 @@ function thumbUrlFor(asset: any, width = 320): string | null {
  * decode reliably and mshots' "warming" placeholder retries
  * transparently. */
 function StaticAssetFrame({ asset, className }: { asset: any; className?: string }) {
+  if (asset?.mimeType === 'text/html' && asset.fileUrl) {
+    return <WebsitePreviewThumb url={asset.fileUrl} name={asset.originalName} className={className} />;
+  }
   const url = thumbUrlFor(asset);
   if (!url) {
     // Render a generic icon so the cell isn't blank.
@@ -433,10 +447,13 @@ export function PlaylistPreviewThumb({ playlist, templateLookup, size = 'tile', 
     const tid = playlist.template?.id;
     const entry = templatePreviewOf(playlist.template) || (tid ? templateLookup?.[tid] : undefined);
 
-    // Tile mode at full quality — render the actual layout zones
-    // via ScaledTemplateThumbnail. The component IO-gates its own
-    // mount so we don't spin up 100 widget trees at once.
-    if (entry && size === 'tile') {
+    // Tile and list draw the same saved artwork at the heights they always
+    // have (180 px in a tile, 40 px in the 56×40 list strip), in the same
+    // rounded, bordered card — TemplateContentThumb adds only the hover: an
+    // intentional mouse/pen hover runs the template live on top of it. The
+    // widget tree is still IO-gated by ScaledTemplateThumbnail itself, so a
+    // grid never spins up 100 of them at once.
+    if (entry) {
       // 2026-05-26 — operator (round 8): "the playlist tiles are
       // massive, they would all be a set size like before, we just
       // added a preview". Pre-fix used the template's own aspect
@@ -448,40 +465,10 @@ export function PlaylistPreviewThumb({ playlist, templateLookup, size = 'tile', 
       return (
         <div
           className={shellClasses(size, className)}
-          style={{ aspectRatio: '16 / 9' }}
+          style={size === 'tile' ? { aspectRatio: '16 / 9' } : undefined}
         >
           <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center">
-            <ScaledTemplateThumbnail
-              zones={entry.zones as any}
-              screenWidth={entry.screenWidth}
-              screenHeight={entry.screenHeight}
-              bgImage={entry.bgImage}
-              bgGradient={entry.bgGradient}
-              bgColor={entry.bgColor}
-              maxHeight={180}
-              freeze
-            />
-          </div>
-        </div>
-      );
-    }
-
-    // List mode — render a tiny static thumbnail too. Same widget
-    // tree but capped at 40px height so it fits the row strip.
-    if (entry && size === 'list') {
-      return (
-        <div className={shellClasses(size, className)}>
-          <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center">
-            <ScaledTemplateThumbnail
-              zones={entry.zones as any}
-              screenWidth={entry.screenWidth}
-              screenHeight={entry.screenHeight}
-              bgImage={entry.bgImage}
-              bgGradient={entry.bgGradient}
-              bgColor={entry.bgColor}
-              maxHeight={40}
-              freeze
-            />
+            <TemplateContentThumb template={entry} name={playlist.name} maxHeight={size === 'tile' ? 180 : 40} framed />
           </div>
         </div>
       );

@@ -2,6 +2,87 @@
 
 Implementation: October 1, 2026. This follow-up changes the CMS and API. It does not require a new APK, change screen canvases, or change the emergency workflow.
 
+## Website screenshots and hover previews
+
+Three operator requests: a website shows its real screenshot wherever a
+thumbnail appears; hovering a playlist's thumbnail steps through its images;
+hovering a template's thumbnail runs the template. This is what the code does.
+
+### The rules every hover preview follows
+
+`apps/web/src/lib/use-hover-preview.ts` is the one definition, used by both
+hover previews.
+
+- Mouse or pen only. A tap (`pointerType: 'touch'`) is ignored.
+- One at a time, page-wide. A second preview starting stops the first, even if
+  the first never received its `pointerleave`.
+- It stops on leaving, when the tab is hidden, and when the thumbnail scrolls out
+  of view under a parked cursor.
+- Nothing runs at rest. No timer, observer or document listener exists until a
+  hover begins.
+- Images are shown whole (`object-contain`, letterboxed), never cropped.
+
+### Websites
+
+`previewOf` returns kind `website` with the address exactly as stored.
+`WebsitePreviewThumb` draws it in the Media Library grid and list, playlist
+thumbnails, dashboard schedules (both layouts), the fleet map's screen tiles,
+screen rows and the screen's content card. The Media Library, the playlist
+editor, the new-playlist wizard and `PlaylistPreviewThumb` all build the URL
+with `websitePreviewUrl` (`apps/web/src/lib/website-preview.ts`).
+
+The screenshot still comes from the existing WordPress mshots service, so the
+operator's URL is sent to that third party. The URL is the stored string,
+unchanged, so a site already warm in the Media Library stays warm everywhere.
+It is **not** sent, and the tile shows a labelled globe instead, for:
+
+- anything that is not an absolute `http(s)` URL;
+- a URL with a username or password;
+- `localhost`, loopback, `10.x`, `172.16-31.x`, `192.168.x`, `169.254.x`,
+  CGNAT (`100.64/10`), multicast/reserved, any IPv6 literal, `*.local`,
+  `*.internal`, `*.lan`, `*.localdomain`, `*.home.arpa`, `*.intranet`, `*.corp`,
+  `*.home`, and single-label names such as `http://intranet/`.
+
+It cannot catch a public hostname that merely resolves to a private address
+(for example `127.0.0.1.nip.io`); a browser has no DNS to ask.
+
+A screenshot the service is still taking fails to load. The thumbnail retries
+three times, 1.5 s, 3 s and 4.5 s apart, then shows the labelled globe. Timers
+are cleared on unmount and when the website changes. The page address is never
+written into a `title` or other attribute.
+
+### Images
+
+- **Playlist library grid.** Unchanged from before the hover work: an image
+  playlist with two or more images rotates at rest, 7 s a frame with a 900 ms
+  cross-fade, over at most five images with a "+N" count. It runs only while at
+  least a quarter visible and not at all under `prefers-reduced-motion`. Hovering
+  changes nothing there. This is the only preview that moves at rest.
+- **Dashboard, screen rows, screen content card, fleet schedule rows.** The
+  first image at rest, in play order (`sequenceOrder`, then position). On hover
+  (`ImageSequenceThumb`) it holds each image 2.5 s and cross-fades for 300 ms;
+  under reduced motion it still steps, with no fade. At most two `<img>` exist
+  at once: the one on show and the next, preloaded invisibly. A picture that
+  fails to load is skipped for the rest of that mount and never retried in a
+  loop. Leaving returns to the first picture. One image is a plain still with no
+  listeners.
+
+### Templates
+
+`TemplateContentThumb` shows the saved artwork at rest (a poster, or the frozen
+frame of a customised board). After the pointer has rested 250 ms on it, the
+template is mounted live as a separate layer on top of the artwork. The saved
+artwork is never replaced or reloaded, so there is no blank frame while the live
+frame loads, and leaving simply removes the layer. A board's own carousel runs at
+its saved interval while hovered. A list with many thumbnails therefore has at
+most one live render. `ScaledTemplateThumbnail` itself is unchanged.
+
+The playlist library keeps its framed 180 px tile and 40 px strip look; the
+dashboard and screens fit the artwork to their frame.
+
+A live render of a menu board reads the POS menu once and then every
+30 seconds while hovered (the widget's own feed); it stops on leaving.
+
 ## Asset deletion
 
 Previously the bulk action called the single-file mutation in a loop. Each file invalidated asset, playlist, schedule and screen queries. The UI visibly removed one card at a time and waited through repeated reads. Folder deletion only kept files, and selection only covered loaded cards.

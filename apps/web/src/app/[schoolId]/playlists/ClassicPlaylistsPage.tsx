@@ -38,6 +38,7 @@ import { appConfirm, appAlert } from '@/components/ui/app-dialog';
 import { TimeField } from '@/components/ui/time-field';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { transformedImageUrl } from '@/lib/asset-image';
+import { websitePreviewUrl } from '@/lib/website-preview';
 import { computeBlastRadius, reachWarnings, isReachBlocked } from '@/lib/blast-radius';
 import { BlastRadiusSummary } from '@/components/playlists/BlastRadiusSummary';
 import { AssetPreviewOverlay } from '@/components/playlists/AssetPreviewOverlay';
@@ -90,8 +91,11 @@ function thumbUrl(asset: any) {
   // so all three playlist surfaces show the same preview as the
   // library. First mshots hit can return a warming placeholder — see
   // the onError retry in <AssetThumb> below.
+  // The shared builder (lib/website-preview.ts): the same string as before for
+  // a public site; null — so every caller falls to its globe icon — for a URL
+  // that must not be handed to a third party.
   if (asset.mimeType === 'text/html' && asset.fileUrl) {
-    return `https://s.wordpress.com/mshots/v1/${encodeURIComponent(asset.fileUrl)}?w=640&h=360`;
+    return websitePreviewUrl(asset.fileUrl);
   }
   if (
     !asset.mimeType?.startsWith('image/') &&

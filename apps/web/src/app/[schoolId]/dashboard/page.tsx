@@ -47,7 +47,7 @@ import { usePathname, useParams } from 'next/navigation';
 import { useEffect, useState, useMemo } from 'react';
 import { useTranslations } from 'next-intl';
 import { transformedImageUrl } from '@/lib/asset-image';
-import { previewOf } from '@/components/screens/v3/screenOps';
+import { imageUrlOfPreview, previewOf } from '@/components/screens/v3/screenOps';
 import { ExpectedThumb } from '@/components/screens/v3/ExpectedThumb';
 
 export default function DashboardPage() {
@@ -441,8 +441,8 @@ export default function DashboardPage() {
           timeStart: (sched.timeStart || '') as string,
           timeEnd: (sched.timeEnd || '') as string,
           isActive: nowHM >= (sched.timeStart || '00:00') && nowHM <= (sched.timeEnd || '23:59'),
-          previewUrl: preview.url,
-          preview: { name: pl?.name || sched.name || null, thumbnailUrl: preview.url, thumbnailKind: preview.kind, thumbnailTint: preview.tint, posterUrl: preview.posterUrl, templatePreview: preview.templatePreview },
+          previewUrl: imageUrlOfPreview(preview),
+          preview: { name: pl?.name || sched.name || null, thumbnailUrl: preview.url, thumbnailKind: preview.kind, thumbnailTint: preview.tint, posterUrl: preview.posterUrl, templatePreview: preview.templatePreview, thumbnailFrames: preview.frames },
           portrait: !!g.portrait,
           playlistId: (sched.playlistId as string | undefined) || null,
         };
@@ -1012,7 +1012,7 @@ export default function DashboardPage() {
                 return (
                   <div key={g.key} className="px-5 py-3 flex items-center gap-3">
                     <div className={`w-1 h-10 rounded-full shrink-0 ${isActive ? 'bg-emerald-500' : 'bg-slate-200'}`} />
-                    <ExpectedThumb expected={{ name: pl?.name || sched.name || null, thumbnailUrl: preview.url, thumbnailKind: preview.kind, thumbnailTint: preview.tint, posterUrl: preview.posterUrl, templatePreview: preview.templatePreview }} className={`${thumbDims} border border-slate-300 shrink-0`} rounded="rounded-none" />
+                    <ExpectedThumb expected={{ name: pl?.name || sched.name || null, thumbnailUrl: preview.url, thumbnailKind: preview.kind, thumbnailTint: preview.tint, posterUrl: preview.posterUrl, templatePreview: preview.templatePreview, thumbnailFrames: preview.frames }} className={`${thumbDims} border border-slate-300 shrink-0`} rounded="rounded-none" />
                     <div className="w-16 text-[11px] font-mono font-semibold text-slate-500 shrink-0">
                       {sched.timeStart || 'All day'}
                       <div className="text-slate-400">{sched.timeEnd || ''}</div>

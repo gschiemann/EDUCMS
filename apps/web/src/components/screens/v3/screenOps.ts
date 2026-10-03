@@ -762,11 +762,13 @@ export function deriveScreenStatus({
 /** What the Expected preview is actually a picture of.
  *  'still'  — the first image in the playlist
  *  'frame'  — the first frame of the first video (browser-decoded, muted)
+ *  'website'— a website: `thumbnailUrl` is the PAGE's address, not a picture —
+ *             draw it with WebsitePreviewThumb, never as an <img src>
  *  'board'  — the template's pre-rendered poster: the board's PRISTINE look,
  *             so operator brand/text overrides are NOT reflected in it
  *  'tint'   — no image exists; the board's own background colour/gradient
  *  'none'   — there is genuinely nothing to show */
-export type ExpectedThumbnailKind = 'still' | 'frame' | 'board' | 'tint' | 'none';
+export type ExpectedThumbnailKind = 'still' | 'frame' | 'board' | 'website' | 'tint' | 'none';
 
 export interface ExpectedContent {
   /** The playlist scheduled to win on this screen right now, if any. */
@@ -787,6 +789,9 @@ export interface ExpectedContent {
    *  `thumbnailKind` says what it actually is so the UI never implies a
    *  poster of a board is a photograph of the screen. */
   templatePreview?: TemplatePreview | null;
+  /** Every image of a multi-image playlist, in play order (`thumbnailKind`
+   *  'still' only) — what a hover walks through. The first is `thumbnailUrl`. */
+  thumbnailFrames?: Array<{ url: string }>;
   thumbnailUrl: string | null;
   thumbnailKind: ExpectedThumbnailKind;
   /** Paintable background of a board we have no poster for — last resort so a
@@ -913,6 +918,7 @@ export function deriveExpectedContent(
     templateId: pl?.template?.id ?? null,
     renderSignature: playlistRenderSignature(pl),
     templatePreview: preview.templatePreview,
+    ...(preview.frames ? { thumbnailFrames: preview.frames } : {}),
     thumbnailUrl: preview.url,
     thumbnailKind: preview.kind,
     thumbnailTint: preview.tint,
@@ -938,12 +944,21 @@ export function deriveExpectedContent(
  */
 export function previewOf(
   pl: OpsPlaylist | undefined,
-): { url: string | null; kind: ExpectedThumbnailKind; tint: string | null; posterUrl: string | null; templatePreview?: TemplatePreview | null } {
+): { url: string | null; kind: ExpectedThumbnailKind; tint: string | null; posterUrl: string | null; templatePreview?: TemplatePreview | null; frames?: Array<{ url: string }> } {
   const templatePreview = templatePreviewOf(pl?.template);
   if (templatePreview) return { url: templatePosterUrl(pl?.template?.zones), kind: 'board', tint: null, posterUrl: null, templatePreview };
   const items = pl?.items ?? [];
-  const still = items.find((i) => i.asset?.fileUrl && (i.asset.mimeType ?? '').startsWith('image/'))?.asset?.fileUrl;
-  if (still) return { url: still, kind: 'still', tint: null, posterUrl: null };
+  // The images in PLAY order — the same ordering playlistRenderSignature uses
+  // (sequenceOrder, falling back to position) — so "first slide" is the slide the
+  // screen opens on, and a hover walks them the way they play.
+  const images = items
+    .map((item, index) => ({ item, index }))
+    .filter(({ item }) => item.asset?.fileUrl && (item.asset.mimeType ?? '').startsWith('image/'))
+    .sort((a, b) => (a.item.sequenceOrder ?? a.index) - (b.item.sequenceOrder ?? b.index) || a.index - b.index)
+    .map(({ item }) => item.asset!.fileUrl!);
+  if (images.length) {
+    return { url: images[0], kind: 'still', tint: null, posterUrl: null, ...(images.length > 1 ? { frames: images.map((url) => ({ url })) } : {}) };
+  }
 
   // A video previews as its poster frame when the API has cut one
   // (2026-09-24) — a plain image that paints on every browser and every
@@ -951,6 +966,9 @@ export function previewOf(
   const videoItem = items.find((i) => i.asset?.fileUrl && (i.asset.mimeType ?? '').startsWith('video/'));
   const video = videoItem?.asset?.fileUrl;
   if (video) return { url: video, kind: 'frame', tint: null, posterUrl: videoItem?.asset?.posterUrl ?? null };
+
+  const website = items.find(i => i.asset?.fileUrl && i.asset.mimeType === 'text/html')?.asset?.fileUrl;
+  if (website) return { url: website, kind: 'website', tint: null, posterUrl: null };
 
   // A board with no media of its own. `allowCustomized` because the caller's
   // only alternative is a blank box: a table row cannot mount a live 4K frame,
@@ -966,6 +984,18 @@ export function previewOf(
   if (tint) return { url: null, kind: 'tint', tint, posterUrl: null };
 
   return { url: null, kind: 'none', tint: null, posterUrl: null };
+}
+
+/**
+ * The preview's address — when, and only when, it is a PICTURE a plain `<img>`
+ * can draw: an image playlist's first slide, or a board's poster. A website's
+ * address (`kind: 'website'`) is a page, a video's is a file; putting either in
+ * an `<img src>` is a broken image, so callers that only have an `<img>` (the
+ * fleet map's screen tiles) take their address from here and show their brand
+ * plate otherwise.
+ */
+export function imageUrlOfPreview(preview: { url: string | null; kind: ExpectedThumbnailKind }): string | null {
+  return preview.url && (preview.kind === 'still' || preview.kind === 'board') ? preview.url : null;
 }
 
 /**
