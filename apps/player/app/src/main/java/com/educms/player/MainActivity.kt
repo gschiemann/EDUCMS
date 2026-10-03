@@ -3046,10 +3046,13 @@ class MainActivity : ComponentActivity() {
                 if (failed === webView) {
                     bridgeNonceRetry?.let { failed.removeCallbacks(it) }
                     bridgeNonceRetry = null
+                    // P2-6 — the remote's focus followed the old view.
+                    val hadFocus = runCatching { failed.hasFocus() }.getOrDefault(false)
                     val (fresh, delayMs) = primaryRendererRecovery.replace(failed, didCrash)
                     webView = fresh
                     binding = ActivityMainBinding.bind(binding.root)
                     configureWebView(fresh)
+                    if (hadFocus) fresh.requestFocus()
                     webHeartbeatEverReceived = false
                     lastSuccessfulLoadAtMs = 0L
                     // P2-5 — the dead page's boot facts must not tell the
@@ -3243,21 +3246,44 @@ class MainActivity : ComponentActivity() {
                 if (view === urlOverlayView) {
                     val previousVisibility = view.visibility
                     val previousUrl = overlayLastStartedUrl
+                    // P2-6 — D-pad input followed the old view; it must follow the fresh one.
+                    val hadFocus = runCatching { view.hasFocus() }.getOrDefault(false)
                     val (fresh, delayMs) = overlayRendererRecovery.replace(view, detail.didCrash())
                     urlOverlayView = fresh
                     binding = ActivityMainBinding.bind(binding.root)
                     configureUrlOverlay(fresh)
+                    // P2-6 — never a full-screen WHITE sheet while the reload waits.
+                    fresh.setBackgroundColor(android.graphics.Color.BLACK)
                     fresh.visibility = previousVisibility
                     keepBlackoutAboveSiteViews("url-overlay renderer replaced")
                     // The overlay remains bridge-free and retains its navigation policy.
                     if (webTabsActive) fresh.settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
-                    fresh.postDelayed({
-                        if (!isDestroyed && urlOverlayView === fresh && fresh.visibility == View.VISIBLE &&
-                            HostAllowlist.isSafeWebUrl(previousUrl ?: "") &&
-                            (webTabsAllowHosts == null || WebTabsPolicy.decideNavigation(previousUrl, webTabsAllowHosts!!, webTabsLearnedHosts, false, false) != WebTabsPolicy.NavDecision.BLOCK)) {
-                            fresh.loadUrl(previousUrl!!)
-                        }
-                    }, delayMs)
+                    if (hadFocus) fresh.requestFocus()
+                    // P2-6 — what the site was showing, else the URL the player
+                    // asked for (validated when shown), else nothing.
+                    val restorable: (String) -> Boolean = { url ->
+                        HostAllowlist.isSafeWebUrl(url) &&
+                            (webTabsAllowHosts == null || WebTabsPolicy.decideNavigation(url, webTabsAllowHosts!!, webTabsLearnedHosts, false, false) != WebTabsPolicy.NavDecision.BLOCK)
+                    }
+                    val target = com.educms.player.webtabs.OverlayRestore.target(previousUrl, urlOverlayCurrentUrl, restorable)
+                    if (target == null) {
+                        // Nothing restorable: HIDE and CLEAR, so the page's next
+                        // show of this URL is a real load instead of an early
+                        // return over an empty overlay.
+                        PlayerLogger.w("MainActivity", "URL overlay renderer replaced — nothing restorable; hiding it until the next show")
+                        urlOverlayCurrentUrl = null
+                        fresh.visibility = View.GONE
+                        // The remote goes back to the player page (its tab bar
+                        // or escape surface) — never left on a hidden view.
+                        if (hadFocus) webView.requestFocus()
+                        if (::recovery.isInitialized && recovery.isActive()) binding.recoveryOverlay.visibility = View.VISIBLE
+                    } else {
+                        fresh.postDelayed({
+                            if (!isDestroyed && urlOverlayView === fresh && fresh.visibility == View.VISIBLE) {
+                                fresh.loadUrl(target)
+                            }
+                        }, delayMs)
+                    }
                 }
                 return true
             }
