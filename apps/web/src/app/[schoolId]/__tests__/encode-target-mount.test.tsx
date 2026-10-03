@@ -14,6 +14,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 jest.mock('next/navigation', () => ({
   useParams: () => ({ schoolId: 'riot-cle' }),
 }));
+jest.mock('@/components/layout/TenantUrlCanonicalizer', () => ({ TenantUrlCanonicalizer: () => null }));
 
 // The chrome's dozen data hooks are not what this proves.
 jest.mock('@/components/layout/DashboardLayout', () => ({

@@ -3,6 +3,7 @@
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { EncodeTargetProvider } from '@/hooks/use-encode-target';
 import { CredentialSetupGate } from '@/components/auth/CredentialSetupGate';
+import { TenantUrlCanonicalizer } from '@/components/layout/TenantUrlCanonicalizer';
 import { useAppStore } from '@/lib/store';
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
@@ -101,6 +102,7 @@ export default function SchoolLayout({
 
   return (
     <DashboardLayout>
+      <TenantUrlCanonicalizer />
       {/* The fleet's largest panel, for the video grade on every library and
           playlist surface (2026-09-24). One 60-byte read, cached, no polling. */}
       <EncodeTargetProvider>{children}</EncodeTargetProvider>

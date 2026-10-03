@@ -19,6 +19,9 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 jest.mock('next/navigation', () => ({
   useParams: () => ({ schoolId: 'riot-jax' }),
 }));
+// URL navigation is covered by organization-url.spec.ts; this fixture has
+// no QueryClient/router and isolates the first-login credential boundary.
+jest.mock('@/components/layout/TenantUrlCanonicalizer', () => ({ TenantUrlCanonicalizer: () => null }));
 
 // The chrome must never mount behind the gate — a marker makes that assertable.
 // 2026-09-24 — the school layout now mounts EncodeTargetProvider (React Query) around its

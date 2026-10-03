@@ -8,6 +8,8 @@ import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
 import {
+  ORGANIZATION_NAME_MAX_LENGTH,
+  isReservedTenantSlug,
   isVertical,
   effectiveEmergencyEnabled,
   emergencyEnablementLocked,
@@ -17,6 +19,10 @@ import {
 import { evaluateMfaPolicy } from '../auth/mfa-policy';
 import { tenantMfaEnforced } from '../auth/tenant-mfa-enforcement';
 import { randomBytes, createHash, createHmac, timingSafeEqual } from 'crypto';
+import { availableOrganizationSlug, TenantUrlClaimConflict } from './tenant-slug';
+
+/** Transaction attempts for a rename that loses a race for its new URL. */
+const ORGANIZATION_RENAME_ATTEMPTS = 3;
 
 @Controller('api/v1/tenants')
 @UseGuards(JwtAuthGuard, RbacGuard)
@@ -165,9 +171,11 @@ export class TenantsController {
             })
           )?.vertical ?? null;
 
-    // Slug uniqueness is global across all tenants, not just per-district.
+    // Slug uniqueness is global across all tenants, not just per-district. A
+    // reserved word (a route the web origin already serves) is unavailable in
+    // exactly the way a taken slug is — same status, same code.
     const existing = await this.prisma.client.tenant.findUnique({ where: { slug: rawSlug } });
-    if (existing) throw new HttpException({ code: 'TENANT_SLUG_TAKEN', message: 'That slug is already taken' }, HttpStatus.CONFLICT);
+    if (existing || isReservedTenantSlug(rawSlug)) throw new HttpException({ code: 'TENANT_SLUG_TAKEN', message: 'That slug is already taken' }, HttpStatus.CONFLICT);
 
     const child = await this.prisma.client.$transaction(async (tx) => {
       const created = await tx.tenant.create({
@@ -394,8 +402,28 @@ export class TenantsController {
   }
 
   /**
-   * Update mutable fields on the CALLER'S tenant (not children). Currently
-   * just `vertical` and `name`. DISTRICT_ADMIN + SUPER_ADMIN only.
+   * Update mutable fields on the CALLER'S tenant (not children): `vertical`,
+   * `name`, `address` and coordinates. DISTRICT_ADMIN + SUPER_ADMIN only, and
+   * it only ever writes `req.user.tenantId` — nothing in the body can name
+   * another tenant.
+   *
+   * THE ACCOUNT URL FOLLOWS THE NAME (owner's decision, 2026-10): when the
+   * organization's name actually CHANGES, its slug (the `[schoolId]` route
+   * segment) is re-derived from the new name in the SAME transaction as the
+   * rename and its audit row. Three rules keep that from ever surprising anyone:
+   *
+   *   1. Only a real name change touches the URL. A save that sends the same
+   *      name back (a client that always posts name + address) leaves it alone,
+   *      as do address-only and industry-only saves.
+   *   2. An organization with a single-sign-on configuration keeps its URL.
+   *      The identity provider has the callback / metadata URLs — which embed
+   *      the slug — registered on ITS side, so renaming would silently break
+   *      sign-in. The name still changes; the response says `urlKept: 'sso'`.
+   *   3. The unique constraint on `Tenant.slug` is the real guard. The
+   *      availability read in `availableOrganizationSlug` is only a courtesy; a
+   *      competing claim between that read and the write surfaces as P2002 on
+   *      the tenant update, which rolls the transaction back and retries with a
+   *      suffix. Audit failures are NOT swallowed: they roll the rename back.
    */
   @Patch('me')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN)
@@ -412,7 +440,14 @@ export class TenantsController {
       if (!isVertical(v)) throw new HttpException({ code: 'TENANT_VERTICAL_INVALID', message: 'Invalid vertical' }, HttpStatus.BAD_REQUEST);
       data.vertical = v;
     }
-    if (body.name && body.name.trim()) data.name = body.name.trim();
+    if (body.name !== undefined) {
+      // A string, trimmed, 1–120 characters — anything else is a 400 before any
+      // read or write (a number used to reach `.trim()` and 500).
+      const name = typeof body.name === 'string' ? body.name.trim() : '';
+      if (!name) throw new HttpException({ code: 'TENANT_NAME_REQUIRED', message: 'Organization name is required' }, HttpStatus.BAD_REQUEST);
+      if (name.length > ORGANIZATION_NAME_MAX_LENGTH) throw new HttpException({ code: 'TENANT_NAME_TOO_LONG', message: `Organization name must be ${ORGANIZATION_NAME_MAX_LENGTH} characters or fewer` }, HttpStatus.BAD_REQUEST);
+      data.name = name;
+    }
     // 2026-05-25 — address editable here. Empty string explicitly
     // clears the field (operator might want to remove a wrong
     // address); null is also treated as "clear." A NON-empty trimmed
@@ -443,20 +478,54 @@ export class TenantsController {
     }
     if (Object.keys(data).length === 0) throw new HttpException({ code: 'TENANT_NOTHING_TO_UPDATE', message: 'Nothing to update' }, HttpStatus.BAD_REQUEST);
 
-    const updated = await this.prisma.client.tenant.update({
-      where: { id: tenantId },
-      data,
-      select: { id: true, name: true, slug: true, vertical: true, address: true } as any,
-    });
-    await this.prisma.client.auditLog.create({
-      data: {
-        tenantId, userId: req.user.userId,
-        action: 'TENANT_UPDATED',
-        targetType: 'Tenant', targetId: tenantId,
-        details: JSON.stringify(data),
-      },
-    }).catch(() => { /* noop */ });
-    return updated;
+    // Everything below runs in ONE transaction per attempt: the single-sign-on
+    // check, the URL availability reads, the tenant write and its audit row.
+    // `tx` is the only handle used inside — a read or write through
+    // `this.prisma.client` would sit OUTSIDE the transaction and survive its
+    // rollback.
+    for (let attempt = 1; attempt <= ORGANIZATION_RENAME_ATTEMPTS; attempt += 1) {
+      try {
+        return await this.prisma.client.$transaction(async (tx) => {
+          const before = await tx.tenant.findUnique({
+            where: { id: tenantId }, select: { name: true, slug: true },
+          });
+          if (!before) throw new HttpException({ code: 'TENANT_NOT_FOUND', message: 'Tenant not found' }, HttpStatus.NOT_FOUND);
+          const patch = { ...data };
+          let urlKept: 'sso' | null = null;
+          if (typeof patch.name === 'string' && patch.name !== before.name) {
+            const sso = await tx.tenantSSOConfig.findUnique({ where: { tenantId }, select: { id: true } });
+            if (sso) urlKept = 'sso';
+            else patch.slug = await availableOrganizationSlug(tx, patch.name, tenantId);
+          }
+          const updated = await tx.tenant.update({
+            where: { id: tenantId }, data: patch,
+            select: { id: true, name: true, slug: true, vertical: true, address: true },
+          }).catch((error: unknown) => {
+            // Tag only the statement that wrote a URL: a uniqueness failure
+            // anywhere else (the audit insert) must not be misread as a
+            // competing URL claim and retried.
+            if (patch.slug !== undefined && (error as { code?: string }).code === 'P2002') throw new TenantUrlClaimConflict();
+            throw error;
+          });
+          await tx.auditLog.create({
+            data: {
+              tenantId, userId: req.user.userId ?? req.user.id ?? null,
+              action: 'TENANT_UPDATED', targetType: 'Tenant', targetId: tenantId,
+              details: JSON.stringify({
+                ...patch, previousName: before.name, previousSlug: before.slug,
+                ...(urlKept ? { urlKept } : {}),
+              }),
+            },
+          });
+          return { ...updated, urlKept };
+        });
+      } catch (error) {
+        const retryable = error instanceof TenantUrlClaimConflict || (error as { code?: string }).code === 'P2034';
+        if (!retryable) throw error;
+        if (attempt === ORGANIZATION_RENAME_ATTEMPTS) break;
+      }
+    }
+    throw new HttpException({ code: 'TENANT_URL_BUSY', message: 'The organization URL changed at the same time. Please save again.' }, HttpStatus.CONFLICT);
   }
 
   /**

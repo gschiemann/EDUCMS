@@ -1081,3 +1081,9 @@ export * from './fan-cam';
 // a hidden student's name on every real-screen output) and the builder (which
 // warns on those fields) never disagree.
 export * from './student-name-fields';
+
+// Tenant URL labels — the one list of words a tenant slug may never be (a
+// slug shares the first path segment with every route the web origin serves),
+// read by the API's rename / add-a-location / signup paths and by the
+// dashboard's URL canonicalizer.
+export * from './tenant-slug';

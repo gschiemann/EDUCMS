@@ -10,7 +10,7 @@ import { EmailService } from '../email/email.service';
 import { SampleDataService } from '../sample-data/sample-data.service';
 import { StarterBoardService } from './starter-board.service';
 import { AppRole } from '@cms/database';
-import { isVertical } from '@cms/api-types';
+import { isReservedTenantSlug, isVertical } from '@cms/api-types';
 
 export const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;     // 1 hour
 export const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;    // 7 days
@@ -224,7 +224,9 @@ export class OnboardingService {
       this.prisma.client.tenant.findUnique({ where: { slug: rawSlug } }),
       this.prisma.client.user.findUnique({ where: { email } }),
     ]);
-    if (existingTenant) throw new ConflictException('That slug is already taken.');
+    // A reserved word (a route the web origin already serves) is unavailable in
+    // exactly the way a taken slug is — same status, same message.
+    if (existingTenant || isReservedTenantSlug(rawSlug)) throw new ConflictException('That slug is already taken.');
     if (existingUser) throw new ConflictException('An account with that email already exists.');
 
     const passwordHash = await this.authService.hashPassword(input.password);

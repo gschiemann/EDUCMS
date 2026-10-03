@@ -571,3 +571,58 @@ describe('TenantsController.setPosterStandard', () => {
     expect(res).toMatchObject({ posterStandardW: 360, posterStandardH: 1200 });
   });
 });
+
+// A slug is the first URL segment of the dashboard, so a word the web origin
+// already serves (a route, a static folder) can never be one. The list lives in
+// @cms/api-types; this proves add-a-location consults it, whether the slug was
+// typed or derived from the name.
+describe('TenantsController.createChild — reserved URL labels', () => {
+  function childFixture() {
+    const created: any[] = [];
+    const tenant = {
+      findUnique: jest.fn(async ({ where }: any) =>
+        where.id ? { id: 'd1', parentId: null, name: 'Harbor District', vertical: 'K12' } : null),
+      create: jest.fn(async ({ data }: any) => {
+        const row = { id: `c${created.length + 1}`, createdAt: new Date(), ...data };
+        created.push(row);
+        return row;
+      }),
+    };
+    const auditLog = { create: jest.fn().mockResolvedValue({}) };
+    const prisma: any = {
+      client: { tenant, auditLog, $transaction: jest.fn(async (cb: any) => cb({ tenant, auditLog })) },
+    };
+    const controller = new TenantsController(prisma, {} as any, {} as any);
+    const req: any = { user: { tenantId: 'd1', userId: 'u1', role: 'DISTRICT_ADMIN' } };
+    return { controller, req, prisma, tenant, created };
+  }
+
+  it.each(['player', 'super', 'locales', 'holiday-templates'])(
+    'refuses a location whose name derives the reserved slug "%s" with the same 409 a taken slug gets',
+    async (word) => {
+      const { controller, req, prisma, tenant } = childFixture();
+      await expect(controller.createChild(req, { name: word })).rejects.toMatchObject({
+        status: 409,
+        response: { code: 'TENANT_SLUG_TAKEN' },
+      });
+      expect(prisma.client.$transaction).not.toHaveBeenCalled();
+      expect(tenant.create).not.toHaveBeenCalled();
+    },
+  );
+
+  it('checks an explicit slug override too, not only one derived from the name', async () => {
+    const { controller, req, tenant } = childFixture();
+    await expect(controller.createChild(req, { name: 'Harbor Annex', slug: 'Player' })).rejects.toMatchObject({
+      status: 409,
+      response: { code: 'TENANT_SLUG_TAKEN' },
+    });
+    expect(tenant.create).not.toHaveBeenCalled();
+  });
+
+  it('still creates an ordinary location, and one that merely starts with a reserved word', async () => {
+    const { controller, req, created } = childFixture();
+    await controller.createChild(req, { name: 'Harbor Annex' });
+    await controller.createChild(req, { name: 'Player Development' });
+    expect(created.map((row) => row.slug)).toEqual(['harbor-annex', 'player-development']);
+  });
+});

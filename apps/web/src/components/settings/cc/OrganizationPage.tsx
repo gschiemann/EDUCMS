@@ -30,7 +30,7 @@ import { useTenantCopy } from '@/hooks/use-tenant-copy';
 import { useLocaleSwitch } from '@/i18n/I18nProvider';
 import { localizedVerticalIndustry } from '@/i18n/vertical-copy';
 import {
-  VERTICALS, VERTICAL_EMERGENCY_TYPES, VERTICAL_TEMPLATE_CATEGORIES,
+  ORGANIZATION_NAME_MAX_LENGTH, VERTICALS, VERTICAL_EMERGENCY_TYPES, VERTICAL_TEMPLATE_CATEGORIES,
   isVertical, normalizeVertical, type Vertical,
 } from '@cms/api-types';
 import { AddressAutocomplete } from '@/components/ui/AddressAutocomplete';
@@ -44,6 +44,7 @@ import {
 interface TenantRow {
   id?: string;
   name?: string;
+  slug?: string;
   address?: string | null;
   vertical?: string;
   parentId?: string | null;
@@ -72,6 +73,10 @@ export function SettingsOrganizationPage() {
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<{ message: string; fieldId?: string }[]>([]);
   const errorRef = useRef<HTMLDivElement>(null);
+  // Set when the last name change was saved but the server KEPT the account URL
+  // (single sign-on registers it on the identity provider's side). The server's
+  // answer is the only source — the page never guesses.
+  const [urlKept, setUrlKept] = useState<'sso' | null>(null);
 
   const [pendingVertical, setPendingVertical] = useState<Vertical | null>(null);
   const [verticalBusy, setVerticalBusy] = useState(false);
@@ -118,10 +123,13 @@ export function SettingsOrganizationPage() {
         if (lat !== null) body.latitude = lat;
         if (lon !== null) body.longitude = lon;
       }
-      await apiFetch('/tenants/me', { method: 'PATCH', body: JSON.stringify(body) });
+      const saved = await apiFetch<{ urlKept?: 'sso' | null }>('/tenants/me', { method: 'PATCH', body: JSON.stringify(body) });
+      // Only a save that carried a name can say whether the URL followed it.
+      if (body.name !== undefined) setUrlKept(saved?.urlKept === 'sso' ? 'sso' : null);
       // Re-read authoritative state BEFORE the form goes pristine (§13.1).
       await qc.invalidateQueries({ queryKey: ['tenant'] });
       await refetch();
+      await qc.invalidateQueries({ queryKey: ['tenants', 'accessible'] });
       await qc.invalidateQueries({ queryKey: ['audit'] });
       discard();
     } catch (e) {
@@ -279,8 +287,17 @@ export function SettingsOrganizationPage() {
                   type="text"
                   value={nameValue}
                   onChange={(e) => setName(e.target.value)}
+                  maxLength={ORGANIZATION_NAME_MAX_LENGTH}
                   className="w-full min-h-[42px] px-3 rounded-[9px] border border-slate-200 bg-white text-[13px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-offset-1"
                 />
+                {urlKept === 'sso' ? (
+                  <p role="status" className="mt-1 text-[12px] text-slate-500">
+                    {t('settings.cc.organization.urlKeptSso', { url: `/${tenant?.slug ?? ''}` })}
+                  </p>
+                ) : (
+                  <p className="mt-1 text-[12px] text-slate-500">{t('settings.cc.organization.urlNameHelp')}</p>
+                )}
+                {tenant?.slug && <p className="mt-1 break-all text-[12px] text-slate-500">{t('settings.cc.organization.urlLabel')}: /{tenant.slug}</p>}
               </div>
               <div>
                 <label htmlFor="cc-org-address" className="block text-[12px] font-medium text-slate-600 mb-1">

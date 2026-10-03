@@ -225,6 +225,38 @@ describe('OnboardingService', () => {
         }),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
+
+    // A slug is the first URL segment of the dashboard, so a word the web origin
+    // already serves can never be one — whether it was typed or derived from the
+    // organization's name. Unavailable the same way a taken slug is (409), and
+    // nothing is created.
+    it.each(['player', 'super', 'login', 'locales', 'holiday-templates'])(
+      'refuses the reserved slug "%s" with the same 409 as a taken slug, and creates nothing',
+      async (word) => {
+        await expect(
+          service.signup({ districtName: 'Harbor Homes', slug: word, adminEmail: 'a@a.com', password: 'password123' }),
+        ).rejects.toBeInstanceOf(ConflictException);
+        expect(state.tenants).toHaveLength(0);
+        expect(state.users).toHaveLength(0);
+      },
+    );
+
+    it('checks the slug DERIVED from the organization name too, not only an explicit one', async () => {
+      await expect(
+        service.signup({ districtName: 'Dashboard', adminEmail: 'a@a.com', password: 'password123' }),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(state.tenants).toHaveLength(0);
+    });
+
+    it('still accepts a slug that merely starts with a reserved word', async () => {
+      const result = await service.signup({
+        districtName: 'Player Development Academy',
+        adminEmail: 'a@a.com',
+        password: 'password123',
+      });
+      expect(result.access_token).toBe('signed.jwt');
+      expect(state.tenants[0].slug).toBe('player-development-academy');
+    });
   });
 
   describe('password reset', () => {
