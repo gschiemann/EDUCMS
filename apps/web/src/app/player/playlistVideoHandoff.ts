@@ -21,6 +21,15 @@ export interface HandoffCallbacks {
 const same = (a: PlaylistVideoSource | null, b: PlaylistVideoSource | null) =>
   !!a && !!b && a.id === b.id && a.src === b.src;
 
+/** The incoming file must present a frame BESIDE the outgoing picture within this. */
+const DUAL_START_MS = 3_000;
+/** …and, with every other decoder released, within this — or the FILE is at fault. */
+const SOLO_START_MS = 8_000;
+/** HAVE_FUTURE_DATA: the element holds bytes it could decode right now. */
+const HAS_DATA = 3;
+/** MediaError.MEDIA_ERR_DECODE — what a refused second decode session looks like. */
+const MEDIA_ERR_DECODE = 3;
+
 /** Normal, free-running video playlists only. Two persistent surfaces; a new
  * file never replaces the picture until it has produced a decoded frame.
  * No canvas copies, opacity fades, playlist clock, or emergency decisions. */
@@ -55,8 +64,13 @@ export class PlaylistVideoHandoff {
       };
       const error = () => {
         if (this.disposed || !v.error) return;
-        if (i === this.target) this.failCurrent();
-        else if (this.slots[i].source) this.fallback('standby-error');
+        if (i === this.target) {
+          // A decode error while ANOTHER deck still holds its decoder is what a
+          // refused second decode session looks like: try the file alone before
+          // blaming it. A missing/unsupported source (any other code) is the file.
+          if (this.besideAnother() && v.error.code === MEDIA_ERR_DECODE) this.startAlone('handoff-decode-error');
+          else this.failCurrent();
+        } else if (this.slots[i].source) this.fallback('standby-error');
       };
       v.addEventListener('ended', ended);
       v.addEventListener('error', error);
@@ -87,7 +101,11 @@ export class PlaylistVideoHandoff {
     this.endedId = null;
     this.failedId = null;
     const matched = this.slots.findIndex(s => same(s.source, active));
-    const index = this.single ? (this.shown ?? 0) : matched >= 0 ? matched : this.shown === 0 ? 1 : 0;
+    this.begin(this.single ? (this.shown ?? 0) : matched >= 0 ? matched : this.shown === 0 ? 1 : 0, active);
+  }
+
+  /** Put `active` on deck `index` and take the glass at its first decoded frame. */
+  private begin(index: number, active: PlaylistVideoSource) {
     this.target = index;
     this.assign(index, active);
     const v = this.decks[index];
@@ -114,11 +132,44 @@ export class PlaylistVideoHandoff {
     this.play(v, () => this.failCurrent());
   }
 
+  /** The incoming deck is waiting for its first frame while a DIFFERENT deck
+   * still holds the picture — and so a decoder. */
+  private besideAnother(): boolean {
+    return !this.single && this.shown !== null && this.target !== null && this.shown !== this.target;
+  }
+
+  /** The incoming file would not present beside the outgoing one. A panel that
+   * runs one decode session does exactly that (measured 2026-09-29, Amlogic T982 /
+   * Android 11 / WebView 95: the second element sits at readyState 4, t=0). That
+   * is the device, not the file: release every decoder and start the file on its
+   * own — one cut to black — and keep this session on one decoder. The caller's
+   * persisted breaker then keeps later sessions off the two-decoder path. */
+  private startAlone(reason: string) {
+    const wanted = this.desired;
+    if (!wanted) return;
+    this.single = true;
+    this.warming = false;
+    this.generation++;
+    this.release(0);
+    this.release(1);
+    this.shown = null;
+    this.cb.fallback(reason);
+    this.begin(0, wanted);
+  }
+
   /** Cheap cadence; decoding overlaps only near the outgoing video's end. */
   tick() {
     if (this.disposed || this.target === null) return;
     if (this.pendingSince !== null) {
-      if (this.env.now() - this.pendingSince > 8_000) this.failCurrent();
+      const waited = this.env.now() - this.pendingSince;
+      // Bytes it could decode, no frame, and another decoder alive: free that one
+      // first. A file still LOADING (a slow link) is not a decoder limit — it
+      // keeps the outgoing frame on glass and waits out the longer bound.
+      if (waited > DUAL_START_MS && this.besideAnother() && this.decks[this.target].readyState >= HAS_DATA) {
+        this.startAlone('handoff-timeout');
+        return;
+      }
+      if (waited > SOLO_START_MS) this.failCurrent();
       return;
     }
     if (this.single || this.warming || !this.next || this.shown !== this.target) return;
