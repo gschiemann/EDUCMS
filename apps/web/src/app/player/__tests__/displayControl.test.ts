@@ -1086,6 +1086,40 @@ describe('END-TO-END: the manifest display block installs on the device', () => 
     expect(sent).not.toHaveProperty('softSchedules');
   });
 
+  // ── USER STANDBY (2026-10-03, player 1.1.21) ──────────────────────────
+  //
+  // "Respect the remote, but a schedule overrides it at its on or off
+  // trigger." A soft panel's OFF trigger is this page's own overlay; its ON
+  // trigger must turn back on a panel a person powered off with the remote,
+  // which only the APK can do. So the soft rows reach the device — under a
+  // key whose only meaning is "may wake", never as a hard blank.
+  it('forwards SOFT windows as wakeOnlySchedules so the APK can answer their ON trigger', () => {
+    const fpRef = { current: '' };
+    installDisplayConfig({ ...BLOCK, schedules: [], softSchedules: BLOCK.schedules }, {}, fpRef);
+    const sent = JSON.parse(callMock.mock.calls[0][1] as string);
+    // Never armed as a hard blank, by any APK…
+    expect(sent.schedules).toEqual([]);
+    expect(sent).not.toHaveProperty('softSchedules');
+    // …but the ON trigger is reachable, in the exact row shape the parser reads.
+    expect(sent.wakeOnlySchedules).toEqual([
+      {
+        id: 'sched-1',
+        daysOfWeek: [1, 2, 3, 4, 5],
+        onTime: '07:00',
+        offTime: '22:00',
+        timezone: 'America/Los_Angeles',
+      },
+    ]);
+  });
+
+  it('a block with no soft windows installs byte-identically (no wakeOnlySchedules key)', () => {
+    expect(toDeviceDisplayConfig(BLOCK, {})).not.toHaveProperty('wakeOnlySchedules');
+    expect(toDeviceDisplayConfig({ ...BLOCK, softSchedules: [] }, {})).not.toHaveProperty('wakeOnlySchedules');
+    expect(displayConfigFingerprint(toDeviceDisplayConfig({ ...BLOCK, softSchedules: [] }, {}))).toBe(
+      displayConfigFingerprint(toDeviceDisplayConfig(BLOCK, {})),
+    );
+  });
+
   it('rolls the fingerprint back when the device rejects the install', async () => {
     callMock.mockRejectedValue(new Error('insecure-transport'));
     const fpRef = { current: '' };

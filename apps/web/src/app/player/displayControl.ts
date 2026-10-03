@@ -619,6 +619,43 @@ export interface DeviceDisplayConfig {
   recipe?: Record<string, unknown>;
   /** Passed through untouched — see the header, rule 2. */
   vendorRecipes?: unknown;
+  /**
+   * The page's SOFT windows, forwarded so the APK can answer their ON
+   * trigger — and nothing else (2026-10-03, player 1.1.21, user standby).
+   *
+   * The owner's rule is "respect the remote, but a schedule overrides it at
+   * its on or off trigger". On a soft panel the OFF trigger is the page's own
+   * black overlay, which needs nothing from the device; the ON trigger has to
+   * turn back on a panel a person powered off with the remote, and only the
+   * APK can do that. So the device gets the soft rows under a key whose ONLY
+   * meaning is "these may wake": `DisplayConfigParser` (1.1.21+) reads them
+   * as `wakeOnlySchedules` and never blanks for them, and an older APK drops
+   * the unknown key. Deliberately NOT `softSchedules` and NOT folded into
+   * `schedules`, both of which an APK would arm as a hard nightly blank.
+   *
+   * Omitted when there are no soft windows, so a screen without any keeps a
+   * byte-identical install (and fingerprint).
+   */
+  wakeOnlySchedules?: Array<Record<string, unknown>>;
+}
+
+/** One manifest window → the row `DisplayConfigParser.parseSchedules` reads. */
+function toDeviceScheduleRows(rows: unknown): Array<Record<string, unknown>> {
+  const input = Array.isArray(rows) ? rows : [];
+  return input
+    .filter((s): s is Record<string, unknown> => !!s && typeof s === 'object' && !Array.isArray(s))
+    .map((s) => {
+      const row: Record<string, unknown> = {};
+      if (typeof s.id === 'string') row.id = s.id;
+      // Contract C2: daysOfWeek is Int[] 0=Sunday..6=Saturday, which
+      // `DisplayConfigParser.parseDays` accepts directly. Forwarded as-is.
+      if (Array.isArray(s.daysOfWeek)) row.daysOfWeek = s.daysOfWeek;
+      if (typeof s.onTime === 'string') row.onTime = s.onTime;
+      if (typeof s.offTime === 'string') row.offTime = s.offTime;
+      if (typeof s.timezone === 'string') row.timezone = s.timezone;
+      if (typeof s.isActive === 'boolean') row.isActive = s.isActive;
+      return row;
+    });
 }
 
 /**
@@ -637,21 +674,7 @@ export function toDeviceDisplayConfig(
   if (!block || typeof block !== 'object' || Array.isArray(block)) return null;
   const b = block as Record<string, unknown>;
 
-  const schedulesIn = Array.isArray(b.schedules) ? b.schedules : [];
-  const schedules = schedulesIn
-    .filter((s): s is Record<string, unknown> => !!s && typeof s === 'object' && !Array.isArray(s))
-    .map((s) => {
-      const row: Record<string, unknown> = {};
-      if (typeof s.id === 'string') row.id = s.id;
-      // Contract C2: daysOfWeek is Int[] 0=Sunday..6=Saturday, which
-      // `DisplayConfigParser.parseDays` accepts directly. Forwarded as-is.
-      if (Array.isArray(s.daysOfWeek)) row.daysOfWeek = s.daysOfWeek;
-      if (typeof s.onTime === 'string') row.onTime = s.onTime;
-      if (typeof s.offTime === 'string') row.offTime = s.offTime;
-      if (typeof s.timezone === 'string') row.timezone = s.timezone;
-      if (typeof s.isActive === 'boolean') row.isActive = s.isActive;
-      return row;
-    });
+  const schedules = toDeviceScheduleRows(b.schedules);
 
   const out: DeviceDisplayConfig = {
     version: typeof b.version === 'number' && Number.isFinite(b.version) ? b.version : 1,
@@ -677,6 +700,11 @@ export function toDeviceDisplayConfig(
   if (b.recipe && typeof b.recipe === 'object' && !Array.isArray(b.recipe)) {
     out.recipe = b.recipe as Record<string, unknown>;
   }
+
+  // USER STANDBY — see `wakeOnlySchedules` on the type. Last, so a block with
+  // no soft windows translates (and fingerprints) exactly as before.
+  const wakeOnly = toDeviceScheduleRows(b.softSchedules);
+  if (wakeOnly.length > 0) out.wakeOnlySchedules = wakeOnly;
 
   return out;
 }
