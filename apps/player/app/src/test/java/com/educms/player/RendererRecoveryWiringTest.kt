@@ -87,6 +87,19 @@ class RendererRecoveryWiringTest {
         assertTrue(loop.contains("if (health.ok)"))
     }
 
+    // ─── P1-1: an alert never waits out the backoff ─────────────────
+
+    @Test
+    fun `P1-1 the primary and every face take the emergency reload delay`() {
+        val lambda = primaryRendererLambda()
+        assertTrue(lambda.contains("DisplayEmergency.isHeld(applicationContext)"))
+        assertTrue(lambda.contains("RendererRecoveryPolicy.reloadDelayMs(delayMs, emergencyHeld)"))
+        assertTrue("the alert reload must reach the controller", lambda.contains("reloadMs,"))
+        val face = code(read("src/main/java/com/educms/player/face/FacePlayerHost.kt"))
+        assertTrue(face.contains("DisplayEmergency.isHeld(activity.applicationContext)"))
+        assertTrue(face.contains("RendererRecoveryPolicy.reloadDelayMs(delayMs, emergencyHeld)"))
+    }
+
     @Test
     fun `P1-2 the staleness watchdog does not race a pending renderer reload`() {
         val src = main

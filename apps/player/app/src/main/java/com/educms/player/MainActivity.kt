@@ -3034,6 +3034,10 @@ class MainActivity : ComponentActivity() {
                     configureWebView(fresh)
                     webHeartbeatEverReceived = false
                     lastSuccessfulLoadAtMs = 0L
+                    // P1-1 — an alert on the glass skips the backoff: reload
+                    // in ~1 s (the strike is already counted by replace()).
+                    val emergencyHeld = runCatching { DisplayEmergency.isHeld(applicationContext) }.getOrDefault(false)
+                    val reloadMs = RendererRecoveryPolicy.reloadDelayMs(delayMs, emergencyHeld)
                     if (::recovery.isInitialized) {
                         // P1-2 — a renderer death reloads on the renderer
                         // clock, NOT behind the /health gate: the page boots
@@ -3041,13 +3045,13 @@ class MainActivity : ComponentActivity() {
                         // glass blank whenever Redis or the uplink was down.
                         recovery.onRendererGone(
                             if (didCrash) "Display process crashed" else "Display process stopped by the system",
-                            delayMs,
-                            runCatching { DisplayEmergency.isHeld(applicationContext) }.getOrDefault(false),
+                            reloadMs,
+                            emergencyHeld,
                         )
                     } else {
                         fresh.postDelayed({
                             if (!isDestroyed && webView === fresh) lifecycleScope.launch { loadPlayer(resolveDeviceToken()) }
-                        }, delayMs)
+                        }, reloadMs)
                     }
                 }
             },

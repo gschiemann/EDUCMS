@@ -12,6 +12,7 @@ import android.view.ViewGroup
 import android.webkit.WebSettings
 import android.webkit.WebView
 import com.educms.player.RendererRecovery
+import com.educms.player.RendererRecoveryPolicy
 import com.educms.player.BuildConfig
 import com.educms.player.SafePlayerWebViewClient
 import com.educms.player.WebAppBridge
@@ -248,7 +249,12 @@ class FacePlayerHost(
                     rendererReload?.let { watchdogHandler.removeCallbacks(it) }
                     val retry = Runnable { if (!destroyed && webView === fresh) reload("renderer replaced") }
                     rendererReload = retry
-                    watchdogHandler.postDelayed(retry, delayMs)
+                    // P1-1 — an alert is box-wide (contract §4): a face showing
+                    // it skips the backoff too. Never health-gated (P1-2).
+                    val emergencyHeld = runCatching {
+                        com.educms.player.display.DisplayEmergency.isHeld(activity.applicationContext)
+                    }.getOrDefault(false)
+                    watchdogHandler.postDelayed(retry, RendererRecoveryPolicy.reloadDelayMs(delayMs, emergencyHeld))
                 }
             },
             onMainFrameError = { label ->

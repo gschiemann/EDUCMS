@@ -24,4 +24,27 @@ class RendererRecoveryPolicyTest {
         assertFalse(policy.recentlyFailed(1_000_000L))
         assertEquals(2_000L, policy.onFailure(1_000_000L))
     }
+
+    // ─── P1-1 (2026-10-03 review): an alert never waits out the backoff ──
+
+    @Test fun `P1-1 during an alert the backoff is skipped but the death is still a strike`() {
+        // A lockdown is on the glass and the renderer keeps dying: the 6th
+        // death would normally cost 60 s of blank glass.
+        val policy = RendererRecoveryPolicy(5, 1_000_000L)
+        val backoff = policy.onFailure(1_000_000L + 60_000L)
+        assertEquals(60_000L, backoff)
+        assertEquals("the death is still counted", 6, policy.failures)
+        assertEquals(
+            RendererRecoveryPolicy.EMERGENCY_RELOAD_MS,
+            RendererRecoveryPolicy.reloadDelayMs(backoff, emergencyHeld = true),
+        )
+        assertEquals(1_000L, RendererRecoveryPolicy.EMERGENCY_RELOAD_MS)
+    }
+
+    @Test fun `P1-1 without an alert the crash-loop backoff stands`() {
+        assertEquals(32_000L, RendererRecoveryPolicy.reloadDelayMs(32_000L, emergencyHeld = false))
+        assertEquals(2_000L, RendererRecoveryPolicy.reloadDelayMs(2_000L, emergencyHeld = false))
+        // …and stays inside the 60 s cap whatever it is handed.
+        assertEquals(60_000L, RendererRecoveryPolicy.reloadDelayMs(Long.MAX_VALUE, emergencyHeld = false))
+    }
 }
