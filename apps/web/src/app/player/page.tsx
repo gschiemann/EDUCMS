@@ -893,6 +893,16 @@ function playbackUrlFor(fileUrl: string, mimeType: string | null | undefined): s
 }
 
 /**
+ * The URL the playback circuit breaker keys a playlist item by: the SAME one the
+ * cache client downloads it under. A manifest-relative fileUrl would otherwise
+ * key the page's "start" breadcrumb and the download's breadcrumbs as two
+ * different files.
+ */
+function safetyUrlFor(item: { asset?: { fileUrl?: string | null; mimeType?: string | null } | null }): string {
+  return playbackUrlFor(item.asset?.fileUrl || '', item.asset?.mimeType);
+}
+
+/**
  * Legacy manifests did not include playlist item ids, so older kiosks
  * fell back to raw URLs as the playback identity. Signed/CDN URLs can
  * change between polls even when the actual content did not, which
@@ -4904,7 +4914,7 @@ function PlayerPage() {
       ? new Set(readinessItems.map((r) => r.id))
       : new Set([...readyItemIds(readinessItems, cacheDrive, cachedMediaKeys)].filter(id => {
           const item = sorted.find(candidate => String(candidate.id) === id);
-          return !item?.asset || !playbackSafety().blocked(item.asset.fileUrl || '', item.asset.fileHash, safetyClock);
+          return !item?.asset || !playbackSafety().blocked(safetyUrlFor(item), item.asset.fileHash, safetyClock);
         }))),
     [playlist?.isEmergency, readinessItems, cacheDrive, cachedMediaKeys, sorted, safetyClock],
   );
@@ -4931,7 +4941,7 @@ function PlayerPage() {
     ? (lastShownIndex !== null && lastShownIndex < sorted.length && readyAt(lastShownIndex) ? lastShownIndex : null)
     : activeSlot.activeIndex;
   const normalFilesSetAside = useMemo(() => !playlist?.isEmergency && sorted.length > 0 &&
-    sorted.every(item => item.asset && playbackSafety().blocked(item.asset.fileUrl || '', item.asset.fileHash, safetyClock)),
+    sorted.every(item => item.asset && playbackSafety().blocked(safetyUrlFor(item), item.asset.fileHash, safetyClock)),
     [playlist?.isEmergency, sorted, safetyClock]);
   const conservativeNormalPlayback = useMemo(() => !playlist?.isEmergency && playbackSafety().conservative(safetyClock),
     [playlist?.isEmergency, safetyClock]);
@@ -4947,7 +4957,7 @@ function PlayerPage() {
     if (playlist?.isEmergency || displayIndex === null) return;
     const item = sorted[displayIndex];
     if (!item?.asset?.mimeType?.startsWith('video/')) return;
-    const finish = playbackSafety().begin(item.asset.fileUrl || '', item.asset.fileHash, 'start', Date.now());
+    const finish = playbackSafety().begin(safetyUrlFor(item), item.asset.fileHash, 'start', Date.now());
     let firstProgressAt = 0;
     let lastFrames = -1;
     let progresses = 0;
@@ -5215,7 +5225,14 @@ function PlayerPage() {
     // isn't operator content — we only want to assert "the content the
     // operator scheduled is on screen").
     const emergencyOn = !!activeEmergency || phase === 'emergency';
-    const playingContent = phase === 'playing' && !!playlist && !playbackStopped && !allAssetsFailed &&
+    // `normalFilesSetAside` (2026-10-03): every file of the playlist is set
+    // aside by the playback circuit breaker, so the glass shows the same
+    // "Content Unavailable" card as `allAssetsFailed`. It used to prove
+    // `idle:content-downloading` (nothing is ready, so the readiness gate says
+    // "waiting") — the dashboard read "Downloading" for six hours over a screen
+    // that was downloading nothing. Same card, same proof.
+    const contentUnavailable = allAssetsFailed || normalFilesSetAside;
+    const playingContent = phase === 'playing' && !!playlist && !playbackStopped && !contentUnavailable &&
       (mediaReady || !!(playlist as any)?.template);
     const rendering = emergencyOn || playingContent;
     // Short content signature so lastRenderedHash is meaningful for
@@ -5243,7 +5260,7 @@ function PlayerPage() {
     // under an `idle:` signature so nothing downstream can mistake it for
     // proof that OPERATOR CONTENT is on the glass. See the POST below.
     if (!rendering) sig = `idle:${phase}`;
-    if (!emergencyOn && allAssetsFailed && !playbackStopped) {
+    if (!emergencyOn && contentUnavailable && !playbackStopped) {
       kind = 'idle';
       sig = 'idle:content-unavailable';
     } else if (!emergencyOn && !playbackStopped && activeSlot.waitingForDownload && !(playlist as any)?.template) {
@@ -5268,7 +5285,13 @@ function PlayerPage() {
       sig = `paused:${currentPlaylistSigRef.current || (playlist as any)?.id || 'unknown'}`;
     }
     renderStateRef.current = { rendering, sig: sig.slice(0, 128), kind };
-  }, [phase, playlist, playbackStopped, activeEmergency, allAssetsFailed, mediaReady, activeSlot.waitingForDownload]);
+  }, [phase, playlist, playbackStopped, activeEmergency, allAssetsFailed, normalFilesSetAside, mediaReady, activeSlot.waitingForDownload]);
+  // Support/test observability, like __eduSyncState and __eduLoopBoundary: what
+  // this page would prove RIGHT NOW. An idle proof is only posted every five
+  // minutes (IDLE_PROOF_INTERVAL_MS), so nothing else can see it promptly.
+  useEffect(() => {
+    try { (window as unknown as { __eduRenderProof?: () => { rendering: boolean; sig: string; kind: string } }).__eduRenderProof = () => ({ ...renderStateRef.current }); } catch { /* diagnostics only */ }
+  }, []);
 
   // The rAF paint counter. One loop for the lifetime of the page; it only
   // advances when the compositor paints. We DON'T gate the loop on

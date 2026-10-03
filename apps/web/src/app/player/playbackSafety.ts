@@ -73,6 +73,9 @@ export function playbackSafety(): PlaybackSafety {
   return singleton;
 }
 
+/** Tests only: drop the singleton so the next call re-reads the store. */
+export function __resetPlaybackSafetyForTests(): void { singleton = null; }
+
 /** A running timer or advancing media clock alone cannot prove decoded video. */
 export function decodedFrameCount(video: HTMLVideoElement): number | undefined {
   try {

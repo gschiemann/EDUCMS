@@ -321,14 +321,23 @@ export async function precachePlaylist(
 ): Promise<PlaylistCacheResult> {
   const sw = await activeWorker();
   if (!sw || !assets?.length) return { ok: false };
-  const allowed = assets.filter(asset => !playbackSafety().blocked(asset.url, asset.sha256, Date.now()));
-  const blockedCount = assets.length - allowed.length;
+  const setAside = assets.filter(asset => playbackSafety().blocked(asset.url, asset.sha256, Date.now()));
+  const allowed = setAside.length ? assets.filter(asset => !setAside.includes(asset)) : assets;
+  const blockedCount = setAside.length;
   if (!allowed.length) return { ok: false, failures: blockedCount, count: assets.length };
+  // "Set aside" means: do not download, verify or mount this file for now. It
+  // never means EVICT it. The worker prunes every cached entry AND every staged
+  // partial download that is not in the list it is sent, so a set-aside file left
+  // out of that list lost its bytes (a healthy 141 MB clip fetched again over a
+  // venue's 1 Mbps link) and its resume point (a file that interrupts the screen
+  // mid-download started again from zero every six hours and could never
+  // finish). Named in keepUrls, it is spared by both prunes.
+  const keepUrls = blockedCount ? [...(opts?.keepUrls ?? []), ...setAside.map(asset => asset.url)] : opts?.keepUrls;
   // The worker acks `{ started: true }` first, then the result. An older worker
   // that never acks is given 15 s; a current one gets five minutes for its
   // small-asset pass (large files are not fetched inside this event).
   const first = await askWorker(
-    sw, { type: 'PRECACHE_PLAYLIST', assets: allowed, softCapBytes, keepUrls: opts?.keepUrls }, 15_000, () => 5 * 60_000,
+    sw, { type: 'PRECACHE_PLAYLIST', assets: allowed, softCapBytes, keepUrls }, 15_000, () => 5 * 60_000,
   );
   if (!first || typeof first.ok !== 'boolean') return { ok: false };
   const count = typeof first.count === 'number' ? first.count : assets.length;

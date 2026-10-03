@@ -23,9 +23,17 @@ test('after an interrupted renderer, normal video keeps playing through one nati
 test('a repeatedly interrupted file is set aside with an honest fallback instead of another decoder crash', async ({ page }) => {
   await bootMockPlayer(page, { tag: 'recovery-quarantined', kind: 'video', videoMp4: true,
     playback: { loopMode: 'continuous' }, storage: {
-      edu_normal_playback_safety_v1: JSON.stringify({ safeUntil: Date.now() + 60_000, pending: [],
-        failures: [{ key: `${url}#${sha}`, count: 2, until: Date.now() + 60_000 }] }),
+      edu_normal_playback_safety_v1: JSON.stringify({ safeUntil: Date.now() + 10 * 60_000, pending: [],
+        failures: [{ key: `${url}#${sha}`, count: 2, until: Date.now() + 10 * 60_000 }] }),
     } });
   await expect(page.locator('video')).toHaveCount(0);
   await expect(page.getByText(/Content Unavailable/i).first()).toBeVisible({ timeout: 20_000 });
+  // The proof must say what the glass says (2026-10-03). With every file set
+  // aside nothing is "ready", and the proof used to fall through to the
+  // readiness gate — the dashboard read "Downloading" over a screen showing
+  // Content Unavailable and downloading nothing. An idle proof is posted only
+  // every five minutes, so read what the page would prove right now.
+  const proof = () => page.evaluate(() => (window as unknown as { __eduRenderProof?: () => { sig: string; kind: string; rendering: boolean } }).__eduRenderProof?.());
+  await expect.poll(async () => (await proof())?.sig, { timeout: 20_000 }).toBe('idle:content-unavailable');
+  expect(await proof()).toMatchObject({ kind: 'idle', rendering: false });
 });

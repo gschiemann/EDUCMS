@@ -1,7 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- vm / fake-worker harness: replies are untyped by design */
 import { getServiceWorkerContainer } from '@/lib/safe-service-worker';
 import { lookupCached, precacheEmergency, precachePlaylist, quarantinedDigestCount } from '../offline-cache';
-import { __resetDigestQuarantineForTests } from '../digestQuarantine';
+import { __resetDigestQuarantineForTests, quarantineKey } from '../digestQuarantine';
+import { __resetPlaybackSafetyForTests } from '../playbackSafety';
 
 // Its own file on purpose: offline-cache.ts memoises the service-worker
 // registration at module level, so a second describe in the same file would
@@ -261,6 +262,49 @@ describe('player offline-cache large-asset orchestration', () => {
       answerWith((m) => (m.type === 'PRECACHE_EMERGENCY' ? { ok: false, failures: 1, count: 1, pending: [] } : undefined));
       await expect(precacheEmergency([assets[0]], 'set-2')).resolves.toEqual({ ok: false, failures: 1, count: 1 });
       expect(sent).toHaveLength(2);
+    });
+  });
+
+  // ── A set-aside file keeps its bytes (2026-10-03 review) ──────────────────
+  // playbackSafety sets a file aside for six hours after it interrupted the
+  // screen twice. The worker prunes every cached entry and every staged partial
+  // download that is not in the list it is sent — so leaving the file out of that
+  // list deleted its cache entry and its resume point. It must ride keepUrls.
+  describe('a file set aside by the playback circuit breaker', () => {
+    const aside = { url: 'https://cdn.example.com/aside.mp4?token=t1', sha256: 'cd'.repeat(32), size: 64 * MiB };
+    const fine = { url: 'https://cdn.example.com/fine.mp4', sha256: 'ef'.repeat(32), size: 9 * MiB };
+    const setAside = (asset: { url: string; sha256: string }) => {
+      window.localStorage.setItem('edu_normal_playback_safety_v1', JSON.stringify({
+        safeUntil: 0, pending: [],
+        failures: [{ key: `${quarantineKey(asset.url)}#${asset.sha256}`, count: 2, until: Date.now() + 60 * 60_000 }],
+      }));
+      __resetPlaybackSafetyForTests();
+    };
+    afterEach(() => { window.localStorage.clear(); __resetPlaybackSafetyForTests(); });
+
+    it('is not downloaded, and is named in keepUrls so the worker prunes neither its cache entry nor its partial download', async () => {
+      setAside(aside);
+      answerWith((m) => (m.type === 'PRECACHE_PLAYLIST' ? { ok: true, failures: 0, count: 1, pending: [] } : undefined));
+      const result = await precachePlaylist([aside, fine], undefined, { keepUrls: ['https://cdn.example.com/on-glass.mp4'] });
+      expect(sent).toHaveLength(1);
+      expect(sent[0].assets).toEqual([fine]);
+      expect(sent[0].keepUrls).toEqual(['https://cdn.example.com/on-glass.mp4', aside.url]);
+      // Still honest: the playlist is not fully cached while a file is set aside.
+      expect(result).toEqual({ ok: false, failures: 1, count: 1 });
+    });
+
+    it('leaves keepUrls exactly as the caller gave them when nothing is set aside (control)', async () => {
+      answerWith((m) => (m.type === 'PRECACHE_PLAYLIST' ? { ok: true, failures: 0, count: 2, pending: [] } : undefined));
+      await precachePlaylist([aside, fine], undefined, { keepUrls: ['https://cdn.example.com/on-glass.mp4'] });
+      expect(sent[0].assets).toEqual([aside, fine]);
+      expect(sent[0].keepUrls).toEqual(['https://cdn.example.com/on-glass.mp4']);
+    });
+
+    it('sends the worker nothing at all when every file is set aside — nothing is pruned', async () => {
+      setAside(aside);
+      answerWith(() => ({ ok: true, failures: 0, count: 0, pending: [] }));
+      await expect(precachePlaylist([aside])).resolves.toEqual({ ok: false, failures: 1, count: 1 });
+      expect(sent).toHaveLength(0);
     });
   });
 
