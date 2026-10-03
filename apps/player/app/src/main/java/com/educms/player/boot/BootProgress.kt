@@ -208,6 +208,31 @@ class BootProgressTracker {
         // and never reaches the escalation. Only a success clears it.
     }
 
+    /**
+     * P2-5 (2026-10-03 review) — the WebView's renderer died and a fresh,
+     * EMPTY WebView replaced it.
+     *
+     * Every fact held here belonged to the page that died. Left in place,
+     * `clientBooted` and `satisfied` told the Back handler a live page was
+     * listening — so Back went into an empty WebView, the native diagnostic
+     * (the actionable escape, rule 15) was skipped, and with the renderer
+     * backoff that window could last a minute. Cleared now, so Back raises
+     * the card after its short grace.
+     *
+     * DISARMED as well: no deadline may run during the renderer wait (the
+     * card is not a verdict on a navigation that has not started). The
+     * reload's `onLoadStarted` re-arms everything. Transport failures survive,
+     * exactly as they survive a reload.
+     */
+    fun onRendererReplaced() {
+        armed = false
+        clientBootedAtMs = 0L
+        registerAttemptedAtMs = 0L
+        registerResultAtMs = 0L
+        satisfied = false
+        raisedReason = null
+    }
+
     /** FACT 1. */
     fun onClientBooted(nowMs: Long) {
         if (clientBootedAtMs == 0L) clientBootedAtMs = nowMs

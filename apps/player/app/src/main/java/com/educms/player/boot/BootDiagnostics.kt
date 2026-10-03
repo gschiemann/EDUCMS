@@ -130,6 +130,15 @@ object BootDiagnostics {
         mainHandler.post { dismiss("a new page load started") }
     }
 
+    /**
+     * P2-5 — the primary's renderer was replaced; the dead page's facts must
+     * not keep telling the Back handler a page is listening. Main thread.
+     */
+    fun onRendererReplaced() {
+        tracker.onRendererReplaced()
+        PlayerLogger.i(TAG, "renderer replaced — boot facts cleared (Back reaches the native escape until the reload)")
+    }
+
     fun onClientBooted(nowMs: Long) {
         tracker.onClientBooted(nowMs)
         PlayerLogger.i(TAG, "boot proof: the player bundle's client JS is running")

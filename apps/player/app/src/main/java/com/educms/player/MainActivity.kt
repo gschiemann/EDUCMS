@@ -3052,6 +3052,9 @@ class MainActivity : ComponentActivity() {
                     configureWebView(fresh)
                     webHeartbeatEverReceived = false
                     lastSuccessfulLoadAtMs = 0L
+                    // P2-5 — the dead page's boot facts must not tell the
+                    // Back handler a page is listening in the empty view.
+                    com.educms.player.boot.BootDiagnostics.onRendererReplaced()
                     // P1-1 — an alert on the glass skips the backoff: reload
                     // in ~1 s (the strike is already counted by replace()).
                     val emergencyHeld = runCatching { DisplayEmergency.isHeld(applicationContext) }.getOrDefault(false)

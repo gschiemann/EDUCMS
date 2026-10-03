@@ -263,4 +263,53 @@ class BootProgressTest {
     fun `an ordinary broken boot is not suppressed`() {
         assertNull(bootDiagnosticSuppression(false, false, false, false, false))
     }
+
+    // ─── P2-5 (2026-10-03 review): a renderer replacement clears the page's facts ──
+
+    @Test
+    fun `P2-5 a replaced renderer stops claiming a booted, satisfied page`() {
+        // A healthy page: booted, registered, satisfied — then its renderer dies.
+        val t = tracker(loadAt = 1_000L)
+        t.onClientBooted(2_000L)
+        t.onRegisterAttempt(3_000L)
+        t.onRegisterResult(4_000L, 1L, ok = true, failureClass = null, httpStatus = null, message = null)
+        assertTrue(t.facts().clientBooted && t.facts().satisfied)
+
+        t.onRendererReplaced()
+
+        // The Back handler reads exactly these two: with them false it raises
+        // the native escape instead of dispatching into an empty WebView.
+        assertFalse(t.facts().clientBooted)
+        assertFalse(t.facts().satisfied)
+        assertFalse(t.facts().registerAttempted)
+    }
+
+    @Test
+    fun `P2-5 no deadline fires during the renderer wait — the reload re-arms them`() {
+        val t = tracker(loadAt = 1_000L)
+        t.onClientBooted(2_000L)
+        t.onRendererReplaced()
+        // Minutes later, still waiting on the renderer backoff: no verdict.
+        assertNull(t.evaluate(10L * 60_000L))
+        // The reload starts a navigation; the 30 s deadline judges it again.
+        t.onLoadStarted(20L * 60_000L)
+        assertNull(t.evaluate(20L * 60_000L + 29_999L))
+        assertEquals(BootFailureReason.NO_CLIENT_BOOT, t.evaluate(20L * 60_000L + 30_000L))
+    }
+
+    @Test
+    fun `P2-5 the primary's renderer path clears the facts`() {
+        var dir: java.io.File? = java.io.File("").absoluteFile
+        var main: java.io.File? = null
+        while (dir != null && main == null) {
+            listOf("src/main/java/com/educms/player/MainActivity.kt", "app/src/main/java/com/educms/player/MainActivity.kt")
+                .map { java.io.File(dir, it) }.firstOrNull { it.isFile }?.let { main = it }
+            dir = dir.parentFile
+        }
+        org.junit.Assume.assumeTrue("MainActivity.kt not on disk", main != null)
+        val src = main!!.readText()
+        val at = src.indexOf("onRendererGone = { failed, didCrash ->")
+        val lambda = src.substring(at, src.indexOf("onMainFrameError =", at))
+        assertTrue(lambda.contains("BootDiagnostics.onRendererReplaced()"))
+    }
 }
