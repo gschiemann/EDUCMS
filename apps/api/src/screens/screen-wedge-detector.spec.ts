@@ -104,3 +104,52 @@ describe('ScreenWedgeDetectorCron.bootGraceWhere', () => {
     expect(ScreenWedgeDetectorCron.BOOT_GRACE_MS).toBeLessThan(5 * 60_000);
   });
 });
+
+/**
+ * A PAINTING SCREEN IS NOT WEDGED (2026-10-04). The telemetry tick omits the
+ * cache report whenever the service worker is slow or absent, so a stale or
+ * missing cache report alone reloaded screens that had painted seconds ago —
+ * all night, on seven Brookfield screens. Fresh render proof now excludes a
+ * screen; stale or missing render proof still qualifies it.
+ */
+describe('ScreenWedgeDetectorCron.renderNotFreshWhere', () => {
+  const now = 1_800_000_000_000;
+  const where = ScreenWedgeDetectorCron.renderNotFreshWhere(now);
+  const isCandidate = (renderedAt: Date | null) =>
+    renderedAt === null
+      ? where.OR.some((c) => c.lastRenderedAt === null)
+      : renderedAt < where.OR[1].lastRenderedAt.lt;
+
+  it('leaves alone a screen that painted recently, whatever its cache report says (the overnight loop)', () => {
+    expect(isCandidate(new Date(now - 9_000))).toBe(false); // FUH43-R: painted 9 s ago, cache report never
+    expect(isCandidate(new Date(now - 3 * 60_000))).toBe(false); // LED Poster 2: painted 3 min ago
+    expect(isCandidate(new Date(now - ScreenWedgeDetectorCron.RENDER_STALE_MS + 1))).toBe(false);
+  });
+
+  it('still grades a screen whose render proof is stale or has never arrived', () => {
+    expect(isCandidate(new Date(now - ScreenWedgeDetectorCron.RENDER_STALE_MS - 1))).toBe(true);
+    expect(isCandidate(new Date(now - 37 * 60 * 60_000))).toBe(true); // the 1.1.6 G43 shape
+    expect(isCandidate(null)).toBe(true);
+  });
+});
+
+describe('ScreenWedgeDetectorCron.sweep candidate query', () => {
+  it('ANDs the boot grace and the render-freshness guard into the Stage-1 query', async () => {
+    const findMany = jest.fn(async () => []);
+    const prisma = {
+      client: {
+        screen: { findMany },
+        screenEvent: { deleteMany: jest.fn(async () => ({ count: 0 })) },
+        deployment: { deleteMany: jest.fn(async () => ({ count: 0 })) },
+      },
+    };
+    const cron = new ScreenWedgeDetectorCron(prisma as any, {} as any, {} as any);
+    await cron.sweep();
+    const where = (findMany.mock.calls[0] as any)[0].where;
+    expect(where.AND).toHaveLength(2);
+    expect(where.AND[1].OR).toEqual([
+      { lastRenderedAt: null },
+      { lastRenderedAt: { lt: expect.any(Date) } },
+    ]);
+  });
+});

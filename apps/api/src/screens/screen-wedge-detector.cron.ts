@@ -130,6 +130,39 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+  /**
+   * A PAINTING SCREEN IS NOT WEDGED (2026-10-04, Brookfield overnight loop).
+   *
+   * The cache report stopped being a liveness signal on 2026-09-02, when it
+   * moved off its own 30 s setInterval POST and into the unified telemetry
+   * tick — which now OMITS it whenever the service worker does not answer
+   * its STATUS_REQUEST within 2 s (busy with a large download, restarting)
+   * or the WebView has no worker at all (`getCacheStatus` → null, by design:
+   * "no reply is not evidence of an empty cache"). Such a screen keeps
+   * posting telemetry WITH fresh render proof, so the absent cache report
+   * says nothing about the React tree. The detector still read it as a
+   * wedge: on 2026-10-03/04 it reloaded FUH43-L/R, G24, L55VEC, LED Poster 2/3
+   * and Foldable LED every ~16 min all night (3 fires → give up → 1 h → again)
+   * while every one of them had painted a frame within the last minute — and
+   * each reload threw away playback and any in-flight download.
+   *
+   * Render proof is the strictly stronger fact: it rides the same telemetry
+   * POST (so the JS loop is alive) AND only advances when the compositor
+   * paints. So cache-report staleness qualifies a screen only when its render
+   * proof is not fresh too. A screen whose render proof goes stale is still
+   * caught by the RENDER_STALE_MS branch exactly as before.
+   */
+  static renderNotFreshWhere(nowMs: number): {
+    OR: [{ lastRenderedAt: null }, { lastRenderedAt: { lt: Date } }];
+  } {
+    return {
+      OR: [
+        { lastRenderedAt: null },
+        { lastRenderedAt: { lt: new Date(nowMs - ScreenWedgeDetectorCron.RENDER_STALE_MS) } },
+      ],
+    };
+  }
+
   /** The web runtime is dead-or-lying if last_rendered_at is older than
    *  this. Render-proof POSTs every 30 s while playing and every 5 min
    *  idle, so 10 min = at least two missed idle proofs. This catches the
@@ -137,7 +170,7 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
    *  auth died keeps its cache loop OFF and its proofs REJECTED (401), so
    *  lastRenderedAt goes stale while lastPingAt stays fresh — G43 sat that
    *  way, "ONLINE" and content-dead, for 37 hours. (2026-08-30, audit P0-6) */
-  private static readonly RENDER_STALE_MS = 10 * 60_000;
+  static readonly RENDER_STALE_MS = 10 * 60_000;
 
   /** How many AUTO_REFRESH_WEB fires in this window trigger escalation.
    *
@@ -295,7 +328,13 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
           },
         ],
         // POST-BOOT GRACE (2026-10-03) — see bootGraceWhere().
-        AND: [ScreenWedgeDetectorCron.bootGraceWhere(now)],
+        // A PAINTING SCREEN IS NOT WEDGED (2026-10-04) — see
+        // renderNotFreshWhere(): fresh render proof overrides a stale or
+        // missing cache report.
+        AND: [
+          ScreenWedgeDetectorCron.bootGraceWhere(now),
+          ScreenWedgeDetectorCron.renderNotFreshWhere(now),
+        ],
         // Don't compete with an in-flight OTA. force_apk_update_pending_at
         // means the operator just clicked "Push APK update" — the player
         // will reboot when the install finishes; firing REFRESH_WEB on
