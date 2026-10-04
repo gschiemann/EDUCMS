@@ -37,6 +37,9 @@ describe('isCsrfExempt', () => {
 
   it('exempts login, health, and the csrf mint endpoint', () => {
     expect(isCsrfExempt('POST', '/api/v1/auth/login')).toBe(true);
+    // Identifier-first sign-in: the lookup runs before any session exists.
+    expect(isCsrfExempt('POST', '/api/v1/auth/sign-in-options')).toBe(true);
+    expect(isCsrfExempt('POST', '/api/v1/auth/sign-in-options/extra')).toBe(false);
     expect(isCsrfExempt('POST', '/api/v1/health')).toBe(true);
     expect(isCsrfExempt('POST', '/api/v1/health/ready')).toBe(true);
     expect(isCsrfExempt('GET', '/api/v1/security/csrf')).toBe(true);

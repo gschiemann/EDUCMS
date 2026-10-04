@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { SsoService } from './sso.service';
 import { SsoController } from './sso.controller';
+import { SignInOptionsController } from './sign-in-options.controller';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AuthModule } from '../auth/auth.module';
 import { RealtimeModule } from '../realtime/realtime.module';
@@ -10,7 +11,7 @@ import { RealtimeModule } from '../realtime/realtime.module';
   // multi-replica safe (S9). PrismaModule + AuthModule as before.
   imports: [PrismaModule, AuthModule, RealtimeModule],
   providers: [SsoService],
-  controllers: [SsoController],
+  controllers: [SsoController, SignInOptionsController],
   exports: [SsoService],
 })
 export class SsoModule {}

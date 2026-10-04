@@ -17,6 +17,12 @@ const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 // wire the web client to pre-fetch tokens before auth calls.
 const EXEMPT_PATHS: Array<(path: string) => boolean> = [
   (p) => p === '/api/v1/auth/login',
+  // Identifier-first sign-in (2026-10-04). Called by the login page with a
+  // bare `fetch` BEFORE /auth/login, so there is no session and no CSRF
+  // cookie to round-trip. It changes no state and returns only what an
+  // email's DOMAIN implies (see sso/sign-in-options.controller.ts), so there
+  // is nothing for a cross-site page to make a victim's browser do.
+  (p) => p === '/api/v1/auth/sign-in-options',
   (p) => p.startsWith('/api/v1/health'),
   (p) => p === '/api/v1/security/csrf',
   // Onboarding & auth-extras: requests arrive without any prior session,
