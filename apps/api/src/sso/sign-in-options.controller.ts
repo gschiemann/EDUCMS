@@ -41,9 +41,21 @@ import { ZodValidationPipe } from '../security/zod-validation.pipe';
  *  • the SSO callback itself still refuses an account that belongs to another
  *    tenant (`SsoService.resolveOrProvisionUser`).
  *
- * Public, per-IP throttled (same class as /auth/login), no audit row (it
- * reveals nothing about an account, and a row per "Continue" would be a write
- * amplifier) and nothing is logged — the address never leaves this function.
+ * Public, per-IP throttled, no audit row (it reveals nothing about an account,
+ * and a row per "Continue" would be a write amplifier) and nothing is logged —
+ * the address never leaves this function.
+ *
+ * ── WHY 20/MIN AND NOT /auth/login's 10 ────────────────────────────────────
+ * Every sign-in spends one lookup BEFORE its login attempt, and a mistyped
+ * address or "Change" spends another without any login at all. At the same
+ * number as the login cap, a building behind one address would run out of
+ * lookups before it ran out of logins. A throttled lookup is not an error —
+ * the page falls back to the password form — but for a single-sign-on
+ * organization that fallback is the WRONG form, so the lookup gets twice the
+ * login cap. It is one small read that says nothing about any account; the
+ * brute-force wall is, and stays, the 10/min on /auth/login itself. The key
+ * is the client IP from `ClientIpThrottlerGuard` (`security/client-ip.ts`),
+ * like every other `@Throttle` in the app.
  */
 export const SignInOptionsSchema = z.object({ email: EmailString }).strict();
 type SignInOptionsInput = z.infer<typeof SignInOptionsSchema>;
@@ -93,7 +105,7 @@ export class SignInOptionsController {
 
   @Post('sign-in-options')
   @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
   async signInOptions(
     @Body(new ZodValidationPipe(SignInOptionsSchema)) body: SignInOptionsInput,
   ): Promise<SignInOptions> {

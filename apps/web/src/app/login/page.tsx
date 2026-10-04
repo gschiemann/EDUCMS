@@ -41,14 +41,20 @@ import {
 import {
   fetchSignInOptions,
   INITIAL_SIGN_IN_STEP,
-  normalizeEmail,
-  readKeepSignedInChoice,
-  signInStepReducer,
   leaveForSingleSignOn,
+  normalizeEmail,
+  signInStepReducer,
   ssoLoginUrl,
   stashEmailForReset,
-  writeKeepSignedInChoice,
 } from '@/lib/sign-in-steps';
+import {
+  clearPendingEulaAcceptance,
+  eulaAcceptedOnThisDevice,
+  EULA_VERSION,
+  recordEulaAcceptance,
+  stashPendingEulaAcceptance,
+} from '@/lib/eula-acceptance';
+import { keepSignedInForPasskey, rememberKeepSignedInChoice } from '@/lib/keep-signed-in';
 
 const INPUT_CLS =
   'w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 ' +
@@ -59,9 +65,14 @@ const PRIMARY_BTN_CLS =
   'w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white ' +
   'text-sm font-semibold py-2.5 px-4 rounded-lg transition-colors flex items-center justify-center gap-2';
 
-/** A low-emphasis alternative under the primary action. */
+/**
+ * A low-emphasis alternative under the primary action. Looks like a text
+ * link; the padding (cancelled by the negative margin) only enlarges the
+ * area a thumb can hit.
+ */
 const LINK_BTN_CLS =
-  'text-xs font-semibold text-indigo-600 hover:text-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed';
+  'px-3 py-2 -my-2 rounded text-xs font-semibold text-indigo-600 hover:text-indigo-700 ' +
+  'disabled:opacity-50 disabled:cursor-not-allowed';
 
 /**
  * The post-sign-in passkey offer (2026-09-22) — one screen between a finished
@@ -146,46 +157,34 @@ function LoginContent() {
   // There is deliberately no control on the page that leads here.
   const manualSso = searchParams.get('sso') === '1';
   const [rememberMe, setRememberMe] = useState(false);
-  // The last "Keep me signed in" choice made on this browser. Step 1 has no
-  // checkbox, so a passkey picked from the email field would otherwise always
-  // be a short session; on step 2 the box simply starts where it was left.
-  // Read after mount (no storage on the server).
-  useEffect(() => { if (readKeepSignedInChoice()) setRememberMe(true); }, []);
-  // EULA v1.0 acceptance. Persisted per-browser in localStorage; the version
-  // is part of the key so bumping the EULA forces re-acceptance.
+  // "Keep me signed in" for the sign-in IN PROGRESS, when it did not come
+  // from the checkbox. The checkbox lives on the password step; a passkey
+  // used on step 1 never passes it, so that sign-in follows the choice its
+  // account last made on this browser (`lib/keep-signed-in.ts`). `null` =
+  // "use the checkbox". A ref, not state: the value is decided and consumed
+  // inside one async sign-in, across renders.
+  const signInKeepRef = useRef<boolean | null>(null);
+  // EULA acceptance (`lib/eula-acceptance.ts` — per browser, per version).
   //
   // The click-through is exactly as binding as it has always been for a
   // browser that has NOT accepted this version: the checkbox is shown on
-  // step 2 and nothing signs in without it. What changed (2026-10-04) is that
-  // a browser that HAS accepted is no longer shown a pre-ticked checkbox on
-  // every visit — it gets one quiet line under the button instead.
-  const EULA_VERSION = '1.0';
-  const EULA_KEY = `edu_cms_eula_accepted_v${EULA_VERSION}`;
+  // step 2, it is `required`, and no handler signs in without it. What
+  // changed (2026-10-04) is that a browser that HAS accepted is no longer
+  // shown a pre-ticked checkbox on every visit — it gets one quiet line
+  // under the button instead.
   /** This browser already accepted this EULA version (read after mount). */
   const [eulaOnDevice, setEulaOnDevice] = useState(false);
-  /** The checkbox, shown only when `eulaOnDevice` is false. */
+  /** The checkbox, shown only when `eulaOnDevice` is false. Never pre-ticked. */
   const [eulaChecked, setEulaChecked] = useState(false);
   const eulaAccepted = eulaOnDevice || eulaChecked;
   // Read AFTER mount, never during render: localStorage does not exist on the
   // server, and a hydration mismatch here would take the form with it.
   useEffect(() => {
-    try {
-      if (typeof window !== 'undefined' && window.localStorage.getItem(EULA_KEY) === 'yes') {
-        setEulaOnDevice(true);
-      }
-    } catch { /* localStorage unavailable */ }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (eulaAcceptedOnThisDevice()) setEulaOnDevice(true);
+    // A fresh visit to this page: a single sign-on round trip that parked a
+    // tick did not finish, so that tick records nothing.
+    clearPendingEulaAcceptance();
   }, []);
-  /** Record the acceptance the operator just gave (or re-confirm an existing one). */
-  const recordEulaAcceptance = () => {
-    try {
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem(EULA_KEY, 'yes');
-        window.localStorage.setItem(`${EULA_KEY}_at`, new Date().toISOString());
-        window.localStorage.setItem(`${EULA_KEY}_by`, email);
-      }
-    } catch { /* best-effort */ }
-  };
   const [ssoSlug, setSsoSlug] = useState('');
   const [ssoChecking, setSsoChecking] = useState(false);
   /** Step 2's single sign-on button was pressed; the browser is leaving. */
@@ -314,6 +313,9 @@ function LoginContent() {
     return () => { cancelled = true; };
   }, [enrollSecret?.otpauthUrl]);
 
+  /** Set the moment a sign-in finishes; the page is on its way out. */
+  const sessionStartedRef = useRef(false);
+
   // Shared post-login completion — used by BOTH the normal password path
   // and the MFA challenge path so EULA persistence + the cross-tenant-safe
   // redirect logic live in exactly one place.
@@ -322,12 +324,19 @@ function LoginContent() {
   // behind, the offer is prepared here BEFORE the redirect, and callers await
   // it so their "Signing in…" state holds until the next screen is ready.
   const completeLogin = async (data: any): Promise<void> => {
-    recordEulaAcceptance();
+    // A session exists from here on — nothing on this page re-arms.
+    sessionStartedRef.current = true;
+    // Recorded only now, on a FULLY successful sign-in.
+    recordEulaAcceptance(email);
     clog.info('auth', 'EULA accepted', { version: EULA_VERSION, userId: data.user?.id });
-    writeKeepSignedInChoice(rememberMe);
+    // The checkbox, unless this sign-in was a passkey used on step 1 (see
+    // `signInKeepRef`). Remembered per account so that account's NEXT passkey
+    // sign-in on this browser follows it.
+    const keepSignedIn = signInKeepRef.current ?? rememberMe;
+    void rememberKeepSignedInChoice(data.user?.id, keepSignedIn);
     // Pass the "Keep me logged in" choice. The store keeps the ACCESS token
     // per-tab only (it is <= 1h now); durability comes from the step below.
-    login(data.access_token, data.user, rememberMe);
+    login(data.access_token, data.user, keepSignedIn);
     // SEC-010 (2026-09-05) — trade the fresh access token for an HttpOnly,
     // first-party, single-use refresh cookie on THIS origin. That cookie is
     // what makes "Keep me logged in" survive closing the app, and page
@@ -338,7 +347,7 @@ function LoginContent() {
     // call, and a failure here is survivable by design — the operator stays
     // signed in on the short session they already have. It runs from this one
     // function so BOTH the password path and the MFA path get it.
-    if (rememberMe && data.access_token) {
+    if (keepSignedIn && data.access_token) {
       void adoptRememberedSession(data.access_token);
     }
     // 2026-05-03 — cross-tenant bleed fix. Only honor `redirectTarget`
@@ -864,11 +873,17 @@ function LoginContent() {
     challengeId: unknown,
     assertion: unknown,
   ): Promise<void> => {
+    // Step 1 has no "Keep me signed in" checkbox. The assertion carries the
+    // account's opaque user handle, so the choice that account last made on
+    // this browser can travel WITH the verify request (the server stamps the
+    // session class there). Default: off — exactly an unticked box.
+    const keepSignedIn = keepSignedInForPasskey(assertion);
+    signInKeepRef.current = keepSignedIn;
     try {
       const res = await fetch(`${API_URL}/auth/passkeys/login/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ challengeId, response: assertion, rememberMe }),
+        body: JSON.stringify({ challengeId, response: assertion, rememberMe: keepSignedIn }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -905,7 +920,7 @@ function LoginContent() {
     setPasskeyHint(null);
     setPasskeyBusy(true);
     warnIfMisconfigured();
-    clog.info('auth', 'Passwordless passkey attempt', { rememberMe, redirectTarget });
+    clog.info('auth', 'Passwordless passkey attempt', { redirectTarget });
     try {
       const optRes = await fetch(`${API_URL}/auth/passkeys/login/options`, {
         method: 'POST',
@@ -981,9 +996,10 @@ function LoginContent() {
     return () => { cancelled = true; };
   }, [passkeyCapable]);
 
-  /** Step 1 is what is on screen, with nothing else in progress. */
-  const onEmailStep =
-    step.name === 'email' && !manualSso && !mfaToken && !passkeyOffer && !pendingBackupCodes;
+  /** No second factor, forced setup, backup codes or passkey offer is on screen. */
+  const signInFormShowing = !mfaToken && !passkeyOffer && !pendingBackupCodes;
+  /** Step 1 is on screen and idle — the only time the autofill request is armed. */
+  const onEmailStep = step.name === 'email' && !manualSso && signInFormShowing;
   const conditionalArmed = onEmailStep && conditionalAvailable === true && eulaOnDevice;
 
   useEffect(() => {
@@ -1034,7 +1050,7 @@ function LoginContent() {
         setPasskeyBusy(false);
         // If that did not end in a session or a next step, this effect is
         // still armed with a spent request — arm a fresh one.
-        if (!cancelled) setConditionalEpoch((n) => n + 1);
+        if (!cancelled && !sessionStartedRef.current) setConditionalEpoch((n) => n + 1);
       }
     })();
     return () => {
@@ -1229,7 +1245,12 @@ function LoginContent() {
     e.preventDefault();
     setError('');
     if (!ssoSlug.trim()) {
-      setError('Enter your organization slug to continue.');
+      setError(t('ssoSlugRequired'));
+      return;
+    }
+    // The same gate every other way in has.
+    if (!eulaAccepted) {
+      setError(t('eulaRequired'));
       return;
     }
     setSsoChecking(true);
@@ -1238,15 +1259,16 @@ function LoginContent() {
       const res = await fetch(`${API_URL}/auth/sso/${encodeURIComponent(ssoSlug.trim())}/config-public`);
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.enabled) {
-        setError(`SSO is not enabled for "${ssoSlug}". Ask your admin to configure it or sign in with your password.`);
+        setError(t('ssoNotEnabled', { slug: ssoSlug.trim() }));
         setSsoChecking(false);
         return;
       }
       const provider = (data.provider as string).toLowerCase();
+      if (!eulaOnDevice) stashPendingEulaAcceptance();
       // Navigate to the API SSO entry point; it will 302 to the IdP.
-      window.location.href = `${API_URL}/auth/sso/${encodeURIComponent(ssoSlug.trim())}/${provider}/login`;
+      leaveForSingleSignOn(`${API_URL}/auth/sso/${encodeURIComponent(ssoSlug.trim())}/${provider}/login`);
     } catch {
-      setError("Can't reach the server to start SSO. Try again in a moment.");
+      setError(t('ssoUnreachable'));
       setSsoChecking(false);
     }
   };
@@ -1354,7 +1376,11 @@ function LoginContent() {
       return;
     }
     setError('');
-    recordEulaAcceptance();
+    // The sign-in finishes on /login/sso-complete, after the round trip to
+    // the identity provider. Park the tick; that page records it once the
+    // session really exists — the same "only on a finished sign-in" rule the
+    // password path follows.
+    if (!eulaOnDevice) stashPendingEulaAcceptance();
     setSsoRedirecting(true);
     clog.info('auth', 'SSO sign-in started', { provider: step.sso.provider });
     leaveForSingleSignOn(ssoLoginUrl(API_URL, step.sso));
@@ -1371,6 +1397,9 @@ function LoginContent() {
     // The "no passkey here yet" hint has done its job the moment the operator
     // takes the path it points to.
     setPasskeyHint(null);
+    // A password sign-in follows the checkbox on this step, whatever an
+    // earlier passkey attempt on this page decided.
+    signInKeepRef.current = null;
     setLoading(true);
     warnIfMisconfigured();
     clog.info('auth', 'Login attempt', { email, rememberMe, redirectTarget });
@@ -1516,7 +1545,7 @@ function LoginContent() {
         type="button"
         onClick={handleChangeEmail}
         aria-label={t('changeEmail')}
-        className="shrink-0 text-xs font-semibold text-indigo-600 hover:text-indigo-700"
+        className="shrink-0 px-2 py-1.5 -mx-2 -my-1.5 rounded text-xs font-semibold text-indigo-600 hover:text-indigo-700"
       >
         {t('change')}
       </button>
@@ -1535,15 +1564,26 @@ function LoginContent() {
 
   /**
    * EULA acceptance — REQUIRED, for a browser that has not accepted this
-   * version. Unticked by default, and both step-2 submit handlers refuse
-   * without it. Once accepted here it is not rendered again (`eulaNote`).
+   * version. Unticked by default. Two independent locks, as before:
+   *   1. `required` — the browser will not submit the form without it;
+   *   2. every submit handler refuses without `eulaAccepted`.
+   * `onInvalid` only swaps the browser's own bubble (in the browser's
+   * language, at the browser's whim) for OUR translated, announced message —
+   * the submit stays blocked either way.
+   * Once accepted on this browser it is not rendered again (`eulaNote`).
+   *
+   * `first`: on a step with nothing to type (single sign-on), this checkbox
+   * IS the first field, so it takes the focus the password field would.
    */
-  const eulaCheckbox = eulaOnDevice ? null : (
+  const renderEulaCheckbox = (first = false) => eulaOnDevice ? null : (
     <label className="flex items-start gap-2 cursor-pointer select-none">
       <input
         type="checkbox"
+        required
+        autoFocus={first}
         checked={eulaChecked}
-        onChange={e => setEulaChecked(e.target.checked)}
+        onChange={e => { setEulaChecked(e.target.checked); setError(''); }}
+        onInvalid={(e) => { e.preventDefault(); setError(t('eulaRequired')); }}
         className="w-4 h-4 mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer shrink-0"
         aria-describedby="eula-text"
       />
@@ -1555,7 +1595,7 @@ function LoginContent() {
 
   /** The quiet line a browser that already accepted gets instead. */
   const eulaNote = eulaOnDevice ? (
-    <p className="text-center text-[11px] leading-snug text-slate-500" data-testid="eula-accepted-note">
+    <p className="text-center text-balance text-[11px] leading-snug text-slate-500" data-testid="eula-accepted-note">
       {t.rich('eulaAcceptedNote', { link: eulaLink })}
     </p>
   ) : null;
@@ -2013,7 +2053,7 @@ function LoginContent() {
                The form that used to sit behind the always-visible "Sign in
                with SSO" button. Nothing on the page links here; the normal
                way in is the email's domain on step 2. */
-            <form onSubmit={handleSsoStart} className="space-y-4">
+            <form key="manual-sso" onSubmit={handleSsoStart} className="space-y-4">
               <div>
                 <label htmlFor="sso-slug" className="block text-xs font-semibold text-slate-700 mb-1.5">
                   {t('orgSlug')}
@@ -2029,6 +2069,7 @@ function LoginContent() {
                   className={INPUT_CLS}
                 />
               </div>
+              {renderEulaCheckbox()}
               {errorBanner}
               <button
                 type="submit"
@@ -2037,13 +2078,14 @@ function LoginContent() {
               >
                 {ssoChecking ? <><Loader2 className="w-4 h-4 animate-spin" /> {t('redirecting')}</> : t('continueSSO')}
               </button>
+              {eulaNote}
             </form>
           ) : step.name !== 'method' ? (
             /* ── STEP 1 — one field ─────────────────────────────────────
                The email, and Continue. `autocomplete="username webauthn"`
                is what lets the browser list this device's passkey in the
                field's own suggestions (see the autofill effect above). */
-            <form onSubmit={handleContinue} className="space-y-4" data-testid="sign-in-step-email">
+            <form key="step-email" onSubmit={handleContinue} className="space-y-4" data-testid="sign-in-step-email">
               <div>
                 <label htmlFor="login-email" className="block text-xs font-semibold text-slate-700 mb-1.5">{t('email')}</label>
                 <input
@@ -2059,8 +2101,11 @@ function LoginContent() {
                   placeholder={t('emailPlaceholder')}
                   className={INPUT_CLS}
                   value={emailInput}
-                  readOnly={step.name === 'checking'}
-                  onChange={e => setEmailInput(e.target.value)}
+                  // Frozen while the lookup is in flight — by ignoring edits,
+                  // NOT by `readOnly`/`disabled`, which would drop focus (and
+                  // the phone keyboard) a moment before the password field
+                  // takes it.
+                  onChange={e => { if (step.name === 'email') setEmailInput(e.target.value); }}
                 />
               </div>
 
@@ -2112,16 +2157,18 @@ function LoginContent() {
                Decided by the email's DOMAIN alone. One primary action; the
                password form is one link away, because a domain claim is not
                proof and nobody may be locked out by it. */
-            <form onSubmit={handleSsoContinue} className="space-y-4" data-testid="sign-in-step-sso">
+            <form key="step-sso" onSubmit={handleSsoContinue} className="space-y-4" data-testid="sign-in-step-sso">
               {identityRow}
               <p className="text-xs text-slate-600 leading-relaxed">{t('ssoExplain')}</p>
 
-              {eulaCheckbox}
+              {renderEulaCheckbox(true)}
               {errorBanner}
 
+              {/* Focus: the EULA checkbox when there is one (it is the
+                  step's first field), otherwise the primary action. */}
               <button
                 type="submit"
-                autoFocus
+                autoFocus={eulaOnDevice}
                 disabled={ssoRedirecting}
                 className={PRIMARY_BTN_CLS}
               >
@@ -2134,21 +2181,23 @@ function LoginContent() {
                 )}
               </button>
 
-              <div className="text-center">
-                <button
-                  type="button"
-                  onClick={() => { setError(''); dispatchStep({ type: 'USE_PASSWORD' }); }}
-                  className={LINK_BTN_CLS}
-                >
-                  {t('usePasswordInstead')}
-                </button>
-              </div>
+              {step.passwordAllowed && (
+                <div className="text-center">
+                  <button
+                    type="button"
+                    onClick={() => { setError(''); dispatchStep({ type: 'USE_PASSWORD' }); }}
+                    className={LINK_BTN_CLS}
+                  >
+                    {t('usePasswordInstead')}
+                  </button>
+                </div>
+              )}
 
               {eulaNote}
             </form>
           ) : (
             /* ── STEP 2 — password ─────────────────────────────────────── */
-            <form onSubmit={handleLogin} className="space-y-4" data-testid="sign-in-step-password">
+            <form key="step-password" onSubmit={handleLogin} className="space-y-4" data-testid="sign-in-step-password">
               {identityRow}
               {/* For password managers: the account this password belongs
                   to. Not shown, not focusable — the address is on screen in
@@ -2201,13 +2250,12 @@ function LoginContent() {
                 </Link>
               </div>
 
-              {eulaCheckbox}
-              {reasonBanners}
+              {renderEulaCheckbox()}
               {errorBanner}
 
               {/* Stays enabled when the EULA is unticked (only `loading`
-                  disables) so the handleLogin guard fires and says why, on
-                  click and on Enter (2026-06-09 Fable audit). */}
+                  disables), so pressing it — or Enter — says WHY nothing
+                  happened instead of looking dead (2026-06-09 Fable audit). */}
               <button
                 type="submit"
                 disabled={loading}
@@ -2231,9 +2279,10 @@ function LoginContent() {
             announced. */}
         <p className="sr-only" aria-live="polite" data-testid="sign-in-step-announcement">{stepAnnouncement}</p>
 
-        {/* Step 1 only: someone who is already typing a password is not
-            looking for "create a workspace". */}
-        {onEmailStep && (
+        {/* Step 1 only (including while its lookup is in flight): someone who
+            is already typing a password or a code is not looking for "create
+            a workspace". */}
+        {step.name !== 'method' && signInFormShowing && (
           <p className="text-center text-xs text-slate-500 mt-6">
             {t('newHere')} <Link href="/signup" className="text-indigo-600 hover:text-indigo-700 font-semibold">{t('createWorkspace')}</Link>
           </p>

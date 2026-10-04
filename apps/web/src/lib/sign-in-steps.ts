@@ -40,6 +40,12 @@ export interface SsoOption {
 
 export interface SignInOptions {
   sso: SsoOption | null;
+  /**
+   * May this organization's people still sign in with a password? Only ever
+   * `false` together with single sign-on — with no SSO to offer, the password
+   * form is the only way in and is always shown.
+   */
+  passwordAllowed: boolean;
 }
 
 export type SignInStep =
@@ -49,10 +55,11 @@ export type SignInStep =
   | { name: 'checking'; email: string }
   /**
    * Step 2. `sso` non-null ⇒ single sign-on is the primary action and the
-   * password form is behind "Use a password instead" (`passwordOpen`).
+   * password form is behind "Use a password instead" (`passwordOpen`) — when
+   * the organization allows a password at all (`passwordAllowed`).
    * `sso` null ⇒ the password form IS the step.
    */
-  | { name: 'method'; email: string; sso: SsoOption | null; passwordOpen: boolean };
+  | { name: 'method'; email: string; sso: SsoOption | null; passwordAllowed: boolean; passwordOpen: boolean };
 
 export type SignInEvent =
   | { type: 'CONTINUE'; email: string }
@@ -85,10 +92,13 @@ export function signInStepReducer(step: SignInStep, event: SignInEvent): SignInS
       // (they pressed Change, or edited and pressed Continue again) is stale.
       if (step.name !== 'checking' || step.email !== event.email) return step;
       const sso = event.options?.sso ?? null;
-      return { name: 'method', email: step.email, sso, passwordOpen: sso === null };
+      // Never a dead end: with no single sign-on to offer, the password form
+      // is shown whatever else the answer said.
+      const passwordAllowed = sso === null || event.options?.passwordAllowed !== false;
+      return { name: 'method', email: step.email, sso, passwordAllowed, passwordOpen: sso === null };
     }
     case 'USE_PASSWORD':
-      if (step.name !== 'method') return step;
+      if (step.name !== 'method' || !step.passwordAllowed) return step;
       return { ...step, passwordOpen: true };
     case 'CHANGE':
       return INITIAL_SIGN_IN_STEP;
@@ -105,20 +115,24 @@ const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,62}$/i;
  * value that ends up in a URL (`tenantSlug` and `provider` do).
  */
 export function parseSignInOptions(data: unknown): SignInOptions {
+  const NO_SSO: SignInOptions = { sso: null, passwordAllowed: true };
   const sso = (data as { sso?: unknown } | null)?.sso as
     | { tenantSlug?: unknown; provider?: unknown; label?: unknown }
     | null
     | undefined;
-  if (!sso || typeof sso !== 'object') return { sso: null };
+  if (!sso || typeof sso !== 'object') return NO_SSO;
   const { tenantSlug, provider, label } = sso;
-  if (typeof tenantSlug !== 'string' || !SLUG_RE.test(tenantSlug)) return { sso: null };
-  if (provider !== 'oidc' && provider !== 'saml') return { sso: null };
+  if (typeof tenantSlug !== 'string' || !SLUG_RE.test(tenantSlug)) return NO_SSO;
+  if (provider !== 'oidc' && provider !== 'saml') return NO_SSO;
   return {
     sso: {
       tenantSlug,
       provider,
       label: typeof label === 'string' && label.trim() && label.length <= 40 ? label.trim() : null,
     },
+    // Only an explicit `false` removes the password form. The API answers
+    // `true` for every organization today (there is no "SSO only" switch).
+    passwordAllowed: (data as { password?: unknown }).password !== false,
   };
 }
 
@@ -212,29 +226,5 @@ export function takeEmailForReset(): string {
     return value.length <= 254 ? value : '';
   } catch {
     return '';
-  }
-}
-
-// ── "Keep me signed in", remembered per browser ─────────────────────────────
-// The checkbox lives on the password step. A passkey picked from the email
-// field on step 1 never sees it, so without this every passkey sign-in would
-// be a short session. What is stored is only the last choice made on this
-// browser at a finished sign-in ('1' / '0') — a preference, not a credential.
-
-export const KEEP_SIGNED_IN_CHOICE_KEY = 'venueos_keep_signed_in';
-
-export function readKeepSignedInChoice(): boolean {
-  try {
-    return typeof window !== 'undefined' && window.localStorage.getItem(KEEP_SIGNED_IN_CHOICE_KEY) === '1';
-  } catch {
-    return false;
-  }
-}
-
-export function writeKeepSignedInChoice(keep: boolean): void {
-  try {
-    if (typeof window !== 'undefined') window.localStorage.setItem(KEEP_SIGNED_IN_CHOICE_KEY, keep ? '1' : '0');
-  } catch {
-    /* no storage — the next sign-in simply starts unticked */
   }
 }

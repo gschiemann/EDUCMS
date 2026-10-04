@@ -14,6 +14,7 @@ const browserSupportsWebAuthn = jest.fn();
 const startRegistration = jest.fn();
 const startAuthentication = jest.fn();
 const platformAuthenticatorIsAvailable = jest.fn();
+const browserSupportsWebAuthnAutofill = jest.fn();
 const cancelCeremony = jest.fn();
 
 jest.mock('@simplewebauthn/browser', () => ({
@@ -21,16 +22,19 @@ jest.mock('@simplewebauthn/browser', () => ({
   startRegistration: (...a: any[]) => startRegistration(...a),
   startAuthentication: (...a: any[]) => startAuthentication(...a),
   platformAuthenticatorIsAvailable: (...a: unknown[]) => platformAuthenticatorIsAvailable(...a),
+  browserSupportsWebAuthnAutofill: (...a: unknown[]) => browserSupportsWebAuthnAutofill(...a),
   WebAuthnAbortService: { cancelCeremony: (...a: unknown[]) => cancelCeremony(...a) },
 }));
 
 import en from '../../i18n/messages/en.json';
 import {
   cancelPasskeyCeremony,
+  conditionalPasskeyAvailable,
   createPasskey,
   describePasskeyError,
   formatPasskeyLastUsed,
   getPasskey,
+  getPasskeyFromAutofill,
   guessDeviceLabel,
   passkeysSupported,
   platformPasskeyAvailable,
@@ -65,6 +69,7 @@ beforeEach(() => {
   startRegistration.mockReset();
   startAuthentication.mockReset();
   platformAuthenticatorIsAvailable.mockReset();
+  browserSupportsWebAuthnAutofill.mockReset();
   cancelCeremony.mockReset();
 });
 
@@ -201,6 +206,59 @@ describe('platformPasskeyAvailable — "does this device have Face ID / Touch ID
     } finally {
       jest.useRealTimers();
     }
+  });
+});
+
+describe('conditionalPasskeyAvailable — "can the browser offer passkeys from a field\'s own autofill?"', () => {
+  it('answers what the browser answers', async () => {
+    browserSupportsWebAuthn.mockReturnValue(true);
+    browserSupportsWebAuthnAutofill.mockResolvedValue(true);
+    await expect(conditionalPasskeyAvailable()).resolves.toBe(true);
+    browserSupportsWebAuthnAutofill.mockResolvedValue(false);
+    await expect(conditionalPasskeyAvailable()).resolves.toBe(false);
+  });
+
+  it('is false without WebAuthn at all, and never even asks', async () => {
+    browserSupportsWebAuthn.mockReturnValue(false);
+    await expect(conditionalPasskeyAvailable()).resolves.toBe(false);
+    expect(browserSupportsWebAuthnAutofill).not.toHaveBeenCalled();
+  });
+
+  it('a probe that THROWS or REJECTS is just "no" — the page falls back to the plain link', async () => {
+    browserSupportsWebAuthn.mockReturnValue(true);
+    browserSupportsWebAuthnAutofill.mockImplementation(() => { throw new Error('blocked'); });
+    await expect(conditionalPasskeyAvailable()).resolves.toBe(false);
+    browserSupportsWebAuthnAutofill.mockRejectedValue(new Error('nope'));
+    await expect(conditionalPasskeyAvailable()).resolves.toBe(false);
+  });
+
+  it('a probe that NEVER settles is "no" within the timeout', async () => {
+    jest.useFakeTimers();
+    try {
+      browserSupportsWebAuthn.mockReturnValue(true);
+      browserSupportsWebAuthnAutofill.mockReturnValue(new Promise(() => undefined));
+      const pending = conditionalPasskeyAvailable(500);
+      await jest.advanceTimersByTimeAsync(600);
+      await expect(pending).resolves.toBe(false);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});
+
+describe('getPasskeyFromAutofill', () => {
+  it('asks the library for a CONDITIONAL request — the one call shape that shows no sheet', async () => {
+    const options = { challenge: 'Y2hhbGw', rpId: 'venue-os.app', allowCredentials: [] };
+    const assertion = { id: 'cred-1' };
+    startAuthentication.mockResolvedValue(assertion);
+    await expect(getPasskeyFromAutofill(options as never)).resolves.toBe(assertion);
+    expect(startAuthentication).toHaveBeenCalledWith({ optionsJSON: options, useBrowserAutofill: true });
+  });
+
+  it('an aborted request is a QUIET outcome, like a dismissed sheet', async () => {
+    startAuthentication.mockRejectedValue(wrappedError('AbortError'));
+    const err = await getPasskeyFromAutofill({ challenge: 'x' } as never).catch((e: unknown) => e);
+    expect(describePasskeyError(err, 'get')).toEqual({ reason: 'cancelled', quiet: true, messageKey: null });
   });
 });
 

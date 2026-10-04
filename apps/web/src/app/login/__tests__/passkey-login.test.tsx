@@ -23,6 +23,7 @@
  * with no passkey must see the challenge step that shipped before this wave,
  * unchanged.
  */
+import { createHash } from 'crypto';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 
 const push = jest.fn();
@@ -90,7 +91,9 @@ const SESSION = {
   access_token: 'tok-passkey',
   user: { id: 'u1', email: 'admin@school.edu', role: 'SCHOOL_ADMIN', tenantSlug: 'lincoln', tenantId: 't1' },
 };
-const ASSERTION = { id: 'cred-1', rawId: 'cred-1', type: 'public-key', response: {} };
+/** The account's WebAuthn user handle — sha256(user id), as the API mints it. */
+const USER_HANDLE = createHash('sha256').update('u1').digest('base64url');
+const ASSERTION = { id: 'cred-1', rawId: 'cred-1', type: 'public-key', response: { userHandle: USER_HANDLE } };
 const GET_OPTIONS = { challenge: 'Y2hhbGw', rpId: 'venueos.app' };
 
 async function signInWithPassword() {
@@ -123,7 +126,7 @@ beforeEach(() => {
   try {
     localStorage.setItem('edu_cms_eula_accepted_v1.0', 'yes');
     // The remembered "Keep me signed in" choice must not leak between tests.
-    localStorage.removeItem('venueos_keep_signed_in');
+    localStorage.removeItem('venueos_keep_signed_in.v1');
   } catch { /* ignore */ }
 });
 
@@ -318,8 +321,8 @@ describe('Sign-in form — passwordless passkey', () => {
     startAuthentication.mockResolvedValue(ASSERTION);
 
     // Step 1 has no checkbox (identifier-first, 2026-10-04): a passkey
-    // sign-in follows the choice last made on this browser.
-    localStorage.setItem('venueos_keep_signed_in', '1');
+    // sign-in follows the choice ITS ACCOUNT last made on this browser.
+    localStorage.setItem('venueos_keep_signed_in.v1', JSON.stringify([USER_HANDLE]));
     await act(async () => { render(<LoginPage />); });
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: /Sign in with a passkey/i }));
@@ -337,7 +340,7 @@ describe('Sign-in form — passwordless passkey', () => {
     expect(adoptRememberedSession).toHaveBeenCalledWith('tok-passkey');
   });
 
-  it('sends rememberMe: false when the box is left alone', async () => {
+  it('sends rememberMe: false when this account never chose to stay signed in here', async () => {
     const calls = mockFetchByPath({
       '/auth/passkeys/login/options': { body: { options: GET_OPTIONS, challengeId: 'ch-9' } },
       '/auth/passkeys/login/verify': { body: SESSION },

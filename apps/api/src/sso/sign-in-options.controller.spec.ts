@@ -14,6 +14,7 @@ import {
   providerLabelFor,
 } from './sign-in-options.controller';
 import { ZodValidationPipe } from '../security/zod-validation.pipe';
+import { AuthController } from '../auth/auth.controller';
 
 interface ConfigRow {
   enabled: boolean;
@@ -194,9 +195,14 @@ describe('input validation → 400', () => {
 describe('route shape', () => {
   const handler = SignInOptionsController.prototype.signInOptions;
 
-  it('is throttled per IP at the /auth/login rate (10 per minute)', () => {
-    expect(Reflect.getMetadata('THROTTLER:LIMITdefault', handler)).toBe(10);
+  it('is throttled per IP: 20 a minute — twice the /auth/login cap it sits in front of', () => {
+    expect(Reflect.getMetadata('THROTTLER:LIMITdefault', handler)).toBe(20);
     expect(Reflect.getMetadata('THROTTLER:TTLdefault', handler)).toBe(60_000);
+    // The comparison the number is defined by. If the login cap moves, look
+    // at this one again.
+    expect(
+      Reflect.getMetadata('THROTTLER:LIMITdefault', AuthController.prototype.login),
+    ).toBe(10);
   });
 
   it('is POST /api/v1/auth/sign-in-options and answers 200', () => {

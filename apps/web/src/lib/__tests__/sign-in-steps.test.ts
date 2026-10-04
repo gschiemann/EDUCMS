@@ -8,22 +8,22 @@
 import {
   fetchSignInOptions,
   INITIAL_SIGN_IN_STEP,
-  KEEP_SIGNED_IN_CHOICE_KEY,
   normalizeEmail,
   parseSignInOptions,
-  readKeepSignedInChoice,
   RESET_EMAIL_HANDOFF_KEY,
   SIGN_IN_OPTIONS_TIMEOUT_MS,
   signInStepReducer,
   ssoLoginUrl,
   stashEmailForReset,
   takeEmailForReset,
-  writeKeepSignedInChoice,
+  type SignInOptions,
   type SignInStep,
   type SsoOption,
 } from '../sign-in-steps';
 
 const SSO: SsoOption = { tenantSlug: 'northfield', provider: 'oidc', label: 'Google' };
+const NO_SSO: SignInOptions = { sso: null, passwordAllowed: true };
+const WITH_SSO: SignInOptions = { sso: SSO, passwordAllowed: true };
 const run = (events: Parameters<typeof signInStepReducer>[1][], from: SignInStep = INITIAL_SIGN_IN_STEP) =>
   events.reduce(signInStepReducer, from);
 
@@ -48,18 +48,42 @@ describe('the step machine', () => {
     expect(
       run([
         { type: 'CONTINUE', email: 'pat@elsewhere.example' },
-        { type: 'OPTIONS', email: 'pat@elsewhere.example', options: { sso: null } },
+        { type: 'OPTIONS', email: 'pat@elsewhere.example', options: NO_SSO },
       ]),
-    ).toEqual({ name: 'method', email: 'pat@elsewhere.example', sso: null, passwordOpen: true });
+    ).toEqual({ name: 'method', email: 'pat@elsewhere.example', sso: null, passwordAllowed: true, passwordOpen: true });
   });
 
   it('single sign-on → it is the step, with the password form closed behind a link', () => {
     const step = run([
       { type: 'CONTINUE', email: 'pat@northfield.example' },
-      { type: 'OPTIONS', email: 'pat@northfield.example', options: { sso: SSO } },
+      { type: 'OPTIONS', email: 'pat@northfield.example', options: WITH_SSO },
     ]);
-    expect(step).toEqual({ name: 'method', email: 'pat@northfield.example', sso: SSO, passwordOpen: false });
+    expect(step).toEqual({
+      name: 'method',
+      email: 'pat@northfield.example',
+      sso: SSO,
+      passwordAllowed: true,
+      passwordOpen: false,
+    });
     expect(signInStepReducer(step, { type: 'USE_PASSWORD' })).toEqual({ ...step, passwordOpen: true });
+  });
+
+  it('an organization that does not allow a password: single sign-on only — the link does nothing', () => {
+    const step = run([
+      { type: 'CONTINUE', email: 'pat@northfield.example' },
+      { type: 'OPTIONS', email: 'pat@northfield.example', options: { sso: SSO, passwordAllowed: false } },
+    ]);
+    expect(step).toMatchObject({ name: 'method', sso: SSO, passwordAllowed: false, passwordOpen: false });
+    expect(signInStepReducer(step, { type: 'USE_PASSWORD' })).toBe(step);
+  });
+
+  it('NEVER A DEAD END: "no password" with no single sign-on to offer still opens the password form', () => {
+    expect(
+      run([
+        { type: 'CONTINUE', email: 'pat@elsewhere.example' },
+        { type: 'OPTIONS', email: 'pat@elsewhere.example', options: { sso: null, passwordAllowed: false } },
+      ]),
+    ).toEqual({ name: 'method', email: 'pat@elsewhere.example', sso: null, passwordAllowed: true, passwordOpen: true });
   });
 
   it('a FAILED lookup (null) falls back to the password form — never a dead end', () => {
@@ -68,7 +92,7 @@ describe('the step machine', () => {
         { type: 'CONTINUE', email: 'pat@northfield.example' },
         { type: 'OPTIONS', email: 'pat@northfield.example', options: null },
       ]),
-    ).toEqual({ name: 'method', email: 'pat@northfield.example', sso: null, passwordOpen: true });
+    ).toEqual({ name: 'method', email: 'pat@northfield.example', sso: null, passwordAllowed: true, passwordOpen: true });
   });
 
   it('a STALE answer — for an address the operator already moved on from — changes nothing', () => {
@@ -76,29 +100,41 @@ describe('the step machine', () => {
     const step = run([
       { type: 'CONTINUE', email: 'first@northfield.example' },
       { type: 'CONTINUE', email: 'second@elsewhere.example' },
-      { type: 'OPTIONS', email: 'first@northfield.example', options: { sso: SSO } },
+      { type: 'OPTIONS', email: 'first@northfield.example', options: WITH_SSO },
     ]);
     expect(step).toEqual({ name: 'checking', email: 'second@elsewhere.example' });
     // An answer arriving on step 1 or step 2 is ignored too.
-    expect(signInStepReducer({ name: 'email' }, { type: 'OPTIONS', email: 'a@b.example', options: { sso: SSO } })).toEqual({
+    expect(signInStepReducer({ name: 'email' }, { type: 'OPTIONS', email: 'a@b.example', options: WITH_SSO })).toEqual({
       name: 'email',
     });
-    const onPassword: SignInStep = { name: 'method', email: 'a@b.example', sso: null, passwordOpen: true };
-    expect(signInStepReducer(onPassword, { type: 'OPTIONS', email: 'a@b.example', options: { sso: SSO } })).toBe(onPassword);
+    const onPassword: SignInStep = {
+      name: 'method',
+      email: 'a@b.example',
+      sso: null,
+      passwordAllowed: true,
+      passwordOpen: true,
+    };
+    expect(signInStepReducer(onPassword, { type: 'OPTIONS', email: 'a@b.example', options: WITH_SSO })).toBe(onPassword);
   });
 
   it('Change returns to the email step from anywhere', () => {
     for (const from of [
       { name: 'checking', email: 'a@b.example' },
-      { name: 'method', email: 'a@b.example', sso: SSO, passwordOpen: false },
-      { name: 'method', email: 'a@b.example', sso: null, passwordOpen: true },
+      { name: 'method', email: 'a@b.example', sso: SSO, passwordAllowed: true, passwordOpen: false },
+      { name: 'method', email: 'a@b.example', sso: null, passwordAllowed: true, passwordOpen: true },
     ] as SignInStep[]) {
       expect(signInStepReducer(from, { type: 'CHANGE' })).toEqual({ name: 'email' });
     }
   });
 
   it('Continue and "Use a password instead" mean nothing on the wrong step', () => {
-    const onPassword: SignInStep = { name: 'method', email: 'a@b.example', sso: null, passwordOpen: true };
+    const onPassword: SignInStep = {
+      name: 'method',
+      email: 'a@b.example',
+      sso: null,
+      passwordAllowed: true,
+      passwordOpen: true,
+    };
     expect(signInStepReducer(onPassword, { type: 'CONTINUE', email: 'other@b.example' })).toBe(onPassword);
     expect(signInStepReducer({ name: 'email' }, { type: 'USE_PASSWORD' })).toEqual({ name: 'email' });
   });
@@ -106,13 +142,25 @@ describe('the step machine', () => {
 
 describe('parseSignInOptions — the answer is never trusted by shape', () => {
   it('reads the documented shape', () => {
-    expect(parseSignInOptions({ password: true, sso: { tenantSlug: 'northfield', provider: 'oidc', label: 'Google' } })).toEqual({
-      sso: SSO,
-    });
+    expect(parseSignInOptions({ password: true, sso: { tenantSlug: 'northfield', provider: 'oidc', label: 'Google' } })).toEqual(
+      WITH_SSO,
+    );
     expect(parseSignInOptions({ password: true, sso: { tenantSlug: 'northfield', provider: 'saml', label: null } })).toEqual({
       sso: { tenantSlug: 'northfield', provider: 'saml', label: null },
+      passwordAllowed: true,
     });
-    expect(parseSignInOptions({ password: true, sso: null })).toEqual({ sso: null });
+    expect(parseSignInOptions({ password: true, sso: null })).toEqual(NO_SSO);
+  });
+
+  it('only an explicit `password: false` WITH single sign-on removes the password form', () => {
+    const sso = { tenantSlug: 'northfield', provider: 'oidc', label: null };
+    expect(parseSignInOptions({ password: false, sso }).passwordAllowed).toBe(false);
+    for (const password of [true, undefined, null, 'false', 0]) {
+      expect(parseSignInOptions({ password, sso }).passwordAllowed).toBe(true);
+    }
+    // Nothing to sign in WITH instead → the password stays.
+    expect(parseSignInOptions({ password: false, sso: null })).toEqual(NO_SSO);
+    expect(parseSignInOptions({ password: false })).toEqual(NO_SSO);
   });
 
   it.each([
@@ -124,11 +172,12 @@ describe('parseSignInOptions — the answer is never trusted by shape', () => {
     ['an unknown provider', { sso: { tenantSlug: 'northfield', provider: 'ldap' } }],
     ['an upper-case provider', { sso: { tenantSlug: 'northfield', provider: 'OIDC' } }],
     ['a missing slug', { sso: { provider: 'oidc' } }],
-    // These two end up in a URL — a slug that could change the path is refused.
-    ['a slug with a slash', { sso: { tenantSlug: '../../auth/login', provider: 'oidc' } }],
-    ['a slug with a query', { sso: { tenantSlug: 'a?next=//evil.example', provider: 'oidc' } }],
-  ])('%s → no single sign-on', (_name, data) => {
-    expect(parseSignInOptions(data)).toEqual({ sso: null });
+    // These two end up in a URL — a slug that could change the path is refused,
+    // and a refused answer never takes the password form with it.
+    ['a slug with a slash', { password: false, sso: { tenantSlug: '../../auth/login', provider: 'oidc' } }],
+    ['a slug with a query', { password: false, sso: { tenantSlug: 'a?next=//evil.example', provider: 'oidc' } }],
+  ])('%s → no single sign-on, password form', (_name, data) => {
+    expect(parseSignInOptions(data)).toEqual(NO_SSO);
   });
 
   it('drops a label that is not a short string, keeping the rest', () => {
@@ -145,7 +194,7 @@ describe('fetchSignInOptions — the lookup can never block a sign-in', () => {
   it('POSTs only the email and returns the parsed answer', async () => {
     const fetchImpl = jest.fn(() => ok({ password: true, sso: { tenantSlug: 'northfield', provider: 'oidc', label: null } }));
     const out = await fetchSignInOptions('https://api.example/api/v1', 'pat@northfield.example', { fetchImpl });
-    expect(out).toEqual({ sso: { tenantSlug: 'northfield', provider: 'oidc', label: null } });
+    expect(out).toEqual({ sso: { tenantSlug: 'northfield', provider: 'oidc', label: null }, passwordAllowed: true });
     const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, { method: string; body: string }];
     expect(url).toBe('https://api.example/api/v1/auth/sign-in-options');
     expect(init.method).toBe('POST');
@@ -206,7 +255,10 @@ describe('ssoLoginUrl', () => {
 });
 
 describe('the "Forgot password?" hand-off', () => {
-  beforeEach(() => sessionStorage.clear());
+  beforeEach(() => {
+    sessionStorage.clear();
+    localStorage.clear();
+  });
 
   it('carries the address once — the reset page consumes it on read', () => {
     stashEmailForReset('  Pat@Northfield.Example ');
@@ -217,7 +269,6 @@ describe('the "Forgot password?" hand-off', () => {
   });
 
   it('never touches localStorage, and stores nothing for an empty address', () => {
-    localStorage.clear();
     stashEmailForReset('   ');
     expect(sessionStorage.length).toBe(0);
     stashEmailForReset('pat@northfield.example');
@@ -227,24 +278,12 @@ describe('the "Forgot password?" hand-off', () => {
   it('survives storage that throws (Safari private mode, locked-down kiosks)', () => {
     const set = jest.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('denied'); });
     const get = jest.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('denied'); });
-    expect(() => stashEmailForReset('pat@northfield.example')).not.toThrow();
-    expect(takeEmailForReset()).toBe('');
-    expect(readKeepSignedInChoice()).toBe(false);
-    expect(() => writeKeepSignedInChoice(true)).not.toThrow();
-    set.mockRestore();
-    get.mockRestore();
-  });
-});
-
-describe('the remembered "Keep me signed in" choice', () => {
-  beforeEach(() => localStorage.clear());
-
-  it('defaults to off, and follows the last choice', () => {
-    expect(readKeepSignedInChoice()).toBe(false);
-    writeKeepSignedInChoice(true);
-    expect(localStorage.getItem(KEEP_SIGNED_IN_CHOICE_KEY)).toBe('1');
-    expect(readKeepSignedInChoice()).toBe(true);
-    writeKeepSignedInChoice(false);
-    expect(readKeepSignedInChoice()).toBe(false);
+    try {
+      expect(() => stashEmailForReset('pat@northfield.example')).not.toThrow();
+      expect(takeEmailForReset()).toBe('');
+    } finally {
+      set.mockRestore();
+      get.mockRestore();
+    }
   });
 });
