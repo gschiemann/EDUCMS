@@ -89,7 +89,7 @@ export function ScreenLocationAtlas({
   const storesByKey = useMemo(() => new Map(stores.map(store => [store.key, store])), [stores]);
   const allPins = useMemo(
     () =>
-      storeLocationPins(stores, logoUrl, selected).map((pin) => {
+      storeLocationPins(stores, logoUrl, selected, (first, more) => t("screens.atlas.nameAndMoreGroups", { name: first, count: more })).map((pin) => {
         const store = storesByKey.get(pin.id)!;
         const mine = store.devices
           .map((s) => rowsById.get(s.id))

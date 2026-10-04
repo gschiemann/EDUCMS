@@ -1751,7 +1751,8 @@
       "groupsNeedAddress": "{count, plural, one {# group needs an address or map pin.} other {# groups need an address or map pin.}}",
       "editGroupLocations": "Edit group locations",
       "onlineNotCurrent": "Online ≠ current",
-      "onlineNotCurrentHint": "Device contact and confirmed content are separate."
+      "onlineNotCurrentHint": "Device contact and confirmed content are separate.",
+      "nameAndMoreGroups": "{name} + {count, plural, one {# group} other {# groups}}"
     },
     "apkUpdateManagerTitle": "Update the companion Manager app. The player is current.",
     "apkUpdateTitle": "Download and install the latest player app on this screen",

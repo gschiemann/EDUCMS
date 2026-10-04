@@ -1751,7 +1751,8 @@
       "groupsNeedAddress": "{count, plural, other {# 个分组需要设置地址或地图标记。}}",
       "editGroupLocations": "编辑分组位置",
       "onlineNotCurrent": "在线 ≠ 内容最新",
-      "onlineNotCurrentHint": "设备在线与内容已确认是两回事。"
+      "onlineNotCurrentHint": "设备在线与内容已确认是两回事。",
+      "nameAndMoreGroups": "{name} + {count} 个分组"
     },
     "apkUpdateManagerTitle": "更新配套的 Manager 应用。播放器已是最新版本。",
     "apkUpdateTitle": "在此屏幕上下载并安装最新的播放器应用",

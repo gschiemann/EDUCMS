@@ -2,7 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 
 const ADDRESS = '100 Market Street, Sacramento, CA';
 const GROUP = { id: 'group-one', name: 'Allora Neighborhood', address: ADDRESS, latitude: 38.58, longitude: -121.49 };
-const LOGO = 'http://localhost:3000/test-brookfield-logo.svg';
+const LOGO = 'http://localhost:3000/test-brand-logo.svg';
 const USER = { id: 'screen-settings-user', email: 'screens@example.com', role: 'SCHOOL_ADMIN', tenantId: 'e2e-settings', canTriggerPanic: false };
 const token = `e30.${Buffer.from(JSON.stringify({ sub: USER.id, exp: 4102444800 })).toString('base64url')}.test`;
 const SCREENS = ['DH43', 'L55VEC'].map((name, i) => ({
@@ -14,7 +14,7 @@ const SCREENS = ['DH43', 'L55VEC'].map((name, i) => ({
 }));
 
 async function openScreens(page: Page, suffix = "", sharedAddress = false) {
-  await page.route('**/test-brookfield-logo.svg', route => route.fulfill({
+  await page.route('**/test-brand-logo.svg', route => route.fulfill({
     contentType: 'image/svg+xml',
     body: '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="#063051"/><text x="20" y="80" fill="white" font-size="85" font-family="sans-serif">B</text></svg>',
   }));
@@ -33,8 +33,8 @@ async function openScreens(page: Page, suffix = "", sharedAddress = false) {
       '/auth/me': USER, '/users/me': USER, '/branding/me': { logoUrl: LOGO },
       '/tenants': [{ id: USER.tenantId, name: 'Screen settings', slug: USER.tenantId }],
       '/tenants/accessible': [{ id: USER.tenantId, name: 'Screen settings', slug: USER.tenantId }],
-      '/screens': sharedAddress ? SCREENS.map((screen, i) => i ? { ...screen, screenGroupId: 'group-shared', screenGroup: { ...GROUP, id: 'group-shared', name: 'Tesoro Neighborhood' } } : screen) : SCREENS,
-      '/screen-groups': [GROUP, ...(sharedAddress ? [{ ...GROUP, id: 'group-shared', name: 'Tesoro Neighborhood' }] : []), { id: 'group-empty', name: 'No location yet', address: null }],
+      '/screens': sharedAddress ? SCREENS.map((screen, i) => i ? { ...screen, screenGroupId: 'group-shared', screenGroup: { ...GROUP, id: 'group-shared', name: 'Maple Court' } } : screen) : SCREENS,
+      '/screen-groups': [GROUP, ...(sharedAddress ? [{ ...GROUP, id: 'group-shared', name: 'Maple Court' }] : []), { id: 'group-empty', name: 'No location yet', address: null }],
       '/schedules': [], '/playlists': [],
       '/player/latest-version': { versionName: '1.1.20', versionCode: 10120, managerVersionName: '1.0.24' },
       '/screens/hardware-catalog': { models: [] },
@@ -204,7 +204,7 @@ test('groups sharing an address keep named pin and detail headings with the addr
   const details = page.getByRole('group', { name: 'Allora Neighborhood + 1 group details' });
   await expect(details.getByText('Allora Neighborhood + 1 group', { exact: true })).toBeVisible();
   await expect(details.getByRole('heading', { name: 'Allora Neighborhood', exact: true })).toBeVisible();
-  await expect(details.getByRole('heading', { name: 'Tesoro Neighborhood', exact: true })).toBeVisible();
+  await expect(details.getByRole('heading', { name: 'Maple Court', exact: true })).toBeVisible();
   await expect(details.getByText(ADDRESS, { exact: true })).toBeVisible();
   await page.screenshot({ path: info.outputPath('shared-location-names.png'), fullPage: true });
 });

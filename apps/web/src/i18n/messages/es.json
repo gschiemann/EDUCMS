@@ -1751,7 +1751,8 @@
       "groupsNeedAddress": "{count, plural, one {# grupo necesita una dirección o un marcador en el mapa.} other {# grupos necesitan una dirección o un marcador en el mapa.}}",
       "editGroupLocations": "Editar ubicaciones de grupos",
       "onlineNotCurrent": "En línea ≠ al día",
-      "onlineNotCurrentHint": "El contacto del dispositivo y el contenido confirmado son cosas distintas."
+      "onlineNotCurrentHint": "El contacto del dispositivo y el contenido confirmado son cosas distintas.",
+      "nameAndMoreGroups": "{name} + {count, plural, one {# grupo} other {# grupos}}"
     },
     "apkUpdateManagerTitle": "Actualiza la aplicación complementaria Manager. El reproductor ya está al día.",
     "apkUpdateTitle": "Descarga e instala la aplicación de reproductor más reciente en esta pantalla",
