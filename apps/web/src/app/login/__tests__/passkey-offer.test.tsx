@@ -69,11 +69,15 @@ function mockFetchByPath(routes: Record<string, Reply>): Call[] {
   const calls: Call[] = [];
   const keys = Object.keys(routes).sort((a, b) => b.length - a.length);
   (global as unknown as { fetch: unknown }).fetch = jest.fn((url: string, init?: RequestInit) => {
-    calls.push({
-      url: String(url),
-      body: init?.body ? JSON.parse(String(init.body)) : undefined,
-      headers: (init?.headers ?? {}) as Record<string, string>,
-    });
+    // The identifier-first domain lookup (2026-10-04) has its own suite; it
+    // answers 404 here → password form, and stays out of `calls`.
+    if (!String(url).endsWith('/auth/sign-in-options')) {
+      calls.push({
+        url: String(url),
+        body: init?.body ? JSON.parse(String(init.body)) : undefined,
+        headers: (init?.headers ?? {}) as Record<string, string>,
+      });
+    }
     const key = keys.find((k) => String(url).endsWith(k));
     const r: Reply = key ? routes[key] : { ok: false, status: 404, body: {} };
     if (r.reject) return Promise.reject(new TypeError('Failed to fetch'));
@@ -104,8 +108,12 @@ function domError(name: string): Error {
 }
 
 async function typePasswordAndSubmit() {
+  // Identifier-first (2026-10-04): the email, Continue, then the password.
   fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'admin@school.edu' } });
-  fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'hunter2hunter2' } });
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: /^Continue$/i }));
+  });
+  fireEvent.change(await screen.findByLabelText('Password'), { target: { value: 'hunter2hunter2' } });
   await act(async () => {
     fireEvent.click(screen.getByRole('button', { name: /^Sign in$/i }));
   });
@@ -304,8 +312,9 @@ describe('the walk-through after password + authenticator code', () => {
     const pushState = jest.spyOn(window.history, 'pushState');
     await signInWithPasswordAndCode();
     await screen.findByRole('button', { name: /Set up passkey/i });
-    // One entry of our own, so Back has something to pop.
-    expect(pushState).toHaveBeenCalledTimes(1);
+    // One entry for the offer, so Back has something to pop — on top of the
+    // one the password step pushed (identifier-first, 2026-10-04).
+    expect(pushState).toHaveBeenCalledTimes(2);
 
     act(() => { window.dispatchEvent(new PopStateEvent('popstate', { state: null })); });
     // After Back our entry is already gone: the destination is PUSHED.
@@ -402,7 +411,9 @@ describe('a FIRST factor — the one-time backup codes come before Continue', ()
     act(() => { window.dispatchEvent(new PopStateEvent('popstate', { state: null })); });
     expect(push).not.toHaveBeenCalled();
     expect(replace).not.toHaveBeenCalled();
-    expect(pushState).toHaveBeenCalledTimes(2); // the entry was re-armed
+    // step 2's entry + the offer's entry + the re-armed one
+    expect(pushState).toHaveBeenCalledTimes(3);
+    pushState.mockRestore();
     expect(screen.getByText(CODES[0])).toBeInTheDocument();
 
     const saved = screen.getByRole('button', { name: /I've saved them/i });
@@ -459,9 +470,13 @@ describe('"Sign in with a passkey" on a device that has none', () => {
   it('no red banner — a calm hint that points at the password and promises the walk-through', async () => {
     mockFetchByPath({ '/auth/passkeys/login/options': { body: { options: GET_OPTIONS, challengeId: 'ch-1' } } });
     startAuthentication.mockRejectedValue(domError('NotAllowedError'));
-    const { container } = render(<LoginPage />);
+    // Rendered inside act: the link appears one promise tick after mount
+    // (the "can this browser autofill passkeys?" probe), and a `findBy`
+    // awaited INSIDE an act scope never sees an update that scope is holding.
+    let container!: HTMLElement;
+    await act(async () => { ({ container } = render(<LoginPage />)); });
     await act(async () => {
-      fireEvent.click(await screen.findByRole('button', { name: /Sign in with a passkey/i }));
+      fireEvent.click(screen.getByRole('button', { name: /Sign in with a passkey/i }));
     });
 
     expect(

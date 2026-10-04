@@ -45,7 +45,10 @@ type Reply = { ok?: boolean; status?: number; body?: any };
 function mockFetchByPath(routes: Record<string, Reply>) {
   const calls: Array<{ url: string; body: any }> = [];
   (global as any).fetch = jest.fn((url: string, init: any) => {
-    calls.push({ url, body: init?.body ? JSON.parse(init.body) : undefined });
+    // The identifier-first domain lookup (2026-10-04) has its own suite
+    // (sign-in-steps.test.tsx). It answers 404 here → password form, and is
+    // kept out of `calls` so the contracts below stay index-exact.
+    if (!String(url).endsWith('/auth/sign-in-options')) calls.push({ url, body: init?.body ? JSON.parse(init.body) : undefined });
     const key = Object.keys(routes).find((k) => String(url).endsWith(k));
     const r: Reply = key ? routes[key] : { ok: false, status: 404, body: {} };
     return Promise.resolve({
@@ -58,8 +61,12 @@ function mockFetchByPath(routes: Record<string, Reply>) {
 }
 
 async function signIn() {
+  // Identifier-first (2026-10-04): the email, Continue, then the password.
   fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'teacher@school.edu' } });
-  fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'hunter2hunter2' } });
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: /^Continue$/i }));
+  });
+  fireEvent.change(await screen.findByLabelText('Password'), { target: { value: 'hunter2hunter2' } });
   await act(async () => {
     fireEvent.click(screen.getByRole('button', { name: /^Sign in$/i }));
   });
@@ -162,8 +169,8 @@ describe('LoginPage — ACC-03 forced-MFA enrollment', () => {
       fireEvent.click(screen.getByRole('button', { name: /Finish sign-in/i }));
     });
 
-    // Back to the front door with an explanation — never a dead end.
-    expect(await screen.findByLabelText('Email')).toBeInTheDocument();
+    // Back to the password step with an explanation — never a dead end.
+    expect(await screen.findByLabelText('Password')).toBeInTheDocument();
     expect(screen.getByText(/timed out/i)).toBeInTheDocument();
   });
 

@@ -1,12 +1,20 @@
 "use client";
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { MonitorPlay, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { API_URL } from '@/lib/api-url';
+import { takeEmailForReset } from '@/lib/sign-in-steps';
 
 export default function RequestPasswordResetPage() {
   const [email, setEmail] = useState('');
+  // The sign-in page hands over the address the operator already typed
+  // ("Forgot password?" on its password step) so it is not typed twice. Read
+  // after mount (no storage on the server) and consumed on read.
+  useEffect(() => {
+    const handed = takeEmailForReset();
+    if (handed) setEmail((current) => current || handed);
+  }, []);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [submitted, setSubmitted] = useState(false);

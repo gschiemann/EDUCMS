@@ -37,6 +37,11 @@ import { API_URL } from '@/lib/api-url';
 function mockFetchSequence(handlers: Array<(url: string, init: any) => any>) {
   let call = 0;
   (global as any).fetch = jest.fn((url: string, init: any) => {
+    // The identifier-first domain lookup (2026-10-04) is not one of the
+    // ordered calls these tests script: it answers 404 → password form.
+    if (String(url).endsWith('/auth/sign-in-options')) {
+      return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) });
+    }
     const h = handlers[Math.min(call, handlers.length - 1)];
     call += 1;
     const r = h(url, init);
@@ -49,8 +54,12 @@ function mockFetchSequence(handlers: Array<(url: string, init: any) => any>) {
 }
 
 async function fillCredentialsAndSubmit() {
+  // Identifier-first (2026-10-04): the email, Continue, then the password.
   fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'admin@school.edu' } });
-  fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'hunter2hunter2' } });
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: /^Continue$/i }));
+  });
+  fireEvent.change(await screen.findByLabelText('Password'), { target: { value: 'hunter2hunter2' } });
   // EULA is pre-checked from a prior localStorage write in beforeEach.
   await act(async () => {
     fireEvent.click(screen.getByRole('button', { name: /^Sign in$/i }));

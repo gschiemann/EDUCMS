@@ -1,10 +1,12 @@
-// TODO(a11y): Sprint 2 — replace autoFocus on email input with useEffect-based focus management.
+// autoFocus is deliberate on this page: each sign-in step mounts fresh and its
+// first field (or primary button) must take focus, or a keyboard / screen-
+// reader operator is left at the top of the document after every step change.
 /* eslint-disable jsx-a11y/no-autofocus */
 "use client";
 
-import { Fragment, Suspense, useEffect, useRef, useState } from 'react';
+import { Fragment, Suspense, useEffect, useReducer, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Loader2, AlertCircle, KeyRound, ShieldCheck, ArrowLeft, Fingerprint, CheckCircle2 } from 'lucide-react';
+import { Loader2, AlertCircle, ShieldCheck, ArrowLeft, Fingerprint, CheckCircle2 } from 'lucide-react';
 import type {
   PublicKeyCredentialCreationOptionsJSON,
   RegistrationResponseJSON,
@@ -19,9 +21,11 @@ import { LanguageSwitcherInline } from '@/components/layout/LanguageMenu';
 import { adoptRememberedSession } from '@/lib/session-client';
 import {
   cancelPasskeyCeremony,
+  conditionalPasskeyAvailable,
   createPasskey,
   describePasskeyError,
   getPasskey,
+  getPasskeyFromAutofill,
   guessDeviceLabel,
   passkeysSupported,
   platformPasskeyAvailable,
@@ -34,10 +38,30 @@ import {
   snoozePasskeyOffer,
   type PasskeyMethod,
 } from '@/lib/passkey-offer';
+import {
+  fetchSignInOptions,
+  INITIAL_SIGN_IN_STEP,
+  normalizeEmail,
+  readKeepSignedInChoice,
+  signInStepReducer,
+  leaveForSingleSignOn,
+  ssoLoginUrl,
+  stashEmailForReset,
+  writeKeepSignedInChoice,
+} from '@/lib/sign-in-steps';
 
 const INPUT_CLS =
   'w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 ' +
   'placeholder:text-slate-400 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition';
+
+/** The ONE primary action of a sign-in step. */
+const PRIMARY_BTN_CLS =
+  'w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white ' +
+  'text-sm font-semibold py-2.5 px-4 rounded-lg transition-colors flex items-center justify-center gap-2';
+
+/** A low-emphasis alternative under the primary action. */
+const LINK_BTN_CLS =
+  'text-xs font-semibold text-indigo-600 hover:text-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed';
 
 /**
  * The post-sign-in passkey offer (2026-09-22) — one screen between a finished
@@ -67,6 +91,9 @@ interface PasskeyOfferState {
   method: PasskeyMethod;
 }
 
+/** The history entry pushed on entering step 2, so the browser's Back returns to step 1. */
+const STEP_HISTORY_STATE = { venueosSignInStep: 2 };
+
 /** A history entry we push while the offer is up, so Back can be answered. */
 const OFFER_HISTORY_STATE = { venueosPasskeyOffer: true };
 
@@ -94,7 +121,18 @@ function LoginContent() {
   // (default VenueOS; EDU CMS only when NEXT_PUBLIC_CMS_BRAND=educms
   // is explicitly set).
   const brand = getClientBrand();
-  const [email, setEmail] = useState('');
+  // ── IDENTIFIER-FIRST SIGN-IN (2026-10-04) ────────────────────────────
+  // Owner: "the sign in seems so confusing, so many options… can't you just
+  // show what's enabled for the user". One field first (the email), then only
+  // what applies to it. The step machine and the lookup are pure and live in
+  // `lib/sign-in-steps.ts`; this page renders them.
+  //
+  // The typed address stays in component state — never the URL, never
+  // localStorage — so "Change" (and the browser's Back) return to it.
+  const [emailInput, setEmailInput] = useState('');
+  const [step, dispatchStep] = useReducer(signInStepReducer, INITIAL_SIGN_IN_STEP);
+  /** The address every handler below uses: what step 2 was opened for, else what is typed. */
+  const email = step.name === 'email' ? normalizeEmail(emailInput) : step.email;
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -103,27 +141,57 @@ function LoginContent() {
   const searchParams = useSearchParams();
   const redirectTarget = searchParams.get('redirect');
   const authReason = searchParams.get('reason'); // 'session-expired' | 'explicit-logout'
+  // Support-only: `/login?sso=1` shows the manual "organization slug" entry
+  // that used to sit behind the always-visible "Sign in with SSO" button.
+  // There is deliberately no control on the page that leads here.
+  const manualSso = searchParams.get('sso') === '1';
   const [rememberMe, setRememberMe] = useState(false);
-  // EULA v1.0 acceptance. Persisted per-browser in localStorage so a
-  // returning user isn't asked again on every login; the version is
-  // part of the key so bumping the EULA forces re-acceptance.
+  // The last "Keep me signed in" choice made on this browser. Step 1 has no
+  // checkbox, so a passkey picked from the email field would otherwise always
+  // be a short session; on step 2 the box simply starts where it was left.
+  // Read after mount (no storage on the server).
+  useEffect(() => { if (readKeepSignedInChoice()) setRememberMe(true); }, []);
+  // EULA v1.0 acceptance. Persisted per-browser in localStorage; the version
+  // is part of the key so bumping the EULA forces re-acceptance.
+  //
+  // The click-through is exactly as binding as it has always been for a
+  // browser that has NOT accepted this version: the checkbox is shown on
+  // step 2 and nothing signs in without it. What changed (2026-10-04) is that
+  // a browser that HAS accepted is no longer shown a pre-ticked checkbox on
+  // every visit — it gets one quiet line under the button instead.
   const EULA_VERSION = '1.0';
   const EULA_KEY = `edu_cms_eula_accepted_v${EULA_VERSION}`;
-  const [eulaAccepted, setEulaAccepted] = useState(false);
-  // Rehydrate on mount so users who've accepted previously don't see
-  // the checkbox block the button. We still SHOW the checkbox (pre-
-  // checked) so it's never silently auto-accepted on a shared device.
+  /** This browser already accepted this EULA version (read after mount). */
+  const [eulaOnDevice, setEulaOnDevice] = useState(false);
+  /** The checkbox, shown only when `eulaOnDevice` is false. */
+  const [eulaChecked, setEulaChecked] = useState(false);
+  const eulaAccepted = eulaOnDevice || eulaChecked;
+  // Read AFTER mount, never during render: localStorage does not exist on the
+  // server, and a hydration mismatch here would take the form with it.
   useEffect(() => {
     try {
       if (typeof window !== 'undefined' && window.localStorage.getItem(EULA_KEY) === 'yes') {
-        setEulaAccepted(true);
+        setEulaOnDevice(true);
       }
     } catch { /* localStorage unavailable */ }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const [ssoOpen, setSsoOpen] = useState(false);
+  /** Record the acceptance the operator just gave (or re-confirm an existing one). */
+  const recordEulaAcceptance = () => {
+    try {
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(EULA_KEY, 'yes');
+        window.localStorage.setItem(`${EULA_KEY}_at`, new Date().toISOString());
+        window.localStorage.setItem(`${EULA_KEY}_by`, email);
+      }
+    } catch { /* best-effort */ }
+  };
   const [ssoSlug, setSsoSlug] = useState('');
   const [ssoChecking, setSsoChecking] = useState(false);
+  /** Step 2's single sign-on button was pressed; the browser is leaving. */
+  const [ssoRedirecting, setSsoRedirecting] = useState(false);
+  /** Polite, screen-reader-only note of what the page just became. */
+  const [stepAnnouncement, setStepAnnouncement] = useState('');
 
   // ── MFA challenge step ──────────────────────────────────────────
   // When /auth/login responds { mfaRequired: true, mfaToken }, the
@@ -254,14 +322,9 @@ function LoginContent() {
   // behind, the offer is prepared here BEFORE the redirect, and callers await
   // it so their "Signing in…" state holds until the next screen is ready.
   const completeLogin = async (data: any): Promise<void> => {
-    try {
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem(EULA_KEY, 'yes');
-        window.localStorage.setItem(`${EULA_KEY}_at`, new Date().toISOString());
-        window.localStorage.setItem(`${EULA_KEY}_by`, email);
-      }
-    } catch { /* best-effort */ }
+    recordEulaAcceptance();
     clog.info('auth', 'EULA accepted', { version: EULA_VERSION, userId: data.user?.id });
+    writeKeepSignedInChoice(rememberMe);
     // Pass the "Keep me logged in" choice. The store keeps the ACCESS token
     // per-tab only (it is <= 1h now); durability comes from the step below.
     login(data.access_token, data.user, rememberMe);
@@ -790,12 +853,48 @@ function LoginContent() {
   };
 
   /**
-   * PASSWORDLESS — no email, no password, just the authenticator.
+   * PASSWORDLESS, second half — trade a passkey assertion for the session.
    *
-   * Honours the SAME gates the password path does: the EULA checkbox (same
-   * message — a second way in must not be a way around the agreement) and
-   * "Keep me logged in". The verify response is fed through
-   * applyLoginResponse, because it can still be a second step.
+   * Shared by BOTH ways an assertion can arrive: the email field's autofill
+   * (conditional mediation) and the "Sign in with a passkey" link. The verify
+   * response is fed through applyLoginResponse, because it can still be a
+   * second step. Returns nothing; every outcome is a state change.
+   */
+  const verifyPasswordlessAssertion = async (
+    challengeId: unknown,
+    assertion: unknown,
+  ): Promise<void> => {
+    try {
+      const res = await fetch(`${API_URL}/auth/passkeys/login/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ challengeId, response: assertion, rememberMe }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        clog.warn('auth', 'Passkey sign-in rejected', { status: res.status, code: data?.code });
+        setError(passkeyHttpError(res.status, data));
+        return;
+      }
+      await applyLoginResponse(res, data, 'passkey', t('passkeyRejected'));
+    } catch {
+      setError(
+        isLikelyMisconfigured() ? t('serverMissingApiUrl') : t('serverUnreachableAt', { url: API_URL }),
+      );
+    }
+  };
+
+  /**
+   * PASSWORDLESS — the "Sign in with a passkey" link (step 1).
+   *
+   * Shown ONLY where the browser cannot offer passkeys from the email field's
+   * own autofill; where it can, the autofill request below is the way in and
+   * there is no link at all.
+   *
+   * Honours the SAME gate the password path does: the EULA (a second way in
+   * must not be a way around the agreement). Step 1 has no checkbox, so the
+   * link is only rendered once this browser has accepted — the guard here is
+   * the belt to that.
    */
   const handlePasswordlessPasskey = async () => {
     if (!eulaAccepted) {
@@ -837,18 +936,7 @@ function LoginContent() {
         return;
       }
 
-      const res = await fetch(`${API_URL}/auth/passkeys/login/verify`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ challengeId: optData.challengeId, response: assertion, rememberMe }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        clog.warn('auth', 'Passkey sign-in rejected', { status: res.status, code: data?.code });
-        setError(passkeyHttpError(res.status, data));
-        return;
-      }
-      await applyLoginResponse(res, data, 'passkey', t('passkeyRejected'));
+      await verifyPasswordlessAssertion(optData.challengeId, assertion);
     } catch {
       setError(
         isLikelyMisconfigured() ? t('serverMissingApiUrl') : t('serverUnreachableAt', { url: API_URL }),
@@ -857,6 +945,110 @@ function LoginContent() {
       setPasskeyBusy(false);
     }
   };
+
+  // ── PASSKEY AUTOFILL on the email field (conditional mediation) ─────────
+  // While step 1 is on screen, a pending `navigator.credentials.get({
+  // mediation: 'conditional' })` lets the BROWSER list this device's passkey
+  // in the email field's own suggestions. Someone who has one picks it and is
+  // signed in; everyone else sees nothing extra — no button, no explainer.
+  //
+  // What makes this safe to leave pending:
+  //  • It shows nothing and submits nothing by itself. The promise settles
+  //    only when the person picks a credential in the browser's UI and
+  //    passes its biometric/PIN check.
+  //  • It is not an account oracle: the options are the same discoverable
+  //    request for every visitor (no email is sent), and which passkeys exist
+  //    is known only to the browser, never to this page, until one is used.
+  //  • It can never sit in front of another ceremony: it is registered with
+  //    the library's single abort service, so the second-factor passkey
+  //    sheet (or the post-sign-in offer) aborts it before starting, and it is
+  //    aborted explicitly the moment the operator presses Continue or leaves.
+  //  • The EULA gate holds: it is armed only in a browser that has already
+  //    accepted the agreement (step 1 has no checkbox to tick).
+  const [conditionalAvailable, setConditionalAvailable] = useState<boolean | null>(null);
+  /** Bumped to re-arm the autofill request after a picked passkey did not end in a session. */
+  const [conditionalEpoch, setConditionalEpoch] = useState(0);
+  /** A conditional request started by the effect below is still pending. */
+  const conditionalPendingRef = useRef(false);
+  // The latest verify handler, for an effect whose request can outlive renders.
+  const verifyPasswordlessRef = useRef(verifyPasswordlessAssertion);
+  useEffect(() => { verifyPasswordlessRef.current = verifyPasswordlessAssertion; });
+
+  useEffect(() => {
+    if (!passkeyCapable) return;
+    let cancelled = false;
+    void conditionalPasskeyAvailable().then((ok) => { if (!cancelled) setConditionalAvailable(ok); });
+    return () => { cancelled = true; };
+  }, [passkeyCapable]);
+
+  /** Step 1 is what is on screen, with nothing else in progress. */
+  const onEmailStep =
+    step.name === 'email' && !manualSso && !mfaToken && !passkeyOffer && !pendingBackupCodes;
+  const conditionalArmed = onEmailStep && conditionalAvailable === true && eulaOnDevice;
+
+  useEffect(() => {
+    if (!conditionalArmed) return;
+    let cancelled = false;
+    void (async () => {
+      let optData: { options?: Parameters<typeof getPasskeyFromAutofill>[0]; challengeId?: unknown } = {};
+      try {
+        const optRes = await fetch(`${API_URL}/auth/passkeys/login/options`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        });
+        optData = await optRes.json().catch(() => ({}));
+        // Refused or throttled: no autofill this time. Never an error on
+        // screen — nobody asked for anything yet.
+        if (!optRes.ok || !optData?.options) return;
+      } catch {
+        return;
+      }
+      if (cancelled || !optData.options) return;
+
+      let assertion;
+      conditionalPendingRef.current = true;
+      try {
+        assertion = await getPasskeyFromAutofill(optData.options);
+      } catch (err) {
+        // Aborted (Continue, leaving, another ceremony) or unsupported after
+        // all. Quiet by design; a real failure after a pick is reported by
+        // the verify step, not here.
+        clog.info('auth', 'Passkey autofill ended without a credential', {
+          reason: describePasskeyError(err, 'get').reason,
+        });
+        return;
+      } finally {
+        conditionalPendingRef.current = false;
+      }
+      if (cancelled) return;
+
+      // The operator picked a passkey in the browser's own UI.
+      setError('');
+      setPasskeyHint(null);
+      setPasskeyBusy(true);
+      clog.info('auth', 'Passkey autofill sign-in', { redirectTarget });
+      try {
+        await verifyPasswordlessRef.current(optData.challengeId, assertion);
+      } finally {
+        setPasskeyBusy(false);
+        // If that did not end in a session or a next step, this effect is
+        // still armed with a spent request — arm a fresh one.
+        if (!cancelled) setConditionalEpoch((n) => n + 1);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      // Abort ONLY a request this effect started and that is still waiting.
+      // A blanket cancel here could abort a modal ceremony that began after
+      // the autofill request had already settled.
+      if (conditionalPendingRef.current) {
+        conditionalPendingRef.current = false;
+        cancelPasskeyCeremony();
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conditionalArmed, conditionalEpoch]);
 
   /**
    * ACC-03 — start forced enrollment. Trades the partial mfaToken for a
@@ -1059,8 +1251,118 @@ function LoginContent() {
     }
   };
 
+  // ── Step 1 → step 2 ─────────────────────────────────────────────────────
+  /**
+   * "Continue". Asks the API what applies to this email's DOMAIN (single
+   * sign-on or not — never anything about an account) and opens step 2.
+   * `fetchSignInOptions` resolves `null` on any failure or after 3 s, which
+   * the step machine reads as "password form": this lookup can never stand
+   * between a person and signing in.
+   */
+  const handleContinue = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const value = normalizeEmail(emailInput);
+    if (!value || step.name !== 'email') return;
+    setError('');
+    setPasskeyHint(null);
+    warnIfMisconfigured();
+    // Leaving step 1 disarms the autofill request (its effect cleanup aborts
+    // it) — the operator has chosen to continue without a passkey.
+    dispatchStep({ type: 'CONTINUE', email: value });
+    const options = await fetchSignInOptions(API_URL, value);
+    dispatchStep({ type: 'OPTIONS', email: value, options });
+  };
+
+  /** Back to step 1 with the address still in the field. */
+  const backToEmailStep = () => {
+    dispatchStep({ type: 'CHANGE' });
+    setPassword('');
+    setError('');
+    setSsoRedirecting(false);
+  };
+
+  // The browser's Back returns from step 2 to step 1 instead of leaving the
+  // page: one synthetic history entry per visit to step 2 (the same device the
+  // passkey offer uses).
+  const stepHistoryPushedRef = useRef(false);
+  const stepBackRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    stepBackRef.current = () => {
+      // The passkey offer answers its own Back (it pushed its own entry).
+      if (passkeyOffer) return;
+      stepHistoryPushedRef.current = false;
+      // One-time backup codes are on screen: Back must not take them away.
+      if (pendingBackupCodes) return;
+      if (mfaToken) cancelMfa();
+      backToEmailStep();
+    };
+  });
+  const onMethodStep = step.name === 'method';
+  useEffect(() => {
+    if (!onMethodStep) return;
+    if (!stepHistoryPushedRef.current) {
+      try {
+        window.history.pushState(STEP_HISTORY_STATE, '');
+        stepHistoryPushedRef.current = true;
+      } catch {
+        /* no history API — "Change" still gets back */
+      }
+    }
+    const onPop = () => stepBackRef.current();
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, [onMethodStep]);
+
+  /** "Change" next to the address on step 2. */
+  const handleChangeEmail = () => {
+    if (stepHistoryPushedRef.current) {
+      // Drop our own history entry so Back from step 1 leaves the page, as it
+      // always has. The popstate it raises finds step 1 already showing.
+      stepHistoryPushedRef.current = false;
+      try { window.history.back(); } catch { /* nothing to drop */ }
+    }
+    backToEmailStep();
+  };
+
+  // Say what the page just became — politely, and only on a CHANGE (the
+  // first paint of step 1 is not announced; the page title already was).
+  const announcedStepRef = useRef<string>('email');
+  const stepKind =
+    step.name === 'method' ? (step.sso && !step.passwordOpen ? 'sso' : 'password') : 'email';
+  useEffect(() => {
+    if (announcedStepRef.current === stepKind) return;
+    announcedStepRef.current = stepKind;
+    setStepAnnouncement(
+      stepKind === 'sso'
+        ? t('stepSsoAnnounce', { email })
+        : stepKind === 'password'
+          ? t('stepPasswordAnnounce', { email })
+          : t('stepEmailAnnounce'),
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stepKind]);
+
+  /**
+   * Step 2, single sign-on. The API 302s to the organization's identity
+   * provider. The EULA gate is the same one the password form has.
+   */
+  const handleSsoContinue = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (step.name !== 'method' || !step.sso) return;
+    if (!eulaAccepted) {
+      setError(t('eulaRequired'));
+      return;
+    }
+    setError('');
+    recordEulaAcceptance();
+    setSsoRedirecting(true);
+    clog.info('auth', 'SSO sign-in started', { provider: step.sso.provider });
+    leaveForSingleSignOn(ssoLoginUrl(API_URL, step.sso));
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (step.name !== 'method') return;
     if (!eulaAccepted) {
       setError(t('eulaRequired'));
       return;
@@ -1174,6 +1476,89 @@ function LoginContent() {
       </div>
     </form>
   );
+
+  // ── Shared pieces of the two sign-in steps ─────────────────────────────
+  /** Errors are announced the moment they appear. */
+  const errorBanner = error ? (
+    <div role="alert" className="flex items-start gap-2 px-3 py-2.5 bg-rose-50 border border-rose-200 rounded-lg">
+      <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" aria-hidden />
+      <p className="text-xs text-rose-700 font-medium">{error}</p>
+    </div>
+  ) : null;
+
+  /** Why the operator is back on this page, when the URL says so. */
+  const reasonBanners = error ? null : (
+    <>
+      {/* 2026-09-11 — the invite was ACCEPTED and the password is set, but
+          this organization requires two-factor, so there is no session yet.
+          Say that plainly: without it the operator lands on a bare login form
+          with no idea whether their invite worked. */}
+      {authReason === 'invite-mfa' && (
+        <div className="flex items-start gap-2 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-lg">
+          <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" aria-hidden />
+          <p className="text-xs text-amber-800 font-medium">{t('inviteMfaSetupNeeded')}</p>
+        </div>
+      )}
+      {authReason === 'session-expired' && (
+        <div className="flex items-start gap-2 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-lg">
+          <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" aria-hidden />
+          <p className="text-xs text-amber-800 font-medium">{t('sessionExpired')}</p>
+        </div>
+      )}
+    </>
+  );
+
+  /** Step 2: who is signing in, and the way back to step 1. */
+  const identityRow = (
+    <div className="flex items-center justify-between gap-3 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg">
+      <span className="min-w-0 break-all text-sm text-slate-900" data-testid="sign-in-email">{email}</span>
+      <button
+        type="button"
+        onClick={handleChangeEmail}
+        aria-label={t('changeEmail')}
+        className="shrink-0 text-xs font-semibold text-indigo-600 hover:text-indigo-700"
+      >
+        {t('change')}
+      </button>
+    </div>
+  );
+
+  const eulaLink = (chunks: React.ReactNode) => (
+    <Link
+      href="/terms/eula"
+      target="_blank"
+      className="text-indigo-600 hover:text-indigo-700 underline underline-offset-2 font-semibold"
+    >
+      {chunks}
+    </Link>
+  );
+
+  /**
+   * EULA acceptance — REQUIRED, for a browser that has not accepted this
+   * version. Unticked by default, and both step-2 submit handlers refuse
+   * without it. Once accepted here it is not rendered again (`eulaNote`).
+   */
+  const eulaCheckbox = eulaOnDevice ? null : (
+    <label className="flex items-start gap-2 cursor-pointer select-none">
+      <input
+        type="checkbox"
+        checked={eulaChecked}
+        onChange={e => setEulaChecked(e.target.checked)}
+        className="w-4 h-4 mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer shrink-0"
+        aria-describedby="eula-text"
+      />
+      <span id="eula-text" className="text-[11px] leading-snug text-slate-600">
+        {t.rich('eulaAgree', { link: eulaLink })}
+      </span>
+    </label>
+  );
+
+  /** The quiet line a browser that already accepted gets instead. */
+  const eulaNote = eulaOnDevice ? (
+    <p className="text-center text-[11px] leading-snug text-slate-500" data-testid="eula-accepted-note">
+      {t.rich('eulaAcceptedNote', { link: eulaLink })}
+    </p>
+  ) : null;
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#fafbfc] px-4 py-10">
@@ -1623,229 +2008,236 @@ function LoginContent() {
               </div>
             ) : codeChallengeForm
           ) : (
-          <>
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <label htmlFor="login-email" className="block text-xs font-semibold text-slate-700 mb-1.5">{t('email')}</label>
-              <input
-                id="login-email"
-                type="email"
-                required
-                autoFocus
-                autoComplete="email"
-                placeholder={t('emailPlaceholder')}
-                className={INPUT_CLS}
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-              />
-            </div>
-            <div>
-              <label htmlFor="login-password" className="block text-xs font-semibold text-slate-700 mb-1.5">{t('password')}</label>
-              <input
-                id="login-password"
-                type="password"
-                required
-                autoComplete="current-password"
-                placeholder="••••••••"
-                className={INPUT_CLS}
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-              />
-            </div>
-
-            <div className="flex items-center justify-between gap-2">
-              <label className="flex items-center gap-2 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={rememberMe}
-                  onChange={e => setRememberMe(e.target.checked)}
-                  className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                />
-                <span className="text-xs font-medium text-slate-600">{t('keepSignedIn')}</span>
-              </label>
-              <Link
-                href="/reset-password/request"
-                className="text-xs font-semibold text-indigo-600 hover:text-indigo-700"
-              >
-                {t('forgotPassword')}
-              </Link>
-            </div>
-
-            {/* EULA acceptance — required. Gates the Sign-in button. */}
-            <label className="flex items-start gap-2 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={eulaAccepted}
-                onChange={e => setEulaAccepted(e.target.checked)}
-                className="w-4 h-4 mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer shrink-0"
-                required
-                aria-describedby="eula-text"
-              />
-              <span id="eula-text" className="text-[11px] leading-snug text-slate-600">
-                {t.rich('eulaAgree', {
-                  link: (chunks) => (
-                    <Link
-                      href="/terms/eula"
-                      target="_blank"
-                      className="text-indigo-600 hover:text-indigo-700 underline underline-offset-2 font-semibold"
-                    >
-                      {chunks}
-                    </Link>
-                  ),
-                })}
-              </span>
-            </label>
-
-            {/* 2026-09-11 — the invite was ACCEPTED and the password is set,
-                but this organization requires two-factor, so there is no
-                session yet. Say that plainly: without it the operator lands on
-                a bare login form with no idea whether their invite worked. */}
-            {!error && authReason === 'invite-mfa' && (
-              <div className="flex items-start gap-2 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-lg">
-                <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-                <p className="text-xs text-amber-800 font-medium">
-                  {t('inviteMfaSetupNeeded')}
-                </p>
-              </div>
-            )}
-
-            {!error && authReason === 'session-expired' && (
-              <div className="flex items-start gap-2 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-lg">
-                <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-                <p className="text-xs text-amber-800 font-medium">
-                  {t('sessionExpired')}
-                </p>
-              </div>
-            )}
-
-            {/* The live region is PERSISTENT (2026-09-21): an aria-live node
-                that only appears at the same moment its text does is not
-                reliably announced. Passwordless passkey failures land here,
-                and "that passkey wasn't accepted" is useless to a screen
-                reader that never hears it. */}
-            <div aria-live="polite">
-              {error && (
-                <div className="flex items-start gap-2 px-3 py-2.5 bg-rose-50 border border-rose-200 rounded-lg">
-                  <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
-                  <p className="text-xs text-rose-700 font-medium">{error}</p>
-                </div>
-              )}
-            </div>
-
-            {/* Keep enabled when the EULA is unchecked (only `loading` disables)
-                so the handleLogin guard fires and surfaces the real "you must
-                accept the EULA" error on click/Enter. Previously disabled on
-                !eulaAccepted, which made that guard — and the Enter-key path —
-                silently dead for first-time users (2026-06-09 Fable audit). */}
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold py-2.5 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
-            >
-              {loading ? (
-                <><Loader2 className="w-4 h-4 animate-spin" /> {t('signingIn')}</>
-              ) : (
-                t('signIn')
-              )}
-            </button>
-
-            {/* Passwordless sign-in (2026-09-21). Secondary by design — the
-                password path stays the one the form submits. It is `type=
-                "button"` so Enter in the email/password fields still submits
-                the real form, and it honours the SAME EULA gate and "Keep me
-                logged in" choice: a second way in must never be a way around
-                the agreement. Hidden entirely when the browser cannot do
-                WebAuthn, rather than shown dead. */}
-            {passkeyCapable && (
+          manualSso ? (
+            /* ── SUPPORT-ONLY manual single sign-on entry (`/login?sso=1`) ──
+               The form that used to sit behind the always-visible "Sign in
+               with SSO" button. Nothing on the page links here; the normal
+               way in is the email's domain on step 2. */
+            <form onSubmit={handleSsoStart} className="space-y-4">
               <div>
-                <button
-                  type="button"
-                  onClick={handlePasswordlessPasskey}
-                  disabled={passkeyBusy || loading}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-white hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed border border-slate-300 rounded-lg text-xs font-semibold text-slate-700 transition-colors"
-                >
-                  {passkeyBusy ? (
-                    <><Loader2 className="w-4 h-4 animate-spin" /> {t('verifying')}</>
-                  ) : (
-                    <><Fingerprint className="w-4 h-4" /> {t('signInWithPasskey')}</>
-                  )}
-                </button>
-
-                {/* "No passkey on this device yet?" (2026-09-22). Right under
-                    the button that produced it, in a PERSISTENT live region so
-                    a screen reader hears it (and inside the same wrapper, so
-                    the empty region adds no gap to the form). Calm, not red:
-                    the sheet closing is not a failure — most often it simply
-                    means there isn't one yet. */}
-                <div aria-live="polite">
-                  {passkeyHint && !error && (
-                    <div
-                      data-testid="passkey-none-hint"
-                      className="mt-3 flex items-start gap-2 px-3 py-2.5 bg-indigo-50/60 border border-indigo-100 rounded-lg"
-                    >
-                      <Fingerprint className="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
-                      <p className="text-xs text-slate-700 leading-relaxed">
-                        {passkeyHint.offer
-                          ? t('passkeyNoneHint', { method: t(PASSKEY_METHOD_KEYS[passkeyHint.method]) })
-                          : t('passkeyNoneHintPlain')}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </form>
-
-          {/* SSO block */}
-          <div className="mt-5 pt-5 border-t border-slate-100">
-            {!ssoOpen ? (
-              <button
-                type="button"
-                onClick={() => { setSsoOpen(true); setError(''); }}
-                className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold text-slate-700 transition-colors"
-              >
-                <KeyRound className="w-4 h-4" /> {t('signInWithSSO')}
-              </button>
-            ) : (
-              <form onSubmit={handleSsoStart} className="space-y-3">
-                <label htmlFor="sso-slug" className="block text-xs font-semibold text-slate-700">
+                <label htmlFor="sso-slug" className="block text-xs font-semibold text-slate-700 mb-1.5">
                   {t('orgSlug')}
                 </label>
                 <input
                   id="sso-slug"
                   type="text"
+                  autoFocus
                   autoComplete="organization"
                   placeholder="acme-co"
                   value={ssoSlug}
                   onChange={(e) => setSsoSlug(e.target.value)}
                   className={INPUT_CLS}
                 />
-                <div className="flex gap-2">
-                  <button
-                    type="submit"
-                    disabled={ssoChecking}
-                    className="flex-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-semibold py-2.5 rounded-lg flex items-center justify-center gap-2"
-                  >
-                    {ssoChecking ? <><Loader2 className="w-4 h-4 animate-spin" /> {t('redirecting')}</> : t('continueSSO')}
-                  </button>
+              </div>
+              {errorBanner}
+              <button
+                type="submit"
+                disabled={ssoChecking}
+                className={PRIMARY_BTN_CLS}
+              >
+                {ssoChecking ? <><Loader2 className="w-4 h-4 animate-spin" /> {t('redirecting')}</> : t('continueSSO')}
+              </button>
+            </form>
+          ) : step.name !== 'method' ? (
+            /* ── STEP 1 — one field ─────────────────────────────────────
+               The email, and Continue. `autocomplete="username webauthn"`
+               is what lets the browser list this device's passkey in the
+               field's own suggestions (see the autofill effect above). */
+            <form onSubmit={handleContinue} className="space-y-4" data-testid="sign-in-step-email">
+              <div>
+                <label htmlFor="login-email" className="block text-xs font-semibold text-slate-700 mb-1.5">{t('email')}</label>
+                <input
+                  id="login-email"
+                  name="email"
+                  type="email"
+                  required
+                  autoFocus
+                  maxLength={254}
+                  autoComplete="username webauthn"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  placeholder={t('emailPlaceholder')}
+                  className={INPUT_CLS}
+                  value={emailInput}
+                  readOnly={step.name === 'checking'}
+                  onChange={e => setEmailInput(e.target.value)}
+                />
+              </div>
+
+              {reasonBanners}
+              {errorBanner}
+
+              <button
+                type="submit"
+                disabled={step.name === 'checking' || passkeyBusy}
+                aria-busy={step.name === 'checking' || passkeyBusy}
+                className={PRIMARY_BTN_CLS}
+              >
+                {(step.name === 'checking' || passkeyBusy) && <Loader2 className="w-4 h-4 animate-spin" aria-hidden />}
+                {t('continue')}
+              </button>
+
+              {/* Only where the browser CANNOT offer passkeys from the field's
+                  autofill. One quiet link, same handler as before; no
+                  explainer box — the post-sign-in offer is what teaches
+                  people to set a passkey up. Not rendered until this browser
+                  has accepted the EULA (step 1 has no checkbox to tick). */}
+              {passkeyCapable && conditionalAvailable === false && eulaOnDevice && (
+                <div className="text-center">
                   <button
                     type="button"
-                    onClick={() => setSsoOpen(false)}
-                    className="px-4 py-2.5 text-slate-500 hover:text-slate-700 text-xs font-semibold"
+                    onClick={handlePasswordlessPasskey}
+                    disabled={passkeyBusy || step.name === 'checking'}
+                    className={LINK_BTN_CLS}
                   >
-                    {t('cancel')}
+                    {t('signInWithPasskey')}
                   </button>
+                  {/* "No passkey on this device yet?" — a calm pointer after
+                      the device sheet closes with no credential. Persistent
+                      live region so a screen reader hears it. */}
+                  <div aria-live="polite">
+                    {passkeyHint && !error && (
+                      <p data-testid="passkey-none-hint" className="mt-2 text-xs text-slate-600 leading-relaxed">
+                        {passkeyHint.offer
+                          ? t('passkeyNoneHint', { method: t(PASSKEY_METHOD_KEYS[passkeyHint.method]) })
+                          : t('passkeyNoneHintPlain')}
+                      </p>
+                    )}
+                  </div>
                 </div>
-              </form>
-            )}
-          </div>
-          </>
+              )}
+            </form>
+          ) : step.sso && !step.passwordOpen ? (
+            /* ── STEP 2 — this organization signs in with single sign-on ──
+               Decided by the email's DOMAIN alone. One primary action; the
+               password form is one link away, because a domain claim is not
+               proof and nobody may be locked out by it. */
+            <form onSubmit={handleSsoContinue} className="space-y-4" data-testid="sign-in-step-sso">
+              {identityRow}
+              <p className="text-xs text-slate-600 leading-relaxed">{t('ssoExplain')}</p>
+
+              {eulaCheckbox}
+              {errorBanner}
+
+              <button
+                type="submit"
+                autoFocus
+                disabled={ssoRedirecting}
+                className={PRIMARY_BTN_CLS}
+              >
+                {ssoRedirecting ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" /> {t('redirecting')}</>
+                ) : step.sso.label ? (
+                  t('continueWithProvider', { provider: step.sso.label })
+                ) : (
+                  t('continueWithSso')
+                )}
+              </button>
+
+              <div className="text-center">
+                <button
+                  type="button"
+                  onClick={() => { setError(''); dispatchStep({ type: 'USE_PASSWORD' }); }}
+                  className={LINK_BTN_CLS}
+                >
+                  {t('usePasswordInstead')}
+                </button>
+              </div>
+
+              {eulaNote}
+            </form>
+          ) : (
+            /* ── STEP 2 — password ─────────────────────────────────────── */
+            <form onSubmit={handleLogin} className="space-y-4" data-testid="sign-in-step-password">
+              {identityRow}
+              {/* For password managers: the account this password belongs
+                  to. Not shown, not focusable — the address is on screen in
+                  the row above. */}
+              <input
+                type="email"
+                name="email"
+                autoComplete="username"
+                value={email}
+                readOnly
+                hidden
+                tabIndex={-1}
+                aria-hidden="true"
+              />
+              <div>
+                <label htmlFor="login-password" className="block text-xs font-semibold text-slate-700 mb-1.5">{t('password')}</label>
+                <input
+                  id="login-password"
+                  name="password"
+                  type="password"
+                  required
+                  autoFocus
+                  autoComplete="current-password"
+                  placeholder="••••••••"
+                  className={INPUT_CLS}
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={e => setRememberMe(e.target.checked)}
+                    className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                  />
+                  <span className="text-xs font-medium text-slate-600">{t('keepSignedIn')}</span>
+                </label>
+                {/* Carries the address forward so it is not typed twice —
+                    through sessionStorage, consumed by the reset page on
+                    arrival; never the URL. */}
+                <Link
+                  href="/reset-password/request"
+                  onClick={() => stashEmailForReset(email)}
+                  className="text-xs font-semibold text-indigo-600 hover:text-indigo-700"
+                >
+                  {t('forgotPassword')}
+                </Link>
+              </div>
+
+              {eulaCheckbox}
+              {reasonBanners}
+              {errorBanner}
+
+              {/* Stays enabled when the EULA is unticked (only `loading`
+                  disables) so the handleLogin guard fires and says why, on
+                  click and on Enter (2026-06-09 Fable audit). */}
+              <button
+                type="submit"
+                disabled={loading}
+                className={PRIMARY_BTN_CLS}
+              >
+                {loading ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" /> {t('signingIn')}</>
+                ) : (
+                  t('signIn')
+                )}
+              </button>
+
+              {eulaNote}
+            </form>
+          )
           )}
         </div>
 
-        <p className="text-center text-xs text-slate-500 mt-6">
-          {t('newHere')} <Link href="/signup" className="text-indigo-600 hover:text-indigo-700 font-semibold">{t('createWorkspace')}</Link>
-        </p>
+        {/* What the page just became, for a screen reader. Persistent node:
+            a live region that appears together with its text is not reliably
+            announced. */}
+        <p className="sr-only" aria-live="polite" data-testid="sign-in-step-announcement">{stepAnnouncement}</p>
+
+        {/* Step 1 only: someone who is already typing a password is not
+            looking for "create a workspace". */}
+        {onEmailStep && (
+          <p className="text-center text-xs text-slate-500 mt-6">
+            {t('newHere')} <Link href="/signup" className="text-indigo-600 hover:text-indigo-700 font-semibold">{t('createWorkspace')}</Link>
+          </p>
+        )}
 
         {/* a11y (2026-05-26): bumped text-slate-400 (2.53:1 fail on #fafbfc bg)
             up to text-slate-600 (~7.86:1, comfortably above WCAG AA 4.5:1).

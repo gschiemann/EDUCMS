@@ -21,6 +21,7 @@
  */
 import {
   browserSupportsWebAuthn,
+  browserSupportsWebAuthnAutofill,
   platformAuthenticatorIsAvailable,
   startAuthentication,
   startRegistration,
@@ -105,6 +106,50 @@ export function getPasskey(
   options: PublicKeyCredentialRequestOptionsJSON,
 ): Promise<AuthenticationResponseJSON> {
   return startAuthentication({ optionsJSON: options });
+}
+
+/**
+ * Can the browser offer passkeys from an input's own autofill ("conditional
+ * mediation")? Safari 16+, Chrome/Edge 108+, Firefox 119+.
+ *
+ * Never throws and never hangs — same contract as `platformPasskeyAvailable`:
+ * a WebView that throws on the probe, or whose promise never settles, answers
+ * `false` within `timeoutMs`, and the page falls back to the plain link.
+ */
+export async function conditionalPasskeyAvailable(timeoutMs = 2_000): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    if (!passkeysSupported()) return false;
+    const timeout = new Promise<boolean>((resolve) => {
+      timer = setTimeout(() => resolve(false), timeoutMs);
+    });
+    return (await Promise.race([browserSupportsWebAuthnAutofill(), timeout])) === true;
+  } catch {
+    return false;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+/**
+ * Wait for the operator to pick a passkey from the email field's autofill
+ * (identifier-first sign-in, 2026-10-04). Shows NOTHING by itself: the browser
+ * lists a passkey in the field's own suggestions only when this device holds
+ * one for this site, and the promise stays pending until one is picked.
+ *
+ * Needs an `<input autocomplete="username webauthn">` on the page (the library
+ * checks). It registers with the same `WebAuthnAbortService` every other
+ * ceremony uses, which is what makes it safe to leave pending:
+ *   • starting ANY modal ceremony (`getPasskey` / `createPasskey`) aborts it
+ *     first, so it can never sit in front of the second-factor sheet;
+ *   • `cancelPasskeyCeremony()` aborts it when the operator moves on.
+ * Either way it rejects with `AbortError`, which `describePasskeyError`
+ * already grades as quiet.
+ */
+export function getPasskeyFromAutofill(
+  options: PublicKeyCredentialRequestOptionsJSON,
+): Promise<AuthenticationResponseJSON> {
+  return startAuthentication({ optionsJSON: options, useBrowserAutofill: true });
 }
 
 /** Which WebAuthn ceremony raised the error — `InvalidStateError` only means

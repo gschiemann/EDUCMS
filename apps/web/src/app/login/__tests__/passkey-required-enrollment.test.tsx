@@ -71,7 +71,10 @@ type Reply = { ok?: boolean; status?: number; body?: any };
 function mockFetchByPath(routes: Record<string, Reply>) {
   const calls: Array<{ url: string; body: any }> = [];
   (global as any).fetch = jest.fn((url: string, init: any) => {
-    calls.push({ url: String(url), body: init?.body ? JSON.parse(init.body) : undefined });
+    // The identifier-first domain lookup (2026-10-04) has its own suite
+    // (sign-in-steps.test.tsx). It answers 404 here → password form, and is
+    // kept out of `calls` so the contracts below stay index-exact.
+    if (!String(url).endsWith('/auth/sign-in-options')) calls.push({ url: String(url), body: init?.body ? JSON.parse(init.body) : undefined });
     const key = Object.keys(routes).find((k) => String(url).endsWith(k));
     const r: Reply = key ? routes[key] : { ok: false, status: 404, body: {} };
     return Promise.resolve({
@@ -106,8 +109,12 @@ const SESSION_WITH_CODES: Reply = {
 };
 
 async function signIn() {
+  // Identifier-first (2026-10-04): the email, Continue, then the password.
   fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'manager@venue.example' } });
-  fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'hunter2hunter2' } });
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: /^Continue$/i }));
+  });
+  fireEvent.change(await screen.findByLabelText('Password'), { target: { value: 'hunter2hunter2' } });
   await act(async () => {
     fireEvent.click(screen.getByRole('button', { name: /^Sign in$/i }));
   });
@@ -386,8 +393,8 @@ describe('setting the factor up with a passkey', () => {
       fireEvent.click(await screen.findByRole('button', { name: /Use Face ID/i }));
     });
 
-    // Back to the front door with an explanation — never a dead end.
-    expect(await screen.findByLabelText('Email')).toBeInTheDocument();
+    // Back to the password step with an explanation — never a dead end.
+    expect(await screen.findByLabelText('Password')).toBeInTheDocument();
     expect(screen.getByText(/timed out/i)).toBeInTheDocument();
   });
 
@@ -404,7 +411,7 @@ describe('setting the factor up with a passkey', () => {
       fireEvent.click(screen.getByRole('button', { name: /^Back$/i }));
     });
 
-    expect(await screen.findByLabelText('Email')).toBeInTheDocument();
+    expect(await screen.findByLabelText('Password')).toBeInTheDocument();
     expect(enrollCalls(calls)).toHaveLength(0);
     expect(startRegistration).not.toHaveBeenCalled();
   });

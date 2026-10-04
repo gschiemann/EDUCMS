@@ -71,7 +71,10 @@ type Reply = { ok?: boolean; status?: number; body?: any };
 function mockFetchByPath(routes: Record<string, Reply>) {
   const calls: Array<{ url: string; body: any }> = [];
   (global as any).fetch = jest.fn((url: string, init: any) => {
-    calls.push({ url: String(url), body: init?.body ? JSON.parse(init.body) : undefined });
+    // The identifier-first domain lookup (2026-10-04) has its own suite
+    // (sign-in-steps.test.tsx). It answers 404 here → password form, and is
+    // kept out of `calls` so the contracts below stay index-exact.
+    if (!String(url).endsWith('/auth/sign-in-options')) calls.push({ url: String(url), body: init?.body ? JSON.parse(init.body) : undefined });
     const key = Object.keys(routes).find((k) => String(url).endsWith(k));
     const r: Reply = key ? routes[key] : { ok: false, status: 404, body: {} };
     return Promise.resolve({
@@ -91,8 +94,12 @@ const ASSERTION = { id: 'cred-1', rawId: 'cred-1', type: 'public-key', response:
 const GET_OPTIONS = { challenge: 'Y2hhbGw', rpId: 'venueos.app' };
 
 async function signInWithPassword() {
+  // Identifier-first (2026-10-04): the email, Continue, then the password.
   fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'admin@school.edu' } });
-  fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'hunter2hunter2' } });
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: /^Continue$/i }));
+  });
+  fireEvent.change(await screen.findByLabelText('Password'), { target: { value: 'hunter2hunter2' } });
   await act(async () => {
     fireEvent.click(screen.getByRole('button', { name: /^Sign in$/i }));
   });
@@ -113,7 +120,11 @@ beforeEach(() => {
   browserSupportsWebAuthn.mockReturnValue(true);
   startAuthentication.mockReset();
   useUIStore.setState({ token: null, user: null });
-  try { localStorage.setItem('edu_cms_eula_accepted_v1.0', 'yes'); } catch { /* ignore */ }
+  try {
+    localStorage.setItem('edu_cms_eula_accepted_v1.0', 'yes');
+    // The remembered "Keep me signed in" choice must not leak between tests.
+    localStorage.removeItem('venueos_keep_signed_in');
+  } catch { /* ignore */ }
 });
 
 // ───────────────────────────────────────────────────────────────────────
@@ -277,7 +288,8 @@ describe('MFA step — passkey as the second factor', () => {
     });
 
     expect(await screen.findByText(/sign-in attempt timed out/i)).toBeInTheDocument();
-    expect(screen.getByLabelText('Email')).toBeInTheDocument();
+    expect(screen.getByLabelText('Password')).toBeInTheDocument();
+    expect(screen.getByTestId('sign-in-email')).toHaveTextContent('admin@school.edu');
   });
 
   it('a browser without WebAuthn never sees the passkey button, even when the account has one', async () => {
@@ -305,8 +317,10 @@ describe('Sign-in form — passwordless passkey', () => {
     });
     startAuthentication.mockResolvedValue(ASSERTION);
 
+    // Step 1 has no checkbox (identifier-first, 2026-10-04): a passkey
+    // sign-in follows the choice last made on this browser.
+    localStorage.setItem('venueos_keep_signed_in', '1');
     await act(async () => { render(<LoginPage />); });
-    fireEvent.click(screen.getByRole('checkbox', { name: /Keep me signed in/i }));
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: /Sign in with a passkey/i }));
     });
@@ -340,8 +354,10 @@ describe('Sign-in form — passwordless passkey', () => {
     expect(adoptRememberedSession).not.toHaveBeenCalled();
   });
 
-  it('is gated by the EULA checkbox exactly like Sign in', async () => {
-    // No prior acceptance → the box starts unchecked.
+  it('is gated by the EULA exactly like Sign in — no passkey way in until this browser has accepted', async () => {
+    // No prior acceptance. Step 1 has no checkbox to tick, so the passkey
+    // link is not offered at all: a second way in must not be a way around
+    // the agreement. The password step is where it is accepted.
     try { localStorage.removeItem('edu_cms_eula_accepted_v1.0'); } catch { /* ignore */ }
     const calls = mockFetchByPath({
       '/auth/passkeys/login/options': { body: { options: GET_OPTIONS, challengeId: 'ch-9' } },
@@ -350,21 +366,12 @@ describe('Sign-in form — passwordless passkey', () => {
     startAuthentication.mockResolvedValue(ASSERTION);
 
     await act(async () => { render(<LoginPage />); });
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /Sign in with a passkey/i }));
-    });
+    await act(async () => { await Promise.resolve(); });
 
-    // The SAME message the password path gives, and nothing left the browser.
-    expect(await screen.findByText(/must accept the End User License Agreement/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Sign in with a passkey/i })).not.toBeInTheDocument();
+    // …and nothing left the browser.
     expect(calls).toHaveLength(0);
     expect(startAuthentication).not.toHaveBeenCalled();
-
-    // Accepting it opens the path — a second way in, not a way around.
-    fireEvent.click(screen.getByRole('checkbox', { name: /End User License Agreement/i }));
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /Sign in with a passkey/i }));
-    });
-    await waitFor(() => { expect(useUIStore.getState().token).toBe('tok-passkey'); });
   });
 
   it('a verify that is NOT a session takes the same branch the password path does', async () => {
@@ -508,8 +515,9 @@ describe('Sign-in form — passwordless passkey', () => {
     await act(async () => { render(<LoginPage />); });
 
     expect(screen.queryByRole('button', { name: /Sign in with a passkey/i })).not.toBeInTheDocument();
-    // The password path is untouched.
-    expect(screen.getByRole('button', { name: /^Sign in$/i })).toBeInTheDocument();
+    // The way in is untouched: the email, then Continue.
+    expect(screen.getByLabelText('Email')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Continue$/i })).toBeInTheDocument();
   });
 });
 
@@ -521,11 +529,7 @@ describe('MFA step — an account with NO passkey is untouched', () => {
   async function challengeHtml(loginBody: any): Promise<string> {
     mockFetchByPath({ '/auth/login': { body: loginBody } });
     const { container, unmount } = render(<LoginPage />);
-    await act(async () => {
-      fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'admin@school.edu' } });
-      fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'hunter2hunter2' } });
-      fireEvent.click(screen.getByRole('button', { name: /^Sign in$/i }));
-    });
+    await signInWithPassword();
     await screen.findByLabelText('Authentication code');
     const html = card(container).innerHTML;
     unmount();
@@ -537,11 +541,7 @@ describe('MFA step — an account with NO passkey is untouched', () => {
     // it changed because of the wave, not because of the environment.
     mockFetchByPath({ '/auth/login': { body: { mfaRequired: true, mfaToken: 'mfa-1' } } });
     const { container } = render(<LoginPage />);
-    await act(async () => {
-      fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'admin@school.edu' } });
-      fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'hunter2hunter2' } });
-      fireEvent.click(screen.getByRole('button', { name: /^Sign in$/i }));
-    });
+    await signInWithPassword();
 
     expect(await screen.findByText('Two-factor verification')).toBeInTheDocument();
     // Every control today's step has.
