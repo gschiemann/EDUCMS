@@ -296,5 +296,17 @@
   "custom/jll-commercial-real-estate/05-industrial-specifications": "b9962fc4e90ad7cb",
   "custom/jll-commercial-real-estate/06-investment-offering": "5e8db1703c7fa37f",
   "custom/jll-commercial-real-estate/07-guided-property-tour": "f8b983e5b97fc1cc",
-  "custom/jll-commercial-real-estate/08-property-finder": "8bc0ebf264c1ae6d"
+  "custom/jll-commercial-real-estate/08-property-finder": "8bc0ebf264c1ae6d",
+  "custom/jll-overview-directions/jll-a": "ab2b5e24f2e1f4be",
+  "custom/jll-overview-directions/jll-b": "96a3ef119f0f1203",
+  "custom/jll-overview-directions/jll-c": "d03eecd07d9e0c87",
+  "custom/jll-overview-directions/generic-a": "bff1ed42d5d8653e",
+  "custom/jll-overview-directions/generic-b": "0b21570c18b5bfd8",
+  "custom/jll-overview-directions/generic-c": "27105a7222aee29d",
+  "custom/jll-touch-experiences/jll-a": "604b0286df454c13",
+  "custom/jll-touch-experiences/jll-b": "1561d575ad5c09c0",
+  "custom/jll-touch-experiences/jll-c": "70250a0db3efed0c",
+  "custom/jll-touch-experiences/generic-a": "e60e0d99ea91db74",
+  "custom/jll-touch-experiences/generic-b": "552286f06d0b3fed",
+  "custom/jll-touch-experiences/generic-c": "8075d606ad1ec060"
 }

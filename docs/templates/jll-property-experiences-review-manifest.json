@@ -1,0 +1,530 @@
+[
+  {
+    "id": "jll-property-signage-a",
+    "collection": "jll",
+    "family": "signage",
+    "orientation": "LANDSCAPE",
+    "isTouchEnabled": false,
+    "idleResetMs": 0,
+    "url": "/templates/custom/jll-overview-directions/jll-a.html",
+    "screenWidth": 3840,
+    "screenHeight": 2160,
+    "sha256": "ab2b5e24f2e1f4be908e66a317d0eba25eeb4b8eda9cf77d32eafdfde9fffb68",
+    "zone": {
+      "widgetType": "EXTERNAL_HTML",
+      "x": 0,
+      "y": 0,
+      "width": 100,
+      "height": 100,
+      "defaultConfig": {
+        "url": "/templates/custom/jll-overview-directions/jll-a.html"
+      }
+    }
+  },
+  {
+    "id": "jll-property-signage-a-portrait",
+    "collection": "jll",
+    "family": "signage",
+    "orientation": "PORTRAIT",
+    "isTouchEnabled": false,
+    "idleResetMs": 0,
+    "url": "/templates/custom/jll-overview-directions/jll-a.html?orientation=portrait",
+    "screenWidth": 2160,
+    "screenHeight": 3840,
+    "sha256": "ab2b5e24f2e1f4be908e66a317d0eba25eeb4b8eda9cf77d32eafdfde9fffb68",
+    "zone": {
+      "widgetType": "EXTERNAL_HTML",
+      "x": 0,
+      "y": 0,
+      "width": 100,
+      "height": 100,
+      "defaultConfig": {
+        "url": "/templates/custom/jll-overview-directions/jll-a.html?orientation=portrait"
+      }
+    }
+  },
+  {
+    "id": "jll-property-signage-b",
+    "collection": "jll",
+    "family": "signage",
+    "orientation": "LANDSCAPE",
+    "isTouchEnabled": false,
+    "idleResetMs": 0,
+    "url": "/templates/custom/jll-overview-directions/jll-b.html",
+    "screenWidth": 3840,
+    "screenHeight": 2160,
+    "sha256": "96a3ef119f0f12036abfb28af44cd1b537841f99a9fe9ea16f3d48b37534dd9b",
+    "zone": {
+      "widgetType": "EXTERNAL_HTML",
+      "x": 0,
+      "y": 0,
+      "width": 100,
+      "height": 100,
+      "defaultConfig": {
+        "url": "/templates/custom/jll-overview-directions/jll-b.html"
+      }
+    }
+  },
+  {
+    "id": "jll-property-signage-b-portrait",
+    "collection": "jll",
+    "family": "signage",
+    "orientation": "PORTRAIT",
+    "isTouchEnabled": false,
+    "idleResetMs": 0,
+    "url": "/templates/custom/jll-overview-directions/jll-b.html?orientation=portrait",
+    "screenWidth": 2160,
+    "screenHeight": 3840,
+    "sha256": "96a3ef119f0f12036abfb28af44cd1b537841f99a9fe9ea16f3d48b37534dd9b",
+    "zone": {
+      "widgetType": "EXTERNAL_HTML",
+      "x": 0,
+      "y": 0,
+      "width": 100,
+      "height": 100,
+      "defaultConfig": {
+        "url": "/templates/custom/jll-overview-directions/jll-b.html?orientation=portrait"
+      }
+    }
+  },
+  {
+    "id": "jll-property-signage-c",
+    "collection": "jll",
+    "family": "signage",
+    "orientation": "LANDSCAPE",
+    "isTouchEnabled": false,
+    "idleResetMs": 0,
+    "url": "/templates/custom/jll-overview-directions/jll-c.html",
+    "screenWidth": 3840,
+    "screenHeight": 2160,
+    "sha256": "d03eecd07d9e0c873daa5505f78afa83bbbc8243fa5c081563f31acb4bcdc223",
+    "zone": {
+      "widgetType": "EXTERNAL_HTML",
+      "x": 0,
+      "y": 0,
+      "width": 100,
+      "height": 100,
+      "defaultConfig": {
+        "url": "/templates/custom/jll-overview-directions/jll-c.html"
+      }
+    }
+  },
+  {
+    "id": "jll-property-signage-c-portrait",
+    "collection": "jll",
+    "family": "signage",
+    "orientation": "PORTRAIT",
+    "isTouchEnabled": false,
+    "idleResetMs": 0,
+    "url": "/templates/custom/jll-overview-directions/jll-c.html?orientation=portrait",
+    "screenWidth": 2160,
+    "screenHeight": 3840,
+    "sha256": "d03eecd07d9e0c873daa5505f78afa83bbbc8243fa5c081563f31acb4bcdc223",
+    "zone": {
+      "widgetType": "EXTERNAL_HTML",
+      "x": 0,
+      "y": 0,
+      "width": 100,
+      "height": 100,
+      "defaultConfig": {
+        "url": "/templates/custom/jll-overview-directions/jll-c.html?orientation=portrait"
+      }
+    }
+  },
+  {
+    "id": "generic-property-signage-a",
+    "collection": "standard",
+    "family": "signage",
+    "orientation": "LANDSCAPE",
+    "isTouchEnabled": false,
+    "idleResetMs": 0,
+    "url": "/templates/custom/jll-overview-directions/generic-a.html",
+    "screenWidth": 3840,
+    "screenHeight": 2160,
+    "sha256": "bff1ed42d5d8653e81a98902d9821f68cd8cecb5bd919a8404c15f7d465a84cd",
+    "zone": {
+      "widgetType": "EXTERNAL_HTML",
+      "x": 0,
+      "y": 0,
+      "width": 100,
+      "height": 100,
+      "defaultConfig": {
+        "url": "/templates/custom/jll-overview-directions/generic-a.html"
+      }
+    }
+  },
+  {
+    "id": "generic-property-signage-a-portrait",
+    "collection": "standard",
+    "family": "signage",
+    "orientation": "PORTRAIT",
+    "isTouchEnabled": false,
+    "idleResetMs": 0,
+    "url": "/templates/custom/jll-overview-directions/generic-a.html?orientation=portrait",
+    "screenWidth": 2160,
+    "screenHeight": 3840,
+    "sha256": "bff1ed42d5d8653e81a98902d9821f68cd8cecb5bd919a8404c15f7d465a84cd",
+    "zone": {
+      "widgetType": "EXTERNAL_HTML",
+      "x": 0,
+      "y": 0,
+      "width": 100,
+      "height": 100,
+      "defaultConfig": {
+        "url": "/templates/custom/jll-overview-directions/generic-a.html?orientation=portrait"
+      }
+    }
+  },
+  {
+    "id": "generic-property-signage-b",
+    "collection": "standard",
+    "family": "signage",
+    "orientation": "LANDSCAPE",
+    "isTouchEnabled": false,
+    "idleResetMs": 0,
+    "url": "/templates/custom/jll-overview-directions/generic-b.html",
+    "screenWidth": 3840,
+    "screenHeight": 2160,
+    "sha256": "0b21570c18b5bfd8d3cee8865139724e572c29ea38bc8a4833b81223a64666e5",
+    "zone": {
+      "widgetType": "EXTERNAL_HTML",
+      "x": 0,
+      "y": 0,
+      "width": 100,
+      "height": 100,
+      "defaultConfig": {
+        "url": "/templates/custom/jll-overview-directions/generic-b.html"
+      }
+    }
+  },
+  {
+    "id": "generic-property-signage-b-portrait",
+    "collection": "standard",
+    "family": "signage",
+    "orientation": "PORTRAIT",
+    "isTouchEnabled": false,
+    "idleResetMs": 0,
+    "url": "/templates/custom/jll-overview-directions/generic-b.html?orientation=portrait",
+    "screenWidth": 2160,
+    "screenHeight": 3840,
+    "sha256": "0b21570c18b5bfd8d3cee8865139724e572c29ea38bc8a4833b81223a64666e5",
+    "zone": {
+      "widgetType": "EXTERNAL_HTML",
+      "x": 0,
+      "y": 0,
+      "width": 100,
+      "height": 100,
+      "defaultConfig": {
+        "url": "/templates/custom/jll-overview-directions/generic-b.html?orientation=portrait"
+      }
+    }
+  },
+  {
+    "id": "generic-property-signage-c",
+    "collection": "standard",
+    "family": "signage",
+    "orientation": "LANDSCAPE",
+    "isTouchEnabled": false,
+    "idleResetMs": 0,
+    "url": "/templates/custom/jll-overview-directions/generic-c.html",
+    "screenWidth": 3840,
+    "screenHeight": 2160,
+    "sha256": "27105a7222aee29d2f587dcccea1dc6da6a6010ab74597ad8779fb77255baa53",
+    "zone": {
+      "widgetType": "EXTERNAL_HTML",
+      "x": 0,
+      "y": 0,
+      "width": 100,
+      "height": 100,
+      "defaultConfig": {
+        "url": "/templates/custom/jll-overview-directions/generic-c.html"
+      }
+    }
+  },
+  {
+    "id": "generic-property-signage-c-portrait",
+    "collection": "standard",
+    "family": "signage",
+    "orientation": "PORTRAIT",
+    "isTouchEnabled": false,
+    "idleResetMs": 0,
+    "url": "/templates/custom/jll-overview-directions/generic-c.html?orientation=portrait",
+    "screenWidth": 2160,
+    "screenHeight": 3840,
+    "sha256": "27105a7222aee29d2f587dcccea1dc6da6a6010ab74597ad8779fb77255baa53",
+    "zone": {
+      "widgetType": "EXTERNAL_HTML",
+      "x": 0,
+      "y": 0,
+      "width": 100,
+      "height": 100,
+      "defaultConfig": {
+        "url": "/templates/custom/jll-overview-directions/generic-c.html?orientation=portrait"
+      }
+    }
+  },
+  {
+    "id": "jll-property-touch-a",
+    "collection": "jll",
+    "family": "touch",
+    "orientation": "LANDSCAPE",
+    "isTouchEnabled": true,
+    "idleResetMs": 120000,
+    "url": "/templates/custom/jll-touch-experiences/jll-a.html",
+    "screenWidth": 3840,
+    "screenHeight": 2160,
+    "sha256": "604b0286df454c135f1d16461c38bcbbb05ec95a6ae4a42d58f916cb30a0eba1",
+    "zone": {
+      "widgetType": "EXTERNAL_HTML",
+      "x": 0,
+      "y": 0,
+      "width": 100,
+      "height": 100,
+      "defaultConfig": {
+        "url": "/templates/custom/jll-touch-experiences/jll-a.html"
+      }
+    }
+  },
+  {
+    "id": "jll-property-touch-a-portrait",
+    "collection": "jll",
+    "family": "touch",
+    "orientation": "PORTRAIT",
+    "isTouchEnabled": true,
+    "idleResetMs": 120000,
+    "url": "/templates/custom/jll-touch-experiences/jll-a.html?orientation=portrait",
+    "screenWidth": 2160,
+    "screenHeight": 3840,
+    "sha256": "604b0286df454c135f1d16461c38bcbbb05ec95a6ae4a42d58f916cb30a0eba1",
+    "zone": {
+      "widgetType": "EXTERNAL_HTML",
+      "x": 0,
+      "y": 0,
+      "width": 100,
+      "height": 100,
+      "defaultConfig": {
+        "url": "/templates/custom/jll-touch-experiences/jll-a.html?orientation=portrait"
+      }
+    }
+  },
+  {
+    "id": "jll-property-touch-b",
+    "collection": "jll",
+    "family": "touch",
+    "orientation": "LANDSCAPE",
+    "isTouchEnabled": true,
+    "idleResetMs": 120000,
+    "url": "/templates/custom/jll-touch-experiences/jll-b.html",
+    "screenWidth": 3840,
+    "screenHeight": 2160,
+    "sha256": "1561d575ad5c09c0dbb0519d985a1880e8ab5bee97694d2024d71637626130a1",
+    "zone": {
+      "widgetType": "EXTERNAL_HTML",
+      "x": 0,
+      "y": 0,
+      "width": 100,
+      "height": 100,
+      "defaultConfig": {
+        "url": "/templates/custom/jll-touch-experiences/jll-b.html"
+      }
+    }
+  },
+  {
+    "id": "jll-property-touch-b-portrait",
+    "collection": "jll",
+    "family": "touch",
+    "orientation": "PORTRAIT",
+    "isTouchEnabled": true,
+    "idleResetMs": 120000,
+    "url": "/templates/custom/jll-touch-experiences/jll-b.html?orientation=portrait",
+    "screenWidth": 2160,
+    "screenHeight": 3840,
+    "sha256": "1561d575ad5c09c0dbb0519d985a1880e8ab5bee97694d2024d71637626130a1",
+    "zone": {
+      "widgetType": "EXTERNAL_HTML",
+      "x": 0,
+      "y": 0,
+      "width": 100,
+      "height": 100,
+      "defaultConfig": {
+        "url": "/templates/custom/jll-touch-experiences/jll-b.html?orientation=portrait"
+      }
+    }
+  },
+  {
+    "id": "jll-property-touch-c",
+    "collection": "jll",
+    "family": "touch",
+    "orientation": "LANDSCAPE",
+    "isTouchEnabled": true,
+    "idleResetMs": 120000,
+    "url": "/templates/custom/jll-touch-experiences/jll-c.html",
+    "screenWidth": 3840,
+    "screenHeight": 2160,
+    "sha256": "70250a0db3efed0c3a921acdcbdd0fd68b66d593bf84515cff69cf2babba9ad8",
+    "zone": {
+      "widgetType": "EXTERNAL_HTML",
+      "x": 0,
+      "y": 0,
+      "width": 100,
+      "height": 100,
+      "defaultConfig": {
+        "url": "/templates/custom/jll-touch-experiences/jll-c.html"
+      }
+    }
+  },
+  {
+    "id": "jll-property-touch-c-portrait",
+    "collection": "jll",
+    "family": "touch",
+    "orientation": "PORTRAIT",
+    "isTouchEnabled": true,
+    "idleResetMs": 120000,
+    "url": "/templates/custom/jll-touch-experiences/jll-c.html?orientation=portrait",
+    "screenWidth": 2160,
+    "screenHeight": 3840,
+    "sha256": "70250a0db3efed0c3a921acdcbdd0fd68b66d593bf84515cff69cf2babba9ad8",
+    "zone": {
+      "widgetType": "EXTERNAL_HTML",
+      "x": 0,
+      "y": 0,
+      "width": 100,
+      "height": 100,
+      "defaultConfig": {
+        "url": "/templates/custom/jll-touch-experiences/jll-c.html?orientation=portrait"
+      }
+    }
+  },
+  {
+    "id": "generic-property-touch-a",
+    "collection": "standard",
+    "family": "touch",
+    "orientation": "LANDSCAPE",
+    "isTouchEnabled": true,
+    "idleResetMs": 120000,
+    "url": "/templates/custom/jll-touch-experiences/generic-a.html",
+    "screenWidth": 3840,
+    "screenHeight": 2160,
+    "sha256": "e60e0d99ea91db7415743f10e4a78c0676f4d902e4b1eeddf1f0df1e213bff2d",
+    "zone": {
+      "widgetType": "EXTERNAL_HTML",
+      "x": 0,
+      "y": 0,
+      "width": 100,
+      "height": 100,
+      "defaultConfig": {
+        "url": "/templates/custom/jll-touch-experiences/generic-a.html"
+      }
+    }
+  },
+  {
+    "id": "generic-property-touch-a-portrait",
+    "collection": "standard",
+    "family": "touch",
+    "orientation": "PORTRAIT",
+    "isTouchEnabled": true,
+    "idleResetMs": 120000,
+    "url": "/templates/custom/jll-touch-experiences/generic-a.html?orientation=portrait",
+    "screenWidth": 2160,
+    "screenHeight": 3840,
+    "sha256": "e60e0d99ea91db7415743f10e4a78c0676f4d902e4b1eeddf1f0df1e213bff2d",
+    "zone": {
+      "widgetType": "EXTERNAL_HTML",
+      "x": 0,
+      "y": 0,
+      "width": 100,
+      "height": 100,
+      "defaultConfig": {
+        "url": "/templates/custom/jll-touch-experiences/generic-a.html?orientation=portrait"
+      }
+    }
+  },
+  {
+    "id": "generic-property-touch-b",
+    "collection": "standard",
+    "family": "touch",
+    "orientation": "LANDSCAPE",
+    "isTouchEnabled": true,
+    "idleResetMs": 120000,
+    "url": "/templates/custom/jll-touch-experiences/generic-b.html",
+    "screenWidth": 3840,
+    "screenHeight": 2160,
+    "sha256": "552286f06d0b3fed6abe7cc357f74fdba53182262ae3e478b31e4ac29f3729ed",
+    "zone": {
+      "widgetType": "EXTERNAL_HTML",
+      "x": 0,
+      "y": 0,
+      "width": 100,
+      "height": 100,
+      "defaultConfig": {
+        "url": "/templates/custom/jll-touch-experiences/generic-b.html"
+      }
+    }
+  },
+  {
+    "id": "generic-property-touch-b-portrait",
+    "collection": "standard",
+    "family": "touch",
+    "orientation": "PORTRAIT",
+    "isTouchEnabled": true,
+    "idleResetMs": 120000,
+    "url": "/templates/custom/jll-touch-experiences/generic-b.html?orientation=portrait",
+    "screenWidth": 2160,
+    "screenHeight": 3840,
+    "sha256": "552286f06d0b3fed6abe7cc357f74fdba53182262ae3e478b31e4ac29f3729ed",
+    "zone": {
+      "widgetType": "EXTERNAL_HTML",
+      "x": 0,
+      "y": 0,
+      "width": 100,
+      "height": 100,
+      "defaultConfig": {
+        "url": "/templates/custom/jll-touch-experiences/generic-b.html?orientation=portrait"
+      }
+    }
+  },
+  {
+    "id": "generic-property-touch-c",
+    "collection": "standard",
+    "family": "touch",
+    "orientation": "LANDSCAPE",
+    "isTouchEnabled": true,
+    "idleResetMs": 120000,
+    "url": "/templates/custom/jll-touch-experiences/generic-c.html",
+    "screenWidth": 3840,
+    "screenHeight": 2160,
+    "sha256": "8075d606ad1ec0604d65208c55654e67b5e50a502bb9802ba6b920d7c752801a",
+    "zone": {
+      "widgetType": "EXTERNAL_HTML",
+      "x": 0,
+      "y": 0,
+      "width": 100,
+      "height": 100,
+      "defaultConfig": {
+        "url": "/templates/custom/jll-touch-experiences/generic-c.html"
+      }
+    }
+  },
+  {
+    "id": "generic-property-touch-c-portrait",
+    "collection": "standard",
+    "family": "touch",
+    "orientation": "PORTRAIT",
+    "isTouchEnabled": true,
+    "idleResetMs": 120000,
+    "url": "/templates/custom/jll-touch-experiences/generic-c.html?orientation=portrait",
+    "screenWidth": 2160,
+    "screenHeight": 3840,
+    "sha256": "8075d606ad1ec0604d65208c55654e67b5e50a502bb9802ba6b920d7c752801a",
+    "zone": {
+      "widgetType": "EXTERNAL_HTML",
+      "x": 0,
+      "y": 0,
+      "width": 100,
+      "height": 100,
+      "defaultConfig": {
+        "url": "/templates/custom/jll-touch-experiences/generic-c.html?orientation=portrait"
+      }
+    }
+  }
+]
