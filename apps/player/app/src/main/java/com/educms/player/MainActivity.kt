@@ -3079,6 +3079,10 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             },
+            // P2-11 — the replacement itself failed (parent gone, WebView
+            // constructor, view rebind). The Activity rebuilds its whole view
+            // tree instead of dying or sitting on a dead view.
+            onRendererGoneFailed = { _, _ -> if (!isDestroyed && !isFinishing) recreate() },
             onMainFrameError = { label ->
                 if (wv === webView && ::recovery.isInitialized) recovery.onError(label)
             },
@@ -3243,7 +3247,9 @@ class MainActivity : ComponentActivity() {
         wv.webViewClient = object : WebViewClient() {
             @androidx.annotation.RequiresApi(Build.VERSION_CODES.O)
             override fun onRenderProcessGone(view: WebView, detail: android.webkit.RenderProcessGoneDetail): Boolean {
-                if (view === urlOverlayView) {
+                // P2-11 — contained: a throw here would kill the app over a
+                // website view. On failure the overlay is hidden and cleared.
+                if (view === urlOverlayView) runCatching {
                     val previousVisibility = view.visibility
                     val previousUrl = overlayLastStartedUrl
                     // P2-6 — D-pad input followed the old view; it must follow the fresh one.
@@ -3284,6 +3290,11 @@ class MainActivity : ComponentActivity() {
                             }
                         }, delayMs)
                     }
+                    Unit
+                }.onFailure { t ->
+                    PlayerLogger.e("MainActivity", "PLAYER_RENDERER_REPLACE_FAILED overlay ${t.javaClass.simpleName}")
+                    urlOverlayCurrentUrl = null
+                    runCatching { urlOverlayView.visibility = View.GONE }
                 }
                 return true
             }

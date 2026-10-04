@@ -28,6 +28,14 @@ import java.io.FileInputStream
  */
 class SafePlayerWebViewClient(
     private val onRendererGone: (WebView, Boolean) -> Unit,
+    /**
+     * P2-11 — the renderer-replacement callback threw. A throw out of
+     * `onRenderProcessGone` kills the whole app, and on a face it breaks face
+     * isolation (a face failure must never reach the Activity). The throw is
+     * contained in this client; the owner decides what a failed replacement
+     * means (the Activity recreates itself, a face stays on its recovery card).
+     */
+    private val onRendererGoneFailed: (WebView, Throwable) -> Unit = { _, _ -> },
     /** Called on main thread for any main-frame load failure. */
     private val onMainFrameError: ((label: String) -> Unit)? = null,
     /** Called on main thread when the page finishes loading successfully. */
@@ -295,8 +303,25 @@ class SafePlayerWebViewClient(
 
     @RequiresApi(Build.VERSION_CODES.O)
     override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
-        Log.e("PlayerWeb", "renderer gone — didCrash=${detail.didCrash()}")
-        onRendererGone(view, detail.didCrash())
+        // P2-7 (2026-10-03 review) — the renderer's priority when it died
+        // tells a memory kill of a backgrounded renderer from a crash of a
+        // visible one; the PlayerLogger line reaches the uploaded diagnostics.
+        val priority = runCatching { detail.rendererPriorityAtExit() }.getOrDefault(-1)
+        Log.e("PlayerWeb", "renderer gone — didCrash=${detail.didCrash()} priorityAtExit=$priority")
+        com.educms.player.logging.PlayerLogger.e(
+            "PlayerWeb",
+            "PLAYER_RENDERER_GONE didCrash=${detail.didCrash()} rendererPriorityAtExit=$priority",
+        )
+        try {
+            onRendererGone(view, detail.didCrash())
+        } catch (t: Throwable) {
+            // P2-11 — contained: never out of this callback.
+            com.educms.player.logging.PlayerLogger.e(
+                "PlayerWeb",
+                "PLAYER_RENDERER_REPLACE_FAILED ${t.javaClass.simpleName}",
+            )
+            runCatching { onRendererGoneFailed(view, t) }
+        }
         return true // we handled it; don't crash the host process
     }
 }
