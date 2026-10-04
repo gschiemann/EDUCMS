@@ -137,6 +137,23 @@ test('an already uploaded renderer marker cannot hide a simultaneous JVM fatal e
   expect(prisma.client.auditLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({ action: 'PLAYER_DIAGNOSTICS_CRASH' }) });
 });
 
+test('the same crash line in a repeated rotating-log upload writes ONE crash record; a new crash writes another', async () => {
+  const redis = fakeRedis();
+  controller = new PlayerLogsController(prisma, { publisher: redis } as any);
+  const first = '2026-10-04T01:00:00Z CRASH FATAL EXCEPTION: main';
+  expect(await controller.ingestLog(screenId, request(first))).toEqual({ stored: true, rows: 1 });
+  expect(await controller.ingestLog(screenId, request(first + '\nheartbeat synced'))).toEqual({ stored: true, rows: 0 });
+  expect(await controller.ingestLog(screenId, request(first + '\n2026-10-04T02:00:00Z CRASH FATAL EXCEPTION: main'))).toEqual({ stored: true, rows: 1 });
+  expect(prisma.client.auditLog.create).toHaveBeenCalledTimes(2);
+});
+test('a crash record that failed to write gives its claim back, so the retry records it', async () => {
+  const redis = fakeRedis();
+  controller = new PlayerLogsController(prisma, { publisher: redis } as any);
+  prisma.client.auditLog.create.mockRejectedValueOnce(Error('database unavailable'));
+  expect(await controller.ingestLog(screenId, request('FATAL EXCEPTION: main'))).toEqual({ stored: false, rows: 0 });
+  expect(await controller.ingestLog(screenId, request('FATAL EXCEPTION: main'))).toEqual({ stored: true, rows: 1 });
+});
+
 describe('rows per upload and per screen per hour', () => {
   test(`one upload writes at most ${MAX_AUDIT_ROWS_PER_UPLOAD} rows — the newest events, in log order — and the next upload writes the rest`, async () => {
     const redis = fakeRedis();

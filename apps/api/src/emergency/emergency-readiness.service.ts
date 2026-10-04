@@ -248,7 +248,21 @@ export class EmergencyReadinessService {
       where: { tenantId, lastPingAt: { gte: onlineCutoff } },
     });
     const cacheFreshScreens = await this.prisma.client.screen.count({
-      where: { tenantId, lastPingAt: { gte: onlineCutoff }, lastCacheReportAt: { gte: cacheCutoff } },
+      // "Confirmed fetching content" = the page is alive and reporting. A
+      // fresh RENDER PROOF proves that as well as a fresh cache report does,
+      // and since 2026-09-02 the cache report is omitted from the telemetry
+      // tick whenever the service worker is slow or absent — so counting the
+      // cache report alone graded healthy, painting screens "not confirmed"
+      // (the same false signal the wedge detector acted on until 2026-10-04).
+      // Reporting only: nothing here touches trigger, delivery or audit.
+      where: {
+        tenantId,
+        lastPingAt: { gte: onlineCutoff },
+        OR: [
+          { lastCacheReportAt: { gte: cacheCutoff } },
+          { lastRenderedAt: { gte: cacheCutoff } },
+        ],
+      },
     });
     const triggerCapableStaff = await this.prisma.client.user.count({
       where: {

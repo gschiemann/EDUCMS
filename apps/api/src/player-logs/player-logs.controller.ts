@@ -65,6 +65,10 @@ const DETAILS_TRUNCATE = 10_240;
 /** Maximum characters of one recovery marker line stored. */
 const RECOVERY_LINE_MAX = 1024;
 
+/** A line that marks a host crash — same alternatives as the whole-body test. */
+const CRASH_LINE =
+  /FATAL EXCEPTION|FATAL\b|E\/AndroidRuntime|java\.lang\.\w+Exception|kotlin\.\w+Exception|OutOfMemoryError|StackOverflowError|ANR in|Process .* died|signal 11|SIGSEGV/i;
+
 /** Newest recovery marker lines examined per upload. */
 const MAX_RECOVERY_CANDIDATES = 32;
 
@@ -218,9 +222,7 @@ export class PlayerLogsController {
     const recoveryLines = rawBody.split('\n').filter(line =>
       /PLAYER_RENDERER_TERMINATED|PLAYER_PLAYBACK_FAILURE|PLAYER_PROCESS_EXIT/.test(line))
       .slice(-MAX_RECOVERY_CANDIDATES);
-    const looksLikeCrash =
-      /FATAL EXCEPTION|FATAL\b|E\/AndroidRuntime|java\.lang\.\w+Exception|kotlin\.\w+Exception|OutOfMemoryError|StackOverflowError|ANR in|Process .* died|signal 11|SIGSEGV/i
-        .test(rawBody);
+    const looksLikeCrash = CRASH_LINE.test(rawBody);
 
     // SECURITY (sec-fix P1, 2026-07-03): only a VERIFIED device (a valid
     // device token bound to this exact :screenId) may write an immutable
@@ -276,6 +278,26 @@ export class PlayerLogsController {
     recoveryLines: string[],
     looksLikeCrash: boolean,
   ): Promise<{ stored: boolean; rows: number; capped: boolean }> {
+    // ONE crash record per crash, not one per upload (2026-10-04). The APK
+    // uploads the tail of a ROTATING log, so the same crash line rides along
+    // in every upload until it rotates out — each one used to write another
+    // 10 KB row into a table that can never be pruned. The newest crash line
+    // (it carries the log's own timestamp) is claimed like a recovery event;
+    // a NEW crash is a new line and is recorded. Redis unavailable → "not
+    // seen", bounded by the hourly cap, as for recovery events.
+    let crashKey: string | null = null;
+    if (looksLikeCrash) {
+      const lines = rawBody.split('\n');
+      let newest = '';
+      for (let i = lines.length - 1; i >= 0; i--) {
+        if (CRASH_LINE.test(lines[i])) { newest = lines[i]; break; }
+      }
+      const key = recoverySeenKey(
+        tenantId, screenId, 'crash:' + createHash('sha256').update(newest).digest('hex'),
+      );
+      if (await this.limits.claimNew(key)) crashKey = key;
+      else looksLikeCrash = false;
+    }
     const recoveryBudget = MAX_AUDIT_ROWS_PER_UPLOAD - (looksLikeCrash ? 1 : 0);
     const claimed: Array<{ line: string; recoveryEventId: string; key: string }> = [];
     for (let i = recoveryLines.length - 1; i >= 0 && claimed.length < recoveryBudget; i--) {
@@ -291,6 +313,8 @@ export class PlayerLogsController {
     const wanted = claimed.length + (looksLikeCrash ? 1 : 0);
     const granted = await this.limits.reserve(screenId, wanted);
     const writeCrash = looksLikeCrash && granted > 0;
+    // A crash claim whose row will not be written is given back.
+    if (crashKey && !writeCrash) await this.limits.release(crashKey);
     const keep = Math.max(0, granted - (writeCrash ? 1 : 0));
     if (granted < wanted) {
       capped = true;
@@ -315,6 +339,7 @@ export class PlayerLogsController {
         rows += 1;
       } catch (err) {
         for (const unwritten of toWrite.slice(i)) await this.limits.release(unwritten.key);
+        if (crashKey) await this.limits.release(crashKey);
         this.logger.error(`Player diagnostics persistence failed for screen ${screenId}: ${(err as Error).message}`);
         return { stored: false, rows, capped };
       }
@@ -333,6 +358,7 @@ export class PlayerLogsController {
         });
         rows += 1;
       } catch (err) {
+        if (crashKey) await this.limits.release(crashKey);
         this.logger.error(`Player diagnostics persistence failed for screen ${screenId}: ${(err as Error).message}`);
         return { stored: false, rows, capped };
       }
