@@ -58,3 +58,8 @@ caec73bf5e3b6780ac0b168b2ea1b329ff094ebb:apps/web/src/lib/passkey-offer.ts:gener
 4a4db39ae9f76831096eb8c8b0075faabae60d66:docs/templates/homebuilder-install-manifest.json:venueos-hardcoded-256bit-hex-secret:390
 4a4db39ae9f76831096eb8c8b0075faabae60d66:docs/templates/homebuilder-install-manifest.json:venueos-hardcoded-256bit-hex-secret:405
 4a4db39ae9f76831096eb8c8b0075faabae60d66:docs/templates/homebuilder-install-manifest.json:venueos-hardcoded-256bit-hex-secret:420
+
+# 2026-10-04 — `KEEP_SIGNED_IN_KEY` is the NAME of a localStorage entry
+# ('venueos_keep_signed_in.v1'), not a credential; the rule fires on the word
+# KEY in the identifier. Sign-in redesign, commit 27208e15.
+27208e159fef843efcd2b554e47aaf51525ce57f:apps/web/src/lib/keep-signed-in.ts:generic-api-key:33
