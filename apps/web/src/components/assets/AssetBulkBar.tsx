@@ -21,6 +21,10 @@ import { useTranslations } from 'next-intl';
 
 export function AssetBulkBar({
   count,
+  selectAllCount,
+  selectingAll,
+  selectAllDisabled,
+  onSelectAll,
   disabled,
   disabledReason,
   deleteDisabled,
@@ -33,6 +37,17 @@ export function AssetBulkBar({
   onClear,
 }: {
   count: number;
+  /**
+   * "Select all N" — the only place that phrase lives (2026-10-04: the
+   * stand-alone toolbar button is gone; the box above the list selects what is
+   * shown, this reaches every matching file, loaded or not). Null / undefined
+   * when there is nothing more to offer.
+   */
+  selectAllCount?: number | null;
+  /** The select-everything request is on its way: the link reads "Selecting…" and stands down. */
+  selectingAll?: boolean;
+  selectAllDisabled?: boolean;
+  onSelectAll?: () => void;
   /**
    * Gate for the CONTRIBUTOR-allowed actions — `POST /playlists` and
    * `PUT /assets/:id/move` both list CONTRIBUTOR, so this is viewer-only.
@@ -68,6 +83,20 @@ export function AssetBulkBar({
       <p className="text-xs font-bold text-indigo-900 mr-1" aria-live="polite">
         {count} {count === 1 ? 'asset' : 'assets'} selected
       </p>
+
+      {/* The same link, wording and place as the Playlists bar. */}
+      {onSelectAll && selectAllCount != null && (
+        <button
+          type="button"
+          onClick={onSelectAll}
+          disabled={selectingAll || selectAllDisabled}
+          aria-busy={selectingAll}
+          data-testid="bulk-select-all"
+          className="min-h-11 sm:min-h-0 px-1 mr-1 text-xs font-bold underline underline-offset-2 text-indigo-700 hover:text-indigo-900 disabled:opacity-50 disabled:cursor-wait"
+        >
+          {selectingAll ? t('assetsLib.selecting') : t('playlistsPage.bulkSelectAll', { count: selectAllCount })}
+        </button>
+      )}
 
       <button
         type="button"

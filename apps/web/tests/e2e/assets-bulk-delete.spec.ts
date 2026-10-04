@@ -42,7 +42,7 @@ async function setup(page: Page, opts: { gate?: Promise<void>; protectedId?: str
   });
   await page.setViewportSize({ width: 1325, height: 900 });
   await page.goto(`/${TENANT}/assets`);
-  await expect(page.getByRole('button', { name: 'Select all', exact: true })).toBeVisible();
+  await expect(page.getByRole('checkbox', { name: 'Select all files shown' })).toBeVisible();
   return { batches, folderDeletes, singleDeletes };
 }
 async function folderDialog(page: Page) {
@@ -53,16 +53,20 @@ async function folderDialog(page: Page) {
   return dialog;
 }
 
-test('Select all includes unloaded files; deletion removes the selection together while browsing remains available', async ({ page }, info) => {
+test('Select all N includes unloaded files; deletion removes the selection together while browsing remains available', async ({ page }, info) => {
   let release!: () => void;
   const gate = new Promise<void>(resolve => { release = resolve; });
   const calls = await setup(page, { gate });
-  await page.getByRole('button', { name: 'Select all', exact: true }).click();
-  await expect(page.getByTestId('asset-bulk-bar')).toContainText('60');
+  // One select-all pattern (2026-10-04): the box above the tiles selects what is SHOWN (3 of the 60 are
+  // loaded here), and "Select all 60" in the bulk bar reaches the files that were never loaded.
+  await page.getByRole('checkbox', { name: 'Select all files shown' }).check();
+  await expect(page.getByTestId('asset-bulk-bar')).toContainText('3 assets selected');
+  await page.getByTestId('asset-bulk-bar').getByRole('button', { name: 'Select all 60' }).click();
+  await expect(page.getByTestId('asset-bulk-bar')).toContainText('60 assets selected');
   await page.getByTestId('asset-bulk-bar').getByRole('button', { name: 'Delete', exact: true }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Deleting 60 files' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Select Demo photo 0.png' })).toHaveCount(0);
+  await expect(page.getByRole('checkbox', { name: 'Select Demo photo 0.png' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Open folder Demo folder' }).click();
   await page.screenshot({ path: info.outputPath('bulk-delete-browsing.png'), fullPage: true });
   release();

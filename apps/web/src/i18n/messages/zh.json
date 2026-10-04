@@ -1789,6 +1789,10 @@
       "setGroupAddress": "设置分组地址"
     }
   },
+  "selection": {
+    "selectItem": "选择 {name}",
+    "clearSelection": "清除选择"
+  },
   "assetsLib": {
     "title": "媒体库",
     "subtitle": "{count} 个素材 — 拖入文件或点击上传",
@@ -1948,8 +1952,7 @@
     "downloadReselect": "请刷新媒体库后重新选择该文件。",
     "zipFailed": "无法准备 ZIP 下载。",
     "selecting": "正在选择…",
-    "clearSelection": "清除选择",
-    "selectAll": "全选",
+    "selectAllShown": "选择显示的所有文件",
     "deletingFiles": "正在删除 {count, plural, other {# 个文件}}… 你可以继续浏览。",
     "preparingZip": "正在准备 ZIP…",
     "downloadZip": "下载 ZIP",
@@ -2145,6 +2148,10 @@
     "bulkClear": "清除",
     "bulkRemoving": "正在移除",
     "bulkRemove": "移除 {count} 个",
+    "selectAllShown": "选择显示的所有播放列表",
+    "selectAllItemsShown": "选择显示的所有项目",
+    "selectAllInLocation": "选择 {name} 的所有屏幕",
+    "pickerFiles": "文件",
     "videoSwitchNote": "下一帧准备就绪后，视频会直接切换。"
   },
   "brandingCard": {

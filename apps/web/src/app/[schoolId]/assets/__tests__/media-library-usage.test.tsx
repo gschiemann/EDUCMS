@@ -431,7 +431,7 @@ describe('In-use confirmation — sent only after a warning that showed the usag
   describe('bulk delete', () => {
     function selectAndDelete() {
       render(<AssetsPage />);
-      fireEvent.click(rtl.getByRole('button', { name: 'Select Recovery-Lounge-August.jpg' }));
+      fireEvent.click(rtl.getByRole('checkbox', { name: 'Select Recovery-Lounge-August.jpg' }));
       return act(async () => {
         fireEvent.click(within(rtl.getByTestId('asset-bulk-bar')).getByRole('button', { name: /^Delete$/ }));
       });

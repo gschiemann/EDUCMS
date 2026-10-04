@@ -758,3 +758,191 @@ describe('bulk selection', () => {
     expect(screen.getByTestId('bulk-remove')).not.toBeDisabled();
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────
+// ONE select-all pattern (Greg, 2026-10-04: "select all should be the same
+// across the entire app… it looks best on the playlist columns… find a good
+// solution for the tiled views as well"). The table header box is the reference;
+// the cards and the grid get the same box at the start of the line above them,
+// and every tile carries the shared corner box and selected look.
+// ─────────────────────────────────────────────────────────────────────
+describe('the one select-all pattern — header box, heading box, tile boxes', () => {
+  const many = (n: number): PlaylistSummaryRow[] =>
+    Array.from({ length: n }, (_, i) => row({ id: `m${i}`, name: `Playlist ${String(i).padStart(2, '0')}`, searchText: `playlist ${i}` }));
+  const mountMany = (n: number) => {
+    const rows = many(n);
+    return mount({ rows, rawById: new Map(rows.map((r) => [r.id, { id: r.id, name: r.name, items: [] }])), onRemoveMany: jest.fn() });
+  };
+  const gridView = () => fireEvent.click(screen.getByRole('button', { name: 'Grid view' }));
+  const gridCard = (name: string) => {
+    const hit = screen.getAllByTestId('playlist-card-grid').find((c) => c.textContent?.includes(name));
+    if (!hit) throw new Error(`no grid card for ${name}`);
+    return hit;
+  };
+  const chip = (card: HTMLElement, name: string) =>
+    within(card).getByRole('checkbox', { name: `Select ${name}` }).parentElement!.parentElement as HTMLElement;
+
+  it('the table header box says what it covers: "Select all playlists shown"', () => {
+    mount({ onRemoveMany: jest.fn() });
+    expect(within(screen.getByTestId('playlist-table')).getByTestId('select-page'))
+      .toBe(within(screen.getByTestId('playlist-table')).getByRole('checkbox', { name: 'Select all playlists shown' }));
+  });
+
+  it('the cards under 1024 px get the same box at the start of a heading line — and it is hidden at 1024+, where the table header has it', () => {
+    mount({ onRemoveMany: jest.fn() });
+    const heading = screen.getByTestId('select-heading');
+    expect(heading).toHaveTextContent('Playlists 5');
+    expect(heading.closest('.lg\\:hidden')).not.toBeNull();
+    expect(within(heading).getByRole('checkbox', { name: 'Select all playlists shown' })).toBe(screen.getByTestId('select-page-heading'));
+    // the box comes BEFORE the words, like the table header's
+    const box = screen.getByTestId('select-page-heading');
+    const title = within(heading).getByRole('heading', { name: /Playlists/ });
+    expect(box.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('is one control: the heading box and the table header box select, and show, the same thing', () => {
+    mount({ onRemoveMany: jest.fn() });
+    fireEvent.click(screen.getByTestId('select-page-heading'));
+    expect(screen.getByTestId('bulk-count')).toHaveTextContent('5 selected');
+    expect((screen.getByTestId('select-page') as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByTestId('select-page-heading') as HTMLInputElement).checked).toBe(true);
+    // one row off → the dash on both
+    fireEvent.click(within(rowNamed('Club Welcome')).getByRole('checkbox', { name: 'Select Club Welcome' }));
+    expect((screen.getByTestId('select-page') as HTMLInputElement).indeterminate).toBe(true);
+    expect((screen.getByTestId('select-page-heading') as HTMLInputElement).indeterminate).toBe(true);
+  });
+
+  it('offers no select-all box to a viewer, or without a bulk handler — in any layout', () => {
+    const { unmount } = mount();
+    expect(screen.queryByTestId('select-heading')).toBeNull();
+    gridView();
+    expect(screen.queryByTestId('select-heading')).toBeNull();
+    unmount();
+    mount({ onRemoveMany: jest.fn(), isViewer: true });
+    expect(screen.queryByTestId('select-heading')).toBeNull();
+  });
+
+  describe('grid', () => {
+    it('swaps the table and the cards for ONE heading box above the tiles', () => {
+      mount({ onRemoveMany: jest.fn() });
+      gridView();
+      expect(screen.queryByTestId('playlist-table')).toBeNull();
+      expect(screen.queryByTestId('playlist-card-compact')).toBeNull();
+      expect(screen.getAllByRole('checkbox', { name: 'Select all playlists shown' })).toHaveLength(1);
+      expect(screen.getByTestId('select-heading')).toHaveTextContent('Playlists 5');
+      // …and in the grid it is NOT confined to <1024 px
+      expect(screen.getByTestId('select-heading').closest('.lg\\:hidden')).toBeNull();
+    });
+
+    it('selects the tiles shown, tri-state, and the bar offers Select all N across pages', () => {
+      mountMany(14); // PAGE_SIZE is 12
+      gridView();
+      const header = () => screen.getByTestId('select-page-heading') as HTMLInputElement;
+      fireEvent.click(header());
+      expect(screen.getByTestId('bulk-count')).toHaveTextContent('12 selected');
+      expect(header().checked).toBe(true);
+      fireEvent.click(within(gridCard('Playlist 03')).getByRole('checkbox', { name: 'Select Playlist 03' }));
+      expect(header().indeterminate).toBe(true);
+      fireEvent.click(within(screen.getByTestId('bulk-bar')).getByRole('button', { name: 'Select all 14' }));
+      expect(screen.getByTestId('bulk-count')).toHaveTextContent('14 selected');
+    });
+
+    it('each tile carries its own named box, and a selected tile wears the SAME selected look the Media Library\'s tiles do', () => {
+      mount({ onRemoveMany: jest.fn() });
+      gridView();
+      fireEvent.click(within(gridCard('Club Welcome')).getByRole('checkbox', { name: 'Select Club Welcome' }));
+      expect(gridCard('Club Welcome')).toHaveAttribute('data-selected', 'true');
+      expect(gridCard('Club Welcome').className).toContain('border-indigo-500');
+      expect(gridCard('Club Welcome').className).toContain('ring-indigo-200');
+      // …without a competing hairline border: two border colours would be ranked by the stylesheet
+      expect(gridCard('Club Welcome').className).not.toContain('E4E8F1');
+      expect(gridCard('Member Promotions')).toHaveAttribute('data-selected', 'false');
+      expect(gridCard('Member Promotions').className).not.toContain('ring-indigo-200');
+    });
+
+    it('a tile\'s box waits for the pointer until anything is selected, then every tile shows one', () => {
+      mount({ onRemoveMany: jest.fn() });
+      gridView();
+      expect(chip(gridCard('Member Promotions'), 'Member Promotions').className).toContain('opacity-0');
+      expect(chip(gridCard('Class Schedule'), 'Class Schedule').className).toContain('opacity-0');
+      fireEvent.click(within(gridCard('Club Welcome')).getByRole('checkbox', { name: 'Select Club Welcome' }));
+      for (const name of ['Member Promotions', 'Club Welcome', 'Class Schedule', 'Lobby Promotions']) {
+        expect(chip(gridCard(name), name).className).not.toContain('opacity-0');
+      }
+      // …and the cards group their hover/focus so the hidden boxes can come back with the pointer
+      expect(gridCard('Member Promotions').className).toMatch(/(^|\s)group(\s|$)/);
+    });
+
+    it('a click on a tile\'s box never opens the playlist', () => {
+      const { props } = mount({ onRemoveMany: jest.fn() });
+      gridView();
+      fireEvent.click(within(gridCard('Member Promotions')).getByRole('checkbox', { name: 'Select Member Promotions' }));
+      expect(props.onOpen).not.toHaveBeenCalled();
+    });
+
+    it('stands down while a removal runs', async () => {
+      let finish: () => void = () => {};
+      mount({ onRemoveMany: jest.fn(() => new Promise<void>((res) => { finish = res; })) });
+      gridView();
+      fireEvent.click(within(gridCard('Member Promotions')).getByRole('checkbox', { name: 'Select Member Promotions' }));
+      fireEvent.click(screen.getByTestId('bulk-remove'));
+      await screen.findByRole('button', { name: /Removing/ });
+      expect(screen.getByTestId('select-page-heading')).toBeDisabled();
+      expect(within(gridCard('Club Welcome')).getByRole('checkbox', { name: 'Select Club Welcome' })).toBeDisabled();
+      await React.act(async () => { finish(); });
+    });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
+// The box explains itself on hover (Greg, 2026-10-04: "is a bare checkbox
+// understood as select all?"): a native tooltip says what a click will do.
+// ─────────────────────────────────────────────────────────────────────
+describe('the select-all box\'s tooltip', () => {
+  const titleOf = (el: HTMLElement) => (el.closest('label') as HTMLElement).getAttribute('title');
+  const tableBox = () => screen.getByTestId('select-page') as HTMLInputElement;
+  const headingBox = () => screen.getByTestId('select-page-heading') as HTMLInputElement;
+
+  it('table header and heading line both say "Select all playlists shown" — from none and from some — and "Clear selection" from all', () => {
+    mount({ onRemoveMany: jest.fn() });
+    expect(titleOf(tableBox())).toBe('Select all playlists shown');
+    expect(titleOf(headingBox())).toBe('Select all playlists shown');
+
+    fireEvent.click(within(rowNamed('Club Welcome')).getByRole('checkbox', { name: 'Select Club Welcome' })); // some
+    expect(tableBox().indeterminate).toBe(true);
+    expect(titleOf(tableBox())).toBe('Select all playlists shown');
+    expect(titleOf(headingBox())).toBe('Select all playlists shown');
+
+    fireEvent.click(tableBox()); // all five on the page
+    expect(tableBox().checked).toBe(true);
+    expect(titleOf(tableBox())).toBe('Clear selection');
+    expect(titleOf(headingBox())).toBe('Clear selection');
+
+    fireEvent.click(headingBox()); // clears
+    expect(titleOf(tableBox())).toBe('Select all playlists shown');
+  });
+
+  it('the accessible name is the same sentence in every state — the checkbox carries the state', () => {
+    mount({ onRemoveMany: jest.fn() });
+    fireEvent.click(tableBox());
+    expect(within(screen.getByTestId('playlist-table')).getByRole('checkbox', { name: 'Select all playlists shown' })).toBeChecked();
+  });
+
+  it('every item box says "Select <name>": the row, the card, and the grid tile', () => {
+    mount({ onRemoveMany: jest.fn() });
+    expect(titleOf(within(rowNamed('Club Welcome')).getByRole('checkbox', { name: 'Select Club Welcome' }))).toBe('Select Club Welcome');
+    const card = screen.getAllByTestId('playlist-card-compact').find((c) => c.textContent?.includes('Club Welcome')) as HTMLElement;
+    expect(titleOf(within(card).getByRole('checkbox', { name: 'Select Club Welcome' }))).toBe('Select Club Welcome');
+    fireEvent.click(screen.getByRole('button', { name: 'Grid view' }));
+    const tile = screen.getAllByTestId('playlist-card-grid').find((c) => c.textContent?.includes('Club Welcome')) as HTMLElement;
+    expect(titleOf(within(tile).getByRole('checkbox', { name: 'Select Club Welcome' }))).toBe('Select Club Welcome');
+  });
+
+  it('the grid\'s heading box says the same', () => {
+    mount({ onRemoveMany: jest.fn() });
+    fireEvent.click(screen.getByRole('button', { name: 'Grid view' }));
+    expect(titleOf(headingBox())).toBe('Select all playlists shown');
+    fireEvent.click(headingBox());
+    expect(titleOf(headingBox())).toBe('Clear selection');
+  });
+});

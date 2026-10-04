@@ -1789,6 +1789,10 @@
       "setGroupAddress": "Establecer dirección del grupo"
     }
   },
+  "selection": {
+    "selectItem": "Seleccionar {name}",
+    "clearSelection": "Borrar selección"
+  },
   "assetsLib": {
     "title": "Biblioteca de medios",
     "subtitle": "{count} archivos — arrastra o haz clic para subir",
@@ -1948,8 +1952,7 @@
     "downloadReselect": "Actualiza la biblioteca y vuelve a seleccionar el archivo.",
     "zipFailed": "No se pudo preparar la descarga ZIP.",
     "selecting": "Seleccionando…",
-    "clearSelection": "Borrar selección",
-    "selectAll": "Seleccionar todo",
+    "selectAllShown": "Seleccionar todos los archivos mostrados",
     "deletingFiles": "Eliminando {count, plural, one {# archivo} other {# archivos}}… Puedes seguir navegando.",
     "preparingZip": "Preparando ZIP…",
     "downloadZip": "Descargar ZIP",
@@ -2145,6 +2148,10 @@
     "bulkClear": "Borrar",
     "bulkRemoving": "Quitando",
     "bulkRemove": "Quitar {count}",
+    "selectAllShown": "Seleccionar todas las listas mostradas",
+    "selectAllItemsShown": "Seleccionar todos los elementos mostrados",
+    "selectAllInLocation": "Seleccionar todas las pantallas de {name}",
+    "pickerFiles": "Archivos",
     "videoSwitchNote": "Los videos cambian directamente cuando el siguiente fotograma está listo."
   },
   "brandingCard": {

@@ -8,6 +8,7 @@ import { useSuperTenants, useCompSeats, useUpsertLicense, type SuperTenantRow } 
 import { appConfirm, appPrompt } from '@/components/ui/app-dialog';
 import { apiFetch } from '@/lib/api-client';
 import ActivationFunnelPanel from './ActivationFunnelPanel';
+import { SelectionCheckbox, selectAllTitle, selectionState } from '@/components/common/SelectionCheckbox';
 
 /**
  * Owner-only control panel. Lists every tenant across the platform,
@@ -310,23 +311,33 @@ export default function SuperPage() {
                 <table className="w-full text-xs">
                   <thead className="bg-slate-50 text-slate-500 uppercase text-[10px] tracking-widest">
                     <tr>
-                      {/* Phase B closeout — selection column. Header
-                          checkbox toggles every tenant in THIS vertical. */}
+                      {/* Phase B closeout — selection column. The header box selects every
+                          tenant in THIS vertical. 2026-10-04: it is the app's one select-all
+                          box now (components/common/SelectionCheckbox) — tri-state, so a
+                          vertical with only some picked shows the dash. */}
                       <th className="text-left px-3 py-2 w-8">
-                        <input
-                          type="checkbox"
-                          checked={rows.every((t) => selectedIds.has(t.id))}
-                          aria-label={`Select all ${vertical} tenants`}
-                          onChange={(e) => {
-                            setSelectedIds((prev) => {
-                              const next = new Set(prev);
-                              if (e.target.checked) rows.forEach((t) => next.add(t.id));
-                              else rows.forEach((t) => next.delete(t.id));
-                              return next;
-                            });
-                          }}
-                          className="w-3.5 h-3.5 accent-indigo-500 cursor-pointer"
-                        />
+                        <span className="block -my-1">
+                          {(() => {
+                            const verticalState = selectionState(rows.filter((t) => selectedIds.has(t.id)).length, rows.length);
+                            return (
+                              <SelectionCheckbox
+                                compact
+                                checked={verticalState === 'all'}
+                                indeterminate={verticalState === 'some'}
+                                label={`Select all ${vertical} tenants shown`}
+                                title={selectAllTitle(verticalState, `Select all ${vertical} tenants shown`, 'Clear selection')}
+                                onChange={(next) => {
+                                  setSelectedIds((prev) => {
+                                    const set = new Set(prev);
+                                    if (next) rows.forEach((t) => set.add(t.id));
+                                    else rows.forEach((t) => set.delete(t.id));
+                                    return set;
+                                  });
+                                }}
+                              />
+                            );
+                          })()}
+                        </span>
                       </th>
                       <th className="text-left px-4 py-2 font-bold">Tenant</th>
                       <th className="text-left px-4 py-2 font-bold">Tier</th>
@@ -347,12 +358,11 @@ export default function SuperPage() {
                     {rows.map(t => (
                       <tr key={t.id} className={`border-t border-slate-100 hover:bg-slate-50 ${selectedIds.has(t.id) ? 'bg-indigo-50/40' : ''}`}>
                         <td className="px-3 py-2.5">
-                          <input
-                            type="checkbox"
+                          <SelectionCheckbox
+                            compact
                             checked={selectedIds.has(t.id)}
+                            label={`Select ${t.name}`}
                             onChange={() => toggleSelect(t.id)}
-                            aria-label={`Select ${t.name}`}
-                            className="w-3.5 h-3.5 accent-indigo-500 cursor-pointer"
                           />
                         </td>
                         <td className="px-4 py-2.5">

@@ -1789,6 +1789,10 @@
       "setGroupAddress": "Set group address"
     }
   },
+  "selection": {
+    "selectItem": "Select {name}",
+    "clearSelection": "Clear selection"
+  },
   "assetsLib": {
     "title": "Media Library",
     "subtitle": "{count} assets — drag files or click to upload",
@@ -1948,8 +1952,7 @@
     "downloadReselect": "Refresh the library and select the file again.",
     "zipFailed": "Could not prepare the ZIP download.",
     "selecting": "Selecting…",
-    "clearSelection": "Clear selection",
-    "selectAll": "Select all",
+    "selectAllShown": "Select all files shown",
     "deletingFiles": "Deleting {count, plural, one {# file} other {# files}}… You can keep browsing.",
     "preparingZip": "Preparing ZIP…",
     "downloadZip": "Download ZIP",
@@ -2145,6 +2148,10 @@
     "bulkClear": "Clear",
     "bulkRemoving": "Removing",
     "bulkRemove": "Remove {count}",
+    "selectAllShown": "Select all playlists shown",
+    "selectAllItemsShown": "Select all items shown",
+    "selectAllInLocation": "Select all screens in {name}",
+    "pickerFiles": "Files",
     "videoSwitchNote": "Videos switch directly when the next frame is ready."
   },
   "brandingCard": {

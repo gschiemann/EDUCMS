@@ -280,7 +280,9 @@ describe('video thumbnails', () => {
   it('the Add Media picker gives its video tiles the same poster, with a measured orientation tag', () => {
     render(<PlaylistsPage embedPlaylistId="p1" embedSection="content" />);
     fireEvent.click(rtl.getAllByRole('button', { name: /Add Media/i })[0]);
-    const tile = rtl.getByRole('button', { name: 'Select promo.mp4' });
+    // A tile is its own box (the control a keyboard reaches) plus a picture that toggles it for the mouse.
+    const tileOf = (name: string) => rtl.getByRole('checkbox', { name: `Select ${name}` }).closest('[data-selected]') as HTMLElement;
+    const tile = tileOf('promo.mp4');
     const poster = tile.querySelector('img') as HTMLImageElement;
     expect(poster.getAttribute('src')).toBe(POSTER_L2);
     expect(poster.className).toMatch(/\bobject-contain\b/);
@@ -290,7 +292,7 @@ describe('video thumbnails', () => {
     fireEvent.load(poster);
     expect(within(tile).getByTestId('asset-orientation')).toHaveTextContent('Portrait');
 
-    const raw = rtl.getByRole('button', { name: 'Select raw.mp4' });
+    const raw = tileOf('raw.mp4');
     expect(raw.querySelector('img')).toBeNull();
     expect(raw.querySelector('video')?.getAttribute('src')).toBe('https://cdn.example.com/L3.mp4#t=0.1');
     expect(play).not.toHaveBeenCalled();

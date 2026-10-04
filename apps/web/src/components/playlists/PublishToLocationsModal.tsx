@@ -18,6 +18,7 @@ import { useFleet, usePlaylists, usePublishToFleet, type PublishToFleetResult } 
 import { useQueryClient } from '@tanstack/react-query';
 import { computeBlastRadius, reachWarnings } from '@/lib/blast-radius';
 import { BlastRadiusSummary } from '@/components/playlists/BlastRadiusSummary';
+import { SelectionCheckbox, selectAllTitle, selectionState } from '@/components/common/SelectionCheckbox';
 
 export function PublishToLocationsModal({
   open,
@@ -181,14 +182,28 @@ export function PublishToLocationsModal({
                 ) : (
                   <div className="space-y-2">
                     {byStore.map((store) => {
-                      const allOn = store.screens.every((s) => selected.has(s.id));
+                      const locationState = selectionState(store.screens.filter((s) => selected.has(s.id)).length, store.screens.length);
                       return (
                         <div key={store.id} className="rounded-xl border border-slate-200">
-                          <button onClick={() => toggleStore(store.screens)} className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-slate-50 rounded-t-xl">
-                            <input type="checkbox" readOnly checked={allOn} className="accent-current" style={{ accentColor: 'var(--brand-primary, #4f46e5)' }} />
-                            <span className="font-bold text-sm text-slate-700 flex-1">{store.name}{store.id === rootId && <span className="ml-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">HQ</span>}</span>
-                            <span className="text-xs text-slate-400">{store.screens.length} screen{store.screens.length === 1 ? '' : 's'}</span>
-                          </button>
+                          {/* The location's heading line carries the one select-all box (it used to be an
+                              inert read-only checkbox nested inside a button): tri-state over this
+                              location's screens. The name and count still toggle the whole location for
+                              the mouse; they are out of the tab order and hidden from assistive tech
+                              because the box is the control a keyboard and a screen reader reach. */}
+                          <div className="w-full flex items-center gap-2 px-3 py-2 hover:bg-slate-50 rounded-t-xl">
+                            <SelectionCheckbox
+                              compact
+                              checked={locationState === 'all'}
+                              indeterminate={locationState === 'some'}
+                              label={t('playlistsPage.selectAllInLocation', { name: store.name })}
+                              title={selectAllTitle(locationState, t('playlistsPage.selectAllInLocation', { name: store.name }), t('selection.clearSelection'))}
+                              onChange={() => toggleStore(store.screens)}
+                            />
+                            <button type="button" tabIndex={-1} aria-hidden="true" onClick={() => toggleStore(store.screens)} className="flex-1 min-w-0 flex items-center gap-2 text-left">
+                              <span className="font-bold text-sm text-slate-700 flex-1">{store.name}{store.id === rootId && <span className="ml-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">HQ</span>}</span>
+                              <span className="text-xs text-slate-400">{store.screens.length} screen{store.screens.length === 1 ? '' : 's'}</span>
+                            </button>
+                          </div>
                           <div className="px-3 pb-2 flex flex-wrap gap-1.5">
                             {store.screens.map((s) => {
                               const on = selected.has(s.id);

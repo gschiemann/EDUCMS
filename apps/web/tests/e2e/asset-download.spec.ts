@@ -91,7 +91,7 @@ async function openLibrary(page: Page, assets = [ASSET], archiveError = false) {
 
 test('three selected assets download once as a ZIP containing every file', async ({ page, context }) => {
   await openLibrary(page, THREE);
-  for (const asset of THREE) await page.getByRole('button', { name: `Select ${asset.originalName}`, exact: true }).click();
+  for (const asset of THREE) await page.getByRole('checkbox', { name: `Select ${asset.originalName}`, exact: true }).check();
   const downloads: unknown[] = [];
   page.on('download', download => downloads.push(download));
   const pending = page.waitForEvent('download');
@@ -109,7 +109,7 @@ test('three selected assets download once as a ZIP containing every file', async
 
 test('archive preparation errors stay in the library and do not download a subset', async ({ page }) => {
   await openLibrary(page, THREE, true);
-  for (const asset of THREE) await page.getByRole('button', { name: `Select ${asset.originalName}`, exact: true }).click();
+  for (const asset of THREE) await page.getByRole('checkbox', { name: `Select ${asset.originalName}`, exact: true }).check();
   const downloads: unknown[] = [];
   page.on('download', download => downloads.push(download));
   await page.getByRole('button', { name: 'Download ZIP', exact: true }).click();
@@ -124,7 +124,7 @@ for (const source of ['details', 'menu', 'bulk'] as const) {
     await openLibrary(page);
     let button;
     if (source === 'bulk') {
-      await page.getByRole('button', { name: `Select ${NAME}`, exact: true }).click();
+      await page.getByRole('checkbox', { name: `Select ${NAME}`, exact: true }).check();
       button = page.getByRole('button', { name: 'Download', exact: true });
     } else {
       await page.getByRole('button', { name: `More actions for ${NAME}` }).click();

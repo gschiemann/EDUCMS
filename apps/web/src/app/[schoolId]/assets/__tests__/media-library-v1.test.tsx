@@ -248,7 +248,7 @@ describe('Media Library v1 — the calm default view', () => {
   it('cards carry no destructive control — only a select box and an overflow menu', () => {
     mount();
     expect(rtl.queryByRole('button', { name: 'Delete Recovery-Lounge-August.jpg' })).not.toBeInTheDocument();
-    expect(rtl.getByRole('button', { name: 'Select Recovery-Lounge-August.jpg' })).toBeInTheDocument();
+    expect(rtl.getByRole('checkbox', { name: 'Select Recovery-Lounge-August.jpg' })).toBeInTheDocument();
     expect(rtl.getByRole('button', { name: 'More actions for Recovery-Lounge-August.jpg' })).toBeInTheDocument();
   });
 
@@ -353,11 +353,11 @@ describe('Media Library v1 — the overflow menu (§11)', () => {
 describe('Media Library v1 — selection bar (§13)', () => {
   it('appears on the first selection, counts correctly, and clears', () => {
     mount();
-    fireEvent.click(rtl.getByRole('button', { name: 'Select Recovery-Lounge-August.jpg' }));
+    fireEvent.click(rtl.getByRole('checkbox', { name: 'Select Recovery-Lounge-August.jpg' }));
     const bar = rtl.getByTestId('asset-bulk-bar');
     expect(bar).toHaveTextContent('1 asset selected');
 
-    fireEvent.click(rtl.getByRole('button', { name: 'Select Trainer-Tips-01.mp4' }));
+    fireEvent.click(rtl.getByRole('checkbox', { name: 'Select Trainer-Tips-01.mp4' }));
     expect(rtl.getByTestId('asset-bulk-bar')).toHaveTextContent('2 assets selected');
 
     fireEvent.click(within(rtl.getByTestId('asset-bulk-bar')).getByRole('button', { name: /Clear selection/ }));
@@ -366,7 +366,7 @@ describe('Media Library v1 — selection bar (§13)', () => {
 
   it('keeps every selection action inline — Delete included, since a one-item More menu was a click for nothing (2026-09-24)', () => {
     mount();
-    fireEvent.click(rtl.getByRole('button', { name: 'Select Recovery-Lounge-August.jpg' }));
+    fireEvent.click(rtl.getByRole('checkbox', { name: 'Select Recovery-Lounge-August.jpg' }));
     const bar = rtl.getByTestId('asset-bulk-bar');
     expect(within(bar).getByRole('button', { name: /Create playlist/ })).toBeInTheDocument();
     expect(within(bar).getByRole('button', { name: /Move to folder/ })).toBeInTheDocument();
@@ -377,7 +377,7 @@ describe('Media Library v1 — selection bar (§13)', () => {
 
   it('Move to folder opens the destination picker for the selection', () => {
     mount();
-    fireEvent.click(rtl.getByRole('button', { name: 'Select Recovery-Lounge-August.jpg' }));
+    fireEvent.click(rtl.getByRole('checkbox', { name: 'Select Recovery-Lounge-August.jpg' }));
     fireEvent.click(within(rtl.getByTestId('asset-bulk-bar')).getByRole('button', { name: /Move to folder/ }));
     expect(rtl.getByText(/to which folder\?/i)).toBeInTheDocument();
   });
@@ -594,7 +594,7 @@ describe('Media Library v1 — deletion is admin-only', () => {
   const openFolderMenu = () =>
     fireEvent.click(rtl.getByRole('button', { name: 'Folder actions for Campaigns' }));
   const openBulkBar = () => {
-    fireEvent.click(rtl.getByRole('button', { name: 'Select Recovery-Lounge-August.jpg' }));
+    fireEvent.click(rtl.getByRole('checkbox', { name: 'Select Recovery-Lounge-August.jpg' }));
     return rtl.getByTestId('asset-bulk-bar');
   };
   const openDetail = () =>

@@ -45,6 +45,7 @@ import { AssetPreviewOverlay } from '@/components/playlists/AssetPreviewOverlay'
 import { VideoPreviewThumb, assetPosterUrl } from '@/components/playlists/VideoPreviewThumb';
 import { AssetEncodeBadge } from '@/components/assets/VideoEncode';
 import { PlaylistEncodeBanner } from '@/components/playlists/PlaylistEncodeBanner';
+import { SELECTED_TILE_CLASS, SelectionCheckbox, SelectionTileCheckbox, selectAllTitle, selectionState } from '@/components/common/SelectionCheckbox';
 import { imageShape, type ImageShape } from '@/lib/image-shape';
 import { uploadAssetDirect } from '@/lib/direct-upload';
 import { useUploadErrorText, useUploadTooLargeText } from '@/lib/use-upload-error-text';
@@ -303,7 +304,7 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSel
         >
           <GripVertical className="w-5 h-5 md:w-4 md:h-4" aria-hidden="true" />
         </button>
-        <input type="checkbox" checked={isSelected} onChange={() => onToggle(item.id)} className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer shrink-0" />
+        <SelectionCheckbox compact checked={isSelected} label={t('selection.selectItem', { name })} onChange={() => onToggle(item.id)} />
         {/* Index number — desktop only; visually redundant on mobile
             where rows are obviously sequential. */}
         <span className="text-xs font-bold text-slate-400 w-5 text-center shrink-0 hidden md:inline-block">{index + 1}</span>
@@ -1669,6 +1670,7 @@ export default function ClassicPlaylistsPage({
     if (select) setSelectedItemIds(new Set(localItems.map(i => i.id)));
     else setSelectedItemIds(new Set());
   };
+  const itemsState = selectionState(selectedItemIds.size, localItems.length);
 
   const handleSave = async () => {
     if (!selectedId) return;
@@ -2078,12 +2080,19 @@ export default function ClassicPlaylistsPage({
     void Promise.all(Array.from({ length: Math.min(3, queue.length) }, () => worker()));
   };
 
-  const handleSelectAllPickerAssets = () => {
-    if (selectedPickerAssets.size === pickerAssets.length && pickerAssets.length > 0) {
-      setSelectedPickerAssets(new Set()); // Deselect all
-    } else {
-      setSelectedPickerAssets(new Set(pickerAssets.map((a: any) => a.id))); // Select all
-    }
+  // The box above the files — the same one the Media Library has. Tri-state over the files
+  // SHOWN: empty or "some" selects every file shown, "all" clears them. A pick made in another
+  // folder stays (the old button replaced the whole selection).
+  const pickerShownState = selectionState(
+    pickerAssets.filter((a: any) => selectedPickerAssets.has(a.id)).length,
+    pickerAssets.length,
+  );
+  const handleSelectAllPickerAssets = (select: boolean) => {
+    setSelectedPickerAssets((prev) => {
+      const next = new Set(prev);
+      for (const a of pickerAssets) { if (select) next.add(a.id); else next.delete(a.id); }
+      return next;
+    });
   };
 
   const handleBulkAddPickerAssets = () => {
@@ -2269,11 +2278,15 @@ export default function ClassicPlaylistsPage({
                   {/* Bulk Actions Header */}
                   <div className="flex flex-wrap items-center justify-between mb-4 px-2 py-2 bg-slate-50/50 rounded-xl border border-slate-100/50 gap-y-2">
                     <div className="flex items-center gap-3">
-                      <input 
-                        type="checkbox" 
-                        checked={selectedItemIds.size === localItems.length && localItems.length > 0}
-                        onChange={(e) => handleSelectAll(e.target.checked)}
-                        className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer ml-1"
+                      {/* The one select-all box (components/common/SelectionCheckbox): tri-state over
+                          the items shown. Every item is shown here, so there is no "Select all N". */}
+                      <SelectionCheckbox
+                        compact
+                        checked={itemsState === 'all'}
+                        indeterminate={itemsState === 'some'}
+                        label={t('playlistsPage.selectAllItemsShown')}
+                        title={selectAllTitle(itemsState, t('playlistsPage.selectAllItemsShown'), t('selection.clearSelection'))}
+                        onChange={handleSelectAll}
                       />
                       <div className="flex items-center gap-2">
                         <Layers className="w-4 h-4 text-slate-400" />
@@ -2726,13 +2739,6 @@ export default function ClassicPlaylistsPage({
                   ))}
                 </div>
                 <div className="flex gap-2 items-center">
-                  <button 
-                    onClick={handleSelectAllPickerAssets}
-                    className="px-2 py-1 text-[10px] font-bold text-indigo-600 hover:bg-indigo-50 rounded flex items-center gap-1 transition-colors"
-                  >
-                    <CheckSquare className="w-3 h-3" /> Select All
-                  </button>
-                  <div className="w-px h-4 bg-slate-200 mx-1"></div>
                   <div className="flex gap-1">
                     {(['all', 'images', 'videos', 'audio', 'urls'] as const).map(f => (
                       <button key={f} onClick={() => setPickerFilter(f)} className={`px-2.5 py-1 text-[10px] font-bold rounded-md ${pickerFilter === f ? 'bg-white text-slate-700 shadow-sm border border-slate-200' : 'text-slate-500 hover:text-slate-700'}`}>
@@ -2824,46 +2830,72 @@ export default function ClassicPlaylistsPage({
                 {pickerAssets.length === 0 ? (
                   <div className="text-center py-12 text-sm text-slate-400">{t('playlistsPage.noAssetsInFolder')}</div>
                 ) : (
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                    {pickerAssets.map((asset: any) => {
-                      const thumb = thumbUrl(asset);
-                      const name = assetName(asset);
-                      const isSelected = selectedPickerAssets.has(asset.id);
-                      
-                      return (
-                        <button
-                          key={asset.id}
-                          onClick={() => handleTogglePickerAsset(asset.id)}
-                          aria-pressed={isSelected}
-                          aria-label={isSelected ? `Deselect ${name}` : `Select ${name}`}
-                          className={`relative rounded-xl border transition-all text-left overflow-hidden group select-none w-full ${
-                            isSelected
-                              ? 'border-indigo-500 shadow-[0_0_0_2px_rgba(99,102,241,0.2)]'
-                              : 'border-slate-200 hover:border-indigo-300 hover:shadow-md'
-                          }`}
-                        >
-                          <div className={`aspect-video flex items-center justify-center relative overflow-hidden ${thumb ? 'bg-slate-900' : 'bg-slate-100'}`}>
-                            {thumb ? (
-                              <PickerTileThumb asset={asset} />
-                            ) : (
-                              mimeIcon(asset.mimeType, 'w-8 h-8')
-                            )}
-                            {/* Checkbox overlay */}
-                            <div className={`absolute top-2 left-2 w-5 h-5 rounded-md border flex items-center justify-center transition-all ${
-                              isSelected 
-                                ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm scale-110' 
-                                : 'bg-white/80 backdrop-blur-sm border-slate-300 text-transparent opacity-0 group-hover:opacity-100'
-                            }`}>
-                              <CheckSquare className="w-3.5 h-3.5" />
-                            </div>
+                  <>
+                    {/* The select-all box: the start of the line above the tiles, the same box
+                        and place as the Media Library's — not a button of its own. */}
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="block -my-0.5 ml-[13px]">
+                        <SelectionCheckbox
+                          compact
+                          checked={pickerShownState === 'all'}
+                          indeterminate={pickerShownState === 'some'}
+                          label={t('assetsLib.selectAllShown')}
+                          title={selectAllTitle(pickerShownState, t('assetsLib.selectAllShown'), t('selection.clearSelection'))}
+                          onChange={handleSelectAllPickerAssets}
+                          testId="picker-select-all"
+                        />
+                      </span>
+                      <h4 className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                        {t('playlistsPage.pickerFiles')} <span className="text-slate-400 font-semibold">{pickerAssets.length}</span>
+                      </h4>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                      {pickerAssets.map((asset: any) => {
+                        const thumb = thumbUrl(asset);
+                        const name = assetName(asset);
+                        const isSelected = selectedPickerAssets.has(asset.id);
+
+                        return (
+                          <div
+                            key={asset.id}
+                            data-selected={isSelected ? 'true' : 'false'}
+                            className={`relative rounded-xl border transition-all overflow-hidden group select-none w-full ${
+                              isSelected ? SELECTED_TILE_CLASS : 'border-slate-200 hover:border-indigo-300 hover:shadow-md'
+                            }`}
+                          >
+                            {/* The picture and the name still toggle the tile — a mouse convenience, out
+                                of the tab order and hidden from assistive tech on purpose: the tile's
+                                own checkbox below is the control a keyboard and a screen reader reach
+                                (the same arrangement as the Playlists cards' PreviewOpener). */}
+                            <button
+                              type="button"
+                              tabIndex={-1}
+                              aria-hidden="true"
+                              onClick={() => handleTogglePickerAsset(asset.id)}
+                              className="block w-full text-left"
+                            >
+                              <div className={`aspect-video flex items-center justify-center relative overflow-hidden ${thumb ? 'bg-slate-900' : 'bg-slate-100'}`}>
+                                {thumb ? (
+                                  <PickerTileThumb asset={asset} />
+                                ) : (
+                                  mimeIcon(asset.mimeType, 'w-8 h-8')
+                                )}
+                              </div>
+                              <div className={`p-2 transition-colors ${isSelected ? 'bg-indigo-50/50' : 'bg-white'}`}>
+                                <p className={`text-[11px] font-bold truncate ${isSelected ? 'text-indigo-900' : 'text-slate-700'}`}>{name}</p>
+                              </div>
+                            </button>
+                            <SelectionTileCheckbox
+                              checked={isSelected}
+                              anySelected={selectedPickerAssets.size > 0}
+                              label={t('selection.selectItem', { name })}
+                              onChange={() => handleTogglePickerAsset(asset.id)}
+                            />
                           </div>
-                          <div className={`p-2 transition-colors ${isSelected ? 'bg-indigo-50/50' : 'bg-white'}`}>
-                            <p className={`text-[11px] font-bold truncate ${isSelected ? 'text-indigo-900' : 'text-slate-700'}`}>{name}</p>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
+                        );
+                      })}
+                    </div>
+                  </>
                 )}
               </div>
             </div>

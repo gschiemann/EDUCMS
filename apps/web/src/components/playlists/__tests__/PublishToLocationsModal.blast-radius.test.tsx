@@ -58,9 +58,56 @@ describe('PublishToLocationsModal — blast radius', () => {
 
   it('a whole-location tick reports every screen it just armed', () => {
     render(<PublishToLocationsModal open onClose={() => {}} initialPlaylistId="p1" />);
-    // The location header button selects all of that location's screens.
-    fireEvent.click(rtl.getByRole('button', { name: /Downtown\s*2 screens/ }));
+    // The location's box selects all of that location's screens.
+    fireEvent.click(rtl.getByRole('checkbox', { name: 'Select all screens in Downtown' }));
     expect(rtl.getByText('Publishes to 2 screens across 1 location')).toBeInTheDocument();
     expect(rtl.getByText('Downtown Menu A · Downtown Menu B')).toBeInTheDocument();
+  });
+
+  it('the location\'s box is the one select-all box: tri-state over that location\'s screens (Greg, 2026-10-04)', () => {
+    render(<PublishToLocationsModal open onClose={() => {}} initialPlaylistId="p1" />);
+    const downtown = () => rtl.getByRole('checkbox', { name: 'Select all screens in Downtown' }) as HTMLInputElement;
+    const airport = () => rtl.getByRole('checkbox', { name: 'Select all screens in Airport' }) as HTMLInputElement;
+    expect(downtown().checked).toBe(false);
+    expect(downtown().indeterminate).toBe(false);
+
+    fireEvent.click(rtl.getByRole('button', { name: /Downtown Menu A/ })); // one of its two screens
+    expect(downtown().indeterminate).toBe(true); // the dash
+    expect(downtown().checked).toBe(false);
+    expect(airport().indeterminate).toBe(false); // other locations are untouched
+
+    fireEvent.click(downtown()); // the dash selects the rest …
+    expect(downtown().checked).toBe(true);
+    expect(rtl.getByText('Publishes to 2 screens across 1 location')).toBeInTheDocument();
+    fireEvent.click(downtown()); // … and all clears them
+    expect(downtown().checked).toBe(false);
+    expect(rtl.getByText('Publishes to 0 screens')).toBeInTheDocument();
+  });
+
+  it('the location\'s name and count still toggle it for the mouse, but are not a second control for assistive tech', () => {
+    const { container } = render(<PublishToLocationsModal open onClose={() => {}} initialPlaylistId="p1" />);
+    const hidden = Array.from(container.querySelectorAll('button[aria-hidden="true"]')) as HTMLElement[];
+    const downtown = hidden.find((b) => /Downtown/.test(b.textContent ?? ''));
+    expect(downtown).toBeDefined();
+    expect(downtown).toHaveAttribute('tabindex', '-1');
+    fireEvent.click(downtown as HTMLElement);
+    expect((rtl.getByRole('checkbox', { name: 'Select all screens in Downtown' }) as HTMLInputElement).checked).toBe(true);
+    // no inert, read-only checkbox nested in a button any more
+    expect(container.querySelector('button input[type="checkbox"]')).toBeNull();
+  });
+
+  it('the location\'s box explains itself on hover: "Select all screens in <location>", and "Clear selection" once all of that location\'s screens are picked (Greg, 2026-10-04)', () => {
+    render(<PublishToLocationsModal open onClose={() => {}} initialPlaylistId="p1" />);
+    const downtown = () => rtl.getByRole('checkbox', { name: 'Select all screens in Downtown' }) as HTMLInputElement;
+    const titleOf = () => (downtown().closest('label') as HTMLElement).getAttribute('title');
+    expect(titleOf()).toBe('Select all screens in Downtown'); // none
+    fireEvent.click(rtl.getByRole('button', { name: /Downtown Menu A/ })); // some
+    expect(downtown().indeterminate).toBe(true);
+    expect(titleOf()).toBe('Select all screens in Downtown');
+    fireEvent.click(downtown()); // all
+    expect(downtown().checked).toBe(true);
+    expect(titleOf()).toBe('Clear selection');
+    // another location is unaffected
+    expect(((rtl.getByRole('checkbox', { name: 'Select all screens in Airport' }) as HTMLInputElement).closest('label') as HTMLElement).getAttribute('title')).toBe('Select all screens in Airport');
   });
 });

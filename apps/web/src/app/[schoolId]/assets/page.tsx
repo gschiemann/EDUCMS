@@ -41,7 +41,7 @@ import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { appConfirm, appAlert } from '@/components/ui/app-dialog';
-import { UploadCloud, Globe, X, CheckCircle2, File, Link2, Grid3X3, List, Search, Image as ImageIcon, Video, Music, FileText, Download, Clock, HardDrive, Maximize2, Info, FolderPlus, Folder, FolderOpen, ChevronRight, Pencil, MoreVertical, Check, Trash2, AlertCircle, RefreshCw, ChevronDown, Sparkles, Loader2, ListPlus, ChevronsRight, ExternalLink, Home } from 'lucide-react';
+import { UploadCloud, Globe, X, CheckCircle2, File, Link2, Grid3X3, List, Search, Image as ImageIcon, Video, Music, FileText, Download, Clock, HardDrive, Maximize2, Info, FolderPlus, Folder, FolderOpen, ChevronRight, Pencil, MoreVertical, Trash2, AlertCircle, RefreshCw, ChevronDown, Sparkles, Loader2, ListPlus, ChevronsRight, ExternalLink, Home } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   useAssets, useAddWebUrl, useDeleteAsset, useAssetFolders, useCreateAssetFolder,
@@ -58,6 +58,7 @@ import { FolderPicker } from '@/components/assets/FolderPicker';
 import { PdfHoverThumb } from '@/components/assets/PdfHoverThumb';
 import { AssetActionsMenu, buildAssetMenuActions } from '@/components/assets/AssetActionsMenu';
 import { AssetBulkBar } from '@/components/assets/AssetBulkBar';
+import { SelectionCheckbox, SelectionTileCheckbox, SELECTED_TILE_CLASS, selectAllTitle, selectionState } from '@/components/common/SelectionCheckbox';
 import { AssetUsageSection, AssetInUseBlock } from '@/components/assets/AssetUsageSection';
 import { AiImageModal, useAiImageAvailable } from '@/components/ai/AiImageGenerateButton';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
@@ -1036,9 +1037,58 @@ export default function AssetsPage() {
     setSelectingAll(false);
   }, [currentFolderId, filter, searchLower]);
 
+  // ── Selection (2026-10-04: one pattern across the app — see
+  // components/common/SelectionCheckbox.tsx) ────────────────────────────────
+  // The box in the table header / above the tiles is tri-state over the rows
+  // SHOWN. "Select all N" lives in the bulk bar and reaches every matching file,
+  // loaded or not. There is no stand-alone "Select all" button.
+  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const anySelected = selectedIds.length > 0;
+  const shownSelectedCount = filtered.reduce((n: number, a: { id: string }) => n + (selectedSet.has(a.id) ? 1 : 0), 0);
+  const shownState = selectionState(shownSelectedCount, filtered.length);
+  // The tooltip of the box above the list: what a click will do — it clears once every file shown is selected.
+  const shownTitle = selectAllTitle(shownState, t('assetsLib.selectAllShown'), t('selection.clearSelection'));
+
+  // A select-everything selection that has been emptied (cleared, deleted,
+  // moved away) is no longer one — drop the flag with it, so a hand-picked
+  // selection made afterwards is not mistaken for it.
+  useEffect(() => {
+    if (selectedIds.length === 0) setAllSelected(false);
+  }, [selectedIds.length]);
+
+  const toggleAsset = (id: string) =>
+    setSelectedIds((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
+
+  const clearSelection = () => {
+    selectionRequest.current++; // a "Select all" still on its way must not fill the selection back in
+    setSelectingAll(false);
+    setSelectedIds([]);
+    setAllSelected(false);
+  };
+
+  /**
+   * The header / heading box. From empty or "some" it selects every row SHOWN;
+   * from "all" it clears them. A select-everything selection also holds files
+   * that are not on screen, so un-ticking the box clears ALL of it — leaving the
+   * unseen remainder selected would be a selection nobody can see.
+   */
+  const toggleShown = () => {
+    if (deletePending.current) return;
+    if (shownState === 'all' && allSelected) { clearSelection(); return; }
+    const shownIds: string[] = filtered.map((a: { id: string }) => a.id);
+    if (shownState === 'all') {
+      const gone = new Set(shownIds);
+      setSelectedIds((p) => p.filter((id) => !gone.has(id)));
+    } else {
+      setSelectedIds((p) => {
+        const have = new Set(p);
+        return [...p, ...shownIds.filter((id) => !have.has(id))];
+      });
+    }
+  };
+
   const selectAllFiles = async () => {
     if (selectingAll || deletePending.current) return;
-    if (allSelected && selectedIds.length) { setSelectedIds([]); setAllSelected(false); return; }
     const request = ++selectionRequest.current;
     setSelectingAll(true);
     try {
@@ -1052,7 +1102,7 @@ export default function AssetsPage() {
         skip += result.assets.length;
         if (!result.assets.length || (result.total !== null ? skip >= result.total : result.assets.length < 1000)) break;
       }
-      if (request === selectionRequest.current) { setSelectedIds([...ids]); setAllSelected(true); }
+      if (request === selectionRequest.current) { setSelectedIds([...ids]); setAllSelected(ids.size > 0); }
     } catch (error) {
       toast.error((error as Error).message || t('assetsLib.selectAllFailed'));
     } finally { if (request === selectionRequest.current) setSelectingAll(false); }
@@ -1336,6 +1386,11 @@ export default function AssetsPage() {
   // library when nothing is narrowing it (the footer says how much of that
   // is loaded), the matches when something is.
   const filesHeadingCount = narrowed || currentFolderId !== null ? filtered.length : libraryTotal;
+  // "Select all N" in the bulk bar: N is the number printed beside that heading,
+  // and the offer is made only while more than that is still unselected. After a
+  // select-everything the selection IS the library, so the comparison is against
+  // everything selected; otherwise against the matching files on screen.
+  const selectAllOffer = filesHeadingCount > (allSelected ? selectedIds.length : shownSelectedCount) ? filesHeadingCount : null;
 
   const folderCount = allFolders.length;
   const showFolderSection = currentFolderChildren.length > 0;
@@ -1694,9 +1749,6 @@ export default function AssetsPage() {
         </div>
 
         <div className="flex gap-2 items-center lg:shrink-0">
-          <button type="button" onClick={() => void selectAllFiles()} disabled={selectingAll || deletingCount > 0 || libraryTotal === 0} className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 py-2 text-[11px] font-semibold text-slate-700 disabled:opacity-50">
-            {selectingAll ? t('assetsLib.selecting') : allSelected && selectedIds.length > 0 ? t('assetsLib.clearSelection') : t('assetsLib.selectAll')}
-          </button>
           <label className="sr-only" htmlFor="assets-sort">Sort files</label>
           <select
             id="assets-sort"
@@ -1785,6 +1837,10 @@ export default function AssetsPage() {
 
       <AssetBulkBar
         count={selectedIds.length}
+        selectAllCount={selectAllOffer}
+        selectingAll={selectingAll}
+        selectAllDisabled={deletingCount > 0}
+        onSelectAll={() => void selectAllFiles()}
         disabled={isViewer}
         disabledReason={readOnlyReason}
         deleteDisabled={!canDelete || deletingCount > 0}
@@ -1794,7 +1850,7 @@ export default function AssetsPage() {
         downloadPending={downloadPending}
         onDownload={downloadSelectedAssets}
         onDelete={handleBulkDelete}
-        onClear={() => setSelectedIds([])}
+        onClear={clearSelection}
       />
 
       {/* ── Folders (§9) ────────────────────────────────────────────── */}
@@ -1918,7 +1974,26 @@ export default function AssetsPage() {
 
       {/* ── Files (§10) ─────────────────────────────────────────────── */}
       {!isLoading && !isError && (
-        <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          {/* Tiles: the one select-all box sits at the START of this line, at the
+              same x as the list view's header box (table card border 1 px + header
+              cell padding 12 px), so switching views never moves it. The list view
+              carries it in its table header instead. A SIBLING of the heading, not
+              inside it, so the heading's own name stays "Recent files 36". */}
+          {viewMode === 'grid' && filtered.length > 0 && (
+            <span className="block -my-0.5 ml-[13px]">
+              <SelectionCheckbox
+                compact
+                checked={shownState === 'all'}
+                indeterminate={shownState === 'some'}
+                label={t('assetsLib.selectAllShown')}
+                title={shownTitle}
+                onChange={toggleShown}
+                disabled={selectingAll || deletingCount > 0}
+                testId="select-shown"
+              />
+            </span>
+          )}
           <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2">
             {filesHeading} <span className="text-slate-400 font-semibold">{filesHeadingCount}</span>
           </h2>
@@ -1979,7 +2054,7 @@ export default function AssetsPage() {
           {filtered.map((a: any) => {
             const thumb = thumbUrl(a);
             const name = assetName(a);
-            const isSelected = selectedIds.includes(a.id);
+            const isSelected = selectedSet.has(a.id);
             const status = statusBadge(a);
             return (
               // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
@@ -1988,30 +2063,20 @@ export default function AssetsPage() {
                 draggable={!isViewer}
                 onDragStart={e => { if (isViewer) { e.preventDefault(); return; } e.dataTransfer.setData('assetId', a.id); e.dataTransfer.effectAllowed = 'move'; }}
                 className={`bg-white rounded-2xl overflow-hidden group transition-all relative border ${
-                  isSelected ? 'border-indigo-500 ring-2 ring-indigo-200 bg-indigo-50/40' : 'border-slate-200 hover:border-slate-300 hover:shadow-md'
+                  isSelected ? SELECTED_TILE_CLASS : 'border-slate-200 hover:border-slate-300 hover:shadow-md'
                 }`}
               >
-                {/* Selection checkbox.
-                    2026-05-29 (mobile P1) — was opacity-0 + group-hover
-                    reveal, which never fires on touch (no :hover on a
-                    phone), so bulk-select was desktop-only. Now: when
-                    unselected we keep it VISIBLE by default and only
-                    hide-until-hover on hover-capable pointers via the
-                    `[@media(hover:hover)]` arbitrary variant. */}
-                <button
-                  onClick={(e) => { e.stopPropagation(); setSelectedIds(p => p.includes(a.id) ? p.filter(id => id !== a.id) : [...p, a.id]); }}
-                  aria-label={isSelected ? `Deselect ${name}` : `Select ${name}`}
-                  aria-pressed={isSelected}
-                  className={`absolute top-2 left-2 z-20 w-11 h-11 sm:w-6 sm:h-6 flex items-center justify-center transition-all ${
-                    isSelected
-                      ? 'opacity-100'
-                      : 'opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus-within:opacity-100'
-                  }`}
-                >
-                  <span className={`w-5 h-5 rounded flex items-center justify-center ${isSelected ? 'bg-indigo-600 border border-indigo-600' : 'bg-white border border-slate-300 shadow-sm'}`}>
-                    {isSelected && <Check className="w-3.5 h-3.5 text-white" />}
-                  </span>
-                </button>
+                {/* The tile's own box — the shared one (Playlists uses the same).
+                    Hover or keyboard focus reveals it on a device that can hover;
+                    a phone has no hover, so there it is always drawn (2026-05-29,
+                    mobile P1); and once ANYTHING is selected every tile shows its
+                    box, so the next pick is a single tap (2026-10-04). */}
+                <SelectionTileCheckbox
+                  checked={isSelected}
+                  anySelected={anySelected}
+                  label={t('selection.selectItem', { name })}
+                  onChange={() => toggleAsset(a.id)}
+                />
 
                 {/* §11/§25 — no permanent destructive control on the card.
                     Everything management-shaped lives behind this menu. */}
@@ -2116,7 +2181,22 @@ export default function AssetsPage() {
             <caption className="sr-only">Media library files</caption>
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50/70">
-                <th scope="col" className="w-10 px-3 py-2"><span className="sr-only">Select</span></th>
+                {/* The select-all box — the Playlists table's header box, in this
+                    table's first column. Tri-state over the rows shown. */}
+                <th scope="col" className="w-10 px-3 py-2">
+                  <span className="block -my-1">
+                    <SelectionCheckbox
+                      compact
+                      checked={shownState === 'all'}
+                      indeterminate={shownState === 'some'}
+                      label={t('assetsLib.selectAllShown')}
+                      title={shownTitle}
+                      onChange={toggleShown}
+                      disabled={selectingAll || deletingCount > 0}
+                      testId="select-shown"
+                    />
+                  </span>
+                </th>
                 <th scope="col" className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">File</th>
                 <th scope="col" className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">Type</th>
                 <th scope="col" className="hidden lg:table-cell px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">Folder</th>
@@ -2130,7 +2210,7 @@ export default function AssetsPage() {
               {filtered.map((a: any) => {
                 const thumb = thumbUrl(a);
                 const name = assetName(a);
-                const isSelected = selectedIds.includes(a.id);
+                const isSelected = selectedSet.has(a.id);
                 const status = statusBadge(a);
                 return (
                   <tr
@@ -2140,16 +2220,12 @@ export default function AssetsPage() {
                     className={`group ${isSelected ? 'bg-indigo-50/60' : 'hover:bg-slate-50'}`}
                   >
                     <td className="px-3 py-2">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setSelectedIds(p => p.includes(a.id) ? p.filter(id => id !== a.id) : [...p, a.id]); }}
-                        aria-label={isSelected ? `Deselect ${name}` : `Select ${name}`}
-                        aria-pressed={isSelected}
-                        className="w-11 h-11 sm:w-5 sm:h-5 -my-3 sm:my-0 flex items-center justify-center"
-                      >
-                        <span className={`w-4 h-4 rounded flex items-center justify-center ${isSelected ? 'bg-indigo-600 border border-indigo-600' : 'bg-white border border-slate-300 shadow-sm'}`}>
-                          {isSelected && <Check className="w-3 h-3 text-white" />}
-                        </span>
-                      </button>
+                      <SelectionCheckbox
+                        compact
+                        checked={isSelected}
+                        label={t('selection.selectItem', { name })}
+                        onChange={() => toggleAsset(a.id)}
+                      />
                     </td>
                     <td className="px-3 py-2 max-w-[340px]">
                       <button

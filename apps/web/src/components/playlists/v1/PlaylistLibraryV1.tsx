@@ -34,6 +34,7 @@ import { createPortal } from 'react-dom';
 import { AlertTriangle, Check, ChevronLeft, ChevronRight, Clock, Copy, Download, Eye, Grid2X2, ListIcon, MoreHorizontal, Pause, Play, Plus, Search, SlidersHorizontal, Trash2, Upload, Usb, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { PlaylistPreviewThumb, type TemplateLookupEntry } from '@/components/playlists/PlaylistPreviewThumb';
+import { SELECTED_TILE_CLASS, SelectionCheckbox, SelectionTileCheckbox, selectAllTitle } from '@/components/common/SelectionCheckbox';
 import {
   activeFilterCount, applyLibrary, buildExceptionBanner, countByStatus, describeContent,
   describeReach, EMPTY_FILTERS, exactStamp, needsAttention, SORT_LABELS, timeAgo,
@@ -121,43 +122,50 @@ export interface SelectionApi {
   /** State of the header checkbox: every row on this page, some, or none. */
   pageState: 'none' | 'some' | 'all';
   togglePage: () => void;
+  /** How many playlists match the tab, search and filters — the number beside the heading. */
+  total: number;
   /** A bulk removal is running — controls stand down. */
   busy: boolean;
 }
 
-/**
- * The selection checkbox. A <label> around it (44 px on a phone) is the hit
- * area, and both label and input are on PLAYLIST_CONTROL's list, so a click on
- * either never falls through to the row's "click anywhere opens the playlist".
+/*
+ * The checkbox itself — SelectBox, with the touch hit area and the tile chip —
+ * is shared with every other list now: components/common/SelectionCheckbox.tsx.
+ * It is a <label> around the input (the hit area), and both label and input are
+ * on PLAYLIST_CONTROL's list, so a click on either never falls through to the
+ * row's "click anywhere opens the playlist".
  */
-function SelectBox({
-  checked, indeterminate, label, onChange, disabled, testId, compact,
-}: {
-  checked: boolean;
-  indeterminate?: boolean;
-  label: string;
-  onChange: () => void;
-  disabled?: boolean;
-  testId?: string;
-  /** 24 px hit area (the WCAG 2.2 minimum) — for the table, where width is spoken for. */
-  compact?: boolean;
-}) {
-  const ref = useRef<HTMLInputElement>(null);
-  useEffect(() => { if (ref.current) ref.current.indeterminate = !!indeterminate && !checked; }, [indeterminate, checked]);
+
+/**
+ * The heading line above the CARDS — the compact list under 1024 px and the
+ * grid. The table has no use for it: its header row carries the same box. Same
+ * box, same x as that header box (card border 1 px + header cell padding
+ * 16 px), so switching between list and tiles keeps it where it was. It is the
+ * ONLY select-all on a phone, where there is no table header.
+ *
+ * It selects the playlists on this page, exactly like the table header; "Select
+ * all N" is in the bulk bar.
+ */
+function SelectionHeading({ selection }: { selection: SelectionApi }) {
+  const t = useTranslations();
   return (
-    <label className={`flex items-center justify-center cursor-pointer ${compact ? 'w-6 h-6' : 'w-11 h-11 md:w-9 md:h-9'}`}>
-      <input
-        ref={ref}
-        type="checkbox"
-        checked={checked}
-        disabled={disabled}
-        onChange={onChange}
-        aria-label={label}
-        data-testid={testId}
-        className="h-4 w-4 rounded border-slate-300 cursor-pointer"
-        style={{ accentColor: 'var(--brand-primary, #3515E8)' }}
-      />
-    </label>
+    <div className="flex items-center gap-2 pl-[17px]" data-testid="select-heading">
+      <span className="block -my-0.5">
+        <SelectionCheckbox
+          compact
+          checked={selection.pageState === 'all'}
+          indeterminate={selection.pageState === 'some'}
+          label={t('playlistsPage.selectAllShown')}
+          title={selectAllTitle(selection.pageState, t('playlistsPage.selectAllShown'), t('selection.clearSelection'))}
+          onChange={selection.togglePage}
+          disabled={selection.busy}
+          testId="select-page-heading"
+        />
+      </span>
+      <h2 className={`text-[13px] font-bold ${INK}`}>
+        {t('playlistsPage.title')} <span className={`font-semibold ${INK_3}`}>{selection.total}</span>
+      </h2>
+    </div>
   );
 }
 
@@ -249,7 +257,7 @@ export function PlaylistLibraryV1(props: PlaylistLibraryV1Props) {
   const rowContext: RowContext = {
     ...baseContext,
     selection: selectable
-      ? { selected, toggle: toggleSelected, pageState, togglePage: togglePageSelected, busy: bulkBusy }
+      ? { selected, toggle: toggleSelected, pageState, togglePage: togglePageSelected, total: visible.length, busy: bulkBusy }
       : undefined,
   };
 
@@ -625,6 +633,7 @@ function PreviewOpener({
 }
 
 function ListView({ rows, ...p }: { rows: PlaylistSummaryRow[] } & RowContext) {
+  const t = useTranslations();
   return (
     <>
       {/* ≥1024: the mock's seven columns.
@@ -680,11 +689,12 @@ function ListView({ rows, ...p }: { rows: PlaylistSummaryRow[] } & RowContext) {
                   {h === 'Playlist' && p.selection ? (
                     <span className="flex items-center gap-1.5">
                       <span className="-my-1">
-                        <SelectBox
+                        <SelectionCheckbox
                           compact
                           checked={p.selection.pageState === 'all'}
                           indeterminate={p.selection.pageState === 'some'}
-                          label="Select every playlist on this page"
+                          label={t('playlistsPage.selectAllShown')}
+                          title={selectAllTitle(p.selection.pageState, t('playlistsPage.selectAllShown'), t('selection.clearSelection'))}
                           onChange={p.selection.togglePage}
                           disabled={p.selection.busy}
                           testId="select-page"
@@ -703,8 +713,11 @@ function ListView({ rows, ...p }: { rows: PlaylistSummaryRow[] } & RowContext) {
           </tbody>
         </table>
       </div>
-      {/* <1024: one operational card per playlist (§23.3, §23.4). */}
+      {/* <1024: one operational card per playlist (§23.3, §23.4). With no table
+          header up here, the heading line above the cards carries the select-all
+          box — the only one a phone has. */}
       <div className="lg:hidden space-y-2">
+        {p.selection && <SelectionHeading selection={p.selection} />}
         {rows.map((row) => <CompactCard key={row.id} row={row} {...p} />)}
       </div>
     </>
@@ -712,6 +725,7 @@ function ListView({ rows, ...p }: { rows: PlaylistSummaryRow[] } & RowContext) {
 }
 
 function Row({ row, ...p }: { row: PlaylistSummaryRow } & RowContext) {
+  const t = useTranslations();
   const attention = needsAttention(row);
   const raw = p.rawById.get(row.id);
   return (
@@ -732,10 +746,10 @@ function Row({ row, ...p }: { row: PlaylistSummaryRow } & RowContext) {
             {raw ? <PlaylistPreviewThumb playlist={raw} templateLookup={p.templateLookup} size="tile" /> : null}
             {p.selection && (
               <div className="absolute top-0.5 left-0.5 rounded-md bg-white/90 shadow-sm">
-                <SelectBox
+                <SelectionCheckbox
                   compact
                   checked={p.selection.selected.has(row.id)}
-                  label={`Select ${row.name}`}
+                  label={t('selection.selectItem', { name: row.name })}
                   onChange={() => p.selection!.toggle(row.id)}
                   disabled={p.selection.busy}
                 />
@@ -899,19 +913,21 @@ function DeliveryCell({
 // ─────────────────────────────────────────────────────────────────────
 
 function CompactCard({ row, ...p }: { row: PlaylistSummaryRow } & RowContext) {
+  const t = useTranslations();
   const attention = needsAttention(row);
   const raw = p.rawById.get(row.id);
   return (
     <div
       className={`rounded-[12px] p-3 ${SURFACE} ${attention ? 'bg-amber-50/60 border-amber-200' : ''}`}
       data-testid="playlist-card-compact"
+      data-selected={p.selection?.selected.has(row.id) ? 'true' : 'false'}
     >
       <div className="flex items-start gap-3">
         {p.selection && (
           <div className="-ml-2 -mt-1.5 shrink-0">
-            <SelectBox
+            <SelectionCheckbox
               checked={p.selection.selected.has(row.id)}
-              label={`Select ${row.name}`}
+              label={t('selection.selectItem', { name: row.name })}
               onChange={() => p.selection!.toggle(row.id)}
               disabled={p.selection.busy}
             />
@@ -972,69 +988,84 @@ function CompactCard({ row, ...p }: { row: PlaylistSummaryRow } & RowContext) {
 // ─────────────────────────────────────────────────────────────────────
 
 function GridView({ rows, ...p }: { rows: PlaylistSummaryRow[] } & RowContext) {
+  const t = useTranslations();
+  const anySelected = (p.selection?.selected.size ?? 0) > 0;
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-      {rows.map((row) => {
-        const attention = needsAttention(row);
-        const raw = p.rawById.get(row.id);
-        return (
-          <div
-            key={row.id}
-            className={`rounded-[12px] overflow-hidden flex flex-col h-[290px] ${SURFACE} ${attention ? 'border-amber-200 bg-amber-50/50' : ''}`}
-            data-testid="playlist-card-grid"
-          >
-            <div className="relative shrink-0">
-              <PreviewOpener
-                onOpen={() => p.onOpen(row.id)}
-                className="h-[132px] w-full bg-slate-100 overflow-hidden shrink-0"
-              >
-                {raw ? <PlaylistPreviewThumb playlist={raw} templateLookup={p.templateLookup} size="tile" /> : null}
-              </PreviewOpener>
-              {p.selection && (
-                <div className="absolute top-1 left-1 rounded-lg bg-white/90 shadow-sm">
-                  <SelectBox
-                    checked={p.selection.selected.has(row.id)}
-                    label={`Select ${row.name}`}
+    <div className="space-y-2">
+      {/* The select-all box: the start of the line above the tiles, where the
+          table's header box would be. */}
+      {p.selection && <SelectionHeading selection={p.selection} />}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+        {rows.map((row) => {
+          const attention = needsAttention(row);
+          const raw = p.rawById.get(row.id);
+          const isSelected = !!p.selection?.selected.has(row.id);
+          return (
+            <div
+              key={row.id}
+              // A selected card swaps its whole border for the shared selected look
+              // (the Media Library's tiles wear the same): never both a hairline AND
+              // an indigo border, which the stylesheet — not the author — would rank.
+              className={`group rounded-[12px] overflow-hidden flex flex-col h-[290px] ${
+                isSelected
+                  ? `bg-white border ${SELECTED_TILE_CLASS}`
+                  : `${SURFACE} ${attention ? 'border-amber-200 bg-amber-50/50' : ''}`
+              }`}
+              data-testid="playlist-card-grid"
+              data-selected={isSelected ? 'true' : 'false'}
+            >
+              <div className="relative shrink-0">
+                <PreviewOpener
+                  onOpen={() => p.onOpen(row.id)}
+                  className="h-[132px] w-full bg-slate-100 overflow-hidden shrink-0"
+                >
+                  {raw ? <PlaylistPreviewThumb playlist={raw} templateLookup={p.templateLookup} size="tile" /> : null}
+                </PreviewOpener>
+                {p.selection && (
+                  <SelectionTileCheckbox
+                    checked={isSelected}
+                    anySelected={anySelected}
+                    label={t('selection.selectItem', { name: row.name })}
                     onChange={() => p.selection!.toggle(row.id)}
                     disabled={p.selection.busy}
                   />
+                )}
+              </div>
+              <div className="p-3 flex-1 flex flex-col min-h-0">
+                <div className="flex items-start justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() => p.onOpen(row.id)}
+                    className={`text-left text-[14px] font-bold ${INK} truncate`}
+                  >
+                    {row.name}
+                  </button>
+                  <StatusPill row={row} attention={attention} />
                 </div>
-              )}
-            </div>
-            <div className="p-3 flex-1 flex flex-col min-h-0">
-              <div className="flex items-start justify-between gap-2">
-                <button
-                  type="button"
-                  onClick={() => p.onOpen(row.id)}
-                  className={`text-left text-[14px] font-bold ${INK} truncate`}
-                >
-                  {row.name}
-                </button>
-                <StatusPill row={row} attention={attention} />
-              </div>
-              <p className={`text-[12px] ${INK_3} truncate`}>{describeContent(row)}</p>
-              <p className={`text-[12px] ${INK_2} truncate mt-1.5`}>{describeReach(row.reach)}</p>
-              <p className={`text-[12px] ${INK_2} truncate`}>{row.scheduleSummary}</p>
-              <div className="mt-1.5 min-h-[36px]">
-                <DeliveryCell row={row} derived={p.deliveryDerived} onRetry={p.onRetry} />
-              </div>
-              <div className="mt-auto pt-2 flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => (attention ? p.onReviewDelivery(row.id) : p.onOpen(row.id))}
-                  className={`flex-1 h-9 rounded-[9px] border text-[13px] font-bold ${
-                    attention ? 'border-amber-300 bg-white text-amber-800' : `${HAIRLINE} bg-white`
-                  }`}
-                  style={attention ? undefined : { color: 'var(--brand-primary, #3515E8)' }}
-                >
-                  {attention ? 'Review' : 'Open'}
-                </button>
-                <OverflowMenu row={row} {...p} />
+                <p className={`text-[12px] ${INK_3} truncate`}>{describeContent(row)}</p>
+                <p className={`text-[12px] ${INK_2} truncate mt-1.5`}>{describeReach(row.reach)}</p>
+                <p className={`text-[12px] ${INK_2} truncate`}>{row.scheduleSummary}</p>
+                <div className="mt-1.5 min-h-[36px]">
+                  <DeliveryCell row={row} derived={p.deliveryDerived} onRetry={p.onRetry} />
+                </div>
+                <div className="mt-auto pt-2 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => (attention ? p.onReviewDelivery(row.id) : p.onOpen(row.id))}
+                    className={`flex-1 h-9 rounded-[9px] border text-[13px] font-bold ${
+                      attention ? 'border-amber-300 bg-white text-amber-800' : `${HAIRLINE} bg-white`
+                    }`}
+                    style={attention ? undefined : { color: 'var(--brand-primary, #3515E8)' }}
+                  >
+                    {attention ? 'Review' : 'Open'}
+                  </button>
+                  <OverflowMenu row={row} {...p} />
+                </div>
               </div>
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 }
