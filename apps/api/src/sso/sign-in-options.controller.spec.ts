@@ -8,6 +8,7 @@
  */
 import * as fs from 'fs';
 import * as path from 'path';
+import { HttpException } from '@nestjs/common';
 import {
   SignInOptionsController,
   SignInOptionsSchema,
@@ -15,6 +16,7 @@ import {
 } from './sign-in-options.controller';
 import { ZodValidationPipe } from '../security/zod-validation.pipe';
 import { AuthController } from '../auth/auth.controller';
+import type { PrismaService } from '../prisma/prisma.service';
 
 interface ConfigRow {
   enabled: boolean;
@@ -32,14 +34,28 @@ interface ConfigRow {
  * Every other model is a Proxy that throws: touching `user` (or anything else)
  * from this handler is the bug.
  */
+interface FindManyArgs {
+  where: {
+    enabled?: boolean;
+    allowedEmailDomain: { equals: string; mode?: 'insensitive' };
+    tenant?: { archivedAt?: null };
+  };
+  take?: number;
+}
+
 function makePrisma(rows: ConfigRow[]) {
-  const findMany = jest.fn(async (args: any) => {
+  const findMany = jest.fn((args: FindManyArgs) => {
     const w = args.where;
-    const wanted = String(w.allowedEmailDomain.equals);
+    const wanted = w.allowedEmailDomain.equals;
     const insensitive = w.allowedEmailDomain.mode === 'insensitive';
     const hits = rows.filter((r) => {
       if (w.enabled !== undefined && r.enabled !== w.enabled) return false;
-      if (w.tenant && 'archivedAt' in w.tenant && w.tenant.archivedAt === null && r.tenant.archivedAt !== null) {
+      if (
+        w.tenant &&
+        'archivedAt' in w.tenant &&
+        w.tenant.archivedAt === null &&
+        r.tenant.archivedAt !== null
+      ) {
         return false;
       }
       if (r.allowedEmailDomain === null) return false;
@@ -47,18 +63,16 @@ function makePrisma(rows: ConfigRow[]) {
         ? r.allowedEmailDomain.toLowerCase() === wanted.toLowerCase()
         : r.allowedEmailDomain === wanted;
     });
-    return hits.slice(0, args.take ?? hits.length);
+    return Promise.resolve(hits.slice(0, args.take ?? hits.length));
   });
-  const client = new Proxy(
-    { tenantSSOConfig: { findMany } },
-    {
-      get(target: any, prop: string) {
-        if (prop in target) return target[prop];
-        throw new Error(`sign-in-options must not touch prisma.${String(prop)}`);
-      },
+  const models: Record<string, unknown> = { tenantSSOConfig: { findMany } };
+  const client = new Proxy(models, {
+    get(target, prop: string) {
+      if (prop in target) return target[prop];
+      throw new Error(`sign-in-options must not touch prisma.${String(prop)}`);
     },
-  );
-  return { prisma: { client } as any, findMany };
+  });
+  return { prisma: { client } as unknown as PrismaService, findMany };
 }
 
 const row = (over: Partial<ConfigRow> = {}): ConfigRow => ({
@@ -93,18 +107,27 @@ describe('POST /auth/sign-in-options', () => {
     expect(a.findMany).toHaveBeenCalledTimes(1);
     expect(b.findMany).toHaveBeenCalledTimes(1);
     // The query itself carries nothing from the local part.
-    expect(JSON.stringify(a.findMany.mock.calls[0][0])).toBe(JSON.stringify(b.findMany.mock.calls[0][0]));
-    expect(JSON.stringify(a.findMany.mock.calls[0][0])).not.toContain('real.person');
+    expect(JSON.stringify(a.findMany.mock.calls[0][0])).toBe(
+      JSON.stringify(b.findMany.mock.calls[0][0]),
+    );
+    expect(JSON.stringify(a.findMany.mock.calls[0][0])).not.toContain(
+      'real.person',
+    );
 
     // Same at an SSO domain.
     const c = await ask([row()], 'real.person@northfield.example');
     const d = await ask([row()], 'nobody-at-all-000@northfield.example');
     expect(JSON.stringify(c.out)).toBe(JSON.stringify(d.out));
-    expect(JSON.stringify(c.findMany.mock.calls[0][0])).toBe(JSON.stringify(d.findMany.mock.calls[0][0]));
+    expect(JSON.stringify(c.findMany.mock.calls[0][0])).toBe(
+      JSON.stringify(d.findMany.mock.calls[0][0]),
+    );
   });
 
   it('never reads the users table (source check — no model but tenantSSOConfig is named)', () => {
-    const src = fs.readFileSync(path.join(__dirname, 'sign-in-options.controller.ts'), 'utf8');
+    const src = fs.readFileSync(
+      path.join(__dirname, 'sign-in-options.controller.ts'),
+      'utf8',
+    );
     const models = [...src.matchAll(/prisma\.client\.(\w+)/g)].map((m) => m[1]);
     expect(models).toEqual(['tenantSSOConfig']);
     // The response type has exactly these keys — a new one must be argued for here.
@@ -113,7 +136,11 @@ describe('POST /auth/sign-in-options', () => {
       .signInOptions(parse({ email: 'a@northfield.example' }))
       .then((out) => {
         expect(Object.keys(out).sort()).toEqual(['password', 'sso']);
-        expect(Object.keys(out.sso!).sort()).toEqual(['label', 'provider', 'tenantSlug']);
+        expect(Object.keys(out.sso!).sort()).toEqual([
+          'label',
+          'provider',
+          'tenantSlug',
+        ]);
       });
   });
 
@@ -126,7 +153,10 @@ describe('POST /auth/sign-in-options', () => {
   });
 
   it('uses the login normalisation — case and surrounding space do not change the answer', async () => {
-    const { out, findMany } = await ask([row({ allowedEmailDomain: 'Northfield.Example' })], '  Teacher@NORTHFIELD.example ');
+    const { out, findMany } = await ask(
+      [row({ allowedEmailDomain: 'Northfield.Example' })],
+      '  Teacher@NORTHFIELD.example ',
+    );
     expect(out.sso?.tenantSlug).toBe('northfield');
     expect(findMany.mock.calls[0][0].where.allowedEmailDomain).toEqual({
       equals: 'northfield.example',
@@ -135,13 +165,23 @@ describe('POST /auth/sign-in-options', () => {
   });
 
   it('ignores a config that is not enabled', async () => {
-    const { out } = await ask([row({ enabled: false })], 'teacher@northfield.example');
+    const { out } = await ask(
+      [row({ enabled: false })],
+      'teacher@northfield.example',
+    );
     expect(out).toEqual({ password: true, sso: null });
   });
 
   it('ignores an archived organization', async () => {
     const { out } = await ask(
-      [row({ tenant: { slug: 'northfield', archivedAt: new Date('2026-08-01T00:00:00Z') } })],
+      [
+        row({
+          tenant: {
+            slug: 'northfield',
+            archivedAt: new Date('2026-08-01T00:00:00Z'),
+          },
+        }),
+      ],
       'teacher@northfield.example',
     );
     expect(out).toEqual({ password: true, sso: null });
@@ -167,8 +207,15 @@ describe('POST /auth/sign-in-options', () => {
   });
 
   it('SAML answers with no provider label; an unknown stored provider answers no SSO', async () => {
-    const saml = await ask([row({ provider: 'SAML', oidcIssuer: null })], 'a@northfield.example');
-    expect(saml.out.sso).toEqual({ tenantSlug: 'northfield', provider: 'saml', label: null });
+    const saml = await ask(
+      [row({ provider: 'SAML', oidcIssuer: null })],
+      'a@northfield.example',
+    );
+    expect(saml.out.sso).toEqual({
+      tenantSlug: 'northfield',
+      provider: 'saml',
+      label: null,
+    });
     const odd = await ask([row({ provider: 'LDAP' })], 'a@northfield.example');
     expect(odd.out).toEqual({ password: true, sso: null });
   });
@@ -188,12 +235,22 @@ describe('input validation → 400', () => {
     ['non-string', { email: 42 }],
     ['unknown extra key', { email: 'a@northfield.example', password: 'x' }],
   ])('%s', (_name, body) => {
-    expect(() => parse(body)).toThrow(expect.objectContaining({ status: 400 }));
+    let thrown: unknown;
+    try {
+      parse(body);
+    } catch (e) {
+      thrown = e;
+    }
+    expect(thrown).toBeInstanceOf(HttpException);
+    expect((thrown as HttpException).getStatus()).toBe(400);
   });
 });
 
 describe('route shape', () => {
-  const handler = SignInOptionsController.prototype.signInOptions;
+  /** The method object the decorators wrote their metadata on — read, never called. */
+  const methodOf = (proto: object, name: string): object =>
+    Object.getOwnPropertyDescriptor(proto, name)?.value as object;
+  const handler = methodOf(SignInOptionsController.prototype, 'signInOptions');
 
   it('is throttled per IP: 20 a minute — twice the /auth/login cap it sits in front of', () => {
     expect(Reflect.getMetadata('THROTTLER:LIMITdefault', handler)).toBe(20);
@@ -201,20 +258,30 @@ describe('route shape', () => {
     // The comparison the number is defined by. If the login cap moves, look
     // at this one again.
     expect(
-      Reflect.getMetadata('THROTTLER:LIMITdefault', AuthController.prototype.login),
+      Reflect.getMetadata(
+        'THROTTLER:LIMITdefault',
+        methodOf(AuthController.prototype, 'login'),
+      ),
     ).toBe(10);
   });
 
   it('is POST /api/v1/auth/sign-in-options and answers 200', () => {
-    expect(Reflect.getMetadata('path', SignInOptionsController)).toBe('api/v1/auth');
+    expect(Reflect.getMetadata('path', SignInOptionsController)).toBe(
+      'api/v1/auth',
+    );
     expect(Reflect.getMetadata('path', handler)).toBe('sign-in-options');
     expect(Reflect.getMetadata('__httpCode__', handler)).toBe(200);
   });
 
   it('is public on purpose: no guard, no principal read (route-guard-inventory.spec scans this file too)', () => {
-    const src = fs.readFileSync(path.join(__dirname, 'sign-in-options.controller.ts'), 'utf8');
+    const src = fs.readFileSync(
+      path.join(__dirname, 'sign-in-options.controller.ts'),
+      'utf8',
+    );
     expect(Reflect.getMetadata('__guards__', handler)).toBeUndefined();
-    expect(Reflect.getMetadata('__guards__', SignInOptionsController)).toBeUndefined();
+    expect(
+      Reflect.getMetadata('__guards__', SignInOptionsController),
+    ).toBeUndefined();
     expect(src).not.toMatch(/\breq(uest)?\.user\b/);
     expect(src).not.toMatch(/Logger|console\./);
   });

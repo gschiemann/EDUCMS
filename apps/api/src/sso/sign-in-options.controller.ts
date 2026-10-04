@@ -87,7 +87,9 @@ const KNOWN_ISSUERS: Array<{ host: string; label: string }> = [
   { host: 'classlink.com', label: 'ClassLink' },
 ];
 
-export function providerLabelFor(issuer: string | null | undefined): string | null {
+export function providerLabelFor(
+  issuer: string | null | undefined,
+): string | null {
   if (!issuer) return null;
   let host: string;
   try {
@@ -95,7 +97,9 @@ export function providerLabelFor(issuer: string | null | undefined): string | nu
   } catch {
     return null;
   }
-  const hit = KNOWN_ISSUERS.find((k) => host === k.host || host.endsWith(`.${k.host}`));
+  const hit = KNOWN_ISSUERS.find(
+    (k) => host === k.host || host.endsWith(`.${k.host}`),
+  );
   return hit ? hit.label : null;
 }
 
@@ -132,7 +136,9 @@ export class SignInOptionsController {
 
     const [claim] = claims;
     const provider = String(claim.provider).toLowerCase();
-    if (provider !== 'oidc' && provider !== 'saml') return { password: true, sso: null };
+    if (provider !== 'oidc' && provider !== 'saml') {
+      return { password: true, sso: null };
+    }
     return {
       password: true,
       sso: {

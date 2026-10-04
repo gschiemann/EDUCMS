@@ -66,12 +66,12 @@ import { useUIStore } from '@/store/ui-store';
 import { API_URL } from '@/lib/api-url';
 
 type Reply = { ok?: boolean; status?: number; body?: unknown; reject?: boolean; hang?: boolean };
-type Call = { url: string; body: any };
+type Call = { url: string; body: Record<string, unknown> };
 
 function mockFetchByPath(routes: Record<string, Reply>): Call[] {
   const calls: Call[] = [];
-  (global as any).fetch = jest.fn((url: string, init?: { body?: string }) => {
-    calls.push({ url: String(url), body: init?.body ? JSON.parse(init.body) : undefined });
+  (global as unknown as { fetch: unknown }).fetch = jest.fn((url: string, init?: { body?: string }) => {
+    calls.push({ url: String(url), body: init?.body ? (JSON.parse(init.body) as Record<string, unknown>) : {} });
     const key = Object.keys(routes).find((k) => String(url).endsWith(k));
     const r: Reply = key ? routes[key] : { ok: false, status: 404, body: {} };
     if (r.reject) return Promise.reject(new TypeError('Failed to fetch'));
