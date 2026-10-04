@@ -11,6 +11,11 @@
  */
 import { chromium, webkit, firefox } from '@playwright/test';
 import { mkdirSync, writeFileSync } from 'node:fs';
+// The sign-in page is identifier-first since 2026-10-04 (email → Continue →
+// password). One shared helper fills it — and the older single-screen form.
+import signInForm from '../../tests/cross-browser/sign-in-form.cjs';
+
+const { fillSignInForm, submitSignIn } = signInForm;
 
 const [persona = 'signup', browserName = 'chromium', baseUrl = 'https://venue-os.app'] = process.argv.slice(2);
 const ENGINES = { chromium, webkit, firefox };
@@ -55,12 +60,11 @@ const run = async () => {
       const e = process.env.BETA_EMAIL, p = process.env.BETA_PW;
       await step('goto-login', async () => { await page.goto(`${baseUrl}/login`, { waitUntil: 'networkidle', timeout: 30000 }); });
       await step('fill-creds', async () => {
-        await page.fill('input[type="email"], input[name="email"]', e, { timeout: 8000 });
-        await page.fill('input[type="password"]', p, { timeout: 8000 });
-        await page.check('input[type="checkbox"]', { timeout: 4000 }).catch(() => {}); // required EULA agree
+        // email → Continue → password, and the EULA checkbox a fresh browser gets.
+        await fillSignInForm(page, e, p);
       });
       await step('submit-login', async () => {
-        await page.click('button[type="submit"], button:has-text("Sign in"), button:has-text("Log in")', { timeout: 8000 });
+        await submitSignIn(page);
         await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
         await page.waitForTimeout(3000);
       });
@@ -115,9 +119,7 @@ const run = async () => {
         // Success heuristic: landed on an authed/dashboard URL OR a clear next step.
         if (/login|signin/i.test(url) && !/dashboard|onboard|\/[a-z0-9-]+\//i.test(url)) {
           // landed back on login — try logging in with what we just created
-          await page.fill('input[type="email"], input[name="email"]', email).catch(() => {});
-          await page.fill('input[type="password"]', password).catch(() => {});
-          await page.click('button[type="submit"], button:has-text("Log in"), button:has-text("Sign in")').catch(() => {});
+          await fillSignInForm(page, email, password).then(() => submitSignIn(page)).catch(() => {});
           await page.waitForTimeout(2500);
         }
       });

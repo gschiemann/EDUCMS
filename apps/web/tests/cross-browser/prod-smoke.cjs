@@ -31,6 +31,7 @@ const { chromium, request } = require('@playwright/test');
 const { setTimeout: delay } = require('node:timers/promises');
 const { mkdirSync, writeFileSync } = require('node:fs');
 const { resolve } = require('node:path');
+const { fillSignInForm, submitSignIn } = require('./sign-in-form.cjs');
 
 const BASE = process.env.PROD_SMOKE_BASE || 'https://venue-os.app';
 const API = process.env.PROD_SMOKE_API || 'https://api-production-39a1.up.railway.app/api/v1';
@@ -153,13 +154,13 @@ async function loginAndCapture(browser) {
     });
     try {
       await page.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded' });
-      await page.locator('#login-email').fill(EMAIL);
-      await page.locator('#login-password').fill(PASSWORD);
-      await page.locator('input[type="checkbox"][aria-describedby="eula-text"]').check();
+      // Identifier-first since 2026-10-04 (email → Continue → password). The
+      // shared helper also still drives the single-screen form, because this
+      // job can reach the live site a minute before OR after Vercel has the
+      // new page. See tests/cross-browser/sign-in-form.cjs.
+      await fillSignInForm(page, EMAIL, PASSWORD);
       await delay(300);
-      const submit = page.locator('button[type="submit"]:has-text("Sign in")');
-      for (let i = 0; i < 30; i++) { if (await submit.isEnabled()) break; await delay(100); }
-      await submit.click();
+      await submitSignIn(page);
       // Wait for the API response, NOT the URL navigation. 45 s is
       // generous — covers the slowest observed Supabase auth verify
       // (pgbouncer cold-start + argon2). The page can still be on

@@ -27,9 +27,13 @@ test.describe('Login flow', () => {
     // TODO: requires seeded SCHOOL_ADMIN user in DB (Sprint 2).
     // Set PLAYWRIGHT_ADMIN_EMAIL + PLAYWRIGHT_ADMIN_PASSWORD env vars.
     await page.goto('/login');
-    await page.fill('[name="email"]', process.env.PLAYWRIGHT_ADMIN_EMAIL ?? '');
-    await page.fill('[name="password"]', process.env.PLAYWRIGHT_ADMIN_PASSWORD ?? '');
-    await page.click('[type="submit"]');
+    // Identifier-first since 2026-10-04: the email, Continue, then the
+    // password (plus the EULA checkbox a fresh browser context gets).
+    await page.locator('#login-email').fill(process.env.PLAYWRIGHT_ADMIN_EMAIL ?? '');
+    await page.getByRole('button', { name: 'Continue', exact: true }).click();
+    await page.locator('#login-password').fill(process.env.PLAYWRIGHT_ADMIN_PASSWORD ?? '');
+    await page.getByRole('checkbox', { name: /End User License Agreement/ }).check();
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
     await expect(page).toHaveURL(/dashboard/);
   });
 
@@ -43,10 +47,18 @@ test.describe('Login flow', () => {
     // missing selector with the default 30s actionability wait burns the
     // whole test budget before .catch() ever runs — that was this test's
     // original 30s-timeout failure mode.
+    // Identifier-first since 2026-10-04: step 1 is the email + Continue; the
+    // password is step 2 (it appears within ~3 s even when no API answers the
+    // domain lookup — that is the page's own bound).
     await page.getByRole('textbox', { name: /email/i })
       .fill('nobody@notreal.invalid', { timeout: 5000 }).catch(() => {});
-    await page.getByRole('textbox', { name: /password/i })
-      .fill('wrongpassword', { timeout: 5000 }).catch(() => {});
+    await page.getByRole('button', { name: /^continue$/i })
+      .click({ timeout: 5000 }).catch(() => {});
+    // (a password input has no ARIA role — it is not a `textbox`)
+    await page.locator('#login-password')
+      .fill('wrongpassword', { timeout: 8000 }).catch(() => {});
+    await page.getByRole('checkbox', { name: /end user license agreement/i })
+      .check({ timeout: 5000 }).catch(() => {});
     await page.getByRole('button', { name: /sign in|log in/i })
       .click({ timeout: 5000 }).catch(() => {});
 

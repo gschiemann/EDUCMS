@@ -12,6 +12,7 @@
  */
 const { chromium, webkit } = require('@playwright/test');
 const path = require('path');
+const { fillSignInForm, submitSignIn } = require('./sign-in-form.cjs');
 
 const BASE = process.env.BASE || 'http://localhost:3103';
 // SEC-004 (2026-09-04): NO LITERAL CREDENTIAL FALLBACK. This file lives in a
@@ -36,21 +37,13 @@ async function login(page) {
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       await page.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded', timeout: 60_000 });
-      // WebKit: a fill that lands before hydration is wiped by React's first
-      // controlled render — the field looks typed, submits empty, 401s. Fill,
-      // then VERIFY, then re-fill.
+      // Identifier-first since 2026-10-04 (email → Continue → password). The
+      // shared helper waits for hydration, then fills, VERIFIES and re-fills
+      // each step — WebKit wipes a fill that lands before React's first
+      // controlled render (the field looks typed, submits empty, 401s).
       await page.waitForLoadState('load').catch(() => {});
-      await page.waitForTimeout(1500);
-      for (let i = 0; i < 3; i++) {
-        await page.fill('input[type="email"]', EMAIL);
-        await page.fill('input[type="password"]', PASSWORD);
-        await page.waitForTimeout(400);
-        if ((await page.inputValue('input[type="email"]')) === EMAIL) break;
-      }
-      await page.locator('input[type="checkbox"][aria-describedby="eula-text"]').check().catch(async () => {
-        for (const c of await page.$$('input[type="checkbox"]')) { await c.check().catch(() => {}); }
-      });
-      await page.locator('button[type="submit"]:has-text("Sign in")').click();
+      await fillSignInForm(page, EMAIL, PASSWORD);
+      await submitSignIn(page);
       await page.waitForURL(/\/(dashboard|super)\b/, { timeout: 60_000 });
       return;
     } catch (e) {

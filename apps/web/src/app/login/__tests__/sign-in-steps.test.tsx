@@ -492,6 +492,23 @@ describe('NOT AN ORACLE — step 2 is the same for any address at a domain', () 
 
 // ───────────────────────────────────────────────────────────────────────
 describe('the address stays in memory', () => {
+  it('no field on either step has a `name` — a submit that beats hydration must carry nothing into the URL', async () => {
+    // A form submitted before React hydrates is a NATIVE GET to this URL, and
+    // a GET serialises every NAMED control into the query string. Unnamed
+    // fields are how a typed address (or password) can never end up in the
+    // address bar, the history or a server log that way.
+    mockFetchByPath({ '/auth/sign-in-options': NO_SSO });
+    localStorage.removeItem(EULA_KEY);
+    await renderPage();
+    const named = () => Array.from(document.querySelectorAll('form input[name], form button[name]'));
+    expect(named()).toEqual([]);
+    expect(screen.getByTestId('sign-in-step-email')).not.toHaveAttribute('action');
+    await continueWith('pat@elsewhere.example');
+    await screen.findByLabelText('Password');
+    expect(named()).toEqual([]);
+    expect(screen.getByTestId('sign-in-step-password')).not.toHaveAttribute('action');
+  });
+
   it('is never written to the URL or to localStorage on the way to step 2', async () => {
     mockFetchByPath({ '/auth/sign-in-options': NO_SSO });
     const before = window.location.href;

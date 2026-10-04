@@ -24,6 +24,7 @@
  * CI:            .github/workflows/prod-smoke.yml (prod-smoke-webkit-nav job)
  */
 const { webkit } = require('@playwright/test');
+const { fillSignInForm, submitSignIn } = require('./sign-in-form.cjs');
 
 const BASE = process.env.WEBKIT_NAV_BASE || process.env.PROD_SMOKE_BASE || 'https://venue-os.app';
 // SEC-004 (2026-09-04): NO LITERAL CREDENTIAL FALLBACK. This file lives in a
@@ -58,13 +59,12 @@ async function login(page) {
   for (let attempt = 1; attempt <= 4; attempt++) {
     try {
       await page.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
-      await page.fill('input[type="email"]', EMAIL);
-      await page.fill('input[type="password"]', PASSWORD);
-      // EULA consent checkbox (must be checked to enable submit).
-      await page.locator('input[type="checkbox"][aria-describedby="eula-text"]').check().catch(async () => {
-        for (const c of await page.$$('input[type="checkbox"]')) { await c.check().catch(() => {}); }
-      });
-      await page.locator('button[type="submit"]:has-text("Sign in")').click();
+      // Identifier-first since 2026-10-04: email → Continue → password (+ the
+      // EULA checkbox, which a fresh browser context always gets). The shared
+      // helper drives that AND the older single-screen form, whichever build
+      // the live site is serving when this job arrives.
+      await fillSignInForm(page, EMAIL, PASSWORD);
+      await submitSignIn(page);
       await page.waitForURL(/\/(dashboard|super)\b/, { timeout: 25_000 });
       return;
     } catch (e) {

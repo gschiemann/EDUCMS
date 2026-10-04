@@ -58,6 +58,15 @@ import { AxeBuilder } from '@axe-core/playwright';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
+// The sign-in page is identifier-first since 2026-10-04 (email → Continue →
+// password). ONE shared helper fills it for every harness that signs in
+// through the real form; it is CommonJS because the live-smoke scripts are.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { fillSignInForm, submitSignIn } = require('../tests/cross-browser/sign-in-form.cjs') as {
+  fillSignInForm: (page: Page, email: string, password: string, opts?: { stepTimeoutMs?: number }) => Promise<void>;
+  submitSignIn: (page: Page) => Promise<void>;
+};
+
 const BASE_URL = process.env.A11Y_BASE_URL || 'http://localhost:3000';
 
 // Seeded SUPER_ADMIN credentials (packages/database/prisma/seed.ts —
@@ -161,8 +170,9 @@ async function auditRoute(page: Page, route: string): Promise<Violation[]> {
  * Sign in as the seeded SUPER_ADMIN so the ROUTES loop below audits real
  * authenticated content instead of the login-redirect shell. Mirrors the
  * UI-login pattern in `apps/web/tests/cross-browser/webkit-nav-smoke.cjs`
- * (fill email/password, tick the EULA checkbox, submit, wait for the
- * dashboard) rather than injecting a token directly — going through the
+ * (email → Continue → password, tick the EULA checkbox, submit, wait for the
+ * dashboard — `tests/cross-browser/sign-in-form.cjs`) rather than injecting
+ * a token directly — going through the
  * real form is what proves the login PAGE itself is reachable and working,
  * and it's the only auth mechanism this app has (the JWT lands in
  * localStorage via the ui-store, not an httpOnly cookie — see
@@ -178,21 +188,13 @@ async function login(page: Page): Promise<boolean> {
   console.log(`\n→ Logging in as ${ADMIN_EMAIL} (${url})`);
   try {
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20_000 });
-    await page.fill('input[type="email"]', ADMIN_EMAIL, { timeout: 5_000 });
-    await page.fill('input[type="password"]', ADMIN_PASSWORD, { timeout: 5_000 });
-    // EULA consent checkbox must be checked for the submit button to
-    // enable (apps/web/src/app/login/page.tsx). Fall back to checking
-    // every checkbox on the page if the aria-describedby selector ever
-    // drifts, same defensive fallback webkit-nav-smoke.cjs uses.
-    await page
-      .locator('input[type="checkbox"][aria-describedby="eula-text"]')
-      .check({ timeout: 5_000 })
-      .catch(async () => {
-        for (const c of await page.$$('input[type="checkbox"]')) {
-          await c.check().catch(() => {});
-        }
-      });
-    await page.locator('button[type="submit"]:has-text("Sign in")').click({ timeout: 5_000 });
+    // Step 1 (email, Continue) → step 2 (password + the EULA checkbox a
+    // fresh browser context always gets). `stepTimeoutMs` is short on
+    // purpose: with no API listening the page's own 3 s lookup bound lands
+    // on the password form anyway, and a login that cannot work must fail
+    // fast here rather than stall the audit.
+    await fillSignInForm(page, ADMIN_EMAIL, ADMIN_PASSWORD, { stepTimeoutMs: 8_000 });
+    await submitSignIn(page);
     await page.waitForURL(/\/(dashboard|super)\b/, { timeout: 20_000 });
     console.log(`  ✓ authenticated (landed on ${page.url()})`);
     return true;

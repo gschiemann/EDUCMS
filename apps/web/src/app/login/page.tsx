@@ -2084,13 +2084,19 @@ function LoginContent() {
             /* ── STEP 1 — one field ─────────────────────────────────────
                The email, and Continue. `autocomplete="username webauthn"`
                is what lets the browser list this device's passkey in the
-               field's own suggestions (see the autofill effect above). */
+               field's own suggestions (see the autofill effect above).
+
+               NO `name` ON ANY FIELD OF THESE FORMS, deliberately (the page
+               never had them). A Continue pressed before React has hydrated
+               is a NATIVE form submit — a GET to this same URL — and a named
+               field would put what was typed into the address bar, the
+               history and the server log. Unnamed, that submit carries
+               nothing. Password managers key on `type` + `autocomplete`. */
             <form key="step-email" onSubmit={handleContinue} className="space-y-4" data-testid="sign-in-step-email">
               <div>
                 <label htmlFor="login-email" className="block text-xs font-semibold text-slate-700 mb-1.5">{t('email')}</label>
                 <input
                   id="login-email"
-                  name="email"
                   type="email"
                   required
                   autoFocus
@@ -2204,7 +2210,6 @@ function LoginContent() {
                   the row above. */}
               <input
                 type="email"
-                name="email"
                 autoComplete="username"
                 value={email}
                 readOnly
@@ -2216,7 +2221,6 @@ function LoginContent() {
                 <label htmlFor="login-password" className="block text-xs font-semibold text-slate-700 mb-1.5">{t('password')}</label>
                 <input
                   id="login-password"
-                  name="password"
                   type="password"
                   required
                   autoFocus
