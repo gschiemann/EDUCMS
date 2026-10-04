@@ -68,7 +68,7 @@ import { fetchJsonBounded, headersStatusOf } from './fetchTimeout';
 // document rAF keeps painting, so the render proof stayed green on a frozen
 // frame forever (1.1.6 audit P0-5). Pure detector + a page-level flag the
 // proof signature consumes.
-import { playbackSafety, decodedFrameCount, isOperatorRefresh } from './playbackSafety';
+import { playbackSafety, decodedFrameCount, isOperatorRefresh, requestDiagnosticsUpload } from './playbackSafety';
 import { createMediaStallDetector, setActiveMediaStalled, isActiveMediaStalled } from './mediaStallWatchdog';
 // 2026-08-30 deep audit B-P0-1/2/3 — wrap-aware schedule windows + the
 // window-edge signature that busts the 304 identity when a window opens or
@@ -5154,6 +5154,24 @@ function PlayerPage() {
   //
   // sec-fix(wave1) #5 (device JWT required) and the preview-mode exclusion
   // are both inherited by the telemetry POST — see the effect below.
+  // ── Evidence after an unclean restart (2026-10-04) ──────────────────────
+  // A boot that follows a crash, a kill or a renderer death sends the Android
+  // shell's log once, a minute in (the device credential is in place by then).
+  // That log holds the OS's own exit reasons — the only record of why a box
+  // nobody can visit keeps dying. One request per page load, never on a clean
+  // boot, never in preview; the server dedupes and caps what it stores.
+  useEffect(() => {
+    if (isPreviewMode()) return;
+    let unclean = false;
+    try {
+      unclean = playbackSafety().interruptedAtBoot ||
+        new URLSearchParams(window.location.search).has('recoveredRenderer');
+    } catch { /* storage denied */ }
+    if (!unclean) return;
+    const timer = setTimeout(() => { requestDiagnosticsUpload({ has: nativeHas, call: nativeCall }); }, 60_000);
+    return () => clearTimeout(timer);
+  }, []);
+
   const cacheReportRef = useRef<{ playlist: TelemetryCacheTier; emergency: TelemetryCacheTier } | null>(null);
   useEffect(() => {
     if (!cacheStatus?.supported) {
@@ -8258,7 +8276,7 @@ function PlayerPage() {
       });
       handle('REFRESH_WEB', (pl) => {
         // Same rule as the WS arm: a person's refresh lifts set-aside files.
-        if (isOperatorRefresh(pl)) { try { playbackSafety().operatorReset(); } catch { /* never block a reload */ } }
+        if (isOperatorRefresh(pl)) { try { playbackSafety().operatorReset(); } catch { /* never block a reload */ } requestDiagnosticsUpload({ has: nativeHas, call: nativeCall }); }
         // Cache-busting reload (not plain reload) so the NovaStar/Taurus
         // WebView fetches the CURRENT bundle instead of re-serving the cached
         // one — see the WS REFRESH_WEB handler for the full rationale.
@@ -8793,7 +8811,7 @@ function PlayerPage() {
               } else {
                 // A person's refresh lifts set-aside files (install-day false
                 // positive); the wedge detector's never does.
-                if (isOperatorRefresh(pl)) { try { playbackSafety().operatorReset(); } catch { /* never block a reload */ } }
+                if (isOperatorRefresh(pl)) { try { playbackSafety().operatorReset(); } catch { /* never block a reload */ } requestDiagnosticsUpload({ has: nativeHas, call: nativeCall }); }
                 const delay = jitterMs > 0 ? Math.floor(Math.random() * jitterMs) : 0;
                 console.log(`[REFRESH_WEB ${corrId}] reloading in ${delay}ms (jitter=${jitterMs}ms scope=${scope})`);
                 // Brief connectivity toast so the operator-at-kiosk

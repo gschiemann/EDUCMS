@@ -14,6 +14,8 @@ const phases = new Set(['download', 'verify', 'assemble', 'start']);
 export class PlaybackSafety {
   private state: State = { safeUntil: 0, pending: [], failures: [] };
   private serial = 0;
+  /** This page load followed an interrupted one (a crash, a kill or a power cut — not a reload). */
+  interruptedAtBoot = false;
   constructor(private readonly store: Store | null, now: number) {
     try {
       const raw = JSON.parse(store?.getItem(STORE_KEY) ?? 'null');
@@ -27,6 +29,7 @@ export class PlaybackSafety {
           Number.isFinite(p.at) && p.at <= now && now - p.at <= PENDING_MAX_AGE_MS).slice(-8) : [];
         // An interrupted page is evidence of an interrupted operation, not proof of OOM.
         // Count one interruption per FILE per boot, even if several phases were pending.
+        this.interruptedAtBoot = pending.length > 0;
         for (const key of new Set<string>(pending.map((p: Pending) => p.key))) {
           const previous = this.state.failures.find(f => f.key === key);
           this.state.failures = this.state.failures.filter(f => f.key !== key);
@@ -107,4 +110,22 @@ export function decodedFrameCount(video: HTMLVideoElement): number | undefined {
       (video as HTMLVideoElement & { webkitDecodedFrameCount?: number }).webkitDecodedFrameCount;
     return typeof count === 'number' && Number.isFinite(count) && count > 0 ? count : undefined;
   } catch { return undefined; }
+}
+
+/**
+ * Ask the Android shell to upload its recent log (2026-10-04) — the device's
+ * own record of process exits, renderer deaths and playback failures. Until now
+ * only a button ON THE PANEL did this, so a screen nobody can visit never sent
+ * its evidence. Fire-and-forget: the upload runs on a native thread and
+ * survives a page reload; the server dedupes repeated events and caps rows per
+ * screen per hour. A browser player or an APK without the method does nothing.
+ */
+export function requestDiagnosticsUpload(
+  bridge: { has(method: string): boolean; call(method: string): Promise<unknown> },
+): boolean {
+  try {
+    if (!bridge.has('uploadDiagnostics')) return false;
+    void bridge.call('uploadDiagnostics').catch(() => undefined);
+    return true;
+  } catch { return false; }
 }

@@ -96,3 +96,27 @@ describe("a person's refresh lifts a set-aside file (install-day false positive)
     expect(isOperatorRefresh(null)).toBe(false);
   });
 });
+
+describe('evidence after an unclean restart', () => {
+  const { requestDiagnosticsUpload } = jest.requireActual('../playbackSafety') as typeof import('../playbackSafety');
+  test('a boot after an interrupted page load is marked; a clean boot and a normal reload are not', () => {
+    const store = new Store();
+    const first = new PlaybackSafety(store, at);
+    expect(first.interruptedAtBoot).toBe(false);
+    first.begin(url, sha, 'download', at);
+    expect(new PlaybackSafety(store, at + 1).interruptedAtBoot).toBe(true);
+    const clean = new Store();
+    const guard = new PlaybackSafety(clean, at);
+    guard.begin(url, sha, 'download', at);
+    guard.orderlyExit();
+    expect(new PlaybackSafety(clean, at + 1).interruptedAtBoot).toBe(false);
+  });
+  test('asks the shell once when it has the method, does nothing otherwise, and never throws', async () => {
+    const call = jest.fn(async () => 'upload started');
+    expect(requestDiagnosticsUpload({ has: () => true, call })).toBe(true);
+    expect(call).toHaveBeenCalledWith('uploadDiagnostics');
+    expect(requestDiagnosticsUpload({ has: () => false, call: jest.fn() })).toBe(false);
+    expect(requestDiagnosticsUpload({ has: () => true, call: async () => { throw new Error('bridge gone'); } })).toBe(true);
+    expect(requestDiagnosticsUpload({ has: () => { throw new Error('no bridge'); }, call })).toBe(false);
+  });
+});
