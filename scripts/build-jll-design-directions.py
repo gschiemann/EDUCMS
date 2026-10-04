@@ -14,6 +14,7 @@ spec = importlib.util.spec_from_file_location('cre', ROOT / 'apps/web/scripts/bu
 cre = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cre)
 REVIEW = ROOT / 'scratch/design/jll-v2'
+REVIEW.mkdir(parents=True, exist_ok=True)
 TARGET = cre.PUBLIC / 'templates/custom/jll-overview-directions'
 ASSETS = TARGET / '_assets'
 ASSETS.mkdir(parents=True, exist_ok=True)

@@ -21,7 +21,7 @@ async function main(){
    await page.locator('[data-close]').click();
    assert.equal(await frame.locator('[data-floor="7"]').getAttribute('aria-pressed'),'true');
    await frame.locator('.app-nav [data-go="gallery"]').click();
-   await frame.locator('[data-back]').click();
+   await frame.locator('[data-back]:visible').click();
    assert.equal(await frame.locator('[data-floor="7"]').getAttribute('aria-pressed'),'true');
    await page.locator('[data-compare]').click();assert.equal(await page.locator('.before').isVisible(),true);
    await page.locator('[data-compare]').click();assert.equal(await page.locator('.before').isVisible(),false);

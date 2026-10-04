@@ -32,6 +32,7 @@ def gallery_files(branded):
 
 SECTIONS=[('home','Home'),('amenities','Amenities'),('plans','Plans'),('location','Location'),('details','Details'),('gallery','Gallery'),('contact','Contact')]
 ICONS={
+ 'back':'<path d="M20 12H4m7-7-7 7 7 7"/>',
  'home':'<path d="m3 10 9-7 9 7v11h-7v-7h-4v7H3z"/>',
  'amenities':'<path d="M4 9h12v6a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5zM16 9h2a3 3 0 0 1 0 6h-2M7 3v3M12 3v3"/>',
  'plans':'<path d="M3 3h18v18H3zM3 11h8V3M11 11v10M11 15h10"/>',
@@ -50,11 +51,12 @@ def home(branded,variant):
     copy='<div class="home-copy">'+field('home.eyebrow','Touch to explore','kicker')+field('home.title',name,'home-heading','h1')+field('home.address','London · EC2M' if branded else '100 Waterfront Avenue','home-address')+'</div>'
     fact='<div class="home-fact">'+field('home.area','19,570' if branded else '19,500','big-number')+field('home.areaLabel','sq ft available','body-copy')+'</div>'
     actions='<div class="home-actions">'+button('home.begin','Begin tour','data-go="amenities"',True)+button('home.plans','View plans','data-go="plans"')+'</div>'
+    story='<div class="portrait-story">'+media('property.portraitStory',['workplace.jpg' if branded else OLD+'workspace.jpg'],'story-photo')+field('home.story','Space for a better\nworking day.','story-heading','h2')+'</div>' if variant!='a' else ''
     if variant=='c':
         entries=[('amenities','Amenities','A better working day'),('plans','Floor plans','Explore every level'),('location','Location','Your neighborhood'),('details','Details','Specifications & leasing'),('gallery','Gallery','See the whole property'),('contact','Contact','Take the next step')]
         hub='<div class="hub-grid">'+''.join('<button type="button" class="hub-item" data-go="'+key+'">'+field('hub.'+key+'.title',label,'hub-title','span')+field('hub.'+key+'.detail',desc,'hub-detail','span')+'<span class="hub-arrow" aria-hidden="true">↗</span></button>' for key,label,desc in entries)+'</div>'
-        return visual+'<div class="home-shade"></div>'+copy+hub
-    return visual+'<div class="home-shade"></div>'+copy+fact+actions
+        return visual+'<div class="home-shade"></div>'+copy+hub+story
+    return visual+'<div class="home-shade"></div>'+copy+fact+actions+story
 
 def amenities(branded):
     options=[('Social','A place to\ncome together.','Café, shared lounges and spaces for events and everyday conversations.','reception.jpg' if branded else OLD+'lobby.jpg'),('Wellbeing','Space to\nrecharge.','Wellness areas and facilities for cycling and showering support the working day.','architecture-2.jpg' if branded else OLD+'office.jpg'),('Workspaces','A different\nway to work.','Co-working areas, a library and presentation spaces bring more choice to the office.','workplace.jpg' if branded else OLD+'workspace.jpg')]
@@ -93,7 +95,7 @@ def scene(branded,variant):
     header='<div class="app-header">'+cre.logo(branded)+field('property.name','One Liverpool Street' if branded else 'Harbor Exchange','header-name')+button('app.back','← Back','data-back disabled')+button('app.restart','Start over','data-restart')+'</div>'
     builders=[('home',lambda:home(branded,variant)),('amenities',lambda:amenities(branded)),('plans',lambda:plans(branded)),('location',lambda:location(branded)),('details',lambda:details(branded)),('contact',lambda:contact(branded)),('gallery',lambda:gallery(branded))]
     pages=''.join('<section class="experience-page page-'+key+'" data-page="'+key+'"'+(' hidden' if key!='home' else '')+'>'+fn()+'</section>' for key,fn in builders)
-    nav='<nav class="app-nav" aria-label="Property sections">'+''.join(button('nav.'+key,label,'data-go="'+key+'"'+(' aria-current="page"' if key=='home' else ''),graphic=icon(key)) for key,label in SECTIONS)+'</nav>'
+    nav='<nav class="app-nav" aria-label="Property sections">'+''.join(button('nav.'+key,label,'data-go="'+key+'"'+(' aria-current="page"' if key=='home' else ''),graphic=icon(key)) for key,label in SECTIONS)+button('nav.back','Back','data-back disabled',graphic=icon('back'))+'</nav>'
     config='<div hidden>'+field('tour.idleSeconds','120')+field('tour.startPage','home')+field('video.autoplay','yes')+field('video.loop','yes')+field('media.property.film.fit','cover')+field('media.property.film.position','center')+'</div>'
     return header+pages+nav+config
 
@@ -182,65 +184,6 @@ CSS=r'''
 .experience .gallery-tabs .control{min-width:600px}
 .experience .gallery-controls{position:absolute;right:0;top:1320px;display:flex;align-items:center;gap:35px}
 .experience .gallery-count{font:400 calc(100px * var(--scale))/1.2 var(--f-body);max-height:145px;min-width:250px;text-align:center}
-/* Portrait: the same usable target sizes in an independently composed layout. */
-.experience.portrait .app-header{left:120px;right:120px;top:90px;height:365px}
-.experience.portrait .header-name{left:0;top:230px;width:1920px;font-size:calc(104px * var(--scale))}
-.experience.portrait .app-header>.control{width:650px}
-.experience.portrait .experience-page{left:120px;top:555px;width:1920px;height:2630px}
-.experience.portrait .app-nav{left:120px;right:120px;bottom:110px;height:420px;grid-template-columns:repeat(3,1fr);gap:25px}
-.experience.portrait .app-nav .control{font-size:calc(100px * var(--scale))}
-.experience.portrait .page-heading{font-size:calc(205px * var(--scale));max-height:475px}
-.experience.portrait .home-copy{width:1920px;top:0}
-.experience.portrait .home-heading{font-size:calc(284px * var(--scale));max-height:950px}
-.experience.portrait .home-media{left:0;top:1550px;width:1920px;height:1080px}
-.experience.portrait .home-actions{left:0;top:1270px;bottom:auto;width:1920px;gap:30px}
-.experience.portrait .home-fact{display:none}
-.experience.b.portrait .home-media{top:0;height:2630px}
-.experience.b.portrait .home-shade{width:1920px;height:2630px;background:linear-gradient(180deg,var(--shade),var(--shade) 56%,transparent)}
-.experience.b.portrait .home-copy{left:90px;top:160px;width:1740px}
-.experience.b.portrait .home-actions{left:90px;top:1510px;width:1740px}
-.experience.c.portrait .home-media{top:0;height:1360px}
-.experience.c.portrait .home-shade{width:1920px;height:1360px}
-.experience.c.portrait .home-copy{left:90px;top:90px;bottom:auto;width:1740px}
-.experience.c.portrait .home-heading{font-size:calc(270px * var(--scale))}
-.experience.c.portrait .hub-grid{left:0;top:1460px;width:1920px;height:1170px;gap:25px;grid-template-rows:repeat(3,1fr)}
-.experience.c.portrait .hub-item{padding:60px 45px}
-.experience.c.portrait .hub-title{font-size:calc(126px * var(--scale));margin:0;max-height:275px}
-.experience.c.portrait .hub-detail{display:none}
-.experience.portrait .amenity-tabs{top:310px;width:1920px;gap:20px}
-.experience.portrait .amenity-photo{top:560px;width:1920px;height:1050px}
-.experience.portrait .amenity-copy{left:0;top:1740px;width:1920px}
-.experience.portrait .section-heading{font-size:calc(185px * var(--scale));max-height:450px;margin-bottom:45px}
-.experience.portrait .amenity-copy .body-copy{font-size:calc(112px * var(--scale));max-height:520px}
-.experience.portrait .page-plans>.page-heading{font-size:calc(195px * var(--scale));max-width:1920px}
-.experience.portrait .page-plans>.control{left:0;top:290px;width:1920px}
-.experience.portrait .floor-rail{left:0;top:520px;width:1920px;display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
-.experience.portrait .floor-label{display:none}
-.experience.portrait .floor-rail .control{width:auto;margin:0;min-height:160px}
-.experience.portrait .plan-window{top:960px;width:1920px;height:1055px}
-.experience.portrait .plan-canvas{width:1920px;height:1055px}
-.experience.portrait .plan-controls{top:2100px}
-.experience.portrait .plan-note{left:0;top:2360px;width:1920px;font-size:calc(104px * var(--scale));max-height:265px}
-.experience.portrait .plan-help{display:none}
-.experience.portrait .location-photo{top:345px;width:1920px;height:1190px}
-.experience.portrait .location-copy{left:0;top:1650px;width:1920px}
-.experience.portrait .location-copy .section-heading{white-space:normal;max-height:245px}
-.experience.portrait .location-address{margin-top:65px;padding-top:40px;display:flex;gap:70px;align-items:baseline}
-.experience.portrait .location-address .kicker{min-width:320px}
-.experience.portrait .details-grid{top:440px;width:1920px;gap:90px 80px}
-.experience.portrait .detail{min-height:525px}
-.experience.portrait .detail-value{font-size:calc(144px * var(--scale))}
-.experience.portrait .details-note{top:2410px;width:1920px;max-height:260px}
-.experience.portrait .contact-copy{left:0;top:0;width:1920px}
-.experience.portrait .contact-copy .page-heading{font-size:calc(240px * var(--scale));max-height:800px}
-.experience.portrait .contact-copy .body-copy{margin-top:60px;width:1920px;max-height:520px}
-.experience.portrait .broker-team{margin-top:60px}
-.experience.portrait .contact-qr{left:435px;top:1320px;width:1050px;height:1050px}
-.experience.portrait .contact-caption{left:0;top:2440px;width:1920px;max-height:250px}
-.experience.portrait .gallery-photo{top:360px;width:1920px;height:1660px}
-.experience.portrait .gallery-tabs{top:2170px;width:1920px;display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
-.experience.portrait .gallery-tabs .control{min-width:0;padding:25px 20px}
-.experience.portrait .gallery-controls{left:0;right:0;top:2430px;justify-content:space-between}
 '''
 
 CSS+=r'''
@@ -271,18 +214,85 @@ CSS+=r'''
 .experience .plan-controls{top:1320px;padding:12px;border-radius:48px;background:var(--accent2)}
 .experience .plan-controls .control{background:var(--paper);border-color:transparent}
 .experience .plan-help{top:1370px}
-.experience.portrait .app-header>.control[data-back]{right:700px;width:430px}
-.experience.portrait .header-name{max-width:1920px}
-.experience.portrait .app-nav{bottom:80px;height:460px;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;padding:16px;border-radius:52px}
-.experience.portrait .app-nav .control{font-size:calc(96px * var(--scale));padding:16px 8px;gap:12px}
-.experience.portrait .app-nav .control:last-child{grid-column:span 2;flex-direction:row;gap:35px}
-.experience.portrait .floor-rail{top:520px;grid-template-columns:repeat(4,minmax(0,1fr));gap:20px}
-.experience.portrait .floor-rail .control{min-height:200px;padding:18px 12px}
-.experience.portrait .plan-window{top:1010px;height:1005px}
-.experience.portrait .plan-canvas{height:1005px}
-.experience.portrait .plan-controls{top:2070px}
-.experience.portrait .plan-note{top:2360px}
 @media(prefers-reduced-motion:reduce){.experience .experience-page:not([hidden]){animation:none}.experience .control,.experience .hub-item{transition:none}}
+'''
+
+CSS+=r'''
+.experience .portrait-story,.experience .app-nav [data-back]{display:none}
+/* Portrait kiosk: navigation stays in the middle, with local controls nearby.
+   Screen mounting height still determines the physical reach of this band. */
+.experience.portrait .app-header{top:90px;height:200px}
+.experience.portrait .header-name{left:740px;top:25px;width:1180px;max-width:1180px;font-size:calc(100px * var(--scale));max-height:135px}
+.experience.portrait .app-header>.control{display:none}
+.experience.portrait .experience-page{left:120px;top:390px;width:1920px;height:3330px}
+.experience.portrait .app-nav{top:1660px;bottom:auto;height:440px;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;padding:16px;border-radius:52px;z-index:5}
+.experience.portrait .app-nav .control{font-size:calc(96px * var(--scale));padding:12px 8px;gap:10px;min-height:0}
+.experience.portrait .app-nav [data-back]{display:flex}
+.experience.portrait .page-heading{font-size:calc(180px * var(--scale));max-height:245px;white-space:nowrap}
+.experience.portrait .home-media{left:0;top:0;width:1920px;height:970px}
+.experience.portrait .home-copy{left:0;top:1900px;width:1920px}
+.experience.portrait .home-heading{font-size:calc(252px * var(--scale));white-space:normal;max-height:800px;margin-top:45px}
+.experience.portrait .home-address{font-size:calc(112px * var(--scale));max-height:270px;margin-top:45px}
+.experience.portrait .home-fact{left:0;top:2930px;gap:50px;display:flex;align-items:baseline}
+.experience.portrait .home-fact .big-number{font-size:calc(200px * var(--scale))}
+.experience.portrait .home-actions{left:0;top:1030px;bottom:auto;width:1920px;gap:30px}
+.experience.portrait .home-actions .control{min-height:190px}
+.experience.b.portrait .home-media,.experience.c.portrait .home-media{height:1220px}
+.experience.b.portrait .home-shade,.experience.c.portrait .home-shade{top:0;left:0;width:1920px;height:1220px;background:linear-gradient(90deg,var(--shade),var(--shade) 30%,transparent)}
+.experience.b.portrait .home-copy,.experience.c.portrait .home-copy{left:90px;top:150px;bottom:auto;width:1740px}
+.experience.b.portrait .home-heading,.experience.c.portrait .home-heading{font-size:calc(225px * var(--scale));max-height:750px}
+.experience.b.portrait .home-fact,.experience.b.portrait .home-actions,.experience.c.portrait .hub-grid{display:none}
+.experience.portrait .portrait-story{display:block;position:absolute;left:0;top:1900px;width:1920px}
+.experience.portrait .story-photo{width:1920px;height:920px;border-radius:48px;overflow:hidden}
+.experience.portrait .story-heading{font:600 calc(180px * var(--scale))/1.08 var(--f-display);letter-spacing:-.025em;max-height:400px;margin-top:60px;white-space:pre-line}
+.experience.portrait .amenity-photo{left:0;top:300px;width:1920px;height:900px}
+.experience.portrait .amenity-tabs{top:1760px;width:1920px;gap:25px}
+.experience.portrait .amenity-copy{left:0;top:2220px;width:1920px}
+.experience.portrait .section-heading{font-size:calc(190px * var(--scale));max-height:450px;margin-bottom:55px}
+.experience.portrait .amenity-copy .body-copy{font-size:calc(112px * var(--scale));max-height:550px}
+.experience.portrait .page-plans>.page-heading{max-width:1920px;font-size:calc(180px * var(--scale))}
+.experience.portrait .page-plans>.control{display:none}
+.experience.portrait .plan-window{left:0;top:300px;width:1920px;height:900px}
+.experience.portrait .plan-canvas{width:1920px;height:900px}
+.experience.portrait .floor-rail{left:0;top:1760px;width:1920px;grid-template-columns:repeat(4,minmax(0,1fr));gap:20px}
+.experience.portrait .floor-label{display:none}
+.experience.portrait .floor-rail .control{width:auto;min-height:180px;padding:18px 12px}
+.experience.portrait .plan-controls{left:0;top:2190px;width:1920px;justify-content:center;gap:45px}
+.experience.portrait .plan-note{left:0;top:2740px;width:1920px;font-size:calc(112px * var(--scale));max-height:300px}
+.experience.portrait .plan-help{display:block;left:0;top:3150px;width:1920px;text-align:left;font-size:calc(104px * var(--scale))}
+.experience.portrait .location-photo{left:0;top:300px;width:1920px;height:900px}
+.experience.portrait .location-copy{left:0;top:1930px;width:1920px}
+.experience.portrait .location-copy .section-heading{white-space:normal;max-height:245px}
+.experience.portrait .location-copy .body-copy{font-size:calc(112px * var(--scale))}
+.experience.portrait .location-address{margin-top:100px;padding-top:70px}
+.experience.portrait .location-address .kicker{margin-bottom:40px}
+.experience.portrait .details-grid{left:0;top:0;width:1920px;display:block}
+.experience.portrait .detail{position:absolute;width:920px;min-height:400px;padding-top:45px}
+.experience.portrait .detail:nth-child(odd){left:0}.experience.portrait .detail:nth-child(even){left:1000px}
+.experience.portrait .detail:nth-child(-n+2){top:330px}
+.experience.portrait .detail:nth-child(n+3):nth-child(-n+4){top:790px}
+.experience.portrait .detail:nth-child(n+5){top:2130px}
+.experience.portrait .detail-value{font-size:calc(144px * var(--scale));max-height:355px}
+.experience.portrait .details-note{left:0;top:2880px;width:1920px;max-height:250px}
+.experience.portrait .contact-copy{left:0;top:0;width:1920px}
+.experience.portrait .contact-copy .page-heading{font-size:calc(230px * var(--scale));white-space:pre-line;max-height:700px}
+.experience.portrait .contact-copy .body-copy{margin-top:60px;width:1920px;font-size:calc(108px * var(--scale));max-height:520px}
+.experience.portrait .broker-team{margin-top:55px;max-height:150px}
+.experience.portrait .contact-qr{left:430px;top:1890px;width:1060px;height:1060px}
+.experience.portrait .contact-caption{left:0;top:3060px;width:1920px;max-height:250px}
+.experience.portrait .gallery-photo{left:0;top:300px;width:1920px;height:2950px}
+.experience.portrait .gallery-tabs{left:0;top:1760px;width:1920px;display:grid;grid-template-columns:repeat(3,1fr);gap:25px;padding:20px;background:var(--paper);border-radius:44px}
+.experience.portrait .gallery-tabs .control{min-width:0;padding:25px 18px}
+.experience.portrait .gallery-controls{left:0;right:0;top:2020px;padding:20px;justify-content:space-between;background:var(--paper);border-radius:44px}
+'''
+
+CSS+=r'''
+.experience.c.portrait .home-media{left:980px;width:940px}
+.experience.c.portrait .home-shade{display:none}
+.experience.c.portrait .home-copy{left:0;top:70px;width:880px;color:var(--ink)}
+.experience.c.portrait .home-copy .kicker{color:var(--brand)}
+.experience.c.portrait .home-heading{font-size:calc(205px * var(--scale));white-space:pre-line;max-height:750px}
+.experience.c.portrait .home-address{font-size:calc(104px * var(--scale));max-height:250px}
 '''
 
 RUNTIME=(ROOT/'scripts/commercial-property-touch.js').read_text()

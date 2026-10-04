@@ -273,7 +273,7 @@
     "url": "/templates/custom/jll-touch-experiences/jll-a.html",
     "screenWidth": 3840,
     "screenHeight": 2160,
-    "sha256": "604b0286df454c135f1d16461c38bcbbb05ec95a6ae4a42d58f916cb30a0eba1",
+    "sha256": "a94d9058507f3f6f53a031efe90106710bd67384b540a86d1fd2945b2788b348",
     "zone": {
       "widgetType": "EXTERNAL_HTML",
       "x": 0,
@@ -295,7 +295,7 @@
     "url": "/templates/custom/jll-touch-experiences/jll-a.html?orientation=portrait",
     "screenWidth": 2160,
     "screenHeight": 3840,
-    "sha256": "604b0286df454c135f1d16461c38bcbbb05ec95a6ae4a42d58f916cb30a0eba1",
+    "sha256": "a94d9058507f3f6f53a031efe90106710bd67384b540a86d1fd2945b2788b348",
     "zone": {
       "widgetType": "EXTERNAL_HTML",
       "x": 0,
@@ -317,7 +317,7 @@
     "url": "/templates/custom/jll-touch-experiences/jll-b.html",
     "screenWidth": 3840,
     "screenHeight": 2160,
-    "sha256": "1561d575ad5c09c0dbb0519d985a1880e8ab5bee97694d2024d71637626130a1",
+    "sha256": "cb110de42cfb08a7a5019b42867c568ed6ffac3ec68058451327807df5a93d34",
     "zone": {
       "widgetType": "EXTERNAL_HTML",
       "x": 0,
@@ -339,7 +339,7 @@
     "url": "/templates/custom/jll-touch-experiences/jll-b.html?orientation=portrait",
     "screenWidth": 2160,
     "screenHeight": 3840,
-    "sha256": "1561d575ad5c09c0dbb0519d985a1880e8ab5bee97694d2024d71637626130a1",
+    "sha256": "cb110de42cfb08a7a5019b42867c568ed6ffac3ec68058451327807df5a93d34",
     "zone": {
       "widgetType": "EXTERNAL_HTML",
       "x": 0,
@@ -361,7 +361,7 @@
     "url": "/templates/custom/jll-touch-experiences/jll-c.html",
     "screenWidth": 3840,
     "screenHeight": 2160,
-    "sha256": "70250a0db3efed0c3a921acdcbdd0fd68b66d593bf84515cff69cf2babba9ad8",
+    "sha256": "6435dfe2fabf7beb3c6fc983677da7c831b58c89b55d7437952f0485a51c1b8d",
     "zone": {
       "widgetType": "EXTERNAL_HTML",
       "x": 0,
@@ -383,7 +383,7 @@
     "url": "/templates/custom/jll-touch-experiences/jll-c.html?orientation=portrait",
     "screenWidth": 2160,
     "screenHeight": 3840,
-    "sha256": "70250a0db3efed0c3a921acdcbdd0fd68b66d593bf84515cff69cf2babba9ad8",
+    "sha256": "6435dfe2fabf7beb3c6fc983677da7c831b58c89b55d7437952f0485a51c1b8d",
     "zone": {
       "widgetType": "EXTERNAL_HTML",
       "x": 0,
@@ -405,7 +405,7 @@
     "url": "/templates/custom/jll-touch-experiences/generic-a.html",
     "screenWidth": 3840,
     "screenHeight": 2160,
-    "sha256": "e60e0d99ea91db7415743f10e4a78c0676f4d902e4b1eeddf1f0df1e213bff2d",
+    "sha256": "f19f802f2ffb367045c925e25e665257be23a4ced93898e2a9a876d865bd2134",
     "zone": {
       "widgetType": "EXTERNAL_HTML",
       "x": 0,
@@ -427,7 +427,7 @@
     "url": "/templates/custom/jll-touch-experiences/generic-a.html?orientation=portrait",
     "screenWidth": 2160,
     "screenHeight": 3840,
-    "sha256": "e60e0d99ea91db7415743f10e4a78c0676f4d902e4b1eeddf1f0df1e213bff2d",
+    "sha256": "f19f802f2ffb367045c925e25e665257be23a4ced93898e2a9a876d865bd2134",
     "zone": {
       "widgetType": "EXTERNAL_HTML",
       "x": 0,
@@ -449,7 +449,7 @@
     "url": "/templates/custom/jll-touch-experiences/generic-b.html",
     "screenWidth": 3840,
     "screenHeight": 2160,
-    "sha256": "552286f06d0b3fed6abe7cc357f74fdba53182262ae3e478b31e4ac29f3729ed",
+    "sha256": "baba77f5182de7e5f62b13523d6ccf984edc0369a10c94e83e2a7c4f5a2b88e7",
     "zone": {
       "widgetType": "EXTERNAL_HTML",
       "x": 0,
@@ -471,7 +471,7 @@
     "url": "/templates/custom/jll-touch-experiences/generic-b.html?orientation=portrait",
     "screenWidth": 2160,
     "screenHeight": 3840,
-    "sha256": "552286f06d0b3fed6abe7cc357f74fdba53182262ae3e478b31e4ac29f3729ed",
+    "sha256": "baba77f5182de7e5f62b13523d6ccf984edc0369a10c94e83e2a7c4f5a2b88e7",
     "zone": {
       "widgetType": "EXTERNAL_HTML",
       "x": 0,
@@ -493,7 +493,7 @@
     "url": "/templates/custom/jll-touch-experiences/generic-c.html",
     "screenWidth": 3840,
     "screenHeight": 2160,
-    "sha256": "8075d606ad1ec0604d65208c55654e67b5e50a502bb9802ba6b920d7c752801a",
+    "sha256": "2ecc5a1b34e5f62d60e46c2e3f6dee3ba85bfef4536b97524f797413d25e297d",
     "zone": {
       "widgetType": "EXTERNAL_HTML",
       "x": 0,
@@ -515,7 +515,7 @@
     "url": "/templates/custom/jll-touch-experiences/generic-c.html?orientation=portrait",
     "screenWidth": 2160,
     "screenHeight": 3840,
-    "sha256": "8075d606ad1ec0604d65208c55654e67b5e50a502bb9802ba6b920d7c752801a",
+    "sha256": "2ecc5a1b34e5f62d60e46c2e3f6dee3ba85bfef4536b97524f797413d25e297d",
     "zone": {
       "widgetType": "EXTERNAL_HTML",
       "x": 0,

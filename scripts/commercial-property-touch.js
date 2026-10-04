@@ -9,7 +9,7 @@
   function show(page,focus,remember){
     if(!pages.some(function(p){return p.dataset.page===page;}))page='home';
     if(remember!==false&&page!==current){history.push(current);if(history.length>30)history.shift();}
-    current=page;document.querySelector('[data-back]').disabled=history.length===0;pages.forEach(function(p){p.hidden=p.dataset.page!==page;});
+    current=page;document.querySelectorAll('[data-back]').forEach(function(b){b.disabled=history.length===0;});pages.forEach(function(p){p.hidden=p.dataset.page!==page;});
     document.querySelectorAll('.app-nav [data-go]').forEach(function(b){if(b.dataset.go===page)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
     if(focus){var h=document.querySelector('[data-page="'+page+'"] h1');if(h){h.tabIndex=-1;h.focus({preventScroll:true});}}
     document.dispatchEvent(new Event('property-page-change'));fit();
@@ -26,7 +26,7 @@
   }
   function sizePlan(){
     var portrait=stage.classList.contains('portrait');
-    canvas.style.width=((portrait?1920:2450)*zoom)+'px';canvas.style.height=((portrait?1005:995)*zoom)+'px';
+    canvas.style.width=((portrait?1920:2450)*zoom)+'px';canvas.style.height=((portrait?900:995)*zoom)+'px';
     windowEl.style.touchAction=zoom>1?'none':'pan-x pan-y';
     write('plans.zoom',Math.round(zoom*100)+'%');
     document.querySelector('[data-zoom="out"]').disabled=zoom<=1;
@@ -46,7 +46,7 @@
     // before the shared shim's previously armed text hot zones.
     event.preventDefault();event.stopPropagation();
     if(b.hasAttribute('data-back')){if(history.length)show(history.pop(),true,false);}
-    else if(b.hasAttribute('data-go'))show(b.dataset.go,true);
+    else if(b.hasAttribute('data-go')){if(b.dataset.go==='home'&&stage.classList.contains('portrait'))reset(true);else show(b.dataset.go,true);}
     else if(b.hasAttribute('data-restart'))reset(true);
     else if(b.hasAttribute('data-floor'))choose('floor',Number(b.dataset.floor));
     else if(b.hasAttribute('data-amenity'))choose('amenity',Number(b.dataset.amenity));

@@ -9,6 +9,12 @@ User approved all three overview directions on October 4, 2026, then requested i
 - Each has a JLL and generic version, each supporting landscape and portrait: 12 HTML templates / 24 formats.
 - Seven touch pages: overview, amenities, plans, location, details, contact, gallery. Three amenity selections and eight floor-plan sheets, covering all published levels for the JLL example. Every section is one tap away in an icon-and-label navigation dock. All eight floor buttons stay visible, and Back preserves the selected floor and zoom. The gallery has manual previous/next and direct image selection. Photo hero carousels autoplay by default.
 
+## Portrait touch composition
+
+The portrait layout has its own composition. Section navigation and Back sit around the vertical center (43–55% of display height), with page-specific controls nearby. Visible button centers remain within 35–70% of the screen height; no primary navigation sits at the bottom edge. Home resets the portrait experience, replacing duplicate top-edge reset buttons. The actual physical reach still depends on display size and mounting height.
+
+Architecture, immersive imagery and the information hub retain distinct portrait entrances. A uses a large photo above the controls and property information below; B uses an immersive upper hero and a lower workplace photograph; C uses a split heading/photograph above the controls. The extra portrait photo is an ordinary editable native image slot.
+
 ## Existing CMS tool compatibility
 
 Native image galleries: replace/reorder photos through the Image picker or `media.<slot>.slides`; configure `carousel.intervalSeconds`, autoplay and transition, plus per-slot fit/crop/mode. Defaults rotate every seven seconds.

@@ -28,6 +28,7 @@ async function layout(frame){return frame.evaluate(()=>{
   es.forEach(e=>{const r=e.getBoundingClientRect();if(r.right>innerWidth+1||r.bottom>innerHeight-10||r.left<0||e.scrollWidth>e.clientWidth+2||parseFloat(getComputedStyle(e).fontSize)<96)errors.push(e.dataset.field+' bounds/type');});
   for(let i=0;i<es.length;i++)for(let j=i+1;j<es.length;j++){const a=es[i].getBoundingClientRect(),b=es[j].getBoundingClientRect();if(a.left<b.right-4&&a.right>b.left+4&&a.top<b.bottom-4&&a.bottom>b.top+4)errors.push(es[i].dataset.field+' overlaps '+es[j].dataset.field);}
   document.querySelectorAll('.stage button').forEach(e=>{if(!e.offsetWidth||!e.offsetHeight)return;const r=e.getBoundingClientRect();if(Math.min(r.width,r.height)*2/3<44)errors.push('Small touch target '+e.textContent);});
+  if(document.querySelector('.stage').classList.contains('portrait'))document.querySelectorAll('.stage button').forEach(e=>{if(!e.offsetWidth||!e.offsetHeight)return;const r=e.getBoundingClientRect(),center=(r.top+r.bottom)/2/innerHeight;if(center<.35||center>.70)errors.push('Portrait control outside middle band '+e.textContent);});
   return errors;
 });}
 async function main(){
@@ -57,7 +58,7 @@ async function main(){
     for(const n of [0,1,2,3,4,5,6,7]){await frame.locator('[data-floor="'+n+'"]').click();assert.equal(await frame.locator('[data-floor-panel="'+n+'"]').isVisible(),true);assert.deepEqual(await layout(frame),[],id+' direct floor '+n);}
     await frame.locator('[data-floor="2"]').click();
     await frame.locator('.app-nav [data-go="gallery"]').click();
-    await frame.locator('[data-back]').click();
+    await frame.locator('[data-back]:visible').click();
     assert.equal(await frame.locator('[data-page="plans"]').isVisible(),true,id+' Back retains page');
     assert.equal(await frame.locator('[data-floor="2"]').getAttribute('aria-pressed'),'true',id+' Back retains floor');
     await frame.locator('[data-zoom="in"]').click();assert.equal(await frame.locator('[data-field="plans.zoom"]').textContent(),'150%');

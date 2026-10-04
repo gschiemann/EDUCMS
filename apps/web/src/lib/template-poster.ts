@@ -19,7 +19,7 @@ export interface PosterZone {
 
 /** Bump on every poster regeneration so browsers/CDN refetch the new PNGs.
  *  Date-based; append a letter for multiple regens in one day (…24b). */
-export const POSTER_VERSION = '20261004a';
+export const POSTER_VERSION = '20261004b';
 
 /**
  * For a board preview (a single EXTERNAL_HTML zone), the path to its
