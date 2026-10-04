@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, X } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
+import { useTranslations } from "next-intl";
 
 type Summary = { name: string; assetIds: string[]; folders: number };
 
@@ -12,6 +13,7 @@ export function FolderDeleteDialog({ folder, onCancel, onConfirm }: {
   onCancel: () => void;
   onConfirm: (assetIds: string[] | null) => void;
 }) {
+  const t = useTranslations();
   const [summary, setSummary] = useState<Summary | null>(null);
   const [error, setError] = useState(false);
   const [contents, setContents] = useState(false);
@@ -42,20 +44,20 @@ export function FolderDeleteDialog({ folder, onCancel, onConfirm }: {
     <div ref={dialog} role="alertdialog" aria-modal="true" aria-labelledby="folder-delete-title" aria-describedby="folder-delete-description" className="w-full max-w-lg rounded-2xl border border-rose-200 bg-white p-6 shadow-xl">
       <div className="flex items-start gap-3">
         <AlertTriangle className="mt-1 h-5 w-5 shrink-0 text-rose-600" aria-hidden />
-        <h2 id="folder-delete-title" className="min-w-0 flex-1 text-lg font-bold text-slate-900">Delete “{folder.name}”?</h2>
-        <button onClick={onCancel} aria-label="Close" className="p-1 text-slate-400"><X className="h-5 w-5" /></button>
+        <h2 id="folder-delete-title" className="min-w-0 flex-1 text-lg font-bold text-slate-900">{t("assetsLib.folderDelete.title", { name: folder.name })}</h2>
+        <button onClick={onCancel} aria-label={t("assetsLib.folderDelete.close")} className="p-1 text-slate-400"><X className="h-5 w-5" /></button>
       </div>
-      <p id="folder-delete-description" className="mt-4 text-sm text-slate-600">Choose what happens to the files. Deleted files cannot be restored.</p>
-      <label htmlFor="folder-delete-contents" aria-label="Also delete all files and subfolders" className="mt-4 flex items-start gap-3 rounded-xl border border-slate-200 p-4 text-sm text-slate-700">
+      <p id="folder-delete-description" className="mt-4 text-sm text-slate-600">{t("assetsLib.folderDelete.description")}</p>
+      <label htmlFor="folder-delete-contents" aria-label={t("assetsLib.folderDelete.alsoContents")} className="mt-4 flex items-start gap-3 rounded-xl border border-slate-200 p-4 text-sm text-slate-700">
         <input id="folder-delete-contents" type="checkbox" checked={contents} onChange={event => setContents(event.target.checked)} disabled={!summary} className="mt-1 h-4 w-4 shrink-0" />
-        <span><span className="block font-semibold">Also delete all files and subfolders</span>
-          <span className="mt-1 block text-xs text-slate-500">{summary ? `${summary.assetIds.length} files · ${Math.max(0, summary.folders - 1)} ${summary.folders === 2 ? "subfolder" : "subfolders"}` : error ? 'Could not check the contents. Close and try again to delete files.' : 'Checking folder contents…'}</span>
+        <span><span className="block font-semibold">{t("assetsLib.folderDelete.alsoContents")}</span>
+          <span className="mt-1 block text-xs text-slate-500">{summary ? t("assetsLib.folderDelete.counts", { files: summary.assetIds.length, folders: Math.max(0, summary.folders - 1) }) : error ? t("assetsLib.folderDelete.checkFailed") : t("assetsLib.folderDelete.checking")}</span>
         </span>
       </label>
-      <p className="mt-3 text-sm text-slate-600">{contents ? 'Files used in playlists are removed from those playlists. Empty playlists stop playing. Protected emergency files are kept, along with their folder.' : 'Files are kept in All files. Subfolders move up one level.'}</p>
+      <p className="mt-3 text-sm text-slate-600">{contents ? t("assetsLib.folderDelete.contentsNote") : t("assetsLib.folderDelete.keepNote")}</p>
       <div className="mt-6 flex flex-wrap justify-end gap-3">
-        <button ref={cancel} onClick={onCancel} className="rounded-xl border border-slate-200 px-4 py-2 font-semibold text-slate-700">Cancel</button>
-        <button onClick={() => onConfirm(contents ? summary!.assetIds : null)} disabled={contents && !summary} className="rounded-xl bg-rose-600 px-4 py-2 font-semibold text-white disabled:opacity-50">{contents ? 'Delete folder and contents' : 'Delete folder, keep files'}</button>
+        <button ref={cancel} onClick={onCancel} className="rounded-xl border border-slate-200 px-4 py-2 font-semibold text-slate-700">{t("assetsLib.folderDelete.cancel")}</button>
+        <button onClick={() => onConfirm(contents ? summary!.assetIds : null)} disabled={contents && !summary} className="rounded-xl bg-rose-600 px-4 py-2 font-semibold text-white disabled:opacity-50">{contents ? t("assetsLib.folderDelete.confirmContents") : t("assetsLib.folderDelete.confirmKeep")}</button>
       </div>
     </div>
   </div>;

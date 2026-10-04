@@ -651,7 +651,7 @@ export function ScreenDetailDrawer({
                     )}
                     {expected.thumbnailKind === 'board' && (
                       <p className="mt-1 text-[10px] font-semibold text-slate-400 leading-snug">
-                        {expected.templatePreview ? 'Preview of the saved template.' : "The board’s own look — brand or text changes you made are not shown here."}
+                        {expected.templatePreview ? t('screens.drawer.savedTemplatePreview') : t('screens.drawer.boardOwnLook')}
                       </p>
                     )}
                   </div>
@@ -838,11 +838,11 @@ export function ScreenDetailDrawer({
                 {onSetLocation && (
                   <div className="mt-3 flex items-center gap-2">
                     <div className="flex-1 min-w-0">
-                      <p className="text-[11px] font-bold text-slate-500">Location</p>
+                      <p className="text-[11px] font-bold text-slate-500">{t('screens.drawer.location')}</p>
                       <p className="text-[12.5px] font-semibold text-slate-700 truncate">
-                        {locationAddress || 'No address set'}
+                        {locationAddress || t('screens.drawer.noAddress')}
                       </p>
-                      {inheritedLocation && <p className="text-[11px] text-slate-500">{screen.geoSource === 'tenant' ? 'From account location' : 'From group address'}</p>}
+                      {inheritedLocation && <p className="text-[11px] text-slate-500">{screen.geoSource === 'tenant' ? t('screens.drawer.fromAccountLocation') : t('screens.drawer.fromGroupAddress')}</p>}
                     </div>
                     <button
                       type="button"
@@ -850,7 +850,7 @@ export function ScreenDetailDrawer({
                       disabled={!canControl}
                       className="px-3 py-2 rounded-lg border border-slate-200 text-[12px] font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                     >
-                      {screen.address ? 'Change' : inheritedLocation ? 'Override' : 'Set location'}
+                      {screen.address ? t('screens.drawer.changeLocation') : inheritedLocation ? t('screens.drawer.overrideLocation') : t('screens.drawer.setLocation')}
                     </button>
                   </div>
                 )}

@@ -1570,9 +1570,9 @@ export function ScreenSettingsSections({
                     onClick={onPushApk}
                     disabled={displayReadOnly || pending || stillWaiting}
                     className="shrink-0 min-h-11 px-4 py-2 rounded-lg border border-indigo-700 bg-indigo-600 text-white font-bold hover:bg-indigo-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                    title={managerStale && upToDate === true ? 'Update the companion Manager app. The player is current.' : 'Download and install the latest player app on this screen'}
+                    title={managerStale && upToDate === true ? t('screens.apkUpdateManagerTitle') : t('screens.apkUpdateTitle')}
                   >
-                    {pending || stillWaiting ? 'Updating…' : ['error', 'timeout'].includes(effectiveStage) ? 'Retry update' : 'Push update'}
+                    {pending || stillWaiting ? t('screens.apkUpdating') : ['error', 'timeout'].includes(effectiveStage) ? t('screens.apkRetryUpdate') : t('screens.apkPushUpdate')}
                   </button>
                 )}
               </div>

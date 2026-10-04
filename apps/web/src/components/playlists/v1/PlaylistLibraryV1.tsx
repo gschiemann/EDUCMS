@@ -165,6 +165,7 @@ function SelectBox({
 type RowContext = Omit<PlaylistLibraryV1Props, 'rows'> & { selection?: SelectionApi };
 
 export function PlaylistLibraryV1(props: PlaylistLibraryV1Props) {
+  const t = useTranslations();
   const { rows, loading, error, isViewer } = props;
 
   const [tab, setTab] = useState<StatusTab>('all');
@@ -268,12 +269,12 @@ export function PlaylistLibraryV1(props: PlaylistLibraryV1Props) {
       {selectable && selectedRows.length > 0 && !error && (
         <div
           role="region"
-          aria-label="Bulk actions"
+          aria-label={t('playlistsPage.bulkActions')}
           data-testid="bulk-bar"
           className="flex items-center justify-end gap-3 flex-wrap"
         >
           <span className={`text-[13px] font-bold ${INK}`} aria-live="polite" data-testid="bulk-count">
-            {selectedRows.length} selected
+            {t('playlistsPage.bulkSelected', { count: selectedRows.length })}
           </span>
           {visible.length > selectedRows.length && (
             <button
@@ -283,7 +284,7 @@ export function PlaylistLibraryV1(props: PlaylistLibraryV1Props) {
               className="text-[13px] font-semibold underline underline-offset-2 disabled:opacity-50"
               style={{ color: 'var(--brand-primary, #3515E8)' }}
             >
-              Select all {visible.length}
+              {t('playlistsPage.bulkSelectAll', { count: visible.length })}
             </button>
           )}
           <button
@@ -292,7 +293,7 @@ export function PlaylistLibraryV1(props: PlaylistLibraryV1Props) {
             disabled={bulkBusy}
             className={`text-[13px] font-semibold ${INK_2} hover:underline disabled:opacity-50`}
           >
-            Clear
+            {t('playlistsPage.bulkClear')}
           </button>
           <button
             type="button"
@@ -302,7 +303,7 @@ export function PlaylistLibraryV1(props: PlaylistLibraryV1Props) {
             className="shrink-0 whitespace-nowrap inline-flex items-center gap-2 h-9 px-4 rounded-[10px] text-[13px] font-bold text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-60 disabled:cursor-wait"
           >
             <Trash2 className="w-4 h-4" aria-hidden />
-            {bulkBusy ? 'Removing' : `Remove ${selectedRows.length}`}
+            {bulkBusy ? t('playlistsPage.bulkRemoving') : t('playlistsPage.bulkRemove', { count: selectedRows.length })}
           </button>
         </div>
       )}

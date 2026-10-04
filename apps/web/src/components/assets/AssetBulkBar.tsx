@@ -17,6 +17,7 @@
  */
 
 import { Download, FolderInput, ListPlus, Loader2, Trash2, X } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 
 export function AssetBulkBar({
   count,
@@ -52,6 +53,7 @@ export function AssetBulkBar({
   onDelete: () => void;
   onClear: () => void;
 }) {
+  const t = useTranslations();
   if (count <= 0) return null;
   const title = disabled ? disabledReason : undefined;
   const deleteTitle = deleteDisabled ? deleteDisabledReason : undefined;
@@ -93,7 +95,7 @@ export function AssetBulkBar({
         className="min-h-11 sm:min-h-0 px-3 py-2 rounded-lg bg-white border border-indigo-200 hover:bg-indigo-100 text-indigo-800 text-xs font-bold flex items-center gap-1.5"
       >
         {downloadPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden /> : <Download className="w-3.5 h-3.5" aria-hidden />}
-        {downloadPending ? 'Preparing ZIP…' : count > 1 ? 'Download ZIP' : 'Download'}
+        {downloadPending ? t('assetsLib.preparingZip') : count > 1 ? t('assetsLib.downloadZip') : t('assetsLib.download')}
       </button>
 
       <button
@@ -103,7 +105,7 @@ export function AssetBulkBar({
         onClick={onDelete}
         className="min-h-11 sm:min-h-0 px-3 py-2 rounded-lg bg-white border border-rose-200 hover:bg-rose-50 text-rose-700 text-xs font-bold flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
       >
-        <Trash2 className="w-3.5 h-3.5" /> Delete
+        <Trash2 className="w-3.5 h-3.5" /> {t('assetsLib.delete')}
       </button>
 
       <button

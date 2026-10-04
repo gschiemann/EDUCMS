@@ -677,6 +677,7 @@ export default function TemplatesPage() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
   const tAi = useTranslations('aiBoards') as unknown as AiBoardsT;
+  const tDel = useTranslations('templateDelete');
 
   const [activeCategory, setActiveCategory] = useState('');
   const [activeLevel, setActiveLevel] = useState('');
@@ -2187,7 +2188,7 @@ export default function TemplatesPage() {
       // An absent/invalid usage answer must not arm a destructive action.
       if (!Array.isArray(usage?.playlists) || !Number.isInteger(usage.total) || usage.total < 0 ||
           typeof usage.protectedEmergency !== 'boolean') {
-        throw new Error('Could not check where this template is used. Please try again.');
+        throw new Error(tDel('usageCheckFailed'));
       }
       setUsageImpact({
         template: target, playlists: usage.playlists, total: usage.total,
@@ -2197,7 +2198,7 @@ export default function TemplatesPage() {
     } catch (err: unknown) {
       if (request !== deleteUsageRequestRef.current) return;
       setDeleteUsageFailed(true);
-      setTemplateDeleteError((err as { message?: string } | null)?.message || 'Could not check where this template is used. Please try again.');
+      setTemplateDeleteError((err as { message?: string } | null)?.message || tDel('usageCheckFailed'));
     } finally {
       if (request === deleteUsageRequestRef.current) setCheckingDeleteUsage(false);
     }
@@ -2219,7 +2220,7 @@ export default function TemplatesPage() {
       await deleteTemplate.mutateAsync(usageImpact.inUse ? { id: target.id, force: true } : { id: target.id });
       deleteUsageRequestRef.current += 1;
       setUsageImpact(null);
-      toast.success(`Deleted “${target.name}”`);
+      toast.success(tDel('deleted', { name: target.name }));
     } catch (err: any) {
       if (err?.code === 'TEMPLATE_IN_USE') {
         // Usage changed AFTER the read. Refresh the warning in this same
@@ -2235,12 +2236,12 @@ export default function TemplatesPage() {
           inUse: true,
           message: typeof body.message === 'string' ? body.message : undefined,
         });
-        setTemplateDeleteError('Usage changed while this confirmation was open. Review the updated warning before deleting.');
+        setTemplateDeleteError(tDel('usageChanged'));
       } else {
         if (err?.code === 'TEMPLATE_EMERGENCY_IN_USE') {
           setUsageImpact((current) => current ? { ...current, protectedEmergency: true } : current);
         }
-        setTemplateDeleteError(err?.message || 'Could not delete this template. Please try again.');
+        setTemplateDeleteError(err?.message || tDel('deleteFailed'));
       }
     } finally {
       setForceDeleting(false);
@@ -3936,6 +3937,7 @@ export function TemplateUsageImpactDialog({
   canDelete?: boolean;
   onRetry?: () => void;
 }) {
+  const tDel = useTranslations('templateDelete');
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const primaryRef = useRef<HTMLButtonElement | null>(null);
   const restoreRef = useRef<HTMLElement | null>(null);
@@ -3975,13 +3977,13 @@ export function TemplateUsageImpactDialog({
   const bits: string[] = [];
   const playlistCount = impact.total ?? impact.playlists.length;
   if (playlistCount > 0) {
-    bits.push(`${playlistCount} playlist${playlistCount === 1 ? '' : 's'}`);
+    bits.push(tDel('playlistCount', { count: playlistCount }));
   }
   if (typeof impact.screensReached === 'number' && impact.screensReached > 0) {
-    bits.push(`${impact.screensReached} screen${impact.screensReached === 1 ? '' : 's'}`);
+    bits.push(tDel('screenCount', { count: impact.screensReached }));
   }
   if (typeof impact.locations === 'number' && impact.locations > 0) {
-    bits.push(`${impact.locations} location${impact.locations === 1 ? '' : 's'}`);
+    bits.push(tDel('locationCount', { count: impact.locations }));
   }
 
   if (typeof document === 'undefined') return null;
@@ -4006,7 +4008,7 @@ export function TemplateUsageImpactDialog({
           </div>
           <div className="min-w-0">
             <h2 id="tpl-impact-title" className="text-[15px] font-bold text-slate-800">
-              {inUse ? `“${impact.template.name}” is currently in use` : `Delete “${impact.template.name}”?`}
+              {inUse ? tDel('inUseTitle', { name: impact.template.name }) : tDel('title', { name: impact.template.name })}
             </h2>
             {bits.length > 0 && (
               <p className="mt-0.5 text-[13px] font-semibold text-slate-600">{bits.join(' · ')}</p>
@@ -4018,22 +4020,22 @@ export function TemplateUsageImpactDialog({
           {checking ? (
             <p className="flex items-center gap-2 text-[13px] text-slate-600">
               <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-              Checking where this template is used…
+              {tDel('checking')}
             </p>
           ) : (
             <>
               <p className="text-[13px] text-slate-600">
-                This permanently removes “{impact.template.name}”. It can’t be restored.
+                {tDel('permanent', { name: impact.template.name })}
               </p>
               {impact.protectedEmergency ? (
                 <p className="text-[13px] font-semibold text-rose-700">
-                  This template is used by emergency content and can’t be deleted here.
+                  {tDel('emergencyProtected')}
                 </p>
               ) : inUse && (
                 <p className="text-[13px] text-slate-600">
                   {playlistCount === 1
-                    ? 'Deleting it takes this layout off that playlist — it falls back to its next layout, so what its screens display can change.'
-                    : 'Deleting it takes this layout off these playlists — they fall back to their next layout, so what their screens display can change.'}
+                    ? tDel('impactOne')
+                    : tDel('impactMany')}
                 </p>
               )}
               {impact.playlists.length > 0 && (
@@ -4056,7 +4058,7 @@ export function TemplateUsageImpactDialog({
                     );
                   })}
                   {playlistCount > impact.playlists.length && (
-                    <li className="text-[12px] text-slate-500">And {playlistCount - impact.playlists.length} more playlists.</li>
+                    <li className="text-[12px] text-slate-500">{tDel('morePlaylists', { count: playlistCount - impact.playlists.length })}</li>
                   )}
                 </ul>
               )}
@@ -4077,7 +4079,7 @@ export function TemplateUsageImpactDialog({
             disabled={deleting}
             className="inline-flex min-h-10 items-center rounded-lg border border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-600 hover:border-slate-300 disabled:opacity-60"
           >
-            Cancel
+            {tDel('cancel')}
           </button>
           {/* Review stays the focused action: Enter lands on the one that
               changes nothing. The delete is one deliberate click away. */}
@@ -4089,7 +4091,7 @@ export function TemplateUsageImpactDialog({
             className="inline-flex min-h-10 items-center rounded-lg px-4 text-[13px] font-bold text-white disabled:opacity-60"
             style={{ backgroundColor: 'var(--brand-primary, #4f46e5)' }}
           >
-            Review
+            {tDel('review')}
           </button>}
           {error && onRetry && !checking && <button
             type="button"
@@ -4097,7 +4099,7 @@ export function TemplateUsageImpactDialog({
             disabled={deleting}
             className="inline-flex min-h-10 items-center rounded-lg border border-slate-200 px-4 text-[13px] font-semibold text-slate-600 disabled:opacity-60"
           >
-            Check again
+            {tDel('checkAgain')}
           </button>}
           <button
             type="button"
@@ -4105,7 +4107,7 @@ export function TemplateUsageImpactDialog({
             disabled={deleting || checking || !canDelete || impact.protectedEmergency}
             className="inline-flex min-h-10 items-center rounded-lg bg-rose-600 px-4 text-[13px] font-bold text-white hover:bg-rose-700 disabled:opacity-60"
           >
-            {deleting ? 'Deleting…' : inUse ? 'Delete anyway' : 'Delete template'}
+            {deleting ? tDel('deleting') : inUse ? tDel('deleteAnyway') : tDel('deleteTemplate')}
           </button>
         </div>
       </div>

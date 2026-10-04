@@ -580,7 +580,7 @@ export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
                       reason this tab exists. */}
                   {ev && ev.state === 'not-updated' && (
                     <span className={`text-[11px] font-bold shrink-0 ${isUpdateInFlight(sc, nowMs) ? INK_3 : 'text-amber-700'}`}>
-                      {isUpdateInFlight(sc, nowMs) ? 'Sending update' : 'Not received'}
+                      {isUpdateInFlight(sc, nowMs) ? t('playlistsPage.sendingUpdate') : t('playlistsPage.notReceived')}
                     </span>
                   )}
                   {ev && ev.state === 'no-picture' && (

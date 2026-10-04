@@ -1551,6 +1551,7 @@ const BOTTOM_BAR_FONTS = [
  *  view toggles (right). Replaces FloatingZoneActions + the old
  *  canvas-controls bar. Operator request 2026-04-27. */
 function BuilderBottomBar() {
+  const tB = useTranslations('builderPanel');
   // ── Canvas controls ──────────────────────────────────────────────
   const zoom         = useBuilderStore((s) => s.zoom);
   const setZoom      = useBuilderStore((s) => s.setZoom);
@@ -1860,7 +1861,7 @@ function BuilderBottomBar() {
           button says so rather than no-op'ing. The Lock toggle is the
           control immediately to its left. */}
       {smallBtn(
-        selectedZone.locked ? 'Locked — unlock to delete' : wt === 'EXTERNAL_HTML' && activeFieldName ? 'Delete text element' : 'Delete (Del)',
+        selectedZone.locked ? tB('deleteLocked') : wt === 'EXTERNAL_HTML' && activeFieldName ? tB('deleteTextElement') : tB('deleteZone'),
         () => { if (!deleteSelectedBoardField()) removeSelected(); },
         <Trash2 className="w-3.5 h-3.5" />,
         true,

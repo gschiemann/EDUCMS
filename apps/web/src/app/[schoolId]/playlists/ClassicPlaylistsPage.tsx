@@ -433,7 +433,7 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSel
               <option value="SLIDE_DOWN">{t('playlistsPage.transSlideDown')}</option>
             </select>
           </div>}
-          {item.asset?.mimeType?.startsWith('video/') && !isEmergencyContent && <p className="text-xs text-slate-600">Videos switch directly when the next frame is ready.</p>}
+          {item.asset?.mimeType?.startsWith('video/') && !isEmergencyContent && <p className="text-xs text-slate-600">{t('playlistsPage.videoSwitchNote')}</p>}
 
           {/* 2026-05-05 — per-video audio toggle. Only shown for video
               items because images and webpages don't have an audio

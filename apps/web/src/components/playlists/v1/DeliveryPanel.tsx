@@ -27,6 +27,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { AlertTriangle, ExternalLink, Loader2, RefreshCw, WifiOff } from 'lucide-react';
 import {
   deriveDeliveryFromScreens, deriveTargetsFromScreens, exactStamp, isUpdateInFlight, summarizeDelivery,
@@ -77,6 +78,7 @@ export interface DeliveryPanelProps {
 }
 
 export function DeliveryPanel(props: DeliveryPanelProps) {
+  const tr = useTranslations();
   const { payload, derived, targetScreens, loading } = props;
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
@@ -248,7 +250,7 @@ export function DeliveryPanel(props: DeliveryPanelProps) {
                           <span className="text-[13px] text-emerald-700 font-semibold">Received</span>
                         ) : t.state === 'not-updated' ? (
                           <span className={`text-[13px] font-semibold ${sending ? INK_3 : 'text-amber-800'}`}>
-                            {sending ? 'Sending update' : 'Not received'}
+                            {sending ? tr('playlistsPage.sendingUpdate') : tr('playlistsPage.notReceived')}
                           </span>
                         ) : t.state === 'offline' ? (
                           <span className={`text-[13px] ${INK_3}`}>Cannot be reached</span>

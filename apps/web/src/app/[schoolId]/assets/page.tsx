@@ -603,7 +603,7 @@ export default function AssetsPage() {
         const reply = await deleteAsset.mutateAsync({ ids: assetIds, confirmInUse: true });
         const failed = ((reply?.results || []) as AssetDeleteResult[]).filter(item => !item.deleted);
         if (failed.length) {
-          await appAlert({ title: 'Some files and their folder were kept', message: `${assetIds.length - failed.length} files deleted. ${failed.length} ${failed.length === 1 ? 'file was' : 'files were'} kept or could not be confirmed. ${failed[0].message || ''}`, tone: 'warn' });
+          await appAlert({ title: t('assetsLib.folderKeptTitle'), message: t('assetsLib.folderKeptMsg', { deleted: assetIds.length - failed.length, kept: failed.length, detail: failed[0].message || '' }), tone: 'warn' });
           return;
         }
       }
@@ -614,7 +614,7 @@ export default function AssetsPage() {
       if (currentFolderId === folder.id) setCurrentFolderId(null);
       void queryClient.invalidateQueries({ queryKey: ['assets'] });
     } catch (error) {
-      await appAlert({ title: 'Could not remove the folder', message: (error as Error).message || 'Refresh and try again. Any files still present are kept.', tone: 'warn' });
+      await appAlert({ title: t('assetsLib.folderRemoveFailedTitle'), message: (error as Error).message || t('assetsLib.folderRemoveFailedMsg'), tone: 'warn' });
     } finally { deletePending.current = false; setDeletingCount(0); }
   };
 
@@ -740,12 +740,12 @@ export default function AssetsPage() {
       if (failures.length) {
         setSelectedIds(current => [...new Set([...current, ...failures.map(item => item.id)])]);
         const protectedCount = failures.filter(item => item.code?.startsWith('ASSET_IN_') && item.code !== 'ASSET_IN_USE').length;
-        await appAlert({ title: 'Some assets were kept', message: `${ids.length - failures.length} of ${ids.length} deleted. ` +
-          (protectedCount ? `${protectedCount} ${protectedCount === 1 ? "is" : "are"} protected emergency content and ${protectedCount === 1 ? "was" : "were"} kept. ` : '') + (failures[0].message || ''), tone: 'warn', confirmLabel: 'OK' });
+        await appAlert({ title: t('assetsLib.assetsKeptTitle'), message: t('assetsLib.assetsKeptMsg', { deleted: ids.length - failures.length, total: ids.length }) + ' ' +
+          (protectedCount ? t('assetsLib.assetsKeptProtected', { count: protectedCount }) + ' ' : '') + (failures[0].message || ''), tone: 'warn', confirmLabel: 'OK' });
       }
     } catch (error) {
       setSelectedIds(current => [...new Set([...current, ...ids])]);
-      await appAlert({ title: "Couldn't confirm deletion", message: (error as Error).message || 'Refresh the library to check which files remain.', tone: 'warn' });
+      await appAlert({ title: t('assetsLib.deleteUnconfirmedTitle'), message: (error as Error).message || t('assetsLib.deleteUnconfirmedMsg'), tone: 'warn' });
     } finally { deletePending.current = false; setDeletingCount(0); }
   };
 
@@ -1036,7 +1036,7 @@ export default function AssetsPage() {
       }
       if (request === selectionRequest.current) { setSelectedIds([...ids]); setAllSelected(true); }
     } catch (error) {
-      toast.error((error as Error).message || 'Could not select all files. Please try again.');
+      toast.error((error as Error).message || t('assetsLib.selectAllFailed'));
     } finally { if (request === selectionRequest.current) setSelectingAll(false); }
   };
 
@@ -1138,7 +1138,7 @@ export default function AssetsPage() {
       link.click();
       link.remove();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Could not download this asset.');
+      toast.error(error instanceof Error ? error.message : t('assetsLib.downloadFailed'));
     }
   };
 
@@ -1150,7 +1150,7 @@ export default function AssetsPage() {
       // subset. A multi-file ZIP always asks the API for ALL selected IDs.
       const asset = assets.find(a => a.id === ids[0]);
       if (asset) downloadAsset(asset);
-      else toast.error('Refresh the library and select the file again.');
+      else toast.error(t('assetsLib.downloadReselect'));
       return;
     }
     downloadPendingRef.current = true;
@@ -1159,7 +1159,7 @@ export default function AssetsPage() {
       const grant = await apiFetch<{ ticket: string; filename: string }>('/assets/download-archive', {
         method: 'POST', body: JSON.stringify({ assetIds: ids }),
       });
-      if (!/^[A-Za-z0-9_-]{43}$/.test(grant.ticket)) throw new Error('Could not prepare the ZIP download.');
+      if (!/^[A-Za-z0-9_-]{43}$/.test(grant.ticket)) throw new Error(t('assetsLib.zipFailed'));
       const link = document.createElement('a');
       link.href = `${getApiUrl().replace(/\/$/, '')}/assets/download-archive/${grant.ticket}`;
       link.download = grant.filename;
@@ -1168,7 +1168,7 @@ export default function AssetsPage() {
       link.click();
       link.remove();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Could not prepare the ZIP download.');
+      toast.error(error instanceof Error ? error.message : t('assetsLib.zipFailed'));
     } finally {
       downloadPendingRef.current = false;
       setDownloadPending(false);
@@ -1677,7 +1677,7 @@ export default function AssetsPage() {
 
         <div className="flex gap-2 items-center lg:shrink-0">
           <button type="button" onClick={() => void selectAllFiles()} disabled={selectingAll || deletingCount > 0 || libraryTotal === 0} className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 py-2 text-[11px] font-semibold text-slate-700 disabled:opacity-50">
-            {selectingAll ? 'Selecting…' : allSelected && selectedIds.length > 0 ? 'Clear selection' : 'Select all'}
+            {selectingAll ? t('assetsLib.selecting') : allSelected && selectedIds.length > 0 ? t('assetsLib.clearSelection') : t('assetsLib.selectAll')}
           </button>
           <label className="sr-only" htmlFor="assets-sort">Sort files</label>
           <select
@@ -1763,7 +1763,7 @@ export default function AssetsPage() {
       )}
 
       {/* ── Selection bar (§13) — contextual, never in the header ────── */}
-      {deletingCount > 0 && <p role="status" className="rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-800">Deleting {deletingCount} {deletingCount === 1 ? 'file' : 'files'}… You can keep browsing.</p>}
+      {deletingCount > 0 && <p role="status" className="rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-800">{t('assetsLib.deletingFiles', { count: deletingCount })}</p>}
 
       <AssetBulkBar
         count={selectedIds.length}

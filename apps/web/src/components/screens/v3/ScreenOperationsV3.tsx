@@ -124,7 +124,8 @@ function lastContact(row: OpsRow, now: number): { primary: string; secondary: st
 }
 
 function GroupAddress({ address }: { address?: string | null }) {
-  return <span className="text-[11.5px] text-slate-500 min-w-0 truncate" title={address || undefined}>{address?.trim() || 'No group address'}</span>;
+  const t = useTranslations();
+  return <span className="text-[11.5px] text-slate-500 min-w-0 truncate" title={address || undefined}>{address?.trim() || t('screens.ops.noGroupAddress')}</span>;
 }
 
 export interface ScreenOperationsV3Props {
@@ -523,7 +524,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
         <button type="button" disabled={!canControl}
           onClick={() => { setGroupMenu(null); onSetGroupLocation({ id: g.id, name: g.name, address: src?.address ?? null }); }}
           className={`${item} border-t border-slate-100`}>
-          {src?.address?.trim() ? 'Edit group address' : 'Set group address'}
+          {src?.address?.trim() ? t('screens.ops.editGroupAddress') : t('screens.ops.setGroupAddress')}
         </button>
         <button type="button" disabled={!canControl}
           onClick={() => { setGroupMenu(null); onPairScreen(g.id); }}

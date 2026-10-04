@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { useTranslations } from "next-intl";
 import type { LucideIcon } from "lucide-react";
 import type { LocationPin } from "./ScreenMap";
 import { ScreenMapClient } from "./ScreenMapClient";
@@ -56,11 +57,12 @@ export function LocationMapFilters<T extends string>({
   selected: T;
   onChange: (key: T) => void;
 }) {
+  const t = useTranslations();
   return (
     <div
       className="absolute top-3 left-3 right-3 lg:left-auto z-[1000] flex items-center gap-1.5 flex-nowrap lg:flex-wrap justify-start lg:justify-end overflow-x-auto lg:overflow-visible max-w-[calc(100%-1.5rem)]"
       role="radiogroup"
-      aria-label="Filter locations on the map"
+      aria-label={t("screens.atlas.filterAria")}
     >
       {filters.map(({ key, label, dot, Icon }) => {
         const on = selected === key;

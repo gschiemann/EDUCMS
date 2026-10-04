@@ -7806,6 +7806,7 @@ function ExternalHtmlTextEditor({
   cfg: any;
   setField: (patch: Record<string, any>) => void;
 }) {
+  const tB = useTranslations('builderPanel');
   const url = typeof cfg?.url === 'string' ? cfg.url.trim() : '';
   // AI Designer boards carry their HTML INLINE (cfg.html, srcdoc) — no url to
   // fetch. Discover fields from that string directly; static boards fetch url.
@@ -8433,7 +8434,7 @@ function ExternalHtmlTextEditor({
           </div>
       {nativeCarousels && hasCfg('carousel.intervalSeconds') && (
         <div className="space-y-2 pb-3 border-b border-slate-200">
-          <div className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest border-b border-slate-200 pb-1">Photo playback</div>
+          <div className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest border-b border-slate-200 pb-1">{tB('photoPlayback')}</div>
           <PhotoPlaybackFields seconds={cfgVal('carousel.intervalSeconds', '7')} transition={cfgVal('carousel.transition', 'fade')}
             onSeconds={(value) => setCfgMany({ 'carousel.intervalSeconds': String(Math.max(1, parseInt(value) || 7)) })}
             onTransition={(value) => setCfgMany({ 'carousel.transition': value })} />
@@ -8460,14 +8461,14 @@ function ExternalHtmlTextEditor({
                   />
                 )}
                 {nativeCarousels && isQr ? (
-                  <TextField label="QR destination URL" value={textOverrides[img.key.replace(/\.qr$/, '.url')] ?? discoveredFields.find(field => field.key === img.key.replace(/\.qr$/, '.url'))?.defaultText ?? ''}
+                  <TextField label={tB('qrDestination')} value={textOverrides[img.key.replace(/\.qr$/, '.url')] ?? discoveredFields.find(field => field.key === img.key.replace(/\.qr$/, '.url'))?.defaultText ?? ''}
                     onChange={(value) => { const key = img.key.replace(/\.qr$/, '.url'); setOverride(key, value, discoveredFields.find(field => field.key === key)?.defaultText ?? ''); }} />
                 ) : nativeCarousels && !/logo/i.test(img.key) ? (
                   <>
                     <AssetListPickerField label={img.label} kind="image" value={imageList(img.key)} onChange={(urls) => setImageList(img.key, urls)} />
-                    <SelectField label="Image fit" value={cfgVal(`media.${img.key}.fit`, '') || (img.key === 'home.plan' ? 'contain' : 'cover')}
-                      options={PHOTO_FIT_OPTIONS} onChange={(value) => setCfgMany({ [`media.${img.key}.fit`]: value })} />
-                    {imageList(img.key).length > 1 && <ToggleField label="Rotate photos" value={nativeImageRotates(img.key)} onChange={(rotate) => setCfgMany({ [`media.${img.key}.mode`]: rotate ? 'carousel' : 'single', ...(rotate ? { 'carousel.autoplay': 'yes' } : {}) })} />}
+                    <SelectField label={tB('imageFit')} value={cfgVal(`media.${img.key}.fit`, '') || (img.key === 'home.plan' ? 'contain' : 'cover')}
+                      options={photoOptions(tB, PHOTO_FIT_OPTIONS)} onChange={(value) => setCfgMany({ [`media.${img.key}.fit`]: value })} />
+                    {imageList(img.key).length > 1 && <ToggleField label={tB('rotatePhotos')} value={nativeImageRotates(img.key)} onChange={(rotate) => setCfgMany({ [`media.${img.key}.mode`]: rotate ? 'carousel' : 'single', ...(rotate ? { 'carousel.autoplay': 'yes' } : {}) })} />}
                   </>
                 ) : (
                   <AssetPickerField
@@ -8476,11 +8477,11 @@ function ExternalHtmlTextEditor({
                     onChange={(value) => setImageList(img.key, [value, ...imageList(img.key).slice(1)])} />
                 )}
                 {nativeCarousels && !isQr && <details className="text-[11px] text-slate-500">
-                  <summary className="cursor-pointer font-semibold">Advanced image settings</summary>
+                  <summary className="cursor-pointer font-semibold">{tB('advancedImage')}</summary>
                   <div className="mt-2 space-y-2">
-                    {/logo/i.test(img.key) && <SelectField label="Image fit" value={cfgVal(`media.${img.key}.fit`, '') || 'contain'} options={PHOTO_FIT_OPTIONS} onChange={(value) => setCfgMany({ [`media.${img.key}.fit`]: value })} />}
-                    <TextField label="Alt text (for screen readers)" value={cfgVal(`media.${img.key}.alt`, '')} onChange={(value) => setCfgMany({ [`media.${img.key}.alt`]: value })} />
-                    <SelectField label="Image focus" value={cfgVal(`media.${img.key}.position`, '')} options={[[ '', 'Template focus' ], [ 'center', 'Center' ], [ 'left center', 'Left' ], [ 'right center', 'Right' ], [ 'center top', 'Top' ], [ 'center bottom', 'Bottom' ]]} onChange={(value) => setCfgMany({ [`media.${img.key}.position`]: value })} />
+                    {/logo/i.test(img.key) && <SelectField label={tB('imageFit')} value={cfgVal(`media.${img.key}.fit`, '') || 'contain'} options={photoOptions(tB, PHOTO_FIT_OPTIONS)} onChange={(value) => setCfgMany({ [`media.${img.key}.fit`]: value })} />}
+                    <TextField label={tB('altText')} value={cfgVal(`media.${img.key}.alt`, '')} onChange={(value) => setCfgMany({ [`media.${img.key}.alt`]: value })} />
+                    <SelectField label={tB('imageFocus')} value={cfgVal(`media.${img.key}.position`, '')} options={[[ '', tB('focus.template') ], [ 'center', tB('focus.center') ], [ 'left center', tB('focus.left') ], [ 'right center', tB('focus.right') ], [ 'center top', tB('focus.top') ], [ 'center bottom', tB('focus.bottom') ]]} onChange={(value) => setCfgMany({ [`media.${img.key}.position`]: value })} />
                   </div>
                 </details>}
                 {/* A slot takes a LIST if the operator wants one — the board
@@ -8717,17 +8718,17 @@ function ExternalHtmlTextEditor({
                         ? 'text-amber-700 bg-amber-100 hover:bg-amber-200'
                         : 'text-slate-400 hover:bg-slate-100 hover:text-slate-600'
                     }`}
-                    title={isHidden ? 'Removed from the board — click to restore' : 'Remove this text element from the board'}
-                    aria-label={isHidden ? `Restore ${label}` : nativeCarousels ? `Delete ${label}` : `Hide ${label}`}
+                    title={isHidden ? tB('removedFromBoard') : tB('removeFromBoard')}
+                    aria-label={isHidden ? tB('restoreField', { label }) : nativeCarousels ? tB('deleteField', { label }) : tB('hideField', { label })}
                     aria-pressed={isHidden}
                   >
                     {isHidden ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                    {isHidden ? 'Restore' : nativeCarousels ? 'Delete' : ''}
+                    {isHidden ? tB('restore') : nativeCarousels ? tB('delete') : ''}
                   </button>
                   )}
                   {nativeCarousels && (styles[f.key]?.offsetX || styles[f.key]?.offsetY) ? (
                     <button type="button" onClick={() => setStylesMap({ ...styles, [f.key]: { ...styles[f.key], offsetX: 0, offsetY: 0 } })}
-                      className="text-[10px] font-medium px-1.5 py-0.5 rounded-md text-slate-500 hover:bg-slate-100" aria-label={`Reset ${label} position`}>Reset position</button>
+                      className="text-[10px] font-medium px-1.5 py-0.5 rounded-md text-slate-500 hover:bg-slate-100" aria-label={tB('resetPositionOf', { label })}>{tB('resetPosition')}</button>
                   ) : null}
                 </div>
                 {f.isShortish ? (
@@ -10962,18 +10963,22 @@ function AssetPickerField({ label, value, onChange, kind }: { label: string; val
   );
 }
 
-const PHOTO_TRANSITION_OPTIONS: [string, string][] = [['fade', 'Fade'], ['slide-left', 'Slide left'], ['slide-right', 'Slide right'], ['slide-up', 'Slide up'], ['zoom', 'Zoom in'], ['cut', 'Cut (no animation)']];
-const PHOTO_FIT_OPTIONS: [string, string][] = [['cover', 'Fill (crop)'], ['contain', 'Fit (no crop)']];
+/** [value, builderPanel message key] — labels resolve at render. */
+const PHOTO_TRANSITION_OPTIONS: [string, string][] = [['fade', 'transition.fade'], ['slide-left', 'transition.slideLeft'], ['slide-right', 'transition.slideRight'], ['slide-up', 'transition.slideUp'], ['zoom', 'transition.zoom'], ['cut', 'transition.cut']];
+const PHOTO_FIT_OPTIONS: [string, string][] = [['cover', 'fit.cover'], ['contain', 'fit.contain']];
+const photoOptions = (tB: (key: string) => string, options: [string, string][]): [string, string][] =>
+  options.map(([value, key]) => [value, tB(key)]);
 
 /** The same playback controls for native widgets and packaged template galleries. */
 function PhotoPlaybackFields({ seconds, transition, fit, onSeconds, onTransition, onFit }: {
   seconds: string; transition: string; fit?: string;
   onSeconds: (value: string) => void; onTransition: (value: string) => void; onFit?: (value: string) => void;
 }) {
+  const tB = useTranslations('builderPanel');
   return <div className="space-y-2">
-    <TextField label="Show each photo for (seconds)" value={seconds} placeholder="5" onChange={onSeconds} />
-    <SelectField label="Transition between photos" value={transition} options={PHOTO_TRANSITION_OPTIONS} onChange={onTransition} />
-    {fit !== undefined && onFit && <SelectField label="Image fit" value={fit} options={PHOTO_FIT_OPTIONS} onChange={onFit} />}
+    <TextField label={tB('photoSeconds')} value={seconds} placeholder="5" onChange={onSeconds} />
+    <SelectField label={tB('photoTransition')} value={transition} options={photoOptions(tB, PHOTO_TRANSITION_OPTIONS)} onChange={onTransition} />
+    {fit !== undefined && onFit && <SelectField label={tB('imageFit')} value={fit} options={photoOptions(tB, PHOTO_FIT_OPTIONS)} onChange={onFit} />}
   </div>;
 }
 
