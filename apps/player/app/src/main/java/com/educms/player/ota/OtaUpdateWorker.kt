@@ -312,6 +312,19 @@ class OtaUpdateWorker(
                 return@withContext Result.success()
             }
             val expectedSha = latest.optString("sha256")
+            // FAIL CLOSED on a missing digest (2026-10-04, 1.1.21). The server
+            // never advertises an update without one (player-ota.controller,
+            // `uptoDate-no-sha`), so an answer without it is not our server's
+            // answer. Checked BEFORE the download: nothing unverifiable is
+            // fetched, let alone handed to an installer.
+            if (!OtaDigestPolicy.acceptable(expectedSha)) {
+                PlayerLogger.e(TAG, "OTA update refused — the server sent no valid sha256 for v${latest.optString("versionName", "$latestVc")}")
+                reportOtaState(
+                    apiRoot, deviceFingerprint, "ERROR", null,
+                    "Update rejected — the release has no checksum to verify the download against",
+                )
+                return@withContext Result.success()
+            }
             val forced = latest.optBoolean("forced", false)
             val latestVn = latest.optString("versionName", "$latestVc")
             PlayerLogger.i(TAG, "OTA update available: $latestVn (versionCode=$latestVc, forced=$forced) — downloading")
@@ -361,7 +374,7 @@ class OtaUpdateWorker(
             }
             reportOtaState(apiRoot, deviceFingerprint, "DOWNLOADING", 100, "v$latestVn")
 
-            if (expectedSha.isNotEmpty()) {
+            run {
                 reportOtaState(apiRoot, deviceFingerprint, "VERIFYING", null, "v$latestVn")
                 val actual = sha256(outFile)
                 if (!actual.equals(expectedSha, ignoreCase = true)) {

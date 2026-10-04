@@ -176,6 +176,14 @@ class OtaWorker(
                 return@withContext Result.success()
             }
             val expectedSha = latest.optString("sha256")
+            // FAIL CLOSED on a missing digest (2026-10-04): the server never
+            // advertises an update without one, so an empty digest used to mean
+            // "install unverified bytes". Refused before anything is downloaded.
+            if (!Regex("^[0-9a-fA-F]{64}$").matches(expectedSha)) {
+                Log.e(TAG, "update refused — the server sent no valid sha256")
+                reportOtaState(apiRoot, fp, "ERROR", null, "Update rejected — the release has no checksum to verify the download against")
+                return@withContext Result.success()
+            }
             val latestVn = latest.optString("versionName", "$latestVc")
             Log.i(TAG, "OTA update available: $latestVn (vc=$latestVc) — downloading from $apkUrl")
 
@@ -192,7 +200,7 @@ class OtaWorker(
 
             // Verify SHA — security boundary; refuse to install
             // tampered/truncated APKs even if "from our own GitHub".
-            if (expectedSha.isNotEmpty()) {
+            run {
                 reportOtaState(apiRoot, fp, "VERIFYING", null, "v$latestVn")
                 val actualSha = sha256(outFile)
                 if (!actualSha.equals(expectedSha, ignoreCase = true)) {
