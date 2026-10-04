@@ -220,7 +220,7 @@ export class PlayerLogsController {
     // The JVM crash handler never sees an isolated WebView renderer death.
     // Native recovery writes these bounded, timestamped markers to disk.
     const recoveryLines = rawBody.split('\n').filter(line =>
-      /PLAYER_RENDERER_TERMINATED|PLAYER_PLAYBACK_FAILURE|PLAYER_PROCESS_EXIT/.test(line))
+      /PLAYER_RENDERER_TERMINATED|PLAYER_RENDERER_REPLACE_FAILED|PLAYER_PLAYBACK_FAILURE|PLAYER_PROCESS_EXIT/.test(line))
       .slice(-MAX_RECOVERY_CANDIDATES);
     const looksLikeCrash = CRASH_LINE.test(rawBody);
 
