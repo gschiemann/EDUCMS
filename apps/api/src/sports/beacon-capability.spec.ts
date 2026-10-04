@@ -453,9 +453,13 @@ describe('gameReport — verified vs unverified evidence', () => {
     const redis = makeSharedRedis();
     const { controller, service, game, sponsor } = sponsorSetup(redis);
     game.rows[0].status = 'FINAL';
-    game.rows[0].startedAt = new Date(Date.now() - 3_600_000); // exactly 1 hour
-    game.rows[0].endedAt = new Date();
-    game.rows[0].updatedAt = new Date();
+    // ONE clock read (2026-10-04). Two reads a millisecond apart made the game
+    // 1 h + 1 ms long, the allowance ceil(3 × 1.0000003) = 4, and this test
+    // red on a slow CI runner while green everywhere else.
+    const ended = Date.now();
+    game.rows[0].startedAt = new Date(ended - 3_600_000); // exactly 1 hour
+    game.rows[0].endedAt = new Date(ended);
+    game.rows[0].updatedAt = new Date(ended);
     sponsor.rows[0].frequencyCapPerHour = 3;
 
     const cap = verifiedCapability();
