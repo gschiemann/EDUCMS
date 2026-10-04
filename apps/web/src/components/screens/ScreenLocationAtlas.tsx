@@ -176,7 +176,7 @@ export function ScreenLocationAtlas({
             value: current,
             Icon: CheckCircle2,
             bg: "#10b981",
-            action: () => setFilter("drift"),
+            action: () => setFilter("healthy"),
           },
           {
             label: t("screens.atlas.needAttention"),

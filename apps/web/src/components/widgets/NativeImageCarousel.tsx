@@ -63,8 +63,12 @@ function ImageCarouselPlayback({ config }: { config: NativeCarouselConfig }) {
     cache.current.set(url, loading);
     return loading;
   }, []);
+  // Warm the first two slides only (2026-10-04). Decoding EVERY slide at mount
+  // asked a 1–2 GB player for one full bitmap per photo at once (a 30-photo
+  // carousel of 4K uploads is ~1 GB of decoded pixels). The timer below already
+  // decodes the next slide before it flips to it, so nothing undecoded is shown.
   useEffect(() => {
-    slideUrls.forEach((url) => {
+    slideUrls.slice(0, 2).forEach((url) => {
       void ready(url);
     });
   }, [slideUrls, ready]);

@@ -1022,7 +1022,19 @@ export default function AssetsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assets, currentFolderId, filter, sort, searchLower, folderNameById]);
 
-  useEffect(() => { selectionRequest.current++; setAllSelected(false); setSelectingAll(false); }, [currentFolderId, filter, searchLower]);
+  // Leaving the view a "Select all" was made in drops that selection too
+  // (2026-10-04): it covers every matching file, including pages never loaded,
+  // and it used to survive into the next folder — where Delete then removed
+  // files that were no longer on screen. A hand-picked selection is kept, as
+  // before, so files can still be gathered across folders.
+  const allSelectedRef = useRef(false);
+  allSelectedRef.current = allSelected;
+  useEffect(() => {
+    selectionRequest.current++;
+    if (allSelectedRef.current) setSelectedIds([]);
+    setAllSelected(false);
+    setSelectingAll(false);
+  }, [currentFolderId, filter, searchLower]);
 
   const selectAllFiles = async () => {
     if (selectingAll || deletePending.current) return;

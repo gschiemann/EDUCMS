@@ -227,7 +227,7 @@ rely on that value for anything reachable from the internet.
 | **Schedule** | When/where a playlist plays | `id`, `tenantId`, `playlistId`, `screenId|screenGroupId`, `startTime`/`endTime`, `daysOfWeek`, `timeStart`/`timeEnd`, `priority`, `isActive` |
 | **Asset** | Image, video, or document file | `id`, `tenantId`, `uploadedByUserId`, `folderId`, `fileUrl`, `mimeType`, `status` (PENDING_APPROVAL, APPROVED) |
 | **AssetFolder** | Hierarchical asset organization | `id`, `tenantId`, `parentId`, `name` |
-| **Template** | Screen layout (459 system presets + custom — see Template System for how to re-derive) | `id`, `name`, `description`, `isSystem`, `screenWidth`/`screenHeight`, `bgColor`/`bgGradient`/`bgImage`, `zones[]` (TemplateZone[]) |
+| **Template** | Screen layout (482 system presets + custom — see Template System for how to re-derive) | `id`, `name`, `description`, `isSystem`, `screenWidth`/`screenHeight`, `bgColor`/`bgGradient`/`bgImage`, `zones[]` (TemplateZone[]) |
 | **TemplateZone** | Widget region in a template | `id`, `templateId`, `name`, `widgetType`, `x`/`y`/`width`/`height` (% coords), `zIndex`, `defaultConfig` |
 | **AuditLog** | Immutable activity log | `id`, `tenantId`, `userId`, `action`, `targetType`, `targetId`, `details`, `createdAt` |
 
@@ -580,7 +580,7 @@ old blind 80 ms-lead seek looped forever on slow-seeking panels and froze them. 
 
 ## Template System
 
-Templates define screen layouts using **459 system presets** plus custom operator-created templates.
+Templates define screen layouts using **482 system presets** (re-derived 2026-10-04) plus custom operator-created templates.
 
 ⚠️ **This file said "17 system presets" until 2026-09-11 — it was wrong by 27×, and it is the
 first thing every agent and every external auditor reads.** The 17 below are only the original
@@ -590,13 +590,14 @@ alone, is what seeds and what the gallery serves:
 
 | file | export | count |
 |---|---|---|
-| `system-presets.ts` (3,352 lines) | `SYSTEM_TEMPLATE_PRESETS` | **347** |
+| `system-presets.ts` | `SYSTEM_TEMPLATE_PRESETS` | **370** (includes the 14 below) |
+| `homebuilder-presets.ts` | `HOMEBUILDER_TEMPLATE_PRESETS` | 14 (spread into the line above) |
 | `sports-presets.ts` | `SPORTS_TEMPLATE_PRESETS` | 44 |
 | `fitness-presets.ts` | `FITNESS_TEMPLATE_PRESETS` | 25 |
 | `restaurant-presets.ts` | `RESTAURANT_TEMPLATE_PRESETS` | 21 |
 | `retail-presets.ts` / `worship-presets.ts` | `RETAIL_` / `WORSHIP_TEMPLATE_PRESETS` | 8 each |
 | `bar-presets.ts` | `BAR_TEMPLATE_PRESETS` | 6 |
-| | **TOTAL (all ids unique)** | **459** |
+| | **TOTAL (unique ids)** | **482** |
 
 **Re-derive it rather than trusting the table** — `SYSTEM_TEMPLATE_PRESETS` is a *computed*
 array (`system-presets.ts:3349` filters `RAW_SYSTEM_PRESETS` for retired widget types, then
@@ -606,30 +607,33 @@ repo root:
 
 ```bash
 node -e '
-const ts=require("typescript"),fs=require("fs"),path=require("path"),Module=require("module");
-const dir="apps/api/src/templates";let total=0;
-for(const f of fs.readdirSync(dir).filter(f=>/-presets\.ts$/.test(f)&&!f.startsWith("ensure-"))){
-  const p=path.join(dir,f),m=new Module(p,null);
-  m._compile(ts.transpileModule(fs.readFileSync(p,"utf8"),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,p);
-  for(const [k,v] of Object.entries(m.exports)) if(Array.isArray(v)&&/_PRESETS$/.test(k)){
-    console.log(String(v.length).padStart(4),k);total+=v.length;}
+const ts=require("typescript"),fs=require("fs"),path=require("path");
+require.extensions[".ts"]=(m,f)=>m._compile(ts.transpileModule(fs.readFileSync(f,"utf8"),{compilerOptions:{module:ts.ModuleKind.CommonJS,esModuleInterop:true}}).outputText,f);
+const dir=path.resolve("apps/api/src/templates");const ids=new Set();
+for(const f of fs.readdirSync(dir).filter(f=>/-presets\.ts$/.test(f)&&!f.startsWith("ensure-")&&!/\.spec\./.test(f))){
+  for(const [k,v] of Object.entries(require(path.join(dir,f)))) if(Array.isArray(v)&&/_TEMPLATE_PRESETS$/.test(k)){
+    console.log(String(v.length).padStart(4),k);v.forEach(p=>ids.add(p.id));}
 }
-console.log(String(total).padStart(4),"TOTAL");'
+console.log(String(ids.size).padStart(4),"UNIQUE ids (the catalogue)");'
 ```
+(Count UNIQUE ids, not the sum: `HOMEBUILDER_TEMPLATE_PRESETS` is also spread into
+`SYSTEM_TEMPLATE_PRESETS`, so the per-file numbers add up to 14 more than the catalogue. The
+previous form of this command compiled each file in isolation and broke on 2026-10-01 when
+`system-presets.ts` gained a runtime import — it printed 126.)
 
 ### EXTERNAL_HTML signage boards + click-to-edit shim (read before editing ANY board — 2026-06-07)
 
 There are **three** template-editing architectures; do not confuse them:
 1. **React-zone presets** — zones rendered by `WidgetRenderer`; edited field-by-field in `PropertiesPanel`.
-2. **EXTERNAL_HTML boards** — the **250** self-contained HTML files under `apps/web/public/templates/{fitness,hs,kiosk,school,signage}/`. Each is a full 3840×2160 (or 1920×1080 kiosk) document rendered in a **null-origin sandboxed `src` iframe** (`allow-scripts`, NO `allow-same-origin`). Because React **cannot reach into that iframe**, all editing must go through a **shim baked into the HTML file**.
+2. **EXTERNAL_HTML boards** — the **282** self-contained HTML files under `apps/web/public/templates/{custom,fitness,hs,kiosk,school,signage}/`. Each is a full 3840×2160 (or 1920×1080 kiosk) document rendered in a **null-origin sandboxed `src` iframe** (`allow-scripts`, NO `allow-same-origin`). Because React **cannot reach into that iframe**, all editing must go through a **shim baked into the HTML file**.
 
    **This said "~107 … {hs,kiosk,signage,fitness}" until 2026-09-11** — low by 143 boards and
    missing `school/` entirely, which is exactly how the editability sweep below ended up
    skipping 59 boards. Re-derive with one command (it is just a file count — trust nothing):
    ```bash
-   find apps/web/public/templates -name '*.html' -not -path '*/_*' | wc -l          # 250
+   find apps/web/public/templates -name '*.html' -not -path '*/_*' | wc -l          # 282
    find apps/web/public/templates -name '*.html' -not -path '*/_*' | cut -d/ -f5 | sort | uniq -c
-   #   7 fitness · 30 hs · 19 kiosk · 40 school · 154 signage
+   #   14 custom · 7 fitness · 30 hs · 19 kiosk · 40 school · 172 signage
    ```
    `signage/` is itself 16 industry sub-folders (`qsr` 24, `worship` 24, `hospitality` 16, `bar`
    13, `corporate` 12, `gym` 11, `church` 10, `fashion` 10, `healthcare` 10, `menus-pos` 10,
@@ -642,13 +646,13 @@ There are **three** template-editing architectures; do not confuse them:
 **The EXTERNAL_HTML shim does TWO jobs (since V5, 2026-06-07):** (a) apply overrides INBOUND (brand/text/image/styles), and (b) **report clicks OUTBOUND** — the "hot zones": click an element in the builder → the panel jumps to that element's field editor. The protocol the panel speaks: `educms-ready` (load) · `educms-edit-mode {on}` (panel→iframe, arms hover-outline + click-report; NEVER sent on the live player) · `educms-field-click {key,kind}` (iframe→panel, drives the jump). The walker keys off `data-field`/`data-imgslot`/`data-action` — so **every editable element needs one of those** (same contract as editability).
 
 **The shim is INJECTED, never hand-written.** Three injectors:
-- `apps/web/scripts/inject-shim-v2.cjs` → bakes the current **EDUCMS-SHIM-V13** (apply + click-to-edit) into static boards, replacing every older marker (V12…V2, `EDUCMS-BRAND-SHIM`) in place. The version lives at `inject-shim-v2.cjs:66` — read it, don't trust this line (it said "V5" here until 2026-09-11). The subdirectory argument is **optional and scopes the walk**; with no argument it walks all of `public/templates`, which is what you normally want: `node apps/web/scripts/inject-shim-v2.cjs` (or `… school`, `… signage/qsr`, …).
+- `apps/web/scripts/inject-shim-v2.cjs` → bakes the current **EDUCMS-SHIM-V14** (apply + click-to-edit) into static boards, replacing every older marker (V12…V2, `EDUCMS-BRAND-SHIM`) in place. The version lives at `inject-shim-v2.cjs:66` — read it, don't trust this line (it said "V5" here until 2026-09-11). The subdirectory argument is **optional and scopes the walk**; with no argument it walks all of `public/templates`, which is what you normally want: `node apps/web/scripts/inject-shim-v2.cjs` (or `… school`, `… signage/qsr`, …).
 - `apps/web/scripts/inject-click-shim.cjs` → an **additive** click-only shim for the 30 `signage/{qsr,menus-pos,bar}` MENU boards, whose hand-crafted V5 carries `applyMenu()` (live per-location POS price + auto-86) that must NOT be clobbered. `node apps/web/scripts/inject-click-shim.cjs signage`.
 - Kiosks load the external `public/templates/kiosk/_edit-shim.js` (apply + click + kiosk engine-render hook). The injectors **skip** any file referencing it (no double-shim).
 
 **⚠️ REDESIGN INVARIANT — the trap that caused the 2026-06-07 "none of the templates can be edited" fire:** when you edit/redesign an existing board, the OLD shim block stays baked in. A board left on the apply-only V4 shim is **un-editable by click**. So **after editing ANY `public/templates/**` board, re-run the injector for its subdir** (and `inject-click-shim.cjs` for menu boards). Confirm with the sweep + the real-browser tests:
 ```bash
-# Sweeps ALL 250 boards. The old form here named `hs signage fitness`, which
+# Sweeps ALL 282 boards. The old form here named `hs signage fitness`, which
 # silently covered only 191 — school/ (40) and kiosk/ (19) were never checked.
 cd apps/web/public/templates && for f in $(find . -name "*.html" -not -path "*/_*"); do \
   grep -qE "educms-field-click|src=[\"'][^\"']*_edit-shim" "$f" || echo "NO CLICK-TO-EDIT: ${f#./}"; done
@@ -662,7 +666,7 @@ Both alternations in that `grep` are load-bearing: 231 boards carry a **baked** 
 clean, so this closes a blind spot rather than a live breakage.
 Full conventions (editability contract, brand tokens, auto-fit ≥50px floor, live engines, build checklist) live in `.claude/agents/venueos-template-designer.md` + `docs/design/FLAGSHIP-TEMPLATE-STANDARDS.md` — the binding spec for any template work.
 
-### System Presets — the original K-12 core (17 of 459)
+### System Presets — the original K-12 core (17 of 482)
 
 ⚠️ **This list is NOT the catalogue.** It is the founding K-12 seventeen, kept because they are
 the presets most docs and tests reference by name. The other 442 — every `MODERN_SCHOOL_*`,
@@ -1800,7 +1804,7 @@ The page renders inside the brand shell — same chrome, same palette, same font
 
 ---
 
-**Last Updated:** 2026-09-29 — continuous repetition is the default for every existing and newly paired screen (unset/empty or `PLAYER_LOOP_CONTINUOUS=all`), with player eligibility and native fallback preserved. Earlier today — sync is decided by the playlist alone (a screen group's `syncMode` is ignored) and the video sync servo no longer seek-loops on slow panels (`sync/videoServo.ts`); the `PLAYER_LOOP_TWODECK` row carries the first real-hardware results. Previous stamp, 2026-09-26 — Player Reliability rule 17 rewritten to what ships: a big file downloads WHOLE in chunked, verified, resumable steps and only THEN plays — readiness-gated playback (`mediaReadiness.ts`; free-run skips an unready slot, a synced group HOLDS it; a new playlist with nothing ready is deferred behind the content on glass), NO 1080p stand-in (Greg's rule, the `bdb3f59a` fallback path deleted), legacy cache entries adopted by hashing on disk instead of re-downloaded, and the emergency tier's large-file lane (≥ 8 MiB only, `tier: 'emergency'`, own staging namespace, set-hash commits only after the confirm pass) — the customer's 4K cache-fill incident, `docs/research/2026-09-26-4k-cache-fill/`; the shared emergency-content check now guards asset and playlist deletion (a Codex ba1a8ed regression); the media-publication sweep is leader-leased and ignores errored rows. Previous stamp, 2026-09-24 — an MP4 whose index sits at the end is now re-muxed to fast start automatically: losslessly, original kept, never for emergency content (`VIDEO_FASTSTART_REMUX_DISABLED` row). Earlier the same day — video encode grading: every upload is ffprobe'd (probe version 2), graded against the kiosk-safe target in `@cms/api-types` and warned about in the Media Library, the playlist editor and the New Playlist wizard; legacy videos are graded by the `VIDEO_PROBE_AUTOHEAL_DISABLED` cron or on demand; the player's dropped-frame sample lands on `Screen.lastVideoReport` (migration `20260924120000_screen_video_playback`) so the screen Overview can say whether the last clip stuttered. Previous stamp, 2026-09-23 — Railway config-as-code is deprecated (cutoff 2026-12-01): the root `railway.json` lost its `build` section, the API's dashboard mirrors it, and a second service (`renderer`) is wired through the Dockerfile-path setting + `RAILWAY_DOCKERFILE_PATH`. Previous stamp, 2026-09-22 — AI models are catalog DATA that upgrade themselves daily, AI on our key is metered in dollars against an allowance per paired screen (`AI_INCLUDED_USD_*`, `AI_MODEL_SYNC_DISABLED` rows), and our key is now per-vendor with per-job routes and a one-hop failover (`OPENAI_API_KEY` / `GEMINI_API_KEY` row — board design prefers GPT-6 Sol). Previous stamp, 2026-09-19 — added the "a schema change ships a MIGRATION FILE" rules under Database Commands: production runs `prisma migrate deploy` at boot (it has since 2026-05-04), `db:push` is local-only, and the 2026-09-16 fleet incident was a schema change with no migration file — now a CI gate (`schema-has-migration`). Previous stamp, 2026-09-14 — repo back to PUBLIC (cost: Actions spending limit + halved runners), `LICENSE` = source-available notice, rule #5 rewritten. Previous stamp, 2026-09-13 — template-builder rules from the pre-Codex audit: selection is a chrome overlay (never hoist a zone's z-index), an idle hotspot press must still drag, canvas frame sizing in `canvas-frame-style.ts`, presets carry no literal countdown dates; plus the harness + sandbox Playwright config pointers. Previous stamp, 2026-09-12 — added the Meta (`INSTAGRAM_APP_ID/SECRET`, `META_APP_ID/SECRET`) and Google Reviews env rows: the four "Coming soon" Apps tiles are real integrations now, dormant until those keys exist. Previous stamp, 2026-09-11 — corrected the Template System section, which was wrong by an
+**Last Updated:** 2026-10-04 — Template System counts re-derived (482 presets, 282 boards, shim V14) and the preset-count command repaired (it printed 126 after `system-presets.ts` gained a runtime import). Previous stamp, 2026-09-29 — continuous repetition is the default for every existing and newly paired screen (unset/empty or `PLAYER_LOOP_CONTINUOUS=all`), with player eligibility and native fallback preserved. Earlier today — sync is decided by the playlist alone (a screen group's `syncMode` is ignored) and the video sync servo no longer seek-loops on slow panels (`sync/videoServo.ts`); the `PLAYER_LOOP_TWODECK` row carries the first real-hardware results. Previous stamp, 2026-09-26 — Player Reliability rule 17 rewritten to what ships: a big file downloads WHOLE in chunked, verified, resumable steps and only THEN plays — readiness-gated playback (`mediaReadiness.ts`; free-run skips an unready slot, a synced group HOLDS it; a new playlist with nothing ready is deferred behind the content on glass), NO 1080p stand-in (Greg's rule, the `bdb3f59a` fallback path deleted), legacy cache entries adopted by hashing on disk instead of re-downloaded, and the emergency tier's large-file lane (≥ 8 MiB only, `tier: 'emergency'`, own staging namespace, set-hash commits only after the confirm pass) — the customer's 4K cache-fill incident, `docs/research/2026-09-26-4k-cache-fill/`; the shared emergency-content check now guards asset and playlist deletion (a Codex ba1a8ed regression); the media-publication sweep is leader-leased and ignores errored rows. Previous stamp, 2026-09-24 — an MP4 whose index sits at the end is now re-muxed to fast start automatically: losslessly, original kept, never for emergency content (`VIDEO_FASTSTART_REMUX_DISABLED` row). Earlier the same day — video encode grading: every upload is ffprobe'd (probe version 2), graded against the kiosk-safe target in `@cms/api-types` and warned about in the Media Library, the playlist editor and the New Playlist wizard; legacy videos are graded by the `VIDEO_PROBE_AUTOHEAL_DISABLED` cron or on demand; the player's dropped-frame sample lands on `Screen.lastVideoReport` (migration `20260924120000_screen_video_playback`) so the screen Overview can say whether the last clip stuttered. Previous stamp, 2026-09-23 — Railway config-as-code is deprecated (cutoff 2026-12-01): the root `railway.json` lost its `build` section, the API's dashboard mirrors it, and a second service (`renderer`) is wired through the Dockerfile-path setting + `RAILWAY_DOCKERFILE_PATH`. Previous stamp, 2026-09-22 — AI models are catalog DATA that upgrade themselves daily, AI on our key is metered in dollars against an allowance per paired screen (`AI_INCLUDED_USD_*`, `AI_MODEL_SYNC_DISABLED` rows), and our key is now per-vendor with per-job routes and a one-hop failover (`OPENAI_API_KEY` / `GEMINI_API_KEY` row — board design prefers GPT-6 Sol). Previous stamp, 2026-09-19 — added the "a schema change ships a MIGRATION FILE" rules under Database Commands: production runs `prisma migrate deploy` at boot (it has since 2026-05-04), `db:push` is local-only, and the 2026-09-16 fleet incident was a schema change with no migration file — now a CI gate (`schema-has-migration`). Previous stamp, 2026-09-14 — repo back to PUBLIC (cost: Actions spending limit + halved runners), `LICENSE` = source-available notice, rule #5 rewritten. Previous stamp, 2026-09-13 — template-builder rules from the pre-Codex audit: selection is a chrome overlay (never hoist a zone's z-index), an idle hotspot press must still drag, canvas frame sizing in `canvas-frame-style.ts`, presets carry no literal countdown dates; plus the harness + sandbox Playwright config pointers. Previous stamp, 2026-09-12 — added the Meta (`INSTAGRAM_APP_ID/SECRET`, `META_APP_ID/SECRET`) and Google Reviews env rows: the four "Coming soon" Apps tiles are real integrations now, dormant until those keys exist. Previous stamp, 2026-09-11 — corrected the Template System section, which was wrong by an
 order of magnitude in the file every agent and auditor reads first: **17 → 459** system presets
 (across SEVEN preset files, not one) and **~107 → 250** EXTERNAL_HTML boards (across five
 subdirectories, not four — `school/` was missing entirely). Widened the click-to-edit sweep from
