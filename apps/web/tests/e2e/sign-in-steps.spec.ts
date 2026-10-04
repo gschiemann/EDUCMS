@@ -24,6 +24,7 @@ import { createHash, generateKeyPairSync } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import { test, expect, type Page, type Route } from '@playwright/test';
+import { AxeBuilder } from '@axe-core/playwright';
 
 const ORIGIN = process.env.E2E_BASE || 'http://localhost:3000';
 const API_ROOT = 'http://api.invalid/api/v1';
@@ -631,6 +632,52 @@ test.describe('layout', () => {
       expect(box!.x + box!.width).toBeLessThanOrEqual(size.width + 0.5);
     });
   }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('accessibility — axe, the same rule set the a11y CI audit runs (WCAG 2.1 A + AA)', () => {
+  /** Zero violations of ANY impact: /login is clean in the CI baseline and must stay that way. */
+  const scan = async (page: Page, what: string) => {
+    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
+    expect(
+      results.violations.map((v) => `${what}: ${v.id} (${v.impact}) — ${v.help} ×${v.nodes.length}`),
+    ).toEqual([]);
+  };
+
+  test('step 1, and step 2 for a first-time browser (checkbox, then the error)', async ({ page }) => {
+    await open(page, api(), { returning: false });
+    await scan(page, 'step 1');
+    await continueWith(page, EMAIL);
+    await expect(page.locator('#login-password')).toBeVisible();
+    await scan(page, 'step 2 password, first time');
+    await page.locator('#login-password').fill(PASSWORD);
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+    await expect(card(page).getByRole('alert')).toBeVisible();
+    await scan(page, 'step 2 password, EULA error');
+  });
+
+  test('step 2 for a returning browser, and the wrong-password error', async ({ page }) => {
+    await open(page, api({ login: 'wrong-password' }));
+    await continueWith(page, EMAIL);
+    await expect(page.getByTestId('eula-accepted-note')).toBeVisible();
+    await scan(page, 'step 2 password, returning');
+    await page.locator('#login-password').fill('not-the-password');
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+    await expect(card(page).getByRole('alert')).toBeVisible();
+    await scan(page, 'step 2 password, wrong password');
+  });
+
+  test('step 2, single sign-on — returning and first-time', async ({ page }) => {
+    await open(page, api({ options: 'sso' }));
+    await continueWith(page, SSO_EMAIL);
+    await expect(page.getByRole('button', { name: 'Continue with Google' })).toBeVisible();
+    await scan(page, 'step 2 SSO, returning');
+
+    await open(page, api({ options: 'sso' }), { returning: false });
+    await continueWith(page, SSO_EMAIL);
+    await expect(page.getByRole('checkbox', { name: /End User License Agreement/ })).toBeVisible();
+    await scan(page, 'step 2 SSO, first time');
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
