@@ -62,7 +62,7 @@ import { AssetUsageSection, AssetInUseBlock } from '@/components/assets/AssetUsa
 import { AiImageModal, useAiImageAvailable } from '@/components/ai/AiImageGenerateButton';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { transformedImageUrl } from '@/lib/asset-image';
-import { assetDownloadUrl } from '@/lib/asset-download';
+import { assetDownloadUrl, AssetDownloadError } from '@/lib/asset-download';
 import { apiFetch, getApiUrl } from '@/lib/api-client';
 import { AssetEncodeBadge, VideoEncodeCard } from '@/components/assets/VideoEncode';
 import { useEncodeTarget } from '@/hooks/use-encode-target';
@@ -332,6 +332,12 @@ function statusBadge(a: any): { label: string; className: string } | null {
 
 export default function AssetsPage() {
   const t = useTranslations();
+  // The two outcomes the browser itself reports are translated here; a
+  // refusal from the server keeps the server's own sentence.
+  const deleteFailureText = (item: AssetDeleteResult) =>
+    item.code === 'DELETE_NOT_CONFIRMED' ? t('assetsLib.deleteNotConfirmed')
+      : item.code === 'DELETE_NOT_STARTED' ? t('assetsLib.deleteNotStarted')
+        : item.message || '';
   const userRole = useUIStore((s) => s.user?.role);
   // Upload, add-by-URL, move, rename/create folder, alt text and
   // create-playlist all carry CONTRIBUTOR in their `@RequireRoles`, so
@@ -603,7 +609,7 @@ export default function AssetsPage() {
         const reply = await deleteAsset.mutateAsync({ ids: assetIds, confirmInUse: true });
         const failed = ((reply?.results || []) as AssetDeleteResult[]).filter(item => !item.deleted);
         if (failed.length) {
-          await appAlert({ title: t('assetsLib.folderKeptTitle'), message: t('assetsLib.folderKeptMsg', { deleted: assetIds.length - failed.length, kept: failed.length, detail: failed[0].message || '' }), tone: 'warn' });
+          await appAlert({ title: t('assetsLib.folderKeptTitle'), message: t('assetsLib.folderKeptMsg', { deleted: assetIds.length - failed.length, kept: failed.length, detail: deleteFailureText(failed[0]) }), tone: 'warn' });
           return;
         }
       }
@@ -741,7 +747,7 @@ export default function AssetsPage() {
         setSelectedIds(current => [...new Set([...current, ...failures.map(item => item.id)])]);
         const protectedCount = failures.filter(item => item.code?.startsWith('ASSET_IN_') && item.code !== 'ASSET_IN_USE').length;
         await appAlert({ title: t('assetsLib.assetsKeptTitle'), message: t('assetsLib.assetsKeptMsg', { deleted: ids.length - failures.length, total: ids.length }) + ' ' +
-          (protectedCount ? t('assetsLib.assetsKeptProtected', { count: protectedCount }) + ' ' : '') + (failures[0].message || ''), tone: 'warn', confirmLabel: 'OK' });
+          (protectedCount ? t('assetsLib.assetsKeptProtected', { count: protectedCount }) + ' ' : '') + deleteFailureText(failures[0]), tone: 'warn', confirmLabel: 'OK' });
       }
     } catch (error) {
       setSelectedIds(current => [...new Set([...current, ...ids])]);
@@ -1138,7 +1144,7 @@ export default function AssetsPage() {
       link.click();
       link.remove();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : t('assetsLib.downloadFailed'));
+      toast.error(error instanceof AssetDownloadError ? t(`assetsLib.downloadErrors.${error.code}`) : error instanceof Error ? error.message : t('assetsLib.downloadFailed'));
     }
   };
 

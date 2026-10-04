@@ -1953,6 +1953,14 @@
       "cancel": "Cancel",
       "confirmContents": "Delete folder and contents",
       "confirmKeep": "Delete folder, keep files"
+    },
+    "deleteNotConfirmed": "Deletion could not be confirmed. Refresh to check this file.",
+    "deleteNotStarted": "Deletion was not started for this file.",
+    "downloadErrors": {
+      "WEB_LINK": "Web links do not have a downloadable file. Use Copy asset link instead.",
+      "NO_FILE": "This asset has no file to download.",
+      "UNSUPPORTED_URL": "This asset does not have a supported download URL.",
+      "EXTERNAL_HOST": "This file is hosted outside the media library. Use Copy asset link instead."
     }
   },
   "playlistsPage": {

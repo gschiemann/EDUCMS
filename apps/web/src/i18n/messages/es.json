@@ -1953,6 +1953,14 @@
       "cancel": "Cancelar",
       "confirmContents": "Eliminar la carpeta y su contenido",
       "confirmKeep": "Eliminar la carpeta y conservar los archivos"
+    },
+    "deleteNotConfirmed": "No se pudo confirmar la eliminación. Actualiza para comprobar este archivo.",
+    "deleteNotStarted": "No se inició la eliminación de este archivo.",
+    "downloadErrors": {
+      "WEB_LINK": "Los enlaces web no tienen un archivo descargable. Usa «Copy asset link».",
+      "NO_FILE": "Este recurso no tiene ningún archivo para descargar.",
+      "UNSUPPORTED_URL": "Este recurso no tiene una URL de descarga compatible.",
+      "EXTERNAL_HOST": "Este archivo está alojado fuera de la biblioteca de medios. Usa «Copy asset link»."
     }
   },
   "playlistsPage": {

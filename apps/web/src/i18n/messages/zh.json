@@ -1953,6 +1953,14 @@
       "cancel": "取消",
       "confirmContents": "删除文件夹及其内容",
       "confirmKeep": "删除文件夹，保留文件"
+    },
+    "deleteNotConfirmed": "无法确认删除结果。请刷新以检查此文件。",
+    "deleteNotStarted": "尚未开始删除此文件。",
+    "downloadErrors": {
+      "WEB_LINK": "网页链接没有可下载的文件。请改用“Copy asset link”。",
+      "NO_FILE": "此素材没有可下载的文件。",
+      "UNSUPPORTED_URL": "此素材的下载地址不受支持。",
+      "EXTERNAL_HOST": "此文件托管在媒体库之外。请改用“Copy asset link”。"
     }
   },
   "playlistsPage": {
