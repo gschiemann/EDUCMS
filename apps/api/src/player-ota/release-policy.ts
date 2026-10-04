@@ -299,6 +299,11 @@ export const PLAYER_RELEASE_SHA_PINS: Readonly<Record<string, string>> = {
   // User-authorized hardware hotfix override; signed release run 36666062476.
   // Verified against both the GitHub asset and the CMS /player/apk/latest bytes.
   '1.1.20': '0486fa3e2d087a46773afff56dcac1cf753d13169629d3042fee03aa206b72a6',
+  // v1.1.21 — remote power-off respected (user standby), native blackout above
+  // site views, renderer-recovery fixes, fail-closed update digest. Released
+  // 2026-10-04 by GS under a hardware-qualification OVERRIDE (unit tests only).
+  // Digest of the gh-downloaded release asset, run 37208804468.
+  '1.1.21': 'dcfb9b8f792fe4818725e8e8bca33770caf696b6b69210772bd85af313a8b907',
 };
 
 /**
