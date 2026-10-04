@@ -68,7 +68,7 @@ import { fetchJsonBounded, headersStatusOf } from './fetchTimeout';
 // document rAF keeps painting, so the render proof stayed green on a frozen
 // frame forever (1.1.6 audit P0-5). Pure detector + a page-level flag the
 // proof signature consumes.
-import { playbackSafety, decodedFrameCount } from './playbackSafety';
+import { playbackSafety, decodedFrameCount, isOperatorRefresh } from './playbackSafety';
 import { createMediaStallDetector, setActiveMediaStalled, isActiveMediaStalled } from './mediaStallWatchdog';
 // 2026-08-30 deep audit B-P0-1/2/3 — wrap-aware schedule windows + the
 // window-edge signature that busts the 304 identity when a window opens or
@@ -8256,7 +8256,9 @@ function PlayerPage() {
           setShowUpdatePrompt(true);
         }
       });
-      handle('REFRESH_WEB', () => {
+      handle('REFRESH_WEB', (pl) => {
+        // Same rule as the WS arm: a person's refresh lifts set-aside files.
+        if (isOperatorRefresh(pl)) { try { playbackSafety().operatorReset(); } catch { /* never block a reload */ } }
         // Cache-busting reload (not plain reload) so the NovaStar/Taurus
         // WebView fetches the CURRENT bundle instead of re-serving the cached
         // one — see the WS REFRESH_WEB handler for the full rationale.
@@ -8789,6 +8791,9 @@ function PlayerPage() {
               if (!targetsUs) {
                 console.log(`[REFRESH_WEB ${corrId}] ignored — not our scope (got ${scope}/${scopeId})`);
               } else {
+                // A person's refresh lifts set-aside files (install-day false
+                // positive); the wedge detector's never does.
+                if (isOperatorRefresh(pl)) { try { playbackSafety().operatorReset(); } catch { /* never block a reload */ } }
                 const delay = jitterMs > 0 ? Math.floor(Math.random() * jitterMs) : 0;
                 console.log(`[REFRESH_WEB ${corrId}] reloading in ${delay}ms (jitter=${jitterMs}ms scope=${scope})`);
                 // Brief connectivity toast so the operator-at-kiosk

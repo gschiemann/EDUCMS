@@ -56,6 +56,20 @@ export class PlaybackSafety {
     return () => { this.state.pending = this.state.pending.filter(p => p.ticket !== ticket); this.save(); };
   }
   orderlyExit() { this.state.pending = []; this.save(); }
+  /**
+   * A PERSON asked for this screen to be refreshed (2026-10-04). Lifts every
+   * set-aside file and forgets interrupted preparations, so the files are tried
+   * again on the reload that follows.
+   *
+   * Why: two un-clean power cycles within 45 minutes of a download starting —
+   * an ordinary install day — set a healthy file aside for six hours, and
+   * nothing an operator pressed could lift it ("Content Unavailable" on a new
+   * screen). A file that really does take the player down is set aside again by
+   * its next two interruptions, so the protection is deferred, not removed.
+   * The renderer-recovery conservative window (`safeUntil`) is left alone.
+   * Never called for a system-initiated refresh (the wedge detector).
+   */
+  operatorReset() { this.state.failures = []; this.state.pending = []; this.save(); }
 }
 
 let singleton: PlaybackSafety | null = null;
@@ -71,6 +85,15 @@ export function playbackSafety(): PlaybackSafety {
     window.addEventListener('pagehide', () => singleton?.orderlyExit());
   } catch { /* SSR */ }
   return singleton;
+}
+
+/**
+ * Did a person ask for this REFRESH_WEB? The server signs the operator's user
+ * id into `requestedBy`; the wedge detector and media publication send null.
+ */
+export function isOperatorRefresh(payload: unknown): boolean {
+  const by = (payload as { requestedBy?: unknown } | null | undefined)?.requestedBy;
+  return typeof by === 'string' && by.length > 0;
 }
 
 /** Tests only: drop the singleton so the next call re-reads the store. */

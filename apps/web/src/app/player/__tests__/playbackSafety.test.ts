@@ -56,3 +56,43 @@ describe('normal playback interruption circuit breaker', () => {
     expect(guard.conservative(at + 1)).toBe(true);
   });
 });
+
+describe("a person's refresh lifts a set-aside file (install-day false positive)", () => {
+  const { isOperatorRefresh } = jest.requireActual('../playbackSafety') as typeof import('../playbackSafety');
+  const setAside = () => {
+    const store = new Store();
+    new PlaybackSafety(store, at).begin(url, sha, 'download', at);
+    new PlaybackSafety(store, at + 1).begin(url, sha, 'download', at + 2);
+    return store;
+  };
+  test('two power cycles during a download set the file aside; operatorReset brings it back, across a reload', () => {
+    const store = setAside();
+    const guard = new PlaybackSafety(store, at + 3);
+    expect(guard.blocked(url, sha, at + 3)).toBe(true);
+    guard.operatorReset();
+    expect(guard.blocked(url, sha, at + 4)).toBe(false);
+    expect(new PlaybackSafety(store, at + 5).blocked(url, sha, at + 5)).toBe(false);
+  });
+  test('a file that really takes the player down is set aside again by its next two interruptions', () => {
+    const store = setAside();
+    new PlaybackSafety(store, at + 3).operatorReset();
+    new PlaybackSafety(store, at + 4).begin(url, sha, 'start', at + 4);
+    new PlaybackSafety(store, at + 5).begin(url, sha, 'start', at + 5);
+    expect(new PlaybackSafety(store, at + 6).blocked(url, sha, at + 6)).toBe(true);
+  });
+  test('the reset leaves the renderer-recovery conservative window alone', () => {
+    const store = new Store();
+    const guard = new PlaybackSafety(store, at);
+    guard.rendererFailed(at);
+    guard.operatorReset();
+    expect(guard.conservative(at + 1)).toBe(true);
+  });
+  test('only a refresh that names a person counts — the wedge detector sends requestedBy: null', () => {
+    expect(isOperatorRefresh({ scope: 'screen', requestedBy: 'user-123' })).toBe(true);
+    expect(isOperatorRefresh({ scope: 'screen', requestedBy: null })).toBe(false);
+    expect(isOperatorRefresh({ scope: 'tenant' })).toBe(false);
+    expect(isOperatorRefresh({ requestedBy: '' })).toBe(false);
+    expect(isOperatorRefresh({ requestedBy: 1 })).toBe(false);
+    expect(isOperatorRefresh(null)).toBe(false);
+  });
+});
