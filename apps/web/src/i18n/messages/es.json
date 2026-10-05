@@ -321,6 +321,8 @@
     "mfaBackupCodesSubtitle": "Se muestran una sola vez.",
     "mfaBackupCodesHelp": "Cada código sirve para entrar una vez si pierdes el teléfono. Guárdalos en un lugar seguro: un gestor de contraseñas, o impresos y bajo llave.",
     "mfaCopyCodes": "Copiar todos los códigos",
+    "mfaCodesCopied": "Copiado",
+    "mfaCodesCopyFailed": "No se pudo copiar. Selecciona los códigos y cópialos a mano.",
     "mfaSavedCodesContinue": "Ya los guardé — continuar",
     "usePasskey": "Usa tu clave de acceso",
     "signInWithPasskey": "Iniciar sesión con una clave de acceso",

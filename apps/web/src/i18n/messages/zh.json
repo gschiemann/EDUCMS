@@ -321,6 +321,8 @@
     "mfaBackupCodesSubtitle": "这些备用码只显示这一次。",
     "mfaBackupCodesHelp": "手机丢失时，每个备用码可用于登录一次。请妥善保管——存入密码管理器，或打印后锁好。",
     "mfaCopyCodes": "复制全部备用码",
+    "mfaCodesCopied": "已复制",
+    "mfaCodesCopyFailed": "无法复制。请选中这些代码并手动复制。",
     "mfaSavedCodesContinue": "已保存，继续",
     "usePasskey": "使用通行密钥",
     "signInWithPasskey": "使用通行密钥登录",

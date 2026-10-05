@@ -7,6 +7,7 @@
 import { Fragment, Suspense, useEffect, useReducer, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Loader2, AlertCircle, ShieldCheck, ArrowLeft, Fingerprint, CheckCircle2, Mail, Smartphone } from 'lucide-react';
+import { CopyCodesButton } from './CopyCodesButton';
 import type {
   PublicKeyCredentialCreationOptionsJSON,
   RegistrationResponseJSON,
@@ -2318,13 +2319,12 @@ function LoginContent() {
                       <li key={c} className="font-mono text-xs text-slate-700 select-all text-center">{c}</li>
                     ))}
                   </ul>
-                  <button
-                    type="button"
-                    onClick={() => { navigator.clipboard?.writeText(offerCodes.join('\n')); }}
-                    className="w-full border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold py-2 px-4 rounded-lg transition-colors"
-                  >
-                    {t('mfaCopyCodes')}
-                  </button>
+                  <CopyCodesButton
+                    codes={offerCodes}
+                    label={t('mfaCopyCodes')}
+                    copiedLabel={t('mfaCodesCopied')}
+                    failedLabel={t('mfaCodesCopyFailed')}
+                  />
                   <button
                     ref={offerPrimaryRef}
                     type="button"
@@ -2369,13 +2369,12 @@ function LoginContent() {
                   <li key={c} className="font-mono text-xs text-slate-700 select-all text-center">{c}</li>
                 ))}
               </ul>
-              <button
-                type="button"
-                onClick={() => { navigator.clipboard?.writeText(pendingBackupCodes.join('\n')); }}
-                className="w-full border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold py-2 px-4 rounded-lg transition-colors"
-              >
-                {t('mfaCopyCodes')}
-              </button>
+              <CopyCodesButton
+                codes={pendingBackupCodes}
+                label={t('mfaCopyCodes')}
+                copiedLabel={t('mfaCodesCopied')}
+                failedLabel={t('mfaCodesCopyFailed')}
+              />
               <button
                 type="button"
                 onClick={() => { const s = pendingSession; setPendingBackupCodes(null); setPendingSession(null); if (s) void completeLogin(s); }}

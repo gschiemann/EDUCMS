@@ -321,6 +321,8 @@
     "mfaBackupCodesSubtitle": "These are shown once and never again.",
     "mfaBackupCodesHelp": "Each code signs you in once if you lose your phone. Store them somewhere safe — a password manager, or printed and locked away.",
     "mfaCopyCodes": "Copy all codes",
+    "mfaCodesCopied": "Copied",
+    "mfaCodesCopyFailed": "Couldn't copy. Select the codes and copy them by hand.",
     "mfaSavedCodesContinue": "I've saved them — continue",
     "usePasskey": "Use your passkey",
     "signInWithPasskey": "Sign in with a passkey",
