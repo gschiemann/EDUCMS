@@ -324,6 +324,10 @@ export const PLAYER_RELEASE_SHA_PINS: Readonly<Record<string, string>> = {
   // the native alert watch, so an alert reaches a screen whose panel is off.
   // Digest captured with scripts/pin-apk-sha.sh right after CI published it.
   '1.1.22': 'eca1fe1e242fc23bafcce8d5485298d44fcf42faf77519abd5991e4430646bc1',
+  // v1.1.23 — released 2026-10-05 (tag player-v1.1.23, release commit be638d1d): the setup
+  // card can no longer trap a remote, permissions read like the box's own menus, and a
+  // screen a person turned off goes back to sleep after an all-clear.
+  '1.1.23': 'cf2fa867d8ea8684b4e0fbb87d75674c554bdbad8305251f3d2ce4d3baf8b155',
 };
 
 /**
