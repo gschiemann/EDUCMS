@@ -79,7 +79,7 @@ export default function ScreensPage() {
   const [locationId, setLocationId] = useState('all');
   const canReadCompany = userRole === 'SUPER_ADMIN' || userRole === 'DISTRICT_ADMIN';
   const fleetQuery = useFleet({ enabled: canReadCompany, refetchInterval: false });
-  const isCorporate = (fleetQuery.data?.locations.length ?? 0) > 1;
+  const isCorporate = canReadCompany && (fleetQuery.data?.locations?.length ?? 0) > 1;
   const companyMode = canReadCompany && scope === 'company';
   const companyQuery = useFleetOperations({ enabled: companyMode });
   const companyFleet = companyQuery.data;

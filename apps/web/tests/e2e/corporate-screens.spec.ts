@@ -2,7 +2,6 @@ import { test, expect, type Page } from '@playwright/test';
 
 // Synthetic company only. Browser requests never touch customer tenants.
 const HQ = 'company-test-hq';
-const ORIGIN = process.env.E2E_BASE || 'http://localhost:3118';
 const USER = { id: 'company-test-user', email: 'operator@example.test', role: 'DISTRICT_ADMIN', tenantId: HQ };
 const locations = [
   { id: HQ, slug: HQ, name: 'Test Corporate', latitude: 39.74, longitude: -104.99 },
@@ -32,8 +31,12 @@ const fleet = {
 
 async function openCompany(page: Page, path: string) {
   const writes: string[] = [];
+  await page.route('https://tile.openstreetmap.org/**', (route) => route.fulfill({
+    contentType: 'image/png',
+    body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jWZkAAAAASUVORK5CYII=', 'base64'),
+  }));
   await page.route('**/api/v1/**', (route) => {
-    const headers = { 'Access-Control-Allow-Origin': ORIGIN, 'Access-Control-Allow-Credentials': 'true',
+    const headers = { 'Access-Control-Allow-Origin': new URL(page.url()).origin, 'Access-Control-Allow-Credentials': 'true',
       'Access-Control-Allow-Headers': 'authorization,content-type,x-csrf-token,x-requested-with',
       'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS' };
     if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers, body: '' });
