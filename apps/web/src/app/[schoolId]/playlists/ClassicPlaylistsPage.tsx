@@ -494,7 +494,7 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSel
                 {item.muted === false ? 'Play with sound' : 'Muted (no audio)'}
               </button>
               <p className="text-[10px] text-slate-400 mt-1.5 leading-snug">
-                Default is muted so videos autoplay reliably. Turn on for clips where the audio is the point — announcements, anthems, etc. Kiosk plays normally; browser preview may need a click.
+                {t('playlistsPage.muteHelp')}
               </p>
             </div>
           )}
@@ -2287,8 +2287,7 @@ export default function ClassicPlaylistsPage({
                   {selectedPlaylist.template.category}
                 </span>
                 <p className="text-xs text-slate-400 max-w-sm mb-6">
-                  This playlist uses a multi-zone template layout with live widgets (clock, weather, announcements, etc).
-                  Schedule it to your screens using the Schedules tab.
+                  {t('playlistsPage.templateLayoutHelp')}
                 </p>
                 <button
                   onClick={() => {
@@ -3285,9 +3284,7 @@ export default function ClassicPlaylistsPage({
                   </button>
                 </div>
                 <p className="text-[10px] text-slate-500 mt-1.5 leading-tight">
-                  {schedMuted
-                    ? 'Every video on this schedule plays silent. Safe for hallways, classrooms during instruction, late-night signage.'
-                    : 'Every video on this schedule plays with audio. Use for announcements, anthems, pep rallies. Kiosk autoplays normally; web preview may need a click.'}
+                  {schedMuted ? t('playlistsPage.schedMutedHelp') : t('playlistsPage.schedSoundHelp')}
                 </p>
               </div>
 

@@ -577,7 +577,7 @@ describe('Pause everywhere (§19.2)', () => {
     const copy = pauseEverywhereCopy('Lobby Promotions', ROW.reach, 4);
     expect(copy.title).toBe('Pause “Lobby Promotions” everywhere?');
     expect(copy.message).toBe(
-      'This disables 4 publishing rules across 4 screens. Screens will fall back according to their schedule priority.',
+      "It won't play on 4 screens until you start it again.",
     );
   });
 

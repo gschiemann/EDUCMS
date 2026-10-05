@@ -204,7 +204,7 @@ describe('a screen whose 1080p playback copy is in play (rule 16, 2026-09-26)', 
     await waitFor(() => expect(setActiveSpy).toHaveBeenCalledWith({ playlistId: 'p1', screenId: 's3', active: false }));
     const arg = appConfirmMock.mock.calls[0][0] as { title: string; message: string; confirmLabel: string; tone: string };
     expect(arg.title).toBe('Stop and cancel publish on L55VEC?');
-    expect(arg.message).toContain('The 1080p copy being prepared for L55VEC is cancelled');
+    expect(arg.message).toContain('L55VEC keeps showing its current content');
     expect(arg.confirmLabel).toBe('Stop and cancel publish');
     expect(arg.tone).toBe('danger');
   });
@@ -224,7 +224,7 @@ describe('a screen whose 1080p playback copy is in play (rule 16, 2026-09-26)', 
     fireEvent.click(within(rowFor('L55VEC')).getByRole('button', { name: 'Remove L55VEC from this playlist' }));
     await waitFor(() => expect(removeSpy).toHaveBeenCalledWith({ playlistId: 'p1', screenId: 's3' }));
     const arg = appConfirmMock.mock.calls[0][0] as { message: string };
-    expect(arg.message).toContain('This also cancels the 1080p copy being prepared for it.');
+    expect(arg.message).toContain('Its 1080p copy is cancelled too.');
   });
 
   it('FAILED: the switch is a retry — a fresh attempt through the gate, no prompt on a free screen', async () => {

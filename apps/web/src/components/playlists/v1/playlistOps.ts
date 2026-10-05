@@ -1572,16 +1572,18 @@ export function buildExceptionBanner(rows: PlaylistSummaryRow[]): ExceptionBanne
 export function pauseEverywhereCopy(
   name: string,
   reach: PlaylistReach,
-  ruleCount: number,
+  // Kept in the signature (every caller passes it), no longer in the copy:
+  // 2026-10-05, Greg — "we over communicate". The consequence is said in
+  // screens and locations, never "publishing rules" or "schedule priority".
+  _ruleCount: number,
 ): { title: string; message: string; confirmLabel: string } {
-  const rules = `${ruleCount} publishing ${ruleCount === 1 ? 'rule' : 'rules'}`;
   const screens = `${reach.screens} ${reach.screens === 1 ? 'screen' : 'screens'}`;
   const where = reach.locations > 1
-    ? `${screens} and ${reach.locations} locations`
+    ? `${screens} at ${reach.locations} locations`
     : screens;
   return {
     title: `Pause “${name}” everywhere?`,
-    message: `This disables ${rules} across ${where}. Screens will fall back according to their schedule priority.`,
+    message: `It won't play on ${where} until you start it again.`,
     confirmLabel: 'Pause everywhere',
   };
 }
@@ -1704,27 +1706,33 @@ export function removePlaylistCopy(
   // district playlist published only to its schools used to read "not
   // published anywhere" right before taking 12 school screens off air.
   const otherLocations = opts.copies ?? (row.reach.locations > 1 ? row.reach.locations - 1 : 0);
+  // 2026-10-05 (Greg, from his phone: "in deleting anything we have an entire
+  // paragraph in the delete menu"). One sentence of consequence in screens and
+  // locations — the reach the operator decides on — plus the honest "can't be
+  // undone" (no trash exists server-side; never promise a restore, §20.3).
+  // No rules, no "available schedule", no "default content".
+  const undo = "This can't be undone.";
   if (ruleCount > 0 || row.reach.screens > 0 || otherLocations > 0) {
-    const bits = [
-      `${ruleCount} ${ruleCount === 1 ? 'rule' : 'rules'}`,
-      `${row.reach.screens} ${row.reach.screens === 1 ? 'screen' : 'screens'}`,
-    ];
-    if (row.reach.locations > 1) bits.push(`${row.reach.locations} locations`);
-    const copies = otherLocations > 0
-      ? ` It also deletes the copies at ${otherLocations} other ${otherLocations === 1 ? 'location' : 'locations'}, including any rules those locations added.`
+    const screens = row.reach.screens > 0
+      ? `${row.reach.screens} ${row.reach.screens === 1 ? 'screen' : 'screens'}`
       : '';
+    const others = otherLocations > 0
+      ? `${otherLocations} other ${otherLocations === 1 ? 'location' : 'locations'}`
+      : '';
+    const reach = [screens, others].filter(Boolean).join(' and ');
     return {
-      title: `Delete published playlist “${row.name}”?`,
-      message: `${bits.join(' · ')}\n\nDeleting it also removes its publishing rules.${copies} Affected screens use another available schedule or their default content. This cannot be undone.`,
-      confirmLabel: 'Delete playlist and rules',
+      title: `Delete “${row.name}”?`,
+      message: reach
+        ? `It will be removed from ${reach}. ${undo}`
+        : `It's published but not on any screen yet. ${undo}`,
+      confirmLabel: 'Delete playlist',
       inUse: true,
     };
   }
   return {
-    title: `Remove “${row.name}”?`,
-    // No trash exists server-side — never promise a 30-day restore (§20.3).
-    message: 'This playlist is not published anywhere. Removing it deletes it permanently — it cannot be restored.',
-    confirmLabel: 'Remove permanently',
+    title: `Delete “${row.name}”?`,
+    message: `It isn't on any screen. ${undo}`,
+    confirmLabel: 'Delete playlist',
     inUse: false,
   };
 }
@@ -1797,12 +1805,10 @@ export function removePlaylistsCopy(
 ): RemoveManyDecision {
   const inUseIds = new Set<string>();
   const screens = new Set<string>();
-  let rules = 0;
   for (const row of rows) {
     const ruleCount = ruleCountOf(row.id);
     if (!removePlaylistCopy(row, ruleCount).inUse) continue;
     inUseIds.add(row.id);
-    rules += ruleCount;
     for (const id of row.targetScreenIds ?? []) screens.add(id);
   }
   const n = rows.length;
@@ -1811,17 +1817,19 @@ export function removePlaylistsCopy(
   const shown = rows.slice(0, REMOVE_MANY_NAMES_SHOWN).map((r) => `• ${r.name}`);
   const more = n > REMOVE_MANY_NAMES_SHOWN ? [`…and ${n - REMOVE_MANY_NAMES_SHOWN} more`] : [];
 
+  // One line of consequence (2026-10-05, Greg: "we over communicate"): how
+  // many are published and to how many screens — no rule counts, no fallback
+  // explanation. The names stay: they are what the operator checks.
   const published =
     p === 0
-      ? 'None of them is published anywhere.'
+      ? 'None of them are on a screen.'
       : `${p === n ? (n === 2 ? 'Both are' : `All ${n} are`) : `${p} of them ${p === 1 ? 'is' : 'are'}`} published` +
-        ` (${rules} ${rules === 1 ? 'rule' : 'rules'}${screens.size > 0 ? ` · ${screens.size} ${screens.size === 1 ? 'screen' : 'screens'}` : ''}).` +
-        ' Removing a published playlist also removes its publishing rules; the screens it was on use another available schedule or their default content.';
+        `${screens.size > 0 ? ` to ${screens.size} ${screens.size === 1 ? 'screen' : 'screens'}` : ''}.`;
 
   return {
-    title: `Remove ${n} playlists?`,
-    message: `${[...shown, ...more].join('\n')}\n\n${published}\n\nThis deletes them permanently — it cannot be restored.`,
-    confirmLabel: p > 0 ? `Delete ${n} playlists` : `Remove ${n} permanently`,
+    title: `Delete ${n} playlists?`,
+    message: `${[...shown, ...more].join('\n')}\n\n${published} This can't be undone.`,
+    confirmLabel: `Delete ${n} playlists`,
     inUseIds,
     publishedCount: p,
   };
@@ -1870,8 +1878,8 @@ export async function removePlaylistsSequentially(
         name: row.name,
         becamePublished,
         reason: becamePublished
-          ? 'it turned out to be published — remove it on its own to see what it affects'
-          : e?.message || 'the server rejected the request',
+          ? "it's published, so delete it on its own"
+          : e?.message || 'try again',
       });
     }
   }
@@ -1887,8 +1895,7 @@ export function describeRemoveManyOutcome(
   const lines = result.failed.slice(0, 6).map((f) => `• ${f.name} — ${f.reason}`);
   if (result.failed.length > 6) lines.push(`…and ${result.failed.length - 6} more`);
   return {
-    title: `Removed ${result.removed.length} of ${total} playlists`,
-    message:
-      `${result.failed.length} ${result.failed.length === 1 ? 'was' : 'were'} not removed and ${result.failed.length === 1 ? 'is' : 'are'} still in your library:\n\n${lines.join('\n')}`,
+    title: `Deleted ${result.removed.length} of ${total} playlists`,
+    message: `${result.failed.length === 1 ? "This one wasn't" : `These ${result.failed.length} weren't`} deleted:\n\n${lines.join('\n')}`,
   };
 }

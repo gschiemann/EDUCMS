@@ -605,7 +605,7 @@ describe('high-consequence confirmations', () => {
     const copy = pauseEverywhereCopy('Member Promotions', { screens: 18, groups: 2, locations: 3 }, 6);
     expect(copy.title).toBe('Pause “Member Promotions” everywhere?');
     expect(copy.message).toBe(
-      'This disables 6 publishing rules across 18 screens and 3 locations. Screens will fall back according to their schedule priority.',
+      "It won't play on 18 screens at 3 locations until you start it again.",
     );
     expect(copy.confirmLabel).toBe('Pause everywhere');
   });
@@ -615,9 +615,9 @@ describe('high-consequence confirmations', () => {
       { name: 'Member Promotions', reach: { screens: 18, groups: 0, locations: 3 } } as PlaylistSummaryRow,
       6,
     );
-    expect(r.confirmLabel).toBe('Delete playlist and rules');
-    expect(r.message).toContain('6 rules · 18 screens · 3 locations');
-    expect(r.message).toMatch(/removes its publishing rules/);
+    expect(r.confirmLabel).toBe('Delete playlist');
+    expect(r.message).toContain('18 screens and 2 other locations');
+    expect(r.message).toMatch(/will be removed from 18 screens/);
   });
 
   it('an unpublished removal never promises a restore the backend cannot honour (§20.3)', () => {
@@ -625,7 +625,7 @@ describe('high-consequence confirmations', () => {
       { name: 'New Member Orientation', reach: { screens: 0, groups: 0, locations: 0 } } as PlaylistSummaryRow,
       0,
     );
-    expect(r.message).toMatch(/cannot be restored/i);
+    expect(r.message).toMatch(/can't be undone/i);
     expect(r.message).not.toMatch(/30 days|trash|recoverable/i);
   });
 
@@ -637,10 +637,10 @@ describe('high-consequence confirmations', () => {
       { name: 'Fall Fundraiser', reach: { screens: 0, groups: 0, locations: 13 } } as PlaylistSummaryRow,
       0,
     );
-    expect(r.confirmLabel).toBe('Delete playlist and rules');
-    expect(r.message).toContain('13 locations');
-    expect(r.message).toMatch(/copies at 12 other locations, including any rules those locations added/);
-    expect(r.message).not.toMatch(/not published anywhere/);
+    expect(r.confirmLabel).toBe('Delete playlist');
+    expect(r.message).toContain('12 other locations');
+    expect(r.message).toMatch(/removed from 12 other locations\./);
+    expect(r.message).not.toMatch(/isn't on any screen/);
   });
 
   it('a playlist published only here does not mention copies', () => {
@@ -648,7 +648,7 @@ describe('high-consequence confirmations', () => {
       { name: 'Lobby', reach: { screens: 2, groups: 0, locations: 1 } } as PlaylistSummaryRow,
       1,
     );
-    expect(r.message).not.toMatch(/copies at/);
+    expect(r.message).not.toMatch(/other location/);
   });
 
   // 2026-09-26 — the server deletes a published playlist only with
@@ -660,7 +660,7 @@ describe('high-consequence confirmations', () => {
     expect(copiesOnly.inUse).toBe(true);
     const unpublished = removePlaylistCopy({ name: 'Draft', reach: { screens: 0, groups: 0, locations: 0 } } as PlaylistSummaryRow, 0);
     expect(unpublished.inUse).toBe(false);
-    expect(unpublished.confirmLabel).toBe('Remove permanently');
+    expect(unpublished.confirmLabel).toBe('Delete playlist');
   });
 
   it("takes the server's exact copy count over the reach.locations estimate", () => {
@@ -670,14 +670,14 @@ describe('high-consequence confirmations', () => {
       2,
       { copies: 3 },
     );
-    expect(r.message).toMatch(/copies at 3 other locations/);
+    expect(r.message).toMatch(/3 other locations/);
     // …and a group reaching another location's screens is not a copy.
     const noCopies = removePlaylistCopy(
       { name: 'Hall', reach: { screens: 5, groups: 1, locations: 2 } } as PlaylistSummaryRow,
       1,
       { copies: 0 },
     );
-    expect(noCopies.message).not.toMatch(/copies at/);
+    expect(noCopies.message).not.toMatch(/other location/);
     expect(noCopies.inUse).toBe(true);
   });
 });
@@ -689,16 +689,16 @@ describe('the published warning rebuilt from a 409 PLAYLIST_PUBLISHED', () => {
     const d = removePlaylistCopyFromServer(row, 0, { rules: 4, screens: 12, locations: 4, copies: 3 });
     expect(d).not.toBeNull();
     expect(d!.inUse).toBe(true);
-    expect(d!.title).toBe('Delete published playlist “Fall Fundraiser”?');
-    expect(d!.message).toContain('4 rules · 12 screens · 4 locations');
-    expect(d!.message).toMatch(/copies at 3 other locations, including any rules those locations added/);
-    expect(d!.confirmLabel).toBe('Delete playlist and rules');
+    expect(d!.title).toBe('Delete “Fall Fundraiser”?');
+    expect(d!.message).toContain('12 screens and 3 other locations');
+    expect(d!.message).toMatch(/This can't be undone\./);
+    expect(d!.confirmLabel).toBe('Delete playlist');
   });
 
   it('a copy with no rules anywhere is still published', () => {
     const d = removePlaylistCopyFromServer(row, 0, { rules: 0, screens: 0, locations: 2, copies: 1 });
     expect(d?.inUse).toBe(true);
-    expect(d?.message).toMatch(/copies at 1 other location,/);
+    expect(d?.message).toMatch(/1 other location\./);
   });
 
   it('counts it could not read fall back to what the page knows', () => {
@@ -707,8 +707,8 @@ describe('the published warning rebuilt from a 409 PLAYLIST_PUBLISHED', () => {
       2,
       { rules: null, screens: null, locations: null, copies: 1 },
     );
-    expect(d?.message).toContain('2 rules · 3 screens');
-    expect(d?.message).toMatch(/copies at 1 other location/);
+    expect(d?.message).toContain('3 screens');
+    expect(d?.message).toMatch(/and 1 other location/);
   });
 
   it.each([
@@ -1012,13 +1012,13 @@ describe('removePlaylistsCopy — the bulk confirmation', () => {
 
   it('none published: names them, says so, promises no way back', () => {
     const d = removePlaylistsCopy([row('a', 'Freese'), row('b', 'Old promo')], () => 0);
-    expect(d.title).toBe('Remove 2 playlists?');
+    expect(d.title).toBe('Delete 2 playlists?');
     expect(d.message).toContain('• Freese');
     expect(d.message).toContain('• Old promo');
-    expect(d.message).toContain('None of them is published anywhere.');
-    expect(d.message).toMatch(/cannot be restored/i);
+    expect(d.message).toContain('None of them are on a screen.');
+    expect(d.message).toMatch(/can't be undone/i);
     expect(d.message).not.toMatch(/30 days|trash|recoverable/i);
-    expect(d.confirmLabel).toBe('Remove 2 permanently');
+    expect(d.confirmLabel).toBe('Delete 2 playlists');
     expect(d.publishedCount).toBe(0);
     expect(d.inUseIds.size).toBe(0);
   });
@@ -1031,8 +1031,8 @@ describe('removePlaylistsCopy — the bulk confirmation', () => {
     const d = removePlaylistsCopy([published, loose, ruled], (id) => (id === 'p' ? 2 : id === 'r' ? 1 : 0));
     expect([...d.inUseIds].sort()).toEqual(['p', 'r']);
     expect(d.publishedCount).toBe(2);
-    expect(d.message).toContain('2 of them are published (3 rules · 3 screens).');
-    expect(d.message).toMatch(/removes its publishing rules/);
+    expect(d.message).toContain('2 of them are published to 3 screens.');
+    expect(d.message).toMatch(/This can't be undone\./);
     expect(d.confirmLabel).toBe('Delete 3 playlists');
     // Agreement with the single-playlist rule, row by row.
     for (const r of [published, loose, ruled]) {
@@ -1045,13 +1045,13 @@ describe('removePlaylistsCopy — the bulk confirmation', () => {
     const a = row('a', 'A', { reach: { screens: 1, groups: 0, locations: 0 }, targetScreenIds: ['shared'] });
     const b = row('b', 'B', { reach: { screens: 1, groups: 0, locations: 0 }, targetScreenIds: ['shared'] });
     const d = removePlaylistsCopy([a, b], () => 1);
-    expect(d.message).toContain('Both are published (2 rules · 1 screen).');
+    expect(d.message).toContain('Both are published to 1 screen.');
   });
 
   it('a long selection lists the first few and counts the rest', () => {
     const rows = Array.from({ length: 10 }, (_, i) => row(`x${i}`, `Playlist ${i}`));
     const d = removePlaylistsCopy(rows, () => 0);
-    expect(d.title).toBe('Remove 10 playlists?');
+    expect(d.title).toBe('Delete 10 playlists?');
     expect(d.message.split('\n').filter((l) => l.startsWith('• '))).toHaveLength(REMOVE_MANY_NAMES_SHOWN);
     expect(d.message).toContain(`…and ${10 - REMOVE_MANY_NAMES_SHOWN} more`);
   });
@@ -1085,7 +1085,7 @@ describe('removePlaylistsSequentially', () => {
     expect(out.failed.map((f) => f.id)).toEqual(['b', 'c']);
     expect(out.failed[0]).toMatchObject({ name: 'B', reason: 'Protected', becamePublished: false });
     expect(out.failed[1]).toMatchObject({ name: 'C', becamePublished: true });
-    expect(out.failed[1].reason).toMatch(/turned out to be published/);
+    expect(out.failed[1].reason).toMatch(/it's published, so delete it on its own/);
   });
 
   it('a playlist the dialog called UNPUBLISHED that the server says is published is never deleted as published', async () => {
@@ -1111,8 +1111,8 @@ describe('describeRemoveManyOutcome', () => {
         { id: 'c', name: 'C', reason: 'the server rejected the request', becamePublished: false },
       ],
     })!;
-    expect(o.title).toBe('Removed 1 of 3 playlists');
-    expect(o.message).toContain('2 were not removed and are still in your library');
+    expect(o.title).toBe('Deleted 1 of 3 playlists');
+    expect(o.message).toContain("These 2 weren't deleted");
     expect(o.message).toContain('• B — Protected');
     expect(o.message).toContain('• C — the server rejected the request');
   });

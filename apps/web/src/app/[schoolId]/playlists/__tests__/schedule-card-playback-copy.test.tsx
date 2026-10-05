@@ -146,7 +146,7 @@ describe('a window with rules held for a 1080p copy', () => {
     await waitFor(() => expect(toggleSpy).toHaveBeenCalledTimes(3));
     const arg = appConfirmMock.mock.calls[0][0] as { title: string; message: string; confirmLabel: string };
     expect(arg.title).toBe('Stop and cancel publish?');
-    expect(arg.message).toBe('This cancels the 1080p copy being prepared for 3 screens and pauses this schedule on 4 screens.');
+    expect(arg.message).toBe('This schedule will pause on 4 screens.');
     expect(arg.confirmLabel).toBe('Stop and cancel publish');
     expect(toggleSpy.mock.calls.map((c) => c[0]).sort()).toEqual(['r-g', 'r-lcd', 'r-wall']);
   });

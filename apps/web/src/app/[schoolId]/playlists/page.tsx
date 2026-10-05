@@ -268,8 +268,8 @@ export default function PlaylistsPage() {
   const handleRemove = useCallback(async (row: PlaylistSummaryRow) => {
     const ruleCount = schedules.filter((s) => s.playlistId === row.id).length;
     const failed = (err: unknown) => appAlert({
-      title: "Couldn't remove playlist",
-      message: (err as { message?: string } | null)?.message || 'The server rejected the request. Refresh and try again.',
+      title: "Couldn't delete the playlist",
+      message: (err as { message?: string } | null)?.message || 'Refresh and try again.',
       tone: 'danger',
     });
     const decision = removePlaylistCopy(row, ruleCount);
@@ -338,13 +338,13 @@ export default function PlaylistsPage() {
     // playlists no longer hold the screen for ~15 s. A toast says it is under
     // way and when it is done; anything that did not go is named in a dialog.
     const n = targets.length;
-    const toastId = toast.loading(`Removing ${n} playlists…`);
+    const toastId = toast.loading(`Deleting ${n} playlists…`);
     void deletePlaylistsBatch
       .mutateAsync({ rows: targets, inUseIds: decision.inUseIds })
       .then(async (result) => {
         const outcome = describeRemoveManyOutcome(n, result);
         if (!outcome) {
-          toast.success(`Removed ${n} playlists`, { id: toastId });
+          toast.success(`Deleted ${n} playlists`, { id: toastId });
           return;
         }
         toast.dismiss(toastId);
@@ -353,8 +353,8 @@ export default function PlaylistsPage() {
       .catch(async (err: unknown) => {
         toast.dismiss(toastId);
         await appAlert({
-          title: 'Couldn’t remove the playlists',
-          message: (err as { message?: string } | null)?.message || 'Something went wrong. Refresh the page to see which ones were removed.',
+          title: 'Couldn’t delete the playlists',
+          message: (err as { message?: string } | null)?.message || 'Refresh to see which ones were deleted.',
           tone: 'warn',
         });
       });
@@ -431,7 +431,7 @@ export default function PlaylistsPage() {
     } catch (err: any) {
       await appAlert({
         title: next ? "Couldn't start this playlist" : "Couldn't stop this playlist",
-        message: err?.message || 'The server rejected the request. Refresh and try again.',
+        message: err?.message || 'Refresh and try again.',
         tone: 'danger',
       });
     }

@@ -113,11 +113,11 @@ describe('removing a playlist — the in-use confirmation', () => {
     await waitFor(() => expect(deleteImpl).toHaveBeenCalled());
     expect(appConfirm).toHaveBeenCalledTimes(1);
     expect(appConfirm.mock.calls[0][0]).toMatchObject({
-      title: 'Delete published playlist “Member Promotions”?',
-      confirmLabel: 'Delete playlist and rules',
+      title: 'Delete “Member Promotions”?',
+      confirmLabel: 'Delete playlist',
       tone: 'danger',
     });
-    expect(appConfirm.mock.calls[0][0].message).toContain('1 rule · 1 screen');
+    expect(appConfirm.mock.calls[0][0].message).toContain('removed from 1 screen');
     expect(deleteImpl).toHaveBeenCalledTimes(1);
     expect(deleteImpl).toHaveBeenCalledWith({ id: 'p1', confirmInUse: true });
     expect(appAlert).not.toHaveBeenCalled();
@@ -126,7 +126,7 @@ describe('removing a playlist — the in-use confirmation', () => {
   it('an unpublished playlist: "not published anywhere", and the delete goes WITHOUT the confirmation', async () => {
     await remove('Fall Fundraiser');
     await waitFor(() => expect(deleteImpl).toHaveBeenCalled());
-    expect(appConfirm.mock.calls[0][0]).toMatchObject({ title: 'Remove “Fall Fundraiser”?', confirmLabel: 'Remove permanently' });
+    expect(appConfirm.mock.calls[0][0]).toMatchObject({ title: 'Delete “Fall Fundraiser”?', confirmLabel: 'Delete playlist' });
     expect(deleteImpl).toHaveBeenCalledWith({ id: 'p2', confirmInUse: false });
   });
 
@@ -146,12 +146,12 @@ describe('removing a playlist — the in-use confirmation', () => {
     expect(appConfirm).toHaveBeenCalledTimes(2);
     const second = appConfirm.mock.calls[1][0];
     expect(second).toMatchObject({
-      title: 'Delete published playlist “Fall Fundraiser”?',
-      confirmLabel: 'Delete playlist and rules',
+      title: 'Delete “Fall Fundraiser”?',
+      confirmLabel: 'Delete playlist',
       tone: 'danger',
     });
-    expect(second.message).toContain('4 rules · 12 screens · 4 locations');
-    expect(second.message).toMatch(/copies at 3 other locations/);
+    expect(second.message).toContain('12 screens and 3 other locations');
+    expect(second.message).toMatch(/3 other locations/);
     expect(deleteImpl.mock.calls.map(([arg]) => arg)).toEqual([
       { id: 'p2', confirmInUse: false },
       { id: 'p2', confirmInUse: true },
@@ -173,7 +173,7 @@ describe('removing a playlist — the in-use confirmation', () => {
     await remove('Fall Fundraiser');
     await waitFor(() => expect(appAlert).toHaveBeenCalled());
     expect(appAlert.mock.calls[0][0]).toMatchObject({
-      title: "Couldn't remove playlist",
+      title: "Couldn't delete the playlist",
       message: expect.stringContaining('so it was not deleted'),
     });
     expect(appConfirm).toHaveBeenCalledTimes(1);
@@ -186,7 +186,7 @@ describe('removing a playlist — the in-use confirmation', () => {
     );
     await remove('Member Promotions');
     await waitFor(() => expect(appAlert).toHaveBeenCalled());
-    expect(appAlert.mock.calls[0][0]).toMatchObject({ title: "Couldn't remove playlist", message: 'This playlist is emergency content.' });
+    expect(appAlert.mock.calls[0][0]).toMatchObject({ title: "Couldn't delete the playlist", message: 'This playlist is emergency content.' });
     expect(appConfirm).toHaveBeenCalledTimes(1);
     expect(deleteImpl).toHaveBeenCalledTimes(1);
   });
@@ -197,7 +197,7 @@ describe('removing a playlist — the in-use confirmation', () => {
       .mockRejectedValueOnce(Object.assign(new Error('Network down'), { status: 503 }));
     await remove('Fall Fundraiser');
     await waitFor(() => expect(appAlert).toHaveBeenCalled());
-    expect(appAlert.mock.calls[0][0]).toMatchObject({ title: "Couldn't remove playlist", message: 'Network down' });
+    expect(appAlert.mock.calls[0][0]).toMatchObject({ title: "Couldn't delete the playlist", message: 'Network down' });
     expect(deleteImpl).toHaveBeenCalledTimes(2);
   });
 });
@@ -227,7 +227,7 @@ describe('removing SEVERAL playlists at once — through the real page', () => {
 
     expect(appConfirm).toHaveBeenCalledTimes(1);
     const dialog = appConfirm.mock.calls[0][0];
-    expect(dialog).toMatchObject({ title: 'Remove 2 playlists?', confirmLabel: 'Delete 2 playlists', tone: 'danger' });
+    expect(dialog).toMatchObject({ title: 'Delete 2 playlists?', confirmLabel: 'Delete 2 playlists', tone: 'danger' });
     expect(dialog.message).toContain('• Member Promotions');
     expect(dialog.message).toContain('• Fall Fundraiser');
     expect(dialog.message).toContain('1 of them is published');
@@ -258,7 +258,7 @@ describe('removing SEVERAL playlists at once — through the real page', () => {
       finish({ removed: ['p1'], failed: [{ id: 'p2', name: 'Fall Fundraiser', reason: 'the server said no', becamePublished: false }] });
     });
     await waitFor(() => expect(appAlert).toHaveBeenCalledTimes(1));
-    expect(appAlert.mock.calls[0][0]).toMatchObject({ title: 'Removed 1 of 2 playlists' });
+    expect(appAlert.mock.calls[0][0]).toMatchObject({ title: 'Deleted 1 of 2 playlists' });
   });
 
   it('cancelling the confirmation deletes nothing and keeps the selection', async () => {
@@ -274,15 +274,15 @@ describe('removing SEVERAL playlists at once — through the real page', () => {
   it('when some could not be removed, says how many went and names each that did not', async () => {
     batchImpl.mockResolvedValue({
       removed: ['p1'],
-      failed: [{ id: 'p2', name: 'Fall Fundraiser', reason: 'it turned out to be published — remove it on its own to see what it affects', becamePublished: true }],
+      failed: [{ id: 'p2', name: 'Fall Fundraiser', reason: "it's published, so delete it on its own", becamePublished: true }],
     });
     render(<PlaylistsPage />);
     checkRow('Member Promotions');
     checkRow('Fall Fundraiser');
     await clickBulkRemove();
     await waitFor(() => expect(appAlert).toHaveBeenCalledTimes(1));
-    expect(appAlert.mock.calls[0][0]).toMatchObject({ title: 'Removed 1 of 2 playlists', tone: 'warn' });
-    expect(appAlert.mock.calls[0][0].message).toContain('• Fall Fundraiser — it turned out to be published');
+    expect(appAlert.mock.calls[0][0]).toMatchObject({ title: 'Deleted 1 of 2 playlists', tone: 'warn' });
+    expect(appAlert.mock.calls[0][0].message).toContain("• Fall Fundraiser — it's published, so delete it on its own");
   });
 
   it('ONE checked playlist reads exactly like removing it from its own menu', async () => {
@@ -290,7 +290,7 @@ describe('removing SEVERAL playlists at once — through the real page', () => {
     checkRow('Fall Fundraiser');
     await clickBulkRemove();
     await waitFor(() => expect(deleteImpl).toHaveBeenCalled());
-    expect(appConfirm.mock.calls[0][0]).toMatchObject({ title: 'Remove “Fall Fundraiser”?', confirmLabel: 'Remove permanently' });
+    expect(appConfirm.mock.calls[0][0]).toMatchObject({ title: 'Delete “Fall Fundraiser”?', confirmLabel: 'Delete playlist' });
     expect(deleteImpl).toHaveBeenCalledWith({ id: 'p2', confirmInUse: false });
     expect(batchImpl).not.toHaveBeenCalled();
   });

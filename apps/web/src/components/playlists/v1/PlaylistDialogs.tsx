@@ -602,8 +602,7 @@ export function ScheduleDialog({
         <>
           {!activate && days.length === 0 && (
             <p role="alert" className="mb-3 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-              Pick at least one day, or choose Activate immediately — a window with no
-              days runs on no day at all.
+              Pick at least one day, or choose Activate immediately.
             </p>
           )}
           {collisionText && (

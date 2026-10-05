@@ -326,7 +326,7 @@ export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
       {row?.statusLabel === 'PREPARING 1080P' && (
         <div role="status" aria-live="polite" data-testid="workspace-playback-preparation" className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-950">
           Preparing a 1080p playback copy{typeof props.playbackProgress === 'number' ? ` · ${props.playbackProgress}%` : '…'}
-          <span className="block text-xs text-indigo-700 mt-0.5">This playlist will publish automatically after preparation. The 4K version stays available.</span>
+          <span className="block text-xs text-indigo-700 mt-0.5">{t('playlistsPage.preparingPublishNote')}</span>
         </div>
       )}
 
@@ -406,9 +406,7 @@ export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
           <div className="min-w-0">
             <h2 className={`text-[13px] font-bold ${INK}`}>Keep screens in sync</h2>
             <p className={`text-[12.5px] ${INK_2} mt-0.5 leading-snug`}>
-              {row.syncPlayback
-                ? 'Every screen playing this playlist changes slides at the same instant. Screens pick this up on their next check-in.'
-                : 'Turn this on for a video wall or side-by-side boards, and every screen playing this playlist will change slides at the same instant.'}
+              {row.syncPlayback ? t('playlistsPage.syncOnHelp') : t('playlistsPage.syncOffHelp')}
             </p>
           </div>
           <button

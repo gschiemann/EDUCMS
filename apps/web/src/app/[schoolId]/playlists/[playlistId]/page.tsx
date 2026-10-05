@@ -120,10 +120,10 @@ export default function PlaylistWorkspacePage() {
     // publish — said out loud, never silently (rule 16).
     const preparing = playbackByScreenRef.current.get(screenId)?.state === 'preparing';
     const ok = await appConfirm({
-      title: `Stop playing on ${screenName}?`,
-      message: `This playlist is removed from ${screenName}. Whatever that screen shows next comes from its other schedules, or it falls back to its idle screen.`
+      title: t('playlistsPage.removeScreenTitle', { name: screenName }),
+      message: t('playlistsPage.removeScreenMessage', { name: screenName })
         + (preparing ? ` ${t('playlistsPage.removeScreenCancelsCopy')}` : ''),
-      confirmLabel: 'Remove screen',
+      confirmLabel: t('playlistsPage.removeScreenConfirm'),
       cancelLabel: 'Cancel',
       tone: 'danger',
     });
@@ -133,7 +133,7 @@ export default function PlaylistWorkspacePage() {
     } catch (err: any) {
       await appAlert({
         title: "Couldn't remove that screen",
-        message: err?.message || 'The server rejected the request. Refresh and try again.',
+        message: err?.message || t('playlistsPage.refreshTryAgain'),
         tone: 'danger',
       });
     }
@@ -339,7 +339,7 @@ export default function PlaylistWorkspacePage() {
     } catch (err: any) {
       await appAlert({
         title: next ? `Couldn't start it on ${screenName}` : `Couldn't stop it on ${screenName}`,
-        message: err?.message || 'The server rejected the request. Refresh and try again.',
+        message: err?.message || t('playlistsPage.refreshTryAgain'),
         tone: 'danger',
       });
     }
@@ -399,7 +399,7 @@ export default function PlaylistWorkspacePage() {
     } catch (err: any) {
       await appAlert({
         title: "Couldn't pause this playlist",
-        message: err?.message || 'The server rejected the request. Refresh and try again.',
+        message: err?.message || t('playlistsPage.refreshTryAgain'),
         tone: 'danger',
       });
     }
@@ -417,11 +417,11 @@ export default function PlaylistWorkspacePage() {
     } catch (err: any) {
       await appAlert({
         title: "Couldn't start this playlist",
-        message: err?.message || 'The server rejected the request. Refresh and try again.',
+        message: err?.message || t('playlistsPage.refreshTryAgain'),
         tone: 'danger',
       });
     }
-  }, [row, setPlaylistActive]);
+  }, [row, setPlaylistActive, t]);
 
   const handleRefreshScreen = useCallback(async (screenId: string) => {
     setRefreshingScreenId(screenId);
