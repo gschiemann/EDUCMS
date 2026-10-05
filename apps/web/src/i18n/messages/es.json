@@ -308,6 +308,7 @@
     "mfaSetupUsePasskey": "Usar Face ID, Touch ID o una llave de seguridad",
     "mfaSetupPasskeyWhy": "No hay que instalar nada y no se puede suplantar.",
     "mfaSetupPasskeyWaiting": "Esperando a tu dispositivo…",
+    "mfaSetupPasskeyStalled": "Tu navegador no abrió la ventana de la llave de acceso. Inténtalo de nuevo o usa una app de autenticación.",
     "mfaSetupUseAuthenticator": "Usar una app de autenticación en su lugar",
     "mfaSetupPasskeyFailed": "No se pudo configurar esa clave de acceso. Inténtalo de nuevo o usa una app de autenticación.",
     "mfaSetupTimedOut": "Tu intento de acceso caducó. Vuelve a introducir tu contraseña.",

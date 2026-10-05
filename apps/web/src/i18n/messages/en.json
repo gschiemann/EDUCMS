@@ -308,6 +308,7 @@
     "mfaSetupUsePasskey": "Use Face ID, Touch ID or a security key",
     "mfaSetupPasskeyWhy": "Nothing to install, and it can't be phished.",
     "mfaSetupPasskeyWaiting": "Waiting for your device…",
+    "mfaSetupPasskeyStalled": "Your browser didn't open the passkey prompt. Try again, or use an authenticator app instead.",
     "mfaSetupUseAuthenticator": "Use an authenticator app instead",
     "mfaSetupPasskeyFailed": "That passkey couldn't be set up. Try again, or use an authenticator app instead.",
     "mfaSetupTimedOut": "Your sign-in attempt timed out. Please enter your password again.",

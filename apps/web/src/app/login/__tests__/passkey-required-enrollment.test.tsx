@@ -262,6 +262,36 @@ describe('the operator is offered a passkey first', () => {
   });
 });
 
+describe('a browser that never opens its passkey sheet', () => {
+  afterEach(() => { jest.useRealTimers(); });
+
+  it('hands the choice back after 15 seconds, and the authenticator app link works the whole time', async () => {
+    // Mac Safari 27.2, 2026-10-05: the options request was answered and the
+    // verify request never came — the button sat on "Waiting for your device…"
+    // with the other choice locked.
+    mockFetchByPath({
+      '/auth/login': ENROLL_REQUIRED,
+      '/auth/mfa/required/passkey/options': { body: { options: CREATE_OPTIONS } },
+    });
+    startRegistration.mockReturnValue(new Promise(() => { /* never settles */ }));
+
+    await act(async () => { render(<LoginPage />); });
+    await signIn();
+    const button = await screen.findByRole('button', { name: /Use Face ID/i });
+    jest.useFakeTimers();
+    fireEvent.click(button);
+
+    // Waiting — and the other choice is NOT locked.
+    expect(screen.getByRole('button', { name: /authenticator app/i })).not.toBeDisabled();
+    expect(screen.queryByText(/didn’t open the passkey prompt|didn't open the passkey prompt/i)).toBeNull();
+
+    await act(async () => { jest.advanceTimersByTime(15_000); });
+
+    expect(screen.getByText(/didn.t open the passkey prompt/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Use Face ID/i })).not.toBeDisabled();
+  });
+});
+
 // ───────────────────────────────────────────────────────────────────────
 // THE PASSKEY PATH
 // ───────────────────────────────────────────────────────────────────────

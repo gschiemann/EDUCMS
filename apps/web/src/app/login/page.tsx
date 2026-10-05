@@ -158,6 +158,9 @@ const OFFER_HISTORY_STATE = { venueosPasskeyOffer: true };
 /** Longest the offer may hold a finished sign-in back while it prepares. */
 const OFFER_PREPARE_TIMEOUT_MS = 8_000;
 
+/** How long the required passkey set-up waits for the browser's sheet before handing the choice back. */
+const REQUIRED_PASSKEY_STALL_MS = 15_000;
+
 export default function LoginPage() {
   return (
     <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-[#fafbfc]"><Loader2 className="w-8 h-8 text-indigo-500 animate-spin" /></div>}>
@@ -1370,7 +1373,11 @@ function LoginContent() {
   const signInFormShowing = !mfaToken && !passkeyOffer && !pendingBackupCodes;
   /** Step 1 is on screen and idle — the only time the autofill request is armed. */
   const onEmailStep = step.name === 'email' && !manualSso && signInFormShowing;
-  const conditionalArmed = onEmailStep && conditionalAvailable === true && eulaOnDevice;
+  // `?autofill=off` keeps the browser's passkey-autofill request from ever
+  // starting on this page load — a diagnostic switch for a Safari passkey
+  // set-up that hung on the required 2-step screen (2026-10-05).
+  const autofillOff = searchParams.get('autofill') === 'off';
+  const conditionalArmed = onEmailStep && conditionalAvailable === true && eulaOnDevice && !autofillOff;
 
   useEffect(() => {
     if (!conditionalArmed) return;
@@ -1496,6 +1503,10 @@ function LoginContent() {
    */
   const chooseAuthenticatorApp = () => {
     if (!mfaToken) return;
+    // A passkey sheet that never opened must not keep this choice locked.
+    cancelPasskeyCeremony();
+    clearRequiredPasskeyStallTimer();
+    setPasskeyBusy(false);
     setError('');
     setEnrollMethod('totp');
     void startRequiredEnrollment(mfaToken);
@@ -1515,6 +1526,22 @@ function LoginContent() {
    * `navigator.credentials.create()`, and the activation from the password
    * submit is long gone by the time this step renders.
    */
+  // A browser that never opens its passkey sheet (and never rejects) left the
+  // required 2-step screen on "Waiting for your device…" with no way out
+  // (Mac Safari 27.2, 2026-10-05: the server answered the options request and
+  // the verify request never came). After REQUIRED_PASSKEY_STALL_MS the screen
+  // hands the choice back: the passkey button works again, the authenticator
+  // app link always worked, and a line says what happened. A sheet that opens
+  // late still completes the set-up.
+  const requiredPasskeyStallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearRequiredPasskeyStallTimer = () => {
+    if (requiredPasskeyStallTimerRef.current) {
+      clearTimeout(requiredPasskeyStallTimerRef.current);
+      requiredPasskeyStallTimerRef.current = null;
+    }
+  };
+  useEffect(() => clearRequiredPasskeyStallTimer, []);
+
   const handleRequiredPasskeyEnroll = async () => {
     if (!mfaToken) return;
     setError('');
@@ -1550,10 +1577,27 @@ function LoginContent() {
         ceremony = createPasskey(creationOptions);
       }
 
+      clearRequiredPasskeyStallTimer();
+      const askedAt = Date.now();
+      requiredPasskeyStallTimerRef.current = setTimeout(() => {
+        requiredPasskeyStallTimerRef.current = null;
+        clog.warn('auth', 'Required passkey ceremony stalled — no device sheet answered', {
+          waitedMs: Date.now() - askedAt,
+          focused: typeof document !== 'undefined' ? document.hasFocus() : null,
+          visibility: typeof document !== 'undefined' ? document.visibilityState : null,
+          autofillOff,
+          conditionalPending: conditionalPendingRef.current,
+        });
+        setPasskeyBusy(false);
+        setError(t('mfaSetupPasskeyStalled'));
+      }, REQUIRED_PASSKEY_STALL_MS);
+
       let credential;
       try {
         credential = await ceremony;
+        clearRequiredPasskeyStallTimer();
       } catch (ceremonyErr) {
+        clearRequiredPasskeyStallTimer();
         // A dismissed Face ID sheet is a DECISION. Quiet, and the operator is
         // back on the choice with both options still open.
         reportPasskeyCeremonyError(ceremonyErr, 'create');
@@ -2389,8 +2433,7 @@ function LoginContent() {
                   <button
                     type="button"
                     onClick={chooseAuthenticatorApp}
-                    disabled={passkeyBusy}
-                    className="w-full text-xs font-semibold text-indigo-600 hover:text-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="w-full text-xs font-semibold text-indigo-600 hover:text-indigo-700"
                   >
                     {t('mfaSetupUseAuthenticator')}
                   </button>
