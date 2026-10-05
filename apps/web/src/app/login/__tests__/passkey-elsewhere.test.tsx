@@ -146,8 +146,11 @@ describe('the passkey step is never a dead end', () => {
     await toSecondStep();
     expect(await screen.findByRole('button', { name: /Use your passkey/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Use another way$/i })).toBeInTheDocument();
-    // The step says what it wants — not "enter the code from your authenticator app".
-    expect(screen.getByText('Use your passkey to finish signing in.')).toBeInTheDocument();
+    // The step says what it asks — not "enter the code from your authenticator app". On a
+    // phone (2026-10-05) that is a question with two equal answers; passkey-phone-setup.test.tsx
+    // has the rest of that path.
+    expect(screen.getByText('Is your passkey on this iPhone?')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Set up a passkey on this iPhone' })).toBeInTheDocument();
     // Pressing it replaces the link with the list — and focus follows to the first way.
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^Use another way$/i })); });
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Use a backup code' }));
@@ -165,7 +168,13 @@ describe('the passkey step is never a dead end', () => {
 
     const ways = screen.getByTestId('mfa-other-ways');
     const labels = Array.from(ways.querySelectorAll('button')).map((b) => b.textContent?.trim());
-    expect(labels).toEqual(['Enter a code from your authenticator app', 'Use a backup code', 'Email me a code']);
+    // On a phone, setting a passkey up HERE leads the list (2026-10-05).
+    expect(labels).toEqual([
+      'Set up a passkey on this iPhone',
+      'Enter a code from your authenticator app',
+      'Use a backup code',
+      'Email me a code',
+    ]);
     // The first way holds focus — a keyboard / VoiceOver user lands on what to do next.
     expect(document.activeElement).toBe(ways.querySelector('button'));
     expect(document.querySelector('.bg-rose-50')).toBeNull();

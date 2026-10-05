@@ -6,7 +6,7 @@
 
 import { Fragment, Suspense, useEffect, useReducer, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Loader2, AlertCircle, ShieldCheck, ArrowLeft, Fingerprint, CheckCircle2, Mail } from 'lucide-react';
+import { Loader2, AlertCircle, ShieldCheck, ArrowLeft, Fingerprint, CheckCircle2, Mail, Smartphone } from 'lucide-react';
 import type {
   PublicKeyCredentialCreationOptionsJSON,
   RegistrationResponseJSON,
@@ -30,15 +30,19 @@ import {
   passkeyDeviceKind,
   passkeyErrorName,
   passkeyMissDiagnostics,
+  passkeyPhoneKind,
   passkeysSupported,
   platformPasskeyAvailable,
   type PasskeyMissStage,
+  type PasskeyPhoneKind,
 } from '@/lib/passkeys';
+import { passkeyRememberedOnDevice, rememberPasskeyOnDevice } from '@/lib/passkey-on-device';
 import {
   emailCodeSendErrorKey,
   emailCodeVerifyError,
   otherWaysFor,
   readMfaFallbacks,
+  type OtherWay,
 } from '@/lib/mfa-other-ways';
 import {
   isPasskeyOfferSnoozed,
@@ -85,6 +89,22 @@ const LINK_BTN_CLS =
   'disabled:opacity-50 disabled:cursor-not-allowed';
 
 /**
+ * One of the two EQUAL first choices on a phone's passkey step (2026-10-05):
+ * "Use your passkey" / "Set up a passkey on this iPhone". Same size, same
+ * weight — neither is the "real" answer until the person says where their
+ * passkey is. 52px tall: a thumb, not a cursor.
+ */
+const CHOICE_BTN_CLS =
+  'w-full min-h-[52px] px-4 py-3 bg-white border-2 border-indigo-200 hover:border-indigo-400 hover:bg-indigo-50 ' +
+  'rounded-xl text-[15px] font-semibold text-indigo-700 transition-colors flex items-center justify-center gap-2.5 ' +
+  'disabled:opacity-50 disabled:cursor-not-allowed';
+
+/** The guided "Turn on Face ID or Touch ID" — the screen's only button, thumb-sized. */
+const TURN_ON_BTN_CLS =
+  'w-full min-h-[52px] px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[15px] font-semibold ' +
+  'transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed';
+
+/**
  * The post-sign-in passkey offer (2026-09-22) — one screen between a finished
  * password (+ authenticator code) sign-in and the dashboard. See
  * `lib/passkey-offer.ts` and, for the server half, the API's
@@ -109,11 +129,24 @@ interface PasskeyOfferState {
   destination: string;
   /** The fresh session's access token — the offer's two calls are Bearer calls. */
   token: string;
-  /** Creation options fetched BEFORE the button is enabled (Safari gesture). */
-  options: PublicKeyCredentialCreationOptionsJSON;
+  /**
+   * Creation options fetched BEFORE the button is enabled (Safari gesture).
+   * `null` only on the guided screen when nothing could be prepared — it then
+   * opens straight on its "add it later" line.
+   */
+  options: PublicKeyCredentialCreationOptionsJSON | null;
   /** Did this sign-in involve a code? Picks "…password and code" vs "…password". */
   withCode: boolean;
   method: PasskeyMethod;
+  /**
+   * The person ASKED for this (2026-10-05) — "Set up a passkey on this
+   * iPhone", then the emailed code. ONE button ("Turn on Face ID or Touch
+   * ID"), no "Not now" / "Don't ask", the "Not now" snooze does not apply,
+   * and a saved passkey goes straight on to the destination.
+   */
+  guided: boolean;
+  /** Which phone or tablet, for the guided screen's words. */
+  device: PasskeyPhoneKind;
 }
 
 /** The history entry pushed on entering step 2, so the browser's Back returns to step 1. */
@@ -255,6 +288,43 @@ function LoginContent() {
   const firstOtherWayRef = useRef<HTMLButtonElement>(null);
   const otherWays = otherWaysFor(mfaMethods, mfaFallbacks);
 
+  // ── "Set up a passkey on this phone" (2026-10-05) ───────────────────
+  // Owner, on his iPhone: "it just pops up a QR code, I X off of that and you
+  // give me 3 more options but I just want to create a passkey on my phone
+  // and get logged in." So on a PHONE or TABLET the passkey step starts with
+  // two equal choices BEFORE any sheet opens — "Use your passkey" and "Set up
+  // a passkey on this iPhone" — and the second is one guided path: the
+  // emailed code (sent at once), then ONE "Turn on Face ID or Touch ID"
+  // button. The password alone never adds a passkey: the grant that buys the
+  // creation options is minted only after the emailed code
+  // (`passkey-enrollment-grant.ts`, mint site 3).
+  //
+  // Decided when the step opens (`applyLoginResponse`): which phone this is,
+  // and only if it has a built-in authenticator (else `null` — the step stays
+  // as it was); and whether this device already holds a passkey for the
+  // account (`lib/passkey-on-device.ts`) — then only "Use your passkey".
+  const [phoneSetupDevice, setPhoneSetupDevice] = useState<PasskeyPhoneKind | null>(null);
+  const [passkeyOnDevice, setPasskeyOnDevice] = useState(false);
+  /** The emailed code on screen belongs to the set-up path. */
+  const [phoneSetup, setPhoneSetup] = useState(false);
+  /** The emailed code — what setting a passkey up here needs first — is on offer. */
+  const emailCodeOffered = otherWays.includes('email');
+  /** "Set up a passkey on this phone" can be offered on this step. */
+  const phoneSetupWay = passkeyStepAvailable && phoneSetupDevice !== null && emailCodeOffered;
+  /** Before any sheet: the two equal choices (not when this device holds one). */
+  const phoneChoices = phoneSetupWay && !passkeyOnDevice && !passkeyMissed;
+  /** After a miss (or from "Use another way"), the set-up path leads the list. */
+  const listedWays: Array<OtherWay | 'phone-setup'> =
+    phoneSetupWay && !phoneChoices ? ['phone-setup', ...otherWays] : otherWays;
+  /**
+   * This phone could hold a passkey, but the emailed code that must come
+   * first is not available (mail not configured, or a password reset in the
+   * last 7 days): the choice is hidden, and the step says where the passkey
+   * works instead.
+   */
+  const phoneSetupBlocked =
+    passkeyStepAvailable && phoneSetupDevice !== null && !emailCodeOffered && !passkeyOnDevice && !passkeyMissed;
+
   // ── The emailed code (2026-10-05) ───────────────────────────────────
   // A 6-digit code mailed to the account, as the SECOND step only: the send
   // needs the partial mfaToken, which exists only after a correct password.
@@ -289,11 +359,13 @@ function LoginContent() {
   // TOTP input carries autoFocus for the same reason; when the passkey button
   // is primary the focus has to follow it or a keyboard operator lands at the
   // top of the document with no idea what changed.
+  // Also on the way BACK from the set-up path's emailed code to the two
+  // choices (the list of ways, when open, takes focus in the effect above).
   useEffect(() => {
-    if (mfaToken && passkeyStepAvailable && !codeFormOpen) {
+    if (mfaToken && passkeyStepAvailable && !codeFormOpen && !emailChallenge && !otherWaysOpen) {
       passkeyStepBtnRef.current?.focus();
     }
-  }, [mfaToken, passkeyStepAvailable, codeFormOpen]);
+  }, [mfaToken, passkeyStepAvailable, codeFormOpen, emailChallenge, otherWaysOpen]);
 
   // ── "No passkey here yet?" and the post-sign-in offer (2026-09-22) ──────
   // Operator: "when i try to login with a passkey to my main account it says
@@ -380,7 +452,7 @@ function LoginContent() {
   // Async since 2026-09-22: when the sign-in left a passkey-enrollment grant
   // behind, the offer is prepared here BEFORE the redirect, and callers await
   // it so their "Signing in…" state holds until the next screen is ready.
-  const completeLogin = async (data: any): Promise<void> => {
+  const completeLogin = async (data: any, opts: { guided?: boolean } = {}): Promise<void> => {
     // A session exists from here on — nothing on this page re-arms.
     sessionStartedRef.current = true;
     // Recorded only now, on a FULLY successful sign-in.
@@ -431,12 +503,32 @@ function LoginContent() {
 
     // THE WALK-THROUGH (2026-09-22). One screen, only when everything lines
     // up; otherwise straight on, exactly as before.
-    const offer = await preparePasskeyOffer(data);
+    const guided = !!opts.guided;
+    const offer = await preparePasskeyOffer(data, guided);
     if (offer) {
       offerClosedRef.current = false;
       setOfferCodes(null);
       setOfferPhase('ready');
       setPasskeyOffer({ ...offer, destination: safeRedirect });
+      return;
+    }
+    if (guided) {
+      // The person ASKED to set up a passkey here and the emailed code proved
+      // it was them, but nothing can be created right now (no grant, options
+      // refused or unreachable). Signed in all the same: say so, with the way
+      // on — never a silent jump to the dashboard, never back to the QR code.
+      offerClosedRef.current = false;
+      setOfferCodes(null);
+      setOfferPhase('failed');
+      setPasskeyOffer({
+        destination: safeRedirect,
+        token: '',
+        options: null,
+        withCode: true,
+        method: passkeyMethodFor(),
+        guided: true,
+        device: phoneSetupDevice ?? 'other',
+      });
       return;
     }
     router.push(safeRedirect);
@@ -462,12 +554,15 @@ function LoginContent() {
    */
   const preparePasskeyOffer = async (
     data: unknown,
+    // The guided path (2026-10-05): the person asked for this one, so a
+    // session's "Not now" does not hold it back. Every other rule stands.
+    guided = false,
   ): Promise<Omit<PasskeyOfferState, 'destination'> | null> => {
     const session = data as { access_token?: unknown; user?: { mustSetupCredentials?: unknown } } | null;
     const grant = readPasskeyEnrollmentGrant(data);
     const token = typeof session?.access_token === 'string' ? session.access_token : '';
     if (!grant || !token || session?.user?.mustSetupCredentials) return null;
-    if (!passkeyCapable || isPasskeyOfferSnoozed()) return null;
+    if (!passkeyCapable || (!guided && isPasskeyOfferSnoozed())) return null;
     if (!(await platformPasskeyAvailable())) return null;
 
     // Bounded: a convenience must never hold a finished sign-in hostage.
@@ -499,6 +594,8 @@ function LoginContent() {
         // runs while a partial mfaToken is held.
         withCode: mfaToken !== null,
         method: passkeyMethodFor(),
+        guided,
+        device: phoneSetupDevice ?? 'other',
       };
     } catch {
       clog.warn('auth', 'Passkey offer skipped — options unreachable', {});
@@ -518,7 +615,7 @@ function LoginContent() {
    */
   const startOfferSetUp = () => {
     const offer = passkeyOffer;
-    if (!offer || offerPhase !== 'ready' || offerClosedRef.current) return;
+    if (!offer || !offer.options || offerPhase !== 'ready' || offerClosedRef.current) return;
     let ceremony: Promise<RegistrationResponseJSON>;
     try {
       ceremony = createPasskey(offer.options);
@@ -539,10 +636,11 @@ function LoginContent() {
     } catch (err) {
       if (offerClosedRef.current) return;
       const described = describePasskeyError(err, 'create');
-      clog.info('auth', 'Passkey offer ended without a credential', { reason: described.reason });
+      clog.info('auth', 'Passkey offer ended without a credential', { reason: described.reason, guided: offer.guided });
       logPasskeyMiss('offer-create', err, null);
       // The browser refused a DUPLICATE: this device already holds a passkey
       // for the account (it was offered because this sign-in used a code).
+      if (described.reason === 'already-registered') await rememberPasskeyOnDevice(email);
       setOfferPhase(
         described.reason === 'already-registered' ? 'exists' : described.quiet ? 'cancelled' : 'failed',
       );
@@ -564,7 +662,9 @@ function LoginContent() {
         code?: string;
       };
       if (res.ok && data?.passkey) {
-        clog.info('auth', 'Passkey added from the sign-in offer', {});
+        clog.info('auth', 'Passkey added from the sign-in offer', { guided: offer.guided });
+        // The next sign-in on this device offers only "Use your passkey".
+        await rememberPasskeyOnDevice(email);
         const codes = Array.isArray(data.backupCodes)
           ? data.backupCodes.filter((c): c is string => typeof c === 'string')
           : [];
@@ -574,6 +674,11 @@ function LoginContent() {
           // before Continue, never after it.
           setOfferCodes(codes);
           setOfferPhase('codes');
+        } else if (offer.guided) {
+          // "…and get logged in": the person asked for exactly this, the
+          // device sheet has just said it is saved — straight on, no extra
+          // "saved" screen to tap through.
+          leaveOffer('none');
         } else {
           setOfferPhase('done');
         }
@@ -697,6 +802,24 @@ function LoginContent() {
     fallbackError: string,
   ) => {
     if (res.ok && data?.mfaRequired && data?.mfaToken) {
+      // Absent ⇒ ['totp'] — an older API can never be read as "this account
+      // has a passkey", only as the shape that already shipped.
+      const methods: string[] = Array.isArray(data.mfaMethods) && data.mfaMethods.length
+        ? data.mfaMethods
+        : ['totp'];
+      // A PHONE with a passkey step (2026-10-05): can it hold a passkey of
+      // its own (a built-in authenticator — bounded, never hangs), and does
+      // it already hold one for this account? Settled BEFORE the step's first
+      // paint, so it opens on the right choices instead of changing under a
+      // thumb. Everywhere else nothing is awaited here.
+      const phone =
+        methods.includes('passkey') && passkeyCapable && !data.mfaEnrollmentRequired ? passkeyPhoneKind() : null;
+      const [canHoldPasskey, holdsPasskey] = phone
+        ? await Promise.all([platformPasskeyAvailable(), passkeyRememberedOnDevice(email)])
+        : [false, false];
+      setPhoneSetupDevice(phone && canHoldPasskey ? phone : null);
+      setPasskeyOnDevice(holdsPasskey);
+      setPhoneSetup(false);
       // Credential was accepted, but a second factor is owed. Hold the
       // short-lived challenge token and render the second step. EULA
       // persistence is deferred to completeLogin() so it only records on a
@@ -704,11 +827,6 @@ function LoginContent() {
       setMfaToken(data.mfaToken);
       setMfaCode('');
       setUseBackupCode(false);
-      // Absent ⇒ ['totp'] — an older API can never be read as "this account
-      // has a passkey", only as the shape that already shipped.
-      const methods: string[] = Array.isArray(data.mfaMethods) && data.mfaMethods.length
-        ? data.mfaMethods
-        : ['totp'];
       setMfaMethods(methods);
       // The other ways through on THIS device (backup codes, an emailed
       // code). Absent ⇒ null ⇒ the shipped behaviour (see mfa-other-ways.ts).
@@ -824,6 +942,9 @@ function LoginContent() {
     setEmailChallenge(null);
     setEmailCode('');
     setEmailCodeResent(false);
+    setPhoneSetup(false);
+    setPhoneSetupDevice(null);
+    setPasskeyOnDevice(false);
     setError('');
   };
 
@@ -931,6 +1052,8 @@ function LoginContent() {
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data?.access_token) {
+        // The passkey works from THIS device — next time, only "Use your passkey".
+        await rememberPasskeyOnDevice(email);
         await completeLogin(data);
         return;
       }
@@ -957,11 +1080,15 @@ function LoginContent() {
    * offers it when the login response listed it. `resend` is "Send a new
    * code" — the API retires the older code when it sends a new one.
    */
-  const sendEmailCode = async (opts: { resend?: boolean } = {}) => {
+  const sendEmailCode = async (opts: { resend?: boolean; guided?: boolean } = {}) => {
     if (!mfaToken || emailCodeBusy) return;
     const token = mfaToken;
     setError('');
+    // Which path this code is for — "Email me a code", or the first step of
+    // "Set up a passkey on this phone". A resend keeps whichever is open.
+    if (!opts.resend) setPhoneSetup(!!opts.guided);
     setEmailCodeBusy('sending');
+    let sent = false;
     try {
       const res = await fetch(`${API_URL}/auth/mfa/challenge/email/send`, {
         method: 'POST',
@@ -971,7 +1098,8 @@ function LoginContent() {
       const data = await res.json().catch(() => ({}));
       if (mfaTokenRef.current !== token) return;
       if (res.ok && typeof data?.challenge === 'string') {
-        clog.info('auth', 'Sign-in code emailed', { resend: !!opts.resend });
+        clog.info('auth', 'Sign-in code emailed', { resend: !!opts.resend, guided: !!opts.guided });
+        sent = true;
         setEmailChallenge(data.challenge);
         setEmailCode('');
         setEmailCodeResent(!!opts.resend);
@@ -989,7 +1117,26 @@ function LoginContent() {
       setError(t('emailCodeUnreachable'));
     } finally {
       setEmailCodeBusy(false);
+      // A first send that did not go out leaves no code form behind it.
+      if (!sent && !opts.resend) setPhoneSetup(false);
     }
+  };
+
+  /**
+   * "Set up a passkey on this phone" (2026-10-05) — ONE guided path. The
+   * emailed code goes out at once (no separate "Email me a code" choice), and
+   * it always comes first: a password alone never adds a passkey.
+   */
+  const startPhoneSetup = () => {
+    void sendEmailCode({ guided: true });
+  };
+
+  /** "Back" from the set-up path's code: to the screen it was started from. */
+  const leavePhoneSetup = () => {
+    setEmailChallenge(null);
+    setEmailCode('');
+    setPhoneSetup(false);
+    setError('');
   };
 
   /** THE EMAILED CODE, step 2 — trade it for the session. */
@@ -1011,10 +1158,11 @@ function LoginContent() {
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data?.access_token) {
-        clog.info('auth', 'Signed in with an emailed code', {});
+        clog.info('auth', 'Signed in with an emailed code', { guided: phoneSetup });
         // Awaited: this is exactly the sign-in the "add a passkey for this
         // device" offer exists for, and "Verifying…" holds until it is ready.
-        await completeLogin(data);
+        // On the set-up path it opens the ONE-button "Turn on" screen.
+        await completeLogin(data, { guided: phoneSetup });
         return;
       }
       clog.warn('auth', 'Emailed code rejected', { status: res.status, code: data?.code });
@@ -1032,6 +1180,7 @@ function LoginContent() {
     setCodeFormOpen(false);
     setEmailChallenge(null);
     setEmailCode('');
+    setPhoneSetup(false);
     setMfaCode('');
     setUseBackupCode(false);
     setError('');
@@ -1758,21 +1907,23 @@ function LoginContent() {
 
       {errorBanner}
 
-      <button type="submit" disabled={emailCodeBusy === 'verifying'} className={PRIMARY_BTN_CLS}>
+      {/* On the set-up path the next screen is "Turn on Face ID…", so the
+          button says Continue rather than promising the end of the sign-in. */}
+      <button type="submit" disabled={emailCodeBusy === 'verifying'} className={PRIMARY_BTN_CLS + (phoneSetup ? ' min-h-[48px]' : '')}>
         {emailCodeBusy === 'verifying' ? (
           <><Loader2 className="w-4 h-4 animate-spin" /> {t('verifying')}</>
         ) : (
-          t('verifySignIn')
+          phoneSetup ? t('continue') : t('verifySignIn')
         )}
       </button>
 
       <div className="flex items-center justify-between gap-2 pt-1">
         <button
           type="button"
-          onClick={showOtherWays}
+          onClick={phoneSetup ? leavePhoneSetup : showOtherWays}
           className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-slate-700 min-h-[44px]"
         >
-          <ArrowLeft className="w-3.5 h-3.5" /> {t('useAnotherWay')}
+          <ArrowLeft className="w-3.5 h-3.5" /> {phoneSetup ? t('back') : t('useAnotherWay')}
         </button>
         <button
           type="button"
@@ -1864,6 +2015,15 @@ function LoginContent() {
     </label>
   );
 
+  /**
+   * The offer card's check mark: a saved passkey, its backup codes — and on
+   * the guided screen every after-state, which all say "You're signed in".
+   */
+  const offerCheckMark =
+    offerPhase === 'done' ||
+    offerPhase === 'codes' ||
+    (!!passkeyOffer?.guided && offerPhase !== 'ready' && offerPhase !== 'working');
+
   /** The quiet line a browser that already accepted gets instead. */
   const eulaNote = eulaOnDevice ? (
     <p className="text-center text-balance text-[11px] leading-snug text-slate-500" data-testid="eula-accepted-note">
@@ -1881,7 +2041,13 @@ function LoginContent() {
             <polygon points="22,16 19,21.2 13,21.2 10,16 13,10.8 19,10.8" fill="#a5b4fc" />
           </svg>
           <h1 className="mt-4 text-xl font-semibold tracking-tight text-slate-900">
-            {passkeyOffer
+            {passkeyOffer?.guided
+              ? (offerPhase === 'ready' || offerPhase === 'working'
+                ? t('phoneSetupTurnOnTitle', { device: passkeyOffer.device })
+                : offerPhase === 'codes'
+                  ? t('mfaBackupCodesTitle')
+                  : t('phoneSetupSignedInTitle'))
+              : passkeyOffer
               ? (offerPhase === 'done'
                 ? t('passkeyOfferDoneTitle')
                 : offerPhase === 'codes'
@@ -1896,7 +2062,13 @@ function LoginContent() {
                   : t('signInTitle', { brand: brand.name })}
           </h1>
           <p className="mt-1 text-sm text-slate-500">
-            {passkeyOffer
+            {passkeyOffer?.guided
+              ? (offerPhase === 'ready' || offerPhase === 'working'
+                ? t('phoneSetupTurnOnSub')
+                : offerPhase === 'codes'
+                  ? t('mfaBackupCodesSubtitle')
+                  : null)
+              : passkeyOffer
               ? (offerPhase === 'done'
                 ? t('passkeyOfferDoneBody', { method: t(PASSKEY_METHOD_KEYS[passkeyOffer.method]) })
                 : offerPhase === 'codes'
@@ -1910,10 +2082,14 @@ function LoginContent() {
                 ? t('mfaSetupSubtitle')
                 : mfaToken
                   ? (emailChallenge
-                    ? t('emailCodeSubtitle')
-                    : passkeyStepAvailable && !codeFormOpen
-                      ? t('mfaUsePasskeySub')
-                      : useBackupCode ? t('mfaEnterBackup') : t('mfaEnterCode'))
+                    ? (phoneSetup && phoneSetupDevice
+                      ? t('phoneSetupCodeSub', { device: phoneSetupDevice })
+                      : t('emailCodeSubtitle'))
+                    : phoneChoices && !codeFormOpen
+                      ? t('phoneChoiceSub', { device: phoneSetupDevice ?? 'other' })
+                      : passkeyStepAvailable && !codeFormOpen
+                        ? t('mfaUsePasskeySub')
+                        : useBackupCode ? t('mfaEnterBackup') : t('mfaEnterCode'))
                   : brand.tagline}
           </p>
         </div>
@@ -1926,14 +2102,19 @@ function LoginContent() {
                before the dashboard. Every exit — Set up, Not now, Continue,
                Esc, Back — ends on the destination the sign-in was headed for.
                The only hold is the one-time backup codes of a FIRST factor. */
-            <div className="space-y-4" data-testid="passkey-offer" data-phase={offerPhase}>
+            <div
+              className="space-y-4"
+              data-testid="passkey-offer"
+              data-phase={offerPhase}
+              data-guided={passkeyOffer.guided ? 'true' : undefined}
+            >
               <div className="flex justify-center">
                 <div
                   className={`w-12 h-12 rounded-xl flex items-center justify-center ${
-                    offerPhase === 'done' || offerPhase === 'codes' ? 'bg-emerald-50' : 'bg-indigo-50'
+                    offerCheckMark ? 'bg-emerald-50' : 'bg-indigo-50'
                   }`}
                 >
-                  {offerPhase === 'done' || offerPhase === 'codes' ? (
+                  {offerCheckMark ? (
                     <CheckCircle2 className="w-6 h-6 text-emerald-600" />
                   ) : (
                     <Fingerprint className="w-6 h-6 text-indigo-600" />
@@ -1945,7 +2126,14 @@ function LoginContent() {
                   appears at the same moment as its text is not reliably
                   announced, so this one is there from the first phase. */}
               <div aria-live="polite">
-                {offerPhase === 'failed' ? (
+                {passkeyOffer.guided && (offerPhase === 'cancelled' || offerPhase === 'failed') ? (
+                  /* The guided path's ONE line when no passkey was made
+                     (2026-10-05): calm, never red — the emailed code already
+                     signed the person in, and this is not a failure of theirs. */
+                  <p data-testid="phone-setup-later" className="text-sm text-slate-700 leading-relaxed text-center">
+                    {t('phoneSetupLater')}
+                  </p>
+                ) : offerPhase === 'failed' ? (
                   <div className="flex items-start gap-2 px-3 py-2.5 bg-rose-50 border border-rose-200 rounded-lg">
                     <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
                     <p className="text-xs text-rose-700 font-medium">{t('passkeyOfferFailed')}</p>
@@ -1963,7 +2151,31 @@ function LoginContent() {
                   reuses the previous phase's <button> for the next phase's —
                   "Not now" became "Continue" mid-`transition-colors` and
                   painted pale for a frame. */}
-              {offerPhase === 'ready' || offerPhase === 'working' ? (
+              {passkeyOffer.guided && (offerPhase === 'ready' || offerPhase === 'working') ? (
+                <Fragment key="offer-guided">
+                  {/* THE ONE BUTTON (2026-10-05). The person asked for this —
+                      "Set up a passkey on this iPhone", then the emailed code
+                      — so there is nothing else to choose here. Its handler
+                      calls create() before anything else (the options are
+                      already here): Safari sees the ceremony inside this tap.
+                      Cancelled or refused, the screen says "add it later" and
+                      the person is still signed in. */}
+                  <button
+                    ref={offerPrimaryRef}
+                    type="button"
+                    data-testid="phone-setup-turn-on"
+                    onClick={startOfferSetUp}
+                    disabled={offerPhase === 'working'}
+                    className={TURN_ON_BTN_CLS}
+                  >
+                    {offerPhase === 'working' ? (
+                      <><Loader2 className="w-4 h-4 animate-spin" aria-hidden /> {t('mfaSetupPasskeyWaiting')}</>
+                    ) : (
+                      <><Fingerprint className="w-5 h-5" aria-hidden /> {t('phoneSetupTurnOnButton', { device: passkeyOffer.device })}</>
+                    )}
+                  </button>
+                </Fragment>
+              ) : offerPhase === 'ready' || offerPhase === 'working' ? (
                 <Fragment key="offer-ask">
                   {/* PRIMARY. Its handler calls create() before anything
                       else — the options are already here — so Safari sees
@@ -2040,7 +2252,10 @@ function LoginContent() {
                     ref={offerPrimaryRef}
                     type="button"
                     onClick={() => leaveOffer(offerPhase === 'done' ? 'none' : 'session')}
-                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold py-2.5 px-4 rounded-lg transition-colors"
+                    className={
+                      'w-full bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold py-2.5 px-4 rounded-lg transition-colors' +
+                      (passkeyOffer.guided ? ' min-h-[48px]' : '')
+                    }
                   >
                     {t('passkeyOfferContinue')}
                   </button>
@@ -2264,10 +2479,49 @@ function LoginContent() {
                   </div>
                 </div>
 
-                {/* PRIMARY control. One tap, on purpose — Safari needs a
+                {phoneChoices && phoneSetupDevice ? (
+                  /* A PHONE OR TABLET (2026-10-05): two EQUAL choices before
+                     any sheet opens. "Use your passkey" is today's button;
+                     "Set up a passkey on this iPhone" emails the code at once
+                     and then asks for ONE tap of Face ID / Touch ID. The page
+                     cannot know where the passkey lives — the person can. */
+                  <div className="space-y-3" data-testid="phone-passkey-choices">
+                    <button
+                      ref={passkeyStepBtnRef}
+                      type="button"
+                      onClick={handlePasskeyChallenge}
+                      disabled={passkeyBusy || !!emailCodeBusy}
+                      className={CHOICE_BTN_CLS}
+                    >
+                      {passkeyBusy ? (
+                        <><Loader2 className="w-5 h-5 animate-spin" aria-hidden /> {t('verifying')}</>
+                      ) : (
+                        <><Fingerprint className="w-5 h-5" aria-hidden /> {t('usePasskey')}</>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="phone-setup-choice"
+                      onClick={startPhoneSetup}
+                      disabled={passkeyBusy || !!emailCodeBusy}
+                      aria-describedby="phone-setup-why"
+                      className={CHOICE_BTN_CLS}
+                    >
+                      {emailCodeBusy === 'sending' ? (
+                        <><Loader2 className="w-5 h-5 animate-spin" aria-hidden /> {t('emailCodeSending')}</>
+                      ) : (
+                        <><Smartphone className="w-5 h-5" aria-hidden /> {t('phoneSetupChoice', { device: phoneSetupDevice })}</>
+                      )}
+                    </button>
+                    <p id="phone-setup-why" className="text-[11px] leading-snug text-slate-500 text-center">
+                      {t('phoneSetupChoiceWhy')}
+                    </p>
+                  </div>
+                ) : (
+                /* PRIMARY control. One tap, on purpose — Safari needs a
                     fresh user gesture for navigator.credentials.get(), and
                     the activation from the password submit is long gone by
-                    the time this step renders. */}
+                    the time this step renders. */
                 <button
                   ref={passkeyStepBtnRef}
                   type="button"
@@ -2281,6 +2535,7 @@ function LoginContent() {
                     <><Fingerprint className="w-4 h-4" /> {passkeyMissed ? t('passkeyTryAgain') : t('usePasskey')}</>
                   )}
                 </button>
+                )}
 
                 {codeFormOpen ? (
                   <>
@@ -2308,24 +2563,48 @@ function LoginContent() {
                         <p data-testid="passkey-elsewhere-note" className="text-sm text-slate-700 leading-relaxed text-center">
                           {t('passkeyElsewhereNote')}
                         </p>
+                      ) : phoneSetupBlocked && phoneSetupDevice ? (
+                        /* No emailed code for this sign-in, so no setting a
+                           passkey up here: say where the passkey works. */
+                        <p data-testid="phone-setup-unavailable" className="text-xs text-slate-600 leading-relaxed text-center">
+                          {t('phoneSetupUnavailable', { device: phoneSetupDevice })}
+                        </p>
                       ) : null}
                     </div>
 
                     {otherWaysOpen ? (
                       <div role="group" aria-label={t('otherWaysLabel')} data-testid="mfa-other-ways" className="space-y-2">
-                        {otherWays.map((way, i) => (
+                        {listedWays.map((way, i) => (
                           <button
                             key={way}
                             ref={i === 0 ? firstOtherWayRef : undefined}
                             type="button"
                             data-way={way}
-                            disabled={way === 'email' && emailCodeBusy === 'sending'}
-                            onClick={() => (way === 'email' ? void sendEmailCode() : openCodeForm(way))}
-                            className="w-full min-h-[44px] border border-slate-300 hover:bg-slate-50 disabled:opacity-50 text-slate-800 text-sm font-semibold py-2.5 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
+                            disabled={
+                              (way === 'email' || way === 'phone-setup') && emailCodeBusy === 'sending'
+                            }
+                            onClick={() =>
+                              way === 'phone-setup'
+                                ? startPhoneSetup()
+                                : way === 'email'
+                                  ? void sendEmailCode()
+                                  : openCodeForm(way)
+                            }
+                            className={
+                              way === 'phone-setup'
+                                // Leads the list after a miss (2026-10-05):
+                                // the likeliest story on a phone is that the
+                                // passkey lives on another device.
+                                ? 'w-full min-h-[48px] border-2 border-indigo-300 bg-indigo-50 hover:bg-indigo-100 disabled:opacity-50 text-indigo-800 text-sm font-semibold py-2.5 px-4 rounded-lg transition-colors flex items-center justify-center gap-2'
+                                : 'w-full min-h-[44px] border border-slate-300 hover:bg-slate-50 disabled:opacity-50 text-slate-800 text-sm font-semibold py-2.5 px-4 rounded-lg transition-colors flex items-center justify-center gap-2'
+                            }
                           >
+                            {way === 'phone-setup' && (emailCodeBusy === 'sending' && phoneSetup
+                              ? <><Loader2 className="w-4 h-4 animate-spin" aria-hidden /> {t('emailCodeSending')}</>
+                              : <><Smartphone className="w-4 h-4 text-indigo-600" aria-hidden /> {t('phoneSetupChoice', { device: phoneSetupDevice ?? 'other' })}</>)}
                             {way === 'totp' && <><ShieldCheck className="w-4 h-4 text-slate-500" aria-hidden /> {t('otherWayAuthenticator')}</>}
                             {way === 'backup' && <><ShieldCheck className="w-4 h-4 text-slate-500" aria-hidden /> {t('useBackupCode')}</>}
-                            {way === 'email' && (emailCodeBusy === 'sending'
+                            {way === 'email' && (emailCodeBusy === 'sending' && !phoneSetup
                               ? <><Loader2 className="w-4 h-4 animate-spin" aria-hidden /> {t('emailCodeSending')}</>
                               : <><Mail className="w-4 h-4 text-slate-500" aria-hidden /> {t('otherWayEmail')}</>)}
                           </button>

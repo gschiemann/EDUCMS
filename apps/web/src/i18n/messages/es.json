@@ -372,7 +372,17 @@
     "emailCodeUnreachable": "No se puede contactar con el servidor para enviar el código. Inténtalo en un momento.",
     "passkeyUseEmailInstead": "Continuar con tu correo y tu contraseña",
     "passkeyNoneHintOffer": "Después de iniciar sesión, te ayudaremos a configurar {method} en este dispositivo.",
-    "passkeyOfferExists": "Este dispositivo ya tiene una clave de acceso para tu cuenta. La próxima vez, elige tu clave de acceso al iniciar sesión."
+    "passkeyOfferExists": "Este dispositivo ya tiene una clave de acceso para tu cuenta. La próxima vez, elige tu clave de acceso al iniciar sesión.",
+    "phoneChoiceSub": "{device, select, iphone {¿Tu clave de acceso está en este iPhone?} ipad {¿Tu clave de acceso está en este iPad?} android {¿Tu clave de acceso está en este teléfono Android?} other {¿Tu clave de acceso está en este dispositivo?}}",
+    "phoneSetupChoice": "{device, select, iphone {Configurar una clave de acceso en este iPhone} ipad {Configurar una clave de acceso en este iPad} android {Configurar una clave de acceso en este teléfono Android} other {Configurar una clave de acceso en este dispositivo}}",
+    "phoneSetupChoiceWhy": "Primero te enviaremos un código por correo para confirmar que eres tú.",
+    "phoneSetupUnavailable": "{device, select, iphone {Si tu clave de acceso no está en este iPhone, inicia sesión en el dispositivo que la tiene.} ipad {Si tu clave de acceso no está en este iPad, inicia sesión en el dispositivo que la tiene.} android {Si tu clave de acceso no está en este teléfono Android, inicia sesión en el dispositivo que la tiene.} other {Si tu clave de acceso no está en este dispositivo, inicia sesión en el dispositivo que la tiene.}}",
+    "phoneSetupCodeSub": "{device, select, iphone {Introduce el código que te enviamos por correo para configurar una clave de acceso en este iPhone.} ipad {Introduce el código que te enviamos por correo para configurar una clave de acceso en este iPad.} android {Introduce el código que te enviamos por correo para configurar una clave de acceso en este teléfono Android.} other {Introduce el código que te enviamos por correo para configurar una clave de acceso en este dispositivo.}}",
+    "phoneSetupTurnOnTitle": "{device, select, iphone {Activa el inicio de sesión con Face ID o Touch ID en este iPhone} ipad {Activa el inicio de sesión con Face ID o Touch ID en este iPad} android {Activa el inicio de sesión con huella o bloqueo de pantalla en este teléfono Android} other {Activa el inicio de sesión con clave de acceso en este dispositivo}}",
+    "phoneSetupTurnOnSub": "Ya iniciaste sesión. Actívalo y la próxima vez iniciar sesión aquí será un solo toque.",
+    "phoneSetupTurnOnButton": "{device, select, iphone {Activar Face ID o Touch ID} ipad {Activar Face ID o Touch ID} android {Activar el inicio con huella} other {Activar el inicio con clave de acceso}}",
+    "phoneSetupSignedInTitle": "Ya iniciaste sesión",
+    "phoneSetupLater": "Puedes añadir una clave de acceso para este dispositivo más tarde en Ajustes → Mi seguridad."
   },
   "account": {
     "title": "Cuenta",

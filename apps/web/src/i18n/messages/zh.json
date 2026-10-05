@@ -372,7 +372,17 @@
     "emailCodeUnreachable": "无法连接服务器发送验证码，请稍后重试。",
     "passkeyUseEmailInstead": "使用邮箱和密码继续",
     "passkeyNoneHintOffer": "登录后，我们会帮你在这台设备上设置{method}。",
-    "passkeyOfferExists": "这台设备上已有你账户的通行密钥。下次登录时，请选择你的通行密钥。"
+    "passkeyOfferExists": "这台设备上已有你账户的通行密钥。下次登录时，请选择你的通行密钥。",
+    "phoneChoiceSub": "{device, select, iphone {你的通行密钥在这台 iPhone 上吗？} ipad {你的通行密钥在这台 iPad 上吗？} android {你的通行密钥在这台 Android 手机上吗？} other {你的通行密钥在这台设备上吗？}}",
+    "phoneSetupChoice": "{device, select, iphone {在这台 iPhone 上设置通行密钥} ipad {在这台 iPad 上设置通行密钥} android {在这台 Android 手机上设置通行密钥} other {在这台设备上设置通行密钥}}",
+    "phoneSetupChoiceWhy": "我们会先通过邮件给你发送验证码，确认是你本人。",
+    "phoneSetupUnavailable": "{device, select, iphone {如果你的通行密钥不在这台 iPhone 上，请在存有它的设备上登录。} ipad {如果你的通行密钥不在这台 iPad 上，请在存有它的设备上登录。} android {如果你的通行密钥不在这台 Android 手机上，请在存有它的设备上登录。} other {如果你的通行密钥不在这台设备上，请在存有它的设备上登录。}}",
+    "phoneSetupCodeSub": "{device, select, iphone {输入我们通过邮件发送的验证码，即可在这台 iPhone 上设置通行密钥。} ipad {输入我们通过邮件发送的验证码，即可在这台 iPad 上设置通行密钥。} android {输入我们通过邮件发送的验证码，即可在这台 Android 手机上设置通行密钥。} other {输入我们通过邮件发送的验证码，即可在这台设备上设置通行密钥。}}",
+    "phoneSetupTurnOnTitle": "{device, select, iphone {为这台 iPhone 开启面容 ID 或触控 ID 登录} ipad {为这台 iPad 开启面容 ID 或触控 ID 登录} android {为这台 Android 手机开启指纹或屏幕锁登录} other {为这台设备开启通行密钥登录}}",
+    "phoneSetupTurnOnSub": "你已登录。开启后，下次在这里登录只需轻点一下。",
+    "phoneSetupTurnOnButton": "{device, select, iphone {开启面容 ID 或触控 ID} ipad {开启面容 ID 或触控 ID} android {开启指纹登录} other {开启通行密钥登录}}",
+    "phoneSetupSignedInTitle": "你已登录",
+    "phoneSetupLater": "你可以稍后在“设置 → 我的安全”中为这台设备添加通行密钥。"
   },
   "account": {
     "title": "账户",

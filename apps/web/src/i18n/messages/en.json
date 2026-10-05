@@ -372,7 +372,17 @@
     "emailCodeUnreachable": "Can't reach the server to send the code. Try again in a moment.",
     "passkeyUseEmailInstead": "Continue with your email and password",
     "passkeyNoneHintOffer": "After you sign in, we'll help you set up {method} on this device.",
-    "passkeyOfferExists": "This device already has a passkey for your account. Next time, choose your passkey when you sign in."
+    "passkeyOfferExists": "This device already has a passkey for your account. Next time, choose your passkey when you sign in.",
+    "phoneChoiceSub": "{device, select, iphone {Is your passkey on this iPhone?} ipad {Is your passkey on this iPad?} android {Is your passkey on this Android phone?} other {Is your passkey on this device?}}",
+    "phoneSetupChoice": "{device, select, iphone {Set up a passkey on this iPhone} ipad {Set up a passkey on this iPad} android {Set up a passkey on this Android phone} other {Set up a passkey on this device}}",
+    "phoneSetupChoiceWhy": "We'll email you a code first, to make sure it's you.",
+    "phoneSetupUnavailable": "{device, select, iphone {If your passkey isn't on this iPhone, sign in on the device that has it.} ipad {If your passkey isn't on this iPad, sign in on the device that has it.} android {If your passkey isn't on this Android phone, sign in on the device that has it.} other {If your passkey isn't on this device, sign in on the device that has it.}}",
+    "phoneSetupCodeSub": "{device, select, iphone {Enter the code we emailed you to set up a passkey on this iPhone.} ipad {Enter the code we emailed you to set up a passkey on this iPad.} android {Enter the code we emailed you to set up a passkey on this Android phone.} other {Enter the code we emailed you to set up a passkey on this device.}}",
+    "phoneSetupTurnOnTitle": "{device, select, iphone {Turn on Face ID or Touch ID sign-in for this iPhone} ipad {Turn on Face ID or Touch ID sign-in for this iPad} android {Turn on fingerprint or screen-lock sign-in for this Android phone} other {Turn on passkey sign-in for this device}}",
+    "phoneSetupTurnOnSub": "You're signed in. Turn it on, and next time signing in here is one tap.",
+    "phoneSetupTurnOnButton": "{device, select, iphone {Turn on Face ID or Touch ID} ipad {Turn on Face ID or Touch ID} android {Turn on fingerprint sign-in} other {Turn on passkey sign-in}}",
+    "phoneSetupSignedInTitle": "You're signed in",
+    "phoneSetupLater": "You can add a passkey for this device later in Settings → My security."
   },
   "account": {
     "title": "Account",

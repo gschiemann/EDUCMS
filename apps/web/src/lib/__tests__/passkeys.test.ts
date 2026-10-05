@@ -36,6 +36,7 @@ import {
   getPasskey,
   getPasskeyFromAutofill,
   guessDeviceLabel,
+  passkeyPhoneKind,
   passkeysSupported,
   platformPasskeyAvailable,
   type PasskeyCeremony,
@@ -302,6 +303,40 @@ describe('guessDeviceLabel', () => {
   it('falls back to the live navigator when no UA is passed', () => {
     // jsdom's default UA is neither Apple nor Windows nor Android.
     expect(guessDeviceLabel()).toBe('Passkey');
+  });
+});
+
+describe('passkeyPhoneKind — "Set up a passkey on this iPhone" only on a phone or tablet (2026-10-05)', () => {
+  const UA = {
+    iphone: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1',
+    ipad: 'Mozilla/5.0 (iPad; CPU OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
+    // iPadOS Safari's default "desktop site" user agent — indistinguishable from a Mac by UA.
+    ipadDesktop: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15',
+    mac: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15',
+    windows: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+    android: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36',
+    otherMobile: 'Mozilla/5.0 (Mobile; rv:48.0) Gecko/48.0 Firefox/48.0 KAIOS/2.5',
+    linuxDesktop: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+  };
+
+  it.each<[string, string, number, string | null]>([
+    ['iPhone', UA.iphone, 5, 'iphone'],
+    ['iPad', UA.ipad, 5, 'ipad'],
+    // No Mac has a touch screen: a "Mac" with touch points is an iPad.
+    ['iPad asking for the desktop site', UA.ipadDesktop, 5, 'ipad'],
+    ['Android', UA.android, 5, 'android'],
+    ['another phone we cannot name', UA.otherMobile, 1, 'other'],
+    // Computers keep the second step exactly as it was.
+    ['Mac', UA.mac, 0, null],
+    ['Windows (even a touch laptop)', UA.windows, 10, null],
+    ['Linux desktop', UA.linuxDesktop, 0, null],
+    ['an empty UA', '', 0, null],
+  ])('%s → %s', (_what, ua, touchPoints, expected) => {
+    expect(passkeyPhoneKind(ua, touchPoints)).toBe(expected);
+  });
+
+  it('reads the live navigator when nothing is passed (jsdom: a desktop)', () => {
+    expect(passkeyPhoneKind()).toBeNull();
   });
 });
 

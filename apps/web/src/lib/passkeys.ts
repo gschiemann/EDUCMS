@@ -309,6 +309,33 @@ export function passkeyDeviceKind(
 }
 
 /**
+ * A PHONE or TABLET, and which one — for "Set up a passkey on this iPhone"
+ * (2026-10-05). `null` on a computer, where the second sign-in step stays
+ * exactly as it was.
+ *
+ * Same user-agent rules as `guessDeviceLabel`, plus the one case a user agent
+ * alone gets wrong: iPadOS Safari asks for the DESKTOP site by default and
+ * sends a Mac user agent. No Mac has a touch screen, so a "Mac" that reports
+ * more than one touch point is an iPad. Any other mobile user agent
+ * ("Mobi" / "Tablet") is a phone or tablet we cannot name — "this device".
+ */
+export type PasskeyPhoneKind = 'iphone' | 'ipad' | 'android' | 'other';
+
+export function passkeyPhoneKind(
+  ua: string | undefined = typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
+  maxTouchPoints: number = typeof navigator !== 'undefined' ? Number(navigator.maxTouchPoints) || 0 : 0,
+): PasskeyPhoneKind | null {
+  switch (guessDeviceLabel(ua)) {
+    case 'iPhone': return 'iphone';
+    case 'iPad': return 'ipad';
+    case 'Android phone': return 'android';
+    case 'Mac': return maxTouchPoints > 1 ? 'ipad' : null;
+    case 'Windows PC': return null;
+    default: return /Mobi|Tablet/i.test(ua || '') ? 'other' : null;
+  }
+}
+
+/**
  * A sensible default name for the device the operator is enrolling, so the
  * list reads "iPhone" instead of a credential id. They can rename it.
  *
