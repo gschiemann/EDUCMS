@@ -106,7 +106,7 @@ export function RenderTrustChip({
     return (
       <span
         className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg bg-amber-500 text-amber-950 shadow-sm"
-        title="This screen's trusted credential expired or was superseded — it is running on renewed temporary keys. Content continues, but re-pair it (gear menu → Re-pair) to restore full trust and instant realtime delivery."
+        title={t('screens.trust.repairTitle')}
       >
         <AlertTriangle className="w-3 h-3 shrink-0" aria-hidden="true" />
         Re-pair required{verifiedAgo ? ` · showing content ${verifiedAgo}` : ''}
@@ -142,7 +142,7 @@ export function RenderTrustChip({
     return (
       <span
         className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg bg-orange-500 text-orange-950 shadow-sm"
-        title="The screen is alive, but its current video has not advanced a frame for 12+ seconds. The player is auto-recovering (reload, then skip the item). If this keeps appearing, the file or this device's decoder is the problem."
+        title={t('screens.trust.stalledTitle')}
       >
         <AlertTriangle className="w-3 h-3 shrink-0" aria-hidden="true" />
         Video stuck — fixing itself{verifiedAgo ? ` · ${verifiedAgo}` : ''}
@@ -172,8 +172,8 @@ export function RenderTrustChip({
         className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-600"
         title={
           verifiedFull
-            ? `This screen confirmed its content is on the glass — last check ${verifiedFull}`
-            : 'This screen is confirming its content is on the glass'
+            ? t('screens.trust.paintingTitleAt', { time: verifiedFull })
+            : t('screens.trust.paintingTitle')
         }
       >
         Showing content ✓{verifiedAgo ? ` · checked ${verifiedAgo}` : ''}
@@ -231,7 +231,7 @@ export function RenderTrustChip({
     return (
       <span
         className="text-[10px] font-semibold px-2.5 py-1 rounded-lg bg-sky-50 text-sky-700"
-        title="This screen is on and working — there is just no content scheduled for it yet. Schedule a playlist and this turns green."
+        title={t('screens.trust.idleTitle')}
       >
         Screen on · nothing scheduled yet{verifiedAgo ? ` · ${verifiedAgo}` : ''}
       </span>
@@ -246,7 +246,7 @@ export function RenderTrustChip({
     return (
       <span
         className="text-[10px] font-semibold px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700"
-        title="Someone paused playback on the screen itself (remote: Back, then Stop). The scheduled content is still assigned and plays again as soon as Resume is pressed on the screen."
+        title={t('screens.trust.pausedTitle')}
       >
         Paused on the screen{verifiedAgo ? ` · ${verifiedAgo}` : ''}
       </span>
@@ -262,7 +262,7 @@ export function RenderTrustChip({
     return (
       <span
         className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg bg-amber-50 text-amber-700"
-        title="The screen paused its picture check-ins a moment ago — usually a reload or an update in progress. This turns into a red alert only if it stays quiet past 5 minutes."
+        title={t('screens.trust.checkingTitle')}
       >
         Confirming picture{verifiedAgo ? `… · last seen ${verifiedAgo}` : '…'}
       </span>
@@ -275,7 +275,7 @@ export function RenderTrustChip({
     return (
       <span
         className="text-[10px] font-semibold px-2.5 py-1 rounded-lg bg-slate-100 text-slate-500"
-        title="This screen has not confirmed a picture in over 48 hours. Long-idle screens and older player versions both land here — worth a look when convenient, but it is not an emergency."
+        title={t('screens.trust.chronicTitle')}
       >
         No picture confirmed{verifiedAgo ? ` since ${verifiedFull ?? verifiedAgo}` : ' in 48h+'}
       </span>
@@ -286,7 +286,7 @@ export function RenderTrustChip({
     return (
       <span
         className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg bg-red-600 text-white shadow-sm"
-        title="This screen is connected and answering, but it has not shown us proof of a picture — it may be stuck or dark. Try Refresh web (or Restart) from the gear menu; if that does not fix it, someone should look at the physical screen."
+        title={t('screens.trust.notPaintingTitle')}
       >
         <AlertTriangle className="w-3 h-3 shrink-0" aria-hidden="true" />
         No picture confirmed{verifiedAgo ? ` · last picture ${verifiedAgo}` : ''} — still responds
@@ -298,7 +298,7 @@ export function RenderTrustChip({
   return (
     <span
       className="text-[10px] font-semibold px-2.5 py-1 rounded-lg bg-slate-100 text-slate-400"
-      title="This screen's player app is too old to confirm its picture (or it just paired). Not a failure — update the player app to get picture confirmations."
+      title={t('screens.trust.unknownTitle')}
     >
       Can&rsquo;t confirm picture yet · older player
     </span>

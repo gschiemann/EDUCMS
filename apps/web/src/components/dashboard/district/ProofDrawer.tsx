@@ -450,9 +450,7 @@ export function ProofDrawer({
                 Confirmed or superseded ({unnamed})
               </h3>
               <p className="text-[12px] font-medium text-slate-500 mt-1.5 leading-relaxed">
-                These screens are no longer waiting on this push. We can&rsquo;t list them by name —
-                a screen drops its marker for this push the moment it confirms, so all we can prove
-                is the count.
+                These screens are no longer waiting on this update.
               </p>
             </div>
           )}

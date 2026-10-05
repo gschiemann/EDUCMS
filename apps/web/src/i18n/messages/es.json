@@ -1924,6 +1924,18 @@
       "sublineWaiting": "Puede tardar hasta 30 minutos.",
       "sublineInstalled": "v{version} instalada",
       "sublineNoVersion": "Versión aún no informada"
+    },
+    "trust": {
+      "repairTitle": "El contenido sigue reproduciéndose. Restablece la confianza desde la configuración de esta pantalla.",
+      "stalledTitle": "El video se detuvo. La pantalla lo está corrigiendo por su cuenta; si sigue pasando, revisa el archivo.",
+      "paintingTitleAt": "Esta pantalla informó una imagen; última comprobación: {time}",
+      "paintingTitle": "Esta pantalla está informando una imagen",
+      "idleTitle": "Todavía no hay nada programado para esta pantalla.",
+      "pausedTitle": "Alguien pausó la reproducción en la pantalla. Pulsa Reanudar allí para continuar.",
+      "checkingTitle": "Suele ser una recarga o una actualización. Solo se pone en rojo si dura más de 5 minutos.",
+      "chronicTitle": "No se ha informado ninguna imagen en más de 48 horas. Revísala cuando puedas.",
+      "notPaintingTitle": "Está en línea pero no ha informado ninguna imagen; puede estar bloqueada o apagada. Prueba Actualizar y luego revisa la pantalla en persona.",
+      "unknownTitle": "La app del reproductor de esta pantalla aún no puede informar una imagen. Actualiza la app para verla aquí."
     }
   },
   "selection": {

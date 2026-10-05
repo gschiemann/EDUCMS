@@ -983,16 +983,16 @@ export function FleetCommandCenter({
     // expected-content-signature exists yet to compare against). The old
     // "Content current" label claimed the stronger thing. "Showing content"
     // (last pill) is the picture-level truth; this one stays app-level.
-    { key: 'content', label: ASSURANCE_LABEL.contentCurrent, Icon: CheckCircle2, pill: fc.assurance.contentCurrent, hint: 'The app version matches what was published, and any pending update has landed. This does not confirm the exact picture on screen — see Showing content for that. Gray = nothing to compare yet.' },
-    { key: 'online', label: ASSURANCE_LABEL.online, Icon: Wifi, pill: fc.assurance.online, hint: 'Screens answering heartbeats. Online alone does not prove a picture — that is the last card.' },
-    { key: 'push', label: ASSURANCE_LABEL.pushLive, Icon: Send, pill: fc.assurance.pushLive, hint: 'Screens with an instant connection. Others still update via ~10s check-ins.' },
+    { key: 'content', label: ASSURANCE_LABEL.contentCurrent, Icon: CheckCircle2, pill: fc.assurance.contentCurrent, hint: 'Screens on the latest app with no update waiting.' },
+    { key: 'online', label: ASSURANCE_LABEL.online, Icon: Wifi, pill: fc.assurance.online, hint: 'Screens that are connected right now.' },
+    { key: 'push', label: ASSURANCE_LABEL.pushLive, Icon: Send, pill: fc.assurance.pushLive, hint: 'Screens that get changes instantly. Others update within about 10 seconds.' },
     // "Emergency setup ready" (2026-09-01): the district check verifies alert
     // content is wired and screens are online — it does NOT verify the alert
     // media is freshly cached on each device (that lives in the location
     // table's own Cache column). The old "ready" wording claimed the fuller
     // guarantee.
     { key: 'emergency', label: ASSURANCE_LABEL.emergencyReady, Icon: ShieldCheck, pill: fc.assurance.emergencyReady, hint: `${nounMany.charAt(0).toUpperCase() + nounMany.slice(1)} with the right alert content wired and screens online. Does not check that alert media is freshly cached on each device. Off means emergency alerts are turned off at every location — turn them on under Settings → Emergency.` },
-    { key: 'painting', label: ASSURANCE_LABEL.showingContent, Icon: MonitorCheck, pill: fc.assurance.showingContent, hint: 'Screens with a confirmed picture on the glass.' },
+    { key: 'painting', label: ASSURANCE_LABEL.showingContent, Icon: MonitorCheck, pill: fc.assurance.showingContent, hint: 'Screens that reported a picture recently.' },
   ];
 
   /** Today's schedule, as the page grouped it. Absent payload → no rows. */
@@ -1145,10 +1145,10 @@ export function FleetCommandCenter({
         </div>
         <p
           className="mt-2 flex items-center gap-1.5 text-[12px] font-semibold text-slate-400"
-          title="A card shows “—” when that check hasn’t answered yet — never a zero it hasn’t earned."
+          title="“—” means that check hasn’t answered yet."
         >
           <Info className="w-3.5 h-3.5 shrink-0" aria-hidden />
-          Status separates connectivity, content, delivery and on-glass proof
+          Each card is a separate check — hover for details
         </p>
       </div>
 

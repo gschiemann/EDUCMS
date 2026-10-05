@@ -181,7 +181,7 @@ describe('FleetCommandCenter', () => {
     expect(rtl.queryByText(/school/i)).not.toBeInTheDocument();
     // The mock's one explanatory line under the rail.
     expect(
-      rtl.getByText('Status separates connectivity, content, delivery and on-glass proof'),
+      rtl.getByText('Each card is a separate check — hover for details'),
     ).toBeInTheDocument();
   });
 

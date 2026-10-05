@@ -1924,6 +1924,18 @@
       "sublineWaiting": "最多可能需要 30 分钟。",
       "sublineInstalled": "已安装 v{version}",
       "sublineNoVersion": "尚未上报版本"
+    },
+    "trust": {
+      "repairTitle": "内容会继续播放。请在此屏幕的设置中恢复信任。",
+      "stalledTitle": "视频停止播放了。屏幕正在自行修复；如果反复出现，请检查该文件。",
+      "paintingTitleAt": "此屏幕已上报画面——最近一次检查：{time}",
+      "paintingTitle": "此屏幕正在上报画面",
+      "idleTitle": "此屏幕尚未排期任何内容。",
+      "pausedTitle": "有人在屏幕上暂停了播放。请在屏幕上按“继续”恢复。",
+      "checkingTitle": "通常是重新加载或更新所致。持续超过 5 分钟才会变为红色。",
+      "chronicTitle": "超过 48 小时未上报画面。有空时请查看。",
+      "notPaintingTitle": "屏幕在线但未上报画面——可能卡住或黑屏。请先尝试“刷新”，再到现场检查。",
+      "unknownTitle": "此屏幕的播放器应用还无法上报画面。请更新应用以在此查看。"
     }
   },
   "selection": {

@@ -661,7 +661,7 @@ export function buildFleetCommand(input: {
     () => null,
     (s) => ({
       headline: `${screenName(s)} · Needs re-pairing`,
-      detail: 'Running on temporary keys, so it cannot confirm a picture. Restore trust.',
+      detail: 'Needs its trust restored before it can report a picture.',
     }),
     'Also needs re-pairing.',
   );

@@ -86,7 +86,7 @@ describe('ProofDrawer', () => {
     renderDrawer();
     // 6 targets − 2 nameable = 4 we can only count.
     expect(rtl.getByText('Confirmed or superseded (4)')).toBeInTheDocument();
-    expect(rtl.getByText(/can’t list them by name/)).toBeInTheDocument();
+    expect(rtl.getByText(/no longer waiting on this update/)).toBeInTheDocument();
   });
 
   it('expanding a screen loads its history and speaks plain English', () => {

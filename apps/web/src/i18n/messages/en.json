@@ -1924,6 +1924,18 @@
       "sublineWaiting": "This can take up to 30 minutes.",
       "sublineInstalled": "v{version} installed",
       "sublineNoVersion": "Version not reported yet"
+    },
+    "trust": {
+      "repairTitle": "Content keeps playing. Restore trust from this screen's settings.",
+      "stalledTitle": "The video stopped moving. The screen is fixing it on its own; if this keeps happening, check the file.",
+      "paintingTitleAt": "This screen reported a picture — last check {time}",
+      "paintingTitle": "This screen is reporting a picture",
+      "idleTitle": "Nothing is scheduled for this screen yet.",
+      "pausedTitle": "Someone paused playback at the screen. Press Resume there to continue.",
+      "checkingTitle": "Usually a reload or an update. It only turns red if this lasts over 5 minutes.",
+      "chronicTitle": "No picture reported in over 48 hours. Worth a look when you can.",
+      "notPaintingTitle": "It's online but hasn't reported a picture — it may be stuck or dark. Try Refresh, then check the screen in person.",
+      "unknownTitle": "This screen's player app can't report a picture yet. Update the app to see it here."
     }
   },
   "selection": {
