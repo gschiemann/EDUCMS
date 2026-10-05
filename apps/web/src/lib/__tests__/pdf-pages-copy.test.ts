@@ -9,6 +9,7 @@ import {
 import { libraryPollMs, ENCODE_CHECK_POLL_MS } from '../video-encode-copy';
 
 // The jest mock of next-intl is a plain function over the real en catalog.
+// eslint-disable-next-line react-hooks/rules-of-hooks -- the next-intl test mock, called once at module scope in a test file; no component renders here
 const t = useTranslations() as unknown as (k: string, v?: Record<string, string | number>) => string;
 
 const BASE = 'https://x.supabase.co/storage/v1/object/public/assets/t/pdf-pages/a/k/';

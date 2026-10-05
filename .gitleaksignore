@@ -65,5 +65,7 @@ caec73bf5e3b6780ac0b168b2ea1b329ff094ebb:apps/web/src/lib/passkey-offer.ts:gener
 27208e159fef843efcd2b554e47aaf51525ce57f:apps/web/src/lib/keep-signed-in.ts:generic-api-key:33
 # 2026-10-05 db1042af — the PDF standard's public password-padding string (ISO 32000-1 §7.6.3.3, Algorithm 2), used to open owner-password-only PDFs; not a secret.
 db1042afc0ae6cda7a838fbc47559cdc6a76bf99:apps/api/src/assets/pdf-encryption.ts:venueos-hardcoded-256bit-hex-secret:37
-# 2026-10-05 db1042af — a page-frame name (`key: 'landscape-1080'`), not a credential.
+# 2026-10-05 db1042af — a page-frame name (landscape-1080), not a credential.
 db1042afc0ae6cda7a838fbc47559cdc6a76bf99:packages/api-types/src/pdf-pages.ts:generic-api-key:49
+# 2026-10-05 9a84e65d — the comment line above, as first written, quoted that page-frame name in a form the generic rule matches.
+9a84e65d45456e918cccc679ce44df44a7a6f977:.gitleaksignore:generic-api-key:68
