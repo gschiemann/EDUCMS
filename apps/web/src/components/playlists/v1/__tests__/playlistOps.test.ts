@@ -610,6 +610,11 @@ describe('high-consequence confirmations', () => {
     expect(copy.confirmLabel).toBe('Pause everywhere');
   });
 
+  it('pause everywhere never says "on 0 screens" (rules that reach no screen yet)', () => {
+    const copy = pauseEverywhereCopy('Later', { screens: 0, groups: 1, locations: 0 }, 2);
+    expect(copy.message).toBe("It won't play until you start it again.");
+  });
+
   it('a published playlist can be deleted after an explicit warning about its rules', () => {
     const r = removePlaylistCopy(
       { name: 'Member Promotions', reach: { screens: 18, groups: 0, locations: 3 } } as PlaylistSummaryRow,

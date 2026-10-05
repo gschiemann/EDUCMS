@@ -1575,15 +1575,20 @@ export function pauseEverywhereCopy(
   // Kept in the signature (every caller passes it), no longer in the copy:
   // 2026-10-05, Greg — "we over communicate". The consequence is said in
   // screens and locations, never "publishing rules" or "schedule priority".
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _ruleCount: number,
 ): { title: string; message: string; confirmLabel: string } {
   const screens = `${reach.screens} ${reach.screens === 1 ? 'screen' : 'screens'}`;
-  const where = reach.locations > 1
-    ? `${screens} at ${reach.locations} locations`
-    : screens;
+  // Rules that reach no screen yet (an empty group, a later start) have no
+  // "on N screens" to state — never "on 0 screens".
+  const where = reach.screens <= 0
+    ? ''
+    : reach.locations > 1
+      ? ` on ${screens} at ${reach.locations} locations`
+      : ` on ${screens}`;
   return {
     title: `Pause “${name}” everywhere?`,
-    message: `It won't play on ${where} until you start it again.`,
+    message: `It won't play${where} until you start it again.`,
     confirmLabel: 'Pause everywhere',
   };
 }
