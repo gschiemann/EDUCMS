@@ -164,7 +164,23 @@ export function blockedBySigningCutover(
  * PLAYER_APK_QUARANTINE for an incident where waiting for a deploy is too
  * slow — subtractive only, so a stale value is safe.
  */
-export const QUARANTINED_PLAYER_VERSIONS: readonly string[] = [];
+export const QUARANTINED_PLAYER_VERSIONS: readonly string[] = [
+  // 2026-10-05 — RECALLED: an alert cannot reach a screen this build has left
+  // off. 1.1.21 respects a remote power-off (the panel stays off until the
+  // power key, the schedule's ON trigger, a WAKE command or an alert), and its
+  // alert path runs through the web page: WS OVERRIDE / manifest poll →
+  // `displayEmergencyHold(true)`. Measured on the first box that took it
+  // (Android 11, WebView 101): from the moment the panel went off the page
+  // made NO request at all — no manifest poll, no push heartbeat, no cache
+  // report — for 8.8 hours, while the native heartbeat kept answering every
+  // 60 s. A page that is not running cannot raise an alert, so the standby
+  // has no way out for a lockdown. (The same panel-off silence shows on
+  // 1.1.20, where the watchdog ended it within 15 minutes by waking the
+  // panel; 1.1.21 is what made it unbounded.) Stays here for good: the fix
+  // ships as a later build whose NATIVE side watches for an alert while the
+  // panel is off.
+  '1.1.21',
+];
 
 /** Manager builds recalled the same way. Env hook: MANAGER_APK_QUARANTINE. */
 export const QUARANTINED_MANAGER_VERSIONS: readonly string[] = [];

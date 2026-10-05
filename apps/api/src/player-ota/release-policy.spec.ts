@@ -106,6 +106,18 @@ describe('evaluateReleaseForFleet', () => {
     expect(evaluateReleaseForFleet({ versionName: '1.1.73', apkUrl: GH, computedSha: 'abc' }).allowed).toBe(true);
   });
 
+  it('1.1.21 is recalled in committed code: no env var is needed to keep it off the fleet', () => {
+    // 2026-10-05 — a panel this build leaves off (remote power key) cannot be
+    // reached by an alert: its web page stops running while the panel is off.
+    delete process.env.PLAYER_APK_QUARANTINE;
+    const recalled = evaluateReleaseForFleet({ versionName: '1.1.21', apkUrl: GH, computedSha: 'abc', pins: {} });
+    expect(recalled.allowed).toBe(false);
+    if (!recalled.allowed) expect(recalled.reason).toBe('version-quarantined:1.1.21');
+    // The builds on either side are untouched.
+    expect(evaluateReleaseForFleet({ versionName: '1.1.20', apkUrl: GH, computedSha: 'abc', pins: {} }).allowed).toBe(true);
+    expect(evaluateReleaseForFleet({ versionName: '1.1.22', apkUrl: GH, computedSha: 'abc', pins: {} }).allowed).toBe(true);
+  });
+
   it('OTA-05: the quarantine env hook can only SUBTRACT, so a stale value is safe', () => {
     // A stale env var can never pin the fleet to an old build (the 2026-05-15
     // footgun) — at worst it declines a good one, which is loud.
