@@ -924,9 +924,11 @@ describe('FleetCommandCenter · map stat cards', () => {
     const inbox = within(rtl.getByRole('group', { name: 'Exception inbox' }));
     // The mock's category headings, in our language — worst first.
     for (const label of ['Emergency gaps', 'No picture confirmed', 'Offline', 'Waiting on review']) {
-      expect(inbox.getByRole('button', { expanded: true, name: new RegExp(label) })).toBeInTheDocument();
+      expect(inbox.getByRole('button', { expanded: false, name: new RegExp(label) })).toBeInTheDocument();
     }
     // A row reads LOCATION on top, screen + problem underneath (mock layout).
+    expect(inbox.queryByText('Dark · Offline')).not.toBeInTheDocument();
+    fireEvent.click(inbox.getByRole('button', { name: /^Offline/ }));
     expect(inbox.getByText('Dark · Offline')).toBeInTheDocument();
     // The wire word never reaches a heading.
     expect(inbox.queryByText(/paint/i)).not.toBeInTheDocument();
@@ -938,20 +940,21 @@ describe('FleetCommandCenter · map stat cards', () => {
     // Anchored: a ROW's accessible name also ends in "Offline" ("Peak West
     // Dark · Offline") — only the heading STARTS with the category word.
     const heading = inbox.getByRole('button', { name: /^Offline/ });
-    expect(inbox.getByText('Dark · Offline')).toBeInTheDocument();
-
-    fireEvent.click(heading);
-    expect(heading).toHaveAttribute('aria-expanded', 'false');
     expect(inbox.queryByText('Dark · Offline')).not.toBeInTheDocument();
 
     fireEvent.click(heading);
+    expect(heading).toHaveAttribute('aria-expanded', 'true');
     expect(inbox.getByText('Dark · Offline')).toBeInTheDocument();
+
+    fireEvent.click(heading);
+    expect(inbox.queryByText('Dark · Offline')).not.toBeInTheDocument();
   });
 
   it('an inbox row over the map SELECTS its location’s pin — it does not navigate', () => {
     renderAtlas();
     const inbox = rtl.getByRole('group', { name: 'Exception inbox' });
 
+    fireEvent.click(within(inbox).getByRole('button', { name: /^Offline/ }));
     fireEvent.click(within(inbox).getByText('Dark · Offline').closest('button')!);
 
     // The pin lights up and the evidence panel opens…
@@ -985,6 +988,7 @@ describe('FleetCommandCenter · map stat cards', () => {
   it('"Open screen" in the inbox detail goes to the Screens page drawer (2026-09-14)', () => {
     renderAtlas();
     const inbox = rtl.getByRole('group', { name: 'Exception inbox' });
+    fireEvent.click(within(inbox).getByRole('button', { name: /^Offline/ }));
     fireEvent.click(within(inbox).getByText('Dark · Offline').closest('button')!);
     fireEvent.click(within(inbox).getByRole('button', { name: /Open screen/ }));
     expect(rtl.queryByRole('dialog', { name: /device details/ })).not.toBeInTheDocument();
@@ -996,7 +1000,7 @@ describe('FleetCommandCenter · map stat cards', () => {
       ...atlasFleet,
       locations: [
         ...atlasFleet.locations,
-        // Has an address → the server is already geocoding it.
+        // Has an address, but that does not prove an active lookup.
         { id: 'north', name: 'Peak North', slug: 'north', address: '9 North Rd, Reno, NV' },
         // No address at all → the operator has something to do.
         { id: 'south', name: 'Peak South', slug: 'south' },
@@ -1008,8 +1012,15 @@ describe('FleetCommandCenter · map stat cards', () => {
     fireEvent.click(rtl.getByRole('tab', { name: 'map' }));
 
     const card = within(rtl.getByRole('group', { name: 'Locations not on the map yet' }));
+    const toggle = card.getByRole('button', { name: /Not on the map yet/ });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(card.getByText('Peak North')).not.toBeVisible();
+    fireEvent.click(toggle);
     expect(card.getByText('Peak North')).toBeInTheDocument();
-    expect(card.getByText(/Locating…/)).toBeInTheDocument();
+    expect(card.getByText('Address not located yet.')).toBeVisible();
+    expect(card.queryByText(/Locating…/)).not.toBeInTheDocument();
+    fireEvent.click(card.getByRole('button', { name: /Review address/ }));
+    expect(switchToTenant).toHaveBeenCalledWith(expect.objectContaining({ slug: 'north' }), '/north/settings');
     expect(card.getByText('Peak South')).toBeInTheDocument();
     expect(card.getByText(/Add an address/)).toBeInTheDocument();
     // Neither of them got a pin.

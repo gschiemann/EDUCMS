@@ -1030,13 +1030,15 @@ interface Props {
    * the map's bottom edge and a fit that ignores them parks pins underneath.
    */
   fitPadBottomRight?: [number, number];
+  /** Override the space reserved for the Atlas's top-left overlay. */
+  fitPadTopLeft?: [number, number];
   /** Centre the map here (keeping the current zoom). `nonce` re-fires it. */
   panTo?: { lat: number; lng: number; nonce: number } | null;
 }
 
 export function ScreenMap({
   screens, groups = [], emergencyActive = false, onScreenClick, onMapClick, renderSidebar = true,
-  locationPins, onLocationClick, heightClass, fitPadBottomRight, panTo,
+  locationPins, onLocationClick, heightClass, fitPadBottomRight, fitPadTopLeft, panTo,
 }: Props) {
   const [query, setQuery] = useState('');
   const [flyTarget, setFlyTarget] = useState<[number, number] | null>(null);
@@ -1064,6 +1066,7 @@ export function ScreenMap({
     () => fitPadBottomRight ?? ATLAS_PAD_BOTTOM_RIGHT,
     [fitPadBottomRight],
   );
+  const atlasPadTopLeft = fitPadTopLeft ?? ATLAS_PAD_TOP_LEFT;
 
   const defaultCenter: [number, number] = points[0] ?? [39.5, -98.35];
   const defaultZoom = points.length > 0 ? 12 : 4;
@@ -1229,6 +1232,7 @@ export function ScreenMap({
           <MapContainer
             center={defaultCenter}
             zoom={defaultZoom}
+            zoomSnap={atlasMode && fitPadTopLeft ? 0.25 : 1}
             // 2026-09-14 (Greg): the scroll wheel scrolls the PAGE past the map;
             // only a pinch (trackpad = ctrl/⌘+wheel, touch = Leaflet's touchZoom),
             // the +/− buttons and double-click zoom. See <PinchZoom /> below.
@@ -1255,7 +1259,7 @@ export function ScreenMap({
                 (top-left) and the selected-location panel (top-right). */}
             <FitBounds
               points={points}
-              padTopLeft={atlasMode ? ATLAS_PAD_TOP_LEFT : undefined}
+              padTopLeft={atlasMode ? atlasPadTopLeft : undefined}
               padBottomRight={atlasMode ? atlasPadBottomRight : undefined}
               // The Atlas lets the BOUNDS choose the zoom (only a pin set with
               // no spread of its own gets a ceiling) — the flat 10 that used to
@@ -1266,7 +1270,7 @@ export function ScreenMap({
               keepFitting={atlasMode}
             />
             {atlasMode
-              ? <AtlasMapControls points={points} padTopLeft={ATLAS_PAD_TOP_LEFT} padBottomRight={atlasPadBottomRight} />
+              ? <AtlasMapControls points={points} padTopLeft={atlasPadTopLeft} padBottomRight={atlasPadBottomRight} />
               : <FitAllControl points={points} />}
             {atlasMode ? (
               <LocationPinLayer pins={locationPins!} onLocationClick={onLocationClick} />

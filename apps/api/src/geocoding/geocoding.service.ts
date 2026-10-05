@@ -39,7 +39,7 @@ export interface GeocodeBias {
  *      Nominatim is the final fallback for the (rare) address Census also
  *      misses, and for anything the "onelineaddress" free-text parser
  *      doesn't like the shape of.
- *   3. **OSM Nominatim** (US-pinned, free) — last-resort fallback so the
+ *   3. **OSM Nominatim** (US + Canada, free) — last-resort fallback so the
  *      picker always returns SOMETHING.
  *
  * Google + Nominatim honour an optional region bias (`bias`): Google via
@@ -75,28 +75,36 @@ export class GeocodingService {
     if (q.length < 3) return [];
     const limit = opts.limit ?? 5;
     const bias = this.validBias(opts.bias);
+    // Census has no Canadian coverage. Recognise country, province or postal
+    // code before it can return a same-named US street for a Canadian address.
+    const canadian =
+      /\bCanada\s*$|\b[ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z][ -]?\d[ABCEGHJ-NPRSTV-Z]\d\b|(?:,|\n)\s*(?:AB|BC|MB|NB|NL|NS|NT|NU|ON|PE|QC|SK|YT)(?:\s*,|\s*$|\s+[ABCEGHJ-NPRSTVXY]\d)/i.test(
+        q,
+      );
 
     if (this.googleKey) {
       try {
-        const hits = await this.google(q, limit, bias);
+        const hits = await this.google(q, limit, bias, canadian);
         if (hits.length) return hits;
       } catch (e) {
         this.logger.warn(
-          `Google geocode failed for "${q.slice(0, 60)}", falling back to Census/OSM: ${(e as Error).message}`,
+          `Google geocode failed for "${q.slice(0, 60)}", falling back to ${canadian ? 'OSM' : 'Census/OSM'}: ${(e as Error).message}`,
         );
       }
     }
     // Keyless primary: Census Bureau TIGER/Line address ranges have real US
     // house-number coverage (mobile bug #216). Try it before Nominatim.
-    try {
-      const hits = await this.census(q);
-      if (hits.length) return hits;
-    } catch (e) {
-      this.logger.warn(
-        `Census geocode failed for "${q.slice(0, 60)}", falling back to OSM: ${(e as Error).message}`,
-      );
+    if (!canadian) {
+      try {
+        const hits = await this.census(q);
+        if (hits.length) return hits;
+      } catch (e) {
+        this.logger.warn(
+          `Census geocode failed for "${q.slice(0, 60)}", falling back to OSM: ${(e as Error).message}`,
+        );
+      }
     }
-    return this.nominatim(q, limit, bias);
+    return this.nominatim(q, limit, bias, canadian);
   }
 
   /**
@@ -132,7 +140,9 @@ export class GeocodingService {
           }
         }
       } catch (e) {
-        this.logger.warn(`Google reverse-geocode failed, falling back to OSM: ${(e as Error).message}`);
+        this.logger.warn(
+          `Google reverse-geocode failed, falling back to OSM: ${(e as Error).message}`,
+        );
       }
     }
 
@@ -145,9 +155,16 @@ export class GeocodingService {
         userAgent: 'VenueOS-Geocoder/1.0 (+https://venue-os.app)',
       });
       if (r.status >= 200 && r.status < 300) {
-        const data = JSON.parse(r.body.toString('utf8')) as { display_name?: string };
+        const data = JSON.parse(r.body.toString('utf8')) as {
+          display_name?: string;
+        };
         if (data?.display_name) {
-          return { display_name: data.display_name, lat: String(lat), lon: String(lng), source: 'nominatim' };
+          return {
+            display_name: data.display_name,
+            lat: String(lat),
+            lon: String(lng),
+            source: 'nominatim',
+          };
         }
       }
     } catch {
@@ -163,10 +180,18 @@ export class GeocodingService {
     return b;
   }
 
-  private async google(q: string, limit: number, bias?: GeocodeBias): Promise<GeocodeResult[]> {
+  private async google(
+    q: string,
+    limit: number,
+    bias?: GeocodeBias,
+    canadian = false,
+  ): Promise<GeocodeResult[]> {
     let url =
       `https://maps.googleapis.com/maps/api/geocode/json` +
-      `?address=${encodeURIComponent(q)}&components=country:US&key=${encodeURIComponent(this.googleKey!)}`;
+      `?address=${encodeURIComponent(q)}&region=${canadian ? 'ca' : 'us'}&key=${encodeURIComponent(this.googleKey!)}`;
+    // A US region bias is soft so a Canadian city can appear in autocomplete;
+    // an explicitly Canadian address must stay in Canada.
+    if (canadian) url += '&components=country:CA';
     if (bias) {
       const d = GeocodingService.BIAS_DEG;
       // bounds=SWlat,SWlng|NElat,NElng
@@ -180,7 +205,8 @@ export class GeocodingService {
       accept: 'application/json',
       userAgent: 'VenueOS-Geocoder/1.0',
     });
-    if (r.status < 200 || r.status >= 300) throw new Error(`Google HTTP ${r.status}`);
+    if (r.status < 200 || r.status >= 300)
+      throw new Error(`Google HTTP ${r.status}`);
     const data = JSON.parse(r.body.toString('utf8')) as {
       status: string;
       error_message?: string;
@@ -191,7 +217,9 @@ export class GeocodingService {
     };
     if (data.status === 'ZERO_RESULTS') return [];
     if (data.status !== 'OK') {
-      throw new Error(`Google status ${data.status}${data.error_message ? ` (${data.error_message})` : ''}`);
+      throw new Error(
+        `Google status ${data.status}${data.error_message ? ` (${data.error_message})` : ''}`,
+      );
     }
     return (data.results || [])
       .filter((x) => x.formatted_address && x.geometry?.location)
@@ -269,10 +297,15 @@ export class GeocodingService {
     return titleCase(raw);
   }
 
-  private async nominatim(q: string, limit: number, bias?: GeocodeBias): Promise<GeocodeResult[]> {
+  private async nominatim(
+    q: string,
+    limit: number,
+    bias?: GeocodeBias,
+    canadian = false,
+  ): Promise<GeocodeResult[]> {
     let url =
       `https://nominatim.openstreetmap.org/search` +
-      `?format=json&addressdetails=0&countrycodes=us&limit=${limit}&q=${encodeURIComponent(q)}`;
+      `?format=json&addressdetails=0&countrycodes=${canadian ? 'ca' : 'us,ca'}&limit=${limit}&q=${encodeURIComponent(q)}`;
     if (bias) {
       const d = GeocodingService.BIAS_DEG;
       // viewbox=lon1,lat1,lon2,lat2 (left,top,right,bottom); bounded=0 = bias not restrict.

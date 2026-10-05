@@ -215,6 +215,85 @@ describe('GeocodingService.search — provider chain', () => {
   });
 });
 
+describe('GeocodingService.search — Canadian locations', () => {
+  it.each([
+    '100 Queen St W, Toronto, ON, Canada',
+    '100 Queen St W, Toronto, ON',
+    '453 W 12th Ave, Vancouver, BC V5Y 1V4',
+    '453 W 12th Ave V5Y1V4',
+  ])(
+    'skips the US Census and restricts the fallback to Canada: %s',
+    async (address) => {
+      delete process.env.GOOGLE_MAPS_API_KEY;
+      mockedFetch.mockResolvedValueOnce(
+        nominatimHit(address, '43.653', '-79.384'),
+      );
+      const results = await new GeocodingService().search(address);
+      expect(results[0].source).toBe('nominatim');
+      expect(mockedFetch).toHaveBeenCalledTimes(1);
+      const url = new URL(mockedFetch.mock.calls[0][0]);
+      expect(url.hostname).toBe('nominatim.openstreetmap.org');
+      expect(url.searchParams.get('countrycodes')).toBe('ca');
+    },
+  );
+
+  it('allows Canadian autocomplete results without an explicit country', async () => {
+    delete process.env.GOOGLE_MAPS_API_KEY;
+    mockedFetch.mockResolvedValueOnce(censusEmpty());
+    mockedFetch.mockResolvedValueOnce(
+      nominatimHit('Toronto, Ontario, Canada', '43.653', '-79.384'),
+    );
+    await new GeocodingService().search('Toronto');
+    expect(
+      new URL(mockedFetch.mock.calls[1][0]).searchParams.get('countrycodes'),
+    ).toBe('us,ca');
+  });
+
+  it('uses Canada for Google and falls back to Canada when Google misses', async () => {
+    process.env.GOOGLE_MAPS_API_KEY = 'test-key-not-real';
+    mockedFetch.mockResolvedValueOnce(googleZeroResults());
+    mockedFetch.mockResolvedValueOnce(
+      nominatimHit('Vancouver, Canada', '49.26', '-123.11'),
+    );
+    const results = await new GeocodingService().search(
+      '453 W 12th Ave, Vancouver, BC',
+      {
+        bias: { lat: 49.26, lng: -123.11 },
+      },
+    );
+    expect(results[0].source).toBe('nominatim');
+    expect(mockedFetch).toHaveBeenCalledTimes(2);
+    const google = new URL(mockedFetch.mock.calls[0][0]);
+    expect(google.searchParams.get('components')).toBe('country:CA');
+    expect(google.searchParams.get('region')).toBe('ca');
+    expect(google.searchParams.has('bounds')).toBe(true);
+    const fallback = new URL(mockedFetch.mock.calls[1][0]);
+    expect(fallback.searchParams.get('countrycodes')).toBe('ca');
+    expect(fallback.searchParams.has('viewbox')).toBe(true);
+  });
+
+  it('keeps US Google searches biased to the US without excluding Canada', async () => {
+    process.env.GOOGLE_MAPS_API_KEY = 'test-key-not-real';
+    mockedFetch.mockResolvedValueOnce(googleHit('Seattle, WA', 47.6, -122.3));
+    await new GeocodingService().search('Seattle, WA');
+    const url = new URL(mockedFetch.mock.calls[0][0]);
+    expect(url.searchParams.get('region')).toBe('us');
+    expect(url.searchParams.has('components')).toBe(false);
+  });
+
+  it('does not mistake a US city or street containing Canada for the country', async () => {
+    delete process.env.GOOGLE_MAPS_API_KEY;
+    mockedFetch.mockResolvedValueOnce(
+      censusHit('123 CANADA RD, LA CANADA FLINTRIDGE, CA, 91011', -118.2, 34.2),
+    );
+    const results = await new GeocodingService().search(
+      '123 Canada Rd, La Canada Flintridge, CA 91011',
+    );
+    expect(results[0].source).toBe('census');
+    expect(mockedFetch.mock.calls[0][0]).toContain('geocoding.geo.census.gov');
+  });
+});
+
 describe('GeocodingService.reverse — unaffected by the Census addition (no reverse endpoint there)', () => {
   beforeEach(() => {
     delete process.env.GOOGLE_MAPS_API_KEY;

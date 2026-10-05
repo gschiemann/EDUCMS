@@ -35,7 +35,7 @@
  * graphic on this page is hand-rolled inline SVG.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { ExpectedThumb } from '@/components/screens/v3/ExpectedThumb';
 import { WebsitePreviewThumb } from '@/components/assets/WebsitePreviewThumb';
@@ -724,9 +724,8 @@ export function FleetCommandCenter({
 
   /**
    * Locations the map cannot honestly place, each with the reason and — when
-   * the fix is the operator's — where the fix lives. A location WITH an
-   * address is not the operator's problem: the server geocodes it on its own
-   * within the hour, so that row says so instead of sending them somewhere.
+   * the fix is the operator's — where the fix lives. An address without
+   * coordinates is unresolved; its presence does not prove a lookup is running.
    */
   const unmappedLocations = useMemo(
     () =>
@@ -768,7 +767,9 @@ export function FleetCommandCenter({
     fc.inboxAll.forEach((r, i) => m.set(r, inboxRowKey(r, i)));
     return m;
   }, [fc.inboxAll]);
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<ExceptionRow['kind']>>(new Set());
+  const [expandedGroups, setExpandedGroups] = useState<Set<ExceptionRow['kind']>>(new Set());
+  const [unmappedOpen, setUnmappedOpen] = useState(false);
+  const unmappedListId = useId();
   /** Which inbox row is under the operator's cursor of attention. */
   const [selectedRowKey, setSelectedRowKey] = useState<string | null>(null);
   const selectedRow = useMemo(
@@ -1569,6 +1570,7 @@ export function FleetCommandCenter({
                   Panels sit above Leaflet's panes (z-[1000] > .leaflet-pane's
                   400) and the map keeps panning behind them. */}
               <LocationMapSurface
+                compact
                 locationPins={locationPins} total={mappableTotal} onLocationClick={selectLocation} panTo={panTarget}
                 empty={(
                   <div className="h-[60vh] min-h-[380px] flex flex-col items-center justify-center text-center px-6">
@@ -1624,13 +1626,13 @@ export function FleetCommandCenter({
 
                     <div className="flex-1 min-h-0 overflow-y-auto">
                       {inboxGroups.map((g) => {
-                        const open = !collapsedGroups.has(g.kind);
+                        const open = expandedGroups.has(g.kind);
                         const Chevron = open ? ChevronUp : ChevronDown;
                         return (
                           <div key={g.kind}>
                             <button
                               type="button"
-                              onClick={() => setCollapsedGroups((prev) => {
+                              onClick={() => setExpandedGroups((prev) => {
                                 const next = new Set(prev);
                                 if (next.has(g.kind)) next.delete(g.kind);
                                 else next.add(g.kind);
@@ -1926,21 +1928,24 @@ export function FleetCommandCenter({
                     role="group"
                     aria-label="Locations not on the map yet"
                   >
-                    <h4 className="text-[12px] font-black text-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => setUnmappedOpen((open) => !open)}
+                      aria-expanded={unmappedOpen}
+                      aria-controls={unmappedListId}
+                      className="w-full flex items-center gap-1.5 text-left text-[12px] font-black text-slate-800"
+                    >
                       Not on the map yet
-                      <span className="ml-1.5 font-black text-slate-400">{unmappedLocations.length}</span>
-                    </h4>
-                    <ul className="mt-1.5 space-y-1.5 max-h-32 overflow-y-auto">
+                      <span className="font-black text-slate-400">{unmappedLocations.length}</span>
+                      {unmappedOpen ? <ChevronUp className="w-3.5 h-3.5 ml-auto" aria-hidden /> : <ChevronDown className="w-3.5 h-3.5 ml-auto" aria-hidden />}
+                    </button>
+                    <ul id={unmappedListId} hidden={!unmappedOpen} className="mt-1.5 space-y-1.5 max-h-32 overflow-y-auto">
                       {unmappedLocations.map(({ row, hasAddress }) => (
                         <li key={row.tenantId} className="min-w-0">
                           <span className="block text-[12px] font-bold text-slate-800 truncate">{row.name}</span>
                           {hasAddress ? (
-                            // The server geocodes an address-only location on
-                            // its own (hourly). Sending the operator to "fix"
-                            // something that is already being fixed is worse
-                            // than telling them to wait.
                             <span className="block text-[11px] font-semibold text-slate-400">
-                              Locating… we&rsquo;re placing this address now
+                              Address not located yet.
                             </span>
                           ) : (
                             <button
@@ -1951,6 +1956,17 @@ export function FleetCommandCenter({
                               style={{ color: 'var(--brand-primary, #4f46e5)' }}
                             >
                               Add an address →
+                            </button>
+                          )}
+                          {hasAddress && (
+                            <button
+                              type="button"
+                              onClick={() => enter(row, 'settings')}
+                              disabled={!!switchingId}
+                              className="text-[11px] font-black hover:underline underline-offset-2 disabled:opacity-60"
+                              style={{ color: 'var(--brand-primary, #4f46e5)' }}
+                            >
+                              Review address →
                             </button>
                           )}
                         </li>

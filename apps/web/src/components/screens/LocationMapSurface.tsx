@@ -6,8 +6,10 @@ import type { LucideIcon } from "lucide-react";
 import type { LocationPin } from "./ScreenMap";
 import { ScreenMapClient } from "./ScreenMapClient";
 
-/** Leave room for the selected location and filters; keep the observer prop stable. */
-const FIT_PADDING: [number, number] = [400, 130];
+/** Compact cards leave the map's width available to the locations. */
+const FIT_TOP_LEFT: [number, number] = [48, 90];
+const FIT_BOTTOM_RIGHT: [number, number] = [180, 100];
+const PANEL_FIT_BOTTOM_RIGHT: [number, number] = [400, 130];
 
 /** Shared by the corporate dashboard and Screens: one map, one navigation layout. */
 export function LocationMapSurface({
@@ -15,6 +17,7 @@ export function LocationMapSurface({
   total,
   onLocationClick,
   panTo,
+  compact = false,
   empty,
   children,
 }: {
@@ -22,6 +25,8 @@ export function LocationMapSurface({
   total: number;
   onLocationClick: (id: string) => void;
   panTo?: { lat: number; lng: number; nonce: number } | null;
+  /** Fleet dashboard opens with collapsed cards; Screens keeps its navigation rail. */
+  compact?: boolean;
   empty: ReactNode;
   children?: ReactNode;
 }) {
@@ -40,7 +45,8 @@ export function LocationMapSurface({
           onLocationClick={onLocationClick}
           panTo={panTo}
           heightClass="h-[72vh] min-h-[520px] max-h-[900px]"
-          fitPadBottomRight={FIT_PADDING}
+          fitPadTopLeft={compact ? FIT_TOP_LEFT : undefined}
+          fitPadBottomRight={compact ? FIT_BOTTOM_RIGHT : PANEL_FIT_BOTTOM_RIGHT}
         />
       )}
       {children}
