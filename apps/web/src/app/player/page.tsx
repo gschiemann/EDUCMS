@@ -179,6 +179,17 @@ import {
   type CacheDriveState,
   type ReadinessItem,
 } from './mediaReadiness';
+// Unplayable items (2026-10-05): a file this screen failed to load or decode —
+// or a type it cannot show (audio) — is out of the rotation like a file still
+// downloading. Pure module; the shapes are tested in unplayableMedia.test.ts.
+import {
+  UNPLAYABLE_RETRY_MS,
+  UnplayableLedger,
+  everyItemUnplayable,
+  pickHeldSlide,
+  playerCanShow,
+  unplayableKey,
+} from './unplayableMedia';
 import { findSlideImage, isImageLoaded } from './slideLoaded';
 import {
   markRefreshAckReported,
@@ -4923,9 +4934,47 @@ function PlayerPage() {
     (index: number) => { const it = sorted[index]; return !!it && readyIds.has(String(it.id)); },
     [sorted, readyIds],
   );
+  // ── Unplayable items (2026-10-05, media beta-test campaign) ────────────
+  // One undecodable video froze a free-running screen for good on its SECOND
+  // visit, and a broken image (or an audio file — there is no audio branch,
+  // it fell through to <img>) was a black slide every lap. The failure was
+  // recorded (`markItemFailed`) but only to detect "EVERY item failed"; the
+  // slide choice never asked. So the failed <video> stayed mounted as the
+  // hidden next-up slide, came back as the SAME errored element, never fired
+  // `error` again — and a video advances only on `ended`/`error` (the free-run
+  // heartbeat skips videos; the stall watchdog reads a paused element as
+  // intentional). Now a failed item is out of the rotation exactly like a file
+  // still downloading: free-run steps over it, a synced group holds its slot,
+  // nothing playable shows the "Content unavailable" card. Keyed by item +
+  // file + digest, so a re-publish is tried at once; the same file again after
+  // UNPLAYABLE_RETRY_MS, judged on the minute `safetyClock`. In memory only —
+  // playbackSafety.ts persists the one class that must survive a reload.
+  // NEVER for an emergency playlist: how an alert's content plays is not
+  // changed by a signage reliability fix (owner sign-off required).
+  const unplayableLedgerRef = useRef(new UnplayableLedger());
+  const [unplayableRev, setUnplayableRev] = useState(0);
+  const unplayableIds = useMemo<ReadonlySet<string>>(() => {
+    const out = new Set<string>();
+    if (playlist?.isEmergency) return out;
+    for (const item of sorted) {
+      const key = unplayableKey({ id: String(item.id), url: String(item.asset?.fileUrl || ''), hash: item.asset?.fileHash ?? null });
+      if (!playerCanShow(item.asset?.mimeType) || unplayableLedgerRef.current.isUnplayable(key, safetyClock)) out.add(String(item.id));
+    }
+    return out;
+    // unplayableRev: the ledger is a ref — a recorded failure bumps it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playlist?.isEmergency, sorted, safetyClock, unplayableRev]);
+  const unplayableAt = useCallback(
+    (index: number) => { const it = sorted[index]; return !!it && unplayableIds.has(String(it.id)); },
+    [sorted, unplayableIds],
+  );
+  const allItemsUnplayable = useMemo(
+    () => !playlist?.isEmergency && everyItemUnplayable(sorted.length, unplayableAt),
+    [playlist?.isEmergency, sorted.length, unplayableAt],
+  );
   const playableAt = useCallback(
-    (index: number) => readyAt(index) && isItemValid(sorted[index]),
-    [sorted, readyAt, isItemValid],
+    (index: number) => readyAt(index) && isItemValid(sorted[index]) && !unplayableAt(index),
+    [sorted, readyAt, isItemValid, unplayableAt],
   );
   const activeSlot = useMemo(
     () => resolveActiveSlot({ counter: currentIndex, n: sorted.length, syncLocked, playable: playableAt, ready: readyAt }),
@@ -4934,13 +4983,37 @@ function PlayerPage() {
   // The slide a synced screen keeps on glass while its timeline slot is held
   // (an unready file must not be mounted; skipping would break the group's
   // phase — on-screen = f(manifest, syncedNow)). Null until something shows.
-  const [lastShownIndex, setLastShownIndex] = useState<number | null>(null);
+  // The last TWO shown (newest first): when the slide on glass is the one that
+  // just failed, the hold falls back to the one before it, never to a slide
+  // that is no longer mounted (black) — pickHeldSlide in unplayableMedia.ts.
+  const [recentShown, setRecentShown] = useState<(number | null)[]>([]);
   useEffect(() => {
-    if (activeSlot.activeIndex !== null && !activeSlot.held) setLastShownIndex(activeSlot.activeIndex);
+    const shown = activeSlot.activeIndex;
+    if (shown !== null && !activeSlot.held) setRecentShown((prev) => (prev[0] === shown ? prev : [shown, prev[0] ?? null]));
   }, [activeSlot]);
   const displayIndex: number | null = activeSlot.held
-    ? (lastShownIndex !== null && lastShownIndex < sorted.length && readyAt(lastShownIndex) ? lastShownIndex : null)
+    // An emergency playlist holds exactly as before: the last shown slide only.
+    ? pickHeldSlide(playlist?.isEmergency ? recentShown.slice(0, 1) : recentShown, sorted.length, (i) => readyAt(i) && !unplayableAt(i))
     : activeSlot.activeIndex;
+  // The item on glass, for the failure callback below: only THAT item failing
+  // means nothing is shown. A hidden slide failing at mount must not flip the
+  // render proof to "Loading content" under a picture that is playing.
+  const displayedItemIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    const it = displayIndex !== null ? sorted[displayIndex] : null;
+    displayedItemIdRef.current = it ? String(it.id) : null;
+  }, [displayIndex, sorted]);
+  // One clear line per item this screen cannot show at all (audio today).
+  const unshowableLoggedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (playlist?.isEmergency) return;
+    for (const item of sorted) {
+      const id = String(item.id);
+      if (playerCanShow(item.asset?.mimeType) || unshowableLoggedRef.current.has(id)) continue;
+      unshowableLoggedRef.current.add(id);
+      console.warn(`[Player] this screen cannot show ${item.asset?.mimeType} items — left out of the rotation: ${item.asset?.fileUrl}`);
+    }
+  }, [playlist?.isEmergency, sorted]);
   const normalFilesSetAside = useMemo(() => !playlist?.isEmergency && sorted.length > 0 &&
     sorted.every(item => item.asset && playbackSafety().blocked(safetyUrlFor(item), item.asset.fileHash, safetyClock)),
     [playlist?.isEmergency, sorted, safetyClock]);
@@ -5250,7 +5323,9 @@ function PlayerPage() {
     // `idle:content-downloading` (nothing is ready, so the readiness gate says
     // "waiting") — the dashboard read "Downloading" for six hours over a screen
     // that was downloading nothing. Same card, same proof.
-    const contentUnavailable = allAssetsFailed || normalFilesSetAside;
+    // `allItemsUnplayable` (2026-10-05): every item failed on this screen or
+    // is a type it cannot show — the same card, the same proof.
+    const contentUnavailable = allAssetsFailed || normalFilesSetAside || allItemsUnplayable;
     const playingContent = phase === 'playing' && !!playlist && !playbackStopped && !contentUnavailable &&
       (mediaReady || !!(playlist as any)?.template);
     const rendering = emergencyOn || playingContent;
@@ -5304,7 +5379,7 @@ function PlayerPage() {
       sig = `paused:${currentPlaylistSigRef.current || (playlist as any)?.id || 'unknown'}`;
     }
     renderStateRef.current = { rendering, sig: sig.slice(0, 128), kind };
-  }, [phase, playlist, playbackStopped, activeEmergency, allAssetsFailed, normalFilesSetAside, mediaReady, activeSlot.waitingForDownload]);
+  }, [phase, playlist, playbackStopped, activeEmergency, allAssetsFailed, normalFilesSetAside, allItemsUnplayable, mediaReady, activeSlot.waitingForDownload]);
   // Support/test observability, like __eduSyncState and __eduLoopBoundary: what
   // this page would prove RIGHT NOW. An idle proof is only posted every five
   // minutes (IDLE_PROOF_INTERVAL_MS), so nothing else can see it promptly.
@@ -9267,7 +9342,7 @@ function PlayerPage() {
   }, [playlist]);
   // A held sync slot keeps the LAST SHOWN slide on glass — of THIS item set.
   // A different set means that index names different content: forget it.
-  useEffect(() => { setLastShownIndex(null); }, [playlistItemsSig]);
+  useEffect(() => { setRecentShown([]); }, [playlistItemsSig]);
 
   // Refs the heartbeat reads — kept fresh by the render-time mirror below.
   const slideStartedAtRef = useRef<number>(Date.now());
@@ -9343,6 +9418,10 @@ function PlayerPage() {
     }, 30_000);
     return () => clearInterval(t);
   }, [allAssetsFailed]);
+  // (No 30 s retry for `allItemsUnplayable`, deliberately — 2026-10-05: every
+  // retry re-mounts the files, and a broken one shows black until its error
+  // arrives — 22 s for an MP4 with no index. The card stays up through the
+  // cool-off; a re-publish is tried at once.)
 
   useEffect(() => {
     if (phase !== 'playing' || !playlist?.items?.length) return;
@@ -10031,11 +10110,25 @@ function PlayerPage() {
   // early returns have already executed on a given render.
   const markItemFailed = useCallback((itemId: string | undefined) => {
     if (!itemId || !sorted.length) return;
-    setMediaReady(false);
+    // Only the slide ON GLASS failing means nothing is shown (2026-10-05): a
+    // hidden next-up slide failing at mount used to flip the proof to
+    // "Loading content" under a picture that was playing. An emergency
+    // playlist keeps the old rule exactly.
+    if (playlist?.isEmergency || String(itemId) === displayedItemIdRef.current) setMediaReady(false);
     const allIds = sorted.map((s: any) => s.id as string).filter(Boolean);
     const allFailed = assetsFailedTrackerRef.current.recordFailure(itemId, allIds);
     if (allFailed) setAllAssetsFailed(true);
-  }, [sorted]);
+    // Unplayable items (2026-10-05): out of the rotation until the file changes
+    // or the retry comes round — see `unplayableIds`. Never for an emergency.
+    if (playlist?.isEmergency) return;
+    const item = sorted.find((s) => String(s.id) === String(itemId));
+    if (!item) return;
+    const key = unplayableKey({ id: String(item.id), url: String(item.asset?.fileUrl || ''), hash: item.asset?.fileHash ?? null });
+    if (unplayableLedgerRef.current.record(key, Date.now())) {
+      console.warn(`[Player] this screen could not play an item — left out of the rotation for ${Math.round(UNPLAYABLE_RETRY_MS / 60_000)} min: ${item.asset?.fileUrl}`);
+      setUnplayableRev((n) => n + 1);
+    }
+  }, [sorted, playlist?.isEmergency]);
   const markItemSucceeded = useCallback(() => {
     assetsFailedTrackerRef.current.recordSuccess();
     setAllAssetsFailed(false);
@@ -11843,7 +11936,7 @@ function PlayerPage() {
         }
       }}
     >
-      {currentItem && !playbackStopped && !allAssetsFailed && !normalFilesSetAside ? (
+      {currentItem && !playbackStopped && !allAssetsFailed && !normalFilesSetAside && !allItemsUnplayable ? (
         <div
           className={`relative w-full h-full flex items-center justify-center ${isPlaylistInteractive ? '' : 'pointer-events-none'}`}
           style={{
@@ -11910,6 +12003,16 @@ function PlayerPage() {
             // unready file, which must not be pre-mounted either.
             const isNext = !conservativeNormalPlayback && activeSlot.nextIndex !== null && index === activeSlot.nextIndex;
             if (!ready) return null;
+            // Unplayable (2026-10-05): a failed item is NOT mounted. Mounting
+            // it again after the cool-off is the retry — a fresh element, so
+            // a file still broken fires `error` again instead of coming back
+            // as the same silent, errored element (the second-visit freeze).
+            if (unplayableIds.has(String(item.id))) return null;
+            // A failure only advances the rotation when the slide that failed
+            // is the one ON GLASS: a hidden next-up video erroring at mount
+            // used to cut the current slide short and land on the broken one.
+            // An emergency playlist keeps the old rule exactly.
+            const advanceOnFailure = isActive || playlist?.isEmergency === true;
             // Render video for active OR next-up so the next clip
             // is already decoded by the time it becomes active.
             if (isVid && !isActive && !isNext) return null;
@@ -11974,7 +12077,7 @@ function PlayerPage() {
                   sourceHash={item.asset.fileHash.toLowerCase()} isActive={isActive} classes={classes}
                   onPlaying={markItemSucceeded} onError={() => {
                     markItemFailed(item.id);
-                    if (!syncActiveRef.current) advanceSlide();
+                    if (!syncActiveRef.current && advanceOnFailure) advanceSlide();
                   }} />;
               }
               if (loopChoice.backend === 'twodeck') {
@@ -11989,7 +12092,7 @@ function PlayerPage() {
                     onError={() => {
                       console.warn('[Player] video error, skipping:', videoSrc);
                       markItemFailed(item.id);
-                      if (!syncActiveRef.current) advanceSlide();
+                      if (!syncActiveRef.current && advanceOnFailure) advanceSlide();
                     }}
                   />
                 );
@@ -12022,7 +12125,7 @@ function PlayerPage() {
                   onError={() => {
                     console.warn('[Player] video error, skipping:', videoSrc);
                     markItemFailed(item.id);
-                    if (!syncActiveRef.current) advanceSlide();
+                    if (!syncActiveRef.current && advanceOnFailure) advanceSlide();
                   }}
                   onPlaying={markItemSucceeded}
                   syncItemIndex={index}
@@ -12180,7 +12283,10 @@ function PlayerPage() {
                 onError={() => {
                   console.warn('[Player] image error, skipping:', resUrl);
                   markItemFailed(item.id);
-                  if (isActive) advanceSlide();
+                  // Under frame-locked sync the conductor owns advancement: the
+                  // failed slot is HELD (2026-10-05), never skipped out of band.
+                  // An emergency playlist keeps its old rule exactly.
+                  if (isActive && (playlist?.isEmergency === true || !syncActiveRef.current)) advanceSlide();
                 }}
               />
             );
@@ -12473,7 +12579,7 @@ function PlayerPage() {
                 Pre-pair splash (KioskSplash mode='pairing') still
                 separate — there's no good way to mash a 6-char code
                 into this layout and we want the code to be the hero. */}
-            {allAssetsFailed || normalFilesSetAside ? (
+            {allAssetsFailed || normalFilesSetAside || allItemsUnplayable ? (
               // 2026-07-01 — LAUNCH-SPRINT player deep pass, blank-screen
               // class (b): every item in the live playlist has failed to
               // load (bulk Supabase outage, stale signed URLs after a

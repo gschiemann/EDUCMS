@@ -123,6 +123,11 @@ export interface BootOptions {
   videoFixtures?: Record<string, string>;
   /** HTTP statuses `POST …/refresh-ack` answers with, in order; the last one repeats. Default [200]. */
   refreshAckStatuses?: number[];
+  /**
+   * Extra routes, registered AFTER the helper's own (so they win over its
+   * `api.invalid` catch-all) and before the page loads — e.g. a broken file.
+   */
+  extraRoutes?: (page: Page) => Promise<void>;
 }
 
 export interface BootedPlayer {
@@ -293,6 +298,8 @@ export async function bootMockPlayer(page: Page, opts: BootOptions): Promise<Boo
     const status = statuses[Math.min(refreshAcks.length - 1, statuses.length - 1)];
     await ok(route, status < 300 ? { ok: true, refreshAcked: true } : { code: 'X' }, status);
   });
+
+  if (opts.extraRoutes) await opts.extraRoutes(page);
 
   await page.goto('/player?fp=' + id.fingerprint);
   return { telemetry, refreshAcks };
