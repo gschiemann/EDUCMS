@@ -29,13 +29,20 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   // Universally lock the dashboard when backend reports an emergency
   // NOTE: this hook MUST run on every render (hook-rule), so it stays above
   // any conditional return.
+  //
+  // 2026-10-05 — alert targeting. `emergencyStatus` only describes the
+  // tenant-wide ("All screens") alert; a group or one-screen alert never
+  // touches it, so the same 30 s tenant poll now also carries
+  // `emergencyScopedAlertActive`. Either one locks the dashboard and puts the
+  // overlay (which lists each live alert with its own all-clear) on screen.
+  // The store is only written when the answer CHANGES, so an overrideId the
+  // trigger modal just recorded is not wiped by the next poll.
   useEffect(() => {
     if (tenant) {
-      if (tenant.emergencyStatus && tenant.emergencyStatus !== 'INACTIVE') {
-        setEmergencyActive(true);
-      } else {
-        setEmergencyActive(false);
-      }
+      const tenantWide = !!(tenant.emergencyStatus && tenant.emergencyStatus !== 'INACTIVE');
+      const targeted = (tenant as { emergencyScopedAlertActive?: boolean }).emergencyScopedAlertActive === true;
+      const active = tenantWide || targeted;
+      if (active !== useAppStore.getState().isEmergencyActive) setEmergencyActive(active);
     }
   }, [tenant, setEmergencyActive]);
 

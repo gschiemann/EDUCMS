@@ -1,6 +1,10 @@
 "use server";
 
 import { fetchWithTimeout } from '@/lib/fetch-timeout';
+// 2026-10-05 — alert targeting. The request bodies are built by pure helpers
+// so "All screens" (no `target`) is provably the exact body sent before
+// targeting existed (lib/__tests__/emergency-target.test.ts).
+import { emergencyAllClearBody, emergencyTriggerBody } from '@/lib/emergency-target';
 
 // LIFE-SAFETY (2026-06-16): a hung API used to leave the operator stuck on
 // "Sending alert to all screens…" forever. Bound every emergency POST so a
@@ -16,9 +20,23 @@ interface EmergencyPayload {
   playlistId?: string;
   triggeredBy: string;
   token?: string;
+  /**
+   * One group or one screen. Absent (the default) = All screens: the request
+   * is the tenant-scope body this action has always sent, unchanged.
+   */
+  target?: { scopeType: 'group' | 'device'; scopeId: string };
 }
 
-export async function broadcastEmergency(payload: EmergencyPayload) {
+/** What `broadcastEmergency` resolves with. It never throws. */
+export interface BroadcastEmergencyResult {
+  success: boolean;
+  error?: string;
+  overrideId?: string;
+  /** Group / one-screen alerts: how many screens the server took over. */
+  affectedScreenCount?: number;
+}
+
+export async function broadcastEmergency(payload: EmergencyPayload): Promise<BroadcastEmergencyResult> {
   const API_URL = process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
 
   let res: Response;
@@ -31,11 +49,7 @@ export async function broadcastEmergency(payload: EmergencyPayload) {
           'Content-Type': 'application/json',
           ...(payload.token ? { Authorization: `Bearer ${payload.token}` } : {})
         },
-        body: JSON.stringify({
-          scopeType: 'tenant',
-          scopeId: payload.schoolId,
-          overridePayload: { severity: 'CRITICAL', type: payload.type, playlistId: payload.playlistId },
-        }),
+        body: JSON.stringify(emergencyTriggerBody(payload)),
       },
       EMERGENCY_FETCH_TIMEOUT_MS,
     );
@@ -57,9 +71,12 @@ export async function broadcastEmergency(payload: EmergencyPayload) {
   // trigger with its eventual all-clear in the audit log. Falls back to
   // success-only payload if the API ever omits it.
   let overrideId: string | undefined;
+  // Group / one-screen alerts: how many screens the server says it took over.
+  let affectedScreenCount: number | undefined;
   try {
     const data = await res.json();
     if (data && typeof data.overrideId === 'string') overrideId = data.overrideId;
+    if (data && typeof data.affectedScreenCount === 'number') affectedScreenCount = data.affectedScreenCount;
   } catch {
     /* response body not JSON; ignore — overrideId stays undefined */
   }
@@ -70,13 +87,20 @@ export async function broadcastEmergency(payload: EmergencyPayload) {
   // React Query on the client handles the actual dashboard refresh,
   // so removing the dead call has no behavior change.
 
-  return { success: true, overrideId };
+  return { success: true, overrideId, ...(affectedScreenCount !== undefined ? { affectedScreenCount } : {}) };
 }
 
 export async function allClearEmergency(payload: {
   schoolId: string;
   token?: string;
   overrideId?: string;
+  /**
+   * The alert's target (2026-10-05). Absent = the whole tenant, the body this
+   * action has always sent. A group / one-screen alert MUST pass its own
+   * scope + `overrideId` so the all-clear ends exactly that alert.
+   */
+  scopeType?: 'tenant' | 'group' | 'device';
+  scopeId?: string;
 }) {
   const API_URL = process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
 
@@ -102,10 +126,7 @@ export async function allClearEmergency(payload: {
           'Content-Type': 'application/json',
           ...(payload.token ? { Authorization: `Bearer ${payload.token}` } : {})
         },
-        body: JSON.stringify({
-          scopeType: 'tenant',
-          scopeId: payload.schoolId,
-        }),
+        body: JSON.stringify(emergencyAllClearBody(payload)),
       },
       EMERGENCY_FETCH_TIMEOUT_MS,
     );

@@ -2463,8 +2463,20 @@ model ScreenEmergencyOverride {
   triggeredByUserId String    @map("triggered_by_user_id")
   triggeredAt       DateTime  @default(now()) @map("triggered_at")
   expiresAt         DateTime? @map("expires_at")
+  // 2026-10-05 — alert targeting (all screens / a group / one screen). WHICH
+  // alert wrote this row and what it was aimed at, so an all-clear ends
+  // exactly that alert and nothing else (`emergency/alert-stack.ts`).
+  // `displaced` = the older alerts this row is covering, newest first; when
+  // the shown alert is cleared the screen returns to the next one. All
+  // nullable: rows written before this change, and the GPIO / floor-plan
+  // writers, carry NULL and keep their old all-clear behaviour.
+  alertId           String?   @map("alert_id")
+  scopeType         String?   @map("scope_type") // tenant | group | device
+  scopeId           String?   @map("scope_id")
+  displaced         Json?     @map("displaced")
 
   @@index([tenantId, triggeredAt])
+  @@index([tenantId, alertId])
   @@map("screen_emergency_overrides")
 }
 

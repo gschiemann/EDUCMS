@@ -41,7 +41,11 @@ describe('EmergencyController', () => {
           findMany: jest.fn().mockResolvedValue([]),
         },
         screenEmergencyOverride: {
+          // Alert targeting (2026-10-05): trigger + all-clear read the rows
+          // their screens hold first (alert-stack.ts). Default: none.
+          findMany: jest.fn().mockResolvedValue([]),
           upsert: jest.fn().mockResolvedValue({}),
+          updateMany: jest.fn().mockResolvedValue({ count: 0 }),
           deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
         },
         // Playlist-ownership validation on /trigger (Lane-1 P0): the override's
@@ -295,14 +299,29 @@ describe('EmergencyController', () => {
   });
 
   it('group all-clear deletes the per-screen overrides for the group (poll backstop clears too)', async () => {
+    // 2026-10-05 — the rows are found by the ALERT that wrote them (not by
+    // the group's current members), and every delete is tenant-scoped and
+    // compare-and-set on the row as read. See emergency.targeting.spec.ts for
+    // the end-to-end matrix this narrows.
+    const at = new Date('2026-10-05T10:00:00Z');
     prismaService.client.screenGroup.findUnique.mockResolvedValueOnce({ tenantId: 't1' });
     prismaService.client.screen.findMany.mockResolvedValueOnce([{ id: 'gym' }, { id: 'hall' }]);
+    prismaService.client.screenEmergencyOverride.findMany.mockResolvedValueOnce([
+      { screenId: 'gym', tenantId: 't1', alertId: 'o-grp', scopeType: 'group', scopeId: 'g1', type: 'LOCKDOWN', severity: 'CRITICAL', triggeredByUserId: 'a', triggeredAt: at, displaced: [] },
+      { screenId: 'hall', tenantId: 't1', alertId: 'o-grp', scopeType: 'group', scopeId: 'g1', type: 'LOCKDOWN', severity: 'CRITICAL', triggeredByUserId: 'a', triggeredAt: at, displaced: [] },
+    ]);
     const req = { user: { id: 'admin1', role: 'SCHOOL_ADMIN', tenantId: 't1' } };
 
     const res = await controller.clearEmergency('o-grp', { scopeType: 'group', scopeId: 'g1' }, req);
     expect(res.success).toBe(true);
+    expect(prismaService.client.screenEmergencyOverride.findMany).toHaveBeenCalledWith({ where: { tenantId: 't1' } });
     expect(prismaService.client.screenEmergencyOverride.deleteMany).toHaveBeenCalledWith({
-      where: { screenId: { in: ['gym', 'hall'] } },
+      where: {
+        OR: [
+          { screenId: 'gym', tenantId: 't1', alertId: 'o-grp', triggeredAt: at },
+          { screenId: 'hall', tenantId: 't1', alertId: 'o-grp', triggeredAt: at },
+        ],
+      },
     });
     expect(redisService.publish).toHaveBeenCalledWith('group:g1', expect.objectContaining({ type: 'ALL_CLEAR' }));
   });
@@ -582,12 +601,14 @@ describe('EmergencyController', () => {
       const body = { scopeType: 'tenant' as const, scopeId: 't1' };
       const result = await controller.clearEmergency('o1', body, req);
       expect(result.success).toBe(true);
-      // District fan-out (2026-08-03): the delete is now subtree-scoped.
-      // For a leaf school the subtree is exactly [t1], so this is the same
-      // set of rows the previous `{ tenantId: 't1' }` matched.
-      expect(prismaService.client.screenEmergencyOverride.deleteMany).toHaveBeenCalledWith({
+      // District fan-out (2026-08-03): the override rows are subtree-scoped.
+      // For a leaf school the subtree is exactly [t1]. (2026-10-05: they are
+      // READ first so only the tenant-wide alert's rows are cleared — with
+      // none present, nothing is deleted.)
+      expect(prismaService.client.screenEmergencyOverride.findMany).toHaveBeenCalledWith({
         where: { tenantId: { in: ['t1'] } },
       });
+      expect(prismaService.client.screenEmergencyOverride.deleteMany).not.toHaveBeenCalled();
     });
 
     it('/broadcast rejects cross-tenant call with ForbiddenException', async () => {

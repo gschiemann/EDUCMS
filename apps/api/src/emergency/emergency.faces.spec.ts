@@ -64,6 +64,10 @@ function makeHarness(rows: Row[]) {
   const upserts: any[] = [];
   const deletes: any[] = [];
   const published: string[] = [];
+  // 2026-10-05 — the override table is stateful here: an all-clear now ends
+  // the rows its OWN alert wrote (alert-stack.ts), so the clear cases below
+  // trigger first and then assert which rows the clear removed.
+  const overrideRows = new Map<string, any>();
 
   const matches = (row: Row, where: any): boolean => {
     if (!where) return true;
@@ -103,12 +107,27 @@ function makeHarness(rows: Row[]) {
         })),
       },
       screenEmergencyOverride: {
-        upsert: jest.fn((args: any) => {
+        findMany: jest.fn(async (args: any) =>
+          [...overrideRows.values()].filter((r) => {
+            const w = args?.where ?? {};
+            if (w.tenantId !== undefined && typeof w.tenantId === 'string' && r.tenantId !== w.tenantId) return false;
+            if (Array.isArray(w.screenId?.in) && !w.screenId.in.includes(r.screenId)) return false;
+            return true;
+          }),
+        ),
+        upsert: jest.fn(async (args: any) => {
           upserts.push(args);
+          const existing = overrideRows.get(args.where.screenId);
+          overrideRows.set(
+            args.where.screenId,
+            existing ? { ...existing, ...args.update } : { screenId: args.where.screenId, ...args.create },
+          );
           return args;
         }),
-        deleteMany: jest.fn((args: any) => {
+        updateMany: jest.fn(async () => ({ count: 0 })),
+        deleteMany: jest.fn(async (args: any) => {
           deletes.push(args);
+          for (const clause of args?.where?.OR ?? []) overrideRows.delete(clause.screenId);
           return args;
         }),
       },
@@ -139,7 +158,7 @@ function makeHarness(rows: Row[]) {
     {} as any,
   );
 
-  return { controller, prisma, redis, upserts, deletes, published };
+  return { controller, prisma, redis, upserts, deletes, published, overrideRows };
 }
 
 const adminReq = { user: { id: 'user-1', tenantId: TENANT, role: 'SCHOOL_ADMIN' } } as any;
@@ -191,54 +210,60 @@ describe('device-scoped TRIGGER reaches every side of the display', () => {
   });
 });
 
+/** Screen ids whose override row an all-clear removed. */
+const clearedScreenIds = (deletes: any[]): string[] =>
+  deletes.flatMap((d) => (d?.where?.OR ?? []).map((c: any) => c.screenId)).filter(Boolean);
+
 describe('device-scoped ALL-CLEAR is symmetric with the trigger', () => {
   it('clears the override on every side the trigger lit', async () => {
     // The set that goes into an alert must be the set that comes out of it.
     const h = makeHarness([front, back]);
-    await h.controller.clearEmergency('ovr_1', { scopeType: 'device', scopeId: FRONT } as any, adminReq);
+    const res: any = await h.controller.triggerEmergency(triggerBody(FRONT), adminReq);
+    await h.controller.clearEmergency(res.overrideId, { scopeType: 'device', scopeId: FRONT } as any, adminReq);
 
-    const cleared = h.deletes.flatMap((d) => {
-      const s = d?.where?.screenId;
-      if (typeof s === 'string') return [s];
-      return Array.isArray(s?.in) ? s.in : [];
-    });
-    expect(cleared).toEqual(expect.arrayContaining([FRONT, BACK]));
+    expect(clearedScreenIds(h.deletes).sort()).toEqual([BACK, FRONT].sort());
+    expect(h.overrideRows.size).toBe(0);
   });
 
   it('pushes the all-clear to the back’s own channel too', async () => {
     // A back panel that never hears the all-clear stays locked down until
     // someone notices — the emergency-003 failure, one pane over.
     const h = makeHarness([front, back]);
-    await h.controller.clearEmergency('ovr_1', { scopeType: 'device', scopeId: FRONT } as any, adminReq);
+    const res: any = await h.controller.triggerEmergency(triggerBody(FRONT), adminReq);
+    h.published.length = 0;
+    await h.controller.clearEmergency(res.overrideId, { scopeType: 'device', scopeId: FRONT } as any, adminReq);
 
-    expect(h.published).toEqual(expect.arrayContaining([`device:${BACK}`]));
+    expect(h.published).toEqual(expect.arrayContaining([`device:${FRONT}`, `device:${BACK}`]));
   });
 
   it('clearing from the FACE clears the whole display', async () => {
     const h = makeHarness([front, back]);
-    await h.controller.clearEmergency('ovr_1', { scopeType: 'device', scopeId: BACK } as any, adminReq);
+    const res: any = await h.controller.triggerEmergency(triggerBody(FRONT), adminReq);
+    await h.controller.clearEmergency(res.overrideId, { scopeType: 'device', scopeId: BACK } as any, adminReq);
 
-    const cleared = h.deletes.flatMap((d) => {
-      const s = d?.where?.screenId;
-      if (typeof s === 'string') return [s];
-      return Array.isArray(s?.in) ? s.in : [];
-    });
-    expect(cleared).toEqual(expect.arrayContaining([FRONT, BACK]));
+    expect(clearedScreenIds(h.deletes).sort()).toEqual([BACK, FRONT].sort());
+  });
+
+  it('an all-clear that does not know the alert id still frees the whole display', async () => {
+    // An old client that mints `clear_<uuid>` instead of passing the trigger's
+    // id falls back to the scope — never to "nothing matched".
+    const h = makeHarness([front, back]);
+    await h.controller.triggerEmergency(triggerBody(FRONT), adminReq);
+    await h.controller.clearEmergency('clear_unknown', { scopeType: 'device', scopeId: BACK } as any, adminReq);
+
+    expect(clearedScreenIds(h.deletes).sort()).toEqual([BACK, FRONT].sort());
+    expect(h.overrideRows.size).toBe(0);
   });
 
   it('a single-sided screen clears exactly itself', async () => {
     const h = makeHarness([solo, front, back]);
-    await h.controller.clearEmergency(
-      'ovr_1',
-      { scopeType: 'device', scopeId: solo.id } as any,
-      adminReq,
-    );
+    await h.controller.triggerEmergency(triggerBody(FRONT), adminReq);
+    const res: any = await h.controller.triggerEmergency(triggerBody(solo.id), adminReq);
+    await h.controller.clearEmergency(res.overrideId, { scopeType: 'device', scopeId: solo.id } as any, adminReq);
 
-    const cleared = h.deletes.flatMap((d) => {
-      const s = d?.where?.screenId;
-      if (typeof s === 'string') return [s];
-      return Array.isArray(s?.in) ? s.in : [];
-    });
-    expect(cleared).toEqual([solo.id]);
+    expect(clearedScreenIds(h.deletes)).toEqual([solo.id]);
+    // The other display's alert is a different alert — untouched.
+    expect([...h.overrideRows.keys()].sort()).toEqual([BACK, FRONT].sort());
   });
 });
+

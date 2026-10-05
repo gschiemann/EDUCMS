@@ -1,11 +1,20 @@
 "use client";
 
 import { useAppStore } from '@/lib/store';
-import { AlertTriangle, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { useEffect, useRef, useState, useTransition } from 'react';
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { allClearEmergency } from '@/actions/trigger-emergency';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
+import { useTenantStatus } from '@/hooks/use-api';
+import { canSendAllClear, hasPanicAuthority } from '@/lib/emergency-capability';
+import { fetchActiveAlerts } from '@/lib/emergency-api';
+import { activeAlertLabel, allClearScopeOf, typeIdOf, type ActiveAlert } from '@/lib/emergency-target';
+import { EmergencyTriggerModal } from '@/components/emergency/EmergencyTriggerModal';
+
+/** A stable key for one live alert (the tenant-wide one has no id). */
+const alertKey = (a: ActiveAlert) => a.alertId ?? `${a.scopeType}:${a.scopeId}`;
 
 export function EmergencyOverlay() {
   // P0-10 (mobile-UX audit 2026-05-29) — LIFE-SAFETY. The fixed
@@ -22,6 +31,7 @@ export function EmergencyOverlay() {
   // literal 'CLEAR' — drilled protocol vocabulary, identical in every
   // locale. Only the instructions around it are translated.
   const t = useTranslations();
+  const queryClient = useQueryClient();
   const setEmergencyActive = useAppStore((state) => state.setEmergencyActive);
   const user = useAppStore((state) => state.user);
   const token = useAppStore((state) => state.token);
@@ -33,6 +43,49 @@ export function EmergencyOverlay() {
   const activeOverrideId = useAppStore((state) => state.activeEmergencyOverrideId);
   const [confirmKey, setConfirmKey] = useState('');
   const [isPending, startTransition] = useTransition();
+  const [clearError, setClearError] = useState<string | null>(null);
+  const [sendAnotherOpen, setSendAnotherOpen] = useState(false);
+
+  // ── WHICH alerts are live (alert targeting, 2026-10-05) ──────────────
+  // An operator can now aim an alert at all screens, one group or one
+  // screen, so several can be live at once and each needs its own all-clear.
+  // This list is read only while the overlay is mounted (i.e. only during an
+  // emergency), every 15 s while the tab is visible and on return — never in
+  // the always-mounted chrome. Only someone who may send the all-clear can
+  // read it (the API applies the trigger's own authorization); everyone else
+  // sees the lock and who to ask.
+  const mayClear = canSendAllClear(user);
+  const { data: tenant } = useTenantStatus();
+  const activeQuery = useQuery({
+    queryKey: ['emergency-active', user?.tenantId ?? null],
+    queryFn: () => fetchActiveAlerts(token),
+    enabled: mayClear && !!token,
+    refetchInterval: 15_000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
+  });
+  const alerts: ActiveAlert[] = useMemo(() => activeQuery.data ?? [], [activeQuery.data]);
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  // One alert (the common case) is simply THE alert — no extra choice.
+  const selected: ActiveAlert | null =
+    alerts.find((a) => alertKey(a) === selectedKey) ?? (alerts.length === 1 ? alerts[0] : null);
+  const tenantWideActive =
+    alerts.some((a) => a.scopeType === 'tenant') ||
+    (!activeQuery.data && !!tenant?.emergencyStatus && tenant.emergencyStatus !== 'INACTIVE');
+
+  // Nothing live any more (cleared from another device, or expired): let the
+  // server's own tenant state decide whether the lock comes down, rather than
+  // closing on one possibly-early list read.
+  const listedEmpty = activeQuery.isSuccess && alerts.length === 0;
+  useEffect(() => {
+    if (listedEmpty) void queryClient.invalidateQueries({ queryKey: ['tenant-status'] });
+  }, [listedEmpty, queryClient]);
+
+  const typeName = (apiType: string | null) => {
+    const id = typeIdOf(apiType);
+    return id ? t(`emergency.types.${id}.name`) : (apiType || t('emergency.active'));
+  };
+  const labelOf = (a: ActiveAlert) => activeAlertLabel(t, typeName(a.type), a);
 
   // A11y audit 2026-05-12 — the takeover overlay was a bare <div> that
   // never told assistive tech "this is a blocking dialog" and let Tab
@@ -67,26 +120,69 @@ export function EmergencyOverlay() {
     return () => document.removeEventListener('keydown', trap);
   }, []);
 
+  // With several alerts the operator picks one first; with the list
+  // unavailable the all-clear falls back to the whole tenant, exactly as
+  // before targeting existed (only when a tenant-wide alert is known).
+  const canSubmit =
+    mayClear &&
+    confirmKey === 'CLEAR' &&
+    !isPending &&
+    (selected !== null || (alerts.length === 0 && tenantWideActive));
+
   const handleAllClear = () => {
-    if (confirmKey === 'CLEAR') {
-      startTransition(async () => {
-        try {
-          await allClearEmergency({
-            schoolId: user?.tenantId || 'global',
-            token: token || undefined,
-            // 2026-05-23 audit P2 #3 — forward the active overrideId
-            // so this all-clear pairs with the original trigger event
-            // in the AuditLog. Falls through to the action's
-            // `clear_<uuid>` mint if undefined (concurrent-clear case).
-            overrideId: activeOverrideId || undefined,
-          });
-          setEmergencyActive(false);
-        } catch (e) {
-          console.error("Failed to clear emergency", e);
-          // Retry later or handle error UI
+    if (!canSubmit) return;
+    const target = selected;
+    setClearError(null);
+    startTransition(async () => {
+      try {
+        const result = await allClearEmergency(
+          target
+            ? {
+                // The tenant-wide entry's scopeId IS the tenant to clear (a
+                // district admin may end one school's own alert).
+                schoolId: target.scopeType === 'tenant' ? target.scopeId : user?.tenantId || 'global',
+                token: token || undefined,
+                // Exactly this alert. The tenant-wide alert carries no id on
+                // the Tenant row, so it keeps the one the modal recorded.
+                overrideId: target.alertId ?? (target.scopeType === 'tenant' ? activeOverrideId || undefined : undefined),
+                // Its own scope — or, if that target was deleted mid-alert, the
+                // scope the server says still reaches it.
+                ...allClearScopeOf(target),
+              }
+            : {
+                schoolId: user?.tenantId || 'global',
+                token: token || undefined,
+                overrideId: activeOverrideId || undefined,
+              },
+        );
+        // LIFE-SAFETY: the action reports failure in its RESULT. It used to
+        // be ignored and the overlay closed anyway — telling the operator the
+        // incident was over while every screen stayed locked down.
+        if (!result || result.success !== true) {
+          setClearError(t('emergency.overlay.clearFailed', { error: result?.error || t('emergency.modal.errUnknown') }));
+          return;
         }
-      });
-    }
+        setConfirmKey('');
+        setSelectedKey(null);
+        void queryClient.invalidateQueries({ queryKey: ['tenant-status'] });
+        if (!mayClear || !token) {
+          setEmergencyActive(false);
+          return;
+        }
+        // Other alerts may still be live — only drop the lock when none is.
+        const remaining = await queryClient.fetchQuery({
+          queryKey: ['emergency-active', user?.tenantId ?? null],
+          queryFn: () => fetchActiveAlerts(token),
+          staleTime: 0,
+        }).catch(() => null);
+        if (remaining && remaining.length === 0) setEmergencyActive(false);
+      } catch (e) {
+        console.error("Failed to clear emergency", e);
+        setClearError(
+          t('emergency.overlay.clearFailed', { error: e instanceof Error ? e.message : String(e) }),
+        );
+      }
+    });
   };
 
   return (
@@ -132,7 +228,7 @@ export function EmergencyOverlay() {
         aria-atomic="true"
         className="sr-only"
       >
-        {t('emergency.overlay.srAlert')}
+        {tenantWideActive ? t('emergency.overlay.srAlert') : t('emergency.overlay.srAlertScoped')}
       </div>
       {/* Flashing global indicator — clamped by the
           @media (prefers-reduced-motion: reduce) rule in globals.css
@@ -142,7 +238,7 @@ export function EmergencyOverlay() {
           convey severity without motion. */}
       <div className="absolute inset-x-0 top-0 h-2 bg-red-500 animate-pulse" aria-hidden />
       <div className="absolute inset-x-0 bottom-0 h-2 bg-red-500 animate-pulse" aria-hidden />
-      
+
       <div className="max-w-2xl w-full my-auto flex flex-col items-center justify-center text-center space-y-8 animate-in zoom-in-95 duration-500">
         <div className="w-32 h-32 rounded-full bg-red-500/20 flex items-center justify-center animate-pulse">
           <AlertTriangle className="w-16 h-16 text-red-500" />
@@ -151,46 +247,124 @@ export function EmergencyOverlay() {
         <div className="space-y-4">
           <h1 id="emergency-overlay-title" className="text-5xl font-black tracking-tighter text-white">{t('emergency.overlay.title')}</h1>
           <p id="emergency-overlay-desc" className="text-xl text-red-200 mt-2 font-medium">
-            {t('emergency.overlay.desc')}
+            {tenantWideActive ? t('emergency.overlay.desc') : t('emergency.overlay.descScoped')}
           </p>
         </div>
 
-        <div className="w-full max-w-md bg-black/40 backdrop-blur-md rounded-xl p-8 border border-red-500/30 mt-8 space-y-6">
-          <div>
-            <label htmlFor="all-clear-input" className="block text-sm font-bold uppercase tracking-wider text-red-400 mb-2">
-              {t('emergency.overlay.authLabel')}
-            </label>
-            <p className="text-sm text-red-200 mb-4 opacity-80">
-              {t.rich('emergency.overlay.authHint', { b: (chunks) => <strong>{chunks}</strong> })}
-            </p>
-            <input
-              ref={inputRef}
-              id="all-clear-input"
-              type="text"
-              value={confirmKey}
-              onChange={(e) => setConfirmKey(e.target.value.toUpperCase())}
-              placeholder={t('emergency.overlay.placeholder')}
-              className="w-full px-4 py-3 bg-black/50 border border-red-500/30 rounded-lg text-white font-mono text-center tracking-[0.5em] focus:ring-2 focus:ring-red-500 outline-none uppercase"
-            />
+        {/* EVERY live alert, each with its target — "Lockdown — Gym group,
+            6 screens". Several alerts are listed separately; the one chosen
+            here is the one the all-clear below ends, and nothing else. */}
+        {mayClear && alerts.length > 0 && (
+          <div className="w-full max-w-md text-left" data-testid="emergency-active-alerts">
+            <h2 className="text-sm font-bold uppercase tracking-wider text-red-300 mb-2">
+              {alerts.length > 1 ? t('emergency.overlay.chooseAlert') : t('emergency.overlay.alertsTitle')}
+            </h2>
+            <ul className="space-y-2">
+              {alerts.map((a) => {
+                const on = selected !== null && alertKey(selected) === alertKey(a);
+                return (
+                  <li key={alertKey(a)}>
+                    <button
+                      type="button"
+                      onClick={() => { setSelectedKey(alertKey(a)); setClearError(null); inputRef.current?.focus(); }}
+                      aria-pressed={on}
+                      className="w-full min-h-[52px] px-4 py-2 rounded-lg border flex items-center gap-3 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+                      style={{
+                        background: on ? 'rgba(239,68,68,0.30)' : 'rgba(0,0,0,0.35)',
+                        borderColor: on ? 'rgba(254,202,202,0.9)' : 'rgba(239,68,68,0.35)',
+                      }}
+                    >
+                      <ShieldAlert className="w-5 h-5 shrink-0 text-red-300" aria-hidden />
+                      <span className="flex-1 min-w-0 font-semibold text-white">{labelOf(a)}</span>
+                      {alerts.length > 1 && (
+                        <span className="shrink-0 text-xs font-bold uppercase tracking-wider text-red-200">
+                          {on ? t('emergency.overlay.selected') : t('emergency.overlay.select')}
+                        </span>
+                      )}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
           </div>
+        )}
+        {mayClear && activeQuery.isError && (
+          <p className="text-sm text-red-200" role="status">{t('emergency.overlay.loadFailed')}</p>
+        )}
 
-          <button
-            onClick={handleAllClear}
-            disabled={confirmKey !== 'CLEAR' || isPending}
-            className="w-full py-4 px-6 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:hover:bg-red-600 text-white font-bold rounded-lg shadow-xl hover:shadow-red-500/20 transition-all flex justify-center items-center gap-2"
-          >
-            {isPending ? (
-              <span className="flex items-center gap-2 animate-pulse">
-                <ShieldCheck className="w-5 h-5" /> {t('emergency.overlay.submitting')}
-              </span>
-            ) : (
-              <span className="flex items-center gap-2">
-                <ShieldCheck className="w-5 h-5" /> {t('emergency.overlay.terminate')}
-              </span>
-            )}
-          </button>
+        <div className="w-full max-w-md bg-black/40 backdrop-blur-md rounded-xl p-8 border border-red-500/30 mt-8 space-y-6">
+          {mayClear ? (
+            <>
+              <div>
+                <label htmlFor="all-clear-input" className="block text-sm font-bold uppercase tracking-wider text-red-400 mb-2">
+                  {t('emergency.overlay.authLabel')}
+                </label>
+                {alerts.length > 1 && selected && (
+                  <p className="text-sm font-semibold text-white mb-2" data-testid="emergency-overlay-ending">
+                    {t('emergency.overlay.ending', { label: labelOf(selected) })}
+                  </p>
+                )}
+                <p className="text-sm text-red-200 mb-4 opacity-80">
+                  {t.rich('emergency.overlay.authHint', { b: (chunks) => <strong>{chunks}</strong> })}
+                </p>
+                <input
+                  ref={inputRef}
+                  id="all-clear-input"
+                  type="text"
+                  value={confirmKey}
+                  onChange={(e) => setConfirmKey(e.target.value.toUpperCase())}
+                  placeholder={t('emergency.overlay.placeholder')}
+                  className="w-full px-4 py-3 bg-black/50 border border-red-500/30 rounded-lg text-white font-mono text-center tracking-[0.5em] focus:ring-2 focus:ring-red-500 outline-none uppercase"
+                />
+              </div>
+
+              {clearError && (
+                <p className="text-sm font-semibold text-red-100 bg-red-900/60 border border-red-400/60 rounded-lg p-3 text-left" role="alert">
+                  {clearError}
+                </p>
+              )}
+
+              <button
+                onClick={handleAllClear}
+                disabled={!canSubmit}
+                className="w-full py-4 px-6 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:hover:bg-red-600 text-white font-bold rounded-lg shadow-xl hover:shadow-red-500/20 transition-all flex justify-center items-center gap-2"
+              >
+                {isPending ? (
+                  <span className="flex items-center gap-2 animate-pulse">
+                    <ShieldCheck className="w-5 h-5" /> {t('emergency.overlay.submitting')}
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-2">
+                    <ShieldCheck className="w-5 h-5" /> {t('emergency.overlay.terminate')}
+                  </span>
+                )}
+              </button>
+            </>
+          ) : (
+            <p className="text-sm text-red-100">{t('emergency.overlay.noAuthority')}</p>
+          )}
         </div>
+
+        {/* One alert per target: an operator who needs a second target (a
+            second group, one more screen) sends a second alert. */}
+        {hasPanicAuthority(user) && (
+          <button
+            type="button"
+            onClick={() => setSendAnotherOpen(true)}
+            className="min-h-[44px] px-5 rounded-lg border border-red-300/50 text-sm font-bold text-red-100 hover:bg-red-500/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+          >
+            {t('emergency.overlay.sendAnother')}
+          </button>
+        )}
       </div>
+      {sendAnotherOpen && (
+        <EmergencyTriggerModal
+          onClose={() => {
+            setSendAnotherOpen(false);
+            void activeQuery.refetch();
+          }}
+        />
+      )}
     </div>
   );
 }
