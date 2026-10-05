@@ -320,6 +320,10 @@ export const PLAYER_RELEASE_SHA_PINS: Readonly<Record<string, string>> = {
   // 2026-10-04 by GS under a hardware-qualification OVERRIDE (unit tests only).
   // Digest of the gh-downloaded release asset, run 37208804468.
   '1.1.21': 'dcfb9b8f792fe4818725e8e8bca33770caf696b6b69210772bd85af313a8b907',
+  // v1.1.22 — released 2026-10-05 (tag player-v1.1.22, release commit 5f8f53a3):
+  // the native alert watch, so an alert reaches a screen whose panel is off.
+  // Digest captured with scripts/pin-apk-sha.sh right after CI published it.
+  '1.1.22': 'eca1fe1e242fc23bafcce8d5485298d44fcf42faf77519abd5991e4430646bc1',
 };
 
 /**
