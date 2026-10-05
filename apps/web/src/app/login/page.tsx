@@ -96,8 +96,8 @@ const LINK_BTN_CLS =
  */
 const CHOICE_BTN_CLS =
   'w-full min-h-[52px] px-4 py-3 bg-white border-2 border-indigo-200 hover:border-indigo-400 hover:bg-indigo-50 ' +
-  'rounded-xl text-[15px] font-semibold text-indigo-700 transition-colors flex items-center justify-center gap-2.5 ' +
-  'disabled:opacity-50 disabled:cursor-not-allowed';
+  'rounded-xl text-[15px] leading-snug text-center font-semibold text-indigo-700 transition-colors ' +
+  'flex items-center justify-center gap-2.5 disabled:opacity-50 disabled:cursor-not-allowed';
 
 /** The guided "Turn on Face ID or Touch ID" — the screen's only button, thumb-sized. */
 const TURN_ON_BTN_CLS =
@@ -2486,6 +2486,9 @@ function LoginContent() {
                      and then asks for ONE tap of Face ID / Touch ID. The page
                      cannot know where the passkey lives — the person can. */
                   <div className="space-y-3" data-testid="phone-passkey-choices">
+                    {/* Equal rows (`auto-rows-fr`): when one label wraps — it
+                        does in Spanish — both choices stay the same height. */}
+                    <div className="grid grid-cols-1 auto-rows-fr gap-3">
                     <button
                       ref={passkeyStepBtnRef}
                       type="button"
@@ -2494,9 +2497,9 @@ function LoginContent() {
                       className={CHOICE_BTN_CLS}
                     >
                       {passkeyBusy ? (
-                        <><Loader2 className="w-5 h-5 animate-spin" aria-hidden /> {t('verifying')}</>
+                        <><Loader2 className="w-5 h-5 shrink-0 animate-spin" aria-hidden /> {t('verifying')}</>
                       ) : (
-                        <><Fingerprint className="w-5 h-5" aria-hidden /> {t('usePasskey')}</>
+                        <><Fingerprint className="w-5 h-5 shrink-0" aria-hidden /> {t('usePasskey')}</>
                       )}
                     </button>
                     <button
@@ -2508,11 +2511,12 @@ function LoginContent() {
                       className={CHOICE_BTN_CLS}
                     >
                       {emailCodeBusy === 'sending' ? (
-                        <><Loader2 className="w-5 h-5 animate-spin" aria-hidden /> {t('emailCodeSending')}</>
+                        <><Loader2 className="w-5 h-5 shrink-0 animate-spin" aria-hidden /> {t('emailCodeSending')}</>
                       ) : (
-                        <><Smartphone className="w-5 h-5" aria-hidden /> {t('phoneSetupChoice', { device: phoneSetupDevice })}</>
+                        <><Smartphone className="w-5 h-5 shrink-0" aria-hidden /> {t('phoneSetupChoice', { device: phoneSetupDevice })}</>
                       )}
                     </button>
+                    </div>
                     <p id="phone-setup-why" className="text-[11px] leading-snug text-slate-500 text-center">
                       {t('phoneSetupChoiceWhy')}
                     </p>

@@ -237,7 +237,9 @@ test.describe('the passkey is on another device', () => {
         { timeout: 60_000 },
       );
       const ways = page.getByTestId('mfa-other-ways');
-      await expect(ways.getByRole('button')).toHaveText(['Use a backup code', 'Email me a code']);
+      // On a phone, setting a passkey up HERE leads the list (2026-10-05 —
+      // passkey-phone-setup.spec.ts walks that path).
+      await expect(ways.getByRole('button')).toHaveText(['Set up a passkey on this iPhone', 'Use a backup code', 'Email me a code']);
       await expect(page.getByRole('button', { name: 'Try your passkey again' })).toBeVisible();
       await expect(page.locator('.bg-rose-50')).toHaveCount(0);
       await assertPhoneLayout(page);
@@ -314,7 +316,11 @@ test.describe('the passkey is on another device', () => {
       await expect(page.getByTestId('passkey-elsewhere-note')).toHaveText(
         'Your passkey may be on another device. Sign in another way on this one:',
       );
-      await expect(page.getByTestId('mfa-other-ways').getByRole('button')).toHaveText(['Use a backup code', 'Email me a code']);
+      await expect(page.getByTestId('mfa-other-ways').getByRole('button')).toHaveText([
+        'Set up a passkey on this iPhone',
+        'Use a backup code',
+        'Email me a code',
+      ]);
       await expect(page.locator('.bg-rose-50')).toHaveCount(0);
       await assertPhoneLayout(page);
       await axe(page, 'another way');
