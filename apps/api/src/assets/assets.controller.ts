@@ -20,7 +20,23 @@ import {
   type OptimizedMedia,
 } from '../storage/media-optimization.service';
 import { UploadContentCheckService } from './upload-content-check.service';
-import { refusalFor, uploadScreenStamp, type UploadScreenVerdict } from './upload-content-verdict';
+import {
+  refusalFor,
+  storedTypeScreenVerdict,
+  uploadScreenStamp,
+  type UploadScreenVerdict,
+} from './upload-content-verdict';
+import { needsHeifConversion } from './heif-convert';
+import {
+  formatAllowedOn,
+  resolveUploadFormat,
+  storedExtensionFor,
+  uploadFormatCopyParams,
+  uploadFormatForType,
+  uploadMimeTypesFor,
+  type UploadFormat,
+  type UploadPath as UploadFormatPath,
+} from '@cms/api-types';
 import { mintUploadRenewTicket, verifyUploadRenewTicket } from './upload-renew-ticket';
 import { VideoTranscodeService } from '../storage/video-transcode/video-transcode.service';
 import { StorageQuotaService } from './storage-quota.service';
@@ -44,23 +60,31 @@ import {
   isInUseDeleteConfirmed,
 } from '../common/in-use-delete';
 
-// Browser-playable formats only. Cross-browser support is non-negotiable
-// for digital signage (CLAUDE.md "Cross-browser support" section): every
-// asset has to render on Mac Safari + Windows Edge + Android WebView with
-// the same source file. That excludes:
+// ── WHAT AN UPLOAD MAY BE (2026-10-05) ──────────────────────────────────────
 //
-//   * `video/quicktime` (.mov) — Apple-only container. Many .mov files
-//     are TRUE QuickTime (`ftyp=qt  `) which Chromium/WebKit refuse to
-//     decode regardless of the MIME header. Even iPhone-style .mov
-//     (`ftyp=mp42`) plays inconsistently. 2026-05-13: a customer's
-//     IMG_*.mov from an iPhone shipped to a Taurus controller, the
-//     Android WebView refused it, splash screen forever.
-//   * `video/x-msvideo` (.avi) — Chromium dropped support in 2014, no
-//     mainstream browser plays AVI today.
+// ONE table, shared with the storage bucket's MIME list and every dashboard
+// upload entry point: `@cms/api-types` upload-formats.ts. Every asset still has
+// to play on Mac Safari + Windows Edge + Android WebView with the same file
+// (CLAUDE.md "Cross-browser support") — what changed is HOW a format gets there.
+// Until 2026-10-05 this file refused QuickTime `.mov` and AVI outright ("export
+// as MP4") and knew nothing of MKV, WMV, MPG, 3GP, MPEG-TS or HEIC. The reason
+// was real (2026-05-13: an iPhone IMG_*.mov shipped to a Taurus controller, the
+// Android WebView refused it, splash screen forever), but the cure is to CONVERT,
+// as competitors do: the signage transcode turns any video that is not
+// screen-safe into an H.264 MP4 that replaces it — a non-MP4 container is always
+// a REQUIRED conversion (storage/video-transcode/transcode-profile.ts) — and
+// complete-upload turns a HEIC photo into a JPEG before the asset exists
+// (heif-convert.ts). Per endpoint:
+//   • DIRECT (presign → complete-upload, every dashboard picker): every format.
+//   • MULTIPART (/assets/upload): never a format converted AFTER upload. Alert
+//     content (the lockdown / evacuate editor) is uploaded here and bound into
+//     its protected playlist at once, and the transcode never converts emergency
+//     content — a .mov here would stay a .mov forever. HEIC is converted before
+//     it is stored, so it is fine here.
+//   • EMERGENCY (/assets/emergency-upload): screen-ready formats only, exactly as
+//     before — it creates no asset and converts nothing.
 //
-// If an operator hits this list with a .mov or .avi, the assertUploadIntent
-// error message tells them to export as MP4 (H.264) — universal.
-// image/svg+xml is intentionally NOT allowed in the media library. Two
+// image/svg+xml is intentionally NOT in the table. Two
 // reasons, in order of importance:
 //   1) The main upload path is presign → direct browser→Supabase, so the
 //      server never sees the bytes and CANNOT sanitize an SVG before it
@@ -72,25 +96,33 @@ import {
 //      + sanitizeLogoSvg / DOMPurify). Operators who want an SVG logo go
 //      there. assertUploadIntent() below returns a friendly message that
 //      points them at it instead of a generic "unsupported format."
-const ALLOWED_TYPES = [
-  'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/x-icon', 'image/bmp',
-  'video/mp4', 'video/webm', 'video/x-m4v',
-  'audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/mp4',
-  'application/pdf',
-];
 
-// Filename extensions we explicitly REJECT before normalization, so the
-// operator gets a clear actionable error ("export as MP4") instead of a
-// silently-failing "file type is not supported" — same gate also applied
-// in the web client's pre-upload check.
-const REJECTED_EXTENSIONS: Record<string, string> = {
-  '.mov': "QuickTime .mov files aren't supported by all browsers (they fail to play on Android signage players and Windows Edge). Please export as MP4 (H.264) — in QuickTime Player: File → Export As → 1080p, then upload the .mp4.",
-  '.avi': "AVI files aren't supported by browsers. Please convert to MP4 (H.264) before uploading.",
-};
-const REJECTED_MIMES: Record<string, string> = {
-  'video/quicktime': REJECTED_EXTENSIONS['.mov'],
-  'video/x-msvideo': REJECTED_EXTENSIONS['.avi'],
-};
+/** /assets/emergency-upload — the screen-ready list, byte for byte what it took before 2026-10-05. */
+const EMERGENCY_UPLOAD_TYPES = uploadMimeTypesFor('emergency');
+
+/** "photos (JPG, PNG, …), video (MP4, MOV, …), audio (MP3, …) or PDF" — what a path takes, read from the table. */
+export function acceptedFormatsText(path: UploadFormatPath): string {
+  const p = uploadFormatCopyParams(path);
+  return `photos (${p.images}), video (${p.videos}), audio (${p.audio}) or PDF`;
+}
+
+/** The extension an object of this stored type is named with ('' when the type is not in the table). */
+function extensionForType(mimeType: string | null | undefined): string {
+  return uploadFormatForType(mimeType)?.extensions[0] ?? '';
+}
+
+/**
+ * The multipart (/assets/upload) file filter: a format the table allows on that
+ * path, by the same rule as every other path (a named type wins, an empty or
+ * generic one leaves it to the extension). The accepted file's `mimetype` is set
+ * to the type it is stored under, so `video/avi`-style names never reach storage.
+ */
+export function acceptMultipartFile(file: { originalname?: string; mimetype: string }): boolean {
+  const resolved = resolveUploadFormat(file.originalname, file.mimetype);
+  if (!resolved.format || !formatAllowedOn(resolved.format, 'multipart')) return false;
+  file.mimetype = resolved.mimeType;
+  return true;
+}
 
 // ── Upload size ceilings (2026-09-23 — 4K video) ───────────────────────────
 //
@@ -222,43 +254,6 @@ export function perTypeSizeCapError(
   }
   return null;
 }
-const EXTENSION_MIME_TYPES: Record<string, string> = {
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.png': 'image/png',
-  '.webp': 'image/webp',
-  '.gif': 'image/gif',
-  // '.svg': 'image/svg+xml',  // Lane-1 P1: temporarily disabled — see ALLOWED_TYPES comment.
-  '.ico': 'image/x-icon',
-  '.bmp': 'image/bmp',
-  '.mp4': 'video/mp4',
-  '.m4v': 'video/mp4',
-  '.webm': 'video/webm',
-  '.mp3': 'audio/mpeg',
-  '.ogg': 'audio/ogg',
-  '.wav': 'audio/wav',
-  '.m4a': 'audio/mp4',
-  '.pdf': 'application/pdf',
-};
-
-const MIME_EXTENSIONS: Record<string, string> = {
-  'image/jpeg': '.jpg',
-  'image/png': '.png',
-  'image/webp': '.webp',
-  'image/gif': '.gif',
-  // 'image/svg+xml': '.svg',  // Lane-1 P1: temporarily disabled.
-  'image/x-icon': '.ico',
-  'image/bmp': '.bmp',
-  'video/mp4': '.mp4',
-  'video/webm': '.webm',
-  'video/x-m4v': '.m4v',
-  'audio/mpeg': '.mp3',
-  'audio/ogg': '.ogg',
-  'audio/wav': '.wav',
-  'audio/mp4': '.m4a',
-  'application/pdf': '.pdf',
-};
-
 const SCREEN_EMERGENCY_ASSET_FIELDS = [
   'emergencyLockdownAssetUrl',
   'emergencyEvacuateAssetUrl',
@@ -456,14 +451,30 @@ export class AssetsController {
     return 'PENDING_APPROVAL';
   }
 
+  /**
+   * The type an upload is stored under (2026-10-05: the shared table). A type the
+   * browser named for a known format wins; an EMPTY or generic one
+   * (`application/octet-stream`, `model/vnd.mts` for an AVCHD clip …) leaves it
+   * to the extension; another name for a known type (`video/avi`) is normalised.
+   */
   private normalizeMimeType(filename: string | undefined, contentType: string | undefined): string {
-    const explicit = (contentType || '').split(';')[0].trim().toLowerCase();
-    if (ALLOWED_TYPES.includes(explicit)) return explicit;
+    return resolveUploadFormat(filename, contentType).mimeType;
+  }
 
-    const ext = extname(filename || '').toLowerCase();
-    if (EXTENSION_MIME_TYPES[ext]) return EXTENSION_MIME_TYPES[ext];
-
-    return explicit;
+  /**
+   * Plain words when this server cannot convert a format that NEEDS converting,
+   * else null. A MOV / AVI / MKV … is only taken while the signage transcode can
+   * run (`VIDEO_TRANSCODE_DISABLED=1` turns it off), a HEIC only while the
+   * converter is wired: stored without its conversion, neither plays everywhere.
+   */
+  private conversionUnavailable(format: UploadFormat): string | null {
+    if (format.handling === 'convert-after-upload' && (!this.transcodes || VideoTranscodeService.disabled())) {
+      return `This is a ${format.label} video, which screens can play only once it is converted to MP4 — and converting is switched off on this server. Export it as MP4 (H.264) and upload that.`;
+    }
+    if (format.handling === 'convert-at-upload' && !this.uploadCheck) {
+      return "This HEIC photo can't be converted on this server. Export it as JPEG and upload it again.";
+    }
+    return null;
   }
 
   /**
@@ -482,31 +493,29 @@ export class AssetsController {
     size: number | undefined,
     path: UploadPath = 'direct',
   ): string {
-    // Surface friendly per-format guidance BEFORE the generic "not
-    // supported" fall-through. .mov / .avi are the common foot-guns
-    // (operators export from iMovie / QuickTime / Camtasia and don't
-    // realize Android WebView refuses to play them) — telling them
-    // "export as MP4" is the actionable next step, not "file type
-    // not supported, sorry."
+    // 2026-10-05 — MOV / AVI used to be refused right here ("export as MP4").
+    // They are accepted now, with MKV, WMV, MPG, 3GP, MPEG-TS and HEIC: the
+    // server converts them ("WHAT AN UPLOAD MAY BE" at the top of this file).
     const ext = extname(filename || '').toLowerCase();
     const explicit = (contentType || '').split(';')[0].trim().toLowerCase();
-    const rejectReason = REJECTED_EXTENSIONS[ext] || REJECTED_MIMES[explicit];
-    if (rejectReason) {
-      throw new HttpException({ code: 'ASSET_FILE_TYPE_REJECTED', message: rejectReason }, HttpStatus.UNSUPPORTED_MEDIA_TYPE);
-    }
 
-    // SVG gets its own friendly, actionable message — see the ALLOWED_TYPES
-    // comment for why it isn't a media-library format. Point the operator at
+    // SVG gets its own friendly, actionable message — see the SVG note at the
+    // top of this file for why it isn't a media-library format. Point the operator at
     // the place SVG DOES work (Brand Kit logos) instead of a generic
-    // "unsupported." Mirrors getUnsupportedReason() in the web assets page.
+    // "unsupported." Mirrors the web's shared pre-check (lib/upload-accept.ts).
     if (ext === '.svg' || explicit === 'image/svg+xml') {
       throw new HttpException({ code: 'ASSET_SVG_NOT_SUPPORTED', message: "SVG isn't supported in the media library (an SVG can carry hidden scripts, so we don't store raw SVGs as content). For a logo, use Settings → Branding — that path accepts SVG safely. Otherwise export this as a PNG and upload that." }, HttpStatus.UNSUPPORTED_MEDIA_TYPE);
     }
 
-    const mimeType = this.normalizeMimeType(filename, contentType);
-    if (!ALLOWED_TYPES.includes(mimeType)) {
-      throw new HttpException({ code: 'ASSET_FILE_TYPE_UNSUPPORTED', message: 'File type is not supported. Allowed: images (JPG/PNG/WebP/GIF), MP4/WebM video, audio (MP3/OGG/WAV/M4A), PDF.' }, HttpStatus.UNSUPPORTED_MEDIA_TYPE);
+    const resolved = resolveUploadFormat(filename, contentType);
+    if (!resolved.format) {
+      throw new HttpException({ code: 'ASSET_FILE_TYPE_UNSUPPORTED', message: `This kind of file can't be uploaded. Upload ${acceptedFormatsText('direct')}.` }, HttpStatus.UNSUPPORTED_MEDIA_TYPE);
     }
+    const unconvertible = this.conversionUnavailable(resolved.format);
+    if (unconvertible) {
+      throw new HttpException({ code: 'ASSET_CONVERSION_UNAVAILABLE', message: unconvertible }, HttpStatus.UNSUPPORTED_MEDIA_TYPE);
+    }
+    const mimeType = resolved.mimeType;
 
     // A 0-byte file HAS a size, and "File size is required." told the operator
     // nothing (media beta test 2026-10-04, L14). Same code and words as the
@@ -542,8 +551,90 @@ export class AssetsController {
     return mimeType;
   }
 
+  /**
+   * The extension the stored object is named with: the file's own (lower-cased)
+   * when it is one of its type's, else the type's own — the manifest and the
+   * player read a URL's extension, so it must agree with the stored type.
+   */
   private storageExtension(filename: string | undefined, mimeType: string): string {
-    return extname(filename || '') || MIME_EXTENSIONS[mimeType] || '';
+    const format = uploadFormatForType(mimeType);
+    return format ? storedExtensionFor(format, filename) : extname(filename || '');
+  }
+
+  /**
+   * HEIC → JPEG (or WebP when the photo is really transparent), or the refusal
+   * (2026-10-05, heif-convert.ts). `definite` — the file itself (damaged, cut
+   * short, undecodable) — is a 422; "could not run just now" is a 503 with words
+   * that say to try again. Either way nothing is stored as HEIC.
+   */
+  private async convertHeifBytes(bytes: Buffer | null, label: string): Promise<OptimizedMedia> {
+    const conv = this.uploadCheck
+      ? await this.uploadCheck.convertHeif(bytes)
+      : { ok: false as const, definite: false, why: 'no converter in this process', ms: 0 };
+    if (!conv.ok) {
+      const refusal = refusalFor(conv.definite ? 'heic' : 'heic-unavailable');
+      this.logger.warn(`[heic] refused ${label}: ${refusal.code} — ${conv.why} [${conv.ms} ms]`);
+      throw new HttpException(
+        { code: refusal.code, message: refusal.message, reason: refusal.reason },
+        conv.definite ? HttpStatus.UNPROCESSABLE_ENTITY : HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+    this.logger.log(
+      `[heic] converted ${label}: ${conv.sourceWidth}×${conv.sourceHeight} → ${conv.width}×${conv.height} ` +
+        `${conv.mimeType} (${conv.decoder}) in ${conv.ms} ms`,
+    );
+    return {
+      buffer: conv.buffer,
+      mimeType: conv.mimeType,
+      ext: conv.ext,
+      // Nothing left to adopt: these bytes ARE the upload.
+      optimized: false,
+      originalBytes: bytes?.length ?? 0,
+      finalBytes: conv.buffer.length,
+      originalDimensions: { w: conv.sourceWidth, h: conv.sourceHeight },
+      processedDimensions: { w: conv.width, h: conv.height },
+      sourceFormat: conv.mimeType === 'image/webp' ? 'webp' : 'jpeg',
+      sourceCompression: null,
+      decodeFailure: null,
+      convertedFrom: 'heic',
+    };
+  }
+
+  /**
+   * The direct path's half: convert the HEIC that landed at `storagePath`, store
+   * the result as a FRESH presign-shaped object (`<tenant>/<uuid>.jpg`) and delete
+   * the HEIC. On any failure the HEIC is deleted too (no debris) and the upload is
+   * refused — the asset row is created only from the converted object.
+   */
+  private async convertHeifUpload(args: {
+    tenantId: string;
+    storagePath: string;
+    bytes: Buffer | null;
+    label: string;
+  }): Promise<{ storagePath: string; optimization: OptimizedMedia }> {
+    let optimization: OptimizedMedia;
+    try {
+      optimization = await this.convertHeifBytes(args.bytes, args.label);
+    } catch (err) {
+      await this.storage.delete(args.storagePath).catch(() => undefined);
+      throw err;
+    }
+    const newPath = `${args.tenantId}/${randomUUID()}${optimization.ext}`;
+    try {
+      await this.storage.upload(newPath, optimization.buffer, optimization.mimeType);
+    } catch (err: any) {
+      await this.storage.delete(newPath).catch(() => undefined);
+      await this.storage.delete(args.storagePath).catch(() => undefined);
+      const refusal = refusalFor('heic-unavailable');
+      this.logger.warn(`[heic] refused ${args.label}: storing the converted copy failed — ${err?.message ?? err}`);
+      throw new HttpException(
+        { code: refusal.code, message: refusal.message, reason: refusal.reason },
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+    // The HEIC original is never kept: nothing may ever serve it.
+    await this.storage.delete(args.storagePath).catch(() => undefined);
+    return { storagePath: newPath, optimization };
   }
 
   private async resolveFolderId(tenantId: string, folderId?: string | null): Promise<string | null> {
@@ -837,6 +928,12 @@ export class AssetsController {
    * media library polls it — only while a tile says "Optimizing…" and the tab
    * is visible — instead of re-downloading the whole list; the moment a job
    * finishes it refetches the list once for the new URL and size.
+   *
+   * 2026-10-05 — each item also carries the URL and type the asset serves NOW.
+   * A MOV / AVI / MKV … upload is converted AFTER it is stored and its URL
+   * changes when the MP4 is swapped in; a picker that keeps a URL BY VALUE (a
+   * template widget, a sports cue) waits for that URL instead of keeping the
+   * original's (apps/web/src/lib/screen-version.ts).
    */
   @Get('optimization')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
@@ -847,7 +944,21 @@ export class AssetsController {
       .filter(Boolean)
       .slice(0, 100);
     if (!this.transcodes || ids.length === 0) return { items: [] };
-    return { items: await this.transcodes.statusForAssets(String(req.user.tenantId), ids) };
+    const tenantId = String(req.user.tenantId);
+    const items = await this.transcodes.statusForAssets(tenantId, ids);
+    if (items.length === 0) return { items };
+    const rows = await this.prisma.client.asset.findMany({
+      where: { tenantId, id: { in: items.map((i) => i.assetId) } },
+      select: { id: true, fileUrl: true, mimeType: true },
+    });
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    return {
+      items: items.map((i) => ({
+        ...i,
+        fileUrl: byId.get(i.assetId)?.fileUrl ?? null,
+        mimeType: byId.get(i.assetId)?.mimeType ?? null,
+      })),
+    };
   }
 
   /**
@@ -870,8 +981,10 @@ export class AssetsController {
   @UseInterceptors(FileInterceptor('file', {
     storage: memoryStorage(),
     limits: { fileSize: 500 * 1024 * 1024 },
+    // Exactly the list it took before 2026-10-05 (now read from the table): this
+    // endpoint stores what it is sent and converts nothing.
     fileFilter: (_req, file, cb) => {
-      if (ALLOWED_TYPES.includes(file.mimetype)) {
+      if (EMERGENCY_UPLOAD_TYPES.includes(file.mimetype)) {
         cb(null, true);
       } else {
         cb(null, false);
@@ -883,7 +996,7 @@ export class AssetsController {
     @UploadedFile() file: Express.Multer.File,
   ) {
     if (!file) {
-      throw new HttpException({ code: 'ASSET_FILE_TYPE_UNSUPPORTED', message: 'No file uploaded, or file type is not supported. Allowed: images (JPG/PNG/WebP/GIF), MP4/WebM video, audio, PDF. QuickTime .mov and AVI are not supported — export as MP4 first. For an SVG logo, use Settings → Branding.' }, HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'ASSET_FILE_TYPE_UNSUPPORTED', message: `No file uploaded, or this kind of file can't be alert media. Alert media must be ready to play the moment it's triggered: ${acceptedFormatsText('emergency')}. Other video (MOV, AVI, MKV …) and HEIC photos have to be converted first — upload them to the Media Library, which converts them, or export them as MP4 / JPEG. For an SVG logo, use Settings → Branding.` }, HttpStatus.BAD_REQUEST);
     }
 
     const safeBuffer = this.storage.toSafeBuffer(file.buffer);
@@ -909,8 +1022,8 @@ export class AssetsController {
 
     // Derive the stored extension from the VALIDATED mimetype rather than the
     // client's filename, falling back to the filename only if the map somehow
-    // misses (it cannot today — every ALLOWED_TYPES entry has a MIME_EXTENSIONS
-    // entry, and the fileFilter exact-matches the same string).
+    // misses (it cannot today — every type the fileFilter takes is a stored type
+    // in the upload-formats table, and each of those has an extension).
     //
     // The extension is load-bearing: `screens.controller.ts` derives the
     // manifest's mime from the URL's extension, and an extension-less URL
@@ -923,7 +1036,7 @@ export class AssetsController {
     // client-controlled and neither is sniffed today, so this changes which
     // client claim wins, not whether we trust the client. Through a browser
     // the two always agree, since File.type is derived from the extension.
-    const ext = MIME_EXTENSIONS[file.mimetype] || extname(file.originalname) || '';
+    const ext = extensionForType(file.mimetype) || extname(file.originalname) || '';
     const storagePath = `${req.user.tenantId}/emergency/${randomUUID()}${ext}`;
     let fileUrl: string;
     try {
@@ -1112,7 +1225,8 @@ export class AssetsController {
     } = {},
   ) {
     const mimeType = this.assertUploadIntent(body.filename, body.contentType, Number(body.size));
-    const storagePath = (body.storagePath || '').trim();
+    // `let`: a HEIC photo is converted below and the JPEG becomes the upload (image branch).
+    let storagePath = (body.storagePath || '').trim();
     if (
       !storagePath ||
       storagePath.includes('..') ||
@@ -1265,22 +1379,23 @@ export class AssetsController {
     // the Upload-Metadata and the object is stored as whatever storage
     // defaults to, with no allowlist check at all (Supabase tus/lifecycle.ts
     // `onCreate`). The claimed type at presign proves nothing about the bytes'
-    // label in storage — this does. Anything outside ALLOWED_TYPES is removed
-    // before an Asset row can point at it.
-    if (storedMime && !ALLOWED_TYPES.includes(storedMime)) {
+    // label in storage — this does. Anything that is not a stored type of the
+    // upload-formats table is removed before an Asset row can point at it.
+    if (storedMime && !uploadFormatForType(storedMime)) {
       await this.storage.delete(storagePath).catch(() => undefined);
       throw new HttpException(
         {
           code: 'ASSET_STORED_TYPE_REJECTED',
           message:
             `Storage recorded this file as "${storedMime.slice(0, 80)}", which isn't a supported media type. ` +
-            'Upload MP4/WebM video, JPG/PNG/WebP/GIF images, MP3/OGG/WAV/M4A audio or PDF.',
+            `Upload ${acceptedFormatsText('direct')}.`,
         },
         HttpStatus.UNSUPPORTED_MEDIA_TYPE,
       );
     }
-    const realMime = storedMime || mimeType;
-    const realSize = info?.size ?? Number(body.size);
+    // `let`: a HEIC photo's JPEG replaces both (image branch below).
+    let realMime = storedMime || mimeType;
+    let realSize = info?.size ?? Number(body.size);
 
     // BUG #6 FIX — per-type size cap enforcement against the REAL stored
     // bytes. The presign step (`assertUploadIntent`) can only validate the
@@ -1343,7 +1458,25 @@ export class AssetsController {
     let imageOpt: OptimizedMedia | null = null;
     if (isImage) {
       imageBytes = await this.storage.download(storagePath).catch(() => null);
-      if (imageBytes && this.mediaOpt.isUploadOptimizableImage(realMime)) {
+      // ── 2026-10-05 — A HEIC PHOTO IS CONVERTED HERE, BEFORE THE ASSET EXISTS ──
+      // Called .heic / .heif, or HEIC bytes under any picture's name (the name is
+      // not the truth): the JPEG is stored as a fresh object, the HEIC is deleted,
+      // and everything below — the check, the row, alt text — sees only the JPEG.
+      // A HEIC that cannot be converted is refused; it is never stored as HEIC.
+      if (needsHeifConversion(realMime, imageBytes)) {
+        const converted = await this.convertHeifUpload({
+          tenantId: String(req.user.tenantId),
+          storagePath,
+          bytes: imageBytes,
+          label: `${JSON.stringify(String(body.filename ?? '').slice(0, 120))} (tenant ${req.user.tenantId})`,
+        });
+        storagePath = converted.storagePath;
+        realMime = converted.optimization.mimeType;
+        realSize = converted.optimization.finalBytes;
+        imageBytes = converted.optimization.buffer;
+        imageOpt = converted.optimization;
+      }
+      if (imageBytes && !imageOpt && this.mediaOpt.isUploadOptimizableImage(realMime)) {
         try {
           // An SVG / TIFF / AVIF under a JPEG / PNG / WebP name is converted
           // (`convertNonScreenFormats`): stored as uploaded it is black on a screen.
@@ -1405,9 +1538,13 @@ export class AssetsController {
     //     (VIDEO_TRANSCODE_DISABLED=1) → nothing: delivered exactly as before.
     // (upload-content-verdict.ts `uploadScreenStamp`; the transcode replaces
     // the stamp whole when it finishes — video-transcode.pipeline.ts.)
+    // A MOV / AVI / MKV / WMV / MPG / 3GP / TS is the exception to "no clean
+    // probe, no stamp": its stored type alone says it is converted before any
+    // screen gets it (`storedTypeScreenVerdict`) — there is no "as before" for
+    // a container that was refused at presign until 2026-10-05.
     const uploadScreen = (realMime || '').toLowerCase().startsWith('video/')
       ? uploadScreenStamp(
-          screenVerdict,
+          screenVerdict ?? storedTypeScreenVerdict(storagePath, realMime),
           !!this.transcodes && !VideoTranscodeService.disabled(),
           Date.now(),
         )
@@ -1510,11 +1647,14 @@ export class AssetsController {
             }
           } else {
             // No optimization gain — record the metadata anyway so the
-            // forensic trail is complete (we tried; nothing to save).
+            // forensic trail is complete (we tried; nothing to save). A HEIC
+            // converted above IS the stored file already: say what it came from.
             await this.prisma.client.asset.update({
               where: { id: asset.id, tenantId: req.user.tenantId },
               data: {
-                processingMeta: { ...baseMeta, skippedReason: 'no-gain-or-passthrough' } as any,
+                processingMeta: (opt.convertedFrom
+                  ? { ...baseMeta, convertedFrom: opt.convertedFrom }
+                  : { ...baseMeta, skippedReason: 'no-gain-or-passthrough' }) as any,
               },
             }).catch(() => undefined);
           }
@@ -1627,13 +1767,10 @@ export class AssetsController {
     // 2 GB); every dashboard picker uses that path, so this one only
     // serves callers that still post multipart. It stays RAM-bound.
     limits: { fileSize: MAX_MULTIPART_FILE_SIZE }, // 500MB
-    fileFilter: (_req, file, cb) => {
-      if (ALLOWED_TYPES.includes(file.mimetype)) {
-        cb(null, true);
-      } else {
-        cb(null, false);
-      }
-    },
+    // The upload-formats table's MULTIPART list (2026-10-05): the old list plus
+    // HEIC (converted below, before it is stored) — never a video that is only
+    // converted after upload (see acceptMultipartFile).
+    fileFilter: (_req, file, cb) => cb(null, acceptMultipartFile(file)),
   }))
   async upload(
     @Request() req: any,
@@ -1641,7 +1778,7 @@ export class AssetsController {
     @Body() body: { folderId?: string } = {},
   ) {
     if (!file) {
-      throw new HttpException({ code: 'ASSET_FILE_TYPE_UNSUPPORTED', message: 'No file uploaded, or file type is not supported. Allowed: images (JPG/PNG/WebP/GIF), MP4/WebM video, audio, PDF. QuickTime .mov and AVI are not supported — export as MP4 first. For an SVG logo, use Settings → Branding.' }, HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'ASSET_FILE_TYPE_UNSUPPORTED', message: `No file uploaded, or this kind of file can't be uploaded here. Here: ${acceptedFormatsText('multipart')}. Other video (MOV, AVI, MKV …) is converted for screens in the Media Library — upload it there, or export it as MP4. For an SVG logo, use Settings → Branding.` }, HttpStatus.BAD_REQUEST);
     }
 
     // Validate the optional folderId — must belong to the caller's tenant.
@@ -1694,7 +1831,25 @@ export class AssetsController {
     let uploadMime = file.mimetype;
     let uploadExt = extname(file.originalname) || '';
     let processingMeta: Record<string, unknown> | null = null;
-    if (this.mediaOpt.isUploadOptimizableImage(file.mimetype)) {
+    if (file.mimetype.startsWith('image/') && needsHeifConversion(file.mimetype, safeBuffer)) {
+      // 2026-10-05 — a HEIC photo (by name or by its bytes) is converted to JPEG
+      // before anything is stored, or refused; never stored as HEIC.
+      const conv = await this.convertHeifBytes(
+        safeBuffer,
+        `${JSON.stringify(String(file.originalname ?? '').slice(0, 120))} (multipart, tenant ${req.user.tenantId})`,
+      );
+      uploadBuf = conv.buffer;
+      uploadMime = conv.mimeType;
+      uploadExt = conv.ext;
+      processingMeta = {
+        originalSize: conv.originalBytes,
+        processedSize: conv.finalBytes,
+        originalDimensions: conv.originalDimensions ?? null,
+        processedDimensions: conv.processedDimensions ?? null,
+        transcodedAt: new Date().toISOString(),
+        convertedFrom: conv.convertedFrom,
+      };
+    } else if (this.mediaOpt.isUploadOptimizableImage(file.mimetype)) {
       const opt = await this.mediaOpt.optimizeImageForUpload(safeBuffer, file.mimetype, uploadExt);
       if (opt.optimized) {
         uploadBuf = opt.buffer;

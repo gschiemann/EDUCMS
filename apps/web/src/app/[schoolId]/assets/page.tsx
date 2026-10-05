@@ -69,7 +69,7 @@ import { AssetEncodeBadge, VideoEncodeCard } from '@/components/assets/VideoEnco
 import { useEncodeTarget } from '@/hooks/use-encode-target';
 import { encodeSuggestions, encodeWarnings, encodeNotes, describeEncodeReason, isVideoMime, libraryPollMs, type VideoEncodeState } from '@/lib/video-encode-copy';
 import { inspectVideoFile } from '@/lib/mp4-inspect';
-import { gradeVideoEncode } from '@cms/api-types';
+import { gradeVideoEncode, uploadFormatForType } from '@cms/api-types';
 import {
   uploadAssetDirect,
   maxUploadBytesFor,
@@ -81,6 +81,7 @@ import { useVideoOptimizationStatus, optimizationOf } from '@/hooks/use-video-op
 import { VideoOptimizationNote } from '@/components/assets/VideoOptimizationNote';
 import { screenReadinessOf } from '@/lib/screen-readiness-copy';
 import { useUploadErrorText } from '@/lib/use-upload-error-text';
+import { LIBRARY_ACCEPT, uploadFormatsCopy, uploadProblemFor, useUploadProblemText } from '@/lib/upload-accept';
 import { formatStorageBytes } from '@/lib/storage-bytes';
 
 // Match the server limit (apps/api/src/assets/assets.controller.ts).
@@ -96,24 +97,17 @@ import { formatStorageBytes } from '@/lib/storage-bytes';
 // and then refuse a 700 MB file with "Max size is 500 MB". The hint now shows
 // what the server last stated (`videoUploadLimitBytes`, 500 MB by default), and
 // a file over it is refused before a byte moves (`refuseBeforeUploadAboveBytes`).
-// 2026-05-13 — Dropped .mov and .avi from the accept list. Browsers /
-// Android WebView refuse QuickTime (`ftyp=qt  `) containers and have
-// never supported AVI cross-platform. Operator hit this with an
-// IMG_*.mov from an iPhone — file uploaded fine, then the player
-// silently failed to play it (HTML5 video element refused the source).
-// Keeping these out of the picker AND the drag-drop validation below
-// means the operator gets an instant, actionable error instead of a
-// 4-hour debugging trip. Server enforces the same allowlist in
-// assets.controller.ts (assertUploadIntent + Supabase bucket policy).
-// SVG is intentionally NOT in the asset-library picker. The library uploads
-// direct browser→Supabase (presign), so the server never sees the bytes and
-// can't sanitize the SVG before it lands in storage — and asset SVGs are
-// rendered raw elsewhere, so an unsanitized one is a stored-XSS vector. Logos
-// DO support SVG via the Brand Kit flow (Settings → Branding), which scrapes
-// or uploads through a server-side-sanitized path. getUnsupportedReason()
-// below explains this if an operator drag-drops a .svg anyway.
-const ACCEPT_STRING = '.jpg,.jpeg,.png,.webp,.gif,.bmp,.mp4,.m4v,.webm,.mp3,.ogg,.wav,.m4a,.pdf';
-
+// WHAT CAN BE UPLOADED (2026-10-05): the picker's `accept`, the drag-drop
+// pre-check and the strip's "Photos (…), video (…)" line all read ONE table —
+// `@cms/api-types` upload-formats.ts via lib/upload-accept.ts — the same one
+// the API and the storage bucket read. 2026-05-13 dropped .mov and .avi here
+// (an iPhone IMG_*.mov uploaded fine, then a screen's WebView refused it);
+// they are back, with MKV, WMV, MPG, 3GP, MPEG-TS and HEIC, because the server
+// now converts them (MP4 after upload, JPEG before the asset exists). SVG stays
+// out: the library uploads straight to storage, so the server never sees the
+// bytes and can't sanitize an SVG (a stored-XSS vector) — logos take SVG via
+// Settings → Branding, and the pre-check says so.
+//
 // §6 — the strip's supported-file line is generated from the SAME rule the
 // uploader enforces, so it can never advertise a format the picker rejects
 // (rendered through `assetsLib.supportedCopy` with the real video ceiling).
@@ -125,29 +119,6 @@ const ACCEPT_STRING = '.jpg,.jpeg,.png,.webp,.gif,.bmp,.mp4,.m4v,.webm,.mp3,.ogg
 const PAGE_SIZE = 50;
 const FULL_SCAN_TAKE = 500;
 
-// Friendly, per-format rejection messages. Mirrors REJECTED_EXTENSIONS /
-// REJECTED_MIMES on the server — keeping the rule list in two places is
-// the price of "fail before upload instead of fail after the bytes have
-// landed on Supabase." When you add a format to one, add it to the other.
-function getUnsupportedReason(file: File): string | null {
-  const name = (file.name || '').toLowerCase();
-  const type = (file.type || '').toLowerCase();
-  if (name.endsWith('.mov') || type === 'video/quicktime') {
-    return "MOV is unsupported — export as MP4 (H.264). Android signage players and Windows Edge refuse QuickTime: in QuickTime Player → File → Export As → 1080p, then upload the .mp4.";
-  }
-  if (name.endsWith('.avi') || type === 'video/x-msvideo') {
-    return "AVI is unsupported — export as MP4 (H.264) and re-upload.";
-  }
-  if (name.endsWith('.svg') || type === 'image/svg+xml') {
-    // Friendly, actionable, and honest about the roadmap — an SVG can carry
-    // hidden scripts so we don't store raw SVGs as content yet. Points at the
-    // place SVG DOES work today (logos) instead of a generic "unsupported
-    // format." Mirrors the server message in assets.controller.ts
-    // assertUploadIntent() and the AssetPicker pre-check.
-    return "SVG is unsupported for asset uploads — export as PNG. For a logo specifically, Settings → Branding accepts SVG safely today.";
-  }
-  return null;
-}
 
 type UploadPhase = 'idle' | 'uploading' | 'processing' | 'success' | 'pending-review' | 'error';
 type ViewMode = 'grid' | 'list';
@@ -218,6 +189,11 @@ function typeIcon(mime: string, size = 'w-5 h-5') {
 /** Short, human file-kind token for the card's metadata line ("JPG", "MP4"). */
 function shortType(mime: string): string {
   if (mime === 'text/html') return 'LINK';
+  // 2026-10-05 — the shared upload-formats table names every stored type the
+  // way an operator does: an AVI still converting reads "AVI", not "X-MS", and
+  // an MPEG-2 video "MPG", not "MP3".
+  const known = uploadFormatForType(mime);
+  if (known) return known.label.toUpperCase();
   const ext = mime?.split('/')[1]?.toUpperCase() || 'FILE';
   return ext === 'JPEG' ? 'JPG' : ext === 'QUICKTIME' ? 'MOV' : ext === 'MPEG' ? 'MP3' : ext.substring(0, 4);
 }
@@ -504,6 +480,7 @@ export default function AssetsPage() {
   const liveOptimization = useVideoOptimizationStatus(assets);
   // A refused / failed upload in the operator's words (server messages pass through).
   const uploadErrorMessage = useUploadErrorText();
+  const uploadProblemText = useUploadProblemText();
   /** true once the server answered a query it actually applied itself. */
   const serverSearched = !!debouncedSearch && page.appliedQuery === debouncedSearch;
 
@@ -827,8 +804,8 @@ export default function AssetsPage() {
       // large" if both happen to be true on the same file). Both states
       // surface in the upload queue so the operator sees which file is
       // blocked and why.
-      const unsupportedReason = getUnsupportedReason(file);
-      if (unsupportedReason) { item.phase = 'error'; item.error = unsupportedReason; }
+      const problem = uploadProblemFor(file);
+      if (problem) { item.phase = 'error'; item.error = uploadProblemText(problem, file); }
       else if (file.size === 0) { item.phase = 'error'; item.error = t('directUpload.fileEmpty'); }
       else if (file.size > refuseBeforeUploadAboveBytes(file)) {
         item.phase = 'error';
@@ -1517,7 +1494,7 @@ export default function AssetsPage() {
             multiple
             className="hidden"
             ref={fileInputRef}
-            accept={ACCEPT_STRING}
+            accept={LIBRARY_ACCEPT}
             onChange={e => {
               // The FolderPicker stashes the chosen destination on a
               // data attribute before popping the file chooser:
@@ -1595,7 +1572,7 @@ export default function AssetsPage() {
           <span className="block text-xs font-bold text-slate-800">
             {dragOver ? 'Drop the files — we’ll ask where to put them' : 'Drop files anywhere to upload'}
           </span>
-          <span className="block text-[11px] text-slate-500 mt-0.5">{t('assetsLib.supportedCopy', { video: formatUploadCap(videoUploadLimitBytes()) })}</span>
+          <span className="block text-[11px] text-slate-500 mt-0.5">{t('assetsLib.supportedCopy', { video: formatUploadCap(videoUploadLimitBytes()), ...uploadFormatsCopy() })}</span>
         </span>
       </button>
 

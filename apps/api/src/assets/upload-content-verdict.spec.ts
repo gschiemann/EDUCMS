@@ -19,6 +19,7 @@ import {
   hasIndexedLayout,
   isPictureContainer,
   sniffBmpOrIco,
+  storedTypeScreenVerdict,
   tailSeekSeconds,
   UPLOAD_REFUSALS,
   uploadContentKind,
@@ -32,7 +33,8 @@ import {
 } from './upload-content-verdict';
 import { readFileSync } from 'fs';
 import * as path from 'path';
-import { readScreenStamp } from '@cms/api-types';
+import { readScreenStamp, withheldFromScreens } from '@cms/api-types';
+import { parseProbe, planTranscode } from '../storage/video-transcode/transcode-profile';
 
 const run = (over: Partial<ToolRun>): ToolRun => ({
   exitCode: 0,
@@ -851,8 +853,9 @@ describe('decideUploadContent — THE decision, both directions', () => {
       expect(r.message.length).toBeLessThan(220);
       expect(reason).toEqual(expect.any(String));
     }
-    // One code per message the page shows (not-video and ends-early share theirs).
-    expect(codes.size).toBe(9);
+    // One code per message the page shows (not-video and ends-early share theirs);
+    // 2026-10-05: + ASSET_IMAGE_HEIC_UNAVAILABLE (a HEIC conversion that could not run just now).
+    expect(codes.size).toBe(10);
   });
 });
 
@@ -985,5 +988,98 @@ describe('uploadScreenStamp — what the new Asset row is created with', () => {
     expect(readScreenStamp({ screen: stamp })).toEqual(
       expect.objectContaining({ ready: false, pending: true, issues: ['frame-rate'] }),
     );
+  });
+});
+
+// ── 2026-10-05 — MOV, AVI, MKV, WMV, MPG, 3GP and TS opened: the NAME counts too ──
+//
+// The transcode plans with the stored object's type and extension
+// (`planTranscode(probe, label)`): anything not called MP4 is a required
+// conversion, so an asset ends an MP4 by name as well as by bytes. The upload's
+// verdict reads the same label — or the gate would hand screens a `.mov` the
+// pipeline is about to replace, and the two would disagree about one file.
+describe('uploadScreenVerdict with the stored name — the upload and the conversion agree', () => {
+  const MOV = { mimeType: 'video/quicktime', extension: '.mov' };
+  const MP4 = { mimeType: 'video/mp4', extension: '.mp4' };
+
+  it('MP4 bytes saved as .mov must be converted: not ready, for its container', () => {
+    expect(uploadScreenVerdict(videoEvidence('clean-h264-1080p30-aac'), MOV)).toEqual({
+      ready: false,
+      issues: ['container'],
+    });
+  });
+
+  it('NEGATIVE CONTROL: the same document named MP4 — or with no name given — is ready, as before', () => {
+    expect(uploadScreenVerdict(videoEvidence('clean-h264-1080p30-aac'), MP4)).toEqual({ ready: true, issues: [] });
+    expect(uploadScreenVerdict(videoEvidence('clean-h264-1080p30-aac'))).toEqual({ ready: true, issues: [] });
+  });
+
+  it.each(Object.keys(SCREEN_FIXTURES.cases))(
+    '%s: not ready at upload ⇔ the transcode plans a REQUIRED conversion, for the same reasons — named MP4 and named MOV',
+    (fixture) => {
+      let compared = 0;
+      for (const label of [MP4, MOV]) {
+        const verdict = uploadScreenVerdict(videoEvidence(fixture), label);
+        if (!verdict) continue; // no clean video verdict for this document (and nothing to plan)
+        const plan = planTranscode(parseProbe(SCREEN_FIXTURES.cases[fixture].probe), label);
+        const required = plan.action === 'transcode' && plan.required;
+        expect(!verdict.ready).toBe(required);
+        if (plan.action === 'transcode') expect(verdict.issues).toEqual(plan.issues);
+        compared++;
+      }
+      // Under a MOV name nothing is ever ready — whatever the bytes hold.
+      const asMov = uploadScreenVerdict(videoEvidence(fixture), MOV);
+      if (asMov) expect(asMov.issues).toContain('container');
+      expect([0, 2]).toContain(compared);
+    },
+  );
+});
+
+describe('storedTypeScreenVerdict — when the probe did not run, a container converted after upload is "not ready" by its TYPE', () => {
+  const NOW = Date.UTC(2026, 9, 5, 9, 30, 0);
+
+  it.each([
+    ['t/a.mov', 'video/quicktime'],
+    ['t/a.qt', 'video/quicktime'],
+    ['t/a.avi', 'video/x-msvideo'],
+    ['t/a.mkv', 'video/x-matroska'],
+    ['t/a.wmv', 'video/x-ms-wmv'],
+    ['t/a.mpg', 'video/mpeg'],
+    ['t/a.3gp', 'video/3gpp'],
+    ['t/a.ts', 'video/mp2t'],
+    ['t/a.m2ts', 'video/mp2t'],
+    // storage recorded no type: the stored name decides, as everywhere else
+    ['t/a.avi', ''],
+    ['t/a.MTS', null],
+  ])('%s (%s) → not ready, for its container', (storagePath, type) => {
+    expect(storedTypeScreenVerdict(storagePath, type)).toEqual({ ready: false, issues: ['container'] });
+  });
+
+  it.each([
+    ['t/a.mp4', 'video/mp4'],
+    ['t/a.m4v', 'video/x-m4v'],
+    ['t/a.webm', 'video/webm'],
+    ['t/a.mp4', ''],
+    ['t/a.jpg', 'image/jpeg'],
+    ['t/a.heic', 'image/heic'],
+    ['t/a.mp3', 'audio/mpeg'],
+    ['t/a.flv', 'video/x-flv'],
+    ['', ''],
+    [null, null],
+  ])('%s (%s) → null: every other file stays unknown, delivered exactly as before', (storagePath, type) => {
+    expect(storedTypeScreenVerdict(storagePath, type)).toBeNull();
+  });
+
+  it('its stamp is a pending "converting" one the manifest gate withholds — and there is none when no conversion is queued', () => {
+    const stamp = uploadScreenStamp(storedTypeScreenVerdict('t/a.avi', 'video/x-msvideo'), true, NOW);
+    expect(stamp).toEqual({
+      version: 1,
+      ready: false,
+      pending: true,
+      issues: ['container'],
+      checkedAt: new Date(NOW).toISOString(),
+    });
+    expect(withheldFromScreens({ mimeType: 'video/x-msvideo', processingMeta: { screen: stamp } })).toBe(true);
+    expect(uploadScreenStamp(storedTypeScreenVerdict('t/a.avi', 'video/x-msvideo'), false, NOW)).toBeNull();
   });
 });

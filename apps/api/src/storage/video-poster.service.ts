@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { Prisma } from '@cms/database';
+import { uploadFormatForType } from '@cms/api-types';
 import { emergencyContentUse } from '../emergency/emergency-content-use';
 import { createHash, randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -424,6 +425,19 @@ export class VideoPosterService {
     if (!facts || !needsFastStartRemux(facts)) return 'not-needed';
     if (mode === 'skip')
       return this.remuxSkipped(args, 'this call asked for no re-mux');
+    // 2026-10-05 — a MOV / 3GP … (a type the signage transcode CONVERTS to MP4)
+    // is that transcode's to replace. A lossless re-mux would move the row to a
+    // `.mp4` copy of the same codec under the same QuickTime type — and the
+    // transcode, queued against the original URL, would then skip it as
+    // `source-changed`. (A queued job already defers the re-mux below; this
+    // holds even when the job could not be queued.)
+    if (
+      uploadFormatForType(args.mimeType)?.handling === 'convert-after-upload'
+    )
+      return this.remuxSkipped(
+        args,
+        'it is converted to MP4 by the signage transcode instead',
+      );
     if (process.env.VIDEO_FASTSTART_REMUX_DISABLED === '1')
       return this.remuxSkipped(
         args,

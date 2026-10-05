@@ -11,6 +11,7 @@
 
 import { useMemo, useRef, useState } from 'react';
 import { uploadAssetDirect } from '@/lib/direct-upload';
+import { LIBRARY_IMAGE_ACCEPT } from '@/lib/upload-accept';
 import { useParams, useRouter } from 'next/navigation';
 import {
   ArrowLeft, Plus, Pencil, Trash2, X, BadgeDollarSign, Upload, Loader2, ImageIcon,
@@ -373,7 +374,7 @@ function SponsorModal({ sponsor, onClose }: { sponsor: Sponsor | null; onClose: 
             <input
               ref={logoFileRef}
               type="file"
-              accept="image/*"
+              accept={LIBRARY_IMAGE_ACCEPT}
               className="hidden"
               onChange={(e) => pickLogo(e.target.files?.[0])}
             />

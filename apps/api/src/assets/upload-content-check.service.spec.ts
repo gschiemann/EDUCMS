@@ -271,36 +271,36 @@ describe('UploadContentCheckService — plumbing', () => {
   });
 
   it('a file that waits past its budget for a slot is ACCEPTED as unchecked — never refused', async () => {
-    const { spawnFn } = scriptedSpawn(
+    const { spawnFn, stats } = scriptedSpawn(
       () => ({ code: 1, stderr: 'moov atom not found\n' }),
       300,
     );
     const svc = new UploadContentCheckService(fakeStorage());
     svc.spawnFn = spawnFn;
     svc.budgetMs = 100;
-    const first = svc.check({
-      storagePath: 't/1.mp4',
-      mimeType: 'video/mp4',
-      storedBytes: 9,
-    });
-    const second = svc.check({
-      storagePath: 't/2.mp4',
-      mimeType: 'video/mp4',
-      storedBytes: 9,
-    });
-    const third = svc.check({
-      storagePath: 't/3.mp4',
-      mimeType: 'video/mp4',
-      storedBytes: 9,
-    });
-    const v3 = await third;
-    expect(v3).toEqual(
-      expect.objectContaining({
-        accept: true,
-        unchecked: expect.stringMatching(/no free check slot/),
-      }),
-    );
-    await Promise.all([first, second]);
+    // Another upload holds the only slot for longer than this file's whole
+    // budget. (2026-10-05: this used to be raced with three checks whose
+    // timers all fell due at ~100 ms; when the first child's kill timer fired
+    // just before the third's wait timer, the third got the slot with nothing
+    // left of its budget and read "ffprobe ran out of time" — about one run in
+    // three on a loaded box. Holding the slot directly removes the race.)
+    const release = await svc.slots.acquire(Date.now() + 5_000);
+    try {
+      const v = await svc.check({
+        storagePath: 't/3.mp4',
+        mimeType: 'video/mp4',
+        storedBytes: 9,
+      });
+      expect(v).toEqual(
+        expect.objectContaining({
+          accept: true,
+          unchecked: expect.stringMatching(/no free check slot/),
+        }),
+      );
+      expect(stats.calls).toHaveLength(0); // it never forked a child
+    } finally {
+      release?.();
+    }
   });
 
   it('an object URL outside the storage prefix is never handed to a tool', async () => {

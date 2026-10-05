@@ -37,6 +37,20 @@ describe('asset downloads', () => {
     expect(() => assetDownloadUrl({ fileUrl }, api)).toThrow();
   });
 
+  it('a converted file downloads with an extension that matches what is stored — the name the operator gave is kept (2026-10-05)', () => {
+    // An iPhone photo stored as the JPEG it was converted to; a MOV after its MP4 was swapped in.
+    expect(assetDownloadUrl({ fileUrl: object, originalName: 'IMG_0042.HEIC', mimeType: 'image/jpeg' }, api).filename).toBe('IMG_0042.jpg');
+    expect(assetDownloadUrl({ fileUrl: object, originalName: 'Gym tour.MOV', mimeType: 'video/mp4' }, api).filename).toBe('Gym tour.mp4');
+    expect(assetDownloadUrl({ fileUrl: object, originalName: 'sticker.heic', mimeType: 'image/webp' }, api).filename).toBe('sticker.webp');
+    // NEGATIVE CONTROLS: an extension that fits, a type the table does not know, no type at all.
+    expect(assetDownloadUrl({ fileUrl: object, originalName: 'Photo.JPEG', mimeType: 'image/jpeg' }, api).filename).toBe('Photo.JPEG');
+    expect(assetDownloadUrl({ fileUrl: object, originalName: 'clip.mov', mimeType: 'video/quicktime' }, api).filename).toBe('clip.mov');
+    expect(assetDownloadUrl({ fileUrl: object, originalName: 'deck.pptx', mimeType: 'application/vnd.ms-powerpoint' }, api).filename).toBe('deck.pptx');
+    expect(assetDownloadUrl({ fileUrl: object, originalName: 'notes.txt' }, api).filename).toBe('notes.txt');
+    expect(assetDownloadUrl({ fileUrl: object, originalName: 'no-extension', mimeType: 'video/mp4' }, api).filename).toBe('no-extension.mp4');
+    expect(assetDownloadUrl({ fileUrl: object, originalName: 'trailer.m4v', mimeType: 'video/mp4' }, api).filename).toBe('trailer.m4v');
+  });
+
   it('explains that a web link is not a stored file', () => {
     expect(() => assetDownloadUrl({ fileUrl: 'https://example.com/', mimeType: 'text/html' }, api))
       .toThrow('Web links do not have a downloadable file');

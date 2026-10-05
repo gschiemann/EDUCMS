@@ -6,6 +6,7 @@ import { useUIStore } from '@/store/ui-store';
 import { useQueryClient } from '@tanstack/react-query';
 import { usePanicContent, useAddPanicAsset, useRemovePanicAsset, type PanicKind, type PanicOrientation } from '@/hooks/use-api';
 import { appConfirm } from '@/components/ui/app-dialog';
+import { ALERT_CONTENT_ACCEPT, uploadProblemFor, useUploadProblemText } from '@/lib/upload-accept';
 
 const apiBase = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1').replace('/api/v1', '');
 
@@ -62,6 +63,7 @@ export function PanicContentEditor({ kind, label, accent, hint }: Props) {
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
+  const problemText = useUploadProblemText();
   const [uploads, setUploads] = useState<Array<{ id: string; name: string; progress: number; phase: 'uploading' | 'error'; error?: string }>>([]);
 
   const items = data?.items ?? [];
@@ -76,6 +78,15 @@ export function PanicContentEditor({ kind, label, accent, hint }: Props) {
 
     Array.from(files).forEach(file => {
       const id = genId();
+      // 2026-10-05 — the shared upload-formats rule for THIS endpoint
+      // (/assets/upload): alert content goes straight into a protected playlist
+      // that is never converted, so a MOV / AVI / … is sent to the Media Library
+      // with plain words; a HEIC photo is fine (converted before it is stored).
+      const problem = uploadProblemFor(file, { path: 'multipart' });
+      if (problem) {
+        setUploads(prev => [{ id, name: file.name, progress: 0, phase: 'error', error: problemText(problem, file) }, ...prev]);
+        return;
+      }
       if (file.size > MAX_FILE_SIZE) {
         setUploads(prev => [{ id, name: file.name, progress: 0, phase: 'error', error: `Too large (${Math.round(file.size / (1024 * 1024))}MB > 500MB cap)` }, ...prev]);
         return;
@@ -214,6 +225,7 @@ export function PanicContentEditor({ kind, label, accent, hint }: Props) {
           ref={fileInputRef}
           type="file"
           multiple
+          accept={ALERT_CONTENT_ACCEPT}
           className="hidden"
           onChange={(e) => { handleFiles(e.target.files); if (fileInputRef.current) fileInputRef.current.value = ''; }}
         />

@@ -216,9 +216,11 @@ describe('presign — resumable descriptor + renew ticket + per-type ceiling', (
     expect(storage.createSignedUploadUrl).not.toHaveBeenCalled();
   });
 
-  it('the upload gates are unchanged: .mov and .svg are still refused at presign', async () => {
+  it('the upload gates: .svg is still refused at presign; a .mov only where the transcode can convert it (2026-10-05)', async () => {
+    // This harness wires no transcode queue — so a MOV, which screens play only
+    // once it is converted, is refused with words that say so…
     const { controller } = makeController(makeStorage());
-    await expectHttp(
+    const refused = await expectHttp(
       () =>
         controller.presignUpload(req() as any, {
           filename: 'IMG_1.mov',
@@ -226,8 +228,28 @@ describe('presign — resumable descriptor + renew ticket + per-type ceiling', (
           size: 10 * MB,
         }),
       HttpStatus.UNSUPPORTED_MEDIA_TYPE,
-      'ASSET_FILE_TYPE_REJECTED',
+      'ASSET_CONVERSION_UNAVAILABLE',
     );
+    expect(refused.getResponse().message).toMatch(/MOV video.*Export it as MP4/);
+    // …and taken, as a QuickTime object, by a controller that has one
+    // (assets-accept-containers.controller.spec.ts covers every container).
+    const storage = makeStorage();
+    const withQueue = new AssetsController(
+      makePrisma(),
+      storage,
+      {} as any,
+      { isUploadOptimizableImage: () => false, optimizeImageForUpload: jest.fn() } as any,
+      { generateImageAltText: jest.fn(async () => null) } as any,
+      { kickOff: jest.fn() } as any,
+      { enqueue: jest.fn(async () => true) } as any,
+    );
+    const ok = await withQueue.presignUpload(req() as any, {
+      filename: 'IMG_1.MOV',
+      contentType: 'video/quicktime',
+      size: 10 * MB,
+    });
+    expect(ok.mimeType).toBe('video/quicktime');
+    expect(ok.storagePath).toMatch(new RegExp(`^${TENANT}/[0-9a-f-]{36}\\.mov$`));
     await expectHttp(
       () =>
         controller.presignUpload(req() as any, {
@@ -356,11 +378,14 @@ describe('complete-upload — the STORED content type must be allowed', () => {
     size: 900 * MB,
   };
 
+  // 2026-10-05: `video/quicktime` left this list — a MOV is a stored type of the
+  // upload-formats table now (converted to MP4 after upload). A container the
+  // table still does not take (Flash video) stands in for it.
   it.each([
     'application/octet-stream',
     'text/html',
     'image/svg+xml',
-    'video/quicktime',
+    'video/x-flv',
   ])('REFUSES (415) and DELETES an object stored as %s', async (storedType) => {
     const storage = makeStorage({
       getObjectInfo: jest.fn(async () => ({

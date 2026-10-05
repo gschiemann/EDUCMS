@@ -2477,3 +2477,74 @@ describe('real ffmpeg round trip', () => {
     60_000,
   );
 });
+
+/**
+ * 2026-10-05 — MOV, AVI, MKV, WMV, MPG, 3GP and MPEG-TS uploads are accepted and
+ * converted. Probing the real refused-extension corpus found two that today's
+ * planner would have kept as uploaded (`already-optimal`): a 3GP of H.264 + AAC
+ * (brand `3gp6` — ffprobe names the whole ISO family "mov,mp4,…") and MP4 bytes
+ * saved as `.mov` (brand `isom`). Both would have stayed `.3gp` / `.mov` assets.
+ * A file must be an MP4 by BRAND and by NAME before it is left alone.
+ */
+describe('a video ends as an MP4 — by its brand and by its name (more containers, 2026-10-05)', () => {
+  const clean = fx('clean-h264-1080p30-aac');
+
+  it('NEGATIVE CONTROL: the clean MP4 is screen-safe and already-optimal by bytes and by name', () => {
+    expect(screenCompatibilityIssues(clean)).toEqual([]);
+    expect(screenCompatibilityIssues(clean, { mimeType: 'video/mp4', extension: '.mp4' })).toEqual([]);
+    expect(screenCompatibilityIssues(clean, { mimeType: 'video/x-m4v', extension: '.M4V' })).toEqual([]);
+    expect(screenCompatibilityIssues(clean, {})).toEqual([]);
+    expect(planTranscode(clean, { mimeType: 'video/mp4', extension: '.mp4' })).toEqual({
+      action: 'skip',
+      reason: 'already-optimal',
+    });
+  });
+
+  it.each(['3gp4', '3gp5', '3gp6', '3ge6', '3g2a', 'qt', 'mj2s', 'mjp2'])(
+    'major brand %j is not an MP4: a container issue, so the conversion is REQUIRED',
+    (brand) => {
+      const p = { ...clean, majorBrand: brand };
+      expect(screenCompatibilityIssues(p)).toEqual(['container']);
+      const d = planTranscode(p);
+      expect(d.action === 'transcode' && d.required).toBe(true);
+    },
+  );
+
+  it.each(['isom', 'iso5', 'mp41', 'mp42', 'avc1', 'm4v', 'dash'])('major brand %j is an MP4', (brand) => {
+    expect(screenCompatibilityIssues({ ...clean, majorBrand: brand })).toEqual([]);
+  });
+
+  it.each<[string, string]>([
+    ['video/quicktime', '.mov'],
+    ['video/quicktime', '.MOV'],
+    ['video/mp4', '.mov'], // MP4 type, QuickTime name
+    ['video/3gpp', '.3gp'],
+    ['video/x-msvideo', '.avi'],
+    ['video/x-matroska', '.mkv'],
+    ['video/x-ms-wmv', '.wmv'],
+    ['video/mpeg', '.mpg'],
+    ['video/mp2t', '.ts'],
+    ['video/mp2t', '.m2ts'],
+    ['video/webm', '.webm'],
+  ])('MP4 bytes in a file called %s %s are converted — required, never already-optimal', (mimeType, extension) => {
+    expect(screenCompatibilityIssues(clean, { mimeType, extension })).toEqual(['container']);
+    const d = planTranscode(clean, { mimeType, extension });
+    expect(d.action).toBe('transcode');
+    if (d.action === 'transcode') {
+      expect(d.required).toBe(true);
+      expect(d.issues).toEqual(['container']);
+      // The plan itself is the ordinary one: same size, no frame-rate change.
+      expect([d.plan.width, d.plan.height, d.plan.fps]).toEqual([1920, 1080, null]);
+    }
+  });
+
+  it("the output check judges the OUTPUT by its bytes — it is always written as .mp4, so the source's name never follows it", () => {
+    const plan = planTranscode(clean, { mimeType: 'video/quicktime', extension: '.mov' });
+    if (plan.action !== 'transcode') throw new Error('expected a transcode');
+    expect(verifyTranscodeOutput(clean, clean, plan.plan)).toEqual({ ok: true });
+    expect(verifyTranscodeOutput(clean, { ...clean, majorBrand: '3gp6' }, plan.plan)).toEqual({
+      ok: false,
+      reason: 'output-not-screen-safe-container',
+    });
+  });
+});

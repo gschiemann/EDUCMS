@@ -21,6 +21,7 @@ import {
   refuseBeforeUploadAboveBytes,
 } from '@/lib/direct-upload';
 import { STORAGE_QUOTA_EXCEEDED, formatStorageBytes, storageQuotaNumbers } from '@/lib/storage-bytes';
+import { uploadFormatsCopy } from '@/lib/upload-accept';
 
 /**
  * The upload content check's refusal codes → their `directUpload.*` words.
@@ -31,7 +32,10 @@ import { STORAGE_QUOTA_EXCEEDED, formatStorageBytes, storageQuotaNumbers } from 
 export const CONTENT_REFUSAL_KEYS: Readonly<Record<string, string>> = {
   ASSET_FILE_EMPTY: 'fileEmpty',
   ASSET_IMAGE_UNREADABLE: 'imageUnreadable',
+  // 2026-10-05 — a HEIC is CONVERTED to JPEG at upload; these two are the
+  // conversion failing (the file) and not running just now (try again).
   ASSET_IMAGE_HEIC: 'imageHeic',
+  ASSET_IMAGE_HEIC_UNAVAILABLE: 'imageHeicUnavailable',
   ASSET_VIDEO_UNPLAYABLE: 'videoUnplayable',
   ASSET_VIDEO_NO_PICTURE: 'videoNoPicture',
   ASSET_VIDEO_IS_PICTURE: 'videoIsPicture',
@@ -48,6 +52,7 @@ function fmtBytes(bytes: number): string {
 
 export function useUploadErrorText(): (err: unknown, file: File) => string {
   const t = useTranslations('directUpload');
+  const tf = useTranslations('uploadFormats');
   return (err, file) => {
     if (err instanceof DirectUploadError) {
       // 2026-09-24 — the organisation's storage allowance is full (413
@@ -68,6 +73,13 @@ export function useUploadErrorText(): (err: unknown, file: File) => string {
       if (err.source === 'api' && err.apiCode && CONTENT_REFUSAL_KEYS[err.apiCode]) {
         return t(CONTENT_REFUSAL_KEYS[err.apiCode]);
       }
+      // 2026-10-05 — "this kind of file can't be uploaded": the same words, and the
+      // same format lists (the shared upload-formats table), as the page's own
+      // pre-check — in the operator's language, not the server's English.
+      if (err.source === 'api' && err.apiCode === 'ASSET_FILE_TYPE_UNSUPPORTED') {
+        return tf('unsupported', { name: file.name || tf('thisFile'), ...uploadFormatsCopy('direct') });
+      }
+      if (err.source === 'api' && err.apiCode === 'ASSET_SVG_NOT_SUPPORTED') return tf('svg');
       // Our API's refusal already says exactly what to do — show it as sent.
       if (err.source === 'api' && err.message) return err.message;
       if (err.code === 'empty') return t('fileEmpty');

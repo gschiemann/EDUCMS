@@ -23,6 +23,7 @@
  * XMLHttpRequest, not fetch: it is the only browser API with UPLOAD progress events, which
  * is what makes a 1.5 GB upload's bar move on a phone. Safari/iOS 12+ compatible.
  */
+import { resolveUploadFormat } from '@cms/api-types';
 import { apiFetch } from '@/lib/api-client';
 
 /** Supabase requires exactly 6 MB TUS chunks (the last one may be shorter). */
@@ -46,10 +47,14 @@ export const MAX_DIRECT_OTHER_BYTES = 500 * 1024 * 1024;
 /** The video limit the server last stated (presign `maxFileSize`); null until one has answered. */
 let serverVideoLimit: number | null = null;
 
+/**
+ * A video by its type, or by its name in the shared upload-formats table — a
+ * `.mkv` / `.ts` / `.mts` often arrives with no type at all (2026-10-05: MOV,
+ * AVI, MKV, WMV, MPG, 3GP and MPEG-TS are accepted and converted to MP4).
+ */
 function isVideoUpload(file: { type?: string | null; name?: string | null }): boolean {
   const type = (file.type || '').toLowerCase();
-  const name = (file.name || '').toLowerCase();
-  return type.startsWith('video/') || /\.(mp4|m4v|webm)$/.test(name);
+  return type.startsWith('video/') || resolveUploadFormat(file.name, file.type).format?.kind === 'video';
 }
 
 /** Remember the video ceiling the server stated for a file of this type. Anything else is ignored. */

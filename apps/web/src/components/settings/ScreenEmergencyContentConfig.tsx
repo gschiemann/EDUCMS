@@ -37,6 +37,7 @@ import {
   type FloorPlanScreen,
 } from '@/hooks/use-api';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
+import { ALERT_MEDIA_ACCEPT, uploadProblemFor, useUploadProblemText } from '@/lib/upload-accept';
 import { VERTICAL_EMERGENCY_TYPES } from '@cms/api-types';
 
 export interface EmergencyTypeRow {
@@ -115,6 +116,7 @@ export function ScreenEmergencyContentConfig({
   // upload spot's spinner is independent.
   const [uploadingType, setUploadingType] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const problemText = useUploadProblemText();
   const [localScreenPatch, setLocalScreenPatch] = useState<Partial<FloorPlanScreen>>({});
 
   useEffect(() => {
@@ -143,19 +145,17 @@ export function ScreenEmergencyContentConfig({
 
   const onUploadCustom = async (type: EmergencyTypeRow, orient: Orient, file: File) => {
     setUploadError(null);
-    // Block .mov / .avi BEFORE the upload starts — emergency content
-    // is the worst place to discover a format problem (operator was
-    // staging a lockdown asset and won't notice the silent player-side
-    // playback fail until a drill or a real incident). Same allowlist
-    // as the asset library; same friendly error.
-    const lowerName = (file.name || '').toLowerCase();
-    const lowerType = (file.type || '').toLowerCase();
-    if (lowerName.endsWith('.mov') || lowerType === 'video/quicktime') {
-      setUploadError("QuickTime .mov isn't supported — export as MP4 (QuickTime Player → Export As → 1080p) and re-upload.");
-      return;
-    }
-    if (lowerName.endsWith('.avi') || lowerType === 'video/x-msvideo') {
-      setUploadError("AVI isn't supported — convert to MP4 and re-upload.");
+    // Refuse what this endpoint cannot take BEFORE the upload starts —
+    // emergency content is the worst place to discover a format problem
+    // (operator was staging a lockdown asset and won't notice the silent
+    // player-side playback fail until a drill or a real incident).
+    // 2026-10-05: the shared upload-formats rule for /assets/emergency-upload,
+    // which stores the file as sent and converts NOTHING: screen-ready formats
+    // only. A MOV / AVI / HEIC gets plain words pointing at the Media Library
+    // (which converts them) instead of the old "isn't supported".
+    const problem = uploadProblemFor(file, { path: 'emergency' });
+    if (problem) {
+      setUploadError(problemText(problem, file));
       return;
     }
     setUploadingType(`${type.short}-${orient}`);
@@ -371,12 +371,12 @@ export function ScreenEmergencyContentConfig({
                       <input
                         type="file"
                         // Explicit format list — `video/*` would let the
-                        // OS picker show .mov / .avi which the player
-                        // can't play back. Keeping the allowlist
-                        // narrow saves the operator a round-trip
-                        // discovering it's unsupported. Mirrors the
-                        // assets-library accept list.
-                        accept=".jpg,.jpeg,.png,.webp,.gif,.svg,.bmp,.mp4,.m4v,.webm,.mp3,.ogg,.wav,.m4a,.pdf"
+                        // OS picker show .mov / .avi, which this endpoint
+                        // stores as sent and never converts. The
+                        // screen-ready list from the shared upload-formats
+                        // table (it used to offer .svg, which the server
+                        // always refused).
+                        accept={ALERT_MEDIA_ACCEPT}
                         className="hidden"
                         disabled={!!uploadingType || updateMutation.isPending}
                         onChange={(e) => {

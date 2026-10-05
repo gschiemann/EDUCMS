@@ -78,6 +78,9 @@ import { ChatToEditBox } from '@/components/ai/ChatToEditBox';
 import { StockPhotoSearch } from '@/components/assets/StockPhotoSearch';
 import { uploadAssetDirect } from '@/lib/direct-upload';
 import { useUploadErrorText, useUploadTooLargeText } from '@/lib/use-upload-error-text';
+import { uploadFormatForType } from '@cms/api-types';
+import { LIBRARY_IMAGE_ACCEPT, isConvertedAfterUpload, libraryAccept, uploadProblemFor, useUploadProblemText } from '@/lib/upload-accept';
+import { ScreenVersionError, waitForScreenVersion } from '@/lib/screen-version';
 import { AiImageGenerateButton } from '@/components/ai/AiImageGenerateButton';
 // Wave B / editor-crush B2/B5 (2026-07-02) — SHAPE + ICON element editors.
 import { SHAPE_KINDS } from '@/components/widgets/ShapeWidget';
@@ -10016,6 +10019,7 @@ export function CanvasBackdropSection({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const backdropProblemText = useUploadProblemText();
 
   /**
    * Upload a file from the operator's computer, straight to storage
@@ -10027,8 +10031,12 @@ export function CanvasBackdropSection({
    */
   const handleFile = async (file: File) => {
     setUploadError(null);
-    if (!file.type.startsWith('image/')) {
-      setUploadError('Please pick an image file (JPG, PNG, GIF, or WEBP).');
+    // 2026-10-05 — the shared upload-formats rule (lib/upload-accept.ts): any
+    // picture the Media Library takes, HEIC included (converted to JPEG before
+    // the asset exists, so the URL below is already the JPEG's).
+    const problem = uploadProblemFor(file, { kinds: ['image'] });
+    if (problem) {
+      setUploadError(backdropProblemText(problem, file));
       return;
     }
     setUploading(true);
@@ -10096,7 +10104,7 @@ export function CanvasBackdropSection({
               id={fileInputId}
               ref={fileInputRef}
               type="file"
-              accept="image/*"
+              accept={LIBRARY_IMAGE_ACCEPT}
               className="hidden"
               onChange={(e) => {
                 const f = e.target.files?.[0];
@@ -11262,37 +11270,43 @@ export function AssetLibraryModal({
   const [uploadPct, setUploadPct] = useState<number | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const tu = useTranslations('directUpload');
+  const tf = useTranslations('uploadFormats');
+  const tl = useTranslations('assetsLib');
   const uploadErrorText = useUploadErrorText();
   const tooLargeText = useUploadTooLargeText();
+  const problemText = useUploadProblemText();
+  // 2026-10-05 — a MOV / AVI / … just uploaded, waiting for its MP4 (undefined = not waiting).
+  const [convertPct, setConvertPct] = useState<number | null | undefined>(undefined);
+  const waitAbort = useRef<AbortController | null>(null);
+  useEffect(() => () => waitAbort.current?.abort(), []);
   const filtered = (assets || []).filter((a: any) => {
     const mt = (a.mimeType || '').toLowerCase();
     return kind === 'image' ? mt.startsWith('image/') : mt.startsWith('video/');
   });
-  // 2026-05-13 — Dropped video/quicktime. .mov files break on Android
-  // signage players and aren't reliable in Edge/Safari. The library-side
-  // /assets/presign endpoint also rejects them; keeping them out of the
-  // template-builder media picker prevents an operator from trying to
-  // upload a .mov here, watching it fail at the API, then being confused
-  // about why their template's video zone is empty.
-  const acceptAttr = kind === 'image'
-    ? 'image/png,image/jpeg,image/webp,image/gif,image/svg+xml,image/avif'
-    : 'video/mp4,video/webm';
+  // What this picker takes, from the shared upload-formats table
+  // (lib/upload-accept.ts) — the same answer as the Media Library. 2026-05-13
+  // dropped video/quicktime here (a .mov broke Android players); 2026-10-05 put
+  // MOV, AVI, MKV, WMV, MPG, 3GP and TS back because the server converts them to
+  // MP4 — and this picker WAITS for that MP4 before it hands the widget a URL
+  // (below). SVG and AVIF, which this list offered and the server always
+  // refused, are gone.
+  const acceptAttr = libraryAccept([kind]);
+
+  /**
+   * An asset still stored as a MOV / AVI / … has not been converted yet (or
+   * could not be): a widget keeps the URL it is handed BY VALUE, so picking it
+   * now would put the original on every screen. Pickable once its MP4 is in.
+   */
+  const awaitingConversion = (a: { mimeType?: unknown } | null | undefined) =>
+    uploadFormatForType(String(a?.mimeType || ''))?.handling === 'convert-after-upload';
 
   const handleUpload = async (file: File) => {
     setUploadError(null);
-    // Fail fast on formats we already know won't play back. Mirrors the
-    // server's REJECTED_EXTENSIONS / REJECTED_MIMES gate in
-    // assets.controller.ts and the assets-page client-side check —
-    // operator gets the actionable "export as MP4" message in <100ms
-    // instead of after a 30-second upload that ends in a server reject.
-    const lowerName = (file.name || '').toLowerCase();
-    const lowerType = (file.type || '').toLowerCase();
-    if (lowerName.endsWith('.mov') || lowerType === 'video/quicktime') {
-      setUploadError("QuickTime .mov isn't supported (Android players and Edge refuse it). Export as MP4: QuickTime Player → File → Export As → 1080p, then upload the .mp4.");
-      return;
-    }
-    if (lowerName.endsWith('.avi') || lowerType === 'video/x-msvideo') {
-      setUploadError("AVI files aren't supported by browsers. Convert to MP4 (H.264) and re-upload.");
+    // Fail fast on what this picker cannot take (an SVG, a file of another
+    // kind, an unknown type) — the shared rule, the same words as everywhere.
+    const problem = uploadProblemFor(file, { kinds: [kind] });
+    if (problem) {
+      setUploadError(problemText(problem, file));
       return;
     }
     const tooBig = tooLargeText(file);
@@ -11318,8 +11332,32 @@ export function AssetLibraryModal({
       // the new URL to the selected set so the operator can keep
       // picking more before hitting "Add N selected".
       await queryClient.invalidateQueries({ queryKey: ['assets'] });
-      const finalUrl = completed.fileUrl;
+      let finalUrl = completed.fileUrl;
       if (!finalUrl) throw new Error('Upload completed but server did not return a file URL.');
+      if (isConvertedAfterUpload(file)) {
+        // A MOV / AVI / …: the widget must keep the MP4's URL, not the
+        // original's (lib/screen-version.ts) — wait for the conversion.
+        setUploadPct(null);
+        setConvertPct(null);
+        waitAbort.current?.abort();
+        const ctl = new AbortController();
+        waitAbort.current = ctl;
+        try {
+          const ready = await waitForScreenVersion(completed.id, {
+            signal: ctl.signal,
+            onProgress: (pct) => setConvertPct(pct),
+          });
+          finalUrl = ready.fileUrl;
+          await queryClient.invalidateQueries({ queryKey: ['assets'] });
+        } catch (e) {
+          if (e instanceof ScreenVersionError) {
+            if (e.code === 'failed') setUploadError(tf('conversionFailed', { name: file.name }));
+            else if (e.code === 'timeout') setUploadError(tf('conversionSlow', { name: file.name }));
+            return;
+          }
+          throw e;
+        }
+      }
       if (multi) {
         setPicked((prev) => new Set(prev).add(finalUrl));
       } else {
@@ -11333,6 +11371,7 @@ export function AssetLibraryModal({
     } finally {
       setUploading(false);
       setUploadPct(null);
+      setConvertPct(undefined);
     }
   };
 
@@ -11433,7 +11472,13 @@ export function AssetLibraryModal({
             {uploading ? (
               <>
                 <svg className="w-4 h-4 animate-spin" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="8" cy="8" r="6" strokeOpacity="0.25" /><path d="M14 8a6 6 0 0 0-6-6" /></svg>
-                {uploadPct !== null ? tu('uploadingPct', { pct: uploadPct }) : 'Uploading…'}
+                {convertPct !== undefined
+                  ? convertPct === null
+                    ? tf('converting')
+                    : tf('convertingPct', { pct: convertPct })
+                  : uploadPct !== null
+                    ? tu('uploadingPct', { pct: uploadPct })
+                    : 'Uploading…'}
               </>
             ) : (
               <>📤 Upload {kind === 'image' ? 'image' : 'video'} from your computer</>
@@ -11461,7 +11506,9 @@ export function AssetLibraryModal({
               {filtered.map((a: any) => {
                 const url = a.fileUrl || a.url;
                 const isPicked = picked.has(url);
+                const notYet = awaitingConversion(a);
                 const handleClick = () => {
+                  if (notYet) return;
                   if (multi) {
                     setPicked((prev) => {
                       const next = new Set(prev);
@@ -11478,9 +11525,16 @@ export function AssetLibraryModal({
                     key={a.id}
                     type="button"
                     onClick={handleClick}
+                    disabled={notYet}
+                    title={notYet ? tl('optimizing') : undefined}
                     aria-pressed={multi ? isPicked : undefined}
-                    className={`group relative aspect-square rounded-lg overflow-hidden bg-slate-100 border transition-all ${isPicked ? 'border-indigo-500 ring-2 ring-indigo-400' : 'border-slate-200 hover:border-indigo-400 hover:ring-2 hover:ring-indigo-200'}`}
+                    className={`group relative aspect-square rounded-lg overflow-hidden bg-slate-100 border transition-all disabled:cursor-not-allowed disabled:opacity-60 ${isPicked ? 'border-indigo-500 ring-2 ring-indigo-400' : 'border-slate-200 hover:border-indigo-400 hover:ring-2 hover:ring-indigo-200'}`}
                   >
+                    {notYet && (
+                      <span className="absolute top-1 left-1 right-1 z-10 rounded bg-white/90 px-1 py-0.5 text-[9px] font-semibold text-slate-600 text-left">
+                        {tl('optimizing')}
+                      </span>
+                    )}
                     {kind === 'image' ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       // 2026-05-30 — EGRESS FIX: asset picker grid tiles → 320px transform

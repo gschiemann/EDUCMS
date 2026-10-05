@@ -1920,7 +1920,7 @@
     "uploadToFolder": "Subir {count, plural, one {# archivo} other {# archivos}} a…",
     "uploadWhichFolder": "¿A qué carpeta subir los archivos?",
     "moveToWhichFolder": "¿A qué carpeta mover {count, plural, one {# elemento} other {# elementos}}?",
-    "supportedCopy": "Imágenes, video, audio y PDF · video de hasta {video}",
+    "supportedCopy": "Fotos ({images}), vídeo ({videos}), audio ({audio}) y PDF · vídeo de hasta {video} · los vídeos (MOV) y las fotos (HEIC) del iPhone se convierten automáticamente para las pantallas",
     "fileTooLargeFor": "El archivo supera {max} (este ocupa {size})",
     "optimizing": "Optimizando para pantallas…",
     "optimizationQueued": "En espera de la comprobación de compatibilidad…",
@@ -3310,13 +3310,14 @@
     "storageFull": "Este archivo necesita {need}; te quedan {left} de tus {total} — elimina contenido que no uses o añade pantallas.",
     "fileEmpty": "Este archivo está vacío (0 bytes). Vuelve a exportarlo y sube la nueva copia.",
     "imageUnreadable": "Esto no es una imagen que las pantallas puedan mostrar: el archivo puede estar dañado o ser otro tipo de archivo guardado con nombre de imagen. Vuelve a exportarlo como JPG o PNG y sube la nueva copia.",
-    "imageHeic": "Esta foto está en el formato HEIC de Apple (guardada con otro nombre) y las pantallas no pueden mostrar HEIC. Expórtala como JPG y sube la nueva copia.",
+    "imageHeic": "No se pudo convertir esta foto HEIC. Expórtala como JPEG y vuelve a subirla.",
     "videoUnplayable": "Esto no es un vídeo reproducible: el archivo puede estar dañado o incompleto. Vuelve a exportarlo y sube la nueva copia.",
     "videoNoPicture": "Este archivo tiene sonido pero no imagen, así que la pantalla no mostraría nada. Vuelve a exportarlo como vídeo y sube la nueva copia.",
     "videoIsPicture": "Esto es una imagen guardada con nombre de vídeo. Súbela con su nombre real de imagen (por ejemplo .jpg o .png).",
     "audioUnplayable": "Esto no es un archivo de audio reproducible: el archivo puede estar dañado o incompleto. Vuelve a exportarlo y sube la nueva copia.",
     "pdfNotPdf": "Esto no es un PDF: puede ser otro tipo de archivo guardado con nombre .pdf. Vuelve a guardarlo o exportarlo como PDF y sube la nueva copia.",
-    "pdfIncomplete": "Este PDF está incompleto: el archivo puede estar dañado o cortado. Vuelve a guardarlo o exportarlo y sube la nueva copia."
+    "pdfIncomplete": "Este PDF está incompleto: el archivo puede estar dañado o cortado. Vuelve a guardarlo o exportarlo y sube la nueva copia.",
+    "imageHeicUnavailable": "No se pudo convertir esta foto HEIC en este momento. Vuelve a subirla en un minuto, o expórtala como JPEG y sube esa."
   },
   "playbackCopy": {
     "cannotPrepare": "{count, plural, one {{files} no se puede preparar para las pantallas 1080p. Quítalo o reemplázalo y vuelve a publicar.} other {Estos archivos no se pueden preparar para las pantallas 1080p: {files}. Quítalos o reemplázalos y vuelve a publicar.}} El contenido anterior sigue en pantalla.",
@@ -3880,5 +3881,17 @@
     "delete": "Eliminar",
     "resetPositionOf": "Restablecer la posición de {label}",
     "resetPosition": "Restablecer posición"
+  },
+  "uploadFormats": {
+    "thisFile": "Este archivo",
+    "svg": "No se puede subir un SVG como contenido: un SVG puede llevar scripts ocultos. Expórtalo como PNG. Para un logotipo, Configuración → Marca acepta SVG de forma segura.",
+    "unsupported": "No se puede subir {name}. Sube fotos ({images}), vídeo ({videos}), audio ({audio}) o PDF.",
+    "wrongKind": "{name} no se puede usar aquí: aquí se admite {formats}.",
+    "convertInLibrary": "{name} es un vídeo {format}. Las pantallas lo reproducen una vez convertido a MP4, pero el contenido de alerta debe reproducirse en el momento en que se activa. Súbelo primero a la Biblioteca de medios (allí se convierte) o expórtalo como MP4 (H.264).",
+    "notAlertMedia": "{name} no puede ser contenido de alerta tal como está: debe estar listo para reproducirse en el momento en que se activa ({formats}). Expórtalo como MP4 o JPG, o súbelo a la Biblioteca de medios, que lo convierte.",
+    "converting": "Convirtiendo a MP4 para las pantallas…",
+    "convertingPct": "Convirtiendo a MP4 para las pantallas… {pct}%",
+    "conversionFailed": "No se pudo convertir {name} a MP4 para las pantallas. Expórtalo como MP4 (H.264) y sube ese archivo.",
+    "conversionSlow": "{name} todavía se está convirtiendo para las pantallas. Está en tu Biblioteca de medios: elígelo allí cuando esté listo."
   }
 }

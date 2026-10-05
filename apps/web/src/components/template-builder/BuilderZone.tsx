@@ -3,6 +3,7 @@
 import { createElement, memo, useRef, useState } from 'react';
 import { Lock, Loader2, Upload, Hand } from 'lucide-react';
 import { uploadAssetDirect } from '@/lib/direct-upload';
+import { isLibraryImageFile } from '@/lib/upload-accept';
 import type { Zone, ResizeHandle } from './types';
 import { getZoneColor, widgetIcon, widgetLabel } from './constants';
 import { isFullCanvasExternalZone } from './SelectionChrome';
@@ -171,7 +172,9 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
     setIsDragOver(false);
 
     const file = e.dataTransfer.files?.[0];
-    if (!file || !file.type.startsWith('image/')) return;
+    // A picture the Media Library takes (HEIC included: converted to JPEG at
+    // upload) — by type OR name, the shared upload-formats rule (2026-10-05).
+    if (!file || !isLibraryImageFile(file)) return;
 
     setIsUploading(true);
     try {

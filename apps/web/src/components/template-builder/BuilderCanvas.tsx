@@ -2,6 +2,7 @@
 
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { uploadAssetDirect } from '@/lib/direct-upload';
+import { isLibraryImageFile } from '@/lib/upload-accept';
 import { useDroppable } from '@dnd-kit/core';
 import { useBuilderStore } from './useBuilderStore';
 import { useTemplate } from '@/hooks/use-api';
@@ -871,7 +872,9 @@ export function BuilderCanvas() {
   const onCanvasDrop = useCallback((e: React.DragEvent) => {
     setHoverFromDrag(false);
     if (previewMode) return;
-    const files = Array.from(e.dataTransfer?.files ?? []).filter((f) => f.type.startsWith('image/'));
+    // A picture the Media Library takes, by its type OR its name (a HEIC dropped
+    // on Windows has no type) — the shared upload-formats rule, 2026-10-05.
+    const files = Array.from(e.dataTransfer?.files ?? []).filter((f) => isLibraryImageFile(f));
     if (files.length === 0) return;
     e.preventDefault();
     e.stopPropagation();

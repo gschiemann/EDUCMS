@@ -242,9 +242,23 @@ describe('Media Library v1 — the calm default view', () => {
     // 2026-10-05: the page states what storage takes TODAY — 500 MB (the Supabase
     // project limit the API clamps its 2 GB code ceiling to). It said "2 GB" and
     // then refused a 700 MB file with "Max size is 500 MB" (media beta test, L6).
-    expect(strip).toHaveTextContent('Images, video, audio and PDF · video up to 500 MB');
+    // 2026-10-05: the formats are LISTED — read from the same table the uploader
+    // and the API enforce — and MOV / HEIC are among them (converted for screens).
+    expect(strip).toHaveTextContent(
+      'Photos (JPG, PNG, WebP, GIF, BMP, ICO, HEIC), video (MP4, M4V, WebM, MOV, AVI, MKV, WMV, MPG, 3GP, TS), audio (MP3, OGG, WAV, M4A) and PDF · video up to 500 MB',
+    );
+    expect(strip).toHaveTextContent('iPhone videos (MOV) and photos (HEIC) are converted for screens automatically');
     // The uploader rejects SVG, so the strip must never advertise it (§6).
     expect(strip).not.toHaveTextContent(/svg/i);
+  });
+
+  it('the file chooser offers every format the table takes — MOV, MKV, HEIC … — and never SVG (2026-10-05)', () => {
+    mount();
+    const accept = (document.querySelector('input[type="file"]') as HTMLInputElement).accept.split(',');
+    for (const ext of ['.mov', '.avi', '.mkv', '.wmv', '.mpg', '.mpeg', '.3gp', '.ts', '.m2ts', '.mts', '.heic', '.heif', '.mp4', '.jpg', '.pdf']) {
+      expect(accept).toContain(ext);
+    }
+    expect(accept.join(',')).not.toMatch(/svg/);
   });
 
   it('cards carry no destructive control — only a select box and an overflow menu', () => {
@@ -262,6 +276,22 @@ describe('Media Library v1 — the calm default view', () => {
     const pdfCard = rtl.getByRole('button', { name: 'View details for Member-Welcome.pdf' });
     expect(pdfCard).toHaveTextContent('PDF');
     expect(pdfCard.textContent).not.toMatch(/×/);
+  });
+
+  it('a video still being converted is labelled as what it is — AVI, MPG, TS — not "X-MS" / "MP3" / "MP2T" (2026-10-05)', () => {
+    assetsResponse = [
+      ASSET({ id: 'v1', originalName: 'old-clip.avi', mimeType: 'video/x-msvideo', processingMeta: null }),
+      ASSET({ id: 'v2', originalName: 'tape.mpg', mimeType: 'video/mpeg', processingMeta: null }),
+      ASSET({ id: 'v3', originalName: 'broadcast.ts', mimeType: 'video/mp2t', processingMeta: null }),
+      ASSET({ id: 'v4', originalName: 'song.mp3', mimeType: 'audio/mpeg', processingMeta: null }),
+    ];
+    mount();
+    const card = (name: string) => rtl.getByRole('button', { name: `View details for ${name}` });
+    expect(within(card('old-clip.avi')).getByText('AVI')).toBeInTheDocument();
+    expect(within(card('tape.mpg')).getByText('MPG')).toBeInTheDocument();
+    expect(within(card('tape.mpg')).queryByText('MP3')).toBeNull();
+    expect(within(card('broadcast.ts')).getByText('TS')).toBeInTheDocument();
+    expect(within(card('song.mp3')).getByText('MP3')).toBeInTheDocument(); // NEGATIVE CONTROL: audio is still MP3
   });
 
   it('a video card prints its probed dimensions AND duration (the 2026-09-24 "—" bug)', () => {
@@ -737,17 +767,50 @@ describe('Media Library v1 — upload queue phases (§14)', () => {
   });
 
   it('a rejected file never enters the queue as Uploading — it names the fix', async () => {
-    mount();
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
-    const mov = new File(['x'], 'IMG_0042.mov', { type: 'video/quicktime' });
-    Object.defineProperty(input, 'files', { value: [mov], configurable: true });
-    await act(async () => { fireEvent.change(input); });
+    const upload = jest.spyOn(DirectUpload, 'uploadAssetDirect');
+    try {
+      mount();
+      const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+      const svg = new File(['<svg/>'], 'logo.svg', { type: 'image/svg+xml' });
+      const flash = new File(['x'], 'old-clip.flv', { type: 'video/x-flv' });
+      Object.defineProperty(input, 'files', { value: [svg, flash], configurable: true });
+      await act(async () => { fireEvent.change(input); });
 
-    const queue = rtl.getByTestId('upload-queue');
-    expect(queue).toHaveTextContent('IMG_0042.mov');
-    expect(queue).toHaveTextContent('Failed');
-    expect(queue).toHaveTextContent('MOV is unsupported — export as MP4 (H.264)');
-    expect(queue).not.toHaveTextContent('Ready');
+      const queue = rtl.getByTestId('upload-queue');
+      expect(queue).toHaveTextContent('logo.svg');
+      expect(queue).toHaveTextContent('Failed');
+      expect(queue).toHaveTextContent("SVG can't be uploaded as content");
+      expect(queue).toHaveTextContent('Settings → Branding takes SVG safely');
+      // An unknown kind of file is told what IS taken — the same lists as the strip.
+      expect(queue).toHaveTextContent("old-clip.flv can't be uploaded. Upload photos (JPG, PNG, WebP, GIF, BMP, ICO, HEIC), video (MP4, M4V, WebM, MOV, AVI, MKV, WMV, MPG, 3GP, TS)");
+      expect(queue).not.toHaveTextContent('Ready');
+      expect(upload).not.toHaveBeenCalled();
+    } finally {
+      upload.mockRestore();
+    }
+  });
+
+  it('an iPhone video (.mov), an AVCHD clip with NO type and a HEIC photo are TAKEN — sent to the uploader, not refused (2026-10-05)', async () => {
+    const upload = jest.spyOn(DirectUpload, 'uploadAssetDirect').mockImplementation(() => new Promise(() => {}));
+    try {
+      mount();
+      const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+      const files = [
+        new File(['x'], 'IMG_0042.MOV', { type: 'video/quicktime' }),
+        new File(['x'], '00012.MTS', { type: '' }),
+        new File(['x'], 'IMG_0043.HEIC', { type: 'image/heic' }),
+      ];
+      Object.defineProperty(input, 'files', { value: files, configurable: true });
+      await act(async () => { fireEvent.change(input); });
+      await act(async () => { await Promise.resolve(); });
+
+      const queue = rtl.getByTestId('upload-queue');
+      for (const f of files) expect(queue).toHaveTextContent(f.name);
+      expect(queue).not.toHaveTextContent('Failed');
+      expect(upload.mock.calls.map(([f]) => (f as File).name).sort()).toEqual(['00012.MTS', 'IMG_0042.MOV', 'IMG_0043.HEIC']);
+    } finally {
+      upload.mockRestore();
+    }
   });
 
   it('an oversized file is refused with the real limit, before any network call', async () => {

@@ -180,6 +180,29 @@ describe('GET /assets/optimization', () => {
     expect(list).toHaveLength(100);
   });
 
+  it('carries the URL and type each asset serves NOW — read for THIS tenant only (2026-10-05: a picker waits for a MOV’s MP4)', async () => {
+    const transcodes = {
+      statusForAssets: jest.fn(async () => [
+        { assetId: 'a1', status: 'done', reason: 'swapped', progress: 100, sourceBytes: 9, outputBytes: 7, finishedAt: null },
+        { assetId: 'a2', status: 'running', reason: null, progress: 40, sourceBytes: 9, outputBytes: null, finishedAt: null },
+      ]),
+    };
+    const { controller, prisma } = makeController(makeStorage(1), transcodes);
+    prisma.client.asset.findMany = jest.fn(async () => [
+      { id: 'a1', fileUrl: 'https://x/storage/v1/object/public/assets/t/optimized/n.mp4', mimeType: 'video/mp4' },
+      { id: 'a2', fileUrl: 'https://x/storage/v1/object/public/assets/t/o.mov', mimeType: 'video/quicktime' },
+    ]);
+    const res: any = await controller.optimizationStatus(admin as any, 'a1,a2');
+    expect(prisma.client.asset.findMany).toHaveBeenCalledWith({
+      where: { tenantId: TENANT, id: { in: ['a1', 'a2'] } },
+      select: { id: true, fileUrl: true, mimeType: true },
+    });
+    expect(res.items).toEqual([
+      expect.objectContaining({ assetId: 'a1', status: 'done', fileUrl: expect.stringMatching(/\.mp4$/), mimeType: 'video/mp4' }),
+      expect.objectContaining({ assetId: 'a2', status: 'running', fileUrl: expect.stringMatching(/\.mov$/), mimeType: 'video/quicktime' }),
+    ]);
+  });
+
   it('answers an empty list with no ids or no service', async () => {
     const a = makeController(makeStorage(1), { statusForAssets: jest.fn() });
     expect(await a.controller.optimizationStatus(admin as any, '')).toEqual({

@@ -29,8 +29,32 @@ import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { uploadAssetDirect } from '@/lib/direct-upload';
 import { useUploadErrorText, useUploadTooLargeText } from '@/lib/use-upload-error-text';
 import { transformedImageUrl } from '@/lib/asset-image';
+import { uploadFormatForType } from '@cms/api-types';
+import {
+  isConvertedAfterUpload,
+  libraryAccept,
+  uploadProblemFor,
+  useUploadProblemText,
+  type UploadKind,
+} from '@/lib/upload-accept';
+import { ScreenVersionError, waitForScreenVersion } from '@/lib/screen-version';
 
 export type AssetKind = 'image' | 'video' | 'audio' | 'all';
+
+/** The upload-formats kinds a picker of this kind takes. */
+function kindsFor(kind: AssetKind): UploadKind[] {
+  return kind === 'all' ? ['image', 'video', 'audio'] : [kind];
+}
+
+/**
+ * An asset still stored as a MOV / AVI / MKV … has not been converted to MP4
+ * yet (or could not be). This picker hands a URL BY VALUE to whatever stores it
+ * (a cue, a sponsor, a spotlight): picking it now would keep the original on
+ * every screen. It becomes pickable the moment its MP4 is swapped in.
+ */
+function awaitingConversion(mimeType: unknown): boolean {
+  return uploadFormatForType(String(mimeType || ''))?.handling === 'convert-after-upload';
+}
 
 /** Relative asset paths → absolute for <img>/<video> display. Absolute
  *  (Supabase / data) URLs pass through untouched. */
@@ -80,10 +104,18 @@ export function AssetPicker({
   const [folderId, setFolderId] = useState<string>('all');
   const [uploading, setUploading] = useState(false);
   const [uploadPct, setUploadPct] = useState<number | null>(null);
+  // 2026-10-05 — a MOV / AVI / … just uploaded, waiting for its MP4: undefined = not waiting.
+  const [convertPct, setConvertPct] = useState<number | null | undefined>(undefined);
   const [err, setErr] = useState('');
   const tu = useTranslations('directUpload');
+  const tf = useTranslations('uploadFormats');
+  const tl = useTranslations('assetsLib');
   const uploadErrorText = useUploadErrorText();
   const tooLargeText = useUploadTooLargeText();
+  const problemText = useUploadProblemText();
+  // Closing the picker stops the wait (the conversion itself carries on).
+  const waitAbort = useRef<AbortController | null>(null);
+  useEffect(() => () => waitAbort.current?.abort(), []);
 
   const folderList: Array<{ id: string; name: string }> = Array.isArray(folders) ? folders : [];
   const all: Array<Record<string, unknown>> = Array.isArray(assets) ? assets : [];
@@ -94,34 +126,18 @@ export function AssetPicker({
     return a.folderId === folderId;
   });
 
-  // SVG is intentionally absent from the accept list — the server can't
-  // sanitize a direct browser→Supabase upload before it lands in storage,
-  // so a raw SVG would be a stored-XSS vector. Dropping it from `accept`
-  // means the native file picker doesn't even offer SVGs; the `upload()`
-  // pre-check below catches a drag-drop / "all files" pick and surfaces a
-  // specific, honest message instead of a generic 415 "Upload failed".
-  // (Mirrors getUnsupportedReason() in /assets/page.tsx + the server's
-  // assertUploadIntent() in assets.controller.ts.)
-  const accept =
-    kind === 'image'
-      ? 'image/png,image/jpeg,image/webp,image/gif,image/avif'
-      : kind === 'video'
-        ? 'video/mp4,video/webm'
-        : kind === 'audio'
-          ? 'audio/mpeg,audio/wav,audio/ogg,audio/mp4'
-          : 'image/png,image/jpeg,image/webp,image/gif,image/avif,video/mp4,video/webm,audio/mpeg,audio/wav,audio/ogg,audio/mp4';
+  // What this picker takes, from the shared upload-formats table
+  // (lib/upload-accept.ts) — the same answer as the Media Library. SVG is never
+  // offered (the server can't sanitize a direct upload; logos take SVG via
+  // Settings → Branding); a MOV / AVI / … or a HEIC IS (the server converts them).
+  const kinds = kindsFor(kind);
+  const accept = libraryAccept(kinds);
 
   const upload = async (file: File) => {
     setErr('');
-    const lname = (file.name || '').toLowerCase();
-    if (lname.endsWith('.mov') || (file.type || '').toLowerCase() === 'video/quicktime') {
-      setErr("QuickTime .mov isn't supported — export as MP4 and re-upload.");
-      return;
-    }
-    if (lname.endsWith('.svg') || (file.type || '').toLowerCase() === 'image/svg+xml') {
-      // Specific over silent: tell the operator exactly what to do instead
-      // of letting the presign call 415 and surface a raw "Upload failed".
-      setErr("SVG logos aren't supported yet — export as PNG (SVG support is coming soon).");
+    const problem = uploadProblemFor(file, { kinds });
+    if (problem) {
+      setErr(problemText(problem, file));
       return;
     }
     const tooBig = tooLargeText(file);
@@ -140,12 +156,38 @@ export function AssetPicker({
       });
       await qc.invalidateQueries({ queryKey: ['assets'] });
       if (!done.fileUrl) throw new Error('Upload completed but no file URL came back.');
-      onPick(done.fileUrl);
+      if (!isConvertedAfterUpload(file)) {
+        onPick(done.fileUrl);
+        return;
+      }
+      // A MOV / AVI / …: the URL the caller keeps must be the MP4's, not the
+      // original's (lib/screen-version.ts) — wait for the conversion.
+      setUploadPct(null);
+      setConvertPct(null);
+      waitAbort.current?.abort();
+      const ctl = new AbortController();
+      waitAbort.current = ctl;
+      try {
+        const ready = await waitForScreenVersion(done.id, {
+          signal: ctl.signal,
+          onProgress: (pct) => setConvertPct(pct),
+        });
+        await qc.invalidateQueries({ queryKey: ['assets'] });
+        onPick(ready.fileUrl);
+      } catch (e) {
+        if (e instanceof ScreenVersionError) {
+          if (e.code === 'failed') setErr(tf('conversionFailed', { name: file.name }));
+          else if (e.code === 'timeout') setErr(tf('conversionSlow', { name: file.name }));
+          return;
+        }
+        throw e;
+      }
     } catch (e) {
       setErr(uploadErrorText(e, file));
     } finally {
       setUploading(false);
       setUploadPct(null);
+      setConvertPct(undefined);
       if (fileRef.current) fileRef.current.value = '';
     }
   };
@@ -226,7 +268,13 @@ export function AssetPicker({
             ) : (
               <Upload className="h-3.5 w-3.5" />
             )}
-            {uploading && uploadPct !== null ? tu('uploadingPct', { pct: uploadPct }) : 'Upload new'}
+            {convertPct !== undefined
+              ? convertPct === null
+                ? tf('converting')
+                : tf('convertingPct', { pct: convertPct })
+              : uploading && uploadPct !== null
+                ? tu('uploadingPct', { pct: uploadPct })
+                : 'Upload new'}
           </button>
         </div>
 
@@ -257,14 +305,21 @@ export function AssetPicker({
                 const isVideo = mt.startsWith('video/');
                 const isAudio = mt.startsWith('audio/');
                 const name = String(a.originalName || url.split('/').pop() || 'file');
+                const notYet = awaitingConversion(mt);
                 return (
                   <button
                     key={String(a.id)}
                     type="button"
                     onClick={() => onPick(url)}
-                    title={name}
-                    className="group relative aspect-square rounded-lg overflow-hidden border border-slate-200 bg-slate-100 hover:border-indigo-400 hover:ring-2 hover:ring-indigo-200 cursor-pointer transition-all"
+                    disabled={notYet}
+                    title={notYet ? `${name} — ${tl('optimizing')}` : name}
+                    className="group relative aspect-square rounded-lg overflow-hidden border border-slate-200 bg-slate-100 hover:border-indigo-400 hover:ring-2 hover:ring-indigo-200 cursor-pointer transition-all disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:ring-0 disabled:hover:border-slate-200"
                   >
+                    {notYet && (
+                      <span className="absolute top-1 left-1 right-1 z-10 rounded bg-white/90 px-1 py-0.5 text-[9px] font-semibold text-slate-600 text-left">
+                        {tl('optimizing')}
+                      </span>
+                    )}
                     {isVideo ? (
                       // 2026-05-30 — EGRESS FIX: preload="none" so picker
                       // grid tiles don't auto-download video bytes.

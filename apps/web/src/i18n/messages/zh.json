@@ -1920,7 +1920,7 @@
     "uploadToFolder": "上传 {count} 个文件到…",
     "uploadWhichFolder": "将文件上传到哪个文件夹？",
     "moveToWhichFolder": "将 {count} 项移动到哪个文件夹？",
-    "supportedCopy": "图片、视频、音频和 PDF · 视频最大 {video}",
+    "supportedCopy": "照片（{images}）、视频（{videos}）、音频（{audio}）和 PDF · 视频最大 {video} · iPhone 视频（MOV）和照片（HEIC）会自动转换以便在屏幕上播放",
     "fileTooLargeFor": "文件超过 {max}（此文件为 {size}）",
     "optimizing": "正在为屏幕优化…",
     "optimizationQueued": "等待屏幕兼容性检查…",
@@ -3310,13 +3310,14 @@
     "storageFull": "此文件需要 {need}；您的 {total} 仅剩 {left} — 请删除不用的媒体或添加屏幕。",
     "fileEmpty": "此文件为空（0 字节）。请重新导出并上传新的副本。",
     "imageUnreadable": "这不是屏幕可以显示的图片——文件可能已损坏，或是以图片名称保存的其他类型文件。请重新导出为 JPG 或 PNG 并上传新的副本。",
-    "imageHeic": "这张照片是 Apple 的 HEIC 格式（以其他名称保存），屏幕无法显示 HEIC。请导出为 JPG 并上传新的副本。",
+    "imageHeic": "无法转换这张 HEIC 照片。请将其导出为 JPEG 后重新上传。",
     "videoUnplayable": "这不是可以播放的视频——文件可能已损坏或不完整。请重新导出并上传新的副本。",
     "videoNoPicture": "此文件只有声音没有画面，屏幕上将什么也不显示。请重新导出为视频并上传新的副本。",
     "videoIsPicture": "这是一张以视频名称保存的图片。请以它真正的图片名称上传（例如 .jpg 或 .png）。",
     "audioUnplayable": "这不是可以播放的音频文件——文件可能已损坏或不完整。请重新导出并上传新的副本。",
     "pdfNotPdf": "这不是 PDF——可能是以 .pdf 名称保存的其他类型文件。请重新保存或导出为 PDF 并上传新的副本。",
-    "pdfIncomplete": "此 PDF 不完整——文件可能已损坏或被截断。请重新保存或导出并上传新的副本。"
+    "pdfIncomplete": "此 PDF 不完整——文件可能已损坏或被截断。请重新保存或导出并上传新的副本。",
+    "imageHeicUnavailable": "暂时无法转换这张 HEIC 照片。请一分钟后重新上传，或将其导出为 JPEG 后上传。"
   },
   "playbackCopy": {
     "cannotPrepare": "{count, plural, other {{files} 无法为 1080p 屏幕准备。请移除或替换后重新发布。}}之前的内容仍在屏幕上显示。",
@@ -3880,5 +3881,17 @@
     "delete": "删除",
     "resetPositionOf": "重置 {label} 的位置",
     "resetPosition": "重置位置"
+  },
+  "uploadFormats": {
+    "thisFile": "此文件",
+    "svg": "不能将 SVG 作为内容上传——SVG 可能包含隐藏脚本。请导出为 PNG。如需上传徽标，“设置 → 品牌”可安全接受 SVG。",
+    "unsupported": "无法上传 {name}。请上传照片（{images}）、视频（{videos}）、音频（{audio}）或 PDF。",
+    "wrongKind": "{name} 不能在此使用——此处支持 {formats}。",
+    "convertInLibrary": "{name} 是 {format} 视频。屏幕需要先将其转换为 MP4 才能播放，但警报内容必须在触发时立即播放。请先将其上传到媒体库（会在那里转换），或导出为 MP4（H.264）。",
+    "notAlertMedia": "{name} 目前不能用作警报媒体——警报媒体必须在触发时即可播放（{formats}）。请导出为 MP4 或 JPG，或上传到媒体库进行转换。",
+    "converting": "正在转换为 MP4 以便在屏幕上播放…",
+    "convertingPct": "正在转换为 MP4 以便在屏幕上播放… {pct}%",
+    "conversionFailed": "{name} 无法转换为可在屏幕上播放的 MP4。请将其导出为 MP4（H.264）后上传。",
+    "conversionSlow": "{name} 仍在转换中。它已在您的媒体库中——准备就绪后请在那里选择。"
   }
 }

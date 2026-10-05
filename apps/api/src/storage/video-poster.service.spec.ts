@@ -1305,6 +1305,30 @@ describe('the fast-start re-mux — an MP4 whose index sits at the tail', () => 
     expect(w.lines().some((l) => l.includes('already fast-start'))).toBe(true);
   });
 
+  it('a MOV / 3GP … (a type the signage transcode CONVERTS to MP4) is never re-muxed — even with no transcode queued (2026-10-05)', async () => {
+    const w = remuxWorld();
+    await expect(
+      w.service.processVideo(
+        { ...BYTES_JOB, mimeType: 'video/quicktime', ext: '.mov' },
+        { remux: 'sync' },
+      ),
+    ).resolves.toMatchObject({ probed: true, remux: 'skipped' });
+    expect(remuxMock).not.toHaveBeenCalled();
+    expect(w.rows[0].fileUrl).toBe(OLD_URL);
+    expect(
+      w
+        .lines()
+        .some((l) =>
+          l.includes('converted to MP4 by the signage transcode instead'),
+        ),
+    ).toBe(true);
+    // NEGATIVE CONTROL: the same index-at-the-end facts as an MP4 ARE re-muxed.
+    const mp4 = remuxWorld();
+    await expect(
+      mp4.service.processVideo(BYTES_JOB, { remux: 'sync' }),
+    ).resolves.toMatchObject({ remux: 'remuxed' });
+  });
+
   it('VIDEO_FASTSTART_REMUX_DISABLED=1 leaves every file exactly as it is', async () => {
     process.env.VIDEO_FASTSTART_REMUX_DISABLED = '1';
     const w = remuxWorld();

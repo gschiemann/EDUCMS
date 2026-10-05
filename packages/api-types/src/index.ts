@@ -1072,6 +1072,11 @@ export * from './video-encode';
 // never disagree about which videos are not playing.
 export * from './screen-readiness';
 
+// What an upload may be (2026-10-05) — one table for the API's allow-list, the
+// storage bucket's MIME list and every dashboard upload entry point, so the same
+// file gets the same answer everywhere (MOV / AVI / MKV / … and HEIC accepted).
+export * from './upload-formats';
+
 // Student information on public screens (K-12 sports launch, 2026-09-27) —
 // the attestation wording + version and the settings contract, shared so the
 // API (which enforces it) and the dashboard (which asks) never disagree.

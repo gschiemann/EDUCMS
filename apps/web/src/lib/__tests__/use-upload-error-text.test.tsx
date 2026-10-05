@@ -97,12 +97,27 @@ describe('useUploadErrorText — the upload content check', () => {
     ['ASSET_VIDEO_NO_PICTURE', 'This file has sound but no picture, so a screen would show nothing. Export it again as a video and upload the new copy.'],
     ['ASSET_VIDEO_IS_PICTURE', 'This is a picture saved with a video name. Upload it under its real picture name (for example .jpg or .png).'],
     ['ASSET_IMAGE_UNREADABLE', "This isn't a picture screens can show — the file may be damaged, or it may be another kind of file saved with a picture's name. Export it again as JPG or PNG and upload the new copy."],
-    ['ASSET_IMAGE_HEIC', "This photo is in Apple's HEIC format (saved with a different name), and screens can't show HEIC. Export it as JPG and upload the new copy."],
+    // 2026-10-05 — a HEIC is converted to JPEG at upload; these are the two ways that can fail.
+    ['ASSET_IMAGE_HEIC', "This HEIC photo couldn't be converted. Export it as JPEG and upload it again."],
+    ['ASSET_IMAGE_HEIC_UNAVAILABLE', "This HEIC photo couldn't be converted just now. Upload it again in a minute, or export it as JPEG and upload that."],
     ['ASSET_AUDIO_UNPLAYABLE', "This isn't a playable audio file — the file may be damaged or incomplete. Export it again and upload the new copy."],
     ['ASSET_PDF_NOT_PDF', "This isn't a PDF — it may be another kind of file saved with a .pdf name. Save or export it as a PDF again and upload the new copy."],
     ['ASSET_PDF_INCOMPLETE', 'This PDF is incomplete — the file may be damaged or cut short. Save or export it again and upload the new copy.'],
   ])('%s is translated, not passed through', (code, words) => {
     expect(text(refusal(code))).toBe(words);
+  });
+
+  it('"this kind of file can\'t be uploaded" is translated with the format lists from the shared table — not the server\'s English (2026-10-05)', () => {
+    const sent = "This kind of file can't be uploaded. Upload photos (…), video (…), audio (…) or PDF.";
+    const refused = new DirectUploadError('unsupported', sent, 415, 'api', 'ASSET_FILE_TYPE_UNSUPPORTED', { code: 'ASSET_FILE_TYPE_UNSUPPORTED', message: sent });
+    const { result } = renderHook(() => useUploadErrorText());
+    expect(result.current(refused, new File(['x'], 'clip.flv'))).toBe(
+      "clip.flv can't be uploaded. Upload photos (JPG, PNG, WebP, GIF, BMP, ICO, HEIC), video (MP4, M4V, WebM, MOV, AVI, MKV, WMV, MPG, 3GP, TS), audio (MP3, OGG, WAV, M4A) or PDF.",
+    );
+    const svg = new DirectUploadError('unsupported', 'SERVER', 415, 'api', 'ASSET_SVG_NOT_SUPPORTED', { code: 'ASSET_SVG_NOT_SUPPORTED' });
+    expect(result.current(svg, new File(['x'], 'logo.svg'))).toBe(
+      "SVG can't be uploaded as content — an SVG can carry hidden scripts. Export it as PNG. For a logo, Settings → Branding takes SVG safely.",
+    );
   });
 
   it('a 0-byte file refused on the page (before any network call) gets the same words', () => {

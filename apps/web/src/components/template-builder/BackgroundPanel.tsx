@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { uploadAssetDirect } from '@/lib/direct-upload';
+import { LIBRARY_IMAGE_ACCEPT, uploadProblemFor, useUploadProblemText } from '@/lib/upload-accept';
 import { createPortal } from 'react-dom';
 import { Palette, Image as ImageIcon, Code2, Upload, X, Check, Pipette } from 'lucide-react';
 import { useBuilderStore } from './useBuilderStore';
@@ -124,6 +125,7 @@ export function BackgroundPanel() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const problemText = useUploadProblemText();
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
   // What's on the canvas right now? Used to render the "currently
@@ -193,8 +195,11 @@ export function BackgroundPanel() {
 
   const handleFile = async (file: File) => {
     setUploadError(null);
-    if (!file.type.startsWith('image/')) {
-      setUploadError('Pick an image file (JPG, PNG, GIF, or WEBP).');
+    // The shared upload-formats rule (lib/upload-accept.ts): any picture the
+    // Media Library takes — a HEIC is converted to JPEG before the asset exists.
+    const problem = uploadProblemFor(file, { kinds: ['image'] });
+    if (problem) {
+      setUploadError(problemText(problem, file));
       return;
     }
     setUploading(true);
@@ -446,7 +451,7 @@ export function BackgroundPanel() {
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/*"
+          accept={LIBRARY_IMAGE_ACCEPT}
           className="hidden"
           onChange={(e) => {
             const f = e.target.files?.[0];

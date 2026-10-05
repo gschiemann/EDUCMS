@@ -40,6 +40,13 @@ export interface OptimizedMedia {
    * smaller. Only with `convertNonScreenFormats` (see optimizeImageForUpload).
    */
   convertedForScreens?: boolean;
+  /**
+   * 2026-10-05 — these bytes ARE the stored upload, converted from another format
+   * before the asset existed (a HEIC photo → JPEG, assets/heif-convert.ts); the
+   * value names the original. Nothing is left to adopt (`optimized` is false); the
+   * upload records it in processingMeta as `convertedFrom`.
+   */
+  convertedFrom?: string;
 }
 
 /**
@@ -65,9 +72,9 @@ export function adoptsReencode(opt: OptimizedMedia, originalBytes: number): bool
  * EXIF stripped, animated GIFs untouched. A screen-sized 1920px copy is
  * prepared when publishing to a 1080p screen; 4K screens keep 4K detail.
  */
-const UPLOAD_IMAGE_MAX_DIM = 3840;
-const UPLOAD_JPEG_QUALITY = 85;
-const UPLOAD_WEBP_QUALITY = 85;
+export const UPLOAD_IMAGE_MAX_DIM = 3840;
+export const UPLOAD_JPEG_QUALITY = 85;
+export const UPLOAD_WEBP_QUALITY = 85;
 
 /**
  * Audit P0-5 (2026-05-27): the upload path does NOT transcode video tonight.

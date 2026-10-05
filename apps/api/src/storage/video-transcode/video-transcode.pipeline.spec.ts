@@ -1203,6 +1203,47 @@ describe('VideoTranscodePipeline — COMPATIBILITY BEFORE SIZE: a source that is
   });
 });
 
+describe('VideoTranscodePipeline — a MOV / 3GP / … upload ends as an MP4 asset whatever its bytes (more containers, 2026-10-05)', () => {
+  // OUT_2160 is the profile's own output: H.264 4:2:0, 30 fps, within the 2160
+  // rung's bitrate. As an `.mp4` it is `already-optimal`; under another name it is
+  // a required conversion — the only difference between the cases below is the NAME.
+  const named = (fileName: string, mimeType: string) => {
+    const url = `${SUPA}${TENANT}/0f6b1c2d-3e4f-4a5b-8c9d-0e1f2a3b4c5d${fileName}`;
+    const t = build({
+      asset: videoAsset({ fileUrl: url, mimeType }),
+      emergency: false,
+      outBytes: SOURCE_BYTES + MB, // the copy is BIGGER: a size-only job would never swap it
+      outProbe: OUT_2160,
+      runOk: true,
+      inProbe: OUT_2160,
+    });
+    return { t, j: job({ sourceUrl: url }) };
+  };
+
+  it.each<[string, string]>([
+    ['.mov', 'video/quicktime'],
+    ['.MOV', 'video/quicktime'],
+    ['.3gp', 'video/3gpp'],
+    ['.mkv', 'video/x-matroska'],
+    ['.ts', 'video/mp2t'],
+    ['.mov', 'video/mp4'], // an MP4 type under a QuickTime name
+  ])('%s (%s) holding screen-safe bytes is CONVERTED: swapped to video/mp4 at a .mp4 URL, ready, converted from "container"', async (ext, mimeType) => {
+    const { t, j } = named(ext, mimeType);
+    const out = await t.pipeline.process(j);
+    expect(out).toMatchObject({ status: 'done', reason: 'swapped' });
+    const swap = t.prisma.client.asset.updateMany.mock.calls.find(([a]: any) => 'fileUrl' in a.data)[0];
+    expect(swap.data.mimeType).toBe('video/mp4');
+    expect(swap.data.fileUrl).toMatch(/\/optimized\/[0-9a-f-]{36}\.mp4$/);
+    expect(swap.data.processingMeta.screen).toMatchObject({ ready: true, convertedFrom: ['container'] });
+  });
+
+  it('NEGATIVE CONTROL: the same bytes as an .mp4 are left alone (already-optimal, nothing uploaded)', async () => {
+    const { t, j } = named('.mp4', 'video/mp4');
+    expect(await t.pipeline.process(j)).toMatchObject({ status: 'skipped', reason: 'already-optimal' });
+    expect(t.uploaded).toEqual([]);
+  });
+});
+
 describe('VideoTranscodePipeline — a >1080p ORIGINAL kept as the served file still gets its 1080p copy', () => {
   // Why: publication to a 1080p screen waits for a decoder-sized copy of every
   // >1080p video, and treats a FINISHED job with no copy as "none is coming" — it

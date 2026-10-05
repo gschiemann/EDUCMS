@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { spawn as nodeSpawn } from 'child_process';
+import { extname } from 'path';
 import sharp from 'sharp';
 import { SupabaseStorageService } from '../storage/supabase-storage.service';
 import {
@@ -24,6 +25,8 @@ import {
   type UploadScreenVerdict,
   type UploadVerdict,
 } from './upload-content-verdict';
+import { CheckSlots, errorText, intEnv, runTool } from './tool-runner';
+import { HeifConverter, type HeifConversion } from './heif-convert';
 
 /**
  * What `check` answers: the accept / refuse decision, plus — for a VIDEO
@@ -66,6 +69,11 @@ export type UploadCheckResult = UploadVerdict & {
  * a tool missing, a time-out, a storage read that failed — comes back ACCEPTED
  * with the reason, which the caller logs. `UPLOAD_CONTENT_CHECK_DISABLED=1` turns
  * the whole check off (every upload is accepted exactly as before it existed).
+ *
+ * HEIC (2026-10-05): `convertHeif` turns an iPhone photo into a JPEG before the
+ * asset exists (heif-convert.ts), through the SAME limiter — one child at a time,
+ * ffprobe, ffmpeg or heif-dec. It is not part of the check and the switch above
+ * does not turn it off: a HEIC is converted or refused, never stored as HEIC.
  */
 @Injectable()
 export class UploadContentCheckService {
@@ -74,11 +82,21 @@ export class UploadContentCheckService {
   budgetMs = intEnv('UPLOAD_CHECK_BUDGET_MS', 12_000);
   probeTimeoutMs = intEnv('UPLOAD_CHECK_PROBE_MS', 6_000);
   readonly slots = new CheckSlots(intEnv('UPLOAD_CHECK_MAX_PARALLEL', 1));
+  /** The HEIC converter, on this service's limiter and spawn seam. */
+  readonly heif = new HeifConverter({
+    slots: this.slots,
+    spawnFn: () => this.spawnFn,
+  });
 
   constructor(private readonly storage: SupabaseStorageService) {}
 
   static disabled(): boolean {
     return process.env.UPLOAD_CONTENT_CHECK_DISABLED === '1';
+  }
+
+  /** HEIC / HEIF → JPEG (or WebP with transparency). Never throws; see heif-convert.ts. */
+  convertHeif(bytes: Buffer | null | undefined): Promise<HeifConversion> {
+    return this.heif.convert(bytes);
   }
 
   async check(input: UploadCheckInput): Promise<UploadCheckResult> {
@@ -112,7 +130,12 @@ export class UploadContentCheckService {
       ...decideUploadContent(evidence),
       // 2026-10-05 — the same ffprobe document, read for the screen-ready
       // verdict too: never a second probe (null when it did not run cleanly).
-      screen: uploadScreenVerdict(evidence),
+      // With the stored object's type and extension, as the transcode plans:
+      // MP4 bytes saved as `.mov` must be converted here as well as there.
+      screen: uploadScreenVerdict(evidence, {
+        mimeType: input.mimeType,
+        extension: extname(input.storagePath || ''),
+      }),
       ms: Date.now() - started,
     };
   }
@@ -250,128 +273,6 @@ export interface UploadCheckInput {
   image?: { bytes: Buffer | null; optimization: OptimizedMedia | null };
 }
 
-const MAX_STDOUT_BYTES = 256 * 1024;
-const MAX_STDERR_BYTES = 16 * 1024;
-
-/** Run ffprobe / ffmpeg with a SIGKILL at `timeoutMs`. Resolves on every path. */
-export function runTool(
-  spawnFn: typeof nodeSpawn,
-  cmd: string,
-  args: string[],
-  timeoutMs: number,
-): Promise<ToolRun> {
-  return new Promise((resolve) => {
-    if (!(timeoutMs > 0)) {
-      resolve({
-        exitCode: null,
-        stdout: '',
-        stderr: '',
-        spawnError: null,
-        timedOut: true,
-      });
-      return;
-    }
-    let settled = false;
-    let stdout = '';
-    let stderr = '';
-    let timedOut = false;
-    const finish = (r: Omit<ToolRun, 'stdout' | 'stderr' | 'timedOut'>) => {
-      if (settled) return;
-      settled = true;
-      resolve({ ...r, stdout, stderr, timedOut });
-    };
-    let proc: ReturnType<typeof nodeSpawn>;
-    try {
-      proc = spawnFn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
-    } catch (err) {
-      finish({ exitCode: null, spawnError: errorText(err) });
-      return;
-    }
-    const timer = setTimeout(() => {
-      timedOut = true;
-      try {
-        proc.kill('SIGKILL');
-      } catch {
-        /* already gone */
-      }
-      finish({ exitCode: null, spawnError: null });
-    }, timeoutMs);
-    proc.stdout?.on('data', (d: Buffer | string) => {
-      if (stdout.length < MAX_STDOUT_BYTES) stdout += d.toString();
-    });
-    proc.stderr?.on('data', (d: Buffer | string) => {
-      if (stderr.length < MAX_STDERR_BYTES) stderr += d.toString();
-    });
-    proc.on('error', (err: Error) => {
-      clearTimeout(timer);
-      finish({ exitCode: null, spawnError: errorText(err) });
-    });
-    proc.on('close', (code: number | null) => {
-      clearTimeout(timer);
-      finish({ exitCode: code, spawnError: null });
-    });
-  });
-}
-
-/**
- * A small process-wide limiter for the check's ffprobe / ffmpeg children.
- * `acquire` resolves a release function, or null when no slot frees up before
- * the deadline — which the check treats as "could not check", never as a refusal.
- */
-export class CheckSlots {
-  private active = 0;
-  private readonly waiting: Array<{
-    grant: (release: (() => void) | null) => void;
-    timer: ReturnType<typeof setTimeout>;
-  }> = [];
-
-  constructor(readonly max: number) {}
-
-  get inUse(): number {
-    return this.active;
-  }
-
-  acquire(deadlineMs: number): Promise<(() => void) | null> {
-    if (this.active < this.max) {
-      this.active += 1;
-      return Promise.resolve(this.releaser());
-    }
-    const wait = deadlineMs - Date.now();
-    if (wait <= 0) return Promise.resolve(null);
-    return new Promise((resolve) => {
-      const entry = {
-        grant: resolve,
-        timer: setTimeout(() => {
-          const i = this.waiting.indexOf(entry);
-          if (i >= 0) this.waiting.splice(i, 1);
-          resolve(null);
-        }, wait),
-      };
-      this.waiting.push(entry);
-    });
-  }
-
-  private releaser(): () => void {
-    let released = false;
-    return () => {
-      if (released) return;
-      released = true;
-      this.active -= 1;
-      while (this.active < this.max && this.waiting.length > 0) {
-        const next = this.waiting.shift()!;
-        clearTimeout(next.timer);
-        this.active += 1;
-        next.grant(this.releaser());
-      }
-    };
-  }
-}
-
-function errorText(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
-
-function intEnv(name: string, def: number): number {
-  const v = parseInt(process.env[name] || '', 10);
-  return Number.isFinite(v) && v > 0 ? v : def;
-}
+// The child runner and the limiter live in tool-runner.ts (shared with the HEIC
+// converter); re-exported so existing imports keep working.
+export { CheckSlots, runTool } from './tool-runner';

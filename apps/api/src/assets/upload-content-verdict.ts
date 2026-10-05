@@ -31,11 +31,16 @@
  * No I/O, no Nest. `UploadContentCheckService` runs the tools and gathers the
  * evidence; `decideUploadContent` is the one decision.
  */
-import { buildScreenStamp, type ScreenStampJson } from '@cms/api-types';
+import {
+  buildScreenStamp,
+  resolveUploadFormat,
+  type ScreenStampJson,
+} from '@cms/api-types';
 import {
   parseProbe,
   screenCompatibilityIssues,
   type ScreenCompatibilityIssue,
+  type SourceLabel,
 } from '../storage/video-transcode/transcode-profile';
 
 /** What a file is checked as, from its (declared, then stored) MIME type. */
@@ -58,7 +63,11 @@ export type BadReason =
   | 'empty'
   /** The bytes are no picture a screen can draw (text, HTML, a video, a damaged file…). */
   | 'not-image'
-  /** An Apple HEIC photo under a picture's name: neither the server nor a screen decodes HEVC. */
+  /**
+   * A HEIC photo the server could not convert — damaged, cut short, or a kind
+   * libheif cannot decode (heif-convert.ts). Since 2026-10-05 a HEIC is CONVERTED
+   * to JPEG at upload, whatever it is called; only one that fails is refused.
+   */
   | 'heic'
   /** Not a media container at all, or one with nothing to show. */
   | 'not-video'
@@ -506,10 +515,20 @@ export function classifyPdf(e: PdfEvidence): Finding {
 
 // ── the decision ────────────────────────────────────────────────────────────
 
+/**
+ * A refusal that is not a verdict on the file: the HEIC conversion could not run
+ * just now (no free slot in time, a time-out, a storage write that failed). A
+ * HEIC is never stored unconverted, so even this refuses — with words that say
+ * to try again (HTTP 503, not 422).
+ */
+export type UnavailableReason = 'heic-unavailable';
+
+export type RefusalReason = BadReason | UnavailableReason;
+
 export interface UploadRefusal {
   /** Stable machine code — the web translates by it. */
   code: string;
-  reason: BadReason;
+  reason: RefusalReason;
   /** Plain words for a non-technical operator, saying what to do. */
   message: string;
 }
@@ -519,7 +538,7 @@ const VIDEO_UNPLAYABLE =
 
 /** Every refusal, its code and its words. The web carries the same words in en / es / zh (`directUpload.*`). */
 export const UPLOAD_REFUSALS: Readonly<
-  Record<BadReason, { code: string; message: string }>
+  Record<RefusalReason, { code: string; message: string }>
 > = {
   empty: {
     code: 'ASSET_FILE_EMPTY',
@@ -534,7 +553,12 @@ export const UPLOAD_REFUSALS: Readonly<
   heic: {
     code: 'ASSET_IMAGE_HEIC',
     message:
-      "This photo is in Apple's HEIC format (saved with a different name), and screens can't show HEIC. Export it as JPG and upload the new copy.",
+      "This HEIC photo couldn't be converted. Export it as JPEG and upload it again.",
+  },
+  'heic-unavailable': {
+    code: 'ASSET_IMAGE_HEIC_UNAVAILABLE',
+    message:
+      "This HEIC photo couldn't be converted just now. Upload it again in a minute, or export it as JPEG and upload that.",
   },
   'not-video': { code: 'ASSET_VIDEO_UNPLAYABLE', message: VIDEO_UNPLAYABLE },
   'ends-early': { code: 'ASSET_VIDEO_UNPLAYABLE', message: VIDEO_UNPLAYABLE },
@@ -565,7 +589,7 @@ export const UPLOAD_REFUSALS: Readonly<
   },
 };
 
-export function refusalFor(reason: BadReason): UploadRefusal {
+export function refusalFor(reason: RefusalReason): UploadRefusal {
   return { reason, ...UPLOAD_REFUSALS[reason] };
 }
 
@@ -636,8 +660,16 @@ export interface UploadScreenVerdict {
  * a real video stream with dimensions in a container that is not a picture
  * format. Whether the END of the file decodes is the integrity check's business
  * (`classifyTailDecode`), not this one's: a format verdict needs headers only.
+ *
+ * `label` is the stored object's type and extension — what the transcode
+ * pipeline plans with too (`planTranscode(probe, label)`), so MP4 bytes saved as
+ * `.mov` are "must be converted" HERE as well as there: an asset has to end as an
+ * MP4 by name, not only by bytes (2026-10-05, MOV / AVI / MKV / … opened).
  */
-export function uploadScreenVerdict(e: ContentEvidence): UploadScreenVerdict | null {
+export function uploadScreenVerdict(
+  e: ContentEvidence,
+  label?: SourceLabel,
+): UploadScreenVerdict | null {
   if (e.kind !== 'video' || e.skipped || e.storedBytes === 0) return null;
   const run = e.video?.probe;
   if (!run || run.spawnError || run.timedOut || run.exitCode !== 0) return null;
@@ -647,8 +679,33 @@ export function uploadScreenVerdict(e: ContentEvidence): UploadScreenVerdict | n
   const probe = parseProbe(doc);
   if (!probe.hasVideo || !probe.width || !probe.height) return null;
   if (isPictureContainer(probe.formatName)) return null;
-  const issues = screenCompatibilityIssues(probe);
+  const issues = screenCompatibilityIssues(probe, label);
   return { ready: issues.length === 0, issues };
+}
+
+/**
+ * The verdict a video's STORED TYPE gives on its own — for when the probe did
+ * not run cleanly (no free check slot, ffprobe missing, a dropped read,
+ * `UPLOAD_CONTENT_CHECK_DISABLED=1`), which leaves `uploadScreenVerdict` null.
+ *
+ * Only the containers converted after upload have one — MOV, AVI, MKV, WMV, MPG,
+ * 3GP, TS (`UPLOAD_FORMATS`, handling `convert-after-upload`): the transcode
+ * converts every such file whatever its bytes hold (the name rule in
+ * `screenCompatibilityIssues`), so "not ready until it is converted" is the
+ * pipeline's own answer, not an invented one. And there is no "as before" to
+ * keep for them — until 2026-10-05 they were refused at presign — so without
+ * this an AVI whose probe hit a busy slot would be handed to screens as an AVI
+ * until its conversion finished. Every other video (MP4, M4V, WebM) stays
+ * unknown here — null, delivered exactly as before.
+ */
+export function storedTypeScreenVerdict(
+  storagePath: string | null | undefined,
+  mimeType: string | null | undefined,
+): UploadScreenVerdict | null {
+  const { format } = resolveUploadFormat(storagePath, mimeType);
+  if (format?.kind !== 'video' || format.handling !== 'convert-after-upload')
+    return null;
+  return { ready: false, issues: ['container'] };
 }
 
 /**
@@ -664,6 +721,8 @@ export function uploadScreenVerdict(e: ContentEvidence): UploadScreenVerdict | n
  *     `pending` there, and the kill switch stays subtractive: with it on, a video
  *     is delivered exactly as before this verdict existed;
  *   • no verdict (the probe did not run cleanly) → null: unknown stays unknown.
+ *     (The controller passes `storedTypeScreenVerdict` in that case, which is
+ *     not null only for a MOV / AVI / MKV / WMV / MPG / 3GP / TS.)
  */
 export function uploadScreenStamp(
   verdict: UploadScreenVerdict | null,

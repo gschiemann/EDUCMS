@@ -554,7 +554,13 @@ export class VideoTranscodePipeline {
       // EVERY `return` of an async helper in this try block is `return await`: a
       // plain `return promise` runs the `finally` (which deletes the temp dir) BEFORE
       // the promise settles, and the keep-original helpers below still read from it.
-      const decision = planTranscode(inProbe);
+      // The stored file's NAME counts too (2026-10-05): a MOV / AVI / MKV / WMV /
+      // MPG / 3GP / TS upload — or MP4 bytes saved as `.mov` — must end as an MP4
+      // asset, so anything not called MP4 is a required conversion.
+      const decision = planTranscode(inProbe, {
+        mimeType: asset.mimeType,
+        extension: path.extname(sourcePath),
+      });
       if (decision.action === 'transcode') learned.issues = decision.issues;
       else if (decision.reason === 'already-optimal') learned.issues = [];
       // The ORIGINAL stays as the served file on every exit below that calls

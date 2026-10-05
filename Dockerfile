@@ -254,7 +254,8 @@ RUN apk add --no-cache \
     ca-certificates \
     ttf-freefont \
     font-noto \
-    ffmpeg
+    ffmpeg \
+    libheif-tools
 # ffmpeg: server-side video transcode in MediaOptimizationService. Signage
 # video uploaded at phone bitrate (40MB+) is re-encoded to ~1080p H.264 so a
 # screen isn't re-streaming tens of MB per loop. ~30MB added to the image.
@@ -264,10 +265,21 @@ RUN apk add --no-cache \
 # duration into Asset.processingMeta (2026-09-24). Do not swap ffmpeg for a
 # slimmer split package without checking ffprobe survives — the boot check
 # further down hard-fails the build without it.
+#
+# libheif-tools (2026-10-05): `heif-dec`, which turns an uploaded iPhone photo
+# (HEIC) into a JPEG before the asset exists (apps/api/src/assets/heif-convert.ts).
+# Chosen over ffmpeg by MEASURING on this base image with HEICs from Apple's own
+# encoder: both stitch the 512×512 tile grid and apply the `irot` rotation, but
+# ffmpeg 8.1.2 drops the Display-P3 colour profile (the photo comes out washed
+# out) and heif-dec keeps it. sharp's prebuilt libvips cannot decode HEVC at
+# all. The package pulls libheif with its libde265 (HEVC) and dav1d (AV1)
+# decoder plugins — ~3 MB; Alpine's install_if adds the encoder plugins for
+# libraries ffmpeg already brought (x265, aom, …), which the build check below
+# borrows to make its own test HEIC. Nothing at runtime encodes.
 
 # Drop the package managers node:22-alpine bundles. Nothing in this image
 # invokes npm, npx or yarn at runtime (verified: the only child processes the
-# API spawns are `ffmpeg` and `gh`), npm's vendored pacote/sigstore accounted
+# API spawns are `ffmpeg`/`ffprobe`, `heif-dec` and `gh`), npm's vendored pacote/sigstore accounted
 # for 2 of the original 52 findings, and a package manager sitting in a
 # production container is a live "fetch and execute arbitrary code" primitive
 # for anyone who reaches RCE in the app. Node itself needs neither to run.
@@ -410,6 +422,21 @@ RUN set -eu; \
       || { echo "FATAL: this ffmpeg's scale filter has no out_transfer option (ffmpeg < 8) — the signage transcode converts HDR10 / HLG / BT.2020 / BT.601 / full-range sources to BT.709 with scale=out_transfer=…:out_primaries=… (storage/video-transcode/transcode-profile.ts buildTranscodeArgs); without it EVERY conversion fails and non-screen-safe uploads are served as uploaded"; exit 1; }; \
     ffmpeg -hide_banner -filters 2>/dev/null | grep -q bwdif \
       || { echo "FATAL: this ffmpeg has no bwdif filter — an interlaced upload is deinterlaced with it before it is scaled (storage/video-transcode/transcode-profile.ts buildTranscodeArgs); without it every interlaced source fails to convert"; exit 1; }; \
+    command -v heif-dec >/dev/null 2>&1 \
+      || { echo "FATAL: heif-dec missing — every uploaded iPhone photo (HEIC) is converted to JPEG with it before the asset exists (apps/api/src/assets/heif-convert.ts); without it every HEIC upload is refused. Alpine package: libheif-tools"; exit 1; }; \
+    heif-dec --list-decoders 2>/dev/null | grep -q libde265 \
+      || { echo "FATAL: heif-dec has no HEVC decoder plugin (libheif-libde265) — it would refuse every iPhone photo with 'No decoding plugin installed for this compression format: HEVC'"; exit 1; }; \
+    echo "[dockerfile] heif-dec $(heif-dec --version 2>/dev/null | head -1): decoding a HEIC made right here"; \
+    if heif-enc --list-encoders 2>/dev/null | grep -q x265; then \
+      ffmpeg -hide_banner -loglevel error -y -f lavfi -i testsrc2=size=1280x960 -frames:v 1 -update 1 /tmp/heic-selftest.png \
+        && heif-enc -q 50 -o /tmp/heic-selftest.heic /tmp/heic-selftest.png \
+        && heif-dec --quiet --tile-threads 2 --codec-threads 1 --png-compression-level 1 /tmp/heic-selftest.heic /tmp/heic-selftest-out.png \
+        && [ "$(ffprobe -v error -show_entries stream=width,height -of csv=p=0 /tmp/heic-selftest-out.png)" = "1280,960" ] \
+        || { echo "FATAL: heif-dec could not decode a HEIC this image encoded itself (1280x960 round trip) — HEIC uploads would all be refused"; exit 1; }; \
+      rm -f /tmp/heic-selftest.png /tmp/heic-selftest.heic /tmp/heic-selftest-out.png; \
+    else \
+      echo "[dockerfile] no HEVC encoder plugin to make a test HEIC with — the decoder plugin check above stands alone"; \
+    fi; \
     echo "[dockerfile] verifying the pinned Supabase root CA"; \
     test -r /etc/ssl/venueos/supabase-prod-ca-2021.crt \
       || { echo "FATAL: the database TLS trust anchor is missing from the image. Any DATABASE_URL carrying sslaccept=strict&sslcert=/etc/ssl/venueos/supabase-prod-ca-2021.crt would fail to connect AT BOOT."; exit 1; }; \
@@ -448,6 +475,10 @@ RUN set -eu; \
            echo "  'cert file not found (Permission denied)'."; exit 1; }; \
     openssl x509 -in /etc/ssl/venueos/supabase-prod-ca-2021.crt -noout -subject >/dev/null \
       || { echo "FATAL: the pinned CA is present and readable but is not a parseable certificate."; exit 1; }; \
+    heif-dec --list-decoders 2>/dev/null | grep -q libde265 \
+      || { echo "FATAL: USER node cannot load heif-dec's HEVC decoder plugin — the API runs it as this user to convert HEIC uploads"; exit 1; }; \
+    t="$(mktemp -d)" && test -w "$t" && rmdir "$t" \
+      || { echo "FATAL: USER node cannot create a temp directory — the HEIC converter and the video transcode work in one"; exit 1; }; \
     echo "[dockerfile] runtime-user assertions passed"
 
 EXPOSE 8080

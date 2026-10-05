@@ -1920,7 +1920,7 @@
     "uploadToFolder": "Upload {count, plural, one {# file} other {# files}} to…",
     "uploadWhichFolder": "Upload files to which folder?",
     "moveToWhichFolder": "Move {count, plural, one {# item} other {# items}} to which folder?",
-    "supportedCopy": "Images, video, audio and PDF · video up to {video}",
+    "supportedCopy": "Photos ({images}), video ({videos}), audio ({audio}) and PDF · video up to {video} · iPhone videos (MOV) and photos (HEIC) are converted for screens automatically",
     "fileTooLargeFor": "File exceeds {max} (this one is {size})",
     "optimizing": "Optimizing for screens…",
     "optimizationQueued": "Waiting for screen compatibility check…",
@@ -3310,13 +3310,14 @@
     "storageFull": "This file needs {need}; {left} of your {total} is left — delete unused media or add screens.",
     "fileEmpty": "This file is empty (0 bytes). Export it again and upload the new copy.",
     "imageUnreadable": "This isn't a picture screens can show — the file may be damaged, or it may be another kind of file saved with a picture's name. Export it again as JPG or PNG and upload the new copy.",
-    "imageHeic": "This photo is in Apple's HEIC format (saved with a different name), and screens can't show HEIC. Export it as JPG and upload the new copy.",
+    "imageHeic": "This HEIC photo couldn't be converted. Export it as JPEG and upload it again.",
     "videoUnplayable": "This isn't a playable video — the file may be damaged or incomplete. Export it again and upload the new copy.",
     "videoNoPicture": "This file has sound but no picture, so a screen would show nothing. Export it again as a video and upload the new copy.",
     "videoIsPicture": "This is a picture saved with a video name. Upload it under its real picture name (for example .jpg or .png).",
     "audioUnplayable": "This isn't a playable audio file — the file may be damaged or incomplete. Export it again and upload the new copy.",
     "pdfNotPdf": "This isn't a PDF — it may be another kind of file saved with a .pdf name. Save or export it as a PDF again and upload the new copy.",
-    "pdfIncomplete": "This PDF is incomplete — the file may be damaged or cut short. Save or export it again and upload the new copy."
+    "pdfIncomplete": "This PDF is incomplete — the file may be damaged or cut short. Save or export it again and upload the new copy.",
+    "imageHeicUnavailable": "This HEIC photo couldn't be converted just now. Upload it again in a minute, or export it as JPEG and upload that."
   },
   "playbackCopy": {
     "cannotPrepare": "{count, plural, one {{files} can't be prepared for 1080p screens. Remove or replace it, then publish again.} other {These files can't be prepared for 1080p screens: {files}. Remove or replace them, then publish again.}} The previous content stays on screen.",
@@ -3880,5 +3881,17 @@
     "delete": "Delete",
     "resetPositionOf": "Reset {label} position",
     "resetPosition": "Reset position"
+  },
+  "uploadFormats": {
+    "thisFile": "This file",
+    "svg": "SVG can't be uploaded as content — an SVG can carry hidden scripts. Export it as PNG. For a logo, Settings → Branding takes SVG safely.",
+    "unsupported": "{name} can't be uploaded. Upload photos ({images}), video ({videos}), audio ({audio}) or PDF.",
+    "wrongKind": "{name} can't be used here — this takes {formats}.",
+    "convertInLibrary": "{name} is a {format} video. Screens play it once it's converted to MP4, but alert content has to play the moment it's triggered. Upload it to the Media Library first (it's converted there), or export it as MP4 (H.264).",
+    "notAlertMedia": "{name} can't be alert media as it is — alert media must be ready to play the moment it's triggered: {formats}. Export it as MP4 or JPG, or upload it to the Media Library, which converts it.",
+    "converting": "Converting to MP4 for screens…",
+    "convertingPct": "Converting to MP4 for screens… {pct}%",
+    "conversionFailed": "{name} couldn't be converted to MP4 for screens. Export it as MP4 (H.264) and upload that.",
+    "conversionSlow": "{name} is still being converted for screens. It's in your Media Library — choose it there once it's ready."
   }
 }

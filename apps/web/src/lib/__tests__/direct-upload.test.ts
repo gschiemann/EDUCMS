@@ -375,6 +375,21 @@ describe('the honest size limit (2026-10-05) — the page says what the server t
     expect(refuseBeforeUploadAboveBytes({ type: 'image/jpeg' })).toBe(500 * MB);
   });
 
+  it('a MOV / MKV / AVCHD clip is a VIDEO for its limit even with no type, by the shared table (2026-10-05)', () => {
+    // A .mkv / .mts often arrives with no type, or a wrong one (model/vnd.mts).
+    for (const f of [
+      { name: 'IMG_0001.MOV', type: 'video/quicktime' },
+      { name: 'match.mkv', type: '' },
+      { name: '00012.MTS', type: 'model/vnd.mts' },
+      { name: 'talk.wmv', type: '' },
+    ]) {
+      expect(refuseBeforeUploadAboveBytes(f)).toBe(DIRECT_VIDEO_CEILING_BYTES);
+      expect(maxUploadBytesFor(f)).toBe(500 * MB);
+    }
+    // NEGATIVE CONTROL: a HEIC photo is a picture, with the picture limit.
+    expect(refuseBeforeUploadAboveBytes({ name: 'IMG_0002.HEIC', type: '' })).toBe(500 * MB);
+  });
+
   it('a 700 MB video is refused by presign BEFORE a byte moves, with the server\'s words — and the page learns the limit', async () => {
     const h = harness();
     h.postJson.mockImplementationOnce(async () => {

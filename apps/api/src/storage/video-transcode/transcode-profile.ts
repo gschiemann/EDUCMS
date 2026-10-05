@@ -59,7 +59,14 @@
  * pipeline refuses an output that reached its `-fs` disk bound (ffmpeg exits 0
  * with a short file; a source of unknown duration has nothing to compare
  * against). A truncated encode never reaches a screen.
+ *
+ * MORE CONTAINERS (2026-10-05). MOV, AVI, MKV, WMV, MPG, 3GP and MPEG-TS uploads
+ * are accepted and converted here: every one of them is a 'container' issue (by
+ * its probe, its ISO brand, or its own name — `SourceLabel`), so the conversion is
+ * REQUIRED and the asset ends as an H.264 MP4 (`video/mp4`, a `.mp4` URL) whatever
+ * the copy weighs.
  */
+import { isMp4Labelled } from '@cms/api-types';
 
 /** x264 CRF for the signage profile. Lower = bigger / better; 21 is visually clean on a wall. */
 export const TRANSCODE_CRF = 21;
@@ -342,8 +349,31 @@ export function assumedSourceMatrix(probe: ProbeResult): 'bt709' | undefined {
   return w >= 1280 || h > 576 ? 'bt709' : undefined;
 }
 
+/**
+ * What the stored file is CALLED: its type and its extension (2026-10-05, when
+ * MOV, AVI, MKV, WMV, MPG, 3GP and TS uploads were opened). A screen is handed a
+ * file by its type and URL, and the library names an asset by them, so a video
+ * must end as an MP4 by NAME as well as by bytes — a `.mov` holding MP4 bytes, or
+ * a `.3gp` holding H.264 + AAC, is converted too (`isMp4Labelled`).
+ */
+export interface SourceLabel {
+  mimeType?: string | null;
+  extension?: string | null;
+}
+
+/**
+ * ISO-BMFF major brands that are NOT MP4: QuickTime (`qt  `), 3GPP / 3GPP2
+ * (`3gp4`…`3gp7`, `3gs7`, `3ge6`, `3g2a`…) and Motion JPEG 2000 (`mj2s`, `mjp2`).
+ * ffprobe names that whole family "mov,mp4,m4a,3gp,3g2,mj2", so only the brand
+ * tells them apart — a 3GP of H.264 + AAC probed as `already-optimal` before.
+ */
+const NON_MP4_BRAND = /^(qt|3g|mj)/;
+
 /** Why this file is not screen-safe as it is. Empty = every player decodes it. */
-export function screenCompatibilityIssues(probe: ProbeResult): ScreenCompatibilityIssue[] {
+export function screenCompatibilityIssues(
+  probe: ProbeResult,
+  label?: SourceLabel,
+): ScreenCompatibilityIssue[] {
   const out: ScreenCompatibilityIssue[] = [];
   if (!probe.hasVideo || !probe.width || !probe.height) return out;
   const short = Math.min(probe.width, probe.height);
@@ -358,8 +388,13 @@ export function screenCompatibilityIssues(probe: ProbeResult): ScreenCompatibili
     (probe.colorTransfer !== null && HDR_TRANSFERS.has(probe.colorTransfer)) ||
     probe.colorPrimaries === 'bt2020'
   ) out.push('hdr');
-  // ffprobe names QuickTime and MP4 alike ("mov,mp4,m4a,…"); the major brand tells them apart.
-  if (!(probe.formatName ?? '').includes('mp4') || probe.majorBrand === 'qt') out.push('container');
+  // ffprobe names QuickTime and MP4 alike ("mov,mp4,m4a,…"); the major brand tells
+  // them apart — and the file's own name has to say MP4 too (SourceLabel).
+  if (
+    !(probe.formatName ?? '').includes('mp4') ||
+    NON_MP4_BRAND.test(probe.majorBrand ?? '') ||
+    (label !== undefined && !isMp4Labelled(label.mimeType, label.extension))
+  ) out.push('container');
   if (
     probe.videoCodec === 'h264' && probe.videoLevel !== null &&
     probe.videoLevel > maxLevelFor(probe.width, probe.height)
@@ -434,8 +469,11 @@ export function targetFps(probe: ProbeResult, cap: number): number | null {
  * `already-optimal` means the source already IS the profile — screen-safe on
  * every count (`screenCompatibilityIssues` is empty) and within the rung's
  * bitrate — so re-encoding it would burn a server CPU for nothing.
+ *
+ * `label` is what the stored file is called (its type and extension): anything
+ * not named MP4 is never `already-optimal`, whatever its bytes.
  */
-export function planTranscode(probe: ProbeResult): PlanDecision {
+export function planTranscode(probe: ProbeResult, label?: SourceLabel): PlanDecision {
   if (!probe.hasVideo) return { action: 'skip', reason: 'no-video-stream' };
   if (!probe.width || !probe.height)
     return { action: 'skip', reason: 'unknown-dimensions' };
@@ -460,7 +498,7 @@ export function planTranscode(probe: ProbeResult): PlanDecision {
     if (probe.width <= probe.height) width = rung.shortSide;
     else height = rung.shortSide;
   }
-  const issues = screenCompatibilityIssues(probe);
+  const issues = screenCompatibilityIssues(probe, label);
   const fps = targetFps(probe, rung.fpsCap);
 
   const withinBitrate =

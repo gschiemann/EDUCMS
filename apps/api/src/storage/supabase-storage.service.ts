@@ -1,5 +1,6 @@
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { uploadMimeTypesFor } from '@cms/api-types';
 import { makeStorageFetch, storageTransportState } from './storage-transport';
 import {
   streamDownloadToFile,
@@ -18,6 +19,31 @@ const BUCKET = 'assets';
  * that global is ≥ 2 GB — `assetsBucketCap()` reports what actually applied.
  */
 export const ASSETS_BUCKET_FILE_SIZE_LIMIT = 2 * 1024 * 1024 * 1024;
+
+/**
+ * The `assets` bucket's MIME allow-list (2026-10-05): every type the Media
+ * Library stores — read from the shared upload-formats table, so a format the
+ * API accepts can never be refused by storage, or the other way round — plus the
+ * design-import PowerPoint types. Supabase checks it against the Content-Type of
+ * EVERY write (a signed PUT, a TUS upload that declares its type, a server upload):
+ * the defence-in-depth half of the API's own allow-list.
+ *
+ * History: 2026-05-13 dropped video/quicktime + video/x-msvideo (an iPhone .mov
+ * shipped to an Android WebView played nothing); 2026-05-29 dropped image/svg+xml
+ * (Audit 37-infra U-1: a PUBLIC bucket serving inline — a stored-XSS vector);
+ * 2026-10-05 put MOV, AVI, MKV, WMV, MPG, 3GP, MPEG-TS and HEIC back, because the
+ * server now converts them before any screen sees them (assets.controller.ts).
+ * SVG stays out.
+ */
+export const ASSETS_BUCKET_MIME_TYPES: readonly string[] = [
+  ...uploadMimeTypesFor('direct'),
+  // 2026-05-03 BUG FIX (cycle 1 ai-imports BUG-002) — the PowerPoint types for the
+  // Canva / Slides / PPTX import pipeline. Without these the imports controller's
+  // MIME filter accepts the upload but Supabase rejects it with "mime type not
+  // allowed", so the upload silently fails after multer + before Asset row creation.
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation', // .pptx
+  'application/vnd.ms-powerpoint', // .ppt
+];
 
 /**
  * Supabase requires TUS resumable uploads to use EXACTLY 6 MB chunks (S3
@@ -160,32 +186,9 @@ export class SupabaseStorageService implements OnModuleInit {
     // project's GLOBAL upload limit; when that happens the WARN below fires
     // and the bucket keeps its previous cap — `assetsBucketCap()` then
     // reports the real value so the API advertises what storage will accept.
-    // 2026-05-13 — Dropped video/quicktime + video/x-msvideo. .mov files
-    // (especially QuickTime-only ftyp=qt containers) and AVI don't play
-    // in Android WebView / Chromium / WebKit, breaking the screen
-    // experience. Kept here as defense-in-depth alongside the
-    // assets.controller assertUploadIntent gate — if someone hits the
-    // Supabase upload URL directly, the bucket policy still rejects.
-    // 2026-05-29 (Audit 37-infra U-1) — dropped image/svg+xml. The bucket is
-    // PUBLIC and serves inline, so an SVG is a stored-XSS vector if it ever
-    // reaches a same-origin context. The assets controller already blocks SVG
-    // at upload (assets.controller.ts assertUploadIntent); this is the
-    // defense-in-depth bucket-policy half — without it, a direct hit on the
-    // Supabase upload URL could still land an SVG. Inconsistency removed.
-    const ALLOWED_MIMES = [
-      'image/jpeg', 'image/png', 'image/webp', 'image/gif',
-      'image/x-icon', 'image/bmp',
-      'video/mp4', 'video/webm', 'video/x-m4v',
-      'audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/mp4',
-      'application/pdf',
-      // 2026-05-03 BUG FIX (cycle 1 ai-imports BUG-002) — added PowerPoint
-      // mimes for the Canva / Slides / PPTX import pipeline. Without these
-      // the imports controller's MIME filter accepts the upload but
-      // Supabase rejects it with "mime type not allowed" so the upload
-      // silently fails after multer + before Asset row creation.
-      'application/vnd.openxmlformats-officedocument.presentationml.presentation', // .pptx
-      'application/vnd.ms-powerpoint', // .ppt
-    ];
+    // The MIME allow-list: ASSETS_BUCKET_MIME_TYPES (read from the shared
+    // upload-formats table; its history is on the constant).
+    const ALLOWED_MIMES = [...ASSETS_BUCKET_MIME_TYPES];
     const FILE_SIZE_LIMIT = ASSETS_BUCKET_FILE_SIZE_LIMIT; // 2 GiB
 
     // Ensure the bucket exists (idempotent on create)
@@ -231,10 +234,17 @@ export class SupabaseStorageService implements OnModuleInit {
           `the bucket keeps its previous cap. Raise the project's global upload limit (Supabase → Storage → Settings) ` +
           `to at least ${FILE_SIZE_LIMIT / (1024 * 1024 * 1024)}GB and restart the API.`,
       );
+      // 2026-10-05 — the size and the MIME list travel in ONE request, so the
+      // size Supabase refuses (the project's global limit is still 500 MB) threw
+      // the MIME list away with it on every boot since 2026-09-23: a type added
+      // to the list never reached production. Apply the list ON ITS OWN — with
+      // no `fileSizeLimit`, storage leaves the bucket's current limit as it is.
+      await this.applyAssetsBucketMimeTypes(ALLOWED_MIMES);
     } else {
       this.logger.log(`Supabase Storage bucket "assets" ready (cap ${FILE_SIZE_LIMIT / (1024*1024)}MB)`);
     }
     await this.refreshAssetsBucketCap(updErr ? null : FILE_SIZE_LIMIT);
+    await this.verifyAssetsBucketMimeTypes(ALLOWED_MIMES);
 
     // PRIVATE floor-plan bucket (launch-readiness P1). public:false so objects
     // are never world-readable; floor-plan endpoints serve them via short-TTL
@@ -583,6 +593,58 @@ export class SupabaseStorageService implements OnModuleInit {
     } catch (e: any) {
       this.assetsBucketCapBytes = null;
       this.logger.warn(`Could not read the assets bucket's effective cap: ${e?.message ?? e}`);
+    }
+  }
+
+  /**
+   * Apply ONLY the `assets` bucket's MIME allow-list (2026-10-05). Used when the
+   * full update (size + list) was refused for its size: storage changes no limit
+   * it is not sent, so the bucket keeps its cap and gets the list. Best-effort and
+   * never throws — a failure is logged with the one manual step that fixes it.
+   */
+  private async applyAssetsBucketMimeTypes(mimeTypes: string[]): Promise<boolean> {
+    try {
+      const { error } = await this.ensureClient().storage.updateBucket(BUCKET, {
+        public: true,
+        allowedMimeTypes: mimeTypes,
+      });
+      if (error) throw error;
+      this.logger.log(`assets bucket: MIME allow-list applied on its own (${mimeTypes.length} types; the size limit is unchanged)`);
+      return true;
+    } catch (e: any) {
+      this.logger.warn(
+        `assets bucket: could not apply the MIME allow-list (${e?.message ?? e}) — uploads of a type missing from it ` +
+          `are refused by storage. Fix: Supabase → Storage → assets → Edit bucket → Allowed MIME types, add the ` +
+          `missing ones from ASSETS_BUCKET_MIME_TYPES, or restart the API once storage is reachable.`,
+      );
+      return false;
+    }
+  }
+
+  /**
+   * Read the `assets` bucket back and say, by name, any type the API accepts that
+   * storage would still refuse (2026-10-05). Read-only; never throws. Returns the
+   * missing types ([] = all there), or null when the bucket could not be read.
+   */
+  private async verifyAssetsBucketMimeTypes(expected: readonly string[]): Promise<string[] | null> {
+    try {
+      const { data, error } = await (this.ensureClient().storage as any).getBucket(BUCKET);
+      if (error) throw error;
+      const raw = data?.allowed_mime_types ?? data?.allowedMimeTypes;
+      // An EMPTY / absent list means "any type" to Supabase: nothing is missing.
+      if (!Array.isArray(raw) || raw.length === 0) return [];
+      const have = new Set(raw.map((t: unknown) => String(t).toLowerCase()));
+      const missing = expected.filter((t) => !have.has(t.toLowerCase()));
+      if (missing.length > 0) {
+        this.logger.warn(
+          `assets bucket still REFUSES ${missing.length} type(s) the API accepts: ${missing.join(', ')} — those uploads fail ` +
+            `at storage ("mime type not allowed"). Add them in Supabase → Storage → assets → Allowed MIME types.`,
+        );
+      }
+      return missing;
+    } catch (e: any) {
+      this.logger.warn(`Could not read the assets bucket's MIME allow-list back: ${e?.message ?? e}`);
+      return null;
     }
   }
 

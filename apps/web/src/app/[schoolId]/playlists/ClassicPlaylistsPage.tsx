@@ -51,6 +51,7 @@ import { SELECTED_TILE_CLASS, SelectionCheckbox, SelectionTileCheckbox, selectAl
 import { imageShape, type ImageShape } from '@/lib/image-shape';
 import { uploadAssetDirect } from '@/lib/direct-upload';
 import { useUploadErrorText, useUploadTooLargeText } from '@/lib/use-upload-error-text';
+import { LIBRARY_ACCEPT, uploadProblemFor, useUploadProblemText } from '@/lib/upload-accept';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
 const apiBase = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1').replace('/api/v1', '');
@@ -1196,6 +1197,7 @@ export default function ClassicPlaylistsPage({
   const [pickerUploads, setPickerUploads] = useState<PickerUpload[]>([]);
   const pickerUploadErrorText = useUploadErrorText();
   const pickerTooLargeText = useUploadTooLargeText();
+  const pickerProblemText = useUploadProblemText();
   const [pickerDragOver, setPickerDragOver] = useState(false);
   const pickerFileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
@@ -2062,13 +2064,17 @@ export default function ClassicPlaylistsPage({
     const list = Array.from(files);
 
     const newItems: PickerUpload[] = list.map(file => {
-      const tooBig = pickerTooLargeText(file);
+      // 2026-10-05 — the same answer as the Media Library (lib/upload-accept.ts):
+      // a MOV / HEIC … is taken and converted; an SVG or an unknown file is refused
+      // before a byte moves. This dialog used to take anything and let the server say no.
+      const problem = uploadProblemFor(file);
+      const refused = problem ? pickerProblemText(problem, file) : pickerTooLargeText(file);
       return {
         id: genId(),
         name: file.name,
         progress: 0,
-        phase: tooBig ? 'error' : 'uploading',
-        error: tooBig ?? undefined,
+        phase: refused ? 'error' : 'uploading',
+        error: refused ?? undefined,
       };
     });
     setPickerUploads(prev => [...newItems, ...prev]);
@@ -2719,6 +2725,7 @@ export default function ClassicPlaylistsPage({
                     ref={pickerFileInputRef}
                     type="file"
                     multiple
+                    accept={LIBRARY_ACCEPT}
                     className="hidden"
                     onChange={(e) => { handlePickerUploadFiles(e.target.files); if (pickerFileInputRef.current) pickerFileInputRef.current.value = ''; }}
                   />
