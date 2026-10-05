@@ -64,7 +64,7 @@ function looksLikeEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
-type FieldErrors = { email?: string; password?: string; confirm?: string };
+type FieldErrors = { email?: string; confirmEmail?: string; password?: string; confirm?: string };
 
 export function CredentialSetupGate() {
   const brand = getClientBrand();
@@ -74,6 +74,7 @@ export function CredentialSetupGate() {
   const logout = useUIStore((s) => s.logout);
 
   const [email, setEmail] = useState('');
+  const [confirmEmail, setConfirmEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
@@ -100,13 +101,19 @@ export function CredentialSetupGate() {
         else if (trimmed.toLowerCase() === placeholderEmail.trim().toLowerCase()) {
           next.email = 'Use your own email — this is the temporary address the account was created with.';
         }
+        // Typed twice: this address receives every sign-in code and password
+        // reset from now on, and a typo here strands the account (nothing
+        // verifies the mailbox yet — Greg, 2026-10-05).
+        if (!next.email && confirmEmail.trim().toLowerCase() !== trimmed.toLowerCase()) {
+          next.confirmEmail = 'The two email addresses do not match.';
+        }
         if (password.length < MIN_PASSWORD_LENGTH) {
           next.password = `Use at least ${MIN_PASSWORD_LENGTH} characters.`;
         }
         if (confirm !== password) next.confirm = 'The two passwords do not match.';
         return next;
       },
-    [email, password, confirm, placeholderEmail],
+    [email, confirmEmail, password, confirm, placeholderEmail],
   );
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -243,6 +250,31 @@ export function CredentialSetupGate() {
               {fieldErrors.email && (
                 <p id="setup-email-error" role="alert" className="mt-1.5 text-xs text-rose-700 font-medium">
                   {fieldErrors.email}
+                </p>
+              )}
+              <p className="mt-1.5 text-[11px] text-slate-500">
+                We send your sign-in codes and password resets here, so make sure you can open it.
+              </p>
+            </div>
+
+            <div>
+              <label htmlFor="setup-confirm-email" className="block text-xs font-semibold text-slate-700 mb-1.5">
+                Type your email again
+              </label>
+              <input
+                id="setup-confirm-email"
+                name="confirm-email"
+                type="email"
+                autoComplete="off"
+                className={fieldErrors.confirmEmail ? INPUT_ERR_CLS : INPUT_CLS}
+                value={confirmEmail}
+                onChange={(e) => setConfirmEmail(e.target.value)}
+                aria-invalid={fieldErrors.confirmEmail ? true : undefined}
+                aria-describedby={describedBy('confirmEmail')}
+              />
+              {fieldErrors.confirmEmail && (
+                <p id="setup-confirmEmail-error" role="alert" className="mt-1.5 text-xs text-rose-700 font-medium">
+                  {fieldErrors.confirmEmail}
                 </p>
               )}
             </div>
