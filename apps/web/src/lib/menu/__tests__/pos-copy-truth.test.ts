@@ -40,7 +40,7 @@ describe('Settings → POS tiles', () => {
   it('the self-serve line promises sold-out only for the POS that reports it', () => {
     const line = en.billingCommerce.catalogSyncLiveDetail;
     expect(line).not.toMatch(/availability/i);
-    expect(line).toMatch(/Square keeps sold-out items current/);
+    expect(line).toMatch(/Square also handles sold-out items/);
     expect(posLiveFactsFor('square').soldOut).toBe(true);
     for (const id of ['clover', 'lightspeed-retail', 'shopify-pos', 'toast']) expect(posLiveFactsFor(id).soldOut).toBe(false);
   });

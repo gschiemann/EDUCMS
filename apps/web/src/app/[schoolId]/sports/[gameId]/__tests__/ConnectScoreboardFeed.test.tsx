@@ -88,9 +88,9 @@ it('K12-F33: says what it is — a generic feed whose sender is yours, no native
   render(<ConnectScoreboardFeed gameId={GAME_ID} stats={{}} />);
   await screen.findAllByText(tokenRe(CREDS.token));
   expect(screen.getByText('External score feed (generic)')).toBeInTheDocument();
-  expect(screen.getByText(/The sender is yours/)).toBeInTheDocument();
+  expect(screen.getByText(/your scoreboard vendor, a relay or a small script/)).toBeInTheDocument();
   expect(screen.getByTestId('feed-vendor-note')).toHaveTextContent(
-    /no native Sportzcast or Scorebird connection/,
+    /no built-in Sportzcast or Scorebird connection/,
   );
   // The old title claimed the vendors as if they were connected natively.
   expect(screen.queryByText(/Sportzcast \/ Scorebird \/ anything/)).not.toBeInTheDocument();

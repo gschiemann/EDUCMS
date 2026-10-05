@@ -96,7 +96,7 @@ describe('useUploadErrorText — the upload content check', () => {
     ['ASSET_VIDEO_UNPLAYABLE', "This isn't a playable video — the file may be damaged or incomplete. Export it again and upload the new copy."],
     ['ASSET_VIDEO_NO_PICTURE', 'This file has sound but no picture, so a screen would show nothing. Export it again as a video and upload the new copy.'],
     ['ASSET_VIDEO_IS_PICTURE', 'This is a picture saved with a video name. Upload it under its real picture name (for example .jpg or .png).'],
-    ['ASSET_IMAGE_UNREADABLE', "This isn't a picture screens can show — the file may be damaged, or it may be another kind of file saved with a picture's name. Export it again as JPG or PNG and upload the new copy."],
+    ['ASSET_IMAGE_UNREADABLE', "This isn't a picture screens can show — it may be damaged or not really an image. Export it as JPG or PNG and upload it again."],
     // 2026-10-05 — a HEIC is converted to JPEG at upload; these are the two ways that can fail.
     ['ASSET_IMAGE_HEIC', "This HEIC photo couldn't be converted. Export it as JPEG and upload it again."],
     ['ASSET_IMAGE_HEIC_UNAVAILABLE', "This HEIC photo couldn't be converted just now. Upload it again in a minute, or export it as JPEG and upload that."],

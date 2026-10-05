@@ -247,7 +247,7 @@ describe('Media Library v1 — the calm default view', () => {
     expect(strip).toHaveTextContent(
       'Photos (JPG, PNG, WebP, GIF, BMP, ICO, HEIC), video (MP4, M4V, WebM, MOV, AVI, MKV, WMV, MPG, 3GP, TS), audio (MP3, OGG, WAV, M4A) and PDF · video up to 500 MB',
     );
-    expect(strip).toHaveTextContent('iPhone videos (MOV) and photos (HEIC) are converted for screens automatically');
+    expect(strip).toHaveTextContent('iPhone photos (HEIC) and videos (MOV) are converted automatically');
     // The uploader rejects SVG, so the strip must never advertise it (§6).
     expect(strip).not.toHaveTextContent(/svg/i);
   });

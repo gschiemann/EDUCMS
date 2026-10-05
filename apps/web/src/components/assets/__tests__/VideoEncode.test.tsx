@@ -96,7 +96,7 @@ describe('VideoEncodeCard', () => {
     expect(screen.getByTestId('video-encode-card')).toHaveAttribute('data-encode-status', 'amber');
     expect(screen.getByText('May hitch or start slowly on some screens')).toBeInTheDocument();
     expect(screen.getByTestId('video-encode-reasons')).toHaveTextContent('Playback index is at the end of the file');
-    expect(screen.getByTestId('video-encode-notes')).toHaveTextContent('1280 × 720 uses only part of your 3840 × 2160 screens');
+    expect(screen.getByTestId('video-encode-notes')).toHaveTextContent('1280 × 720 is smaller than your 3840 × 2160 screens');
     expect(screen.getByTestId('video-encode-suggested')).toHaveTextContent('Export from your original design at 3840 × 2160');
     expect(screen.getByTestId('video-encode-facts')).toHaveTextContent('Indexend of file');
     expect(screen.queryByText(/Canva/)).not.toBeInTheDocument();
