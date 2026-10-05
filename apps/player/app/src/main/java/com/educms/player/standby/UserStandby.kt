@@ -35,19 +35,29 @@ import java.lang.ref.WeakReference
  * ─────────────────────────────────────────────────────────────────────
  * ⚠️ WHAT KEEPS AN ALERT ABLE TO REACH A PANEL IN STANDBY
  * ─────────────────────────────────────────────────────────────────────
- * A screen in standby still has to show a lockdown. The page keeps running
- * behind the dark panel (nothing calls `WebView.pauseTimers()`; the
- * foreground HeartbeatService keeps this process alive), and the alert path
- * — WS OVERRIDE / manifest → `displayEmergencyHold(true)` →
- * [DisplayEmergency.enforceNow] — ends the standby and wakes the panel with a
- * wake lock that needs no window. NOTHING on that path consults this class.
+ * A screen in standby still has to show a lockdown.
  *
- * What was missing is the CPU: a box whose panel is off and that holds no
- * wake lock is free to suspend, and a suspended box receives nothing. Before
- * 1.1.21 the Watchdog woke the panel within 15 minutes, which incidentally
- * restored delivery; now that a standby can last all night, this holds a
- * PARTIAL wake lock for as long as it lasts (refreshed by every Watchdog
- * tick), so the page's socket and its polling keep running dark.
+ * ⚠️ CORRECTED 2026-10-05 (1.1.22). 1.1.21 shipped this paragraph saying
+ * "the page keeps running behind the dark panel". MEASURED FALSE: on the one
+ * box that ran 1.1.21 (an X80) the page made no request for 8.8 hours from
+ * the minute its panel went off, while the native HeartbeatService kept
+ * calling the API every minute. Nothing in this app pauses the page (no
+ * `pauseTimers()`), so the cause is the platform's and is unknown — and a
+ * page that is not running raises nothing. 1.1.21 was recalled for it.
+ *
+ * What reaches a dark panel now is NATIVE:
+ * `com.educms.player.alertwatch.NativeAlertWatch` polls the screen's own
+ * manifest while the panel is off and raises the hold itself —
+ * [DisplayEmergency.raiseFromNativeWatch] → [DisplayEmergency.enforceNow],
+ * which ends the standby and wakes the panel with a wake lock that needs no
+ * window. NOTHING on that path consults this class. The page's own path
+ * (WS OVERRIDE / manifest → `displayEmergencyHold(true)`) is unchanged and
+ * still works wherever a page does keep running.
+ *
+ * The CPU lock below is still held for the whole standby (refreshed by every
+ * Watchdog tick): a box whose panel is off and that holds no wake lock is
+ * free to suspend, and a suspended box polls nothing. The watch holds its
+ * own as well, for every dark period, standby or not.
  */
 object UserStandby {
 

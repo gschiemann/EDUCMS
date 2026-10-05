@@ -89,6 +89,18 @@ const REQUIRED = [
   { cls: 'com.educms.player.face.FaceBridgeIsolationTest', min: 5 },
   // The server → native activation path: silence must never un-host a side.
   { cls: 'com.educms.player.face.FaceActivationTest', min: 4 },
+  // ── Native alert watch (2026-10-05, 1.1.22) — LIFE SAFETY ────────
+  // The page made no request for 8.8 hours behind a dark panel, so a
+  // lockdown could not wake the screen; the manifest is now also asked from
+  // native code while the panel is off. If these stop running, nothing in CI
+  // checks what counts as an alert, that the watch can only RAISE, or the
+  // confirm-or-reload limits.
+  { cls: 'com.educms.player.alertwatch.ManifestAlertScannerTest', min: 8 },
+  { cls: 'com.educms.player.alertwatch.NativeAlertWatchPolicyTest', min: 15 },
+  { cls: 'com.educms.player.alertwatch.NativeAlertWatchEngineTest', min: 10 },
+  // Source-shape guards (Assume-based): the watch has a caller, and nothing
+  // in it can lower a hold.
+  { cls: 'com.educms.player.alertwatch.NativeAlertWatchWiringTest', min: 8 },
 ];
 
 /**

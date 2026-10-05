@@ -2,6 +2,7 @@ package com.educms.player.display
 
 import android.content.Context
 import android.os.PowerManager
+import android.os.SystemClock
 import com.educms.player.logging.PlayerLogger
 
 /**
@@ -437,11 +438,72 @@ object DisplayEmergency {
      * must not make a RAISE disappear, and must not create a member nothing
      * can ever release.
      */
-    fun setHold(ctx: Context, faceIndex: Int, active: Boolean): Boolean {
+    fun setHold(ctx: Context, faceIndex: Int, active: Boolean): Boolean =
+        setHoldFrom(ctx, faceIndex, active, fromPage = true)
+
+    // ─── the native alert watch (2026-10-05, player 1.1.22) ──────────
+    //
+    // On the X80 the page made no request for 8.8 hours after its panel was
+    // turned off, so the page could not raise this hold and a lockdown could
+    // not wake the screen. `com.educms.player.alertwatch` now asks the
+    // manifest from native code while the panel is off and raises here.
+
+    /**
+     * face → `elapsedRealtime` of its PAGE's last raise in the current hold
+     * period. In memory only, and never read by anything that decides the
+     * hold: it answers the watch's one question, "has the page itself seen
+     * this alert?". Stamped when the page raises, dropped when it releases.
+     */
+    private val pageRaisedAt = java.util.concurrent.ConcurrentHashMap<Int, Long>()
+
+    /** `elapsedRealtime` of [faceIndex]'s page's last raise in the current hold period, or null. */
+    fun pageRaisedAtMs(faceIndex: Int): Long? = pageRaisedAt[faceIndex]
+
+    /**
+     * ⚠️ THE NATIVE ALERT WATCH'S ONLY DOOR INTO THE INTERLOCK — AND IT ONLY
+     * OPENS ONE WAY.
+     *
+     * RAISE ONLY. There is deliberately no native release: the watch reads
+     * "no alert" from a poll that can be late, cached by a proxy or simply
+     * wrong about which alert it is looking at, and a hold released by a
+     * guess is the one failure this file exists to prevent. The page, on a
+     * LIVE manifest, stays the only thing that releases (CLAUDE.md player
+     * rule 11). A hold nothing releases costs electricity.
+     *
+     * Goes through the same [engage] the page's raise does, so it ends a
+     * user standby, wakes the panel and re-enforces on every repeat.
+     *
+     * @param firstForThisAlert logs the marker once per alert; repeats (one
+     *        per poll while the panel is still off) are a quiet re-assert.
+     */
+    fun raiseFromNativeWatch(ctx: Context, faceIndex: Int, firstForThisAlert: Boolean): Boolean {
+        val app = ctx.applicationContext
+        if (firstForThisAlert) {
+            PlayerLogger.e(
+                TAG,
+                "PLAYER_NATIVE_ALERT_RAISE face=$faceIndex heldBefore=${isHeld(app)} — this screen's manifest " +
+                    "reports an active emergency alert while the panel is off; the NATIVE watch is raising " +
+                    "the hold because the page has not",
+            )
+        } else {
+            PlayerLogger.w(
+                TAG,
+                "native alert watch: the alert is still active and the panel is still off — " +
+                    "re-asserting a visible screen (face $faceIndex)",
+            )
+        }
+        return setHoldFrom(app, faceIndex, active = true, fromPage = false)
+    }
+
+    private fun setHoldFrom(ctx: Context, faceIndex: Int, active: Boolean, fromPage: Boolean): Boolean {
         val app = ctx.applicationContext
         synchronized(holdLock) {
             val live = liveFaces
             val face = creditedFace(faceIndex, live)
+            if (fromPage) {
+                // Bookkeeping only — see [pageRaisedAt].
+                if (active) pageRaisedAt[face] = SystemClock.elapsedRealtime() else pageRaisedAt.remove(face)
+            }
             if (face != faceIndex) {
                 PlayerLogger.w(
                     TAG,
@@ -539,6 +601,9 @@ object DisplayEmergency {
     }
 
     private fun release(app: Context, wasHeld: Boolean, face: Int): Boolean {
+        // A new hold period starts clean: a raise the page made for the last
+        // alert says nothing about the next one.
+        pageRaisedAt.clear()
         if (!wasHeld) return true
         val persisted = DisplayPrefs.commitEmergencyHold(
             app,

@@ -224,8 +224,13 @@ object RelaunchEscalation {
      * @return false only when this package has NO launch intent (a broken
      *         install); true when the call was made. ⚠️ True is NOT proof
      *         the Activity started — that is the entire point of this file.
+     *
+     * `internal` since 1.1.22: the native alert watch brings the player
+     * forward with this same call after it has raised the emergency hold
+     * (`NativeAlertWatch`). It does not use [attempt] — that ladder's
+     * notification and its ota-state report speak about an update.
      */
-    private fun launchNow(ctx: Context, source: String): Boolean {
+    internal fun launchNow(ctx: Context, source: String): Boolean {
         val launch = try {
             ctx.packageManager.getLaunchIntentForPackage(ctx.packageName)
         } catch (t: Throwable) {

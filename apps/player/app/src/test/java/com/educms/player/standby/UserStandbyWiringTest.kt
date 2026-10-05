@@ -174,8 +174,16 @@ class UserStandbyWiringTest {
         assertTrue(body(src, "private fun reassertEmergency(").contains("DisplayEmergency.enforceNow(app)"))
     }
 
+    /**
+     * Renamed 2026-10-05 (1.1.22). This was `the page keeps running behind a
+     * dark panel` — a claim these three source facts never proved and that
+     * production DISPROVED: on the X80 the page made no request for 8.8 hours
+     * after its panel went off. The facts are still required (they are what
+     * this app can do for the page); what reaches a dark panel now is the
+     * native alert watch — see `NativeAlertWatchWiringTest`.
+     */
     @Test
-    fun `the page keeps running behind a dark panel`() {
+    fun `nothing in this app stops the page behind a dark panel, and the CPU stays awake`() {
         // (1) nothing pauses the WebView's JavaScript timers;
         val sources = File(moduleRoot ?: return, "src/main/java").walkTopDown()
             .filter { it.isFile && it.extension == "kt" }

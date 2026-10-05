@@ -267,7 +267,11 @@ class MainActivity : ComponentActivity() {
      * finds a navigation younger than the grace window does nothing at
      * all — no strike, no reload. Only after the grace expires may a stale
      * tick strike.
+     *
+     * `@Volatile` since 1.1.22: the native alert watch reads it from its own
+     * thread (a load younger than a minute is never reloaded).
      */
+    @Volatile
     private var lastLoadStartedAtMs: Long = 0L
 
     /**
@@ -1318,6 +1322,52 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * NATIVE ALERT WATCH (2026-10-05, player 1.1.22) — what the watch needs
+     * from this Activity: a reload of the page, and when a load last started.
+     *
+     * The watch raises the emergency hold natively when the page is not
+     * running (the X80 whose page made no request for 8.8 hours behind a
+     * dark panel). Raising wakes the panel; only the PAGE can draw the alert.
+     * So when the page has not raised the hold itself 20 s later, the watch
+     * asks for this — at most once a minute, three times per alert.
+     *
+     * ⚠️ THE ONE RELOAD THAT RUNS DURING A HELD ALERT. The content watchdog
+     * refuses to navigate an alert off the glass, and that stays true: this
+     * is only ever asked for while the page has given NO proof it is showing
+     * the alert. It is the same abort-then-`loadPlayer` sequence the
+     * staleness watchdog uses (including the C-P1-3 abort marker), not a
+     * second kind of reload.
+     *
+     * Held as a STRONG field because the watch keeps only a WeakReference —
+     * same reason as [displayHooks]. Called from the watch's own thread.
+     */
+    private val alertWatchHost = object : com.educms.player.alertwatch.NativeAlertWatch.PageHost {
+        override fun reloadPage(face: Int, why: String) {
+            runOnUiThread {
+                if (isDestroyed || isFinishing || !::webView.isInitialized) return@runOnUiThread
+                if (face != DisplayEmergency.PRIMARY_FACE) {
+                    PlayerLogger.w("MainActivity", "native alert watch asked to reload face $face — only the primary is reloaded here")
+                    return@runOnUiThread
+                }
+                if (managerGateShown) {
+                    // Same rule as the watchdog: the gate withholds the page on
+                    // purpose (and the upgrade gate releases itself the moment a
+                    // hold is engaged).
+                    PlayerLogger.w("MainActivity", "native alert watch reload skipped — the manager gate owns the screen")
+                    return@runOnUiThread
+                }
+                PlayerLogger.e("MainActivity", "reloading the player page for the native alert watch — $why")
+                playerWebViewClient?.markNextFinishAborted()
+                runCatching { webView.stopLoading() }
+                lifecycleScope.launch { loadPlayer(resolveDeviceToken()) }
+            }
+        }
+
+        override fun pageLoadStartedAtMs(face: Int): Long =
+            if (face == DisplayEmergency.PRIMARY_FACE) lastLoadStartedAtMs else 0L
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -1426,6 +1476,9 @@ class MainActivity : ComponentActivity() {
             "onCreate",
         )
         com.educms.player.standby.UserStandby.setListener(standbyListener)
+        // 1.1.22 — the native alert watch reloads the page through this
+        // Activity when the page has not confirmed an alert it raised.
+        com.educms.player.alertwatch.NativeAlertWatch.setPageHost(alertWatchHost)
         window.addFlags(WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD)
 
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -4070,6 +4123,7 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         liveInstances.decrementAndGet()
         runCatching { com.educms.player.standby.UserStandby.clearListener(standbyListener) }
+        runCatching { com.educms.player.alertwatch.NativeAlertWatch.clearPageHost(alertWatchHost) }
         // P1-3 — close the tty and stop the reader with the Activity; the next
         // instance builds its own bridge and must find the port free.
         runCatching { ctsSerialBridge.disconnect() }

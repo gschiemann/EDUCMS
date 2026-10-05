@@ -87,6 +87,11 @@ class WatchdogReceiver : android.content.BroadcastReceiver() {
         val app = ctx.applicationContext
         runCatching { UserStandby.onWatchdogTick(app) }
             .onFailure { Log.w("Watchdog", "user-standby tick failed: ${it.message}") }
+        // 1.1.22 — this alarm is the one thing here that can wake a suspended
+        // CPU, so it also puts the native alert watch back if its loop is not
+        // running behind a dark panel. Idempotent, never throws. BEFORE the
+        // standby SKIP below: a panel in standby is exactly the one to watch.
+        com.educms.player.alertwatch.NativeAlertWatch.kick(app, "watchdog tick")
         val mode = UserStandby.relaunchMode(app)
         if (mode == RelaunchMode.SKIP) {
             PlayerLogger.i("Watchdog", "Tick — a person has this panel off and the player is alive; not relaunching")

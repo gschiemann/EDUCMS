@@ -18,6 +18,7 @@ import com.educms.player.BuildConfig
 import com.educms.player.MainActivity
 import com.educms.player.PlayerApp
 import com.educms.player.R
+import com.educms.player.alertwatch.NativeAlertWatch
 import com.educms.player.logging.PlayerLogger
 import com.educms.player.ota.RelaunchEscalation
 import kotlinx.coroutines.*
@@ -86,6 +87,14 @@ class HeartbeatService : Service() {
         startForegroundCompat()
         loopJob?.cancel()
         loopJob = scope.launch { runLoop() }
+        // 2026-10-05 (1.1.22) — THE NATIVE ALERT WATCH starts here, because
+        // this foreground service is what keeps the process alive behind a
+        // dark panel. On the X80 the PAGE made no request for 8.8 hours after
+        // its panel was turned off, while this service's own loop reached the
+        // API every minute; so the question "is there an alert?" is now also
+        // asked from this side whenever the panel is off. Never throws.
+        runCatching { NativeAlertWatch.ensureStarted(applicationContext) }
+            .onFailure { PlayerLogger.e(TAG, "native alert watch could not start", it) }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -215,6 +224,9 @@ class HeartbeatService : Service() {
         val ctx = applicationContext
         val prefs = ctx.getSharedPreferences("edu_player", Context.MODE_PRIVATE)
         while (scope.isActive) {
+            // A watch loop that died, or that was never started, is put back
+            // within a minute. Idempotent; one binder call when the panel is on.
+            NativeAlertWatch.kick(ctx, "heartbeat loop")
             val fp = prefs.getString("device_fingerprint", null)
             val apiRoot = prefs.getString("api_root", null)
             if (!fp.isNullOrBlank() && !apiRoot.isNullOrBlank() && shouldTickNow(prefs)) {
