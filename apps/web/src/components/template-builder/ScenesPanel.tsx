@@ -115,7 +115,7 @@ export function ScenesPanel() {
     // duplicate them onto every scene). Match the message to the
     // actual outcome so the operator isn't surprised.
     const detail = zonesOnScene > 0
-      ? `This scene has ${zonesOnScene} widget${zonesOnScene === 1 ? '' : 's'}. Deleting the scene moves them to the default scene.`
+      ? `Its ${zonesOnScene} widget${zonesOnScene === 1 ? '' : 's'} move${zonesOnScene === 1 ? 's' : ''} to the default scene.`
       : 'This scene is empty.';
     const ok = await appConfirm({
       title: `Delete "${name}"?`,

@@ -121,7 +121,7 @@ test.describe('deleting a template that playlists use', () => {
     await open(page, calls);
     await chooseDelete(page);
     const dialog = page.getByRole('alertdialog');
-    await expect(dialog).toContainText('“Club Welcome” is currently in use');
+    await expect(dialog).toContainText('“Club Welcome” is in use');
     await expect(dialog).toContainText('Morning Loop');
     await expect(dialog).toContainText('Front Desk');
     await expect(dialog.getByRole('button', { name: 'Review' })).toBeVisible();
@@ -229,7 +229,7 @@ test.describe('first confirmation usage and failure handling', () => {
     await expect(dialog.getByRole('button', { name: 'Delete template' })).toBeEnabled();
     await dialog.evaluate(el => el.setAttribute('data-original-dialog', 'yes'));
     await dialog.getByRole('button', { name: 'Delete template' }).click();
-    await expect(dialog).toContainText('Usage changed while this confirmation was open');
+    await expect(dialog).toContainText("Where it's used just changed");
     await expect(dialog).toHaveAttribute('data-original-dialog', 'yes');
     await expect(page.getByRole('dialog')).toHaveCount(0);
     expect(calls).toEqual(['DELETE']);

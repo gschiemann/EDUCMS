@@ -71,7 +71,7 @@ describe('the impact dialog: a warning that can delete, and a Review that goes t
 
   it('says what deleting does to those playlists, in the singular and the plural', () => {
     mount({ playlists: [{ id: 'p1', name: 'Morning Loop' }] });
-    expect(screen.getByText(/takes this layout off that playlist — it falls back to its next layout/)).toBeInTheDocument();
+    expect(screen.getByText(/That playlist will stop using it, so its screens may change/)).toBeInTheDocument();
   });
 
   it('while the delete runs, every action stands down and the button says so', () => {
@@ -92,7 +92,7 @@ describe('the impact dialog: a warning that can delete, and a Review that goes t
 describe('§11.3 — it states the server\'s reach, and only the server\'s reach', () => {
   it('names the template and summarizes playlists · screens · locations', () => {
     mount();
-    expect(screen.getByText(/“Club Welcome” is currently in use/)).toBeInTheDocument();
+    expect(screen.getByText(/“Club Welcome” is in use/)).toBeInTheDocument();
     expect(screen.getByText('2 playlists · 3 screens · 1 location')).toBeInTheDocument();
   });
 

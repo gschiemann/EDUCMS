@@ -437,7 +437,7 @@ export function BrandKitPanel() {
       title: 'Remove template brand kit?',
       // Codex T05: the endpoint clears only the kit — colors, fonts and backgrounds
       // already applied to widgets stay. Say exactly that.
-      message: 'Removes this template’s brand kit. Colors, fonts and backgrounds already applied to widgets stay as they are; your global CMS theme is not affected.',
+      message: 'Colors, fonts and backgrounds already on this template stay as they are.',
       confirmLabel: 'Remove',
       tone: 'danger',
     }))) return;

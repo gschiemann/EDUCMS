@@ -107,11 +107,11 @@ export function MakeItLive({ zone }: { zone: Zone }) {
         title: `Make this a ${w.label.toLowerCase()}?`,
         message:
           `${w.blurb}\n\n` +
-          `This replaces the ${widgetLabel(zone.widgetType).toLowerCase()} in this zone. ` +
+          `This replaces the ${widgetLabel(zone.widgetType).toLowerCase()} here. ` +
           (losing
-            ? `Its settings — including the text “${losing}” — are discarded.`
-            : 'Its current settings are discarded.') +
-          `\n\nPosition, size, layer order and the layer name stay exactly as they are, and Undo puts the old widget back.`,
+            ? `Its text “${losing}” is discarded.`
+            : 'Its settings are discarded.') +
+          ' Undo puts it back.',
         tone: 'warn',
         confirmLabel: `Make it a ${w.label.toLowerCase()}`,
         cancelLabel: 'Keep it as it is',
