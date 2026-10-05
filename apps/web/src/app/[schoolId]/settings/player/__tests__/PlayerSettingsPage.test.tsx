@@ -171,9 +171,9 @@ describe('status model — one label per state, text always present', () => {
 it('never states a version it cannot evidence', async () => {
   serve({ latest: { versionName: null, versionCode: null, source: 'unknown' }, screens: [online()] });
   renderPage(PlayerSettingsPage);
-  expect(await screen.findByText(/release feed did not answer/i)).toBeInTheDocument();
+  expect(await screen.findByText(/Couldn't check for the newest version/i)).toBeInTheDocument();
   expect(
-    screen.getByText(/Rollout cannot be verified/i),
+    screen.getByText(/Can't check the rollout yet/i),
   ).toBeInTheDocument();
 });
 

@@ -63,7 +63,7 @@ it('names the primary account as a location when there are no children', async (
     screen.getByText('No other locations yet. Everything runs under the primary account.'),
   ).toBeInTheDocument();
   // Archiving is explained rather than implied.
-  expect(screen.getByText(/Removing a location archives it/)).toBeInTheDocument();
+  expect(screen.getByText(/Removing a location hides it from this list/)).toBeInTheDocument();
 });
 
 it('removes a child only on the SECOND tap, through the archive endpoint', async () => {

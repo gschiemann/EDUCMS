@@ -1062,9 +1062,7 @@ function WhyClosedModal({
               <ExternalLink className="w-4 h-4" /> Licensed business TV stays on the provider player
             </h3>
             <p className="text-sky-950/90">
-              Atmosphere TV and DIRECTV for Business are valid commercial services, but VenueOS does not capture,
-              re-encode, or rebroadcast their protected output. Playback remains on the approved receiver or app;
-              a future VenueOS adapter can add input control and verified device health.
+              {t('streamingSso.licensedTvBody')}
             </p>
             <div className="flex flex-col sm:flex-row gap-2 pt-1">
               <button

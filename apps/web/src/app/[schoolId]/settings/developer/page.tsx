@@ -466,9 +466,9 @@ function ApiKeysSection() {
   const handleRevoke = async (id: string, label: string) => {
     if (
       !(await appConfirm({
-        title: 'Revoke API key?',
-        message: `"${label}" will stop working immediately. Anything using this token will start returning 401. This cannot be undone.`,
-        confirmLabel: 'Revoke',
+        title: t('settings.cc.developer.revokeKeyTitle'),
+        message: t('settings.cc.developer.revokeKeyMessage', { label }),
+        confirmLabel: t('settings.cc.developer.revokeKeyConfirm'),
         tone: 'danger',
       }))
     )

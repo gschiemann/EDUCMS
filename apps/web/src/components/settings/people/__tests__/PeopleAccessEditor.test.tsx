@@ -113,7 +113,7 @@ it('shows the copyable accept link when the API reports email was not delivered'
 
   const field = await screen.findByLabelText('Invitation accept link');
   expect(field).toHaveValue('https://app.example/accept/tok123');
-  expect(screen.getByText(/Outbound email is not configured/i)).toBeInTheDocument();
+  expect(screen.getByText(/Email isn't set up/i)).toBeInTheDocument();
 });
 
 it('reports a real invite as sent, with no copy-link fallback', async () => {
@@ -160,14 +160,14 @@ it('filters by search text and by account status', async () => {
   await screen.findByText('No team member matches those filters.');
 });
 
-it('lists an INVITED account under Pending invitations and says what the API cannot tell us', async () => {
+it('lists an INVITED account under Pending invitations, in one plain line', async () => {
   mockApi([JUNIOR, INVITED]);
   renderEditor();
   await screen.findByText('jr@x.edu');
   const heading = screen.getByRole('heading', { name: 'Pending invitations' });
   const section = heading.closest('section') as HTMLElement;
   expect(within(section).getAllByText('new@x.edu').length).toBeGreaterThan(0);
-  expect(within(section).getByText(/no expiry, resend or revoke endpoint/i)).toBeInTheDocument();
+  expect(within(section).getByText(/People who haven't signed in yet/i)).toBeInTheDocument();
 });
 
 it('states the MFA policy count and points personal enrollment at My security', async () => {
@@ -239,7 +239,7 @@ it('says plainly that nobody is signed out', async () => {
   mockApi([JUNIOR], { '/tenants': { id: 't1', mfaEnforced: true, mfaEnforcedEffective: true } });
   renderEditor();
   expect(
-    await screen.findByText(/does not sign anyone out.*next sign-in/i),
+    await screen.findByText(/doesn't sign anyone out.*next sign-in/i),
   ).toBeInTheDocument();
 });
 
@@ -328,7 +328,7 @@ it('spells out the blast radius, and what does NOT change, before asking for a p
   expect(screen.getByText('Reset two-factor sign-in for totp@x.edu?')).toBeInTheDocument();
   expect(
     screen.getByText(
-      'This removes their authenticator app and any passkeys and signs them out everywhere. Their password does not change. They will set two-factor up again the next time they sign in.',
+      'This removes their authenticator app and passkeys and signs them out. Their password stays the same.',
     ),
   ).toBeInTheDocument();
   expect(screen.getByLabelText('Reason (optional)')).toBeInTheDocument();
@@ -413,7 +413,7 @@ it('translates the other refusals by CODE, never by message text', async () => {
   });
 
   const cases: Array<[ApiError, RegExp]> = [
-    [Object.assign(new Error('x'), { status: 409, code: 'PASSWORD_REQUIRED' }), /identity provider/i],
+    [Object.assign(new Error('x'), { status: 409, code: 'PASSWORD_REQUIRED' }), /no password to confirm with/i],
     [Object.assign(new Error('x'), { status: 404, code: 'USER_NOT_FOUND' }), /no longer available/i],
     [Object.assign(new Error('x'), { status: 429 }), /Too many attempts/i],
   ];

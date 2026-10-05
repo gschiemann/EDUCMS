@@ -130,7 +130,7 @@ describe('My security — every authenticated role', () => {
     expect(screen.getAllByRole('heading', { name: 'Two-factor authentication' }).length).toBeGreaterThan(0);
     // The containment behaviour that IS built is stated; no invented
     // "active sessions" list.
-    expect(screen.getByText(/does not list your individual sessions yet/)).toBeInTheDocument();
+    expect(screen.getByText(/To sign out your other devices, change your password/)).toBeInTheDocument();
   });
 });
 

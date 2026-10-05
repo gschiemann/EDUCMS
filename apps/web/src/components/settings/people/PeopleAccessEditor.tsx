@@ -637,7 +637,7 @@ export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
                                   ? t('settings.team.disableUserTitle', { email: user.email })
                                   : t('settings.team.enableUserTitle', { email: user.email }),
                                 message: turningOff
-                                  ? `${t('settings.team.disableUserMessage')} ${t('settings.cc.people.affectedAccess', { role: tenantCopy.roleLabel(user.role) })}`
+                                  ? t('settings.team.disableUserMessage')
                                   : t('settings.team.enableUserMessage'),
                                 tone: turningOff ? 'danger' : undefined,
                                 confirmLabel: turningOff
@@ -667,7 +667,7 @@ export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
                             onClick={async () => {
                               const ok = await appConfirm({
                                 title: t('settings.team.removeUserTitle', { email: user.email }),
-                                message: `${t('settings.cc.people.removeUserMessage')} ${t('settings.cc.people.affectedAccess', { role: tenantCopy.roleLabel(user.role) })}`,
+                                message: t('settings.cc.people.removeUserMessage', { role: tenantCopy.roleLabel(user.role) }),
                                 tone: 'danger',
                                 confirmLabel: t('settings.team.removeUser'),
                               });
