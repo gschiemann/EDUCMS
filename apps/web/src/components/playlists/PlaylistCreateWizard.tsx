@@ -150,6 +150,7 @@ import { websitePreviewUrl } from '@/lib/website-preview';
 import { AssetPreviewOverlay } from './AssetPreviewOverlay';
 import { assetPosterUrl } from './VideoPreviewThumb';
 import { AssetEncodeBadge } from '@/components/assets/VideoEncode';
+import { ScreenReadinessPill } from '@/components/assets/ScreenReadinessPill';
 import { publicationOptimizationNotice } from '@/components/playlists/publish-media-notice';
 import { imageShape, type ImageShape } from '@/lib/image-shape';
 import { isTouchTemplate } from '@/lib/template-relevance';
@@ -1927,6 +1928,8 @@ function Step2Media({
                   {/* Encode grade (2026-09-24): a video that will stutter on
                       the wall says so before it is picked. */}
                   <AssetEncodeBadge asset={a} variant="onImage" className="absolute top-2 right-2 z-20" />
+                  {/* 2026-10-05 — not playing on screens yet / can't play. */}
+                  <ScreenReadinessPill asset={a} variant="onImage" className="absolute bottom-1.5 left-1.5 z-20 max-w-[60%]" />
                 </div>
                 <div className="px-2 py-1.5 bg-white">
                   <div className="flex items-center">
@@ -2189,6 +2192,8 @@ function SortableMediaRow({
             </span>
           )}
         </div>
+        {/* 2026-10-05 — screens skip a video that is converting / can't play. */}
+        <ScreenReadinessPill asset={asset} className="mt-0.5" />
       </div>
       <div className="flex items-center mr-1">
         {isAV ? (

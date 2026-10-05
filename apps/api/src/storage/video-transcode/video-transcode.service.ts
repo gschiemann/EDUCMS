@@ -24,6 +24,7 @@
  */
 import { Injectable, Logger } from '@nestjs/common';
 import type { Prisma } from '@cms/database';
+import { buildScreenStamp, readScreenStamp } from '@cms/api-types';
 import { PrismaService } from '../../prisma/prisma.service';
 
 export type TranscodeStatus =
@@ -182,7 +183,46 @@ export class VideoTranscodeService {
       this.logger.warn(
         `[transcode] could not queue asset ${input.assetId}: ${(e as Error)?.message ?? e}`,
       );
+      await this.settleUnqueued(input);
       return false;
+    }
+  }
+
+  /**
+   * The upload stamped this video "converting" (`processingMeta.screen.pending`,
+   * 2026-10-05) because its conversion was about to be queued. The queue
+   * refused, so nothing will ever finish it: say so instead of "converting"
+   * forever — `{ ready: false, issues, error: 'not-queued' }`, which the
+   * library words as "could not be converted, upload it again". Best effort and
+   * never throws: the database may be exactly what just failed. A row that is
+   * not pending (a screen-safe upload, an emergency upload — which never gets a
+   * pending stamp) is left alone.
+   */
+  private async settleUnqueued(input: { tenantId: string; assetId: string }): Promise<void> {
+    try {
+      const row = await this.prisma.client.asset.findFirst({
+        where: { id: input.assetId, tenantId: input.tenantId },
+        select: { fileUrl: true, processingMeta: true },
+      });
+      const stamp = readScreenStamp(row?.processingMeta);
+      if (!row || !stamp?.pending) return;
+      const base =
+        row.processingMeta && typeof row.processingMeta === 'object' && !Array.isArray(row.processingMeta)
+          ? (row.processingMeta as Record<string, unknown>)
+          : {};
+      await this.prisma.client.asset.updateMany({
+        where: { id: input.assetId, tenantId: input.tenantId, fileUrl: row.fileUrl },
+        data: {
+          processingMeta: {
+            ...base,
+            screen: { ...buildScreenStamp({ ready: false, issues: stamp.issues, error: 'not-queued' }, Date.now()) },
+          } as Prisma.InputJsonObject,
+        },
+      });
+    } catch (e) {
+      this.logger.warn(
+        `[transcode] asset ${input.assetId} stays "converting for screens": its conversion was never queued and the stamp could not be corrected: ${(e as Error)?.message ?? e}`,
+      );
     }
   }
 
@@ -507,6 +547,37 @@ export class VideoTranscodeService {
       );
     }
     return out;
+  }
+
+  /**
+   * FINISHED jobs whose asset still carries the upload's "converting" stamp
+   * (`processingMeta.screen.pending`, 2026-10-05). Every job that ends in the
+   * pipeline settles that stamp on its way out; the ones the stale sweep ends
+   * above (`stalled`, `expired`) never reach that exit, so the worker settles
+   * these right after a sweep that ended any (VideoTranscodePipeline
+   * `settlePendingVerdict`). Alert media is left out — it is never stamped.
+   * One job row per asset (unique `asset_id`), so a terminal job here means no
+   * other job is coming for it. Bounded, and joined by primary key: cheap.
+   */
+  async finishedJobsWithPendingVerdict(
+    limit = 50,
+  ): Promise<Array<{ id: string; tenantId: string; assetId: string; reason: string | null }>> {
+    const rows = await this.prisma.client.$queryRawUnsafe<
+      Array<{ id: string; tenantId: string; assetId: string; reason: string | null }>
+    >(
+      `
+      SELECT j."id", j."tenant_id" AS "tenantId", j."asset_id" AS "assetId", j."reason"
+        FROM "video_transcode_jobs" j
+        JOIN "assets" a ON a."id" = j."asset_id" AND a."tenant_id" = j."tenant_id"
+       WHERE j."status" IN ('done', 'skipped', 'failed')
+         AND (a."processing_meta" -> 'screen' ->> 'pending') = 'true'
+         AND COALESCE(j."reason", '') <> 'emergency-content'
+       ORDER BY j."finished_at" DESC NULLS LAST
+       LIMIT $1
+      `,
+      Math.max(1, Math.min(500, Math.trunc(limit))),
+    );
+    return (rows || []).filter((r) => !!r?.assetId);
   }
 
   /**

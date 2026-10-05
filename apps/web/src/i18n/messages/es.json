@@ -1934,6 +1934,39 @@
     "optimizeNotSmaller": "Se conservó tal como se subió: recodificarlo no lo habría hecho más pequeño.",
     "optimizeFailed": "No se pudo optimizar este video: las pantallas reproducen el archivo tal como se subió.",
     "optimizeEmergency": "El contenido de emergencia nunca se recodifica: las pantallas reproducen el archivo tal como se subió.",
+    "screenReady": {
+      "convertingDetail": "Convirtiendo para pantallas: empezará a reproducirse cuando la copia esté lista",
+      "convertingDetailPct": "Convirtiendo para pantallas: empezará a reproducirse cuando la copia esté lista · {pct}%",
+      "convertingCard": "Convirtiendo para pantallas…",
+      "convertingCardPct": "Convirtiendo para pantallas… {pct}%",
+      "convertingQueued": "En espera para convertir para pantallas…",
+      "failed": "Este video no se pudo convertir para pantallas: {reason}. Expórtalo como MP4 (H.264) y vuelve a subirlo.",
+      "failedCard": "No se puede reproducir en pantallas",
+      "converted": "Convertido para pantallas (era {from}).",
+      "listSeparator": ", ",
+      "reason": {
+        "unreadable": "el archivo no se pudo leer como video",
+        "tooSlow": "la conversión tardó demasiado",
+        "couldNotRun": "la conversión no se pudo realizar",
+        "failed": "la conversión falló"
+      },
+      "issue": {
+        "codecUnknown": "un códec que las pantallas no reproducen",
+        "hdr": "HDR",
+        "pixelFormat": "color de 10 bits",
+        "colourRange": "color de rango completo",
+        "frameRate": "más de 30 fps",
+        "variableFrameRate": "una velocidad de fotogramas variable",
+        "container": "no MP4",
+        "interlaced": "entrelazado",
+        "rotation": "girado",
+        "pixelAspect": "píxeles estirados",
+        "oversize": "un tamaño no estándar",
+        "level": "un nivel H.264 alto",
+        "audio": "un audio que las pantallas no reproducen",
+        "durationUnknown": "sin duración registrada"
+      }
+    },
     "statusReady": "Listo para usar",
     "statusPending": "Pendiente de revisión",
     "statusArchived": "Archivado",
@@ -2023,6 +2056,12 @@
     "line": "Línea",
     "newPlaylist": "Nueva lista",
     "dragToReorder": "Arrastra para reordenar",
+    "screenReady": {
+      "converting": "Aún no se reproduce: convirtiendo",
+      "cantPlay": "No se puede reproducir en pantallas",
+      "convertingShort": "Convirtiendo",
+      "cantPlayShort": "No se reproduce"
+    },
     "timeRestricted": "Con horario",
     "auto": "Auto",
     "durationSeconds": "Duración en segundos",

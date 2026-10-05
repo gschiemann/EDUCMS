@@ -31,7 +31,12 @@
  * No I/O, no Nest. `UploadContentCheckService` runs the tools and gathers the
  * evidence; `decideUploadContent` is the one decision.
  */
-import { parseProbe } from '../storage/video-transcode/transcode-profile';
+import { buildScreenStamp, type ScreenStampJson } from '@cms/api-types';
+import {
+  parseProbe,
+  screenCompatibilityIssues,
+  type ScreenCompatibilityIssue,
+} from '../storage/video-transcode/transcode-profile';
 
 /** What a file is checked as, from its (declared, then stored) MIME type. */
 export type UploadContentKind = 'image' | 'video' | 'audio' | 'pdf';
@@ -606,6 +611,72 @@ export function decideUploadContent(e: ContentEvidence): UploadVerdict {
     unchecked: finding.status === 'unknown' ? finding.why : null,
     finding,
   };
+}
+
+// ── can every screen play it AS UPLOADED? (2026-10-05, the screen-ready gate) ──
+
+/** What the upload's own ffprobe says about screen compatibility. */
+export interface UploadScreenVerdict {
+  /** No compatibility issue: every player decodes the file as uploaded. */
+  ready: boolean;
+  /** `screenCompatibilityIssues` of the probe — empty when ready. */
+  issues: ScreenCompatibilityIssue[];
+}
+
+/**
+ * The screen-compatibility verdict for a VIDEO, from the ffprobe document the
+ * content check already fetched — no second probe. It is the transcode's own
+ * rule (`screenCompatibilityIssues`) on the same `parseProbe` of the same
+ * `buildProbeArgs` output the transcode pipeline reads from its local copy, so
+ * the upload and the conversion can never disagree about a file.
+ *
+ * NULL — no verdict, never an invented one — unless the probe ran CLEANLY: it
+ * started, finished in time, exited 0, printed a JSON document, read without a
+ * network failure (a read that broke mid-way can leave out a stream), and found
+ * a real video stream with dimensions in a container that is not a picture
+ * format. Whether the END of the file decodes is the integrity check's business
+ * (`classifyTailDecode`), not this one's: a format verdict needs headers only.
+ */
+export function uploadScreenVerdict(e: ContentEvidence): UploadScreenVerdict | null {
+  if (e.kind !== 'video' || e.skipped || e.storedBytes === 0) return null;
+  const run = e.video?.probe;
+  if (!run || run.spawnError || run.timedOut || run.exitCode !== 0) return null;
+  if (READ_FAILURE.test(run.stderr)) return null;
+  const doc = parseJson(run.stdout);
+  if (!doc) return null;
+  const probe = parseProbe(doc);
+  if (!probe.hasVideo || !probe.width || !probe.height) return null;
+  if (isPictureContainer(probe.formatName)) return null;
+  const issues = screenCompatibilityIssues(probe);
+  return { ready: issues.length === 0, issues };
+}
+
+/**
+ * The `processingMeta.screen` stamp the new Asset row is CREATED with
+ * (`POST /assets/complete-upload`), or null for none:
+ *
+ *   • screen-safe as uploaded            → `{ ready: true }`;
+ *   • must be converted, and a conversion is being queued
+ *                                         → `{ ready: false, pending: true, issues }`
+ *     — the manifest leaves it out until the transcode stamps the converted copy;
+ *   • must be converted but NO conversion will run (`VIDEO_TRANSCODE_DISABLED=1`,
+ *     a build without the transcode) → null. Nothing would ever settle a
+ *     `pending` there, and the kill switch stays subtractive: with it on, a video
+ *     is delivered exactly as before this verdict existed;
+ *   • no verdict (the probe did not run cleanly) → null: unknown stays unknown.
+ */
+export function uploadScreenStamp(
+  verdict: UploadScreenVerdict | null,
+  conversionQueued: boolean,
+  nowMs: number,
+): ScreenStampJson | null {
+  if (!verdict) return null;
+  if (verdict.ready) return buildScreenStamp({ ready: true }, nowMs);
+  if (!conversionQueued) return null;
+  return buildScreenStamp(
+    { ready: false, pending: true, issues: verdict.issues },
+    nowMs,
+  );
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────────

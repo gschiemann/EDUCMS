@@ -81,7 +81,7 @@ function makeStorage(server: CorpusServer) {
   } as any;
 }
 
-function makeController(storage: any, withCheck = true) {
+function makeController(storage: any, withCheck = true, transcodes?: any) {
   const prisma = makePrisma();
   const controller = new AssetsController(
     prisma,
@@ -90,7 +90,7 @@ function makeController(storage: any, withCheck = true) {
     new MediaOptimizationService(),
     { generateImageAltText: jest.fn(async () => null) } as any,
     { kickOff: jest.fn() } as any,
-    undefined,
+    transcodes,
     undefined,
     undefined,
     undefined,
@@ -203,7 +203,7 @@ if (!hasMediaTools) {
     /** Put the case's bytes at a fresh presign-shaped path, then finalize it. */
     async function finalize(
       name: string,
-      opts: { withCheck?: boolean; bytes?: Buffer } = {},
+      opts: { withCheck?: boolean; bytes?: Buffer; transcodes?: any } = {},
     ) {
       const f = corpus[name];
       const storagePath = mintPath(f.ext);
@@ -213,6 +213,7 @@ if (!hasMediaTools) {
       const { controller, prisma } = makeController(
         storage,
         opts.withCheck !== false,
+        opts.transcodes,
       );
       const filename = `${name}${f.ext}`;
       let result: any = null;
@@ -328,6 +329,88 @@ if (!hasMediaTools) {
       });
       expect(err).toBeNull();
       expect(prisma.client.asset.create).toHaveBeenCalledTimes(1);
+    });
+
+    // ── 2026-10-05 — the screen-ready verdict exists from the moment of upload ──
+    //
+    // The REAL check's ffprobe of the REAL stored bytes decides it, and it is
+    // written IN the create — the row never exists without it.
+    describe('the screen-ready verdict is written in the create', () => {
+      /** The signage transcode queue, as the controller sees it. */
+      const queue = () => ({ enqueue: jest.fn(async () => true) });
+      const createdMeta = (prisma: any) =>
+        prisma.client.asset.create.mock.calls[0][0].data.processingMeta;
+
+      afterEach(() => {
+        delete process.env.VIDEO_TRANSCODE_DISABLED;
+        delete process.env.UPLOAD_CONTENT_CHECK_DISABLED;
+      });
+
+      it('a screen-safe H.264 MP4 → { version: 1, ready: true, checkedAt }', async () => {
+        const { err, prisma } = await finalize('good-mp4', { transcodes: queue() });
+        expect(err).toBeNull();
+        expect(createdMeta(prisma)).toEqual({
+          screen: { version: 1, ready: true, checkedAt: expect.any(String) },
+        });
+      });
+
+      it('a video that must be converted first (an MPEG-TS under a .mp4 name) → { ready: false, pending: true, issues } — and its conversion is queued', async () => {
+        const transcodes = queue();
+        const { err, prisma } = await finalize('ts-as-mp4', { transcodes });
+        expect(err).toBeNull();
+        expect(createdMeta(prisma)).toEqual({
+          screen: {
+            version: 1,
+            ready: false,
+            pending: true,
+            issues: expect.arrayContaining(['container']),
+            checkedAt: expect.any(String),
+          },
+        });
+        expect(transcodes.enqueue).toHaveBeenCalledWith(
+          expect.objectContaining({ assetId: 'asset-new', tenantId: TENANT }),
+        );
+      });
+
+      it('the probe could not run (storage answering 500) → NO stamp: unknown stays unknown', async () => {
+        server.mode = 'error500';
+        const { err, prisma } = await finalize('ts-as-mp4', { transcodes: queue() });
+        expect(err).toBeNull();
+        expect(createdMeta(prisma)).toBeUndefined();
+      });
+
+      it('no conversion would run (VIDEO_TRANSCODE_DISABLED=1) → no "pending" that nothing would ever settle; the file goes out as before', async () => {
+        process.env.VIDEO_TRANSCODE_DISABLED = '1';
+        const { err, prisma } = await finalize('ts-as-mp4', { transcodes: queue() });
+        expect(err).toBeNull();
+        expect(createdMeta(prisma)).toBeUndefined();
+      });
+
+      it('…and a build with no transcode queue at all behaves the same', async () => {
+        const { err, prisma } = await finalize('ts-as-mp4');
+        expect(err).toBeNull();
+        expect(createdMeta(prisma)).toBeUndefined();
+      });
+
+      it('…while a screen-safe file is still stamped ready without a queue (nothing needs converting)', async () => {
+        const { prisma } = await finalize('good-mp4');
+        expect(createdMeta(prisma)?.screen).toMatchObject({ version: 1, ready: true });
+      });
+
+      it('UPLOAD_CONTENT_CHECK_DISABLED=1 → no check, no stamp: exactly the pre-check behaviour', async () => {
+        process.env.UPLOAD_CONTENT_CHECK_DISABLED = '1';
+        const { err, prisma } = await finalize('ts-as-mp4', { transcodes: queue() });
+        expect(err).toBeNull();
+        expect(createdMeta(prisma)).toBeUndefined();
+      });
+
+      it('pictures, audio and PDFs are never stamped', async () => {
+        for (const name of ['good-jpg', 'good-png', 'good-m4a', 'good-pdf']) {
+          const { err, prisma } = await finalize(name, { transcodes: queue() });
+          expect(err).toBeNull();
+          expect(createdMeta(prisma)?.screen).toBeUndefined();
+        }
+      });
     });
   },
 );

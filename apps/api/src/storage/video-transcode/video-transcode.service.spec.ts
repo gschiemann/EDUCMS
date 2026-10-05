@@ -90,6 +90,67 @@ describe('VideoTranscodeService.enqueue', () => {
     ).toBeNull();
   });
 
+  // 2026-10-05 — the upload stamped the video "converting" because this queue
+  // was about to take it. A queue that refuses must not leave that forever.
+  describe('a refused enqueue settles the upload’s "converting" stamp', () => {
+    const PENDING = {
+      version: 1,
+      ready: false,
+      pending: true,
+      issues: ['codec', 'hdr'],
+      checkedAt: '2026-10-05T09:00:00.000Z',
+    };
+    const withAsset = (processingMeta: unknown) => {
+      const prisma = makePrisma();
+      prisma.client.videoTranscodeJob.createMany.mockRejectedValueOnce(new Error('EMAXCONNSESSION'));
+      prisma.client.asset = {
+        findFirst: jest.fn(async () => ({ fileUrl: 'https://x/a1.mp4', processingMeta })),
+        updateMany: jest.fn(async () => ({ count: 1 })),
+      };
+      return prisma;
+    };
+    const input = { tenantId: 't1', assetId: 'a1', sourceUrl: 'https://x/a1.mp4', sourceBytes: 1 };
+
+    it('→ { ready: false, the issues, error: "not-queued" } — no "pending" that nothing would ever finish', async () => {
+      const prisma = withAsset({ probe: { codec: 'hevc' }, screen: PENDING });
+      expect(await new VideoTranscodeService(prisma).enqueue(input)).toBe(false);
+      expect(prisma.client.asset.findFirst.mock.calls[0][0].where).toEqual({ id: 'a1', tenantId: 't1' });
+      const write = prisma.client.asset.updateMany.mock.calls[0][0];
+      expect(write.where).toEqual({ id: 'a1', tenantId: 't1', fileUrl: 'https://x/a1.mp4' });
+      expect(write.data.processingMeta).toEqual({
+        probe: { codec: 'hevc' },
+        screen: {
+          version: 1,
+          ready: false,
+          issues: ['codec', 'hdr'],
+          error: 'not-queued',
+          checkedAt: expect.any(String),
+        },
+      });
+    });
+
+    it('a row that is not pending (a screen-safe upload) is left alone', async () => {
+      const prisma = withAsset({ screen: { version: 1, ready: true, checkedAt: 'x' } });
+      await new VideoTranscodeService(prisma).enqueue(input);
+      expect(prisma.client.asset.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('a settle that fails too still never throws (the database may be what failed)', async () => {
+      const prisma = withAsset({ screen: PENDING });
+      prisma.client.asset.updateMany.mockRejectedValueOnce(new Error('db down'));
+      await expect(new VideoTranscodeService(prisma).enqueue(input)).resolves.toBe(false);
+    });
+
+    it('a successful enqueue never touches the stamp', async () => {
+      const prisma = withAsset({ screen: PENDING });
+      prisma.client.videoTranscodeJob.createMany.mockReset();
+      prisma.client.videoTranscodeJob.createMany.mockResolvedValue({ count: 1 });
+      expect(await new VideoTranscodeService(prisma).enqueue(input)).toBe(true);
+      expect(prisma.client.asset.findFirst).not.toHaveBeenCalled();
+      expect(prisma.client.asset.updateMany).not.toHaveBeenCalled();
+    });
+  });
+
   it('VIDEO_TRANSCODE_DISABLED=1 queues nothing (subtractive kill switch)', async () => {
     process.env.VIDEO_TRANSCODE_DISABLED = '1';
     const prisma = makePrisma();
@@ -177,6 +238,25 @@ describe('VideoTranscodeService worker SQL shapes', () => {
     expect(prisma.client.$executeRawUnsafe.mock.calls[2][0]).toContain(
       `"reason" = 'expired'`,
     );
+  });
+
+  it('finishedJobsWithPendingVerdict: FINISHED jobs only, the asset joined by id AND tenant, pending stamps only, never alert media, bounded', async () => {
+    const prisma = makePrisma();
+    prisma.client.$queryRawUnsafe.mockResolvedValueOnce([
+      { id: 'j1', tenantId: 't1', assetId: 'a1', reason: 'stalled' },
+      { id: 'j2', tenantId: 't1', assetId: null, reason: 'expired' },
+    ]);
+    const svc = new VideoTranscodeService(prisma);
+    expect(await svc.finishedJobsWithPendingVerdict(10_000)).toEqual([
+      { id: 'j1', tenantId: 't1', assetId: 'a1', reason: 'stalled' },
+    ]);
+    const [sql, limit] = prisma.client.$queryRawUnsafe.mock.calls[0];
+    expect(sql).toContain(`j."status" IN ('done', 'skipped', 'failed')`);
+    expect(sql).toContain(`a."id" = j."asset_id" AND a."tenant_id" = j."tenant_id"`);
+    expect(sql).toContain(`(a."processing_meta" -> 'screen' ->> 'pending') = 'true'`);
+    expect(sql).toContain(`<> 'emergency-content'`);
+    expect(sql).toContain('LIMIT $1');
+    expect(limit).toBe(500);
   });
 
   it('the retention claim is a SKIP LOCKED lease on a DONE row whose original is not yet deleted', async () => {

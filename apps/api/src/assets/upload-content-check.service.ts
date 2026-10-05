@@ -14,14 +14,26 @@ import {
   PDF_HEAD_BYTES,
   PDF_TAIL_BYTES,
   uploadContentKind,
+  uploadScreenVerdict,
   videoProbeStep,
   type ContentEvidence,
   type ImageEvidence,
   type PdfEvidence,
   type ToolRun,
   type UploadContentKind,
+  type UploadScreenVerdict,
   type UploadVerdict,
 } from './upload-content-verdict';
+
+/**
+ * What `check` answers: the accept / refuse decision, plus — for a VIDEO
+ * whose probe ran cleanly — whether every screen can play it as uploaded
+ * (`screen`, null otherwise; see `uploadScreenVerdict`).
+ */
+export type UploadCheckResult = UploadVerdict & {
+  ms: number;
+  screen: UploadScreenVerdict | null;
+};
 
 /**
  * The content check `POST /assets/complete-upload` runs on the bytes that just
@@ -69,15 +81,14 @@ export class UploadContentCheckService {
     return process.env.UPLOAD_CONTENT_CHECK_DISABLED === '1';
   }
 
-  async check(
-    input: UploadCheckInput,
-  ): Promise<UploadVerdict & { ms: number }> {
+  async check(input: UploadCheckInput): Promise<UploadCheckResult> {
     const started = Date.now();
     const kind = uploadContentKind(input.mimeType);
-    const unchecked = (why: string): UploadVerdict & { ms: number } => ({
+    const unchecked = (why: string): UploadCheckResult => ({
       accept: true,
       unchecked: why,
       finding: { status: 'unknown', why },
+      screen: null,
       ms: Date.now() - started,
     });
     if (!kind) return unchecked('not a kind of file that is checked');
@@ -97,7 +108,13 @@ export class UploadContentCheckService {
         skipped: `the check threw: ${errorText(err)}`,
       };
     }
-    return { ...decideUploadContent(evidence), ms: Date.now() - started };
+    return {
+      ...decideUploadContent(evidence),
+      // 2026-10-05 — the same ffprobe document, read for the screen-ready
+      // verdict too: never a second probe (null when it did not run cleanly).
+      screen: uploadScreenVerdict(evidence),
+      ms: Date.now() - started,
+    };
   }
 
   private async gather(

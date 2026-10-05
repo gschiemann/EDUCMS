@@ -159,6 +159,47 @@ describe('VideoTranscodeWorker.tick — one transcode per replica', () => {
     expect(jobs.sweepStale).toHaveBeenCalledTimes(1);
   });
 
+  // 2026-10-05 — a job the sweep ENDS never reaches the pipeline's exit, which
+  // is where every other job settles its upload's "converting" stamp.
+  it('after a sweep that ENDED jobs, their assets’ "converting" stamps are settled through the pipeline', async () => {
+    const jobs = makeJobs({
+      pendingWork: jest.fn(async () => ({ queued: false, stale: true, originalDue: false })),
+      sweepStale: jest.fn(async () => ({ requeued: 0, failed: 1, expired: 1 })),
+      finishedJobsWithPendingVerdict: jest.fn(async () => [
+        { id: 'job-9', tenantId: 'tenant-1', assetId: 'asset-9', reason: 'stalled' },
+        { id: 'job-8', tenantId: 'tenant-2', assetId: 'asset-8', reason: 'expired' },
+      ]),
+    });
+    const { worker, pipeline } = makeWorker({ jobs });
+    pipeline.settlePendingVerdict = jest.fn(async () => 'settled');
+    await worker.tick();
+    expect(pipeline.settlePendingVerdict.mock.calls).toEqual([
+      [{ id: 'job-9', tenantId: 'tenant-1', assetId: 'asset-9' }, { reason: 'stalled' }],
+      [{ id: 'job-8', tenantId: 'tenant-2', assetId: 'asset-8' }, { reason: 'expired' }],
+    ]);
+  });
+
+  it('a sweep that only RE-QUEUED (or found nothing) settles nothing — those jobs are still converting', async () => {
+    const jobs = makeJobs({
+      pendingWork: jest.fn(async () => ({ queued: false, stale: true, originalDue: false })),
+      sweepStale: jest.fn(async () => ({ requeued: 2, failed: 0, expired: 0 })),
+      finishedJobsWithPendingVerdict: jest.fn(async () => []),
+    });
+    const { worker } = makeWorker({ jobs });
+    await worker.tick();
+    expect(jobs.finishedJobsWithPendingVerdict).not.toHaveBeenCalled();
+  });
+
+  it('settling never throws out of the tick', async () => {
+    const jobs = makeJobs({
+      finishedJobsWithPendingVerdict: jest.fn(async () => {
+        throw new Error('db down');
+      }),
+    });
+    const { worker } = makeWorker({ jobs });
+    await expect(worker.settleSweptVerdicts()).resolves.toBe(0);
+  });
+
   it('a tick that throws never throws out of the loop', async () => {
     const jobs = makeJobs({
       pendingWork: jest.fn(async () => {

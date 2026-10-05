@@ -79,6 +79,7 @@ import {
 } from '@/lib/direct-upload';
 import { useVideoOptimizationStatus, optimizationOf } from '@/hooks/use-video-optimization';
 import { VideoOptimizationNote } from '@/components/assets/VideoOptimizationNote';
+import { screenReadinessOf } from '@/lib/screen-readiness-copy';
 import { useUploadErrorText } from '@/lib/use-upload-error-text';
 import { formatStorageBytes } from '@/lib/storage-bytes';
 
@@ -2172,7 +2173,13 @@ export default function AssetsPage() {
                     <span className="block text-[11px] text-slate-500">{fmtSize(a.fileSize)}</span>
                     {isVideo(a) && (
                       <span className="block">
-                        <VideoOptimizationNote optimization={optimizationOf(a, liveOptimization)} variant="card" fmtSize={fmtSize} />
+                        {/* 2026-10-05 — `screen`: converting / can't play on screens (the manifest gate's verdict). */}
+                        <VideoOptimizationNote
+                          optimization={optimizationOf(a, liveOptimization)}
+                          screen={screenReadinessOf(a, optimizationOf(a, liveOptimization))}
+                          variant="card"
+                          fmtSize={fmtSize}
+                        />
                       </span>
                     )}
                   </span>
@@ -2265,7 +2272,12 @@ export default function AssetsPage() {
                       {fmtSize(a.fileSize)}
                       {isVideo(a) && (
                         <span className="block">
-                          <VideoOptimizationNote optimization={optimizationOf(a, liveOptimization)} variant="row" fmtSize={fmtSize} />
+                          <VideoOptimizationNote
+                            optimization={optimizationOf(a, liveOptimization)}
+                            screen={screenReadinessOf(a, optimizationOf(a, liveOptimization))}
+                            variant="row"
+                            fmtSize={fmtSize}
+                          />
                         </span>
                       )}
                     </td>
@@ -2428,8 +2440,11 @@ export default function AssetsPage() {
                 }}
               />
 
-              {/* 4c. The signage transcode (2026-09-23) — what screens actually download. */}
-              {isVideo(selectedAsset) && (optimizationOf(selectedLive, liveOptimization) || (selectedLive?.processingMeta as { renditions?: { '1080p'?: unknown } } | null)?.renditions?.['1080p']) && (
+              {/* 4c. The signage transcode (2026-09-23) — what screens actually download.
+                  2026-10-05: also whenever the screen-ready verdict has something
+                  to say (converting / could not be converted / converted from …),
+                  job row or not — it is what decides whether screens get the file. */}
+              {isVideo(selectedAsset) && (optimizationOf(selectedLive, liveOptimization) || (selectedLive?.processingMeta as { renditions?: { '1080p'?: unknown } } | null)?.renditions?.['1080p'] || screenReadinessOf(selectedLive, optimizationOf(selectedLive, liveOptimization))) && (
                 <div className="bg-slate-50 rounded-lg p-3" data-testid="asset-screen-version">
                   <div className="flex items-center gap-1.5 mb-1">
                     <Video className="w-3 h-3 text-slate-400" aria-hidden />
@@ -2438,6 +2453,7 @@ export default function AssetsPage() {
                   <VideoOptimizationNote
                     optimization={optimizationOf(selectedLive, liveOptimization)}
                     rendition={(selectedLive?.processingMeta as { renditions?: { '1080p'?: { url?: string; sha256?: string; width?: number; height?: number; size?: number } } } | null)?.renditions?.['1080p']}
+                    screen={screenReadinessOf(selectedLive, optimizationOf(selectedLive, liveOptimization))}
                     variant="detail"
                     fmtSize={fmtSize}
                   />

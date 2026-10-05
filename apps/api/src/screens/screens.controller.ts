@@ -1,5 +1,5 @@
 import { Controller, Post, Get, Put, Delete, Body, Param, Query, Req, Res, UseGuards, Request, HttpException, HttpStatus } from '@nestjs/common';
-import { encodeTargetFromResolutions } from '@cms/api-types';
+import { encodeTargetFromResolutions, withheldFromScreens } from '@cms/api-types';
 import { selectVideoFile } from './video-rendition';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import type { Request as ExpressReq, Response } from 'express';
@@ -6386,6 +6386,21 @@ export class ScreensController {
     // Lets one playlist publish to lobby muted + cafeteria with
     // sound from the same source content.
     const scheduleMute = (s as any).mutedOverride;
+    // ── 2026-10-05 — THE SCREEN-READY GATE (this normal branch ONLY) ──────
+    // A video whose served file is stamped NOT screen-ready
+    // (`processingMeta.screen.ready === false`: still converting, or its
+    // conversion failed — HEVC, HDR, 60 fps, WebM …) is left out of the
+    // manifest: a screen must never be handed a file it cannot play. No stamp
+    // (every asset from before the verdict existed) or `ready: true` is
+    // delivered exactly as before, so an unaffected payload — and its ETag —
+    // is byte-for-byte unchanged. A playlist that loses every item is exactly
+    // a playlist with no items (the approval gate above already produces
+    // those): it keeps its place in the schedule ranking with `items: []`.
+    // The stamp flip is a Prisma write to Asset (a manifest-fed model), so the
+    // hot cache is busted and the converted file reaches the screen on its
+    // next poll with no publish. The EMERGENCY and SPORTS branches above never
+    // read the verdict — alert media is delivered whatever it says.
+    const deliverableItems = s.playlist.items.filter((pi) => !withheldFromScreens(pi.asset));
     return ({
       id: s.playlistId,
       // Name + schedule metadata — lets the player surface "what's
@@ -6405,7 +6420,7 @@ export class ScreensController {
         pin: s.screenId ? 'screen' : 'group',
         priority: s.priority ?? 0,
       },
-      totalBytes: s.playlist.items.reduce(
+      totalBytes: deliverableItems.reduce(
         (sum, pi) => sum + (selectVideoFile(pi.asset, screen.resolution).size || 0),
         0,
       ),
@@ -6458,7 +6473,7 @@ export class ScreensController {
             : [],
         },
       } : {}),
-      items: s.playlist.items.map(pi => {
+      items: deliverableItems.map(pi => {
         const selected = selectVideoFile(pi.asset, screen.resolution);
         return ({
         item_id: pi.id,

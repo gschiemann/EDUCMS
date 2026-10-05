@@ -212,7 +212,14 @@ export class VideoTranscodeWorker implements OnModuleInit, OnModuleDestroy {
     this.ticking = true;
     try {
       const work = await this.jobs.pendingWork();
-      if (work.stale) await this.jobs.sweepStale();
+      if (work.stale) {
+        const swept = await this.jobs.sweepStale();
+        // A job the sweep ENDED (stalled twice, or never claimed) never reached
+        // the pipeline's exit, which is where a job settles its upload's
+        // "converting" stamp — so settle those here, or they would read
+        // "converting" (and stay off every screen) forever.
+        if (swept.failed || swept.expired) await this.settleSweptVerdicts();
+      }
       if (
         work.originalDue &&
         Date.now() - this.lastOriginalSweepAt >= ORIGINAL_SWEEP_MIN_GAP_MS
@@ -314,6 +321,32 @@ export class VideoTranscodeWorker implements OnModuleInit, OnModuleDestroy {
       this.running = null;
       this.wake();
     }
+  }
+
+  /**
+   * Settle the upload's "converting" stamp (`processingMeta.screen.pending`,
+   * 2026-10-05) on assets whose job has finished without settling it — the
+   * stale sweep's `stalled` / `expired` endings. Each one through the
+   * pipeline's own `settlePendingVerdict` (fresh read, tenant-scoped, alert
+   * media and active jobs left alone). Public for specs; never throws.
+   */
+  async settleSweptVerdicts(): Promise<number> {
+    let settled = 0;
+    try {
+      const rows = await this.jobs.finishedJobsWithPendingVerdict(50);
+      for (const r of rows) {
+        const result = await this.pipeline.settlePendingVerdict(
+          { id: r.id, tenantId: r.tenantId, assetId: r.assetId },
+          { reason: r.reason || 'failed' },
+        );
+        if (result === 'settled') settled += 1;
+      }
+    } catch (e) {
+      this.logger.warn(
+        `VideoTranscodeWorker: settling "converting" verdicts after the stale sweep failed: ${(e as Error)?.message ?? e}`,
+      );
+    }
+    return settled;
   }
 
   /** Heartbeat the running job; abort it if the lease is gone. */

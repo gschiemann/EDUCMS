@@ -198,6 +198,8 @@ interface World {
   probeFails?: 'in' | 'out';
   /** What the re-run probe + poster pass answers after a swap ('throw' = it rejects). */
   servedFile?: { probed: boolean; posterUrl: string | null } | 'throw';
+  /** Another transcode job for the same asset is queued / running (the settle step's check). */
+  otherActiveJob?: boolean;
 }
 
 function build(w: World) {
@@ -242,6 +244,9 @@ function build(w: World) {
         }),
       },
       auditLog: { create: jest.fn(async () => ({ id: 'audit-1' })) },
+      videoTranscodeJob: {
+        findFirst: jest.fn(async () => (w.otherActiveJob ? { id: 'job-2' } : null)),
+      },
       $queryRawUnsafe: jest.fn(async (sql: string) => {
         if (sql === EMERGENCY_CONTENT_SQL) {
           emergencyChecks += 1;
@@ -1999,5 +2004,249 @@ describe('VideoTranscodePipeline — the deferred fast-start pass after a kept o
     const t = world(videoAsset(), 'throw');
     await expect(t.pipeline.remuxKeptOriginal(job())).resolves.toBeUndefined();
     expect(t.videoPoster.processVideo).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── 2026-10-05 — the upload's `pending` NEVER survives a finished job ──────────
+//
+// complete-upload stamps a video that must be converted
+// `{ ready: false, pending: true, issues }` (the manifest leaves it out, the
+// library says "converting"). Every way a job can END must replace that with a
+// finished verdict; a run handed back to the queue must leave it alone.
+describe('VideoTranscodePipeline — the upload’s "converting" stamp is replaced by a finished verdict', () => {
+  const PENDING = {
+    version: 1,
+    ready: false,
+    pending: true,
+    issues: HEVC_ISSUES,
+    checkedAt: '2026-10-05T09:00:00.000Z',
+  };
+  const FACTS = { probe: { probeVersion: 2, codec: 'hevc' }, durationMs: 30_000 };
+  /** The asset as complete-upload created it: the probe facts + the pending stamp. */
+  const uploaded = (over: Record<string, unknown> = {}) =>
+    videoAsset({ processingMeta: { ...FACTS, screen: PENDING }, ...over });
+  /** A REQUIRED conversion (HEVC HDR) of an upload stamped pending. */
+  const pendingJob = (over: Partial<World> = {}) =>
+    build({
+      asset: uploaded(),
+      emergency: false,
+      outBytes: FIFTH,
+      outProbe: OUT_2160,
+      runOk: true,
+      inProbe: HEVC_HDR_4K,
+      ...over,
+    });
+  /** The last `processingMeta` written (a stamp, a swap or a settle) — what the row holds when the job is over. */
+  const lastMetaWrite = (t: { prisma: any }) => {
+    const calls = t.prisma.client.asset.updateMany.mock.calls.filter(
+      ([a]: any) => a.data.processingMeta !== undefined,
+    );
+    return calls[calls.length - 1]?.[0];
+  };
+  const finalScreen = (t: { prisma: any }) => lastMetaWrite(t)?.data.processingMeta.screen;
+
+  describe('the exits that write a verdict REPLACE the stamp — no `pending` survives', () => {
+    it('converted and swapped → ready, converted from what', async () => {
+      const t = pendingJob();
+      expect(await t.pipeline.process(job())).toMatchObject({ status: 'done', reason: 'swapped' });
+      expect(finalScreen(t)).toEqual({
+        version: 1,
+        ready: true,
+        convertedFrom: HEVC_ISSUES,
+        checkedAt: expect.stringMatching(CHECKED_AT),
+      });
+    });
+
+    it.each<[string, Partial<World>, string]>([
+      ['ffmpeg fails', { runOk: false, outBytes: 0 }, 'ffmpeg-failed'],
+      ['the encode times out', { runOk: 'timeout', outBytes: 0 }, 'timeout'],
+      ['the output is rejected', { outProbe: { ...OUT_2160, durationS: 3 } }, 'output-rejected'],
+    ])('the conversion fails (%s) → not ready, with why — and NO pending', async (_label, over, error) => {
+      const t = pendingJob(over);
+      await t.pipeline.process(job());
+      expect(finalScreen(t)).toEqual({
+        version: 1,
+        ready: false,
+        issues: HEVC_ISSUES,
+        error,
+        checkedAt: expect.stringMatching(CHECKED_AT),
+      });
+      expect(lastMetaWrite(t).data.processingMeta).toMatchObject(FACTS);
+    });
+
+    it('the file cannot be read at all → not ready, unreadable', async () => {
+      const t = pendingJob({ probeFails: 'in' });
+      await t.pipeline.process(job());
+      expect(finalScreen(t)).toEqual(
+        expect.objectContaining({ ready: false, issues: ['unreadable'], error: 'probe-failed' }),
+      );
+      expect(finalScreen(t)).not.toHaveProperty('pending');
+    });
+  });
+
+  describe('the exits that write NO verdict of their own: a still-pending stamp is SETTLED as not ready', () => {
+    it.each<[string, (t: ReturnType<typeof pendingJob>) => void, Partial<World>, string]>([
+      ['no free temp disk', () => undefined, { free: 4 * MB }, 'insufficient-temp-disk'],
+      [
+        'the size is unknown',
+        (t) => t.storage.getObjectInfo.mockImplementationOnce(async () => null),
+        {},
+        'source-size-unknown',
+      ],
+      [
+        'the download fails',
+        (t) =>
+          t.storage.downloadObjectToFile.mockImplementationOnce(async () => {
+            throw new Error('download returned 503');
+          }),
+        {},
+        'error',
+      ],
+    ])('%s → { ready: false, the upload’s issues, error }', async (_label, arrange, over, error) => {
+      const t = pendingJob(over);
+      arrange(t);
+      const out = await t.pipeline.process(job({ sourceBytes: error === 'source-size-unknown' ? null : SOURCE_BYTES }));
+      expect(out).toMatchObject({ status: 'failed', reason: error });
+      expect(t.uploaded).toEqual([]); // nothing was converted
+      expect(finalScreen(t)).toEqual({
+        version: 1,
+        ready: false,
+        issues: HEVC_ISSUES,
+        error,
+        checkedAt: expect.stringMatching(CHECKED_AT),
+      });
+      // …written guarded by the file it read, tenant-scoped, the facts kept.
+      const write = lastMetaWrite(t);
+      expect(write.where).toEqual({ id: 'asset-1', tenantId: TENANT, fileUrl: SRC_URL });
+      expect(write.data.processingMeta).toMatchObject(FACTS);
+    });
+
+    it('an archived asset is settled too (restoring it later must not resurrect "converting")', async () => {
+      const t = pendingJob({ asset: uploaded({ status: 'ARCHIVED' }) });
+      expect((await t.pipeline.process(job())).reason).toBe('asset-archived');
+      expect(finalScreen(t)).toMatchObject({ ready: false, error: 'asset-archived' });
+      expect(finalScreen(t)).not.toHaveProperty('pending');
+    });
+
+    it('a verdict write that failed (DB hiccup) is retried by the settle step, so it does not stay "converting"', async () => {
+      const t = pendingJob({ runOk: false, outBytes: 0 });
+      let first = true;
+      const real = t.prisma.client.asset.updateMany.getMockImplementation();
+      t.prisma.client.asset.updateMany.mockImplementation(async (args: any) => {
+        if (first && args.data.processingMeta && !('fileUrl' in args.data) && !('fileHash' in args.data)) {
+          first = false;
+          throw new Error('db down');
+        }
+        return real(args);
+      });
+      expect(await t.pipeline.process(job())).toMatchObject({ status: 'failed', reason: 'ffmpeg-failed' });
+      expect(finalScreen(t)).toEqual(
+        expect.objectContaining({ ready: false, issues: HEVC_ISSUES, error: 'ffmpeg-failed' }),
+      );
+      expect(t.prisma.client.asset.findFirst.mock.calls.length).toBeGreaterThan(2);
+    });
+
+    it('the run’s OWN probe wins over the upload’s: a file the job found screen-safe is settled READY', async () => {
+      // A size-only encode that fails says nothing itself (the source is
+      // screen-safe) — but a pending stamp from the upload must still end.
+      const t = pendingJob({ inProbe: CAMERA_4K, runOk: false, outBytes: 0 });
+      await t.pipeline.process(job());
+      expect(finalScreen(t)).toEqual({ version: 1, ready: true, checkedAt: expect.stringMatching(CHECKED_AT) });
+    });
+  });
+
+  describe('left alone', () => {
+    it('a run handed back to the queue (aborted: a deploy, a lost lease) stamps NOTHING — it is still converting', async () => {
+      const t = pendingJob({ runOk: 'aborted', outBytes: 0 });
+      expect(await t.pipeline.process(job())).toMatchObject({ status: 'failed', reason: 'aborted' });
+      expect(stampsOf(t)).toEqual([]);
+      expect(t.prisma.client.asset.findFirst).toHaveBeenCalledTimes(1); // the job's own read; no settle
+    });
+
+    it('…also when the abort surfaces as a throw', async () => {
+      const ac = new AbortController();
+      const t = pendingJob();
+      t.storage.downloadObjectToFile.mockImplementationOnce(async () => {
+        ac.abort();
+        throw new Error('The operation was aborted');
+      });
+      expect(await t.pipeline.process(job(), { signal: ac.signal })).toMatchObject({ reason: 'aborted' });
+      expect(stampsOf(t)).toEqual([]);
+    });
+
+    it('…and when it lands AFTER the plan said "required" (mid-upload of the converted copy)', async () => {
+      const ac = new AbortController();
+      const t = pendingJob();
+      t.storage.uploadFileFromDisk.mockImplementationOnce(async () => {
+        ac.abort();
+        throw new Error('The operation was aborted');
+      });
+      expect(await t.pipeline.process(job(), { signal: ac.signal })).toMatchObject({ reason: 'aborted' });
+      expect(stampsOf(t)).toEqual([]);
+      // NEGATIVE CONTROL: the same throw WITHOUT an abort is a real failure, and says so.
+      const failed = pendingJob({ uploadThrows: true });
+      expect(await failed.pipeline.process(job())).toMatchObject({ status: 'failed', reason: 'error' });
+      expect(finalScreen(failed)).toEqual(
+        expect.objectContaining({ ready: false, issues: HEVC_ISSUES, error: 'error' }),
+      );
+    });
+
+    it('EMERGENCY media is never stamped — not even to settle a pending one', async () => {
+      const t = pendingJob({ emergency: true });
+      expect(await t.pipeline.process(job())).toEqual({ status: 'skipped', reason: 'emergency-content' });
+      expect(t.prisma.client.asset.updateMany).not.toHaveBeenCalled();
+      // …nor when the row becomes alert media between the job's start and the settle.
+      const late = pendingJob({ free: 4 * MB, emergencyFromCheck: 2 });
+      await late.pipeline.process(job());
+      expect(late.prisma.client.asset.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('another job is queued / running for the same asset: it will stamp the verdict', async () => {
+      const t = pendingJob({ free: 4 * MB, otherActiveJob: true });
+      await t.pipeline.process(job());
+      expect(t.prisma.client.asset.updateMany).not.toHaveBeenCalled();
+      const where = t.prisma.client.videoTranscodeJob.findFirst.mock.calls[0][0].where;
+      expect(where).toEqual({
+        assetId: 'asset-1',
+        tenantId: TENANT,
+        status: { in: ['queued', 'running'] },
+        NOT: { id: 'job-1' },
+      });
+    });
+
+    it('a finished verdict (or none at all) is not touched by the settle step', async () => {
+      const finished = pendingJob({
+        free: 4 * MB,
+        asset: uploaded({ processingMeta: { screen: { version: 1, ready: true, checkedAt: 'x' } } }),
+      });
+      await finished.pipeline.process(job());
+      expect(finished.prisma.client.asset.updateMany).not.toHaveBeenCalled();
+
+      const none = pendingJob({ free: 4 * MB, asset: videoAsset() });
+      await none.pipeline.process(job());
+      expect(none.prisma.client.asset.updateMany).not.toHaveBeenCalled();
+    });
+  });
+
+  it('settlePendingVerdict (the stale sweep’s path) settles a pending stamp with the job’s reason', async () => {
+    const t = pendingJob();
+    expect(
+      await t.pipeline.settlePendingVerdict({ id: 'job-1', tenantId: TENANT, assetId: 'asset-1' }, { reason: 'stalled' }),
+    ).toBe('settled');
+    expect(finalScreen(t)).toEqual({
+      version: 1,
+      ready: false,
+      issues: HEVC_ISSUES,
+      error: 'stalled',
+      checkedAt: expect.stringMatching(CHECKED_AT),
+    });
+    // Idempotent: a second pass finds nothing pending.
+    expect(
+      await t.pipeline.settlePendingVerdict({ id: 'job-1', tenantId: TENANT, assetId: 'asset-1' }, { reason: 'stalled' }),
+    ).toBe('not-pending');
+    // Tenant-scoped: another tenant's id finds nothing.
+    expect(
+      await t.pipeline.settlePendingVerdict({ id: 'job-1', tenantId: 'tenant-2', assetId: 'asset-1' }, { reason: 'stalled' }),
+    ).toBe('gone');
   });
 });

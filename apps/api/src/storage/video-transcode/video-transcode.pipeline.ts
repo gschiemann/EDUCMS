@@ -30,6 +30,16 @@
  * that dies BEFORE the probe (size unknown, no temp disk, the download) learns
  * nothing and stamps nothing; emergency media is never stamped at all.
  *
+ * THE UPLOAD'S `pending` (2026-10-05). complete-upload already stamps a video
+ * that must be converted `{ ready: false, pending: true, issues }` — the
+ * manifest leaves it out while it converts. Every verdict above REPLACES that
+ * stamp whole; an exit that writes none (the early deaths just listed, an
+ * archived asset, an unexpected error) has its still-pending stamp settled as
+ * not ready by `settlePendingVerdict` once the job has an outcome, so
+ * "converting" never outlives a finished job. A run handed back to the queue
+ * (`aborted`) is not finished and stamps nothing; alert media keeps whatever
+ * the upload wrote, since the emergency branch never reads the verdict.
+ *
  * THE CONTRACT: `process` never throws and never breaks an asset. Every early
  * exit returns an outcome; the asset keeps serving its original unless the
  * final swap write succeeded, and that write is the only change a screen can
@@ -45,6 +55,11 @@
  */
 import { Injectable, Logger } from '@nestjs/common';
 import type { Prisma } from '@cms/database';
+import {
+  buildScreenStamp,
+  readScreenStamp,
+  type ScreenVerdictInput,
+} from '@cms/api-types';
 import { randomUUID } from 'crypto';
 import { promises as fs } from 'fs';
 import * as os from 'os';
@@ -191,13 +206,27 @@ function renditionDetails(
     : { attempted: true, created: false, reason: attempt.reason };
 }
 
-/** The verdict `processingMeta.screen` records about the file an asset serves. */
-interface ScreenVerdict {
-  ready: boolean;
-  issues?: string[];
-  error?: string;
-  convertedFrom?: string[];
-}
+/**
+ * The verdict `processingMeta.screen` records about the file an asset serves.
+ * The pipeline never writes `pending` itself — that is the UPLOAD's stamp (a
+ * conversion is queued); every verdict written here is a FINISHED one, and it
+ * replaces the whole stamp (see `buildScreenStamp`).
+ */
+type ScreenVerdict = Omit<ScreenVerdictInput, 'pending'>;
+
+/** What `settlePendingVerdict` did, for the worker's log and the specs. */
+export type PendingSettle =
+  | 'settled'
+  /** No row, or the row moved between the read and the write. */
+  | 'gone'
+  /** The stamp is already a finished verdict (or there is none). */
+  | 'not-pending'
+  /** Another job for this asset is queued or running: it will stamp the verdict. */
+  | 'job-active'
+  /** Alert media is never stamped. */
+  | 'emergency'
+  /** The read or write failed (logged); the stamp is unchanged. */
+  | 'failed';
 
 const asRecord = (v: unknown): Record<string, unknown> =>
   v && typeof v === 'object' && !Array.isArray(v)
@@ -393,10 +422,39 @@ export class VideoTranscodePipeline {
     }
   }
 
-  /** Run one job. Never throws. */
+  /**
+   * Run one job. Never throws.
+   *
+   * 2026-10-05 — `pending` NEVER SURVIVES A FINISHED JOB. The upload stamps a
+   * video that must be converted `{ ready: false, pending: true }` (the
+   * manifest leaves it out, the library says "converting"). Most exits below
+   * replace that with a finished verdict themselves; the rest — a job that
+   * ended before it could probe (no size, no temp disk, a failed download), an
+   * archived asset, an unexpected error — would have left "converting" on the
+   * row forever. So once the job has an outcome, `settlePendingVerdict` turns a
+   * stamp that is STILL pending into the finished one. A run handed back to
+   * the queue (`aborted`: a deploy, a lost lease) is not finished — its stamp
+   * stays "converting" for the run that picks it up.
+   */
   async process(
     job: ClaimedTranscodeJob,
     ctx: { signal?: AbortSignal; onProgress?: (pct: number) => void } = {},
+  ): Promise<TranscodeOutcome> {
+    const learned: { issues: string[] | null } = { issues: null };
+    const outcome = await this.runJob(job, ctx, learned);
+    if (outcome.reason !== 'aborted' && outcome.status !== 'done') {
+      // `done` (a swap, or a 1080p copy beside a screen-safe original) wrote
+      // `ready: true` in its own write; nothing can be pending after it.
+      await this.settlePendingVerdict(job, outcome, learned.issues);
+    }
+    return outcome;
+  }
+
+  private async runJob(
+    job: ClaimedTranscodeJob,
+    ctx: { signal?: AbortSignal; onProgress?: (pct: number) => void },
+    /** What this run's own probe found (the plan's issues) — for the settle step. */
+    learned: { issues: string[] | null },
   ): Promise<TranscodeOutcome> {
     const t0 = this.env.now();
     let dir: string | null = null;
@@ -497,6 +555,8 @@ export class VideoTranscodePipeline {
       // plain `return promise` runs the `finally` (which deletes the temp dir) BEFORE
       // the promise settles, and the keep-original helpers below still read from it.
       const decision = planTranscode(inProbe);
+      if (decision.action === 'transcode') learned.issues = decision.issues;
+      else if (decision.reason === 'already-optimal') learned.issues = [];
       // The ORIGINAL stays as the served file on every exit below that calls
       // this (a screen-safe source that needed nothing, could not be shrunk, or
       // whose size-only encode failed). If it is bigger than 1920×1080 in either
@@ -558,7 +618,13 @@ export class VideoTranscodePipeline {
       if (required) requiredIssues = issues;
       const notReady = async (outcome: TranscodeOutcome): Promise<TranscodeOutcome> => {
         if (required) {
-          await this.markScreenReadiness(job, { ready: false, issues, error: outcome.reason });
+          // A run handed back to the queue (`aborted`: a deploy, a lost lease)
+          // has not failed — the run that picks it up stamps the verdict. A
+          // "could not be converted" here would sit on the row for the whole
+          // retry, and a lost lease can race the stale sweep's own settle.
+          if (outcome.reason !== 'aborted') {
+            await this.markScreenReadiness(job, { ready: false, issues, error: outcome.reason });
+          }
           return await keepOriginal(outcome);
         }
         // Size-only: the source is screen-safe and stays as it is — the failure
@@ -838,12 +904,13 @@ export class VideoTranscodePipeline {
       // A REQUIRED conversion that died unexpectedly leaves a file that is not
       // screen-safe serving as uploaded: say so, like every other failed
       // conversion. The stamp is written only while the row still serves the
-      // source, so a failure AFTER the swap committed writes nothing.
-      if (requiredIssues) {
+      // source, so a failure AFTER the swap committed writes nothing. An ABORT
+      // is not a failure — the job goes back to the queue — so it stamps nothing.
+      if (requiredIssues && !aborted) {
         await this.markScreenReadiness(job, {
           ready: false,
           issues: requiredIssues,
-          error: aborted ? 'aborted' : 'error',
+          error: 'error',
         });
       }
       return this.failed(
@@ -1178,29 +1245,104 @@ export class VideoTranscodePipeline {
   }
 
   /**
+   * The `screen` object itself — the one shape every writer (stamp, swap, copy,
+   * settle, and the upload) uses: `buildScreenStamp` from `@cms/api-types`, so
+   * the manifest's reader and the dashboard's can never drift from it. A
+   * finished verdict carries no `pending`, and replacing the whole key is what
+   * guarantees an earlier stage's `pending` / `error` never survive.
+   */
+  private screenStamp(verdict: ScreenVerdict): Record<string, unknown> {
+    return { ...buildScreenStamp(verdict, this.env.now()) };
+  }
+
+  /**
+   * Turn a stamp that is STILL `pending` into a finished verdict — the rule
+   * `process` applies after every outcome that is not a hand-back, and the
+   * worker applies to the jobs the stale sweep ends (`stalled`, `expired`),
+   * which never reach `process`'s exit at all.
+   *
+   * The finished verdict is the best knowledge there is: this run's own probe
+   * when it got that far (`learnedIssues` — empty means the file proved
+   * screen-safe after all → `ready: true`), else the upload's issues; the error
+   * is the job's outcome. Read fresh and tenant-scoped; written only while the
+   * row still serves the file that was read (`fileUrl` in the WHERE), through
+   * `prisma.client` so the manifest cache notices. Left alone:
+   *   • alert media — never stamped, the same rule as every other exit; the
+   *     emergency branch of the manifest never reads this verdict anyway;
+   *   • a row with another job queued or running for it — that job stamps;
+   *   • a stamp that is not pending (a finished verdict, or none at all).
+   * Never throws.
+   */
+  async settlePendingVerdict(
+    job: Pick<ClaimedTranscodeJob, 'id' | 'tenantId' | 'assetId'>,
+    outcome: Pick<TranscodeOutcome, 'reason'>,
+    learnedIssues: string[] | null = null,
+  ): Promise<PendingSettle> {
+    if (!job.assetId) return 'gone';
+    if (outcome.reason === 'emergency-content') return 'emergency';
+    try {
+      const row = await this.prisma.client.asset.findFirst({
+        where: { id: job.assetId, tenantId: job.tenantId },
+        select: { fileUrl: true, processingMeta: true },
+      });
+      if (!row) return 'gone';
+      const stamp = readScreenStamp(row.processingMeta);
+      if (!stamp?.pending) return 'not-pending';
+      const other = await this.prisma.client.videoTranscodeJob.findFirst({
+        where: {
+          assetId: job.assetId,
+          tenantId: job.tenantId,
+          status: { in: ['queued', 'running'] },
+          NOT: { id: job.id },
+        },
+        select: { id: true },
+      });
+      if (other) return 'job-active';
+      if (await this.isEmergencyContent(job.assetId, row.fileUrl)) return 'emergency';
+      const verdict: ScreenVerdict =
+        learnedIssues && learnedIssues.length === 0
+          ? { ready: true }
+          : {
+              ready: false,
+              issues: learnedIssues ?? stamp.issues,
+              error: outcome.reason,
+            };
+      const saved = await this.prisma.client.asset.updateMany({
+        where: { id: job.assetId, tenantId: job.tenantId, fileUrl: row.fileUrl },
+        data: {
+          processingMeta: {
+            ...asRecord(row.processingMeta),
+            screen: this.screenStamp(verdict),
+          } as Prisma.InputJsonObject,
+        },
+      });
+      if (saved.count === 0) return 'gone';
+      this.logger.log(
+        `[transcode] asset ${job.assetId}: the "converting for screens" verdict settled as ${verdict.ready ? 'ready' : `not ready (${outcome.reason})`}`,
+      );
+      return 'settled';
+    } catch (e) {
+      this.logger.warn(
+        `[transcode] asset ${job.assetId}: could not settle its pending screen verdict: ${(e as Error)?.message ?? e}`,
+      );
+      return 'failed';
+    }
+  }
+
+  /**
    * Stamp whether the file this asset SERVES is something every signage
    * player decodes (2026-10-04) — `processingMeta.screen`:
    *
    *   { ready: true }                          already screen-safe, or converted
    *   { ready: false, issues, error }          needs conversion and it FAILED
    *
-   * The manifest never hands a screen a video stamped `ready: false`, and the
-   * dashboard says why. Written only while the row still serves the file this
-   * job looked at; a fresh read is merged so the probe's own keys survive.
-   * Best-effort: a failed stamp must never fail the job.
+   * Either one REPLACES whatever the row held, including the upload's
+   * `{ ready: false, pending: true }` (2026-10-05). The manifest never hands a
+   * screen a video stamped `ready: false`, and the dashboard says why. Written
+   * only while the row still serves the file this job looked at; a fresh read
+   * is merged so the probe's own keys survive. Best-effort: a failed stamp
+   * must never fail the job (the settle step after it retries a pending one).
    */
-  /** The `screen` object itself — the one shape every writer (stamp, swap, copy) uses. */
-  private screenStamp(verdict: ScreenVerdict): Record<string, unknown> {
-    return {
-      version: 1,
-      ready: verdict.ready,
-      ...(verdict.issues?.length ? { issues: verdict.issues } : {}),
-      ...(verdict.convertedFrom?.length ? { convertedFrom: verdict.convertedFrom } : {}),
-      ...(verdict.error ? { error: String(verdict.error).slice(0, 160) } : {}),
-      checkedAt: new Date(this.env.now()).toISOString(),
-    };
-  }
-
   private async markScreenReadiness(
     job: ClaimedTranscodeJob,
     verdict: ScreenVerdict,

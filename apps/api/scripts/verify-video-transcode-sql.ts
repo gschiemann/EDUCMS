@@ -28,7 +28,10 @@
  *   9. the whole-database reference scan finds a URL embedded in a template zone's config, in a
  *      template background and in another asset row; ignores the excluded history tables; and
  *      reports "unreferenced" once those references are gone;
- *  10. the retention claim leases a due original exactly once.
+ *  10. the retention claim leases a due original exactly once;
+ *  11. (2026-10-05) a finished job whose asset still carries the upload's "converting" stamp is
+ *      found by its JSON path (queued jobs, alert media and settled stamps are not), and
+ *      settlePendingVerdict writes the finished verdict through Prisma, keeping the other keys.
  */
 import { PrismaClient } from '@prisma/client';
 import { randomUUID } from 'crypto';
@@ -567,6 +570,83 @@ async function main() {
       where: { assetId: orig.id },
     });
     check('markOriginalDeleted stamps it', !!row?.originalDeletedAt, row);
+
+    // ── 11. (2026-10-05) the upload's "converting" stamp never outlives a finished job ──
+    // The stale sweep ends jobs (stalled / expired) that never reach the pipeline's
+    // exit, so the worker asks finishedJobsWithPendingVerdict() — a JSON-path filter
+    // on assets.processing_meta joined by id AND tenant — and settles each one.
+    const PENDING = {
+      version: 1,
+      ready: false,
+      pending: true,
+      issues: ['codec', 'hdr'],
+      checkedAt: new Date().toISOString(),
+    };
+    const withJob = async (
+      n: string,
+      screen: unknown,
+      job: { status: string; reason: string | null },
+    ) => {
+      const a = await mkAsset(tenants[1], n);
+      await client.asset.update({
+        where: { id: a.id },
+        data: { processingMeta: { probe: { codec: 'hevc' }, screen } as any },
+      });
+      await client.videoTranscodeJob.create({
+        data: {
+          tenantId: tenants[1],
+          assetId: a.id,
+          sourceUrl: a.fileUrl,
+          status: job.status,
+          reason: job.reason,
+          finishedAt: job.status === 'queued' ? null : new Date(),
+        },
+      });
+      return a;
+    };
+    const stalled = await withJob('stalled', PENDING, { status: 'failed', reason: 'stalled' });
+    const stillQueued = await withJob('queued', PENDING, { status: 'queued', reason: null });
+    const alert = await withJob('alert', PENDING, { status: 'skipped', reason: 'emergency-content' });
+    const settledAlready = await withJob(
+      'settled',
+      { ...PENDING, pending: undefined, error: 'ffmpeg-failed' },
+      { status: 'failed', reason: 'ffmpeg-failed' },
+    );
+    const pendingRows = (await svc.finishedJobsWithPendingVerdict(500)).filter((r) =>
+      [stalled.id, stillQueued.id, alert.id, settledAlready.id].includes(r.assetId),
+    );
+    check(
+      'finishedJobsWithPendingVerdict finds the FINISHED job whose asset still says "converting" — and only it',
+      pendingRows.length === 1 && pendingRows[0].assetId === stalled.id && pendingRows[0].reason === 'stalled',
+      pendingRows,
+    );
+    const outcome = await pipeline.settlePendingVerdict(
+      { id: pendingRows[0]?.id ?? 'none', tenantId: tenants[1], assetId: stalled.id },
+      { reason: 'stalled' },
+    );
+    const settledRow = await client.asset.findUnique({ where: { id: stalled.id } });
+    const verdict = (settledRow?.processingMeta as any)?.screen;
+    check(
+      'settlePendingVerdict writes the finished verdict through Prisma: not ready, the issues, the reason, NO pending — the probe facts kept',
+      outcome === 'settled' &&
+        verdict?.ready === false &&
+        verdict?.pending === undefined &&
+        verdict?.error === 'stalled' &&
+        JSON.stringify(verdict?.issues) === JSON.stringify(['codec', 'hdr']) &&
+        (settledRow?.processingMeta as any)?.probe?.codec === 'hevc',
+      { outcome, meta: settledRow?.processingMeta },
+    );
+    check(
+      '…and the next query no longer finds it (idempotent)',
+      !(await svc.finishedJobsWithPendingVerdict(500)).some((r) => r.assetId === stalled.id),
+    );
+    check(
+      'an asset whose job is still QUEUED is left "converting" (the job will stamp it)',
+      (await pipeline.settlePendingVerdict(
+        { id: 'some-other-job', tenantId: tenants[1], assetId: stillQueued.id },
+        { reason: 'stalled' },
+      )) === 'job-active',
+    );
   } finally {
     // Clean up everything this run made (audit rows are append-only by trigger in prod; best effort).
     await client.videoTranscodeJob

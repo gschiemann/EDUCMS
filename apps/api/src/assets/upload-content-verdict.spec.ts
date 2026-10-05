@@ -22,11 +22,17 @@ import {
   tailSeekSeconds,
   UPLOAD_REFUSALS,
   uploadContentKind,
+  uploadScreenStamp,
+  uploadScreenVerdict,
   videoProbeStep,
   videoStreamDurationS,
+  type ContentEvidence,
   type ImageEvidence,
   type ToolRun,
 } from './upload-content-verdict';
+import { readFileSync } from 'fs';
+import * as path from 'path';
+import { readScreenStamp } from '@cms/api-types';
 
 const run = (over: Partial<ToolRun>): ToolRun => ({
   exitCode: 0,
@@ -847,5 +853,137 @@ describe('decideUploadContent — THE decision, both directions', () => {
     }
     // One code per message the page shows (not-video and ends-early share theirs).
     expect(codes.size).toBe(9);
+  });
+});
+
+// ── 2026-10-05 — can every screen play it AS UPLOADED? ──────────────────────
+//
+// The screen-ready verdict is read from the SAME ffprobe document the content
+// check already fetched. The documents below are REAL ffprobe output
+// (storage/video-transcode/__fixtures__/screen-compat-probes.json, ffmpeg 8.1.1),
+// the corpus the transcode's own rule is pinned on — so the upload's verdict is
+// proven against the conversion's, not against a hand-written stand-in.
+const SCREEN_FIXTURES = JSON.parse(
+  readFileSync(
+    path.join(__dirname, '..', 'storage', 'video-transcode', '__fixtures__', 'screen-compat-probes.json'),
+    'utf8',
+  ),
+) as { cases: Record<string, { probe: unknown }> };
+
+/** The content check's evidence for an upload whose ffprobe printed this fixture's document. */
+const videoEvidence = (
+  fixture: string,
+  over: Partial<ToolRun> = {},
+): ContentEvidence => ({
+  kind: 'video',
+  storedBytes: 4096,
+  video: {
+    probe: run({ stdout: JSON.stringify(SCREEN_FIXTURES.cases[fixture].probe), ...over }),
+    tail: run({ stdout: ONE_FRAME }),
+  },
+});
+
+describe("uploadScreenVerdict — the screen-ready verdict from the upload's own ffprobe", () => {
+  it.each([
+    'clean-h264-1080p30-aac',
+    'clean-h264-videotoolbox-iphone-style',
+    'clean-h264-uhd-30',
+    'clean-h264-portrait-1080x1920',
+    'clean-h264-no-audio',
+  ])('a screen-safe file (%s) is READY as uploaded', (fixture) => {
+    expect(uploadScreenVerdict(videoEvidence(fixture))).toEqual({ ready: true, issues: [] });
+  });
+
+  it.each([
+    ['hevc-10bit-hdr10', ['codec', 'pixel-format', 'hdr']],
+    ['hevc-10bit-hlg', ['codec', 'pixel-format', 'hdr']],
+    ['h264-60fps', ['frame-rate']],
+    ['vp9-webm-opus', ['codec', 'container', 'audio-codec']],
+    ['h264-quicktime-mov', ['container']],
+    ['h264-rotation-90', ['rotation']],
+  ])('a file that must be converted (%s) names why: %j', (fixture, expected) => {
+    const v = uploadScreenVerdict(videoEvidence(fixture));
+    expect(v?.ready).toBe(false);
+    expect(v?.issues).toEqual(expect.arrayContaining(expected as string[]));
+  });
+
+  it('a verdict does not depend on the END of the file decoding — a format verdict needs headers only', () => {
+    const e = videoEvidence('hevc-10bit-hdr10');
+    e.video!.tail = null; // the tail decode ran out of budget
+    expect(uploadScreenVerdict(e)?.ready).toBe(false);
+  });
+
+  describe('NO verdict — never an invented one — unless the probe ran cleanly', () => {
+    it.each<[string, ContentEvidence]>([
+      ['ffprobe could not start', videoEvidence('hevc-10bit-hdr10', { spawnError: 'ENOENT' })],
+      ['ffprobe ran out of time', videoEvidence('hevc-10bit-hdr10', { timedOut: true, exitCode: null })],
+      ['ffprobe exited non-zero', videoEvidence('hevc-10bit-hdr10', { exitCode: 1 })],
+      ['the read broke while ffprobe looked (a stream may be missing)', videoEvidence('hevc-10bit-hdr10', { stderr: SERVER_5XX })],
+      ['the read dropped mid-body', videoEvidence('h264-60fps', { stderr: GOOD_FILE_DROPPED_READ })],
+      ['ffprobe printed no JSON', videoEvidence('hevc-10bit-hdr10', { stdout: '{"streams": [' })],
+      ['the check never ran (no free slot)', { kind: 'video', storedBytes: 4096, skipped: 'no free check slot within the time budget' }],
+      ['the video was never probed', { kind: 'video', storedBytes: 4096 }],
+      ['zero bytes', { ...videoEvidence('hevc-10bit-hdr10'), storedBytes: 0 }],
+    ])('%s → null', (_label, evidence) => {
+      expect(uploadScreenVerdict(evidence)).toBeNull();
+    });
+
+    it('a sound-only file and a picture under a video name have no verdict (they are refused anyway)', () => {
+      expect(
+        uploadScreenVerdict({ kind: 'video', storedBytes: 9, video: { probe: run({ stdout: probeJson([AAC]) }), tail: null } }),
+      ).toBeNull();
+      expect(
+        uploadScreenVerdict({
+          kind: 'video',
+          storedBytes: 9,
+          video: {
+            probe: run({ stdout: probeJson([{ ...H264, codec_name: 'mjpeg' }], { format_name: 'jpeg_pipe' }) }),
+            tail: null,
+          },
+        }),
+      ).toBeNull();
+    });
+
+    it('only videos: audio, pictures and PDFs never get a screen verdict', () => {
+      expect(uploadScreenVerdict({ kind: 'audio', storedBytes: 9, audio: { probe: run({ stdout: probeJson([AAC]) }) } })).toBeNull();
+      expect(uploadScreenVerdict({ kind: 'image', storedBytes: 9 })).toBeNull();
+      expect(uploadScreenVerdict({ kind: 'pdf', storedBytes: 9 })).toBeNull();
+    });
+  });
+});
+
+describe('uploadScreenStamp — what the new Asset row is created with', () => {
+  const NOW = Date.UTC(2026, 9, 5, 9, 30, 0);
+  const AT = new Date(NOW).toISOString();
+
+  it('screen-safe → { version: 1, ready: true, checkedAt }', () => {
+    expect(uploadScreenStamp({ ready: true, issues: [] }, true, NOW)).toEqual({ version: 1, ready: true, checkedAt: AT });
+    // …whether or not a conversion is coming: nothing needs one.
+    expect(uploadScreenStamp({ ready: true, issues: [] }, false, NOW)).toEqual({ version: 1, ready: true, checkedAt: AT });
+  });
+
+  it('must be converted and a conversion is queued → { version: 1, ready: false, pending: true, issues, checkedAt }', () => {
+    expect(uploadScreenStamp({ ready: false, issues: ['codec', 'hdr'] }, true, NOW)).toEqual({
+      version: 1,
+      ready: false,
+      pending: true,
+      issues: ['codec', 'hdr'],
+      checkedAt: AT,
+    });
+  });
+
+  it('must be converted but no conversion will run (VIDEO_TRANSCODE_DISABLED) → no stamp: nothing would ever settle a pending', () => {
+    expect(uploadScreenStamp({ ready: false, issues: ['codec'] }, false, NOW)).toBeNull();
+  });
+
+  it('no verdict → no stamp: unknown stays unknown', () => {
+    expect(uploadScreenStamp(null, true, NOW)).toBeNull();
+  });
+
+  it('the stamp reads back through the shared reader the manifest and the dashboard use', () => {
+    const stamp = uploadScreenStamp(uploadScreenVerdict(videoEvidence('h264-60fps')), true, NOW);
+    expect(readScreenStamp({ screen: stamp })).toEqual(
+      expect.objectContaining({ ready: false, pending: true, issues: ['frame-rate'] }),
+    );
   });
 });

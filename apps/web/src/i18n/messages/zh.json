@@ -1934,6 +1934,39 @@
     "optimizeNotSmaller": "保留上传的原文件 — 重新编码不会让它更小。",
     "optimizeFailed": "无法优化此视频 — 屏幕播放上传的原文件。",
     "optimizeEmergency": "紧急媒体从不重新编码 — 屏幕播放上传的原文件。",
+    "screenReady": {
+      "convertingDetail": "正在为屏幕转换 — 副本就绪后即开始播放",
+      "convertingDetailPct": "正在为屏幕转换 — 副本就绪后即开始播放 · {pct}%",
+      "convertingCard": "正在为屏幕转换…",
+      "convertingCardPct": "正在为屏幕转换… {pct}%",
+      "convertingQueued": "等待为屏幕转换…",
+      "failed": "此视频无法为屏幕转换：{reason}。请将其导出为 MP4 (H.264) 并重新上传。",
+      "failedCard": "无法在屏幕上播放",
+      "converted": "已为屏幕转换（原为 {from}）。",
+      "listSeparator": "、",
+      "reason": {
+        "unreadable": "无法将该文件读取为视频",
+        "tooSlow": "转换耗时过长",
+        "couldNotRun": "转换无法运行",
+        "failed": "转换失败"
+      },
+      "issue": {
+        "codecUnknown": "屏幕无法播放的编码",
+        "hdr": "HDR",
+        "pixelFormat": "10 位色彩",
+        "colourRange": "全范围色彩",
+        "frameRate": "超过 30 fps",
+        "variableFrameRate": "可变帧率",
+        "container": "非 MP4",
+        "interlaced": "隔行扫描",
+        "rotation": "已旋转",
+        "pixelAspect": "拉伸像素",
+        "oversize": "非标准尺寸",
+        "level": "较高的 H.264 级别",
+        "audio": "屏幕无法播放的音频",
+        "durationUnknown": "未记录时长"
+      }
+    },
     "statusReady": "可使用",
     "statusPending": "待审核",
     "statusArchived": "已归档",
@@ -2023,6 +2056,12 @@
     "line": "行",
     "newPlaylist": "新建播放列表",
     "dragToReorder": "拖动以重新排序",
+    "screenReady": {
+      "converting": "尚未播放 — 正在转换",
+      "cantPlay": "无法在屏幕上播放",
+      "convertingShort": "转换中",
+      "cantPlayShort": "无法播放"
+    },
     "timeRestricted": "限定时段",
     "auto": "自动",
     "durationSeconds": "时长（秒）",
@@ -3280,8 +3319,8 @@
     "pdfIncomplete": "此 PDF 不完整——文件可能已损坏或被截断。请重新保存或导出并上传新的副本。"
   },
   "playbackCopy": {
-    "cannotPrepare": "{files} 无法为 1080p 屏幕准备。请移除或替换后重新发布。之前的内容仍在屏幕上显示。",
-    "notNow": "{files} 的 1080p 副本暂时无法生成。之前的内容仍在屏幕上显示——请一分钟后重新发布。",
+    "cannotPrepare": "{count, plural, other {{files} 无法为 1080p 屏幕准备。请移除或替换后重新发布。}}之前的内容仍在屏幕上显示。",
+    "notNow": "{count, plural, other {{files} 的 1080p 副本暂时无法生成。}}之前的内容仍在屏幕上显示——请一分钟后重新发布。",
     "quoted": "“{name}”",
     "separator": "、",
     "andMore": "{names}以及另外 {count} 个文件"

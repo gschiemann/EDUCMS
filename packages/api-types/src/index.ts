@@ -1066,6 +1066,12 @@ export * from './template-background';
 // can never disagree about what "will stutter on the wall" means.
 export * from './video-encode';
 
+// Screen readiness (2026-10-05) — `processingMeta.screen`, whether the file a
+// video serves is something every player decodes. Shared so the manifest
+// (which leaves a not-ready video out) and the dashboard (which says why) can
+// never disagree about which videos are not playing.
+export * from './screen-readiness';
+
 // Student information on public screens (K-12 sports launch, 2026-09-27) —
 // the attestation wording + version and the settings contract, shared so the
 // API (which enforces it) and the dashboard (which asks) never disagree.

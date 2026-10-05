@@ -20,7 +20,7 @@ import {
   type OptimizedMedia,
 } from '../storage/media-optimization.service';
 import { UploadContentCheckService } from './upload-content-check.service';
-import { refusalFor } from './upload-content-verdict';
+import { refusalFor, uploadScreenStamp, type UploadScreenVerdict } from './upload-content-verdict';
 import { mintUploadRenewTicket, verifyUploadRenewTicket } from './upload-renew-ticket';
 import { VideoTranscodeService } from '../storage/video-transcode/video-transcode.service';
 import { StorageQuotaService } from './storage-quota.service';
@@ -1364,6 +1364,7 @@ export class AssetsController {
     }
     // UPLOAD_CONTENT_CHECK_DISABLED=1 restores the pre-2026-10-05 behaviour
     // exactly (no check, no per-upload log line).
+    let screenVerdict: UploadScreenVerdict | null = null;
     if (this.uploadCheck && !UploadContentCheckService.disabled()) {
       const verdict = await this.uploadCheck.check({
         storagePath,
@@ -1386,7 +1387,31 @@ export class AssetsController {
       if (verdict.unchecked) {
         this.logger.warn(`[upload-check] could not check ${label} — accepted as before: ${verdict.unchecked} [${verdict.ms} ms]`);
       }
+      screenVerdict = verdict.screen ?? null;
     }
+
+    // ── 2026-10-05 — THE SCREEN-READY VERDICT EXISTS FROM THE MOMENT OF UPLOAD ──
+    //
+    // Until now a video that is not screen-safe (HEVC, HDR, 60 fps, WebM, a
+    // QuickTime .mov …) had NO verdict between upload and the end of its
+    // conversion — minutes for a 4K HDR phone clip — and was delivered to
+    // screens as uploaded meanwhile. The check above already read the file's
+    // ffprobe document; `processingMeta.screen` is written from it IN THIS
+    // CREATE, so the row never exists without it:
+    //   • screen-safe              → { ready: true }
+    //   • must be converted first  → { ready: false, pending: true, issues } —
+    //     the manifest leaves it out until the transcode stamps the copy;
+    //   • the probe did not run cleanly, or no conversion would run
+    //     (VIDEO_TRANSCODE_DISABLED=1) → nothing: delivered exactly as before.
+    // (upload-content-verdict.ts `uploadScreenStamp`; the transcode replaces
+    // the stamp whole when it finishes — video-transcode.pipeline.ts.)
+    const uploadScreen = (realMime || '').toLowerCase().startsWith('video/')
+      ? uploadScreenStamp(
+          screenVerdict,
+          !!this.transcodes && !VideoTranscodeService.disabled(),
+          Date.now(),
+        )
+      : null;
 
     const asset = await this.prisma.client.asset.create({
       data: {
@@ -1399,6 +1424,7 @@ export class AssetsController {
         originalName: body.filename || null,
         status: this.initialAssetStatus(req.user.role),
         folderId,
+        ...(uploadScreen ? { processingMeta: { screen: uploadScreen } as any } : {}),
       },
     });
 

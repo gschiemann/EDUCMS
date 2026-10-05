@@ -44,6 +44,8 @@ import { BlastRadiusSummary } from '@/components/playlists/BlastRadiusSummary';
 import { AssetPreviewOverlay } from '@/components/playlists/AssetPreviewOverlay';
 import { VideoPreviewThumb, assetPosterUrl } from '@/components/playlists/VideoPreviewThumb';
 import { AssetEncodeBadge } from '@/components/assets/VideoEncode';
+import { ScreenReadinessPill } from '@/components/assets/ScreenReadinessPill';
+import { notPlayingOnScreens, screenReadinessOf } from '@/lib/screen-readiness-copy';
 import { PlaylistEncodeBanner } from '@/components/playlists/PlaylistEncodeBanner';
 import { SELECTED_TILE_CLASS, SelectionCheckbox, SelectionTileCheckbox, selectAllTitle, selectionState } from '@/components/common/SelectionCheckbox';
 import { imageShape, type ImageShape } from '@/lib/image-shape';
@@ -215,6 +217,10 @@ function PickerTileThumb({ asset }: { asset: any }) {
       {/* Encode grade (2026-09-24): a video that will stutter on the wall
           says so BEFORE it is picked. Green / unknown render nothing. */}
       <AssetEncodeBadge asset={asset} variant="onImage" className="absolute top-2 right-2" />
+      {/* 2026-10-05 — not playing on screens yet (converting) / can't play:
+          said BEFORE it is picked. Bottom-left: the badge owns the top-right,
+          the shape chip the bottom-right. */}
+      <ScreenReadinessPill asset={asset} variant="onImage" className="absolute bottom-1.5 left-1.5 max-w-[60%]" />
       {shape && (
         <span
           data-testid="asset-orientation"
@@ -237,6 +243,8 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSel
   const style = { transform: CSS.Transform.toString(transform), transition, zIndex: isDragging ? 50 : undefined, opacity: isDragging ? 0.5 : 1 };
   const thumb = thumbUrl(item.asset);
   const name = assetName(item.asset);
+  // 2026-10-05 — the screens are not being handed this video (converting / failed).
+  const notPlaying = notPlayingOnScreens(screenReadinessOf(item.asset));
 
   return (
     <div ref={setNodeRef} style={style} className={`bg-white rounded-2xl border ${isSelected ? 'border-indigo-400 ring-2 ring-indigo-100 shadow-[0_4px_20px_rgba(99,102,241,0.12)]' : 'border-slate-100 group hover:shadow-[0_4px_20px_rgba(0,0,0,0.04)]'} transition-all overflow-hidden flex flex-col`}>
@@ -329,6 +337,16 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSel
                 carries the full sentences. */}
             <AssetEncodeBadge asset={item.asset} interactive className="shrink-0" />
           </div>
+          {/* 2026-10-05 — a video the screens are NOT being handed (still
+              converting for screens, or its conversion failed) says so: the
+              manifest skips it, and an operator must never be surprised by
+              that. Under the name from md up; on a phone this column is a few
+              pixels wide, so the mark gets its own line under the row (below). */}
+          {notPlaying && (
+            <span className="hidden md:block mt-0.5" data-testid="screen-ready-mark-desktop">
+              <ScreenReadinessPill asset={item.asset} />
+            </span>
+          )}
           {/* Mime label is desktop-only — secondary info, eats a
               line on mobile that we can't afford. Available via
               the row's title attribute for accessibility. */}
@@ -404,6 +422,12 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSel
           <Trash2 className="w-4 h-4" aria-hidden />
         </button>
       </div>
+      {notPlaying && (
+        // The phone placement of the mark above: its own full-width line.
+        <div className="md:hidden px-3 pb-2.5 -mt-0.5" data-testid="screen-ready-mark-phone">
+          <ScreenReadinessPill asset={item.asset} />
+        </div>
+      )}
 
       {preview && (
         <AssetPreviewOverlay url={item.asset?.fileUrl} mimeType={item.asset?.mimeType} name={name} onClose={() => setPreview(false)} />

@@ -1934,6 +1934,39 @@
     "optimizeNotSmaller": "Kept as uploaded — re-encoding wouldn't have made it smaller.",
     "optimizeFailed": "Couldn't optimize this video — screens play the file as uploaded.",
     "optimizeEmergency": "Emergency media is never re-encoded — screens play the file as uploaded.",
+    "screenReady": {
+      "convertingDetail": "Converting for screens — it will start playing when the copy is ready",
+      "convertingDetailPct": "Converting for screens — it will start playing when the copy is ready · {pct}%",
+      "convertingCard": "Converting for screens…",
+      "convertingCardPct": "Converting for screens… {pct}%",
+      "convertingQueued": "Waiting to convert for screens…",
+      "failed": "This video could not be converted for screens: {reason}. Export it as MP4 (H.264) and upload it again.",
+      "failedCard": "Can't play on screens",
+      "converted": "Converted for screens (was {from}).",
+      "listSeparator": ", ",
+      "reason": {
+        "unreadable": "the file couldn't be read as a video",
+        "tooSlow": "converting it took too long",
+        "couldNotRun": "the conversion couldn't run",
+        "failed": "the conversion failed"
+      },
+      "issue": {
+        "codecUnknown": "a codec screens can't play",
+        "hdr": "HDR",
+        "pixelFormat": "10-bit colour",
+        "colourRange": "full-range colour",
+        "frameRate": "over 30 fps",
+        "variableFrameRate": "a variable frame rate",
+        "container": "not MP4",
+        "interlaced": "interlaced",
+        "rotation": "rotated",
+        "pixelAspect": "stretched pixels",
+        "oversize": "a non-standard size",
+        "level": "a high H.264 level",
+        "audio": "audio screens can't play",
+        "durationUnknown": "no recorded length"
+      }
+    },
     "statusReady": "Ready to use",
     "statusPending": "Pending review",
     "statusArchived": "Archived",
@@ -2023,6 +2056,12 @@
     "line": "Line",
     "newPlaylist": "New Playlist",
     "dragToReorder": "Drag to reorder",
+    "screenReady": {
+      "converting": "Not playing yet — converting",
+      "cantPlay": "Can't play on screens",
+      "convertingShort": "Converting",
+      "cantPlayShort": "Can't play"
+    },
     "timeRestricted": "Time Restricted",
     "auto": "Auto",
     "durationSeconds": "Duration in seconds",
