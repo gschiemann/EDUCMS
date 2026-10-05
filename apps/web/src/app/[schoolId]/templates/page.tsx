@@ -4024,9 +4024,8 @@ export function TemplateUsageImpactDialog({
             </p>
           ) : (
             <>
-              <p className="text-[13px] text-slate-600">
-                {tDel('permanent', { name: impact.template.name })}
-              </p>
+              {/* What happens first, then that it is permanent (2026-10-05 —
+                  one short line each instead of a paragraph). */}
               {impact.protectedEmergency ? (
                 <p className="text-[13px] font-semibold text-rose-700">
                   {tDel('emergencyProtected')}
@@ -4038,6 +4037,9 @@ export function TemplateUsageImpactDialog({
                     : tDel('impactMany')}
                 </p>
               )}
+              <p className="text-[13px] text-slate-600">
+                {tDel('permanent', { name: impact.template.name })}
+              </p>
               {impact.playlists.length > 0 && (
                 <ul className="max-h-32 space-y-1 overflow-y-auto rounded-lg bg-slate-50 p-2.5">
                   {impact.playlists.map((p) => {

@@ -90,7 +90,7 @@ test('delete contents includes unloaded descendants, then removes only the empty
   const calls = await setup(page);
   const dialog = await folderDialog(page);
   await dialog.getByRole('checkbox', { name: /Also delete all files/ }).check();
-  await expect(dialog).toContainText('Empty playlists stop playing. Protected emergency files are kept');
+  await expect(dialog).toContainText("They'll be removed from any playlists that use them. This can't be undone.");
   await dialog.getByRole('button', { name: 'Delete folder and contents' }).click();
   await expect.poll(() => calls.folderDeletes).toEqual(['empty-tree']);
   expect(calls.batches).toEqual([['asset-50', 'asset-51', 'asset-59']]);
@@ -101,7 +101,7 @@ test('protected content keeps its folder and is explained without a second Delet
   const dialog = await folderDialog(page);
   await dialog.getByRole('checkbox', { name: /Also delete all files/ }).check();
   await dialog.getByRole('button', { name: 'Delete folder and contents' }).click();
-  await expect(page.getByRole('dialog')).toContainText('2 files deleted. 1 file was kept');
+  await expect(page.getByRole('dialog')).toContainText('2 of 3 files deleted.');
   expect(calls.folderDeletes).toEqual([]);
   await expect(page.getByRole('dialog').getByRole('button', { name: /Delete/ })).toHaveCount(0);
 });

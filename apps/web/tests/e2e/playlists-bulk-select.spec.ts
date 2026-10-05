@@ -124,8 +124,8 @@ test.describe('playlists library — bulk select and remove', () => {
     await page.getByTestId('bulk-remove').click();
     const dialog = page.getByRole('dialog');
     await dialog.waitFor({ state: 'visible', timeout: 10_000 });
-    await expect(dialog.getByRole('heading', { name: 'Remove 3 playlists?' })).toBeVisible();
-    await expect(dialog).toContainText('1 of them is published (1 rule · 1 screen)');
+    await expect(dialog.getByRole('heading', { name: 'Delete 3 playlists?' })).toBeVisible();
+    await expect(dialog).toContainText('1 of them is published to 1 screen.');
     await page.waitForTimeout(400); // the enter animation
 
     // Every button sits inside the card (the label once ran off its right edge).
