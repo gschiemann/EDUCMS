@@ -1,5 +1,9 @@
 import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request, HttpException, HttpStatus, Logger, Optional } from '@nestjs/common';
-import { MediaPublicationService } from './media-publication.service';
+import {
+  failedPublicationFiles,
+  MediaPublicationService,
+  SCHEDULE_MEDIA_COPY_FAILED,
+} from './media-publication.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
@@ -105,7 +109,7 @@ export class SchedulesController {
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
   async list(@Request() req: any) {
     const tenantId = req.user.tenantId;
-    return this.prisma.client.schedule.findMany({
+    const rows = await this.prisma.client.schedule.findMany({
       where: { tenantId },
       include: {
         playlist: { select: { id: true, name: true } },
@@ -114,6 +118,39 @@ export class SchedulesController {
       },
       orderBy: { startTime: 'desc' },
     });
+    return this.withFailedPublicationFiles(tenantId, rows);
+  }
+
+  /**
+   * A held publish whose 1080p copy could not be made carries its words in
+   * `pendingMediaError` (English, naming the files). The files themselves —
+   * asset ids and names, machine-readable — were recorded when the rule was
+   * stamped (MediaPublicationService.stampCopyFailure); attach them as
+   * `pendingMediaFiles` so the dashboard can say it in the operator's language
+   * (2026-10-05). One query, and only when such a rule exists. A rule stamped
+   * before this, or a lookup that fails, simply has no `pendingMediaFiles`: the
+   * page then shows the stamped words as sent.
+   */
+  private async withFailedPublicationFiles<T extends { id: string; pendingMedia: boolean; pendingMediaError: string | null }>(
+    tenantId: string,
+    rows: T[],
+  ): Promise<Array<T & { pendingMediaFiles?: Array<{ assetId: string; name: string }> }>> {
+    const failedIds = rows.filter((r) => r.pendingMedia && r.pendingMediaError).map((r) => r.id);
+    if (!failedIds.length) return rows;
+    const audits = await this.prisma.client.auditLog
+      .findMany({
+        where: { tenantId, action: SCHEDULE_MEDIA_COPY_FAILED, targetId: { in: failedIds } },
+        orderBy: { createdAt: 'desc' },
+        select: { targetId: true, details: true },
+      })
+      .catch(() => [] as Array<{ targetId: string | null; details: string | null }>);
+    const filesBySchedule = new Map<string, Array<{ assetId: string; name: string }>>();
+    for (const a of audits) {
+      if (!a.targetId || filesBySchedule.has(a.targetId)) continue; // newest first
+      const files = failedPublicationFiles(a.details);
+      if (files) filesBySchedule.set(a.targetId, files);
+    }
+    return rows.map((r) => (filesBySchedule.has(r.id) ? { ...r, pendingMediaFiles: filesBySchedule.get(r.id) } : r));
   }
 
   @Post()

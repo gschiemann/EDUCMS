@@ -239,8 +239,10 @@ describe('Media Library v1 — the calm default view', () => {
     mount();
     const strip = rtl.getByTestId('upload-strip');
     expect(strip).toHaveTextContent('Drop files anywhere to upload');
-    // 2026-09-23: uploads go straight to storage, so video may be up to 2 GB.
-    expect(strip).toHaveTextContent('Images, video, audio and PDF · video up to 2 GB');
+    // 2026-10-05: the page states what storage takes TODAY — 500 MB (the Supabase
+    // project limit the API clamps its 2 GB code ceiling to). It said "2 GB" and
+    // then refused a 700 MB file with "Max size is 500 MB" (media beta test, L6).
+    expect(strip).toHaveTextContent('Images, video, audio and PDF · video up to 500 MB');
     // The uploader rejects SVG, so the strip must never advertise it (§6).
     expect(strip).not.toHaveTextContent(/svg/i);
   });
@@ -706,6 +708,34 @@ describe('Media Library v1 — upload queue phases (§14)', () => {
     }
   });
 
+  it('a file the server refuses as unplayable shows the plain words on its row (2026-10-05)', async () => {
+    // Cut from the producer: complete-upload's 422 for an MP4 cut off mid-way
+    // (apps/api/src/assets/upload-content-verdict.ts refusalFor('ends-early')).
+    const body = {
+      code: 'ASSET_VIDEO_UNPLAYABLE',
+      reason: 'ends-early',
+      message: "This isn't a playable video — the file may be damaged or incomplete. Export it again and upload the new copy.",
+    };
+    const upload = jest.spyOn(DirectUpload, 'uploadAssetDirect').mockRejectedValue(
+      new DirectUpload.DirectUploadError('server', 'SERVER SENTENCE', 422, 'api', body.code, body),
+    );
+    try {
+      mount();
+      const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+      await act(async () => {
+        fireEvent.change(input, { target: { files: [new File(['cut'], 'gym-loop.mp4', { type: 'video/mp4' })] } });
+      });
+      await act(async () => { await Promise.resolve(); });
+      const queue = rtl.getByTestId('upload-queue');
+      expect(queue).toHaveTextContent('gym-loop.mp4');
+      expect(queue).toHaveTextContent('Failed');
+      expect(queue).toHaveTextContent(body.message);
+      expect(queue).not.toHaveTextContent('Ready');
+    } finally {
+      upload.mockRestore();
+    }
+  });
+
   it('a rejected file never enters the queue as Uploading — it names the fix', async () => {
     mount();
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
@@ -723,18 +753,22 @@ describe('Media Library v1 — upload queue phases (§14)', () => {
   it('an oversized file is refused with the real limit, before any network call', async () => {
     mount();
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
-    // Video: the direct-upload ceiling is 2 GB (a 600 MB 4K clip is fine now).
+    // Video over the 2 GB code ceiling: refused here, naming the limit storage
+    // takes today (500 MB) — not the ceiling (2026-10-05).
     const big = new File(['x'], 'huge.mp4', { type: 'video/mp4' });
     Object.defineProperty(big, 'size', { value: 2.5 * 1024 * 1024 * 1024 });
     // Anything else keeps the 500 MB outer cap.
     const pdf = new File(['x'], 'scan.pdf', { type: 'application/pdf' });
     Object.defineProperty(pdf, 'size', { value: 600 * 1024 * 1024 });
-    Object.defineProperty(input, 'files', { value: [big, pdf], configurable: true });
+    // A 0-byte file says it is empty.
+    const empty = new File([], 'blank.jpg', { type: 'image/jpeg' });
+    Object.defineProperty(input, 'files', { value: [big, pdf, empty], configurable: true });
     await act(async () => { fireEvent.change(input); });
 
     const queue = rtl.getByTestId('upload-queue');
-    expect(queue).toHaveTextContent('File exceeds 2 GB (this one is 2.50 GB)');
+    expect(queue).toHaveTextContent('File exceeds 500 MB (this one is 2.50 GB)');
     expect(queue).toHaveTextContent('File exceeds 500 MB (this one is 600.0 MB)');
+    expect(queue).toHaveTextContent('This file is empty (0 bytes). Export it again and upload the new copy.');
   });
 });
 

@@ -73,8 +73,9 @@ import { gradeVideoEncode } from '@cms/api-types';
 import {
   uploadAssetDirect,
   maxUploadBytesFor,
+  refuseBeforeUploadAboveBytes,
   formatUploadCap,
-  MAX_DIRECT_VIDEO_BYTES,
+  videoUploadLimitBytes,
 } from '@/lib/direct-upload';
 import { useVideoOptimizationStatus, optimizationOf } from '@/hooks/use-video-optimization';
 import { VideoOptimizationNote } from '@/components/assets/VideoOptimizationNote';
@@ -86,9 +87,14 @@ import { formatStorageBytes } from '@/lib/storage-bytes';
 // upload — partner reported "added a video and i get a network error and
 // it never loads" but the actual error was the client-side guard.
 // 2026-09-23 — per file now (`maxUploadBytesFor`): uploads go browser →
-// storage directly, so video may be up to 2 GB; everything else keeps the
-// 500 MB outer cap (the server applies the tighter per-type caps with its
-// own friendly message).
+// storage directly; everything else keeps the 500 MB outer cap (the server
+// applies the tighter per-type caps with its own friendly message).
+// 2026-10-05 — video is 500 MB TODAY, not 2 GB: 2 GB is the code's ceiling,
+// but the storage bucket takes 500 MB (the Supabase project's upload limit)
+// and the server enforces that. The page used to promise "video up to 2 GB"
+// and then refuse a 700 MB file with "Max size is 500 MB". The hint now shows
+// what the server last stated (`videoUploadLimitBytes`, 500 MB by default), and
+// a file over it is refused before a byte moves (`refuseBeforeUploadAboveBytes`).
 // 2026-05-13 — Dropped .mov and .avi from the accept list. Browsers /
 // Android WebView refuse QuickTime (`ftyp=qt  `) containers and have
 // never supported AVI cross-platform. Operator hit this with an
@@ -822,7 +828,8 @@ export default function AssetsPage() {
       // blocked and why.
       const unsupportedReason = getUnsupportedReason(file);
       if (unsupportedReason) { item.phase = 'error'; item.error = unsupportedReason; }
-      else if (file.size > maxUploadBytesFor(file)) {
+      else if (file.size === 0) { item.phase = 'error'; item.error = t('directUpload.fileEmpty'); }
+      else if (file.size > refuseBeforeUploadAboveBytes(file)) {
         item.phase = 'error';
         item.error = t('assetsLib.fileTooLargeFor', { max: formatUploadCap(maxUploadBytesFor(file)), size: fmtSize(file.size) });
       }
@@ -1587,7 +1594,7 @@ export default function AssetsPage() {
           <span className="block text-xs font-bold text-slate-800">
             {dragOver ? 'Drop the files — we’ll ask where to put them' : 'Drop files anywhere to upload'}
           </span>
-          <span className="block text-[11px] text-slate-500 mt-0.5">{t('assetsLib.supportedCopy', { video: formatUploadCap(MAX_DIRECT_VIDEO_BYTES) })}</span>
+          <span className="block text-[11px] text-slate-500 mt-0.5">{t('assetsLib.supportedCopy', { video: formatUploadCap(videoUploadLimitBytes()) })}</span>
         </span>
       </button>
 

@@ -11,9 +11,14 @@
  *   screens.","usedBytes":53257594470,"includedBytes":53687091200,
  *   "neededBytes":966367642}}
  */
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 import { renderHook } from '@testing-library/react';
 import { DirectUploadError } from '@/lib/direct-upload';
-import { useUploadErrorText } from '../use-upload-error-text';
+import en from '@/i18n/messages/en.json';
+import es from '@/i18n/messages/es.json';
+import zh from '@/i18n/messages/zh.json';
+import { CONTENT_REFUSAL_KEYS, useUploadErrorText } from '../use-upload-error-text';
 
 const QUOTA_413 = {
   status: 413,
@@ -73,5 +78,53 @@ describe('useUploadErrorText — STORAGE_QUOTA_EXCEEDED', () => {
       { code: 'ASSET_VIDEO_TOO_LARGE' },
     );
     expect(text(tooLarge)).toBe('Video is too large for signage (2.5 GB). Max is 2 GB — …');
+  });
+});
+
+/**
+ * 2026-10-05 — complete-upload refuses a file that is not what its name says, or
+ * that a screen cannot play (apps/api/src/assets/upload-content-verdict.ts). Each
+ * refusal's code is TRANSLATED; the bodies below are cut from the producer
+ * (`refusalFor(...)` → `{ code, message, reason }`, HTTP 422).
+ */
+describe('useUploadErrorText — the upload content check', () => {
+  const refusal = (code: string, serverMessage = 'SERVER SENTENCE') =>
+    new DirectUploadError('server', serverMessage, 422, 'api', code, { code, message: serverMessage, reason: 'x' });
+
+  it.each([
+    ['ASSET_FILE_EMPTY', 'This file is empty (0 bytes). Export it again and upload the new copy.'],
+    ['ASSET_VIDEO_UNPLAYABLE', "This isn't a playable video — the file may be damaged or incomplete. Export it again and upload the new copy."],
+    ['ASSET_VIDEO_NO_PICTURE', 'This file has sound but no picture, so a screen would show nothing. Export it again as a video and upload the new copy.'],
+    ['ASSET_VIDEO_IS_PICTURE', 'This is a picture saved with a video name. Upload it under its real picture name (for example .jpg or .png).'],
+    ['ASSET_IMAGE_UNREADABLE', "This isn't a picture screens can show — the file may be damaged, or it may be another kind of file saved with a picture's name. Export it again as JPG or PNG and upload the new copy."],
+    ['ASSET_IMAGE_HEIC', "This photo is in Apple's HEIC format (saved with a different name), and screens can't show HEIC. Export it as JPG and upload the new copy."],
+    ['ASSET_AUDIO_UNPLAYABLE', "This isn't a playable audio file — the file may be damaged or incomplete. Export it again and upload the new copy."],
+    ['ASSET_PDF_NOT_PDF', "This isn't a PDF — it may be another kind of file saved with a .pdf name. Save or export it as a PDF again and upload the new copy."],
+    ['ASSET_PDF_INCOMPLETE', 'This PDF is incomplete — the file may be damaged or cut short. Save or export it again and upload the new copy.'],
+  ])('%s is translated, not passed through', (code, words) => {
+    expect(text(refusal(code))).toBe(words);
+  });
+
+  it('a 0-byte file refused on the page (before any network call) gets the same words', () => {
+    expect(text(new DirectUploadError('empty', 'This file is empty.'))).toBe(
+      'This file is empty (0 bytes). Export it again and upload the new copy.',
+    );
+  });
+
+  it('DRIFT GUARD: every refusal code the API can send has words here (read from the producer)', () => {
+    const src = readFileSync(resolve(__dirname, '../../../../api/src/assets/upload-content-verdict.ts'), 'utf8');
+    const block = src.slice(src.indexOf('export const UPLOAD_REFUSALS'), src.indexOf('export function refusalFor'));
+    const codes = new Set(Array.from(block.matchAll(/code: '(ASSET_[A-Z_]+)'/g), (m) => m[1]));
+    expect(codes.size).toBeGreaterThanOrEqual(9);
+    for (const code of codes) expect(CONTENT_REFUSAL_KEYS[code]).toEqual(expect.any(String));
+  });
+
+  it('the words exist in English, Spanish and Chinese — really translated', () => {
+    const catalogs = { en, es, zh } as unknown as Record<string, { directUpload: Record<string, string> }>;
+    for (const key of Object.values(CONTENT_REFUSAL_KEYS)) {
+      for (const lang of ['en', 'es', 'zh']) expect(catalogs[lang].directUpload[key]).toEqual(expect.stringMatching(/\S/));
+      expect(catalogs.es.directUpload[key]).not.toBe(catalogs.en.directUpload[key]);
+      expect(catalogs.zh.directUpload[key]).not.toBe(catalogs.en.directUpload[key]);
+    }
   });
 });

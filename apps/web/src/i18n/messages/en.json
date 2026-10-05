@@ -1916,7 +1916,7 @@
     "allFiles": "All Files",
     "addUrlToggle": "Add URL",
     "upload": "Upload",
-    "dropHint": "Choose a folder (or root) next — images, video, audio, PDF · video up to 2 GB",
+    "dropHint": "Choose a folder (or root) next — images, video, audio, PDF · video up to 500 MB",
     "uploadToFolder": "Upload {count, plural, one {# file} other {# files}} to…",
     "uploadWhichFolder": "Upload files to which folder?",
     "moveToWhichFolder": "Move {count, plural, one {# item} other {# items}} to which folder?",
@@ -3268,7 +3268,23 @@
     "expired": "This upload can no longer be continued. Start it again.",
     "storageRefused": "Storage refused the file. Try again, or export it as MP4 (H.264).",
     "cancelled": "Upload cancelled.",
-    "storageFull": "This file needs {need}; {left} of your {total} is left — delete unused media or add screens."
+    "storageFull": "This file needs {need}; {left} of your {total} is left — delete unused media or add screens.",
+    "fileEmpty": "This file is empty (0 bytes). Export it again and upload the new copy.",
+    "imageUnreadable": "This isn't a picture screens can show — the file may be damaged, or it may be another kind of file saved with a picture's name. Export it again as JPG or PNG and upload the new copy.",
+    "imageHeic": "This photo is in Apple's HEIC format (saved with a different name), and screens can't show HEIC. Export it as JPG and upload the new copy.",
+    "videoUnplayable": "This isn't a playable video — the file may be damaged or incomplete. Export it again and upload the new copy.",
+    "videoNoPicture": "This file has sound but no picture, so a screen would show nothing. Export it again as a video and upload the new copy.",
+    "videoIsPicture": "This is a picture saved with a video name. Upload it under its real picture name (for example .jpg or .png).",
+    "audioUnplayable": "This isn't a playable audio file — the file may be damaged or incomplete. Export it again and upload the new copy.",
+    "pdfNotPdf": "This isn't a PDF — it may be another kind of file saved with a .pdf name. Save or export it as a PDF again and upload the new copy.",
+    "pdfIncomplete": "This PDF is incomplete — the file may be damaged or cut short. Save or export it again and upload the new copy."
+  },
+  "playbackCopy": {
+    "cannotPrepare": "{count, plural, one {{files} can't be prepared for 1080p screens. Remove or replace it, then publish again.} other {These files can't be prepared for 1080p screens: {files}. Remove or replace them, then publish again.}} The previous content stays on screen.",
+    "notNow": "{count, plural, one {The 1080p copy of {files} couldn't be made just now.} other {The 1080p copies of {files} couldn't be made just now.}} The previous content stays on screen — publish again in a minute.",
+    "quoted": "“{name}”",
+    "separator": ", ",
+    "andMore": "{names} and {count} more"
   },
   "sportsConsole": {
     "reopenPrompt": "Why are you reopening this final game? This reason is recorded with your name.",

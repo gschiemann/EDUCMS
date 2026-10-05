@@ -120,8 +120,9 @@ describe('media publication gate', () => {
       { assetId: 'asset-v', status: 'failed', reason: 'ffmpeg-failed' },
     ]);
     await h.service.sweep();
+    // 2026-10-05: the stamp NAMES the file (media-publication-names-files.spec.ts).
     expect(h.prisma.client.schedule.updateMany).toHaveBeenCalledWith(expect.objectContaining({
-      data: { pendingMediaError: expect.stringContaining('could not be prepared') },
+      data: { pendingMediaError: expect.stringContaining("“4k.mp4” can't be prepared for 1080p screens") },
     }));
     expect(h.prisma.client.$transaction).not.toHaveBeenCalled();
     expect(h.redis.publish).not.toHaveBeenCalled();

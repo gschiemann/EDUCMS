@@ -1916,7 +1916,7 @@
     "allFiles": "Todos los archivos",
     "addUrlToggle": "Añadir URL",
     "upload": "Subir",
-    "dropHint": "Elige una carpeta (o la raíz) — imágenes, vídeo, audio, PDF · vídeo de hasta 2 GB",
+    "dropHint": "Elige una carpeta (o la raíz) — imágenes, vídeo, audio, PDF · vídeo de hasta 500 MB",
     "uploadToFolder": "Subir {count, plural, one {# archivo} other {# archivos}} a…",
     "uploadWhichFolder": "¿A qué carpeta subir los archivos?",
     "moveToWhichFolder": "¿A qué carpeta mover {count, plural, one {# elemento} other {# elementos}}?",
@@ -3268,7 +3268,23 @@
     "expired": "Esta subida ya no puede continuar. Vuelve a iniciarla.",
     "storageRefused": "El almacenamiento rechazó el archivo. Inténtalo de nuevo o expórtalo como MP4 (H.264).",
     "cancelled": "Subida cancelada.",
-    "storageFull": "Este archivo necesita {need}; te quedan {left} de tus {total} — elimina contenido que no uses o añade pantallas."
+    "storageFull": "Este archivo necesita {need}; te quedan {left} de tus {total} — elimina contenido que no uses o añade pantallas.",
+    "fileEmpty": "Este archivo está vacío (0 bytes). Vuelve a exportarlo y sube la nueva copia.",
+    "imageUnreadable": "Esto no es una imagen que las pantallas puedan mostrar: el archivo puede estar dañado o ser otro tipo de archivo guardado con nombre de imagen. Vuelve a exportarlo como JPG o PNG y sube la nueva copia.",
+    "imageHeic": "Esta foto está en el formato HEIC de Apple (guardada con otro nombre) y las pantallas no pueden mostrar HEIC. Expórtala como JPG y sube la nueva copia.",
+    "videoUnplayable": "Esto no es un vídeo reproducible: el archivo puede estar dañado o incompleto. Vuelve a exportarlo y sube la nueva copia.",
+    "videoNoPicture": "Este archivo tiene sonido pero no imagen, así que la pantalla no mostraría nada. Vuelve a exportarlo como vídeo y sube la nueva copia.",
+    "videoIsPicture": "Esto es una imagen guardada con nombre de vídeo. Súbela con su nombre real de imagen (por ejemplo .jpg o .png).",
+    "audioUnplayable": "Esto no es un archivo de audio reproducible: el archivo puede estar dañado o incompleto. Vuelve a exportarlo y sube la nueva copia.",
+    "pdfNotPdf": "Esto no es un PDF: puede ser otro tipo de archivo guardado con nombre .pdf. Vuelve a guardarlo o exportarlo como PDF y sube la nueva copia.",
+    "pdfIncomplete": "Este PDF está incompleto: el archivo puede estar dañado o cortado. Vuelve a guardarlo o exportarlo y sube la nueva copia."
+  },
+  "playbackCopy": {
+    "cannotPrepare": "{count, plural, one {{files} no se puede preparar para las pantallas 1080p. Quítalo o reemplázalo y vuelve a publicar.} other {Estos archivos no se pueden preparar para las pantallas 1080p: {files}. Quítalos o reemplázalos y vuelve a publicar.}} El contenido anterior sigue en pantalla.",
+    "notNow": "{count, plural, one {La copia 1080p de {files} no se pudo crear en este momento.} other {Las copias 1080p de {files} no se pudieron crear en este momento.}} El contenido anterior sigue en pantalla: vuelve a publicar en un minuto.",
+    "quoted": "“{name}”",
+    "separator": ", ",
+    "andMore": "{names} y {count} más"
   },
   "sportsConsole": {
     "reopenPrompt": "¿Por qué reabre este partido finalizado? El motivo queda registrado con su nombre.",

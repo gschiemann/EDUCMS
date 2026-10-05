@@ -624,7 +624,8 @@ describe('POST /playlists/:id/publish-to-fleet — copies in each location', () 
     const h = harness(makeWorld(), { queueFails: true });
     const out = await publish(h, ['c-lcd', 'c-wall']);
     expect(out.perLocation[0]).toMatchObject({ screensScheduled: 1, screensPending: 0 });
-    expect(out.perLocation[0].screenFailures).toEqual([expect.objectContaining({ screenId: 'c-lcd', error: expect.stringContaining('1080p video copy could not be queued') })]);
+    // The failure NAMES the file (2026-10-05) and says publishing again can work.
+    expect(out.perLocation[0].screenFailures).toEqual([expect.objectContaining({ screenId: 'c-lcd', error: expect.stringMatching(/^The 1080p copy of “4k\.mp4” couldn't be made just now\..*publish again/) })]);
     expect(rowOn(h.w, 'c-lcd')).toEqual([]);
     expect(rowOn(h.w, 'c-wall')[0]).toMatchObject({ isActive: true });
   });

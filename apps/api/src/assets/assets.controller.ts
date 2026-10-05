@@ -16,7 +16,11 @@ import { SupabaseStorageService, RESUMABLE_CHUNK_BYTES } from '../storage/supaba
 import {
   MediaOptimizationService,
   VIDEO_WARN_SIZE_BYTES,
+  adoptsReencode,
+  type OptimizedMedia,
 } from '../storage/media-optimization.service';
+import { UploadContentCheckService } from './upload-content-check.service';
+import { refusalFor } from './upload-content-verdict';
 import { mintUploadRenewTicket, verifyUploadRenewTicket } from './upload-renew-ticket';
 import { VideoTranscodeService } from '../storage/video-transcode/video-transcode.service';
 import { StorageQuotaService } from './storage-quota.service';
@@ -297,6 +301,10 @@ export class AssetsController {
     @Optional() private readonly storageQuota?: StorageQuotaService,
     @Optional() private readonly redisService?: RedisService,
     @Optional() private readonly signer?: WebsocketSignerService,
+    // 2026-10-05 — is the uploaded file what its name says, and can a screen
+    // play it (upload-content-check.service.ts)? Optional for the specs that
+    // build this controller by hand; production always has it.
+    @Optional() private readonly uploadCheck?: UploadContentCheckService,
   ) {}
 
   /**
@@ -500,13 +508,23 @@ export class AssetsController {
       throw new HttpException({ code: 'ASSET_FILE_TYPE_UNSUPPORTED', message: 'File type is not supported. Allowed: images (JPG/PNG/WebP/GIF), MP4/WebM video, audio (MP3/OGG/WAV/M4A), PDF.' }, HttpStatus.UNSUPPORTED_MEDIA_TYPE);
     }
 
+    // A 0-byte file HAS a size, and "File size is required." told the operator
+    // nothing (media beta test 2026-10-04, L14). Same code and words as the
+    // complete-upload content check gives a 0-byte object.
+    if (Number(size) === 0) {
+      const empty = refusalFor('empty');
+      throw new HttpException({ code: empty.code, message: empty.message, reason: empty.reason }, HttpStatus.UNPROCESSABLE_ENTITY);
+    }
     if (!Number.isFinite(size) || Number(size) <= 0) {
       throw new HttpException({ code: 'ASSET_FILE_SIZE_REQUIRED', message: 'File size is required.' }, HttpStatus.BAD_REQUEST);
     }
 
     const outerCap = path === 'direct' ? this.directCeiling() : MAX_ASSET_FILE_SIZE;
     if (Number(size) > outerCap) {
-      throw new HttpException({ code: 'ASSET_FILE_TOO_LARGE', message: `File is too large. Max size is ${formatCapBytes(outerCap)}.` }, HttpStatus.PAYLOAD_TOO_LARGE);
+      // `maxFileSize` (2026-10-05): the page learns the real ceiling from this
+      // answer as well as from a successful presign, so its "video up to …" line
+      // states what storage takes (500 MB today), not the 2 GB code ceiling.
+      throw new HttpException({ code: 'ASSET_FILE_TOO_LARGE', message: `File is too large. Max size is ${formatCapBytes(outerCap)}.`, maxFileSize: outerCap }, HttpStatus.PAYLOAD_TOO_LARGE);
     }
 
     // Per-type caps (Supabase egress hardening 2026-05-23). The outer cap
@@ -1302,6 +1320,74 @@ export class AssetsController {
       }
     }
 
+    // ── 2026-10-05 — IS THIS FILE WHAT ITS NAME SAYS, AND CAN A SCREEN PLAY IT? ──
+    //
+    // Until now the type came from the NAME alone and nothing read the bytes:
+    // a text file, an executable or a ZIP named .mp4, HTML named .jpg, MP4
+    // bytes named .png, an MP4 cut off at 10/50/90 % — every one was stored and
+    // shown "Ready", then froze a screen, sat black for its slot, or refused a
+    // whole playlist on every 1080p screen (media beta test 2026-10-04, PART A).
+    // The check reads the stored object (upload-content-check.service.ts; the
+    // policy is upload-content-verdict.ts) BEFORE any Asset row exists:
+    //   • a definite verdict ("not a video", "ends early", "not a picture") →
+    //     the object is deleted (no debris) and the operator is told in plain
+    //     words what to do — a 422 with a stable `code` the page translates;
+    //   • a check that could not run (storage, ffprobe, a time-out) → accepted
+    //     exactly as before, with a warning in the log.
+    //
+    // Pictures: the bytes are read back ONCE here — the optimizer always did
+    // that after the row existed — so the check, the optimizer and alt text
+    // share one download, and the optimizer's own sharp failure is the verdict.
+    const isImage = (realMime || '').toLowerCase().startsWith('image/');
+    let imageBytes: Buffer | null = null;
+    let imageOpt: OptimizedMedia | null = null;
+    if (isImage) {
+      imageBytes = await this.storage.download(storagePath).catch(() => null);
+      if (imageBytes && this.mediaOpt.isUploadOptimizableImage(realMime)) {
+        try {
+          // An SVG / TIFF / AVIF under a JPEG / PNG / WebP name is converted
+          // (`convertNonScreenFormats`): stored as uploaded it is black on a screen.
+          imageOpt = await this.mediaOpt.optimizeImageForUpload(
+            imageBytes,
+            realMime,
+            extname(storagePath) || '',
+            undefined,
+            undefined,
+            { convertNonScreenFormats: true },
+          );
+        } catch (err: any) {
+          // Never throws by contract; if it ever does, the check reads the bytes itself.
+          imageOpt = null;
+          this.logger.warn(`[assets] upload optimize threw for ${storagePath}: ${err?.message ?? err}`);
+        }
+      }
+    }
+    // UPLOAD_CONTENT_CHECK_DISABLED=1 restores the pre-2026-10-05 behaviour
+    // exactly (no check, no per-upload log line).
+    if (this.uploadCheck && !UploadContentCheckService.disabled()) {
+      const verdict = await this.uploadCheck.check({
+        storagePath,
+        mimeType: realMime,
+        storedBytes: info && typeof info.size === 'number' ? info.size : null,
+        ...(isImage ? { image: { bytes: imageBytes, optimization: imageOpt } } : {}),
+      });
+      const label = `${JSON.stringify(String(body.filename ?? '').slice(0, 120))} (${realMime}, ${realSize} B, tenant ${req.user.tenantId})`;
+      if (!verdict.accept) {
+        await this.storage.delete(storagePath).catch(() => undefined);
+        this.logger.warn(
+          `[upload-check] refused ${label}: ${verdict.refusal.code}/${verdict.refusal.reason} — ` +
+            `${verdict.finding.status === 'bad' ? verdict.finding.detail : ''} [${verdict.ms} ms]`,
+        );
+        throw new HttpException(
+          { code: verdict.refusal.code, message: verdict.refusal.message, reason: verdict.refusal.reason },
+          HttpStatus.UNPROCESSABLE_ENTITY,
+        );
+      }
+      if (verdict.unchecked) {
+        this.logger.warn(`[upload-check] could not check ${label} — accepted as before: ${verdict.unchecked} [${verdict.ms} ms]`);
+      }
+    }
+
     const asset = await this.prisma.client.asset.create({
       data: {
         tenantId: req.user.tenantId,
@@ -1336,15 +1422,16 @@ export class AssetsController {
     // preferred (smaller payload = cheaper + faster call); falls back
     // to the original raw buffer if optimization didn't happen / had
     // no gain.
-    let altTextBuffer: Buffer | null = null;
+    //
+    // 2026-10-05 — the download and the optimizer run ABOVE, before the row
+    // exists (they are the content check's evidence); this applies their result.
+    let altTextBuffer: Buffer | null = imageBytes;
     let altTextMime: string = realMime;
     if (this.mediaOpt.isUploadOptimizableImage(realMime)) {
       try {
-        const original = await this.storage.download(storagePath);
-        if (original) {
-          altTextBuffer = original; // fallback if optimization skipped
-          const origExt = extname(storagePath) || '';
-          const opt = await this.mediaOpt.optimizeImageForUpload(original, realMime, origExt);
+        const original = imageBytes;
+        const opt = imageOpt;
+        if (original && opt) {
           const baseMeta: Record<string, unknown> = {
             originalSize: opt.originalBytes,
             processedSize: opt.finalBytes,
@@ -1352,10 +1439,11 @@ export class AssetsController {
             processedDimensions: opt.processedDimensions ?? null,
             transcodedAt: new Date().toISOString(),
           };
-          if (opt.optimized && opt.finalBytes < original.length) {
+          if (adoptsReencode(opt, original.length)) {
             // sharp output → re-upload to a NEW path so the URL extension
             // matches the new mime (e.g. .webp). Old path is deleted to
-            // avoid orphaned blobs eating storage quota.
+            // avoid orphaned blobs eating storage quota. (Adopted when it is
+            // smaller, or when it replaces a format screens cannot draw.)
             const newPath = `${req.user.tenantId}/${randomUUID()}${opt.ext}`;
             try {
               await this.storage.upload(newPath, opt.buffer, opt.mimeType);
@@ -1449,16 +1537,15 @@ export class AssetsController {
     }
 
     // Audit P1-2 (2026-05-28) — fire-and-forget alt-text generation.
-    // For images we MAY already have the buffer from the optimizer
-    // path above; for non-optimizable images (GIF, animated) we'd need
-    // a fresh download — gated below by `altTextBuffer != null`.
-    // Animated GIFs fall through here; downloading them just to feed
-    // the model their first frame is cheap and worth the visibility.
-    if ((realMime || '').toLowerCase().startsWith('image/')) {
+    // Every picture's bytes were read once above (the content check); the
+    // optimizer's output replaces them when it was adopted. Only a read that
+    // failed there is retried here — gated below by `altTextBuffer != null`.
+    // Animated GIFs get here too; feeding the model their first frame is
+    // cheap and worth the visibility.
+    if (isImage) {
       if (!altTextBuffer) {
-        // Animated GIF / format not routed through the optimizer.
-        // Best-effort fetch — we don't care if it fails, alt-text is
-        // never blocking.
+        // The read above failed. Best-effort retry — we don't care if it
+        // fails, alt-text is never blocking.
         try {
           altTextBuffer = await this.storage.download(storagePath);
         } catch { /* swallow — skip alt-text */ }

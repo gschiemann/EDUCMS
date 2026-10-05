@@ -14,7 +14,10 @@
  *      this user's own retry, so a lost response is safe to re-send.
  *
  * The API never holds the bytes (it used to buffer every upload in its RAM — the same
- * process that delivers lockdown alerts), so the ceiling is storage's: 2 GB for video.
+ * process that delivers lockdown alerts), so the ceiling is storage's. For video the code
+ * allows up to 2 GB, but the storage bucket takes 500 MB today (the Supabase project's
+ * upload limit), and that is what the API enforces and what this page says — see
+ * `videoUploadLimitBytes`.
  * The service-role key never reaches the browser; the token authorises one object.
  *
  * XMLHttpRequest, not fetch: it is the only browser API with UPLOAD progress events, which
@@ -24,17 +27,62 @@ import { apiFetch } from '@/lib/api-client';
 
 /** Supabase requires exactly 6 MB TUS chunks (the last one may be shorter). */
 export const RESUMABLE_CHUNK_BYTES = 6 * 1024 * 1024;
-/** Mirrors the API: video up to 2 GiB − 1 byte on the direct path. */
-export const MAX_DIRECT_VIDEO_BYTES = 2 * 1024 * 1024 * 1024 - 1;
+/**
+ * The most the API can EVER take for one video on the direct path: 2 GiB − 1 byte, all that
+ * `Asset.fileSize` (an int4) can record. NOT what an upload can use today — see below.
+ */
+export const DIRECT_VIDEO_CEILING_BYTES = 2 * 1024 * 1024 * 1024 - 1;
+/**
+ * What storage takes for one video TODAY: 500 MB, the Supabase project's upload limit, which
+ * the API clamps its 2 GB ceiling to (assets.controller.ts `directCeiling`). The page said
+ * "video up to 2 GB" while the server answered "Max size is 500 MB" (media beta test
+ * 2026-10-04, L6). This is only the default: every presign answers the real `maxFileSize`,
+ * and a refusal for size carries it too, so the page follows the server (`noteServerUploadLimit`).
+ */
+export const DEFAULT_DIRECT_VIDEO_BYTES = 500 * 1024 * 1024;
 /** Everything else keeps the old outer cap (the server applies the tighter per-type caps). */
 export const MAX_DIRECT_OTHER_BYTES = 500 * 1024 * 1024;
 
-/** The client-side ceiling for a file (the server re-checks the real stored bytes). */
-export function maxUploadBytesFor(file: { type?: string; name?: string }): number {
+/** The video limit the server last stated (presign `maxFileSize`); null until one has answered. */
+let serverVideoLimit: number | null = null;
+
+function isVideoUpload(file: { type?: string | null; name?: string | null }): boolean {
   const type = (file.type || '').toLowerCase();
   const name = (file.name || '').toLowerCase();
-  const isVideo = type.startsWith('video/') || /\.(mp4|m4v|webm)$/.test(name);
-  return isVideo ? MAX_DIRECT_VIDEO_BYTES : MAX_DIRECT_OTHER_BYTES;
+  return type.startsWith('video/') || /\.(mp4|m4v|webm)$/.test(name);
+}
+
+/** Remember the video ceiling the server stated for a file of this type. Anything else is ignored. */
+export function noteServerUploadLimit(mimeType: string | null | undefined, maxFileSize: unknown): void {
+  const n = Number(maxFileSize);
+  if (!isVideoUpload({ type: mimeType }) || !Number.isFinite(n) || n <= 0) return;
+  serverVideoLimit = Math.min(Math.floor(n), DIRECT_VIDEO_CEILING_BYTES);
+}
+
+/** Test seam: forget what the server said. */
+export function resetServerUploadLimit(): void {
+  serverVideoLimit = null;
+}
+
+/** The video limit to SHOW: what the server last said, else what storage takes today (500 MB). */
+export function videoUploadLimitBytes(): number {
+  return serverVideoLimit ?? DEFAULT_DIRECT_VIDEO_BYTES;
+}
+
+/** The limit to TELL the operator for this file — the page's hint and a refusal's numbers. */
+export function maxUploadBytesFor(file: { type?: string; name?: string }): number {
+  return isVideoUpload(file) ? videoUploadLimitBytes() : MAX_DIRECT_OTHER_BYTES;
+}
+
+/**
+ * Above this a picker refuses the file before any network call. A video over the limit the
+ * server has STATED is refused at once. A video the server has not been asked about yet, up
+ * to the 2 GB code ceiling, goes to presign — which answers before a single byte moves
+ * ("File is too large. Max size is 500 MB.") — so the day the storage limit is raised the
+ * page never turns away a file the server would take.
+ */
+export function refuseBeforeUploadAboveBytes(file: { type?: string; name?: string }): number {
+  return isVideoUpload(file) ? (serverVideoLimit ?? DIRECT_VIDEO_CEILING_BYTES) : MAX_DIRECT_OTHER_BYTES;
 }
 
 /** "2 GB" / "500 MB" — binary units, the way the rest of the app formats sizes. */
@@ -65,7 +113,7 @@ export interface CompletedAsset {
   posterUrl: string | null;
 }
 
-export type DirectUploadErrorCode = 'too-large' | 'unsupported' | 'network' | 'storage' | 'server' | 'aborted' | 'expired';
+export type DirectUploadErrorCode = 'too-large' | 'unsupported' | 'network' | 'storage' | 'server' | 'aborted' | 'expired' | 'empty';
 
 export class DirectUploadError extends Error {
   constructor(
@@ -265,6 +313,10 @@ export async function uploadAssetDirect(file: File, opts: DirectUploadOptions = 
   };
   const contentType = file.type || 'application/octet-stream';
 
+  // A 0-byte file has nothing to show; say so before any network call (the API
+  // refuses it too: ASSET_FILE_EMPTY). It used to read "File size is required."
+  if (file.size === 0) throw new DirectUploadError('empty', 'This file is empty.');
+
   opts.onPhase?.('preparing');
   let presign: PresignResponse;
   try {
@@ -275,10 +327,16 @@ export async function uploadAssetDirect(file: File, opts: DirectUploadOptions = 
       folderId: opts.folderId ?? null,
     });
   } catch (e) {
-    throw mapApiError(e);
+    const mapped = mapApiError(e);
+    // A refusal for size states the real ceiling: remember it for the next file and the hint.
+    if (mapped.code === 'too-large') {
+      noteServerUploadLimit(contentType, (mapped.apiBody as { maxFileSize?: unknown } | undefined)?.maxFileSize);
+    }
+    throw mapped;
   }
   aborted();
   const storedType = presign.mimeType || contentType;
+  noteServerUploadLimit(storedType, presign.maxFileSize);
 
   // ── token lifecycle (TUS re-checks it on every chunk) ────────────────────
   let token = presign.token || '';

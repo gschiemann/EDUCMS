@@ -15,7 +15,8 @@
  *
  * Uploads use the same direct-to-storage client the /assets page uses
  * (src/lib/direct-upload.ts: presign → resumable TUS / signed PUT →
- * complete-upload, up to 2 GB for video, with live progress). `onPick`
+ * complete-upload, video up to the storage limit — 500 MB today — with live
+ * progress). `onPick`
  * receives the asset's stored `fileUrl` so callers store it exactly as before.
  */
 

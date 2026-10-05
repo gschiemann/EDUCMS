@@ -2026,7 +2026,8 @@ export default function ClassicPlaylistsPage({
   // client the /assets page uses (src/lib/direct-upload.ts — 2026-09-23: this
   // used to POST multipart, i.e. through the API's RAM, capped at 500 MB).
   // Large files go up RESUMABLE, so a 4K video survives a dropped connection;
-  // video may be up to 2 GB. The upload lands in whichever folder the picker
+  // video may be up to the storage limit (500 MB today — src/lib/direct-upload.ts
+  // videoUploadLimitBytes). The upload lands in whichever folder the picker
   // is browsing. On success we (a) invalidate the assets cache so it
   // refetches and (b) auto-select the new asset so "Add Selected" picks it up
   // without an extra click.

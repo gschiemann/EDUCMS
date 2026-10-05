@@ -3,13 +3,42 @@
 /**
  * The words a picker shows when a direct upload fails (2026-09-23). Server
  * refusals (a 413/415 from presign or complete-upload) already carry the
- * specific, actionable API message — "Video is too large for signage (2.5 GB).
- * Max is 2 GB…" — so those pass through; transport failures get translated
- * copy. Shared by every picker that calls `uploadAssetDirect`.
+ * specific, actionable API message — "File is too large. Max size is 500 MB." —
+ * so those pass through; transport failures get translated copy. Shared by
+ * every picker that calls `uploadAssetDirect`.
+ *
+ * 2026-10-05 — complete-upload now reads the bytes and refuses a file that is
+ * not what its name says, or that a screen cannot play (a truncated video, text
+ * named .jpg, a PDF cut short …: apps/api/src/assets/upload-content-verdict.ts).
+ * Each refusal has a stable code, translated here; the server's English sentence
+ * is the same words and stays the fallback.
  */
 import { useTranslations } from 'next-intl';
-import { DirectUploadError, formatUploadCap, maxUploadBytesFor } from '@/lib/direct-upload';
+import {
+  DirectUploadError,
+  formatUploadCap,
+  maxUploadBytesFor,
+  refuseBeforeUploadAboveBytes,
+} from '@/lib/direct-upload';
 import { STORAGE_QUOTA_EXCEEDED, formatStorageBytes, storageQuotaNumbers } from '@/lib/storage-bytes';
+
+/**
+ * The upload content check's refusal codes → their `directUpload.*` words.
+ * MUST list every code in UPLOAD_REFUSALS (apps/api/src/assets/upload-content-
+ * verdict.ts) — use-upload-error-text.test.tsx reads that file and fails on a
+ * code that has no words here.
+ */
+export const CONTENT_REFUSAL_KEYS: Readonly<Record<string, string>> = {
+  ASSET_FILE_EMPTY: 'fileEmpty',
+  ASSET_IMAGE_UNREADABLE: 'imageUnreadable',
+  ASSET_IMAGE_HEIC: 'imageHeic',
+  ASSET_VIDEO_UNPLAYABLE: 'videoUnplayable',
+  ASSET_VIDEO_NO_PICTURE: 'videoNoPicture',
+  ASSET_VIDEO_IS_PICTURE: 'videoIsPicture',
+  ASSET_AUDIO_UNPLAYABLE: 'audioUnplayable',
+  ASSET_PDF_NOT_PDF: 'pdfNotPdf',
+  ASSET_PDF_INCOMPLETE: 'pdfIncomplete',
+};
 
 function fmtBytes(bytes: number): string {
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
@@ -35,8 +64,13 @@ export function useUploadErrorText(): (err: unknown, file: File) => string {
           });
         }
       }
+      // 2026-10-05 — the file is not what its name says, or a screen cannot play it.
+      if (err.source === 'api' && err.apiCode && CONTENT_REFUSAL_KEYS[err.apiCode]) {
+        return t(CONTENT_REFUSAL_KEYS[err.apiCode]);
+      }
       // Our API's refusal already says exactly what to do — show it as sent.
       if (err.source === 'api' && err.message) return err.message;
+      if (err.code === 'empty') return t('fileEmpty');
       if (err.code === 'aborted') return t('cancelled');
       if (err.code === 'network') return t('networkLost');
       if (err.code === 'expired') return t('expired');
@@ -49,11 +83,18 @@ export function useUploadErrorText(): (err: unknown, file: File) => string {
   };
 }
 
-/** A pre-flight check a picker runs before any network call. null = fine. */
+/**
+ * A pre-flight check a picker runs before any network call. null = fine.
+ * Refuses an empty file, and a file over the limit the server has stated (a video
+ * the server has not been asked about yet goes to presign, which answers before a
+ * byte moves — see `refuseBeforeUploadAboveBytes`).
+ */
 export function useUploadTooLargeText(): (file: File) => string | null {
   const t = useTranslations('directUpload');
   return (file) => {
-    const max = maxUploadBytesFor(file);
-    return file.size > max ? t('tooLarge', { name: file.name, size: fmtBytes(file.size), max: formatUploadCap(max) }) : null;
+    if (file.size === 0) return t('fileEmpty');
+    return file.size > refuseBeforeUploadAboveBytes(file)
+      ? t('tooLarge', { name: file.name, size: fmtBytes(file.size), max: formatUploadCap(maxUploadBytesFor(file)) })
+      : null;
   };
 }

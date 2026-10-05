@@ -23,6 +23,40 @@ export interface OptimizedMedia {
   finalBytes: number;
   originalDimensions?: { w: number; h: number };
   processedDimensions?: { w: number; h: number };
+  /**
+   * 2026-10-05 — what sharp made of the INPUT, for the upload content check
+   * (assets/upload-content-verdict.ts). `sourceFormat` / `sourceCompression` are
+   * sharp's own `metadata()` answer ('jpeg', 'png', 'heif' + 'hevc', 'svg' …);
+   * `decodeFailure` is what it threw, when it threw. Before this the failure was
+   * only logged and the original kept — a text file named .jpg ended "Ready".
+   * Undefined when the optimizer never looked (not an optimizable type).
+   */
+  sourceFormat?: string | null;
+  sourceCompression?: string | null;
+  decodeFailure?: string | null;
+  /**
+   * The source was a format screens cannot draw (SVG, TIFF, AVIF … under a
+   * JPEG / PNG / WebP name), so the re-encode replaces it even though it is not
+   * smaller. Only with `convertNonScreenFormats` (see optimizeImageForUpload).
+   */
+  convertedForScreens?: boolean;
+}
+
+/**
+ * Formats a screen draws from an `<img>` whatever the file is called (browsers
+ * sniff the bytes). Anything else sharp can read (SVG, TIFF, AVIF/HEIF, …) shows
+ * black on a screen when stored as uploaded.
+ */
+const SCREEN_IMAGE_FORMATS = new Set(['jpeg', 'png', 'webp', 'gif']);
+
+/**
+ * Will the caller store the optimizer's re-encode in place of the original?
+ * The upload path's rule, in one place (assets.controller.ts completeUpload and
+ * the upload content check both read it): a re-encode that is smaller, or one
+ * that replaces a format screens cannot draw.
+ */
+export function adoptsReencode(opt: OptimizedMedia, originalBytes: number): boolean {
+  return opt.optimized && (opt.finalBytes < originalBytes || opt.convertedForScreens === true);
 }
 
 /**
@@ -147,10 +181,21 @@ export class MediaOptimizationService {
    *
    * Returns `optimized: false` and the ORIGINAL bytes if:
    *   - The processed buffer ended up larger than the original (rare but
-   *     possible for tiny / pre-optimized inputs).
-   *   - sharp threw (corrupt input, unrecognized format).
+   *     possible for tiny / pre-optimized inputs) — unless the source is a
+   *     format screens cannot draw and `opts.convertNonScreenFormats` is set.
+   *   - sharp threw (corrupt input, unrecognized format) — `decodeFailure`
+   *     then says what it threw (2026-10-05).
    * Callers must always store the returned buffer + mime + ext, NOT the
    * inputs they passed in — the optimizer may switch JPEG→JPEG, PNG→PNG, etc.
+   *
+   * `opts.convertNonScreenFormats` (2026-10-05, the media-library upload only):
+   * an SVG, TIFF or AVIF under a JPEG / PNG / WebP name used to be kept as
+   * uploaded whenever its re-encode came out bigger — and a screen cannot draw
+   * those bytes (an SVG served as image/png is black everywhere; AVIF is black on
+   * a Chromium-83 LED controller). With the option the re-encode replaces them
+   * whatever it weighs (`convertedForScreens`). Off by default so every other
+   * caller — the multipart path that panic content uses, the 1080p publish copy —
+   * behaves exactly as before.
    */
   async optimizeImageForUpload(
     buffer: Buffer,
@@ -158,6 +203,7 @@ export class MediaOptimizationService {
     ext: string,
     maxDimension = UPLOAD_IMAGE_MAX_DIM,
     maxShortDimension = maxDimension,
+    opts: { convertNonScreenFormats?: boolean } = {},
   ): Promise<OptimizedMedia> {
     const passthrough = (): OptimizedMedia => ({
       buffer,
@@ -170,10 +216,20 @@ export class MediaOptimizationService {
 
     if (!this.isUploadOptimizableImage(mimeType)) return passthrough();
 
+    // What sharp recognised, kept outside the try so a decode that fails AFTER
+    // the header read still reports the format (a HEIC reads fine, then fails).
+    let meta: sharp.Metadata | null = null;
+    const source = () => ({
+      sourceFormat: meta?.format ?? null,
+      sourceCompression:
+        typeof (meta as { compression?: unknown } | null)?.compression === 'string'
+          ? ((meta as { compression?: string }).compression as string)
+          : null,
+    });
     try {
       // First read metadata so we can record dimensions for processingMeta —
       // this is a cheap header parse, sharp does NOT decode the whole image.
-      const meta = await sharp(buffer, { failOn: 'none' }).metadata();
+      meta = await sharp(buffer, { failOn: 'none' }).metadata();
       const origW = typeof meta.width === 'number' ? meta.width : undefined;
       const origH = typeof meta.height === 'number' ? meta.height : undefined;
       const originalDimensions = origW && origH ? { w: origW, h: origH } : undefined;
@@ -221,9 +277,12 @@ export class MediaOptimizationService {
 
       // If we didn't resize AND the encode produced a bigger buffer, fall
       // back to the original. (Re-encoding can balloon files that were
-      // already aggressively compressed.)
-      if (!needsResize && outBuf.length >= buffer.length) {
-        return { ...passthrough(), originalDimensions };
+      // already aggressively compressed.) Unless the original is a format no
+      // screen draws and the caller asked for those to be converted.
+      const screenDrawable = SCREEN_IMAGE_FORMATS.has(String(meta.format ?? ''));
+      const convertedForScreens = !screenDrawable && opts.convertNonScreenFormats === true;
+      if (!needsResize && outBuf.length >= buffer.length && !convertedForScreens) {
+        return { ...passthrough(), originalDimensions, ...source() };
       }
 
       // Read the OUT buffer's dimensions for the metadata record.
@@ -244,12 +303,14 @@ export class MediaOptimizationService {
         finalBytes: outBuf.length,
         originalDimensions,
         processedDimensions,
+        ...source(),
+        ...(convertedForScreens ? { convertedForScreens: true } : {}),
       };
     } catch (e: any) {
       this.logger.warn(
         `optimizeImageForUpload failed (${mimeType}); storing original: ${e?.message || e}`,
       );
-      return passthrough();
+      return { ...passthrough(), ...source(), decodeFailure: String(e?.message || e) };
     }
   }
 

@@ -28,7 +28,12 @@ import {
   jwtExpiryMs,
   maxUploadBytesFor,
   formatUploadCap,
-  MAX_DIRECT_VIDEO_BYTES,
+  DEFAULT_DIRECT_VIDEO_BYTES,
+  DIRECT_VIDEO_CEILING_BYTES,
+  noteServerUploadLimit,
+  refuseBeforeUploadAboveBytes,
+  resetServerUploadLimit,
+  videoUploadLimitBytes,
   type DirectUploadDeps,
   type XhrResult,
 } from '../direct-upload';
@@ -96,7 +101,8 @@ function harness(opts: { now?: () => number; server?: Partial<Server>; presignTo
         storagePath: PATH,
         fileUrl: `${SUPA}/storage/v1/object/public/assets/${PATH}`,
         mimeType: body.contentType,
-        maxFileSize: MAX_DIRECT_VIDEO_BYTES,
+        // What the API answers today for a video: the bucket's 500 MB (assets.controller.ts directCeiling).
+        maxFileSize: DEFAULT_DIRECT_VIDEO_BYTES,
         resumable: opts.noResumable
           ? null
           : { endpoint: ENDPOINT, bucketName: 'assets', objectName: PATH, chunkSize: 6 * MB, cacheControl: '31536000' },
@@ -184,6 +190,8 @@ function harness(opts: { now?: () => number; server?: Partial<Server>; presignTo
   };
   return { deps, server, calls, postJson, request, advance: (ms: number) => (clock += ms) };
 }
+
+beforeEach(() => resetServerUploadLimit());
 
 describe('uploadAssetDirect — TUS resumable for large files', () => {
   it('a 20 MB video goes up in 6 MB chunks with the token as x-signature, then registers', async () => {
@@ -347,14 +355,75 @@ describe('uploadAssetDirect — small files and server refusals', () => {
   });
 });
 
-describe('helpers', () => {
-  it('maxUploadBytesFor: 2 GB for video, 500 MB for the rest', () => {
-    expect(maxUploadBytesFor({ type: 'video/mp4' })).toBe(2 ** 31 - 1);
-    expect(maxUploadBytesFor({ name: 'clip.webm' })).toBe(2 ** 31 - 1);
+describe('the honest size limit (2026-10-05) — the page says what the server takes', () => {
+  /** A file-shaped stand-in: allocating 700 MB in a test is not the point. */
+  const bigVideo = (bytes: number) => ({ size: bytes, type: 'video/mp4', name: 'gym-4k.mp4' }) as unknown as File;
+  /** Cut from AssetsController.assertUploadIntent: the outer-cap 413 for a 700 MB video, bucket at 500 MB. */
+  const PRESIGN_413 = { code: 'ASSET_FILE_TOO_LARGE', message: 'File is too large. Max size is 500 MB.', maxFileSize: 524288000 };
+
+  it('before any server answer: video SHOWS 500 MB (what storage takes), the rest 500 MB', () => {
+    expect(videoUploadLimitBytes()).toBe(500 * MB);
+    expect(maxUploadBytesFor({ type: 'video/mp4' })).toBe(500 * MB);
+    expect(maxUploadBytesFor({ name: 'clip.webm' })).toBe(500 * MB);
     expect(maxUploadBytesFor({ type: 'image/png' })).toBe(500 * MB);
+    expect(formatUploadCap(maxUploadBytesFor({ type: 'video/mp4' }))).toBe('500 MB');
     expect(formatUploadCap(2 ** 31 - 1)).toBe('2 GB');
-    expect(formatUploadCap(500 * MB)).toBe('500 MB');
   });
+
+  it('…but nothing under the 2 GB code ceiling is turned away locally until the server has stated its limit', () => {
+    expect(refuseBeforeUploadAboveBytes({ type: 'video/mp4' })).toBe(DIRECT_VIDEO_CEILING_BYTES);
+    expect(refuseBeforeUploadAboveBytes({ type: 'image/jpeg' })).toBe(500 * MB);
+  });
+
+  it('a 700 MB video is refused by presign BEFORE a byte moves, with the server\'s words — and the page learns the limit', async () => {
+    const h = harness();
+    h.postJson.mockImplementationOnce(async () => {
+      const e = new Error(PRESIGN_413.message) as Error & { status?: number; code?: string; body?: unknown };
+      e.status = 413;
+      e.code = PRESIGN_413.code;
+      e.body = PRESIGN_413;
+      throw e;
+    });
+    const err = await uploadAssetDirect(bigVideo(700_000_000), { deps: h.deps }).catch((e) => e);
+    expect(err).toBeInstanceOf(DirectUploadError);
+    expect(err.code).toBe('too-large');
+    expect(err.message).toBe('File is too large. Max size is 500 MB.');
+    expect(h.request).not.toHaveBeenCalled(); // no PUT, no TUS: not a byte sent
+    // The next file over it is refused locally, and the hint says 500 MB.
+    expect(refuseBeforeUploadAboveBytes({ type: 'video/mp4' })).toBe(524288000);
+    expect(videoUploadLimitBytes()).toBe(524288000);
+  });
+
+  it('the day the storage limit is raised, the page follows the server instead of refusing what it would take', async () => {
+    const h = harness();
+    h.postJson.mockImplementationOnce((async (_p: string, body: any) => ({
+      uploadUrl: 'x', signedUrl: 'x', token: 't', storagePath: PATH, fileUrl: 'u', mimeType: body.contentType,
+      maxFileSize: DIRECT_VIDEO_CEILING_BYTES, resumable: null, renewTicket: 'r',
+    })) as any);
+    await uploadAssetDirect(file(1 * MB), { deps: h.deps });
+    expect(videoUploadLimitBytes()).toBe(DIRECT_VIDEO_CEILING_BYTES);
+    expect(formatUploadCap(maxUploadBytesFor({ type: 'video/mp4' }))).toBe('2 GB');
+  });
+
+  it('noteServerUploadLimit learns only a video\'s limit, and only a real number', () => {
+    noteServerUploadLimit('image/jpeg', 25 * MB);
+    noteServerUploadLimit('video/mp4', 'lots');
+    noteServerUploadLimit('video/mp4', -1);
+    expect(videoUploadLimitBytes()).toBe(DEFAULT_DIRECT_VIDEO_BYTES);
+    noteServerUploadLimit('video/mp4', 10 * 1024 ** 3);
+    expect(videoUploadLimitBytes()).toBe(DIRECT_VIDEO_CEILING_BYTES); // never above the code ceiling
+  });
+
+  it('a 0-byte file is "empty" before any network call', async () => {
+    const h = harness();
+    const err = await uploadAssetDirect(file(0), { deps: h.deps }).catch((e) => e);
+    expect(err).toBeInstanceOf(DirectUploadError);
+    expect(err.code).toBe('empty');
+    expect(h.postJson).not.toHaveBeenCalled();
+  });
+});
+
+describe('helpers', () => {
   it('jwtExpiryMs reads exp without verifying; garbage is null', () => {
     expect(jwtExpiryMs(jwt(1234))).toBe(1_234_000);
     expect(jwtExpiryMs('nope')).toBeNull();

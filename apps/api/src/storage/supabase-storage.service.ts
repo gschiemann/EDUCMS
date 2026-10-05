@@ -904,6 +904,69 @@ export class SupabaseStorageService implements OnModuleInit {
   }
 
   /**
+   * Read bytes `start`…`endInclusive` of an `assets` object (2026-10-05, the
+   * upload content check: a PDF's first and last few KB). Service-role GET with a
+   * `Range` header — never the whole object: a 206 is the range; a 200 (the range
+   * ignored) is accepted only for a range that starts at 0 and is cut at the same
+   * length; any other answer, a time-out or a thrown fetch resolves null. Bounded
+   * by `timeoutMs` even on the node:https fallback, which ignores abort signals.
+   */
+  async readObjectRange(
+    filePath: string,
+    start: number,
+    endInclusive: number,
+    timeoutMs = 5_000,
+  ): Promise<Buffer | null> {
+    if (!Number.isInteger(start) || !Number.isInteger(endInclusive) || start < 0 || endInclusive < start) {
+      return null;
+    }
+    const want = endInclusive - start + 1;
+    const ac = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const expired = new Promise<null>((resolve) => {
+      timer = setTimeout(() => {
+        ac.abort();
+        resolve(null);
+      }, timeoutMs);
+    });
+    const read = (async (): Promise<Buffer | null> => {
+      const { url, key } = this.supabaseConfig();
+      const res = await this.storageFetch(`${url}/storage/v1/object/${BUCKET}/${filePath}`, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${key}`, apikey: key, Range: `bytes=${start}-${endInclusive}` },
+        signal: ac.signal,
+      });
+      if (res.status !== 206 && !(res.status === 200 && start === 0)) {
+        await res.body?.cancel().catch(() => undefined);
+        return null;
+      }
+      const body = res.body;
+      if (!body) return Buffer.from(await res.arrayBuffer()).subarray(0, want);
+      const reader = body.getReader();
+      const chunks: Buffer[] = [];
+      let total = 0;
+      try {
+        while (total < want) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value && value.byteLength > 0) {
+            chunks.push(Buffer.from(value.buffer, value.byteOffset, value.byteLength));
+            total += value.byteLength;
+          }
+        }
+      } finally {
+        reader.cancel().catch(() => undefined);
+      }
+      return Buffer.concat(chunks).subarray(0, want);
+    })().catch(() => null);
+    try {
+      return await Promise.race([read, expired]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  /**
    * Delete a file from Supabase Storage.
    */
   async delete(filePath: string): Promise<void> {

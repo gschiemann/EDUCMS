@@ -156,6 +156,7 @@ import { MediaPublicationService } from './schedules/media-publication.service';
 import { VideoTranscodePipeline } from './storage/video-transcode/video-transcode.pipeline';
 import { VideoTranscodeWorker } from './storage/video-transcode/video-transcode.worker';
 import { StorageQuotaService } from './assets/storage-quota.service';
+import { UploadContentCheckService } from './assets/upload-content-check.service';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { RbacGuard } from './auth/rbac.guard';
 import { SentryModule } from '@sentry/nestjs/setup';
@@ -332,6 +333,12 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     // 2026-09-24 — per-organisation storage allowance on the media-library upload
     // paths (assets/storage-quota.service.ts).
     StorageQuotaService,
+    // 2026-10-05 — complete-upload reads the stored bytes before an Asset row
+    // exists: a file that is not what its name says, or that a screen cannot
+    // play (a truncated video, text named .jpg), is refused in plain words and
+    // deleted; a check that cannot run accepts as before
+    // (assets/upload-content-check.service.ts).
+    UploadContentCheckService,
     // Server-side URL renderer (Puppeteer + Alpine Chromium). Used by
     // ProxyController to handle JS-heavy / AJAX-loaded sites that the
     // legacy strip-scripts proxy can't render. See renderer.service.ts.

@@ -84,6 +84,122 @@ export interface RuleTarget {
   screenGroupId: string | null;
 }
 
+// ── naming the files a publish cannot prepare (2026-10-05) ──────────────────
+//
+// One file a 1080p screen could not get a copy of used to refuse the WHOLE
+// publish with "The 1080p image copy could not be prepared … please retry
+// publishing" — naming nothing, and retrying could never help (media beta test
+// 2026-10-04, img-findings ANSWER 1: two non-pictures blocked 86 good ones). Now
+// every file is examined, the refusal names each one by the name the operator
+// sees, says what to do, and carries the asset ids (`files`).
+
+/** One file a publish could not prepare for its 1080p screens. */
+export interface PlaybackCopyFailure {
+  assetId: string;
+  /** The name the operator sees in the Media Library. */
+  name: string;
+}
+
+/** The audit action that records which files a held publish failed on (GET /schedules reads it back). */
+export const SCHEDULE_MEDIA_COPY_FAILED = 'SCHEDULE_MEDIA_COPY_FAILED';
+
+/** What the operator calls a file: its upload name, else the last part of its URL, else its id. */
+export function assetDisplayName(asset: { id: string; originalName?: string | null; fileUrl?: string | null }): string {
+  const own = (asset.originalName || '').replace(/\s+/g, ' ').trim();
+  if (own) return own;
+  try {
+    const last = decodeURIComponent(new URL(asset.fileUrl || '').pathname.split('/').pop() || '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (last) return last;
+  } catch {
+    /* not a URL */
+  }
+  return asset.id;
+}
+
+const NAMES_SHOWN = 5;
+const NAME_CHARS = 80;
+
+/** `“a.jpg”, “b.png” and 3 more` — at most five names, each cut at 80 characters. */
+export function quoteFileNames(names: string[]): string {
+  const quoted = names.slice(0, NAMES_SHOWN).map((n) => {
+    const one = n.replace(/\s+/g, ' ').trim();
+    return `“${one.length > NAME_CHARS ? `${one.slice(0, NAME_CHARS - 1)}…` : one}”`;
+  });
+  const rest = names.length - quoted.length;
+  return rest > 0 ? `${quoted.join(', ')} and ${rest} more` : quoted.join(', ');
+}
+
+/**
+ * The words a refused publish says. `unusable`: the file itself cannot be
+ * prepared — it must be removed or replaced. `retry`: the copy could not be made
+ * just now (storage, the job queue) — publishing again can work. English here;
+ * the dashboard translates from the `files` it is sent.
+ */
+export function playbackCopyFailureMessage(names: string[], kind: 'unusable' | 'retry'): string {
+  const files = quoteFileNames(names);
+  const many = names.length > 1;
+  if (kind === 'retry') {
+    return `The 1080p ${many ? 'copies' : 'copy'} of ${files} couldn't be made just now. ` +
+      'The previous content stays on screen — publish again in a minute.';
+  }
+  return many
+    ? `These files can't be prepared for 1080p screens: ${files}. Remove or replace them, then publish again. The previous content stays on screen.`
+    : `${files} can't be prepared for 1080p screens. Remove or replace it, then publish again. The previous content stays on screen.`;
+}
+
+/** At most this many files ride in one refusal body (a message names five; the ids are all here up to this). */
+const FILES_IN_BODY = 100;
+
+/** The files a SCHEDULE_MEDIA_COPY_FAILED audit row recorded; null when it holds none. Never throws. */
+export function failedPublicationFiles(details: string | null | undefined): PlaybackCopyFailure[] | null {
+  try {
+    const parsed: unknown = JSON.parse(details || '');
+    const files = parsed && typeof parsed === 'object' ? (parsed as { files?: unknown }).files : null;
+    if (!Array.isArray(files)) return null;
+    const out: PlaybackCopyFailure[] = [];
+    for (const f of files) {
+      const rec = f && typeof f === 'object' ? (f as Record<string, unknown>) : {};
+      if (typeof rec.assetId === 'string' && typeof rec.name === 'string') out.push({ assetId: rec.assetId, name: rec.name });
+    }
+    return out.length ? out : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The refusal for a publish with files that cannot get their 1080p copy. Files
+ * that are unusable are what the operator must act on, so they are named when
+ * any exist (422); a refusal made only of "not just now" failures is a 503.
+ */
+export function playbackCopyRefusal(
+  code: 'IMAGE_PLAYBACK_COPY_FAILED' | 'VIDEO_PLAYBACK_COPY_QUEUE_FAILED',
+  failures: Array<PlaybackCopyFailure & { retryable: boolean }>,
+): HttpException {
+  const unusable = failures.filter((f) => !f.retryable);
+  const named = unusable.length ? unusable : failures;
+  const retryable = unusable.length === 0;
+  return new HttpException(
+    {
+      code,
+      message: playbackCopyFailureMessage(named.map((f) => f.name), retryable ? 'retry' : 'unusable'),
+      files: named.slice(0, FILES_IN_BODY).map(({ assetId, name }) => ({ assetId, name })),
+      retryable,
+    },
+    retryable ? HttpStatus.SERVICE_UNAVAILABLE : HttpStatus.UNPROCESSABLE_ENTITY,
+  );
+}
+
+/** Why one picture's 1080p copy could not be made, and whether publishing again can help. */
+class ImageCopyError extends Error {
+  constructor(message: string, readonly retryable: boolean) {
+    super(message);
+    this.name = 'ImageCopyError';
+  }
+}
+
 @Injectable()
 export class MediaPublicationService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(MediaPublicationService.name);
@@ -143,7 +259,7 @@ export class MediaPublicationService implements OnModuleInit, OnModuleDestroy {
   private async ensureImageCopy(tenantId: string, asset: Asset): Promise<void> {
     const file = this.fileOwner(asset.fileUrl);
     if (!file || this.storage.publicUrlForPath(file.path) !== asset.fileUrl) {
-      throw new Error('This image cannot be optimized for the selected screen. Publishing was not started.');
+      throw new ImageCopyError('This image cannot be optimized for the selected screen. Publishing was not started.', false);
     }
     if (file.owner !== tenantId) {
       // A file outside this tenant's folder is readable here ONLY when it is a
@@ -154,19 +270,29 @@ export class MediaPublicationService implements OnModuleInit, OnModuleDestroy {
         where: { tenantId: file.owner, fileUrl: asset.fileUrl },
         select: { id: true },
       });
-      if (!shared) throw new Error('This image cannot be optimized for the selected screen. Publishing was not started.');
+      if (!shared) throw new ImageCopyError('This image cannot be optimized for the selected screen. Publishing was not started.', false);
     }
     const path = file.path;
     const source = await this.storage.download(path);
-    if (!source) throw new Error('The image could not be downloaded for optimization. Publishing was not started.');
-    const actual = await sharp(source).metadata();
+    if (!source) throw new ImageCopyError('The image could not be downloaded for optimization. Publishing was not started.', true);
+    let actual: sharp.Metadata;
+    try {
+      actual = await sharp(source).metadata();
+    } catch (err) {
+      // The bytes are not a picture sharp can read (text, HTML, a video under a
+      // picture's name): the same bytes fail the same way on every retry.
+      throw new ImageCopyError(`Not a readable image: ${(err as Error).message}`, false);
+    }
     if (actual.width && actual.height && Math.max(actual.width, actual.height) <= 1920 &&
         Math.min(actual.width, actual.height) <= 1080) return;
     const result = await this.mediaOpt.optimizeImageForUpload(source, asset.mimeType, extname(path), 1920, 1080);
     if (!result.optimized || !result.processedDimensions ||
         Math.max(result.processedDimensions.w, result.processedDimensions.h) > 1920 ||
         Math.min(result.processedDimensions.w, result.processedDimensions.h) > 1080) {
-      throw new Error('The 1080p image copy could not be prepared. Publishing was not started.');
+      throw new ImageCopyError(
+        `The 1080p image copy could not be prepared${result.decodeFailure ? ` (${result.decodeFailure})` : ''}. Publishing was not started.`,
+        false,
+      );
     }
     const outputPath = `${tenantId}/optimized/renditions/${randomUUID()}${result.ext}`;
     const sha256 = createHash('sha256').update(result.buffer).digest('hex');
@@ -186,7 +312,10 @@ export class MediaPublicationService implements OnModuleInit, OnModuleDestroy {
             renditions: { ...((asset.processingMeta as Record<string, any> | null)?.renditions ?? {}), '1080p': rendition },
           } as Prisma.InputJsonObject },
         });
-        if (!updated.count) throw new Error('The image changed during optimization. Publishing was not started.');
+        // Count 0: the row changed meanwhile, or the picture is also in a
+        // protected (emergency) playlist, which never gets a copy — removing
+        // or replacing it is the way forward either way.
+        if (!updated.count) throw new ImageCopyError('The image changed during optimization. Publishing was not started.', false);
         await tx.auditLog.create({ data: {
           tenantId, userId: null, action: 'IMAGE_PLAYBACK_RENDITION_CREATED',
           targetType: 'Asset', targetId: asset.id,
@@ -237,6 +366,9 @@ export class MediaPublicationService implements OnModuleInit, OnModuleDestroy {
     // Each asset once, however many times the playlist repeats it.
     const assets = new Map(playlist.items.map((i) => [i.asset.id, i.asset] as const));
     const waiting: Asset[] = [];
+    // EVERY picture is examined (2026-10-05): the first failure used to end the
+    // publish, unnamed, and the files after it were never looked at.
+    const imageFailures: Array<PlaybackCopyFailure & { retryable: boolean }> = [];
     for (let asset of assets.values()) {
       if (!needsImage(asset) && !needsVideo(asset)) continue;
       asset = await this.adoptOwnerPlaybackFacts(tenantId, asset);
@@ -244,22 +376,27 @@ export class MediaPublicationService implements OnModuleInit, OnModuleDestroy {
         try {
           await this.ensureImageCopy(tenantId, asset);
         } catch (error) {
-          this.logger.warn(`Image playback preparation failed for ${asset.id}: ${(error as Error).message}`);
-          throw new HttpException({ code: 'IMAGE_PLAYBACK_COPY_FAILED',
-            message: 'The 1080p image copy could not be prepared. The previous content remains on screen; please retry publishing.' },
-          HttpStatus.SERVICE_UNAVAILABLE);
+          const retryable = error instanceof ImageCopyError ? error.retryable : true;
+          this.logger.warn(
+            `Image playback preparation failed for ${asset.id} (${retryable ? 'may work on a retry' : 'the file itself'}): ${(error as Error).message}`,
+          );
+          imageFailures.push({ assetId: asset.id, name: assetDisplayName(asset), retryable });
+          continue;
         }
       }
       if (needsVideo(asset)) waiting.push(asset);
     }
+    // Refused before anything is queued: the caller creates no schedule row and
+    // the previous content stays on screen.
+    if (imageFailures.length) throw playbackCopyRefusal('IMAGE_PLAYBACK_COPY_FAILED', imageFailures);
+    const queueFailures: Array<PlaybackCopyFailure & { retryable: boolean }> = [];
     for (const asset of waiting) {
       const queued = await this.jobs.enqueueForRendition({
         tenantId, assetId: asset.id, sourceUrl: asset.fileUrl, sourceBytes: asset.fileSize,
       });
-      if (!queued) throw new HttpException({ code: 'VIDEO_PLAYBACK_COPY_QUEUE_FAILED',
-        message: 'The 1080p video copy could not be queued. The previous content remains on screen; please retry publishing.' },
-      HttpStatus.SERVICE_UNAVAILABLE);
+      if (!queued) queueFailures.push({ assetId: asset.id, name: assetDisplayName(asset), retryable: true });
     }
+    if (queueFailures.length) throw playbackCopyRefusal('VIDEO_PLAYBACK_COPY_QUEUE_FAILED', queueFailures);
     return waiting.length > 0;
   }
 
@@ -277,6 +414,45 @@ export class MediaPublicationService implements OnModuleInit, OnModuleDestroy {
       if (await this.prepare(tenantId, playlistId, rule.screenId, rule.screenGroupId)) waiting.add(rule.id);
     }
     return waiting;
+  }
+
+  /**
+   * A held publish whose copy cannot be made: stamp the rule with words that
+   * NAME the files and say what to do (the dashboard shows them on the rule),
+   * and record the files — ids and names — in the audit log, which GET
+   * /schedules reads back as `pendingMediaFiles` so the page can say it in the
+   * operator's language. The stamp is guarded (only a held, unstamped rule);
+   * the audit row follows only a stamp that landed.
+   */
+  private async stampCopyFailure(
+    rule: { id: string; tenantId: string; playlistId: string; screenId: string | null; screenGroupId: string | null },
+    files: Array<PlaybackCopyFailure & { job: { status: string | null; reason: string | null } }>,
+  ): Promise<void> {
+    const stamped = await this.prisma.client.schedule.updateMany({
+      where: { id: rule.id, tenantId: rule.tenantId, pendingMedia: true, pendingMediaError: null },
+      data: { pendingMediaError: playbackCopyFailureMessage(files.map((f) => f.name), 'unusable') },
+    });
+    if (!stamped.count) return;
+    try {
+      await this.prisma.client.auditLog.create({
+        data: {
+          tenantId: rule.tenantId,
+          userId: null,
+          action: SCHEDULE_MEDIA_COPY_FAILED,
+          targetType: 'Schedule',
+          targetId: rule.id,
+          details: JSON.stringify({
+            playlistId: rule.playlistId,
+            screenId: rule.screenId,
+            screenGroupId: rule.screenGroupId,
+            files: files.slice(0, FILES_IN_BODY),
+          }),
+        },
+      });
+    } catch (err) {
+      // The named words are already on the rule; the page then shows them as sent.
+      this.logger.warn(`Could not record the files of failed publication ${rule.id}: ${(err as Error).message}`);
+    }
   }
 
   /** Recheck every item and target; never activate on a failed/incomplete copy. */
@@ -309,19 +485,24 @@ export class MediaPublicationService implements OnModuleInit, OnModuleDestroy {
       for (const rule of pending) {
         const targetResolutions = rule.screen
           ? [rule.screen.resolution] : rule.screenGroup?.screens.map((s) => s.resolution) ?? [];
-        const waiting = rule.playlist.items.map((i) => i.asset).filter((asset) =>
-          targetResolutions.some((r) => needs1080VideoCopy(asset, r)));
+        const waiting = [...new Map(rule.playlist.items.map((i) => [i.asset.id, i.asset] as const)).values()]
+          .filter((asset) => targetResolutions.some((r) => needs1080VideoCopy(asset, r)));
         if (waiting.length) {
           const jobs = await this.prisma.client.videoTranscodeJob.findMany({
             where: { tenantId: rule.tenantId, assetId: { in: waiting.map((asset) => asset.id) } },
             select: { assetId: true, status: true, reason: true },
           });
-          const failed = jobs.find((job) => ['failed', 'skipped', 'done'].includes(job.status));
-          if (failed && !rule.pendingMediaError) {
-            await this.prisma.client.schedule.updateMany({
-              where: { id: rule.id, tenantId: rule.tenantId, pendingMedia: true },
-              data: { pendingMediaError: 'A playback copy could not be prepared. Retry publishing this playlist.' },
-            });
+          const jobOf = new Map(jobs.map((job) => [job.assetId, job] as const));
+          // EVERY file whose copy job ended without a copy is named (2026-10-05)
+          // — the stamp used to say "A playback copy could not be prepared",
+          // naming nothing, on the first one it found.
+          const failed = waiting.filter((asset) => ['failed', 'skipped', 'done'].includes(jobOf.get(asset.id)?.status ?? ''));
+          if (failed.length && !rule.pendingMediaError) {
+            await this.stampCopyFailure(rule, failed.map((asset) => ({
+              assetId: asset.id,
+              name: assetDisplayName(asset),
+              job: { status: jobOf.get(asset.id)?.status ?? null, reason: jobOf.get(asset.id)?.reason ?? null },
+            })));
           }
           continue;
         }

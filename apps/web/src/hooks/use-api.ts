@@ -16,6 +16,8 @@ import type {
   RegistrationResponseJSON,
 } from '@simplewebauthn/browser';
 import { apiFetch } from '@/lib/api-client';
+import { useTranslations } from 'next-intl';
+import { translateFailedPublications, withPlaybackCopyText } from '@/lib/playback-copy-text';
 import { removePlaylistsSequentially, type PlaylistSummaryRow } from '@/components/playlists/v1/playlistOps';
 import { API_URL } from '@/lib/api-url';
 // The job poll's "this id is gone" rule (the page settles on the same rule).
@@ -1224,11 +1226,15 @@ export function useSetPlaylistSync() {
  */
 export function useSetPlaylistScreenActive() {
   const qc = useQueryClient();
+  const tCopy = useTranslations('playbackCopy');
   return useMutation({
     mutationFn: ({ playlistId, screenId, active }: { playlistId: string; screenId: string; active: boolean }) =>
       apiFetch(`/playlists/${playlistId}/screens/${screenId}/active`, {
         method: 'PUT',
         body: JSON.stringify({ active }),
+      }).catch((e: unknown) => {
+        // A screen whose 1080p copy cannot be made names the files (2026-10-05).
+        throw withPlaybackCopyText(tCopy, e);
       }),
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ['schedules'] });
@@ -1251,11 +1257,14 @@ export function useRemovePlaylistScreen() {
 
 export function useSetPlaylistActive() {
   const qc = useQueryClient();
+  const tCopy = useTranslations('playbackCopy');
   return useMutation({
     mutationFn: ({ id, active }: { id: string; active: boolean }) =>
       apiFetch(`/playlists/${id}/active`, {
         method: 'PUT',
         body: JSON.stringify({ active }),
+      }).catch((e: unknown) => {
+        throw withPlaybackCopyText(tCopy, e);
       }),
     onMutate: async ({ id, active }) => {
       await Promise.all([
@@ -1290,9 +1299,15 @@ export function useSetPlaylistActive() {
 // ─── Schedules ──────────────────────────────────────────────────
 
 export function useSchedules() {
+  // A held publish whose 1080p copy failed NAMES its files (2026-10-05): the
+  // server sends them as `pendingMediaFiles`, and `pendingMediaError` becomes
+  // the words in the operator's language for every view that shows it.
+  const tCopy = useTranslations('playbackCopy');
+  const select = useCallback((rows: any) => translateFailedPublications(tCopy, rows), [tCopy]);
   return useQuery({
     queryKey: ['schedules'],
     queryFn: () => apiFetch('/schedules'),
+    select,
     staleTime: 30_000,
     // While a video copy is encoding, refresh only on a visible page so the
     // operator sees the automatic publish or its error without reopening it.
@@ -1306,6 +1321,7 @@ export function useSchedules() {
 
 export function useCreateSchedule() {
   const qc = useQueryClient();
+  const tCopy = useTranslations('playbackCopy');
   return useMutation({
     mutationFn: (data: {
       playlistId: string;
@@ -1327,7 +1343,12 @@ export function useCreateSchedule() {
       // Used by the "Save" button in the Publish modal so operators can
       // stage a schedule without flipping any screens.
       isActive?: boolean;
-    }) => apiFetch('/schedules', { method: 'POST', body: JSON.stringify(data) }),
+    }) =>
+      apiFetch('/schedules', { method: 'POST', body: JSON.stringify(data) }).catch((e: unknown) => {
+        // A refused publish names the files it could not prepare (2026-10-05);
+        // every caller shows err.message, so the words change here once.
+        throw withPlaybackCopyText(tCopy, e);
+      }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['schedules'] });
       qc.invalidateQueries({ queryKey: ['playlists'] });
@@ -1337,9 +1358,12 @@ export function useCreateSchedule() {
 
 export function useUpdateSchedule() {
   const qc = useQueryClient();
+  const tCopy = useTranslations('playbackCopy');
   return useMutation({
     mutationFn: ({ id, ...data }: { id: string; screenGroupId?: string; screenId?: string; daysOfWeek?: string | null; timeStart?: string | null; timeEnd?: string | null; priority?: number; mutedOverride?: boolean | null }) =>
-      apiFetch(`/schedules/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+      apiFetch(`/schedules/${id}`, { method: 'PUT', body: JSON.stringify(data) }).catch((e: unknown) => {
+        throw withPlaybackCopyText(tCopy, e);
+      }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['schedules'] });
       qc.invalidateQueries({ queryKey: ['playlists'] });
@@ -1349,8 +1373,12 @@ export function useUpdateSchedule() {
 
 export function useToggleSchedule() {
   const qc = useQueryClient();
+  const tCopy = useTranslations('playbackCopy');
   return useMutation({
-    mutationFn: (id: string) => apiFetch(`/schedules/${id}/toggle`, { method: 'PUT' }),
+    mutationFn: (id: string) =>
+      apiFetch(`/schedules/${id}/toggle`, { method: 'PUT' }).catch((e: unknown) => {
+        throw withPlaybackCopyText(tCopy, e);
+      }),
     onMutate: async (id) => {
       await qc.cancelQueries({ queryKey: ['schedules'] });
       const prev = qc.getQueryData<any>(['schedules']);

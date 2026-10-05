@@ -966,8 +966,11 @@ export class PlaylistsController {
       if (waiting) {
         throw new HttpException({
           code: waiting.pendingMediaError ? 'PLAYBACK_COPY_FAILED' : 'PLAYBACK_COPY_PENDING',
+          // The rule's own words name the files it failed on (2026-10-05,
+          // MediaPublicationService.stampCopyFailure); older rules carry the
+          // generic sentence, which reads fine here too.
           message: waiting.pendingMediaError
-            ? 'A playback copy failed. Retry publishing this playlist.'
+            ? waiting.pendingMediaError
             : 'A playback copy is still being prepared. This playlist will publish automatically when preparation finishes.',
         }, HttpStatus.CONFLICT);
       }

@@ -11304,7 +11304,8 @@ export function AssetLibraryModal({
     setUploadPct(0);
     try {
       // 2026-09-23 — straight to storage (src/lib/direct-upload.ts): resumable
-      // for large files (a 4K video survives a dropped connection), up to 2 GB,
+      // for large files (a 4K video survives a dropped connection), up to the
+      // storage limit (500 MB today — direct-upload.ts videoUploadLimitBytes),
       // with real progress; the API never holds the bytes.
       const completed = await uploadAssetDirect(file, {
         folderId: null,

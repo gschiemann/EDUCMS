@@ -1916,7 +1916,7 @@
     "allFiles": "全部文件",
     "addUrlToggle": "添加网址",
     "upload": "上传",
-    "dropHint": "接着选择文件夹（或根目录）— 图片、视频、音频、PDF · 视频最大 2 GB",
+    "dropHint": "接着选择文件夹（或根目录）— 图片、视频、音频、PDF · 视频最大 500 MB",
     "uploadToFolder": "上传 {count} 个文件到…",
     "uploadWhichFolder": "将文件上传到哪个文件夹？",
     "moveToWhichFolder": "将 {count} 项移动到哪个文件夹？",
@@ -3268,7 +3268,23 @@
     "expired": "此上传已无法继续，请重新开始。",
     "storageRefused": "存储服务拒绝了该文件。请重试，或导出为 MP4（H.264）。",
     "cancelled": "上传已取消。",
-    "storageFull": "此文件需要 {need}；您的 {total} 仅剩 {left} — 请删除不用的媒体或添加屏幕。"
+    "storageFull": "此文件需要 {need}；您的 {total} 仅剩 {left} — 请删除不用的媒体或添加屏幕。",
+    "fileEmpty": "此文件为空（0 字节）。请重新导出并上传新的副本。",
+    "imageUnreadable": "这不是屏幕可以显示的图片——文件可能已损坏，或是以图片名称保存的其他类型文件。请重新导出为 JPG 或 PNG 并上传新的副本。",
+    "imageHeic": "这张照片是 Apple 的 HEIC 格式（以其他名称保存），屏幕无法显示 HEIC。请导出为 JPG 并上传新的副本。",
+    "videoUnplayable": "这不是可以播放的视频——文件可能已损坏或不完整。请重新导出并上传新的副本。",
+    "videoNoPicture": "此文件只有声音没有画面，屏幕上将什么也不显示。请重新导出为视频并上传新的副本。",
+    "videoIsPicture": "这是一张以视频名称保存的图片。请以它真正的图片名称上传（例如 .jpg 或 .png）。",
+    "audioUnplayable": "这不是可以播放的音频文件——文件可能已损坏或不完整。请重新导出并上传新的副本。",
+    "pdfNotPdf": "这不是 PDF——可能是以 .pdf 名称保存的其他类型文件。请重新保存或导出为 PDF 并上传新的副本。",
+    "pdfIncomplete": "此 PDF 不完整——文件可能已损坏或被截断。请重新保存或导出并上传新的副本。"
+  },
+  "playbackCopy": {
+    "cannotPrepare": "{files} 无法为 1080p 屏幕准备。请移除或替换后重新发布。之前的内容仍在屏幕上显示。",
+    "notNow": "{files} 的 1080p 副本暂时无法生成。之前的内容仍在屏幕上显示——请一分钟后重新发布。",
+    "quoted": "“{name}”",
+    "separator": "、",
+    "andMore": "{names}以及另外 {count} 个文件"
   },
   "sportsConsole": {
     "reopenPrompt": "为什么要重新开启这场已结束的比赛？该原因将与您的姓名一起记录。",
