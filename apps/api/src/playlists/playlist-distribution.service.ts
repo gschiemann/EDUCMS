@@ -292,11 +292,31 @@ export class PlaylistDistributionService {
     // the incidental dedupe against a *separately uploaded* child asset that
     // happened to share bytes — which was never required for correctness, and
     // was precisely the substitution vector.
+    // 2026-10-05 — a PDF's pages (`processingMeta.pdfPages`) are facts of the
+    // FILE, so a copy carries the parent's record: ready → the copy's screens
+    // get the same pages; pending → the parent's rendering completes the copy
+    // too (PdfPagesService.propagateToCopies). No record → none (as before).
+    const parentPdfPages =
+      parentAsset?.processingMeta && typeof parentAsset.processingMeta === 'object' && !Array.isArray(parentAsset.processingMeta)
+        ? (parentAsset.processingMeta as Record<string, unknown>).pdfPages
+        : undefined;
+    const pdfPages = parentPdfPages && typeof parentPdfPages === 'object' ? parentPdfPages : null;
     const existing = await this.prisma.client.asset.findFirst({
       where: { tenantId: childTenantId, fileUrl: parentAsset.fileUrl },
-      select: { id: true },
+      select: { id: true, processingMeta: true },
     });
-    if (existing) return existing.id;
+    if (existing) {
+      const own = existing.processingMeta && typeof existing.processingMeta === 'object' && !Array.isArray(existing.processingMeta)
+        ? (existing.processingMeta as Record<string, unknown>) : {};
+      // A copy made before pages existed takes the parent's record once.
+      if (pdfPages && !own.pdfPages) {
+        await this.prisma.client.asset.updateMany({
+          where: { id: existing.id, tenantId: childTenantId, fileUrl: parentAsset.fileUrl },
+          data: { processingMeta: { ...own, pdfPages } as any },
+        });
+      }
+      return existing.id;
+    }
     const created = await this.prisma.client.asset.create({
       data: {
         tenantId: childTenantId,
@@ -308,6 +328,7 @@ export class PlaylistDistributionService {
         originalName: parentAsset.originalName ?? null,
         fileHash: parentAsset.fileHash ?? null,
         altText: parentAsset.altText ?? null,
+        ...(pdfPages ? { processingMeta: { pdfPages } as any } : {}),
       },
       select: { id: true },
     });

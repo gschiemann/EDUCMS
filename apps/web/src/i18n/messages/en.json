@@ -2011,6 +2011,27 @@
       "NO_FILE": "This asset has no file to download.",
       "UNSUPPORTED_URL": "This asset does not have a supported download URL.",
       "EXTERNAL_HOST": "This file is hosted outside the media library. Use Copy asset link instead."
+    },
+    "pdfPages": {
+      "preparing": "Preparing pages… {done} of {count}",
+      "preparingUnknown": "Preparing pages…",
+      "preparingDetail": "screens show it once its pages are ready",
+      "ready": "{pages, plural, one {# page} other {# pages}}",
+      "truncated": "Showing the first {pages} of {count} pages",
+      "readyDetail": "screens show one page at a time",
+      "failedShort": "Can't be shown on screens",
+      "failed": "This PDF can't be shown on screens: {reason}.",
+      "reason": {
+        "password": "it is password-protected — remove the password and upload it again",
+        "unreadable": "the file could not be read as a PDF",
+        "tooLarge": "its pages are too large to prepare",
+        "other": "its pages could not be prepared"
+      },
+      "legacyFailed": "Desktop players may still show it as a PDF; Android players cannot.",
+      "itemLine": "{pages, plural, one {# page} other {# pages}} · {each} s each = {total}",
+      "seconds": "{n} s",
+      "minutes": "{n} min",
+      "hoursMinutes": "{h} h {m} min"
     }
   },
   "playlistsPage": {
@@ -3317,6 +3338,7 @@
     "audioUnplayable": "This isn't a playable audio file — the file may be damaged or incomplete. Export it again and upload the new copy.",
     "pdfNotPdf": "This isn't a PDF — it may be another kind of file saved with a .pdf name. Save or export it as a PDF again and upload the new copy.",
     "pdfIncomplete": "This PDF is incomplete — the file may be damaged or cut short. Save or export it again and upload the new copy.",
+    "pdfPassword": "This PDF is password-protected. Remove the password and upload it again.",
     "imageHeicUnavailable": "This HEIC photo couldn't be converted just now. Upload it again in a minute, or export it as JPEG and upload that."
   },
   "playbackCopy": {

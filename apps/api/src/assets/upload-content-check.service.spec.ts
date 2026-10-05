@@ -330,6 +330,9 @@ describe('UploadContentCheckService — plumbing', () => {
   });
 
   it('a PDF is two small range reads — never a download', async () => {
+    // 2026-10-05 — 64 KB at each end (the `/Encrypt` look); the header and the
+    // %%EOF are still judged on the first 1 KB / last 4 KB of those.
+    const size = 30 * 1024 * 1024;
     const storage = fakeStorage({
       readObjectRange: jest.fn(async (_p: string, start: number) =>
         Buffer.from(start === 0 ? '%PDF-1.4\n' : 'trailer\n%%EOF\n'),
@@ -339,15 +342,89 @@ describe('UploadContentCheckService — plumbing', () => {
     const v = await svc.check({
       storagePath: 't/a.pdf',
       mimeType: 'application/pdf',
-      storedBytes: 50_000,
+      storedBytes: size,
     });
     expect(v.accept).toBe(true);
     expect(
       storage.readObjectRange.mock.calls.map((c: unknown[]) => [c[1], c[2]]),
     ).toEqual([
-      [0, 1023],
-      [50_000 - 4096, 49_999],
+      [0, 65_535],
+      [size - 65_536, size - 1],
     ]);
+  });
+
+  it('a small PDF (≤ 64 KB) is ONE read of the whole file', async () => {
+    const storage = fakeStorage({
+      readObjectRange: jest.fn(async () => Buffer.from('%PDF-1.4\n1 0 obj<<>>endobj\ntrailer\n%%EOF\n')),
+    });
+    const v = await new UploadContentCheckService(storage).check({
+      storagePath: 't/a.pdf',
+      mimeType: 'application/pdf',
+      storedBytes: 50_000,
+    });
+    expect(v.accept).toBe(true);
+    expect(storage.readObjectRange.mock.calls.map((c: unknown[]) => [c[1], c[2]])).toEqual([[0, 49_999]]);
+  });
+
+  it('a PDF that needs a password to open is refused in plain words; owner-password-only is accepted', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { readFileSync } = require('fs') as typeof import('fs');
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { join } = require('path') as typeof import('path');
+    const fx = (n: string) => readFileSync(join(__dirname, '../../test/fixtures/pdf-pages', n));
+    for (const [name, accept] of [
+      ['user-password-aes-256.pdf', false],
+      ['user-password-rc4-40.pdf', false],
+      ['owner-only-aes-256.pdf', true],
+      ['three-pages.pdf', true],
+    ] as const) {
+      const bytes = fx(name);
+      const storage = fakeStorage({
+        readObjectRange: jest.fn(async (_p: string, start: number, end: number) => bytes.subarray(start, end + 1)),
+      });
+      const v = await new UploadContentCheckService(storage).check({
+        storagePath: `t/${name}`,
+        mimeType: 'application/pdf',
+        storedBytes: bytes.length,
+      });
+      expect([name, v.accept]).toEqual([name, accept]);
+      if (!v.accept) {
+        expect(v.refusal).toEqual({
+          code: 'ASSET_PDF_PASSWORD',
+          reason: 'pdf-password',
+          message: 'This PDF is password-protected. Remove the password and upload it again.',
+        });
+      }
+    }
+  });
+
+  it('a big encrypted PDF is read whole only because it mentions /Encrypt — and then judged', async () => {
+    const enc = readEnc();
+    // The same bytes, padded to 200 KB in the middle (a comment), so the windows do not overlap.
+    const pad = Buffer.alloc(200 * 1024, 0x20);
+    const head = enc.subarray(0, 9);
+    const big = Buffer.concat([head, Buffer.from('%'), pad, Buffer.from('\n'), enc.subarray(9)]);
+    const storage = fakeStorage({
+      readObjectRange: jest.fn(async (_p: string, start: number, end: number) => big.subarray(start, end + 1)),
+    });
+    const v = await new UploadContentCheckService(storage).check({
+      storagePath: 't/big.pdf',
+      mimeType: 'application/pdf',
+      storedBytes: big.length,
+    });
+    expect(v.accept).toBe(false);
+    expect(storage.readObjectRange.mock.calls.map((c: unknown[]) => [c[1], c[2]])).toEqual([
+      [0, 65_535],
+      [big.length - 65_536, big.length - 1],
+      [0, big.length - 1],
+    ]);
+    function readEnc() {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const fs = require('fs');
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const path = require('path');
+      return fs.readFileSync(path.join(__dirname, '../../test/fixtures/pdf-pages/user-password-aes-128.pdf')) as Buffer;
+    }
   });
 });
 

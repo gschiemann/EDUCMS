@@ -374,3 +374,126 @@ describeWithChromium(
     });
   },
 );
+
+// ── 2026-10-05 — rasterizePdfFrames: a page range composed into screen frames ──
+describe('PdfRasterService.rasterizePdfFrames', () => {
+  const FRAMES = [
+    { key: 'landscape', width: 3840, height: 2160 },
+    { key: 'portrait', width: 2160, height: 3840 },
+  ];
+  const pdf = Buffer.from('%PDF-1.7\n1 0 obj<<>>endobj\n%%EOF\n');
+
+  class RangeStub extends PdfRasterService {
+    readonly seen: Array<{ firstPage?: number; frames?: unknown; maxPages: number }> = [];
+    constructor(private readonly answer: () => Promise<RasterPipelineOutcome>) {
+      super();
+    }
+    protected async executeRasterize(
+      _pdfPath: string,
+      _scratchDir: string,
+      limits: RasterizeJobLimits,
+      request: { firstPage?: number; frames?: unknown } = {},
+    ): Promise<RasterPipelineOutcome> {
+      this.seen.push({ firstPage: request.firstPage, frames: request.frames, maxPages: limits.maxPages });
+      return this.answer();
+    }
+  }
+
+  const framedPage = (n: number) => ({
+    sourcePage: n,
+    widthPx: 2160,
+    heightPx: 2795,
+    webpBase64: '',
+    thumbWebpBase64: Buffer.from('thumb').toString('base64'),
+    frames: FRAMES.map((f) => ({
+      key: f.key,
+      widthPx: f.width,
+      heightPx: f.height,
+      webpBase64: Buffer.from(`${f.key}-${n}`).toString('base64'),
+    })),
+  });
+
+  it('hands the range and the frames to the worker, and the frames back as buffers', async () => {
+    const svc = new RangeStub(async () => ({
+      ok: true, sourcePageCount: 12, pages: [framedPage(7), framedPage(8)], warnings: [], truncated: true, elapsedMs: 5,
+    }));
+    const out = await svc.rasterizePdfFrames(pdf, { firstPage: 7, frames: FRAMES }, { maxPages: 2 });
+    expect(svc.seen).toEqual([{ firstPage: 7, frames: FRAMES, maxPages: 2 }]);
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(out).toMatchObject({ sourcePageCount: 12, truncated: true });
+    expect(out.pages.map((p) => p.sourcePage)).toEqual([7, 8]);
+    expect(out.pages[1].frames.map((f) => [f.key, f.webp.toString()])).toEqual([
+      ['landscape', 'landscape-8'],
+      ['portrait', 'portrait-8'],
+    ]);
+    expect(out.pages[0].thumbWebp.toString()).toBe('thumb');
+  });
+
+  it('refuses a page that came back without its frames', async () => {
+    const svc = new RangeStub(async () => ({
+      ok: true, sourcePageCount: 1, pages: [{ ...framedPage(1), frames: undefined }], warnings: [], truncated: false, elapsedMs: 1,
+    }));
+    expect(await svc.rasterizePdfFrames(pdf, { firstPage: 1, frames: FRAMES })).toEqual({ ok: false, reason: 'worker-frames-missing' });
+  });
+
+  it('passes the worker refusal through, and refuses non-PDF bytes before any worker', async () => {
+    const svc = new RangeStub(async () => ({ ok: false, reason: 'pdf-password-protected' }));
+    expect(await svc.rasterizePdfFrames(pdf, { firstPage: 1, frames: FRAMES })).toEqual({ ok: false, reason: 'pdf-password-protected' });
+    expect(await svc.rasterizePdfFrames(Buffer.from('not a pdf'), { firstPage: 1, frames: FRAMES })).toEqual({ ok: false, reason: 'pdf-unreadable' });
+    expect(svc.seen).toHaveLength(1);
+  });
+
+  it('shares ONE slot with the design import: background work is refused while anything holds it', async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((r) => { release = r; });
+    const svc = new RangeStub(async () => {
+      await gate;
+      return { ok: true, sourcePageCount: 1, pages: [framedPage(1)], warnings: [], truncated: false, elapsedMs: 1 };
+    });
+    const first = svc.rasterizePdfFrames(pdf, { firstPage: 1, frames: FRAMES });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(await svc.rasterizePdfFrames(pdf, { firstPage: 1, frames: FRAMES })).toEqual({ ok: false, reason: 'raster-busy' });
+    release();
+    expect((await first).ok).toBe(true);
+  });
+
+  it('a design import WAITS for a background page range and goes first — the next range is refused', async () => {
+    let releaseRange: () => void = () => undefined;
+    const rangeGate = new Promise<void>((r) => { releaseRange = r; });
+    let releaseImport: () => void = () => undefined;
+    const importGate = new Promise<void>((r) => { releaseImport = r; });
+    const order: string[] = [];
+    const svc = new RangeStub(async () => undefined as never);
+    (svc as any).executeRasterize = async (_p: string, _s: string, _l: unknown, request: { frames?: unknown } = {}) => {
+      if (request.frames) {
+        order.push('range');
+        await rangeGate;
+        return { ok: true, sourcePageCount: 2, pages: [framedPage(1)], warnings: [], truncated: true, elapsedMs: 1 };
+      }
+      order.push('import');
+      await importGate;
+      return { ok: true, sourcePageCount: 1, pages: [{ ...framedPage(1), frames: undefined, webpBase64: 'AAAA' }], warnings: [], truncated: false, elapsedMs: 1 };
+    };
+    const range = svc.rasterizePdfFrames(pdf, { firstPage: 1, frames: FRAMES });
+    await new Promise((r) => setTimeout(r, 20));
+    const importing = svc.rasterizePdf(pdf); // a person waiting: must not be refused
+    await new Promise((r) => setTimeout(r, 20));
+    releaseRange();
+    expect((await range).ok).toBe(true);
+    await new Promise((r) => setTimeout(r, 20));
+    // The background loop's next range finds the import in the slot.
+    expect(await svc.rasterizePdfFrames(pdf, { firstPage: 2, frames: FRAMES })).toEqual({ ok: false, reason: 'raster-busy' });
+    releaseImport();
+    expect((await importing).ok).toBe(true);
+    expect(order).toEqual(['range', 'import']);
+  });
+
+  it('an import waits only so long for a background range, then is refused as before', async () => {
+    const svc = new RangeStub(() => new Promise(() => undefined)); // a range that never ends
+    svc.importWaitMs = 30;
+    void svc.rasterizePdfFrames(pdf, { firstPage: 1, frames: FRAMES });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(await svc.rasterizePdf(pdf)).toEqual({ ok: false, reason: 'raster-busy' });
+  });
+});

@@ -77,6 +77,8 @@ import { AdsModule } from './ads/ads.module';
 import { SampleDataModule } from './sample-data/sample-data.module';
 // 2026-05-03 — Canva / Slides / PowerPoint design-import pipeline.
 import { ImportsModule } from './imports/imports.module';
+import { RasterModule } from './imports/raster/raster.module';
+import { PdfPagesService } from './storage/pdf-pages/pdf-pages.service';
 // 2026-05-03 — Claude-backed AI content generation.
 import { AiModule } from './ai/ai.module';
 // 2026-09-23 — AI Designer background generation jobs: the service behind TemplatesController's
@@ -193,6 +195,10 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     AdsModule,
     SampleDataModule,
     ImportsModule,
+    // 2026-10-05 — the SAME RasterModule instance ImportsModule uses (Nest shares a
+    // static module), so PdfPagesService and the design import hold ONE
+    // PdfRasterService and its one-browser-at-a-time slot.
+    RasterModule,
     AiModule,
     DesignerJobsModule,
     MusicModule,
@@ -339,6 +345,10 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     // deleted; a check that cannot run accepts as before
     // (assets/upload-content-check.service.ts).
     UploadContentCheckService,
+    // 2026-10-05 — a PDF's pages are rendered once, after its upload answers, into
+    // screen-shaped pictures (storage/pdf-pages); the normal manifest hands
+    // screens the pictures instead of the PDF, which Android players cannot draw.
+    PdfPagesService,
     // Server-side URL renderer (Puppeteer + Alpine Chromium). Used by
     // ProxyController to handle JS-heavy / AJAX-loaded sites that the
     // legacy strip-scripts proxy can't render. See renderer.service.ts.

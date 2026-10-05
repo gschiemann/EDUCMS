@@ -50,7 +50,9 @@ import {
   type PdfjsAssets,
 } from './pdfjs-assets';
 import type {
+  RasterFrameSpec,
   RasterizeJobLimits,
+  RasterizedFrameMessage,
   RasterizedPageMessage,
 } from './render-worker-protocol';
 
@@ -155,6 +157,10 @@ export interface RasterPipelineInput {
   limits: RasterizeJobLimits;
   logger: PipelineLogger;
   onBrowserLaunched?: (pid: number) => void;
+  /** 1-based first page (default 1). `limits.maxPages` then counts from here. */
+  firstPage?: number;
+  /** Compose every page into these screen frames instead of the page-shaped image. */
+  frames?: RasterFrameSpec[];
 }
 
 /** Race `work` against a hard deadline, without holding the event loop open. */
@@ -224,6 +230,8 @@ export async function runPdfRasterPipeline(
     logger,
     onBrowserLaunched,
   } = input;
+  const frames = input.frames && input.frames.length > 0 ? input.frames : null;
+  const firstPage = Math.max(1, Math.floor(input.firstPage ?? 1));
   const start = Date.now();
   // Under the child's own `workerBudgetMs` so a job that runs long reports
   // `raster-budget-exceeded` instead of being shot anonymously by the parent.
@@ -340,25 +348,31 @@ export async function runPdfRasterPipeline(
     const sourcePageCount = opened.numPages ?? 0;
     if (sourcePageCount < 1) return { ok: false, reason: 'pdf-empty' };
 
+    // A range job that starts past the end asked for nothing that exists.
+    if (firstPage > sourcePageCount) return { ok: false, reason: 'page-out-of-range' };
+
     // ── BOUND 1: HOW MANY PAGES ──────────────────────────────────────────
     // Truncation is a RESULT, not a failure: an operator with a 200-page
     // catalogue gets the first 60 and a sentence saying so, which is strictly
     // better than a refusal and incomparably better than the silent drop this
-    // replaces.
+    // replaces. A range job (`firstPage` > 1) counts its cap from where it
+    // starts; `truncated` then means "the document goes on past this job".
     let truncated = false;
-    let pageBudget = sourcePageCount;
-    if (sourcePageCount > limits.maxPages) {
-      pageBudget = limits.maxPages;
+    let lastPage = sourcePageCount;
+    if (sourcePageCount - firstPage + 1 > limits.maxPages) {
+      lastPage = firstPage + limits.maxPages - 1;
       truncated = true;
       warnings.push(
-        `page-cap: rendered ${limits.maxPages} of ${sourcePageCount} pages (limit ${limits.maxPages})`,
+        firstPage === 1
+          ? `page-cap: rendered ${limits.maxPages} of ${sourcePageCount} pages (limit ${limits.maxPages})`
+          : `page-cap: rendered pages ${firstPage}-${lastPage} of ${sourcePageCount} (limit ${limits.maxPages} per job)`,
       );
     }
 
     const pages: RasterizedPageMessage[] = [];
     let totalBytes = 0;
 
-    for (let n = 1; n <= pageBudget; n += 1) {
+    for (let n = firstPage; n <= lastPage; n += 1) {
       if (Date.now() >= deadlineAt) {
         // Out of clock with pages already encoded. Those pages are real, so
         // they are returned — flagged, counted and explained.
@@ -377,6 +391,9 @@ export async function runPdfRasterPipeline(
               targetLongEdgePx: limits.targetLongEdgePx,
               maxPagePixels: limits.maxPagePixels,
               maxScale: limits.maxScale,
+              // With frames, paint just big enough for the largest frame the
+              // page has to fill — never a pixel a screen will not show.
+              fitBoxes: frames ? frames.map((f) => ({ w: f.width, h: f.height })) : null,
             }),
             Math.min(
               limits.pageRenderTimeoutMs,
@@ -399,12 +416,12 @@ export async function runPdfRasterPipeline(
         return { ok: false, reason: 'page-render-failed' };
       }
 
-      let encoded: { webp: Buffer; thumb: Buffer };
+      let encoded: { webp: Buffer; thumb: Buffer; frames: RasterizedFrameMessage[] | null };
       try {
-        encoded = await encodePage(
-          Buffer.from(painted.pngBase64, 'base64'),
-          limits,
-        );
+        const png = Buffer.from(painted.pngBase64, 'base64');
+        encoded = frames
+          ? await encodePageFrames(png, frames, limits)
+          : { ...(await encodePage(png, limits)), frames: null };
       } catch (e: any) {
         logger.warn(
           `[raster] page ${n} encode failed: ${String(e?.message ?? e).slice(0, 160)}`,
@@ -416,7 +433,10 @@ export async function runPdfRasterPipeline(
       // Checked BEFORE the page joins the result, so the returned set always
       // fits the budget the parent will re-check. Same truncation contract as
       // the page cap: stop, flag, explain.
-      const pageBytes = encoded.webp.byteLength + encoded.thumb.byteLength;
+      const pageBytes =
+        encoded.webp.byteLength +
+        encoded.thumb.byteLength +
+        (encoded.frames ?? []).reduce((sum, f) => sum + Math.ceil((f.webpBase64.length * 3) / 4), 0);
       if (totalBytes + pageBytes > limits.maxTotalOutputBytes) {
         truncated = true;
         warnings.push(
@@ -432,6 +452,7 @@ export async function runPdfRasterPipeline(
         heightPx: painted.heightPx,
         webpBase64: encoded.webp.toString('base64'),
         thumbWebpBase64: encoded.thumb.toString('base64'),
+        ...(encoded.frames ? { frames: encoded.frames } : {}),
       });
     }
 
@@ -551,6 +572,63 @@ async function encodePage(
   return { webp, thumb };
 }
 
+/**
+ * The page composed into each screen frame, plus the page thumbnail.
+ *
+ * Each frame is EXACTLY its canvas size: the page drawn whole ("contain"),
+ * centred, on black — the way a slide sits on a projector. A player draws a
+ * picture edge to edge, so a page delivered at its own shape would be
+ * stretched over any screen of another shape; a frame is already the
+ * screen's shape and is drawn 1:1. Encoded here, in the child, from the
+ * lossless paint, so the API process never decodes a page and no frame is a
+ * second-generation encode.
+ *
+ * The page-shaped full-size image is NOT produced (an empty buffer): nothing
+ * downstream of a frames job reads it, and it would cost a fifth encode and
+ * IPC bytes per page.
+ */
+export async function encodePageFrames(
+  png: Buffer,
+  frames: RasterFrameSpec[],
+  limits: Pick<RasterizeJobLimits, 'thumbLongEdgePx' | 'webpQuality'>,
+): Promise<{ webp: Buffer; thumb: Buffer; frames: RasterizedFrameMessage[] }> {
+  const out: RasterizedFrameMessage[] = [];
+  for (const frame of frames) {
+    const webp = await sharp(png)
+      // The page is painted on white and is opaque; flattening drops the
+      // canvas's alpha channel so no frame carries transparency a player
+      // would composite over whatever sits behind the slide.
+      .flatten({ background: '#000000' })
+      .resize({
+        width: frame.width,
+        height: frame.height,
+        fit: 'contain',
+        position: 'centre',
+        background: '#000000',
+        kernel: 'lanczos3',
+      })
+      .webp({ quality: limits.webpQuality, effort: 4 })
+      .toBuffer();
+    out.push({
+      key: frame.key,
+      widthPx: frame.width,
+      heightPx: frame.height,
+      webpBase64: webp.toString('base64'),
+    });
+  }
+  const thumb = await sharp(png)
+    .flatten({ background: '#ffffff' })
+    .resize({
+      width: limits.thumbLongEdgePx,
+      height: limits.thumbLongEdgePx,
+      fit: 'inside',
+      withoutEnlargement: true,
+    })
+    .webp({ quality: Math.min(limits.webpQuality, 70) })
+    .toBuffer();
+  return { webp: Buffer.alloc(0), thumb, frames: out };
+}
+
 /* ────────────────────────────────────────────────────────────────────────
  * The two functions below run INSIDE the page, not in Node. They are passed
  * to `page.evaluate`, serialised to source, and evaluated in the browser —
@@ -611,6 +689,11 @@ interface PaintPageArgs {
   targetLongEdgePx: number;
   maxPagePixels: number;
   maxScale: number;
+  /**
+   * Frames the page will be composed into. When present the paint is sized to
+   * fill the LARGEST of them ("contain"), not to `targetLongEdgePx`.
+   */
+  fitBoxes?: Array<{ w: number; h: number }> | null;
 }
 
 /**
@@ -632,6 +715,15 @@ function paintPageInPage(args: PaintPageArgs): Promise<PagePaintResult> {
 
     // Aspect is preserved by construction: one scale factor, both axes.
     let scale = args.targetLongEdgePx / longEdge;
+    if (args.fitBoxes && args.fitBoxes.length > 0) {
+      // The scale at which the page exactly fills the largest frame it is
+      // drawn into: each frame's "contain" scale, the biggest of them.
+      scale = 0;
+      for (const box of args.fitBoxes) {
+        const fit = Math.min(box.w / (natural.width || 1), box.h / (natural.height || 1));
+        if (fit > scale) scale = fit;
+      }
+    }
     scale = Math.min(scale, args.maxScale);
     const pixelsAtScale = natural.width * scale * (natural.height * scale);
     if (pixelsAtScale > args.maxPagePixels) {

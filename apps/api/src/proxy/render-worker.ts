@@ -58,6 +58,30 @@ function send(message: WorkerMessage): void {
   }
 }
 
+/**
+ * Post the job's ANSWER and resolve once Node has handed it to the OS.
+ *
+ * `process.send` is asynchronous: it queues the serialized message and writes
+ * it to the IPC pipe as the pipe drains. The answer used to be followed at once
+ * by `process.disconnect()` and a 50 ms exit — fine for a URL render's HTML or
+ * a page or two of rastered images, but a raster result of a few megabytes
+ * (eight pages × four screen frames, 2026-10-05) was still being written when
+ * the channel closed, and the parent saw only `worker-exit code=0`. Measured
+ * against the compiled worker: a 50-page document failed every 8-page job.
+ * Data already written to the pipe survives the writer's exit, so waiting for
+ * the write callback is the whole fix.
+ */
+function sendFlushed(message: WorkerMessage): Promise<void> {
+  return new Promise<void>((resolve) => {
+    if (typeof process.send !== 'function') return resolve();
+    try {
+      process.send(message, undefined, {}, () => resolve());
+    } catch {
+      resolve(); // parent went away; nothing useful left to do
+    }
+  });
+}
+
 function makeLogger(): PipelineLogger {
   const emit = (level: WorkerLogLevel) => (message: string) =>
     send({ v: RENDER_PROTOCOL_VERSION, type: 'log', level, message: sanitizeLogText(message) });
@@ -134,6 +158,8 @@ async function runRasterizeJob(job: RasterizeJobMessage): Promise<WorkerMessage>
       executablePath: job.executablePath,
       userDataDir: job.userDataDir,
       limits: job.limits,
+      firstPage: job.firstPage,
+      frames: job.frames,
       logger,
       onBrowserLaunched: (pid) =>
         send({ v: RENDER_PROTOCOL_VERSION, type: 'browser', pid }),
@@ -163,7 +189,8 @@ async function runRasterizeJob(job: RasterizeJobMessage): Promise<WorkerMessage>
 async function runJob(job: WorkerJobMessage): Promise<void> {
   const outcome =
     job.type === 'rasterize' ? await runRasterizeJob(job) : await runUrlRenderJob(job);
-  send(outcome);
+  // Flushed BEFORE anything below can close the channel (see sendFlushed).
+  await sendFlushed(outcome);
   // Best-effort cleanup, and only that: this runs AFTER the result is posted,
   // so it races the parent's SIGKILL and frequently loses (measured against
   // the compiled worker). The PARENT owns these directories and removes them

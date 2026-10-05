@@ -45,6 +45,7 @@ import { AssetPreviewOverlay } from '@/components/playlists/AssetPreviewOverlay'
 import { VideoPreviewThumb, assetPosterUrl } from '@/components/playlists/VideoPreviewThumb';
 import { AssetEncodeBadge } from '@/components/assets/VideoEncode';
 import { ScreenReadinessPill } from '@/components/assets/ScreenReadinessPill';
+import { pdfItemLine } from '@/lib/pdf-pages-copy';
 import { notPlayingOnScreens, screenReadinessOf } from '@/lib/screen-readiness-copy';
 import { PlaylistEncodeBanner } from '@/components/playlists/PlaylistEncodeBanner';
 import { SELECTED_TILE_CLASS, SelectionCheckbox, SelectionTileCheckbox, selectAllTitle, selectionState } from '@/components/common/SelectionCheckbox';
@@ -246,6 +247,9 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSel
   const name = assetName(item.asset);
   // 2026-10-05 — the screens are not being handed this video (converting / failed).
   const notPlaying = notPlayingOnScreens(screenReadinessOf(item.asset));
+  // 2026-10-05 — a PDF plays as its pages, each for this item's duration:
+  // "12 pages · 10 s each = 2 min" (or "Preparing pages… 7 of 12").
+  const pdfLine = pdfItemLine(t, item.asset, item.durationMs || 10000);
 
   return (
     <div ref={setNodeRef} style={style} className={`bg-white rounded-2xl border ${isSelected ? 'border-indigo-400 ring-2 ring-indigo-100 shadow-[0_4px_20px_rgba(99,102,241,0.12)]' : 'border-slate-100 group hover:shadow-[0_4px_20px_rgba(0,0,0,0.04)]'} transition-all overflow-hidden flex flex-col`}>
@@ -347,6 +351,11 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSel
             <span className="hidden md:block mt-0.5" data-testid="screen-ready-mark-desktop">
               <ScreenReadinessPill asset={item.asset} />
             </span>
+          )}
+          {pdfLine && (
+            <p className="text-[10px] font-semibold text-slate-500 truncate" data-testid="pdf-item-line" title={pdfLine}>
+              {pdfLine}
+            </p>
           )}
           {/* Mime label is desktop-only — secondary info, eats a
               line on mobile that we can't afford. Available via

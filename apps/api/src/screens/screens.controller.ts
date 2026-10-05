@@ -1,5 +1,6 @@
 import { Controller, Post, Get, Put, Delete, Body, Param, Query, Req, Res, UseGuards, Request, HttpException, HttpStatus } from '@nestjs/common';
-import { encodeTargetFromResolutions, withheldFromScreens } from '@cms/api-types';
+import { encodeTargetFromResolutions, pdfDelivery, withheldFromScreens } from '@cms/api-types';
+import { pdfPageBytes, pdfPageManifestItems, pdfScreenShape } from './pdf-page-items';
 import { selectVideoFile } from './video-rendition';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import type { Request as ExpressReq, Response } from 'express';
@@ -6374,6 +6375,19 @@ export class ScreensController {
       return res.status(200).json(emptyBody);
     }
 
+    // 2026-10-05 — which page frame this screen is handed for a PDF (its
+    // orientation; 1080p or not). Stable Screen columns only — cache-safe.
+    const pdfShape = pdfScreenShape({
+      resolution: (screen as any).resolution ?? null,
+      canvasW: (screen as any).canvasW ?? null,
+      canvasH: (screen as any).canvasH ?? null,
+      manifestOrientation: resolveManifestOrientation(
+        (screen as any).orientation,
+        (screen as any).resolution,
+        (screen as any).hardwareModel,
+      ),
+    });
+
     // Sum item file sizes per playlist so the player can show operators
     // how much disk a playlist uses from the Stopped splash. Items with
     // no captured fileSize (e.g. URL-type assets, pre-hash uploads)
@@ -6400,7 +6414,22 @@ export class ScreensController {
     // hot cache is busted and the converted file reaches the screen on its
     // next poll with no publish. The EMERGENCY and SPORTS branches above never
     // read the verdict — alert media is delivered whatever it says.
-    const deliverableItems = s.playlist.items.filter((pi) => !withheldFromScreens(pi.asset));
+    //
+    // ── 2026-10-05 — PDF PAGES (this normal branch ONLY) ─────────────────
+    // A PDF with pages (`processingMeta.pdfPages`, storage/pdf-pages) is handed
+    // to screens as one IMAGE item per page (pdf-page-items.ts): Android players
+    // have no PDF viewer, and a desktop one showed its toolbar and page 1. A PDF
+    // whose pages are still being made — or a NEW PDF whose pages could not be
+    // made — is left out exactly like a video that is not ready; a PDF with no
+    // record at all (uploaded before pages existed) is delivered as before, so
+    // its payload and ETag do not move. The pages' write is a Prisma write to
+    // Asset, so the hot cache is busted and they reach the screen on its next
+    // poll with no publish.
+    const deliverableItems = s.playlist.items.filter(
+      (pi) => !withheldFromScreens(pi.asset) && pdfDelivery(pi.asset) !== 'withhold',
+    );
+    const itemMuted = (pi: (typeof deliverableItems)[number]): boolean =>
+      typeof scheduleMute === 'boolean' ? scheduleMute : ((pi as any).muted ?? true);
     return ({
       id: s.playlistId,
       // Name + schedule metadata — lets the player surface "what's
@@ -6421,7 +6450,11 @@ export class ScreensController {
         priority: s.priority ?? 0,
       },
       totalBytes: deliverableItems.reduce(
-        (sum, pi) => sum + (selectVideoFile(pi.asset, screen.resolution).size || 0),
+        (sum, pi) =>
+          sum +
+          (pdfDelivery(pi.asset) === 'pages'
+            ? pdfPageBytes(pi, pdfShape)
+            : selectVideoFile(pi.asset, screen.resolution).size || 0),
         0,
       ),
       // Include template data when playlist is template-based
@@ -6473,9 +6506,10 @@ export class ScreensController {
             : [],
         },
       } : {}),
-      items: deliverableItems.map(pi => {
+      items: deliverableItems.flatMap(pi => {
+        if (pdfDelivery(pi.asset) === 'pages') return pdfPageManifestItems(pi, pdfShape, itemMuted(pi));
         const selected = selectVideoFile(pi.asset, screen.resolution);
-        return ({
+        return [({
         item_id: pi.id,
         asset_id: pi.assetId,
         asset_hash: selected.sha256,
@@ -6507,7 +6541,7 @@ export class ScreensController {
         muted: typeof scheduleMute === 'boolean'
           ? scheduleMute
           : ((pi as any).muted ?? true),
-      });})
+      })];})
     });
     });
 

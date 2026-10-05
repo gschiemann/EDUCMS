@@ -110,6 +110,11 @@ export const LEASE = {
   // makes is claim-guarded, so a second replica would be safe but wasteful: it
   // would scan the same rows every tick and re-queue the same rendition jobs.
   MEDIA_PUBLICATION_SWEEP: 'schedules:media-publication-sweep',
+  // 2026-10-05 — PDF pages: the sweep that resumes a page rendering a deploy or a
+  // crash interrupted (and renders PDFs from before pages existed). Leased because
+  // every candidate costs a Chromium job and two replicas would render the same
+  // document twice and race the same row's processingMeta.
+  PDF_PAGES_SWEEP: 'storage:pdf-pages-sweep',
 } as const;
 
 export type LeaseName = (typeof LEASE)[keyof typeof LEASE];

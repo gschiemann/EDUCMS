@@ -399,3 +399,137 @@ describeWithChromium(
     });
   },
 );
+
+// ── 2026-10-05 — PDF pages on screens: a page RANGE, composed into FRAMES ──
+//
+// A screen draws a picture edge to edge, so a page has to arrive already in
+// the screen's shape. These assertions are about pixels — a black bar where
+// the page is narrower than the frame, the page's own colour band where it is
+// — so they need a real browser, like every other paint claim in this file.
+describeWithChromium(
+  'runPdfRasterPipeline — page ranges composed into screen frames',
+  (executablePath) => {
+    jest.setTimeout(180_000);
+    const PAGES = join(__dirname, '../../test/fixtures/pdf-pages');
+    const pagesFixture = (name: string) => readFileSync(join(PAGES, name));
+    const FRAMES = [
+      { key: 'landscape', width: 3840, height: 2160 },
+      { key: 'portrait-1080', width: 1080, height: 1920 },
+    ];
+    let launcher: BrowserLauncher;
+    let tmpDir: string;
+    beforeAll(async () => {
+      launcher = (await loadPuppeteerForTests()) as unknown as BrowserLauncher;
+      const { mkdtemp } = await import('node:fs/promises');
+      const { tmpdir } = await import('node:os');
+      tmpDir = await mkdtemp(join(tmpdir(), 'venueos-frames-spec-'));
+    });
+    afterAll(async () => {
+      const { rm } = await import('node:fs/promises');
+      if (tmpDir) await rm(tmpDir, { recursive: true, force: true }).catch(() => undefined);
+    });
+    async function frames(bytes: Buffer, firstPage = 1, maxPages = 6): Promise<RasterPipelineOutcome> {
+      const { writeFile } = await import('node:fs/promises');
+      const { randomBytes } = await import('node:crypto');
+      const pdfPath = join(tmpDir, `${randomBytes(8).toString('hex')}.pdf`);
+      await writeFile(pdfPath, bytes);
+      return runPdfRasterPipeline({
+        launcher,
+        pdfPath,
+        executablePath,
+        limits: { ...DEFAULT_RASTERIZE_LIMITS, maxPages },
+        logger: silent,
+        firstPage,
+        frames: FRAMES,
+      });
+    }
+    const frameOf = (outcome: RasterPipelineOutcome, page: number, key: string): Buffer => {
+      if (!outcome.ok) throw new Error(`raster failed: ${outcome.reason}`);
+      const p = outcome.pages.find((x) => x.sourcePage === page)!;
+      return Buffer.from(p.frames!.find((f) => f.key === key)!.webpBase64, 'base64');
+    };
+    const RED = '#d91a1a';
+    const GREEN = '#1a9933';
+    const BLUE = '#1a33cc';
+    const BLACK = '#000000';
+
+    it('every frame is exactly its canvas, and no page-shaped image rides along', async () => {
+      const out = await frames(pagesFixture('three-pages.pdf'));
+      expect(out.ok).toBe(true);
+      if (!out.ok) return;
+      expect(out.sourcePageCount).toBe(3);
+      expect(out.pages.map((p) => p.sourcePage)).toEqual([1, 2, 3]);
+      for (const page of out.pages) {
+        expect(page.webpBase64).toBe('');
+        expect(page.frames!.map((f) => f.key)).toEqual(['landscape', 'portrait-1080']);
+        for (const f of page.frames!) {
+          const meta = await sharp(Buffer.from(f.webpBase64, 'base64')).metadata();
+          expect([meta.width, meta.height]).toEqual([f.widthPx, f.heightPx]);
+          expect(meta.hasAlpha).toBe(false);
+        }
+      }
+    });
+
+    it('a Letter page on a landscape screen is the whole page, centred, on black', async () => {
+      const out = await frames(pagesFixture('three-pages.pdf'));
+      const landscape = frameOf(out, 1, 'landscape');
+      expect(colourDistance(await pixelAt(landscape, 0.05, 0.5), BLACK)).toBeLessThan(12);
+      expect(colourDistance(await pixelAt(landscape, 0.95, 0.5), BLACK)).toBeLessThan(12);
+      // The red band across the top of the page, not cropped off.
+      expect(colourDistance(await pixelAt(landscape, 0.5, 0.05), RED)).toBeLessThan(40);
+      // On a portrait 1080 panel the same page is letterboxed top and bottom.
+      const portrait = frameOf(out, 1, 'portrait-1080');
+      expect(colourDistance(await pixelAt(portrait, 0.5, 0.03), BLACK)).toBeLessThan(12);
+      expect(colourDistance(await pixelAt(portrait, 0.5, 0.21), RED)).toBeLessThan(40);
+    });
+
+    it('a 16:9 slide fills a landscape frame edge to edge — no bars', async () => {
+      const out = await frames(pagesFixture('three-pages.pdf'));
+      const landscape = frameOf(out, 2, 'landscape');
+      expect(colourDistance(await pixelAt(landscape, 0.01, 0.05), GREEN)).toBeLessThan(40);
+      expect(colourDistance(await pixelAt(landscape, 0.99, 0.05), GREEN)).toBeLessThan(40);
+    });
+
+    it('honours /Rotate 90: the page band ends up on the right, the page is landscape', async () => {
+      const out = await frames(pagesFixture('three-pages.pdf'));
+      if (!out.ok) throw new Error(out.reason);
+      const p3 = out.pages.find((p) => p.sourcePage === 3)!;
+      expect(p3.widthPx).toBeGreaterThan(p3.heightPx);
+      const landscape = frameOf(out, 3, 'landscape');
+      expect(colourDistance(await pixelAt(landscape, 0.8, 0.5), BLUE)).toBeLessThan(40);
+      expect(colourDistance(await pixelAt(landscape, 0.03, 0.5), BLACK)).toBeLessThan(12);
+    });
+
+    it('walks a long document range by range, and says when it goes on', async () => {
+      const doc = fixture('forty-one-pages.pdf');
+      const head = await frames(doc, 1, 3);
+      expect(head).toMatchObject({ ok: true, sourcePageCount: 41, truncated: true });
+      if (head.ok) expect(head.pages.map((p) => p.sourcePage)).toEqual([1, 2, 3]);
+      const tail = await frames(doc, 39, 6);
+      expect(tail).toMatchObject({ ok: true, sourcePageCount: 41, truncated: false });
+      if (tail.ok) expect(tail.pages.map((p) => p.sourcePage)).toEqual([39, 40, 41]);
+    });
+
+    it('a range past the last page is a refusal, not an empty success', async () => {
+      expect(await frames(fixture('forty-one-pages.pdf'), 42)).toEqual({ ok: false, reason: 'page-out-of-range' });
+    });
+
+    it.each(['rc4-40', 'rc4-128', 'aes-128', 'aes-256-r5', 'aes-256'])(
+      'an owner-password-only PDF (%s) renders — anyone can open it',
+      async (tag) => {
+        const out = await frames(pagesFixture(`owner-only-${tag}.pdf`));
+        expect(out).toMatchObject({ ok: true, sourcePageCount: 1 });
+      },
+    );
+
+    it.each(['rc4-40', 'rc4-128', 'aes-128', 'aes-256-r5', 'aes-256'])(
+      'a PDF that needs a password to open (%s) is refused with a stable reason',
+      async (tag) => {
+        expect(await frames(pagesFixture(`user-password-${tag}.pdf`))).toEqual({
+          ok: false,
+          reason: 'pdf-password-protected',
+        });
+      },
+    );
+  },
+);

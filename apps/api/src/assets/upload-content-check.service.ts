@@ -26,6 +26,12 @@ import {
   type UploadVerdict,
 } from './upload-content-verdict';
 import { CheckSlots, errorText, intEnv, runTool } from './tool-runner';
+import { mentionsEncrypt, pdfOpenVerdict, type PdfOpenVerdict } from './pdf-encryption';
+
+/** Bytes read at each end of a PDF for the `/Encrypt` look (2026-10-05). */
+const PDF_ENCRYPT_WINDOW_BYTES = 64 * 1024;
+/** An encrypted PDF up to this size is read whole to test the empty password (the PDF upload cap is 25 MiB). */
+const PDF_ENCRYPT_MAX_READ_BYTES = 64 * 1024 * 1024;
 import { HeifConverter, type HeifConversion } from './heif-convert';
 
 /**
@@ -233,23 +239,55 @@ export class UploadContentCheckService {
   ): Promise<PdfEvidence> {
     const timeout = Math.max(500, Math.min(5_000, deadline - Date.now()));
     const size = input.storedBytes;
-    const [head, tail] = await Promise.all([
-      this.storage.readObjectRange(
-        input.storagePath,
-        0,
-        PDF_HEAD_BYTES - 1,
-        timeout,
-      ),
-      typeof size === 'number' && size > 0
-        ? this.storage.readObjectRange(
+    // 2026-10-05 — the same two reads, wider: the header and %%EOF checks still
+    // look at the first 1 KB / last 4 KB, and the extra bytes are where a
+    // trailer's `/Encrypt` entry sits (a linearized file's first-page trailer at
+    // the top, the main trailer or xref-stream dictionary at the end).
+    // A file no bigger than one window is ONE read of the whole file.
+    const small = typeof size === 'number' && size > 0 && size <= PDF_ENCRYPT_WINDOW_BYTES;
+    const [headWindow, tailWindow] = small
+      ? await this.storage
+          .readObjectRange(input.storagePath, 0, size - 1, timeout)
+          .then((whole) => [whole, whole] as const)
+      : await Promise.all([
+          this.storage.readObjectRange(
             input.storagePath,
-            Math.max(0, size - PDF_TAIL_BYTES),
-            size - 1,
+            0,
+            PDF_ENCRYPT_WINDOW_BYTES - 1,
             timeout,
-          )
-        : Promise.resolve(null),
-    ]);
-    return { head, tail };
+          ),
+          typeof size === 'number' && size > 0
+            ? this.storage.readObjectRange(
+                input.storagePath,
+                Math.max(0, size - PDF_ENCRYPT_WINDOW_BYTES),
+                size - 1,
+                timeout,
+              )
+            : Promise.resolve(null),
+        ]);
+    const head = headWindow ? headWindow.subarray(0, PDF_HEAD_BYTES) : null;
+    const tail = tailWindow ? tailWindow.subarray(Math.max(0, tailWindow.length - PDF_TAIL_BYTES)) : null;
+    // Encrypted? Then can it be opened WITHOUT a password — a PDF that needs one
+    // could never be shown on a screen, so it is refused in plain words. Only an
+    // encrypted file pays for the full read (≤ the PDF upload cap), inside the
+    // same budget; a read that fails or runs out of time is "not checked".
+    let open: PdfOpenVerdict | null = null;
+    if (
+      mentionsEncrypt(headWindow, tailWindow) &&
+      typeof size === 'number' &&
+      size > 0 &&
+      size <= PDF_ENCRYPT_MAX_READ_BYTES
+    ) {
+      const remaining = deadline - Date.now();
+      if (remaining > 500) {
+        const whole =
+          headWindow && headWindow.length >= size
+            ? headWindow
+            : await this.storage.readObjectRange(input.storagePath, 0, size - 1, Math.min(remaining, 8_000));
+        if (whole && whole.length === size) open = pdfOpenVerdict(whole);
+      }
+    }
+    return { head, tail, open };
   }
 
   /** Spawn one tool with a hard kill timer. Never throws; output is capped. */

@@ -243,3 +243,100 @@ describe('parseWorkerMessage — a raster result is untrusted input too', () => 
     });
   });
 });
+
+// ── 2026-10-05 — PDF pages on screens: a page RANGE and screen FRAMES ──────
+//
+// Two optional fields, and the same discipline as the rest of this file: when
+// present they are exact, and a raster result that answers a frames job must
+// carry exactly the frames that job asked for — the child decoded a stranger's
+// file, so "here is your 3840×2160 frame" is a claim, not a fact.
+describe('rasterize job — page range and screen frames', () => {
+  const frames = [
+    { key: 'landscape', width: 3840, height: 2160 },
+    { key: 'portrait-1080', width: 1080, height: 1920 },
+  ];
+
+  it('accepts a range job with frames, and keeps both', () => {
+    expect(parseRenderJob({ ...rasterJob, firstPage: 7, frames })).toMatchObject({
+      firstPage: 7,
+      frames,
+    });
+  });
+
+  it('a job without them is the design-import job, unchanged', () => {
+    const parsed = parseRenderJob(rasterJob) as Record<string, unknown>;
+    expect(parsed).not.toHaveProperty('firstPage');
+    expect(parsed).not.toHaveProperty('frames');
+  });
+
+  it.each([
+    ['page zero', { firstPage: 0 }],
+    ['a fractional page', { firstPage: 1.5 }],
+    ['a page given as a string', { firstPage: '2' }],
+    ['an empty frame list', { frames: [] }],
+    ['frames that are not a list', { frames: { key: 'landscape' } }],
+    ['more frames than allowed', { frames: Array.from({ length: 7 }, (_, i) => ({ key: `f${i}`, width: 100, height: 100 })) }],
+    ['a duplicate frame key', { frames: [frames[0], frames[0]] }],
+    ['a frame key with a path in it', { frames: [{ key: '../x', width: 100, height: 100 }] }],
+    ['a frame wider than any screen', { frames: [{ key: 'x', width: 9000, height: 100 }] }],
+    ['a frame of no size', { frames: [{ key: 'x', width: 0, height: 100 }] }],
+    ['a fractional frame size', { frames: [{ key: 'x', width: 100.5, height: 100 }] }],
+  ])('refuses %s', (_label, extra) => {
+    expect(parseRenderJob({ ...rasterJob, ...extra })).toBeNull();
+  });
+});
+
+describe('parseWorkerMessage — a frames result carries exactly the frames asked for', () => {
+  const frames = [
+    { key: 'landscape', width: 3840, height: 2160 },
+    { key: 'portrait', width: 2160, height: 3840 },
+  ];
+  const caps: RasterResultCaps = { maxPages: 3, maxTotalOutputBytes: 4096, frames };
+  const framed = (n: number, over: Record<string, unknown> = {}) => ({
+    sourcePage: n,
+    widthPx: 2160,
+    heightPx: 2795,
+    webpBase64: '',
+    thumbWebpBase64: 'AAAA',
+    frames: frames.map((f) => ({ key: f.key, widthPx: f.width, heightPx: f.height, webpBase64: 'AAAA' })),
+    ...over,
+  });
+  const result = (pages: unknown[]) => ({
+    v: RENDER_PROTOCOL_VERSION,
+    type: 'raster-result',
+    ok: true,
+    sourcePageCount: 12,
+    pages,
+    warnings: [],
+    truncated: true,
+    elapsedMs: 9,
+  });
+
+  it('accepts a page carrying every requested frame, in order', () => {
+    const parsed = parseWorkerMessage(result([framed(7), framed(8)]), 1, caps) as any;
+    expect(parsed.pages.map((p: any) => p.sourcePage)).toEqual([7, 8]);
+    expect(parsed.pages[0].frames.map((f: any) => f.key)).toEqual(['landscape', 'portrait']);
+  });
+
+  it.each([
+    ['a missing frame', framed(1, { frames: [framed(1).frames[0]] })],
+    ['frames in another order', framed(1, { frames: [...framed(1).frames].reverse() })],
+    ['a frame of another size', framed(1, { frames: [{ ...framed(1).frames[0], widthPx: 3839 }, framed(1).frames[1]] })],
+    ['an extra frame', framed(1, { frames: [...framed(1).frames, { key: 'x', widthPx: 16, heightPx: 16, webpBase64: 'AAAA' }] })],
+    ['an empty frame image', framed(1, { frames: [{ ...framed(1).frames[0], webpBase64: '' }, framed(1).frames[1]] })],
+    ['frame data that is not base64', framed(1, { frames: [{ ...framed(1).frames[0], webpBase64: '<svg>' }, framed(1).frames[1]] })],
+    ['no frames at all', framed(1, { frames: undefined })],
+  ])('REFUSES the whole result for %s', (_label, page) => {
+    expect(parseWorkerMessage(result([page]), 1, caps)).toBeNull();
+  });
+
+  it('REFUSES frames the caller never asked for', () => {
+    const { frames: _f, ...noFramesCaps } = caps;
+    expect(parseWorkerMessage(result([framed(1)]), 1, noFramesCaps)).toBeNull();
+  });
+
+  it('counts frame bytes against the budget', () => {
+    const fat = framed(1, { frames: frames.map((f) => ({ key: f.key, widthPx: f.width, heightPx: f.height, webpBase64: 'A'.repeat(4000) })) });
+    expect(parseWorkerMessage(result([fat]), 1, caps)).toBeNull();
+  });
+});

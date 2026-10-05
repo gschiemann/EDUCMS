@@ -522,3 +522,49 @@ describe('RenderWorkerClient — Chromium path resolution', () => {
       .toBe('/explicit/chrome');
   });
 });
+
+// ── 2026-10-05 — the REAL worker hands a multi-megabyte raster answer over whole ──
+//
+// The worker used to post its answer and close the IPC channel at once; a
+// result of a few megabytes (PDF pages composed into four screen frames) was
+// still being written, and the parent saw `worker-exit code=0`. This forks the
+// SHIPPED worker source (through ts-node, as `dist/` does not exist under
+// Jest) with a real Chromium, and asks for every page of a 41-page PDF in ONE
+// job — an answer of several megabytes.
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { describeWithChromium: describeWithBrowser } = require('../../test/chromium-for-tests');
+describeWithBrowser('the real forked worker — a large raster answer arrives whole', (executablePath: string) => {
+  jest.setTimeout(240_000);
+  it('41 pages × 2 frames in one job: every page, every frame', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { mkdtempSync: mk, copyFileSync } = require('node:fs');
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { DEFAULT_RASTERIZE_LIMITS } = require('./pdf-raster-pipeline');
+    const shim = stub(
+      'real-worker-shim',
+      `require(${JSON.stringify(require.resolve('ts-node'))}).register({ transpileOnly: true, project: ${JSON.stringify(join(__dirname, '../../tsconfig.json'))} });
+       require(${JSON.stringify(join(__dirname, 'render-worker.ts'))});`,
+    );
+    const scratch = mk(join(tmpdir(), 'venueos-pdfin-'));
+    const pdfPath = join(scratch, 'doc.pdf');
+    copyFileSync(join(__dirname, '../../test/fixtures/import-corpus/forty-one-pages.pdf'), pdfPath);
+    const frames = [
+      { key: 'landscape', width: 3840, height: 2160 },
+      { key: 'portrait', width: 2160, height: 3840 },
+    ];
+    const client = new RenderWorkerClient({ workerScriptPath: shim, executablePath, killBudgetMs: 200_000 });
+    const out = await client.rasterizePdf(
+      pdfPath,
+      scratch,
+      { ...DEFAULT_RASTERIZE_LIMITS, maxPages: 41, maxTotalOutputBytes: 64 * 1024 * 1024, workerBudgetMs: 180_000, pageRenderTimeoutMs: 30_000 },
+      { firstPage: 1, frames },
+    );
+    rmSync(scratch, { recursive: true, force: true });
+    expect(out.ok ? 'ok' : out.reason).toBe('ok');
+    if (!out.ok) return;
+    expect(out.pages.map((p) => p.sourcePage)).toEqual(Array.from({ length: 41 }, (_, i) => i + 1));
+    const bytes = out.pages.reduce((s, p) => s + p.frames!.reduce((t, f) => t + f.webpBase64.length, 0), 0);
+    // Big enough to have been lost before the fix (it failed from ~2 MB).
+    expect(bytes).toBeGreaterThan(2 * 1024 * 1024);
+  });
+});

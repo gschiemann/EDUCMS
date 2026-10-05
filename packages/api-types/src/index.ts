@@ -1077,6 +1077,12 @@ export * from './screen-readiness';
 // file gets the same answer everywhere (MOV / AVI / MKV / … and HEIC accepted).
 export * from './upload-formats';
 
+// PDF pages (2026-10-05) — `processingMeta.pdfPages`, a PDF's pages rendered once
+// at upload into screen-shaped pictures. Shared so the manifest (which hands
+// screens the pages) and the dashboard (which says "Preparing pages… 7 of 12")
+// can never disagree about which PDFs are on screens.
+export * from './pdf-pages';
+
 // Student information on public screens (K-12 sports launch, 2026-09-27) —
 // the attestation wording + version and the settings contract, shared so the
 // API (which enforces it) and the dashboard (which asks) never disagree.

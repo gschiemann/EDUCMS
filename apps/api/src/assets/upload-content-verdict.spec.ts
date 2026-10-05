@@ -855,7 +855,8 @@ describe('decideUploadContent — THE decision, both directions', () => {
     }
     // One code per message the page shows (not-video and ends-early share theirs);
     // 2026-10-05: + ASSET_IMAGE_HEIC_UNAVAILABLE (a HEIC conversion that could not run just now).
-    expect(codes.size).toBe(10);
+    // 2026-10-05: + ASSET_PDF_PASSWORD (a PDF that needs a password to open).
+    expect(codes.size).toBe(11);
   });
 });
 

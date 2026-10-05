@@ -2011,6 +2011,27 @@
       "NO_FILE": "Este recurso no tiene ningún archivo para descargar.",
       "UNSUPPORTED_URL": "Este recurso no tiene una URL de descarga compatible.",
       "EXTERNAL_HOST": "Este archivo está alojado fuera de la biblioteca de medios. Usa «Copy asset link»."
+    },
+    "pdfPages": {
+      "preparing": "Preparando páginas… {done} de {count}",
+      "preparingUnknown": "Preparando páginas…",
+      "preparingDetail": "las pantallas lo mostrarán cuando sus páginas estén listas",
+      "ready": "{pages, plural, one {# página} other {# páginas}}",
+      "truncated": "Se muestran las primeras {pages} de {count} páginas",
+      "readyDetail": "las pantallas muestran una página a la vez",
+      "failedShort": "No se puede mostrar en pantallas",
+      "failed": "Este PDF no se puede mostrar en pantallas: {reason}.",
+      "reason": {
+        "password": "está protegido con contraseña; quita la contraseña y vuelve a subirlo",
+        "unreadable": "el archivo no se pudo leer como PDF",
+        "tooLarge": "sus páginas son demasiado grandes para prepararlas",
+        "other": "sus páginas no se pudieron preparar"
+      },
+      "legacyFailed": "Los reproductores de escritorio aún pueden mostrarlo como PDF; los de Android no.",
+      "itemLine": "{pages, plural, one {# página} other {# páginas}} · {each} s cada una = {total}",
+      "seconds": "{n} s",
+      "minutes": "{n} min",
+      "hoursMinutes": "{h} h {m} min"
     }
   },
   "playlistsPage": {
@@ -3317,6 +3338,7 @@
     "audioUnplayable": "Esto no es un archivo de audio reproducible: el archivo puede estar dañado o incompleto. Vuelve a exportarlo y sube la nueva copia.",
     "pdfNotPdf": "Esto no es un PDF: puede ser otro tipo de archivo guardado con nombre .pdf. Vuelve a guardarlo o exportarlo como PDF y sube la nueva copia.",
     "pdfIncomplete": "Este PDF está incompleto: el archivo puede estar dañado o cortado. Vuelve a guardarlo o exportarlo y sube la nueva copia.",
+    "pdfPassword": "Este PDF está protegido con contraseña. Quita la contraseña y vuelve a subirlo.",
     "imageHeicUnavailable": "No se pudo convertir esta foto HEIC en este momento. Vuelve a subirla en un minuto, o expórtala como JPEG y sube esa."
   },
   "playbackCopy": {

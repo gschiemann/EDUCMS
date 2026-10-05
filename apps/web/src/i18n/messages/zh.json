@@ -2011,6 +2011,27 @@
       "NO_FILE": "此素材没有可下载的文件。",
       "UNSUPPORTED_URL": "此素材的下载地址不受支持。",
       "EXTERNAL_HOST": "此文件托管在媒体库之外。请改用“Copy asset link”。"
+    },
+    "pdfPages": {
+      "preparing": "正在准备页面… {done}/{count}",
+      "preparingUnknown": "正在准备页面…",
+      "preparingDetail": "页面准备好后屏幕即开始显示",
+      "ready": "{pages} 页",
+      "truncated": "显示前 {pages} 页（共 {count} 页）",
+      "readyDetail": "屏幕逐页显示",
+      "failedShort": "无法在屏幕上显示",
+      "failed": "此 PDF 无法在屏幕上显示：{reason}。",
+      "reason": {
+        "password": "该文件受密码保护，请移除密码后重新上传",
+        "unreadable": "无法将该文件读取为 PDF",
+        "tooLarge": "页面过大，无法准备",
+        "other": "页面无法准备"
+      },
+      "legacyFailed": "桌面播放器可能仍能以 PDF 显示，安卓播放器则无法显示。",
+      "itemLine": "{pages} 页 · 每页 {each} 秒 = {total}",
+      "seconds": "{n} 秒",
+      "minutes": "{n} 分钟",
+      "hoursMinutes": "{h} 小时 {m} 分钟"
     }
   },
   "playlistsPage": {
@@ -3317,6 +3338,7 @@
     "audioUnplayable": "这不是可以播放的音频文件——文件可能已损坏或不完整。请重新导出并上传新的副本。",
     "pdfNotPdf": "这不是 PDF——可能是以 .pdf 名称保存的其他类型文件。请重新保存或导出为 PDF 并上传新的副本。",
     "pdfIncomplete": "此 PDF 不完整——文件可能已损坏或被截断。请重新保存或导出并上传新的副本。",
+    "pdfPassword": "此 PDF 受密码保护。请移除密码后重新上传。",
     "imageHeicUnavailable": "暂时无法转换这张 HEIC 照片。请一分钟后重新上传，或将其导出为 JPEG 后上传。"
   },
   "playbackCopy": {

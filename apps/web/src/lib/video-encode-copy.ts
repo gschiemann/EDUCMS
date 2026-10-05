@@ -16,6 +16,7 @@
  * Greg, 2026-09-24: "if the content doesn't meet spec we should at least
  * warn them that they may have issues".
  */
+import { pdfPagesMayStillLand } from './pdf-pages-copy';
 import {
   DEFAULT_ENCODE_TARGET,
   gradeVideoProcessingMeta,
@@ -276,7 +277,14 @@ export const ENCODE_CHECK_POLL_MS = 5_000;
  * the mobile-perf standard).
  */
 export function libraryPollMs(assets: EncodeGradableAsset[], now: number = Date.now()): number | false {
-  return assets.some((a) => videoEncodeState(a, now).status === 'checking' || remuxMayStillLand(a, now))
+  return assets.some(
+    (a) =>
+      videoEncodeState(a, now).status === 'checking' ||
+      remuxMayStillLand(a, now) ||
+      // 2026-10-05 — a PDF whose pages are still being made: "Preparing pages…
+      // 7 of 12" advances on its own, and the poll stops when they land.
+      pdfPagesMayStillLand(a, now),
+  )
     ? ENCODE_CHECK_POLL_MS
     : false;
 }

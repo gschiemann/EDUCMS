@@ -20,6 +20,7 @@ import {
   type OptimizedMedia,
 } from '../storage/media-optimization.service';
 import { UploadContentCheckService } from './upload-content-check.service';
+import { PdfPagesService, pdfPageObjectPaths } from '../storage/pdf-pages/pdf-pages.service';
 import {
   refusalFor,
   storedTypeScreenVerdict,
@@ -300,7 +301,31 @@ export class AssetsController {
     // play it (upload-content-check.service.ts)? Optional for the specs that
     // build this controller by hand; production always has it.
     @Optional() private readonly uploadCheck?: UploadContentCheckService,
+    // 2026-10-05 — a PDF's pages are rendered after its upload answers, into the
+    // pictures screens are handed instead of the PDF (storage/pdf-pages).
+    // Optional for the specs that build this controller by hand.
+    @Optional() private readonly pdfPages?: PdfPagesService,
   ) {}
+
+  /**
+   * The `processingMeta.pdfPages` record a new PDF is CREATED with (pending), so
+   * the row never exists without it; null for anything else, or when pages are
+   * switched off / cannot be made here — the PDF is then delivered as before.
+   */
+  private pdfPagesRecordFor(mimeType: string): Record<string, unknown> | null {
+    const m = (mimeType || '').toLowerCase();
+    if (m !== 'application/pdf' && m !== 'application/x-pdf') return null;
+    return (this.pdfPages?.pendingRecord() as Record<string, unknown> | null | undefined) ?? null;
+  }
+
+  /** Render a just-created PDF's pages in the background. Never throws. */
+  private kickOffPdfPages(assetId: string, tenantId: string): void {
+    try {
+      this.pdfPages?.kickOff(assetId, tenantId);
+    } catch (e: any) {
+      this.logger.warn(`[assets] pdf pages kickOff failed for ${assetId}: ${e?.message ?? e}`);
+    }
+  }
 
   /**
    * Queue the signage transcode for a just-created video asset (2026-09-23).
@@ -1550,6 +1575,14 @@ export class AssetsController {
         )
       : null;
 
+    // 2026-10-05 — a PDF is created PENDING its pages (pdfPagesRecordFor): the
+    // normal manifest leaves it out until they exist, then hands screens one
+    // picture per page. Rendered after this request answers (kickOffPdfPages).
+    const pdfPagesRecord = this.pdfPagesRecordFor(realMime);
+    const createMeta: Record<string, unknown> = {
+      ...(uploadScreen ? { screen: uploadScreen } : {}),
+      ...(pdfPagesRecord ? { pdfPages: pdfPagesRecord } : {}),
+    };
     const asset = await this.prisma.client.asset.create({
       data: {
         tenantId: req.user.tenantId,
@@ -1561,9 +1594,10 @@ export class AssetsController {
         originalName: body.filename || null,
         status: this.initialAssetStatus(req.user.role),
         folderId,
-        ...(uploadScreen ? { processingMeta: { screen: uploadScreen } as any } : {}),
+        ...(Object.keys(createMeta).length ? { processingMeta: createMeta as any } : {}),
       },
     });
+    if (pdfPagesRecord) this.kickOffPdfPages(asset.id, req.user.tenantId);
 
     // SUPABASE EGRESS / QUALITY FIX (2026-05-23, tightened 2026-05-27 P0-5).
     // The legacy /assets/upload chain optimizes images inline via sharp;
@@ -1887,6 +1921,7 @@ export class AssetsController {
     // re-download exactly the diff. Computed in-memory from the SAME bytes
     // we stored (post-optimization) — no extra read.
     const fileHash = createHash('sha256').update(uploadBuf).digest('hex');
+    const multipartPdfPages = this.pdfPagesRecordFor(uploadMime);
 
     const asset = await this.prisma.client.asset.create({
       data: {
@@ -1909,9 +1944,13 @@ export class AssetsController {
         // NullableJsonNullValueInput type forbids a plain object literal
         // (it wants either Prisma.JsonNull or the value-typed shape) —
         // the actual JSONB value is a plain Record<string,unknown>.
-        ...(processingMeta ? { processingMeta: processingMeta as any } : {}),
+        ...(processingMeta || multipartPdfPages
+          ? { processingMeta: { ...(processingMeta ?? {}), ...(multipartPdfPages ? { pdfPages: multipartPdfPages } : {}) } as any }
+          : {}),
       },
     });
+    // 2026-10-05 — a PDF's pages, rendered after this request answers.
+    if (multipartPdfPages) this.kickOffPdfPages(asset.id, req.user.tenantId);
 
     if (asset.status === 'PENDING_APPROVAL') {
       // Fire-and-forget — don't block the upload response on
@@ -2606,6 +2645,19 @@ export class AssetsController {
     if (posterUrl) {
       const posterPath = this.storage.extractPath(posterUrl);
       if (posterPath) await this.storage.delete(posterPath).catch(() => undefined);
+    }
+
+    // 2026-10-05 — and a PDF's pages (storage/pdf-pages): every frame and
+    // thumbnail, only under THIS tenant's own pages folder, and only when no
+    // other row still serves this file — a fleet copy is shown the owner's
+    // pages. Best-effort, like the poster: leftovers are orphaned pictures,
+    // never a reason an asset cannot be deleted.
+    const pagePaths = pdfPageObjectPaths(asset.processingMeta, req.user.tenantId, (u) => this.storage.extractPath(u));
+    if (pagePaths.length) {
+      const sharing = await this.prisma.client.asset
+        .count({ where: { fileUrl: asset.fileUrl, id: { not: id } } })
+        .catch(() => 1);
+      if (sharing === 0) await this.storage.deleteMany(pagePaths).catch(() => 0);
     }
 
     // 2026-09-24 — and the original a fast-start re-mux kept beside its copy

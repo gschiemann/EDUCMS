@@ -134,7 +134,36 @@ export interface RasterizeJobMessage {
   /** Throwaway Chromium profile, same lifecycle as the render job's. */
   userDataDir: string;
   limits: RasterizeJobLimits;
+  /**
+   * 1-based source page to start at (2026-10-05, PDF pages on screens). Absent
+   * = 1, which is every design-import job. A long document is rastered in
+   * short jobs — pages 1–6, then 7–12 … — so no single child holds a whole
+   * document's images and the dashboard can say how far it got.
+   */
+  firstPage?: number;
+  /**
+   * Screen frames to compose every page into, INSTEAD of the page-shaped
+   * full-size image (2026-10-05). Each frame is a fixed canvas — 3840×2160,
+   * 1080×1920 … — with the page drawn whole and centred on black ("contain"),
+   * because a player draws a picture edge to edge (`object-fit: fill`) and a
+   * Letter page stretched over a 16:9 panel is not the page. Absent = the
+   * design-import output, unchanged.
+   */
+  frames?: RasterFrameSpec[];
 }
+
+/** One screen canvas a rastered page is composed into. */
+export interface RasterFrameSpec {
+  /** Stable name the caller files the image under: `landscape`, `portrait-1080` … */
+  key: string;
+  width: number;
+  height: number;
+}
+
+/** Frames per job, and their size range — a request outside these is not a job. */
+export const MAX_RASTER_FRAMES = 6;
+export const MAX_RASTER_FRAME_EDGE = 4096;
+const FRAME_KEY = /^[a-z0-9][a-z0-9-]{0,31}$/;
 
 /** Every job shape the worker will accept. Nothing else is a job. */
 export type WorkerJobMessage = RenderJobMessage | RasterizeJobMessage;
@@ -145,10 +174,23 @@ export interface RasterizedPageMessage {
   sourcePage: number;
   widthPx: number;
   heightPx: number;
-  /** Full-size WebP, base64. `serialization: 'json'` cannot carry a Buffer. */
+  /**
+   * Full-size WebP, base64. `serialization: 'json'` cannot carry a Buffer.
+   * EMPTY when the job asked for `frames` — the frames are the output then.
+   */
   webpBase64: string;
   /** Thumbnail WebP, base64. */
   thumbWebpBase64: string;
+  /** The page composed into each requested frame, in request order. Only when asked for. */
+  frames?: RasterizedFrameMessage[];
+}
+
+/** One frame of one page as it crosses the IPC boundary. */
+export interface RasterizedFrameMessage {
+  key: string;
+  widthPx: number;
+  heightPx: number;
+  webpBase64: string;
 }
 
 export type WorkerLogLevel = 'log' | 'warn' | 'error';
@@ -392,6 +434,18 @@ function parseRasterizeJob(raw: Record<string, unknown>): RasterizeJobMessage | 
   // sharp rejects anything outside 1-100, and a job that cannot encode is a
   // job that wasted a browser launch to find out.
   if ((l.webpQuality as number) > 100) return null;
+  // Optional, and exact when present: an out-of-range page or a malformed
+  // frame is not a job, it is not "the default".
+  let firstPage: number | undefined;
+  if (raw.firstPage !== undefined) {
+    if (!Number.isSafeInteger(raw.firstPage) || (raw.firstPage as number) < 1) return null;
+    firstPage = raw.firstPage as number;
+  }
+  let frames: RasterFrameSpec[] | undefined;
+  if (raw.frames !== undefined) {
+    frames = parseFrameSpecs(raw.frames) ?? undefined;
+    if (!frames) return null;
+  }
   return {
     v: RENDER_PROTOCOL_VERSION,
     type: 'rasterize',
@@ -400,6 +454,8 @@ function parseRasterizeJob(raw: Record<string, unknown>): RasterizeJobMessage | 
     scratchDir: raw.scratchDir,
     executablePath: raw.executablePath,
     userDataDir: raw.userDataDir,
+    ...(firstPage !== undefined ? { firstPage } : {}),
+    ...(frames ? { frames } : {}),
     limits: {
       maxPages: l.maxPages as number,
       maxPagePixels: l.maxPagePixels as number,
@@ -416,6 +472,29 @@ function parseRasterizeJob(raw: Record<string, unknown>): RasterizeJobMessage | 
 }
 
 /**
+ * A frame list, validated: 1..MAX_RASTER_FRAMES entries, each a unique key and
+ * a whole-pixel size inside 16..MAX_RASTER_FRAME_EDGE. Null for anything else.
+ */
+export function parseFrameSpecs(raw: unknown): RasterFrameSpec[] | null {
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > MAX_RASTER_FRAMES) return null;
+  const out: RasterFrameSpec[] = [];
+  const keys = new Set<string>();
+  for (const entry of raw) {
+    if (!isPlainRecord(entry)) return null;
+    const { key, width, height } = entry;
+    if (typeof key !== 'string' || !FRAME_KEY.test(key) || keys.has(key)) return null;
+    for (const edge of [width, height]) {
+      if (!Number.isSafeInteger(edge) || (edge as number) < 16 || (edge as number) > MAX_RASTER_FRAME_EDGE) {
+        return null;
+      }
+    }
+    keys.add(key);
+    out.push({ key, width: width as number, height: height as number });
+  }
+  return out;
+}
+
+/**
  * Caps the PARENT re-applies to a raster result.
  *
  * Passed per call rather than read from the job so that a client which never
@@ -425,6 +504,13 @@ function parseRasterizeJob(raw: Record<string, unknown>): RasterizeJobMessage | 
 export interface RasterResultCaps {
   maxPages: number;
   maxTotalOutputBytes: number;
+  /**
+   * The frames THIS job asked for. Every page must then carry exactly these —
+   * same keys, same order, same sizes — and nothing else; without them a page
+   * carrying frames is refused. The child decoded a stranger's file, so "here
+   * is a 3840×2160 frame" is a claim the parent checks, not one it trusts.
+   */
+  frames?: RasterFrameSpec[];
 }
 
 /**
@@ -539,6 +625,25 @@ function parseRasterResult(
     if (typeof webpBase64 !== 'string' || !BASE64_ONLY.test(webpBase64)) return null;
     if (typeof thumbWebpBase64 !== 'string' || !BASE64_ONLY.test(thumbWebpBase64)) return null;
     totalBytes += base64Bytes(webpBase64) + base64Bytes(thumbWebpBase64);
+    // Frames: exactly the ones this job asked for, or none at all.
+    let frames: RasterizedFrameMessage[] | undefined;
+    if (caps.frames) {
+      if (!Array.isArray(entry.frames) || entry.frames.length !== caps.frames.length) return null;
+      frames = [];
+      for (let i = 0; i < caps.frames.length; i += 1) {
+        const want = caps.frames[i];
+        const got = entry.frames[i];
+        if (!isPlainRecord(got)) return null;
+        if (got.key !== want.key || got.widthPx !== want.width || got.heightPx !== want.height) return null;
+        if (typeof got.webpBase64 !== 'string' || got.webpBase64.length === 0 || !BASE64_ONLY.test(got.webpBase64)) {
+          return null;
+        }
+        totalBytes += base64Bytes(got.webpBase64);
+        frames.push({ key: want.key, widthPx: want.width, heightPx: want.height, webpBase64: got.webpBase64 });
+      }
+    } else if (entry.frames !== undefined) {
+      return null;
+    }
     if (totalBytes > caps.maxTotalOutputBytes) return null;
     pages.push({
       sourcePage: Math.floor(sourcePage),
@@ -546,6 +651,7 @@ function parseRasterResult(
       heightPx: Math.floor(heightPx),
       webpBase64,
       thumbWebpBase64,
+      ...(frames ? { frames } : {}),
     });
   }
 

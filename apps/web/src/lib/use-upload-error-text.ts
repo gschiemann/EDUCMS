@@ -42,6 +42,8 @@ export const CONTENT_REFUSAL_KEYS: Readonly<Record<string, string>> = {
   ASSET_AUDIO_UNPLAYABLE: 'audioUnplayable',
   ASSET_PDF_NOT_PDF: 'pdfNotPdf',
   ASSET_PDF_INCOMPLETE: 'pdfIncomplete',
+  // 2026-10-05 — a PDF that needs a password to open: no screen could show it.
+  ASSET_PDF_PASSWORD: 'pdfPassword',
 };
 
 function fmtBytes(bytes: number): string {

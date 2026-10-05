@@ -60,6 +60,7 @@ import {
   buildWorkerEnv,
   parseWorkerMessage,
   sanitizeLogText,
+  type RasterFrameSpec,
   type RasterResultCaps,
   type RasterizeJobLimits,
   type RenderJobLimits,
@@ -136,6 +137,12 @@ function cgroupMemoryBytes(): number | null {
     }
   }
   return null;
+}
+
+/** Which pages a raster job covers, and the screen frames it composes them into. */
+export interface RasterRangeRequest {
+  firstPage?: number;
+  frames?: RasterFrameSpec[];
 }
 
 export interface RenderWorkerClientOptions {
@@ -272,6 +279,7 @@ export class RenderWorkerClient {
     pdfPath: string,
     scratchDir: string,
     limits: RasterizeJobLimits,
+    request: RasterRangeRequest = {},
   ): Promise<RasterPipelineOutcome> {
     if (this.active) return { ok: false, reason: 'worker-busy' };
     if (!this.isAvailable()) {
@@ -296,10 +304,14 @@ export class RenderWorkerClient {
       executablePath: this.executablePath,
       userDataDir: profileDir,
       limits,
+      ...(request.firstPage !== undefined ? { firstPage: request.firstPage } : {}),
+      ...(request.frames && request.frames.length ? { frames: request.frames } : {}),
     };
     const rasterCaps: RasterResultCaps = {
       maxPages: limits.maxPages,
       maxTotalOutputBytes: limits.maxTotalOutputBytes,
+      // A frames job is answered with exactly those frames, or not at all.
+      ...(request.frames && request.frames.length ? { frames: request.frames } : {}),
     };
 
     try {

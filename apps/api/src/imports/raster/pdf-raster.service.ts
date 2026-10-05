@@ -32,9 +32,15 @@ import {
   DEFAULT_RASTERIZE_LIMITS,
   type RasterPipelineOutcome,
 } from '../../proxy/pdf-raster-pipeline';
-import { RenderWorkerClient } from '../../proxy/render-worker-client';
+import {
+  RenderWorkerClient,
+  type RasterRangeRequest,
+} from '../../proxy/render-worker-client';
 import type { PipelineLogger } from '../../proxy/render-pipeline';
-import type { RasterizeJobLimits } from '../../proxy/render-worker-protocol';
+import type {
+  RasterFrameSpec,
+  RasterizeJobLimits,
+} from '../../proxy/render-worker-protocol';
 
 /** One rendered source page, ready to store. */
 export interface RasterizedPage {
@@ -65,6 +71,30 @@ export type RasterizeResult =
 /** Caller-tunable bounds. Anything omitted keeps the shipped default. */
 export type RasterizeOptions = Partial<RasterizeJobLimits>;
 
+/** One page composed into screen frames (`rasterizePdfFrames`). */
+export interface FramedPage {
+  /** 1-based page number in the SOURCE document. */
+  sourcePage: number;
+  /** The paint's size — the page's own shape, before it was framed. */
+  widthPx: number;
+  heightPx: number;
+  thumbWebp: Buffer;
+  /** In the order the frames were requested. */
+  frames: Array<{ key: string; widthPx: number; heightPx: number; webp: Buffer }>;
+}
+
+export type RasterizeFramesResult =
+  | {
+      ok: true;
+      sourcePageCount: number;
+      pages: FramedPage[];
+      warnings: string[];
+      /** The document goes on past the last page returned. */
+      truncated: boolean;
+      elapsedMs: number;
+    }
+  | { ok: false; reason: string };
+
 /**
  * A PDF may carry up to 1024 bytes of preamble before its header, and readers
  * tolerate it — so this is a scan, not a prefix test.
@@ -89,6 +119,50 @@ export class PdfRasterService implements OnModuleDestroy {
    * question from "how much memory" to "how long is the queue".
    */
   private readonly MAX_CONCURRENT = 1;
+
+  /**
+   * Who holds the one slot (2026-10-05). A design import is a person waiting
+   * on a request; a PDF-pages range (`rasterizePdfFrames`) is background work
+   * that retries by itself. So an import that finds a BACKGROUND range in the
+   * slot waits for it (a range is a few pages — seconds) instead of being
+   * refused, and takes the slot before the background loop's next range can.
+   * Import against import is unchanged: refused, not queued.
+   */
+  private holder: 'import' | 'background' | null = null;
+  private readonly releaseWaiters: Array<() => void> = [];
+  /** How long an import waits for a background range to finish. */
+  importWaitMs = 30_000;
+
+  /** Take the slot synchronously — before any await, so two callers cannot both pass a check. */
+  private claim(kind: 'import' | 'background'): boolean {
+    if (this.inFlight >= this.MAX_CONCURRENT) return false;
+    this.inFlight += 1;
+    this.holder = kind;
+    return true;
+  }
+
+  /** Free the slot and wake anyone waiting for it (synchronously, so a waiter claims first). */
+  private release(): void {
+    this.inFlight -= 1;
+    this.holder = null;
+    for (const wake of this.releaseWaiters.splice(0)) wake();
+  }
+
+  private waitForRelease(ms: number): Promise<boolean> {
+    return new Promise<boolean>((resolve) => {
+      const wake = () => {
+        clearTimeout(timer);
+        resolve(true);
+      };
+      const timer = setTimeout(() => {
+        const i = this.releaseWaiters.indexOf(wake);
+        if (i >= 0) this.releaseWaiters.splice(i, 1);
+        resolve(false);
+      }, ms);
+      timer.unref?.();
+      this.releaseWaiters.push(wake);
+    });
+  }
 
   /**
    * The parent's SIGKILL deadline, above the worker's own budget so the normal
@@ -138,17 +212,25 @@ export class PdfRasterService implements OnModuleDestroy {
     // so this is an early exit, not the control.
     if (!looksLikePdf(bytes)) return { ok: false, reason: 'pdf-unreadable' };
 
-    if (this.inFlight >= this.MAX_CONCURRENT) {
-      this.logger.warn(
-        `[raster] max concurrency hit (${this.inFlight}); refusing`,
-      );
-      return { ok: false, reason: 'raster-busy' };
+    if (!this.claim('import')) {
+      // A background page range gives way: wait for it, then go first.
+      const waited =
+        this.holder === 'background' &&
+        (await this.waitForRelease(this.importWaitMs)) &&
+        this.claim('import');
+      if (!waited) {
+        this.logger.warn(
+          `[raster] max concurrency hit (${this.inFlight}); refusing`,
+        );
+        return { ok: false, reason: 'raster-busy' };
+      }
     }
 
     let scratchDir: string;
     try {
       scratchDir = await mkdtemp(join(tmpdir(), 'venueos-pdfin-'));
     } catch (e: any) {
+      this.release();
       this.logger.warn(`[raster] could not create scratch dir: ${e?.message}`);
       return { ok: false, reason: 'scratch-dir-failed' };
     }
@@ -156,7 +238,6 @@ export class PdfRasterService implements OnModuleDestroy {
     // reaches a path this process opens.
     const pdfPath = join(scratchDir, `${randomBytes(16).toString('hex')}.pdf`);
 
-    this.inFlight += 1;
     try {
       // 0o600 — the worker runs as the same user, and nothing else on the box
       // has any business reading a tenant's upload.
@@ -190,12 +271,96 @@ export class PdfRasterService implements OnModuleDestroy {
       this.logger.warn(`[raster] failed: ${e?.message}`);
       return { ok: false, reason: 'raster-failed' };
     } finally {
-      this.inFlight -= 1;
+      this.release();
       // The worker unlinks the FILE as soon as it has read it, and removes the
       // directory on its way out — but that last step runs after it posts its
       // result and so races our own SIGKILL. This process owns the directory
       // precisely because that race exists: a leaked scratch dir per failed
       // import is a disk leak with a tenant's document in it.
+      await rm(scratchDir, { recursive: true, force: true }).catch(
+        () => undefined,
+      );
+    }
+  }
+
+  /**
+   * Rasterize a RANGE of pages, each composed into the given screen frames
+   * (2026-10-05, PDF pages on screens — `storage/pdf-pages`).
+   *
+   * Same gates as `rasterizePdf` — the size cap, the header sniff, ONE job per
+   * process across both callers (`inFlight` is shared with the design import,
+   * so a page render and an import never run two browsers at once), the
+   * scratch directory this process owns — and the same never-throws contract.
+   * What differs is the output: per page, one WebP per frame plus the
+   * thumbnail, and no page-shaped full-size image. `maxPages` (in `options`)
+   * is the size of THIS range; the caller walks a long document range by range.
+   */
+  async rasterizePdfFrames(
+    bytes: Buffer,
+    request: { firstPage: number; frames: RasterFrameSpec[] },
+    options: RasterizeOptions = {},
+  ): Promise<RasterizeFramesResult> {
+    const limits: RasterizeJobLimits = {
+      ...DEFAULT_RASTERIZE_LIMITS,
+      ...options,
+    };
+    if (bytes.byteLength === 0) return { ok: false, reason: 'pdf-unreadable' };
+    if (bytes.byteLength > limits.maxPdfBytes)
+      return { ok: false, reason: 'pdf-too-large' };
+    if (!looksLikePdf(bytes)) return { ok: false, reason: 'pdf-unreadable' };
+    if (!request.frames.length) return { ok: false, reason: 'no-frames' };
+    // Background work never waits here: the caller backs off and retries.
+    if (!this.claim('background')) return { ok: false, reason: 'raster-busy' };
+
+    let scratchDir: string;
+    try {
+      scratchDir = await mkdtemp(join(tmpdir(), 'venueos-pdfin-'));
+    } catch (e: any) {
+      this.release();
+      this.logger.warn(`[raster] could not create scratch dir: ${e?.message}`);
+      return { ok: false, reason: 'scratch-dir-failed' };
+    }
+    const pdfPath = join(scratchDir, `${randomBytes(16).toString('hex')}.pdf`);
+    try {
+      await writeFile(pdfPath, bytes, { mode: 0o600 });
+      const outcome = await this.executeRasterize(pdfPath, scratchDir, limits, {
+        firstPage: request.firstPage,
+        frames: request.frames,
+      });
+      if (!outcome.ok) return { ok: false, reason: outcome.reason };
+      const pages: FramedPage[] = [];
+      for (const page of outcome.pages) {
+        // `parseWorkerMessage` already refused a page without exactly the
+        // requested frames; this re-states it for the in-process test seam.
+        if (!page.frames || page.frames.length !== request.frames.length) {
+          return { ok: false, reason: 'worker-frames-missing' };
+        }
+        pages.push({
+          sourcePage: page.sourcePage,
+          widthPx: page.widthPx,
+          heightPx: page.heightPx,
+          thumbWebp: Buffer.from(page.thumbWebpBase64, 'base64'),
+          frames: page.frames.map((f) => ({
+            key: f.key,
+            widthPx: f.widthPx,
+            heightPx: f.heightPx,
+            webp: Buffer.from(f.webpBase64, 'base64'),
+          })),
+        });
+      }
+      return {
+        ok: true,
+        sourcePageCount: outcome.sourcePageCount,
+        pages,
+        warnings: outcome.warnings,
+        truncated: outcome.truncated,
+        elapsedMs: outcome.elapsedMs,
+      };
+    } catch (e: any) {
+      this.logger.warn(`[raster] frames failed: ${e?.message}`);
+      return { ok: false, reason: 'raster-failed' };
+    } finally {
+      this.release();
       await rm(scratchDir, { recursive: true, force: true }).catch(
         () => undefined,
       );
@@ -215,8 +380,9 @@ export class PdfRasterService implements OnModuleDestroy {
     pdfPath: string,
     scratchDir: string,
     limits: RasterizeJobLimits,
+    request: RasterRangeRequest = {},
   ): Promise<RasterPipelineOutcome> {
-    return this.worker.rasterizePdf(pdfPath, scratchDir, limits);
+    return this.worker.rasterizePdf(pdfPath, scratchDir, limits, request);
   }
 
   async onModuleDestroy() {

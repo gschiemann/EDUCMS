@@ -31,6 +31,7 @@
  * No I/O, no Nest. `UploadContentCheckService` runs the tools and gathers the
  * evidence; `decideUploadContent` is the one decision.
  */
+import type { PdfOpenVerdict } from './pdf-encryption';
 import {
   buildScreenStamp,
   resolveUploadFormat,
@@ -81,7 +82,14 @@ export type BadReason =
   /** No `%PDF-` header: some other file under a .pdf name. */
   | 'not-pdf'
   /** A PDF header but no `%%EOF` at the end: cut short. */
-  | 'pdf-incomplete';
+  | 'pdf-incomplete'
+  /**
+   * 2026-10-05 — a PDF that needs a password TO OPEN (a real user password, or a
+   * certificate): no screen could ever show it (pdf-encryption.ts). A PDF with
+   * only an owner password (no editing / printing) opens for everyone and is
+   * accepted.
+   */
+  | 'pdf-password';
 
 /** What one look at the file concluded. */
 export type Finding =
@@ -134,6 +142,12 @@ export interface PdfEvidence {
   head: Buffer | null;
   /** The last bytes of the object; null = they could not be read (or the size is unknown). */
   tail: Buffer | null;
+  /**
+   * 2026-10-05 — can it be opened without a password (`pdfOpenVerdict`)? Only
+   * looked at when the file mentions `/Encrypt`; absent / null = not checked,
+   * which is never a reason to refuse.
+   */
+  open?: PdfOpenVerdict | null;
 }
 
 export interface ContentEvidence {
@@ -510,7 +524,12 @@ export function classifyPdf(e: PdfEvidence): Finding {
   if (!e.tail) return unknown('the end of the file could not be read');
   if (e.tail.lastIndexOf('%%EOF', undefined, 'latin1') < 0)
     return bad('pdf-incomplete', `no %%EOF in the last ${e.tail.length} bytes`);
-  return ok('a %PDF- header and a %%EOF end marker');
+  if (e.open?.status === 'needs-password') return bad('pdf-password', e.open.detail);
+  return ok(
+    e.open?.status === 'opens'
+      ? 'a %PDF- header, a %%EOF end marker, and it opens without a password'
+      : 'a %PDF- header and a %%EOF end marker',
+  );
 }
 
 // ── the decision ────────────────────────────────────────────────────────────
@@ -586,6 +605,10 @@ export const UPLOAD_REFUSALS: Readonly<
     code: 'ASSET_PDF_INCOMPLETE',
     message:
       'This PDF is incomplete — the file may be damaged or cut short. Save or export it again and upload the new copy.',
+  },
+  'pdf-password': {
+    code: 'ASSET_PDF_PASSWORD',
+    message: 'This PDF is password-protected. Remove the password and upload it again.',
   },
 };
 

@@ -79,6 +79,7 @@ import {
 } from '@/lib/direct-upload';
 import { useVideoOptimizationStatus, optimizationOf } from '@/hooks/use-video-optimization';
 import { VideoOptimizationNote } from '@/components/assets/VideoOptimizationNote';
+import { PdfPagesNote } from '@/components/assets/PdfPagesNote';
 import { screenReadinessOf } from '@/lib/screen-readiness-copy';
 import { useUploadErrorText } from '@/lib/use-upload-error-text';
 import { LIBRARY_ACCEPT, uploadFormatsCopy, uploadProblemFor, useUploadProblemText } from '@/lib/upload-accept';
@@ -2159,6 +2160,10 @@ export default function AssetsPage() {
                         />
                       </span>
                     )}
+                    {/* 2026-10-05 — a PDF reaches screens as its pages: say where that stands. */}
+                    <span className="block">
+                      <PdfPagesNote asset={a} variant="card" />
+                    </span>
                   </span>
                 </button>
               </li>
@@ -2257,6 +2262,9 @@ export default function AssetsPage() {
                           />
                         </span>
                       )}
+                      <span className="block">
+                        <PdfPagesNote asset={a} variant="row" />
+                      </span>
                     </td>
                     <td className="hidden md:table-cell px-3 py-2 text-[11px] text-slate-600 whitespace-nowrap">{fmtRelative(a.createdAt) || '—'}</td>
                     <td className="hidden xl:table-cell px-3 py-2 text-[11px] text-slate-600 truncate max-w-[180px]">{a.uploadedBy?.email || '—'}</td>
@@ -2434,6 +2442,17 @@ export default function AssetsPage() {
                     variant="detail"
                     fmtSize={fmtSize}
                   />
+                </div>
+              )}
+
+              {/* 4d. A PDF's pages (2026-10-05) — what screens are handed instead of the PDF. */}
+              {selectedLive?.processingMeta?.pdfPages && (
+                <div className="bg-slate-50 rounded-lg p-3" data-testid="asset-pdf-pages">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <FileText className="w-3 h-3 text-slate-400" aria-hidden />
+                    <span className="text-[10px] font-bold text-slate-500 uppercase">{t('assetsLib.labelScreenVersion')}</span>
+                  </div>
+                  <PdfPagesNote asset={selectedLive} variant="detail" />
                 </div>
               )}
 
