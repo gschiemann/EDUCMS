@@ -1,0 +1,2179 @@
+{
+ "_meta": {
+  "about": "Real ffprobe output (trimmed to the fields transcode-profile.ts reads). Regenerate with apps/api/scripts/gen-transcode-probe-fixtures.mjs — never hand-edit.",
+  "ffmpeg": "ffmpeg version 8.1.1 Copyright (c) 2000-2026 the FFmpeg developers"
+ },
+ "cases": {
+  "clean-h264-1080p30-aac": {
+   "ffmpeg": [
+    "ffmpeg -f lavfi -i 'color=c=0x404040:s=1920x1080:r=30,drawbox=x=0:y=0:w=iw/6:h=ih/6:color=red:t=fill,drawbox=x=iw*5/6:y=ih*5/6:w=iw/6:h=ih/6:color=blue:t=fill' -f lavfi -i 'sine=frequency=440:sample_rate=48000' -t 1 -c:v libx264 -preset veryfast -pix_fmt yuv420p -profile:v high -c:a aac -ac 2 -movflags +faststart out.mp4"
+   ],
+   "probe": {
+    "streams": [
+     {
+      "index": 0,
+      "codec_name": "h264",
+      "codec_type": "video",
+      "profile": "High",
+      "width": 1920,
+      "height": 1080,
+      "sample_aspect_ratio": "1:1",
+      "display_aspect_ratio": "16:9",
+      "pix_fmt": "yuv420p",
+      "level": 40,
+      "field_order": "progressive",
+      "r_frame_rate": "30/1",
+      "avg_frame_rate": "30/1",
+      "duration": "1.000000",
+      "bit_rate": "26000",
+      "disposition": {
+       "attached_pic": 0
+      }
+     },
+     {
+      "index": 1,
+      "codec_name": "aac",
+      "codec_type": "audio",
+      "profile": "LC",
+      "r_frame_rate": "0/0",
+      "avg_frame_rate": "0/0",
+      "duration": "1.000000",
+      "bit_rate": "127707",
+      "sample_rate": "48000",
+      "channels": 2,
+      "channel_layout": "stereo",
+      "disposition": {
+       "attached_pic": 0
+      }
+     }
+    ],
+    "format": {
+     "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+     "duration": "1.000000",
+     "size": "22074",
+     "bit_rate": "176592",
+     "tags": {
+      "major_brand": "isom"
+     }
+    }
+   }
+  },
+  "clean-h264-videotoolbox-iphone-style": {
+   "ffmpeg": [
+    "ffmpeg -f lavfi -i 'color=c=0x404040:s=1920x1080:r=30,drawbox=x=0:y=0:w=iw/6:h=ih/6:color=red:t=fill,drawbox=x=iw*5/6:y=ih*5/6:w=iw/6:h=ih/6:color=blue:t=fill' -f lavfi -i 'sine=frequency=440:sample_rate=48000' -t 1 -c:v h264_videotoolbox -b:v 8M -pix_fmt yuv420p -c:a aac -ac 2 -movflags +faststart out.mp4"
+   ],
+   "probe": {
+    "streams": [
+     {
+      "index": 0,
+      "codec_name": "h264",
+      "codec_type": "video",
+      "profile": "High",
+      "width": 1920,
+      "height": 1080,
+      "sample_aspect_ratio": "1:1",
+      "display_aspect_ratio": "16:9",
+      "pix_fmt": "yuv420p",
+      "level": 40,
+      "field_order": "progressive",
+      "r_frame_rate": "30/1",
+      "avg_frame_rate": "30/1",
+      "duration": "1.000000",
+      "bit_rate": "41160",
+      "disposition": {
+       "attached_pic": 0
+      }
+     },
+     {
+      "index": 1,
+      "codec_name": "aac",
+      "codec_type": "audio",
+      "profile": "LC",
+      "r_frame_rate": "0/0",
+      "avg_frame_rate": "0/0",
+      "duration": "1.000000",
+      "bit_rate": "127707",
+      "sample_rate": "48000",
+      "channels": 2,
+      "channel_layout": "stereo",
+      "disposition": {
+       "attached_pic": 0
+      }
+     }
+    ],
+    "format": {
+     "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+     "duration": "1.000000",
+     "size": "23730",
+     "bit_rate": "189840",
+     "tags": {
+      "major_brand": "isom"
+     }
+    }
+   }
+  },
+  "clean-h264-cover-tmcd-subtitle": {
+   "ffmpeg": [
+    "ffmpeg -f lavfi -i 'color=c=green:s=600x600' -frames:v 1 cover.jpg",
+    "ffmpeg -f lavfi -i 'color=c=0x404040:s=1920x1080:r=30,drawbox=x=0:y=0:w=iw/6:h=ih/6:color=red:t=fill,drawbox=x=iw*5/6:y=ih*5/6:w=iw/6:h=ih/6:color=blue:t=fill' -f lavfi -i 'sine=frequency=440:sample_rate=48000' -t 1 -c:v libx264 -preset veryfast -pix_fmt yuv420p -profile:v high -c:a aac -ac 2 -movflags +faststart cts-base.mp4",
+    "ffmpeg -i cts-base.mp4 -i cover.jpg -i sub.srt -map 0 -map 1 -map 2 -c copy -c:s mov_text -disposition:v:1 attached_pic -timecode '01:00:00:00' -write_tmcd 1 out.mp4"
+   ],
+   "probe": {
+    "streams": [
+     {
+      "index": 0,
+      "codec_name": "h264",
+      "codec_type": "video",
+      "profile": "High",
+      "width": 1920,
+      "height": 1080,
+      "sample_aspect_ratio": "1:1",
+      "display_aspect_ratio": "16:9",
+      "pix_fmt": "yuv420p",
+      "level": 40,
+      "field_order": "progressive",
+      "r_frame_rate": "30/1",
+      "avg_frame_rate": "30/1",
+      "duration": "1.000000",
+      "bit_rate": "26000",
+      "disposition": {
+       "attached_pic": 0
+      }
+     },
+     {
+      "index": 1,
+      "codec_name": "aac",
+      "codec_type": "audio",
+      "profile": "LC",
+      "r_frame_rate": "0/0",
+      "avg_frame_rate": "0/0",
+      "duration": "1.000000",
+      "bit_rate": "127707",
+      "sample_rate": "48000",
+      "channels": 2,
+      "channel_layout": "stereo",
+      "disposition": {
+       "attached_pic": 0
+      }
+     },
+     {
+      "index": 2,
+      "codec_name": "mov_text",
+      "codec_type": "subtitle",
+      "r_frame_rate": "0/0",
+      "avg_frame_rate": "0/0",
+      "duration": "0.900000",
+      "bit_rate": "80",
+      "disposition": {
+       "attached_pic": 0
+      }
+     },
+     {
+      "index": 3,
+      "codec_type": "data",
+      "r_frame_rate": "0/0",
+      "avg_frame_rate": "15360/512",
+      "duration": "1.000000",
+      "bit_rate": "32",
+      "disposition": {
+       "attached_pic": 0
+      }
+     },
+     {
+      "index": 4,
+      "codec_type": "data",
+      "r_frame_rate": "0/0",
+      "avg_frame_rate": "12800/512",
+      "duration": "0.000000",
+      "disposition": {
+       "attached_pic": 0
+      }
+     },
+     {
+      "index": 5,
+      "codec_name": "mjpeg",
+      "codec_type": "video",
+      "profile": "Baseline",
+      "width": 600,
+      "height": 600,
+      "sample_aspect_ratio": "1:1",
+      "display_aspect_ratio": "1:1",
+      "pix_fmt": "yuvj420p",
+      "level": -99,
+      "color_range": "pc",
+      "color_space": "bt470bg",
+      "r_frame_rate": "90000/1",
+      "avg_frame_rate": "0/0",
+      "duration": "1.000000",
+      "disposition": {
+       "attached_pic": 1
+      }
+     }
+    ],
+    "format": {
+     "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+     "duration": "1.000000",
+     "size": "25889",
+     "bit_rate": "207112",
+     "tags": {
+      "major_brand": "isom"
+     }
+    }
+   }
+  },
+  "clean-h264-no-audio": {
+   "ffmpeg": [
+    "ffmpeg -f lavfi -i 'color=c=0x404040:s=1920x1080:r=30,drawbox=x=0:y=0:w=iw/6:h=ih/6:color=red:t=fill,drawbox=x=iw*5/6:y=ih*5/6:w=iw/6:h=ih/6:color=blue:t=fill' -t 1 -c:v libx264 -preset veryfast -pix_fmt yuv420p -profile:v high -movflags +faststart out.mp4"
+   ],
+   "probe": {
+    "streams": [
+     {
+      "index": 0,
+      "codec_name": "h264",
+      "codec_type": "video",
+      "profile": "High",
+      "width": 1920,
+      "height": 1080,
+      "sample_aspect_ratio": "1:1",
+      "display_aspect_ratio": "16:9",
+      "pix_fmt": "yuv420p",
+      "level": 40,
+      "field_order": "progressive",
+      "r_frame_rate": "30/1",
+      "avg_frame_rate": "30/1",
+      "duration": "1.000000",
+      "bit_rate": "26000",
+      "disposition": {
+       "attached_pic": 0
+      }
+     }
+    ],
+    "format": {
+     "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+     "duration": "1.000000",
+     "size": "4485",
+     "bit_rate": "35880",
+     "tags": {
+      "major_brand": "isom"
+     }
+    }
+   }
+  },
+  "clean-h264-mp3-44k": {
+   "ffmpeg": [
+    "ffmpeg -f lavfi -i 'color=c=0x404040:s=1280x720:r=30,drawbox=x=0:y=0:w=iw/6:h=ih/6:color=red:t=fill,drawbox=x=iw*5/6:y=ih*5/6:w=iw/6:h=ih/6:color=blue:t=fill' -f lavfi -i 'sine=frequency=440:sample_rate=44100' -t 1 -c:v libx264 -preset veryfast -pix_fmt yuv420p -profile:v high -c:a libmp3lame -ac 2 -movflags +faststart out.mp4"
+   ],
+   "probe": {
+    "streams": [
+     {
+      "index": 0,
+      "codec_name": "h264",
+      "codec_type": "video",
+      "profile": "High",
+      "width": 1280,
+      "height": 720,
+      "sample_aspect_ratio": "1:1",
+      "display_aspect_ratio": "16:9",
+      "pix_fmt": "yuv420p",
+      "level": 31,
+      "field_order": "progressive",
+      "r_frame_rate": "30/1",
+      "avg_frame_rate": "30/1",
+      "duration": "1.000000",
+      "bit_rate": "17424",
+      "disposition": {
+       "attached_pic": 0
+      }
+     },
+     {
+      "index": 1,
+      "codec_name": "mp3",
+      "codec_type": "audio",
+      "r_frame_rate": "0/0",
+      "avg_frame_rate": "0/0",
+      "duration": "1.000000",
+      "bit_rate": "130474",
+      "sample_rate": "44100",
+      "channels": 2,
+      "channel_layout": "stereo",
+      "disposition": {
+       "attached_pic": 0
+      }
+     }
+    ],
+    "format": {
+     "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+     "duration": "1.000000",
+     "size": "21235",
+     "bit_rate": "169880",
+     "tags": {
+      "major_brand": "isom"
+     }
+    }
+   }
+  },
+  "clean-h264-aac-mono-48k": {
+   "ffmpeg": [
+    "ffmpeg -f lavfi -i 'color=c=0x404040:s=1280x720:r=30,drawbox=x=0:y=0:w=iw/6:h=ih/6:color=red:t=fill,drawbox=x=iw*5/6:y=ih*5/6:w=iw/6:h=ih/6:color=blue:t=fill' -f lavfi -i 'sine=frequency=440:sample_rate=48000' -t 1 -c:v libx264 -preset veryfast -pix_fmt yuv420p -profile:v high -c:a aac -movflags +faststart out.mp4"
+   ],
+   "probe": {
+    "streams": [
+     {
+      "index": 0,
+      "codec_name": "h264",
+      "codec_type": "video",
+      "profile": "High",
+      "width": 1280,
+      "height": 720,
+      "sample_aspect_ratio": "1:1",
+      "display_aspect_ratio": "16:9",
+      "pix_fmt": "yuv420p",
+      "level": 31,
+      "field_order": "progressive",
+      "r_frame_rate": "30/1",
+      "avg_frame_rate": "30/1",
+      "duration": "1.000000",
+      "bit_rate": "17424",
+      "disposition": {
+       "attached_pic": 0
+      }
+     },
+     {
+      "index": 1,
+      "codec_name": "aac",
+      "codec_type": "audio",
+      "profile": "LC",
+      "r_frame_rate": "0/0",
+      "avg_frame_rate": "0/0",
+      "duration": "1.000000",
+      "bit_rate": "70386",
+      "sample_rate": "48000",
+      "channels": 1,
+      "channel_layout": "mono",
+      "disposition": {
+       "attached_pic": 0
+      }
+     }
+    ],
+    "format": {
+     "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+     "duration": "1.000000",
+     "size": "13683",
+     "bit_rate": "109464",
+     "tags": {
+      "major_brand": "isom"
+     }
+    }
+   }
+  },
+  "clean-h264-baseline-360p": {
+   "ffmpeg": [
+    "ffmpeg -f lavfi -i 'color=c=0x404040:s=640x360:r=30,drawbox=x=0:y=0:w=iw/6:h=ih/6:color=red:t=fill,drawbox=x=iw*5/6:y=ih*5/6:w=iw/6:h=ih/6:color=blue:t=fill' -f lavfi -i 'sine=frequency=440:sample_rate=48000' -t 1 -c:v libx264 -preset veryfast -pix_fmt yuv420p -profile:v baseline -c:a aac -ac 2 -movflags +faststart out.mp4"
+   ],
+   "probe": {
+    "streams": [
+     {
+      "index": 0,
+      "codec_name": "h264",
+      "codec_type": "video",
+      "profile": "Constrained Baseline",
+      "width": 640,
+      "height": 360,
+      "sample_aspect_ratio": "1:1",
+      "display_aspect_ratio": "16:9",
+      "pix_fmt": "yuv420p",
+      "level": 30,
+      "field_order": "progressive",
+      "r_frame_rate": "30/1",
+      "avg_frame_rate": "30/1",
+      "duration": "1.000000",
+      "bit_rate": "14752",
+      "disposition": {
+       "attached_pic": 0
+      }
+     },
+     {
+      "index": 1,
+      "codec_name": "aac",
+      "codec_type": "audio",
+      "profile": "LC",
+      "r_frame_rate": "0/0",
+      "avg_frame_rate": "0/0",
+      "duration": "1.000000",
+      "bit_rate": "127707",
+      "sample_rate": "48000",
+      "channels": 2,
+      "channel_layout": "stereo",
+      "disposition": {
+       "attached_pic": 0
+      }
+     }
+    ],
+    "format": {
+     "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+     "duration": "1.000000",
+     "size": "20430",
+     "bit_rate": "163440",
+     "tags": {
+      "major_brand": "isom"
+     }
+    }
+   }
+  },
+  "clean-h264-ntsc-2997": {
+   "ffmpeg": [
+    "ffmpeg -f lavfi -i 'color=c=0x404040:s=1280x720:r=30000/1001,drawbox=x=0:y=0:w=iw/6:h=ih/6:color=red:t=fill,drawbox=x=iw*5/6:y=ih*5/6:w=iw/6:h=ih/6:color=blue:t=fill' -f lavfi -i 'sine=frequency=440:sample_rate=48000' -t 1 -c:v libx264 -preset veryfast -pix_fmt yuv420p -profile:v high -c:a aac -ac 2 -movflags +faststart out.mp4"
+   ],
+   "probe": {
+    "streams": [
+     {
+      "index": 0,
+      "codec_name": "h264",
+      "codec_type": "video",
+      "profile": "High",
+      "width": 1280,
+      "height": 720,
+      "sample_aspect_ratio": "1:1",
+      "display_aspect_ratio": "16:9",
+      "pix_fmt": "yuv420p",
+      "level": 31,
+      "field_order": "progressive",
+      "r_frame_rate": "30000/1001",
+      "avg_frame_rate": "30000/1001",
+      "duration": "1.001000",
+      "bit_rate": "17406",
+      "disposition": {
+       "attached_pic": 0
+      }
+     },
+     {
+      "index": 1,
+      "codec_name": "aac",
+      "codec_type": "audio",
+      "profile": "LC",
+      "r_frame_rate": "0/0",
+      "avg_frame_rate": "0/0",
+      "duration": "1.000000",
+      "bit_rate": "127707",
+      "sample_rate": "48000",
+      "channels": 2,
+      "channel_layout": "stereo",
+      "disposition": {
+       "attached_pic": 0
+      }
+     }
+    ],
+    "format": {
+     "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+     "duration": "1.001000",
+     "size": "20999",
+     "bit_rate": "167824",
+     "tags": {
+      "major_brand": "isom"
+     }
+    }
+   }
+  },
+  "clean-h264-uhd-30": {
+   "ffmpeg": [
+    "ffmpeg -f lavfi -i 'color=c=0x404040:s=3840x2160:r=30,drawbox=x=0:y=0:w=iw/6:h=ih/6:color=red:t=fill,drawbox=x=iw*5/6:y=ih*5/6:w=iw/6:h=ih/6:color=blue:t=fill' -frames:v 2 -c:v libx264 -preset veryfast -pix_fmt yuv420p -profile:v high -movflags +faststart out.mp4"
+   ],
+   "probe": {
+    "streams": [
+     {
+      "index": 0,
+      "codec_name": "h264",
+      "codec_type": "video",
+      "profile": "High",
+      "width": 3840,
+      "height": 2160,
+      "sample_aspect_ratio": "1:1",
+      "display_aspect_ratio": "16:9",
+      "pix_fmt": "yuv420p",
+      "level": 51,
+      "field_order": "progressive",
+      "r_frame_rate": "30/1",
+      "avg_frame_rate": "30/1",
+      "duration": "0.066667",
+      "bit_rate": "308040",
+      "disposition": {
+       "attached_pic": 0
+      }
+     }
+    ],
+    "format": {
+     "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+     "duration": "0.066667",
+     "size": "3433",
+     "bit_rate": "411957",
+     "tags": {
+      "major_brand": "isom"
+     }
+    }
+   }
+  },
+  "clean-h264-dci-4096x2160-30": {
+   "ffmpeg": [
+    "ffmpeg -f lavfi -i 'color=c=0x404040:s=4096x2160:r=30,drawbox=x=0:y=0:w=iw/6:h=ih/6:color=red:t=fill,drawbox=x=iw*5/6:y=ih*5/6:w=iw/6:h=ih/6:color=blue:t=fill' -frames:v 2 -c:v libx264 -preset veryfast -pix_fmt yuv420p -profile:v high -movflags +faststart out.mp4"
+   ],
+   "probe": {
+    "streams": [
+     {
+      "index": 0,
+      "codec_name": "h264",
+      "codec_type": "video",
+      "profile": "High",
+      "width": 4096,
+      "height": 2160,
+      "sample_aspect_ratio": "1:1",
+      "display_aspect_ratio": "256:135",
+      "pix_fmt": "yuv420p",
+      "level": 52,
+      "field_order": "progressive",
+      "r_frame_rate": "30/1",
+      "avg_frame_rate": "30/1",
+      "duration": "0.066667",
+      "bit_rate": "333480",
+      "disposition": {
+       "attached_pic": 0
+      }
+     }
+    ],
+    "format": {
+     "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+     "duration": "0.066667",
+     "size": "3646",
+     "bit_rate": "437517",
+     "tags": {
+      "major_brand": "isom"
+     }
+    }
+   }
+  },
+  "clean-h264-portrait-1080x1920": {
+   "ffmpeg": [
+    "ffmpeg -f lavfi -i 'color=c=0x404040:s=1080x1920:r=30,drawbox=x=0:y=0:w=iw/6:h=ih/6:color=red:t=fill,drawbox=x=iw*5/6:y=ih*5/6:w=iw/6:h=ih/6:color=blue:t=fill' -frames:v 3 -c:v libx264 -preset veryfast -pix_fmt yuv420p -profile:v high -movflags +faststart out.mp4"
+   ],
+   "probe": {
+    "streams": [
+     {
+      "index": 0,
+      "codec_name": "h264",
+      "codec_type": "video",
+      "profile": "High",
+      "width": 1080,
+      "height": 1920,
+      "sample_aspect_ratio": "1:1",
+      "display_aspect_ratio": "9:16",
+      "pix_fmt": "yuv420p",
+      "level": 40,
+      "field_order": "progressive",
+      "r_frame_rate": "30/1",
+      "avg_frame_rate": "30/1",
+      "duration": "0.100000",
+      "bit_rate": "110800",
+      "disposition": {
+       "attached_pic": 0
+      }
+     }
+    ],
+    "format": {
+     "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+     "duration": "0.100000",
+     "size": "2296",
+     "bit_rate": "183680",
+     "tags": {
+      "major_brand": "isom"
+     }
+    }
+   }
+  },
+  "clean-h264-ultrawide-3840x1080": {
+   "ffmpeg": [
+    "ffmpeg -f lavfi -i 'color=c=0x404040:s=3840x1080:r=30,drawbox=x=0:y=0:w=iw/6:h=ih/6:color=red:t=fill,drawbox=x=iw*5/6:y=ih*5/6:w=iw/6:h=ih/6:color=blue:t=fill' -frames:v 3 -c:v libx264 -preset veryfast -pix_fmt yuv420p -profile:v high -movflags +faststart out.mp4"
+   ],
+   "probe": {
+    "streams": [
+     {
+      "index": 0,
+      "codec_name": "h264",
+      "codec_type": "video",
+      "profile": "High",
+      "width": 3840,
+      "height": 1080,
+      "sample_aspect_ratio": "1:1",
+      "display_aspect_ratio": "32:9",
+      "pix_fmt": "yuv420p",
+      "level": 50,
+      "field_order": "progressive",
+      "r_frame_rate": "30/1",
+      "avg_frame_rate": "30/1",
+      "duration": "0.100000",
+      "bit_rate": "151600",
+      "disposition": {
+       "attached_pic": 0
+      }
+     }
+    ],
+    "format": {
+     "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+     "duration": "0.100000",
+     "size": "2806",
+     "bit_rate": "224480",
+     "tags": {
+      "major_brand": "isom"
+     }
+    }
+   }
+  },
+  "clean-h264-untagged-hd-720p": {
+   "ffmpeg": [
+    "ffmpeg -f lavfi -i 'color=c=0x404040:s=1280x720:r=30,drawbox=x=0:y=0:w=iw/6:h=ih/6:color=red:t=fill,drawbox=x=iw*5/6:y=ih*5/6:w=iw/6:h=ih/6:color=blue:t=fill' -t 1 -c:v libx264 -preset veryfast -pix_fmt yuv420p -profile:v high -x264-params 'colorprim=undef:transfer=undef:colormatrix=undef' -movflags +faststart out.mp4"
+   ],
+   "probe": {
+    "streams": [
+     {
+      "index": 0,
+      "codec_name": "h264",
+      "codec_type": "video",
+      "profile": "High",
+      "width": 1280,
+      "height": 720,
+      "sample_aspect_ratio": "1:1",
+      "display_aspect_ratio": "16:9",
+      "pix_fmt": "yuv420p",
+      "level": 31,
+      "field_order": "progressive",
+      "r_frame_rate": "30/1",
+      "avg_frame_rate": "30/1",
+      "duration": "1.000000",
+      "bit_rate": "17424",
+      "disposition": {
+       "attached_pic": 0
+      }
+     }
+    ],
+    "format": {
+     "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+     "duration": "1.000000",
+     "size": "3412",
+     "bit_rate": "27296",
+     "tags": {
+      "major_brand": "isom"
+     }
+    }
+   }
+  },
+  "clean-h264-untagged-sd-576p": {
+   "ffmpeg": [
+    "ffmpeg -f lavfi -i 'color=c=0x404040:s=720x576:r=25,drawbox=x=0:y=0:w=iw/6:h=ih/6:color=red:t=fill,drawbox=x=iw*5/6:y=ih*5/6:w=iw/6:h=ih/6:color=blue:t=fill' -t 1 -c:v libx264 -preset veryfast -pix_fmt yuv420p -profile:v high -x264-params 'colorprim=undef:transfer=undef:colormatrix=undef' -movflags +faststart out.mp4"
+   ],
+   "probe": {
+    "streams": [
+     {
+      "index": 0,
+      "codec_name": "h264",
+      "codec_type": "video",
+      "profile": "High",
+      "width": 720,
+      "height": 576,
+      "sample_aspect_ratio": "1:1",
+      "display_aspect_ratio": "5:4",
+      "pix_fmt": "yuv420p",
+      "level": 30,
+      "field_order": "progressive",
+      "r_frame_rate": "25/1",
+      "avg_frame_rate": "25/1",
+      "duration": "1.000000",
+      "bit_rate": "11808",
+      "disposition": {
+       "attached_pic": 0
+      }
+     }
+    ],
+    "format": {
+     "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+     "duration": "1.000000",
+     "size": "2649",
+     "bit_rate": "21192",
+     "tags": {
+      "major_brand": "isom"
+     }
+    }
+   }
+  },
+  "clean-h264-bt601-tagged-hd": {
+   "ffmpeg": [
+    "ffmpeg -f lavfi -i 'color=c=0x404040:s=1280x720:r=30,drawbox=x=0:y=0:w=iw/6:h=ih/6:color=red:t=fill,drawbox=x=iw*5/6:y=ih*5/6:w=iw/6:h=ih/6:color=blue:t=fill' -t 1 -c:v libx264 -preset veryfast -pix_fmt yuv420p -profile:v high -colorspace smpte170m -color_primaries smpte170m -color_trc smpte170m -movflags +faststart out.mp4"
+   ],
+   "probe": {
+    "streams": [
+     {
+      "index": 0,
+      "codec_name": "h264",
+      "codec_type": "video",
+      "profile": "High",
+      "width": 1280,
+      "height": 720,
+      "sample_aspect_ratio": "1:1",
+      "display_aspect_ratio": "16:9",
+      "pix_fmt": "yuv420p",
+      "level": 31,
+      "color_range": "tv",
+      "color_space": "smpte170m",
+      "field_order": "progressive",
+      "r_frame_rate": "30/1",
+      "avg_frame_rate": "30/1",
+      "duration": "1.000000",
+      "bit_rate": "17424",
+      "disposition": {
+       "attached_pic": 0
+      }
+     }
+    ],
+    "format": {
+     "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+     "duration": "1.000000",
+     "size": "3414",
+     "bit_rate": "27312",
+     "tags": {
+      "major_brand": "isom"
+     }
+    }
+   }
+  },
+  "hevc-8bit-mp4": {
+   "ffmpeg": [
+    "ffmpeg -f lavfi -i 'color=c=0x404040:s=480x270:r=30,drawbox=x=0:y=0:w=iw/6:h=ih/6:color=red:t=fill,drawbox=x=iw*5/6:y=ih*5/6:w=iw/6:h=ih/6:color=blue:t=fill' -f lavfi -i 'sine=frequency=440:sample_rate=48000' -t 1 -c:v libx265 -preset ultrafast -pix_fmt yuv420p -x265-params 'log-level=error' -tag:v hvc1 -c:a aac -ac 2 -movflags +faststart out.mp4"
+   ],
+   "probe": {
+    "streams": [
+     {
+      "index": 0,
+      "codec_name": "hevc",
+      "codec_type": "video",
+      "profile": "Main",
+      "width": 480,
+      "height": 270,
+      "sample_aspect_ratio": "1:1",
+      "display_aspect_ratio": "16:9",
+      "pix_fmt": "yuv420p",
+      "level": 63,
+      "color_range": "tv",
+      "field_order": "progressive",
+      "r_frame_rate": "30/1",
+      "avg_frame_rate": "30/1",
+      "duration": "1.000000",
+      "bit_rate": "9656",
+      "disposition": {
+       "attached_pic": 0
+      }
+     },
+     {
+      "index": 1,
+      "codec_name": "aac",
+      "codec_type": "audio",
+      "profile": "LC",
+      "r_frame_rate": "0/0",
+      "avg_frame_rate": "0/0",
+      "duration": "1.000000",
+      "bit_rate": "127707",
+      "sample_rate": "48000",
+      "channels": 2,
+      "channel_layout": "stereo",
+      "disposition": {
+       "attached_pic": 0
+      }
+     }
+    ],
+    "format": {
+     "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+     "duration": "1.000000",
+     "size": "22472",
+     "bit_rate": "179776",
+     "tags": {
+      "major_brand": "isom"
+     }
+    }
+   }
+  },
+  "hevc-10bit-hdr10": {
+   "ffmpeg": [
+    "ffmpeg -f lavfi -i 'color=c=0x404040:s=480x270:r=30,drawbox=x=0:y=0:w=iw/6:h=ih/6:color=red:t=fill,drawbox=x=iw*5/6:y=ih*5/6:w=iw/6:h=ih/6:color=blue:t=fill' -f lavfi -i 'sine=frequency=440:sample_rate=48000' -vf 'scale=out_color_matrix=bt2020nc:out_primaries=bt2020:out_transfer=smpte2084:out_range=tv,format=yuv420p10le' -t 1 -c:v libx265 -preset ultrafast -crf 18 -pix_fmt yuv420p10le -color_primaries bt2020 -color_trc smpte2084 -colorspace bt2020nc -color_range tv -x265-params 'log-level=error' -tag:v hvc1 -c:a aac -ac 2 -movflags +faststart out.mp4"
+   ],
+   "probe": {
+    "streams": [
+     {
+      "index": 0,
+      "codec_name": "hevc",
+      "codec_type": "video",
+      "profile": "Main 10",
+      "width": 480,
+      "height": 270,
+      "sample_aspect_ratio": "1:1",
+      "display_aspect_ratio": "16:9",
+      "pix_fmt": "yuv420p10le",
+      "level": 63,
+      "color_range": "tv",
+      "color_space": "bt2020nc",
+      "color_transfer": "smpte2084",
+      "color_primaries": "bt2020",
+      "field_order": "progressive",
+      "r_frame_rate": "30/1",
+      "avg_frame_rate": "30/1",
+      "duration": "1.000000",
+      "bit_rate": "10832",
+      "disposition": {
+       "attached_pic": 0
+      }
+     },
+     {
+      "index": 1,
+      "codec_name": "aac",
+      "codec_type": "audio",
+      "profile": "LC",
+      "r_frame_rate": "0/0",
+      "avg_frame_rate": "0/0",
+      "duration": "1.000000",
+      "bit_rate": "127707",
+      "sample_rate": "48000",
+      "channels": 2,
+      "channel_layout": "stereo",
+      "disposition": {
+       "attached_pic": 0
+      }
+     }
+    ],
+    "format": {
+     "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+     "duration": "1.000000",
+     "size": "22633",
+     "bit_rate": "181064",
+     "tags": {
+      "major_brand": "isom"
+     }
+    }
+   }
+  },
+  "hevc-10bit-hlg": {
+   "ffmpeg": [
+    "ffmpeg -f lavfi -i 'color=c=0x404040:s=480x270:r=30,drawbox=x=0:y=0:w=iw/6:h=ih/6:color=red:t=fill,drawbox=x=iw*5/6:y=ih*5/6:w=iw/6:h=ih/6:color=blue:t=fill' -f lavfi -i 'sine=frequency=440:sample_rate=48000' -vf 'scale=out_color_matrix=bt2020nc:out_primaries=bt2020:out_transfer=arib-std-b67:out_range=tv,format=yuv420p10le' -t 1 -c:v libx265 -preset ultrafast -crf 18 -pix_fmt yuv420p10le -color_primaries bt2020 -color_trc arib-std-b67 -colorspace bt2020nc -color_range tv -x265-params 'log-level=error' -tag:v hvc1 -c:a aac -ac 2 -movflags +faststart out.mp4"
+   ],
+   "probe": {
+    "streams": [
+     {
+      "index": 0,
+      "codec_name": "hevc",
+      "codec_type": "video",
+      "profile": "Main 10",
+      "width": 480,
+      "height": 270,
+      "sample_aspect_ratio": "1:1",
+      "display_aspect_ratio": "16:9",
+      "pix_fmt": "yuv420p10le",
+      "level": 63,
+      "color_range": "tv",
+      "color_space": "bt2020nc",
+      "color_transfer": "arib-std-b67",
+      "color_primaries": "bt2020",
+      "field_order": "progressive",
+      "r_frame_rate": "30/1",
+      "avg_frame_rate": "30/1",
+      "duration": "1.000000",
+      "bit_rate": "10976",
+      "disposition": {
+       "attached_pic": 0
+      }
+     },
+     {
+      "index": 1,
+      "codec_name": "aac",
+      "codec_type": "audio",
+      "profile": "LC",
+      "r_frame_rate": "0/0",
+      "avg_frame_rate": "0/0",
+      "duration": "1.000000",
+      "bit_rate": "127707",
+      "sample_rate": "48000",
+      "channels": 2,
+      "channel_layout": "stereo",
+      "disposition": {
+       "attached_pic": 0
+      }
+     }
+    ],
+    "format": {
+     "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+     "duration": "1.000000",
+     "size": "22651",
+     "bit_rate": "181208",
+     "tags": {
+      "major_brand": "isom"
+     }
+    }
+   }
+  },
+  "vp9-webm-opus": {
+   "ffmpeg": [
+    "ffmpeg -f lavfi -i 'color=c=0x404040:s=480x270:r=30,drawbox=x=0:y=0:w=iw/6:h=ih/6:color=red:t=fill,drawbox=x=iw*5/6:y=ih*5/6:w=iw/6:h=ih/6:color=blue:t=fill' -f lavfi -i 'sine=frequency=440:sample_rate=48000' -t 1 -c:v libvpx-vp9 -b:v 1M -deadline realtime -cpu-used 8 -pix_fmt yuv420p -c:a libopus -ac 2 out.webm"
+   ],
+   "probe": {
+    "streams": [
+     {
+      "index": 0,
+      "codec_name": "vp9",
+      "codec_type": "video",
+      "profile": "Profile 0",
+      "width": 480,
+      "height": 270,
+      "sample_aspect_ratio": "1:1",
+      "display_aspect_ratio": "16:9",
+      "pix_fmt": "yuv420p",
+      "level": -99,
+      "color_range": "tv",
+      "field_order": "progressive",
+      "r_frame_rate": "30/1",
+      "avg_frame_rate": "30/1",
+      "disposition": {
+       "attached_pic": 0
+      }
+     },
+     {
+      "index": 1,
+      "codec_name": "opus",
+      "codec_type": "audio",
+      "r_frame_rate": "0/0",
+      "avg_frame_rate": "0/0",
+      "sample_rate": "48000",
+      "channels": 2,
+      "channel_layout": "stereo",
+      "disposition": {
+       "attached_pic": 0
+      }
+     }
+    ],
+    "format": {
+     "format_name": "matroska,webm",
+     "duration": "1.008000",
+     "size": "18514",
+     "bit_rate": "146936"
+    }
+   }
+  },
+  "av1-mp4": {
+   "ffmpeg": [
+    "ffmpeg -f lavfi -i 'color=c=0x404040:s=480x270:r=30,drawbox=x=0:y=0:w=iw/6:h=ih/6:color=red:t=fill,drawbox=x=iw*5/6:y=ih*5/6:w=iw/6:h=ih/6:color=blue:t=fill' -f lavfi -i 'sine=frequency=440:sample_rate=48000' -t 1 -c:v libsvtav1 -preset 12 -crf 40 -pix_fmt yuv420p -c:a aac -ac 2 -movflags +faststart out.mp4"
+   ],
+   "probe": {
+    "streams": [
+     {
+      "index": 0,
+      "codec_name": "av1",
+      "codec_type": "video",
+      "profile": "Main",
+      "width": 480,
+      "height": 270,
+      "sample_aspect_ratio": "1:1",
+      "display_aspect_ratio": "16:9",
+      "pix_fmt": "yuv420p",
+      "level": 0,
+      "color_range": "tv",
+      "field_order": "progressive",
+      "r_frame_rate": "30/1",
+      "avg_frame_rate": "30/1",
+      "duration": "1.000000",
+      "bit_rate": "7048",
+      "disposition": {
+       "attached_pic": 0
+      }
+     },
+     {
+      "index": 1,
+      "codec_name": "aac",
+      "codec_type": "audio",
+      "profile": "LC",
+      "r_frame_rate": "0/0",
+      "avg_frame_rate": "0/0",
+      "duration": "1.000000",
+      "bit_rate": "127707",
+      "sample_rate": "48000",
+      "channels": 2,
+      "channel_layout": "stereo",
+      "disposition": {
+       "attached_pic": 0
+      }
+     }
+    ],
+    "format": {
+     "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+     "duration": "1.000000",
+     "size": "19496",
+     "bit_rate": "155968",
+     "tags": {
+      "major_brand": "isom"
+     }
+    }
+   }
+  },
+  "prores-mov-pcm": {
+   "ffmpeg": [
+    "ffmpeg -f lavfi -i 'color=c=0x404040:s=480x270:r=30,drawbox=x=0:y=0:w=iw/6:h=ih/6:color=red:t=fill,drawbox=x=iw*5/6:y=ih*5/6:w=iw/6:h=ih/6:color=blue:t=fill' -f lavfi -i 'sine=frequency=440:sample_rate=48000' -t 1 -c:v prores_ks -profile:v 0 -pix_fmt yuv422p10le -c:a pcm_s16le out.mov"
+   ],
+   "probe": {
+    "streams": [
+     {
+      "index": 0,
+      "codec_name": "prores",
+      "codec_type": "video",
+      "profile": "Proxy",
+      "width": 480,
+      "height": 270,
+      "sample_aspect_ratio": "1:1",
+      "display_aspect_ratio": "16:9",
+      "pix_fmt": "yuv422p10le",
+      "level": -99,
+      "color_range": "tv",
+      "field_order": "progressive",
+      "r_frame_rate": "30/1",
+      "avg_frame_rate": "30/1",
+      "duration": "1.000000",
+      "bit_rate": "530880",
+      "disposition": {
+       "attached_pic": 0
+      }
+     },
+     {
+      "index": 1,
+      "codec_name": "pcm_s16le",
+      "codec_type": "audio",
+      "r_frame_rate": "0/0",
+      "avg_frame_rate": "0/0",
+      "duration": "1.000000",
+      "bit_rate": "768000",
+      "sample_rate": "48000",
+      "channels": 1,
+      "channel_layout": "mono",
+      "disposition": {
+       "attached_pic": 0
+      }
+     }
+    ],
+    "format": {
+     "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+     "duration": "1.000000",
+     "size": "164135",
+     "bit_rate": "1313080",
+     "tags": {
+      "major_brand": "qt  "
+     }
+    }
+   }
+  },
+  "h264-high10": {
+   "ffmpeg": [
+    "ffmpeg -f lavfi -i 'color=c=0x404040:s=480x270:r=30,drawbox=x=0:y=0:w=iw/6:h=ih/6:color=red:t=fill,drawbox=x=iw*5/6:y=ih*5/6:w=iw/6:h=ih/6:color=blue:t=fill' -f lavfi -i 'sine=frequency=440:sample_rate=48000' -t 1 -c:v libx264 -preset veryfast -profile:v high10 -pix_fmt yuv420p10le -c:a aac -ac 2 -movflags +faststart out.mp4"
+   ],
+   "probe": {
+    "streams": [
+     {
+      "index": 0,
+      "codec_name": "h264",
+      "codec_type": "video",
+      "profile": "High 10",
+      "width": 480,
+      "height": 270,
+      "sample_aspect_ratio": "1:1",
+      "display_aspect_ratio": "16:9",
+      "pix_fmt": "yuv420p10le",
+      "level": 21,
+      "field_order": "progressive",
+      "r_frame_rate": "30/1",
+      "avg_frame_rate": "30/1",
+      "duration": "1.000000",
+      "bit_rate": "11168",
+      "disposition": {
+       "attached_pic": 0
+      }
+     },
+     {
+      "index": 1,
+      "codec_name": "aac",
+      "codec_type": "audio",
+      "profile": "LC",
+      "r_frame_rate": "0/0",
+      "avg_frame_rate": "0/0",
+      "duration": "1.000000",
+      "bit_rate": "127707",
+      "sample_rate": "48000",
+      "channels": 2,
+      "channel_layout": "stereo",
+      "disposition": {
+       "attached_pic": 0
+      }
+     }
+    ],
+    "format": {
+     "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+     "duration": "1.000000",
+     "size": "20219",
+     "bit_rate": "161752",
+     "tags": {
+      "major_brand": "isom"
+     }
+    }
+   }
+  },
+  "h264-422": {
+   "ffmpeg": [
+    "ffmpeg -f lavfi -i 'color=c=0x404040:s=480x270:r=30,drawbox=x=0:y=0:w=iw/6:h=ih/6:color=red:t=fill,drawbox=x=iw*5/6:y=ih*5/6:w=iw/6:h=ih/6:color=blue:t=fill' -f lavfi -i 'sine=frequency=440:sample_rate=48000' -t 1 -c:v libx264 -preset veryfast -profile:v high422 -pix_fmt yuv422p -c:a aac -ac 2 -movflags +faststart out.mp4"
+   ],
+   "probe": {
+    "streams": [
+     {
+      "index": 0,
+      "codec_name": "h264",
+      "codec_type": "video",
+      "profile": "High 4:2:2",
+      "width": 480,
+      "height": 270,
+      "sample_aspect_ratio": "1:1",
+      "display_aspect_ratio": "16:9",
+      "pix_fmt": "yuv422p",
+      "level": 21,
+      "field_order": "progressive",
+      "r_frame_rate": "30/1",
+      "avg_frame_rate": "30/1",
+      "duration": "1.000000",
+      "bit_rate": "11072",
+      "disposition": {
+       "attached_pic": 0
+      }
+     },
+     {
+      "index": 1,
+      "codec_name": "aac",
+      "codec_type": "audio",
+      "profile": "LC",
+      "r_frame_rate": "0/0",
+      "avg_frame_rate": "0/0",
+      "duration": "1.000000",
+      "bit_rate": "127707",
+      "sample_rate": "48000",
+      "channels": 2,
+      "channel_layout": "stereo",
+      "disposition": {
+       "attached_pic": 0
+      }
+     }
+    ],
+    "format": {
+     "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+     "duration": "1.000000",
+     "size": "20207",
+     "bit_rate": "161656",
+     "tags": {
+      "major_brand": "isom"
+     }
+    }
+   }
+  },
+  "h264-444": {
+   "ffmpeg": [
+    "ffmpeg -f lavfi -i 'color=c=0x404040:s=480x270:r=30,drawbox=x=0:y=0:w=iw/6:h=ih/6:color=red:t=fill,drawbox=x=iw*5/6:y=ih*5/6:w=iw/6:h=ih/6:color=blue:t=fill' -f lavfi -i 'sine=frequency=440:sample_rate=48000' -t 1 -c:v libx264 -preset veryfast -profile:v high444 -pix_fmt yuv444p -c:a aac -ac 2 -movflags +faststart out.mp4"
+   ],
+   "probe": {
+    "streams": [
+     {
+      "index": 0,
+      "codec_name": "h264",
+      "codec_type": "video",
+      "profile": "High 4:4:4 Predictive",
+      "width": 480,
+      "height": 270,
+      "sample_aspect_ratio": "1:1",
+      "display_aspect_ratio": "16:9",
+      "pix_fmt": "yuv444p",
+      "level": 21,
+      "field_order": "progressive",
+      "r_frame_rate": "30/1",
+      "avg_frame_rate": "30/1",
+      "duration": "1.000000",
+      "bit_rate": "12224",
+      "disposition": {
+       "attached_pic": 0
+      }
+     },
+     {
+      "index": 1,
+      "codec_name": "aac",
+      "codec_type": "audio",
+      "profile": "LC",
+      "r_frame_rate": "0/0",
+      "avg_frame_rate": "0/0",
+      "duration": "1.000000",
+      "bit_rate": "127707",
+      "sample_rate": "48000",
+      "channels": 2,
+      "channel_layout": "stereo",
+      "disposition": {
+       "attached_pic": 0
+      }
+     }
+    ],
+    "format": {
+     "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+     "duration": "1.000000",
+     "size": "20353",
+     "bit_rate": "162824",
+     "tags": {
+      "major_brand": "isom"
+     }
+    }
+   }
+  },
+  "h264-fullrange-yuvj420p": {
+   "ffmpeg": [
+    "ffmpeg -f lavfi -i 'color=c=0x404040:s=480x270:r=30,drawbox=x=0:y=0:w=iw/6:h=ih/6:color=red:t=fill,drawbox=x=iw*5/6:y=ih*5/6:w=iw/6:h=ih/6:color=blue:t=fill' -f lavfi -i 'sine=frequency=440:sample_rate=48000' -t 1 -c:v libx264 -preset veryfast -pix_fmt yuvj420p -color_range pc -c:a aac -ac 2 -movflags +faststart out.mp4"
+   ],
+   "probe": {
+    "streams": [
+     {
+      "index": 0,
+      "codec_name": "h264",
+      "codec_type": "video",
+      "profile": "High",
+      "width": 480,
+      "height": 270,
+      "sample_aspect_ratio": "1:1",
+      "display_aspect_ratio": "16:9",
+      "pix_fmt": "yuvj420p",
+      "level": 21,
+      "color_range": "pc",
+      "field_order": "progressive",
+      "r_frame_rate": "30/1",
+      "avg_frame_rate": "30/1",
+      "duration": "1.000000",
+      "bit_rate": "10984",
+      "disposition": {
+       "attached_pic": 0
+      }
+     },
+     {
+      "index": 1,
+      "codec_name": "aac",
+      "codec_type": "audio",
+      "profile": "LC",
+      "r_frame_rate": "0/0",
+      "avg_frame_rate": "0/0",
+      "duration": "1.000000",
+      "bit_rate": "127707",
+      "sample_rate": "48000",
+      "channels": 2,
+      "channel_layout": "stereo",
+      "disposition": {
+       "attached_pic": 0
+      }
+     }
+    ],
+    "format": {
+     "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+     "duration": "1.000000",
+     "size": "20195",
+     "bit_rate": "161560",
+     "tags": {
+      "major_brand": "isom"
+     }
+    }
+   }
+  },
+  "h264-interlaced-tff": {
+   "ffmpeg": [
+    "ffmpeg -f lavfi -i 'color=c=0x404040:s=480x272:r=30,drawbox=x=0:y=0:w=iw/6:h=ih/6:color=red:t=fill,drawbox=x=iw*5/6:y=ih*5/6:w=iw/6:h=ih/6:color=blue:t=fill' -f lavfi -i 'sine=frequency=440:sample_rate=48000' -t 1 -c:v libx264 -preset veryfast -flags +ilme+ildct -top 1 -pix_fmt yuv420p -c:a aac -ac 2 -movflags +faststart out.mp4"
+   ],
+   "probe": {
+    "streams": [
+     {
+      "index": 0,
+      "codec_name": "h264",
+      "codec_type": "video",
+      "profile": "High",
+      "width": 480,
+      "height": 272,
+      "sample_aspect_ratio": "1:1",
+      "display_aspect_ratio": "30:17",
+      "pix_fmt": "yuv420p",
+      "level": 21,
+      "field_order": "tt",
+      "r_frame_rate": "30/1",
+      "avg_frame_rate": "30/1",
+      "duration": "1.000000",
+      "bit_rate": "13096",
+      "disposition": {
+       "attached_pic": 0
+      }
+     },
+     {
+      "index": 1,
+      "codec_name": "aac",
+      "codec_type": "audio",
+      "profile": "LC",
+      "r_frame_rate": "0/0",
+      "avg_frame_rate": "0/0",
+      "duration": "1.000000",
+      "bit_rate": "127707",
+      "sample_rate": "48000",
+      "channels": 2,
+      "channel_layout": "stereo",
+      "disposition": {
+       "attached_pic": 0
+      }
+     }
+    ],
+    "format": {
+     "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+     "duration": "1.000000",
+     "size": "20460",
+     "bit_rate": "163680",
+     "tags": {
+      "major_brand": "isom"
+     }
+    }
+   }
+  },
+  "h264-anamorphic-sar-4-3": {
+   "ffmpeg": [
+    "ffmpeg -f lavfi -i 'color=c=0x404040:s=480x270:r=30,drawbox=x=0:y=0:w=iw/6:h=ih/6:color=red:t=fill,drawbox=x=iw*5/6:y=ih*5/6:w=iw/6:h=ih/6:color=blue:t=fill' -f lavfi -i 'sine=frequency=440:sample_rate=48000' -vf 'scale=360:270,setsar=4/3' -t 1 -c:v libx264 -preset veryfast -pix_fmt yuv420p -profile:v high -c:a aac -ac 2 -movflags +faststart out.mp4"
+   ],
+   "probe": {
+    "streams": [
+     {
+      "index": 0,
+      "codec_name": "h264",
+      "codec_type": "video",
+      "profile": "High",
+      "width": 360,
+      "height": 270,
+      "sample_aspect_ratio": "4:3",
+      "display_aspect_ratio": "16:9",
+      "pix_fmt": "yuv420p",
+      "level": 13,
+      "field_order": "progressive",
+      "r_frame_rate": "30/1",
+      "avg_frame_rate": "30/1",
+      "duration": "1.000000",
+      "bit_rate": "10880",
+      "disposition": {
+       "attached_pic": 0
+      }
+     },
+     {
+      "index": 1,
+      "codec_name": "aac",
+      "codec_type": "audio",
+      "profile": "LC",
+      "r_frame_rate": "0/0",
+      "avg_frame_rate": "0/0",
+      "duration": "1.000000",
+      "bit_rate": "127707",
+      "sample_rate": "48000",
+      "channels": 2,
+      "channel_layout": "stereo",
+      "disposition": {
+       "attached_pic": 0
+      }
+     }
+    ],
+    "format": {
+     "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+     "duration": "1.000000",
+     "size": "20183",
+     "bit_rate": "161464",
+     "tags": {
+      "major_brand": "isom"
+     }
+    }
+   }
+  },
+  "h264-anamorphic-1440x1080-sar-4-3": {
+   "ffmpeg": [
+    "ffmpeg -f lavfi -i 'color=c=0x404040:s=1920x1080:r=30,drawbox=x=0:y=0:w=iw/6:h=ih/6:color=red:t=fill,drawbox=x=iw*5/6:y=ih*5/6:w=iw/6:h=ih/6:color=blue:t=fill' -vf 'scale=1440:1080,setsar=4/3' -frames:v 3 -c:v libx264 -preset veryfast -pix_fmt yuv420p -profile:v high -movflags +faststart out.mp4"
+   ],
+   "probe": {
+    "streams": [
+     {
+      "index": 0,
+      "codec_name": "h264",
+      "codec_type": "video",
+      "profile": "High",
+      "width": 1440,
+      "height": 1080,
+      "sample_aspect_ratio": "4:3",
+      "display_aspect_ratio": "16:9",
+      "pix_fmt": "yuv420p",
+      "level": 40,
+      "field_order": "progressive",
+      "r_frame_rate": "30/1",
+      "avg_frame_rate": "30/1",
+      "duration": "0.100000",
+      "bit_rate": "104640",
+      "disposition": {
+       "attached_pic": 0
+      }
+     }
+    ],
+    "format": {
+     "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+     "duration": "0.100000",
+     "size": "2219",
+     "bit_rate": "177520",
+     "tags": {
+      "major_brand": "isom"
+     }
+    }
+   }
+  },
+  "h264-rotation-90": {
+   "ffmpeg": [
+    "ffmpeg -f lavfi -i 'color=c=0x404040:s=480x270:r=30,drawbox=x=0:y=0:w=iw/6:h=ih/6:color=red:t=fill,drawbox=x=iw*5/6:y=ih*5/6:w=iw/6:h=ih/6:color=blue:t=fill' -f lavfi -i 'sine=frequency=440:sample_rate=48000' -vf 'transpose=1' -t 1 -c:v libx264 -preset veryfast -pix_fmt yuv420p -profile:v high -c:a aac -ac 2 -movflags +faststart rot-stored.mp4",
+    "ffmpeg -display_rotation:v:0 90 -i rot-stored.mp4 -c copy out.mp4"
+   ],
+   "probe": {
+    "streams": [
+     {
+      "index": 0,
+      "codec_name": "h264",
+      "codec_type": "video",
+      "profile": "High",
+      "width": 270,
+      "height": 480,
+      "sample_aspect_ratio": "1:1",
+      "display_aspect_ratio": "9:16",
+      "pix_fmt": "yuv420p",
+      "level": 21,
+      "field_order": "progressive",
+      "r_frame_rate": "30/1",
+      "avg_frame_rate": "30/1",
+      "duration": "1.000000",
+      "bit_rate": "10592",
+      "disposition": {
+       "attached_pic": 0
+      },
+      "side_data_list": [
+       {
+        "side_data_type": "Display Matrix",
+        "rotation": 90
+       }
+      ]
+     },
+     {
+      "index": 1,
+      "codec_name": "aac",
+      "codec_type": "audio",
+      "profile": "LC",
+      "r_frame_rate": "0/0",
+      "avg_frame_rate": "0/0",
+      "duration": "1.000000",
+      "bit_rate": "127707",
+      "sample_rate": "48000",
+      "channels": 2,
+      "channel_layout": "stereo",
+      "disposition": {
+       "attached_pic": 0
+      }
+     }
+    ],
+    "format": {
+     "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+     "duration": "1.000000",
+     "size": "20147",
+     "bit_rate": "161176",
+     "tags": {
+      "major_brand": "isom"
+     }
+    }
+   }
+  },
+  "h264-60fps": {
+   "ffmpeg": [
+    "ffmpeg -f lavfi -i 'color=c=0x404040:s=480x270:r=60,drawbox=x=0:y=0:w=iw/6:h=ih/6:color=red:t=fill,drawbox=x=iw*5/6:y=ih*5/6:w=iw/6:h=ih/6:color=blue:t=fill' -f lavfi -i 'sine=frequency=440:sample_rate=48000' -t 1 -c:v libx264 -preset veryfast -pix_fmt yuv420p -profile:v high -c:a aac -ac 2 -movflags +faststart out.mp4"
+   ],
+   "probe": {
+    "streams": [
+     {
+      "index": 0,
+      "codec_name": "h264",
+      "codec_type": "video",
+      "profile": "High",
+      "width": 480,
+      "height": 270,
+      "sample_aspect_ratio": "1:1",
+      "display_aspect_ratio": "16:9",
+      "pix_fmt": "yuv420p",
+      "level": 30,
+      "field_order": "progressive",
+      "r_frame_rate": "60/1",
+      "avg_frame_rate": "60/1",
+      "duration": "1.000000",
+      "bit_rate": "14344",
+      "disposition": {
+       "attached_pic": 0
+      }
+     },
+     {
+      "index": 1,
+      "codec_name": "aac",
+      "codec_type": "audio",
+      "profile": "LC",
+      "r_frame_rate": "0/0",
+      "avg_frame_rate": "0/0",
+      "duration": "1.000000",
+      "bit_rate": "127707",
+      "sample_rate": "48000",
+      "channels": 2,
+      "channel_layout": "stereo",
+      "disposition": {
+       "attached_pic": 0
+      }
+     }
+    ],
+    "format": {
+     "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+     "duration": "1.000000",
+     "size": "21135",
+     "bit_rate": "169080",
+     "tags": {
+      "major_brand": "isom"
+     }
+    }
+   }
+  },
+  "h264-59.94fps": {
+   "ffmpeg": [
+    "ffmpeg -f lavfi -i 'color=c=0x404040:s=480x270:r=60000/1001,drawbox=x=0:y=0:w=iw/6:h=ih/6:color=red:t=fill,drawbox=x=iw*5/6:y=ih*5/6:w=iw/6:h=ih/6:color=blue:t=fill' -f lavfi -i 'sine=frequency=440:sample_rate=48000' -t 1 -c:v libx264 -preset veryfast -pix_fmt yuv420p -profile:v high -c:a aac -ac 2 -movflags +faststart out.mp4"
+   ],
+   "probe": {
+    "streams": [
+     {
+      "index": 0,
+      "codec_name": "h264",
+      "codec_type": "video",
+      "profile": "High",
+      "width": 480,
+      "height": 270,
+      "sample_aspect_ratio": "1:1",
+      "display_aspect_ratio": "16:9",
+      "pix_fmt": "yuv420p",
+      "level": 30,
+      "field_order": "progressive",
+      "r_frame_rate": "60000/1001",
+      "avg_frame_rate": "60000/1001",
+      "duration": "1.001000",
+      "bit_rate": "14329",
+      "disposition": {
+       "attached_pic": 0
+      }
+     },
+     {
+      "index": 1,
+      "codec_name": "aac",
+      "codec_type": "audio",
+      "profile": "LC",
+      "r_frame_rate": "0/0",
+      "avg_frame_rate": "0/0",
+      "duration": "1.000000",
+      "bit_rate": "127707",
+      "sample_rate": "48000",
+      "channels": 2,
+      "channel_layout": "stereo",
+      "disposition": {
+       "attached_pic": 0
+      }
+     }
+    ],
+    "format": {
+     "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+     "duration": "1.001000",
+     "size": "21134",
+     "bit_rate": "168903",
+     "tags": {
+      "major_brand": "isom"
+     }
+    }
+   }
+  },
+  "h264-120fps": {
+   "ffmpeg": [
+    "ffmpeg -f lavfi -i 'color=c=0x404040:s=320x180:r=120,drawbox=x=0:y=0:w=iw/6:h=ih/6:color=red:t=fill,drawbox=x=iw*5/6:y=ih*5/6:w=iw/6:h=ih/6:color=blue:t=fill' -t 1 -c:v libx264 -preset veryfast -pix_fmt yuv420p -profile:v high -movflags +faststart out.mp4"
+   ],
+   "probe": {
+    "streams": [
+     {
+      "index": 0,
+      "codec_name": "h264",
+      "codec_type": "video",
+      "profile": "High",
+      "width": 320,
+      "height": 180,
+      "sample_aspect_ratio": "1:1",
+      "display_aspect_ratio": "16:9",
+      "pix_fmt": "yuv420p",
+      "level": 30,
+      "field_order": "progressive",
+      "r_frame_rate": "120/1",
+      "avg_frame_rate": "120/1",
+      "duration": "1.000000",
+      "bit_rate": "20224",
+      "disposition": {
+       "attached_pic": 0
+      }
+     }
+    ],
+    "format": {
+     "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+     "duration": "1.000000",
+     "size": "4833",
+     "bit_rate": "38664",
+     "tags": {
+      "major_brand": "isom"
+     }
+    }
+   }
+  },
+  "h264-vfr": {
+   "ffmpeg": [
+    "ffmpeg -f lavfi -i 'color=c=0x404040:s=480x270:r=30,drawbox=x=0:y=0:w=iw/6:h=ih/6:color=red:t=fill,drawbox=x=iw*5/6:y=ih*5/6:w=iw/6:h=ih/6:color=blue:t=fill' -f lavfi -i 'sine=frequency=440:sample_rate=48000' -vf 'select='lt(mod(n,10),7)'' -t 1.4 -fps_mode vfr -c:v libx264 -preset veryfast -pix_fmt yuv420p -profile:v high -c:a aac -ac 2 -movflags +faststart out.mp4"
+   ],
+   "probe": {
+    "streams": [
+     {
+      "index": 0,
+      "codec_name": "h264",
+      "codec_type": "video",
+      "profile": "High",
+      "width": 480,
+      "height": 270,
+      "sample_aspect_ratio": "1:1",
+      "display_aspect_ratio": "16:9",
+      "pix_fmt": "yuv420p",
+      "level": 21,
+      "field_order": "progressive",
+      "r_frame_rate": "30/1",
+      "avg_frame_rate": "300/13",
+      "duration": "1.300000",
+      "bit_rate": "8443",
+      "disposition": {
+       "attached_pic": 0
+      }
+     },
+     {
+      "index": 1,
+      "codec_name": "aac",
+      "codec_type": "audio",
+      "profile": "LC",
+      "r_frame_rate": "0/0",
+      "avg_frame_rate": "0/0",
+      "duration": "1.400000",
+      "bit_rate": "128138",
+      "sample_rate": "48000",
+      "channels": 2,
+      "channel_layout": "stereo",
+      "disposition": {
+       "attached_pic": 0
+      }
+     }
+    ],
+    "format": {
+     "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+     "duration": "1.400000",
+     "size": "26793",
+     "bit_rate": "153102",
+     "tags": {
+      "major_brand": "isom"
+     }
+    }
+   }
+  },
+  "h264-1440p": {
+   "ffmpeg": [
+    "ffmpeg -f lavfi -i 'color=c=0x404040:s=2560x1440:r=30,drawbox=x=0:y=0:w=iw/6:h=ih/6:color=red:t=fill,drawbox=x=iw*5/6:y=ih*5/6:w=iw/6:h=ih/6:color=blue:t=fill' -frames:v 3 -c:v libx264 -preset veryfast -pix_fmt yuv420p -profile:v high -movflags +faststart out.mp4"
+   ],
+   "probe": {
+    "streams": [
+     {
+      "index": 0,
+      "codec_name": "h264",
+      "codec_type": "video",
+      "profile": "High",
+      "width": 2560,
+      "height": 1440,
+      "sample_aspect_ratio": "1:1",
+      "display_aspect_ratio": "16:9",
+      "pix_fmt": "yuv420p",
+      "level": 50,
+      "field_order": "progressive",
+      "r_frame_rate": "30/1",
+      "avg_frame_rate": "30/1",
+      "duration": "0.100000",
+      "bit_rate": "141440",
+      "disposition": {
+       "attached_pic": 0
+      }
+     }
+    ],
+    "format": {
+     "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+     "duration": "0.100000",
+     "size": "2678",
+     "bit_rate": "214240",
+     "tags": {
+      "major_brand": "isom"
+     }
+    }
+   }
+  },
+  "h264-8k": {
+   "ffmpeg": [
+    "ffmpeg -f lavfi -i 'color=c=0x404040:s=7680x4320:r=30,drawbox=x=0:y=0:w=iw/6:h=ih/6:color=red:t=fill,drawbox=x=iw*5/6:y=ih*5/6:w=iw/6:h=ih/6:color=blue:t=fill' -frames:v 2 -c:v libx264 -preset ultrafast -crf 40 -pix_fmt yuv420p -movflags +faststart out.mp4"
+   ],
+   "probe": {
+    "streams": [
+     {
+      "index": 0,
+      "codec_name": "h264",
+      "codec_type": "video",
+      "profile": "Constrained Baseline",
+      "width": 7680,
+      "height": 4320,
+      "sample_aspect_ratio": "1:1",
+      "display_aspect_ratio": "16:9",
+      "pix_fmt": "yuv420p",
+      "level": 60,
+      "field_order": "progressive",
+      "r_frame_rate": "30/1",
+      "avg_frame_rate": "30/1",
+      "duration": "0.066667",
+      "bit_rate": "11765520",
+      "disposition": {
+       "attached_pic": 0
+      }
+     }
+    ],
+    "format": {
+     "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+     "duration": "0.066667",
+     "size": "98909",
+     "bit_rate": "11869020",
+     "tags": {
+      "major_brand": "isom"
+     }
+    }
+   }
+  },
+  "h264-1080p-level-5.1": {
+   "ffmpeg": [
+    "ffmpeg -f lavfi -i 'color=c=0x404040:s=1920x1080:r=30,drawbox=x=0:y=0:w=iw/6:h=ih/6:color=red:t=fill,drawbox=x=iw*5/6:y=ih*5/6:w=iw/6:h=ih/6:color=blue:t=fill' -f lavfi -i 'sine=frequency=440:sample_rate=48000' -t 1 -c:v libx264 -preset veryfast -pix_fmt yuv420p -profile:v high -level:v 5.1 -c:a aac -ac 2 -movflags +faststart out.mp4"
+   ],
+   "probe": {
+    "streams": [
+     {
+      "index": 0,
+      "codec_name": "h264",
+      "codec_type": "video",
+      "profile": "High",
+      "width": 1920,
+      "height": 1080,
+      "sample_aspect_ratio": "1:1",
+      "display_aspect_ratio": "16:9",
+      "pix_fmt": "yuv420p",
+      "level": 51,
+      "field_order": "progressive",
+      "r_frame_rate": "30/1",
+      "avg_frame_rate": "30/1",
+      "duration": "1.000000",
+      "bit_rate": "26000",
+      "disposition": {
+       "attached_pic": 0
+      }
+     },
+     {
+      "index": 1,
+      "codec_name": "aac",
+      "codec_type": "audio",
+      "profile": "LC",
+      "r_frame_rate": "0/0",
+      "avg_frame_rate": "0/0",
+      "duration": "1.000000",
+      "bit_rate": "127707",
+      "sample_rate": "48000",
+      "channels": 2,
+      "channel_layout": "stereo",
+      "disposition": {
+       "attached_pic": 0
+      }
+     }
+    ],
+    "format": {
+     "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+     "duration": "1.000000",
+     "size": "22074",
+     "bit_rate": "176592",
+     "tags": {
+      "major_brand": "isom"
+     }
+    }
+   }
+  },
+  "h264-quicktime-mov": {
+   "ffmpeg": [
+    "ffmpeg -f lavfi -i 'color=c=0x404040:s=1280x720:r=30,drawbox=x=0:y=0:w=iw/6:h=ih/6:color=red:t=fill,drawbox=x=iw*5/6:y=ih*5/6:w=iw/6:h=ih/6:color=blue:t=fill' -f lavfi -i 'sine=frequency=440:sample_rate=48000' -t 1 -c:v libx264 -preset veryfast -pix_fmt yuv420p -profile:v high -c:a aac -ac 2 -f mov out.mov"
+   ],
+   "probe": {
+    "streams": [
+     {
+      "index": 0,
+      "codec_name": "h264",
+      "codec_type": "video",
+      "profile": "High",
+      "width": 1280,
+      "height": 720,
+      "sample_aspect_ratio": "1:1",
+      "display_aspect_ratio": "16:9",
+      "pix_fmt": "yuv420p",
+      "level": 31,
+      "field_order": "progressive",
+      "r_frame_rate": "30/1",
+      "avg_frame_rate": "30/1",
+      "duration": "1.000000",
+      "bit_rate": "17424",
+      "disposition": {
+       "attached_pic": 0
+      }
+     },
+     {
+      "index": 1,
+      "codec_name": "aac",
+      "codec_type": "audio",
+      "profile": "LC",
+      "r_frame_rate": "0/0",
+      "avg_frame_rate": "0/0",
+      "duration": "1.000000",
+      "bit_rate": "127707",
+      "sample_rate": "48000",
+      "channels": 2,
+      "channel_layout": "stereo",
+      "disposition": {
+       "attached_pic": 0
+      }
+     }
+    ],
+    "format": {
+     "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+     "duration": "1.000000",
+     "size": "21052",
+     "bit_rate": "168416",
+     "tags": {
+      "major_brand": "qt  "
+     }
+    }
+   }
+  },
+  "h264-matroska-mkv": {
+   "ffmpeg": [
+    "ffmpeg -f lavfi -i 'color=c=0x404040:s=1280x720:r=30,drawbox=x=0:y=0:w=iw/6:h=ih/6:color=red:t=fill,drawbox=x=iw*5/6:y=ih*5/6:w=iw/6:h=ih/6:color=blue:t=fill' -f lavfi -i 'sine=frequency=440:sample_rate=48000' -t 1 -c:v libx264 -preset veryfast -pix_fmt yuv420p -profile:v high -c:a aac -ac 2 out.mkv"
+   ],
+   "probe": {
+    "streams": [
+     {
+      "index": 0,
+      "codec_name": "h264",
+      "codec_type": "video",
+      "profile": "High",
+      "width": 1280,
+      "height": 720,
+      "sample_aspect_ratio": "1:1",
+      "display_aspect_ratio": "16:9",
+      "pix_fmt": "yuv420p",
+      "level": 31,
+      "color_range": "tv",
+      "field_order": "progressive",
+      "r_frame_rate": "30/1",
+      "avg_frame_rate": "30/1",
+      "disposition": {
+       "attached_pic": 0
+      }
+     },
+     {
+      "index": 1,
+      "codec_name": "aac",
+      "codec_type": "audio",
+      "profile": "LC",
+      "r_frame_rate": "0/0",
+      "avg_frame_rate": "0/0",
+      "sample_rate": "48000",
+      "channels": 2,
+      "channel_layout": "stereo",
+      "disposition": {
+       "attached_pic": 0
+      }
+     }
+    ],
+    "format": {
+     "format_name": "matroska,webm",
+     "duration": "1.021000",
+     "size": "19802",
+     "bit_rate": "155157"
+    }
+   }
+  },
+  "h264-ac3-audio": {
+   "ffmpeg": [
+    "ffmpeg -f lavfi -i 'color=c=0x404040:s=1280x720:r=30,drawbox=x=0:y=0:w=iw/6:h=ih/6:color=red:t=fill,drawbox=x=iw*5/6:y=ih*5/6:w=iw/6:h=ih/6:color=blue:t=fill' -f lavfi -i 'sine=frequency=440:sample_rate=48000' -t 1 -c:v libx264 -preset veryfast -pix_fmt yuv420p -profile:v high -c:a ac3 -ac 2 -movflags +faststart out.mp4"
+   ],
+   "probe": {
+    "streams": [
+     {
+      "index": 0,
+      "codec_name": "h264",
+      "codec_type": "video",
+      "profile": "High",
+      "width": 1280,
+      "height": 720,
+      "sample_aspect_ratio": "1:1",
+      "display_aspect_ratio": "16:9",
+      "pix_fmt": "yuv420p",
+      "level": 31,
+      "field_order": "progressive",
+      "r_frame_rate": "30/1",
+      "avg_frame_rate": "30/1",
+      "duration": "1.000000",
+      "bit_rate": "17424",
+      "disposition": {
+       "attached_pic": 0
+      }
+     },
+     {
+      "index": 1,
+      "codec_name": "ac3",
+      "codec_type": "audio",
+      "r_frame_rate": "0/0",
+      "avg_frame_rate": "0/0",
+      "duration": "0.994000",
+      "bit_rate": "192000",
+      "sample_rate": "48000",
+      "channels": 2,
+      "channel_layout": "stereo",
+      "disposition": {
+       "attached_pic": 0
+      },
+      "side_data_list": [
+       {
+        "side_data_type": "Audio Service Type"
+       }
+      ]
+     }
+    ],
+    "format": {
+     "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+     "duration": "1.000000",
+     "size": "28736",
+     "bit_rate": "229888",
+     "tags": {
+      "major_brand": "isom"
+     }
+    }
+   }
+  },
+  "h264-aac-5.1": {
+   "ffmpeg": [
+    "ffmpeg -f lavfi -i 'color=c=0x404040:s=1280x720:r=30,drawbox=x=0:y=0:w=iw/6:h=ih/6:color=red:t=fill,drawbox=x=iw*5/6:y=ih*5/6:w=iw/6:h=ih/6:color=blue:t=fill' -f lavfi -i 'sine=frequency=440:sample_rate=48000' -t 1 -c:v libx264 -preset veryfast -pix_fmt yuv420p -profile:v high -c:a aac -ac 6 -movflags +faststart out.mp4"
+   ],
+   "probe": {
+    "streams": [
+     {
+      "index": 0,
+      "codec_name": "h264",
+      "codec_type": "video",
+      "profile": "High",
+      "width": 1280,
+      "height": 720,
+      "sample_aspect_ratio": "1:1",
+      "display_aspect_ratio": "16:9",
+      "pix_fmt": "yuv420p",
+      "level": 31,
+      "field_order": "progressive",
+      "r_frame_rate": "30/1",
+      "avg_frame_rate": "30/1",
+      "duration": "1.000000",
+      "bit_rate": "17424",
+      "disposition": {
+       "attached_pic": 0
+      }
+     },
+     {
+      "index": 1,
+      "codec_name": "aac",
+      "codec_type": "audio",
+      "profile": "LC",
+      "r_frame_rate": "0/0",
+      "avg_frame_rate": "0/0",
+      "duration": "1.000000",
+      "bit_rate": "174979",
+      "sample_rate": "48000",
+      "channels": 6,
+      "channel_layout": "5.1",
+      "disposition": {
+       "attached_pic": 0
+      }
+     }
+    ],
+    "format": {
+     "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+     "duration": "1.000000",
+     "size": "27036",
+     "bit_rate": "216288",
+     "tags": {
+      "major_brand": "isom"
+     }
+    }
+   }
+  },
+  "h264-aac-96k": {
+   "ffmpeg": [
+    "ffmpeg -f lavfi -i 'color=c=0x404040:s=1280x720:r=30,drawbox=x=0:y=0:w=iw/6:h=ih/6:color=red:t=fill,drawbox=x=iw*5/6:y=ih*5/6:w=iw/6:h=ih/6:color=blue:t=fill' -f lavfi -i 'sine=frequency=440:sample_rate=96000' -t 1 -c:v libx264 -preset veryfast -pix_fmt yuv420p -profile:v high -c:a aac -ac 2 -movflags +faststart out.mp4"
+   ],
+   "probe": {
+    "streams": [
+     {
+      "index": 0,
+      "codec_name": "h264",
+      "codec_type": "video",
+      "profile": "High",
+      "width": 1280,
+      "height": 720,
+      "sample_aspect_ratio": "1:1",
+      "display_aspect_ratio": "16:9",
+      "pix_fmt": "yuv420p",
+      "level": 31,
+      "field_order": "progressive",
+      "r_frame_rate": "30/1",
+      "avg_frame_rate": "30/1",
+      "duration": "1.000000",
+      "bit_rate": "17424",
+      "disposition": {
+       "attached_pic": 0
+      }
+     },
+     {
+      "index": 1,
+      "codec_name": "aac",
+      "codec_type": "audio",
+      "profile": "LC",
+      "r_frame_rate": "0/0",
+      "avg_frame_rate": "0/0",
+      "duration": "1.000000",
+      "bit_rate": "128691",
+      "sample_rate": "96000",
+      "channels": 2,
+      "channel_layout": "stereo",
+      "disposition": {
+       "attached_pic": 0
+      }
+     }
+    ],
+    "format": {
+     "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+     "duration": "1.000000",
+     "size": "20963",
+     "bit_rate": "167704",
+     "tags": {
+      "major_brand": "isom"
+     }
+    }
+   }
+  },
+  "h264-opus-in-mp4": {
+   "ffmpeg": [
+    "ffmpeg -f lavfi -i 'color=c=0x404040:s=1280x720:r=30,drawbox=x=0:y=0:w=iw/6:h=ih/6:color=red:t=fill,drawbox=x=iw*5/6:y=ih*5/6:w=iw/6:h=ih/6:color=blue:t=fill' -f lavfi -i 'sine=frequency=440:sample_rate=48000' -t 1 -c:v libx264 -preset veryfast -pix_fmt yuv420p -profile:v high -c:a libopus -ac 2 -strict -2 -movflags +faststart out.mp4"
+   ],
+   "probe": {
+    "streams": [
+     {
+      "index": 0,
+      "codec_name": "h264",
+      "codec_type": "video",
+      "profile": "High",
+      "width": 1280,
+      "height": 720,
+      "sample_aspect_ratio": "1:1",
+      "display_aspect_ratio": "16:9",
+      "pix_fmt": "yuv420p",
+      "level": 31,
+      "field_order": "progressive",
+      "r_frame_rate": "30/1",
+      "avg_frame_rate": "30/1",
+      "duration": "1.000000",
+      "bit_rate": "17424",
+      "disposition": {
+       "attached_pic": 0
+      }
+     },
+     {
+      "index": 1,
+      "codec_name": "opus",
+      "codec_type": "audio",
+      "r_frame_rate": "0/0",
+      "avg_frame_rate": "0/0",
+      "duration": "1.000000",
+      "bit_rate": "122078",
+      "sample_rate": "48000",
+      "channels": 2,
+      "channel_layout": "stereo",
+      "disposition": {
+       "attached_pic": 0
+      }
+     }
+    ],
+    "format": {
+     "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+     "duration": "1.000000",
+     "size": "19969",
+     "bit_rate": "159752",
+     "tags": {
+      "major_brand": "isom"
+     }
+    }
+   }
+  },
+  "raw-h264-elementary-stream": {
+   "ffmpeg": [
+    "ffmpeg -f lavfi -i 'color=c=0x404040:s=480x270:r=30,drawbox=x=0:y=0:w=iw/6:h=ih/6:color=red:t=fill,drawbox=x=iw*5/6:y=ih*5/6:w=iw/6:h=ih/6:color=blue:t=fill' -t 1 -c:v libx264 -preset veryfast -pix_fmt yuv420p -f h264 out.h264"
+   ],
+   "probe": {
+    "streams": [
+     {
+      "index": 0,
+      "codec_name": "h264",
+      "codec_type": "video",
+      "profile": "High",
+      "width": 480,
+      "height": 270,
+      "sample_aspect_ratio": "1:1",
+      "display_aspect_ratio": "16:9",
+      "pix_fmt": "yuv420p",
+      "level": 21,
+      "field_order": "progressive",
+      "r_frame_rate": "60/1",
+      "avg_frame_rate": "25/1",
+      "disposition": {
+       "attached_pic": 0
+      }
+     }
+    ],
+    "format": {
+     "format_name": "h264",
+     "size": "1388"
+    }
+   }
+  }
+ }
+}

@@ -79,7 +79,16 @@ const hasFfmpeg = (() => {
   try {
     execFileSync('ffmpeg', ['-hide_banner', '-version'], { stdio: 'ignore' });
     execFileSync('ffprobe', ['-hide_banner', '-version'], { stdio: 'ignore' });
-    return true;
+    // buildTranscodeArgs converts colour with `scale=out_transfer=…:out_primaries=…`
+    // (ffmpeg ≥ 8). An older ffmpeg refuses the option, so the real run is skipped —
+    // the production image asserts the option at build time (Dockerfile).
+    const scaleHelp = execFileSync('ffmpeg', ['-hide_banner', '-h', 'filter=scale'], { encoding: 'utf8' });
+    const major = /ffmpeg version n?(\d+)\./i.exec(execFileSync('ffmpeg', ['-hide_banner', '-version'], { encoding: 'utf8' }));
+    return (
+      /out_transfer/.test(scaleHelp) &&
+      /out_primaries/.test(scaleHelp) &&
+      (!major || Number(major[1]) >= 8)
+    );
   } catch {
     return false;
   }

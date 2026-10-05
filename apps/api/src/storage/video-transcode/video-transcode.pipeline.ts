@@ -3,15 +3,32 @@
  *
  *   asset still serving the source? not emergency media? enough temp disk?
  *     → stream the original from storage to a temp file (hashed as it lands)
- *     → ffprobe → plan (skip if the file already IS the signage profile)
- *     → ffmpeg (2 threads, nice 19, SIGKILL budget from the duration, -fs at
- *       the source size)
- *     → smaller? → ffprobe the output → verify it is the WHOLE video
+ *     → ffprobe → plan: skip when the file already IS the signage profile
+ *       (screen-safe AND within the bitrate ceiling), else transcode, either
+ *       REQUIRED (screenCompatibilityIssues named something) or size-only
+ *     → ffmpeg (2 threads, nice 19, SIGKILL budget from the duration, -fs bound)
+ *     → size-only: swap only when SMALLER; required: swap at ANY size, but never
+ *       an output that reached its -fs bound (a truncated encode exits 0)
+ *     → original KEPT (screen-safe, bigger than 1920×1080): make the 1080p copy
+ *       from it and report `done / rendition-created` (keepOriginalWithCopy)
+ *     → ffprobe the output → verify it is the WHOLE video
  *     → stream it to `<tenant>/optimized/<uuid>.mp4`
  *     → ONE conditional write swaps the asset's fileUrl — only while the asset
  *       still serves exactly the source and is still not in a protected playlist
  *     → re-run the probe + poster (VideoPosterService) on the NEW file, so the
  *       facts on the row describe what screens now download (see step 9)
+ *
+ * COMPATIBILITY BEFORE SIZE (2026-10-04). Owner's rule: "support as many files
+ * as possible but they must work 100% of the time." A source that is not
+ * screen-safe (HEVC, VP9, AV1, 10-bit, HDR, interlaced, anamorphic, rotated,
+ * > 30 fps, …) is converted whatever the output's size — H.264 is usually
+ * LARGER than the codec it replaces. Every exit that LEARNS whether the file
+ * this asset serves is playable stamps `processingMeta.screen`:
+ *   { version: 1, ready: true,  convertedFrom?: issues[], checkedAt }
+ *   { version: 1, ready: false, issues[], error, checkedAt }   (conversion failed / unreadable)
+ * so the manifest and the dashboard can say so; see markScreenReadiness. A job
+ * that dies BEFORE the probe (size unknown, no temp disk, the download) learns
+ * nothing and stamps nothing; emergency media is never stamped at all.
  *
  * THE CONTRACT: `process` never throws and never breaks an asset. Every early
  * exit returns an outcome; the asset keeps serving its original unless the
@@ -150,6 +167,43 @@ interface CompatibilityRendition {
   path: string;
 }
 
+/** What became of the decoder-sized (1080p) copy a job tried to make. */
+type RenditionAttempt =
+  | { status: 'created'; rendition: CompatibilityRendition }
+  /** The picture already fits 1920×1080 in either orientation: nothing to make. */
+  | { status: 'not-needed' }
+  /** The copy could not be made or verified; the primary file is untouched. */
+  | { status: 'failed'; reason: string };
+
+/** The part of an attempt the job's `details` records (nothing when no copy was needed). */
+function renditionDetails(
+  attempt: RenditionAttempt,
+): Record<string, unknown> | undefined {
+  if (attempt.status === 'not-needed') return undefined;
+  return attempt.status === 'created'
+    ? {
+        attempted: true,
+        created: true,
+        width: attempt.rendition.width,
+        height: attempt.rendition.height,
+        size: attempt.rendition.size,
+      }
+    : { attempted: true, created: false, reason: attempt.reason };
+}
+
+/** The verdict `processingMeta.screen` records about the file an asset serves. */
+interface ScreenVerdict {
+  ready: boolean;
+  issues?: string[];
+  error?: string;
+  convertedFrom?: string[];
+}
+
+const asRecord = (v: unknown): Record<string, unknown> =>
+  v && typeof v === 'object' && !Array.isArray(v)
+    ? (v as Record<string, unknown>)
+    : {};
+
 /** Require the MP4 index before media data, not merely an ffmpeg success code. */
 async function hasFastStart(file: string): Promise<boolean> {
   const handle = await fs.open(file, 'r');
@@ -224,7 +278,9 @@ export function mergeTranscodeMeta(
  * before this job — so the fast-start re-mux VideoPosterService deferred
  * while the job was queued may still apply. The others swapped (`done`),
  * lost the asset, found it changed / archived / external / emergency, or
- * were aborted mid-run (the row is claimed again later).
+ * were aborted mid-run (the row is claimed again later). A job that ended
+ * `done / rendition-created` kept the original too (it only added the 1080p
+ * copy), so it is in the first group — see `remuxAfterTranscode`.
  */
 export const NO_REMUX_AFTER_TRANSCODE: ReadonlySet<string> = new Set([
   'swapped',
@@ -241,9 +297,10 @@ export const NO_REMUX_AFTER_TRANSCODE: ReadonlySet<string> = new Set([
 export function remuxAfterTranscode(
   outcome: Pick<TranscodeOutcome, 'status' | 'reason'>,
 ): boolean {
-  return (
-    outcome.status !== 'done' && !NO_REMUX_AFTER_TRANSCODE.has(outcome.reason)
-  );
+  // `done` normally means "swapped" (the row serves a NEW file); the one `done`
+  // that left the original serving is the 1080p copy made next to it.
+  if (outcome.status === 'done') return outcome.reason === 'rendition-created';
+  return !NO_REMUX_AFTER_TRANSCODE.has(outcome.reason);
 }
 
 /** What `refreshServedFileFacts` records on the job's `details`. */
@@ -343,6 +400,10 @@ export class VideoTranscodePipeline {
   ): Promise<TranscodeOutcome> {
     const t0 = this.env.now();
     let dir: string | null = null;
+    // Set once the plan says this file MUST be converted: what the catch-all
+    // stamps if something unexpected (a storage blip on the upload, a DB error)
+    // ends the job after that point.
+    let requiredIssues: string[] | null = null;
     try {
       // ── 1. Is there still something to do? ──────────────────────────────
       if (!job.assetId) return { status: 'skipped', reason: 'asset-deleted' };
@@ -400,8 +461,9 @@ export class VideoTranscodePipeline {
         (path.extname(sourcePath) || '.mp4')
           .replace(/[^.A-Za-z0-9]/g, '')
           .slice(0, 9) || '.mp4';
-      const inPath = path.join(dir, `in${ext}`);
-      const outPath = path.join(dir, 'out.mp4');
+      const workDir: string = dir;
+      const inPath = path.join(workDir, `in${ext}`);
+      const outPath = path.join(workDir, 'out.mp4');
       const dl = await this.storage.downloadObjectToFile(sourcePath, inPath, {
         // A little slack over the recorded size; anything bigger is not the file we queued.
         maxBytes: Math.floor(sourceBytes * 1.01) + MB,
@@ -425,62 +487,109 @@ export class VideoTranscodePipeline {
       try {
         inProbe = await this.runner.probe(inPath);
       } catch (e) {
-        return keepOriginal(
+        // ffprobe cannot read it: no player will either.
+        await this.markScreenReadiness(job, { ready: false, issues: ['unreadable'], error: 'probe-failed' });
+        return await keepOriginal(
           this.failed('probe-failed', t0, (e as Error)?.message, bytesIn),
         );
       }
+      // EVERY `return` of an async helper in this try block is `return await`: a
+      // plain `return promise` runs the `finally` (which deletes the temp dir) BEFORE
+      // the promise settles, and the keep-original helpers below still read from it.
       const decision = planTranscode(inProbe);
+      // The ORIGINAL stays as the served file on every exit below that calls
+      // this (a screen-safe source that needed nothing, could not be shrunk, or
+      // whose size-only encode failed). If it is bigger than 1920×1080 in either
+      // orientation a 1080p screen still needs its decoder-sized copy, and a
+      // FINISHED job with no copy leaves publication to 1080p screens waiting
+      // forever — so the copy is made from the original before the job reports
+      // (see keepOriginalWithCopy).
+      const keepWithCopy = (
+        outcome: TranscodeOutcome,
+        verdict: 'ready' | null,
+      ): Promise<TranscodeOutcome> =>
+        this.keepOriginalWithCopy({
+          job,
+          assetId: asset.id,
+          inPath,
+          outPath,
+          inProbe,
+          bytesIn,
+          sha256In: dl.sha256,
+          dir: workDir,
+          ctx,
+          outcome,
+          verdict,
+          keepOriginal,
+          t0,
+        });
       if (decision.action === 'skip') {
         if (decision.reason === 'already-optimal') {
-          const rendition = await this.create1080Rendition(
-            job, inPath, inProbe, bytesIn, dir, ctx,
-          );
-          if (rendition) {
-            if (await this.isEmergencyContent(asset.id, job.sourceUrl)) {
-              await this.storage.delete(rendition.path).catch(() => undefined);
-              return keepOriginal({ status: 'skipped', reason: 'emergency-content' });
-            }
-            const merged = {
-              ...(asset.processingMeta && typeof asset.processingMeta === 'object' &&
-                  !Array.isArray(asset.processingMeta) ? asset.processingMeta as object : {}),
-              renditions: { '1080p': this.publicRendition(rendition) },
-            };
-            const saved = await this.prisma.client.asset.updateMany({
-              where: {
-                id: asset.id,
-                tenantId: job.tenantId,
-                fileUrl: job.sourceUrl,
-                playlistItems: { none: { playlist: { isProtected: true } } },
-              },
-              data: { processingMeta: merged as Prisma.InputJsonObject },
-            });
-            if (!saved.count) {
-              await this.storage.delete(rendition.path).catch(() => undefined);
-              return keepOriginal({ status: 'skipped', reason: 'source-changed' });
-            }
-            await this.auditRendition(job, rendition);
-            await this.backfillOriginalHash(job, dl.sha256);
-            return {
-              status: 'done', reason: 'rendition-created',
-              outputUrl: rendition.url, outputBytes: rendition.size,
+          // `already-optimal` IS the statement that every player decodes it.
+          return await keepWithCopy(
+            {
+              status: 'skipped',
+              reason: 'already-optimal',
               details: this.details({ inProbe, bytesIn, t0 }),
-            };
-          }
+            },
+            'ready',
+          );
         }
-        return keepOriginal({
+        // A file with no video stream or no dimensions is not a playable video.
+        await this.markScreenReadiness(job, {
+          ready: false,
+          issues: ['unreadable'],
+          error: decision.reason,
+        });
+        return await keepOriginal({
           status: 'skipped',
           reason: decision.reason,
           details: this.details({ inProbe, bytesIn, t0 }),
         });
       }
       const plan = decision.plan;
+      // COMPATIBILITY BEFORE SIZE (2026-10-04). `required` = the source is not
+      // something every signage player decodes (see screenCompatibilityIssues):
+      // its output replaces it whatever the size, and a failure must be SAID —
+      // the original is kept in storage but stamped not-screen-ready, so no
+      // manifest ever hands it to a screen (`markScreenReadiness`).
+      const required = decision.required;
+      const issues = decision.issues;
+      if (required) requiredIssues = issues;
+      const notReady = async (outcome: TranscodeOutcome): Promise<TranscodeOutcome> => {
+        if (required) {
+          await this.markScreenReadiness(job, { ready: false, issues, error: outcome.reason });
+          return await keepOriginal(outcome);
+        }
+        // Size-only: the source is screen-safe and stays as it is — the failure
+        // says nothing about it (no verdict) — but a 1080p screen still needs its copy.
+        return await keepWithCopy(outcome, null);
+      };
 
       // ── 5. Encode (bounded in time, threads, priority and output size). ──
+      // A size-only transcode stops at the source's size (a bigger output could
+      // never be swapped in). A REQUIRED one may legitimately come out bigger —
+      // H.264 needs more bits than HEVC / AV1 / VP9 — so its bound is disk, not
+      // the source: four times the source, at least 512 MB, never past 2 GB…
+      let sizeLimitBytes = bytesIn;
+      if (required) {
+        sizeLimitBytes = Math.min(2_000_000_000, Math.max(bytesIn * 4, 512 * MB));
+        // …and never past the room that is actually left. The preflight
+        // (tempBytesNeeded) budgeted the source plus an output no bigger than
+        // the source; this bound is up to four times that, so re-read the free
+        // space now that the source has landed, keep 128 MB for the 1080p copy,
+        // and never go below the size-only bound the preflight did account for.
+        const room = await this.env.freeBytes(dir);
+        if (room !== null)
+          sizeLimitBytes = Math.max(bytesIn, Math.min(sizeLimitBytes, room - 128 * MB));
+      }
       let lastPct = -1;
       const run = await this.runner.transcode(
-        buildTranscodeArgs(inPath, outPath, plan, { sizeLimitBytes: bytesIn }),
+        buildTranscodeArgs(inPath, outPath, plan, { sizeLimitBytes }),
         {
-          timeoutMs: transcodeTimeoutMs(inProbe.durationS),
+          // A conversion a screen depends on gets the longer allowance: a phone's
+          // 4K60 HDR clip is three times the work of the H.264 this budget was sized on.
+          timeoutMs: transcodeTimeoutMs(inProbe.durationS, { required }),
           signal: ctx.signal,
           onProgressSeconds: (s) => {
             const pct = progressPercent(s, inProbe.durationS);
@@ -498,7 +607,7 @@ export class VideoTranscodePipeline {
             : run.reason.startsWith('timeout')
               ? 'timeout'
               : 'ffmpeg-failed';
-        return keepOriginal(
+        return await notReady(
           this.failed(
             reason,
             t0,
@@ -509,21 +618,43 @@ export class VideoTranscodePipeline {
         );
       }
 
-      // ── 6. Never worse: smaller AND the whole video. ────────────────────
+      // ── 6. Never worse: the whole video — and, when the source was already
+      //      screen-safe, smaller too. A required conversion is kept at any size.
       const bytesOut = (await fs.stat(outPath)).size;
-      if (bytesOut >= bytesIn) {
-        return keepOriginal({
-          status: 'skipped',
-          reason: 'not-smaller',
-          outputBytes: bytesOut,
-          details: this.details({ inProbe, bytesIn, bytesOut, t0, plan }),
-        });
+      if (!required && bytesOut >= bytesIn) {
+        // Screen-safe already (no compatibility issue), just not shrinkable. The
+        // original stays — and a 1080p screen still needs its copy of it.
+        return await keepWithCopy(
+          {
+            status: 'skipped',
+            reason: 'not-smaller',
+            outputBytes: bytesOut,
+            details: this.details({ inProbe, bytesIn, bytesOut, t0, plan }),
+          },
+          'ready',
+        );
+      }
+      if (required && bytesOut >= sizeLimitBytes) {
+        // ffmpeg stops writing at `-fs` and EXITS 0 with a short file. A size-only
+        // job never gets here with one (an output that big is "not smaller"), but
+        // a required job's bound is bigger than the source: the duration check
+        // alone cannot catch a source with no known duration, nor a tail cut
+        // inside its 2 % tolerance. An output that reached the bound is cut off.
+        return await notReady(
+          this.failed(
+            'output-truncated',
+            t0,
+            `the output reached its ${sizeLimitBytes}-byte limit — the encode was cut short`,
+            bytesIn,
+            this.details({ inProbe, bytesIn, bytesOut, t0, plan }),
+          ),
+        );
       }
       let outProbe: ProbeResult;
       try {
         outProbe = await this.runner.probe(outPath);
       } catch (e) {
-        return keepOriginal(
+        return await notReady(
           this.failed(
             'output-probe-failed',
             t0,
@@ -534,7 +665,7 @@ export class VideoTranscodePipeline {
       }
       const verdict = verifyTranscodeOutput(inProbe, outProbe, plan);
       if (!verdict.ok) {
-        return keepOriginal(
+        return await notReady(
           this.failed(
             'output-rejected',
             t0,
@@ -554,9 +685,10 @@ export class VideoTranscodePipeline {
         'video/mp4',
         { signal: ctx.signal },
       );
-      const rendition = await this.create1080Rendition(
-        job, outPath, outProbe, bytesOut, dir, ctx,
+      const attempt = await this.create1080Rendition(
+        job, outPath, outProbe, bytesOut, workDir, ctx,
       );
+      const rendition = attempt.status === 'created' ? attempt.rendition : null;
 
       // ── 8. The swap — the only write a screen can ever see. ─────────────
       const details = this.details({
@@ -569,11 +701,13 @@ export class VideoTranscodePipeline {
         sha256In: dl.sha256,
         sha256Out,
       });
+      const copy = renditionDetails(attempt);
+      if (copy) details.rendition = copy;
       if (await this.isEmergencyContent(asset.id, job.sourceUrl)) {
         // Became alert media while we encoded: never swap it.
         await this.storage.delete(outputPath).catch(() => undefined);
         if (rendition) await this.storage.delete(rendition.path).catch(() => undefined);
-        return keepOriginal({
+        return await keepOriginal({
           status: 'skipped',
           reason: 'emergency-content',
           details,
@@ -618,6 +752,8 @@ export class VideoTranscodePipeline {
               savedBytes: bytesIn - bytesOut,
             },
             ...(rendition ? { renditions: { '1080p': this.publicRendition(rendition) } } : {}),
+            // The served file is now the profile: every player decodes it.
+            screen: this.screenStamp({ ready: true, convertedFrom: issues }),
           }) as Prisma.InputJsonObject,
         },
       });
@@ -637,7 +773,7 @@ export class VideoTranscodePipeline {
             : 'emergency-content';
         return reason === 'asset-deleted'
           ? { status: 'skipped', reason, details }
-          : keepOriginal({ status: 'skipped', reason, details });
+          : await keepOriginal({ status: 'skipped', reason, details });
       }
 
       await this.prisma.client.auditLog
@@ -666,7 +802,10 @@ export class VideoTranscodePipeline {
         );
       this.logger.log(
         `[transcode] asset ${asset.id} ${plan.rung.label}: ${Math.round(bytesIn / MB)} MB → ${Math.round(bytesOut / MB)} MB ` +
-          `(${Math.round((1 - bytesOut / bytesIn) * 100)}% smaller) in ${details.seconds}s — swapped`,
+          (bytesOut < bytesIn
+            ? `(${Math.round((1 - bytesOut / bytesIn) * 100)}% smaller)`
+            : `(${Math.round((bytesOut / bytesIn - 1) * 100)}% larger — converted for screens: ${issues.join(', ')})`) +
+          ` in ${details.seconds}s — swapped`,
       );
       if (rendition) await this.auditRendition(job, rendition);
 
@@ -696,6 +835,17 @@ export class VideoTranscodePipeline {
       this.logger.warn(
         `[transcode] job ${job.id} (asset ${job.assetId}) ${aborted ? 'aborted' : 'failed'}: ${msg}`,
       );
+      // A REQUIRED conversion that died unexpectedly leaves a file that is not
+      // screen-safe serving as uploaded: say so, like every other failed
+      // conversion. The stamp is written only while the row still serves the
+      // source, so a failure AFTER the swap committed writes nothing.
+      if (requiredIssues) {
+        await this.markScreenReadiness(job, {
+          ready: false,
+          issues: requiredIssues,
+          error: aborted ? 'aborted' : 'error',
+        });
+      }
       return this.failed(
         aborted ? 'aborted' : 'error',
         t0,
@@ -722,13 +872,13 @@ export class VideoTranscodePipeline {
     inputBytes: number,
     dir: string,
     ctx: { signal?: AbortSignal },
-  ): Promise<CompatibilityRendition | null> {
+  ): Promise<RenditionAttempt> {
     const plan = plan1080Rendition(source);
-    if (!plan) return null;
+    if (!plan) return { status: 'not-needed' };
     const free = await this.env.freeBytes(dir);
     if (free !== null && free < inputBytes + 128 * MB) {
       this.logger.warn(`[transcode] asset ${job.assetId}: no temp disk for 1080p rendition`);
-      return null;
+      return { status: 'failed', reason: 'no-temp-disk' };
     }
     const output = path.join(dir, 'rendition-1080.mp4');
     let uploadedPath: string | null = null;
@@ -763,14 +913,171 @@ export class VideoTranscodePipeline {
       const url = await this.storage.uploadFileFromDisk(
         uploadedPath, output, 'video/mp4', { signal: ctx.signal },
       );
-      return { url, sha256, size, width: plan.width, height: plan.height, path: uploadedPath };
+      return {
+        status: 'created',
+        rendition: { url, sha256, size, width: plan.width, height: plan.height, path: uploadedPath },
+      };
     } catch (e) {
       if (uploadedPath) await this.storage.delete(uploadedPath).catch(() => undefined);
+      const reason = String((e as Error)?.message ?? e).slice(0, 200);
       this.logger.warn(
-        `[transcode] asset ${job.assetId}: 1080p rendition unavailable: ${(e as Error)?.message ?? e}`,
+        `[transcode] asset ${job.assetId}: 1080p rendition unavailable: ${reason}`,
       );
-      return null;
+      return { status: 'failed', reason };
     }
+  }
+
+  /**
+   * The job ends with the ORIGINAL kept as the served file and that original is
+   * screen-safe. If it is bigger than 1920×1080 (either orientation) a 1080p
+   * screen needs a decoder-sized copy of it, so make one FROM THE ORIGINAL and
+   * record it beside it on the same row (the swap path does the same from its
+   * output); report `done / rendition-created` when it worked.
+   *
+   * Why this exists: publication waits for a copy of every >1080p video a 1080p
+   * screen will play, and treats a FINISHED job with no copy as "no copy is
+   * coming" — it fails the whole schedule. A low-bitrate 4K file whose size-only
+   * encode came out no smaller used to end `skipped / not-smaller` here, copy-less,
+   * and blocked every 1080p screen's playlist forever.
+   *
+   * When the copy cannot be made the original keeps serving, the outcome SAYS so
+   * (`error` and `details.rendition`) and `processingMeta.renditions` stays
+   * absent, so publication can name the file. Never for an aborted run (the worker
+   * hands the job back), emergency media (re-checked before the write) or a row
+   * that moved on (the write is conditional on the source URL).
+   *
+   * `verdict: 'ready'` = this path already knows the source is screen-safe, so the
+   * row says so whatever becomes of the copy. `null` = this path says nothing about
+   * the original (a failed size-only encode); a copy that IS made still ends with
+   * the `ready` stamp — the plan only sends screen-safe sources down these paths.
+   */
+  private async keepOriginalWithCopy(x: {
+    job: ClaimedTranscodeJob;
+    assetId: string;
+    inPath: string;
+    /** The size-only encode's leftover: removed first, it holds the room the copy needs. */
+    outPath: string;
+    inProbe: ProbeResult;
+    bytesIn: number;
+    sha256In: string;
+    dir: string;
+    ctx: { signal?: AbortSignal };
+    /** What the job would report without a copy. */
+    outcome: TranscodeOutcome;
+    verdict: 'ready' | null;
+    keepOriginal: (outcome: TranscodeOutcome) => Promise<TranscodeOutcome>;
+    t0: number;
+  }): Promise<TranscodeOutcome> {
+    const { job, ctx, outcome } = x;
+    const stampReady = async () => {
+      if (x.verdict === 'ready') await this.markScreenReadiness(job, { ready: true });
+    };
+    // The worker hands an aborted run back to the queue: no copy, no verdict.
+    if (outcome.reason === 'aborted') return x.keepOriginal(outcome);
+
+    await fs.rm(x.outPath, { force: true }).catch(() => undefined);
+    const attempt = await this.create1080Rendition(job, x.inPath, x.inProbe, x.bytesIn, x.dir, ctx);
+    if (ctx.signal?.aborted) {
+      // Handed back to the queue: nothing is recorded, so nothing may be left behind.
+      if (attempt.status === 'created')
+        await this.storage.delete(attempt.rendition.path).catch(() => undefined);
+      return this.failed('aborted', x.t0, 'aborted while making the 1080p copy', x.bytesIn);
+    }
+    if (attempt.status === 'failed' && attempt.reason === 'became-emergency-content') {
+      // Never touch, never stamp, alert media.
+      return x.keepOriginal({ status: 'skipped', reason: 'emergency-content' });
+    }
+    if (attempt.status === 'not-needed') {
+      await stampReady();
+      return x.keepOriginal(outcome);
+    }
+    if (attempt.status === 'failed') {
+      await stampReady();
+      return x.keepOriginal({
+        ...outcome,
+        error: outcome.error ?? `the 1080p playback copy could not be made: ${attempt.reason}`,
+        details: { ...(outcome.details ?? {}), rendition: renditionDetails(attempt) },
+      });
+    }
+
+    const rendition = attempt.rendition;
+    if (await this.isEmergencyContent(x.assetId, job.sourceUrl)) {
+      await this.storage.delete(rendition.path).catch(() => undefined);
+      return x.keepOriginal({ status: 'skipped', reason: 'emergency-content' });
+    }
+    let recorded = false;
+    try {
+      // Only a screen-safe source is ever sent down these paths (a required
+      // conversion that failed is never given a copy), so the verdict is "ready".
+      recorded = await this.recordRendition(job, x.assetId, rendition, { ready: true });
+    } catch (e) {
+      await this.storage.delete(rendition.path).catch(() => undefined);
+      throw e;
+    }
+    if (!recorded) {
+      await this.storage.delete(rendition.path).catch(() => undefined);
+      return x.keepOriginal({ status: 'skipped', reason: 'source-changed' });
+    }
+    await this.auditRendition(job, rendition);
+    await this.backfillOriginalHash(job, x.sha256In);
+    // The original is still what a 4K screen downloads: ops still wants to know.
+    this.warnIfLargeOriginalKept(job, x.bytesIn, outcome.reason);
+    return {
+      status: 'done',
+      reason: 'rendition-created',
+      outputUrl: rendition.url,
+      outputBytes: rendition.size,
+      details: {
+        ...(outcome.details ?? {}),
+        seconds: Math.round((this.env.now() - x.t0) / 100) / 10,
+        rendition: renditionDetails(attempt),
+        originalKept: outcome.reason,
+        ...(outcome.error ? { originalError: outcome.error } : {}),
+      },
+    };
+  }
+
+  /**
+   * Hang the 1080p copy — and the screen-ready verdict — on the row beside the
+   * ORIGINAL it was made from, in ONE write: merged into what the row holds NOW (a
+   * fresh read — the probe facts the upload-time pass wrote while this job ran must
+   * survive), conditional on the row still serving the source and not being in a
+   * protected (emergency) playlist. False = the row moved on; the caller removes
+   * the copy.
+   */
+  private async recordRendition(
+    job: ClaimedTranscodeJob,
+    assetId: string,
+    rendition: CompatibilityRendition,
+    verdict: ScreenVerdict,
+  ): Promise<boolean> {
+    const row = await this.prisma.client.asset.findFirst({
+      where: { id: assetId, tenantId: job.tenantId, fileUrl: job.sourceUrl },
+      select: { processingMeta: true },
+    });
+    if (!row) return false;
+    const base = asRecord(row.processingMeta);
+    const saved = await this.prisma.client.asset.updateMany({
+      where: {
+        id: assetId,
+        tenantId: job.tenantId,
+        fileUrl: job.sourceUrl,
+        playlistItems: { none: { playlist: { isProtected: true } } },
+      },
+      data: {
+        processingMeta: {
+          ...base,
+          renditions: {
+            ...asRecord(base.renditions),
+            '1080p': this.publicRendition(rendition),
+          },
+          // The verdict lands WITH the copy: a row never holds a copy of a file
+          // nobody has said is playable.
+          screen: this.screenStamp(verdict),
+        } as Prisma.InputJsonObject,
+      },
+    });
+    return saved.count > 0;
   }
 
   private async auditRendition(
@@ -866,6 +1173,62 @@ export class VideoTranscodePipeline {
       this.logger.warn(
         `[transcode] large video kept at its original size (${Math.round(bytesIn / MB)} MB, asset ${job.assetId}, ` +
           `reason ${reason}) — every screen downloads the original.`,
+      );
+    }
+  }
+
+  /**
+   * Stamp whether the file this asset SERVES is something every signage
+   * player decodes (2026-10-04) — `processingMeta.screen`:
+   *
+   *   { ready: true }                          already screen-safe, or converted
+   *   { ready: false, issues, error }          needs conversion and it FAILED
+   *
+   * The manifest never hands a screen a video stamped `ready: false`, and the
+   * dashboard says why. Written only while the row still serves the file this
+   * job looked at; a fresh read is merged so the probe's own keys survive.
+   * Best-effort: a failed stamp must never fail the job.
+   */
+  /** The `screen` object itself — the one shape every writer (stamp, swap, copy) uses. */
+  private screenStamp(verdict: ScreenVerdict): Record<string, unknown> {
+    return {
+      version: 1,
+      ready: verdict.ready,
+      ...(verdict.issues?.length ? { issues: verdict.issues } : {}),
+      ...(verdict.convertedFrom?.length ? { convertedFrom: verdict.convertedFrom } : {}),
+      ...(verdict.error ? { error: String(verdict.error).slice(0, 160) } : {}),
+      checkedAt: new Date(this.env.now()).toISOString(),
+    };
+  }
+
+  private async markScreenReadiness(
+    job: ClaimedTranscodeJob,
+    verdict: ScreenVerdict,
+    servedUrl: string = job.sourceUrl,
+  ): Promise<void> {
+    if (!job.assetId) return;
+    try {
+      const row = await this.prisma.client.asset.findFirst({
+        where: { id: job.assetId, tenantId: job.tenantId, fileUrl: servedUrl },
+        select: { processingMeta: true },
+      });
+      if (!row) return;
+      const base =
+        row.processingMeta && typeof row.processingMeta === 'object' && !Array.isArray(row.processingMeta)
+          ? (row.processingMeta as Record<string, unknown>)
+          : {};
+      await this.prisma.client.asset.updateMany({
+        where: { id: job.assetId, tenantId: job.tenantId, fileUrl: servedUrl },
+        data: {
+          processingMeta: {
+            ...base,
+            screen: this.screenStamp(verdict),
+          } as Prisma.InputJsonObject,
+        },
+      });
+    } catch (e) {
+      this.logger.warn(
+        `[transcode] screen-readiness stamp failed for ${job.assetId}: ${(e as Error)?.message ?? e}`,
       );
     }
   }

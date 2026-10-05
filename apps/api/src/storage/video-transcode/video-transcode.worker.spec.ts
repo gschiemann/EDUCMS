@@ -289,7 +289,7 @@ describe('VideoTranscodeWorker.run — the deferred fast-start pass (2026-09-24)
     expect(order).toEqual(['finish', 'remux']);
   });
 
-  it('a swap, an outcome discarded as re-queued elsewhere, and the no-touch reasons never start it', async () => {
+  it('a swap, an outcome discarded as re-queued elsewhere, and the no-touch reasons never start it — a kept original (incl. one that only gained its 1080p copy) does', async () => {
     const cases: Array<[TranscodeOutcome, boolean]> = [
       [
         { status: 'done', reason: 'swapped', outputUrl: 'u', outputBytes: 10 },
@@ -300,6 +300,17 @@ describe('VideoTranscodeWorker.run — the deferred fast-start pass (2026-09-24)
       [{ status: 'skipped', reason: 'asset-deleted' }, false],
       [{ status: 'failed', reason: 'ffmpeg-failed', error: 'x' }, true],
       [{ status: 'skipped', reason: 'already-optimal' }, true],
+      // The 1080p copy was made NEXT TO the original (it is still what the row
+      // serves), so the fast-start pass that was deferred while the job ran is due.
+      [
+        {
+          status: 'done',
+          reason: 'rendition-created',
+          outputUrl: 'u',
+          outputBytes: 10,
+        },
+        true,
+      ],
     ];
     for (const [outcome, expected] of cases) {
       const w = remuxWorker({ outcome });

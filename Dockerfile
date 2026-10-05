@@ -406,6 +406,10 @@ RUN set -eu; \
       || { echo "FATAL: ffprobe missing — VideoPosterService reads every uploaded video's dimensions/duration with it and VideoTranscodeWorker probes every transcode input/output (Alpine's ffmpeg package ships it; a slimmer split package would drop it)"; exit 1; }; \
     ffmpeg -hide_banner -encoders 2>/dev/null | grep -q libx264 \
       || { echo "FATAL: this ffmpeg has no libx264 encoder — the signage video profile is H.264 High (storage/video-transcode)"; exit 1; }; \
+    ffmpeg -hide_banner -h filter=scale 2>/dev/null | grep -q out_transfer \
+      || { echo "FATAL: this ffmpeg's scale filter has no out_transfer option (ffmpeg < 8) — the signage transcode converts HDR10 / HLG / BT.2020 / BT.601 / full-range sources to BT.709 with scale=out_transfer=…:out_primaries=… (storage/video-transcode/transcode-profile.ts buildTranscodeArgs); without it EVERY conversion fails and non-screen-safe uploads are served as uploaded"; exit 1; }; \
+    ffmpeg -hide_banner -filters 2>/dev/null | grep -q bwdif \
+      || { echo "FATAL: this ffmpeg has no bwdif filter — an interlaced upload is deinterlaced with it before it is scaled (storage/video-transcode/transcode-profile.ts buildTranscodeArgs); without it every interlaced source fails to convert"; exit 1; }; \
     echo "[dockerfile] verifying the pinned Supabase root CA"; \
     test -r /etc/ssl/venueos/supabase-prod-ca-2021.crt \
       || { echo "FATAL: the database TLS trust anchor is missing from the image. Any DATABASE_URL carrying sslaccept=strict&sslcert=/etc/ssl/venueos/supabase-prod-ca-2021.crt would fail to connect AT BOOT."; exit 1; }; \
