@@ -77,7 +77,8 @@ export class FeedsController {
   }
 
   private validateUrl(url: string | undefined): { url: string; host: string } {
-    if (!url) {
+    // `?url=a&url=b` arrives as an array at runtime (CodeQL type confusion).
+    if (typeof url !== 'string' || !url) {
       throw new HttpException(
         { message: 'Missing url parameter', code: 'FEEDS_MISSING_URL' },
         HttpStatus.BAD_REQUEST,

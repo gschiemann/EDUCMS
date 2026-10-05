@@ -82,7 +82,7 @@ function providerOAuthConfigured(envPrefix: string): boolean {
  *  Only the *.myshopify.com admin host is allowed (no arbitrary domains). */
 function sanitizeShopDomain(raw?: string): string | null {
   if (!raw) return null;
-  let s = String(raw).trim().toLowerCase();
+  let s = String(raw).trim().toLowerCase().slice(0, 300);
   s = s.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
   if (!s) return null;
   if (!s.includes('.')) s = `${s}.myshopify.com`;

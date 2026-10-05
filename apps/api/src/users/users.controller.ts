@@ -21,7 +21,9 @@ import { EmailService } from '../email/email.service';
 import { clientIpFromRequest } from '../security/client-ip';
 
 function isValidEmail(email: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  // 254 is the longest valid address; the bound keeps this pattern linear
+  // (CodeQL js/polynomial-redos).
+  return typeof email === 'string' && email.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
 // P1-1 (2026-05-28) — privilege rank, HIGH→LOW. Used only to detect a

@@ -102,7 +102,11 @@ export class ProxyController {
     @Res() res: Response,
   ) {
     try {
-      if (!url) {
+      // `?url=a&url=b` arrives as an ARRAY: Nest does not enforce the declared
+      // `string` at runtime (CodeQL js/type-confusion-through-parameter-
+      // tampering, 2026-10-05). Everything below — the SSRF admission, the
+      // render capability, the cache key — assumes one string.
+      if (typeof url !== 'string' || !url) {
         throw new HttpException({ code: 'PROXY_URL_REQUIRED', message: 'Missing url parameter' }, HttpStatus.BAD_REQUEST);
       }
 
@@ -163,7 +167,7 @@ export class ProxyController {
       // grant comes from the signed `cap`; no grant means no Chromium, which
       // lands on the `safeFetch` path immediately below — the renderer's own
       // documented fallback, not an error.
-      const grant = this.resolveRenderGrant(url, capParam);
+      const grant = this.resolveRenderGrant(url, typeof capParam === 'string' ? capParam : undefined);
       if (this.renderer && !interactive && grant) {
         const rendered = await this.renderer.render(url, grant);
         if (rendered) {

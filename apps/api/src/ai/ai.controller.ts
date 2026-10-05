@@ -256,7 +256,7 @@ export class AiController {
     @Query('orientation') orientation?: string,
   ) {
     const results = await this.ai.searchStockPhotos({
-      query: (q ?? '').slice(0, 200),
+      query: typeof q === 'string' ? q.slice(0, 200) : '',
       orientation: orientation === 'portrait' ? 'portrait' : 'landscape',
       limit: 12,
     });

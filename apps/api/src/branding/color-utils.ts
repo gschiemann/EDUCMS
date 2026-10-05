@@ -20,6 +20,9 @@ const HSL_FN = /hsla?\s*\(\s*([-.\d]+)(?:deg|rad|turn)?\s*[, ]\s*([-.\d]+)%\s*[,
 
 export function parseColor(raw: string): { hex: string; alpha: number } | null {
   if (!raw) return null;
+  // A real color token is short; a scraped site controls this string, and
+  // the RGB/HSL patterns backtrack on long input (CodeQL js/polynomial-redos).
+  if (typeof raw !== 'string' || raw.length > 120) return null;
   const s = raw.trim().toLowerCase();
   let m: RegExpMatchArray | null;
   if ((m = s.match(HEX3))) {

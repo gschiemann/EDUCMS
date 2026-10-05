@@ -351,7 +351,10 @@ const FONT_FAMILY_NAME_RE = /^[a-z0-9][a-z0-9 '&.-]{1,39}$/i;
  */
 export function sanitizeFontFamilyName(raw: string | null | undefined): string | null {
   if (!raw || typeof raw !== 'string') return null;
+  // Bounded before any regex: a scraped site controls this string
+  // (CodeQL js/polynomial-redos).
   const first = raw
+    .slice(0, 300)
     .split(',')[0]
     .replace(/^\s*['"]+|['"]+\s*$/g, '')
     .replace(/\s+/g, ' ')
