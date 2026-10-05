@@ -235,6 +235,31 @@ describe('the operator is offered a passkey first', () => {
     // WebKit would reject the call outright.
     expect(startRegistration).not.toHaveBeenCalled();
   });
+
+  it('has the passkey options ready when the screen opens, so the tap goes straight to the device', async () => {
+    // Safari loses the tap's permission if a network fetch comes between the
+    // tap and navigator.credentials.create() (RIOT Corporate, 2026-10-05: the
+    // button stuck on "Waiting for your device…" and no sheet opened).
+    const calls = mockFetchByPath({
+      '/auth/login': ENROLL_REQUIRED,
+      '/auth/mfa/required/passkey/options': { body: { options: CREATE_OPTIONS } },
+      '/auth/mfa/required/passkey/verify': SESSION_WITH_CODES,
+    });
+    startRegistration.mockResolvedValue(CREDENTIAL);
+
+    await act(async () => { render(<LoginPage />); });
+    await signIn();
+    const button = await screen.findByRole('button', { name: /Use Face ID/i });
+    await waitFor(() => {
+      expect(calls.some((c) => c.url.endsWith('/auth/mfa/required/passkey/options'))).toBe(true);
+    });
+    const optionFetches = calls.filter((c) => c.url.endsWith('/auth/mfa/required/passkey/options')).length;
+
+    // Tap: the ceremony starts in the same turn, with no new request first.
+    fireEvent.click(button);
+    expect(startRegistration).toHaveBeenCalledWith({ optionsJSON: CREATE_OPTIONS });
+    expect(calls.filter((c) => c.url.endsWith('/auth/mfa/required/passkey/options')).length).toBe(optionFetches);
+  });
 });
 
 // ───────────────────────────────────────────────────────────────────────

@@ -427,6 +427,39 @@ function LoginContent() {
     }
   }, [mfaToken, enrollRequired, enrollMethod]);
 
+  // Safari only lets navigator.credentials.create() run straight from the tap
+  // that asked for it; a network fetch in between (the old order: tap, fetch
+  // the options, THEN create) loses that permission, so on a Mac the button
+  // sat on "Waiting for your device…" and no passkey sheet ever opened
+  // (RIOT Corporate first sign-in, 2026-10-05). The options are therefore
+  // fetched as the choice screen opens and the tap goes straight to the
+  // device. The server's challenge lives 5 minutes; anything older, or a
+  // fetch that has not landed, falls back to the fetch-then-create path.
+  const requiredPasskeyOptsRef = useRef<{ token: string; options: any; at: number } | null>(null);
+  useEffect(() => {
+    requiredPasskeyOptsRef.current = null;
+    if (!mfaToken || !enrollRequired || enrollMethod !== 'choice') return;
+    let live = true;
+    (async () => {
+      try {
+        const res = await fetch(`${API_URL}/auth/mfa/required/passkey/options`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mfaToken }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (live && res.ok && data?.options) {
+          requiredPasskeyOptsRef.current = { token: mfaToken, options: data.options, at: Date.now() };
+        }
+      } catch {
+        /* the tap fetches them itself */
+      }
+    })();
+    return () => {
+      live = false;
+    };
+  }, [mfaToken, enrollRequired, enrollMethod]);
+
   // Render the otpauth URL into a QR the moment the provisional secret
   // arrives. `qrcode` is imported lazily so the login bundle — the first
   // thing every user downloads — does not carry it for the 99% of sign-ins
@@ -1487,26 +1520,39 @@ function LoginContent() {
     setError('');
     setPasskeyBusy(true);
     try {
-      const optRes = await fetch(`${API_URL}/auth/mfa/required/passkey/options`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mfaToken }),
-      });
-      const optData = await optRes.json().catch(() => ({}));
-      if (!optRes.ok || !optData?.options) {
-        if (optData?.code === 'MFA_TOKEN_INVALID') {
-          cancelMfa();
-          setError(t('mfaSetupTimedOut'));
+      // Options already fetched when this screen opened: go STRAIGHT to the
+      // device, with nothing awaited first (see the effect above).
+      const ready = requiredPasskeyOptsRef.current;
+      requiredPasskeyOptsRef.current = null;
+      let creationOptions: any = null;
+      let ceremony: Promise<any> | null = null;
+      if (ready && ready.token === mfaToken && Date.now() - ready.at < 4 * 60_000) {
+        creationOptions = ready.options;
+        ceremony = createPasskey(creationOptions);
+      } else {
+        const optRes = await fetch(`${API_URL}/auth/mfa/required/passkey/options`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mfaToken }),
+        });
+        const optData = await optRes.json().catch(() => ({}));
+        if (!optRes.ok || !optData?.options) {
+          if (optData?.code === 'MFA_TOKEN_INVALID') {
+            cancelMfa();
+            setError(t('mfaSetupTimedOut'));
+            return;
+          }
+          clog.warn('auth', 'Required-MFA passkey options rejected', { status: optRes.status, code: optData?.code });
+          setError(passkeyEnrollHttpError(optRes.status, optData));
           return;
         }
-        clog.warn('auth', 'Required-MFA passkey options rejected', { status: optRes.status, code: optData?.code });
-        setError(passkeyEnrollHttpError(optRes.status, optData));
-        return;
+        creationOptions = optData.options;
+        ceremony = createPasskey(creationOptions);
       }
 
       let credential;
       try {
-        credential = await createPasskey(optData.options);
+        credential = await ceremony;
       } catch (ceremonyErr) {
         // A dismissed Face ID sheet is a DECISION. Quiet, and the operator is
         // back on the choice with both options still open.
