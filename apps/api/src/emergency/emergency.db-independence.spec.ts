@@ -68,7 +68,12 @@ describe('Emergency dispatch is independent of the database', () => {
           findMany: jest.fn().mockResolvedValue([]),
         },
         screenEmergencyOverride: {
+          // Alert targeting (2026-10-05): trigger + all-clear read the rows
+          // their screens hold first. On the tenant path that read happens
+          // AFTER the fan-out starts, so a stalled read cannot delay delivery.
+          findMany: jest.fn().mockResolvedValue([]),
           upsert: jest.fn().mockResolvedValue({}),
+          updateMany: jest.fn().mockResolvedValue({ count: 0 }),
           deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
         },
         playlist: { findFirst: jest.fn().mockResolvedValue({ id: 'pl-ok' }) },

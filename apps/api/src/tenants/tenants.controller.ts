@@ -20,6 +20,7 @@ import { evaluateMfaPolicy } from '../auth/mfa-policy';
 import { tenantMfaEnforced } from '../auth/tenant-mfa-enforcement';
 import { randomBytes, createHash, createHmac, timingSafeEqual } from 'crypto';
 import { availableOrganizationSlug, TenantUrlClaimConflict } from './tenant-slug';
+import { collectDescendantTenantIds } from '../emergency/tenant-hierarchy';
 
 /** Transaction attempts for a rename that loses a race for its new URL. */
 const ORGANIZATION_RENAME_ATTEMPTS = 3;
@@ -751,6 +752,50 @@ export class TenantsController {
     return { success: true, archivedCount: archived.length, archived, skipped };
   }
 
+  /**
+   * Is a group / one-screen emergency alert live where this user would see
+   * it? (alert targeting, 2026-10-05)
+   *
+   * Same tenant window as GET /emergency/active: the user's own tenant, plus
+   * the tenants below it for a DISTRICT_ADMIN / SUPER_ADMIN (who may target a
+   * school's screen). A row from before alert identity (GPIO input, the
+   * floor-plan endpoint) counts too — it is an alert on a screen and was
+   * previously invisible to the dashboard. An expired row does not.
+   *
+   * FAIL-SOFT to `false`: this is a dashboard hint read on every tenant poll
+   * and must never 500 the dashboard. It changes no screen: the override rows
+   * the manifest reads are untouched by this read either way.
+   */
+  private async scopedEmergencyAlertActive(user: any, tenantId: string): Promise<boolean> {
+    if (!tenantId) return false;
+    try {
+      const ids =
+        user?.role === AppRole.DISTRICT_ADMIN || user?.role === AppRole.SUPER_ADMIN
+          ? [tenantId, ...(await collectDescendantTenantIds(this.prisma.client.tenant as any, tenantId))]
+          : [tenantId];
+      const now = new Date();
+      const candidates: Array<{ screenId: string }> = await (this.prisma.client as any).screenEmergencyOverride.findMany({
+        where: {
+          tenantId: { in: ids },
+          OR: [{ scopeType: { in: ['group', 'device'] } }, { alertId: null }],
+          AND: [{ OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] }],
+        },
+        select: { screenId: true },
+        take: 200,
+      });
+      if (candidates.length === 0) return false; // the normal case: one query
+      // A row whose screen was deleted shows nothing anywhere (deleting a
+      // screen leaves its override row behind) and has no all-clear target —
+      // it must not hold the dashboard lock up. Same rule as /emergency/active.
+      const live = await this.prisma.client.screen.count({
+        where: { tenantId: { in: ids }, id: { in: candidates.map((c) => c.screenId) } },
+      });
+      return live > 0;
+    } catch {
+      return false;
+    }
+  }
+
   @Get()
   async getTenantInfo(@Request() req: any) {
     const tenantId = req.user.tenantId;
@@ -803,6 +848,12 @@ export class TenantsController {
     const vertical: unknown = row.vertical;
     return {
       ...row,
+      // 2026-10-05 — alert targeting. `emergencyStatus` only describes the
+      // tenant-wide ("All screens") alert; a group or one-screen alert never
+      // touches it. The dashboard decides whether to raise its emergency
+      // overlay from THIS endpoint (the 30 s poll it already runs), so the
+      // second fact rides here instead of in a new poller.
+      emergencyScopedAlertActive: await this.scopedEmergencyAlertActive(req.user, tenantId),
       emergencyEnabledEffective: effectiveEmergencyEnabled(vertical, row.emergencyEnabled),
       /** True for verticals that may never turn the capability off (K–12). */
       emergencyEnabledLocked: emergencyEnablementLocked(vertical),

@@ -147,6 +147,23 @@ describe('District-wide emergency propagation (fan-out + manifest inheritance)',
     return value === clause;
   };
 
+  /** Override-row `where`: tenant/screen ids, plus the all-clear's
+   *  compare-and-set guard (alertId + triggeredAt) and its OR batch. */
+  const overrideMatches = (row: any, where: any): boolean => {
+    if (!where) return true;
+    if (where.tenantId !== undefined && !idMatches(row.tenantId, where.tenantId)) return false;
+    if (where.screenId !== undefined && !idMatches(row.screenId, where.screenId)) return false;
+    if (where.alertId !== undefined && (row.alertId ?? null) !== where.alertId) return false;
+    if (
+      where.triggeredAt !== undefined &&
+      new Date(row.triggeredAt).getTime() !== new Date(where.triggeredAt).getTime()
+    ) {
+      return false;
+    }
+    if (Array.isArray(where.OR) && !where.OR.some((c: any) => overrideMatches(row, c))) return false;
+    return true;
+  };
+
   beforeEach(async () => {
     // Module-level caches in manifest-hot-cache.ts survive between specs.
     resetManifestCacheForTests();
@@ -261,17 +278,30 @@ describe('District-wide emergency propagation (fan-out + manifest inheritance)',
         },
         screenEmergencyOverride: {
           findUnique: jest.fn(async ({ where }: any) => overrides.get(where.screenId) ?? null),
+          // Alert targeting (2026-10-05): trigger + all-clear read the rows
+          // first so an all-clear ends exactly its own alert.
+          findMany: jest.fn(async ({ where }: any) =>
+            [...overrides.values()].filter((row) => overrideMatches(row, where)).map((row) => ({ ...row })),
+          ),
           upsert: jest.fn(async ({ where, create, update }: any) => {
             const existing = overrides.get(where.screenId);
             const row = existing ? { ...existing, ...update } : { screenId: where.screenId, ...create };
             overrides.set(where.screenId, row);
             return row;
           }),
+          updateMany: jest.fn(async ({ where, data }: any) => {
+            let count = 0;
+            for (const [screenId, row] of [...overrides.entries()]) {
+              if (!overrideMatches(row, where)) continue;
+              overrides.set(screenId, { ...row, ...data });
+              count++;
+            }
+            return { count };
+          }),
           deleteMany: jest.fn(async ({ where }: any) => {
             let count = 0;
             for (const [screenId, row] of [...overrides.entries()]) {
-              if (where?.tenantId !== undefined && !idMatches(row.tenantId, where.tenantId)) continue;
-              if (where?.screenId !== undefined && !idMatches(screenId, where.screenId)) continue;
+              if (!overrideMatches(row, where)) continue;
               overrides.delete(screenId);
               count++;
             }

@@ -43,6 +43,18 @@ import { collectDescendantTenantIds, isDescendantTenant } from './tenant-hierarc
 // unit. (Tenant- and group-scoped alerts already reach faces for free: a face
 // is an ordinary Screen row in the tenant.)
 import { deviceScopeScreenIds } from '../screens/screen-faces';
+// 2026-10-05 — alert targeting. One override row per screen, several alerts:
+// which alert a row belongs to, and what it is covering, so an all-clear ends
+// exactly its own alert. See the module header for the rule.
+import {
+  clearAlert,
+  entriesOfRow,
+  isEntryExpired,
+  placeAlert,
+  type AlertScopeType,
+  type OverrideEntry,
+} from './alert-stack';
+import { SCREEN_ONLINE_GRACE_MS } from '../telemetry/online-grace';
 import {
   TriggerEmergencyInputSchema,
   ClearEmergencyInputSchema,
@@ -265,11 +277,23 @@ export class EmergencyController {
       panicLandscape: string | null;
       panicPortrait: string | null;
       triggeredByUserId: string;
+      // 2026-10-05 — alert targeting. Who this alert is, what it was aimed
+      // at, and the rows its screens hold right now, so each write keeps the
+      // alerts the screen is covering (alert-stack.ts) instead of erasing
+      // them. `sameTarget` says which earlier alerts this one REPLACES.
+      alertId: string;
+      scopeType: AlertScopeType;
+      scopeId: string;
+      existingByScreen: Map<string, any>;
+      sameTarget: (e: OverrideEntry) => boolean;
     },
-  ): any[] {
+  ): { ops: any[]; replacedAlertIds: string[] } {
     const typeKey = this.emergencyTypeKey(opts.overridePayload.type);
     const explicitPlaylistId = opts.overridePayload.playlistId || null;
-    return screens.map((screen) => {
+    const triggeredAt = new Date().toISOString();
+    const expiresAt = this.emergencyExpiresAt(opts.overridePayload.expiresAt);
+    const replacedAlertIds = new Set<string>();
+    const ops = screens.map((screen) => {
       const screenContent = this.pickScreenEmergencyContent(screen, typeKey);
       const isPortrait = this.isPortraitScreen(screen);
       const tenantFallbackPlaylistId = isPortrait
@@ -282,21 +306,144 @@ export class EmergencyController {
       const mediaUrl = playlistId
         ? null
         : (screenContent.mediaUrl || opts.overridePayload.mediaUrl || null);
-      const data = {
-        type: typeKey || 'CUSTOM',
-        severity: opts.severity,
-        playlistId,
-        mediaUrl,
-        textBlob: opts.overridePayload.textBlob || null,
-        expiresAt: this.emergencyExpiresAt(opts.overridePayload.expiresAt),
-        triggeredByUserId: opts.triggeredByUserId,
-      };
+      const placed = placeAlert(
+        opts.existingByScreen.get(screen.id) ?? null,
+        {
+          alertId: opts.alertId,
+          scopeType: opts.scopeType,
+          scopeId: opts.scopeId,
+          type: typeKey || 'CUSTOM',
+          severity: opts.severity,
+          scopeNote: null,
+          playlistId,
+          mediaUrl,
+          textBlob: opts.overridePayload.textBlob || null,
+          floorPlanId: null,
+          floorZoneId: null,
+          scenarioId: null,
+          triggeredByUserId: opts.triggeredByUserId,
+          triggeredAt,
+          expiresAt: expiresAt ? expiresAt.toISOString() : null,
+        },
+        opts.sameTarget,
+      );
+      for (const id of placed.replacedAlertIds) replacedAlertIds.add(id);
+      const data = { ...placed.columns, tenantId: opts.tenantId } as any;
       return (this.prisma.client as any).screenEmergencyOverride.upsert({
         where: { screenId: screen.id },
-        create: { screenId: screen.id, tenantId: opts.tenantId, ...data },
-        update: { ...data, triggeredAt: new Date() },
+        create: { screenId: screen.id, ...data },
+        update: data,
       });
     });
+    return { ops, replacedAlertIds: [...replacedAlertIds] };
+  }
+
+  /**
+   * Every pane of every display that has a pane in `rows` (2026-10-05).
+   *
+   * A face is created in its front's group, but group membership is per row:
+   * move the front to another group and the back stays where it was. A group
+   * alert that lit the front of a double-sided display while the back kept
+   * showing the lunch menu is the failure the device scope already closed
+   * (`deviceScopeScreenIds`); this closes it for the group scope. One indexed
+   * read, tenant-scoped like every other read on this path.
+   */
+  private async wholeDisplays(tenantId: string, rows: any[]): Promise<any[]> {
+    if (rows.length === 0) return rows;
+    const roots = [...new Set(rows.map((r) => (r.faceOfScreenId as string | null) || r.id))];
+    const unitRows = await this.prisma.client.screen.findMany({
+      where: {
+        tenantId,
+        OR: [{ id: { in: roots } }, { faceOfScreenId: { in: roots } }],
+      },
+    });
+    const byId = new Map<string, any>();
+    for (const r of [...rows, ...(unitRows as any[])]) byId.set(r.id, r);
+    return [...byId.values()];
+  }
+
+  /**
+   * Every pane of the display `scopeId` names, for a device-scoped all-clear —
+   * the same set `deviceScopeScreenIds` gives the trigger. One query in the
+   * common case, a second only when the operator named a SIDE. `scopeId` is
+   * ALWAYS included, even if its row could not be read: a failed lookup must
+   * never SHRINK the set an all-clear reaches.
+   */
+  private async deviceUnitScreenIds(tenantId: string, scopeId: string): Promise<string[]> {
+    const named = await this.prisma.client.screen.findMany({
+      where: { tenantId, OR: [{ id: scopeId }, { faceOfScreenId: scopeId }] },
+      select: { id: true, faceOfScreenId: true },
+    });
+    const rootId = ((named.find((s) => s.id === scopeId) as any)?.faceOfScreenId as string | null) || scopeId;
+    const unitRows =
+      rootId === scopeId
+        ? named
+        : await this.prisma.client.screen.findMany({
+            where: { tenantId, OR: [{ id: rootId }, { faceOfScreenId: rootId }] },
+            select: { id: true, faceOfScreenId: true },
+          });
+    return Array.from(new Set([scopeId, ...deviceScopeScreenIds(scopeId, unitRows as any)]));
+  }
+
+  /** The override rows a set of screens hold right now, keyed by screen. */
+  private async overrideRowsFor(tenantId: string | { in: string[] }, screenIds?: string[]): Promise<any[]> {
+    if (screenIds && screenIds.length === 0) return [];
+    return (this.prisma.client as any).screenEmergencyOverride.findMany({
+      where: { tenantId, ...(screenIds ? { screenId: { in: screenIds } } : {}) },
+    });
+  }
+
+  /**
+   * Turn one all-clear into the writes that end EXACTLY the alert(s)
+   * `isCleared` matches (2026-10-05 — see alert-stack.ts for the rule).
+   *
+   * A screen whose shown alert is cleared falls back to the newest alert it
+   * was covering; with nothing left its row is deleted. Every write is
+   * compare-and-set on the row as it was read (`alertId` + `triggeredAt`), so
+   * a trigger that lands on the same screen between this read and the
+   * transaction is never overwritten by a plan computed from the old row.
+   */
+  private planAllClear(
+    rows: any[],
+    isCleared: (row: any, e: OverrideEntry) => boolean,
+  ): { ops: any[]; clearedScreenIds: string[]; restoredScreenIds: string[] } {
+    const deletes: Array<{ screenId: string; alertId: string | null; triggeredAt: Date }> = [];
+    const ops: any[] = [];
+    const clearedScreenIds: string[] = [];
+    const restoredScreenIds: string[] = [];
+    for (const row of rows) {
+      const plan = clearAlert(row, (e) => isCleared(row, e));
+      if (plan.kind === 'keep') continue;
+      const guard = {
+        screenId: row.screenId,
+        tenantId: row.tenantId,
+        alertId: row.alertId ?? null,
+        triggeredAt: row.triggeredAt,
+      };
+      if (plan.kind === 'delete') {
+        deletes.push(guard);
+        clearedScreenIds.push(row.screenId);
+        continue;
+      }
+      ops.push(
+        (this.prisma.client as any).screenEmergencyOverride.updateMany({
+          where: guard,
+          data: plan.columns,
+        }),
+      );
+      if (plan.restored) {
+        clearedScreenIds.push(row.screenId);
+        restoredScreenIds.push(row.screenId);
+      }
+    }
+    if (deletes.length > 0) {
+      ops.unshift(
+        (this.prisma.client as any).screenEmergencyOverride.deleteMany({
+          where: { OR: deletes },
+        }),
+      );
+    }
+    return { ops, clearedScreenIds, restoredScreenIds };
   }
 
   /**
@@ -527,6 +674,9 @@ export class EmergencyController {
     // invalidation, pub/sub fan-out, webhooks, GPIO lamps) all iterate this
     // list rather than the single targeted id — that was the whole bug.
     let affectedTenantIds: string[] = [];
+    // Group / device scope only: how many screens the alert took over
+    // (whole displays included), so the operator UI can report it.
+    let affectedScreenCount: number | undefined;
 
     // If targeting a tenant (e.g., a school), update its emergencyStatus persistently
     if (scopeType === 'tenant') {
@@ -627,6 +777,19 @@ export class EmergencyController {
           screensByTenant.set(s.tenantId, list);
         }
       }
+      // 2026-10-05 — location-based rows are written per screen, so they can
+      // land on a screen that is carrying a group or one-screen alert. Read
+      // what those screens hold so the alert is kept UNDERNEATH this one and
+      // comes back when this one clears (alert-stack.ts, gap G5). Only the
+      // location-mode tenants pay this read — it is the only path that writes
+      // rows on a tenant-scoped trigger.
+      const existingLocationRows = new Map<string, any>(
+        locationModeTenantIds.length > 0
+          ? (await this.overrideRowsFor({ in: locationModeTenantIds })).map((r: any) => [r.screenId, r])
+          : [],
+      );
+      const locationTriggeredAt = new Date().toISOString();
+      const locationExpiresAt = this.emergencyExpiresAt(overridePayload.expiresAt);
 
       // Build the whole subtree's writes, then commit them in ONE
       // transaction. All-or-nothing across the district: a fan-out that
@@ -686,29 +849,36 @@ export class EmergencyController {
               ? null
               : (screenContent.mediaUrl || (playlistId ? null : (overridePayload.mediaUrl || null)));
 
+            // Same content as always; what changed (2026-10-05) is that the
+            // row now records it belongs to THIS tenant-wide alert, and keeps
+            // a group / one-screen alert it lands on underneath it. An older
+            // tenant-wide alert is replaced, exactly like the Tenant row is.
+            const placed = placeAlert(
+              existingLocationRows.get(screen.id) ?? null,
+              {
+                alertId: overrideId,
+                scopeType: 'tenant',
+                scopeId: affectedTenantId,
+                type: typeKey || 'CUSTOM',
+                severity,
+                scopeNote: null,
+                playlistId,
+                mediaUrl,
+                textBlob: overridePayload.textBlob || null,
+                floorPlanId: null,
+                floorZoneId: null,
+                scenarioId: null,
+                triggeredByUserId: req.user?.id || 'admin_system',
+                triggeredAt: locationTriggeredAt,
+                expiresAt: locationExpiresAt ? locationExpiresAt.toISOString() : null,
+              },
+              (e) => e.scopeType === 'tenant',
+            );
+            const rowData = { ...placed.columns, tenantId: affectedTenantId } as any;
             locationBasedOverrides.push((this.prisma.client as any).screenEmergencyOverride.upsert({
               where: { screenId: screen.id },
-              create: {
-                screenId: screen.id,
-                tenantId: affectedTenantId,
-                type: typeKey || 'CUSTOM',
-                severity,
-                playlistId,
-                mediaUrl,
-                textBlob: overridePayload.textBlob || null,
-                expiresAt: this.emergencyExpiresAt(overridePayload.expiresAt),
-                triggeredByUserId: req.user?.id || 'admin_system',
-              },
-              update: {
-                type: typeKey || 'CUSTOM',
-                severity,
-                playlistId,
-                mediaUrl,
-                textBlob: overridePayload.textBlob || null,
-                expiresAt: this.emergencyExpiresAt(overridePayload.expiresAt),
-                triggeredByUserId: req.user?.id || 'admin_system',
-                triggeredAt: new Date(),
-              },
+              create: { screenId: screen.id, ...rowData },
+              update: rowData,
             }));
           }
         }
@@ -836,41 +1006,68 @@ export class EmergencyController {
         const inScope = new Set(deviceScopeScreenIds(scopeId, unitRows as any));
         affectedScreens = unitRows.filter((r) => inScope.has(r.id));
       } else {
-        affectedScreens = await this.prisma.client.screen.findMany({
-          where: { screenGroupId: scopeId },
+        // TENANT-SCOPED (2026-10-05, gap G1). `ownedTenantId` was verified
+        // above; a screen of ANOTHER organisation still carrying this group's
+        // id from before ISO-01 (2026-08-04) refused cross-tenant binds is not
+        // this operator's screen and must never receive their alert.
+        const members = await this.prisma.client.screen.findMany({
+          where: { tenantId: ownedTenantId, screenGroupId: scopeId },
         });
+        // WHOLE DISPLAYS (gap G2): a back side left in another group (or in
+        // none) when its front moved still belongs to a display in this group.
+        affectedScreens = await this.wholeDisplays(ownedTenantId, members as any[]);
       }
 
-      // Push to every pane. The named channel already went out above; these
-      // are the OTHER sides of the same display, which have their own device
-      // channels because they are their own Screen rows. Best-effort exactly
-      // like the primary fan-out — the per-screen override rows written below
-      // are what the HTTP polling backstop reads, so a dead push channel
-      // still delivers the alert.
-      if (scopeType === 'device') {
-        const extraChannels = affectedScreens
-          .map((s) => `device:${s.id}`)
-          .filter((ch) => ch !== `${scopeType}:${scopeId}`);
-        if (extraChannels.length) {
-          await this.dispatchEmergencyFanout(extraChannels, signedMessage, {
-            scopeType,
-            overrideId,
-            userId: req.user?.id,
-          });
-        }
+      // Push to every pane the scope channel cannot reach. Device scope: the
+      // OTHER sides of the named display. Group scope: a side that sits
+      // outside the group (the gateway matches `group:` on the device's own
+      // group). Each is its own Screen row with its own device channel.
+      // Best-effort exactly like the primary fan-out — the per-screen override
+      // rows written below are what the HTTP polling backstop reads, so a dead
+      // push channel still delivers the alert.
+      const extraChannels = affectedScreens
+        .filter((s) => (scopeType === 'device' ? s.id !== scopeId : s.screenGroupId !== scopeId))
+        .map((s) => `device:${s.id}`);
+      if (extraChannels.length) {
+        await this.dispatchEmergencyFanout(extraChannels, signedMessage, {
+          scopeType,
+          overrideId,
+          userId: req.user?.id,
+        });
       }
 
       const tenantForFallback = await this.prisma.client.tenant.findUnique({ where: { id: ownedTenantId } });
       const panic = this.pickTenantPanicPlaylists(tenantForFallback as any, overridePayload.type);
 
-      const overrideUpserts = this.buildScreenEmergencyUpserts(affectedScreens, {
+      // What these screens are showing right now — kept underneath this alert
+      // so its all-clear can hand each screen back (alert-stack.ts, gap G5).
+      const affectedIds = affectedScreens.map((s) => s.id as string);
+      const existingByScreen = new Map<string, any>(
+        (await this.overrideRowsFor(ownedTenantId, affectedIds)).map((r: any) => [r.screenId, r]),
+      );
+      // A new alert on the SAME target replaces the old one (escalating the
+      // gym from Hold to Lockdown ends the Hold). For a device that is any
+      // pane of the same display, whichever side the operator named.
+      const unitIds = new Set(affectedIds);
+      const sameTarget = (e: OverrideEntry) =>
+        scopeType === 'device'
+          ? e.scopeType === 'device' && !!e.scopeId && unitIds.has(e.scopeId)
+          : e.scopeType === 'group' && e.scopeId === scopeId;
+
+      const { ops: overrideUpserts, replacedAlertIds } = this.buildScreenEmergencyUpserts(affectedScreens, {
         tenantId: ownedTenantId,
         severity,
         overridePayload,
         panicLandscape: panic.landscape,
         panicPortrait: panic.portrait,
         triggeredByUserId: req.user?.id || 'admin_system',
+        alertId: overrideId,
+        scopeType: scopeType as AlertScopeType,
+        scopeId,
+        existingByScreen,
+        sameTarget,
       });
+      affectedScreenCount = affectedScreens.length;
 
       // ownedTenantId already verified above. Override rows + audit in one
       // transaction so a concurrent all-clear can't leave half the group's
@@ -886,8 +1083,14 @@ export class EmergencyController {
             details: JSON.stringify({
               overrideId,
               severity,
+              type: this.emergencyTypeKey(overridePayload.type),
               scopeType,
+              scopeId,
               affectedScreenCount: affectedScreens.length,
+              // Forensics: exactly which screens this alert took over, and any
+              // earlier alert on the same target it replaced (an escalation).
+              affectedScreenIds: affectedIds,
+              replacedAlertIds,
               triggeredByTenant: req.user?.tenantId,
             }),
           },
@@ -976,6 +1179,9 @@ export class EmergencyController {
       // 38 screens" instead of implying a district trigger hit one row.
       affectedTenantIds,
       affectedTenantCount: affectedTenantIds.length,
+      // Group / device scope: how many screens the alert took over, both
+      // sides of a double-sided display counted. Absent for tenant scope.
+      ...(affectedScreenCount !== undefined ? { affectedScreenCount } : {}),
       message:
         affectedTenantIds.length > 1
           ? `Emergency dispatched to ${channel} and ${affectedTenantIds.length - 1} child location(s)`
@@ -1015,6 +1221,8 @@ export class EmergencyController {
     // has been told the incident is over.
     let affectedTenantIds: string[] = [];
     let clearFanout: Promise<void> | null = null;
+    // Group / device scope: the screens whose glass this all-clear changes.
+    let changedScreenIds: string[] = [];
 
     // If targeting a tenant, clear its emergencyStatus + audit atomically.
     // Clear BOTH orientation pointers so a portrait screen doesn't keep
@@ -1062,6 +1270,25 @@ export class EmergencyController {
         emergencyPortraitPlaylistId: null,
       } as any;
 
+      // Per-screen override rows across the WHOLE subtree that belong to the
+      // tenant-wide alert. Without them a rebooted screen in a child school
+      // re-reads its override row and comes back up locked down — the
+      // emergency-003 bug, district-scope variant.
+      //
+      // 2026-10-05 — "belong to" is now exact. The tenant-wide alert's rows
+      // are the location-based rows it wrote (scopeType 'tenant') plus every
+      // row from before alert identity existed (alertId NULL — GPIO, floor
+      // plans, pre-2026-10-05 rows), i.e. precisely what this path always
+      // cleared. A GROUP or ONE-SCREEN alert is a different alert with its own
+      // all-clear: clearing the building-wide weather alert must not end the
+      // nurse's medical alert (gap G5). A screen that was covering one gets it
+      // back instead of going dark.
+      const subtreeRows = await this.overrideRowsFor({ in: affectedTenantIds });
+      const tenantRowPlan = this.planAllClear(
+        subtreeRows,
+        (_row, e) => e.scopeType === 'tenant' || !e.alertId,
+      );
+
       await this.prisma.client.$transaction([
         this.prisma.client.tenant.update({
           where: { id: scopeId },
@@ -1079,13 +1306,9 @@ export class EmergencyController {
               }),
             ]
           : []),
-        // Per-screen overrides across the WHOLE subtree. Without the `in`
-        // a rebooted screen in a child school re-reads its override row off
-        // disk and comes back up locked down — the emergency-003 bug,
-        // district-scope variant.
-        (this.prisma.client as any).screenEmergencyOverride.deleteMany({
-          where: { tenantId: { in: affectedTenantIds } },
-        }),
+        // Per-screen overrides that belong to the tenant-wide alert, across
+        // the whole subtree (planned above).
+        ...tenantRowPlan.ops,
         // One audit row per affected tenant, same reasoning as the trigger:
         // each school's own trail has to record that IT was cleared.
         ...affectedTenantIds.map((tid) =>
@@ -1102,95 +1325,74 @@ export class EmergencyController {
                 originTenantId: scopeId,
                 propagatedFromTenantId: tid === scopeId ? null : scopeId,
                 subtreeTenantCount: affectedTenantIds.length,
+                // Screens that went back to a group / one-screen alert they
+                // had been covering, rather than to normal content.
+                restoredScreenIds: tenantRowPlan.restoredScreenIds.filter((sid) =>
+                  subtreeRows.some((r: any) => r.screenId === sid && r.tenantId === tid),
+                ),
               }),
             },
           }),
         ),
       ]);
-    } else if (scopeType === 'device') {
-      // emergency-003 fix: previously the device-scope all-clear only
-      // wrote an AuditLog row and broadcast — it never deleted the
-      // ScreenEmergencyOverride. Result: the screen rebooted and re-read
-      // its override row from disk, getting stuck on lockdown after the
-      // operator thought they had cleared it. Delete the override row
-      // atomically with the audit write so they can't drift apart.
-      // ── Double-sided displays: clear every pane the trigger lit ────────
+    } else {
+      // ── GROUP / DEVICE — end EXACTLY this alert (2026-10-05) ──────────────
       //
-      // DELIBERATELY SYMMETRIC with the trigger above. The set that goes
-      // into an alert must be the set that comes out of it — an asymmetry
-      // here is precisely how a screen gets stranded on a lockdown nobody
-      // can clear (the emergency-003 bug class, which is why this branch
-      // deletes override rows at all).
-      // Same shape as the trigger: one query in the common case, a second
-      // only when the operator named a SIDE rather than the display.
-      const namedForClear = await this.prisma.client.screen.findMany({
-        where: {
-          tenantId: ownedTenantId,
-          OR: [{ id: scopeId }, { faceOfScreenId: scopeId }],
-        },
-        select: { id: true, faceOfScreenId: true },
-      });
-      const clearRootId =
-        ((namedForClear.find((s) => s.id === scopeId) as any)?.faceOfScreenId as string | null) ||
-        scopeId;
-      const clearUnitRows =
-        clearRootId === scopeId
-          ? namedForClear
-          : await this.prisma.client.screen.findMany({
-              where: {
-                tenantId: ownedTenantId,
-                OR: [{ id: clearRootId }, { faceOfScreenId: clearRootId }],
-              },
-              select: { id: true, faceOfScreenId: true },
-            });
-      // `scopeId` is ALWAYS included, even if the row could not be read: a
-      // failed lookup must never SHRINK the set an all-clear reaches.
-      const clearScreenIds = Array.from(
-        new Set([scopeId, ...deviceScopeScreenIds(scopeId, clearUnitRows as any)]),
-      );
-      // Push the all-clear to the other panes' own device channels.
-      const clearExtraChannels = clearScreenIds
-        .map((sid) => `device:${sid}`)
-        .filter((ch) => ch !== `${scopeType}:${scopeId}`);
-      if (clearExtraChannels.length) {
-        await this.dispatchEmergencyFanout(clearExtraChannels, signedMessage, {
-          scopeType,
-          overrideId,
-          userId: req.user?.id,
-          action: 'all-clear',
+      // emergency-003 fix (kept): an all-clear deletes the override rows the
+      // trigger wrote, atomically with its audit row, or a rebooted screen
+      // re-reads its row and comes back up locked down.
+      //
+      // What changed: these branches used to delete the rows of the scope's
+      // CURRENT screens. Proven wrong by emergency.targeting.spec.ts once
+      // several alerts can be live: a screen moved out of the group
+      // mid-incident stayed on lockdown after the all-clear (G3); a screen
+      // moved into it lost its own alert (G4); clearing a one-screen alert
+      // inside a group lockdown put that screen back on its normal playlist
+      // while the rest of the group stayed locked down (G5).
+      //
+      // Now matched by ALERT IDENTITY: every row in the owning tenant that
+      // carries `overrideId` — shown or covered — wherever those screens are
+      // today. A screen whose shown alert ends returns to the newest alert it
+      // was covering, or to normal content (alert-stack.ts). No other alert's
+      // row is touched.
+      //
+      // A caller that does not know the id (an old client minting
+      // `clear_<uuid>`, or an alert raised before alert identity existed)
+      // falls back to the SCOPE: alerts aimed at this same target, plus
+      // pre-identity rows on the target's screens — what this branch always
+      // cleared, minus any OTHER alert's rows.
+      let scopeScreenIds: string[];
+      if (scopeType === 'device') {
+        // ── Double-sided displays: the device scope means the DISPLAY ─────
+        // DELIBERATELY SYMMETRIC with the trigger above: one query in the
+        // common case, a second only when the operator named a SIDE.
+        scopeScreenIds = await this.deviceUnitScreenIds(ownedTenantId, scopeId);
+      } else {
+        // Tenant-scoped + whole displays — the same set the trigger reaches.
+        const members = await this.prisma.client.screen.findMany({
+          where: { tenantId: ownedTenantId, screenGroupId: scopeId },
+          select: { id: true, faceOfScreenId: true, screenGroupId: true },
         });
+        scopeScreenIds = (await this.wholeDisplays(ownedTenantId, members as any[])).map((s) => s.id as string);
       }
+      const inScope = new Set(scopeScreenIds);
+
+      const tenantRows = await this.overrideRowsFor(ownedTenantId);
+      const matchedByAlert = tenantRows.some((r: any) =>
+        entriesOfRow(r).some((e) => e.alertId === overrideId),
+      );
+      const isCleared = matchedByAlert
+        ? (_row: any, e: OverrideEntry) => e.alertId === overrideId
+        : (row: any, e: OverrideEntry) =>
+            (e.scopeType === scopeType &&
+              !!e.scopeId &&
+              (scopeType === 'device' ? inScope.has(e.scopeId) : e.scopeId === scopeId)) ||
+            (!e.alertId && inScope.has(row.screenId));
+      const plan = this.planAllClear(tenantRows, isCleared);
+      changedScreenIds = plan.clearedScreenIds;
 
       await this.prisma.client.$transaction([
-        (this.prisma.client as any).screenEmergencyOverride.deleteMany({
-          where: { screenId: { in: clearScreenIds }, tenantId: ownedTenantId },
-        }),
-        this.prisma.client.auditLog.create({
-          data: {
-            action: 'CLEAR_EMERGENCY',
-            targetType: scopeType,
-            targetId: scopeId,
-            tenantId: ownedTenantId,
-            userId: req.user?.id,
-            details: JSON.stringify({ overrideId, triggeredByTenant: req.user?.tenantId }),
-          },
-        }),
-      ]);
-    } else {
-      // group scope — delete the per-screen ScreenEmergencyOverride rows we
-      // created for this group's screens on trigger (symmetry with the device
-      // branch above) so a poll-only kiosk drops the lockdown on all-clear
-      // too. Without this a rebooted screen would re-read its override row and
-      // stay locked down after all-clear — the emergency-003 bug, group-scope
-      // variant. (2026-06-01.)
-      const groupScreens = await this.prisma.client.screen.findMany({
-        where: { screenGroupId: scopeId },
-        select: { id: true },
-      });
-      await this.prisma.client.$transaction([
-        (this.prisma.client as any).screenEmergencyOverride.deleteMany({
-          where: { screenId: { in: groupScreens.map((s) => s.id) } },
-        }),
+        ...plan.ops,
         this.prisma.client.auditLog.create({
           data: {
             action: 'CLEAR_EMERGENCY',
@@ -1200,7 +1402,16 @@ export class EmergencyController {
             userId: req.user?.id,
             details: JSON.stringify({
               overrideId,
-              clearedScreenCount: groupScreens.length,
+              scopeType,
+              scopeId,
+              // 'alert' = this exact alert's rows; 'scope' = the caller did
+              // not know the id, so the scope fallback above was used.
+              matchedBy: matchedByAlert ? 'alert' : 'scope',
+              // Screens whose alert ended, and the subset that went back to
+              // an older alert they had been covering instead of to normal.
+              clearedScreenIds: plan.clearedScreenIds,
+              clearedScreenCount: plan.clearedScreenIds.length,
+              restoredScreenIds: plan.restoredScreenIds,
               triggeredByTenant: req.user?.tenantId,
             }),
           },
@@ -1214,24 +1425,30 @@ export class EmergencyController {
     //
     // For tenant scope the fan-out was STARTED before persistence (see
     // above) so a stalled write cannot strand screens in lockdown. Group /
-    // device scope needs no lookup to know its channel, so it dispatches
-    // here — still before nothing, since its writes are already done and
-    // the channel was never in doubt. Both awaited so the response reports
-    // the real dispatch outcome. One channel per affected tenant, for the
-    // same gateway-matching reason as the trigger path, and with the same
-    // independent catch so one failed publish can't strand the rest of the
-    // district on a lockdown that has already been cleared.
+    // device scope dispatches here, AFTER its writes, so a screen that
+    // reconciles on the push reads the cleared row rather than the old one.
+    // Both awaited so the response reports the real dispatch outcome.
     const channel = `${scopeType}:${scopeId}`;
     if (!clearFanout) {
-      for (const tid of affectedTenantIds) {
-        invalidateTenantState(tid);
-        // Group / device all-clear: move the revision so the cleared screens
-        // pull the manifest, but leave `active` alone — the tenant-wide alert
-        // state (if any) was never touched by this scope.
-        bumpTenantEmergencyEpoch({ redis: this.redisService }, tid);
-      }
+      // Move the OWNING tenant's revision so a screen on the cheap revision
+      // poll pulls its manifest — symmetric with the trigger, which bumps the
+      // same tenant. (Until 2026-10-05 this looped over `affectedTenantIds`,
+      // which only the tenant branch fills, so a group/device all-clear never
+      // moved the epoch: a poll-only screen waited for the content revision or
+      // its periodic reconcile to notice the all-clear — gap G6.) `active` is
+      // left alone: the tenant-wide alert state was never touched here.
+      invalidateTenantState(ownedTenantId);
+      bumpTenantEmergencyEpoch({ redis: this.redisService }, ownedTenantId);
+      // The scope channel, plus the device channel of every screen whose
+      // glass changed that the scope channel cannot reach — the other side of
+      // a display, a screen moved out of the group mid-incident. The player
+      // answers ALL_CLEAR by re-reading its manifest, so a screen that went
+      // back to an older alert simply shows that alert.
+      const extraChannels = changedScreenIds
+        .map((sid) => `device:${sid}`)
+        .filter((ch) => ch !== channel);
       clearFanout = this.dispatchEmergencyFanout(
-        [channel],
+        [channel, ...extraChannels],
         signedMessage,
         { scopeType, overrideId, userId: req.user?.id, action: 'all-clear' },
       );
@@ -1738,6 +1955,302 @@ export class EmergencyController {
    * For now we inherit controller-wide JwtAuthGuard; device auth
    * is a separate follow-up.
    */
+  // ───────────────────────────────────────────────────────────
+  // Alert targeting (2026-10-05) — "all screens, a group, or single
+  // screens". Two reads for the operator surfaces (/panic, the dashboard
+  // trigger modal and the active-alert overlay). Both carry EXACTLY the
+  // trigger's authorization — `@AllowPanicBypass` + the same roles — so the
+  // people who may send an alert can see where it can go and what is live,
+  // and nobody else can. Neither one changes who may trigger.
+  // ───────────────────────────────────────────────────────────
+
+  /** The caller's own tenant — the same resolution `resolveScopeTenant` uses. */
+  private callerTenantIdOf(user: any): string | null {
+    return user?.tenantId || user?.schoolId || user?.districtId || null;
+  }
+
+  /**
+   * May this caller aim an alert at a tenant BELOW their own? Mirrors the
+   * downward clause of `resolveScopeTenant` exactly: a DISTRICT_ADMIN may
+   * reach their schools, SUPER_ADMIN may reach anything; every other caller
+   * — school admins and delegated staff — only their own tenant.
+   */
+  private mayTargetDescendants(user: any): boolean {
+    return user?.role === AppRole.DISTRICT_ADMIN || user?.role === AppRole.SUPER_ADMIN;
+  }
+
+  /**
+   * GET /api/v1/emergency/targets — what an alert can be aimed at.
+   *
+   *   allScreensCount — the screens an "All screens" alert reaches: the
+   *                     caller's tenant AND every non-archived tenant below
+   *                     it, because the tenant-scope trigger fans out to the
+   *                     whole subtree (tenant-hierarchy.ts).
+   *   groups / screens — only from tenants the caller may target on their
+   *                     own (the rule `resolveScopeTenant` enforces on the
+   *                     trigger), each with the number of screens an alert on
+   *                     it reaches — whole double-sided displays included.
+   *
+   * On-demand only: /panic reads it once after sign-in, the dashboard modal
+   * once per open. Never polled.
+   */
+  @Get('targets')
+  @AllowPanicBypass()
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async targets(@Req() req: any) {
+    const rootId = this.callerTenantIdOf(req.user);
+    if (!rootId) {
+      return { tenantId: null, tenantName: null, allScreensCount: 0, groups: [], screens: [] };
+    }
+    const descendantIds = await collectDescendantTenantIds(this.prisma.client.tenant as any, rootId);
+    const subtreeIds = [rootId, ...descendantIds];
+    const targetableIds = this.mayTargetDescendants(req.user) ? subtreeIds : [rootId];
+
+    const [tenantRows, screenRows, groupRows] = await Promise.all([
+      this.prisma.client.tenant.findMany({
+        where: { id: { in: subtreeIds } },
+        select: { id: true, name: true },
+      }),
+      this.prisma.client.screen.findMany({
+        where: { tenantId: { in: subtreeIds } },
+        select: {
+          id: true,
+          name: true,
+          location: true,
+          status: true,
+          lastPingAt: true,
+          tenantId: true,
+          screenGroupId: true,
+          faceOfScreenId: true,
+        },
+      }),
+      this.prisma.client.screenGroup.findMany({
+        where: { tenantId: { in: targetableIds } },
+        select: { id: true, name: true, tenantId: true },
+      }),
+    ]);
+
+    const tenantName = new Map<string, string>((tenantRows as any[]).map((t) => [t.id, t.name]));
+    const groupName = new Map<string, string>((groupRows as any[]).map((g) => [g.id, g.name]));
+    const targetable = new Set(targetableIds);
+    const screens = (screenRows as any[]).filter((s) => s.tenantId && targetable.has(s.tenantId));
+    const byTenant = new Map<string, any[]>();
+    for (const s of screens) {
+      const list = byTenant.get(s.tenantId) ?? [];
+      list.push(s);
+      byTenant.set(s.tenantId, list);
+    }
+    /** Every pane of the display `id` belongs to — what a device alert reaches. */
+    const displayOf = (s: any): string[] =>
+      deviceScopeScreenIds(s.id, (byTenant.get(s.tenantId) ?? []) as any);
+    const now = Date.now();
+    const online = (s: any): boolean => {
+      if (s.status === 'REVOKED') return false;
+      const last = s.lastPingAt ? new Date(s.lastPingAt).getTime() : 0;
+      return !!last && now - last < SCREEN_ONLINE_GRACE_MS;
+    };
+
+    const groups = (groupRows as any[])
+      .map((g) => {
+        // Same set the trigger reaches: tenant-scoped members, whole displays.
+        const reach = new Set<string>();
+        for (const s of byTenant.get(g.tenantId) ?? []) {
+          if (s.screenGroupId === g.id) for (const id of displayOf(s)) reach.add(id);
+        }
+        return {
+          id: g.id,
+          name: g.name,
+          tenantId: g.tenantId,
+          tenantName: tenantName.get(g.tenantId) ?? null,
+          screenCount: reach.size,
+        };
+      })
+      .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+
+    const screenList = screens
+      .map((s) => ({
+        id: s.id,
+        name: s.name,
+        location: s.location ?? null,
+        online: online(s),
+        groupId: s.screenGroupId ?? null,
+        groupName: s.screenGroupId ? groupName.get(s.screenGroupId) ?? null : null,
+        tenantId: s.tenantId,
+        tenantName: tenantName.get(s.tenantId) ?? null,
+        // A double-sided display is reached whole whichever side is named.
+        displayScreenCount: displayOf(s).length,
+      }))
+      .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+
+    return {
+      tenantId: rootId,
+      tenantName: tenantName.get(rootId) ?? null,
+      allScreensCount: (screenRows as any[]).length,
+      groups,
+      screens: screenList,
+    };
+  }
+
+  /**
+   * GET /api/v1/emergency/active — every alert that is live right now, with
+   * its target, so each can be listed and ended on its own.
+   *
+   *   • the tenant-wide ("All screens") alert of the caller's tenant — read
+   *     off the Tenant row, the state the manifest itself reads;
+   *   • one entry per GROUP / ONE-SCREEN alert, grouped from the override
+   *     rows by alert identity (shown or covered — a covered alert is still
+   *     live and comes back when the one over it clears);
+   *   • a row from before alert identity (GPIO input, the floor-plan
+   *     endpoint) as its own one-screen entry with `alertId: null`. Its
+   *     all-clear falls back to the screen scope, which clears exactly it.
+   *
+   * Same tenant window as /targets. Read by the dashboard overlay while it is
+   * mounted and by /panic while it is open — never by the global chrome.
+   */
+  @Get('active')
+  @AllowPanicBypass()
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async activeAlerts(@Req() req: any) {
+    const rootId = this.callerTenantIdOf(req.user);
+    if (!rootId) return { alerts: [] };
+    const descendantIds = await collectDescendantTenantIds(this.prisma.client.tenant as any, rootId);
+    const subtreeIds = [rootId, ...descendantIds];
+    const visibleIds = this.mayTargetDescendants(req.user) ? subtreeIds : [rootId];
+    const visible = new Set(visibleIds);
+
+    const [tenantRows, screenRows, overrideRows] = await Promise.all([
+      this.prisma.client.tenant.findMany({
+        where: { id: { in: subtreeIds } },
+        select: { id: true, name: true, parentId: true, emergencyStatus: true, emergencyType: true } as any,
+      }),
+      this.prisma.client.screen.findMany({
+        where: { tenantId: { in: subtreeIds } },
+        select: { id: true, name: true, tenantId: true },
+      }),
+      this.overrideRowsFor({ in: visibleIds }),
+    ]);
+
+    const tenants = new Map<string, any>((tenantRows as any[]).map((t) => [t.id, t]));
+    const screenName = new Map<string, string>((screenRows as any[]).map((s) => [s.id, s.name]));
+    const isActive = (t: any) => !!t?.emergencyStatus && t.emergencyStatus !== 'INACTIVE';
+    /** Screens an alert on tenant `tid` reaches: it and everything below it. */
+    const subtreeScreenCount = (tid: string): number => {
+      const inSubtree = (id: string | null | undefined): boolean => {
+        for (let hop = 0, cur = id; cur && hop < 8; hop++) {
+          if (cur === tid) return true;
+          cur = tenants.get(cur)?.parentId ?? null;
+        }
+        return false;
+      };
+      return (screenRows as any[]).filter((s) => inSubtree(s.tenantId)).length;
+    };
+
+    const alerts: any[] = [];
+    // ── Tenant-wide alerts ──────────────────────────────────────────────
+    // A district alert fans out and writes every school's row, so when the
+    // caller's own tenant is in alert the child rows are that same alert —
+    // one entry. A child that is in alert while the root is NOT was raised
+    // for that school alone, and a district admin may end it, so it lists.
+    const root = tenants.get(rootId);
+    const tenantWideIds = isActive(root)
+      ? [rootId]
+      : visibleIds.filter((id) => id !== rootId && isActive(tenants.get(id)));
+    for (const tid of tenantWideIds) {
+      const t = tenants.get(tid);
+      alerts.push({
+        alertId: null,
+        scopeType: 'tenant',
+        scopeId: tid,
+        targetName: t?.name ?? null,
+        tenantId: tid,
+        tenantName: t?.name ?? null,
+        type: t?.emergencyType ?? null,
+        severity: t?.emergencyStatus ?? null,
+        screenCount: subtreeScreenCount(tid),
+        showingCount: null,
+        triggeredAt: null,
+      });
+    }
+
+    // ── Group / one-screen alerts ───────────────────────────────────────
+    const nowMs = Date.now();
+    const scoped = new Map<string, any>();
+    // A row whose screen was deleted puts nothing on any glass (deleting a
+    // screen does not delete its override row). Listing it would show the
+    // operator an alert they cannot end — a device all-clear on a deleted
+    // screen is a 404 — and would hold the dashboard lock up forever.
+    const liveScreens = new Set<string>((screenRows as any[]).map((s) => s.id));
+    for (const row of overrideRows as any[]) {
+      if (!visible.has(row.tenantId)) continue;
+      if (!liveScreens.has(row.screenId)) continue;
+      entriesOfRow(row).forEach((e, depth) => {
+        if (isEntryExpired(e, nowMs)) return;
+        // The tenant-wide alert's own location-based rows belong to the entry
+        // above. So do pre-identity rows in a tenant that is in a tenant-wide
+        // alert: the whole-organisation all-clear is what clears them.
+        if (e.scopeType === 'tenant') return;
+        if (!e.alertId && isActive(tenants.get(row.tenantId))) return;
+        const key = e.alertId ?? `legacy:${row.screenId}`;
+        let agg = scoped.get(key);
+        if (!agg) {
+          agg = {
+            alertId: e.alertId,
+            scopeType: e.alertId ? e.scopeType : 'device',
+            scopeId: e.alertId ? e.scopeId : row.screenId,
+            tenantId: row.tenantId,
+            type: e.type,
+            severity: e.severity,
+            triggeredAt: e.triggeredAt,
+            screens: new Set<string>(),
+            showingCount: 0,
+          };
+          scoped.set(key, agg);
+        }
+        agg.screens.add(row.screenId);
+        if (depth === 0) agg.showingCount += 1;
+      });
+    }
+    const groupIds = [...scoped.values()].filter((a) => a.scopeType === 'group').map((a) => a.scopeId);
+    const groupRows = groupIds.length
+      ? await this.prisma.client.screenGroup.findMany({
+          where: { id: { in: groupIds }, tenantId: { in: visibleIds } },
+          select: { id: true, name: true },
+        })
+      : [];
+    const groupName = new Map<string, string>((groupRows as any[]).map((g) => [g.id, g.name]));
+    const scopedAlerts = [...scoped.values()]
+      .map((a) => {
+        // Where the all-clear must be sent. Normally the alert's own target.
+        // If that target no longer exists — the group was deleted, or the
+        // named side of a display was removed — send it to one of the screens
+        // still carrying the alert: the device all-clear matches by alert id,
+        // so it still ends exactly this alert on every screen it is on.
+        const targetGone =
+          (a.scopeType === 'group' && !groupName.has(a.scopeId)) ||
+          (a.scopeType === 'device' && !liveScreens.has(a.scopeId));
+        const anyScreen = [...a.screens][0] as string;
+        return {
+          alertId: a.alertId,
+          scopeType: a.scopeType,
+          scopeId: a.scopeId,
+          targetName:
+            (a.scopeType === 'group' ? groupName.get(a.scopeId) : screenName.get(a.scopeId)) ?? null,
+          tenantId: a.tenantId,
+          tenantName: tenants.get(a.tenantId)?.name ?? null,
+          type: a.type,
+          severity: a.severity,
+          screenCount: a.screens.size,
+          showingCount: a.showingCount,
+          triggeredAt: a.triggeredAt,
+          clearScopeType: targetGone ? 'device' : a.scopeType,
+          clearScopeId: targetGone ? anyScreen : a.scopeId,
+        };
+      })
+      .sort((x, y) => String(y.triggeredAt).localeCompare(String(x.triggeredAt)));
+
+    return { alerts: [...alerts, ...scopedAlerts] };
+  }
+
   @Get('status')
   async status(
     @Req() req: any,

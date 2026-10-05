@@ -1,12 +1,24 @@
 import { useAppStore } from '@/lib/store';
 import { X, Flame, ShieldAlert, WifiOff, Hand, Lock, HeartPulse, CloudLightning, AlertTriangle, RotateCcw } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { useState, useTransition } from 'react';
+import { useMemo, useState, useTransition } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { broadcastEmergency } from '@/actions/trigger-emergency';
 import { clog } from '@/lib/client-logger';
 import * as Sentry from '@sentry/nextjs';
 import { useEmergencyAnnouncer } from '@/components/emergency/EmergencyLiveRegion';
+// 2026-10-05 — alert targeting: All screens (default) / one group / one screen.
+import { EmergencyTargetPicker } from '@/components/emergency/EmergencyTargetPicker';
+import { EmergencyTargetBar } from '@/components/emergency/EmergencyTargetBar';
+import { fetchEmergencyTargets } from '@/lib/emergency-api';
+import {
+  allScreensTarget,
+  isAllScreens,
+  targetChipLabel,
+  targetSummary,
+  type EmergencyTarget,
+} from '@/lib/emergency-target';
 
 /**
  * Emergency Trigger — the red button on the dashboard.
@@ -55,6 +67,29 @@ export function EmergencyTriggerModal({ onClose }: Props) {
   // firing a lockdown from this desktop modal now hears type-select →
   // sending → success/failure.
   const { announce, region: liveRegion } = useEmergencyAnnouncer();
+  const queryClient = useQueryClient();
+
+  // ── WHERE the alert goes (2026-10-05) ──────────────────────────────────
+  // Default: All screens — the target every trigger has always had, so the
+  // flow below is unchanged and costs zero extra taps. The list behind
+  // "Choose screens" is read once per open (never polled) and is never on the
+  // critical path: if it fails, All screens still sends.
+  const schoolId = user?.tenantId || 'global';
+  const targetsQuery = useQuery({
+    queryKey: ['emergency-targets', schoolId],
+    queryFn: () => fetchEmergencyTargets(token),
+    enabled: !!token,
+    staleTime: 60_000,
+    retry: 1,
+  });
+  const allScreens = useMemo(
+    () => allScreensTarget(schoolId, targetsQuery.data?.allScreensCount ?? null),
+    [schoolId, targetsQuery.data?.allScreensCount],
+  );
+  const [chosenTarget, setChosenTarget] = useState<EmergencyTarget | null>(null);
+  const target = chosenTarget ?? allScreens;
+  const [pickerOpen, setPickerOpen] = useState(false);
+
   // Stores the last-attempted payload so the retry button re-fires the
   // same broadcast without requiring the operator to re-fill the form.
   const [lastPayload, setLastPayload] = useState<{
@@ -62,6 +97,9 @@ export function EmergencyTriggerModal({ onClose }: Props) {
     type: string;
     triggeredBy: string;
     token?: string;
+    target?: { scopeType: 'group' | 'device'; scopeId: string };
+    /** For the words only — what the operator confirmed. */
+    summaryTarget: EmergencyTarget;
   } | null>(null);
 
   // Full Standard Response Protocol — used by the vast majority of US
@@ -90,20 +128,33 @@ export function EmergencyTriggerModal({ onClose }: Props) {
     type: string;
     triggeredBy: string;
     token?: string;
+    target?: { scopeType: 'group' | 'device'; scopeId: string };
+    summaryTarget: EmergencyTarget;
   }) => {
     setDispatchError(null);
     setLastPayload(payload);
     const typeName = types.find((tt) => tt.id === payload.type)?.name || payload.type;
-    announce(t('emergency.modal.annTriggering', { type: typeName }));
+    const summary = targetSummary(t, typeName, payload.summaryTarget);
+    // `summaryTarget` is for the words only; the server action gets exactly
+    // what it always got, plus `target` when a group / screen was chosen.
+    const actionPayload = {
+      schoolId: payload.schoolId,
+      type: payload.type,
+      triggeredBy: payload.triggeredBy,
+      token: payload.token,
+      ...(payload.target ? { target: payload.target } : {}),
+    };
+    announce(t('emergency.target.announceSending', { summary }));
     startTransition(async () => {
       const started = performance.now();
       clog.warn('emergency', `TRIGGER: ${payload.type}`, {
         schoolId: payload.schoolId,
         triggeredBy: payload.triggeredBy,
         role: user?.role,
+        scopeType: payload.target?.scopeType ?? 'tenant',
       });
       try {
-        const result = await broadcastEmergency(payload);
+        const result = await broadcastEmergency(actionPayload);
         // Guard: the server action returns { success: false, error: "..." } on
         // rejection (HTTP 200 body) rather than throwing. Treat that as a
         // failure — do NOT flip local emergency state until the server confirms.
@@ -117,11 +168,14 @@ export function EmergencyTriggerModal({ onClose }: Props) {
           elapsedMs: Math.round(performance.now() - started),
           overrideId: result.overrideId,
         });
-        announce(t('emergency.modal.annSent', { type: typeName }));
+        announce(t('emergency.target.announceSent', { summary }));
         // ONLY flip local emergency state after the server confirms the broadcast.
         // Carry the overrideId into the store so EmergencyOverlay can pass it
         // back on all-clear (audit P2 #3 — forensic chain-of-custody fix).
         setEmergencyActive(true, result.overrideId);
+        // The overlay lists live alerts by target; make it read the new one.
+        void queryClient.invalidateQueries({ queryKey: ['emergency-active'] });
+        void queryClient.invalidateQueries({ queryKey: ['tenant-status'] });
         onClose();
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -135,7 +189,7 @@ export function EmergencyTriggerModal({ onClose }: Props) {
           extra: { schoolId: payload.schoolId, triggeredBy: payload.triggeredBy },
         });
         setDispatchError(message || t('emergency.modal.errUnknown'));
-        announce(t('emergency.modal.annFailed', { type: typeName, error: message }));
+        announce(t('emergency.target.announceFailed', { summary, error: message }));
         // Local emergency state intentionally NOT set — server did not confirm broadcast.
       }
     });
@@ -144,12 +198,18 @@ export function EmergencyTriggerModal({ onClose }: Props) {
   const handleTrigger = () => {
     if (!selectedType || confirmKey !== confirmWord) return;
     fireTrigger({
-      schoolId: user?.tenantId || 'global',
+      schoolId,
       type: selectedType,
       // No playlistId — the server resolves the right panic playlist
       // for this type from the tenant's stored settings.
       triggeredBy: user?.id || 'unknown',
       token: token || undefined,
+      // All screens sends NO target — the exact request of every trigger
+      // before targeting existed. Only a chosen group / screen adds one.
+      ...(isAllScreens(target)
+        ? {}
+        : { target: { scopeType: target.scopeType as 'group' | 'device', scopeId: target.scopeId } }),
+      summaryTarget: target,
     });
   };
 
@@ -197,6 +257,18 @@ export function EmergencyTriggerModal({ onClose }: Props) {
         </div>
 
         <div className="p-6 space-y-6 flex-1 overflow-y-auto">
+          {/* WHERE (2026-10-05). Defaults to All screens — the target every
+              trigger has always had — so the steps below are unchanged. */}
+          <EmergencyTargetBar
+            target={target}
+            disabled={isPending}
+            onChoose={() => setPickerOpen(true)}
+            onReset={() => {
+              setChosenTarget(null);
+              setDispatchError(null);
+              announce(t('emergency.target.announceTargetSet', { target: t('emergency.target.allScreens') }));
+            }}
+          />
           {/* Step 1 — pick the SRP type */}
           <div>
             <h3 className="text-sm font-semibold tracking-tight text-white mb-3">
@@ -250,9 +322,11 @@ export function EmergencyTriggerModal({ onClose }: Props) {
                 className="rounded-xl p-4 border space-y-3"
                 style={{ background: 'rgba(239,68,68,0.06)', borderColor: 'rgba(239,68,68,0.25)' }}
               >
-                <p className="text-sm text-white/80">
-                  {t.rich('emergency.modal.willBroadcast', {
-                    type: currentType?.name ?? '',
+                {/* The confirmation states target and count in plain words:
+                    "Lockdown on all 24 screens" / "Lockdown on 1 screen — Lobby". */}
+                <p className="text-sm text-white/80" data-testid="emergency-confirm-summary">
+                  {t.rich('emergency.modal.willSend', {
+                    summary: targetSummary(t, currentType?.name ?? '', target),
                     b: (chunks) => <strong className="font-bold text-white">{chunks}</strong>,
                   })}
                 </p>
@@ -331,7 +405,17 @@ export function EmergencyTriggerModal({ onClose }: Props) {
             style={{ background: 'linear-gradient(160deg, #ef4444 0%, #b91c1c 100%)', boxShadow: '0 0 24px rgba(239,68,68,0.30)' }}
           >
             {isPending ? (
-              <span className="animate-pulse">{t('emergency.modal.sending')}</span>
+              <span className="animate-pulse">
+                {lastPayload
+                  ? t('emergency.modal.sendingTo', {
+                      summary: targetSummary(
+                        t,
+                        types.find((tt) => tt.id === lastPayload.type)?.name ?? lastPayload.type,
+                        lastPayload.summaryTarget,
+                      ),
+                    })
+                  : t('emergency.modal.sending')}
+              </span>
             ) : (
               <span className="flex items-center gap-2">
                 <WifiOff className="w-4 h-4" /> {t('emergency.modal.title')}
@@ -340,6 +424,20 @@ export function EmergencyTriggerModal({ onClose }: Props) {
           </button>
         </div>
       </div>
+      <EmergencyTargetPicker
+        open={pickerOpen}
+        targets={targetsQuery.data ?? null}
+        status={targetsQuery.isError ? 'error' : targetsQuery.data ? 'ready' : 'loading'}
+        selected={target}
+        allScreens={allScreens}
+        onSelect={(next) => {
+          setChosenTarget(isAllScreens(next) ? null : next);
+          setDispatchError(null);
+          announce(t('emergency.target.announceTargetSet', { target: targetChipLabel(t, next) }));
+        }}
+        onClose={() => setPickerOpen(false)}
+        onRetry={() => void targetsQuery.refetch()}
+      />
     </div>
   );
 }

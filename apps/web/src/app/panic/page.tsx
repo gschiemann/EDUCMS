@@ -32,6 +32,28 @@ import {
   setEmergencyVoiceEnabled,
   speakEmergencyIfEnabled,
 } from '@/lib/emergency-voice';
+// 2026-10-05 — alert targeting: "all screens, a group, or single screens".
+// All screens stays the default (zero extra taps); "Choose screens" picks
+// ONE group or ONE screen. Live alerts are listed with their targets and
+// each one is ended on its own.
+import { allClearEmergency } from '@/actions/trigger-emergency';
+import { fetchActiveAlerts, fetchEmergencyTargets } from '@/lib/emergency-api';
+import {
+  activeAlertLabel,
+  allClearScopeOf,
+  allScreensTarget,
+  isAllScreens,
+  isSameAlert,
+  targetChipLabel,
+  targetSummary,
+  typeIdOf,
+  type ActiveAlert,
+  type EmergencyTarget,
+  type EmergencyTargets,
+} from '@/lib/emergency-target';
+import { EmergencyTargetBar } from '@/components/emergency/EmergencyTargetBar';
+import { EmergencyTargetPicker } from '@/components/emergency/EmergencyTargetPicker';
+import { PanicActiveAlertsSheet } from '@/components/emergency/PanicActiveAlertsSheet';
 
 // 2026-05-03 BUG FIX (cycle 1 emergency BUG-001) — was 1500ms, but
 // CLAUDE.md "Key Safeguards #5: Hold-to-Trigger UX" requires
@@ -122,6 +144,38 @@ export default function MobilePanicPage() {
   const holdTimerRef = useRef<NodeJS.Timeout | null>(null);
   const progressTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+  // ── WHERE the alert goes (alert targeting, 2026-10-05) ────────────────
+  // `chosenTarget` null = All screens, the default and the only target this
+  // page had before. The list behind "Choose screens" is read once after
+  // sign-in (never polled) and is never on the trigger's critical path: if it
+  // fails, All screens still sends — only its count is missing.
+  const [targets, setTargets] = useState<EmergencyTargets | null>(null);
+  const [targetsStatus, setTargetsStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [chosenTarget, setChosenTarget] = useState<EmergencyTarget | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  // Live alerts (each with its target) — from the 5 s poll below, which used
+  // to read only the tenant-wide status and so could not see, or wait on, a
+  // group / one-screen alert.
+  const [activeAlerts, setActiveAlerts] = useState<ActiveAlert[] | null>(null);
+  const [alertsSheetOpen, setAlertsSheetOpen] = useState(false);
+  // The alert this page just sent: what the "Broadcasted" screen describes and
+  // waits on. A ref copy for the poll, which must not restart when it changes.
+  const [sentAlert, setSentAlert] = useState<{ overrideId?: string; target: EmergencyTarget } | null>(null);
+  const firedRef = useRef<{ overrideId?: string; target: EmergencyTarget } | null>(null);
+  // The overrideId of an "All screens" alert sent from this page, so its
+  // all-clear pairs with the trigger in the audit log (the Tenant row carries
+  // no id). Same chain-of-custody rule as the dashboard overlay (P2 #3).
+  const tenantOverrideIdRef = useRef<string | undefined>(undefined);
+
+  const allScreens = allScreensTarget(verifiedUser?.tenantId ?? '', targets?.allScreensCount ?? null);
+  const target: EmergencyTarget = chosenTarget ?? allScreens;
+  const alertKey = (a: ActiveAlert) => a.alertId ?? `${a.scopeType}:${a.scopeId}`;
+  const alertTypeName = (apiType: string | null) => {
+    const id = typeIdOf(apiType);
+    return id ? typeName(id) : (apiType || t('emergency.active'));
+  };
+  const alertLabel = (a: ActiveAlert) => activeAlertLabel(t, alertTypeName(a.type), a);
+
   // A11y audit (2026-05-25): update the live region so a screen reader
   // follows the trigger lifecycle.
   //
@@ -160,17 +214,18 @@ export default function MobilePanicPage() {
     let cancelled = false;
     const check = async () => {
       try {
-        const r = await fetchWithTimeout(
-          `${API_URL}/emergency/status?tenantId=${encodeURIComponent(verifiedUser.tenantId)}`,
-          { headers: { Authorization: `Bearer ${verifiedToken}` }, cache: 'no-store' },
-          // 4s < the 5s poll interval, so a stalled poll is aborted before the
-          // next one fires — no pile-up of hung requests.
-          4000,
-        );
-        if (!r.ok || cancelled) return;
-        const data = await r.json();
-        const isActive = data?.tenantStatus && data.tenantStatus !== 'INACTIVE';
-        if (!isActive && phase === 'triggered') {
+        // 2026-10-05 — reads every live alert WITH its target, not just the
+        // tenant-wide status: a group / one-screen alert never touches
+        // `tenantStatus`, so the old read would have flashed "All Clear" the
+        // moment a targeted alert was sent. 4s < the 5s poll interval, so a
+        // stalled poll is aborted before the next one fires — no pile-up of
+        // hung requests.
+        const alerts = await fetchActiveAlerts(verifiedToken, 4000);
+        if (cancelled) return;
+        setActiveAlerts(alerts);
+        const sent = firedRef.current;
+        const stillOn = sent ? alerts.some((a) => isSameAlert(a, sent)) : true;
+        if (!stillOn && phase === 'triggered') {
           // Admin cleared it. Flash All Clear, then return to idle so
           // staff can re-fire if they need to.
           setJustCleared(true);
@@ -179,6 +234,8 @@ export default function MobilePanicPage() {
             if (cancelled) return;
             setPhase('idle');
             setFiredType(null);
+            setSentAlert(null);
+            firedRef.current = null;
             setJustCleared(false);
           }, 2500);
         }
@@ -196,6 +253,49 @@ export default function MobilePanicPage() {
     // every time the operator switches language. Dep array unchanged.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, verifiedToken, verifiedUser?.tenantId]);
+
+  // The groups and screens behind "Choose screens" — read ONCE per signed-in
+  // session (and on Retry), never polled.
+  const loadTargets = async (token: string) => {
+    setTargetsStatus('loading');
+    try {
+      setTargets(await fetchEmergencyTargets(token));
+      setTargetsStatus('ready');
+    } catch {
+      setTargetsStatus('error');
+    }
+  };
+  const authorized = hasPanicAuthority(verifiedUser);
+  useEffect(() => {
+    if (!verifiedToken || !verifiedUser?.tenantId || !authorized) return;
+    void loadTargets(verifiedToken);
+  }, [verifiedToken, verifiedUser?.tenantId, authorized]);
+
+  /** End exactly one live alert. Resolves with the server's verdict. */
+  const endAlert = async (alert: ActiveAlert): Promise<{ ok: boolean; error?: string }> => {
+    if (!verifiedToken || !verifiedUser?.tenantId) return { ok: false, error: t('emergency.panic.errNoToken') };
+    const result = await allClearEmergency({
+      // The tenant-wide entry's scopeId IS the tenant to clear.
+      schoolId: alert.scopeType === 'tenant' ? alert.scopeId : verifiedUser.tenantId,
+      token: verifiedToken,
+      overrideId:
+        alert.alertId ??
+        (alert.scopeType === 'tenant' && alert.scopeId === verifiedUser.tenantId ? tenantOverrideIdRef.current : undefined),
+      // Its own scope — or, if that target was deleted mid-alert, the scope
+      // the server says still reaches it.
+      ...allClearScopeOf(alert),
+    });
+    if (!result?.success) {
+      const raw = result?.error || '';
+      if (raw.includes('401') || raw.includes('403')) return { ok: false, error: t('emergency.panic.errNoAuthority') };
+      if (raw.toLowerCase().includes('network') || raw.toLowerCase().includes('fetch')) return { ok: false, error: t('emergency.panic.errNetwork') };
+      return { ok: false, error: raw || t('emergency.panic.errGeneric') };
+    }
+    if (alert.scopeType === 'tenant') tenantOverrideIdRef.current = undefined;
+    // Re-read now so the list (and the lock it describes) updates at once.
+    try { setActiveAlerts(await fetchActiveAlerts(verifiedToken, 4000)); } catch { /* next poll */ }
+    return { ok: true };
+  };
 
   // Verify session on mount
   useEffect(() => {
@@ -280,13 +380,18 @@ export default function MobilePanicPage() {
     setHoldingId(typeId);
     setProgress(0);
     const startTime = Date.now();
+    // The target is fixed when the hold STARTS: what the operator saw on the
+    // "Send to" line is what is sent, whatever happens in the next 3 s.
+    const sendTarget = target;
     const type = TYPES.find((ty) => ty.id === typeId);
-    if (type) announce(t('emergency.panic.annHolding', { type: typeName(type.id) }));
+    if (type) {
+      announce(t('emergency.target.announceHolding', { type: typeName(type.id), target: targetChipLabel(t, sendTarget) }));
+    }
     progressTimerRef.current = setInterval(() => {
       const pct = Math.min(((Date.now() - startTime) / HOLD_DURATION_MS) * 100, 100);
       setProgress(pct);
     }, 50);
-    holdTimerRef.current = setTimeout(() => fireEmergency(typeId), HOLD_DURATION_MS);
+    holdTimerRef.current = setTimeout(() => fireEmergency(typeId, sendTarget), HOLD_DURATION_MS);
   };
 
   const handlePointerDown = (typeId: string) => (e: React.PointerEvent) => {
@@ -325,12 +430,12 @@ export default function MobilePanicPage() {
     clearHold();
   };
 
-  const fireEmergency = async (typeId: string) => {
+  const fireEmergency = async (typeId: string, sendTarget: EmergencyTarget) => {
     clearHold();
     setPhase('triggering');
     setFiredType(typeId);
-    const type = TYPES.find((ty) => ty.id === typeId);
-    if (type) announce(t('emergency.panic.annTriggering', { type: typeName(type.id) }));
+    const summary = targetSummary(t, typeName(typeId), sendTarget);
+    announce(t('emergency.target.announceSending', { summary }));
     try {
       if (!verifiedToken) throw new Error(t('emergency.panic.errNoToken'));
       if (!verifiedUser?.tenantId) throw new Error(t('emergency.panic.errNoSchool'));
@@ -339,6 +444,11 @@ export default function MobilePanicPage() {
         type: typeId,
         triggeredBy: verifiedUser.id || 'unknown',
         token: verifiedToken,
+        // All screens sends NO target — the exact request this page has
+        // always sent. Only a chosen group / screen adds one.
+        ...(isAllScreens(sendTarget)
+          ? {}
+          : { target: { scopeType: sendTarget.scopeType as 'group' | 'device', scopeId: sendTarget.scopeId } }),
       });
       if (result?.error) {
         // LIFE-SAFETY (audit P1 #7): differentiate auth vs network vs
@@ -352,14 +462,30 @@ export default function MobilePanicPage() {
         }
         throw new Error(result.error);
       }
+      // What the "Broadcasted" screen describes and the poll waits on. The
+      // server's own count wins when it reports one (whole displays counted).
+      const sent = {
+        overrideId: result?.overrideId,
+        target:
+          typeof result?.affectedScreenCount === 'number'
+            ? { ...sendTarget, screenCount: result.affectedScreenCount }
+            : sendTarget,
+      };
+      if (isAllScreens(sendTarget)) tenantOverrideIdRef.current = result?.overrideId;
+      firedRef.current = sent;
+      setSentAlert(sent);
+      // The NEXT alert starts from All screens again. Under stress nobody
+      // re-reads the "Send to" line; if the next press is an escalation, the
+      // whole building is the safe direction to be wrong in — never one room.
+      setChosenTarget(null);
       setPhase('triggered');
-      if (type) announce(t('emergency.panic.annSent', { type: typeName(type.id) }));
+      announce(t('emergency.target.announceSent', { summary: targetSummary(t, typeName(typeId), sent.target) }));
     } catch (e: any) {
       console.error('[PANIC] Emergency trigger failed:', e);
       const msg = e.message || t('emergency.panic.errGeneric');
       setErrorMsg(msg);
       setPhase('error');
-      announce(t('emergency.panic.annFailed', { error: msg }));
+      announce(t('emergency.target.announceFailed', { summary, error: msg }));
     }
   };
 
@@ -493,6 +619,7 @@ export default function MobilePanicPage() {
 
   if (phase === 'triggered') {
     const fired = TYPES.find((ty) => ty.id === firedType) || TYPES[2];
+    const sent = sentAlert;
 
     // Admin just fired all-clear from the dashboard. Flash a green
     // "All Clear" confirmation before the polling effect transitions
@@ -532,12 +659,29 @@ export default function MobilePanicPage() {
           <CheckCircle2 className="w-20 h-20 relative z-10" style={{ color: fired.accent }} />
         </div>
         <h1 className="text-3xl font-black mb-2 uppercase tracking-tight text-center" style={{ color: fired.accent }}>{typeName(fired.id)}<br/>{t('emergency.panic.broadcasted')}</h1>
-        <p className="text-white/55 mb-8 max-w-[260px] mx-auto text-center text-sm leading-relaxed">
-          {t('emergency.panic.screensLocked')}
+        {/* WHERE it went, in plain words — "Lockdown on all 24 screens" /
+            "Lockdown on 1 screen — Lobby" (alert targeting, 2026-10-05). */}
+        <p className="text-white/80 mb-3 max-w-[300px] mx-auto text-center text-base font-semibold leading-snug" data-testid="panic-sent-summary">
+          {targetSummary(t, typeName(fired.id), sent?.target ?? allScreens)}
         </p>
-        <p className="absolute bottom-8 italic text-white/55 text-xs text-center w-full px-8 leading-relaxed">
-          {t('emergency.panic.waitingForAdmin')}
+        <p className="text-white/55 mb-8 max-w-[280px] mx-auto text-center text-sm leading-relaxed">
+          {t('emergency.target.waitingForClear')}
         </p>
+        {/* Back to the panel: this alert stays on (listed there with its own
+            all-clear) and another alert can go to another target. */}
+        <button
+          type="button"
+          onClick={() => {
+            setPhase('idle');
+            setFiredType(null);
+            setSentAlert(null);
+            firedRef.current = null;
+          }}
+          className="px-8 min-h-[48px] rounded-2xl font-bold uppercase tracking-wider text-sm bg-white/[0.06] border border-white/15 text-white/90 active:bg-white/[0.12] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+          data-testid="panic-back-to-panel"
+        >
+          {t('emergency.target.backToPanel')}
+        </button>
       </div>
     );
   }
@@ -595,8 +739,45 @@ export default function MobilePanicPage() {
         <p className="text-white/60 text-[11px] mt-1">{t('emergency.panic.holdHint')}</p>
       </div>
 
+      <div className="px-5 pb-1 space-y-2">
+        {/* LIVE ALERTS (alert targeting, 2026-10-05) — one compact line, so
+            the trigger grid keeps its size however many are on. Tapping it
+            opens the list, where each alert has its own all-clear. */}
+        {activeAlerts && activeAlerts.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setAlertsSheetOpen(true)}
+            disabled={phase === 'triggering'}
+            data-testid="panic-active-alerts"
+            className="w-full min-h-[48px] px-3 rounded-2xl flex items-center gap-2 text-left border disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+            style={{ background: 'rgba(239,68,68,0.14)', borderColor: 'rgba(248,113,113,0.55)' }}
+          >
+            <span className="w-2.5 h-2.5 shrink-0 rounded-full bg-red-400 motion-safe:animate-pulse" aria-hidden />
+            <span className="flex-1 min-w-0 text-[13px] font-semibold text-white truncate">
+              {activeAlerts.length === 1
+                ? alertLabel(activeAlerts[0])
+                : t('emergency.target.activeCount', { count: activeAlerts.length })}
+            </span>
+            <span className="shrink-0 text-[11px] font-bold uppercase tracking-wider text-red-100">
+              {activeAlerts.length === 1 ? t('emergency.target.endAlert') : t('emergency.target.viewAlerts')}
+            </span>
+          </button>
+        )}
+        {/* WHERE: All screens by default — zero extra taps; "Choose screens"
+            picks one group or one screen. Locked while a send is in flight. */}
+        <EmergencyTargetBar
+          target={target}
+          disabled={phase === 'triggering'}
+          onChoose={() => setPickerOpen(true)}
+          onReset={() => {
+            setChosenTarget(null);
+            announce(t('emergency.target.announceTargetSet', { target: targetChipLabel(t, allScreens) }));
+          }}
+        />
+      </div>
+
       {/* 2x3 grid — generous spacing so adjacent buttons aren't easy to fat-finger */}
-      <div className="flex-1 grid grid-cols-2 grid-rows-3 gap-x-5 gap-y-4 px-5 pt-2 pb-[max(1.5rem,env(safe-area-inset-bottom))] place-items-center">
+      <div className="flex-1 min-h-0 grid grid-cols-2 grid-rows-3 gap-x-5 gap-y-4 px-5 pt-2 pb-[max(1.5rem,env(safe-area-inset-bottom))] place-items-center">
         {TYPES.map((type) => {
           const isHolding = holdingId === type.id;
           const isTriggering = phase === 'triggering' && firedType === type.id;
@@ -629,7 +810,12 @@ export default function MobilePanicPage() {
               onContextMenu={(e) => e.preventDefault()}
               aria-label={t('emergency.panic.buttonAria', { type: typeName(type.id) })}
               disabled={phase === 'triggering'}
-              className={`relative aspect-square w-full max-w-[156px] rounded-full flex flex-col items-center justify-center
+              // Sized by the ROW, capped at 156 px (2026-10-05): the target line
+              // above takes height, and on a phone browser (address bar showing)
+              // a width-sized circle taller than its row overlapped the next
+              // button — exactly what the generous gap exists to prevent. In the
+              // installed app at 390×844 this still renders 156 px, as before.
+              className={`relative aspect-square h-full max-h-[156px] max-w-full rounded-full flex flex-col items-center justify-center
                 transition-all duration-150 outline-none
                 ${dim ? 'opacity-30' : ''}
                 ${isHolding ? 'scale-95' : ''}
@@ -678,6 +864,30 @@ export default function MobilePanicPage() {
           );
         })}
       </div>
+
+      <EmergencyTargetPicker
+        open={pickerOpen}
+        targets={targets}
+        status={targetsStatus}
+        selected={target}
+        allScreens={allScreens}
+        onSelect={(next) => {
+          setChosenTarget(isAllScreens(next) ? null : next);
+          announce(t('emergency.target.announceTargetSet', { target: targetChipLabel(t, next) }));
+        }}
+        onClose={() => setPickerOpen(false)}
+        onRetry={() => { if (verifiedToken) void loadTargets(verifiedToken); }}
+      />
+      {alertsSheetOpen && (
+        <PanicActiveAlertsSheet
+          alerts={activeAlerts ?? []}
+          labelOf={alertLabel}
+          keyOf={alertKey}
+          onEnd={endAlert}
+          onClose={() => setAlertsSheetOpen(false)}
+          announce={announce}
+        />
+      )}
     </div>
   );
 }
