@@ -1108,7 +1108,7 @@ export interface ScreenSettingsContentProps {
   onPushApk: () => void;
   onRefreshWeb: () => void;
   refreshWebPending: boolean;
-  previewHref: string;
+  previewHref: string | null;
   /**
    * 2026-07-28 — this screen has frame-locked sync ON (shows the trim UI).
    * 2026-09-16: was `groupSyncLocked` (the group's retired syncMode); it is
@@ -1362,7 +1362,7 @@ export function ScreenSettingsSections({
               for. Everything else is a setting, below. */}
           {showQuickActions && (
             <div className="flex items-center gap-2 px-3.5 py-2.5 border-b border-slate-100">
-              <a
+              {previewHref && <a
                 href={previewHref}
                 target="_blank"
                 rel="noopener noreferrer"
@@ -1372,7 +1372,7 @@ export function ScreenSettingsSections({
               >
                 <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
                 Preview
-              </a>
+              </a>}
               <button
                 type="button"
                 onClick={() => { onClose?.(); onRefreshWeb(); }}

@@ -63,6 +63,8 @@ import { HARDWARE_CATALOG, resolveHardwareModel } from '@cms/api-types';
 
 /** One row of `GET /screens` (apps/api/src/screens/screens.controller.ts list()). */
 export interface OpsScreen {
+  tenantId?: string;
+  sourceTenant?: { id: string; name: string; slug: string } | null;
   id: string;
   name?: string | null;
   status?: string | null;
@@ -140,6 +142,7 @@ export interface OpsScreen {
 
 /** One row of `GET /schedules` (schedules.controller.ts list()). */
 export interface OpsSchedule {
+  tenantId?: string;
   id: string;
   playlistId?: string | null;
   screenId?: string | null;
@@ -161,6 +164,7 @@ export interface OpsSchedule {
  * "Playing <name>" and mean it.
  */
 export interface OpsPlaylist {
+  tenantId?: string;
   id: string;
   name?: string | null;
   items?: Array<{
@@ -881,6 +885,7 @@ export function deriveExpectedContent(
   const mine = schedules.filter(
     (s) =>
       s.isActive !== false &&
+      (!screen.tenantId || !s.tenantId || s.tenantId === screen.tenantId) &&
       ((s.screenId && s.screenId === screen.id) ||
         (s.screenGroupId && screen.screenGroupId && s.screenGroupId === screen.screenGroupId)),
   );
@@ -1565,6 +1570,11 @@ export interface ScreenOps {
 
 export const UNGROUPED_ID = '__ungrouped__';
 
+/** Company ungrouped screens keep their owning location, like real groups. */
+export function getOpsGroupId(screen: OpsScreen): string {
+  return screen.screenGroupId || (screen.sourceTenant?.id ? `${UNGROUPED_ID}:${screen.sourceTenant.id}` : UNGROUPED_ID);
+}
+
 export function buildScreenOps(input: {
   screens: OpsScreen[];
   schedules: OpsSchedule[];
@@ -1609,7 +1619,7 @@ export function buildScreenOps(input: {
   // ── grouping ───────────────────────────────────────────────────
   const byGroup = new Map<string, OpsRow[]>();
   for (const r of sortedRows) {
-    const gid = r.screen.screenGroupId || UNGROUPED_ID;
+    const gid = getOpsGroupId(r.screen);
     const bucket = byGroup.get(gid);
     if (bucket) bucket.push(r);
     else byGroup.set(gid, [r]);
@@ -1623,8 +1633,8 @@ export function buildScreenOps(input: {
       return acc == null || t > acc ? t : acc;
     }, null);
     const name =
-      id === UNGROUPED_ID
-        ? 'Not in a group'
+      id.startsWith(UNGROUPED_ID)
+        ? `${groupRows[0]?.screen.sourceTenant?.name ? groupRows[0].screen.sourceTenant.name + ' · ' : ''}Not in a group`
         : groupRows[0]?.screen.screenGroup?.name || 'Group';
     // A quiet summary the collapsed row can carry (§8). It must not claim
     // more than the rows do: "All screens current" only when every row
@@ -1732,7 +1742,7 @@ export function matchesFilter(row: OpsRow, filter: FilterKey): boolean {
 export function matchesQuery(row: OpsRow, normalizedQuery: string): boolean {
   if (!normalizedQuery) return true;
   const s = row.screen;
-  const hay = [s.name, s.screenGroup?.name, s.hardwareModel, row.expected.name]
+  const hay = [s.name, s.sourceTenant?.name, s.screenGroup?.name, s.hardwareModel, row.expected.name]
     .filter(Boolean)
     .join(' ')
     .toLowerCase();

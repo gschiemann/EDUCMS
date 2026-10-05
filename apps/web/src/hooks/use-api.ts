@@ -74,9 +74,10 @@ export function useTenantStatus() {
 
 // ─── Screen Groups ──────────────────────────────────────────────
 
-export function useScreenGroups() {
+export function useScreenGroups(opts?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ['screen-groups'],
+    enabled: opts?.enabled ?? true,
     queryFn: () => apiFetch('/screen-groups'),
     // The Screens page renders screen status from the nested
     // `group.screens[]` (not from /screens), so this query drives the
@@ -186,9 +187,10 @@ export function useUpdateScreenGroup() {
 
 // ─── Screens (individual devices) ───────────────────────────────
 
-export function useScreens() {
+export function useScreens(opts?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ['screens'],
+    enabled: opts?.enabled ?? true,
     queryFn: () => apiFetch('/screens'),
     // Auto-refresh so a screen coming back online flips from OFFLINE to
     // ONLINE in the dashboard without a manual reload. 15s balances
@@ -972,9 +974,10 @@ export function useDeleteScreen() {
 
 // ─── Playlists ──────────────────────────────────────────────────
 
-export function usePlaylists() {
+export function usePlaylists(opts?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ['playlists'],
+    enabled: opts?.enabled ?? true,
     queryFn: () => apiFetch('/playlists'),
     // Keep playlist list fresh for 30s — navigating Templates → Playlists
     // → back was retriggering a network fetch on every remount, making
@@ -1298,7 +1301,7 @@ export function useSetPlaylistActive() {
 
 // ─── Schedules ──────────────────────────────────────────────────
 
-export function useSchedules() {
+export function useSchedules(opts?: { enabled?: boolean }) {
   // A held publish whose 1080p copy failed NAMES its files (2026-10-05): the
   // server sends them as `pendingMediaFiles`, and `pendingMediaError` becomes
   // the words in the operator's language for every view that shows it.
@@ -1306,6 +1309,7 @@ export function useSchedules() {
   const select = useCallback((rows: any) => translateFailedPublications(tCopy, rows), [tCopy]);
   return useQuery({
     queryKey: ['schedules'],
+    enabled: opts?.enabled ?? true,
     queryFn: () => apiFetch('/schedules'),
     select,
     staleTime: 30_000,
@@ -3245,12 +3249,31 @@ export interface FleetResponse {
   stats: { total: number; online: number; offline: number; locationCount: number };
   screens: FleetScreen[];
 }
-export function useFleet(opts?: { enabled?: boolean }) {
+export function useFleet(opts?: { enabled?: boolean; refetchInterval?: number | false }) {
   return useQuery<FleetResponse>({
     queryKey: ['screens', 'fleet'],
     queryFn: () => apiFetch('/screens/fleet'),
     enabled: opts?.enabled ?? true,
     // Near-real-time, same cadence as the per-tenant screen list.
+    refetchInterval: opts?.refetchInterval ?? 30_000,
+    staleTime: 10_000,
+  });
+}
+
+/** Rich company inspection; the dashboard's ordinary fleet read stays thin. */
+export interface FleetOperationsResponse extends Omit<FleetResponse, 'screens'> {
+  screens: Array<FleetScreen & import('@/components/screens/v3/screenOps').OpsScreen>;
+  operations: {
+    groups: Array<{ id: string; tenantId: string; name: string; address?: string | null; latitude?: number | null; longitude?: number | null; syncActive?: boolean; sourceTenant: FleetScreen['sourceTenant'] }>;
+    schedules: import('@/components/screens/v3/screenOps').OpsSchedule[];
+    playlists: import('@/components/screens/v3/screenOps').OpsPlaylist[];
+  };
+}
+export function useFleetOperations(opts: { enabled: boolean }) {
+  return useQuery<FleetOperationsResponse>({
+    queryKey: ['screens', 'fleet-operations'],
+    queryFn: () => apiFetch('/screens/fleet?view=operations'),
+    enabled: opts.enabled,
     refetchInterval: 30_000,
     staleTime: 10_000,
   });

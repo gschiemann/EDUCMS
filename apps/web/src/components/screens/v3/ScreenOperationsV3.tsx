@@ -37,7 +37,7 @@ import { appConfirm } from '@/components/ui/app-dialog';
 import { useApkPushState } from '@/components/screens/ScreenSettingsMenu';
 import { AnchoredMenu } from '@/components/ui/anchored-menu';
 import {
-  buildScreenOps, matchesFilter, matchesQuery, msOf, syncStatusFor, UNGROUPED_ID,
+  buildScreenOps, matchesFilter, matchesQuery, msOf, syncStatusFor, getOpsGroupId, UNGROUPED_ID,
   type FilterKey, type OpsGroup, type OpsPlaylist,
   type OpsRow, type OpsSchedule, type OpsScreen,
 } from './screenOps';
@@ -163,14 +163,16 @@ export interface ScreenOperationsV3Props {
    * viewer-only gate to say.
    */
   canControl: boolean;
+  controlDisabledReason?: string;
   viewMode: ScreensViewMode;
   onViewMode: (v: ScreensViewMode) => void;
   /**
    * Map view. Receives the SAME rows the list would show, so search and the
    * filter chip mean the same thing on both surfaces (§5).
    */
-  renderMap?: (screens: OpsScreen[], navigation: { rows: OpsRow[]; onOpenScreen: (id: string) => void; onList: () => void }) => React.ReactNode;
+  renderMap?: (screens: OpsScreen[], navigation: { rows: OpsRow[]; isFiltered: boolean; onOpenScreen: (id: string) => void; onList: () => void }) => React.ReactNode;
   floorSlot?: React.ReactNode;
+  scopeSlot?: React.ReactNode;
   /**
    * The device-first "Connect a screen" how-to. Opened from the (i) beside
    * Pair screen, in a dialog (2026-09-14) — Pair screen is the one prominent
@@ -185,7 +187,7 @@ export interface ScreenOperationsV3Props {
   onOpenDisplaySchedule: (target: { kind: 'screen' | 'group'; id: string; name: string }) => void;
   onChanged: () => void;
   /** Preview URL builder — the page holds the auth token. */
-  buildPreviewHref: (screen: OpsScreen) => string;
+  buildPreviewHref: (screen: OpsScreen) => string | null;
   /** One-shot deep link: open THIS screen's drawer (`?screen=<id>`). */
   deepLinkScreenId?: string | null;
   /** Dashboard site row: expand and scroll to this group after data arrives. */
@@ -232,8 +234,8 @@ const GROUP_CARD_CLASS = 'rounded-2xl border border-slate-200 bg-white overflow-
 export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
   const {
     screens, groups, schedules, playlists, deployedSha, deployedBundleId,
-    isLoading, isError, onRetry, canControl, viewMode, onViewMode,
-    renderMap, floorSlot, connectSlot, onPairScreen, onSetScreenLocation, onSetGroupLocation, onOpenDisplaySchedule,
+    isLoading, isError, onRetry, canControl, controlDisabledReason, viewMode, onViewMode,
+    renderMap, floorSlot, scopeSlot, connectSlot, onPairScreen, onSetScreenLocation, onSetGroupLocation, onOpenDisplaySchedule,
     onChanged, buildPreviewHref,
     deepLinkScreenId, deepLinkFilter, deepLinkGroupId,
   } = props;
@@ -351,7 +353,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
     const target = screens.find((s) => s.id === deepLinkScreenId);
     if (!target) return; // wait for data
     deepLinkApplied.current = true;
-    setManualExpand((m) => ({ ...m, [target.screenGroupId ?? UNGROUPED_ID]: true }));
+    setManualExpand((m) => ({ ...m, [getOpsGroupId(target)]: true }));
     setSelectedId(deepLinkScreenId);
     setDrawerTab('actions');
   }, [deepLinkScreenId, screens]);
@@ -577,7 +579,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
               ['list', 'List', ListIcon],
               ['map', 'Map', MapIcon],
               ['floor', 'Floor plans', MapPin],
-            ] as const).map(([key, label, Icon]) => {
+            ] as const).filter(([key]) => key !== 'floor' || floorSlot).map(([key, label, Icon]) => {
               const active = viewMode === key;
               return (
                 <button
@@ -603,7 +605,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
             type="button"
             onClick={() => { setNewGroupOpen(true); setNewGroupError(null); }}
             disabled={!canControl}
-            title={!canControl ? 'Your role can’t create groups' : undefined}
+            title={!canControl ? controlDisabledReason ?? 'Your role can’t create groups' : undefined}
             className="px-4 py-2.5 sm:py-2 bg-white text-slate-700 text-sm font-bold rounded-xl border border-slate-200 shadow-sm flex items-center gap-2 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Plus className="w-4 h-4" aria-hidden /> New group
@@ -613,7 +615,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
             type="button"
             onClick={() => onPairScreen()}
             disabled={!canControl}
-            title={!canControl ? 'Your role can’t pair screens' : undefined}
+            title={!canControl ? controlDisabledReason ?? 'Your role can’t pair screens' : undefined}
             className="px-4 py-2.5 sm:py-2 text-white text-sm font-bold rounded-xl shadow-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             style={brand}
           >
@@ -706,6 +708,8 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
           on the Overview pills with a drill-in. */}
 
       {/* Floor plans owns its whole body; search has nothing to filter there. */}
+      {scopeSlot}
+
       {viewMode === 'floor' && floorSlot}
 
       {viewMode !== 'floor' && (
@@ -768,7 +772,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
           </div>
 
           {/* Map view — the same rows the list would show, as pins (§5). */}
-          {viewMode === 'map' && renderMap?.(visibleGroups.flatMap((g) => g.rows.map((r) => r.screen)), { rows: visibleGroups.flatMap(g => g.rows), onOpenScreen: id => { setSelectedId(id); setDrawerTab('overview'); }, onList: () => onViewMode('list') })}
+          {viewMode === 'map' && renderMap?.(visibleGroups.flatMap((g) => g.rows.map((r) => r.screen)), { rows: visibleGroups.flatMap(g => g.rows), isFiltered: filtering, onOpenScreen: id => { setSelectedId(id); setDrawerTab('overview'); }, onList: () => onViewMode('list') })}
 
           {/* ─── The fleet (§8) ──────────────────────────────── */}
           {viewMode === 'list' && (
@@ -893,7 +897,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                               <span className={`w-2 h-2 rounded-full ${g.online === g.rows.length ? 'bg-emerald-500' : g.online === 0 ? 'bg-slate-400' : 'bg-amber-500'}`} aria-hidden />
                               {contact}
                             </span>
-                            {g.id !== UNGROUPED_ID ? (
+                            {!g.id.startsWith(UNGROUPED_ID) ? (
                               <div className="relative inline-block shrink-0">
                                 <button
                                   type="button"
@@ -1048,15 +1052,15 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                                           className="w-full px-3.5 py-2.5 text-[12.5px] font-bold text-slate-700 hover:bg-slate-50 text-left border-t border-slate-100">
                                           Settings
                                         </button>
-                                        <a
-                                          href={buildPreviewHref(s)}
+                                        {buildPreviewHref(s) && <a
+                                          href={buildPreviewHref(s) ?? undefined}
                                           target="_blank"
                                           rel="noopener noreferrer"
                                           onClick={(e) => { e.stopPropagation(); setRowMenu(null); }}
                                           className="block w-full px-3.5 py-2.5 text-[12.5px] font-bold text-slate-700 hover:bg-slate-50 text-left border-t border-slate-100"
                                         >
                                           Open live preview
-                                        </a>
+                                        </a>}
                                     </AnchoredMenu>
                                   </div>
                                 </div>

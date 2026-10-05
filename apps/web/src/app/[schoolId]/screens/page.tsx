@@ -19,7 +19,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Loader2, QrCode, Wifi, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import {
-  usePlaylists, useSchedules, useScreenGroups, useScreens,
+  usePlaylists, useSchedules, useScreenGroups, useScreens, useFleet, useFleetOperations,
   useUpdateScreenGroup, useUpdateScreenLocation,
 } from '@/hooks/use-api';
 import { apiFetch } from '@/lib/api-client';
@@ -27,6 +27,8 @@ import { useBranding } from '@/lib/branding-context';
 import { useUIStore } from '@/store/ui-store';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { useDeployedBundle } from '@/hooks/use-deployed-bundle';
+import { CompanyScreenAtlas } from '@/components/screens/CompanyScreenAtlas';
+import { LocationFilter } from '@/components/screens/LocationFilter';
 import { ScreenLocationAtlas } from '@/components/screens/ScreenLocationAtlas';
 import { ReturnToFleetBanner } from '@/components/screens/ReturnToFleetBanner';
 import { ScreenLocationModal } from '@/components/screens/ScreenLocationModal';
@@ -72,6 +74,16 @@ export default function ScreensPage() {
   const branding = useBranding();
   const userRole = useUIStore((s) => s.user?.role);
   const authToken = useUIStore((s) => s.token);
+  const currentTenantId = useUIStore((s) => s.user?.tenantId);
+  const [scope, setScope] = useState<'local' | 'company'>('local');
+  const [locationId, setLocationId] = useState('all');
+  const canReadCompany = userRole === 'SUPER_ADMIN' || userRole === 'DISTRICT_ADMIN';
+  const fleetQuery = useFleet({ enabled: canReadCompany, refetchInterval: false });
+  const isCorporate = (fleetQuery.data?.locations.length ?? 0) > 1;
+  const companyMode = canReadCompany && scope === 'company';
+  const companyQuery = useFleetOperations({ enabled: companyMode });
+  const companyFleet = companyQuery.data;
+  const companyLocations = useMemo(() => (companyFleet?.locations ?? []).filter((l) => locationId === 'all' || l.id === locationId), [companyFleet, locationId]);
   // Mirrors the API's own @RequireRoles set for display control — a control a
   // role can never use must not render enabled for that role. Every write this
   // page can reach (pair, refresh-web, screen PUT, orientation, force-update,
@@ -88,10 +100,28 @@ export default function ScreensPage() {
   const [deepLinkScreenId, setDeepLinkScreenId] = useState<string | null>(null);
   const [deepLinkFilter, setDeepLinkFilter] = useState<FilterKey | null>(null);
   const [viewMode, setViewMode] = useState<ScreensViewMode>('list');
+  const changeScope = (value: 'local' | 'company') => {
+    setScope(value); setDeepLinkScreenId(null); setDeepLinkGroupId(null);
+    if (viewMode === 'floor') setViewMode('list');
+    const params = new URLSearchParams(window.location.search);
+    if (value === 'company') params.set('scope', value);
+    else { params.delete('scope'); params.delete('location'); }
+    window.history.replaceState(null, '', window.location.pathname + (params.size ? `?${params}` : ''));
+  };
+  const changeLocation = (id: string) => {
+    setLocationId(id); setDeepLinkScreenId(null); setDeepLinkGroupId(null);
+    const params = new URLSearchParams(window.location.search);
+    params.set('scope', 'company');
+    if (id === 'all') params.delete('location'); else params.set('location', id);
+    window.history.replaceState(null, '', window.location.pathname + `?${params}`);
+  };
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
       const sp = new URLSearchParams(window.location.search);
+      if (sp.get('scope') === 'company') setScope('company');
+      if (sp.get('location')) setLocationId(sp.get('location')!);
       const id = sp.get('screen');
       const groupId = sp.get('group');
       if (groupId) { setDeepLinkGroupId(groupId); setViewMode('list'); }
@@ -119,24 +149,28 @@ export default function ScreensPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── data (unchanged endpoints; nothing new on the API side) ──────
-  const screensQuery = useScreens();
-  const groupsQuery = useScreenGroups();
-  const schedulesQuery = useSchedules();
-  const playlistsQuery = usePlaylists();
+  // ── local data and optional company inspection ──────
+  const screensQuery = useScreens({ enabled: !companyMode });
+  const groupsQuery = useScreenGroups({ enabled: !companyMode });
+  const schedulesQuery = useSchedules({ enabled: !companyMode });
+  const playlistsQuery = usePlaylists({ enabled: !companyMode });
   const updateLocation = useUpdateScreenLocation();
   const updateGroup = useUpdateScreenGroup();
 
-  const screens = useMemo(() => ((screensQuery.data as OpsScreen[] | undefined) ?? []), [screensQuery.data]);
+  const screens = useMemo<OpsScreen[]>(() => companyMode
+    ? (companyFleet?.screens ?? []).filter((screen) => locationId === 'all' || screen.sourceTenant?.id === locationId).map((screen) => ({
+      ...screen, screenGroup: screen.screenGroup ? { ...screen.screenGroup, name: `${screen.sourceTenant?.name ?? 'Location'} · ${screen.screenGroup.name}` } : null,
+    }))
+    : ((screensQuery.data as OpsScreen[] | undefined) ?? []), [companyMode, companyFleet, locationId, screensQuery.data]);
   const groups = useMemo(
-    () => (((groupsQuery.data as any[] | undefined) ?? []).map((g) => ({
-      id: g.id, name: g.name, address: g.address ?? null, syncMode: g.syncMode ?? null,
+    () => ((companyMode ? (companyFleet?.operations.groups ?? []).filter((g) => locationId === 'all' || g.tenantId === locationId) : ((groupsQuery.data as any[] | undefined) ?? [])).map((g) => ({
+      id: g.id, name: companyMode ? `${g.sourceTenant?.name ?? 'Location'} · ${g.name}` : g.name, address: g.address ?? null, syncMode: g.syncMode ?? null,
       // 2026-09-16 — server-derived "any screen here is frame-locked". Only
       // the calibration entry reads it; the sync SETTING lives on the playlist.
       syncActive: g.syncActive ?? null,
       latitude: g.latitude ?? null, longitude: g.longitude ?? null,
     }))),
-    [groupsQuery.data],
+    [groupsQuery.data, companyMode, companyFleet, locationId],
   );
 
   // ── deployed page bundle — the reference every row is graded on.
@@ -185,9 +219,10 @@ export default function ScreensPage() {
   }, [showQrForScan, pairCode]);
 
   const refetchAll = useCallback(() => {
+    if (companyMode) { companyQuery.refetch(); return; }
     screensQuery.refetch();
     groupsQuery.refetch();
-  }, [screensQuery, groupsQuery]);
+  }, [screensQuery, groupsQuery, companyQuery, companyMode]);
 
   const handlePairScreen = async () => {
     if (!pairCode.trim()) return;
@@ -217,6 +252,7 @@ export default function ScreensPage() {
   /** Preview URL — the admin JWT rides the FRAGMENT so it never reaches a log. */
   const buildPreviewHref = useCallback(
     (screen: OpsScreen) => {
+      if (screen.sourceTenant && screen.sourceTenant.id !== currentTenantId) return null;
       const base = typeof window !== 'undefined' ? `${window.location.origin}/player` : '/player';
       const q = new URLSearchParams({
         deviceId: screen.deviceFingerprint ?? '',
@@ -225,7 +261,7 @@ export default function ScreensPage() {
       });
       return `${base}?${q.toString()}${authToken ? `#t=${encodeURIComponent(authToken)}` : ''}`;
     },
-    [authToken],
+    [authToken, currentTenantId],
   );
 
   return (
@@ -234,16 +270,31 @@ export default function ScreensPage() {
       <ReturnToFleetBanner />
 
       <ScreenOperationsV3
+        key={companyMode ? 'company' : 'local'}
+        scopeSlot={isCorporate || companyMode ? (
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="inline-flex bg-slate-100 rounded-xl p-1 border border-slate-200" role="group" aria-label="Screen scope">
+              {(['local', 'company'] as const).map((value) => <button key={value} type="button" aria-pressed={scope === value}
+                onClick={() => changeScope(value)}
+                className={`px-3 py-2 text-xs font-bold rounded-lg ${scope === value ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500'}`}>
+                {value === 'local' ? 'Local screens' : 'All company screens'}
+              </button>)}
+            </div>
+            {companyMode && <p className="text-xs text-slate-500">Company view is read-only</p>}
+            {companyMode && <LocationFilter locations={companyFleet?.locations ?? fleetQuery.data?.locations ?? []} value={locationId} onChange={changeLocation} />}
+          </div>
+        ) : null}
         screens={screens}
         groups={groups}
-        schedules={(schedulesQuery.data as any[]) ?? []}
-        playlists={(playlistsQuery.data as any[]) ?? []}
+        schedules={companyMode ? companyFleet?.operations.schedules ?? [] : (schedulesQuery.data as any[]) ?? []}
+        playlists={companyMode ? companyFleet?.operations.playlists ?? [] : (playlistsQuery.data as any[]) ?? []}
         deployedSha={deployed.sha}
         deployedBundleId={deployed.bundleId}
-        isLoading={screensQuery.isLoading || groupsQuery.isLoading}
-        isError={screensQuery.isError || groupsQuery.isError}
+        isLoading={companyMode ? companyQuery.isLoading : screensQuery.isLoading || groupsQuery.isLoading}
+        isError={companyMode ? companyQuery.isError : screensQuery.isError || groupsQuery.isError}
         onRetry={refetchAll}
-        canControl={canControlDisplay}
+        canControl={canControlDisplay && !companyMode}
+        controlDisabledReason={companyMode ? "Company view is read-only. Manage corporate screens in Local screens." : undefined}
         viewMode={viewMode}
         onViewMode={setViewMode}
         deepLinkGroupId={deepLinkGroupId}
@@ -258,16 +309,24 @@ export default function ScreensPage() {
         onOpenDisplaySchedule={(target) => setDisplayScheduleTarget(target)}
         onChanged={refetchAll}
         buildPreviewHref={buildPreviewHref}
-        renderMap={(visible, navigation) => (
+        renderMap={(visible, navigation) => companyMode && !companyFleet ? (
+          <div role="status" className="rounded-2xl border border-slate-200 bg-white p-12 text-center text-sm text-slate-500">
+            {companyQuery.isError ? <>Couldn’t load company screens. <button type="button" onClick={refetchAll} className="font-bold underline">Try again</button></> : 'Loading company locations…'}
+          </div>
+        ) : companyMode && companyFleet ? (
+          <CompanyScreenAtlas fleet={companyFleet} locations={companyLocations} screens={visible} rows={navigation.rows} isFiltered={navigation.isFiltered}
+            logoUrl={branding?.logoUrl ?? null} deployedSha={deployed.sha} deployedBundleId={deployed.bundleId}
+            onOpenScreen={navigation.onOpenScreen} onLocationList={(id) => { changeLocation(id); navigation.onList(); }} />
+        ) : (
           <ScreenLocationAtlas screens={visible} rows={navigation.rows} groups={groups}
             logoUrl={branding?.logoUrl ?? null} onOpenScreen={navigation.onOpenScreen} onList={navigation.onList} />
         )}
-        floorSlot={<FloorPlansView embedded />}
+        floorSlot={companyMode ? null : <FloorPlansView embedded />}
         connectSlot={
           <ConnectScreenCard
             pairedCount={screens.length}
             playerUrl={typeof window !== 'undefined' ? `${window.location.origin}/player` : '/player'}
-            pairDisabled={!canControlDisplay}
+            pairDisabled={!canControlDisplay || companyMode}
             onPairScreen={() => {
               setShowPairModal(true);
               setPairCode(''); setPairName(''); setPairGroupId(''); setPairError('');

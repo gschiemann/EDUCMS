@@ -14,6 +14,8 @@ import type {
   FleetPulseResponse,
 } from '@/hooks/use-api';
 
+const mockRouterPush = jest.fn();
+jest.mock('next/navigation', () => ({ useRouter: () => ({ push: mockRouterPush }) }));
 const switchToTenant = jest.fn();
 jest.mock('@/hooks/use-tenant-switch', () => ({
   useTenantSwitch: () => ({ switchToTenant, switchingId: null, error: null, clearError: () => {} }),
@@ -66,6 +68,7 @@ beforeAll(() => {
 // only meaningful once each test starts from zero.
 beforeEach(() => {
   switchToTenant.mockClear();
+  mockRouterPush.mockClear();
   refreshMutate.mockClear();
   updateScreenMutate.mockClear();
   setOrientationMutate.mockClear();
@@ -482,12 +485,9 @@ describe('FleetCommandCenter', () => {
     fireEvent.click(within(row).getByRole('button', { name: 'Open' }));
     // No dashboard-side drawer any more ("don't create multiple paths").
     expect(rtl.queryByRole('dialog', { name: /device details/ })).not.toBeInTheDocument();
-    // The screen lives at a DIFFERENT location than the session, so it rides
-    // the tenant switch, deep-linked to this screen's drawer.
-    expect(switchToTenant).toHaveBeenCalledWith(
-      { id: 'west', slug: 'west' },
-      expect.stringMatching(/^\/west\/screens\?screen=/),
-    );
+    // Corporate inspection retains the current session and opens company scope.
+    expect(switchToTenant).not.toHaveBeenCalled();
+    expect(mockRouterPush).toHaveBeenCalledWith(expect.stringMatching(/^\/hq\/screens\?screen=.*&scope=company&location=west$/));
   });
 
   it('every answered assurance pill is a link into the list behind its number (2026-09-14)', () => {
@@ -495,7 +495,7 @@ describe('FleetCommandCenter', () => {
       <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" />,
     );
     const online = rtl.getByRole('link', { name: /Devices online|online/i });
-    expect(online.getAttribute('href')).toMatch(/\/screens\?filter=offline$/);
+    expect(online.getAttribute('href')).toMatch(/\/screens\?scope=company&filter=offline$/);
     const emergency = rtl.getByRole('link', { name: /Emergency/i });
     expect(emergency.getAttribute('href')).toMatch(/\/settings\/emergency$/);
   });
@@ -813,7 +813,7 @@ describe('FleetCommandCenter · location filter', () => {
       <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" />,
     );
     expect(openScope()).toHaveValue('all');
-    expect(rtl.getAllByRole('option').map((o) => o.textContent))
+    expect(within(openScope()).getAllByRole('option').map((o) => o.textContent))
       .toEqual(['All gyms', 'Iron Peak HQ', 'Peak West']);
   });
 
@@ -839,7 +839,7 @@ describe('FleetCommandCenter · location filter', () => {
     const names = rtl.getAllByRole('cell').map((c) => c.textContent ?? '');
     expect(names.some((t) => t.startsWith('Peak West'))).toBe(false);
     expect(names.some((t) => t.startsWith('Iron Peak HQ'))).toBe(true);
-    expect(rtl.getByRole('option', { name: 'Peak West' })).toBeInTheDocument();
+    expect(within(openScope()).getByRole('option', { name: 'Peak West' })).toBeInTheDocument();
     expect(rtl.getByText('Showing 1 of 1 gym')).toBeInTheDocument();
   });
 
@@ -891,8 +891,8 @@ describe('FleetCommandCenter · map stat cards', () => {
   it('the counts above the map are drill-ins, not ornaments (2026-09-14)', () => {
     renderAtlas();
     const totals = within(rtl.getByRole('group', { name: 'Fleet totals' }));
-    expect(totals.getByRole('link', { name: /Need attention/ })).toHaveAttribute('href', expect.stringMatching(/\/screens\?filter=attention$/));
-    expect(totals.getByRole('link', { name: /Screens/ })).toHaveAttribute('href', expect.stringMatching(/\/screens$/));
+    expect(totals.getByRole('link', { name: /Need attention/ })).toHaveAttribute('href', expect.stringMatching(/\/screens\?scope=company&filter=attention$/));
+    expect(totals.getByRole('link', { name: /Screens/ })).toHaveAttribute('href', expect.stringMatching(/\/screens\?scope=company$/));
     // Locations → the list view of this same section.
     fireEvent.click(totals.getByRole('button', { name: /Gyms/ }));
     expect(rtl.getByRole('tab', { name: 'list' })).toHaveAttribute('aria-selected', 'true');
@@ -992,7 +992,8 @@ describe('FleetCommandCenter · map stat cards', () => {
     fireEvent.click(within(inbox).getByText('Dark · Offline').closest('button')!);
     fireEvent.click(within(inbox).getByRole('button', { name: /Open screen/ }));
     expect(rtl.queryByRole('dialog', { name: /device details/ })).not.toBeInTheDocument();
-    expect(switchToTenant).toHaveBeenCalledWith(expect.objectContaining({ slug: expect.any(String) }), expect.stringMatching(/\/screens\?screen=/));
+    expect(switchToTenant).not.toHaveBeenCalled();
+    expect(mockRouterPush).toHaveBeenCalledWith(expect.stringMatching(/^\/hq\/screens\?screen=.*&scope=company&location=/));
   });
 
   it('a location with no coordinates is listed, not invented onto the map', () => {
@@ -1177,4 +1178,16 @@ describe('the atlas panel’s screen tiles', () => {
     ]);
     expect(tile(panel).querySelector('img')).toBeNull();
   });
+});
+
+
+it('the location-list selector offers names, scopes totals and keeps all names available when filtered', () => {
+  render(<FleetCommandCenter fleet={fleet} orgName="Iron Peak" />);
+  const filter = rtl.getByRole('combobox', { name: 'Filter gyms by name' });
+  expect(within(filter).getByRole('option', { name: 'Peak West' })).toBeInTheDocument();
+  fireEvent.change(filter, { target: { value: 'west' } });
+  expect(rtl.getByRole('combobox', { name: 'Show one gym or all of them' })).toHaveValue('west');
+  expect(within(filter).getByRole('option', { name: 'Iron Peak HQ' })).toBeInTheDocument();
+  fireEvent.change(filter, { target: { value: 'all' } });
+  expect(rtl.getByRole('combobox', { name: 'Show one gym or all of them' })).toHaveValue('all');
 });

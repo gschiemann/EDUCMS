@@ -13,7 +13,7 @@
  *      rollback (the quiet Classic view link) both work.
  */
 import * as React from 'react';
-import { render, screen as rtl, act } from '@testing-library/react';
+import { render, screen as rtl, act, fireEvent } from '@testing-library/react';
 
 // ── Everything the page reaches for, stubbed at the boundary ────────
 jest.mock('next/navigation', () => ({ useParams: () => ({ schoolId: 'demo' }) }));
@@ -21,13 +21,18 @@ jest.mock('qrcode', () => ({ toDataURL: jest.fn(async () => 'data:image/png;base
 jest.mock('@/lib/branding-context', () => ({ useBranding: () => ({ logoUrl: 'https://cdn.example/brookfield.png' }) }));
 jest.mock('@/lib/api-client', () => ({ apiFetch: jest.fn(async () => ({})) }));
 let mockRole = 'SCHOOL_ADMIN';
+let mockFleet: any = undefined;
+let mockCompany: any = undefined;
+const mockCompanyQueryOptions = jest.fn();
 jest.mock('@/store/ui-store', () => ({
-  useUIStore: (sel: any) => sel({ user: { role: mockRole }, token: 'tok' }),
+  useUIStore: (sel: any) => sel({ user: { role: mockRole, tenantId: 'hq' }, token: 'tok' }),
 }));
 jest.mock('@/hooks/use-overlay-lock', () => ({ useOverlayLock: () => {} }));
 const q = (data: any) => ({ data, isLoading: false, isError: false, refetch: jest.fn() });
 jest.mock('@/hooks/use-api', () => ({
-  useScreens: () => q([]),
+  useScreens: () => q([{ id: 'local', name: 'HQ lobby', status: 'ONLINE' }]),
+  useFleet: () => q(mockFleet),
+  useFleetOperations: (options: any) => { mockCompanyQueryOptions(options); return q(mockCompany); },
   useScreenGroups: () => q([]),
   useSchedules: () => q([]),
   usePlaylists: () => q([]),
@@ -45,6 +50,7 @@ jest.mock('@/hooks/use-api', () => ({
     isLoading: false, isError: false,
   }),
 }));
+jest.mock('@/components/screens/CompanyScreenAtlas', () => ({ CompanyScreenAtlas: () => <div data-testid="company-map" /> }));
 jest.mock('@/components/screens/ScreenLocationAtlas', () => ({ ScreenLocationAtlas: (props: any) => <div data-testid="screen-map" data-logo={props.logoUrl ?? ''} /> }));
 jest.mock('@/components/screens/ReturnToFleetBanner', () => ({ ReturnToFleetBanner: () => null }));
 jest.mock('@/components/screens/ScreenLocationModal', () => ({ ScreenLocationModal: () => null }));
@@ -59,7 +65,7 @@ const mockV3Props: any[] = [];
 jest.mock('@/components/screens/v3/ScreenOperationsV3', () => ({
   ScreenOperationsV3: (props: any) => {
     mockV3Props.push(props);
-    return <div data-testid="v3-screens">{props.renderMap([], { rows: [], onOpenScreen: jest.fn(), onList: jest.fn() })}</div>;
+    return <div data-testid="v3-screens">{props.scopeSlot}{props.renderMap([], { rows: [], onOpenScreen: jest.fn(), onList: jest.fn() })}</div>;
   },
 }));
 
@@ -88,6 +94,7 @@ beforeEach(() => {
   global.fetch = jest.fn(async () => ({ ok: false })) as any;
   window.history.replaceState(null, '', '/demo/screens');
   mockRole = 'SCHOOL_ADMIN';
+  mockFleet = undefined; mockCompany = undefined; mockCompanyQueryOptions.mockClear();
   mockV3Props.length = 0;
 });
 
@@ -137,3 +144,30 @@ describe('role → write capability', () => {
   });
 });
 
+
+
+it('corporate selects named locations without changing session and returns to its own local controls', () => {
+  mockRole = 'DISTRICT_ADMIN';
+  mockFleet = { root: { id: 'hq', name: 'Corporate', slug: 'hq' }, locations: [{ id: 'hq', name: 'Corporate' }, { id: 'a', name: 'Austin' }, { id: 'b', name: 'Boston' }] };
+  mockCompany = { ...mockFleet, screens: [
+    { id: 'a-screen', name: 'A lobby', sourceTenant: { id: 'a', name: 'Austin' }, screenGroupId: 'a-group', screenGroup: { id: 'a-group', name: 'Lobby' } },
+    { id: 'b-screen', name: 'B lobby', sourceTenant: { id: 'b', name: 'Boston' } },
+  ], operations: { groups: [{ id: 'a-group', name: 'Lobby', tenantId: 'a', sourceTenant: { id: 'a', name: 'Austin' } }], schedules: [], playlists: [] } };
+  render(<ScreensPage />);
+  expect(mockV3Props.at(-1).screens.map((s: any) => s.id)).toEqual(['local']);
+  expect(mockV3Props.at(-1).canControl).toBe(true);
+  fireEvent.click(rtl.getByRole('button', { name: 'All company screens' }));
+  expect(mockCompanyQueryOptions).toHaveBeenLastCalledWith({ enabled: true });
+  expect(mockV3Props.at(-1).screens).toHaveLength(2);
+  expect(mockV3Props.at(-1).groups[0].name).toBe('Austin · Lobby');
+  expect(mockV3Props.at(-1).canControl).toBe(false);
+  expect(mockV3Props.at(-1).buildPreviewHref(mockCompany.screens[0])).toBeNull();
+  const filter = rtl.getByRole('combobox', { name: 'Filter by location' });
+  expect(rtl.getByRole('option', { name: 'Boston' })).toBeInTheDocument();
+  fireEvent.change(filter, { target: { value: 'a' } });
+  expect(mockV3Props.at(-1).screens.map((s: any) => s.id)).toEqual(['a-screen']);
+  expect(mockV3Props.at(-1).floorSlot).toBeNull();
+  fireEvent.click(rtl.getByRole('button', { name: 'Local screens' }));
+  expect(mockV3Props.at(-1).screens.map((s: any) => s.id)).toEqual(['local']);
+  expect(mockV3Props.at(-1).canControl).toBe(true);
+});

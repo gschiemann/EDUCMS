@@ -2391,9 +2391,10 @@ export class ScreensController {
   // single-location dashboard with zero extra scope.
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   async fleet(
-    @Request() req: any,
+    @Request() req: { user: { tenantId: string; role: string } },
     @Res({ passthrough: true }) res?: any,
     @Query('tenantId') tenantIdRaw?: string,
+    @Query('view') viewRaw?: string,
   ) {
     if (res?.setHeader) {
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
@@ -2404,7 +2405,7 @@ export class ScreensController {
     // an HQ admin browsing /child-slug/dashboard must see the child's info,
     // not the whole org. Validated against the caller's readable set —
     // never a free cross-tenant read.
-    const rootId = await this.resolveFleetRoot(req.user.tenantId as string, tenantIdRaw);
+    const rootId = await this.resolveFleetRoot(req.user.tenantId, tenantIdRaw);
     const sel = { id: true, name: true, slug: true, vertical: true, latitude: true, longitude: true, address: true } as const;
     const self = await this.prisma.client.tenant.findUnique({ where: { id: rootId }, select: sel });
     const children = await this.prisma.client.tenant.findMany({
@@ -2438,6 +2439,14 @@ export class ScreensController {
       include: { screenGroup: { select: { id: true, name: true, address: true, latitude: true, longitude: true } } },
       orderBy: [{ tenantId: 'asc' }, { name: 'asc' }],
     });
+
+    // The normal dashboard keeps its slim roll-up. Screens asks for the
+    // operations view, within the SAME proven self + active-child scope.
+    // These are bulk reads, never one request/query per location or screen.
+    const operations =
+      viewRaw === 'operations'
+        ? await this.readFleetOperations(tenantIds)
+        : null;
 
     // Live status from lastPingAt recency — MUST mirror list()'s rule
     // (35s = 30s heartbeat + grace). Keep in sync with the GET / mapper.
@@ -2486,6 +2495,52 @@ export class ScreensController {
         id: s.id,
         name: s.name,
         status: liveStatus,
+        ...(operations
+          ? {
+              tenantId: s.tenantId,
+              screenGroupId: s.screenGroupId,
+              address: s.address,
+              latitude: s.latitude,
+              longitude: s.longitude,
+              hardwareModel: s.hardwareModel,
+              resolution: s.resolution,
+              orientation: s.orientation,
+              osInfo: s.osInfo,
+              browserInfo: s.browserInfo,
+              playerVersion: s.playerVersion,
+              managerVersion: s.managerVersion,
+              ipAddress: s.ipAddress,
+              pairedAt: s.pairedAt,
+              lastVideoReport: s.lastVideoReport,
+              lastVideoReportAt: s.lastVideoReportAt,
+              lastCrashAt: s.lastCrashAt,
+              lastCrashMessage: s.lastCrashMessage,
+              lastCrashVersion: s.lastCrashVersion,
+              pendingRefreshAt: s.pendingRefreshAt,
+              lastPushConnectedAt: s.lastPushConnectedAt,
+              // A child live preview needs its owning session. Do not hand out
+              // child pairing identifiers or weaken the player manifest guard.
+              ...(s.tenantId === req.user.tenantId &&
+              ADMIN_ROLES_FOR_SCREEN_SECRETS.has(req.user?.role)
+                ? { deviceFingerprint: s.deviceFingerprint }
+                : {}),
+              syncActive: resolveScreenSync({
+                scheduledPlaylistSync: operations.schedules
+                  .filter(
+                    (schedule) =>
+                      schedule.tenantId === s.tenantId &&
+                      schedule.isActive &&
+                      new Date(schedule.startTime).getTime() <= now &&
+                      (schedule.endTime == null ||
+                        new Date(schedule.endTime).getTime() >= now) &&
+                      (schedule.screenId === s.id ||
+                        (!!s.screenGroupId &&
+                          schedule.screenGroupId === s.screenGroupId)),
+                  )
+                  .map((schedule) => schedule.playlist?.syncPlayback),
+              }).enabled,
+            }
+          : {}),
         screenGroup: (s as any).screenGroup ?? null,
         lastPingAt: s.lastPingAt,
         lastCacheReport: (s as any).lastCacheReport ?? null,
@@ -2559,7 +2614,105 @@ export class ScreensController {
       })),
       stats: { total: screens.length, online, offline, locationCount: tenants.length },
       screens,
+      ...(operations
+        ? {
+            operations: {
+              ...operations,
+              groups: operations.groups.map((group) => ({
+                ...group,
+                sourceTenant: metaByTenant.get(group.tenantId) ?? null,
+                syncActive: screens.some(
+                  (screen) =>
+                    screen.screenGroupId === group.id && screen.syncActive,
+                ),
+              })),
+            },
+          }
+        : {}),
     };
+  }
+
+  /** Read-only screen operations context for an already-authorized fleet. */
+  private async readFleetOperations(tenantIds: string[]) {
+    const [groups, schedules, playlists] = await Promise.all([
+      this.prisma.client.screenGroup.findMany({
+        where: { tenantId: { in: tenantIds } },
+        select: {
+          id: true,
+          tenantId: true,
+          name: true,
+          address: true,
+          latitude: true,
+          longitude: true,
+        },
+        orderBy: { name: 'asc' },
+      }),
+      this.prisma.client.schedule.findMany({
+        where: { tenantId: { in: tenantIds } },
+        select: {
+          id: true,
+          tenantId: true,
+          playlistId: true,
+          screenId: true,
+          screenGroupId: true,
+          priority: true,
+          mode: true,
+          isActive: true,
+          startTime: true,
+          endTime: true,
+          daysOfWeek: true,
+          timeStart: true,
+          timeEnd: true,
+          playlist: { select: { id: true, name: true, syncPlayback: true } },
+        },
+      }),
+      this.prisma.client.playlist.findMany({
+        where: {
+          tenantId: { in: tenantIds },
+          schedules: { some: { tenantId: { in: tenantIds } } },
+        },
+        select: {
+          id: true,
+          tenantId: true,
+          name: true,
+          items: {
+            select: {
+              id: true,
+              sequenceOrder: true,
+              durationMs: true,
+              asset: {
+                select: { fileUrl: true, mimeType: true, posterUrl: true },
+              },
+            },
+            orderBy: { sequenceOrder: 'asc' },
+          },
+          template: {
+            select: {
+              id: true,
+              name: true,
+              screenWidth: true,
+              screenHeight: true,
+              bgColor: true,
+              bgGradient: true,
+              bgImage: true,
+              zones: {
+                select: {
+                  widgetType: true,
+                  defaultConfig: true,
+                  x: true,
+                  y: true,
+                  width: true,
+                  height: true,
+                  zIndex: true,
+                },
+                orderBy: { sortOrder: 'asc' },
+              },
+            },
+          },
+        },
+      }),
+    ]);
+    return { groups, schedules, playlists };
   }
 
   /**

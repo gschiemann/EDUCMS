@@ -1489,3 +1489,20 @@ describe('imageUrlOfPreview — only a picture an <img> can draw', () => {
     expect(imageUrlOfPreview(previewOf(undefined))).toBeNull();
   });
 });
+
+
+it('company ungrouped screens stay in separate named location groups and search matches location', () => {
+  const screens = [scr({ id: 'a', sourceTenant: { id: 'a', name: 'Austin', slug: 'a' } }), scr({ id: 'b', sourceTenant: { id: 'b', name: 'Boston', slug: 'b' } })];
+  const result = buildScreenOps({ screens, schedules: [], playlists: [], deployedSha: SHA, now: NOW });
+  expect(result.groups.map((g) => g.name)).toEqual(['Austin · Not in a group', 'Boston · Not in a group']);
+  expect(result.groups.map((g) => g.id)).toEqual([`${UNGROUPED_ID}:a`, `${UNGROUPED_ID}:b`]);
+  expect(matchesQuery(result.rows[0], 'austin')).toBe(true);
+  expect(matchesQuery(result.rows[1], 'austin')).toBe(false);
+});
+
+
+it('company expected content ignores a schedule from another owning tenant', () => {
+  const screen = scr({ tenantId: 'a', screenGroupId: 'group-a' });
+  const expected = deriveExpectedContent(screen, [{ id: 'foreign', tenantId: 'b', screenGroupId: 'group-a', isActive: true, playlist: { id: 'p', name: 'Other location' } }], new Map(), NOW);
+  expect(expected.name).toBeNull();
+});

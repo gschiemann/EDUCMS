@@ -133,7 +133,7 @@ export interface ScreenDetailDrawerProps {
   /** Name of the group / place this screen sits in — the header's second half. */
   placeName: string;
   /** Player preview URL for this screen (built by the page — it holds the token). */
-  previewHref: string;
+  previewHref: string | null;
   /**
    * SUPER / DISTRICT / SCHOOL admin — mirrors the `@RequireRoles` set on every
    * write route this drawer can reach (refresh-web, screen PUT for rename and
@@ -957,7 +957,7 @@ export function ScreenDetailDrawer({
               : <RefreshCw className="w-4 h-4" aria-hidden />}
             {sent ? 'Request sent ✓' : online ? 'Resync content' : 'Queue a resync'}
           </button>
-          <a
+          {previewHref && <a
             href={previewHref}
             target="_blank"
             rel="noopener noreferrer"
@@ -969,7 +969,7 @@ export function ScreenDetailDrawer({
             style={online ? undefined : { background: 'var(--brand-primary, #4f46e5)' }}
           >
             Open live preview
-          </a>
+          </a>}
         </div>
 
         {!online && (

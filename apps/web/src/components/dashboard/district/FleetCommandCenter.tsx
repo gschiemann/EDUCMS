@@ -37,13 +37,15 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { LocationFilter } from '@/components/screens/LocationFilter';
 import { ExpectedThumb } from '@/components/screens/v3/ExpectedThumb';
 import { WebsitePreviewThumb } from '@/components/assets/WebsitePreviewThumb';
 import type { ExpectedContent } from '@/components/screens/v3/screenOps';
 import {
   AlertCircle, AlertTriangle, ArrowRight, Building2, Calendar, CheckCircle2, ChevronDown,
   ChevronUp, CloudOff, CreditCard, FileCheck2, Inbox, Info, KeyRound, ListVideo, Loader2, MapPin,
-  MonitorCheck, MonitorPlay, MonitorX, MoreHorizontal, Radio, RefreshCw, Search, Send,
+  MonitorCheck, MonitorPlay, MonitorX, MoreHorizontal, Radio, RefreshCw, Send,
   ShieldAlert, ShieldCheck, Upload, Wifi, X, Zap,
 } from 'lucide-react';
 import { useTenantSwitch } from '@/hooks/use-tenant-switch';
@@ -63,7 +65,6 @@ import {
 } from './fleetCommand';
 import { AnchoredMenu } from '@/components/ui/anchored-menu';
 import { deriveRenderTrustGrade } from '@/components/screens/renderTrust';
-import { filterScorecards } from './districtRollup';
 import { ProofDrawer, timeAgo, type ProofDrawerScreen } from './ProofDrawer';
 import { computeUptime, type DisplayScheduleRow } from './uptime';
 import { UptimeCard } from './UptimeCard';
@@ -482,7 +483,7 @@ export function FleetCommandCenter({
   logoUrl?: string | null;
 }) {
   const { switchToTenant, switchingId } = useTenantSwitch();
-  const [q, setQ] = useState('');
+  const router = useRouter();
   // ── Network Atlas — the locations section's second view. ────────────
   // The map is a VIEW of this section, not a second module: FleetRollup no
   // longer renders under Fleet Command (classic keeps it), so locations
@@ -562,8 +563,16 @@ export function FleetCommandCenter({
   const nounMany = VERTICAL_LABELS[vertical].plural.toLowerCase();
   const n = (count: number) => (count === 1 ? nounOne : nounMany);
 
-  const enter = (row: { tenantId: string; slug: string }, path: string) =>
-    switchToTenant({ id: row.tenantId, slug: row.slug }, `/${row.slug}/${path}`);
+  const enter = (row: { tenantId: string; slug: string }, path: string) => {
+    if (fleet.locations.length > 1 && path.split('?')[0] === 'screens') {
+      const params = new URLSearchParams(path.split('?')[1] ?? '');
+      params.set('scope', 'company');
+      params.set('location', row.tenantId);
+      router.push(`/${fleet.root?.slug ?? ''}/screens?${params}`);
+      return;
+    }
+    return switchToTenant({ id: row.tenantId, slug: row.slug }, `/${row.slug}/${path}`);
+  };
 
   /**
    * SINGLE-LOCATION MODE (2026-08-31 — operator: "the dashboard for a child
@@ -579,7 +588,8 @@ export function FleetCommandCenter({
   /** The playlists index — where "Manage" and "+N more" land. */
   const playlistsHref = `/${fleet.root?.slug ?? ''}/playlists`;
   /** This location's screens page — single-location "view all" target. */
-  const screensHref = `/${fleet.root?.slug ?? ''}/screens`;
+  const screensHref = `/${fleet.root?.slug ?? ''}/screens${singleLocation ? '' : `?scope=company${scopeId === 'all' ? '' : `&location=${encodeURIComponent(scopeId)}`}`}`;
+  const screenFilterHref = (filter: string) => `${screensHref}${singleLocation ? '?' : '&'}filter=${filter}`;
   /**
    * "Push content" opens the CREATE WIZARD, not the index (2026-08-31
    * operator: "clicking push content should take you to play list and launch
@@ -590,10 +600,7 @@ export function FleetCommandCenter({
    */
   const newPlaylistHref = `${playlistsHref}?newPlaylist=1`;
 
-  const visible = useMemo(
-    () => filterScorecards(fc.locations, q) as LocationRow[],
-    [fc.locations, q],
-  );
+  const visible = fc.locations as LocationRow[];
 
   // ── Atlas pin filter (Network Atlas mock parity) ──────────────────
   // The mock's five chips float over the map. Every one of them is a slice of
@@ -1062,21 +1069,9 @@ export function FleetCommandCenter({
         </div>
 
         {!singleLocation && (
-        <div className="relative">
-          <MapPin className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" aria-hidden />
-          <select
-            value={scopeId}
-            onChange={(e) => { setScopeId(e.target.value); setSelectedTenantId(null); }}
-            aria-label={`Show one ${nounOne} or all of them`}
-            className={`appearance-none pl-9 pr-9 py-2.5 rounded-xl text-[13px] font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-300 ${CARD}`}
-          >
-            <option value="all">All {nounMany}</option>
-            {fleet.locations.map((l) => (
-              <option key={l.id} value={l.id}>{l.name}</option>
-            ))}
-          </select>
-          <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" aria-hidden />
-        </div>
+        <LocationFilter locations={fleet.locations} value={scopeId}
+          onChange={(id) => { setScopeId(id); setSelectedTenantId(null); }}
+          label={`Show one ${nounOne} or all of them`} allLabel={`All ${nounMany}`} />
         )}
 
         <div className="ml-auto flex items-center gap-2">
@@ -1104,10 +1099,10 @@ export function FleetCommandCenter({
             // not answered yet ("—") has nothing to drill into and stays inert.
             const drill: string | null =
               pill.state === 'unknown' ? null
-              : key === 'online' ? `${screensHref}?filter=offline`
-              : key === 'push' ? `${screensHref}?filter=push-delayed`
-              : key === 'content' ? `${screensHref}?filter=content-behind`
-              : key === 'painting' ? `${screensHref}?filter=attention`
+              : key === 'online' ? screenFilterHref('offline')
+              : key === 'push' ? screenFilterHref('push-delayed')
+              : key === 'content' ? screenFilterHref('content-behind')
+              : key === 'painting' ? screenFilterHref('attention')
               : key === 'emergency' ? `/${fleet.root?.slug ?? ''}/settings/emergency`
               : null;
             const body = (
@@ -1482,23 +1477,9 @@ export function FleetCommandCenter({
               <h3 className="text-[17px] font-black text-slate-900 capitalize">{nounMany}</h3>
             )}
             <div className="ml-auto flex items-center gap-2">
-              {view === 'list' && fc.locations.length > 8 && (
-                <div className="relative">
-                  <Search className="w-3.5 h-3.5 text-slate-300 absolute left-2.5 top-1/2 -translate-y-1/2" aria-hidden />
-                  <input
-                    value={q}
-                    onChange={(e) => setQ(e.target.value)}
-                    placeholder={`Filter ${nounMany}…`}
-                    aria-label={`Filter ${nounMany} by name`}
-                    className="pl-8 pr-7 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold w-40 focus:ring-2 focus:ring-indigo-300 outline-none"
-                  />
-                  {q && (
-                    <button type="button" onClick={() => setQ('')} aria-label="Clear filter" className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500">
-                      <X className="w-3.5 h-3.5" aria-hidden />
-                    </button>
-                  )}
-                </div>
-              )}
+              <LocationFilter locations={fleet.locations} value={scopeId}
+                onChange={(id) => { setScopeId(id); setSelectedTenantId(null); }}
+                label={`Filter ${nounMany} by name`} allLabel={`All ${nounMany}`} />
               <div className="flex bg-slate-100 rounded-lg p-0.5" role="tablist" aria-label="Locations view">
                 {(['list', 'map'] as const).map((v) => (
                   <button
@@ -1530,8 +1511,8 @@ export function FleetCommandCenter({
                   // two-word labels ("App Current") and stop matching the mock.
                   { key: 'loc', label: nounMany.charAt(0).toUpperCase() + nounMany.slice(1), value: fc.locations.length, Icon: MapPin, bg: 'var(--brand-primary, #4f46e5)', go: { list: true }, hint: `See the ${nounMany} list` },
                   { key: 'scr', label: 'Screens', value: scoped.fleet.screens.length, Icon: MonitorPlay, bg: '#2563eb', go: { href: screensHref }, hint: 'Open the Screens page' },
-                  { key: 'cur', label: ASSURANCE_LABEL.contentCurrent, value: fc.assurance.contentCurrent.state === 'unknown' ? '—' : fc.assurance.contentCurrent.n, Icon: CheckCircle2, bg: '#10b981', go: fc.assurance.contentCurrent.state === 'unknown' ? null : { href: `${screensHref}?filter=content-behind` }, hint: 'See the screens that are behind' },
-                  { key: 'att', label: 'Need attention', value: attentionCount, Icon: AlertTriangle, bg: '#f97316', go: { href: `${screensHref}?filter=attention` }, hint: 'See the screens that need attention' },
+                  { key: 'cur', label: ASSURANCE_LABEL.contentCurrent, value: fc.assurance.contentCurrent.state === 'unknown' ? '—' : fc.assurance.contentCurrent.n, Icon: CheckCircle2, bg: '#10b981', go: fc.assurance.contentCurrent.state === 'unknown' ? null : { href: screenFilterHref('content-behind') }, hint: 'See the screens that are behind' },
+                  { key: 'att', label: 'Need attention', value: attentionCount, Icon: AlertTriangle, bg: '#f97316', go: { href: screenFilterHref('attention') }, hint: 'See the screens that need attention' },
                 ] as Array<{ key: string; label: string; value: number | string; Icon: typeof MapPin; bg: string; go: { href: string } | { list: true } | null; hint: string }>).map(({ key, label, value, Icon, bg, go, hint }) => {
                   const body = (
                     <>
@@ -2023,7 +2004,7 @@ export function FleetCommandCenter({
                   </thead>
                   <tbody>
                     {visible.length === 0 && (
-                      <tr><td colSpan={9} className="px-2 py-4 text-sm font-semibold text-slate-400">No {nounOne} matches{q.trim() ? ` “${q.trim()}”` : ''}.</td></tr>
+                      <tr><td colSpan={9} className="px-2 py-4 text-sm font-semibold text-slate-400">No {nounOne} matches this filter.</td></tr>
                     )}
                     {visible.map((row) => {
                       const worst = worstLine(row);
