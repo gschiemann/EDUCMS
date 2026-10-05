@@ -18,13 +18,13 @@ export async function deleteAssetsInBatches(target: BulkAssetDeleteTarget): Prom
       );
       for (const id of chunk) {
         const result = Array.isArray(reply?.results) ? reply.results.find(item => item.id === id && typeof item.deleted === 'boolean') : null;
-        results.push(result || { id, deleted: false, code: 'DELETE_NOT_CONFIRMED', message: 'Deletion could not be confirmed. Refresh to check this file.' });
+        results.push(result || { id, deleted: false, code: 'DELETE_NOT_CONFIRMED', message: "Refresh to see what's left." });
       }
     } catch {
       // A lost response may follow a committed deletion. Report uncertainty;
       // restore the list and let the final refetch establish the actual state.
-      results.push(...chunk.map(id => ({ id, deleted: false, code: 'DELETE_NOT_CONFIRMED', message: 'Deletion could not be confirmed. Refresh to check this file.' })));
-      results.push(...ids.slice(start + 20).map(id => ({ id, deleted: false, code: 'DELETE_NOT_STARTED', message: 'Deletion was not started for this file.' })));
+      results.push(...chunk.map(id => ({ id, deleted: false, code: 'DELETE_NOT_CONFIRMED', message: "Refresh to see what's left." })));
+      results.push(...ids.slice(start + 20).map(id => ({ id, deleted: false, code: 'DELETE_NOT_STARTED', message: 'Try again.' })));
       break;
     }
   }

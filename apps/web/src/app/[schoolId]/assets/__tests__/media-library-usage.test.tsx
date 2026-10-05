@@ -196,7 +196,7 @@ describe('Asset detail — usage and impact (§15)', () => {
     usageState = { data: PROTECTED, isLoading: false, isError: false };
     openDetail();
     expect(rtl.getByTestId('asset-usage')).toHaveTextContent(
-      'This asset is protected emergency content and cannot be removed here. Open Emergency settings to review it.',
+      "It's used for emergency alerts, so it can't be deleted here. Manage it in Settings → Emergency.",
     );
   });
 
@@ -228,9 +228,9 @@ describe('Deletion safety (§16)', () => {
     });
     await waitFor(() => expect(appConfirm).toHaveBeenCalled());
     const arg = appConfirm.mock.calls[0][0];
-    expect(arg.title).toBe('Delete "Recovery-Lounge-August.jpg"?');
-    expect(arg.message).toContain('This asset is not used by any playlist.');
-    expect(arg.message).toContain('cannot be restored');
+    expect(arg.title).toBe('Delete “Recovery-Lounge-August.jpg”?');
+    expect(arg.message).toContain("It isn't in any playlist.");
+    expect(arg.message).toContain("can't be undone");
     expect(arg.message).not.toMatch(/30 days|restore it|trash/i);
     expect(arg.tone).toBe('danger');
   });
@@ -244,8 +244,8 @@ describe('Deletion safety (§16)', () => {
     });
     await waitFor(() => expect(appConfirm).toHaveBeenCalled());
     const arg = appConfirm.mock.calls[0][0];
-    expect(arg.message).toContain("We couldn't check where this asset is used");
-    expect(arg.message).not.toMatch(/not used by any playlist/i);
+    expect(arg.message).toContain("We couldn't check where it's used");
+    expect(arg.message).not.toMatch(/isn't in any playlist/i);
   });
 
   it('IN USE: shows the affected playlists and allows the warned delete', async () => {
@@ -258,16 +258,16 @@ describe('Deletion safety (§16)', () => {
       fireEvent.click(rtl.getByRole('menuitem', { name: 'Delete…' }));
     });
     const block = await rtl.findByTestId('asset-in-use-block');
-    expect(block).toHaveTextContent('This asset is currently in use');
-    expect(block).toHaveTextContent('It appears in 3 playlists reaching 8 screens');
-    expect(block).toHaveTextContent('this asset from those playlists');
-    expect(block).toHaveTextContent('Any playlist left empty will be unpublished');
+    expect(block).toHaveTextContent('This file is in use');
+    expect(block).toHaveTextContent("It's in 3 playlists reaching 8 screens");
+    expect(block).toHaveTextContent('Deleting it takes it out of those playlists.');
+    expect(block).not.toHaveTextContent(/unpublished|default content|available schedule/i);
     expect(within(block).getByRole('button', { name: 'Review usage' })).toBeInTheDocument();
     expect(within(block).getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
-    expect(within(block).getByRole('button', { name: 'Delete asset' })).toBeInTheDocument();
+    expect(within(block).getByRole('button', { name: 'Delete anyway' })).toBeInTheDocument();
     expect(appConfirm).not.toHaveBeenCalled();
     await act(async () => {
-      fireEvent.click(within(block).getByRole('button', { name: 'Delete asset' }));
+      fireEvent.click(within(block).getByRole('button', { name: 'Delete anyway' }));
     });
     // The operator saw the usage and chose Delete: the one single-asset path
     // that carries the in-use confirmation.
@@ -297,9 +297,9 @@ describe('Deletion safety (§16)', () => {
     });
     await waitFor(() => expect(appAlert).toHaveBeenCalled());
     const arg = appAlert.mock.calls[0][0];
-    expect(arg.title).toBe('Protected emergency content');
+    expect(arg.title).toBe("Can't delete this file");
     expect(arg.message).toBe(
-      'This asset is protected emergency content and cannot be removed here. Open Emergency settings to review it.',
+      "It's used for emergency alerts. Manage it in Settings → Emergency.",
     );
     expect(appConfirm).not.toHaveBeenCalled();
     expect(rtl.queryByTestId('asset-in-use-block')).not.toBeInTheDocument();
@@ -359,13 +359,13 @@ describe('In-use confirmation — sent only after a warning that showed the usag
     deleteImpl = deleted;
     await clickDelete();
     const block = await rtl.findByTestId('asset-in-use-block');
-    expect(block).toHaveTextContent('It appears in 3 playlists reaching 8 screens');
+    expect(block).toHaveTextContent("It's in 3 playlists reaching 8 screens");
     expect(within(block).getByText('Summer Strength')).toBeInTheDocument();
     expect(deleted).toHaveBeenCalledTimes(1);
     expect(deleted).toHaveBeenLastCalledWith({ id: 'a1', confirmInUse: false });
     expect(appAlert).not.toHaveBeenCalled();
     await act(async () => {
-      fireEvent.click(within(block).getByRole('button', { name: 'Delete asset' }));
+      fireEvent.click(within(block).getByRole('button', { name: 'Delete anyway' }));
     });
     expect(deleted).toHaveBeenCalledTimes(2);
     expect(deleted).toHaveBeenLastCalledWith({ id: 'a1', confirmInUse: true });
@@ -391,7 +391,7 @@ describe('In-use confirmation — sent only after a warning that showed the usag
     deleteImpl = deleted;
     await clickDelete();
     await waitFor(() => expect(appAlert).toHaveBeenCalled());
-    expect(appAlert.mock.calls[0][0].title).toBe('Protected emergency content');
+    expect(appAlert.mock.calls[0][0].title).toBe("Can't delete this file");
     expect(rtl.queryByTestId('asset-in-use-block')).not.toBeInTheDocument();
     expect(deleted).toHaveBeenCalledTimes(1);
   });
@@ -404,7 +404,7 @@ describe('In-use confirmation — sent only after a warning that showed the usag
     await clickDelete();
     await waitFor(() => expect(appAlert).toHaveBeenCalled());
     expect(appAlert.mock.calls[0][0]).toMatchObject({
-      title: "Couldn't delete this asset",
+      title: "Couldn't delete this file",
       message: expect.stringContaining('so it was not deleted'),
     });
     expect(rtl.queryByTestId('asset-in-use-block')).not.toBeInTheDocument();
@@ -420,10 +420,10 @@ describe('In-use confirmation — sent only after a warning that showed the usag
     await clickDelete();
     const block = await rtl.findByTestId('asset-in-use-block');
     await act(async () => {
-      fireEvent.click(within(block).getByRole('button', { name: 'Delete asset' }));
+      fireEvent.click(within(block).getByRole('button', { name: 'Delete anyway' }));
     });
     await waitFor(() => expect(appAlert).toHaveBeenCalled());
-    expect(appAlert.mock.calls[0][0]).toMatchObject({ title: "Couldn't delete this asset", message: 'This file is emergency content.' });
+    expect(appAlert.mock.calls[0][0]).toMatchObject({ title: "Couldn't delete this file", message: 'This file is emergency content.' });
     expect(deleted).toHaveBeenCalledTimes(1);
     expect(deleted).toHaveBeenCalledWith({ id: 'a1', confirmInUse: true });
   });
@@ -443,7 +443,7 @@ describe('In-use confirmation — sent only after a warning that showed the usag
       deleteImpl = deleted;
       await selectAndDelete();
       await waitFor(() => expect(deleted).toHaveBeenCalled());
-      expect(appConfirm.mock.calls[0][0].message).toContain('Assets used in playlists will be removed from those playlists.');
+      expect(appConfirm.mock.calls[0][0].message).toContain("They'll be removed from any playlists that use them.");
       expect(deleted).toHaveBeenCalledWith({ ids: ['a1'], confirmInUse: true });
     });
 
@@ -462,8 +462,8 @@ describe('In-use confirmation — sent only after a warning that showed the usag
         Promise.resolve({ results: [{ id: 'a1', deleted: false, code: 'ASSET_IN_EMERGENCY_CONTENT', message: 'This file is emergency content.' }] });
       await selectAndDelete();
       await waitFor(() => expect(appAlert).toHaveBeenCalled());
-      expect(appAlert.mock.calls[0][0]).toMatchObject({ title: 'Some assets were kept' });
-      expect(appAlert.mock.calls[0][0].message).toBe('0 of 1 deleted. 1 is protected emergency content and was kept. This file is emergency content.');
+      expect(appAlert.mock.calls[0][0]).toMatchObject({ title: "Couldn't delete every file" });
+      expect(appAlert.mock.calls[0][0].message).toBe('0 of 1 deleted. 1 is used for emergency alerts and was kept. This file is emergency content.');
     });
   });
 });

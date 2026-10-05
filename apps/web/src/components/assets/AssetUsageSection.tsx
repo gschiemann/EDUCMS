@@ -73,8 +73,7 @@ export function AssetUsageSection({
             <div className="min-w-0">
               <p className="text-xs font-bold text-amber-900">Can&apos;t check usage right now</p>
               <p className="text-[11px] text-amber-800 leading-relaxed mt-0.5">
-                We couldn&apos;t reach the usage service, so we don&apos;t know which playlists or screens
-                are using this file. Check your playlists before you remove it.
+                We couldn&apos;t check where this file is used. Check your playlists before you delete it.
               </p>
               {onRetry && (
                 <button
@@ -103,8 +102,7 @@ export function AssetUsageSection({
             <div className="min-w-0">
               <p className="text-xs font-bold text-rose-900">Protected emergency content</p>
               <p className="text-[11px] text-rose-800 leading-relaxed mt-0.5">
-                This asset is protected emergency content and cannot be removed here. Open Emergency
-                settings to review it.
+                It&apos;s used for emergency alerts, so it can&apos;t be deleted here. Manage it in Settings → Emergency.
               </p>
             </div>
           </div>
@@ -126,7 +124,7 @@ export function AssetUsageSection({
           <div>
             <p className="text-xs font-bold text-slate-700">Not used by any playlist</p>
             <p className="text-[11px] text-slate-600 leading-relaxed mt-0.5">
-              Nothing on your screens is pointing at this file right now.
+              It isn&apos;t on any screen right now.
             </p>
           </div>
         </div>
@@ -153,7 +151,7 @@ export function AssetUsageSection({
                 ? `Currently reaching ${pluralize(reach, 'screen', 'screens')}${
                     locations > 0 ? ` across ${pluralize(locations, 'location', 'locations')}` : ''
                   }`
-                : 'Not on any screen right now — no active schedule uses these playlists.'}
+                : 'Not on any screen right now.'}
             </p>
           </div>
         </div>
@@ -245,12 +243,12 @@ export function AssetInUseBlock({
         </span>
         <div className="min-w-0">
           <h2 id="asset-in-use-title" className="text-sm font-bold text-slate-900">
-            This asset is currently in use
+            This file is in use
           </h2>
           <p className="text-xs text-slate-600 leading-relaxed mt-1">
-            It appears in {pluralize(playlistCount, 'playlist', 'playlists')}
-            {reach > 0 ? ` reaching ${pluralize(reach, 'screen', 'screens')}` : ''}. Deleting it removes
-            this asset from those playlists. Any playlist left empty will be unpublished; affected screens use another available schedule or their default content.
+            It&apos;s in {pluralize(playlistCount, 'playlist', 'playlists')}
+            {reach > 0 ? ` reaching ${pluralize(reach, 'screen', 'screens')}` : ''}. Deleting it takes it out
+            of {playlistCount === 1 ? 'that playlist' : 'those playlists'}.
           </p>
           <p className="text-[11px] text-slate-500 mt-1 break-all">{assetName}</p>
         </div>
@@ -278,7 +276,7 @@ export function AssetInUseBlock({
           onClick={onDelete}
           className="px-4 py-2 min-h-11 sm:min-h-0 rounded-lg bg-rose-700 hover:bg-rose-800 text-white text-xs font-bold"
         >
-          Delete asset
+          Delete anyway
         </button>
       </div>
     </div>

@@ -595,7 +595,7 @@ export default function AssetsPage() {
         const reply = await deleteAsset.mutateAsync({ ids: assetIds, confirmInUse: true });
         const failed = ((reply?.results || []) as AssetDeleteResult[]).filter(item => !item.deleted);
         if (failed.length) {
-          await appAlert({ title: t('assetsLib.folderKeptTitle'), message: t('assetsLib.folderKeptMsg', { deleted: assetIds.length - failed.length, kept: failed.length, detail: deleteFailureText(failed[0]) }), tone: 'warn' });
+          await appAlert({ title: t('assetsLib.folderKeptTitle'), message: t('assetsLib.folderKeptMsg', { deleted: assetIds.length - failed.length, total: assetIds.length, detail: deleteFailureText(failed[0]) }), tone: 'warn' });
           return;
         }
       }
@@ -639,9 +639,8 @@ export default function AssetsPage() {
 
   const alertProtectedEmergency = () =>
     appAlert({
-      title: 'Protected emergency content',
-      message:
-        'This asset is protected emergency content and cannot be removed here. Open Emergency settings to review it.',
+      title: t('assetsLib.protectedTitle'),
+      message: t('assetsLib.protectedMsg'),
       tone: 'warn',
       confirmLabel: 'OK',
     });
@@ -673,8 +672,8 @@ export default function AssetsPage() {
       }
       clog.error('upload', 'Delete failed', { id: a.id, msg: e?.message });
       await appAlert({
-        title: "Couldn't delete this asset",
-        message: e?.message || 'Please try again in a moment.',
+        title: t('assetsLib.deleteFailedTitle'),
+        message: e?.message || t('assetsLib.deleteFailedMsg'),
         tone: 'danger',
         confirmLabel: 'OK',
       });
@@ -695,12 +694,10 @@ export default function AssetsPage() {
     }
 
     const ok = await appConfirm({
-      title: `Delete "${name}"?`,
-      message: usage
-        ? 'This asset is not used by any playlist. It will be permanently deleted and cannot be restored.'
-        : "We couldn't check where this asset is used, so it may still be playing on a screen. It will be permanently deleted and cannot be restored.",
+      title: t('assetsLib.deleteOneTitle', { name }),
+      message: usage ? t('assetsLib.deleteOneUnused') : t('assetsLib.deleteOneUnknown'),
       tone: 'danger',
-      confirmLabel: 'Delete',
+      confirmLabel: t('assetsLib.delete'),
     });
     if (!ok) return;
 
@@ -712,12 +709,10 @@ export default function AssetsPage() {
   const handleBulkDelete = async () => {
     if (selectedIds.length === 0) return;
     const ok = await appConfirm({
-      title: `Delete ${selectedIds.length} ${selectedIds.length === 1 ? 'asset' : 'assets'}?`,
-      message:
-        `Assets used in playlists will be removed from those playlists. Any playlist left empty will be unpublished; affected screens use another available schedule or their default content. ` +
-        `Protected emergency content will be kept. Deleted files cannot be restored.`,
+      title: t('assetsLib.deleteManyTitle', { count: selectedIds.length }),
+      message: t('assetsLib.deleteManyMsg'),
       tone: 'danger',
-      confirmLabel: 'Delete',
+      confirmLabel: t('assetsLib.delete'),
     });
     if (!ok) return;
 
@@ -937,10 +932,8 @@ export default function AssetsPage() {
       const host = new URL(webUrl.trim().startsWith('http') ? webUrl.trim() : `https://${webUrl.trim()}`).hostname;
       if (DRM_STREAMING.test(host)) {
         await appAlert({
-          title: "Streaming services can't play on signage",
-          message:
-            `${host} uses DRM copy-protection that blocks playback inside any signage player (this is true on every signage platform, not just VenueOS). ` +
-            `For live video on screens, use a YouTube/Twitch/Vimeo embed, an HLS stream URL, or an HDMI source into the display.`,
+          title: t('assetsLib.drmTitle'),
+          message: t('assetsLib.drmMsg', { host }),
           tone: 'danger',
           confirmLabel: t('assetsLib.gotIt'),
         });
