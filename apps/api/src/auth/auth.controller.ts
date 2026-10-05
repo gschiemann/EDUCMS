@@ -1,9 +1,28 @@
-import { BadRequestException, Body, ConflictException, Controller, ForbiddenException, HttpCode, HttpException, HttpStatus, Logger, Post, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, ConflictException, Controller, ForbiddenException, HttpCode, HttpException, HttpStatus, Logger, Post, Req, UnauthorizedException, UseGuards, Optional } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { Throttle } from '@nestjs/throttler';
 import { z } from 'zod';
 import { EmailString, LoginInputSchema, type LoginInput } from '@cms/api-types';
 import { AuthService } from './auth.service';
+import { EmailService } from '../email/email.service';
+import { requireSecret } from '../security/required-secret';
+import {
+  SETUP_EMAIL_CODE_ACCOUNT_WINDOW_MS,
+  SETUP_EMAIL_CODE_IP_WINDOW_MS,
+  SETUP_EMAIL_CODE_SENDS_PER_ACCOUNT,
+  SETUP_EMAIL_CODE_SENDS_PER_IP,
+  setupEmailChallengeHash,
+  setupEmailVerificationRequired,
+} from './setup-email-verification';
+import {
+  MFA_EMAIL_CODE_MAX_ATTEMPTS,
+  MFA_EMAIL_CODE_TTL_MS,
+  emailCodeHashesMatch,
+  generateEmailCode,
+  hashClientIp,
+  hashEmailCode,
+  normalizeEmailCode,
+} from './mfa-email-code';
 import { ZodValidationPipe } from '../security/zod-validation.pipe';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { RedisService } from '../realtime/redis.service';
@@ -52,8 +71,12 @@ export const CompleteSetupSchema = z
   .object({
     email: EmailString,
     password: z.string().min(8).max(200),
+    /** The 6-digit code emailed to `email`; required once setup verifies the address. */
+    emailCode: z.string().max(20).optional(),
   })
   .strict();
+export const SetupEmailCodeSchema = z.object({ email: EmailString }).strict();
+type SetupEmailCodeInput = z.infer<typeof SetupEmailCodeSchema>;
 type CompleteSetupInput = z.infer<typeof CompleteSetupSchema>;
 
 @Controller('api/v1/auth')
@@ -68,6 +91,7 @@ export class AuthController {
     private authService: AuthService,
     private redisService: RedisService,
     private prisma: PrismaService,
+    @Optional() private emailService?: EmailService,
   ) {}
 
   @HttpCode(HttpStatus.OK)
@@ -304,6 +328,230 @@ export class AuthController {
    * that ends in a support call. The session itself is the proof, and step 4
    * limits what a stolen one could keep.
    */
+  /**
+   * FIRST-LOGIN EMAIL VERIFICATION (2026-10-06) — POST /auth/complete-setup/email-code.
+   *
+   * Setup swaps the placeholder email for the person's own, and nothing proved
+   * the mailbox was real or theirs: a typo, or an address that never was an
+   * inbox (Greg's RIOT Corporate claim, 2026-10-05), strands every sign-in
+   * code and password reset — and a profile cannot change its email. So
+   * setup emails a 6-digit code to the NEW address and finishes only with it.
+   *
+   * `{ required: false }` when verification is off for this deploy (auto mode
+   * on the shared sender, which reaches nobody but the Resend account owner —
+   * requiring a code there would make setup impossible); the form then goes
+   * straight to `complete-setup`, exactly as before.
+   *
+   * The code is bound to (account, address), expires in 10 minutes, allows 5
+   * wrong tries, and is never returned, logged or written to the audit row.
+   * Reachable in setup state only (the guard allowlists this exact route).
+   */
+  @Post('complete-setup/email-code')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { ttl: 60_000, limit: 6 } })
+  async sendSetupEmailCode(
+    @Body(new ZodValidationPipe(SetupEmailCodeSchema)) body: SetupEmailCodeInput,
+    @Req() req: Request,
+  ) {
+    const actor = (req as any).user;
+    const userId: string | undefined = actor?.userId || actor?.id;
+    if (!userId || actor?.kind === 'api-key' || actor?.kind === 'device') {
+      throw new UnauthorizedException({
+        code: 'AUTH_SETUP_NOT_APPLICABLE',
+        message: 'Only a signed-in user account can complete first-login setup.',
+      });
+    }
+    // ten-ok: identity SELF-lookup — id IS the authenticated JWT principal
+    const dbUser = await this.prisma.client.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, tenantId: true, mustSetupCredentials: true },
+    });
+    if (!dbUser) {
+      throw new UnauthorizedException({ code: 'AUTH_USER_NOT_FOUND', message: 'User not found' });
+    }
+    if (!dbUser.mustSetupCredentials) {
+      throw new ForbiddenException({
+        code: 'SETUP_NOT_REQUIRED',
+        message: 'This account has already been set up.',
+      });
+    }
+    if (!this.setupEmailVerificationRequired()) return { required: false };
+
+    const email = body.email.trim().toLowerCase();
+    if (email === dbUser.email.trim().toLowerCase()) {
+      throw new BadRequestException({
+        code: 'SETUP_EMAIL_UNCHANGED',
+        message:
+          'Enter your own work email — this is the temporary address the account was ' +
+          'created with.',
+      });
+    }
+    const taken = await this.prisma.client.user.findUnique({
+      where: { email },
+      select: { id: true },
+    });
+    if (taken && taken.id !== dbUser.id) {
+      throw new ConflictException({
+        code: 'SETUP_EMAIL_IN_USE',
+        message: 'That email is already in use. Try another, or ask your administrator.',
+      });
+    }
+
+    const now = Date.now();
+    const ipHash = hashClientIp(clientIpFromRequest(req));
+    // ten-ok: scoped to the verified principal's own id
+    const recent = await this.prisma.client.mfaEmailCode.findMany({
+      where: {
+        userId: dbUser.id,
+        createdAt: { gte: new Date(now - SETUP_EMAIL_CODE_ACCOUNT_WINDOW_MS) },
+      },
+      select: { createdAt: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (recent.length >= SETUP_EMAIL_CODE_SENDS_PER_ACCOUNT) {
+      const retryAfterSeconds = Math.max(
+        1,
+        Math.ceil((recent[0].createdAt.getTime() + SETUP_EMAIL_CODE_ACCOUNT_WINDOW_MS - now) / 1000),
+      );
+      throw new HttpException(
+        {
+          code: 'SETUP_EMAIL_CODE_TOO_MANY',
+          message: `Too many codes requested. Try again in ${Math.ceil(retryAfterSeconds / 60)} minutes.`,
+          retryAfterSeconds,
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+    if (ipHash) {
+      // ten-ok: a per-network rate limit, not a tenant read
+      const fromThisNetwork = await this.prisma.client.mfaEmailCode.count({
+        where: { ipHash, createdAt: { gte: new Date(now - SETUP_EMAIL_CODE_IP_WINDOW_MS) } },
+      });
+      if (fromThisNetwork >= SETUP_EMAIL_CODE_SENDS_PER_IP) {
+        throw new HttpException(
+          {
+            code: 'SETUP_EMAIL_CODE_TOO_MANY',
+            message: 'Too many codes requested from this network. Try again later.',
+          },
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+      }
+    }
+
+    const challengeHash = setupEmailChallengeHash(dbUser.id, email);
+    const code = generateEmailCode();
+    await this.prisma.client.$transaction([
+      // A new code for the same address replaces the old one (and its attempt count).
+      // ten-ok: the hash binds the verified principal's own id
+      this.prisma.client.mfaEmailCode.deleteMany({ where: { challengeHash } }),
+      // ten-ok: the row is created for the verified principal
+      this.prisma.client.mfaEmailCode.create({
+        data: {
+          userId: dbUser.id,
+          challengeHash,
+          codeHash: hashEmailCode(this.codeSecret(), challengeHash, code),
+          ipHash,
+          expiresAt: new Date(now + MFA_EMAIL_CODE_TTL_MS),
+        },
+      }),
+    ]);
+
+    const status = (await this.emailService?.sendSetupEmailCode({ to: email, code })) ?? 'FAILED';
+    if (status === 'FAILED') {
+      // ten-ok: the hash binds the verified principal's own id
+      await this.prisma.client.mfaEmailCode.deleteMany({ where: { challengeHash } }).catch(() => undefined);
+      throw new HttpException(
+        {
+          code: 'SETUP_EMAIL_CODE_NOT_SENT',
+          message: "We couldn't send the code. Check the address and try again in a minute.",
+        },
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+
+    try {
+      await this.prisma.client.auditLog.create({
+        data: {
+          tenantId: dbUser.tenantId,
+          userId: dbUser.id,
+          action: 'USER_SETUP_EMAIL_CODE_SENT',
+          targetType: 'User',
+          targetId: dbUser.id,
+          // Never the code. The address is already named by the completion row.
+          details: JSON.stringify({ ip: clientIpFromRequest(req), newEmail: email }),
+        },
+      });
+    } catch (e: any) {
+      this.authLogger.warn(`audit(USER_SETUP_EMAIL_CODE_SENT) failed: ${e?.message ?? e}`);
+    }
+    return { required: true, sent: true, expiresInSeconds: Math.floor(MFA_EMAIL_CODE_TTL_MS / 1000) };
+  }
+
+  private setupEmailVerificationRequired(): boolean {
+    return setupEmailVerificationRequired({
+      deliverable:
+        !!this.emailService &&
+        this.emailService.isConfigured() &&
+        this.emailService.isDeliverableToArbitraryRecipients(),
+    });
+  }
+
+  private codeSecret(): string {
+    return requireSecret('JWT_SECRET', { devFallback: 'dev_only_jwt_secret_CHANGE_ME' });
+  }
+
+  /**
+   * Spend the emailed code for (this account, this address). Wrong tries are
+   * counted BEFORE the comparison, so the sixth guess is refused even when it
+   * is right; the spend itself is a conditional write, so one code can never
+   * complete setup twice.
+   */
+  private async consumeSetupEmailCode(userId: string, email: string, raw: unknown): Promise<void> {
+    const code = normalizeEmailCode(raw);
+    if (!code) {
+      throw new BadRequestException({
+        code: 'SETUP_EMAIL_CODE_REQUIRED',
+        message: 'Enter the 6-digit code we emailed to that address.',
+      });
+    }
+    const invalid = () =>
+      new BadRequestException({
+        code: 'SETUP_EMAIL_CODE_INVALID',
+        message: "That code isn't right. Check the email and try again.",
+      });
+    const challengeHash = setupEmailChallengeHash(userId, email);
+    // ten-ok: the hash binds the verified principal's own id
+    const row = await this.prisma.client.mfaEmailCode.findUnique({ where: { challengeHash } });
+    if (!row || row.userId !== userId || row.usedAt) throw invalid();
+    if (row.expiresAt.getTime() <= Date.now()) {
+      throw new BadRequestException({
+        code: 'SETUP_EMAIL_CODE_EXPIRED',
+        message: 'That code has expired. Ask for a new one.',
+      });
+    }
+    if (row.attempts >= MFA_EMAIL_CODE_MAX_ATTEMPTS) {
+      throw new HttpException(
+        { code: 'SETUP_EMAIL_CODE_LOCKED', message: 'Too many wrong codes. Ask for a new one.' },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+    if (!emailCodeHashesMatch(hashEmailCode(this.codeSecret(), challengeHash, code), row.codeHash)) {
+      // ten-ok: the row was read a few lines up for this verified principal
+      await this.prisma.client.mfaEmailCode.update({
+        where: { id: row.id },
+        data: { attempts: { increment: 1 } },
+      });
+      throw invalid();
+    }
+    // ten-ok: the row was read a few lines up for this verified principal
+    const spent = await this.prisma.client.mfaEmailCode.updateMany({
+      where: { id: row.id, usedAt: null },
+      data: { usedAt: new Date() },
+    });
+    if (spent.count !== 1) throw invalid();
+  }
+
   @Post('complete-setup')
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard)
@@ -391,6 +639,12 @@ export class AuthController {
         code: 'SETUP_EMAIL_IN_USE',
         message: 'That email is already in use. Try another, or ask your administrator.',
       });
+    }
+
+    // 2026-10-06: the new address must be proven with the emailed code (when
+    // this deploy can deliver mail — see setup-email-verification.ts).
+    if (this.setupEmailVerificationRequired()) {
+      await this.consumeSetupEmailCode(dbUser.id, email, body.emailCode);
     }
 
     const passwordHash = await this.authService.hashPassword(body.password);

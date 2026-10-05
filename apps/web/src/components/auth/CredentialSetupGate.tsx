@@ -75,6 +75,14 @@ export function CredentialSetupGate() {
 
   const [email, setEmail] = useState('');
   const [confirmEmail, setConfirmEmail] = useState('');
+  // Step 2 (2026-10-06): when this deploy can deliver mail, the new address is
+  // proven with a 6-digit code before setup finishes.
+  const [codeStep, setCodeStep] = useState(false);
+  const [emailCode, setEmailCode] = useState('');
+  const [codeError, setCodeError] = useState('');
+  const [sentTo, setSentTo] = useState('');
+  const [resendIn, setResendIn] = useState(0);
+  const codeRef = useRef<HTMLInputElement>(null);
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
@@ -116,31 +124,70 @@ export function CredentialSetupGate() {
     [email, confirmEmail, password, confirm, placeholderEmail],
   );
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setFormError('');
-    const problems = validate();
-    setFieldErrors(problems);
-    if (Object.keys(problems).length > 0) return;
+  // Deliberately raw fetches rather than `apiFetch`: these calls happen while
+  // the account is gated, and apiFetch's success path schedules a silent token
+  // refresh — a route the gate refuses — which would log a confusing 403 on
+  // the one request that must look clean.
+  const authHeaders = async (): Promise<Record<string, string>> => {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${useUIStore.getState().token ?? ''}`,
+    };
+    const csrf = await ensureCsrfToken().catch(() => null);
+    if (csrf) headers['X-CSRF-Token'] = csrf;
+    return headers;
+  };
 
-    setSubmitting(true);
+  /** Ask the server to email a code to the new address. */
+  const requestCode = async (): Promise<'sent' | 'not-required' | 'failed'> => {
+    const address = email.trim().toLowerCase();
+    const res = await fetch(`${API_URL}/auth/complete-setup/email-code`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: await authHeaders(),
+      body: JSON.stringify({ email: address }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data?.required === false) return 'not-required';
+    if (res.ok && data?.sent) {
+      setSentTo(address);
+      setEmailCode('');
+      setCodeError('');
+      setResendIn(30);
+      setCodeStep(true);
+      return 'sent';
+    }
+    switch (data?.code) {
+      case 'SETUP_EMAIL_IN_USE':
+        setCodeStep(false);
+        setFieldErrors({ email: 'That email is already in use. Try another, or ask your administrator.' });
+        break;
+      case 'SETUP_EMAIL_UNCHANGED':
+        setCodeStep(false);
+        setFieldErrors({ email: 'Use your own email — this is the temporary address the account was created with.' });
+        break;
+      case 'SETUP_NOT_REQUIRED':
+        setUser(user ? { ...user, mustSetupCredentials: false } : user);
+        break;
+      default:
+        clog.warn('auth', 'Setup email code not sent', { status: res.status, code: data?.code });
+        setFormError(data?.message || 'We could not send the code. Please try again.');
+    }
+    return 'failed';
+  };
+
+  /** Save the new email + password (with the emailed code when verification is on). */
+  const finishSetup = async (code?: string) => {
     try {
-      // Deliberately a raw fetch rather than `apiFetch`: this call happens
-      // while the account is gated, and apiFetch's success path schedules a
-      // silent token refresh — a route the gate refuses — which would log a
-      // confusing 403 on the one request that must look clean.
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${useUIStore.getState().token ?? ''}`,
-      };
-      const csrf = await ensureCsrfToken().catch(() => null);
-      if (csrf) headers['X-CSRF-Token'] = csrf;
-
       const res = await fetch(`${API_URL}/auth/complete-setup`, {
         method: 'POST',
         credentials: 'include',
-        headers,
-        body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
+        headers: await authHeaders(),
+        body: JSON.stringify({
+          email: email.trim().toLowerCase(),
+          password,
+          ...(code ? { emailCode: code } : {}),
+        }),
       });
       const data = await res.json().catch(() => ({}));
 
@@ -159,15 +206,33 @@ export function CredentialSetupGate() {
 
       switch (data?.code) {
         case 'SETUP_EMAIL_IN_USE':
+          setCodeStep(false);
           setFieldErrors({ email: 'That email is already in use. Try another, or ask your administrator.' });
           break;
         case 'SETUP_EMAIL_UNCHANGED':
+          setCodeStep(false);
           setFieldErrors({
             email: 'Use your own email — this is the temporary address the account was created with.',
           });
           break;
         case 'SETUP_PASSWORD_UNCHANGED':
+          setCodeStep(false);
           setFieldErrors({ password: 'Choose a new password — this is the starter password you were given.' });
+          break;
+        case 'SETUP_EMAIL_CODE_REQUIRED':
+          // The server now verifies addresses (mail was just switched on):
+          // send the code and show its step.
+          if (!codeStep) await requestCode();
+          else setCodeError('Enter the 6-digit code from the email.');
+          break;
+        case 'SETUP_EMAIL_CODE_INVALID':
+          setCodeError("That code isn't right. Check the email and try again.");
+          break;
+        case 'SETUP_EMAIL_CODE_EXPIRED':
+          setCodeError('That code has expired. Send a new one.');
+          break;
+        case 'SETUP_EMAIL_CODE_LOCKED':
+          setCodeError('Too many wrong tries. Send a new code.');
           break;
         case 'ValidationError':
           // The server's Zod pipe does not say WHICH field failed, and the
@@ -186,10 +251,66 @@ export function CredentialSetupGate() {
       }
     } catch {
       setFormError(`Can't reach the server at ${API_URL}. Check your connection and try again.`);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormError('');
+    if (codeStep) {
+      const digits = emailCode.replace(/\D/g, '');
+      if (digits.length !== 6) {
+        setCodeError('Enter the 6-digit code from the email.');
+        return;
+      }
+      setCodeError('');
+      setSubmitting(true);
+      try {
+        await finishSetup(digits);
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
+    const problems = validate();
+    setFieldErrors(problems);
+    if (Object.keys(problems).length > 0) return;
+
+    setSubmitting(true);
+    try {
+      const outcome = await requestCode();
+      // Verification is off for this deploy: save straight away, as before.
+      if (outcome === 'not-required') await finishSetup();
+    } catch {
+      setFormError(`Can't reach the server at ${API_URL}. Check your connection and try again.`);
     } finally {
       setSubmitting(false);
     }
   };
+
+  const resendCode = async () => {
+    setFormError('');
+    setCodeError('');
+    setSubmitting(true);
+    try {
+      await requestCode();
+    } catch {
+      setFormError(`Can't reach the server at ${API_URL}. Check your connection and try again.`);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const id = setTimeout(() => setResendIn((n) => n - 1), 1000);
+    return () => clearTimeout(id);
+  }, [resendIn]);
+
+  useEffect(() => {
+    if (codeStep) codeRef.current?.focus();
+  }, [codeStep]);
 
   const describedBy = (field: keyof FieldErrors) =>
     fieldErrors[field] ? `setup-${field}-error` : undefined;
@@ -230,6 +351,57 @@ export function CredentialSetupGate() {
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+            {codeStep ? (
+              <div className="space-y-3">
+                <p className="text-sm text-slate-700">
+                  We sent a 6-digit code to <strong className="font-semibold break-all">{sentTo}</strong>. It can take a
+                  minute to arrive.
+                </p>
+                <div>
+                  <label htmlFor="setup-email-code" className="block text-xs font-semibold text-slate-700 mb-1.5">
+                    Code from the email
+                  </label>
+                  <input
+                    id="setup-email-code"
+                    ref={codeRef}
+                    name="email-code"
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={7}
+                    placeholder="123456"
+                    className={codeError ? INPUT_ERR_CLS : INPUT_CLS}
+                    value={emailCode}
+                    onChange={(e) => setEmailCode(e.target.value)}
+                    aria-invalid={codeError ? true : undefined}
+                    aria-describedby={codeError ? 'setup-email-code-error' : undefined}
+                  />
+                  {codeError && (
+                    <p id="setup-email-code-error" role="alert" className="mt-1.5 text-xs text-rose-700 font-medium">
+                      {codeError}
+                    </p>
+                  )}
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <button
+                    type="button"
+                    onClick={resendCode}
+                    disabled={submitting || resendIn > 0}
+                    className="font-semibold text-indigo-600 hover:text-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {resendIn > 0 ? `Send a new code (${resendIn}s)` : 'Send a new code'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setCodeStep(false); setEmailCode(''); setCodeError(''); }}
+                    className="font-semibold text-slate-500 hover:text-slate-700"
+                  >
+                    Use a different email
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
             <div>
               <label htmlFor="setup-email" className="block text-xs font-semibold text-slate-700 mb-1.5">
                 Your work email
@@ -325,6 +497,9 @@ export function CredentialSetupGate() {
               )}
             </div>
 
+              </>
+            )}
+
             {formError && (
               <div role="alert" className="flex items-start gap-2 px-3 py-2.5 bg-rose-50 border border-rose-200 rounded-lg">
                 <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" aria-hidden />
@@ -342,7 +517,7 @@ export function CredentialSetupGate() {
                   <Loader2 className="w-4 h-4 animate-spin" aria-hidden /> Saving…
                 </>
               ) : (
-                'Save and continue'
+                codeStep ? 'Verify and finish' : 'Save and continue'
               )}
             </button>
           </form>

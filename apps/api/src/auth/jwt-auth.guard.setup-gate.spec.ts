@@ -10,9 +10,10 @@
  *   - EMERGENCY routes are refused too — an account that has not established
  *     who it belongs to must not be able to fire a district-wide lockdown, and
  *     could not name an actor in the audit row if it did;
- *   - exactly three routes pass: complete-setup, logout, and the session read
- *     — the minimum set that lets the account finish setup, get out, or let
- *     the dashboard learn to render the setup screen;
+ *   - exactly four routes pass: complete-setup, its email-code step (the
+ *     emailed proof that the new address is real), logout, and the session
+ *     read — the minimum set that lets the account finish setup, get out, or
+ *     let the dashboard learn to render the setup screen;
  *   - the fast path answers from the token's `msc` claim with NO database work;
  *   - a token with NO claim is VERIFIED against the row rather than trusted,
  *     so a mint path that forgets the claim can never become a bypass;
@@ -170,9 +171,17 @@ describe('JwtAuthGuard — first-login credential setup gate', () => {
       await expect(guard.canActivate(ctx)).resolves.toBe(true);
     });
 
-    it('is exactly three routes — widening this list must be deliberate', () => {
+    it('lets the email-code step through (2026-10-06: setup verifies the new address)', async () => {
+      const { prisma } = makePrisma();
+      const guard = new JwtAuthGuard(jwt, makeRedis() as any, undefined, prisma as any);
+      const { ctx } = ctxFor(gatedToken(), 'POST', '/api/v1/auth/complete-setup/email-code');
+      await expect(guard.canActivate(ctx)).resolves.toBe(true);
+    });
+
+    it('is exactly four routes — widening this list must be deliberate', () => {
       expect(SETUP_REQUIRED_ALLOWED_ROUTES).toEqual([
         { method: 'POST', path: '/api/v1/auth/complete-setup' },
+        { method: 'POST', path: '/api/v1/auth/complete-setup/email-code' },
         { method: 'POST', path: '/api/v1/auth/logout' },
         { method: 'GET', path: '/api/v1/users/me' },
       ]);

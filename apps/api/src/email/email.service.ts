@@ -181,6 +181,36 @@ export class EmailService {
   }
 
   /**
+   * The code that proves a person owns the address they typed during
+   * first-login setup (2026-10-06). Like the sign-in code, the durable
+   * `email_logs` row holds a REDACTED copy; the real message is what is sent.
+   */
+  async sendSetupEmailCode(params: { to: string; code: string }): Promise<EmailDispatchStatus> {
+    const subject = `${params.code} is your VenueOS verification code`;
+    const lines = (code: string) => [
+      `Your VenueOS verification code is:`,
+      ``,
+      `    ${code}`,
+      ``,
+      `Enter it on the account setup page within 10 minutes to confirm this email address. It works once.`,
+      ``,
+      `You're getting this because this address was entered while setting up a VenueOS account. ` +
+        `If that wasn't you, ignore this message — nothing changes unless the code is entered.`,
+      ``,
+      `— The VenueOS team`,
+    ];
+    const redacted = '••••••';
+    return this.#enqueue({
+      to: params.to,
+      subject,
+      body: lines(params.code).join('\n'),
+      kind: 'SETUP_EMAIL_CODE',
+      logSubject: `${redacted} is your VenueOS verification code`,
+      logBody: lines(redacted).join('\n'),
+    });
+  }
+
+  /**
    * "New sign-in to your VenueOS account on <device>" — sent after a sign-in
    * whose second step was an EMAILED code (2026-10-05). The owner's safeguard
    * for making that code available to every role: the account holder hears

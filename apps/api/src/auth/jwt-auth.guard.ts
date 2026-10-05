@@ -117,6 +117,7 @@ const ARCHIVE_CHECK_TTL_MS = 30_000;
  */
 export const SETUP_REQUIRED_ALLOWED_ROUTES: readonly { method: string; path: string }[] = [
   { method: 'POST', path: '/api/v1/auth/complete-setup' },
+  { method: 'POST', path: '/api/v1/auth/complete-setup/email-code' },
   { method: 'POST', path: '/api/v1/auth/logout' },
   { method: 'GET', path: '/api/v1/users/me' },
 ];
