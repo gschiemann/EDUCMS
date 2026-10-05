@@ -87,8 +87,10 @@ def main() -> None:
     print()
     print(f"Subject:  CN=Android Debug, O=Android, C=US")
     print(f"Alias:    {ALIAS}")
-    print(f"StorePwd: {PASSWORD.decode()}")
-    print(f"KeyPwd:   {PASSWORD.decode()}")
+    # The store and key passwords are the standard, public Android debug
+    # value (PASSWORD above); they are not echoed so no log ever carries one.
+    print("StorePwd: the standard Android debug password (see PASSWORD)")
+    print("KeyPwd:   same as StorePwd")
     print(f"Valid:    {now.date()} -> {(now + timedelta(days=365 * 30)).date()}")
 
 
