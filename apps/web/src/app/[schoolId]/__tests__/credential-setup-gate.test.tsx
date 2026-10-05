@@ -66,14 +66,20 @@ const GATED_USER = {
   mustSetupCredentials: true,
 };
 
-function mockFetchOnce(result: { ok?: boolean; status?: number; body?: unknown }) {
-  const fn = jest.fn(() =>
-    Promise.resolve({
-      ok: result.ok ?? true,
-      status: result.status ?? 200,
-      json: () => Promise.resolve(result.body ?? {}),
-    }),
-  );
+function mockSetupFetch(
+  result: { ok?: boolean; status?: number; body?: unknown },
+  verificationRequired = false,
+) {
+  const fn = jest.fn((url: RequestInfo | URL, _init?: RequestInit) => {
+    const response: typeof result = String(url).endsWith('/auth/complete-setup/email-code')
+      ? { body: { required: verificationRequired, sent: verificationRequired } }
+      : result;
+    return Promise.resolve({
+      ok: response.ok ?? true,
+      status: response.status ?? 200,
+      json: () => Promise.resolve(response.body ?? {}),
+    });
+  });
   (globalThis as unknown as { fetch: unknown }).fetch = fn;
   return fn;
 }
@@ -96,6 +102,9 @@ async function fillAndSubmit(
   const password = values.password ?? 'a-real-password-1';
   const confirm = values.confirm ?? password;
   fireEvent.change(screen.getByLabelText('Your work email'), { target: { value: email } });
+  fireEvent.change(screen.getByLabelText('Type your email again'), {
+    target: { value: email },
+  });
   fireEvent.change(screen.getByLabelText('New password'), { target: { value: password } });
   fireEvent.change(screen.getByLabelText('Confirm new password'), { target: { value: confirm } });
   await act(async () => {
@@ -135,7 +144,7 @@ describe('SchoolLayout — first-login credential setup gate', () => {
   });
 
   it('submits to /auth/complete-setup and drops the operator into the dashboard', async () => {
-    const fetchMock = mockFetchOnce({
+    const fetchMock = mockSetupFetch({
       body: {
         success: true,
         access_token: 'fresh.jwt.token',
@@ -147,8 +156,10 @@ describe('SchoolLayout — first-login credential setup gate', () => {
     await renderLayout();
     await fillAndSubmit();
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchMock.mock.calls[0] as unknown as [
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0][0]).toBe(`${API_URL}/auth/complete-setup/email-code`);
+    expect(JSON.parse(fetchMock.mock.calls[0][1]?.body as string)).toEqual({ email: 'dana@riotcolor.com' });
+    const [url, init] = fetchMock.mock.calls[1] as unknown as [
       string,
       RequestInit & { headers: Record<string, string>; body: string },
     ];
@@ -169,7 +180,7 @@ describe('SchoolLayout — first-login credential setup gate', () => {
   });
 
   it('surfaces a duplicate email inline on the email field and keeps the gate up', async () => {
-    mockFetchOnce({
+    mockSetupFetch({
       ok: false,
       status: 409,
       body: { error: true, code: 'SETUP_EMAIL_IN_USE', message: 'That email is already in use.' },
@@ -192,7 +203,7 @@ describe('SchoolLayout — first-login credential setup gate', () => {
   });
 
   it('surfaces a password-policy failure inline', async () => {
-    mockFetchOnce({
+    mockSetupFetch({
       ok: false,
       status: 400,
       body: { error: true, code: 'SETUP_PASSWORD_UNCHANGED', message: 'Choose a new password.' },
@@ -206,7 +217,7 @@ describe('SchoolLayout — first-login credential setup gate', () => {
 
   describe('client-side checks answer without a round trip', () => {
     it('refuses a short password', async () => {
-      const fetchMock = mockFetchOnce({ body: {} });
+      const fetchMock = mockSetupFetch({ body: {} });
       await renderLayout();
       await fillAndSubmit({ password: 'short7!' });
 
@@ -215,7 +226,7 @@ describe('SchoolLayout — first-login credential setup gate', () => {
     });
 
     it('refuses a mismatched confirmation', async () => {
-      const fetchMock = mockFetchOnce({ body: {} });
+      const fetchMock = mockSetupFetch({ body: {} });
       await renderLayout();
       await fillAndSubmit({ password: 'a-real-password-1', confirm: 'something-else-2' });
 
@@ -224,7 +235,7 @@ describe('SchoolLayout — first-login credential setup gate', () => {
     });
 
     it('refuses keeping the placeholder email', async () => {
-      const fetchMock = mockFetchOnce({ body: {} });
+      const fetchMock = mockSetupFetch({ body: {} });
       await renderLayout();
       await fillAndSubmit({ email: 'riot-jacksonville@riotcolor.com' });
 
@@ -234,7 +245,7 @@ describe('SchoolLayout — first-login credential setup gate', () => {
   });
 
   it('is completable with a keyboard alone', async () => {
-    const fetchMock = mockFetchOnce({
+    const fetchMock = mockSetupFetch({
       body: {
         success: true,
         access_token: 'fresh.jwt.token',
@@ -249,6 +260,7 @@ describe('SchoolLayout — first-login credential setup gate', () => {
     // Every control is a real labelled form control in reading order, and the
     // form submits on Enter from within it (a native <form> + type=submit).
     fireEvent.change(screen.getByLabelText('Your work email'), { target: { value: 'dana@riotcolor.com' } });
+    fireEvent.change(screen.getByLabelText('Type your email again'), { target: { value: 'dana@riotcolor.com' } });
     fireEvent.change(screen.getByLabelText('New password'), { target: { value: 'a-real-password-1' } });
     fireEvent.change(screen.getByLabelText('Confirm new password'), { target: { value: 'a-real-password-1' } });
     const form = screen.getByLabelText('Your work email').closest('form');
@@ -257,7 +269,39 @@ describe('SchoolLayout — first-login credential setup gate', () => {
       fireEvent.submit(form as HTMLFormElement);
     });
 
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps the dashboard unmounted until the new email is verified', async () => {
+    const fetchMock = mockSetupFetch({
+      body: {
+        access_token: 'fresh.jwt.token',
+        user: { ...GATED_USER, email: 'dana@riotcolor.com', mustSetupCredentials: false },
+      },
+    }, true);
+    await renderLayout();
+    await fillAndSubmit();
+
+    expect(await screen.findByLabelText('Code from the email')).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId('dashboard-chrome')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('page-content')).not.toBeInTheDocument();
+    expect(useUIStore.getState().token).toBe('starter.jwt.token');
+
+    fireEvent.change(screen.getByLabelText('Code from the email'), { target: { value: '123456' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /verify and finish/i }));
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(fetchMock.mock.calls[1][1]?.body as string)).toEqual({
+      email: 'dana@riotcolor.com',
+      password: 'a-real-password-1',
+      emailCode: '123456',
+    });
+    await waitFor(() => expect(screen.getByTestId('dashboard-chrome')).toBeInTheDocument());
+    expect(screen.getByTestId('page-content')).toBeInTheDocument();
+    expect(useUIStore.getState().token).toBe('fresh.jwt.token');
   });
 
   it('offers a way out for an operator handed the wrong credential', async () => {
