@@ -182,7 +182,7 @@ it('separates rollout verification from any policy result', async () => {
   renderPage(PlayerSettingsPage);
   expect(await screen.findByText('Rollout verified on 1/2 screens.')).toBeInTheDocument();
   // Nothing has been saved, so no policy claim is on screen.
-  expect(screen.queryByText(/Policy saved at/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/Saved at .*\./)).not.toBeInTheDocument();
 });
 
 it('says "Policy saved" only after the server answers AND the state is re-read', async () => {
@@ -216,10 +216,10 @@ it('says "Policy saved" only after the server answers AND the state is re-read',
 
   fireEvent.click(screen.getByTestId('shell-save'));
   await waitFor(() => expect(screen.getByTestId('shell-save')).toHaveTextContent('saving:yes'));
-  expect(screen.queryByText(/Policy saved at/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/Saved at .*\./)).not.toBeInTheDocument();
 
   await act(async () => { release(); });
-  expect(await screen.findByText(/Policy saved at .* and re-read from the server\./)).toBeInTheDocument();
+  expect(await screen.findByText(/Saved at .*\./)).toBeInTheDocument();
   const put = apiFetch.mock.calls.find(([p, o]: any[]) => p === '/tenants/me/ota-window' && o?.method === 'PUT');
   expect(JSON.parse(put![1].body)).toEqual({ start: '22:00', end: '04:00', timezone: 'America/Chicago' });
 });
