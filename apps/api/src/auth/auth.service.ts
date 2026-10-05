@@ -7,6 +7,12 @@ import { issueMfaChallengeToken } from './mfa-challenge-token';
 import { evaluateMfaPolicy, mfaPolicyNotice, type MfaPolicyDecision } from './mfa-policy';
 import { tenantMfaEnforced } from './tenant-mfa-enforcement';
 import { isLoginEligible } from './login-eligibility';
+import { hasBackupCodes } from './mfa-backup-codes';
+import {
+  emailCodeDeliveryConfigured,
+  emailCodeEligibility,
+  lastPasswordResetAt,
+} from './mfa-email-code';
 
 /**
  * Which second factors an account can actually present. Additive on every
@@ -23,6 +29,19 @@ export function mfaMethodsFor(hasTotp: boolean, hasPasskey: boolean): MfaMethod[
   if (hasTotp) methods.push('totp');
   return methods;
 }
+
+/**
+ * The OTHER ways to finish the second step on this device when the factor
+ * named in `mfaMethods` is somewhere else (2026-10-05 — the owner's passkey
+ * was on his Mac, the sign-in was on his iPhone):
+ *   'backup' — the account holds unused backup codes;
+ *   'email'  — a 6-digit code can be mailed to the account
+ *              (`mfa-email-code.ts` decides; never right after a reset).
+ * A SEPARATE field rather than more `mfaMethods` values, so every client and
+ * test that reads `mfaMethods` keeps its exact meaning: "a factor this account
+ * holds". Absent when empty.
+ */
+export type MfaFallback = 'backup' | 'email';
 
 // ── POST /auth/refresh — sliding session, capped at the ORIGINAL login ──────
 // All four windows anchor to the `origIat` claim (the real credential check),
@@ -237,6 +256,33 @@ export class AuthService {
   }
 
   /**
+   * The `mfaFallbacks` of a challenge envelope (see {@link MfaFallback}).
+   * Only ever called on the CHALLENGE branch, i.e. for an account that holds a
+   * factor — so `holdsFactor` is true by construction.
+   *
+   * Never throws and never blocks a sign-in: a failed reset lookup simply
+   * leaves 'email' out (the cautious direction — one fewer option, never a
+   * weaker one), and the passkey / authenticator / backup-code ways through
+   * are untouched.
+   */
+  private async mfaFallbacksFor(user: any): Promise<MfaFallback[]> {
+    const out: MfaFallback[] = [];
+    if (hasBackupCodes(user?.mfaBackupCodes)) out.push('backup');
+    if (!emailCodeDeliveryConfigured()) return out;
+    try {
+      const eligibility = emailCodeEligibility({
+        deliveryConfigured: true,
+        holdsFactor: true,
+        lastPasswordResetAt: await lastPasswordResetAt(this.prisma.client, user?.id),
+      });
+      if (eligibility === 'ok') out.push('email');
+    } catch {
+      /* unknown → no emailed code this time */
+    }
+    return out;
+  }
+
+  /**
    * P0-4 (2026-05-28) — resolve the tenant a failed-login email maps to,
    * so the controller can write an `AUTH_LOGIN_FAILED` AuditLog row
    * attributed to the RIGHT tenant. `AuditLog.tenantId` is NOT NULL in
@@ -402,9 +448,15 @@ export class AuthService {
     // 6-digit box the user no longer has an app for.
     const hasPasskey = await this.userHasPasskey(user);
     if (!opts.mfaAlreadySatisfied && (user?.mfaTotpVerifiedAt || hasPasskey)) {
+      const mfaFallbacks = await this.mfaFallbacksFor(user);
       return {
         mfaRequired: true,
         mfaMethods: mfaMethodsFor(!!user?.mfaTotpVerifiedAt, hasPasskey),
+        // `undefined` when empty, which JSON drops — absent on the wire. A
+        // plain property (not a conditional spread) keeps this return a plain
+        // object literal, so the inferred union of `login()`'s envelopes is
+        // unchanged for every caller that reads `access_token` off it.
+        mfaFallbacks: mfaFallbacks.length ? mfaFallbacks : undefined,
         mfaToken: issueMfaChallengeToken(this.jwtService, user.id, rememberMe),
       };
     }

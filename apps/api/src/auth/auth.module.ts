@@ -3,7 +3,9 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { MfaController } from './mfa.controller';
 import { PasskeyController } from './passkey.controller';
+import { MfaEmailCodeController } from './mfa-email-code.controller';
 import { SessionController } from './session.controller';
+import { EmailModule } from '../email/email.module';
 import { SessionRefreshService } from './session-refresh.service';
 import { MfaRateLimiter } from './mfa-rate-limiter';
 import { PassportModule } from '@nestjs/passport';
@@ -22,6 +24,8 @@ import { requireSecret } from '../security/required-secret';
 @Module({
   imports: [
     PrismaModule,
+    // The emailed sign-in code (2026-10-05) sends through EmailService.
+    EmailModule,
     PassportModule,
     JwtModule.register({
       // sec-fix(wave1) #2: throws at boot in prod if JWT_SECRET is unset.
@@ -30,7 +34,7 @@ import { requireSecret } from '../security/required-secret';
     }),
   ],
   providers: [AuthService, JwtStrategy, MfaRateLimiter, SessionRefreshService],
-  controllers: [AuthController, MfaController, PasskeyController, SessionController],
+  controllers: [AuthController, MfaController, PasskeyController, MfaEmailCodeController, SessionController],
   exports: [AuthService, JwtModule, SessionRefreshService],
 })
 export class AuthModule {}

@@ -100,12 +100,14 @@ export class AuthController {
       throw new UnauthorizedException({ code: 'AUTH_INVALID_CREDENTIALS', message: 'Invalid credentials' });
     }
     const session = await this.authService.login(user, body.rememberMe);
-    // THE POST-SIGN-IN PASSKEY OFFER (2026-09-22) — mint site 1 of exactly 2
-    // (the other is MfaController.challenge; `passkey-enrollment-grant.spec`
-    // pins the count). Only a FULL session gets one — an `mfaRequired`
-    // envelope has not finished signing in — and only for an account with no
-    // passkey that is not behind the first-login setup gate. `_count` is the
-    // join `validateUser` already made, so this costs no query.
+    // THE POST-SIGN-IN PASSKEY OFFER (2026-09-22) — mint site 1 of exactly 3
+    // (the others are MfaController.challenge and MfaEmailCodeController
+    // .verify; `passkey-enrollment-grant.spec` pins the count). Only a FULL
+    // session gets one — an `mfaRequired` envelope has not finished signing in
+    // — and only for an account below the passkey cap that is not behind the
+    // first-login setup gate (since 2026-10-05 an account with a passkey on
+    // ANOTHER device is offered one for this device too). `_count` is the join
+    // `validateUser` already made, so this costs no query.
     const result = await withPasskeyEnrollmentOffer(
       session,
       user as PasskeyOfferSubject,

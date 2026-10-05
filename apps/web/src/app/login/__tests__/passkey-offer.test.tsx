@@ -170,7 +170,7 @@ describe('the walk-through after password + authenticator code', () => {
     const calls = mockFetchByPath(OFFER_ROUTES);
     await signInWithPasswordAndCode();
 
-    expect(await screen.findByRole('heading', { name: 'Sign in faster next time' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Sign in with Face ID or Touch ID next time?' })).toBeInTheDocument();
     expect(screen.getByText('Use Face ID or Touch ID instead of your password and code.')).toBeInTheDocument();
     // Signed in already — the offer is a screen BEFORE the redirect.
     expect(useUIStore.getState().token).toBe('tok-1');
@@ -185,7 +185,7 @@ describe('the walk-through after password + authenticator code', () => {
     expect(startRegistration).not.toHaveBeenCalled();
 
     // The primary control holds focus.
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: /Set up passkey/i }));
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: /Add a passkey for this Mac/i }));
   });
 
   it('"Set up passkey" calls create() SYNCHRONOUSLY inside the tap (Safari user gesture), then saves and continues', async () => {
@@ -193,7 +193,7 @@ describe('the walk-through after password + authenticator code', () => {
     let resolveCreate: (v: unknown) => void = () => undefined;
     startRegistration.mockImplementation(() => new Promise((r) => { resolveCreate = r; }));
     await signInWithPasswordAndCode();
-    const setUp = await screen.findByRole('button', { name: /Set up passkey/i });
+    const setUp = await screen.findByRole('button', { name: /Add a passkey for this Mac/i });
     const callsBefore = calls.length;
 
     // NO act/await around the click: if anything were awaited in front of
@@ -250,7 +250,7 @@ describe('the walk-through after password + authenticator code', () => {
     calls = mockFetchByPath(OFFER_ROUTES);
     await signInWithPasswordAndCode();
     await waitFor(() => { expect(push).toHaveBeenCalledWith(DEST); });
-    expect(screen.queryByRole('heading', { name: 'Sign in faster next time' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Sign in with Face ID or Touch ID next time?' })).not.toBeInTheDocument();
     expect(calls.some((c) => c.url.endsWith('/auth/passkeys/register/options'))).toBe(false);
     cleanup();
 
@@ -261,7 +261,7 @@ describe('the walk-through after password + authenticator code', () => {
     replace.mockReset();
     mockFetchByPath(OFFER_ROUTES);
     await signInWithPasswordAndCode();
-    expect(await screen.findByRole('button', { name: /Set up passkey/i })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /Add a passkey for this Mac/i })).toBeInTheDocument();
   });
 
   it('"Don\'t ask on this device" is the one answer that holds for 30 days — the next session does not ask, or spend its grant', async () => {
@@ -285,7 +285,7 @@ describe('the walk-through after password + authenticator code', () => {
     calls = mockFetchByPath(OFFER_ROUTES);
     await signInWithPasswordAndCode();
     await waitFor(() => { expect(push).toHaveBeenCalledWith(DEST); });
-    expect(screen.queryByRole('heading', { name: 'Sign in faster next time' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Sign in with Face ID or Touch ID next time?' })).not.toBeInTheDocument();
     expect(calls.some((c) => c.url.endsWith('/auth/passkeys/register/options'))).toBe(false);
   });
 
@@ -293,14 +293,14 @@ describe('the walk-through after password + authenticator code', () => {
     localStorage.setItem(LEGACY_PASSKEY_OFFER_SNOOZE_KEYS[0], String(Date.now()));
     mockFetchByPath(OFFER_ROUTES);
     await signInWithPasswordAndCode();
-    expect(await screen.findByRole('button', { name: /Set up passkey/i })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /Add a passkey for this Mac/i })).toBeInTheDocument();
     expect(localStorage.getItem(LEGACY_PASSKEY_OFFER_SNOOZE_KEYS[0])).toBeNull();
   });
 
   it('Esc on the offer says what "Not now" says — this session, never the 30-day answer', async () => {
     mockFetchByPath(OFFER_ROUTES);
     await signInWithPasswordAndCode();
-    await screen.findByRole('button', { name: /Set up passkey/i });
+    await screen.findByRole('button', { name: /Add a passkey for this Mac/i });
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(replace).toHaveBeenCalledWith(DEST);
     expect(sessionStorage.getItem(PASSKEY_OFFER_SESSION_KEY)).toBe('1');
@@ -311,7 +311,7 @@ describe('the walk-through after password + authenticator code', () => {
     mockFetchByPath(OFFER_ROUTES);
     const pushState = jest.spyOn(window.history, 'pushState');
     await signInWithPasswordAndCode();
-    await screen.findByRole('button', { name: /Set up passkey/i });
+    await screen.findByRole('button', { name: /Add a passkey for this Mac/i });
     // One entry for the offer, so Back has something to pop — on top of the
     // one the password step pushed (identifier-first, 2026-10-04).
     expect(pushState).toHaveBeenCalledTimes(2);
@@ -329,7 +329,7 @@ describe('the walk-through after password + authenticator code', () => {
     await typePasswordAndSubmit();
     fireEvent.change(await screen.findByLabelText('Authentication code'), { target: { value: '123456' } });
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Verify & sign in/i })); });
-    await act(async () => { fireEvent.click(await screen.findByRole('button', { name: /Set up passkey/i })); });
+    await act(async () => { fireEvent.click(await screen.findByRole('button', { name: /Add a passkey for this Mac/i })); });
 
     expect(
       await screen.findByText('No passkey was set up. You can add one anytime in Settings → My security.'),
@@ -349,7 +349,7 @@ describe('the walk-through after password + authenticator code', () => {
     });
     startRegistration.mockResolvedValue(ATTESTATION);
     await signInWithPasswordAndCode();
-    await act(async () => { fireEvent.click(await screen.findByRole('button', { name: /Set up passkey/i })); });
+    await act(async () => { fireEvent.click(await screen.findByRole('button', { name: /Add a passkey for this Mac/i })); });
 
     expect(
       await screen.findByText("We couldn't set up a passkey this time. You can add one later in Settings → My security."),
@@ -365,7 +365,7 @@ describe('the walk-through after password + authenticator code', () => {
     mockFetchByPath({ ...OFFER_ROUTES, '/auth/passkeys/register/verify': { reject: true } });
     startRegistration.mockResolvedValue(ATTESTATION);
     await signInWithPasswordAndCode();
-    await act(async () => { fireEvent.click(await screen.findByRole('button', { name: /Set up passkey/i })); });
+    await act(async () => { fireEvent.click(await screen.findByRole('button', { name: /Add a passkey for this Mac/i })); });
     expect(await screen.findByText(/couldn't set up a passkey this time/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Continue$/i })).toBeInTheDocument();
   });
@@ -374,7 +374,7 @@ describe('the walk-through after password + authenticator code', () => {
     mockFetchByPath(OFFER_ROUTES);
     startRegistration.mockResolvedValue(ATTESTATION);
     await signInWithPasswordAndCode();
-    await act(async () => { fireEvent.click(await screen.findByRole('button', { name: /Set up passkey/i })); });
+    await act(async () => { fireEvent.click(await screen.findByRole('button', { name: /Add a passkey for this Mac/i })); });
     await screen.findByRole('heading', { name: 'Passkey saved' });
     for (const store of [localStorage, sessionStorage]) {
       for (let i = 0; i < store.length; i++) {
@@ -402,7 +402,7 @@ describe('a FIRST factor — the one-time backup codes come before Continue', ()
     await typePasswordAndSubmit();
     // No code was typed on this sign-in, so the body says "password" only.
     expect(await screen.findByText('Use Face ID or Touch ID instead of your password.')).toBeInTheDocument();
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Set up passkey/i })); });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Add a passkey for this Mac/i })); });
 
     expect(await screen.findByRole('heading', { name: 'Save your backup codes' })).toBeInTheDocument();
     for (const c of CODES) expect(screen.getByText(c)).toBeInTheDocument();
@@ -444,7 +444,7 @@ describe('no offer — straight to the dashboard, exactly as before', () => {
     await act(async () => { render(<LoginPage />); });
     await typePasswordAndSubmit();
     await waitFor(() => { expect(push).toHaveBeenCalledWith(DEST); });
-    expect(screen.queryByRole('heading', { name: 'Sign in faster next time' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Sign in with Face ID or Touch ID next time?' })).not.toBeInTheDocument();
     // The grant was not spent on an offer nobody will see.
     expect(calls.some((c) => c.url.endsWith('/auth/passkeys/register/options'))).toBe(false);
   });
@@ -457,7 +457,7 @@ describe('no offer — straight to the dashboard, exactly as before', () => {
     await act(async () => { render(<LoginPage />); });
     await typePasswordAndSubmit();
     await waitFor(() => { expect(push).toHaveBeenCalledWith(DEST); });
-    expect(screen.queryByRole('heading', { name: 'Sign in faster next time' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Sign in with Face ID or Touch ID next time?' })).not.toBeInTheDocument();
     // …and a 403 there never signed anyone out.
     expect(useUIStore.getState().token).toBe('tok-1');
   });
@@ -479,14 +479,23 @@ describe('"Sign in with a passkey" on a device that has none', () => {
       fireEvent.click(screen.getByRole('button', { name: /Sign in with a passkey/i }));
     });
 
+    // 2026-10-05 — the owner's words for what was missing: the passkey may be
+    // on ANOTHER device, and this page must say how to get in on this one.
     expect(
-      await screen.findByText(
-        "No passkey on this device yet? Sign in with your email and password, and we'll help you set up Face ID or Touch ID for next time.",
-      ),
+      await screen.findByText('Your passkey may be on another device. Sign in another way on this one:'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("After you sign in, we'll help you set up Face ID or Touch ID on this device."),
     ).toBeInTheDocument();
     expect(container.querySelector('.bg-rose-50')).toBeNull();
     // The hint sits in a live region so it is announced.
     expect(screen.getByTestId('passkey-none-hint').parentElement).toHaveAttribute('aria-live', 'polite');
+    // …and its way on is a real control: the email field, focused.
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Continue with your email and password' }));
+    });
+    expect(document.activeElement).toBe(screen.getByLabelText('Email'));
+    expect(screen.queryByTestId('passkey-none-hint')).not.toBeInTheDocument();
   });
 
   it('promises nothing when this device cannot hold a passkey', async () => {
@@ -498,8 +507,9 @@ describe('"Sign in with a passkey" on a device that has none', () => {
       fireEvent.click(screen.getByRole('button', { name: /Sign in with a passkey/i }));
     });
     expect(
-      await screen.findByText('No passkey on this device yet? Sign in with your email and password instead.'),
+      await screen.findByText('Your passkey may be on another device. Sign in another way on this one:'),
     ).toBeInTheDocument();
+    expect(screen.queryByText(/we'll help you set up/i)).not.toBeInTheDocument();
   });
 
   it('the hint gives way to a real error, and clears when the password path is taken', async () => {

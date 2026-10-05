@@ -62,11 +62,53 @@ function formatPlurals(msg: string, values: Record<string, unknown>): string {
   return out;
 }
 
+/**
+ * ICU `{k, select, a {…} b {…} other {…}}` — the option named by the value,
+ * else `other`. Added 2026-10-05 for "Add a passkey for this {device}"; the
+ * real next-intl has always supported it, so this only stops the stand-in
+ * from rendering the raw option list.
+ */
+function formatSelects(msg: string, values: Record<string, unknown>): string {
+  let out = '';
+  let i = 0;
+  while (i < msg.length) {
+    const m = /\{(\w+),\s*select,/.exec(msg.slice(i));
+    if (!m) { out += msg.slice(i); break; }
+    const start = i + m.index;
+    out += msg.slice(i, start);
+    let depth = 0;
+    let end = start;
+    for (; end < msg.length; end++) {
+      if (msg[end] === '{') depth++;
+      else if (msg[end] === '}') { depth--; if (depth === 0) break; }
+    }
+    const body = msg.slice(start + m[0].length, end);
+    const options: Record<string, string> = {};
+    const optRe = /\s*([\w-]+)\s*\{/g;
+    let o: RegExpExecArray | null;
+    while ((o = optRe.exec(body)) !== null) {
+      let d = 1;
+      let j = optRe.lastIndex;
+      for (; j < body.length && d > 0; j++) {
+        if (body[j] === '{') d++;
+        else if (body[j] === '}') d--;
+      }
+      options[o[1]] = body.slice(optRe.lastIndex, j - 1);
+      optRe.lastIndex = j;
+    }
+    const v = String(values[m[1]]);
+    out += options[v] ?? options.other ?? '';
+    i = end + 1;
+  }
+  return out;
+}
+
 function interpolate(msg: string, values?: Values): string {
   // Rich tags render their inner text; ICU-ish {var} placeholders substitute.
   let out = msg.replace(/<(\w+)>([\s\S]*?)<\/\1>/g, '$2');
   if (values) {
     out = formatPlurals(out, values);
+    out = formatSelects(out, values);
     out = out.replace(/\{(\w+)(?:,[^}]*)?\}/g, (m, name) =>
       name in values && typeof values[name] !== 'function'
         ? String(values[name])

@@ -196,6 +196,12 @@ test.describe('Passkeys — the always-there way to set one up', () => {
     await expect(password).toBeVisible({ timeout: 60_000 });
     await password.fill(PASSWORD);
     await page.locator('form:has(#passkey-add-password) button[type="submit"]').click();
+    // Tap 2 (2026-10-05): the device sheet opens in its OWN tap, on a button named for this
+    // device — Safari refuses create() once a network round trip has spent the first tap.
+    const create = page.getByTestId('passkey-add-ready').getByRole('button', { name: /^Add a passkey for this / });
+    await expect(create).toBeFocused({ timeout: 30_000 });
+    expect(a.verifyCalls).toHaveLength(0);
+    await create.click();
 
     // The list has the new passkey — labelled with what the page guessed for this device.
     await expect.poll(() => a.verifyCalls.length, { timeout: 30_000 }).toBe(1);

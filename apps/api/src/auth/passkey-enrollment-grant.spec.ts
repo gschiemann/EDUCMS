@@ -385,9 +385,14 @@ describe('withPasskeyEnrollmentOffer — who gets an offer', () => {
       eligible,
     ],
     [
-      'an account that already has a passkey',
+      'an account already at the passkey cap (10)',
       SESSION,
-      { ...eligible, _count: { passkeys: 1 } },
+      { ...eligible, _count: { passkeys: 10 } },
+    ],
+    [
+      'an account whose passkey count is not a sane number',
+      SESSION,
+      { ...eligible, _count: { passkeys: -1 } },
     ],
     [
       'an account whose passkey count was not loaded',
@@ -417,6 +422,17 @@ describe('withPasskeyEnrollmentOffer — who gets an offer', () => {
       expect('passkeyEnrollment' in out).toBe(false);
     },
   );
+
+  it('an account whose passkey is on ANOTHER device (1..9 passkeys) gets one too — this sign-in did not use one (2026-10-05)', async () => {
+    for (const held of [1, 9]) {
+      const out = (await withPasskeyEnrollmentOffer(
+        SESSION,
+        { ...eligible, _count: { passkeys: held } },
+        null,
+      )) as typeof SESSION & { passkeyEnrollment?: { grant: string } };
+      expect(out.passkeyEnrollment?.grant).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    }
+  });
 
   it('a store failure means no offer, never a failed sign-in', async () => {
     const redis = new FakeRedis();
@@ -513,13 +529,16 @@ describe('WHO MAY MINT OR SPEND — resolved from the AST of every source file',
     return sites;
   }
 
-  it('the grant is attached to a sign-in response at EXACTLY two doors — password login and the TOTP/backup-code challenge', () => {
+  it('the grant is attached to a sign-in response at EXACTLY three doors — password login, the TOTP/backup-code challenge, and the emailed code', () => {
     // Not a refresh (auth.controller `refresh`, session.controller), not a
     // tenant switch (tenants.controller), not a passkey sign-in, not forced
     // enrollment, not signup / invite. A new caller has to be argued for here.
+    // The third (2026-10-05): a sign-in finished with a code emailed to the
+    // account — a sign-in that did NOT use a passkey, on a device that has none.
     expect(callSites('withPasskeyEnrollmentOffer')).toEqual({
       [path.join('auth', 'auth.controller.ts')]: 1,
       [path.join('auth', 'mfa.controller.ts')]: 1,
+      [path.join('auth', 'mfa-email-code.controller.ts')]: 1,
     });
   });
 
@@ -535,7 +554,7 @@ describe('WHO MAY MINT OR SPEND — resolved from the AST of every source file',
     });
   });
 
-  it('the two mint sites are inside the two sign-in handlers, after the session is minted', () => {
+  it('the three mint sites are inside the three sign-in handlers, after the session is minted', () => {
     const at = (file: string, method: string) => {
       const text = fs.readFileSync(path.join(SRC, 'auth', file), 'utf8');
       const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
@@ -562,6 +581,15 @@ describe('WHO MAY MINT OR SPEND — resolved from the AST of every source file',
     expect(challenge.indexOf('this.auth.login(')).toBeGreaterThan(-1);
     expect(challenge.indexOf('withPasskeyEnrollmentOffer(')).toBeGreaterThan(
       challenge.indexOf('this.auth.login('),
+    );
+    const emailed = at('mfa-email-code.controller.ts', 'verify');
+    expect(emailed.indexOf('this.auth.login(')).toBeGreaterThan(-1);
+    expect(emailed.indexOf('withPasskeyEnrollmentOffer(')).toBeGreaterThan(
+      emailed.indexOf('this.auth.login('),
+    );
+    // …and never at the SEND step, which has not signed anyone in.
+    expect(at('mfa-email-code.controller.ts', 'send')).not.toContain(
+      'withPasskeyEnrollmentOffer',
     );
     // …and NOT in the refresh / forced-enrollment handlers that share those files.
     expect(at('auth.controller.ts', 'refresh')).not.toContain(

@@ -249,6 +249,66 @@ export function describePasskeyError(
 }
 
 /**
+ * The DOMException name behind a failed ceremony ('NotAllowedError',
+ * 'SecurityError', …), or '' — for diagnostics only, never for copy.
+ */
+export function passkeyErrorName(err: unknown): string {
+  return domExceptionName(err);
+}
+
+/** Where a passkey ceremony ended without a credential (diagnostics). */
+export type PasskeyMissStage = 'mfa' | 'passwordless' | 'autofill' | 'offer-create' | 'settings-create';
+
+/**
+ * WHY A PASSKEY DID NOT WORK HERE — the client-log record (2026-10-05).
+ *
+ * The owner's iPhone showed the cross-device QR code for a passkey made on his
+ * Mac. Two different causes look identical on glass: the passkey is not synced
+ * to this device, or it was made on a DIFFERENT web address (each address is
+ * its own passkey domain — see the API's webauthn-config.ts). This record
+ * separates them next time: the error name, the page's host (an address, not
+ * a person), and whether the account is known to hold passkeys (`null` on the
+ * passwordless path, where no account is known yet). Deliberately NO email, no
+ * user id, no credential id — nothing that identifies anyone.
+ */
+export function passkeyMissDiagnostics(input: {
+  stage: PasskeyMissStage;
+  err: unknown;
+  accountHasPasskeys: boolean | null;
+  host?: string;
+}): { stage: PasskeyMissStage; errorName: string; reason: PasskeyErrorReason; host: string; accountHasPasskeys: boolean | null } {
+  const host =
+    input.host ?? (typeof window !== 'undefined' && window.location ? window.location.host : '');
+  return {
+    stage: input.stage,
+    errorName: domExceptionName(input.err) || 'unknown',
+    reason: describePasskeyError(input.err, input.stage.endsWith('create') ? 'create' : 'get').reason,
+    host,
+    accountHasPasskeys: input.accountHasPasskeys,
+  };
+}
+
+/**
+ * Which KIND of device this is, for "Add a passkey for this iPhone" — an ICU
+ * `select` key, so each language words it properly. Same order and rules as
+ * `guessDeviceLabel` below (an iPhone's UA says "like Mac OS X").
+ */
+export type PasskeyDeviceKind = 'iphone' | 'ipad' | 'android' | 'mac' | 'windows' | 'other';
+
+export function passkeyDeviceKind(
+  ua: string | undefined = typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
+): PasskeyDeviceKind {
+  switch (guessDeviceLabel(ua)) {
+    case 'iPhone': return 'iphone';
+    case 'iPad': return 'ipad';
+    case 'Android phone': return 'android';
+    case 'Mac': return 'mac';
+    case 'Windows PC': return 'windows';
+    default: return 'other';
+  }
+}
+
+/**
  * A sensible default name for the device the operator is enrolling, so the
  * list reads "iPhone" instead of a credential id. They can rename it.
  *

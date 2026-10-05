@@ -104,6 +104,19 @@ describe('isCsrfExempt', () => {
     expect(isCsrfExempt('POST', '/api/v1/auth/mfa/required/passkey/options/extra')).toBe(false);
   });
 
+  it('exempts the two EMAILED-CODE second-step routes, exactly (2026-10-05)', () => {
+    // Pre-session, called with a bare fetch between the password and the
+    // second step — the same class as /auth/mfa/challenge. Without these the
+    // "email me a code" way through would answer 403 CsrfError in production
+    // while every controller spec stayed green (they never pass through here).
+    expect(isCsrfExempt('POST', '/api/v1/auth/mfa/challenge/email/send')).toBe(true);
+    expect(isCsrfExempt('POST', '/api/v1/auth/mfa/challenge/email')).toBe(true);
+    // Exact match only — no prefix, no sibling.
+    expect(isCsrfExempt('POST', '/api/v1/auth/mfa/challenge/email/send/extra')).toBe(false);
+    expect(isCsrfExempt('POST', '/api/v1/auth/mfa/challenge/email/verify')).toBe(false);
+    expect(isCsrfExempt('POST', '/api/v1/auth/mfa/challenge/emails')).toBe(false);
+  });
+
   it('exempts the SEC-010 server-to-server session endpoints, and ONLY those two', () => {
     // /refresh and /revoke are called by the WEB ORIGIN'S SERVER (the Next
     // route handlers in apps/web/src/app/api/session/*), never by a browser.

@@ -26,6 +26,9 @@ import {
  * three public helpers (`sendWelcome`, `sendPasswordReset`, `sendUserInvite`),
  * so no call-sites need to change.
  */
+/** How one dispatch ended — `SENT_UNVERIFIED` is the shared-sender case (see #dispatch). */
+export type EmailDispatchStatus = 'SENT' | 'SENT_UNVERIFIED' | 'FAILED';
+
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
@@ -137,7 +140,95 @@ export class EmailService {
     await this.#enqueue({ to: params.to, subject, body, kind: 'MFA_RESET' });
   }
 
-  async #enqueue(params: { to: string; subject: string; body: string; kind: string }): Promise<void> {
+  /**
+   * The emailed sign-in code — the second step when the account's passkey (or
+   * authenticator app) is on another device (2026-10-05, `mfa-email-code.ts`).
+   *
+   * The code is in the SUBJECT on purpose: a phone shows it in the
+   * notification, and Safari's one-time-code AutoFill reads it from Mail, so
+   * on an iPhone the code usually arrives in the field with one tap.
+   *
+   * The durable `email_logs` row gets a REDACTED copy (the code replaced by
+   * ••••••): a database read must never hold a live sign-in code. The real
+   * message is what is dispatched. Returns the dispatch outcome so the caller
+   * can say "we couldn't send it" instead of "check your inbox" when the
+   * provider refused.
+   */
+  async sendSignInCode(params: { to: string; code: string }): Promise<EmailDispatchStatus> {
+    const subject = `${params.code} is your VenueOS sign-in code`;
+    const lines = (code: string) => [
+      `Your VenueOS sign-in code is:`,
+      ``,
+      `    ${code}`,
+      ``,
+      `Enter it on the sign-in page within 10 minutes. It works once.`,
+      ``,
+      `You're getting this because someone entered your password and asked for a code. ` +
+        `If that wasn't you, don't share this code with anyone. Change your password right away ` +
+        `(on the VenueOS sign-in page, choose "Forgot password?") and tell your administrator.`,
+      ``,
+      `— The VenueOS team`,
+    ];
+    const redacted = '••••••';
+    return this.#enqueue({
+      to: params.to,
+      subject,
+      body: lines(params.code).join('\n'),
+      kind: 'MFA_EMAIL_CODE',
+      logSubject: `${redacted} is your VenueOS sign-in code`,
+      logBody: lines(redacted).join('\n'),
+    });
+  }
+
+  /**
+   * "New sign-in to your VenueOS account on <device>" — sent after a sign-in
+   * whose second step was an EMAILED code (2026-10-05). The owner's safeguard
+   * for making that code available to every role: the account holder hears
+   * about every such sign-in.
+   *
+   * No link, like `sendMfaReset`: a security notice that offers a button is
+   * the shape of the phishing mail that would imitate it.
+   */
+  async sendNewSignInNotice(params: {
+    to: string;
+    device: string;
+    at?: Date;
+  }): Promise<EmailDispatchStatus> {
+    const when = (params.at ?? new Date()).toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
+    const subject = `New sign-in to your VenueOS account on ${params.device}`;
+    const body = [
+      `Your VenueOS account (${params.to}) was just signed in on ${params.device}, ` +
+        `using your password and a code we emailed to you.`,
+      ``,
+      `When: ${when}`,
+      ``,
+      `If this was you, there's nothing to do.`,
+      ``,
+      `If it wasn't you, change your password right away: on the VenueOS sign-in page, choose ` +
+        `"Forgot password?". Then tell your administrator.`,
+      ``,
+      `— The VenueOS team`,
+    ].join('\n');
+    return this.#enqueue({ to: params.to, subject, body, kind: 'NEW_SIGN_IN' });
+  }
+
+  /**
+   * `logSubject` / `logBody` (2026-10-05): what the durable `email_logs` row
+   * records when it must differ from what is SENT — today only the sign-in
+   * code, whose row carries a redacted copy. Absent = the row records the
+   * message itself, exactly as before.
+   *
+   * Returns how the dispatch ended. Every existing caller ignores it (they
+   * `await` a void), so the return is additive.
+   */
+  async #enqueue(params: {
+    to: string;
+    subject: string;
+    body: string;
+    kind: string;
+    logSubject?: string;
+    logBody?: string;
+  }): Promise<EmailDispatchStatus> {
     // MED-7 audit fix: previously a failed EmailLog.create would either
     // 500 the calling request silently or be lost in the noise. Wrap each
     // step with explicit logging at appropriate severity so production
@@ -151,8 +242,8 @@ export class EmailService {
       row = await this.prisma.client.emailLog.create({
         data: {
           toEmail: params.to,
-          subject: params.subject,
-          body: params.body,
+          subject: params.logSubject ?? params.subject,
+          body: params.logBody ?? params.body,
           kind: params.kind,
           status: 'QUEUED',
         },
@@ -179,6 +270,7 @@ export class EmailService {
         where: { id: row.id },
         data: { status: sendStatus, sentAt: new Date() },
       });
+      return sendStatus;
     } catch (err: any) {
       this.logger.warn(
         `Email dispatch FAILED — log row persisted, marking FAILED. ` +
@@ -196,6 +288,7 @@ export class EmailService {
           `EmailLog FAILED-status update ALSO failed. logId=${row.id} originalErr=${err?.message} updateErr=${updateErr?.message}`,
         );
       }
+      return 'FAILED';
     }
   }
 

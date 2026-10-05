@@ -144,6 +144,10 @@ describe('PasskeyCard — add flow', () => {
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: /^Continue$/i }));
     });
+    // The password tap alone never opens the device sheet.
+    expect(startRegistration).not.toHaveBeenCalled();
+    // Tap 2 (2026-10-05): create() runs inside ITS OWN tap — Safari's rule.
+    await act(async () => { fireEvent.click(await screen.findByRole('button', { name: /Add a passkey for this device/i })); });
 
     // The REAL endpoints, with the REAL bodies.
     await waitFor(() => {
@@ -189,6 +193,8 @@ describe('PasskeyCard — add flow', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Add a passkey/i }));
     fireEvent.change(await screen.findByPlaceholderText('Your password'), { target: { value: 'pw' } });
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^Continue$/i })); });
+    // Tap 2 (2026-10-05): create() runs inside ITS OWN tap — Safari's rule.
+    await act(async () => { fireEvent.click(await screen.findByRole('button', { name: /Add a passkey for this device/i })); });
 
     expect(await screen.findByText('AAAA-1111')).toBeInTheDocument();
     expect(screen.getByText('CCCC-3333')).toBeInTheDocument();
@@ -267,6 +273,8 @@ describe('PasskeyCard — add flow', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Add a passkey/i }));
     fireEvent.change(await screen.findByPlaceholderText('Your password'), { target: { value: 'pw' } });
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^Continue$/i })); });
+    // Tap 2 (2026-10-05): create() runs inside ITS OWN tap — Safari's rule.
+    await act(async () => { fireEvent.click(await screen.findByRole('button', { name: /Add a passkey for this device/i })); });
 
     await waitFor(() => { expect(startRegistration).toHaveBeenCalled(); });
     // Nothing red, nothing verified, and we are back on the button.
@@ -290,8 +298,43 @@ describe('PasskeyCard — add flow', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Add a passkey/i }));
     fireEvent.change(await screen.findByPlaceholderText('Your password'), { target: { value: 'pw' } });
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^Continue$/i })); });
+    // Tap 2 (2026-10-05): create() runs inside ITS OWN tap — Safari's rule.
+    await act(async () => { fireEvent.click(await screen.findByRole('button', { name: /Add a passkey for this device/i })); });
 
     expect(await screen.findByText(/This device already has a passkey/i)).toBeInTheDocument();
+  });
+
+  it('on an iPhone (with a passkey already on the Mac) the button names THIS device, and create() runs synchronously in its tap', async () => {
+    const real = Object.getOwnPropertyDescriptor(window.navigator, 'userAgent');
+    Object.defineProperty(window.navigator, 'userAgent', {
+      value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148',
+      configurable: true,
+    });
+    try {
+      apiFetch.mockImplementation((path: string) => {
+        if (path === '/auth/passkeys') {
+          return Promise.resolve({ passkeys: [{ ...IPHONE, id: 'pk-mac', label: 'Mac' }], max: 10 });
+        }
+        if (path === '/auth/passkeys/register/options') return Promise.resolve({ options: CREATE_OPTIONS });
+        if (path === '/auth/passkeys/register/verify') return Promise.resolve({ passkey: IPHONE });
+        return Promise.resolve(null);
+      });
+      // Never settles: this test is about WHEN create() is called, not after.
+      startRegistration.mockReturnValue(new Promise(() => {}));
+
+      await act(async () => { renderCard(); });
+      fireEvent.click(await screen.findByRole('button', { name: 'Add a passkey for this iPhone' }));
+      fireEvent.change(await screen.findByPlaceholderText('Your password'), { target: { value: 'pw' } });
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^Continue$/i })); });
+
+      const create = await screen.findByRole('button', { name: 'Add a passkey for this iPhone' });
+      expect(document.activeElement).toBe(create);
+      expect(startRegistration).not.toHaveBeenCalled();
+      fireEvent.click(create); // NOT awaited: the call must already have happened
+      expect(startRegistration).toHaveBeenCalledWith({ optionsJSON: CREATE_OPTIONS });
+    } finally {
+      if (real) Object.defineProperty(window.navigator, 'userAgent', real);
+    }
   });
 });
 

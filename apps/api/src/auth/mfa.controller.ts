@@ -732,11 +732,13 @@ export class MfaController {
     );
 
     // 6. THE POST-SIGN-IN PASSKEY OFFER (2026-09-22) — mint site 2 of exactly
-    //    2 (the other is AuthController.login; `passkey-enrollment-grant.spec`
-    //    pins the count). The password AND a second factor just proved out,
-    //    so this is a real, complete sign-in. Offered only to an account with
-    //    no passkey — one that has a passkey and used a backup code here gets
-    //    nothing — and never behind the first-login setup gate.
+    //    3 (the others are AuthController.login and MfaEmailCodeController
+    //    .verify; `passkey-enrollment-grant.spec` pins the count). The password
+    //    AND a second factor just proved out, so this is a real, complete
+    //    sign-in. Since 2026-10-05 an account whose passkey is on ANOTHER
+    //    device (it used a code or a backup code HERE) is offered one for
+    //    this device; never at the passkey cap, never behind the first-login
+    //    setup gate.
     return withPasskeyEnrollmentOffer(
       session,
       dbUser,

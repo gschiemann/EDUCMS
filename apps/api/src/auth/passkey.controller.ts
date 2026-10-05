@@ -135,14 +135,12 @@ import {
   type WebAuthnRegistrationReauth,
 } from './webauthn-challenge-store';
 import { redeemPasskeyEnrollmentGrant } from './passkey-enrollment-grant';
+import { MAX_PASSKEYS_PER_USER } from './passkey-limits';
 
-/**
- * Ten per account. High enough for a laptop, a phone, a tablet and a couple of
- * hardware keys with room to spare; low enough that a stolen session cannot
- * quietly salt an account with credentials, and that the `excludeCredentials`
- * list stays a sane size on every ceremony.
- */
-export const MAX_PASSKEYS_PER_USER = 10;
+// The cap lives in passkey-limits.ts (the offer reads it too); re-exported so
+// every existing `import { MAX_PASSKEYS_PER_USER } from './passkey.controller'`
+// keeps working.
+export { MAX_PASSKEYS_PER_USER };
 
 /**
  * ES256 (-7), RS256 (-257), EdDSA (-8). The three every platform

@@ -100,6 +100,18 @@ const EXEMPT_PATHS: Array<(path: string) => boolean> = [
   // per-user MFA limiter on verify.
   (p) => p === '/api/v1/auth/mfa/required/passkey/options',
   (p) => p === '/api/v1/auth/mfa/required/passkey/verify',
+  // THE EMAILED SIGN-IN CODE (2026-10-05). Same pre-session class again: the
+  // login page calls both with a bare `fetch` while the person is between the
+  // password and the second step, so there is no session and no CSRF cookie.
+  //  • /send is authorized by the short-lived signed `mfaToken` in the BODY —
+  //    the /mfa/challenge argument, word for word.
+  //  • the verify route takes an opaque 256-bit handle that ONLY the /send
+  //    response ever carried, plus the code from the inbox. A browser attaches
+  //    neither on its own, so a cross-site page has nothing to replay.
+  // Abuse: @Throttle on both, per-account + per-IP send caps counted in the
+  // table, 5 attempts per code, and the shared per-user MFA limiter.
+  (p) => p === '/api/v1/auth/mfa/challenge/email/send',
+  (p) => p === '/api/v1/auth/mfa/challenge/email',
   // SEC-010 (2026-09-05) — durable-session endpoints. NOT browser-reachable
   // paths in the normal deploy: the dashboard calls its OWN origin
   // (`/api/session/*`, Next route handlers) and THOSE call these, server to

@@ -699,3 +699,103 @@ describe('passkeys at the login gate', () => {
     expect(d.blocking).toBe(false);
   });
 });
+
+// ───────────────────────────────────────────────────────────────────────
+// 2026-10-05 — THE OTHER WAYS THROUGH THE SECOND STEP (`mfaFallbacks`).
+// The owner's passkey lived on his Mac; on his iPhone the challenge offered
+// only that passkey. The envelope now also says which ways through work on
+// ANY device: backup codes (when the account has some) and an emailed code
+// (when mail is configured and no password reset is fresh).
+describe('mfaFallbacks — what else can finish this sign-in on this device', () => {
+  const owner = {
+    id: 'owner-1', email: 'owner@venueos.example', tenantId: 'tenant-1',
+    role: 'SUPER_ADMIN', canTriggerPanic: true, mfaRequired: false, mfaTotpVerifiedAt: null,
+  };
+
+  async function service(opts: { lastResetAt?: Date | null; resetLookupThrows?: boolean } = {}) {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        AuthService,
+        { provide: JwtService, useValue: { sign: jest.fn().mockReturnValue('mock_jwt_token') } },
+        {
+          provide: PrismaService,
+          useValue: {
+            client: {
+              user: { findUnique: jest.fn(), update: jest.fn() },
+              tenant: { findUnique: jest.fn().mockResolvedValue(ENFORCING_TENANT) },
+              passkey: { count: jest.fn().mockResolvedValue(1) },
+              passwordResetToken: {
+                findFirst: opts.resetLookupThrows
+                  ? jest.fn().mockRejectedValue(new Error('db down'))
+                  : jest.fn().mockResolvedValue(opts.lastResetAt ? { usedAt: opts.lastResetAt } : null),
+              },
+            },
+          },
+        },
+      ],
+    }).compile();
+    return module.get<AuthService>(AuthService);
+  }
+
+  let env: Record<string, string | undefined>;
+  beforeEach(() => {
+    env = { NODE_ENV: process.env.NODE_ENV, RESEND_API_KEY: process.env.RESEND_API_KEY };
+  });
+  afterEach(() => {
+    for (const [k, v] of Object.entries(env)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  });
+
+  it('a passkey account WITH backup codes, mail configured: backup + email, and mfaMethods is unchanged', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.RESEND_API_KEY = 're_test_not_real';
+    const res: any = await (await service()).login({ ...owner, mfaBackupCodes: [{ hash: 'x' }], _count: { passkeys: 1 } });
+    expect(res.mfaRequired).toBe(true);
+    expect(res.mfaMethods).toEqual(['passkey']);
+    expect(res.mfaFallbacks).toEqual(['backup', 'email']);
+  });
+
+  it('NOT offered without email: production with no RESEND_API_KEY lists no email code', async () => {
+    process.env.NODE_ENV = 'production';
+    delete process.env.RESEND_API_KEY;
+    const res: any = await (await service()).login({ ...owner, mfaBackupCodes: [{ hash: 'x' }], _count: { passkeys: 1 } });
+    expect(res.mfaFallbacks).toEqual(['backup']);
+  });
+
+  it('no backup codes and no mail → the field is ABSENT on the wire, never an empty list', async () => {
+    process.env.NODE_ENV = 'production';
+    delete process.env.RESEND_API_KEY;
+    const res: any = await (await service()).login({ ...owner, mfaBackupCodes: [], _count: { passkeys: 1 } });
+    expect(res.mfaRequired).toBe(true);
+    expect(res.mfaFallbacks).toBeUndefined();
+    expect(JSON.parse(JSON.stringify(res))).not.toHaveProperty('mfaFallbacks');
+  });
+
+  it('a password reset in the last 7 days takes the email code off the list', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.RESEND_API_KEY = 're_test_not_real';
+    const res: any = await (await service({ lastResetAt: new Date(Date.now() - 3_600_000) }))
+      .login({ ...owner, _count: { passkeys: 1 } });
+    expect(res.mfaFallbacks).toBeUndefined();
+  });
+
+  it('an unreadable reset history fails toward FEWER options, never a failed sign-in', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.RESEND_API_KEY = 're_test_not_real';
+    const res: any = await (await service({ resetLookupThrows: true }))
+      .login({ ...owner, mfaBackupCodes: [{ hash: 'x' }], _count: { passkeys: 1 } });
+    expect(res.mfaRequired).toBe(true);
+    expect(res.mfaFallbacks).toEqual(['backup']);
+  });
+
+  it('the FORCED-ENROLLMENT envelope never carries fallbacks — an emailed code is not a way around enrolling', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.RESEND_API_KEY = 're_test_not_real';
+    // No TOTP, no passkey → the policy blocks a SUPER_ADMIN into enrollment.
+    const res: any = await (await service()).login({ ...owner, mfaBackupCodes: [{ hash: 'x' }], _count: { passkeys: 0 } });
+    expect(res.mfaEnrollmentRequired).toBe(true);
+    expect(res.mfaFallbacks).toBeUndefined();
+  });
+});

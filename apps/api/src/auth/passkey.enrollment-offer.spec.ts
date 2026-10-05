@@ -48,6 +48,7 @@ import {
 import { SSO_PROVISIONED_NO_PASSWORD_HASH } from './sso-provisioned-account';
 import { MFA_CHALLENGE_PURPOSE } from './mfa-challenge-token';
 import { sealMfaSecret } from './mfa-secret-cipher';
+import { issueBackupCodes } from './mfa-backup-codes';
 import { base32Decode, generateTotpSecret, TotpInternals } from './totp';
 
 jest.setTimeout(30_000);
@@ -566,17 +567,19 @@ describe('MINT SITE 2 — POST /auth/mfa/challenge (password + authenticator cod
     });
   });
 
-  it('an account that already has a passkey (signing in with a backup code) gets NO grant', async () => {
+  it('an account whose passkey is on ANOTHER device (backup code here) GETS a grant — and it adds a passkey for THIS device (2026-10-05)', async () => {
+    // The owner's case: one passkey, made on the Mac; the sign-in is on the
+    // iPhone, which has none. Until 2026-10-05 "already has a passkey" meant
+    // no offer, so the phone could never get one from the sign-in.
     const h = await buildHarness([await makeUser()]);
-    // A passkey through the password door; it mints the account's codes.
-    const device = softAuthenticator();
+    const mac = softAuthenticator();
     const { options } = await h.controller.registerOptions(
       { password: TEST_PASSWORD },
       h.req(),
     );
     const { backupCodes } = await h.controller.registerVerify(
       {
-        response: device.register({
+        response: mac.register({
           ...CEREMONY,
           challenge: options.challenge,
         }),
@@ -591,6 +594,39 @@ describe('MINT SITE 2 — POST /auth/mfa/challenge (password + authenticator cod
     const session = (await h.mfa.challenge({
       mfaToken: 'x'.repeat(20),
       backupCode: backupCodes![0],
+    })) as SignInResponse;
+    expect(session.access_token).toBe('final-jwt');
+    expect(session.passkeyEnrollment?.grant).toMatch(/^[A-Za-z0-9_-]{43}$/);
+
+    // The grant opens the ordinary ceremony for the phone. The Mac's
+    // credential is excluded (no duplicate on the same authenticator), the
+    // phone's is stored beside it, and no new backup codes are minted — the
+    // account already has its set.
+    const phone = await registerWithGrant(h, session.passkeyEnrollment!.grant);
+    expect(phone.options.excludeCredentials?.map((c) => c.id)).toEqual([mac.credentialId]);
+    expect(h.passkeys.map((p) => p.credentialId)).toEqual([mac.credentialId, phone.device.credentialId]);
+    expect(phone.result.backupCodes).toBeUndefined();
+  });
+
+  it('an account already at the passkey cap gets NO grant', async () => {
+    const h = await buildHarness([await makeUser()]);
+    for (let i = 0; i < 10; i++) {
+      const device = softAuthenticator();
+      const { options } = await h.controller.registerOptions({ password: TEST_PASSWORD }, h.req());
+      await h.controller.registerVerify(
+        { response: device.register({ ...CEREMONY, challenge: options.challenge }) } as any,
+        h.req(),
+      );
+    }
+    expect(h.passkeys).toHaveLength(10);
+    h.jwt.verifyAsync.mockResolvedValue({ sub: 'user-1', purpose: MFA_CHALLENGE_PURPOSE });
+    // A real backup code is needed to finish; the harness keeps only hashes,
+    // so mint a fresh set through the same issuer the controller uses.
+    const issued = await issueBackupCodes();
+    h.users.get('user-1')!.mfaBackupCodes = issued.stored;
+    const session = (await h.mfa.challenge({
+      mfaToken: 'x'.repeat(20),
+      backupCode: issued.plain[0],
     })) as SignInResponse;
     expect(session.access_token).toBe('final-jwt');
     expect(session.passkeyEnrollment).toBeUndefined();

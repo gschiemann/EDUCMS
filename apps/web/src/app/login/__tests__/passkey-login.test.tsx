@@ -148,21 +148,27 @@ describe('MFA step — passkey as the second factor', () => {
     // …and it holds focus, because it is the step's primary control.
     expect(document.activeElement).toBe(passkeyBtn);
 
-    // The code form is NOT on screen yet — only the way to it.
+    // The code form is NOT on screen yet — only the way to it: ONE link,
+    // "Use another way", always visible (2026-10-05).
     expect(screen.queryByLabelText('Authentication code')).not.toBeInTheDocument();
-    const link = screen.getByRole('button', { name: /Use a 6-digit code instead/i });
+    const link = screen.getByRole('button', { name: /^Use another way$/i });
 
     // We have NOT signed in.
     expect(useUIStore.getState().token).toBeNull();
 
-    // The link reveals today's form, unchanged.
+    // The link lists the ways; the authenticator one reveals today's form, unchanged.
     await act(async () => { fireEvent.click(link); });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Enter a code from your authenticator app/i }));
+    });
     expect(screen.getByLabelText('Authentication code')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Verify & sign in/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Use a backup code/i })).toBeInTheDocument();
+    // …and the list is one tap away again.
+    expect(screen.getByRole('button', { name: /^Use another way$/i })).toBeInTheDocument();
   });
 
-  it("['passkey'] offers NO code link, but a backup code is still reachable", async () => {
+  it("['passkey'] offers NO authenticator code, but a backup code is still reachable", async () => {
     mockFetchByPath({
       '/auth/login': { body: { mfaRequired: true, mfaToken: 'mfa-1', mfaMethods: ['passkey'] } },
     });
@@ -171,10 +177,12 @@ describe('MFA step — passkey as the second factor', () => {
     await signInWithPassword();
 
     await screen.findByRole('button', { name: /Use your passkey/i });
-    expect(screen.queryByRole('button', { name: /Use a 6-digit code instead/i })).not.toBeInTheDocument();
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^Use another way$/i })); });
+    expect(screen.queryByRole('button', { name: /authenticator app/i })).not.toBeInTheDocument();
 
     // A passkey-only user's fallback IS a backup code — if that is not
-    // reachable, losing the device is a lockout.
+    // reachable, losing the device is a lockout. (An API that predates
+    // `mfaFallbacks` — this response — keeps offering it, as shipped.)
     const backup = screen.getByRole('button', { name: /Use a backup code/i });
     await act(async () => { fireEvent.click(backup); });
     expect(screen.getByLabelText('Backup code')).toBeInTheDocument();
@@ -191,6 +199,7 @@ describe('MFA step — passkey as the second factor', () => {
     await act(async () => { render(<LoginPage />); });
     await signInWithPassword();
     await screen.findByRole('button', { name: /Use your passkey/i });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^Use another way$/i })); });
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Use a backup code/i })); });
     expect(screen.getByRole('button', { name: /Use authenticator code/i })).toBeInTheDocument();
   });
@@ -274,8 +283,15 @@ describe('MFA step — passkey as the second factor', () => {
     await waitFor(() => { expect(startAuthentication).toHaveBeenCalled(); });
     expect(screen.queryByText(/wasn't accepted/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Too many attempts/i)).not.toBeInTheDocument();
-    // Back on the button, still holding the partial token.
-    expect(screen.getByRole('button', { name: /Use your passkey/i })).toBeInTheDocument();
+    // Still holding the partial token, the passkey one tap away…
+    expect(screen.getByRole('button', { name: /Try your passkey again/i })).toBeInTheDocument();
+    // …but NOT a dead end (2026-10-05): the calm sentence and the ways that
+    // work on this device, opened by themselves.
+    expect(screen.getByTestId('passkey-elsewhere-note')).toHaveTextContent(
+      'Your passkey may be on another device. Sign in another way on this one:',
+    );
+    expect(screen.getByTestId('mfa-other-ways')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Use a backup code/i })).toBeInTheDocument();
   });
 
   it('an expired mfaToken sends the operator back to the password form', async () => {
@@ -505,9 +521,10 @@ describe('Sign-in form — passwordless passkey', () => {
     // error (the operator's report: Safari says none is saved, then nothing
     // happened). Quiet is no longer silent: the page says what to do next.
     const hint = await screen.findByTestId('passkey-none-hint');
-    expect(hint).toHaveTextContent(
-      "No passkey on this device yet? Sign in with your email and password, and we'll help you set up your fingerprint, face or screen lock for next time.",
-    );
+    // 2026-10-05 — and it names the likeliest story on a phone: the passkey is
+    // on ANOTHER device. The way on is the email + password on this page.
+    expect(hint).toHaveTextContent('Your passkey may be on another device. Sign in another way on this one:');
+    expect(hint).toHaveTextContent("After you sign in, we'll help you set up your fingerprint, face or screen lock on this device.");
     expect(hint.className).not.toMatch(/rose/);
   });
 

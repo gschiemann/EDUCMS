@@ -6,7 +6,7 @@
 
 import { Fragment, Suspense, useEffect, useReducer, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Loader2, AlertCircle, ShieldCheck, ArrowLeft, Fingerprint, CheckCircle2 } from 'lucide-react';
+import { Loader2, AlertCircle, ShieldCheck, ArrowLeft, Fingerprint, CheckCircle2, Mail } from 'lucide-react';
 import type {
   PublicKeyCredentialCreationOptionsJSON,
   RegistrationResponseJSON,
@@ -27,9 +27,19 @@ import {
   getPasskey,
   getPasskeyFromAutofill,
   guessDeviceLabel,
+  passkeyDeviceKind,
+  passkeyErrorName,
+  passkeyMissDiagnostics,
   passkeysSupported,
   platformPasskeyAvailable,
+  type PasskeyMissStage,
 } from '@/lib/passkeys';
+import {
+  emailCodeSendErrorKey,
+  emailCodeVerifyError,
+  otherWaysFor,
+  readMfaFallbacks,
+} from '@/lib/mfa-other-ways';
 import {
   isPasskeyOfferSnoozed,
   PASSKEY_METHOD_KEYS,
@@ -87,8 +97,12 @@ const LINK_BTN_CLS =
  *               one-time backup codes must be seen before Continue
  *   cancelled — the sheet was dismissed; calm note + Continue
  *   failed    — plain message + Continue
+ *   exists    — this device ALREADY holds a passkey for the account (the
+ *               browser refused a duplicate); calm note + Continue. Possible
+ *               since 2026-10-05, when the offer started going to accounts
+ *               whose passkey is on another device.
  */
-type PasskeyOfferPhase = 'ready' | 'working' | 'done' | 'codes' | 'cancelled' | 'failed';
+type PasskeyOfferPhase = 'ready' | 'working' | 'done' | 'codes' | 'cancelled' | 'failed' | 'exists';
 
 interface PasskeyOfferState {
   /** Where the sign-in was going; every way out of the offer goes there. */
@@ -225,8 +239,51 @@ function LoginContent() {
 
   /** Show the passkey button on the challenge step? */
   const passkeyStepAvailable = mfaMethods.includes('passkey') && passkeyCapable;
-  /** Is the 6-digit code still an option for this account? */
-  const totpStepAvailable = mfaMethods.includes('totp');
+
+  // ── "Use another way" (2026-10-05) ──────────────────────────────────
+  // Owner: his passkey was on his Mac; on his iPhone the sheet showed the
+  // cross-device QR code and the page offered nothing else he could see. The
+  // pure decisions are in `lib/mfa-other-ways.ts`.
+  //
+  // `mfaFallbacks` from the login response — `null` when the API predates it,
+  // which reads as the shipped behaviour (backup code offered, no email).
+  const [mfaFallbacks, setMfaFallbacks] = useState<string[] | null>(null);
+  /** The list of other ways is open on the passkey step. */
+  const [otherWaysOpen, setOtherWaysOpen] = useState(false);
+  /** The passkey sheet just closed without a credential on THIS device. */
+  const [passkeyMissed, setPasskeyMissed] = useState(false);
+  const firstOtherWayRef = useRef<HTMLButtonElement>(null);
+  const otherWays = otherWaysFor(mfaMethods, mfaFallbacks);
+
+  // ── The emailed code (2026-10-05) ───────────────────────────────────
+  // A 6-digit code mailed to the account, as the SECOND step only: the send
+  // needs the partial mfaToken, which exists only after a correct password.
+  // `emailChallenge` is the opaque handle the send returned — page memory
+  // only, never storage, exactly like the mfaToken it stands beside.
+  const [emailChallenge, setEmailChallenge] = useState<string | null>(null);
+  const [emailCode, setEmailCode] = useState('');
+  const [emailCodeBusy, setEmailCodeBusy] = useState<false | 'sending' | 'verifying'>(false);
+  const [emailCodeResent, setEmailCodeResent] = useState(false);
+  /** The live partial token, for async handlers that must not act after "Back". */
+  const mfaTokenRef = useRef<string | null>(null);
+  useEffect(() => { mfaTokenRef.current = mfaToken; }, [mfaToken]);
+
+  /**
+   * Diagnostics for a passkey ceremony that ended without a credential —
+   * through the existing client log, no PII (see `passkeyMissDiagnostics`).
+   */
+  const logPasskeyMiss = (stage: PasskeyMissStage, err: unknown, accountHasPasskeys: boolean | null) => {
+    clog.info('auth', 'Passkey ceremony ended without a credential', passkeyMissDiagnostics({ stage, err, accountHasPasskeys }));
+  };
+
+  // Whenever the list of ways comes on screen — because the passkey missed,
+  // because "Use another way" was pressed (that link is replaced by the list,
+  // so focus would otherwise fall to the page), or on the way back from a code
+  // form — focus its first way: the keyboard or screen-reader operator lands
+  // on what to do next.
+  useEffect(() => {
+    if (mfaToken && otherWaysOpen && !codeFormOpen && !emailChallenge) firstOtherWayRef.current?.focus();
+  }, [mfaToken, otherWaysOpen, passkeyMissed, codeFormOpen, emailChallenge]);
 
   // Focus the step's PRIMARY control when the passkey challenge opens. The
   // TOTP input carries autoFocus for the same reason; when the passkey button
@@ -483,7 +540,12 @@ function LoginContent() {
       if (offerClosedRef.current) return;
       const described = describePasskeyError(err, 'create');
       clog.info('auth', 'Passkey offer ended without a credential', { reason: described.reason });
-      setOfferPhase(described.quiet ? 'cancelled' : 'failed');
+      logPasskeyMiss('offer-create', err, null);
+      // The browser refused a DUPLICATE: this device already holds a passkey
+      // for the account (it was offered because this sign-in used a code).
+      setOfferPhase(
+        described.reason === 'already-registered' ? 'exists' : described.quiet ? 'cancelled' : 'failed',
+      );
       return;
     }
     // The operator left while the sheet was up. Registering now would add a
@@ -648,6 +710,13 @@ function LoginContent() {
         ? data.mfaMethods
         : ['totp'];
       setMfaMethods(methods);
+      // The other ways through on THIS device (backup codes, an emailed
+      // code). Absent ⇒ null ⇒ the shipped behaviour (see mfa-other-ways.ts).
+      setMfaFallbacks(readMfaFallbacks(data));
+      setOtherWaysOpen(false);
+      setPasskeyMissed(false);
+      setEmailChallenge(null);
+      setEmailCode('');
       // The code form opens immediately UNLESS a passkey is on offer, in
       // which case the passkey button is the primary control.
       setCodeFormOpen(!(methods.includes('passkey') && passkeyCapable));
@@ -749,6 +818,12 @@ function LoginContent() {
     setPendingSession(null);
     setMfaMethods(['totp']);
     setCodeFormOpen(false);
+    setMfaFallbacks(null);
+    setOtherWaysOpen(false);
+    setPasskeyMissed(false);
+    setEmailChallenge(null);
+    setEmailCode('');
+    setEmailCodeResent(false);
     setError('');
   };
 
@@ -810,6 +885,7 @@ function LoginContent() {
    */
   const handlePasskeyChallenge = async () => {
     if (!mfaToken) return;
+    const token = mfaToken;
     setError('');
     setPasskeyBusy(true);
     try {
@@ -826,6 +902,7 @@ function LoginContent() {
           return;
         }
         setError(passkeyHttpError(optRes.status, optData));
+        setOtherWaysOpen(true);
         return;
       }
 
@@ -833,7 +910,17 @@ function LoginContent() {
       try {
         assertion = await getPasskey(optData.options);
       } catch (ceremonyErr) {
+        // NEVER A DEAD END (2026-10-05). Cancelled, timed out, "no passkey
+        // here" (iOS's cross-device QR code dismissed) — the browser reports
+        // them all alike, and the likeliest story on a phone is that the
+        // passkey lives on another device. Say so calmly and open the ways
+        // that work on THIS one. A cancel still paints no red banner.
         reportPasskeyCeremonyError(ceremonyErr);
+        logPasskeyMiss('mfa', ceremonyErr, true);
+        if (mfaTokenRef.current !== token) return; // "Back" was pressed meanwhile
+        setPasskeyMissed(true);
+        setOtherWaysOpen(true);
+        setCodeFormOpen(false);
         return;
       }
 
@@ -854,11 +941,110 @@ function LoginContent() {
       }
       clog.warn('auth', 'Passkey challenge rejected', { status: res.status, code: data?.code });
       setError(passkeyHttpError(res.status, data));
+      setOtherWaysOpen(true);
     } catch {
       setError(t('mfaVerifyUnreachable'));
     } finally {
       setPasskeyBusy(false);
     }
+  };
+
+  /**
+   * THE EMAILED CODE, step 1 — "Email a code to …" (2026-10-05).
+   *
+   * Needs the partial mfaToken (the password was proven); the API decides
+   * whether this account may have one (`mfa-email-code.ts`) and the page only
+   * offers it when the login response listed it. `resend` is "Send a new
+   * code" — the API retires the older code when it sends a new one.
+   */
+  const sendEmailCode = async (opts: { resend?: boolean } = {}) => {
+    if (!mfaToken || emailCodeBusy) return;
+    const token = mfaToken;
+    setError('');
+    setEmailCodeBusy('sending');
+    try {
+      const res = await fetch(`${API_URL}/auth/mfa/challenge/email/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mfaToken: token }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (mfaTokenRef.current !== token) return;
+      if (res.ok && typeof data?.challenge === 'string') {
+        clog.info('auth', 'Sign-in code emailed', { resend: !!opts.resend });
+        setEmailChallenge(data.challenge);
+        setEmailCode('');
+        setEmailCodeResent(!!opts.resend);
+        setCodeFormOpen(false);
+        return;
+      }
+      if (data?.code === 'MFA_TOKEN_INVALID') {
+        cancelMfa();
+        setError(t('mfaSetupTimedOut'));
+        return;
+      }
+      clog.warn('auth', 'Sign-in code not sent', { status: res.status, code: data?.code });
+      setError(t(emailCodeSendErrorKey(res.status, data?.code)));
+    } catch {
+      setError(t('emailCodeUnreachable'));
+    } finally {
+      setEmailCodeBusy(false);
+    }
+  };
+
+  /** THE EMAILED CODE, step 2 — trade it for the session. */
+  const handleEmailCodeSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!emailChallenge || emailCodeBusy) return;
+    const trimmed = emailCode.trim();
+    if (!trimmed) {
+      setError(t('emailCodeEnter'));
+      return;
+    }
+    setError('');
+    setEmailCodeBusy('verifying');
+    try {
+      const res = await fetch(`${API_URL}/auth/mfa/challenge/email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ challenge: emailChallenge, code: trimmed }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data?.access_token) {
+        clog.info('auth', 'Signed in with an emailed code', {});
+        // Awaited: this is exactly the sign-in the "add a passkey for this
+        // device" offer exists for, and "Verifying…" holds until it is ready.
+        await completeLogin(data);
+        return;
+      }
+      clog.warn('auth', 'Emailed code rejected', { status: res.status, code: data?.code });
+      const refused = emailCodeVerifyError(res.status, data);
+      setError(t(refused.key, refused.values));
+    } catch {
+      setError(t('mfaVerifyUnreachable'));
+    } finally {
+      setEmailCodeBusy(false);
+    }
+  };
+
+  /** Back from a code form (authenticator, backup or emailed) to the list of ways. */
+  const showOtherWays = () => {
+    setCodeFormOpen(false);
+    setEmailChallenge(null);
+    setEmailCode('');
+    setMfaCode('');
+    setUseBackupCode(false);
+    setError('');
+    setOtherWaysOpen(true);
+  };
+
+  /** Open the authenticator-code or backup-code form from the list. */
+  const openCodeForm = (kind: 'totp' | 'backup') => {
+    setUseBackupCode(kind === 'backup');
+    setMfaCode('');
+    setError('');
+    setEmailChallenge(null);
+    setCodeFormOpen(true);
   };
 
   /**
@@ -937,6 +1123,8 @@ function LoginContent() {
       try {
         assertion = await getPasskey(optData.options);
       } catch (ceremonyErr) {
+        // No account is known yet on this path, so `accountHasPasskeys` is null.
+        logPasskeyMiss('passwordless', ceremonyErr, null);
         const described = reportPasskeyCeremonyError(ceremonyErr);
         if (described.quiet) {
           // The operator's own report: "it says I don't have one saved" —
@@ -1033,6 +1221,22 @@ function LoginContent() {
         clog.info('auth', 'Passkey autofill ended without a credential', {
           reason: describePasskeyError(err, 'get').reason,
         });
+        // 2026-10-05 — NotAllowedError (unlike AbortError, which is OUR abort
+        // on Continue / leaving) means the operator PICKED a passkey in the
+        // autofill — on iOS, "a passkey from another device" — and its sheet
+        // closed without one. Same calm pointer as the passkey link, and the
+        // autofill is re-armed so it keeps working.
+        // The request has SETTLED — mark it before the await below, so an
+        // unmount meanwhile never "aborts" a ceremony this effect no longer owns.
+        conditionalPendingRef.current = false;
+        if (!cancelled && passkeyErrorName(err) === 'NotAllowedError') {
+          logPasskeyMiss('autofill', err, null);
+          const canOffer = (await platformPasskeyAvailable()) && !isPasskeyOfferSnoozed();
+          if (!cancelled) {
+            setPasskeyHint({ offer: canOffer, method: passkeyMethodFor() });
+            setConditionalEpoch((n) => n + 1);
+          }
+        }
         return;
       } finally {
         conditionalPendingRef.current = false;
@@ -1515,6 +1719,73 @@ function LoginContent() {
     </div>
   ) : null;
 
+  /**
+   * THE EMAILED CODE form (2026-10-05). `autocomplete="one-time-code"`, so
+   * Safari on an iPhone offers the code from Mail above the keyboard — usually
+   * one tap. "Send a new code" retires the old one (the API keeps only the
+   * newest alive); "Use another way" returns to the list.
+   */
+  const emailCodeForm = (
+    <form onSubmit={handleEmailCodeSubmit} className="space-y-4" data-testid="mfa-email-code-form">
+      <div className="flex justify-center">
+        <div className="w-12 h-12 rounded-xl bg-indigo-50 flex items-center justify-center">
+          <Mail className="w-6 h-6 text-indigo-600" aria-hidden />
+        </div>
+      </div>
+      <p className="text-sm text-slate-700 leading-relaxed text-center" aria-live="polite" data-testid="email-code-sent">
+        {emailCodeResent ? t('emailCodeResent', { email }) : t('emailCodeSent', { email })}
+      </p>
+      <div>
+        <label htmlFor="mfa-email-code" className="block text-xs font-semibold text-slate-700 mb-1.5">
+          {t('emailCodeLabel')}
+        </label>
+        <input
+          id="mfa-email-code"
+          type="text"
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          autoFocus
+          required
+          maxLength={9}
+          placeholder="123456"
+          className={INPUT_CLS + ' tracking-[0.4em] text-center font-mono text-base'}
+          value={emailCode}
+          onChange={(e) => setEmailCode(e.target.value)}
+          aria-describedby="mfa-email-code-help"
+        />
+        <p id="mfa-email-code-help" className="mt-1.5 text-[11px] text-slate-500">{t('emailCodeHelp')}</p>
+      </div>
+
+      {errorBanner}
+
+      <button type="submit" disabled={emailCodeBusy === 'verifying'} className={PRIMARY_BTN_CLS}>
+        {emailCodeBusy === 'verifying' ? (
+          <><Loader2 className="w-4 h-4 animate-spin" /> {t('verifying')}</>
+        ) : (
+          t('verifySignIn')
+        )}
+      </button>
+
+      <div className="flex items-center justify-between gap-2 pt-1">
+        <button
+          type="button"
+          onClick={showOtherWays}
+          className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-slate-700 min-h-[44px]"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" /> {t('useAnotherWay')}
+        </button>
+        <button
+          type="button"
+          onClick={() => void sendEmailCode({ resend: true })}
+          disabled={!!emailCodeBusy}
+          className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 disabled:opacity-50 min-h-[44px]"
+        >
+          {emailCodeBusy === 'sending' ? t('emailCodeSending') : t('emailCodeResend')}
+        </button>
+      </div>
+    </form>
+  );
+
   /** Why the operator is back on this page, when the URL says so. */
   const reasonBanners = error ? null : (
     <>
@@ -1615,7 +1886,7 @@ function LoginContent() {
                 ? t('passkeyOfferDoneTitle')
                 : offerPhase === 'codes'
                   ? t('mfaBackupCodesTitle')
-                  : t('passkeyOfferTitle'))
+                  : t('passkeyOfferTitle', { method: t(PASSKEY_METHOD_KEYS[passkeyOffer.method]) }))
               : pendingBackupCodes
               ? t('mfaBackupCodesTitle')
               : enrollRequired
@@ -1638,7 +1909,11 @@ function LoginContent() {
               : enrollRequired
                 ? t('mfaSetupSubtitle')
                 : mfaToken
-                  ? (useBackupCode ? t('mfaEnterBackup') : t('mfaEnterCode'))
+                  ? (emailChallenge
+                    ? t('emailCodeSubtitle')
+                    : passkeyStepAvailable && !codeFormOpen
+                      ? t('mfaUsePasskeySub')
+                      : useBackupCode ? t('mfaEnterBackup') : t('mfaEnterCode'))
                   : brand.tagline}
           </p>
         </div>
@@ -1677,6 +1952,8 @@ function LoginContent() {
                   </div>
                 ) : offerPhase === 'cancelled' ? (
                   <p className="text-xs text-slate-600 leading-relaxed text-center">{t('passkeyOfferCancelled')}</p>
+                ) : offerPhase === 'exists' ? (
+                  <p className="text-xs text-slate-600 leading-relaxed text-center">{t('passkeyOfferExists')}</p>
                 ) : offerPhase === 'done' || offerPhase === 'codes' ? (
                   <span className="sr-only">{t('passkeyOfferDoneTitle')}</span>
                 ) : null}
@@ -1701,7 +1978,10 @@ function LoginContent() {
                     {offerPhase === 'working' ? (
                       <><Loader2 className="w-4 h-4 animate-spin" /> {t('mfaSetupPasskeyWaiting')}</>
                     ) : (
-                      <><Fingerprint className="w-4 h-4" /> {t('passkeyOfferSetUp')}</>
+                      // "Add a passkey for this iPhone" (2026-10-05) — the
+                      // device is named, so it is obvious the passkey being
+                      // made lives on THIS one.
+                      <><Fingerprint className="w-4 h-4" /> {tRoot('passkeys.addForDevice', { device: passkeyDeviceKind() })}</>
                     )}
                   </button>
                   <button
@@ -1754,8 +2034,8 @@ function LoginContent() {
                 </Fragment>
               ) : (
                 <Fragment key="offer-after">
-                  {/* done / cancelled / failed — the sentence is in the live
-                      region above; this is the way on. */}
+                  {/* done / cancelled / failed / exists — the sentence is in
+                      the live region above; this is the way on. */}
                   <button
                     ref={offerPrimaryRef}
                     type="button"
@@ -1975,8 +2255,9 @@ function LoginContent() {
                WebAuthn) this renders `codeChallengeForm` and nothing else —
                the exact markup that shipped before 2026-09-21. The passkey
                arm is additive; it never reshapes the TOTP-only step. */
-            passkeyStepAvailable ? (
-              <div className="space-y-4">
+            emailChallenge ? emailCodeForm
+            : passkeyStepAvailable ? (
+              <div className="space-y-4" data-testid="mfa-passkey-step">
                 <div className="flex justify-center">
                   <div className="w-12 h-12 rounded-xl bg-indigo-50 flex items-center justify-center">
                     <Fingerprint className="w-6 h-6 text-indigo-600" />
@@ -1997,34 +2278,80 @@ function LoginContent() {
                   {passkeyBusy ? (
                     <><Loader2 className="w-4 h-4 animate-spin" /> {t('verifying')}</>
                   ) : (
-                    <><Fingerprint className="w-4 h-4" /> {t('usePasskey')}</>
+                    <><Fingerprint className="w-4 h-4" /> {passkeyMissed ? t('passkeyTryAgain') : t('usePasskey')}</>
                   )}
                 </button>
 
-                {/* The code form is the ALTERNATIVE here. Offered only when
-                    the account actually has TOTP — a passkey-only user gets
-                    the backup-code path below instead, which is their real
-                    fallback. */}
-                {!codeFormOpen && totpStepAvailable && (
-                  <button
-                    type="button"
-                    onClick={() => { setCodeFormOpen(true); setError(''); }}
-                    className="w-full text-xs font-semibold text-indigo-600 hover:text-indigo-700"
-                  >
-                    {t('useCodeInstead')}
-                  </button>
-                )}
-
-                {codeFormOpen ? codeChallengeForm : (
+                {codeFormOpen ? (
                   <>
+                    {codeChallengeForm}
+                    {/* The way back to the list — the code form keeps its own
+                        Back (to the password) and its own code/backup toggle. */}
+                    <div className="text-center">
+                      <button type="button" onClick={showOtherWays} className={LINK_BTN_CLS}>
+                        {t('useAnotherWay')}
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {/* NEVER A DEAD END (2026-10-05). Persistent live region:
+                        the calm "may be on another device" line after the
+                        sheet closes with nothing, or a real error. */}
                     <div aria-live="polite">
-                      {error && (
+                      {error ? (
                         <div className="flex items-start gap-2 px-3 py-2.5 bg-rose-50 border border-rose-200 rounded-lg">
                           <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
                           <p className="text-xs text-rose-700 font-medium">{error}</p>
                         </div>
-                      )}
+                      ) : passkeyMissed ? (
+                        <p data-testid="passkey-elsewhere-note" className="text-sm text-slate-700 leading-relaxed text-center">
+                          {t('passkeyElsewhereNote')}
+                        </p>
+                      ) : null}
                     </div>
+
+                    {otherWaysOpen ? (
+                      <div role="group" aria-label={t('otherWaysLabel')} data-testid="mfa-other-ways" className="space-y-2">
+                        {otherWays.map((way, i) => (
+                          <button
+                            key={way}
+                            ref={i === 0 ? firstOtherWayRef : undefined}
+                            type="button"
+                            data-way={way}
+                            disabled={way === 'email' && emailCodeBusy === 'sending'}
+                            onClick={() => (way === 'email' ? void sendEmailCode() : openCodeForm(way))}
+                            className="w-full min-h-[44px] border border-slate-300 hover:bg-slate-50 disabled:opacity-50 text-slate-800 text-sm font-semibold py-2.5 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
+                          >
+                            {way === 'totp' && <><ShieldCheck className="w-4 h-4 text-slate-500" aria-hidden /> {t('otherWayAuthenticator')}</>}
+                            {way === 'backup' && <><ShieldCheck className="w-4 h-4 text-slate-500" aria-hidden /> {t('useBackupCode')}</>}
+                            {way === 'email' && (emailCodeBusy === 'sending'
+                              ? <><Loader2 className="w-4 h-4 animate-spin" aria-hidden /> {t('emailCodeSending')}</>
+                              : <><Mail className="w-4 h-4 text-slate-500" aria-hidden /> {t('otherWayEmail')}</>)}
+                          </button>
+                        ))}
+                        {/* No emailed code here (mail not configured, or a
+                            password reset is too fresh): say where the
+                            passkey DOES work, and how to bring it here. */}
+                        {!otherWays.includes('email') && (
+                          <p data-testid="other-way-device-hint" className="text-xs text-slate-600 leading-relaxed text-center">
+                            {otherWays.length === 0 ? t('otherWayNone') : t('otherWayDeviceHint')}
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-center">
+                        <button
+                          type="button"
+                          data-testid="use-another-way"
+                          onClick={() => { setOtherWaysOpen(true); setError(''); }}
+                          className={LINK_BTN_CLS}
+                        >
+                          {t('useAnotherWay')}
+                        </button>
+                      </div>
+                    )}
+
                     <div className="flex items-center justify-between gap-2 pt-1">
                       <button
                         type="button"
@@ -2033,20 +2360,32 @@ function LoginContent() {
                       >
                         <ArrowLeft className="w-3.5 h-3.5" /> {t('back')}
                       </button>
-                      {/* A passkey-only account's fallback IS a backup code,
-                          so this stays reachable whether or not TOTP is on. */}
-                      <button
-                        type="button"
-                        onClick={() => { setUseBackupCode(true); setMfaCode(''); setError(''); setCodeFormOpen(true); }}
-                        className="text-xs font-semibold text-indigo-600 hover:text-indigo-700"
-                      >
-                        {t('useBackupCode')}
-                      </button>
                     </div>
                   </>
                 )}
               </div>
-            ) : codeChallengeForm
+            ) : (
+              <>
+                {codeChallengeForm}
+                {/* The authenticator-only account (or a browser with no
+                    WebAuthn) gets the emailed code too — but ONLY when the API
+                    listed it, so with an older API, or with mail off, this
+                    branch is the exact markup that has always shipped. */}
+                {otherWays.includes('email') && (
+                  <div className="text-center mt-3">
+                    <button
+                      type="button"
+                      data-testid="email-code-instead"
+                      onClick={() => void sendEmailCode()}
+                      disabled={emailCodeBusy === 'sending'}
+                      className={LINK_BTN_CLS}
+                    >
+                      {emailCodeBusy === 'sending' ? t('emailCodeSending') : t('emailCodeInstead')}
+                    </button>
+                  </div>
+                )}
+              </>
+            )
           ) : (
           manualSso ? (
             /* ── SUPPORT-ONLY manual single sign-on entry (`/login?sso=1`) ──
@@ -2143,20 +2482,37 @@ function LoginContent() {
                   >
                     {t('signInWithPasskey')}
                   </button>
-                  {/* "No passkey on this device yet?" — a calm pointer after
-                      the device sheet closes with no credential. Persistent
-                      live region so a screen reader hears it. */}
-                  <div aria-live="polite">
-                    {passkeyHint && !error && (
-                      <p data-testid="passkey-none-hint" className="mt-2 text-xs text-slate-600 leading-relaxed">
-                        {passkeyHint.offer
-                          ? t('passkeyNoneHint', { method: t(PASSKEY_METHOD_KEYS[passkeyHint.method]) })
-                          : t('passkeyNoneHintPlain')}
+                </div>
+              )}
+              {/* "Your passkey may be on another device" — a calm pointer
+                  after the device sheet closes with no credential, from the
+                  link above OR the email field's autofill (where iOS offers
+                  "a passkey from another device"). The way on is the email
+                  and password on THIS page, so it is named as a button that
+                  takes you there. Persistent live region so a screen reader
+                  hears it. */}
+              <div aria-live="polite" className="text-center">
+                {passkeyHint && !error && (
+                  <div data-testid="passkey-none-hint" className="mt-1 space-y-2">
+                    <p className="text-xs text-slate-700 leading-relaxed">{t('passkeyElsewhereNote')}</p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPasskeyHint(null);
+                        document.getElementById('login-email')?.focus();
+                      }}
+                      className="w-full min-h-[44px] border border-slate-300 hover:bg-slate-50 text-slate-800 text-sm font-semibold py-2.5 px-4 rounded-lg transition-colors"
+                    >
+                      {t('passkeyUseEmailInstead')}
+                    </button>
+                    {passkeyHint.offer && (
+                      <p className="text-[11px] text-slate-500 leading-relaxed">
+                        {t('passkeyNoneHintOffer', { method: t(PASSKEY_METHOD_KEYS[passkeyHint.method]) })}
                       </p>
                     )}
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </form>
           ) : step.sso && !step.passwordOpen ? (
             /* ── STEP 2 — this organization signs in with single sign-on ──

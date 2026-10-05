@@ -22,13 +22,20 @@ import {
   usePasskeyDelete,
   type PasskeySummary,
 } from '@/hooks/use-api';
+import type {
+  PublicKeyCredentialCreationOptionsJSON,
+  RegistrationResponseJSON,
+} from '@simplewebauthn/browser';
 import {
   createPasskey,
   describePasskeyError,
   formatPasskeyLastUsed,
   guessDeviceLabel,
+  passkeyDeviceKind,
+  passkeyMissDiagnostics,
   passkeysSupported,
 } from '@/lib/passkeys';
+import { clog } from '@/lib/client-logger';
 
 /**
  * PasskeyCard — enroll / rename / remove WebAuthn passkeys for the signed-in
@@ -67,12 +74,27 @@ export function PasskeyCard({ autoOpenAdd = false }: { autoOpenAdd?: boolean } =
   const [error, setError] = useState<string | null>(null);
 
   // ── Add flow ────────────────────────────────────────────────────────
-  // The operator opens the password panel, we trade the password for creation
-  // options, run the ceremony, then verify. `adding` covers the whole chain
-  // including the browser sheet, which no mutation's isPending can see.
+  // TWO TAPS, ON PURPOSE (2026-10-05). The operator opens the password panel
+  // and we trade the password for creation options; THEN a second button —
+  // "Add a passkey for this iPhone" — calls `create()` as the very first thing
+  // in its tap. Safari only lets `navigator.credentials.create()` run inside
+  // the user's tap, and the old single chain (password → await fetch →
+  // create) could spend that activation on the network round trip; WebKit
+  // then refuses with NotAllowedError, which reads exactly like "cancelled",
+  // so on a phone the panel simply closed and nothing happened. Owner: "I
+  // should be able to add the passkey right from the mobile device".
+  // `adding` covers the password → options call; `creating` the device sheet
+  // and the verify, which no mutation's isPending can see on its own.
   const [showAdd, setShowAdd] = useState(false);
   const [addPassword, setAddPassword] = useState('');
   const [adding, setAdding] = useState(false);
+  /** Options in hand, waiting for the tap that runs `create()`. */
+  const [pendingOptions, setPendingOptions] = useState<PublicKeyCredentialCreationOptionsJSON | null>(null);
+  const [creating, setCreating] = useState(false);
+  const createBtnRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (pendingOptions && !creating) createBtnRef.current?.focus();
+  }, [pendingOptions, creating]);
   // `?add=passkey` (2026-09-24) — the account menu's "Set up a passkey" lands
   // on this card with the password panel ALREADY open, once the browser is
   // known to be able to create one. Once only: closing it must stay closed.
@@ -136,6 +158,7 @@ export function PasskeyCard({ autoOpenAdd = false }: { autoOpenAdd?: boolean } =
     return (e && e.message) || t(fallbackKey);
   };
 
+  /** Tap 1 — the password, traded for creation options. Nothing is created yet. */
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -147,13 +170,45 @@ export function PasskeyCard({ autoOpenAdd = false }: { autoOpenAdd?: boolean } =
     try {
       const { options } = await optionsMut.mutateAsync({ password: addPassword });
       // Clear the password the moment the server has accepted it — it is not
-      // needed for the rest of the chain and the browser sheet can sit open
-      // for a long time.
+      // needed for the rest of the chain.
       setAddPassword('');
-      let attestation;
+      setPendingOptions(options);
+    } catch (err) {
+      setError(apiMessage(err, 'passkeys.errAddFailed'));
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  /**
+   * Tap 2 — "Add a passkey for this iPhone". `createPasskey` is the FIRST
+   * statement, nothing awaited in front of it, so the device sheet opens
+   * inside this tap's user activation (see the block above `showAdd`).
+   */
+  const startCreate = () => {
+    const options = pendingOptions;
+    if (!options || creating) return;
+    let ceremony: Promise<RegistrationResponseJSON>;
+    try {
+      ceremony = createPasskey(options);
+    } catch (err) {
+      ceremony = Promise.reject(err);
+    }
+    setCreating(true);
+    void finishCreate(ceremony);
+  };
+
+  const finishCreate = async (ceremony: Promise<RegistrationResponseJSON>) => {
+    try {
+      let attestation: RegistrationResponseJSON;
       try {
-        attestation = await createPasskey(options);
+        attestation = await ceremony;
       } catch (ceremonyErr) {
+        clog.info('auth', 'Passkey ceremony ended without a credential',
+          passkeyMissDiagnostics({ stage: 'settings-create', err: ceremonyErr, accountHasPasskeys: passkeys.length > 0 }));
+        // The options' challenge is single-use: whatever happened, the next
+        // attempt starts again from the password.
+        setPendingOptions(null);
         const described = describePasskeyError(ceremonyErr, 'create');
         // A dismissed Face ID sheet is a decision, not a failure. Close the
         // panel and say nothing.
@@ -165,15 +220,24 @@ export function PasskeyCard({ autoOpenAdd = false }: { autoOpenAdd?: boolean } =
         response: attestation,
         label: guessDeviceLabel(),
       });
+      setPendingOptions(null);
       setShowAdd(false);
       if (Array.isArray(res.backupCodes) && res.backupCodes.length) {
         setBackupCodes(res.backupCodes);
       }
     } catch (err) {
+      setPendingOptions(null);
       setError(apiMessage(err, 'passkeys.errAddFailed'));
     } finally {
-      setAdding(false);
+      setCreating(false);
     }
+  };
+
+  const closeAdd = () => {
+    setShowAdd(false);
+    setAddPassword('');
+    setPendingOptions(null);
+    setError(null);
   };
 
   const handleRemove = async (e: React.FormEvent) => {
@@ -272,10 +336,13 @@ export function PasskeyCard({ autoOpenAdd = false }: { autoOpenAdd?: boolean } =
         {supported && !showAdd && !atLimit && (
           <button
             type="button"
-            onClick={() => { setShowAdd(true); setError(null); setAddPassword(''); setRemoveId(null); setRenameId(null); }}
-            className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 transition-colors disabled:opacity-60"
+            data-testid="passkey-add-for-device"
+            onClick={() => { setShowAdd(true); setError(null); setAddPassword(''); setPendingOptions(null); setRemoveId(null); setRenameId(null); }}
+            className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 min-h-[44px] rounded-lg bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 transition-colors disabled:opacity-60"
           >
-            <Plus className="w-4 h-4" /> {t('passkeys.addPasskey')}
+            {/* "Add a passkey for this iPhone" (2026-10-05): a passkey lives on
+                the device that makes it, so the button says which one. */}
+            <Plus className="w-4 h-4" /> {t('passkeys.addForDevice', { device: passkeyDeviceKind() })}
           </button>
         )}
       </div>
@@ -340,8 +407,36 @@ export function PasskeyCard({ autoOpenAdd = false }: { autoOpenAdd?: boolean } =
           </div>
         )}
 
-        {/* ── Add: password re-auth ────────────────────────────────── */}
-        {showAdd && (
+        {/* ── Add, tap 2: the device sheet, opened inside this tap ──── */}
+        {showAdd && pendingOptions && (
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-3" data-testid="passkey-add-ready">
+            <p className="text-xs font-semibold text-slate-700">{t('passkeys.readyToCreate')}</p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                ref={createBtnRef}
+                type="button"
+                onClick={startCreate}
+                disabled={creating}
+                className="px-4 py-2 min-h-[44px] bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-bold rounded-lg inline-flex items-center gap-2"
+              >
+                {creating
+                  ? <><Loader2 className="w-4 h-4 animate-spin" /> {t('passkeys.creating')}</>
+                  : <><Fingerprint className="w-4 h-4" /> {t('passkeys.addForDevice', { device: passkeyDeviceKind() })}</>}
+              </button>
+              <button
+                type="button"
+                onClick={closeAdd}
+                disabled={creating}
+                className="px-4 py-2 min-h-[44px] text-slate-500 hover:text-slate-700 text-xs font-semibold disabled:opacity-50"
+              >
+                {t('mfaCard.cancel')}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Add, tap 1: password re-auth ─────────────────────────── */}
+        {showAdd && !pendingOptions && (
           <form onSubmit={handleAdd} className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-3">
             <p className="text-xs font-semibold text-slate-700">{t('passkeys.confirmPasswordAdd')}</p>
             <p className="text-[11px] text-slate-500">{t('passkeys.confirmPasswordAddWhy')}</p>
@@ -362,16 +457,18 @@ export function PasskeyCard({ autoOpenAdd = false }: { autoOpenAdd?: boolean } =
               <button
                 type="submit"
                 disabled={adding}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-bold rounded-lg inline-flex items-center gap-2"
+                className="px-4 py-2 min-h-[44px] bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-bold rounded-lg inline-flex items-center gap-2"
               >
+                {/* Only the password check runs on this tap now; the device
+                    sheet is the NEXT tap — so no "waiting for your device". */}
                 {adding
-                  ? <><Loader2 className="w-4 h-4 animate-spin" /> {t('passkeys.creating')}</>
+                  ? <><Loader2 className="w-4 h-4 animate-spin" /> {t('passkeys.continueAdd')}</>
                   : <><Fingerprint className="w-4 h-4" /> {t('passkeys.continueAdd')}</>}
               </button>
               <button
                 type="button"
-                onClick={() => { setShowAdd(false); setAddPassword(''); setError(null); }}
-                className="px-4 py-2 text-slate-500 hover:text-slate-700 text-xs font-semibold"
+                onClick={closeAdd}
+                className="px-4 py-2 min-h-[44px] text-slate-500 hover:text-slate-700 text-xs font-semibold"
               >
                 {t('mfaCard.cancel')}
               </button>

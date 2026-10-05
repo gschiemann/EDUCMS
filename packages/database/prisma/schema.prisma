@@ -578,6 +578,7 @@ model User {
   cleverId             String?              @unique @map("clever_id")
   cleverRole           String?              @map("clever_role")
   passwordResets       PasswordResetToken[]
+  mfaEmailCodes        MfaEmailCode[]
   passkeys             Passkey[]
   invitesSent          UserInvite[]         @relation("InviteInviter")
   invite               UserInvite?          @relation("InviteUser")
@@ -629,6 +630,39 @@ model PasswordResetToken {
 
   @@index([userId])
   @@map("password_reset_tokens")
+}
+
+// 2026-10-05 — EMAILED SIGN-IN CODE, the second step when the account's
+// passkey (or authenticator app) is on ANOTHER device. Owner, after his Mac
+// passkey could not be used on his iPhone: "I should be able to add the
+// passkey right from the mobile device". One row per code sent; it exists only
+// AFTER the password was proven (it is created by presenting the partial
+// `mfaToken` that /auth/login mints after a correct password), so a code is
+// never a password replacement. Same storage idea as password_reset_tokens:
+// nothing usable is stored — the handle the page holds is kept as a SHA-256,
+// the 6-digit code as an HMAC keyed by a server secret.
+//   challengeHash — sha256(opaque handle returned to the page that sent it)
+//   codeHash      — HMAC-SHA256(server key, challengeHash + ':' + code)
+//   attempts      — wrong guesses so far; 5 and the code is dead
+//   ipHash        — sha256(client IP): the per-IP send limit, without
+//                   keeping the address itself
+// Superseded codes are expired (expiresAt = now) when a new one is sent.
+model MfaEmailCode {
+  id            String    @id @default(uuid())
+  userId        String    @map("user_id")
+  challengeHash String    @unique @map("challenge_hash")
+  codeHash      String    @map("code_hash")
+  rememberMe    Boolean   @default(false) @map("remember_me")
+  attempts      Int       @default(0)
+  ipHash        String?   @map("ip_hash")
+  expiresAt     DateTime  @map("expires_at")
+  usedAt        DateTime? @map("used_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([ipHash, createdAt])
+  @@map("mfa_email_codes")
 }
 
 // 2026-05-25 — Passkey table reserved for Phase 3 (WebAuthn). Stores

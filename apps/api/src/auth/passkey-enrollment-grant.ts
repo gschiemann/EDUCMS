@@ -29,18 +29,31 @@
  *     two concurrent redemptions cannot both succeed.
  *
  * ── WHO CAN MINT ONE ──────────────────────────────────────────────────────
- * Exactly TWO call sites of `withPasskeyEnrollmentOffer`, pinned by
+ * Exactly THREE call sites of `withPasskeyEnrollmentOffer`, pinned by
  * `passkey-enrollment-grant.spec.ts`:
  *   • `AuthController.login`    — the password proved out and NO second
  *                                  factor is owed (a full session came back);
  *   • `MfaController.challenge` — the password AND an authenticator code or
- *                                  backup code proved out.
+ *                                  backup code proved out;
+ *   • `MfaEmailCodeController.verify` (2026-10-05) — the password AND a code
+ *                                  emailed to the account proved out.
  * Never a token refresh, never the durable-session refresh, never a tenant
- * switch, never a passkey sign-in (that account already holds one), never
- * forced enrollment, never signup / invite. A stolen session token therefore
- * cannot produce a grant — only a real sign-in can — and it is only minted
- * for an account with NO passkey that is not held behind the first-login
- * credential-setup gate.
+ * switch, never a passkey sign-in (THIS device just used one), never forced
+ * enrollment, never signup / invite. A stolen session token therefore cannot
+ * produce a grant — only a real sign-in can — and it is only minted for an
+ * account that is not held behind the first-login credential-setup gate and
+ * is below the passkey cap.
+ *
+ * ── "ON THIS DEVICE", NOT "ON THIS ACCOUNT" (2026-10-05) ──────────────────
+ * Until today the offer went only to an account with ZERO passkeys. The owner
+ * had one — on his Mac — and signed in on his iPhone another way: the rule
+ * said "already has a passkey", so the phone was never offered one, and the
+ * next sign-in there was the same dead end. Every mint site above is a sign-in
+ * that did NOT use a passkey, which is the real signal that THIS device has
+ * none, so the offer now goes to any account below the cap. If the device
+ * does hold one after all (the operator chose a code on the Mac), the browser
+ * refuses the duplicate (`excludeCredentials`) and the page says "this device
+ * already has your passkey" — nothing is created twice.
  *
  * ── WHAT IT AUTHORIZES ────────────────────────────────────────────────────
  * ONE thing: `POST /auth/passkeys/register/options` for the SAME account,
@@ -61,6 +74,7 @@
 
 import { createHash, randomBytes } from 'crypto';
 
+import { MAX_PASSKEYS_PER_USER } from './passkey-limits';
 import {
   challengeKey,
   isUsableChallengeRedis,
@@ -252,10 +266,10 @@ export interface PasskeyOfferSubject {
    */
   mustSetupCredentials?: boolean | null;
   /**
-   * `_count.passkeys` — passkeys the account holds RIGHT NOW. Anything but a
-   * literal `0`, including "not loaded", means no offer: an offer made to an
-   * account that already has a passkey is noise, and one made on a guess is
-   * worse.
+   * `_count.passkeys` — passkeys the account holds RIGHT NOW. A number below
+   * `MAX_PASSKEYS_PER_USER` gets an offer (2026-10-05: zero OR MORE — see
+   * "ON THIS DEVICE" above). "Not loaded" means no offer: one made on a guess
+   * is worse than none, and at the cap registration would refuse anyway.
    */
   _count?: { passkeys?: number | null } | null;
 }
@@ -289,7 +303,15 @@ export async function withPasskeyEnrollmentOffer<T>(
   if (envelope.mfaRequired) return response;
   if (!subject || typeof subject.id !== 'string' || !subject.id)
     return response;
-  if (subject._count?.passkeys !== 0) return response;
+  const held = subject._count?.passkeys;
+  if (
+    typeof held !== 'number' ||
+    !Number.isInteger(held) ||
+    held < 0 ||
+    held >= MAX_PASSKEYS_PER_USER
+  ) {
+    return response;
+  }
   if (subject.mustSetupCredentials !== false) return response;
 
   const passkeyEnrollment = await mintPasskeyEnrollmentGrant(redis, subject.id);
