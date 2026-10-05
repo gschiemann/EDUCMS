@@ -197,7 +197,7 @@ describe('§8.4 / §19 — unknown is labelled unknown, never green and never ze
     const card = rtl.getByTestId('needs-attention');
     expect(card).toHaveAttribute('data-state', 'unknown');
     expect(card.textContent).toContain('Nothing needs attention');
-    expect(card.textContent).toMatch(/isn’t a full all-clear/);
+    expect(card.textContent).not.toMatch(/all-clear/);
     expect(card.textContent).not.toContain('Fleet checks passed');
     // Gray, not green — §8.4 reserves green for a proved result.
     expect(card.querySelector('.bg-slate-100')).toBeTruthy();
@@ -386,7 +386,7 @@ describe('the healthy fleet', () => {
     const card = rtl.getByTestId('needs-attention');
     expect(card).toHaveAttribute('data-state', 'clear');
     expect(card.textContent).toContain('All checks passed');
-    expect(card.textContent).toContain('2 of 2 devices online');
+    expect(card.textContent).toContain('2 of 2 screens online');
     // §M04's own example says "45 expected revisions rendered". No expected
     // content revision exists (2026-09-01 audit), so this surface must not
     // borrow the phrase.

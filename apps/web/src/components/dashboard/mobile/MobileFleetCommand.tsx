@@ -297,19 +297,13 @@ function NeedsAttention({
             </p>
             <p className="mt-0.5 text-[12.5px] leading-snug text-slate-600">
               {assurance.online.state === 'unknown'
-                // Never cry wolf, and never cry all-clear either: a check that
-                // did not answer is reported as not-answered, not as zero.
+                // A check that did not answer is reported as not-answered,
+                // never as zero. Picture evidence lives in the tiles below;
+                // this card names only what needs a person (2026-10-05:
+                // the old hedge line read as a contradiction).
                 ? 'No screens reporting yet.'
-                : `${assurance.online.n} of ${assurance.online.total} devices online · ` +
-                  (assurance.showingContent.state === 'unknown'
-                    ? 'no picture evidence yet'
-                    : `${assurance.showingContent.n} reporting a confirmed picture`)}
+                : `${assurance.online.n} of ${assurance.online.total} screens online`}
             </p>
-            {!allClear && (
-              <p className="mt-1 text-[11.5px] text-slate-500">
-                Some checks haven’t reported, so this isn’t a full all-clear.
-              </p>
-            )}
           </div>
         </div>
       </div>

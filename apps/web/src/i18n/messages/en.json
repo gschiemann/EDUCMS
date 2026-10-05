@@ -1225,7 +1225,7 @@
         "readinessOff": "Emergency alerts are off for this organization, so nothing is graded. Turn them on under Emergency to set up alert types and their content.",
         "attentionTitle": "Needs attention",
         "attentionDesc": "Sorted by severity, then by operational impact.",
-        "attentionNone": "Nothing needs attention in the checks available here.",
+        "attentionNone": "Nothing needs attention.",
         "attentionOpen": "Open {section}",
         "changesTitle": "Recent settings changes",
         "changesDesc": "From the immutable audit log.",

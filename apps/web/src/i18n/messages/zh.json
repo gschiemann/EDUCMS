@@ -1225,7 +1225,7 @@
         "readinessOff": "本组织的紧急警报已关闭，因此不进行任何评估。请在“紧急”中开启后再设置警报类型和内容。",
         "attentionTitle": "需要处理",
         "attentionDesc": "先按严重程度排序，再按对运营的影响排序。",
-        "attentionNone": "此处可用的检查中没有需要处理的项目。",
+        "attentionNone": "没有需要处理的事项。",
         "attentionOpen": "打开{section}",
         "changesTitle": "最近的设置变更",
         "changesDesc": "来自不可篡改的审计日志。",
