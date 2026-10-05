@@ -100,6 +100,17 @@ class WatchdogReceiver : android.content.BroadcastReceiver() {
         if (mode == RelaunchMode.DARK) {
             PlayerLogger.i("Watchdog", "Tick — panel off by a person and the player is gone; relaunching it dark")
         }
+        // 1.1.23 (the X80 setup freeze) — a person left the setup card for a
+        // system Settings screen and may still be working in it. This launch
+        // is unconditional and, once "Display over other apps" is granted,
+        // LEGAL from the background — so it landed on top of the Settings
+        // page in their hands. Bounded (SetupCeremonyMath.SETUP_AWAY_YIELD_MS)
+        // and never during an alert; the service + alert-watch work above
+        // has already run.
+        if (com.educms.player.setup.SetupCeremony.relaunchShouldYield(app)) {
+            PlayerLogger.i("Watchdog", "Tick — a person is in a system screen from the setup card; not relaunching over it")
+            return
+        }
         // Only re-launch the activity if it's been idle for a while; otherwise
         // we'd steal focus. Best-effort — Android 10+ background launch
         // restrictions might block this, but on rooted Taurus / Device-Owner

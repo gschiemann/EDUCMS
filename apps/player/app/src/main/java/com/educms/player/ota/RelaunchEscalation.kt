@@ -169,6 +169,19 @@ object RelaunchEscalation {
                 )
                 return
             }
+            // 1.1.23 — same shape as the install prompt above: not foreground
+            // because a PERSON left the setup card for a system Settings
+            // screen, not because the player is gone. Relaunching would land
+            // on top of the page in their hands (the X80). Bounded; never
+            // during an alert.
+            if (com.educms.player.setup.SetupCeremony.relaunchShouldYield(ctx)) {
+                PlayerLogger.i(
+                    TAG,
+                    "relaunch attempt from $source skipped — a person is in a system screen " +
+                        "opened from the setup card",
+                )
+                return
+            }
             // USER STANDBY (2026-10-03, player 1.1.21) — a person turned this
             // panel off with the remote. The escalation below PROVES a launch
             // by onResume, which a dark panel never reaches, and its last rung

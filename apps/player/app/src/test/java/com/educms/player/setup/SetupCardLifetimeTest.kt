@@ -279,6 +279,6 @@ class SetupCardLifetimeTest {
         val granting = SetupCeremonyMath.buildModel(fleet())
         assertEquals("installPromptShown", granting.primaryKey)
         assertTrue(granting.primaryLabel!!.contains("name-installPromptShown"))
-        assertEquals("Not now", granting.secondaryLabel)
+        assertEquals(SetupCeremonyMath.SKIP_LABEL, granting.secondaryLabel)
     }
 }

@@ -192,6 +192,13 @@ object DisplayCapabilityProbe {
         // own reporting path would mean a second endpoint, a second dedup
         // marker and a second thing to keep off the manifest hot path.
         section(root, "setup") { com.educms.player.setup.SetupCeremony.telemetryJson(ctx) }
+        // 2026-10-05 (v1.1.23, the X80) — every permission for BOTH apps,
+        // read the way the system menu shows it, plus who the box's HOME is.
+        // The X80 owner saw rows unchecked whose toggles were ON — some on the
+        // Manager's line, not the Player's. These raw facts let the lead see a
+        // box's real state from the dashboard; the API keeps them in
+        // `screen_device_inventory` beside `setup` (INVENTORY_SECTIONS).
+        section(root, "permissions") { com.educms.player.setup.SetupCeremony.permissionsJson(ctx) }
         section(root, "admin") { adminState(ctx) }
         section(root, "brightness") { brightnessSurface(ctx) }
         section(root, "backlightNodes") { backlightNodes() }

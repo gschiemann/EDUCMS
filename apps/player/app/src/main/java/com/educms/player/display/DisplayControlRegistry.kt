@@ -141,7 +141,14 @@ object DisplayControlRegistry {
         // provider runs, so the ACTION_SCREEN_OFF a device-admin lock fires at
         // once is never mistaken for somebody's remote.
         when (action) {
-            DisplayAction.Wake -> UserStandby.end(app, "a WAKE command")
+            DisplayAction.Wake -> {
+                UserStandby.end(app, "a WAKE command")
+                // 1.1.23 — a WAKE COMMAND during an alert means the panel
+                // stays on after the all-clear (last command wins). The
+                // alert's own wake runs inside UserStandby.duringOwnWake and
+                // does not count.
+                UserStandby.noteDeliberateWake(app)
+            }
             DisplayAction.Blank -> UserStandby.noteOwnBlank()
             else -> Unit
         }

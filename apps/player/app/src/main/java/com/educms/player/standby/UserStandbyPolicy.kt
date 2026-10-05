@@ -45,7 +45,47 @@ data class StandbyRecord(
     val sinceElapsedMs: Long,
     /** `Settings.Global.BOOT_COUNT` at entry, or -1 on a ROM that does not keep it. */
     val bootCount: Int,
+    /**
+     * 1.1.23 — this standby was PUT BACK by us after an alert's all-clear,
+     * through our own best blank. Such a panel may still be lit for a while
+     * (a screen-off timeout takes 15 s; the software floor is a black overlay
+     * on a lit backlight), so being interactive does NOT end it. What ends it
+     * is what ends any standby — the power key (SCREEN_ON), a WAKE command,
+     * the schedule's ON trigger, an alert, a reboot — and ending it undoes
+     * our blank. The person's original times are kept, so "last command
+     * wins" is still measured from THEIR off.
+     */
+    val restoredByUs: Boolean = false,
 )
+
+/** A person's standby that an alert ended, kept so the all-clear can put it back (1.1.23). */
+data class InterruptedStandby(
+    /** The person's standby as it was when the alert arrived. */
+    val record: StandbyRecord,
+    /** `elapsedRealtime` when the alert ended it. */
+    val interruptedAtElapsedMs: Long,
+)
+
+/** What the all-clear does about a standby the alert ended. */
+enum class RestoreDecision {
+    /** Put the panel back to sleep and re-enter user standby. */
+    RESTORE,
+
+    /** No person had the panel off when the alert came. */
+    NOTHING_INTERRUPTED,
+
+    /** Some face is still in an alert — nothing may darken. */
+    STILL_HELD,
+
+    /** The box restarted since — a boot is "on". */
+    REBOOTED,
+
+    /** A WAKE command (the dashboard's Turn on) came after the alert began — it spoke last. */
+    WAKE_COMMAND_DURING_ALERT,
+
+    /** The on/off schedule's ON trigger fired after the person's off — it spoke last. */
+    SCHEDULE_ON_AFTER_OFF,
+}
 
 /** Who turned the panel off. */
 enum class ScreenOffCause {
@@ -153,7 +193,10 @@ object UserStandbyPolicy {
         nowBootCount: Int,
         screenInteractive: Boolean,
     ): Boolean = when {
-        screenInteractive -> false
+        // A standby WE put back after an alert may still be lit while our
+        // blank takes hold (or for good, on the software floor). See
+        // [StandbyRecord.restoredByUs].
+        screenInteractive && !record.restoredByUs -> false
         nowElapsedMs < record.sinceElapsedMs -> false
         record.bootCount >= 0 && nowBootCount >= 0 && record.bootCount != nowBootCount -> false
         else -> true
@@ -174,4 +217,50 @@ object UserStandbyPolicy {
      */
     fun scheduleEndsStandby(record: StandbyRecord, lastTransition: ScheduleTransition?): Boolean =
         lastTransition != null && lastTransition.on && lastTransition.atMs > record.sinceWallMs
+
+    // ─── 1.1.23 — AFTER THE ALL-CLEAR, BACK TO HOW IT WAS ────────────────
+    //
+    // Owner, after the 1.1.22 drill on the X80: the alert woke a panel he had
+    // turned off with the remote — correct — but after the all-clear it STAYED
+    // ON. An alert used to END the standby for good. Now the standby the
+    // alert interrupted is remembered and, when the hold is released, put
+    // back — unless something that outranks the person's off spoke during the
+    // alert. Last command wins, exactly as for the standby itself.
+    //
+    // ⚠️ Nothing here may darken during an alert: [STILL_HELD] is checked
+    // first, and the caller runs only on the release path, after the hold is
+    // committed released.
+
+    /**
+     * What the all-clear does about a standby an alert ended.
+     *
+     * Order matters: an alert still held outranks everything (never darken
+     * during an alert); a reboot voids the person's standby as it always has;
+     * then a WAKE command or the schedule's ON trigger that spoke after the
+     * person's off wins.
+     *
+     * @param lastDeliberateWakeElapsedMs the last WAKE that was a COMMAND (the
+     *        dashboard's Turn on, the schedule's ON) — never the alert's own
+     *        wake. Null = none since the interruption.
+     */
+    fun restoreAfterAlert(
+        interrupted: InterruptedStandby?,
+        stillHeld: Boolean,
+        nowElapsedMs: Long,
+        nowBootCount: Int,
+        lastDeliberateWakeElapsedMs: Long?,
+        lastScheduleTransition: ScheduleTransition?,
+    ): RestoreDecision = when {
+        interrupted == null -> RestoreDecision.NOTHING_INTERRUPTED
+        stillHeld -> RestoreDecision.STILL_HELD
+        nowElapsedMs < interrupted.interruptedAtElapsedMs -> RestoreDecision.REBOOTED
+        nowElapsedMs < interrupted.record.sinceElapsedMs -> RestoreDecision.REBOOTED
+        interrupted.record.bootCount >= 0 && nowBootCount >= 0 &&
+            interrupted.record.bootCount != nowBootCount -> RestoreDecision.REBOOTED
+        lastDeliberateWakeElapsedMs != null &&
+            lastDeliberateWakeElapsedMs >= interrupted.interruptedAtElapsedMs ->
+            RestoreDecision.WAKE_COMMAND_DURING_ALERT
+        scheduleEndsStandby(interrupted.record, lastScheduleTransition) -> RestoreDecision.SCHEDULE_ON_AFTER_OFF
+        else -> RestoreDecision.RESTORE
+    }
 }

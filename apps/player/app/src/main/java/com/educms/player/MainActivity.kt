@@ -1742,6 +1742,20 @@ class MainActivity : ComponentActivity() {
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
+                // 2026-10-05 (1.1.23, the X80 setup freeze): Back reaches HERE
+                // with the setup card on glass only when focus had escaped to
+                // a WebView behind the card — the card's own key handler
+                // never saw the press. It used to fall through to the stop-
+                // overlay dispatch below, into a page hidden behind the card:
+                // a Back that did nothing anyone could see. The card is what
+                // the operator is looking at, so Back closes the card.
+                if (runCatching {
+                        com.educms.player.setup.SetupCeremony.closeFromActivityBack(this@MainActivity)
+                    }.getOrDefault(false)
+                ) {
+                    PlayerLogger.i("MainActivity", "back-press closed the setup card (focus had left it)")
+                    return
+                }
                 // 2026-08-30 (field install, two bricked units): while the
                 // Manager-install gate owns the screen the WebView has no
                 // player page, so the stop-overlay dispatch below lands in
@@ -3459,7 +3473,13 @@ class MainActivity : ComponentActivity() {
         // bringToFront() only changes z-order, not focus — without this
         // the main player WebView keeps focus and the remote can't drive
         // the URL page. (2026-05-20)
-        urlOverlayView.requestFocus()
+        //
+        // ⚠️ NOT while a native card owns the remote (1.1.23). The setup
+        // checklist and the boot diagnostic sit ABOVE this view; a website
+        // slide coming up behind them used to take the focus, and every key
+        // after that went to a page nobody could see — the card looked
+        // frozen. The site gets focus when the card goes away.
+        if (!nativeCardOwnsRemote()) urlOverlayView.requestFocus()
         binding.managerGateOverlay.bringToFront()
         // 1.1.21 — LAST: a native blank stays over the site it just buried.
         keepBlackoutAboveSiteViews("showUrlOverlay")
@@ -3550,7 +3570,7 @@ class MainActivity : ComponentActivity() {
         // Unlike the URL asset overlay, focus stays with the player page (its
         // tab bar is the remote's parked control) UNLESS the widget asked for
         // it — a D-pad user pressing "into the site". Back hands it back.
-        if (req.focus) urlOverlayView.requestFocus()
+        if (req.focus && !nativeCardOwnsRemote()) urlOverlayView.requestFocus()
         binding.managerGateOverlay.bringToFront()
         // 1.1.21 — LAST: a native blank stays over the site it just buried.
         keepBlackoutAboveSiteViews("webTabsShow")
@@ -3590,8 +3610,9 @@ class MainActivity : ComponentActivity() {
         urlOverlayView.visibility = View.GONE
         urlOverlayView.settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
         restoreUrlOverlayLayout()
-        // Give the remote back to the player page's tab bar / escape surface.
-        webView.requestFocus()
+        // Give the remote back to the player page's tab bar / escape surface
+        // — unless a native card owns it (1.1.23; see showUrlOverlay).
+        if (!nativeCardOwnsRemote()) webView.requestFocus()
     }
 
     /**
@@ -3951,6 +3972,8 @@ class MainActivity : ComponentActivity() {
         // See the companion's [isInForeground] — the only proof a post-OTA
         // relaunch actually landed on the glass.
         isInForeground = true
+        // 1.1.23 — whoever left the setup card for a system screen is back.
+        runCatching { com.educms.player.setup.SetupCeremony.noteHostResumed() }
         // USER STANDBY — resumed with the panel lit means whatever turned it
         // back on (a person, an alert, the schedule) has ended the standby;
         // this catches a SCREEN_ON broadcast that never reached us.
@@ -4100,6 +4123,11 @@ class MainActivity : ComponentActivity() {
     override fun onPause() {
         isInForeground = false
         isResumedForLockTask = false
+        // 1.1.23 — pausing WITH the setup card on glass means a person just
+        // left it for a system screen (a page the card opened, or their own
+        // HOME press). The background relaunch paths keep their hands off
+        // the glass while they work there; see SetupCeremony.relaunchShouldYield.
+        runCatching { com.educms.player.setup.SetupCeremony.noteHostPaused() }
         // USER STANDBY — a pause taken while the panel is already
         // non-interactive is the SLEEP pausing us: the player was on the
         // glass when the panel went off. UserStandby reads this when the
@@ -4858,6 +4886,16 @@ class MainActivity : ComponentActivity() {
             finishAffinity()
         }
     }
+
+    /**
+     * Is a NATIVE card (the setup checklist or the boot diagnostic) on the
+     * glass right now? While one is, it owns the remote: nothing else in this
+     * window may take focus (1.1.23 — a website slide behind the setup card
+     * took it, and every key went to a page nobody could see).
+     */
+    private fun nativeCardOwnsRemote(): Boolean =
+        runCatching { com.educms.player.setup.SetupCeremony.isShowing() }.getOrDefault(false) ||
+            runCatching { com.educms.player.boot.BootDiagnostics.isShowing() }.getOrDefault(false)
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         // Website Tabs (2026-09-28): a remote key while a site is up is

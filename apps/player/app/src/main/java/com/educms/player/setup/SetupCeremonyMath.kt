@@ -52,6 +52,20 @@ data class StepState(
      * words a person can check — see [SetupCeremonyMath.notApplicableReason].
      */
     val notApplicableReason: String? = null,
+    /**
+     * THIS SCREEN CANNOT DO THIS STEP (2026-10-05, v1.1.23 — the X80 loop).
+     *
+     * The step applies in principle, but its Settings page does not exist on
+     * this ROM, or the ROM hands its intent to something that is not a
+     * Settings app (the X80 opened a Google web page), or the page refused to
+     * open on this exact firmware. Such a step is SHOWN — with
+     * [unavailableReason] in plain words — but it is never armed, never
+     * counted toward "N of N" and never tappable, so it can never become a
+     * button that loops the operator through a page that is not there.
+     */
+    val unavailable: Boolean = false,
+    /** Operator-facing words for [unavailable]. Null when it is not. */
+    val unavailableReason: String? = null,
 )
 
 object SetupCeremonyMath {
@@ -85,13 +99,21 @@ object SetupCeremonyMath {
      * demotion exists to stop.
      */
     fun nextKey(states: List<StepState>): String? =
-        states.firstOrNull { it.applies && !it.optional && !it.satisfied && !it.offered }?.key
+        states.firstOrNull {
+            it.applies && !it.optional && !it.satisfied && !it.offered && !it.unavailable
+        }?.key
 
     /** Steps that are meaningful on this box, in order. */
     fun applicable(states: List<StepState>): List<StepState> = states.filter { it.applies }
 
-    /** The happy path: applicable AND not demoted to advanced. */
-    fun core(states: List<StepState>): List<StepState> = states.filter { it.applies && !it.optional }
+    /**
+     * The happy path: applicable, not demoted to advanced, and DOABLE on this
+     * screen. An [StepState.unavailable] step is excluded from the count the
+     * same way a non-applicable one is: a total this screen can never reach
+     * would pin the card at "PAUSED" forever over a page that does not exist.
+     */
+    fun core(states: List<StepState>): List<StepState> =
+        states.filter { it.applies && !it.optional && !it.unavailable }
 
     /** Applicable but advanced — rendered, tappable, never counted. */
     fun optional(states: List<StepState>): List<StepState> =
@@ -425,10 +447,114 @@ object SetupCeremonyMath {
             "\"Open setup on this panel\". Or, at the screen, press and hold the " +
             "TOP-LEFT corner for 6 seconds."
 
-    /** Shown while there is still armed work — unchanged from v2. */
+    /**
+     * Shown while there is still armed work.
+     *
+     * v1.1.23 adds the last sentence: Back is the way out of this card, and
+     * it holds until the screen restarts (the X80 owner could not find a way
+     * off the card with a remote).
+     */
     const val FOOTNOTE_GRANTING =
         "Android asks for each permission on its own screen — that part is not " +
-            "up to us. We bring you back to this list every time."
+            "up to us. We bring you back to this list every time. Press Back to " +
+            "close this list until the screen restarts."
+
+    // ── v7 (2026-10-05, v1.1.23) — THE X80 LOOP ──────────────────────────
+    //
+    // Owner, remote only: Enter on the card opened a Google web page, Back
+    // returned to the same card, and the D-pad "could not get anywhere
+    // else". Three rules came out of it, and the copy below is theirs:
+    //
+    //   1. A step whose Settings page does not exist on this screen (or that
+    //      the ROM hands to a browser) SAYS SO on the card and is skipped —
+    //      it is never a button. See [StepState.unavailable].
+    //   2. Every card with an action has a second control: "Skip this
+    //      step". Skipping advances the sequence and the card STAYS, with
+    //      the next step armed; Back is what closes it.
+    //   3. Back closes the card until the next restart of the screen —
+    //      persisted, so a process restart does not bring it straight back
+    //      ([hiddenUntilReboot]).
+
+    /** The secondary button on a card that still has a step armed. */
+    const val SKIP_LABEL = "Skip this step"
+
+    /**
+     * The secondary button on the post-upgrade offer card: there, declining
+     * is an answer about one build (see `SetupCeremony.dismissByOperator`),
+     * not a skip within a sequence.
+     */
+    const val NOT_NOW_LABEL = "Not now"
+
+    /** An unavailable row: nothing on this screen opens the page. */
+    const val UNAVAILABLE_NO_PAGE =
+        "Not available on this screen — its Settings has no page for this. Skipped."
+
+    /** An unavailable row: the page was there but would not open on this firmware. */
+    const val UNAVAILABLE_LAUNCH_FAILED =
+        "Not available on this screen — it would not open that page. Skipped."
+
+    /**
+     * An unavailable row: the ROM hands the intent to something that is not
+     * a Settings app (the X80's Google page).
+     */
+    fun unavailableNotSettings(appLabel: String?): String =
+        "Not available on this screen — it sends this to " +
+            (appLabel?.takeIf { it.isNotBlank() } ?: "another app") +
+            " instead of its Settings. Skipped."
+
+    /**
+     * Has the operator closed the card with Back during THIS boot of the box?
+     *
+     * "Until the next restart" survives a process restart (an OTA, an OOM
+     * kill, the X80's four reconnects in eight minutes) but not a reboot. A
+     * different `Settings.Global.BOOT_COUNT` is a different boot; where the
+     * ROM keeps no boot count, `elapsedRealtime` going backwards is.
+     *
+     * @param hiddenBootCount boot count when Back was pressed; -1 = unknown.
+     * @param hiddenElapsedMs `elapsedRealtime` when Back was pressed; 0 = never hidden.
+     */
+    fun hiddenUntilReboot(
+        hiddenBootCount: Int,
+        hiddenElapsedMs: Long,
+        nowBootCount: Int,
+        nowElapsedMs: Long,
+    ): Boolean = when {
+        hiddenElapsedMs <= 0L -> false
+        nowElapsedMs < hiddenElapsedMs -> false
+        hiddenBootCount >= 0 && nowBootCount >= 0 -> hiddenBootCount == nowBootCount
+        else -> true
+    }
+
+    /**
+     * How long, after the operator leaves the setup card for a system screen,
+     * the background relaunch paths keep their hands off the glass.
+     *
+     * The X80 owner was working in a system Settings screen during setup.
+     * The player's own 15-minute Watchdog launches MainActivity
+     * unconditionally, and once "Display over other apps" is granted that
+     * launch is LEGAL from the background — so it lands on top of whatever
+     * Settings page the operator is using. Twenty minutes covers one missed
+     * Watchdog tick with margin; after it the kiosk takes its screen back as
+     * it always has.
+     */
+    const val SETUP_AWAY_YIELD_MS = 20L * 60L * 1000L
+
+    /**
+     * Must a background relaunch (Watchdog tick, post-OTA rung) leave the
+     * glass alone right now because a person left the setup card for a
+     * system screen?
+     *
+     * ⚠️ NEVER during an emergency: an alert outranks setup, exactly as the
+     * card itself withdraws for one.
+     *
+     * @param awaySinceMs `elapsedRealtime` when MainActivity paused with the
+     *        setup card on glass; 0 = it did not.
+     */
+    fun yieldRelaunchToSetup(awaySinceMs: Long, nowElapsedMs: Long, emergencyHeld: Boolean): Boolean =
+        !emergencyHeld &&
+            awaySinceMs > 0L &&
+            nowElapsedMs >= awaySinceMs &&
+            nowElapsedMs - awaySinceMs < SETUP_AWAY_YIELD_MS
 
     // ── v4 (2026-09-01) — THE POST-UPGRADE RELAUNCH-GRANT OFFER ──────────
     //
@@ -608,8 +734,11 @@ object SetupCeremonyMath {
             !f.isHomeApp &&
             f.declinedVc != f.currentVc
 
-    /** How one row reads. */
-    enum class RowStatus { GRANTED, CURRENT, NEEDED }
+    /**
+     * How one row reads. UNAVAILABLE (v1.1.23): this screen cannot do the
+     * step — shown with its reason, never tappable, never armed.
+     */
+    enum class RowStatus { GRANTED, CURRENT, NEEDED, UNAVAILABLE }
 
     /**
      * What the screen as a whole is doing.
@@ -723,6 +852,7 @@ object SetupCeremonyMath {
         headingOverride: String? = null,
         footnoteOverride: String? = null,
         countdown: String? = null,
+        secondaryOverride: String? = null,
     ): ChecklistModel {
         val states = inputs.map { it.state }
         val armed = nextKey(states)
@@ -731,26 +861,38 @@ object SetupCeremonyMath {
         fun rowFor(input: ChecklistInput): ChecklistRow {
             val status = when {
                 input.state.satisfied -> RowStatus.GRANTED
+                // v1.1.23 — before CURRENT/NEEDED: an unavailable step is
+                // never armed (nextKey skips it) and must never read as
+                // something the operator still owes this screen.
+                input.state.unavailable -> RowStatus.UNAVAILABLE
                 input.state.key == armed -> RowStatus.CURRENT
                 else -> RowStatus.NEEDED
             }
             return ChecklistRow(
                 key = input.state.key,
                 name = input.name,
-                why = input.why,
+                why = if (status == RowStatus.UNAVAILABLE) {
+                    input.state.unavailableReason ?: UNAVAILABLE_NO_PAGE
+                } else {
+                    input.why
+                },
                 status = status,
-                note = input.note,
+                note = if (status == RowStatus.UNAVAILABLE) null else input.note,
                 // The hint is a paragraph of Settings-menu directions. On
                 // the armed row it is help; on all six at once it is
                 // wallpaper nobody reads. An ADVANCED row is never armed,
                 // so it carries its hint whenever it is un-granted — that
                 // section is read on purpose, by somebody who came looking.
                 hint = when {
+                    status == RowStatus.UNAVAILABLE -> null
                     status == RowStatus.CURRENT -> input.hint
                     input.state.optional && !input.state.satisfied -> input.hint
                     else -> null
                 },
-                actionable = !input.state.satisfied,
+                // An unavailable row is not a button: there is no page behind
+                // it on this screen, and a button that opens nothing (or a
+                // browser) is exactly the X80 loop.
+                actionable = !input.state.satisfied && !input.state.unavailable,
             )
         }
 
@@ -768,7 +910,7 @@ object SetupCeremonyMath {
         // has none (no companion app, a device owner pinning HOME) reports 0
         // and its card is byte-for-byte what v2 showed.
         val optionalOutstanding = optionalRows.count {
-            it.status != RowStatus.GRANTED
+            it.status != RowStatus.GRANTED && it.status != RowStatus.UNAVAILABLE
         }
 
         return ChecklistModel(
@@ -802,7 +944,15 @@ object SetupCeremonyMath {
                     if (optionalOutstanding > 0) PRIMARY_CLOSE else PRIMARY_DONE
             },
             primaryKey = armed,
-            secondaryLabel = if (mode == ChecklistMode.GRANTING) "Not now" else null,
+            // v1.1.23: "Skip this step" — the X80 loop's way forward without
+            // leaving the card. Before, the second button was "Not now",
+            // which skipped AND closed; closing is Back's job now, and it
+            // holds until the screen restarts.
+            secondaryLabel = when {
+                mode != ChecklistMode.GRANTING -> null
+                secondaryOverride != null -> secondaryOverride
+                else -> SKIP_LABEL
+            },
             optionalOutstanding = optionalOutstanding,
             // GRANTING keeps v2's explainer — the operator is mid-flow and
             // the thing they need is why Android keeps throwing them at

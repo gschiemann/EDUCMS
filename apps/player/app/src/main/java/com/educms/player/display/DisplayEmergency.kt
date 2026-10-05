@@ -635,6 +635,15 @@ object DisplayEmergency {
         // effect NOW, not silently wait until tomorrow's boundary.
         runCatching { DisplayScheduler.armAndApply(app) }
             .onFailure { PlayerLogger.w(TAG, "post-release schedule re-evaluation failed: ${it.message}") }
+
+        // (f) 1.1.23 — BACK TO HOW IT WAS. If this alert woke a panel a
+        // person had turned off with the remote, put it back to sleep and
+        // resume their standby — unless a WAKE command or the schedule's ON
+        // trigger spoke after their off. Runs only HERE, on the committed
+        // release with no face holding, last, so nothing can darken during an
+        // alert (the registry also refuses every blank while one is held).
+        runCatching { com.educms.player.standby.UserStandby.restoreAfterAlertIfDue(app) }
+            .onFailure { PlayerLogger.w(TAG, "post-release standby restore failed: ${it.message}") }
         return persisted
     }
 
@@ -668,6 +677,11 @@ object DisplayEmergency {
         // Nothing on this path ever ASKS whether a standby is in force — it
         // only ends one — so standby can never sit between an alert and the
         // glass. Cheap and silent when no standby exists (every re-raise).
+        // 1.1.23 — write down the standby this alert is ending, so the
+        // all-clear can put it back (release, step f). It records; it never
+        // gates — the very next line ends the standby either way.
+        runCatching { com.educms.player.standby.UserStandby.rememberForAlertRestore(app) }
+            .onFailure { PlayerLogger.w(TAG, "could not remember the standby for the all-clear: ${it.message}") }
         runCatching { com.educms.player.standby.UserStandby.end(app, "an emergency alert") }
             .onFailure { PlayerLogger.e(TAG, "could not end a user standby for the alert", it) }
         // Read the mirror BEFORE we correct it: this is the only place
@@ -689,12 +703,16 @@ object DisplayEmergency {
         ScreenWakeLock.pokeScreen(app)
 
         runCatching {
-            DisplayControlRegistry.apply(app, DisplayAction.Wake, revertAfterMs = null)
-            DisplayControlRegistry.apply(
-                app,
-                DisplayAction.SetBrightness(EMERGENCY_BRIGHTNESS),
-                revertAfterMs = null,
-            )
+            // The ALERT's own wake — not a person's command, so it must not
+            // cancel the all-clear restore (1.1.23; see UserStandby.noteDeliberateWake).
+            com.educms.player.standby.UserStandby.duringOwnWake {
+                DisplayControlRegistry.apply(app, DisplayAction.Wake, revertAfterMs = null)
+                DisplayControlRegistry.apply(
+                    app,
+                    DisplayAction.SetBrightness(EMERGENCY_BRIGHTNESS),
+                    revertAfterMs = null,
+                )
+            }
         }.onFailure { PlayerLogger.e(TAG, "emergency wake through the registry failed", it) }
 
         DisplayPrefs.setBlanked(app, false)

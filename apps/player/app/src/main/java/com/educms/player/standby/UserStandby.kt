@@ -9,8 +9,12 @@ import android.os.SystemClock
 import android.provider.Settings
 import androidx.core.content.ContextCompat
 import com.educms.player.MainActivity
+import com.educms.player.display.DisplayAction
+import com.educms.player.display.DisplayConfigStore
+import com.educms.player.display.DisplayControlRegistry
 import com.educms.player.display.DisplayEmergency
 import com.educms.player.display.DisplayPrefs
+import com.educms.player.display.DisplayScheduleMath
 import com.educms.player.display.DisplayScheduler
 import com.educms.player.logging.PlayerLogger
 import java.lang.ref.WeakReference
@@ -67,6 +71,28 @@ object UserStandby {
     private const val KEY_SINCE_ELAPSED = "user_standby_since_elapsed_ms"
     private const val KEY_BOOT_COUNT = "user_standby_boot_count"
     private const val CPU_LOCK_TAG = "educms:user-standby"
+
+    /** 1.1.23 — the standby in force was put back by us after an alert. See [StandbyRecord.restoredByUs]. */
+    private const val KEY_RESTORED = "user_standby_restored_by_us"
+
+    // 1.1.23 — the standby an alert interrupted, kept for the all-clear.
+    private const val KEY_INT_SINCE_WALL = "user_standby_interrupted_since_wall_ms"
+    private const val KEY_INT_SINCE_ELAPSED = "user_standby_interrupted_since_elapsed_ms"
+    private const val KEY_INT_BOOT_COUNT = "user_standby_interrupted_boot_count"
+    private const val KEY_INT_AT_ELAPSED = "user_standby_interrupted_at_elapsed_ms"
+
+    /** `elapsedRealtime` of the last WAKE COMMAND after that interruption (never the alert's own). */
+    private const val KEY_WAKE_AFTER_INT = "user_standby_wake_after_interrupt_elapsed_ms"
+
+    /**
+     * > 0 while THIS thread is running a wake WE issue — the alert's own, or
+     * the one that undoes our restore blank. Such a wake is not a person's
+     * command and must not cancel the all-clear restore.
+     */
+    private val ownWakeDepth = object : ThreadLocal<Int>() {
+        // Not ThreadLocal.withInitial — that is API 26 and minSdk is 24.
+        override fun initialValue(): Int = 0
+    }
 
     /** MainActivity hears every transition so it can disarm / re-arm its wake flags. */
     fun interface Listener {
@@ -210,7 +236,174 @@ object UserStandby {
     fun onActivityResumed(ctx: Context) {
         if (cachedActive == false) return
         val app = ctx.applicationContext
+        // 1.1.23 — a standby WE put back after an alert can be lit (the
+        // software floor; the 15 s before a screen-off timeout takes hold),
+        // so a resume says nothing about it. The power key, a WAKE, the
+        // schedule, an alert or a reboot end it.
+        if (readRecord(app)?.restoredByUs == true) return
         if (screenInteractive(app)) end(app, "the player came back on the glass")
+    }
+
+    // ─── 1.1.23 — after the all-clear, back to how it was ───────────────
+
+    /**
+     * An alert is about to END the standby a person is in. Remember it so the
+     * all-clear can put it back ([restoreAfterAlertIfDue]). Called by
+     * `DisplayEmergency.enforceNow` immediately before it ends the standby;
+     * cheap and silent when there is none (every per-poll re-raise).
+     *
+     * ⚠️ It never GATES the alert — it only writes down what the alert is
+     * ending. A failure here costs the restore, never the wake.
+     */
+    fun rememberForAlertRestore(ctx: Context) {
+        if (cachedActive == false) return
+        val app = ctx.applicationContext
+        val record = readRecord(app) ?: return
+        val now = SystemClock.elapsedRealtime()
+        // Only a standby that is really still in force — a stale record (the
+        // person already turned the panel back on while we were dead) must
+        // not become a restore that switches off a panel they switched on.
+        val valid = UserStandbyPolicy.recordStillValid(
+            record = record,
+            nowElapsedMs = now,
+            nowBootCount = bootCount(app),
+            screenInteractive = screenInteractive(app),
+        )
+        if (!valid) return
+        synchronized(lock) {
+            runCatching {
+                prefs(app).edit()
+                    .putLong(KEY_INT_SINCE_WALL, record.sinceWallMs)
+                    .putLong(KEY_INT_SINCE_ELAPSED, record.sinceElapsedMs)
+                    .putInt(KEY_INT_BOOT_COUNT, record.bootCount)
+                    .putLong(KEY_INT_AT_ELAPSED, now)
+                    .remove(KEY_WAKE_AFTER_INT)
+                    .commit()
+            }.onFailure { PlayerLogger.w(TAG, "could not remember the standby for the all-clear: ${it.message}") }
+        }
+        PlayerLogger.w(TAG, "an emergency alert is ending a person's standby — it will be put back after the all-clear")
+    }
+
+    /**
+     * A WAKE ran through the display registry. If it was a COMMAND — the
+     * dashboard's Turn on, the schedule's ON — and an alert interrupted a
+     * standby, that command spoke after the person's off: the all-clear must
+     * not put the panel back to sleep. The alert's own wake, and the wake that
+     * undoes our restore blank, run inside [duringOwnWake] and do not count.
+     */
+    fun noteDeliberateWake(ctx: Context) {
+        if (ownWakeDepth.get()!! > 0) return
+        val app = ctx.applicationContext
+        val p = prefs(app)
+        if (!p.contains(KEY_INT_AT_ELAPSED)) return
+        runCatching {
+            p.edit().putLong(KEY_WAKE_AFTER_INT, SystemClock.elapsedRealtime()).commit()
+        }
+        PlayerLogger.i(TAG, "a WAKE command came during the alert — the panel stays on after the all-clear")
+    }
+
+    /** Run [block] as a wake WE issue — see [noteDeliberateWake]. */
+    fun <T> duringOwnWake(block: () -> T): T {
+        ownWakeDepth.set(ownWakeDepth.get()!! + 1)
+        try {
+            return block()
+        } finally {
+            ownWakeDepth.set(ownWakeDepth.get()!! - 1)
+        }
+    }
+
+    /**
+     * The emergency hold was just RELEASED — no face is holding. If an alert
+     * ended a person's standby, put it back: sleep the panel through the
+     * display registry with its best blank provider, and re-enter user
+     * standby — unless a WAKE command or the schedule's ON trigger spoke after
+     * the person's off, or the box restarted ([UserStandbyPolicy.restoreAfterAlert]).
+     *
+     * One-shot: the remembered standby is cleared whatever the decision.
+     *
+     * ⚠️ NEVER DURING AN ALERT. Called only from `DisplayEmergency.release`,
+     * after the release is committed; it re-checks the hold anyway, and the
+     * registry refuses every blank while one is held.
+     */
+    fun restoreAfterAlertIfDue(ctx: Context) {
+        val app = ctx.applicationContext
+        val p = prefs(app)
+        if (!p.contains(KEY_INT_AT_ELAPSED)) return
+        val interrupted = InterruptedStandby(
+            record = StandbyRecord(
+                sinceWallMs = p.getLong(KEY_INT_SINCE_WALL, 0L),
+                sinceElapsedMs = p.getLong(KEY_INT_SINCE_ELAPSED, 0L),
+                bootCount = p.getInt(KEY_INT_BOOT_COUNT, -1),
+            ),
+            interruptedAtElapsedMs = p.getLong(KEY_INT_AT_ELAPSED, 0L),
+        )
+        val wakeAt = if (p.contains(KEY_WAKE_AFTER_INT)) p.getLong(KEY_WAKE_AFTER_INT, 0L) else null
+        val lastTransition = runCatching {
+            val config = DisplayConfigStore.load(app)
+            DisplayScheduleMath.lastTransitionAtOrBefore(
+                config.schedules + config.wakeOnlySchedules,
+                System.currentTimeMillis(),
+            )
+        }.getOrNull()
+        val decision = UserStandbyPolicy.restoreAfterAlert(
+            interrupted = interrupted,
+            stillHeld = runCatching { DisplayEmergency.isHeld(app) }.getOrDefault(true),
+            nowElapsedMs = SystemClock.elapsedRealtime(),
+            nowBootCount = bootCount(app),
+            lastDeliberateWakeElapsedMs = wakeAt,
+            lastScheduleTransition = lastTransition,
+        )
+        clearInterrupted(app)
+        if (decision != RestoreDecision.RESTORE) {
+            PlayerLogger.i(TAG, "all-clear: not putting the panel back to sleep — $decision")
+            return
+        }
+        // Ours, recorded BEFORE the provider runs, so the screen-off it causes
+        // is never read as a person's remote (the registry also does this).
+        noteOwnBlank()
+        val result = runCatching {
+            DisplayControlRegistry.apply(app, DisplayAction.Blank, revertAfterMs = null)
+        }.getOrNull()
+        if (result == null || !result.ok) {
+            PlayerLogger.w(TAG, "all-clear: could not put the panel back to sleep ($result) — leaving it on")
+            return
+        }
+        enterRestored(app, interrupted.record)
+        PlayerLogger.w(
+            TAG,
+            "all-clear: the panel a person had turned off is going back to sleep via " +
+                "${(result as? com.educms.player.display.ActionResult.Ok)?.providerId} " +
+                "(user standby resumes; the power key, a WAKE, the schedule's ON or an alert ends it)",
+        )
+    }
+
+    private fun clearInterrupted(app: Context) {
+        runCatching {
+            prefs(app).edit()
+                .remove(KEY_INT_SINCE_WALL)
+                .remove(KEY_INT_SINCE_ELAPSED)
+                .remove(KEY_INT_BOOT_COUNT)
+                .remove(KEY_INT_AT_ELAPSED)
+                .remove(KEY_WAKE_AFTER_INT)
+                .commit()
+        }.onFailure { PlayerLogger.w(TAG, "could not clear the remembered standby: ${it.message}") }
+    }
+
+    /** Re-enter user standby with the PERSON's original times, marked as put back by us. */
+    private fun enterRestored(app: Context, original: StandbyRecord) {
+        synchronized(lock) {
+            runCatching {
+                prefs(app).edit()
+                    .putLong(KEY_SINCE_WALL, original.sinceWallMs)
+                    .putLong(KEY_SINCE_ELAPSED, original.sinceElapsedMs)
+                    .putInt(KEY_BOOT_COUNT, original.bootCount)
+                    .putBoolean(KEY_RESTORED, true)
+                    .commit()
+            }.onFailure { PlayerLogger.w(TAG, "could not persist the restored standby: ${it.message}") }
+            cachedActive = true
+        }
+        acquireCpuLock(app)
+        notifyListener(true)
     }
 
     /** Every Watchdog tick: keep the CPU lock fresh and catch a schedule trigger an alarm missed. */
@@ -269,6 +462,7 @@ object UserStandby {
                     .putLong(KEY_SINCE_WALL, record.sinceWallMs)
                     .putLong(KEY_SINCE_ELAPSED, record.sinceElapsedMs)
                     .putInt(KEY_BOOT_COUNT, record.bootCount)
+                    .remove(KEY_RESTORED)
                     .commit()
             }.getOrDefault(false)
             cachedActive = true
@@ -284,12 +478,15 @@ object UserStandby {
     }
 
     private fun exit(app: Context, reason: String) {
+        val wasRestoredByUs: Boolean
         synchronized(lock) {
+            wasRestoredByUs = runCatching { prefs(app).getBoolean(KEY_RESTORED, false) }.getOrDefault(false)
             runCatching {
                 prefs(app).edit()
                     .remove(KEY_SINCE_WALL)
                     .remove(KEY_SINCE_ELAPSED)
                     .remove(KEY_BOOT_COUNT)
+                    .remove(KEY_RESTORED)
                     .commit()
             }.onFailure { PlayerLogger.w(TAG, "could not clear the standby record: ${it.message}") }
             cachedActive = false
@@ -297,6 +494,17 @@ object UserStandby {
         PlayerLogger.i(TAG, "user standby ENDED — $reason")
         releaseCpuLock()
         notifyListener(false)
+        // 1.1.23 — a standby WE put back after an alert is held by OUR blank
+        // (a short screen-off timeout, a lock, the software floor). Whatever
+        // ended it — the power key, a WAKE, the schedule, an alert, a reboot —
+        // means "be on", so the blank comes off with it; otherwise the power
+        // key would light a panel that sleeps again 15 s later. A wake WE
+        // issue, so it never counts as a person's command.
+        if (wasRestoredByUs) {
+            runCatching {
+                duringOwnWake { DisplayControlRegistry.apply(app, DisplayAction.Wake, revertAfterMs = null) }
+            }.onFailure { PlayerLogger.w(TAG, "could not undo the restore blank: ${it.message}") }
+        }
     }
 
     /**
@@ -355,6 +563,7 @@ object UserStandby {
             sinceWallMs = p.getLong(KEY_SINCE_WALL, 0L),
             sinceElapsedMs = p.getLong(KEY_SINCE_ELAPSED, 0L),
             bootCount = p.getInt(KEY_BOOT_COUNT, -1),
+            restoredByUs = p.getBoolean(KEY_RESTORED, false),
         )
     }.getOrNull()
 

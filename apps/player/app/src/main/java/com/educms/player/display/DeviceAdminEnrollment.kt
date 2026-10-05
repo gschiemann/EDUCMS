@@ -129,11 +129,17 @@ object DeviceAdminEnrollment {
      * @param activity the FOREGROUND Activity. Required, not incidental —
      *        see the hard rule in this file's header.
      * @param source   one of [SOURCE_BRIDGE] / [SOURCE_INTENT], for the log.
+     * @param component the exact activity to open (v1.1.23). The setup
+     *        checklist resolves `ACTION_ADD_DEVICE_ADMIN` itself and refuses
+     *        anything that is not a Settings app (the X80 handed setup
+     *        intents to a web page), then passes the vetted component here so
+     *        no chooser or other app can answer. Null = the implicit intent,
+     *        exactly as before (the field-ops intent and the web bridge).
      * @return a JSON string in the same shape [DisplayControlApi] uses:
      *         `{"ok":true,"state":"prompt-pending"}` or
      *         `{"ok":false,"code":"recently-declined","message":"…"}`.
      */
-    fun requestEnrollment(activity: Activity, source: String): String {
+    fun requestEnrollment(activity: Activity, source: String, component: ComponentName? = null): String {
         val app = activity.applicationContext
         val now = System.currentTimeMillis()
         val rec = record(app)
@@ -162,6 +168,7 @@ object DeviceAdminEnrollment {
         val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN)
             .putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent(app))
             .putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, explanation)
+        if (component != null) intent.component = component
 
         // Marker written BEFORE the launch, on purpose. If the process
         // dies while the dialog is up, the next resume still has

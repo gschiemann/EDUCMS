@@ -83,7 +83,9 @@ class SetupChecklistModelTest {
         assertTrue(model.rows.drop(1).all { it.status == RowStatus.NEEDED })
         assertEquals("installPromptShown", model.primaryKey)
         assertEquals("Grant next: name-installPromptShown", model.primaryLabel)
-        assertEquals("Not now", model.secondaryLabel)
+        // v1.1.23 (the X80 loop): the second button skips the armed step and
+        // the card stays — Back is what closes it.
+        assertEquals(SetupCeremonyMath.SKIP_LABEL, model.secondaryLabel)
     }
 
     @Test

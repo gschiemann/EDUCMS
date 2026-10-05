@@ -101,6 +101,24 @@ const REQUIRED = [
   // Source-shape guards (Assume-based): the watch has a caller, and nothing
   // in it can lower a hold.
   { cls: 'com.educms.player.alertwatch.NativeAlertWatchWiringTest', min: 8 },
+  // ── The X80 setup freeze (2026-10-05, 1.1.23) ────────────────────
+  // Enter on the setup card opened a Google web page, Back returned to the
+  // same card, the D-pad reached nothing else — a power-cycle loop. The
+  // first pins which app a setup button may open (never a browser, never a
+  // chooser); the second pins the card rules (an impossible step is never a
+  // button, Skip advances, Back holds until restart, no re-arm loop, the
+  // relaunch paths yield) plus Assume-based source guards for the wiring.
+  { cls: 'com.educms.player.setup.SettingsPagePolicyTest', min: 10 },
+  { cls: 'com.educms.player.setup.SetupX80LoopTest', min: 20 },
+  // Permissions read the way the system menu shows them, for the Player
+  // AND the Manager — the X80's "unchecked, but already switched on".
+  { cls: 'com.educms.player.setup.PermissionFactsTest', min: 8 },
+  // ── After the all-clear, back to how it was (1.1.23) — LIFE SAFETY ──
+  // A panel a person turned off goes back to sleep when the alert ends,
+  // unless a WAKE or the schedule's ON spoke during it. The wiring half
+  // pins that the restore runs ONLY on the committed release, never on the
+  // alert path, so nothing can darken while an alert is held.
+  { cls: 'com.educms.player.standby.StandbyRestoreAfterAlertTest', min: 12 },
 ];
 
 /**

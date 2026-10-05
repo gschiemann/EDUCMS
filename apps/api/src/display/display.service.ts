@@ -341,7 +341,21 @@ export function normalizeCapabilityReport(
  *   'app'   — installer-of-record / silent-update-armed / SDK. Answers
  *     "will this panel's next OTA need a tap" without a site visit.
  *   'setup' — what the first-boot ceremony achieved on a panel nobody was
- *     standing next to, including which Settings pages a vendor hid.
+ *     standing next to, including which Settings pages a vendor hid. Since
+ *     Player 1.1.23 each step also says WHAT its button opens on that ROM
+ *     (`opens`) and why a step is unavailable there.
+ *
+ * Added 2026-10-05 (Player 1.1.23, the X80 setup freeze):
+ *
+ *   'permissions' — every permission the setup card and the display layer
+ *     depend on, for BOTH the Player and the Manager companion, read the way
+ *     the system Settings menu shows it (appop mode + install-time
+ *     permission), plus who the box's HOME is. The X80 owner saw rows
+ *     unchecked whose toggles were already ON — some granted on the
+ *     Manager's line of the Settings list, not the Player's. Placed right
+ *     after 'setup' so the two read together and survive trimming before the
+ *     bulky dumps behind them. Older players simply do not send it: absent
+ *     sections are skipped, nothing else changes.
  */
 const INVENTORY_SECTIONS = [
   'commandOutcomes',
@@ -350,6 +364,7 @@ const INVENTORY_SECTIONS = [
   'backlightNodes',
   'app',
   'setup',
+  'permissions',
   'settingsKeys',
   'audio',
   'power',

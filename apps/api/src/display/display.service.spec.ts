@@ -54,6 +54,7 @@ import { Test } from '@nestjs/testing';
 
 import {
   DISPLAY_BRIGHTNESS_MECHANISMS,
+  DisplayCapabilityReportSchema,
   DISPLAY_RECOVERY_MIN_BRIGHTNESS_PERCENT,
   MIN_SAFE_BRIGHTNESS_PERCENT,
   isBrightnessMechanismProven,
@@ -1041,6 +1042,125 @@ describe('boundInventoryReport — bounded by construction, never by trust', () 
     const out = boundInventoryReport(fat) as any;
     expect(JSON.stringify(out).length).toBeLessThanOrEqual(32 * 1024);
     expect(out.commandOutcomes[0].actionId).toBe('act-keep');
+  });
+
+  // ── PLAYER 1.1.23 — THE X80 SETUP FREEZE (2026-10-05) ────────────────
+  //
+  // The owner saw setup rows unchecked whose toggles were already ON — some
+  // granted on the Manager companion's line of the Settings list, not the
+  // Player's — and Enter on the card opened a web page. The player now
+  // reports every permission for BOTH apps, as the system menu shows it,
+  // and what each setup button opens on that ROM. These specs pin that the
+  // API keeps it, and that an older player is stored exactly as before.
+
+  /** The shape a 1.1.23 Goodview-firmware X80 sends (abridged). */
+  const X80_BODY = {
+    schema: 1,
+    verdict: {
+      volume: 'audiomanager',
+      brightness: 'settings',
+      screenBlank: 'screen-timeout',
+      reboot: 'none',
+      hardPowerOff: 'serial-candidate',
+      deviceOwnerPath: 'provisionable-after-factory-reset',
+    },
+    setup: {
+      granted: 3,
+      required: 4,
+      steps: [
+        {
+          key: 'batteryExemptPromptShown',
+          held: false,
+          launch: 'direct',
+          unavailable: null,
+          opens: {
+            package: 'com.goodview.settings',
+            activity: 'com.goodview.settings.BatteryActivity',
+            via: 'direct',
+          },
+        },
+        {
+          key: 'homeSetupPromptShown',
+          held: false,
+          unavailable:
+            'Not available on this screen — it sends this to com.android.chrome instead of its Settings. Skipped.',
+          opens: { refused: 'this screen sends this page to com.android.chrome — not a Settings app' },
+        },
+      ],
+    },
+    permissions: {
+      schema: 1,
+      player: { pkg: 'com.educms.player', label: 'VenueOS Player' },
+      manager: { pkg: 'com.educms.manager', label: 'VenueOS Manager' },
+      rows: {
+        batteryUnrestricted: {
+          step: 'batteryExemptPromptShown',
+          player: { granted: false, requested: null, how: 'isIgnoringBatteryOptimizations' },
+          manager: { granted: true, requested: null, how: 'isIgnoringBatteryOptimizations' },
+          note: 'Switched on for VenueOS Manager, not for VenueOS Player — switch on VenueOS Player too.',
+        },
+        installUnknownApps: {
+          step: 'installPromptShown',
+          player: { granted: true, requested: true, how: 'canRequestPackageInstalls+appop:allowed' },
+          manager: { granted: true, requested: true, how: 'appop:allowed' },
+        },
+      },
+      home: {
+        defaultPackage: 'com.goodview.launcher',
+        defaultActivity: 'com.goodview.launcher.Home',
+        playerIsDefault: false,
+        playerAliasEnabled: true,
+      },
+    },
+  };
+
+  it('accepts a 1.1.23 report carrying the new permissions key at the door', () => {
+    expect(DisplayCapabilityReportSchema.safeParse(X80_BODY).success).toBe(true);
+  });
+
+  it('keeps the permissions section — per permission, per package, plus HOME', () => {
+    const out = boundInventoryReport(X80_BODY) as any;
+    expect(out).not.toBeNull();
+    const battery = out.permissions.rows.batteryUnrestricted;
+    expect(battery.player.granted).toBe(false);
+    expect(battery.manager.granted).toBe(true);
+    expect(battery.note).toContain('VenueOS Manager');
+    expect(out.permissions.player.label).toBe('VenueOS Player');
+    expect(out.permissions.home.defaultPackage).toBe('com.goodview.launcher');
+    // …and what each setup button opens on this ROM, or why nothing does.
+    expect(out.setup.steps[0].opens.package).toBe('com.goodview.settings');
+    expect(out.setup.steps[1].opens.refused).toContain('com.android.chrome');
+  });
+
+  it('never puts the permissions section on the Screen row (the 5 s manifest re-read)', () => {
+    const stored = normalizeCapabilityReport(X80_BODY as any, 1_760_000_000_000) as any;
+    expect(stored).not.toHaveProperty('permissions');
+    expect(stored).not.toHaveProperty('setup');
+    expect(stored.verdict.screenBlank).toBe('screen-timeout');
+  });
+
+  it('an older player without the section is stored exactly as before', () => {
+    const out = boundInventoryReport({
+      setup: { granted: 1, required: 4 },
+      admin: { selfIsActiveAdmin: false },
+    }) as any;
+    expect(out).not.toHaveProperty('permissions');
+    expect(Object.keys(out).sort()).toEqual(['admin', 'setup']);
+  });
+
+  it('permissions survives trimming before the bulky dumps behind it', () => {
+    const fat: Record<string, unknown> = {
+      setup: { granted: 1 },
+      permissions: { rows: { writeSettings: { player: { granted: false } } } },
+    };
+    for (const section of ['settingsKeys', 'audio', 'power', 'displays', 'features', 'vendorPackages', 'serial', 'control']) {
+      fat[section] = Object.fromEntries(
+        Array.from({ length: 64 }, (_, i) => [`k${i}`, 'y'.repeat(200)]),
+      );
+    }
+    const out = boundInventoryReport(fat) as any;
+    expect(JSON.stringify(out).length).toBeLessThanOrEqual(32 * 1024);
+    expect(out.permissions.rows.writeSettings.player.granted).toBe(false);
   });
 
   it('a 4MB junk payload can never store more than the ceiling', () => {

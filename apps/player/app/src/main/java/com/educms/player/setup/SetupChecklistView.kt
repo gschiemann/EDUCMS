@@ -2,9 +2,11 @@ package com.educms.player.setup
 
 import android.app.Activity
 import android.graphics.drawable.GradientDrawable
+import android.view.FocusFinder
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
+import android.view.ViewTreeObserver
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
@@ -62,8 +64,14 @@ internal class SetupChecklistView(
     activity: Activity,
     /** Operator asked to run this step's grant. */
     private val onGrant: (String) -> Unit,
-    /** The explicit "Not now" / Done button. */
+    /**
+     * The second button: "Skip this step" on the checklist (v1.1.23 — the
+     * card stays, the next step is armed), "Not now" on the post-update
+     * offer card.
+     */
     private val onSecondary: () -> Unit,
+    /** "Done" / "Close" — the primary button of a card with nothing armed. */
+    private val onDone: () -> Unit,
     /**
      * The remote's Back key. Split from [onSecondary] 2026-08-30 (field
      * install): Back used to run the same advance-past-the-armed-step
@@ -106,6 +114,20 @@ internal class SetupChecklistView(
         const val GLYPH_GRANTED = "✓"
         const val GLYPH_CURRENT = "→"
         const val GLYPH_NEEDED = "○"
+
+        /** A step this screen cannot do (v1.1.23). A dash, not a cross — nothing is wrong. */
+        const val GLYPH_UNAVAILABLE = "–"
+
+        /**
+         * The selection ring (v1.1.23, the X80 owner: "the D-pad cannot move
+         * the selection"). `decorate` paints a 33%-alpha blue tint; on the
+         * filled indigo primary that changes the colour by a few percent, so
+         * the primary looked selected whether it was or not and a move to
+         * "Not now" or a row was invisible from across a room. A solid white
+         * ring reads on indigo, on slate and on every TV's gamma.
+         */
+        const val RING = 0xFFFFFFFF.toInt()
+        const val RING_DP = 3
     }
 
     private val rowsHolder: LinearLayout
@@ -255,6 +277,9 @@ internal class SetupChecklistView(
     /** Key the primary button currently fires. Null in PAUSED/COMPLETE. */
     private var primaryKey: String? = null
 
+    /** This card saw the DOWN of the Back press in flight. See [dispatchKeyEvent]. */
+    private var backDownSeen = false
+
     /**
      * Re-render from live state. Called on every resume — the whole
      * point of the screen is that a grant made in Settings is reflected
@@ -319,11 +344,13 @@ internal class SetupChecklistView(
         } else {
             primaryShell.visibility = View.VISIBLE
             primaryButton.text = model.primaryLabel
-            // In PAUSED there is nothing left to arm, so the primary is
-            // simply "Done" — same handler as Not-now.
+            // In PAUSED / COMPLETE there is nothing left to arm, so the
+            // primary is "Done" / "Close" — it closes the card. (Before
+            // v1.1.23 it shared Not-now's handler; the second button is
+            // "Skip this step" now, which must NOT close the card.)
             primaryButton.setOnClickListener {
                 val key = primaryKey
-                if (key == null) onSecondary() else onGrant(key)
+                if (key == null) onDone() else onGrant(key)
             }
         }
 
@@ -358,6 +385,132 @@ internal class SetupChecklistView(
         LedCanvasHost.fitNarrow(this)
 
         if (!isFocusParked()) parkFocus(focusedRowKey)
+        // The ring follows focus through the global listener; this covers a
+        // selection that was already parked before the listener saw it.
+        showRingOn(findFocus())
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // v1.1.23 — the selection must be VISIBLE, and must stay ON the card
+    // ─────────────────────────────────────────────────────────────────
+
+    /** The control currently wearing the ring. */
+    private var ringed: View? = null
+
+    private val ringDrawable: GradientDrawable by lazy {
+        GradientDrawable().apply {
+            setColor(0x00000000)
+            setStroke(dp(RING_DP), RING)
+            cornerRadius = dp(10).toFloat()
+        }
+    }
+
+    /**
+     * Move the ring to whatever this card's focus is on. A FOREGROUND, never
+     * the background: `decorate` owns the background (its tint) and the
+     * primary's fill lives on its shell — a foreground can be added without
+     * touching either.
+     */
+    private fun showRingOn(view: View?) {
+        val target = view?.takeIf { it !== this && isControl(it) }
+        if (target === ringed) return
+        ringed?.foreground = null
+        target?.foreground = ringDrawable
+        ringed = target
+    }
+
+    /** One of this card's own live controls: a button or a tappable row. */
+    private fun isControl(view: View): Boolean =
+        view === primaryButton || view === secondaryButton || view.parent === rowsHolder
+
+    /**
+     * ⚠️ THE CARD HOLDS THE REMOTE WHILE IT IS UP (v1.1.23). Something BEHIND
+     * this scrim can take the window's focus — a website slide coming up
+     * (`showUrlOverlay` grabs focus for its own D-pad), a renderer swap that
+     * re-focuses its WebView, the window refocusing its first focusable when
+     * a row is rebuilt. From then on every key went to a page nobody could
+     * see: D-pad moved nothing on the card, OK pressed something invisible,
+     * and the card looked frozen. So the moment focus leaves the card while
+     * it is on glass, it is put back on a real control (posted, so the
+     * thief's own focus change finishes first and nothing ping-pongs inside
+     * one dispatch).
+     */
+    private val focusWatcher = ViewTreeObserver.OnGlobalFocusChangeListener { _, newFocus ->
+        if (newFocus != null && !contains(newFocus)) {
+            showRingOn(null)
+            if (!reclaimPosted) {
+                reclaimPosted = true
+                post {
+                    reclaimPosted = false
+                    if (isAttachedToWindow && isShown && findFocus() == null) {
+                        PlayerLogger.w(
+                            "SetupCeremony",
+                            "focus left the setup card for ${newFocus.javaClass.simpleName} — taking it back",
+                        )
+                        reclaimFocus()
+                    }
+                }
+            }
+        } else {
+            showRingOn(newFocus)
+        }
+    }
+
+    /** A reclaim is already queued; see [focusWatcher]. */
+    private var reclaimPosted = false
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        viewTreeObserver.addOnGlobalFocusChangeListener(focusWatcher)
+    }
+
+    override fun onDetachedFromWindow() {
+        viewTreeObserver.removeOnGlobalFocusChangeListener(focusWatcher)
+        super.onDetachedFromWindow()
+    }
+
+    /** Is [view] this card or something inside it? */
+    fun contains(view: View): Boolean {
+        var v: View? = view
+        while (v != null) {
+            if (v === this) return true
+            v = v.parent as? View
+        }
+        return false
+    }
+
+    /**
+     * Focus escaped the card (a WebView behind it took it). Put it back on a
+     * real control — the press that noticed is swallowed by the caller, so
+     * the NEXT press lands where the operator can see it.
+     */
+    fun reclaimFocus() {
+        if (!parkFocus()) requestFocus()
+        showRingOn(findFocus())
+    }
+
+    /**
+     * ⚠️ THE D-PAD STAYS ON THE CARD (v1.1.23). The window's focus search
+     * spans every focusable view in it, including the WebViews UNDER this
+     * scrim — a Website Tabs site area is a real focus target, and once the
+     * selection crossed into it every key went to a page nobody could see.
+     * Search only inside the card; at its edge the selection stays put.
+     */
+    override fun focusSearch(focused: View?, direction: Int): View? {
+        if (focused == null || !contains(focused)) return super.focusSearch(focused, direction)
+        // The selection is on the card itself or its scroller — full-screen
+        // rects with no control "beside" them, so a geometric search finds
+        // nothing and the press did nothing. Any direction moves it ONTO the
+        // card's first real control instead.
+        if (!isControl(focused)) return firstControl() ?: focused
+        return FocusFinder.getInstance().findNextFocus(this, focused, direction) ?: focused
+    }
+
+    /** Where a fresh selection belongs: the armed action, else a row, else the second button. */
+    private fun firstControl(): View? = when {
+        primaryShell.visibility == View.VISIBLE -> primaryButton
+        else -> focusableRows().firstOrNull()
+            ?: secondaryButton.takeIf { it.visibility == View.VISIBLE }
     }
 
     /**
@@ -447,50 +600,61 @@ internal class SetupChecklistView(
     }
 
     /**
-     * Back = hide for this session (see [onBack] — it must never burn the
-     * armed step). Intercepted at dispatch (not via an OnKeyListener) so it
-     * fires no matter which child inside the overlay holds focus.
+     * Back = close the card until the screen restarts (see [onBack] — it
+     * must never burn the armed step). Intercepted at dispatch (not via an
+     * OnKeyListener) so it fires no matter which child inside the overlay
+     * holds focus.
      *
-     * OK/Enter while the ROOT itself holds focus fires the primary action —
-     * the belt to the focus-parking suspenders above: even if some OEM
-     * focus quirk strands focus on the root again, the remote's OK key
-     * still advances the ceremony instead of doing nothing.
-     *
-     * ⚠️ AND IT NEVER SWALLOWS A KEY IT CANNOT ACT ON (2026-09-01, field
-     * report G65-B). This branch used to `return true` unconditionally: in
-     * COMPLETE both buttons were GONE, so OK on the root consumed the press
-     * and did NOTHING — "it pops up but the remote control has no control
-     * over that popup so it just sits there", in one line of code. Since
-     * v1.1.12 every mode carries a primary button so this should be
-     * unreachable; if it is reached anyway, the card re-parks focus so the
-     * NEXT press lands on a real control, and the key falls through to
-     * `super` instead of disappearing.
+     * OK/Enter while the selection is NOT on one of the card's controls (the
+     * root, the scroller) puts the selection on a real control and does
+     * nothing else (v1.1.23). History: 1.1.12 made it fire the primary, as a
+     * belt for a stranded focus, after field report G65-B ("the remote
+     * control has no control over that popup") — but firing an action nobody
+     * can see selected is the X80 loop (Enter → Google, again and again).
+     * The press is never swallowed silently: it always moves the visible
+     * selection onto something the next press can operate.
      */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (event.keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP) {
-            onBack()
+        // ⚠️ BACK IS ANSWERED ONLY FOR A PRESS THIS CARD SAW BEGIN (v1.1.23).
+        // A system screen that finishes on Back's DOWN hands the matching UP
+        // to whichever window has focus next — Android delivers "inconsistent"
+        // key-ups by design — so the card used to close itself the instant
+        // the operator came back from a Settings page. The DOWN is consumed
+        // here (so nothing else starts tracking it) and only the UP of that
+        // same press closes the card.
+        if (event.keyCode == KeyEvent.KEYCODE_BACK) {
+            when (event.action) {
+                KeyEvent.ACTION_DOWN -> if (event.repeatCount == 0) backDownSeen = true
+                KeyEvent.ACTION_UP -> {
+                    val ours = backDownSeen && !event.isCanceled
+                    backDownSeen = false
+                    if (ours) onBack()
+                }
+            }
             return true
         }
-        if ((event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||
-                event.keyCode == KeyEvent.KEYCODE_ENTER ||
-                event.keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER) &&
-            event.action == KeyEvent.ACTION_UP &&
-            findFocus() === this
-        ) {
-            if (primaryShell.visibility == View.VISIBLE) {
-                primaryButton.performClick()
+        // ⚠️ OK NEVER FIRES SOMETHING THE OPERATOR CANNOT SEE SELECTED
+        // (v1.1.23). Up to 1.1.22, OK with the selection on the card ROOT
+        // pressed the primary — the "belt" for a stranded focus. On the X80
+        // that is the loop: no ring anywhere, the D-pad cannot leave a root
+        // whose rect is the whole screen (no control is "below" or "beside"
+        // it), and every OK fired the armed step. Now OK on anything that is
+        // not one of the card's controls only PUTS THE SELECTION on a real
+        // control, ringed — the next OK is a choice the operator can see.
+        if (isConfirmKey(event.keyCode)) {
+            val focused = findFocus()
+            if (focused == null || !isControl(focused)) {
+                if (event.action == KeyEvent.ACTION_UP) reclaimFocus()
                 return true
             }
-            if (secondaryButton.visibility == View.VISIBLE) {
-                secondaryButton.performClick()
-                return true
-            }
-            // Nothing on this card can answer that press. Put the selection
-            // somewhere it can, and let the event go on being an event.
-            parkFocus()
         }
         return super.dispatchKeyEvent(event)
     }
+
+    private fun isConfirmKey(keyCode: Int): Boolean =
+        keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||
+            keyCode == KeyEvent.KEYCODE_ENTER ||
+            keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER
 
     // ─────────────────────────────────────────────────────────────────
     // row + view helpers
@@ -507,11 +671,13 @@ internal class SetupChecklistView(
             SetupCeremonyMath.RowStatus.GRANTED -> OK
             SetupCeremonyMath.RowStatus.CURRENT -> ACCENT
             SetupCeremonyMath.RowStatus.NEEDED -> SUBTLE
+            SetupCeremonyMath.RowStatus.UNAVAILABLE -> FAINT
         }
         val glyph = when (row.status) {
             SetupCeremonyMath.RowStatus.GRANTED -> GLYPH_GRANTED
             SetupCeremonyMath.RowStatus.CURRENT -> GLYPH_CURRENT
             SetupCeremonyMath.RowStatus.NEEDED -> GLYPH_NEEDED
+            SetupCeremonyMath.RowStatus.UNAVAILABLE -> GLYPH_UNAVAILABLE
         }
         line.addView(
             label(glyph, 16f, glyphColor, bold = true).apply {
@@ -529,7 +695,11 @@ internal class SetupChecklistView(
             label(
                 row.name,
                 14f,
-                if (row.status == SetupCeremonyMath.RowStatus.GRANTED) SUBTLE else TEXT,
+                when (row.status) {
+                    SetupCeremonyMath.RowStatus.GRANTED -> SUBTLE
+                    SetupCeremonyMath.RowStatus.UNAVAILABLE -> FAINT
+                    else -> TEXT
+                },
                 bold = row.status == SetupCeremonyMath.RowStatus.CURRENT,
             ).apply { gravity = Gravity.START },
         )
@@ -537,7 +707,9 @@ internal class SetupChecklistView(
             label(
                 if (row.status == SetupCeremonyMath.RowStatus.GRANTED) "Granted" else row.why,
                 12f,
-                SUBTLE,
+                // An unavailable row's line IS the plain-words reason the
+                // step was skipped on this screen — amber, so it is read.
+                if (row.status == SetupCeremonyMath.RowStatus.UNAVAILABLE) WARN else SUBTLE,
             ).apply { gravity = Gravity.START },
         )
         // What just happened, when the direct page was not there.

@@ -143,6 +143,9 @@ class RelaunchGrantOfferTest {
             headingOverride = SetupCeremonyMath.HEADING_AFTER_UPDATE,
             footnoteOverride = SetupCeremonyMath.FOOTNOTE_AFTER_UPDATE,
             countdown = SetupCeremonyMath.countdownLine(30),
+            // Exactly what renderRelaunchOffer passes (v1.1.23): on this card
+            // the second button is an answer about this build, not a skip.
+            secondaryOverride = SetupCeremonyMath.NOT_NOW_LABEL,
         )
         assertEquals(ChecklistMode.GRANTING, model.mode)
         assertEquals(SetupCeremonyMath.HEADING_AFTER_UPDATE, model.heading)

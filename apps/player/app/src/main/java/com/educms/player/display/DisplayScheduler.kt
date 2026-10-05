@@ -84,6 +84,20 @@ object DisplayScheduler {
             PlayerLogger.i(TAG, "schedule already satisfied (on=$desiredOn)")
             return
         }
+        // 1.1.23 — a person's standby that the all-clear PUT BACK is held by
+        // our blank, so an ON window that was already running when they
+        // pressed power would read as "should be on" and wake it on the next
+        // re-evaluation (a manifest poll, a process start). Their off came
+        // after that window opened — it wins, exactly as for the standby
+        // itself. A schedule ON that fired AFTER their off was already handled
+        // by endStandbyIfScheduleTriggered above, which ended the standby.
+        if (desiredOn && UserStandby.isActive(app)) {
+            PlayerLogger.i(
+                TAG,
+                "schedule says on, but a person turned this panel off after that window opened — leaving it off",
+            )
+            return
+        }
         val action = if (desiredOn) DisplayAction.Wake else DisplayAction.Blank
         // ⚠️ The registry is the single gate and it will refuse this
         // anyway; the explicit check is here so the log says WHY a
