@@ -4,8 +4,10 @@ import '../../../../test-mocks/pointer-event-polyfill';
 import {
   ImageSequenceThumb,
   IMAGE_PREVIEW_FADE_MS,
+  IMAGE_PREVIEW_FIRST_STEP_MS,
   IMAGE_PREVIEW_HOLD_MS,
   MAX_PREVIEW_FRAMES,
+  holdFor,
   initialSequence,
   pickNext,
   sequenceReducer,
@@ -14,11 +16,17 @@ import {
 } from '../ImageSequenceThumb';
 
 /**
- * A playlist's first image at rest; a calm, bounded walk through its images on
- * a real mouse/pen hover. The owner's rules, as tests: nothing moves at rest,
- * 2.5 s a picture with a 300 ms fade (no fade under reduced motion), the whole
- * image, never more than two <img>, a picture that 404s is skipped (never a
- * loop), and leaving resets.
+ * A playlist's first image at rest; a QUICK, bounded walk through its images on
+ * a real mouse/pen hover. The owner's rules, as tests: nothing moves at rest;
+ * under the pointer the first step comes ~350 ms after it lands, then each
+ * picture is held 1.2 s with a 250 ms fade (no fade under reduced motion); the
+ * whole image, never more than two <img>, never a picture that has not loaded;
+ * a picture that 404s is skipped (never a loop); and leaving resets.
+ *
+ * The cadence is quick on purpose (2026-10-04 — "when you hover and preview
+ * content ... it should preview faster"): pointing at a thumbnail IS asking to
+ * see it. The slow cadence the owner's headache rule is about belongs to
+ * what moves AT REST, which this component never does.
  */
 
 const frame = (id: string) => ({ url: `https://cdn.example.test/${id}.png`, name: id });
@@ -37,11 +45,15 @@ const listenedOn = (spy: jest.SpyInstance) => spy.mock.instances as unknown as u
 /** One whole step. The hold and the fade are separate acts on purpose: the fade
  *  timer is scheduled by the render the end of the hold causes, exactly as it is
  *  in a browser, where time passes between the two. */
-const step = (container: HTMLElement) => {
+const step = (container: HTMLElement, hold = IMAGE_PREVIEW_HOLD_MS) => {
   fireEvent.load(standby(container));
-  tick(IMAGE_PREVIEW_HOLD_MS);
+  tick(hold);
   tick(IMAGE_PREVIEW_FADE_MS);
 };
+/** The first step after a hover begins waits only the short first-step time, not a full hold. */
+const firstStep = (container: HTMLElement) => step(container, IMAGE_PREVIEW_FIRST_STEP_MS);
+/** The nth step of a hover (0 = the first): short wait first, the full hold after that. */
+const nthStep = (container: HTMLElement, n: number) => (n === 0 ? firstStep(container) : step(container));
 
 function reducedMotion(on: boolean) {
   Object.defineProperty(window, 'matchMedia', {
@@ -60,10 +72,16 @@ afterEach(() => {
 });
 
 describe('the owner’s numbers', () => {
-  it('holds each picture 2.5 s and cross-fades for 300 ms, over at most 5 pictures', () => {
-    expect(IMAGE_PREVIEW_HOLD_MS).toBe(2500);
-    expect(IMAGE_PREVIEW_FADE_MS).toBe(300);
+  it('first step ~350 ms after the pointer lands, then 1.2 s a picture with a 250 ms cross-fade, over at most 5 pictures', () => {
+    expect(IMAGE_PREVIEW_FIRST_STEP_MS).toBe(350);
+    expect(IMAGE_PREVIEW_HOLD_MS).toBe(1200);
+    expect(IMAGE_PREVIEW_FADE_MS).toBe(250);
     expect(MAX_PREVIEW_FRAMES).toBe(5);
+  });
+
+  it('the first step is shorter than a hold — long enough that a pointer crossing the tile never flips it', () => {
+    expect(IMAGE_PREVIEW_FIRST_STEP_MS).toBeLessThan(IMAGE_PREVIEW_HOLD_MS);
+    expect(IMAGE_PREVIEW_FIRST_STEP_MS).toBeGreaterThanOrEqual(250);
   });
 });
 
@@ -91,7 +109,7 @@ describe('at rest', () => {
 });
 
 describe('a mouse hover', () => {
-  it('waits the full hold, fades for 300 ms, then shows the next picture — never more than two <img>', () => {
+  it('steps ~350 ms after the pointer lands, cross-fades for 250 ms, then shows the next picture — never more than two <img>', () => {
     const { container } = render(<ImageSequenceThumb frames={frames} />);
     hover(container);
     expect(imgs(container)).toHaveLength(2); // the one on show + the next, preloaded
@@ -99,17 +117,18 @@ describe('a mouse hover', () => {
     expect(standby(container).style.opacity).toBe('0');
     fireEvent.load(standby(container));
 
-    tick(IMAGE_PREVIEW_HOLD_MS - 1);
+    // Literal numbers on purpose: a constant changed in the component must not be able to pass its own test.
+    tick(349);
     expect(shownIndex(container)).toBe(0);
-    expect(standby(container).style.opacity).toBe('0'); // still held
+    expect(standby(container).style.opacity).toBe('0'); // a pointer that merely crossed the tile never got here
     tick(1);
     // The fade begins: the standby comes up over the picture on show.
     expect(standby(container).style.opacity).toBe('1');
-    expect(standby(container).style.transition).toBe(`opacity ${IMAGE_PREVIEW_FADE_MS}ms ease-in-out`);
+    expect(standby(container).style.transition).toBe('opacity 250ms ease-in-out');
     expect(shownIndex(container)).toBe(0);
     expect(imgs(container)).toHaveLength(2);
 
-    tick(IMAGE_PREVIEW_FADE_MS - 1);
+    tick(249);
     expect(shownIndex(container)).toBe(0);
     tick(1);
     expect(shownIndex(container)).toBe(1);
@@ -118,28 +137,87 @@ describe('a mouse hover', () => {
     expect(standby(container)).toHaveAttribute('src', frames[2].url);
   });
 
-  it('keeps stepping a, b, c, a… on the same 2.5 s hold', () => {
+  it('then holds each picture 1.2 s before the next 250 ms fade', () => {
+    const { container } = render(<ImageSequenceThumb frames={frames} />);
+    hover(container);
+    firstStep(container);
+    expect(shownIndex(container)).toBe(1);
+    fireEvent.load(standby(container)); // c, preloaded
+
+    tick(1199);
+    expect(shownIndex(container)).toBe(1);
+    expect(standby(container).style.opacity).toBe('0'); // still holding b
+    tick(1);
+    expect(standby(container).style.opacity).toBe('1'); // c comes up
+    tick(250);
+    expect(shownIndex(container)).toBe(2);
+  });
+
+  it('keeps stepping a, b, c, a… — the short first step, then the full hold every time', () => {
     const { container } = render(<ImageSequenceThumb frames={frames} />);
     hover(container);
     const seen: number[] = [];
     for (let n = 0; n < 4; n++) {
-      step(container);
+      nthStep(container, n);
       seen.push(shownIndex(container));
       expect(imgs(container).length).toBeLessThanOrEqual(2);
     }
     expect(seen).toEqual([1, 2, 0, 1]);
   });
 
-  it('never steps to a picture that has not loaded: the hold ends, it waits, and moves the moment the picture arrives', () => {
+  it('a pointer that leaves before the first step changes nothing — even with the next picture already loaded', () => {
     const { container } = render(<ImageSequenceThumb frames={frames} />);
     hover(container);
-    tick(IMAGE_PREVIEW_HOLD_MS + 5000); // a slow network: the hold is long over
-    expect(shownIndex(container)).toBe(0);
-    expect(standby(container).style.opacity).toBe('0');
     fireEvent.load(standby(container));
-    expect(standby(container).style.opacity).toBe('1'); // no second hold on top of the wait
+    tick(300); // crossing the tile, not pointing at it
+    expect(shownIndex(container)).toBe(0);
+    expect(standby(container).style.opacity).toBe('0'); // never began to fade
+    unhover(container);
+    expect(shownIndex(container)).toBe(0);
+    expect(imgs(container)).toHaveLength(1);
+    expect(imgs(container)[0]).toHaveAttribute('src', frames[0].url);
+    expect(jest.getTimerCount()).toBe(0);
+    tick(60_000);
+    expect(shownIndex(container)).toBe(0);
+  });
+
+  it('never steps to a picture that has not loaded: the wait ends, it holds, and moves the moment the picture arrives', () => {
+    const { container } = render(<ImageSequenceThumb frames={frames} />);
+    hover(container);
+    tick(IMAGE_PREVIEW_FIRST_STEP_MS + 5000); // a slow network: the first step is long due
+    expect(shownIndex(container)).toBe(0);
+    expect(standby(container).style.opacity).toBe('0'); // not a blank or half-loaded frame
+    fireEvent.load(standby(container));
+    expect(standby(container).style.opacity).toBe('1'); // no second wait on top of the hold-up
     tick(IMAGE_PREVIEW_FADE_MS);
     expect(shownIndex(container)).toBe(1);
+  });
+
+  it('holds a LATER step for the next picture too — the quick 1.2 s hold does not outrun the network', () => {
+    const { container } = render(<ImageSequenceThumb frames={frames} />);
+    hover(container);
+    firstStep(container);
+    expect(shownIndex(container)).toBe(1);
+    // c, the new standby, has NOT loaded. The hold ends, and nothing changes.
+    tick(IMAGE_PREVIEW_HOLD_MS + 5000);
+    expect(shownIndex(container)).toBe(1);
+    expect(standby(container).style.opacity).toBe('0');
+    expect(standby(container)).toHaveAttribute('src', frames[2].url);
+    fireEvent.load(standby(container));
+    expect(standby(container).style.opacity).toBe('1');
+    tick(IMAGE_PREVIEW_FADE_MS);
+    expect(shownIndex(container)).toBe(2);
+  });
+
+  it('a standby that loads before its hold ends still waits out the hold — the load never hurries a step', () => {
+    const { container } = render(<ImageSequenceThumb frames={frames} />);
+    hover(container);
+    firstStep(container);
+    fireEvent.load(standby(container)); // c arrives straight away
+    tick(1000);
+    expect(standby(container).style.opacity).toBe('0'); // b has only been on show for 1 s
+    tick(200);
+    expect(standby(container).style.opacity).toBe('1');
   });
 
   it('ignores a pointer that is a finger', () => {
@@ -149,39 +227,54 @@ describe('a mouse hover', () => {
     tick(60_000);
     expect(shownIndex(container)).toBe(0);
     expect(jest.getTimerCount()).toBe(0);
+    expect(root(container).getAttribute('data-preview-state')).toBe('rest');
   });
 
   it('a pen counts as a hover', () => {
     const { container } = render(<ImageSequenceThumb frames={frames} />);
     hover(container, 'pen');
     expect(imgs(container)).toHaveLength(2);
+    firstStep(container);
+    expect(shownIndex(container)).toBe(1);
   });
 });
 
 describe('prefers-reduced-motion', () => {
-  it('still steps on the same hold, but with no fade at all', () => {
+  it('still steps — after the same short first wait — but with no fade at all', () => {
     reducedMotion(true);
     const { container } = render(<ImageSequenceThumb frames={frames} />);
     hover(container);
     fireEvent.load(standby(container));
-    tick(IMAGE_PREVIEW_HOLD_MS);
-    // Straight to the next picture: no 300 ms in between, and no transition on any element.
+    tick(349);
+    expect(shownIndex(container)).toBe(0);
+    tick(1);
+    // Straight to the next picture: no 250 ms in between, and no transition on any element.
     expect(shownIndex(container)).toBe(1);
     for (const img of imgs(container)) expect(img.style.transition === '' || img.style.transition === 'none').toBe(true);
     expect(jest.getTimerCount()).toBe(1); // only the next hold
   });
 
-  it('keeps stepping — a, b, c, a — every 2.5 s, never stalling after the first step', () => {
+  it('keeps stepping — a, b, c, a — every 1.2 s after that, never stalling after the first step', () => {
     reducedMotion(true);
     const { container } = render(<ImageSequenceThumb frames={frames} />);
     hover(container);
     const seen: number[] = [];
     for (let n = 0; n < 4; n++) {
       fireEvent.load(standby(container));
-      tick(IMAGE_PREVIEW_HOLD_MS);
+      tick(n === 0 ? IMAGE_PREVIEW_FIRST_STEP_MS : IMAGE_PREVIEW_HOLD_MS);
       seen.push(shownIndex(container));
     }
     expect(seen).toEqual([1, 2, 0, 1]);
+  });
+
+  it('holds for an unloaded picture here too', () => {
+    reducedMotion(true);
+    const { container } = render(<ImageSequenceThumb frames={frames} />);
+    hover(container);
+    tick(IMAGE_PREVIEW_FIRST_STEP_MS + 5000);
+    expect(shownIndex(container)).toBe(0);
+    fireEvent.load(standby(container));
+    expect(shownIndex(container)).toBe(1);
   });
 });
 
@@ -189,7 +282,7 @@ describe('leaving', () => {
   it('mid-hold: back to the first picture, one <img>, no timer', () => {
     const { container } = render(<ImageSequenceThumb frames={frames} />);
     hover(container);
-    step(container);
+    firstStep(container);
     expect(shownIndex(container)).toBe(1);
     unhover(container);
     expect(shownIndex(container)).toBe(0);
@@ -198,11 +291,22 @@ describe('leaving', () => {
     expect(jest.getTimerCount()).toBe(0);
   });
 
+  it('deep into the quick walk: still back to the first picture', () => {
+    const { container } = render(<ImageSequenceThumb frames={frames} />);
+    hover(container);
+    for (let n = 0; n < 4; n++) nthStep(container, n);
+    expect(shownIndex(container)).toBe(1);
+    unhover(container);
+    expect(shownIndex(container)).toBe(0);
+    expect(imgs(container)).toHaveLength(1);
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
   it('mid-fade: nothing finishes later — the pending fade timer is gone', () => {
     const { container } = render(<ImageSequenceThumb frames={frames} />);
     hover(container);
     fireEvent.load(standby(container));
-    tick(IMAGE_PREVIEW_HOLD_MS);
+    tick(IMAGE_PREVIEW_FIRST_STEP_MS);
     expect(standby(container).style.opacity).toBe('1');
     unhover(container);
     expect(jest.getTimerCount()).toBe(0);
@@ -222,7 +326,7 @@ describe('leaving', () => {
     expect(standby(container)).toHaveAttribute('src', frames[1].url);
     // A late `load` from the element that was removed must change nothing.
     fireEvent.load(firstStandby);
-    tick(IMAGE_PREVIEW_HOLD_MS);
+    tick(IMAGE_PREVIEW_FIRST_STEP_MS);
     expect(shownIndex(container)).toBe(0);
     expect(standby(container).style.opacity).toBe('0');
     fireEvent.load(standby(container));
@@ -230,12 +334,25 @@ describe('leaving', () => {
     expect(shownIndex(container)).toBe(1);
   });
 
+  it('a second hover starts over with the SHORT first step again — not the full hold it had settled into', () => {
+    const { container } = render(<ImageSequenceThumb frames={frames} />);
+    hover(container);
+    for (let n = 0; n < 3; n++) nthStep(container, n); // well into the walk: holds are 1.2 s now
+    unhover(container);
+    hover(container);
+    fireEvent.load(standby(container));
+    tick(349);
+    expect(standby(container).style.opacity).toBe('0');
+    tick(1);
+    expect(standby(container).style.opacity).toBe('1'); // ~350 ms again, every time the pointer lands
+  });
+
   it('after a full hover and leave, the first hover-less state is fully quiet', () => {
     const { container } = render(<ImageSequenceThumb frames={frames} />);
     for (let run = 0; run < 3; run++) {
       hover(container);
       fireEvent.load(standby(container));
-      tick(IMAGE_PREVIEW_HOLD_MS);
+      tick(IMAGE_PREVIEW_FIRST_STEP_MS);
       unhover(container);
       expect(jest.getTimerCount()).toBe(0);
       expect(imgs(container)).toHaveLength(1);
@@ -258,7 +375,7 @@ describe('it stops on its own, with the pointer still on it', () => {
   it('when the tab is hidden: back to the first picture, one <img>, no timer', () => {
     const { container } = render(<ImageSequenceThumb frames={frames} />);
     hover(container);
-    step(container);
+    firstStep(container);
     expect(shownIndex(container)).toBe(1);
     jest.spyOn(document, 'hidden', 'get').mockReturnValue(true);
     act(() => { document.dispatchEvent(new Event('visibilitychange')); });
@@ -274,7 +391,7 @@ describe('it stops on its own, with the pointer still on it', () => {
       const { container } = render(<ImageSequenceThumb frames={frames} />);
       hover(container);
       act(() => FakeObserver.all[0].report(true));
-      step(container);
+      firstStep(container);
       expect(shownIndex(container)).toBe(1);
       act(() => FakeObserver.all[0].report(false));
       expect(shownIndex(container)).toBe(0);
@@ -289,7 +406,7 @@ describe('it stops on its own, with the pointer still on it', () => {
     const { container } = render(<React.StrictMode><ImageSequenceThumb frames={frames} /></React.StrictMode>);
     hover(container);
     expect(imgs(container)).toHaveLength(2);
-    step(container);
+    firstStep(container);
     expect(shownIndex(container)).toBe(1);
     unhover(container);
     expect(shownIndex(container)).toBe(0);
@@ -310,7 +427,7 @@ describe('a picture that will not load', () => {
     // Two full laps: b must never come back.
     const srcs = new Set<string>();
     for (let n = 0; n < 6; n++) {
-      step(container);
+      nthStep(container, n);
       imgs(container).forEach((img) => srcs.add(img.getAttribute('src') ?? ''));
     }
     expect(srcs.has(frames[1].url)).toBe(false);
@@ -320,7 +437,7 @@ describe('a picture that will not load', () => {
   it('a hold that already ended moves on the moment the replacement standby loads', () => {
     const { container } = render(<ImageSequenceThumb frames={frames} />);
     hover(container);
-    tick(IMAGE_PREVIEW_HOLD_MS + 1000);
+    tick(IMAGE_PREVIEW_FIRST_STEP_MS + 1000);
     fireEvent.error(standby(container));
     fireEvent.load(standby(container)); // c
     expect(standby(container).style.opacity).toBe('1');
@@ -345,7 +462,7 @@ describe('a picture that will not load', () => {
     fireEvent.error(imgs(container)[0]);
     expect(imgs(container)).toHaveLength(0);
     hover(container);
-    step(container);
+    firstStep(container);
     expect(shownIndex(container)).toBe(1);
     expect(imgs(container).map((i) => i.getAttribute('src'))).not.toContain(frames[0].url);
   });
@@ -422,7 +539,7 @@ describe('the set of pictures changing', () => {
   it('while hovered: starts over — first picture, one <img>, no timer from the old run', () => {
     const { container, rerender } = render(<ImageSequenceThumb frames={frames} />);
     hover(container);
-    step(container);
+    firstStep(container);
     expect(shownIndex(container)).toBe(1);
     rerender(<ImageSequenceThumb frames={['x', 'y'].map(frame)} />);
     expect(shownIndex(container)).toBe(0);
@@ -454,8 +571,8 @@ describe('the set of pictures changing', () => {
 
 describe('unmounting', () => {
   it.each([
-    ['during the hold', IMAGE_PREVIEW_HOLD_MS - 100, false],
-    ['during the fade', IMAGE_PREVIEW_HOLD_MS + 100, true],
+    ['during the first wait', IMAGE_PREVIEW_FIRST_STEP_MS - 100, false],
+    ['during the first fade', IMAGE_PREVIEW_FIRST_STEP_MS + 100, true],
   ])('%s leaves no timer behind', (_label, ms, loaded) => {
     const { container, unmount } = render(<ImageSequenceThumb frames={frames} />);
     hover(container);
@@ -475,11 +592,24 @@ describe('a long playlist', () => {
     hover(container);
     const seen = new Set<string>();
     for (let n = 0; n < 12; n++) {
-      step(container);
+      nthStep(container, n);
       imgs(container).forEach((i) => seen.add(i.getAttribute('src') ?? ''));
       expect(container.textContent).toBe('');
     }
     expect(seen.size).toBe(MAX_PREVIEW_FRAMES);
+  });
+
+  it('past the cap, the quick walk LOOPS the same five — it never reaches the sixth or seventh, however long the pointer rests', () => {
+    const seven = ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map(frame);
+    const { container } = render(<ImageSequenceThumb frames={seven} />);
+    hover(container);
+    const order: number[] = [];
+    for (let n = 0; n < 11; n++) {
+      nthStep(container, n);
+      order.push(shownIndex(container));
+    }
+    expect(order).toEqual([1, 2, 3, 4, 0, 1, 2, 3, 4, 0, 1]);
+    expect(Math.max(...order)).toBe(MAX_PREVIEW_FRAMES - 1);
   });
 });
 
@@ -499,8 +629,26 @@ describe('sequenceReducer', () => {
 
   it('start is idempotent, and a run begins at the first picture with a fresh standby', () => {
     const started = run(initialSequence(3), { type: 'start' });
-    expect(started).toMatchObject({ running: true, active: 0, next: 1, nextReady: false, holdDone: false, fading: false });
+    expect(started).toMatchObject({ running: true, active: 0, next: 1, nextReady: false, holdDone: false, fading: false, steps: 0 });
     expect(sequenceReducer(started, { type: 'start' })).toBe(started);
+  });
+
+  it('holdFor: the short first-step wait until the hover has stepped once, the full hold after — and again after every stop', () => {
+    const started = run(initialSequence(3), { type: 'start' });
+    expect(holdFor(initialSequence(3))).toBe(350);
+    expect(holdFor(started)).toBe(350);
+    let state = run(started, { type: 'holdElapsed', reduced: true }, { type: 'loaded', key: keyOfNext(started), reduced: true });
+    expect(state).toMatchObject({ active: 1, steps: 1 });
+    expect(holdFor(state)).toBe(1200);
+    // A fade-driven step counts the same way.
+    state = run(state, { type: 'holdElapsed', reduced: false }, { type: 'loaded', key: keyOfNext(state), reduced: false }, { type: 'faded' });
+    expect(state).toMatchObject({ active: 2, steps: 2 });
+    expect(holdFor(state)).toBe(1200);
+    // Leaving forgets it; so does a standby that failed (it is not a step).
+    expect(holdFor(sequenceReducer(state, { type: 'stop' }))).toBe(350);
+    const failedStandby = sequenceReducer(started, { type: 'failed', key: keyOfNext(started) });
+    expect(failedStandby.steps).toBe(0);
+    expect(holdFor(failedStandby)).toBe(350);
   });
 
   it('a hold that ends before the standby is ready only records the hold; the load then steps at once', () => {
@@ -521,7 +669,7 @@ describe('sequenceReducer', () => {
   it('reduced motion steps straight to the next picture — never through a fade', () => {
     let state = run(initialSequence(3), { type: 'start' }, { type: 'holdElapsed', reduced: true });
     state = sequenceReducer(state, { type: 'loaded', key: keyOfNext(state), reduced: true });
-    expect(state).toMatchObject({ active: 1, fading: false, next: 2, nextReady: false, holdDone: false });
+    expect(state).toMatchObject({ active: 1, fading: false, next: 2, nextReady: false, holdDone: false, steps: 1 });
   });
 
   it('a stale load (an element that is no longer the standby) changes nothing', () => {
@@ -578,7 +726,7 @@ describe('sequenceReducer', () => {
     later = run(later, { type: 'loaded', key: keyOfNext(later), reduced: true }, { type: 'holdElapsed', reduced: true });
     expect(later.active).toBe(2);
     const reset = sequenceReducer(later, { type: 'stop' });
-    expect(reset).toMatchObject({ running: false, active: 0, next: null, fading: false, holdDone: false });
+    expect(reset).toMatchObject({ running: false, active: 0, next: null, fading: false, holdDone: false, steps: 0 });
     expect(reset.activeKey).not.toBe(later.activeKey); // a new element for the first picture
     expect(reset.failed).toEqual([1]);
   });

@@ -31,13 +31,30 @@
  *                          Pauses when the element scrolls offscreen
  *                          (IntersectionObserver) to avoid burning
  *                          CPU on a list scrolled past.
- *                          THIS IS THE ONE PREVIEW THAT MOVES AT REST —
- *                          7 s a frame, 900 ms fade — and it is exactly
- *                          what it was before the hover previews
- *                          (ImageSequenceThumb on the dashboard and
- *                          screens, TemplateContentThumb here) were
- *                          added: the owner's standing rule is that
- *                          nothing else moves until the pointer is on it.
+ *                          THIS IS THE ONE PREVIEW THAT MOVES AT REST,
+ *                          so at rest it is SLOW — 7 s a frame, 900 ms
+ *                          fade, unchanged since the owner's 2026-09-16
+ *                          headache rule (a grid shows dozens of these
+ *                          at once). Nothing else moves until the
+ *                          pointer is on it.
+ *                          UNDER THE POINTER IT IS QUICK. Once a mouse
+ *                          or pen has RESTED on a slideshow for 350 ms,
+ *                          THAT thumbnail steps at once, then holds
+ *                          each picture 1.2 s with a 250 ms fade —
+ *                          pointing at it is asking to see what is in
+ *                          it, and waiting ~8 s a picture for that was
+ *                          the owner's 2026-10-04 complaint ("its
+ *                          waiting the full 10 sec ... in between the
+ *                          images"). The pointer rules are
+ *                          `useHoverPreview`'s: mouse/pen only (a tap
+ *                          never makes it quick), ONE preview on the
+ *                          whole page at a time (so quick can never
+ *                          become a wall of motion), stops on leave /
+ *                          hidden tab / scrolled away. Leaving settles
+ *                          on the picture being shown and the slow
+ *                          rotation carries on from there. The quick
+ *                          cadence is `ImageSequenceThumb`'s — the same
+ *                          the screens page and dashboards use.
  *
  *   - Video playlist     → first video's poster frame (Asset.posterUrl)
  *                          as an <img>; a mouse hovering the tile plays
@@ -83,15 +100,25 @@ import { transformedImageUrl } from '@/lib/asset-image';
 import { VideoPreviewThumb, assetPosterUrl } from './VideoPreviewThumb';
 import { WebsitePreviewThumb } from '@/components/assets/WebsitePreviewThumb';
 import { templatePreviewOf } from '@/lib/template-preview';
+import { useHoverPreview } from '@/lib/use-hover-preview';
+import { IMAGE_PREVIEW_FADE_MS, IMAGE_PREVIEW_FIRST_STEP_MS, IMAGE_PREVIEW_HOLD_MS } from './ImageSequenceThumb';
 
 const apiBase = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1').replace('/api/v1', '');
 
-// Slideshow timing. The old values claimed to feel "easy to read rather than
-// rapid" at 1.4s a frame — Greg, 2026-09-16: "the carousel of images is like
-// every 2 seconds, slow that way down, it makes being on this page give me a
-// head ache". A grid can show dozens of these cycling at once, so the page
+// Slideshow timing AT REST. The old values claimed to feel "easy to read rather
+// than rapid" at 1.4s a frame — Greg, 2026-09-16: "the carousel of images is
+// like every 2 seconds, slow that way down, it makes being on this page give me
+// a head ache". A grid can show dozens of these cycling at once, so the page
 // reads as strobing long before any single card does. Seven seconds a frame
 // with a slow cross-fade: still obviously moving, no longer flicker.
+//
+// That is the pace of what moves WITHOUT being asked. A slideshow a mouse/pen
+// pointer has RESTED on is a different thing — pointing at it is asking to see
+// what is in it — and it runs `ImageSequenceThumb`'s quick cadence instead
+// (IMAGE_PREVIEW_*: 350 ms to the first step, 1.2 s a picture, 250 ms fade;
+// Greg, 2026-10-04: "its waiting the full 10 sec ... in between the images").
+// Only ONE slideshow on the page can be under the pointer (`useHoverPreview`),
+// so the headache rule is untouched: many thumbnails never move quickly at once.
 const SLIDE_HOLD_MS = 7000;
 const SLIDE_FADE_MS = 900;
 const MAX_SLIDESHOW_FRAMES = 5;
@@ -203,7 +230,7 @@ function thumbUrlFor(asset: any, width = 320): string | null {
  * playlists page's AssetThumb component pattern so video frames
  * decode reliably and mshots' "warming" placeholder retries
  * transparently. */
-function StaticAssetFrame({ asset, className }: { asset: any; className?: string }) {
+function StaticAssetFrame({ asset, className, onPictureLoad }: { asset: any; className?: string; onPictureLoad?: () => void }) {
   if (asset?.mimeType === 'text/html' && asset.fileUrl) {
     return <WebsitePreviewThumb url={asset.fileUrl} name={asset.originalName} className={className} />;
   }
@@ -252,6 +279,7 @@ function StaticAssetFrame({ asset, className }: { asset: any; className?: string
       src={url}
       alt=""
       className={className}
+      onLoad={onPictureLoad}
       onError={(e) => {
         // mshots first-hit warming retry, same as AssetThumb in
         // the playlists page.
@@ -320,12 +348,33 @@ function LazyPdfThumb({ url }: { url: string }) {
   );
 }
 
-/** Slow cross-fade slideshow through up to 5 image frames. Pauses on
+/**
+ * The first frame after `from` (wrapping round) whose picture has arrived — what
+ * the quick walk steps to. Null when none has: the walk then waits for one
+ * rather than fade to a blank or half-drawn frame. A picture that never arrives
+ * (a broken file) is skipped for the same reason it is never waited for.
+ */
+export function nextArrivedFrame(from: number, keys: readonly string[], arrived: ReadonlySet<string>): number | null {
+  for (let step = 1; step < keys.length; step++) {
+    const candidate = (from + step) % keys.length;
+    if (arrived.has(keys[candidate])) return candidate;
+  }
+  return null;
+}
+
+/** How much of a SLOW fade that began at `beganAt` (epoch ms) is still to run. */
+function slowFadeLeft(beganAt: number): number {
+  return Math.max(0, SLIDE_FADE_MS - (Date.now() - beganAt));
+}
+
+/** Cross-fade slideshow through up to 5 image frames: SLOW at rest, QUICK under
+ * a resting mouse/pen pointer (see the file header for why). Pauses at rest on
  * offscreen + prefers-reduced-motion. */
 function ImageSlideshow({ assets, className }: { assets: any[]; className?: string }) {
   // Cap to MAX_SLIDESHOW_FRAMES for perf — a 50-image playlist would
   // otherwise mount 50 <img> tags per row.
   const frames = useMemo(() => assets.slice(0, MAX_SLIDESHOW_FRAMES), [assets]);
+  const frameKeys = frames.map((asset, idx) => String(asset?.id || idx));
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [active, setActive] = useState(0);
   const [running, setRunning] = useState(false);
@@ -336,6 +385,29 @@ function ImageSlideshow({ assets, className }: { assets: any[]; className?: stri
     if (typeof window === 'undefined' || !window.matchMedia) return false;
     return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   }, []);
+
+  // A mouse/pen pointer that has RESTED here. The 350 ms rest is the hook's own
+  // hover intent: it is what tells a pointer that is pointing from one that is
+  // crossing on its way elsewhere — a crossing changes nothing at all, not even
+  // the slow rotation's clock (the hook starts nothing, and this thumbnail has
+  // no state, until the pointer has rested). Touch never gets here.
+  const hovered = useHoverPreview(containerRef, { intentMs: IMAGE_PREVIEW_FIRST_STEP_MS });
+
+  // What the quick walk reads when its timer fires — kept here, not in its
+  // effect's deps, so a re-render never re-arms the timer. (The frame keys are a
+  // fresh array every render; the effect below depends on the count, not them.)
+  const live = useRef({ active: 0, keys: frameKeys });
+  useEffect(() => { live.current = { active, keys: frameKeys }; });
+  // Which pictures have arrived, and the step the walk is holding for one, if any.
+  const arrival = useRef<{ keys: Set<string>; wake: (() => void) | null }>({ keys: new Set(), wake: null });
+  const pictureArrived = (key: string) => {
+    arrival.current.keys.add(key);
+    arrival.current.wake?.();
+  };
+  // When the SLOW rotation last began a fade: a pointer that lands mid-fade lets
+  // it finish before the quick walk's first step, so two fades never cut across
+  // each other into a three-picture blur.
+  const slowFadeBeganAt = useRef(0);
 
   // Start/stop based on viewport visibility. Avoids a tab with 100
   // playlists chewing through CPU on a 20-frame slideshow timer per
@@ -360,38 +432,80 @@ function ImageSlideshow({ assets, className }: { assets: any[]; className?: stri
     return () => io.disconnect();
   }, []);
 
-  // Frame advance timer. Only schedules when running, motion is OK,
-  // and there's more than one frame to cycle. The interval includes
-  // both the hold time AND the fade overlap so the next frame is
-  // mid-fade when it becomes the "active" layer.
+  // THE SLOW ROTATION — what runs at rest. Only schedules when running, motion
+  // is OK, there's more than one frame to cycle, and no pointer is resting on it
+  // (the quick walk below has the wheel then; leaving starts this one afresh from
+  // the picture on show). The interval includes both the hold time AND the fade
+  // overlap so the next frame is mid-fade when it becomes the "active" layer.
   useEffect(() => {
     if (!running) return;
+    if (hovered) return;
     if (reducedMotion) return;
     if (frames.length < 2) return;
     const interval = window.setInterval(() => {
+      slowFadeBeganAt.current = Date.now();
       setActive((prev) => (prev + 1) % frames.length);
     }, SLIDE_HOLD_MS);
     return () => window.clearInterval(interval);
-  }, [running, reducedMotion, frames.length]);
+  }, [running, hovered, reducedMotion, frames.length]);
+
+  // THE QUICK WALK — only while a pointer rests on it. It steps to the next
+  // picture THAT HAS ARRIVED (never to one still loading, never a blank or
+  // half-drawn frame; one that never arrives is skipped); if none has, it holds
+  // on what is showing and steps the moment one does. Then every
+  // HOLD + FADE (1.2 s fully shown, 250 ms fade). It runs under reduced motion
+  // too — a person pointing at it asked to see it — but with no fade at all.
+  useEffect(() => {
+    if (!hovered || frames.length < 2) return;
+    const waiting = arrival.current;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const step = () => {
+      timer = undefined;
+      waiting.wake = null;
+      const next = nextArrivedFrame(live.current.active, live.current.keys, waiting.keys);
+      if (next === null) {
+        waiting.wake = step;
+        return;
+      }
+      live.current.active = next;
+      setActive(next);
+      timer = setTimeout(step, IMAGE_PREVIEW_HOLD_MS + IMAGE_PREVIEW_FADE_MS);
+    };
+    const settleIn = slowFadeLeft(slowFadeBeganAt.current);
+    if (settleIn === 0) step();
+    else timer = setTimeout(step, settleIn);
+    return () => {
+      if (timer !== undefined) clearTimeout(timer);
+      waiting.wake = null;
+    };
+  }, [hovered, frames.length]);
 
   if (frames.length === 0) return null;
 
+  const fade = hovered ? (reducedMotion ? 'none' : `opacity ${IMAGE_PREVIEW_FADE_MS}ms ease-in-out`) : `opacity ${SLIDE_FADE_MS}ms ease-in-out`;
+
   return (
-    <div ref={containerRef} className={`relative overflow-hidden bg-slate-50 ${className || ''}`}>
+    <div
+      ref={containerRef}
+      className={`relative overflow-hidden bg-slate-50 ${className || ''}`}
+      data-image-slideshow
+      data-preview-state={hovered ? 'quick' : 'rest'}
+      data-preview-index={active}
+    >
       {frames.map((asset, idx) => (
         <div
           key={asset?.id || idx}
           className="absolute top-0 right-0 bottom-0 left-0"
           style={{
             opacity: idx === active ? 1 : 0,
-            transition: `opacity ${SLIDE_FADE_MS}ms ease-in-out`,
+            transition: fade,
             // Only the active frame should receive pointer events,
             // not strictly necessary for non-interactive previews
             // but keeps a11y trees clean.
             pointerEvents: idx === active ? 'auto' : 'none',
           }}
         >
-          <StaticAssetFrame asset={asset} className="w-full h-full object-contain" />
+          <StaticAssetFrame asset={asset} className="w-full h-full object-contain" onPictureLoad={() => pictureArrived(frameKeys[idx])} />
         </div>
       ))}
       {/* +N indicator for playlists longer than the slideshow cap. */}

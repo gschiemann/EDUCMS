@@ -8,18 +8,33 @@ import { useHoverPreview } from '@/lib/use-hover-preview';
 export interface ImagePreviewFrame { url: string }
 
 /**
- * How long each picture is held while the operator hovers. The owner gets
- * headaches from fast-moving thumbnails: long enough to actually read the
- * picture, never a flicker.
+ * THE QUICK CADENCE — what the ONE thumbnail under a resting mouse/pen pointer
+ * does. Pointing at a thumbnail is asking to see what is in it, so it moves at
+ * a pace a person can follow without waiting (the owner, 2026-10-04: "when you
+ * hover and preview content from playlists and screens it should preview
+ * faster"; it was 2.5 s a picture here and 7 s in the playlist library).
+ *
+ * This is NOT the pace the owner's 2026-09-16 headache rule is about. That rule
+ * is about MANY thumbnails moving AT REST — the library grid's slideshow
+ * (PlaylistPreviewThumb), which stays at 7 s a frame / 900 ms fade. Nothing in
+ * this file ever runs at rest, and `useHoverPreview` lets ONE preview run on the
+ * whole page, so a quick walk here can never become a wall of strobing tiles.
+ *
+ * `IMAGE_PREVIEW_FIRST_STEP_MS` is the wait before the FIRST step after the
+ * pointer lands: long enough that a pointer merely crossing the tile (on its way
+ * to a button, down a column of rows) never flips it, short enough to feel
+ * immediate. Each picture after that is held `IMAGE_PREVIEW_HOLD_MS`.
  */
-export const IMAGE_PREVIEW_HOLD_MS = 2500;
+export const IMAGE_PREVIEW_FIRST_STEP_MS = 350;
+/** How long each picture is held — fully shown, fade excluded — once the walk is under way. */
+export const IMAGE_PREVIEW_HOLD_MS = 1200;
 /** The soft hand-off between two pictures. Under prefers-reduced-motion there is no fade at all. */
-export const IMAGE_PREVIEW_FADE_MS = 300;
+export const IMAGE_PREVIEW_FADE_MS = 250;
 export const MAX_PREVIEW_FRAMES = 5;
 
 /**
  * ImageSequenceThumb — a playlist's first image at rest; on an intentional
- * mouse/pen hover, a short walk through its images.
+ * mouse/pen hover, a quick walk through its images.
  *
  * What it promises (the owner's standing rules for previews):
  *   - NOTHING MOVES AT REST. No timer or observer, and no listener beyond the
@@ -27,12 +42,16 @@ export const MAX_PREVIEW_FRAMES = 5;
  *     only, one preview on the page at a time, stops on leave / hidden tab /
  *     scrolled away).
  *   - THE WHOLE IMAGE. `object-contain`, letterboxed — never cropped to fill.
- *   - CALM. 2.5 s on each picture, a 300 ms cross-fade (none under
- *     prefers-reduced-motion — it still steps).
+ *   - QUICK UNDER THE POINTER. The first step ~350 ms after the pointer lands,
+ *     then 1.2 s on each picture with a 250 ms cross-fade (none under
+ *     prefers-reduced-motion — it still steps). See the constants above for why
+ *     this is quick while the library's at-rest slideshow stays slow.
  *   - AT MOST TWO <img> AT A TIME: the picture on show, and the next one,
- *     preloaded invisibly so the step never waits on the network. A picture
- *     that fails to load is skipped for the rest of this mount; it is never
- *     retried in a loop.
+ *     preloaded invisibly the moment the pointer lands. A picture that fails to
+ *     load is skipped for the rest of this mount; it is never retried in a loop.
+ *   - NEVER AN UNLOADED PICTURE. A step happens only when the hold is over AND
+ *     the next picture has loaded — a quick hold that outruns a slow network
+ *     waits for the picture, it never fades to a blank or half-drawn frame.
  *   - LEAVING RESETS to the first picture.
  *   - NOTHING DRAWN OVER THE PICTURE. No count badge: these thumbnails can be
  *     28 px wide, and a "+3" chip would hide a third of the image the owner
@@ -118,6 +137,9 @@ export interface SequenceState {
   /** Makes every standby a FRESH element: a reused element whose src did not
    *  change fires no new `load`, and the sequence would wait on it forever. */
   serial: number;
+  /** Pictures this hover has stepped on to; 0 = still on the one it landed on.
+   *  The first step waits `IMAGE_PREVIEW_FIRST_STEP_MS`, every later hold `IMAGE_PREVIEW_HOLD_MS`. */
+  steps: number;
 }
 
 export type SequenceEvent =
@@ -129,7 +151,12 @@ export type SequenceEvent =
   | { type: 'faded' };
 
 export function initialSequence(count: number): SequenceState {
-  return { running: false, count, active: 0, activeKey: '0.0', next: null, nextKey: null, nextReady: false, holdDone: false, fading: false, failed: [], serial: 0 };
+  return { running: false, count, active: 0, activeKey: '0.0', next: null, nextKey: null, nextReady: false, holdDone: false, fading: false, failed: [], serial: 0, steps: 0 };
+}
+
+/** How long the picture on show is held before the next step: the short first-step wait until this hover has stepped once, the full hold after. */
+export function holdFor(state: SequenceState): number {
+  return state.steps === 0 ? IMAGE_PREVIEW_FIRST_STEP_MS : IMAGE_PREVIEW_HOLD_MS;
 }
 
 /** The next picture that has not failed, walking forward from `from` and wrapping; null when none is left. */
@@ -158,6 +185,7 @@ function swap(state: SequenceState): SequenceState {
     holdDone: false,
     fading: false,
     serial,
+    steps: state.steps + 1,
   };
 }
 
@@ -226,18 +254,20 @@ function Sequence({ frames, label, className }: { frames: ImagePreviewFrame[]; l
   useHoverPreview(ref, { onChange: onHover });
 
   // Hold the picture on show. The timer runs only while a hover is running and
-  // there is a standby to step to. A STEP restarts it — `activeKey` is in the
-  // deps for exactly that: under reduced motion a step goes straight from
-  // "holding" to "holding the next picture" with every other dependency
-  // unchanged, and without it the hold of the second picture would never start.
-  // A standby swapped for another after a failure does NOT restart it (the
-  // picture on show has been held that long already).
+  // there is a standby to step to. The first hold after the pointer lands is the
+  // short first-step wait (`holdFor`), every later one the full hold. A STEP
+  // restarts it — `activeKey` is in the deps for exactly that: under reduced
+  // motion a step goes straight from "holding" to "holding the next picture"
+  // with every other dependency unchanged, and without it the hold of the second
+  // picture would never start. A standby swapped for another after a failure
+  // does NOT restart it (the picture on show has been held that long already).
   const hasNext = state.next !== null;
+  const holdMs = holdFor(state);
   useEffect(() => {
     if (!state.running || !hasNext || state.holdDone || state.fading) return;
-    const timer = setTimeout(() => dispatch({ type: 'holdElapsed', reduced: prefersReducedMotion() }), IMAGE_PREVIEW_HOLD_MS);
+    const timer = setTimeout(() => dispatch({ type: 'holdElapsed', reduced: prefersReducedMotion() }), holdMs);
     return () => clearTimeout(timer);
-  }, [state.running, state.activeKey, hasNext, state.holdDone, state.fading]);
+  }, [state.running, state.activeKey, hasNext, state.holdDone, state.fading, holdMs]);
 
   // The cross-fade is over: the standby is the picture on show.
   useEffect(() => {

@@ -28,7 +28,13 @@ import { useEffect, useRef, useState, type RefObject } from 'react';
  *   - OPTIONAL HOVER INTENT (`intentMs`). A preview that is expensive to start
  *     (a live template render is a whole document) should not start for a
  *     cursor that is merely crossing the row on its way to a button. The
- *     pointer must rest for `intentMs` first.
+ *     pointer must rest for `intentMs` first. The same wait is also how a
+ *     preview that CHANGES what is on show tells pointing from crossing: the
+ *     playlist library's image slideshow (quick under a resting pointer, slow at
+ *     rest) uses it so a pointer crossing the tile leaves no trace — nothing
+ *     starts, no state changes, not even the slow rotation's clock. A touch
+ *     never starts the wait, a new entry restarts it, and a tab that went hidden
+ *     during it starts nothing.
  *
  * Returns whether the preview is running. `onChange` fires on every start and
  * stop, for a consumer that keeps its own state machine (reset on stop).

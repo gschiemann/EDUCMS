@@ -175,7 +175,8 @@ test('the playlist library’s image slideshow rotates by itself, slowly (7 s ho
     }
   });
   expect(await slideshowIndex(page)).toBe(0);
-  // Well past a hover-style 2.5 s hold, and still on the first picture: this is the calm 7 s rotation.
+  // Well past the quick hover cadence (350 ms to a first step, then a picture every 1.45 s), and still on the
+  // first picture: at rest, with no pointer on it, this is the calm 7 s rotation.
   await page.waitForTimeout(3500);
   expect(await slideshowIndex(page)).toBe(0);
   await expect.poll(() => slideshowIndex(page), { timeout: 10000 }).toBe(1);
@@ -194,7 +195,63 @@ test('the playlist library’s image slideshow rotates by itself, slowly (7 s ho
   expect(rotations[1] - rotations[0]).toBeLessThan(7500);
 });
 
-test('uploaded images stay still at rest and walk through on hover — 2.5 s a picture — across the dashboard, screen rows and details', async ({ page }, info) => {
+// The quick cadence is 350 ms to the first step + a 250 ms fade = the second picture is ON SHOW ~600 ms
+// after the pointer lands (the old 2.5 s hold + 300 ms fade took 2.8 s). Every wait below is 2 s, so it
+// fails against the old cadence and still leaves a loaded CI runner generous room.
+const QUICK_STEP_TIMEOUT = 2000;
+
+test('hovering the playlist library’s image slideshow makes THAT thumbnail quick — and leaving hands it back to the slow rotation, on the picture it is showing', async ({ page }, info) => {
+  await setup(page, false, 'images');
+  await page.route('https://preview.example.test/**', route => route.fulfill({ status: 200, contentType: 'image/svg+xml', body: WEBSITE_SHOT }));
+  await page.goto(`/${TENANT}/playlists`);
+  // The slideshow on screen (the compact cards' copy is hidden by CSS and never runs).
+  const slideshow = page.locator('[data-image-slideshow]:visible').first();
+  await expect(slideshow).toHaveAttribute('data-preview-state', 'rest', { timeout: 15000 });
+  // The quick walk only steps to a picture that has arrived: let all three load first (a real person's pointer
+  // arrives seconds after the page, not milliseconds).
+  await expect.poll(() => slideshow.evaluate(el => Array.from(el.querySelectorAll('img')).filter(image => image.complete && image.naturalWidth > 0).length), { timeout: 15000 }).toBe(3);
+  const fadeOf = () => slideshow.evaluate(el => getComputedStyle(el.querySelector('div.absolute') as HTMLElement).transitionDuration);
+  expect(await fadeOf()).toBe('0.9s'); // at rest: the slow cross-fade
+  // Indices are read, not assumed: the slow clock is 7 s, and a loaded runner may already have moved it.
+  const start = Number(await slideshow.getAttribute('data-preview-index'));
+  const at = (steps: number) => String((start + steps) % 3);
+
+  await slideshow.hover();
+  // The pointer rests ~350 ms, then the thumbnail steps at once — against the 7 s a picture it takes at rest.
+  await expect(slideshow).toHaveAttribute('data-preview-state', 'quick', { timeout: QUICK_STEP_TIMEOUT });
+  await expect(slideshow).toHaveAttribute('data-preview-index', at(1), { timeout: QUICK_STEP_TIMEOUT });
+  expect(await fadeOf()).toBe('0.25s'); // the browser's own computed fade, not the style string we asked for
+  // …and a picture every ~1.45 s after that (1.2 s held + a 250 ms fade).
+  await expect(slideshow).toHaveAttribute('data-preview-index', at(2), { timeout: 2500 });
+  await page.screenshot({ path: info.outputPath('library-slideshow-quick.png'), fullPage: true });
+
+  // Leaving: back to the slow rotation, ON THE PICTURE IT WAS SHOWING (never snapped back to the first).
+  await page.mouse.move(0, 0);
+  await expect(slideshow).toHaveAttribute('data-preview-state', 'rest', { timeout: QUICK_STEP_TIMEOUT });
+  const shown = await slideshow.getAttribute('data-preview-index');
+  expect(shown).not.toBeNull();
+  expect(await fadeOf()).toBe('0.9s');
+  // Calm again: well over a quick step's worth of time later, nothing has moved (the slow clock is 7 s).
+  await page.waitForTimeout(3000);
+  await expect(slideshow).toHaveAttribute('data-preview-index', shown!);
+});
+
+test('a pointer that only crosses the library slideshow leaves no trace — the slow rotation keeps its own clock', async ({ page }) => {
+  await setup(page, false, 'images');
+  await page.route('https://preview.example.test/**', route => route.fulfill({ status: 200, contentType: 'image/svg+xml', body: WEBSITE_SHOT }));
+  await page.goto(`/${TENANT}/playlists`);
+  const slideshow = page.locator('[data-image-slideshow]:visible').first();
+  await expect(slideshow).toHaveAttribute('data-preview-state', 'rest', { timeout: 15000 });
+  const box = (await slideshow.boundingBox())!;
+  // Cross it fast — in, across and out well inside the 350 ms rest.
+  await page.mouse.move(box.x - 20, box.y + box.height / 2);
+  await page.mouse.move(box.x + box.width + 20, box.y + box.height / 2, { steps: 6 });
+  await page.waitForTimeout(600); // longer than the rest: had it counted as a hover, it would have gone quick by now
+  await expect(slideshow).toHaveAttribute('data-preview-state', 'rest');
+  expect(await slideshow.evaluate(el => getComputedStyle(el.querySelector('div.absolute') as HTMLElement).transitionDuration)).toBe('0.9s');
+});
+
+test('uploaded images stay still at rest and walk through QUICKLY on hover — across the dashboard, screen rows and details', async ({ page }, info) => {
   await setup(page, false, 'images');
   await page.route('https://preview.example.test/**', route => route.fulfill({ status: 200, contentType: 'image/svg+xml', body: WEBSITE_SHOT }));
   for (const path of ['dashboard', 'screens']) {
@@ -208,7 +265,7 @@ test('uploaded images stay still at rest and walk through on hover — 2.5 s a p
     await preview.hover();
     // At most two pictures exist while it runs (the one on show, and the next, preloaded).
     await expect(preview.locator('img')).toHaveCount(2);
-    await expect(preview).toHaveAttribute('data-preview-index', '1', { timeout: 8000 });
+    await expect(preview).toHaveAttribute('data-preview-index', '1', { timeout: QUICK_STEP_TIMEOUT });
     expect(await preview.locator('img').count()).toBeLessThanOrEqual(2);
     // The whole image, never cropped.
     await expect(preview.locator('img').first()).toHaveCSS('object-fit', 'contain');
@@ -220,7 +277,7 @@ test('uploaded images stay still at rest and walk through on hover — 2.5 s a p
   await page.getByRole('button', { name: 'Demo display', exact: true }).click();
   const preview = page.getByTestId('screen-content-card').locator('[data-image-sequence]');
   await preview.hover();
-  await expect(preview).toHaveAttribute('data-preview-index', '1', { timeout: 8000 });
+  await expect(preview).toHaveAttribute('data-preview-index', '1', { timeout: QUICK_STEP_TIMEOUT });
   await page.screenshot({ path: info.outputPath('image-hover-screen.png'), fullPage: true });
 });
 
@@ -249,7 +306,7 @@ const recordSequence = (preview: Locator) => preview.evaluate(root => {
 const readSequence = (preview: Locator) => preview.evaluate(() => (window as unknown as { __sequence: { styles: string[]; opacity: Array<{ at: number; value: number }> } }).__sequence);
 
 for (const reduced of [false, true]) {
-  test(reduced ? 'with reduced motion the images still step on hover — with no fade' : 'with normal motion the images cross-fade over about 300 ms on hover', async ({ page }) => {
+  test(reduced ? 'with reduced motion the images still step on hover — with no fade' : 'with normal motion the images cross-fade over about 250 ms on hover', async ({ page }) => {
     if (reduced) await page.emulateMedia({ reducedMotion: 'reduce' });
     await setup(page, false, 'images');
     await page.route('https://preview.example.test/**', route => route.fulfill({ status: 200, contentType: 'image/svg+xml', body: WEBSITE_SHOT }));
@@ -258,11 +315,11 @@ for (const reduced of [false, true]) {
     await preview.scrollIntoViewIfNeeded();
     await recordSequence(preview);
     await preview.hover();
-    await expect(preview).toHaveAttribute('data-preview-index', '1', { timeout: 8000 });
+    await expect(preview).toHaveAttribute('data-preview-index', '1', { timeout: QUICK_STEP_TIMEOUT });
     await page.waitForTimeout(200);
     const { styles, opacity } = await readSequence(preview);
     const anyFade = styles.some(style => /transition:\s*opacity/.test(style));
-    const fadeOf300ms = styles.some(style => /transition:\s*opacity\s+(0\.3s|300ms)/.test(style));
+    const fadeOf250ms = styles.some(style => /transition:\s*opacity\s+(0\.25s|250ms)/.test(style));
     const midway = opacity.filter(sample => sample.value > 0.05 && sample.value < 0.95);
     if (reduced) {
       // It stepped (index 1, above) — and the component never asked for ANY fade: its standby says `transition: none`.
@@ -271,10 +328,10 @@ for (const reduced of [false, true]) {
       expect(midway).toHaveLength(0);
     } else {
       // The control that makes the reduced-motion case mean something: with normal motion the same
-      // observation DOES see the fade — a 300 ms one, really passing through the middle opacities…
-      expect(fadeOf300ms).toBe(true);
+      // observation DOES see the fade — a 250 ms one, really passing through the middle opacities…
+      expect(fadeOf250ms).toBe(true);
       expect(midway.length).toBeGreaterThan(3);
-      // …taking about 300 ms from the first trace of the second picture to (nearly) all of it.
+      // …taking about 250 ms from the first trace of the second picture to (nearly) all of it.
       const begins = opacity.find(sample => sample.value > 0.02)!.at;
       const done = opacity.find(sample => sample.at > begins && sample.value >= 0.98)!.at;
       expect(done - begins).toBeGreaterThan(100);

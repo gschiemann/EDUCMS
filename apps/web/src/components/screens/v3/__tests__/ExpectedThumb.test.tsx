@@ -3,7 +3,7 @@ import { render, screen, cleanup, fireEvent, act } from '@testing-library/react'
 import '../../../../../test-mocks/pointer-event-polyfill';
 import { ExpectedThumb } from '../ExpectedThumb';
 import { TEMPLATE_HOVER_INTENT_MS } from '@/components/templates/TemplateContentThumb';
-import { IMAGE_PREVIEW_HOLD_MS } from '@/components/playlists/ImageSequenceThumb';
+import { IMAGE_PREVIEW_FADE_MS, IMAGE_PREVIEW_FIRST_STEP_MS, IMAGE_PREVIEW_HOLD_MS } from '@/components/playlists/ImageSequenceThumb';
 
 // The template cases only need to see HOW the thumbnail was asked to draw.
 jest.mock('@/components/templates/ScaledTemplateThumbnail', () => ({
@@ -134,7 +134,47 @@ describe('several images', () => {
       fireEvent.pointerLeave(root);
       expect(container.querySelectorAll('img')).toHaveLength(1);
       expect(jest.getTimerCount()).toBe(0);
-      expect(IMAGE_PREVIEW_HOLD_MS).toBe(2500);
+    } finally { jest.useRealTimers(); }
+  });
+
+  it('is QUICK under the pointer on the Screens page and dashboards: ~350 ms to the first step, then 1.2 s a picture, 250 ms fade', () => {
+    jest.useFakeTimers();
+    try {
+      const { container } = render(<ExpectedThumb expected={several} />);
+      const root = container.querySelector('[data-image-sequence]')!;
+      const standby = () => container.querySelector('img[aria-hidden="true"]') as HTMLImageElement;
+      const shown = () => Number(root.getAttribute('data-preview-index'));
+      // The numbers the owner asked for, pinned here as well because this is the surface he reads them on.
+      expect([IMAGE_PREVIEW_FIRST_STEP_MS, IMAGE_PREVIEW_HOLD_MS, IMAGE_PREVIEW_FADE_MS]).toEqual([350, 1200, 250]);
+
+      fireEvent.pointerEnter(root, { pointerType: 'mouse' });
+      fireEvent.load(standby());
+      act(() => { jest.advanceTimersByTime(349); });
+      expect(standby().style.opacity).toBe('0'); // a pointer crossing the row has not flipped anything
+      act(() => { jest.advanceTimersByTime(1); });
+      expect(standby().style.opacity).toBe('1');
+      act(() => { jest.advanceTimersByTime(250); });
+      expect(shown()).toBe(1);
+
+      fireEvent.load(standby());
+      act(() => { jest.advanceTimersByTime(1199); });
+      expect(shown()).toBe(1);
+      expect(standby().style.opacity).toBe('0');
+      act(() => { jest.advanceTimersByTime(1); });
+      expect(standby().style.opacity).toBe('1');
+    } finally { jest.useRealTimers(); }
+  });
+
+  it('a touch tap on the same thumbnail never starts it', () => {
+    jest.useFakeTimers();
+    try {
+      const { container } = render(<ExpectedThumb expected={several} />);
+      const root = container.querySelector('[data-image-sequence]')!;
+      fireEvent.pointerEnter(root, { pointerType: 'touch' });
+      act(() => { jest.advanceTimersByTime(30_000); });
+      expect(container.querySelectorAll('img')).toHaveLength(1);
+      expect(root.getAttribute('data-preview-index')).toBe('0');
+      expect(jest.getTimerCount()).toBe(0);
     } finally { jest.useRealTimers(); }
   });
 

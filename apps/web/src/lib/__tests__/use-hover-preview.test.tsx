@@ -180,6 +180,44 @@ describe('hover intent', () => {
     enter('a');
     expect(jest.getTimerCount()).toBe(1);
   });
+
+  // The playlist library's slideshow tells "pointing at it" from "crossing it" with
+  // `intentMs` alone (a crossing must change nothing — not even its slow clock), so
+  // these three are what its quick walk stands on.
+  it('a touch never even starts the wait — no timer, no state, nothing to cancel', () => {
+    render(<Harness id="a" intentMs={350} />);
+    enter('a', 'touch');
+    expect(jest.getTimerCount()).toBe(0);
+    act(() => { jest.advanceTimersByTime(5000); });
+    expect(isActive('a')).toBe(false);
+    expect(FakeObserver.all).toHaveLength(0);
+  });
+
+  it('every new entry restarts the wait: three near-misses never add up to a hover', () => {
+    const calls: boolean[] = [];
+    render(<Harness id="a" intentMs={350} onChange={(on) => calls.push(on)} />);
+    for (let pass = 0; pass < 3; pass++) {
+      enter('a');
+      act(() => { jest.advanceTimersByTime(349); });
+      leave('a');
+    }
+    expect(isActive('a')).toBe(false);
+    expect(calls).toEqual([]); // not one start, not one stop: a crossing is invisible to its consumer
+    expect(jest.getTimerCount()).toBe(0);
+    enter('a');
+    act(() => { jest.advanceTimersByTime(350); });
+    expect(isActive('a')).toBe(true);
+  });
+
+  it('a tab that goes hidden during the wait never starts the preview', () => {
+    render(<Harness id="a" intentMs={350} />);
+    enter('a');
+    const hidden = jest.spyOn(document, 'hidden', 'get').mockReturnValue(true);
+    act(() => { jest.advanceTimersByTime(350); });
+    expect(isActive('a')).toBe(false);
+    expect(FakeObserver.all).toHaveLength(0);
+    hidden.mockReturnValue(false);
+  });
 });
 
 describe('onChange', () => {

@@ -53,19 +53,40 @@ written into a `title` or other attribute.
 
 ### Images
 
-- **Playlist library grid.** Unchanged from before the hover work: an image
-  playlist with two or more images rotates at rest, 7 s a frame with a 900 ms
+**Slow at rest, quick under the pointer.** Pointing at a thumbnail is asking to
+see what is in it, so the one thumbnail a mouse or pen has rested on moves at a
+pace a person can follow. Many thumbnails moving by themselves gave the owner a
+headache (2026-09-16), so whatever moves at rest stays slow. The quick numbers are
+`IMAGE_PREVIEW_*` in `ImageSequenceThumb.tsx`, and both thumbnails below use them:
+the first step comes 350 ms after the pointer lands (a pointer merely crossing the
+tile never flips it), then each picture is held 1.2 s with a 250 ms cross-fade. Under
+`prefers-reduced-motion` it still steps, with no fade. Only one thumbnail on the
+page can be under the pointer, so quick never becomes a wall of motion. A walk
+never steps to a picture that has not loaded: it never fades to a blank or
+half-drawn frame. Touch never starts it. If it ever needs to be faster or slower,
+those three constants are the only numbers to change.
+
+- **Playlist library grid** (`PlaylistPreviewThumb`). At rest, unchanged: an image
+  playlist with two or more images rotates, 7 s a frame with a 900 ms
   cross-fade, over at most five images with a "+N" count. It runs only while at
-  least a quarter visible and not at all under `prefers-reduced-motion`. Hovering
-  changes nothing there. This is the only preview that moves at rest.
+  least a quarter visible and not at all under `prefers-reduced-motion`. This is
+  the only preview that moves at rest. Once a pointer has rested on it for 350 ms
+  (`useHoverPreview`'s hover intent), that one slideshow steps at once and runs the
+  quick cadence over the same five pictures, and the slow rotation pauses while the
+  pointer is there. Leaving settles on the picture being shown (it does not jump
+  back to the first) and the slow rotation carries on from there. A pointer that
+  only crosses the tile changes nothing, not even the slow rotation's clock. The
+  quick walk passes over a picture that is still loading or broken, and waits
+  when none other has arrived. A slow fade still in progress when the pointer
+  rests is allowed to finish before the first quick step.
 - **Dashboard, screen rows, screen content card, fleet schedule rows.** The
   first image at rest, in play order (`sequenceOrder`, then position). On hover
-  (`ImageSequenceThumb`) it holds each image 2.5 s and cross-fades for 300 ms;
-  under reduced motion it still steps, with no fade. At most two `<img>` exist
-  at once: the one on show and the next, preloaded invisibly. A picture that
-  fails to load is skipped for the rest of that mount and never retried in a
-  loop. Leaving returns to the first picture. One image is a plain still with no
-  listeners.
+  (`ImageSequenceThumb`) the first step comes after 350 ms, then each image is held
+  1.2 s and cross-fades for 250 ms; under reduced motion it still steps, with no
+  fade. At most two `<img>` exist at once: the one on show and the next,
+  preloaded invisibly the moment the pointer lands. A picture that fails to load
+  is skipped for the rest of that mount and never retried in a loop. Leaving
+  returns to the first picture. One image is a plain still with no listeners.
 
 ### Templates
 

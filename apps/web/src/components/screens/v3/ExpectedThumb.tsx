@@ -47,8 +47,9 @@ export function ExpectedThumb({
     return <WebsitePreviewThumb url={expected.thumbnailUrl} name={expected.name} className={base} />;
   }
 
-  // Several images: the first at rest; on an intentional mouse/pen hover, a calm
-  // walk through them (see ImageSequenceThumb — nothing moves at rest).
+  // Several images: the first at rest; on an intentional mouse/pen hover, a
+  // quick walk through them — ~350 ms to the first step, then 1.2 s a picture
+  // (see ImageSequenceThumb: nothing moves at rest, quick only under the pointer).
   if (expected.thumbnailKind === 'still' && (expected.thumbnailFrames?.length ?? 0) > 1) {
     return <ImageSequenceThumb frames={expected.thumbnailFrames!} name={expected.name} className={base} />;
   }
