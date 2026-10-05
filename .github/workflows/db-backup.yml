@@ -44,7 +44,7 @@ jobs:
     steps:
       # Only the Supabase CA is needed from the repo — pg_dump verifies the
       # server certificate against it (see the dump step).
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           sparse-checkout: packages/database/certs
           sparse-checkout-cone-mode: false
@@ -91,7 +91,7 @@ jobs:
           ls -l venueos-db.dump.enc
 
       - name: Upload encrypted artifact (30-day retention)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: venueos-db-backup-${{ github.run_id }}
           path: venueos-db.dump.enc
