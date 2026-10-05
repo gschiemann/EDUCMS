@@ -66,8 +66,7 @@ export function useFloorPlanDelete() {
   const confirmAndDelete = async (plan: ManageableFloorPlan): Promise<boolean> => {
     const ok = await appConfirm({
       title: `Delete "${plan.name}"?`,
-      message:
-        'This removes the floor plan and detaches every screen placed on it. The screens themselves stay paired and will revert to "unplaced" status.',
+      message: "Its screens stay paired but come off the plan. This can't be undone.",
       tone: 'danger',
       confirmLabel: 'Delete plan',
     });
@@ -78,7 +77,7 @@ export function useFloorPlanDelete() {
     } catch (err: any) {
       await appAlert({
         title: "Couldn't delete plan",
-        message: err?.message || 'Try again, or refresh if the issue persists.',
+        message: err?.message || 'Refresh and try again.',
         tone: 'danger',
       });
       return false;

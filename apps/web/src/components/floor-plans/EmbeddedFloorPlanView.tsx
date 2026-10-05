@@ -883,7 +883,7 @@ function ScreenDetailDrawer({
   const handleDetach = async () => {
     const ok = await appConfirm({
       title: `Remove "${screen.name}" from this plan?`,
-      message: 'The screen stays paired and keeps playing. It just won\'t show on this floor plan anymore.',
+      message: "It stays paired; it just won't show on this plan.",
       tone: 'warn',
       confirmLabel: 'Remove pin',
     });

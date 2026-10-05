@@ -369,7 +369,7 @@ export function ScreenDetailDrawer({
         setAnnouncement(
           already
             ? 'This screen’s credential is already trusted. Nothing changed.'
-            : 'Trust restored. Waiting for this screen to check in and prove its credential — up to ten minutes.',
+            : t('screens.drawer.trustRequestedAnnounce'),
         );
         // Re-pull the fleet payload. The badge OUTSIDE this drawer does not
         // clear here: the server has only armed the heal, and `authState`
@@ -425,10 +425,9 @@ export function ScreenDetailDrawer({
 
   const removeScreen = async () => {
     const ok = await appConfirm({
-      title: `Remove “${screen.name ?? 'this screen'}”?`,
-      message:
-        'The screen stops receiving content and disappears from this list. The device keeps running until it is unplugged; pair it again to bring it back.',
-      confirmLabel: 'Remove screen',
+      title: t('screens.drawer.removeTitle', { name: screen.name ?? t('screens.drawer.thisScreen') }),
+      message: t('screens.drawer.removeMessage'),
+      confirmLabel: t('screens.drawer.removeConfirm'),
       tone: 'danger',
     });
     if (!ok) return;
@@ -502,11 +501,11 @@ export function ScreenDetailDrawer({
                 title={
                   syncStatus.kind === 'locked'
                     ? (syncStatus.jittery
-                      ? `Frame-locked, but this screen's network is jittery (${syncStatus.detail}). Sync is fighting it with faster sampling — a wired connection or a closer access point fixes this.`
-                      : `Frame-locked. Clock agreement ±${syncStatus.ms}ms — flips land within a frame of the group. (${syncStatus.detail})`)
+                      ? t('screens.drawer.syncJittery')
+                      : t('screens.drawer.syncLocked', { ms: syncStatus.ms }))
                     : syncStatus.kind === 'diverged'
-                      ? 'This screen is playing different content than the rest of its group (a per-screen schedule likely overrides the group), so sync cannot hold across them.'
-                      : 'Synced playback is on for this group; this screen is still locking its clock (a few seconds after boot or toggle).'
+                      ? t('screens.drawer.syncDiverged')
+                      : t('screens.drawer.syncLocking')
                 }
               >
                 {syncStatus.kind === 'locked' ? `sync ±${syncStatus.ms}ms${syncStatus.jittery ? ' ⚠' : ''}` : syncStatus.kind === 'diverged' ? '≠ content' : 'sync…'}
@@ -739,13 +738,12 @@ export function ScreenDetailDrawer({
                   while the server is actually asking for it. */}
               {needsTrustRestore && (
                 <section>
-                  <SectionLabel hint="Content keeps playing throughout. Nothing on the screen changes.">
+                  <SectionLabel hint={t('screens.drawer.trustHint')}>
                     Credential
                   </SectionLabel>
                   <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3.5">
                     <p className="text-[12.5px] font-semibold text-amber-900 leading-snug">
-                      This screen is running on temporary one-hour keys. It keeps playing content,
-                      but it renews far more often than it should and shows here as needing a re-pair.
+                      {t('screens.drawer.trustBody')}
                     </p>
                     <button
                       type="button"
@@ -764,21 +762,18 @@ export function ScreenDetailDrawer({
                         <span className="block text-[11px] font-semibold text-white/80 mt-0.5">
                           {/* Truth-first: this arms the heal. The DEVICE completes
                               it, and nothing here can prove that it has. */}
-                          Lets this screen prove its credential on its next check-in — no re-pairing,
-                          no trip to the panel.
+                          {t('screens.drawer.trustButtonSub')}
                         </span>
                       </span>
                     </button>
                     {restored === 'done' && (
                       <p className="mt-2 text-[11.5px] font-semibold text-amber-900 leading-snug">
-                        Requested. This badge clears once the screen checks in and proves its
-                        credential — usually within ten minutes. It has not happened yet.
+                        {t('screens.drawer.trustRequested')}
                       </p>
                     )}
                     {restored === 'already' && (
                       <p className="mt-2 text-[11.5px] font-semibold text-amber-900 leading-snug">
-                        The server already has this screen on a full credential — this badge is from
-                        the last check-in and clears on the next one.
+                        {t('screens.drawer.trustAlready')}
                       </p>
                     )}
                     {restoreError && (
@@ -979,8 +974,7 @@ export function ScreenDetailDrawer({
 
         {!online && (
           <p className="px-5 pb-3 -mt-1 text-[11px] font-semibold text-slate-400 leading-snug">
-            This screen isn’t answering, so a resync can’t land right now — check its power and
-            network at the site. It collects everything waiting the moment it reconnects.
+            {t('screens.drawer.offlineResyncNote')}
           </p>
         )}
 

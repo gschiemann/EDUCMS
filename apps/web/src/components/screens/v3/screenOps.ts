@@ -1126,7 +1126,7 @@ export function deriveReportedContent(
     return {
       state: 'behind',
       line: 'Update not confirmed',
-      detail: `Sent ${wordyAge(pendingMs, now) ?? 'a moment'} ago; the screen has not echoed it back yet.`,
+      detail: `Sent ${wordyAge(pendingMs, now) ?? 'a moment'} ago; waiting for the screen to confirm it.`,
       app,
     };
   }
@@ -1208,7 +1208,7 @@ export function deriveReportedContent(
       line: 'Playing a board',
       detail: dated(
         scheduled
-          ? 'Not the board scheduled right now — the screen re-checks on its own; Resync hurries it.'
+          ? 'Not the board scheduled right now. It updates on its own.'
           : 'Nothing is scheduled for this screen, yet a board is playing.',
       ),
       app,
@@ -1223,7 +1223,7 @@ export function deriveReportedContent(
       line: 'Playing a playlist',
       detail: dated(
         scheduled
-          ? `Can’t confirm it is ${scheduled} yet — it may be an older version of it. The screen re-checks on its own; Resync hurries it.`
+          ? `Can’t confirm it is ${scheduled} yet. It updates on its own.`
           : 'Nothing is scheduled for this screen, yet a playlist is playing.',
       ),
       app,

@@ -110,7 +110,7 @@ describe('deleting a plan', () => {
     // The confirmation names the consequence the operator cares about.
     const opts = appConfirm.mock.calls[0][0];
     expect(opts.title).toContain('Lincoln HS — Floor 1');
-    expect(opts.message).toMatch(/detaches every screen/i);
+    expect(opts.message).toMatch(/screens stay paired but come off the plan/i);
     expect(opts.tone).toBe('danger');
   });
 

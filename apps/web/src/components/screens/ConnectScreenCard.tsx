@@ -274,6 +274,7 @@ export function ConnectScreenCard({
   onPairScreen,
   pairDisabled,
 }: ConnectScreenCardProps) {
+  const t = useTranslations();
   // The remembered choice comes from localStorage, which is an EXTERNAL
   // STORE — so it is read with `useSyncExternalStore`, not with a mount
   // effect that calls setState (React 19 flags that as a cascading render,
@@ -466,9 +467,7 @@ export function ConnectScreenCard({
                         <ExternalLink className="w-3 h-3 text-slate-400" />
                       </a>
                       <p className="text-[11px] text-slate-400">
-                        Always the current release — the link resolves to the newest published
-                        build, so there is no version to look up. After this one install the app
-                        keeps itself updated.
+                        {t('screens.connect.apkAlwaysNewest')}
                       </p>
                       {/* USB path (2026-08-25, operator request). Plenty of
                           commercial panels ship no browser and no way to scan
@@ -546,10 +545,7 @@ export function ConnectScreenCard({
 
             <Step n={3} title="It starts up and shows a 6-character code">
               <p className="text-xs text-slate-500 mt-0.5">
-                First power-up asks for a few one-tap Android permissions, one dialog at a time —
-                including setting the Player as the Home app, so it comes back on its own after a
-                reboot or a power cut. Then the code fills the screen, and it holds the panel
-                awake while it plays.
+                {t('screens.connect.mediaFirstBoot')}
               </p>
             </Step>
 

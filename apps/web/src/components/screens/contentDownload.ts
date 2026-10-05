@@ -195,19 +195,18 @@ export const DOWNLOAD_COPY_EN = {
   'screens.contentState.downloading': 'Downloading new content',
   'screens.contentState.downloadingProgress': 'Downloading new content · {percent}% of {size}',
   'screens.contentState.downloadingSoFar': 'Downloading new content · {loaded} so far',
-  'screens.contentState.downloadingDetail':
-    'The new file is downloading to this screen. It starts playing the moment the whole file is on the screen.',
+  'screens.contentState.downloadingDetail': 'It starts playing once the download finishes.',
   'screens.contentState.showingPrevious': 'Still showing previous content',
   'screens.contentState.showingPreviousProgress':
     'Still showing previous content · new content {percent}% of {size}',
   'screens.contentState.showingPreviousSoFar': 'Still showing previous content · new content {loaded} so far',
   'screens.contentState.showingPreviousDetail':
-    'New content is downloading to this screen. It keeps playing what it had until the whole new file is on the screen, then switches over.',
+    'It keeps showing the old content until the new file finishes downloading.',
   'screens.contentState.backgroundProgress': 'Downloading another file · {percent}% of {size}',
   'screens.contentState.backgroundSoFar': 'Downloading another file · {loaded} so far',
   'screens.contentState.unavailable': 'Content unavailable',
   'screens.contentState.unavailableDetail':
-    'The screen is on, but none of the scheduled files would load, so it shows its “Content unavailable” card and tries again every 30 seconds on its own. If it stays this way, check the files in the playlist.',
+    "None of the scheduled files would load. It keeps retrying; if this lasts, check the playlist's files.",
   'screens.contentState.loading': 'Loading content',
   'screens.contentState.loadingDetail': 'The screen picked up its schedule and is opening the first item.',
   'screens.contentState.connecting': 'Screen on · connecting',
@@ -216,7 +215,7 @@ export const DOWNLOAD_COPY_EN = {
   'screens.contentState.syncing': 'Syncing',
   'screens.contentState.syncingEvidence': 'Update sent — waiting for the screen to confirm',
   'screens.contentState.syncingDetail':
-    'An update was sent to this screen a moment ago. It reloads within a few seconds and confirms as soon as it is back. If it has not confirmed after a minute or two this turns into “Content behind” and offers Resync.',
+    'Waiting for the screen to confirm your update — usually a few seconds.',
   'playlistsPage.deliveryDownloadOne': '{name} · {percent}% of {size}',
   'playlistsPage.deliveryDownloadOneSoFar': '{name} · {loaded} so far',
   'playlistsPage.deliveryHeldOne': '{name} · new content {percent}% of {size}',

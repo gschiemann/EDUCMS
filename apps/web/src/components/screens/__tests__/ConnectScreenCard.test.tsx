@@ -222,7 +222,7 @@ describe('ConnectScreenCard — media player path (its OWN steps, not the APK fl
     // HOME-app step; MainActivity holds FLAG_KEEP_SCREEN_ON.
     expect(screen.getByText(/one dialog at a time/)).toBeInTheDocument();
     expect(screen.getByText(/Home app/)).toBeInTheDocument();
-    expect(screen.getByText(/holds the panel awake/)).toBeInTheDocument();
+    expect(screen.getByText(/Then the code fills the screen/)).toBeInTheDocument();
   });
 });
 

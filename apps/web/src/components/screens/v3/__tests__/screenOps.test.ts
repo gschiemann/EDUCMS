@@ -1287,7 +1287,7 @@ describe('downloads + idle proofs on the row, the Overview and the Delivery card
       expect(s.tone).toBe('bad');
       expect(s.needsAttention).toBe(true);
       expect(s.action).toBe('Troubleshoot');
-      expect(s.detail).toMatch(/none of the scheduled files would load/);
+      expect(s.detail).toMatch(/None of the scheduled files would load/);
       // It sits with the other online-but-no-content-on-glass alarms.
       expect(STATUS_ORDER.indexOf('content-unavailable')).toBeLessThan(STATUS_ORDER.indexOf('offline'));
       expect(STATUS_ORDER.indexOf('content-unavailable')).toBeGreaterThan(STATUS_ORDER.indexOf('media-stalled'));
@@ -1313,7 +1313,7 @@ describe('downloads + idle proofs on the row, the Overview and the Delivery card
       const r = reported({ lastRenderedHash: 'idle:content-downloading', ...snapshot() });
       expect(r.state).toBe('downloading');
       expect(r.line).toBe(NOTHING_ON_GLASS);
-      expect(r.detail).toMatch(/starts playing the moment the whole file is on the screen/);
+      expect(r.detail).toMatch(/starts playing once the download finishes/);
       expect(r.download).toMatchObject({ state: 'downloading', percent: 62, fileName: 'RIOT promo 4K.mp4' });
       expect(contentStatusLine(r)).toBe(NOTHING_ON_GLASS);
     });

@@ -489,7 +489,7 @@ describe('detail drawer (§10 / §14)', () => {
     fireEvent.click(within(rtl.getByTestId('screens-desktop')).getAllByRole('button', { name: 'Back Office' })[0]);
     const dialog = rtl.getByRole('dialog');
     expect(within(dialog).getByText(/Offline · 3 hours/)).toBeInTheDocument();
-    expect(within(dialog).getByText(/check its power and\s+network at the site/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/Check its power and network/)).toBeInTheDocument();
     // §13: never offer Resync as though it can land — it queues, and says so.
     expect(within(dialog).getByRole('button', { name: /Queue a resync/ })).toBeInTheDocument();
     expect(within(dialog).queryByRole('button', { name: /^Resync content/ })).not.toBeInTheDocument();
@@ -554,7 +554,7 @@ describe('Restore trust', () => {
     const dialog = openActions('G43');
     fireEvent.click(within(dialog).getByRole('button', { name: /Restore trust/ }));
     await waitFor(() =>
-      expect(within(dialog).getByText(/It has not happened yet/)).toBeInTheDocument(),
+      expect(within(dialog).getByText(/once the screen checks in/)).toBeInTheDocument(),
     );
     expect(within(dialog).getByText(/within ten minutes/)).toBeInTheDocument();
     // …and the button latches so a second click can't churn the credential.
@@ -586,7 +586,7 @@ describe('Restore trust', () => {
     const dialog = openActions('G43');
     fireEvent.click(within(dialog).getByRole('button', { name: /Restore trust/ }));
     await waitFor(() =>
-      expect(within(dialog).getByText(/already has this screen on a full credential/)).toBeInTheDocument(),
+      expect(within(dialog).getByText(/This screen is already trusted/)).toBeInTheDocument(),
     );
   });
 
@@ -800,12 +800,12 @@ describe('download visibility (2026-09-27)', () => {
     expect(within(card).getByText('Downloading new content · 62% of 141 MB')).toBeInTheDocument();
     expect(within(card).getByRole('progressbar')).toHaveAttribute('aria-valuenow', '62');
     expect(within(card).getByText('Promo 4K.mp4')).toBeInTheDocument();
-    expect(within(card).getByText(/starts playing the moment the whole file is on the screen/)).toBeInTheDocument();
+    expect(within(card).getByText(/starts playing once the download finishes/)).toBeInTheDocument();
     // The Delivery card: the download is what is waiting, never "Nothing waiting".
     expect(within(dialog).getAllByText('Downloading new content · 62% of 141 MB').length).toBe(1);
     expect(within(dialog).queryByText(/Nothing waiting/)).not.toBeInTheDocument();
     // …and the explanation is said once, not twice.
-    expect(within(dialog).getAllByText(/starts playing the moment the whole file is on the screen/).length).toBe(1);
+    expect(within(dialog).getAllByText(/starts playing once the download finishes/).length).toBe(1);
   });
 
   it('the Overview with a stale snapshot shows no bar and no number', () => {

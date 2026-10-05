@@ -150,6 +150,9 @@ const REBOOT_TOKEN = 'REBOOT';
  * interim — readable by everyone, wrong for nobody the way `screens.display.
  * note.powerOffUnproven` on screen would be. OWED, one commit: move all of
  * these into `screens.display.*` across en/es/zh and delete the constants.
+ * (2026-10-05: the power-off CONFIRMATION moved — `screens.display.
+ * powerOffConfirm*` — when its paragraph was cut to one sentence. The labels
+ * and sent-rows below are still owed.)
  */
 const BLANK_SENT_COPY =
   'Blank sent — the screen goes black but stays powered. Press Wake to bring it back.';
@@ -158,10 +161,6 @@ const POWER_OFF_LABEL = 'Turn panel off';
 const POWER_ON_LABEL = 'Turn panel on';
 const POWER_OFF_SENT_COPY = 'Power-off sent to the panel. Turn panel on brings it back.';
 const POWER_ON_SENT_COPY = 'Power-on sent to the panel.';
-const POWER_OFF_CONFIRM_TITLE = 'Turn this panel off?';
-const POWER_OFF_CONFIRM_BODY =
-  'This cuts power to the panel itself, not just the picture. It comes back with “Turn panel on” — but if that fails, someone has to walk to the screen. To simply darken it, use Blank instead.';
-const POWER_OFF_CONFIRM_CTA = 'Turn it off';
 
 /**
  * Prefer literal copy when an axis carries it; fall back to its i18n key.
@@ -504,10 +503,10 @@ export function ScreenDisplayControls({
    */
   const confirmPowerOff = async () => {
     const ok = await appConfirm({
-      title: POWER_OFF_CONFIRM_TITLE,
-      message: POWER_OFF_CONFIRM_BODY,
+      title: t('screens.display.powerOffConfirmTitle'),
+      message: t('screens.display.powerOffConfirmBody'),
       tone: 'danger',
-      confirmLabel: POWER_OFF_CONFIRM_CTA,
+      confirmLabel: t('screens.display.powerOffConfirmCta'),
     });
     if (!ok) return;
     await send('POWER_OFF', { okMsg: POWER_OFF_SENT_COPY });

@@ -1377,7 +1377,7 @@ export function ScreenSettingsSections({
                 type="button"
                 onClick={() => { onClose?.(); onRefreshWeb(); }}
                 disabled={refreshWebPending}
-                title="Reload the player page on the device — picks up any deployed fix. Not an APK update."
+                title={t('screens.apk.refreshTitle')}
                 className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg border border-slate-200 bg-white text-[11px] font-bold text-slate-700 hover:bg-slate-50 hover:border-slate-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${refreshWebPending ? 'animate-spin text-indigo-500' : 'text-slate-400'}`} />
@@ -1402,7 +1402,7 @@ export function ScreenSettingsSections({
           {isAndroidPlayer && upToDate === true && !pushed && !managerStale && (
             <div
               className="flex items-center gap-2 px-3.5 py-2.5 border-b border-slate-100"
-              title={`Latest published APK is v${latestVersion}. Updates are manual — push from here when one is available.`}
+              title={t('screens.apk.upToDateTitle', { version: latestVersion ?? '' })}
             >
               <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
               <span className="text-[11px] font-semibold text-emerald-700">
@@ -1447,11 +1447,10 @@ export function ScreenSettingsSections({
                   <WifiOff className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
                   <span className="flex-1 min-w-0">
                     <span className="block text-rose-700 font-bold">
-                      OTA can’t cross the v1.1.0 signing change
+                      {t('screens.apk.reinstallTitle')}
                     </span>
                     <span className="block text-[10px] font-normal text-slate-500 mt-0.5">
-                      Visit the screen: install the v1.1.0+ APK, re-pair it, then uninstall
-                      the old app. Runbook: apps/player/RELEASE_SIGNING.md
+                      {t('screens.apk.reinstallBody')}
                     </span>
                   </span>
                 </div>
@@ -1498,25 +1497,25 @@ export function ScreenSettingsSections({
                 : <RefreshCw className={`w-4 h-4 shrink-0 ${upToDate === false ? 'text-amber-500' : 'text-indigo-500'}`} />;
 
             const pendingSecs = Math.floor(pushedMsAgo / 1000);
-            const pendingHumanAgo = pendingSecs < 60
-              ? `${pendingSecs}s ago`
-              : `${Math.floor(pendingSecs / 60)}m ${pendingSecs % 60}s ago`;
+            const pendingElapsed = pendingSecs < 60
+              ? `${pendingSecs}s`
+              : `${Math.floor(pendingSecs / 60)}m ${pendingSecs % 60}s`;
             const timeoutCopy =
               upToDate === true
-                ? `No version change after 35 min — kiosk was already on the latest.`
-                : `No update after 35 min. Power-cycle the screen, check "Install unknown apps" permission, or sideload via ViPlex.`;
+                ? t('screens.apk.timeoutLatest')
+                : t('screens.apk.timeout');
 
             const stageLabel =
-              effectiveStage === 'installed'   ? `Kiosk installed v${currentVersion} ✓` :
-              effectiveStage === 'uptodate'    ? `Kiosk checked in — already on v${currentVersion || latestVersion || '?'} ✓` :
-              effectiveStage === 'relaunch-blocked' ? `Installed — kiosk needs a tap to relaunch` :
+              effectiveStage === 'installed'   ? t('screens.apk.installed', { version: currentVersion ?? '' }) :
+              effectiveStage === 'uptodate'    ? t('screens.apk.alreadyLatest', { version: currentVersion || latestVersion || '?' }) :
+              effectiveStage === 'relaunch-blocked' ? t('screens.apk.relaunchBlocked') :
               effectiveStage === 'error'       ? `Install error: ${otaMessage || 'unknown error'}` :
-              effectiveStage === 'installing'  ? `Installing on kiosk... ${otaMessage || ''}` :
-              effectiveStage === 'verifying'   ? `Verifying APK signature on kiosk...` :
-              effectiveStage === 'downloading' ? `Downloading on kiosk${otaProgress !== null ? ` (${otaProgress}%)` : '...'}` :
-              effectiveStage === 'checking'    ? `Kiosk acknowledged push, checking server...` :
+              effectiveStage === 'installing'  ? `${t('screens.apk.installing')}${otaMessage ? ` ${otaMessage}` : ''}` :
+              effectiveStage === 'verifying'   ? t('screens.apk.verifying') :
+              effectiveStage === 'downloading' ? (otaProgress !== null ? t('screens.apk.downloadingPct', { percent: otaProgress }) : t('screens.apk.downloading')) :
+              effectiveStage === 'checking'    ? t('screens.apk.checking') :
               effectiveStage === 'timeout'     ? timeoutCopy :
-              effectiveStage === 'pending'     ? `Update sent ${pendingHumanAgo} — waiting for kiosk (≤ 35 min via periodic check)` :
+              effectiveStage === 'pending'     ? t('screens.apk.pending', { elapsed: pendingElapsed }) :
               // Player current, companion Manager behind. Named for the app
               // that actually needs the push, so the operator is not told "on
               // latest" about the thing that isn't.
@@ -1537,15 +1536,17 @@ export function ScreenSettingsSections({
             // Sub-line — surface real device telemetry when in-flight.
             const subline =
               effectiveStage === 'uptodate'
-                ? `Kiosk answered the push at ${otaAt ? new Date(otaAt).toLocaleTimeString() : 'check-in'} — nothing newer to install`
+                ? (otaAt
+                    ? t('screens.apk.sublineUpToDate', { time: new Date(otaAt).toLocaleTimeString() })
+                    : t('screens.apk.timeoutLatest'))
                 : effectiveStage === 'relaunch-blocked'
                   // The device's own report names the missing grant; fall
                   // back to the generic remedy if the message got lost.
-                  ? (otaMessage || 'Android blocked the auto-relaunch — open the player once on the panel, or grant “Display over other apps” in setup')
+                  ? (otaMessage || t('screens.apk.sublineRelaunch'))
                 : isInFlight
-                  ? (deviceTruth
-                      ? `Kiosk last reported ${deviceTruth} ${otaAt ? new Date(otaAt).toLocaleTimeString() : ''}`
-                      : `If WS push didn’t reach kiosk, periodic check installs within 30 min`)
+                  ? (deviceTruth && otaAt
+                      ? t('screens.apk.sublineLastHeard', { time: new Date(otaAt).toLocaleTimeString() })
+                      : t('screens.apk.sublineWaiting'))
                   // Idle — the compact row replaced the old
                   // current→latest strip, so carry the installed
                   // version here where the decision is being made.
@@ -1554,7 +1555,9 @@ export function ScreenSettingsSections({
                   // read as an argument against pressing the button.
                   : upToDate === true && managerStale
                     ? `Player v${currentVersion} is current · Manager v${currentManagerVersion} → v${latestManagerVersion}`
-                    : `${currentVersion ? `v${currentVersion} installed` : 'No Player version reported yet'} — updates are manual-only`;
+                    : currentVersion
+                      ? t('screens.apk.sublineInstalled', { version: currentVersion })
+                      : t('screens.apk.sublineNoVersion');
             return (
               <div className="w-full flex items-center gap-3 p-3.5 rounded-xl border border-slate-200 bg-slate-50/60 text-xs mb-3" data-testid="apk-update-status">
                 {stageIcon}

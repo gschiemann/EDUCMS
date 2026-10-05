@@ -543,7 +543,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
         </button>
         {synced && schoolSlug && (
           <a href={`/${schoolSlug}/screens/sync-calibrate?groupId=${g.id}`}
-            title="Point your phone camera at these screens and the wizard measures each display's true glass latency and sets the trims for you."
+            title={t('screens.ops.calibrateTitle')}
             className={`block ${item} border-t border-slate-100`}>
             Calibrate sync…
           </a>

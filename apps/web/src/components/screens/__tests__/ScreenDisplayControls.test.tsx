@@ -117,7 +117,7 @@ describe('ScreenDisplayControls — what actually reaches the DOM', () => {
     // direction and the API refuses it on a null verdict.
     expect(rtl.getAllByRole('slider')).toHaveLength(1);
     expect(rtl.queryByRole('button', { name: /Restart device/ })).toBeNull();
-    expect(rtl.getByText(/hasn’t reported what it can control/i)).toBeTruthy();
+    expect(rtl.getByText(/once this screen reports what it can do/i)).toBeTruthy();
   });
 
   // ⚠️ REVERSED AGAIN 2026-08-25 (the blank/power split). On 2026-08-13 this
@@ -149,7 +149,7 @@ describe('ScreenDisplayControls — what actually reaches the DOM', () => {
     renderPanel(null);
     const brightness = rtl.getByLabelText(/Brightness/) as HTMLInputElement;
     expect(Number(brightness.min)).toBe(DISPLAY_RECOVERY_MIN_BRIGHTNESS_PERCENT);
-    expect(rtl.getByText(/brightness can only be RAISED/i)).toBeTruthy();
+    expect(rtl.getByText(/brightness can only go up/i)).toBeTruthy();
   });
 
   it('posts a raise-only brightness the API will accept on an unreported screen', async () => {
@@ -500,7 +500,7 @@ describe('ScreenDisplayControls — the wire shape (contract C1)', () => {
     });
     await waitFor(() => expect(rtl.getByRole('status')).toBeTruthy());
     const row = rtl.getByRole('status');
-    expect(row.textContent).toMatch(/Not delivered/i);
+    expect(row.textContent).toMatch(/Couldn't reach this screen/i);
     expect(row.className).toMatch(/rose/);
     expect(rtl.queryByText(/Wake sent\./)).toBeNull();
   });
@@ -525,12 +525,12 @@ describe('ScreenDisplayControls — the wire shape (contract C1)', () => {
     const row = rtl.getByRole('status');
 
     // Names the CAUSE (this screen has no live connection)…
-    expect(row.textContent).toMatch(/no live connection/i);
+    expect(row.textContent).toMatch(/isn't connected right now/i);
     // …and is honest about the consequence: nothing is queued. Display
     // actions are immediate-only — the manifest carries schedules, never
     // immediate actions, and nothing replays a missed frame. Promising an
     // automatic retry would be a fresh lie inside the fix for one.
-    expect(row.textContent).toMatch(/aren’t queued|not queued/i);
+    expect(row.textContent).toMatch(/won't be sent later/i);
     // Never claims success.
     expect(rtl.queryByText(/Wake sent\./)).toBeNull();
     // Explanation styling, not alarm styling.
@@ -552,7 +552,7 @@ describe('ScreenDisplayControls — the wire shape (contract C1)', () => {
     });
     await waitFor(() => expect(rtl.getByRole('status')).toBeTruthy());
     const row = rtl.getByRole('status');
-    expect(row.textContent).toMatch(/Not delivered/i);
+    expect(row.textContent).toMatch(/Couldn't reach this screen/i);
     expect(row.className).toMatch(/rose/);
   });
 
@@ -586,7 +586,7 @@ describe('ScreenDisplayControls — the wire shape (contract C1)', () => {
     });
     await waitFor(() => expect(rtl.getByRole('status')).toBeTruthy());
     const row = rtl.getByRole('status');
-    expect(row.textContent).toMatch(/can’t tell whether the screen got that command/i);
+    expect(row.textContent).toMatch(/can't tell if it worked/i);
     expect(row.textContent).toMatch(/press Wake/i);
     expect(row.textContent).not.toMatch(/aborted/i);
     expect(row.className).toMatch(/rose/);
