@@ -18,9 +18,21 @@ is retained; abandoned packages are reclaimed on the next preparation.
 `continuousLoop.ts` appends those fragments repeatedly at offsets calculated
 from integer source ticks. It never seeks, changes src, reloads or calls
 endOfStream at an ordinary boundary. The pump serializes append/remove, keeps
-about six seconds ahead and at least eight seconds behind, retaining the
+twenty seconds ahead and at least eight seconds behind, retaining the
 preceding complete keyframe interval, and verifies each fragment before append.
-Package revision 2 records sorted presentation keyframe ticks. Removal stops
+Headroom is measured from the contiguous SourceBuffer range containing the
+playing time, rather than the last fragment's claimed end: an appended range
+after a hole cannot keep the decoder fed. Startup buffers the same twenty
+seconds before playing, and urgent refills precede optional history removal.
+The margin covers the fifteen-second verified-read deadline on slow flash.
+The larger compressed buffer is a hardware memory qualification consideration.
+If an append exceeds the browser's buffer quota while playable bytes remain,
+the pump reduces its headroom, starts/consumes those bytes and retries the same
+fragment. It preserves source samples, quality and the single decoder. A quota
+with less than two seconds available remains a bounded failure; a broken source
+or checksum still follows the existing fallback. Reduced headroom is recorded
+with the pump's quota counter in failure diagnostics.
+Package metadata records sorted presentation keyframe ticks. Removal stops
 one source tick before a retained keyframe at/before the history target, because
 MSE can extend removal to the next random-access point. A fixed time cutoff
 could remove the playing GOP when its keyframes were over eight seconds apart.
@@ -37,9 +49,23 @@ playlists use their existing paths. A failure restores the original on the same
 element once, records a reason and blocks this file/backend for 24 hours. Page
 cleanup cancels the pump, removes callbacks/listeners/timers and revokes its URL.
 A blocked reload does not extend the block. Two-deck blocks are independent.
-The continuous guard is scoped by engine revision and source digest. Revision 2
-gets one fresh attempt for a file blocked by revision 1; the older failure record
-is preserved. A failure on revision 2 remains blocked across reloads for 24 hours.
+The continuous guard is scoped by engine revision and source digest. Revision 3
+gets one fresh attempt for a file blocked by an earlier revision; older failure
+records are preserved. A failure on revision 3 remains blocked across reloads
+for 24 hours.
+
+At initial stream adoption and recovery, a display-only canvas retains the
+last available source-resolution frame, up to 3840x2160 pixels, while the same
+video element resets. It is removed on an actual rVFC from the replacement
+pipeline after loadeddata, and its backing store is freed immediately. This
+adds at most one ~32 MiB pixel copy during a reset, never a second decoder or
+a lower-resolution video. Capture failure does not stop recovery. A frozen
+frame is still a recovery interval, not evidence of advancing playback.
+Fallback logs include media/buffer/pump state without URLs or credentials;
+the Android diagnostics upload is requested after failures, at most once per
+minute across mounts, using the existing authenticated bridge. Blocked reloads
+do not trigger additional uploads. This distinguishes a read starvation from
+a decoder/append failure in subsequent field evidence.
 
 `ContinuousBoundaryDetector` measures compositor frame hold at forward cycle
 boundaries. Backend adoption starts a new timing session so native preparation
@@ -71,6 +97,9 @@ applies the selection. No APK or database migration is required.
 
 Browser tests cover repeated playback with no seeks/source changes, bounded
 buffering while offline, and corrupted-fragment fallback with persisted expiry.
+An eight-second cache-read delay checks that playback continues without a
+waiting event; a failed fragment checks frame retention during native restart.
+A startup quota injection checks continued repetition with no source-frame skip.
 Unit tests cover B-frame presentation coverage, exact stts durations, long-running
 29.97 fps offsets, holes/overlaps, gating and compositor seam measurements. API
 tests prove strict continuous telemetry acceptance. A synthetic 250-frame GOP

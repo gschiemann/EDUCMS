@@ -419,14 +419,17 @@ self.addEventListener('fetch', (event) => {
 
     // Try emergency cache first (highest priority for life-safety).
     const emCache = await caches.open(EMERGENCY_CACHE);
+    // This file is served directly, outside Next's transpiler. Fleet WebViews
+    // include Chromium 66: modern syntax here prevents the ENTIRE cache worker
+    // from registering and leaves large videos streaming from the network.
     const emHit = await emCache.match(req, { ignoreSearch: true })
-              ?? (altReq && await emCache.match(altReq, { ignoreSearch: true }));
+              || (altReq && await emCache.match(altReq, { ignoreSearch: true }));
     if (emHit) return rangeHeader ? await rangeResponseFromCached(emHit, rangeHeader) : emHit;
 
     // Then playlist cache.
     const plCache = await caches.open(PLAYLIST_CACHE);
     const plHit = await plCache.match(req, { ignoreSearch: true })
-              ?? (altReq && await plCache.match(altReq, { ignoreSearch: true }));
+              || (altReq && await plCache.match(altReq, { ignoreSearch: true }));
     if (plHit) return rangeHeader ? await rangeResponseFromCached(plHit, rangeHeader) : plHit;
 
     // Bug fix (Android images): for cross-origin URLs that are NOT in any
@@ -1646,7 +1649,7 @@ async function precacheEmergency(assets, setHash, ackPort) {
   let allCached = failures === 0 && pending.length === 0;
   if (allCached) {
     for (const asset of assets) {
-      if (!asset?.url) continue;
+      if (!asset || !asset.url) continue;
       // FIX (player-005): ignoreSearch so token rotation doesn't make a
       // freshly-cached asset look "missing" on the verification pass.
       const present = await cache.match(
@@ -1694,7 +1697,7 @@ async function precacheEmergency(assets, setHash, ackPort) {
 }
 
 async function fetchAndStore(asset, cache, meta, opts) {
-  if (!asset?.url) return false;
+  if (!asset || !asset.url) return false;
   // F4 (2026-08-30): tiers can opt out of the 24h null-hash revalidation —
   // the emergency tier does, because an unverifiable refetch must never be
   // able to replace known-good alert media (see precacheEmergency).
@@ -2002,7 +2005,7 @@ function stableKey(u) {
     p.search = '';
     p.hash = '';
     return p.toString();
-  } catch { return String(u || '').split('?')[0].split('#')[0]; }
+  } catch (_e) { return String(u || '').split('?')[0].split('#')[0]; }
 }
 
 // normalizeUrl is now an alias for stableKey — kept as a separate name so

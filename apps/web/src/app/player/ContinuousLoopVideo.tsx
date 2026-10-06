@@ -11,6 +11,7 @@ import { bootCheck, blockFor, isBlocked, markAlive, markStarted, markStopped, ty
 import { videoQualityTracker } from './videoQuality';
 import { createMediaStallDetector, setActiveMediaStalled } from './mediaStallWatchdog';
 import { continuousGuardKey } from './continuousLoopRevision';
+import { retainVideoFrame, releaseVideoFrame, reportContinuousFailure } from './continuousRecovery';
 
 interface Props {
   src: string; sourceHash: string; videoKey: string; isActive: boolean; classes: string;
@@ -27,28 +28,44 @@ function scopedStorage(hash: string): KV | null {
 
 export function ContinuousLoopVideo({ src, sourceHash, videoKey, isActive, classes, onPlaying, onError }: Props) {
   const ref = useRef<HTMLVideoElement>(null);
+  const frameRef = useRef<HTMLCanvasElement>(null);
   const callbacks = useRef({ onPlaying, onError });
   callbacks.current = { onPlaying, onError };
 
   useEffect(() => {
     const video = ref.current as RvfcVideoElement | null;
+    const canvas = frameRef.current;
     if (!video || !isActive) return;
     const life = new AbortController();
     let disposed = false;
     let fellBack = false;
-    let engine: { running: Promise<void>; dispose(): void } | undefined;
+    let engine: { running: Promise<void>; snapshot(): object; dispose(): void } | undefined;
     let continuous: ContinuousBoundaryDetector | null = null;
     let frameId: number | undefined;
     let alive: ReturnType<typeof setInterval> | undefined;
+    let preparationPhase = 'imports';
     const native = new NativeWrapDetector();
     const kv = scopedStorage(sourceHash);
+    let heldFrame = false;
+    let replacementLoaded = false;
+    const holdFrame = () => {
+      if (!heldFrame && canvas) heldFrame = retainVideoFrame(video, canvas);
+      replacementLoaded = false;
+    };
+    const releaseFrame = () => {
+      if (canvas) releaseVideoFrame(canvas);
+      heldFrame = false; replacementLoaded = false;
+    };
+    const onLoadedData = () => { replacementLoaded = true; };
+    video.addEventListener('loadeddata', onLoadedData);
     const onHide = () => { if (kv) markStopped(kv); };
     window.addEventListener('pagehide', onHide);
 
     const fallback = (reason: string) => {
       if (disposed || fellBack) return;
       fellBack = true;
-      console.warn('[Player] continuous loop fallback:', reason);
+      reportContinuousFailure(reason, video, engine?.snapshot() ?? { phase: preparationPhase });
+      if (video.getAttribute('src') !== src) holdFrame();
       // The fallback is final for this mount: stop preparing too. A package that
       // finished AFTER this point used to start the stream anyway — on a mount
       // that had already recorded the fallback and could no longer undo a failure.
@@ -64,7 +81,7 @@ export function ContinuousLoopVideo({ src, sourceHash, videoKey, isActive, class
       if (video.getAttribute('src') !== src) {
         video.src = src; video.loop = true; video.muted = true;
         video.play().catch(() => { /* active error / watchdog owns it */ });
-      }
+      } else releaseFrame();
     };
 
     const onPlayingNow = () => {
@@ -86,6 +103,7 @@ export function ContinuousLoopVideo({ src, sourceHash, videoKey, isActive, class
 
     const onFrame = (_now: number, meta: FrameMeta) => {
       if (disposed) return;
+      if (heldFrame && replacementLoaded && video.readyState >= 2) releaseFrame();
       const event = continuous ? continuous.onFrame(meta) : native.onFrame(meta, video.duration);
       if (event) loopBoundaryTracker.record(event);
       frameId = video.requestVideoFrameCallback?.(onFrame);
@@ -100,10 +118,11 @@ export function ContinuousLoopVideo({ src, sourceHash, videoKey, isActive, class
           import('./continuousLoopPackage'), import('./continuousLoop'),
         ]);
         if (disposed || fellBack) return;
+        preparationPhase = 'package';
         const p = await prepareLoopPackage(src, sourceHash, life.signal);
         if (disposed || fellBack) return;
         continuous = new ContinuousBoundaryDetector(p.durationTicks, p.timescale);
-        engine = startContinuousLoop(video, p, life.signal);
+        engine = startContinuousLoop(video, p, life.signal, holdFrame);
         video.dataset.loopBackend = 'continuous';
         loopBoundaryTracker.startSession('continuous');
         if (kv) markStarted(kv, Date.now());
@@ -129,7 +148,7 @@ export function ContinuousLoopVideo({ src, sourceHash, videoKey, isActive, class
       // ever does.
       if (engine && !fellBack) { fallback('clock-stalled'); return; }
       if (!fellBack) fallback('clock-stalled');
-      if (++recoveries === 1) { video.load(); video.play().catch(() => undefined); }
+      if (++recoveries === 1) { holdFrame(); video.load(); video.play().catch(() => undefined); }
       else callbacks.current.onError();
     }, 4000);
 
@@ -139,6 +158,8 @@ export function ContinuousLoopVideo({ src, sourceHash, videoKey, isActive, class
       if (frameId !== undefined) video.cancelVideoFrameCallback?.(frameId);
       window.removeEventListener('pagehide', onHide);
       video.removeEventListener('playing', onPlayingNow); video.removeEventListener('error', onVideoError);
+      video.removeEventListener('loadeddata', onLoadedData);
+      releaseFrame();
       videoQualityTracker.detach(video, Date.now());
       if (kv) markStopped(kv);
       setActiveMediaStalled(false);
@@ -146,6 +167,10 @@ export function ContinuousLoopVideo({ src, sourceHash, videoKey, isActive, class
     };
   }, [isActive, videoKey, src, sourceHash]);
 
-  return <video ref={ref} src={src} className={classes} muted playsInline preload="auto"
-    style={{ objectFit: 'fill' }} data-loop-backend="preparing-continuous" />;
+  return <>
+    <video ref={ref} src={src} className={classes} muted playsInline preload="auto"
+      style={{ objectFit: 'fill' }} data-loop-backend="preparing-continuous" />
+    <canvas ref={frameRef} aria-hidden="true" data-recovery-frame="true"
+      style={{ display: 'none', position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 11 }} />
+  </>;
 }

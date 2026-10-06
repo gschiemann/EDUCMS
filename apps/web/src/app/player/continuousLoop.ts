@@ -3,6 +3,17 @@
  */
 import { bounded, checkAbort, LOOP_CACHE, readLoopFragment, type LoopPackage } from './continuousLoopPackage';
 
+// A verified cache read is bounded at 15 seconds. Six seconds of headroom
+// cannot cover that legal operation on slow/contended Android flash storage.
+export const CONTINUOUS_AHEAD_SECONDS = 20;
+
+export function bufferedAhead(now: number, ranges: TimeRanges): number {
+  for (let i = 0; i < ranges.length; i++) {
+    if (ranges.start(i) <= now && ranges.end(i) > now) return ranges.end(i) - now;
+  }
+  return 0;
+}
+
 export function cycleOffset(cycle: number, p: Pick<LoopPackage, 'durationTicks' | 'firstPts' | 'timescale'>): number {
   const ticks = cycle * p.durationTicks;
   if (!Number.isSafeInteger(cycle) || cycle < 0 || !Number.isSafeInteger(ticks)) throw new Error('timeline-overflow');
@@ -45,7 +56,7 @@ function sourceEvent(target: EventTarget, event: string, signal: AbortSignal, ac
   });
 }
 
-export function startContinuousLoop(video: HTMLVideoElement, p: LoopPackage, parent: AbortSignal) {
+export function startContinuousLoop(video: HTMLVideoElement, p: LoopPackage, parent: AbortSignal, beforeAttach?: () => void) {
   const life = new AbortController();
   const signal = life.signal;
   const abort = () => life.abort();
@@ -53,36 +64,63 @@ export function startContinuousLoop(video: HTMLVideoElement, p: LoopPackage, par
   if (parent.aborted) life.abort();
   const source = new MediaSource();
   const url = URL.createObjectURL(source);
+  const state = { phase: 'open', cycle: 0, fragment: 0, appendedUntil: 0, aheadTarget: CONTINUOUS_AHEAD_SECONDS, quotaBackoffs: 0 };
   const running = (async () => {
     checkAbort(signal);
     const cache = await caches.open(LOOP_CACHE);
-    await sourceEvent(source, 'sourceopen', signal, () => { video.loop = false; video.src = url; });
+    await sourceEvent(source, 'sourceopen', signal, () => { beforeAttach?.(); video.loop = false; video.src = url; });
     const buffer = source.addSourceBuffer(p.mime);
     buffer.mode = 'segments';
     source.duration = Infinity;
     const mutate = (fn: () => void) => sourceEvent(buffer, 'updateend', signal, fn);
     const init = await readLoopFragment(cache, p.init, signal);
+    state.phase = 'init';
     await mutate(() => buffer.appendBuffer(init));
     let cycle = 0; let index = 0; let until = 0; let pruned = 0; let started = false;
     while (!signal.aborted) {
       if (video.error || source.readyState !== 'open') throw new Error('mse-playback');
       const now = video.currentTime;
-      const removeTo = pruneEnd(now, p);
-      if (removeTo - pruned >= 2) {
-        await mutate(() => buffer.remove(0, removeTo));
-        pruned = removeTo;
-      }
-      if (until - now >= 6) {
+      const ahead = bufferedAhead(now, buffer.buffered);
+      if (ahead >= state.aheadTarget) {
+        state.phase = 'buffered';
         await bounded(signal, 1000, () => new Promise<void>(r => setTimeout(r, 100)));
         continue;
       }
+      const removeTo = pruneEnd(now, p);
+      // Refill a starving buffer before doing optional history cleanup.
+      if (ahead >= 6 && removeTo - pruned >= 2) {
+        state.phase = 'prune';
+        await mutate(() => buffer.remove(0, removeTo));
+        pruned = removeTo;
+      }
       const f = p.fragments[index];
+      state.phase = 'read'; state.cycle = cycle; state.fragment = index;
       const bytes = await readLoopFragment(cache, f, signal);
       const offset = cycleOffset(cycle, p);
-      await mutate(() => { buffer.timestampOffset = offset; buffer.appendBuffer(bytes); });
+      state.phase = 'append';
+      try {
+        await mutate(() => { buffer.timestampOffset = offset; buffer.appendBuffer(bytes); });
+      } catch (error) {
+        // Android can expose a smaller MSE quota even with a supported codec.
+        // Keep the same full-quality stream, start/consume buffered frames and
+        // retry this fragment at a smaller horizon. Never skip a source sample.
+        const available = bufferedAhead(video.currentTime, buffer.buffered);
+        if (!(error instanceof DOMException) || error.name !== 'QuotaExceededError' || available < 2) throw error;
+        state.aheadTarget = Math.max(2, Math.min(state.aheadTarget, available - 1));
+        state.quotaBackoffs++;
+        state.phase = 'buffer-pressure';
+        if (!started) {
+          await bounded(signal, 15_000, () => video.play());
+          started = true;
+        }
+        await bounded(signal, 1000, () => new Promise<void>(r => setTimeout(r, 100)));
+        continue;
+      }
       until = (cycle * p.durationTicks + f.endTicks) / p.timescale;
+      state.appendedUntil = Math.round(until * 1000) / 1000;
       if (++index === p.fragments.length) { index = 0; cycle++; }
-      if (!started && until >= Math.min(2, p.durationTicks / p.timescale)) {
+      if (!started && bufferedAhead(now, buffer.buffered) >= state.aheadTarget) {
+        state.phase = 'play';
         await bounded(signal, 15_000, () => video.play());
         started = true;
       }
@@ -90,6 +128,7 @@ export function startContinuousLoop(video: HTMLVideoElement, p: LoopPackage, par
   })();
   return {
     running,
+    snapshot() { return { ...state }; },
     dispose() {
       life.abort(); parent.removeEventListener('abort', abort);
       if (video.getAttribute('src') === url) { video.pause(); video.removeAttribute('src'); video.load(); }

@@ -1,5 +1,5 @@
 import { sampleTimeline, restoreSampleTiming, validLoopPackage, type LoopPackage } from '../continuousLoopPackage';
-import { cycleOffset, pruneEnd } from '../continuousLoop';
+import { bufferedAhead, cycleOffset, pruneEnd } from '../continuousLoop';
 import { CONTINUOUS_LOOP_REVISION, continuousGuardKey } from '../continuousLoopRevision';
 import { ContinuousBoundaryDetector } from '../loopBoundary';
 import { pickLoopBackend } from '../loopEligibility';
@@ -15,6 +15,15 @@ test('timestamp holes, overlaps and a nonrandom-access opening are refused', () 
     expect(() => sampleTimeline(pts.map(cts => ({ cts, duration: 1, is_sync: true })), 30)).toThrow('non-contiguous');
   }
   expect(() => sampleTimeline([{ cts: 0, duration: 1, is_sync: false }], 30)).toThrow('unsupported');
+});
+
+test('only contiguous playable bytes count as headroom, not a later appended fragment', () => {
+  const ranges = { length: 2, start: (i: number) => [0, 20][i], end: (i: number) => [6, 40][i] };
+  expect(bufferedAhead(5, ranges)).toBe(1);
+  expect(bufferedAhead(10, ranges)).toBe(0);
+  expect(bufferedAhead(25, ranges)).toBe(15);
+  expect(bufferedAhead(40, ranges)).toBe(0);
+  expect(bufferedAhead(0, { ...ranges, length: 0 })).toBe(0);
 });
 test('source stts overrides a duration inflated by encoder delay, including variable runs', () => {
   const samples = [{ dts: 0, cts: 2, duration: 1 }, { dts: 1, cts: 4, duration: 1 }, { dts: 2, cts: 3, duration: 2 }];

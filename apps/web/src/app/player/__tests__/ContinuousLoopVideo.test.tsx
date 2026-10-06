@@ -14,7 +14,7 @@
  */
 import { render, act } from '@testing-library/react';
 
-const startContinuousLoop = jest.fn(() => ({ running: new Promise<void>(() => undefined), dispose: jest.fn() }));
+const startContinuousLoop = jest.fn(() => ({ running: new Promise<void>(() => undefined), snapshot: () => ({ phase: 'buffered' }), dispose: jest.fn() }));
 let finishPackage: (p: unknown) => void = () => undefined;
 const prepareLoopPackage = jest.fn((...args: [src: string, hash: string, signal: AbortSignal]) => { void args; return new Promise(resolve => { finishPackage = resolve; }); });
 jest.mock('../continuousLoop', () => ({ startContinuousLoop: (...a: unknown[]) => (startContinuousLoop as jest.Mock)(...a) }));
@@ -32,6 +32,7 @@ beforeEach(() => {
   jest.useFakeTimers();
   localStorage.clear();
   startContinuousLoop.mockClear();
+  startContinuousLoop.mockImplementation(() => ({ running: new Promise<void>(() => undefined), snapshot: () => ({ phase: 'buffered' }), dispose: jest.fn() }));
   prepareLoopPackage.mockClear();
   clock = 0;
   play = jest.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(() => Promise.resolve());
@@ -100,4 +101,40 @@ it('a second stall after the native recovery hands the file to the page as faile
   clock += 1; act(() => { jest.advanceTimersByTime(4_000); }); // progress re-arms the detector
   act(() => { jest.advanceTimersByTime(24_000); });           // episode 2 → the file
   expect(onError).toHaveBeenCalledTimes(1);
+});
+
+it('retains a 4K frame through adoption until replacement frame output, and frees it on cleanup', async () => {
+  const frames: Array<(now: number, meta: { mediaTime: number; expectedDisplayTime: number; presentedFrames: number }) => void> = [];
+  Object.defineProperties(HTMLVideoElement.prototype, {
+    videoWidth: { configurable: true, get: () => 3840 },
+    videoHeight: { configurable: true, get: () => 2160 },
+    readyState: { configurable: true, get: () => 4 },
+  });
+  const drawImage = jest.fn();
+  jest.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage } as unknown as CanvasRenderingContext2D);
+  const request = jest.fn((fn: typeof frames[number]) => { frames.push(fn); return frames.length; });
+  Object.defineProperty(HTMLVideoElement.prototype, 'requestVideoFrameCallback', { configurable: true, value: request });
+  const { video, container, unmount } = mount();
+  await settle();
+  startContinuousLoop.mockImplementation((...args: unknown[]) => {
+    (args[3] as () => void)();
+    video.src = 'blob:new-pipeline';
+    return { running: new Promise<void>(() => undefined), snapshot: () => ({ phase: 'buffered' }), dispose: jest.fn() };
+  });
+  await act(async () => { finishPackage(PACKAGE); await Promise.resolve(); });
+  await settle();
+  const canvas = container.querySelector('canvas')!;
+  expect(canvas.style.display).toBe('block');
+  expect([canvas.width, canvas.height]).toEqual([3840, 2160]);
+  // Clock changes / playing events cannot dismiss the retained pixels.
+  act(() => { video.dispatchEvent(new Event('playing')); });
+  expect(canvas.style.display).toBe('block');
+  act(() => { video.dispatchEvent(new Event('loadeddata')); });
+  expect(canvas.style.display).toBe('block');
+  act(() => { frames.shift()!(1, { mediaTime: 0, expectedDisplayTime: 1, presentedFrames: 1 }); });
+  expect([canvas.width, canvas.height, canvas.style.display]).toEqual([0, 0, 'none']);
+  canvas.width = 3840; canvas.height = 2160;
+  unmount();
+  expect(canvas.width).toBe(0);
+  delete (HTMLVideoElement.prototype as unknown as Record<string, unknown>).requestVideoFrameCallback;
 });
