@@ -69,6 +69,7 @@ import { fetchJsonBounded, headersStatusOf } from './fetchTimeout';
 // frame forever (1.1.6 audit P0-5). Pure detector + a page-level flag the
 // proof signature consumes.
 import { playbackSafety, decodedFrameCount, isOperatorRefresh, requestDiagnosticsUpload } from './playbackSafety';
+import { createDeviceDiagnosticsUploader, installDeviceDiagnosticsUploader } from './deviceDiagnostics';
 import { createMediaStallDetector, setActiveMediaStalled, isActiveMediaStalled } from './mediaStallWatchdog';
 // 2026-08-30 deep audit B-P0-1/2/3 — wrap-aware schedule windows + the
 // window-edge signature that busts the 304 identity when a window opens or
@@ -5227,6 +5228,24 @@ function PlayerPage() {
   //
   // sec-fix(wave1) #5 (device JWT required) and the preview-mode exclusion
   // are both inherited by the telemetry POST — see the effect below.
+  // Upload using the current screen credential, including older APKs whose
+  // uploadDiagnostics path incorrectly names the hardware fingerprint.
+  useEffect(() => {
+    if (isPreviewMode() || !screenId || !nativeHas('getRecentLogs')) return;
+    const uninstall = installDeviceDiagnosticsUploader(createDeviceDiagnosticsUploader({
+      screenId, token: getDeviceToken, apiRoot: getApiRoot,
+      readLogs: () => nativeCall('getRecentLogs'),
+      post: (url, init) => fetchJsonBounded(url, init, 15_000),
+      now: Date.now,
+    }));
+    // A blocked mount still needs the previous failure's evidence. Upload
+    // once after it settles, only if this page actually recorded a fallback.
+    const timer = setTimeout(() => {
+      if (loopBoundaryTracker.peek()?.fallbacks) requestDiagnosticsUpload({ has: nativeHas, call: nativeCall });
+    }, 20_000);
+    return () => { clearTimeout(timer); uninstall(); };
+  }, [screenId]);
+
   // ── Evidence after an unclean restart (2026-10-04) ──────────────────────
   // A boot that follows a crash, a kill or a renderer death sends the Android
   // shell's log once, a minute in (the device credential is in place by then).

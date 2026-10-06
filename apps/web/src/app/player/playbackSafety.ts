@@ -1,5 +1,6 @@
 /** Normal-media recovery only. Emergency callers never enter this module. */
 import { quarantineKey } from './digestQuarantine';
+import { requestDeviceDiagnosticsUpload } from './deviceDiagnostics';
 
 export const PLAYBACK_SAFETY_MS = 6 * 60 * 60 * 1000;
 const PENDING_MAX_AGE_MS = 45 * 60 * 1000;
@@ -124,6 +125,7 @@ export function requestDiagnosticsUpload(
   bridge: { has(method: string): boolean; call(method: string): Promise<unknown> },
 ): boolean {
   try {
+    if (requestDeviceDiagnosticsUpload()) return true;
     if (!bridge.has('uploadDiagnostics')) return false;
     void bridge.call('uploadDiagnostics').catch(() => undefined);
     return true;
