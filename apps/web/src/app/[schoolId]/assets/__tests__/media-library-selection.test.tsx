@@ -20,6 +20,7 @@
  */
 
 import * as React from 'react';
+jest.mock('@/hooks/use-mobile', () => ({ useIsMobile: () => false }));
 import { render, screen as rtl, fireEvent, within, act } from '@testing-library/react';
 
 const NOW = Date.now();

@@ -21,6 +21,7 @@
  */
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { useUIStore } from '@/store/ui-store';
 
 const apiFetch = jest.fn();
 jest.mock('@/lib/api-client', () => ({
@@ -61,6 +62,7 @@ function renderPage() {
 
 describe('Onboarding /onboarding/apps — Concierge auto-fill (task #265)', () => {
   beforeEach(() => {
+    useUIStore.setState({ user: { id: 'test-user', tenantId: 'tenant-1' } as never });
     apiFetch.mockReset();
     push.mockReset();
     window.localStorage.clear();

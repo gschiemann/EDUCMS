@@ -24,7 +24,6 @@ import { useTranslations } from 'next-intl';
 // is always empty after migration. That left the sidebar stuck on
 // default "VenueOS" branding no matter what the tenant adopted.
 const BRAND_LS_PREFIX = 'edu-cms-branding-cache-v1:';
-const BRAND_LS_LEGACY = 'edu-cms-branding-cache-v1';
 
 export function Sidebar() {
   const t = useTranslations();
@@ -77,7 +76,8 @@ export function Sidebar() {
   // templates, settings card. That added up to ~8 round trips per
   // navigation. The hook collapses them to ONE per minute per tab.
   const userTenantId = user?.tenantId || null;
-  const [branding, setBranding] = useState<TenantBranding | null>(null);
+  const [brandingEntry, setBrandingEntry] = useState<{ tenantId: string | null; data: TenantBranding | null }>({ tenantId: null, data: null });
+  const branding = brandingEntry.tenantId === userTenantId ? brandingEntry.data : null;
   // Shared cache subscription. If another component has already loaded
   // /branding/me within the last 60s, this returns instantly without a
   // network call. Otherwise React Query fires one fetch with the
@@ -88,6 +88,7 @@ export function Sidebar() {
   // React Query cache is still cold). Same per-tenant key the
   // BrandStyleInjector writes to.
   useEffect(() => {
+    const setBranding = (data: TenantBranding | null) => setBrandingEntry({ tenantId: userTenantId, data });
     const read = () => {
       try {
         if (userTenantId) {
@@ -97,15 +98,7 @@ export function Sidebar() {
             return;
           }
         }
-        // Legacy single-key fallback (mobile-Claude's migration wipes
-        // this on BrandStyleInjector mount; read in case the injector
-        // hasn't run yet on a fresh tab).
-        const legacy = localStorage.getItem(BRAND_LS_LEGACY);
-        if (legacy) {
-          setBranding(JSON.parse(legacy));
-        } else {
-          setBranding(null);
-        }
+        setBranding(null);
       } catch { setBranding(null); }
     };
     read();
@@ -131,6 +124,7 @@ export function Sidebar() {
   // back to VenueOS default by clearing the state. Errors are handled
   // by useTenantBranding's retry config so we don't need a catch.
   useEffect(() => {
+    const setBranding = (data: TenantBranding | null) => setBrandingEntry({ tenantId: userTenantId, data });
     if (!userTenantId) return;
     if (brandingFromQuery) {
       setBranding(brandingFromQuery);

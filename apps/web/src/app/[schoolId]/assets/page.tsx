@@ -55,6 +55,9 @@ import { clog } from '@/lib/client-logger';
 import { FolderDeleteDialog } from '@/components/assets/FolderDeleteDialog';
 import type { AssetDeleteResult } from '@/lib/asset-bulk-delete';
 import { FolderPicker } from '@/components/assets/FolderPicker';
+import { AnchoredMenu } from '@/components/ui/anchored-menu';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { createUploadQueue } from '@/lib/upload-queue';
 import { PdfHoverThumb } from '@/components/assets/PdfHoverThumb';
 import { AssetActionsMenu, buildAssetMenuActions } from '@/components/assets/AssetActionsMenu';
 import { AssetBulkBar } from '@/components/assets/AssetBulkBar';
@@ -72,6 +75,7 @@ import { inspectVideoFile } from '@/lib/mp4-inspect';
 import { gradeVideoEncode, uploadFormatForType } from '@cms/api-types';
 import {
   uploadAssetDirect,
+  DirectUploadError,
   maxUploadBytesFor,
   refuseBeforeUploadAboveBytes,
   formatUploadCap,
@@ -153,6 +157,8 @@ interface UploadItem {
   progress: number;
   phase: UploadPhase;
   error?: string;
+  folderId?: string | null;
+  canRetry?: boolean;
   /**
    * The encode verdict read from the FILE before/while it uploads
    * (2026-09-24, `mp4-inspect.ts`): the codec, size, frame rate, index
@@ -317,6 +323,17 @@ function statusBadge(a: any): { label: string; className: string } | null {
 
 export default function AssetsPage() {
   const t = useTranslations();
+  const uploadTenantId = useUIStore((s) => s.user?.tenantId);
+  const isMobile = useIsMobile();
+  const mobileRef = useRef(isMobile);
+  mobileRef.current = isMobile;
+  const [uploadQueue] = useState(() => createUploadQueue(() => mobileRef.current ? 1 : 3));
+  const uploadControllers = useRef(new Set<AbortController>());
+  useEffect(() => () => {
+    uploadQueue.clear();
+    for (const controller of uploadControllers.current) controller.abort();
+    uploadControllers.current.clear();
+  }, [uploadQueue, uploadTenantId]);
   // The two outcomes the browser itself reports are translated here; a
   // refusal from the server keeps the server's own sentence.
   const deleteFailureText = (item: AssetDeleteResult) =>
@@ -393,6 +410,7 @@ export default function AssetsPage() {
   const urlInputRef = useRef<HTMLInputElement>(null);
   const newFolderInputRef = useRef<HTMLInputElement>(null);
   const addMenuRef = useRef<HTMLDivElement>(null);
+  const addMenuButtonRef = useRef<HTMLButtonElement>(null);
   const detailRef = useRef<HTMLDivElement>(null);
   const detailOpenerRef = useRef<HTMLElement | null>(null);
   const dragDepth = useRef(0);
@@ -414,11 +432,9 @@ export default function AssetsPage() {
   const FOLDERS_PREVIEW_LIMIT = 5;
   // Searchable folder picker state:
   //   - showFolderPicker: 'upload' | 'bulk-move' | 'single-move' | null
-  //   - pendingFiles: files dragged onto the page that need a destination.
-  //     The picker opens, user chooses a folder, then we upload these
-  //     without ever asking for files again. Empty for the plain "Upload
-  //     files" flow (which falls through to the native file chooser after
-  //     the picker resolves).
+  //   - pendingFiles: the phone's selected batch or files dropped on the page.
+  //     Keep the File objects until the operator confirms Upload and a folder.
+  //     Desktop clicks choose the destination before opening the native picker.
   const [showFolderPicker, setShowFolderPicker] = useState<'upload' | 'bulk-move' | 'single-move' | null>(null);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [moveTargetId, setMoveTargetId] = useState<string | null>(null);
@@ -782,7 +798,19 @@ export default function AssetsPage() {
     }
   };
 
-  const handleFiles = useCallback((files: FileList | File[] | null, targetFolderIdOverride?: string | null) => {
+  const enqueueUploads = (items: UploadItem[], folderId: string | null) => {
+    uploadQueue.add(items.map((item) => {
+      const controller = new AbortController();
+      uploadControllers.current.add(controller);
+      return async () => {
+        try {
+          if (!controller.signal.aborted) await doUpload(item, folderId, controller.signal);
+        } finally { uploadControllers.current.delete(controller); }
+      };
+    }));
+  };
+
+  const handleFiles = (files: FileList | File[] | null, targetFolderIdOverride?: string | null) => {
     if (!files) return;
     const list = Array.isArray(files) ? files : Array.from(files);
     if (list.length === 0) return;
@@ -793,6 +821,7 @@ export default function AssetsPage() {
         file,
         progress: 0,
         phase: 'idle',
+        folderId: targetFolderIdOverride !== undefined ? targetFolderIdOverride : currentFolderId,
         ...(isVideoMime(file.type) ? { encode: { status: 'checking', verdict: { grade: 'unknown', reasons: [] }, facts: null } as VideoEncodeState } : {}),
       };
       // Reject BEFORE any network call. The order matters: format check
@@ -810,18 +839,9 @@ export default function AssetsPage() {
       return item;
     });
     setUploads(prev => [...items, ...prev]);
-    // Concurrency-limited uploader. Operator (2026-04-29): tried to
-    // upload 42MB across 8+ images at once, every request died with a
-    // network error; single-file uploads worked. Root cause: previous
-    // `.forEach((u) => doUpload(u))` fired all uploads in parallel,
-    // which overwhelms one of: Vercel→Railway proxy connection cap,
-    // Multer's in-memory parser (each large file holds its own buffer
-    // + a SHA-256 working buffer), Supabase storage's per-bucket rate
-    // limit, or the Prisma connection pool. 3-in-flight is the sweet
-    // spot — empirically what Yodeck / Rise / OptiSigns serialize at,
-    // fast for small batches, doesn't hammer any single downstream.
-    // Everything past the first three sits in the queue reading
-    // "Waiting" (§14), which is the truth.
+    // One queue across every selection: one transfer at a time on phones,
+    // three on desktop. Extra files remain Waiting, and each retains its
+    // chosen destination even if the operator browses another folder.
     // Pre-upload playback check (2026-09-24): read the MP4's own index the
     // moment it is dropped — bounded reads, never the media — and grade it
     // against the fleet's panels, so the queue can explain automatic fixes
@@ -842,22 +862,10 @@ export default function AssetsPage() {
         });
     }
 
-    const MAX_CONCURRENT_UPLOADS = 3;
-    const queue = items.filter((u) => u.phase === 'idle').slice();
-    const runWorker = async (): Promise<void> => {
-      while (true) {
-        const next = queue.shift();
-        if (!next) return;
-        try { await doUpload(next, targetFolderIdOverride); } catch { /* error already surfaced via UI state */ }
-      }
-    };
-    const workerCount = Math.min(MAX_CONCURRENT_UPLOADS, queue.length);
-    const workers = Array.from({ length: workerCount }, () => runWorker());
-    void Promise.all(workers);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [encodeTarget]);
+    enqueueUploads(items.filter((u) => u.phase === 'idle'), targetFolderIdOverride !== undefined ? targetFolderIdOverride : currentFolderId);
+  };
 
-  const doUpload = async (item: UploadItem, targetFolderIdOverride?: string | null): Promise<void> => {
+  const doUpload = async (item: UploadItem, targetFolderIdOverride?: string | null, signal?: AbortSignal): Promise<void> => {
     // Destination precedence:
     //   1. Explicit override from the FolderPicker
     //   2. Current browsed folder (uploads into whatever is open)
@@ -889,6 +897,7 @@ export default function AssetsPage() {
       // server registering the asset — §14: never "Ready" before that).
       const created = await uploadAssetDirect(item.file, {
         folderId: targetFolderId || null,
+        signal,
         onProgress: ({ loaded, fraction }) => {
           setUploads(p => p.map(u => u.id === item.id
             ? { ...u, sent: loaded, progress: Math.max(u.progress, Math.min(96, 2 + Math.round(fraction * 94))) }
@@ -915,7 +924,8 @@ export default function AssetsPage() {
       const elapsedMs = Math.round(performance.now() - started);
       const msg = uploadErrorMessage(err, item.file);
       clog.error('upload', 'Failed', { id: item.id, name: item.file.name, msg, code: err?.code, elapsedMs });
-      setUploads(p => p.map(u => u.id === item.id ? { ...u, phase: 'error', note: undefined, error: msg } : u));
+      const canRetry = err instanceof DirectUploadError && err.source === 'client' && ['network', 'storage', 'expired'].includes(err.code);
+      setUploads(p => p.map(u => u.id === item.id ? { ...u, phase: 'error', note: undefined, error: msg, canRetry } : u));
     }
   };
 
@@ -1280,7 +1290,7 @@ export default function AssetsPage() {
   useEffect(() => {
     if (!addMenuOpen) return;
     const onDown = (e: MouseEvent) => {
-      if (!addMenuRef.current?.contains(e.target as Node)) setAddMenuOpen(false);
+      if (!addMenuRef.current?.contains(e.target as Node) && !(e.target as Element)?.closest?.('[data-asset-add-menu]')) setAddMenuOpen(false);
     };
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setAddMenuOpen(false); };
     document.addEventListener('mousedown', onDown);
@@ -1348,7 +1358,13 @@ export default function AssetsPage() {
     setShowFolderPicker('upload');
   };
 
-  const openUploadPicker = () => { setPendingFiles([]); setShowFolderPicker('upload'); };
+  const openUploadPicker = () => {
+    setPendingFiles([]);
+    // Open synchronously from the tap; Safari's native picker needs user activation.
+    // On a phone the selected batch is then confirmed with an explicit Upload button.
+    if (isMobile) fileInputRef.current?.click();
+    else setShowFolderPicker('upload');
+  };
 
   // §10 — "Recent files" for the default Newest view; a neutral heading or
   // the active filter's label once anything is narrowing the list.
@@ -1429,6 +1445,7 @@ export default function AssetsPage() {
         <div className="flex gap-2 items-center">
           <div className="relative" ref={addMenuRef}>
             <button
+              ref={addMenuButtonRef}
               type="button"
               aria-haspopup="menu"
               aria-expanded={addMenuOpen}
@@ -1441,12 +1458,13 @@ export default function AssetsPage() {
               <UploadCloud className="w-4 h-4" />
               Add asset <ChevronDown className="w-3.5 h-3.5 opacity-80" />
             </button>
-            {addMenuOpen && (
+            <AnchoredMenu anchorRef={addMenuButtonRef} open={addMenuOpen} width={228} align="left">
               <div
+                data-asset-add-menu
                 role="menu"
                 tabIndex={-1}
                 aria-label="Add asset"
-                className="absolute right-0 top-full mt-1 z-40 min-w-[228px] bg-white border border-slate-200 rounded-xl shadow-xl py-1"
+                className="py-1"
               >
                 <button
                   type="button"
@@ -1481,7 +1499,7 @@ export default function AssetsPage() {
                   </button>
                 )}
               </div>
-            )}
+            </AnchoredMenu>
           </div>
           <input
             type="file"
@@ -1503,7 +1521,11 @@ export default function AssetsPage() {
                   : raw === '__root__'
                   ? null
                   : raw;
-              handleFiles(e.target.files, override);
+              const selectedFiles = Array.from(e.currentTarget.files || []);
+              if (isMobile && selectedFiles.length > 0) {
+                setPendingFiles(selectedFiles);
+                setShowFolderPicker('upload');
+              } else handleFiles(selectedFiles, override);
               // Reset so re-selecting the same file fires onChange.
               e.currentTarget.value = '';
             }}
@@ -1614,6 +1636,14 @@ export default function AssetsPage() {
                   {u.phase === 'success' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />}
                   {u.phase === 'error' && <X className="w-3.5 h-3.5 text-rose-600 shrink-0" />}
                 </div>
+                {u.phase === 'error' && u.canRetry && (
+                  <button type="button" className="mt-1 min-h-11 px-3 text-xs font-bold text-indigo-700" onClick={() => {
+                    setUploads(p => p.map(item => item.id === u.id ? { ...item, phase: 'idle', progress: 0, error: undefined, note: undefined, canRetry: false } : item));
+                    enqueueUploads([u], u.folderId ?? null);
+                  }}>
+                    {t('assetsLib.retryUpload')}
+                  </button>
+                )}
                 {/* Error reason on its own row so long messages (export-as-MP4
                     guidance, file-too-large, server validation errors) can
                     wrap and stay legible. Title attribute preserves the full
@@ -2698,6 +2728,7 @@ export default function AssetsPage() {
                 + (pendingFiles.length > 3 ? ` + ${pendingFiles.length - 3} more` : '')
               : undefined
           }
+          confirmLabel={showFolderPicker === 'upload' && pendingFiles.length > 0 ? t('assetsLib.uploadSelected', { count: pendingFiles.length }) : undefined}
           onConfirm={handleFolderPicked}
           onClose={() => { setShowFolderPicker(null); setPendingFiles([]); setMoveTargetId(null); }}
           onCreateFolder={async (name, parentId) => {

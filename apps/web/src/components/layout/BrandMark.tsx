@@ -45,7 +45,6 @@ import { logoBackdrop, readLogoBackground, type LogoBackground } from '@/compone
 
 /** Per-tenant branding cache key — written by <BrandStyleInjector />. */
 const BRAND_LS_PREFIX = 'edu-cms-branding-cache-v1:';
-const BRAND_LS_LEGACY = 'edu-cms-branding-cache-v1';
 
 export type BrandMarkSize = 'sm' | 'md';
 
@@ -88,7 +87,7 @@ export function decodeBrandText(s: string | undefined | null): string {
  *
  * Order: BrandingProvider context (already fed by the shared
  * `useTenantBranding()` query, so it is as fresh as the Sidebar's copy) →
- * per-tenant localStorage → legacy global key → nothing. The `branding:update`
+ * per-tenant localStorage → nothing. The `branding:update`
  * event repaints live when the wizard adopts a brand, which is the same signal
  * the Sidebar and the style injector listen for.
  */
@@ -100,11 +99,13 @@ export function useBrandIdentity(): BrandIdentity {
   // (mobile-perf standard #4).
   const tenantId = useAppStore((s) => s.user?.tenantId) || null;
   const [mounted, setMounted] = useState(false);
-  const [cached, setCached] = useState<Record<string, unknown> | null>(null);
+  const [cacheEntry, setCacheEntry] = useState<{ tenantId: string | null; data: Record<string, unknown> | null }>({ tenantId: null, data: null });
+  const cached = cacheEntry.tenantId === tenantId ? cacheEntry.data : null;
 
   useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
+    const setCached = (data: Record<string, unknown> | null) => setCacheEntry({ tenantId, data });
     // PER-TENANT key only. Scanning for "any brand cache" would re-create the
     // cross-tenant theme bleed the prefixed keys exist to prevent — the
     // injector does not evict a previous tenant's entry on switch.
@@ -114,8 +115,7 @@ export function useBrandIdentity(): BrandIdentity {
           const raw = localStorage.getItem(BRAND_LS_PREFIX + tenantId);
           if (raw) { setCached(JSON.parse(raw)); return; }
         }
-        const legacy = localStorage.getItem(BRAND_LS_LEGACY);
-        setCached(legacy ? JSON.parse(legacy) : null);
+        setCached(null);
       } catch { setCached(null); }
     };
     read();
@@ -238,7 +238,8 @@ export function BrandMark({
   // If the rehosted logoUrl 404s (Supabase rehost failed silently on adopt),
   // we would otherwise render a broken-image icon. Track the failure and fall
   // through to the initials chip.
-  const [logoImgBroken, setLogoImgBroken] = useState(false);
+  const [brokenLogoUrl, setBrokenLogoUrl] = useState<string | null>(null);
+  const logoImgBroken = !!id.logoUrl && brokenLogoUrl === id.logoUrl;
 
   // 2026-05-26 — a white wordmark on transparent is invisible on white chrome.
   // The tone hook + the operator's backdrop picker decide the chip behind it;
@@ -267,13 +268,13 @@ export function BrandMark({
           // Decorative whenever the name is adjacent; otherwise the wrapper
           // carries the label, so the img stays alt="" either way.
           alt=""
-          onError={() => setLogoImgBroken(true)}
+          onError={() => setBrokenLogoUrl(id.logoUrl)}
           onLoad={(e) => {
             // 2026-05-26 round 7 — `=== 0` only. A 14×30 favicon variant is a
             // real logo; a stricter threshold sent the operator's wordmark all
             // the way down to initials.
             const img = e.currentTarget;
-            if (img.naturalWidth === 0 || img.naturalHeight === 0) setLogoImgBroken(true);
+            if (img.naturalWidth === 0 || img.naturalHeight === 0) setBrokenLogoUrl(id.logoUrl);
           }}
           className="max-h-full max-w-full object-contain"
         />

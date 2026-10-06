@@ -32,7 +32,7 @@ export function LocationMapSurface({
 }) {
   return (
     <div
-      className="relative rounded-2xl border border-slate-200 overflow-hidden bg-slate-100"
+      className="relative isolate rounded-2xl border border-slate-200 overflow-hidden bg-slate-100"
       data-testid="location-map-surface"
     >
       {total === 0 ? (
@@ -44,7 +44,7 @@ export function LocationMapSurface({
           locationPins={locationPins}
           onLocationClick={onLocationClick}
           panTo={panTo}
-          heightClass="h-[72vh] min-h-[520px] max-h-[900px]"
+          heightClass="h-[60dvh] min-h-[360px] max-h-[600px] sm:h-[72vh] sm:min-h-[520px] sm:max-h-[900px]"
           fitPadTopLeft={compact ? FIT_TOP_LEFT : undefined}
           fitPadBottomRight={compact ? FIT_BOTTOM_RIGHT : PANEL_FIT_BOTTOM_RIGHT}
         />

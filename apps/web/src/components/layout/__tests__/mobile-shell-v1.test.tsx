@@ -12,7 +12,7 @@
  *     and nothing else in the suite would notice.
  *   - the rollback contract never paints the wrong shell first.
  */
-import { render, screen, act, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, act, fireEvent, waitFor, within } from '@testing-library/react';
 
 jest.mock('next/navigation', () => ({
   usePathname: () => mockPathname,
@@ -194,13 +194,6 @@ describe('§6.3 — one navigation system: the More sheet is a superset of the d
 });
 
 describe('§6.2 / §15 — the sheet behaves like a sheet', () => {
-  /**
-   * Focus restoration here is NOT the textbook case: opening the sheet raises
-   * the overlay lock, which unmounts the entire tab bar — the More button
-   * included. So on close the trigger is a brand-new node and a captured ref
-   * would be pointing at detached DOM. This asserts focus lands on whatever
-   * More button is actually on screen afterwards.
-   */
   it('takes focus into itself on open, and restores it to More on close', async () => {
     render(<MobileTabBar />);
     fireEvent.click(screen.getByRole('button', { name: /More/ }));
@@ -216,15 +209,20 @@ describe('§6.2 / §15 — the sheet behaves like a sheet', () => {
     expect(document.activeElement).not.toBe(document.body);
   });
 
-  it('traps Tab inside the sheet', async () => {
+  it('traps Tab inside More and its persistent primary navigation', async () => {
     render(<MobileTabBar />);
     fireEvent.click(screen.getByRole('button', { name: /More/ }));
     const sheet = await screen.findByTestId('more-sheet');
     await waitFor(() => expect(sheet.contains(document.activeElement)).toBe(true));
-    for (let i = 0; i < 25; i += 1) {
+    const dialog = screen.getByRole('dialog');
+    const nav = within(dialog).getByRole('navigation', { name: 'Primary' });
+    let reachedTabs = false;
+    for (let i = 0; i < 40; i += 1) {
       fireEvent.keyDown(document, { key: 'Tab' });
-      expect(sheet.contains(document.activeElement)).toBe(true);
+      expect(dialog.contains(document.activeElement)).toBe(true);
+      reachedTabs ||= nav.contains(document.activeElement);
     }
+    expect(reachedTabs).toBe(true);
   });
 
   it('makes the app content inert to assistive tech while open, and restores it', async () => {
@@ -240,13 +238,15 @@ describe('§6.2 / §15 — the sheet behaves like a sheet', () => {
     main.remove();
   });
 
-  it('clears the tab bar while it is open (shared overlay lock)', async () => {
+  it('keeps the tabs available and closes More when a primary destination is picked', async () => {
     render(<MobileTabBar />);
     fireEvent.click(screen.getByRole('button', { name: /More/ }));
     await screen.findByTestId('more-sheet');
-    await waitFor(() =>
-      expect(screen.queryByRole('navigation', { name: 'Primary' })).not.toBeInTheDocument(),
-    );
+    const nav = screen.getByRole('navigation', { name: 'Primary' });
+    expect(nav).toBeInTheDocument();
+    expect(useUIStore.getState().overlayOpenCount).toBe(0);
+    fireEvent.click(within(nav).getByRole('link', { name: /Media/ }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
   it('closes on the scrim and on the 44×44 close control', async () => {

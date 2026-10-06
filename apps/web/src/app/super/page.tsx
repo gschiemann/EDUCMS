@@ -165,8 +165,8 @@ export default function SuperPage() {
   return (
     <div className="min-h-screen bg-slate-50 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
-        <header className="flex items-center justify-between">
-          <div>
+        <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
             <h1 className="text-2xl font-extrabold text-slate-900 flex items-center gap-2">
               <Crown className="w-6 h-6 text-amber-500" /> Owner control panel
             </h1>
@@ -177,7 +177,7 @@ export default function SuperPage() {
               </a>
             </p>
           </div>
-          <div className="flex items-center gap-3 flex-wrap">
+          <div className="grid grid-cols-2 gap-3 sm:flex sm:items-center sm:flex-wrap shrink-0">
             <Stat label="Tenants" value={String(totalTenants)} />
             <Stat label="Paired screens" value={String(totalSeats)} />
             {/* Phase B closeout — fleet health rollups across every

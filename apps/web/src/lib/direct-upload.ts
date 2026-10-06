@@ -201,6 +201,8 @@ export interface DirectUploadOptions {
 
 /** Backoff between attempts that made NO progress (reset whenever the server accepts bytes). */
 export const RESUME_DELAYS_MS = [1_000, 2_000, 5_000, 10_000, 20_000, 30_000, 30_000, 30_000];
+/** A stalled connection retries; a slow upload with byte progress is never timed out. */
+export const UPLOAD_IDLE_TIMEOUT_MS = 90_000;
 /** Renew the storage token when it has less than this left. */
 const RENEW_MARGIN_MS = 5 * 60_000;
 
@@ -214,7 +216,20 @@ function xhrRequest(
 ): Promise<XhrResult> {
   return new Promise((resolve) => {
     const xhr = new XMLHttpRequest();
-    const done = (status: number) =>
+    let finished = false;
+    let idleTimer: ReturnType<typeof setTimeout>;
+    let stalled = false;
+    const abort = () => xhr.abort();
+    const keepAlive = () => {
+      if (finished) return;
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => { stalled = true; xhr.abort(); }, UPLOAD_IDLE_TIMEOUT_MS);
+    };
+    const done = (status: number) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(idleTimer);
+      signal?.removeEventListener('abort', abort);
       resolve({
         status,
         header: (n) => {
@@ -226,25 +241,29 @@ function xhrRequest(
         },
         body: typeof xhr.responseText === 'string' ? xhr.responseText : '',
       });
+    };
     xhr.open(method, url);
     for (const [k, v] of Object.entries(headers)) xhr.setRequestHeader(k, v);
-    if (onUploadProgress && xhr.upload) {
+    if (xhr.upload) {
       xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable || e.loaded) onUploadProgress(e.loaded);
+        keepAlive();
+        if (e.lengthComputable || e.loaded) onUploadProgress?.(e.loaded);
       };
     }
+    xhr.onprogress = keepAlive;
     xhr.onload = () => done(xhr.status);
     xhr.onerror = () => done(0);
     xhr.ontimeout = () => done(0);
-    xhr.onabort = () => done(-1);
+    xhr.onabort = () => done(stalled ? 0 : -1);
     if (signal) {
       if (signal.aborted) {
         done(-1);
         return;
       }
-      signal.addEventListener('abort', () => xhr.abort(), { once: true });
+      signal.addEventListener('abort', abort, { once: true });
     }
-    xhr.send(body);
+    keepAlive();
+    try { xhr.send(body); } catch { done(0); }
   });
 }
 

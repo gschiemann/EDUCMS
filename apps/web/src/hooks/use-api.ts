@@ -4082,9 +4082,11 @@ import type { TenantBranding } from '@/lib/branding';
 const TENANT_BRANDING_QUERY_KEY = ['branding', 'me'] as const;
 
 export function useTenantBranding() {
+  const tenantId = useUIStore((s) => s.user?.tenantId) ?? null;
   return useQuery<TenantBranding | null>({
-    queryKey: TENANT_BRANDING_QUERY_KEY,
-    queryFn: () => apiFetch<TenantBranding | null>('/branding/me'),
+    queryKey: [...TENANT_BRANDING_QUERY_KEY, tenantId],
+    queryFn: ({ signal }) => apiFetch<TenantBranding | null>('/branding/me', { signal }),
+    enabled: !!tenantId,
     // 60s — branding is operator-changed via Adopt/Reset, not background
     // process; the explicit invalidator below covers writes.
     staleTime: 60_000,

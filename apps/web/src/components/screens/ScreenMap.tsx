@@ -14,6 +14,7 @@ import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 import 'leaflet.markercluster';
 import { MonitorPlay, AlertTriangle, Wifi, WifiOff, Search, X, Crosshair, ChevronRight, Building2 } from 'lucide-react';
 import { atlasFitMaxZoom, clampFitPadding, pinSetKey } from './atlasFit';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 /**
  * Sprint 8 command-center fleet map — upgraded to sell the product.
@@ -146,6 +147,15 @@ const STATUS_META: Record<StatusKey, { color: string; label: string; icon: typeo
 const BASEMAP_TILES = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 const BASEMAP_ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+
+function MobileMapGestures({ mobile }: { mobile: boolean }) {
+  const map = useMap();
+  useEffect(() => {
+    if (mobile) map.dragging.disable();
+    else map.dragging.enable();
+  }, [map, mobile]);
+  return null;
+}
 
 function buildIcon(status: StatusKey): L.DivIcon {
   const meta = STATUS_META[status];
@@ -1040,6 +1050,7 @@ export function ScreenMap({
   screens, groups = [], emergencyActive = false, onScreenClick, onMapClick, renderSidebar = true,
   locationPins, onLocationClick, heightClass, fitPadBottomRight, fitPadTopLeft, panTo,
 }: Props) {
+  const isMobile = useIsMobile();
   const [query, setQuery] = useState('');
   const [flyTarget, setFlyTarget] = useState<[number, number] | null>(null);
   const [flyNonce, setFlyNonce] = useState(0);
@@ -1226,7 +1237,7 @@ export function ScreenMap({
         )}
 
         {/* Map */}
-        <div className={`relative w-full overflow-hidden ${
+        <div className={`relative isolate w-full overflow-hidden ${
           heightClass ?? 'h-[60dvh] max-h-[600px] sm:h-[600px] sm:max-h-none rounded-xl border border-slate-200 shadow-sm'
         }`}>
           <MapContainer
@@ -1237,6 +1248,9 @@ export function ScreenMap({
             // only a pinch (trackpad = ctrl/⌘+wheel, touch = Leaflet's touchZoom),
             // the +/− buttons and double-click zoom. See <PinchZoom /> below.
             scrollWheelZoom={false}
+            // A single finger scrolls the page on a phone; two fingers still
+            // pinch/pan the map through Leaflet's touchZoom handler.
+            dragging={!isMobile}
             // Atlas mode draws its own controls at the bottom-centre: the
             // default top-left zoom buttons sit exactly under the floating
             // exception inbox.
@@ -1254,6 +1268,7 @@ export function ScreenMap({
                 of a keyed styled-tile provider. */}
             <style>{`.venueos-basemap { filter: saturate(0.35) brightness(1.04) contrast(0.97); }`}</style>
             <InvalidateSizeOnShow />
+            <MobileMapGestures mobile={isMobile} />
             <PinchZoom />
             {/* Atlas mode fits clear of the floating exception-inbox card
                 (top-left) and the selected-location panel (top-right). */}

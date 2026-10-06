@@ -117,7 +117,7 @@ export function BrandStyleInjector() {
     }
 
     const branding = brandingFromQuery ?? null;
-    const serialized = branding ? JSON.stringify(branding) : '__null__';
+    const serialized = `${tenantId}:${branding ? JSON.stringify(branding) : '__null__'}`;
     if (lastAppliedRef.current === serialized) return;
     lastAppliedRef.current = serialized;
 

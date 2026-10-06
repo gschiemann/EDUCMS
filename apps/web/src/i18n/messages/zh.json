@@ -25,6 +25,7 @@
     "classicNavigation": "使用经典导航"
   },
   "toolbar": {
+    "backToDashboard": "返回控制面板",
     "openNav": "打开导航菜单",
     "closeMenu": "关闭菜单",
     "close": "关闭",
@@ -1953,6 +1954,8 @@
     "clearSelection": "清除选择"
   },
   "assetsLib": {
+    "retryUpload": "重试上传",
+    "uploadSelected": "上传 {count} 个文件",
     "title": "媒体库",
     "subtitle": "{count} 个素材 — 拖入文件或点击上传",
     "subtitleScope": "{assets} 个素材，分布在 {folders} 个文件夹",

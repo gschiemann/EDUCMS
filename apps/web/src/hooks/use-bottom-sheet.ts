@@ -10,7 +10,7 @@ import { useOverlayLock } from './use-overlay-lock';
  * makes it universal ("Modals/sheets trap focus, make background inert, close
  * with Escape and restore focus"):
  *
- *   - Use the shared overlay lock.        → useOverlayLock (hides the tab bar)
+ *   - Use the shared overlay lock, or include primary navigation in More.
  *   - Trap focus.                         → Tab / Shift+Tab wrap inside
  *   - Make the background inert.          → aria-hidden on the app root
  *   - Close with Escape.                  → keydown
@@ -37,20 +37,17 @@ export function useBottomSheet(opts: {
   /**
    * How to FIND the trigger again when it did not survive the sheet.
    *
-   * This is not belt-and-braces, it is the normal case for the More sheet:
-   * opening it raises the shared overlay lock, which unmounts the whole tab
-   * bar — including the More button that opened it. On close the bar remounts
-   * as brand-new DOM, so the captured node is detached and focusing it would
-   * silently drop focus to <body>, leaving a keyboard operator stranded at the
-   * top of the document. A CSS selector re-finds the fresh node.
-   * (Caught by mobile-shell-v1.test.tsx, not by reading the code.)
+   * An intervening workflow may replace the original trigger. Re-find its
+   * current node rather than leaving focus on the document body.
    */
   restoreFocusSelector?: string;
+  /** More navigation keeps its primary tabs reachable alongside the sheet. */
+  navigationRef?: React.RefObject<HTMLElement | null>;
 }) {
-  const { open, onClose, sheetRef, triggerRef, restoreFocusSelector } = opts;
-  // Hide the global tab bar while the sheet owns the screen (§6.2, and the
-  // QA checklist's "Every overlay hides/clears the bottom tab bar").
-  useOverlayLock(open);
+  const { open, onClose, sheetRef, triggerRef, restoreFocusSelector, navigationRef } = opts;
+  // More includes the primary tabs in its dialog and focus scope. Other
+  // workflows still hide the global tab bar while they own the screen.
+  useOverlayLock(open && !navigationRef);
 
   // Keep the latest onClose without re-arming the listener every render.
   const onCloseRef = useRef(onClose);
@@ -71,7 +68,10 @@ export function useBottomSheet(opts: {
     // Initial focus lands on the first real control INSIDE the sheet. A
     // focusable container that merely holds focus is not parked focus — the
     // exact SetupChecklistView failure the player rules call out.
-    const focusables = () => (sheet ? getFocusable(sheet) : []);
+    const focusables = () => [
+      ...(sheet ? getFocusable(sheet) : []),
+      ...(navigationRef?.current ? getFocusable(navigationRef.current) : []),
+    ];
     const raf = requestAnimationFrame(() => focusables()[0]?.focus());
 
     const onKey = (e: KeyboardEvent) => {
@@ -108,7 +108,7 @@ export function useBottomSheet(opts: {
         });
       }
     };
-  }, [open, sheetRef, triggerRef, restoreFocusSelector]);
+  }, [open, sheetRef, triggerRef, restoreFocusSelector, navigationRef]);
 }
 
 const FOCUSABLE_SELECTOR =

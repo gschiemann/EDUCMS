@@ -25,6 +25,7 @@
     "classicNavigation": "Use classic navigation"
   },
   "toolbar": {
+    "backToDashboard": "Back to dashboard",
     "openNav": "Open navigation menu",
     "closeMenu": "Close menu",
     "close": "Close",
@@ -1953,6 +1954,8 @@
     "clearSelection": "Clear selection"
   },
   "assetsLib": {
+    "retryUpload": "Retry upload",
+    "uploadSelected": "Upload {count, plural, one {# file} other {# files}}",
     "title": "Media Library",
     "subtitle": "{count} assets — drag files or click to upload",
     "subtitleScope": "{assets} assets across {folders} folders",

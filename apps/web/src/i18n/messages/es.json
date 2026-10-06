@@ -25,6 +25,7 @@
     "classicNavigation": "Usar la navegación clásica"
   },
   "toolbar": {
+    "backToDashboard": "Volver al panel",
     "openNav": "Abrir el menú de navegación",
     "closeMenu": "Cerrar el menú",
     "close": "Cerrar",
@@ -1953,6 +1954,8 @@
     "clearSelection": "Borrar selección"
   },
   "assetsLib": {
+    "retryUpload": "Reintentar subida",
+    "uploadSelected": "Subir {count, plural, one {# archivo} other {# archivos}}",
     "title": "Biblioteca de medios",
     "subtitle": "{count} archivos — arrastra o haz clic para subir",
     "subtitleScope": "{assets} archivos en {folders} carpetas",

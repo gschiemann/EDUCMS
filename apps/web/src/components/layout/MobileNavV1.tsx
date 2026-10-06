@@ -57,6 +57,7 @@ export function MobileNavV1({ onSwitchShell }: { onSwitchShell: (v: MobileShell)
   const params = useParams<{ schoolId?: string }>();
   const schoolId = params?.schoolId || '';
   const user = useAppStore((s) => s.user);
+  const activeTenant = useAppStore((s) => s.activeTenant);
   const logout = useAppStore((s) => s.logout);
   const overlayOpenCount = useAppStore((s) => s.overlayOpenCount);
   const mobileSidebarOpen = useAppStore((s) => s.mobileSidebarOpen);
@@ -67,6 +68,8 @@ export function MobileNavV1({ onSwitchShell }: { onSwitchShell: (v: MobileShell)
   const [moreOpen, setMoreOpen] = useState(false);
   const sheetRef = useRef<HTMLDivElement>(null);
   const moreBtnRef = useRef<HTMLButtonElement>(null);
+  const navigationRef = useRef<HTMLElement>(null);
+  useEffect(() => { setMoreOpen(false); }, [pathname]);
 
   // The passkey row in the account area of the sheet (2026-09-24) — the
   // phone's counterpart of TopToolbar's account-menu entry (the avatar is
@@ -85,9 +88,9 @@ export function MobileNavV1({ onSwitchShell }: { onSwitchShell: (v: MobileShell)
     onClose: () => setMoreOpen(false),
     sheetRef,
     triggerRef: moreBtnRef,
-    // The overlay lock unmounts this very tab bar while the sheet is open, so
-    // the trigger has to be re-found by id once it comes back.
+    // Re-find the trigger if another overlay replaced it while More was open.
     restoreFocusSelector: '#mobile-more-tab',
+    navigationRef,
   });
 
   const isHidden =
@@ -101,11 +104,11 @@ export function MobileNavV1({ onSwitchShell }: { onSwitchShell: (v: MobileShell)
     pathname.startsWith('/onboarding') ||
     /\/templates\/builder\//.test(pathname) ||
     mobileSidebarOpen ||
-    // The sheet raises this itself through useBottomSheet, so an open More
-    // sheet hides the bar underneath it exactly like any other overlay.
+    // Full-screen workflows own navigation; More keeps these tabs reachable.
     overlayOpenCount > 0;
 
-  const base = schoolId ? `/${schoolId}` : '';
+  const tenantSlug = schoolId || activeTenant || user?.tenantSlug || user?.tenantId || '';
+  const base = tenantSlug ? `/${tenantSlug}` : '';
   const homeHref = base ? `${base}/dashboard` : '/';
   // Settings live under the tenant slug; off a slugged route fall back to the
   // operator's home slug (same rule as TopToolbar).
@@ -170,13 +173,10 @@ export function MobileNavV1({ onSwitchShell }: { onSwitchShell: (v: MobileShell)
   const moreActive = moreItems.some((m) => pathname.startsWith(m.href.split('?')[0]));
 
   return (
-    <>
+    <div role={moreOpen ? 'dialog' : undefined} aria-modal={moreOpen ? true : undefined} aria-label={moreOpen ? t('toolbar.moreNavigation') : undefined}>
       {moreOpen && (
         <div
           className="md:hidden fixed top-0 right-0 bottom-0 left-0 z-[61]"
-          role="dialog"
-          aria-modal="true"
-          aria-label={t('toolbar.moreNavigation')}
         >
           <button
             type="button"
@@ -190,7 +190,7 @@ export function MobileNavV1({ onSwitchShell }: { onSwitchShell: (v: MobileShell)
             // will-change/contain promote the sheet to its own layer so the
             // slide-up runs on the compositor (mobile-perf standard #4).
             style={{ willChange: 'transform', contain: 'paint' }}
-            className="absolute bottom-0 right-0 left-0 bg-white rounded-t-[20px] shadow-[0_-8px_30px_rgba(0,0,0,0.14)] max-h-[85dvh] overflow-y-auto motion-safe:animate-in motion-safe:slide-in-from-bottom motion-safe:duration-200"
+            className="absolute bottom-[calc(64px+env(safe-area-inset-bottom))] right-0 left-0 bg-white rounded-t-[20px] shadow-[0_-8px_30px_rgba(0,0,0,0.14)] max-h-[75dvh] overflow-y-auto motion-safe:animate-in motion-safe:slide-in-from-bottom motion-safe:duration-200"
           >
             <div className="sticky top-0 bg-white flex items-center justify-between gap-2 px-5 pt-4 pb-2 border-b border-slate-100">
               {/* 2026-09-21 — the sheet is the phone's whole navigation, so it
@@ -279,10 +279,11 @@ export function MobileNavV1({ onSwitchShell }: { onSwitchShell: (v: MobileShell)
 
       {!isHidden && (
         <nav
+          ref={navigationRef}
           data-testid="mobile-tabbar-v1"
           // Solid background, no backdrop-filter — this repaints on every
           // scroll frame and it is always mounted (mobile-perf standard #3).
-          className="md:hidden fixed bottom-0 right-0 left-0 z-[60] bg-white border-t border-slate-200 pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_20px_rgba(0,0,0,0.04)]"
+          className="md:hidden fixed bottom-0 right-0 left-0 z-[62] bg-white border-t border-slate-200 pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_20px_rgba(0,0,0,0.04)]"
           aria-label="Primary"
         >
           <div className="flex items-stretch justify-around">
@@ -293,6 +294,7 @@ export function MobileNavV1({ onSwitchShell }: { onSwitchShell: (v: MobileShell)
                 <Link
                   key={tab.key}
                   href={tab.href}
+                  onClick={() => setMoreOpen(false)}
                   // §6.1 minimum target 48×56; the bar's own visual height is
                   // 64px so labels never crowd the icons.
                   className={cn(
@@ -344,6 +346,6 @@ export function MobileNavV1({ onSwitchShell }: { onSwitchShell: (v: MobileShell)
           </div>
         </nav>
       )}
-    </>
+    </div>
   );
 }

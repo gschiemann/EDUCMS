@@ -17,6 +17,7 @@
 import * as React from 'react';
 import { render, screen as rtl, fireEvent, within, act, waitFor } from '@testing-library/react';
 import type { AssetUsage } from '@/hooks/use-api';
+jest.mock('@/hooks/use-mobile', () => ({ useIsMobile: () => false }));
 
 const ASSET = {
   id: 'a1',

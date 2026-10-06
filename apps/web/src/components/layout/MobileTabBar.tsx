@@ -66,6 +66,7 @@ function ClassicMobileTabBar({ onSwitchShell }: { onSwitchShell: (v: MobileShell
   const params = useParams<{ schoolId?: string }>();
   const schoolId = params?.schoolId || '';
   const user = useAppStore((s) => s.user);
+  const activeTenant = useAppStore((s) => s.activeTenant);
   // 2026-05-28 — when the mobile sidebar drawer (Sidebar.tsx, z-40) is
   // open, its footer Sign-out button sits UNDER this tab bar (z-60),
   // so it was untappable. Hide the tab bar while the drawer is open so
@@ -118,7 +119,8 @@ function ClassicMobileTabBar({ onSwitchShell }: { onSwitchShell: (v: MobileShell
 
   // Routes prefixed with the schoolId since most tenant-scoped pages
   // live under /[schoolId]/...
-  const base = schoolId ? `/${schoolId}` : '';
+  const tenantSlug = schoolId || activeTenant || user?.tenantSlug || user?.tenantId || '';
+  const base = tenantSlug ? `/${tenantSlug}` : '';
   const isAdmin =
     user?.role === 'SUPER_ADMIN' ||
     user?.role === 'DISTRICT_ADMIN' ||

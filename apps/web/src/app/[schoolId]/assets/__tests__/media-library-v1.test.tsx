@@ -22,6 +22,7 @@ import * as React from 'react';
 import { render, screen as rtl, fireEvent, within, act } from '@testing-library/react';
 import * as Mp4Inspect from '@/lib/mp4-inspect';
 import * as DirectUpload from '@/lib/direct-upload';
+jest.mock('@/hooks/use-mobile', () => ({ useIsMobile: () => false }));
 
 const NOW = Date.now();
 const iso = (minsAgo: number) => new Date(NOW - minsAgo * 60_000).toISOString();

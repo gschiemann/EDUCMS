@@ -32,6 +32,7 @@ interface Props {
   onCreateFolder?: (name: string, parentId: string | null) => Promise<{ id: string } | null>;
   /** Optional hint shown under the header — e.g. "3 files ready to upload". */
   subtitle?: string;
+  confirmLabel?: string;
 }
 
 /**
@@ -61,6 +62,7 @@ export function FolderPicker({
   onClose,
   onCreateFolder,
   subtitle,
+  confirmLabel = 'Choose folder',
 }: Props) {
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(initialSelectedId ?? null);
@@ -484,7 +486,7 @@ export function FolderPicker({
               onClick={() => onConfirm(selectedId)}
               className="flex-1 md:flex-initial min-w-0 px-3 py-2.5 md:py-1.5 text-sm md:text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 rounded-lg whitespace-nowrap"
             >
-              Choose folder
+              {confirmLabel}
             </button>
           </div>
         </div>
