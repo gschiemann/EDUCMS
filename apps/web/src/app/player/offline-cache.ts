@@ -211,11 +211,12 @@ async function downloadLargeAsset(
   let consecutiveFailures = 0;
   let total: number | null = size;
 
-  const reportFailure = (phase: string, reason: unknown) => {
+  const reportFailure = (phase: 'chunk' | 'verify' | 'assemble', reason: unknown) => {
     // Include the worker's actual answer without media URLs or credentials.
     // Native logs capture this warning before the authenticated upload reads it.
-    console.warn(`[Player] content cache failed ${JSON.stringify({ phase, reason: typeof reason === 'string' ? reason.slice(0, 160) : 'no-worker-reply', offset, total })}`);
-    requestDeviceDiagnosticsUpload();
+    const failure = { phase, reason: typeof reason === 'string' ? reason.slice(0, 160) : 'no-worker-reply', offset, total };
+    console.warn(`[Player] content cache failed ${JSON.stringify(failure)}`);
+    requestDeviceDiagnosticsUpload(failure);
   };
 
   const failStep = async (): Promise<boolean> => {

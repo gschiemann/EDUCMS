@@ -77,6 +77,7 @@ describe('player offline-cache large-asset orchestration', () => {
         .resolves.toMatchObject({ ok: false });
       expect(cached).not.toHaveBeenCalled();
       expect(upload).toHaveBeenCalledTimes(1);
+      expect(upload).toHaveBeenCalledWith({ phase: 'assemble', reason: 'QuotaExceededError', offset: size, total: size });
       const message = String(warn.mock.calls[0][0]);
       expect(message).toContain('"phase":"assemble"');
       expect(message).toContain('"reason":"QuotaExceededError"');

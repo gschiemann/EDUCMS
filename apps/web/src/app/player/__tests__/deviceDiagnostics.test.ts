@@ -57,3 +57,18 @@ test('all playback recovery callers use the authenticated upload when installed,
   requestDiagnosticsUpload({ has: () => true, call: native });
   expect(native).toHaveBeenCalledWith('uploadDiagnostics');
 });
+
+test('a worker failure reaches authenticated diagnostics even when the legacy bridge refuses or fails to read logs', async () => {
+  const h = harness();
+  const failure = { phase: 'assemble' as const, reason: 'Cache write failed https://cdn.example/private?token=secret', offset: 16_000_000, total: 16_000_000 };
+  h.deps.readLogs.mockResolvedValue('(refused: bridge-nonce — this frame may not read device logs)');
+  await h.upload(failure);
+  const body = h.deps.post.mock.calls[0][1].body as string;
+  expect(body).toContain('PLAYER_PLAYBACK_FAILURE [web-player] content cache failed');
+  expect(body).toContain('"phase":"assemble"');
+  expect(body).toContain('Cache write failed [media-url]');
+  expect(body).not.toContain('token=secret');
+  h.advance(); h.deps.readLogs.mockRejectedValueOnce(new Error('bridge unavailable'));
+  await h.upload(failure);
+  expect(h.deps.post).toHaveBeenCalledTimes(2);
+});
