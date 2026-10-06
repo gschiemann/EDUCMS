@@ -27,6 +27,7 @@ const PACKAGE = { durationTicks: 90_000, timescale: 30_000 };
 let clock = 0;
 let play: jest.SpyInstance;
 let load: jest.SpyInstance;
+let frameCallbacks: Array<(now: number, meta: { mediaTime: number; expectedDisplayTime: number; presentedFrames: number }) => void>;
 
 beforeEach(() => {
   jest.useFakeTimers();
@@ -35,9 +36,18 @@ beforeEach(() => {
   startContinuousLoop.mockImplementation(() => ({ running: new Promise<void>(() => undefined), snapshot: () => ({ phase: 'buffered' }), dispose: jest.fn() }));
   prepareLoopPackage.mockClear();
   clock = 0;
+  Object.defineProperties(HTMLVideoElement.prototype, {
+    videoWidth: { configurable: true, get: () => 0 },
+    videoHeight: { configurable: true, get: () => 0 },
+    readyState: { configurable: true, get: () => 0 },
+  });
+  frameCallbacks = [];
+  Object.defineProperty(HTMLVideoElement.prototype, 'requestVideoFrameCallback', { configurable: true, value: (fn: typeof frameCallbacks[number]) => { frameCallbacks.push(fn); return frameCallbacks.length; } });
+  Object.defineProperty(HTMLVideoElement.prototype, 'cancelVideoFrameCallback', { configurable: true, value: () => undefined });
   play = jest.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(() => Promise.resolve());
   load = jest.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => undefined);
   jest.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
+  jest.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: jest.fn() } as unknown as CanvasRenderingContext2D);
   // A playing element whose clock the test drives.
   Object.defineProperty(HTMLMediaElement.prototype, 'paused', { configurable: true, get: () => false });
   Object.defineProperty(HTMLMediaElement.prototype, 'currentTime', { configurable: true, get: () => clock, set: () => undefined });
@@ -46,6 +56,8 @@ afterEach(() => {
   jest.clearAllTimers();
   jest.useRealTimers();
   jest.restoreAllMocks();
+  delete (HTMLVideoElement.prototype as unknown as Record<string, unknown>).requestVideoFrameCallback;
+  delete (HTMLVideoElement.prototype as unknown as Record<string, unknown>).cancelVideoFrameCallback;
 });
 
 /** Let the dynamic imports and the awaits behind them settle. */
@@ -61,9 +73,16 @@ function mount(onError = jest.fn()) {
   return { ...view, onError, video: view.container.querySelector('video') as HTMLVideoElement };
 }
 
+async function presentFrame() {
+  act(() => { frameCallbacks.shift()!(0, { mediaTime: clock, expectedDisplayTime: Date.now(), presentedFrames: 1 }); });
+  await settle();
+}
+
 it('adopts the one-stream engine when preparation finishes on a healthy element (control)', async () => {
   const { video } = mount();
   await settle();
+  expect(prepareLoopPackage).not.toHaveBeenCalled();
+  await presentFrame();
   expect(prepareLoopPackage).toHaveBeenCalledTimes(1);
   // The clock advances every watchdog sample: no stall.
   for (let i = 0; i < 6; i++) { clock += 4; act(() => { jest.advanceTimersByTime(4_000); }); }
@@ -76,6 +95,7 @@ it('adopts the one-stream engine when preparation finishes on a healthy element 
 it('a stall while preparing recovers the native element, stops preparing, and never starts the stream', async () => {
   const { video, onError } = mount();
   await settle();
+  await presentFrame();
   const signal = prepareLoopPackage.mock.calls[0][2];
   expect(signal.aborted).toBe(false);
   const loadsBefore = load.mock.calls.length;
@@ -96,9 +116,10 @@ it('a stall while preparing recovers the native element, stops preparing, and ne
 it('a second stall after the native recovery hands the file to the page as failed, once', async () => {
   const { onError } = mount();
   await settle();
+  await presentFrame();
   act(() => { jest.advanceTimersByTime(24_000); });           // episode 1 → fallback + reload
   expect(onError).not.toHaveBeenCalled();
-  clock += 1; act(() => { jest.advanceTimersByTime(4_000); }); // progress re-arms the detector
+  clock += 1; await presentFrame(); act(() => { jest.advanceTimersByTime(4_000); }); // progress re-arms the detector
   act(() => { jest.advanceTimersByTime(24_000); });           // episode 2 → the file
   expect(onError).toHaveBeenCalledTimes(1);
 });
@@ -115,6 +136,8 @@ it('retains a 4K frame through adoption until replacement frame output, and free
   const request = jest.fn((fn: typeof frames[number]) => { frames.push(fn); return frames.length; });
   Object.defineProperty(HTMLVideoElement.prototype, 'requestVideoFrameCallback', { configurable: true, value: request });
   const { video, container, unmount } = mount();
+  await settle();
+  act(() => { frames.shift()!(0, { mediaTime: 0, expectedDisplayTime: 0, presentedFrames: 1 }); });
   await settle();
   startContinuousLoop.mockImplementation((...args: unknown[]) => {
     (args[3] as () => void)();
@@ -137,4 +160,33 @@ it('retains a 4K frame through adoption until replacement frame output, and free
   unmount();
   expect(canvas.width).toBe(0);
   delete (HTMLVideoElement.prototype as unknown as Record<string, unknown>).requestVideoFrameCallback;
+});
+
+it('a 24-second first-file load never trips the playback watchdog or competes with packaging', async () => {
+  const { video, onError } = mount();
+  await settle();
+  act(() => { video.dispatchEvent(new Event('playing')); jest.advanceTimersByTime(24_000); });
+  expect(prepareLoopPackage).not.toHaveBeenCalled();
+  expect(startContinuousLoop).not.toHaveBeenCalled();
+  expect(load).not.toHaveBeenCalled();
+  expect(onError).not.toHaveBeenCalled();
+  await presentFrame();
+  expect(prepareLoopPackage).toHaveBeenCalledTimes(1);
+  await act(async () => { finishPackage(PACKAGE); await Promise.resolve(); });
+  await settle();
+  expect(startContinuousLoop).toHaveBeenCalledTimes(1);
+});
+
+it('a file that never presents its first frame has a finite recovery deadline and escalates once', async () => {
+  const { onError } = mount();
+  await settle();
+  const before = load.mock.calls.length;
+  act(() => { jest.advanceTimersByTime(48_000); });
+  expect(load.mock.calls.length).toBe(before + 1);
+  expect(onError).not.toHaveBeenCalled();
+  act(() => { jest.advanceTimersByTime(48_000); });
+  expect(onError).toHaveBeenCalledTimes(1);
+  act(() => { jest.advanceTimersByTime(48_000); });
+  expect(onError).toHaveBeenCalledTimes(1);
+  expect(prepareLoopPackage).not.toHaveBeenCalled();
 });

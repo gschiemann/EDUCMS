@@ -106,6 +106,54 @@ test.describe('one-stream continuous video', () => {
     expect(state).toMatchObject({ delayed: true, waits: 0, backend: 'continuous' });
     expect(state.frames).toBeGreaterThan(100);
   });
+  test('initial buffer loading is bounded preparation, not a decoder stall', async ({ page }) => {
+    test.setTimeout(100_000);
+    await seedVerifiedVideo(page);
+    await page.addInitScript(() => {
+      const match = Cache.prototype.match;
+      let reads = 0;
+      Cache.prototype.match = async function(...args) {
+        if (String(args[0]).includes('/__venueos_loop__/') && /\/\d+$/.test(String(args[0])) && reads++ < 8) {
+          await new Promise(resolve => setTimeout(resolve, 2500));
+        }
+        return match.apply(this, args);
+      };
+    });
+    await bootMockPlayer(page, { tag: 'continuous-startup-flash', kind: 'video', videoMp4: true, playback: { loopMode: 'continuous' } });
+    await expect.poll(() => page.evaluate(() => {
+      const v = document.querySelector('video');
+      return v?.dataset.loopBackend === 'continuous' && v.currentTime > 3;
+    }), { timeout: 65_000 }).toBe(true);
+    const loop = await page.evaluate(() => (window as unknown as { __eduLoopBoundary: () => { fallbacks: number } | null }).__eduLoopBoundary());
+    expect(loop?.fallbacks ?? 0).toBe(0);
+  });
+  test('preparation waits for a delayed first compositor frame', async ({ page }) => {
+    test.setTimeout(80_000);
+    // Deliberately withhold the first compositor observation. A playing event
+    // or an advancing clock must not start concurrent fragment preparation.
+    await page.addInitScript(() => {
+      const request = HTMLVideoElement.prototype.requestVideoFrameCallback;
+      let first = true;
+      HTMLVideoElement.prototype.requestVideoFrameCallback = function(callback) {
+        return request.call(this, (now, meta) => {
+          if (first) { first = false; setTimeout(() => callback(now, meta), 20_000); }
+          else callback(now, meta);
+        });
+      };
+    });
+    await seedVerifiedVideo(page);
+    await bootMockPlayer(page, { tag: 'continuous-slow-open', kind: 'video', videoMp4: true,
+      playback: { loopMode: 'continuous' },
+    });
+    await page.waitForTimeout(16_000);
+    expect(await page.locator('video').getAttribute('data-loop-backend')).toBe('preparing-continuous');
+    await expect.poll(() => page.evaluate(() => {
+      const v = document.querySelector('video');
+      return v?.dataset.loopBackend === 'continuous' && v.currentTime > 3;
+    }), { timeout: 60_000 }).toBe(true);
+    const loop = await page.evaluate(() => (window as unknown as { __eduLoopBoundary: () => { fallbacks: number } | null }).__eduLoopBoundary());
+    expect(loop?.fallbacks ?? 0).toBe(0);
+  });
   test('a startup buffer quota reduces headroom while preserving every video sample', async ({ page }) => {
     test.setTimeout(90_000);
     await seedVerifiedVideo(page);

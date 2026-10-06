@@ -13,6 +13,8 @@ import { createMediaStallDetector, setActiveMediaStalled } from './mediaStallWat
 import { continuousGuardKey } from './continuousLoopRevision';
 import { retainVideoFrame, releaseVideoFrame, reportContinuousFailure } from './continuousRecovery';
 
+const NATIVE_STARTUP_MS = 45_000;
+
 interface Props {
   src: string; sourceHash: string; videoKey: string; isActive: boolean; classes: string;
   onPlaying?: () => void; onError: () => void;
@@ -43,9 +45,14 @@ export function ContinuousLoopVideo({ src, sourceHash, videoKey, isActive, class
     let continuous: ContinuousBoundaryDetector | null = null;
     let frameId: number | undefined;
     let alive: ReturnType<typeof setInterval> | undefined;
-    let preparationPhase = 'imports';
+    let preparationPhase = 'native-start';
+    let firstFrameSeen = false;
+    let startupAt = Date.now();
+    let resolveFirstFrame: () => void = () => undefined;
+    const firstFrame = new Promise<void>(resolve => { resolveFirstFrame = resolve; });
     const native = new NativeWrapDetector();
     const kv = scopedStorage(sourceHash);
+    const detector = createMediaStallDetector();
     let heldFrame = false;
     let replacementLoaded = false;
     const holdFrame = () => {
@@ -64,6 +71,7 @@ export function ContinuousLoopVideo({ src, sourceHash, videoKey, isActive, class
     const fallback = (reason: string) => {
       if (disposed || fellBack) return;
       fellBack = true;
+      resolveFirstFrame();
       reportContinuousFailure(reason, video, engine?.snapshot() ?? { phase: preparationPhase });
       if (video.getAttribute('src') !== src) holdFrame();
       // The fallback is final for this mount: stop preparing too. A package that
@@ -79,6 +87,7 @@ export function ContinuousLoopVideo({ src, sourceHash, videoKey, isActive, class
       video.dataset.loopBackend = 'native';
       // A preparation error need not disturb the already-playing native file.
       if (video.getAttribute('src') !== src) {
+        firstFrameSeen = false; startupAt = Date.now(); detector.reset();
         video.src = src; video.loop = true; video.muted = true;
         video.play().catch(() => { /* active error / watchdog owns it */ });
       } else releaseFrame();
@@ -103,6 +112,7 @@ export function ContinuousLoopVideo({ src, sourceHash, videoKey, isActive, class
 
     const onFrame = (_now: number, meta: FrameMeta) => {
       if (disposed) return;
+      if (!firstFrameSeen) { firstFrameSeen = true; resolveFirstFrame(); }
       if (heldFrame && replacementLoaded && video.readyState >= 2) releaseFrame();
       const event = continuous ? continuous.onFrame(meta) : native.onFrame(meta, video.duration);
       if (event) loopBoundaryTracker.record(event);
@@ -114,6 +124,12 @@ export function ContinuousLoopVideo({ src, sourceHash, videoKey, isActive, class
     const prepare = async () => {
       if (kv) { bootCheck(kv, Date.now()); if (isBlocked(kv, Date.now())) { fallback('blocked'); return; } }
       try {
+        // A large cached MP4 can take longer than the steady-state stall
+        // deadline to open on Android. Do not compete for flash/parser work
+        // before its first decoded frame, or cancel preparation as a stall.
+        await firstFrame;
+        if (disposed || fellBack) return;
+        preparationPhase = 'imports';
         const [{ prepareLoopPackage }, { startContinuousLoop }] = await Promise.all([
           import('./continuousLoopPackage'), import('./continuousLoop'),
         ]);
@@ -134,26 +150,36 @@ export function ContinuousLoopVideo({ src, sourceHash, videoKey, isActive, class
     };
     void prepare();
 
-    const detector = createMediaStallDetector();
     let recoveries = 0;
+    let recoveryFailed = false;
     const watchdog = setInterval(() => {
-      const result = detector.sample(Date.now(), { currentTimeMs: video.currentTime * 1000, decodedFrames: decodedFrameCount(video),
-        paused: video.paused, seeking: video.seeking, ended: video.ended });
+      if (recoveryFailed) return;
+      const now = Date.now();
+      const starting = !firstFrameSeen;
+      // Startup has its own finite deadline. The 12-second playback detector
+      // starts after an actual frame; currentTime=0/readyState=0 is not evidence
+      // that a decoder which has never started has become stuck.
+      const result = starting ? (now - startupAt >= NATIVE_STARTUP_MS ? 'stalled' : 'idle') :
+        detector.sample(now, { currentTimeMs: video.currentTime * 1000, decodedFrames: decodedFrameCount(video),
+          paused: video.paused, seeking: video.seeking, ended: video.ended });
       setActiveMediaStalled(detector.isStalled());
       if (result !== 'stalled') return;
+      const reason = starting ? 'native-start-timeout' : 'clock-stalled';
       // The detector reports an episode ONCE. With the stream running, the
       // fallback itself restarts the element on the original file. While still
       // preparing, the element is already on the original file and the fallback
       // does not touch it — so that one report must also recover it, or nothing
       // ever does.
-      if (engine && !fellBack) { fallback('clock-stalled'); return; }
-      if (!fellBack) fallback('clock-stalled');
-      if (++recoveries === 1) { holdFrame(); video.load(); video.play().catch(() => undefined); }
-      else callbacks.current.onError();
+      if (engine && !fellBack) { fallback(reason); return; }
+      if (!fellBack) fallback(reason);
+      if (++recoveries === 1) {
+        holdFrame(); firstFrameSeen = false; startupAt = now; detector.reset();
+        video.load(); video.play().catch(() => undefined);
+      } else { recoveryFailed = true; callbacks.current.onError(); }
     }, 4000);
 
     return () => {
-      disposed = true; life.abort(); engine?.dispose();
+      disposed = true; resolveFirstFrame(); life.abort(); engine?.dispose();
       clearInterval(watchdog); if (alive) clearInterval(alive);
       if (frameId !== undefined) video.cancelVideoFrameCallback?.(frameId);
       window.removeEventListener('pagehide', onHide);

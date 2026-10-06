@@ -49,10 +49,17 @@ playlists use their existing paths. A failure restores the original on the same
 element once, records a reason and blocks this file/backend for 24 hours. Page
 cleanup cancels the pump, removes callbacks/listeners/timers and revokes its URL.
 A blocked reload does not extend the block. Two-deck blocks are independent.
-The continuous guard is scoped by engine revision and source digest. Revision 3
+The continuous guard is scoped by engine revision and source digest. Revision 4
 gets one fresh attempt for a file blocked by an earlier revision; older failure
-records are preserved. A failure on revision 3 remains blocked across reloads
+records are preserved. A failure on revision 4 remains blocked across reloads
 for 24 hours.
+
+Native file startup is separate from steady playback. Fragment preparation
+waits for the first compositor video frame so it does not compete with a large
+file's initial cache read. The 12-second stall detector starts after that frame.
+A file with no first frame gets a finite 45-second startup deadline, one native
+reload, then the existing file-failure path if that restart also produces no
+frame. A `playing` event alone does not establish decoded-frame progress.
 
 At initial stream adoption and recovery, a display-only canvas retains the
 last available source-resolution frame, up to 3840x2160 pixels, while the same
@@ -63,8 +70,10 @@ a lower-resolution video. Capture failure does not stop recovery. A frozen
 frame is still a recovery interval, not evidence of advancing playback.
 Fallback logs include media/buffer/pump state without URLs or credentials;
 the Android diagnostics upload is requested after failures, at most once per
-minute across mounts, using the existing authenticated bridge. Blocked reloads
-do not trigger additional uploads. This distinguishes a read starvation from
+minute across mounts. The page reads the native log and uploads it with its
+current screen ID and device credential to the existing authenticated endpoint;
+older APK fingerprint upload paths cannot attribute these events. A blocked
+mount requests the previous failure's evidence once after startup. This distinguishes a read starvation from
 a decoder/append failure in subsequent field evidence.
 
 `ContinuousBoundaryDetector` measures compositor frame hold at forward cycle
