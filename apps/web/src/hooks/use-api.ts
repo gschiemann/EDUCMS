@@ -3458,6 +3458,9 @@ export interface PublishToFleetResult {
   sourcePlaylistId: string;
   totalScreens: number;
   totalLocations: number;
+  ok?: boolean;
+  screensScheduled?: number;
+  failures?: Array<{ tenantId: string; tenantName: string; error: string }>;
   /**
    * Rule 16 (2026-09-26): screens whose rule is HELD for a 1080p playback copy.
    * They keep what they show now and start by themselves when the copy lands;
@@ -3467,6 +3470,7 @@ export interface PublishToFleetResult {
   perLocation: Array<{
     tenantId: string; tenantName: string; playlistId: string; screensScheduled: number; isParent: boolean;
     screensPending?: number; pendingScreenIds?: string[];
+    screenFailures?: Array<{ screenId: string; screenName: string; error: string }>;
   }>;
 }
 export function usePublishToFleet() {

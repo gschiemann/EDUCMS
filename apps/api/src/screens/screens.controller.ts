@@ -2499,6 +2499,9 @@ export class ScreensController {
           ? {
               tenantId: s.tenantId,
               screenGroupId: s.screenGroupId,
+              faceOfScreenId: s.faceOfScreenId,
+              faceIndex: s.faceIndex,
+              faceContentMode: s.faceContentMode,
               address: s.address,
               latitude: s.latitude,
               longitude: s.longitude,

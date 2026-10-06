@@ -37,6 +37,8 @@ const noopMutation = () => ({ mutateAsync: jest.fn().mockResolvedValue({ id: 'ne
 const createScheduleSpy = jest.fn().mockResolvedValue({ id: 'sched-new' });
 
 jest.mock('@/hooks/use-api', () => ({
+  useFleetOperations: () => ({ data: undefined, isLoading: false }),
+  usePublishToFleet: () => ({ mutateAsync: jest.fn(), isPending: false }),
   useAssets: () => ({ data: ASSETS }),
   useAssetFolders: () => ({ data: [] }),
   useTemplates: () => ({ data: [] }),

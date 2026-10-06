@@ -65,6 +65,9 @@ import { HARDWARE_CATALOG, resolveHardwareModel } from '@cms/api-types';
 export interface OpsScreen {
   tenantId?: string;
   sourceTenant?: { id: string; name: string; slug: string } | null;
+  faceOfScreenId?: string | null;
+  faceIndex?: number | null;
+  faceContentMode?: string | null;
   id: string;
   name?: string | null;
   status?: string | null;

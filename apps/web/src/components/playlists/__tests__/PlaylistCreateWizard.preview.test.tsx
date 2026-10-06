@@ -21,6 +21,8 @@ const noopMutation = () => ({ mutateAsync: jest.fn().mockResolvedValue({ id: 'ne
 // Wholesale mock: every hook the wizard calls must be listed or it reads as
 // undefined at render. If you add a hook to the wizard, add it here too.
 jest.mock('@/hooks/use-api', () => ({
+  useFleetOperations: () => ({ data: undefined, isLoading: false }),
+  usePublishToFleet: () => ({ mutateAsync: jest.fn(), isPending: false }),
   useAssets: () => ({ data: ASSETS }),
   useAssetFolders: () => ({ data: [] }),
   useTemplates: () => ({ data: [] }),

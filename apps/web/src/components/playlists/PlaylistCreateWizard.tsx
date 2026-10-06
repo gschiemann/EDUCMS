@@ -101,7 +101,10 @@ import {
   useCreateSubmission,
   useSetPlaylistSync,
   useSetScreenFaceMode,
+  useFleetOperations,
+  usePublishToFleet,
 } from '@/hooks/use-api';
+import { LocationFilter } from '@/components/screens/LocationFilter';
 // 2026-09-16 — double-sided displays. The API models one face as one Screen
 // row; the operator installed ONE display. This folds the flat list back into
 // displays so Step 3 can ask one question instead of showing two rows that
@@ -111,6 +114,7 @@ import {
   publishTargetsForSides,
   unitSelection,
   type DisplayUnit,
+  type FaceAwareScreenRef,
 } from '@/lib/screen-faces';
 import { useUIStore } from '@/store/ui-store';
 import { useQueryClient } from '@tanstack/react-query';
@@ -174,6 +178,17 @@ const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
 const apiBase = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1').replace('/api/v1', '');
 
 type PlaylistKind = 'media' | 'template';
+
+interface WizardScreen extends FaceAwareScreenRef {
+  sourceTenant?: { id: string; name: string } | null;
+  screenGroupId?: string | null;
+}
+interface WizardScreenGroup {
+  id: string;
+  name?: string | null;
+  tenantId?: string;
+  screens?: WizardScreen[];
+}
 
 // 2026-05-26 — `items` is what the wizard JUST wrote to the server in
 // `PUT /playlists/:id/items`. The parent's editor view reads from this
@@ -494,6 +509,8 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
   // fans out to every member (fixes "publish reaches only 1 of N screens").
   const [selectedGroupIds, setSelectedGroupIds] = useState<Set<string>>(new Set());
   const [screenSearch, setScreenSearch] = useState('');
+  const [localScreensOnly, setLocalScreensOnly] = useState(false);
+  const [screenLocation, setScreenLocation] = useState('all');
 
   // Step 4 — publish
   const [activateImmediately, setActivateImmediately] = useState<boolean>(true);
@@ -511,8 +528,24 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
   const { data: assets } = useAssets();
   const { data: folders } = useAssetFolders();
   const { data: templates } = useTemplates();
-  const { data: screens } = useScreens();
-  const { data: screenGroups } = useScreenGroups();
+  const { data: localScreens } = useScreens();
+  const { data: localGroups } = useScreenGroups();
+  const user = useUIStore((s) => s.user);
+  const canPublishCompany = user?.role === 'SUPER_ADMIN' || user?.role === 'DISTRICT_ADMIN';
+  const fleetQuery = useFleetOperations({ enabled: open && canPublishCompany });
+  const publishToFleet = usePublishToFleet();
+  // Never reuse a previous tenant's cached company payload during a switch.
+  const fleet = canPublishCompany && fleetQuery.data?.root?.id === user?.tenantId ? fleetQuery.data : undefined;
+  const isCorporate = (fleet?.locations?.length ?? 0) > 1;
+  const companyScope = isCorporate && !localScreensOnly;
+  const screens: WizardScreen[] = (companyScope ? fleet?.screens : localScreens) ?? [];
+  const screenGroups: WizardScreenGroup[] = (companyScope
+    ? (fleet?.operations?.groups ?? []).map((group) => ({
+        ...group,
+        name: `${group.sourceTenant?.name ?? 'Location'} · ${group.name}`,
+        screens: (fleet?.screens ?? []).filter((screen) => screen.screenGroupId === group.id),
+      }))
+    : localGroups) ?? [];
   const createPlaylist = useCreatePlaylist();
   const saveItems = useReorderPlaylistItems();
   const createSchedule = useCreateSchedule();
@@ -540,7 +573,7 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
   // An Editor (CONTRIBUTOR) can build + stage but can't publish to screens
   // directly — picking screens routes the final step to Submit-for-Review
   // instead of going live. Admins publish immediately.
-  const isContributor = useUIStore((s) => s.user?.role) === 'CONTRIBUTOR';
+  const isContributor = user?.role === 'CONTRIBUTOR';
   const willSubmitForReview = isContributor && selectedScreenIds.size > 0;
 
   const nameInputRef = useRef<HTMLInputElement>(null);
@@ -570,6 +603,8 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
     // a video wall today quietly syncing an unrelated playlist tomorrow.
     setSyncPlayback(false);
     setScreenSearch('');
+    setLocalScreensOnly(false);
+    setScreenLocation('all');
     setActivateImmediately(true);
     setSchedStartDate('');
     setSchedEndDate('');
@@ -728,14 +763,41 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
     return true;
   });
 
-  const filteredScreens = (screens || []).filter((s: any) => {
+  const matchingScreens = screens.filter((s) => {
+    if (companyScope && screenLocation !== 'all' && s.sourceTenant?.id !== screenLocation) return false;
     if (!screenSearch) return true;
     const needle = screenSearch.toLowerCase();
-    const hay = `${s.name || ''} ${s.id}`.toLowerCase();
+    const hay = `${s.name || ''} ${s.id} ${s.sourceTenant?.name ?? ''}`.toLowerCase();
     return hay.includes(needle);
   });
+  const matchingIds = new Set(matchingScreens.map((s) => s.id));
+  // Keep a whole display together when a search matches one of its sides.
+  const filteredScreens = companyScope
+    ? groupScreensIntoUnits(screens)
+        .filter((unit) => unit.sides.some((side) => matchingIds.has(side.screen.id)))
+        .flatMap((unit) => unit.sides.map((side) => side.screen))
+    : matchingScreens;
+  const visibleGroups = screenGroups.filter((group) =>
+    !companyScope || screenLocation === 'all' || group.tenantId === screenLocation,
+  );
 
   const selectedTemplate = (templates || []).find((t: any) => t.id === selectedTemplateId);
+  const resolvedScreenIds = new Set(selectedScreenIds);
+  for (const group of screenGroups || []) {
+    if (selectedGroupIds.has(group.id)) {
+      (group.screens || []).forEach((s) => { if (s?.id) resolvedScreenIds.add(s.id); });
+    }
+  }
+  // A mirroring side plays through its front; it must never get a dead rule.
+  const fleetTargetIds = screens
+    .filter((s) => resolvedScreenIds.has(s.id) && (!s.faceOfScreenId || s.faceContentMode === 'OWN'))
+    .map((s) => s.id);
+  const fleetTargets = new Set(fleetTargetIds);
+  const fleetPublish = companyScope && screens.some((s) =>
+    fleetTargets.has(s.id) && s.sourceTenant?.id !== fleet?.root?.id,
+  );
+  const effectiveActivate = fleetPublish || activateImmediately;
+  const fleetTemplateBlocked = fleetPublish && kind === 'template' && !selectedTemplate?.isSystem;
 
   // ─── Blast radius ──────────────────────────────────────────────────
   //
@@ -752,12 +814,15 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
   // note on probeVideoDuration).
   const blastRadius = computeBlastRadius({
     screens: screens || [],
-    groups: screenGroups || [],
-    selectedScreenIds,
-    selectedGroupIds,
+    groups: fleetPublish
+      ? (fleet?.locations ?? []).map((location) => ({ ...location, screens: screens.filter((s) => s.sourceTenant?.id === location.id) }))
+      : screenGroups || [],
+    selectedScreenIds: fleetPublish ? fleetTargetIds : selectedScreenIds,
+    selectedGroupIds: fleetPublish ? [] : selectedGroupIds,
+    groupMode: fleetPublish ? 'containing' : 'picked',
   });
   const reach = reachWarnings(blastRadius, {
-    windowed: !activateImmediately,
+    windowed: !effectiveActivate,
     days: schedDays,
     alwaysLabel: '“Activate immediately”',
   });
@@ -957,8 +1022,9 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
     // Belt-and-braces for the P7 gate — the Create button is already
     // disabled while a blocking reach warning stands (windowed schedule,
     // zero days picked), but never let a keyboard/Enter path around it.
-    if (reachBlocked) return;
+    if (reachBlocked || fleetTemplateBlocked) return;
     setCreating(true);
+    let savedForRecovery: Parameters<Props['onCreated']>[0] | null = null;
     try {
       // 1. Create the playlist row.
       const body: { name: string; templateId?: string } = { name: name.trim() };
@@ -979,7 +1045,7 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
       //     it because a follow-up setting did not stick would be the worse
       //     outcome. A sync that silently failed is recoverable in one click
       //     from the playlist's Screens tab; a discarded playlist is not.
-      if (syncPlayback) {
+      if (syncPlayback && !fleetPublish) {
         try {
           await setPlaylistSync.mutateAsync({ id: playlistId, sync: true });
         } catch (e) {
@@ -1044,7 +1110,49 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
       //    - If no screens picked: skip schedule creation (operator chose
       //      to assign later from the playlist detail view).
       let draftScheduleIds: string[] = [];
-      if (selectedScreenIds.size > 0 || selectedGroupIds.size > 0) {
+      if (fleetPublish) {
+        savedForRecovery = { id: playlistId, name: created.name || name.trim(), templateId: created.templateId ?? null, items: editorItems };
+        const conflicts = findScreenConflicts({
+          targetScreenIds: fleetTargetIds,
+          windows: [{}],
+          excludePlaylistId: playlistId,
+          playlists: (fleet?.operations?.playlists ?? []) as never,
+          schedules: (fleet?.operations?.schedules ?? []) as never,
+          screens: (screens || []) as never,
+          groups: (screenGroups || []) as never,
+        });
+        const prompt = describeScreenConflicts(conflicts, name.trim() || 'this playlist', 'add-screens');
+        if (prompt && !await appConfirm({ title: prompt.title, message: prompt.message, tone: 'warn', confirmLabel: prompt.confirmLabel })) {
+          setCreating(false);
+          onCreated(savedForRecovery);
+          return;
+        }
+        const result = await publishToFleet.mutateAsync({ playlistId, screenIds: fleetTargetIds });
+        qc.invalidateQueries({ queryKey: ['schedules'] });
+        qc.invalidateQueries({ queryKey: ['screens', 'fleet'] });
+        qc.invalidateQueries({ queryKey: ['screens', 'fleet-operations'] });
+        const failures = [
+          ...(result.failures ?? []).map((failure) => `${failure.tenantName}: ${failure.error}`),
+          ...result.perLocation.flatMap((location) => (location.screenFailures ?? []).map((failure) => `${location.tenantName} · ${failure.screenName}: ${failure.error}`)),
+        ];
+        const scheduled = result.screensScheduled ?? result.perLocation.reduce((n, location) => n + location.screensScheduled, 0);
+        const pending = result.screensPending ?? 0;
+        const deliveredLocations = new Set(result.perLocation.map((location) => location.tenantId));
+        const failedIds = new Set(result.perLocation.flatMap((location) => (location.screenFailures ?? []).map((failure) => failure.screenId)));
+        const pendingIds = new Set(result.perLocation.flatMap((location) => location.pendingScreenIds ?? []));
+        const liveIds = screens.filter((screen) => fleetTargets.has(screen.id) && deliveredLocations.has(screen.sourceTenant?.id ?? '') && !failedIds.has(screen.id) && !pendingIds.has(screen.id)).map((screen) => screen.id);
+        // Report panes of glass, including mirrored sides, just as Review does.
+        // Older responses without held IDs fall back to their server totals.
+        const liveCount = pending > pendingIds.size ? scheduled : computeBlastRadius({ screens, selectedScreenIds: liveIds }).screenCount;
+        const pendingCount = pendingIds.size ? computeBlastRadius({ screens, selectedScreenIds: pendingIds }).screenCount : pending;
+        await appAlert({
+          title: failures.length ? 'Published with issues' : 'Playlist published',
+          message: `${liveCount} screen${liveCount === 1 ? '' : 's'} scheduled to play now across ${result.perLocation.length} location${result.perLocation.length === 1 ? '' : 's'}.` +
+            (pendingCount ? ` ${pendingCount} screen${pendingCount === 1 ? '' : 's'} will start when the playback copy is ready; they keep their current content until then.` : '') +
+            (failures.length ? ` These targets could not publish: ${failures.join('; ')}. Open the saved playlist to retry those screens.` : ''),
+          tone: failures.length ? 'warn' : 'info',
+        });
+      } else if (selectedScreenIds.size > 0 || selectedGroupIds.size > 0) {
         const computeStartTime = (): string => {
           if (!schedStartDate) return new Date().toISOString();
           const tod = activateImmediately ? '00:00' : schedTimeStart || '00:00';
@@ -1201,10 +1309,13 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
     } catch (err: any) {
       setCreating(false);
       await appAlert({
-        title: 'Couldn’t create playlist',
+        title: savedForRecovery ? 'Playlist saved, publishing failed' : 'Couldn’t create playlist',
         message: err?.message || 'Something went wrong. Try again, or split the steps in the editor.',
         tone: 'danger',
       });
+      // A failed distribution leaves the saved source available for retry;
+      // don't leave Create enabled to produce another duplicate playlist.
+      if (savedForRecovery) onCreated(savedForRecovery);
     }
   };
 
@@ -1251,7 +1362,8 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
   // Steps 3/4: always enabled
   const nextDisabled =
     (step === 1 && !canAdvanceFromStep1) ||
-    (step === 2 && !canAdvanceFromStep2);
+    (step === 2 && !canAdvanceFromStep2) ||
+    (step === 3 && fleetTemplateBlocked);
 
   // ─── Render ────────────────────────────────────────────────────────
 
@@ -1348,13 +1460,62 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
             />
           )}
           {step === 3 && (
+            <>
+            {canPublishCompany && fleetQuery.isLoading && (
+              <p role="status" className="mb-3 text-sm text-slate-500">Loading company screens…</p>
+            )}
+            {canPublishCompany && fleetQuery.isError && (
+              <div role="alert" className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                Company screens could not load. You can still select local screens.
+                <button type="button" onClick={() => void fleetQuery.refetch()} className="ml-2 underline font-bold">Try again</button>
+              </div>
+            )}
+            {isCorporate && (
+              <div className="mb-4 flex flex-wrap items-center gap-2">
+                <div role="group" aria-label="Screen scope" className="flex rounded-xl border border-slate-200 p-1 bg-slate-50">
+                  {[{ local: false, label: 'All company screens' }, { local: true, label: 'Local screens' }].map((scope) => (
+                    <button key={scope.label} type="button" aria-pressed={localScreensOnly === scope.local}
+                      onClick={() => {
+                        if (localScreensOnly === scope.local) return;
+                        setLocalScreensOnly(scope.local);
+                        setScreenLocation('all');
+                        setScreenSearch('');
+                        setSelectedScreenIds(new Set());
+                        setSelectedGroupIds(new Set());
+                      }}
+                      className={`min-h-[44px] px-3 rounded-lg text-xs font-bold ${localScreensOnly === scope.local ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500'}`}>
+                      {scope.label}
+                    </button>
+                  ))}
+                </div>
+                {companyScope && <LocationFilter locations={fleet?.locations ?? []} value={screenLocation} onChange={setScreenLocation} />}
+              </div>
+            )}
+            {fleetTemplateBlocked && (
+              <p role="alert" className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                This template belongs to this location. Choose Local screens, or use a media playlist or shared template to publish across the company.
+              </p>
+            )}
             <Step3Screens
               screens={filteredScreens}
               total={(screens || []).length}
-              groups={screenGroups || []}
+              groups={visibleGroups}
               search={screenSearch}
               setSearch={setScreenSearch}
               selectedIds={selectedScreenIds}
+              selectedCount={blastRadius.screenCount}
+              onToggleAll={companyScope ? () => {
+                const ids = filteredScreens.filter((s) => !s.faceOfScreenId || s.faceContentMode === 'OWN').map((s) => s.id);
+                const clearing = ids.length > 0 && ids.every((id) => selectedScreenIds.has(id));
+                setSelectedScreenIds((previous) => {
+                  const next = new Set(previous);
+                  ids.forEach((id) => clearing ? next.delete(id) : next.add(id));
+                  return next;
+                });
+                // Select-all is an explicit set of screens, not a future group fan-out.
+                setSelectedGroupIds(new Set());
+              } : undefined}
+              canSetFaceMode={companyScope ? (screen) => screen.sourceTenant?.id === fleet?.root?.id : undefined}
               onToggle={toggleScreen}
               onPickGroup={(group: any) => {
                 const ids: string[] = (group.screens || [])
@@ -1398,9 +1559,11 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
               faceModePending={setFaceMode.isPending}
               onSkip={() => {
                 setSelectedScreenIds(new Set());
+                setSelectedGroupIds(new Set());
                 goNext();
               }}
             />
+            </>
           )}
           {/* Sync belongs beside the screen pick, because it is a statement
               ABOUT those screens — Greg asked for it here rather than only on
@@ -1409,7 +1572,7 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
               screens dialog's picker, where there is no new playlist to sync.
               Only offered once at least one screen is picked: syncing nothing
               is a setting with no subject. */}
-          {step === 3 && selectedScreenIds.size + selectedGroupIds.size > 0 && (
+          {step === 3 && !fleetPublish && selectedScreenIds.size + selectedGroupIds.size > 0 && (
             <div className="mt-4 rounded-xl border border-slate-200 p-3.5 flex items-start justify-between gap-4">
               <div className="min-w-0">
                 <p className="text-sm font-bold text-slate-800">Keep screens in sync</p>
@@ -1439,7 +1602,8 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
           )}
           {step === 4 && (
             <Step4Publish
-              activate={activateImmediately}
+              activate={effectiveActivate}
+              companyPublish={fleetPublish}
               setActivate={setActivateImmediately}
               startDate={schedStartDate}
               setStartDate={setSchedStartDate}
@@ -1469,7 +1633,8 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
               template={selectedTemplate}
               blastRadius={blastRadius}
               reach={reach}
-              activate={activateImmediately}
+              activate={effectiveActivate}
+              companyPublish={fleetPublish}
               schedDays={schedDays}
               schedTimeStart={schedTimeStart}
               schedTimeEnd={schedTimeEnd}
@@ -1547,7 +1712,7 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
               <button
                 type="button"
                 onClick={handleCreate}
-                disabled={creating || reachBlocked}
+                disabled={creating || reachBlocked || fleetTemplateBlocked}
                 title={reachBlocked ? 'Pick at least one day, or switch to Activate immediately.' : undefined}
                 className="inline-flex items-center px-5 py-2 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 disabled:cursor-not-allowed rounded-lg shadow-sm transition-colors"
               >
@@ -1563,7 +1728,7 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
                         real, useful outcome — but the button must not imply
                         it went live. (willSubmitForReview already implies
                         ≥1 screen, so those two never collide.) */}
-                    {willSubmitForReview
+                    {fleetPublish ? 'Create & Publish' : willSubmitForReview
                       ? 'Create & Send for Review'
                       : blastRadius.screenCount === 0
                         ? "Create (won't display yet)"
@@ -2436,12 +2601,14 @@ function DoubleSidedUnitCard({
   onToggle,
   onSetFaceMode,
   pending,
+  readOnlyMode,
 }: {
   unit: DisplayUnit<any>;
   selectedIds: Set<string>;
   onToggle: (id: string) => void;
   onSetFaceMode: (faceScreenId: string, mode: 'MIRROR' | 'OWN') => void;
   pending?: boolean;
+  readOnlyMode?: boolean;
 }) {
   const combined = unit.sidesAreCombined;
   const selection = unitSelection(unit, selectedIds);
@@ -2472,6 +2639,7 @@ function DoubleSidedUnitCard({
           <p className="text-sm font-bold text-slate-800 truncate">
             {unit.primary.name || 'Untitled screen'}
           </p>
+          {unit.primary.sourceTenant?.name && <p className="text-xs text-slate-500 mt-0.5">{unit.primary.sourceTenant.name}</p>}
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1">
             Double-sided · {unit.sides.length} sides
           </p>
@@ -2492,7 +2660,8 @@ function DoubleSidedUnitCard({
               key={opt.mode}
               type="button"
               aria-pressed={active}
-              disabled={pending}
+              disabled={pending || readOnlyMode}
+              title={readOnlyMode ? 'Side settings are managed at this location' : undefined}
               onClick={() => setAll(opt.mode)}
               className={`flex-1 min-h-[44px] px-2 py-2 text-[11px] font-bold ${
                 i === 0 ? 'rounded-l-lg' : 'rounded-r-lg'
@@ -2528,7 +2697,7 @@ function DoubleSidedUnitCard({
             )}
           </button>
           <p className="text-[10px] text-slate-400 mt-1.5">
-            Both sides show this. Switch to “Different per side” to give the back its own content.
+            {readOnlyMode ? 'Both sides show this playlist. Side settings are managed at this location.' : 'Both sides show this. Switch to “Different per side” to give the back its own content.'}
           </p>
         </>
       ) : (
@@ -2602,6 +2771,9 @@ export function Step3Screens({
   search,
   setSearch,
   selectedIds,
+  selectedCount,
+  onToggleAll,
+  canSetFaceMode,
   onToggle,
   onPickGroup,
   onSetFaceMode,
@@ -2614,6 +2786,9 @@ export function Step3Screens({
   search: string;
   setSearch: (s: string) => void;
   selectedIds: Set<string>;
+  selectedCount?: number;
+  onToggleAll?: () => void;
+  canSetFaceMode?: (screen: WizardScreen) => boolean;
   onToggle: (id: string) => void;
   onPickGroup: (group: any) => void;
   onSetFaceMode: (faceScreenId: string, mode: 'MIRROR' | 'OWN') => void;
@@ -2643,10 +2818,17 @@ export function Step3Screens({
         <div className="inline-flex items-center px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-100">
           <Monitor className="w-3.5 h-3.5 text-emerald-600 mr-1.5" />
           <span className="text-xs font-bold text-emerald-700">
-            {selectedIds.size} of {total} screens
+            {selectedCount ?? selectedIds.size} of {total} screens
           </span>
         </div>
       </div>
+      {onToggleAll && (
+        <button type="button" onClick={onToggleAll} disabled={!screens.length}
+          className="mb-3 min-h-[44px] px-3 rounded-lg border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+          {screens.length > 0 && screens.filter((s: WizardScreen) => !s.faceOfScreenId || s.faceContentMode === 'OWN').every((s: WizardScreen) => selectedIds.has(s.id))
+            ? 'Clear matching screens' : 'Select all matching screens'}
+        </button>
+      )}
 
       {/* Screen groups — sit above the individual screens grid. Click
           a group → selects every screen it contains (toggle behavior:
@@ -2766,6 +2948,7 @@ export function Step3Screens({
                     onToggle={onToggle}
                     onSetFaceMode={onSetFaceMode}
                     pending={faceModePending}
+                    readOnlyMode={canSetFaceMode ? !canSetFaceMode(unit.primary) : false}
                   />
                 );
               }
@@ -2796,6 +2979,7 @@ export function Step3Screens({
                       <p className="text-sm font-bold text-slate-800 truncate">
                         {s.name || 'Untitled screen'}
                       </p>
+                      {s.sourceTenant?.name && <p className="text-xs text-slate-500 mt-0.5">{s.sourceTenant.name}</p>}
                       <div className="flex items-center mt-1">
                         {online ? (
                           <>
@@ -3137,6 +3321,7 @@ export function Step4Publish({
   toggleDay,
   screensPicked,
   optimizationNotice,
+  companyPublish,
 }: {
   activate: boolean;
   setActivate: (b: boolean) => void;
@@ -3152,7 +3337,16 @@ export function Step4Publish({
   toggleDay: (d: string) => void;
   screensPicked: number;
   optimizationNotice?: string | null;
+  companyPublish?: boolean;
 }) {
+  if (companyPublish) return (
+    <div>
+      <p className="text-base font-bold text-slate-800 mb-1">Publishing across the company</p>
+      <p className="text-sm text-slate-600 mb-3">Starts now and plays 24/7 until stopped. Each selected location receives its own copy of this playlist.</p>
+      <p className="text-xs text-slate-500">This replaces the regular content on the selected screens. Schedule windows are available when publishing to local screens.</p>
+      {optimizationNotice && <p role="status" className="mt-4 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm text-indigo-950">{optimizationNotice}</p>}
+    </div>
+  );
   return (
     <div>
       <p className="text-base font-bold text-slate-800 mb-1">Publishing</p>
@@ -3291,6 +3485,7 @@ function Step5Review({
   schedStartDate,
   schedEndDate,
   willSubmitForReview,
+  companyPublish,
 }: {
   name: string;
   kind: PlaylistKind;
@@ -3305,6 +3500,7 @@ function Step5Review({
   schedStartDate: string;
   schedEndDate: string;
   willSubmitForReview?: boolean;
+  companyPublish?: boolean;
 }) {
   const scheduleLabel = (() => {
     if (activate) {
@@ -3329,8 +3525,8 @@ function Step5Review({
           <Sparkles className="w-5 h-5 text-indigo-600" />
         </div>
         <div>
-          <p className="text-base font-bold text-slate-800">{willSubmitForReview ? 'Ready to send for review' : 'Ready to create'}</p>
-          <p className="text-xs text-slate-500">{willSubmitForReview ? 'Double-check the summary, then send it to an admin to review and publish.' : 'Double-check the summary below, then hit Create Playlist.'}</p>
+          <p className="text-base font-bold text-slate-800">{willSubmitForReview ? 'Ready to send for review' : companyPublish ? 'Ready to publish' : 'Ready to create'}</p>
+          <p className="text-xs text-slate-500">{willSubmitForReview ? 'Double-check the summary, then send it to an admin to review and publish.' : companyPublish ? 'Double-check the screens and locations below, then hit Create & Publish.' : 'Double-check the summary below, then hit Create Playlist.'}</p>
         </div>
       </div>
 
@@ -3403,6 +3599,7 @@ function Step5Review({
         radius={blastRadius}
         warnings={reach}
         verb={willSubmitForReview ? 'Requests publish to' : 'Publishes to'}
+        groupNoun={companyPublish ? 'location' : 'group'}
       />
       {blastRadius.screenCount === 0 && (
         <p className="text-xs text-slate-500 mt-2 text-center">

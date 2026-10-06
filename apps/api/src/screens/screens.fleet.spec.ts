@@ -216,6 +216,9 @@ describe('fleet operations context', () => {
           pairingCode: 'CHILD1',
           deviceSecret: 'secret',
           resolution: '1920x1080',
+          faceOfScreenId: 'screen-front',
+          faceIndex: 1,
+          faceContentMode: 'MIRROR',
         },
       ],
     });
@@ -255,6 +258,9 @@ describe('fleet operations context', () => {
       tenantId: 'a',
       screenGroupId: 'group-a',
       resolution: '1920x1080',
+      faceOfScreenId: 'screen-front',
+      faceIndex: 1,
+      faceContentMode: 'MIRROR',
       syncActive: true,
     });
     expect(result.screens[1]).not.toHaveProperty('deviceFingerprint');
