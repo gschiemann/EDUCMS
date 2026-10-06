@@ -69,6 +69,7 @@ import { fetchJsonBounded, headersStatusOf } from './fetchTimeout';
 // frame forever (1.1.6 audit P0-5). Pure detector + a page-level flag the
 // proof signature consumes.
 import { playbackSafety, decodedFrameCount, isOperatorRefresh, requestDiagnosticsUpload } from './playbackSafety';
+import { otaCheckAnswered } from './otaAttempt';
 import { createDeviceDiagnosticsUploader, installDeviceDiagnosticsUploader } from './deviceDiagnostics';
 import { createMediaStallDetector, setActiveMediaStalled, isActiveMediaStalled } from './mediaStallWatchdog';
 // 2026-08-30 deep audit B-P0-1/2/3 — wrap-aware schedule windows + the
@@ -2922,47 +2923,10 @@ function PlayerPage() {
   const phaseRef = useRef<Phase>('registering');
   useEffect(() => { phaseRef.current = phase; }, [phase]);
 
-  // 2026-05-20 — always-on-screen update fix. The bundle-drift watcher
-  // (Phase B4, below) refuses to reload while content is playing so it
-  // never flashes mid-content. But a screen that plays a single URL /
-  // looping item 24/7 is ALWAYS "playing" and never hits an idle window,
-  // so it deferred the reload FOREVER and ran an ancient web bundle
-  // indefinitely (operator's M43 kiosk was stuck on a months-old build —
-  // that's why a stale error overlay bled through a URL page that current
-  // code renders correctly). Two new triggers fix it without flashing
-  // mid-content:
-  //   1. Loop-boundary reload (heartbeat): for a multi-item playlist, do
-  //      the pending reload at the exact moment we wrap from the last
-  //      item back to the first — the content was about to restart from
-  //      item 0 anyway, so picking up the new bundle there is invisible.
-  //   2. Max-staleness cap (watcher): a screen that NEVER wraps (single
-  //      URL / solo item / single-board template) can't hit a loop
-  //      boundary, so once the bundle has been known-stale longer than
-  //      this cap we reload anyway. The dashboard "Refresh kiosk page"
-  //      push stays the instant override for an urgent fix.
-  //
-  // 2026-06-27 — LAUNCH-BLOCKING fix. The cap above used to be SIX HOURS,
-  // which meant any continuously-looping kiosk (a single board, a solo
-  // URL, a template-only screen) ran a known-stale bundle for up to 6h
-  // after a deploy — confirmed live on a 960×1080 LED that never picked
-  // up new player/emergency fixes. The loop-boundary reload only covers
-  // multi-distinct-item PLAYLISTS (the heartbeat effect requires
-  // playlist.items and skips single-distinct-item playlists), so a
-  // single-board screen had NOTHING but this cap. The WS REFRESH_WEB push
-  // doesn't help either: if a kiosk's WebSocket is flaky/down (the very
-  // symptom — emergencies arrive via the HTTP manifest poll but reloads
-  // don't), the WS-only push never lands.
-  //
-  // The cap is now ~12 minutes — roughly 1-2 typical playlist loops. A
-  // brief between-loop splash blip is the correct trade for a kiosk that
-  // is otherwise running stale code indefinitely. The watcher polls
-  // /api/build-info on its OWN interval (WS-independent), so this fires
-  // even when the socket is dead.
-  // `bundleDriftSinceRef` = epoch ms when we first saw the server SHA
-  // differ from ours (null = we're in sync). Read by both the watcher
-  // and the playback heartbeat (different effects → must be a ref).
+  // A deployment is not an instruction to interrupt live content. Detect
+  // bundle drift for idle activation only; operator REFRESH_WEB and actual
+  // failure recovery retain their separate, authenticated paths.
   const bundleDriftSinceRef = useRef<number | null>(null);
-  const MAX_BUNDLE_STALE_MS = 12 * 60 * 1000; // 12 min (~1-2 playlist loops)
   // Reload-loop floor: epoch ms of the last bundle-drift reload we fired.
   // Guarantees we NEVER reload more than once per MIN_BUNDLE_RELOAD_GAP_MS
   // for the bundle-drift reason — so even if the server SHA never
@@ -4241,21 +4205,21 @@ function PlayerPage() {
           // eslint-disable-next-line no-console
           console.warn(`[OTA] suppressed false INSTALLED banner: claimed=${claimedVn} running=${runningVn}`);
         }
-        // 2026-08-25 — operator pushed an update and the panel's banner
-        // TITLE sat on "Update in progress" indefinitely while the
-        // sublabel said "no newer release offered". UP_TO_DATE is a
-        // TERMINAL answer, not progress: show the outcome, then stand
-        // down on its own (same pattern as the INSTALLED dismissal
-        // above; longer dwell so someone standing at the panel can
-        // actually read it).
-        // …but only for THIS attempt's answer. The previous check's
-        // UP_TO_DATE (same `at` as when the attempt began) would otherwise
-        // take the banner down in the middle of the install it started.
-        const answersThisAttempt =
-          otaBaselineAtRef.current === undefined || (data.ota.at || null) !== otaBaselineAtRef.current;
-        if (data.ota.state === 'UP_TO_DATE' && answersThisAttempt) {
-          setTimeout(() => setOtaProgress(null), 12_000);
-        }
+      }
+      // 2026-08-25 — operator pushed an update and the panel's banner
+      // TITLE sat on "Update in progress" indefinitely while the
+      // sublabel said "no newer release offered". UP_TO_DATE is a
+      // TERMINAL answer, not progress: show the outcome, then stand
+      // down on its own (same pattern as the INSTALLED dismissal
+      // above; longer dwell so someone standing at the panel can
+      // actually read it).
+      // …but only for THIS attempt's answer. The previous check's
+      // UP_TO_DATE (same `at` as when the attempt began) would otherwise
+      // take the banner down in the middle of the install it started.
+      const answersThisAttempt =
+        otaBaselineAtRef.current === undefined || (data.ota.at || null) !== otaBaselineAtRef.current;
+      if (data.ota.state === 'UP_TO_DATE' && answersThisAttempt) {
+        setTimeout(() => setOtaProgress(null), 12_000);
       }
     } else {
       serverOtaAtRef.current = null;
@@ -4269,6 +4233,13 @@ function PlayerPage() {
       ? data.forceUpdatePendingAt.trim()
       : '';
     const pendingKey = pendingAt || `legacy-${Math.floor(now / 60_000)}`;
+
+    if (otaCheckAnswered(data.ota?.state, data.ota?.at, pendingAt)) {
+      // Native already answered this server request; a web reload must
+      // not re-fire it or fabricate another update-in-progress banner.
+      otaPollKeyRef.current = pendingKey;
+      return;
+    }
 
     if (pendingAt) {
       if (otaPollKeyRef.current === pendingKey) return;
@@ -7738,13 +7709,13 @@ function PlayerPage() {
 
   // ─── Sprint 11 Phase B4 — stale-bundle auto-detection ───
   // Companion to B1 (REFRESH_WEB push from dashboard). This is the
-  // kiosk-driven half: every ~5 min the kiosk fetches /api/build-info,
+  // kiosk-driven half: every 15 min the kiosk fetches /api/build-info,
   // compares the server's deployed SHA to its own baked-in SHA. On
   // mismatch the kiosk schedules a soft reload during an idle window
   // so a freshly-deployed fix reaches the fleet without any operator
   // action.
   //
-  // Idle = not currently rendering an emergency override AND not
+  // Idle = content is stopped, no emergency override, and not
   // currently in the middle of an OTA install. The 60-300s random
   // delay spreads a thousand-device fleet across 4 minutes so we
   // don't all hit Vercel + Railway at the same instant after deploy.
@@ -7797,7 +7768,7 @@ function PlayerPage() {
     let cancelled = false;
     let scheduledReloadTimer: ReturnType<typeof setTimeout> | null = null;
 
-    const sameOriginBuildInfoUrl = '/api/build-info';
+    const sameOriginBuildInfoUrl = '/api/build-info?playerPolicy=idle';
     const check = async () => {
       if (cancelled || scheduledReloadTimer) return;
       try {
@@ -7819,8 +7790,8 @@ function PlayerPage() {
         if (theirs === mine) { bundleDriftSinceRef.current = null; return; }
         const myShaShortLabel = mine;
         const serverShaShortLabel = theirs;
-        // Record when we FIRST noticed the drift so the staleness cap +
-        // loop-boundary trigger can reason about how long we've run old code.
+        // Keep the first observation for diagnostics; elapsed time never
+        // grants permission to interrupt playback.
         if (!bundleDriftSinceRef.current) bundleDriftSinceRef.current = Date.now();
         // Mismatch — server has a different deployed SHA than us.
         // Schedule a soft reload in 60-300s. The delay both spreads
@@ -7828,7 +7799,7 @@ function PlayerPage() {
         // (future: a "Refresh queued in N s" toast with cancel).
         const delay = 60_000 + Math.floor(Math.random() * 240_000);
         console.log(
-          `[bundle-drift] by=${useBundleId ? 'bundleId' : 'sha'} mine=${myShaShortLabel} server=${serverShaShortLabel} — reloading in ${Math.round(delay / 1000)}s`,
+          `[bundle-drift] by=${useBundleId ? 'bundleId' : 'sha'} mine=${myShaShortLabel} server=${serverShaShortLabel} — checking for idle in ${Math.round(delay / 1000)}s`,
         );
         scheduledReloadTimer = setTimeout(() => {
           // Re-let the next poll schedule its own timer once this one
@@ -7858,31 +7829,10 @@ function PlayerPage() {
             clearTimer();
             return;
           }
-          // 2026-05-13 — historically we NEVER reloaded during playback
-          // (operator: "once content is live, it stays live"). The flaw:
-          // a 24/7 single-board / solo-URL / template-only screen is ALWAYS
-          // "playing" and never hits a loop boundary, so it deferred the
-          // reload for the full 6h cap and ran ancient code — confirmed
-          // live on a 960×1080 LED that never picked up new player /
-          // emergency fixes (2026-06-27, launch-blocking).
-          //
-          // New policy: while playing, defer ONLY until the (now ~12 min)
-          // staleness cap, then force the reload. For a multi-item playlist
-          // the loop-boundary path in the heartbeat usually catches it
-          // first (invisible at the seam); this cap is the backstop for
-          // screens that can't wrap. A brief between-loop splash blip is
-          // the correct trade vs. indefinitely-stale code. phaseRef gives
-          // us the CURRENT phase at timer-fire time (mount-time phase was
-          // 'registering').
           if (phaseRef.current === 'playing') {
-            const staleMs = bundleDriftSinceRef.current ? Date.now() - bundleDriftSinceRef.current : 0;
-            if (staleMs < MAX_BUNDLE_STALE_MS) {
-              console.log('[bundle-drift] content playing — deferring (' + Math.round(staleMs / 60000) + 'm stale; loop-boundary or ' + Math.round(MAX_BUNDLE_STALE_MS / 60000) + 'm cap will catch it)');
-              clearTimer();
-              return;
-            }
-            console.warn('[bundle-drift] stale ' + Math.round(staleMs / 60000) + 'm while continuously playing — forcing reload (staleness cap)');
-            // fall through to the reload below
+            console.log('[bundle-drift] content playing — waiting for idle or an operator refresh');
+            clearTimer();
+            return;
           }
           // Record BEFORE we navigate away so the floor is honored even if
           // the reload is async / the document survives momentarily.
@@ -7904,13 +7854,11 @@ function PlayerPage() {
     // alone was ~432 k function invocations a month to read four
     // environment variables that cannot change for the life of a
     // deployment. THIS IS NOT AN EMERGENCY PATH: it is a stale-bundle
-    // detector whose own reload is then deliberately delayed a further
-    // 60-300 s and deferred behind playback for up to the 12-minute
-    // staleness cap. Widening the poll to 15 min is small next to the delay
+    // detector whose own reload is delayed a further 60-300 s and waits
+    // until content stops. Widening the poll to 15 min is small next to the delay
     // the mechanism already builds in on purpose, and the operator's direct
     // lever (REFRESH_WEB push + the durable `pendingRefreshAt` manifest
-    // field) is unchanged and immediate. The route is also edge-cached now,
-    // so the remaining calls no longer cost an invocation each.
+    // field) remains the explicit activation and recovery path.
     const kickTimer = setTimeout(check, 30_000);
     const iv = setInterval(check, 15 * 60_000);
     return () => {
@@ -9471,7 +9419,7 @@ function PlayerPage() {
     const heartbeat = setInterval(() => {
       // Frame-locked sync: while the rAF conductor is locked and driving,
       // the legacy free-run advance stands down entirely (the conductor
-      // also carries the loop-seam bundle-reload check). If the clock
+      // drives the legacy playlist clock). If the clock
       // ever unlocks (uncertainty blows out), syncActiveRef drops false
       // and this heartbeat resumes seamlessly — screens degrade to
       // today's free-run behavior rather than freezing.
@@ -9520,27 +9468,8 @@ function PlayerPage() {
       const duration = item.durationMs || 10000;
       const elapsed = Date.now() - slideStartedAtRef.current;
       if (elapsed >= duration) {
-        // 2026-05-20 — loop-boundary opportunistic bundle reload. If a
-        // newer web bundle is waiting (bundle-drift watcher set the
-        // marker) and we're finishing the LAST item — about to wrap back
-        // to item 0 — pick the new bundle up RIGHT HERE. The playlist was
-        // going to restart from the top anyway, so the reload is invisible
-        // (no mid-content flash). A 24/7 single-item screen never reaches
-        // this branch; the watcher's staleness cap covers that case.
-        if (
-          idx === sorted.length - 1 &&
-          bundleDriftSinceRef.current &&
-          !readCachedEmergency() &&
-          // Honor the reload-loop floor here too — if a watcher reload just
-          // fired, don't immediately re-fire at the next seam.
-          (!lastBundleReloadAtRef.current ||
-            Date.now() - lastBundleReloadAtRef.current >= MIN_BUNDLE_RELOAD_GAP_MS)
-        ) {
-          console.log('[bundle-drift] loop boundary reached with new bundle pending — reloading at the seam');
-          lastBundleReloadAtRef.current = Date.now();
-          hardCacheBustingReload();
-          return;
-        }
+        // A playlist wrap is still live playback. Keep the page, decoded
+        // media and URL overlays alive when a newer bundle is available.
         // Next PLAYABLE slot — a file still downloading is stepped over,
         // never mounted (readiness-gated playback, 2026-09-26).
         setCurrentIndex((prev) => nextPlayableCounter(prev, sorted.length, playable));
@@ -9569,8 +9498,7 @@ function PlayerPage() {
   //      rather than one after it.
   //   3. index changed? → advance the monotonic counter congruently
   //      (advanceCounterTo — consumers all read % N, and the +1 preload
-  //      contract keeps working). Loop-seam bundle reload is preserved
-  //      from the legacy path.
+  //      contract keeps working). Deployment changes never reload a live loop.
   //
   // A stalled/frozen tab self-corrects on the next frame that runs — the
   // conductor can jump multiple items forward (or effectively "rewind" by
@@ -9639,22 +9567,8 @@ function PlayerPage() {
       const cur = currentIndexRef.current;
       const next = advanceCounterTo(cur, posFlip.index, sorted.length);
       if (next === cur) return;
-      // Loop-seam opportunistic bundle reload — parity with the legacy
-      // heartbeat's check: only at the wrap back to item 0, only with a
-      // pending bundle, never during an emergency, floor-limited.
-      const wrapped = (cur % sorted.length) + (next - cur) >= sorted.length;
-      if (
-        wrapped &&
-        bundleDriftSinceRef.current &&
-        !readCachedEmergency() &&
-        (!lastBundleReloadAtRef.current ||
-          Date.now() - lastBundleReloadAtRef.current >= MIN_BUNDLE_RELOAD_GAP_MS)
-      ) {
-        console.log('[Player Sync] loop seam with new bundle pending — reloading (rejoins in phase)');
-        lastBundleReloadAtRef.current = Date.now();
-        hardCacheBustingReload();
-        return;
-      }
+      // Sync wraps also keep the running document; a deploy must not
+      // interrupt a live wall or move it out of phase during navigation.
       // Flip-error telemetry: offset into the new item at decision time,
       // minus the deliberate lead ≈ how late this flip is vs the shared
       // boundary. Only meaningful for single-step advances.

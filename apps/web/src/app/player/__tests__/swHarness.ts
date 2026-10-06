@@ -121,12 +121,18 @@ export function loadWorker() {
     });
   });
   const cacheNamed = (name: string) => cacheMap.get(name) ?? new FakeCache();
+  const fetchRequest = (request: Request) => new Promise<Response>((resolveResponse) => {
+    handlers.fetch({ request, respondWith: (response: Promise<Response>) => resolveResponse(response as unknown as Response) });
+  });
+  const status = () => new Promise<any>((resolveStatus) => {
+    handlers.message({ data: { type: 'STATUS_REQUEST' }, source: { postMessage: resolveStatus }, waitUntil: () => undefined });
+  });
   /** Put bytes straight into a tier the way the old worker did: no meta rows at all. */
   const seedLegacyEntry = async (cacheName: string, url: string, bytes: Uint8Array) => {
     const cache = await caches.open(cacheName);
     await cache.put(url, new Response(bytes.slice(), { status: 200, headers: { 'content-type': 'video/mp4' } }));
   };
-  return { context, hooks, send, cacheNamed, seedLegacyEntry, setFetch: (fn: unknown) => { context.fetch = fn; } };
+  return { context, hooks, send, cacheNamed, fetchRequest, status, seedLegacyEntry, setFetch: (fn: unknown) => { context.fetch = fn; } };
 }
 
 export type Worker = ReturnType<typeof loadWorker>;

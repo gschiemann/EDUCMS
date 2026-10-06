@@ -428,6 +428,10 @@ self.addEventListener('fetch', (event) => {
 
     // Then playlist cache.
     const plCache = await caches.open(PLAYLIST_CACHE);
+    // A verified download can play directly from its disk chunks when this
+    // device cannot hold a second full copy during assembly.
+    const chunked = await responseFromChunkedPlaylist(req.url);
+    if (chunked) return rangeHeader ? await rangeResponseFromCached(chunked, rangeHeader) : chunked;
     const plHit = await plCache.match(req, { ignoreSearch: true })
               || (altReq && await plCache.match(altReq, { ignoreSearch: true }));
     if (plHit) return rangeHeader ? await rangeResponseFromCached(plHit, rangeHeader) : plHit;
@@ -504,9 +508,10 @@ self.addEventListener('message', (event) => {
     const tier = tierFromMessage(msg);
     event.waitUntil(answerPort(event, async () => {
       if (!tier) return { ok: false, reason: 'bad-request' };
-      if (msg.type === 'PRECACHE_CHUNK') return stageChunk(msg, tier);
-      if (msg.type === 'PRECACHE_VERIFY') return verifyStaged(msg, tier);
-      if (msg.type === 'PRECACHE_ASSEMBLE') return assembleStaged(msg, tier);
+      const stageTier = await stageTierForMessage(msg, tier);
+      if (msg.type === 'PRECACHE_CHUNK') return stageChunk(msg, stageTier);
+      if (msg.type === 'PRECACHE_VERIFY') return verifyStaged(msg, stageTier);
+      if (msg.type === 'PRECACHE_ASSEMBLE') return assembleStaged(msg, stageTier);
       // Hash a legacy cached entry on disk against the manifest digest.
       return adoptCached(msg, tier);
     }));
@@ -791,6 +796,7 @@ const CHUNK_FETCH_TIMEOUT_MS = 240 * 1000;
 const STAGE_PREFIX = '/__edu_stage__/';
 const STAGE_INFO_PREFIX = '/__edu_stage_info__/';
 const STAGE_OK_PREFIX = '/__edu_stage_ok__/';
+const CHUNKED_PLAYLIST_PREFIX = '/__edu_chunked_playlist__/';
 // ─── Tiers of the staging protocol (2026-09-26, emergency large files) ─────
 // Every chunk / verify / assemble / adopt step names its TIER. The two tiers
 // stage under SEPARATE namespaces so `precachePlaylist`'s prune of staging
@@ -834,16 +840,112 @@ function stageEncodedKey(url) {
   return encodeURIComponent(stableKey(url));
 }
 function stagePrefixFor(url, tier) {
-  return `${tier.stagePrefix}${stageEncodedKey(url)}/`;
+  return `${tier.stagePrefix}${stageEncodedKey(url)}/${tier.generation ? tier.generation + '/' : ''}`;
 }
 function stageChunkKey(tier, url, start, length) {
   return new Request(`${stagePrefixFor(url, tier)}${start}-${length}`);
 }
 function stageInfoKey(url, tier) {
-  return new Request(`${tier.infoPrefix}${stageEncodedKey(url)}`);
+  return new Request(`${tier.infoPrefix}${stageEncodedKey(url)}${tier.generation ? '/' + tier.generation : ''}`);
 }
 function stageOkKey(url, tier) {
-  return new Request(`${tier.okPrefix}${stageEncodedKey(url)}`);
+  return new Request(`${tier.okPrefix}${stageEncodedKey(url)}${tier.generation ? '/' + tier.generation : ''}`);
+}
+
+function chunkedPlaylistKey(url) {
+  return new Request(`${CHUNKED_PLAYLIST_PREFIX}${stageEncodedKey(url)}`);
+}
+
+async function readChunkedRecord(url) {
+  const meta = await caches.open(META_CACHE);
+  const res = await meta.match(chunkedPlaylistKey(url));
+  if (!res) return null;
+  try {
+    const r = await res.json();
+    if (!r || !Number.isSafeInteger(r.total) || r.total <= 0 ||
+        (r.sha256 !== null && !isSha256Hex(r.sha256)) ||
+        (r.generation !== null && !/^g-[0-9a-f]{64}$/.test(r.generation))) return null;
+    return r;
+  } catch (_e) { return null; }
+}
+
+// A changed digest at the SAME URL downloads alongside the still-playable
+// generation. Verification failure must never delete its predecessor.
+async function stageTierForMessage(msg, tier) {
+  if (tier.name !== 'playlist' || !isSha256Hex(msg.sha256)) return tier;
+  const old = await readChunkedRecord(msg.url);
+  if (!old) return tier;
+  return Object.assign({}, tier, {
+    generation: old.sha256 === msg.sha256.toLowerCase() ? old.generation : 'g-' + msg.sha256.toLowerCase(),
+  });
+}
+
+async function chunkedPlaylist(url) {
+  const record = await readChunkedRecord(url);
+  if (!record) return null;
+  const tier = Object.assign({}, PLAYLIST_TIER, { generation: record.generation });
+  const staging = await caches.open(STAGING_CACHE);
+  const markerRes = await staging.match(stageOkKey(url, tier));
+  if (!markerRes) return null;
+  let marker;
+  try { marker = await markerRes.json(); } catch (_e) { return null; }
+  if (!marker || marker.total !== record.total || marker.sha256 !== record.sha256) return null;
+  const layout = contiguousLayout(await listStagedChunks(staging, url, tier), record.total);
+  if (!layout.ok || layout.nextOffset !== record.total) return null;
+  return { record, tier, staging, layout };
+}
+
+async function responseFromChunkedPlaylist(url) {
+  const file = await chunkedPlaylist(url);
+  if (!file) return null;
+  const blobs = [];
+  for (const part of file.layout.chunks) {
+    const res = await file.staging.match(stageChunkKey(file.tier, url, part.start, part.length));
+    if (!res) return null;
+    // Chromium returns disk-backed Blob handles. Combining those handles
+    // does not allocate the video in JS or write another cached copy.
+    const blob = await res.blob();
+    if (blob.size !== part.length) return null;
+    blobs.push(blob);
+  }
+  const info = await readStageInfo(file.staging, url, file.tier);
+  const contentType = (info && info.contentType) || 'application/octet-stream';
+  const body = new Blob(blobs, { type: contentType });
+  return new Response(body, { status: 200, headers: {
+    'content-type': contentType, 'content-length': String(file.record.total), 'accept-ranges': 'bytes',
+  } });
+}
+
+async function removeChunkedPlaylist(url, record) {
+  const meta = await caches.open(META_CACHE);
+  await meta.delete(chunkedPlaylistKey(url));
+  if (record) await purgeStaging(await caches.open(STAGING_CACHE), url,
+    Object.assign({}, PLAYLIST_TIER, { generation: record.generation }));
+}
+
+async function chunkedPlaylistEntries() {
+  const meta = await caches.open(META_CACHE);
+  const entries = [];
+  for (const key of await meta.keys()) {
+    const path = new URL(key.url).pathname;
+    if (!path.startsWith(CHUNKED_PLAYLIST_PREFIX)) continue;
+    let url;
+    try { url = decodeURIComponent(path.slice(CHUNKED_PLAYLIST_PREFIX.length)); } catch (_e) { continue; }
+    const file = await chunkedPlaylist(url);
+    if (file) entries.push({ url, record: file.record });
+  }
+  return entries;
+}
+
+async function pruneChunkedPlaylists(keep) {
+  const meta = await caches.open(META_CACHE);
+  for (const key of await meta.keys()) {
+    const path = new URL(key.url).pathname;
+    if (!path.startsWith(CHUNKED_PLAYLIST_PREFIX)) continue;
+    let url;
+    try { url = decodeURIComponent(path.slice(CHUNKED_PLAYLIST_PREFIX.length)); } catch (_e) { continue; }
+    if (!keep.has(normalizeUrl(url))) await removeChunkedPlaylist(url, await readChunkedRecord(url));
+  }
 }
 
 /** `bytes a-b/total` (total may be `*`). null when absent, unreadable (CORS) or malformed. */
@@ -926,7 +1028,9 @@ async function purgeStaging(staging, url, tier) {
   for (const req of keys) {
     let pathname;
     try { pathname = new URL(req.url).pathname; } catch (_e) { continue; }
-    if (pathname.startsWith(prefix)) await staging.delete(req);
+    // A legacy generation's prefix also contains newer generations.
+    // Remove only its own chunks/temp entries; preserve the other files.
+    if (pathname.startsWith(prefix) && !pathname.slice(prefix.length).includes('/')) await staging.delete(req);
   }
   await staging.delete(stageInfoKey(url, tier));
   await staging.delete(stageOkKey(url, tier));
@@ -947,15 +1051,15 @@ async function purgeStagingExcept(liveStableUrls, tier) {
     try { pathname = new URL(req.url).pathname; } catch (_e) { continue; }
     let encoded = null;
     if (pathname.startsWith(tier.stagePrefix)) encoded = pathname.slice(tier.stagePrefix.length).split('/')[0];
-    else if (pathname.startsWith(tier.infoPrefix)) encoded = pathname.slice(tier.infoPrefix.length);
-    else if (pathname.startsWith(tier.okPrefix)) encoded = pathname.slice(tier.okPrefix.length);
+    else if (pathname.startsWith(tier.infoPrefix)) encoded = pathname.slice(tier.infoPrefix.length).split('/')[0];
+    else if (pathname.startsWith(tier.okPrefix)) encoded = pathname.slice(tier.okPrefix.length).split('/')[0];
     if (encoded !== null && !keep.has(encoded)) await staging.delete(req);
   }
 }
 
 /** Cached and, when the manifest carries a digest, the digest we verified matches it. */
 async function isCachedCurrent(asset, cache, meta) {
-  return (await cachedDigestState(asset, cache, meta)) === 'current';
+  return (await cachedDigestState(asset, cache, meta, true)) === 'current';
 }
 
 /**
@@ -968,8 +1072,12 @@ async function isCachedCurrent(asset, cache, meta) {
  *   'stale'     — entry whose stored digest is a different verified digest:
  *                 the manifest moved on, re-download.
  */
-async function cachedDigestState(asset, cache, meta) {
+async function cachedDigestState(asset, cache, meta, allowChunked) {
   if (!asset || !asset.url) return 'absent';
+  if (allowChunked) {
+    const file = await chunkedPlaylist(asset.url);
+    if (file) return !asset.sha256 || file.record.sha256 === String(asset.sha256).toLowerCase() ? 'current' : 'stale';
+  }
   const req = new Request(asset.url, { mode: 'cors', credentials: 'omit' });
   const cached = await cache.match(req, { ignoreSearch: true });
   if (!cached) return 'absent';
@@ -1043,6 +1151,7 @@ async function adoptCached(msg, tier) {
 async function isPresent(url, plCache, emCache) {
   const req = new Request(url, { mode: 'cors', credentials: 'omit' });
   if (await emCache.match(req, { ignoreSearch: true })) return true;
+  if (await chunkedPlaylist(url)) return true;
   return !!(await plCache.match(req, { ignoreSearch: true }));
 }
 
@@ -1345,7 +1454,26 @@ async function assembleStaged(msg, tier) {
     'accept-ranges': 'bytes',
   };
   const req = new Request(url, { mode: 'cors', credentials: 'omit' });
-  await cache.put(req, new Response(body, { status: 200, headers }));
+  try {
+    await cache.put(req, new Response(body, { status: 200, headers }));
+  } catch (e) {
+    if (tier.name !== 'playlist' || !(e && (e.name === 'QuotaExceededError' || /quota.*exceed/i.test(e.message || '')))) throw e;
+    try { await body.cancel(); } catch (_e) { /* Cache.put may still own the reader. */ }
+    // The complete bytes already passed SHA-256. Publish only a small
+    // pointer to that verified generation; never discard it to make room
+    // for a second full copy. Emergency assembly keeps its existing path.
+    const previous = await readChunkedRecord(url);
+    await meta.put(chunkedPlaylistKey(url), new Response(JSON.stringify({
+      sha256: expected, total: layout.total, generation: tier.generation || null,
+    }), { headers: { 'content-type': 'application/json' } }));
+    await cache.delete(req, { ignoreSearch: true });
+    if (previous && previous.generation !== (tier.generation || null)) {
+      await purgeStaging(staging, url, Object.assign({}, PLAYLIST_TIER, { generation: previous.generation }));
+    }
+    return { ok: true, total: layout.total, storage: 'verified-chunks' };
+  }
+  const previous = tier.name === 'playlist' ? await readChunkedRecord(url) : null;
+  if (previous) await removeChunkedPlaylist(url, previous);
   // The same records fetchAndStore writes, so status sums, hash checks and the
   // bounded revalidation treat this entry exactly like a directly fetched one.
   const norm = normalizeUrl(url);
@@ -1497,6 +1625,7 @@ async function precachePlaylist(assets, softCapBytes, ackPort, keepUrls) {
   // 1b. Half-downloaded files for URLs that left the manifest are dead weight.
   // Playlist namespace only — an emergency file mid-download is not touched.
   try { await purgeStagingExcept(new Set([...liveUrls, ...keep]), PLAYLIST_TIER); } catch (_e) { /* best-effort */ }
+  await pruneChunkedPlaylists(new Set([...liveUrls, ...keep]));
 
   // 2. Pre-fetch missing assets, respecting hash changes. Emit a
   //    progress event per completed asset so the splash can show a
@@ -1514,7 +1643,7 @@ async function precachePlaylist(assets, softCapBytes, ackPort, keepUrls) {
   const pending = [];
   for (const asset of assets) {
     if (isLargeAsset(asset)) {
-      const state = await cachedDigestState(asset, cache, meta);
+      const state = await cachedDigestState(asset, cache, meta, true);
       if (state === 'current') {
         loaded += 1;
       } else {
@@ -1538,6 +1667,8 @@ async function precachePlaylist(assets, softCapBytes, ackPort, keepUrls) {
   // 3. Honor soft cap by evicting oldest. We don't track real LRU, so we
   // approximate: iterate in insertion order and drop until under cap.
   let total = await sumCacheBytes(cache);
+  const chunkedEntries = await chunkedPlaylistEntries();
+  total += chunkedEntries.reduce((sum, entry) => sum + entry.record.total, 0);
   if (total > softCapBytes) {
     const keys = await cache.keys();
     for (const req of keys) {
@@ -1549,6 +1680,11 @@ async function precachePlaylist(assets, softCapBytes, ackPort, keepUrls) {
       SIZE_BY_URL.delete(normalizeUrl(req.url));
       total -= sz;
     }
+  }
+  for (const entry of chunkedEntries) {
+    if (total <= softCapBytes) break;
+    await removeChunkedPlaylist(entry.url, entry.record);
+    total -= entry.record.total;
   }
 
   // `ok` means every live asset is in the cache right now. Large files the
@@ -1891,15 +2027,17 @@ async function replyStatus(client) {
   const [plKeys, emKeys, shKeys, plBytes, emBytes, shBytes] = await Promise.all([
     pl.keys(), em.keys(), sh.keys(), sumCacheBytes(pl), sumCacheBytes(em), sumCacheBytes(sh),
   ]);
+  const chunked = await chunkedPlaylistEntries();
   client.postMessage({
     type: 'STATUS_REPLY',
-    playlist: { count: plKeys.length, bytes: plBytes },
+    playlist: { count: plKeys.length + chunked.length, bytes: plBytes + chunked.reduce((sum, entry) => sum + entry.record.total, 0) },
     emergency: { count: emKeys.length, bytes: emBytes, floorBytes: EMERGENCY_FLOOR_BYTES },
     shell: { count: shKeys.length, bytes: shBytes },
   });
 }
 
 async function clearCache(tier) {
+  if (tier === 'all' || tier === 'playlist') await pruneChunkedPlaylists(new Set());
   if (tier === 'all' || tier === 'playlist') await caches.delete(PLAYLIST_CACHE);
   if (tier === 'all' || tier === 'emergency') await caches.delete(EMERGENCY_CACHE);
   if (tier === 'all' || tier === 'shell') await caches.delete(SHELL_CACHE);

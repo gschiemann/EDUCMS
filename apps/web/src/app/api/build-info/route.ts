@@ -1,65 +1,19 @@
 /**
- * /api/build-info — what bundle is this deployment serving right now?
- * Consumed by the kiosk's stale-bundle detector (`player/page.tsx`).
- *
- * Sprint 11 Phase B4 — stale-bundle auto-detection.
- *
- * Flow:
- *   1. Kiosk captures its own identity when its bundle loads — the build's
- *      `bundleId` when one was stamped, else the commit SHA.
- *   2. Every 15 minutes the kiosk fetches THIS endpoint and compares.
- *   3. On mismatch it schedules a soft reload during the next idle window
- *      (no emergency on screen, no OTA install in flight).
- *
- * Why a server-side read works: Vercel serves this route from the
- * deployment that owns it. An old kiosk running an old bundle still hits
- * the CURRENT deployment's route, which reports the CURRENT identity →
- * mismatch detected. That property is unchanged by everything below.
- *
- * ── 2026-09-02, efficiency program. TWO CHANGES, BOTH COST FIXES ────────
- *
- * 1. IT IS NO LONGER A PER-REQUEST FUNCTION. This route was
- *    `force-dynamic` + `no-store`, which made it the single busiest route
- *    on the Vercel project at 0 % cached — every screen, every 5 minutes,
- *    invoking a Node function to read four environment variables that
- *    cannot change for the life of the deployment. At 50 always-on screens
- *    that alone was ~432 k function calls a month. `revalidate` opts the
- *    handler into Next's cache, so the fleet is served from the edge and
- *    the function renders at most once per window no matter how large the
- *    fleet gets. The kiosk keeps `cache: 'no-store'` on its side, so it
- *    always ASKS — the answer just no longer costs an invocation.
- *
- * 2. `bundleId` — AN IDENTITY THAT ONLY MOVES WHEN THE BUNDLE DOES.
- *    `sha` is the git commit, and EVERY commit changes it: an API-only fix,
- *    an APK change, a docs or test commit still triggers a Vercel build and
- *    therefore still told every kiosk in the fleet it was stale. The result
- *    was a fleet-wide soft reload and shell re-download per deploy, for
- *    bundles whose bytes were identical. `bundleId` is a hash of the
- *    client-bundle build inputs (see `scripts/build-info.cjs`), so those
- *    deploys are correctly silent.
- *
- * `sha`/`shaFull` are UNCHANGED and still returned: bundles deployed before
- * this change compare on them, and they remain the right value for the
- * dashboard's page-bundle chip (which reports what the player is running,
- * not what it should reload to). New bundles prefer `bundleId` and fall
- * back to `sha` whenever either side lacks one — so a build that never ran
- * the prebuild step behaves exactly as it did before.
+ * Deployment identity for the dashboard and idle-only player activation.
+ * Legacy players treat sha/bundleId drift as permission to interrupt live
+ * content. Return no automatic trigger to those callers; keep shaFull for
+ * diagnosis and leave explicit authenticated refresh/recovery untouched.
  */
 
 import { NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
 
-/**
- * Cache window, in seconds. Everything this route returns is fixed for the
- * life of the deployment, so the only reason this is not `false` (cache
- * forever) is to let a self-hosted `next start` pick up an env var that was
- * absent at build time. Vercel purges the cache on a new production
- * deployment, so a deploy is still visible to the fleet immediately.
- */
-export const revalidate = 300;
+// Legacy players use these identities as a live-reload trigger. The response
+// now depends on the caller, so never share it through a static/CDN cache.
+export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: Request) {
   // VERCEL_GIT_COMMIT_SHA is auto-injected by Vercel during build +
   // runtime. The NEXT_PUBLIC_ form is inlined into client bundles;
   // the non-prefixed form is server-only. NEXT_PUBLIC_BUILD_SHA is
@@ -84,13 +38,25 @@ export async function GET() {
   // self-hosted setups); the kiosk then falls back to the SHA comparison.
   const bundleId = process.env.NEXT_PUBLIC_BUNDLE_ID || null;
 
+  // Stop already-running older players from treating this deployment as a
+  // command to reload live content. Updated players explicitly request the
+  // idle-only policy. Dashboard/default callers still get the real identity.
+  let legacyPlayer = false;
+  try {
+    const caller = new URL(request.headers.get('referer') || '');
+    const current = new URL(request.url);
+    legacyPlayer = caller.origin === current.origin &&
+      (caller.pathname === '/player' || caller.pathname.startsWith('/player/')) &&
+      current.searchParams.get('playerPolicy') !== 'idle';
+  } catch { /* No player referrer: preserve the public diagnostic response. */ }
+
   return NextResponse.json({
-    sha: shortSha,
+    sha: legacyPlayer ? null : shortSha,
     shaFull: sha,
-    bundleId,
+    bundleId: legacyPlayer ? null : bundleId,
+    playerActivation: 'idle-or-operator',
     builtAt: process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_DATE || null,
-    // Render time, not request time — this response is cached. Kept for
-    // human debugging only; nothing compares it.
+    // Diagnostic timestamp only; no player compares clocks against it.
     ts: new Date().toISOString(),
-  });
+  }, { headers: { 'Cache-Control': 'private, no-store' } });
 }

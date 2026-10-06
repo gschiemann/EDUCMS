@@ -5,9 +5,9 @@
  * ── Why this exists ──────────────────────────────────────────────────
  * A player fix ships in the WEB bundle, and a panel picks it up on its OWN
  * schedule: the bundle-drift detector in `page.tsx` polls `/api/build-info`
- * every ~5 min, then DEFERS the reload while content is playing (up to the
- * ~12 min staleness cap) and skips it entirely during an emergency. So for
- * up to ~20 minutes after a deploy, a freshly-fixed button and a genuinely
+ * every 15 min, then waits until playback stops or an operator refreshes.
+ * It skips activation during an emergency. Until activation, a freshly-fixed
+ * button and a genuinely
  * dead button look IDENTICAL from the dashboard — and nothing in telemetry
  * recorded which bundle a panel was on, so the only way to reason about it
  * was to infer panel state from deploy timestamps. That inference is what
