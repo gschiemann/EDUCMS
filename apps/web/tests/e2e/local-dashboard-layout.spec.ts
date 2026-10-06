@@ -2,7 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 
 // The only difference between these accounts is their parent relationship.
 // All data is synthetic and every API request is intercepted.
-async function openLocalDashboard(page: Page, child: boolean) {
+async function openLocalDashboard(page: Page, child: boolean, width = 1840) {
   const tenant = { id: 'local-layout-test', slug: 'local-layout-test', name: 'Test Office',
     vertical: 'CORPORATE', parentId: child ? 'test-corporate-parent' : null };
   const user = { id: 'layout-test-user', email: 'operator@example.test', role: 'SCHOOL_ADMIN', tenantId: tenant.id };
@@ -38,16 +38,17 @@ async function openLocalDashboard(page: Page, child: boolean) {
     };
     return route.fulfill({ contentType: 'application/json', headers, body: JSON.stringify(bodies[path] ?? []) });
   });
-  await page.setViewportSize({ width: 1840, height: 1100 });
+  await page.setViewportSize({ width, height: width < 768 ? 844 : 1100 });
   await page.goto(`/${tenant.id}/dashboard`);
   return corporateReads;
 }
 
 for (const child of [false, true]) {
-  test(`${child ? 'child location' : 'standalone account'} uses the local status, guide, KPI and Sites dashboard`, async ({ page }, info) => {
+ for (const width of [1840, 390, 320]) {
+  test(`${child ? 'child location' : 'standalone account'} uses the full local dashboard at ${width}px`, async ({ page }, info) => {
     const errors: string[] = [];
     page.on('pageerror', error => errors.push(error.message));
-    const corporateReads = await openLocalDashboard(page, child);
+    const corporateReads = await openLocalDashboard(page, child, width);
     await expect(page.getByRole('heading', { name: 'Getting started', exact: true })).toBeVisible();
     await expect(page.locator('.dash-kpi-card')).toHaveCount(5);
     await expect(page.getByRole('link', { name: /Fleet health/i })).toContainText('50.0%');
@@ -56,8 +57,15 @@ for (const child of [false, true]) {
     await expect(page.locator('a[href$="screens?group=lobby"]')).toContainText('Lobby');
     await expect(page.locator('a[href$="screens?group=meeting"]')).toContainText('Meeting rooms');
     await expect(page.getByRole('heading', { name: 'Overview', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: /Today.s Schedule/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Recent Activity', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Quick Actions', exact: true })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     expect(corporateReads).toEqual([]);
     expect(errors).toEqual([]);
-    await page.screenshot({ path: info.outputPath(`${child ? 'child' : 'standalone'}-local-dashboard.png`), fullPage: true });
+    await page.locator('a[href$="screens?group=lobby"]').locator('xpath=ancestor::section').screenshot({ path: info.outputPath(`sites-${width}.png`), animations: 'disabled' });
+    await page.screenshot({ path: info.outputPath(`${child ? 'child' : 'standalone'}-${width}-dashboard.png`), fullPage: true });
   });
+}
+
 }

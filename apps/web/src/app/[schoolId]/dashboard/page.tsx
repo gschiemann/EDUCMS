@@ -37,7 +37,6 @@ import { useAppStore } from '@/lib/store';
 import { useUIStore } from '@/store/ui-store';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { firstName as userFirstName } from '@/lib/user-display';
-import { MobileDashboard } from '@/components/dashboard/MobileDashboard';
 import { StarterBoardCard } from '@/components/dashboard/StarterBoardCard';
 import { FleetRollup } from '@/components/screens/FleetRollup';
 import { DistrictCommandCenter } from '@/components/dashboard/district/DistrictCommandCenter';
@@ -88,12 +87,7 @@ export default function DashboardPage() {
   // every 15 min, so there is nothing a poller would catch).
   const fleetPulse = useFleetPulse({ enabled: canFleet && commandEligible });
 
-  // All hooks below run on EVERY render regardless of viewport (Rules
-  // of Hooks). MobileDashboard re-uses the same hooks anyway, so the
-  // network cost is identical between the two paths. The mobile path
-  // simply uses its own JSX tree — see the early return at the very
-  // end of this function.
-
+  // One data model and content tree for every viewport; only layout adapts.
   const { data: activity } = useRecentActivity();
   const displaySchedules = useAllDisplaySchedules(commandEligible);
   // Fleet Command's activity card reads the SAME audit rows the classic
@@ -478,16 +472,8 @@ export default function DashboardPage() {
   // admin knows at a glance whether today needs attention.
   const incidentCount = fleet.offline + pendingAssets.length;
 
-  // 2026-05-14 — mobile-first early return. All hooks above ran
-  // unconditionally so Rules of Hooks are satisfied. MobileDashboard
-  // reads the same data via its own hook calls (React Query dedupes
-  // requests), so no extra network calls.
-  if (isMobile) {
-    return <MobileDashboard schoolId={schoolId} />;
-  }
-
   return (
-    <div className="space-y-6 pb-12">
+    <div className="min-w-0 space-y-6 pb-12" data-testid="dashboard-content">
       {/* Brand-aware overrides — swaps hardcoded indigo for CSS vars */}
       <style>{`
         .dash-link { color: var(--brand-primary, #4f46e5); }
@@ -511,7 +497,7 @@ export default function DashboardPage() {
           the original takeover cannot re-occur from this surface. */}
       {branding?.displayName ? (
         <header
-          className="relative rounded-2xl overflow-hidden p-6"
+          className="relative rounded-2xl overflow-hidden p-4 sm:p-6"
           style={{
             background:
               'linear-gradient(135deg, color-mix(in srgb, var(--brand-primary, #4f46e5) 18%, white), color-mix(in srgb, var(--brand-primary, #4f46e5) 8%, white))',
@@ -543,12 +529,12 @@ export default function DashboardPage() {
               style={{
                 background:
                   'radial-gradient(circle, color-mix(in srgb, var(--brand-primary, #4f46e5) 35%, transparent), transparent 70%)',
-                filter: 'blur(20px)',
+                filter: isMobile ? undefined : 'blur(20px)',
               }}
             />
           </div>
-          <div className="relative flex items-start justify-between gap-6 flex-wrap">
-            <div className="min-w-0 flex-1">
+          <div className="relative flex flex-col sm:flex-row items-start justify-between gap-3 sm:gap-6">
+            <div className="min-w-0 w-full sm:w-auto sm:flex-1">
               {/* 2026-09-14 (Greg): "just say welcome, not welcome back — mix in
                   good morning / good evening still". The time-of-day greeting the
                   location view uses ("Good morning, Greg") leads, the welcome follows. */}
@@ -559,7 +545,7 @@ export default function DashboardPage() {
                 {greeting}, {firstName}
               </p>
               <h1
-                className="text-3xl font-extrabold tracking-tight leading-tight mt-0.5"
+                className="text-2xl sm:text-3xl font-extrabold tracking-tight leading-tight mt-0.5"
                 style={{ color: 'color-mix(in srgb, var(--brand-primary, #4f46e5) 85%, black)' }}
               >
                 Welcome to {branding.displayName}
@@ -594,7 +580,7 @@ export default function DashboardPage() {
                 )}
               </div>
             </div>
-            <div className="text-right shrink-0">
+            <div className="text-left sm:text-right shrink-0">
               <div className="text-2xl font-bold text-slate-800 tabular-nums">
                 {now ? now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : ''}
               </div>
@@ -605,7 +591,7 @@ export default function DashboardPage() {
           </div>
         </header>
       ) : (
-        <header className="flex items-start justify-between gap-6 flex-wrap">
+        <header className="flex flex-col sm:flex-row items-start justify-between gap-3 sm:gap-6">
           <div>
             <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">
               {greeting}, {firstName}
@@ -660,7 +646,7 @@ export default function DashboardPage() {
         <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-red-600 to-red-500 text-white shadow-lg shadow-red-500/30 border border-red-400/50">
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(255,255,255,0.2),transparent)]" />
           <div className="relative p-5 flex items-center gap-4">
-            <div className="w-14 h-14 rounded-full bg-white/20 backdrop-blur flex items-center justify-center shrink-0 animate-pulse">
+            <div className="w-14 h-14 rounded-full bg-white/20 md:backdrop-blur flex items-center justify-center shrink-0 animate-pulse">
               <Siren className="w-7 h-7" />
             </div>
             <div className="flex-1 min-w-0">
@@ -720,7 +706,7 @@ export default function DashboardPage() {
       {showClassic && isHQ && fleetRollup && <FleetRollup fleet={fleetRollup} />}
 
       {showClassic && !emergencyActive && (
-        <div className="rounded-xl bg-white border border-slate-200 px-5 py-3 flex items-center gap-6 flex-wrap">
+        <div className="rounded-xl bg-white border border-slate-200 px-5 py-3 flex items-center gap-3 sm:gap-6 flex-wrap">
           <div className="flex items-center gap-2">
             <span className={`relative flex h-2.5 w-2.5 ${incidentCount > 0 ? '' : ''}`}>
               <span className={`absolute inset-0 rounded-full ${incidentCount > 0 ? 'bg-amber-400' : 'bg-emerald-400'} animate-ping opacity-75`} />
@@ -730,7 +716,7 @@ export default function DashboardPage() {
               {incidentCount > 0 ? t('dashboard.itemsNeedAttention', { count: incidentCount }) : t('dashboard.allSystemsNormal')}
             </span>
           </div>
-          <div className="h-5 w-px bg-slate-200" />
+          <div className="hidden sm:block h-5 w-px bg-slate-200" />
           <div className="flex items-center gap-2 text-xs text-slate-600">
             <Activity className="w-3.5 h-3.5 text-slate-400" />
             <span className="font-semibold">{fleet.online.toLocaleString()}</span>
@@ -738,7 +724,7 @@ export default function DashboardPage() {
           </div>
           {liveNowCount > 0 && (
             <>
-              <div className="h-5 w-px bg-slate-200" />
+              <div className="hidden sm:block h-5 w-px bg-slate-200" />
               <div className="flex items-center gap-2 text-xs text-slate-600">
                 <MonitorPlay className="w-3.5 h-3.5" style={{ color: 'var(--brand-primary, #6366f1)' }} />
                 <span className="font-semibold">{liveNowCount}</span>
@@ -748,7 +734,7 @@ export default function DashboardPage() {
           )}
           {fleet.stale > 0 && (
             <>
-              <div className="h-5 w-px bg-slate-200" />
+              <div className="hidden sm:block h-5 w-px bg-slate-200" />
               <div className="flex items-center gap-2 text-xs text-amber-700">
                 <AlertTriangle className="w-3.5 h-3.5" />
                 <span className="font-semibold">{fleet.stale}</span>
@@ -775,7 +761,7 @@ export default function DashboardPage() {
         </button>
       )}
       {showClassic && showOnboarding && (
-        <div className="relative bg-gradient-to-br from-indigo-50 via-white to-violet-50 rounded-2xl border border-indigo-100 p-8 shadow-sm">
+        <div className="relative bg-gradient-to-br from-indigo-50 via-white to-violet-50 rounded-2xl border border-indigo-100 p-4 sm:p-8 shadow-sm">
           <button
             type="button"
             onClick={dismissHint}
@@ -854,7 +840,7 @@ export default function DashboardPage() {
           dashboard to see at 8 AM. ──────────────────────────────── */}
       {sites.length > 0 && (
         <section className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+          <div className="px-4 sm:px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-2">
               <Building2 className="w-4 h-4 text-slate-500" />
               <h2 className="text-sm font-bold text-slate-700">Sites</h2>
@@ -869,9 +855,9 @@ export default function DashboardPage() {
           <div>
             {/* Header row */}
             <div className="px-5 py-2 border-b border-slate-100 grid grid-cols-12 gap-3 items-center bg-slate-50/50">
-              <div className="col-span-5 text-[10px] font-bold uppercase tracking-widest text-slate-400">Location</div>
-              <div className="col-span-2 text-[10px] font-bold uppercase tracking-widest text-slate-400 text-right">Online</div>
-              <div className="col-span-4 text-[10px] font-bold uppercase tracking-widest text-slate-400">Health</div>
+              <div className="col-span-6 sm:col-span-5 text-[10px] font-bold uppercase tracking-widest text-slate-400">Location</div>
+              <div className="col-span-3 sm:col-span-2 text-[10px] font-bold uppercase tracking-widest text-slate-400 text-right">Online</div>
+              <div className="col-span-3 sm:col-span-4 text-[10px] font-bold uppercase tracking-widest text-slate-400">Health</div>
               <div className="col-span-1" />
             </div>
             <div className="divide-y divide-slate-50">
@@ -883,19 +869,19 @@ export default function DashboardPage() {
                     href={`${tenantBase}/screens?group=${encodeURIComponent(site.id === '_unassigned' ? '__ungrouped__' : site.id)}`}
                     className="px-5 py-3 grid grid-cols-12 gap-3 items-center hover:bg-slate-50 transition-colors group"
                   >
-                    <div className="col-span-5 min-w-0 flex items-center gap-2.5">
+                    <div className="col-span-10 sm:col-span-5 min-w-0 flex items-center gap-2.5">
                       <span className={`w-2 h-2 rounded-full shrink-0 ${
                         healthy ? 'bg-emerald-500' : site.offline >= site.total / 2 ? 'bg-rose-500' : 'bg-amber-500'
                       }`} />
                       <span className="text-sm font-semibold text-slate-800 truncate">{site.name}</span>
                     </div>
-                    <div className="col-span-2 text-right text-sm tabular-nums">
+                    <div className="col-span-6 sm:col-span-2 sm:row-start-auto row-start-2 text-sm tabular-nums sm:text-right">
                       <span className={healthy ? 'text-emerald-700 font-semibold' : 'text-slate-700 font-semibold'}>
                         {site.online}
                       </span>
                       <span className="text-slate-400"> / {site.total}</span>
                     </div>
-                    <div className="col-span-4 flex items-center gap-2">
+                    <div className="col-span-6 sm:col-span-4 flex items-center gap-2">
                       <div className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
                         <div
                           className={`h-full rounded-full transition-all ${
@@ -910,7 +896,7 @@ export default function DashboardPage() {
                         {site.pct.toFixed(site.pct === 100 ? 0 : 1)}%
                       </span>
                     </div>
-                    <div className="col-span-1 flex justify-end">
+                    <div className="col-span-2 sm:col-span-1 row-start-1 sm:row-start-auto col-start-11 sm:col-start-auto flex justify-end">
                       <ArrowRight className="w-3.5 h-3.5 text-slate-300 group-hover:translate-x-0.5 transition-all dash-arrow" />
                     </div>
                   </Link>
@@ -938,7 +924,7 @@ export default function DashboardPage() {
       {showClassic && (
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+          <div className="px-4 sm:px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-2">
               <Calendar className="w-4 h-4" style={{ color: 'var(--brand-primary, #6366f1)' }} />
               <h2 className="text-sm font-bold text-slate-700">{t('dashboard.todaysSchedule')}</h2>
@@ -1242,7 +1228,7 @@ function KpiCard({
       </div>
       <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">{label}</div>
       <div className={`text-[28px] font-black tracking-tight leading-none tabular-nums ${valueClass}`} style={valueStyle}>{bigValue}</div>
-      <div className="mt-1 text-[11px] text-slate-500 truncate">{emptyText || sub}</div>
+      <div className="mt-1 text-[11px] text-slate-500 break-words sm:truncate">{emptyText || sub}</div>
     </Link>
   );
 }

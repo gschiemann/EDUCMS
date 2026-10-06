@@ -184,7 +184,7 @@ describe('FleetCommandCenter', () => {
     expect(rtl.queryByText(/school/i)).not.toBeInTheDocument();
     // The mock's one explanatory line under the rail.
     expect(
-      rtl.getByText('Each card is a separate check — hover for details'),
+      rtl.getByText('Each card is a separate check — open it for details'),
     ).toBeInTheDocument();
   });
 
@@ -230,12 +230,12 @@ describe('FleetCommandCenter', () => {
     // percentage; the exact n of m stays reachable in the cell's title.
     const cache = (location: string) => locationRow(location).children[5];
     expect(cache('Iron Peak HQ')).toHaveTextContent('Good 100%');
-    expect(cache('Iron Peak HQ').firstElementChild).toHaveAttribute(
+    expect(cache('Iron Peak HQ').querySelector('[title]')).toHaveAttribute(
       'title',
       expect.stringContaining('1 of 1 screens'),
     );
     expect(cache('Peak West')).toHaveTextContent('Low 50%');
-    expect(cache('Peak West').firstElementChild).toHaveAttribute(
+    expect(cache('Peak West').querySelector('[title]')).toHaveAttribute(
       'title',
       expect.stringContaining('1 of 2 screens'),
     );
@@ -1050,9 +1050,12 @@ describe('FleetCommandCenter · map stat cards', () => {
 
   it('the legend speaks English — "Picture proof", never "painting"', () => {
     renderAtlas();
-    const legend = within(rtl.getByRole('group', { name: 'Status guide' }));
-    for (const label of ['Device online', 'App current', 'Push live', 'Picture proof']) {
-      expect(legend.getByText(label)).toBeInTheDocument();
+    // jsdom doesn't apply responsive CSS; both placements must keep the copy.
+    for (const group of rtl.getAllByRole('group', { name: 'Status guide' })) {
+      const legend = within(group);
+      for (const label of ['Device online', 'App current', 'Push live', 'Picture proof']) {
+        expect(legend.getByText(label)).toBeInTheDocument();
+      }
     }
     // Our wire vocabulary must not leak into the operator's map.
     expect(rtl.queryByText(/paint/i)).not.toBeInTheDocument();

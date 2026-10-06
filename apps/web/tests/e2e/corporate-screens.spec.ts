@@ -29,7 +29,7 @@ const fleet = {
   operations: { groups, schedules: [], playlists: [] },
 };
 
-async function openCompany(page: Page, path: string) {
+async function openCompany(page: Page, path: string, width = 1840) {
   const writes: string[] = [];
   await page.route('https://tile.openstreetmap.org/**', (route) => route.fulfill({
     contentType: 'image/png',
@@ -63,7 +63,7 @@ async function openCompany(page: Page, path: string) {
     sessionStorage.setItem('edu_cms_token', `${b64({ alg: 'none', typ: 'JWT' })}.${b64({ sub: user.id, tenantId: user.tenantId, role: user.role, exp: Math.floor(Date.now() / 1000) + 3600 })}.sig`);
     sessionStorage.setItem('edu_cms_user', JSON.stringify(user));
   }, USER);
-  await page.setViewportSize({ width: 1840, height: 1100 });
+  await page.setViewportSize({ width, height: width < 768 ? 844 : 1100 });
   await page.goto(`/${HQ}/${path}`, { waitUntil: 'domcontentloaded' });
   return writes;
 }
@@ -139,3 +139,38 @@ test('dashboard offers all location names and totals link into company Screens',
   await expect(page.getByTestId('screens-desktop').locator('[data-screen-group="a-group"]')).toBeVisible();
   await expect(page.getByTestId('screens-desktop').getByRole('button', { name: own.name, exact: true })).toHaveCount(0);
 });
+
+for (const width of [390, 320]) {
+  test(`corporate phone retains overview, uptime, every location column and activity at ${width}px`, async ({ page }, info) => {
+    const errors: string[] = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await openCompany(page, 'dashboard', width);
+    const overview = page.getByRole('region', { name: 'Overview', exact: true });
+    await expect(overview.getByRole('heading', { name: 'Overview', exact: true })).toBeVisible();
+    await expect(overview.getByRole('heading', { name: 'Uptime', exact: true })).toBeVisible();
+    await expect(overview.getByRole('heading', { name: /Today.s Schedule/ })).toBeVisible();
+    await expect(overview.getByRole('heading', { name: 'Recent activity', exact: true })).toBeVisible();
+    const table = page.getByRole('table', { name: 'Location health' });
+    const austin = table.getByRole('row').filter({ hasText: 'Austin office' });
+    await expect(austin).toBeVisible();
+    for (const label of ['Screens', 'Content', 'Trend', 'Push', 'Cache', 'Emergency', 'Last change']) {
+      await expect(austin.getByText(label, { exact: true })).toBeVisible();
+    }
+    const actions = austin.getByRole('button', { name: 'More actions for Austin office' });
+    await actions.click();
+    await expect(page.getByRole('group', { name: 'Actions for Austin office' })).toBeVisible();
+    await actions.click();
+    await table.screenshot({ path: info.outputPath(`corporate-locations-${width}.png`), animations: 'disabled' });
+    await page.screenshot({ path: info.outputPath(`corporate-phone-${width}.png`), fullPage: true, animations: 'disabled' });
+    await page.getByRole('button', { name: 'Filter offices by name' }).click();
+    await page.getByRole('checkbox', { name: 'Select Austin office' }).check();
+    await page.getByRole('checkbox', { name: 'Select Boston office' }).check();
+    await page.getByRole('button', { name: 'Done', exact: true }).click();
+    await expect(table.getByRole('row').filter({ hasText: 'Test Corporate' })).toHaveCount(0);
+    await page.getByRole('tab', { name: 'map', exact: true }).click();
+    await expect(page.locator('.leaflet-container')).toBeVisible();
+    await expect(page.getByRole('group', { name: 'Status guide' }).filter({ visible: true })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    expect(errors).toEqual([]);
+  });
+}

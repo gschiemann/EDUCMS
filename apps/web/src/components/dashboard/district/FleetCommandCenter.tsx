@@ -1110,11 +1110,11 @@ export function FleetCommandCenter({
                 <span className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${PILL_ICON_TONE[pill.state]}`}>
                   <Icon className="w-5 h-5" aria-hidden />
                 </span>
-                <span className="min-w-0 flex items-baseline gap-1.5">
+                <span className="min-w-0 flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-1.5">
                   <span className="text-[16px] font-black text-slate-900 shrink-0">
                     {pill.state === 'unknown' ? '—' : pill.state === 'off' ? 'Off' : `${pill.n}/${pill.total}`}
                   </span>
-                  <span className="text-[13px] font-semibold text-slate-500 truncate">{label}</span>
+                  <span className="text-[13px] font-semibold text-slate-500 break-words sm:truncate">{label}</span>
                 </span>
               </>
             );
@@ -1144,7 +1144,7 @@ export function FleetCommandCenter({
           title="“—” means that check hasn’t answered yet."
         >
           <Info className="w-3.5 h-3.5 shrink-0" aria-hidden />
-          Each card is a separate check — hover for details
+          Each card is a separate check — open it for details
         </p>
       </div>
 
@@ -1958,36 +1958,16 @@ export function FleetCommandCenter({
 
                 {/* Static guide, separate from the live assurance counts above. */}
                 {mappableTotal > 0 && (
-                  <div
-                    className="hidden lg:block absolute bottom-3 right-3 z-[1000] max-w-[calc(100%-1.5rem)] bg-white rounded-2xl border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.14)] px-4 py-3"
-                    role="group"
-                    aria-label="Status guide"
-                  >
-                    <h4 className="text-[12px] font-black text-slate-800">Status guide <span className="font-normal text-slate-500">· not live status</span></h4>
-                    <div className="mt-2 pt-2 border-t border-slate-100 flex flex-wrap gap-x-5 gap-y-2">
-                      {[
-                        { label: 'Device online', Icon: Wifi },
-                        { label: ASSURANCE_LABEL.contentCurrent, Icon: CheckCircle2 },
-                        { label: 'Push live', Icon: Radio },
-                        // "Picture proof", never "painting" — that is our wire
-                        // vocabulary, not the operator's (2026-08-31 feedback).
-                        { label: 'Picture proof', Icon: MonitorCheck },
-                      ].map(({ label, Icon }) => (
-                        <span key={label} className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-slate-600">
-                          <Icon className="w-4 h-4 shrink-0 text-slate-400" aria-hidden />
-                          {label}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
+                  <DashboardStatusGuide className="hidden lg:block absolute bottom-3 right-3 z-[1000] max-w-[calc(100%-1.5rem)] bg-white rounded-2xl border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.14)] px-4 py-3" />
                 )}
               </LocationMapSurface>
+              {mappableTotal > 0 && <DashboardStatusGuide className={`${CARD} lg:hidden px-4 py-3`} />}
             </div>
           ) : (
             <>
-              <div className="px-5 overflow-x-auto">
-                <table className="w-full text-left" style={{ minWidth: 820 }}>
-                  <thead>
+              <div className="px-4 sm:px-5 lg:overflow-x-auto">
+                <table className="block lg:table w-full lg:min-w-[820px] text-left" aria-label="Location health">
+                  <thead className="hidden lg:table-header-group">
                     <tr className="text-[11.5px] font-semibold text-slate-500 border-y border-slate-100">
                       <th className="px-2 py-2.5 font-semibold">Location</th>
                       <th className="px-2 py-2.5 font-semibold">Screens</th>
@@ -2000,7 +1980,7 @@ export function FleetCommandCenter({
                       <th className="px-2 py-2.5" aria-label="Actions" />
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="block lg:table-row-group">
                     {visible.length === 0 && (
                       <tr><td colSpan={9} className="px-2 py-4 text-sm font-semibold text-slate-400">No {nounOne} matches this filter.</td></tr>
                     )}
@@ -2015,14 +1995,14 @@ export function FleetCommandCenter({
                         <tr
                           key={row.tenantId}
                           onClick={() => enter(row, worstPath(row))}
-                          className="border-b border-slate-50 last:border-b-0 hover:bg-slate-50/70 cursor-pointer text-[13px] font-bold"
+                          className="grid grid-cols-2 lg:table-row border-b border-slate-100 lg:border-slate-50 last:border-b-0 hover:bg-slate-50/70 cursor-pointer text-[13px] font-bold py-3 lg:py-0"
                         >
-                          <td className="px-2 py-3">
+                          <td className="block lg:table-cell min-w-0 px-2 py-3 col-span-2 lg:col-span-1">
                             <div className="flex items-center gap-2">
                               <MapPin className="w-4 h-4 text-slate-400 shrink-0" aria-hidden />
                               <div className="min-w-0">
                                 <div className="text-slate-900 flex items-center gap-2">
-                                  <span className="truncate">{row.name}</span>
+                                  <button type="button" onClick={(event) => { event.stopPropagation(); enter(row, worstPath(row)); }} className="min-w-0 text-left break-words lg:truncate focus-visible:underline">{row.name}</button>
                                   {row.isSelf && <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 border border-slate-200 rounded px-1 py-0.5 shrink-0">HQ</span>}
                                   {row.pendingApprovals > 0 && (
                                     <span className="text-[9.5px] font-black rounded-full px-1.5 py-0.5 text-white shrink-0" style={{ background: 'var(--brand-primary, #6366f1)' }}>
@@ -2034,26 +2014,26 @@ export function FleetCommandCenter({
                               </div>
                             </div>
                           </td>
-                          <td className="px-2 py-3 text-slate-900 whitespace-nowrap">
+                          <td className="block lg:table-cell min-w-0 px-2 py-3 text-slate-900 whitespace-nowrap"><span className="block lg:hidden text-[10px] font-semibold text-slate-500 mb-1">Screens</span>
                             <span className={row.screensOffline > 0 ? 'text-amber-600' : ''}>{row.screensOnline}</span>
                             <span className="text-slate-300">/{row.screensTotal}</span>
                           </td>
-                          <td className="px-2 py-3">
+                          <td className="block lg:table-cell min-w-0 px-2 py-3"><span className="block lg:hidden text-[10px] font-semibold text-slate-500 mb-1">Content</span>
                             {!row.hasScreens ? <StatusCell tone="muted">—</StatusCell>
                               : row.contentBehind > 0
                                 ? <StatusCell tone="bad">{row.contentBehind} behind</StatusCell>
                                 : <StatusCell tone="ok">Up to date</StatusCell>}
                           </td>
-                          <td className="px-2 py-3">
+                          <td className="block lg:table-cell min-w-0 px-2 py-3"><span className="block lg:hidden text-[10px] font-semibold text-slate-500 mb-1">Trend</span>
                             <Sparkline series={pulse?.locations?.[row.tenantId]} />
                           </td>
-                          <td className="px-2 py-3">
+                          <td className="block lg:table-cell min-w-0 px-2 py-3"><span className="block lg:hidden text-[10px] font-semibold text-slate-500 mb-1">Push</span>
                             {!row.hasScreens ? <StatusCell tone="muted">—</StatusCell>
                               : row.pushStale > 0
                                 ? <StatusCell tone="warn" title={`${row.pushStale} screen${row.pushStale === 1 ? '' : 's'} on ~10s check-ins`}>Degraded</StatusCell>
                                 : <StatusCell tone="ok">Live</StatusCell>}
                           </td>
-                          <td className="px-2 py-3">
+                          <td className="block lg:table-cell min-w-0 px-2 py-3"><span className="block lg:hidden text-[10px] font-semibold text-slate-500 mb-1">Cache</span>
                             {!row.hasScreens ? <StatusCell tone="muted">—</StatusCell> : (
                               <StatusCell
                                 tone={cacheGrade === 'Good' ? 'ok' : 'warn'}
@@ -2063,7 +2043,7 @@ export function FleetCommandCenter({
                               </StatusCell>
                             )}
                           </td>
-                          <td className="px-2 py-3">
+                          <td className="block lg:table-cell min-w-0 px-2 py-3"><span className="block lg:hidden text-[10px] font-semibold text-slate-500 mb-1">Emergency</span>
                             {!row.hasScreens ? <StatusCell tone="muted">—</StatusCell> : (<>
                               {row.readiness === 'READY' && <StatusCell tone="ok">Ready</StatusCell>}
                               {row.readiness === 'NEEDS_ATTENTION' && <StatusCell tone="warn">Gaps</StatusCell>}
@@ -2071,7 +2051,7 @@ export function FleetCommandCenter({
                               {row.readiness === 'UNKNOWN' && <StatusCell tone="muted">—</StatusCell>}
                             </>)}
                           </td>
-                          <td className="px-2 py-3 whitespace-nowrap">
+                          <td className="block lg:table-cell min-w-0 px-2 py-3 whitespace-nowrap"><span className="block lg:hidden text-[10px] font-semibold text-slate-500 mb-1">Last change</span>
                             {lastPush ? (
                               <>
                                 <div className="text-slate-900">{clockTime(lastPush)}</div>
@@ -2079,7 +2059,7 @@ export function FleetCommandCenter({
                               </>
                             ) : <span className="text-slate-300">—</span>}
                           </td>
-                          <td className="px-2 py-3 text-right">
+                          <td className="block lg:table-cell min-w-0 px-2 py-3 text-right">
                             {switchingId === row.tenantId ? (
                               <Loader2 className="w-4 h-4 text-slate-400 animate-spin inline-block" aria-hidden />
                             ) : (
@@ -2093,7 +2073,7 @@ export function FleetCommandCenter({
                                     e.stopPropagation();
                                     setMenuFor((v) => (v === row.tenantId ? null : row.tenantId));
                                   }}
-                                  className="w-8 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+                                  className="min-w-11 min-h-11 lg:min-w-8 lg:min-h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100"
                                 >
                                   <MoreHorizontal className="w-4 h-4" aria-hidden />
                                 </button>
@@ -2216,5 +2196,31 @@ export function FleetCommandCenter({
       )}
 
     </section>
+  );
+}
+
+function DashboardStatusGuide({ className }: { className: string }) {
+  return (
+                  <div className={className}
+                    role="group"
+                    aria-label="Status guide"
+                  >
+                    <h4 className="text-[12px] font-black text-slate-800">Status guide <span className="font-normal text-slate-500">· not live status</span></h4>
+                    <div className="mt-2 pt-2 border-t border-slate-100 flex flex-wrap gap-x-5 gap-y-2">
+                      {[
+                        { label: 'Device online', Icon: Wifi },
+                        { label: ASSURANCE_LABEL.contentCurrent, Icon: CheckCircle2 },
+                        { label: 'Push live', Icon: Radio },
+                        // "Picture proof", never "painting" — that is our wire
+                        // vocabulary, not the operator's (2026-08-31 feedback).
+                        { label: 'Picture proof', Icon: MonitorCheck },
+                      ].map(({ label, Icon }) => (
+                        <span key={label} className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-slate-600">
+                          <Icon className="w-4 h-4 shrink-0 text-slate-400" aria-hidden />
+                          {label}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
   );
 }
