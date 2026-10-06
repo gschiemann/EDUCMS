@@ -52,6 +52,7 @@ jest.mock('@/hooks/use-api', () => ({
   usePlaylistSummary: query(null),
   useFleet: query({ root: null, locations: [], stats: {}, screens: [] }),
   useDeletePlaylist: () => ({ mutateAsync: (arg: DeleteArg) => deleteImpl(arg), mutate: jest.fn(), isPending: false }),
+  useFleetOperations: query(undefined),
   useCreatePlaylist: mutation,
   useDeletePlaylistsBatch: () => ({ mutateAsync: (arg: BatchArg) => batchImpl(arg), mutate: jest.fn(), isPending: false }),
   useReorderPlaylistItems: mutation,
