@@ -21,6 +21,7 @@ import { tenantMfaEnforced } from '../auth/tenant-mfa-enforcement';
 import { randomBytes, createHash, createHmac, timingSafeEqual } from 'crypto';
 import { availableOrganizationSlug, TenantUrlClaimConflict } from './tenant-slug';
 import { collectDescendantTenantIds } from '../emergency/tenant-hierarchy';
+import { initializeEmergencyLocations } from './emergency-defaults';
 
 /** Transaction attempts for a rename that loses a race for its new URL. */
 const ORGANIZATION_RENAME_ATTEMPTS = 3;
@@ -884,9 +885,41 @@ export class TenantsController {
   // ──────────────────────────────────────────────────────────────────
   @Put('me/emergency-enabled')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
-  async setEmergencyEnabled(@Request() req: any, @Body() body: { enabled?: boolean }) {
-    const tenantId = req.user.tenantId as string;
+  async setEmergencyEnabled(
+    @Request()
+    req: { user: { tenantId: string; userId: string; role: AppRole } },
+    @Body() body: { enabled?: boolean; applyToAllLocations?: boolean },
+  ) {
+    const tenantId = req.user.tenantId;
     const enabled = !!body?.enabled;
+    const applyToAllLocations = body?.applyToAllLocations === true;
+    if (
+      body?.applyToAllLocations !== undefined &&
+      typeof body.applyToAllLocations !== 'boolean'
+    ) {
+      throw new HttpException(
+        {
+          code: 'EMERGENCY_SCOPE_INVALID',
+          message: 'Apply to all locations must be a boolean.',
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    if (
+      applyToAllLocations &&
+      (!enabled ||
+        (req.user.role !== AppRole.SUPER_ADMIN &&
+          req.user.role !== AppRole.DISTRICT_ADMIN))
+    ) {
+      throw new HttpException(
+        {
+          code: 'EMERGENCY_SCOPE_FORBIDDEN',
+          message:
+            'Only company administrators turning emergency setup on can apply it to all locations.',
+        },
+        HttpStatus.FORBIDDEN,
+      );
+    }
 
     const current = (await this.prisma.client.tenant.findUnique({
       where: { id: tenantId },
@@ -913,38 +946,70 @@ export class TenantsController {
     // Update + immutable audit row in one transaction — the same shape the
     // other emergency-adjacent tenant mutations use. Details carry the
     // previous/next value only; no secrets (handoff §19.6).
-    const previousEffective = effectiveEmergencyEnabled(current.vertical, current.emergencyEnabled);
-    const updated = await this.prisma.client.$transaction(async (tx) => {
-      const t = (await tx.tenant.update({
-        where: { id: tenantId },
-        data: { emergencyEnabled: enabled } as any,
-        select: { vertical: true, emergencyEnabled: true } as any,
-      })) as any;
-      await tx.auditLog.create({
-        data: {
-          tenantId,
-          userId: req.user.userId,
-          action: 'EMERGENCY_ENABLED_CHANGED',
-          targetType: 'Tenant',
-          targetId: tenantId,
-          details: JSON.stringify({
-            scopeType: 'organization',
-            scopeId: tenantId,
-            changedFields: ['emergencyEnabled'],
-            previous: { emergencyEnabled: current.emergencyEnabled ?? null, effective: previousEffective },
-            next: { emergencyEnabled: enabled, effective: enabled },
-          }),
-        },
-      });
-      return t;
-    });
+    let initialization = {
+      locationsEnabled: 0,
+      locationsInitialized: 0,
+      defaultBucketsLoaded: 0,
+    };
+    const previousEffective = effectiveEmergencyEnabled(
+      current.vertical,
+      current.emergencyEnabled,
+    );
+    const updated = await this.prisma.client.$transaction(
+      async (tx) => {
+        const t = (await tx.tenant.update({
+          where: { id: tenantId },
+          data: { emergencyEnabled: enabled } as any,
+          select: { vertical: true, emergencyEnabled: true } as any,
+        })) as any;
+        if (applyToAllLocations) {
+          const descendants = await collectDescendantTenantIds(
+            tx.tenant,
+            tenantId,
+          );
+          initialization = await initializeEmergencyLocations(
+            tx,
+            tenantId,
+            descendants,
+            req.user.userId,
+          );
+        }
+        await tx.auditLog.create({
+          data: {
+            tenantId,
+            userId: req.user.userId,
+            action: 'EMERGENCY_ENABLED_CHANGED',
+            targetType: 'Tenant',
+            targetId: tenantId,
+            details: JSON.stringify({
+              scopeType: 'organization',
+              scopeId: tenantId,
+              changedFields: ['emergencyEnabled'],
+              previous: {
+                emergencyEnabled: current.emergencyEnabled ?? null,
+                effective: previousEffective,
+              },
+              next: { emergencyEnabled: enabled, effective: enabled },
+              applyToAllLocations,
+              initialization,
+            }),
+          },
+        });
+        return t;
+      },
+      { timeout: 20_000 },
+    );
 
     // Re-read authoritative state and return it — the editor shows success
     // only after the server confirms (§13.2, no optimistic success).
     return {
       ok: true,
+      ...initialization,
       emergencyEnabled: updated.emergencyEnabled ?? null,
-      emergencyEnabledEffective: effectiveEmergencyEnabled(updated.vertical, updated.emergencyEnabled),
+      emergencyEnabledEffective: effectiveEmergencyEnabled(
+        updated.vertical,
+        updated.emergencyEnabled,
+      ),
       emergencyEnabledLocked: emergencyEnablementLocked(updated.vertical),
     };
   }

@@ -40,7 +40,7 @@ jest.mock('@/components/emergency/EmergencyReadinessCard', () => ({
   useEmergencyReadiness: () => ({ data: undefined, isLoading: false }),
 }));
 
-const mutateAsync = jest.fn(async (next: boolean) => ({ ok: true, next }));
+const mutateAsync = jest.fn<Promise<{ ok: boolean; next?: boolean | { enabled: boolean; applyToAllLocations?: boolean }; locationsEnabled?: number; locationsInitialized?: number; defaultBucketsLoaded?: number }>, [boolean | { enabled: boolean; applyToAllLocations?: boolean }]>(async (next: boolean | { enabled: boolean; applyToAllLocations?: boolean }) => ({ ok: true, next }));
 let enablement: {
   enabled: boolean;
   stored: boolean | null;
@@ -74,7 +74,7 @@ function renderPage() {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mutateAsync.mockImplementation(async (next: boolean) => ({ ok: true, next }));
+  mutateAsync.mockImplementation(async (next: boolean | { enabled: boolean; applyToAllLocations?: boolean }) => ({ ok: true, next }));
   enablement = { enabled: true, stored: true, locked: false, isLoading: false, isError: false };
   window.localStorage.clear();
 });
@@ -121,6 +121,39 @@ describe('Emergency settings page', () => {
       expect(screen.getByText('Saved. The server confirms emergency alerts are off.')).toBeInTheDocument(),
     );
     expect(mutateAsync).toHaveBeenCalledWith(false);
+  });
+
+  it('explains corporate initialization and reports the server counts without claiming all locations are ready', async () => {
+    enablement = { enabled: false, stored: false, locked: false, isLoading: false, isError: false };
+    mutateAsync.mockResolvedValueOnce({ ok: true, locationsEnabled: 3, locationsInitialized: 2, defaultBucketsLoaded: 12 });
+    renderPage();
+    const applyAll = screen.getByRole('checkbox', { name: /Apply to all current locations/i });
+    expect(applyAll).not.toBeChecked();
+    fireEvent.click(applyAll);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /turn on emergency alerts/i }));
+    });
+    const { appConfirm } = jest.requireMock('@/components/ui/app-dialog');
+    expect(appConfirm).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('including locations without screens') }));
+    expect(await screen.findByText(/setup enabled for 3 locations; initial alert content loaded for 2 locations/i)).toBeInTheDocument();
+    expect(screen.getByText(/Existing local content was kept/i)).toBeInTheDocument();
+    expect(mutateAsync).toHaveBeenCalledWith({ enabled: true, applyToAllLocations: true });
+  });
+
+  it('enables only the corporate account unless all locations is explicitly selected', async () => {
+    enablement = { enabled: false, stored: false, locked: false, isLoading: false, isError: false };
+    renderPage();
+    expect(screen.getByRole('checkbox', { name: /Apply to all current locations/i })).not.toBeChecked();
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /turn on emergency alerts/i })); });
+    expect(mutateAsync).toHaveBeenCalledWith(true);
+    const { appConfirm } = jest.requireMock('@/components/ui/app-dialog');
+    expect(appConfirm).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('this account only') }));
+  });
+
+  it('lets an already enabled corporate account explicitly initialize its locations', async () => {
+    renderPage();
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Apply setup to all locations' })); });
+    expect(mutateAsync).toHaveBeenCalledWith({ enabled: true, applyToAllLocations: true });
   });
 
   it('migrates a leftover localStorage answer to the server once, then deletes the key', async () => {

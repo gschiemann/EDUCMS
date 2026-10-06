@@ -256,16 +256,23 @@ function EnablementSection() {
   const t = useTranslations();
   const { enabled, locked, verticalStated, isLoading, isError } = useEmergencyEnablement();
   const setEnabled = useSetEmergencyEnabled();
+  const role = useUIStore((state) => state.user?.role);
+  const { data: tenant } = useTenant();
+  const includesLocations = (role === 'SUPER_ADMIN' || role === 'DISTRICT_ADMIN')
+    && !(tenant as { parentId?: string | null } | undefined)?.parentId;
+  const [applyToAllLocations, setApplyToAllLocations] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmedMessage, setConfirmedMessage] = useState<string | null>(null);
 
-  const apply = async (next: boolean) => {
+  const apply = async (next: boolean, allLocations = false) => {
     const ok = await appConfirm(
       next
         ? {
-            title: t('settings.cc.emergency.enablement.confirmOnTitle'),
-            message: t('settings.cc.emergency.enablement.confirmOnBody'),
-            confirmLabel: t('settings.cc.emergency.enablement.confirmOnCta'),
+            title: t(allLocations ? 'settings.cc.emergency.enablement.confirmCorporateOnTitle' : 'settings.cc.emergency.enablement.confirmOnTitle'),
+            message: t(allLocations
+              ? 'settings.cc.emergency.enablement.confirmCorporateOnBody'
+              : 'settings.cc.emergency.enablement.confirmOnBody'),
+            confirmLabel: t(allLocations ? 'settings.cc.emergency.enablement.confirmCorporateOnCta' : 'settings.cc.emergency.enablement.confirmOnCta'),
           }
         : {
             title: t('settings.cc.emergency.enablement.confirmOffTitle'),
@@ -281,10 +288,15 @@ function EnablementSection() {
       // §13.2 — no optimistic success. `mutateAsync` resolves only after the
       // tenant query has been re-read, so the confirmation below reports the
       // server's answer, never the button that was clicked.
-      await setEnabled.mutateAsync(next);
+      const result = await setEnabled.mutateAsync(allLocations ? { enabled: true, applyToAllLocations: true } : next);
+      setApplyToAllLocations(false);
       setConfirmedMessage(
         next
-          ? t('settings.cc.emergency.enablement.savedOn')
+          ? result.locationsEnabled || result.locationsInitialized
+            ? t('settings.cc.emergency.enablement.savedLocations', {
+                enabled: result.locationsEnabled ?? 0, initialized: result.locationsInitialized ?? 0,
+              })
+            : t('settings.cc.emergency.enablement.savedOn')
           : t('settings.cc.emergency.enablement.savedOff'),
       );
     } catch (e: unknown) {
@@ -356,6 +368,15 @@ function EnablementSection() {
                     ? t('settings.cc.emergency.enablement.onBody')
                     : t('settings.cc.emergency.enablement.offBody')}
                 </p>
+                {includesLocations && !enabled && !locked && (
+                  <label className="mt-3 flex items-start gap-2 text-[13px] text-slate-700 min-h-[44px] cursor-pointer">
+                    <input type="checkbox" checked={applyToAllLocations} onChange={(event) => setApplyToAllLocations(event.target.checked)}
+                      disabled={setEnabled.isPending} className="mt-0.5 h-4 w-4 rounded border-slate-300 accent-rose-600" />
+                    <span>{t('settings.cc.emergency.enablement.applyAllLabel')}
+                      <span className="mt-1 block text-[12px] text-slate-500">{t('settings.cc.emergency.enablement.applyAllHint')}</span>
+                    </span>
+                  </label>
+                )}
                 {locked && (
                   <p className="mt-1.5 text-[12px] leading-[17px] text-slate-600">
                     {t('settings.cc.emergency.enablement.lockedNote')}
@@ -374,10 +395,17 @@ function EnablementSection() {
               </div>
             </div>
 
+            <div className="flex flex-wrap gap-2">
+            {includesLocations && enabled && (
+              <button type="button" onClick={() => apply(true, true)} disabled={setEnabled.isPending}
+                className="min-h-[44px] px-3.5 rounded-[10px] border border-slate-200 bg-white text-[13px] font-medium text-slate-700 disabled:opacity-60">
+                {t('settings.cc.emergency.enablement.applyAllAction')}
+              </button>
+            )}
             {!locked && (
               <button
                 type="button"
-                onClick={() => apply(!enabled)}
+                onClick={() => apply(!enabled, !enabled && applyToAllLocations)}
                 disabled={setEnabled.isPending}
                 className={`shrink-0 inline-flex items-center gap-2 min-h-[38px] px-3.5 rounded-[10px] text-[13px] font-medium disabled:opacity-60 ${
                   enabled
@@ -397,6 +425,7 @@ function EnablementSection() {
                 )}
               </button>
             )}
+            </div>
           </div>
         </div>
       )}

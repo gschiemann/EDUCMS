@@ -3966,13 +3966,19 @@ export function useEmergencyEnablement(): EmergencyEnablement {
 export function useSetEmergencyEnabled() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (enabled: boolean) =>
-      apiFetch('/tenants/me/emergency-enabled', { method: 'PUT', body: JSON.stringify({ enabled }) }),
+    mutationFn: (input: boolean | { enabled: boolean; applyToAllLocations?: boolean }) =>
+      apiFetch<{ ok: boolean; locationsEnabled?: number; locationsInitialized?: number; defaultBucketsLoaded?: number }>(
+        '/tenants/me/emergency-enabled', { method: 'PUT', body: JSON.stringify(typeof input === 'boolean' ? { enabled: input } : input) },
+      ),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ['tenant'] });
       // Turning the capability on/off changes what the readiness report is
       // grading, so re-ask rather than leaving a stale verdict on screen.
-      qc.invalidateQueries({ queryKey: ['emergency-readiness'] });
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['emergency-readiness'] }),
+        qc.invalidateQueries({ queryKey: ['panic-content'] }),
+        qc.invalidateQueries({ queryKey: ['screens', 'fleet-operations'] }),
+      ]);
     },
   });
 }
