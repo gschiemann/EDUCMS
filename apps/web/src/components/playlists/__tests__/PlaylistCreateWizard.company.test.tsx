@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 const HQ = { id: 'hq', name: 'Test Corporate', slug: 'hq' };
 const ALPHA = { id: 'alpha', name: 'Alpha office', slug: 'alpha' };
@@ -74,10 +74,21 @@ function review() {
   fireEvent.click(screen.getByRole('button', { name: /^Next/ }));
 }
 
+it('groups individual devices by office and places the shared filter with the screen search', () => {
+  openToScreens();
+  const alpha = screen.getByRole('region', { name: 'Alpha office screens' });
+  const beta = screen.getByRole('region', { name: 'Beta office screens' });
+  expect(within(alpha).getByText('Entrance display')).toBeInTheDocument();
+  expect(within(alpha).queryByText('Reception display')).not.toBeInTheDocument();
+  expect(within(beta).getByText('Reception display')).toBeInTheDocument();
+  expect(screen.getByPlaceholderText('Search individual screens…').parentElement?.parentElement)
+    .toContainElement(screen.getByRole('button', { name: 'Filter by location' }));
+});
+
 it('selects all company screens including HQ, publishes through distribution, and counts mirrored reach', async () => {
   const onCreated = openToScreens();
   expect(screen.getByRole('button', { name: 'All company screens' })).toHaveAttribute('aria-pressed', 'true');
-  fireEvent.click(screen.getByRole('button', { name: 'Select all matching screens' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select all' }));
   expect(screen.getByText('5 of 5 screens')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: /^Next/ }));
   expect(screen.getByText('Publishing across the company')).toBeInTheDocument();
@@ -95,7 +106,7 @@ it('keeps selected locations when filtering, and can pick a single independent s
   fireEvent.click(screen.getByRole('button', { name: 'Filter by location' }));
   fireEvent.click(screen.getByRole('checkbox', { name: 'Select Alpha office' }));
   fireEvent.click(screen.getByRole('button', { name: 'Done' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Select all matching screens' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select all' }));
   fireEvent.click(screen.getByRole('button', { name: 'Filter by location' }));
   fireEvent.click(screen.getByRole('checkbox', { name: 'Select Beta office' }));
   fireEvent.click(screen.getByRole('button', { name: 'Done' }));
@@ -160,7 +171,7 @@ it('reports held playback copies and partial screen failures honestly', async ()
   fireEvent.click(screen.getByRole('button', { name: 'Filter by location' }));
   fireEvent.click(screen.getByRole('checkbox', { name: 'Select Beta office' }));
   fireEvent.click(screen.getByRole('button', { name: 'Done' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Select all matching screens' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select all' }));
   review();
   fireEvent.click(screen.getByRole('button', { name: 'Create & Publish' }));
   await waitFor(() => expect(onCreated).toHaveBeenCalled());
@@ -204,7 +215,7 @@ it('selects matching screens across two checked locations without selecting corp
   fireEvent.click(screen.getByRole('checkbox', { name: 'Select Beta office' }));
   fireEvent.click(screen.getByRole('button', { name: 'Done' }));
   expect(screen.queryByText('Corporate lobby')).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Select all matching screens' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select all' }));
   review();
   expect(screen.getByText('Publishes to 4 screens across 2 locations')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Create & Publish' }));

@@ -1,5 +1,7 @@
 "use client";
 
+import { SelectionCheckbox } from '@/components/common/SelectionCheckbox';
+
 /**
  * PlaylistCreateWizard — operator's primary creation flow.
  *
@@ -61,6 +63,7 @@ import {
   useMemo,
   useRef,
   type CSSProperties,
+  type ReactNode,
 } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -1488,7 +1491,6 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
                     </button>
                   ))}
                 </div>
-                {companyScope && <LocationFilter locations={fleet?.locations ?? []} value={screenLocations} onChange={setScreenLocations} />}
               </div>
             )}
             {fleetTemplateBlocked && (
@@ -1502,6 +1504,7 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
               groups={visibleGroups}
               search={screenSearch}
               setSearch={setScreenSearch}
+              locationFilter={companyScope ? <LocationFilter locations={fleet?.locations ?? []} value={screenLocations} onChange={setScreenLocations} /> : undefined}
               selectedIds={selectedScreenIds}
               selectedCount={blastRadius.screenCount}
               onToggleAll={companyScope ? () => {
@@ -2772,6 +2775,7 @@ export function Step3Screens({
   setSearch,
   selectedIds,
   selectedCount,
+  locationFilter,
   onToggleAll,
   canSetFaceMode,
   onToggle,
@@ -2787,6 +2791,7 @@ export function Step3Screens({
   setSearch: (s: string) => void;
   selectedIds: Set<string>;
   selectedCount?: number;
+  locationFilter?: ReactNode;
   onToggleAll?: () => void;
   canSetFaceMode?: (screen: WizardScreen) => boolean;
   onToggle: (id: string) => void;
@@ -2805,30 +2810,43 @@ export function Step3Screens({
   // One physical display = one card, even when it is two Screen rows.
   // Ordinary screens come back as one-sided units, so the double-sided
   // feature is invisible on a fleet that has none.
-  const units = groupScreensIntoUnits(screens as any[]);
+  const units = groupScreensIntoUnits(screens as WizardScreen[]);
+  const byLocation = new Map<string, { id: string; name: string | null; units: typeof units }>();
+  for (const unit of units) {
+    const location = unit.primary.sourceTenant;
+    const key = location?.id ?? 'local';
+    const section = byLocation.get(key) ?? { id: key, name: location?.name ?? null, units: [] };
+    section.units.push(unit);
+    byLocation.set(key, section);
+  }
+  const locationSections = [...byLocation.values()].sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''));
+  const selectable = screens.filter((screen: WizardScreen) => !screen.faceOfScreenId || screen.faceContentMode === 'OWN');
+  const allSelected = selectable.length > 0 && selectable.every((screen: WizardScreen) => selectedIds.has(screen.id));
+  const someSelected = !allSelected && selectable.some((screen: WizardScreen) => selectedIds.has(screen.id));
   return (
     <div>
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
         <div>
           <p className="text-base font-bold text-slate-800">Where should it play?</p>
           <p className="text-xs text-slate-500 mt-0.5">
             Pick a screen group (one click adds all its screens) or pick individual screens. Skip to assign later.
           </p>
         </div>
+        <div className="flex items-center gap-3 shrink-0">
+          {onToggleAll && (
+            <div className="inline-flex items-center gap-1 text-xs font-bold text-slate-700 min-h-[44px]">
+              <SelectionCheckbox checked={allSelected} indeterminate={someSelected} label="Select all" onChange={onToggleAll} disabled={!selectable.length} />
+              <button type="button" onClick={onToggleAll} disabled={!selectable.length} className="min-h-[44px] disabled:opacity-50">Select all</button>
+            </div>
+          )}
         <div className="inline-flex items-center px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-100">
           <Monitor className="w-3.5 h-3.5 text-emerald-600 mr-1.5" />
           <span className="text-xs font-bold text-emerald-700">
             {selectedCount ?? selectedIds.size} of {total} screens
           </span>
         </div>
+        </div>
       </div>
-      {onToggleAll && (
-        <button type="button" onClick={onToggleAll} disabled={!screens.length}
-          className="mb-3 min-h-[44px] px-3 rounded-lg border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
-          {screens.length > 0 && screens.filter((s: WizardScreen) => !s.faceOfScreenId || s.faceContentMode === 'OWN').every((s: WizardScreen) => selectedIds.has(s.id))
-            ? 'Clear matching screens' : 'Select all matching screens'}
-        </button>
-      )}
 
       {/* Screen groups — sit above the individual screens grid. Click
           a group → selects every screen it contains (toggle behavior:
@@ -2896,7 +2914,8 @@ export function Step3Screens({
       )}
 
       {total > 0 && (
-        <div className="relative mb-3">
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <div className="relative flex-1 min-w-[180px]">
           <Search className="absolute top-1/2 left-3 -translate-y-1/2 w-4 h-4 text-slate-300" />
           <input
             type="text"
@@ -2905,6 +2924,8 @@ export function Step3Screens({
             placeholder="Search individual screens…"
             className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-emerald-400"
           />
+          </div>
+          {locationFilter}
         </div>
       )}
 
@@ -2936,8 +2957,11 @@ export function Step3Screens({
         </div>
       ) : (
         <>
+          {locationSections.map((location) => (
+          <section key={location.id} aria-label={location.name ? `${location.name} screens` : 'Individual screens'} className="mb-4">
+            {location.name && <h3 className="text-sm font-bold text-slate-700 mb-2">{location.name}</h3>}
           <div className="grid grid-cols-1 sm:grid-cols-2">
-            {units.map((unit) => {
+            {location.units.map((unit) => {
               // A double-sided display is ONE card that asks one question.
               if (unit.isMultiSided) {
                 return (
@@ -3011,6 +3035,8 @@ export function Step3Screens({
               );
             })}
           </div>
+          </section>
+          ))}
           <div className="text-center mt-2">
             <button
               type="button"
