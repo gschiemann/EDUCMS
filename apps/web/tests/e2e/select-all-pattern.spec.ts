@@ -67,7 +67,10 @@ async function openAs(page: Page, route: 'assets' | 'playlists', viewport: { wid
   await page.route('**/api/v1/assets/folders', (r) => json(r, []));
   // The library is bigger than the first page, like the operator's own: until the whole library is
   // loaded the type chips carry no per-type counts, which is what the toolbar's width depends on.
-  await page.route(/\/api\/v1\/assets(\?.*)?$/, (r) => json(r, { assets: ASSETS, total: 112 }));
+  await page.route(/\/api\/v1\/assets(\?.*)?$/, (r) => json(r,
+    // GET /assets is a bare array for wizard pickers; the library opts into
+    // the paginated envelope with take. Model both actual API contracts.
+    new URL(r.request().url()).searchParams.has('take') ? { assets: ASSETS, total: 112 } : ASSETS));
   await page.route('**/api/v1/playlists', (r) => json(r, PLAYLISTS));
 
   await page.addInitScript((user) => {
