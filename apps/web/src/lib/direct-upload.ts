@@ -183,12 +183,13 @@ export interface DirectUploadDeps {
     method: 'POST' | 'PATCH' | 'HEAD' | 'PUT',
     url: string,
     headers: Record<string, string>,
-    body: Blob | null,
+    body: Blob | ArrayBuffer | null,
     onUploadProgress?: (loaded: number) => void,
     signal?: AbortSignal,
   ): Promise<XhrResult>;
   sleep(ms: number, signal?: AbortSignal): Promise<void>;
   now(): number;
+  readChunk(blob: Blob, signal?: AbortSignal): Promise<ArrayBuffer>;
 }
 
 export interface DirectUploadOptions {
@@ -210,7 +211,7 @@ function xhrRequest(
   method: 'POST' | 'PATCH' | 'HEAD' | 'PUT',
   url: string,
   headers: Record<string, string>,
-  body: Blob | null,
+  body: Blob | ArrayBuffer | null,
   onUploadProgress?: (loaded: number) => void,
   signal?: AbortSignal,
 ): Promise<XhrResult> {
@@ -267,6 +268,40 @@ function xhrRequest(
   });
 }
 
+/** iOS file-provider Blobs can send an empty body after earlier chunks succeeded.
+ * Materialize only the current 6 MB chunk, so XHR owns bytes rather than a lazy
+ * file handle. FileReader also works on the oldest supported Safari versions. */
+export function readUploadChunk(blob: Blob, signal?: AbortSignal): Promise<ArrayBuffer> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    let finished = false;
+    const finish = (error?: DirectUploadError) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', abort);
+      if (error) reject(error);
+      else if (reader.result instanceof ArrayBuffer && reader.result.byteLength === blob.size) resolve(reader.result);
+      else reject(new DirectUploadError('storage', 'The selected file could not be read. Select it again from Files.'));
+    };
+    const abort = () => {
+      finish(new DirectUploadError('aborted', 'Upload cancelled.'));
+      if (reader.readyState === FileReader.LOADING) reader.abort();
+    };
+    const timer = setTimeout(() => {
+      finish(new DirectUploadError('storage', 'The selected file could not be read. Select it again from Files.'));
+      if (reader.readyState === FileReader.LOADING) reader.abort();
+    }, UPLOAD_IDLE_TIMEOUT_MS);
+    reader.onload = () => finish();
+    reader.onerror = () => finish(new DirectUploadError('storage', 'The selected file could not be read. Select it again from Files.'));
+    reader.onabort = () => finish(new DirectUploadError('aborted', 'Upload cancelled.'));
+    if (signal?.aborted) { abort(); return; }
+    signal?.addEventListener('abort', abort, { once: true });
+    try { reader.readAsArrayBuffer(blob); }
+    catch { finish(new DirectUploadError('storage', 'The selected file could not be read. Select it again from Files.')); }
+  });
+}
+
 const realDeps: DirectUploadDeps = {
   postJson: <T,>(path: string, body: Record<string, unknown>) =>
     apiFetch<T>(path, { method: 'POST', body: JSON.stringify(body) }),
@@ -280,6 +315,7 @@ const realDeps: DirectUploadDeps = {
       }, { once: true });
     }),
   now: () => Date.now(),
+  readChunk: readUploadChunk,
 };
 
 /** `exp` (ms) of a JWT, unverified — only to know when to renew. null = unreadable. */
@@ -491,12 +527,17 @@ export async function uploadAssetDirect(file: File, opts: DirectUploadOptions = 
 
     // 2. send chunks; resume from the server's offset after any failure
     let offset = 0;
+    let accepted = 0;
     let stalls = 0;
     report(0);
     while (offset < total) {
       aborted();
       await freshToken();
       const end = Math.min(offset + chunk, total);
+      const bytes = await deps.readChunk(file.slice(offset, end), opts.signal);
+      aborted();
+      if (bytes.byteLength !== end - offset) throw new DirectUploadError('storage', 'The selected file could not be read. Select it again from Files.');
+      opts.onPhase?.('uploading');
       const res = await deps.request(
         'PATCH',
         uploadUrl,
@@ -506,18 +547,25 @@ export async function uploadAssetDirect(file: File, opts: DirectUploadOptions = 
           'Upload-Offset': String(offset),
           'Content-Type': 'application/offset+octet-stream',
         },
-        file.slice(offset, end),
+        bytes,
         (loaded) => report(offset + loaded),
         opts.signal,
       );
       if (res.status === -1) throw new DirectUploadError('aborted', 'Upload cancelled.');
       if (res.status === 204 || res.status === 200) {
-        const next = Number(res.header('Upload-Offset'));
-        offset = Number.isFinite(next) && next > offset ? next : end;
-        stalls = 0;
-        report(offset);
-        opts.onPhase?.('uploading');
-        continue;
+        const value = res.header('Upload-Offset');
+        const next = value && /^\d+$/.test(value) ? Number(value) : NaN;
+        if (!Number.isSafeInteger(next) || next < offset || next > end) {
+          throw new DirectUploadError('storage', 'Storage did not confirm the uploaded bytes.', res.status);
+        }
+        if (next > offset) {
+          offset = next;
+          // A 204 without new bytes must never reset the retry budget or
+          // manufacture progress (the iOS empty-body / 409 loop).
+          if (offset > accepted) { accepted = offset; stalls = 0; }
+          report(offset);
+          continue;
+        }
       }
       if (res.status === 413) throw new DirectUploadError('too-large', 'Storage refused the file as too large.', 413);
       if (res.status === 404 || res.status === 410) throw new DirectUploadError('expired', 'The upload expired on the storage side.', res.status);
@@ -539,10 +587,11 @@ export async function uploadAssetDirect(file: File, opts: DirectUploadOptions = 
       const head = await deps.request('HEAD', uploadUrl, { ...base, 'x-signature': token }, null, undefined, opts.signal);
       if (head.status === -1) throw new DirectUploadError('aborted', 'Upload cancelled.');
       if (head.status === 404 || head.status === 410) throw new DirectUploadError('expired', 'The upload expired on the storage side.', head.status);
-      const at = Number(head.header('Upload-Offset'));
+      const headOffset = head.header('Upload-Offset');
+      const at = headOffset && /^\d+$/.test(headOffset) ? Number(headOffset) : NaN;
       if ((head.status === 200 || head.status === 204) && Number.isFinite(at) && at >= 0 && at <= total) {
         // Bytes that landed before the connection dropped count as progress.
-        if (at > offset) stalls = 0;
+        if (at > accepted) { accepted = at; stalls = 0; }
         offset = at;
         report(offset);
       }

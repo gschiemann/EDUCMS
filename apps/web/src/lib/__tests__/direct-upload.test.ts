@@ -135,13 +135,14 @@ function harness(opts: { now?: () => number; server?: Partial<Server>; presignTo
   });
 
   let patchN = 0;
-  const request = jest.fn(async (method: string, url: string, headers: Record<string, string>, body: Blob | null, onUp?: (n: number) => void) => {
+  const request = jest.fn(async (method: string, url: string, headers: Record<string, string>, body: Blob | ArrayBuffer | null, onUp?: (n: number) => void) => {
+    const bytes = body instanceof ArrayBuffer ? body.byteLength : body?.size ?? 0;
     calls.push(`${method} ${url.replace(SUPA, '')}`);
     if (method === 'PUT') {
       server.puts += 1;
       if (server.putStatus) return res(server.putStatus);
-      onUp?.(body!.size);
-      server.offset = body!.size;
+      onUp?.(bytes);
+      server.offset = bytes;
       return res(200, {}, '{"Key":"assets/x"}');
     }
     const token = headers['x-signature'];
@@ -164,17 +165,17 @@ function harness(opts: { now?: () => number; server?: Partial<Server>; presignTo
       if (forced !== null && forced !== undefined) {
         // A drop can happen AFTER the server accepted the bytes (response lost).
         if (server.acceptedDespiteFailure?.(patchN) && Number(headers['Upload-Offset']) === server.offset) {
-          server.offset += body!.size;
+          server.offset += bytes;
         }
         return res(forced);
       }
       if (!sigOk) return res(403, {}, '{"message":"jwt expired"}');
       const off = Number(headers['Upload-Offset']);
       if (off !== server.offset) return res(409);
-      onUp?.(Math.floor(body!.size / 2));
-      onUp?.(body!.size);
-      server.offset += body!.size;
-      server.patches.push({ offset: off, bytes: body!.size, token });
+      onUp?.(Math.floor(bytes / 2));
+      onUp?.(bytes);
+      server.offset += bytes;
+      server.patches.push({ offset: off, bytes, token });
       return res(204, { 'Upload-Offset': String(server.offset) });
     }
     return res(500);
@@ -187,6 +188,7 @@ function harness(opts: { now?: () => number; server?: Partial<Server>; presignTo
       clock += ms;
     }),
     now,
+    readChunk: jest.fn(async (blob: Blob) => new ArrayBuffer(blob.size)),
   };
   return { deps, server, calls, postJson, request, advance: (ms: number) => (clock += ms) };
 }
@@ -230,6 +232,46 @@ describe('uploadAssetDirect — TUS resumable for large files', () => {
     const sentAt = h.server.patches.map((p) => p.offset);
     expect(new Set(sentAt).size).toBe(sentAt.length); // no offset uploaded twice
     expect(phases).toContain('reconnecting');
+  });
+
+  it('sends materialized chunk bytes, including after recovering a lost response', async () => {
+    const h = harness({ server: { failPatch: n => n === 2 ? 0 : null, acceptedDespiteFailure: n => n === 2 } });
+    await uploadAssetDirect(file(20 * MB), { deps: h.deps });
+    const patches = h.request.mock.calls.filter(([method]) => method === 'PATCH');
+    expect(patches.every(call => call[3] instanceof ArrayBuffer && call[3].byteLength > 0)).toBe(true);
+    expect(h.server.offset).toBe(20 * MB);
+  });
+
+  it('never invents progress or loops forever when 204 accepts zero bytes then HEAD confirms no progress', async () => {
+    const h = harness();
+    const original = h.deps.request!;
+    h.deps.request = jest.fn(async (...args: Parameters<DirectUploadDeps['request']>) => {
+      if (args[0] === 'PATCH') return res(204, { 'Upload-Offset': '0' });
+      return original(...args);
+    });
+    const progress: number[] = [];
+    await expect(uploadAssetDirect(file(20 * MB), { deps: h.deps, onProgress: p => progress.push(p.loaded) }))
+      .rejects.toMatchObject({ code: 'network' });
+    expect(progress.every(n => n === 0)).toBe(true);
+    expect((h.deps.sleep as jest.Mock).mock.calls).toHaveLength(RESUME_DELAYS_MS.length);
+    expect(h.postJson.mock.calls.some(([path]) => path === '/assets/complete-upload')).toBe(false);
+  });
+
+  it.each([null, 'garbage', '999999999'])('rejects an unconfirmed chunk offset (%s) without registering', async value => {
+    const h = harness();
+    const original = h.deps.request!;
+    h.deps.request = jest.fn(async (...args: Parameters<DirectUploadDeps['request']>) => args[0] === 'PATCH'
+      ? res(204, value === null ? {} : { 'Upload-Offset': value }) : original(...args));
+    await expect(uploadAssetDirect(file(20 * MB), { deps: h.deps })).rejects.toMatchObject({ code: 'storage' });
+    expect(h.postJson.mock.calls.some(([path]) => path === '/assets/complete-upload')).toBe(false);
+  });
+
+  it('does not send an unreadable chunk to storage', async () => {
+    const h = harness();
+    h.deps.readChunk = async () => new ArrayBuffer(0);
+    await expect(uploadAssetDirect(file(20 * MB), { deps: h.deps })).rejects.toMatchObject({ code: 'storage' });
+    expect(h.request.mock.calls.some(([method]) => method === 'PATCH')).toBe(false);
+    expect(h.postJson.mock.calls.some(([path]) => path === '/assets/complete-upload')).toBe(false);
   });
 
   it('a token that expires MID-UPLOAD is renewed with the ticket and the same chunk resent', async () => {

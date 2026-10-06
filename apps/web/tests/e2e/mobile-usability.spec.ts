@@ -12,7 +12,7 @@ const token = (tenantId: string) => {
 };
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jWZkAAAAASUVORK5CYII=', 'base64');
 
-async function setup(page: Page, opts: { failFirst?: boolean; delayBetaBrand?: boolean; holdStorage?: boolean; remembered?: boolean; coldStart?: boolean } = {}) {
+async function setup(page: Page, opts: { failFirst?: boolean; delayBetaBrand?: boolean; holdStorage?: boolean; remembered?: boolean; coldStart?: boolean; resumable?: boolean } = {}) {
   const requests: Array<{ path: string; data: any }> = [];
   const errors: string[] = [];
   const storage = { active: 0, max: 0, attempts: 0 };
@@ -71,7 +71,11 @@ async function setup(page: Page, opts: { failFirst?: boolean; delayBetaBrand?: b
     if (path === '/branding/me' && tenantId === BETA && opts.delayBetaBrand) await betaBrandGate;
     if (path === '/tenants/switch') body = { access_token: token(data.tenantId), user: user(data.tenantId) };
     if (path === '/assets/presign') body = { uploadUrl: `https://storage.example.test/${encodeURIComponent(data.filename)}`,
-      storagePath: `${tenantId}/${data.filename}`, mimeType: data.contentType, maxFileSize: 500 * 1024 * 1024 };
+      storagePath: `${tenantId}/${data.filename}`, mimeType: data.contentType, maxFileSize: 500 * 1024 * 1024,
+      ...(opts.resumable ? { token: 'synthetic-path-only-token', resumable: {
+        endpoint: `https://tus.example.test/${encodeURIComponent(data.filename)}`, bucketName: 'assets',
+        objectName: `${tenantId}/${data.filename}`, chunkSize: 6 * 1024 ** 2, cacheControl: '31536000',
+      } } : {}) };
     if (path === '/assets/complete-upload') body = { id: data.filename, status: 'PUBLISHED', originalName: data.filename, mimeType: data.contentType, name: data.filename, fileSize: data.fileSize, fileUrl: 'https://cdn.example.test/video.mp4' };
     return route.fulfill({ status: 200, contentType: 'application/json', headers, body: JSON.stringify(body) });
   });
@@ -126,6 +130,52 @@ test('five videos retain their selection, confirm the folder, run three transfer
   expect(state.requests.filter(r => r.path === '/assets/complete-upload')).toHaveLength(5);
   await expect(page.getByRole('navigation', { name: 'Primary' })).toBeVisible();
   await page.screenshot({ animations: 'disabled', path: info.outputPath('five-video-upload-results.png') });
+  expect(state.errors).toEqual([]);
+});
+
+test('three large phone videos send real chunk bytes and finish after a zero-byte acknowledgement', async ({ page }, info) => {
+  const state = await setup(page, { resumable: true });
+  const uploads = new Map<string, { offset: number; emptyAcknowledged: boolean; patches: number }>();
+  const chunks: number[] = [];
+  await page.route('https://tus.example.test/**', async route => {
+    const req = route.request();
+    const key = new URL(req.url()).pathname;
+    const headers = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*',
+      'Access-Control-Allow-Methods': 'POST,PATCH,HEAD,OPTIONS', 'Access-Control-Expose-Headers': 'Location,Upload-Offset',
+      'Cache-Control': 'no-store' };
+    if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers });
+    if (req.method() === 'POST') {
+      uploads.set(key, { offset: 0, emptyAcknowledged: false, patches: 0 });
+      return route.fulfill({ status: 201, headers: { ...headers, Location: req.url() } });
+    }
+    const upload = uploads.get(key)!;
+    if (req.method() === 'HEAD') return route.fulfill({ status: 200, headers: { ...headers, 'Upload-Offset': String(upload.offset) } });
+    const bytes = req.postDataBuffer()!;
+    expect(bytes.length).toBeGreaterThan(0);
+    expect(bytes[0]).toBe(165);
+    expect(bytes[bytes.length - 1]).toBe(165);
+    chunks.push(bytes.length); upload.patches++;
+    if (Number(req.headers()['upload-offset']) !== upload.offset) return route.fulfill({ status: 409, headers });
+    if (upload.offset === 6 * 1024 ** 2 && !upload.emptyAcknowledged) upload.emptyAcknowledged = true;
+    else upload.offset += bytes.length;
+    return route.fulfill({ status: 204, headers: { ...headers, 'Upload-Offset': String(upload.offset) } });
+  });
+  await page.goto(`/${ALPHA}/assets`);
+  await page.getByRole('button', { name: 'Add asset', exact: true }).click();
+  const choosing = page.waitForEvent('filechooser');
+  await page.getByRole('menuitem', { name: 'Upload files', exact: true }).click();
+  await (await choosing).setFiles(Array.from({ length: 3 }, (_, i) => ({ name: `large-${i}.mov`,
+    mimeType: 'video/quicktime', buffer: Buffer.alloc(13 * 1024 ** 2, 165) })));
+  await page.getByRole('dialog').getByRole('button', { name: /Test videos/ }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Upload 3 files', exact: true }).click();
+  const queue = page.getByTestId('upload-queue');
+  await expect(queue.getByText('Ready', { exact: true })).toHaveCount(3, { timeout: 30_000 });
+  expect(uploads.size).toBe(3);
+  expect([...uploads.values()].every(upload => upload.offset === 13 * 1024 ** 2 && upload.patches === 4)).toBe(true);
+  expect(chunks.every(n => n > 0 && n <= 6 * 1024 ** 2)).toBe(true);
+  expect(state.requests.filter(r => r.path === '/assets/complete-upload')).toHaveLength(3);
+  await expect(queue.getByText('Connection dropped — resuming…')).toHaveCount(0);
+  await page.screenshot({ path: info.outputPath('three-resumable-videos-completed.png') });
   expect(state.errors).toEqual([]);
 });
 
