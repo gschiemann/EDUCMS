@@ -54,60 +54,21 @@ export default function DashboardPage() {
   const t = useTranslations();
   const isMobile = useIsMobile();
   const params = useParams<{ schoolId?: string }>();
-  // HQ fleet command center (Corporate dashboard). Admin-gated; a leaf tenant
-  // gets nothing extra. Declared before any early return to satisfy rules-of-hooks.
+  // Corporate Overview applies only to accounts with their own child locations.
+  // A child location and a standalone account share the local dashboard layout.
   const fleetRole = useUIStore((s) => s.user?.role);
-  // SCHOOL_ADMIN included since 2026-08-31 (child-location Fleet Command):
-  // the fleet reads open to leaf admins server-side, returning self-only.
   const canFleet =
     fleetRole === 'SUPER_ADMIN' || fleetRole === 'DISTRICT_ADMIN' || fleetRole === 'SCHOOL_ADMIN';
   const fleetRollupQuery = useFleet({ enabled: canFleet });
   const fleetRollup = fleetRollupQuery.data;
   const isHQ = (fleetRollup?.locations?.length ?? 0) > 1;
-  // Child-location Fleet Command (2026-08-31 — operator: "the dashboard for
-  // a child location should look the same new look as the top level just be
-  // only that locations info"). A child session's fleet is naturally
-  // self-only, so the same surface renders in single-location mode. A
-  // STANDALONE single-location org (no parent) keeps the classic dashboard —
-  // no ask, no surprise. Same useTenantStatus query key as the main call
-  // below — React Query dedupes; this just makes parentId available to the
-  // gates above the other hooks.
-  const tenantForGateQuery = useTenantStatus();
-  const tenantForGate = tenantForGateQuery.data;
-  const isChildLocation = !!(tenantForGate as any)?.parentId;
-  const commandEligible = isHQ || isChildLocation;
+  const commandEligible = isHQ;
   const schoolId = params?.schoolId || '';
 
-  // ── Overview vs classic HQ dashboard ──────────────────────────────────
-  // 2026-09-14 (Greg: "dump classic view") — the Overview surface is the only
-  // dashboard for every org that qualifies for it. The "Classic view" switch and
-  // its stored preference (`venueos_hq_dashboard`, 2026-08-31) are gone; a value
-  // left in a browser is ignored. The classic layout survives ONLY as the
-  // surface for orgs that never qualified (standalone leaf orgs / roles that
-  // cannot read a fleet). Fleet-wide rollback is now a code change, on purpose.
-  const prefLoaded = true;
-  /** True when the Fleet Command surface owns the page (gates the classic
-   *  welcome header / status strip / KPI wall / Sites / Exceptions off).
-   *  HQ and child locations both qualify; standalone leaf orgs never do. */
-  const hqCommand = commandEligible;
-  /**
-   * The which-dashboard decision is still IN FLIGHT (2026-08-31 — operator:
-   * "i see the old classic dashboard for about .5 seconds and then the new
-   * one loads"). Until the stored preference is read AND the fleet payload
-   * answers is-this-an-HQ (plus, for a one-location fleet, the tenant row
-   * answers is-this-a-child), the page must not paint EITHER dashboard —
-   * classic-then-swap was exactly that first-guess flash. Non-fleet roles
-   * resolve on the preference read alone (their query never runs), and an
-   * errored fleet read falls back to classic rather than blanking forever.
-   */
-  const commandDecisionPending =
-    !prefLoaded ||
-    (canFleet && (
-      fleetRollupQuery.isPending ||
-      (!isHQ && !fleetRollupQuery.isError && tenantForGateQuery.isPending)
-    ));
-  /** Classic sections render only once the decision has actually landed. */
-  const showClassic = !hqCommand && !commandDecisionPending;
+  // Wait for the fleet response before choosing a layout, so HQ never flashes
+  // the local dashboard. Failed fleet reads fall back to the local surface.
+  const commandDecisionPending = canFleet && fleetRollupQuery.isPending;
+  const showClassic = !commandEligible && !commandDecisionPending;
 
   // ── DISTRICT COMMAND CENTER (2026-08-24) ────────────────────────────
   // `isHQ` IS the district-parent test: /screens/fleet returns self + direct
