@@ -73,7 +73,9 @@ test('corporate creates and publishes to all company screens from the wizard', a
   page.on('pageerror', (error) => errors.push(error.message));
   await page.setViewportSize({ width: 1440, height: 1000 });
   const { wizard, writes } = await openWizard(page);
-  await expect(wizard.getByRole('combobox', { name: 'Filter by location' }).locator('option')).toHaveCount(4);
+  await wizard.getByRole('button', { name: 'Filter by location' }).click();
+  await expect(page.getByRole('checkbox')).toHaveCount(4);
+  await page.getByRole('button', { name: 'Done', exact: true }).click();
   await wizard.getByRole('button', { name: 'Select all matching screens' }).click();
   await expect(wizard.getByText('4 of 4 screens', { exact: true })).toBeVisible();
   await wizard.screenshot({ path: info.outputPath('company-wizard-screens.png') });
@@ -99,7 +101,18 @@ test('corporate can filter and publish to one child display on a phone', async (
   page.on('pageerror', (error) => errors.push(error.message));
   await page.setViewportSize({ width: 390, height: 844 });
   const { wizard, writes } = await openWizard(page);
-  await wizard.getByRole('combobox', { name: 'Filter by location' }).selectOption(A.id);
+  await wizard.getByRole('button', { name: 'Filter by location' }).click();
+  await page.getByRole('checkbox', { name: 'Select Alpha office' }).check();
+  await page.getByRole('checkbox', { name: 'Select Beta office' }).check();
+  await expect(wizard.getByText('Corporate lobby', { exact: true })).toHaveCount(0);
+  await expect(wizard.getByText('Reception screen', { exact: true })).toBeVisible();
+  const panel = page.getByRole('group', { name: 'Filter by location options' });
+  const bounds = await panel.boundingBox();
+  expect(bounds!.x).toBeGreaterThanOrEqual(0);
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390);
+  await page.screenshot({ path: info.outputPath('location-checkboxes-mobile.png') });
+  await page.getByRole('checkbox', { name: 'Select Beta office' }).uncheck();
+  await page.getByRole('button', { name: 'Done', exact: true }).click();
   await expect(wizard.getByText('Reception screen', { exact: true })).toHaveCount(0);
   await wizard.getByRole('button', { name: 'Play this on both sides', exact: true }).click();
   await wizard.screenshot({ path: info.outputPath('company-wizard-mobile.png') });
@@ -125,4 +138,19 @@ test('corporate local screens still use the regular schedule publish path', asyn
   await expect(wizard).toHaveCount(0);
   expect(writes.some((write) => write.path === '/schedules')).toBe(true);
   expect(writes.some((write) => write.path.endsWith('/publish-to-fleet'))).toBe(false);
+});
+
+test('corporate publishes to two checked offices without including its local screens', async ({ page }) => {
+  const { wizard, writes } = await openWizard(page);
+  await wizard.getByRole('button', { name: 'Filter by location' }).click();
+  await page.getByRole('checkbox', { name: 'Select Alpha office' }).check();
+  await page.getByRole('checkbox', { name: 'Select Beta office' }).check();
+  await page.getByRole('button', { name: 'Done', exact: true }).click();
+  await wizard.getByRole('button', { name: 'Select all matching screens' }).click();
+  await wizard.getByRole('button', { name: /^Next/ }).click();
+  await wizard.getByRole('button', { name: /^Next/ }).click();
+  await expect(wizard.getByText('Publishes to 3 screens across 2 locations')).toBeVisible();
+  await wizard.getByRole('button', { name: 'Create & Publish', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Playlist published', exact: true })).toBeVisible();
+  expect(writes.find((write) => write.path.endsWith('/publish-to-fleet'))?.body).toEqual({ screenIds: [front.id, beta.id] });
 });

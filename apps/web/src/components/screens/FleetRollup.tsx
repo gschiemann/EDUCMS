@@ -27,6 +27,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { ChevronRight, ChevronDown, Building2, Loader2, Search, X } from 'lucide-react';
 import { ScreenMapClient } from '@/components/screens/ScreenMapClient';
 import { useTenantSwitch } from '@/hooks/use-tenant-switch';
+import { LocationFilter } from './LocationFilter';
 import type { FleetResponse } from '@/hooks/use-api';
 
 function Stat({ label, value, sub, tone }: { label: string; value: number; sub?: string; tone?: 'ok' | 'warn' }) {
@@ -58,19 +59,22 @@ export function FleetRollup({ fleet }: { fleet: FleetResponse }) {
   const rootId = fleet.root?.id;
 
   const [q, setQ] = useState('');
+  const [locationIds, setLocationIds] = useState<string[]>([]);
+  const scopedLocations = useMemo(() => fleet.locations.filter((l) => locationIds.length === 0 || locationIds.includes(l.id)), [fleet.locations, locationIds]);
+  const scopedScreens = useMemo(() => fleet.screens.filter((s) => locationIds.length === 0 || locationIds.includes(s.sourceTenant?.id ?? '')), [fleet.screens, locationIds]);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [expandedStates, setExpandedStates] = useState<Set<string>>(new Set());
   const [expandedLoc, setExpandedLoc] = useState<string | null>(null);
   const norm = q.trim().toLowerCase();
   const filtering = statusFilter !== 'all' || norm.length > 0;
 
-  const total = fleet.screens.length;
-  const onlineCount = useMemo(() => fleet.screens.filter((s) => s.status === 'ONLINE').length, [fleet.screens]);
+  const total = scopedScreens.length;
+  const onlineCount = useMemo(() => scopedScreens.filter((s) => s.status === 'ONLINE').length, [scopedScreens]);
   const offlineCount = total - onlineCount;
 
   // Cross-store search + status filter — drives both the map and the tree.
   const filtered = useMemo(() => {
-    return fleet.screens.filter((s) => {
+    return scopedScreens.filter((s) => {
       const isOnline = s.status === 'ONLINE';
       if (statusFilter === 'online' && !isOnline) return false;
       if (statusFilter === 'offline' && isOnline) return false;
@@ -79,7 +83,7 @@ export function FleetRollup({ fleet }: { fleet: FleetResponse }) {
       const addr = s.effectiveAddress?.toLowerCase() || '';
       return s.name.toLowerCase().includes(norm) || store.includes(norm) || addr.includes(norm);
     });
-  }, [fleet.screens, statusFilter, norm]);
+  }, [scopedScreens, statusFilter, norm]);
 
   const mapScreens = useMemo(
     () =>
@@ -102,7 +106,7 @@ export function FleetRollup({ fleet }: { fleet: FleetResponse }) {
   // State roll-up + the per-location detail.
   const byStore = useMemo(() => {
     const m = new Map<string, { meta: { id: string; name: string; slug: string }; address: string | null; screens: FleetResponse['screens'] }>();
-    if (!filtering) for (const loc of fleet.locations) if (loc.id !== rootId) m.set(loc.id, { meta: loc, address: null, screens: [] });
+    if (!filtering) for (const loc of scopedLocations) if (loc.id !== rootId) m.set(loc.id, { meta: loc, address: null, screens: [] });
     for (const s of filtered) {
       if (!s.sourceTenant || s.sourceTenant.id === rootId) continue;
       if (!m.has(s.sourceTenant.id)) m.set(s.sourceTenant.id, { meta: s.sourceTenant, address: null, screens: [] });
@@ -111,7 +115,7 @@ export function FleetRollup({ fleet }: { fleet: FleetResponse }) {
       if (!e.address && s.effectiveAddress) e.address = s.effectiveAddress;
     }
     return Array.from(m.values());
-  }, [filtered, fleet.locations, rootId, filtering]);
+  }, [filtered, scopedLocations, rootId, filtering]);
 
   // Roll up into State → Location.
   const tree = useMemo(() => {
@@ -158,7 +162,7 @@ export function FleetRollup({ fleet }: { fleet: FleetResponse }) {
     [fleet.screens, tree],
   );
 
-  const storeCount = fleet.stats.locationCount > 1 ? fleet.stats.locationCount - 1 : fleet.stats.locationCount;
+  const storeCount = scopedLocations.filter((location) => location.id !== rootId).length;
 
   const chipBase = 'px-3 py-1.5 text-xs font-bold rounded-lg border inline-flex items-center gap-1.5 transition-colors';
   const Chip = ({ k, label, count }: { k: StatusFilter; label: string; count: number }) => {
@@ -206,6 +210,7 @@ export function FleetRollup({ fleet }: { fleet: FleetResponse }) {
             </button>
           )}
         </div>
+        <LocationFilter locations={fleet.locations} value={locationIds} onChange={setLocationIds} />
         <div className="flex gap-1.5">
           <Chip k="all" label="All" count={total} />
           <Chip k="online" label="Online" count={onlineCount} />

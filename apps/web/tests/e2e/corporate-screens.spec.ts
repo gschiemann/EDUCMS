@@ -87,11 +87,17 @@ test('corporate sees local and company group cards, details and location map wit
   await expect(drawer.getByText('192.0.2.10', { exact: true })).toBeVisible();
   await expect(drawer.getByRole('link', { name: 'Open live preview' })).toHaveCount(0);
   await drawer.getByRole('button', { name: 'Close details' }).click();
-  const filter = page.getByRole('combobox', { name: 'Filter by location' });
-  await filter.selectOption('austin');
+  const filter = page.getByRole('button', { name: 'Filter by location' });
+  await filter.click();
+  await page.getByRole('checkbox', { name: 'Select Austin office' }).check();
   await expect(desktop.locator('[data-screen-group="b-group"]')).toHaveCount(0);
-  await expect(filter.locator('option')).toHaveCount(5);
-  await filter.selectOption('all');
+  await expect(page.getByRole('checkbox')).toHaveCount(5);
+  await page.getByRole('checkbox', { name: 'Select Boston office' }).check();
+  await expect(desktop.locator('[data-screen-group="b-group"]')).toBeVisible();
+  await expect(desktop.getByRole('button', { name: own.name, exact: true })).toHaveCount(0);
+  expect(new URL(page.url()).searchParams.getAll('location')).toEqual(['austin', 'boston']);
+  await page.getByRole('checkbox', { name: 'All locations', exact: true }).check();
+  await page.getByRole('button', { name: 'Done', exact: true }).click();
   await page.getByRole('tab', { name: 'Map', exact: true }).click();
   await page.locator('.leaflet-container').waitFor();
   await expect(page.locator('.venueos-locpin-row').filter({ hasText: 'Seattle office' })).toBeVisible();
@@ -99,7 +105,7 @@ test('corporate sees local and company group cards, details and location map wit
   await page.locator('[data-testid="location-map-surface"]').screenshot({ path: info.outputPath('company-screen-map.png') });
   await page.locator('.venueos-locpin-row').filter({ hasText: 'Austin office' }).click();
   await page.getByRole('region', { name: 'Austin office screens' }).getByRole('button', { name: 'View location in list' }).click();
-  await expect(filter).toHaveValue('austin');
+  await expect(filter).toHaveText('Austin office');
   await expect(page.getByRole('tab', { name: 'List', exact: true })).toHaveAttribute('aria-selected', 'true');
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   await page.screenshot({ path: info.outputPath('company-screen-groups.png') });
@@ -111,17 +117,25 @@ test('corporate sees local and company group cards, details and location map wit
   expect(errors).toEqual([]);
 });
 
-test('dashboard offers all location names and totals link into company Screens', async ({ page }) => {
+test('dashboard offers all location names and totals link into company Screens', async ({ page }, info) => {
   test.setTimeout(120_000);
   await openCompany(page, 'dashboard');
-  const filter = page.getByRole('combobox', { name: 'Filter offices by name' });
+  const filter = page.getByRole('button', { name: 'Filter offices by name' });
   await expect(filter).toBeVisible({ timeout: 90_000 });
-  await filter.selectOption('boston');
-  await expect(filter.locator('option')).toHaveCount(5);
-  await expect(page.getByRole('combobox', { name: 'Show one office or all of them' })).toHaveValue('boston');
-  await filter.selectOption('all');
+  await filter.click();
+  await page.getByRole('checkbox', { name: 'Select Boston office' }).check();
+  await expect(page.getByRole('checkbox')).toHaveCount(5);
+  await page.getByRole('checkbox', { name: 'Select Austin office' }).check();
+  await expect(page.getByRole('button', { name: 'Filter offices', exact: true })).toHaveText('2 locations selected');
+  await page.screenshot({ path: info.outputPath('dashboard-location-checkboxes.png') });
+  await page.getByRole('button', { name: 'Done', exact: true }).click();
   await page.getByRole('tab', { name: 'map', exact: true }).click();
+  await expect(page.getByRole('group', { name: 'Status guide' })).toContainText('not live status');
+  await page.getByRole('group', { name: 'Status guide' }).screenshot({ path: info.outputPath('status-guide.png') });
   await page.getByRole('group', { name: 'Fleet totals' }).getByRole('link', { name: /Screens/ }).click();
+  await expect.poll(() => new URL(page.url()).searchParams.getAll('location')).toEqual(['boston', 'austin']);
   await expect(page.getByRole('button', { name: 'All company screens', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByTestId('screens-desktop').locator('[data-screen-group="b-group"]')).toBeVisible();
+  await expect(page.getByTestId('screens-desktop').locator('[data-screen-group="a-group"]')).toBeVisible();
+  await expect(page.getByTestId('screens-desktop').getByRole('button', { name: own.name, exact: true })).toHaveCount(0);
 });

@@ -76,14 +76,14 @@ export default function ScreensPage() {
   const authToken = useUIStore((s) => s.token);
   const currentTenantId = useUIStore((s) => s.user?.tenantId);
   const [scope, setScope] = useState<'local' | 'company'>('local');
-  const [locationId, setLocationId] = useState('all');
+  const [locationIds, setLocationIds] = useState<string[]>([]);
   const canReadCompany = userRole === 'SUPER_ADMIN' || userRole === 'DISTRICT_ADMIN';
   const fleetQuery = useFleet({ enabled: canReadCompany, refetchInterval: false });
   const isCorporate = canReadCompany && (fleetQuery.data?.locations?.length ?? 0) > 1;
   const companyMode = canReadCompany && scope === 'company';
   const companyQuery = useFleetOperations({ enabled: companyMode });
   const companyFleet = companyQuery.data;
-  const companyLocations = useMemo(() => (companyFleet?.locations ?? []).filter((l) => locationId === 'all' || l.id === locationId), [companyFleet, locationId]);
+  const companyLocations = useMemo(() => (companyFleet?.locations ?? []).filter((l) => locationIds.length === 0 || locationIds.includes(l.id)), [companyFleet, locationIds]);
   // Mirrors the API's own @RequireRoles set for display control — a control a
   // role can never use must not render enabled for that role. Every write this
   // page can reach (pair, refresh-web, screen PUT, orientation, force-update,
@@ -108,11 +108,12 @@ export default function ScreensPage() {
     else { params.delete('scope'); params.delete('location'); }
     window.history.replaceState(null, '', window.location.pathname + (params.size ? `?${params}` : ''));
   };
-  const changeLocation = (id: string) => {
-    setLocationId(id); setDeepLinkScreenId(null); setDeepLinkGroupId(null);
+  const changeLocation = (ids: string[]) => {
+    setLocationIds(ids); setDeepLinkScreenId(null); setDeepLinkGroupId(null);
     const params = new URLSearchParams(window.location.search);
     params.set('scope', 'company');
-    if (id === 'all') params.delete('location'); else params.set('location', id);
+    params.delete('location');
+    ids.forEach((id) => params.append('location', id));
     window.history.replaceState(null, '', window.location.pathname + `?${params}`);
   };
 
@@ -121,7 +122,7 @@ export default function ScreensPage() {
     try {
       const sp = new URLSearchParams(window.location.search);
       if (sp.get('scope') === 'company') setScope('company');
-      if (sp.get('location')) setLocationId(sp.get('location')!);
+      setLocationIds([...new Set(sp.getAll('location').filter((id) => id && id !== 'all'))]);
       const id = sp.get('screen');
       const groupId = sp.get('group');
       if (groupId) { setDeepLinkGroupId(groupId); setViewMode('list'); }
@@ -158,19 +159,19 @@ export default function ScreensPage() {
   const updateGroup = useUpdateScreenGroup();
 
   const screens = useMemo<OpsScreen[]>(() => companyMode
-    ? (companyFleet?.screens ?? []).filter((screen) => locationId === 'all' || screen.sourceTenant?.id === locationId).map((screen) => ({
+    ? (companyFleet?.screens ?? []).filter((screen) => locationIds.length === 0 || locationIds.includes(screen.sourceTenant?.id ?? '')).map((screen) => ({
       ...screen, screenGroup: screen.screenGroup ? { ...screen.screenGroup, name: `${screen.sourceTenant?.name ?? 'Location'} · ${screen.screenGroup.name}` } : null,
     }))
-    : ((screensQuery.data as OpsScreen[] | undefined) ?? []), [companyMode, companyFleet, locationId, screensQuery.data]);
+    : ((screensQuery.data as OpsScreen[] | undefined) ?? []), [companyMode, companyFleet, locationIds, screensQuery.data]);
   const groups = useMemo(
-    () => ((companyMode ? (companyFleet?.operations.groups ?? []).filter((g) => locationId === 'all' || g.tenantId === locationId) : ((groupsQuery.data as any[] | undefined) ?? [])).map((g) => ({
+    () => ((companyMode ? (companyFleet?.operations.groups ?? []).filter((g) => locationIds.length === 0 || locationIds.includes(g.tenantId)) : ((groupsQuery.data as any[] | undefined) ?? [])).map((g) => ({
       id: g.id, name: companyMode ? `${g.sourceTenant?.name ?? 'Location'} · ${g.name}` : g.name, address: g.address ?? null, syncMode: g.syncMode ?? null,
       // 2026-09-16 — server-derived "any screen here is frame-locked". Only
       // the calibration entry reads it; the sync SETTING lives on the playlist.
       syncActive: g.syncActive ?? null,
       latitude: g.latitude ?? null, longitude: g.longitude ?? null,
     }))),
-    [groupsQuery.data, companyMode, companyFleet, locationId],
+    [groupsQuery.data, companyMode, companyFleet, locationIds],
   );
 
   // ── deployed page bundle — the reference every row is graded on.
@@ -281,7 +282,7 @@ export default function ScreensPage() {
               </button>)}
             </div>
             {companyMode && <p className="text-xs text-slate-500">Company view is read-only</p>}
-            {companyMode && <LocationFilter locations={companyFleet?.locations ?? fleetQuery.data?.locations ?? []} value={locationId} onChange={changeLocation} />}
+            {companyMode && <LocationFilter locations={companyFleet?.locations ?? fleetQuery.data?.locations ?? []} value={locationIds} onChange={changeLocation} />}
           </div>
         ) : null}
         screens={screens}
@@ -316,7 +317,7 @@ export default function ScreensPage() {
         ) : companyMode && companyFleet ? (
           <CompanyScreenAtlas fleet={companyFleet} locations={companyLocations} screens={visible} rows={navigation.rows} isFiltered={navigation.isFiltered}
             logoUrl={branding?.logoUrl ?? null} deployedSha={deployed.sha} deployedBundleId={deployed.bundleId}
-            onOpenScreen={navigation.onOpenScreen} onLocationList={(id) => { changeLocation(id); navigation.onList(); }} />
+            onOpenScreen={navigation.onOpenScreen} onLocationList={(id) => { changeLocation([id]); navigation.onList(); }} />
         ) : (
           <ScreenLocationAtlas screens={visible} rows={navigation.rows} groups={groups}
             logoUrl={branding?.logoUrl ?? null} onOpenScreen={navigation.onOpenScreen} onList={navigation.onList} />

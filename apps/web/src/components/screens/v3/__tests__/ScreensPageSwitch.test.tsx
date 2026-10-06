@@ -154,7 +154,7 @@ it('corporate selects named locations without changing session and returns to it
     { id: 'b-screen', name: 'B lobby', sourceTenant: { id: 'b', name: 'Boston' } },
   ], operations: { groups: [{ id: 'a-group', name: 'Lobby', tenantId: 'a', sourceTenant: { id: 'a', name: 'Austin' } }], schedules: [], playlists: [] } };
   render(<ScreensPage />);
-  expect(mockV3Props.at(-1).screens.map((s: any) => s.id)).toEqual(['local']);
+  expect(mockV3Props.at(-1).screens.map((s: { id: string }) => s.id)).toEqual(['local']);
   expect(mockV3Props.at(-1).canControl).toBe(true);
   fireEvent.click(rtl.getByRole('button', { name: 'All company screens' }));
   expect(mockCompanyQueryOptions).toHaveBeenLastCalledWith({ enabled: true });
@@ -162,12 +162,17 @@ it('corporate selects named locations without changing session and returns to it
   expect(mockV3Props.at(-1).groups[0].name).toBe('Austin · Lobby');
   expect(mockV3Props.at(-1).canControl).toBe(false);
   expect(mockV3Props.at(-1).buildPreviewHref(mockCompany.screens[0])).toBeNull();
-  const filter = rtl.getByRole('combobox', { name: 'Filter by location' });
-  expect(rtl.getByRole('option', { name: 'Boston' })).toBeInTheDocument();
-  fireEvent.change(filter, { target: { value: 'a' } });
-  expect(mockV3Props.at(-1).screens.map((s: any) => s.id)).toEqual(['a-screen']);
+  const filter = rtl.getByRole('button', { name: 'Filter by location' });
+  fireEvent.click(filter);
+  expect(rtl.getByRole('checkbox', { name: 'Select Boston' })).toBeInTheDocument();
+  fireEvent.click(rtl.getByRole('checkbox', { name: 'Select Austin' }));
+  expect(mockV3Props.at(-1).screens.map((s: { id: string }) => s.id)).toEqual(['a-screen']);
   expect(mockV3Props.at(-1).floorSlot).toBeNull();
+  fireEvent.click(rtl.getByRole('checkbox', { name: 'Select Boston' }));
+  expect(mockV3Props.at(-1).screens.map((s: { id: string }) => s.id)).toEqual(['a-screen', 'b-screen']);
+  expect(new URLSearchParams(window.location.search).getAll('location')).toEqual(['a', 'b']);
+  fireEvent.click(rtl.getByRole('button', { name: 'Done' }));
   fireEvent.click(rtl.getByRole('button', { name: 'Local screens' }));
-  expect(mockV3Props.at(-1).screens.map((s: any) => s.id)).toEqual(['local']);
+  expect(mockV3Props.at(-1).screens.map((s: { id: string }) => s.id)).toEqual(['local']);
   expect(mockV3Props.at(-1).canControl).toBe(true);
 });

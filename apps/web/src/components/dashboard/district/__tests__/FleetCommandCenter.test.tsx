@@ -806,15 +806,18 @@ describe('FleetCommandCenter · fleet pulse', () => {
 // table over unfiltered pills is how an operator misreads their own fleet.
 
 describe('FleetCommandCenter · location filter', () => {
-  const openScope = () => rtl.getByLabelText('Show one gym or all of them');
+  const openScope = () => rtl.getByRole('button', { name: 'Filter gyms' });
+  const pick = (name: string) => { fireEvent.click(openScope()); fireEvent.click(rtl.getByRole('checkbox', { name: `Select ${name}` })); fireEvent.click(rtl.getByRole('button', { name: 'Done' })); };
 
   it('defaults to every location', () => {
     render(
       <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" />,
     );
-    expect(openScope()).toHaveValue('all');
-    expect(within(openScope()).getAllByRole('option').map((o) => o.textContent))
-      .toEqual(['All gyms', 'Iron Peak HQ', 'Peak West']);
+    expect(openScope()).toHaveTextContent('All gyms');
+    fireEvent.click(openScope());
+    expect(rtl.getByRole('checkbox', { name: 'All gyms' })).toBeChecked();
+    expect(rtl.getAllByRole('checkbox').map((o) => o.getAttribute('aria-label')))
+      .toEqual(['All gyms', 'Select Iron Peak HQ', 'Select Peak West']);
   });
 
   /** The count a named assurance card is showing (its label's sibling). */
@@ -828,7 +831,7 @@ describe('FleetCommandCenter · location filter', () => {
     expect(pillValue('Devices online')).toHaveTextContent('2/3');
     expect(rtl.getByText(/Peak West can’t display an emergency alert/)).toBeInTheDocument();
 
-    fireEvent.change(openScope(), { target: { value: 'hq' } });
+    pick('Iron Peak HQ');
 
     // Pills now count HQ's one screen only…
     expect(pillValue('Devices online')).toHaveTextContent('1/1');
@@ -839,7 +842,8 @@ describe('FleetCommandCenter · location filter', () => {
     const names = rtl.getAllByRole('cell').map((c) => c.textContent ?? '');
     expect(names.some((t) => t.startsWith('Peak West'))).toBe(false);
     expect(names.some((t) => t.startsWith('Iron Peak HQ'))).toBe(true);
-    expect(within(openScope()).getByRole('option', { name: 'Peak West' })).toBeInTheDocument();
+    fireEvent.click(openScope());
+    expect(rtl.getByRole('checkbox', { name: 'Select Peak West' })).toBeInTheDocument();
     expect(rtl.getByText('Showing 1 of 1 gym')).toBeInTheDocument();
   });
 
@@ -847,7 +851,7 @@ describe('FleetCommandCenter · location filter', () => {
     render(
       <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" />,
     );
-    fireEvent.change(openScope(), { target: { value: 'hq' } });
+    pick('Iron Peak HQ');
     // The scope narrows what the page REPORTS; it is not a publish target,
     // so the button must not imply the push is pre-scoped to one gym.
     expect(rtl.getByText('Push content').closest('a')).toHaveAttribute('href', '/hq/playlists?newPlaylist=1');
@@ -1046,7 +1050,7 @@ describe('FleetCommandCenter · map stat cards', () => {
 
   it('the legend speaks English — "Picture proof", never "painting"', () => {
     renderAtlas();
-    const legend = within(rtl.getByRole('group', { name: 'Online ≠ current' }));
+    const legend = within(rtl.getByRole('group', { name: 'Status guide' }));
     for (const label of ['Device online', 'App current', 'Push live', 'Picture proof']) {
       expect(legend.getByText(label)).toBeInTheDocument();
     }
@@ -1074,7 +1078,7 @@ describe('single-location mode (child-location dashboard, 2026-08-31)', () => {
     // The five assurance pills still stand — same surface.
     expect(rtl.getByText('Devices online')).toBeInTheDocument();
     // No "All gyms" scope dropdown for a single location.
-    expect(rtl.queryByLabelText(/Show one gym/)).not.toBeInTheDocument();
+    expect(rtl.queryByRole('button', { name: 'Filter gyms' })).not.toBeInTheDocument();
     // No locations module at all — a one-row table restates the pills.
     expect(rtl.queryByRole('tab', { name: 'map' })).not.toBeInTheDocument();
     expect(rtl.queryByRole('tab', { name: 'list' })).not.toBeInTheDocument();
@@ -1095,7 +1099,7 @@ describe('single-location mode (child-location dashboard, 2026-08-31)', () => {
     render(
       <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" />,
     );
-    expect(rtl.getByLabelText(/Show one gym/)).toBeInTheDocument();
+    expect(rtl.getByRole('button', { name: 'Filter gyms' })).toBeInTheDocument();
     expect(rtl.getByRole('tab', { name: 'map' })).toBeInTheDocument();
   });
 });
@@ -1181,13 +1185,31 @@ describe('the atlas panel’s screen tiles', () => {
 });
 
 
-it('the location-list selector offers names, scopes totals and keeps all names available when filtered', () => {
+it('both location selectors share checkbox selections and can reset to all', () => {
   render(<FleetCommandCenter fleet={fleet} orgName="Iron Peak" />);
-  const filter = rtl.getByRole('combobox', { name: 'Filter gyms by name' });
-  expect(within(filter).getByRole('option', { name: 'Peak West' })).toBeInTheDocument();
-  fireEvent.change(filter, { target: { value: 'west' } });
-  expect(rtl.getByRole('combobox', { name: 'Show one gym or all of them' })).toHaveValue('west');
-  expect(within(filter).getByRole('option', { name: 'Iron Peak HQ' })).toBeInTheDocument();
-  fireEvent.change(filter, { target: { value: 'all' } });
-  expect(rtl.getByRole('combobox', { name: 'Show one gym or all of them' })).toHaveValue('all');
+  const filter = rtl.getByRole('button', { name: 'Filter gyms by name' });
+  const header = rtl.getByRole('button', { name: 'Filter gyms' });
+  fireEvent.click(filter);
+  fireEvent.click(rtl.getByRole('checkbox', { name: 'Select Peak West' }));
+  expect(header).toHaveTextContent('Peak West');
+  expect(rtl.getByRole('checkbox', { name: 'Select Iron Peak HQ' })).toBeInTheDocument();
+  fireEvent.click(rtl.getByRole('checkbox', { name: 'Select Iron Peak HQ' }));
+  expect(header).toHaveTextContent('2 locations selected');
+  fireEvent.click(rtl.getByRole('checkbox', { name: 'All gyms' }));
+  expect(header).toHaveTextContent('All gyms');
+});
+
+it('combines two locations while excluding a third from assurance counts and screen links', () => {
+  const three = { ...fleet, locations: [...fleet.locations, { id: 'north', name: 'Peak North', slug: 'north' }],
+    screens: [...fleet.screens, scr('north', { id: 'north-screen', status: 'OFFLINE' })] };
+  render(<FleetCommandCenter fleet={three} readiness={readiness} approvals={approvals} orgName="Iron Peak" />);
+  fireEvent.click(rtl.getByRole('button', { name: 'Filter gyms' }));
+  fireEvent.click(rtl.getByRole('checkbox', { name: 'Select Iron Peak HQ' }));
+  fireEvent.click(rtl.getByRole('checkbox', { name: 'Select Peak West' }));
+  fireEvent.click(rtl.getByRole('button', { name: 'Done' }));
+  expect(rtl.getByText('Devices online').previousElementSibling).toHaveTextContent('2/3');
+  expect(rtl.getAllByRole('cell').some((cell) => cell.textContent?.startsWith('Peak North'))).toBe(false);
+  fireEvent.click(rtl.getByRole('tab', { name: 'map' }));
+  expect(within(rtl.getByRole('group', { name: 'Fleet totals' })).getByRole('link', { name: /Screens/ }))
+    .toHaveAttribute('href', '/hq/screens?scope=company&location=hq&location=west');
 });

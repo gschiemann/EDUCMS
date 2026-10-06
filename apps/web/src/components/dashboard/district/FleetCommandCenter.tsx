@@ -495,23 +495,23 @@ export function FleetCommandCenter({
   // Scoping happens by PRE-FILTERING the derivation's inputs, never by
   // filtering its output: the derivation stays pure and every number on the
   // page — pills, inbox, table, map — is then computed over the same subset.
-  const [scopeId, setScopeId] = useState<string>('all');
+  const [scopeIds, setScopeIds] = useState<string[]>([]);
   const scoped = useMemo(() => {
-    if (scopeId === 'all') return { fleet, readiness: readiness ?? null, approvals: approvals ?? null };
+    if (scopeIds.length === 0) return { fleet, readiness: readiness ?? null, approvals: approvals ?? null };
     return {
       fleet: {
         ...fleet,
-        locations: fleet.locations.filter((l) => l.id === scopeId),
-        screens: fleet.screens.filter((s) => s.sourceTenant?.id === scopeId),
+        locations: fleet.locations.filter((l) => scopeIds.includes(l.id)),
+        screens: fleet.screens.filter((s) => scopeIds.includes(s.sourceTenant?.id ?? '')),
       },
       readiness: readiness
-        ? { ...readiness, schools: readiness.schools.filter((s) => s.tenantId === scopeId) }
+        ? { ...readiness, schools: readiness.schools.filter((s) => scopeIds.includes(s.tenantId)) }
         : null,
       approvals: approvals
-        ? { ...approvals, byTenant: (approvals.byTenant ?? []).filter((a) => a.tenantId === scopeId) }
+        ? { ...approvals, byTenant: (approvals.byTenant ?? []).filter((a) => scopeIds.includes(a.tenantId)) }
         : null,
     };
-  }, [fleet, readiness, approvals, scopeId]);
+  }, [fleet, readiness, approvals, scopeIds]);
 
   // ── Header actions (design-mock parity) ─────────────────────────────
   // "Push content" goes to the PUBLISH FLOW (2026-08-31 operator: "push
@@ -588,7 +588,7 @@ export function FleetCommandCenter({
   /** The playlists index — where "Manage" and "+N more" land. */
   const playlistsHref = `/${fleet.root?.slug ?? ''}/playlists`;
   /** This location's screens page — single-location "view all" target. */
-  const screensHref = `/${fleet.root?.slug ?? ''}/screens${singleLocation ? '' : `?scope=company${scopeId === 'all' ? '' : `&location=${encodeURIComponent(scopeId)}`}`}`;
+  const screensHref = `/${fleet.root?.slug ?? ''}/screens${singleLocation ? '' : `?scope=company${scopeIds.length === 0 ? '' : scopeIds.map((id) => `&location=${encodeURIComponent(id)}`).join('')}`}`;
   const screenFilterHref = (filter: string) => `${screensHref}${singleLocation ? '?' : '&'}filter=${filter}`;
   /**
    * "Push content" opens the CREATE WIZARD, not the index (2026-08-31
@@ -1069,9 +1069,9 @@ export function FleetCommandCenter({
         </div>
 
         {!singleLocation && (
-        <LocationFilter locations={fleet.locations} value={scopeId}
-          onChange={(id) => { setScopeId(id); setSelectedTenantId(null); }}
-          label={`Show one ${nounOne} or all of them`} allLabel={`All ${nounMany}`} />
+        <LocationFilter locations={fleet.locations} value={scopeIds}
+          onChange={(ids) => { setScopeIds(ids); setSelectedTenantId(null); }}
+          label={`Filter ${nounMany}`} allLabel={`All ${nounMany}`} />
         )}
 
         <div className="ml-auto flex items-center gap-2">
@@ -1477,8 +1477,8 @@ export function FleetCommandCenter({
               <h3 className="text-[17px] font-black text-slate-900 capitalize">{nounMany}</h3>
             )}
             <div className="ml-auto flex items-center gap-2">
-              <LocationFilter locations={fleet.locations} value={scopeId}
-                onChange={(id) => { setScopeId(id); setSelectedTenantId(null); }}
+              <LocationFilter locations={fleet.locations} value={scopeIds}
+                onChange={(ids) => { setScopeIds(ids); setSelectedTenantId(null); }}
                 label={`Filter ${nounMany} by name`} allLabel={`All ${nounMany}`} />
               <div className="flex bg-slate-100 rounded-lg p-0.5" role="tablist" aria-label="Locations view">
                 {(['list', 'map'] as const).map((v) => (
@@ -1956,27 +1956,25 @@ export function FleetCommandCenter({
                   </div>
                 )}
 
-                {/* ── "Online ≠ current", floating bottom-right ─────────
-                    The mock's teaching strip: it names the four separate
-                    truths so nobody reads a green ring as proof of a picture. */}
+                {/* Static guide, separate from the live assurance counts above. */}
                 {mappableTotal > 0 && (
                   <div
                     className="hidden lg:block absolute bottom-3 right-3 z-[1000] max-w-[calc(100%-1.5rem)] bg-white rounded-2xl border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.14)] px-4 py-3"
                     role="group"
-                    aria-label="Online ≠ current"
+                    aria-label="Status guide"
                   >
-                    <h4 className="text-[12px] font-black text-slate-800">Online ≠ current</h4>
+                    <h4 className="text-[12px] font-black text-slate-800">Status guide <span className="font-normal text-slate-500">· not live status</span></h4>
                     <div className="mt-2 pt-2 border-t border-slate-100 flex flex-wrap gap-x-5 gap-y-2">
                       {[
-                        { label: 'Device online', Icon: Wifi, cls: 'text-emerald-500' },
-                        { label: ASSURANCE_LABEL.contentCurrent, Icon: CheckCircle2, cls: 'text-emerald-500' },
-                        { label: 'Push live', Icon: Radio, cls: 'text-indigo-500' },
+                        { label: 'Device online', Icon: Wifi },
+                        { label: ASSURANCE_LABEL.contentCurrent, Icon: CheckCircle2 },
+                        { label: 'Push live', Icon: Radio },
                         // "Picture proof", never "painting" — that is our wire
                         // vocabulary, not the operator's (2026-08-31 feedback).
-                        { label: 'Picture proof', Icon: MonitorCheck, cls: 'text-indigo-500' },
-                      ].map(({ label, Icon, cls }) => (
+                        { label: 'Picture proof', Icon: MonitorCheck },
+                      ].map(({ label, Icon }) => (
                         <span key={label} className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-slate-600">
-                          <Icon className={`w-4 h-4 shrink-0 ${cls}`} aria-hidden />
+                          <Icon className="w-4 h-4 shrink-0 text-slate-400" aria-hidden />
                           {label}
                         </span>
                       ))}

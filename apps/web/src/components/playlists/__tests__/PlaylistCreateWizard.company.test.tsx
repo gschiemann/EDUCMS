@@ -92,9 +92,13 @@ it('selects all company screens including HQ, publishes through distribution, an
 
 it('keeps selected locations when filtering, and can pick a single independent side', async () => {
   openToScreens();
-  fireEvent.change(screen.getByRole('combobox', { name: 'Filter by location' }), { target: { value: ALPHA.id } });
+  fireEvent.click(screen.getByRole('button', { name: 'Filter by location' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select Alpha office' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Done' }));
   fireEvent.click(screen.getByRole('button', { name: 'Select all matching screens' }));
-  fireEvent.change(screen.getByRole('combobox', { name: 'Filter by location' }), { target: { value: BETA.id } });
+  fireEvent.click(screen.getByRole('button', { name: 'Filter by location' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select Beta office' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Done' }));
   fireEvent.click(screen.getByRole('button', { name: 'Back side' }));
   review();
   expect(screen.getByText('Publishes to 3 screens across 2 locations')).toBeInTheDocument();
@@ -153,7 +157,9 @@ it('reports held playback copies and partial screen failures honestly', async ()
     perLocation: [{ tenantId: BETA.id, tenantName: BETA.name, screensScheduled: 0, screensPending: 1,
       screenFailures: [{ screenId: BETA_BACK.id, screenName: 'Back display', error: 'Copy unavailable' }] }] });
   const onCreated = openToScreens();
-  fireEvent.change(screen.getByRole('combobox', { name: 'Filter by location' }), { target: { value: BETA.id } });
+  fireEvent.click(screen.getByRole('button', { name: 'Filter by location' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select Beta office' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Done' }));
   fireEvent.click(screen.getByRole('button', { name: 'Select all matching screens' }));
   review();
   fireEvent.click(screen.getByRole('button', { name: 'Create & Publish' }));
@@ -189,4 +195,18 @@ it('Skip clears both selected groups and their members', () => {
   fireEvent.click(screen.getByRole('button', { name: 'Skip — assign screens later' }));
   fireEvent.click(screen.getByRole('button', { name: /^Next/ }));
   expect(screen.getByText('Publishes to 0 screens')).toBeInTheDocument();
+});
+
+it('selects matching screens across two checked locations without selecting corporate screens', async () => {
+  openToScreens();
+  fireEvent.click(screen.getByRole('button', { name: 'Filter by location' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select Alpha office' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select Beta office' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+  expect(screen.queryByText('Corporate lobby')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Select all matching screens' }));
+  review();
+  expect(screen.getByText('Publishes to 4 screens across 2 locations')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Create & Publish' }));
+  await waitFor(() => expect(publish).toHaveBeenCalledWith({ playlistId: 'new-playlist', screenIds: [FRONT.id, BETA_FRONT.id, BETA_BACK.id] }));
 });

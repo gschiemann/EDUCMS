@@ -510,7 +510,7 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
   const [selectedGroupIds, setSelectedGroupIds] = useState<Set<string>>(new Set());
   const [screenSearch, setScreenSearch] = useState('');
   const [localScreensOnly, setLocalScreensOnly] = useState(false);
-  const [screenLocation, setScreenLocation] = useState('all');
+  const [screenLocations, setScreenLocations] = useState<string[]>([]);
 
   // Step 4 — publish
   const [activateImmediately, setActivateImmediately] = useState<boolean>(true);
@@ -604,7 +604,7 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
     setSyncPlayback(false);
     setScreenSearch('');
     setLocalScreensOnly(false);
-    setScreenLocation('all');
+    setScreenLocations([]);
     setActivateImmediately(true);
     setSchedStartDate('');
     setSchedEndDate('');
@@ -764,7 +764,7 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
   });
 
   const matchingScreens = screens.filter((s) => {
-    if (companyScope && screenLocation !== 'all' && s.sourceTenant?.id !== screenLocation) return false;
+    if (companyScope && screenLocations.length > 0 && !screenLocations.includes(s.sourceTenant?.id ?? '')) return false;
     if (!screenSearch) return true;
     const needle = screenSearch.toLowerCase();
     const hay = `${s.name || ''} ${s.id} ${s.sourceTenant?.name ?? ''}`.toLowerCase();
@@ -778,7 +778,7 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
         .flatMap((unit) => unit.sides.map((side) => side.screen))
     : matchingScreens;
   const visibleGroups = screenGroups.filter((group) =>
-    !companyScope || screenLocation === 'all' || group.tenantId === screenLocation,
+    !companyScope || screenLocations.length === 0 || screenLocations.includes(group.tenantId ?? ''),
   );
 
   const selectedTemplate = (templates || []).find((t: any) => t.id === selectedTemplateId);
@@ -1478,7 +1478,7 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
                       onClick={() => {
                         if (localScreensOnly === scope.local) return;
                         setLocalScreensOnly(scope.local);
-                        setScreenLocation('all');
+                        setScreenLocations([]);
                         setScreenSearch('');
                         setSelectedScreenIds(new Set());
                         setSelectedGroupIds(new Set());
@@ -1488,7 +1488,7 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
                     </button>
                   ))}
                 </div>
-                {companyScope && <LocationFilter locations={fleet?.locations ?? []} value={screenLocation} onChange={setScreenLocation} />}
+                {companyScope && <LocationFilter locations={fleet?.locations ?? []} value={screenLocations} onChange={setScreenLocations} />}
               </div>
             )}
             {fleetTemplateBlocked && (
