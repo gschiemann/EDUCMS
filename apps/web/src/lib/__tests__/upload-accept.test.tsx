@@ -191,7 +191,7 @@ describe('SINGLE SOURCE — every upload entry point reads lib/upload-accept.ts'
 
   it('finds the known entry points (a negative control for the scan itself)', () => {
     for (const known of [
-      'app/[schoolId]/assets/page.tsx',
+      'hooks/use-library-uploads.ts',
       'app/[schoolId]/playlists/ClassicPlaylistsPage.tsx',
       'components/assets/AssetPicker.tsx',
       'components/template-builder/PropertiesPanel.tsx',
@@ -199,6 +199,14 @@ describe('SINGLE SOURCE — every upload entry point reads lib/upload-accept.ts'
       'components/settings/ScreenEmergencyContentConfig.tsx',
     ]) {
       expect(entries).toContain(known);
+    }
+  });
+
+  it('the library and wizard delegate to the shared validated uploader', () => {
+    for (const file of ['app/[schoolId]/assets/page.tsx', 'components/playlists/WizardMediaUpload.tsx']) {
+      const src = readFileSync(join(SRC, file), 'utf8');
+      expect(src).toContain("from '@/hooks/use-library-uploads'");
+      expect(src).toContain("from '@/lib/upload-accept'");
     }
   });
 

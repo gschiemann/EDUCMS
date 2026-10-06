@@ -24,7 +24,7 @@ import {
   MonitorCheck, CloudOff, ListVideo, Upload, Plus, ArrowRight,
   Image as ImageIcon, MonitorPlay, Siren, CheckCircle2, Clock,
   AlertTriangle, Calendar, Zap, Users as UsersIcon, Building2,
-  TrendingUp, TrendingDown, Activity, X, RefreshCw,
+  TrendingUp, TrendingDown, Activity, X, RefreshCw, ChevronDown,
 } from 'lucide-react';
 import { useRecentActivity } from '@/hooks/use-dashboard-data';
 import {
@@ -431,6 +431,7 @@ export default function DashboardPage() {
   // goes away when they explicitly close it. Now the only gate is the
   // per-user "I dismissed this" flag in localStorage.
   const [hintDismissed, setHintDismissed] = useState(false);
+  const [mobileSetupOpen, setMobileSetupOpen] = useState(false);
   useEffect(() => {
     try { setHintDismissed(localStorage.getItem('edu_dashboard_hint_dismissed') === '1'); } catch {}
   }, []);
@@ -473,7 +474,7 @@ export default function DashboardPage() {
   const incidentCount = fleet.offline + pendingAssets.length;
 
   return (
-    <div className="min-w-0 space-y-6 pb-12" data-testid="dashboard-content">
+    <div className="min-w-0 max-w-full space-y-4 sm:space-y-6 pb-12" data-testid="dashboard-content">
       {/* Brand-aware overrides — swaps hardcoded indigo for CSS vars */}
       <style>{`
         .dash-link { color: var(--brand-primary, #4f46e5); }
@@ -761,22 +762,31 @@ export default function DashboardPage() {
         </button>
       )}
       {showClassic && showOnboarding && (
-        <div className="relative bg-gradient-to-br from-indigo-50 via-white to-violet-50 rounded-2xl border border-indigo-100 p-4 sm:p-8 shadow-sm">
+        <div data-testid="dashboard-setup" className="relative min-w-0 bg-gradient-to-br from-indigo-50 via-white to-violet-50 rounded-2xl border border-indigo-100 p-3 sm:p-8 shadow-sm">
           <button
             type="button"
             onClick={dismissHint}
             title={t('dashboard.hideGuide')}
             aria-label={t('dashboard.hideGuideAria')}
-            className="absolute top-3 right-3 p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-white/70 transition-colors"
+            className="absolute top-2 right-2 sm:top-3 sm:right-3 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-700 hover:bg-white/70 transition-colors"
           >
             <X className="w-4 h-4" aria-hidden />
           </button>
-          <h2 className="text-lg font-bold text-slate-800 mb-2">{t('dashboard.gettingStarted')}</h2>
-          <p className="text-sm text-slate-600 mb-6">{t('dashboard.gettingStartedDesc')}</p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <h2 className="text-sm sm:text-lg font-bold text-slate-800 pr-12 sm:mb-2">
+            <button type="button" className="flex min-h-[44px] w-full items-center justify-between text-left gap-2 sm:hidden"
+              aria-expanded={mobileSetupOpen} aria-controls="dashboard-setup-steps" onClick={() => setMobileSetupOpen(open => !open)}>
+              {t('dashboard.gettingStarted')}
+              <ChevronDown aria-hidden className={`w-4 h-4 shrink-0 transition-transform ${mobileSetupOpen ? 'rotate-180' : ''}`} />
+            </button>
+            <span className="hidden sm:inline">{t('dashboard.gettingStarted')}</span>
+          </h2>
+          <div id="dashboard-setup-steps" className={`${mobileSetupOpen ? 'block' : 'hidden'} sm:block`}>
+          <p className="hidden sm:block text-sm text-slate-600 mb-6">{t('dashboard.gettingStartedDesc')}</p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2 sm:gap-4 mt-2 sm:mt-0">
             <OnboardStep href={`${tenantBase}/screens`} step={1} color="emerald" Icon={MonitorPlay} title={t('dashboard.step1Title')} desc={t('dashboard.step1Desc')} cta={t('dashboard.step1Cta')} />
             <OnboardStep href={`${tenantBase}/assets`} step={2} color="sky" Icon={Upload} title={t('dashboard.step2Title')} desc={t('dashboard.step2Desc')} cta={t('dashboard.step2Cta')} />
             <OnboardStep href={`${tenantBase}/playlists`} step={3} color="violet" Icon={ListVideo} title={t('dashboard.step3Title')} desc={t('dashboard.step3Desc')} cta={t('dashboard.step3Cta')} />
+          </div>
           </div>
         </div>
       )}
@@ -787,7 +797,7 @@ export default function DashboardPage() {
       {/* ─── Fleet KPIs + Sites — CLASSIC/single-location only: Fleet
           Command's assurance rail + location table replace both. ─── */}
       {showClassic && (<>
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 sm:gap-4 min-w-0" data-testid="dashboard-health">
         <KpiCard
           href={`${tenantBase}/screens`}
           label={t('dashboard.fleetHealth')}
@@ -1215,20 +1225,20 @@ function KpiCard({
   return (
     <Link
       href={href}
-      className="dash-kpi-card group bg-white rounded-xl border border-slate-200 p-4 hover:shadow-md hover:-translate-y-0.5 transition-all"
+      className="dash-kpi-card group min-w-0 grid grid-cols-[24px_minmax(0,1fr)] gap-x-2 content-start sm:block bg-white rounded-xl border border-slate-200 p-3 sm:p-4 hover:shadow-md hover:-translate-y-0.5 transition-all"
     >
-      <div className="flex items-start justify-between mb-3">
+      <div className="row-span-3 flex items-start justify-between sm:mb-3">
         <div
-          className={`w-9 h-9 rounded-lg flex items-center justify-center shadow ${isBrandTone ? '' : `bg-gradient-to-br ${toneIcon[tone]}`}`}
+          className={`w-6 h-6 sm:w-9 sm:h-9 shrink-0 rounded-lg flex items-center justify-center sm:shadow ${isBrandTone ? '' : `bg-gradient-to-br ${toneIcon[tone]}`}`}
           style={iconBoxStyle}
         >
-          <Icon className="w-4 h-4 text-white" strokeWidth={2.5} />
+          <Icon className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" strokeWidth={2.5} />
         </div>
-        <ArrowRight className="w-3.5 h-3.5 text-slate-300 group-hover:translate-x-0.5 transition-all dash-arrow" />
+        <ArrowRight className="hidden sm:block w-3.5 h-3.5 text-slate-300 group-hover:translate-x-0.5 transition-all dash-arrow" />
       </div>
-      <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">{label}</div>
-      <div className={`text-[28px] font-black tracking-tight leading-none tabular-nums ${valueClass}`} style={valueStyle}>{bigValue}</div>
-      <div className="mt-1 text-[11px] text-slate-500 break-words sm:truncate">{emptyText || sub}</div>
+      <div className="min-w-0 text-[9px] sm:text-[10px] font-bold uppercase sm:tracking-widest text-slate-500 mb-1">{label}</div>
+      <div className={`text-[22px] sm:text-[28px] font-black tracking-tight leading-none tabular-nums ${valueClass}`} style={valueStyle}>{bigValue}</div>
+      <div className="min-w-0 mt-1 text-[10px] sm:text-[11px] leading-snug text-slate-500 break-words sm:truncate">{emptyText || sub}</div>
     </Link>
   );
 }
@@ -1261,15 +1271,16 @@ function OnboardStep({
     emerald: { ring: 'hover:border-emerald-300', icon: 'bg-emerald-50 text-emerald-600 group-hover:bg-emerald-100', text: 'text-emerald-600 group-hover:text-emerald-700' },
   };
   return (
-    <Link href={href} className={`group p-5 bg-white/70 backdrop-blur-md rounded-xl border border-slate-200 ${c[color].ring} hover:shadow-lg hover:-translate-y-1 transition-all duration-300`}>
-      <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-3 group-hover:scale-110 transition-all ${c[color].icon}`}>
-        <Icon className="w-5 h-5" />
+    <Link href={href} className={`group min-w-0 grid grid-cols-[32px_minmax(0,1fr)_12px] gap-x-3 items-center sm:block p-3 sm:p-5 bg-white/70 backdrop-blur-md rounded-xl border border-slate-200 ${c[color].ring} hover:shadow-lg hover:-translate-y-1 transition-all duration-300`}>
+      <div className={`row-span-2 w-8 h-8 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center sm:mb-3 group-hover:scale-110 transition-all ${c[color].icon}`}>
+        <Icon className="w-4 h-4 sm:w-5 sm:h-5" />
       </div>
-      <h3 className="text-sm font-bold text-slate-800">{step}. {title}</h3>
-      <p className="text-xs text-slate-500 mt-1">{desc}</p>
-      <span className={`text-xs font-semibold mt-3 flex items-center gap-1 ${c[color].text}`}>
-        {cta} <ArrowRight className="w-3 h-3 group-hover:translate-x-1 transition-transform" />
+      <h3 className="col-start-2 min-w-0 text-xs sm:text-sm font-bold text-slate-800">{step}. {title}</h3>
+      <p className="hidden sm:block text-xs text-slate-500 mt-1">{desc}</p>
+      <span className={`col-start-2 min-w-0 text-[11px] sm:text-xs font-semibold sm:mt-3 flex items-center gap-1 ${c[color].text}`}>
+        {cta} <ArrowRight className="hidden sm:block w-3 h-3 group-hover:translate-x-1 transition-transform" />
       </span>
+      <ArrowRight aria-hidden className="col-start-3 row-start-1 row-span-2 sm:hidden w-3 h-3 text-slate-400" />
     </Link>
   );
 }

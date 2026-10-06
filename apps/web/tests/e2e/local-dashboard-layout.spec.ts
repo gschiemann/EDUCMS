@@ -51,6 +51,22 @@ for (const child of [false, true]) {
     const corporateReads = await openLocalDashboard(page, child, width);
     await expect(page.getByRole('heading', { name: 'Getting started', exact: true })).toBeVisible();
     await expect(page.locator('.dash-kpi-card')).toHaveCount(5);
+    if (width < 768) {
+      const setup = page.getByTestId('dashboard-setup');
+      const expand = setup.getByRole('button', { name: 'Getting started', exact: true });
+      await expect(expand).toHaveAttribute('aria-expanded', 'false');
+      expect((await setup.boundingBox())!.height).toBeLessThan(100);
+      for (const card of await page.locator('.dash-kpi-card').all()) {
+        expect((await card.boundingBox())!.height).toBeLessThan(115);
+      }
+      expect((await page.getByTestId('dashboard-health').boundingBox())!.height).toBeLessThan(320);
+      await expand.click();
+      await expect(setup.getByRole('link')).toHaveCount(3);
+      expect((await setup.boundingBox())!.height).toBeLessThan(330);
+      await expand.click();
+      const main = page.locator('#main-content');
+      expect(await main.evaluate(el => el.scrollWidth - el.clientWidth)).toBe(0);
+    }
     await expect(page.getByRole('link', { name: /Fleet health/i })).toContainText('50.0%');
     await expect(page.getByRole('link', { name: /^Library\b/i })).toContainText('3');
     await expect(page.getByRole('link', { name: /^Sites\b/i })).toContainText('2');

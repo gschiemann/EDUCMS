@@ -137,13 +137,8 @@ jobs:
         # really does produce a new deployment, and cap that wait well under the
         # job timeout so a miss FAILS loudly instead of being killed silently.
         #
-        # KNOWN LIMIT, stated rather than hidden: this only waits on the RAILWAY
-        # API (the one surface that reports its commit at /health). apps/web is
-        # deployed by VERCEL and is not in Railway's watchPatterns, so a web-only
-        # push skips the wait and may smoke a Vercel build that is a minute or two
-        # stale. Nothing here detects that; if a flaky web-only smoke ever traces
-        # back to it, the fix is a commit-reporting endpoint on the web origin, not
-        # a blind sleep.
+        # The separate web-deploy check below covers Vercel using
+        # /api/build-info; this check still verifies the Railway API artifact.
         if: github.event_name == 'push'
         env:
           API: https://api-production-39a1.up.railway.app/api/v1/health
@@ -195,6 +190,13 @@ jobs:
           echo "::error::$GITHUB_SHA never became live within 5 minutes and the push changes the API image."
           echo "Smoking a different build is worse than not smoking, so this fails."
           exit 1
+
+      - name: Wait for the pushed web artifact
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WEB_ORIGIN: https://venue-os.app
+        run: node scripts/wait-for-web-deploy.cjs
 
       - name: Run prod smoke
         # Test account credentials live in the workflow as plain values
@@ -265,6 +267,13 @@ jobs:
 
       - name: Install Playwright WebKit (with system deps)
         run: pnpm --filter web exec playwright install --with-deps webkit
+
+      - name: Wait for the pushed web artifact
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WEB_ORIGIN: https://venue-os.app
+        run: node scripts/wait-for-web-deploy.cjs
 
       - name: Run WebKit dashboard-nav smoke
         # Seed SUPER_ADMIN (public, Springfield-Elementary-isolated) — same as

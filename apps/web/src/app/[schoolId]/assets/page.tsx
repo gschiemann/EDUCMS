@@ -57,7 +57,10 @@ import type { AssetDeleteResult } from '@/lib/asset-bulk-delete';
 import { FolderPicker } from '@/components/assets/FolderPicker';
 import { AnchoredMenu } from '@/components/ui/anchored-menu';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { createUploadQueue } from '@/lib/upload-queue';
+import { formatMediaBytes as fmtSize } from '@/lib/media-bytes';
+import { useLibraryUploads } from '@/hooks/use-library-uploads';
+import { useFilePicker } from '@/hooks/use-file-picker';
+import type { UploadPhase } from '@/lib/upload-job-store';
 import { PdfHoverThumb } from '@/components/assets/PdfHoverThumb';
 import { AssetActionsMenu, buildAssetMenuActions } from '@/components/assets/AssetActionsMenu';
 import { AssetBulkBar } from '@/components/assets/AssetBulkBar';
@@ -70,14 +73,9 @@ import { assetDownloadUrl, AssetDownloadError } from '@/lib/asset-download';
 import { apiFetch, getApiUrl } from '@/lib/api-client';
 import { AssetEncodeBadge, VideoEncodeCard } from '@/components/assets/VideoEncode';
 import { useEncodeTarget } from '@/hooks/use-encode-target';
-import { encodeSuggestions, encodeWarnings, encodeNotes, describeEncodeReason, isVideoMime, libraryPollMs, type VideoEncodeState } from '@/lib/video-encode-copy';
-import { inspectVideoFile } from '@/lib/mp4-inspect';
-import { gradeVideoEncode, uploadFormatForType } from '@cms/api-types';
+import { encodeSuggestions, encodeWarnings, encodeNotes, describeEncodeReason, libraryPollMs, type VideoEncodeState } from '@/lib/video-encode-copy';
+import { uploadFormatForType } from '@cms/api-types';
 import {
-  uploadAssetDirect,
-  DirectUploadError,
-  maxUploadBytesFor,
-  refuseBeforeUploadAboveBytes,
   formatUploadCap,
   videoUploadLimitBytes,
 } from '@/lib/direct-upload';
@@ -85,8 +83,7 @@ import { useVideoOptimizationStatus, optimizationOf } from '@/hooks/use-video-op
 import { VideoOptimizationNote } from '@/components/assets/VideoOptimizationNote';
 import { PdfPagesNote } from '@/components/assets/PdfPagesNote';
 import { screenReadinessOf } from '@/lib/screen-readiness-copy';
-import { useUploadErrorText } from '@/lib/use-upload-error-text';
-import { LIBRARY_ACCEPT, uploadFormatsCopy, uploadProblemFor, useUploadProblemText } from '@/lib/upload-accept';
+import { LIBRARY_ACCEPT, uploadFormatsCopy } from '@/lib/upload-accept';
 import { formatStorageBytes } from '@/lib/storage-bytes';
 
 // Match the server limit (apps/api/src/assets/assets.controller.ts).
@@ -125,7 +122,6 @@ const PAGE_SIZE = 50;
 const FULL_SCAN_TAKE = 500;
 
 
-type UploadPhase = 'idle' | 'uploading' | 'processing' | 'success' | 'pending-review' | 'error';
 type ViewMode = 'grid' | 'list';
 type FilterType = 'all' | 'images' | 'videos' | 'audio' | 'urls' | 'documents';
 type SortKey = 'newest' | 'oldest' | 'nameAsc' | 'nameDesc' | 'largest' | 'smallest';
@@ -151,29 +147,6 @@ const UPLOAD_PHASE_LABEL: Record<UploadPhase, string> = {
   error: 'Failed',
 };
 
-interface UploadItem {
-  id: string;
-  file: File;
-  progress: number;
-  phase: UploadPhase;
-  error?: string;
-  folderId?: string | null;
-  canRetry?: boolean;
-  /**
-   * The encode verdict read from the FILE before/while it uploads
-   * (2026-09-24, `mp4-inspect.ts`): the codec, size, frame rate, index
-   * placement and the rest come from the MP4's own moov box, so the queue
-   * row can say "May hitch on your screens — the index is at the end of the
-   * file" the moment the file is dropped. `checking` until the read lands;
-   * `unknown` for a container we cannot read. The server's ffprobe pass
-   * confirms it after the upload.
-   */
-  encode?: VideoEncodeState;
-  /** Bytes the storage server has received (drives "412 MB of 1.4 GB"). */
-  sent?: number;
-  /** A transient state line — "Connection dropped — resuming…". */
-  note?: string;
-}
 
 function getAssetType(mime: string): FilterType {
   if (mime?.startsWith('image/')) return 'images';
@@ -221,13 +194,6 @@ function typeBadge(mime: string, opts?: { onImage?: boolean }) {
   return <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${c[type] || 'bg-slate-100 text-slate-600'}`}>{short}</span>;
 }
 
-function fmtSize(bytes: number | null | undefined) {
-  if (!bytes) return '—';
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-}
 
 function fmtDate(d: string) {
   return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -323,17 +289,7 @@ function statusBadge(a: any): { label: string; className: string } | null {
 
 export default function AssetsPage() {
   const t = useTranslations();
-  const uploadTenantId = useUIStore((s) => s.user?.tenantId);
   const isMobile = useIsMobile();
-  const mobileRef = useRef(isMobile);
-  mobileRef.current = isMobile;
-  const [uploadQueue] = useState(() => createUploadQueue(() => mobileRef.current ? 1 : 3));
-  const uploadControllers = useRef(new Set<AbortController>());
-  useEffect(() => () => {
-    uploadQueue.clear();
-    for (const controller of uploadControllers.current) controller.abort();
-    uploadControllers.current.clear();
-  }, [uploadQueue, uploadTenantId]);
   // The two outcomes the browser itself reports are translated here; a
   // refusal from the server keeps the server's own sentence.
   const deleteFailureText = (item: AssetDeleteResult) =>
@@ -353,7 +309,6 @@ export default function AssetsPage() {
   const canDelete =
     userRole === 'SUPER_ADMIN' || userRole === 'DISTRICT_ADMIN' || userRole === 'SCHOOL_ADMIN';
   const deleteDeniedReason = 'Only an admin can delete files';
-  const [uploads, setUploads] = useState<UploadItem[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [filter, setFilter] = useState<FilterType>('all');
   const [sort, setSort] = useState<SortKey>('newest');
@@ -407,6 +362,7 @@ export default function AssetsPage() {
   // its own overlay lock, so it's not gated here.)
   useOverlayLock(!!selectedAsset || !!inUseBlock);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const picker = useFilePicker(fileInputRef);
   const urlInputRef = useRef<HTMLInputElement>(null);
   const newFolderInputRef = useRef<HTMLInputElement>(null);
   const addMenuRef = useRef<HTMLDivElement>(null);
@@ -492,12 +448,11 @@ export default function AssetsPage() {
   const assets = page.assets;
 
   const encodeTarget = useEncodeTarget();
+  const { uploads, setUploads, start: startUploads, retry: retryUpload, clear: clearUploads } = useLibraryUploads(encodeTarget);
   // 2026-09-23 — videos still being optimized for screens: polled (visible
   // tab only) until they finish, then the list refetches once.
   const liveOptimization = useVideoOptimizationStatus(assets);
   // A refused / failed upload in the operator's words (server messages pass through).
-  const uploadErrorMessage = useUploadErrorText();
-  const uploadProblemText = useUploadProblemText();
   /** true once the server answered a query it actually applied itself. */
   const serverSearched = !!debouncedSearch && page.appliedQuery === debouncedSearch;
 
@@ -785,7 +740,7 @@ export default function AssetsPage() {
         const input = fileInputRef.current;
         if (input) {
           input.dataset.overrideFolderId = folderId === null ? '__root__' : folderId;
-          input.click();
+          picker.open();
         }
       }
     } else if (mode === 'bulk-move') {
@@ -798,135 +753,9 @@ export default function AssetsPage() {
     }
   };
 
-  const enqueueUploads = (items: UploadItem[], folderId: string | null) => {
-    uploadQueue.add(items.map((item) => {
-      const controller = new AbortController();
-      uploadControllers.current.add(controller);
-      return async () => {
-        try {
-          if (!controller.signal.aborted) await doUpload(item, folderId, controller.signal);
-        } finally { uploadControllers.current.delete(controller); }
-      };
-    }));
-  };
-
   const handleFiles = (files: FileList | File[] | null, targetFolderIdOverride?: string | null) => {
     if (!files) return;
-    const list = Array.isArray(files) ? files : Array.from(files);
-    if (list.length === 0) return;
-    const genId = () => { try { return crypto.randomUUID(); } catch { return Math.random().toString(36).substring(2, 10); } };
-    const items = list.map((file) => {
-      const item: UploadItem = {
-        id: genId(),
-        file,
-        progress: 0,
-        phase: 'idle',
-        folderId: targetFolderIdOverride !== undefined ? targetFolderIdOverride : currentFolderId,
-        ...(isVideoMime(file.type) ? { encode: { status: 'checking', verdict: { grade: 'unknown', reasons: [] }, facts: null } as VideoEncodeState } : {}),
-      };
-      // Reject BEFORE any network call. The order matters: format check
-      // first (we'd rather tell the operator "export as MP4" than "too
-      // large" if both happen to be true on the same file). Both states
-      // surface in the upload queue so the operator sees which file is
-      // blocked and why.
-      const problem = uploadProblemFor(file);
-      if (problem) { item.phase = 'error'; item.error = uploadProblemText(problem, file); }
-      else if (file.size === 0) { item.phase = 'error'; item.error = t('directUpload.fileEmpty'); }
-      else if (file.size > refuseBeforeUploadAboveBytes(file)) {
-        item.phase = 'error';
-        item.error = t('assetsLib.fileTooLargeFor', { max: formatUploadCap(maxUploadBytesFor(file)), size: fmtSize(file.size) });
-      }
-      return item;
-    });
-    setUploads(prev => [...items, ...prev]);
-    // One queue across every selection: one transfer at a time on phones,
-    // three on desktop. Extra files remain Waiting, and each retains its
-    // chosen destination even if the operator browses another folder.
-    // Pre-upload playback check (2026-09-24): read the MP4's own index the
-    // moment it is dropped — bounded reads, never the media — and grade it
-    // against the fleet's panels, so the queue can explain automatic fixes
-    // and flag remaining playback issues before the bytes go up. Never
-    // blocks or fails an upload; a container we cannot read simply
-    // reads "not checked" until the server's ffprobe pass lands.
-    for (const item of items) {
-      if (!item.encode) continue;
-      void inspectVideoFile(item.file)
-        .then((inspected) => {
-          const facts = inspected.container ? inspected.facts : null;
-          const verdict = gradeVideoEncode(facts, encodeTarget);
-          const status: VideoEncodeState['status'] = facts ? verdict.grade : 'unknown';
-          setUploads((p) => p.map((u) => (u.id === item.id ? { ...u, encode: { status, verdict, facts } } : u)));
-        })
-        .catch(() => {
-          setUploads((p) => p.map((u) => (u.id === item.id ? { ...u, encode: { status: 'unknown', verdict: { grade: 'unknown', reasons: [] }, facts: null } } : u)));
-        });
-    }
-
-    enqueueUploads(items.filter((u) => u.phase === 'idle'), targetFolderIdOverride !== undefined ? targetFolderIdOverride : currentFolderId);
-  };
-
-  const doUpload = async (item: UploadItem, targetFolderIdOverride?: string | null, signal?: AbortSignal): Promise<void> => {
-    // Destination precedence:
-    //   1. Explicit override from the FolderPicker
-    //   2. Current browsed folder (uploads into whatever is open)
-    //   3. Root
-    // `targetFolderIdOverride === undefined` means no override; use
-    // currentFolderId. `null` means "explicit root".
-    const targetFolderId =
-      targetFolderIdOverride !== undefined ? targetFolderIdOverride : currentFolderId;
-
-    const started = performance.now();
-    clog.info('upload', 'Start', {
-      id: item.id,
-      name: item.file.name,
-      size: item.file.size,
-      mime: item.file.type,
-      folderId: targetFolderId || '(root)',
-    });
-
-    const setPhase = (phase: UploadPhase, progress?: number) => {
-      setUploads(p => p.map(u => u.id === item.id ? { ...u, phase, note: undefined, ...(progress !== undefined ? { progress } : {}) } : u));
-    };
-
-    try {
-      setPhase('uploading', 2);
-      // 2026-09-23 — straight to storage (src/lib/direct-upload.ts): large
-      // files go up RESUMABLE (TUS, 6 MB chunks) and survive a dropped
-      // connection; the API never holds the bytes. Progress is the storage
-      // server's own byte count, mapped onto 2–96% (the last stretch is the
-      // server registering the asset — §14: never "Ready" before that).
-      const created = await uploadAssetDirect(item.file, {
-        folderId: targetFolderId || null,
-        signal,
-        onProgress: ({ loaded, fraction }) => {
-          setUploads(p => p.map(u => u.id === item.id
-            ? { ...u, sent: loaded, progress: Math.max(u.progress, Math.min(96, 2 + Math.round(fraction * 94))) }
-            : u));
-        },
-        onPhase: (ph) => {
-          if (ph === 'reconnecting') {
-            setUploads(p => p.map(u => u.id === item.id ? { ...u, note: t('directUpload.resuming') } : u));
-          } else if (ph === 'uploading') {
-            setUploads(p => p.map(u => u.id === item.id && u.note ? { ...u, note: undefined } : u));
-          } else if (ph === 'finalizing') {
-            setPhase('processing', 98);
-          }
-        },
-      });
-      const elapsedMs = Math.round(performance.now() - started);
-      clog.info('upload', 'Success', { id: item.id, name: item.file.name, elapsedMs, bytes: item.file.size });
-      // A contributor's upload lands in the review queue — say so instead
-      // of "Ready", which would be a lie about what is on screen.
-      const needsReview = created?.status === 'PENDING_APPROVAL';
-      setUploads(p => p.map(u => u.id === item.id ? { ...u, progress: 100, note: undefined, phase: needsReview ? 'pending-review' : 'success' } : u));
-      queryClient.invalidateQueries({ queryKey: ['assets'] });
-    } catch (err: any) {
-      const elapsedMs = Math.round(performance.now() - started);
-      const msg = uploadErrorMessage(err, item.file);
-      clog.error('upload', 'Failed', { id: item.id, name: item.file.name, msg, code: err?.code, elapsedMs });
-      const canRetry = err instanceof DirectUploadError && err.source === 'client' && ['network', 'storage', 'expired'].includes(err.code);
-      setUploads(p => p.map(u => u.id === item.id ? { ...u, phase: 'error', note: undefined, error: msg, canRetry } : u));
-    }
+    startUploads(Array.from(files), targetFolderIdOverride === undefined ? currentFolderId : targetFolderIdOverride);
   };
 
   const handleAddUrl = async () => {
@@ -1358,11 +1187,11 @@ export default function AssetsPage() {
     setShowFolderPicker('upload');
   };
 
-  const openUploadPicker = () => {
+  const openUploadPicker = (source: 'files' | 'photos' = 'files') => {
     setPendingFiles([]);
     // Open synchronously from the tap; Safari's native picker needs user activation.
     // On a phone the selected batch is then confirmed with an explicit Upload button.
-    if (isMobile) fileInputRef.current?.click();
+    if (isMobile) picker.open(source);
     else setShowFolderPicker('upload');
   };
 
@@ -1475,6 +1304,7 @@ export default function AssetsPage() {
                 >
                   <UploadCloud className="w-3.5 h-3.5 text-indigo-500" /> Upload files
                 </button>
+                {picker.ios && <button type="button" role="menuitem" onClick={() => { setAddMenuOpen(false); openUploadPicker('photos'); }} className="w-full px-3 py-2 min-h-11 text-left text-xs font-medium text-slate-700 hover:bg-slate-50">{t('assetsLib.photoLibrary')}</button>}
                 <button
                   type="button"
                   role="menuitem"
@@ -1571,7 +1401,7 @@ export default function AssetsPage() {
         disabled={isViewer}
         aria-label={isViewer ? t('assetsLib.uploadDisabledViewer') : t('assetsLib.uploadAria')}
         title={isViewer ? readOnlyReason : undefined}
-        onClick={openUploadPicker}
+        onClick={() => openUploadPicker()}
         data-testid="upload-strip"
         className={`hidden md:flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left transition-colors ${
           isViewer
@@ -1592,12 +1422,15 @@ export default function AssetsPage() {
         </span>
       </button>
 
+      {picker.ios && <p className="text-xs text-slate-500">{t('assetsLib.iosVideoHint')}</p>}
+
       {/* ── Upload queue (§14) ───────────────────────────────────────── */}
       {uploads.length > 0 && (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden" data-testid="upload-queue">
           <div className="px-4 py-2.5 border-b border-slate-100 flex justify-between items-center bg-slate-50/70">
             <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">{t('assetsLib.uploads')}</span>
             <button onClick={() => setUploads(p => p.filter(u => u.phase === 'uploading' || u.phase === 'processing' || u.phase === 'idle'))} className="text-[11px] text-indigo-700 hover:text-indigo-900 font-bold">{t('assetsLib.clearDone')}</button>
+            <button type="button" onClick={clearUploads} className="min-h-11 text-[11px] font-bold text-slate-600">{t('assetsLib.clearFiles')}</button>
           </div>
           <div className="divide-y divide-slate-100 max-h-64 overflow-y-auto" aria-live="polite">
             {uploads.map(u => {
@@ -1638,8 +1471,7 @@ export default function AssetsPage() {
                 </div>
                 {u.phase === 'error' && u.canRetry && (
                   <button type="button" className="mt-1 min-h-11 px-3 text-xs font-bold text-indigo-700" onClick={() => {
-                    setUploads(p => p.map(item => item.id === u.id ? { ...item, phase: 'idle', progress: 0, error: undefined, note: undefined, canRetry: false } : item));
-                    enqueueUploads([u], u.folderId ?? null);
+                    retryUpload(u);
                   }}>
                     {t('assetsLib.retryUpload')}
                   </button>

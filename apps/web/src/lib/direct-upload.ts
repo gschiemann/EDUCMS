@@ -328,7 +328,12 @@ function mapApiError(e: unknown): DirectUploadError {
  * to its own (translated) words.
  */
 export async function uploadAssetDirect(file: File, opts: DirectUploadOptions = {}): Promise<CompletedAsset> {
-  const deps: DirectUploadDeps = { ...realDeps, ...(opts.deps || {}) };
+  const deps: DirectUploadDeps = { ...realDeps,
+    postJson: <T,>(path: string, body: Record<string, unknown>) => {
+      if (opts.signal?.aborted) return Promise.reject(new DirectUploadError('aborted', 'Upload cancelled.'));
+      return apiFetch<T>(path, { method: 'POST', body: JSON.stringify(body), signal: opts.signal });
+    },
+    ...(opts.deps || {}) };
   const total = file.size;
   const report = (loaded: number) =>
     opts.onProgress?.({ loaded: Math.min(loaded, total), total, fraction: total > 0 ? Math.min(1, loaded / total) : 1 });

@@ -288,6 +288,15 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
             });
             return apiFetch<T>(path, { ...options, _sessionRetry: true });
           }
+          if (hasRememberMarker()) {
+            // A network/5xx refresh failure keeps the cookie and marker.
+            // Only an explicit refusal clears them; an outage must not
+            // destroy a recoverable session when a phone returns to the app.
+            emit('unreachable', attempt, fullUrl, 'Session refresh unavailable');
+            const error = new Error('Can\u2019t reconnect your session. Please try again.') as Error & { status: number };
+            error.status = 503;
+            throw error;
+          }
         }
 
         if (token && !sessionLogoutFired) {

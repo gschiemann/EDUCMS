@@ -6,6 +6,8 @@
 import { render, screen, waitFor, act } from '@testing-library/react';
 
 const replace = jest.fn();
+const mockSwitch = jest.fn(async () => ({ ok: true }));
+jest.mock('@/hooks/use-tenant-switch', () => ({ useTenantSwitch: () => ({ switchToTenant: mockSwitch }) }));
 let mockNext: string | null = null;
 
 jest.mock('next/navigation', () => ({
@@ -24,6 +26,7 @@ let mockTenants: any = { data: { tenants: [] }, isPending: false, isError: false
 
 import LaunchPage from '../page';
 import { useUIStore } from '@/store/ui-store';
+import { setRememberMarker, __resetSessionRefreshState } from '@/lib/session-client';
 
 function signedIn(slug: string | null = 'peak-west') {
   act(() => {
@@ -36,10 +39,12 @@ function signedIn(slug: string | null = 'peak-west') {
 
 beforeEach(() => {
   replace.mockClear();
+  mockSwitch.mockClear();
+  __resetSessionRefreshState();
   mockNext = null;
   window.localStorage.clear();
   mockTenants = { data: { tenants: [] }, isPending: false, isError: false };
-  act(() => { useUIStore.setState({ token: null, user: null }); });
+  act(() => { useUIStore.setState({ token: null, user: null, authRestoring: false }); });
   global.fetch = jest.fn();
 });
 
@@ -127,4 +132,45 @@ it('a deep link survives the launch router', async () => {
   signedIn();
   render(<LaunchPage />);
   await waitFor(() => expect(replace).toHaveBeenCalledWith('/peak-west/screens'));
+});
+
+
+it('waits for cold-start cookie restoration instead of redirecting to login', async () => {
+  setRememberMarker(true);
+  act(() => useUIStore.setState({ authRestoring: true }));
+  render(<LaunchPage />);
+  expect(screen.getByTestId('launch-working')).toBeInTheDocument();
+  expect(replace).not.toHaveBeenCalled();
+  expect(global.fetch).not.toHaveBeenCalled();
+  (global.fetch as jest.Mock).mockResolvedValue({ ok: true, status: 200 });
+  act(() => useUIStore.setState({ token: 'restored', user: { id: 'u', tenantId: 't', tenantSlug: 'peak-west' } as never, authRestoring: false }));
+  await waitFor(() => expect(replace).toHaveBeenCalledWith('/peak-west/dashboard'));
+});
+
+it('re-enters a saved workspace only after the accessible-locations response confirms it', async () => {
+  signedIn(); setRememberMarker(true);
+  localStorage.setItem('edu_cms_last_school', 'peak-east');
+  (global.fetch as jest.Mock).mockResolvedValueOnce({ ok: true, status: 200 })
+    .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ tenants: [{ id: 'east', slug: 'peak-east' }] }) });
+  render(<LaunchPage />);
+  await waitFor(() => expect(mockSwitch).toHaveBeenCalledWith({ id: 'east', slug: 'peak-east' }));
+  expect(replace).not.toHaveBeenCalledWith('/peak-west/dashboard');
+});
+
+it('a saved workspace that is no longer allowed falls back to the home account', async () => {
+  signedIn(); setRememberMarker(true);
+  localStorage.setItem('edu_cms_last_school', 'revoked-location');
+  (global.fetch as jest.Mock).mockResolvedValueOnce({ ok: true, status: 200 })
+    .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ tenants: [] }) });
+  render(<LaunchPage />);
+  await waitFor(() => expect(replace).toHaveBeenCalledWith('/peak-west/dashboard'));
+  expect(mockSwitch).not.toHaveBeenCalled();
+});
+
+it('a retryable restoration failure shows offline without forgetting the login choice', async () => {
+  setRememberMarker(true);
+  render(<LaunchPage />);
+  expect(await screen.findByTestId('launch-offline')).toBeInTheDocument();
+  expect(localStorage.getItem('edu_cms_remember')).toBe('1');
+  expect(replace).not.toHaveBeenCalled();
 });

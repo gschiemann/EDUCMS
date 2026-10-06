@@ -1954,6 +1954,12 @@
     "clearSelection": "清除选择"
   },
   "assetsLib": {
+    "uploadFiles": "上传文件",
+    "photoLibrary": "照片图库",
+    "iosVideoHint": "视频卡在照片中？请在照片中选择“分享”→“存储到文件”，然后在这里选择“上传文件”。",
+    "cancelUploadSelection": "取消",
+    "clearFiles": "清除文件",
+    "uploadActivity": "上传：已完成 {done} 个，共 {total} 个",
     "retryUpload": "重试上传",
     "uploadSelected": "上传 {count} 个文件",
     "title": "媒体库",

@@ -8,6 +8,7 @@ import { installThumbTransformFallback } from '@/lib/asset-image';
 import { AppToaster } from '@/components/ui/AppToaster';
 import { buildMutationCache } from '@/lib/mutation-error-cache';
 import { SessionRestorer } from '@/components/layout/SessionRestorer';
+import { UploadActivity } from '@/components/assets/UploadActivity';
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   // Supabase image-transform fallback (2026-07-30): on the Free plan the
@@ -67,6 +68,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
       <SessionRestorer />
       <I18nProvider>
         <BrandingProvider>{children}</BrandingProvider>
+        <UploadActivity />
       </I18nProvider>
       {/* One toast host for the whole app (dashboard + login + marketing).
           Pinned BELOW the emergency overlay — see AppToaster's z-index note. */}

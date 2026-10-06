@@ -9,6 +9,8 @@ import { API_URL } from '@/lib/api-url';
 import { fetchWithTimeout } from '@/lib/fetch-timeout';
 import { useAccessibleTenants } from '@/hooks/use-api';
 import { decideLaunch, type LaunchDecision } from './launchRoute';
+import { hasRememberMarker, refreshRememberedSession } from '@/lib/session-client';
+import { useTenantSwitch } from '@/hooks/use-tenant-switch';
 
 /**
  * M01 — Launch router.
@@ -56,6 +58,8 @@ function LaunchRouter() {
   const params = useSearchParams();
   const token = useAppStore((s) => s.token);
   const user = useAppStore((s) => s.user);
+  const authRestoring = useAppStore((s) => s.authRestoring);
+  const { switchToTenant } = useTenantSwitch();
 
   const [mounted, setMounted] = useState(false);
   const [verify, setVerify] = useState<'pending' | 'ok' | 'expired' | 'unreachable' | 'skipped'>('pending');
@@ -71,8 +75,8 @@ function LaunchRouter() {
   // that an admin-only endpoint turns a valid contributor session into a
   // bogus "signed out".
   useEffect(() => {
-    if (!mounted) return;
-    if (!token) { setVerify('skipped'); return; }
+    if (!mounted || authRestoring) return;
+    if (!token) { setVerify(hasRememberMarker() ? 'unreachable' : 'skipped'); return; }
     let cancelled = false;
     setVerify('pending');
     (async () => {
@@ -84,8 +88,34 @@ function LaunchRouter() {
         );
         if (cancelled) return;
         if (res.ok) {
+          // The cookie restores the HOME identity. Re-enter the remembered
+          // workspace only after the server confirms it is still accessible.
+          let lastSlug: string | null = null;
+          try { lastSlug = localStorage.getItem('edu_cms_last_school'); } catch {}
+          if (hasRememberMarker() && lastSlug && lastSlug !== useAppStore.getState().user?.tenantSlug) {
+            const accessible = await fetchWithTimeout(`${API_URL}/tenants/accessible`, {
+              headers: { Authorization: `Bearer ${token}` },
+            }, 6000);
+            if (cancelled) return;
+            if (!accessible.ok) { setVerify('unreachable'); return; }
+            const body = await accessible.json();
+            const target = body?.tenants?.find((tenant: { slug: string }) => tenant.slug === lastSlug);
+            if (target) {
+              const switched = await switchToTenant(target);
+              if (!cancelled && !switched.ok) setVerify('unreachable');
+              return;
+            }
+          }
           setVerify('ok');
           try { window.localStorage.setItem(LAST_SYNC_KEY, new Date().toISOString()); } catch { /* ignore */ }
+        } else if (res.status === 401 && hasRememberMarker()) {
+          const restored = await refreshRememberedSession();
+          if (cancelled) return;
+          if (restored?.access_token && restored.user) {
+            // Changing token starts a new verification pass, never a redirect
+            // using the expired token or an unchecked local workspace slug.
+            useAppStore.getState().login(restored.access_token, restored.user, true);
+          } else setVerify(hasRememberMarker() ? 'unreachable' : 'expired');
         } else if (res.status === 401 || res.status === 403) {
           setVerify('expired');
         } else {
@@ -97,21 +127,22 @@ function LaunchRouter() {
       }
     })();
     return () => { cancelled = true; };
-  }, [mounted, token, attempt]);
+  }, [mounted, token, authRestoring, attempt, switchToTenant]);
 
   useEffect(() => {
     try { setLastSync(window.localStorage.getItem(LAST_SYNC_KEY)); } catch { /* ignore */ }
   }, [mounted, verify]);
 
   const decision: LaunchDecision | null = useMemo(() => {
-    if (!mounted || verify === 'pending') return null;
+    if (!mounted || authRestoring || verify === 'pending') return null;
+    if (verify === 'unreachable') return { kind: 'offline' };
     return decideLaunch({
       hasToken: !!token,
       slug: user?.tenantSlug ?? null,
       verify,
       next,
     });
-  }, [mounted, verify, token, user?.tenantSlug, next]);
+  }, [mounted, authRestoring, verify, token, user?.tenantSlug, next]);
 
   // Navigation happens in an effect, never during render.
   useEffect(() => {
@@ -164,7 +195,15 @@ function LaunchRouter() {
           </p>
           <button
             type="button"
-            onClick={() => setAttempt((a) => a + 1)}
+            onClick={async () => {
+              if (!token && hasRememberMarker()) {
+                useAppStore.getState().setAuthRestoring(true);
+                const restored = await refreshRememberedSession();
+                if (restored?.access_token && restored.user) useAppStore.getState().login(restored.access_token, restored.user, true);
+                else useAppStore.getState().setAuthRestoring(false);
+              }
+              setAttempt((a) => a + 1);
+            }}
             className="mt-5 inline-flex items-center justify-center gap-2 w-full min-h-[48px] rounded-xl bg-white/10 hover:bg-white/15 text-white text-[14px] font-bold transition-colors"
           >
             <RefreshCw className="w-4 h-4" aria-hidden /> Try again

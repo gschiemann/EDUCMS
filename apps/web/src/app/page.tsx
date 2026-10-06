@@ -3,6 +3,7 @@ import { ArrowRight, Shield, Palette, Zap, KeyRound } from 'lucide-react';
 import { PublicShell } from '@/components/marketing/PublicShell';
 import { TemplateEmbed } from '@/components/marketing/TemplateEmbed';
 import { IndustryShowcase } from '@/components/marketing/IndustryShowcase';
+import { SessionEntryRedirect } from '@/components/layout/SessionEntryRedirect';
 
 /**
  * VenueOS landing page.
@@ -26,6 +27,7 @@ const NAVY = '#070a14';
 export default function LandingPage() {
   return (
     <PublicShell>
+      <SessionEntryRedirect />
       <Hero />
       <LogoStrip />
       <IndustryShowcase />

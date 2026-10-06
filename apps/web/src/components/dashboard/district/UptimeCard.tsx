@@ -102,7 +102,7 @@ export function UptimeCard({
   };
 
   return (
-    <div className="w-full flex flex-col" data-testid="uptime-card">
+    <div className="w-full min-w-0 max-w-full flex flex-col" data-testid="uptime-card">
       {/* hero */}
       <div className="flex items-baseline gap-2.5">
         <span className="text-[38px] leading-[1.15] font-semibold tracking-[-1.3px] tabular-nums text-slate-900" data-testid="ontime-pct">
@@ -126,7 +126,7 @@ export function UptimeCard({
         <>
           <svg
             viewBox={`0 0 ${W} ${H}`}
-            className="w-full h-[110px] block cursor-crosshair"
+            className="w-full min-w-0 max-w-full h-[110px] block cursor-crosshair"
             role="img"
             aria-label={`Devices needing attention over the last 24 hours, ${samples} samples; vertical scale 0 to ${axisMax} devices. Hatched gaps mean no observation.`}
             onClick={(e) => {
@@ -209,7 +209,7 @@ export function UptimeCard({
 
       {/* right now */}
       <p className="text-[10px] tracking-[.1em] uppercase text-slate-500 font-medium border-t border-slate-200 pt-2 mb-1">Right now</p>
-      <div className="grid grid-cols-4 gap-1">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1">
         {stat('offline', offlineNow, 'Offline', offlineNow ? 'text-rose-600' : 'text-slate-900', `${screensHref}?filter=offline`)}
         {stat('unconfirmed', notPaintingNow, 'Playback unconfirmed', notPaintingNow ? 'text-amber-700' : 'text-slate-900', `${screensHref}?filter=attention`)}
         {stat('unknown', unknownNow, 'Unknown', 'text-slate-900', screensHref)}

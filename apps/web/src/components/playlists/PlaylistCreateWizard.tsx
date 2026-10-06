@@ -107,6 +107,8 @@ import {
   useFleetOperations,
   usePublishToFleet,
 } from '@/hooks/use-api';
+import { WizardMediaUpload } from '@/components/playlists/WizardMediaUpload';
+import type { CompletedAsset } from '@/lib/direct-upload';
 import { LocationFilter } from '@/components/screens/LocationFilter';
 // 2026-09-16 — double-sided displays. The API models one face as one Screen
 // row; the operator installed ONE display. This folds the flat list back into
@@ -528,7 +530,10 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
   const [enterAnim, setEnterAnim] = useState(false);
 
   // Hooks
-  const { data: assets } = useAssets();
+  const { data: fetchedAssets } = useAssets();
+  const [uploadedAssets, setUploadedAssets] = useState<CompletedAsset[]>([]);
+  const [uploadBusy, setUploadBusy] = useState(false);
+  const assets = useMemo(() => [...new Map([...uploadedAssets, ...(fetchedAssets ?? [])].map(asset => [asset.id, asset])).values()], [fetchedAssets, uploadedAssets]);
   const { data: folders } = useAssetFolders();
   const { data: templates } = useTemplates();
   const { data: localScreens } = useScreens();
@@ -592,6 +597,8 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
     setName('');
     setKind(null);
     setSelectedAssetItems([]);
+    setUploadedAssets([]);
+    setUploadBusy(false);
     setSelectedTemplateId(null);
     setAssetSearch('');
     setAssetFilter('all');
@@ -838,7 +845,7 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
 
   const canAdvanceFromStep1 = name.trim().length > 0 && kind !== null;
   const canAdvanceFromStep2 = kind === 'media'
-    ? selectedAssetItems.length > 0
+    ? selectedAssetItems.length > 0 && !uploadBusy
     : selectedTemplateId !== null;
   // Step 3 always advanceable — "Skip" is a valid choice.
   // Step 4 always advanceable.
@@ -852,7 +859,7 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
   };
   const goBack = () => setStep((s) => Math.max(1, s - 1));
   const jumpTo = (n: number) => {
-    if (n <= highestVisited) setStep(n);
+    if (n <= highestVisited && !(uploadBusy && n > 2)) setStep(n);
   };
 
   // ─── Step toggles ──────────────────────────────────────────────────
@@ -910,6 +917,15 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
       v.src = src;
     } catch {
       /* noop */
+    }
+  };
+
+  const acceptUploadedAsset = (asset: CompletedAsset) => {
+    setUploadedAssets(previous => previous.some(item => item.id === asset.id) ? previous : [...previous, asset]);
+    const av = /^(video|audio)\//.test(asset.mimeType);
+    setSelectedAssetItems(previous => previous.some(item => item.assetId === asset.id) ? previous : [...previous, { assetId: asset.id, durationMs: av ? 30000 : 10000 }]);
+    if (asset.mimeType.startsWith('video/') && asset.fileUrl) {
+      probeVideoDuration(asset.id, asset.fileUrl.startsWith('http') ? asset.fileUrl : `${apiBase}${asset.fileUrl}`);
     }
   };
 
@@ -1437,6 +1453,9 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
               setFilter={setAssetFilter}
               selectedIds={selectedAssetIds}
               onToggle={toggleAsset}
+              canUpload={user?.role !== 'RESTRICTED_VIEWER'}
+              onUploaded={acceptUploadedAsset}
+              onUploadBusy={setUploadBusy}
             />
           )}
           {step === 2 && kind === 'template' && (
@@ -1886,6 +1905,9 @@ function Step2Media({
   setFilter,
   selectedIds,
   onToggle,
+  canUpload,
+  onUploaded,
+  onUploadBusy,
 }: {
   assets: any[];
   folders: any[];
@@ -1898,6 +1920,9 @@ function Step2Media({
   setFilter: (f: 'all' | 'images' | 'videos' | 'audio' | 'urls') => void;
   selectedIds: Set<string>;
   onToggle: (id: string) => void;
+  canUpload: boolean;
+  onUploaded: (asset: CompletedAsset) => void;
+  onUploadBusy: (busy: boolean) => void;
 }) {
   const filterChips: { id: typeof filter; label: string }[] = [
     { id: 'all', label: 'All' },
@@ -1908,7 +1933,7 @@ function Step2Media({
   ];
   return (
     <div>
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
         <div>
           <p className="text-base font-bold text-slate-800">Pick the media to play</p>
           <p className="text-xs text-slate-500 mt-0.5">
@@ -1922,6 +1947,8 @@ function Step2Media({
           </span>
         </div>
       </div>
+
+      {canUpload && <WizardMediaUpload folderId={currentFolderId} folderName={breadcrumb[breadcrumb.length - 1]?.name ?? 'All files'} onUploaded={onUploaded} onBusy={onUploadBusy} />}
 
       {/* 2026-05-26 — Folder breadcrumb. Always shows "All folders"
           (root) at the start. Click any segment to hop back. Search
@@ -2035,8 +2062,8 @@ function Step2Media({
           </p>
           <p className="text-xs text-slate-400 mt-1">
             {folders.length > 0 && !search
-              ? 'Open a folder above or upload more from the Assets page.'
-              : 'Try clearing the filter or uploading from the Assets page first.'}
+              ? 'Open a folder above or upload files here.'
+              : 'Try clearing the filter or uploading files here.'}
           </p>
         </div>
       ) : (

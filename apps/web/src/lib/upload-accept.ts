@@ -45,6 +45,14 @@ export function libraryAccept(kinds?: readonly UploadKind[]): string {
 
 /** Every format the Media Library takes. */
 export const LIBRARY_ACCEPT = libraryAccept();
+/** iOS maps this generic type to public.data, which opens Files directly
+ * instead of preparing every Photos selection before returning a FileList.
+ * This is a picker hint ONLY: uploadProblemFor and server validation still
+ * enforce the shared format table. Other platforms keep the normal hint. */
+export const IOS_FILES_ACCEPT = 'application/octet-stream';
+export function isIOSFilePicker(browser: Pick<Navigator, 'userAgent' | 'platform' | 'maxTouchPoints'> | undefined = typeof navigator === 'undefined' ? undefined : navigator): boolean {
+  return !!browser && (/iPad|iPhone|iPod/.test(browser.userAgent) || (browser.platform === 'MacIntel' && browser.maxTouchPoints > 1));
+}
 /** Pictures only (HEIC included — it is converted to JPEG). */
 export const LIBRARY_IMAGE_ACCEPT = libraryAccept(['image']);
 /** The lockdown / evacuate content editor (POST /assets/upload). */

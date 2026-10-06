@@ -1954,6 +1954,12 @@
     "clearSelection": "Clear selection"
   },
   "assetsLib": {
+    "uploadFiles": "Upload files",
+    "photoLibrary": "Photo library",
+    "iosVideoHint": "Videos stuck in Photos? In Photos, choose Share → Save to Files, then choose Upload files here.",
+    "cancelUploadSelection": "Cancel",
+    "clearFiles": "Clear files",
+    "uploadActivity": "Uploads: {done} of {total} finished",
     "retryUpload": "Retry upload",
     "uploadSelected": "Upload {count, plural, one {# file} other {# files}}",
     "title": "Media Library",

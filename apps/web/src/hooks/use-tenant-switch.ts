@@ -32,6 +32,7 @@ import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 import { useAppStore } from '@/lib/store';
+import { hasRememberMarker } from '@/lib/session-client';
 
 // Mirrors the key SchoolSwitcher used to own. Centralized here so future
 // reads (e.g. last-school redirect on login) have one canonical location.
@@ -77,9 +78,10 @@ export function useTenantSwitch() {
           body: JSON.stringify({ tenantId: tenant.id }),
         });
 
-        // 2. Persist the new token + user. login() writes through to
-        //    localStorage so a page refresh survives the switch.
-        login(res.access_token, res.user);
+        // A switch changes scope, not the operator's durability choice.
+        // Keep the original HttpOnly session cookie: switched tokens cannot
+        // mint one, and restoring it will re-check access to this location.
+        login(res.access_token, res.user, hasRememberMarker());
 
         // 3. Flip the in-memory active-tenant slug. BrandStyleInjector
         //    has [tenantId, activeTenant, user] in its dep array; this

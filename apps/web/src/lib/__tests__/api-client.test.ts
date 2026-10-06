@@ -284,3 +284,36 @@ describe('apiFetch — proactive silent refresh', () => {
     expect(mockState.logout).not.toHaveBeenCalled();
   });
 });
+
+describe('cookie recovery after an access-token 401', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.localStorage.setItem('edu_cms_remember', '1');
+    require('../session-client').__resetSessionRefreshState();
+    mockState.token = 'expired-access-token';
+  });
+  afterEach(() => window.localStorage.clear());
+  for (const failure of ['network', '503']) {
+    it(`a ${failure} refresh failure preserves the session for a later retry`, async () => {
+      fetchMock.mockImplementation(async (url: string) => {
+        if (String(url) === '/api/session/refresh') {
+          if (failure === 'network') throw new TypeError('offline');
+          return jsonRes(503, { refreshed: false });
+        }
+        return jsonRes(401, {});
+      });
+      await expect(apiFetch('/screens', { _noRetry: true })).rejects.toMatchObject({ status: 503 });
+      expect(mockState.logout).not.toHaveBeenCalled();
+      expect(emitAuthEvent).not.toHaveBeenCalled();
+      expect(window.localStorage.getItem('edu_cms_remember')).toBe('1');
+      expect(mockState.token).toBe('expired-access-token');
+    });
+  }
+  it('an explicitly refused refresh still signs out and emits the expiration event', async () => {
+    fetchMock.mockImplementation(async () => jsonRes(401, {}));
+    await expect(apiFetch('/screens', { _noRetry: true })).rejects.toThrow('Session expired');
+    expect(mockState.logout).toHaveBeenCalledTimes(1);
+    expect(emitAuthEvent).toHaveBeenCalledTimes(1);
+    expect(window.localStorage.getItem('edu_cms_remember')).toBeNull();
+  });
+});

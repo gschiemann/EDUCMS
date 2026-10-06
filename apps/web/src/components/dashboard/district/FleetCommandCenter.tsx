@@ -74,7 +74,7 @@ import { LocationMapSurface, LocationMapFilters } from '@/components/screens/Loc
 import type { LocationPin } from '@/components/screens/ScreenMap';
 
 /** The mock's card: white on the page's slate ground, hairline, barely a shadow. */
-const CARD = 'bg-white rounded-2xl border border-slate-200/90 shadow-[0_1px_3px_rgba(15,23,42,0.05)]';
+const CARD = 'min-w-0 max-w-full bg-white rounded-2xl border border-slate-200/90 shadow-[0_1px_3px_rgba(15,23,42,0.05)]';
 
 /** Icon-chip tint per assurance state — semantic health, never brand. */
 const PILL_ICON_TONE: Record<AssuranceState, string> = {
@@ -1037,6 +1037,7 @@ export function FleetCommandCenter({
     : `${Math.max(1, Math.round(pulseSpanMs / 60_000))}m`;
 
   // ── The locations table's row menu ("⋯") ──────────────────────────
+  const [expandedLocations, setExpandedLocations] = useState<Set<string>>(() => new Set());
   const [menuFor, setMenuFor] = useState<string | null>(null);
   // Anchors for the row "⋯" portal menus (AnchoredMenu) — the table scrolls
   // horizontally (`overflow-x-auto`), which clips a positioned child
@@ -1054,7 +1055,7 @@ export function FleetCommandCenter({
   const inboxCount = fc.inbox.length + fc.inboxOverflow;
 
   return (
-    <section aria-label="Overview" className="space-y-4">
+    <section aria-label="Overview" className="min-w-0 max-w-full space-y-4">
       {/* ─── Header band ─────────────────────────────────────────── */}
       <div className="flex items-center gap-3 flex-wrap">
         <div className="min-w-0">
@@ -1208,7 +1209,7 @@ export function FleetCommandCenter({
       {/* ─── 3 · Needs attention · Today's Schedule · Fleet pulse ───
           Pulse takes the NARROWEST column so Today's Schedule gains the room
           its device lines need (2026-08-31 operator ask). */}
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1.05fr)_minmax(0,0.85fr)]">
+      <div className="grid grid-cols-1 min-w-0 gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1.05fr)_minmax(0,0.85fr)]">
         {/* Needs attention */}
         <div className={`${CARD} flex flex-col`}>
           <div className="px-5 pt-4 pb-3 flex items-center gap-2.5">
@@ -1456,11 +1457,11 @@ export function FleetCommandCenter({
           the last build read as "a small map in a card"). The white card
           chrome drops away too — the map IS the surface, and the panels float
           on it. */}
-      <div className={`grid gap-4 ${view === 'map' || singleLocation ? '' : 'lg:grid-cols-[minmax(0,2.4fr)_minmax(0,1fr)]'}`}>
+      <div className={`grid grid-cols-1 min-w-0 gap-4 ${view === 'map' || singleLocation ? '' : 'lg:grid-cols-[minmax(0,2.4fr)_minmax(0,1fr)]'}`}>
         {/* Single-location mode: no locations module at all — a one-row
             table (or a one-pin map) restates what the pills already say. */}
         {!singleLocation && (
-        <div ref={locationsRef} className={view === 'map' ? 'flex flex-col' : `${CARD} flex flex-col`}>
+        <div ref={locationsRef} className={view === 'map' ? 'min-w-0 flex flex-col' : `${CARD} flex flex-col`}>
           <div className={`flex items-center gap-3 flex-wrap ${view === 'map' ? 'pb-3' : 'px-5 pt-4 pb-3'}`}>
             {view === 'map' ? (
               <div className="min-w-0">
@@ -1980,7 +1981,7 @@ export function FleetCommandCenter({
                       <th className="px-2 py-2.5" aria-label="Actions" />
                     </tr>
                   </thead>
-                  <tbody className="block lg:table-row-group">
+                  <tbody className="block lg:table-row-group relative">
                     {visible.length === 0 && (
                       <tr><td colSpan={9} className="px-2 py-4 text-sm font-semibold text-slate-400">No {nounOne} matches this filter.</td></tr>
                     )}
@@ -1991,13 +1992,15 @@ export function FleetCommandCenter({
                         : 0;
                       const cacheGrade = cachePct >= 90 ? 'Good' : cachePct >= 60 ? 'Fair' : 'Low';
                       const lastPush = lastPushByTenant.get(row.tenantId);
+                      const expanded = expandedLocations.has(row.tenantId);
+                      const detailCell = `${expanded ? 'block' : 'hidden'} lg:table-cell min-w-0 px-2 py-1.5 lg:py-3`;
                       return (
                         <tr
                           key={row.tenantId}
                           onClick={() => enter(row, worstPath(row))}
-                          className="grid grid-cols-2 lg:table-row border-b border-slate-100 lg:border-slate-50 last:border-b-0 hover:bg-slate-50/70 cursor-pointer text-[13px] font-bold py-3 lg:py-0"
+                          className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:table-row border-b border-slate-100 lg:border-slate-50 last:border-b-0 hover:bg-slate-50/70 cursor-pointer text-[13px] font-bold py-2 lg:py-0"
                         >
-                          <td className="block lg:table-cell min-w-0 px-2 py-3 col-span-2 lg:col-span-1">
+                          <td className="block lg:table-cell min-w-0 px-2 py-1 lg:py-3 col-start-1 row-start-1 col-span-2 lg:col-span-1 pr-12 lg:pr-2 relative">
                             <div className="flex items-center gap-2">
                               <MapPin className="w-4 h-4 text-slate-400 shrink-0" aria-hidden />
                               <div className="min-w-0">
@@ -2010,30 +2013,37 @@ export function FleetCommandCenter({
                                     </span>
                                   )}
                                 </div>
-                                {worst && <div className={`text-[11px] font-bold ${worst.cls}`}>{worst.text}</div>}
+                                {worst && <div className={`hidden lg:block text-[11px] font-bold ${worst.cls}`}>{worst.text}</div>}
+                                <button type="button" aria-expanded={expanded} aria-label={`Details for ${row.name}`} onClick={event => {
+                                  event.stopPropagation();
+                                  setExpandedLocations(current => { const next = new Set(current); if (next.has(row.tenantId)) next.delete(row.tenantId); else next.add(row.tenantId); return next; });
+                                }} className="lg:hidden flex items-center gap-1 min-h-9 text-[11px] font-medium text-slate-500">
+                                  <span>{row.hasScreens ? `${row.screensOnline}/${row.screensTotal} online` : 'No screens yet'}{worst && row.hasScreens ? ` · ${worst.text}` : ''}</span>
+                                  <ChevronDown className={`w-3.5 h-3.5 shrink-0 ${expanded ? 'rotate-180' : ''}`} aria-hidden />
+                                </button>
                               </div>
                             </div>
                           </td>
-                          <td className="block lg:table-cell min-w-0 px-2 py-3 text-slate-900 whitespace-nowrap"><span className="block lg:hidden text-[10px] font-semibold text-slate-500 mb-1">Screens</span>
+                          <td className={`${detailCell} text-slate-900 whitespace-nowrap`}><span className="block lg:hidden text-[10px] font-semibold text-slate-500 mb-1">Screens</span>
                             <span className={row.screensOffline > 0 ? 'text-amber-600' : ''}>{row.screensOnline}</span>
                             <span className="text-slate-300">/{row.screensTotal}</span>
                           </td>
-                          <td className="block lg:table-cell min-w-0 px-2 py-3"><span className="block lg:hidden text-[10px] font-semibold text-slate-500 mb-1">Content</span>
+                          <td className={detailCell}><span className="block lg:hidden text-[10px] font-semibold text-slate-500 mb-1">Content</span>
                             {!row.hasScreens ? <StatusCell tone="muted">—</StatusCell>
                               : row.contentBehind > 0
                                 ? <StatusCell tone="bad">{row.contentBehind} behind</StatusCell>
                                 : <StatusCell tone="ok">Up to date</StatusCell>}
                           </td>
-                          <td className="block lg:table-cell min-w-0 px-2 py-3"><span className="block lg:hidden text-[10px] font-semibold text-slate-500 mb-1">Trend</span>
+                          <td className={detailCell}><span className="block lg:hidden text-[10px] font-semibold text-slate-500 mb-1">Trend</span>
                             <Sparkline series={pulse?.locations?.[row.tenantId]} />
                           </td>
-                          <td className="block lg:table-cell min-w-0 px-2 py-3"><span className="block lg:hidden text-[10px] font-semibold text-slate-500 mb-1">Push</span>
+                          <td className={detailCell}><span className="block lg:hidden text-[10px] font-semibold text-slate-500 mb-1">Push</span>
                             {!row.hasScreens ? <StatusCell tone="muted">—</StatusCell>
                               : row.pushStale > 0
                                 ? <StatusCell tone="warn" title={`${row.pushStale} screen${row.pushStale === 1 ? '' : 's'} on ~10s check-ins`}>Degraded</StatusCell>
                                 : <StatusCell tone="ok">Live</StatusCell>}
                           </td>
-                          <td className="block lg:table-cell min-w-0 px-2 py-3"><span className="block lg:hidden text-[10px] font-semibold text-slate-500 mb-1">Cache</span>
+                          <td className={detailCell}><span className="block lg:hidden text-[10px] font-semibold text-slate-500 mb-1">Cache</span>
                             {!row.hasScreens ? <StatusCell tone="muted">—</StatusCell> : (
                               <StatusCell
                                 tone={cacheGrade === 'Good' ? 'ok' : 'warn'}
@@ -2043,7 +2053,7 @@ export function FleetCommandCenter({
                               </StatusCell>
                             )}
                           </td>
-                          <td className="block lg:table-cell min-w-0 px-2 py-3"><span className="block lg:hidden text-[10px] font-semibold text-slate-500 mb-1">Emergency</span>
+                          <td className={detailCell}><span className="block lg:hidden text-[10px] font-semibold text-slate-500 mb-1">Emergency</span>
                             {!row.hasScreens ? <StatusCell tone="muted">—</StatusCell> : (<>
                               {row.readiness === 'READY' && <StatusCell tone="ok">Ready</StatusCell>}
                               {row.readiness === 'NEEDS_ATTENTION' && <StatusCell tone="warn">Gaps</StatusCell>}
@@ -2051,7 +2061,7 @@ export function FleetCommandCenter({
                               {row.readiness === 'UNKNOWN' && <StatusCell tone="muted">—</StatusCell>}
                             </>)}
                           </td>
-                          <td className="block lg:table-cell min-w-0 px-2 py-3 whitespace-nowrap"><span className="block lg:hidden text-[10px] font-semibold text-slate-500 mb-1">Last change</span>
+                          <td className={`${detailCell} whitespace-nowrap`}><span className="block lg:hidden text-[10px] font-semibold text-slate-500 mb-1">Last change</span>
                             {lastPush ? (
                               <>
                                 <div className="text-slate-900">{clockTime(lastPush)}</div>
@@ -2059,7 +2069,7 @@ export function FleetCommandCenter({
                               </>
                             ) : <span className="text-slate-300">—</span>}
                           </td>
-                          <td className="block lg:table-cell min-w-0 px-2 py-3 text-right">
+                          <td className="block lg:table-cell min-w-0 px-2 py-1 lg:py-3 text-right col-start-2 row-start-1 justify-self-end lg:static relative -ml-12 lg:ml-0">
                             {switchingId === row.tenantId ? (
                               <Loader2 className="w-4 h-4 text-slate-400 animate-spin inline-block" aria-hidden />
                             ) : (

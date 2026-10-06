@@ -124,8 +124,8 @@ jest.mock('@/components/ui/app-dialog', () => ({
 jest.mock('@/hooks/use-overlay-lock', () => ({ useOverlayLock: () => {} }));
 jest.mock('@/store/ui-store', () => ({
   useUIStore: Object.assign(
-    (sel: (s: unknown) => unknown) => sel({ user: { role: 'SCHOOL_ADMIN', id: 'u1' }, token: 't' }),
-    { getState: () => ({ token: 't' }) },
+    (sel: (s: unknown) => unknown) => sel({ user: { role: 'SCHOOL_ADMIN', id: 'u1', tenantId: 's1' }, token: 't' }),
+    { getState: () => ({ user: { id: 'u1', tenantId: 's1' }, token: 't' }), subscribe: jest.fn(() => () => {}) },
   ),
 }));
 // The AI affordance self-gates on a network probe; keep it out of these tests.
@@ -150,12 +150,15 @@ jest.mock('@/hooks/use-video-optimization', () => {
 
 import { toast } from 'sonner';
 import AssetsPage from '../page';
+import { clearUploadJobs, useUploadJobStore } from '@/lib/upload-job-store';
 
 function mount() {
   return render(<AssetsPage />);
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  clearUploadJobs(useUploadJobStore.getState().items.map(item => item.id));
+  for (let i = 0; i < 12; i++) await Promise.resolve();
   assetsResponse = ASSETS;
   assetRequests = [];
   usageResponse = { data: undefined, isLoading: false, isError: true };
@@ -589,7 +592,7 @@ function asRole(role: string, body: () => void) {
   const original = store.useUIStore;
   store.useUIStore = Object.assign(
     (sel: (s: unknown) => unknown) => sel({ user: { role, id: 'u9' }, token: 't' }),
-    { getState: () => ({ token: 't' }) },
+    { getState: () => ({ user: { id: 'u1', tenantId: 's1' }, token: 't' }), subscribe: jest.fn(() => () => {}) },
   );
   try {
     mount();
@@ -718,7 +721,7 @@ describe('Media Library v1 — upload queue phases (§14)', () => {
         variableFrameRate: false, audio: null, container: 'mp4' },
     });
     const upload = jest.spyOn(DirectUpload, 'uploadAssetDirect').mockImplementation(
-      () => new Promise(() => {}),
+      (_file, opts) => new Promise((_resolve, reject) => { opts?.signal?.addEventListener('abort', () => reject(new DOMException('Cancelled', 'AbortError')), { once: true }); }),
     );
     try {
       mount();
@@ -792,7 +795,7 @@ describe('Media Library v1 — upload queue phases (§14)', () => {
   });
 
   it('an iPhone video (.mov), an AVCHD clip with NO type and a HEIC photo are TAKEN — sent to the uploader, not refused (2026-10-05)', async () => {
-    const upload = jest.spyOn(DirectUpload, 'uploadAssetDirect').mockImplementation(() => new Promise(() => {}));
+    const upload = jest.spyOn(DirectUpload, 'uploadAssetDirect').mockImplementation((_file, opts) => new Promise((_resolve, reject) => { opts?.signal?.addEventListener('abort', () => reject(new DOMException('Cancelled', 'AbortError')), { once: true }); }));
     try {
       mount();
       const input = document.querySelector('input[type="file"]') as HTMLInputElement;

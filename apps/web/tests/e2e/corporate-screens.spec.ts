@@ -29,8 +29,14 @@ const fleet = {
   operations: { groups, schedules: [], playlists: [] },
 };
 
-async function openCompany(page: Page, path: string, width = 1840) {
+async function openCompany(page: Page, path: string, width = 1840, dense = false) {
   const writes: string[] = [];
+  const companyLocations = dense ? [...locations, ...Array.from({ length: 37 }, (_, i) => ({
+    id: `extra-${i}`, slug: `extra-${i}`, name: `Company regional location ${i + 1} with a long office name`, latitude: 36, longitude: -100,
+  }))] : locations;
+  const companyFleet = { ...fleet, locations: companyLocations, stats: { ...fleet.stats, locationCount: companyLocations.length } };
+  const now = Date.now();
+  const pulse = dense ? Array.from({ length: 96 }, (_, i) => ({ ts: now - (95 - i) * 15 * 60_000, online: 2, offline: 1, notPainting: 0, total: 3 })) : [];
   await page.route('https://tile.openstreetmap.org/**', (route) => route.fulfill({
     contentType: 'image/png',
     body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jWZkAAAAASUVORK5CYII=', 'base64'),
@@ -46,11 +52,11 @@ async function openCompany(page: Page, path: string, width = 1840) {
     let body: unknown = [];
     if (apiPath === '/auth/me') body = USER;
     if (apiPath === '/tenants') body = fleet.root;
-    if (apiPath === '/tenants/accessible') body = { current: HQ, tenants: locations };
+    if (apiPath === '/tenants/accessible') body = { current: HQ, tenants: companyLocations };
     if (apiPath === '/branding/me') body = { displayName: 'Test Corporate', primaryColor: '#e11d48' };
-    if (apiPath === '/screens/fleet') body = fleet;
+    if (apiPath === '/screens/fleet') body = companyFleet;
     if (apiPath === '/screens') body = [own];
-    if (apiPath === '/screens/fleet-pulse') body = { fleet: [], locations: {} };
+    if (apiPath === '/screens/fleet-pulse') body = { fleet: pulse, locations: {} };
     if (apiPath === '/emergency/readiness/district') body = { schools: [], notReadyCount: 0, delivery: { key: 'delivery', status: 'ok' } };
     if (apiPath === '/submissions/pending-counts') body = { byTenant: [], total: 0 };
     if (apiPath === '/deployments') body = { deployments: [] };
@@ -141,6 +147,29 @@ test('dashboard offers all location names and totals link into company Screens',
 });
 
 for (const width of [390, 320]) {
+  test(`41 mobile locations and a full uptime history fit the viewport at ${width}px`, async ({ page }, info) => {
+    await openCompany(page, 'dashboard', width, true);
+    const uptime = page.getByTestId('uptime-card');
+    await expect(uptime.getByRole('img')).toBeVisible();
+    await expect(uptime.getByText('Scheduled off', { exact: true })).toBeVisible();
+    const table = page.getByRole('table', { name: 'Location health' });
+    await expect(table.getByRole('button', { name: /^Details for / })).toHaveCount(41);
+    const row = table.getByRole('row').filter({ hasText: 'Boston office' });
+    expect((await row.boundingBox())!.height).toBeLessThan(115);
+    await expect(row.getByText('Cache', { exact: true })).toBeHidden();
+    const overflow = await page.evaluate(() => {
+      const main = document.getElementById('main-content');
+      return { page: document.documentElement.scrollWidth - window.innerWidth,
+        main: main ? main.scrollWidth - main.clientWidth : 0 };
+    });
+    expect(overflow).toEqual({ page: 0, main: 0 });
+    const rect = (await uptime.boundingBox())!;
+    expect(rect.x).toBeGreaterThanOrEqual(0);
+    expect(rect.x + rect.width).toBeLessThanOrEqual(width);
+    await uptime.screenshot({ path: info.outputPath(`uptime-full-history-${width}.png`), animations: 'disabled' });
+    await table.screenshot({ path: info.outputPath(`compact-41-locations-${width}.png`), animations: 'disabled' });
+  });
+
   test(`corporate phone retains overview, uptime, every location column and activity at ${width}px`, async ({ page }, info) => {
     const errors: string[] = [];
     page.on('pageerror', error => errors.push(error.message));
@@ -153,6 +182,8 @@ for (const width of [390, 320]) {
     const table = page.getByRole('table', { name: 'Location health' });
     const austin = table.getByRole('row').filter({ hasText: 'Austin office' });
     await expect(austin).toBeVisible();
+    expect((await austin.boundingBox())!.height).toBeLessThan(115);
+    await austin.getByRole('button', { name: 'Details for Austin office', exact: true }).click();
     for (const label of ['Screens', 'Content', 'Trend', 'Push', 'Cache', 'Emergency', 'Last change']) {
       await expect(austin.getByText(label, { exact: true })).toBeVisible();
     }

@@ -1954,6 +1954,12 @@
     "clearSelection": "Borrar selección"
   },
   "assetsLib": {
+    "uploadFiles": "Subir archivos",
+    "photoLibrary": "Fototeca",
+    "iosVideoHint": "¿Los vídeos se quedan en Fotos? En Fotos, elige Compartir → Guardar en Archivos y después Subir archivos aquí.",
+    "cancelUploadSelection": "Cancelar",
+    "clearFiles": "Limpiar archivos",
+    "uploadActivity": "Subidas: {done} de {total} terminadas",
     "retryUpload": "Reintentar subida",
     "uploadSelected": "Subir {count, plural, one {# archivo} other {# archivos}}",
     "title": "Biblioteca de medios",
