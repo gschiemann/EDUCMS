@@ -1,6 +1,7 @@
 import { getServiceWorkerContainer, isServiceWorkerAvailable } from '../../lib/safe-service-worker';
 import { playbackSafety } from './playbackSafety';
 import { digestQuarantine } from './digestQuarantine';
+import { requestDeviceDiagnosticsUpload } from './deviceDiagnostics';
 /**
  * Offline-cache client — talks to /sw-player.js. Used by the player to:
  *   - Register the SW on first run
@@ -210,6 +211,13 @@ async function downloadLargeAsset(
   let consecutiveFailures = 0;
   let total: number | null = size;
 
+  const reportFailure = (phase: string, reason: unknown) => {
+    // Include the worker's actual answer without media URLs or credentials.
+    // Native logs capture this warning before the authenticated upload reads it.
+    console.warn(`[Player] content cache failed ${JSON.stringify({ phase, reason: typeof reason === 'string' ? reason.slice(0, 160) : 'no-worker-reply', offset, total })}`);
+    requestDeviceDiagnosticsUpload();
+  };
+
   const failStep = async (): Promise<boolean> => {
     consecutiveFailures += 1;
     if (consecutiveFailures >= MAX_CONSECUTIVE_CHUNK_FAILURES) return false;
@@ -226,6 +234,7 @@ async function downloadLargeAsset(
       type: 'PRECACHE_CHUNK', url: asset.url, sha256, size, offset, chunkBytes, ...tier,
     }, CHUNK_ACK_TIMEOUT_MS);
     if (!reply || reply.ok !== true) {
+      reportFailure('chunk', reply?.reason);
       if (isFatalChunkReason(reply?.reason)) return false;
       if (!(await failStep())) return false;
       continue;
@@ -247,6 +256,7 @@ async function downloadLargeAsset(
     const verified = await askWorker(sw, { type: 'PRECACHE_VERIFY', url: asset.url, sha256, ...tier }, STEP_ACK_TIMEOUT_MS);
     finishVerify?.();
     if (!verified || verified.ok !== true) {
+      reportFailure('verify', verified?.reason);
       if (verified?.reason === 'incomplete' && typeof verified.nextOffset === 'number') {
         offset = verified.nextOffset;
         if (!(await failStep())) return false;
@@ -264,6 +274,7 @@ async function downloadLargeAsset(
     const assembled = await askWorker(sw, { type: 'PRECACHE_ASSEMBLE', url: asset.url, sha256, ...tier }, STEP_ACK_TIMEOUT_MS);
     finishAssemble?.();
     if (!assembled || assembled.ok !== true) {
+      reportFailure('assemble', assembled?.reason);
       if (assembled?.reason === 'incomplete' && typeof assembled.nextOffset === 'number') {
         offset = assembled.nextOffset;
         if (!(await failStep())) return false;

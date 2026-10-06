@@ -5238,10 +5238,12 @@ function PlayerPage() {
       post: (url, init) => fetchJsonBounded(url, init, 15_000),
       now: Date.now,
     }));
-    // A blocked mount still needs the previous failure's evidence. Upload
-    // once after it settles, only if this page actually recorded a fallback.
+    // A blocked loop or a boot still without visible assigned content needs
+    // the native evidence too. One bounded upload; never a polling loop.
     const timer = setTimeout(() => {
-      if (loopBoundaryTracker.peek()?.fallbacks) requestDiagnosticsUpload({ has: nativeHas, call: nativeCall });
+      if (loopBoundaryTracker.peek()?.fallbacks || !renderStateRef.current.rendering) {
+        requestDiagnosticsUpload({ has: nativeHas, call: nativeCall });
+      }
     }, 20_000);
     return () => { clearTimeout(timer); uninstall(); };
   }, [screenId]);

@@ -3,6 +3,7 @@ import { getServiceWorkerContainer } from '@/lib/safe-service-worker';
 import { lookupCached, precacheEmergency, precachePlaylist, quarantinedDigestCount } from '../offline-cache';
 import { __resetDigestQuarantineForTests, quarantineKey } from '../digestQuarantine';
 import { __resetPlaybackSafetyForTests } from '../playbackSafety';
+import { installDeviceDiagnosticsUploader } from '../deviceDiagnostics';
 
 // Its own file on purpose: offline-cache.ts memoises the service-worker
 // registration at module level, so a second describe in the same file would
@@ -54,6 +55,34 @@ describe('player offline-cache large-asset orchestration', () => {
       if (reply !== undefined) ports[0].postMessage(reply);
     });
   }
+
+  it('reports a completed download that cannot commit with the actual worker reason and no URL', async () => {
+    const url = 'https://cdn.example.com/video.mp4?token=private';
+    const size = 16 * MiB;
+    const upload = jest.fn(async () => undefined);
+    const uninstall = installDeviceDiagnosticsUploader(upload);
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const cached = jest.fn();
+    try {
+      answerWith(m => {
+        switch (m.type) {
+          case 'PRECACHE_PLAYLIST': return { ok: false, pending: [{ url, size }] };
+          case 'PRECACHE_CHUNK': return { ok: true, nextOffset: size, total: size, complete: true };
+          case 'PRECACHE_VERIFY': return { ok: true, verified: true };
+          case 'PRECACHE_ASSEMBLE': return { ok: false, reason: 'QuotaExceededError' };
+          default: return { ok: false };
+        }
+      });
+      await expect(precachePlaylist([{ url, size }], undefined, { onAssetCached: cached }))
+        .resolves.toMatchObject({ ok: false });
+      expect(cached).not.toHaveBeenCalled();
+      expect(upload).toHaveBeenCalledTimes(1);
+      const message = String(warn.mock.calls[0][0]);
+      expect(message).toContain('"phase":"assemble"');
+      expect(message).toContain('"reason":"QuotaExceededError"');
+      expect(message).not.toContain(url);
+    } finally { uninstall(); warn.mockRestore(); }
+  });
 
   it('drives a pending large file chunk → verify → assemble and only then reports ok', async () => {
     const url = 'https://cdn.example.com/4k.mp4';
