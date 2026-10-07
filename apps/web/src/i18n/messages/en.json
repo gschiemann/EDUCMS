@@ -1891,7 +1891,7 @@
       "removeMessage": "It will stop getting content and leave this list. Pair it again to bring it back.",
       "removeConfirm": "Remove screen",
       "thisScreen": "this screen",
-      "trustHint": "Content keeps playing.",
+      "trustHint": "Cached content may keep playing. Restore trust to resume verified reporting.",
       "trustBody": "This screen needs its trust restored.",
       "trustButtonSub": "No re-pairing or site visit needed.",
       "trustRequested": "Requested. The badge clears once the screen checks in, usually within ten minutes.",
@@ -1937,7 +1937,7 @@
       "sublineNoVersion": "Version not reported yet"
     },
     "trust": {
-      "repairTitle": "Content keeps playing. Restore trust from this screen's settings.",
+      "repairTitle": "Device trust needs repair. Restore trust from this screen's settings.",
       "stalledTitle": "The video stopped moving. The screen is fixing it on its own; if this keeps happening, check the file.",
       "paintingTitleAt": "This screen reported a picture — last check {time}",
       "paintingTitle": "This screen is reporting a picture",

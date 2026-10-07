@@ -1891,7 +1891,7 @@
       "removeMessage": "它将不再接收内容，并从此列表中移除。重新配对即可恢复。",
       "removeConfirm": "移除屏幕",
       "thisScreen": "此屏幕",
-      "trustHint": "内容会继续播放。",
+      "trustHint": "缓存内容可能继续播放。恢复信任后，屏幕才能恢复已验证的状态上报。",
       "trustBody": "需要恢复此屏幕的信任。",
       "trustButtonSub": "无需重新配对或到现场。",
       "trustRequested": "已请求。屏幕连接后此标记会消失，通常在十分钟内。",
@@ -1937,7 +1937,7 @@
       "sublineNoVersion": "尚未上报版本"
     },
     "trust": {
-      "repairTitle": "内容会继续播放。请在此屏幕的设置中恢复信任。",
+      "repairTitle": "设备信任需要修复。请在此屏幕的设置中恢复信任。",
       "stalledTitle": "视频停止播放了。屏幕正在自行修复；如果反复出现，请检查该文件。",
       "paintingTitleAt": "此屏幕已上报画面——最近一次检查：{time}",
       "paintingTitle": "此屏幕正在上报画面",

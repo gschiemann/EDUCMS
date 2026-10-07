@@ -522,6 +522,8 @@ describe('Restore trust', () => {
     const dialog = openActions('G43');
     expect(within(dialog).getByText('Credential')).toBeInTheDocument();
     expect(within(dialog).getByRole('button', { name: /Restore trust/ })).toBeInTheDocument();
+    expect(within(dialog).getByText(/Cached content may keep playing/)).toBeInTheDocument();
+    expect(within(dialog).queryByText('Content keeps playing.')).not.toBeInTheDocument();
   });
 
   it('is ABSENT on a healthy screen — no button for a problem that is not there', () => {

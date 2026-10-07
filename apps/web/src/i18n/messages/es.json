@@ -1891,7 +1891,7 @@
       "removeMessage": "Dejará de recibir contenido y saldrá de esta lista. Vuelve a vincularla para recuperarla.",
       "removeConfirm": "Quitar pantalla",
       "thisScreen": "esta pantalla",
-      "trustHint": "El contenido sigue reproduciéndose.",
+      "trustHint": "El contenido guardado en caché puede seguir reproduciéndose. Restablece la confianza para reanudar los informes verificados.",
       "trustBody": "Hay que restablecer la confianza de esta pantalla.",
       "trustButtonSub": "No hace falta volver a vincularla ni ir al sitio.",
       "trustRequested": "Solicitado. El aviso desaparece cuando la pantalla se conecte, normalmente en unos diez minutos.",
@@ -1937,7 +1937,7 @@
       "sublineNoVersion": "Versión aún no informada"
     },
     "trust": {
-      "repairTitle": "El contenido sigue reproduciéndose. Restablece la confianza desde la configuración de esta pantalla.",
+      "repairTitle": "Es necesario reparar la confianza del dispositivo. Restablece la confianza desde la configuración de esta pantalla.",
       "stalledTitle": "El video se detuvo. La pantalla lo está corrigiendo por su cuenta; si sigue pasando, revisa el archivo.",
       "paintingTitleAt": "Esta pantalla informó una imagen; última comprobación: {time}",
       "paintingTitle": "Esta pantalla está informando una imagen",

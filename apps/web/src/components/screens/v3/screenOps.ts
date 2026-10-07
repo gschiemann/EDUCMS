@@ -213,11 +213,11 @@ export const STATUS_ORDER = [
   'content-unavailable', // reachable, but none of the scheduled files would load
   'offline', // heartbeat stale
   'revoked', // access removed — cannot be told anything
+  'repair-required', // repair credentials before asking for delivery proof
   'content-behind', // an update was SENT and the screen has not confirmed it
   'push-delayed', // live push degraded, polling backstop carrying it
   'syncing', // an update was sent moments ago; inside the normal confirmation window
-  'app-updating', // playing correctly, on an older page bundle, self-healing
-  'repair-required', // credential downgraded
+  'app-updating', // newer web build available; activation waits for idle/operator
   'pending', // paired but has never checked in
   'confirming', // brief self-healing render gap
   'downloading', // nothing on glass yet: the new file is downloading
@@ -339,16 +339,14 @@ export const PUSH_CONFIRM_GRACE_MS = 90_000;
  *   1. Emergency delivery or all-clear risk
  *   2. Online but not painting / frozen media
  *   3. Offline
- *   4. Content behind
- *   5. Push channel degraded
- *   6. Re-pair or setup issue
+ *   4. Credential repair required
+ *   5. Content behind / push channel degraded
+ *   6. Web player update available
  *   7. Healthy (and the calm not-an-alarm states)
  *
- * Note the deliberate re-ordering against `deriveRenderTrustGrade`, which
- * returns 'repair-required' INSTEAD of a green state. Here credential trust
- * is a rank-6 fact, so a screen that is both behind on content and needs
- * re-pairing reports the content problem — the one the operator can fix
- * from this page — and the drawer still shows both.
+ * Credential repair precedes delivery and build skew: a refused device
+ * cannot acknowledge a refresh or report its picture until trust is repaired.
+ * Repeated Resync requests cannot repair that credential.
  *
  * 2026-09-04: rank 2 ('not painting') no longer beats it for a
  * REPAIR_REQUIRED screen, because the grade function no longer produces
@@ -476,6 +474,21 @@ export function deriveScreenStatus({
     };
   }
 
+  // A refused credential explains missing acknowledgements and picture proof.
+  // Show its actual remedy before suggesting another refresh or a web update.
+  if (grade === 'repair-required') {
+    return {
+      key: 'repair-required',
+      tone: 'warn',
+      label: 'Device trust needs repair',
+      action: 'Re-pair',
+      needsAttention: true,
+      detail:
+        'The screen is using a temporary credential, so the server cannot accept its picture reports or update acknowledgements. ' +
+        'Open Actions and tap Restore trust. The screen must prove its credential on its next check-in before recovery is confirmed.',
+    };
+  }
+
   // 4 ── online, but something has not converged. WHICH something decides
   // whether this is an alarm (2026-09-16).
   //
@@ -548,10 +561,9 @@ export function deriveScreenStatus({
   if (cause === 'stale-bundle') {
     // NOT an exception. `needsAttention` is false on purpose: this screen is
     // showing its assigned content right now, and the only difference from a
-    // green row is which build of the app is drawing it. It updates itself —
-    // the drift detector polls, waits out a 60-300s spread so a fleet does not
-    // stampede, then defers behind playback to a 12-minute cap and forces the
-    // reload.
+    // green row is which web build is drawing it. New builds activate while
+    // playback is idle or after an explicit operator refresh; continuous live
+    // content must never be interrupted just to advance a build number.
     //
     // NO ACTION ON THE ROW (2026-09-21). This used to offer Resync "for an
     // operator who does not want to wait". Every web deploy puts the WHOLE
@@ -568,12 +580,12 @@ export function deriveScreenStatus({
     return {
       key: 'app-updating',
       tone: 'muted',
-      label: 'Player update pending',
+      label: 'Web player update available',
       evidence: 'Content is playing on the previous player build',
       action: 'View',
       needsAttention: false,
       detail:
-        'This screen is playing its scheduled content on an older build of the player app. It reloads onto the current build on its own, usually within half an hour. Nothing for you to do.',
+        'A newer web player is available. It applies when playback is idle or an operator refreshes this screen. Live content keeps playing. This is separate from the installed Android app version.',
     };
   }
 
@@ -590,26 +602,6 @@ export function deriveScreenStatus({
       needsAttention: true,
       detail:
         'The instant connection to this screen is down, so updates arrive on its own check-in instead — roughly every ten seconds. Content still lands, just slower.',
-    };
-  }
-
-  // 6 ── credential trust needs an operator.
-  if (grade === 'repair-required') {
-    return {
-      key: 'repair-required',
-      tone: 'warn',
-      label: 'Re-pair required',
-      action: 'Re-pair',
-      needsAttention: true,
-      // 2026-09-01: this used to say "pair it again", which sent the operator
-      // hunting for a pairing code a screen in this state never shows. The
-      // drawer's Actions tab now carries a one-click Restore trust that arms
-      // the server-side heal (POST /screens/:id/restore-trust).
-      detail:
-        'This screen is running on temporary keys, so the server is refusing its ' +
-        'picture-proof reports — an absent proof here is the credential, not the panel. ' +
-        'Content keeps playing. Open Actions and tap Restore trust; the screen proves ' +
-        'its credential on its next check-in and picture proof resumes with it.',
     };
   }
 
@@ -1069,9 +1061,9 @@ function deriveAppVersion(
     reportedBundleId: screen.lastBundleId ?? null,
     deployedBundleId,
   });
-  if (skew === 'stale') return { state: 'updating', line: 'Player app: update pending — it reloads onto the current build on its own.' };
+  if (skew === 'stale') return { state: 'updating', line: 'Web player: update available — applies when idle or refreshed by an operator.' };
   if (skew === 'unknown') return { state: 'unknown', line: null };
-  return { state: 'current', line: 'Player app: current build.' };
+  return { state: 'current', line: 'Web player: current build.' };
 }
 
 export function deriveReportedContent(
@@ -1898,7 +1890,7 @@ export function deriveDeviceFacts(screen: OpsScreen, app: ReportedContent['app']
     .join(' · ');
   const build =
     app.state === 'updating'
-      ? 'Update pending — reloads onto the current build on its own'
+      ? 'Web update available — applies when idle or refreshed by an operator'
       : app.state === 'current'
         ? 'Current build'
         : null;

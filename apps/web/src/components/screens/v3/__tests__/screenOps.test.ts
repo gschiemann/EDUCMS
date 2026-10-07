@@ -164,10 +164,10 @@ describe('deriveScreenStatus — §9 taxonomy', () => {
   // A screen on an older BUNDLE is not behind on CONTENT; it is playing exactly
   // what it was told to play. The old expectation is kept below as the thing
   // that must NOT come back.
-  it('stale page bundle with no pending push → Player update pending, NOT an exception', () => {
+  it('stale web bundle with no pending push → update available, not an exception', () => {
     const s = status({ lastBundleSha: 'oldsha000000' });
     expect(s.key).toBe('app-updating');
-    expect(s.label).toBe('Player update pending');
+    expect(s.label).toBe('Web player update available');
     expect(s.tone).toBe('muted');
     expect(s.needsAttention).toBe(false);
     expect(s.age).toBeUndefined();
@@ -183,13 +183,15 @@ describe('deriveScreenStatus — §9 taxonomy', () => {
   // Every deploy puts the WHOLE fleet in this state until each panel reloads
   // itself. A row action of Resync/Retry renders a button on the Screens page
   // (desktop and mobile); anything else renders none. So this state must never
-  // carry one — it heals on its own and says so.
-  it('a self-updating screen ASKS FOR NOTHING: no Resync on the row, and the copy says so', () => {
+  // carry one — activation waits for idle playback or an operator refresh.
+  it('a newer web build leaves live content running and states its actual activation policy', () => {
     const s = status({ lastBundleSha: 'oldsha000000' });
     expect(s.action).toBe('View');
     expect(['Resync', 'Retry']).not.toContain(s.action);
-    expect(s.detail).toMatch(/on its own/i);
-    expect(s.detail).toMatch(/nothing for you to do/i);
+    expect(s.detail).toMatch(/when playback is idle/i);
+    expect(s.detail).toMatch(/operator refreshes/i);
+    expect(s.detail).toMatch(/separate from.*Android app/i);
+    expect(s.detail).not.toMatch(/half an hour|on its own/i);
     expect(s.detail).not.toMatch(/resync/i);
   });
 
@@ -237,6 +239,18 @@ describe('deriveScreenStatus — §9 taxonomy', () => {
     expect(s.key).toBe('repair-required');
     expect(s.tone).toBe('warn');
     expect(s.action).toBe('Re-pair');
+  });
+
+  it.each([
+    { lastBundleSha: 'oldsha000000' },
+    { pendingRefreshAt: new Date(NOW - 18 * MIN).toISOString() },
+    { pushChannel: 'stale' as const },
+  ])('credential repair outranks an unavailable update or delivery acknowledgement: %p', (other) => {
+    const s = status({ authState: 'REPAIR_REQUIRED', ...other });
+    expect(s.key).toBe('repair-required');
+    expect(s.label).toBe('Device trust needs repair');
+    expect(s.detail).toContain('Restore trust');
+    expect(s.detail).not.toMatch(/Content keeps playing/i);
   });
 
   it('player alive with no schedule → Screen on · nothing scheduled (neutral, not a failure)', () => {
@@ -333,17 +347,17 @@ describe('precedence — one dominant status per row (§3.1)', () => {
     expect(s.key).toBe('content-behind');
   });
 
-  it('content-behind beats re-pair — the fixable-from-here fact wins', () => {
+  it('credential repair precedes an acknowledgement the refused device cannot send', () => {
     const s = status({
       pendingRefreshAt: new Date(NOW - 3 * MIN).toISOString(),
       authState: 'REPAIR_REQUIRED',
     });
-    expect(s.key).toBe('content-behind');
+    expect(s.key).toBe('repair-required');
   });
 
-  it('push-delayed beats re-pair', () => {
+  it('credential repair precedes a push channel that cannot authenticate', () => {
     const s = status({ pushChannel: 'stale', authState: 'REPAIR_REQUIRED' });
-    expect(s.key).toBe('push-delayed');
+    expect(s.key).toBe('repair-required');
   });
 
   it('STATUS_ORDER has no duplicates and every key is reachable in the rank map', () => {
@@ -408,10 +422,10 @@ describe('screenOps — graded on the identity the player RELOADS on', () => {
       BUNDLE,
     );
     expect(r.app.state).toBe('current');
-    expect(r.app.line).toBe('Player app: current build.');
+    expect(r.app.line).toBe('Web player: current build.');
   });
 
-  it('a screen genuinely on an older BUNDLE still reads Player update pending — and asks for nothing', () => {
+  it('an older web bundle shows update availability without demanding a refresh', () => {
     // The calm self-healing state must survive — silent would hide a panel
     // actually stuck on old code.
     const s = deriveScreenStatus({
@@ -421,9 +435,9 @@ describe('screenOps — graded on the identity the player RELOADS on', () => {
       now: NOW,
     });
     expect(s.key).toBe('app-updating');
-    expect(s.label).toBe('Player update pending');
+    expect(s.label).toBe('Web player update available');
     expect(s.needsAttention).toBe(false);
-    expect(s.action).toBe('View'); // no Resync button: it reloads on its own
+    expect(s.action).toBe('View'); // no Resync button merely to advance the build
   });
 
   it('an unacked push still outranks a matching bundleId', () => {
@@ -1088,7 +1102,7 @@ describe('videoSampleName', () => {
 
 describe('contentStatusLine', () => {
   it('does not repeat the name under a confirmed match, and keeps the player’s own words otherwise', () => {
-    const app = { state: 'current' as const, line: 'Player app: current build.' };
+    const app = { state: 'current' as const, line: 'Web player: current build.' };
     expect(contentStatusLine({ state: 'confirmed', line: 'Playing Summer Strength', app })).toBe('Playing as scheduled');
     expect(contentStatusLine({ state: 'behind', line: 'Still on the previous version', app })).toBe('Still on the previous version');
     expect(contentStatusLine({ state: 'idle', line: 'Nothing scheduled — idle', app })).toBe('Nothing scheduled — idle');
@@ -1149,12 +1163,12 @@ describe('deriveDeviceFacts', () => {
     });
     expect(fact({ playerVersion: '1.1.12' }, 'player', app('updating'))).toMatchObject({
       value: 'Player 1.1.12',
-      hint: 'Update pending — reloads onto the current build on its own',
+      hint: 'Web update available — applies when idle or refreshed by an operator',
       tone: 'warn',
     });
     // A browser-only player has no APK; a pending update is still a fact about it.
     expect(fact({}, 'player', app('updating'))).toMatchObject({
-      value: 'Update pending — reloads onto the current build on its own',
+      value: 'Web update available — applies when idle or refreshed by an operator',
       tone: 'warn',
     });
     expect(fact({ playerVersion: '1.1.12' }, 'player', app('unknown'))).toMatchObject({ value: 'Player 1.1.12' });
