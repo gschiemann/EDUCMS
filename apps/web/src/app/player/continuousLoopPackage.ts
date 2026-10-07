@@ -119,7 +119,8 @@ export async function readLoopFragment(cache: Cache, f: LoopFragment, signal: Ab
 
 let packagingTail: Promise<unknown> = Promise.resolve();
 
-/** Serialize preparation across mounts (including React StrictMode). */
+/** Serialize preparation in THIS document (including React StrictMode).
+ * Other display faces have independent queues and share the origin's cache. */
 export function prepareLoopPackage(src: string, sourceHash: string, signal: AbortSignal): Promise<LoopPackage> {
   const job = packagingTail.catch(() => undefined).then(() => prepare(src, sourceHash, signal));
   packagingTail = job.catch(() => undefined);
@@ -155,11 +156,13 @@ async function prepare(src: string, sourceHash: string, signal: AbortSignal): Pr
   if (existing) {
     const data = await bounded(signal, 10_000, () => existing.json()) as LoopPackage;
     if (validLoopPackage(data, sourceHash)) return data;
-    await cache.delete(manifestKey);
   }
-  // A package costs at most one extra copy. Reclaim only this dedicated cache,
-  // including incomplete work from an interrupted session. Never touch SW tiers.
-  for (const key of await cache.keys()) { checkAbort(signal); await cache.delete(key); }
+  // CacheStorage is shared by both face WebViews; packagingTail is not. Never
+  // evict another face's playing/preparing bytes (even for this same hash).
+  // Each attempt owns an immutable nonce namespace. Publish its manifest last;
+  // concurrent successful writers may replace that pointer without invalidating
+  // either returned package. Quota failure uses the existing native fallback,
+  // and the catch below removes ONLY this attempt's unpublished namespace.
   const nonce = Array.from(crypto.getRandomValues(new Uint32Array(2))).join('-');
   const prefix = `${ROOT}${sourceHash}/${nonce}/`;
   const { createFile } = await import('mp4box');
