@@ -829,8 +829,9 @@ export class ScreensController {
      * still exist, still be paired, not be REVOKED, and to still recognise
      * the credential being presented.
      */
+    let verifiedPriorClaims: { epoch: number; unproven: boolean } | null = null;
     const verifyPriorToken = (
-      screen: { id: string; status?: string | null; tenantId?: string | null; credentialEpoch?: number | null; credentialEpochRotatedAt?: Date | null },
+      screen: { id: string; status?: string | null; tenantId?: string | null; authState?: string | null; credentialEpoch?: number | null; credentialEpochRotatedAt?: Date | null },
     ): 'valid' | 'valid-grace' | 'unproven-restorable' | 'stale' | 'expired' | 'invalid' | 'absent' => {
       if (!body.priorDeviceToken) return 'absent';
       const epochState = {
@@ -843,6 +844,7 @@ export class ScreensController {
         }) as any;
         if (decoded?.kind !== 'device') return 'invalid';
         if (decoded?.sub !== screen.id) return 'invalid';
+        verifiedPriorClaims = { epoch: epochFromClaim(decoded), unproven: isUnprovenDeviceClaim(decoded) };
         // DEVAUTH-01 (2026-08-04) — an UNPROVEN credential is not proof of
         // possession. It was minted to a caller who supplied nothing but a
         // fingerprint, so treating it as evidence that the caller holds the
@@ -881,7 +883,7 @@ export class ScreensController {
         // DT-05 happened). It now also catches the `aud` marker.
         if (isUnprovenDeviceClaim(decoded)) {
           const operatorJustPaired =
-            (existing as any).authState === 'PROVEN' &&
+            screen.authState === 'PROVEN' &&
             isEpochAcceptable(epochFromClaim(decoded), epochState) &&
             epochFromClaim(decoded) === epochState.credentialEpoch - 1;
           return operatorJustPaired ? 'unproven-restorable' : 'stale';
@@ -913,176 +915,197 @@ export class ScreensController {
     if (existing) {
       // ── Paired re-registration — graduated trust (sec-fix P0 #5) ──────────
       if (existing.tenantId) {
-        // 2026-08-03 (DT-01/DT-02): a REVOKED screen may not re-register
-        // itself back into service. Revocation is an operator decision;
-        // the way back is an operator re-pairing the screen with a fresh
-        // pairing code, not the compromised device asking nicely.
-        if ((existing as any).status === 'REVOKED') {
-          throw new HttpException(
-            { code: 'SCREEN_CREDENTIAL_REVOKED', message: 'This screen’s credential was revoked by an administrator. Re-pair it from the dashboard.' },
-            HttpStatus.FORBIDDEN,
+        const registrationId = existing.id;
+        const registrationTenantId = existing.tenantId;
+        let credentialTimelineEvent: {
+          screenId: string; tenantId: string; kind: string;
+          detail: { priorAuthState: string | null; authState: string; priorStatus: string };
+        } | null = null;
+        const registration = await this.prisma.client.$transaction(async (tx) => {
+          // Serialize the ENTIRE trust decision, not only the increment. A
+          // concurrent register must see the first one's new epoch; a revoke
+          // must never be overwritten by a request's earlier ONLINE snapshot.
+          // This is the row resolved from the submitted fingerprint above.
+          const locked = await tx.$queryRaw<Array<{ id: string }>>`
+            SELECT id FROM screens
+            WHERE id = ${registrationId} AND tenant_id = ${registrationTenantId}
+            FOR UPDATE
+          `;
+          if (locked.length !== 1) {
+            throw new HttpException(
+              { code: 'SCREEN_REGISTRATION_CHANGED', message: 'Screen registration changed. Retry registration.' },
+              HttpStatus.CONFLICT,
+            );
+          }
+          const existing = await tx.screen.findUnique({
+            where: { id: registrationId, tenantId: registrationTenantId },
+          });
+          if (!existing || existing.tenantId !== registrationTenantId ||
+              existing.deviceFingerprint !== body.deviceFingerprint) {
+            throw new HttpException(
+              { code: 'SCREEN_REGISTRATION_CHANGED', message: 'Screen registration changed. Retry registration.' },
+              HttpStatus.CONFLICT,
+            );
+          }
+
+          // 2026-08-03 (DT-01/DT-02): a REVOKED screen may not re-register
+          // itself back into service. Revocation is an operator decision;
+          // the way back is an operator re-pairing the screen with a fresh
+          // pairing code, not the compromised device asking nicely.
+          if ((existing as any).status === 'REVOKED') {
+            throw new HttpException(
+              { code: 'SCREEN_CREDENTIAL_REVOKED', message: 'This screen’s credential was revoked by an administrator. Re-pair it from the dashboard.' },
+              HttpStatus.FORBIDDEN,
+            );
+          }
+
+          const priorStatus = verifyPriorToken(existing as any);
+
+          if (priorStatus === 'invalid') {
+            // Caller supplied a token but it binds to a different screen →
+            // hard reject. Fingerprint alone is not enough to prove identity
+            // when a token was actively presented.
+            throw new HttpException({ code: 'SCREEN_TOKEN_MISMATCH', message: 'Invalid prior device token: screenId mismatch' }, HttpStatus.UNAUTHORIZED);
+          }
+
+          // Determine issued TTL (DT-02/DT-04):
+          //   valid prior token → 180d + ROTATE the credential epoch
+          //   stale prior token → 1h + requiresRePair (superseded/revoked
+          //                       credential — a fork; audited, not 401'd)
+          //   expired prior token → 1h + requiresRePair
+          //   absent prior token → 1h + requiresRePair (was 365d by default
+          //                       before DT-04 removed the legacy branch)
+          let issuedTtl: string;
+          let requiresRePair = false;
+          let renewed = false;
+
+          if (priorStatus === 'valid' || priorStatus === 'valid-grace' || priorStatus === 'unproven-restorable') {
+            issuedTtl = DEVICE_TOKEN_TTL_PAIRED;
+            renewed = true;
+          } else {
+            issuedTtl = DEVICE_TOKEN_TTL_UNPROVEN;
+            requiresRePair = true;
+          }
+
+          // 2026-05-27 — back-fill hardwareModel if it's still null on
+          // an already-paired screen (every screen paired before the
+          // auto-detect landed). inferIfUnknown returns null when the
+          // column already has a value, so this NEVER overwrites a
+          // manual override an admin set via the dashboard.
+          const detectedHardware = inferIfUnknown(
+            { userAgent: body.userAgent || existing.userAgent, osInfo: body.osInfo || existing.osInfo },
+            (existing as any).hardwareModel,
           );
-        }
+          // 2026-08-30 (reliability W1-2 / audit P0-5) — stamp the server's
+          // trust verdict on the row, server-side, at the same instant the
+          // token is minted. This is what lets the dashboard say "re-pair
+          // required" instead of a green ONLINE while a screen lives on
+          // 1-hour downgraded tokens. Written only on CHANGE so the
+          // boot-wave re-register stays a telemetry-only write (both columns
+          // are in SCREEN_TELEMETRY_ONLY_FIELDS — no manifest-cache churn).
+          const newAuthState = renewed ? 'PROVEN' : 'REPAIR_REQUIRED';
+          // ten-ok: device re-registration. There is no caller tenant — the
+          // principal is the screen itself, and `existing` was resolved from the
+          // presented credential / fingerprint above, so the id IS the identity.
+          // The row's `tenantId` is READ here to be sealed into the minted JWT,
+          // which is the opposite of a value to compare a caller against; the
+          // write touches only this row's own telemetry + authState columns.
+          const updated = await tx.screen.update({
+            where: { id: existing.id },
+            data: {
+              resolution: body.resolution || existing.resolution,
+              osInfo: body.osInfo || existing.osInfo,
+              browserInfo: body.browserInfo || existing.browserInfo,
+              userAgent: body.userAgent || existing.userAgent,
+              ipAddress: clientIpFromRequest(req),
+              lastPingAt: new Date(),
+              status: 'ONLINE',
+              ...(detectedHardware ? { hardwareModel: detectedHardware } : {}),
+              ...(newAuthState !== (existing as any).authState
+                ? { authState: newAuthState, authStateChangedAt: new Date() }
+                : {}),
+            },
+          });
 
-        const priorStatus = verifyPriorToken(existing as any);
+          // ── Credential timeline (2026-08-31, Fleet Command Phase 2) ────
+          // TRANSITIONS ONLY. Every screen re-registers on a 10-minute timer,
+          // so a row per register would bury the two moments that matter
+          // under a fleet-wide flood — and the dashboard needs to show WHEN a
+          // screen lost or regained proven trust, not that it keeps checking.
+          //   repair-required     — the verdict just flipped INTO
+          //                         REPAIR_REQUIRED (the token was downgraded
+          //                         to 1 hour; content may still be playing,
+          //                         but the credential is no longer proven).
+          //   credential-restored — trust was re-minted: either the verdict
+          //                         flipped back to PROVEN, or the
+          //                         operator-repair restore verdict accepted a
+          //                         token that could not otherwise renew.
+          //                         That restore is one-shot by construction —
+          //                         it requires the PRE-pair epoch, and
+          //                         accepting it rotates past that epoch.
+          const priorAuthState = ((existing as any).authState ?? null) as string | null;
+          const credentialEventKind =
+            newAuthState === 'REPAIR_REQUIRED' && priorAuthState !== 'REPAIR_REQUIRED'
+              ? 'repair-required'
+              : (newAuthState === 'PROVEN' && priorAuthState !== 'PROVEN') ||
+                  priorStatus === 'unproven-restorable'
+                ? 'credential-restored'
+                : null;
+          if (credentialEventKind) {
+            credentialTimelineEvent = {
+              screenId: existing.id,
+              tenantId: existing.tenantId,
+              kind: credentialEventKind,
+              detail: { priorAuthState, authState: newAuthState, priorStatus },
+            };
+          }
 
-        if (priorStatus === 'invalid') {
-          // Caller supplied a token but it binds to a different screen →
-          // hard reject. Fingerprint alone is not enough to prove identity
-          // when a token was actively presented.
-          throw new HttpException({ code: 'SCREEN_TOKEN_MISMATCH', message: 'Invalid prior device token: screenId mismatch' }, HttpStatus.UNAUTHORIZED);
-        }
-
-        // Determine issued TTL (DT-02/DT-04):
-        //   valid prior token → 180d + ROTATE the credential epoch
-        //   stale prior token → 1h + requiresRePair (superseded/revoked
-        //                       credential — a fork; audited, not 401'd)
-        //   expired prior token → 1h + requiresRePair
-        //   absent prior token → 1h + requiresRePair (was 365d by default
-        //                       before DT-04 removed the legacy branch)
-        let issuedTtl: string;
-        let requiresRePair = false;
-        let renewed = false;
-
-        if (priorStatus === 'valid' || priorStatus === 'valid-grace' || priorStatus === 'unproven-restorable') {
-          issuedTtl = DEVICE_TOKEN_TTL_PAIRED;
-          renewed = true;
-        } else {
-          issuedTtl = DEVICE_TOKEN_TTL_UNPROVEN;
-          requiresRePair = true;
-        }
-
-        // 2026-05-27 — back-fill hardwareModel if it's still null on
-        // an already-paired screen (every screen paired before the
-        // auto-detect landed). inferIfUnknown returns null when the
-        // column already has a value, so this NEVER overwrites a
-        // manual override an admin set via the dashboard.
-        const detectedHardware = inferIfUnknown(
-          { userAgent: body.userAgent || existing.userAgent, osInfo: body.osInfo || existing.osInfo },
-          (existing as any).hardwareModel,
-        );
-        // 2026-08-30 (reliability W1-2 / audit P0-5) — stamp the server's
-        // trust verdict on the row, server-side, at the same instant the
-        // token is minted. This is what lets the dashboard say "re-pair
-        // required" instead of a green ONLINE while a screen lives on
-        // 1-hour downgraded tokens. Written only on CHANGE so the
-        // boot-wave re-register stays a telemetry-only write (both columns
-        // are in SCREEN_TELEMETRY_ONLY_FIELDS — no manifest-cache churn).
-        const newAuthState = renewed ? 'PROVEN' : 'REPAIR_REQUIRED';
-        // ten-ok: device re-registration. There is no caller tenant — the
-        // principal is the screen itself, and `existing` was resolved from the
-        // presented credential / fingerprint above, so the id IS the identity.
-        // The row's `tenantId` is READ here to be sealed into the minted JWT,
-        // which is the opposite of a value to compare a caller against; the
-        // write touches only this row's own telemetry + authState columns.
-        const updated = await this.prisma.client.screen.update({
-          where: { id: existing.id },
-          data: {
-            resolution: body.resolution || existing.resolution,
-            osInfo: body.osInfo || existing.osInfo,
-            browserInfo: body.browserInfo || existing.browserInfo,
-            userAgent: body.userAgent || existing.userAgent,
-            ipAddress: clientIpFromRequest(req),
-            lastPingAt: new Date(),
-            status: 'ONLINE',
-            ...(detectedHardware ? { hardwareModel: detectedHardware } : {}),
-            ...(newAuthState !== (existing as any).authState
-              ? { authState: newAuthState, authStateChangedAt: new Date() }
-              : {}),
-          },
-        });
-
-        // ── Credential timeline (2026-08-31, Fleet Command Phase 2) ────
-        // TRANSITIONS ONLY. Every screen re-registers on a 10-minute timer,
-        // so a row per register would bury the two moments that matter
-        // under a fleet-wide flood — and the dashboard needs to show WHEN a
-        // screen lost or regained proven trust, not that it keeps checking.
-        //   repair-required     — the verdict just flipped INTO
-        //                         REPAIR_REQUIRED (the token was downgraded
-        //                         to 1 hour; content may still be playing,
-        //                         but the credential is no longer proven).
-        //   credential-restored — trust was re-minted: either the verdict
-        //                         flipped back to PROVEN, or the
-        //                         operator-repair restore verdict accepted a
-        //                         token that could not otherwise renew.
-        //                         That restore is one-shot by construction —
-        //                         it requires the PRE-pair epoch, and
-        //                         accepting it rotates past that epoch.
-        const priorAuthState = ((existing as any).authState ?? null) as string | null;
-        const credentialEventKind =
-          newAuthState === 'REPAIR_REQUIRED' && priorAuthState !== 'REPAIR_REQUIRED'
-            ? 'repair-required'
-            : (newAuthState === 'PROVEN' && priorAuthState !== 'PROVEN') ||
-                priorStatus === 'unproven-restorable'
-              ? 'credential-restored'
-              : null;
-        if (credentialEventKind) {
-          // Best-effort, and try/catch rather than a trailing `.catch()`:
-          // the credential decision is already made and the token is about
-          // to be minted, so NOTHING here — including a synchronous throw —
-          // may fail a register and strand a screen.
-          try {
-            await this.prisma.client.screenEvent.create({
-              data: {
-                screenId: existing.id,
-                tenantId: existing.tenantId,
-                kind: credentialEventKind,
-                detail: { priorAuthState, authState: newAuthState, priorStatus },
-              },
-            });
-          } catch { /* timeline best-effort */ }
-        }
-
-        // ── Credential rotation (DT-02) ───────────────────────────────
-        // A screen that proved possession gets a NEW epoch, so the token
-        // it just handed us is retired the moment the new one is issued
-        // (subject to the grace window that keeps a lost response from
-        // locking a real kiosk out — see CREDENTIAL_EPOCH_GRACE_MS).
-        // This is what turns "a stolen copy renews itself forever" into
-        // "two parties cannot both hold the current credential, and the
-        // fork is visible."
-        let issuedEpoch = Number((existing as any).credentialEpoch ?? 0) || 0;
-        // 2026-10-03: a proven register inside the rotation window mints on
-        // the CURRENT epoch — one rotation per reload burst, not one per page
-        // load (see CREDENTIAL_ROTATION_MIN_INTERVAL_MS). `valid` ONLY: the
-        // operator-repair restore below must still rotate (its one-shot
-        // guarantee is the rotation itself).
-        const rotationSkipped =
-          priorStatus === 'valid' &&
-          rotatedWithinRotationWindow((existing as any).credentialEpochRotatedAt);
-        if ((priorStatus === 'valid' && !rotationSkipped) || priorStatus === 'unproven-restorable') {
-          try {
+          // ── Credential rotation (DT-02) ───────────────────────────────
+          // A screen that proved possession gets a NEW epoch, so the token
+          // it just handed us is retired the moment the new one is issued
+          // (subject to the grace window that keeps a lost response from
+          // locking a real kiosk out — see CREDENTIAL_EPOCH_GRACE_MS).
+          // This is what turns "a stolen copy renews itself forever" into
+          // "two parties cannot both hold the current credential, and the
+          // fork is visible."
+          let issuedEpoch = Number((existing as any).credentialEpoch ?? 0) || 0;
+          // 2026-10-03: a proven register inside the rotation window mints on
+          // the CURRENT epoch — one rotation per reload burst, not one per page
+          // load (see CREDENTIAL_ROTATION_MIN_INTERVAL_MS). `valid` ONLY: the
+          // operator-repair restore below must still rotate (its one-shot
+          // guarantee is the rotation itself).
+          const rotationSkipped =
+            priorStatus === 'valid' &&
+            rotatedWithinRotationWindow((existing as any).credentialEpochRotatedAt);
+          if ((priorStatus === 'valid' && !rotationSkipped) || priorStatus === 'unproven-restorable') {
+            // A failed rotation must roll back the trust decision; minting from
+            // the pre-write snapshot would defeat the atomic renewal guarantee.
             issuedEpoch = await rotateScreenCredentialEpoch(
               { prisma: this.prisma, redis: this.redisService },
               existing.id,
+              tx,
             );
-          } catch {
-            /* rotation is best-effort: never fail a live kiosk's boot on it */
+          } else if (rotationSkipped) {
+            // Same as the grace branch: no new epoch, and drop any cached
+            // snapshot so this device's next request reads the live row.
+            invalidateDeviceCredentialCache(existing.id);
+          } else if (priorStatus === 'valid-grace') {
+            // B-P1-6 (2026-08-30): a grace-window register is a duplicate of a
+            // rotation that ALREADY happened — mint on the CURRENT epoch and
+            // do NOT rotate again, so a concurrent-register fork converges
+            // instead of escalating (see verifyPriorToken). issuedEpoch is
+            // already the current epoch from the row read above.
+            invalidateDeviceCredentialCache(existing.id);
+          } else {
+            // Downgraded credentials do NOT rotate — otherwise an attacker
+            // could force-rotate a screen out of its own credential just by
+            // spamming /register with no token at all.
+            invalidateDeviceCredentialCache(existing.id);
           }
-        } else if (rotationSkipped) {
-          // Same as the grace branch: no new epoch, and drop any cached
-          // snapshot so this device's next request reads the live row.
-          invalidateDeviceCredentialCache(existing.id);
-        } else if (priorStatus === 'valid-grace') {
-          // B-P1-6 (2026-08-30): a grace-window register is a duplicate of a
-          // rotation that ALREADY happened — mint on the CURRENT epoch and
-          // do NOT rotate again, so a concurrent-register fork converges
-          // instead of escalating (see verifyPriorToken). issuedEpoch is
-          // already the current epoch from the row read above.
-          invalidateDeviceCredentialCache(existing.id);
-        } else {
-          // Downgraded credentials do NOT rotate — otherwise an attacker
-          // could force-rotate a screen out of its own credential just by
-          // spamming /register with no token at all.
-          invalidateDeviceCredentialCache(existing.id);
-        }
 
-        // Renewal is a privileged event and used to write no AuditLog at
-        // all, so a self-renewal chain was invisible in forensics. Wrapped
-        // in try/catch, not just `.catch()`: an audit write must never be
-        // able to fail a live kiosk's boot, synchronously or otherwise.
-        try {
-          this.prisma.client.auditLog.create({
+          // Commit the privileged decision and immutable audit together. Never
+          // issue a credential if either write fails.
+          await tx.auditLog.create({
             data: {
               tenantId: existing.tenantId,
               userId: null,
@@ -1093,25 +1116,39 @@ export class ScreensController {
                 priorTokenStatus: priorStatus,
                 issuedTtl,
                 credentialEpoch: issuedEpoch,
+                observedCredentialEpoch: Number(existing.credentialEpoch ?? 0) || 0,
+                // Only claims from a successfully verified, screen-bound JWT.
+                // No raw credential is retained, including on downgrade.
+                presentedCredentialEpoch: verifiedPriorClaims?.epoch ?? null,
+                presentedCredentialUnproven: verifiedPriorClaims?.unproven ?? null,
                 requiresRePair,
-                // Forensics: "each register rotates" used to be inferable from
-                // the epoch alone; with the rotation window it is not.
                 ...(rotationSkipped ? { rotationSkipped: 'rotated-within-window' } : {}),
                 ip: clientIpFromRequest(req),
                 fingerprint: body.deviceFingerprint.slice(0, 24),
               }),
             },
-          }).catch(() => { /* audit best-effort */ });
-        } catch { /* audit best-effort */ }
+          });
 
-        return {
-          screenId: updated.id,
-          pairingCode: updated.pairingCode,
-          paired: true,
-          name: updated.name,
-          deviceToken: mintDeviceJwt(updated.id, true, issuedTtl, existing.tenantId, issuedEpoch),
-          ...(requiresRePair ? { requiresRePair: true } : {}),
-        };
+          return {
+            screenId: updated.id,
+            pairingCode: updated.pairingCode,
+            paired: true,
+            name: updated.name,
+            deviceToken: mintDeviceJwt(updated.id, true, issuedTtl, existing.tenantId, issuedEpoch),
+            ...(requiresRePair ? { requiresRePair: true } : {}),
+          };
+        });
+        // The helper also invalidates during rotation. Repeat AFTER COMMIT so
+        // an in-flight reader cannot leave a pre-commit snapshot cached here.
+        invalidateDeviceCredentialCache(registrationId);
+        // Timeline remains best-effort. Keep it outside the transaction: a
+        // caught SQL failure would otherwise abort the credential/audit commit.
+        if (credentialTimelineEvent) {
+          try {
+            await this.prisma.client.screenEvent.create({ data: credentialTimelineEvent });
+          } catch { /* timeline best-effort; immutable AuditLog already committed */ }
+        }
+        return registration;
       }
 
       // ── Unpaired re-registration (no tenantId yet) ────────────────────────

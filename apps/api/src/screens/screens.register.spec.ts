@@ -55,6 +55,9 @@ const mockPrisma: any = {
   },
 };
 
+mockPrisma.client.$transaction = jest.fn((fn: (tx: any) => Promise<unknown>) => fn(mockPrisma.client));
+mockPrisma.client.$queryRaw = jest.fn().mockResolvedValue([{ id: 'screen-paired-001' }]);
+
 const mockRedis: any = { publish: jest.fn() };
 const mockSigner: any = { signMessage: jest.fn() };
 const mockLicense: any = { assertSeatAvailable: jest.fn() };

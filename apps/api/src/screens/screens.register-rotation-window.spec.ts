@@ -102,6 +102,10 @@ function setup(row: Partial<Row>) {
       screenEvent: { create: jest.fn().mockResolvedValue({}) },
     },
   };
+  Object.assign(prisma.client, {
+    $transaction: jest.fn((fn: (tx: any) => Promise<unknown>) => fn(prisma.client)),
+    $queryRaw: jest.fn().mockResolvedValue([{ id: SCREEN }]),
+  });
   const controller = new ScreensController(
     ...([
       prisma,
