@@ -95,15 +95,22 @@ export function ContinuousLoopVideo({ src, sourceHash, videoKey, isActive, class
 
     const onPlayingNow = () => {
       if (disposed) return;
+      callbacks.current.onPlaying?.();
+    };
+    const onEmptied = () => {
+      if (disposed) return;
+      // A new source/load resets the element's counters. Rebuffering does
+      // not: rebasing on every `playing` discarded all short bad stretches
+      // and could leave the dashboard's quality sample hours out of date.
       videoQualityTracker.detach(video, Date.now());
       videoQualityTracker.attach(video, src, Date.now());
-      callbacks.current.onPlaying?.();
     };
     const onVideoError = () => {
       if (engine && !fellBack) fallback('media-error');
       else if (!disposed) callbacks.current.onError();
     };
     video.addEventListener('playing', onPlayingNow);
+    video.addEventListener('emptied', onEmptied);
     video.addEventListener('error', onVideoError);
     video.loop = true; video.muted = true;
     video.play().catch(() => { /* active error / watchdog owns it */ });
@@ -184,6 +191,7 @@ export function ContinuousLoopVideo({ src, sourceHash, videoKey, isActive, class
       if (frameId !== undefined) video.cancelVideoFrameCallback?.(frameId);
       window.removeEventListener('pagehide', onHide);
       video.removeEventListener('playing', onPlayingNow); video.removeEventListener('error', onVideoError);
+      video.removeEventListener('emptied', onEmptied);
       video.removeEventListener('loadeddata', onLoadedData);
       releaseFrame();
       videoQualityTracker.detach(video, Date.now());

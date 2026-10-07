@@ -21,6 +21,7 @@ jest.mock('../continuousLoop', () => ({ startContinuousLoop: (...a: unknown[]) =
 jest.mock('../continuousLoopPackage', () => ({ prepareLoopPackage: (...a: unknown[]) => (prepareLoopPackage as jest.Mock)(...a) }));
 
 import { ContinuousLoopVideo } from '../ContinuousLoopVideo';
+import { videoQualityTracker } from '../videoQuality';
 
 const HASH = 'a'.repeat(64);
 const PACKAGE = { durationTicks: 90_000, timescale: 30_000 };
@@ -77,6 +78,31 @@ async function presentFrame() {
   act(() => { frameCallbacks.shift()!(0, { mediaTime: clock, expectedDisplayTime: Date.now(), presentedFrames: 1 }); });
   await settle();
 }
+
+it('keeps frame and stall evidence across frequent playing events after rebuffering', () => {
+  let total = 0;
+  let dropped = 0;
+  Object.defineProperty(HTMLVideoElement.prototype, 'getVideoPlaybackQuality', {
+    configurable: true,
+    value: () => ({ totalVideoFrames: total, droppedVideoFrames: dropped }),
+  });
+  const start = Date.now();
+  const { video, unmount } = mount();
+  video.dispatchEvent(new Event('playing'));
+  // Ten short rebuffer episodes. Each stretch alone is below the minimum
+  // sample size, while the complete window shows the real playback failure.
+  for (let i = 0; i < 10; i++) {
+    total += 30; dropped += 15;
+    jest.setSystemTime(start + i * 1000 + 700);
+    video.dispatchEvent(new Event('waiting'));
+    jest.setSystemTime(start + (i + 1) * 1000);
+    video.dispatchEvent(new Event('playing'));
+  }
+  const report = videoQualityTracker.take(Date.now());
+  unmount();
+  delete (HTMLVideoElement.prototype as unknown as Record<string, unknown>).getVideoPlaybackQuality;
+  expect(report).toMatchObject({ totalFrames: 300, droppedFrames: 150, stalls: 10, stalledMs: 3000 });
+});
 
 it('adopts the one-stream engine when preparation finishes on a healthy element (control)', async () => {
   const { video } = mount();

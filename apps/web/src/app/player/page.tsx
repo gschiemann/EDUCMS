@@ -31,7 +31,8 @@ import { cachedManifestWouldClearLiveAlert } from './emergencyInterlock';
 //     player's entire trust anchor (WS, SSE, manifest, reconcile). Validate it.
 //   pushGate    — R-04/R-05: ONE signature+freshness+replay gate shared by the
 //     WS and SSE consumers, and the TENANT_CHANGED addressing check.
-import { resolveApiRoot, resolveDeviceToken, type ApiRootPolicy } from './trustGuards';
+import { resolveApiRoot, type ApiRootPolicy } from './trustGuards';
+import { createDeviceTokenSession } from './deviceTokenSession';
 import { freshDeviceIdentity } from './deviceIdentity';
 import {
   gatewayApiRoot,
@@ -63,7 +64,7 @@ import { createWsAuthPolicy } from './wsAuthPolicy';
 // and one hung socket (or a 200-then-stalled-body proxy) would otherwise
 // wedge the manifest gate (including emergency polling), park credential
 // recovery forever, or stop the pairing loop. See fetchTimeout.ts.
-import { fetchJsonBounded, headersStatusOf } from './fetchTimeout';
+import { fetchJsonBounded, headersStatusOf, type BoundedJsonResult } from './fetchTimeout';
 // 2026-08-30 deep audit D-2 — a stalled <video> fires no error and no ended;
 // document rAF keeps painting, so the render proof stayed green on a frozen
 // frame forever (1.1.6 audit P0-5). Pure detector + a page-level flag the
@@ -774,27 +775,30 @@ export function dispatchTouchAction(
   }
 }
 
-/**
- * Get the device pairing token from URL → localStorage → null.
- *
- * R-01 (adjacent): `?token=` had the same "persist whatever the URL says"
- * shape as `?api=`. A valid token can only be minted by the server, so this
- * is not a repointable trust anchor — but an unvalidated blob still landed in
- * localStorage and then in every Bearer header + the SSE query string. Shape
- * hygiene now runs on BOTH write and read (see `trustGuards.ts`), so junk is
- * never persisted and a previously-poisoned value self-heals.
- */
+const deviceTokenSession = createDeviceTokenSession<BoundedJsonResult>({
+  storage: () => typeof window === 'undefined' ? null : window.localStorage,
+  search: () => typeof window === 'undefined' ? '' : window.location.search,
+  tokenFromResponse: ({ res, json }) => res.ok && typeof json?.deviceToken === 'string' ? json.deviceToken : null,
+  persistNative: (token) => { if (nativeHas('setDeviceToken')) nativeFire('setDeviceToken', token); },
+  onWarning: (reason) => { console.warn('[Player] device credential:', reason); },
+});
+
+/** Accepted renewal in this document, then stored-wins bootstrap. */
 function getDeviceToken(): string | null {
   if (typeof window === 'undefined') return null;
-  let storage: Storage | null = null;
-  try { storage = window.localStorage; } catch { storage = null; }
-  return resolveDeviceToken({
-    search: window.location.search,
-    storage,
-    onReject: (reason) => {
-      try { console.warn('[Player] rejected device token —', reason); } catch {}
-    },
-  });
+  return deviceTokenSession.read();
+}
+
+function registerDeviceCredential(deviceInfo: Record<string, unknown> = {}, timeoutMs = 15_000) {
+  return deviceTokenSession.register((prior) => fetchJsonBounded(`${getApiRoot()}/api/v1/screens/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      deviceFingerprint: getDeviceFingerprint(),
+      ...deviceInfo,
+      ...(prior ? { priorDeviceToken: prior } : {}),
+    }),
+  }, timeoutMs));
 }
 
 /** Compute exponential backoff with full jitter. Capped at maxMs. */
@@ -3817,29 +3821,6 @@ function PlayerPage() {
   const lastManifestOkAtRef = useRef(0);
 
   /**
-   * Persist a server-accepted device token EVERYWHERE at once: localStorage
-   * (the credential of record) + the native `edu_player` store via the
-   * setDeviceToken bridge (so the OTA worker stays authenticated and — on
-   * APK ≥ 1.1.7 — the next native reload injects the CURRENT token instead
-   * of a fossil). One writer, no split brain.
-   */
-  // Deepest-audit R-P0-02 correction #3 (2026-08-30): once this page has
-  // UNPAIRED, no in-flight credential response may repopulate the stores —
-  // a recovery/boot register that resolves AFTER the operator's unpair
-  // would otherwise resurrect a token for a screen they just revoked.
-  const unpairedRef = useRef(false);
-  const persistDeviceToken = useCallback((token: string) => {
-    if (unpairedRef.current) {
-      console.warn('[Player] refusing to persist a device token after unpair (late in-flight response)');
-      return;
-    }
-    try { localStorage.setItem(LS_TOKEN, token); } catch {}
-    try {
-      if (nativeHas('setDeviceToken')) nativeFire('setDeviceToken', token);
-    } catch {}
-  }, []);
-
-  /**
    * ── Controlled credential recovery (2026-08-30, audit P0-1) ────────────
    * ONE re-register attempt, shared by every trigger (manifest 401, WS
    * AUTH_FAIL, render-proof 401, proactive renewal), single-flighted and
@@ -3858,27 +3839,19 @@ function PlayerPage() {
         return Promise.resolve('cooldown');
       }
       credRecoveryLastAtRef.current = Date.now();
-      const attempt = (async (): Promise<'renewed' | 'repair-required' | 'failed'> => {
+      const attempt = (async (): Promise<'renewed' | 'repair-required' | 'failed' | 'skipped'> => {
         try {
-          const fp = getDeviceFingerprint();
-          const prior = getDeviceToken();
-          console.warn(`[Player] credential recovery (${trigger}) — re-registering${prior ? ' with prior token' : ''}`);
+          console.warn(`[Player] credential recovery (${trigger}) — re-registering`);
           // Bounded ACROSS THE BODY (D-1/F1): a hung register — headers OR
           // body — would park the recovery single-flight ref for the life
           // of the page. No retry ever.
-          const { res, json: data } = await fetchJsonBounded(`${getApiRoot()}/api/v1/screens/register`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              deviceFingerprint: fp,
-              ...(prior ? { priorDeviceToken: prior } : {}),
-            }),
-          }, 15_000);
+          const result = await registerDeviceCredential();
+          if (!result) return 'skipped'; // retired identity; no verdict/state writes
+          const { res, json: data } = result;
           if (!res.ok || !data) {
             console.warn(`[Player] credential recovery failed: HTTP ${res.status}${data ? '' : ' (empty body)'}`);
             return 'failed';
           }
-          if (data?.deviceToken) persistDeviceToken(data.deviceToken);
           // A renewal IS a successful registration — report it so the native
           // diagnostic's "last successful registration" is a live fact rather
           // than a boot-time relic. Deliberately only the SUCCESS half: a
@@ -3910,7 +3883,7 @@ function PlayerPage() {
       credRecoveryInFlightRef.current = attempt;
       return attempt;
     },
-    [persistDeviceToken],
+    [],
   );
 
   /**
@@ -5825,7 +5798,6 @@ function PlayerPage() {
         // server can verify proof-of-possession for paired re-registrations.
         // Without this the server falls back to the STRICT_REPAIR_AUTH behavior
         // (1-hour token until re-paired). Kiosks ≥ v1.0.34 send this field.
-        const storedPriorToken = getDeviceToken();
         // FACT 2 (P0-2) — immediately BEFORE the request leaves, never after.
         // The native deadline for a RESULT starts when the attempt starts, so
         // a socket that hangs for two minutes is visible as "attempted, never
@@ -5834,17 +5806,10 @@ function PlayerPage() {
         // Bounded ACROSS THE BODY (D-1/F1): the never-gives-up registration
         // chain awaits this — a hung socket OR a stalled body used to stall
         // it with no throw, so no retry either.
-        const { res, json: data } = await fetchJsonBounded(`${getApiRoot()}/api/v1/screens/register`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            deviceFingerprint: fp,
-            ...deviceInfo,
-            ...(storedPriorToken ? { priorDeviceToken: storedPriorToken } : {}),
-          }),
-        }, 20_000);
+        const result = await registerDeviceCredential(deviceInfo, 20_000);
 
-        if (cancelled) return;
+        if (cancelled || !result) return;
+        const { res, json: data } = result;
         if (!res.ok) {
           // Carry the API's own code + message (2026-09-02, Android-9
           // Goodview handoff P1): "Registration HTTP 429" told the installer
@@ -5867,13 +5832,6 @@ function PlayerPage() {
         // `preloadPlayerRenderer` never rejects, and the render path is
         // Suspense-guarded regardless of whether this warm-up wins the race.
         void preloadPlayerRenderer();
-
-        // Persist the device JWT the API now mints at register time.
-        // Before this fix the browser player had no device token, so
-        // manifest fetches fell back to a hardcoded demo admin login
-        // (that doesn't exist in production) and every paired screen
-        // showed 'unable to connect'.
-        if (data.deviceToken) persistDeviceToken(data.deviceToken);
 
         // 2026-08-30 (reliability program W1-2) — `requiresRePair` is a REAL
         // state, not a hint to ignore. The server sets it when the prior
@@ -6032,6 +5990,7 @@ function PlayerPage() {
     if (phase !== 'pairing') return;
 
     const fp = getDeviceFingerprint();
+    let cancelled = false;
     const loop = createPairingLoop({
       baseMs: 3000,
       backoff: (n) => backoffMs(n, 3000, 30_000),
@@ -6040,6 +5999,7 @@ function PlayerPage() {
         // hung fetch OR stalled body here would stop pairing polling
         // forever, the exact failure this loop ended.
         const { res, json: data } = await fetchJsonBounded(buildHeartbeatUrl(getApiRoot(), fp), {}, 10_000);
+        if (cancelled) return 'done';
         if (!res.ok || !data) return 'fail';
         if (data.paired) {
           // ⚠️ EXCHANGE THE CREDENTIAL BEFORE ADVANCING (2026-08-24).
@@ -6070,17 +6030,10 @@ function PlayerPage() {
           // is unrecoverable without physical access to the screen.
           let exchanged = false;
           try {
-            const prior = getDeviceToken();
-            const { res: rr, json: rd } = await fetchJsonBounded(`${getApiRoot()}/api/v1/screens/register`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                deviceFingerprint: fp,
-                ...(prior ? { priorDeviceToken: prior } : {}),
-              }),
-            }, 15_000);
+            const result = await registerDeviceCredential();
+            if (cancelled || !result) return 'done';
+            const { res: rr, json: rd } = result;
             if (rr.ok) {
-              if (rd?.deviceToken) persistDeviceToken(rd.deviceToken);
               // 2026-08-30 — carry the server's trust verdict out of the
               // exchange too (a re-pair that raced the epoch grace window
               // lands here with requiresRePair=true).
@@ -6120,7 +6073,7 @@ function PlayerPage() {
       },
     });
     loop.start();
-    return () => loop.stop();
+    return () => { cancelled = true; loop.stop(); };
   }, [phase, handleHeartbeatOta]);
 
   // ─── Phase 3: Fetch playlist content ───
@@ -8664,7 +8617,7 @@ function PlayerPage() {
                 );
                 return;
               }
-              try { localStorage.removeItem('edu_device_token'); } catch {}
+              deviceTokenSession.invalidate();
               try { localStorage.removeItem('edu_device_fp'); } catch {}
               try { localStorage.removeItem('edu_manifest_cache_v1'); } catch {}
               try { localStorage.removeItem('edu_emergency_cache_v1'); } catch {}
@@ -8674,7 +8627,8 @@ function PlayerPage() {
                 getServiceWorkerContainer()?.controller?.postMessage({ type: 'CLEAR_CACHE', tier: 'all' });
               } catch {}
               // Ask the native shell (if present) to wipe USB cache + reload.
-              nativeFire('unpair');
+              const nativeReloading = nativeFire('unpair');
+              if (!nativeReloading) deviceTokenSession.resume();
               setActiveEmergency(null);
               setPhase('registering');
               return;
@@ -9820,7 +9774,7 @@ function PlayerPage() {
       // System WebView 90+) all support keepalive: true.
       const token =
         localStorage.getItem('edu_cms_token') ||
-        localStorage.getItem('edu_device_token') ||
+        getDeviceToken() ||
         '';
       try {
         const res = await fetch(url, {
@@ -9950,7 +9904,7 @@ function PlayerPage() {
           // goto-template was non-functional on real kiosks.
           const token = typeof window !== 'undefined'
             ? (localStorage.getItem('edu_cms_token')
-               || localStorage.getItem('edu_device_token')
+               || getDeviceToken()
                || '')
             : '';
           // 2026-05-14 — operator-confirmed: dispatcher fires
@@ -10367,11 +10321,9 @@ function PlayerPage() {
   const handleUnpair = async () => {
     // R-P0-02: gate ALL token writers FIRST — before any await gives an
     // in-flight register response the chance to land mid-teardown.
-    unpairedRef.current = true;
     const fp = getDeviceFingerprint();
-    const token = (() => {
-      try { return localStorage.getItem('edu_device_token') || ''; } catch { return ''; }
-    })();
+    const token = getDeviceToken() || '';
+    deviceTokenSession.invalidate();
 
     // 1. Server: clear tenantId + regenerate pairingCode. 4s budget,
     //    swallow errors so a flaky network can't trap the kiosk.
@@ -10399,13 +10351,10 @@ function PlayerPage() {
     //    token. On non-APK clients (browser tab) fall through to a
     //    React-only reset. AND-002 — nativeFire returns false exactly
     //    in that no-APK case and never throws.
-    // Teardown complete: lift the token-writer gate so the FRESH pairing
-    // cycle that starts now can store its new unpaired credential. Any
-    // in-flight response from BEFORE this point already lost the race to
-    // the gate above. (On the APK path the whole page reloads, which
-    // resets the ref anyway.)
-    unpairedRef.current = false;
+    // A new registration can start now; the retired generation remains
+    // invalid forever, even if its response lands after this reset.
     if (nativeFire('unpair')) return;
+    deviceTokenSession.resume();
     setActiveEmergency(null);
     setPlaybackStopped(false);
     setExitUnavailable(false);
