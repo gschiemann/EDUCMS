@@ -71,6 +71,7 @@ type MockState = {
   failedDirectCalls: number;
   failedDirectManifests: number;
   directManifests: number;
+  gatewayAvailable: boolean;
   /** Control-plane calls that came back through the SAME-ORIGIN gateway. */
   gatewayCalls: string[];
   gatewayRegisters: number;
@@ -84,6 +85,7 @@ const freshState = (): MockState => ({
   failedDirectCalls: 0,
   failedDirectManifests: 0,
   directManifests: 0,
+  gatewayAvailable: true,
   gatewayCalls: [],
   gatewayRegisters: 0,
   gatewayManifests: 0,
@@ -127,6 +129,7 @@ async function installMocks(page: Page, state: MockState, baseOrigin: string) {
       }
     } else {
       state.gatewayCalls.push(path);
+      if (!state.gatewayAvailable) return route.abort('failed');
     }
 
     if (path === '/api/v1/screens/register') {
@@ -301,6 +304,11 @@ test.describe('same-origin gateway fallback — the Goodview story', () => {
     test.setTimeout(240_000);
 
     const state = freshState();
+    // Runtime status requests now also prove transport failures, so a healthy
+    // gateway can recover before the toast's 15s grace. Hold BOTH transports
+    // down until the operator sees the prolonged outage, then restore only
+    // the gateway. This tests the toast without relying on random backoff.
+    state.gatewayAvailable = false;
     const origin = baseURL ?? 'http://localhost:3000';
     await installWsStub(page);
     await seedIdentity(page);
@@ -323,6 +331,7 @@ test.describe('same-origin gateway fallback — the Goodview story', () => {
       page.locator('[data-edu-reconnect-toast]'),
       'the reconnect panel never appeared — this is the "Connecting to your CMS…" forever bug',
     ).toBeVisible({ timeout: 90_000 });
+    state.gatewayAvailable = true;
 
     // 3) (b) IT SWITCHES to the same origin after N network-class failures.
     await expect
