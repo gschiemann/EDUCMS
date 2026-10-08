@@ -246,18 +246,22 @@ describe('a box bound to a game learns it from its manifest (K12-F32)', () => {
       activeBoardSurface: 'BOARD',
     });
     const controller = harness(screen);
-    const initial = await manifest(controller);
+    const read = async (etag?: string) =>
+      (await manifest(controller, etag)) as {
+        statusCode: number;
+        body: { refreshRequestedAt: number | null };
+        headers: Record<string, string>;
+      };
+    const initial = await read();
     const value = nowMs - 1000;
     screen.pendingRefreshAt = new Date(value);
-    const requested = await manifest(controller, initial.headers.etag);
+    const requested = await read(initial.headers.etag);
     expect(requested.statusCode).toBe(200);
     expect(requested.body.refreshRequestedAt).toBe(value);
     expect(requested.headers.etag).not.toBe(initial.headers.etag);
-    expect((await manifest(controller, requested.headers.etag)).statusCode).toBe(
-      304,
-    );
+    expect((await read(requested.headers.etag)).statusCode).toBe(304);
     screen.pendingRefreshAt = null;
-    const acked = await manifest(controller, requested.headers.etag);
+    const acked = await read(requested.headers.etag);
     expect(acked.statusCode).toBe(200);
     expect(acked.body.refreshRequestedAt).toBeNull();
     expect(acked.headers.etag).toBe(initial.headers.etag);

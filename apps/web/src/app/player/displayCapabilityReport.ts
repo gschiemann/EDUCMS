@@ -187,8 +187,10 @@ export function recordCommandOutcome(
  *   (vendor packages, settings keys, serial nodes, admin/device-owner
  *   state) to screen_device_inventory — the evidence vendor power recipes
  *   are authored from.
+ *   rev 3 (2026-10-08): the API retains FaceHostRegistry's `faces` section.
+ *   Re-send it once so existing APKs report their actual panel hosts too.
  */
-const REPORT_SCHEMA_REV = '2';
+const REPORT_SCHEMA_REV = '3';
 
 function markerFor(
   screenId: string,

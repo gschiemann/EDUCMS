@@ -63,6 +63,20 @@ beforeEach(() => {
 });
 
 describe('reportDisplayCapabilities', () => {
+  it('re-reports face-host evidence once after upgrading the inventory schema', async () => {
+    const faces = { observed: true, requested: [0, 1], hosted: [{ face: 1, displayId: 1 }], shortfall: [], reason: null };
+    callMock.mockResolvedValue(JSON.stringify({ ...JSON.parse(PROBE), faces }));
+    await reportDisplayCapabilities(OPTS);
+    const marker = window.localStorage.getItem('edu_display_caps_reported')!;
+    window.localStorage.setItem('edu_display_caps_reported', marker.replace(/\|r\d+$/, '|r2'));
+    (global.fetch as jest.Mock).mockClear();
+    await expect(reportDisplayCapabilities(OPTS)).resolves.toBe('reported');
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body as string).faces).toEqual(faces);
+    await expect(reportDisplayCapabilities(OPTS)).resolves.toBe('skipped: already reported this version');
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
   it('POSTs the probe payload plus the transport it reached the APK over', async () => {
     await expect(reportDisplayCapabilities(OPTS)).resolves.toBe('reported');
     expect(global.fetch).toHaveBeenCalledTimes(1);
