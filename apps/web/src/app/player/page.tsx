@@ -1736,6 +1736,9 @@ function PlayerVideoSlide({
     if (!isActive || !isSoloPlaylist) return;
     const v = videoRef.current as RvfcVideoElement | null;
     if (!v || typeof v.requestVideoFrameCallback !== 'function') return;
+    // A backend change is a new measurement session. Retaining the previous
+    // continuous session made a native comparison inherit its seam totals.
+    loopBoundaryTracker.startSession('native');
     const det = new NativeWrapDetector();
     let id: number | null = null;
     let stopped = false;

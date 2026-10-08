@@ -20,6 +20,10 @@
  * Continuous takes precedence over PLAYER_LOOP_TWODECK. Audio, emergency,
  * sync, mixed playlists and unsupported formats remain on their existing
  * player paths; this switch does not bypass those gates.
+ * `PLAYER_LOOP_NATIVE=id1,id2,...` pins only those named screens to native,
+ * ahead of both selectors, for a same-file comparison or scoped rollback.
+ * Empty/unset changes nothing; `all` is not a wildcard. Media selection and
+ * integrity are independent of the loop backend and remain unchanged.
  *
  * `PLAYER_LOOP_TWODECK` (Railway env) decides who gets `twodeck`:
  *   unset / `off` / `0`  — nobody (default)
@@ -58,6 +62,8 @@ export function resolveLoopMode(
   // covers a screen that paired years ago and one added tomorrow. Content and
   // device eligibility are evaluated in the player, with a per-file fallback.
   if (!screenId?.trim()) return 'native';
+  const nativeIds = (env.PLAYER_LOOP_NATIVE ?? '').split(',').map(x => x.trim()).filter(Boolean);
+  if (nativeIds.includes(screenId)) return 'native';
   const continuous = (env.PLAYER_LOOP_CONTINUOUS ?? '').trim();
   if (!continuous || continuous.toLowerCase() === 'all') return 'continuous';
   if (continuous.split(',').some((x) => x.trim() === screenId))

@@ -1,6 +1,17 @@
 import { resolveLoopMode, resolvePlaybackConfig } from './playback-config';
 
 describe('resolveLoopMode', () => {
+  it('pins only named screens to the same-file native backend without changing default enrollment', () => {
+    const env = { PLAYER_LOOP_NATIVE: ' front , back ', PLAYER_LOOP_CONTINUOUS: 'all', PLAYER_LOOP_TWODECK: 'all' };
+    expect(resolvePlaybackConfig('front', env)).toEqual({ loopMode: 'native' });
+    expect(resolvePlaybackConfig('back', env)).toEqual({ loopMode: 'native' });
+    expect(resolvePlaybackConfig('other', env)).toEqual({ loopMode: 'continuous' });
+    expect(resolvePlaybackConfig('newly-paired', env)).toEqual({ loopMode: 'continuous' });
+    for (const value of [undefined, '', ' ', 'all', 'fro', 'front-other']) {
+      expect(resolveLoopMode('front', { PLAYER_LOOP_NATIVE: value })).toBe('continuous');
+    }
+    expect(resolveLoopMode('front', {})).toBe('continuous');
+  });
   it('a diagnostic list restricts continuous and otherwise uses legacy selection', () => {
     const env = {
       PLAYER_LOOP_CONTINUOUS: ' canary ',

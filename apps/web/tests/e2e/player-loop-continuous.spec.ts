@@ -2,7 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { bootMockPlayer } from './helpers/mock-player';
+import { bootMockPlayer, playerIds, playerManifest } from './helpers/mock-player';
 import { continuousGuardKey } from '../../src/app/player/continuousLoopRevision';
 
 async function seedVerifiedVideo(page: Page, fixture = 'loop-clip.mp4') {
@@ -22,6 +22,55 @@ async function seedVerifiedVideo(page: Page, fixture = 'loop-clip.mp4') {
 test.describe('one-stream continuous video', () => {
   test.use({ serviceWorkers: 'allow' });
   test.skip(({ browserName }) => browserName !== 'chromium', 'H.264/MSE qualification starts on Chromium');
+  test('a scoped backend change keeps the same full-quality file without reloading the player', async ({ page }) => {
+    test.setTimeout(90_000);
+    await seedVerifiedVideo(page);
+    const tag = 'continuous-native-comparison';
+    const manifest = playerManifest(playerIds(tag).screenId, 'video', { loopMode: 'continuous' }, 1, true);
+    let navigations = 0;
+    page.on('framenavigated', frame => { if (frame === page.mainFrame()) navigations++; });
+    await bootMockPlayer(page, { tag, kind: 'video', videoMp4: true, manifest,
+      extraRoutes: async p => {
+        await p.addInitScript(() => {
+          const Real = window.WebSocket;
+          window.WebSocket = new Proxy(Real, { construct(target, args) {
+            const socket = Reflect.construct(target, args);
+            if (String(args[0]).includes('/realtime')) {
+              (window as unknown as { __comparisonSocket: WebSocket }).__comparisonSocket = socket;
+            }
+            return socket;
+          } });
+        });
+      },
+    });
+    await expect(page.locator('video[data-loop-backend="continuous"]')).toBeAttached({ timeout: 60_000 });
+    await expect.poll(() => page.evaluate(() => document.querySelector('video')?.currentTime ?? 0), { timeout: 12_000 }).toBeGreaterThan(5);
+    const original = { ...manifest.playlists[0].items[0] };
+    const navigationCount = navigations;
+    manifest.playback = { loopMode: 'native' };
+    await page.evaluate(() => {
+      const socket = (window as unknown as { __comparisonSocket: WebSocket }).__comparisonSocket;
+      socket.onmessage?.(new MessageEvent('message', { data: JSON.stringify({
+        type: 'SYNC', signature: 'test-signature', idempotencyKey: 'same-file-native', timestamp: Date.now(), payload: {},
+      }) }));
+    });
+    await expect(page.locator('video[data-loop-backend="continuous"]')).toHaveCount(0, { timeout: 15_000 });
+    await expect.poll(() => page.evaluate(() => {
+      const v = document.querySelector('video');
+      return !!v && v.loop && !v.paused && v.currentTime > 0.25;
+    })).toBe(true);
+    await expect.poll(() => page.evaluate(() => (window as unknown as {
+      __eduLoopBoundary: () => { backend: string; boundaries: number } | null;
+    }).__eduLoopBoundary()?.boundaries ?? 0), { timeout: 12_000 }).toBeGreaterThanOrEqual(2);
+    const result = await page.evaluate(() => ({
+      videos: document.querySelectorAll('video').length,
+      snapshot: (window as unknown as { __eduLoopBoundary: () => unknown }).__eduLoopBoundary(),
+    }));
+    expect(result.videos).toBe(1);
+    expect(result.snapshot).toMatchObject({ backend: 'native', fallbacks: 0 });
+    expect(manifest.playlists[0].items[0]).toEqual(original);
+    expect(navigations).toBe(navigationCount);
+  });
   test('a 250-frame GOP retains the playing frames during eviction and across repeated cycles', async ({ page }) => {
     test.setTimeout(90_000);
     await seedVerifiedVideo(page, 'loop-long-gop.mp4');
