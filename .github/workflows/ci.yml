@@ -580,7 +580,10 @@ jobs:
     # by the runner with NO failing step recorded — an opaque red that costs
     # more to diagnose than the tests are worth. An explicit cap makes a hang
     # fail legibly instead of mysteriously.
-    timeout-minutes: 30
+    # WebKit's 385-case suite took 26.2 min plus ~4 min setup and passed
+    # every applicable test, then the 30-min job cap killed report/cleanup.
+    # Keep the complete browser matrix and a finite bound with setup margin.
+    timeout-minutes: 40
     permissions:
       contents: read
     # 2026-07-13 (audit W0-06): this job used to be PR-only — and this repo
