@@ -1,8 +1,8 @@
 jest.mock('../nativeBridge', () => ({ nativeHas: jest.fn(() => true), nativeCall: jest.fn().mockResolvedValue('queued') }));
 
-function load() {
+async function load() {
   jest.resetModules();
-  return { ...require('../continuousRecovery'), ...require('../nativeBridge') } as typeof import('../continuousRecovery') & typeof import('../nativeBridge');
+  return { ...await import('../continuousRecovery'), ...await import('../nativeBridge') };
 }
 const line = '[Player] stalled playback sample ' + JSON.stringify({ ms: 60000, f: 1500, d: 800, w: 300,
   waitMs: 59000, aheadMs: 19000, minAheadMs: 17000, waitAheadMs: [17000, 20000],
@@ -10,8 +10,8 @@ const line = '[Player] stalled playback sample ' + JSON.stringify({ ms: 60000, f
 beforeEach(() => { jest.useFakeTimers({ now: 100000 }); });
 afterEach(() => { jest.restoreAllMocks(); jest.clearAllTimers(); jest.useRealTimers(); });
 
-test('progressive warnings are capped at three per document with a minute shared across mounts and a delayed upload', () => {
-  const { reportContinuousPlaybackSample: report, nativeCall } = load();
+test('progressive warnings are capped at three per document with a minute shared across mounts and a delayed upload', async () => {
+  const { reportContinuousPlaybackSample: report, nativeCall } = await load();
   const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
   report(null); expect(warn).not.toHaveBeenCalled();
   report(line); report(line);
@@ -26,8 +26,8 @@ test('progressive warnings are capped at three per document with a minute shared
   expect(warn.mock.calls.every(([text]) => text.length <= 450 && !/https?:|token|url/i.test(text))).toBe(true);
 });
 
-test('fallback and progressive samples share the upload cooldown without suppressing recovery warnings', () => {
-  const { reportContinuousPlaybackSample: report, reportContinuousFailure, nativeCall } = load();
+test('fallback and progressive samples share the upload cooldown without suppressing recovery warnings', async () => {
+  const { reportContinuousPlaybackSample: report, reportContinuousFailure, nativeCall } = await load();
   jest.spyOn(console, 'warn').mockImplementation(() => undefined);
   reportContinuousFailure('clock-stalled', document.createElement('video'));
   report(line);
@@ -37,8 +37,8 @@ test('fallback and progressive samples share the upload cooldown without suppres
   jest.advanceTimersByTime(1000); expect(nativeCall).toHaveBeenCalledTimes(2);
 });
 
-test('content strings, unknown keys, oversized lines and bridge failure cannot produce unsafe diagnostics', () => {
-  const { reportContinuousPlaybackSample: report, nativeHas } = load();
+test('content strings, unknown keys, oversized lines and bridge failure cannot produce unsafe diagnostics', async () => {
+  const { reportContinuousPlaybackSample: report, nativeHas } = await load();
   const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
   report(line.replace('19000', '"https://private.invalid/?token=secret"'));
   report(line.replace('"quota"', '"content"'));
