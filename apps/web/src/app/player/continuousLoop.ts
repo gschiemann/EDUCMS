@@ -1,6 +1,7 @@
 /** One media element, one advancing MSE timeline. Ordinary cycle boundaries
  * never seek, reload, change src, or call endOfStream. Buffers remain bounded.
  */
+import { ContinuousPumpDiagnostics } from './continuousDiagnostics';
 import { bounded, checkAbort, LOOP_CACHE, readLoopFragment, type LoopPackage } from './continuousLoopPackage';
 
 // A verified cache read is bounded at 15 seconds. Six seconds of headroom
@@ -64,23 +65,27 @@ export function startContinuousLoop(video: HTMLVideoElement, p: LoopPackage, par
   if (parent.aborted) life.abort();
   const source = new MediaSource();
   const url = URL.createObjectURL(source);
+  const diagnostics = new ContinuousPumpDiagnostics();
+  let sourceBuffer: SourceBuffer | undefined;
   const state = { phase: 'open', cycle: 0, fragment: 0, appendedUntil: 0, aheadTarget: CONTINUOUS_AHEAD_SECONDS, quotaBackoffs: 0 };
   const running = (async () => {
     checkAbort(signal);
     const cache = await caches.open(LOOP_CACHE);
     await sourceEvent(source, 'sourceopen', signal, () => { beforeAttach?.(); video.loop = false; video.src = url; });
     const buffer = source.addSourceBuffer(p.mime);
+    sourceBuffer = buffer;
     buffer.mode = 'segments';
     source.duration = Infinity;
     const mutate = (fn: () => void) => sourceEvent(buffer, 'updateend', signal, fn);
-    const init = await readLoopFragment(cache, p.init, signal);
+    const init = await diagnostics.measure('read', () => readLoopFragment(cache, p.init, signal));
     state.phase = 'init';
-    await mutate(() => buffer.appendBuffer(init));
+    await diagnostics.measure('append', () => mutate(() => buffer.appendBuffer(init)));
     let cycle = 0; let index = 0; let until = 0; let pruned = 0; let started = false;
     while (!signal.aborted) {
       if (video.error || source.readyState !== 'open') throw new Error('mse-playback');
       const now = video.currentTime;
       const ahead = bufferedAhead(now, buffer.buffered);
+      diagnostics.observeAhead(ahead);
       if (ahead >= state.aheadTarget) {
         state.phase = 'buffered';
         await bounded(signal, 1000, () => new Promise<void>(r => setTimeout(r, 100)));
@@ -90,16 +95,16 @@ export function startContinuousLoop(video: HTMLVideoElement, p: LoopPackage, par
       // Refill a starving buffer before doing optional history cleanup.
       if (ahead >= 6 && removeTo - pruned >= 2) {
         state.phase = 'prune';
-        await mutate(() => buffer.remove(0, removeTo));
+        await diagnostics.measure('prune', () => mutate(() => buffer.remove(0, removeTo)));
         pruned = removeTo;
       }
       const f = p.fragments[index];
       state.phase = 'read'; state.cycle = cycle; state.fragment = index;
-      const bytes = await readLoopFragment(cache, f, signal);
+      const bytes = await diagnostics.measure('read', () => readLoopFragment(cache, f, signal));
       const offset = cycleOffset(cycle, p);
       state.phase = 'append';
       try {
-        await mutate(() => { buffer.timestampOffset = offset; buffer.appendBuffer(bytes); });
+        await diagnostics.measure('append', () => mutate(() => { buffer.timestampOffset = offset; buffer.appendBuffer(bytes); }));
       } catch (error) {
         // Android can expose a smaller MSE quota even with a supported codec.
         // Keep the same full-quality stream, start/consume buffered frames and
@@ -111,7 +116,7 @@ export function startContinuousLoop(video: HTMLVideoElement, p: LoopPackage, par
         state.phase = 'buffer-pressure';
         if (!started) {
           await bounded(signal, 15_000, () => video.play());
-          started = true;
+          started = true; diagnostics.start();
         }
         await bounded(signal, 1000, () => new Promise<void>(r => setTimeout(r, 100)));
         continue;
@@ -122,13 +127,17 @@ export function startContinuousLoop(video: HTMLVideoElement, p: LoopPackage, par
       if (!started && bufferedAhead(now, buffer.buffered) >= state.aheadTarget) {
         state.phase = 'play';
         await bounded(signal, 15_000, () => video.play());
-        started = true;
+        started = true; diagnostics.start();
       }
     }
   })();
   return {
     running,
-    snapshot() { return { ...state }; },
+    snapshot() {
+      try { if (sourceBuffer) diagnostics.observeAhead(bufferedAhead(video.currentTime, sourceBuffer.buffered)); }
+      catch { /* A detached buffer must not interfere with failure reporting. */ }
+      return { ...state, diagnostics: diagnostics.snapshot() };
+    },
     dispose() {
       life.abort(); parent.removeEventListener('abort', abort);
       if (video.getAttribute('src') === url) { video.pause(); video.removeAttribute('src'); video.load(); }

@@ -216,3 +216,43 @@ it('a file that never presents its first frame has a finite recovery deadline an
   expect(onError).toHaveBeenCalledTimes(1);
   expect(prepareLoopPackage).not.toHaveBeenCalled();
 });
+
+
+it('the existing watchdog reports progressive failure with real waiting headroom without reloading the stream', async () => {
+  let total = 0; let dropped = 0;
+  Object.defineProperty(HTMLVideoElement.prototype, 'getVideoPlaybackQuality', {
+    configurable: true, value: () => ({ totalVideoFrames: total, droppedVideoFrames: dropped }),
+  });
+  const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+  const { video, unmount, onError } = mount();
+  Object.defineProperty(video, 'buffered', { value: { length: 1, start: () => 0, end: () => clock + 18 } });
+  await presentFrame();
+  const pump = { aheadMs: 19000, minAheadMs: 17000, latency: {
+    read: { count: 30, totalMs: 300, maxMs: 12 }, append: { count: 30, totalMs: 180, maxMs: 8 },
+    prune: { count: 7, totalMs: 21, maxMs: 3 },
+  } };
+  startContinuousLoop.mockImplementation(() => ({ running: new Promise<void>(() => undefined),
+    snapshot: () => ({ phase: 'buffered', diagnostics: pump, quotaBackoffs: 0 }), dispose: jest.fn() }));
+  await act(async () => { finishPackage(PACKAGE); await Promise.resolve(); });
+  await settle();
+  video.dispatchEvent(new Event('playing'));
+  const loadsBefore = load.mock.calls.length;
+  const playsBefore = play.mock.calls.length;
+  for (let i = 0; i < 15; i++) {
+    total += 100; dropped += 55; clock += 4;
+    video.dispatchEvent(new Event('waiting'));
+    act(() => { jest.advanceTimersByTime(200); });
+    video.dispatchEvent(new Event('playing'));
+    act(() => { jest.advanceTimersByTime(3800); });
+  }
+  expect(warn).toHaveBeenCalledTimes(1);
+  expect(warn.mock.calls[0][0]).toMatch(/^\[Player\] stalled playback sample /);
+  expect(warn.mock.calls[0][0]).toContain('"waitAheadMs":[18000,18000]');
+  expect(warn.mock.calls[0][0]).toContain('"f":1500,"d":825');
+  expect(video.dataset.loopBackend).toBe('continuous');
+  expect(load).toHaveBeenCalledTimes(loadsBefore);
+  expect(play).toHaveBeenCalledTimes(playsBefore);
+  expect(onError).not.toHaveBeenCalled();
+  unmount();
+  delete (HTMLVideoElement.prototype as unknown as Record<string, unknown>).getVideoPlaybackQuality;
+});

@@ -8,10 +8,13 @@ import { decodedFrameCount } from './playbackSafety';
 import { useEffect, useRef } from 'react';
 import { ContinuousBoundaryDetector, NativeWrapDetector, loopBoundaryTracker, type FrameMeta, type RvfcVideoElement } from './loopBoundary';
 import { bootCheck, blockFor, isBlocked, markAlive, markStarted, markStopped, type KV } from './loopGuard';
-import { videoQualityTracker } from './videoQuality';
+import { readVideoQuality, videoQualityTracker } from './videoQuality';
 import { createMediaStallDetector, setActiveMediaStalled } from './mediaStallWatchdog';
 import { continuousGuardKey } from './continuousLoopRevision';
-import { retainVideoFrame, releaseVideoFrame, reportContinuousFailure } from './continuousRecovery';
+import { retainVideoFrame, releaseVideoFrame, reportContinuousFailure, reportContinuousPlaybackSample } from './continuousRecovery';
+
+import { ContinuousPlaybackDiagnostics } from './continuousDiagnostics';
+import type { startContinuousLoop } from './continuousLoop';
 
 const NATIVE_STARTUP_MS = 45_000;
 
@@ -41,7 +44,10 @@ export function ContinuousLoopVideo({ src, sourceHash, videoKey, isActive, class
     const life = new AbortController();
     let disposed = false;
     let fellBack = false;
-    let engine: { running: Promise<void>; snapshot(): object; dispose(): void } | undefined;
+    let engine: ReturnType<typeof startContinuousLoop> | undefined;
+    const diagnostics = new ContinuousPlaybackDiagnostics();
+    diagnostics.reset(Date.now(), readVideoQuality(video));
+    let diagnosticSeeking = false;
     let continuous: ContinuousBoundaryDetector | null = null;
     let frameId: number | undefined;
     let alive: ReturnType<typeof setInterval> | undefined;
@@ -95,6 +101,7 @@ export function ContinuousLoopVideo({ src, sourceHash, videoKey, isActive, class
 
     const onPlayingNow = () => {
       if (disposed) return;
+      if (engine && !fellBack) { diagnosticSeeking = false; diagnostics.playing(Date.now()); }
       callbacks.current.onPlaying?.();
     };
     const onEmptied = () => {
@@ -102,6 +109,8 @@ export function ContinuousLoopVideo({ src, sourceHash, videoKey, isActive, class
       // A new source/load resets the element's counters. Rebuffering does
       // not: rebasing on every `playing` discarded all short bad stretches
       // and could leave the dashboard's quality sample hours out of date.
+      diagnostics.reset(Date.now(), readVideoQuality(video));
+      diagnosticSeeking = false;
       videoQualityTracker.detach(video, Date.now());
       videoQualityTracker.attach(video, src, Date.now());
     };
@@ -109,6 +118,26 @@ export function ContinuousLoopVideo({ src, sourceHash, videoKey, isActive, class
       if (engine && !fellBack) fallback('media-error');
       else if (!disposed) callbacks.current.onError();
     };
+    const onWaiting = () => {
+      if (!engine || fellBack || video.paused || video.seeking || diagnosticSeeking) return;
+      try {
+        const now = video.currentTime; const ranges = video.buffered;
+        let ahead = 0;
+        for (let i = 0; i < ranges.length; i++) {
+          if (ranges.start(i) <= now && ranges.end(i) > now) { ahead = ranges.end(i) - now; break; }
+        }
+        diagnostics.waiting(Date.now(), ahead);
+      }
+      catch { /* A detached element must never affect playback. */ }
+    };
+    const onWaitEnd = () => diagnostics.closeWait(Date.now());
+    const onSeeking = () => { diagnosticSeeking = true; onWaitEnd(); };
+    const onSeeked = () => { diagnosticSeeking = false; };
+    video.addEventListener('waiting', onWaiting);
+    video.addEventListener('pause', onWaitEnd);
+    video.addEventListener('ended', onWaitEnd);
+    video.addEventListener('seeking', onSeeking);
+    video.addEventListener('seeked', onSeeked);
     video.addEventListener('playing', onPlayingNow);
     video.addEventListener('emptied', onEmptied);
     video.addEventListener('error', onVideoError);
@@ -119,6 +148,7 @@ export function ContinuousLoopVideo({ src, sourceHash, videoKey, isActive, class
 
     const onFrame = (_now: number, meta: FrameMeta) => {
       if (disposed) return;
+      if (engine && !fellBack) diagnostics.frame(meta.processingDuration);
       if (!firstFrameSeen) { firstFrameSeen = true; resolveFirstFrame(); }
       if (heldFrame && replacementLoaded && video.readyState >= 2) releaseFrame();
       const event = continuous ? continuous.onFrame(meta) : native.onFrame(meta, video.duration);
@@ -145,6 +175,7 @@ export function ContinuousLoopVideo({ src, sourceHash, videoKey, isActive, class
         const p = await prepareLoopPackage(src, sourceHash, life.signal);
         if (disposed || fellBack) return;
         continuous = new ContinuousBoundaryDetector(p.durationTicks, p.timescale);
+        diagnostics.reset(Date.now(), readVideoQuality(video));
         engine = startContinuousLoop(video, p, life.signal, holdFrame);
         video.dataset.loopBackend = 'continuous';
         loopBoundaryTracker.startSession('continuous');
@@ -162,6 +193,13 @@ export function ContinuousLoopVideo({ src, sourceHash, videoKey, isActive, class
     const watchdog = setInterval(() => {
       if (recoveryFailed) return;
       const now = Date.now();
+      if (engine && !fellBack) {
+        try {
+          const pump = engine.snapshot();
+          if (pump.diagnostics) reportContinuousPlaybackSample(diagnostics.sample(now, readVideoQuality(video),
+            { ...pump.diagnostics, quotaBackoffs: pump.quotaBackoffs }));
+        } catch { /* Diagnostic reads cannot trigger fallback or recovery. */ }
+      }
       const starting = !firstFrameSeen;
       // Startup has its own finite deadline. The 12-second playback detector
       // starts after an actual frame; currentTime=0/readyState=0 is not evidence
@@ -192,6 +230,11 @@ export function ContinuousLoopVideo({ src, sourceHash, videoKey, isActive, class
       window.removeEventListener('pagehide', onHide);
       video.removeEventListener('playing', onPlayingNow); video.removeEventListener('error', onVideoError);
       video.removeEventListener('emptied', onEmptied);
+      video.removeEventListener('waiting', onWaiting);
+      video.removeEventListener('pause', onWaitEnd);
+      video.removeEventListener('ended', onWaitEnd);
+      video.removeEventListener('seeking', onSeeking);
+      video.removeEventListener('seeked', onSeeked);
       video.removeEventListener('loadeddata', onLoadedData);
       releaseFrame();
       videoQualityTracker.detach(video, Date.now());

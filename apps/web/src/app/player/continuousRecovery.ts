@@ -6,6 +6,8 @@ import { requestDiagnosticsUpload } from './playbackSafety';
 
 const MAX_FRAME_PIXELS = 3840 * 2160;
 let lastUploadAt = -Infinity;
+let lastProgressiveAt = -Infinity;
+let progressiveSamples = 0;
 
 export function retainVideoFrame(video: HTMLVideoElement, canvas: HTMLCanvasElement): boolean {
   if (video.readyState < 2 || !video.videoWidth || !video.videoHeight ||
@@ -41,9 +43,31 @@ export function reportContinuousFailure(reason: string, video: HTMLVideoElement,
       paused: video.paused, seeking: video.seeking, buffered, pump,
     })}`);
   } catch { /* Diagnostics must never prevent recovery on a damaged element. */ }
+  if (reason !== 'blocked') scheduleDiagnosticsUpload();
+}
+
+function scheduleDiagnosticsUpload(): void {
   try {
-    if (reason === 'blocked' || Date.now() - lastUploadAt < 60_000 || !nativeHas('uploadDiagnostics')) return;
+    if (Date.now() - lastUploadAt < 60_000 || !nativeHas('uploadDiagnostics')) return;
     lastUploadAt = Date.now();
     setTimeout(() => requestDiagnosticsUpload({ has: nativeHas, call: nativeCall }), 1000);
   } catch { /* Older or unavailable native bridges leave playback unaffected. */ }
+}
+
+/** Three progressive samples per document, shared across mounts. The collector
+ * constructs numeric-only records; reject anything outside that schema here.
+ */
+export function reportContinuousPlaybackSample(line: string | null): void {
+  if (!line || progressiveSamples >= 3 || Date.now() - lastProgressiveAt < 60_000) return;
+  if (line.length > 450 || !/^\[Player\] (stalled playback sample|failed frame budget) \{/.test(line)) return;
+  try {
+    const record = JSON.parse(line.slice(line.indexOf('{'))) as Record<string, unknown>;
+    const keys = ['ms', 'f', 'd', 'w', 'waitMs', 'aheadMs', 'minAheadMs', 'waitAheadMs', 'opMaxMs', 'decodeMs', 'quota'];
+    const numeric = (v: unknown): boolean => v === null || (typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1_000_000_000);
+    if (!record || Object.keys(record).length !== keys.length || !Object.entries(record).every(([key, value]) =>
+      keys.includes(key) && (Array.isArray(value) ? value.length <= 3 && value.every(numeric) : numeric(value)))) return;
+  } catch { return; }
+  progressiveSamples++; lastProgressiveAt = Date.now();
+  try { console.warn(line); } catch { /* Diagnostics never control playback. */ }
+  scheduleDiagnosticsUpload();
 }

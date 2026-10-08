@@ -40,6 +40,8 @@ export interface FrameMeta {
   expectedDisplayTime: number;
   /** The element's running count of frames sent to the compositor. */
   presentedFrames?: number;
+  /** Optional browser decoder submission-to-ready duration, seconds. */
+  processingDuration?: number;
 }
 
 export interface BoundaryEvent {
