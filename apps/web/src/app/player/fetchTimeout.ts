@@ -76,7 +76,13 @@ export async function fetchJsonBounded(
     try { json = await res.json(); } catch { json = null; }
     return { res, json };
   }
-  const ctl = externalCtl ?? new AbortController();
+  // Keep the deadline private. The caller's controller represents explicit
+  // cancellation (e.g. an emergency preempting a normal manifest), which
+  // transport recovery must distinguish from an unresponsive origin.
+  const ctl = new AbortController();
+  const abortFromCaller = () => ctl.abort();
+  externalCtl?.signal.addEventListener('abort', abortFromCaller, { once: true });
+  if (externalCtl?.signal.aborted) ctl.abort();
   const timer = setTimeout(() => {
     try { ctl.abort(); } catch { /* swallow */ }
   }, timeoutMs);
@@ -103,5 +109,6 @@ export async function fetchJsonBounded(
     return { res, json };
   } finally {
     clearTimeout(timer);
+    externalCtl?.signal.removeEventListener('abort', abortFromCaller);
   }
 }

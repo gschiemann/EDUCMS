@@ -33,6 +33,7 @@ import { cachedManifestWouldClearLiveAlert } from './emergencyInterlock';
 //     WS and SSE consumers, and the TENANT_CHANGED addressing check.
 import { resolveApiRoot, type ApiRootPolicy } from './trustGuards';
 import { createDeviceTokenSession } from './deviceTokenSession';
+import { createControlPlaneRequest } from './controlPlaneRequest';
 import { freshDeviceIdentity } from './deviceIdentity';
 import {
   gatewayApiRoot,
@@ -790,7 +791,7 @@ function getDeviceToken(): string | null {
 }
 
 function registerDeviceCredential(deviceInfo: Record<string, unknown> = {}, timeoutMs = 15_000) {
-  return deviceTokenSession.register((prior) => fetchJsonBounded(`${getApiRoot()}/api/v1/screens/register`, {
+  return deviceTokenSession.register((prior) => requestControlPlane(`${getApiRoot()}/api/v1/screens/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -1102,7 +1103,7 @@ function publishApiOriginDiagnostic(): void {
   } catch { /* swallow */ }
 }
 
-/** Record a control-plane failure (register/heartbeat). Pure decision, impure persistence. */
+/** Record a bounded control-plane transport failure throughout the session. */
 function noteControlPlaneFailure(err: unknown): void {
   const before = apiOriginState();
   const next = onControlPlaneFailure(before, err);
@@ -1129,6 +1130,11 @@ function noteControlPlaneSuccess(): void {
     try { console.info('[Player] direct API origin reachable again — gateway fallback cleared'); } catch { /* swallow */ }
   }
 }
+
+const requestControlPlane = createControlPlaneRequest({
+  success: noteControlPlaneSuccess,
+  failure: noteControlPlaneFailure,
+});
 
 /** One-shot: the gateway decision was taken but the page origin is unusable. */
 let gatewayRootWarned = false;
@@ -5894,18 +5900,12 @@ function PlayerPage() {
         await register();
         // Success — register() already set phase to pairing/connecting.
         // Clear connectivity state so the toast goes away.
-        // P0-1: a reachable control plane also self-heals a persisted
-        // same-origin-gateway fallback (only when we are ON direct).
-        noteControlPlaneSuccess();
         setConnectivity({ kind: 'connected' });
         registerFailCountRef.current = 0;
       } catch (e: any) {
         if (stopped || cancelled) return;
-        // P0-1: NETWORK-class failures (never a 4xx/5xx — the API answered
-        // those) count toward moving the whole control plane onto the
-        // same-origin gateway. getApiRoot() picks the new origin up on the
-        // very next call, so the retry below already uses it.
-        noteControlPlaneFailure(e);
+        // The bounded request already recorded transport reachability;
+        // getApiRoot() picks up any gateway decision on the next retry.
         registerFailCountRef.current += 1;
         // Floor ABOVE the API's 5 s per-fingerprint cooldown
         // (REGISTER_FP_COOLDOWN_MS in screens.controller.ts). A 2 s first
@@ -5998,7 +5998,7 @@ function PlayerPage() {
         // Bounded ACROSS THE BODY (D-1/F1): the loop AWAITS each tick — a
         // hung fetch OR stalled body here would stop pairing polling
         // forever, the exact failure this loop ended.
-        const { res, json: data } = await fetchJsonBounded(buildHeartbeatUrl(getApiRoot(), fp), {}, 10_000);
+        const { res, json: data } = await requestControlPlane(buildHeartbeatUrl(getApiRoot(), fp), {}, 10_000);
         if (cancelled) return 'done';
         if (!res.ok || !data) return 'fail';
         if (data.paired) {
@@ -6984,7 +6984,7 @@ function PlayerPage() {
       }
       const manifestCtl = typeof AbortController === 'function' ? new AbortController() : undefined;
       manifestFetchAbortRef.current = manifestCtl ?? null;
-      const { res: manifestRes, json: manifestBody } = await fetchJsonBounded(
+      const { res: manifestRes, json: manifestBody } = await requestControlPlane(
         `${getApiRoot()}/api/v1/screens/${screenId}/manifest${emergencyDisplayed ? `?_eb=${Date.now()}` : ''}`,
         {
           headers: {
@@ -7378,12 +7378,11 @@ function PlayerPage() {
      */
     const legacyStatusTick = async () => {
       try {
-        const res = await fetch(buildHeartbeatUrl(getApiRoot(), fp), {
+        const { res, json: data } = await requestControlPlane(buildHeartbeatUrl(getApiRoot(), fp), {
           method: 'GET', cache: 'no-store',
-        });
+        }, 10_000);
         if (res.ok) {
-          const data = await res.json();
-          handleHeartbeatOta(data, 'legacy status fallback');
+          if (data) handleHeartbeatOta(data, 'legacy status fallback');
         }
       } catch { /* tolerated — next tick retries, forever */ }
     };
@@ -7448,7 +7447,7 @@ function PlayerPage() {
         // Bounded ACROSS THE BODY READ (player rule 4): `fetch()` resolves
         // at headers, so a 200-then-stalled-body proxy would otherwise wedge
         // this chain and silently stop every report the fleet depends on.
-        const out = await fetchJsonBounded(
+        const out = await requestControlPlane(
           `${getApiRoot()}/api/v1/screens/${screenId}/telemetry`,
           {
             method: 'POST',
@@ -9074,7 +9073,7 @@ function PlayerPage() {
           const baseline = lastAppliedRevRef.current;
           // Bounded ACROSS THE BODY READ (player rule 4): a 200-then-stalled
           // body would otherwise wedge this poll for the life of the page.
-          const { res, json } = await fetchJsonBounded(
+          const { res, json } = await requestControlPlane(
             `${getApiRoot()}${emergencyRevPath(screenId)}`,
             {
               headers: {
