@@ -54,6 +54,7 @@ export function ContinuousLoopVideo({ src, sourceHash, videoKey, isActive, class
     let preparationPhase = 'native-start';
     let firstFrameSeen = false;
     let startupAt = Date.now();
+    let startupResumeTried = false;
     let resolveFirstFrame: () => void = () => undefined;
     const firstFrame = new Promise<void>(resolve => { resolveFirstFrame = resolve; });
     const native = new NativeWrapDetector();
@@ -201,6 +202,13 @@ export function ContinuousLoopVideo({ src, sourceHash, videoKey, isActive, class
         } catch { /* Diagnostic reads cannot trigger fallback or recovery. */ }
       }
       const starting = !firstFrameSeen;
+      // A native open may interrupt the first play() while it obtains data.
+      // A ready, paused file has not tested MSE at all. Resume it once on the
+      // existing watchdog rather than waiting 45 s and blocking the engine.
+      if (starting && !engine && video.paused && video.readyState >= 2 && !startupResumeTried) {
+        startupResumeTried = true;
+        video.play().catch(() => undefined);
+      }
       // Startup has its own finite deadline. The 12-second playback detector
       // starts after an actual frame; currentTime=0/readyState=0 is not evidence
       // that a decoder which has never started has become stuck.
@@ -210,6 +218,17 @@ export function ContinuousLoopVideo({ src, sourceHash, videoKey, isActive, class
       setActiveMediaStalled(detector.isStalled());
       if (result !== 'stalled') return;
       const reason = starting ? 'native-start-timeout' : 'clock-stalled';
+      if (starting && !engine && !fellBack && preparationPhase === 'native-start') {
+        // No MSE pipeline has run yet. One bounded native restart may still
+        // produce its first frame; retain the waiting preparation promise so
+        // that success can adopt continuous playback without a 24-hour ban.
+        reportContinuousFailure(reason, video, { phase: preparationPhase }, 'native startup failed');
+        if (++recoveries === 1) {
+          startupAt = now;
+          video.load(); video.play().catch(() => undefined);
+        } else { recoveryFailed = true; callbacks.current.onError(); }
+        return;
+      }
       // The detector reports an episode ONCE. With the stream running, the
       // fallback itself restarts the element on the original file. While still
       // preparing, the element is already on the original file and the fallback

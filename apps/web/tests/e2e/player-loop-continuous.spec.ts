@@ -22,6 +22,25 @@ async function seedVerifiedVideo(page: Page, fixture = 'loop-clip.mp4') {
 test.describe('one-stream continuous video', () => {
   test.use({ serviceWorkers: 'allow' });
   test.skip(({ browserName }) => browserName !== 'chromium', 'H.264/MSE qualification starts on Chromium');
+  test('an initial native open retry still adopts continuous after its first real frame', async ({ page }) => {
+    test.setTimeout(80_000);
+    const hash = await seedVerifiedVideo(page);
+    await page.addInitScript(() => {
+      const request = HTMLVideoElement.prototype.requestVideoFrameCallback;
+      let first = true;
+      HTMLVideoElement.prototype.requestVideoFrameCallback = function(callback) {
+        return request.call(this, (now, meta) => {
+          if (first) { first = false; setTimeout(() => callback(now, meta), 50_000); }
+          else callback(now, meta);
+        });
+      };
+    });
+    await bootMockPlayer(page, { tag: 'continuous-start-resume', kind: 'video', videoMp4: true, playback: { loopMode: 'continuous' } });
+    await expect(page.locator('video[data-loop-backend="continuous"]')).toBeAttached({ timeout: 65_000 });
+    await expect.poll(() => page.evaluate(() => document.querySelector('video')?.currentTime ?? 0)).toBeGreaterThan(2);
+    expect(await page.evaluate(key => localStorage.getItem(key), continuousGuardKey(hash, 'edu_loop_twodeck_blocked_until'))).toBeNull();
+    expect(await page.evaluate(() => (window as unknown as { __eduLoopBoundary: () => { fallbacks: number } | null }).__eduLoopBoundary()?.fallbacks ?? 0)).toBe(0);
+  });
   test('a scoped backend change keeps the same full-quality file without reloading the player', async ({ page }) => {
     test.setTimeout(90_000);
     await seedVerifiedVideo(page);

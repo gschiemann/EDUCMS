@@ -217,6 +217,38 @@ it('a file that never presents its first frame has a finite recovery deadline an
   expect(prepareLoopPackage).not.toHaveBeenCalled();
 });
 
+it('resumes a ready but paused native startup once without reloading or blaming the MSE engine', async () => {
+  Object.defineProperty(HTMLVideoElement.prototype, 'readyState', { configurable: true, get: () => 4 });
+  Object.defineProperty(HTMLMediaElement.prototype, 'paused', { configurable: true, get: () => true });
+  play.mockRejectedValueOnce(new DOMException('Interrupted initial playback', 'AbortError'));
+  const { video, onError } = mount();
+  await settle();
+  act(() => { jest.advanceTimersByTime(4_000); });
+  await settle();
+  expect(play).toHaveBeenCalledTimes(2);
+  expect(load).not.toHaveBeenCalled();
+  expect(onError).not.toHaveBeenCalled();
+  act(() => { jest.advanceTimersByTime(4_000); });
+  expect(play).toHaveBeenCalledTimes(2); // Never an unbounded play retry.
+  await presentFrame();
+  await act(async () => { finishPackage(PACKAGE); await Promise.resolve(); });
+  await settle();
+  expect(video.dataset.loopBackend).toBe('continuous');
+});
+
+it('a failed initial native open can recover without imposing a 24-hour MSE block', async () => {
+  const { video, onError } = mount();
+  await settle();
+  act(() => { jest.advanceTimersByTime(48_000); });
+  expect(load).toHaveBeenCalledTimes(1);
+  expect(onError).not.toHaveBeenCalled();
+  await presentFrame();
+  await act(async () => { finishPackage(PACKAGE); await Promise.resolve(); });
+  await settle();
+  expect(startContinuousLoop).toHaveBeenCalledTimes(1);
+  expect(video.dataset.loopBackend).toBe('continuous');
+});
+
 
 it('the existing watchdog reports progressive failure with real waiting headroom without reloading the stream', async () => {
   let total = 0; let dropped = 0;

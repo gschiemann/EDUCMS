@@ -246,6 +246,116 @@ async function manifest(h: ReturnType<typeof makeHarness>, screenId: string) {
   return res;
 }
 
+describe('scoped portrait decoder compatibility', () => {
+  const previousCompat = process.env.PLAYER_PORTRAIT_AVC_COMPAT;
+  const previousNative = process.env.PLAYER_LOOP_NATIVE;
+  afterEach(() => {
+    if (previousCompat === undefined)
+      delete process.env.PLAYER_PORTRAIT_AVC_COMPAT;
+    else process.env.PLAYER_PORTRAIT_AVC_COMPAT = previousCompat;
+    if (previousNative === undefined) delete process.env.PLAYER_LOOP_NATIVE;
+    else process.env.PLAYER_LOOP_NATIVE = previousNative;
+  });
+
+  it.each([true, false])(
+    'keeps the mirrored item URL/hash/size and download total cohesive (native=%s)',
+    async (native) => {
+      process.env.PLAYER_PORTRAIT_AVC_COMPAT = BACK;
+      process.env.PLAYER_LOOP_NATIVE = native ? BACK : '';
+      const items = [
+        {
+          id: 'item-video',
+          assetId: 'asset-video',
+          durationMs: 30000,
+          sequenceOrder: 0,
+          asset: {
+            fileUrl: 'https://media.example/original.mp4',
+            fileHash: 'a'.repeat(64),
+            fileSize: 300000,
+            mimeType: 'video/mp4',
+            processingMeta: {
+              probe: { fps: 30 },
+              renditions: {
+                '1080p': {
+                  url: 'https://media.example/standard.mp4',
+                  sha256: 'b'.repeat(64),
+                  size: 100000,
+                  width: 1080,
+                  height: 1668,
+                },
+                'portrait-avc-compat': {
+                  url: 'https://media.example/compatible.mp4',
+                  sha256: 'c'.repeat(64),
+                  size: 200000,
+                  sourceSha256: 'a'.repeat(64),
+                  displayWidth: 1080,
+                  displayHeight: 1668,
+                  codedWidth: 1668,
+                  codedHeight: 1080,
+                  rotation: 90,
+                  fps: 30,
+                  codec: 'h264',
+                  profile: 'Constrained Baseline',
+                  level: 40,
+                },
+              },
+            },
+          },
+        },
+      ];
+      const schedule = {
+        id: 'sch-front',
+        playlistId: 'pl-front',
+        screenId: FRONT,
+        screenGroupId: null,
+        priority: 0,
+        mode: 'replace',
+        startTime: new Date(nowMs - 1000),
+        endTime: null,
+        daysOfWeek: null,
+        timeStart: null,
+        timeEnd: null,
+        mutedOverride: null,
+        playlist: {
+          id: 'pl-front',
+          name: 'Portrait video',
+          syncPlayback: false,
+          items,
+          template: null,
+        },
+      };
+      const h = makeHarness({
+        rows: { [FRONT]: frontRow(), [BACK]: backRow() },
+        schedulesFor: () => [schedule],
+      });
+      const res = (await manifest(h, BACK)) as {
+        statusCode: number;
+        body: {
+          sync: { enabled: boolean };
+          playlists: Array<{ items: unknown[]; totalBytes: number }>;
+          face: { mirroredFrom: string };
+        };
+      };
+      expect(res.statusCode).toBe(200);
+      expect(res.body.sync).toEqual({ enabled: false });
+      const selected = native
+        ? {
+            url: 'https://media.example/compatible.mp4',
+            asset_hash: 'c'.repeat(64),
+            asset_size: 200000,
+          }
+        : {
+            url: 'https://media.example/standard.mp4',
+            asset_hash: 'b'.repeat(64),
+            asset_size: 100000,
+          };
+      expect(res.body.playlists[0].items[0]).toMatchObject(selected);
+      expect(res.body.playlists[0].totalBytes).toBe(selected.asset_size);
+      expect(res.body.face.mirroredFrom).toBe(FRONT);
+    },
+  );
+});
+
 beforeEach(() => {
   // Monotonic — never rewind. Several caches on this path expire by TTL
   // alone, and a rewound clock makes a previous case's entry look like it was

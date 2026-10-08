@@ -49,9 +49,9 @@ playlists use their existing paths. A failure restores the original on the same
 element once, records a reason and blocks this file/backend for 24 hours. Page
 cleanup cancels the pump, removes callbacks/listeners/timers and revokes its URL.
 A blocked reload does not extend the block. Two-deck blocks are independent.
-The continuous guard is scoped by engine revision and source digest. Revision 4
+The continuous guard is scoped by engine revision and source digest. Revision 5
 gets one fresh attempt for a file blocked by an earlier revision; older failure
-records are preserved. A failure on revision 4 remains blocked across reloads
+records are preserved. A failure on revision 5 remains blocked across reloads
 for 24 hours.
 
 Native file startup is separate from steady playback. Fragment preparation
@@ -60,6 +60,10 @@ file's initial cache read. The 12-second stall detector starts after that frame.
 A file with no first frame gets a finite 45-second startup deadline, one native
 reload, then the existing file-failure path if that restart also produces no
 frame. A `playing` event alone does not establish decoded-frame progress.
+The existing watchdog resumes a ready but paused native open once. A native
+startup timeout does not block the continuous engine before it has run: the
+one native restart retains the first-frame wait, so a recovered file can still
+prepare and adopt the stream. Two failed startup deadlines still escalate once.
 
 At initial stream adoption and recovery, a display-only canvas retains the
 last available source-resolution frame, up to 3840x2160 pixels, while the same

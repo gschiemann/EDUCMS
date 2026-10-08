@@ -32,12 +32,13 @@ export function releaseVideoFrame(canvas: HTMLCanvasElement): void {
  * warning; request its existing authenticated upload after that log write.
  * All mounts share the cooldown so repeated errors cannot flood ingestion.
  */
-export function reportContinuousFailure(reason: string, video: HTMLVideoElement, pump?: object): void {
+export function reportContinuousFailure(reason: string, video: HTMLVideoElement, pump?: object,
+  stage: 'continuous loop fallback' | 'native startup failed' = 'continuous loop fallback'): void {
   try {
     const buffered = Array.from({ length: Math.min(video.buffered.length, 3) }, (_, i) =>
       [video.buffered.start(i), video.buffered.end(i)].map(n => Math.round(n * 1000) / 1000));
     const safeReason = /^[a-z0-9:-]{1,64}$/i.test(reason) ? reason : 'pipeline-error';
-    console.warn(`[Player] continuous loop fallback: ${safeReason} ${JSON.stringify({
+    console.warn(`[Player] ${stage}: ${safeReason} ${JSON.stringify({
       time: Math.round(video.currentTime * 1000) / 1000, ready: video.readyState,
       network: video.networkState, error: video.error?.code ?? 0,
       paused: video.paused, seeking: video.seeking, buffered, pump,

@@ -1,7 +1,7 @@
 import { Controller, Post, Get, Put, Delete, Body, Param, Query, Req, Res, UseGuards, Request, HttpException, HttpStatus } from '@nestjs/common';
 import { encodeTargetFromResolutions, pdfDelivery, withheldFromScreens } from '@cms/api-types';
 import { pdfPageBytes, pdfPageManifestItems, pdfScreenShape } from './pdf-page-items';
-import { selectVideoFile } from './video-rendition';
+import { selectVideoFile, usesPortraitAvcCompatibility } from './video-rendition';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import type { Request as ExpressReq, Response } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
@@ -6585,6 +6585,10 @@ export class ScreensController {
     // how much disk a playlist uses from the Stopped splash. Items with
     // no captured fileSize (e.g. URL-type assets, pre-hash uploads)
     // simply contribute 0.
+    // The current fragmenter omits MP4 display matrices. A rotated coded
+    // picture is selected only alongside native playback, never handed to MSE.
+    const portraitAvcCompatibility = usesPortraitAvcCompatibility(screen.id) &&
+      resolvePlaybackConfig(screen.id).loopMode === 'native';
     const dynamicPlaylists = schedules.map(s => {
     // 2026-05-05 — schedule-level audio override.
     // Null = honor each PlaylistItem.muted (current behavior).
@@ -6647,7 +6651,7 @@ export class ScreensController {
           sum +
           (pdfDelivery(pi.asset) === 'pages'
             ? pdfPageBytes(pi, pdfShape)
-            : selectVideoFile(pi.asset, screen.resolution).size || 0),
+            : selectVideoFile(pi.asset, screen.resolution, portraitAvcCompatibility).size || 0),
         0,
       ),
       // Include template data when playlist is template-based
@@ -6701,7 +6705,7 @@ export class ScreensController {
       } : {}),
       items: deliverableItems.flatMap(pi => {
         if (pdfDelivery(pi.asset) === 'pages') return pdfPageManifestItems(pi, pdfShape, itemMuted(pi));
-        const selected = selectVideoFile(pi.asset, screen.resolution);
+        const selected = selectVideoFile(pi.asset, screen.resolution, portraitAvcCompatibility);
         return [({
         item_id: pi.id,
         asset_id: pi.assetId,
@@ -6886,9 +6890,8 @@ export class ScreensController {
       // have different playlists assigned to screens in the same group it
       // doesnt make sense saying to keep them in sync". `resolveScreenSync`
       // owns the whole rule — ANY playlist scheduled onto this screen with
-      // syncPlayback on, OR the legacy group flag — and screen-sync.ts states
-      // why it is ANY rather than ALL, and why the legacy arm is what makes
-      // this deploy safe for the groups that are locked today.
+      // syncPlayback on. The legacy group flag is ignored since 2026-09-29;
+      // screen-sync.ts explains why this is ANY rather than ALL.
       //
       // THE BLOCK SHAPE IS UNCHANGED, deliberately: every deployed player
       // reads {enabled, groupId, trimMs}, so this needs no player migration
