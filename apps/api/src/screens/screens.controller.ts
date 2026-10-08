@@ -6199,6 +6199,12 @@ export class ScreensController {
           tenantId: screen.tenantId,
           tenantName: (screen as any).tenant?.name || null,
           generatedAt: new Date().toISOString(),
+          // A live board uses this early return instead of the normal body.
+          // Carry the durable refresh VALUE here too, including in its ETag,
+          // or a lost push leaves board screens permanently behind.
+          refreshRequestedAt: screen.pendingRefreshAt
+            ? new Date(screen.pendingRefreshAt as Date).getTime()
+            : null,
           // 2026-05-24 — orientation lock for sports-mode screens too.
           orientation: resolveManifestOrientation((screen as any).orientation, (screen as any).resolution, (screen as any).hardwareModel),
           // 2026-06-24 — carry the LED canvas dims + tile-repeat on the

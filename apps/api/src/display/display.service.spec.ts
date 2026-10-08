@@ -914,6 +914,20 @@ describe('DisplayService', () => {
 });
 
 describe('boundInventoryReport — bounded by construction, never by trust', () => {
+  it('retains the native face-host evidence alongside the physical display inventory', () => {
+    const faces = {
+      observed: true,
+      requested: [0, 1],
+      hosted: [{ face: 1, displayId: 1 }],
+      shortfall: [],
+      reason: null,
+    };
+    expect(boundInventoryReport({ faces })).toMatchObject({ faces });
+    expect(
+      boundInventoryReport({ displays: { available: true, displays: [] } }),
+    ).not.toHaveProperty('faces');
+  });
+
   it('keeps the recipe-authoring sections and drops everything else', () => {
     const out = boundInventoryReport({
       schema: 1,
@@ -1801,4 +1815,3 @@ describe('OPEN_SETUP — rides the display transport, drives no display', () => 
     expect(res.deliveryReason).toBe('no_push_socket');
   });
 });
-

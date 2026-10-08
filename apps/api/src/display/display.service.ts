@@ -369,6 +369,9 @@ const INVENTORY_SECTIONS = [
   'audio',
   'power',
   'displays',
+  // FaceHostRegistry reports which Presentation windows are actually hosted.
+  // Keep that evidence; physical display inventory alone cannot prove hosting.
+  'faces',
   'features',
   'vendorPackages',
   'serial',

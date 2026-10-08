@@ -190,7 +190,7 @@ function harness(
   );
 }
 
-async function manifest(controller: ScreensController) {
+async function manifest(controller: ScreensController, etag?: string) {
   const res: any = { statusCode: null, body: undefined, headers: {} };
   res.setHeader = (k: string, v: string) => (
     (res.headers[k.toLowerCase()] = v),
@@ -202,6 +202,7 @@ async function manifest(controller: ScreensController) {
   res.end = () => res;
   const req = {
     headers: {
+      ...(etag ? { 'if-none-match': etag } : {}),
       authorization: `Bearer ${jwt.sign(
         { sub: BOX, kind: 'device', ep: 0, fp: 'fp-test' },
         DEVICE_JWT_SECRET,
@@ -239,6 +240,29 @@ const EXPECTED_BLOCK = {
 };
 
 describe('a box bound to a game learns it from its manifest (K12-F32)', () => {
+  it('delivers and clears durable refresh requests while showing a live board, including conditional polls', async () => {
+    const screen = row({
+      activeBoardGameId: 'game-hoops',
+      activeBoardSurface: 'BOARD',
+    });
+    const controller = harness(screen);
+    const initial = await manifest(controller);
+    const value = nowMs - 1000;
+    screen.pendingRefreshAt = new Date(value);
+    const requested = await manifest(controller, initial.headers.etag);
+    expect(requested.statusCode).toBe(200);
+    expect(requested.body.refreshRequestedAt).toBe(value);
+    expect(requested.headers.etag).not.toBe(initial.headers.etag);
+    expect((await manifest(controller, requested.headers.etag)).statusCode).toBe(
+      304,
+    );
+    screen.pendingRefreshAt = null;
+    const acked = await manifest(controller, requested.headers.etag);
+    expect(acked.statusCode).toBe(200);
+    expect(acked.body.refreshRequestedAt).toBeNull();
+    expect(acked.headers.etag).toBe(initial.headers.etag);
+  });
+
   it('in the normal body', async () => {
     const res = await manifest(
       harness(row({ config: BOUND_CONFIG }), { scheduled: true }),
