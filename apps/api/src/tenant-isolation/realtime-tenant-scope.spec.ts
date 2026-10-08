@@ -112,24 +112,31 @@ function liveRow(p: Party, overrides: Record<string, unknown> = {}) {
  */
 function twoTenantPrisma(rows: Record<string, any>) {
   const find = async ({ where }: any = {}) => {
-    if (where?.id) return rows[where.id] ?? null;
-    if (where?.deviceFingerprint) {
-      return Object.values(rows).find((r: any) => r.deviceFingerprint === where.deviceFingerprint) ?? null;
-    }
-    return null;
+    const row = where?.id
+      ? rows[where.id]
+      : where?.deviceFingerprint
+        ? Object.values(rows).find((r: any) => r.deviceFingerprint === where.deviceFingerprint)
+        : null;
+    return row && (where.tenantId === undefined || row.tenantId === where.tenantId) ? row : null;
   };
-  return {
-    client: {
-      screen: {
-        findUnique: jest.fn(find),
-        findFirst: jest.fn(find),
-        update: jest.fn(async () => ({})),
-        updateMany: jest.fn(async () => ({ count: 1 })),
-      },
-      auditLog: { create: jest.fn(async () => ({})) },
-      screenEvent: { create: jest.fn(async () => ({})) },
+  const client: any = {
+    screen: {
+      findUnique: jest.fn(find),
+      findFirst: jest.fn(find),
+      update: jest.fn(async () => ({})),
+      updateMany: jest.fn(async () => ({ count: 1 })),
     },
-  } as any;
+    auditLog: { create: jest.fn(async () => ({})) },
+    screenEvent: { create: jest.fn(async () => ({})) },
+    // Paired registration locks and re-reads this same tenant-owned row
+    // inside an interactive transaction before minting the credential.
+    $queryRaw: jest.fn(async (_sql: TemplateStringsArray, id: string, tenantId: string) => {
+      const row = rows[id];
+      return row && row.id === id && row.tenantId === tenantId ? [{ id }] : [];
+    }),
+  };
+  client.$transaction = jest.fn((work: (tx: any) => Promise<unknown>) => work(client));
+  return { client } as any;
 }
 
 /**
