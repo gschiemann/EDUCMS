@@ -65,19 +65,29 @@ function playingManifest(origin: string) {
 }
 
 type MockState = {
-  /** Control-plane calls that went to the DIRECT (API) origin — all blackholed. */
+  /** Control-plane calls that went to the DIRECT (API) origin. */
   directCalls: string[];
+  directAvailable: boolean;
+  failedDirectCalls: number;
+  failedDirectManifests: number;
+  directManifests: number;
   /** Control-plane calls that came back through the SAME-ORIGIN gateway. */
   gatewayCalls: string[];
   gatewayRegisters: number;
   gatewayManifests: number;
+  gatewayManifestTokens: Array<string | null>;
 };
 
 const freshState = (): MockState => ({
   directCalls: [],
+  directAvailable: false,
+  failedDirectCalls: 0,
+  failedDirectManifests: 0,
+  directManifests: 0,
   gatewayCalls: [],
   gatewayRegisters: 0,
   gatewayManifests: 0,
+  gatewayManifestTokens: [],
 });
 
 /**
@@ -107,17 +117,20 @@ async function installMocks(page: Page, state: MockState, baseOrigin: string) {
     const url = new URL(route.request().url());
     const path = url.pathname;
 
-    // ── THE BLACKOUT: the API origin is unreachable at the transport layer.
-    if (url.host === 'api.invalid') {
+    const direct = url.host === 'api.invalid';
+    if (direct) {
       state.directCalls.push(path);
-      return route.abort('failed');
+      if (!state.directAvailable) {
+        state.failedDirectCalls += 1;
+        if (path.endsWith('/manifest')) state.failedDirectManifests += 1;
+        return route.abort('failed');
+      }
+    } else {
+      state.gatewayCalls.push(path);
     }
 
-    // ── THE GATEWAY: same-origin, reachable.
-    state.gatewayCalls.push(path);
-
     if (path === '/api/v1/screens/register') {
-      state.gatewayRegisters += 1;
+      if (!direct) state.gatewayRegisters += 1;
       return ok(route, {
         paired: true,
         screenId: FAKE_SCREEN_ID,
@@ -126,7 +139,11 @@ async function installMocks(page: Page, state: MockState, baseOrigin: string) {
       });
     }
     if (path === `/api/v1/screens/${FAKE_SCREEN_ID}/manifest`) {
-      state.gatewayManifests += 1;
+      if (direct) state.directManifests += 1;
+      else {
+        state.gatewayManifests += 1;
+        state.gatewayManifestTokens.push(route.request().headers().authorization ?? null);
+      }
       return ok(route, playingManifest(baseOrigin));
     }
     if (path.startsWith('/api/v1/screens/status/')) {
@@ -228,6 +245,53 @@ const originMode = (page: Page) =>
 const contentImg = (page: Page) => page.locator(`img[src*="gateway-test-asset"]`);
 
 test.describe('same-origin gateway fallback — the Goodview story', () => {
+  test('direct transport fails after playback starts → gateway recovers without remounting content', async ({
+    page,
+    baseURL,
+  }) => {
+    test.setTimeout(180_000);
+    const state = freshState();
+    state.directAvailable = true;
+    const origin = baseURL ?? 'http://localhost:3000';
+    await installWsStub(page);
+    await seedIdentity(page);
+    await installMocks(page, state, origin);
+
+    await page.goto('/player?fp=' + FAKE_FINGERPRINT);
+    await expect(contentImg(page)).toBeVisible({ timeout: 60_000 });
+    expect(state.directManifests).toBeGreaterThanOrEqual(1);
+    expect(state.gatewayManifests).toBe(0);
+    expect(await originMode(page)).toBe('direct');
+
+    // Keep the real DOM node as evidence that moving the control plane did
+    // not navigate, blank the screen, or restart the mounted playlist.
+    const onGlass = await contentImg(page).elementHandle();
+    expect(onGlass).not.toBeNull();
+    let navigations = 0;
+    page.on('framenavigated', (frame) => {
+      if (frame === page.mainFrame()) navigations += 1;
+    });
+
+    // State-driven, after a PROVEN successful direct boot. Every direct
+    // control-plane request now fails at transport, matching a WebView DNS /
+    // TLS outage. Other successful endpoints must not reset the consecutive
+    // failure counter while a manifest-only mock outage is in progress.
+    state.directAvailable = false;
+    await expect.poll(() => state.gatewayManifests, {
+      timeout: 90_000,
+      message: 'runtime manifest failures never moved the authenticated request to the gateway',
+    }).toBeGreaterThanOrEqual(1);
+
+    expect(state.failedDirectCalls).toBeGreaterThanOrEqual(3);
+    expect(state.failedDirectManifests).toBeGreaterThanOrEqual(1);
+    expect(await originMode(page)).toBe('gateway');
+    expect(state.gatewayManifestTokens).toContain(`Bearer ${DEVICE_TOKEN}`);
+    await expect(contentImg(page)).toBeVisible();
+    expect(await onGlass!.evaluate((node) => node.isConnected)).toBe(true);
+    expect(navigations, 'gateway recovery must preserve live playback').toBe(0);
+    expect(await page.evaluate(() => localStorage.getItem('edu_api_gateway_fallback'))).toBe('1');
+  });
+
   test('direct origin blackholed → operator told → whole control plane moves to the page origin', async ({
     page,
     baseURL,
