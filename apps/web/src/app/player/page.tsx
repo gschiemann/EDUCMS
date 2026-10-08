@@ -1649,6 +1649,8 @@ function PlayerVideoSlide({
   // service-worker payloads from before the column existed).
   const isMuted = muted !== false;
 
+  // A published rendition can replace the URL under the same playlist item
+  // ID. Changing src reopens and pauses the element; activation must replay it.
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
@@ -1704,7 +1706,7 @@ function PlayerVideoSlide({
     } else {
       try { v.pause(); } catch { /* noop */ }
     }
-  }, [isActive, isMuted]);
+  }, [isActive, isMuted, src]);
 
   // Dropped-frame sample (2026-09-24) — the screen's half of "was it the file
   // or the player?". A base reading when this slide takes the glass, the
@@ -1719,9 +1721,9 @@ function PlayerVideoSlide({
     return () => {
       videoQualityTracker.detach(v, Date.now());
     };
-    // `src` is fixed for the life of a slide (key={videoKey} remounts per item).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isActive, videoKey]);
+    // Renditions can change without changing the item ID. Rebase counters and
+    // attribute the new file's samples to its own URL after replacement.
+  }, [isActive, videoKey, src]);
 
   // Loop-boundary probe (2026-09-29, video-loop audit F1/F2). A solo video's
   // native `loop` is a seek back to 0 — on an Android WebView the decoder
@@ -1766,9 +1768,9 @@ function PlayerVideoSlide({
         try { v.cancelVideoFrameCallback?.(id); } catch { /* noop */ }
       }
     };
-    // Keyed on the slide's identity, like the tracker above.
+    // Source replacement starts a new measurement session, like the tracker.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isActive, isSoloPlaylist, videoKey]);
+  }, [isActive, isSoloPlaylist, videoKey, src]);
 
   // 2026-05-05 — recover from autoplay-with-sound block on first user
   // gesture. Chrome's policy says any document-wide click / keydown /
@@ -1846,10 +1848,10 @@ function PlayerVideoSlide({
       clearInterval(t);
       setActiveMediaStalled(false);
     };
-    // onError/src/isMuted are stable-in-behavior parent closures; keying on
-    // the item identity (videoKey) resets the detector per slide.
+    // Reset the detector for a replacement file even when its item ID is
+    // unchanged. Parent onError behavior remains stable across renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isActive, videoKey, trackDecodedFrames]);
+  }, [isActive, videoKey, src, isMuted, trackDecodedFrames]);
 
   // ─── Frame-locked sync: preroll + measured start lead (tier-1) ─────
   // This slide is mounted-hidden as the timeline's NEXT item (parent
@@ -1904,7 +1906,7 @@ function PlayerVideoSlide({
     };
     // Refs are stable; index/count constant per mounted slide.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isActive, syncItemIndex, syncItemCount]);
+  }, [isActive, syncItemIndex, syncItemCount, src]);
 
   // ─── Frame-locked sync servo (2026-07-28) ──────────────────────────
   // Locks the media clock to the shared timeline slot. Measured browser
@@ -1989,7 +1991,7 @@ function PlayerVideoSlide({
     // syncActiveRef/syncPosRef are stable ref objects; syncItemIndex is
     // constant per mounted slide.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isActive, syncItemIndex]);
+  }, [isActive, syncItemIndex, src]);
 
   // 2026-05-13 — MIME-coercion for iPhone .mov files.
   //

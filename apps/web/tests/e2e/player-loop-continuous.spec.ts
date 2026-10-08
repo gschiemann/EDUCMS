@@ -22,6 +22,64 @@ async function seedVerifiedVideo(page: Page, fixture = 'loop-clip.mp4') {
 test.describe('one-stream continuous video', () => {
   test.use({ serviceWorkers: 'allow' });
   test.skip(({ browserName }) => browserName !== 'chromium', 'H.264/MSE qualification starts on Chromium');
+  test('a native rendition replacement resumes the same item and reports the new source', async ({ page }) => {
+    await seedVerifiedVideo(page);
+    const tag = 'native-rendition-replacement';
+    const manifest = playerManifest(playerIds(tag).screenId, 'video', { loopMode: 'native' }, 1, true);
+    const replacementUrl = 'http://api.invalid/assets/replacement.mp4';
+    const replacement = fs.readFileSync(path.join(__dirname, 'fixtures', 'loop-long-gop.mp4'));
+    let navigations = 0;
+    page.on('framenavigated', frame => { if (frame === page.mainFrame()) navigations++; });
+    const { telemetry } = await bootMockPlayer(page, { tag, kind: 'video', videoMp4: true, manifest,
+      videoFixtures: { [replacementUrl]: 'loop-long-gop.mp4' },
+      extraRoutes: async p => {
+        await p.addInitScript(() => {
+          const Real = window.WebSocket;
+          window.WebSocket = new Proxy(Real, { construct(target, args) {
+            const socket = Reflect.construct(target, args);
+            if (String(args[0]).includes('/realtime')) {
+              (window as unknown as { __replacementSocket: WebSocket }).__replacementSocket = socket;
+            }
+            return socket;
+          } });
+        });
+      },
+    });
+    await expect.poll(() => page.evaluate(() => {
+      const v = document.querySelector('video');
+      return !!v && !v.paused && v.currentTime > 0.5;
+    })).toBe(true);
+    await page.evaluate(() => {
+      (window as unknown as { __originalVideo: HTMLVideoElement }).__originalVideo = document.querySelector('video')!;
+    });
+    const navigationCount = navigations;
+    const item = manifest.playlists[0].items[0];
+    const replacementHash = createHash('sha256').update(replacement).digest('hex');
+    Object.assign(item, { url: replacementUrl, asset_hash: replacementHash });
+    await page.evaluate(async ({ url, base64, hash }) => {
+      const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+      await (await caches.open('edu-player-playlist-v9')).put(url,
+        new Response(bytes, { headers: { 'content-type': 'video/mp4', 'content-length': String(bytes.length) } }));
+      await (await caches.open('edu-player-meta-v9')).put('/__edu_meta__/' + encodeURIComponent(url), new Response(hash));
+    }, { url: replacementUrl, base64: replacement.toString('base64'), hash: replacementHash });
+    await page.evaluate(() => {
+      const socket = (window as unknown as { __replacementSocket: WebSocket }).__replacementSocket;
+      socket.onmessage?.(new MessageEvent('message', { data: JSON.stringify({
+        type: 'SYNC', signature: 'test-signature', idempotencyKey: 'replace-native-rendition', timestamp: Date.now(), payload: {},
+      }) }));
+    });
+    await expect(page.locator('video')).toHaveAttribute('src', replacementUrl);
+    await expect.poll(() => page.evaluate(() => {
+      const v = document.querySelector('video');
+      return !!v && !v.paused && v.currentTime > 0.5;
+    }), { timeout: 12_000 }).toBe(true);
+    expect(await page.evaluate(() => document.querySelector('video') ===
+      (window as unknown as { __originalVideo: HTMLVideoElement }).__originalVideo)).toBe(true);
+    await expect.poll(() => telemetry.some(report =>
+      (report as { video?: { url?: string; totalFrames?: number } }).video?.url === replacementUrl),
+    { timeout: 70_000 }).toBe(true);
+    expect(navigations).toBe(navigationCount);
+  });
   test('an initial native open retry still adopts continuous after its first real frame', async ({ page }) => {
     test.setTimeout(80_000);
     const hash = await seedVerifiedVideo(page);
