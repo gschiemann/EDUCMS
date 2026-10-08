@@ -131,7 +131,12 @@ async function registerForToken(opts: {
   const prisma: any = {
     client: {
       screen: {
-        findUnique: jest.fn(async () => row),
+        findUnique: jest.fn(async ({ where }: any) => {
+          if (where.id !== undefined && where.id !== row.id) return null;
+          if (where.tenantId !== undefined && where.tenantId !== row.tenantId) return null;
+          if (where.deviceFingerprint !== undefined && where.deviceFingerprint !== row.deviceFingerprint) return null;
+          return row;
+        }),
         create: jest.fn(),
         update: jest
           .fn()
@@ -140,8 +145,13 @@ async function registerForToken(opts: {
       },
       auditLog: { create: jest.fn(async () => ({})) },
       screenEvent: { create: jest.fn(async () => ({})) },
+      $queryRaw: jest.fn(async (_sql: TemplateStringsArray, id: string, tenantId: string) =>
+        row.id === id && row.tenantId === tenantId ? [{ id }] : []),
     },
   };
+  // Registration now locks and re-reads the row before minting; keep these
+  // admission tests on that real path, including its tenant-scoped lock.
+  prisma.client.$transaction = jest.fn((work: (tx: any) => Promise<unknown>) => work(prisma.client));
   const controller = new ScreensController(
     prisma,
     { publish: jest.fn() } as any,
