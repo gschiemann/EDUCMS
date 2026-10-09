@@ -402,7 +402,7 @@ describe('THE SPLIT: soft frames draw the overlay, hard frames drive hardware', 
     expect(s.on).toBe(true);
 
     const res = dispatchDisplayControl(
-      envelope({ action: 'WAKE', hard: true }),
+      envelope({ action: 'WAKE', hard: true, nativePowerOnRequestedAt: new Date(NOW).toISOString() }),
       'screen-1',
       ctx(seen),
       'WS',
@@ -410,7 +410,9 @@ describe('THE SPLIT: soft frames draw the overlay, hard frames drive hardware', 
     );
     expect(res).toEqual({ status: 'sent', action: 'WAKE' });
     expect(s.on).toBe(false);
-    expect(callMock).toHaveBeenCalledWith('displayApply', '{"action":"WAKE"}');
+    expect(callMock).toHaveBeenCalledWith('displayApply', JSON.stringify({
+      action: 'WAKE', screenId: 'screen-1', nativePowerOnRequestedAt: new Date(NOW).toISOString(),
+    }));
   });
 
   it('a FLAG-LESS frame keeps its pre-split behaviour — forwarded', () => {

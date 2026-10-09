@@ -2,6 +2,7 @@ package com.educms.player.display
 
 import android.content.Context
 import com.educms.player.logging.PlayerLogger
+import com.educms.player.heartbeat.NativePowerControl
 import org.json.JSONObject
 
 /**
@@ -165,7 +166,11 @@ object DisplayControlApi {
             )
             "SETVOLUME" -> run(app, DisplayAction.SetVolume(obj.optInt("percent", -1)), revert, trusted)
             "BLANK" -> run(app, DisplayAction.Blank, revert, trusted)
-            "WAKE" -> run(app, DisplayAction.Wake, revert, trusted)
+            "WAKE" -> if (NativePowerControl.beginWebPowerOn(app, obj, trusted) == false) {
+                errorJson("power-on-not-applied", "power-on already consumed, superseded or could not be persisted")
+            } else {
+                run(app, DisplayAction.Wake, revert, trusted)
+            }
             "REBOOT" -> run(app, DisplayAction.Reboot, null, trusted)
             else -> errorJson("bad-action", "unknown action '${name.take(32)}'")
         }

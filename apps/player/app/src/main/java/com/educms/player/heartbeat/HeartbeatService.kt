@@ -21,10 +21,13 @@ import com.educms.player.R
 import com.educms.player.alertwatch.NativeAlertWatch
 import com.educms.player.logging.PlayerLogger
 import com.educms.player.ota.RelaunchEscalation
+import com.educms.player.security.HostAllowlist
 import kotlinx.coroutines.*
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.Timer
+import java.util.TimerTask
 
 /**
  * Foreground service that keeps the player "alive" + visible to the
@@ -315,6 +318,7 @@ class HeartbeatService : Service() {
                 // state has a dead credential the web player is failing to renew, which
                 // is a problem to surface, not to hide behind a forged ONLINE.
                 val deviceToken = prefs.getString("device_token", null)?.trim()
+                val nativeAllowed = !deviceToken.isNullOrBlank() && HostAllowlist.isApiHost(apiRoot)
                 val conn = (url.openConnection() as HttpURLConnection).apply {
                     requestMethod = "GET"
                     connectTimeout = 6_000
@@ -322,16 +326,41 @@ class HeartbeatService : Service() {
                     if (!deviceToken.isNullOrBlank()) {
                         setRequestProperty("Authorization", "Bearer $deviceToken")
                     }
+                    if (nativeAllowed) runCatching {
+                        setRequestProperty(NativePowerControl.HEADER, NativePowerControl.report(applicationContext, prefs))
+                    }.onFailure { PlayerLogger.w(TAG, "native power report unavailable: ${it.message}") }
                 }
-                val code = conn.responseCode
-                if (code in 200..299) {
-                    consecutiveFailures = 0
-                    val body = conn.inputStream.bufferedReader().use { it.readText() }
-                    handleHeartbeatResponse(body, prefs)
-                } else {
-                    consecutiveFailures += 1
-                    Log.w(TAG, "Heartbeat returned HTTP $code (consecutive=$consecutiveFailures)")
-                    PlayerLogger.w(TAG, "Heartbeat tick failed: HTTP $code (consecutive=$consecutiveFailures)")
+                // Bound the entire exchange, including a body that trickles
+                // forever inside readTimeout. A stuck native heartbeat must
+                // not strand the one channel that can wake a suspended page.
+                val deadline = Timer("native-heartbeat-deadline", true)
+                deadline.schedule(object : TimerTask() {
+                    override fun run() { runCatching { conn.disconnect() } }
+                }, 8_000L)
+                try {
+                    val code = conn.responseCode
+                    if (code in 200..299) {
+                        val body = conn.inputStream.bufferedReader().use {
+                            val text = StringBuilder()
+                            val buffer = CharArray(2048)
+                            while (true) {
+                                val count = it.read(buffer)
+                                if (count < 0) break
+                                if (text.length + count > 32_768) throw java.io.IOException("Heartbeat body exceeds 32 KiB")
+                                text.append(buffer, 0, count)
+                            }
+                            text.toString()
+                        }
+                        handleHeartbeatResponse(body, prefs, nativeAllowed && HostAllowlist.isApiHost(conn.url.toString()))
+                        consecutiveFailures = 0
+                    } else {
+                        consecutiveFailures += 1
+                        Log.w(TAG, "Heartbeat returned HTTP $code (consecutive=$consecutiveFailures)")
+                        PlayerLogger.w(TAG, "Heartbeat tick failed: HTTP $code (consecutive=$consecutiveFailures)")
+                    }
+                } finally {
+                    deadline.cancel()
+                    conn.disconnect()
                 }
             }
         } catch (e: Exception) {
@@ -343,8 +372,11 @@ class HeartbeatService : Service() {
         }
     }
 
-    private fun handleHeartbeatResponse(body: String, prefs: SharedPreferences) {
+    private fun handleHeartbeatResponse(body: String, prefs: SharedPreferences, nativeAllowed: Boolean) {
         if (body.isBlank()) return
+        if (nativeAllowed) runCatching {
+            NativePowerControl.accept(applicationContext, prefs, JSONObject(body))
+        }.onFailure { PlayerLogger.e(TAG, "native power command failed", it) }
         // ── How many sides the server says this display has ─────────────
         // Read BEFORE the forced-OTA early return below, and isolated from it:
         // a malformed OTA field must not stop a back side being hosted, and

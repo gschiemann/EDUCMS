@@ -285,6 +285,8 @@ export interface DisplayControlCommand {
    * already translated it onto the legacy verb. Forwarded to the bridge.
    */
   hard?: true;
+  /** Same identity as the native heartbeat backstop; omitted by older APIs. */
+  nativePowerOn?: { screenId: string; requestedAt: string };
 }
 
 /**
@@ -324,6 +326,11 @@ export function parseDisplayControlCommand(payload: unknown): DisplayControlComm
   // same instant, and a deploy window is not the place to invent semantics.
   if (p.soft === true) out.soft = true;
   if (p.hard === true) out.hard = true;
+  if (p.hard === true && action === 'WAKE' && typeof p.screenId === 'string' &&
+      typeof p.nativePowerOnRequestedAt === 'string' &&
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(p.nativePowerOnRequestedAt)) {
+    out.nativePowerOn = { screenId: p.screenId, requestedAt: p.nativePowerOnRequestedAt };
+  }
 
   return out;
 }
@@ -511,6 +518,10 @@ export function toDeviceActionJson(cmd: DisplayControlCommand): string {
   if (cmd.percent !== undefined) body.percent = cmd.percent;
   if (cmd.revertAfterMs !== undefined) body.revertAfterMs = cmd.revertAfterMs;
   if (cmd.allowBlack) body.allowBlack = true;
+  if (cmd.action === 'WAKE' && cmd.hard && cmd.nativePowerOn) {
+    body.screenId = cmd.nativePowerOn.screenId;
+    body.nativePowerOnRequestedAt = cmd.nativePowerOn.requestedAt;
+  }
   return JSON.stringify(body);
 }
 

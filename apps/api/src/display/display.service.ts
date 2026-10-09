@@ -933,6 +933,18 @@ export class DisplayService {
       },
     });
 
+    const issuedAt = new Date();
+    // A sleeping Android WebView cannot consume DISPLAY_CONTROL. Retain
+    // explicit POWER_ON for the authenticated native heartbeat, independently
+    // of Redis. A later POWER_OFF cancels it. No heartbeat by itself wakes a
+    // panel, and BLANK/WAKE remain the web overlay actions.
+    if (action === 'POWER_ON' || action === 'POWER_OFF') {
+      await this.prisma.client.screen.update({
+        where: { id: screenId, tenantId },
+        data: { nativePowerOnAt: action === 'POWER_ON' ? issuedAt : null },
+      });
+    }
+
     // `issuedAt` rides the WS message, NOT the manifest — a per-request
     // clock value in the manifest would kill 304s fleet-wide (CLAUDE.md
     // multiscreen-sync rule 4 / manifest-cache rule 7).
@@ -978,7 +990,8 @@ export class DisplayService {
       revertAfterMs,
       allowBlack: opts.allowBlack === true,
       mechanism: effectiveMechanism,
-      issuedAt: new Date().toISOString(),
+      issuedAt: issuedAt.toISOString(),
+      ...(action === 'POWER_ON' ? { nativePowerOnRequestedAt: issuedAt.toISOString() } : {}),
       ...(soft ? { soft: true as const } : {}),
       ...(hard ? { hard: true as const } : {}),
     };

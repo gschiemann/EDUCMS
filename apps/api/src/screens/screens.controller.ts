@@ -2,6 +2,7 @@ import { Controller, Post, Get, Put, Delete, Body, Param, Query, Req, Res, UseGu
 import { encodeTargetFromResolutions, pdfDelivery, withheldFromScreens } from '@cms/api-types';
 import { pdfPageBytes, pdfPageManifestItems, pdfScreenShape } from './pdf-page-items';
 import { selectVideoFile, usesPortraitAvcCompatibility } from './video-rendition';
+import { NATIVE_RUNTIME_HEADER, parseNativeRuntime, pendingNativePowerOn } from './native-runtime';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import type { Request as ExpressReq, Response } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
@@ -1534,6 +1535,11 @@ export class ScreensController {
     // booleans are the whole policy and every write below is gated on one.
     const mayStampLiveness = credential.proved || !paired;
     const mayStampFirmware = credential.proved;
+    // Native-only power evidence. An anonymous status read cannot forge it
+    // or receive an operator command; a WebView heartbeat pays no extra query.
+    const nativeRuntime = paired && credential.proved
+      ? parseNativeRuntime(req?.headers?.[NATIVE_RUNTIME_HEADER])
+      : null;
 
     // Update lastPingAt — and if the kiosk passed its app version on
     // this heartbeat, capture it too. Operator (2026-04-27): "we
@@ -1551,6 +1557,10 @@ export class ScreensController {
     // the write site below, and only when `mayStampLiveness` holds. Seeding
     // them unconditionally is what made an anonymous poll a liveness writer.
     const data: any = {};
+    if (nativeRuntime) {
+      data.nativeRuntimeReport = nativeRuntime;
+      data.nativeRuntimeReportAt = new Date();
+    }
     const vn = mayStampFirmware ? (versionName || '').trim() : '';
     if (vn) {
       data.playerVersion = vn;
@@ -1647,7 +1657,7 @@ export class ScreensController {
     const otaCleared = data.forceApkUpdatePendingAt === null;
     // Every `mustWrite` input is already gated on `mayStampFirmware`, so
     // mustWrite ⇒ proved ⇒ mayStampLiveness. Stated rather than relied on.
-    const mustWrite = mayStampFirmware && (!!versionChanged || managerChanged || otaCleared);
+    const mustWrite = mayStampFirmware && (!!versionChanged || managerChanged || otaCleared || !!nativeRuntime);
     const pingDue = mayStampLiveness && !shouldSkipLastPingWrite(screen.id);
 
     let screenAfterUpdate: any = screen;
@@ -1756,6 +1766,15 @@ export class ScreensController {
       // Heartbeat-driven polling fallback for missed WS pushes.
       forceUpdatePending,
       forceUpdatePendingAt: forceAt ? new Date(forceAt).toISOString() : null,
+      ...(nativeRuntime ? {
+        nativeControl: {
+          schema: 1,
+          // Identity acknowledgement never clears the row: an in-flight
+          // old heartbeat cannot delete a newer operator power-on.
+          powerOnRequestedAt: nativeRuntime.powerOnAck === screen.nativePowerOnAt?.toISOString()
+            ? null : pendingNativePowerOn(screen.nativePowerOnAt),
+        },
+      } : {}),
     };
   }
 

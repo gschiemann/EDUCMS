@@ -620,6 +620,8 @@ export const DISPLAY_CONTROL_WS_TYPE = 'DISPLAY_CONTROL';
  * (CLAUDE.md manifest-cache rule 7).
  */
 export interface DisplayControlWsPayload {
+  /** POWER_ON identity shared with the authenticated native heartbeat backstop. */
+  nativePowerOnRequestedAt?: string;
   screenId: string;
   /** Idempotency key — the player MUST de-duplicate on this (replayed WS). */
   actionId: string;

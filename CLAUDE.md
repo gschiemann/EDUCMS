@@ -315,6 +315,12 @@ A reliable player continuously proves FOUR SEPARATE FACTS — never let one stan
    AND the manifest (`pendingRefreshAt` → `refreshRequestedAt`), acknowledged by VALUE identity
    (`refreshAckMs`), never by clock comparison — signage boxes run minutes of skew and a
    timestamp inequality reload-loops them.
+   Explicit POWER_ON also rides the authenticated native status heartbeat, because an asleep
+   WebView cannot consume Redis or a manifest. Its five-minute server TTL and persisted bounded
+   attempts use one identity shared with the live displayApply path. A later physical OFF
+   suppresses retries of that old identity. Native ACK requires observed Android interactive
+   AND Player foreground; it never stamps content render/cache proof. This requires the new
+   native implementation; Player 1.1.23 has no such unattended wake command transport.
 7. **Manifest schedule order is deterministic** (`effective-schedule.ts`: screen-pin > group,
    priority desc, newest startTime, stable id) and the player applies the first window-open
    replace winner — "any template wins" must never come back. Template apply signatures include

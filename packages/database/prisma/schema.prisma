@@ -1276,6 +1276,12 @@ model Screen {
   // exact state (AUTO_RECOVERY_PUSH_DEAD) where the old WS-only command
   // could never arrive. Cleared on the next successful render-proof.
   pendingRefreshAt                    DateTime?    @map("pending_refresh_at")
+  // Native recovery does not depend on the WebView running. An explicit
+  // POWER_ON is retained for five minutes and consumed once by identity.
+  // These reports prove native power/foreground state, never content health.
+  nativePowerOnAt                     DateTime?    @map("native_power_on_at")
+  nativeRuntimeReport                 Json?        @map("native_runtime_report")
+  nativeRuntimeReportAt               DateTime?    @map("native_runtime_report_at")
   // ── Frame-locked sync (2026-07-28) ───────────────────────────────────
   // syncOffsetMs — per-screen latency trim (±ms). Different display models
   // add different FIXED pipeline latencies (LED controller scaling, TV

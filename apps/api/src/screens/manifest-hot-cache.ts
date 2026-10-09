@@ -282,6 +282,9 @@ export const MANIFEST_MUTATING_ACTIONS = new Set([
  */
 export const SCREEN_TELEMETRY_ONLY_FIELDS = new Set([
     'lastPingAt',
+    'nativePowerOnAt',
+    'nativeRuntimeReport',
+    'nativeRuntimeReportAt',
     'status',
     'playerVersion',
     'playerVersionAt',
