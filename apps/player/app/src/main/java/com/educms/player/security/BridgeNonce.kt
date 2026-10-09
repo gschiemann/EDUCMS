@@ -307,6 +307,7 @@ class BridgeNonce(
             "openSettingsForManager",
             "setBootstrap",
             "setDeviceToken",
+            "sharedVideoPrepare", "sharedVideoCommit", "sharedVideoStop", "sharedVideoState",
             "setOrientation",
             "showUrlOverlay",
             "unpair",

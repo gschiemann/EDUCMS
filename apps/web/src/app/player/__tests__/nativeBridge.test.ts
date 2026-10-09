@@ -402,6 +402,18 @@ describe('nativeHas — SYNCHRONOUS capability probe', () => {
       expect(b.nativeHas('ctsSerialConnect2')).toBe(false);
     });
 
+    it('withholds every native media method until its APK floor or an explicit method manifest', () => {
+      w().EduCmsNativeChannel = new FakeChannel();
+      for (const version of ['1.1.23', '1.1.24']) {
+        setUa(`${POSTER_UA} EduCmsPlayer/${version}`);
+        const b = loadBridge();
+        for (const m of ['sharedVideoPrepare', 'sharedVideoCommit', 'sharedVideoStop', 'sharedVideoState']) expect(b.nativeHas(m)).toBe(false);
+      }
+      setUa(`${POSTER_UA} EduCmsPlayer/1.1.25`);
+      const b = loadBridge();
+      for (const m of ['sharedVideoPrepare', 'sharedVideoCommit', 'sharedVideoStop', 'sharedVideoState']) expect(b.nativeHas(m)).toBe(true);
+    });
+
     it('keeps them withheld below the floor, and with no stamp at all', () => {
       w().EduCmsNativeChannel = new FakeChannel();
       setUa(`${POSTER_UA} EduCmsPlayer/1.1.12 (Android 11)`);
@@ -640,7 +652,7 @@ describe('method tables stay in sync with the APK', () => {
     // (Website Tabs, next APK ≥ 1.1.19): `webTabsShow` lays the native site
     // WebView over the widget's measured bounds with a default-deny host
     // allowlist, `webTabsHide` takes it down and can sign the sites out.
-    expect(all).toHaveLength(32);
+    expect(all).toHaveLength(36);
   });
 
   /**

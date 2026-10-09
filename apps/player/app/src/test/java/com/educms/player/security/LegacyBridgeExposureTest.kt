@@ -189,7 +189,7 @@ class LegacyBridgeExposureTest {
         )
         assertTrue(
             "the main-frame document callback no longer drives delivery",
-            src.contains("onMainFrameDocument = { view, _ -> pumpBridgeNonceDelivery(view) }"),
+            Regex("""onMainFrameDocument = \{ view, _ ->[^}]*pumpBridgeNonceDelivery\(view\)""").containsMatchIn(src),
         )
         // Three delivery points across a navigation, not two. onPageCommitVisible
         // is the first moment evaluateJavascript provably targets the NEW document.
@@ -392,7 +392,7 @@ class LegacyBridgeExposureTest {
             "NativeBridgeChannel.METHODS changed size. SEC-002 must not add a method NAME — " +
                 "if this is a deliberate new method, update the web tables and the canary " +
                 "count in nativeBridge.test.ts in the SAME commit (CLAUDE.md player rule 9).",
-            32,
+            36, // Four optional native media names; see nativeBridge.ts >=1.1.25 floors.
             names.size,
         )
     }

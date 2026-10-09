@@ -269,6 +269,10 @@ class WebAppBridge(
      * device, so there is nothing to gate: the only way in is the
      * origin + main-frame-checked channel. See [BridgeNonce].
      */
+    private val sharedVideoPrepareImpl: (String) -> Unit = {},
+    private val sharedVideoCommitImpl: (String) -> Unit = {},
+    private val sharedVideoStopImpl: (String) -> Unit = {},
+    private val sharedVideoStateImpl: () -> String = { "{\"version\":1,\"state\":\"idle\"}" },
     private val bridgeNonce: BridgeNonce? = null,
 ) {
     /**
@@ -286,6 +290,31 @@ class WebAppBridge(
      * and it presents [channelNonce] after clearing the strictly stronger
      * origin + main-frame gates.
      */
+    // Native media is an optional, face-bound control capability. Never probe on old APKs.
+    @JavascriptInterface
+    fun sharedVideoPrepare(json: String) { sharedVideoPrepare("", json) }
+    @JavascriptInterface
+    fun sharedVideoPrepare(nonce: String, json: String) {
+        if (gate("sharedVideoPrepare", nonce)) sharedVideoPrepareImpl(json)
+    }
+    @JavascriptInterface
+    fun sharedVideoCommit(session: String) { sharedVideoCommit("", session) }
+    @JavascriptInterface
+    fun sharedVideoCommit(nonce: String, session: String) {
+        if (gate("sharedVideoCommit", nonce)) sharedVideoCommitImpl(session)
+    }
+    @JavascriptInterface
+    fun sharedVideoStop(session: String) { sharedVideoStop("", session) }
+    @JavascriptInterface
+    fun sharedVideoStop(nonce: String, session: String) {
+        if (gate("sharedVideoStop", nonce)) sharedVideoStopImpl(session)
+    }
+    @JavascriptInterface
+    fun sharedVideoState(): String = sharedVideoState("")
+    @JavascriptInterface
+    fun sharedVideoState(nonce: String): String =
+        if (gate("sharedVideoState", nonce)) sharedVideoStateImpl() else "{\"version\":1,\"state\":\"failed\",\"reason\":\"bridge-refused\"}"
+
     private fun gate(method: String, nonce: String?): Boolean =
         bridgeNonce?.allow(method, nonce) ?: true
 

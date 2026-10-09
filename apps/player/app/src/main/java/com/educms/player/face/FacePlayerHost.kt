@@ -186,8 +186,12 @@ class FacePlayerHost(
     // correct call on the Android 7.1 board this exists for. Suppressed at the
     // function, not the statement: a Kotlin annotation cannot sit on an
     // assignment inside an `apply` block.
+    private var sharedVideoHost: com.educms.player.media.SharedVideoHost? = null
+
     @Suppress("DEPRECATION")
     private fun configureWebView(wv: WebView) {
+        val sharedMedia = com.educms.player.media.SharedVideoHost.attach(faceIndex, wv)
+        sharedVideoHost = sharedMedia
         // Deliberately the same settings the primary uses. A face is a
         // screen; it renders the same bundle and must not quietly differ.
         wv.settings.apply {
@@ -208,7 +212,7 @@ class FacePlayerHost(
 
         val faceNonce = BridgeNonce()
         nonce = faceNonce
-        val faceBridge = buildBridge(faceNonce)
+        val faceBridge = buildBridge(faceNonce, sharedMedia)
         bridge = faceBridge
 
         // ⚠️ PER-WEBVIEW ATTACH. `attach` and `attachLegacyCompatShim` both
@@ -272,6 +276,7 @@ class FacePlayerHost(
                 // on the strength of the back having painted.
             },
             onMainFrameDocument = { view, _ ->
+                sharedMedia.invalidate()
                 // Legacy transport only: re-deliver THIS face's nonce into
                 // THIS face's top frame. The primary's nonce is a different
                 // object and is never touched.
@@ -337,7 +342,11 @@ class FacePlayerHost(
      * Read the REFUSALS as carefully as the wiring: each one is a box-level
      * concern a face must not be able to drive.
      */
-    private fun buildBridge(faceNonce: BridgeNonce): WebAppBridge = WebAppBridge(
+    private fun buildBridge(faceNonce: BridgeNonce, sharedMedia: com.educms.player.media.SharedVideoHost): WebAppBridge = WebAppBridge(
+        sharedVideoPrepareImpl = sharedMedia::prepare,
+        sharedVideoCommitImpl = sharedMedia::commit,
+        sharedVideoStopImpl = sharedMedia::stop,
+        sharedVideoStateImpl = sharedMedia::stateJson,
         // A face may not unpair the BOX. Unpairing a single side is an
         // operator action from the dashboard against that side's Screen row.
         onUnpair = {
@@ -622,6 +631,8 @@ class FacePlayerHost(
     fun destroy() {
         if (destroyed) return
         destroyed = true
+        sharedVideoHost?.detach()
+        sharedVideoHost = null
         rendererReload?.let { watchdogHandler.removeCallbacks(it) }
         rendererReload = null
         watchdogHandler.removeCallbacks(watchdogTicker)

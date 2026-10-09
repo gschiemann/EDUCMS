@@ -2455,8 +2455,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private var sharedVideoHost: com.educms.player.media.SharedVideoHost? = null
+
     @SuppressLint("SetJavaScriptEnabled")
     private fun configureWebView(wv: WebView) {
+        val sharedMedia = com.educms.player.media.SharedVideoHost.attach(0, wv)
+        sharedVideoHost = sharedMedia
         wv.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
@@ -2487,6 +2491,10 @@ class MainActivity : ComponentActivity() {
         val nonce = com.educms.player.security.BridgeNonce()
         bridgeNonce = nonce
         val webAppBridge = WebAppBridge(
+                sharedVideoPrepareImpl = sharedMedia::prepare,
+                sharedVideoCommitImpl = sharedMedia::commit,
+                sharedVideoStopImpl = sharedMedia::stop,
+                sharedVideoStateImpl = sharedMedia::stateJson,
                 // AND-004 REVERTED (2026-08-03) — this call site briefly
                 // ran through an on-device operator-PIN gate. It was the
                 // WRONG LAYER and is now removed:
@@ -3162,7 +3170,7 @@ class MainActivity : ComponentActivity() {
             // injection costs the MAIN frame its control plane rather than
             // opening the surface to everyone, so this is a bounded retry
             // rather than a single shot. See [bridgeNonceRetriesLeft].
-            onMainFrameDocument = { view, _ -> pumpBridgeNonceDelivery(view) },
+            onMainFrameDocument = { view, _ -> sharedMedia.invalidate(); pumpBridgeNonceDelivery(view) },
             onPageFinishedOk = {
                 if (wv !== webView) return@SafePlayerWebViewClient
                 lastSuccessfulLoadAtMs = android.os.SystemClock.elapsedRealtime()
@@ -4121,6 +4129,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onPause() {
+        com.educms.player.media.SharedVideoHost.suspendAll()
         isInForeground = false
         isResumedForLockTask = false
         // 1.1.23 — pausing WITH the setup card on glass means a person just
@@ -4149,6 +4158,8 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        sharedVideoHost?.detach()
+        sharedVideoHost = null
         liveInstances.decrementAndGet()
         runCatching { com.educms.player.standby.UserStandby.clearListener(standbyListener) }
         runCatching { com.educms.player.alertwatch.NativeAlertWatch.clearPageHost(alertWatchHost) }

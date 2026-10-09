@@ -157,6 +157,7 @@ object NativeBridgeChannel {
         // JWT. Fire-and-forget and WRITE-ONLY; there is deliberately no
         // getter on either surface. See WebAppBridge.onSetDeviceToken.
         "setDeviceToken",
+        "sharedVideoPrepare", "sharedVideoCommit", "sharedVideoStop", "sharedVideoState",
         "showUrlOverlay",
         "hideUrlOverlay",
         "openSettingsForManager",
@@ -649,6 +650,10 @@ object NativeBridgeChannel {
             "heartbeatV2" -> { bridge.heartbeatV2(strAt(args, 0)); null }
             "setOrientation" -> { bridge.setOrientation(bridge.channelNonce(), strAt(args, 0)); null }
             "setBootstrap" -> { bridge.setBootstrap(bridge.channelNonce(), strAt(args, 0), strAt(args, 1)); null }
+            "sharedVideoPrepare" -> { bridge.sharedVideoPrepare(bridge.channelNonce(), strAt(args, 0)); null }
+            "sharedVideoCommit" -> { bridge.sharedVideoCommit(bridge.channelNonce(), strAt(args, 0)); null }
+            "sharedVideoStop" -> { bridge.sharedVideoStop(bridge.channelNonce(), strAt(args, 0)); null }
+            "sharedVideoState" -> bridge.sharedVideoState(bridge.channelNonce())
             "setDeviceToken" -> { bridge.setDeviceToken(bridge.channelNonce(), strAt(args, 0)); null }
             "showUrlOverlay" -> { bridge.showUrlOverlay(bridge.channelNonce(), strAt(args, 0)); null }
             "hideUrlOverlay" -> { bridge.hideUrlOverlay(); null }

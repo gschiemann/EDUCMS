@@ -670,6 +670,8 @@ object DisplayEmergency {
      *        needs to see.
      */
     fun enforceNow(ctx: Context, quiet: Boolean = false) {
+        // Normal video yields; this observer never acquires/releases a hold.
+        runCatching { com.educms.player.media.SharedVideoHost.suppressForEmergency() }
         val app = ctx.applicationContext
         // ⚠️ USER STANDBY (2026-10-03) — AN ALERT OUTRANKS THE REMOTE. A person
         // may have powered this panel off; the alert ends that standby FIRST,

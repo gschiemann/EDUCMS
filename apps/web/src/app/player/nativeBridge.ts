@@ -77,6 +77,7 @@
 
 /** Methods that return a value — use `nativeCall` (Promise). */
 export const NATIVE_VALUE_METHODS = [
+  'sharedVideoState',
   'deviceInfo',
   'checkForUpdates',
   // 2026-08-25 (v1.1.5) — the PANEL BUTTON's own update path. It stamps
@@ -132,6 +133,7 @@ export const NATIVE_VALUE_METHODS = [
 
 /** Methods with no return value — use `nativeFire` (sync, void). */
 export const NATIVE_VOID_METHODS = [
+  'sharedVideoPrepare', 'sharedVideoCommit', 'sharedVideoStop',
   'exitToDeviceHome',
   'unpair',
   'reload',
@@ -283,7 +285,8 @@ const KNOWN_METHODS: readonly string[] = [
     m !== 'registerAttempt' &&
     m !== 'registerResult' &&
     m !== 'webTabsShow' &&
-    m !== 'webTabsHide',
+    m !== 'webTabsHide' &&
+    m !== 'sharedVideoPrepare' && m !== 'sharedVideoCommit' && m !== 'sharedVideoStop' && m !== 'sharedVideoState',
 );
 
 /**
@@ -306,6 +309,9 @@ const KNOWN_METHODS: readonly string[] = [
  * an APK older than the stamp) keeps the old conservative answer.
  */
 const METHOD_FLOORS: Readonly<Record<string, readonly [number, number, number]>> = {
+  // Optional native media ships only in the next APK; never infer from a working channel.
+  sharedVideoPrepare: [1, 1, 25], sharedVideoCommit: [1, 1, 25],
+  sharedVideoStop: [1, 1, 25], sharedVideoState: [1, 1, 25],
   heartbeatV2: [1, 1, 7],
   bootProof: [1, 1, 13],
   registerAttempt: [1, 1, 13],
@@ -409,6 +415,7 @@ function getLegacy(): any | null {
  * `docs/research/2026-09-02-efficiency-audit/1F-bridge-nonce-design.md` §2.1).
  */
 const LEGACY_NONCE_GATED_METHODS: readonly string[] = [
+  'sharedVideoPrepare', 'sharedVideoCommit', 'sharedVideoStop', 'sharedVideoState',
   'checkForUpdates',
   'checkForUpdatesUserInitiated',
   'exitToDeviceHome',
