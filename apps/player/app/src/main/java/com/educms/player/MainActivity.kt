@@ -475,7 +475,7 @@ class MainActivity : ComponentActivity() {
         override fun run() {
             val nowMs = android.os.SystemClock.elapsedRealtime()
             val facts = com.educms.player.boot.BootDiagnostics.tracker.facts()
-            if (facts.satisfied) {
+            if (facts.satisfied || facts.contentStarted) {
                 // Registration succeeded — nothing left to watch until the
                 // next navigation re-arms us via loadPlayer().
                 return
@@ -2901,6 +2901,9 @@ class MainActivity : ComponentActivity() {
                 // handled; all that is left is to feed the policy. `null`
                 // means the page didn't say — recorded as unknown, which
                 // neither refreshes nor disarms. See ContentWatchdogPolicy.
+                onWebBootContent = { hash, frames ->
+                    if (wv === webView) com.educms.player.boot.BootDiagnostics.onContentPresented(hash, frames)
+                },
                 onWebHeartbeatV2 = { syncOk ->
                     if (wv !== webView) return@WebAppBridge
                     val now = android.os.SystemClock.elapsedRealtime()

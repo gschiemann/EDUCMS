@@ -20,6 +20,42 @@ class BootProgressTest {
     private fun tracker(loadAt: Long = 0L): BootProgressTracker =
         BootProgressTracker().apply { onLoadStarted(loadAt) }
 
+    @Test
+    fun `offline content stops boot card without fabricating registration success`() {
+        val t = tracker(100L)
+        t.onClientBooted(200L)
+        t.onRegisterAttempt(300L)
+        t.onRegisterResult(400L, 0L, false, RegisterFailureClass.NETWORK, null, "offline")
+        assertFalse(t.onContentPresented("pl:last-good", 100L))
+        assertTrue(t.onContentPresented("pl:last-good", 150L))
+        assertTrue(t.facts().contentStarted)
+        assertFalse(t.facts().satisfied)
+        assertEquals(0L, t.lastRegisterOkWallMs)
+        assertNull(t.evaluate(180_000L))
+    }
+
+    @Test
+    fun `idle missing stalled and regressed counters do not certify content`() {
+        val t = tracker(100L)
+        t.onClientBooted(200L)
+        assertFalse(t.onContentPresented("idle:connecting", 100L))
+        assertFalse(t.onContentPresented("stall|pl:video", 100L))
+        assertFalse(t.onContentPresented("pl:video", null))
+        assertFalse(t.onContentPresented("pl:video", 0L))
+        assertFalse(t.onContentPresented("pl:video", 100L))
+        assertFalse(t.onContentPresented("pl:video", 99L))
+        assertFalse(t.onContentPresented("pl:video", 100L))
+        assertFalse(t.facts().contentStarted)
+        t.onLoadStarted(1000L)
+        assertFalse(t.onContentPresented("pl:video", 200L))
+        t.onClientBooted(1100L)
+        assertFalse(t.onContentPresented("pl:video", 200L))
+        assertTrue(t.onContentPresented("pl:video", 201L))
+        t.onRendererReplaced()
+        assertFalse(t.facts().contentStarted)
+        assertFalse(t.onContentPresented("pl:video", 202L))
+    }
+
     // ─── the deadlines themselves ────────────────────────────────────
 
     @Test

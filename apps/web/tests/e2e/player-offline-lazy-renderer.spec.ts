@@ -1,4 +1,7 @@
 import { test, expect, type Page, type Route } from '@playwright/test';
+import fs from 'node:fs';
+import path from 'node:path';
+import { createHash } from 'node:crypto';
 
 /**
  * COLD OFFLINE BOOT AFTER THE RENDERER SPLIT (P0-3, 2026-09-02).
@@ -25,17 +28,9 @@ import { test, expect, type Page, type Route } from '@playwright/test';
  *   → the document boots from cache AND the renderer chunk is still served,
  *     proven by fetching it from the offline page.
  *
- * ⚠ HONEST SCOPE. This spec deliberately does NOT assert that the TEMPLATE
- * re-renders on a cold offline boot, because today it cannot — and that is a
- * PRE-EXISTING gap this wave did not create and did not fix: the web player
- * has no persisted `screenId` (it is only ever set from
- * `POST /screens/register` / `/screens/status` responses — page.tsx), so
- * with no network there is no screen id, so `fetchContent` never runs, so
- * the `readCachedManifest()` fallback inside it is never reached. The
- * service worker's shell tier lets the page EXECUTE offline; making it also
- * SHOW content offline needs a persisted screen id and is its own change.
- * Asserting it here would either fail forever or quietly be written to pass
- * against a mock that is not offline at all.
+ * The cold boot now also verifies the saved template is visible while all
+ * registration/manifest requests fail. Previously this test explicitly
+ * documented that no screen identity was restored, so content never started.
  *
  * Harness rules (per CLAUDE.md player rule 14, and copied from
  * player-canvas-geometry.spec.ts): never replace `window.WebSocket`
@@ -43,10 +38,10 @@ import { test, expect, type Page, type Route } from '@playwright/test';
  * and a dead stub stalls the whole page boot silently.
  */
 
-const FAKE_SCREEN_ID = 'test-screen-000000offline';
-const FAKE_TENANT_ID = 'test-tenant-000000offline';
+const FAKE_SCREEN_ID = '11111111-1111-4111-8111-111111111111';
+const FAKE_TENANT_ID = '22222222-2222-4222-8222-222222222222';
 const FAKE_FINGERPRINT = 'test-fp-offline-lazy-renderer';
-const BOOT_TOKEN = 'boot.stored.token-not-real';
+const BOOT_TOKEN = 'header.' + Buffer.from(JSON.stringify({ kind: 'device', sub: FAKE_SCREEN_ID, tenantId: FAKE_TENANT_ID, exp: 1 })).toString('base64url') + '.signature';
 /** Rendered by the TEXT widget — visible ONLY if the lazy renderer ran. */
 const PROOF_TEXT = 'OFFLINE RENDER PROOF';
 /**
@@ -357,7 +352,61 @@ test.describe('lazy renderer survives a cold offline boot', () => {
       await expect(page.locator('.kiosk-brand-name, [data-edu-player-root]').first())
         .toBeAttached({ timeout: 90_000 });
       await expect(page.getByText('Waiting for network')).toHaveCount(0);
+      await expect(page.getByText(PROOF_TEXT).first()).toBeVisible({ timeout: 15_000 });
+      await page.screenshot({ path: '/tmp/player-offline-template-recovered.png' });
     }
   });
 
+});
+
+test('cached video loops after a cold boot without internet', async ({ page, context, browserName }) => {
+  test.skip(browserName !== 'chromium', 'WebKit offline SW interception is unavailable in this harness');
+  test.setTimeout(180_000);
+  const clip = fs.readFileSync(path.join(__dirname, 'fixtures', 'loop-clip.mp4'));
+  const videoUrl = 'https://api.invalid/assets/loop-clip.mp4';
+  let downloads = 0;
+  await installWsStub(page);
+  await installMocks(page);
+  await page.route('**/api/v1/**', (route) => route.request().url().includes('/telemetry') ? ok(route, { ok: true }) : route.fallback());
+  await page.route(`**/api/v1/screens/${FAKE_SCREEN_ID}/manifest*`, (route) => ok(route, {
+    screenId: FAKE_SCREEN_ID, tenantId: FAKE_TENANT_ID, screenName: 'Offline Video', isEmergency: false,
+    playlists: [{ id: 'offline-video', name: 'Saved Video', items: [{
+      item_id: 'offline-item', asset_id: 'offline-asset', url: videoUrl,
+      mime_type: 'video/mp4', asset_size: clip.length,
+      asset_hash: createHash('sha256').update(clip).digest('hex'),
+      sequence: 0, duration_ms: 2500, muted: true, transition_type: 'NONE',
+    }] }],
+  }));
+  await context.route('**/assets/loop-clip.mp4', (route) => {
+    downloads++;
+    const headers = { 'Access-Control-Allow-Origin': '*', 'Accept-Ranges': 'bytes', 'Content-Type': 'video/mp4' };
+    const range = /^bytes=(\d*)-(\d*)$/.exec(route.request().headers()['range'] || '');
+    if (!range) return route.fulfill({ status: 200, headers: { ...headers, 'Content-Length': String(clip.length) }, body: clip });
+    const start = Number(range[1] || 0);
+    const end = range[2] ? Math.min(Number(range[2]), clip.length - 1) : clip.length - 1;
+    return route.fulfill({ status: 206, headers: { ...headers, 'Content-Range': `bytes ${start}-${end}/${clip.length}`, 'Content-Length': String(end - start + 1) }, body: clip.subarray(start, end + 1) });
+  });
+  await page.goto(`/player?fp=${FAKE_FINGERPRINT}&client=android`);
+  const frames = () => page.evaluate(() => Array.from(document.querySelectorAll('video')).reduce((total, v) => total + (v.getVideoPlaybackQuality?.().totalVideoFrames || 0), 0));
+  await expect.poll(frames, { timeout: 30_000 }).toBeGreaterThan(10);
+  await expect.poll(() => page.evaluate(() => !!navigator.serviceWorker.controller), { timeout: 30_000 }).toBe(true);
+  expect(await refreshShell(page)).toBe(true);
+  await expect.poll(() => page.evaluate(async (url) => {
+    const response = await caches.match(url);
+    return response ? (await response.arrayBuffer()).byteLength : 0;
+  }, videoUrl), { timeout: 30_000 }).toBe(clip.length);
+  await expect.poll(() => page.evaluate((id) => !!localStorage.getItem('edu_manifest_cache_v2:' + id + ':playing'), FAKE_SCREEN_ID)).toBe(true);
+  await context.unroute('**/assets/loop-clip.mp4');
+  await page.unroute('**/api/v1/screens/register');
+  await page.unroute(`**/api/v1/screens/${FAKE_SCREEN_ID}/manifest*`);
+  await page.route('**/api/v1/**', (route) => route.abort());
+  const before = downloads;
+  await context.setOffline(true);
+  await page.reload();
+  await expect.poll(frames, { timeout: 15_000 }).toBeGreaterThan(10);
+  const first = await frames();
+  await expect.poll(frames, { timeout: 15_000 }).toBeGreaterThan(first + 90);
+  expect(downloads).toBe(before);
+  await expect(page.getByText('Content unavailable', { exact: false })).toHaveCount(0);
+  await page.screenshot({ path: '/tmp/player-offline-video-recovered.png' });
 });

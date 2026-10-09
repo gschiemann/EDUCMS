@@ -169,6 +169,7 @@ import {
   type PlaylistCacheAsset,
 } from './offline-cache';
 import { PlaylistCacheRetryPolicy } from './playlistCacheRetryPolicy';
+import { clearOfflineManifests, readOfflineManifest, saveManifest, type SavedManifest } from './offlineBoot';
 // Readiness-gated playback (2026-09-26): a large file is never mounted or
 // streamed before its native bytes are on disk — download the whole file,
 // THEN play it. Pure module; the shapes are tested in mediaReadiness.test.ts.
@@ -871,15 +872,16 @@ function maybeExecuteDurableRefresh(manifest: any): void {
   }, 250);
 }
 
-/** Cache the last good manifest payload so the player can survive a cold reboot offline. */
-function cacheManifest(m: any) {
-  try { localStorage.setItem(LS_MANIFEST_CACHE, JSON.stringify({ at: Date.now(), m })); } catch {}
-}
-function readCachedManifest(): { at: number; m: any } | null {
+/** Save received manifests separately from content that actually became ready. */
+function cacheManifest(m: any, screenId: string, playable = false) {
   try {
-    const raw = localStorage.getItem(LS_MANIFEST_CACHE);
-    return raw ? JSON.parse(raw) : null;
-  } catch { return null; }
+    saveManifest(localStorage, m, screenId, getDeviceFingerprint(), playable);
+    if (!playable) localStorage.setItem(LS_MANIFEST_CACHE, JSON.stringify({ at: Date.now(), m }));
+  } catch {}
+}
+function readCachedManifest(): SavedManifest | null {
+  try { return readOfflineManifest(localStorage, getDeviceToken(), getDeviceFingerprint()); }
+  catch { return null; }
 }
 
 /**
@@ -2928,6 +2930,16 @@ export default function PlayerPageWrapper() {
 }
 
 
+function bootContentSample(state: { rendering: boolean; sig: string; video?: boolean }, documentFrames: number) {
+  if (!state.rendering || isActiveMediaStalled()) return undefined;
+  // The quality tracker owns only the active video; a hidden standby does
+  // not supply evidence. Static content retains compositor paint evidence.
+  const decoded = videoQualityTracker.presentedFrames();
+  if (state.video && decoded === null) return undefined;
+  const frames = decoded ?? documentFrames;
+  return frames > 0 ? { hash: state.sig, frames } : undefined;
+}
+
 function PlayerPage() {
   const [phase, setPhase] = useState<Phase>('registering');
   // 2026-05-13 — ref-mirror of phase so callbacks captured by long-
@@ -2936,6 +2948,8 @@ function PlayerPage() {
   // CURRENT phase without restarting the effect on every transition.
   // Bound below in a tiny useEffect that just syncs the ref.
   const phaseRef = useRef<Phase>('registering');
+  const offlineBootRef = useRef<SavedManifest | null>(null);
+  const playbackManifestRef = useRef<{ m: any; fromCache: boolean } | null>(null);
   useEffect(() => { phaseRef.current = phase; }, [phase]);
 
   // A deployment is not an instruction to interrupt live content. Detect
@@ -3049,7 +3063,9 @@ function PlayerPage() {
         telemetryLastPostAtRef.current !== null &&
         Date.now() - telemetryLastPostAtRef.current < 3 * 60_000;
       if (pastPairing && nativeHas('heartbeatV2')) {
-        nativeFire('heartbeatV2', JSON.stringify({ syncOk, telemetryOk }));
+        nativeFire('heartbeatV2', JSON.stringify({ syncOk, telemetryOk,
+          bootContent: bootContentSample(renderStateRef.current, renderFramesRef.current),
+        }));
       } else {
         // No-op in the browser player — nativeFire returns false.
         nativeFire('heartbeat');
@@ -3896,6 +3912,21 @@ function PlayerPage() {
     },
     [],
   );
+
+  // Local identity/content replay precedes online registration. A known
+  // device can start its saved playlist while the ordinary authenticated
+  // reconcile and credential renewal recover in the background.
+  useEffect(() => {
+    if (isPreviewMode()) return;
+    const saved = readCachedManifest();
+    if (!saved) return;
+    offlineBootRef.current = saved;
+    setScreenId(saved.screenId);
+    setScreenName(saved.m.screenName || '');
+    setPhase('connecting');
+    reportRegisterAttempt();
+    void attemptCredentialRecovery('cached-boot');
+  }, [attemptCredentialRecovery]);
 
   /**
    * Proactive renewal — the missing half of the credential lifecycle. A
@@ -4820,6 +4851,7 @@ function PlayerPage() {
     items: any[];
     isEmergency: boolean;
     readiness: ReadinessItem[];
+    manifest: { m: any; fromCache: boolean };
   };
   const pendingPlaylistCommitRef = useRef<PendingPlaylistCommit | null>(null);
 
@@ -5280,7 +5312,7 @@ function PlayerPage() {
   // Mirror the live render state into refs so the rAF loop + the 30s POST
   // timer read CURRENT values without restarting their effects on every
   // content/phase change (which would reset the frame counter mid-stream).
-  const renderStateRef = useRef<{ rendering: boolean; sig: string; kind: string }>({
+  const renderStateRef = useRef<{ rendering: boolean; sig: string; kind: string; video?: boolean }>({
     rendering: false,
     sig: '',
     kind: 'idle',
@@ -5354,8 +5386,34 @@ function PlayerPage() {
       kind = 'paused';
       sig = `paused:${currentPlaylistSigRef.current || (playlist as any)?.id || 'unknown'}`;
     }
-    renderStateRef.current = { rendering, sig: sig.slice(0, 128), kind };
-  }, [phase, playlist, playbackStopped, activeEmergency, allAssetsFailed, normalFilesSetAside, allItemsUnplayable, mediaReady, activeSlot.waitingForDownload]);
+    const video = !emergencyOn && !(playlist as any)?.template && displayIndex !== null &&
+      String(sorted[displayIndex]?.asset?.mimeType || '').startsWith('video/');
+    renderStateRef.current = { rendering, sig: sig.slice(0, 128), kind, video };
+  }, [phase, playlist, playbackStopped, activeEmergency, allAssetsFailed, normalFilesSetAside, allItemsUnplayable, mediaReady, activeSlot.waitingForDownload, displayIndex, sorted]);
+  // An assignment still downloading must not replace the reboot fallback.
+  // Persist the selected payload only once its media is ready on this page.
+  useEffect(() => {
+    const selected = playbackManifestRef.current;
+    if (!selected || selected.fromCache || !screenId || !renderStateRef.current.rendering) return;
+    cacheManifest(selected.m, screenId, true);
+  }, [screenId, phase, playlist, mediaReady, playbackStopped, activeEmergency]);
+
+  // A short bounded sample burst covers media decoding after readiness.
+  // Two advancing samples retire boot diagnostics before offline retries
+  // can raise their card; no network-success stamp is made.
+  useEffect(() => {
+    if (isPreviewMode() || !nativeHas('heartbeatV2')) return;
+    const timers = [250, 2250, 5250, 10250].map(delay => setTimeout(() => {
+      const state = renderStateRef.current;
+      const bootContent = bootContentSample(state, renderFramesRef.current);
+      if (!bootContent) return;
+      nativeFire('heartbeatV2', JSON.stringify({ syncOk: true, telemetryOk: false,
+        bootContent,
+      }));
+    }, delay));
+    return () => timers.forEach(clearTimeout);
+  }, [phase, playlist, mediaReady, playbackStopped, activeEmergency]);
+
   // Support/test observability, like __eduSyncState and __eduLoopBoundary: what
   // this page would prove RIGHT NOW. An idle proof is only posted every five
   // minutes (IDLE_PROOF_INTERVAL_MS), so nothing else can see it promptly.
@@ -5760,7 +5818,7 @@ function PlayerPage() {
   // player is constantly checking in to get reconnected and not
   // waiting for me".
   useEffect(() => {
-    if (phase !== 'registering') return;
+    if (phase !== 'registering' || offlineBootRef.current) return;
     // Clear any pending retry — we're actively trying right now.
     if (registerRetryTimerRef.current) {
       clearTimeout(registerRetryTimerRef.current);
@@ -6095,6 +6153,7 @@ function PlayerPage() {
   // deferred playlist's first file lands. State setters and refs only, so the
   // identity is stable for the life of the page.
   const commitMediaPlaylist = useCallback((commit: PendingPlaylistCommit) => {
+    playbackManifestRef.current = commit.manifest;
     // Fix #2 (2026-05-04) — clamp instead of reset when the playlist size
     // didn't shrink past the current index. If the operator ADDED items at
     // the end (length grew), we can keep going from where we are. If they
@@ -6747,6 +6806,7 @@ function PlayerPage() {
           const tplSig =
             'tpl:' + (templateWinner.template?.id || templateWinner.template?.name || '')
             + (templateWinner.contentRev ? `:${templateWinner.contentRev}` : '');
+          playbackManifestRef.current = { m: manifest, fromCache };
           if (tplSig !== currentPlaylistSigRef.current) {
             currentPlaylistSigRef.current = tplSig;
             setPlaylist({ name: templateWinner.template.name || 'Template Content', template: templateWinner.template, items: [] });
@@ -6854,6 +6914,8 @@ function PlayerPage() {
             .join('||');
           const isEmergencyContent = manifest.isEmergency === true;
           if (newSig === currentPlaylistSigRef.current) {
+            playbackManifestRef.current = { m: manifest, fromCache };
+            if (!fromCache && renderStateRef.current.rendering) cacheManifest(manifest, screenId, true);
             // Same content, but the emergency FLAG may have flipped (e.g. a
             // tenant whose everyday playlist doubles as its panic playlist).
             contentIsEmergencyRef.current = isEmergencyContent;
@@ -6867,6 +6929,7 @@ function PlayerPage() {
           }
           const commit: PendingPlaylistCommit = {
             sig: newSig,
+            manifest: { m: manifest, fromCache },
             name: manifest.playlists.length > 1 ? 'Scheduled Content (Combined)' : manifest.playlists[0].name || 'Scheduled Content',
             items: combinedItems,
             isEmergency: isEmergencyContent,
@@ -6921,6 +6984,7 @@ function PlayerPage() {
           setPlaylist(null);
           setCurrentIndex(0);
           setManifestPlaylists([]);
+          if (!fromCache) cacheManifest(manifest, screenId, true);
           return true;
         }
         // 2026-05-13 — REQUIRE_EMPTY_STREAK gate. See
@@ -6946,6 +7010,7 @@ function PlayerPage() {
         setPlaylist(null);
         setCurrentIndex(0);
       }
+      if (!fromCache && currentPlaylistSigRef.current === '') cacheManifest(manifest, screenId, true);
       // Clear the operator-facing summary too — "no playlist loaded"
       // is what the Stopped splash should render.
       setManifestPlaylists([]);
@@ -6953,6 +7018,12 @@ function PlayerPage() {
     };
 
     try {
+      const saved = offlineBootRef.current;
+      if (saved?.screenId === screenId) {
+        offlineBootRef.current = null;
+        applyManifest(saved.m, true);
+        setPhase('playing');
+      }
       const access_token = await resolveAuthToken();
 
       // LIFE-SAFETY (2026-07-31 stuck-lockdown incident): while an emergency
@@ -7037,6 +7108,7 @@ function PlayerPage() {
             setPlaylist(null);
             setCurrentIndex(0);
             setManifestPlaylists([]);
+            if (lastAppliedManifestRef.current) cacheManifest(lastAppliedManifestRef.current, screenId, true);
           } else {
             console.log(
               `[Player] empty manifest re-confirmed by 304 (streak ${emptyManifestStreakRef.current}/3)`,
@@ -7088,7 +7160,7 @@ function PlayerPage() {
         // Replace-or-clear, never keep: a 200 without an ETag (the emergency
         // branch) must drop the stale one or the next normal poll could 304.
         manifestEtagRef.current = manifestRes.headers.get('etag');
-        cacheManifest(manifest); // survive cold reboot
+        cacheManifest(manifest, screenId); // received; playable snapshot is separate
         fetchFailCountRef.current = 0; // reset on success
         fetchFailStreakStartedAtRef.current = null;
         lastManifestOkAtRef.current = Date.now();
@@ -7153,7 +7225,7 @@ function PlayerPage() {
 
       // Try cached manifest so we keep playing during outages.
       const cached = readCachedManifest();
-      if (cached?.m) {
+      if (cached?.m && cached.screenId === screenId) {
         const ageMin = Math.round((Date.now() - cached.at) / 60000);
         console.warn(`[Player] Falling back to cached manifest (${ageMin}m old)`);
         // fromCache=true — this payload came off disk, so it may not release
@@ -8623,7 +8695,7 @@ function PlayerPage() {
               }
               deviceTokenSession.invalidate();
               try { localStorage.removeItem('edu_device_fp'); } catch {}
-              try { localStorage.removeItem('edu_manifest_cache_v1'); } catch {}
+              try { clearOfflineManifests(localStorage); } catch {}
               try { localStorage.removeItem('edu_emergency_cache_v1'); } catch {}
               // Ask the SW to clear both cache tiers so disk is clean for the
               // new tenant.
@@ -10345,7 +10417,7 @@ function PlayerPage() {
     // 2. Local state + caches.
     try { localStorage.removeItem('edu_device_token'); } catch { /* ignore */ }
     try { localStorage.removeItem('edu_device_fp'); } catch { /* ignore */ }
-    try { localStorage.removeItem('edu_manifest_cache_v1'); } catch { /* ignore */ }
+    try { clearOfflineManifests(localStorage); } catch { /* ignore */ }
     try { localStorage.removeItem('edu_emergency_cache_v1'); } catch { /* ignore */ }
     try {
       getServiceWorkerContainer()?.controller?.postMessage({ type: 'CLEAR_CACHE', tier: 'all' });

@@ -145,6 +145,14 @@ export class VideoQualityTracker {
     this.clock = clock;
   }
 
+  /** Local boot evidence reads the active decoder, without consuming a
+   * telemetry sample or treating document paints as video output.
+   */
+  presentedFrames(): number | null {
+    const counters = readVideoQuality(this.active?.el);
+    return counters ? counters.totalFrames - counters.droppedFrames : null;
+  }
+
   /** A slide became the one on glass. Records the base reading; replaces any earlier element. */
   attach(el: VideoQualitySource, src: string, nowMs: number): void {
     if (this.active) {
