@@ -40,6 +40,10 @@ regexes = [
   # release report in commit 710a8f8a; exclude that exact public value from
   # history scans, without exempting the report or other 64-hex literals.
   '''0486fa3e2d087a46773afff56dcac1cf753d13169629d3042fee03aa206b72a6''',
+  # Private 1.1.25-field.1 APK digest, verified from signed CI run 37979383254
+  # and private storage read-back. Artifact integrity metadata, not a key.
+  # Exclude only this exact verified value; all other literals remain scanned.
+  '''b4d83b39a8732b8a8a513a7016091ea7ad6caec4f033a28f5bf8f73cc23b4dcd''',
 ]
 # 2026-08-03 — APK provenance digests are 64-hex and therefore INDISTINGUISHABLE
 # from a 256-bit signing key by regex or entropy (this rule fired on the real
