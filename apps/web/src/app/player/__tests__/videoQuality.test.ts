@@ -336,3 +336,19 @@ describe('VideoQualityTracker — rebuffer pauses', () => {
     expect(addEventListener).not.toHaveBeenCalled();
   });
 });
+
+
+test('local boot reads active decoder output without consuming telemetry', () => {
+  const tracker = new VideoQualityTracker();
+  expect(tracker.presentedFrames()).toBeNull();
+  const { el, play } = fakeVideo();
+  tracker.attach(el, 'video.mp4', 1000);
+  play(200, 10);
+  expect(tracker.presentedFrames()).toBe(190);
+  expect(tracker.presentedFrames()).toBe(190);
+  const report = tracker.take(2000);
+  expect(report?.totalFrames).toBe(200);
+  expect(report?.droppedFrames).toBe(10);
+  tracker.detach(el, 2100);
+  expect(tracker.presentedFrames()).toBeNull();
+});

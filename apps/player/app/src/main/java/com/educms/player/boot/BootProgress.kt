@@ -134,6 +134,7 @@ data class BootFacts(
     val lastFailureMessage: String?,
     val consecutiveTransportFailures: Int,
     val raisedReason: BootFailureReason?,
+    val contentStarted: Boolean = false,
 ) {
     val clientBooted: Boolean get() = clientBootedAtMs != 0L
     val registerAttempted: Boolean get() = registerAttemptedAtMs != 0L
@@ -170,6 +171,9 @@ class BootProgressTracker {
      * a worse outcome than no diagnostic at all.
      */
     private var satisfied: Boolean = false
+    private var contentStarted: Boolean = false
+    private var contentHash: String? = null
+    private var contentFrames: Long = 0L
 
     /**
      * The verdict already raised for THIS navigation, if any. Latched so a
@@ -201,6 +205,9 @@ class BootProgressTracker {
         registerAttemptedAtMs = 0L
         registerResultAtMs = 0L
         satisfied = false
+        contentStarted = false
+        contentHash = null
+        contentFrames = 0L
         raisedReason = null
         // Transport failures deliberately SURVIVE a reload: the reload is
         // usually OUR OWN recovery attempt, and resetting the counter on it
@@ -230,6 +237,9 @@ class BootProgressTracker {
         registerAttemptedAtMs = 0L
         registerResultAtMs = 0L
         satisfied = false
+        contentStarted = false
+        contentHash = null
+        contentFrames = 0L
         raisedReason = null
     }
 
@@ -280,6 +290,23 @@ class BootProgressTracker {
             if (cls.isTransport) consecutiveTransportFailures + 1 else 0
     }
 
+    /** Two advancing content samples end boot diagnostics without claiming
+     * registration/network success. The ongoing content watchdog owns stalls.
+     */
+    fun onContentPresented(hash: String?, frames: Long?): Boolean {
+        if (!armed || clientBootedAtMs == 0L || hash == null || hash.length > 128 ||
+            !(hash.startsWith("pl:") || hash.startsWith("em:")) ||
+            frames == null || frames <= 0L || frames > 9_007_199_254_740_991L) return false
+        if (hash == contentHash && frames <= contentFrames) return false
+        val advancing = hash == contentHash && frames > contentFrames
+        contentHash = hash
+        contentFrames = frames
+        if (!advancing) return false
+        contentStarted = true
+        raisedReason = null
+        return true
+    }
+
     /** Seed the persisted value on process start. Never moves it backwards. */
     fun seedLastRegisterOk(wallMs: Long) {
         if (wallMs > lastRegisterOkWallMs) lastRegisterOkWallMs = wallMs
@@ -291,6 +318,7 @@ class BootProgressTracker {
         registerAttemptedAtMs = registerAttemptedAtMs,
         registerResultAtMs = registerResultAtMs,
         satisfied = satisfied,
+        contentStarted = contentStarted,
         lastFailureClass = lastFailureClass,
         lastFailureStatus = lastFailureStatus,
         lastFailureMessage = lastFailureMessage,
@@ -311,7 +339,7 @@ class BootProgressTracker {
      * is merely a consequence of the first).
      */
     fun evaluate(nowMs: Long): BootFailureReason? {
-        if (satisfied) return null
+        if (satisfied || contentStarted) return null
         if (raisedReason != null) return null
         if (!armed) return null
         val sinceLoad = nowMs - loadStartedAtMs

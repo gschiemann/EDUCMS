@@ -159,6 +159,7 @@ class WebAppBridge(
      * heartbeat at its normal cadence", which is today's behaviour.
      */
     private val onWebTelemetryReported: (telemetryOk: Boolean) -> Unit = {},
+    private val onWebBootContent: (hash: String?, frames: Long?) -> Unit = { _, _ -> },
     /**
      * 2026-05-24 — per-screen orientation lock. The /player route calls
      * `bridge.setOrientation('LANDSCAPE' | 'PORTRAIT' | 'AUTO')` when
@@ -431,9 +432,16 @@ class WebAppBridge(
         onWebHeartbeat()
         var syncOk: Boolean? = null
         var telemetryOk = false
+        var contentHash: String? = null
+        var contentFrames: Long? = null
         try {
             val json = org.json.JSONObject(stateJson)
             syncOk = json.opt("syncOk") as? Boolean
+            json.optJSONObject("bootContent")?.let { proof ->
+                contentHash = proof.opt("hash") as? String
+                val value = (proof.opt("frames") as? Number)?.toDouble()
+                contentFrames = value?.takeIf { it.isFinite() && it > 0 && it <= 9_007_199_254_740_991.0 && it % 1.0 == 0.0 }?.toLong()
+            }
             // 2026-09-02 — an ADDITIVE key on an existing method, which is
             // why this whole wave needs no new bridge method and therefore
             // no three-file atomic contract, no KNOWN_METHODS exclusion and
@@ -450,6 +458,7 @@ class WebAppBridge(
         }
         onWebHeartbeatV2(syncOk)
         onWebTelemetryReported(telemetryOk)
+        onWebBootContent(contentHash, contentFrames)
     }
 
     /**

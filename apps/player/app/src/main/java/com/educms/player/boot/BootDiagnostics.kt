@@ -178,6 +178,13 @@ object BootDiagnostics {
         }
     }
 
+    /** Local playback is a distinct fact from successful registration. */
+    fun onContentPresented(hash: String?, frames: Long?) {
+        mainHandler.post {
+            if (tracker.onContentPresented(hash, frames)) dismiss("saved content is advancing")
+        }
+    }
+
     // ─── the tick ────────────────────────────────────────────────────
 
     /**
