@@ -1,6 +1,7 @@
 import {
   selectVideoFile,
   usesPortraitAvcCompatibility,
+  usesNoBFrameCompatibility,
 } from './video-rendition';
 import {
   needs1080ImageCopy,
@@ -55,6 +56,122 @@ describe('screen-specific media rendition', () => {
       },
     },
   };
+
+  const scores = {
+    avg: { standard: 0.98565, candidate: 0.98557 },
+    worst1percent: { standard: 0.97939, candidate: 0.97929 },
+    worst1second: { standard: 0.98041, candidate: 0.98064 },
+  };
+  const noB = {
+    ...compat,
+    width: 1080,
+    height: 1668,
+    rotation: 0,
+    profile: 'High',
+    level: 41,
+    bFrames: 0,
+    referenceFrames: 1,
+    bitrate: 6_590_007,
+    standardSha256: original.processingMeta.renditions['1080p'].sha256,
+    quality: {
+      version: 1,
+      frames: 3000,
+      visualChecked: true,
+      full: scores,
+      text: scores,
+    },
+  };
+  const noBAsset = {
+    ...portrait,
+    processingMeta: {
+      ...portrait.processingMeta,
+      renditions: {
+        '1080p': {
+          ...portrait.processingMeta.renditions['1080p'],
+          bitrate: 6_720_298,
+        },
+        'avc-no-b': noB,
+      },
+    },
+  };
+
+  it('selects a verified no-B-frame trial only by exact opt-in and preserves 4K/default delivery', () => {
+    expect(
+      usesNoBFrameCompatibility('front', { PLAYER_VIDEO_NO_B: ' front ,back' }),
+    ).toBe(true);
+    for (const value of [undefined, '', 'all', 'front-other']) {
+      expect(
+        usesNoBFrameCompatibility('front', { PLAYER_VIDEO_NO_B: value }),
+      ).toBe(false);
+    }
+    expect(usesNoBFrameCompatibility('', {})).toBe(false);
+    expect(selectVideoFile(noBAsset, '1080x1920', false, true)).toEqual({
+      url: noB.url,
+      sha256: noB.sha256,
+      size: noB.size,
+    });
+    expect(selectVideoFile(noBAsset, '1080x1920').url).toBe(
+      original.processingMeta.renditions['1080p'].url,
+    );
+    for (const resolution of ['3840x2160', '2560x1440', undefined, 'unknown']) {
+      expect(selectVideoFile(noBAsset, resolution, false, true).url).toBe(
+        original.fileUrl,
+      );
+    }
+  });
+
+  it.each([
+    { width: 720 },
+    { height: 1080 },
+    { fps: 24 },
+    { rotation: 90 },
+    { sourceSha256: 'd'.repeat(64) },
+    { standardSha256: 'd'.repeat(64) },
+    { bFrames: 3 },
+    { referenceFrames: 4 },
+    { level: 51 },
+    { bitrate: 8_000_000 },
+    { bitrate: NaN },
+    { profile: 'Constrained Baseline' },
+    { sha256: '' },
+    { size: 0 },
+    { url: 'http://example.com/unverified.mp4' },
+    { quality: undefined },
+    { quality: { ...noB.quality, visualChecked: false } },
+    { quality: { ...noB.quality, frames: 100 } },
+    {
+      quality: {
+        ...noB.quality,
+        full: { ...scores, avg: { standard: 0.99, candidate: 0.98 } },
+      },
+    },
+    {
+      quality: {
+        ...noB.quality,
+        text: { ...scores, worst1second: { standard: 0.99, candidate: 0.98 } },
+      },
+    },
+    {
+      quality: {
+        ...noB.quality,
+        full: { ...scores, worst1percent: { standard: 0.99, candidate: NaN } },
+      },
+    },
+  ])('rejects unverified no-B-frame field files %j', (invalid) => {
+    const asset = {
+      ...noBAsset,
+      processingMeta: {
+        ...noBAsset.processingMeta,
+        renditions: {
+          ...noBAsset.processingMeta.renditions,
+          'avc-no-b': { ...noB, ...invalid },
+        },
+      },
+    };
+    expect(selectVideoFile(asset, '1080x1920', false, true).url).toBe(
+      original.processingMeta.renditions['1080p'].url,
+    );
+  });
 
   it('selects an explicitly scoped compatible file without reducing displayed pixels or frame rate', () => {
     expect(

@@ -249,18 +249,22 @@ async function manifest(h: ReturnType<typeof makeHarness>, screenId: string) {
 describe('scoped portrait decoder compatibility', () => {
   const previousCompat = process.env.PLAYER_PORTRAIT_AVC_COMPAT;
   const previousNative = process.env.PLAYER_LOOP_NATIVE;
+  const previousNoB = process.env.PLAYER_VIDEO_NO_B;
   afterEach(() => {
     if (previousCompat === undefined)
       delete process.env.PLAYER_PORTRAIT_AVC_COMPAT;
     else process.env.PLAYER_PORTRAIT_AVC_COMPAT = previousCompat;
     if (previousNative === undefined) delete process.env.PLAYER_LOOP_NATIVE;
     else process.env.PLAYER_LOOP_NATIVE = previousNative;
+    if (previousNoB === undefined) delete process.env.PLAYER_VIDEO_NO_B;
+    else process.env.PLAYER_VIDEO_NO_B = previousNoB;
   });
 
-  it.each([true, false])(
-    'keeps the mirrored item URL/hash/size and download total cohesive (native=%s)',
-    async (native) => {
-      process.env.PLAYER_PORTRAIT_AVC_COMPAT = BACK;
+  it.each([[true, false], [false, false], [true, true], [false, true]])(
+    'keeps the mirrored item URL/hash/size and download total cohesive (native=%s, noB=%s)',
+    async (native, noB) => {
+      process.env.PLAYER_PORTRAIT_AVC_COMPAT = noB ? '' : BACK;
+      process.env.PLAYER_VIDEO_NO_B = noB ? BACK : '';
       process.env.PLAYER_LOOP_NATIVE = native ? BACK : '';
       const items = [
         {
@@ -282,6 +286,7 @@ describe('scoped portrait decoder compatibility', () => {
                   size: 100000,
                   width: 1080,
                   height: 1668,
+                  bitrate: 6_720_298,
                 },
                 'portrait-avc-compat': {
                   url: 'https://media.example/compatible.mp4',
@@ -303,6 +308,17 @@ describe('scoped portrait decoder compatibility', () => {
           },
         },
       ];
+      if (noB) {
+        const qualityScores = { avg: { standard: .99, candidate: .99 }, worst1percent: { standard: .98, candidate: .98 }, worst1second: { standard: .98, candidate: .98 } };
+        Object.assign(items[0].asset.processingMeta.renditions, {
+          'avc-no-b': {
+            url: 'https://media.example/compatible.mp4', sha256: 'c'.repeat(64), size: 200000,
+            sourceSha256: 'a'.repeat(64), standardSha256: 'b'.repeat(64), width: 1080, height: 1668,
+            rotation: 0, fps: 30, codec: 'h264', profile: 'High', level: 41, bFrames: 0, referenceFrames: 1, bitrate: 6_590_007,
+            quality: { version: 1, frames: 3000, visualChecked: true, full: qualityScores, text: qualityScores },
+          },
+        });
+      }
       const schedule = {
         id: 'sch-front',
         playlistId: 'pl-front',
@@ -352,6 +368,10 @@ describe('scoped portrait decoder compatibility', () => {
       expect(res.body.playlists[0].items[0]).toMatchObject(selected);
       expect(res.body.playlists[0].totalBytes).toBe(selected.asset_size);
       expect(res.body.face.mirroredFrom).toBe(FRONT);
+      const front = await manifest(h, FRONT);
+      expect(front.body.playlists[0].items[0]).toMatchObject({
+        url: 'https://media.example/standard.mp4', asset_hash: 'b'.repeat(64), asset_size: 100000,
+      });
     },
   );
 });
