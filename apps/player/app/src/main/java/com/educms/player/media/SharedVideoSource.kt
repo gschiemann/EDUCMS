@@ -18,9 +18,10 @@ internal class SharedVideoSource(private val ctx: Context) {
     fun descriptor(face: Int, expectedScreen: String): SharedVideoDescriptor {
         val token = FaceTokenStore.read(ctx, face) ?: error("credential-missing")
         require(NativeAlertWatchPolicy.screenIdOf(token) == expectedScreen) { "credential-identity" }
-        val root = ctx.getSharedPreferences("edu_player", Context.MODE_PRIVATE).getString("api_root", null)
+        val saved = ctx.getSharedPreferences("edu_player", Context.MODE_PRIVATE).getString("api_root", null) ?: error("api-root")
+        val root = SharedVideoSourcePolicy.apiBase(saved)
         require(HostAllowlist.isApiHost(root)) { "api-origin" }
-        val url = "${root!!.trimEnd('/')}/api/v1/screens/$expectedScreen/manifest"
+        val url = "$root/api/v1/screens/$expectedScreen/manifest"
         val bytes = request(url, token, 15_000L) { c ->
             require(c.responseCode == 200) { "manifest-http-${c.responseCode}" }
             c.inputStream.use { input ->

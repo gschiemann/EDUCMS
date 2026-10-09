@@ -20,7 +20,7 @@ import java.util.concurrent.Executors
 /** Activity/Presentation-owned adapter. No JS-supplied face index or credential is accepted. */
 class SharedVideoHost private constructor(internal val face: Int, internal val web: WebView) {
     internal val ctx: Context = web.context.applicationContext
-    internal val texture = SurfaceView(web.context)
+    internal val surfaceView = SurfaceView(web.context)
     internal var attached = false
     internal var generation = 0L
     internal var state = "idle"
@@ -36,11 +36,9 @@ class SharedVideoHost private constructor(internal val face: Int, internal val w
     internal var ptsUs = 0L
     internal var lastUpdate = 0L
     internal var lastStamp = 0L
-    internal var swapMaxMs = 0L
     internal var codecName: String? = null
     internal var loops = 0L
     internal var startedAt = 0L
-    internal val stamps = LinkedHashMap<Long,Long>()
     internal var detached = false
 
     fun prepare(json: String) = SharedVideoBox.prepare(this,json)
@@ -51,7 +49,7 @@ class SharedVideoHost private constructor(internal val face: Int, internal val w
     fun detach() {
         SharedVideoBox.invalidate(this,"host-detached")
         synchronized(SharedVideoBox) { detached = true }
-        (texture.parent as? ViewGroup)?.removeView(texture)
+        (surfaceView.parent as? ViewGroup)?.removeView(surfaceView)
         SharedVideoBox.detach(this)
     }
 
@@ -63,7 +61,7 @@ class SharedVideoHost private constructor(internal val face: Int, internal val w
             val parent = web.parent as? ViewGroup
             if (parent == null || face !in 0..1) { host.detached = true; return host }
             // No default-fleet surface allocation. Attach only after authenticated descriptors agree.
-            host.texture.holder.addCallback(object : SurfaceHolder.Callback {
+            host.surfaceView.holder.addCallback(object : SurfaceHolder.Callback {
                 override fun surfaceCreated(holder: SurfaceHolder) { SharedVideoBox.surfaceReady() }
                 override fun surfaceChanged(holder: SurfaceHolder,format: Int,w: Int,h: Int) { SharedVideoBox.surfaceReady() }
                 override fun surfaceDestroyed(holder: SurfaceHolder) { if (host.attached) host.invalidate() }
@@ -91,7 +89,7 @@ internal object SharedVideoBox {
         hosts[host.face]?.let { old ->
             stopAll("host-replaced")
             old.detached = true
-            (old.texture.parent as? ViewGroup)?.removeView(old.texture)
+            (old.surfaceView.parent as? ViewGroup)?.removeView(old.surfaceView)
         }
         hosts[host.face] = host
     }
@@ -147,7 +145,7 @@ internal object SharedVideoBox {
         gate = SharedVideoCommitGate(session,setOf(0,1))
         listOf(a,b).forEach {
             it.sessionId = session; it.updates = 0; it.unique = 0; it.ptsUs = 0; it.lastStamp = 0
-            it.lastUpdate = 0; it.swapMaxMs = 0; it.loops = 0; it.stamps.clear(); it.startedAt = 0
+            it.lastUpdate = 0; it.loops = 0; it.startedAt = 0
         }
         main.post {
             if (!current(e,session)) return@post
@@ -155,8 +153,8 @@ internal object SharedVideoBox {
                 if (!h.attached) {
                     val parent = h.web.parent as? ViewGroup
                     if (parent == null) { synchronized(this) { stopAll("output-detached") }; return@post }
-                    h.texture.setZOrderOnTop(false)
-                    parent.addView(h.texture,parent.indexOfChild(h.web),ViewGroup.LayoutParams(-1,-1))
+                    h.surfaceView.setZOrderOnTop(false)
+                    parent.addView(h.surfaceView,parent.indexOfChild(h.web),ViewGroup.LayoutParams(-1,-1))
                     h.attached = true
                 }
             }
@@ -176,14 +174,14 @@ internal object SharedVideoBox {
 
     private fun prepareSurfaces(e: Long,session: String,a: SharedVideoHost,b: SharedVideoHost,da: SharedVideoDescriptor) {
             if (!current(e,session) || allocating) return
-            if (listOf(a,b).any { !it.texture.holder.surface.isValid || it.texture.width <= 0 || it.texture.height <= 0 }) return
+            if (listOf(a,b).any { !it.surfaceView.holder.surface.isValid || it.surfaceView.width <= 0 || it.surfaceView.height <= 0 }) return
             allocating = true
             val outputList = listOf(a,b).map { h ->
-                val s = h.texture.holder.surface
-                if (!s.isValid || h.texture.width <= 0 || h.texture.height <= 0 || !h.web.isHardwareAccelerated) {
+                val s = h.surfaceView.holder.surface
+                if (!s.isValid || h.surfaceView.width <= 0 || h.surfaceView.height <= 0 || !h.web.isHardwareAccelerated) {
                     synchronized(this) { if (current(e,session)) stopAll("output-unavailable") }; return
                 }
-                SharedVideoRenderer.Output(s,h.texture.width,h.texture.height,h.descriptor!!) { stamp,pts,_ ->
+                SharedVideoRenderer.Output(s,h.surfaceView.width,h.surfaceView.height,h.descriptor!!) { stamp,pts,_ ->
                     synchronized(this) { if (current(e,session)) updated(h,stamp,pts) }
                 }
             }
@@ -230,7 +228,7 @@ internal object SharedVideoBox {
 
     @Synchronized fun updated(host: SharedVideoHost,stamp: Long,pts: Long) {
         if (host.sessionId != id || id == null || host.startedAt == 0L || hosts[host.face] !== host) return
-        if (!host.texture.holder.surface.isValid || !host.texture.isShown) return
+        if (!host.surfaceView.holder.surface.isValid || !host.surfaceView.isShown) return
         if (!SharedVideoCodecPolicy.validRenderStamp(stamp,pts)) return
         host.updates++
         if (stamp != host.lastStamp) { host.unique++; host.lastStamp = stamp; host.ptsUs = pts }
@@ -251,7 +249,7 @@ internal object SharedVideoBox {
                 val why = when {
                     DisplayEmergency.isHeld(h.ctx) -> "emergency-held"
                     sid != h.descriptor?.screenId -> "credential-identity"
-                    h.detached || !h.texture.isAttachedToWindow || !h.web.isAttachedToWindow -> "output-detached"
+                    h.detached || !h.surfaceView.isAttachedToWindow || !h.web.isAttachedToWindow -> "output-detached"
                     now-h.lastPoll > 10_000 -> "page-lease-expired"
                     h.startedAt > 0 && now-maxOf(h.startedAt,h.lastUpdate) > 8000 -> "output-stalled"
                     else -> null
@@ -264,12 +262,11 @@ internal object SharedVideoBox {
 
     @Synchronized fun state(host: SharedVideoHost): String {
         host.lastPoll = SystemClock.elapsedRealtime()
-        val output = JSONObject().put("attached",!host.detached && host.texture.isAttachedToWindow)
-            .put("visible",!host.detached && host.texture.isShown && host.texture.windowVisibility == View.VISIBLE)
+        val output = JSONObject().put("attached",!host.detached && host.surfaceView.isAttachedToWindow)
+            .put("visible",!host.detached && host.surfaceView.isShown && host.surfaceView.windowVisibility == View.VISIBLE)
             .put("hardwareAccelerated",host.web.isHardwareAccelerated)
             .put("viewUpdates",host.updates).put("uniqueFrames",host.unique).put("sourcePtsUs",host.ptsUs)
-            .put("width",host.texture.width).put("height",host.texture.height).put("lastUpdateElapsedMs",host.lastUpdate)
-            .put("swapMaxMs",host.swapMaxMs)
+            .put("width",host.surfaceView.width).put("height",host.surfaceView.height).put("lastUpdateElapsedMs",host.lastUpdate)
             .put("ageMs",if (host.lastStamp > 0) ((System.nanoTime()-host.lastStamp)/1_000_000).coerceIn(0,86_400_000) else 86_400_000)
         return JSONObject().put("version",1).put("state",host.state).put("sessionId",host.sessionId ?: JSONObject.NULL)
             .put("revision",host.reportRevision ?: JSONObject.NULL).put("sha256",host.reportSha ?: JSONObject.NULL)
@@ -287,10 +284,9 @@ internal object SharedVideoBox {
             h.generation++
             h.request = null; h.descriptor = null
             if (h.state != "idle") { h.state = "failed"; h.reason = why }
-            h.stamps.clear()
             main.post { if (h.state == "failed" || h.state == "idle") {
                 h.web.setBackgroundColor(Color.BLACK)
-                if (h.attached) { h.attached = false; (h.texture.parent as? ViewGroup)?.removeView(h.texture) }
+                if (h.attached) { h.attached = false; (h.surfaceView.parent as? ViewGroup)?.removeView(h.surfaceView) }
             } }
         }
     }

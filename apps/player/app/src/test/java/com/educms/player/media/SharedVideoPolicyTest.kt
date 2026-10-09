@@ -51,4 +51,13 @@ class SharedVideoPolicyTest {
         org.junit.Assert.assertFalse(SharedVideoCodecPolicy.validRenderStamp(1,-1))
         org.junit.Assert.assertTrue(SharedVideoCodecPolicy.validRenderStamp(1,0))
     }
+    @Test fun apiOriginAndBootstrapSuffixProduceTheSameBoundedRequestRoot() {
+        val root="https://api-production-39a1.up.railway.app"
+        for (saved in listOf(root,"$root/","$root/api/v1","$root/api/v1/"))
+            assertEquals(root,SharedVideoSourcePolicy.apiBase(saved))
+        for (saved in listOf("http://api-production-39a1.up.railway.app", "$root/other", "$root/api/v1?x=1", "$root#x", "https://user:pass@api-production-39a1.up.railway.app")) {
+            assertTrue(saved,runCatching { SharedVideoSourcePolicy.apiBase(saved) }.isFailure)
+        }
+    }
+
 }

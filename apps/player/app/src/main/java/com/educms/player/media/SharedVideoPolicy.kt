@@ -43,6 +43,13 @@ internal data class SharedVideoDescriptor(
 
 internal object SharedVideoSourcePolicy {
     const val MAX_BYTES = 512L * 1024 * 1024
+    /** Bootstrap accepts an origin or /api/v1; never append the API prefix twice. */
+    fun apiBase(value: String): String {
+        val u = URI(value.trim().trimEnd('/').removeSuffix("/api/v1"))
+        require(u.scheme == "https" && u.host != null && u.userInfo == null &&
+            u.rawPath.isNullOrEmpty() && u.rawQuery == null && u.rawFragment == null) { "api-root" }
+        return "${u.scheme}://${u.rawAuthority}"
+    }
     fun allowed(value: String): Boolean = runCatching {
         val u = URI(value)
         u.scheme == "https" && u.host == "bhdaxzfalaycfopvcopm.supabase.co" &&
@@ -57,16 +64,7 @@ internal object SharedVideoTransform {
     fun degrees(orientation: String,rotation: Int,outputWidth: Int,outputHeight: Int): Int =
         (rotation + if (orientation == "PORTRAIT" && outputWidth > outputHeight) 90
             else if (orientation == "LANDSCAPE" && outputHeight > outputWidth) 270 else 0) % 360
-    /** Texture coordinates; decoder crop/vertical transform is subsequently applied by GL. */
-    fun coordinates(orientation: String, rotation: Int, outputWidth: Int, outputHeight: Int): FloatArray {
-        val quarter = degrees(orientation,rotation,outputWidth,outputHeight)/90
-        val corners = arrayOf(floatArrayOf(0f, 0f), floatArrayOf(1f, 0f), floatArrayOf(0f, 1f), floatArrayOf(1f, 1f))
-        return corners.flatMap { p ->
-            var x = p[0]; var y = p[1]
-            repeat(quarter) { val oldX = x; x = 1f - y; y = oldX }
-            listOf(x, y)
-        }.toFloatArray()
-    }
+
 }
 
 /** No decoder is admitted until both exact session participants surrender their HTML decoder. */

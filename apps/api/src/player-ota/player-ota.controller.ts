@@ -73,6 +73,7 @@ import {
 // apk-storage.ts for what deliberately does NOT change: the sha authority,
 // the rollout/cohort/hold gates, and the device-side verification.
 import { resolveApkDelivery, type ApkDelivery } from './apk-storage';
+import { isFieldCandidateTarget, configuredFieldRelease, mintFieldTicket, verifyFieldTicket, verifiedFieldBytes } from './field-candidate';
 import { signDownloadTag, verifyDownloadTag, DOWNLOAD_TAG_PARAM } from './download-tag';
 
 interface UpdateCheckBody {
@@ -358,6 +359,7 @@ export class PlayerOtaController {
     let lookupScreenId: string | null = null;
     let lookupTenantId: string | null = null;
     let lookupScreenName: string | null = null;
+    let fieldTarget = false;
     // Phase B canary — captured at screen-lookup time, defaults to
     // full-rollout (100) when no screen row exists.
     let tenantCanaryPct = 100;
@@ -387,6 +389,7 @@ export class PlayerOtaController {
         if (screen) {
           lookupScreenId = screen.id;
           lookupTenantId = screen.tenantId;
+          fieldTarget = isFieldCandidateTarget(screen.id,screen.tenantId);
           // Phase B canary — pull the tenant's current rollout %.
           // Missing/null defaults to 100 (full rollout, no change in
           // behavior for tenants that haven't opted into canary).
@@ -408,11 +411,11 @@ export class PlayerOtaController {
         // players never send source='user' (no tap wiring until v1.1.5),
         // so this branch is inert for the current fleet and arms the
         // moment the tap-wired player ships.
-        if (screen && deviceAuthenticated && callerSource === 'user') {
+        if (screen && deviceAuthenticated && callerSource === 'user' && !fieldTarget) {
           lookupScreenName = screen.name ?? null;
           allowUpdate = true;
           allowReason = 'panel-user-tap';
-        } else if (screen?.tenant?.autoUpdatePlayerEnabled) {
+        } else if (screen?.tenant?.autoUpdatePlayerEnabled && !fieldTarget) {
           allowUpdate = true;
           allowReason = 'tenant-auto-on';
         } else if (screen?.forceApkUpdatePendingAt) {
@@ -623,6 +626,37 @@ export class PlayerOtaController {
     // release is now exactly "push the tag" — no Railway touch, no
     // env var to go stale. The PLAYER_APK_* env vars are now inert
     // and should be deleted from Railway.
+
+    // Field artifacts are never stable/latest releases. Only an authenticated,
+    // exact-screen operator push, AFTER the existing maintenance/canary gates,
+    // can request a pinned private artifact. A malformed/unavailable candidate
+    // holds this selected screen on its current build; other screens are unchanged.
+    if (fieldTarget) {
+      const release = configuredFieldRelease();
+      if (!deviceAuthenticated || !lookupScreenId || !lookupTenantId ||
+          forcedPendingScreenId !== lookupScreenId || !release) return {uptoDate:true};
+      if (callerVc >= release.versionCode) return {uptoDate:true};
+      if (blockedBySigningCutover(callerVn,release.versionName)) return {uptoDate:true,needsManualReinstall:true};
+      const origin=apiOriginFromRequest(req);
+      if (!origin || !origin.startsWith('https://')) return {uptoDate:true};
+      try {
+        await verifiedFieldBytes(release);
+        const ticket=mintFieldTicket(release,lookupScreenId,lookupTenantId);
+        if(!ticket) return {uptoDate:true};
+        // Mandatory audit before advertising any private test bytes.
+        await this.prisma.client.auditLog.create({data:{
+          action:'PLAYER_FIELD_APK_OFFER',targetType:'screen',targetId:lookupScreenId,tenantId:lookupTenantId,userId:null,
+          details:JSON.stringify({versionName:release.versionName,versionCode:release.versionCode,sha256:release.sha256,sourceUrl:release.sourceUrl,fromVersion:callerVn}),
+        }});
+        this.logger.log(`[ota] decision=install-private-field screen=${lookupScreenId} target=${release.versionName} sha=${release.sha256.slice(0,12)}`);
+        return {latest:{versionCode:release.versionCode,versionName:release.versionName,
+          apkUrl:`${origin}/api/v1/player/field-apk/${release.sha256}?ticket=${encodeURIComponent(ticket)}`,
+          sha256:release.sha256,forced:false}};
+      } catch {
+        this.logger.error(`[ota] decision=hold-private-field screen=${lookupScreenId} reason=artifact-or-audit-unavailable`);
+        return {uptoDate:true};
+      }
+    }
 
     // ── Path B: auto-resolve from the latest GitHub Release ──
     // Zero env config required. Mirrors /apk/latest so every tagged
@@ -1085,6 +1119,26 @@ export class PlayerOtaController {
       this.logger.warn(`[mgr-ota] lookup failed: ${e?.message}`);
       return { uptoDate: true };
     }
+  }
+
+  /** Private field download capability minted only by an authenticated exact-screen offer. */
+  @Get('field-apk/:sha')
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  async streamFieldApk(@Param('sha') sha: string,@Req() req: ExpressReq,@Res() res: Response): Promise<void> {
+    const release=configuredFieldRelease();
+    const ticket=release && sha===release.sha256 ? verifyFieldTicket(req.query?.ticket,release) : null;
+    if(!release || !ticket) throw new NotFoundException({code:'PLAYER_FIELD_APK_UNAVAILABLE'});
+    const screen=await this.prisma.client.screen.findFirst({where:{id:ticket.screenId,tenantId:ticket.tenantId,status:{not:'REVOKED'}},select:{id:true}});
+    if(!screen) throw new NotFoundException({code:'PLAYER_FIELD_APK_UNAVAILABLE'});
+    try {
+      const bytes=await verifiedFieldBytes(release);
+      res.setHeader('Cache-Control','no-store');
+      res.setHeader('Content-Type','application/vnd.android.package-archive');
+      res.setHeader('Content-Length',String(bytes.length));
+      res.setHeader('Content-Disposition',`attachment; filename="venue-os-player-${release.versionName}.apk"`);
+      this.logger.log(`[ota] private-field-download screen=${ticket.screenId} sha=${sha.slice(0,12)}`);
+      res.end(bytes);
+    } catch {throw new NotFoundException({code:'PLAYER_FIELD_APK_UNAVAILABLE'});}
   }
 
   @Get('apk/latest')
