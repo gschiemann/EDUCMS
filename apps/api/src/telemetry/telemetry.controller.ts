@@ -318,6 +318,7 @@ export class TelemetryController {
             displayCapabilitiesAt: true,
             // Only read to MERGE a loop-boundary block into it (below).
             lastVideoReport: true,
+            faceIndex: true,
           },
         }),
       { label: 'screen.findUnique[telemetry]' },
@@ -420,7 +421,16 @@ export class TelemetryController {
     // comparison — and NEVER a 400. A garbage build identifier must not be
     // able to make a screen stop reporting.
     const bundleId = normalizeBundleSha(body.versions?.bundleId);
-    if (body.render) {
+    const nativeVideo = body.nativeVideo;
+    if (nativeVideo && nativeVideo.faceIndex !== (screen.faceIndex ?? 0)) {
+      throw new HttpException({code:'NATIVE_VIDEO_FACE_MISMATCH'},HttpStatus.BAD_REQUEST);
+    }
+    const previousNative = (screen.lastVideoReport as any)?.native;
+    const nativeOutput = nativeVideo?.output;
+    const nativeProven = !!nativeVideo && nativeVideo.state === 'presenting' && !!nativeOutput &&
+      nativeOutput.attached && nativeOutput.visible && nativeOutput.ageMs <= 2500 && nativeOutput.viewUpdates > 0 &&
+      nativeOutput.uniqueFrames > (previousNative?.sessionId === nativeVideo.sessionId ? previousNative?.output?.uniqueFrames ?? 0 : 0);
+    if (body.render && (!nativeVideo || nativeProven)) {
       if (!shouldSkipRenderProofWrite(screenId, bundleSha ?? '', bundleId ?? '')) {
         markRenderProofWritten(screenId, bundleSha ?? '', bundleId ?? '');
         data.lastRenderedAt = now;
@@ -482,6 +492,14 @@ export class TelemetryController {
       data.lastVideoReport = { ...base, loop: { ...loopReport, at: now.toISOString() } };
       // `lastVideoReportAt` is left alone when only the seam moved: it dates
       // the FRAME sample, and the dashboard reads its age.
+    }
+
+    if (nativeVideo) {
+      const base = (data.lastVideoReport as Record<string,unknown> | undefined) ??
+        (screen.lastVideoReport && typeof screen.lastVideoReport === 'object' && !Array.isArray(screen.lastVideoReport)
+          ? screen.lastVideoReport as Record<string,unknown> : {});
+      data.lastVideoReport = { ...base, native: { ...nativeVideo, at: now.toISOString(), evidence: 'surface-render-callback' } };
+      // Do NOT update lastVideoReportAt: it dates HTML frame/drop counters, never native readiness.
     }
 
     // ── 5. DURABLE-REFRESH ACK (was: render-proof's refreshAckMs) ───────

@@ -1,3 +1,4 @@
+import type { NativeSharedVideoState } from './nativeSharedVideo';
 /**
  * telemetry.ts — the player's ONE routine report (2026-09-02, efficiency
  * program P0-1).
@@ -202,6 +203,7 @@ export interface TelemetryBody {
   render?: TelemetryRenderBlock;
   refreshAckMs?: number;
   capsHash?: string;
+  nativeVideo?: NativeSharedVideoState;
   video?: TelemetryVideoReport;
   loop?: TelemetryLoopReport;
 }
@@ -408,6 +410,7 @@ export interface TelemetryBodyInput {
   capsHash?: string | null;
   /** The last video's playback sample (dropped frames, and rebuffer pauses
    *  when counted), when there is a new one to report. */
+  nativeVideo?: NativeSharedVideoState | null;
   video?: TelemetryVideoReport | null;
   /** The loop-boundary summary, when a boundary was observed since the last one (2026-09-29). */
   loop?: Omit<TelemetryLoopReport, 'evidence'> | null;
@@ -435,6 +438,7 @@ export interface DownloadSnapshotInput {
  */
 export function buildTelemetryBody(input: TelemetryBodyInput): TelemetryBody {
   const body: TelemetryBody = {};
+  if (input.nativeVideo && input.nativeVideo.state !== 'idle') body.nativeVideo = input.nativeVideo;
 
   const versions: NonNullable<TelemetryBody['versions']> = {};
   const player = (input.playerVersion ?? '').trim();

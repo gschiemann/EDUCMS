@@ -125,6 +125,7 @@ internal object SharedVideoCodecPolicy {
     /** Surface output can have size zero. Empty EOS and codec config are not frames. */
     fun render(size: Int,flags: Int): Boolean = flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG == 0 &&
         (flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM == 0 || size > 0)
+    fun validRenderStamp(nanos: Long,ptsUs: Long): Boolean = nanos > 0 && ptsUs >= 0 && ptsUs != Long.MAX_VALUE
     fun hardwareName(name: String): Boolean {
         val n = name.lowercase()
         return (n.startsWith("omx.") || n.startsWith("c2.")) &&

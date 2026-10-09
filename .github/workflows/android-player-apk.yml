@@ -58,6 +58,10 @@ on:
         description: 'Override the player base URL (e.g. for a staging build)'
         required: false
         default: ''
+      playerFieldCandidate:
+        description: 'Private field artifact only: higher x.y.z-field.N (does not publish a fleet release)'
+        required: false
+        default: ''
 
 # ── SUPPLY-02 (2026-08-04): every `uses:` here is pinned to a full commit SHA.
 #
@@ -302,6 +306,8 @@ jobs:
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
           HAVE_KEYSTORE: ${{ steps.keystore.outputs.available }}
+          PLAYER_FIELD_CANDIDATE: ${{ github.event.inputs.playerFieldCandidate }}
+          BUILD_EVENT: ${{ github.event_name }}
         run: |
           cd apps/player
           # Tee full build output so failures leave a readable artifact for
@@ -320,7 +326,18 @@ jobs:
           else
             echo "VARIANT=debug" >> $GITHUB_ENV
           fi
-          ./gradlew --no-daemon --stacktrace "$TASK" -PplayerBaseUrl="$PLAYER_BASE_URL" 2>&1 | tee gradle-build.log
+          FIELD_ARGS=()
+          if [ -n "$PLAYER_FIELD_CANDIDATE" ]; then
+            if [ "$BUILD_EVENT" != "workflow_dispatch" ] || [ "$HAVE_KEYSTORE" != "true" ] ||
+               [[ ! "$PLAYER_FIELD_CANDIDATE" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]?)\.(0|[1-9][0-9]?)-field\.([1-9][0-9]*)$ ]]; then
+              echo "::error::Field candidates require a manual dispatch, production signing, and x.y.z-field.N"
+              exit 1
+            fi
+            FIELD_ARGS+=("-PplayerFieldCandidate=$PLAYER_FIELD_CANDIDATE")
+            echo "PLAYER_FIELD_CANDIDATE=$PLAYER_FIELD_CANDIDATE" >> "$GITHUB_ENV"
+            echo "Private field candidate: $PLAYER_FIELD_CANDIDATE; no release catalogue publication" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          ./gradlew --no-daemon --stacktrace "$TASK" -PplayerBaseUrl="$PLAYER_BASE_URL" "${FIELD_ARGS[@]}" 2>&1 | tee gradle-build.log
           status=${PIPESTATUS[0]}
           exit $status
 
@@ -403,7 +420,9 @@ jobs:
           # GitHub Release tag.
           VN=$(grep -oP 'versionName\s*=\s*"\K[^"]+' apps/player/app/build.gradle.kts | head -1)
           TAG="${GITHUB_REF_NAME}"
-          if [[ "$TAG" == player-v* ]]; then
+          if [ -n "$PLAYER_FIELD_CANDIDATE" ]; then
+            VERSION="$PLAYER_FIELD_CANDIDATE-${GITHUB_SHA:0:7}"
+          elif [[ "$TAG" == player-v* ]]; then
             VERSION="${TAG#player-v}"
           elif [ -n "$VN" ]; then
             VERSION="$VN-${GITHUB_SHA:0:7}"

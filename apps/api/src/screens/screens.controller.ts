@@ -1,3 +1,4 @@
+import { nativeSharedVideoTarget, buildNativeSharedVideoDescriptor } from './native-shared-video';
 import { Controller, Post, Get, Put, Delete, Body, Param, Query, Req, Res, UseGuards, Request, HttpException, HttpStatus } from '@nestjs/common';
 import { encodeTargetFromResolutions, pdfDelivery, withheldFromScreens } from '@cms/api-types';
 import { pdfPageBytes, pdfPageManifestItems, pdfScreenShape } from './pdf-page-items';
@@ -6966,6 +6967,22 @@ export class ScreensController {
       playback: resolvePlaybackConfig((screen as any).id),
       playlists: dynamicPlaylists
     };
+
+    if (nativeSharedVideoTarget(screen.id) && screen.tenantId) {
+      // Only the explicitly admitted pair pays this tenant-scoped lookup.
+      const peers = await this.prisma.client.screen.findMany({
+        where: { tenantId: screen.tenantId, ...(screen.faceOfScreenId
+          ? { id: String(screen.faceOfScreenId) }
+          : { faceOfScreenId: screen.id, faceIndex: 1, faceContentMode: 'MIRROR' }) },
+        take: 2,
+      });
+      const item = dynamicPlaylists[0]?.items[0];
+      const asset = item && schedules.flatMap(s => s.playlist.items).find(pi => pi.assetId === item.asset_id)?.asset;
+      if (peers.length === 1 && asset) {
+        const native = buildNativeSharedVideoDescriptor({screen,peer:peers[0],manifest:manifestPayload,asset});
+        if (native) manifestPayload.nativeSharedVideo = native;
+      }
+    }
 
     // 2026-07-02 (efficiency #2 pre-req) — the hash MUST cover every field
     // applyManifest consumes (isEmergency, orientation, canvasW/H, repeats,

@@ -45,6 +45,13 @@ internal class SharedVideoSource(private val ctx: Context) {
         require(dir.isDirectory || dir.mkdirs()) { "media-cache-unavailable" }
         val file = File(dir, "${d.sha256}.mp4")
         if (verify(file, d, current)) return file
+        // This cache owns video bytes only; never touches browser or emergency caches.
+        // Bound retained copies and remove interrupted, box-owned staging files.
+        dir.listFiles()?.filter { it.isFile && it.name.startsWith(".") && it.name.endsWith(".part") }?.forEach { it.delete() }
+        val copies = dir.listFiles()?.filter { it.isFile && Regex("[a-f0-9]{64}\\.mp4").matches(it.name) && it != file }
+            ?.sortedByDescending { it.lastModified() } ?: emptyList()
+        copies.drop(1).forEach { it.delete() }
+        if (file.exists()) require(file.delete()) { "media-cache-corrupt" }
         require(dir.usableSpace > d.size + 64L * 1024 * 1024) { "media-cache-quota" }
         val temp = File(dir, ".${d.sha256}.${UUID.randomUUID()}.part")
         try {

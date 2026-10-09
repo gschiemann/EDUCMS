@@ -198,6 +198,21 @@ android {
         versionCode = 10124
         versionName = "1.1.24"
 
+        // Manual field artifacts have their own higher install code and explicit prerelease name.
+        // Default/tag builds retain the published literal version; never rebuild a stable version
+        // with test bytes. The release workflow accepts this property only on manual dispatch.
+        val fieldCandidate = project.findProperty("playerFieldCandidate") as? String
+        if (!fieldCandidate.isNullOrEmpty()) {
+            val m = Regex("^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]?)\\.(0|[1-9][0-9]?)-field\\.([1-9][0-9]*)$").matchEntire(fieldCandidate)
+                ?: error("playerFieldCandidate must be x.y.z-field.N")
+            val major = m.groupValues[1].toLongOrNull() ?: error("candidate major too large")
+            require(major <= 214747L) { "candidate major too large" }
+            val candidateCode = major * 10000L + m.groupValues[2].toLong() * 100L + m.groupValues[3].toLong()
+            require(candidateCode > versionCode!! && candidateCode <= Int.MAX_VALUE) { "candidate install code must exceed the stable player" }
+            versionCode = candidateCode.toInt()
+            versionName = fieldCandidate
+        }
+
         // Override at build time:  -PplayerBaseUrl="https://your.app/player"
         val playerBaseUrl: String = (project.findProperty("playerBaseUrl") as? String)
             ?: System.getenv("PLAYER_BASE_URL")

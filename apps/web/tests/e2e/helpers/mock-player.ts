@@ -104,6 +104,8 @@ export interface Posted {
 
 export interface BootOptions {
   tag: string;
+  /** Fake UUID identities for protocols that validate the production identity shape. */
+  identity?: ReturnType<typeof playerIds>;
   kind: MockKind;
   /** The manifest's `playback` block (per-screen switches), e.g. `{ loopMode: 'twodeck' }`. */
   playback?: { loopMode: string };
@@ -139,7 +141,7 @@ export interface BootedPlayer {
 
 export async function bootMockPlayer(page: Page, opts: BootOptions): Promise<BootedPlayer> {
   const { tag, kind } = opts;
-  const id = playerIds(tag);
+  const id = opts.identity ?? playerIds(tag);
   const telemetry: Posted[] = [];
   const refreshAcks: BootedPlayer['refreshAcks'] = [];
 

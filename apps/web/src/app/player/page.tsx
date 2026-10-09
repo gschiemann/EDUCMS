@@ -1,4 +1,6 @@
-"use client";
+'use client';
+import { NativeDualVideo } from './NativeDualVideo';
+import { readNativeSharedVideoDescriptor, sharedVideoEligible, nativeSharedVideoEvidence, type NativeSharedVideoDescriptor } from './nativeSharedVideo';
 
 import { useState, useEffect, useCallback, useRef, useMemo, Component, Suspense, ReactNode } from 'react';
 import { PlaylistVideoDeck } from './PlaylistVideoDeck';
@@ -3017,7 +3019,7 @@ function PlayerPage() {
       // "operator content OR an emergency is on the glass" (it feeds the
       // render proof) — and it's a ref, safe inside this mount-once closure
       // where raw state like playbackStopped would be stale.
-      const contentOnGlass = renderStateRef.current.rendering;
+      const contentOnGlass = renderStateRef.current.rendering && (!nativeSharedVideoEvidence.isSelected() || nativeSharedVideoEvidence.hasFreshFrames(Date.now()));
       const syncOk = manifestFresh || contentOnGlass;
       // On the registering/pairing splash there is legitimately no manifest
       // to reconcile — stay on the legacy heartbeat so the native content
@@ -3085,6 +3087,7 @@ function PlayerPage() {
   //      (detected by window.innerWidth/innerHeight not matching after ~2s)
   // PORTRAIT-preview-mode users (?orientation=portrait in URL) bypass
   // this and use the existing previewOrientation path.
+  const [nativeSharedDescriptor, setNativeSharedDescriptor] = useState<NativeSharedVideoDescriptor | null>(null);
   const [manifestOrientation, setManifestOrientation] = useState<'LANDSCAPE' | 'PORTRAIT' | 'AUTO' | null>(null);
 
   // 2026-05-26 — content tile-repeat for LED ribbons. Operator picks
@@ -4994,7 +4997,9 @@ function PlayerPage() {
     const tick = setInterval(() => {
       if (document.hidden) return;
       const videos = [...document.querySelectorAll<HTMLVideoElement>('video')].filter(video => !video.paused && !video.ended);
-      const frames = videos.reduce((sum, video) => sum + (decodedFrameCount(video) ?? 0), 0);
+      const frames = nativeSharedVideoEvidence.isSelected()
+        ? (nativeSharedVideoEvidence.hasFreshFrames(Date.now()) ? nativeSharedVideoEvidence.frameCount() : 0)
+        : videos.reduce((sum, video) => sum + (decodedFrameCount(video) ?? 0), 0);
       if (frames > 0 && frames !== lastFrames) {
         lastFrames = frames;
         progresses += 1;
@@ -5557,6 +5562,10 @@ function PlayerPage() {
   const renderProofIdleAtRef = useRef(0);
   const takeRenderProof = useCallback((nowMs: number) => {
     const state = renderStateRef.current;
+    // The selected native path must prove THIS face's own new, fresh surface output.
+    // Readiness/process heartbeat/document rAF cannot keep a failed native video green.
+    const nativeSelected = nativeSharedVideoEvidence.isSelected() && !state.sig.startsWith('em:');
+    if (nativeSelected && !nativeSharedVideoEvidence.canProve(nowMs)) return null;
 
     // Frame-locked sync telemetry rides the proof, exactly as it did on the
     // standalone POST. Absent entirely when sync is off, so the wire payload
@@ -5602,7 +5611,7 @@ function PlayerPage() {
         Date.now() - lastManifestOkAtRef.current > 2 * 60_000);
     const stallMarked = alertUnconfirmed
       ? `unconfirmed|${state.sig}`
-      : isActiveMediaStalled() && state.sig.startsWith('pl:')
+      : !nativeSelected && isActiveMediaStalled() && state.sig.startsWith('pl:')
         ? `stall|${state.sig}`
         : state.sig;
 
@@ -5612,7 +5621,7 @@ function PlayerPage() {
       // PAIRED. An unpaired screen belongs to no tenant, so there is nobody
       // for the proof to be visible to and no reason to write its row.
       paired: !!capabilityReportGate,
-      frames: renderFramesRef.current,
+      frames: nativeSelected ? nativeSharedVideoEvidence.frameCount() : renderFramesRef.current,
       lastReportedFrames: renderProofFramesRef.current,
       lastIdlePostAtMs: renderProofIdleAtRef.current,
       nowMs,
@@ -5629,6 +5638,7 @@ function PlayerPage() {
    *  next tick, not silently marked as reported. */
   const commitRenderProof = useCallback((frames: number, isIdleLane: boolean, nowMs: number) => {
     renderProofFramesRef.current = frames;
+    if (nativeSharedVideoEvidence.isSelected()) nativeSharedVideoEvidence.commitProof();
     if (isIdleLane) renderProofIdleAtRef.current = nowMs;
   }, []);
 
@@ -6222,6 +6232,7 @@ function PlayerPage() {
       // calling it on every apply costs one boolean check after the first.
       void preloadPlayerRenderer();
 
+      setNativeSharedDescriptor(em || cachedNormalWouldClearLiveAlert ? null : readNativeSharedVideoDescriptor(manifest.nativeSharedVideo));
       if (manifest.tenantId) setTenantId(manifest.tenantId);
       if (manifest.tenantName !== undefined) setTenantName(manifest.tenantName);
 
@@ -6794,6 +6805,7 @@ function PlayerPage() {
               // silent. Carry it through.
               muted: item.muted,
               asset: {
+                id: item.asset_id ?? null,
                 fileUrl: item.url,
                 // Use the manifest's mime_type when available (always set
                 // by the API now). Fall back to URL-extension guessing
@@ -7430,6 +7442,7 @@ function PlayerPage() {
         // The last video's dropped-frame sample, when there is a new one
         // (2026-09-24). At most one per report; the server keeps the latest.
         video: videoQualityTracker.take(nowMs),
+        nativeVideo: nativeSharedVideoEvidence.telemetry(),
         // What this screen measured at a solo video's loop seam (2026-09-29);
         // sent only when a boundary was observed since the last report.
         loop: loopReportDue(nowMs, loopReportBlockedUntilRef.current) ? loopBoundaryTracker.take() : null,
@@ -11960,16 +11973,26 @@ function PlayerPage() {
                 blocked: (() => { try { return loopIsBlocked(window.localStorage, Date.now()); } catch { return false; } })(),
                 isPreview: isPreviewMode(),
               });
+              const nativeEligible = sharedVideoEligible(nativeSharedDescriptor, {
+                screenId,tenantId,assetId:item.asset.id,sha256:item.asset.fileHash ?? '',
+                solo:isSoloPlaylist && sorted.length === 1,muted:(item as {muted?:boolean|null}).muted !== false,
+                active:isActive,emergency:!!activeEmergency || playlist?.isEmergency === true,
+                sync:syncConfigRef.current.enabled,preview:isPreviewMode(),
+              });
+              const wrapNative = (browser: React.ReactNode) => nativeEligible
+                ? <NativeDualVideo key={item.id} descriptor={nativeSharedDescriptor} classes={classes}
+                    onPlaying={markItemSucceeded}>{browser}</NativeDualVideo>
+                : browser;
               if (loopChoice.backend === 'continuous') {
-                return <ContinuousLoopVideo key={item.id} videoKey={item.id} src={videoSrc}
+                return wrapNative(<ContinuousLoopVideo key={item.id} videoKey={item.id} src={videoSrc}
                   sourceHash={item.asset.fileHash.toLowerCase()} isActive={isActive} classes={classes}
                   onPlaying={markItemSucceeded} onError={() => {
                     markItemFailed(item.id);
                     if (!syncActiveRef.current && advanceOnFailure) advanceSlide();
-                  }} />;
+                  }} />);
               }
               if (loopChoice.backend === 'twodeck') {
-                return (
+                return wrapNative(
                   <SeamlessLoopVideo
                     key={item.id}
                     videoKey={item.id}
@@ -11985,7 +12008,7 @@ function PlayerPage() {
                   />
                 );
               }
-              return (
+              return wrapNative(
                 <PlayerVideoSlide
                   trackDecodedFrames={!playlist?.isEmergency}
                   key={item.id}

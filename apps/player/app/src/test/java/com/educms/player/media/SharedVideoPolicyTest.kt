@@ -46,4 +46,9 @@ class SharedVideoPolicyTest {
             assertFalse(url,SharedVideoSourcePolicy.allowed(url))
         }
     }
+    @org.junit.Test fun eosRenderNotificationsCannotProveAdvancingPictures() {
+        org.junit.Assert.assertFalse(SharedVideoCodecPolicy.validRenderStamp(1,Long.MAX_VALUE))
+        org.junit.Assert.assertFalse(SharedVideoCodecPolicy.validRenderStamp(1,-1))
+        org.junit.Assert.assertTrue(SharedVideoCodecPolicy.validRenderStamp(1,0))
+    }
 }

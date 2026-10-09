@@ -161,6 +161,27 @@ export const refreshAckSchema = z.strictObject({
   refreshAckMs: z.number().finite().min(0).max(8_640_000_000_000_000),
 });
 
+/** Own native SurfaceView output callbacks; never HTML dropped-frame counters or panel illumination. */
+const nativeVideoSchema = z.strictObject({
+  version: z.literal(1), state: z.enum(['preparing','ready','presenting','failed']),
+  sessionId: z.string().uuid(), revision: z.string().min(1).max(128),
+  sha256: z.string().regex(/^[a-f0-9]{64}$/), faceIndex: z.number().int().min(0).max(1),
+  reason: z.string().regex(/^[a-z0-9-]{1,64}$/i).optional(),
+  codecName: z.string().regex(/^[a-z0-9_.-]{1,128}$/i).optional(),
+  elapsedMs: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
+  stalls: z.number().int().min(0).max(1_000_000).optional(),
+  loops: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
+  output: z.strictObject({
+    attached: z.boolean(), visible: z.boolean(), hardwareAccelerated: z.boolean(),
+    viewUpdates: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    uniqueFrames: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    sourcePtsUs: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    width: z.number().int().min(0).max(16_384), height: z.number().int().min(0).max(16_384),
+    lastUpdateElapsedMs: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    ageMs: z.number().int().min(0).max(86_400_000),
+  }).optional(),
+});
+
 export const screenTelemetrySchema = z.strictObject({
   versions: z
     .strictObject({
@@ -202,6 +223,7 @@ export const screenTelemetrySchema = z.strictObject({
   refreshAckMs: z.number().finite().min(0).optional(),
   capsHash: z.string().max(64).optional(),
   video: videoSchema.optional(),
+  nativeVideo: nativeVideoSchema.optional(),
   loop: loopBoundarySchema.optional(),
 });
 

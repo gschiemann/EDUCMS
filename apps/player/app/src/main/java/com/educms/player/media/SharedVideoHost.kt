@@ -66,7 +66,7 @@ class SharedVideoHost private constructor(internal val face: Int, internal val w
             host.texture.holder.addCallback(object : SurfaceHolder.Callback {
                 override fun surfaceCreated(holder: SurfaceHolder) { SharedVideoBox.surfaceReady() }
                 override fun surfaceChanged(holder: SurfaceHolder,format: Int,w: Int,h: Int) { SharedVideoBox.surfaceReady() }
-                override fun surfaceDestroyed(holder: SurfaceHolder) { host.invalidate() }
+                override fun surfaceDestroyed(holder: SurfaceHolder) { if (host.attached) host.invalidate() }
             })
             return host
         }
@@ -76,7 +76,7 @@ class SharedVideoHost private constructor(internal val face: Int, internal val w
     }
 }
 
-/** Serialized box ownership. Network/codec/GL work never runs while holding this monitor. */
+/** Serialized box ownership. Network/codec work never runs while holding this monitor. */
 internal object SharedVideoBox {
     private val main = Handler(Looper.getMainLooper())
     private val io = Executors.newSingleThreadExecutor { r -> Thread(r,"shared-video-source").apply { isDaemon = true } }
@@ -136,7 +136,7 @@ internal object SharedVideoBox {
     private fun valid(host: SharedVideoHost,generation: Long,request: Triple<String,String,String>) =
         hosts[host.face] === host && !host.detached && host.generation == generation && host.request == request && host.state == "preparing"
 
-    /** Called under monitor; dispatches output snapshot to UI before any GL allocation. */
+    /** Called under monitor; dispatches output snapshot to UI before any decoder allocation. */
     private fun joinIfReady() {
         if (id != null) return
         val a = hosts[0] ?: return; val b = hosts[1] ?: return
@@ -161,6 +161,7 @@ internal object SharedVideoBox {
                 }
             }
             prepareSurfaces(e,session,a,b,da)
+            main.postDelayed({ watch(e,session) },1000)
         }
     }
 
@@ -190,6 +191,11 @@ internal object SharedVideoBox {
                 try {
                     val file = SharedVideoSource(a.ctx).verifiedFile(da) { current(e,session) }
                     if (!current(e,session)) return@execute
+                    // Re-prove BOTH credentials/selections after a potentially long download.
+                    val freshA = SharedVideoSource(a.ctx).descriptor(a.face,da.screenId)
+                    val freshB = SharedVideoSource(b.ctx).descriptor(b.face,b.descriptor?.screenId ?: error("peer-retired"))
+                    require(freshA == da && freshB == b.descriptor && freshA.agrees(freshB)) { "selection-changed" }
+                    if (!current(e,session)) return@execute
                     val r = SharedVideoRenderer(file,da,outputList,{ current(e,session) },
                         ready = { synchronized(this) { if (current(e,session)) {
                             a.state = "ready"; b.state = "ready"
@@ -199,7 +205,6 @@ internal object SharedVideoBox {
                         looped = { face -> synchronized(this) { if (current(e,session)) hosts[face]?.let { it.loops++ } } })
                     synchronized(this) { if (!current(e,session)) { r.stop(); return@execute }; renderer = r }
                     r.prepare()
-                    main.postDelayed({ watch(e,session) },1000)
                 } catch (_: Exception) { synchronized(this) { if (current(e,session)) stopAll("source-failed") } }
             }
     }
@@ -226,6 +231,7 @@ internal object SharedVideoBox {
     @Synchronized fun updated(host: SharedVideoHost,stamp: Long,pts: Long) {
         if (host.sessionId != id || id == null || host.startedAt == 0L || hosts[host.face] !== host) return
         if (!host.texture.holder.surface.isValid || !host.texture.isShown) return
+        if (!SharedVideoCodecPolicy.validRenderStamp(stamp,pts)) return
         host.updates++
         if (stamp != host.lastStamp) { host.unique++; host.lastStamp = stamp; host.ptsUs = pts }
         host.lastUpdate = SystemClock.elapsedRealtime()
@@ -264,6 +270,7 @@ internal object SharedVideoBox {
             .put("viewUpdates",host.updates).put("uniqueFrames",host.unique).put("sourcePtsUs",host.ptsUs)
             .put("width",host.texture.width).put("height",host.texture.height).put("lastUpdateElapsedMs",host.lastUpdate)
             .put("swapMaxMs",host.swapMaxMs)
+            .put("ageMs",if (host.lastStamp > 0) ((System.nanoTime()-host.lastStamp)/1_000_000).coerceIn(0,86_400_000) else 86_400_000)
         return JSONObject().put("version",1).put("state",host.state).put("sessionId",host.sessionId ?: JSONObject.NULL)
             .put("revision",host.reportRevision ?: JSONObject.NULL).put("sha256",host.reportSha ?: JSONObject.NULL)
             .put("faceIndex",host.face).put("reason",host.reason ?: JSONObject.NULL).put("output",output)

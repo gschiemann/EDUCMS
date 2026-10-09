@@ -402,6 +402,35 @@ describe('POST /screens/:id/telemetry', () => {
     });
   });
 
+  const nativeSample = (state='presenting', frames=1800): any => ({version:1,state,
+    sessionId:'11111111-1111-4111-8111-111111111111',revision:'revision',sha256:'a'.repeat(64),faceIndex:0,
+    codecName:'OMX.rk.video_decoder.avc',elapsedMs:60000,loops:1,
+    output:{attached:true,visible:true,hardwareAccelerated:true,viewUpdates:frames,uniqueFrames:frames,
+      sourcePtsUs:3000000,width:1080,height:1920,lastUpdateElapsedMs:999999,ageMs:0}});
+  it.each(['preparing','ready','failed'])('native %s never refreshes render or HTML frame-quality timestamps',async state=>{
+    await controller.report(SCREEN_ID,makeReq(),{nativeVideo:nativeSample(state),render:{frames:99,hash:'pl:test'}});
+    expect(writtenData()).not.toHaveProperty('lastRenderedAt');
+    expect(writtenData()).not.toHaveProperty('lastVideoReportAt');
+    expect(writtenData()?.lastVideoReport).toMatchObject({native:{state,evidence:'surface-render-callback'}});
+  });
+  it('native advancing output records its own facts without inventing HTML drops',async()=>{
+    await controller.report(SCREEN_ID,makeReq(),{nativeVideo:nativeSample(),render:{frames:1800,hash:'pl:test'}});
+    expect(writtenData()).toHaveProperty('lastRenderedAt');
+    expect(writtenData()).not.toHaveProperty('lastVideoReportAt');
+    expect(writtenData()?.lastVideoReport).not.toHaveProperty('droppedFrames');
+  });
+  it('native stale callbacks and repeated counters cannot stamp render proof',async()=>{
+    prisma.client.screen.findUnique.mockResolvedValue(baseRow({lastVideoReport:{native:nativeSample()}}));
+    await controller.report(SCREEN_ID,makeReq(),{nativeVideo:nativeSample(),render:{frames:9999,hash:'pl:test'}});
+    expect(writtenData()).not.toHaveProperty('lastRenderedAt');
+  });
+  it('native telemetry is strict and face-scoped',async()=>{
+    for(const nativeVideo of [{...nativeSample(),faceIndex:1},{...nativeSample(),invented:1},
+      {...nativeSample(),output:{...nativeSample().output,uniqueFrames:Number.MAX_SAFE_INTEGER+1}}]) {
+      await expect(controller.report(SCREEN_ID,makeReq(),{nativeVideo})).rejects.toMatchObject({status:400});
+    }
+  });
+
   it('sanitizeVideoReport keeps the rebuffer counters only as bounded non-negative ints, and only when sent', () => {
     const base = { url: 'x', totalFrames: 1830, droppedFrames: 0 };
     expect(sanitizeVideoReport({ ...base, stalls: 0, stalledMs: 0 })).toEqual({
