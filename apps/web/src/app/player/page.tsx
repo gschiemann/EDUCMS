@@ -171,7 +171,7 @@ import {
   type PlaylistCacheAsset,
 } from './offline-cache';
 import { PlaylistCacheRetryPolicy } from './playlistCacheRetryPolicy';
-import { clearOfflineManifests, readOfflineManifest, saveManifest, type SavedManifest } from './offlineBoot';
+import { clearOfflineManifests, readOfflineManifest, recordManifestPairing, saveManifest, type SavedManifest } from './offlineBoot';
 // Readiness-gated playback (2026-09-26): a large file is never mounted or
 // streamed before its native bytes are on disk — download the whole file,
 // THEN play it. Pure module; the shapes are tested in mediaReadiness.test.ts.
@@ -2957,6 +2957,9 @@ function PlayerPage() {
   const phaseRef = useRef<Phase>('registering');
   const offlineBootRef = useRef<SavedManifest | null>(null);
   const playbackManifestRef = useRef<{ m: any; fromCache: boolean } | null>(null);
+  const registeredScreenRef = useRef<string | null>(null);
+  const manifestIdentityGenerationRef = useRef(0);
+  const serverUnpairedRef = useRef(false);
   useEffect(() => { phaseRef.current = phase; }, [phase]);
 
   // A deployment is not an instruction to interrupt live content. Detect
@@ -3887,6 +3890,33 @@ function PlayerPage() {
             console.warn(`[Player] credential recovery failed: HTTP ${res.status}${data ? '' : ' (empty body)'}`);
             return 'failed';
           }
+          const changedIdentity = !!registeredScreenRef.current && data.screenId !== registeredScreenRef.current;
+          if (data.paired === false || changedIdentity) {
+            // An authoritative unpair/new identity ends normal cached replay.
+            // Retire in-flight/pending normal manifests; preserve a live alert.
+            manifestIdentityGenerationRef.current++;
+            manifestFetchAbortRef.current?.abort();
+            offlineBootRef.current = null;
+            playbackManifestRef.current = null;
+            pendingPlaylistCommitRef.current = null;
+            currentPlaylistSigRef.current = '';
+            lastAppliedManifestRef.current = null;
+            manifestEtagRef.current = null;
+            try { clearOfflineManifests(localStorage); } catch {}
+            setNativeSharedDescriptor(null);
+            setPlaylist(null);
+            setManifestPlaylists([]);
+            setTenantId(null);
+            setScreenId(data.screenId);
+            setScreenName(data.name || '');
+            setPairingCode(data.pairingCode || null);
+            setPhase(data.paired === false ? 'pairing' : 'connecting');
+          }
+          serverUnpairedRef.current = data.paired === false;
+          registeredScreenRef.current = data.screenId;
+          if (typeof data.paired === 'boolean') {
+            try { recordManifestPairing(localStorage, data.screenId, data.paired); } catch {}
+          }
           // A renewal IS a successful registration — report it so the native
           // diagnostic's "last successful registration" is a live fact rather
           // than a boot-time relic. Deliberately only the SUCCESS half: a
@@ -3929,6 +3959,7 @@ function PlayerPage() {
     const saved = readCachedManifest();
     if (!saved) return;
     offlineBootRef.current = saved;
+    registeredScreenRef.current = saved.screenId;
     setScreenId(saved.screenId);
     setScreenName(saved.m.screenName || '');
     setPhase('connecting');
@@ -5907,6 +5938,11 @@ function PlayerPage() {
 
         setScreenId(data.screenId);
         setScreenName(data.name);
+        registeredScreenRef.current = data.screenId;
+        serverUnpairedRef.current = data.paired === false;
+        if (typeof data.paired === 'boolean') {
+          try { recordManifestPairing(localStorage, data.screenId, data.paired); } catch {}
+        }
 
         // P0-3 — registration is DONE, so the renderer is now certainly
         // wanted: start pulling its chunk in the background while the
@@ -6130,6 +6166,9 @@ function PlayerPage() {
           if (!exchanged) return 'fail';
           setScreenName(data.name);
           setScreenId(data.screenId);
+          serverUnpairedRef.current = false;
+          registeredScreenRef.current = data.screenId;
+          try { recordManifestPairing(localStorage, data.screenId, true); } catch {}
           setPhase('connecting');
           return 'done';
         }
@@ -6185,7 +6224,9 @@ function PlayerPage() {
   }, []);
 
   const fetchContentInner = useCallback(async () => {
-    if (!screenId) return;
+    if (!screenId || serverUnpairedRef.current) return;
+    const identityGeneration = manifestIdentityGenerationRef.current;
+    const identityRetired = () => serverUnpairedRef.current || identityGeneration !== manifestIdentityGenerationRef.current;
 
     // Resolve auth token for this fetch. Device-pairing token first —
     // the old "admin fallback login" with hardcoded creds was baked
@@ -7042,6 +7083,7 @@ function PlayerPage() {
         setPhase('playing');
       }
       const access_token = await resolveAuthToken();
+      if (identityRetired()) return;
 
       // LIFE-SAFETY (2026-07-31 stuck-lockdown incident): while an emergency
       // is DISPLAYED, every poll must come back as a FULL 200 from the
@@ -7091,6 +7133,7 @@ function PlayerPage() {
         20_000,
         manifestCtl,
       );
+      if (identityRetired()) return;
 
       // 304 — nothing changed since the ETag'd manifest we already applied.
       // Same success bookkeeping as a 200, minus the re-apply.
@@ -7234,6 +7277,7 @@ function PlayerPage() {
       // Non-OK and not 401 — fall through to catch.
       throw new Error(`Manifest fetch failed: HTTP ${manifestRes.status}`);
     } catch (e: any) {
+      if (identityRetired()) return;
       fetchFailCountRef.current += 1;
       if (fetchFailStreakStartedAtRef.current === null) {
         fetchFailStreakStartedAtRef.current = Date.now();

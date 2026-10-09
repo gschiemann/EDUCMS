@@ -410,3 +410,42 @@ test('cached video loops after a cold boot without internet', async ({ page, con
   await expect(page.getByText('Content unavailable', { exact: false })).toHaveCount(0);
   await page.screenshot({ path: '/tmp/player-offline-video-recovered.png' });
 });
+
+test.describe('cached pairing authority', () => {
+test.use({ serviceWorkers: 'block' });
+test('an authoritative unpair retires cached content and stays retired after reload', async ({ page }) => {
+  await installMocks(page);
+  await installWsStub(page);
+  const saved = { at: Date.now(), m: {
+    screenId: FAKE_SCREEN_ID, screenName: 'Saved screen', tenantId: FAKE_TENANT_ID,
+    isEmergency: false, orientation: 'LANDSCAPE', playlists: templatePlaylist(),
+  } };
+  await page.addInitScript(({ saved, fp }) => {
+    if (!localStorage.getItem('edu_manifest_pairing_v2:' + saved.m.screenId)) {
+      localStorage.setItem('edu_device_fp', fp);
+      localStorage.setItem('edu_manifest_cache_v1', JSON.stringify(saved));
+    }
+  }, { saved, fp: FAKE_FINGERPRINT });
+  let release!: () => void;
+  const verdict = new Promise<void>(resolve => { release = resolve; });
+  await page.route('**/api/v1/screens/register', async route => {
+    await verdict;
+    await ok(route, { screenId: FAKE_SCREEN_ID, name: 'Unpaired screen', paired: false,
+      pairingCode: '123456', deviceToken: 'header.' + Buffer.from(JSON.stringify({
+        kind: 'device', sub: FAKE_SCREEN_ID, exp: 1,
+      })).toString('base64url') + '.signature' });
+  });
+  // A response already in flight may arrive after registration; it cannot
+  // restore old content once the authoritative identity generation retires.
+  await page.route(`**/api/v1/screens/${FAKE_SCREEN_ID}/manifest*`, route => route.abort());
+  await page.goto('/player', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByText(PROOF_TEXT, { exact: true })).toBeVisible({ timeout: 20_000 });
+  release();
+  await expect(page.getByText(PROOF_TEXT, { exact: true })).toHaveCount(0);
+  await expect.poll(() => page.evaluate(id => localStorage.getItem('edu_manifest_pairing_v2:' + id), FAKE_SCREEN_ID)).toBe('unpaired');
+  await expect(page.locator('body')).toContainText('123456');
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await expect(page.locator('body')).toContainText('123456');
+  await expect(page.getByText(PROOF_TEXT, { exact: true })).toHaveCount(0);
+});
+});
