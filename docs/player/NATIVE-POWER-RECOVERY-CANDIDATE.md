@@ -1,6 +1,6 @@
 # Native power recovery candidate — 1.1.24
 
-This branch builds a signed test artifact through manual `android-player-apk.yml` dispatch. It does not create a release tag, publish to the production APK catalogue, or change fleet auto-update settings. All physical hardware classes remain UNQUALIFIED.
+Version 1.1.24 was first built as a signed test candidate through manual `android-player-apk.yml` dispatch. On 2026-10-09, the operator explicitly requested publication so VisionCore can be updated from its screen. The release uses the recorded `--unqualified-override`; its OVERRIDE cells are outstanding physical qualification debt, not hardware PASS results. No fleet update command or auto-update setting change is part of this publication.
 
 The candidate adds an authenticated native heartbeat backstop for an operator's explicit POWER_ON. A sleeping WebView cannot consume normal push commands. The backstop has a five-minute server TTL, at most three persisted attempts, exact screen and command identities, and deduplication shared with the live displayApply path. A later physical OFF cancels retries. Neither a routine heartbeat nor stale rendering creates a wake.
 
