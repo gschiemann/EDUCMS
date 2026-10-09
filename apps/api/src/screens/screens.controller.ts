@@ -1,7 +1,7 @@
 import { Controller, Post, Get, Put, Delete, Body, Param, Query, Req, Res, UseGuards, Request, HttpException, HttpStatus } from '@nestjs/common';
 import { encodeTargetFromResolutions, pdfDelivery, withheldFromScreens } from '@cms/api-types';
 import { pdfPageBytes, pdfPageManifestItems, pdfScreenShape } from './pdf-page-items';
-import { selectVideoFile, usesPortraitAvcCompatibility } from './video-rendition';
+import { selectVideoFile, usesPortraitAvcCompatibility, usesNoBFrameCompatibility } from './video-rendition';
 import { NATIVE_RUNTIME_HEADER, parseNativeRuntime, pendingNativePowerOn } from './native-runtime';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import type { Request as ExpressReq, Response } from 'express';
@@ -6614,6 +6614,8 @@ export class ScreensController {
     // picture is selected only alongside native playback, never handed to MSE.
     const portraitAvcCompatibility = usesPortraitAvcCompatibility(screen.id) &&
       resolvePlaybackConfig(screen.id).loopMode === 'native';
+    const noBFrameCompatibility = usesNoBFrameCompatibility(screen.id) &&
+      resolvePlaybackConfig(screen.id).loopMode === 'native';
     const dynamicPlaylists = schedules.map(s => {
     // 2026-05-05 — schedule-level audio override.
     // Null = honor each PlaylistItem.muted (current behavior).
@@ -6676,7 +6678,7 @@ export class ScreensController {
           sum +
           (pdfDelivery(pi.asset) === 'pages'
             ? pdfPageBytes(pi, pdfShape)
-            : selectVideoFile(pi.asset, screen.resolution, portraitAvcCompatibility).size || 0),
+            : selectVideoFile(pi.asset, screen.resolution, portraitAvcCompatibility, noBFrameCompatibility).size || 0),
         0,
       ),
       // Include template data when playlist is template-based
@@ -6730,7 +6732,7 @@ export class ScreensController {
       } : {}),
       items: deliverableItems.flatMap(pi => {
         if (pdfDelivery(pi.asset) === 'pages') return pdfPageManifestItems(pi, pdfShape, itemMuted(pi));
-        const selected = selectVideoFile(pi.asset, screen.resolution, portraitAvcCompatibility);
+        const selected = selectVideoFile(pi.asset, screen.resolution, portraitAvcCompatibility, noBFrameCompatibility);
         return [({
         item_id: pi.id,
         asset_id: pi.assetId,

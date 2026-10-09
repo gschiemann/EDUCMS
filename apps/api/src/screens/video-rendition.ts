@@ -56,6 +56,100 @@ export function usesPortraitAvcCompatibility(
     .includes(screenId);
 }
 
+/** A separate, exact-screen field trial; absent by default. */
+export function usesNoBFrameCompatibility(
+  screenId: string,
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return (
+    !!screenId &&
+    (env.PLAYER_VIDEO_NO_B ?? '')
+      .split(',')
+      .some((id) => id.trim() === screenId)
+  );
+}
+
+function noBFrameRendition(
+  meta: unknown,
+  sourceHash: string | null | undefined,
+): SelectedVideoFile | null {
+  const selected = validRendition(meta, 'avc-no-b');
+  if (!selected) return null;
+  const m = meta as {
+    probe?: { fps?: number };
+    renditions: Record<string, Record<string, unknown>>;
+  };
+  const standard = m.renditions['1080p'];
+  const candidate = m.renditions['avc-no-b'];
+  if (
+    !standard ||
+    !validRendition(meta) ||
+    !sourceHash ||
+    candidate.sourceSha256 !== sourceHash ||
+    candidate.standardSha256 !== standard.sha256 ||
+    !Number.isSafeInteger(standard.width) ||
+    !Number.isSafeInteger(standard.height) ||
+    Number(standard.width) <= 0 ||
+    Number(standard.height) <= 0 ||
+    candidate.width !== standard.width ||
+    candidate.height !== standard.height ||
+    candidate.rotation !== 0 ||
+    candidate.codec !== 'h264' ||
+    candidate.profile !== 'High' ||
+    candidate.level !== 41 ||
+    candidate.bFrames !== 0 ||
+    candidate.referenceFrames !== 1 ||
+    typeof m.probe?.fps !== 'number' ||
+    !Number.isFinite(m.probe.fps) ||
+    m.probe.fps <= 0 ||
+    candidate.fps !== Math.min(30, m.probe.fps) ||
+    typeof candidate.bitrate !== 'number' ||
+    !Number.isFinite(candidate.bitrate) ||
+    candidate.bitrate <= 0 ||
+    typeof standard.bitrate !== 'number' ||
+    !Number.isFinite(standard.bitrate) ||
+    candidate.bitrate > standard.bitrate
+  )
+    return null;
+  // Field copies must carry the original comparison, including difficult motion
+  // and fine text. An average alone can conceal a visibly worse interval.
+  const quality = candidate.quality as Record<string, unknown> | undefined;
+  if (
+    !quality ||
+    quality.version !== 1 ||
+    quality.frames !== 3000 ||
+    quality.visualChecked !== true
+  )
+    return null;
+  for (const region of ['full', 'text']) {
+    const scores = quality[region] as Record<string, unknown> | undefined;
+    if (!scores) return null;
+    for (const [metric, tolerance] of [
+      ['avg', 0.0001],
+      ['worst1percent', 0.001],
+      ['worst1second', 0.001],
+    ] as const) {
+      const pair = scores[metric] as
+        | { standard?: number; candidate?: number }
+        | undefined;
+      if (
+        !pair ||
+        typeof pair.standard !== 'number' ||
+        typeof pair.candidate !== 'number' ||
+        !Number.isFinite(pair.standard) ||
+        !Number.isFinite(pair.candidate) ||
+        pair.standard < 0 ||
+        pair.standard > 1 ||
+        pair.candidate < 0 ||
+        pair.candidate > 1 ||
+        pair.standard - pair.candidate > tolerance
+      )
+        return null;
+    }
+  }
+  return selected;
+}
+
 function portraitAvcRendition(
   meta: unknown,
   sourceHash: string | null | undefined,
@@ -101,6 +195,7 @@ export function selectVideoFile(
   asset: ManifestVideoAsset,
   screenResolution: string | null | undefined,
   portraitAvcCompatibility = false,
+  noBFrameCompatibility = false,
 ): SelectedVideoFile {
   const primary = {
     url: asset.fileUrl,
@@ -123,6 +218,10 @@ export function selectVideoFile(
       asset.processingMeta,
       asset.fileHash,
     );
+    if (compatible) return compatible;
+  }
+  if (noBFrameCompatibility && asset.mimeType === 'video/mp4') {
+    const compatible = noBFrameRendition(asset.processingMeta, asset.fileHash);
     if (compatible) return compatible;
   }
   return validRendition(asset.processingMeta) ?? primary;
