@@ -195,8 +195,8 @@ android {
         // TO RELEASE, once the checklist has been run on real hardware and
         // the PASS rows are recorded:  scripts/release-apk.sh player 1.1.18
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        versionCode = 10123
-        versionName = "1.1.23"
+        versionCode = 10124
+        versionName = "1.1.24"
 
         // Override at build time:  -PplayerBaseUrl="https://your.app/player"
         val playerBaseUrl: String = (project.findProperty("playerBaseUrl") as? String)

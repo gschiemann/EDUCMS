@@ -381,3 +381,19 @@ to be run on hardware.
 | 2026-10-04 | player | 1.1.21 | GS | (all)/* | Greg ordered the release on 2026-10-04 to stop the VisionCore X80 and office panels waking after a remote power-off. NOT a field hotfix. Unit tests and lint only: no hardware class has run 1.1.21. Unproven on glass: remote-standby (screen stays off; schedule ON, dashboard Wake and an emergency alert each wake it), renderer-recovery changes, native blackout above site views. First on-glass run is the VisionCore X80 and Greg's office panels after this release. |
 | 2026-10-05 | player | 1.1.22 | GS | (all)/* | Greg ordered the release on 2026-10-05 ("Release .22 and let's test it"): 1.1.21 was recalled because an alert could not reach a panel that was off, and 1.1.22 adds the native alert watch that closes that hole. NOT a field hotfix. Unit tests and lint only: no hardware class has run 1.1.22. Unproven on glass: the native watch polling while the panel is off, the wake, the page resuming and confirming the alert, the reload path. First on-glass run is the alert-from-off drill on the VisionCore X80 right after this release. |
 | 2026-10-05 | player | 1.1.23 | GS | (all)/* | Greg ordered the release on 2026-10-05 ("finish the new player"): the setup card trapped the remote twice on the VisionCore X80 (Enter opened a Google web page, Back returned to the same card) and only a power cycle got the box back. FIELD HOTFIX. Unit tests and lint only: no hardware class has run 1.1.23. Unproven on glass: the setup card on the X80 (ring, Skip, Back, missing-page rows), the Manager permission read on Android 11, the sleep-again-after-all-clear drill. First on-glass run is the VisionCore X80 right after this release. |
+
+
+## Release: player 1.1.24
+
+Candidate only, 2026-10-09 UTC. Manual CI artifact for matching-hardware qualification; no release tag or production publication. JVM tests and Android 14 emulator wake/foreground exercises are software evidence. All full physical qualification cells remain UNQUALIFIED. See `docs/player/NATIVE-POWER-RECOVERY-CANDIDATE.md`.
+
+| class | cold-install | pairing | reboot-recovery | offline-recovery | content-update | emergency-drill | remote-nav | ota-push | boot-proof |
+|---|---|---|---|---|---|---|---|---|---|
+| goodview-t982-a11 | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED |
+| goodview-t982-a13 | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED |
+| maxhub-l55vec-a13 | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED |
+| rockchip-rk3288-a7 | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED |
+| rockchip-rk3328-a11 | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED |
+| novastar-taurus-rk356x-a11 | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED |
+| goodview-lcd-a9 | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED |
+| generic-android-emulator | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED |
