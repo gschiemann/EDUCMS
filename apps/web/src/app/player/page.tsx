@@ -76,6 +76,11 @@ import { fetchJsonBounded, headersStatusOf, type BoundedJsonResult } from './fet
 // proof signature consumes.
 import { playbackSafety, decodedFrameCount, isOperatorRefresh, requestDiagnosticsUpload } from './playbackSafety';
 import { otaCheckAnswered } from './otaAttempt';
+// Never-interrupt (2026-10-10): every automatic reload asks this first. A
+// person's refresh is always honoured; a SYSTEM refresh (wedge detector,
+// rendition swap) is declined by a screen that can prove it is painting and
+// fetching; a waiting web bundle is picked up only when nothing is on glass.
+import { admitRefresh, bundleReloadIdle, manifestRefreshOrigin, pushRefreshOrigin, type LiveEvidence, type RefreshAdmission, type RefreshOrigin } from './refreshAdmission';
 import { createDeviceDiagnosticsUploader, installDeviceDiagnosticsUploader } from './deviceDiagnostics';
 import { createMediaStallDetector, setActiveMediaStalled, isActiveMediaStalled } from './mediaStallWatchdog';
 // 2026-08-30 deep audit B-P0-1/2/3 — wrap-aware schedule windows + the
@@ -835,7 +840,14 @@ function readRefreshAck(): number | null {
     return null;
   }
 }
-function maybeExecuteDurableRefresh(manifest: any): void {
+function maybeExecuteDurableRefresh(
+  manifest: any,
+  // Never-interrupt (2026-10-10): the page's admission for the command's
+  // origin (`refreshAdmission.ts`). The ack below is persisted regardless —
+  // a declined command is still CONSUMED (value identity), so the server
+  // clears the flag on the next telemetry post instead of re-offering it.
+  admit: (origin: RefreshOrigin) => RefreshAdmission = () => ({ action: 'reload' }),
+): void {
   // The command targets the SCREEN. An admin's "Open in Browser" preview
   // fetches the same manifest — reloading their tab (and consuming the ack
   // into the wrong localStorage) would be both baffling and wrong.
@@ -858,6 +870,17 @@ function maybeExecuteDurableRefresh(manifest: any): void {
     if (localStorage.getItem(LS_REFRESH_ACK) !== String(req)) return;
   } catch {
     return; // ack MUST be durable before we act
+  }
+  // Never-interrupt (2026-10-10): who asked? The wedge detector's durable
+  // ride reaches push-dead screens — exactly the fleet's problem boxes — so
+  // this is where a SYSTEM reload most often lands on content a customer is
+  // watching. A manifest just arrived (the fetch loop is alive by
+  // construction), so a painting screen declines it; an operator's Resync,
+  // or a manifest from an API that does not say, reloads as it always has.
+  const origin = manifestRefreshOrigin(manifest?.refreshRequestedBy);
+  if (admit(origin).action === 'decline') {
+    console.warn(`[Player] durable REFRESH_WEB (${origin}) declined — content is playing and provably healthy; acknowledged without a reload (never-interrupt)`);
+    return;
   }
   console.warn('[Player] durable REFRESH_WEB arrived via manifest — reloading once');
   setTimeout(() => {
@@ -5360,6 +5383,10 @@ function PlayerPage() {
   // UNKNOWN — never falsely RED. Preview mode is skipped so it can't write
   // proof on behalf of the real paired device.
   const renderFramesRef = useRef(0);
+  // Never-interrupt (2026-10-10): WHEN the compositor last ran the rAF tick.
+  // A fresh stamp is the page's own proof that it is painting — the local
+  // half of the evidence a system-initiated refresh is weighed against.
+  const lastPaintAtRef = useRef(0);
   // Mirror the live render state into refs so the rAF loop + the 30s POST
   // timer read CURRENT values without restarting their effects on every
   // content/phase change (which would reset the frame counter mid-stream).
@@ -5483,11 +5510,37 @@ function PlayerPage() {
     const tick = () => {
       if (stopped) return;
       renderFramesRef.current = (renderFramesRef.current + 1) % Number.MAX_SAFE_INTEGER;
+      lastPaintAtRef.current = Date.now();
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => { stopped = true; cancelAnimationFrame(raf); };
   }, []);
+
+  // ── Never-interrupt (2026-10-10): the page's own health evidence ───────
+  // Read at decision time by every automatic reload path (pushed REFRESH_WEB,
+  // durable manifest REFRESH_WEB, the pending-bundle check). Refs only, so
+  // the WS/SSE handlers and fetchContent see CURRENT values without
+  // re-subscribing. `admitRefresh` / `bundleReloadIdle` (refreshAdmission.ts)
+  // hold the decisions and are unit-tested per shape.
+  const liveEvidence = useCallback((): LiveEvidence => {
+    const state = renderStateRef.current;
+    return {
+      phase: phaseRef.current,
+      rendering: state.rendering,
+      sig: state.sig,
+      kind: state.kind,
+      emergency: !!activeEmergencyRef.current || !!pushedEmergencyMessageRef.current || !!readCachedEmergency(),
+      mediaStalled: isActiveMediaStalled(),
+      nowMs: Date.now(),
+      lastPaintAtMs: lastPaintAtRef.current,
+      lastManifestOkAtMs: lastManifestOkAtRef.current,
+    };
+  }, []);
+  const admitRefreshNow = useCallback(
+    (origin: RefreshOrigin): RefreshAdmission => admitRefresh(origin, liveEvidence()),
+    [liveEvidence],
+  );
 
   // ── 2026-08-25 (v1.1.5) — hand the APK this screen's DEVICE JWT ────────
   //
@@ -7284,7 +7337,7 @@ function PlayerPage() {
         appliedWindowSigRef.current = windowSignature(manifest?.playlists, new Date());
         // Durable REFRESH_WEB — live manifests only (a disk-cached command
         // value is either already acked or pointless offline).
-        maybeExecuteDurableRefresh(manifest);
+        maybeExecuteDurableRefresh(manifest, admitRefreshNow);
         setPhase('playing');
         setLastSync(new Date().toLocaleTimeString());
         return;
@@ -7936,7 +7989,12 @@ function PlayerPage() {
             clearTimer();
             return;
           }
-          if (phaseRef.current === 'playing') {
+          // Never-interrupt (2026-10-10): "idle" is decided by what is on the
+          // GLASS, not by the phase. Content playing, a file downloading or
+          // loading, an operator-paused screen: wait. The splash phases, a
+          // screen with nothing scheduled, the Content Unavailable card: the
+          // new bundle may be picked up — nothing visible is torn down.
+          if (!bundleReloadIdle(liveEvidence())) {
             console.log('[bundle-drift] content playing — waiting for idle or an operator refresh');
             clearTimer();
             return;
@@ -8428,6 +8486,13 @@ function PlayerPage() {
       handle('REFRESH_WEB', (pl) => {
         // Same rule as the WS arm: a person's refresh lifts set-aside files.
         if (isOperatorRefresh(pl)) { try { playbackSafety().operatorReset(); } catch { /* never block a reload */ } requestDiagnosticsUpload({ has: nativeHas, call: nativeCall }); }
+        // Never-interrupt (2026-10-10) — mirror of the WS arm's admission: a
+        // SYSTEM refresh is declined by a provably healthy playing screen.
+        const sseOrigin = pushRefreshOrigin(pl);
+        if (admitRefreshNow(sseOrigin).action === 'decline') {
+          console.warn(`[REFRESH_WEB sse] declined — ${sseOrigin} refresh on a provably healthy playing screen (never-interrupt)`);
+          return;
+        }
         // Cache-busting reload (not plain reload) so the NovaStar/Taurus
         // WebView fetches the CURRENT bundle instead of re-serving the cached
         // one — see the WS REFRESH_WEB handler for the full rationale.
@@ -8964,6 +9029,18 @@ function PlayerPage() {
                 // A person's refresh lifts set-aside files (install-day false
                 // positive); the wedge detector's never does.
                 if (isOperatorRefresh(pl)) { try { playbackSafety().operatorReset(); } catch { /* never block a reload */ } requestDiagnosticsUpload({ has: nativeHas, call: nativeCall }); }
+                // Never-interrupt (2026-10-10): a SYSTEM refresh (the wedge
+                // detector sees only server-side telemetry) is declined when
+                // this page can prove it is playing, painting and fetching —
+                // the reload would only tear down content a customer is
+                // looking at. An operator's refresh is always honoured, and a
+                // screen that cannot prove its health reloads as before.
+                const wsOrigin = pushRefreshOrigin(pl);
+                const wsVerdict = admitRefreshNow(wsOrigin);
+                if (wsVerdict.action === 'decline') {
+                  console.warn(`[REFRESH_WEB ${corrId}] declined — ${wsOrigin} refresh on a provably healthy playing screen (never-interrupt)`);
+                  return;
+                }
                 const delay = jitterMs > 0 ? Math.floor(Math.random() * jitterMs) : 0;
                 console.log(`[REFRESH_WEB ${corrId}] reloading in ${delay}ms (jitter=${jitterMs}ms scope=${scope})`);
                 // Brief connectivity toast so the operator-at-kiosk

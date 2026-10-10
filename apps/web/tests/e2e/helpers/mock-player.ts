@@ -183,6 +183,17 @@ export async function bootMockPlayer(page: Page, opts: BootOptions): Promise<Boo
           addEventListener() { /* unused */ },
           removeEventListener() { /* unused */ },
         };
+        // Test hook: the most recent realtime stub, so a spec can deliver a
+        // pushed message (e.g. a wedge-detector REFRESH_WEB) exactly as the
+        // server would — `window.__eduTestRealtime.deliver({...})`.
+        (window as unknown as { __eduTestRealtime?: unknown }).__eduTestRealtime = {
+          deliver(message: unknown) {
+            (inst.onmessage as ((e: MessageEvent) => void) | null)?.call(
+              null,
+              new MessageEvent('message', { data: JSON.stringify(message) }),
+            );
+          },
+        };
         setTimeout(() => {
           inst.readyState = RealWS.OPEN;
           (inst.onopen as ((e: Event) => void) | null)?.call(null, new Event('open'));
