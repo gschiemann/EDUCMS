@@ -11,18 +11,17 @@ import {
   SETUP_EMAIL_CODE_IP_WINDOW_MS,
   SETUP_EMAIL_CODE_SENDS_PER_ACCOUNT,
   SETUP_EMAIL_CODE_SENDS_PER_IP,
+  emailOwnershipProofRequired,
   setupEmailChallengeHash,
-  setupEmailVerificationRequired,
 } from './setup-email-verification';
 import {
-  MFA_EMAIL_CODE_MAX_ATTEMPTS,
   MFA_EMAIL_CODE_TTL_MS,
-  emailCodeHashesMatch,
   generateEmailCode,
   hashClientIp,
   hashEmailCode,
   normalizeEmailCode,
 } from './mfa-email-code';
+import { claimEmailCodeAttempt, spendEmailCode } from './email-code-claim';
 import { ZodValidationPipe } from '../security/zod-validation.pipe';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { RedisService } from '../realtime/redis.service';
@@ -78,6 +77,12 @@ export const CompleteSetupSchema = z
 export const SetupEmailCodeSchema = z.object({ email: EmailString }).strict();
 type SetupEmailCodeInput = z.infer<typeof SetupEmailCodeSchema>;
 type CompleteSetupInput = z.infer<typeof CompleteSetupSchema>;
+
+const setupCodeInvalid = () =>
+  new BadRequestException({
+    code: 'SETUP_EMAIL_CODE_INVALID',
+    message: "That code isn't right. Check the email and try again.",
+  });
 
 @Controller('api/v1/auth')
 export class AuthController {
@@ -489,12 +494,7 @@ export class AuthController {
   }
 
   private setupEmailVerificationRequired(): boolean {
-    return setupEmailVerificationRequired({
-      deliverable:
-        !!this.emailService &&
-        this.emailService.isConfigured() &&
-        this.emailService.isDeliverableToArbitraryRecipients(),
-    });
+    return emailOwnershipProofRequired(this.emailService);
   }
 
   private codeSecret(): string {
@@ -502,12 +502,15 @@ export class AuthController {
   }
 
   /**
-   * Spend the emailed code for (this account, this address). Wrong tries are
-   * counted BEFORE the comparison, so the sixth guess is refused even when it
-   * is right; the spend itself is a conditional write, so one code can never
-   * complete setup twice.
+   * Prove the emailed code for (this account, this address) WITHOUT spending
+   * it. The attempt is claimed atomically BEFORE the comparison (see
+   * email-code-claim.ts — the 2026-10-10 review fix: parallel wrong guesses
+   * used to all read `attempts = 0` and slip past the 5-try cap), so the
+   * sixth guess is refused even when it is right. The caller spends the row in
+   * the SAME transaction as the user update, so one code can never complete
+   * setup twice and a spent code always means a finished setup.
    */
-  private async consumeSetupEmailCode(userId: string, email: string, raw: unknown): Promise<void> {
+  private async checkSetupEmailCode(userId: string, email: string, raw: unknown): Promise<string> {
     const code = normalizeEmailCode(raw);
     if (!code) {
       throw new BadRequestException({
@@ -515,41 +518,26 @@ export class AuthController {
         message: 'Enter the 6-digit code we emailed to that address.',
       });
     }
-    const invalid = () =>
-      new BadRequestException({
-        code: 'SETUP_EMAIL_CODE_INVALID',
-        message: "That code isn't right. Check the email and try again.",
-      });
-    const challengeHash = setupEmailChallengeHash(userId, email);
-    // ten-ok: the hash binds the verified principal's own id
-    const row = await this.prisma.client.mfaEmailCode.findUnique({ where: { challengeHash } });
-    if (!row || row.userId !== userId || row.usedAt) throw invalid();
-    if (row.expiresAt.getTime() <= Date.now()) {
+    const result = await claimEmailCodeAttempt(this.prisma.client, {
+      challengeHash: setupEmailChallengeHash(userId, email),
+      userId,
+      code,
+      secret: this.codeSecret(),
+    });
+    if (result.ok) return result.rowId;
+    if (result.reason === 'expired') {
       throw new BadRequestException({
         code: 'SETUP_EMAIL_CODE_EXPIRED',
         message: 'That code has expired. Ask for a new one.',
       });
     }
-    if (row.attempts >= MFA_EMAIL_CODE_MAX_ATTEMPTS) {
+    if (result.reason === 'locked') {
       throw new HttpException(
         { code: 'SETUP_EMAIL_CODE_LOCKED', message: 'Too many wrong codes. Ask for a new one.' },
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }
-    if (!emailCodeHashesMatch(hashEmailCode(this.codeSecret(), challengeHash, code), row.codeHash)) {
-      // ten-ok: the row was read a few lines up for this verified principal
-      await this.prisma.client.mfaEmailCode.update({
-        where: { id: row.id },
-        data: { attempts: { increment: 1 } },
-      });
-      throw invalid();
-    }
-    // ten-ok: the row was read a few lines up for this verified principal
-    const spent = await this.prisma.client.mfaEmailCode.updateMany({
-      where: { id: row.id, usedAt: null },
-      data: { usedAt: new Date() },
-    });
-    if (spent.count !== 1) throw invalid();
+    throw setupCodeInvalid();
   }
 
   @Post('complete-setup')
@@ -643,19 +631,24 @@ export class AuthController {
 
     // 2026-10-06: the new address must be proven with the emailed code (when
     // this deploy can deliver mail — see setup-email-verification.ts).
-    if (this.setupEmailVerificationRequired()) {
-      await this.consumeSetupEmailCode(dbUser.id, email, body.emailCode);
-    }
+    const codeRowId = this.setupEmailVerificationRequired()
+      ? await this.checkSetupEmailCode(dbUser.id, email, body.emailCode)
+      : null;
 
     const passwordHash = await this.authService.hashPassword(body.password);
 
     // 3. ONE write. Splitting the email change from the flag clear would leave
     //    a window where the account has its real email but is still gated.
+    //    The emailed code is spent INSIDE the same transaction: if another
+    //    request spent it first, the update rolls back with it.
     try {
-      // ten-ok: identity SELF-update — only touches the authenticated principal's own row
-      await this.prisma.client.user.update({
-        where: { id: dbUser.id },
-        data: { email, passwordHash, mustSetupCredentials: false },
+      await this.prisma.client.$transaction(async (tx: any) => {
+        if (codeRowId && !(await spendEmailCode(tx, codeRowId))) throw setupCodeInvalid();
+        // ten-ok: identity SELF-update — only touches the authenticated principal's own row
+        await tx.user.update({
+          where: { id: dbUser.id },
+          data: { email, passwordHash, mustSetupCredentials: false },
+        });
       });
     } catch (e: any) {
       // P2002 = unique constraint. Only `email` is unique on this write, so
@@ -689,10 +682,32 @@ export class AuthController {
           `${e?.message ?? e}`,
       );
     }
-    const access_token = this.authService.signSessionToken(
-      { ...dbUser, email, mustSetupCredentials: false },
-      { iatSeconds: revocationEpoch },
-    );
+
+    // 4b. FIRST SIGN-IN ORDER (2026-10-10): the account has its own email now,
+    //     so this is where the required two-step setup happens — not before.
+    //     If the policy requires a factor this account does not hold, there is
+    //     NO session yet: hand back the same enrollment envelope `/auth/login`
+    //     would have, and the sign-in screen takes the person through it (the
+    //     passkey / authenticator is registered under the REAL address). If the
+    //     policy cannot be read, fail closed — no session, sign in again.
+    let enrollment: Awaited<ReturnType<AuthService['requiredEnrollmentEnvelope']>> = null;
+    let enrollmentUnknown = false;
+    try {
+      enrollment = await this.authService.requiredEnrollmentEnvelope(dbUser.id);
+    } catch (e: any) {
+      enrollmentUnknown = true;
+      this.authLogger.error(
+        `completeSetup(${dbUser.id}): credentials rotated but the two-step policy could not be ` +
+          `read — no session issued, the person signs in again: ${e?.message ?? e}`,
+      );
+    }
+    const access_token =
+      enrollment || enrollmentUnknown
+        ? null
+        : this.authService.signSessionToken(
+            { ...dbUser, email, mustSetupCredentials: false },
+            { iatSeconds: revocationEpoch },
+          );
 
     // 5. Audit. The emails are stored in the clear here ON PURPOSE and unlike
     //    the failed-login rows, which hash them: this row is the ONLY record of
@@ -714,6 +729,8 @@ export class AuthController {
             previousEmail: dbUser.email,
             newEmail: email,
             sessionsRevoked,
+            // The required two-step setup comes next (no session until it is done).
+            twoStepSetupNext: !!enrollment,
           }),
         },
       });
@@ -725,6 +742,13 @@ export class AuthController {
     // Mirror the login response's user shape so the client can replace its
     // stored session wholesale — the email it cached is now WRONG, and the
     // gate flag it is rendering from must flip to false.
+    if (enrollment) {
+      return { success: true, sessionsRevoked, email, ...enrollment };
+    }
+    if (!access_token) {
+      return { success: true, sessionsRevoked, email, signInAgain: true };
+    }
+
     const tenant = await this.prisma.client.tenant.findUnique({
       where: { id: dbUser.tenantId },
       select: { slug: true, vertical: true, name: true },

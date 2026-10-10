@@ -507,7 +507,25 @@ export class AuthService {
       { ...(user ?? {}), hasPasskey },
       { tenantEnforced: tenantMfaEnforced(tenant) },
     );
-    if (!opts.mfaAlreadySatisfied && !opts.skipPolicyGate && mfaDecision.blocking) {
+    // ── FIRST SIGN-IN ORDER (2026-10-10): CLAIM THE ACCOUNT, THEN 2-STEP ────
+    // An account still on its provisioning credentials (`mustSetupCredentials`)
+    // used to be held HERE first, so the person set up a passkey or an
+    // authenticator — and was mailed codes — under the STARTER address
+    // (`riot-tulsa@riotcolor.com`, a mailbox nobody owns), and only then was
+    // asked for their own email. The order is now: claim email + password
+    // first (`/auth/complete-setup`, with the emailed code when on), then the
+    // required two-step setup, which `complete-setup` hands straight back as
+    // this same enrollment envelope (`requiredEnrollmentEnvelope`).
+    //
+    // Not a bypass: the session minted below carries `msc: true`, and
+    // JwtAuthGuard refuses that session every route except the setup call,
+    // its email-code call, logout and `GET /users/me` — no data, no emergency
+    // trigger. It cannot be refreshed (`refreshSession` and the durable
+    // refresh both refuse a blocking account), and it is revoked the moment
+    // setup completes. An account that already HOLDS a factor is still
+    // challenged above, unchanged.
+    const setupFirst = !!user?.mustSetupCredentials;
+    if (!opts.mfaAlreadySatisfied && !opts.skipPolicyGate && !setupFirst && mfaDecision.blocking) {
       return {
         mfaRequired: true,
         mfaEnrollmentRequired: true,
@@ -580,6 +598,55 @@ export class AuthService {
         // response, or the app paints for a frame before the gate appears.
         mustSetupCredentials: !!user.mustSetupCredentials,
       }
+    };
+  }
+
+  /**
+   * FIRST SIGN-IN ORDER (2026-10-10) — the enrollment envelope owed right
+   * after first-login setup, or `null` when none is owed.
+   *
+   * `login()` lets an account in setup state through the policy gate (see the
+   * comment there) so it can claim its own email first. The moment setup
+   * clears the flag, the policy applies again — and this is where: if it is
+   * blocking, `complete-setup` returns THIS instead of a session, and the
+   * sign-in screen takes the person through the required two-step setup with
+   * the token, exactly as if `/auth/login` had answered it. The factor is then
+   * registered under their real address.
+   *
+   * Reads the LIVE row (role, panic capability, per-user override, factors,
+   * tenant enforcement) — the same inputs, through the same functions, as the
+   * gate in `login()`, so the two can never disagree about "blocking".
+   * A database error propagates: an unknown answer must not become a session.
+   */
+  async requiredEnrollmentEnvelope(
+    userId: string,
+    rememberMe?: boolean,
+  ): Promise<{ mfaRequired: true; mfaEnrollmentRequired: true; mfaMethods: MfaMethod[]; mfaToken: string } | null> {
+    // ten-ok: identity SELF-lookup — the account that just completed its own setup
+    const row = await this.prisma.client.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        role: true,
+        canTriggerPanic: true,
+        mfaRequired: true,
+        mfaTotpVerifiedAt: true,
+        tenantId: true,
+        _count: { select: { passkeys: true } },
+      },
+    });
+    if (!row) return null;
+    const tenant = await this.loadTenantForSession(row.tenantId);
+    const decision = evaluateMfaPolicy(
+      { ...(row as any), hasPasskey: ((row as any)._count?.passkeys ?? 0) > 0 },
+      { tenantEnforced: tenantMfaEnforced(tenant) },
+    );
+    if (!decision.blocking) return null;
+    return {
+      mfaRequired: true,
+      mfaEnrollmentRequired: true,
+      mfaMethods: mfaMethodsFor(false, false),
+      mfaToken: issueMfaChallengeToken(this.jwtService, row.id, rememberMe),
     };
   }
 

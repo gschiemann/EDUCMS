@@ -65,7 +65,7 @@ function setup(
   };
   const userUpdate = jest.fn().mockResolvedValue({});
   const auditCreate = jest.fn().mockResolvedValue({});
-  const prisma = {
+  const prisma: any = {
     client: {
       mfaEmailCode: mfa,
       auditLog: { create: auditCreate },
@@ -74,13 +74,14 @@ function setup(
         findUnique: jest.fn(async ({ where }: any) => (where?.id ? dbUser : opts.emailTaken ? { id: 'someone-else' } : null)),
         update: userUpdate,
       },
-      $transaction: jest.fn(async (ops: Promise<unknown>[]) => Promise.all(ops)),
+      $transaction: jest.fn(async (arg: any) => (typeof arg === 'function' ? arg(prisma.client) : Promise.all(arg))),
     },
   };
   const authService = {
     hashPassword: jest.fn().mockResolvedValue('$argon2id$new'),
     verifyPassword: jest.fn().mockResolvedValue(false),
     signSessionToken: jest.fn().mockReturnValue('fresh.jwt'),
+    requiredEnrollmentEnvelope: jest.fn().mockResolvedValue(null),
   };
   const redis = { markUserTokensInvalid: jest.fn().mockResolvedValue(undefined) };
   const sent: Array<{ to: string; code: string }> = [];
@@ -178,10 +179,50 @@ describe('POST /auth/complete-setup — with the emailed code required', () => {
     expect(userUpdate).not.toHaveBeenCalled();
   });
 
-  it('a wrong code is counted and refused', async () => {
+  it('a wrong code is counted — by an atomic claim — and refused', async () => {
     const { controller, mfa, userUpdate } = setup({ row: goodRow() });
     await expect(finish(controller, '000000')).rejects.toMatchObject({ response: { code: 'SETUP_EMAIL_CODE_INVALID' } });
-    expect(mfa.update).toHaveBeenCalledWith({ where: { id: 'row1' }, data: { attempts: { increment: 1 } } });
+    expect(mfa.updateMany).toHaveBeenCalledWith({
+      where: { id: 'row1', usedAt: null, expiresAt: { gt: expect.any(Date) }, attempts: { lt: MFA_EMAIL_CODE_MAX_ATTEMPTS } },
+      data: { attempts: { increment: 1 } },
+    });
+    // Never the old read-then-increment.
+    expect(mfa.update).not.toHaveBeenCalled();
+    // Counted, but NOT spent.
+    expect(mfa.updateMany).not.toHaveBeenCalledWith(expect.objectContaining({ data: { usedAt: expect.any(Date) } }));
+    expect(userUpdate).not.toHaveBeenCalled();
+  });
+
+  it('THE 2026-10-10 REVIEW FIX: twenty wrong guesses fired at once cannot add up to more than five', async () => {
+    // A store with real compare-and-set semantics: each updateMany checks and
+    // increments in one synchronous step, the way Postgres serialises the row.
+    const live = goodRow();
+    const { controller, mfa } = setup({ row: live });
+    mfa.findUnique.mockImplementation(async () => ({ ...live }));
+    let compared = 0;
+    mfa.updateMany.mockImplementation(async ({ where, data }: any) => {
+      if (data?.attempts) {
+        if (live.usedAt || live.attempts >= where.attempts.lt) return { count: 0 };
+        live.attempts += 1;
+        compared += 1;
+        return { count: 1 };
+      }
+      if (live.usedAt) return { count: 0 };
+      (live as any).usedAt = new Date();
+      return { count: 1 };
+    });
+    const results = await Promise.allSettled(Array.from({ length: 20 }, () => finish(controller, '000000')));
+    expect(results.every((r) => r.status === 'rejected')).toBe(true);
+    expect(compared).toBe(MFA_EMAIL_CODE_MAX_ATTEMPTS);
+    expect(live.attempts).toBe(MFA_EMAIL_CODE_MAX_ATTEMPTS);
+    // And the right code is now refused too.
+    await expect(finish(controller, CODE)).rejects.toMatchObject({ response: { code: 'SETUP_EMAIL_CODE_LOCKED' } });
+  });
+
+  it('the code is spent in the SAME transaction as the account update — a lost spend race writes nothing', async () => {
+    const { controller, mfa, userUpdate } = setup({ row: goodRow() });
+    mfa.updateMany.mockImplementation(async ({ data }: any) => (data?.usedAt ? { count: 0 } : { count: 1 }));
+    await expect(finish(controller, CODE)).rejects.toMatchObject({ response: { code: 'SETUP_EMAIL_CODE_INVALID' } });
     expect(userUpdate).not.toHaveBeenCalled();
   });
 

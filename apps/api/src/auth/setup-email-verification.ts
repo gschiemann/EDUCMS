@@ -43,6 +43,30 @@ export function setupEmailVerificationRequired(input: {
   return input.deliverable;
 }
 
+/**
+ * One answer to "must a new address be proven with an emailed code?" for every
+ * door that sets a sign-in email (first-login setup, an admin changing
+ * someone's email). Same mode switch, same deliverability rule.
+ */
+export function emailOwnershipProofRequired(
+  emailService:
+    | { isConfigured(): boolean; isDeliverableToArbitraryRecipients(): boolean }
+    | null
+    | undefined,
+): boolean {
+  return setupEmailVerificationRequired({
+    deliverable:
+      !!emailService && emailService.isConfigured() && emailService.isDeliverableToArbitraryRecipients(),
+  });
+}
+
+/** An admin email change: the code is bound to (target account, new address). */
+export function adminEmailChangeChallengeHash(targetUserId: string, email: string): string {
+  return createHash('sha256')
+    .update(`venueos-admin-email-change|${targetUserId}|${email.trim().toLowerCase()}`)
+    .digest('hex');
+}
+
 /** Setup codes per account per window (shared table with the sign-in codes). */
 export const SETUP_EMAIL_CODE_SENDS_PER_ACCOUNT = 6;
 export const SETUP_EMAIL_CODE_ACCOUNT_WINDOW_MS = 15 * 60_000;

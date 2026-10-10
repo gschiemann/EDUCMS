@@ -91,13 +91,16 @@ function setup(
     validateUser: jest.fn(),
     tenantIdForEmail: jest.fn(),
     login: jest.fn(),
+    // No two-step owed after setup unless a test says so.
+    requiredEnrollmentEnvelope: jest.fn().mockResolvedValue(null),
   };
   const redisService = { publisher: null, markUserTokensInvalid };
-  const prisma = {
+  const prisma: any = {
     client: {
       auditLog: { create: auditCreate },
       tenant: { findUnique: jest.fn().mockResolvedValue({ slug: 'riot-jax', vertical: 'RETAIL', name: 'Riot Jacksonville' }), upsert: jest.fn() },
       user: { findUnique: userFindUnique, update: userUpdate },
+      $transaction: jest.fn(async (fn: any) => fn(prisma.client)),
     },
   };
   const controller = new AuthController(authService as any, redisService as any, prisma as any);
