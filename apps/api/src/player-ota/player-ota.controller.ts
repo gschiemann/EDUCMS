@@ -93,11 +93,70 @@ export class PlayerOtaController {
   // audit row per replica per 10 min, which is bounded noise, not a
   // correctness input (nothing reads this map but the audit write below).
   private static readonly userTapAuditAt = new Map<string, number>();
+  // Private field-APK offer audit dedup (review P2, 2026-10-10): ONE row per
+  // (screen, candidate digest, operator push). The push is identified by the
+  // screen's `forceApkUpdatePendingAt`, so a NEW push of the same build is
+  // audited again. This set only spares the DB lookup on repeat polls; the
+  // authoritative "already audited?" answer is the audit table itself, so a
+  // restart or a second replica never offers without a row.
+  private readonly fieldOfferAudited = new Set<string>();
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly redisService: RedisService,
   ) {}
+
+  /**
+   * Write the PLAYER_FIELD_APK_OFFER audit row unless this exact offer —
+   * (screen, digest, push) — is already on record. Throws when the lookup or
+   * the write fails, so the caller holds the screen: an offer is never made
+   * without its row existing.
+   */
+  private async auditFieldOfferOnce(
+    screenId: string,
+    tenantId: string,
+    release: { versionName: string; versionCode: number; sha256: string; sourceUrl: string },
+    pushAt: Date | null,
+    fromVersion: string,
+  ): Promise<void> {
+    const pushIso = pushAt && Number.isFinite(pushAt.getTime()) ? pushAt.toISOString() : null;
+    const key = pushIso ? `${screenId}|${release.sha256}|${pushIso}` : null;
+    if (key && this.fieldOfferAudited.has(key)) return;
+    if (pushIso) {
+      const existing = await this.prisma.client.auditLog.findFirst({
+        where: {
+          tenantId,
+          action: 'PLAYER_FIELD_APK_OFFER',
+          targetType: 'screen',
+          targetId: screenId,
+          // (no createdAt bound: the push time is the API clock, createdAt
+          // is Postgres's — skew must never turn a dedup into a miss)
+          AND: [
+            { details: { contains: `"sha256":"${release.sha256}"` } },
+            { details: { contains: `"pushAt":"${pushIso}"` } },
+          ],
+        },
+        select: { id: true },
+      });
+      if (!existing) {
+        await this.prisma.client.auditLog.create({ data: {
+          action: 'PLAYER_FIELD_APK_OFFER', targetType: 'screen', targetId: screenId, tenantId, userId: null,
+          details: JSON.stringify({ versionName: release.versionName, versionCode: release.versionCode, sha256: release.sha256, pushAt: pushIso, sourceUrl: release.sourceUrl, fromVersion }),
+        } });
+      }
+    } else {
+      // No push identity to key on (cannot happen on the guarded path):
+      // audit every offer rather than risk an unaudited one.
+      await this.prisma.client.auditLog.create({ data: {
+        action: 'PLAYER_FIELD_APK_OFFER', targetType: 'screen', targetId: screenId, tenantId, userId: null,
+        details: JSON.stringify({ versionName: release.versionName, versionCode: release.versionCode, sha256: release.sha256, sourceUrl: release.sourceUrl, fromVersion }),
+      } });
+    }
+    if (key) {
+      if (this.fieldOfferAudited.size >= 5_000) this.fieldOfferAudited.clear();
+      this.fieldOfferAudited.add(key);
+    }
+  }
 
   /**
    * OTA-01 — does this request carry a valid device credential bound to the
@@ -356,6 +415,8 @@ export class PlayerOtaController {
     let allowUpdate = false;
     let allowReason = 'gated';
     let forcedPendingScreenId: string | null = null;
+    // Identity of the operator push that set forcedPendingScreenId.
+    let forcedPendingAt: Date | null = null;
     let lookupScreenId: string | null = null;
     let lookupTenantId: string | null = null;
     let lookupScreenName: string | null = null;
@@ -486,6 +547,7 @@ export class PlayerOtaController {
                   ? `force-pending-${Math.round(ageMs / 1000)}s-ago-inside-window`
                   : `force-pending-${Math.round(ageMs / 1000)}s-ago`;
               forcedPendingScreenId = screen.id;
+              forcedPendingAt = new Date(screen.forceApkUpdatePendingAt);
             } else {
               allowReason = `force-pending-but-outside-window-${t!.otaWindowStart}-${t!.otaWindowEnd}-${t!.otaWindowTimezone}`;
               this.logger.log(
@@ -643,11 +705,11 @@ export class PlayerOtaController {
         await verifiedFieldBytes(release);
         const ticket=mintFieldTicket(release,lookupScreenId,lookupTenantId);
         if(!ticket) return {uptoDate:true};
-        // Mandatory audit before advertising any private test bytes.
-        await this.prisma.client.auditLog.create({data:{
-          action:'PLAYER_FIELD_APK_OFFER',targetType:'screen',targetId:lookupScreenId,tenantId:lookupTenantId,userId:null,
-          details:JSON.stringify({versionName:release.versionName,versionCode:release.versionCode,sha256:release.sha256,sourceUrl:release.sourceUrl,fromVersion:callerVn}),
-        }});
+        // Mandatory audit before advertising any private test bytes — one row
+        // per (screen, digest, push), not one per update check while the push
+        // is pending (review P2, 2026-10-10). A failed lookup or write still
+        // holds the screen (catch below).
+        await this.auditFieldOfferOnce(lookupScreenId, lookupTenantId, release, forcedPendingAt, callerVn);
         this.logger.log(`[ota] decision=install-private-field screen=${lookupScreenId} target=${release.versionName} sha=${release.sha256.slice(0,12)}`);
         return {latest:{versionCode:release.versionCode,versionName:release.versionName,
           apkUrl:`${origin}/api/v1/player/field-apk/${release.sha256}?ticket=${encodeURIComponent(ticket)}`,

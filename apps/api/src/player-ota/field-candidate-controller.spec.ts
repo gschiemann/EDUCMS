@@ -53,7 +53,10 @@ function harness({
         findFirst: jest.fn().mockResolvedValue(row),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
-      auditLog: { create: jest.fn().mockResolvedValue({}) },
+      auditLog: {
+        create: jest.fn().mockResolvedValue({}),
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
     },
   };
   const c = new PlayerOtaController(prisma, {
@@ -61,7 +64,7 @@ function harness({
   } as any);
   jest.spyOn(c as any, 'isDeviceAuthenticated').mockResolvedValue(auth);
   jest.spyOn(c as any, 'persistReportedVersion').mockResolvedValue(undefined);
-  return { c, prisma };
+  return { c, prisma, row };
 }
 const body = {
   fingerprint: 'fake-fp',
@@ -171,6 +174,40 @@ describe('field APK uses existing exact-screen operator authorization', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+  it('audits ONE row per (screen, candidate, push) — not one per update check', async () => {
+    const { c, prisma, row } = harness();
+    for (let i = 0; i < 4; i++) {
+      const r: any = await c.updateCheck(body, req);
+      expect(r.latest.versionName).toBe(release.versionName);
+    }
+    expect(prisma.client.auditLog.create).toHaveBeenCalledTimes(1);
+    const details = JSON.parse(prisma.client.auditLog.create.mock.calls[0][0].data.details);
+    expect(details).toMatchObject({
+      sha256: release.sha256,
+      pushAt: row.forceApkUpdatePendingAt!.toISOString(),
+    });
+    // A NEW operator push of the same build is a new offer: audited again.
+    row.forceApkUpdatePendingAt = new Date(row.forceApkUpdatePendingAt!.getTime() + 1000);
+    await c.updateCheck(body, req);
+    expect(prisma.client.auditLog.create).toHaveBeenCalledTimes(2);
+  });
+  it('another replica (empty memory) finds the existing row and does not write a second', async () => {
+    const { c, prisma, row } = harness();
+    prisma.client.auditLog.findFirst.mockResolvedValue({ id: 'existing' });
+    const r: any = await c.updateCheck(body, req);
+    expect(r.latest.versionName).toBe(release.versionName);
+    expect(prisma.client.auditLog.create).not.toHaveBeenCalled();
+    const where = prisma.client.auditLog.findFirst.mock.calls[0][0].where;
+    expect(where).toMatchObject({ tenantId: tenant, action: 'PLAYER_FIELD_APK_OFFER', targetId: id });
+    expect(JSON.stringify(where.AND)).toContain(release.sha256);
+    expect(JSON.stringify(where.AND)).toContain(row.forceApkUpdatePendingAt!.toISOString());
+  });
+  it('holds the screen when the audit lookup fails — never offers without a row', async () => {
+    const { c, prisma } = harness();
+    prisma.client.auditLog.findFirst.mockRejectedValue(Error('db down'));
+    expect(await c.updateCheck(body, req)).toEqual({ uptoDate: true });
+    expect(prisma.client.auditLog.create).not.toHaveBeenCalled();
   });
   it('a real pending operator push can reach an auto-enabled selected test device', async () => {
     const { c } = harness({ auto: true });
