@@ -378,13 +378,38 @@ export type ReleaseGateVerdict =
   | { allowed: true; pinned: boolean }
   | { allowed: false; reason: string };
 
-/** Compare 3-part semver, `a >= b`. Unparseable parts read as 0. */
+/** Compare semver, `a >= b`. Unparseable numeric parts read as 0. A
+ *  prerelease (`1.1.25-field.1`) ranks BELOW its release (`1.1.25`), and
+ *  prereleases of the same core compare by dot-separated identifier, so a
+ *  field build can never read as newer than the stable release it precedes
+ *  (2026-10-10 review P1-1). */
 export function semverGte(a: string, b: string): boolean {
-  const pa = String(a).split('.').map((n) => parseInt(n, 10) || 0);
-  const pb = String(b).split('.').map((n) => parseInt(n, 10) || 0);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const diff = (pa[i] || 0) - (pb[i] || 0);
+  const split = (v: string) => {
+    const s = String(v);
+    const dash = s.indexOf('-');
+    return {
+      core: (dash < 0 ? s : s.slice(0, dash)).split('.').map((n) => parseInt(n, 10) || 0),
+      pre: dash < 0 ? null : s.slice(dash + 1).split('.'),
+    };
+  };
+  const pa = split(a);
+  const pb = split(b);
+  for (let i = 0; i < Math.max(pa.core.length, pb.core.length); i++) {
+    const diff = (pa.core[i] || 0) - (pb.core[i] || 0);
     if (diff !== 0) return diff > 0;
+  }
+  if (!pa.pre || !pb.pre) return !pa.pre;
+  for (let i = 0; i < Math.max(pa.pre.length, pb.pre.length); i++) {
+    const x = pa.pre[i];
+    const y = pb.pre[i];
+    if (x === undefined) return false;
+    if (y === undefined) return true;
+    if (x === y) continue;
+    const nx = /^\d+$/.test(x);
+    const ny = /^\d+$/.test(y);
+    if (nx && ny) return Number(x) > Number(y);
+    if (nx !== ny) return ny;
+    return x > y;
   }
   return true;
 }

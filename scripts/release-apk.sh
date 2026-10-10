@@ -78,6 +78,18 @@ if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
   exit 1
 fi
 
+# ── Field-candidate collision (2026-10-10 review P1-1) ────────────────────
+# A private field build x.y.z-field.N carries the SAME versionCode as stable
+# x.y.z (the suffix is not encoded), and the device OTA worker refuses any
+# offer whose versionCode is not GREATER than its own. So a stable x.y.z
+# would never install on the screens that took the field build — they would
+# be stranded on prerelease bytes. Release the next patch instead.
+if grep -q "'$vn-field\." apps/api/src/player-ota/field-candidate-releases.ts 2>/dev/null; then
+  echo "REFUSING TO TAG: a field candidate $vn-field.* exists with versionCode $vc." >&2
+  echo "Screens that installed it would never accept stable $vn. Release $MA.$MI.$((PA + 1)) instead." >&2
+  exit 1
+fi
+
 # ── Hardware qualification preflight ──────────────────────────────────────
 # The same gate CI runs on the tag. Refuse to tag a version that has not been
 # proven on the real hardware classes. See apps/player/HARDWARE-QUALIFICATION.md
