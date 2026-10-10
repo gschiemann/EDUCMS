@@ -277,9 +277,13 @@ export function EmergencyTriggerModal({ onClose }: Props) {
               )}
             </h2>
             <p className="text-xs text-white/65 mt-0.5">
-              {t.rich(isDrill ? 'emergency.drill.configuredIn' : 'emergency.modal.configuredIn', {
-                b: (chunks) => <strong className="text-white/85">{chunks}</strong>,
-              })}
+              {isDrill
+                ? t.rich('emergency.drill.configuredIn', {
+                    b: (chunks) => <strong className="text-white/85">{chunks}</strong>,
+                  })
+                : t.rich('emergency.modal.configuredIn', {
+                    b: (chunks) => <strong className="text-white/85">{chunks}</strong>,
+                  })}
             </p>
           </div>
           <button
@@ -371,10 +375,15 @@ export function EmergencyTriggerModal({ onClose }: Props) {
                     "Lockdown on all 24 screens" / "Lockdown on 1 screen — Lobby".
                     A drill says DRILL in the sentence itself. */}
                 <p className="text-sm text-white/80" data-testid="emergency-confirm-summary">
-                  {t.rich(isDrill ? 'emergency.drill.willSend' : 'emergency.modal.willSend', {
-                    summary: targetSummary(t, currentType?.name ?? '', target),
-                    b: (chunks) => <strong className="font-bold text-white">{chunks}</strong>,
-                  })}
+                  {isDrill
+                    ? t.rich('emergency.drill.willSend', {
+                        summary: targetSummary(t, currentType?.name ?? '', target),
+                        b: (chunks) => <strong className="font-bold text-white">{chunks}</strong>,
+                      })
+                    : t.rich('emergency.modal.willSend', {
+                        summary: targetSummary(t, currentType?.name ?? '', target),
+                        b: (chunks) => <strong className="font-bold text-white">{chunks}</strong>,
+                      })}
                 </p>
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider text-white/65 mb-1.5">
