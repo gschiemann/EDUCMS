@@ -19,7 +19,7 @@ export const RESERVED_TENANT_SLUGS: ReadonlySet<string> = new Set([
   'api', '_next', 'login', 'logout', 'signup', 'super', 'player', 'pair',
   'console', 'connect', 'demo', 'auth', 'onboarding', 'invite', 'reset-password',
   'forgot-password', 'verify-email', 'privacy', 'terms', 'templates',
-  'accept-invite', 'assets', 'athlete', 'board', 'cdn', 'coppa', 'dashboard',
+  'accept-invite', 'setup-account', 'assets', 'athlete', 'board', 'cdn', 'coppa', 'dashboard',
   'dev', 'ferpa', 'guide', 'help', 'launch', 'overlay', 'panic', 'pricing',
   'ribbon', 'schedules', 'scorebug', 'screens', 'status',
   // Customer console (2026-10-10): the owner-link landing + the suspended page.
