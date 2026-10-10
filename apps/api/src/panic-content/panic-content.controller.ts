@@ -56,6 +56,28 @@ export class PanicContentController {
     default:  'emergencyPortraitPlaylistId',
   } as const;
 
+  // 2026-10-10 — EMERGENCY DRILLS. `?mode=drill` manages the type's DRILL
+  // bucket: a separate protected playlist per type per orientation, stored in
+  // the `Tenant.drill*PlaylistId` columns. A drill of that type plays it; with
+  // no items the drill falls back to the LIVE bucket (emergency-drill.ts).
+  // `default` has no drill variant — a drill always names its incident type.
+  private static readonly KIND_TO_FIELD_DRILL = {
+    lockdown: 'drillLockdownPlaylistId',
+    weather:  'drillWeatherPlaylistId',
+    evacuate: 'drillEvacuatePlaylistId',
+    hold:     'drillHoldPlaylistId',
+    secure:   'drillSecurePlaylistId',
+    medical:  'drillMedicalPlaylistId',
+  } as const;
+  private static readonly KIND_TO_FIELD_DRILL_PORTRAIT = {
+    lockdown: 'drillLockdownPortraitPlaylistId',
+    weather:  'drillWeatherPortraitPlaylistId',
+    evacuate: 'drillEvacuatePortraitPlaylistId',
+    hold:     'drillHoldPortraitPlaylistId',
+    secure:   'drillSecurePortraitPlaylistId',
+    medical:  'drillMedicalPortraitPlaylistId',
+  } as const;
+
   private static readonly KIND_LABELS: Record<string, string> = {
     lockdown: 'Lockdown',
     weather:  'Shelter (Weather / Hazmat)',
@@ -76,7 +98,29 @@ export class PanicContentController {
     return raw === 'portrait' ? 'portrait' : 'landscape';
   }
 
-  private fieldFor(kind: keyof typeof PanicContentController.KIND_TO_FIELD, orientation: 'landscape' | 'portrait') {
+  /** `?mode=drill` selects the drill bucket; anything else is the live bucket (the default every existing caller gets). */
+  private normalizeMode(raw: string | undefined, kind: string): 'live' | 'drill' {
+    if (raw !== 'drill') return 'live';
+    if (!(kind in PanicContentController.KIND_TO_FIELD_DRILL)) {
+      throw new HttpException(
+        { code: 'PANIC_CONTENT_DRILL_KIND_UNKNOWN', message: `No drill content bucket for kind: ${kind}` },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    return 'drill';
+  }
+
+  private fieldFor(
+    kind: keyof typeof PanicContentController.KIND_TO_FIELD,
+    orientation: 'landscape' | 'portrait',
+    mode: 'live' | 'drill' = 'live',
+  ) {
+    if (mode === 'drill') {
+      const k = kind as keyof typeof PanicContentController.KIND_TO_FIELD_DRILL;
+      return orientation === 'portrait'
+        ? PanicContentController.KIND_TO_FIELD_DRILL_PORTRAIT[k]
+        : PanicContentController.KIND_TO_FIELD_DRILL[k];
+    }
     return orientation === 'portrait'
       ? PanicContentController.KIND_TO_FIELD_PORTRAIT[kind]
       : PanicContentController.KIND_TO_FIELD[kind];
@@ -87,8 +131,11 @@ export class PanicContentController {
   // use `{kind}_portrait` so a tenant's landscape + portrait buckets are
   // stored in separate protected playlists with no risk of asset cross-
   // over between the two.
-  private protectedKindFor(kind: string, orientation: 'landscape' | 'portrait') {
-    return orientation === 'portrait' ? `${kind}_portrait` : kind;
+  private protectedKindFor(kind: string, orientation: 'landscape' | 'portrait', mode: 'live' | 'drill' = 'live') {
+    // Drill buckets are tagged `{kind}_drill` / `{kind}_drill_portrait` so a
+    // live and a drill bucket of the same type can never share a playlist.
+    const base = mode === 'drill' ? `${kind}_drill` : kind;
+    return orientation === 'portrait' ? `${base}_portrait` : base;
   }
 
   /**
@@ -101,9 +148,10 @@ export class PanicContentController {
     tenantId: string,
     kind: keyof typeof PanicContentController.KIND_TO_FIELD,
     orientation: 'landscape' | 'portrait',
+    mode: 'live' | 'drill' = 'live',
   ): Promise<string> {
-    const field = this.fieldFor(kind, orientation);
-    const pKind = this.protectedKindFor(kind, orientation);
+    const field = this.fieldFor(kind, orientation, mode);
+    const pKind = this.protectedKindFor(kind, orientation, mode);
     const tenant = await this.prisma.client.tenant.findUnique({
       where: { id: tenantId },
       select: { id: true, [field]: true } as any,
@@ -132,10 +180,11 @@ export class PanicContentController {
 
     // Create.
     const labelSuffix = orientation === 'portrait' ? ' — Portrait' : '';
+    const labelPrefix = mode === 'drill' ? 'DRILL: ' : '';
     const created = await this.prisma.client.playlist.create({
       data: {
         tenantId,
-        name: `🚨 ${PanicContentController.KIND_LABELS[kind]}${labelSuffix} (System)`,
+        name: `🚨 ${labelPrefix}${PanicContentController.KIND_LABELS[kind]}${labelSuffix} (System)`,
         isProtected: true,
         protectedKind: pKind,
       },
@@ -156,10 +205,12 @@ export class PanicContentController {
     @Request() req: any,
     @Param('kind') kind: string,
     @Query('orientation') orientationRaw?: string,
+    @Query('mode') modeRaw?: string,
   ) {
     this.validateKind(kind);
     const orientation = this.normalizeOrientation(orientationRaw);
-    const playlistId = await this.ensurePlaylist(req.user.tenantId, kind as any, orientation);
+    const mode = this.normalizeMode(modeRaw, kind);
+    const playlistId = await this.ensurePlaylist(req.user.tenantId, kind as any, orientation, mode);
     const items = await this.prisma.client.playlistItem.findMany({
       where: { playlistId },
       orderBy: { sequenceOrder: 'asc' },
@@ -168,6 +219,7 @@ export class PanicContentController {
     return {
       kind,
       orientation,
+      mode,
       label: PanicContentController.KIND_LABELS[kind],
       playlistId,
       items: items.map(i => ({
@@ -189,12 +241,14 @@ export class PanicContentController {
     @Param('kind') kind: string,
     @Body() body: { assetId: string; durationMs?: number },
     @Query('orientation') orientationRaw?: string,
+    @Query('mode') modeRaw?: string,
   ) {
     this.validateKind(kind);
     if (!body.assetId) {
       throw new HttpException({ code: 'PANIC_CONTENT_ASSET_ID_REQUIRED', message: 'assetId required' }, HttpStatus.BAD_REQUEST);
     }
     const orientation = this.normalizeOrientation(orientationRaw);
+    const mode = this.normalizeMode(modeRaw, kind);
     const asset = await this.prisma.client.asset.findFirst({
       where: { id: body.assetId, tenantId: req.user.tenantId },
       select: { id: true, mimeType: true },
@@ -202,7 +256,7 @@ export class PanicContentController {
     if (!asset) {
       throw new HttpException({ code: 'PANIC_CONTENT_ASSET_NOT_FOUND', message: 'Asset not found in this tenant' }, HttpStatus.NOT_FOUND);
     }
-    const playlistId = await this.ensurePlaylist(req.user.tenantId, kind as any, orientation);
+    const playlistId = await this.ensurePlaylist(req.user.tenantId, kind as any, orientation, mode);
     const last = await this.prisma.client.playlistItem.findFirst({
       where: { playlistId },
       orderBy: { sequenceOrder: 'desc' },
@@ -237,6 +291,7 @@ export class PanicContentController {
           details: JSON.stringify({
             kind,
             orientation,
+            mode,
             itemId: item.id,
             assetId: asset.id,
             durationMs: dur,
@@ -256,10 +311,12 @@ export class PanicContentController {
     @Param('kind') kind: string,
     @Param('itemId') itemId: string,
     @Query('orientation') orientationRaw?: string,
+    @Query('mode') modeRaw?: string,
   ) {
     this.validateKind(kind);
     const orientation = this.normalizeOrientation(orientationRaw);
-    const expectedProtectedKind = this.protectedKindFor(kind, orientation);
+    const mode = this.normalizeMode(modeRaw, kind);
+    const expectedProtectedKind = this.protectedKindFor(kind, orientation, mode);
     const item = await this.prisma.client.playlistItem.findUnique({
       where: { id: itemId },
       include: { playlist: { select: { tenantId: true, isProtected: true, protectedKind: true } } },
@@ -284,6 +341,7 @@ export class PanicContentController {
           details: JSON.stringify({
             kind,
             orientation,
+            mode,
             itemId,
             assetId: item.assetId,
           }),

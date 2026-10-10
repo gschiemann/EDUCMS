@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Param, Query, Req, UseGuards, ForbiddenException, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, Query, Req, UseGuards, ForbiddenException, BadRequestException, NotFoundException, ConflictException } from '@nestjs/common';
 import { RedisService } from '../realtime/redis.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AppRole } from '@cms/database';
@@ -55,6 +55,20 @@ import {
   type OverrideEntry,
 } from './alert-stack';
 import { SCREEN_ONLINE_GRACE_MS } from '../telemetry/online-grace';
+// 2026-10-10 — EMERGENCY DRILLS. The pure rules (which content a drill plays,
+// whether a live alert blocks it, the "DRILL — " text prefix) live in
+// emergency-drill.ts so every one of them is a microsecond unit test and the
+// LIVE path below stays byte-for-byte what it was.
+import {
+  DRILL_BLOCKED_CODE,
+  DRILL_BLOCKED_MESSAGE,
+  DRILL_CLEAR_ACTION,
+  DRILL_TRIGGER_ACTION,
+  drillTextBlob,
+  liveAlertsBlockingDrill,
+  pickTenantDrillPlaylists,
+  type TriggerPlaylists,
+} from './emergency-drill';
 import {
   TriggerEmergencyInputSchema,
   ClearEmergencyInputSchema,
@@ -180,6 +194,91 @@ export class EmergencyController {
     }
   }
 
+  /**
+   * The tenant playlists a trigger of `type` plays (2026-10-10).
+   *
+   * LIVE: exactly `pickTenantPanicPlaylists` — unchanged.
+   * DRILL: the type's DRILL playlists, if at least one of them has an item;
+   * otherwise the type's LIVE playlists (Greg's rule: no drill content set ⇒
+   * the drill plays the live content, and the screen still shows the DRILL
+   * banner). "Has an item" matters because Settings → Drill lazily creates
+   * an EMPTY protected playlist the moment the tab is opened; an empty drill
+   * playlist must fall back, not blank the wall with the system default.
+   * One extra `playlistItem.count` on the drill path only.
+   */
+  private async resolveTriggerPlaylists(
+    tenantInfo: any,
+    type: string | null | undefined,
+    isDrill: boolean,
+  ): Promise<TriggerPlaylists> {
+    const live = this.pickTenantPanicPlaylists(tenantInfo, type);
+    if (!isDrill) return { ...live, source: 'live' };
+    const drill = pickTenantDrillPlaylists(tenantInfo, type);
+    const ids = [drill.landscape, drill.portrait].filter((x): x is string => !!x);
+    if (ids.length === 0) return { ...live, source: 'live' };
+    let items = 0;
+    try {
+      items = await this.prisma.client.playlistItem.count({ where: { playlistId: { in: ids } } });
+    } catch {
+      // A count that cannot run must not pick an empty playlist over the
+      // rehearsed live content: fall back.
+      items = 0;
+    }
+    if (items === 0) return { ...live, source: 'live' };
+    return {
+      landscape: drill.landscape || drill.portrait,
+      portrait: drill.portrait || drill.landscape,
+      source: 'drill',
+    };
+  }
+
+  /**
+   * A DRILL must never replace or downgrade a LIVE alert (2026-10-10). Refuse
+   * with a plain-language 409 when a live alert is active anywhere the drill
+   * would reach: the targeted tenant subtree (tenant scope) or the owning
+   * tenant (group / device scope), any ANCESTOR whose live alert the screens
+   * inherit, and any override row on the affected screens that carries a
+   * live entry, shown or covered. The live path never calls this.
+   */
+  private async refuseDrillOverLiveAlert(args: {
+    tenantIds: string[];
+    screenIds?: string[];
+  }): Promise<void> {
+    const tenantRows = await this.prisma.client.tenant.findMany({
+      where: { id: { in: args.tenantIds } },
+      select: { id: true, parentId: true, emergencyStatus: true, emergencyIsDrill: true, archivedAt: true } as any,
+    });
+    // Ancestors (bounded walk): a school drill while its district is in a
+    // live lockdown would overwrite the inherited alert on the school's row.
+    const ancestors: any[] = [];
+    const seen = new Set<string>(args.tenantIds);
+    let cursor = (tenantRows as any[]).find((t) => t.id === args.tenantIds[0])?.parentId ?? null;
+    for (let hop = 0; cursor && hop < 8 && !seen.has(cursor); hop++) {
+      seen.add(cursor);
+      const row: any = await this.prisma.client.tenant.findUnique({
+        where: { id: cursor },
+        select: { id: true, parentId: true, emergencyStatus: true, emergencyIsDrill: true, archivedAt: true } as any,
+      });
+      if (!row || row.archivedAt) break;
+      ancestors.push(row);
+      cursor = row.parentId ?? null;
+    }
+    const overrideRows = args.screenIds
+      ? await this.overrideRowsFor({ in: args.tenantIds }, args.screenIds)
+      : await this.overrideRowsFor({ in: args.tenantIds });
+    const blocking = liveAlertsBlockingDrill({
+      tenants: [...(tenantRows as any[]), ...ancestors],
+      overrideRows,
+    });
+    if (blocking.length > 0) {
+      throw new ConflictException({
+        code: DRILL_BLOCKED_CODE,
+        message: DRILL_BLOCKED_MESSAGE,
+        blocking,
+      });
+    }
+  }
+
   private pickScreenEmergencyContent(screen: any, typeKey: string | null): {
     playlistId: string | null;
     mediaUrl: string | null;
@@ -286,10 +385,18 @@ export class EmergencyController {
       scopeId: string;
       existingByScreen: Map<string, any>;
       sameTarget: (e: OverrideEntry) => boolean;
+      // 2026-10-10 — drills. `panicSource: 'drill'` means the tenant pair is
+      // the type's DRILL content, which then beats the screen's per-type LIVE
+      // config (a drill should play drill content wherever it was set);
+      // 'live' keeps the exact precedence below.
+      isDrill?: boolean;
+      panicSource?: 'live' | 'drill';
     },
   ): { ops: any[]; replacedAlertIds: string[] } {
     const typeKey = this.emergencyTypeKey(opts.overridePayload.type);
     const explicitPlaylistId = opts.overridePayload.playlistId || null;
+    const isDrill = opts.isDrill === true;
+    const drillContentWins = isDrill && opts.panicSource === 'drill';
     const triggeredAt = new Date().toISOString();
     const expiresAt = this.emergencyExpiresAt(opts.overridePayload.expiresAt);
     const replacedAlertIds = new Set<string>();
@@ -301,6 +408,7 @@ export class EmergencyController {
         : (opts.panicLandscape || opts.panicPortrait || null);
       const playlistId =
         explicitPlaylistId
+        || (drillContentWins ? tenantFallbackPlaylistId : null)
         || screenContent.playlistId
         || (screenContent.mediaUrl ? null : tenantFallbackPlaylistId);
       const mediaUrl = playlistId
@@ -317,13 +425,14 @@ export class EmergencyController {
           scopeNote: null,
           playlistId,
           mediaUrl,
-          textBlob: opts.overridePayload.textBlob || null,
+          textBlob: drillTextBlob(opts.overridePayload.textBlob, isDrill),
           floorPlanId: null,
           floorZoneId: null,
           scenarioId: null,
           triggeredByUserId: opts.triggeredByUserId,
           triggeredAt,
           expiresAt: expiresAt ? expiresAt.toISOString() : null,
+          isDrill,
         },
         opts.sameTarget,
       );
@@ -336,6 +445,54 @@ export class EmergencyController {
       });
     });
     return { ops, replacedAlertIds: [...replacedAlertIds] };
+  }
+
+  /**
+   * The screens a GROUP / DEVICE alert reaches (whole displays included) —
+   * moved verbatim out of `trigger` (2026-10-10) so a drill can resolve them
+   * BEFORE its fast-path dispatch; the live trigger calls it where the inline
+   * code was, with the same queries in the same order.
+   */
+  private async scopeScreens(scopeType: string, scopeId: string, ownedTenantId: string): Promise<any[]> {
+    if (scopeType === 'device') {
+      // ONE query in the common case: the named row, plus any sides
+      // hanging off it. When the operator names the display (or an
+      // ordinary single-sided screen) that IS the whole unit, and this is
+      // the only read — same cost as before faces existed.
+      const named = await this.prisma.client.screen.findMany({
+        where: {
+          tenantId: ownedTenantId,
+          OR: [{ id: scopeId }, { faceOfScreenId: scopeId }],
+        },
+      });
+      const rootId =
+        ((named.find((s) => s.id === scopeId) as any)?.faceOfScreenId as string | null) || scopeId;
+      const unitRows =
+        rootId === scopeId
+          ? named
+          // They named a SIDE, so the display is elsewhere. One extra read,
+          // only in that case, to pick up the front and its other sides.
+          : await this.prisma.client.screen.findMany({
+              where: {
+                tenantId: ownedTenantId,
+                OR: [{ id: rootId }, { faceOfScreenId: rootId }],
+              },
+            });
+      // `deviceScopeScreenIds` is the single authority on unit membership,
+      // shared with the all-clear so the two can never disagree.
+      const inScope = new Set(deviceScopeScreenIds(scopeId, unitRows as any));
+      return unitRows.filter((r) => inScope.has(r.id));
+    }
+    // TENANT-SCOPED (2026-10-05, gap G1). `ownedTenantId` was verified by
+    // the caller; a screen of ANOTHER organisation still carrying this
+    // group's id from before ISO-01 (2026-08-04) refused cross-tenant binds
+    // is not this operator's screen and must never receive their alert.
+    const members = await this.prisma.client.screen.findMany({
+      where: { tenantId: ownedTenantId, screenGroupId: scopeId },
+    });
+    // WHOLE DISPLAYS (gap G2): a back side left in another group (or in
+    // none) when its front moved still belongs to a display in this group.
+    return this.wholeDisplays(ownedTenantId, members as any[]);
   }
 
   /**
@@ -630,6 +787,15 @@ export class EmergencyController {
 
     const overrideId = overridePayload.overrideId || `ovr_${crypto.randomUUID()}`;
     const severity = overridePayload.severity || 'CRITICAL';
+    // ── EMERGENCY DRILLS (2026-10-10) ────────────────────────────────────
+    // `isDrill` is read ONCE here and never inferred anywhere else. Only the
+    // JSON literal `true` is a drill; every request that does not say so is
+    // a LIVE alert and takes the exact path it always took. The signed push
+    // carries `isDrill: true` only on a drill, so a live OVERRIDE envelope is
+    // byte-for-byte what it was; the text is prefixed "DRILL — " so an old
+    // cached player bundle says so without knowing the field.
+    const isDrill = overridePayload.isDrill === true;
+    const auditAction = isDrill ? DRILL_TRIGGER_ACTION : 'TRIGGER_EMERGENCY';
     const message = {
       type: 'OVERRIDE',
       payload: {
@@ -638,8 +804,9 @@ export class EmergencyController {
         type: overridePayload.type,
         playlistId: overridePayload.playlistId,
         mediaUrl: overridePayload.mediaUrl,
-        textBlob: overridePayload.textBlob,
-        expiresAt: overridePayload.expiresAt || (Math.floor(Date.now() / 1000) + 3600) // 1 hr default
+        textBlob: isDrill ? (drillTextBlob(overridePayload.textBlob, true) ?? undefined) : overridePayload.textBlob,
+        expiresAt: overridePayload.expiresAt || (Math.floor(Date.now() / 1000) + 3600), // 1 hr default
+        ...(isDrill ? { isDrill: true } : {}),
       }
     };
 
@@ -693,6 +860,11 @@ export class EmergencyController {
       );
       affectedTenantIds = [scopeId, ...descendantTenantIds];
 
+      // A drill never goes out over a live alert — anywhere in the subtree,
+      // on any screen in it, or inherited from above. Checked BEFORE the
+      // fast-path dispatch below so a refused drill reaches no screen.
+      if (isDrill) await this.refuseDrillOverLiveAlert({ tenantIds: affectedTenantIds });
+
       // Channels are known the instant the subtree is resolved — dispatch
       // now, in parallel with everything below. Cache invalidation rides
       // along because it is synchronous in-memory work that must not be
@@ -719,6 +891,7 @@ export class EmergencyController {
               scopeNote: null,
               scope: 'tenant',
               expiresAt: null,
+              ...(isDrill ? { isDrill: true } : {}),
             }
           : null;
       for (const tid of affectedTenantIds) {
@@ -815,8 +988,12 @@ export class EmergencyController {
         // the lockdown content that school rehearsed. An explicit
         // playlistId from the operator still wins everywhere (it was
         // ownership-checked against the district above).
+        // Drill: the type's DRILL playlists when any has content, else the
+        // LIVE pair (emergency-drill.ts). Live: the live pair, unchanged.
+        let panicSource: 'live' | 'drill' = 'live';
         if (tenantInfo) {
-          const tenantPlaylists = this.pickTenantPanicPlaylists(tenantInfo, overridePayload.type);
+          const tenantPlaylists = await this.resolveTriggerPlaylists(tenantInfo, overridePayload.type, isDrill);
+          panicSource = tenantPlaylists.source;
           if (!activePlaylistId) {
             activePlaylistId = tenantPlaylists.landscape;
             activePortraitPlaylistId = tenantPlaylists.portrait;
@@ -844,10 +1021,16 @@ export class EmergencyController {
               locationSpecificCount += 1;
             }
 
-            const playlistId = screenContent.playlistId || (screenContent.mediaUrl ? null : tenantFallbackPlaylistId);
-            const mediaUrl = screenContent.playlistId
+            // A drill with drill content plays it on every screen, ahead of the
+            // screen's per-type LIVE config; a drill with none keeps the live
+            // precedence (per-screen live content, then the live tenant pair).
+            const playlistId =
+              (isDrill && panicSource === 'drill' ? tenantFallbackPlaylistId : null)
+              || screenContent.playlistId
+              || (screenContent.mediaUrl ? null : tenantFallbackPlaylistId);
+            const mediaUrl = playlistId
               ? null
-              : (screenContent.mediaUrl || (playlistId ? null : (overridePayload.mediaUrl || null)));
+              : (screenContent.mediaUrl || (overridePayload.mediaUrl || null));
 
             // Same content as always; what changed (2026-10-05) is that the
             // row now records it belongs to THIS tenant-wide alert, and keeps
@@ -864,13 +1047,14 @@ export class EmergencyController {
                 scopeNote: null,
                 playlistId,
                 mediaUrl,
-                textBlob: overridePayload.textBlob || null,
+                textBlob: drillTextBlob(overridePayload.textBlob, isDrill),
                 floorPlanId: null,
                 floorZoneId: null,
                 scenarioId: null,
                 triggeredByUserId: req.user?.id || 'admin_system',
                 triggeredAt: locationTriggeredAt,
                 expiresAt: locationExpiresAt ? locationExpiresAt.toISOString() : null,
+                isDrill,
               },
               (e) => e.scopeType === 'tenant',
             );
@@ -904,6 +1088,9 @@ export class EmergencyController {
                 : null,
               emergencyPlaylistId: activePlaylistId || null,
               emergencyPortraitPlaylistId: activePortraitPlaylistId || null,
+              // 2026-10-10 — a live trigger writes `false` here, so a live
+              // alert over a running drill REPLACES it (one slot per tenant).
+              emergencyIsDrill: isDrill,
             } as any,
           }),
           // AUDIT: one immutable row PER AFFECTED TENANT. The forensic
@@ -914,7 +1101,7 @@ export class EmergencyController {
           // district action that caused it.
           this.prisma.client.auditLog.create({
             data: {
-              action: 'TRIGGER_EMERGENCY',
+              action: auditAction,
               targetType: scopeType,
               targetId: affectedTenantId,
               tenantId: affectedTenantId,
@@ -923,6 +1110,11 @@ export class EmergencyController {
                 overrideId,
                 severity,
                 type: typeKey,
+                isDrill,
+                // Which columns the content came from: a drill that fell back
+                // to live content says so here.
+                contentSource: panicSource,
+                playlistId: activePlaylistId,
                 portraitPlaylistId: activePortraitPlaylistId,
                 locationBasedEnabled: !!tenantInfo?.locationBasedEmergencyEnabled,
                 locationScreenCount,
@@ -960,6 +1152,17 @@ export class EmergencyController {
       // screen on a 304. `active` is deliberately NOT asserted here — a
       // group/device trigger does not put the TENANT into an alert, and the
       // per-screen record picks the real state up on the next manifest build.
+      // Drills (2026-10-10): the screens this alert reaches are resolved
+      // BEFORE the fast-path dispatch so a refused drill reaches no screen;
+      // the live path keeps its dispatch-first order below.
+      let drillScreens: any[] | null = null;
+      if (isDrill) {
+        drillScreens = await this.scopeScreens(scopeType, scopeId, ownedTenantId);
+        await this.refuseDrillOverLiveAlert({
+          tenantIds: [ownedTenantId],
+          screenIds: drillScreens.map((s) => s.id as string),
+        });
+      }
       bumpTenantEmergencyEpoch({ redis: this.redisService }, ownedTenantId);
       fanout = this.dispatchEmergencyFanout(
         [`${scopeType}:${scopeId}`],
@@ -976,47 +1179,7 @@ export class EmergencyController {
       //
       // The query is tenant-scoped: `ownedTenantId` was verified above, and
       // an alert must never be able to reach a row outside it.
-      let affectedScreens: any[];
-      if (scopeType === 'device') {
-        // ONE query in the common case: the named row, plus any sides
-        // hanging off it. When the operator names the display (or an
-        // ordinary single-sided screen) that IS the whole unit, and this is
-        // the only read — same cost as before faces existed.
-        const named = await this.prisma.client.screen.findMany({
-          where: {
-            tenantId: ownedTenantId,
-            OR: [{ id: scopeId }, { faceOfScreenId: scopeId }],
-          },
-        });
-        const rootId =
-          ((named.find((s) => s.id === scopeId) as any)?.faceOfScreenId as string | null) || scopeId;
-        const unitRows =
-          rootId === scopeId
-            ? named
-            // They named a SIDE, so the display is elsewhere. One extra read,
-            // only in that case, to pick up the front and its other sides.
-            : await this.prisma.client.screen.findMany({
-                where: {
-                  tenantId: ownedTenantId,
-                  OR: [{ id: rootId }, { faceOfScreenId: rootId }],
-                },
-              });
-        // `deviceScopeScreenIds` is the single authority on unit membership,
-        // shared with the all-clear below so the two can never disagree.
-        const inScope = new Set(deviceScopeScreenIds(scopeId, unitRows as any));
-        affectedScreens = unitRows.filter((r) => inScope.has(r.id));
-      } else {
-        // TENANT-SCOPED (2026-10-05, gap G1). `ownedTenantId` was verified
-        // above; a screen of ANOTHER organisation still carrying this group's
-        // id from before ISO-01 (2026-08-04) refused cross-tenant binds is not
-        // this operator's screen and must never receive their alert.
-        const members = await this.prisma.client.screen.findMany({
-          where: { tenantId: ownedTenantId, screenGroupId: scopeId },
-        });
-        // WHOLE DISPLAYS (gap G2): a back side left in another group (or in
-        // none) when its front moved still belongs to a display in this group.
-        affectedScreens = await this.wholeDisplays(ownedTenantId, members as any[]);
-      }
+      const affectedScreens: any[] = drillScreens ?? (await this.scopeScreens(scopeType, scopeId, ownedTenantId));
 
       // Push to every pane the scope channel cannot reach. Device scope: the
       // OTHER sides of the named display. Group scope: a side that sits
@@ -1037,7 +1200,7 @@ export class EmergencyController {
       }
 
       const tenantForFallback = await this.prisma.client.tenant.findUnique({ where: { id: ownedTenantId } });
-      const panic = this.pickTenantPanicPlaylists(tenantForFallback as any, overridePayload.type);
+      const panic = await this.resolveTriggerPlaylists(tenantForFallback as any, overridePayload.type, isDrill);
 
       // What these screens are showing right now — kept underneath this alert
       // so its all-clear can hand each screen back (alert-stack.ts, gap G5).
@@ -1066,6 +1229,8 @@ export class EmergencyController {
         scopeId,
         existingByScreen,
         sameTarget,
+        isDrill,
+        panicSource: panic.source,
       });
       affectedScreenCount = affectedScreens.length;
 
@@ -1075,7 +1240,7 @@ export class EmergencyController {
       await this.prisma.client.$transaction([
         this.prisma.client.auditLog.create({
           data: {
-            action: 'TRIGGER_EMERGENCY',
+            action: auditAction,
             targetType: scopeType,
             targetId: scopeId,
             tenantId: ownedTenantId,
@@ -1084,6 +1249,8 @@ export class EmergencyController {
               overrideId,
               severity,
               type: this.emergencyTypeKey(overridePayload.type),
+              isDrill,
+              contentSource: panic.source,
               scopeType,
               scopeId,
               affectedScreenCount: affectedScreens.length,
@@ -1131,6 +1298,7 @@ export class EmergencyController {
           scopeId: tid,
           severity: message.payload?.severity ?? severity,
           type: message.payload?.type,
+          isDrill,
           triggeredAt: new Date().toISOString(),
           triggeredByUserId: req.user?.id ?? null,
           // Provenance so a downstream integration can tell a district
@@ -1175,6 +1343,7 @@ export class EmergencyController {
     return {
       success: true,
       overrideId,
+      isDrill,
       // Additive reach reporting so the operator UI can say "7 schools,
       // 38 screens" instead of implying a district trigger hit one row.
       affectedTenantIds,
@@ -1227,6 +1396,26 @@ export class EmergencyController {
     // If targeting a tenant, clear its emergencyStatus + audit atomically.
     // Clear BOTH orientation pointers so a portrait screen doesn't keep
     // rendering an emergency after the admin hit all-clear.
+    // 2026-10-10 — drills. Whether the alert being ended is a DRILL decides
+    // the audit action and, for tenant scope, WHICH rows the all-clear may
+    // touch: a drill all-clear ends only drill state, so a school that went
+    // LIVE under a district drill keeps its live alert. Read before the
+    // dispatch below; a read that fails reads as "live" (the wider clear),
+    // which is the direction an all-clear has to fail.
+    let clearingDrill = false;
+    if (scopeType === 'tenant') {
+      try {
+        const root: any = await this.prisma.client.tenant.findUnique({
+          where: { id: scopeId },
+          select: { emergencyStatus: true, emergencyIsDrill: true } as any,
+        });
+        clearingDrill =
+          !!root && !!root.emergencyStatus && root.emergencyStatus !== 'INACTIVE' && root.emergencyIsDrill === true;
+      } catch {
+        clearingDrill = false;
+      }
+    }
+
     if (scopeType === 'tenant') {
       const descendantTenantIds = await collectDescendantTenantIds(
         this.prisma.client.tenant as any,
@@ -1268,7 +1457,18 @@ export class EmergencyController {
         emergencyType: null,
         emergencyPlaylistId: null,
         emergencyPortraitPlaylistId: null,
+        // 2026-10-10 — a cleared tenant is never "in a drill".
+        emergencyIsDrill: false,
       } as any;
+      // A DRILL all-clear writes only rows that are still in a drill — the
+      // compare-and-set on `emergencyIsDrill` is what keeps a school that went
+      // LIVE after the district drill started locked down. A live all-clear
+      // writes every row, exactly as before.
+      const tenantClearWhere = (ids: string | string[]) =>
+        ({
+          id: typeof ids === 'string' ? ids : { in: ids },
+          ...(clearingDrill ? { emergencyIsDrill: true } : {}),
+        }) as any;
 
       // Per-screen override rows across the WHOLE subtree that belong to the
       // tenant-wide alert. Without them a rebooted screen in a child school
@@ -1284,16 +1484,23 @@ export class EmergencyController {
       // nurse's medical alert (gap G5). A screen that was covering one gets it
       // back instead of going dark.
       const subtreeRows = await this.overrideRowsFor({ in: affectedTenantIds });
+      // 2026-10-10 — a drill all-clear ends ONLY the drill's own tenant-wide
+      // rows; it never touches a live row, nor a pre-identity row (those are
+      // live alerts from before drills existed).
       const tenantRowPlan = this.planAllClear(
         subtreeRows,
-        (_row, e) => e.scopeType === 'tenant' || !e.alertId,
+        clearingDrill
+          ? (_row, e) => e.scopeType === 'tenant' && e.isDrill
+          : (_row, e) => e.scopeType === 'tenant' || !e.alertId,
       );
 
       await this.prisma.client.$transaction([
-        this.prisma.client.tenant.update({
-          where: { id: scopeId },
-          data: clearedState,
-        }),
+        clearingDrill
+          ? this.prisma.client.tenant.updateMany({ where: tenantClearWhere(scopeId), data: clearedState })
+          : this.prisma.client.tenant.update({
+              where: { id: scopeId },
+              data: clearedState,
+            }),
         // Descendants clear in ONE statement — the data is identical for
         // every school, unlike the trigger path where each resolves its own
         // playlists. Empty `in` list is a no-op, so the leaf-school path
@@ -1301,7 +1508,7 @@ export class EmergencyController {
         ...(descendantTenantIds.length > 0
           ? [
               this.prisma.client.tenant.updateMany({
-                where: { id: { in: descendantTenantIds } },
+                where: tenantClearWhere(descendantTenantIds),
                 data: clearedState,
               }),
             ]
@@ -1314,13 +1521,14 @@ export class EmergencyController {
         ...affectedTenantIds.map((tid) =>
           this.prisma.client.auditLog.create({
             data: {
-              action: 'CLEAR_EMERGENCY',
+              action: clearingDrill ? DRILL_CLEAR_ACTION : 'CLEAR_EMERGENCY',
               targetType: scopeType,
               targetId: tid,
               tenantId: tid,
               userId: req.user?.id,
               details: JSON.stringify({
                 overrideId,
+                isDrill: clearingDrill,
                 triggeredByTenant: req.user?.tenantId,
                 originTenantId: scopeId,
                 propagatedFromTenantId: tid === scopeId ? null : scopeId,
@@ -1390,18 +1598,26 @@ export class EmergencyController {
             (!e.alertId && inScope.has(row.screenId));
       const plan = this.planAllClear(tenantRows, isCleared);
       changedScreenIds = plan.clearedScreenIds;
+      // 2026-10-10 — the alert this all-clear ended was a drill iff every
+      // entry it matched is one (an alert is one thing on every screen it is
+      // on). Nothing matched ⇒ reported as live, the wider reading.
+      const matchedEntries = tenantRows.flatMap((r: any) =>
+        entriesOfRow(r).filter((e) => isCleared(r, e)),
+      );
+      clearingDrill = matchedEntries.length > 0 && matchedEntries.every((e) => e.isDrill);
 
       await this.prisma.client.$transaction([
         ...plan.ops,
         this.prisma.client.auditLog.create({
           data: {
-            action: 'CLEAR_EMERGENCY',
+            action: clearingDrill ? DRILL_CLEAR_ACTION : 'CLEAR_EMERGENCY',
             targetType: scopeType,
             targetId: scopeId,
             tenantId: ownedTenantId,
             userId: req.user?.id,
             details: JSON.stringify({
               overrideId,
+              isDrill: clearingDrill,
               scopeType,
               scopeId,
               // 'alert' = this exact alert's rows; 'scope' = the caller did
@@ -1457,6 +1673,7 @@ export class EmergencyController {
 
     return {
       success: true,
+      isDrill: clearingDrill,
       affectedTenantIds,
       affectedTenantCount: affectedTenantIds.length,
       message:
@@ -2121,7 +2338,7 @@ export class EmergencyController {
     const [tenantRows, screenRows, overrideRows] = await Promise.all([
       this.prisma.client.tenant.findMany({
         where: { id: { in: subtreeIds } },
-        select: { id: true, name: true, parentId: true, emergencyStatus: true, emergencyType: true } as any,
+        select: { id: true, name: true, parentId: true, emergencyStatus: true, emergencyType: true, emergencyIsDrill: true } as any,
       }),
       this.prisma.client.screen.findMany({
         where: { tenantId: { in: subtreeIds } },
@@ -2166,6 +2383,8 @@ export class EmergencyController {
         tenantName: t?.name ?? null,
         type: t?.emergencyType ?? null,
         severity: t?.emergencyStatus ?? null,
+        // 2026-10-10 — a drill, so the dashboard and /panic can say so.
+        isDrill: t?.emergencyIsDrill === true,
         screenCount: subtreeScreenCount(tid),
         showingCount: null,
         triggeredAt: null,
@@ -2200,6 +2419,7 @@ export class EmergencyController {
             tenantId: row.tenantId,
             type: e.type,
             severity: e.severity,
+            isDrill: e.isDrill,
             triggeredAt: e.triggeredAt,
             screens: new Set<string>(),
             showingCount: 0,
@@ -2239,6 +2459,7 @@ export class EmergencyController {
           tenantName: tenants.get(a.tenantId)?.name ?? null,
           type: a.type,
           severity: a.severity,
+          isDrill: a.isDrill === true,
           screenCount: a.screens.size,
           showingCount: a.showingCount,
           triggeredAt: a.triggeredAt,

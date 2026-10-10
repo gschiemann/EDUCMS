@@ -255,6 +255,16 @@ describe('emergencySignature', () => {
     });
     expect(local).not.toBe(inherited);
   });
+
+  // 2026-10-10 — drills: a live alert replacing a drill of the same type and
+  // content must still move the revision; a live signature is unchanged.
+  it('distinguishes a drill from a live alert, and a live alert signs as before', () => {
+    const liveAlert = emergencySignature({ tenantStatus: 'CRITICAL', tenantType: 'LOCKDOWN' });
+    const drillAlert = emergencySignature({ tenantStatus: 'CRITICAL', tenantType: 'LOCKDOWN', isDrill: true });
+    expect(liveAlert).not.toBe(drillAlert);
+    expect(emergencySignature({ tenantStatus: 'CRITICAL', tenantType: 'LOCKDOWN', isDrill: false })).toBe(liveAlert);
+    expect(emergencySignature({ tenantStatus: 'CRITICAL', tenantType: 'LOCKDOWN', isDrill: null })).toBe(liveAlert);
+  });
 });
 
 describe('epoch helpers', () => {

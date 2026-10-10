@@ -38,7 +38,27 @@ export const TENANT_EMERGENCY_PLAYLIST_FIELDS = [
   'panicHoldPortraitPlaylistId',
   'panicSecurePortraitPlaylistId',
   'panicMedicalPortraitPlaylistId',
+  // 2026-10-10 — drill content. Deleting the only clip in a drill playlist
+  // would blank the next drill (which then falls back to live content and
+  // still needs its own never-evict copy), so the guard reads them too.
+  'drillLockdownPlaylistId',
+  'drillEvacuatePlaylistId',
+  'drillWeatherPlaylistId',
+  'drillHoldPlaylistId',
+  'drillSecurePlaylistId',
+  'drillMedicalPlaylistId',
+  'drillLockdownPortraitPlaylistId',
+  'drillEvacuatePortraitPlaylistId',
+  'drillWeatherPortraitPlaylistId',
+  'drillHoldPortraitPlaylistId',
+  'drillSecurePortraitPlaylistId',
+  'drillMedicalPortraitPlaylistId',
 ] as const satisfies readonly (keyof Prisma.TenantWhereInput)[];
+
+/** The twelve drill columns alone — what `GET /screens/:id/emergency-assets` adds to the never-evict tier. */
+export const TENANT_DRILL_PLAYLIST_FIELDS = TENANT_EMERGENCY_PLAYLIST_FIELDS.filter((f) =>
+  f.startsWith('drill'),
+) as ReadonlyArray<(typeof TENANT_EMERGENCY_PLAYLIST_FIELDS)[number]>;
 
 export const SCREEN_EMERGENCY_PLAYLIST_FIELDS = [
   'emergencyLockdownPlaylistId',

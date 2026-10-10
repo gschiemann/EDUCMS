@@ -66,6 +66,13 @@ export interface OverrideEntry {
   triggeredByUserId: string;
   triggeredAt: string;
   expiresAt: string | null;
+  /**
+   * 2026-10-10 — a DRILL, not a live alert. Rows and stored entries from
+   * before drills existed carry no flag and read as live (false), which is
+   * exactly what they were. A drill all-clear matches entries by this flag
+   * so it can never end a live alert; a live alert never has to look at it.
+   */
+  isDrill: boolean;
 }
 
 /** Most alerts one row will remember underneath the one it shows. */
@@ -89,6 +96,7 @@ export interface OverrideColumns {
   triggeredAt: Date;
   expiresAt: Date | null;
   displaced: OverrideEntry[];
+  isDrill: boolean;
 }
 
 const str = (v: unknown): string | null => (typeof v === 'string' && v.length > 0 ? v : null);
@@ -118,6 +126,9 @@ export function entryFromRow(row: any): OverrideEntry {
     triggeredByUserId: str(row?.triggeredByUserId) ?? 'admin_system',
     triggeredAt: isoOf(row?.triggeredAt) ?? new Date(0).toISOString(),
     expiresAt: isoOf(row?.expiresAt),
+    // Only the JSON literal `true` is a drill. Anything else (absent on every
+    // pre-drill row, a damaged value) is a live alert — the fail-safe reading.
+    isDrill: row?.isDrill === true,
   };
 }
 
@@ -163,6 +174,7 @@ function columnsOf(e: OverrideEntry, displaced: OverrideEntry[]): OverrideColumn
     triggeredAt: new Date(e.triggeredAt),
     expiresAt: e.expiresAt ? new Date(e.expiresAt) : null,
     displaced,
+    isDrill: e.isDrill === true,
   };
 }
 

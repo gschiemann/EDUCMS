@@ -819,6 +819,9 @@ export class TenantsController {
         latitude: true,
         longitude: true,
         emergencyStatus: true,
+        // 2026-10-10 — whether the active tenant-wide alert is a DRILL, so the
+        // dashboard overlay can say DRILL even when its alert list is down.
+        emergencyIsDrill: true,
         panicLockdownPlaylistId: true,
         panicWeatherPlaylistId: true,
         panicEvacuatePlaylistId: true,

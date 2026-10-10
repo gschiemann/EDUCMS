@@ -39,6 +39,8 @@ function entry(alertId: string | null, over: Partial<OverrideEntry> = {}): Overr
     triggeredByUserId: 'u1',
     triggeredAt: new Date(T0).toISOString(),
     expiresAt: null,
+    // 2026-10-10 — every pre-drill entry is a live alert.
+    isDrill: false,
     ...over,
   };
 }

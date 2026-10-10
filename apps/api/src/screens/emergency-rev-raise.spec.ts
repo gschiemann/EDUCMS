@@ -94,6 +94,16 @@ describe('sanitizeAlertDescriptor — the only door into the descriptor', () => 
       scopeNote: null, // over-length note is dropped, the alert still raises
     });
   });
+
+  // 2026-10-10 — drills. Only the literal `true` is a drill, and a live
+  // descriptor carries NO `isDrill` key at all (byte-for-byte as before).
+  it('carries isDrill only when it is the literal true', () => {
+    expect(sanitizeAlertDescriptor({ ...LOCKDOWN, isDrill: true })).toEqual({ ...LOCKDOWN, isDrill: true });
+    expect(sanitizeAlertDescriptor({ ...LOCKDOWN, isDrill: 'true' })).toEqual(LOCKDOWN);
+    expect(sanitizeAlertDescriptor({ ...LOCKDOWN, isDrill: 1 })).toEqual(LOCKDOWN);
+    expect(sanitizeAlertDescriptor({ ...LOCKDOWN, isDrill: false })).toEqual(LOCKDOWN);
+    expect('isDrill' in (sanitizeAlertDescriptor(LOCKDOWN) as object)).toBe(false);
+  });
 });
 
 describe('epoch round-trip', () => {

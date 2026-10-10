@@ -101,6 +101,7 @@ import { resolvePlaybackConfig } from './playback-config';
 // cadence would read the entire healthy fleet as OFFLINE. See online-grace.ts
 // for the derivation and for the detection-speed cost it accepts.
 import { SCREEN_ONLINE_GRACE_MS } from '../telemetry/online-grace';
+import { TENANT_DRILL_PLAYLIST_FIELDS } from '../emergency/emergency-content-use';
 import { sanitizeCacheReport } from '../telemetry/cache-report';
 // 2026-08-13 — display control. The manifest's `display` block carries the
 // on/off windows the player arms as LOCAL AlarmManager alarms (a screen with
@@ -5152,6 +5153,10 @@ export class ScreensController {
     emergencyType: true,
     emergencyPlaylistId: true,
     emergencyPortraitPlaylistId: true,
+    // 2026-10-10 — is the active tenant-wide alert a DRILL? Rides the
+    // manifest as `isDrill` (inside the hashed payload) so the player paints
+    // the drill banner; inherited from an ancestor like the rest.
+    emergencyIsDrill: true,
     locationBasedEmergencyEnabled: true,
   } as const;
 
@@ -5730,6 +5735,7 @@ export class ScreensController {
             emergencyType: ancestor.emergencyType,
             emergencyPlaylistId: ancestor.emergencyPlaylistId,
             emergencyPortraitPlaylistId: ancestor.emergencyPortraitPlaylistId,
+            emergencyIsDrill: ancestor.emergencyIsDrill === true,
             // NOT inherited: locationBasedEmergencyEnabled stays this
             // school's own opt-in, because the per-screen emergency config
             // it gates lives on THIS school's screens.
@@ -5780,6 +5786,12 @@ export class ScreensController {
             tenantPlaylistId: tenant?.emergencyPlaylistId ?? null,
             tenantPortraitPlaylistId: tenant?.emergencyPortraitPlaylistId ?? null,
             inheritedFromTenantId,
+            // 2026-10-10 — a drill replaced by a live alert of the same type
+            // and content must still move the signature.
+            isDrill:
+              activeScreenOverride
+                ? activeScreenOverride.isDrill === true
+                : tenant?.emergencyIsDrill === true,
           }),
           boundaryAt: activeScreenOverride?.expiresAt
             ? new Date(activeScreenOverride.expiresAt).getTime()
@@ -6022,6 +6034,16 @@ export class ScreensController {
           activeScreenOverride?.severity ||
           tenant?.emergencyStatus ||
           'HIGH';
+        // ── EMERGENCY DRILLS (2026-10-10) ──────────────────────────────────
+        // The alert this screen shows is a DRILL iff the row it is built from
+        // says so: the per-screen override when one is active (it wins the
+        // glass, so its flag wins too), else the tenant-wide alert's flag.
+        // Only the JSON literal `true` is a drill; every pre-drill row reads
+        // false. Emitted on every emergency manifest, inside the ETag-hashed
+        // payload (it is a stable fact of the alert, never volatile).
+        const isDrill: boolean = activeScreenOverride
+          ? activeScreenOverride.isDrill === true
+          : (tenant as any)?.emergencyIsDrill === true;
 
         // BULLETPROOF FALLBACK: If the admin failed to assign an emergency playlist or it was empty,
         // we MUST still lock the screen down to protect the school.
@@ -6057,13 +6079,22 @@ export class ScreensController {
           // so the wall says both.
           const effectiveTypeLabel =
             effectiveType === 'EVACUATE' ? 'FIRE — EVACUATE' : effectiveType;
+          // 2026-10-10 — a DRILL says so in the words themselves, on top of
+          // the player's banner, so an old cached bundle still shows it.
+          const drillMark = isDrill ? 'DRILL — THIS IS A DRILL\n\n' : '';
           const fallbackContent =
             activeScreenOverride?.textBlob
-              ? activeScreenOverride.textBlob
+              ? `${drillMark}${activeScreenOverride.textBlob}`
               : activeScreenOverride?.scopeNote
-                ? `${effectiveTypeLabel} — ${activeScreenOverride.scopeNote}\n\nFollow standard procedures.`
-                : `EMERGENCY NOTIFICATION\n\n${effectiveTypeLabel} PROTOCOL ACTIVE\n\nPlease follow standard procedures`;
+                ? `${drillMark}${effectiveTypeLabel} — ${activeScreenOverride.scopeNote}\n\nFollow standard procedures.`
+                : isDrill
+                  ? `DRILL — THIS IS A DRILL\n\n${effectiveTypeLabel} DRILL\n\nFollow standard procedures. This is not a real emergency.`
+                  : `EMERGENCY NOTIFICATION\n\n${effectiveTypeLabel} PROTOCOL ACTIVE\n\nPlease follow standard procedures`;
           const fallbackBg =
+            // A drill's system-default board is indigo, never the red of a
+            // live alert — the same colour the player banner and the dashboard
+            // use, so "drill" reads at a glance from across a gym.
+            isDrill ? '#3730a3' :
             effectiveSeverity === 'CRITICAL' ? '#dc2626' :
             effectiveSeverity === 'HIGH'     ? '#dc2626' :
             effectiveSeverity === 'MEDIUM'   ? '#d97706' :
@@ -6119,6 +6150,11 @@ export class ScreensController {
           // the right banner / icon. Per-screen wins over tenant.
           emergencyType: effectiveType,
           emergencySeverity: effectiveSeverity,
+          // 2026-10-10 — DRILL vs LIVE. The player paints a persistent
+          // "DRILL — THIS IS A DRILL" banner over the content when true;
+          // the native alert watch keys on `isEmergency` alone, so a drill
+          // wakes a sleeping panel exactly like a live alert.
+          isDrill,
           // Operator-typed scope note ("Gym — hold position") so the
           // player can render it as a sub-banner. Empty when only the
           // tenant-wide alert is active.
@@ -7409,6 +7445,21 @@ export class ScreensController {
             panicHoldPortraitPlaylistId: true,
             panicSecurePortraitPlaylistId: true,
             panicMedicalPortraitPlaylistId: true,
+            // 2026-10-10 — drill content is precached in the same
+            // never-evict tier: a drill must play from local disk exactly
+            // like the real thing.
+            drillLockdownPlaylistId: true,
+            drillEvacuatePlaylistId: true,
+            drillWeatherPlaylistId: true,
+            drillHoldPlaylistId: true,
+            drillSecurePlaylistId: true,
+            drillMedicalPlaylistId: true,
+            drillLockdownPortraitPlaylistId: true,
+            drillEvacuatePortraitPlaylistId: true,
+            drillWeatherPortraitPlaylistId: true,
+            drillHoldPortraitPlaylistId: true,
+            drillSecurePortraitPlaylistId: true,
+            drillMedicalPortraitPlaylistId: true,
           },
         },
       },
@@ -7436,6 +7487,7 @@ export class ScreensController {
       (tenant as any).panicHoldPortraitPlaylistId,
       (tenant as any).panicSecurePortraitPlaylistId,
       (tenant as any).panicMedicalPortraitPlaylistId,
+      ...TENANT_DRILL_PLAYLIST_FIELDS.map((f) => (tenant as any)[f]),
       (screen as any).emergencyLockdownPlaylistId,
       (screen as any).emergencyEvacuatePlaylistId,
       (screen as any).emergencyWeatherPlaylistId,

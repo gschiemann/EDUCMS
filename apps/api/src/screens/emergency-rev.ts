@@ -190,6 +190,12 @@ export interface EmergencyAlertDescriptor {
   scope: 'tenant';
   /** `manifest.emergencyExpiresAt` (UNIX seconds). Null tenant-wide. */
   expiresAt: number | null;
+  /**
+   * `manifest.isDrill` (2026-10-10). Present and `true` only for a DRILL, so
+   * a live descriptor is byte-for-byte what it was; the player reads
+   * `=== true` and paints its drill banner from the raise alone.
+   */
+  isDrill?: true;
 }
 
 /**
@@ -237,7 +243,15 @@ export function sanitizeAlertDescriptor(value: unknown): EmergencyAlertDescripto
     typeof v.expiresAt === 'number' && Number.isFinite(v.expiresAt) && v.expiresAt > 0
       ? Math.floor(v.expiresAt)
       : null;
-  return { type, severity, scopeNote, scope: 'tenant', expiresAt };
+  return {
+    type,
+    severity,
+    scopeNote,
+    scope: 'tenant',
+    expiresAt,
+    // Only the literal `true` survives the round trip through Redis.
+    ...(v.isDrill === true ? { isDrill: true as const } : {}),
+  };
 }
 
 /** The minimal Redis surface this module needs. Never throws. */
@@ -322,6 +336,8 @@ export interface EmergencySignatureInput {
   tenantPlaylistId?: string | null;
   tenantPortraitPlaylistId?: string | null;
   inheritedFromTenantId?: string | null;
+  /** 2026-10-10 — the alert on glass is a drill. */
+  isDrill?: boolean | null;
 }
 
 /**
@@ -345,6 +361,9 @@ export function emergencySignature(input: EmergencySignatureInput): string {
     input.tenantPlaylistId ?? '',
     input.tenantPortraitPlaylistId ?? '',
     input.inheritedFromTenantId ?? '',
+    // Appended LAST so every pre-drill signature is unchanged (`''` for a
+    // live alert, exactly what the join produced before this field).
+    input.isDrill === true ? 'drill' : '',
   ].join('|');
   return crypto.createHash('sha256').update(material).digest('hex').slice(0, 12);
 }
