@@ -28,6 +28,7 @@ import { TouchOverlay, TouchNavOverlay } from '@/components/player/TouchOverlay'
 import { EmergencyOverlay, type EmergencyMessageView } from '@/components/player/EmergencyOverlay';
 import { reconcileStrandedEmergency } from './emergencyReconcile';
 import { cachedManifestWouldClearLiveAlert } from './emergencyInterlock';
+import { DrillBanner } from '@/components/player/DrillBanner';
 // 2026-08-01 security wave — pure guard modules (no React/DOM) so each is
 // unit-tested without mounting this page.
 //   trustGuards — R-01: the `?api=` / localStorage API-root override is the
@@ -6303,6 +6304,12 @@ function PlayerPage() {
           // expiresAt only present on per-screen overrides; absent for
           // tenant-wide alerts (which last until explicit ALL_CLEAR).
           expiresAt: manifest.emergencyExpiresAt || null,
+          // 2026-10-10 — EMERGENCY DRILLS. Only the JSON literal `true` is a
+          // drill (a server from before drills emits no field = live). It
+          // paints the persistent DrillBanner over the content; everything
+          // else about the alert — hold, cache, interlock, cadence — is
+          // identical to a live alert, which is the point of a drill.
+          isDrill: manifest.isDrill === true,
         };
       } else if (manifest.emergency || manifest.override) {
         // Legacy nested envelope — keep for back-compat.
@@ -13821,6 +13828,13 @@ function PlayerPage() {
           self-poll needs both tenantId AND apiUrl to fire.
           The component renders nothing when there's no active
           message — zero-cost when no emergency is happening. */}
+      {/* 2026-10-10 — EMERGENCY DRILLS. A DRILL alert paints an unmissable
+          "DRILL — THIS IS A DRILL" banner ABOVE every content layer (its
+          z-index tops the message overlay's), so operator content cannot
+          hide it. Keyed on the same `activeEmergency` the manifest / raise
+          path writes (rule 11 untouched: a cached manifest may raise it,
+          only the server releases it). Nothing renders for a live alert. */}
+      {activeEmergency?.isDrill === true && <DrillBanner />}
       {tenantId && (
         <EmergencyOverlay
           message={pushedEmergencyMessage}

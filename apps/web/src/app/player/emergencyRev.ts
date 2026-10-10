@@ -108,6 +108,8 @@ export interface RevAlertPayload {
   scopeNote: string | null;
   scope: string;
   expiresAt: number | null;
+  /** 2026-10-10 — a DRILL (`manifest.isDrill`). Only the literal `true` counts. */
+  isDrill: boolean;
 }
 
 export type RevPollOutcome =
@@ -188,6 +190,8 @@ export function alertFromRevEnvelope(env: RevAlertEnvelope | null | undefined): 
       typeof row.expiresAt === 'number' && Number.isFinite(row.expiresAt) && row.expiresAt > 0
         ? row.expiresAt
         : null,
+    // Mirrors applyManifest: `manifest.isDrill === true`, nothing looser.
+    isDrill: row.isDrill === true,
   };
 }
 

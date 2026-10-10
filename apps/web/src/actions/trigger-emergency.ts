@@ -25,12 +25,19 @@ interface EmergencyPayload {
    * is the tenant-scope body this action has always sent, unchanged.
    */
   target?: { scopeType: 'group' | 'device'; scopeId: string };
+  /**
+   * A DRILL (2026-10-10). Absent/false = a live alert: the request is the
+   * body this action has always sent, unchanged.
+   */
+  isDrill?: boolean;
 }
 
 /** What `broadcastEmergency` resolves with. It never throws. */
 export interface BroadcastEmergencyResult {
   success: boolean;
   error?: string;
+  /** The server's error code when it sent one (e.g. a drill refused over a live alert). */
+  code?: string;
   overrideId?: string;
   /** Group / one-screen alerts: how many screens the server took over. */
   affectedScreenCount?: number;
@@ -64,7 +71,23 @@ export async function broadcastEmergency(payload: EmergencyPayload): Promise<Bro
   }
 
   if (!res.ok) {
-    return { success: false, error: `Emergency broadcast failed: ${res.status}` };
+    // The status stays first in the string (the surfaces route on "401"/"403"
+    // and "network"); the server's plain-language reason, when it sent one,
+    // follows — a drill refused over a live alert (409) must say WHY.
+    let serverMessage = '';
+    let code: string | undefined;
+    try {
+      const body = await res.json();
+      if (body && typeof body.message === 'string') serverMessage = body.message;
+      if (body && typeof body.code === 'string') code = body.code;
+    } catch {
+      /* no JSON body */
+    }
+    return {
+      success: false,
+      error: `Emergency broadcast failed: ${res.status}${serverMessage ? ` — ${serverMessage}` : ''}`,
+      ...(code ? { code } : {}),
+    };
   }
 
   // Read overrideId out of the API response so the caller can pair this

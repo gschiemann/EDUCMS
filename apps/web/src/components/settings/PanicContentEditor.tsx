@@ -4,7 +4,7 @@ import { useState, useRef } from 'react';
 import { Loader2, Trash2, Upload, Image as ImageIcon, Video, Music, AlertTriangle, ShieldCheck, Monitor, Smartphone } from 'lucide-react';
 import { useUIStore } from '@/store/ui-store';
 import { useQueryClient } from '@tanstack/react-query';
-import { usePanicContent, useAddPanicAsset, useRemovePanicAsset, type PanicKind, type PanicOrientation } from '@/hooks/use-api';
+import { usePanicContent, useAddPanicAsset, useRemovePanicAsset, type PanicKind, type PanicMode, type PanicOrientation } from '@/hooks/use-api';
 import { appConfirm } from '@/components/ui/app-dialog';
 import { ALERT_CONTENT_ACCEPT, uploadProblemFor, useUploadProblemText } from '@/lib/upload-accept';
 
@@ -17,6 +17,11 @@ type Props = {
   accent: 'red' | 'amber' | 'orange' | 'slate' | 'sky' | 'violet' | 'rose';
   /** Optional one-line description shown under the title. */
   hint?: string;
+  /**
+   * 2026-10-10 — which bucket this card edits: the LIVE content (default,
+   * every existing caller) or the DRILL content for the same type.
+   */
+  mode?: PanicMode;
 };
 
 const ACCENT_MAP = {
@@ -46,7 +51,7 @@ const MAX_FILE_SIZE = 500 * 1024 * 1024; // matches the /assets video cap (raise
  * what they actually have; zero friction when there's only one
  * orientation in play.
  */
-export function PanicContentEditor({ kind, label, accent, hint }: Props) {
+export function PanicContentEditor({ kind, label, accent, hint, mode = 'live' }: Props) {
   const a = ACCENT_MAP[accent];
   const [orientation, setOrientation] = useState<PanicOrientation>('landscape');
   // Read BOTH variants so the toggle labels can show a count for each
@@ -54,12 +59,12 @@ export function PanicContentEditor({ kind, label, accent, hint }: Props) {
   // tiny cached list lookup — worth it so the operator sees at a
   // glance whether portrait is empty vs has content. The active one
   // drives the drop zone + item list below.
-  const landscapeQ = usePanicContent(kind, 'landscape');
-  const portraitQ  = usePanicContent(kind, 'portrait');
+  const landscapeQ = usePanicContent(kind, 'landscape', mode);
+  const portraitQ  = usePanicContent(kind, 'portrait', mode);
   const data = orientation === 'portrait' ? portraitQ.data : landscapeQ.data;
   const isLoading = orientation === 'portrait' ? portraitQ.isLoading : landscapeQ.isLoading;
-  const addAsset = useAddPanicAsset(kind, orientation);
-  const removeAsset = useRemovePanicAsset(kind, orientation);
+  const addAsset = useAddPanicAsset(kind, orientation, mode);
+  const removeAsset = useRemovePanicAsset(kind, orientation, mode);
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -150,7 +155,7 @@ export function PanicContentEditor({ kind, label, accent, hint }: Props) {
   const anyConfigured = landscapeCount > 0 || portraitCount > 0;
 
   return (
-    <div data-alert-content-card={kind} className={`min-w-0 p-3 rounded-xl border ${a.border} ${a.bg} flex flex-col gap-2`}>
+    <div data-alert-content-card={kind} data-alert-content-mode={mode} className={`min-w-0 p-3 rounded-xl border ${a.border} ${a.bg} flex flex-col gap-2`}>
       <div>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
@@ -159,7 +164,7 @@ export function PanicContentEditor({ kind, label, accent, hint }: Props) {
           </div>
           <span className={`text-[10px] font-bold uppercase tracking-wider shrink-0 flex items-center gap-1 ${anyConfigured ? 'text-emerald-600' : 'text-amber-600'}`}>
             {anyConfigured ? <ShieldCheck className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
-            {anyConfigured ? `${landscapeCount}L · ${portraitCount}P` : 'No content'}
+            {anyConfigured ? `${landscapeCount}L · ${portraitCount}P` : (mode === 'drill' ? 'Uses live content' : 'No content')}
           </span>
         </div>
         {hint && <p className="text-[11px] text-slate-500 mt-0.5 ml-5">{hint}</p>}

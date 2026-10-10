@@ -309,7 +309,19 @@ describe('the raise fast path', () => {
       scopeNote: null,
       scope: 'tenant',
       expiresAt: null,
+      isDrill: false,
     });
+  });
+
+  // 2026-10-10 — drills: the raise paints the drill banner on its own, and
+  // only the literal `true` counts (mirrors applyManifest's `=== true`).
+  it('carries isDrill only for the literal true', () => {
+    const drill = { ...SIGNED, payload: { ...SIGNED.payload, isDrill: true } };
+    expect(alertFromRevEnvelope(drill as never)).toMatchObject({ isDrill: true });
+    for (const v of ['true', 1, false, null, undefined]) {
+      const env = { ...SIGNED, payload: { ...SIGNED.payload, isDrill: v } };
+      expect(alertFromRevEnvelope(env as never)).toMatchObject({ isDrill: false });
+    }
   });
 
   it('carries a scope note and expiry when the server sends them', () => {

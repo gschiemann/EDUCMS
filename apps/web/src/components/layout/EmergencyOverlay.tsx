@@ -10,7 +10,7 @@ import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { useTenantStatus } from '@/hooks/use-api';
 import { canSendAllClear, hasPanicAuthority } from '@/lib/emergency-capability';
 import { fetchActiveAlerts } from '@/lib/emergency-api';
-import { activeAlertLabel, allClearScopeOf, typeIdOf, type ActiveAlert } from '@/lib/emergency-target';
+import { activeAlertLabel, allAlertsAreDrills, allClearScopeOf, typeIdOf, type ActiveAlert } from '@/lib/emergency-target';
 import { EmergencyTriggerModal } from '@/components/emergency/EmergencyTriggerModal';
 
 /** A stable key for one live alert (the tenant-wide one has no id). */
@@ -72,6 +72,17 @@ export function EmergencyOverlay() {
   const tenantWideActive =
     alerts.some((a) => a.scopeType === 'tenant') ||
     (!activeQuery.data && !!tenant?.emergencyStatus && tenant.emergencyStatus !== 'INACTIVE');
+  // ── DRILL vs LIVE (2026-10-10) ───────────────────────────────────────
+  // The overlay is indigo and says DRILL only when EVERY live alert is a
+  // drill (with the list unavailable, when the tenant-wide alert is one).
+  // One live alert among drills keeps the red live chrome: the real thing
+  // always wins the screen.
+  const drillOnly = activeQuery.data
+    ? allAlertsAreDrills(alerts)
+    : (tenant as { emergencyIsDrill?: boolean } | undefined)?.emergencyIsDrill === true;
+  const tone = drillOnly
+    ? { root: 'bg-indigo-950/90 border-indigo-500', bar: 'bg-indigo-500', iconBg: 'bg-indigo-500/20', icon: 'text-indigo-300', desc: 'text-indigo-200', label: 'text-indigo-300', hint: 'text-indigo-200', ring: 'focus:ring-indigo-500', border: 'border-indigo-500/30', input: 'border-indigo-500/30', button: 'bg-indigo-600 hover:bg-indigo-700 disabled:hover:bg-indigo-600 hover:shadow-indigo-500/20', link: 'border-indigo-300/50 text-indigo-100 hover:bg-indigo-500/20', item: 'text-indigo-300', itemOn: 'rgba(99,102,241,0.30)', itemOnBorder: 'rgba(199,210,254,0.9)', itemOff: 'rgba(99,102,241,0.35)', selectText: 'text-indigo-200' }
+    : { root: 'bg-red-950/90 border-red-500', bar: 'bg-red-500', iconBg: 'bg-red-500/20', icon: 'text-red-500', desc: 'text-red-200', label: 'text-red-400', hint: 'text-red-200', ring: 'focus:ring-red-500', border: 'border-red-500/30', input: 'border-red-500/30', button: 'bg-red-600 hover:bg-red-700 disabled:hover:bg-red-600 hover:shadow-red-500/20', link: 'border-red-300/50 text-red-100 hover:bg-red-500/20', item: 'text-red-300', itemOn: 'rgba(239,68,68,0.30)', itemOnBorder: 'rgba(254,202,202,0.9)', itemOff: 'rgba(239,68,68,0.35)', selectText: 'text-red-200' };
 
   // Nothing live any more (cleared from another device, or expired): let the
   // server's own tenant state decide whether the lock comes down, rather than
@@ -215,7 +226,9 @@ export function EmergencyOverlay() {
       // unable to clear the emergency. `overflow-y-auto` lets it scroll; the
       // `my-auto` on the inner block keeps it centered when it DOES fit.
       // (Dashboard surface, not a Taurus player — inset-0 / blur are fine here.)
-      className="absolute inset-0 z-[60] flex items-center justify-center p-6 overflow-y-auto bg-red-950/90 backdrop-blur-3xl border-8 border-red-500 transition-all duration-300"
+      className={`absolute inset-0 z-[60] flex items-center justify-center p-6 overflow-y-auto backdrop-blur-3xl border-8 transition-all duration-300 ${tone.root}`}
+      data-testid="emergency-overlay"
+      data-drill={drillOnly ? 'true' : 'false'}
     >
       {/* Inner alert region — announces the title + description on mount.
           The outer alertdialog handles focus + modal semantics; this
@@ -228,7 +241,11 @@ export function EmergencyOverlay() {
         aria-atomic="true"
         className="sr-only"
       >
-        {tenantWideActive ? t('emergency.overlay.srAlert') : t('emergency.overlay.srAlertScoped')}
+        {drillOnly
+          ? t('emergency.drill.overlaySr')
+          : tenantWideActive
+            ? t('emergency.overlay.srAlert')
+            : t('emergency.overlay.srAlertScoped')}
       </div>
       {/* Flashing global indicator — clamped by the
           @media (prefers-reduced-motion: reduce) rule in globals.css
@@ -236,18 +253,24 @@ export function EmergencyOverlay() {
           don't see sustained pulsing red. The static border + the
           word "EMERGENCY ACTIVE" + the unmissable contrast still
           convey severity without motion. */}
-      <div className="absolute inset-x-0 top-0 h-2 bg-red-500 animate-pulse" aria-hidden />
-      <div className="absolute inset-x-0 bottom-0 h-2 bg-red-500 animate-pulse" aria-hidden />
+      <div className={`absolute inset-x-0 top-0 h-2 animate-pulse ${tone.bar}`} aria-hidden />
+      <div className={`absolute inset-x-0 bottom-0 h-2 animate-pulse ${tone.bar}`} aria-hidden />
 
       <div className="max-w-2xl w-full my-auto flex flex-col items-center justify-center text-center space-y-8 animate-in zoom-in-95 duration-500">
-        <div className="w-32 h-32 rounded-full bg-red-500/20 flex items-center justify-center animate-pulse">
-          <AlertTriangle className="w-16 h-16 text-red-500" />
+        <div className={`w-32 h-32 rounded-full flex items-center justify-center animate-pulse ${tone.iconBg}`}>
+          <AlertTriangle className={`w-16 h-16 ${tone.icon}`} />
         </div>
 
         <div className="space-y-4">
-          <h1 id="emergency-overlay-title" className="text-5xl font-black tracking-tighter text-white">{t('emergency.overlay.title')}</h1>
-          <p id="emergency-overlay-desc" className="text-xl text-red-200 mt-2 font-medium">
-            {tenantWideActive ? t('emergency.overlay.desc') : t('emergency.overlay.descScoped')}
+          <h1 id="emergency-overlay-title" className="text-5xl font-black tracking-tighter text-white">
+            {drillOnly ? t('emergency.drill.overlayTitle') : t('emergency.overlay.title')}
+          </h1>
+          <p id="emergency-overlay-desc" className={`text-xl mt-2 font-medium ${tone.desc}`}>
+            {drillOnly
+              ? t('emergency.drill.overlayDesc')
+              : tenantWideActive
+                ? t('emergency.overlay.desc')
+                : t('emergency.overlay.descScoped')}
           </p>
         </div>
 
@@ -256,7 +279,7 @@ export function EmergencyOverlay() {
             here is the one the all-clear below ends, and nothing else. */}
         {mayClear && alerts.length > 0 && (
           <div className="w-full max-w-md text-left" data-testid="emergency-active-alerts">
-            <h2 className="text-sm font-bold uppercase tracking-wider text-red-300 mb-2">
+            <h2 className={`text-sm font-bold uppercase tracking-wider mb-2 ${tone.item}`}>
               {alerts.length > 1 ? t('emergency.overlay.chooseAlert') : t('emergency.overlay.alertsTitle')}
             </h2>
             <ul className="space-y-2">
@@ -270,14 +293,19 @@ export function EmergencyOverlay() {
                       aria-pressed={on}
                       className="w-full min-h-[52px] px-4 py-2 rounded-lg border flex items-center gap-3 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
                       style={{
-                        background: on ? 'rgba(239,68,68,0.30)' : 'rgba(0,0,0,0.35)',
-                        borderColor: on ? 'rgba(254,202,202,0.9)' : 'rgba(239,68,68,0.35)',
+                        background: on ? tone.itemOn : 'rgba(0,0,0,0.35)',
+                        borderColor: on ? tone.itemOnBorder : tone.itemOff,
                       }}
                     >
-                      <ShieldAlert className="w-5 h-5 shrink-0 text-red-300" aria-hidden />
+                      <ShieldAlert className={`w-5 h-5 shrink-0 ${a.isDrill ? 'text-indigo-300' : 'text-red-300'}`} aria-hidden />
                       <span className="flex-1 min-w-0 font-semibold text-white">{labelOf(a)}</span>
+                      {a.isDrill && (
+                        <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-[0.18em]" style={{ background: '#4f46e5', color: '#fff' }} data-testid="emergency-alert-drill-badge">
+                          {t('emergency.drill.badge')}
+                        </span>
+                      )}
                       {alerts.length > 1 && (
-                        <span className="shrink-0 text-xs font-bold uppercase tracking-wider text-red-200">
+                        <span className={`shrink-0 text-xs font-bold uppercase tracking-wider ${tone.selectText}`}>
                           {on ? t('emergency.overlay.selected') : t('emergency.overlay.select')}
                         </span>
                       )}
@@ -289,14 +317,14 @@ export function EmergencyOverlay() {
           </div>
         )}
         {mayClear && activeQuery.isError && (
-          <p className="text-sm text-red-200" role="status">{t('emergency.overlay.loadFailed')}</p>
+          <p className={`text-sm ${tone.hint}`} role="status">{t('emergency.overlay.loadFailed')}</p>
         )}
 
-        <div className="w-full max-w-md bg-black/40 backdrop-blur-md rounded-xl p-8 border border-red-500/30 mt-8 space-y-6">
+        <div className={`w-full max-w-md bg-black/40 backdrop-blur-md rounded-xl p-8 border mt-8 space-y-6 ${tone.border}`}>
           {mayClear ? (
             <>
               <div>
-                <label htmlFor="all-clear-input" className="block text-sm font-bold uppercase tracking-wider text-red-400 mb-2">
+                <label htmlFor="all-clear-input" className={`block text-sm font-bold uppercase tracking-wider mb-2 ${tone.label}`}>
                   {t('emergency.overlay.authLabel')}
                 </label>
                 {alerts.length > 1 && selected && (
@@ -304,7 +332,7 @@ export function EmergencyOverlay() {
                     {t('emergency.overlay.ending', { label: labelOf(selected) })}
                   </p>
                 )}
-                <p className="text-sm text-red-200 mb-4 opacity-80">
+                <p className={`text-sm mb-4 opacity-80 ${tone.hint}`}>
                   {t.rich('emergency.overlay.authHint', { b: (chunks) => <strong>{chunks}</strong> })}
                 </p>
                 <input
@@ -314,7 +342,7 @@ export function EmergencyOverlay() {
                   value={confirmKey}
                   onChange={(e) => setConfirmKey(e.target.value.toUpperCase())}
                   placeholder={t('emergency.overlay.placeholder')}
-                  className="w-full px-4 py-3 bg-black/50 border border-red-500/30 rounded-lg text-white font-mono text-center tracking-[0.5em] focus:ring-2 focus:ring-red-500 outline-none uppercase"
+                  className={`w-full px-4 py-3 bg-black/50 border rounded-lg text-white font-mono text-center tracking-[0.5em] focus:ring-2 outline-none uppercase ${tone.input} ${tone.ring}`}
                 />
               </div>
 
@@ -327,7 +355,8 @@ export function EmergencyOverlay() {
               <button
                 onClick={handleAllClear}
                 disabled={!canSubmit}
-                className="w-full py-4 px-6 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:hover:bg-red-600 text-white font-bold rounded-lg shadow-xl hover:shadow-red-500/20 transition-all flex justify-center items-center gap-2"
+                data-testid="emergency-overlay-terminate"
+                className={`w-full py-4 px-6 disabled:opacity-50 text-white font-bold rounded-lg shadow-xl transition-all flex justify-center items-center gap-2 ${tone.button}`}
               >
                 {isPending ? (
                   <span className="flex items-center gap-2 animate-pulse">
@@ -335,13 +364,14 @@ export function EmergencyOverlay() {
                   </span>
                 ) : (
                   <span className="flex items-center gap-2">
-                    <ShieldCheck className="w-5 h-5" /> {t('emergency.overlay.terminate')}
+                    <ShieldCheck className="w-5 h-5" />{' '}
+                    {drillOnly && (selected?.isDrill ?? true) ? t('emergency.drill.terminate') : t('emergency.overlay.terminate')}
                   </span>
                 )}
               </button>
             </>
           ) : (
-            <p className="text-sm text-red-100">{t('emergency.overlay.noAuthority')}</p>
+            <p className={`text-sm ${drillOnly ? 'text-indigo-100' : 'text-red-100'}`}>{t('emergency.overlay.noAuthority')}</p>
           )}
         </div>
 
@@ -351,7 +381,7 @@ export function EmergencyOverlay() {
           <button
             type="button"
             onClick={() => setSendAnotherOpen(true)}
-            className="min-h-[44px] px-5 rounded-lg border border-red-300/50 text-sm font-bold text-red-100 hover:bg-red-500/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+            className={`min-h-[44px] px-5 rounded-lg border text-sm font-bold focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 ${tone.link}`}
           >
             {t('emergency.overlay.sendAnother')}
           </button>

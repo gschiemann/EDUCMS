@@ -454,7 +454,7 @@ async function readEmergencyCache(page: Page) {
   return page.evaluate(() => {
     try {
       const raw = localStorage.getItem('edu_emergency_cache_v1');
-      return raw ? (JSON.parse(raw) as { payload?: { active?: boolean; type?: string } }) : null;
+      return raw ? (JSON.parse(raw) as { payload?: { active?: boolean; type?: string; isDrill?: boolean } }) : null;
     } catch {
       return null;
     }
@@ -695,6 +695,57 @@ test.describe('Emergency path — P0-8 regression suite', () => {
     const cache = await readEmergencyCache(page);
     expect(cache?.payload?.active, 'cached emergency must mark active=true').toBe(true);
     expect(cache?.payload?.type, 'cached emergency must carry the flat type').toBe('LOCKDOWN');
+  });
+
+  // 2026-10-10 — EMERGENCY DRILLS. The manifest's `isDrill: true` paints the
+  // persistent "DRILL — THIS IS A DRILL" banner over the content; a live
+  // alert (test 2 above) paints no banner. Same flat contract, one more field.
+  test('2b. manifest isDrill:true paints the DRILL banner; a live alert does not', async ({ page }) => {
+    await page.goto('/player?fp=' + FAKE_FINGERPRINT);
+    await waitForPlayerReady(page);
+    expect(await readEmergencyCache(page)).toBeNull();
+
+    manifestRef.value = baselineManifest({
+      isEmergency: true,
+      emergencyType: 'LOCKDOWN',
+      emergencySeverity: 'CRITICAL',
+      emergencyScopeNote: null,
+      emergencyScope: 'tenant',
+      isDrill: true,
+    });
+    await pushWs(page, {
+      type: 'OVERRIDE',
+      timestamp: Date.now(),
+      eventId: 'override-evt-drill-1',
+      signature: 'fake-sig-for-test',
+      payload: { overrideId: 'or-drill-1', severity: 'CRITICAL', textBlob: 'DRILL — test', expiresAt: 0, isDrill: true },
+    });
+
+    const banner = page.locator('[data-testid="drill-banner"]');
+    await expect(banner, 'a DRILL manifest must paint the drill banner').toBeVisible({ timeout: 5_000 });
+    await expect(banner).toContainText('THIS IS A DRILL');
+    await expect(banner).toContainText('SIMULACRO');
+    const cache = await readEmergencyCache(page);
+    expect(cache?.payload?.isDrill, 'the cached alert must remember it is a drill').toBe(true);
+
+    // A LIVE alert of the same type — the banner must come down, the alert stays.
+    manifestRef.value = baselineManifest({
+      isEmergency: true,
+      emergencyType: 'LOCKDOWN',
+      emergencySeverity: 'CRITICAL',
+      emergencyScopeNote: null,
+      emergencyScope: 'tenant',
+      isDrill: false,
+    });
+    await pushWs(page, {
+      type: 'OVERRIDE',
+      timestamp: Date.now(),
+      eventId: 'override-evt-drill-2',
+      signature: 'fake-sig-for-test',
+      payload: { overrideId: 'or-live-2', severity: 'CRITICAL', textBlob: '', expiresAt: 0 },
+    });
+    await expect(banner, 'a LIVE alert must not carry the drill banner').toBeHidden({ timeout: 5_000 });
+    await expect.poll(async () => (await readEmergencyCache(page))?.payload?.isDrill, { timeout: 5_000 }).toBe(false);
   });
 
   test('3. WS OVERRIDE with Date.now() ms timestamp (P0-1) is NOT dropped as stale', async ({

@@ -244,6 +244,38 @@
       "activeCount": "{count, plural, other {# 条警报正在显示}}",
       "viewAlerts": "查看",
       "deletedGroup": "已删除的分组"
+    },
+    "drill": {
+      "switchLabel": "警报模式",
+      "live": "真实",
+      "drill": "演习",
+      "liveHint": "真实紧急情况。屏幕显示真实的紧急内容。",
+      "drillHint": "仅供演练。屏幕显示演习内容并带有“演习”横幅。每次打开都会重置为“真实”。",
+      "modeBadge": "演习模式",
+      "modalTitle": "开始演习",
+      "configuredIn": "演习内容在<b>设置 → 紧急 → 演习</b>中配置。没有演习内容的类型将播放其真实内容，并标记为演习。",
+      "willSend": "这将立即开始一次<b>演习</b>：{summary}。所有屏幕都会显示“演习”横幅。",
+      "sending": "正在开始演习…",
+      "sendingTo": "正在开始演习：{summary}…",
+      "fire": "开始演习",
+      "blocked": "当前有真实紧急警报正在进行。请先结束真实警报——演习永远不会取代真实紧急情况。",
+      "alertPrefix": "演习：{label}",
+      "badge": "演习",
+      "panicTitle": "演习触发",
+      "panicHint": "演习模式——按住任意按钮 3 秒即可开始演练。屏幕将显示“演习”。",
+      "buttonAria": "开始{type}演习。按住 3 秒以发送。",
+      "broadcasted": "演习已开始",
+      "announceSending": "正在开始演习：{summary}。",
+      "announceSent": "演习已开始：{summary}。",
+      "announceHolding": "正在按住发送至{target}的{type}演习。继续按住 3 秒即可开始。",
+      "announceModeDrill": "演习模式。下一条警报将是演练。",
+      "announceModeLive": "真实模式。下一条警报将是真实紧急情况。",
+      "overlayTitle": "演习进行中",
+      "overlayDesc": "屏幕正在显示带有“演习”横幅的演习内容。这是演练，不是真实紧急情况。",
+      "overlaySr": "紧急演习进行中。屏幕正在显示演习内容。要结束演习，请输入 CLEAR 并授权解除警报。",
+      "terminate": "结束演习（解除警报）",
+      "playerBanner": "演习 — 这是演习",
+      "playerBannerSub": "演练 · 并非真实紧急情况"
     }
   },
   "auth": {
@@ -915,6 +947,33 @@
           "weather": "天气内容",
           "evacuation": "火警 / 疏散内容",
           "floorPlans": "平面图"
+        },
+        "drill": {
+          "tabs": {
+            "live": "真实",
+            "drill": "演习",
+            "ariaLabel": "真实或演习内容"
+          },
+          "liveNote": "真实紧急情况期间屏幕显示的内容。",
+          "drillNote": "演练期间屏幕显示的内容。没有演习内容的类型将播放其真实内容——屏幕仍会显示“演习”横幅。演习内容与真实内容一样缓存在每块屏幕上。",
+          "log": {
+            "title": "演习记录",
+            "desc": "来自审计记录的近期演习：运行了什么、在哪里、由谁发起以及持续了多久。",
+            "loading": "正在读取演习记录…",
+            "loadFailed": "无法读取演习记录。请重新加载页面重试。",
+            "empty": "尚无演习。将开关设为“演习”后，从“紧急”按钮开始一次。",
+            "type": "类型",
+            "scope": "范围",
+            "who": "发起人",
+            "started": "开始",
+            "ended": "结束",
+            "duration": "时长",
+            "inProgress": "进行中",
+            "allScreens": "所有屏幕",
+            "group": "分组",
+            "screen": "屏幕",
+            "unknownUser": "未知"
+          }
         }
       },
       "brand": {

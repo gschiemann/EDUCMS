@@ -60,6 +60,53 @@ beforeEach(() => {
   });
 });
 
+// 2026-10-10 — drills. The overlay says DRILL (indigo) only when every live
+// alert is a drill; one real alert among drills keeps the red live chrome.
+describe('EmergencyOverlay — DRILL vs LIVE', () => {
+  const GYM_DRILL = { ...GYM, isDrill: true };
+  const LOBBY_DRILL = { ...LOBBY, isDrill: true };
+
+  it('a drill-only incident is indigo and says DRILL ACTIVE, with the drill badge on the alert', async () => {
+    fetchActiveAlerts.mockResolvedValue([GYM_DRILL]);
+    await renderOverlay();
+    const root = await screen.findByTestId('emergency-overlay');
+    await waitFor(() => expect(root).toHaveAttribute('data-drill', 'true'));
+    expect(root.className).toMatch(/indigo/);
+    expect(root.className).not.toMatch(/bg-red-950/);
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('DRILL ACTIVE');
+    expect(screen.getByText(/practice drill, not a real emergency/i)).toBeInTheDocument();
+    expect(screen.getByTestId('emergency-active-alerts')).toHaveTextContent('Drill: Lockdown — Gym group, 6 screens');
+    expect(screen.getByTestId('emergency-alert-drill-badge')).toHaveTextContent('Drill');
+    expect(screen.getByTestId('emergency-overlay-terminate')).toHaveTextContent('End Drill (All Clear)');
+  });
+
+  it('a live alert among drills keeps the red LIVE chrome', async () => {
+    fetchActiveAlerts.mockResolvedValue([GYM_DRILL, LOBBY]);
+    await renderOverlay();
+    const root = await screen.findByTestId('emergency-overlay');
+    await waitFor(() => expect(screen.getByTestId('emergency-active-alerts')).toHaveTextContent('Medical — Lobby'));
+    expect(root).toHaveAttribute('data-drill', 'false');
+    expect(root.className).toMatch(/bg-red-950/);
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('EMERGENCY ACTIVE');
+    expect(screen.getAllByTestId('emergency-alert-drill-badge')).toHaveLength(1);
+  });
+
+  it('the all-clear for a drill goes to exactly that drill, through the same CLEAR gate', async () => {
+    fetchActiveAlerts.mockResolvedValueOnce([LOBBY_DRILL]).mockResolvedValue([]);
+    allClearEmergency.mockResolvedValue({ success: true });
+    await renderOverlay();
+    await screen.findByTestId('emergency-active-alerts');
+    expect(screen.getByTestId('emergency-overlay-terminate')).toBeDisabled();
+    fireEvent.change(screen.getByPlaceholderText('Type CLEAR'), { target: { value: 'clear' } });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('emergency-overlay-terminate'));
+    });
+    expect(allClearEmergency).toHaveBeenCalledWith(
+      expect.objectContaining({ overrideId: 'ovr_lobby', scopeType: 'device', scopeId: 's-lobby' }),
+    );
+  });
+});
+
 describe('EmergencyOverlay — several alerts, each with its own all-clear', () => {
   it('lists every live alert with its target and ends exactly the chosen one', async () => {
     fetchActiveAlerts.mockResolvedValueOnce([GYM, LOBBY]).mockResolvedValue([LOBBY]);

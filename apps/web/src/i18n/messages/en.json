@@ -244,6 +244,38 @@
       "activeCount": "{count, plural, one {# alert is on} other {# alerts are on}}",
       "viewAlerts": "View",
       "deletedGroup": "a deleted group"
+    },
+    "drill": {
+      "switchLabel": "Alert mode",
+      "live": "LIVE",
+      "drill": "DRILL",
+      "liveHint": "Real emergency. Screens show the live emergency content.",
+      "drillHint": "Practice only. Screens show drill content with a DRILL banner. Resets to LIVE every time this opens.",
+      "modeBadge": "DRILL MODE",
+      "modalTitle": "Start a Drill",
+      "configuredIn": "Drill content is configured in <b>Settings → Emergency → Drill</b>. A type with no drill content plays its live content, still marked DRILL.",
+      "willSend": "This will immediately start a <b>DRILL</b>: {summary}. Every screen will show a DRILL banner.",
+      "sending": "Starting drill…",
+      "sendingTo": "Starting drill: {summary}…",
+      "fire": "Start Drill",
+      "blocked": "A live emergency alert is active. End the live alert first — a drill never replaces a real emergency.",
+      "alertPrefix": "Drill: {label}",
+      "badge": "Drill",
+      "panicTitle": "Drill Trigger",
+      "panicHint": "DRILL MODE — press and hold any button for 3 seconds to start a practice drill. Screens will say DRILL.",
+      "buttonAria": "Start {type} drill. Hold for 3 seconds to broadcast.",
+      "broadcasted": "Drill started",
+      "announceSending": "Starting drill: {summary}.",
+      "announceSent": "Drill started: {summary}.",
+      "announceHolding": "Holding {type} DRILL for {target}. Keep holding for 3 seconds to start it.",
+      "announceModeDrill": "Drill mode. The next alert will be a practice drill.",
+      "announceModeLive": "Live mode. The next alert will be a real emergency.",
+      "overlayTitle": "DRILL ACTIVE",
+      "overlayDesc": "Screens are showing drill content with a DRILL banner. This is a practice drill, not a real emergency.",
+      "overlaySr": "Emergency drill active. Screens are showing drill content. To end the drill, type CLEAR and authorize the all-clear.",
+      "terminate": "End Drill (All Clear)",
+      "playerBanner": "DRILL — THIS IS A DRILL",
+      "playerBannerSub": "Practice drill · Not a real emergency"
     }
   },
   "auth": {
@@ -915,6 +947,33 @@
           "weather": "Weather content",
           "evacuation": "Fire / evacuation content",
           "floorPlans": "Floor plans"
+        },
+        "drill": {
+          "tabs": {
+            "live": "Live",
+            "drill": "Drill",
+            "ariaLabel": "Live or drill content"
+          },
+          "liveNote": "What screens show during a real emergency.",
+          "drillNote": "What screens show during a practice drill. A type with no drill content plays its live content — the screen still shows a DRILL banner. Drill content is cached on every screen like live content.",
+          "log": {
+            "title": "Drill log",
+            "desc": "Recent drills, from the audit trail: what was run, where, who started it, and how long it lasted.",
+            "loading": "Reading the drill log…",
+            "loadFailed": "Could not read the drill log. Reload this page to try again.",
+            "empty": "No drills yet. Start one from the Emergency button with the switch set to DRILL.",
+            "type": "Type",
+            "scope": "Where",
+            "who": "Started by",
+            "started": "Started",
+            "ended": "Ended",
+            "duration": "Duration",
+            "inProgress": "In progress",
+            "allScreens": "All screens",
+            "group": "Group",
+            "screen": "Screen",
+            "unknownUser": "Unknown"
+          }
         }
       },
       "brand": {

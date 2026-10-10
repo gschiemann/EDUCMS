@@ -39,6 +39,7 @@ import {
 import { allClearEmergency } from '@/actions/trigger-emergency';
 import { fetchActiveAlerts, fetchEmergencyTargets } from '@/lib/emergency-api';
 import {
+  DEFAULT_EMERGENCY_MODE,
   activeAlertLabel,
   allClearScopeOf,
   allScreensTarget,
@@ -48,10 +49,13 @@ import {
   targetSummary,
   typeIdOf,
   type ActiveAlert,
+  type EmergencyMode,
   type EmergencyTarget,
   type EmergencyTargets,
 } from '@/lib/emergency-target';
 import { EmergencyTargetBar } from '@/components/emergency/EmergencyTargetBar';
+// 2026-10-10 — LIVE | DRILL. Local state, LIVE on every open, never persisted.
+import { LiveDrillSwitch } from '@/components/emergency/LiveDrillSwitch';
 import { EmergencyTargetPicker } from '@/components/emergency/EmergencyTargetPicker';
 import { PanicActiveAlertsSheet } from '@/components/emergency/PanicActiveAlertsSheet';
 
@@ -153,6 +157,14 @@ export default function MobilePanicPage() {
   const [targetsStatus, setTargetsStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [chosenTarget, setChosenTarget] = useState<EmergencyTarget | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  // ── LIVE or DRILL (2026-10-10) ─────────────────────────────────────────
+  // `useState(DEFAULT_EMERGENCY_MODE)`: this page opens in LIVE every time.
+  // The mode is captured when a hold STARTS (like the target) and goes back
+  // to LIVE after a drill is sent — the next press is the real thing unless
+  // the operator flips it again. Drill = indigo chrome + "DRILL" on every
+  // button; the 3-second hold is the same.
+  const [mode, setMode] = useState<EmergencyMode>(DEFAULT_EMERGENCY_MODE);
+  const isDrill = mode === 'drill';
   // Live alerts (each with its target) — from the 5 s poll below, which used
   // to read only the tenant-wide status and so could not see, or wait on, a
   // group / one-screen alert.
@@ -160,8 +172,8 @@ export default function MobilePanicPage() {
   const [alertsSheetOpen, setAlertsSheetOpen] = useState(false);
   // The alert this page just sent: what the "Broadcasted" screen describes and
   // waits on. A ref copy for the poll, which must not restart when it changes.
-  const [sentAlert, setSentAlert] = useState<{ overrideId?: string; target: EmergencyTarget } | null>(null);
-  const firedRef = useRef<{ overrideId?: string; target: EmergencyTarget } | null>(null);
+  const [sentAlert, setSentAlert] = useState<{ overrideId?: string; target: EmergencyTarget; isDrill?: boolean } | null>(null);
+  const firedRef = useRef<{ overrideId?: string; target: EmergencyTarget; isDrill?: boolean } | null>(null);
   // The overrideId of an "All screens" alert sent from this page, so its
   // all-clear pairs with the trigger in the audit log (the Tenant row carries
   // no id). Same chain-of-custody rule as the dashboard overlay (P2 #3).
@@ -380,18 +392,24 @@ export default function MobilePanicPage() {
     setHoldingId(typeId);
     setProgress(0);
     const startTime = Date.now();
-    // The target is fixed when the hold STARTS: what the operator saw on the
-    // "Send to" line is what is sent, whatever happens in the next 3 s.
+    // The target AND the mode are fixed when the hold STARTS: what the
+    // operator saw on the "Send to" line and the LIVE | DRILL switch is what
+    // is sent, whatever happens in the next 3 s.
     const sendTarget = target;
+    const sendMode = mode;
     const type = TYPES.find((ty) => ty.id === typeId);
     if (type) {
-      announce(t('emergency.target.announceHolding', { type: typeName(type.id), target: targetChipLabel(t, sendTarget) }));
+      announce(
+        sendMode === 'drill'
+          ? t('emergency.drill.announceHolding', { type: typeName(type.id), target: targetChipLabel(t, sendTarget) })
+          : t('emergency.target.announceHolding', { type: typeName(type.id), target: targetChipLabel(t, sendTarget) }),
+      );
     }
     progressTimerRef.current = setInterval(() => {
       const pct = Math.min(((Date.now() - startTime) / HOLD_DURATION_MS) * 100, 100);
       setProgress(pct);
     }, 50);
-    holdTimerRef.current = setTimeout(() => fireEmergency(typeId, sendTarget), HOLD_DURATION_MS);
+    holdTimerRef.current = setTimeout(() => fireEmergency(typeId, sendTarget, sendMode), HOLD_DURATION_MS);
   };
 
   const handlePointerDown = (typeId: string) => (e: React.PointerEvent) => {
@@ -430,12 +448,13 @@ export default function MobilePanicPage() {
     clearHold();
   };
 
-  const fireEmergency = async (typeId: string, sendTarget: EmergencyTarget) => {
+  const fireEmergency = async (typeId: string, sendTarget: EmergencyTarget, sendMode: EmergencyMode = 'live') => {
     clearHold();
     setPhase('triggering');
     setFiredType(typeId);
+    const drill = sendMode === 'drill';
     const summary = targetSummary(t, typeName(typeId), sendTarget);
-    announce(t('emergency.target.announceSending', { summary }));
+    announce(drill ? t('emergency.drill.announceSending', { summary }) : t('emergency.target.announceSending', { summary }));
     try {
       if (!verifiedToken) throw new Error(t('emergency.panic.errNoToken'));
       if (!verifiedUser?.tenantId) throw new Error(t('emergency.panic.errNoSchool'));
@@ -449,8 +468,15 @@ export default function MobilePanicPage() {
         ...(isAllScreens(sendTarget)
           ? {}
           : { target: { scopeType: sendTarget.scopeType as 'group' | 'device', scopeId: sendTarget.scopeId } }),
+        // A drill adds exactly one key; LIVE adds nothing.
+        ...(drill ? { isDrill: true } : {}),
       });
       if (result?.error) {
+        // A drill refused because a live alert is on (409): say so in plain
+        // words rather than "could not reach the server".
+        if (result.code === 'EMERGENCY_DRILL_BLOCKED_BY_LIVE_ALERT' || result.error.includes('409')) {
+          throw new Error(t('emergency.drill.blocked'));
+        }
         // LIFE-SAFETY (audit P1 #7): differentiate auth vs network vs
         // server errors. Previously every 4xx/5xx collapsed to "Session
         // expired" which misroutes the operator during a real incident.
@@ -470,6 +496,7 @@ export default function MobilePanicPage() {
           typeof result?.affectedScreenCount === 'number'
             ? { ...sendTarget, screenCount: result.affectedScreenCount }
             : sendTarget,
+        isDrill: drill,
       };
       if (isAllScreens(sendTarget)) tenantOverrideIdRef.current = result?.overrideId;
       firedRef.current = sent;
@@ -478,8 +505,15 @@ export default function MobilePanicPage() {
       // re-reads the "Send to" line; if the next press is an escalation, the
       // whole building is the safe direction to be wrong in — never one room.
       setChosenTarget(null);
+      // …and from LIVE again, for the same reason: a drill is the exception
+      // the operator asked for once, never a state this phone remembers.
+      setMode(DEFAULT_EMERGENCY_MODE);
       setPhase('triggered');
-      announce(t('emergency.target.announceSent', { summary: targetSummary(t, typeName(typeId), sent.target) }));
+      announce(
+        drill
+          ? t('emergency.drill.announceSent', { summary: targetSummary(t, typeName(typeId), sent.target) })
+          : t('emergency.target.announceSent', { summary: targetSummary(t, typeName(typeId), sent.target) }),
+      );
     } catch (e: any) {
       console.error('[PANIC] Emergency trigger failed:', e);
       const msg = e.message || t('emergency.panic.errGeneric');
@@ -658,7 +692,18 @@ export default function MobilePanicPage() {
           />
           <CheckCircle2 className="w-20 h-20 relative z-10" style={{ color: fired.accent }} />
         </div>
-        <h1 className="text-3xl font-black mb-2 uppercase tracking-tight text-center" style={{ color: fired.accent }}>{typeName(fired.id)}<br/>{t('emergency.panic.broadcasted')}</h1>
+        {sent?.isDrill && (
+          <span
+            className="mb-3 px-3 py-1 rounded-full text-[11px] font-black tracking-[0.22em] uppercase"
+            style={{ background: '#4f46e5', color: '#fff' }}
+            data-testid="panic-drill-badge"
+          >
+            {t('emergency.drill.modeBadge')}
+          </span>
+        )}
+        <h1 className="text-3xl font-black mb-2 uppercase tracking-tight text-center" style={{ color: fired.accent }}>
+          {typeName(fired.id)}<br/>{sent?.isDrill ? t('emergency.drill.broadcasted') : t('emergency.panic.broadcasted')}
+        </h1>
         {/* WHERE it went, in plain words — "Lockdown on all 24 screens" /
             "Lockdown on 1 screen — Lobby" (alert targeting, 2026-10-05). */}
         <p className="text-white/80 mb-3 max-w-[300px] mx-auto text-center text-base font-semibold leading-snug" data-testid="panic-sent-summary">
@@ -731,15 +776,30 @@ export default function MobilePanicPage() {
       </p>
 
       <div className="px-5 pb-2 text-center">
-        <h1 className="text-[1.35rem] font-black tracking-tight text-white">{t('emergency.panic.title')}</h1>
+        <h1 className="text-[1.35rem] font-black tracking-tight text-white" data-testid="panic-title">
+          {isDrill ? t('emergency.drill.panicTitle') : t('emergency.panic.title')}
+        </h1>
         {/* 2026-05-03 BUG FIX (cycle 4 emergency-BUG-013) — copy used to
             say "1.5 seconds" but HOLD_DURATION_MS is 3000 (cycle-1 fix
             restoring the CLAUDE.md "Key Safeguards #5" 3-second hold).
             Updated to match actual timer so operators see truthful UX. */}
-        <p className="text-white/60 text-[11px] mt-1">{t('emergency.panic.holdHint')}</p>
+        <p className={`text-[11px] mt-1 ${isDrill ? 'text-indigo-200 font-semibold' : 'text-white/60'}`} data-testid="panic-hold-hint">
+          {isDrill ? t('emergency.drill.panicHint') : t('emergency.panic.holdHint')}
+        </p>
       </div>
 
       <div className="px-5 pb-1 space-y-2">
+        {/* LIVE | DRILL (2026-10-10). LIVE on every open; back to LIVE after
+            a drill is sent. Locked while a send is in flight. */}
+        <LiveDrillSwitch
+          mode={mode}
+          size="compact"
+          disabled={phase === 'triggering'}
+          onChange={(next) => {
+            setMode(next);
+            announce(next === 'drill' ? t('emergency.drill.announceModeDrill') : t('emergency.drill.announceModeLive'));
+          }}
+        />
         {/* LIVE ALERTS (alert targeting, 2026-10-05) — one compact line, so
             the trigger grid keeps its size however many are on. Tapping it
             opens the list, where each alert has its own all-clear. */}
@@ -808,7 +868,8 @@ export default function MobilePanicPage() {
               onKeyUp={handleKeyUp}
               onBlur={clearHold}
               onContextMenu={(e) => e.preventDefault()}
-              aria-label={t('emergency.panic.buttonAria', { type: typeName(type.id) })}
+              aria-label={isDrill ? t('emergency.drill.buttonAria', { type: typeName(type.id) }) : t('emergency.panic.buttonAria', { type: typeName(type.id) })}
+              data-mode={mode}
               disabled={phase === 'triggering'}
               // Sized by the ROW, capped at 156 px (2026-10-05): the target line
               // above takes height, and on a phone browser (address bar showing)
@@ -824,12 +885,26 @@ export default function MobilePanicPage() {
                 WebkitTapHighlightColor: 'transparent',
                 touchAction: 'none',
                 background: isHolding ? holdBg : restBg,
-                border: `1px solid ${isHolding ? type.accent : `rgba(${type.rgb},0.40)`}`,
+                // Drill: an indigo ring replaces the type's colour ring so the
+                // whole grid visibly changes mode; the type colour stays as the
+                // icon/glow so Hold is still Hold.
+                border: `1px solid ${isHolding ? type.accent : isDrill ? 'rgba(129,140,248,0.75)' : `rgba(${type.rgb},0.40)`}`,
                 boxShadow: isHolding
                   ? `0 0 44px rgba(${type.rgb},0.55), inset 0 -7px 0 rgba(0,0,0,0.28)`
-                  : `0 0 0 1px rgba(${type.rgb},0.10), 0 12px 30px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.05)`,
+                  : isDrill
+                    ? `0 0 0 2px rgba(99,102,241,0.45), 0 12px 30px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.05)`
+                    : `0 0 0 1px rgba(${type.rgb},0.10), 0 12px 30px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.05)`,
               }}
             >
+              {isDrill && !isTriggering && (
+                <span
+                  className="absolute top-2 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded text-[9px] font-black tracking-[0.2em] uppercase"
+                  style={{ background: '#4f46e5', color: '#fff' }}
+                  aria-hidden
+                >
+                  {t('emergency.drill.drill')}
+                </span>
+              )}
               {/* Progress ring */}
               <svg className="absolute top-0 right-0 bottom-0 left-0 w-full h-full -rotate-90 pointer-events-none" viewBox="0 0 100 100">
                 <circle cx="50" cy="50" r="46" stroke="rgba(255,255,255,0.10)" strokeWidth="3" fill="none" />

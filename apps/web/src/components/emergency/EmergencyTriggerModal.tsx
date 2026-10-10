@@ -11,12 +11,17 @@ import { useEmergencyAnnouncer } from '@/components/emergency/EmergencyLiveRegio
 // 2026-10-05 — alert targeting: All screens (default) / one group / one screen.
 import { EmergencyTargetPicker } from '@/components/emergency/EmergencyTargetPicker';
 import { EmergencyTargetBar } from '@/components/emergency/EmergencyTargetBar';
+// 2026-10-10 — LIVE | DRILL. Local state, defaults to LIVE on every open,
+// never persisted (see LiveDrillSwitch.tsx for the rule).
+import { LiveDrillSwitch } from '@/components/emergency/LiveDrillSwitch';
 import { fetchEmergencyTargets } from '@/lib/emergency-api';
 import {
+  DEFAULT_EMERGENCY_MODE,
   allScreensTarget,
   isAllScreens,
   targetChipLabel,
   targetSummary,
+  type EmergencyMode,
   type EmergencyTarget,
 } from '@/lib/emergency-target';
 
@@ -89,6 +94,18 @@ export function EmergencyTriggerModal({ onClose }: Props) {
   const [chosenTarget, setChosenTarget] = useState<EmergencyTarget | null>(null);
   const target = chosenTarget ?? allScreens;
   const [pickerOpen, setPickerOpen] = useState(false);
+  // ── LIVE or DRILL (2026-10-10) ─────────────────────────────────────────
+  // `useState(DEFAULT_EMERGENCY_MODE)` is the whole persistence story: the
+  // modal mounts in LIVE every time it opens. A drill changes the WORDS and
+  // the COLOUR of everything below (indigo, never red) and adds `isDrill` to
+  // the request; the type grid, the typed confirm word and the fire ceremony
+  // are exactly the live ones.
+  const [mode, setMode] = useState<EmergencyMode>(DEFAULT_EMERGENCY_MODE);
+  const isDrill = mode === 'drill';
+  // Live = red; drill = indigo. Raw triplets for the inline rgba() glows.
+  const accent = isDrill ? '#6366f1' : '#ef4444';
+  const accentRgb = isDrill ? '99,102,241' : '239,68,68';
+  const accentText = isDrill ? '#a5b4fc' : '#f87171';
 
   // Stores the last-attempted payload so the retry button re-fires the
   // same broadcast without requiring the operator to re-fill the form.
@@ -98,6 +115,8 @@ export function EmergencyTriggerModal({ onClose }: Props) {
     triggeredBy: string;
     token?: string;
     target?: { scopeType: 'group' | 'device'; scopeId: string };
+    /** A drill (2026-10-10). Absent = live, the request as it always was. */
+    isDrill?: true;
     /** For the words only — what the operator confirmed. */
     summaryTarget: EmergencyTarget;
   } | null>(null);
@@ -129,29 +148,34 @@ export function EmergencyTriggerModal({ onClose }: Props) {
     triggeredBy: string;
     token?: string;
     target?: { scopeType: 'group' | 'device'; scopeId: string };
+    isDrill?: true;
     summaryTarget: EmergencyTarget;
   }) => {
     setDispatchError(null);
     setLastPayload(payload);
     const typeName = types.find((tt) => tt.id === payload.type)?.name || payload.type;
     const summary = targetSummary(t, typeName, payload.summaryTarget);
+    const drill = payload.isDrill === true;
     // `summaryTarget` is for the words only; the server action gets exactly
-    // what it always got, plus `target` when a group / screen was chosen.
+    // what it always got, plus `target` when a group / screen was chosen,
+    // plus `isDrill` only for a drill.
     const actionPayload = {
       schoolId: payload.schoolId,
       type: payload.type,
       triggeredBy: payload.triggeredBy,
       token: payload.token,
       ...(payload.target ? { target: payload.target } : {}),
+      ...(drill ? { isDrill: true } : {}),
     };
-    announce(t('emergency.target.announceSending', { summary }));
+    announce(drill ? t('emergency.drill.announceSending', { summary }) : t('emergency.target.announceSending', { summary }));
     startTransition(async () => {
       const started = performance.now();
-      clog.warn('emergency', `TRIGGER: ${payload.type}`, {
+      clog.warn('emergency', `TRIGGER: ${payload.type}${drill ? ' (DRILL)' : ''}`, {
         schoolId: payload.schoolId,
         triggeredBy: payload.triggeredBy,
         role: user?.role,
         scopeType: payload.target?.scopeType ?? 'tenant',
+        isDrill: drill,
       });
       try {
         const result = await broadcastEmergency(actionPayload);
@@ -168,7 +192,7 @@ export function EmergencyTriggerModal({ onClose }: Props) {
           elapsedMs: Math.round(performance.now() - started),
           overrideId: result.overrideId,
         });
-        announce(t('emergency.target.announceSent', { summary }));
+        announce(drill ? t('emergency.drill.announceSent', { summary }) : t('emergency.target.announceSent', { summary }));
         // ONLY flip local emergency state after the server confirms the broadcast.
         // Carry the overrideId into the store so EmergencyOverlay can pass it
         // back on all-clear (audit P2 #3 — forensic chain-of-custody fix).
@@ -209,6 +233,8 @@ export function EmergencyTriggerModal({ onClose }: Props) {
       ...(isAllScreens(target)
         ? {}
         : { target: { scopeType: target.scopeType as 'group' | 'device', scopeId: target.scopeId } }),
+      // A drill adds exactly one key; LIVE adds nothing.
+      ...(isDrill ? { isDrill: true as const } : {}),
       summaryTarget: target,
     });
   };
@@ -234,15 +260,24 @@ export function EmergencyTriggerModal({ onClose }: Props) {
         {/* Header */}
         <div
           className="px-6 py-4 border-b border-white/10 flex justify-between items-center"
-          style={{ background: 'linear-gradient(180deg, rgba(239,68,68,0.14) 0%, rgba(239,68,68,0.04) 100%)' }}
+          style={{ background: `linear-gradient(180deg, rgba(${accentRgb},0.14) 0%, rgba(${accentRgb},0.04) 100%)` }}
         >
           <div>
-            <h2 className="text-lg font-bold flex items-center gap-2" style={{ color: '#f87171' }}>
+            <h2 className="text-lg font-bold flex items-center gap-2" style={{ color: accentText }} data-testid="emergency-modal-title">
               <ShieldAlert className="w-5 h-5" />
-              {t('emergency.modal.title')}
+              {isDrill ? t('emergency.drill.modalTitle') : t('emergency.modal.title')}
+              {isDrill && (
+                <span
+                  className="ml-1 px-2 py-0.5 rounded-md text-[10px] font-black tracking-[0.2em] uppercase"
+                  style={{ background: '#4f46e5', color: '#fff' }}
+                  data-testid="emergency-drill-badge"
+                >
+                  {t('emergency.drill.modeBadge')}
+                </span>
+              )}
             </h2>
             <p className="text-xs text-white/65 mt-0.5">
-              {t.rich('emergency.modal.configuredIn', {
+              {t.rich(isDrill ? 'emergency.drill.configuredIn' : 'emergency.modal.configuredIn', {
                 b: (chunks) => <strong className="text-white/85">{chunks}</strong>,
               })}
             </p>
@@ -257,6 +292,16 @@ export function EmergencyTriggerModal({ onClose }: Props) {
         </div>
 
         <div className="p-6 space-y-6 flex-1 overflow-y-auto">
+          {/* LIVE | DRILL (2026-10-10). Defaults to LIVE on every open. */}
+          <LiveDrillSwitch
+            mode={mode}
+            disabled={isPending}
+            onChange={(next) => {
+              setMode(next);
+              setDispatchError(null);
+              announce(next === 'drill' ? t('emergency.drill.announceModeDrill') : t('emergency.drill.announceModeLive'));
+            }}
+          />
           {/* WHERE (2026-10-05). Defaults to All screens — the target every
               trigger has always had — so the steps below are unchanged. */}
           <EmergencyTargetBar
@@ -320,12 +365,13 @@ export function EmergencyTriggerModal({ onClose }: Props) {
               </h3>
               <div
                 className="rounded-xl p-4 border space-y-3"
-                style={{ background: 'rgba(239,68,68,0.06)', borderColor: 'rgba(239,68,68,0.25)' }}
+                style={{ background: `rgba(${accentRgb},0.06)`, borderColor: `rgba(${accentRgb},0.25)` }}
               >
                 {/* The confirmation states target and count in plain words:
-                    "Lockdown on all 24 screens" / "Lockdown on 1 screen — Lobby". */}
+                    "Lockdown on all 24 screens" / "Lockdown on 1 screen — Lobby".
+                    A drill says DRILL in the sentence itself. */}
                 <p className="text-sm text-white/80" data-testid="emergency-confirm-summary">
-                  {t.rich('emergency.modal.willSend', {
+                  {t.rich(isDrill ? 'emergency.drill.willSend' : 'emergency.modal.willSend', {
                     summary: targetSummary(t, currentType?.name ?? '', target),
                     b: (chunks) => <strong className="font-bold text-white">{chunks}</strong>,
                   })}
@@ -334,7 +380,7 @@ export function EmergencyTriggerModal({ onClose }: Props) {
                   <label className="block text-xs font-semibold uppercase tracking-wider text-white/65 mb-1.5">
                     {t.rich('emergency.modal.typeToConfirm', {
                       word: confirmWord,
-                      w: (chunks) => <span className="font-mono font-bold" style={{ color: '#fca5a5' }}>{chunks}</span>,
+                      w: (chunks) => <span className="font-mono font-bold" style={{ color: isDrill ? '#c7d2fe' : '#fca5a5' }}>{chunks}</span>,
                     })}
                   </label>
                   <input
@@ -355,7 +401,7 @@ export function EmergencyTriggerModal({ onClose }: Props) {
                     placeholder={confirmWord}
                     autoFocus
                     aria-label={t('emergency.modal.confirmAria', { word: confirmWord })}
-                    className="w-full px-4 py-2.5 border border-white/15 rounded-md bg-slate-950/60 text-white placeholder-white/60 font-mono text-sm outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all uppercase tracking-wider"
+                    className={`w-full px-4 py-2.5 border border-white/15 rounded-md bg-slate-950/60 text-white placeholder-white/60 font-mono text-sm outline-none focus:ring-2 ${isDrill ? 'focus:ring-indigo-500' : 'focus:ring-red-500'} focus:border-transparent transition-all uppercase tracking-wider`}
                   />
                 </div>
               </div>
@@ -401,24 +447,31 @@ export function EmergencyTriggerModal({ onClose }: Props) {
           <button
             onClick={handleTrigger}
             disabled={!selectedType || confirmKey !== confirmWord || isPending}
+            data-testid="emergency-fire"
+            data-mode={mode}
             className="px-6 py-2.5 text-white text-sm font-bold rounded-md shadow-sm transition-all flex justify-center items-center gap-2 min-w-[160px] disabled:opacity-40 active:scale-[0.99]"
-            style={{ background: 'linear-gradient(160deg, #ef4444 0%, #b91c1c 100%)', boxShadow: '0 0 24px rgba(239,68,68,0.30)' }}
+            style={{
+              background: isDrill
+                ? 'linear-gradient(160deg, #6366f1 0%, #4338ca 100%)'
+                : 'linear-gradient(160deg, #ef4444 0%, #b91c1c 100%)',
+              boxShadow: `0 0 24px rgba(${accentRgb},0.30)`,
+            }}
           >
             {isPending ? (
               <span className="animate-pulse">
                 {lastPayload
-                  ? t('emergency.modal.sendingTo', {
+                  ? t(lastPayload.isDrill ? 'emergency.drill.sendingTo' : 'emergency.modal.sendingTo', {
                       summary: targetSummary(
                         t,
                         types.find((tt) => tt.id === lastPayload.type)?.name ?? lastPayload.type,
                         lastPayload.summaryTarget,
                       ),
                     })
-                  : t('emergency.modal.sending')}
+                  : t(isDrill ? 'emergency.drill.sending' : 'emergency.modal.sending')}
               </span>
             ) : (
               <span className="flex items-center gap-2">
-                <WifiOff className="w-4 h-4" /> {t('emergency.modal.title')}
+                <WifiOff className="w-4 h-4" /> {isDrill ? t('emergency.drill.fire') : t('emergency.modal.title')}
               </span>
             )}
           </button>

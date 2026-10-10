@@ -17,6 +17,14 @@
 
 export type EmergencyScopeType = 'tenant' | 'group' | 'device';
 
+/**
+ * LIVE or DRILL (2026-10-10). Every trigger surface holds this in LOCAL state
+ * that starts at 'live' on EVERY open and is never persisted — a real
+ * lockdown must never go out as a drill because someone left a switch on.
+ */
+export type EmergencyMode = 'live' | 'drill';
+export const DEFAULT_EMERGENCY_MODE: EmergencyMode = 'live';
+
 /** Who an alert goes to. `tenant` = All screens, the default. */
 export interface EmergencyTarget {
   scopeType: EmergencyScopeType;
@@ -72,6 +80,8 @@ export interface ActiveAlert {
   /** Incident type ("LOCKDOWN"); null when the row predates incident types. */
   type: string | null;
   severity: string | null;
+  /** 2026-10-10 — a DRILL, not a live alert. Absent on older servers = live. */
+  isDrill?: boolean;
   screenCount: number;
   showingCount: number | null;
   triggeredAt: string | null;
@@ -122,16 +132,26 @@ export function emergencyTriggerBody(payload: {
   type: string;
   playlistId?: string;
   target?: { scopeType: EmergencyScopeType; scopeId: string } | null;
+  /**
+   * A DRILL (2026-10-10). Only `true` adds `isDrill: true` to the payload;
+   * absent/false leaves the body byte-for-byte the live request.
+   */
+  isDrill?: boolean;
 }): {
   scopeType: EmergencyScopeType;
   scopeId: string;
-  overridePayload: { severity: 'CRITICAL'; type: string; playlistId: string | undefined };
+  overridePayload: { severity: 'CRITICAL'; type: string; playlistId: string | undefined; isDrill?: true };
 } {
   const scoped = payload.target && payload.target.scopeType !== 'tenant' ? payload.target : null;
   return {
     scopeType: scoped ? scoped.scopeType : 'tenant',
     scopeId: scoped ? scoped.scopeId : payload.schoolId,
-    overridePayload: { severity: 'CRITICAL', type: payload.type, playlistId: payload.playlistId },
+    overridePayload: {
+      severity: 'CRITICAL',
+      type: payload.type,
+      playlistId: payload.playlistId,
+      ...(payload.isDrill === true ? { isDrill: true as const } : {}),
+    },
   };
 }
 
@@ -229,16 +249,26 @@ export function targetChipLabel(t: Translate, target: EmergencyTarget): string {
  * "Lockdown — all 24 screens".
  */
 export function activeAlertLabel(t: Translate, typeName: string, alert: ActiveAlert): string {
-  if (alert.scopeType === 'tenant') {
-    return t('emergency.target.activeAll', { type: typeName, count: alert.screenCount });
-  }
-  const name =
-    alert.scopeType === 'group'
-      ? alert.targetName
-        ? groupDisplayName(t, alert.targetName)
-        : t('emergency.target.deletedGroup')
-      : alert.targetName ?? t('emergency.target.unnamedScreen');
-  return t('emergency.target.activeOne', { type: typeName, name, count: alert.screenCount });
+  const label =
+    alert.scopeType === 'tenant'
+      ? t('emergency.target.activeAll', { type: typeName, count: alert.screenCount })
+      : t('emergency.target.activeOne', {
+          type: typeName,
+          name:
+            alert.scopeType === 'group'
+              ? alert.targetName
+                ? groupDisplayName(t, alert.targetName)
+                : t('emergency.target.deletedGroup')
+              : alert.targetName ?? t('emergency.target.unnamedScreen'),
+          count: alert.screenCount,
+        });
+  // A drill is named as one everywhere it is listed: "Drill: Lockdown — …".
+  return alert.isDrill === true ? t('emergency.drill.alertPrefix', { label }) : label;
+}
+
+/** True when every live alert is a drill (the dashboard overlay turns indigo, not red). */
+export function allAlertsAreDrills(alerts: readonly ActiveAlert[]): boolean {
+  return alerts.length > 0 && alerts.every((a) => a.isDrill === true);
 }
 
 /** The panic/modal type id ("lockdown") for an API incident type ("LOCKDOWN"), or null. */

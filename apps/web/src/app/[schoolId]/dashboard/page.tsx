@@ -108,6 +108,8 @@ export default function DashboardPage() {
       UPLOAD_SCREEN_EMERGENCY_ASSET: 'Emergency content stored',
       TRIGGER_EMERGENCY: 'Emergency alert started',
       CLEAR_EMERGENCY: 'Emergency all-clear sent',
+      TRIGGER_EMERGENCY_DRILL: 'Emergency drill started',
+      CLEAR_EMERGENCY_DRILL: 'Emergency drill ended',
       REFRESH_WEB: 'Screens told to resync',
       FORCE_APK_UPDATE: 'Player update pushed',
       SCHEDULE_CREATED: 'Schedule created',

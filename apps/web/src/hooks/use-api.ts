@@ -3568,6 +3568,11 @@ export type PanicKind = 'lockdown' | 'weather' | 'evacuate' | 'hold' | 'secure' 
 // orientation's emergency media rendered natively. Defaults to
 // landscape so every existing caller keeps the old behavior.
 export type PanicOrientation = 'landscape' | 'portrait';
+/**
+ * 2026-10-10 — the LIVE bucket (what a real alert plays) or the DRILL bucket
+ * (what a drill plays; empty = the drill falls back to live content).
+ */
+export type PanicMode = 'live' | 'drill';
 export type PanicAssetItem = {
   id: string;
   assetId: string;
@@ -3578,30 +3583,34 @@ export type PanicAssetItem = {
 export type PanicBucket = {
   kind: PanicKind;
   orientation?: PanicOrientation;
+  mode?: PanicMode;
   label: string;
   playlistId: string;
   items: PanicAssetItem[];
 };
-export function usePanicContent(kind: PanicKind, orientation: PanicOrientation = 'landscape') {
+/** `?mode=drill` only when asked: the live request is the URL every existing caller sent. */
+const panicContentQuery = (orientation: PanicOrientation, mode: PanicMode) =>
+  `orientation=${orientation}${mode === 'drill' ? '&mode=drill' : ''}`;
+export function usePanicContent(kind: PanicKind, orientation: PanicOrientation = 'landscape', mode: PanicMode = 'live') {
   return useQuery<PanicBucket>({
-    queryKey: ['panic-content', kind, orientation],
-    queryFn: () => apiFetch(`/panic-content/${kind}/assets?orientation=${orientation}`),
+    queryKey: ['panic-content', kind, orientation, mode],
+    queryFn: () => apiFetch(`/panic-content/${kind}/assets?${panicContentQuery(orientation, mode)}`),
   });
 }
-export function useAddPanicAsset(kind: PanicKind, orientation: PanicOrientation = 'landscape') {
+export function useAddPanicAsset(kind: PanicKind, orientation: PanicOrientation = 'landscape', mode: PanicMode = 'live') {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: { assetId: string; durationMs?: number }) =>
-      apiFetch(`/panic-content/${kind}/assets?orientation=${orientation}`, { method: 'POST', body: JSON.stringify(body) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['panic-content', kind, orientation] }),
+      apiFetch(`/panic-content/${kind}/assets?${panicContentQuery(orientation, mode)}`, { method: 'POST', body: JSON.stringify(body) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['panic-content', kind, orientation, mode] }),
   });
 }
-export function useRemovePanicAsset(kind: PanicKind, orientation: PanicOrientation = 'landscape') {
+export function useRemovePanicAsset(kind: PanicKind, orientation: PanicOrientation = 'landscape', mode: PanicMode = 'live') {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (itemId: string) =>
-      apiFetch(`/panic-content/${kind}/assets/${itemId}?orientation=${orientation}`, { method: 'DELETE' }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['panic-content', kind, orientation] }),
+      apiFetch(`/panic-content/${kind}/assets/${itemId}?${panicContentQuery(orientation, mode)}`, { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['panic-content', kind, orientation, mode] }),
   });
 }
 

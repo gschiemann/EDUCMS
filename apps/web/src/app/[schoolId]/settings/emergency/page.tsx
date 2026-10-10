@@ -10,14 +10,16 @@
  *   1. Readiness summary
  *   2. Emergency capability enabled/configured state
  *   3. Delivery model — organization-wide or location-based
- *   4. Alert types and content wiring
+ *   4. Alert types and content wiring — LIVE | DRILL tabs (2026-10-10). The
+ *      Live tab is what a real alert plays; the Drill tab is what a practice
+ *      drill plays (a type with no drill content falls back to its live
+ *      content, still marked DRILL on every screen) plus the DRILL LOG —
+ *      recent drills read from the audit trail (TRIGGER_EMERGENCY_DRILL /
+ *      CLEAR_EMERGENCY_DRILL, paired by overrideId). Drills are STARTED from
+ *      the trigger surfaces (the Emergency button / the /panic page) with
+ *      their LIVE | DRILL switch, never from here: this page is configuration,
+ *      not a trigger screen.
  *   5. Floor-plan and location coverage
- *   6. Drill/test controls — DELIBERATELY ABSENT. No drill or test endpoint
- *      exists in the API (`apps/api/src/emergency/` has trigger, all-clear,
- *      readiness and nothing else), and §7.5 allows only controls that are
- *      "actually implemented". A "Run a drill" button that fires the real
- *      trigger endpoint would be a trigger wearing a test costume, and a
- *      disabled "coming soon" control is banned by §11. So: nothing.
  *   7. Audit/history link
  *
  * WHAT CHANGED 2026-09-02 (handoff §19.5). The master on/off used to live in
@@ -51,6 +53,8 @@ import {
   History,
   Stethoscope,
   Image as ImageIcon,
+  FlaskConical,
+  ShieldAlert,
 } from 'lucide-react';
 import {
   useTenant,
@@ -63,10 +67,13 @@ import {
   useLocationBasedEmergencyConfig,
   useToggleLocationBasedEmergency,
   type PanicKind,
+  type PanicMode,
 } from '@/hooks/use-api';
 import { API_URL } from '@/lib/api-url';
 import { useUIStore } from '@/store/ui-store';
 import { PanicContentEditor } from '@/components/settings/PanicContentEditor';
+// Drill log pairing (pure; a page file may export nothing but its page).
+import { drillDuration, pairDrillLog, type AuditRow, type DrillLogEntry } from '@/lib/drill-log';
 import { EmergencyReadinessCard, useEmergencyReadiness } from '@/components/emergency/EmergencyReadinessCard';
 import { EmbeddedFloorPlanView } from '@/components/floor-plans/EmbeddedFloorPlanView';
 import { selectionAfterPlans } from '@/components/floor-plans/plan-selection';
@@ -223,10 +230,8 @@ function EmergencyEditor({ schoolId }: { schoolId: string }) {
       {/* 2 — Capability enabled/configured state */}
       <EnablementSection />
 
-      {/* 3, 4, 5 */}
+      {/* 3, 4 (Live | Drill), 5 */}
       {capabilityOn && <DeliveryAndContent schoolId={schoolId} />}
-
-      {/* 6 — drill/test controls: none exist in the API. Nothing renders. */}
 
       {/* 7 — Audit / history */}
       <EditorSection
@@ -505,6 +510,9 @@ function DeliveryAndContent({ schoolId }: { schoolId: string }) {
   const toggle = useToggleLocationBasedEmergency();
   const locationMode = !!cfg?.enabled;
   const [error, setError] = useState<string | null>(null);
+  // LIVE | DRILL content (2026-10-10). An authoring tab, not a trigger
+  // switch: which bucket the six cards below edit. Opens on Live.
+  const [contentMode, setContentMode] = useState<PanicMode>('live');
 
   const switchMode = async (target: string) => {
     const wantLocation = target === 'location';
@@ -573,14 +581,50 @@ function DeliveryAndContent({ schoolId }: { schoolId: string }) {
         title={t('settings.cc.emergency.content.title')}
         description={t('settings.cc.emergency.content.desc')}
       >
+        {/* LIVE | DRILL — two clearly separated sections (2026-10-10). */}
+        <div
+          role="tablist"
+          aria-label={t('settings.cc.emergency.drill.tabs.ariaLabel')}
+          className="inline-grid grid-cols-2 bg-slate-100 border border-slate-200 rounded-[10px] p-0.5 mb-3 text-[12px] font-semibold"
+          data-testid="emergency-content-mode-tabs"
+        >
+          {(['live', 'drill'] as const).map((m) => {
+            const on = contentMode === m;
+            const Icon = m === 'drill' ? FlaskConical : ShieldAlert;
+            return (
+              <button
+                key={m}
+                type="button"
+                role="tab"
+                aria-selected={on}
+                data-testid={`emergency-content-tab-${m}`}
+                onClick={() => setContentMode(m)}
+                className={`min-h-[34px] px-4 rounded-[8px] flex items-center justify-center gap-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 ${
+                  on
+                    ? m === 'drill'
+                      ? 'bg-indigo-600 text-white shadow-sm'
+                      : 'bg-red-600 text-white shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" aria-hidden />
+                {t(`settings.cc.emergency.drill.tabs.${m}`)}
+              </button>
+            );
+          })}
+        </div>
+        <p className="text-[12px] leading-[17px] text-slate-500 mb-3" data-testid="emergency-content-mode-note">
+          {contentMode === 'drill' ? t('settings.cc.emergency.drill.drillNote') : t('settings.cc.emergency.drill.liveNote')}
+        </p>
         <h4 className="text-[12px] font-medium text-slate-500 mb-2">
           {t('settings.cc.emergency.content.criticalGroup')}
         </h4>
         <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,260px),1fr))] gap-3">
           {CRITICAL_TYPES.map(({ kind, accent }) => (
             <PanicContentEditor
-              key={kind}
+              key={`${contentMode}-${kind}`}
               kind={kind}
+              mode={contentMode}
               accent={accent}
               label={t(`settings.cc.emergency.types.${kind}.label`)}
               hint={t(`settings.cc.emergency.types.${kind}.hint`)}
@@ -593,14 +637,16 @@ function DeliveryAndContent({ schoolId }: { schoolId: string }) {
         <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,260px),1fr))] gap-3">
           {AWARENESS_TYPES.map(({ kind, accent }) => (
             <PanicContentEditor
-              key={kind}
+              key={`${contentMode}-${kind}`}
               kind={kind}
+              mode={contentMode}
               accent={accent}
               label={t(`settings.cc.emergency.types.${kind}.label`)}
               hint={t(`settings.cc.emergency.types.${kind}.hint`)}
             />
           ))}
         </div>
+        {contentMode === 'drill' && <DrillLog />}
       </EditorSection>
 
       <EditorSection
@@ -617,6 +663,80 @@ function DeliveryAndContent({ schoolId }: { schoolId: string }) {
         )}
       </EditorSection>
     </>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────
+// 4b — Drill log (2026-10-10): recent drills from the audit trail
+// ────────────────────────────────────────────────────────────────
+
+function DrillLog() {
+  const t = useTranslations();
+  const triggers = useAuditLog({ action: 'TRIGGER_EMERGENCY_DRILL', limit: 50 });
+  const clears = useAuditLog({ action: 'CLEAR_EMERGENCY_DRILL', limit: 200 });
+  const rows = useMemo(
+    () => pairDrillLog((triggers.data?.items ?? []) as AuditRow[], (clears.data?.items ?? []) as AuditRow[]),
+    [triggers.data, clears.data],
+  );
+  const typeLabel = (apiType: string | null) => {
+    const id = String(apiType ?? '').toLowerCase();
+    return (ALL_KINDS as readonly string[]).includes(id) ? t(`settings.cc.emergency.types.${id}.label`) : apiType ?? '—';
+  };
+  const scopeLabel = (e: DrillLogEntry) =>
+    e.scopeType === 'group'
+      ? t('settings.cc.emergency.drill.log.group')
+      : e.scopeType === 'device'
+        ? t('settings.cc.emergency.drill.log.screen')
+        : t('settings.cc.emergency.drill.log.allScreens');
+  return (
+    <div className="mt-6 rounded-xl border border-indigo-200 bg-indigo-50/40 p-3" data-testid="emergency-drill-log">
+      <div className="flex items-center gap-2 mb-1">
+        <FlaskConical className="w-4 h-4 text-indigo-600" aria-hidden />
+        <h4 className="text-[13px] font-semibold text-slate-900">{t('settings.cc.emergency.drill.log.title')}</h4>
+      </div>
+      <p className="text-[12px] leading-[17px] text-slate-500 mb-3">{t('settings.cc.emergency.drill.log.desc')}</p>
+      {triggers.isLoading || clears.isLoading ? (
+        <p className="flex items-center gap-2 text-[12px] text-slate-500">
+          <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
+          {t('settings.cc.emergency.drill.log.loading')}
+        </p>
+      ) : triggers.isError || clears.isError ? (
+        <p className="text-[12px] text-slate-600">{t('settings.cc.emergency.drill.log.loadFailed')}</p>
+      ) : rows.length === 0 ? (
+        <p className="text-[12px] text-slate-500 italic" data-testid="emergency-drill-log-empty">
+          {t('settings.cc.emergency.drill.log.empty')}
+        </p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-[12px] text-left">
+            <thead>
+              <tr className="text-slate-500">
+                <th className="py-1 pr-3 font-medium">{t('settings.cc.emergency.drill.log.type')}</th>
+                <th className="py-1 pr-3 font-medium">{t('settings.cc.emergency.drill.log.scope')}</th>
+                <th className="py-1 pr-3 font-medium">{t('settings.cc.emergency.drill.log.who')}</th>
+                <th className="py-1 pr-3 font-medium">{t('settings.cc.emergency.drill.log.started')}</th>
+                <th className="py-1 pr-3 font-medium">{t('settings.cc.emergency.drill.log.ended')}</th>
+                <th className="py-1 font-medium">{t('settings.cc.emergency.drill.log.duration')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((e) => (
+                <tr key={e.key} className="border-t border-indigo-100 text-slate-700" data-testid="emergency-drill-log-row">
+                  <td className="py-1.5 pr-3 font-semibold text-slate-900">{typeLabel(e.type)}</td>
+                  <td className="py-1.5 pr-3">{scopeLabel(e)}</td>
+                  <td className="py-1.5 pr-3 truncate max-w-[200px]">{e.who ?? t('settings.cc.emergency.drill.log.unknownUser')}</td>
+                  <td className="py-1.5 pr-3 whitespace-nowrap">{new Date(e.startedAt).toLocaleString()}</td>
+                  <td className="py-1.5 pr-3 whitespace-nowrap">
+                    {e.endedAt ? new Date(e.endedAt).toLocaleString() : <span className="text-indigo-700 font-semibold">{t('settings.cc.emergency.drill.log.inProgress')}</span>}
+                  </td>
+                  <td className="py-1.5 whitespace-nowrap">{drillDuration(e.startedAt, e.endedAt) ?? '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   );
 }
 

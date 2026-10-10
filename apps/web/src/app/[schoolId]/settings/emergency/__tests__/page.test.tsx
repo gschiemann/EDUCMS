@@ -30,7 +30,7 @@ jest.mock('@/components/ui/app-dialog', () => ({
 }));
 
 jest.mock('@/components/settings/PanicContentEditor', () => ({
-  PanicContentEditor: ({ label }: { label: string }) => <div>panic-editor:{label}</div>,
+  PanicContentEditor: ({ label, mode }: { label: string; mode?: string }) => <div>panic-editor:{mode ?? 'live'}:{label}</div>,
 }));
 jest.mock('@/components/floor-plans/EmbeddedFloorPlanView', () => ({
   EmbeddedFloorPlanView: () => <div>floor-plan-view</div>,
@@ -171,9 +171,24 @@ describe('Emergency settings page', () => {
     expect(mutateAsync).not.toHaveBeenCalled();
   });
 
-  it('renders no drill or test control (none is implemented server-side)', () => {
+  // 2026-10-10 — drills exist now. The content section has LIVE | DRILL tabs
+  // (authoring, never a trigger): the Drill tab edits the drill buckets and
+  // shows the drill log; nothing here can start a drill.
+  it('has Live | Drill content tabs — the Drill tab edits drill buckets and shows the drill log, and nothing triggers', () => {
     renderPage();
-    expect(screen.queryByRole('button', { name: /drill|run a test|send a test/i })).not.toBeInTheDocument();
+    expect(screen.getByTestId('emergency-content-tab-live')).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getAllByText(/^panic-editor:live:/)).toHaveLength(6);
+    expect(screen.queryByTestId('emergency-drill-log')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('emergency-content-tab-drill'));
+    expect(screen.getByTestId('emergency-content-tab-drill')).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getAllByText(/^panic-editor:drill:/)).toHaveLength(6);
+    expect(screen.getByTestId('emergency-content-mode-note')).toHaveTextContent('still shows a DRILL banner');
+    expect(screen.getByTestId('emergency-drill-log')).toBeInTheDocument();
+    expect(screen.getByTestId('emergency-drill-log-empty')).toBeInTheDocument();
+
+    // Configuration only: no control on this page starts a drill or a test.
+    expect(screen.queryByRole('button', { name: /run a drill|start a drill|run a test|send a test/i })).not.toBeInTheDocument();
     expect(screen.queryByText(/coming soon/i)).not.toBeInTheDocument();
   });
 });

@@ -244,6 +244,38 @@
       "activeCount": "{count, plural, one {# alerta activa} other {# alertas activas}}",
       "viewAlerts": "Ver",
       "deletedGroup": "un grupo eliminado"
+    },
+    "drill": {
+      "switchLabel": "Modo de alerta",
+      "live": "REAL",
+      "drill": "SIMULACRO",
+      "liveHint": "Emergencia real. Las pantallas muestran el contenido de emergencia real.",
+      "drillHint": "Solo práctica. Las pantallas muestran el contenido del simulacro con un aviso de SIMULACRO. Vuelve a REAL cada vez que se abre.",
+      "modeBadge": "MODO SIMULACRO",
+      "modalTitle": "Iniciar un simulacro",
+      "configuredIn": "El contenido del simulacro se configura en <b>Ajustes → Emergencia → Simulacro</b>. Un tipo sin contenido de simulacro reproduce su contenido real, marcado como SIMULACRO.",
+      "willSend": "Esto iniciará de inmediato un <b>SIMULACRO</b>: {summary}. Todas las pantallas mostrarán un aviso de SIMULACRO.",
+      "sending": "Iniciando simulacro…",
+      "sendingTo": "Iniciando simulacro: {summary}…",
+      "fire": "Iniciar simulacro",
+      "blocked": "Hay una alerta de emergencia real activa. Termínela primero: un simulacro nunca reemplaza una emergencia real.",
+      "alertPrefix": "Simulacro: {label}",
+      "badge": "Simulacro",
+      "panicTitle": "Activar simulacro",
+      "panicHint": "MODO SIMULACRO — mantenga pulsado cualquier botón 3 segundos para iniciar un simulacro. Las pantallas dirán SIMULACRO.",
+      "buttonAria": "Iniciar simulacro de {type}. Mantenga pulsado 3 segundos para enviar.",
+      "broadcasted": "Simulacro iniciado",
+      "announceSending": "Iniciando simulacro: {summary}.",
+      "announceSent": "Simulacro iniciado: {summary}.",
+      "announceHolding": "Manteniendo SIMULACRO de {type} para {target}. Siga pulsando 3 segundos para iniciarlo.",
+      "announceModeDrill": "Modo simulacro. La próxima alerta será un simulacro de práctica.",
+      "announceModeLive": "Modo real. La próxima alerta será una emergencia real.",
+      "overlayTitle": "SIMULACRO ACTIVO",
+      "overlayDesc": "Las pantallas muestran el contenido del simulacro con un aviso de SIMULACRO. Es una práctica, no una emergencia real.",
+      "overlaySr": "Simulacro de emergencia activo. Las pantallas muestran el contenido del simulacro. Para terminarlo, escriba CLEAR y autorice el fin de la alerta.",
+      "terminate": "Terminar simulacro (fin de alerta)",
+      "playerBanner": "SIMULACRO — ESTO ES UN SIMULACRO",
+      "playerBannerSub": "Simulacro de práctica · No es una emergencia real"
     }
   },
   "auth": {
@@ -915,6 +947,33 @@
           "weather": "Contenido meteorológico",
           "evacuation": "Contenido de incendio / evacuación",
           "floorPlans": "Planos"
+        },
+        "drill": {
+          "tabs": {
+            "live": "Real",
+            "drill": "Simulacro",
+            "ariaLabel": "Contenido real o de simulacro"
+          },
+          "liveNote": "Lo que muestran las pantallas durante una emergencia real.",
+          "drillNote": "Lo que muestran las pantallas durante un simulacro. Un tipo sin contenido de simulacro reproduce su contenido real; la pantalla sigue mostrando el aviso de SIMULACRO. El contenido del simulacro se guarda en cada pantalla igual que el contenido real.",
+          "log": {
+            "title": "Registro de simulacros",
+            "desc": "Simulacros recientes, del registro de auditoría: qué se ejecutó, dónde, quién lo inició y cuánto duró.",
+            "loading": "Leyendo el registro de simulacros…",
+            "loadFailed": "No se pudo leer el registro de simulacros. Recargue la página para intentarlo de nuevo.",
+            "empty": "Aún no hay simulacros. Inicie uno desde el botón de Emergencia con el selector en SIMULACRO.",
+            "type": "Tipo",
+            "scope": "Dónde",
+            "who": "Iniciado por",
+            "started": "Inicio",
+            "ended": "Fin",
+            "duration": "Duración",
+            "inProgress": "En curso",
+            "allScreens": "Todas las pantallas",
+            "group": "Grupo",
+            "screen": "Pantalla",
+            "unknownUser": "Desconocido"
+          }
         }
       },
       "brand": {

@@ -60,6 +60,19 @@ describe('"All screens" sends exactly what was sent before targeting existed', (
     );
   });
 
+  // 2026-10-10 — drills. `isDrill: true` adds exactly one key; false/absent is the live body.
+  it('a DRILL adds exactly `isDrill: true`, and anything else leaves the live body untouched', () => {
+    expect(JSON.stringify(emergencyTriggerBody({ schoolId: 't1', type: 'lockdown', isDrill: true }))).toBe(
+      '{"scopeType":"tenant","scopeId":"t1","overridePayload":{"severity":"CRITICAL","type":"lockdown","isDrill":true}}',
+    );
+    expect(JSON.stringify(emergencyTriggerBody({ schoolId: 't1', type: 'lockdown', isDrill: false }))).toBe(
+      '{"scopeType":"tenant","scopeId":"t1","overridePayload":{"severity":"CRITICAL","type":"lockdown"}}',
+    );
+    expect(
+      JSON.stringify(emergencyTriggerBody({ schoolId: 't1', type: 'hold', isDrill: true, target: { scopeType: 'group', scopeId: 'g-gym' } })),
+    ).toBe('{"scopeType":"group","scopeId":"g-gym","overridePayload":{"severity":"CRITICAL","type":"hold","isDrill":true}}');
+  });
+
   it('keeps carrying a playlistId exactly where it always did', () => {
     expect(JSON.stringify(emergencyTriggerBody({ schoolId: 't1', type: 'evacuate', playlistId: 'pl-1' }))).toBe(
       '{"scopeType":"tenant","scopeId":"t1","overridePayload":{"severity":"CRITICAL","type":"evacuate","playlistId":"pl-1"}}',
