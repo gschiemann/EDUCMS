@@ -60,7 +60,9 @@ export async function recordPushDeployment(
       // Re-asserts tenant ownership so a racing unpair/re-tenant can never
       // let this write cross a tenant boundary.
       where: { id: { in: targetIds }, tenantId: { in: opts.targetTenantIds } },
-      data: { pendingRefreshAt: opts.value },
+      // A person asked (Refresh / Resync / publish) — the player always
+      // honours an operator's refresh (`refresh-request-origin.ts`).
+      data: { pendingRefreshAt: opts.value, pendingRefreshSource: 'operator' },
     });
 
     await prisma.client.deployment.create({

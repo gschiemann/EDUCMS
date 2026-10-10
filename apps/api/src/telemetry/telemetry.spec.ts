@@ -1079,7 +1079,9 @@ describe('POST /screens/:id/refresh-ack', () => {
     expect(prisma.client.screen.update).toHaveBeenCalledTimes(1);
     const { data, where } = prisma.client.screen.update.mock.calls[0][0];
     expect(where).toEqual({ id: screenId });
-    expect(data).toEqual({ pendingRefreshAt: null });
+    // The source is cleared WITH the value — a stale 'system' stamp must never
+    // outlive the command it described (never-interrupt, 2026-10-10).
+    expect(data).toEqual({ pendingRefreshAt: null, pendingRefreshSource: null });
     // Clearing the command IS manifest content: it must invalidate.
     expect(shouldBumpManifestRev('Screen', 'update', Object.keys(data))).toBe(true);
     expect(prisma.client.screenEvent.create).toHaveBeenCalledWith({

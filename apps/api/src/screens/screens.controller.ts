@@ -131,6 +131,7 @@ import { inferIfUnknown } from './hardware-detect';
 // without a Prisma client (same discipline as ScreenWedgeDetectorCron.decide).
 import { deriveRenderHealth } from './render-proof';
 import { recordPushDeployment, type RecordPushDeploymentOpts } from './deployment-record';
+import { refreshRequestedBy } from './refresh-request-origin';
 // 2026-08-03 security wave (DT-01…DT-05): the single device-credential
 // verification path + the revocation writer. Read `device-auth.ts` before
 // touching anything device-authenticated in this file.
@@ -6289,6 +6290,12 @@ export class ScreensController {
           refreshRequestedAt: screen.pendingRefreshAt
             ? new Date(screen.pendingRefreshAt as Date).getTime()
             : null,
+          // Who asked (never-interrupt, 2026-10-10) — null exactly when the
+          // value above is, so the hashed body stays stable between edges.
+          refreshRequestedBy: refreshRequestedBy(
+            screen.pendingRefreshAt as Date | null,
+            screen.pendingRefreshSource as string | null,
+          ),
           // 2026-05-24 — orientation lock for sports-mode screens too.
           orientation: resolveManifestOrientation((screen as any).orientation, (screen as any).resolution, (screen as any).hardwareModel),
           // 2026-06-24 — carry the LED canvas dims + tile-repeat on the
@@ -6623,6 +6630,12 @@ export class ScreensController {
         refreshRequestedAt: (screen as any).pendingRefreshAt
           ? new Date((screen as any).pendingRefreshAt).getTime()
           : null,
+        // Who asked (never-interrupt, 2026-10-10) — same contract as the
+        // scoreboard branch: null exactly when the value above is.
+        refreshRequestedBy: refreshRequestedBy(
+          (screen as any).pendingRefreshAt,
+          (screen as any).pendingRefreshSource,
+        ),
         // 2026-08-13 — "no content scheduled" is NOT "no display schedule".
         // A screen waiting for an assignment must still power its panel
         // down overnight, so the display block rides this body too. It is
@@ -6954,6 +6967,13 @@ export class ScreensController {
       refreshRequestedAt: (screen as any).pendingRefreshAt
         ? new Date((screen as any).pendingRefreshAt).getTime()
         : null,
+      // Who asked (never-interrupt, 2026-10-10): 'operator' reloads as it
+      // always has; a painting, fetching screen declines 'system'. Older
+      // players ignore the key.
+      refreshRequestedBy: refreshRequestedBy(
+        (screen as any).pendingRefreshAt,
+        (screen as any).pendingRefreshSource,
+      ),
       // ── Double-sided displays (2026-09-16) ─────────────────────────────
       // Emitted ONLY on a face's own manifest. Every ordinary screen's
       // payload — and therefore its ETag — stays byte-for-byte what it was
@@ -7362,7 +7382,7 @@ export class ScreensController {
         // Dated by lastBundleShaAt above — same statement, same instant.
         ...(bundleId != null ? { lastBundleId: bundleId } : {}),
         ...(syncReport ? { lastSyncReport: syncReport, lastSyncReportAt: new Date() } : {}),
-        ...(clearPendingRefresh ? { pendingRefreshAt: null } : {}),
+        ...(clearPendingRefresh ? { pendingRefreshAt: null, pendingRefreshSource: null } : {}),
       } as any,
       // Fire-and-forget telemetry — don't RETURNING the whole 88-column row.
       select: { id: true },

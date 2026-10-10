@@ -1297,6 +1297,15 @@ model Screen {
   // exact state (AUTO_RECOVERY_PUSH_DEAD) where the old WS-only command
   // could never arrive. Cleared on the next successful render-proof.
   pendingRefreshAt                    DateTime?    @map("pending_refresh_at")
+  // Who asked for that refresh (2026-10-10, never-interrupt program):
+  // 'operator' (a person's Refresh / Resync / publish) or 'system' (the wedge
+  // detector, a rendition swap). Written in the SAME statement as
+  // pendingRefreshAt and cleared with it. The manifest carries it as
+  // `refreshRequestedBy`, so a screen that can prove it is painting and
+  // fetching declines a SYSTEM refresh instead of tearing down live content,
+  // while an operator's refresh is always honoured. Null = unknown → the
+  // player treats it as an operator's (the pre-column behaviour).
+  pendingRefreshSource                String?      @map("pending_refresh_source")
   // Native recovery does not depend on the WebView running. An explicit
   // POWER_ON is retained for five minutes and consumed once by identity.
   // These reports prove native power/foreground state, never content health.

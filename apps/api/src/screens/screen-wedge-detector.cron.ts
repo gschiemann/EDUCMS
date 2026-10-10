@@ -439,7 +439,10 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
             // a racing re-tenant/unpair can never make this write cross a
             // tenant boundary.
             where: { id: screen.id, tenantId: screen.tenantId! },
-            data: { pendingRefreshAt: new Date() } as any,
+            // SYSTEM-initiated (never-interrupt, 2026-10-10): a screen that can
+            // prove it is painting and fetching declines this reload; one that
+            // cannot still reloads exactly as before (`refresh-request-origin.ts`).
+            data: { pendingRefreshAt: new Date(), pendingRefreshSource: 'system' } as any,
             select: { id: true },
           });
         } catch (e) {
@@ -599,7 +602,8 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
         await this.prisma.client.screen.update({
           // Tenant-scoped (TEN-001) — same reasoning as the push-dead write.
           where: { id: screen.id, tenantId: screen.tenantId! },
-          data: { pendingRefreshAt: new Date() } as any,
+          // SYSTEM-initiated — see the push-dead write above.
+          data: { pendingRefreshAt: new Date(), pendingRefreshSource: 'system' } as any,
           select: { id: true },
         });
         durableSet = true;

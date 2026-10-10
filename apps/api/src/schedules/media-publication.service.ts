@@ -591,7 +591,10 @@ export class MediaPublicationService implements OnModuleInit, OnModuleDestroy {
             const refreshed = await this.prisma.client.$transaction(async (tx) => {
               const claimed = await tx.screen.updateMany({
                 where: { id: screen.id, tenantId: rule.tenantId, pendingRefreshAt: null },
-                data: { pendingRefreshAt: value },
+                // SYSTEM-initiated: a current bundle re-applies a rendition
+                // swap by apply signature and may decline this; an old bundle
+                // still reloads (`screens/refresh-request-origin.ts`).
+                data: { pendingRefreshAt: value, pendingRefreshSource: 'system' },
               });
               if (!claimed.count) return false;
               await tx.auditLog.create({ data: {

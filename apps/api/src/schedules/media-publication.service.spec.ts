@@ -263,6 +263,8 @@ describe('media publication gate', () => {
     await h.service.sweep();
     expect(h.tx.screen.updateMany).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'screen-1', tenantId: 'tenant', pendingRefreshAt: null },
+      // A rendition swap is a SYSTEM refresh (never-interrupt, 2026-10-10).
+      data: { pendingRefreshAt: expect.any(Date), pendingRefreshSource: 'system' },
     }));
     expect(h.tx.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ action: 'AUTO_MEDIA_RENDITION_REFRESH' }),

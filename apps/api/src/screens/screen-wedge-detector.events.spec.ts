@@ -67,6 +67,12 @@ describe('auto-refresh-requested timeline rows', () => {
 
     // Existing behavior untouched: durable stamp + signed publish + audit.
     expect(prisma.client.screen.update).toHaveBeenCalledTimes(1);
+    // Never-interrupt (2026-10-10): the stamp says the SYSTEM asked, so a
+    // screen that can prove it is painting may decline the reload.
+    expect(prisma.client.screen.update.mock.calls[0][0].data).toEqual({
+      pendingRefreshAt: expect.any(Date),
+      pendingRefreshSource: 'system',
+    });
     expect(redis.publish).toHaveBeenCalledTimes(1);
     expect(prisma.client.auditLog.create.mock.calls[0][0].data.action).toBe('AUTO_REFRESH_WEB');
 
@@ -90,6 +96,11 @@ describe('auto-refresh-requested timeline rows', () => {
     const out = await cron.sweep();
     expect(out.recovered).toBe(0); // still not a "fire" — unchanged
     expect(redis.publish).not.toHaveBeenCalled(); // still no pointless push
+    // The manifest ride is stamped as the SYSTEM's here too.
+    expect(prisma.client.screen.update.mock.calls[0][0].data).toEqual({
+      pendingRefreshAt: expect.any(Date),
+      pendingRefreshSource: 'system',
+    });
     expect(prisma.client.auditLog.create.mock.calls[0][0].data.action).toBe(
       'AUTO_RECOVERY_PUSH_DEAD',
     );

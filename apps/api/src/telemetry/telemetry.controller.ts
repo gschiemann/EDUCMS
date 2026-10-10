@@ -191,7 +191,7 @@ export class TelemetryController {
         // SCREEN_TELEMETRY_ONLY_FIELDS, so the mutation hook does.
         this.prisma.client.screen.update({
           where: { id: screenId },
-          data: { pendingRefreshAt: null },
+          data: { pendingRefreshAt: null, pendingRefreshSource: null },
           select: { id: true },
         }),
       { label: 'screen.update[refresh-ack]' },
