@@ -2666,7 +2666,7 @@ export default function ClassicPlaylistsPage({
                                 ? 'Read-only — viewer role'
                                 : preparing
                                   ? t('playlistsPage.stopCancelPublish')
-                                  : `${win.allActive ? 'Pause' : 'Resume'} this schedule on ${win.screenCount} screen${win.screenCount === 1 ? '' : 's'}`}
+                                  : t(win.allActive ? 'playlistsPage.pauseScheduleOn' : 'playlistsPage.resumeScheduleOn', { count: win.screenCount })}
                             >
                               <Power className="w-4 h-4" />
                             </button>

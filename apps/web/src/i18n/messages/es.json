@@ -2461,7 +2461,9 @@
     "muteHelp": "Los videos se reproducen sin sonido a menos que lo actives.",
     "schedMutedHelp": "Todos los videos de esta programación se reproducen sin sonido.",
     "schedSoundHelp": "Todos los videos de esta programación se reproducen con sonido.",
-    "templateLayoutHelp": "Esta lista usa un diseño de plantilla. Usa la pestaña Programación para ponerla en pantallas."
+    "templateLayoutHelp": "Esta lista usa un diseño de plantilla. Usa la pestaña Programación para ponerla en pantallas.",
+    "pauseScheduleOn": "Pausar esta programación{count, plural, =0 {} one { en # pantalla} other { en # pantallas}}",
+    "resumeScheduleOn": "Reanudar esta programación{count, plural, =0 {} one { en # pantalla} other { en # pantallas}}"
   },
   "brandingCard": {
     "loading": "Cargando…",

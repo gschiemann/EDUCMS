@@ -2461,7 +2461,9 @@
     "muteHelp": "Videos play muted unless you turn sound on.",
     "schedMutedHelp": "Every video on this schedule plays without sound.",
     "schedSoundHelp": "Every video on this schedule plays with sound.",
-    "templateLayoutHelp": "This playlist uses a template layout. Use the Schedule tab to put it on screens."
+    "templateLayoutHelp": "This playlist uses a template layout. Use the Schedule tab to put it on screens.",
+    "pauseScheduleOn": "Pause this schedule{count, plural, =0 {} one { on # screen} other { on # screens}}",
+    "resumeScheduleOn": "Resume this schedule{count, plural, =0 {} one { on # screen} other { on # screens}}"
   },
   "brandingCard": {
     "loading": "Loading…",

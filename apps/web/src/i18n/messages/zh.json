@@ -2461,7 +2461,9 @@
     "muteHelp": "除非你开启声音，否则视频静音播放。",
     "schedMutedHelp": "此排期中的所有视频都将静音播放。",
     "schedSoundHelp": "此排期中的所有视频都将有声播放。",
-    "templateLayoutHelp": "此播放列表使用模板布局。请在“排期”标签页中将其投放到屏幕。"
+    "templateLayoutHelp": "此播放列表使用模板布局。请在“排期”标签页中将其投放到屏幕。",
+    "pauseScheduleOn": "{count, plural, =0 {} other {在 # 块屏幕上}}暂停此排期",
+    "resumeScheduleOn": "{count, plural, =0 {} other {在 # 块屏幕上}}恢复此排期"
   },
   "brandingCard": {
     "loading": "加载中…",
