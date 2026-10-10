@@ -1,5 +1,6 @@
 'use client';
 import { NativeDualVideo } from './NativeDualVideo';
+import { useInfoOverlayTimeout } from './useInfoOverlayTimeout';
 import { readNativeSharedVideoDescriptor, sharedVideoEligible, nativeSharedVideoEvidence, type NativeSharedVideoDescriptor } from './nativeSharedVideo';
 
 import { useState, useEffect, useCallback, useRef, useMemo, Component, Suspense, ReactNode } from 'react';
@@ -3424,6 +3425,12 @@ function PlayerPage() {
   const [error, setError] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<string | null>(null);
   const [showOverlay, setShowOverlay] = useState(false);
+  const closeInfoOverlay = useCallback(() => setShowOverlay(false), []);
+  const openInfoOverlay = useCallback((source: string, input: { isTrusted: boolean; key?: string }) => {
+    // Record the actual opener without device credentials or content URLs.
+    console.warn('[Player] screen information opened', { source, key: input.key ?? null, trusted: input.isTrusted });
+    setShowOverlay(true);
+  }, []);
   // 2026-05-16 — operator-confirmed OTA. When the dashboard pushes an
   // update (CHECK_FOR_UPDATES), instead of installing immediately we
   // raise this flag and show a full-screen "Update now?" prompt. The
@@ -3441,6 +3448,7 @@ function PlayerPage() {
   // editor; the next reload picks up canvasW/canvasH from URL params,
   // pins the document, and content fills the visible LED.
   const [showCanvasEditor, setShowCanvasEditor] = useState(false);
+  useInfoOverlayTimeout(showOverlay, closeInfoOverlay, showCanvasEditor);
   // v1.0.16 — visible feedback for the "Sync Now" button. Operator
   // (2026-04-27): "hitting sync does nothing it appears, not sure
   // what the button is used for". Cause: when fetchContent runs and
@@ -4376,6 +4384,7 @@ function PlayerPage() {
         }
         return;
       }
+      if (e.repeat) return;
       // Universal "go back / dismiss" keys.
       if (key === 'Escape' || key === 'Backspace' || key === 'GoBack' || key === 'Back') {
         e.preventDefault();
@@ -4386,7 +4395,7 @@ function PlayerPage() {
       // overlay so the operator can reach Sync / Exit / Unpair.
       if ((key === 'Home' || key === 'i' || key === 'I') && !showOverlay && !playbackStopped) {
         e.preventDefault();
-        setShowOverlay(true);
+        openInfoOverlay('remote-key', e);
         return;
       }
     };
@@ -4396,7 +4405,7 @@ function PlayerPage() {
       window.removeEventListener('edu-show-stop-overlay', onShowStop as EventListener);
       window.removeEventListener('keydown', onKey, true);
     };
-  }, [playbackStopped, showOverlay]);
+  }, [playbackStopped, showOverlay, openInfoOverlay]);
 
   // Latest published APK version — fetched once at boot, used by the
   // post-pair splash to show "Update available" + Install button.
@@ -11337,7 +11346,10 @@ function PlayerPage() {
         role={isInteractive ? undefined : 'button'}
         tabIndex={isInteractive ? -1 : 0}
         aria-label={isInteractive ? undefined : 'Toggle screen info overlay'}
-        onClick={isInteractive ? undefined : () => setShowOverlay(!showOverlay)}
+        onClick={isInteractive ? undefined : e => {
+          if (e.target instanceof Element && e.target.closest('[data-edu-player-info-panel]')) return;
+          if (showOverlay) closeInfoOverlay(); else openInfoOverlay('template-click', e);
+        }}
         onKeyDown={e => {
           // Only toggle on direct-target keypresses. Without this
           // guard, Enter on any BUTTON inside the overlay (Stop,
@@ -11345,8 +11357,11 @@ function PlayerPage() {
           // right after the button handler ran — the operator
           // reported "nothing happened" because the overlay
           // disappeared before they could see the Stopped splash.
-          if (e.target !== e.currentTarget) return;
-          if (!isInteractive && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setShowOverlay(s => !s); }
+          if (e.repeat || e.target !== e.currentTarget) return;
+          if (!isInteractive && (e.key === 'Enter' || e.key === ' ')) {
+            e.preventDefault();
+            if (showOverlay) closeInfoOverlay(); else openInfoOverlay('template-key', e);
+          }
         }}
         data-edu-player-root="template"
         style={{
@@ -11681,7 +11696,12 @@ function PlayerPage() {
         {/* Info overlay */}
         {showOverlay && (
           <div className="absolute top-0 right-0 bottom-0 left-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[999]">
-            <div className="bg-slate-900 rounded-2xl p-8 max-w-md w-full mx-4 border border-slate-700 space-y-3">
+            <div data-edu-player-info-panel role="dialog" aria-label="Screen information"
+              className="bg-slate-900 rounded-2xl p-8 max-w-md w-full mx-4 border border-slate-700 space-y-3">
+              <button type="button" data-edu-return-to-content onClick={closeInfoOverlay}
+                className="text-sm font-medium text-white px-3 py-2 rounded-lg bg-slate-700">
+                Return to content
+              </button>
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-bold text-white">{screenName || 'Screen'}</h3>
                 <div className="flex items-center gap-2">
@@ -11948,13 +11968,17 @@ function PlayerPage() {
       role={isPlaylistInteractive ? undefined : 'button'}
       tabIndex={isPlaylistInteractive ? -1 : 0}
       aria-label={isPlaylistInteractive ? undefined : 'Toggle screen info overlay'}
-      onClick={isPlaylistInteractive ? undefined : () => setShowOverlay(!showOverlay)}
+      onClick={isPlaylistInteractive ? undefined : e => {
+        if (e.target instanceof Element && e.target.closest('[data-edu-player-info-panel]')) return;
+        if (showOverlay) closeInfoOverlay(); else openInfoOverlay('media-click', e);
+      }}
       onKeyDown={e => {
         // Same target-check as the template path above — keeps
         // button keypresses from bubbling into an overlay toggle.
-        if (e.target !== e.currentTarget) return;
+        if (e.repeat || e.target !== e.currentTarget) return;
         if (!isPlaylistInteractive && (e.key === 'Enter' || e.key === ' ')) {
-          e.preventDefault(); setShowOverlay(s => !s);
+          e.preventDefault();
+          if (showOverlay) closeInfoOverlay(); else openInfoOverlay('media-key', e);
         }
       }}
     >
@@ -13685,7 +13709,12 @@ function PlayerPage() {
       {/* Overlay */}
       {showOverlay && (
         <div className="absolute top-0 right-0 bottom-0 left-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-slate-900 rounded-2xl p-8 max-w-md w-full mx-4 border border-slate-700 space-y-3">
+          <div data-edu-player-info-panel role="dialog" aria-label="Screen information"
+            className="bg-slate-900 rounded-2xl p-8 max-w-md w-full mx-4 border border-slate-700 space-y-3">
+            <button type="button" data-edu-return-to-content onClick={closeInfoOverlay}
+              className="text-sm font-medium text-white px-3 py-2 rounded-lg bg-slate-700">
+              Return to content
+            </button>
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-bold text-white">{screenName || 'Screen'}</h3>
               <div className="flex items-center gap-2">
