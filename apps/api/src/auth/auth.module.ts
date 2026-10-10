@@ -5,6 +5,7 @@ import { MfaController } from './mfa.controller';
 import { PasskeyController } from './passkey.controller';
 import { MfaEmailCodeController } from './mfa-email-code.controller';
 import { SessionController } from './session.controller';
+import { AccountSetupLinkController } from './account-setup-link.controller';
 import { EmailModule } from '../email/email.module';
 import { SessionRefreshService } from './session-refresh.service';
 import { MfaRateLimiter } from './mfa-rate-limiter';
@@ -34,7 +35,15 @@ import { requireSecret } from '../security/required-secret';
     }),
   ],
   providers: [AuthService, JwtStrategy, MfaRateLimiter, SessionRefreshService],
-  controllers: [AuthController, MfaController, PasskeyController, MfaEmailCodeController, SessionController],
+  controllers: [
+    AuthController,
+    MfaController,
+    PasskeyController,
+    MfaEmailCodeController,
+    SessionController,
+    // One-time account setup links, the public half (2026-10-10).
+    AccountSetupLinkController,
+  ],
   exports: [AuthService, JwtModule, SessionRefreshService],
 })
 export class AuthModule {}

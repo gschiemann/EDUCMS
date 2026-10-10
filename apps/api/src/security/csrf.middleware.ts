@@ -37,6 +37,14 @@ const EXEMPT_PATHS: Array<(path: string) => boolean> = [
   // session, no CSRF cookie, and the capability is the hashed single-use token
   // in the path (customers/customer-claim.controller.ts). @Throttle(5/60s).
   (p) => /^\/api\/v1\/customer-claims\/[^/]+\/claim$/.test(p),
+  // ONE-TIME ACCOUNT SETUP LINKS (2026-10-10) — the invite-accept class: the
+  // person has never signed in, so there is no session and no CSRF cookie.
+  // The 256-bit token in the BODY is the whole authorisation (a browser never
+  // attaches it on its own; only its sha256 is stored), `preview` changes
+  // nothing, and `redeem` spends the token in one conditional write. Both are
+  // @Throttle'd per IP.
+  (p) => p === '/api/v1/auth/setup-link/preview',
+  (p) => p === '/api/v1/auth/setup-link/redeem',
   // MFA step-up + forced enrollment (2026-09-04). SAME CLASS AS /auth/login
   // ABOVE, and they were missed when MFA landed: the caller has NO session
   // yet — that is the whole point — so there is no CSRF cookie to round-trip,

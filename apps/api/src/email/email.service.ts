@@ -211,6 +211,59 @@ export class EmailService {
   }
 
   /**
+   * The code that proves the NEW address when an administrator changes
+   * someone's sign-in email (2026-10-10). Read out to the administrator by the
+   * person who owns the inbox, so the copy says exactly that. Redacted in the
+   * durable `email_logs` row, like every code.
+   */
+  async sendEmailChangeCode(params: { to: string; code: string; actorName: string }): Promise<EmailDispatchStatus> {
+    const subject = `${params.code} is your VenueOS email confirmation code`;
+    const lines = (code: string) => [
+      `Your VenueOS email confirmation code is:`,
+      ``,
+      `    ${code}`,
+      ``,
+      `${params.actorName} is changing the sign-in email of a VenueOS account to this address. ` +
+        `Give them this code to confirm it is yours. It works once and expires in 10 minutes.`,
+      ``,
+      `If you don't know about this, don't share the code — nothing changes unless it is entered.`,
+      ``,
+      `— The VenueOS team`,
+    ];
+    const redacted = '••••••';
+    return this.#enqueue({
+      to: params.to,
+      subject,
+      body: lines(params.code).join('\n'),
+      kind: 'EMAIL_CHANGE_CODE',
+      logSubject: `${redacted} is your VenueOS email confirmation code`,
+      logBody: lines(redacted).join('\n'),
+    });
+  }
+
+  /**
+   * The security notice to the OLD address after an administrator changed an
+   * account's sign-in email (2026-10-10). No link (the `sendMfaReset` rule — a
+   * security notice with a button is the shape of the phishing mail that would
+   * imitate it), and the new address is not named: the person it matters to
+   * is the one who can no longer read mail sent to it.
+   */
+  async sendEmailChangedNotice(params: { to: string; actorName: string }): Promise<EmailDispatchStatus> {
+    const when = new Date().toISOString().slice(0, 10);
+    const subject = 'The sign-in email of your VenueOS account was changed';
+    const body = [
+      `${params.actorName} changed the sign-in email of your VenueOS account (${params.to}) on ${when}.`,
+      ``,
+      `From now on, sign-in codes and password resets go to the new address, and this address can no longer sign in.`,
+      ``,
+      `If you did not expect this, contact your administrator.`,
+      ``,
+      `— The VenueOS team`,
+    ].join('\n');
+    return this.#enqueue({ to: params.to, subject, body, kind: 'EMAIL_CHANGED' });
+  }
+
+  /**
    * "New sign-in to your VenueOS account on <device>" — sent after a sign-in
    * whose second step was an EMAILED code (2026-10-05). The owner's safeguard
    * for making that code available to every role: the account holder hears

@@ -11,6 +11,7 @@ import { EmergencyReadinessService } from './emergency/emergency-readiness.servi
 import { StatsController } from './stats/stats.controller';
 import { AuditController } from './audit/audit.controller';
 import { UsersController } from './users/users.controller';
+import { AccountAdminController } from './users/account-admin.controller';
 import { PlaylistsController } from './playlists/playlists.controller';
 import { PlaylistDistributionService } from './playlists/playlist-distribution.service';
 import { ScreenGroupsController } from './screen-groups/screen-groups.controller';
@@ -270,6 +271,8 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     StatsController,
     AuditController,
     UsersController,
+    // Change someone's email + one-time setup links (2026-10-10).
+    AccountAdminController,
     PlaylistsController,
     ScreenGroupsController,
     SchedulesController,

@@ -19,6 +19,7 @@ import { accountHasNoOwnPassword, verifyReauthPassword } from '../auth/password-
 import { SessionRefreshService } from '../auth/session-refresh.service';
 import { EmailService } from '../email/email.service';
 import { clientIpFromRequest } from '../security/client-ip';
+import { loadManageableTarget as loadManageableTargetShared } from './manageable-target';
 
 function isValidEmail(email: string): boolean {
   // 254 is the longest valid address; the bound keeps this pattern linear
@@ -165,52 +166,10 @@ export class UsersController {
     id: string,
     opts: { allowSelf?: boolean; notFoundOnScopeMiss?: boolean } = {},
   ): Promise<{ id: string; email: string; role: string; tenantId: string; status: string }> {
-    const callerRole: string = req?.user?.role;
-    const callerTenantId: string = req?.user?.tenantId;
-    const callerId: string = req?.user?.id;
-
-    // ten-ok: resolve-then-verify — the tenant subtree is asserted a few lines
-    // below (403 on miss) and SUPER_ADMIN is cross-tenant by design, so the
-    // lookup cannot be pre-scoped to the caller's tenant without breaking the
-    // district→school reach this endpoint family needs.
-    const target = await this.prisma.client.user.findFirst({
-      where: { id, deletedAt: null } as any,
-      select: { id: true, email: true, role: true, tenantId: true, status: true } as any,
-    });
-    if (!target) {
-      throw new HttpException({ code: 'USER_NOT_FOUND', message: 'User not found' }, HttpStatus.NOT_FOUND);
-    }
-
-    const isSelf = !!callerId && (target as any).id === callerId;
-    if (isSelf && !opts.allowSelf) {
-      throw new HttpException(
-        { code: 'USER_CANNOT_ACT_ON_SELF', message: 'You cannot do that to your own account.' },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-
-    if (callerRole !== AppRole.SUPER_ADMIN && (target as any).tenantId !== callerTenantId) {
-      let inSubtree = false;
-      if (callerRole === AppRole.DISTRICT_ADMIN && (target as any).tenantId) {
-        const t = await this.prisma.client.tenant.findUnique({
-          where: { id: (target as any).tenantId },
-          select: { parentId: true } as any,
-        });
-        inSubtree = !!t && (t as any).parentId === callerTenantId;
-      }
-      if (!inSubtree) {
-        if (opts.notFoundOnScopeMiss) {
-          throw new HttpException({ code: 'USER_NOT_FOUND', message: 'User not found' }, HttpStatus.NOT_FOUND);
-        }
-        throw new ForbiddenException({ code: 'USER_NOT_IN_TENANT', message: 'Target user is not in your tenant.' });
-      }
-    }
-
-    // Rank last, so a cross-tenant probe cannot use the (more specific) rank
-    // error to learn a stranger's role.
-    if (!isSelf) assertCallerCanAssignRole(callerRole, (target as any).role);
-
-    return target as any;
+    // 2026-10-10 — the body moved, unchanged, to `manageable-target.ts` so the
+    // account-administration routes (change email, setup links) run the SAME
+    // gate rather than a copy that could drift from it.
+    return loadManageableTargetShared(this.prisma.client, req, id, opts);
   }
 
   @Get()
@@ -247,6 +206,9 @@ export class UsersController {
         firstName: true, lastName: true,
         mfaRequired: true, mfaTotpVerifiedAt: true,
         status: true,
+        // 2026-10-10 — still on its provisioning starter credentials? The
+        // People page offers "Setup link" (one-time invite) for exactly these.
+        mustSetupCredentials: true,
         _count: { select: { passkeys: true } },
       } as any,
       orderBy: { createdAt: 'desc' },
