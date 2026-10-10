@@ -1,4 +1,5 @@
 import { createHash } from 'crypto';
+import { supabaseOrigin } from '../storage/supabase-origin';
 
 const uuid = (x: unknown): x is string =>
   typeof x === 'string' &&
@@ -81,11 +82,15 @@ export function buildNativeSharedVideoDescriptor(input: {
     item.asset_size > 512 * 1024 * 1024
   )
     return null;
+  // The media must come from THIS deploy's Supabase project (SUPABASE_URL;
+  // the production host when unset). A malformed SUPABASE_URL admits nothing.
+  const trusted = supabaseOrigin(env);
+  if (!trusted) return null;
   try {
     const u = new URL(item.url);
     if (
       u.protocol !== 'https:' ||
-      u.hostname !== 'bhdaxzfalaycfopvcopm.supabase.co' ||
+      u.hostname !== trusted.host ||
       u.username ||
       u.password ||
       u.hash ||

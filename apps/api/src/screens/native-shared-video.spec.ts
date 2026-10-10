@@ -143,6 +143,35 @@ describe('explicit native mirrored-video admission', () => {
         }),
       ).toBeNull();
   });
+  it('trusts exactly the SUPABASE_URL host (production host only when unset)', () => {
+    const withUrl = (u: string, supabaseUrl?: string) => {
+      const f = fixture();
+      const pl = f.manifest.playlists[0];
+      return build({
+        ...f,
+        env: { ...f.env, ...(supabaseUrl === undefined ? {} : { SUPABASE_URL: supabaseUrl }) },
+        manifest: { ...f.manifest, playlists: [{ ...pl, items: [{ ...pl.items[0], url: u }] }] },
+        asset: {
+          ...f.asset,
+          processingMeta: {
+            ...f.asset.processingMeta,
+            renditions: { '1080p': { ...f.asset.processingMeta.renditions['1080p'], url: u } },
+          },
+        },
+      });
+    };
+    const staging = 'https://staging-proj.supabase.co/storage/v1/object/public/assets/test.mp4';
+    // Unset: unchanged behaviour — the production host, nothing else.
+    expect(withUrl(url)).not.toBeNull();
+    expect(withUrl(staging)).toBeNull();
+    // Set: that one host, exactly.
+    expect(withUrl(staging, 'https://staging-proj.supabase.co')).not.toBeNull();
+    expect(withUrl(url, 'https://staging-proj.supabase.co')).toBeNull();
+    expect(withUrl('https://staging-proj.supabase.co.evil.test/storage/v1/object/public/assets/test.mp4', 'https://staging-proj.supabase.co')).toBeNull();
+    // Set but malformed: fail closed — never back to the default host.
+    for (const bad of ['http://bhdaxzfalaycfopvcopm.supabase.co', 'https://bhdaxzfalaycfopvcopm.supabase.co:8443', 'nope'])
+      expect(withUrl(url, bad)).toBeNull();
+  });
   it('refuses an incoherent URL/hash/size or unsupported source properties', () => {
     const f = fixture();
     const pl = f.manifest.playlists[0];

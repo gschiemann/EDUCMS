@@ -125,13 +125,38 @@ describe('private field admission and download capability', () => {
     await expect(verifiedFieldBytes(release, env, tooLarge)).rejects.toThrow(
       'field-apk-size',
     );
+    // 2026-10-10 — the storage origin is SUPABASE_URL's, not a hard-coded
+    // host; anything but a bare https origin is refused before any request,
+    // and an unset SUPABASE_URL is still "not configured" (the key is never
+    // sent to a defaulted host).
+    for (const bad of [
+      '',
+      'http://bhdaxzfalaycfopvcopm.supabase.co',
+      'https://user:pw@bhdaxzfalaycfopvcopm.supabase.co',
+      'https://bhdaxzfalaycfopvcopm.supabase.co:8443',
+      'https://bhdaxzfalaycfopvcopm.supabase.co/storage',
+      'https://bhdaxzfalaycfopvcopm.supabase.co/?x=1',
+      'not a url',
+    ]) {
+      const never = jest.fn();
+      await expect(
+        verifiedFieldBytes(release, { ...env, SUPABASE_URL: bad }, never),
+      ).rejects.toThrow('field-storage-unconfigured');
+      expect(never).not.toHaveBeenCalled();
+    }
+    const staging = jest
+      .fn()
+      .mockResolvedValue(new Response(Buffer.from('wrong-bytes')));
     await expect(
       verifiedFieldBytes(
         release,
-        { ...env, SUPABASE_URL: 'https://evil.test' },
-        wrong,
+        { ...env, SUPABASE_URL: 'https://staging-proj.supabase.co/' },
+        staging,
       ),
-    ).rejects.toThrow('field-storage-unconfigured');
+    ).rejects.toThrow();
+    expect(staging.mock.calls[0][0]).toBe(
+      `https://staging-proj.supabase.co/storage/v1/object/apks/field-player/${release.sha256}.apk`,
+    );
     const correct = jest.fn().mockResolvedValue(new Response(data));
     expect(await verifiedFieldBytes(release, env, correct)).toEqual(data);
     expect(correct.mock.calls[0][0]).toBe(

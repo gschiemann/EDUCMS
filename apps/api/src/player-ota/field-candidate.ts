@@ -4,6 +4,7 @@ import {
   type FieldCandidateRelease,
 } from './field-candidate-releases';
 import { evaluateReleaseForFleet } from './release-policy';
+import { supabaseOrigin } from '../storage/supabase-origin';
 
 const uuid = (v: unknown): v is string =>
   typeof v === 'string' &&
@@ -148,12 +149,13 @@ export async function verifiedFieldBytes(
     return cache.bytes;
   if (flight?.sha === r.sha256) return flight.task;
   const task = (async () => {
-    const root = (env.SUPABASE_URL ?? '').replace(/\/+$/, '');
-    if (
-      root !== 'https://bhdaxzfalaycfopvcopm.supabase.co' ||
-      !env.SUPABASE_SERVICE_ROLE_KEY
-    )
+    // The one origin this deploy trusts, from SUPABASE_URL (a bare https
+    // origin, exact host). Unset still means "not configured" here, exactly as
+    // before: the service-role key is never sent to a defaulted host.
+    const trusted = supabaseOrigin(env);
+    if (!trusted?.fromEnv || !env.SUPABASE_SERVICE_ROLE_KEY)
       throw Error('field-storage-unconfigured');
+    const root = trusted.origin;
     const bucket = env.PLAYER_APK_STORAGE_BUCKET || 'apks';
     if (!/^[a-z0-9_-]{1,63}$/.test(bucket)) throw Error('field-storage-bucket');
     const abort = new AbortController(),
