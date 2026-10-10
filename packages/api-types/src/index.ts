@@ -167,6 +167,16 @@ export const OverridePayloadSchema = z
     textBlob: BoundedText(5000).optional(),
     expiresAt: EpochSecondsOrIso.optional(),
     playlistId: Id.optional(),
+    /**
+     * 2026-10-10 — EMERGENCY DRILLS. `true` starts a DRILL: the server plays
+     * the type's DRILL content (falling back to its live content), prefixes
+     * the alert text with "DRILL — ", carries `isDrill` on the signed push and
+     * the manifest, audits it under its own action, and REFUSES it (409) while
+     * a live alert is active at an overlapping scope. Absent/false = a live
+     * alert, byte-for-byte the request every surface sent before drills.
+     * Never persisted client-side: every trigger surface defaults to LIVE.
+     */
+    isDrill: z.boolean().optional(),
   })
   .strict();
 export type OverridePayload = z.infer<typeof OverridePayloadSchema>;

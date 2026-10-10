@@ -57,6 +57,27 @@ model Tenant {
   panicHoldPortraitPlaylistId     String?            @map("panic_hold_portrait_playlist_id")
   panicSecurePortraitPlaylistId   String?            @map("panic_secure_portrait_playlist_id")
   panicMedicalPortraitPlaylistId  String?            @map("panic_medical_portrait_playlist_id")
+  // 2026-10-10 — EMERGENCY DRILLS. A drill plays DIFFERENT content from a live
+  // alert of the same type (Settings → Emergency → Drill), one protected
+  // playlist per incident type per orientation, exactly like the panic_*
+  // columns above. NULL = no drill content for that type: a drill then falls
+  // back to the type's LIVE content (and the screen still shows the DRILL
+  // banner). `emergencyIsDrill` says whether the ACTIVE tenant-wide alert
+  // (emergencyStatus / emergencyType / emergencyPlaylistId) is a drill; the
+  // manifest carries it as `isDrill` so the player paints the drill banner.
+  emergencyIsDrill                Boolean            @default(false) @map("emergency_is_drill")
+  drillLockdownPlaylistId         String?            @map("drill_lockdown_playlist_id")
+  drillEvacuatePlaylistId         String?            @map("drill_evacuate_playlist_id")
+  drillWeatherPlaylistId          String?            @map("drill_weather_playlist_id")
+  drillHoldPlaylistId             String?            @map("drill_hold_playlist_id")
+  drillSecurePlaylistId           String?            @map("drill_secure_playlist_id")
+  drillMedicalPlaylistId          String?            @map("drill_medical_playlist_id")
+  drillLockdownPortraitPlaylistId String?            @map("drill_lockdown_portrait_playlist_id")
+  drillEvacuatePortraitPlaylistId String?            @map("drill_evacuate_portrait_playlist_id")
+  drillWeatherPortraitPlaylistId  String?            @map("drill_weather_portrait_playlist_id")
+  drillHoldPortraitPlaylistId     String?            @map("drill_hold_portrait_playlist_id")
+  drillSecurePortraitPlaylistId   String?            @map("drill_secure_portrait_playlist_id")
+  drillMedicalPortraitPlaylistId  String?            @map("drill_medical_portrait_playlist_id")
   assetFolders                    AssetFolder[]
   assets                          Asset[]
   auditLogs                       AuditLog[]
@@ -2480,6 +2501,12 @@ model ScreenEmergencyOverride {
   scopeType         String?   @map("scope_type") // tenant | group | device
   scopeId           String?   @map("scope_id")
   displaced         Json?     @map("displaced")
+  // 2026-10-10 — emergency drills. True when the alert this row shows is a
+  // DRILL (the manifest emits it as `isDrill`; the player paints the drill
+  // banner over the content). Every row from before drills existed reads
+  // false = a live alert, which is exactly what it was. The alerts a row is
+  // covering carry their own flag inside `displaced`.
+  isDrill           Boolean   @default(false) @map("is_drill")
 
   @@index([tenantId, triggeredAt])
   @@index([tenantId, alertId])
