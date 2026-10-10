@@ -21,6 +21,7 @@
     "db:reset": "node scripts/guard-destructive-db.cjs 'pnpm db:reset' && pnpm --filter @cms/database run db:reset",
     "db:backfill-hashes": "pnpm --filter @cms/database exec tsx ../../scripts/backfill-asset-hashes.ts",
     "db:backfill-posters": "pnpm --filter @cms/database exec tsx ../../scripts/backfill-video-posters.ts",
+    "db:migrate-bug-screenshots": "pnpm --filter @cms/database exec tsx ../../scripts/migrate-bug-screenshots-private.ts",
     "worktrees:status": "bash scripts/cleanup-worktrees.sh",
     "worktrees:clean": "bash scripts/cleanup-worktrees.sh --execute --branches",
     "hygiene": "bash scripts/hygiene-check.sh",

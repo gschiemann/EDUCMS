@@ -255,7 +255,8 @@ export interface CreateBugRequest {
   /** The full client-side bundle. */
   captured: BugCapturedContext;
   /** Optional base64-encoded screenshot. Backend uploads to Supabase
-   *  storage and stores the public URL on Bug.screenshotUrl. */
+   *  storage (PRIVATE bucket) and stores its object URL on Bug.screenshotUrl;
+   *  every read returns a short-TTL signed URL instead. */
   screenshotBase64?: string;
 }
 

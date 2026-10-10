@@ -114,6 +114,17 @@ const LOGO_BUCKET = 'branding-logos';
 //     service.
 const IMPORT_STAGING_BUCKET = 'import-staging';
 
+// PRIVATE bucket for BUG-REPORT SCREENSHOTS (2026-10-10). A bug screenshot is
+// a capture of the operator's own dashboard — customer names, screen lists,
+// school data. They used to land in the PUBLIC `bug-screenshots` bucket, so
+// anyone holding the link could open them forever. New screenshots go here
+// (public:false) and the RBAC-gated bug endpoints hand out short-TTL signed
+// URLs only. `scripts/migrate-bug-screenshots-private.ts` moves the legacy
+// objects across (dry-run by default).
+const BUG_SCREENSHOT_BUCKET = 'bug-screenshots-private';
+/** The legacy PUBLIC bucket existing screenshots live in until migrated. */
+export const LEGACY_BUG_SCREENSHOT_BUCKET = 'bug-screenshots';
+
 // Every bucket created with `public: true`. Used by uploadToBucket() to pick
 // the correct `/object/public/...` URL shape — see the PUBLIC_BUCKETS
 // callsite for why this can't just special-case the `assets` BUCKET anymore.
@@ -307,6 +318,32 @@ export class SupabaseStorageService implements OnModuleInit {
         this.logger.warn(`Failed to update import-staging bucket: ${isUpdErr.message}`);
       } else {
         this.logger.log(`Supabase Storage bucket "${IMPORT_STAGING_BUCKET}" ready (private, cap ${IMPORT_STAGING_SIZE_LIMIT / (1024 * 1024)}MB)`);
+      }
+    }
+
+    // PRIVATE bug-screenshot bucket (2026-10-10). Same shape as floor plans:
+    // created private, and re-asserted private on every boot so a bucket
+    // flipped public in the Supabase console is corrected, not trusted.
+    // 2 MB matches BUG_SCREENSHOT_MAX_BYTES in @cms/api-types.
+    const BUG_SCREENSHOT_MIMES = ['image/png', 'image/jpeg', 'image/webp'];
+    const BUG_SCREENSHOT_SIZE_LIMIT = 2 * 1024 * 1024;
+    const { error: bsErr } = await this.client.storage.createBucket(BUG_SCREENSHOT_BUCKET, {
+      public: false,
+      fileSizeLimit: BUG_SCREENSHOT_SIZE_LIMIT,
+      allowedMimeTypes: BUG_SCREENSHOT_MIMES,
+    });
+    if (bsErr && !bsErr.message?.includes('already exists') && !bsErr.message?.includes('duplicate')) {
+      this.logger.error(`Failed to create bug-screenshot bucket: ${bsErr.message}`);
+    } else {
+      const { error: bsUpdErr } = await this.client.storage.updateBucket(BUG_SCREENSHOT_BUCKET, {
+        public: false,
+        fileSizeLimit: BUG_SCREENSHOT_SIZE_LIMIT,
+        allowedMimeTypes: BUG_SCREENSHOT_MIMES,
+      });
+      if (bsUpdErr) {
+        this.logger.warn(`Failed to update bug-screenshot bucket: ${bsUpdErr.message}`);
+      } else {
+        this.logger.log(`Supabase Storage bucket "${BUG_SCREENSHOT_BUCKET}" ready (private)`);
       }
     }
 
@@ -553,6 +590,12 @@ export class SupabaseStorageService implements OnModuleInit {
    *  and the retention sweep can route without hard-coding it. */
   importStagingBucketName(): string {
     return IMPORT_STAGING_BUCKET;
+  }
+
+  /** The PRIVATE bug-screenshot bucket name (2026-10-10). Exposed so the bug
+   *  reporter and its migration script never hard-code it. */
+  bugScreenshotBucketName(): string {
+    return BUG_SCREENSHOT_BUCKET;
   }
 
   /** The public brand-logo bucket name (task #223). Exposed so callers that

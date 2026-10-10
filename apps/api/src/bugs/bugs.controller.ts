@@ -73,11 +73,8 @@ import { notifyBugFixProposed } from './bug-notify';
 // proposed / fix-shipped. Best-effort: every email call is wrapped
 // in a try/catch so an email outage NEVER blocks the bug pipeline.
 import { EmailService } from '../email/email.service';
-import { makeStorageFetch } from '../storage/storage-transport';
-
-// ─── Bucket setup ────────────────────────────────────────────────
-
-const SCREENSHOT_BUCKET = 'bug-screenshots';
+import { SupabaseStorageService } from '../storage/supabase-storage.service';
+import { signBugScreenshotUrl } from './bug-screenshot-url';
 
 // ─── Body schemas (zod — same boundary discipline as ai.controller) ───
 
@@ -303,24 +300,16 @@ const ADMIN_ROLES = [
 @Controller('api/v1/bugs')
 export class BugsController {
   private readonly logger = new Logger(BugsController.name);
-  /**
-   * Idempotent screenshot-bucket setup. First POST that has a
-   * screenshot ensures the bucket exists; subsequent calls hit a
-   * fast in-memory boolean.
-   */
-  private screenshotBucketReady: Promise<void> | null = null;
 
-  // Same node:https-fallback transport as SupabaseStorageService
-  // (2026-07-31 "fetch failed" incident — storage-transport.ts). Screenshot
-  // uploads are the evidence trail for every bug report; they must not
-  // silently die with the platform's undici→Supabase path.
-  private readonly storageFetch = makeStorageFetch((m) => this.logger.warn(m));
-
+  // Screenshot uploads go through SupabaseStorageService, which carries the
+  // same node:https-fallback transport (2026-07-31 "fetch failed" incident —
+  // storage-transport.ts) and owns the PRIVATE bucket's boot-time setup.
   constructor(
     private readonly prisma: PrismaService,
     private readonly enrichment: BugEnrichmentService,
     private readonly analyzer: BugAnalyzerService,
     private readonly email: EmailService,
+    private readonly storage: SupabaseStorageService,
   ) {}
 
   // ─── POST /api/v1/bugs ──────────────────────────────────────
@@ -542,7 +531,7 @@ export class BugsController {
       },
     });
 
-    return rows.map((r) => this.toListItem(r));
+    return Promise.all(rows.map((r) => this.withSignedScreenshot(this.toListItem(r))));
   }
 
   // ─── GET /api/v1/bugs/:id ───────────────────────────────────
@@ -554,7 +543,7 @@ export class BugsController {
     @Param('id') id: string,
   ): Promise<BugDetail> {
     const bug = await this.loadBugWithRbac(req, id);
-    return this.toDetail(bug);
+    return this.withSignedScreenshot(this.toDetail(bug));
   }
 
   // ─── POST /api/v1/bugs/:id/approve ──────────────────────────
@@ -714,7 +703,7 @@ export class BugsController {
       reasonChars: rejectedReason.length,
     });
 
-    return this.toDetail(updated);
+    return this.withSignedScreenshot(this.toDetail(updated));
   }
 
   // ─── POST /api/v1/bugs/:id/iterate ──────────────────────────
@@ -762,7 +751,7 @@ export class BugsController {
     const reloaded = await this.prisma.client.bug.findUnique({
       where: { id, tenantId: bug.tenantId },
     });
-    return this.toDetail(reloaded!);
+    return this.withSignedScreenshot(this.toDetail(reloaded!));
   }
 
   // ─── POST /api/v1/bugs/:id/manual-analysis ──────────────────
@@ -898,7 +887,7 @@ export class BugsController {
     const reloaded = await this.prisma.client.bug.findUnique({
       where: { id, tenantId: bug.tenantId },
     });
-    return this.toDetail(reloaded!);
+    return this.withSignedScreenshot(this.toDetail(reloaded!));
   }
 
   // ─── Internals ──────────────────────────────────────────────
@@ -1011,93 +1000,33 @@ export class BugsController {
   }
 
   /**
-   * Ensure the bug-screenshots bucket exists. Idempotent + cached so
-   * we don't slam Supabase on every POST. Bucket is private (no public
-   * URL); we return the public URL for now because the dashboard runs
-   * as authed-admin only and short-TTL signed URLs aren't worth the
-   * extra complexity for v1.
+   * Upload a screenshot to the PRIVATE bug-screenshot bucket (2026-10-10).
+   * Returns the stored `…/object/<bucket>/<path>` URL, which is NOT openable
+   * on its own — every read path re-signs it (`signBugScreenshotUrl`). The
+   * bucket itself is created + re-asserted private at boot by
+   * SupabaseStorageService, exactly like the floor-plan bucket.
    */
-  private async ensureScreenshotBucket(): Promise<void> {
-    if (!this.screenshotBucketReady) {
-      this.screenshotBucketReady = (async () => {
-        const url = (process.env.SUPABASE_URL || '').trim().replace(/\/+$/, '');
-        const key = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
-        if (!url || !key) {
-          // No Supabase configured — caller catches + we just skip the
-          // upload. Mark the promise as resolved so we don't re-try
-          // every request.
-          return;
-        }
-        try {
-          const { createClient } = await import('@supabase/supabase-js');
-          const client = createClient(url, key, {
-            auth: { persistSession: false },
-            global: { fetch: this.storageFetch },
-          });
-          const { error } = await client.storage.createBucket(SCREENSHOT_BUCKET, {
-            public: true,
-            fileSizeLimit: BUG_SCREENSHOT_MAX_BYTES,
-            allowedMimeTypes: ['image/png', 'image/jpeg', 'image/webp'],
-          });
-          if (error && !error.message?.match(/already exists|duplicate/i)) {
-            this.logger.warn(
-              `screenshot bucket create failed: ${error.message}`,
-            );
-          }
-        } catch (e: any) {
-          this.logger.warn(
-            `screenshot bucket setup threw: ${e?.message ?? e}`,
-          );
-        }
-      })();
-    }
-    return this.screenshotBucketReady;
-  }
-
-  /** Upload a screenshot Buffer to bug-screenshots/, return public URL. */
   private async uploadScreenshot(
     tenantId: string | null,
     buffer: Buffer,
     contentType: string,
   ): Promise<string> {
-    await this.ensureScreenshotBucket();
-    const url = (process.env.SUPABASE_URL || '').trim().replace(/\/+$/, '');
-    const key = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
-    if (!url || !key) {
-      throw new Error(
-        'Supabase storage not configured — set SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY',
-      );
-    }
     // Per-tenant prefix keeps the bucket browsable / easy to GC if a
-    // tenant offboards. UUID filename avoids collision + makes the
-    // URL non-guessable.
+    // tenant offboards. UUID filename avoids collision.
     const ext = contentType === 'image/jpeg' ? 'jpg' : contentType === 'image/webp' ? 'webp' : 'png';
     const filename = `${cryptoUuid()}.${ext}`;
-    const path = tenantId
-      ? `${tenantId}/${filename}`
-      : `__platform__/${filename}`;
-    const endpoint = `${url}/storage/v1/object/${SCREENSHOT_BUCKET}/${path}`;
-    // Copy to a guaranteed ArrayBuffer (same approach SupabaseStorageService uses;
-    // some fetch implementations choke on a raw Buffer body).
-    const ab = new ArrayBuffer(buffer.length);
-    new Uint8Array(ab).set(buffer);
-    const res = await this.storageFetch(endpoint, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${key}`,
-        apikey: key,
-        'Content-Type': contentType,
-        'Content-Length': String(buffer.length),
-        'x-upsert': 'true',
-        'Cache-Control': 'public, max-age=31536000, immutable',
-      },
-      body: new Blob([ab]),
-    });
-    if (!res.ok) {
-      const errBody = await res.text().catch(() => '');
-      throw new Error(`storage upload ${res.status}: ${errBody.slice(0, 200)}`);
-    }
-    return `${url}/storage/v1/object/public/${SCREENSHOT_BUCKET}/${path}`;
+    const path = tenantId ? `${tenantId}/${filename}` : `__platform__/${filename}`;
+    return this.storage.uploadToBucket(
+      this.storage.bugScreenshotBucketName(),
+      path,
+      buffer,
+      contentType,
+    );
+  }
+
+  /** Sign the screenshot on every DTO the API returns (never the stored URL). */
+  private async withSignedScreenshot<T extends { screenshotUrl: string | null }>(dto: T): Promise<T> {
+    return { ...dto, screenshotUrl: await signBugScreenshotUrl(this.storage, dto.screenshotUrl) };
   }
 
   /**
