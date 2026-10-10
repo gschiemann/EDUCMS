@@ -67,6 +67,7 @@ export function AuthExpirationGuard() {
       !pathname.startsWith('/pair') &&
       !pathname.startsWith('/player') &&
       !pathname.startsWith('/accept-invite') &&
+      !pathname.startsWith('/setup-account') &&
       !pathname.startsWith('/reset-password');
     if (onProtected && !authRestoring && (!user || !token)) {
       clog.warn('auth', 'Auth missing on protected route — hard-redirecting to /login', { pathname });

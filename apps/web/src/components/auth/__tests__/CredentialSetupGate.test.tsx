@@ -12,6 +12,7 @@ jest.mock('@/store/ui-store', () => {
 jest.mock('@/lib/api-url', () => ({ API_URL: 'http://api.test/api/v1' }));
 jest.mock('@/lib/client-logger', () => ({ clog: { info: jest.fn(), warn: jest.fn(), error: jest.fn() } }));
 jest.mock('@/lib/brand', () => ({ getClientBrand: () => ({ name: 'VenueOS' }) }));
+jest.mock('@/lib/hard-navigate', () => ({ hardNavigate: jest.fn() }));
 jest.mock('@/lib/csrf', () => ({ ensureCsrfToken: jest.fn().mockResolvedValue('csrf') }));
 
 const fetchMock = jest.fn();
@@ -141,5 +142,46 @@ describe('proving the new address with an emailed code', () => {
     render(<CredentialSetupGate />);
     await fillAndSubmit();
     expect(await screen.findByText(/We sent a 6-digit code to/i)).toBeInTheDocument();
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────
+// FIRST SIGN-IN ORDER (2026-10-10) — two-step setup comes AFTER this screen.
+// ───────────────────────────────────────────────────────────────────────
+describe('when the role needs two-step sign-in', () => {
+  const replace = (jest.requireMock('@/lib/hard-navigate') as any).hardNavigate as jest.Mock;
+  beforeEach(() => {
+    replace.mockClear();
+    sessionStorage.clear();
+    store().setToken.mockClear();
+    store().logout.mockClear();
+  });
+
+  it('saves the email + password, then hands the enrollment step to the sign-in page (no session here)', async () => {
+    route({
+      '/auth/complete-setup/email-code': () => ({ ok: true, body: { required: false } }),
+      '/auth/complete-setup': () => ({
+        ok: true,
+        body: { success: true, sessionsRevoked: true, email: 'manager@riotcolor.com', mfaRequired: true, mfaEnrollmentRequired: true, mfaMethods: [], mfaToken: 'after-setup' },
+      }),
+    });
+    render(<CredentialSetupGate />);
+    await fillAndSubmit();
+    expect(store().setToken).not.toHaveBeenCalled();
+    expect(store().logout).toHaveBeenCalled();
+    expect(replace).toHaveBeenCalledWith('/login?reason=setup-two-step');
+    const parked = JSON.parse(sessionStorage.getItem('venueos_setup_two_step') || '{}');
+    expect(parked.email).toBe('manager@riotcolor.com');
+    expect(parked.envelope.mfaToken).toBe('after-setup');
+  });
+
+  it('a fail-closed answer (signInAgain) sends them to sign in with the new credentials', async () => {
+    route({
+      '/auth/complete-setup/email-code': () => ({ ok: true, body: { required: false } }),
+      '/auth/complete-setup': () => ({ ok: true, body: { success: true, signInAgain: true } }),
+    });
+    render(<CredentialSetupGate />);
+    await fillAndSubmit();
+    expect(replace).toHaveBeenCalledWith('/login?reason=setup-done');
   });
 });

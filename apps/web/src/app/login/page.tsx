@@ -70,6 +70,7 @@ import {
   stashPendingEulaAcceptance,
 } from '@/lib/eula-acceptance';
 import { keepSignedInForPasskey, rememberKeepSignedInChoice } from '@/lib/keep-signed-in';
+import { takeSetupTwoStep } from '@/lib/setup-two-step-handoff';
 
 const INPUT_CLS =
   'w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 ' +
@@ -915,6 +916,26 @@ function LoginContent() {
     clog.warn('auth', 'Login rejected', { status: res.status, message: data?.message, source });
     setError(data?.message || fallbackError);
   };
+
+  // ── FIRST SIGN-IN ORDER (2026-10-10) ─────────────────────────────────
+  // First-login setup (CredentialSetupGate) saved the person's own email and
+  // password, and their role needs two-step sign-in: it parked the enrollment
+  // envelope `/auth/complete-setup` returned and sent them here. Resume it ONCE
+  // through the same branch a password sign-in takes, so the passkey /
+  // authenticator is set up for the address they just claimed — without typing
+  // the new password again. `take` removes it; a stale or missing hand-off is
+  // simply the normal sign-in form.
+  const setupHandoffTakenRef = useRef(false);
+  useEffect(() => {
+    if (setupHandoffTakenRef.current) return;
+    setupHandoffTakenRef.current = true;
+    const handoff = takeSetupTwoStep();
+    if (!handoff) return;
+    setEmailInput(handoff.email);
+    void applyLoginResponse({ ok: true, status: 200 }, handoff.envelope, 'password', t('mfaSetupTimedOut'));
+    // Runs once on arrival; applyLoginResponse is this render's closure.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleMfaChallenge = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2039,6 +2060,12 @@ function LoginContent() {
         <div className="flex items-start gap-2 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-lg">
           <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" aria-hidden />
           <p className="text-xs text-amber-800 font-medium">{t('inviteMfaSetupNeeded')}</p>
+        </div>
+      )}
+      {authReason === 'setup-done' && (
+        <div className="flex items-start gap-2 px-3 py-2.5 bg-emerald-50 border border-emerald-200 rounded-lg">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" aria-hidden />
+          <p className="text-xs text-emerald-800 font-medium">{t('setupDoneSignIn')}</p>
         </div>
       )}
       {authReason === 'session-expired' && (

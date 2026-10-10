@@ -29,20 +29,27 @@
  * in, and errors are `role="alert"` + wired to their input via
  * `aria-describedby`/`aria-invalid` so a screen reader announces them.
  *
- * ENGLISH-ONLY, deliberately. The three locale catalogs are held at exact key
- * parity by a hard CI gate (`check-i18n-parity.cjs`), and shipping guessed
- * es/zh strings for a security-critical flow is worse than shipping none.
- * This surface is scoped to one US operator's provisioning run; localise it
- * alongside the rest of the auth surfaces when that work is done properly.
+ * en + es + zh (2026-10-10): every string lives in the `credentialSetup`
+ * namespace of the three catalogs (held at key parity by
+ * `check-i18n-parity.cjs`). It used to be English-only.
+ *
+ * FIRST SIGN-IN ORDER (2026-10-10): this screen now comes BEFORE the required
+ * two-step setup. When `/auth/complete-setup` answers with the enrollment
+ * envelope (no session yet), the envelope is handed to the sign-in page
+ * (`lib/setup-two-step-handoff.ts`), which owns the passkey / authenticator
+ * flow — so the factor is registered under the person's REAL address.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { AlertCircle, KeyRound, Loader2 } from 'lucide-react';
 import { useUIStore } from '@/store/ui-store';
 import { API_URL } from '@/lib/api-url';
 import { clog } from '@/lib/client-logger';
 import { getClientBrand } from '@/lib/brand';
 import { ensureCsrfToken } from '@/lib/csrf';
+import { isTwoStepEnvelope, stashSetupTwoStep } from '@/lib/setup-two-step-handoff';
+import { hardNavigate } from '@/lib/hard-navigate';
 
 /** Matches the login screen's input styling exactly — same surface family. */
 const INPUT_CLS =
@@ -67,6 +74,7 @@ function looksLikeEmail(value: string): boolean {
 type FieldErrors = { email?: string; confirmEmail?: string; password?: string; confirm?: string };
 
 export function CredentialSetupGate() {
+  const t = useTranslations('credentialSetup');
   const brand = getClientBrand();
   const user = useUIStore((s) => s.user);
   const setToken = useUIStore((s) => s.setToken);
@@ -88,6 +96,8 @@ export function CredentialSetupGate() {
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  /** Saved; on the way to the sign-in page for the required two-step setup. */
+  const [twoStepNext, setTwoStepNext] = useState(false);
 
   const emailRef = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
@@ -104,24 +114,24 @@ export function CredentialSetupGate() {
       (): FieldErrors => {
         const next: FieldErrors = {};
         const trimmed = email.trim();
-        if (!trimmed) next.email = 'Enter your work email address.';
-        else if (!looksLikeEmail(trimmed)) next.email = 'That does not look like an email address.';
+        if (!trimmed) next.email = t('emailRequired');
+        else if (!looksLikeEmail(trimmed)) next.email = t('emailInvalid');
         else if (trimmed.toLowerCase() === placeholderEmail.trim().toLowerCase()) {
-          next.email = 'Use your own email — this is the temporary address the account was created with.';
+          next.email = t('emailIsPlaceholder');
         }
         // Typed twice: this address receives every sign-in code and password
         // reset from now on, and a typo here strands the account (nothing
         // verifies the mailbox yet — Greg, 2026-10-05).
         if (!next.email && confirmEmail.trim().toLowerCase() !== trimmed.toLowerCase()) {
-          next.confirmEmail = 'The two email addresses do not match.';
+          next.confirmEmail = t('emailMismatch');
         }
         if (password.length < MIN_PASSWORD_LENGTH) {
-          next.password = `Use at least ${MIN_PASSWORD_LENGTH} characters.`;
+          next.password = t('passwordTooShort', { min: MIN_PASSWORD_LENGTH });
         }
-        if (confirm !== password) next.confirm = 'The two passwords do not match.';
+        if (confirm !== password) next.confirm = t('passwordMismatch');
         return next;
       },
-    [email, confirmEmail, password, confirm, placeholderEmail],
+    [email, confirmEmail, password, confirm, placeholderEmail, t],
   );
 
   // Deliberately raw fetches rather than `apiFetch`: these calls happen while
@@ -160,18 +170,18 @@ export function CredentialSetupGate() {
     switch (data?.code) {
       case 'SETUP_EMAIL_IN_USE':
         setCodeStep(false);
-        setFieldErrors({ email: 'That email is already in use. Try another, or ask your administrator.' });
+        setFieldErrors({ email: t('emailInUse') });
         break;
       case 'SETUP_EMAIL_UNCHANGED':
         setCodeStep(false);
-        setFieldErrors({ email: 'Use your own email — this is the temporary address the account was created with.' });
+        setFieldErrors({ email: t('emailIsPlaceholder') });
         break;
       case 'SETUP_NOT_REQUIRED':
         setUser(user ? { ...user, mustSetupCredentials: false } : user);
         break;
       default:
         clog.warn('auth', 'Setup email code not sent', { status: res.status, code: data?.code });
-        setFormError(data?.message || 'We could not send the code. Please try again.');
+        setFormError(t('sendFailed'));
     }
     return 'failed';
   };
@@ -191,6 +201,25 @@ export function CredentialSetupGate() {
       });
       const data = await res.json().catch(() => ({}));
 
+      // FIRST SIGN-IN ORDER (2026-10-10): saved, and the account's role needs
+      // two-step sign-in — there is no session until that is set up. Hand the
+      // envelope to the sign-in page, which owns that flow.
+      if (res.ok && isTwoStepEnvelope(data)) {
+        clog.info('auth', 'Credential setup complete — two-step setup next', { sessionsRevoked: (data as { sessionsRevoked?: unknown }).sessionsRevoked });
+        setTwoStepNext(true);
+        const saved = (data as { email?: unknown }).email;
+        const address = (typeof saved === 'string' && saved) || email.trim().toLowerCase();
+        const handedOff = stashSetupTwoStep(address, data);
+        logout();
+        hardNavigate(handedOff ? '/login?reason=setup-two-step' : '/login?reason=setup-done');
+        return;
+      }
+      if (res.ok && data?.signInAgain) {
+        logout();
+        hardNavigate('/login?reason=setup-done');
+        return;
+      }
+
       if (res.ok && data?.access_token && data?.user) {
         clog.info('auth', 'First-login credential setup complete', {
           userId: data.user.id,
@@ -207,38 +236,36 @@ export function CredentialSetupGate() {
       switch (data?.code) {
         case 'SETUP_EMAIL_IN_USE':
           setCodeStep(false);
-          setFieldErrors({ email: 'That email is already in use. Try another, or ask your administrator.' });
+          setFieldErrors({ email: t('emailInUse') });
           break;
         case 'SETUP_EMAIL_UNCHANGED':
           setCodeStep(false);
-          setFieldErrors({
-            email: 'Use your own email — this is the temporary address the account was created with.',
-          });
+          setFieldErrors({ email: t('emailIsPlaceholder') });
           break;
         case 'SETUP_PASSWORD_UNCHANGED':
           setCodeStep(false);
-          setFieldErrors({ password: 'Choose a new password — this is the starter password you were given.' });
+          setFieldErrors({ password: t('passwordUnchanged') });
           break;
         case 'SETUP_EMAIL_CODE_REQUIRED':
           // The server now verifies addresses (mail was just switched on):
           // send the code and show its step.
           if (!codeStep) await requestCode();
-          else setCodeError('Enter the 6-digit code from the email.');
+          else setCodeError(t('codeEnter'));
           break;
         case 'SETUP_EMAIL_CODE_INVALID':
-          setCodeError("That code isn't right. Check the email and try again.");
+          setCodeError(t('codeWrong'));
           break;
         case 'SETUP_EMAIL_CODE_EXPIRED':
-          setCodeError('That code has expired. Send a new one.');
+          setCodeError(t('codeExpired'));
           break;
         case 'SETUP_EMAIL_CODE_LOCKED':
-          setCodeError('Too many wrong tries. Send a new code.');
+          setCodeError(t('codeLocked'));
           break;
         case 'ValidationError':
           // The server's Zod pipe does not say WHICH field failed, and the
           // client checks above already cover every rule it enforces — so
           // reaching here means something unusual (e.g. an over-long value).
-          setFormError('Check the email and password and try again.');
+          setFormError(t('checkFields'));
           break;
         case 'SETUP_NOT_REQUIRED':
           // The account was set up elsewhere (another tab, an admin). Nothing
@@ -247,10 +274,10 @@ export function CredentialSetupGate() {
           break;
         default:
           clog.warn('auth', 'Credential setup rejected', { status: res.status, code: data?.code });
-          setFormError(data?.message || 'We could not save that. Please try again.');
+          setFormError(t('saveFailed'));
       }
     } catch {
-      setFormError(`Can't reach the server at ${API_URL}. Check your connection and try again.`);
+      setFormError(t('unreachable', { url: API_URL }));
     }
   };
 
@@ -260,7 +287,7 @@ export function CredentialSetupGate() {
     if (codeStep) {
       const digits = emailCode.replace(/\D/g, '');
       if (digits.length !== 6) {
-        setCodeError('Enter the 6-digit code from the email.');
+        setCodeError(t('codeEnter'));
         return;
       }
       setCodeError('');
@@ -283,7 +310,7 @@ export function CredentialSetupGate() {
       // Verification is off for this deploy: save straight away, as before.
       if (outcome === 'not-required') await finishSetup();
     } catch {
-      setFormError(`Can't reach the server at ${API_URL}. Check your connection and try again.`);
+      setFormError(t('unreachable', { url: API_URL }));
     } finally {
       setSubmitting(false);
     }
@@ -296,7 +323,7 @@ export function CredentialSetupGate() {
     try {
       await requestCode();
     } catch {
-      setFormError(`Can't reach the server at ${API_URL}. Check your connection and try again.`);
+      setFormError(t('unreachable', { url: API_URL }));
     } finally {
       setSubmitting(false);
     }
@@ -325,10 +352,10 @@ export function CredentialSetupGate() {
             <polygon points="22,16 19,21.2 13,21.2 10,16 13,10.8 19,10.8" fill="#a5b4fc" />
           </svg>
           <h1 className="mt-4 text-xl font-semibold tracking-tight text-slate-900">
-            Finish setting up your account
+            {t('title')}
           </h1>
           <p className="mt-1 text-sm text-slate-500">
-            One time only — then you&rsquo;re into {brand.name}.
+            {t('subtitle', { brand: brand.name })}
           </p>
         </div>
 
@@ -340,26 +367,32 @@ export function CredentialSetupGate() {
           </div>
 
           <p className="text-xs text-slate-600 leading-relaxed mb-5">
-            This account was created for your location with a temporary email
-            {placeholderEmail ? (
-              <>
-                {' '}(<span className="font-mono text-slate-500">{placeholderEmail}</span>)
-              </>
-            ) : null}{' '}
-            and a starter password. Replace both with your own so password resets reach you and
-            your actions are recorded under your name.
+            {t('intro')}
           </p>
+          {placeholderEmail && (
+            <p className="-mt-3 mb-5 text-xs text-slate-500">
+              {t('temporaryEmailLabel')}{' '}
+              <span className="font-mono text-slate-500 break-all">{placeholderEmail}</span>
+            </p>
+          )}
+
+          {twoStepNext && (
+            <p role="status" className="mb-4 text-xs font-medium text-indigo-700">
+              {t('twoStepNext')}
+            </p>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-4" noValidate>
             {codeStep ? (
               <div className="space-y-3">
                 <p className="text-sm text-slate-700">
-                  We sent a 6-digit code to <strong className="font-semibold break-all">{sentTo}</strong>. It can take a
-                  minute to arrive.
+                  {t('codeSentLead')} <strong className="font-semibold break-all">{sentTo}</strong>
+                  <br />
+                  {t('codeSentHint')}
                 </p>
                 <div>
                   <label htmlFor="setup-email-code" className="block text-xs font-semibold text-slate-700 mb-1.5">
-                    Code from the email
+                    {t('codeLabel')}
                   </label>
                   <input
                     id="setup-email-code"
@@ -389,14 +422,14 @@ export function CredentialSetupGate() {
                     disabled={submitting || resendIn > 0}
                     className="font-semibold text-indigo-600 hover:text-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {resendIn > 0 ? `Send a new code (${resendIn}s)` : 'Send a new code'}
+                    {resendIn > 0 ? t('resendIn', { seconds: resendIn }) : t('resend')}
                   </button>
                   <button
                     type="button"
                     onClick={() => { setCodeStep(false); setEmailCode(''); setCodeError(''); }}
                     className="font-semibold text-slate-500 hover:text-slate-700"
                   >
-                    Use a different email
+                    {t('differentEmail')}
                   </button>
                 </div>
               </div>
@@ -404,7 +437,7 @@ export function CredentialSetupGate() {
               <>
             <div>
               <label htmlFor="setup-email" className="block text-xs font-semibold text-slate-700 mb-1.5">
-                Your work email
+                {t('emailLabel')}
               </label>
               <input
                 id="setup-email"
@@ -425,13 +458,13 @@ export function CredentialSetupGate() {
                 </p>
               )}
               <p className="mt-1.5 text-[11px] text-slate-500">
-                We send your sign-in codes and password resets here, so make sure you can open it.
+                {t('emailHelp')}
               </p>
             </div>
 
             <div>
               <label htmlFor="setup-confirm-email" className="block text-xs font-semibold text-slate-700 mb-1.5">
-                Type your email again
+                {t('confirmEmailLabel')}
               </label>
               <input
                 id="setup-confirm-email"
@@ -453,14 +486,14 @@ export function CredentialSetupGate() {
 
             <div>
               <label htmlFor="setup-password" className="block text-xs font-semibold text-slate-700 mb-1.5">
-                New password
+                {t('passwordLabel')}
               </label>
               <input
                 id="setup-password"
                 name="new-password"
                 type="password"
                 autoComplete="new-password"
-                placeholder={`At least ${MIN_PASSWORD_LENGTH} characters`}
+                placeholder={t('passwordPlaceholder', { min: MIN_PASSWORD_LENGTH })}
                 className={fieldErrors.password ? INPUT_ERR_CLS : INPUT_CLS}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -476,14 +509,14 @@ export function CredentialSetupGate() {
 
             <div>
               <label htmlFor="setup-confirm" className="block text-xs font-semibold text-slate-700 mb-1.5">
-                Confirm new password
+                {t('confirmLabel')}
               </label>
               <input
                 id="setup-confirm"
                 name="confirm-password"
                 type="password"
                 autoComplete="new-password"
-                placeholder="Type it again"
+                placeholder={t('confirmPlaceholder')}
                 className={fieldErrors.confirm ? INPUT_ERR_CLS : INPUT_CLS}
                 value={confirm}
                 onChange={(e) => setConfirm(e.target.value)}
@@ -509,15 +542,15 @@ export function CredentialSetupGate() {
 
             <button
               type="submit"
-              disabled={submitting}
+              disabled={submitting || twoStepNext}
               className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold py-2.5 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
             >
               {submitting ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin" aria-hidden /> Saving…
+                  <Loader2 className="w-4 h-4 animate-spin" aria-hidden /> {t('saving')}
                 </>
               ) : (
-                codeStep ? 'Verify and finish' : 'Save and continue'
+                codeStep ? t('verifyFinish') : t('saveContinue')
               )}
             </button>
           </form>
@@ -537,7 +570,7 @@ export function CredentialSetupGate() {
             }}
             className="text-xs font-semibold text-slate-500 hover:text-slate-700"
           >
-            Not your account? Sign out
+            {t('notYou')}
           </button>
         </div>
       </div>

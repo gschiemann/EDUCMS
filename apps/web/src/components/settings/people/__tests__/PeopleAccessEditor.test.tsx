@@ -83,7 +83,8 @@ it('hides every lifecycle control on a PEER row and on the caller’s own row', 
   // A junior row keeps all three actions and an editable role.
   const junior = rowFor('jr@x.edu');
   expect(within(junior).getByRole('combobox')).toBeEnabled();
-  expect(within(junior).getAllByRole('button').length).toBe(3);
+  // 2FA policy, change email (2026-10-10), disable, remove.
+  expect(within(junior).getAllByRole('button').length).toBe(4);
 });
 
 it('never offers SUPER_ADMIN in the invite role picker', async () => {
@@ -309,10 +310,10 @@ it('offers the reset only on a row with a factor to remove, and never on a peer 
 
   // Nothing to reset → no action (the server would do nothing).
   expect(within(rowFor('jr@x.edu')).queryByRole('button', { name: 'Reset 2FA' })).toBeNull();
-  expect(within(rowFor('jr@x.edu')).getAllByRole('button').length).toBe(3);
+  expect(within(rowFor('jr@x.edu')).getAllByRole('button').length).toBe(4);
 
   // Enrolled AND manageable → the fourth action appears.
-  expect(within(rowFor('totp@x.edu')).getAllByRole('button').length).toBe(4);
+  expect(within(rowFor('totp@x.edu')).getAllByRole('button').length).toBe(5);
 
   // A PEER is enrolled but not manageable; so is the caller's own row (ME is
   // mfaEnrolled). Neither may be reset from here — the server would refuse.

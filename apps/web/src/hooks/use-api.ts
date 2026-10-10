@@ -2849,6 +2849,8 @@ export type TeamUser = {
    * `ACTIVE` is refused at login (`AuthService.validateUser`).
    */
   status?: string;
+  /** 2026-10-10 — still on its provisioning starter credentials (offer a setup link). Optional: older API. */
+  mustSetupCredentials?: boolean;
 };
 
 export function useUsers() {
@@ -2932,6 +2934,99 @@ export function useResetUserMfa() {
         method: 'POST',
         body: JSON.stringify(reason ? { password, reason } : { password }),
       }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['users'] }); },
+  });
+}
+
+// ─── Account administration (2026-10-10) ──────────────────────────
+// Change someone's sign-in email, and one-time setup links that replace
+// provisioning starter passwords. Every write carries the ACTOR's own password
+// (step-up); a wrong one is 403 `ACCOUNT_ADMIN_BAD_PASSWORD`, never 401.
+
+/** Step 1 of an email change: email a code to the NEW address (or `required: false`). */
+export function useSendEmailChangeCode() {
+  return useMutation<
+    { required: boolean; sent?: boolean; expiresInSeconds?: number },
+    Error,
+    { id: string; email: string; password: string }
+  >({
+    mutationFn: ({ id, email, password }) =>
+      apiFetch(`/users/${id}/email/code`, { method: 'POST', body: JSON.stringify({ email, password }) }),
+  });
+}
+
+/** Step 2: apply it (with the code when verification is on). Ends the person's sessions. */
+export function useChangeUserEmail() {
+  const qc = useQueryClient();
+  return useMutation<
+    { ok: true; email: string; verified: boolean; sessionsRevoked: boolean },
+    Error,
+    { id: string; email: string; password: string; code?: string }
+  >({
+    mutationFn: ({ id, email, password, code }) =>
+      apiFetch(`/users/${id}/email`, {
+        method: 'PUT',
+        body: JSON.stringify(code ? { email, password, code } : { email, password }),
+      }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['users'] }); },
+  });
+}
+
+export type SetupLinkAccount = {
+  id: string;
+  email: string;
+  role: string;
+  status: string;
+  firstName: string | null;
+  lastName: string | null;
+  tenantId: string;
+  tenantName: string | null;
+  hasTwoStep: boolean;
+  link: 'none' | 'active' | 'used' | 'expired';
+  linkExpiresAt: string | null;
+};
+
+/** Accounts in this organisation (and its locations) that still owe first sign-in. */
+export function useSetupLinkAccounts(enabled = true) {
+  return useQuery<{ accounts: SetupLinkAccount[] }>({
+    queryKey: ['users', 'setup-links'],
+    queryFn: () => apiFetch('/users/setup-links'),
+    staleTime: 60_000,
+    enabled,
+  });
+}
+
+/** Generate (or regenerate) one account's link. Retires its starter password. */
+export function useCreateSetupLink() {
+  const qc = useQueryClient();
+  return useMutation<
+    { ok: true; userId: string; email: string; url: string; expiresAt: string },
+    Error,
+    { id: string; password: string }
+  >({
+    mutationFn: ({ id, password }) =>
+      apiFetch(`/users/${id}/setup-link`, { method: 'POST', body: JSON.stringify({ password }) }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['users'] }); },
+  });
+}
+
+export type BulkSetupLink = {
+  userId: string;
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+  location: string | null;
+  role: string;
+  url: string;
+  expiresAt: string;
+};
+
+/** A fresh link for every pending account in scope (for the CSV download). */
+export function useBulkSetupLinks() {
+  const qc = useQueryClient();
+  return useMutation<{ links: BulkSetupLink[]; skipped: Array<{ email: string; code: string }> }, Error, { password: string }>({
+    mutationFn: ({ password }) =>
+      apiFetch('/users/setup-links/bulk', { method: 'POST', body: JSON.stringify({ password }) }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['users'] }); },
   });
 }

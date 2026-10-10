@@ -29,15 +29,18 @@ import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import {
   UserPlus, Trash2, Loader2, ShieldCheck, ShieldOff, Ban, Lock, KeyRound,
-  Users as UsersIcon, MailCheck, Search,
+  Users as UsersIcon, MailCheck, Search, AtSign, Link2, Download,
 } from 'lucide-react';
 import {
   useUsers, useInviteUser, useCreateUserDirect, useDeleteUser, useUpdateUserRole,
   useSetUserMfaRequired, useSetUserDisabled, useResetUserMfa,
   useContentApprovalConfig, useToggleContentApproval,
   useMfaEnforcement, useSetMfaEnforced,
+  useSendEmailChangeCode, useChangeUserEmail, useCreateSetupLink,
+  useSetupLinkAccounts, useBulkSetupLinks,
   type TeamUser,
 } from '@/hooks/use-api';
+import { setupLinksCsv, setupLinksCsvFilename } from '@/lib/setup-links-csv';
 import { useUIStore } from '@/store/ui-store';
 import { canAssignRole } from '@/lib/role-assignment';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
@@ -161,6 +164,149 @@ export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
       } else {
         setResetError(e?.message || t('settings.cc.people.resetMfaFailed'));
       }
+    }
+  };
+
+  // ── Account administration (2026-10-10) ──────────────────────────────
+  // Change someone's sign-in email; one-time setup links instead of starter
+  // passwords. Same inline-panel idiom as the 2FA reset above: the server
+  // needs the admin's own password, which `appConfirm` cannot collect.
+  const sendEmailCode = useSendEmailChangeCode();
+  const changeEmail = useChangeUserEmail();
+  const createLink = useCreateSetupLink();
+  const bulkLinks = useBulkSetupLinks();
+  const isAdminCaller = callerRole === 'SUPER_ADMIN' || callerRole === 'DISTRICT_ADMIN' || callerRole === 'SCHOOL_ADMIN';
+  const setupAccounts = useSetupLinkAccounts(isAdminCaller);
+
+  const [emailFor, setEmailFor] = useState<string | null>(null);
+  const [emailNew, setEmailNew] = useState('');
+  const [emailPassword, setEmailPassword] = useState('');
+  const [emailCode, setEmailCode] = useState('');
+  const [emailCodeSentTo, setEmailCodeSentTo] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<string | null>(null);
+
+  const [linkFor, setLinkFor] = useState<string | null>(null);
+  const [linkPassword, setLinkPassword] = useState('');
+  const [linkError, setLinkError] = useState<string | null>(null);
+  const [linkResult, setLinkResult] = useState<{ email: string; url: string; expiresAt: string } | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
+
+  const [bulkPassword, setBulkPassword] = useState('');
+  const [bulkError, setBulkError] = useState<string | null>(null);
+  const [bulkDone, setBulkDone] = useState<string | null>(null);
+
+  const closeEmailPanel = () => {
+    setEmailFor(null); setEmailNew(''); setEmailPassword(''); setEmailCode('');
+    setEmailCodeSentTo(null); setEmailError(null);
+  };
+  const closeLinkPanel = () => {
+    setLinkFor(null); setLinkPassword(''); setLinkError(null); setLinkResult(null); setLinkCopied(false);
+  };
+
+  /** One map from the server's structured codes to plain words — never the message text. */
+  const adminErrorText = (err: unknown): string => {
+    const e = err as { code?: string; status?: number };
+    const byCode: Record<string, string> = {
+      ACCOUNT_ADMIN_BAD_PASSWORD: 'adminBadPassword',
+      ACCOUNT_ADMIN_PASSWORD_REQUIRED: 'adminBadPassword',
+      PASSWORD_REQUIRED: 'adminNoPassword',
+      USER_EMAIL_INVALID: 'emailInvalid',
+      USER_EMAIL_IN_USE: 'emailInUse',
+      USER_EMAIL_UNCHANGED: 'emailUnchanged',
+      USER_EMAIL_CHANGE_INVITED: 'emailInvited',
+      USER_EMAIL_CHANGE_SETUP_PENDING: 'emailSetupPending',
+      USER_EMAIL_CODE_INVALID: 'emailCodeWrong',
+      USER_EMAIL_CODE_REQUIRED: 'emailCodeWrong',
+      USER_EMAIL_CODE_EXPIRED: 'emailCodeExpired',
+      USER_EMAIL_CODE_LOCKED: 'emailCodeLocked',
+      USER_EMAIL_CODE_NOT_SENT: 'emailCodeNotSent',
+      USER_EMAIL_CODE_TOO_MANY: 'adminTooMany',
+      SETUP_LINK_HAS_FACTOR: 'setupLinkHasTwoStep',
+      SETUP_LINK_NOT_APPLICABLE: 'setupLinkNotApplicable',
+      SETUP_LINK_ACCOUNT_INACTIVE: 'setupLinkInactive',
+    };
+    if (e?.code && byCode[e.code]) return t(`settings.cc.people.${byCode[e.code]}`);
+    if (e?.status === 404) return t('settings.cc.people.adminGone');
+    if (e?.status === 429) return t('settings.cc.people.adminTooMany');
+    return t('settings.cc.people.adminFailed');
+  };
+
+  const handleEmailSubmit = async (user: TeamUser) => {
+    setEmailError(null);
+    setRowError(null);
+    const email = emailNew.trim().toLowerCase();
+    try {
+      if (!emailCodeSentTo) {
+        const step = await sendEmailCode.mutateAsync({ id: user.id, email, password: emailPassword });
+        if (step?.required) {
+          setEmailCodeSentTo(email);
+          return;
+        }
+      }
+      const out = await changeEmail.mutateAsync({
+        id: user.id,
+        email,
+        password: emailPassword,
+        code: emailCodeSentTo ? emailCode.replace(/\D/g, '') : undefined,
+      });
+      setResetDone(
+        out.verified
+          ? t('settings.cc.people.emailChangedVerified', { email: out.email })
+          : t('settings.cc.people.emailChangedUnverified', { email: out.email }),
+      );
+      closeEmailPanel();
+    } catch (err) {
+      setEmailError(adminErrorText(err));
+    }
+  };
+
+  const handleLinkSubmit = async (user: TeamUser) => {
+    setLinkError(null);
+    setRowError(null);
+    try {
+      const out = await createLink.mutateAsync({ id: user.id, password: linkPassword });
+      setLinkPassword('');
+      setLinkResult({ email: out.email, url: out.url, expiresAt: out.expiresAt });
+    } catch (err) {
+      setLinkError(adminErrorText(err));
+    }
+  };
+
+  const fmtDate = (iso: string) => new Date(iso).toLocaleDateString();
+
+  const handleBulkDownload = async () => {
+    setBulkError(null);
+    setBulkDone(null);
+    try {
+      const out = await bulkLinks.mutateAsync({ password: bulkPassword });
+      setBulkPassword('');
+      if (out.links.length > 0) {
+        const csv = setupLinksCsv(
+          out.links.map((l) => ({ ...l, role: tenantCopy.roleLabel(l.role) })),
+          {
+            location: t('settings.cc.people.csvLocation'),
+            name: t('settings.cc.people.csvName'),
+            currentEmail: t('settings.cc.people.csvCurrentEmail'),
+            role: t('settings.cc.people.csvRole'),
+            link: t('settings.cc.people.csvLink'),
+            expires: t('settings.cc.people.csvExpires'),
+          },
+        );
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+        const href = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = href;
+        a.download = setupLinksCsvFilename();
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(href), 1000);
+      }
+      const parts = [t('settings.cc.people.downloadLinksDone', { count: out.links.length })];
+      if (out.skipped.length) parts.push(t('settings.cc.people.downloadLinksSkipped', { count: out.skipped.length }));
+      setBulkDone(parts.join(' '));
+    } catch (err) {
+      setBulkError(adminErrorText(err));
     }
   };
 
@@ -627,6 +773,44 @@ export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
                             {t('settings.cc.people.resetMfa')}
                           </button>
                         )}
+                        {manageable && !isPending && !user.mustSetupCredentials && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setResetDone(null);
+                              closeLinkPanel();
+                              const opening = emailFor !== user.id;
+                              closeEmailPanel();
+                              if (opening) setEmailFor(user.id);
+                            }}
+                            aria-expanded={emailFor === user.id}
+                            aria-controls={`people-email-${user.id}`}
+                            title={t('settings.cc.people.changeEmailHint')}
+                            className="inline-flex items-center gap-1 min-h-[34px] px-2 rounded-[8px] border border-slate-200 bg-white text-[12px] font-medium text-slate-600 hover:bg-slate-50"
+                          >
+                            <AtSign className="w-3.5 h-3.5" aria-hidden />
+                            {t('settings.cc.people.changeEmail')}
+                          </button>
+                        )}
+                        {manageable && !!user.mustSetupCredentials && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setResetDone(null);
+                              closeEmailPanel();
+                              const opening = linkFor !== user.id;
+                              closeLinkPanel();
+                              if (opening) setLinkFor(user.id);
+                            }}
+                            aria-expanded={linkFor === user.id}
+                            aria-controls={`people-link-${user.id}`}
+                            title={t('settings.cc.people.setupLinkHint')}
+                            className="inline-flex items-center gap-1 min-h-[34px] px-2 rounded-[8px] border border-slate-200 bg-white text-[12px] font-medium text-slate-600 hover:bg-slate-50"
+                          >
+                            <Link2 className="w-3.5 h-3.5" aria-hidden />
+                            {t('settings.cc.people.setupLink')}
+                          </button>
+                        )}
                         {manageable && !isPending && (
                           <button
                             type="button"
@@ -758,6 +942,180 @@ export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
                           </div>
                         </form>
                       )}
+
+                      {emailFor === user.id && (
+                        <form
+                          id={`people-email-${user.id}`}
+                          onSubmit={(e) => { e.preventDefault(); handleEmailSubmit(user); }}
+                          className="md:col-span-4 mt-2 rounded-[11px] border border-slate-200 bg-slate-50/70 p-3.5"
+                        >
+                          <p className="text-[13px] font-medium text-slate-900">
+                            {t('settings.cc.people.changeEmailTitle', { email: user.email })}
+                          </p>
+                          <p className="mt-1 text-[12px] leading-[17px] text-slate-600">
+                            {t('settings.cc.people.changeEmailExplain')}
+                          </p>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                            <div>
+                              <label htmlFor={`people-email-new-${user.id}`} className="block text-[12px] font-medium text-slate-700 mb-1">
+                                {t('settings.cc.people.newEmail')}
+                              </label>
+                              <input
+                                id={`people-email-new-${user.id}`}
+                                type="email"
+                                autoComplete="off"
+                                maxLength={254}
+                                value={emailNew}
+                                disabled={!!emailCodeSentTo}
+                                onChange={(e) => setEmailNew(e.target.value)}
+                                className="w-full min-h-[42px] px-3 rounded-[9px] border border-slate-300 bg-white text-[13px] disabled:opacity-60"
+                              />
+                            </div>
+                            <div>
+                              <label htmlFor={`people-email-password-${user.id}`} className="block text-[12px] font-medium text-slate-700 mb-1">
+                                {t('settings.cc.people.yourPassword')}
+                              </label>
+                              <input
+                                id={`people-email-password-${user.id}`}
+                                type="password"
+                                autoComplete="current-password"
+                                value={emailPassword}
+                                onChange={(e) => setEmailPassword(e.target.value)}
+                                aria-describedby={`people-email-password-help-${user.id}`}
+                                className="w-full min-h-[42px] px-3 rounded-[9px] border border-slate-300 bg-white text-[13px]"
+                              />
+                              <p id={`people-email-password-help-${user.id}`} className="mt-1 text-[12px] text-slate-500">
+                                {t('settings.cc.people.yourPasswordHelp')}
+                              </p>
+                            </div>
+                            {emailCodeSentTo && (
+                              <div className="md:col-span-2">
+                                <p role="status" className="text-[12px] text-slate-700 mb-2">
+                                  {t('settings.cc.people.codeSentTo', { email: emailCodeSentTo })}
+                                </p>
+                                <label htmlFor={`people-email-code-${user.id}`} className="block text-[12px] font-medium text-slate-700 mb-1">
+                                  {t('settings.cc.people.codeLabel')}
+                                </label>
+                                <input
+                                  id={`people-email-code-${user.id}`}
+                                  type="text"
+                                  inputMode="numeric"
+                                  autoComplete="off"
+                                  maxLength={7}
+                                  value={emailCode}
+                                  onChange={(e) => setEmailCode(e.target.value)}
+                                  className="w-full md:w-[180px] min-h-[42px] px-3 rounded-[9px] border border-slate-300 bg-white text-[13px] font-mono"
+                                />
+                              </div>
+                            )}
+                          </div>
+                          {emailError && (
+                            <p role="alert" className="mt-2 text-[12px] leading-[17px] text-rose-700">{emailError}</p>
+                          )}
+                          <div className="flex flex-wrap gap-2 mt-3.5">
+                            <button
+                              type="submit"
+                              disabled={
+                                sendEmailCode.isPending || changeEmail.isPending || !emailNew.trim() || emailPassword.length === 0 ||
+                                (!!emailCodeSentTo && emailCode.replace(/\D/g, '').length !== 6)
+                              }
+                              className="min-h-[42px] px-4 rounded-[10px] text-[13px] font-medium text-[var(--brand-primary-ink)] disabled:opacity-50"
+                              style={{ background: 'var(--brand-primary)' }}
+                            >
+                              {sendEmailCode.isPending || changeEmail.isPending
+                                ? t('settings.cc.people.changingEmail')
+                                : t('settings.cc.people.applyEmail')}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={closeEmailPanel}
+                              className="min-h-[42px] px-4 rounded-[10px] border border-slate-200 bg-white text-[13px] font-medium text-slate-600"
+                            >
+                              {t('settings.common.cancel')}
+                            </button>
+                          </div>
+                        </form>
+                      )}
+
+                      {linkFor === user.id && (
+                        <form
+                          id={`people-link-${user.id}`}
+                          onSubmit={(e) => { e.preventDefault(); handleLinkSubmit(user); }}
+                          className="md:col-span-4 mt-2 rounded-[11px] border border-slate-200 bg-slate-50/70 p-3.5"
+                        >
+                          <p className="text-[13px] font-medium text-slate-900">
+                            {t('settings.cc.people.setupLinkTitle', { email: user.email })}
+                          </p>
+                          <p className="mt-1 text-[12px] leading-[17px] text-slate-600">
+                            {t('settings.cc.people.setupLinkExplain')}
+                          </p>
+                          {linkResult ? (
+                            <div role="status" className="mt-3">
+                              <p className="text-[12px] font-medium text-emerald-800">
+                                {t('settings.cc.people.setupLinkReady', { email: linkResult.email, date: fmtDate(linkResult.expiresAt) })}
+                              </p>
+                              <div className="mt-2 flex flex-col sm:flex-row gap-2">
+                                <label htmlFor={`people-link-url-${user.id}`} className="sr-only">{t('settings.cc.people.setupLinkLabel')}</label>
+                                <input
+                                  id={`people-link-url-${user.id}`}
+                                  readOnly
+                                  value={linkResult.url}
+                                  onFocus={(e) => e.currentTarget.select()}
+                                  className="flex-1 min-h-[38px] px-2 rounded-[8px] border border-slate-300 bg-white text-[11px] font-mono"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    navigator.clipboard?.writeText(linkResult.url);
+                                    setLinkCopied(true);
+                                    setTimeout(() => setLinkCopied(false), 1500);
+                                  }}
+                                  className="min-h-[38px] px-3 rounded-[8px] text-[12px] font-medium text-[var(--brand-primary-ink)]"
+                                  style={{ background: 'var(--brand-primary)' }}
+                                >
+                                  {linkCopied ? t('settings.common.copied') : t('settings.cc.people.copyLink')}
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="mt-3 md:max-w-[50%]">
+                              <label htmlFor={`people-link-password-${user.id}`} className="block text-[12px] font-medium text-slate-700 mb-1">
+                                {t('settings.cc.people.yourPassword')}
+                              </label>
+                              <input
+                                id={`people-link-password-${user.id}`}
+                                type="password"
+                                autoComplete="current-password"
+                                value={linkPassword}
+                                onChange={(e) => setLinkPassword(e.target.value)}
+                                className="w-full min-h-[42px] px-3 rounded-[9px] border border-slate-300 bg-white text-[13px]"
+                              />
+                            </div>
+                          )}
+                          {linkError && (
+                            <p role="alert" className="mt-2 text-[12px] leading-[17px] text-rose-700">{linkError}</p>
+                          )}
+                          <div className="flex flex-wrap gap-2 mt-3.5">
+                            {!linkResult && (
+                              <button
+                                type="submit"
+                                disabled={createLink.isPending || linkPassword.length === 0}
+                                className="min-h-[42px] px-4 rounded-[10px] text-[13px] font-medium text-[var(--brand-primary-ink)] disabled:opacity-50"
+                                style={{ background: 'var(--brand-primary)' }}
+                              >
+                                {createLink.isPending ? t('settings.cc.people.setupLinkWorking') : t('settings.cc.people.setupLinkCreate')}
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={closeLinkPanel}
+                              className="min-h-[42px] px-4 rounded-[10px] border border-slate-200 bg-white text-[13px] font-medium text-slate-600"
+                            >
+                              {linkResult ? t('settings.cc.people.setupLinkDone') : t('settings.common.cancel')}
+                            </button>
+                          </div>
+                        </form>
+                      )}
                     </li>
                   );
                 })}
@@ -788,6 +1146,77 @@ export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
           </ul>
         )}
       </EditorSection>
+
+      {/* ── First sign-in links (2026-10-10) ─────────────────────────────
+          Accounts in this organisation and its locations still on their
+          provisioning starter credentials. One CSV of one-time links replaces
+          handing out guessable starter passwords. */}
+      {isAdminCaller && (setupAccounts.data?.accounts?.length ?? 0) > 0 && (
+        <EditorSection
+          id="setup-links"
+          title={t('settings.cc.people.setupLinksTitle')}
+          description={t('settings.cc.people.setupLinksDescription')}
+        >
+          <p className="text-[13px] text-slate-700 mb-2">
+            {t('settings.cc.people.setupLinksCount', { count: setupAccounts.data!.accounts.length })}
+          </p>
+          <ul className="divide-y divide-slate-100 border-t border-slate-100 mb-3">
+            {setupAccounts.data!.accounts.map((a) => (
+              <li key={a.id} className="flex flex-wrap items-center gap-2 px-2 py-2.5">
+                <span className="text-[13px] text-slate-900 min-w-0 truncate">{a.tenantName || a.email}</span>
+                <span className="text-[12px] text-slate-500 min-w-0 truncate">{a.email}</span>
+                <StatusPill
+                  className="ml-auto"
+                  kind={a.hasTwoStep ? 'blocked' : a.link === 'active' ? 'ready' : 'attention'}
+                  label={
+                    a.hasTwoStep
+                      ? t('settings.cc.people.linkStatusTwoStep')
+                      : a.link === 'active' && a.linkExpiresAt
+                        ? t('settings.cc.people.linkStatusActive', { date: fmtDate(a.linkExpiresAt) })
+                        : a.link === 'used'
+                          ? t('settings.cc.people.linkStatusUsed')
+                          : a.link === 'expired'
+                            ? t('settings.cc.people.linkStatusExpired')
+                            : t('settings.cc.people.linkStatusNone')
+                  }
+                />
+              </li>
+            ))}
+          </ul>
+          <form
+            onSubmit={(e) => { e.preventDefault(); handleBulkDownload(); }}
+            className="rounded-[11px] border border-slate-200 bg-slate-50/70 p-3.5"
+          >
+            <p className="text-[12px] leading-[17px] text-slate-600 mb-2">{t('settings.cc.people.downloadLinksExplain')}</p>
+            <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
+              <div className="flex-1 min-w-0">
+                <label htmlFor="people-bulk-password" className="block text-[12px] font-medium text-slate-700 mb-1">
+                  {t('settings.cc.people.yourPassword')}
+                </label>
+                <input
+                  id="people-bulk-password"
+                  type="password"
+                  autoComplete="current-password"
+                  value={bulkPassword}
+                  onChange={(e) => setBulkPassword(e.target.value)}
+                  className="w-full min-h-[42px] px-3 rounded-[9px] border border-slate-300 bg-white text-[13px]"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={bulkLinks.isPending || bulkPassword.length === 0}
+                className="inline-flex items-center justify-center gap-1.5 min-h-[42px] px-4 rounded-[10px] text-[13px] font-medium text-[var(--brand-primary-ink)] disabled:opacity-50"
+                style={{ background: 'var(--brand-primary)' }}
+              >
+                <Download className="w-4 h-4" aria-hidden />
+                {bulkLinks.isPending ? t('settings.cc.people.downloadLinksWorking') : t('settings.cc.people.downloadLinks')}
+              </button>
+            </div>
+            {bulkError && <p role="alert" className="mt-2 text-[12px] text-rose-700">{bulkError}</p>}
+            {bulkDone && <p role="status" className="mt-2 text-[12px] text-emerald-800">{bulkDone}</p>}
+          </form>
+        </EditorSection>
+      )}
 
       {/* ── Roles and capabilities (read-only explainer) ────────────── */}
       <EditorSection
