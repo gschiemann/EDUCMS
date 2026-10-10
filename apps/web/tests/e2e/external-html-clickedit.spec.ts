@@ -282,7 +282,8 @@ test.describe('EXTERNAL_HTML boards report clicks (hot-zones)', () => {
       // between measuring and clicking, and the test called a working board
       // dead. Prediction cannot win that race — so don't predict.
       //
-      // A capture listener on `document` is the FIRST node in the capture path,
+      // A capture listener on `window` precedes the companion's document
+      // capture handler, which stops propagation after selecting a media slot.
       // so it sees the same event, with the same `ev.target`, before any of the
       // shim's element listeners run (and their stopPropagation() cannot
       // retroactively unrun it). Applying the shim's own `closest()` rule to
@@ -292,13 +293,15 @@ test.describe('EXTERNAL_HTML boards report clicks (hot-zones)', () => {
       await page.evaluate(() => {
         const SEL = '[data-field],[data-mediafield],[data-imgslot],[data-img],[data-slot],[data-action],[data-videoslot],[data-posterslot]';
         (window as any).__expectedKey = null;
-        document.addEventListener(
+        window.addEventListener(
           'click',
           (ev) => {
             const t = ev.target as Element | null;
             const reporter = t && t.closest ? t.closest(SEL) : null;
             if (!reporter) return;
-            (window as any).__expectedKey =
+            const mediaKey = reporter.matches('[data-imgslot],[data-posterslot],[data-img],[data-widget="image-slot"],[data-videoslot]')
+              ? reporter.getAttribute('data-videoslot') || reporter.getAttribute('data-imgslot') || reporter.getAttribute('data-posterslot') || reporter.getAttribute('data-slot') || reporter.getAttribute('data-img') : null;
+            (window as any).__expectedKey = mediaKey ||
               reporter.getAttribute('data-action') || reporter.getAttribute('data-mediafield') ||
               reporter.getAttribute('data-field') || reporter.getAttribute('data-imgslot') ||
               reporter.getAttribute('data-videoslot') || reporter.getAttribute('data-posterslot') ||

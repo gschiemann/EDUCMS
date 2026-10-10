@@ -38,6 +38,11 @@ describe('templatePosterUrl', () => {
       expect(templatePosterUrl(customized)).toBeNull();
     });
 
+    it('renders media fit/rotation and video replacements live instead of hiding them behind the default poster', () => {
+      expect(templatePosterUrl(board('/templates/hs/a.html', { mediaStyles: { hero: { rotation: 90, fit: 'contain' } } }))).toBeNull();
+      expect(templatePosterUrl(board('/templates/hs/a.html', { videoOverrides: { hero: '/clip.mp4' } }))).toBeNull();
+    });
+
     it('is allowed when the caller opts in — a table row cannot mount a live 4K frame', () => {
       expect(templatePosterUrl(customized, { allowCustomized: true }))
         .toBe(`/templates/_thumbs/hs/a.png?v=${POSTER_VERSION}`);

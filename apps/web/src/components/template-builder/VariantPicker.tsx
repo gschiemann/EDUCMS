@@ -45,7 +45,7 @@
  */
 
 import { useMemo, useState, useEffect, type ReactNode } from 'react';
-import { Search, X, SlidersHorizontal, ChevronRight, RotateCcw } from 'lucide-react';
+import { Search, X, SlidersHorizontal, ChevronRight, RotateCcw, Image as ImageIcon, Video, Type } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
 import '@/components/widgets/variants-register'; // boot-time registration
 import {
@@ -58,11 +58,13 @@ import { WidgetErrorBoundary } from '@/components/widgets/WidgetErrorBoundary';
 // Wave B / editor-crush B6a (2026-07-02) — smart drop sizes so palette adds
 // land at their natural footprint (shared with BuilderShell.handleDragEnd).
 import { resolveDropSize } from './drop-sizes';
+import { openMediaPicker } from './media-sizing';
 import {
   WIDGET_CATEGORIES, OTHER_CATEGORY, categoryForType,
   friendlyTypeLabel, friendlyVariantName,
   deriveStyleOptions, derivePlaceOptions, matchesStyle, matchesPlace,
   curatedFlagships, CURATED_LIMIT,
+  orderWidgetVariants, matchesWidgetSearch,
 } from './widget-catalog';
 
 /** Tiles shown in a category row before the operator has to say "See all". */
@@ -296,14 +298,9 @@ export function VariantPicker({ replaceZoneId }: VariantPickerProps = {}) {
       });
     }
     if (searching) {
-      const q = search.trim().toLowerCase();
-      list = list.filter(v =>
-        v.name.toLowerCase().includes(q) ||
-        (v.description?.toLowerCase().includes(q)) ||
-        friendlyTypeLabel(String(v.widgetType)).toLowerCase().includes(q),
-      );
+      list = list.filter(v => matchesWidgetSearch(v, search));
     }
-    return list;
+    return orderWidgetVariants(list);
   }, [visible, typeFilter, category, style, place, level, isK12, search, searching]);
 
   // The curated default — ≤12 flagship widgets for THIS tenant, never the
@@ -324,7 +321,7 @@ export function VariantPicker({ replaceZoneId }: VariantPickerProps = {}) {
       if (arr) arr.push(v); else buckets.set(cid, [v]);
     }
     const ordered = [...WIDGET_CATEGORIES, OTHER_CATEGORY]
-      .map(c => ({ cat: c, items: buckets.get(c.id) || [] }))
+      .map(c => ({ cat: c, items: orderWidgetVariants(buckets.get(c.id) || []) }))
       .filter(r => r.items.length > 0);
     return ordered;
   }, [visible]);
@@ -341,6 +338,10 @@ export function VariantPicker({ replaceZoneId }: VariantPickerProps = {}) {
     : (replaceMode && selected ? 'replace' : 'add');
 
   const handlePick = (v: WidgetVariant, action: PickAction) => {
+    if (v.id === 'image-basic' || v.id === 'video-basic') {
+      openMediaPicker({ kind: v.id === 'image-basic' ? 'image' : 'video', ...(action === 'replace' && selected ? { zoneId: selected.id, replaceWidget: true } : {}) });
+      return;
+    }
     if (action !== 'add' && selected) {
       // FILL the seeded placeholder, or an explicit REPLACE. Keeps the zone's
       // position and size — that is the whole point — and is one undo step.
@@ -365,13 +366,19 @@ export function VariantPicker({ replaceZoneId }: VariantPickerProps = {}) {
 
   return (
     <div className="flex flex-col h-full min-h-0 overflow-hidden">
-      {/* Quick layouts — a starting split for the canvas. Hidden while the
-          operator is narrowing the library; it is a layout tool, not a
-          search result. */}
-      {!browsing && <QuickLayoutsSection />}
-
       {/* ── Header: ONE search field + ONE filter button ──────────────── */}
       <div className="px-4 py-3 border-b border-slate-100 shrink-0 space-y-2">
+        <div className="grid grid-cols-3 gap-2" role="group" aria-label="Add to your design">
+          <button type="button" onClick={() => openMediaPicker({ kind: 'image' })} className="flex flex-col items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-3 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 focus-visible:outline-2 focus-visible:outline-indigo-500">
+            <ImageIcon className="h-5 w-5" aria-hidden /> Image
+          </button>
+          <button type="button" onClick={() => openMediaPicker({ kind: 'video' })} className="flex flex-col items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-3 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 focus-visible:outline-2 focus-visible:outline-indigo-500">
+            <Video className="h-5 w-5" aria-hidden /> Video
+          </button>
+          <button type="button" onClick={() => { addZone('TEXT', undefined, resolveDropSize('TEXT'), { replacePlaceholder: true }); }} className="flex flex-col items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2 py-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-indigo-500">
+            <Type className="h-5 w-5" aria-hidden /> Text
+          </button>
+        </div>
         <div className="flex items-center gap-2">
           <div className="relative flex-1 min-w-0">
             <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden />
@@ -496,9 +503,24 @@ export function VariantPicker({ replaceZoneId }: VariantPickerProps = {}) {
           </>
         ) : (
           <div className="space-y-5">
+            <Section
+              title={selectedIsPlaceholder ? 'Start here' : 'Most used'}
+              blurb="The handful most boards actually start with."
+              count={curated.length}
+            >
+              <TileGrid
+                slot="curated"
+                variants={curated}
+                selectedVariantId={zoneVariantId(selected)}
+                action={defaultAction}
+                zoneName={selectedName}
+                onPick={handlePick}
+              />
+            </Section>
+
             {/* Restyle — the one place a click is always a REPLACE, and it
                 says so on every tile. Only for an occupied zone. */}
-            {restyleOptions.length > 0 && selected && (
+            {restyleOptions.length > 1 && selected && (
               <Section
                 title={`Restyle “${selectedName}”`}
                 blurb="These swap this widget's look. They replace it — they don't add another."
@@ -515,21 +537,6 @@ export function VariantPicker({ replaceZoneId }: VariantPickerProps = {}) {
                 />
               </Section>
             )}
-
-            <Section
-              title={selectedIsPlaceholder ? 'Start here' : 'Most used'}
-              blurb="The handful most boards actually start with."
-              count={curated.length}
-            >
-              <TileGrid
-                slot="curated"
-                variants={curated}
-                selectedVariantId={zoneVariantId(selected)}
-                action={defaultAction}
-                zoneName={selectedName}
-                onPick={handlePick}
-              />
-            </Section>
 
             {rows.map(({ cat, items }) => (
               <Section
@@ -549,6 +556,7 @@ export function VariantPicker({ replaceZoneId }: VariantPickerProps = {}) {
                 />
               </Section>
             ))}
+            <QuickLayoutsSection />
           </div>
         )}
       </div>

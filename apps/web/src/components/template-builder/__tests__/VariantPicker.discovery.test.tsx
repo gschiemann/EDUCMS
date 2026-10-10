@@ -110,7 +110,7 @@ describe('a brand-new template opens on widgets, not on nothing', () => {
 
   it('clicking a widget FILLS the placeholder instead of stacking a box on top of it', () => {
     mountPicker();
-    fireEvent.click(tiles()[0]);
+    fireEvent.click(screen.getAllByRole('button', { name: /^Add Sticky Note / })[0]);
     const state = useBuilderStore.getState();
     expect(state.zones).toHaveLength(1);               // no orphan placeholder left behind
     expect(state.zones[0].id).toBe(PLACEHOLDER_ZONE.id);
@@ -225,7 +225,7 @@ describe('ADD and REPLACE are different gestures', () => {
     // Pick from the CATALOGUE, not the restyle row — the restyle row is a
     // deliberate replace surface and is asserted separately below.
     const library = screen.getByText('Most used').closest('section')!;
-    fireEvent.click(within(library).getAllByRole('button', { name: /^Add / })[0]);
+    fireEvent.click(within(library).getByRole('button', { name: /^Add Sticky Note/ }));
     expect(useBuilderStore.getState().zones).toHaveLength(2);
     expect(useBuilderStore.getState().zones[0].widgetType).toBe('CLOCK');
   });
@@ -233,7 +233,7 @@ describe('ADD and REPLACE are different gestures', () => {
   it('REPLACE is an explicit, labelled choice that keeps the zone in place', () => {
     mountPicker();
     fireEvent.click(screen.getByRole('button', { name: /^Replace “Clock 1”$/ }));
-    const tile = screen.getAllByRole('button', { name: /^Replace “Clock 1” with / })[0];
+    const tile = screen.getAllByRole('button', { name: /^Replace “Clock 1” with Sticky Note/ })[0];
     fireEvent.click(tile);
     const state = useBuilderStore.getState();
     expect(state.zones).toHaveLength(1);                 // replaced, not appended
@@ -254,11 +254,22 @@ describe('ADD and REPLACE are different gestures', () => {
   it('every tile is operable by keyboard — drag is never the only route', () => {
     mountPicker();
     const library = screen.getByText('Most used').closest('section')!;
-    const tile = within(library).getAllByRole('button', { name: /^Add / })[0];
+    const tile = within(library).getByRole('button', { name: /^Add Sticky Note/ });
     expect(tile.getAttribute('tabindex')).toBe('0');
     fireEvent.keyDown(tile, { key: 'Enter' });
     expect(useBuilderStore.getState().zones).toHaveLength(2);
   });
+});
+
+it('the quick Text action replaces the empty starter and undoes in one step', () => {
+  setZones([PLACEHOLDER_ZONE], [PLACEHOLDER_ZONE.id]);
+  mountPicker();
+  fireEvent.click(within(screen.getByRole('group', { name: 'Add to your design' })).getByRole('button', { name: /^Text$/ }));
+  expect(useBuilderStore.getState().zones).toHaveLength(1);
+  expect(useBuilderStore.getState().zones[0].widgetType).toBe('TEXT');
+  expect(useBuilderStore.getState().zones[0].width).toBeLessThan(100);
+  act(() => useBuilderStore.getState().undo());
+  expect(useBuilderStore.getState().zones).toEqual([PLACEHOLDER_ZONE]);
 });
 
 describe('industry chrome never leaks from an inferred vertical', () => {

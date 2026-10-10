@@ -665,10 +665,30 @@ There are **three** template-editing architectures; do not confuse them:
 
 **The EXTERNAL_HTML shim does TWO jobs (since V5, 2026-06-07):** (a) apply overrides INBOUND (brand/text/image/styles), and (b) **report clicks OUTBOUND** — the "hot zones": click an element in the builder → the panel jumps to that element's field editor. The protocol the panel speaks: `educms-ready` (load) · `educms-edit-mode {on}` (panel→iframe, arms hover-outline + click-report; NEVER sent on the live player) · `educms-field-click {key,kind}` (iframe→panel, drives the jump). The walker keys off `data-field`/`data-imgslot`/`data-action` — so **every editable element needs one of those** (same contract as editability).
 
-**The shim is INJECTED, never hand-written.** Three injectors:
+**The shim is INJECTED, never hand-written.** Existing apply/click mechanisms:
 - `apps/web/scripts/inject-shim-v2.cjs` → bakes the current **EDUCMS-SHIM-V14** (apply + click-to-edit) into static boards, replacing every older marker (V12…V2, `EDUCMS-BRAND-SHIM`) in place. The version lives at `inject-shim-v2.cjs:66` — read it, don't trust this line (it said "V5" here until 2026-09-11). The subdirectory argument is **optional and scopes the walk**; with no argument it walks all of `public/templates`, which is what you normally want: `node apps/web/scripts/inject-shim-v2.cjs` (or `… school`, `… signage/qsr`, …).
 - `apps/web/scripts/inject-click-shim.cjs` → an **additive** click-only shim for the 30 `signage/{qsr,menus-pos,bar}` MENU boards, whose hand-crafted V5 carries `applyMenu()` (live per-location POS price + auto-86) that must NOT be clobbered. `node apps/web/scripts/inject-click-shim.cjs signage`.
 - Kiosks load the external `public/templates/kiosk/_edit-shim.js` (apply + click + kiosk engine-render hook). The injectors **skip** any file referencing it (no double-shim).
+
+**Shared media controls (2026-10-10).** `apps/web/scripts/board-media-controls.ts` is an
+additive companion, baked into all packaged boards by
+`node apps/web/scripts/inject-media-controls.cjs` (`EDUCMS-MEDIA-CONTROLS-V1`). Run it
+after adding a board or changing the companion; never hand-edit its generated script.
+It preserves the existing V14, menu/POS and kiosk shims. Advertised
+`educms-media-ready` slots use the editor's shared Replace / Fit / Rotate toolbar;
+their saved overrides live in `defaultConfig.mediaStyles`, `imageOverrides` and
+`videoOverrides`. Media changes use postMessage without reloading a kiosk's current
+screen. Embedded slots retain their authored frames; separately added Image / Video
+zones use the same insertion and gesture controls on blank and preset canvases.
+The mounted bottom bar is **inside `BuilderShell.tsx`**, not `BottomToolbar.tsx`.
+Keep Image / Video / Text quick actions above search, everyday media first in
+the curated list, and Photos & video first in the full library. New media is
+chosen before insertion and uses its source proportions; rotation and fit belong
+in the visible selection toolbar. Preserve these paths on blank and preset canvases.
+Regenerate affected gallery posters and their provenance, then bump `POSTER_VERSION`
+in `src/lib/template-poster.ts`. The behavioral coverage is
+`builder-media-editing.spec.ts` and the discovered full-corpus
+`board-media-compatibility.spec.ts` (Chromium + WebKit).
 
 **⚠️ REDESIGN INVARIANT — the trap that caused the 2026-06-07 "none of the templates can be edited" fire:** when you edit/redesign an existing board, the OLD shim block stays baked in. A board left on the apply-only V4 shim is **un-editable by click**. So **after editing ANY `public/templates/**` board, re-run the injector for its subdir** (and `inject-click-shim.cjs` for menu boards). Confirm with the sweep + the real-browser tests:
 ```bash

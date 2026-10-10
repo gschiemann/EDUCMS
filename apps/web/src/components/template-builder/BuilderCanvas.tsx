@@ -14,6 +14,8 @@ import { canvasFrameStyle } from './canvas-frame-style';
 import { healPatternCss } from '@/lib/pattern-css';
 import { snapMove, snapResize } from './snap-engine';
 import type { ResizeHandle, SnapLine, Zone } from './types';
+import { readMediaDimensions } from './media-sizing';
+import { rotateResizeFrame } from './zone-geometry';
 
 interface Rect { x: number; y: number; width: number; height: number }
 
@@ -60,17 +62,19 @@ export async function placeDroppedImageFiles(
   dropAt?: { x: number; y: number },
 ): Promise<string[]> {
   const newIds: string[] = [];
+  const templateId = useBuilderStore.getState().templateId;
   for (let i = 0; i < files.length; i++) {
     try {
       // 2026-09-23 — direct to storage; the created asset's `fileUrl` (the old
       // multipart response had no `url`, so zones got an undefined source).
       const { fileUrl: url } = await uploadAssetDirect(files[i]);
+      const dimensions = await readMediaDimensions(url, 'image');
       const st = useBuilderStore.getState();
+      if (st.templateId !== templateId) return newIds;
       const at = dropAt
         ? { x: Math.min(100, dropAt.x + i * 3), y: Math.min(100, dropAt.y + i * 3) }
         : undefined;
-      const id = st.addZone('IMAGE', at);
-      st.updateZone(id, { defaultConfig: { assetUrl: url } });
+      const id = st.addMediaZone('image', url, dimensions, at);
       newIds.push(id);
     } catch (err) {
       console.error('Canvas drop upload failed:', err);
@@ -184,8 +188,9 @@ export function resizeWithModifiers(
   if (handle.includes('s')) rawH = orig.height + dy * f;
   if (handle.includes('n')) rawH = orig.height - dy * f;
 
-  let nw = Math.max(3, rawW);
-  let nh = Math.max(3, rawH);
+  const minimum = ASPECT_DEFAULT_TYPES.has(widgetType) ? 0.1 : 3;
+  let nw = Math.max(minimum, rawW);
+  let nh = Math.max(minimum, rawH);
   if (aspectLock) {
     // Dominant pointer axis drives the scale; the other follows the
     // original ratio. Floored so neither dimension collapses below the
@@ -193,7 +198,7 @@ export function resizeWithModifiers(
     const scaleW = rawW / orig.width;
     const scaleH = rawH / orig.height;
     let scale = Math.abs(scaleW - 1) >= Math.abs(scaleH - 1) ? scaleW : scaleH;
-    scale = Math.max(scale, 3 / orig.width, 3 / orig.height);
+    scale = Math.max(scale, minimum / orig.width, minimum / orig.height);
     nw = orig.width * scale;
     nh = orig.height * scale;
   }
@@ -572,6 +577,7 @@ export function BuilderCanvas() {
   const [dragState, setDragState] = useState<
     | { mode: 'move'; zoneId: string; startX: number; startY: number; origs: Record<string, Zone> }
     | { mode: 'resize'; zoneId: string; handle: ResizeHandle; startX: number; startY: number; orig: Zone }
+    | { mode: 'rotate'; zoneId: string; centerX: number; centerY: number; startAngle: number; rotation: number }
     // A3 — group resize. `box` is the selection's bounding rect at drag
     // start; `origs` holds every selected zone's own rect at drag start
     // so each one can be scaled proportionally relative to `box`'s
@@ -661,6 +667,18 @@ export function BuilderCanvas() {
     setDragState({ mode: 'resize', zoneId, handle, startX: e.clientX, startY: e.clientY, orig: { ...orig } });
   }, [zones, selectedIds, select, beginTransaction]);
 
+  const onRotatePointerDown = useCallback((e: React.PointerEvent, zoneId: string) => {
+    e.preventDefault(); e.stopPropagation();
+    const zone = zones.find(z => z.id === zoneId);
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!zone || zone.locked || !rect) return;
+    const centerX = rect.left + (zone.x + zone.width / 2) / 100 * rect.width;
+    const centerY = rect.top + (zone.y + zone.height / 2) / 100 * rect.height;
+    const rotation = Number(zone.defaultConfig?._zoneRotation) || 0;
+    beginTransaction();
+    setDragState({ mode: 'rotate', zoneId, centerX, centerY, rotation, startAngle: Math.atan2(e.clientY - centerY, e.clientX - centerX) });
+  }, [zones, beginTransaction]);
+
   // A3 — group resize. Fired from the ONE shared bounding-box handle
   // set BuilderCanvas renders when selectedIds.length > 1 (see the
   // groupBox render block below). Captures every selected zone's rect
@@ -689,10 +707,17 @@ export function BuilderCanvas() {
       const canvas = canvasRef.current;
       if (!canvas) return;
       const rect = canvas.getBoundingClientRect();
-      const dx = (e.clientX - dragState.startX) / rect.width * 100;
-      const dy = (e.clientY - dragState.startY) / rect.height * 100;
+      const dx = dragState.mode === 'rotate' ? 0 : (e.clientX - dragState.startX) / rect.width * 100;
+      const dy = dragState.mode === 'rotate' ? 0 : (e.clientY - dragState.startY) / rect.height * 100;
 
-      if (dragState.mode === 'move') {
+      if (dragState.mode === 'rotate') {
+        const angle = Math.atan2(e.clientY - dragState.centerY, e.clientX - dragState.centerX);
+        let degrees = ((dragState.rotation + (angle - dragState.startAngle) * 180 / Math.PI) % 360 + 360) % 360;
+        const snap = e.shiftKey ? 15 : 90;
+        if (e.shiftKey || Math.abs(degrees - Math.round(degrees / snap) * snap) < 3) degrees = Math.round(degrees / snap) * snap % 360;
+        const zone = useBuilderStore.getState().zones.find(z => z.id === dragState.zoneId);
+        if (zone && !zone.locked) updateZone(zone.id, { defaultConfig: { ...zone.defaultConfig, _zoneRotation: Math.round(degrees) } });
+      } else if (dragState.mode === 'move') {
         const ids = Object.keys(dragState.origs);
         const primary = dragState.origs[dragState.zoneId];
         if (!primary) return;
@@ -718,6 +743,26 @@ export function BuilderCanvas() {
       } else if (dragState.mode === 'resize') {
         const o = dragState.orig;
         const h = dragState.handle;
+        const rotation = Number(o.defaultConfig?._zoneRotation) || 0;
+        if (rotation % 360 !== 0) {
+          const angle = rotation * Math.PI / 180;
+          const px = dx / 100 * rect.width, py = dy / 100 * rect.height;
+          const localDx = (px * Math.cos(angle) + py * Math.sin(angle)) / rect.width * 100;
+          const localDy = (-px * Math.sin(angle) + py * Math.cos(angle)) / rect.height * 100;
+          let resized = resizeWithModifiers(o, o.widgetType, h, localDx, localDy, { shiftKey: e.shiftKey, altKey: e.altKey });
+          if (!resized) {
+            let x = o.x, y = o.y, width = o.width, height = o.height;
+            const minimum = ASPECT_DEFAULT_TYPES.has(o.widgetType) ? 0.1 : 3;
+            if (h.includes('e')) width = Math.max(minimum, o.width + localDx);
+            if (h.includes('s')) height = Math.max(minimum, o.height + localDy);
+            if (h.includes('w')) { const delta = Math.min(localDx, o.width - minimum); x += delta; width -= delta; }
+            if (h.includes('n')) { const delta = Math.min(localDy, o.height - minimum); y += delta; height -= delta; }
+            resized = { x, y, width, height };
+          }
+          setActiveSnapLines([]);
+          updateZone(o.id, rotateResizeFrame(o, resized, rotation, rect));
+          return;
+        }
         // A5 — modifier-constrained resize (aspect-lock / from-center).
         // When a constraint is active it owns the geometry: no edge
         // snapping, no guide lines (matching how Canva relaxes snap
@@ -785,9 +830,11 @@ export function BuilderCanvas() {
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
     return () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
     };
   }, [dragState, zones, gridSize, snapEnabled, showGrid, showGuides, updateZone, updateZones, endTransaction]);
 
@@ -1041,7 +1088,7 @@ export function BuilderCanvas() {
               aria-hidden
               className="absolute top-3 left-3 pointer-events-none px-3 py-1.5 rounded-full bg-white/80 backdrop-blur-sm shadow-md border border-indigo-200/60 text-[10px] font-bold text-indigo-700 tracking-wider uppercase"
             >
-              Now add a widget â†’
+              Add an image, video, or text to get started
             </div>
           )}
 
@@ -1075,7 +1122,7 @@ export function BuilderCanvas() {
               selecting a full-screen background must not hide the widgets on it). */}
           {!previewMode && selectedIds.length === 1 && (() => {
             const z = zones.find((zz) => zz.id === selectedIds[0]);
-            return z ? <SelectionChrome zone={z} onResizePointerDown={onResizePointerDown} /> : null;
+            return z ? <SelectionChrome zone={z} onResizePointerDown={onResizePointerDown} onRotatePointerDown={onRotatePointerDown} /> : null;
           })()}
 
           {/* A3 — group resize. One shared bounding box with corner

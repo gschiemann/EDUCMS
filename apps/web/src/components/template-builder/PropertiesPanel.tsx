@@ -25,6 +25,8 @@ import { CSS as DndCSS } from '@dnd-kit/utilities';
 import { useBuilderStore } from './useBuilderStore';
 import { MakeItLive } from './MakeItLive';
 import { fitHeightGeometry } from './zone-geometry';
+import { mediaSourcePatch } from './media-source';
+import { readMediaDimensions, type MediaKind } from './media-sizing';
 import { widgetLabel } from './constants';
 import { transformedImageUrl } from '@/lib/asset-image';
 import { ALL_V2_WIDGETS } from '@/components/widgets/v2/registry';
@@ -2711,6 +2713,15 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
   // rewrite endpoint needs the zone's rendered px box to target a length.
   const canvasW = useBuilderStore((s) => s.meta.screenWidth);
   const canvasH = useBuilderStore((s) => s.meta.screenHeight);
+  const mediaChoice = useRef(0);
+  const setMediaField = async (url: string, kind: MediaKind) => {
+    const choice = ++mediaChoice.current;
+    const dimensions = url ? await readMediaDimensions(url, kind) : null;
+    if (choice !== mediaChoice.current) return;
+    const live = useBuilderStore.getState().zones.find(z => z.id === zone.id);
+    if (live && live.defaultConfig !== zone.defaultConfig) return;
+    updateZone(zone.id, mediaSourcePatch(live || zone, url, kind, dimensions, { width: canvasW, height: canvasH }), true);
+  };
   const zonePx = {
     w: Math.round(((Number(zone.width) || 0) / 100) * (canvasW || 1920)),
     h: Math.round(((Number(zone.height) || 0) / 100) * (canvasH || 1080)),
@@ -4367,7 +4378,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       // 2026-05-03 — v2 LOGO_* variants read `c.logoUrl` not `assetUrl`.
       // Mirror BOTH so legacy + v2 see the same picked image. Renderer
       // priority: image first, then mascot/emoji fallback.
-      fields.push(<AssetPickerField key="assetUrl" label="Logo image (optional)" value={cfg.assetUrl || cfg.logoUrl || ''} kind="image" onChange={(v) => setField({ assetUrl: v, logoUrl: v })} />);
+      fields.push(<AssetPickerField key="assetUrl" label="Logo image (optional)" value={cfg.assetUrl || cfg.logoUrl || ''} kind="image" onChange={(v) => { void setMediaField(v, 'image'); }} />);
       // v2 extras — tagline, established year, mascot emoji. Optional;
       // legacy widget ignores them silently.
       fields.push(<TextField key="tagline" label="Tagline (optional)" value={cfg.tagline || ''} placeholder="Home of the Eagles" onChange={(v) => setField({ tagline: v })} />);
@@ -4418,8 +4429,8 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       break;
     }
     case 'IMAGE':
-      fields.push(<AssetPickerField key="assetUrl" label="Image" value={cfg.assetUrl || cfg.imageUrl || ''} kind="image" onChange={(v) => setField({ assetUrl: v, imageUrl: undefined })} />);
-      fields.push(<SelectField key="fitMode" label="Fit" value={cfg.fitMode || 'cover'} options={[['cover','Fill (crop)'],['contain','Fit (no crop)']]} onChange={(v) => setField({ fitMode: v })} />);
+      fields.push(<AssetPickerField key="assetUrl" label="Image" value={cfg.assetUrl || cfg.imageUrl || ''} kind="image" onChange={(v) => { void setMediaField(v, 'image'); }} />);
+      fields.push(<SelectField key="fitMode" label="Fit" value={cfg.fit || cfg.fitMode || 'contain'} options={[['contain','Show whole image'],['cover','Fill frame (crop)']]} onChange={(v) => setField({ fit: v, fitMode: v })} />);
       // Opacity + corner radius (moved here from the removed floating pill —
       // ImageWidget reads cfg.opacity + cfg.borderRadius).
       fields.push(<NumField key="opacity" id="img-opacity" label="Opacity (0–1)" value={typeof cfg.opacity === 'number' ? cfg.opacity : 1} onChange={(v) => setField({ opacity: v })} min={0} max={1} step={0.05} />);
@@ -4427,8 +4438,8 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       fields.push(<TextField key="assetName" label="Alt text (for screen readers)" value={cfg.assetName || ''} placeholder="School logo" onChange={(v) => setField({ assetName: v })} />);
       break;
     case 'VIDEO':
-      fields.push(<AssetPickerField key="assetUrl" label="Video" value={cfg.assetUrl || cfg.url || ''} kind="video" onChange={(v) => setField({ assetUrl: v, url: undefined })} />);
-      fields.push(<SelectField key="fitMode" label="Fit" value={cfg.fitMode || 'cover'} options={[['cover','Fill screen (crop)'],['contain','Fit (letterbox)']]} onChange={(v) => setField({ fitMode: v })} />);
+      fields.push(<AssetPickerField key="assetUrl" label="Video" value={cfg.assetUrl || cfg.url || ''} kind="video" onChange={(v) => { void setMediaField(v, 'video'); }} />);
+      fields.push(<SelectField key="fitMode" label="Fit" value={cfg.fit || cfg.fitMode || 'cover'} options={[['contain','Show whole video'],['cover','Fill frame (crop)']]} onChange={(v) => setField({ fit: v, fitMode: v })} />);
       fields.push(<NumField key="opacity" id="vid-opacity" label="Opacity (0–1)" value={typeof cfg.opacity === 'number' ? cfg.opacity : 1} onChange={(v) => setField({ opacity: v })} min={0} max={1} step={0.05} />);
       fields.push(<NumField key="borderRadius" id="vid-radius" label="Corner radius (px)" value={typeof cfg.borderRadius === 'number' ? cfg.borderRadius : 0} onChange={(v) => setField({ borderRadius: v })} min={0} max={120} step={1} />);
       fields.push(<ToggleField key="autoplay" label="Autoplay" value={cfg.autoplay !== false} onChange={(v) => setField({ autoplay: v })} />);
@@ -8240,14 +8251,20 @@ function ExternalHtmlTextEditor({
   // default are removed, so untouched settings never bloat the config.
   const setCfgMany = (patch: Record<string, string>) => {
     const next = { ...textOverrides };
+    const mediaStyles = { ...cfg.mediaStyles };
     for (const [k, v] of Object.entries(patch)) {
       const dflt = cfgDefaults[k] ?? '';
       if (v === dflt || (!v && !(nativeCarousels && /^media\..+\.alt$/.test(k)))) delete next[k];
       else next[k] = v;
+      const mediaFit = /^media\.(.+)\.fit$/.exec(k);
+      if (mediaFit && ['contain', 'cover', 'fill'].includes(v)) mediaStyles[mediaFit[1]] = { ...mediaStyles[mediaFit[1]], fit: v };
     }
-    setField({ textOverrides: Object.keys(next).length ? next : undefined });
+    setField({ textOverrides: Object.keys(next).length ? next : undefined, ...(Object.keys(mediaStyles).length ? { mediaStyles } : {}) });
   };
-  const cfgVal = (k: string, fb = ''): string => (textOverrides[k] ?? cfgDefaults[k] ?? fb);
+  const cfgVal = (k: string, fb = ''): string => {
+    const mediaFit = /^media\.(.+)\.fit$/.exec(k);
+    return (mediaFit ? cfg.mediaStyles?.[mediaFit[1]]?.fit : undefined) ?? textOverrides[k] ?? cfgDefaults[k] ?? fb;
+  };
   const cfgOn = (k: string, fb = 'yes'): boolean => !BOARD_OFFISH.test(cfgVal(k, fb) || fb);
   const nativeImageRotates = (key: string): boolean => {
     if (!cfgOn('carousel.autoplay')) return false;
@@ -8386,6 +8403,15 @@ function ExternalHtmlTextEditor({
   // educms-highlight handler — safe to call unconditionally.
   const pingHighlight = (key: string) => {
     if (!key) return;
+    const st = useBuilderStore.getState();
+    const id = st.selectedIds.length === 1 ? st.selectedIds[0] : null;
+    const owner = Array.from(document.querySelectorAll<HTMLIFrameElement>('[data-canvas-media-fields]')).find(frame => frame.closest<HTMLElement>('[data-zone-id]')?.dataset.zoneId === id);
+    if (owner) {
+      try {
+        const field = (JSON.parse(owner.dataset.canvasMediaFields || '[]') as import('./types').BoardMediaField[]).find(field => field.key === key);
+        if (field) st.setActiveMediaField(field);
+      } catch { /* A detached frame cannot provide a media selection. */ }
+    }
     const base = url.split('?')[0];
     try {
       document.querySelectorAll('iframe[title="Signage template"]').forEach((f) => {
@@ -10958,7 +10984,7 @@ function AssetPickerField({ label, value, onChange, kind }: { label: string; val
                 onClick={() => onChange('')}
                 className="px-2 py-1 text-[10px] font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded border border-rose-100"
               >
-                Remove photo
+                Remove {kind === 'image' ? 'photo' : 'video'}
               </button>
             )}
           </div>
@@ -11247,6 +11273,13 @@ export function AssetLibraryModal({
   const { data: assets, isLoading } = useAssets();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const [mediaSearch, setMediaSearch] = useState('');
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    dialogRef.current?.querySelector<HTMLButtonElement>('button[aria-label="Close"]')?.focus();
+    return () => { if (previous?.isConnected) previous.focus(); };
+  }, []);
   // Wave B / editor-crush B1 (2026-07-02) — "Your library" vs "Stock photos"
   // tab. Image-only; video kind never shows the tab bar so stays 'library'.
   const [libraryTab, setLibraryTab] = useState<'library' | 'stock'>('library');
@@ -11281,7 +11314,8 @@ export function AssetLibraryModal({
   useEffect(() => () => waitAbort.current?.abort(), []);
   const filtered = (assets || []).filter((a: any) => {
     const mt = (a.mimeType || '').toLowerCase();
-    return kind === 'image' ? mt.startsWith('image/') : mt.startsWith('video/');
+    const matchesKind = kind === 'image' ? mt.startsWith('image/') : mt.startsWith('video/');
+    return matchesKind && (!mediaSearch.trim() || String(a.originalName || '').toLowerCase().includes(mediaSearch.trim().toLowerCase()));
   });
   // What this picker takes, from the shared upload-formats table
   // (lib/upload-accept.ts) — the same answer as the Media Library. 2026-05-13
@@ -11385,6 +11419,8 @@ export function AssetLibraryModal({
   };
 
   return (
+    // Dialog-level handling traps descendant Tab/Escape and blocks canvas shortcuts.
+    // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
     <div
       // top/right/bottom/left longhand (NOT inset-0) — matches AssetPicker.tsx
       // and the CLAUDE.md #10 convention. z-[10001] paints over the mobile
@@ -11398,6 +11434,18 @@ export function AssetLibraryModal({
       }}
       role="dialog"
       aria-modal="true"
+      aria-label={kind === 'image' ? 'Choose images' : 'Choose videos'}
+      ref={dialogRef}
+      onKeyDown={e => {
+        e.stopPropagation();
+        if (e.key === 'Escape') { e.preventDefault(); onClose(); }
+        if (e.key === 'Tab') {
+          const controls = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled), input:not([type="file"]), [role="tab"]')).filter(el => el.getClientRects().length > 0);
+          const first = controls[0], last = controls[controls.length - 1];
+          if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); }
+          else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
+        }
+      }}
     >
       {/* a11y wave (2026-08-24) — jsx-a11y/click-events-have-key-events +
           no-static-element-interactions. This is a modal backdrop: a
@@ -11495,11 +11543,12 @@ export function AssetLibraryModal({
         </div>
 
         <div className="flex-1 overflow-y-auto p-3">
+          <input type="search" aria-label="Search media library" placeholder="Search your files…" value={mediaSearch} onChange={e => setMediaSearch(e.target.value)} className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus-visible:outline-indigo-500" />
           {isLoading ? (
             <div className="text-center text-xs text-slate-400 py-12">Loading library…</div>
           ) : filtered.length === 0 ? (
             <div className="text-center text-xs text-slate-400 py-12">
-              Library is empty — upload a {kind === 'image' ? 'photo' : 'video'} above to get started.
+              {mediaSearch.trim() ? 'No files match your search.' : `Library is empty — upload a ${kind === 'image' ? 'photo' : 'video'} above to get started.`}
             </div>
           ) : (
             <div className="grid grid-cols-3 gap-2">
@@ -11525,7 +11574,8 @@ export function AssetLibraryModal({
                     key={a.id}
                     type="button"
                     onClick={handleClick}
-                    disabled={notYet}
+                    aria-label={a.originalName || url}
+                    disabled={notYet || uploading}
                     title={notYet ? tl('optimizing') : undefined}
                     aria-pressed={multi ? isPicked : undefined}
                     className={`group relative aspect-square rounded-lg overflow-hidden bg-slate-100 border transition-all disabled:cursor-not-allowed disabled:opacity-60 ${isPicked ? 'border-indigo-500 ring-2 ring-indigo-400' : 'border-slate-200 hover:border-indigo-400 hover:ring-2 hover:ring-indigo-200'}`}

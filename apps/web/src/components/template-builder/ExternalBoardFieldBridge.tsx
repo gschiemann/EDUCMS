@@ -2,6 +2,8 @@
 
 import { useEffect } from "react";
 import { useBuilderStore } from "./useBuilderStore";
+import { patchBoardMedia } from "./board-media";
+import type { BoardMediaField } from "./types";
 
 /** Change one field, preserving the rest of the board and one Undo step. */
 export function patchBoardField(zoneId: string, key: string, patch: Record<string, number | boolean>) {
@@ -20,6 +22,10 @@ export function patchBoardField(zoneId: string, key: string, patch: Record<strin
 /** Keyboard Delete targets the selected text, never its full-board scene. */
 export function deleteSelectedBoardField(): boolean {
   const store = useBuilderStore.getState();
+  if (store.activeMediaField && store.selectedIds.length === 1 && store.selectedIds[0] === store.activeMediaField.zoneId) {
+    patchBoardMedia(store.activeMediaField.zoneId, store.activeMediaField.key, { hidden: true });
+    return true;
+  }
   if (!store.activeFieldName || store.selectedIds.length !== 1) return false;
   const zone = store.zones.find(z => z.id === store.selectedIds[0]);
   if (zone?.widgetType !== "EXTERNAL_HTML") return false;
@@ -30,6 +36,8 @@ export function deleteSelectedBoardField(): boolean {
 /** Nudge advertised native text instead of moving the complete scene. */
 export function nudgeSelectedBoardField(dx: number, dy: number): boolean {
   const store = useBuilderStore.getState();
+  // A photo selection must never nudge the entire background board.
+  if (store.activeMediaField?.zoneId === store.selectedIds[0]) return true;
   const key = store.activeFieldName;
   const zoneId = store.selectedIds.length === 1 ? store.selectedIds[0] : null;
   if (!key || !zoneId) return false;
@@ -54,6 +62,7 @@ export function ExternalBoardFieldBridge() {
   const activeField = useBuilderStore(s => s.activeFieldName);
   useEffect(() => {
     const capabilities = new Map<Window, Set<string>>();
+    const mediaCapabilities = new Map<Window, Map<string, BoardMediaField>>();
     function frames() {
       return Array.from(document.querySelectorAll<HTMLIFrameElement>("[data-template-canvas] [data-zone-id] iframe"));
     }
@@ -68,7 +77,10 @@ export function ExternalBoardFieldBridge() {
       frame.contentWindow?.postMessage({ type: "educms-layout-select", key: useBuilderStore.getState().activeFieldName }, "*");
     }
     function request() {
-      frames().forEach(frame => frame.contentWindow?.postMessage({ type: "educms-layout-request" }, "*"));
+      frames().forEach(frame => {
+        frame.contentWindow?.postMessage({ type: "educms-layout-request" }, "*");
+        frame.contentWindow?.postMessage({ type: "educms-media-request" }, "*");
+      });
     }
     const onMessage = (event: MessageEvent) => {
       const source = owner(event.source);
@@ -77,7 +89,28 @@ export function ExternalBoardFieldBridge() {
       const window = source.frame.contentWindow!;
       if (data.type === "educms-ready") {
         window.postMessage({ type: "educms-layout-request" }, "*");
+        window.postMessage({ type: "educms-media-request" }, "*");
         return;
+      }
+      if (data.type === "educms-media-ready" && Array.isArray(data.slots)) {
+        const fields = new Map<string, BoardMediaField>();
+        for (const slot of data.slots.slice(0, 500)) {
+          if (!slot || typeof slot.key !== 'string' || !slot.key || slot.key.length > 160 || !['image', 'video'].includes(slot.kind)) continue;
+          fields.set(slot.key, { zoneId: source.zone.id, key: slot.key, kind: slot.kind, defaultFit: slot.defaultFit === 'contain' ? 'contain' : 'cover', hasSource: slot.hasSource === true });
+        }
+        mediaCapabilities.set(window, fields);
+        source.frame.dataset.canvasMediaFields = JSON.stringify(Array.from(fields.values()));
+        window.postMessage({ type: 'educms-edit-mode', on: !source.zone.locked && !useBuilderStore.getState().previewMode }, '*');
+        const active = useBuilderStore.getState().activeMediaField;
+        const current = active?.zoneId === source.zone.id ? fields.get(active.key) : null;
+        if (active && current && (current.hasSource !== active.hasSource || current.defaultFit !== active.defaultFit)) useBuilderStore.getState().setActiveMediaField(current);
+        return;
+      }
+      if ((data.type === 'educms-media-select' || data.type === 'educms-field-click') && typeof data.key === 'string') {
+        const media = mediaCapabilities.get(window)?.get(data.key);
+        const store = useBuilderStore.getState();
+        if (media && !store.previewMode) { store.select(source.zone.id); store.setActiveMediaField(media); return; }
+        if (data.type === 'educms-field-click') store.setActiveMediaField(null);
       }
       if (data.type === "educms-layout-ready" && Array.isArray(data.keys)) {
         const keys = data.keys.filter((k: unknown): k is string => typeof k === "string" && k.length <= 160);
@@ -107,7 +140,7 @@ export function ExternalBoardFieldBridge() {
     addEventListener("message", onMessage);
     request();
     const retry = setTimeout(request, 500);
-    return () => { removeEventListener("message", onMessage); clearTimeout(retry); frames().forEach(f => { delete f.dataset.canvasTextKeys; f.contentWindow?.postMessage({ type: "educms-layout-mode", on: false }, "*"); }); };
+    return () => { removeEventListener("message", onMessage); clearTimeout(retry); frames().forEach(f => { delete f.dataset.canvasTextKeys; delete f.dataset.canvasMediaFields; f.contentWindow?.postMessage({ type: "educms-layout-mode", on: false }, "*"); f.contentWindow?.postMessage({ type: 'educms-edit-mode', on: false }, '*'); }); };
   }, []);
   // Changing a selection must not replace the message listener between a
   // field-select message and the following completed drag message.
@@ -117,6 +150,8 @@ export function ExternalBoardFieldBridge() {
       const zone = zones.find(z => z.id === id);
       if (zone?.widgetType !== "EXTERNAL_HTML") return;
       frame.contentWindow?.postMessage({ type: "educms-layout-request" }, "*");
+      frame.contentWindow?.postMessage({ type: "educms-media-request" }, "*");
+      frame.contentWindow?.postMessage({ type: 'educms-edit-mode', on: !zone.locked && !previewMode }, '*');
       frame.contentWindow?.postMessage({ type: "educms-layout-mode", on: !zone.locked && !previewMode }, "*");
       frame.contentWindow?.postMessage({ type: "educms-layout-select", key: useBuilderStore.getState().selectedIds.includes(zone.id) ? activeField : null }, "*");
     });

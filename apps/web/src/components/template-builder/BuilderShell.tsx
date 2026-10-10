@@ -38,6 +38,9 @@ import { CanvasContextMenu } from './CanvasContextMenu';
 // resurrect WidgetPalette without first verifying it's actually
 // mounted somewhere.
 import { VariantPicker } from './VariantPicker';
+import { MediaInsertPicker } from './MediaInsertPicker';
+import { openMediaPicker } from './media-sizing';
+import { BoardMediaControls, MediaQuickControls, RotationControls } from './SelectionControls';
 // App Library (Phase 1, 2026-06-30) — curated "Apps" tab. Each app is a
 // thin config-form wrapper that produces a standard zone config for a
 // widgetType WidgetRenderer already renders (STREAMING/WEBPAGE/WEATHER/
@@ -984,6 +987,7 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
 
       if (mod && e.key.toLowerCase() === 'd' && selectedIds.length > 0) {
         e.preventDefault();
+        if (useBuilderStore.getState().activeMediaField) return;
         selectedIds.forEach(id => duplicateZone(id));
         return;
       }
@@ -1127,6 +1131,10 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
       // hard to the blank case: with any real content on the canvas, a drag
       // still adds, unchanged.
       const st = useBuilderStore.getState();
+      if (variantId === 'image-basic' || variantId === 'video-basic') {
+        openMediaPicker({ kind: variantId === 'image-basic' ? 'image' : 'video', dropAt });
+        return;
+      }
       const blankPlaceholder =
         st.zones.length === 1 && st.zones[0].widgetType === 'EMPTY' ? st.zones[0] : null;
       if (blankPlaceholder) {
@@ -1471,6 +1479,7 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
               duplicate / delete + zoom / grid / undo). Two surfaces now:
               left panel + this bottom bar. */}
           <BuilderCanvas />
+          <MediaInsertPicker />
           <ExternalBoardFieldBridge />
           {!previewMode && <BuilderBottomBar />}
           {/* A6 — right-click context menu on zones + canvas. Shares the
@@ -1636,6 +1645,7 @@ function BuilderBottomBar() {
   const wt         = selectedZone?.widgetType ?? '';
   const isText      = wt === 'TEXT' || wt === 'RICH_TEXT';
   const isImage     = wt === 'IMAGE' || wt === 'IMAGE_CAROUSEL' || wt === 'LOGO';
+  const isPlainMedia = wt === 'IMAGE' || wt === 'VIDEO' || wt === 'LOGO';
   const isClock     = wt === 'CLOCK';
   const isWeather   = wt === 'WEATHER';
   const isTicker    = wt === 'TICKER';
@@ -1679,6 +1689,7 @@ function BuilderBottomBar() {
   // that focusing a panel input is equivalent to clicking the canvas
   // text — both light up the bottom bar.
   const storeActiveFieldName = useBuilderStore((s) => s.activeFieldName);
+  const storeActiveMediaField = useBuilderStore((s) => s.activeMediaField);
   const setActiveFieldName = useBuilderStore((s) => s.setActiveFieldName);
 
   // Listen to BuilderZone's canvas-click event so clicking text on the
@@ -1728,6 +1739,7 @@ function BuilderBottomBar() {
   }, [selectedZone?.id]);
 
   const activeFieldName = storeActiveFieldName;
+  const activeMediaField = wt === 'EXTERNAL_HTML' && storeActiveMediaField?.zoneId === selectedZone?.id ? storeActiveMediaField : null;
   // Per-field UX is offered for any selected widget that already
   // supports the `_styles` schema OR is an HS template (consumes the
   // same schema once we strip the legacy __styles path). Mirrors the
@@ -1737,7 +1749,7 @@ function BuilderBottomBar() {
   // are top-level cfg props, not per-field overrides). Every OTHER
   // text-bearing widget (HS templates, MS templates, themed widgets,
   // animated widgets, etc.) gets the per-field path.
-  const supportsPerFieldStyles = !!selectedZone && !isImage && !isTextStyle && !isSportEl;
+  const supportsPerFieldStyles = !!selectedZone && wt !== 'EMPTY' && !isImage && !isPlainMedia && !isTextStyle && !isSportEl && !activeMediaField;
   const isPerFieldText = supportsPerFieldStyles && !!activeFieldName;
   const canonicalFieldStyles = (cfg._styles && typeof cfg._styles === 'object' ? cfg._styles : {}) as Record<string, any>;
   // HOLIDAY briefly shipped a private `__styles` map. Read it into the
@@ -1846,7 +1858,12 @@ function BuilderBottomBar() {
   );
 
   // Generic zone-action cluster (Dup / Forward / Back / Lock / Delete)
-  const zoneActions = selectedZone ? (
+  const zoneActions = selectedZone && activeMediaField ? (
+    <>
+      <button type="button" onClick={() => useBuilderStore.getState().setActiveMediaField(null)} className="h-8 rounded-md px-2 text-xs text-slate-600 hover:bg-slate-100">Select template</button>
+      {smallBtn(`Delete ${activeMediaField.kind}`, () => deleteSelectedBoardField(), <Trash2 className="w-3.5 h-3.5" />, true, false, !!selectedZone.locked)}
+    </>
+  ) : selectedZone ? (
     <>
       {smallBtn('Duplicate (Ctrl/⌘+D)', () => duplicateZone(selectedZone.id), <Copy className="w-3.5 h-3.5" />)}
       {smallBtn('Bring forward', () => moveLayer(selectedZone.id, 'up'), <ChevronUp className="w-3.5 h-3.5" />)}
@@ -1875,7 +1892,7 @@ function BuilderBottomBar() {
     // data-builder-bottom-bar: BuilderCanvas measures this element to
     // reserve exactly the room it occupies. Keep the attribute if the
     // bar is restyled — without it the canvas falls back to a constant.
-    <div data-builder-bottom-bar className="absolute bottom-3 left-1/2 -translate-x-1/2 z-30 bg-white border border-slate-200 rounded-2xl shadow-lg flex items-center gap-1 px-2 py-1.5">
+    <div data-builder-bottom-bar className="absolute bottom-3 left-1/2 -translate-x-1/2 z-30 w-max max-w-[calc(100%_-_24px)] bg-white border border-slate-200 rounded-2xl shadow-lg flex flex-wrap justify-center items-center gap-1 px-2 py-1.5">
 
       {/* ══ LEFT: zone-context section ══════════════════════════════ */}
       {selectedZone ? (
@@ -2177,7 +2194,9 @@ function BuilderBottomBar() {
           )}
 
           {/* IMAGE / IMAGE_CAROUSEL / LOGO */}
-          {isImage && (
+          {activeMediaField && <BoardMediaControls zone={selectedZone} field={activeMediaField} />}
+          {isPlainMedia && <MediaQuickControls key={selectedZone.id} zone={selectedZone} />}
+          {isImage && !isPlainMedia && (
             <>
               <div className="relative">
                 <button
@@ -2337,6 +2356,7 @@ function BuilderBottomBar() {
             </>
           )}
 
+          {wt !== 'EMPTY' && wt !== 'EXTERNAL_HTML' && <RotationControls zone={selectedZone} />}
           {/* Generic zone actions — always when a zone is selected */}
           {zoneActions}
 

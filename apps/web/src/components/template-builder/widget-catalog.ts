@@ -173,6 +173,14 @@ export function friendlyVariantName(v: Pick<WidgetVariant, 'name' | 'widgetType'
   return n;
 }
 
+/** Match the everyday words an operator uses, including their plurals. */
+export function matchesWidgetSearch(v: WidgetVariant, query: string): boolean {
+  const aliases: Record<string, string> = { images: 'image', pictures: 'image', picture: 'image', photos: 'photo', videos: 'video', logos: 'logo', shapes: 'shape', slideshows: 'slideshow' };
+  const q = query.trim().toLowerCase().replace(/\b(images|pictures|picture|photos|videos|logos|shapes|slideshows)\b/g, word => aliases[word]);
+  const text = [v.name, v.description, friendlyTypeLabel(String(v.widgetType)), String(v.widgetType).replace(/_/g, ' ')].join(' ').toLowerCase();
+  return text.includes(q);
+}
+
 // ───────────────────────────────────────────────────────────────────────────
 // 2. Named categories — the rows that replaced the chip rail
 // ───────────────────────────────────────────────────────────────────────────
@@ -186,8 +194,8 @@ export interface WidgetCategory {
 }
 
 /**
- * ~10 named rows, in the order an operator builds a board: words first,
- * then time, then media. Vertical packs sit last because a tenant only ever
+ * ~10 named rows: media and everyday design tools first.
+ * Vertical packs sit last because a tenant only ever
  * sees its own.
  *
  * A type may appear in exactly ONE category — `categoryForType` takes the
@@ -196,22 +204,28 @@ export interface WidgetCategory {
  */
 export const WIDGET_CATEGORIES: readonly WidgetCategory[] = [
   {
+    id: 'media',
+    label: 'Photos & video',
+    blurb: 'Your own pictures and clips, on their own or as a slideshow.',
+    types: ['IMAGE', 'VIDEO', 'IMAGE_CAROUSEL', 'VIDEO_CAROUSEL', 'PLAYLIST', 'MUSIC_PLAYER'],
+  },
+  {
     id: 'words',
     label: 'Words & headlines',
     blurb: 'Say something — titles, notices and scrolling messages.',
     types: ['TEXT', 'RICH_TEXT', 'ANNOUNCEMENT', 'TICKER'],
   },
   {
-    id: 'time',
-    label: 'Time & schedules',
-    blurb: 'Clocks, countdowns and what happens next.',
-    types: ['CLOCK', 'COUNTDOWN', 'CALENDAR', 'BELL_SCHEDULE'],
+    id: 'design',
+    label: 'Shapes & backgrounds',
+    blurb: 'The layer under everything else — blocks, icons, backdrops.',
+    types: ['SHAPE', 'ICON', 'BACKGROUND', 'EXTERNAL_HTML'],
   },
   {
-    id: 'media',
-    label: 'Photos & video',
-    blurb: 'Your own pictures and clips, on their own or as a slideshow.',
-    types: ['IMAGE', 'IMAGE_CAROUSEL', 'VIDEO', 'VIDEO_CAROUSEL', 'PLAYLIST', 'MUSIC_PLAYER'],
+    id: 'brand',
+    label: 'Brand & people',
+    blurb: 'Your logo, the people behind it, and sponsor space.',
+    types: ['LOGO', 'STAFF_SPOTLIGHT', 'HOUSE_AD_BANNER'],
   },
   {
     id: 'live',
@@ -220,10 +234,10 @@ export const WIDGET_CATEGORIES: readonly WidgetCategory[] = [
     types: ['WEATHER', 'LIVE_DATA', 'CHART', 'WEBPAGE', 'RSS_FEED', 'SOCIAL_FEED', 'GOOGLE_REVIEWS'],
   },
   {
-    id: 'brand',
-    label: 'Brand & people',
-    blurb: 'Your logo, the people behind it, and sponsor space.',
-    types: ['LOGO', 'STAFF_SPOTLIGHT', 'HOUSE_AD_BANNER'],
+    id: 'time',
+    label: 'Time & schedules',
+    blurb: 'Clocks, countdowns and what happens next.',
+    types: ['CLOCK', 'COUNTDOWN', 'CALENDAR', 'BELL_SCHEDULE'],
   },
   {
     id: 'food',
@@ -258,12 +272,6 @@ export const WIDGET_CATEGORIES: readonly WidgetCategory[] = [
     label: 'Touch & interactive',
     blurb: 'Tap targets for a screen people can actually press.',
     types: ['TOUCH_POINT'],
-  },
-  {
-    id: 'design',
-    label: 'Shapes & backgrounds',
-    blurb: 'The layer under everything else — blocks, icons, backdrops.',
-    types: ['SHAPE', 'ICON', 'BACKGROUND', 'EXTERNAL_HTML'],
   },
   {
     id: 'venue',
@@ -400,10 +408,24 @@ const VERTICAL_FLAGSHIP_TYPES: Record<string, readonly string[]> = {
   WORSHIP: ['WORSHIP', 'ANNOUNCEMENT', 'CALENDAR', 'STAFF_SPOTLIGHT'],
 };
 
-/** Shown to every vertical, after that vertical's own flagships. */
+export const EVERYDAY_WIDGET_TYPES: readonly string[] = [
+  'IMAGE', 'VIDEO', 'TEXT', 'IMAGE_CAROUSEL', 'VIDEO_CAROUSEL', 'LOGO', 'SHAPE',
+];
+
+const BASIC_MEDIA_IDS = new Set(['image-basic', 'video-basic', 'image-carousel-basic', 'video-carousel-basic']);
+
+/** Put one everyday tool first, before a long run of its styled variants. */
+export function orderWidgetVariants(visible: readonly WidgetVariant[]): WidgetVariant[] {
+  const first = new Map<string, WidgetVariant>();
+  for (const v of visible) if (!first.has(String(v.widgetType)) || BASIC_MEDIA_IDS.has(v.id)) first.set(String(v.widgetType), v);
+  const front = EVERYDAY_WIDGET_TYPES.map(type => first.get(type)).filter((v): v is WidgetVariant => !!v);
+  const ids = new Set(front.map(v => v.id));
+  return [...front, ...visible.filter(v => !ids.has(v.id))];
+}
+
+/** The everyday building blocks lead for every industry. */
 const UNIVERSAL_FLAGSHIP_TYPES: readonly string[] = [
-  'TEXT', 'IMAGE', 'VIDEO', 'CLOCK', 'WEATHER',
-  'IMAGE_CAROUSEL', 'TICKER', 'COUNTDOWN', 'CALENDAR', 'LOGO', 'WEBPAGE', 'SHAPE',
+  ...EVERYDAY_WIDGET_TYPES, 'CLOCK', 'WEATHER', 'TICKER', 'COUNTDOWN', 'CALENDAR', 'WEBPAGE',
 ];
 
 /** Upper bound on the curated row. The research range is 8-12. */
@@ -411,9 +433,8 @@ export const CURATED_LIMIT = 12;
 
 /**
  * Pick one representative variant per flagship type from the already
- * vertical-filtered set, vertical-specific first. Preference inside a type:
- * whichever variant the registry lists first, which is the authored order in
- * `variants-register.ts` — i.e. the one whoever built the pack put first.
+ * vertical-filtered set, everyday tools before industry-specific widgets.
+ * Basic media variants lead; other types retain their authored first variant.
  */
 export function curatedFlagships(
   visible: readonly WidgetVariant[],
@@ -421,11 +442,11 @@ export function curatedFlagships(
   limit: number = CURATED_LIMIT,
 ): WidgetVariant[] {
   const byType = new Map<string, WidgetVariant>();
-  for (const v of visible) {
+  for (const v of orderWidgetVariants(visible)) {
     const t = String(v.widgetType);
     if (!byType.has(t)) byType.set(t, v);
   }
-  const order = [...(VERTICAL_FLAGSHIP_TYPES[vertical] || []), ...UNIVERSAL_FLAGSHIP_TYPES];
+  const order = [...EVERYDAY_WIDGET_TYPES, ...(VERTICAL_FLAGSHIP_TYPES[vertical] || []), ...UNIVERSAL_FLAGSHIP_TYPES.slice(EVERYDAY_WIDGET_TYPES.length)];
   const out: WidgetVariant[] = [];
   const taken = new Set<string>();
   for (const t of order) {

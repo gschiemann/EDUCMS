@@ -34,6 +34,10 @@ const uploadAssetDirect = jest.fn();
 jest.mock('@/lib/direct-upload', () => ({
   uploadAssetDirect: (...args: unknown[]) => uploadAssetDirect(...args),
 }));
+jest.mock('../media-sizing', () => ({
+  ...jest.requireActual('../media-sizing'),
+  readMediaDimensions: jest.fn().mockResolvedValue({ width: 768, height: 324 }),
+}));
 
 /** Cut from AssetsController.completeUpload's return. */
 const completed = (fileUrl: string) => ({

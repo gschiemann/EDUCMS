@@ -23,6 +23,7 @@ import { WidgetErrorBoundary } from '@/components/widgets/WidgetErrorBoundary';
 import { buildTextStyleRules, buildFieldOnlyStyleRules } from '@/components/widgets/text-style-contract';
 import { appAlert } from '@/components/ui/app-dialog';
 import { useBuilderStore } from './useBuilderStore';
+import { assignMediaSource } from './media-source';
 
 /**
  * setByPath — build a shallow-merge patch that updates a nested
@@ -167,6 +168,9 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
 
   const handleDrop = async (e: React.DragEvent) => {
     if (previewMode || zone.locked || !supportsUpload || !onConfigChange) return;
+    // A batch belongs on the canvas as separate pictures, even when the
+    // pointer happens to land on an existing picture.
+    if (e.dataTransfer.files.length > 1) { setIsDragOver(false); return; }
     e.preventDefault();
     e.stopPropagation();
     setIsDragOver(false);
@@ -189,7 +193,7 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
       } else if (zone.widgetType === 'STAFF_SPOTLIGHT') {
         onConfigChange(zone.id, { photoUrl: url });
       } else {
-        onConfigChange(zone.id, { assetUrl: url });
+        await assignMediaSource(zone.id, url, 'image');
       }
     } catch (err) {
       console.error('Upload failed:', err);

@@ -23,6 +23,8 @@
 
 import type { Zone, ResizeHandle } from './types';
 import { getZoneColor } from './constants';
+import { RotateCw } from 'lucide-react';
+import { useBuilderStore } from './useBuilderStore';
 
 export const HANDLES: ResizeHandle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
 
@@ -57,9 +59,10 @@ const zoneRotation = (zone: Zone): number => {
 interface Props {
   zone: Zone;
   onResizePointerDown: (e: React.PointerEvent, zoneId: string, handle: ResizeHandle) => void;
+  onRotatePointerDown?: (e: React.PointerEvent, zoneId: string) => void;
 }
 
-export function SelectionChrome({ zone, onResizePointerDown }: Props) {
+export function SelectionChrome({ zone, onResizePointerDown, onRotatePointerDown }: Props) {
   if (isFullCanvasExternalZone(zone)) return null;
   const rot = zoneRotation(zone);
   const canResize = !zone.locked;
@@ -90,6 +93,23 @@ export function SelectionChrome({ zone, onResizePointerDown }: Props) {
           onPointerDown={(e) => { e.stopPropagation(); onResizePointerDown(e, zone.id, h); }}
         />
       ))}
+      {canResize && onRotatePointerDown && zone.widgetType !== 'EMPTY' && <>
+        <div className="absolute left-1/2 -translate-x-1/2 w-px h-6 bg-indigo-500" style={{ bottom: -26 }} />
+        <button type="button" aria-label="Rotate selection" title="Drag to rotate. Hold Shift for 15° steps. Arrow keys rotate; Home resets."
+          className="absolute left-1/2 -translate-x-1/2 flex h-8 w-8 items-center justify-center rounded-full border border-indigo-300 bg-white text-indigo-600 shadow-md cursor-grab active:cursor-grabbing"
+          style={{ bottom: -56, pointerEvents: 'auto', touchAction: 'none' }}
+          onPointerDown={e => { e.stopPropagation(); onRotatePointerDown(e, zone.id); }}
+          onKeyDown={e => {
+            if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home'].includes(e.key)) return;
+            e.preventDefault(); e.stopPropagation();
+            const st = useBuilderStore.getState();
+            const current = st.zones.find(z => z.id === zone.id);
+            if (!current || current.locked) return;
+            const angle = zoneRotation(current);
+            const next = e.key === 'Home' ? 0 : angle + (['ArrowLeft', 'ArrowDown'].includes(e.key) ? -1 : 1) * (e.shiftKey ? 15 : 1);
+            st.updateZone(zone.id, { defaultConfig: { ...current.defaultConfig, _zoneRotation: ((next % 360) + 360) % 360 } }, true);
+          }}><RotateCw className="h-4 w-4" aria-hidden /></button>
+      </>}
     </div>
   );
 }

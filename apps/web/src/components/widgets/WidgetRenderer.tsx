@@ -4321,6 +4321,7 @@ function ExternalHtmlWidget({ config, freeze }: { config: any; freeze?: boolean 
       ['textStyles', styles],
       ['img', config?.imageOverrides],
       ['video', config?.videoOverrides],
+      ['mediaStyles', config?.mediaStyles],
       // ?actions=… per-[data-action] button → platform touch-action map
       // ({ key: { type, target } }). The kiosk shim reads it and, on a
       // visitor tap, posts educms-action to the parent; the PLAYER runs it
@@ -4369,7 +4370,11 @@ function ExternalHtmlWidget({ config, freeze }: { config: any; freeze?: boolean 
       result += `${result.includes('?') ? '&' : '?'}freeze=1`;
     }
     return result;
-  }, [url, config?.brand, config?.textOverrides, config?.textStyles, config?._styles, config?.imageOverrides, config?.videoOverrides, config?.actionOverrides, config?.repeatCounts, freeze]);
+  // Media changes go through postMediaOverrides below. Keeping the iframe
+  // URL stable preserves a kiosk's current screen while replacing/rotating.
+  // A different board or non-media config still encodes the current maps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [url, config?.brand, config?.textOverrides, config?.textStyles, config?._styles, config?.actionOverrides, config?.repeatCounts, freeze]);
 
   // ── Explicit POS bindings (2026-09-23, POS-A) ───────────────────
   // A board can be told WHICH POS item a row or a field shows (see
@@ -4532,11 +4537,12 @@ function ExternalHtmlWidget({ config, freeze }: { config: any; freeze?: boolean 
     if (styles) payload.textStyles = styles;
     if (config?.imageOverrides) payload.img = config.imageOverrides;
     if (config?.videoOverrides) payload.video = config.videoOverrides;
+    if (config?.mediaStyles) payload.mediaStyles = config.mediaStyles;
     if (config?.actionOverrides) payload.actions = config.actionOverrides;
     if (config?.repeatCounts) payload.repeat = config.repeatCounts;
     try { win.postMessage(payload, '*'); } catch { /* detached / cross-origin — ignore */ }
     postResolvedBindings(win, resolvedBindingsRef.current);
-  }, [inlineHtml, config?.brand, config?.textOverrides, config?.textStyles, config?._styles, config?.imageOverrides, config?.videoOverrides, config?.actionOverrides, config?.repeatCounts, postResolvedBindings]);
+  }, [inlineHtml, config?.brand, config?.textOverrides, config?.textStyles, config?._styles, config?.imageOverrides, config?.videoOverrides, config?.mediaStyles, config?.actionOverrides, config?.repeatCounts, postResolvedBindings]);
   useEffect(() => {
     postDesignerOverrides();
     const el = frameRef.current;
@@ -4544,6 +4550,24 @@ function ExternalHtmlWidget({ config, freeze }: { config: any; freeze?: boolean 
     el.addEventListener('load', postDesignerOverrides);
     return () => { el.removeEventListener('load', postDesignerOverrides); };
   }, [postDesignerOverrides]);
+
+  const hadMediaOverrides = useRef(false);
+  const postMediaOverrides = useCallback(() => {
+    const hasMedia = [config?.imageOverrides, config?.videoOverrides, config?.mediaStyles].some(map => map && Object.keys(map).length > 0);
+    if (!hasMedia && !hadMediaOverrides.current) return;
+    hadMediaOverrides.current = hasMedia;
+    frameRef.current?.contentWindow?.postMessage({ type: 'educms-overrides', img: config?.imageOverrides || {}, video: config?.videoOverrides || {}, mediaStyles: config?.mediaStyles || {} }, '*');
+  }, [config?.imageOverrides, config?.videoOverrides, config?.mediaStyles]);
+  useEffect(() => {
+    postMediaOverrides();
+    const frame = frameRef.current;
+    const ready = (event: MessageEvent) => {
+      if (event.source === frame?.contentWindow && event.data?.type === 'educms-ready') postMediaOverrides();
+    };
+    frame?.addEventListener('load', postMediaOverrides);
+    window.addEventListener('message', ready);
+    return () => { frame?.removeEventListener('load', postMediaOverrides); window.removeEventListener('message', ready); };
+  }, [postMediaOverrides]);
 
   const postMenu = useCallback(() => {
     const win = frameRef.current?.contentWindow;

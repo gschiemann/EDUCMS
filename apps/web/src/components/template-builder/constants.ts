@@ -393,6 +393,10 @@ export const WIDGET_META: Record<string, { label: string; icon: LucideIcon; desc
 WIDGET_GROUPS.forEach(g => g.types.forEach(t => {
   WIDGET_META[t.type] = { label: t.label, icon: t.icon as LucideIcon, desc: t.desc };
 }));
+// Industry packs reuse these types; their "Hero image" labels must not
+// rename the universal building blocks in the editor and Layers panel.
+WIDGET_META['IMAGE'] = { label: 'Image', icon: ImageIcon, desc: 'An image from your files or media library' };
+WIDGET_META['VIDEO'] = { label: 'Video', icon: Play, desc: 'A video from your files or media library' };
 
 // Phase D2.9-D2.12 — the canonical interactive widget type. Every
 // touch palette tile (TOUCH_HOTSPOT, TOUCH_HELP, etc.) canonicalizes

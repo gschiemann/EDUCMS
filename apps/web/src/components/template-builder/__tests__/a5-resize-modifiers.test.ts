@@ -83,13 +83,13 @@ describe('A5 — resize modifiers', () => {
     expect(r!.y + r!.height / 2).toBeCloseTo(20, 5);
   });
 
-  it('aspect-locked shrink floors at the 3% minimum without breaking the ratio', () => {
+  it('aspect-locked media shrink keeps a positive minimum without breaking the ratio', () => {
     // Massive inward drag would take width negative; the scale floors so
-    // BOTH dims stay >= 3 and the ratio holds.
+    // BOTH dims stay positive and the ratio holds, including small logos.
     const r = resizeWithModifiers(img, 'IMAGE', 'se', -100, -100, noMods);
     expect(r).not.toBeNull();
-    expect(r!.width).toBeGreaterThanOrEqual(3);
-    expect(r!.height).toBeGreaterThanOrEqual(3);
+    expect(r!.width).toBeGreaterThanOrEqual(0.1);
+    expect(r!.height).toBeGreaterThanOrEqual(0.1);
     expect(r!.width / r!.height).toBeCloseTo(2, 5);
   });
 

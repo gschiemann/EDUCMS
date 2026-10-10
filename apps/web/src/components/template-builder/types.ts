@@ -1,3 +1,11 @@
+export interface BoardMediaField {
+  zoneId: string;
+  key: string;
+  kind: 'image' | 'video';
+  defaultFit: 'contain' | 'cover';
+  hasSource: boolean;
+}
+
 /**
  * Touch interaction model (Phase D1 — v1 launch, 2026-05-11).
  *

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
-import type { Zone, HistoryEntry, TemplateScene } from './types';
+import type { Zone, HistoryEntry, TemplateScene, BoardMediaField } from './types';
 import { DEFAULT_GRID_SIZE, MIN_ZONE_SIZE, widgetLabel } from './constants';
+import { naturalMediaSize, type MediaDimensions } from './media-sizing';
 
 const HISTORY_LIMIT = 50;
 
@@ -171,6 +172,7 @@ interface BuilderState {
    *  Drives the BuilderBottomBar's per-field format toolbar. Cleared
    *  when selection changes or panel input blurs. 2026-05-08. */
   activeFieldName: string | null;
+  activeMediaField: BoardMediaField | null;
   gridSize: number;
   snapEnabled: boolean;
   showGrid: boolean;
@@ -248,7 +250,9 @@ interface BuilderState {
    * QR drops as a small corner square, etc.) without touching the
    * palette/touch-tile paths, which keep their existing sizing untouched.
    */
-  addZone(widgetType: string, dropAt?: { x: number; y: number }, size?: { w: number; h: number }): string;
+  addZone(widgetType: string, dropAt?: { x: number; y: number }, size?: { w: number; h: number }, options?: { replacePlaceholder?: boolean }): string;
+  /** Insert a picture/clip and its tight frame together as one undo step. */
+  addMediaZone(kind: 'image' | 'video', url: string, dimensions: MediaDimensions | null, dropAt?: { x: number; y: number }): string;
   /**
    * Put a widget INTO an existing zone, keeping its position and size.
    *
@@ -284,6 +288,7 @@ interface BuilderState {
   setMeta(patch: Partial<BuilderState['meta']>): void;
   select(ids: string[] | string | null, additive?: boolean, opts?: { source?: 'canvas' | 'panel' }): void;
   setActiveFieldName(name: string | null): void;
+  setActiveMediaField(field: BoardMediaField | null): void;
   toggleLock(id: string): void;
   moveLayer(id: string, dir: 'up' | 'down' | 'top' | 'bottom'): void;
   flipCanvas(): void;
@@ -377,8 +382,11 @@ function applyBulkPatch(z: Zone, patch: Partial<Zone>): Zone {
 }
 
 function clampZone(z: Zone): Zone {
-  const width = Math.max(MIN_ZONE_SIZE, Math.min(100, z.width));
-  const height = Math.max(MIN_ZONE_SIZE, Math.min(100, z.height));
+  // A small logo or a thin banner must retain its source proportions. The
+  // generic 3% minimum on each axis independently stretched their frames.
+  const minimum = ['IMAGE', 'VIDEO', 'LOGO'].includes(z.widgetType) ? 0.1 : MIN_ZONE_SIZE;
+  const width = Math.max(minimum, Math.min(100, z.width));
+  const height = Math.max(minimum, Math.min(100, z.height));
   const x = Math.max(0, Math.min(100 - width, z.x));
   const y = Math.max(0, Math.min(100 - height, z.y));
   return { ...z, x, y, width, height };
@@ -418,6 +426,7 @@ export const useBuilderStore = create<BuilderState>((rawSet, get) => {
   selectionSource: 'canvas',
   editRev: 0,
   activeFieldName: null,
+  activeMediaField: null,
   gridSize: DEFAULT_GRID_SIZE,
   snapEnabled: true,
   showGrid: true,
@@ -449,6 +458,7 @@ export const useBuilderStore = create<BuilderState>((rawSet, get) => {
       activeSceneId: defaultScene?.id ?? null,
       selectedIds: [],
       activeFieldName: null,
+      activeMediaField: null,
       past: [],
       future: [],
       isDirty: false,
@@ -585,6 +595,7 @@ export const useBuilderStore = create<BuilderState>((rawSet, get) => {
       // first widget. See selectionEpoch.
       selectionEpoch: prev.selectionEpoch + 1,
       activeFieldName: null,
+      activeMediaField: null,
       ...(isTouchTile && !prev.isTouchEnabled ? { isTouchEnabled: true } : {}),
     });
   },
@@ -614,7 +625,7 @@ export const useBuilderStore = create<BuilderState>((rawSet, get) => {
   setActiveSceneId: (sceneId) => {
     // Drop selection when switching scenes — selecting a zone that's
     // not visible on the current scene is a UX dead-end.
-    set({ activeSceneId: sceneId, selectedIds: [], activeFieldName: null });
+    set({ activeSceneId: sceneId, selectedIds: [], activeFieldName: null, activeMediaField: null });
   },
 
   assignZonesToScene: (zoneIds, sceneId, commit = true) => {
@@ -632,9 +643,27 @@ export const useBuilderStore = create<BuilderState>((rawSet, get) => {
     set({ isDirty: false });
   },
 
-  addZone: (widgetType, dropAt, size) => {
+  addMediaZone: (kind, url, dimensions, dropAt) => {
+    const before = get();
+    const size = dimensions ? naturalMediaSize(dimensions, { width: before.meta.screenWidth, height: before.meta.screenHeight }) : { w: 40, h: 40 };
+    const count = before.zones.filter(z => z.widgetType !== 'EMPTY').length;
+    const at = dropAt ?? { x: 50 + (count % 5) * 3, y: 50 + (count % 5) * 3 };
+    const id = get().addZone(kind === 'image' ? 'IMAGE' : 'VIDEO', at, size, { replacePlaceholder: true });
+    set({
+      zones: get().zones.map(z => z.id === id ? {
+        ...z,
+        defaultConfig: { assetUrl: url, fit: 'contain', fitMode: 'contain', ...(dimensions ? { _mediaWidth: dimensions.width, _mediaHeight: dimensions.height } : {}) },
+      } : z),
+      isDirty: true,
+    });
+    return id;
+  },
+
+  addZone: (widgetType, dropAt, size, options) => {
     const id = crypto.randomUUID();
-    const zones = get().zones;
+    const existing = get().zones;
+    const replaceBlank = options?.replacePlaceholder && existing.length === 1 && existing[0].widgetType === 'EMPTY' && !existing[0].locked;
+    const zones = replaceBlank ? [] : existing;
     const past = [...get().past, snapshot(get())].slice(-HISTORY_LIMIT);
     // App Library smart-placement (world-class build, 2026-07-01) — a
     // generic 40x30 box for every widget was wrong for both a full-bleed
@@ -948,14 +977,14 @@ export const useBuilderStore = create<BuilderState>((rawSet, get) => {
   select: (ids, additive = false, opts) => {
     const selectionSource = opts?.source ?? 'canvas';
     if (ids === null) {
-      set({ selectedIds: [], activeFieldName: null, selectionSource });
+      set({ selectedIds: [], activeFieldName: null, activeMediaField: null, selectionSource });
       return;
     }
     const arr = Array.isArray(ids) ? ids : [ids];
     if (additive) {
       const curr = new Set(get().selectedIds);
       arr.forEach(id => curr.has(id) ? curr.delete(id) : curr.add(id));
-      set({ selectedIds: Array.from(curr), selectionEpoch: get().selectionEpoch + 1, selectionSource });
+      set({ selectedIds: Array.from(curr), activeMediaField: null, selectionEpoch: get().selectionEpoch + 1, selectionSource });
     } else {
       // A re-click on the already-selected zone bumps the epoch so the editor
       // re-opens (see selectionEpoch); the active field survives it.
@@ -966,11 +995,13 @@ export const useBuilderStore = create<BuilderState>((rawSet, get) => {
         selectionEpoch: get().selectionEpoch + 1,
         selectionSource,
         activeFieldName: sameSelection ? get().activeFieldName : null,
+        activeMediaField: sameSelection ? get().activeMediaField : null,
       });
     }
   },
 
-  setActiveFieldName: (name) => set({ activeFieldName: name }),
+  setActiveFieldName: (name) => set({ activeFieldName: name, ...(name ? { activeMediaField: null } : {}) }),
+  setActiveMediaField: (field) => set({ activeMediaField: field, ...(field ? { activeFieldName: null } : {}) }),
 
   toggleLock: (id) => {
     const prev = get();
