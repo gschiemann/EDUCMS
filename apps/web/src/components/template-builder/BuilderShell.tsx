@@ -1890,7 +1890,7 @@ function BuilderBottomBar() {
 
   return (
     // data-builder-bottom-bar: BuilderCanvas measures this element to
-    // reserve exactly the room it occupies. Keep the attribute if the
+    // reserve room across selection changes. Keep the attribute if the
     // bar is restyled — without it the canvas falls back to a constant.
     <div data-builder-bottom-bar className="absolute bottom-3 left-1/2 -translate-x-1/2 z-30 w-max max-w-[calc(100%_-_24px)] bg-white border border-slate-200 rounded-2xl shadow-lg flex flex-wrap justify-center items-center gap-1 px-2 py-1.5">
 

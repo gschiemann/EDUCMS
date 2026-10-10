@@ -100,10 +100,10 @@ export async function placeDroppedImageFiles(
 export const BOTTOM_BAR_CLEARANCE = 84;
 
 /**
- * Measure the floating bottom bar and report how much vertical room the
- * canvas must leave free: the bar's own height plus twice the gap it
- * floats above the bottom edge (once for the gap itself, once so the
- * canvas is not flush against it).
+ * Reserve the tallest measured selection bar for the current editor width.
+ * Switching between image and text controls must not enlarge a portrait
+ * canvas underneath the pointer at the end of a drag. A real container
+ * resize starts a new measurement; taller controls still receive room.
  */
 function useBottomBarClearance(previewMode: boolean): number {
   const [clearance, setClearance] = useState(BOTTOM_BAR_CLEARANCE);
@@ -111,12 +111,18 @@ function useBottomBarClearance(previewMode: boolean): number {
     if (previewMode) return;
     const el = document.querySelector('[data-builder-bottom-bar]') as HTMLElement | null;
     if (!el) return;
+    let measuredWidth: number | undefined;
     const measure = () => {
       const r = el.getBoundingClientRect();
       if (!r.height) return;
       const parent = el.offsetParent as HTMLElement | null;
-      const gap = parent ? parent.getBoundingClientRect().bottom - r.bottom : 12;
-      setClearance(Math.ceil(r.height + Math.max(0, gap) * 2));
+      const parentRect = parent?.getBoundingClientRect();
+      const gap = parentRect ? parentRect.bottom - r.bottom : 12;
+      const width = parentRect?.width ?? window.innerWidth;
+      const sameWidth = width === measuredWidth;
+      measuredWidth = width;
+      const needed = Math.ceil(r.height + Math.max(0, gap) * 2);
+      setClearance(previous => sameWidth ? Math.max(previous, needed) : needed);
     };
     measure();
     const ro = new ResizeObserver(measure);

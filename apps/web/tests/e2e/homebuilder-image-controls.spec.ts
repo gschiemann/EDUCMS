@@ -211,18 +211,50 @@ for (const portrait of [false, true]) {
     await expect(frame.locator("html")).toHaveAttribute("data-educms-layout-edit", "");
     const caption = frame.locator('[data-field="tour.photoCaption"]');
     await expect(caption).toBeVisible();
+    const bar = page.locator('[data-builder-bottom-bar]');
+    const canvas = page.locator('[data-template-canvas]');
+    await expect(bar.getByRole('group', { name: 'Media controls', exact: true })).toBeVisible();
+    await page.evaluate(() => document.fonts.ready);
+    await frame.locator('html').evaluate(() => document.fonts.ready);
+    // Let the toolbar's ResizeObserver and the board's fit pass both paint.
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    await expect.poll(() => frame.locator('.stage').evaluate(el => Math.abs(el.getBoundingClientRect().width - innerWidth))).toBeLessThan(1);
+    const imageCanvas = (await canvas.boundingBox())!;
+    await caption.click();
+    await expect(bar.getByRole('button', { name: 'Delete text element', exact: true })).toBeVisible();
+    await frame.locator('html').evaluate(() => document.fonts.ready);
+    await expect.poll(() => frame.locator('.stage').evaluate(el => Math.abs(el.getBoundingClientRect().width - innerWidth))).toBeLessThan(1);
+    // Changing selection controls must not enlarge the portrait canvas.
+    await expect.poll(async () => (await canvas.boundingBox())!.height - imageCanvas.height).toBeLessThan(1);
     const before = (await caption.boundingBox())!;
+    const stage = (await frame.locator('.stage').boundingBox())!;
+    // Wide captions have less than 40 screen pixels of room in portrait.
+    // Exercise an exact drag inside the board rather than its edge clamp.
+    const dx = Math.min(40, Math.floor(stage.x + stage.width - before.x - before.width) - 2);
+    expect(dx).toBeGreaterThan(10);
+    const positionError = (x: number, y: number) => async () => {
+      const current = await caption.boundingBox();
+      // A saved text override reloads the iframe; poll until it paints again.
+      return current ? Math.max(Math.abs(current.x - before.x - x), Math.abs(current.y - before.y - y)) : Infinity;
+    };
+    const relativePosition = async () => {
+      const current = await caption.boundingBox();
+      const currentStage = await frame.locator('.stage').boundingBox();
+      return current && currentStage ? {
+        x: (current.x - currentStage.x) / currentStage.width,
+        y: (current.y - currentStage.y) / currentStage.height,
+      } : null;
+    };
     await page.mouse.move(before.x + before.width / 2, before.y + before.height / 2);
     await page.mouse.down();
-    await page.mouse.move(before.x + before.width / 2 + 40, before.y + before.height / 2 - 15, { steps: 12 });
+    await page.mouse.move(before.x + before.width / 2 + dx, before.y + before.height / 2 - 15, { steps: 12 });
     await page.mouse.up();
-    await expect.poll(async () => Math.round((await caption.boundingBox())!.x - before.x)).toBeGreaterThan(35);
-    await expect.poll(async () => Math.round((await caption.boundingBox())!.y - before.y)).toBeLessThan(-10);
-    const bar = page.locator('[data-builder-bottom-bar]');
+    await expect.poll(positionError(dx, -15)).toBeLessThan(2);
+    const moved = (await relativePosition())!;
     await bar.getByRole('button', { name: 'Undo (Ctrl/⌘+Z)', exact: true }).click();
-    await expect.poll(async () => Math.abs((await caption.boundingBox())!.x - before.x)).toBeLessThan(2);
+    await expect.poll(positionError(0, 0)).toBeLessThan(2);
     await bar.getByRole('button', { name: 'Redo (Ctrl/⌘+Y)', exact: true }).click();
-    await expect.poll(async () => (await caption.boundingBox())!.x - before.x).toBeGreaterThan(35);
+    await expect.poll(positionError(dx, -15)).toBeLessThan(2);
     await caption.click();
     await bar.getByRole('button', { name: 'Delete text element', exact: true }).click();
     await expect(caption).not.toBeVisible();
@@ -239,7 +271,12 @@ for (const portrait of [false, true]) {
     await expect(caption).not.toBeVisible();
     await page.locator('[data-edit-field="tour.photoCaption"]').getByRole('button', { name: /^Restore / }).click();
     await expect(caption).toBeVisible();
-    await expect.poll(async () => (await caption.boundingBox())!.x - before.x).toBeGreaterThan(35);
+    // Reopening fits the canvas to its current toolbar. The text's saved
+    // position within the actual rendered board must remain identical.
+    await expect.poll(async () => {
+      const current = await relativePosition();
+      return current ? Math.max(Math.abs(current.x - moved.x), Math.abs(current.y - moved.y)) : Infinity;
+    }).toBeLessThan(0.001);
     await page.screenshot({ path: info.outputPath('canvas-text-moved-' + (portrait ? 'portrait' : 'landscape') + '.png'), fullPage: true });
   });
 }
@@ -248,7 +285,12 @@ test("all newly installed designs paint photos, logos and floor plans in the rea
   page,
 }) => {
   test.setTimeout(120_000);
-  await page.goto("/");
+  // A static host keeps the marketing page's delayed React hydration from
+  // replacing the iframe inserted by setContent during this board-only check.
+  await page.route('**/__homebuilder_test_host', route => route.fulfill({
+    contentType: 'text/html', body: '<!doctype html><title>Board test host</title>',
+  }));
+  await page.goto('/__homebuilder_test_host');
   for (const record of catalog) {
     await page.setViewportSize(
       record.orientation === "PORTRAIT"

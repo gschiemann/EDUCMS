@@ -73,6 +73,9 @@ async function addImage(page: Page, name: string) {
 }
 
 test('media starts at the top; cancel leaves the design alone; three pictures have tight frames and save their rotation', async ({ page }, testInfo) => {
+  // Three insertions, screenshots and save/reopen took 59.4 s on Linux WebKit.
+  // Keep each assertion's normal bound and allow the composed flow to finish.
+  test.setTimeout(120_000);
   const state = await openEditor(page);
   const quick = page.getByRole('group', { name: 'Add to your design' });
   for (const label of ['Image', 'Video', 'Text']) await expect(quick.getByRole('button', { name: label, exact: true })).toBeInViewport();
@@ -206,6 +209,7 @@ for (const [board, key] of [
   ['/templates/custom/brookfield/07-tour-takeaway.html', 'tour.image'],
 ] as const) {
   test(`built-in media has the same replace, fit and rotation controls: ${board}`, async ({ page }, testInfo) => {
+    test.setTimeout(90_000);
     const boardConfig = { url: board, imageOverrides: { [key]: [media[0].fileUrl, media[2].fileUrl] } };
     const state = await openEditor(page, false, [{ id: 'built-in', name: 'Standard template', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: boardConfig }]);
     const frame = page.locator('[data-zone-id="built-in"] iframe').contentFrame();

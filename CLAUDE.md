@@ -688,6 +688,12 @@ in the visible selection toolbar. Preserve these paths on blank and preset canva
 Board HTML also feeds the API's approved AI reference catalog. After changing it,
 run `node apps/api/scripts/build-designer-exemplars.cjs` and its `--check`, even
 when the change only adds a shim. The source hashes cover the complete HTML.
+Reserve the tallest measured bottom toolbar at the current editor width; a
+shorter selection toolbar must not enlarge the portrait canvas after a drag.
+Reset that measurement on an actual container resize, and still allow taller
+controls the room they need. Browser drag tests must wait for board fitting,
+use movement inside its bounds, and check the rendered position after Undo,
+Redo and reopening.
 Regenerate affected gallery posters and their provenance, then bump `POSTER_VERSION`
 in `src/lib/template-poster.ts`. The behavioral coverage is
 `builder-media-editing.spec.ts` and the discovered full-corpus

@@ -14,6 +14,7 @@ The editor now puts Image, Video and Text first, inserts selected media into a f
 6. **Better file-drop behavior.** Dropping several files onto the canvas, including over an existing picture, adds separate images instead of repeatedly replacing one. A single-file replacement still preserves the existing layout. Metadata loads are bounded and stale asynchronous completions are guarded.
 7. **Accessible picker and toolbar.** The picker has a labelled dialog, Escape close, keyboard focus trapping and focus restoration, filename labels and search. Canvas shortcuts are blocked while the picker is active. The toolbar wraps to remain reachable in portrait editing.
 8. **Clearer starter guidance.** The blank canvas now says “Add an image, video, or text to get started,” replacing an existing garbled arrow. Empty and video selections no longer show the unrelated instruction to click text for styling.
+9. **Portrait canvas stability.** The canvas retains space for the tallest selection toolbar measured at the current editor width. Switching to shorter controls no longer enlarges a portrait canvas after a drag. Actual container resizing resets that measurement; taller controls still receive enough room.
 
 ## Included templates
 
@@ -67,6 +68,8 @@ The real Next editor and actual board HTML were rendered in Chromium and WebKit.
 | Builder Jest suites plus affected HTML renderer and poster suites | **76 suites / 705 tests passed** |
 | Approved AI reference freshness, sanitization and selection suite | **133 tests passed** after reference regeneration |
 | Media editing and existing palette click/keyboard/drag browser tests | **28 tests passed** across Chromium and WebKit |
+| Landscape/portrait text movement, history and save/reopen repeat check | **12 repeat cases passed** across both engines |
+| Final media, palette and existing homebuilder browser rerun | **38 tests passed** across both engines |
 | Discovered 282-board media compatibility sweep | **564 tests passed** across both engines |
 | Existing board click-to-edit and family-coverage tests | **106 tests passed** across both engines |
 | Web TypeScript, `tsc --noEmit --incremental false` | Passed |
@@ -122,8 +125,12 @@ All 282 posters were captured again from the final HTML. The manifest records th
 
 The first production push exposed an additional freshness dependency in CI: the API's approved AI exemplar catalog hashes the complete source HTML, including editing shims. Regenerating its 11 references changed only `sourceSha256` and `strippedRuntimes`; every HTML payload remained identical. The correction preserves the existing freshness gate. `CLAUDE.md` now requires this regeneration and `--check` after board changes, including shim-only changes. The final release status and CI results are recorded in the Desktop handoff's `STATUS.md`.
 
+The full Chromium run also exposed a portrait text-drag regression check. Local reproduction showed that selection toolbars could reduce their reserved height and enlarge the canvas after the gesture. `useBottomBarClearance` now retains the greatest measured clearance at the current container width. The existing homebuilder test waits for fonts and actual board fitting, drags within the remaining canvas bounds, checks exact horizontal and vertical movement plus Undo/Redo, and verifies the restored rendered position relative to the board after save/reopen. The assertions account for the board's edge clamp and check the actual rendered position.
+
+The full browser gate now allows 50 minutes for roughly 690 cases per engine, including the added 282-board sweep. WebKit reached the previous 40-minute cap before finishing. Both engines and every discovered board remain required. The composed three-image save/reopen flow has a 120-second total budget after a 59.4-second Linux WebKit pass; per-assertion waits retain their ordinary bounds. Built-in board flows allow 90 seconds. The board-only homebuilder render test uses a static routed host so marketing-page hydration cannot replace its real sandboxed iframe.
+
 ## Delivery limits and next step
 
-This report distinguishes local implementation from production release. The accompanying handoff status records the final commit and local integration. The implementation was rebased onto local master `47f9b8ff` and passed the full local preflight. No production push, CI run or deployment is claimed here. A release still requires post-push CI watch, deployed editor verification, and the applicable physical-player qualification before a fleet-ready claim. Browser rendering is not evidence of physical Taurus or Android playback.
+The implementation was integrated onto master and deployed on the operator's explicit push request. The Desktop handoff's `STATUS.md` records the final release commits, production identity, CI results and deployed verification. Its `evidence/` folder preserves screenshots and logs. Physical-player qualification was not performed for this editor update.
 
 Further usability work can build on these shared controls, especially internal holiday/AI-board media, richer cropping and independent positioning of embedded board elements. Those are separate product changes; the reported basic media workflow is implemented and browser-verified.
