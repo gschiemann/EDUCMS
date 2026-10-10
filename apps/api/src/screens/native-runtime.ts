@@ -35,6 +35,31 @@ export function parseNativeRuntime(value: unknown): NativeRuntimeReport | null {
   }
 }
 
+/**
+ * Has the power / wake state changed since the report the row already holds?
+ * (2026-10-10, review P2 on 78a41305.) Every native heartbeat used to force a
+ * `screens` write, bypassing the 25 s ping debounce. Only a CHANGE in what the
+ * panel is doing — interactive, foreground, standby onset, or a new power-on
+ * acknowledgement — must reach the row promptly; an unchanged report rides
+ * the ordinary debounced liveness write. `elapsedRealtimeMs` advances on every
+ * beat by definition and is deliberately not part of the comparison. An
+ * unreadable stored report counts as changed (write it).
+ */
+export function nativePowerStateChanged(
+  stored: unknown,
+  next: NativeRuntimeReport,
+): boolean {
+  const prev = runtimeSchema.safeParse(stored);
+  if (!prev.success) return true;
+  const a = prev.data;
+  return (
+    a.interactive !== next.interactive ||
+    a.foreground !== next.foreground ||
+    a.standbySinceMs !== next.standbySinceMs ||
+    a.powerOnAck !== next.powerOnAck
+  );
+}
+
 /** Server age, not the kiosk's wall clock. Silence and an expired command never wake a screen. */
 export function pendingNativePowerOn(
   value: Date | null | undefined,

@@ -3,7 +3,7 @@ import { Controller, Post, Get, Put, Delete, Body, Param, Query, Req, Res, UseGu
 import { encodeTargetFromResolutions, pdfDelivery, withheldFromScreens } from '@cms/api-types';
 import { pdfPageBytes, pdfPageManifestItems, pdfScreenShape } from './pdf-page-items';
 import { selectVideoFile, usesPortraitAvcCompatibility, usesNoBFrameCompatibility } from './video-rendition';
-import { NATIVE_RUNTIME_HEADER, parseNativeRuntime, pendingNativePowerOn } from './native-runtime';
+import { NATIVE_RUNTIME_HEADER, nativePowerStateChanged, parseNativeRuntime, pendingNativePowerOn } from './native-runtime';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import type { Request as ExpressReq, Response } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
@@ -1659,7 +1659,15 @@ export class ScreensController {
     const otaCleared = data.forceApkUpdatePendingAt === null;
     // Every `mustWrite` input is already gated on `mayStampFirmware`, so
     // mustWrite ⇒ proved ⇒ mayStampLiveness. Stated rather than relied on.
-    const mustWrite = mayStampFirmware && (!!versionChanged || managerChanged || otaCleared || !!nativeRuntime);
+    // A native report forces a write only when the panel's power / wake state
+    // CHANGED (review P2, 2026-10-10): an unchanged report rides the 25 s ping
+    // debounce like every other heartbeat field. The POWER_ON command itself
+    // never depends on this write — it is answered from `screen.nativePowerOnAt`
+    // on the fresh read above, and its identity ack (a changed `powerOnAck`)
+    // is a state change, so it is still written at once.
+    const nativeChanged = !!nativeRuntime &&
+      nativePowerStateChanged(screen.nativeRuntimeReport, nativeRuntime);
+    const mustWrite = mayStampFirmware && (!!versionChanged || managerChanged || otaCleared || nativeChanged);
     const pingDue = mayStampLiveness && !shouldSkipLastPingWrite(screen.id);
 
     let screenAfterUpdate: any = screen;

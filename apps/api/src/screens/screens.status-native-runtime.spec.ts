@@ -16,9 +16,12 @@ const runtime = {
   powerOnAck: null,
 };
 
-function harness(proved = true, paired = true) {
+function harness(proved = true, paired = true, id = 'wall') {
   const row = {
-    id: 'wall',
+    id,
+    nativeRuntimeReport: null as unknown,
+    playerVersion: '1.1.24',
+    playerVersionCode: 10124,
     tenantId: paired ? 'cleveland' : null,
     deviceFingerprint: 'android-wall',
     nativePowerOnAt: issued as Date | null,
@@ -122,5 +125,48 @@ describe('native heartbeat wake backstop', () => {
     expect(await poll(controller)).toMatchObject({
       nativeControl: { powerOnRequestedAt: null },
     });
+  });
+});
+
+describe('native heartbeat write debounce (review P2, 2026-10-10)', () => {
+  it('an unchanged report rides the ping debounce; the wake command is still answered', async () => {
+    const { controller, screen, row } = harness(true, true, 'wall-debounce-1');
+    row.nativeRuntimeReport = runtime;
+    await poll(controller); // first beat: the liveness write is due
+    expect(screen.update).toHaveBeenCalledTimes(1);
+    // Same panel state, new uptime counter, inside the debounce window.
+    const again = await poll(
+      controller,
+      JSON.stringify({ ...runtime, elapsedRealtimeMs: runtime.elapsedRealtimeMs + 3000 }),
+    );
+    expect(screen.update).toHaveBeenCalledTimes(1);
+    // POWER_ON never waits on the write: it comes from the fresh row read.
+    expect(again).toMatchObject({
+      nativeControl: { powerOnRequestedAt: issued.toISOString() },
+    });
+  });
+
+  it('a power / wake change is written at once, even inside the debounce window', async () => {
+    const { controller, screen, row } = harness(true, true, 'wall-debounce-2');
+    row.nativeRuntimeReport = runtime;
+    await poll(controller);
+    expect(screen.update).toHaveBeenCalledTimes(1);
+    const woke = { ...runtime, interactive: true, foreground: true, standbySinceMs: null };
+    await poll(controller, JSON.stringify(woke));
+    expect(screen.update).toHaveBeenCalledTimes(2);
+    expect(screen.update.mock.calls[1][0].data.nativeRuntimeReport).toEqual(woke);
+    // The identity acknowledgement is a change too.
+    row.nativeRuntimeReport = woke;
+    await poll(controller, JSON.stringify({ ...woke, powerOnAck: issued.toISOString() }));
+    expect(screen.update).toHaveBeenCalledTimes(3);
+  });
+
+  it('a row with no stored report gets the first one written', async () => {
+    const { controller, screen } = harness(true, true, 'wall-debounce-3');
+    await poll(controller);
+    await poll(controller);
+    // 1st: debounce due (+ new report); 2nd: stored row (mock) still has
+    // none, so it is still a change and is written.
+    expect(screen.update).toHaveBeenCalledTimes(2);
   });
 });
