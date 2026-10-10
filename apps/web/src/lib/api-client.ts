@@ -15,6 +15,40 @@ const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const RETRY_DELAYS_MS = [1000, 3000, 7000];
 const RETRYABLE_STATUS = new Set([502, 503, 504]);
 
+/**
+ * 2026-10-10 review P1-1: `/api/session/refresh` always mints for the user's
+ * HOME tenant. After a workspace switch the page is operating in another
+ * location, so adopting that token would replay this request — and every
+ * write after it — against the home tenant while the URL and cache still show
+ * the switched one. Re-switch to the active tenant with the fresh token (the
+ * API re-checks access); if that is refused, return null so the caller ends
+ * the session cleanly instead of silently changing tenant.
+ */
+const rescopeInFlight = new Map<string, Promise<any | null>>();
+async function rescopeToActiveTenant(restored: any, activeTenantId: string | null): Promise<any | null> {
+  if (!restored?.access_token) return restored;
+  const restoredTenantId = restored.user?.tenantId ?? null;
+  if (!activeTenantId || !restoredTenantId || restoredTenantId === activeTenantId) return restored;
+  const key = `${restored.access_token}:${activeTenantId}`;
+  let pending = rescopeInFlight.get(key);
+  if (!pending) {
+    pending = apiFetch<any>('/tenants/switch', {
+      method: 'POST',
+      body: JSON.stringify({ tenantId: activeTenantId }),
+      headers: { Authorization: `Bearer ${restored.access_token}` },
+      _sessionRetry: true,
+      _noRetry: true,
+    })
+      .then((res) => (res?.access_token && res.user?.tenantId === activeTenantId ? res : null))
+      .catch(() => null)
+      .finally(() => { setTimeout(() => rescopeInFlight.delete(key), 0); });
+    rescopeInFlight.set(key, pending);
+  }
+  const switched = await pending;
+  if (!switched) clog.warn('api', 'Refreshed session could not be re-scoped to the active location — ending session');
+  return switched;
+}
+
 type ApiFetchOptions = RequestInit & {
   _csrfRetry?: boolean;
   _noRetry?: boolean;
@@ -279,7 +313,9 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
         //   • no timer anywhere — this only ever runs in response to a real
         //     401 on a real request (CLAUDE.md mobile-perf standard).
         if (token && !options._sessionRetry && !sessionLogoutFired && hasRememberMarker()) {
-          const restored = await refreshRememberedSession();
+          const activeTenantId = useUIStore.getState().user?.tenantId ?? null;
+          const refreshed = await refreshRememberedSession();
+          const restored = await rescopeToActiveTenant(refreshed, activeTenantId);
           if (restored?.access_token) {
             useUIStore.getState().setToken(restored.access_token);
             if (restored.user) useUIStore.getState().setUser(restored.user);
@@ -288,7 +324,7 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
             });
             return apiFetch<T>(path, { ...options, _sessionRetry: true });
           }
-          if (hasRememberMarker()) {
+          if (!refreshed?.access_token && hasRememberMarker()) {
             // A network/5xx refresh failure keeps the cookie and marker.
             // Only an explicit refusal clears them; an outage must not
             // destroy a recoverable session when a phone returns to the app.
