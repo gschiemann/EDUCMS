@@ -88,6 +88,8 @@ export function useUploadErrorText(): (err: unknown, file: File) => string {
       if (err.code === 'aborted') return t('cancelled');
       if (err.code === 'network') return t('networkLost');
       if (err.code === 'expired') return t('expired');
+      if (err.code === 'unreadable') return t('fileUnreadable');
+      if (err.code === 'unconfirmed') return t('storageUnconfirmed');
       if (err.code === 'too-large') {
         return t('tooLarge', { name: file.name, size: fmtBytes(file.size), max: formatUploadCap(maxUploadBytesFor(file)) });
       }

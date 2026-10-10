@@ -18,7 +18,7 @@ it('a hung file-provider read fails within the watchdog instead of occupying the
   const spy = jest.spyOn(FileReader.prototype, 'readAsArrayBuffer').mockImplementation(() => {});
   try {
     const read = readUploadChunk(new Blob(['test']));
-    const rejected = expect(read).rejects.toMatchObject({ code: 'storage' });
+    const rejected = expect(read).rejects.toMatchObject({ code: 'unreadable' });
     jest.advanceTimersByTime(UPLOAD_IDLE_TIMEOUT_MS);
     await rejected;
   } finally { spy.mockRestore(); jest.useRealTimers(); }

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { X } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import type { FleetLocation, FleetOperationsResponse } from '@/hooks/use-api';
 import { buildFleetCommand, locationTone } from '@/components/dashboard/district/fleetCommand';
 import type { OpsRow, OpsScreen } from './v3/screenOps';
@@ -21,6 +22,7 @@ export function CompanyScreenAtlas({ fleet, locations, screens, rows, isFiltered
   onOpenScreen: (id: string) => void;
   onLocationList: (id: string) => void;
 }) {
+  const t = useTranslations('companyAtlas');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const visibleLocations = useMemo(() => {
     const ids = new Set(screens.map((s) => s.sourceTenant?.id));
@@ -57,28 +59,28 @@ export function CompanyScreenAtlas({ fleet, locations, screens, rows, isFiltered
 
   return (
     <LocationMapSurface locationPins={pins} total={pins.length} compact onLocationClick={setSelectedId}
-      empty={<div className="p-12 text-center text-sm text-slate-500">No mapped locations match this view.</div>}>
+      empty={<div className="p-12 text-center text-sm text-slate-500">{t('noMapped')}</div>}>
       {unmapped.length > 0 && (
         <details className="absolute left-3 bottom-3 z-[1000] max-w-[calc(100%-1.5rem)] w-72 rounded-2xl border border-slate-200 bg-white shadow-lg">
-          <summary className="cursor-pointer px-4 py-3 text-xs font-bold text-slate-700">Not on the map yet · {unmapped.length}</summary>
+          <summary className="cursor-pointer px-4 py-3 text-xs font-bold text-slate-700">{t('notOnMap', { count: unmapped.length })}</summary>
           <div className="max-h-48 overflow-auto px-4 pb-3 space-y-2 text-xs">
-            {unmapped.map((l) => <div key={l.id}><p className="font-bold">{l.name}</p><p className="text-slate-500">{l.address ? 'Address not located yet.' : 'No address saved.'}</p></div>)}
+            {unmapped.map((l) => <div key={l.id}><p className="font-bold">{l.name}</p><p className="text-slate-500">{l.address ? t('addressNotLocated') : t('noAddress')}</p></div>)}
           </div>
         </details>
       )}
       {selected && (
-        <div className="absolute top-3 right-3 z-[1000] w-80 max-w-[calc(100%-1.5rem)] rounded-2xl border border-slate-200 bg-white shadow-lg p-4" role="region" aria-label={`${selected.name} screens`}>
-          <div className="flex items-center gap-2"><h3 className="font-bold text-sm flex-1">{selected.name}</h3><button type="button" onClick={() => setSelectedId(null)} aria-label="Close location"><X className="w-4 h-4" /></button></div>
-          <p className="text-xs text-slate-500 mt-1">{selected.address || 'No address saved'}</p>
+        <div className="absolute top-3 right-3 z-[1000] w-80 max-w-[calc(100%-1.5rem)] rounded-2xl border border-slate-200 bg-white shadow-lg p-4" role="region" aria-label={t('locationScreens', { name: selected.name })}>
+          <div className="flex items-center gap-2"><h3 className="font-bold text-sm flex-1">{selected.name}</h3><button type="button" onClick={() => setSelectedId(null)} aria-label={t('close')}><X className="w-4 h-4" /></button></div>
+          <p className="text-xs text-slate-500 mt-1">{selected.address || t('noAddress')}</p>
           <div className="max-h-64 overflow-auto mt-3 space-y-1">
-            {selectedRows.length === 0 ? <p className="text-xs text-slate-500">No screens in this view.</p> : selectedRows.map((row) => (
+            {selectedRows.length === 0 ? <p className="text-xs text-slate-500">{t('noScreens')}</p> : selectedRows.map((row) => (
               <button type="button" key={row.screen.id} onClick={() => onOpenScreen(row.screen.id)} className="w-full rounded-lg p-2 text-left hover:bg-slate-50 border border-slate-100">
                 <span className="block text-xs font-bold text-slate-800">{row.screen.name}</span>
-                <span className="block text-xs text-slate-500">{row.screen.status === 'ONLINE' ? 'Online' : 'Offline'} · {row.expected.name || 'Nothing scheduled'}</span>
+                <span className="block text-xs text-slate-500">{row.screen.status === 'ONLINE' ? t('online') : t('offline')} · {row.expected.name || t('nothingScheduled')}</span>
               </button>
             ))}
           </div>
-          <button type="button" onClick={() => onLocationList(selected.id)} className="mt-3 text-xs font-bold text-slate-700 underline">View location in list</button>
+          <button type="button" onClick={() => onLocationList(selected.id)} className="mt-3 text-xs font-bold text-slate-700 underline">{t('viewInList')}</button>
         </div>
       )}
     </LocationMapSurface>

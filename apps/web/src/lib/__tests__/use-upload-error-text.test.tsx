@@ -42,6 +42,22 @@ function text(err: unknown): string {
   return result.current(err, file);
 }
 
+describe('useUploadErrorText — device-side failures (2026-10-10)', () => {
+  it('an unreadable file and unconfirmed bytes get their own words, not "storage refused"', () => {
+    expect(text(new DirectUploadError('unreadable', 'x'))).toBe(en.directUpload.fileUnreadable);
+    expect(text(new DirectUploadError('unconfirmed', 'x'))).toBe(en.directUpload.storageUnconfirmed);
+    expect(text(new DirectUploadError('storage', 'x'))).toBe(en.directUpload.storageRefused);
+  });
+
+  it('those words exist, translated, in es and zh', () => {
+    const catalogs = { en, es, zh } as unknown as Record<string, { directUpload: Record<string, string> }>;
+    for (const key of ['fileUnreadable', 'storageUnconfirmed']) {
+      expect(catalogs.es.directUpload[key]).not.toBe(catalogs.en.directUpload[key]);
+      expect(catalogs.zh.directUpload[key]).not.toBe(catalogs.en.directUpload[key]);
+    }
+  });
+});
+
 describe('useUploadErrorText — STORAGE_QUOTA_EXCEEDED', () => {
   it('is translated from the numbers in the body, not passed through', () => {
     // A server sentence the copy would never contain proves the translated path ran.

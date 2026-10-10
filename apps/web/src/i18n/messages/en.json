@@ -3591,7 +3591,9 @@
     "pdfNotPdf": "This isn't a PDF — it may be another kind of file saved with a .pdf name. Save or export it as a PDF again and upload the new copy.",
     "pdfIncomplete": "This PDF is incomplete — the file may be damaged or cut short. Save or export it again and upload the new copy.",
     "pdfPassword": "This PDF is password-protected. Remove the password and upload it again.",
-    "imageHeicUnavailable": "This HEIC photo couldn't be converted just now. Upload it again in a minute, or export it as JPEG and upload that."
+    "imageHeicUnavailable": "This HEIC photo couldn't be converted just now. Upload it again in a minute, or export it as JPEG and upload that.",
+    "fileUnreadable": "The selected file could not be read. Select it again from Files.",
+    "storageUnconfirmed": "Storage didn't confirm the upload. Try again."
   },
   "playbackCopy": {
     "cannotPrepare": "{count, plural, one {{files} can't be prepared for 1080p screens. Remove or replace it, then publish again.} other {These files can't be prepared for 1080p screens: {files}. Remove or replace them, then publish again.}} The previous content stays on screen.",
@@ -4167,5 +4169,50 @@
     "convertingPct": "Converting to MP4 for screens… {pct}%",
     "conversionFailed": "{name} couldn't be converted to MP4 for screens. Export it as MP4 (H.264) and upload that.",
     "conversionSlow": "{name} is still being converted for screens. It's in your Media Library — choose it there once it's ready."
+  },
+  "locationFilter": {
+    "label": "Filter by location",
+    "all": "All locations",
+    "selectedCount": "{count, plural, one {# location selected} other {# locations selected}}",
+    "options": "{label} options",
+    "search": "Search locations",
+    "searchPlaceholder": "Search locations…",
+    "select": "Select {name}",
+    "noMatches": "No matching locations",
+    "selectedShort": "{count} selected",
+    "done": "Done"
+  },
+  "companyAtlas": {
+    "noMapped": "No mapped locations match this view.",
+    "notOnMap": "Not on the map yet · {count}",
+    "addressNotLocated": "Address not located yet.",
+    "noAddress": "No address saved.",
+    "locationScreens": "{name} screens",
+    "close": "Close location",
+    "noScreens": "No screens in this view.",
+    "online": "Online",
+    "offline": "Offline",
+    "nothingScheduled": "Nothing scheduled",
+    "viewInList": "View location in list"
+  },
+  "companyPublish": {
+    "locationFallback": "Location",
+    "loading": "Loading company screens…",
+    "loadFailed": "Company screens could not load. You can still select local screens.",
+    "tryAgain": "Try again",
+    "scopeLabel": "Screen scope",
+    "scopeAll": "All company screens",
+    "scopeLocal": "Local screens",
+    "templateBlocked": "This template belongs to this location. Choose Local screens, or use a media playlist or shared template to publish across the company.",
+    "publishedTitle": "Playlist published",
+    "publishedWithIssuesTitle": "Published with issues",
+    "publishedLive": "{live, plural, one {# screen} other {# screens}} scheduled to play now across {locations, plural, one {# location} other {# locations}}.",
+    "publishedPending": "{pending, plural, one {# screen} other {# screens}} will start when the playback copy is ready; they keep their current content until then.",
+    "publishedFailures": "These targets could not publish: {failures}. Open the saved playlist to retry those screens.",
+    "stepTitle": "Publishing across the company",
+    "stepBody": "Starts now and plays 24/7 until stopped. Each selected location receives its own copy of this playlist.",
+    "stepNote": "This replaces the regular content on the selected screens. Schedule windows are available when publishing to local screens.",
+    "reviewTitle": "Ready to publish",
+    "reviewBody": "Double-check the screens and locations below, then hit Create & Publish."
   }
 }

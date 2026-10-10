@@ -3591,7 +3591,9 @@
     "pdfNotPdf": "Esto no es un PDF: puede ser otro tipo de archivo guardado con nombre .pdf. Vuelve a guardarlo o exportarlo como PDF y sube la nueva copia.",
     "pdfIncomplete": "Este PDF está incompleto: el archivo puede estar dañado o cortado. Vuelve a guardarlo o exportarlo y sube la nueva copia.",
     "pdfPassword": "Este PDF está protegido con contraseña. Quita la contraseña y vuelve a subirlo.",
-    "imageHeicUnavailable": "No se pudo convertir esta foto HEIC en este momento. Vuelve a subirla en un minuto, o expórtala como JPEG y sube esa."
+    "imageHeicUnavailable": "No se pudo convertir esta foto HEIC en este momento. Vuelve a subirla en un minuto, o expórtala como JPEG y sube esa.",
+    "fileUnreadable": "No se pudo leer el archivo seleccionado. Vuelve a seleccionarlo en Archivos.",
+    "storageUnconfirmed": "El almacenamiento no confirmó la subida. Inténtalo de nuevo."
   },
   "playbackCopy": {
     "cannotPrepare": "{count, plural, one {{files} no se puede preparar para las pantallas 1080p. Quítalo o reemplázalo y vuelve a publicar.} other {Estos archivos no se pueden preparar para las pantallas 1080p: {files}. Quítalos o reemplázalos y vuelve a publicar.}} El contenido anterior sigue en pantalla.",
@@ -4167,5 +4169,50 @@
     "convertingPct": "Convirtiendo a MP4 para las pantallas… {pct}%",
     "conversionFailed": "No se pudo convertir {name} a MP4 para las pantallas. Expórtalo como MP4 (H.264) y sube ese archivo.",
     "conversionSlow": "{name} todavía se está convirtiendo para las pantallas. Está en tu Biblioteca de medios: elígelo allí cuando esté listo."
+  },
+  "locationFilter": {
+    "label": "Filtrar por ubicación",
+    "all": "Todas las ubicaciones",
+    "selectedCount": "{count, plural, one {# ubicación seleccionada} other {# ubicaciones seleccionadas}}",
+    "options": "Opciones de {label}",
+    "search": "Buscar ubicaciones",
+    "searchPlaceholder": "Buscar ubicaciones…",
+    "select": "Seleccionar {name}",
+    "noMatches": "No hay ubicaciones que coincidan",
+    "selectedShort": "{count} seleccionadas",
+    "done": "Listo"
+  },
+  "companyAtlas": {
+    "noMapped": "Ninguna ubicación del mapa coincide con esta vista.",
+    "notOnMap": "Aún no están en el mapa · {count}",
+    "addressNotLocated": "La dirección aún no se ha localizado.",
+    "noAddress": "No hay dirección guardada.",
+    "locationScreens": "Pantallas de {name}",
+    "close": "Cerrar ubicación",
+    "noScreens": "No hay pantallas en esta vista.",
+    "online": "En línea",
+    "offline": "Sin conexión",
+    "nothingScheduled": "Nada programado",
+    "viewInList": "Ver ubicación en la lista"
+  },
+  "companyPublish": {
+    "locationFallback": "Ubicación",
+    "loading": "Cargando las pantallas de la empresa…",
+    "loadFailed": "No se pudieron cargar las pantallas de la empresa. Aún puedes seleccionar pantallas locales.",
+    "tryAgain": "Reintentar",
+    "scopeLabel": "Alcance de pantallas",
+    "scopeAll": "Todas las pantallas de la empresa",
+    "scopeLocal": "Pantallas locales",
+    "templateBlocked": "Esta plantilla pertenece a esta ubicación. Elige Pantallas locales, o usa una lista de medios o una plantilla compartida para publicar en toda la empresa.",
+    "publishedTitle": "Lista publicada",
+    "publishedWithIssuesTitle": "Publicada con problemas",
+    "publishedLive": "{live, plural, one {# pantalla programada} other {# pantallas programadas}} para reproducirse ahora en {locations, plural, one {# ubicación} other {# ubicaciones}}.",
+    "publishedPending": "{pending, plural, one {# pantalla empezará} other {# pantallas empezarán}} cuando la copia de reproducción esté lista; mientras tanto conservan su contenido actual.",
+    "publishedFailures": "No se pudo publicar en estos destinos: {failures}. Abre la lista guardada para reintentar esas pantallas.",
+    "stepTitle": "Publicar en toda la empresa",
+    "stepBody": "Empieza ahora y se reproduce 24/7 hasta que se detenga. Cada ubicación seleccionada recibe su propia copia de esta lista.",
+    "stepNote": "Esto reemplaza el contenido habitual de las pantallas seleccionadas. Las franjas horarias están disponibles al publicar en pantallas locales.",
+    "reviewTitle": "Listo para publicar",
+    "reviewBody": "Revisa las pantallas y ubicaciones de abajo y pulsa Crear y publicar."
   }
 }

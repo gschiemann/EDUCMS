@@ -2,17 +2,21 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ChevronDown, MapPin, Search } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { AnchoredMenu } from '@/components/ui/anchored-menu';
 import { SelectionCheckbox } from '@/components/common/SelectionCheckbox';
 
 /** Empty selection means all locations. Filters only narrow the current view. */
-export function LocationFilter({ locations, value, onChange, label = 'Filter by location', allLabel = 'All locations' }: {
+export function LocationFilter({ locations, value, onChange, label: labelProp, allLabel: allLabelProp }: {
   locations: Array<{ id: string; name: string }>;
   value: string[];
   onChange: (ids: string[]) => void;
   label?: string;
   allLabel?: string;
 }) {
+  const t = useTranslations('locationFilter');
+  const label = labelProp ?? t('label');
+  const allLabel = allLabelProp ?? t('all');
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -23,8 +27,8 @@ export function LocationFilter({ locations, value, onChange, label = 'Filter by 
   const selected = new Set(value);
   const choices = sorted.filter((location) => location.name.toLowerCase().includes(search.trim().toLowerCase()));
   const summary = value.length === 0 ? allLabel : value.length === 1
-    ? locations.find((location) => location.id === value[0])?.name ?? '1 location selected'
-    : `${value.length} locations selected`;
+    ? locations.find((location) => location.id === value[0])?.name ?? t('selectedCount', { count: 1 })
+    : t('selectedCount', { count: value.length });
 
   useEffect(() => {
     if (!open) return;
@@ -62,12 +66,12 @@ export function LocationFilter({ locations, value, onChange, label = 'Filter by 
         <ChevronDown className="w-4 h-4 shrink-0 text-slate-400" aria-hidden />
       </button>
       <AnchoredMenu anchorRef={triggerRef} open={open} width={typeof window === 'undefined' ? 320 : Math.min(320, window.innerWidth - 16)}
-        ariaLabel={`${label} options`} onPlaced={() => searchRef.current?.focus()}>
+        ariaLabel={t('options', { label })} onPlaced={() => searchRef.current?.focus()}>
         <div ref={panelRef} id={panelId}>
           <div className="relative m-3">
             <Search className="absolute left-3 top-3 w-4 h-4 text-slate-400" aria-hidden />
             <input ref={searchRef} type="search" value={search} onChange={(event) => setSearch(event.target.value)}
-              aria-label="Search locations" placeholder="Search locations…"
+              aria-label={t('search')} placeholder={t('searchPlaceholder')}
               className="w-full min-h-11 pl-9 pr-3 rounded-lg border border-slate-200 text-sm outline-none focus:ring-2 focus:ring-indigo-300" />
           </div>
           <div className="flex items-center px-3 border-b border-slate-100">
@@ -77,15 +81,15 @@ export function LocationFilter({ locations, value, onChange, label = 'Filter by 
           <div className="max-h-[min(320px,45vh)] overflow-y-auto p-1">
             {choices.map((location) => (
               <div key={location.id} className={`flex items-center px-2 rounded-lg ${selected.has(location.id) ? 'bg-indigo-50' : 'hover:bg-slate-50'}`}>
-                <SelectionCheckbox checked={selected.has(location.id)} label={`Select ${location.name}`} onChange={() => toggle(location.id)} />
+                <SelectionCheckbox checked={selected.has(location.id)} label={t('select', { name: location.name })} onChange={() => toggle(location.id)} />
                 <button type="button" onClick={() => toggle(location.id)} className="flex-1 min-h-11 text-left px-2 text-sm text-slate-700">{location.name}</button>
               </div>
             ))}
-            {choices.length === 0 && <p className="px-3 py-4 text-sm text-slate-500">No matching locations</p>}
+            {choices.length === 0 && <p className="px-3 py-4 text-sm text-slate-500">{t('noMatches')}</p>}
           </div>
           <div className="flex items-center justify-between gap-2 border-t border-slate-100 px-3 py-2">
-            <span className="text-xs text-slate-500">{value.length ? `${value.length} selected` : allLabel}</span>
-            <button type="button" onClick={close} className="min-h-11 px-3 rounded-lg text-sm font-bold text-indigo-600 hover:bg-indigo-50">Done</button>
+            <span className="text-xs text-slate-500">{value.length ? t('selectedShort', { count: value.length }) : allLabel}</span>
+            <button type="button" onClick={close} className="min-h-11 px-3 rounded-lg text-sm font-bold text-indigo-600 hover:bg-indigo-50">{t('done')}</button>
           </div>
         </div>
       </AnchoredMenu>

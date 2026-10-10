@@ -262,14 +262,14 @@ describe('uploadAssetDirect — TUS resumable for large files', () => {
     const original = h.deps.request!;
     h.deps.request = jest.fn(async (...args: Parameters<DirectUploadDeps['request']>) => args[0] === 'PATCH'
       ? res(204, value === null ? {} : { 'Upload-Offset': value }) : original(...args));
-    await expect(uploadAssetDirect(file(20 * MB), { deps: h.deps })).rejects.toMatchObject({ code: 'storage' });
+    await expect(uploadAssetDirect(file(20 * MB), { deps: h.deps })).rejects.toMatchObject({ code: 'unconfirmed' });
     expect(h.postJson.mock.calls.some(([path]) => path === '/assets/complete-upload')).toBe(false);
   });
 
   it('does not send an unreadable chunk to storage', async () => {
     const h = harness();
     h.deps.readChunk = async () => new ArrayBuffer(0);
-    await expect(uploadAssetDirect(file(20 * MB), { deps: h.deps })).rejects.toMatchObject({ code: 'storage' });
+    await expect(uploadAssetDirect(file(20 * MB), { deps: h.deps })).rejects.toMatchObject({ code: 'unreadable' });
     expect(h.request.mock.calls.some(([method]) => method === 'PATCH')).toBe(false);
     expect(h.postJson.mock.calls.some(([path]) => path === '/assets/complete-upload')).toBe(false);
   });

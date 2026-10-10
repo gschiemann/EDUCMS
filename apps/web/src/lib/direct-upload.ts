@@ -118,7 +118,11 @@ export interface CompletedAsset {
   posterUrl: string | null;
 }
 
-export type DirectUploadErrorCode = 'too-large' | 'unsupported' | 'network' | 'storage' | 'server' | 'aborted' | 'expired' | 'empty';
+export type DirectUploadErrorCode = 'too-large' | 'unsupported' | 'network' | 'storage' | 'server' | 'aborted' | 'expired' | 'empty'
+  /** The picked file could not be read on this device (iOS Files provider, a moved file). */
+  | 'unreadable'
+  /** Storage answered but did not confirm the bytes it was sent. */
+  | 'unconfirmed';
 
 export class DirectUploadError extends Error {
   constructor(
@@ -282,23 +286,23 @@ export function readUploadChunk(blob: Blob, signal?: AbortSignal): Promise<Array
       signal?.removeEventListener('abort', abort);
       if (error) reject(error);
       else if (reader.result instanceof ArrayBuffer && reader.result.byteLength === blob.size) resolve(reader.result);
-      else reject(new DirectUploadError('storage', 'The selected file could not be read. Select it again from Files.'));
+      else reject(new DirectUploadError('unreadable', 'The selected file could not be read. Select it again from Files.'));
     };
     const abort = () => {
       finish(new DirectUploadError('aborted', 'Upload cancelled.'));
       if (reader.readyState === FileReader.LOADING) reader.abort();
     };
     const timer = setTimeout(() => {
-      finish(new DirectUploadError('storage', 'The selected file could not be read. Select it again from Files.'));
+      finish(new DirectUploadError('unreadable', 'The selected file could not be read. Select it again from Files.'));
       if (reader.readyState === FileReader.LOADING) reader.abort();
     }, UPLOAD_IDLE_TIMEOUT_MS);
     reader.onload = () => finish();
-    reader.onerror = () => finish(new DirectUploadError('storage', 'The selected file could not be read. Select it again from Files.'));
+    reader.onerror = () => finish(new DirectUploadError('unreadable', 'The selected file could not be read. Select it again from Files.'));
     reader.onabort = () => finish(new DirectUploadError('aborted', 'Upload cancelled.'));
     if (signal?.aborted) { abort(); return; }
     signal?.addEventListener('abort', abort, { once: true });
     try { reader.readAsArrayBuffer(blob); }
-    catch { finish(new DirectUploadError('storage', 'The selected file could not be read. Select it again from Files.')); }
+    catch { finish(new DirectUploadError('unreadable', 'The selected file could not be read. Select it again from Files.')); }
   });
 }
 
@@ -536,7 +540,7 @@ export async function uploadAssetDirect(file: File, opts: DirectUploadOptions = 
       const end = Math.min(offset + chunk, total);
       const bytes = await deps.readChunk(file.slice(offset, end), opts.signal);
       aborted();
-      if (bytes.byteLength !== end - offset) throw new DirectUploadError('storage', 'The selected file could not be read. Select it again from Files.');
+      if (bytes.byteLength !== end - offset) throw new DirectUploadError('unreadable', 'The selected file could not be read. Select it again from Files.');
       opts.onPhase?.('uploading');
       const res = await deps.request(
         'PATCH',
@@ -556,7 +560,7 @@ export async function uploadAssetDirect(file: File, opts: DirectUploadOptions = 
         const value = res.header('Upload-Offset');
         const next = value && /^\d+$/.test(value) ? Number(value) : NaN;
         if (!Number.isSafeInteger(next) || next < offset || next > end) {
-          throw new DirectUploadError('storage', 'Storage did not confirm the uploaded bytes.', res.status);
+          throw new DirectUploadError('unconfirmed', 'Storage did not confirm the uploaded bytes.', res.status);
         }
         if (next > offset) {
           offset = next;

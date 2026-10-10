@@ -66,6 +66,7 @@ import {
   type ReactNode,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { useTranslations } from 'next-intl';
 import {
   X,
   Play,
@@ -540,6 +541,7 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
   const { data: localGroups } = useScreenGroups();
   const user = useUIStore((s) => s.user);
   const canPublishCompany = user?.role === 'SUPER_ADMIN' || user?.role === 'DISTRICT_ADMIN';
+  const tc = useTranslations('companyPublish');
   const fleetQuery = useFleetOperations({ enabled: open && canPublishCompany });
   const publishToFleet = usePublishToFleet();
   // Never reuse a previous tenant's cached company payload during a switch.
@@ -550,7 +552,7 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
   const screenGroups: WizardScreenGroup[] = (companyScope
     ? (fleet?.operations?.groups ?? []).map((group) => ({
         ...group,
-        name: `${group.sourceTenant?.name ?? 'Location'} · ${group.name}`,
+        name: `${group.sourceTenant?.name ?? tc('locationFallback')} · ${group.name}`,
         screens: (fleet?.screens ?? []).filter((screen) => screen.screenGroupId === group.id),
       }))
     : localGroups) ?? [];
@@ -1165,10 +1167,10 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
         const liveCount = pending > pendingIds.size ? scheduled : computeBlastRadius({ screens, selectedScreenIds: liveIds }).screenCount;
         const pendingCount = pendingIds.size ? computeBlastRadius({ screens, selectedScreenIds: pendingIds }).screenCount : pending;
         await appAlert({
-          title: failures.length ? 'Published with issues' : 'Playlist published',
-          message: `${liveCount} screen${liveCount === 1 ? '' : 's'} scheduled to play now across ${result.perLocation.length} location${result.perLocation.length === 1 ? '' : 's'}.` +
-            (pendingCount ? ` ${pendingCount} screen${pendingCount === 1 ? '' : 's'} will start when the playback copy is ready; they keep their current content until then.` : '') +
-            (failures.length ? ` These targets could not publish: ${failures.join('; ')}. Open the saved playlist to retry those screens.` : ''),
+          title: failures.length ? tc('publishedWithIssuesTitle') : tc('publishedTitle'),
+          message: tc('publishedLive', { live: liveCount, locations: result.perLocation.length }) +
+            (pendingCount ? ` ${tc('publishedPending', { pending: pendingCount })}` : '') +
+            (failures.length ? ` ${tc('publishedFailures', { failures: failures.join('; ') })}` : ''),
           tone: failures.length ? 'warn' : 'info',
         });
       } else if (selectedScreenIds.size > 0 || selectedGroupIds.size > 0) {
@@ -1484,18 +1486,18 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
           {step === 3 && (
             <>
             {canPublishCompany && fleetQuery.isLoading && (
-              <p role="status" className="mb-3 text-sm text-slate-500">Loading company screens…</p>
+              <p role="status" className="mb-3 text-sm text-slate-500">{tc('loading')}</p>
             )}
             {canPublishCompany && fleetQuery.isError && (
               <div role="alert" className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-                Company screens could not load. You can still select local screens.
-                <button type="button" onClick={() => void fleetQuery.refetch()} className="ml-2 underline font-bold">Try again</button>
+                {tc('loadFailed')}
+                <button type="button" onClick={() => void fleetQuery.refetch()} className="ml-2 underline font-bold">{tc('tryAgain')}</button>
               </div>
             )}
             {isCorporate && (
               <div className="mb-4 flex flex-wrap items-center gap-2">
-                <div role="group" aria-label="Screen scope" className="flex rounded-xl border border-slate-200 p-1 bg-slate-50">
-                  {[{ local: false, label: 'All company screens' }, { local: true, label: 'Local screens' }].map((scope) => (
+                <div role="group" aria-label={tc('scopeLabel')} className="flex rounded-xl border border-slate-200 p-1 bg-slate-50">
+                  {[{ local: false, label: tc('scopeAll') }, { local: true, label: tc('scopeLocal') }].map((scope) => (
                     <button key={scope.label} type="button" aria-pressed={localScreensOnly === scope.local}
                       onClick={() => {
                         if (localScreensOnly === scope.local) return;
@@ -1514,7 +1516,7 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
             )}
             {fleetTemplateBlocked && (
               <p role="alert" className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-                This template belongs to this location. Choose Local screens, or use a media playlist or shared template to publish across the company.
+                {tc('templateBlocked')}
               </p>
             )}
             <Step3Screens
@@ -3392,11 +3394,12 @@ export function Step4Publish({
   optimizationNotice?: string | null;
   companyPublish?: boolean;
 }) {
+  const tc = useTranslations('companyPublish');
   if (companyPublish) return (
     <div>
-      <p className="text-base font-bold text-slate-800 mb-1">Publishing across the company</p>
-      <p className="text-sm text-slate-600 mb-3">Starts now and plays 24/7 until stopped. Each selected location receives its own copy of this playlist.</p>
-      <p className="text-xs text-slate-500">This replaces the regular content on the selected screens. Schedule windows are available when publishing to local screens.</p>
+      <p className="text-base font-bold text-slate-800 mb-1">{tc('stepTitle')}</p>
+      <p className="text-sm text-slate-600 mb-3">{tc('stepBody')}</p>
+      <p className="text-xs text-slate-500">{tc('stepNote')}</p>
       {optimizationNotice && <p role="status" className="mt-4 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm text-indigo-950">{optimizationNotice}</p>}
     </div>
   );
@@ -3555,6 +3558,7 @@ function Step5Review({
   willSubmitForReview?: boolean;
   companyPublish?: boolean;
 }) {
+  const tc = useTranslations('companyPublish');
   const scheduleLabel = (() => {
     if (activate) {
       if (blastRadius.screenCount === 0) return 'Activate immediately when screens are assigned';
@@ -3578,8 +3582,8 @@ function Step5Review({
           <Sparkles className="w-5 h-5 text-indigo-600" />
         </div>
         <div>
-          <p className="text-base font-bold text-slate-800">{willSubmitForReview ? 'Ready to send for review' : companyPublish ? 'Ready to publish' : 'Ready to create'}</p>
-          <p className="text-xs text-slate-500">{willSubmitForReview ? 'Double-check the summary, then send it to an admin to review and publish.' : companyPublish ? 'Double-check the screens and locations below, then hit Create & Publish.' : 'Double-check the summary below, then hit Create Playlist.'}</p>
+          <p className="text-base font-bold text-slate-800">{willSubmitForReview ? 'Ready to send for review' : companyPublish ? tc('reviewTitle') : 'Ready to create'}</p>
+          <p className="text-xs text-slate-500">{willSubmitForReview ? 'Double-check the summary, then send it to an admin to review and publish.' : companyPublish ? tc('reviewBody') : 'Double-check the summary below, then hit Create Playlist.'}</p>
         </div>
       </div>
 

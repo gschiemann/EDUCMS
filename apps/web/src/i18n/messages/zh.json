@@ -3591,7 +3591,9 @@
     "pdfNotPdf": "这不是 PDF——可能是以 .pdf 名称保存的其他类型文件。请重新保存或导出为 PDF 并上传新的副本。",
     "pdfIncomplete": "此 PDF 不完整——文件可能已损坏或被截断。请重新保存或导出并上传新的副本。",
     "pdfPassword": "此 PDF 受密码保护。请移除密码后重新上传。",
-    "imageHeicUnavailable": "暂时无法转换这张 HEIC 照片。请一分钟后重新上传，或将其导出为 JPEG 后上传。"
+    "imageHeicUnavailable": "暂时无法转换这张 HEIC 照片。请一分钟后重新上传，或将其导出为 JPEG 后上传。",
+    "fileUnreadable": "无法读取所选文件。请从“文件”中重新选择。",
+    "storageUnconfirmed": "存储未确认上传。请重试。"
   },
   "playbackCopy": {
     "cannotPrepare": "{count, plural, other {{files} 无法为 1080p 屏幕准备。请移除或替换后重新发布。}}之前的内容仍在屏幕上显示。",
@@ -4167,5 +4169,50 @@
     "convertingPct": "正在转换为 MP4 以便在屏幕上播放… {pct}%",
     "conversionFailed": "{name} 无法转换为可在屏幕上播放的 MP4。请将其导出为 MP4（H.264）后上传。",
     "conversionSlow": "{name} 仍在转换中。它已在您的媒体库中——准备就绪后请在那里选择。"
+  },
+  "locationFilter": {
+    "label": "按地点筛选",
+    "all": "所有地点",
+    "selectedCount": "{count, plural, other {已选择 # 个地点}}",
+    "options": "{label}选项",
+    "search": "搜索地点",
+    "searchPlaceholder": "搜索地点…",
+    "select": "选择 {name}",
+    "noMatches": "没有匹配的地点",
+    "selectedShort": "已选择 {count} 个",
+    "done": "完成"
+  },
+  "companyAtlas": {
+    "noMapped": "没有符合此视图的地图地点。",
+    "notOnMap": "尚未显示在地图上 · {count}",
+    "addressNotLocated": "尚未定位到地址。",
+    "noAddress": "未保存地址。",
+    "locationScreens": "{name} 的屏幕",
+    "close": "关闭地点",
+    "noScreens": "此视图中没有屏幕。",
+    "online": "在线",
+    "offline": "离线",
+    "nothingScheduled": "未安排内容",
+    "viewInList": "在列表中查看地点"
+  },
+  "companyPublish": {
+    "locationFallback": "地点",
+    "loading": "正在加载公司屏幕…",
+    "loadFailed": "无法加载公司屏幕。你仍可以选择本地屏幕。",
+    "tryAgain": "重试",
+    "scopeLabel": "屏幕范围",
+    "scopeAll": "所有公司屏幕",
+    "scopeLocal": "本地屏幕",
+    "templateBlocked": "此模板属于该地点。请选择“本地屏幕”，或使用媒体播放列表或共享模板在全公司发布。",
+    "publishedTitle": "播放列表已发布",
+    "publishedWithIssuesTitle": "已发布，但有问题",
+    "publishedLive": "{live, plural, other {# 块屏幕}}已安排在 {locations, plural, other {# 个地点}}立即播放。",
+    "publishedPending": "{pending, plural, other {# 块屏幕}}将在播放副本准备好后开始播放；在此之前它们保留当前内容。",
+    "publishedFailures": "以下目标无法发布：{failures}。打开已保存的播放列表以重试这些屏幕。",
+    "stepTitle": "在全公司发布",
+    "stepBody": "立即开始，全天候播放，直到停止。每个选定的地点都会收到此播放列表的一份副本。",
+    "stepNote": "这会替换所选屏幕上的常规内容。发布到本地屏幕时可以设置排期时段。",
+    "reviewTitle": "准备发布",
+    "reviewBody": "检查下方的屏幕和地点，然后点击“创建并发布”。"
   }
 }
