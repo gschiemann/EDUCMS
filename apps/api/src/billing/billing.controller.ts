@@ -36,6 +36,27 @@ import { LicenseService } from '../license/license.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AiAllowanceService } from '../ai/ai-allowance.service';
 import { AI_BOARD_PACKS, BOARD_PACK_VALID_MONTHS, boardPackById } from '../ai/ai-board-credits';
+import { cardCheckoutAllowed, isInvoiceBilled } from '../customers/customer-console.policy';
+
+/**
+ * CUSTOMER CONSOLE (2026-10-10): an organisation the owner bills by INVOICE /
+ * PURCHASE_ORDER (through ARC — no card) or has comp'd never gets a Stripe
+ * checkout, whatever an old tab or an API client asks for. The Billing page
+ * hides the buttons (GET /billing/account); this is the server side of it.
+ * CARD customers (and no-license self-serve tenants) are untouched.
+ */
+const notCardBilled = (mode: string | null | undefined) =>
+  new HttpException(
+    {
+      code: 'BILLING_NOT_CARD',
+      billingMode: mode ?? null,
+      message:
+        mode === 'COMP'
+          ? 'Your account is complimentary — there is nothing to pay.'
+          : 'Your account is billed by invoice. Contact your VenueOS account manager to change your plan.',
+    },
+    HttpStatus.CONFLICT,
+  );
 
 const BILLING_ROLES = [
   AppRole.SUPER_ADMIN,
@@ -87,6 +108,8 @@ export class BillingController {
     @Request() req: any,
     @Body() body: { billingPeriod?: 'monthly' | 'annual' },
   ) {
+    const account = await this.license.orgAccount(req.user.tenantId);
+    if (!cardCheckoutAllowed(account.governing)) throw notCardBilled(account.governing?.billingMode);
     if (!this.stripe.enabled()) {
       return {
         enabled: false,
@@ -174,6 +197,9 @@ export class BillingController {
   @RequireRoles(...BILLING_ROLES)
   async aiPackCheckout(@Request() req: any, @Body() body: { pack?: unknown }) {
     const tenantId = req.user.tenantId;
+    // Invoice / PO customers never enter a card (a comp'd customer may still buy a pack).
+    const account = await this.license.orgAccount(tenantId);
+    if (isInvoiceBilled(account.governing?.billingMode)) throw notCardBilled(account.governing?.billingMode);
     const availability = await this.allowance.purchaseAvailabilityFor(tenantId);
     if (!availability.enabled) {
       return { enabled: false, reason: availability.reasonCode, message: availability.reason };

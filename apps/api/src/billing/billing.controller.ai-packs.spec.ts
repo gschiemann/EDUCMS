@@ -25,6 +25,9 @@ const req = (over: any = {}) => ({
   ...over,
 });
 
+/** A card-billed (self-serve) organisation — the customer-console invoice gate lets it through. */
+const cardLicense = { orgAccount: async () => ({ rootTenantId: 'org_A', governing: null, suspended: false }) };
+
 function build(opts: { availability?: any; checkout?: jest.Mock } = {}) {
   const stripe = {
     enabled: () => true,
@@ -56,7 +59,7 @@ function build(opts: { availability?: any; checkout?: jest.Mock } = {}) {
   };
   const controller = new BillingController(
     stripe as any,
-    {} as any,
+    cardLicense as any,
     {} as any,
     allowance as any,
   );
@@ -166,7 +169,7 @@ describe('POST /billing/ai-packs/checkout', () => {
       const stripe = { checkoutBoardPack: jest.fn() };
       const controller = new BillingController(
         stripe as any,
-        {} as any,
+        cardLicense as any,
         {} as any,
         allowance,
       );

@@ -92,6 +92,58 @@ export class LicenseService {
     };
   }
 
+  /**
+   * CUSTOMER CONSOLE (2026-10-10) — the organisation-level billing facts for a
+   * tenant: its own License and the nearest ancestor's, up to three levels
+   * (district → school → sub-site, deeper than anything the product creates).
+   *
+   *   - `governing`  the License that decides HOW this tenant is billed: its
+   *                  own row if it has one, else the nearest ancestor's. A
+   *                  school inside an invoice-billed district has no License
+   *                  of its own, and must not be offered card checkout.
+   *   - `suspended`  true when this tenant's OR any ancestor's License is
+   *                  SUSPENDED — suspending an organisation covers all of its
+   *                  schools / locations.
+   *   - `rootTenantId` the top-level organisation (the "customer").
+   *
+   * One query. Optionally takes a transaction client (same deadlock reason as
+   * getEffective).
+   */
+  async orgAccount(tenantId: string, tx?: any): Promise<{
+    rootTenantId: string;
+    governing: Record<string, any> | null;
+    suspended: boolean;
+  }> {
+    const client = tx ?? this.prisma.client;
+    const lic = { select: { tenantId: true, tier: true, status: true, billingMode: true, poNumber: true, renewalDate: true, currentPeriodEnd: true, expiresAt: true, seatLimit: true, monthlyPriceCents: true, stripeSubscriptionId: true } };
+    const row = await client.tenant.findUnique({
+      where: { id: tenantId },
+      select: {
+        id: true,
+        parentId: true,
+        license: lic,
+        parent: {
+          select: {
+            id: true,
+            parentId: true,
+            license: lic,
+            parent: { select: { id: true, parentId: true, license: lic } },
+          },
+        },
+      },
+    });
+    if (!row) return { rootTenantId: tenantId, governing: null, suspended: false };
+    const chain: Array<{ id: string; parentId: string | null; license: any }> = [];
+    let cur: any = row;
+    while (cur) {
+      chain.push(cur);
+      cur = cur.parent ?? null;
+    }
+    const governing = chain.find((t) => t.license)?.license ?? null;
+    const suspended = chain.some((t) => t.license?.status === 'SUSPENDED');
+    return { rootTenantId: chain[chain.length - 1].id, governing, suspended };
+  }
+
   /** Count of seats currently in use by this tenant. Optionally takes a
    *  Prisma transaction client so the count + downstream write are
    *  serialized together (used by ScreensController.pair to close the
@@ -125,6 +177,21 @@ export class LicenseService {
    * against an admin-claimed Screen so the limit was checked at claim time.
    */
   async assertSeatAvailable(tenantId: string, tx?: any): Promise<void> {
+    // CUSTOMER CONSOLE (2026-10-10): a SUSPENDED organisation pairs no new
+    // screens — at the organisation itself OR any of its schools / locations
+    // (the per-tenant status check below only sees a school's own License,
+    // which a school inside a suspended district usually does not have).
+    // Screens already paired keep playing; this gate is only on NEW pairs.
+    const org = await this.orgAccount(tenantId, tx);
+    if (org.suspended) {
+      throw new HttpException(
+        {
+          code: 'ORG_SUSPENDED',
+          message: 'This organization is suspended. Contact VenueOS to reactivate it before pairing new screens.',
+        },
+        HttpStatus.PAYMENT_REQUIRED,
+      );
+    }
     const eff = await this.getEffective(tenantId, tx);
     if (eff.status !== 'ACTIVE') {
       throw new HttpException(

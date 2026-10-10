@@ -14,6 +14,9 @@ import { SampleDataModule } from '../sample-data/sample-data.module';
   // at signup (see starter-board.service.ts). Prisma-only, so it needs nothing
   // beyond PrismaModule.
   providers: [OnboardingService, StarterBoardService],
-  exports: [OnboardingService],
+  // StarterBoardService is exported for the customer console's "create customer"
+  // (customers/customer-console.service.ts), which gives a SUPER_ADMIN-created
+  // organisation the same first board a self-signup gets.
+  exports: [OnboardingService, StarterBoardService],
 })
 export class OnboardingModule {}

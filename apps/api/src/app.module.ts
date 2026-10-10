@@ -69,6 +69,7 @@ import { SportsModule } from './sports/sports.module';
 import { StreamingModule } from './streaming/streaming.module';
 // 2026-05-03 — Sprint 8c billing (Stripe Checkout scaffolding).
 import { BillingModule } from './billing/billing.module';
+import { CustomersModule } from './customers/customers.module';
 // 2026-05-03 — Sprint 8d POS catalog sync framework.
 import { PosModule } from './pos/pos.module';
 // 2026-05-03 — Sprint 8d ad-network monetization framework.
@@ -191,6 +192,9 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     SportsModule,
     StreamingModule,
     BillingModule,
+    // 2026-10-10 — customer management console (/super/customers), invoice
+    // billing ledger, single-use owner links, and the suspended-org gate.
+    CustomersModule,
     PosModule,
     AdsModule,
     SampleDataModule,

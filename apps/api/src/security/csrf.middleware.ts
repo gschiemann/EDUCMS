@@ -32,6 +32,11 @@ const EXEMPT_PATHS: Array<(path: string) => boolean> = [
   (p) => p === '/api/v1/password-reset/request',
   (p) => p === '/api/v1/password-reset/complete',
   (p) => /^\/api\/v1\/invites\/[^/]+\/accept$/.test(p),
+  // Customer console (2026-10-10): the single-use OWNER link a SUPER_ADMIN
+  // hands a new customer. Same class as invite-accept directly above — no
+  // session, no CSRF cookie, and the capability is the hashed single-use token
+  // in the path (customers/customer-claim.controller.ts). @Throttle(5/60s).
+  (p) => /^\/api\/v1\/customer-claims\/[^/]+\/claim$/.test(p),
   // MFA step-up + forced enrollment (2026-09-04). SAME CLASS AS /auth/login
   // ABOVE, and they were missed when MFA landed: the caller has NO session
   // yet — that is the whole point — so there is no CSRF cookie to round-trip,
