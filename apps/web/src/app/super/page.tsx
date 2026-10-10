@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { Loader2, Crown, Building2, AlertCircle, Plus, Search, X, Filter, HardDrive, Trash2, RefreshCw, CheckCircle2 } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import { useSuperTenants, useCompSeats, useUpsertLicense, type SuperTenantRow } from '@/hooks/use-api';
@@ -18,6 +19,7 @@ import { SelectionCheckbox, selectAllTitle, selectionState } from '@/components/
  */
 export default function SuperPage() {
   const router = useRouter();
+  const tc = useTranslations('customerConsole');
   const user = useAppStore(s => s.user);
   const { data: tenants, isLoading } = useSuperTenants();
   const comp = useCompSeats();
@@ -172,6 +174,9 @@ export default function SuperPage() {
             </h1>
             <p className="text-sm text-slate-500 mt-1">
               Tenants, licenses, billing health.{' '}
+              <a href="/super/customers" className="font-bold text-indigo-600 hover:text-indigo-800">
+                {tc('title')} →
+              </a>{' '}
               <a href="/super/ai" className="font-bold text-indigo-600 hover:text-indigo-800">
                 AI models &amp; usage →
               </a>

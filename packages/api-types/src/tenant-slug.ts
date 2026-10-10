@@ -22,6 +22,8 @@ export const RESERVED_TENANT_SLUGS: ReadonlySet<string> = new Set([
   'accept-invite', 'assets', 'athlete', 'board', 'cdn', 'coppa', 'dashboard',
   'dev', 'ferpa', 'guide', 'help', 'launch', 'overlay', 'panic', 'pricing',
   'ribbon', 'schedules', 'scorebug', 'screens', 'status',
+  // Customer console (2026-10-10): the owner-link landing + the suspended page.
+  'claim-account', 'account-suspended',
   // Static folders under apps/web/public that are served at `/<name>`.
   // `locales` is generated there by scripts/emit-locale-catalogs.cjs
   // (gitignored), so only the explicit assertion in the spec can see it in CI.

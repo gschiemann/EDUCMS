@@ -62,6 +62,15 @@ interface CurrentLicense {
   expiresAt?: string | null;
   isPilot?: boolean;
 }
+interface BillingAccount {
+  billingMode: string | null;
+  cardCheckout: boolean;
+  invoiceBilled: boolean;
+  comp: boolean;
+  poNumber: string | null;
+  renewalDate: string | null;
+  invoices: Array<{ number: string; amountCents: number; currency: string; sentAt: string | null; dueAt: string | null; paidAt: string | null; status: string; overdue: boolean }>;
+}
 interface TierCard {
   id: string;
   name: string;
@@ -150,6 +159,17 @@ export default function BillingPage() {
       apiFetch<{ stripeEnabled: boolean; message?: string }>('/billing/status').catch(() => null),
     staleTime: 5 * 60_000,
   });
+
+  // CUSTOMER CONSOLE (2026-10-10): how THIS organisation is billed. An INVOICE / PURCHASE_ORDER
+  // customer is billed by ARC (no card) and a COMP one is free — neither is ever offered Stripe
+  // checkout (the API refuses it too: 409 BILLING_NOT_CARD). `null` while unknown / on an API that
+  // predates the endpoint → the page behaves exactly as before.
+  const account = useQuery<BillingAccount | null>({
+    queryKey: ['billing', 'account'],
+    queryFn: () => apiFetch<BillingAccount>('/billing/account').catch(() => null),
+    staleTime: 5 * 60_000,
+  });
+  const offline = account.data && account.data.cardCheckout === false ? account.data : null;
 
   const stripeEnabled: boolean | null = billingStatus.data
     ? !!billingStatus.data.stripeEnabled
@@ -336,7 +356,9 @@ export default function BillingPage() {
 
       {/* Stripe dormant → say so once, at the top, instead of letting the
           operator discover it by clicking a dead action. */}
-      {stripeEnabled === false && (
+      {offline && <OfflineBillingCard account={offline} />}
+
+      {stripeEnabled === false && !offline && (
         <div className="mb-5 rounded-[11px] border border-slate-200 bg-slate-50 px-4 py-3.5">
           <strong className="block text-[13px] font-medium text-slate-900">
             {t('settings.cc.billing.notConfiguredTitle')}
@@ -366,7 +388,7 @@ export default function BillingPage() {
             managing={busy === 'portal'}
             // The Customer Portal is a Stripe-hosted page — offering it with
             // Stripe dormant would be the same dead button in another coat.
-            showManage={hasPaidPlan && stripeEnabled === true}
+            showManage={hasPaidPlan && stripeEnabled === true && !offline}
           />
         )}
         <p className="mt-3 text-[12px] leading-[17px] text-slate-500">
@@ -374,7 +396,8 @@ export default function BillingPage() {
         </p>
       </EditorSection>
 
-      {/* ── Invoices ──────────────────────────────────────────── */}
+      {/* ── Invoices + Plans: card billing only ───────────────── */}
+      {!offline && (<>
       <EditorSection
         id="bill-invoices"
         title={t('settings.cc.billing.invoicesTitle')}
@@ -424,6 +447,7 @@ export default function BillingPage() {
           </>
         )}
       </EditorSection>
+      </>)}
 
       <p className="pt-4 border-t border-slate-200 text-[12px] leading-[17px] text-slate-400">
         {t('billingCommerce.pricingFooter')}{' '}
@@ -744,6 +768,70 @@ function TierTile({
       ) : (
         <div className="w-full py-2 text-[12px] font-medium rounded-[10px] bg-slate-50 text-slate-400 text-center">
           {t('billingCommerce.defaultNoCard')}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** An organisation billed by invoice / PO through ARC, or comp'd: no card, ever. */
+function OfflineBillingCard({ account }: { account: BillingAccount }) {
+  const t = useTranslations();
+  const invoiceBilled = account.invoiceBilled;
+  return (
+    <div className="mb-5 rounded-[13px] bg-white border border-slate-200 p-5" data-testid="offline-billing">
+      <strong className="block text-[15px] font-medium text-slate-900">
+        {invoiceBilled ? t('customerConsole.customerBilling.invoiceTitle') : t('customerConsole.customerBilling.compTitle')}
+      </strong>
+      <p className="mt-1 text-[13px] leading-[19px] text-slate-600">
+        {invoiceBilled ? t('customerConsole.customerBilling.invoiceBody') : t('customerConsole.customerBilling.compBody')}
+      </p>
+      {(account.poNumber || account.renewalDate) && (
+        <dl className="mt-3 grid grid-cols-2 gap-3 text-[13px]">
+          {account.poNumber && (
+            <div><dt className="text-slate-500">{t('customerConsole.customerBilling.poNumber')}</dt><dd className="font-medium text-slate-900">{account.poNumber}</dd></div>
+          )}
+          {account.renewalDate && (
+            <div><dt className="text-slate-500">{t('customerConsole.customerBilling.renews')}</dt><dd className="font-medium text-slate-900">{fmtDate(account.renewalDate)}</dd></div>
+          )}
+        </dl>
+      )}
+      {invoiceBilled && (
+        <div className="mt-4">
+          <strong className="block text-[13px] font-medium text-slate-900">{t('customerConsole.customerBilling.invoicesTitle')}</strong>
+          {account.invoices.length === 0 ? (
+            <p className="mt-1 text-[12px] text-slate-500">{t('customerConsole.customerBilling.noInvoices')}</p>
+          ) : (
+            <div className="mt-2 overflow-x-auto">
+              <table className="w-full text-[13px]">
+                <thead>
+                  <tr className="text-[11px] font-medium tracking-[.08em] uppercase text-slate-500 border-b border-slate-100">
+                    <th className="text-left py-2 pr-3">{t('billingCommerce.invoice')}</th>
+                    <th className="text-left py-2 pr-3">{t('billingCommerce.date')}</th>
+                    <th className="text-left py-2 pr-3">{t('customerConsole.customerBilling.due')}</th>
+                    <th className="text-right py-2 pr-3">{t('billingCommerce.amount')}</th>
+                    <th className="text-left py-2">{t('billingCommerce.status')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {account.invoices.map((inv) => (
+                    <tr key={inv.number} className="border-b border-slate-50 last:border-0">
+                      <td className="py-2 pr-3 font-medium text-slate-700">{inv.number}</td>
+                      <td className="py-2 pr-3 text-slate-600">{fmtDate(inv.sentAt)}</td>
+                      <td className="py-2 pr-3 text-slate-600">{fmtDate(inv.dueAt)}</td>
+                      <td className="py-2 pr-3 text-right tabular-nums">{fmtCents(inv.amountCents)}</td>
+                      <td className="py-2">
+                        <StatusPill
+                          kind={inv.status === 'PAID' ? 'ready' : 'attention'}
+                          label={inv.overdue && inv.status === 'SENT' ? t('customerConsole.customerBilling.overdue') : t(`customerConsole.customerBilling.status.${inv.status}`)}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
     </div>

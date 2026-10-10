@@ -398,6 +398,16 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
             useUIStore.getState().setUser({ ...cur, mustSetupCredentials: true });
           }
         }
+        // CUSTOMER CONSOLE (2026-10-10) — the organisation is suspended
+        // (OrgSuspensionInterceptor). Every dashboard call now 403s, so show the
+        // page that says why instead of a dashboard full of errors. Never from
+        // the emergency panel: its own API routes are exempt and it must stay put.
+        if (res.status === 403 && body?.code === 'ORG_SUSPENDED' && typeof window !== 'undefined') {
+          const here = window.location.pathname;
+          if (!here.startsWith('/panic') && !here.startsWith('/account-suspended')) {
+            window.location.assign('/account-suspended');
+          }
+        }
         // 2026-05-25 (audit-W8) — attach status + code + body to the
         // thrown error so callers can branch on a STRUCTURED field
         // instead of regex-matching the message. Was a real defect
