@@ -248,6 +248,18 @@ describe('fleet operations context', () => {
         }),
       );
     }
+    // Payload diet (2026-10-10): paused / untargeted rules and the playlists
+    // only they name are never read — the view discards them anyway.
+    const targeted = [{ screenId: { not: null } }, { screenGroupId: { not: null } }];
+    expect(prisma.client.schedule.findMany.mock.calls[0][0].where).toMatchObject({
+      isActive: true,
+      OR: targeted,
+    });
+    expect(prisma.client.playlist.findMany.mock.calls[0][0].where.schedules.some).toEqual({
+      tenantId: { in: ['corp', 'a'] },
+      isActive: true,
+      OR: targeted,
+    });
     expect(result.screens[0]).toMatchObject({
       tenantId: 'corp',
       hardwareModel: 'Test model',

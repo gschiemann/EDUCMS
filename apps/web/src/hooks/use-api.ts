@@ -3270,8 +3270,12 @@ export interface FleetOperationsResponse extends Omit<FleetResponse, 'screens'> 
   };
 }
 export function useFleetOperations(opts: { enabled: boolean }) {
+  // The API scopes this read to the session's ACTIVE tenant, so the cache
+  // must too: a workspace switch never paints the previous company's fleet.
+  // Invalidations keyed ['screens', 'fleet-operations'] still match by prefix.
+  const tenantId = useUIStore((s) => s.user?.tenantId) ?? null;
   return useQuery<FleetOperationsResponse>({
-    queryKey: ['screens', 'fleet-operations'],
+    queryKey: ['screens', 'fleet-operations', tenantId],
     queryFn: () => apiFetch('/screens/fleet?view=operations'),
     enabled: opts.enabled,
     refetchInterval: 30_000,

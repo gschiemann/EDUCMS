@@ -2716,8 +2716,16 @@ export class ScreensController {
         },
         orderBy: { name: 'asc' },
       }),
+      // Payload diet (2026-10-10): the view's only consumer is
+      // deriveExpectedContent (web screenOps.ts), which discards
+      // `isActive === false` rows and any row targeting neither a screen nor
+      // a group — so those are never sent. Tenant scope is unchanged.
       this.prisma.client.schedule.findMany({
-        where: { tenantId: { in: tenantIds } },
+        where: {
+          tenantId: { in: tenantIds },
+          isActive: true,
+          OR: [{ screenId: { not: null } }, { screenGroupId: { not: null } }],
+        },
         select: {
           id: true,
           tenantId: true,
@@ -2738,7 +2746,15 @@ export class ScreensController {
       this.prisma.client.playlist.findMany({
         where: {
           tenantId: { in: tenantIds },
-          schedules: { some: { tenantId: { in: tenantIds } } },
+          // Only playlists an ACTIVE, targeted schedule above can name — a
+          // playlist reachable only through paused rules is never rendered.
+          schedules: {
+            some: {
+              tenantId: { in: tenantIds },
+              isActive: true,
+              OR: [{ screenId: { not: null } }, { screenGroupId: { not: null } }],
+            },
+          },
         },
         select: {
           id: true,
@@ -2755,6 +2771,10 @@ export class ScreensController {
             },
             orderBy: { sequenceOrder: 'asc' },
           },
+          // Zones + defaultConfig STAY: the company table's expected-content
+          // thumbnail renders the board from them (ExpectedThumb →
+          // TemplateContentThumb, and templatePosterUrl reads config.url).
+          // Without them every board row would show a blank or default tile.
           template: {
             select: {
               id: true,
