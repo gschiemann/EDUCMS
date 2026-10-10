@@ -685,6 +685,9 @@ Keep Image / Video / Text quick actions above search, everyday media first in
 the curated list, and Photos & video first in the full library. New media is
 chosen before insertion and uses its source proportions; rotation and fit belong
 in the visible selection toolbar. Preserve these paths on blank and preset canvases.
+Board HTML also feeds the API's approved AI reference catalog. After changing it,
+run `node apps/api/scripts/build-designer-exemplars.cjs` and its `--check`, even
+when the change only adds a shim. The source hashes cover the complete HTML.
 Regenerate affected gallery posters and their provenance, then bump `POSTER_VERSION`
 in `src/lib/template-poster.ts`. The behavioral coverage is
 `builder-media-editing.spec.ts` and the discovered full-corpus

@@ -41,6 +41,7 @@ Holiday boards and arbitrary inline AI-generated HTML retain their separate inte
 | Store, placement, undo and selection | `useBuilderStore.ts`, `types.ts` |
 | Embedded board media | New `board-media.ts`; `ExternalBoardFieldBridge.tsx` |
 | Packaged companion and generation | New `apps/web/scripts/board-media-controls.ts`, `inject-media-controls.cjs`; all 282 board HTML files |
+| Approved AI reference freshness | Regenerated `apps/api/src/ai/designer-exemplars.generated.ts` with the existing `build-designer-exemplars.cjs` |
 | Initial media and live updates | `apps/web/src/components/widgets/WidgetRenderer.tsx` — `ExternalHtmlWidget` |
 | Gallery freshness | `src/lib/template-poster.ts`, `_thumbs/poster-manifest.json`, freshly captured posters |
 | Guards and documentation | `tools/check-board-editability.cjs`, `CLAUDE.md`, this report |
@@ -64,6 +65,7 @@ The real Next editor and actual board HTML were rendered in Chromium and WebKit.
 | Check | Result |
 | --- | --- |
 | Builder Jest suites plus affected HTML renderer and poster suites | **76 suites / 705 tests passed** |
+| Approved AI reference freshness, sanitization and selection suite | **133 tests passed** after reference regeneration |
 | Media editing and existing palette click/keyboard/drag browser tests | **28 tests passed** across Chromium and WebKit |
 | Discovered 282-board media compatibility sweep | **564 tests passed** across both engines |
 | Existing board click-to-edit and family-coverage tests | **106 tests passed** across both engines |
@@ -109,12 +111,16 @@ node apps/web/scripts/inject-media-controls.cjs
 node apps/web/tools/check-board-editability.cjs
 node apps/web/tools/check-inset-serialization.cjs
 node apps/web/tools/check-poster-freshness.cjs
+node apps/api/scripts/build-designer-exemplars.cjs
+node apps/api/scripts/build-designer-exemplars.cjs --check
 pnpm preflight
 ```
 
 Never hand-edit the baked companion. Change its TypeScript source and rerun the injector. Regenerate posters from the final HTML, record their real capture provenance and bump `POSTER_VERSION`; do not merely rehash the manifest. Poster capture preserves the existing generator's 800×450 workflow and fitness `freeze=1` preview rule. Customized media/video templates use a live preview rather than the pristine packaged poster.
 
 All 282 posters were captured again from the final HTML. The manifest records the captured HTML hashes; 163 PNG files changed and the other captures were byte-identical. `POSTER_VERSION` is now `20261010a`. The capture log and generator used for this run are preserved with the Desktop handoff evidence.
+
+The first production push exposed an additional freshness dependency in CI: the API's approved AI exemplar catalog hashes the complete source HTML, including editing shims. Regenerating its 11 references changed only `sourceSha256` and `strippedRuntimes`; every HTML payload remained identical. The correction preserves the existing freshness gate. `CLAUDE.md` now requires this regeneration and `--check` after board changes, including shim-only changes. The final release status and CI results are recorded in the Desktop handoff's `STATUS.md`.
 
 ## Delivery limits and next step
 
