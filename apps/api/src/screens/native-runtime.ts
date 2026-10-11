@@ -127,3 +127,28 @@ export function pendingNativePowerOn(
   const age = nowMs - value.getTime();
   return age >= 0 && age < NATIVE_POWER_ON_TTL_MS ? value.toISOString() : null;
 }
+
+/** How fresh a native report must be to speak for the panel's power state now. */
+export const NATIVE_ASLEEP_FRESH_MS = 5 * 60_000;
+
+/**
+ * Does the ANDROID side say this panel is asleep right now? (2026-10-11)
+ *
+ * True only for a fresh, well-formed native report with `interactive:false`.
+ * A sleeping panel is not a wedged one: its page may be paused by the
+ * platform, and reloading it (the wedge detector's REFRESH_WEB) cannot bring
+ * a picture back — VisionCore's X80 collected 19 automatic refreshes while
+ * its panel was simply off. Unknown, stale or unreadable → false (the
+ * detector keeps its current behaviour).
+ */
+export function nativeReportsAsleep(
+  report: unknown,
+  reportAt: Date | null | undefined,
+  nowMs = Date.now(),
+): boolean {
+  if (!reportAt) return false;
+  const age = nowMs - reportAt.getTime();
+  if (!(age >= 0 && age <= NATIVE_ASLEEP_FRESH_MS)) return false;
+  const parsed = runtimeSchema.safeParse(report);
+  return parsed.success && parsed.data.interactive === false;
+}

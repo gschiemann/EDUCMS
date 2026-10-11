@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { LEASE, LeaderLeaseService, leadThisTick } from '../realtime/leader-lease.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
+import { nativeReportsAsleep } from './native-runtime';
 
 /**
  * ScreenWedgeDetectorCron — fleet-wide auto-recovery for the "alive but
@@ -350,6 +351,10 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
         lastRenderedAt: true,
         pairedAt: true,
         lastPushConnectedAt: true,
+        // 2026-10-11 — the native heartbeat's own power report (player
+        // 1.1.24+). A panel Android reports asleep is not wedged.
+        nativeRuntimeReport: true,
+        nativeRuntimeReportAt: true,
       },
     });
 
@@ -397,6 +402,18 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
 
     let pushDeadFlagged = 0;
     for (const screen of candidates) {
+      // A PANEL ANDROID REPORTS ASLEEP IS NOT WEDGED (2026-10-11). Its
+      // render proof is stale because its panel is off — a person's remote,
+      // the after-alert restore, a vendor timer — and a REFRESH_WEB cannot
+      // bring a picture back; VisionCore's X80 collected 19 of them while
+      // simply off. The next sweep after it wakes judges it normally. LOG
+      // only: no audit row, no counter in the sweep result.
+      if (nativeReportsAsleep(screen.nativeRuntimeReport, screen.nativeRuntimeReportAt, now)) {
+        this.logger.log(
+          `[wedge-detector] screen=${screen.id} stale render but Android reports the panel asleep — not a wedge, skipped`,
+        );
+        continue;
+      }
       const history = historyByScreen.get(screen.id) ?? [];
       // Push-channel liveness: a REFRESH_WEB rides WS/SSE — if the screen
       // has no live push channel it CANNOT arrive, so retrying is noise.
