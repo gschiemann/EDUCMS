@@ -979,7 +979,9 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                                     </span>
                                     {row.expected.name && (
                                       <span className="block text-[11.5px] font-semibold text-slate-400 truncate">
-                                        Scheduled{row.expected.viaGroup ? ' for the group' : ''}
+                                        {row.expected.game
+                                          ? t('screens.contentState.liveGameAssigned')
+                                          : `Scheduled${row.expected.viaGroup ? ' for the group' : ''}`}
                                       </span>
                                     )}
                                   </span>

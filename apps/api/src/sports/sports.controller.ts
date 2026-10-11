@@ -212,6 +212,9 @@ export class SportsController {
       scorebugTemplateId?: string | null;
       // Sports Wave S4-1 (P1-8) — editable any time from Setup.
       scheduledAt?: string | null;
+      // Muse beta S-04 — team abbreviations.
+      homeAbbrev?: string | null;
+      awayAbbrev?: string | null;
     },
   ) {
     return this.sports.updateGameDetails(req.user.tenantId, id, body, userActor(req));

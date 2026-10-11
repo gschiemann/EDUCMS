@@ -9,6 +9,7 @@ import { useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { ArrowLeft, Check, Copy, Link2, Loader2, PauseCircle, PlayCircle } from 'lucide-react';
 import { appConfirm, appPrompt } from '@/components/ui/app-dialog';
+import { SupportAccessCard } from './SupportAccessCard';
 import {
   useCreateInvoice,
   useIssueStarterLink,
@@ -63,6 +64,8 @@ export function CustomerView({ c }: { c: CustomerDetail }) {
         </header>
 
         <LicenseCard c={c} />
+        {/* 2026-10-11 — VenueOS reaches this customer's data only under a grant. */}
+        <SupportAccessCard orgId={c.id} orgName={c.name} />
         <SuspensionCard c={c} />
         <OwnerLinkCard c={c} />
         <InvoicesCard c={c} />

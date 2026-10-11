@@ -120,3 +120,45 @@ it('says nothing extra at a venue the policy does not apply to', async () => {
   await waitFor(() => expect(screen.getByText('Showing everything on the roster')).toBeInTheDocument());
   expect(screen.queryByTestId('roster-privacy-school-note')).toBeNull();
 });
+
+// Muse beta DEV-006 / S-06: headline, note and options from ONE policy.
+it('never says "Showing everything" while the school policy hides names and photos', async () => {
+  schoolPolicy = { applies: true, names: { allowed: false }, photos: { allowed: false } };
+  apiFetch.mockResolvedValueOnce(ALL_ON);
+  mount();
+  await waitFor(() => expect(screen.getByTestId('roster-privacy-school-note')).toBeInTheDocument());
+  expect(screen.getByRole('status')).toHaveTextContent('Public screens show less than the roster');
+  expect(screen.queryByText('Showing everything on the roster')).toBeNull();
+  // The options show what a public screen gets, and say why they cannot change.
+  const names = screen.getByRole('combobox', { name: 'Names' }) as HTMLSelectElement;
+  expect(names.value).toBe('hidden');
+  expect(names).toBeDisabled();
+  expect(screen.getByRole('checkbox', { name: 'Photos' })).not.toBeChecked();
+  expect(screen.getByRole('checkbox', { name: 'Photos' })).toBeDisabled();
+  // Switches the school does not govern stay live.
+  expect(screen.getByRole('checkbox', { name: 'Jersey numbers' })).toBeEnabled();
+});
+
+it('names allowed but photos blocked: the note names photos only, and only photos lock', async () => {
+  schoolPolicy = { applies: true, names: { allowed: true }, photos: { allowed: false } };
+  apiFetch.mockResolvedValueOnce(ALL_ON);
+  mount();
+  await waitFor(() =>
+    expect(screen.getByTestId('roster-privacy-school-note')).toHaveTextContent("hides students' photos"),
+  );
+  expect((screen.getByRole('combobox', { name: 'Names' }) as HTMLSelectElement).value).toBe('full');
+  expect(screen.getByRole('combobox', { name: 'Names' })).toBeEnabled();
+  expect(screen.getByRole('checkbox', { name: 'Photos' })).toBeDisabled();
+});
+
+it('names blocked, photos allowed: the note names names only', async () => {
+  schoolPolicy = { applies: true, names: { allowed: false }, photos: { allowed: true } };
+  apiFetch.mockResolvedValueOnce(ALL_ON);
+  mount();
+  await waitFor(() =>
+    expect(screen.getByTestId('roster-privacy-school-note')).toHaveTextContent(
+      "Your school's policy hides students' names on public screens.",
+    ),
+  );
+  expect(screen.getByRole('checkbox', { name: 'Photos' })).toBeEnabled();
+});

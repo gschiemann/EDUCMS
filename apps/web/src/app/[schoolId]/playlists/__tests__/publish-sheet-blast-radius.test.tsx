@@ -38,6 +38,7 @@ jest.mock('@/hooks/use-api', () => ({
   useSchedules: query([]),
   useScreens: query(SCREENS),
   useTemplates: query([]),
+  useTenant: query(undefined),
   useUsers: query([]),
   useFleet: query({ root: null, locations: [], stats: { total: 0, online: 0, offline: 0, locationCount: 0 }, screens: [] }),
   useFleetOperations: query(undefined),

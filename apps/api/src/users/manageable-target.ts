@@ -1,6 +1,7 @@
 import { ForbiddenException, HttpException, HttpStatus } from '@nestjs/common';
 import { AppRole } from '@cms/database';
 import { assertCallerCanAssignRole } from '../auth/role-assignment';
+import { assertSupportReach } from '../support-access/support-access.context';
 
 /**
  * THE ONE GATE for "may this caller act ON this account?" — extracted
@@ -74,6 +75,9 @@ export async function loadManageableTarget(
       throw new ForbiddenException({ code: 'USER_NOT_IN_TENANT', message: 'Target user is not in your tenant.' });
     }
   }
+
+  // SUPPORT ACCESS (2026-10-11): a super admin manages a customer's account only under a grant.
+  await assertSupportReach(req?.user, (target as any).tenantId);
 
   if (!isSelf) assertCallerCanAssignRole(callerRole, (target as any).role);
 

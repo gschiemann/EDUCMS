@@ -35,7 +35,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { formatScore, formatSportClock, sportForGame } from '@cms/api-types';
-import { useGameState, fmtSegment, type GameSnapshot } from './GameStateContext';
+import { useGameState, fmtSegment, teamAbbrevOf, type GameSnapshot } from './GameStateContext';
 import { liveNeutral } from './cts-fields';
 import { FitOneLine } from './FitOneLine';
 import { sceneCss } from '../scene-css';
@@ -79,7 +79,9 @@ function useScaleToFit(w: number, hh: number) {
   return { ref, scale };
 }
 
-function abbr(name?: string) { return (name ?? '').trim().slice(0, 3).toUpperCase() || '—'; }
+// Muse beta S-04: the shared abbreviation rule, not "first three letters"
+// (which made "Muse Sports Test Home" and "… Away" both MUS).
+function abbr(snap: GameSnapshot, side: 'home' | 'away') { return teamAbbrevOf(snap, side) || '—'; }
 
 // ── RIBBON ───────────────────────────────────────────────────────────
 export interface RibbonCfg {
@@ -121,8 +123,8 @@ export function RibbonScoreboardWidget({ config }: { config?: RibbonCfg }) {
   // in the builder, neutral on a live board with no data.
   const homeScoreText = isLiveNoData ? liveNeutral('value') : formatScore(def, snap.homeScore);
   const awayScoreText = isLiveNoData ? liveNeutral('value') : formatScore(def, snap.awayScore);
-  const homeAbbrText = isLiveNoData ? liveNeutral('value') : abbr(snap.homeTeam);
-  const awayAbbrText = isLiveNoData ? liveNeutral('value') : abbr(snap.awayTeam);
+  const homeAbbrText = isLiveNoData ? liveNeutral('value') : abbr(snap, 'home');
+  const awayAbbrText = isLiveNoData ? liveNeutral('value') : abbr(snap, 'away');
   // THE formatter (K12-F17) — the /board route's digits for the same instant.
   const clockText = isLiveNoData ? liveNeutral('clock') : formatSportClock(def, clockMs);
   const segmentText = isLiveNoData ? '' : (def ? fmtSegment(snap.sport, snap.segment, snap.rules) : '');
@@ -207,8 +209,8 @@ export function ScorebugWidget({ config }: { config?: ScorebugCfg }) {
   // sample in the builder, neutral on a live board with no data.
   const homeScoreText = isLiveNoData ? liveNeutral('value') : formatScore(def, snap.homeScore);
   const awayScoreText = isLiveNoData ? liveNeutral('value') : formatScore(def, snap.awayScore);
-  const homeAbbrText = isLiveNoData ? liveNeutral('value') : abbr(snap.homeTeam);
-  const awayAbbrText = isLiveNoData ? liveNeutral('value') : abbr(snap.awayTeam);
+  const homeAbbrText = isLiveNoData ? liveNeutral('value') : abbr(snap, 'home');
+  const awayAbbrText = isLiveNoData ? liveNeutral('value') : abbr(snap, 'away');
   // THE formatter (K12-F17) — the /board route's digits for the same instant.
   const clockText = isLiveNoData ? liveNeutral('clock') : formatSportClock(def, clockMs);
   const segmentText = isLiveNoData ? '' : (def ? fmtSegment(snap.sport, snap.segment, snap.rules) : '');

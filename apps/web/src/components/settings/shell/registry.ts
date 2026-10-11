@@ -22,6 +22,7 @@ import {
   Code2,
   Lock,
   Trophy,
+  LifeBuoy,
 } from 'lucide-react';
 
 export type SettingsGroup = 'workspace' | 'operations' | 'access' | 'account';
@@ -38,6 +39,7 @@ export type SettingsSectionId =
   | 'people'
   | 'billing'
   | 'developer'
+  | 'supportAccess'
   | 'security';
 
 export type SettingsRole =
@@ -221,6 +223,22 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDefinition[] = [
     keywords: ['api key', 'api keys', 'webhook', 'webhooks', 'sdk', 'docs', 'audit log', 'build', 'system info', 'token'],
     scopes: ['organization'],
     roles: ORG_ADMIN_ROLES,
+  },
+  {
+    // 2026-10-11 — customer-approved VenueOS support access: approve / deny a
+    // request, give access proactively, end it any time, see the history.
+    // Everyone may read the state; the API lets only the organisation's
+    // admins decide.
+    id: 'supportAccess',
+    labelKey: 'supportAccess',
+    descriptionKey: 'supportAccess',
+    group: 'access',
+    icon: LifeBuoy,
+    path: 'support-access',
+    matches: ['support-access'],
+    keywords: ['venueos', 'support', 'access', 'help', 'remote access', 'grant', 'approve', 'vendor'],
+    scopes: ['organization', 'location'],
+    roles: ALL_ROLES,
   },
   {
     id: 'security',

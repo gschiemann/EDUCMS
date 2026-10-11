@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { SCREEN_ONLINE_GRACE_MS } from '../telemetry/online-grace';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
@@ -74,7 +75,31 @@ export interface EmergencyReadinessReport {
   locked: boolean;
   score: number; // 0-100, informational — the verdict is the contract
   items: ReadinessItem[];
+  /**
+   * Per-type content, from the SAME counts the `content` item is graded on
+   * (Muse beta DEV-002, 2026-10-07: the header said "wired" while the
+   * per-type rail said "No content", because one counted playlist ids and
+   * the other counted items). Present whenever the capability is on.
+   */
+  contentByType?: ReadinessTypeContent[];
+  /**
+   * Drill content, reported on its OWN line and never graded: a drill with no
+   * drill content of its own plays the live content, so it cannot make a
+   * tenant less ready. Kept out of `items` so it is never mixed with live.
+   */
+  drillContent?: { typesWithDrillContent: number; typesTotal: number; detail: string };
   computedAt: string;
+}
+
+export interface ReadinessTypeContent {
+  kind: PanicKindKey;
+  label: string;
+  /** Graded for this vertical (a gym is not graded on lockdown). */
+  required: boolean;
+  /** Items in the LIVE bucket, landscape + portrait. > 0 means "has content". */
+  liveItems: number;
+  /** Items in the DRILL bucket, landscape + portrait. Informational only. */
+  drillItems: number;
 }
 
 /** One child school's readiness as the DISTRICT rollup reports it. */
@@ -124,24 +149,15 @@ export interface DistrictReadinessReport {
   computedAt: string;
 }
 
-// Mirrors the fleet's own liveness convention (screens.controller.ts
-// STALE_MS): a screen pinging within 35s is ONLINE.
-const ONLINE_WITHIN_MS = 35 * 1000;
+// DEV-007: the fleet's ONE liveness rule (telemetry/online-grace.ts) — the
+// Screens page, Dashboard and this report used to disagree (35 s here).
+const ONLINE_WITHIN_MS = SCREEN_ONLINE_GRACE_MS;
 // Mirrors the wedge-detector convention: a content-fetch loop that hasn't
 // reported its cache within 5 minutes is considered stuck.
 const CACHE_FRESH_WITHIN_MS = 5 * 60 * 1000;
 // A lockdown drill cadence schools actually follow; older than this reads
 // as "you haven't exercised the system in a while", never as broken.
 const EXERCISE_WARN_AFTER_DAYS = 90;
-
-const PANIC_TYPES: Array<{ field: string; label: string }> = [
-  { field: 'panicLockdownPlaylistId', label: 'Lockdown' },
-  { field: 'panicSecurePlaylistId', label: 'Secure' },
-  { field: 'panicHoldPlaylistId', label: 'Hold' },
-  { field: 'panicEvacuatePlaylistId', label: 'Fire / Evacuate' },
-  { field: 'panicWeatherPlaylistId', label: 'Weather' },
-  { field: 'panicMedicalPlaylistId', label: 'Medical' },
-];
 
 /** Panic-type key → the tenant column + human label it lives behind. */
 const TYPE_TO_FIELD: Record<string, { field: string; label: string }> = {
@@ -152,6 +168,57 @@ const TYPE_TO_FIELD: Record<string, { field: string; label: string }> = {
   weather:  { field: 'panicWeatherPlaylistId',  label: 'Weather' },
   medical:  { field: 'panicMedicalPlaylistId',  label: 'Medical' },
 };
+
+export type PanicKindKey = 'lockdown' | 'secure' | 'hold' | 'evacuate' | 'weather' | 'medical';
+
+/**
+ * Every playlist column a type's content can live behind — live and drill,
+ * landscape and portrait (the same four columns panic-content.controller
+ * writes). A type HAS content only when one of its LIVE playlists holds at
+ * least one item: the editor creates an empty protected playlist the first
+ * time it is opened, so "a playlist id is set" was never proof of content
+ * (Muse beta DEV-002 — the header counted ids, the rail counted items).
+ */
+const KIND_COLUMNS: Array<{ kind: PanicKindKey; live: [string, string]; drill: [string, string] }> = [
+  { kind: 'lockdown', live: ['panicLockdownPlaylistId', 'panicLockdownPortraitPlaylistId'], drill: ['drillLockdownPlaylistId', 'drillLockdownPortraitPlaylistId'] },
+  { kind: 'secure',   live: ['panicSecurePlaylistId',   'panicSecurePortraitPlaylistId'],   drill: ['drillSecurePlaylistId',   'drillSecurePortraitPlaylistId'] },
+  { kind: 'hold',     live: ['panicHoldPlaylistId',     'panicHoldPortraitPlaylistId'],     drill: ['drillHoldPlaylistId',     'drillHoldPortraitPlaylistId'] },
+  { kind: 'evacuate', live: ['panicEvacuatePlaylistId', 'panicEvacuatePortraitPlaylistId'], drill: ['drillEvacuatePlaylistId', 'drillEvacuatePortraitPlaylistId'] },
+  { kind: 'weather',  live: ['panicWeatherPlaylistId',  'panicWeatherPortraitPlaylistId'],  drill: ['drillWeatherPlaylistId',  'drillWeatherPortraitPlaylistId'] },
+  { kind: 'medical',  live: ['panicMedicalPlaylistId',  'panicMedicalPortraitPlaylistId'],  drill: ['drillMedicalPlaylistId',  'drillMedicalPortraitPlaylistId'] },
+];
+const ALL_CONTENT_COLUMNS: string[] = KIND_COLUMNS.flatMap((k) => [...k.live, ...k.drill]);
+const LIVE_CONTENT_COLUMNS: string[] = KIND_COLUMNS.flatMap((k) => [...k.live]);
+
+function itemsBehind(row: Record<string, unknown>, columns: readonly string[], counts: Map<string, number>): number {
+  let n = 0;
+  const seen = new Set<string>();
+  for (const c of columns) {
+    const id = row[c];
+    if (typeof id === 'string' && id && !seen.has(id)) {
+      seen.add(id);
+      n += counts.get(id) ?? 0;
+    }
+  }
+  return n;
+}
+
+/** Live item count for a graded type, given its LANDSCAPE live column (TYPE_TO_FIELD's field). */
+function liveItemsForField(row: Record<string, unknown>, field: string, counts: Map<string, number>): number {
+  const entry = KIND_COLUMNS.find((k) => k.live[0] === field);
+  return itemsBehind(row, entry ? entry.live : [field], counts);
+}
+
+/** Roles that may trigger in their OWN tenant (emergency.controller `@RequireRoles`). */
+const TRIGGER_ROLES_HERE = ['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN'];
+/**
+ * Roles that may trigger on a DESCENDANT tenant: a DISTRICT_ADMIN reaches
+ * downward (`resolveScopeTenant` -> `isDescendantTenant`), and SUPER_ADMIN may
+ * act on any tenant. Only the parent chain is counted — platform staff in
+ * unrelated tenants are not this organization's people.
+ */
+const TRIGGER_ROLES_FROM_PARENT = ['SUPER_ADMIN', 'DISTRICT_ADMIN'];
+const MAX_ANCESTOR_HOPS = 8;
 
 /**
  * The alert set THIS tenant's vertical is graded against (2026-08-30 —
@@ -220,7 +287,8 @@ export class EmergencyReadinessService {
       select: {
         vertical: true,
         emergencyEnabled: true,
-        ...Object.fromEntries(PANIC_TYPES.map((t) => [t.field, true])),
+        parentId: true,
+        ...Object.fromEntries(ALL_CONTENT_COLUMNS.map((c) => [c, true])),
       } as any,
     });
     // OFF is not "not ready" — it is not graded at all. Answer before any
@@ -264,15 +332,34 @@ export class EmergencyReadinessService {
         ],
       },
     });
-    const triggerCapableStaff = await this.prisma.client.user.count({
+    // Who can ACTUALLY trigger here (Muse beta DEV-002): the same roles the
+    // trigger endpoint accepts — SUPER_ADMIN included — plus the delegated
+    // `canTriggerPanic` flag (never a viewer), plus admins of the parent
+    // organization who can reach down into this location. Active,
+    // non-deleted accounts only: an invite nobody accepted presses nothing.
+    const triggerCapableHere = await this.prisma.client.user.count({
       where: {
         tenantId,
+        deletedAt: null,
+        status: 'ACTIVE',
         OR: [
-          { canTriggerPanic: true },
-          { role: { in: ['DISTRICT_ADMIN', 'SCHOOL_ADMIN'] } },
+          { canTriggerPanic: true, role: { not: 'RESTRICTED_VIEWER' } },
+          { role: { in: TRIGGER_ROLES_HERE } },
         ],
-      },
+      } as any,
     });
+    const ancestorIds = await this.ancestorTenantIds(((tenant as any)?.parentId as string | null) ?? null, tenantId);
+    const triggerCapableFromParent = ancestorIds.length
+      ? await this.prisma.client.user.count({
+          where: {
+            tenantId: { in: ancestorIds },
+            deletedAt: null,
+            status: 'ACTIVE',
+            role: { in: TRIGGER_ROLES_FROM_PARENT },
+          } as any,
+        })
+      : 0;
+    const triggerCapableStaff = triggerCapableHere + triggerCapableFromParent;
     const lastTrigger = await this.prisma.client.auditLog.findFirst({
       where: { tenantId, action: 'TRIGGER_EMERGENCY' },
       orderBy: { createdAt: 'desc' },
@@ -289,11 +376,35 @@ export class EmergencyReadinessService {
 
     // 1. CONTENT — which of the six alert types have a playlist wired.
     const tenantRow = (tenant || {}) as Record<string, unknown>;
+    // ONE count of items per content playlist — the header, the per-type
+    // rail and the verdict all read these numbers (DEV-002).
+    const itemCounts = await this.itemCountsByPlaylist(
+      ALL_CONTENT_COLUMNS.map((c) => tenantRow[c]),
+      [tenantId],
+    );
     // Graded against THIS vertical's required set — never K12's six.
     const { required, anchor } = requiredTypesFor(tenantRow['vertical']);
-    const wired = required.filter((t) => !!tenantRow[t.field]);
-    const missingTypes = required.filter((t) => !tenantRow[t.field]).map((t) => t.label);
-    const anchorWired = !!tenantRow[anchor.field];
+    const hasLive = (field: string) => liveItemsForField(tenantRow, field, itemCounts) > 0;
+    const wired = required.filter((t) => hasLive(t.field));
+    const missingTypes = required.filter((t) => !hasLive(t.field)).map((t) => t.label);
+    const anchorWired = hasLive(anchor.field);
+    const requiredFields = new Set(required.map((t) => t.field));
+    const contentByType: ReadinessTypeContent[] = KIND_COLUMNS.map((k) => ({
+      kind: k.kind,
+      label: TYPE_TO_FIELD[k.kind].label,
+      required: requiredFields.has(k.live[0]),
+      liveItems: itemsBehind(tenantRow, k.live, itemCounts),
+      drillItems: itemsBehind(tenantRow, k.drill, itemCounts),
+    }));
+    const typesWithDrillContent = contentByType.filter((c) => c.drillItems > 0).length;
+    const drillContent = {
+      typesWithDrillContent,
+      typesTotal: contentByType.length,
+      detail:
+        typesWithDrillContent === 0
+          ? 'No alert type has drill content of its own — a drill shows the live content, marked DRILL.'
+          : `${typesWithDrillContent} of ${contentByType.length} alert types have their own drill content; the rest drill with their live content, marked DRILL.`,
+    };
     items.push({
       key: 'content',
       status: wired.length === required.length ? 'ok' : anchorWired ? 'warn' : 'missing',
@@ -328,11 +439,15 @@ export class EmergencyReadinessService {
     items.push({
       key: 'screens',
       status: screensStatus,
-      label: 'Screens ready to display',
+      // Muse beta DEV-002: "ready to display" claimed more than this measures.
+      // It counts screens that checked in, and of those the ones that sent
+      // playback or cache proof recently — it does NOT prove a screen holds
+      // this tenant's alert content, so the copy no longer says it does.
+      label: 'Screens online',
       detail:
         totalScreens === 0
           ? 'No screens paired yet.'
-          : `${onlineScreens} of ${totalScreens} screens online; ${cacheFreshScreens} confirmed fetching content.`,
+          : `${onlineScreens} of ${totalScreens} screens online; ${cacheFreshScreens} of them reported playback in the last 5 minutes.`,
       fixHint:
         screensStatus === 'ok' ? ''
         : totalScreens === 0 ? 'Pair a screen — an alert with no screens reaches no one.'
@@ -344,7 +459,11 @@ export class EmergencyReadinessService {
       key: 'staff',
       status: triggerCapableStaff >= 2 ? 'ok' : triggerCapableStaff === 1 ? 'warn' : 'missing',
       label: 'People who can trigger',
-      detail: `${triggerCapableStaff} ${triggerCapableStaff === 1 ? 'person' : 'people'} can trigger an alert.`,
+      detail:
+        `${triggerCapableStaff} ${triggerCapableStaff === 1 ? 'person' : 'people'} can trigger an alert` +
+        (triggerCapableFromParent > 0
+          ? ` (${triggerCapableHere} here, ${triggerCapableFromParent} from the parent organization).`
+          : '.'),
       fixHint:
         triggerCapableStaff >= 2 ? ''
         : triggerCapableStaff === 1 ? 'One person is a single point of failure — grant a second trusted staff member panic access in Team settings.'
@@ -391,8 +510,43 @@ export class EmergencyReadinessService {
       verticalStated: enablement.verticalStated,
       score,
       items,
+      contentByType,
+      drillContent,
       computedAt: new Date(now).toISOString(),
     };
+  }
+
+  /**
+   * Item counts per playlist id, tenant-scoped through the playlist relation
+   * (a column that somehow points at another tenant's playlist counts as
+   * empty — the same rule panic-content.controller applies). ONE groupBy.
+   */
+  private async itemCountsByPlaylist(rawIds: unknown[], tenantIds: string[]): Promise<Map<string, number>> {
+    const ids = Array.from(new Set(rawIds.filter((v): v is string => typeof v === 'string' && v.length > 0)));
+    if (ids.length === 0) return new Map();
+    const rows = await (this.prisma.client.playlistItem as any).groupBy({
+      by: ['playlistId'],
+      where: { playlistId: { in: ids }, playlist: { tenantId: { in: tenantIds } } },
+      _count: { _all: true },
+    });
+    return new Map(
+      (rows as any[]).map((r) => [r.playlistId as string, Number(r._count?._all ?? 0)]),
+    );
+  }
+
+  /** The parent chain above a tenant, nearest first, bounded and cycle-safe. */
+  private async ancestorTenantIds(parentId: string | null, selfId: string): Promise<string[]> {
+    const out: string[] = [];
+    let cursor = parentId;
+    for (let hop = 0; hop < MAX_ANCESTOR_HOPS && cursor && cursor !== selfId && !out.includes(cursor); hop++) {
+      out.push(cursor);
+      const row = await this.prisma.client.tenant.findFirst({
+        where: { id: cursor },
+        select: { parentId: true } as any,
+      });
+      cursor = ((row as any)?.parentId as string | null) ?? null;
+    }
+    return out;
   }
 
   /**
@@ -451,11 +605,17 @@ export class EmergencyReadinessService {
         slug: true,
         vertical: true,
         emergencyEnabled: true,
-        ...(Object.fromEntries(PANIC_TYPES.map((t) => [t.field, true])) as Record<string, true>),
+        ...(Object.fromEntries(LIVE_CONTENT_COLUMNS.map((c) => [c, true])) as Record<string, true>),
       } as any,
       orderBy: { name: 'asc' },
     });
     const tenantIds = tenants.map((t: any) => t.id as string);
+    // 1 query — live item counts for every school's content playlists, so a
+    // school is "wired" by the same rule as its own card (DEV-002).
+    const itemCounts = await this.itemCountsByPlaylist(
+      tenants.flatMap((t: any) => LIVE_CONTENT_COLUMNS.map((c) => t[c])),
+      tenantIds,
+    );
 
     // 2 queries — screens per school. groupBy, never a per-school count().
     const [totalRows, onlineRows] = await Promise.all([
@@ -485,9 +645,10 @@ export class EmergencyReadinessService {
       // Per-vertical grading (2026-08-30): a gym is graded on evacuate +
       // weather + medical, never on K12's lockdown set.
       const { required, anchor } = requiredTypesFor(row.vertical);
-      const wired = required.filter((t) => !!row[t.field]);
-      const missingTypes = required.filter((t) => !row[t.field]).map((t) => t.label);
-      const anchorWired = !!row[anchor.field];
+      const hasLive = (field: string) => liveItemsForField(row, field, itemCounts) > 0;
+      const wired = required.filter((t) => hasLive(t.field));
+      const missingTypes = required.filter((t) => !hasLive(t.field)).map((t) => t.label);
+      const anchorWired = hasLive(anchor.field);
       const contentStatus: ReadinessStatus =
         wired.length === required.length ? 'ok' : anchorWired ? 'warn' : 'missing';
 

@@ -1619,7 +1619,7 @@ export function useAddWebUrl() {
   return useMutation({
     mutationFn: (data: { url: string; name?: string; folderId?: string | null }) =>
       apiFetch('/assets/url', { method: 'POST', body: JSON.stringify(data) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['assets'] }),
+    onSuccess: () => invalidateAssetLibrary(qc),
   });
 }
 
@@ -1639,7 +1639,7 @@ export function useGenerateImage() {
         '/ai/image',
         { method: 'POST', body: JSON.stringify(data) },
       ),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['assets'] }),
+    onSuccess: () => invalidateAssetLibrary(qc),
   });
 }
 
@@ -1679,7 +1679,7 @@ export function useStockRehost() {
   return useMutation({
     mutationFn: (params: { url: string }) =>
       apiFetch<{ url?: string }>('/ai/stock-rehost', { method: 'POST', body: JSON.stringify(params) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['assets'] }),
+    onSuccess: () => invalidateAssetLibrary(qc),
   });
 }
 
@@ -1732,7 +1732,7 @@ export function useDeleteAsset() {
       patchAssetCaches(qc, assets => assets.filter((asset: { id: string }) => !deleted.has(asset.id)));
     },
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: ['assets'] });
+      void invalidateAssetLibrary(qc);
       qc.invalidateQueries({ queryKey: ['playlists'] });
       qc.invalidateQueries({ queryKey: ['schedules'] });
       qc.invalidateQueries({ queryKey: ['screens'] });
@@ -1821,6 +1821,18 @@ export function useUpdateAltText() {
   });
 }
 
+/**
+ * Re-read the media library AND its folder counts (Muse beta DEV-020,
+ * 2026-10-07): a move / upload / delete changed a folder's count, but only
+ * `['assets']` was invalidated, so the folder rail kept its old numbers.
+ */
+export function invalidateAssetLibrary(qc: QueryClient) {
+  return Promise.all([
+    qc.invalidateQueries({ queryKey: ['assets'] }),
+    qc.invalidateQueries({ queryKey: ['asset-folders'] }),
+  ]);
+}
+
 export function useMoveAsset() {
   const qc = useQueryClient();
   return useMutation({
@@ -1836,7 +1848,7 @@ export function useMoveAsset() {
     onError: (_e, _vars, ctx) => {
       restoreAssetCaches(qc, ctx?.prev as any);
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: ['assets'] }),
+    onSettled: () => invalidateAssetLibrary(qc),
   });
 }
 
@@ -3247,7 +3259,9 @@ export function useSetTenantPosterStandard() {
 
 // ─── Accessible Tenants (Multi-school Switcher) ───────────────
 export function useAccessibleTenants() {
-  return useQuery<{ current: string; tenants: Array<{ id: string; name: string; slug: string; parentId: string | null }> }>({
+  // `supportAccess` (2026-10-11, SUPER_ADMIN rows only): 'internal' | 'home' |
+  // 'grant' = the switch will succeed; null = needs the customer's approval.
+  return useQuery<{ current: string; tenants: Array<{ id: string; name: string; slug: string; parentId: string | null; supportAccess?: 'internal' | 'home' | 'grant' | null }> }>({
     queryKey: ['tenants', 'accessible'],
     queryFn: () => apiFetch('/tenants/accessible'),
     staleTime: 60_000,
@@ -3701,7 +3715,11 @@ export function useAddPanicAsset(kind: PanicKind, orientation: PanicOrientation 
   return useMutation({
     mutationFn: (body: { assetId: string; durationMs?: number }) =>
       apiFetch(`/panic-content/${kind}/assets?${panicContentQuery(orientation, mode)}`, { method: 'POST', body: JSON.stringify(body) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['panic-content', kind, orientation, mode] }),
+    // The readiness report counts these items (DEV-002) — re-ask it too.
+    onSuccess: () => Promise.all([
+      qc.invalidateQueries({ queryKey: ['panic-content', kind, orientation, mode] }),
+      qc.invalidateQueries({ queryKey: ['emergency-readiness'] }),
+    ]),
   });
 }
 export function useRemovePanicAsset(kind: PanicKind, orientation: PanicOrientation = 'landscape', mode: PanicMode = 'live') {
@@ -3709,7 +3727,10 @@ export function useRemovePanicAsset(kind: PanicKind, orientation: PanicOrientati
   return useMutation({
     mutationFn: (itemId: string) =>
       apiFetch(`/panic-content/${kind}/assets/${itemId}?${panicContentQuery(orientation, mode)}`, { method: 'DELETE' }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['panic-content', kind, orientation, mode] }),
+    onSuccess: () => Promise.all([
+      qc.invalidateQueries({ queryKey: ['panic-content', kind, orientation, mode] }),
+      qc.invalidateQueries({ queryKey: ['emergency-readiness'] }),
+    ]),
   });
 }
 
@@ -4150,7 +4171,11 @@ export function useToggleUsbIngest() {
   return useMutation({
     mutationFn: (enabled: boolean) =>
       apiFetch('/tenants/me/usb-ingest', { method: 'PUT', body: JSON.stringify({ enabled }) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['usb-ingest-config'] }),
+    // ['tenant'] carries usbIngestEnabled for the playlists menu (DEV-024).
+    onSuccess: () => Promise.all([
+      qc.invalidateQueries({ queryKey: ['usb-ingest-config'] }),
+      qc.invalidateQueries({ queryKey: ['tenant'] }),
+    ]),
   });
 }
 export function useRotateUsbIngestKey() {
@@ -4979,6 +5004,8 @@ export function useUpdateGameDetails(gameId: string | undefined) {
       ribbonTemplateId?: string | null;
       scorebugTemplateId?: string | null;
       scheduledAt?: string | null;
+      homeAbbrev?: string | null;
+      awayAbbrev?: string | null;
     }) => apiFetch(`/sports/games/${gameId}`, { method: 'PATCH', body: JSON.stringify(data) }),
     onSuccess: (game: any) => {
       if (game?.id) qc.setQueryData(['sports-game', game.id], game);
@@ -5372,10 +5399,25 @@ export function useGameControl(gameId: string) {
       writeBack(game);
     },
   });
+  // S-02 (Muse beta 2026-10-07): Go Live waited a full round trip with no
+  // visible change, and the console kept saying SCHEDULED while the board
+  // already said LIVE. The status now flips in the cache the instant it is
+  // tapped (the server's answer stays authoritative via writeBack), and a
+  // refusal re-reads server truth — never a stale snapshot (see rollback).
   const status = useMutation({
     mutationFn: (body: { status: string }) =>
       sendGameCommand(`/sports/games/${gameId}/status`, 'PATCH', body),
-    onSuccess: writeBack,
+    onMutate: async (body) => {
+      await qc.cancelQueries({ queryKey: gameKey });
+      const prev = snapshotGame();
+      if (prev) qc.setQueryData(gameKey, (old: any) => (old ? { ...old, status: body.status } : old));
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => rollback(ctx),
+    onSuccess: (game: any) => {
+      writeBack(game);
+      qc.invalidateQueries({ queryKey: ['sports-games'] });
+    },
   });
   // K12-F13 (2026-09-26): a FINAL game is locked server-side; the audited
   // reopen (reason required) is the only way back to live scoring.

@@ -257,3 +257,32 @@ describe('arming the hook', () => {
     expect(next).toHaveBeenCalled();
   });
 });
+
+describe('SUPPORT ACCESS (2026-10-11) — the same hook fills AuditLog.supportGrantId', () => {
+  const GRANT_ACTOR = { userId: 'super-1', apiKeyId: null, supportGrantId: 'grant-1' };
+
+  it('stamps supportGrantId on an AuditLog create written under a grant, and never apiKeyId', () => {
+    const params: any = { model: 'AuditLog', action: 'create', args: { data: { action: 'PLAYLIST_DELETED' } } };
+    runWithAuditActor(GRANT_ACTOR, () => applyAuditActorToPrismaArgs(params));
+    expect(params.args.data.supportGrantId).toBe('grant-1');
+    expect(params.args.data.apiKeyId).toBeUndefined();
+  });
+
+  it('never overwrites a supportGrantId the writer set, and stamps nothing outside a grant', () => {
+    const explicit: any = { model: 'AuditLog', action: 'create', args: { data: { supportGrantId: 'grant-explicit' } } };
+    runWithAuditActor(GRANT_ACTOR, () => applyAuditActorToPrismaArgs(explicit));
+    expect(explicit.args.data.supportGrantId).toBe('grant-explicit');
+    const human: any = { model: 'AuditLog', action: 'create', args: { data: {} } };
+    runWithAuditActor({ userId: 'u', apiKeyId: null }, () => applyAuditActorToPrismaArgs(human));
+    expect(human.args.data.supportGrantId).toBeUndefined();
+  });
+
+  it('createMany rows and non-AuditLog models behave as for apiKeyId', () => {
+    const many: any = { model: 'AuditLog', action: 'createMany', args: { data: [{}, { supportGrantId: 'keep' }] } };
+    runWithAuditActor(GRANT_ACTOR, () => applyAuditActorToPrismaArgs(many));
+    expect(many.args.data.map((r: any) => r.supportGrantId)).toEqual(['grant-1', 'keep']);
+    const other: any = { model: 'Playlist', action: 'create', args: { data: {} } };
+    runWithAuditActor(GRANT_ACTOR, () => applyAuditActorToPrismaArgs(other));
+    expect(other.args.data.supportGrantId).toBeUndefined();
+  });
+});

@@ -12,6 +12,7 @@ import { StarterBoardService } from './starter-board.service';
 import { AppRole } from '@cms/database';
 import { isReservedTenantSlug, isVertical } from '@cms/api-types';
 import { cardBillingReady, newTrialEndsAt, TRIAL_SCREENS } from '../billing/trial-policy';
+import { assertSupportReach } from '../support-access/support-access.context';
 
 export const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;     // 1 hour
 export const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;    // 7 days
@@ -517,6 +518,7 @@ export class OnboardingService {
     // design; DISTRICT_ADMIN may invite into their own district OR a child
     // school of their district; everyone else is locked to their own
     // tenant.
+    await assertSupportReach(inviter, input.tenantId); // SUPPORT ACCESS (2026-10-11)
     if (inviter.role !== 'SUPER_ADMIN' && inviter.tenantId !== input.tenantId) {
       // Allow DISTRICT_ADMIN to invite into a child school of their district.
       if (inviter.role === 'DISTRICT_ADMIN') {
@@ -697,6 +699,7 @@ export class OnboardingService {
     if (!tenant) throw new NotFoundException('Tenant not found.');
 
     // Same cross-tenant guard as createInvite.
+    await assertSupportReach(inviter, input.tenantId); // SUPPORT ACCESS (2026-10-11)
     if (inviter.role !== 'SUPER_ADMIN' && inviter.tenantId !== input.tenantId) {
       if (inviter.role === 'DISTRICT_ADMIN') {
         if (tenant.parentId !== inviter.tenantId) {

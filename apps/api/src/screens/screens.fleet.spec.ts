@@ -34,6 +34,7 @@ function makeController(opts: { self: any; children: any[]; screens: any[] }) {
       screenGroup: { findMany: jest.fn().mockResolvedValue([]) },
       schedule: { findMany: jest.fn().mockResolvedValue([]) },
       playlist: { findMany: jest.fn().mockResolvedValue([]) },
+      game: { findMany: jest.fn().mockResolvedValue([]) },
     },
   };
   const c = new ScreensController(
@@ -310,5 +311,44 @@ describe('fleet operations context', () => {
     ).rejects.toThrow();
     expect(prisma.client.screen.findMany).not.toHaveBeenCalled();
     expect(prisma.client.schedule.findMany).not.toHaveBeenCalled();
+  });
+
+  // DEV-004 (Muse beta): a screen a live game owns names the game.
+  it('names the live game a screen shows, batched and tenant-matched like the manifest', async () => {
+    const { c, prisma } = makeController({
+      self: T('corp', 'Corporate', 'corp'),
+      children: [T('a', 'Office A', 'a')],
+      screens: [
+        { id: 's1', name: 'Gym board', tenantId: 'corp', status: 'ONLINE', lastPingAt: new Date(), activeBoardGameId: 'g1' },
+        // A game id that belongs to ANOTHER tenant than the screen — ignored, as the manifest does.
+        { id: 's2', name: 'Lobby', tenantId: 'a', status: 'ONLINE', lastPingAt: new Date(), activeBoardGameId: 'g1' },
+        { id: 's3', name: 'Hall', tenantId: 'a', status: 'ONLINE', lastPingAt: new Date() },
+      ],
+    });
+    prisma.client.game.findMany.mockResolvedValue([
+      { id: 'g1', tenantId: 'corp', homeTeam: 'Lions', awayTeam: 'Tigers', status: 'LIVE', sport: 'basketball' },
+    ]);
+    const result = await c.fleet(req('corp'), res(), undefined, 'operations');
+    expect(prisma.client.game.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.client.game.findMany.mock.calls[0][0].where).toEqual({
+      id: { in: ['g1'] },
+      tenantId: { in: ['corp', 'a'] },
+    });
+    expect(result.screens.find((s: any) => s.id === 's1').activeBoardGame).toEqual({
+      id: 'g1', homeTeam: 'Lions', awayTeam: 'Tigers', status: 'LIVE', sport: 'basketball',
+    });
+    expect(result.screens.find((s: any) => s.id === 's2').activeBoardGame).toBeNull();
+    expect(result.screens.find((s: any) => s.id === 's3').activeBoardGame).toBeNull();
+  });
+
+  it('the summary read never reads games', async () => {
+    const { c, prisma } = makeController({
+      self: T('corp', 'Corporate', 'corp'),
+      children: [],
+      screens: [{ id: 's1', name: 'x', tenantId: 'corp', status: 'ONLINE', lastPingAt: new Date(), activeBoardGameId: 'g1' }],
+    });
+    const result = await c.fleet(req('corp'), res());
+    expect(prisma.client.game.findMany).not.toHaveBeenCalled();
+    expect(result.screens[0]).not.toHaveProperty('activeBoardGame');
   });
 });

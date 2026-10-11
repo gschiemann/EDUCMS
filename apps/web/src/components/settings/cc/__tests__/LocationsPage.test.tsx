@@ -99,3 +99,26 @@ it('creates a child through POST /tenants/children with a silently derived slug'
     })),
   );
 });
+
+// Muse beta DEV-003: the slug froze at the FIRST letter when the name was
+// typed one keystroke at a time (the single change event above hid it), and
+// the server refused the create with TENANT_SLUG_TOO_SHORT.
+it('derives the full slug when the name is typed one keystroke at a time', async () => {
+  routes([]);
+  renderInShell(<SettingsLocationsPage />);
+
+  fireEvent.click(await screen.findByRole('button', { name: /Add a location/ }));
+  const input = await screen.findByLabelText('Location name');
+  const typed = 'Lincoln High';
+  for (let i = 1; i <= typed.length; i += 1) {
+    fireEvent.change(input, { target: { value: typed.slice(0, i) } });
+  }
+  fireEvent.click(screen.getByRole('button', { name: 'Create location' }));
+
+  await waitFor(() =>
+    expect(apiFetch).toHaveBeenCalledWith('/tenants/children', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ name: 'Lincoln High', slug: 'lincoln-high' }),
+    })),
+  );
+});

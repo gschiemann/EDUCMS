@@ -490,6 +490,7 @@ export default function PlaylistWorkspacePage() {
       onPauseEverywhere={handlePauseEverywhere}
       onResumeEverywhere={handleResumeEverywhere}
       pausePending={setPlaylistActive.isPending}
+      pauseDirection={setPlaylistActive.isPending ? (setPlaylistActive.variables?.active ? 'resume' : 'pause') : null}
       onRefreshScreen={handleRefreshScreen}
       refreshingScreenId={refreshingScreenId}
       onOpenScreen={(screenId) => router.push(`/${schoolId}/screens?screen=${screenId}`)}

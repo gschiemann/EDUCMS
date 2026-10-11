@@ -22,6 +22,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ShieldCheck, Loader2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { useStudentPrivacy } from '@/hooks/use-student-privacy';
+import { effectiveRosterPolicy } from '@/lib/roster-privacy-effective';
 
 export interface RosterPrivacy {
   names: 'full' | 'last' | 'hidden';
@@ -42,14 +43,12 @@ export function RosterPrivacyCard({ gameId }: { gameId: string }) {
   // K-12 launch, lane B3 — the school's own policy. These per-game switches
   // can only hide MORE than it (the API AND-s them together), so say so when
   // the school's policy is the stricter one.
-  const { data: school } = useStudentPrivacy();
-  const schoolNote = school?.applies
-    ? !school.names.allowed
-      ? tp('policyNote')
-      : !school.photos.allowed
-        ? tp('policyPhotosNote')
-        : null
-    : null;
+  //
+  // Muse beta DEV-006 / S-06: the headline, this note and every option are
+  // derived from ONE effective policy (school AND game) — the headline used
+  // to say "Showing everything" from the game's switches alone while this
+  // note said the school hides names and photos.
+  const { data: school, isLoading: schoolLoading } = useStudentPrivacy();
   const qc = useQueryClient();
   const key = ['sports', 'roster-privacy', gameId];
   const { data, isLoading } = useQuery<RosterPrivacy>({
@@ -82,19 +81,37 @@ export function RosterPrivacyCard({ gameId }: { gameId: string }) {
   });
 
   const p = pending ?? data ?? DEFAULTS;
+  const eff = effectiveRosterPolicy(p, school);
+  const schoolNote =
+    eff.schoolNote === 'namesAndPhotos'
+      ? tp('policyNote')
+      : eff.schoolNote === 'names'
+        ? tp('policyNamesNote')
+        : eff.schoolNote === 'photos'
+          ? tp('policyPhotosNote')
+          : null;
+  const checking = isLoading || schoolLoading;
   const set = (patch: Partial<RosterPrivacy>) => {
     const next = { ...p, ...patch };
     setPending(next);
     save.mutate(next);
   };
-  const restricted = p.names !== 'full' || !p.numbers || !p.photos || !p.positions || !p.stats;
 
-  const toggle = (k: 'numbers' | 'photos' | 'positions' | 'stats', label: string) => (
-    <label key={k} className="flex items-center gap-2 text-xs text-slate-600">
-      <input type="checkbox" checked={p[k]} disabled={isLoading} onChange={(e) => set({ [k]: e.target.checked } as Partial<RosterPrivacy>)} />
-      {label}
-    </label>
-  );
+  const toggle = (k: 'numbers' | 'photos' | 'positions' | 'stats', label: string) => {
+    const locked = k === 'photos' && eff.photosLockedBySchool;
+    return (
+      <label key={k} className={`flex items-center gap-2 text-xs ${locked ? 'text-slate-400' : 'text-slate-600'}`}>
+        <input
+          type="checkbox"
+          checked={eff[k]}
+          disabled={checking || locked}
+          title={locked ? schoolNote ?? undefined : undefined}
+          onChange={(e) => set({ [k]: e.target.checked } as Partial<RosterPrivacy>)}
+        />
+        {label}
+      </label>
+    );
+  };
 
   return (
     <section
@@ -107,7 +124,7 @@ export function RosterPrivacyCard({ gameId }: { gameId: string }) {
           {t('title')}
         </h3>
         <span role="status" className="text-[11px] text-slate-500">
-          {save.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-label={t('saving')} /> : save.isError ? t('error') : restricted ? t('restricted') : t('everything')}
+          {save.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-label={t('saving')} /> : save.isError ? t('error') : checking ? t('checking') : eff.restricted ? t('restricted') : t('everything')}
         </span>
       </div>
       <p className="text-[11px] text-slate-500 mb-2">
@@ -124,8 +141,9 @@ export function RosterPrivacyCard({ gameId }: { gameId: string }) {
           {t('names')}
           <select
             aria-label={t('names')}
-            value={p.names}
-            disabled={isLoading}
+            value={eff.names}
+            disabled={checking || eff.namesLockedBySchool}
+            title={eff.namesLockedBySchool ? schoolNote ?? undefined : undefined}
             onChange={(e) => set({ names: e.target.value as RosterPrivacy['names'] })}
             className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs"
           >

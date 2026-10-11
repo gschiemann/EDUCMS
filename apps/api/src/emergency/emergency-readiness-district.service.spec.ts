@@ -33,6 +33,8 @@ interface DistrictMockOpts {
   redisState?: 'ok' | 'none' | 'fail';
   signerThrows?: boolean;
   dbFails?: boolean;
+  /** Playlist ids whose bucket exists but holds no items. */
+  emptyPlaylists?: string[];
 }
 
 const ALL_WIRED = {
@@ -49,6 +51,7 @@ function makeDistrictMocks(opts: DistrictMockOpts = {}) {
   // 'district' is the parent's own row; 'school-1..n' are its children.
   const ids = ['district', ...Array.from({ length: n }, (_, i) => `school-${i + 1}`)];
   const wheres: any[] = [];
+  const itemWheres: any[] = [];
   let dbQueries = 0;
 
   const prisma = {
@@ -81,6 +84,17 @@ function makeDistrictMocks(opts: DistrictMockOpts = {}) {
             .filter((r) => r._count._all > 0);
         }),
       },
+      // DEV-002: a type is wired when its LIVE playlist holds items. One
+      // item per playlist id unless `emptyPlaylists` names it.
+      playlistItem: {
+        groupBy: jest.fn(async (args: any) => {
+          dbQueries += 1;
+          itemWheres.push(args.where);
+          return (args.where.playlistId.in as string[])
+            .filter((id) => !opts.emptyPlaylists?.includes(id))
+            .map((playlistId) => ({ playlistId, _count: { _all: 1 } }));
+        }),
+      },
       $queryRaw: opts.dbFails
         ? jest.fn(async () => { dbQueries += 1; throw new Error('db down'); })
         : jest.fn(async () => { dbQueries += 1; return 1; }),
@@ -104,7 +118,7 @@ function makeDistrictMocks(opts: DistrictMockOpts = {}) {
       : jest.fn(() => ({ signature: 'sig' })),
   } as any;
 
-  return { prisma, redis, wsSigner, wheres, queryCount: () => dbQueries };
+  return { prisma, redis, wsSigner, wheres, itemWheres, queryCount: () => dbQueries };
 }
 
 const svcFor = (m: ReturnType<typeof makeDistrictMocks>) =>
@@ -286,8 +300,8 @@ describe('EmergencyReadinessService.computeDistrict', () => {
 
     expect(rBig.schools).toHaveLength(41);
     expect(big.queryCount()).toBe(small.queryCount());
-    // 1 tenant findMany + 2 screen groupBy + 1 `SELECT 1` delivery probe.
-    expect(big.queryCount()).toBe(4);
+    // 1 tenant findMany + 1 playlist-item groupBy + 2 screen groupBy + 1 `SELECT 1` delivery probe.
+    expect(big.queryCount()).toBe(5);
     // And never a per-school count() fan-out.
     expect(big.prisma.client.screen.groupBy).toHaveBeenCalledTimes(2);
     expect(big.prisma.client.tenant.findMany).toHaveBeenCalledTimes(1);
@@ -306,5 +320,17 @@ describe('EmergencyReadinessService.computeDistrict', () => {
       expect(w.tenantId.in).toContain('district');
       expect(w.tenantId.in).toContain('school-1');
     }
+    // The item count is scoped to the same set through the playlist relation.
+    expect(m.itemWheres).toHaveLength(1);
+    expect(m.itemWheres[0].playlist.tenantId.in).toContain('district');
+    expect(m.itemWheres[0].playlist.tenantId.in).toContain('school-1');
+  });
+
+  it('DEV-002: an EMPTY bucket (playlist exists, no items) is not wired', async () => {
+    const m = makeDistrictMocks({ emptyPlaylists: ['pl4'] });
+    const r = await svcFor(m).computeDistrict('district');
+    const s1 = r.schools.find((s) => s.tenantId === 'school-1')!;
+    expect(s1.contentWired).toBe(5);
+    expect(s1.missingTypes).toContain('Fire / Evacuate');
   });
 });

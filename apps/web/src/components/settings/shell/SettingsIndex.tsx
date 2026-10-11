@@ -38,6 +38,7 @@ export function SettingsIndex({
   const { statuses, navigate } = useSettingsShell();
   const { vertical } = useTenantCopy();
   const sections = visibleSections(role, vertical);
+  const canSeeHistory = role === 'SUPER_ADMIN' || role === 'DISTRICT_ADMIN' || role === 'SCHOOL_ADMIN';
 
   const groups = SETTINGS_GROUP_ORDER.map((g) => ({
     id: g,
@@ -80,11 +81,21 @@ export function SettingsIndex({
           </ul>
         </div>
       ))}
-      {variant === 'rail' && (
-        <div className="mx-2 mt-4 px-3 py-3 rounded-[10px] bg-slate-100/80">
+      {/* DEV-009 (Muse beta): this was a plain div — it described the
+          history and went nowhere. It now opens the audit log, the page that
+          actually holds every saved change, for the roles that may read it
+          (the API's audit list is admin-only, so nobody else gets a link to
+          a page that would refuse them). */}
+      {variant === 'rail' && canSeeHistory && (
+        <Link
+          href={`/${schoolId}/audit`}
+          onClick={(e) => onClick(e, `/${schoolId}/audit`)}
+          data-testid="settings-history-link"
+          className="block mx-2 mt-4 px-3 py-3 rounded-[10px] bg-slate-100/80 hover:bg-slate-200/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1"
+        >
           <strong className="block text-[12px] font-medium text-slate-900">{t('settings.shell.historyTitle')}</strong>
           <span className="block mt-1 text-[11px] leading-[15px] text-slate-500">{t('settings.shell.historyBody')}</span>
-        </div>
+        </Link>
       )}
     </nav>
   );

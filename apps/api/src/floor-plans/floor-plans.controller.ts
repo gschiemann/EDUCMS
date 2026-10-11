@@ -34,6 +34,7 @@
  *     and bucket policies apply.
  */
 
+import { SCREEN_ONLINE_GRACE_MS } from '../telemetry/online-grace';
 import {
   Controller,
   Post,
@@ -131,7 +132,8 @@ function clampCoord(value: number, max: number): number {
   return value;
 }
 
-const SCREEN_ONLINE_STALE_MS = 35 * 1000;
+// DEV-007: the one online window (telemetry/online-grace.ts), not a private 35 s.
+const SCREEN_ONLINE_STALE_MS = SCREEN_ONLINE_GRACE_MS;
 
 type FloorPlanScreenStatusRow = {
   status: string;

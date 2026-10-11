@@ -71,6 +71,7 @@ import { StreamingModule } from './streaming/streaming.module';
 // 2026-05-03 — Sprint 8c billing (Stripe Checkout scaffolding).
 import { BillingModule } from './billing/billing.module';
 import { CustomersModule } from './customers/customers.module';
+import { SupportAccessModule } from './support-access/support-access.module';
 // 2026-05-03 — Sprint 8d POS catalog sync framework.
 import { PosModule } from './pos/pos.module';
 // 2026-05-03 — Sprint 8d ad-network monetization framework.
@@ -196,6 +197,9 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     // 2026-10-10 — customer management console (/super/customers), invoice
     // billing ledger, single-use owner links, and the suspended-org gate.
     CustomersModule,
+    // 2026-10-11 — customer-approved, time-boxed support access; replaces
+    // VenueOS's standing reach into customer organisations (@Global gate).
+    SupportAccessModule,
     PosModule,
     AdsModule,
     SampleDataModule,

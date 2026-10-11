@@ -34,11 +34,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
+import { useTranslations } from 'next-intl';
 import { normalizeVertical } from '@cms/api-types';
 import {
   useCreatePlaylist, useDeletePlaylist, useDeletePlaylistsBatch, useFleet, usePlaylists, usePlaylistSummary,
   useReorderPlaylistItems, useSchedules, useScreenGroups, useScreens, useSetPlaylistActive,
-  useTemplates,
+  useTemplates, useTenant,
 } from '@/hooks/use-api';
 import { useUIStore } from '@/store/ui-store';
 import { appAlert, appConfirm } from '@/components/ui/app-dialog';
@@ -67,6 +68,21 @@ export default function PlaylistsPage() {
   const isViewer = currentUser?.role === 'RESTRICTED_VIEWER';
   const isContributor = currentUser?.role === 'CONTRIBUTOR';
   const canFleetPublish = currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'DISTRICT_ADMIN';
+  // DEV-024 (Muse beta): Export to USB is refused (403 USB_INGEST_DISABLED)
+  // while the organization has USB export off. Say so ON the menu item; an
+  // admin also gets the way to the setting. Unknown (still loading) never
+  // disables — only a server that says `false` does.
+  const tUsb = useTranslations('playlistsPage');
+  const { data: tenantForUsb } = useTenant();
+  const isUsbAdmin = ['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN'].includes(currentUser?.role ?? '');
+  const usbExportBlocked = (tenantForUsb as { usbIngestEnabled?: boolean } | undefined)?.usbIngestEnabled === false
+    ? {
+        reason: isUsbAdmin ? tUsb('usbExportOffAdmin') : tUsb('usbExportOff'),
+        ...(isUsbAdmin
+          ? { settingsLabel: tUsb('usbExportOpenSettings'), onOpenSettings: () => router.push(`/${schoolId}/settings/player/offline`) }
+          : {}),
+      }
+    : null;
 
   // ── §5: the ?newPlaylist=1 contract ──────────────────────────────
   // The dashboard and the Assets page both link here with it (Assets also
@@ -455,6 +471,7 @@ export default function PlaylistsPage() {
         onNew={() => setWizardOpen(true)}
         onDuplicate={handleDuplicate}
         onExport={(id) => { void runUsbExport(id); }}
+        usbExportBlocked={usbExportBlocked}
         onRemove={handleRemove}
         onRemoveMany={handleRemoveMany}
         onPublishToLocations={isHQ ? (id: string) => { setPublishToLocationsId(id); setPublishToLocationsOpen(true); } : undefined}

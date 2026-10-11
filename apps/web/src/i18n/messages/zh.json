@@ -787,6 +787,10 @@
         "sports": {
           "label": "体育",
           "description": "比赛日设置，包括公共屏幕可以显示哪些学生信息。"
+        },
+        "supportAccess": {
+          "label": "VenueOS 支持访问",
+          "description": "决定 VenueOS 支持何时可以进入你的组织，并可随时结束。"
         }
       },
       "scopePersonal": "个人账户",
@@ -940,7 +944,11 @@
           "lastExercisedBody": "根据审计日志，上一次真正发送警报的时间。",
           "health": "下发链路",
           "healthHint": "服务器对数据库、消息广播和签名器的自检。",
-          "healthLink": "运行自检"
+          "healthLink": "运行自检",
+          "typeUnknown": "未知",
+          "drillContent": "演练内容",
+          "drillContentCount": "{total} 种中有 {count} 种",
+          "drillContentBody": "演练内容与正式内容分开，不计入评分。没有专属演练内容的类型会使用其正式内容进行演练，并标注“演练”。"
         },
         "search": {
           "enable": "开启紧急警报",
@@ -1661,6 +1669,29 @@
         "railBrowserSupport": "当前浏览器",
         "railDirectToUsb": "直接写入 USB 文件夹",
         "railZipFallback": "下载签名 ZIP 文件"
+      },
+      "supportAccess": {
+        "searchGive": "授予 VenueOS 支持访问",
+        "railStateLabel": "当前状态",
+        "railState": {
+          "active": "VenueOS 已获访问",
+          "pending": "请求待处理",
+          "none": "无访问",
+          "unknown": "未知"
+        },
+        "railStateBody": {
+          "active": "VenueOS 支持可以在显示的时间之前查看和更改这个组织。你可以随时结束。",
+          "pending": "VenueOS 正在请求访问。在管理员批准之前不会发生任何事情。",
+          "none": "VenueOS 无法打开你的屏幕、内容、人员、警报、设置或日志。",
+          "unknown": "无法读取当前状态。"
+        },
+        "railRuleLabel": "规则",
+        "railRuleTitle": "你来批准，你来计时",
+        "railRuleBody": "VenueOS 对你的数据没有长期访问权。每次授权都有时限，范围为整个组织或你选择的场所，VenueOS 在此期间的所有操作都会写入你的审计日志。",
+        "editorTitle": "VenueOS 支持访问",
+        "editorDesc": "批准或拒绝 VenueOS 的请求，需要帮助时主动授予访问，并可随时结束。",
+        "sectionTitle": "支持访问",
+        "sectionDesc": "只有你组织的管理员可以批准、授予或结束访问。"
       }
     }
   },
@@ -1962,7 +1993,14 @@
       "connectingDetail": "屏幕已开启，仍在获取排程，因此暂时显示等待画面。",
       "syncing": "正在同步",
       "syncingEvidence": "更新已发送 — 等待屏幕确认",
-      "syncingDetail": "正在等待屏幕确认你的更新，通常只需几秒。"
+      "syncingDetail": "正在等待屏幕确认你的更新，通常只需几秒。",
+      "needsRepair": "设备无法上报（需要重新配对）",
+      "needsRepairDetail": "服务器拒绝了此屏幕的凭据，因此它无法上报正在显示的内容。请打开“操作”并点按“恢复信任”。",
+      "game": "比赛：{game}",
+      "gameDetail": "此屏幕已分配一场直播比赛，因此显示比赛而不是其排程的播放列表。",
+      "gameNotConfirmed": "已分配比赛：{game} · 尚未确认",
+      "gameNotConfirmedDetail": "此屏幕已分配一场直播比赛，但尚未确认画面。",
+      "liveGameAssigned": "已分配直播比赛"
     },
     "atlas": {
       "filterAria": "筛选地图上的地点",
@@ -2529,7 +2567,11 @@
     "schedSoundHelp": "此排期中的所有视频都将有声播放。",
     "templateLayoutHelp": "此播放列表使用模板布局。请在“排期”标签页中将其投放到屏幕。",
     "pauseScheduleOn": "{count, plural, =0 {} other {在 # 块屏幕上}}暂停此排期",
-    "resumeScheduleOn": "{count, plural, =0 {} other {在 # 块屏幕上}}恢复此排期"
+    "resumeScheduleOn": "{count, plural, =0 {} other {在 # 块屏幕上}}恢复此排期",
+    "usbExportOff": "此组织已关闭 USB 导出。请联系管理员开启。",
+    "usbExportOffAdmin": "此组织已关闭 USB 导出。",
+    "usbExportOpenSettings": "在设置中开启 USB 导出",
+    "durationClamped": "时长范围为 {min} 到 {max} 秒，已设为 {seconds}。"
   },
   "brandingCard": {
     "loading": "加载中…",
@@ -3542,7 +3584,8 @@
       "everything": "显示名单中的全部信息",
       "restricted": "公共屏幕显示的信息少于名单",
       "saving": "正在保存",
-      "error": "无法保存——请重试"
+      "error": "无法保存——请重试",
+      "checking": "正在检查公共屏幕显示的内容"
     },
     "scope": {
       "tag": "成绩",
@@ -3746,7 +3789,8 @@
       "adminOnly": "只有管理员可以记录照片授权或取消退出。",
       "optedOutNote": "永不在公共屏幕上显示",
       "policyNote": "您学校的政策会在公共屏幕上隐藏学生姓名和照片。这些开关只能隐藏更多内容。",
-      "policyPhotosNote": "您学校的政策会在公共屏幕上隐藏学生照片。这些开关只能隐藏更多内容。"
+      "policyPhotosNote": "您学校的政策会在公共屏幕上隐藏学生照片。这些开关只能隐藏更多内容。",
+      "policyNamesNote": "贵校的政策会在公共屏幕上隐藏学生姓名。这些开关只能隐藏更多内容。"
     },
     "typedNames": {
       "warning": "请勿在此输入学生姓名——贵校尚未确认其名录信息政策。",
@@ -4022,7 +4066,9 @@
     "holdingUntil": "屏幕保留至 {time}",
     "returnNow": "立即恢复屏幕",
     "returning": "正在恢复…",
-    "returnFailed": "无法恢复屏幕，请重试。"
+    "returnFailed": "无法恢复屏幕，请重试。",
+    "screensLoading": "正在加载屏幕…",
+    "screensLoadFailed": "无法加载您的屏幕，系统会自动重试。"
   },
   "sportsCelebrate": {
     "title": "自动庆祝",
@@ -4103,7 +4149,15 @@
     "takeoverTitle": "要移动此屏幕的控制台吗？",
     "takeoverMessage": "{screen}正在为{game}读取控制台。移到这里后，那场比赛将不再收到控制台数据。",
     "takeoverConfirm": "移到这里",
-    "errorTaken": "该屏幕现在正在为另一场比赛读取控制台——请重新选择。"
+    "errorTaken": "该屏幕现在正在为另一场比赛读取控制台——请重新选择。",
+    "goingLive": "正在开始直播…",
+    "abbrevTitle": "队伍缩写",
+    "abbrevHelp": "滚动条和比分条上显示的队伍名称。留空则使用建议值。",
+    "abbrevHome": "主队",
+    "abbrevAway": "客队",
+    "abbrevInvalid": "请使用 1 到 5 个字母或数字。",
+    "abbrevCollision": "两支队伍都会显示 {abbrev}，请为其中一队设置不同的缩写。",
+    "abbrevSaveFailed": "无法保存缩写，请重试。"
   },
   "consoleBridge": {
     "title": "记分牌控制台",
@@ -4514,6 +4568,35 @@
         "PAST_DUE": "逾期",
         "VOID": "已作废"
       }
+    },
+    "support": {
+      "title": "支持访问",
+      "explain": "VenueOS 对客户数据没有长期访问权。切换到这个组织并读取或更改其屏幕、内容、人员、警报、设置或日志，需要客户批准的有效授权。",
+      "loadFailed": "无法加载支持访问。",
+      "genericError": "出了点问题，请重试。",
+      "internal": "内部组织：始终可访问，无需授权。",
+      "active": "访问已授予，截止 {until}。",
+      "activeBreakGlass": "紧急访问已开启，截止 {until}。",
+      "pending": "请求已于 {on} 发送，等待客户管理员处理。",
+      "none": "当前无访问权。向客户请求，或由客户在“设置 → VenueOS 支持访问”中授予。",
+      "reason": "原因（客户可见）",
+      "reasonPlaceholder": "例如：大厅屏幕视频循环异常，需要检查播放列表",
+      "reasonRequired": "必须填写原因。",
+      "ask": "发送请求",
+      "endNow": "结束我们的访问",
+      "endTitle": "结束支持访问？",
+      "endBody": "VenueOS 将立即失去对 {name} 的访问。",
+      "withdraw": "撤回请求",
+      "withdrawTitle": "撤回这个请求？",
+      "withdrawBody": "客户将不再看到它。",
+      "breakGlass": "紧急访问（破玉按钮）",
+      "breakGlassExplain": "仅用于客户无人响应的真实事故：最多一小时，必须填写原因，客户的所有管理员会立即收到邮件，并显示在他们的横幅上。",
+      "breakGlassTitle": "对 {name} 开启紧急访问？",
+      "breakGlassBody": "此操作会被审计，客户管理员会立即收到邮件。访问在一小时后自动结束。请描述事故。",
+      "breakGlassReason": "事故是什么？",
+      "breakGlassConfirm": "开启紧急访问",
+      "history": "历史记录（{count}）",
+      "accessEnded": "VenueOS 已不再拥有你刚才所在组织的访问权。请在下方客户页面向客户请求支持访问，或切换到内部组织。"
     }
   },
   "credentialSetup": {
@@ -4637,5 +4720,74 @@
       "trialEndedBody": "添加付款方式即可配对新屏幕。已有的屏幕会继续播放。",
       "failed": "无法为您的方案添加屏幕。"
     }
+  },
+  "supportAccess": {
+    "loading": "正在加载支持访问…",
+    "loadFailed": "无法加载支持访问。",
+    "genericError": "出了点问题，请重试。",
+    "noneTitle": "VenueOS 没有访问权",
+    "noneBody": "VenueOS 支持无法打开这个组织的屏幕、内容、人员、警报、设置或日志。需要帮助时，请在下方授予访问或批准请求。",
+    "pendingTitle": "VenueOS（{by}）正在请求支持访问",
+    "pendingExplain": "在你决定之前不会发生任何事情。你可以批准比请求更短的时间。",
+    "adminsDecide": "你组织的管理员可以批准或拒绝。",
+    "reason": "原因",
+    "note": "备注",
+    "noteOptional": "备注（可选）",
+    "notePlaceholder": "VenueOS 应该查看什么？",
+    "requestedFor": "请求时长",
+    "askedOn": "请求时间",
+    "approveFor": "批准时长",
+    "asRequested": "按请求（{duration}）",
+    "approve": "批准",
+    "deny": "拒绝",
+    "scope": "范围",
+    "wholeOrg": "整个组织",
+    "specificLocations": "指定场所",
+    "pickLocation": "请至少选择一个场所。",
+    "activeTitle": "VenueOS 支持已获访问",
+    "activeBreakGlassTitle": "VenueOS 开启了紧急支持访问",
+    "activeExplain": "VenueOS 在此期间的所有操作都会记录在你的审计日志中并归属于此次访问。结束立即生效。",
+    "until": "截止",
+    "how": "方式",
+    "inviteTitle": "授予 VenueOS 支持访问",
+    "inviteBody": "让 VenueOS 支持在设定的时间内进入你的组织，无需请求。你可以随时结束。",
+    "duration": "时长",
+    "inviteSubmit": "授予访问",
+    "historyTitle": "历史记录",
+    "historyEmpty": "VenueOS 从未访问过这个组织。",
+    "durations": {
+      "oneHour": "1 小时",
+      "oneDay": "24 小时",
+      "sevenDays": "7 天",
+      "days": "{count} 天",
+      "hours": "{count} 小时",
+      "minutes": "{count} 分钟"
+    },
+    "kind": {
+      "REQUEST": "VenueOS 请求，由你批准",
+      "INVITE": "由你授予",
+      "BREAK_GLASS": "VenueOS 开启的紧急访问"
+    },
+    "status": {
+      "REQUESTED": "待处理",
+      "ACTIVE": "生效中",
+      "DENIED": "已拒绝",
+      "REVOKED": "已结束",
+      "EXPIRED": "已过期"
+    },
+    "banner": {
+      "active": "VenueOS 支持可访问这个组织，截止 {until}。",
+      "breakGlass": "VenueOS 开启了对这个组织的紧急支持访问，截止 {until}。",
+      "pending": "VenueOS（{by}）正在请求支持访问。",
+      "details": "详情",
+      "review": "处理",
+      "endNow": "立即结束",
+      "endConfirmTitle": "结束 VenueOS 支持访问？",
+      "endConfirmBody": "VenueOS 将立即失去对这个组织的访问。你可以随时再次授予。",
+      "endFailed": "无法结束访问，请重试。"
+    }
+  },
+  "switcher": {
+    "needsAccess": "需要客户批准"
   }
 }

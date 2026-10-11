@@ -57,6 +57,7 @@ import { HARDWARE_CATALOG, resolveHardwareModel } from '@cms/api-types';
 // There is now one shared implementation.
 import { verifyDeviceForScreen } from './device-auth';
 import { GpioService, type GpioInPin, type GpioOutPin, type GpioInputState, type GpioOutputState } from './gpio.service';
+import { assertSupportReach } from '../support-access/support-access.context';
 
 /** Pin sets for input validation. */
 const GPIO_IN_PINS = new Set<GpioInPin>(['in1', 'in2']);
@@ -258,6 +259,7 @@ export class GpioController {
       // 404 not 403 to avoid leaking screen existence across tenants.
       throw new NotFoundException({ code: 'SCREEN_NOT_FOUND', message: 'Screen not found' });
     }
+    await assertSupportReach(req.user, screen.tenantId); // SUPPORT ACCESS (2026-10-11)
 
     await this.gpio.setOutput({
       screenId: screen.id as string,

@@ -7,6 +7,7 @@ import { Body, Controller, Get, Param, Post, Put, Query, Req, UseGuards, HttpExc
 const ALLOWED_TIERS = new Set(['PILOT', 'STANDARD', 'ENTERPRISE', 'EDU_DISTRICT', 'RESTAURANT_CHAIN']);
 const ALLOWED_BILLING_MODES = new Set(['CARD', 'INVOICE', 'PURCHASE_ORDER', 'COMP']);
 const ALLOWED_STATUSES = new Set(['ACTIVE', 'PAST_DUE', 'SUSPENDED', 'CANCELLED']);
+import { screenOnlineCutoff } from '../telemetry/online-grace';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
@@ -15,6 +16,17 @@ import { PrismaService } from '../prisma/prisma.service';
 import { LicenseService } from './license.service';
 import { SupabaseStorageService } from '../storage/supabase-storage.service';
 import { isEmergencyStatusActive } from '../emergency/emergency-status';
+
+/**
+ * The platform-wide asset wipe is OFF by default (Muse beta 2026-10-07).
+ * Only the exact values `1` / `true` turn it on — a typo leaves it off,
+ * which is the direction a misconfiguration has to fail for a route that
+ * deletes every customer's media.
+ */
+export function isPlatformAssetWipeEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  const v = (env.PLATFORM_ASSET_WIPE_ENABLED ?? '').trim().toLowerCase();
+  return v === '1' || v === 'true';
+}
 
 /**
  * Owner-only management endpoints. Used by the /super page in the web app
@@ -65,7 +77,8 @@ export class SuperLicenseController {
       orderBy: [{ vertical: 'asc' }, { name: 'asc' }],
     });
 
-    const onlineCutoff = new Date(Date.now() - 2 * 60_000);
+    // DEV-007: the shared online window, not a private 2 minutes.
+    const onlineCutoff = screenOnlineCutoff();
     const since24h = new Date(Date.now() - 24 * 60 * 60_000);
 
     // Parallel: per-tenant ONLINE counts + per-tenant INFRA_EVENT count.
@@ -377,6 +390,30 @@ export class SuperLicenseController {
     @Body() body: { confirm?: string },
     @Req() req: any,
   ) {
+    // Muse beta (2026-10-07): this wipes EVERY tenant's media — customer
+    // content included — and it sat beside routine owner tools. It is now
+    // OFF unless the deploy deliberately sets PLATFORM_ASSET_WIPE_ENABLED=1
+    // (pre-launch clean-slate only). A refused call still leaves an AuditLog
+    // row: someone tried to run the nuclear option, and the record says who.
+    if (!isPlatformAssetWipeEnabled()) {
+      await this.prisma.client.auditLog.create({
+        data: {
+          tenantId: null as any,
+          userId: req?.user?.userId ?? null,
+          action: 'STORAGE_WIPE_ALL_ASSETS_REFUSED',
+          targetType: 'Storage',
+          targetId: this.storage.bucketName(),
+          details: JSON.stringify({ reason: 'PLATFORM_ASSET_WIPE_ENABLED is not set' }),
+        },
+      }).catch(() => undefined);
+      throw new HttpException(
+        {
+          code: 'STORAGE_WIPE_DISABLED',
+          message: 'Wiping every asset is turned off on this deploy (PLATFORM_ASSET_WIPE_ENABLED is not set).',
+        },
+        HttpStatus.FORBIDDEN,
+      );
+    }
     if (body?.confirm !== 'YES_WIPE_ALL_ASSETS') {
       throw new HttpException(
         { code: 'LICENSE_WIPE_CONFIRMATION_REQUIRED', message: 'wipe-all-assets requires { confirm: "YES_WIPE_ALL_ASSETS" } in the body.' },

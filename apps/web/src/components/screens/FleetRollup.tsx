@@ -23,6 +23,7 @@
  * Dashboard surface (not player/widget) → CSS `inset`/`gap` are fine here.
  */
 
+import { countOnlineScreens, isScreenOnline } from '@/lib/screen-online';
 import { useCallback, useMemo, useState } from 'react';
 import { ChevronRight, ChevronDown, Building2, Loader2, Search, X } from 'lucide-react';
 import { ScreenMapClient } from '@/components/screens/ScreenMapClient';
@@ -69,13 +70,13 @@ export function FleetRollup({ fleet }: { fleet: FleetResponse }) {
   const filtering = statusFilter !== 'all' || norm.length > 0;
 
   const total = scopedScreens.length;
-  const onlineCount = useMemo(() => scopedScreens.filter((s) => s.status === 'ONLINE').length, [scopedScreens]);
+  const onlineCount = useMemo(() => countOnlineScreens(scopedScreens), [scopedScreens]);
   const offlineCount = total - onlineCount;
 
   // Cross-store search + status filter — drives both the map and the tree.
   const filtered = useMemo(() => {
     return scopedScreens.filter((s) => {
-      const isOnline = s.status === 'ONLINE';
+      const isOnline = isScreenOnline(s);
       if (statusFilter === 'online' && !isOnline) return false;
       if (statusFilter === 'offline' && isOnline) return false;
       if (!norm) return true;

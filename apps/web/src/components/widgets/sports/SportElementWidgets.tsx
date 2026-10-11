@@ -32,7 +32,7 @@
 import React from 'react';
 import { foulsReachBonus, shotClockDisplayLen, sportForGame, teamBonus } from '@cms/api-types';
 import { formatShotClockReading, SHOT_CLOCK_TENTHS_AT_MS } from '@/lib/game-clock-format';
-import { subClockMs, useGameState, useRenderSurface, type GameSnapshot } from './GameStateContext';
+import { subClockMs, teamAbbrevOf, useGameState, useRenderSurface, type GameSnapshot } from './GameStateContext';
 import { FitOneLine, FitBox } from './FitOneLine';
 import { deriveCtsField } from './cts-fields';
 import { sceneCss } from '../scene-css';
@@ -182,7 +182,11 @@ export function TeamAbbrWidget({ config }: { config: ElCfg }) {
   const t = teamOf(s?.snapshot, team);
   const override = typeof config.teamName === 'string' ? config.teamName.trim() : '';
   const name = override || t.name || (team === 'away' ? 'TIGERS' : 'EAGLES');
-  const abbr = name.trim().slice(0, 3).toUpperCase();
+  // Muse beta S-04: a typed override still abbreviates by its first letters;
+  // the live game uses the shared rule (operator value, else smart default).
+  const abbr = !override && s?.snapshot
+    ? teamAbbrevOf(s.snapshot, team === 'away' ? 'away' : 'home')
+    : name.trim().slice(0, 3).toUpperCase();
   return (
     <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent', overflow: 'hidden' }}>
       <FitOneLine
@@ -271,9 +275,18 @@ const STATUS: Record<string, { label: string; bg: string; pulse?: boolean }> = {
   HALFTIME: { label: 'HALFTIME', bg: '#2563eb' },
   FINAL: { label: 'FINAL', bg: '#1e293b' },
 };
+const PENDING_STATUS: { label: string; bg: string; pulse?: boolean } = { label: '—', bg: '#475569' };
 export function GameStatusWidget({ config, live = true }: { config: ElCfg; live?: boolean }) {
   const s = useGameState();
-  const st = STATUS[s?.snapshot?.status ?? 'LIVE'] || STATUS.SCHEDULED;
+  // S-03 (Muse beta 2026-10-07): a LIVE surface (provider mounted) with no
+  // snapshot yet used to fall back to 'LIVE' and say LIVE while the game was
+  // SCHEDULED. Only the builder (s == null) shows the sample LIVE pill; a
+  // live surface waiting on its first snapshot says nothing it cannot prove.
+  const st = s == null
+    ? STATUS.LIVE
+    : s.snapshot?.status
+      ? STATUS[s.snapshot.status] || STATUS.SCHEDULED
+      : PENDING_STATUS;
   // The pulsing dot says "live right now" — a claim only a LIVE link may make
   // (K12-F40). While the widget's poll is stale (or still connecting) the
   // pill keeps the game's status, without the pulse. The builder (s == null)

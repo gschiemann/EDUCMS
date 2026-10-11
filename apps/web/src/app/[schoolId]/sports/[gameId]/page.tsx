@@ -17,6 +17,7 @@
  * pre-game and between-game content that is rarely touched during play.
  */
 
+import { TeamAbbrevFields } from './TeamAbbrevFields';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { useQueryClient } from '@tanstack/react-query';
@@ -518,7 +519,11 @@ function GameControl() {
   // unified status mutation the old stepper used) THEN open Run; once live, it
   // just opens Run. Routing on mutation success so the operator never lands in
   // Run before the state actually flipped.
+  // S-02 (Muse beta): the status flips optimistically (useGameControl), so
+  // every label on this page reads LIVE the moment Go Live is tapped; a
+  // second tap while the request is in flight does nothing.
   const onLive = () => {
+    if (ctl.status.isPending) return;
     if (g.status === 'SCHEDULED' || g.status === 'PRE_GAME') {
       ctl.status.mutate({ status: 'LIVE' }, { onSuccess: () => setMode('run') });
     } else {
@@ -787,6 +792,7 @@ function GameControl() {
                 <span className="font-semibold text-slate-500">More → Set up game</span>.
               </p>
               <ScheduledAtField gameId={gameId} scheduledAt={g.scheduledAt ?? null} />
+              <TeamAbbrevFields gameId={gameId} game={g} />
               {/* K12-F01 / F27 — the rules this game is bound to, what they
                   were checked against, and (before it starts) the audited
                   switch. */}
@@ -1050,7 +1056,7 @@ function GameControl() {
             {/* item A/0 — the checklist's single primary action. Go-Live runs
                 the Scheduled→LIVE transition via the same unified status
                 mutation, then opens Run. */}
-            <GoLiveBar g={g} onLive={onLive} />
+            <GoLiveBar g={g} onLive={onLive} pending={ctl.status.isPending} />
 
           </div>
         </div>
@@ -7904,7 +7910,7 @@ function ScheduledAtField({
  * (React Query dedupes by key), the config query fetches once, and the
  * live bits (scheduledAt) ride the existing useGame 4s poll via props.
  */
-function AutoPushCard({
+export function AutoPushCard({
   gameId,
   scheduledAt,
 }: {
@@ -7912,7 +7918,9 @@ function AutoPushCard({
   scheduledAt: string | null;
 }) {
   const { data: cfg } = useAutoPush(gameId);
-  const { data: screens } = useGameScreens(gameId);
+  // DEV-029 (Muse beta): `[]` while the list was still loading read as "No
+  // paired screens yet". Loading and a failed read now say so instead.
+  const { data: screens, isLoading: screensLoading, isError: screensError } = useGameScreens(gameId);
   const set = useSetAutoPush(gameId);
 
   const tPost = useTranslations('sportsPostgame');
@@ -8026,7 +8034,15 @@ function AutoPushCard({
         </p>
       )}
 
-      {list.length === 0 ? (
+      {screensLoading && list.length === 0 ? (
+        <p className="text-xs text-slate-400 mt-2" role="status" data-testid="autopush-screens-loading">
+          {tPost('screensLoading')}
+        </p>
+      ) : screensError && list.length === 0 ? (
+        <p className="text-xs text-amber-700 mt-2" role="status" data-testid="autopush-screens-error">
+          {tPost('screensLoadFailed')}
+        </p>
+      ) : list.length === 0 ? (
         <p className="text-xs text-slate-400 mt-2">
           No paired screens yet — pair a display, then come back to schedule it.
         </p>
@@ -8304,7 +8320,8 @@ function RunStatusControl({
 /** item A/0 — the Setup checklist's single primary action. `onLive` (in the
  *  parent) performs the Scheduled→LIVE transition via the same unified mutation
  *  then routes to Run; once live it just opens Run. */
-function GoLiveBar({ g, onLive }: { g: any; onLive: () => void }) {
+function GoLiveBar({ g, onLive, pending = false }: { g: any; onLive: () => void; pending?: boolean }) {
+  const tSetup = useTranslations('sportsConsoleSetup');
   const status = String(g?.status || 'SCHEDULED');
   const pre = status === 'SCHEDULED' || status === 'PRE_GAME';
   return (
@@ -8322,9 +8339,11 @@ function GoLiveBar({ g, onLive }: { g: any; onLive: () => void }) {
       <button
         type="button"
         onClick={onLive}
-        className="min-h-[48px] px-6 py-2.5 rounded-xl text-base font-black bg-green-500 hover:bg-green-400 text-slate-900 shrink-0"
+        disabled={pending}
+        aria-busy={pending || undefined}
+        className="min-h-[48px] px-6 py-2.5 rounded-xl text-base font-black bg-green-500 hover:bg-green-400 text-slate-900 shrink-0 disabled:opacity-70 disabled:cursor-wait"
       >
-        {pre ? '● Go Live' : 'Open Run console →'}
+        {pending ? tSetup('goingLive') : pre ? '● Go Live' : 'Open Run console →'}
       </button>
     </div>
   );

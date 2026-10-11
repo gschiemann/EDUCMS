@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { Loader2, Crown, Building2, AlertCircle, Plus, Search, X, Filter, HardDrive, Trash2, RefreshCw, CheckCircle2 } from 'lucide-react';
+import { Loader2, Crown, Building2, AlertCircle, Plus, Search, X, Filter, HardDrive, RefreshCw, CheckCircle2 } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import { useSuperTenants, useCompSeats, useUpsertLicense, type SuperTenantRow } from '@/hooks/use-api';
 import { appConfirm, appPrompt } from '@/components/ui/app-dialog';
@@ -44,7 +44,7 @@ export default function SuperPage() {
   // more hooks than during the previous render" the moment a real
   // SUPER_ADMIN reaches the post-return body. Result: /super was
   // unrenderable for the only role that uses it — and the new
-  // Storage Admin panel shipped tonight (Wipe / Backfill / Audit)
+  // Storage Admin panel (Backfill / Audit; the platform-wide Wipe was removed 2026-10-11)
   // was unreachable until this fix. Verified via:
   //   `npx eslint apps/web/src/app/super/page.tsx`
   //   → 4× react-hooks/rules-of-hooks errors (lines 70, 71, 72, 88).
@@ -477,14 +477,15 @@ export default function SuperPage() {
  *      samples 50 objects and reports any with missing immutable header.
  *   2. Backfill cache-control: POST /super/storage/backfill-cache-control —
  *      idempotent SQL UPDATE on storage.objects.metadata. Zero re-upload.
- *   3. Wipe all assets: POST /super/storage/wipe-all-assets — destroys
- *      every Asset row, every PlaylistItem, every Supabase storage
- *      object. Double-confirmation (browser confirm + typed sentinel
- *      string) because this is irreversible.
+ *
+ * "Wipe ALL Assets" was REMOVED from this panel (Muse beta 2026-10-07): it
+ * deleted every tenant's media and sat beside routine tools. The API route
+ * survives only behind PLATFORM_ASSET_WIPE_ENABLED=1 (off by default) and
+ * audits every attempt; there is deliberately no button for it.
  */
 function StorageAdmin() {
   const [auditResult, setAuditResult] = useState<any>(null);
-  const [busy, setBusy] = useState<'audit' | 'backfill' | 'wipe' | null>(null);
+  const [busy, setBusy] = useState<'audit' | 'backfill' | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const runAudit = async () => {
@@ -520,48 +521,14 @@ function StorageAdmin() {
     }
   };
 
-  const runWipe = async () => {
-    // Two-step confirmation. Step 1: the universal "are you sure"
-    // dialog. Step 2: typed sentinel string — operator must literally
-    // type WIPE to proceed. Mirrors the server-side
-    // { confirm: 'YES_WIPE_ALL_ASSETS' } token.
-    const ok = await appConfirm({
-      title: 'Wipe ALL assets across every tenant?',
-      message:
-        'This deletes EVERY Asset row, EVERY PlaylistItem, and EVERY object in the Supabase assets bucket. Playlists / schedules / screens stay intact (just empty). IRREVERSIBLE.',
-      confirmLabel: 'Continue',
-      tone: 'danger',
-    });
-    if (!ok) return;
-    const typed = await appPrompt({
-      title: 'Type WIPE to confirm',
-      message: 'You are about to wipe every asset across the platform. Type the word WIPE (uppercase) to proceed.',
-      placeholder: 'WIPE',
-    });
-    if (typed?.trim() !== 'WIPE') return;
-    setBusy('wipe');
-    setError(null);
-    try {
-      const res = await apiFetch<any>('/super/storage/wipe-all-assets', {
-        method: 'POST',
-        body: JSON.stringify({ confirm: 'YES_WIPE_ALL_ASSETS' }),
-      });
-      setAuditResult({ kind: 'wipe', data: res });
-    } catch (e: any) {
-      setError(e?.message || 'Wipe failed.');
-    } finally {
-      setBusy(null);
-    }
-  };
-
   return (
     <section className="mt-8 bg-white rounded-2xl border border-slate-200 shadow-sm">
       <div className="px-5 py-4 border-b border-slate-200 flex items-center gap-2">
         <HardDrive className="w-4 h-4 text-slate-500" />
         <h2 className="text-sm font-extrabold text-slate-800">Storage Admin</h2>
-        <span className="text-[10px] text-slate-400 ml-2">Supabase assets bucket — egress / cache control / clean slate</span>
+        <span className="text-[10px] text-slate-400 ml-2">Supabase assets bucket — egress / cache control</span>
       </div>
-      <div className="p-5 grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-3">
         <button
           type="button"
           onClick={runAudit}
@@ -587,19 +554,6 @@ function StorageAdmin() {
           </div>
           <span className="text-[11px] text-slate-500">Patch storage.objects.metadata so pre-fix assets serve as immutable. Idempotent.</span>
         </button>
-
-        <button
-          type="button"
-          onClick={runWipe}
-          disabled={busy !== null}
-          className="flex flex-col items-start gap-1 p-4 border border-rose-200 hover:border-rose-400 hover:bg-rose-50 rounded-xl text-left transition-colors disabled:opacity-50"
-        >
-          <div className="flex items-center gap-2">
-            {busy === 'wipe' ? <Loader2 className="w-4 h-4 animate-spin text-slate-400" /> : <Trash2 className="w-4 h-4 text-rose-600" />}
-            <span className="text-sm font-bold text-rose-700">Wipe ALL Assets</span>
-          </div>
-          <span className="text-[11px] text-rose-600/80">Irreversible. Deletes every asset + every Supabase storage object. Pre-launch clean slate.</span>
-        </button>
       </div>
 
       {(auditResult || error) && (
@@ -613,7 +567,7 @@ function StorageAdmin() {
           {auditResult && (
             <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg">
               <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-                {auditResult.kind === 'audit' ? 'Audit result' : auditResult.kind === 'backfill' ? 'Backfill result' : 'Wipe result'}
+                {auditResult.kind === 'audit' ? 'Audit result' : 'Backfill result'}
               </div>
               <pre className="text-[11px] font-mono text-slate-700 whitespace-pre-wrap break-all max-h-64 overflow-y-auto">
                 {JSON.stringify(auditResult.data, null, 2)}

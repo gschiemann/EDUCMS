@@ -1300,8 +1300,15 @@ export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
           </p>
         )}
 
-        <p className="mt-4 text-[13px] text-slate-700">
-          {t('settings.cc.people.mfaCount', { required: mfaRequiredCount, total: rows.length })}
+        <p className="mt-4 text-[13px] text-slate-700" data-testid="people-mfa-count">
+          {/* DEV-013 (Muse beta): this read "0 of 0 accounts" while the roster
+              was still loading (or had failed) — a number the evidence did not
+              support. Say what is true until the roster arrives. */}
+          {usersLoading
+            ? t('settings.common.loading')
+            : usersError
+              ? t('settings.common.unavailable')
+              : t('settings.cc.people.mfaCount', { required: mfaRequiredCount, total: rows.length })}
         </p>
         <p className="mt-1.5 text-[12px] leading-[17px] text-slate-500">{t('settings.cc.people.mfaPolicyNote')}</p>
         <p className="mt-2 text-[12px] leading-[17px] text-slate-500">

@@ -61,7 +61,6 @@ import {
   useAuditLog,
   useFloorPlans,
   useUploadFloorPlan,
-  usePanicContent,
   useEmergencyEnablement,
   useSetEmergencyEnabled,
   useLocationBasedEmergencyConfig,
@@ -75,6 +74,7 @@ import { PanicContentEditor } from '@/components/settings/PanicContentEditor';
 // Drill log pairing (pure; a page file may export nothing but its page).
 import { drillDuration, pairDrillLog, type AuditRow, type DrillLogEntry } from '@/lib/drill-log';
 import { EmergencyReadinessCard, useEmergencyReadiness } from '@/components/emergency/EmergencyReadinessCard';
+import { AlertTypeRail } from '@/components/emergency/AlertTypeRail';
 import { EmbeddedFloorPlanView } from '@/components/floor-plans/EmbeddedFloorPlanView';
 import { selectionAfterPlans } from '@/components/floor-plans/plan-selection';
 import {
@@ -1041,7 +1041,7 @@ function EmergencyContextRail({ role }: { role?: string }) {
 
   return (
     <>
-      <AlertTypeRail />
+      <AlertTypeRail report={readiness.data} loading={readiness.isLoading} kinds={ALL_KINDS} />
 
       {/* Coverage — only what the server can actually attest to. */}
       {screens && (
@@ -1074,68 +1074,6 @@ function EmergencyContextRail({ role }: { role?: string }) {
         </ContextModule>
       )}
     </>
-  );
-}
-
-/**
- * Readiness BY ALERT TYPE. Sourced from the same `panic-content` queries the
- * editors below use (identical query keys → one request each, shared cache),
- * so a type reads "Configured" only when the server actually holds media for
- * it in at least one orientation.
- */
-function AlertTypeRail() {
-  const t = useTranslations();
-  // Hooks must be unconditional and in a stable order: one fixed-length list,
-  // one query per kind, never a loop over server-driven data.
-  const lockdown = usePanicContent('lockdown', 'landscape');
-  const lockdownP = usePanicContent('lockdown', 'portrait');
-  const evacuate = usePanicContent('evacuate', 'landscape');
-  const evacuateP = usePanicContent('evacuate', 'portrait');
-  const medical = usePanicContent('medical', 'landscape');
-  const medicalP = usePanicContent('medical', 'portrait');
-  const secure = usePanicContent('secure', 'landscape');
-  const secureP = usePanicContent('secure', 'portrait');
-  const weather = usePanicContent('weather', 'landscape');
-  const weatherP = usePanicContent('weather', 'portrait');
-  const hold = usePanicContent('hold', 'landscape');
-  const holdP = usePanicContent('hold', 'portrait');
-
-  const pairs = [
-    [lockdown, lockdownP],
-    [evacuate, evacuateP],
-    [medical, medicalP],
-    [secure, secureP],
-    [weather, weatherP],
-    [hold, holdP],
-  ] as const;
-
-  return (
-    <ContextModule label={t('settings.cc.emergency.rail.byType')}>
-      <ul className="mt-1 space-y-1.5">
-        {ALL_KINDS.map((kind, i) => {
-          const [land, port] = pairs[i];
-          const loaded = !land.isLoading && !port.isLoading;
-          const count = (land.data?.items?.length ?? 0) + (port.data?.items?.length ?? 0);
-          return (
-            <li key={kind} className="flex items-center justify-between gap-2">
-              <span className="text-[12px] text-slate-600">{t(`settings.cc.emergency.types.${kind}.label`)}</span>
-              {loaded ? (
-                <StatusPill
-                  kind={count > 0 ? 'ready' : 'notConfigured'}
-                  label={
-                    count > 0
-                      ? t('settings.cc.emergency.rail.typeConfigured')
-                      : t('settings.cc.emergency.rail.typeNotConfigured')
-                  }
-                />
-              ) : (
-                <StatusPill kind="unknown" label={t('settings.cc.emergency.rail.typeChecking')} />
-              )}
-            </li>
-          );
-        })}
-      </ul>
-    </ContextModule>
   );
 }
 

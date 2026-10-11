@@ -117,6 +117,12 @@ export interface OpsScreen {
   lastPushConnectedAt?: string | null;
   pushChannel?: 'live' | 'stale' | 'unknown' | null;
   authState?: string | null;
+  /**
+   * The live game pushed to this screen (`Screen.activeBoardGameId`, resolved
+   * tenant-matched by `GET /screens/fleet?view=operations`). While set, the
+   * manifest serves the scoreboard INSTEAD of the schedule (DEV-004).
+   */
+  activeBoardGame?: { id: string; homeTeam: string; awayTeam: string; status?: string | null; sport?: string | null } | null;
   hardwareModel?: string | null;
   resolution?: string | null;
   osInfo?: string | null;
@@ -803,6 +809,12 @@ export interface ExpectedContent {
   viaGroup: boolean;
   /** A schedule exists but its day/time window is closed right now. */
   windowClosed: boolean;
+  /**
+   * A live game owns this screen (DEV-004): the manifest's scoreboard branch
+   * returns before the schedule, so the game — not the playlist — is what
+   * the screen is told to show. `name` carries its label.
+   */
+  game?: { id: string; label: string; status: string | null } | null;
 }
 
 /** The honest empty answer: nothing scheduled, nothing to preview. */
@@ -877,6 +889,15 @@ export function deriveExpectedContent(
   playlistById: Map<string, OpsPlaylist>,
   now: number,
 ): ExpectedContent {
+  // A pushed live game outranks every schedule — the same order as the
+  // manifest (emergency, then the scoreboard, then the schedule). Naming the
+  // playlist here is how the dashboard said "playlist not updated" about a
+  // screen that was correctly showing a game (Muse beta DEV-004).
+  const game = screen.activeBoardGame;
+  if (game?.id) {
+    const label = `${game.homeTeam} vs ${game.awayTeam}`;
+    return { ...NOTHING_SCHEDULED, name: label, game: { id: game.id, label, status: game.status ?? null } };
+  }
   const mine = schedules.filter(
     (s) =>
       s.isActive !== false &&
@@ -1074,6 +1095,14 @@ export function deriveReportedContent(
   expected?: ExpectedContent | null,
 ): ReportedContent {
   const app = deriveAppVersion(screen, deployedSha, deployedBundleId);
+  // DEV-004: a screen whose credential the server refused cannot report what
+  // it shows — its last proof is from before, however recent it looks. Say
+  // that, instead of replaying stale proof as "current content".
+  if (screen.authState === 'REPAIR_REQUIRED') {
+    const line = copy('screens.contentState.needsRepair');
+    const detail = copy('screens.contentState.needsRepairDetail');
+    return { state: 'unknown', line: line.en, detail: detail.en, app, messages: { line: line.message, detail: detail.message } };
+  }
   if (screen.status !== 'ONLINE') {
     const heard = wordyAge(msOf(screen.lastPingAt), now);
     return {
@@ -1133,6 +1162,21 @@ export function deriveReportedContent(
 
   // ── What the idle proofs and the download snapshot say (2026-09-27) ──
   const idleKind = idleProofKind(proof);
+
+  // DEV-004: a live game owns the screen. It is shown INSTEAD of the
+  // schedule, so a board/playlist proof is the game, not "not the scheduled
+  // board". Without a dated picture proof, say the game is assigned but not
+  // yet confirmed — never "Playing" it.
+  if (expected?.game) {
+    if (confirmedAgo && idleKind === null) {
+      const line = copy('screens.contentState.game', { game: expected.game.label });
+      const detail = copy('screens.contentState.gameDetail');
+      return { state: 'playing', line: line.en, detail: detail.en, app, messages: { line: line.message, detail: detail.message } };
+    }
+    const line = copy('screens.contentState.gameNotConfirmed', { game: expected.game.label });
+    const detail = copy('screens.contentState.gameNotConfirmedDetail');
+    return { state: 'unknown', line: line.en, detail: detail.en, app, messages: { line: line.message, detail: detail.message } };
+  }
   const download = liveDownload(deriveContentDownload(screen, now));
   const said = (
     state: ReportedState,
