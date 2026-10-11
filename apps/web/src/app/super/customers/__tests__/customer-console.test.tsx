@@ -38,8 +38,8 @@ const apiFetch = jest.fn(async (path: string, opts: any = {}) => {
 });
 jest.mock('@/lib/api-client', () => ({ apiFetch: (p: string, o?: any) => apiFetch(p, o) }));
 jest.mock('@/lib/store', () => ({ useAppStore: (sel: (s: unknown) => unknown) => sel({ user: { id: 'u', role } }) }));
-const appConfirm = jest.fn(async () => true);
-const appPrompt = jest.fn(async () => 'Unpaid');
+const appConfirm = jest.fn(async (_o?: any) => true);
+const appPrompt = jest.fn(async (_o?: any) => 'Unpaid');
 jest.mock('@/components/ui/app-dialog', () => ({ appConfirm: (o: any) => appConfirm(o), appPrompt: (o: any) => appPrompt(o) }));
 jest.mock('next/navigation', () => ({ useParams: () => ({ id: 'c1' }), useRouter: () => ({ push: jest.fn() }) }));
 jest.mock('next/link', () => ({ __esModule: true, default: ({ href, children, ...rest }: any) => <a href={href} {...rest}>{children}</a> }));

@@ -1101,7 +1101,8 @@ describe('the fast-start re-mux — an MP4 whose index sits at the tail', () => 
       isProtected: true,
     });
     const tenantQuery = w.db.tenant.findFirst.mock.calls[0][0];
-    expect(orOf(tenantQuery)).toHaveLength(14);
+    // 2026-10-10: + the 12 drill playlist columns (drill content is emergency content).
+    expect(orOf(tenantQuery)).toHaveLength(26);
     expect(orOf(tenantQuery)).toContainEqual({
       panicLockdownPlaylistId: { in: ['pl-1'] },
     });
