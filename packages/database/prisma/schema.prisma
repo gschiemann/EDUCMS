@@ -813,6 +813,19 @@ model License {
   renewalDate              DateTime? @map("renewal_date")
   suspendedAt              DateTime? @map("suspended_at")
   suspendReason            String?   @map("suspend_reason")
+  // 2026-10-11 — SELF-SERVE TRIAL → PAID (apps/api/src/billing/trial-policy.ts).
+  // All additive. A row written before this reads exactly as before.
+  //  - trialEndsAt: when the free trial ends. Set at signup (tier FREE_TRIAL)
+  //    and, once a card is added, mirrored from the Stripe subscription's
+  //    `trial_end` so billing starts on the ORIGINAL trial end date.
+  //  - trialNoticeStage: which trial reminder email has been sent
+  //    (0 none · 1 seven days · 2 one day · 3 ended). Claimed atomically
+  //    before sending, so a reminder goes out at most once across replicas.
+  //  - noticeLocale: en | es | zh — the language the signup page was in;
+  //    billing emails are written in it.
+  trialEndsAt              DateTime? @map("trial_ends_at")
+  trialNoticeStage         Int       @default(0) @map("trial_notice_stage")
+  noticeLocale             String?   @map("notice_locale")
   createdAt                DateTime  @default(now()) @map("created_at")
   updatedAt                DateTime  @default(now()) @updatedAt @map("updated_at")
   tenant                   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
