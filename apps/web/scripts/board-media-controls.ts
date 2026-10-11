@@ -6,6 +6,7 @@ type MediaStyle = { fit?: string; rotation?: number; hidden?: boolean };
 export {};
 const selector = '[data-imgslot],[data-posterslot],[data-img],[data-widget="image-slot"],[data-videoslot]';
 const authored = new WeakMap<HTMLElement, { transform: string; priority: string; base: string; display: string; size: string; sizePriority: string; position: string; repeat: string }>();
+const styledNodes = new WeakSet<HTMLElement>();
 const originalFits = new WeakMap<HTMLElement, { value: string; priority: string }>();
 const sourceDefaults = new Map<string, string | string[]>();
 const paintedSourceNodes = new WeakSet<HTMLElement>();
@@ -42,6 +43,18 @@ function rememberSources() {
     sourceDefaults.set(key, media?.getAttribute('src') || media?.querySelector('source')?.getAttribute('src') || /url\(["']?([^"')]+)["']?\)/.exec(getComputedStyle(el).backgroundImage)?.[1] || '');
   });
 }
+// Snapshot before a legacy painter handles saved sources or the first edit.
+// Keep the snapshot separate from painting so untouched/carousel slots retain
+// their own runtime behavior.
+function rememberAuthoredStyles() {
+  slots().forEach(el => {
+    if (!authored.has(el)) authored.set(el, { transform: el.style.transform, priority: el.style.getPropertyPriority('transform'), base: getComputedStyle(el).transform, display: el.style.display, size: el.style.backgroundSize, sizePriority: el.style.getPropertyPriority('background-size'), position: el.style.backgroundPosition, repeat: el.style.backgroundRepeat });
+    const children = el.matches('img,video') ? [el] : Array.from(el.querySelectorAll<HTMLElement>('img,video'));
+    children.forEach(child => {
+      if (!originalFits.has(child)) originalFits.set(child, { value: child.style.objectFit, priority: child.style.getPropertyPriority('object-fit') });
+    });
+  });
+}
 function announce() {
   parent.postMessage({ type: 'educms-media-ready', slots: slots().map(el => {
     const video = el.hasAttribute('data-videoslot');
@@ -52,10 +65,12 @@ function announce() {
   }) }, '*');
 }
 function apply() {
+  rememberAuthoredStyles();
   slots().forEach(el => {
     const style = mediaStyles[keyOf(el)];
     const children = el.matches('img,video') ? [el] : Array.from(el.querySelectorAll<HTMLElement>('img,video'));
-    if (!style && !authored.has(el)) return;
+    if (!style && !styledNodes.has(el)) return;
+    if (style) styledNodes.add(el);
     if (!authored.has(el)) authored.set(el, { transform: el.style.transform, priority: el.style.getPropertyPriority('transform'), base: getComputedStyle(el).transform, display: el.style.display, size: el.style.backgroundSize, sizePriority: el.style.getPropertyPriority('background-size'), position: el.style.backgroundPosition, repeat: el.style.backgroundRepeat });
     const original = authored.get(el)!;
     const rotation = typeof style?.rotation === 'number' && Number.isFinite(style.rotation) ? ((style.rotation % 360) + 360) % 360 : 0;
@@ -91,7 +106,7 @@ function readInitial() {
       const value = JSON.parse(decodeURIComponent(escape(atob(encoded.replace(/-/g, '+').replace(/_/g, '/')))));
       if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
       if (key === 'mediaStyles') mediaStyles = value;
-      else currentSources[key] = value;
+      else { currentSources[key] = value; Object.keys(value).forEach(slot => seenSources[key].add(slot)); }
     }
   } catch { /* Keep the authored design when an override cannot be decoded. */ }
 }
@@ -150,12 +165,12 @@ document.addEventListener('click', event => {
   parent.postMessage({ type: 'educms-field-click', key: keyOf(target), kind: target.hasAttribute('data-videoslot') ? 'video' : 'img' }, '*');
 }, true);
 function ready() {
-  rememberSources(); readInitial(); paintSources(currentSources); apply(); announce();
+  rememberAuthoredStyles(); rememberSources(); readInitial(); paintSources(currentSources); apply(); announce();
   Promise.resolve().then(() => { paintSources(currentSources); apply(); });
   settleMedia();
   // Kiosk screen swaps and native carousels create new media nodes later.
   new MutationObserver(() => {
-    rememberSources();
+    rememberAuthoredStyles(); rememberSources();
     // Repaint new kiosk screens, without resetting an existing carousel's
     // current slide on every unrelated clock/text DOM update.
     paintSources(currentSources, true);
@@ -163,4 +178,7 @@ function ready() {
     if (editing) announce();
   }).observe(document.body, { childList: true, subtree: true });
 }
+// The injected companion follows the authored body, before DOMContentLoaded
+// listeners apply URL overrides. Also retry at ready for dynamically born slots.
+rememberAuthoredStyles(); rememberSources();
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ready, true); else ready();
