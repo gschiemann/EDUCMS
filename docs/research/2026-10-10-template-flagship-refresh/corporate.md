@@ -52,3 +52,9 @@ The range-box overlap diagnostic can report adjacent large display lines whose f
 ## Lead integration steps
 
 This commit contains source/assets and this report only. Lead must integrate central V15 changes, rebuild affected API exemplars, regenerate corporate gallery posters/provenance and run centralized browser checks. No source commit is represented as published, live or deployed. Worktree remains attached for the separately assigned bar/QSR wave; archive only after its commits and report have been integrated and preserved.
+
+## Follow-up: explicit text styles and brand precedence
+
+After lead review, all eight local fit engines now track explicit `textStyles.fontSize` from query and postMessage, reapply that size after shim callbacks and skip those fields during automatic fitting. Changing theme.scale therefore preserves an operator-chosen72px size. Theme application caches the last token strings and only writes a variable when its actual token changes, so editing scale does not restore default background or other untouched tokens over a separately applied API brand.
+
+Focused regression verification covers eight boards × Chromium/WebKit =16 scenarios. Every case checks query72px, message72px, survival after theme.scale1.2, retained API background/primary overrides and zero page errors. Evidence: `override-precedence-verification.json`. This is a narrow source follow-up; preceding layout evidence and all retained generated runtimes remain applicable.
