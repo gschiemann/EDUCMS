@@ -23,6 +23,18 @@ import { defineConfig, devices } from '@playwright/test';
  * AND webkit. The 2026-05-09 holiday-bridge bug shipped because local dev
  * was Chrome-only; we don't repeat that mistake on a life-safety surface.
  */
+/**
+ * Opt-in port override (2026-10-11). `reuseExistingServer` below means a
+ * stray `next dev` on :3000 from ANOTHER session gets "reused" — serving its
+ * code, not yours. Set `E2E_PORT=3100` (any free port) to run this suite's
+ * own prebuilt server beside it instead of killing someone else's process.
+ * Default is unchanged (3000) — CI and `pnpm test:e2e` behave exactly as
+ * before. global-setup.ts reads `PLAYWRIGHT_BASE_URL`, which this sets too.
+ */
+const E2E_PORT = process.env.E2E_PORT || '3000';
+const E2E_BASE_URL = `http://localhost:${E2E_PORT}`;
+process.env.PLAYWRIGHT_BASE_URL ||= E2E_BASE_URL;
+
 export default defineConfig({
   // Compile /player once before any browser starts — see the file header.
   // This is what fixes the webkit-only Emergency Path red; the per-test
@@ -50,7 +62,7 @@ export default defineConfig({
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
 
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL: E2E_BASE_URL,
     trace: 'on-first-retry',
     // The player page does NOT use service workers in test mode (we never
     // call register on it in this spec), but explicitly opt out so the
@@ -119,7 +131,7 @@ export default defineConfig({
     // nonce-based CSP that only a real build can emit (SEC-010).
     command: 'node ./tests/e2e-webserver.cjs',
     cwd: '.',
-    url: 'http://localhost:3000',
+    url: E2E_BASE_URL,
     reuseExistingServer: !process.env.CI,
     // Two very different budgets, deliberately:
     //   E2E_PREBUILT=1 — the workflow already built, so `next start` answers
@@ -144,6 +156,7 @@ export default defineConfig({
       // all `next dev` ever needed) would bake the localhost fallback into
       // the bundle and quietly defeat the NXDOMAIN tripwire.
       NEXT_PUBLIC_API_URL: 'http://api.invalid/api/v1',
+      E2E_PORT,
       // (E2E_PREBUILT / E2E_REBUILD arrive through process.env — Playwright
       // merges it into the webServer environment, so they need no entry here.)
     },
