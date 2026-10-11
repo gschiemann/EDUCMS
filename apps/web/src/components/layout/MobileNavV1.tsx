@@ -5,7 +5,7 @@ import { usePathname, useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   Home, FolderOpen, ListMusic, MonitorPlay, MoreHorizontal,
-  Trophy, LayoutTemplate, Settings, ClipboardCheck, FileClock, User, X,
+  Trophy, LayoutTemplate, Settings, ClipboardCheck, FileClock, User, X, BarChart3,
   UtensilsCrossed, Tag, LifeBuoy, Crown, LogOut, RotateCcw, Fingerprint,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -133,6 +133,7 @@ export function MobileNavV1({ onSwitchShell }: { onSwitchShell: (v: MobileShell)
   type MoreItem = { key: string; label: string; icon: typeof Home; href: string; badge?: number };
   const moreItems: MoreItem[] = [
     { key: 'templates', label: t('nav.templates'), icon: LayoutTemplate, href: `${base}/templates` },
+    { key: 'proof', label: t('nav.proofOfPlay'), icon: BarChart3, href: `${base}/analytics` },
     ...(isSportsVertical
       ? [{ key: 'sports', label: t('nav.sports'), icon: Trophy, href: `${base}/sports` }]
       : []),

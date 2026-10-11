@@ -5,7 +5,7 @@ import { usePathname, useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   Home, FolderOpen, ListMusic, MonitorPlay,
-  LayoutGrid, Trophy, LayoutTemplate, Settings, ClipboardCheck, FileClock, User, X,
+  LayoutGrid, Trophy, LayoutTemplate, Settings, ClipboardCheck, FileClock, User, X, BarChart3,
   UtensilsCrossed,
   Tag,
 } from 'lucide-react';
@@ -170,6 +170,7 @@ function ClassicMobileTabBar({ onSwitchShell }: { onSwitchShell: (v: MobileShell
         }]
       : []),
     { key: 'templates', label: t('nav.templates'), icon: LayoutTemplate, href: `${base}/templates` },
+    { key: 'proof', label: t('nav.proofOfPlay'), icon: BarChart3, href: `${base}/analytics` },
     ...(isAdmin
       ? [
           { key: 'reviews', label: t('nav.reviews'), icon: ClipboardCheck, href: `${base}/reviews` },

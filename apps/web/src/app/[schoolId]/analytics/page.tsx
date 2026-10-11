@@ -11,8 +11,9 @@
 
 import { useState, type ComponentType } from 'react';
 import { useTranslations } from 'next-intl';
-import { BarChart3, Loader2, ListVideo, MonitorPlay, ImageIcon, Database } from 'lucide-react';
+import { BarChart3, Loader2, ListVideo, MonitorPlay, ImageIcon, Database, Download } from 'lucide-react';
 import { useProofOfPlay, type ProofOfPlayEntry } from '@/hooks/use-api';
+import { proofOfPlayCsv, proofOfPlayCsvFilename } from '@/lib/proof-of-play-csv';
 
 const RANGES = [
   { days: 7, label: '7 days' },
@@ -87,6 +88,29 @@ export default function AnalyticsPage() {
   const [days, setDays] = useState(7);
   const { data, isLoading, isError } = useProofOfPlay(days);
 
+  // CSV of the report already on screen (no extra request).
+  const hasRows = !!data && data.ready && data.totalSamples > 0;
+  const downloadCsv = () => {
+    if (!data) return;
+    const csv = proofOfPlayCsv(data, {
+      type: t('opsPages.proofOfPlayCsvType'),
+      name: t('opsPages.proofOfPlayCsvName'),
+      hours: t('opsPages.proofOfPlayCsvHours'),
+      samples: t('opsPages.proofOfPlayCsvSamples'),
+      playlist: t('opsPages.proofOfPlayCsvPlaylist'),
+      asset: t('opsPages.proofOfPlayCsvAsset'),
+      screen: t('opsPages.proofOfPlayCsvScreen'),
+    });
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = proofOfPlayCsvFilename(days);
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="mx-auto max-w-5xl space-y-5 p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -99,7 +123,7 @@ export default function AnalyticsPage() {
             {t('opsPages.proofOfPlaySubtitle')}
           </p>
         </div>
-        <div className="flex gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
           {RANGES.map((r) => (
             <button
               key={r.days}
@@ -114,6 +138,16 @@ export default function AnalyticsPage() {
               {t('opsPages.daysCount', { days: r.days })}
             </button>
           ))}
+          {hasRows && (
+            <button
+              type="button"
+              onClick={downloadCsv}
+              className="ml-1 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-600 transition-colors hover:border-indigo-300"
+            >
+              <Download className="h-4 w-4" aria-hidden />
+              {t('opsPages.proofOfPlayExport')}
+            </button>
+          )}
         </div>
       </div>
 
