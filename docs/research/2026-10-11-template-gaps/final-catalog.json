@@ -1,0 +1,41 @@
+{
+  "total": 488,
+  "retired": 19,
+  "quarantined": 16,
+  "offered": 453,
+  "native": 151,
+  "external": 302,
+  "distinctBoardURLs": 244,
+  "newPresets": [
+    {
+      "id": "preset-sig-corporate-20",
+      "url": "/templates/signage/corporate/20-service-update.html",
+      "vertical": "K12|GYM|RETAIL|CORPORATE|QSR|FASHION|BAR|HEALTHCARE|HOSPITALITY|RESTAURANT|SPORTS|WORSHIP"
+    },
+    {
+      "id": "preset-sig-corporate-20-portrait",
+      "url": "/templates/signage/corporate/20-service-update.html?o=portrait",
+      "vertical": "K12|GYM|RETAIL|CORPORATE|QSR|FASHION|BAR|HEALTHCARE|HOSPITALITY|RESTAURANT|SPORTS|WORSHIP"
+    },
+    {
+      "id": "preset-sig-clinic-02",
+      "url": "/templates/signage/clinic/02-services-booking-guide.html",
+      "vertical": "HEALTHCARE"
+    },
+    {
+      "id": "preset-sig-clinic-02-portrait",
+      "url": "/templates/signage/clinic/02-services-booking-guide.html?o=portrait",
+      "vertical": "HEALTHCARE"
+    },
+    {
+      "id": "preset-school-commencement-guide",
+      "url": "/templates/school/commencement-guest-guide.html",
+      "vertical": "K12"
+    },
+    {
+      "id": "preset-school-commencement-guide-portrait",
+      "url": "/templates/school/commencement-guest-guide.html?o=portrait",
+      "vertical": "K12"
+    }
+  ]
+}

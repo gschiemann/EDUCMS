@@ -1,0 +1,359 @@
+{
+  "regular": 285,
+  "holidays": 58,
+  "total": 343,
+  "stale": [],
+  "missing": [],
+  "noMedia": [],
+  "noClick": [],
+  "portraitPreviews": [
+    {
+      "url": "/templates/school/campus-pulse/01-campus-magazine.html?o=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/school/campus-pulse/01-campus-magazine-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/school/campus-pulse/02-digital-signal.html?o=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/school/campus-pulse/02-digital-signal-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/school/campus-pulse/03-neo-yearbook.html?o=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/school/campus-pulse/03-neo-yearbook-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/school/campus-pulse/04-varsity-broadcast.html?o=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/school/campus-pulse/04-varsity-broadcast-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/school/campus-pulse/05-metro-wayfinding.html?o=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/school/campus-pulse/05-metro-wayfinding-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/school/campus-pulse/06-aurora-fold.html?o=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/school/campus-pulse/06-aurora-fold-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/hs/achievement.html?o=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/hs/achievement-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/hs/bell-schedule.html?o=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/hs/bell-schedule-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/school/ms-lunch-campus-lineup.html?o=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/school/ms-lunch-campus-lineup-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/hs/hall-wayfinder-campus-grid.html?o=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/hs/hall-wayfinder-campus-grid-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/hs/morning-news.html?o=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/hs/morning-news-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/signage/worship/welcome-v1-common-ground.html?orientation=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/signage/worship/welcome-v1-common-ground-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/signage/worship/welcome-v2-sacred-light.html?orientation=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/signage/worship/welcome-v2-sacred-light-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/signage/worship/welcome-v3-open-door.html?orientation=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/signage/worship/welcome-v3-open-door-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/signage/worship/service-v1-now-next.html?orientation=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/signage/worship/service-v1-now-next-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/signage/worship/service-v2-campus-threshold.html?orientation=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/signage/worship/service-v2-campus-threshold-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/signage/worship/service-v3-ceremonial.html?orientation=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/signage/worship/service-v3-ceremonial-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/signage/worship/sermon-v1-deep-root.html?orientation=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/signage/worship/sermon-v1-deep-root-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/signage/worship/sermon-v2-field-notes.html?orientation=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/signage/worship/sermon-v2-field-notes-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/signage/worship/sermon-v3-confluence.html?orientation=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/signage/worship/sermon-v3-confluence-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/signage/worship/song-v1-sunday-record.html?orientation=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/signage/worship/song-v1-sunday-record-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/signage/worship/song-v2-new-hymnal.html?orientation=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/signage/worship/song-v2-new-hymnal-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/signage/worship/song-v3-sacred-frequency.html?orientation=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/signage/worship/song-v3-sacred-frequency-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/signage/worship/weekly-v1-one-invitation.html?orientation=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/signage/worship/weekly-v1-one-invitation-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/signage/worship/weekly-v2-weekline.html?orientation=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/signage/worship/weekly-v2-weekline-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/signage/worship/weekly-v3-three-ways-in.html?orientation=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/signage/worship/weekly-v3-three-ways-in-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/signage/worship/giving-v1-measured-future.html?orientation=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/signage/worship/giving-v1-measured-future-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/signage/worship/giving-v2-light-window.html?orientation=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/signage/worship/giving-v2-light-window-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/signage/worship/giving-v3-one-more-seat.html?orientation=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/signage/worship/giving-v3-one-more-seat-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/signage/worship/verse-v1-daybreak.html?orientation=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/signage/worship/verse-v1-daybreak-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/signage/worship/verse-v2-word-stands.html?orientation=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/signage/worship/verse-v2-word-stands-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/signage/worship/verse-v3-open-sky.html?orientation=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/signage/worship/verse-v3-open-sky-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/signage/worship/lobby-v1-foyer-edit.html?orientation=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/signage/worship/lobby-v1-foyer-edit-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/signage/worship/lobby-v2-campus-line.html?orientation=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/signage/worship/lobby-v2-campus-line-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/signage/worship/lobby-v3-live-commons.html?orientation=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/signage/worship/lobby-v3-live-commons-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/signage/qsr/redesign-drive-thru-v1-lane-one.html?orientation=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/signage/qsr/redesign-drive-thru-v1-lane-one-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/signage/qsr/redesign-drive-thru-v2-market-board.html?orientation=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/signage/qsr/redesign-drive-thru-v2-market-board-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/signage/qsr/redesign-drive-thru-v3-order-logic.html?orientation=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/signage/qsr/redesign-drive-thru-v3-order-logic-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/signage/qsr/redesign-counter-v1-the-pass.html?orientation=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/signage/qsr/redesign-counter-v1-the-pass-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/signage/qsr/redesign-counter-v2-market-mosaic.html?orientation=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/signage/qsr/redesign-counter-v2-market-mosaic-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/signage/qsr/redesign-counter-v3-menu-folio.html?orientation=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/signage/qsr/redesign-counter-v3-menu-folio-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/signage/qsr/redesign-coffee-v1-roasters-ledger.html?orientation=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/signage/qsr/redesign-coffee-v1-roasters-ledger-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/signage/qsr/redesign-coffee-v2-morning-window.html?orientation=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/signage/qsr/redesign-coffee-v2-morning-window-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/signage/qsr/redesign-coffee-v3-ceramic-shelf.html?orientation=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/signage/qsr/redesign-coffee-v3-ceramic-shelf-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/signage/qsr/redesign-pizza-v1-slice-signal.html?orientation=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/signage/qsr/redesign-pizza-v1-slice-signal-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/signage/qsr/redesign-pizza-v2-oven-no7.html?orientation=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/signage/qsr/redesign-pizza-v2-oven-no7-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/signage/qsr/redesign-pizza-v3-house-press.html?orientation=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/signage/qsr/redesign-pizza-v3-house-press-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/signage/bar/redesign-tap-list-v1-copper-manifold.html?orientation=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/signage/bar/redesign-tap-list-v1-copper-manifold-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/signage/bar/redesign-tap-list-v2-cellar-index.html?orientation=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/signage/bar/redesign-tap-list-v2-cellar-index-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/signage/bar/redesign-tap-list-v3-draft-lab.html?orientation=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/signage/bar/redesign-tap-list-v3-draft-lab-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/signage/qsr/24-super-taco-flagship.html?orientation=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/signage/qsr/24-super-taco-flagship-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/signage/qsr/25-super-taco-tacos.html?orientation=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/signage/qsr/25-super-taco-tacos-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/signage/qsr/26-super-taco-burritos.html?orientation=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/signage/qsr/26-super-taco-burritos-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/signage/qsr/27-super-taco-combos.html?orientation=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/signage/qsr/27-super-taco-combos-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/signage/corporate/20-service-update.html?o=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/signage/corporate/20-service-update-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/signage/clinic/02-services-booking-guide.html?o=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/signage/clinic/02-services-booking-guide-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/school/commencement-guest-guide.html?o=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/school/commencement-guest-guide-portrait.png",
+      "width": 450,
+      "height": 800
+    },
+    {
+      "url": "/templates/signage/qsr/redesign-sushi-ramen-after-dark.html?orientation=portrait",
+      "poster": "/Users/gschiemann/.codex/worktrees/template-editor-release/EDU CMS/apps/web/public/templates/_thumbs/signage/qsr/redesign-sushi-ramen-after-dark-portrait.png",
+      "width": 450,
+      "height": 800
+    }
+  ]
+}
