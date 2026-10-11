@@ -16,7 +16,7 @@ export const DESIGNER_EXEMPLARS: readonly DesignerExemplar[] = [
   {
     id: "menu-hero-cards",
     title: "Menu board — hero panel + dish cards",
-    sourceSha256: "019bff697556d3c2",
+    sourceSha256: "6031df2115a8b763",
     approval: "Greg, 2026-09-22: the qsr 24-27 menu wall Codex built on GPT-6 Sol is the bar the AI Designer must meet (\"learn from this and make our AI generation this good\") — docs/research/2026-09-22-ai-designer-rework/README.md",
     vertical: "qsr",
     verticals: ["food"],
@@ -34,7 +34,7 @@ export const DESIGNER_EXEMPLARS: readonly DesignerExemplar[] = [
   {
     id: "menu-hero-cards-portrait",
     title: "Menu board — hero panel + dish cards",
-    sourceSha256: "019bff697556d3c2",
+    sourceSha256: "6031df2115a8b763",
     approval: "Greg, 2026-09-22: the qsr 24-27 menu wall Codex built on GPT-6 Sol is the bar the AI Designer must meet (\"learn from this and make our AI generation this good\") — docs/research/2026-09-22-ai-designer-rework/README.md",
     vertical: "qsr",
     verticals: ["food"],
@@ -52,7 +52,7 @@ export const DESIGNER_EXEMPLARS: readonly DesignerExemplar[] = [
   {
     id: "menu-rail-cards",
     title: "Menu board — photo rail + dish cards (one screen of a three-screen wall)",
-    sourceSha256: "51efa3c2276612f8",
+    sourceSha256: "498acf202af25a18",
     approval: "Greg, 2026-09-22: the qsr 24-27 menu wall Codex built on GPT-6 Sol is the bar the AI Designer must meet (\"learn from this and make our AI generation this good\") — docs/research/2026-09-22-ai-designer-rework/README.md",
     vertical: "qsr",
     verticals: ["food"],
@@ -70,7 +70,7 @@ export const DESIGNER_EXEMPLARS: readonly DesignerExemplar[] = [
   {
     id: "menu-rail-cards-portrait",
     title: "Menu board — photo rail + dish cards (one screen of a three-screen wall)",
-    sourceSha256: "51efa3c2276612f8",
+    sourceSha256: "498acf202af25a18",
     approval: "Greg, 2026-09-22: the qsr 24-27 menu wall Codex built on GPT-6 Sol is the bar the AI Designer must meet (\"learn from this and make our AI generation this good\") — docs/research/2026-09-22-ai-designer-rework/README.md",
     vertical: "qsr",
     verticals: ["food"],
@@ -88,7 +88,7 @@ export const DESIGNER_EXEMPLARS: readonly DesignerExemplar[] = [
   {
     id: "offer-split",
     title: "Offer board — photo + one featured offer (one screen of a three-screen wall)",
-    sourceSha256: "10fb69ad1ba9ca0e",
+    sourceSha256: "a02cf24b14372743",
     approval: "Greg, 2026-09-22: the qsr 24-27 menu wall Codex built on GPT-6 Sol is the bar the AI Designer must meet (\"learn from this and make our AI generation this good\") — docs/research/2026-09-22-ai-designer-rework/README.md",
     vertical: "qsr",
     verticals: ["food"],
@@ -106,7 +106,7 @@ export const DESIGNER_EXEMPLARS: readonly DesignerExemplar[] = [
   {
     id: "offer-split-portrait",
     title: "Offer board — photo + one featured offer (one screen of a three-screen wall)",
-    sourceSha256: "10fb69ad1ba9ca0e",
+    sourceSha256: "a02cf24b14372743",
     approval: "Greg, 2026-09-22: the qsr 24-27 menu wall Codex built on GPT-6 Sol is the bar the AI Designer must meet (\"learn from this and make our AI generation this good\") — docs/research/2026-09-22-ai-designer-rework/README.md",
     vertical: "qsr",
     verticals: ["food"],
@@ -124,7 +124,7 @@ export const DESIGNER_EXEMPLARS: readonly DesignerExemplar[] = [
   {
     id: "welcome-name-hero",
     title: "Welcome board — giant two-line greeting + a column of working cards",
-    sourceSha256: "34f92da2d5ed5e2c",
+    sourceSha256: "8dfb52993c513407",
     approval: "APPROVED 2026-07-02 by Greg (\"i like them all, keep them\") — docs/design/approved/2026-07-02-gym-welcome/README.md",
     vertical: "fitness",
     verticals: ["fitness"],
@@ -142,7 +142,7 @@ export const DESIGNER_EXEMPLARS: readonly DesignerExemplar[] = [
   {
     id: "welcome-name-hero-portrait",
     title: "Welcome board — giant two-line greeting + a column of working cards",
-    sourceSha256: "34f92da2d5ed5e2c",
+    sourceSha256: "8dfb52993c513407",
     approval: "APPROVED 2026-07-02 by Greg (\"i like them all, keep them\") — docs/design/approved/2026-07-02-gym-welcome/README.md",
     vertical: "fitness",
     verticals: ["fitness"],
@@ -160,7 +160,7 @@ export const DESIGNER_EXEMPLARS: readonly DesignerExemplar[] = [
   {
     id: "welcome-split",
     title: "Welcome board — two halves across a diagonal seam",
-    sourceSha256: "b853010ba025efae",
+    sourceSha256: "e5c0c8ceb9c4d641",
     approval: "APPROVED 2026-07-02 by Greg (\"i like them all, keep them\") — docs/design/approved/2026-07-02-gym-welcome/README.md",
     vertical: "fitness",
     verticals: ["fitness"],
@@ -178,7 +178,7 @@ export const DESIGNER_EXEMPLARS: readonly DesignerExemplar[] = [
   {
     id: "welcome-scene",
     title: "Welcome board — a photo scene, the welcome on a solid panel over it, and an info footer band",
-    sourceSha256: "183e0af2377d2aaf",
+    sourceSha256: "5b62c0d5ac84f849",
     approval: "APPROVED 2026-07-23 — marker in the board: local HTML concept approved by the user",
     vertical: "retail",
     verticals: ["retail"],
@@ -196,7 +196,7 @@ export const DESIGNER_EXEMPLARS: readonly DesignerExemplar[] = [
   {
     id: "welcome-scene-portrait",
     title: "Welcome board — a photo scene, the welcome on a solid panel over it, and an info footer band",
-    sourceSha256: "183e0af2377d2aaf",
+    sourceSha256: "5b62c0d5ac84f849",
     approval: "APPROVED 2026-07-23 — marker in the board: local HTML concept approved by the user",
     vertical: "retail",
     verticals: ["retail"],

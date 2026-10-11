@@ -39,3 +39,28 @@ for (const board of [
     await expect(frame.locator('link[data-edu-board-font="Pacifico"],link[data-edu-holiday-font="Pacifico"]')).toHaveCount(1);
   });
 }
+
+for (const url of ['/templates/school/ms-lobby-v1.html', '/templates/signage/menus-pos/02-wine-list.html']) {
+  test(`brand headline fonts load inside the board document: ${url}`, async ({ page, baseURL }) => {
+    await page.route('https://fonts.googleapis.com/**', route => route.fulfill({
+      contentType: 'text/css', headers: { 'access-control-allow-origin': '*' },
+      body: '@font-face{font-family:Pacifico;src:url("https://fonts.gstatic.com/editor-font.woff2") format("woff2");font-display:swap}',
+    }));
+    await page.route('https://fonts.gstatic.com/**', route => route.fulfill({
+      contentType: 'font/woff2', headers: { 'access-control-allow-origin': '*' }, body: fontFixture,
+    }));
+    await page.route('**/brand-font-shell', route => route.fulfill({ contentType: 'text/html',
+      body: `<iframe title="Brand font test" sandbox="allow-scripts" src="${url}"></iframe>` }));
+    await page.goto(`${baseURL}/brand-font-shell`);
+    const frame = page.getByTitle('Brand font test').contentFrame();
+    await expect(frame.locator('#stage')).toBeVisible();
+    await page.evaluate(() => document.querySelector('iframe')!.contentWindow!.postMessage({
+      type: 'educms-overrides', brand: { fontDisplay: 'Pacifico' },
+    }, '*'));
+    await expect(frame.locator('link[data-edu-board-font="Pacifico"]')).toHaveCount(1);
+    await expect.poll(() => frame.locator('#stage').evaluate(() => Array.from(document.fonts)
+      .some(face => face.family === 'Pacifico' && face.status === 'loaded'))).toBe(true);
+    await expect.poll(() => frame.locator('#stage').evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue('--f-display'))).toContain('Pacifico');
+  });
+}

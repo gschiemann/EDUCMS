@@ -1,14 +1,26 @@
 // Fonts are document resources: loading a face in the parent editor does not
 // make it available inside a sandboxed board. Keep all three board protocols
 // on the same font-loading path without replacing their existing edit shims.
+// All authored Google families plus the text toolbar choices are loadable.
 const googleFonts = new Set([
-  'Inter', 'Roboto', 'Open Sans', 'Lato', 'Montserrat', 'Poppins',
-  'Oswald', 'Raleway', 'Nunito', 'Source Sans Pro', 'Playfair Display',
-  'Merriweather', 'Bebas Neue', 'Caveat', 'Pacifico',
-  'Fraunces', 'DM Sans', 'IBM Plex Mono', 'Archivo', 'Archivo Black',
-  'Barlow Condensed', 'Instrument Sans', 'Newsreader', 'Manrope',
-  'Cormorant Garamond', 'Hanken Grotesk', 'Space Grotesk', 'Sora',
-  'Fredoka', 'JetBrains Mono', 'Baloo 2', 'Space Mono', 'Bricolage Grotesque',
+  'Albert Sans', 'Alegreya Sans SC', 'Anton', 'Anybody', 'Archivo',
+  'Archivo Black', 'Archivo Narrow', 'Atkinson Hyperlegible', 'Azeret Mono', 'Bagel Fat One',
+  'Baloo 2', 'Barlow Condensed', 'Bebas Neue', 'Berkshire Swash', 'Bodoni Moda',
+  'Bowlby One', 'Bricolage Grotesque', 'Bungee', 'Caveat', 'Caveat Brush',
+  'Chewy', 'Chivo Mono', 'Cormorant Garamond', 'Creepster', 'DM Mono',
+  'DM Sans', 'DM Serif Display', 'Domine', 'EB Garamond', 'Epilogue',
+  'Figtree', 'Fira Mono', 'Fragment Mono', 'Fraunces', 'Fredoka',
+  'Hanken Grotesk', 'IBM Plex Mono', 'IBM Plex Sans', 'Instrument Sans', 'Instrument Serif',
+  'Inter', 'JetBrains Mono', 'Lato', 'League Spartan', 'Lexend',
+  'Libre Franklin', 'Literata', 'Lora', 'Manrope', 'Marcellus',
+  'Martian Mono', 'Merriweather', 'Monoton', 'Montserrat', 'Mountains of Christmas',
+  'Newsreader', 'Nunito', 'Onest', 'Open Sans', 'Oswald',
+  'Outfit', 'Pacifico', 'Permanent Marker', 'Playfair Display', 'Plus Jakarta Sans',
+  'Poppins', 'Prata', 'Quicksand', 'Raleway', 'Roboto',
+  'Roboto Condensed', 'Roboto Mono', 'Roboto Slab', 'Rufina', 'Saira Semi Condensed',
+  'Schibsted Grotesk', 'Sniglet', 'Sora', 'Source Code Pro', 'Source Sans 3',
+  'Source Sans Pro', 'Space Grotesk', 'Space Mono', 'Special Elite', 'Syne',
+  'Unbounded', 'VT323', 'Work Sans', 'Young Serif',
 ]);
 const requested = new Set<string>();
 const themeFont = /^theme\.f(?:Display|Head|Body|Mono)$/;
@@ -52,7 +64,18 @@ function applyFonts(data: Record<string, unknown>) {
   }
   const brand = data.brand;
   if (brand && typeof brand === 'object') {
-    ['fontHeading', 'fontBody', 'fontMono'].forEach(key => ensureFont((brand as Record<string, unknown>)[key]));
+    ['fontDisplay', 'fontBody', 'fontCondensed', 'fontHeading', 'fontMono'].forEach(key => ensureFont((brand as Record<string, unknown>)[key]));
+    // Legacy menu adapters predate the canonical theme font variables. Keep
+    // their POS logic intact while making the visible brand font controls
+    // update the same authored roles as the generic board adapter.
+    const roles: Record<string, string[]> = {
+      fontDisplay: ['--f-display', '--f-head'], fontBody: ['--f-body'],
+      fontCondensed: ['--f-mono'], fontHeading: ['--f-display', '--f-head'], fontMono: ['--f-mono'],
+    };
+    Object.keys(roles).forEach(key => {
+      const value = (brand as Record<string, unknown>)[key];
+      if (typeof value === 'string' && value.trim()) roles[key].forEach(variable => document.documentElement.style.setProperty(variable, value));
+    });
   }
 }
 

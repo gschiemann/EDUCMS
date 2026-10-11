@@ -1,0 +1,515 @@
+[
+  {
+    "path": "apps/web/public/holiday-templates/es-christmas.html",
+    "oldText": 47,
+    "newText": 60,
+    "oldSlots": 2,
+    "newSlots": 4,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/holiday-templates/hs-christmas.html",
+    "oldText": 46,
+    "newText": 59,
+    "oldSlots": 1,
+    "newSlots": 2,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/holiday-templates/ms-christmas.html",
+    "oldText": 45,
+    "newText": 61,
+    "oldSlots": 3,
+    "newSlots": 4,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/school/elem-schedule-v1.html",
+    "oldText": 47,
+    "newText": 47,
+    "oldSlots": 1,
+    "newSlots": 1,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/school/elem-schedule-v2.html",
+    "oldText": 48,
+    "newText": 48,
+    "oldSlots": 1,
+    "newSlots": 1,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/school/elem-schedule-v3.html",
+    "oldText": 48,
+    "newText": 48,
+    "oldSlots": 1,
+    "newSlots": 1,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/school/ms-lobby-v1.html",
+    "oldText": 38,
+    "newText": 38,
+    "oldSlots": 2,
+    "newSlots": 2,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/school/ms-lobby-v2.html",
+    "oldText": 38,
+    "newText": 39,
+    "oldSlots": 2,
+    "newSlots": 3,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/school/ms-lobby-v3.html",
+    "oldText": 42,
+    "newText": 42,
+    "oldSlots": 2,
+    "newSlots": 2,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/signage/bar/01-tap-list-flagship.html",
+    "oldText": 74,
+    "newText": 107,
+    "oldSlots": 0,
+    "newSlots": 1,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/signage/bar/02-cocktail-menu.html",
+    "oldText": 34,
+    "newText": 52,
+    "oldSlots": 0,
+    "newSlots": 2,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/signage/bar/03-bottle-list.html",
+    "oldText": 74,
+    "newText": 91,
+    "oldSlots": 0,
+    "newSlots": 1,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/signage/bar/04-happy-hour.html",
+    "oldText": 56,
+    "newText": 57,
+    "oldSlots": 5,
+    "newSlots": 5,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/signage/bar/06-tonight-live.html",
+    "oldText": 23,
+    "newText": 46,
+    "oldSlots": 0,
+    "newSlots": 2,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/signage/bar/07-bottle-service.html",
+    "oldText": 91,
+    "newText": 91,
+    "oldSlots": 5,
+    "newSlots": 5,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/signage/bar/08-game-day.html",
+    "oldText": 73,
+    "newText": 74,
+    "oldSlots": 4,
+    "newSlots": 4,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/signage/clinic/01-campaign-flagship.html",
+    "oldText": 22,
+    "newText": 35,
+    "oldSlots": 0,
+    "newSlots": 2,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/signage/corporate/01-lobby-welcome-flagship.html",
+    "oldText": 26,
+    "newText": 39,
+    "oldSlots": 1,
+    "newSlots": 1,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/signage/corporate/02-conference-room.html",
+    "oldText": 11,
+    "newText": 32,
+    "oldSlots": 0,
+    "newSlots": 1,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/signage/corporate/03-kpi-dashboard.html",
+    "oldText": 32,
+    "newText": 45,
+    "oldSlots": 1,
+    "newSlots": 1,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/signage/corporate/04-new-hires.html",
+    "oldText": 25,
+    "newText": 42,
+    "oldSlots": 5,
+    "newSlots": 5,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/signage/corporate/05-floor-directory.html",
+    "oldText": 22,
+    "newText": 37,
+    "oldSlots": 0,
+    "newSlots": 1,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/signage/corporate/06-all-hands.html",
+    "oldText": 28,
+    "newText": 43,
+    "oldSlots": 2,
+    "newSlots": 2,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/signage/corporate/08-shuttle-board.html",
+    "oldText": 19,
+    "newText": 38,
+    "oldSlots": 0,
+    "newSlots": 1,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/signage/corporate/09-events-week.html",
+    "oldText": 23,
+    "newText": 44,
+    "oldSlots": 0,
+    "newSlots": 1,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/signage/fashion/02-editorial.html",
+    "oldText": 7,
+    "newText": 20,
+    "oldSlots": 1,
+    "newSlots": 3,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/signage/fashion/03-sale.html",
+    "oldText": 21,
+    "newText": 34,
+    "oldSlots": 2,
+    "newSlots": 2,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/signage/fashion/05-event-trunkshow.html",
+    "oldText": 16,
+    "newText": 29,
+    "oldSlots": 1,
+    "newSlots": 3,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/signage/fashion/06-fitting-room.html",
+    "oldText": 23,
+    "newText": 37,
+    "oldSlots": 0,
+    "newSlots": 1,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/signage/healthcare/01-waiting-room-flagship.html",
+    "oldText": 12,
+    "newText": 34,
+    "oldSlots": 0,
+    "newSlots": 2,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/signage/healthcare/02-physician-directory.html",
+    "oldText": 21,
+    "newText": 42,
+    "oldSlots": 0,
+    "newSlots": 7,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/signage/healthcare/03-now-serving.html",
+    "oldText": 15,
+    "newText": 34,
+    "oldSlots": 0,
+    "newSlots": 1,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/signage/healthcare/04-vaccine-clinic.html",
+    "oldText": 12,
+    "newText": 35,
+    "oldSlots": 0,
+    "newSlots": 1,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/signage/healthcare/05-hours-closures.html",
+    "oldText": 19,
+    "newText": 47,
+    "oldSlots": 0,
+    "newSlots": 1,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/signage/healthcare/06-patient-education.html",
+    "oldText": 12,
+    "newText": 41,
+    "oldSlots": 0,
+    "newSlots": 1,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/signage/healthcare/07-mychart-signup.html",
+    "oldText": 6,
+    "newText": 33,
+    "oldSlots": 0,
+    "newSlots": 2,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/signage/healthcare/08-pharmacy-pickup.html",
+    "oldText": 21,
+    "newText": 49,
+    "oldSlots": 0,
+    "newSlots": 1,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/signage/healthcare/09-clinical-trial.html",
+    "oldText": 9,
+    "newText": 33,
+    "oldSlots": 0,
+    "newSlots": 2,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/signage/healthcare/10-thanks-leave.html",
+    "oldText": 7,
+    "newText": 31,
+    "oldSlots": 0,
+    "newSlots": 2,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/signage/hospitality/03-events-board.html",
+    "oldText": 47,
+    "newText": 72,
+    "oldSlots": 0,
+    "newSlots": 1,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/signage/hospitality/06-wayfinder.html",
+    "oldText": 41,
+    "newText": 73,
+    "oldSlots": 0,
+    "newSlots": 1,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/signage/hospitality/08-checkin-status.html",
+    "oldText": 36,
+    "newText": 68,
+    "oldSlots": 0,
+    "newSlots": 1,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/signage/hospitality/09-outlook.html",
+    "oldText": 31,
+    "newText": 57,
+    "oldSlots": 0,
+    "newSlots": 2,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/signage/menus-pos/01-fullservice-menu.html",
+    "oldText": 56,
+    "newText": 77,
+    "oldSlots": 0,
+    "newSlots": 0,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/signage/menus-pos/02-wine-list.html",
+    "oldText": 57,
+    "newText": 75,
+    "oldSlots": 0,
+    "newSlots": 1,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/signage/menus-pos/04-cocktail-program.html",
+    "oldText": 27,
+    "newText": 45,
+    "oldSlots": 0,
+    "newSlots": 1,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/signage/menus-pos/05-86-board.html",
+    "oldText": 24,
+    "newText": 44,
+    "oldSlots": 0,
+    "newSlots": 1,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/signage/menus-pos/06-brunch.html",
+    "oldText": 28,
+    "newText": 46,
+    "oldSlots": 0,
+    "newSlots": 1,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/signage/menus-pos/07-prix-fixe.html",
+    "oldText": 22,
+    "newText": 43,
+    "oldSlots": 0,
+    "newSlots": 1,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/signage/menus-pos/08-tasting-progress.html",
+    "oldText": 14,
+    "newText": 45,
+    "oldSlots": 0,
+    "newSlots": 1,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/signage/menus-pos/09-reservations.html",
+    "oldText": 41,
+    "newText": 69,
+    "oldSlots": 0,
+    "newSlots": 1,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/signage/menus-pos/10-takeaway-pickup.html",
+    "oldText": 29,
+    "newText": 49,
+    "oldSlots": 0,
+    "newSlots": 1,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/signage/qsr/08-rewards.html",
+    "oldText": 18,
+    "newText": 38,
+    "oldSlots": 0,
+    "newSlots": 2,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/signage/qsr/09-hours-location.html",
+    "oldText": 20,
+    "newText": 39,
+    "oldSlots": 0,
+    "newSlots": 1,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/signage/qsr/10-now-hiring.html",
+    "oldText": 21,
+    "newText": 40,
+    "oldSlots": 0,
+    "newSlots": 3,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/signage/veterinary/01-waiting-room-flagship.html",
+    "oldText": 28,
+    "newText": 41,
+    "oldSlots": 1,
+    "newSlots": 2,
+    "lostText": [],
+    "lostSlots": []
+  },
+  {
+    "path": "apps/web/public/templates/signage/veterinary/02-adopt-gallery.html",
+    "oldText": 29,
+    "newText": 42,
+    "oldSlots": 4,
+    "newSlots": 5,
+    "lostText": [],
+    "lostSlots": []
+  }
+]
