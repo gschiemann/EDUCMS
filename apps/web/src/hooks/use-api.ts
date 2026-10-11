@@ -1619,7 +1619,7 @@ export function useAddWebUrl() {
   return useMutation({
     mutationFn: (data: { url: string; name?: string; folderId?: string | null }) =>
       apiFetch('/assets/url', { method: 'POST', body: JSON.stringify(data) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['assets'] }),
+    onSuccess: () => invalidateAssetLibrary(qc),
   });
 }
 
@@ -1639,7 +1639,7 @@ export function useGenerateImage() {
         '/ai/image',
         { method: 'POST', body: JSON.stringify(data) },
       ),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['assets'] }),
+    onSuccess: () => invalidateAssetLibrary(qc),
   });
 }
 
@@ -1679,7 +1679,7 @@ export function useStockRehost() {
   return useMutation({
     mutationFn: (params: { url: string }) =>
       apiFetch<{ url?: string }>('/ai/stock-rehost', { method: 'POST', body: JSON.stringify(params) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['assets'] }),
+    onSuccess: () => invalidateAssetLibrary(qc),
   });
 }
 
@@ -1732,7 +1732,7 @@ export function useDeleteAsset() {
       patchAssetCaches(qc, assets => assets.filter((asset: { id: string }) => !deleted.has(asset.id)));
     },
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: ['assets'] });
+      void invalidateAssetLibrary(qc);
       qc.invalidateQueries({ queryKey: ['playlists'] });
       qc.invalidateQueries({ queryKey: ['schedules'] });
       qc.invalidateQueries({ queryKey: ['screens'] });
@@ -1821,6 +1821,18 @@ export function useUpdateAltText() {
   });
 }
 
+/**
+ * Re-read the media library AND its folder counts (Muse beta DEV-020,
+ * 2026-10-07): a move / upload / delete changed a folder's count, but only
+ * `['assets']` was invalidated, so the folder rail kept its old numbers.
+ */
+export function invalidateAssetLibrary(qc: QueryClient) {
+  return Promise.all([
+    qc.invalidateQueries({ queryKey: ['assets'] }),
+    qc.invalidateQueries({ queryKey: ['asset-folders'] }),
+  ]);
+}
+
 export function useMoveAsset() {
   const qc = useQueryClient();
   return useMutation({
@@ -1836,7 +1848,7 @@ export function useMoveAsset() {
     onError: (_e, _vars, ctx) => {
       restoreAssetCaches(qc, ctx?.prev as any);
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: ['assets'] }),
+    onSettled: () => invalidateAssetLibrary(qc),
   });
 }
 

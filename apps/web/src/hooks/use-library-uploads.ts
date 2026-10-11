@@ -12,6 +12,7 @@ import { useUploadErrorText } from '@/lib/use-upload-error-text';
 import { formatMediaBytes } from '@/lib/media-bytes';
 import { inspectVideoFile } from '@/lib/mp4-inspect';
 import { isVideoMime } from '@/lib/video-encode-copy';
+import { invalidateAssetLibrary } from '@/hooks/use-api';
 
 /** Both library and wizard own the selection UI; the app owns accepted jobs.
  * No effect cleans these jobs up when a page or wizard unmounts. */
@@ -43,7 +44,7 @@ export function useLibraryUploads(target?: VideoEncodeTarget) {
       });
       if (signal.aborted) return;
       patch(item.id, { asset, phase: asset.status === 'PENDING_APPROVAL' ? 'pending-review' : 'success', progress: 100 });
-      void qc.invalidateQueries({ queryKey: ['assets'] });
+      void invalidateAssetLibrary(qc); // DEV-020: the folder's count moved too
     } catch (error) {
       if (signal.aborted) return;
       patch(item.id, { phase: 'error', note: undefined, error: errorText(error, item.file),

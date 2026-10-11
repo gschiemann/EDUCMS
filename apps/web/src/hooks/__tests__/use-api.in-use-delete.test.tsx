@@ -117,5 +117,5 @@ it('bulk removal updates paged and legacy caches together, restoring only files 
   });
   expect(h.qc.getQueryData(['assets'])).toEqual([{ id: 'a2' }, { id: 'a3' }]);
   expect(h.qc.getQueryData(['assets', 'page', 'all'])).toEqual({ assets: [{ id: 'a2' }, { id: 'a3' }], total: 2 });
-  expect(invalidate.mock.calls.map(([arg]) => arg?.queryKey)).toEqual([['assets'], ['playlists'], ['schedules'], ['screens']]);
+  expect(invalidate.mock.calls.map(([arg]) => arg?.queryKey)).toEqual([['assets'], ['asset-folders'], ['playlists'], ['schedules'], ['screens']]);
 });
