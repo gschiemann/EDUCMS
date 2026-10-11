@@ -6,7 +6,7 @@ import { requestDeviceDiagnosticsUpload } from './deviceDiagnostics';
  * Offline-cache client — talks to /sw-player.js. Used by the player to:
  *   - Register the SW on first run
  *   - Push playlist + emergency asset lists for pre-caching
- *   - Read cache status for the info overlay
+ *   - Read cache status for the paused (Back menu) diagnostics card
  *
  * Safe to call from any environment: if Service Worker isn't available
  * (older browser, SSR, missing API) the helpers no-op gracefully so

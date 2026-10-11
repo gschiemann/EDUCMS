@@ -1,7 +1,5 @@
 'use client';
 import { NativeDualVideo } from './NativeDualVideo';
-import { useInfoOverlayTimeout } from './useInfoOverlayTimeout';
-import { createInfoOverlayEvidence, infoInputTarget, infoOpenDecision, INFO_CONTAINED_TARGETS, type EventLike, type InfoOpenSource } from './infoOverlayEvidence';
 import { readNativeSharedVideoDescriptor, sharedVideoEligible, nativeSharedVideoEvidence, type NativeSharedVideoDescriptor } from './nativeSharedVideo';
 
 import { useState, useEffect, useCallback, useRef, useMemo, Component, Suspense, ReactNode } from 'react';
@@ -16,7 +14,7 @@ import { healPatternCss } from '@/lib/pattern-css';
 // rendererBundle.tsx — loaded after register succeeds and the first
 // manifest is applied. Re-adding a static renderer import here silently
 // puts the whole catalog back on the pairing path.
-import { MonitorPlay, Wifi, WifiOff, AlertTriangle, Loader2, Settings, CheckCircle2, HardDrive, Cpu, Server, Network, Play, Pause, Monitor, Info, Power, RefreshCw, Download, LogOut } from 'lucide-react';
+import { MonitorPlay, WifiOff, AlertTriangle, Loader2, Settings, CheckCircle2, HardDrive, Cpu, Server, Network, Play, Pause, Monitor, Info, Power, RefreshCw, Download, LogOut } from 'lucide-react';
 import { KioskSplash, type LoadProgress } from '@/components/player/KioskSplash';
 import { TouchOverlay, TouchNavOverlay } from '@/components/player/TouchOverlay';
 // Sprint 5 SOS / TEXT_BROADCAST / MEDIA_ALERT renderer. Audit P0-3
@@ -2384,391 +2382,6 @@ function getDeviceInfo() {
 
 type Phase = 'registering' | 'pairing' | 'connecting' | 'playing' | 'offline' | 'emergency';
 
-// ─── Software version + manual OTA trigger inside the info overlay ───
-// User ask 2026-04-20: "stop/start with the TV remote, see the software
-// version, maybe trigger the update from there". Enter key already toggles
-// the overlay (onKeyDown handler on the playlist container); this row
-// puts the missing version info + a Check-for-updates button in reach.
-function SoftwareInfoRow() {
-  const [apkVersion, setApkVersion] = useState<string | null>(null);
-  const [webVersion] = useState<string>(
-    (process.env.NEXT_PUBLIC_BUILD_SHA || '').slice(0, 7) || 'dev',
-  );
-  const [checking, setChecking] = useState(false);
-  const [lastCheckMsg, setLastCheckMsg] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!nativeHas('deviceInfo')) return;
-    nativeCall<string>('deviceInfo')
-      .then((raw) => {
-        if (cancelled || !raw) return;
-        const info = JSON.parse(raw);
-        if (info?.appVersion) setApkVersion(info.appVersion);
-      })
-      .catch(() => { /* browser player — leave as null */ });
-    return () => { cancelled = true; };
-  }, []);
-
-  const handleCheck = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setChecking(true);
-    setLastCheckMsg(null);
-    try {
-      // Preferred path: 1.0.6+ native bridge enqueues the OTA worker
-      // right now. The worker handles the full download+install dance,
-      // so we just tell the operator we've asked.
-      if (nativeHas('checkForUpdates')) {
-        const ver = await nativeCallOr<string>('', 'checkForUpdates');
-        setLastCheckMsg(`Checking… (currently on ${ver || apkVersion || '?'})`);
-        // After ~8s the worker has usually either begun downloading
-        // (install prompt pops separately) OR reported uptoDate.
-        setTimeout(() => setLastCheckMsg((prev) => prev ? 'Check complete — watch for install prompt if an update was available.' : prev), 8_000);
-        return;
-      }
-      // Fallback for 1.0.5 (no bridge method): POST /update-check directly
-      // from JS, show the result. If an update is available, open the
-      // APK URL so Android's downloader + installer kick in manually.
-      const payload = {
-        versionName: apkVersion || 'browser',
-        versionCode: 0,
-        fingerprint: localStorage.getItem('edu_device_fp') || '',
-        abi: 'browser',
-      };
-      const r = await fetch(`${getApiRoot()}/api/v1/player/update-check`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (!r.ok) {
-        setLastCheckMsg(`Check failed — HTTP ${r.status}. Try rebooting the kiosk.`);
-        return;
-      }
-      const data = await r.json();
-      if (data?.uptoDate) {
-        setLastCheckMsg(`Up to date — running ${apkVersion || 'web build'}.`);
-        return;
-      }
-      if (data?.latest?.apkUrl) {
-        setLastCheckMsg(`Update available: ${data.latest.versionName}. Opening installer…`);
-        // Navigate to the APK URL — on Android this kicks off the
-        // download + install flow even for older APK builds that
-        // don't have the native OTA bridge.
-        try { window.location.href = data.latest.apkUrl; } catch { /* noop */ }
-        return;
-      }
-      setLastCheckMsg('Check complete — no update info returned.');
-    } catch (err: any) {
-      setLastCheckMsg(`Check error: ${err?.message || err}`);
-    } finally {
-      setChecking(false);
-    }
-  };
-
-  return (
-    <>
-      <div className="flex justify-between">
-        <span className="text-slate-400">APK version</span>
-        <span className="text-white font-medium text-xs">{apkVersion || '(browser — no APK)'}</span>
-      </div>
-      <div className="flex justify-between">
-        <span className="text-slate-400">Web build</span>
-        <span className="text-white font-mono text-[11px]">{webVersion}</span>
-      </div>
-      {apkVersion && (
-        <button
-          onClick={handleCheck}
-          disabled={checking}
-          className="w-full mt-1 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-white rounded-lg font-medium text-xs transition-colors flex items-center justify-center gap-1.5"
-        >
-          {checking ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
-          {checking ? 'Checking…' : 'Check for updates'}
-        </button>
-      )}
-      {lastCheckMsg && (
-        <p className="text-[11px] text-slate-400 leading-snug px-0.5">{lastCheckMsg}</p>
-      )}
-    </>
-  );
-}
-
-// ─── Diagnostics section inside the info overlay ───────────────────────────────
-// Calls window.EduCmsNative.getRecentLogs() (Kotlin bridge) to pull the
-// tail of the on-device rotating log file and display it in a scrollable
-// pre block. Two action buttons:
-//   "Upload to Support" — calls uploadDiagnostics() to POST /api/v1/player-logs
-//   "Copy"             — copies the raw log text to the clipboard
-// Only rendered when the native bridge is present (inside the APK WebView).
-// Hidden in plain browser player builds.
-function DiagnosticsRow() {
-  const [logs, setLogs] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [uploadMsg, setUploadMsg] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
-  // ⚠️ These two MUST stay above the early return below. They were briefly
-  // declared further down, next to handleEnroll, which made them CONDITIONAL
-  // hooks — on a screen with no native bridge the component returns before
-  // them, so the hook order changes the moment the bridge appears and React
-  // throws #310, taking the whole player down. The rules-of-hooks CI gate
-  // caught it; do not move them back for tidiness.
-  const [enrolling, setEnrolling] = useState(false);
-  const [enrollMsg, setEnrollMsg] = useState<string | null>(null);
-
-  if (!nativeHas('getRecentLogs')) return null;
-
-  const loadLogs = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setExpanded(true);
-    setLogs('(reading device log…)');
-    try {
-      const raw = await nativeCall<string>('getRecentLogs');
-      setLogs(typeof raw === 'string' ? raw : JSON.stringify(raw));
-    } catch (err: any) {
-      setLogs('(error reading logs: ' + (err?.message || String(err)) + ')');
-    }
-  };
-
-  const handleUpload = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setUploading(true);
-    setUploadMsg(null);
-    try {
-      if (!nativeHas('uploadDiagnostics')) {
-        setUploadMsg('uploadDiagnostics not available');
-      } else {
-        const result = await nativeCall<string>('uploadDiagnostics');
-        setUploadMsg(result || 'upload triggered');
-      }
-    } catch (err: any) {
-      setUploadMsg('error: ' + (err?.message || String(err)));
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const handleCopy = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!logs) return;
-    try {
-      await navigator.clipboard.writeText(logs);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Clipboard API unavailable on some older WebViews — fail silently.
-    }
-  };
-
-  // ── One-tap device-admin enrolment ────────────────────────────────────
-  //
-  // THE CALLER for `displayEnrollAdmin`. The enrolment wave built the whole
-  // native side — PlayerAdminReceiver, the state machine, the bridge method —
-  // and the review correctly filed "no caller in any web bundle" as a P0.
-  // This is that caller.
-  //
-  // WHY IT MATTERS: DeviceAdminBlankProvider gives a REAL panel blank via
-  // DevicePolicyManager.lockNow(), which needs an ACTIVE DEVICE ADMIN. That is
-  // NOT device owner — no factory reset, no adb, no accounts constraint, just
-  // one operator tap through the system dialog. Without it, blank falls
-  // through to the screen-timeout provider (needs the WRITE_SETTINGS appop,
-  // i.e. adb) or the software dim floor, which does not really turn the panel
-  // off and saves no power.
-  //
-  // WHY IT LIVES HERE and not in the dashboard: the dashboard runs in a
-  // browser and cannot reach the native bridge at all. Enrolment has to be
-  // initiated from inside the APK's WebView, and this panel is the established
-  // operator-on-device surface. The dashboard's job is to TELL you which
-  // screens still need the tap — the probe reports `enrollment.oneTapAvailable`
-  // for exactly that.
-  //
-  // Deliberately inside the expanded panel: enrolment must never fire
-  // automatically or nag. A signage box that pops a system security dialog on
-  // a wall in front of customers is worse than a screen that dims in software.
-  const canEnroll = nativeHas('displayEnrollAdmin');
-
-  const handleEnroll = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setEnrolling(true);
-    setEnrollMsg(null);
-    try {
-      const raw = await nativeCall<string>('displayEnrollAdmin');
-      // Native answers a JSON status string. Surface its own message when it
-      // has one rather than inventing our own — it knows why it declined
-      // (already enrolled, recently declined, no operator present).
-      let msg = 'Follow the prompt on this screen.';
-      try {
-        const parsed = raw ? JSON.parse(raw) : null;
-        if (parsed && typeof parsed === 'object') {
-          if (parsed.ok === false) {
-            msg = typeof parsed.code === 'string' ? `Not started: ${parsed.code}` : 'Not started.';
-          } else if (typeof parsed.state === 'string') {
-            msg = `Enrolment: ${parsed.state}`;
-          }
-        }
-      } catch {
-        /* non-JSON answer — keep the generic prompt message */
-      }
-      setEnrollMsg(msg);
-    } catch (err: any) {
-      setEnrollMsg('error: ' + (err?.message || String(err)));
-    } finally {
-      setEnrolling(false);
-    }
-  };
-
-  return (
-    <div className="pt-1 border-t border-slate-700/60 space-y-2">
-      <div className="flex items-center justify-between">
-        <span className="text-slate-400 text-xs font-medium uppercase tracking-wide">Diagnostics</span>
-        <button
-          onClick={expanded ? (e) => { e.stopPropagation(); setExpanded(false); } : loadLogs}
-          className="text-[11px] text-indigo-400 hover:text-indigo-300 transition-colors"
-        >
-          {expanded ? 'Hide logs' : 'Show device logs'}
-        </button>
-      </div>
-
-      {expanded && (
-        <>
-          <pre className="bg-slate-950 rounded-lg p-2 text-[10px] font-mono text-slate-300 overflow-y-auto max-h-48 whitespace-pre-wrap break-all leading-relaxed">
-            {logs || '(loading...)'}
-          </pre>
-          <div className="flex gap-2">
-            <button
-              onClick={handleUpload}
-              disabled={uploading}
-              className="flex-1 py-1.5 bg-indigo-700 hover:bg-indigo-600 disabled:opacity-50 text-white rounded-md text-[11px] font-medium transition-colors"
-            >
-              {uploading ? 'Uploading...' : 'Upload to Support'}
-            </button>
-            <button
-              onClick={handleCopy}
-              className="py-1.5 px-3 bg-slate-700 hover:bg-slate-600 text-white rounded-md text-[11px] font-medium transition-colors"
-            >
-              {copied ? 'Copied!' : 'Copy'}
-            </button>
-          </div>
-          {uploadMsg && (
-            <p className="text-[10px] text-slate-400 leading-snug">{uploadMsg}</p>
-          )}
-          {canEnroll && (
-            <div className="pt-2 border-t border-slate-700/60 space-y-1">
-              <button
-                onClick={handleEnroll}
-                disabled={enrolling}
-                className="w-full py-1.5 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white rounded-md text-[11px] font-medium transition-colors"
-              >
-                {enrolling ? 'Opening…' : 'Enable scheduled screen off'}
-              </button>
-              <p className="text-[10px] text-slate-400 leading-snug">
-                Lets this screen really power its panel down on a schedule
-                instead of just dimming the image. Android will ask you to
-                confirm once.
-              </p>
-              {enrollMsg && (
-                <p className="text-[10px] text-slate-400 leading-snug">{enrollMsg}</p>
-              )}
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
-
-// ─── Cache status chip shown inside the info overlay. Surfaces both tiers
-// ─── so admins can verify the player is actually serving emergencies from
-// ─── disk (not network) — critical sanity check during drills.
-function CacheStatusRow({ status }: { status: CacheStatus | null }) {
-  if (!status) {
-    return (
-      <div className="flex justify-between"><span className="text-slate-400">Offline cache</span><span className="text-slate-500 text-xs">checking…</span></div>
-    );
-  }
-  if (!status.supported) {
-    return (
-      <div className="flex justify-between"><span className="text-slate-400">Offline cache</span><span className="text-slate-500 text-xs">unsupported (browser)</span></div>
-    );
-  }
-  return (
-    <>
-      <div className="flex justify-between">
-        <span className="text-slate-400">Playlist cache</span>
-        <span className="text-white font-medium text-xs">{status.playlist.count} assets · {formatBytes(status.playlist.bytes)}</span>
-      </div>
-      <div className="flex justify-between">
-        <span className="text-slate-400">Emergency cache 🛡️</span>
-        <span className={status.emergency.count > 0 ? 'text-emerald-400 font-medium text-xs' : 'text-amber-400 font-medium text-xs'}>
-          {status.emergency.count > 0
-            ? `${status.emergency.count} assets · ${formatBytes(status.emergency.bytes)} ✓`
-            : 'NONE — emergencies will fetch from network'}
-        </span>
-      </div>
-    </>
-  );
-}
-
-/**
- * Diagnostic row showing the effective LED canvas. If the operator has
- * set a canvas override (URL params or localStorage), display it with
- * "(override)" suffix. Otherwise show the controller's reported display
- * size with "(auto)" so the operator can tell at a glance whether
- * they're on auto or manual. Renders nothing on SSR.
- */
-function CanvasInfoRow() {
-  const [tick, setTick] = useState(0);
-  // Re-read after mount so localStorage values land. Re-render on a
-  // 'storage' event for cross-tab edits (not common on a kiosk, but
-  // free to add) plus a one-shot mount.
-  useEffect(() => {
-    setTick((t) => t + 1);
-    const onStorage = () => setTick((t) => t + 1);
-    if (typeof window !== 'undefined') window.addEventListener('storage', onStorage);
-    return () => {
-      if (typeof window !== 'undefined') window.removeEventListener('storage', onStorage);
-    };
-  }, []);
-  if (typeof window === 'undefined') return null;
-  let display = '—';
-  let label = 'auto';
-  let fitMode: 'contain' | 'cover' | 'auto' = 'auto';
-  try {
-    const p = new URLSearchParams(window.location.search);
-    const override = readCanvasOverride();
-    fitMode = override.fitMode;
-    if (override.w && override.h) {
-      display = `${override.w}×${override.h}`;
-      label = 'override';
-    } else {
-      const w = parseInt(p.get('w') || '', 10) || window.screen.width;
-      const h = parseInt(p.get('h') || '', 10) || window.screen.height;
-      display = `${w}×${h}`;
-    }
-  } catch { /* fall back to defaults */ }
-  // `tick` only used to trigger a re-render; reference it to silence
-  // the unused-variable warning.
-  void tick;
-  const fitLabel = fitMode === 'cover'
-    ? 'Fill screen (crop overflow)'
-    : fitMode === 'contain'
-      ? 'Show whole template (letterbox)'
-      : 'Auto (fills when shapes match)';
-  return (
-    <>
-      <div className="flex justify-between">
-        <span className="text-slate-400">LED canvas</span>
-        <span className={label === 'override' ? 'text-emerald-400 font-medium text-xs' : 'text-slate-300 font-medium text-xs'}>
-          {display}{' '}<span className="opacity-60">({label})</span>
-        </span>
-      </div>
-      <div className="flex justify-between">
-        <span className="text-slate-400">Fit mode</span>
-        <span className="text-slate-300 font-medium text-xs">{fitLabel}</span>
-      </div>
-    </>
-  );
-}
-
 /**
  * FitToViewport — life-safety scale-to-fit (LANE 1, 2026-06-27).
  *
@@ -3475,7 +3088,7 @@ function PlayerPage() {
   useEffect(() => { screenIdRef.current = screenId; }, [screenId]);
   const [tenantId, setTenantId] = useState<string | null>(null);
   // Operator-facing tenant/account name — pulled from the manifest so
-  // the player info overlay can show "paired with: <tenant>". The ID
+  // the paused (Back menu) card can show "paired with: <tenant>". The ID
   // is a UUID; the name is what the operator actually recognises.
   const [tenantName, setTenantName] = useState<string | null>(null);
   // tenantIdRef mirrors tenantId so the WebSocket effect can read it
@@ -3496,48 +3109,6 @@ function PlayerPage() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<string | null>(null);
-  const [showOverlay, setShowOverlay] = useState(false);
-  const showOverlayRef = useRef(false);
-  showOverlayRef.current = showOverlay;
-  // Opener journal (infoOverlayEvidence.ts — read its header). Keyed on the
-  // screen identity ALONE, deliberately: the tenant id only arrives with the
-  // first manifest, and the pre-content connecting hero — exactly where a
-  // stray Enter/click used to open the card — happens before that. The row
-  // holds nothing tenant-specific (enums, numbers, booleans; 24 h bound), and
-  // `localStorage` here is already the per-face facade (faceStorageShim.ts),
-  // so a second face never reads the front's journal.
-  const infoEvidenceRef = useRef<ReturnType<typeof createInfoOverlayEvidence> | null>(null);
-  useEffect(() => {
-    if (!screenId) return;
-    let evidence: ReturnType<typeof createInfoOverlayEvidence>;
-    try {
-      evidence = createInfoOverlayEvidence(localStorage, `edu_info_input_v1:${screenId}`, readOwnBundleId() ?? 'dev');
-    } catch {
-      // Some kiosk storage policies throw even when obtaining localStorage.
-      evidence = createInfoOverlayEvidence({ getItem: () => null, setItem: () => undefined }, '', readOwnBundleId() ?? 'dev');
-    }
-    infoEvidenceRef.current = evidence;
-    // Passive capture observers: they never preventDefault, never move focus,
-    // never synthesize input — a stray `.input()` throw cannot reach playback.
-    const observe = (event: Event) => { try { evidence.input(event); } catch { /* observation only */ } };
-    const types = ['keydown', 'keyup', 'pointerdown', 'pointerup', 'mousedown', 'mouseup', 'touchstart', 'touchend'];
-    types.forEach(type => window.addEventListener(type, observe, { capture: true, passive: true }));
-    return () => {
-      types.forEach(type => window.removeEventListener(type, observe, true));
-      if (infoEvidenceRef.current === evidence) infoEvidenceRef.current = null;
-    };
-  }, [screenId]);
-  const closeInfoOverlay = useCallback(() => setShowOverlay(false), []);
-  // The ONLY writer of `showOverlay = true`. Nothing calls this directly —
-  // every opener goes through `requestInfoOverlay` below, which is the one
-  // policy gate (infoOverlayEvidence.ts). Keep it that way: a second writer
-  // is a second way for the card to appear over content nobody touched.
-  const openInfoOverlay = useCallback((source: InfoOpenSource, input: EventLike) => {
-    // Record the actual opener without device credentials or content URLs.
-    infoEvidenceRef.current?.opened(source, input);
-    console.warn('[Player] screen information opened', { source, key: input.key ?? null, trusted: input.isTrusted });
-    setShowOverlay(true);
-  }, []);
   // 2026-05-16 — operator-confirmed OTA. When the dashboard pushes an
   // update (CHECK_FOR_UPDATES), instead of installing immediately we
   // raise this flag and show a full-screen "Update now?" prompt. The
@@ -3555,7 +3126,20 @@ function PlayerPage() {
   // editor; the next reload picks up canvasW/canvasH from URL params,
   // pins the document, and content fills the visible LED.
   const [showCanvasEditor, setShowCanvasEditor] = useState(false);
-  useInfoOverlayTimeout(showOverlay, closeInfoOverlay, showCanvasEditor);
+  const showCanvasEditorRef = useRef(false);
+  showCanvasEditorRef.current = showCanvasEditor;
+  // 2026-10-11 — the editor is opened from the Back menu's "Resize LED
+  // area" button. When it closes (Cancel, or Back inside it), put the
+  // remote's focus back on that button so the D-pad is parked on a real
+  // control again (rule 15) instead of on <body>.
+  const resizeLedButtonRef = useRef<HTMLButtonElement | null>(null);
+  const canvasEditorWasOpenRef = useRef(false);
+  useEffect(() => {
+    if (showCanvasEditor) { canvasEditorWasOpenRef.current = true; return; }
+    if (!canvasEditorWasOpenRef.current) return;
+    canvasEditorWasOpenRef.current = false;
+    try { resizeLedButtonRef.current?.focus(); } catch { /* focus is best-effort */ }
+  }, [showCanvasEditor]);
   // v1.0.16 — visible feedback for the "Sync Now" button. Operator
   // (2026-04-27): "hitting sync does nothing it appears, not sure
   // what the button is used for". Cause: when fetchContent runs and
@@ -3574,34 +3158,6 @@ function PlayerPage() {
   const [playbackStopped, setPlaybackStopped] = useState(false);
   const playbackStoppedRef = useRef(false);
   playbackStoppedRef.current = playbackStopped;
-  /**
-   * THE one open gate for the screen-information card (2026-10-10, the
-   * Vision Core "card over unattended video" bug). Every opener — the global
-   * Home/i/I shortcut, the root's Enter/Space, a root click — asks
-   * `infoOpenDecision` with the LIVE refs (never a render closure) and either
-   * opens or records why it did not. The policy: content on the glass
-   * (`playing` / `offline` phase — the connecting hero, registering and
-   * pairing splashes are NOT content), not BLANK, not deliberately stopped,
-   * not already open, an unmodified key, and an input that did not start on
-   * a control / typing / status / prompt surface. Closing is deliberately
-   * ungated so Back and the root toggle always get the operator out.
-   *
-   * Returns true when the card opened, so a key handler can decide whether
-   * to `preventDefault` — a refused `i` inside a text field keeps typing.
-   */
-  const requestInfoOverlay = useCallback((source: InfoOpenSource, input: EventLike): boolean => {
-    const phase = phaseRef.current;
-    const verdict = infoOpenDecision(
-      { phase, blank: softBlankRef.current, stopped: playbackStoppedRef.current, open: showOverlayRef.current },
-      input,
-    );
-    if (verdict !== 'open') {
-      infoEvidenceRef.current?.refused(verdict, source, input, phase);
-      return false;
-    }
-    openInfoOverlay(source, input);
-    return true;
-  }, [openInfoOverlay]);
   // ── Off-hours background update (2026-10-10) ────────────────────────────
   // What the 15-min build-info check found, and how far the background
   // preparation got. Read by the apply tick (the bundle-drift effect below)
@@ -4173,7 +3729,7 @@ function PlayerPage() {
    * injects it for the empty-storage bootstrap case; once resolveDeviceToken
    * has had the chance to adopt it (the getDeviceToken() call below), a
    * credential has no business sitting in browser history / screenshots /
-   * the operator-info overlay. Every OTHER param (fp/w/h/dpr/mv/vc/api…)
+   * an operator diagnostics card. Every OTHER param (fp/w/h/dpr/mv/vc/api…)
    * stays — later effects read them.
    */
   useEffect(() => {
@@ -4502,7 +4058,9 @@ function PlayerPage() {
   // remote control to work. Fix: TOGGLE behavior for Back —
   //   - playing  + Back  = pause (show stop overlay)
   //   - paused   + Back  = resume + close overlay
-  //   - info     + Back  = close info overlay
+  //   - editor   + Back  = close the LED canvas editor (back to the menu)
+  // (2026-10-11: the "Screen information" card and its Home/i shortcut are
+  // GONE — owner decision; Back is the single operator entry point.)
   // Plus listen for global keyboard events (Enter / Space / OK) so
   // the Resume / Sync / Exit buttons can be triggered from a remote
   // even if the operator can't precisely click them.
@@ -4516,16 +4074,21 @@ function PlayerPage() {
         console.warn('[Player] remote input ignored — emergency active (controls locked)');
         return;
       }
+      // 2026-10-11 — Back from the on-screen LED canvas editor returns to
+      // the Screen options menu it was opened from (rule 15: Back always
+      // reaches an actionable escape, never a silent state change). Checked
+      // BEFORE the pause toggle: the editor opens from the paused menu, so
+      // `playbackStopped` is true while it is up.
+      if (showCanvasEditorRef.current) {
+        setShowCanvasEditor(false);
+        return;
+      }
       // TOGGLE: if already in any overlay state, dismissing it is
       // more useful than re-asserting it. Operator hits Back twice
       // in a row → overlay gone, content resumes.
       if (playbackStopped) {
         setPlaybackStopped(false);
         setExitUnavailable(false);
-        return;
-      }
-      if (showOverlay) {
-        setShowOverlay(false);
         return;
       }
       setPlaybackStopped(true);
@@ -4544,7 +4107,7 @@ function PlayerPage() {
       // SECURITY: same emergency lockout as onShowStop — raw-keyboard
       // remotes (Goodview/OEM Escape emitters) must not bypass it.
       if (activeEmergencyRef.current || pushedEmergencyMessageRef.current) {
-        if (key === 'Escape' || key === 'Backspace' || key === 'GoBack' || key === 'Back' || key === 'Home' || key === 'i' || key === 'I') {
+        if (key === 'Escape' || key === 'Backspace' || key === 'GoBack' || key === 'Back') {
           e.preventDefault();
           console.warn('[Player] remote key ignored — emergency active (controls locked)');
         }
@@ -4557,16 +4120,6 @@ function PlayerPage() {
         onShowStop();
         return;
       }
-      // Home or remote OK from playback (no overlay) → bring up info
-      // overlay so the operator can reach Sync / Exit / Unpair.
-      // 2026-10-10 — through the ONE policy gate (`requestInfoOverlay`): a
-      // Home/i latched during the connecting hero, typed into the canvas
-      // editor, or sent as Ctrl/Alt/Meta+i no longer opens the card; a
-      // refused key keeps its default so typing is unaffected.
-      if (key === 'Home' || key === 'i' || key === 'I') {
-        if (requestInfoOverlay('remote-key', e)) e.preventDefault();
-        return;
-      }
     };
     window.addEventListener('keydown', onKey, true);
 
@@ -4574,7 +4127,7 @@ function PlayerPage() {
       window.removeEventListener('edu-show-stop-overlay', onShowStop as EventListener);
       window.removeEventListener('keydown', onKey, true);
     };
-  }, [playbackStopped, showOverlay, requestInfoOverlay]);
+  }, [playbackStopped]);
 
   // Latest published APK version — fetched once at boot, used by the
   // post-pair splash to show "Update available" + Install button.
@@ -4583,11 +4136,11 @@ function PlayerPage() {
   const [latestApkVersion, setLatestApkVersion] = useState<string | null>(null);
   /**
    * Can a surface that RENDERS `latestApkVersion` be on the glass right now?
-   * That is the splash (any phase other than steady playback), the Stop /
-   * pause overlay, and the info overlay. Used only to pick this poll's
+   * That is the splash (any phase other than steady playback) and the Stop /
+   * pause overlay. Used only to pick this poll's
    * cadence — never to decide anything an operator sees.
    */
-  const splashCanBeVisible = phase !== 'playing' || playbackStopped || showOverlay;
+  const splashCanBeVisible = phase !== 'playing' || playbackStopped;
   useEffect(() => {
     let cancelled = false;
     // 2026-05-04 — operator: "why doesnt it know that there is an
@@ -4680,7 +4233,7 @@ function PlayerPage() {
   const [pushedEmergencyMessage, setPushedEmergencyMessage] = useState<EmergencyMessageView | null>(null);
   // Ref mirror for the remote-input lockout below (same pattern as
   // activeEmergencyRef — the key/back handlers live in a closure with
-  // [playbackStopped, showOverlay] deps and must read live emergency state).
+  // [playbackStopped] deps and must read live emergency state).
   const pushedEmergencyMessageRef = useRef<EmergencyMessageView | null>(null);
   useEffect(() => {
     pushedEmergencyMessageRef.current = pushedEmergencyMessage;
@@ -4850,7 +4403,7 @@ function PlayerPage() {
   // even exit out of the warning — what if the bad guy has some universal
   // remote." During ANY displayed emergency (tenant-wide override OR pushed
   // SOS/broadcast), the local remote must be inert:
-  //  1. Force-close the Stop/Exit splash + info overlay the moment an
+  //  1. Force-close the Stop/Exit splash the moment an
   //     emergency activates — the alert takes the glass even if someone
   //     parked the kiosk on the splash first (the stopped splash renders
   //     ABOVE playback, so leaving it up would hide a lockdown).
@@ -4879,7 +4432,6 @@ function PlayerPage() {
     }
     setPlaybackStopped(false);
     setExitUnavailable(false);
-    setShowOverlay(false);
     armBackTrap();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [!!activeEmergency, !!pushedEmergencyMessage]);
@@ -5366,7 +4918,7 @@ function PlayerPage() {
       // Ask for current status as soon as the worker activates.
       getCacheStatus().then(setCacheStatus).catch(() => {});
     });
-    // Refresh status every 30s so the info overlay stays current.
+    // Refresh status every 30s so the paused card's cache rows stay current.
     const t = setInterval(() => {
       getCacheStatus().then(setCacheStatus).catch(() => {});
     }, 30_000);
@@ -5432,7 +4984,7 @@ function PlayerPage() {
   // minute unified telemetry POST instead of a request of its own.
   //
   // The service-worker read stays local and cheap (a postMessage round trip,
-  // no network) and keeps feeding the info overlay's live numbers; this ref
+  // no network) and keeps feeding the paused card's live numbers; this ref
   // is just the handoff to the telemetry tick, which cannot await it.
   //
   // sec-fix(wave1) #5 (device JWT required) and the preview-mode exclusion
@@ -6846,7 +6398,7 @@ function PlayerPage() {
             // kept heartbeating and proving paint; the glass showed
             // nothing); the same size applied at boot by the pin script in
             // player/layout.tsx renders perfectly — which is the path the
-            // on-device "Resize for LED" editor has always used
+            // on-device "Resize LED area" editor has always used
             // (location.replace + params). So on the APK shell, once a
             // canvas has been pinned (currentW is non-empty), a DIFFERENT
             // target persists what is the operator's (above) and asks the
@@ -8932,9 +8484,7 @@ function PlayerPage() {
           ws.send(JSON.stringify({ event: 'HELLO', data: { token: tok } }));
           heartbeatRef.current = setInterval(() => {
             if (ws.readyState === WebSocket.OPEN) {
-              ws.send(JSON.stringify({ event: 'HEARTBEAT', data: {
-                metrics: { playerInfo: infoEvidenceRef.current?.snapshot(showOverlayRef.current) ?? null },
-              } }));
+              ws.send(JSON.stringify({ event: 'HEARTBEAT', data: {} }));
               // Dead-connection detector: if we haven't heard ANYTHING (incl
               // pong) in 60s, force a reconnect. Some proxies silently drop.
               if (Date.now() - lastWsMessageAtRef.current > 60_000) {
@@ -10736,17 +10286,10 @@ function PlayerPage() {
       })()
     : null;
 
-  // ─── Exit / Stop handlers (hoisted above phase early-returns so the
+  // ─── Exit handlers are hoisted above the phase early-returns so the
   //     offline "Reconnecting…" screen can reuse the same Exit logic
   //     the Stopped splash uses — operator should be able to leave the
-  //     app from any error state, not just from mid-playback). ───
-  // Stop = "go back to the player's main splash". Playback pauses but
-  // the shell is still running, with a branded splash that lets the
-  // operator Resume, Exit, or Unpair.
-  const handleStopPlayback = () => {
-    setShowOverlay(false);
-    setPlaybackStopped(true);
-  };
+  //     app from any error state, not just from mid-playback. ───
 
   // v1.0.16 — wraps fetchContent with visible button feedback.
   // Operator (2026-04-27): "hitting sync does nothing it appears."
@@ -10892,7 +10435,6 @@ function PlayerPage() {
     setActiveEmergency(null);
     setPlaybackStopped(false);
     setExitUnavailable(false);
-    setShowOverlay(false);
     setPhase('registering');
   };
 
@@ -10984,7 +10526,7 @@ function PlayerPage() {
 
   // 2026-04-28 — Install Now handler shared by every splash mode.
   // Operator: "screen paired screen should be our main screen with
-  // all the info" — moved from the click-to-show info overlay into
+  // all the info" — moved from the (since deleted) click-to-show info overlay into
   // KioskSplash itself so the banner appears on pairing AND
   // post-pair splashes. Mirrors the legacy in-overlay button:
   //  1. Set otaProgress so the banner switches to "in progress"
@@ -11287,7 +10829,7 @@ function PlayerPage() {
       : null;
 
   // Canvas-size editor — rendered in every phase so the operator can
-  // open it from the playing-empty overlay AND it stays mounted across
+  // open it from the Back menu ("Resize LED area") AND it stays mounted across
   // phase changes (e.g. so the save+reload doesn't disappear mid-input
   // if a SYNC fires). Initial values pre-fill from current override.
   const canvasOverride = readCanvasOverride();
@@ -11731,43 +11273,17 @@ function PlayerPage() {
     // list + Resume/Sync/Exit/Unpair buttons.
 
     return (
-      // eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events
       <div
         className={`fixed top-0 right-0 bottom-0 left-0 ${isInteractive ? '' : 'cursor-none'}`}
-        // role / tabIndex / aria-label / onClick are conditional —
-        // a static signage template needs role=button so a11y
-        // tooling treats the whole canvas as the trigger for the
-        // info overlay, but a template containing a WEBPAGE zone
-        // is interactive: clicks pass through to the iframe and
-        // the canvas itself is just a passive container. Eslint
-        // can't statically prove the conditional pair is balanced,
-        // hence the disable above.
-        role={isInteractive ? undefined : 'button'}
-        tabIndex={isInteractive ? -1 : 0}
-        aria-label={isInteractive ? undefined : 'Toggle screen info overlay'}
-        onClick={isInteractive ? undefined : e => {
-          // 2026-10-10 — a click that started on a control, a typing field,
-          // the update prompt or the card itself is never a canvas toggle
-          // (either direction). CLOSE stays ungated; OPEN goes through the
-          // one policy gate (phase / BLANK / stopped / modifiers).
-          if (INFO_CONTAINED_TARGETS.includes(infoInputTarget(e.target))) return;
-          if (showOverlay) { if (!softBlankRef.current) closeInfoOverlay(); return; }
-          requestInfoOverlay('template-click', e);
-        }}
-        onKeyDown={e => {
-          // Only toggle on direct-target keypresses. Without this
-          // guard, Enter on any BUTTON inside the overlay (Stop,
-          // Exit, Sync) bubbled here and the overlay toggled off
-          // right after the button handler ran — the operator
-          // reported "nothing happened" because the overlay
-          // disappeared before they could see the Stopped splash.
-          if (e.repeat || e.target !== e.currentTarget) return;
-          if (!isInteractive && (e.key === 'Enter' || e.key === ' ')) {
-            e.preventDefault();
-            if (showOverlay) { if (!softBlankRef.current) closeInfoOverlay(); return; }
-            requestInfoOverlay('template-key', e);
-          }
-        }}
+        // 2026-10-11 (owner decision) — the canvas is a PASSIVE container.
+        // It used to be role=button / tabIndex=0 with click + Enter/Space
+        // handlers that opened the "Screen information" card, and that card
+        // kept appearing over unattended content (the Vision Core X80
+        // photograph). A tap or key press on playing content now does
+        // NOTHING; an interactive template (touch / WEBPAGE) still passes
+        // clicks through to its own widgets. The ONLY operator surface is
+        // the Back menu (`edu-show-stop-overlay` / Escape — the window-level
+        // listener, which needs no focus to work).
         data-edu-player-root="template"
         style={{
           // 2026-05-13 — Inline-style fallback. Operator reported
@@ -12098,75 +11614,6 @@ function PlayerPage() {
             longhand, not `top-0 right-0 bottom-0 left-0` — Chromium-83 Taurus, CLAUDE.md #10. */}
         {updatePromptNode}
 
-        {/* Info overlay */}
-        {showOverlay && (
-          <div className="absolute top-0 right-0 bottom-0 left-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[999]">
-            <div data-edu-player-info-panel role="dialog" aria-label="Screen information"
-              className="bg-slate-900 rounded-2xl p-8 max-w-md w-full mx-4 border border-slate-700 space-y-3">
-              <button type="button" data-edu-return-to-content onClick={closeInfoOverlay}
-                className="text-sm font-medium text-white px-3 py-2 rounded-lg bg-slate-700">
-                Return to content
-              </button>
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-bold text-white">{screenName || 'Screen'}</h3>
-                <div className="flex items-center gap-2">
-                  {isPreviewMode() && <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-amber-500/20 text-amber-400 rounded-full">Preview</span>}
-                  <Wifi className="w-4 h-4 text-emerald-400" />
-                  <span className="text-sm text-emerald-400 font-medium">Connected</span>
-                </div>
-              </div>
-              {tenantName && (
-                <div className="text-xs text-indigo-300 font-medium -mt-1">
-                  Paired with <span className="text-indigo-200">{tenantName}</span>
-                </div>
-              )}
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between"><span className="text-slate-400">Template</span><span className="text-white font-medium">{tpl.name}</span></div>
-                <div className="flex justify-between"><span className="text-slate-400">Zones</span><span className="text-white font-medium">{zones.length} live widgets</span></div>
-                <div className="flex justify-between"><span className="text-slate-400">Resolution</span><span className="text-white font-medium">{tpl.screenWidth}×{tpl.screenHeight}</span></div>
-                <CanvasInfoRow />
-                <div className="flex justify-between"><span className="text-slate-400">Last Sync</span><span className="text-white font-medium">{lastSync || 'Never'}</span></div>
-                <CacheStatusRow status={cacheStatus} />
-                <SoftwareInfoRow />
-                <DiagnosticsRow />
-              </div>
-              <div className="flex gap-2 pt-2 flex-wrap">
-                <button onClick={(e) => { e.stopPropagation(); handleSyncWithFeedback(); }} disabled={syncFeedback === 'syncing'} className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-700/60 text-white rounded-lg font-medium text-sm transition-colors">
-                  {syncFeedback === 'syncing' ? 'Syncing…' : syncFeedback === 'done' ? 'Synced ✓' : syncFeedback === 'err' ? 'Sync failed' : 'Sync Now'}
-                </button>
-                <button
-                  onClick={(e) => { e.stopPropagation(); setShowCanvasEditor(true); }}
-                  title="Set the LED's visible pixel size (overrides the controller's frame buffer)"
-                  className="py-2 px-3 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-xs font-bold transition-colors"
-                >
-                  Resize for LED
-                </button>
-                {/* Stop button — ALWAYS shown, unlike the native-only
-                    Exit below. Tries the exit bridge first, then a
-                    best-effort window.close(), and finally falls back
-                    to a stop-curtain so the operator always gets a
-                    visible "playback is halted" state (critical on
-                    Goodview-style OEM WebViews that don't inject a
-                    native exit bridge). */}
-                {/* Overlay actions: Sync + Stop only. Exit and
-                    Unpair were redundant here — both belong on the
-                    Stopped splash where the operator has already
-                    paused playback and is making a deliberate
-                    decision. Three "leave the app" controls jammed
-                    into one tiny overlay was confusing per the
-                    Integration Lead's review. */}
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleStopPlayback(); }}
-                  onKeyDown={(e) => e.stopPropagation()}
-                  title="Stop playback — opens the player splash with Resume / Exit / Unpair"
-                  className="py-2 px-4 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-sm font-bold transition-colors"
-                >
-                  Stop
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
         {/* 2026-04-29 — operator: "pushed the update from the app to
             the player and got no feedback on the player that anything
             was pushed". Audit found {otaOverlay} was missing from the
@@ -12178,9 +11625,9 @@ function PlayerPage() {
         {otaOverlay}
         {connectivityToast}
         {unsignedWsBanner}
-        {/* Live template content on the glass. Operator surface only while
-            the info overlay is open; otherwise the boot-window rule applies. */}
-        {renderRepairRequiredChip(showOverlay)}
+        {/* Live template content on the glass is never an operator surface;
+            the boot-window rule applies. */}
+        {renderRepairRequiredChip(false)}
         {canvasEditor}
         {/* 2026-08-25 — SAME AUDIT MISS, THIRD TIME. The blank/power split
             put the soft-blank overlay in the non-template branch only, so
@@ -12370,29 +11817,11 @@ function PlayerPage() {
         overflow: 'hidden',
         cursor: isPlaylistInteractive ? undefined : 'none',
       }}
-      role={isPlaylistInteractive ? undefined : 'button'}
-      tabIndex={isPlaylistInteractive ? -1 : 0}
-      aria-label={isPlaylistInteractive ? undefined : 'Toggle screen info overlay'}
-      onClick={isPlaylistInteractive ? undefined : e => {
-        // 2026-10-10 — same contract as the template root: contained
-        // surfaces never toggle, CLOSE is ungated, OPEN is the one policy
-        // gate. The connecting hero, the paused card and the "Content
-        // Unavailable" diagnostics all render INSIDE this root, so a click
-        // on them used to reach this toggle (the phase gap the review found).
-        if (INFO_CONTAINED_TARGETS.includes(infoInputTarget(e.target))) return;
-        if (showOverlay) { if (!softBlankRef.current) closeInfoOverlay(); return; }
-        requestInfoOverlay('media-click', e);
-      }}
-      onKeyDown={e => {
-        // Same target-check as the template path above — keeps
-        // button keypresses from bubbling into an overlay toggle.
-        if (e.repeat || e.target !== e.currentTarget) return;
-        if (!isPlaylistInteractive && (e.key === 'Enter' || e.key === ' ')) {
-          e.preventDefault();
-          if (showOverlay) { if (!softBlankRef.current) closeInfoOverlay(); return; }
-          requestInfoOverlay('media-key', e);
-        }
-      }}
+      // 2026-10-11 (owner decision) — passive container, same contract as
+      // the template root above: no role, no tabIndex, no click/key
+      // handlers. The "Screen information" card they opened is gone; the
+      // Back menu (window-level Escape / `edu-show-stop-overlay`) is the
+      // operator surface and needs no focused element to reach.
     >
       {currentItem && !playbackStopped && !allAssetsFailed && !normalFilesSetAside && !allItemsUnplayable ? (
         <div
@@ -13979,6 +13408,23 @@ function PlayerPage() {
                           : <><RefreshCw className="w-4 h-4 text-slate-400" /> Sync now</>}
                   </button>
                   <button
+                    // 2026-10-11 — moved here from the deleted "Screen
+                    // information" card (owner decision: the card is gone;
+                    // the Back menu is the one operator surface). Opens the
+                    // on-screen LED canvas editor (canvasW/canvasH override
+                    // for Taurus-class controllers whose frame buffer is
+                    // larger than the LED). Remote-operable: the action-row
+                    // outline is the visible focus; Back inside the editor
+                    // returns here (onShowStop), and so does Cancel.
+                    ref={resizeLedButtonRef}
+                    data-edu-resize-led
+                    onClick={(e) => { e.stopPropagation(); setShowCanvasEditor(true); }}
+                    className="px-5 py-2.5 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-bold rounded-2xl transition-all shadow-sm flex items-center gap-2 focus:scale-95 z-20 relative"
+                    title="Set the LED's visible pixel size (overrides the controller's frame buffer)"
+                  >
+                    <Monitor className="w-4 h-4 text-slate-400" /> Resize LED area
+                  </button>
+                  <button
                     onClick={(e) => { e.stopPropagation(); handleExitApp(); }}
                     disabled={exitUnavailable}
                     className="px-5 py-2.5 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-bold rounded-2xl transition-all shadow-sm flex items-center gap-2 focus:scale-95 z-20 relative"
@@ -14118,68 +13564,6 @@ function PlayerPage() {
         />
       )}
 
-      {/* Overlay */}
-      {showOverlay && (
-        <div className="absolute top-0 right-0 bottom-0 left-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50">
-          <div data-edu-player-info-panel role="dialog" aria-label="Screen information"
-            className="bg-slate-900 rounded-2xl p-8 max-w-md w-full mx-4 border border-slate-700 space-y-3">
-            <button type="button" data-edu-return-to-content onClick={closeInfoOverlay}
-              className="text-sm font-medium text-white px-3 py-2 rounded-lg bg-slate-700">
-              Return to content
-            </button>
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-bold text-white">{screenName || 'Screen'}</h3>
-              <div className="flex items-center gap-2">
-                {isPreviewMode() && <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-amber-500/20 text-amber-400 rounded-full">Preview</span>}
-                <Wifi className="w-4 h-4 text-emerald-400" />
-                <span className="text-sm text-emerald-400 font-medium">Connected</span>
-              </div>
-            </div>
-            {tenantName && (
-              <div className="text-xs text-indigo-300 font-medium -mt-1">
-                Paired with <span className="text-indigo-200">{tenantName}</span>
-              </div>
-            )}
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between"><span className="text-slate-400">Playlist</span><span className="text-white font-medium">{playlist?.name || 'None'}</span></div>
-              <div className="flex justify-between"><span className="text-slate-400">Slide</span><span className="text-white font-medium">{(currentIndex % (sorted.length || 1)) + 1} / {sorted.length}</span></div>
-              <CanvasInfoRow />
-              <div className="flex justify-between"><span className="text-slate-400">Last Sync</span><span className="text-white font-medium">{lastSync || 'Never'}</span></div>
-              <CacheStatusRow status={cacheStatus} />
-              <SoftwareInfoRow />
-              <DiagnosticsRow />
-            </div>
-            <div className="flex gap-2 pt-2 flex-wrap">
-              <button
-                onClick={(e) => { e.stopPropagation(); handleSyncWithFeedback(); }}
-                disabled={syncFeedback === 'syncing'}
-                className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-700/60 text-white rounded-lg font-medium text-sm transition-colors flex items-center justify-center gap-1.5"
-              >
-                {syncFeedback === 'syncing' ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Syncing…</> : 'Sync Now'}
-              </button>
-              <button
-                onClick={(e) => { e.stopPropagation(); setShowCanvasEditor(true); }}
-                title="Set the LED's visible pixel size (overrides the controller's frame buffer)"
-                className="py-2 px-3 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-xs font-bold transition-colors"
-              >
-                Resize for LED
-              </button>
-              {/* Overlay actions trimmed to Sync + Stop. Exit +
-                  Unpair are now on the Stopped splash where they
-                  belong (the operator has already paused before
-                  making a destructive choice). */}
-              <button
-                onClick={(e) => { e.stopPropagation(); handleStopPlayback(); }}
-                onKeyDown={(e) => e.stopPropagation()}
-                title="Stop playback — opens the player splash with Resume / Exit / Unpair"
-                className="py-2 px-4 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-sm font-bold transition-colors"
-              >
-                Stop
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       <style jsx>{`
         @keyframes shrink { from { width: 100%; } to { width: 0%; } }
@@ -14192,7 +13576,7 @@ function PlayerPage() {
       {unsignedWsBanner}
         {/* Main return: the diagnostics card (paused / connecting / no content /
             all-assets-failed) IS the operator surface; live playback is not. */}
-        {renderRepairRequiredChip(!(currentItem && !playbackStopped && !allAssetsFailed) || showOverlay)}
+        {renderRepairRequiredChip(!(currentItem && !playbackStopped && !allAssetsFailed))}
       {canvasEditor}
       {softBlankOverlay}
       {/* Back-key discoverability on the post-pair "Connecting" hero — the
@@ -14830,6 +14214,10 @@ function CanvasSizeEditor({
             onChange={(e) => setW(e.target.value)}
             placeholder="Width"
             aria-label="Canvas width in pixels"
+            // 2026-10-11 — the editor is reached with a remote: park focus
+            // on the first field so OK/arrows work without hunting for it
+            // under the overlay (the opener button is behind it).
+            autoFocus
             style={inputStyle}
           />
           <span style={{ color: '#64748b', fontSize: '20px' }}>×</span>

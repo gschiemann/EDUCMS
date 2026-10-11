@@ -15,7 +15,7 @@
  *     the OS width the operator set in ViPlex for exactly that purpose.
  *
  * THE RULE (one function, both phases):
- *   1. An explicit canvas (dashboard LED canvas / on-device "Resize for LED")
+ *   1. An explicit canvas (dashboard LED canvas / on-device "Resize LED area")
  *      always wins. Not this module's business — the caller passes it and it
  *      is returned as-is.
  *   2. Not a poster-class box → null: the OS resolution governs, as it always

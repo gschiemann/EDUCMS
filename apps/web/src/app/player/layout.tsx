@@ -174,7 +174,7 @@ if(typeof crypto!=='undefined'&&typeof crypto.randomUUID!=='function'&&typeof cr
           // The controller can't tell us LED dimensions — NovaStar's
           // tile mapping is hardware-level and not exposed to Android.
           // So the operator sets canvasW/canvasH once per screen via
-          // the player's info overlay ("Resize for LED" button), we
+          // the player's Back menu ("Resize LED area" button), we
           // persist to localStorage, and apply on every subsequent boot.
           var w=parseInt(p.get('w'),10);
           var h=parseInt(p.get('h'),10);
@@ -222,7 +222,7 @@ if(typeof crypto!=='undefined'&&typeof crypto.randomUUID!=='function'&&typeof cr
           var effH=canvasH>0?canvasH:(h>0?h:(typeof window!=='undefined'?window.innerHeight:0));
           // Operator escape hatch: ?narrow=1 forces narrow-stack mode
           // regardless of detected dimensions. Useful when the LED is
-          // narrow but you haven't run "Resize for LED" yet.
+          // narrow but you haven't run "Resize LED area" yet.
           var forceNarrow=(p.get('narrow')==='1');
           if(effW>0&&effH>0){
             var m=document.querySelector('meta[name="viewport"]');
@@ -275,7 +275,7 @@ if(typeof crypto!=='undefined'&&typeof crypto.randomUUID!=='function'&&typeof cr
             // Mark whether canvas params were operator-supplied vs
             // viewport-fallback. The diagnostic strip surfaces this so
             // the operator can tell at a glance whether they need to
-            // run "Resize for LED". cfg=Y means configured; cfg=N
+            // run "Resize LED area". cfg=Y means configured; cfg=N
             // means we're using the WebView viewport as a best guess.
             document.documentElement.setAttribute(
               'data-led-cfg',

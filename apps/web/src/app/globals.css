@@ -442,7 +442,7 @@
   .bg-violet-500\/20 { background-color: rgba(139, 92, 246, 0.2) !important; }
   .bg-fuchsia-500\/20 { background-color: rgba(217, 70, 239, 0.2) !important; }
 
-  /* Slate / muted backgrounds used for cards in info overlay */
+  /* Slate / muted backgrounds used for dark operator cards */
   .bg-slate-50 { background-color: #f8fafc !important; }
   .bg-slate-100 { background-color: #f1f5f9 !important; }
   .bg-slate-50\/50 { background-color: rgba(248, 250, 252, 0.5) !important; }

@@ -155,6 +155,6 @@ So when the next box arrives and behaves differently, you have a per-box profile
 ## Phase 3 ahead (after this list is green)
 
 - Settings UI in the APK for tty / baud / parity (so no URL query needed)
-- Kiosk info overlay shows "Serial: connected · N bytes/sec"
+- Kiosk paused (Back menu) diagnostics show "Serial: connected · N bytes/sec" (the on-glass "Screen information" card was removed 2026-10-11)
 - Exponential backoff on the auto-reconnect (currently flat 2s)
 - Telemetry: parser dropped-byte counter to PlayerLogger
