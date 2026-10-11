@@ -207,6 +207,11 @@ export const DISPLAY_BRIGHTNESS_MECHANISMS = [
 export const DISPLAY_BLANK_MECHANISMS = [
   'vendor-recipe',
   'device-admin',
+  // 2026-10-11 — the player's "VenueOS sleep" accessibility service
+  // (`AccessibilityLockProvider`): the power key's own goToSleep, for a box
+  // that cannot make the player a device admin. Inert until a person turns it
+  // on at the panel. Unproven for POWER_OFF (see below).
+  'accessibility-lock',
   'screen-timeout',
   'software-dim',
   'device-owner',
@@ -586,6 +591,10 @@ export function isBrightnessMechanismProven(
 export const DISPLAY_POWER_UNPROVEN_MECHANISMS = [
   'device-admin',
   'device-owner',
+  // 2026-10-11 — the same lock-and-sleep path the power key takes, so the
+  // same vendor-standby question applies until a supervised on-site round
+  // trip proves it per model.
+  'accessibility-lock',
 ] as const;
 
 /**
@@ -947,6 +956,14 @@ export function displayActionSupport(
       const mech = verdict!.screenBlank;
       if (POWER_PROVEN.includes(mech)) {
         return { supported: true, mechanism: mech };
+      }
+      if (mech === 'accessibility-lock') {
+        return {
+          supported: false,
+          code: DISPLAY_REFUSAL_CODES.BLANK_MECHANISM_UNPROVEN,
+          message:
+            'Turning this panel off from the dashboard is not enabled yet: the VenueOS sleep service on it puts the panel to sleep the way its power button does, and that has not been proven to come back on command on this model. It is used after an alert ends (to put back a panel someone had turned off). Blank still darkens the screen safely, and Wake always reverses it.',
+        };
       }
       if (POWER_UNPROVEN.includes(mech)) {
         return {

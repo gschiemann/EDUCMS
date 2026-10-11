@@ -72,4 +72,43 @@ class NativePowerOnPolicyTest {
         assertFalse(NativePowerOnPolicy.mayAcknowledge(command, cancelled, true, true))
         assertTrue(NativePowerOnPolicy.mayApply("2026-10-09T00:21:00.123Z", cancelled, 10_000_000L))
     }
+
+    // ─── 2026-10-11: the ACK the X80 never sent ──────────────────────────
+    // VisionCore woke on a web-pushed POWER_ON (attempt 1 here), the page kept
+    // reporting so the native heartbeat ran every five minutes, and by its
+    // next tick the server had stopped repeating the five-minute command — so
+    // nothing ever compared "interactive + in front" against it.
+
+    @Test fun anAppliedCommandAwaitsProofWithoutTheServerRepeatingIt() {
+        val saved = NativePowerOnPolicy.beforeApply(command, NativePowerOnPolicy.Memory(), 1_000_000L)
+        assertEquals(command, NativePowerOnPolicy.awaitingProof(saved, 1_000_000L + 6 * 60_000L))
+        // …and the same mayAcknowledge rule then decides.
+        assertTrue(NativePowerOnPolicy.mayAcknowledge(command, saved, true, true))
+    }
+
+    @Test fun awaitingProofNeverAuthorisesAnotherWake() {
+        val saved = NativePowerOnPolicy.Memory(command, NativePowerOnPolicy.MAX_ATTEMPTS, 1_000_000L)
+        assertEquals(command, NativePowerOnPolicy.awaitingProof(saved, 1_060_000L))
+        assertFalse(NativePowerOnPolicy.mayApply(command, saved, 1_060_000L))
+    }
+
+    @Test fun nothingAwaitsProofOnceAcknowledgedSuppressedNeverAppliedOrOld() {
+        val applied = NativePowerOnPolicy.Memory(command, 1, 1_000_000L)
+        assertNull(NativePowerOnPolicy.awaitingProof(NativePowerOnPolicy.Memory(), 1_000_000L))
+        assertNull(NativePowerOnPolicy.awaitingProof(applied.copy(acknowledged = command), 1_000_000L))
+        assertNull(NativePowerOnPolicy.awaitingProof(applied.copy(suppressed = command), 1_000_000L))
+        assertNull(NativePowerOnPolicy.awaitingProof(applied.copy(attempts = 0), 1_000_000L))
+        assertNull(NativePowerOnPolicy.awaitingProof(applied.copy(command = "garbage"), 1_000_000L))
+        assertNull(
+            NativePowerOnPolicy.awaitingProof(applied, 1_000_000L + NativePowerOnPolicy.ACK_WINDOW_MS + 1),
+        )
+    }
+
+    @Test fun aRebootIsNotProofOfAnEarlierWake() {
+        // elapsedRealtime went backwards: a panel that is on after a boot
+        // says nothing about this command.
+        val applied = NativePowerOnPolicy.Memory(command, 1, 5_000_000L)
+        assertNull(NativePowerOnPolicy.awaitingProof(applied, 100_000L))
+    }
 }
+

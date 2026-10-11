@@ -120,6 +120,10 @@ object UserStandby {
             when (intent.action) {
                 Intent.ACTION_SCREEN_OFF -> onScreenOff(context)
                 Intent.ACTION_SCREEN_ON -> onScreenOn(context)
+                // 2026-10-11 — a screensaver is not a sleep (SleepProof).
+                Intent.ACTION_DREAMING_STARTED -> runCatching {
+                    com.educms.player.display.SleepProof.onDreamingStarted(context)
+                }.onFailure { PlayerLogger.w(TAG, "screensaver handling failed: ${it.message}") }
                 else -> Unit
             }
         }
@@ -143,8 +147,9 @@ object UserStandby {
             val filter = IntentFilter().apply {
                 addAction(Intent.ACTION_SCREEN_OFF)
                 addAction(Intent.ACTION_SCREEN_ON)
+                addAction(Intent.ACTION_DREAMING_STARTED)
             }
-            // Both actions are PROTECTED system broadcasts — only the system
+            // All three actions are PROTECTED system broadcasts — only the system
             // can send them — so EXPORTED grants nothing to other apps; it is
             // the flag that delivers them on every API level without the
             // compat permission shim.
@@ -195,6 +200,16 @@ object UserStandby {
         }
         cachedActive = true
         return record
+    }
+
+    /**
+     * Is the standby in force one WE put back after an alert's all-clear?
+     * [com.educms.player.display.SleepProof] covers such a panel with black
+     * when the restore blank did not turn it off.
+     */
+    fun restoredStandbyActive(ctx: Context): Boolean {
+        val app = ctx.applicationContext
+        return readRecord(app)?.restoredByUs == true && isActive(app)
     }
 
     /** What a relaunch path may do right now. Never throws. */
@@ -356,6 +371,13 @@ object UserStandby {
         clearInterrupted(app)
         if (decision != RestoreDecision.RESTORE) {
             PlayerLogger.i(TAG, "all-clear: not putting the panel back to sleep — $decision")
+            runCatching {
+                com.educms.player.display.SleepProof.noteRestoreDecision(
+                    app,
+                    decision.name,
+                    com.educms.player.display.SleepProofPolicy.OUTCOME_KEPT_ON,
+                )
+            }
             return
         }
         // Ours, recorded BEFORE the provider runs, so the screen-off it causes
@@ -366,9 +388,27 @@ object UserStandby {
         }.getOrNull()
         if (result == null || !result.ok) {
             PlayerLogger.w(TAG, "all-clear: could not put the panel back to sleep ($result) — leaving it on")
+            runCatching {
+                com.educms.player.display.SleepProof.noteRestoreDecision(
+                    app,
+                    decision.name,
+                    com.educms.player.display.SleepProofPolicy.OUTCOME_FAILED,
+                )
+            }
             return
         }
         enterRestored(app, interrupted.record)
+        // 2026-10-11 — the blank reported Ok; whether the panel actually went
+        // off is checked after its settle window (SleepProof). If it did not
+        // (the X80: a screensaver, or something holding the screen on), the
+        // screen is covered with black — "back to black" is the most such a
+        // box can do without device admin or the VenueOS sleep service.
+        runCatching {
+            com.educms.player.display.SleepProof.markForRestore(
+                app,
+                (result as? com.educms.player.display.ActionResult.Ok)?.providerId,
+            )
+        }
         PlayerLogger.w(
             TAG,
             "all-clear: the panel a person had turned off is going back to sleep via " +

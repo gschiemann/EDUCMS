@@ -145,6 +145,12 @@ object DisplayCapabilityProbe {
     private val SETTINGS_HEURISTIC = listOf(
         "backlight", "bright", "panel", "lcd", "screen_off", "hdmi",
         "standby", "sleep", "schedule", "power_on", "power_off", "led_",
+        // 2026-10-11 — what can stop a screen-off from being a sleep: a
+        // screensaver (`screensaver_enabled`, `screensaver_components`) and
+        // Android's inactivity sleep (`attentive_timeout`), which turns a
+        // TV-class box off after hours without remote input whatever the
+        // app holds. Read-only evidence for the sleep/wake audit.
+        "screensaver", "attentive",
     )
 
     /**

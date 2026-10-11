@@ -16,7 +16,7 @@ import com.educms.player.standby.UserStandby
  *
  * ```
  * BRIGHTNESS   NovaStarTaurus → VendorRecipe → SysfsBacklight → SettingsBrightness → SoftwareDim
- * BLANK / WAKE NovaStarTaurus → VendorRecipe → DeviceAdminBlank → ScreenTimeout → SoftwareDim
+ * BLANK / WAKE NovaStarTaurus → VendorRecipe → DeviceAdminBlank → AccessibilityLock → ScreenTimeout → SoftwareDim
  * VOLUME       AudioManager
  * REBOOT       DeviceOwnerReboot          (device owner only — no fallback exists)
  * ```
@@ -74,6 +74,7 @@ object DisplayControlRegistry {
             NovaStarTaurusProvider,
             VendorRecipeProvider,
             DeviceAdminBlankProvider,
+            AccessibilityLockProvider,
             ScreenTimeoutBlankProvider,
             SoftwareDimProvider,
         ),
@@ -81,6 +82,7 @@ object DisplayControlRegistry {
             NovaStarTaurusProvider,
             VendorRecipeProvider,
             DeviceAdminBlankProvider,
+            AccessibilityLockProvider,
             ScreenTimeoutBlankProvider,
             SoftwareDimProvider,
         ),
@@ -142,6 +144,10 @@ object DisplayControlRegistry {
         // once is never mistaken for somebody's remote.
         when (action) {
             DisplayAction.Wake -> {
+                // 2026-10-11 — a blank still being checked is judged NOW,
+                // before this wake changes the answer (a dead-man revert or a
+                // Turn on can land inside the screen-timeout settle window).
+                runCatching { SleepProof.beforeWake(app) }
                 UserStandby.end(app, "a WAKE command")
                 // 1.1.23 — a WAKE COMMAND during an alert means the panel
                 // stays on after the all-clear (last command wins). The
@@ -256,6 +262,16 @@ object DisplayControlRegistry {
         }
 
         if (result.ok) recordState(app, action)
+
+        // 2026-10-11 — a BLANK that claims a real sleep is CHECKED afterwards
+        // (SleepProof): did Android actually go non-interactive, or did a
+        // screensaver start instead? Bookkeeping only — it schedules a read
+        // and never drives the panel during an alert.
+        val blankedVia = (result as? ActionResult.Ok)?.providerId
+        if (action == DisplayAction.Blank && blankedVia != null) {
+            runCatching { SleepProof.expect(app, blankedVia) }
+                .onFailure { PlayerLogger.w(TAG, "sleep check could not be scheduled: ${it.message}") }
+        }
 
         // ── ⚠️ LIFE-SAFETY RE-ASSERT — the other half of the gate ──
         // The gate at the top is check-then-act across a thread boundary:
