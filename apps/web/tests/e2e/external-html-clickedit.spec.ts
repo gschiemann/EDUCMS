@@ -53,6 +53,9 @@ import path from 'path';
  */
 
 const BOARDS = [
+  '/templates/signage/corporate/20-service-update.html',
+  '/templates/signage/clinic/02-services-booking-guide.html',
+  '/templates/school/commencement-guest-guide.html',
   // Approved homebuilder packs: each collection and orientation is a family.
   '/templates/signage/corporate/homebuilder/01-welcome-cinematic.html',
   '/templates/signage/corporate/homebuilder/portrait/01-welcome-cinematic.html',

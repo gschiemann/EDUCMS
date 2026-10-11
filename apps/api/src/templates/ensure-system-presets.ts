@@ -271,6 +271,12 @@ SYSTEM_TEMPLATE_PRESETS.forEach((p) => {
 // is the full set of verticals that preset should appear under.
 const PRESET_VERTICALS: Map<string, string[]> = new Map();
 
+// Ordinary service notices apply to every venue. Keep one preset per
+// orientation and use the established multi-vertical gallery matching.
+for (const id of ['preset-sig-corporate-20', 'preset-sig-corporate-20-portrait']) {
+  PRESET_VERTICALS.set(id, [...VERTICALS]);
+}
+
 // Full-service-appropriate QSR menu boards that should ALSO surface to
 // RESTAURANT tenants. Deliberately the sit-down subset — pure
 // counter-service / drive-thru boards (drive-thru, counter-order,
