@@ -90,8 +90,8 @@ UPDATE "tenants" SET "is_internal" = true
    AND "slug" IN (
      '__system__',             -- security-event sink, never a customer
      'visioncore-systems',     -- VisionCore (the owner's media-player box)
-     'dodgers',                -- the owner's home organisation (Brookfield NorCal demo)
-     'springfield-district',   -- the seeded demo district
-     'goodview',               -- Android-9 Goodview bench unit
-     'arc-service-department'  -- ARC, the owner's company
+     'dodgers'                 -- the owner's test organisation (Brookfield NorCal demo)
    );
+-- Owner decision 2026-10-11: ONLY these three are VenueOS-internal. Durgabari
+-- and every RIOT organisation are customers (approval required); demo orgs
+-- (Springfield, Walnut Creek, Crunch, AGC) were archived the same day.
