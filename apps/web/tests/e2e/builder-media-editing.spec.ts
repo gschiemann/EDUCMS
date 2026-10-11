@@ -202,16 +202,22 @@ test('Fit frame repairs a saved image with empty borders; toolbar and panel fit 
   await expect(zone.locator('img')).toHaveAttribute('src', media[1].fileUrl);
 });
 
-for (const [board, key] of [
+for (const [board, key, portrait = false] of [
   ['/templates/school/elem-news-storybook.html', 'school.logo'],
   ['/templates/signage/qsr/01-drive-thru-flagship.html', 'hero'],
   ['/templates/kiosk/school.html', 'staff.reyes.photo'],
   ['/templates/custom/brookfield/07-tour-takeaway.html', 'tour.image'],
+  ['/templates/signage/corporate/20-service-update.html', 'hero.photo', false],
+  ['/templates/signage/corporate/20-service-update.html', 'hero.photo', true],
+  ['/templates/signage/clinic/02-services-booking-guide.html', 'hero.photo', false],
+  ['/templates/signage/clinic/02-services-booking-guide.html', 'hero.photo', true],
+  ['/templates/school/commencement-guest-guide.html', 'ceremony.photo', false],
+  ['/templates/school/commencement-guest-guide.html', 'ceremony.photo', true],
 ] as const) {
-  test(`built-in media has the same replace, fit and rotation controls: ${board}`, async ({ page }, testInfo) => {
+  test(`built-in media has the same replace, fit and rotation controls: ${board} (${portrait ? 'portrait' : 'landscape'})`, async ({ page }, testInfo) => {
     test.setTimeout(90_000);
-    const boardConfig = { url: board, imageOverrides: { [key]: [media[0].fileUrl, media[2].fileUrl] } };
-    const state = await openEditor(page, false, [{ id: 'built-in', name: 'Standard template', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: boardConfig }]);
+    const boardConfig = { url: board + (portrait ? '?o=portrait' : ''), imageOverrides: { [key]: [media[0].fileUrl, media[2].fileUrl] } };
+    const state = await openEditor(page, portrait, [{ id: 'built-in', name: 'Standard template', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: boardConfig }]);
     const frame = page.locator('[data-zone-id="built-in"] iframe').contentFrame();
     if (board.includes('/kiosk/')) await frame.getByText('Directory', { exact: true }).click();
     const slot = frame.locator(`[data-imgslot="${key}"]:visible,[data-slot="${key}"]:visible,[data-img="${key}"]:visible,[data-posterslot="${key}"]:visible`).first();
