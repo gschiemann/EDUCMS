@@ -51,13 +51,12 @@ if (!EMAIL || !PASSWORD) {
 const SHOTS = resolve(__dirname, 'prod-smoke-shots');
 mkdirSync(SHOTS, { recursive: true });
 
-// 2026-10-11 — only VenueOS-INTERNAL organisations. Support access means the
-// smoke account (a SUPER_ADMIN) can no longer open a customer org without a
-// grant, and the old demo orgs (Springfield, Chardon/Crunch, AGC, Gym Demo,
-// Greg's Fitness) are archived.
+// 2026-10-11 — only VenueOS-INTERNAL organisations. The smoke account lives
+// in Springfield (the seeded test district, marked internal so support-access
+// grants never apply); the other old demo orgs were archived.
 const TENANTS = [
-  { slug: 'dodgers',            name: 'Brookfield Residential Northern California' },
-  { slug: 'visioncore-systems', name: 'VisionCore Systems' },
+  { slug: 'springfield-district',   name: 'Springfield School District' },
+  { slug: 'springfield-elementary', name: 'Springfield Elementary' },
 ];
 // 2026-05-11 — Tenant concurrency dropped 6 → 3 → 1 after Supabase
 // pgbouncer pool flakiness. Even at concurrency 3, 1-of-3 random
