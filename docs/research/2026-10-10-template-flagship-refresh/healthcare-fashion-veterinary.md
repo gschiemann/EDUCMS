@@ -4,7 +4,7 @@ Second wave source report, 2026-10-11. Branch: `codex/healthcare-flagship-refres
 Managed tree: `/Users/gschiemann/.codex/worktrees/healthcare-flagship-refresh/EDU CMS`.
 Dependency: healthcare source/assets from `4aa5a486`.
 
-The first second-wave commit contains six existing boards: fashion02/03/05/06, veterinary02 and clinic01. A seventh board, veterinary01, was added by the lead after a read-only audit demonstrated small type, overflow, empty photography and a wide stage in portrait; that board will follow in a separate verified commit. The newer retail/fashion boards and quarantined fashion07/08 have not been edited. Lead owns shared injectors, API exemplars/registration, generated posters, integration and deployment.
+The first second-wave commit contains six existing boards: fashion02/03/05/06, veterinary02 and clinic01. A seventh board, veterinary01, was added by the lead after a read-only audit demonstrated small type, overflow, empty photography and a wide stage in portrait; that board is now complete in the separate verified follow-up described below. The newer retail/fashion boards and quarantined fashion07/08 have not been edited. Lead owns shared injectors, API exemplars/registration, generated posters, integration and deployment.
 
 ## Six rebuilt designs
 
@@ -77,3 +77,45 @@ Eight local Pexels photos are included, with individual primary-source credits a
 - docs/research/2026-10-10-template-flagship-refresh/healthcare.md (corrected DOM counts; the earlier regex included script selector strings)
 
 Existing board paths/IDs/classifications are retained. API metadata, poster generation, V15 shim injection, CI, deployment and worktree cleanup remain with the lead.
+
+
+## Veterinary01 follow-up — Pet of the Day waiting room
+
+The lead added `apps/web/public/templates/signage/veterinary/01-waiting-room-flagship.html` after the read-only audit found 16 supporting fields below the 50px floor, 15 overflowing text boxes, an empty pet-photo default and the landscape canvas incorrectly retained in portrait. The rebuild preserves all 28 original real DOM text keys and the original `pod.photo` slot. It adds 13 canonical theme fields and a replaceable `brand.logo` slot: 41 real fields, two image/logo slots, zero lost keys. The sample pet and queue text remains manually editable; unsupported Live and nonexistent `/api/vet/...` feed decoration has been removed.
+
+The selected concept uses a large arched Golden Retriever portrait beside a warm editorial pet feature, a four-row care ledger, and a clear footer for authored care copy, hours and front-desk assistance. In portrait the pet feature sits above the full-width care ledger, with the care tip above a two-column hours/assistance footer. It is a real 2160×3840 stage rather than a scaled wide frame. Three actual studies were rendered and individually inspected: arched portrait, opposing-corner ticket frame and full rectangular portrait with a tinted care ledger. The arched direction was selected following visual inspection; this is not a claim of user approval.
+
+This board adds a fourth distinct font direction to the second wave: **Fraunces** display with **DM Sans** headlines/body and **IBM Plex Mono** clock. Both Chromium and WebKit confirmed loaded Fraunces/DM Sans font faces. Every visible word is covered by an editable field; the visible-text audit found zero uncovered nodes. The four font roles remain editable canonical fields. All eight color roles and both real photo/logo slots remain editable. The supplied portrait is a locally credited stock photo by Helena Lopes, not an assertion that this model is the sample pet Biscuit. It can be replaced using the original `pod.photo` key.
+
+The following table records actual CSS defaults and rendered Chromium body sizes at the full canvas resolution. The corresponding WebKit measurements are equivalent within font-metric differences. Supporting fields floor at 50px; all body fields floor at 60px, with the floor and ceiling both scaled by theme.scale. Longer copy and 1.15 scale remain within those floors without clipping or ellipses.
+
+| Body field | Landscape default / measured | Portrait default / measured |
+| --- | --- | --- |
+| Pet age/breed/visit description (`pod.meta`) | 84px / 77.17px | 84px / 73.40px |
+| Pet feature quotation (`pod.quote`) | 88px / 88px | 86px / 82.78px |
+| Care-row status (`board.*.status`) | 78px / 78px | 88px / 88px |
+| Authored care tip (`tip.text`) | 82px / 78.01px | 86px / 86px |
+| Front-desk assistance (`cta.value`) | 96px / 96px | 96px / 96px |
+
+The final targeted sweep passed **4/4**: Chromium and WebKit at 3840×2160 and 2160×3840, running in the real null-origin editor sandbox. It covers default copy, a longer pet name/description/quotation and clinician care note, 1.15 scale, frozen typography parity, zero text clipping/out-of-stage fields, ≥60px body/≥50px supporting copy, explicit message/query 72px font size, pinned local clock, editable-field click, primary/accent updates, image swap and rotation. Tight care-note and assistance boxes were enlarged rather than shrinking the body floor. Both full-resolution default orientations were opened and visually inspected after the final run. Two further Chromium/WebKit checks confirm loaded fonts and complete visible-copy editability. Two control checks also changed all four font roles, all eight color tokens, both image/logo slots, image rotation and contain fit, and exercised text/photo click selection. A separate fit-only message works in both engines. The extra combined image-plus-fit message exposed a shared V1 ordering defect in WebKit: the generic shim can repaint cover after the capture-phase fit listener. This is not a board CSS defect; the lead has added a coalesced setTimeout(0) reapplication to the shared V2 companion after complete message dispatch. Corpus-wide combined verification is pending with the lead; this source intentionally preserves the assigned old companion for central regeneration.
+
+The authored dental tip's existing claim about brushing three times weekly preventing most dental disease is unchanged. It is existing sample clinical copy, not a new clinical assertion added by this design work, and is flagged for the clinical content owner rather than represented as verified medical guidance.
+
+Follow-up evidence under `/Users/gschiemann/Desktop/template-flagship-audit/healthcare/second-wave/`:
+
+- `final/waiting-results.json`: four successful browser/orientation cases and actual font metrics.
+- `final/waiting-font-edit-results.json`: loaded font faces and zero uncovered visible text in both browsers.
+- `final/waiting-edit-controls.json`: actual font/color/slot/click changes, combined-message fit defect and successful fit-only result; lead owns the central V2 correction.
+- `final/waiting-field-audit.json`: 28/28 original DOM keys and the original photo slot preserved.
+- `final/veterinary-01-waiting-room-flagship-*-*.png`: full-resolution final views.
+- `studies/veterinary-01-waiting-room-flagship*.png`: three inspected studies.
+- `harness/`: persisted authoring and test scripts, including waiting.py.
+
+Exact follow-up source/report files:
+
+- apps/web/public/templates/signage/veterinary/01-waiting-room-flagship.html
+- apps/web/public/templates/signage/veterinary/assets/pexels-35511912.jpg
+- apps/web/public/templates/signage/veterinary/assets/README.md
+- docs/research/2026-10-10-template-flagship-refresh/healthcare-fashion-veterinary.md
+
+The source retains its existing shim/media companion. Shared V15 regeneration, API exemplars, generated posters, integration, live deployment proof and managed-worktree cleanup remain with the lead. The prior six-board commit is `02aabad42a3c0472289787eed7c8124d3a9303f1`, integrated by the lead as `45c13052`; this follow-up does not redo those boards.
