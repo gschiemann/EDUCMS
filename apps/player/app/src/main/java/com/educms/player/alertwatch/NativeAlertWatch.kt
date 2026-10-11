@@ -416,6 +416,12 @@ object NativeAlertWatch {
                 NativeAlertWatchEngine.Level.ERROR -> PlayerLogger.e(TAG, message)
             }
         }
+
+        /** 2026-10-11 — the markers above reach the server: a bounded, rate-limited device-log upload. */
+        override fun alertEpisodeSettled(face: Int, outcome: String) {
+            runCatching { com.educms.player.wake.WakeRecovery.onAlertEpisodeSettled(app, outcome) }
+                .onFailure { PlayerLogger.w(TAG, "could not schedule the diagnostics upload: ${it.message}") }
+        }
     }
 
     // ─── the CPU ─────────────────────────────────────────────────────

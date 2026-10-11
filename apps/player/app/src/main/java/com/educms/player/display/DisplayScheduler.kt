@@ -115,7 +115,7 @@ object DisplayScheduler {
             return
         }
         PlayerLogger.i(TAG, "schedule says on=$desiredOn — applying ${action.describe()}")
-        DisplayControlRegistry.apply(app, action, revertAfterMs = null)
+        DisplayControlRegistry.apply(app, action, revertAfterMs = null, wakeSource = "schedule-on")
     }
 
     /**
@@ -154,7 +154,7 @@ object DisplayScheduler {
                 "came after the remote turned this panel off — the schedule wins, waking it",
         )
         UserStandby.end(app, "the on/off schedule's ON trigger")
-        DisplayControlRegistry.apply(app, DisplayAction.Wake, revertAfterMs = null)
+        DisplayControlRegistry.apply(app, DisplayAction.Wake, revertAfterMs = null, wakeSource = "schedule-on")
         return true
     }
 

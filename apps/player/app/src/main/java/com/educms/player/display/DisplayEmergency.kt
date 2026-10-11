@@ -708,7 +708,7 @@ object DisplayEmergency {
             // The ALERT's own wake — not a person's command, so it must not
             // cancel the all-clear restore (1.1.23; see UserStandby.noteDeliberateWake).
             com.educms.player.standby.UserStandby.duringOwnWake {
-                DisplayControlRegistry.apply(app, DisplayAction.Wake, revertAfterMs = null)
+                DisplayControlRegistry.apply(app, DisplayAction.Wake, revertAfterMs = null, wakeSource = "emergency")
                 DisplayControlRegistry.apply(
                     app,
                     DisplayAction.SetBrightness(EMERGENCY_BRIGHTNESS),

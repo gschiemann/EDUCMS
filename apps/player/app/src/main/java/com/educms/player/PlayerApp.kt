@@ -84,6 +84,11 @@ class PlayerApp : Application() {
         // gone while a person has the panel off. Never throws.
         runCatching { com.educms.player.standby.UserStandby.install(this) }
             .onFailure { PlayerLogger.w("PlayerApp", "user standby install failed: ${it.message}") }
+        // 2026-10-11 — PLAYER_PROCESS_START (pid, uptime, boot count) and, when
+        // the last wake never reached onResume, PLAYER_WAKE_PROCESS_RESTART:
+        // the one fact the 2026-10-11 L55VEC drill could not show.
+        runCatching { com.educms.player.wake.WakeRecovery.onProcessStart(this) }
+            .onFailure { PlayerLogger.w("PlayerApp", "wake process-start bookkeeping failed: ${it.message}") }
         scheduleOtaWorker()
         startManagerHeartbeat()
         installCrashHandler()

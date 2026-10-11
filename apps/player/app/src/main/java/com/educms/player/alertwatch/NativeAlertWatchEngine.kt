@@ -64,6 +64,15 @@ class NativeAlertWatchEngine(private val ports: Ports) {
         fun cpuLock(hold: Boolean)
 
         fun log(level: Level, message: String)
+
+        /**
+         * An episode settled — `confirmed`, `unconfirmed`, `not-on-glass`, or
+         * the page having lifted the hold itself (2026-10-11). Observability
+         * only: the Android half sends the device log up so the
+         * `PLAYER_NATIVE_ALERT_*` markers reach the server. Default is a
+         * no-op; it decides nothing about the hold.
+         */
+        fun alertEpisodeSettled(face: Int, outcome: String) = Unit
     }
 
     enum class Level { INFO, WARN, ERROR }
@@ -136,6 +145,7 @@ class NativeAlertWatchEngine(private val ports: Ports) {
                 )
             }
             faces[face] = NativeAlertWatchPolicy.close(state)
+            ports.alertEpisodeSettled(face, "page-cleared")
         }
     }
 
@@ -319,6 +329,7 @@ class NativeAlertWatchEngine(private val ports: Ports) {
                         "PLAYER_NATIVE_ALERT_CONFIRMED face=$face afterMs=${(raisedAt - ep.openedAtMs).coerceAtLeast(0L)} " +
                             "reloads=${ep.reloads} — the page raised the hold itself: it has the alert",
                     )
+                    ports.alertEpisodeSettled(face, "confirmed")
                 }
                 FollowUp.PageCleared -> {
                     faces[face] = NativeAlertWatchPolicy.close(state)
@@ -327,6 +338,7 @@ class NativeAlertWatchEngine(private val ports: Ports) {
                         "PLAYER_NATIVE_ALERT_PAGE_CLEARED face=$face afterMs=${nowMs - ep.openedAtMs} — " +
                             "the page released the hold on a live manifest; the native watch has nothing left to confirm",
                     )
+                    ports.alertEpisodeSettled(face, "page-cleared")
                 }
                 FollowUp.Reload -> {
                     val attempt = ep.reloads + 1
@@ -353,6 +365,7 @@ class NativeAlertWatchEngine(private val ports: Ports) {
                             "sinceRaiseMs=${nowMs - ep.openedAtMs} — the page never raised the hold itself. " +
                             "The hold STAYS engaged and the panel stays lit; no further reloads for this alert",
                     )
+                    ports.alertEpisodeSettled(face, "unconfirmed")
                 }
             }
             if (held && NativeAlertWatchPolicy.alertLive(faceState(face))) alertLive = true
@@ -390,6 +403,7 @@ class NativeAlertWatchEngine(private val ports: Ports) {
                             "the foreground. Android refuses a launch from the background unless the app is the " +
                             "Home app, holds \"Display over other apps\" or is a device owner. The hold stays engaged",
                     )
+                    ports.alertEpisodeSettled(0, "not-on-glass")
                 }
             }
         }

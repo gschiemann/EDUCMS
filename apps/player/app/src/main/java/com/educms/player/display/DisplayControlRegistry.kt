@@ -3,6 +3,7 @@ package com.educms.player.display
 import android.content.Context
 import com.educms.player.logging.PlayerLogger
 import com.educms.player.standby.UserStandby
+import com.educms.player.wake.WakeRecovery
 
 /**
  * Resolves each [Capability] to exactly ONE provider, once, and caches
@@ -122,12 +123,18 @@ object DisplayControlRegistry {
      *        unattended darkening never takes a mechanism that has latched
      *        panels into a vendor standby (see `standby.RestoreBlankPolicy`).
      *        Null = the unchanged behaviour every other caller gets.
+     * @param wakeSource (2026-10-11) who is asking for a WAKE — named in the
+     *        wake timeline and the `PLAYER_WAKE_*` markers (`dead-man-revert`,
+     *        `command`, `schedule-on`, `emergency`, `power-on`, `standby-end`).
+     *        Every Wake, named or not, starts [WakeRecovery]'s bounded
+     *        foreground check once the provider and the backstop have run.
      */
     fun apply(
         ctx: Context,
         rawAction: DisplayAction,
         revertAfterMs: Long? = null,
         allowProvider: ((String) -> Boolean)? = null,
+        wakeSource: String? = null,
     ): ActionResult {
         val app = ctx.applicationContext
         val action = DisplayLimits.normalize(rawAction)
@@ -286,6 +293,18 @@ object DisplayControlRegistry {
             // WAKE resolved to software-dim.
             runCatching { ScreenWakeLock.pokeScreenIfAsleep(app) }
                 .onFailure { PlayerLogger.w(TAG, "software-dim wake poke failed: ${it.message}") }
+        }
+
+        // ── 2026-10-11 — A WAKE IS NOT OVER UNTIL THE PLAYER IS IN FRONT ──
+        // Turning the panel on is one act; whatever Android then shows is
+        // another. Every wake path (the dead-man revert, Turn on, the
+        // schedule's ON, the alert raise, the end of a standby) now hands
+        // off to one bounded check that brings the EXISTING Activity
+        // forward if the panel is on and it is not resumed — never a page
+        // reload, never into a dark panel, never over a person's standby.
+        if (action == DisplayAction.Wake) {
+            runCatching { WakeRecovery.afterWake(app, wakeSource ?: "registry") }
+                .onFailure { PlayerLogger.w(TAG, "wake foreground check could not start: ${it.message}") }
         }
 
         if (result.ok) recordState(app, action)

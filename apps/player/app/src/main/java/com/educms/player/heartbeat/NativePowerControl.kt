@@ -51,6 +51,11 @@ object NativePowerControl {
         runCatching { out.put("powerOnAttempts", prefs.getInt(ATTEMPTS, 0).coerceIn(0, 9)) }
         runCatching { SleepProof.reportJson(ctx)?.let { out.put("sleep", it) } }
             .onFailure { PlayerLogger.w("NativePowerControl", "sleep facts unavailable: ${it.message}") }
+        // 2026-10-11 — the last wake step by step (`wake`) and THIS process
+        // (`proc`): the server can now see when the panel came on, when the
+        // Activity resumed, and whether the process that reports is the one
+        // that was woken. See `wake.WakeReport`.
+        com.educms.player.wake.WakeRecovery.attachTo(out, ctx)
         return out.toString()
     }
 
@@ -81,7 +86,7 @@ object NativePowerControl {
         }
         if (!beginAttempt(ctx, prefs, command)) return
         val result = runCatching {
-            DisplayControlRegistry.apply(ctx.applicationContext, DisplayAction.Wake, revertAfterMs = null)
+            DisplayControlRegistry.apply(ctx.applicationContext, DisplayAction.Wake, revertAfterMs = null, wakeSource = "power-on")
         }.getOrNull()
         // Wake alone can leave the OEM launcher visible. Bring our existing
         // task forward only for this explicit, persisted operator command.

@@ -1294,9 +1294,16 @@ class MainActivity : ComponentActivity() {
             // Every caller of this hook is a deliberate wake (a WAKE command or
             // the emergency enforce) and has already ended any user standby, so
             // the API-27 half of the arming comes back with the flag.
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) setTurnScreenOn(true)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                setTurnScreenOn(true)
+                // 2026-10-11 — the live form of the manifest's showWhenLocked,
+                // re-asserted with the wake so a keyguard a device-admin lock
+                // engaged is occluded by this window, then asked to go.
+                setShowWhenLocked(true)
+            }
             if (::binding.isInitialized) binding.root.keepScreenOn = true
             PlayerLogger.i("DisplayWindow", "wake requested via window flags")
+            com.educms.player.wake.KeyguardDismiss.requestIfLocked(this, "wake")
         }.onFailure { PlayerLogger.w("DisplayWindow", "requestScreenWake failed: ${it.message}") }
     }
 
@@ -2630,7 +2637,13 @@ class MainActivity : ComponentActivity() {
                     } else {
                         // Security: log only truncated token hint, never the full JWT.
                         PlayerLogger.i("MainActivity", "uploadDiagnostics triggered via JS bridge (jwt=${PlayerLogger.truncateSecret(jwt)})")
-                        PlayerLogger.uploadRecent(apiRoot, jwt, fp)
+                        // 2026-10-11 — the path segment must be the SCREEN ID the
+                        // token is bound to, or the server verifies nothing and
+                        // never writes the markers into the forensic log (it
+                        // accepts the upload, console-only). The fingerprint is
+                        // the fallback for an unpaired screen, as before.
+                        val segment = com.educms.player.alertwatch.NativeAlertWatchPolicy.screenIdOf(jwt) ?: fp
+                        PlayerLogger.uploadRecent(apiRoot, jwt, segment)
                         "upload started — check server AuditLog"
                     }
                 },
@@ -3792,6 +3805,9 @@ class MainActivity : ComponentActivity() {
         // reload quietly buy the page another 30 s of silence.
         com.educms.player.boot.BootDiagnostics.onLoadStarted(lastLoadStartedAtMs)
         startBootWatchdog()
+        // 2026-10-11 — evidence for the wake timeline: did this wake cost a
+        // page load (a reload, or a cold start after a process death)?
+        runCatching { com.educms.player.wake.WakeRecovery.onPageLoadStarted(applicationContext) }
 
         val base = BuildConfig.PLAYER_BASE_URL.trimEnd('/')
 
@@ -4006,6 +4022,14 @@ class MainActivity : ComponentActivity() {
         // this catches a SCREEN_ON broadcast that never reached us.
         runCatching { com.educms.player.standby.UserStandby.onActivityResumed(applicationContext) }
             .onFailure { PlayerLogger.w("UserStandby", "onActivityResumed failed: ${it.message}") }
+        // 2026-10-11 — THE PROOF A WAKE LANDED. Stamps the wake timeline,
+        // stands any in-flight foreground check down and pulls the native
+        // heartbeat forward so the server sees `interactive`/`foreground`
+        // now, not on the next five-minute tick. Then ask the keyguard a
+        // device-admin lock left behind to go (insecure only; API 26+).
+        runCatching { com.educms.player.wake.WakeRecovery.onActivityResumed(applicationContext) }
+            .onFailure { PlayerLogger.w("WakeRecovery", "onActivityResumed failed: ${it.message}") }
+        runCatching { com.educms.player.wake.KeyguardDismiss.requestIfLocked(this, "resume") }
         webView.onResume()
         if (::urlOverlayView.isInitialized) {
             urlOverlayView.onResume()

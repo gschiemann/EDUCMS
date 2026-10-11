@@ -382,7 +382,7 @@ object DisplayControlApi {
             action == DisplayAction.Wake
         val before = if (wantsEvidence) safeSample(ctx) else null
 
-        val result = DisplayControlRegistry.apply(ctx, action, revertAfterMs)
+        val result = DisplayControlRegistry.apply(ctx, action, revertAfterMs, wakeSource = "command")
         val after = if (wantsEvidence) safeSample(ctx) else null
         val backstop = windowBrightnessBackstop(ctx, action, result, before, after)
 

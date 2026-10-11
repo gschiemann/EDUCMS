@@ -227,7 +227,7 @@ object DisplayGuard {
         due.sortedBy { if (it.ownsBlankState) 1 else 0 }.forEach { record ->
             record.revertActions().forEach { action ->
                 PlayerLogger.i(TAG, "DEAD-MAN REVERT firing → ${action.describe()} (${record.capability})")
-                val result = DisplayControlRegistry.apply(app, action, revertAfterMs = null)
+                val result = DisplayControlRegistry.apply(app, action, revertAfterMs = null, wakeSource = "dead-man-revert")
                 if (!result.ok) {
                     PlayerLogger.e(TAG, "dead-man revert did NOT take: ${action.describe()} → $result")
                 }

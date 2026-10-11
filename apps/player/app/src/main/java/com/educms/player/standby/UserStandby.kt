@@ -493,6 +493,10 @@ object UserStandby {
                 PlayerLogger.i(TAG, "screen off while the player was not on the glass — not a user standby")
             ScreenOffCause.EMERGENCY -> reassertEmergency(app, now)
         }
+        // 2026-10-11 — a dark panel ends any wake check, and the server hears
+        // about the power state now rather than on the next periodic tick.
+        runCatching { com.educms.player.wake.WakeRecovery.onScreenOff(app) }
+            .onFailure { PlayerLogger.w(TAG, "wake bookkeeping on screen-off failed: ${it.message}") }
     }
 
     internal fun onScreenOn(ctx: Context) {
@@ -500,6 +504,10 @@ object UserStandby {
         // Any screen-on ends it: the person pressed power, or one of the
         // deliberate wakes (alert, schedule ON, WAKE command) already did.
         end(app, "the panel was turned on")
+        // 2026-10-11 — AFTER the standby has ended: the panel is on, so the
+        // player must be in front of it within seconds, whoever turned it on.
+        runCatching { com.educms.player.wake.WakeRecovery.onScreenOn(app) }
+            .onFailure { PlayerLogger.w(TAG, "wake bookkeeping on screen-on failed: ${it.message}") }
     }
 
     // ─── internals ───────────────────────────────────────────────────
@@ -562,7 +570,7 @@ object UserStandby {
         // issue, so it never counts as a person's command.
         if (wasRestoredByUs) {
             runCatching {
-                duringOwnWake { DisplayControlRegistry.apply(app, DisplayAction.Wake, revertAfterMs = null) }
+                duringOwnWake { DisplayControlRegistry.apply(app, DisplayAction.Wake, revertAfterMs = null, wakeSource = "standby-end") }
             }.onFailure { PlayerLogger.w(TAG, "could not undo the restore blank: ${it.message}") }
         }
     }

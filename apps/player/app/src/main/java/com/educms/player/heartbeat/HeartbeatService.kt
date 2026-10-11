@@ -160,15 +160,6 @@ class HeartbeatService : Service() {
         super.onTaskRemoved(rootIntent)
     }
 
-    override fun onDestroy() {
-        Log.w(TAG, "HeartbeatService.onDestroy — scheduling restart")
-        PlayerLogger.w(TAG, "HeartbeatService destroyed — rescheduling in 30s")
-        rescheduleSelf(30_000)
-        loopJob?.cancel()
-        scope.cancel()
-        super.onDestroy()
-    }
-
     /**
      * C-P2-11 (2026-08-30 deep audit) — a REAL bug that was sitting under
      * the lint baseline, not a false positive.
@@ -226,6 +217,7 @@ class HeartbeatService : Service() {
     private suspend fun runLoop() {
         val ctx = applicationContext
         val prefs = ctx.getSharedPreferences("edu_player", Context.MODE_PRIVATE)
+        serviceAlive = true
         while (scope.isActive) {
             // A watch loop that died, or that was never started, is put back
             // within a minute. Idempotent; one binder call when the panel is on.
@@ -233,6 +225,17 @@ class HeartbeatService : Service() {
             val fp = prefs.getString("device_fingerprint", null)
             val apiRoot = prefs.getString("api_root", null)
             if (!fp.isNullOrBlank() && !apiRoot.isNullOrBlank() && shouldTickNow(prefs)) {
+                // 2026-10-11 — a prompt request is consumed by the tick it
+                // caused; one that lands mid-request is answered next round.
+                val prompted = promptReason
+                if (prompted != null) {
+                    promptReason = null
+                    synchronized(promptLock) {
+                        val now = SystemClock.elapsedRealtime()
+                        promptTicks = PromptTickPolicy.prune(now, promptTicks) + now
+                    }
+                    PlayerLogger.i(TAG, "native heartbeat pulled forward — $prompted")
+                }
                 tickWithWakeLock(apiRoot, fp, prefs)
             }
             // Backoff if we're failing — 30s baseline doubles to a 90s cap.
@@ -252,8 +255,21 @@ class HeartbeatService : Service() {
             val delayMs = if (consecutiveFailures > 3)
                 minOf(BASE_INTERVAL_MS * (1L shl minOf(consecutiveFailures - 3, 4)), MAX_BACKOFF_MS)
             else BASE_INTERVAL_MS
-            delay(delayMs)
+            // 2026-10-11 — the sleep is interruptible: a power event
+            // (`requestPromptTick`) wakes the loop early, bounded by
+            // PromptTickPolicy. Nothing else changed about the cadence.
+            withTimeoutOrNull(delayMs) { poke.receive() }
         }
+    }
+
+    override fun onDestroy() {
+        serviceAlive = false
+        Log.w(TAG, "HeartbeatService.onDestroy — scheduling restart")
+        PlayerLogger.w(TAG, "HeartbeatService destroyed — rescheduling in 30s")
+        rescheduleSelf(30_000)
+        loopJob?.cancel()
+        scope.cancel()
+        super.onDestroy()
     }
 
     /**
@@ -276,6 +292,7 @@ class HeartbeatService : Service() {
         lastTickAtMs = prefs.getLong(KEY_LAST_TICK_AT, 0L),
         webTelemetryAtMs = prefs.getLong(KEY_WEB_TELEMETRY_AT, 0L),
         nativeUrgent = nativeUrgent(),
+        promptRequested = promptReason != null,
     )
 
     /**
@@ -297,7 +314,10 @@ class HeartbeatService : Service() {
         val interactive = runCatching {
             (ctx.getSystemService(Context.POWER_SERVICE) as? PowerManager)?.isInteractive
         }.getOrNull()
-        return interactive != true || NativePowerControl.awaitingProof(ctx)
+        // 2026-10-11 — and while a wake is still being checked for the
+        // player in front (at most a few seconds).
+        return interactive != true || NativePowerControl.awaitingProof(ctx) ||
+            com.educms.player.wake.WakeRecovery.checkInFlight()
     }
 
     private suspend fun tickWithWakeLock(apiRoot: String, fp: String, prefs: SharedPreferences) {
@@ -524,16 +544,61 @@ class HeartbeatService : Service() {
             lastTickAtMs: Long,
             webTelemetryAtMs: Long,
             nativeUrgent: Boolean = false,
+            promptRequested: Boolean = false,
         ): Boolean {
             if (nowMs < lastTickAtMs) return true                       // rule 2
             if (nowMs - lastTickAtMs >= WEB_REPORTING_FLOOR_MS) return true // rule 1
             // Rule 4 (2026-10-11): the panel is dark, or a power-on awaits its
             // proof — the page's freshness says nothing about either.
             if (nativeUrgent) return true
+            // Rule 5 (2026-10-11): a power event (screen on/off, a wake, the
+            // Activity resuming) asked for one prompt report, already bounded
+            // by PromptTickPolicy. The server must not learn `interactive`
+            // minutes after the panel changed.
+            if (promptRequested) return true
             val webFresh = webTelemetryAtMs > 0L &&
                 nowMs >= webTelemetryAtMs &&
                 nowMs - webTelemetryAtMs < WEB_TELEMETRY_FRESH_MS
             return !webFresh                                            // rule 3
+        }
+
+        // ─── 2026-10-11 — the prompt tick ────────────────────────────
+        //
+        // THE LAG THIS CLOSES: the report that says "the panel came on at T"
+        // used to ride the next periodic tick — up to five minutes after T
+        // once the page was reporting again. `requestPromptTick` wakes the
+        // loop's sleep early; the decision stays in `decideTick` (rule 5)
+        // and the rate in `PromptTickPolicy`.
+        private val poke = kotlinx.coroutines.channels.Channel<Unit>(kotlinx.coroutines.channels.Channel.CONFLATED)
+        private val promptLock = Any()
+        @Volatile private var promptReason: String? = null
+        @Volatile private var promptTicks: List<Long> = emptyList()
+        @Volatile private var serviceAlive = false
+
+        /**
+         * Ask for ONE native heartbeat now, for [reason] (`screen-on`,
+         * `screen-off`, `wake:<source>`, `activity-resumed`). Bounded by
+         * [PromptTickPolicy]; a refused request is folded into the periodic
+         * tick. Safe from any thread, never throws.
+         */
+        fun requestPromptTick(ctx: Context, reason: String) {
+            try {
+                val now = SystemClock.elapsedRealtime()
+                val accepted = synchronized(promptLock) {
+                    promptTicks = PromptTickPolicy.prune(now, promptTicks)
+                    PromptTickPolicy.accept(now, promptTicks)
+                }
+                if (!accepted) return
+                if (promptReason == null) promptReason = reason
+                poke.trySend(Unit)
+                // A loop that is not running cannot be poked; the service's
+                // own start path ticks at once. Only when it is really gone —
+                // an FGS start from the background is refused on Android 12+
+                // and caught in ensureRunning either way.
+                if (!serviceAlive) ensureRunning(ctx.applicationContext)
+            } catch (e: Exception) {
+                Log.w(TAG, "requestPromptTick failed", e)
+            }
         }
 
         fun noteWebTelemetry(ctx: Context, telemetryOk: Boolean) {
