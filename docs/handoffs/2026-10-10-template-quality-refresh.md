@@ -58,7 +58,7 @@ All **1,802 original DOM text keys and 47 original image-slot keys** in the 57 r
 
 - Image, Video and Text remain at the top of the quick actions and curated widget lists from the earlier shipped editor release. Blank and built-in templates use the same visible Replace / Fit / Rotate controls, natural source proportions, gestures, locks, Undo/Redo and save behavior.
 - All 285 regular and 58 holiday HTML sources have the additive V2 media companion. Replacing an image inside a child img now changes that image. Fit/rotation reapplies after legacy painters finish, including WebKit's message-listener ordering. Saved fits override legacy important logo rules; clearing them restores authored fit declarations.
-- Authored media sources and crops are captured before legacy override painters run. Undo restores source, crop, fit and rotation in both engines, including after saved URL reload; slots without media style edits keep their own runtime behavior.
+- Authored media sources and crops are captured before legacy override painters run. Undo restores source, crop, fit and rotation in both engines, including after saved URL reload; video poster images retain their independent authored source; slots without media style edits keep their own runtime behavior.
 - The companion loads all 89 authored/toolbar Google-font families inside the sandbox when selected through field styles, theme edits or brand controls. Fonts loaded in the editor parent are not mistaken for iframe resources.
 - Holiday image slots are discovered from the selected grade/design/orientation. They now support the same media selection and replacement controls, removal/restoration, Undo/Redo, save and reload. Holiday field caches include grade, variant, design and orientation so alternates use their actual fields.
 - Repeating-list restoration now retains original row blueprints after shrinking to one row, restores distinct defaults and saved text when growing again, preserves the reduced-list layout on repeated updates, and attaches click-to-edit handlers to restored rows. Both the new care-services guide and an existing events board are covered in both browsers/orientations. Each board retains its authored row-capacity limit.
@@ -109,7 +109,7 @@ Implementation is integrated locally on `codex/template-flagship-refresh`, inclu
 
 ## Additional scope — catalog gaps (2026-10-11)
 
-Compared offered native and HTML alternatives before adding these three workflows. Each has an independent portrait composition, large editable copy, four editable font roles, palette controls, logo and photo slots, and both gallery orientations. All nine concept studies, source authoring and browser evidence are preserved on Desktop.
+Compared offered native and HTML alternatives before adding these three workflows. Each has an independent portrait composition, large editable copy, editable font families, palette controls, logo and photo slots, and both gallery orientations. All nine concept studies, source authoring and browser evidence are preserved on Desktop.
 
 | New workflow | Preset IDs | Source | Use case |
 |---|---|---|---|
