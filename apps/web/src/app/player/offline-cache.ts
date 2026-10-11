@@ -502,6 +502,69 @@ export async function precacheAppShell(): Promise<void> {
   sw.postMessage({ type: 'PRECACHE_SHELL', extra: loadedShellScripts() });
 }
 
+export type ShellPrepareResult = {
+  ok: boolean;
+  count?: number;
+  added?: number;
+  failures?: number;
+  /** No worker to prepare with, or an older worker that never acknowledges. */
+  unavailable?: boolean;
+};
+
+/** A PRECACHE_SHELL that never acks within this is an older worker (or a stalled one). */
+export const SHELL_PREPARE_TIMEOUT_MS = 4 * 60_000;
+
+/**
+ * Off-hours update (2026-10-10): pin the NEW build's shell — the route
+ * document and every chunk it references — while content plays, and learn
+ * whether that whole shell is on disk. Same PRECACHE_SHELL the idle refresh
+ * sends, but with a port, so the worker's answer is a fact the page can act
+ * on. The media tiers are untouched: the shell cache is its own tier and its
+ * prune keeps every chunk this document is still running on.
+ */
+export async function prepareShellForUpdate(): Promise<ShellPrepareResult> {
+  const sw = await activeWorker();
+  if (!sw) return { ok: false, unavailable: true };
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (r: ShellPrepareResult) => { if (!settled) { settled = true; resolve(r); } };
+    try {
+      const ch = new MessageChannel();
+      ch.port1.onmessage = (e: MessageEvent) => {
+        const d = e.data || {};
+        finish({ ok: d.ok === true, count: d.count, added: d.added, failures: d.failures });
+      };
+      sw.postMessage({ type: 'PRECACHE_SHELL', extra: loadedShellScripts() }, [ch.port2]);
+      setTimeout(() => finish({ ok: false, unavailable: true }), SHELL_PREPARE_TIMEOUT_MS);
+    } catch {
+      finish({ ok: false, unavailable: true });
+    }
+  });
+}
+
+/**
+ * Arm the worker to serve the NEXT navigation from the pinned shell document
+ * (one-shot, bounded TTL). Called right before the off-hours reload. False
+ * when there is no worker or it did not answer — the reload then goes
+ * network-first exactly as it always has.
+ */
+export async function armShellSwap(ttlMs = 120_000): Promise<boolean> {
+  const sw = await activeWorker();
+  if (!sw) return false;
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (v: boolean) => { if (!settled) { settled = true; resolve(v); } };
+    try {
+      const ch = new MessageChannel();
+      ch.port1.onmessage = (e: MessageEvent) => finish(e.data?.ok === true);
+      sw.postMessage({ type: 'SHELL_SWAP_ARM', ttlMs }, [ch.port2]);
+      setTimeout(() => finish(false), 3_000);
+    } catch {
+      finish(false);
+    }
+  });
+}
+
 /**
  * The `/_next/static` scripts THIS document is currently running on (P0-3).
  *
