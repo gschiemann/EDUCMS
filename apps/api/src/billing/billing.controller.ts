@@ -128,6 +128,7 @@ export class BillingController {
     try {
       // Pre-fill Stripe's email with the person adding the card (first checkout only).
       const me = req.user?.id
+        // ten-ok: identity SELF-lookup — the signed-in user's own email, nothing else.
         ? await this.prisma.client.user.findUnique({ where: { id: req.user.id }, select: { email: true } })
         : null;
       const email = me?.email && !me.email.endsWith('.invalid') ? me.email : null;
