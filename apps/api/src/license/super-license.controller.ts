@@ -7,6 +7,7 @@ import { Body, Controller, Get, Param, Post, Put, Query, Req, UseGuards, HttpExc
 const ALLOWED_TIERS = new Set(['PILOT', 'STANDARD', 'ENTERPRISE', 'EDU_DISTRICT', 'RESTAURANT_CHAIN']);
 const ALLOWED_BILLING_MODES = new Set(['CARD', 'INVOICE', 'PURCHASE_ORDER', 'COMP']);
 const ALLOWED_STATUSES = new Set(['ACTIVE', 'PAST_DUE', 'SUSPENDED', 'CANCELLED']);
+import { screenOnlineCutoff } from '../telemetry/online-grace';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
@@ -76,7 +77,8 @@ export class SuperLicenseController {
       orderBy: [{ vertical: 'asc' }, { name: 'asc' }],
     });
 
-    const onlineCutoff = new Date(Date.now() - 2 * 60_000);
+    // DEV-007: the shared online window, not a private 2 minutes.
+    const onlineCutoff = screenOnlineCutoff();
     const since24h = new Date(Date.now() - 24 * 60 * 60_000);
 
     // Parallel: per-tenant ONLINE counts + per-tenant INFRA_EVENT count.

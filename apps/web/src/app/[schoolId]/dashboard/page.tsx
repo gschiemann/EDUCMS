@@ -20,6 +20,7 @@
  *   density high, visual noise low. Big numbers, small labels.
  */
 
+import { countOnlineScreens } from '@/lib/screen-online';
 import {
   MonitorCheck, CloudOff, ListVideo, Upload, Plus, ArrowRight,
   Image as ImageIcon, MonitorPlay, Siren, CheckCircle2, Clock,
@@ -572,7 +573,7 @@ export default function DashboardPage() {
                   <>
                     <span className="text-slate-300">·</span>
                     <span>
-                      {t('dashboard.screensOnlineOf', { online: screens.filter((s: any) => s.status === 'ONLINE').length, total: screens.length })}
+                      {t('dashboard.screensOnlineOf', { online: countOnlineScreens(screens), total: screens.length })}
                     </span>
                   </>
                 )}

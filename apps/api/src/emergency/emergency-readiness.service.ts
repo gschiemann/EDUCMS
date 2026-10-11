@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { SCREEN_ONLINE_GRACE_MS } from '../telemetry/online-grace';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
@@ -148,9 +149,9 @@ export interface DistrictReadinessReport {
   computedAt: string;
 }
 
-// Mirrors the fleet's own liveness convention (screens.controller.ts
-// STALE_MS): a screen pinging within 35s is ONLINE.
-const ONLINE_WITHIN_MS = 35 * 1000;
+// DEV-007: the fleet's ONE liveness rule (telemetry/online-grace.ts) — the
+// Screens page, Dashboard and this report used to disagree (35 s here).
+const ONLINE_WITHIN_MS = SCREEN_ONLINE_GRACE_MS;
 // Mirrors the wedge-detector convention: a content-fetch loop that hasn't
 // reported its cache within 5 minutes is considered stuck.
 const CACHE_FRESH_WITHIN_MS = 5 * 60 * 1000;

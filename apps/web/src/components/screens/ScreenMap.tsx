@@ -1,5 +1,6 @@
 "use client";
 
+import { isScreenOnline } from '@/lib/screen-online';
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { MapContainer, TileLayer, useMap } from 'react-leaflet';
 import L from 'leaflet';
@@ -108,9 +109,10 @@ const LOCATION_CLUSTER_THRESHOLD = 30;
  *  (emergency-media cache) plus a stale-sync warning, without cluttering the
  *  at-a-glance legend. Returns null for non-online screens. */
 function onlineDetail(s: ScreenForMap): { text: string; color: string } | null {
-  if (s.status !== 'ONLINE') return null;
-  if (s.lastPingAt && Date.now() - new Date(s.lastPingAt).getTime() > 5 * 60_000)
-    return { text: 'Stale sync · last seen >5m ago', color: '#f97316' };
+  // DEV-007: ONLINE is the server's one rule (last ping < 100 s), so the old
+  // private "> 5 min since ping" branch here could never fire on an ONLINE
+  // screen — it was a second definition of online that said nothing true.
+  if (!isScreenOnline(s)) return null;
   const cached = (s.lastCacheReport?.emergency?.count || 0) > 0;
   return cached
     ? { text: 'Emergency media cached', color: '#10b981' }

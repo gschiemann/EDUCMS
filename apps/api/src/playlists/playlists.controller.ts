@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards, UseFilters, Request, HttpException, HttpStatus, Logger, Optional } from '@nestjs/common';
+import { isScreenOnline } from '../telemetry/online-grace';
 import { PrismaService } from '../prisma/prisma.service';
 import { MediaPublicationService, type RuleTarget } from '../schedules/media-publication.service';
 import { recordPushDeployment } from '../screens/deployment-record';
@@ -504,10 +505,10 @@ export class PlaylistsController {
 
     const nowMs = Date.now();
     const valueMs = latestRow.value.getTime();
-    const ONLINE_MS = 35 * 1000;
 
     const targets = screens.map((s: any) => {
-      const online = !!s.lastPingAt && nowMs - new Date(s.lastPingAt).getTime() < ONLINE_MS;
+      // DEV-007: the shared online rule (telemetry/online-grace.ts).
+      const online = isScreenOnline(s, nowMs);
       const ackedAt = ackAtByKey.get(ackKey(s.id, valueMs)) ?? null;
       const state = ackedAt
         ? 'acknowledged'

@@ -58,3 +58,28 @@ export const SCREEN_ONLINE_GRACE_MS = 100 * 1000;
  * assertion in `telemetry.spec.ts`.
  */
 export const TELEMETRY_CADENCE_FOR_GRACE_MS = TELEMETRY_INTERVAL_MS;
+
+/**
+ * THE "screen online" rule (Muse beta DEV-007, 2026-10-07): the Dashboard,
+ * Settings, Emergency readiness, the Screens page, floor plans, the owner
+ * console and the playlist delivery report each carried their own window
+ * (35 s, 2 min, 100 s) and disagreed — "15 of 20" on one page, "19 of 20" on
+ * the next. Every server surface now asks these two functions.
+ *
+ * A screen is ONLINE when it is not revoked, belongs to a tenant, and its
+ * last telemetry ping is younger than SCREEN_ONLINE_GRACE_MS.
+ */
+export function screenOnlineCutoff(nowMs: number = Date.now()): Date {
+  return new Date(nowMs - SCREEN_ONLINE_GRACE_MS);
+}
+
+export function isScreenOnline(
+  screen: { lastPingAt?: Date | string | null; status?: string | null; tenantId?: string | null },
+  nowMs: number = Date.now(),
+): boolean {
+  if (screen.status === 'REVOKED') return false;
+  if (screen.tenantId === null) return false;
+  if (!screen.lastPingAt) return false;
+  const last = new Date(screen.lastPingAt).getTime();
+  return Number.isFinite(last) && nowMs - last < SCREEN_ONLINE_GRACE_MS;
+}

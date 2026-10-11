@@ -28,6 +28,7 @@
  * to it via a conditional render so we keep one route.
  */
 
+import { countOnlineScreens } from '@/lib/screen-online';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -227,7 +228,7 @@ function ClassicMobileDashboard({ schoolId }: { schoolId: string }) {
   const { data: districtApprovals } = useDistrictPendingApprovals({ enabled: canFleet && isHQ });
 
   const totalScreens = (screens || []).length;
-  const onlineScreens = (screens || []).filter((s: any) => s.status === 'ONLINE').length;
+  const onlineScreens = countOnlineScreens(screens); // DEV-007: the one definition
   const offlineScreens = totalScreens - onlineScreens;
   const activeSchedules = (schedules || []).filter((s: any) => s.isActive).length;
   const pendingCount = (pendingSubmissions || []).length;
