@@ -2267,6 +2267,7 @@
       "mech": {
         "device-admin": "Turns the panel off for real (Android lock).",
         "accessibility": "Turns the panel off for real (VenueOS sleep service), the way its power button does.",
+        "lock-held-back": "This model's Android lock has latched panels off on older Android, so VenueOS does not use it unattended. It turns off through the screen-off timer where allowed, otherwise covers the screen with black.",
         "vendor": "Turns the panel off with this model's own command.",
         "screen-timeout": "Turns off through Android's screen-off timer. Some TV-type boxes show a screensaver instead; the player checks and reports which.",
         "screensaver": "This box shows a screensaver instead of turning off, so the player uses a black screen (the backlight stays on). For a real off, turn on VenueOS sleep under Accessibility at the panel.",

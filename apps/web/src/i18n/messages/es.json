@@ -2267,6 +2267,7 @@
       "mech": {
         "device-admin": "Apaga el panel de verdad (bloqueo de Android).",
         "accessibility": "Apaga el panel de verdad (servicio de reposo de VenueOS), igual que su botón de encendido.",
+        "lock-held-back": "En versiones antiguas de Android, el bloqueo de este modelo ha dejado paneles apagados sin poder encenderlos, así que VenueOS no lo usa sin supervisión. Se apaga con el temporizador de pantalla cuando se permite; si no, cubre la pantalla de negro.",
         "vendor": "Apaga el panel con el comando propio de este modelo.",
         "screen-timeout": "Se apaga con el temporizador de pantalla de Android. Algunos equipos tipo TV muestran un protector de pantalla en su lugar; el reproductor lo comprueba e informa.",
         "screensaver": "Este equipo muestra un protector de pantalla en lugar de apagarse, así que el reproductor usa una pantalla negra (la retroiluminación sigue encendida). Para apagarlo de verdad, active el reposo de VenueOS en Accesibilidad en el panel.",

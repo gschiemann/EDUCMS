@@ -92,6 +92,21 @@ describe('sleep & wake — what each screen can do, and what it proved', () => {
     expect(mechanismKind(null, false)).toBe('unknown');
   });
 
+  it('a lock below Android 13 is held back, exactly as the player holds it back', () => {
+    expect(mechanismKind('device-admin', false, 25)).toBe('lock-held-back');
+    expect(mechanismKind('device-admin', false, 30)).toBe('lock-held-back');
+    expect(mechanismKind('accessibility-lock', false, 30)).toBe('lock-held-back');
+    expect(mechanismKind('device-admin', false, 33)).toBe('device-admin');
+    // Unknown SDK: say what the verdict says.
+    expect(mechanismKind('device-admin', false, null)).toBe('device-admin');
+    const g43 = summarizeSleepWake({
+      playerVersion: '1.1.23',
+      displayCapabilities: { schema: 1, build: { sdk: 30, release: '11' }, verdict: { screenBlank: 'device-admin' } },
+      nowMs: NOW,
+    });
+    expect(g43.mechanism).toBe('lock-held-back');
+  });
+
   it('reads the player sleep evidence block (1.1.25 candidate), preferring its live mechanism', () => {
     const s = summarizeSleepWake({
       ...x80,

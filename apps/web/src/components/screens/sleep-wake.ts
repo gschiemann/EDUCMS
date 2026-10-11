@@ -41,6 +41,12 @@ export type SleepMechanismKind =
   | 'device-admin'
   /** The "VenueOS sleep" accessibility service — the power key's own sleep. */
   | 'accessibility'
+  /**
+   * A lock exists (device admin / VenueOS sleep) but this Android is older
+   * than 13, where the lock has latched panels into a vendor standby, so the
+   * player does not use it unattended (player `RestoreBlankPolicy`).
+   */
+  | 'lock-held-back'
   /** A vendor command for this model (a recipe). */
   | 'vendor'
   /** Android's screen-off timeout — sleeps where the box allows. */
@@ -128,14 +134,25 @@ function outcome(v: unknown): SleepOutcome {
   return typeof v === 'string' && (OUTCOMES as readonly string[]).includes(v) ? (v as SleepOutcome) : 'unknown';
 }
 
-/** Map a resolved blank mechanism (+ whether a screensaver was seen) to what it means on the glass. */
-export function mechanismKind(blank: string | null | undefined, screensaverSeen: boolean): SleepMechanismKind {
+/** Android 13 — the first release where the player uses a lock unattended (player `RestoreBlankPolicy`). */
+export const LOCK_UNATTENDED_MIN_SDK = 33;
+
+/**
+ * Map a resolved blank mechanism (+ whether a screensaver was seen, + the
+ * Android SDK when known) to what it means on the glass.
+ */
+export function mechanismKind(
+  blank: string | null | undefined,
+  screensaverSeen: boolean,
+  sdkInt: number | null = null,
+): SleepMechanismKind {
+  const lockHeldBack = sdkInt !== null && sdkInt < LOCK_UNATTENDED_MIN_SDK;
   switch (blank) {
     case 'device-admin':
     case 'device-owner':
-      return 'device-admin';
+      return lockHeldBack ? 'lock-held-back' : 'device-admin';
     case 'accessibility-lock':
-      return 'accessibility';
+      return lockHeldBack ? 'lock-held-back' : 'accessibility';
     case 'vendor-recipe':
       return 'vendor';
     case 'screen-timeout':
@@ -201,7 +218,10 @@ export function summarizeSleepWake(input: SleepWakeInput): SleepWakeSummary {
       : null;
 
   return {
-    mechanism: mechanismKind(blank, screensaverSeen),
+    mechanism: mechanismKind(blank, screensaverSeen, (() => {
+      const sdk = asObject(verdict?.build)?.sdk;
+      return typeof sdk === 'number' && Number.isInteger(sdk) ? sdk : null;
+    })()),
     now,
     alertWakesSleeping: support(NATIVE_ALERT_WATCH_MIN),
     turnOnReachesSleeping: support(NATIVE_POWER_ON_MIN),
