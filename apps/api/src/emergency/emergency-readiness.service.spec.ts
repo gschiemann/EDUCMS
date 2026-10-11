@@ -14,6 +14,9 @@ function makeMocks(overrides: Partial<Record<string, any>> = {}) {
       tenant: {
         findFirst: jest.fn(async (args: any) => {
           calls.where.push(args.where);
+          if (args.where?.id && args.where.id !== overrides.selfId && overrides.ancestors?.[args.where.id] !== undefined) {
+            return { parentId: overrides.ancestors[args.where.id] };
+          }
           return overrides.tenant ?? {
             panicLockdownPlaylistId: 'pl1',
             panicSecurePlaylistId: 'pl2',
@@ -35,7 +38,21 @@ function makeMocks(overrides: Partial<Record<string, any>> = {}) {
       user: {
         count: jest.fn(async (args: any) => {
           calls.where.push(args.where);
-          return overrides.staff ?? 3;
+          // First call = this tenant; second (only when a parent exists) = the parent chain.
+          const n = (prisma.client.user.count as jest.Mock).mock.calls.length;
+          if (n === 1) return overrides.staff ?? 3;
+          return overrides.parentStaff ?? 0;
+        }),
+      },
+      // DEV-002: content = items in the LIVE playlists. One item per id
+      // unless `itemCounts` says otherwise.
+      playlistItem: {
+        groupBy: jest.fn(async (args: any) => {
+          calls.where.push(args.where);
+          return (args.where.playlistId.in as string[]).map((playlistId) => ({
+            playlistId,
+            _count: { _all: overrides.itemCounts?.[playlistId] ?? 1 },
+          }));
         }),
       },
       auditLog: {
@@ -247,7 +264,8 @@ describe('EmergencyReadinessService', () => {
     const r = await svc.compute('t1');
     const screens = r.items.find((i) => i.key === 'screens')!;
     expect(screens.status).toBe('warn');
-    expect(screens.detail).toBe('3 of 5 screens online; 2 confirmed fetching content.');
+    expect(screens.label).toBe('Screens online');
+    expect(screens.detail).toBe('3 of 5 screens online; 2 of them reported playback in the last 5 minutes.');
   });
 
   it('TENANT ISOLATION: every query carries the tenantId', async () => {
@@ -258,5 +276,69 @@ describe('EmergencyReadinessService', () => {
     for (const w of calls.where) {
       expect(JSON.stringify(w)).toContain('tenant-xyz');
     }
+  });
+
+  // ── Muse beta DEV-002 (2026-10-07) ─────────────────────────────────
+  it('DEV-002: an EMPTY bucket is not content — header and per-type list agree', async () => {
+    const { prisma, redis, wsSigner } = makeMocks({ itemCounts: { pl4: 0, pl5: 0 } });
+    const r = await new EmergencyReadinessService(prisma, redis, wsSigner).compute('t1');
+    const content = r.items.find((i) => i.key === 'content')!;
+    expect(content.detail).toBe('4 of 6 alert types have content.');
+    const byType = r.contentByType!;
+    expect(byType).toHaveLength(6);
+    expect(byType.filter((c) => c.required && c.liveItems > 0)).toHaveLength(4);
+    expect(byType.find((c) => c.kind === 'evacuate')!.liveItems).toBe(0);
+    expect(byType.find((c) => c.kind === 'lockdown')!.liveItems).toBe(1);
+  });
+
+  it('DEV-002: portrait-only content counts as content for that type', async () => {
+    const { prisma, redis, wsSigner } = makeMocks({
+      tenant: { vertical: 'K12', panicLockdownPlaylistId: 'land', panicLockdownPortraitPlaylistId: 'port' },
+      itemCounts: { land: 0, port: 2 },
+    });
+    const r = await new EmergencyReadinessService(prisma, redis, wsSigner).compute('t1');
+    expect(r.contentByType!.find((c) => c.kind === 'lockdown')!.liveItems).toBe(2);
+    expect(r.items.find((i) => i.key === 'content')!.status).toBe('warn');
+  });
+
+  it('DEV-002: drill content is reported on its own line and never graded', async () => {
+    const { prisma, redis, wsSigner } = makeMocks({
+      tenant: { vertical: 'K12', drillLockdownPlaylistId: 'd1' },
+      itemCounts: { d1: 3 },
+    });
+    const r = await new EmergencyReadinessService(prisma, redis, wsSigner).compute('t1');
+    // Live content is still missing: drill content must not make it "wired".
+    expect(r.items.find((i) => i.key === 'content')!.status).toBe('missing');
+    expect(r.items.map((i) => i.key)).not.toContain('drill');
+    expect(r.drillContent).toEqual(expect.objectContaining({ typesWithDrillContent: 1, typesTotal: 6 }));
+    expect(r.contentByType!.find((c) => c.kind === 'lockdown')!.drillItems).toBe(3);
+  });
+
+  it('DEV-002: staff counts SUPER_ADMIN here, active accounts only, never a viewer', async () => {
+    const { prisma, redis, wsSigner } = makeMocks();
+    await new EmergencyReadinessService(prisma, redis, wsSigner).compute('t1');
+    const where = (prisma.client.user.count as jest.Mock).mock.calls[0][0].where;
+    expect(where.tenantId).toBe('t1');
+    expect(where.status).toBe('ACTIVE');
+    expect(where.deletedAt).toBeNull();
+    expect(JSON.stringify(where.OR)).toContain('SUPER_ADMIN');
+    expect(JSON.stringify(where.OR)).toContain('"not":"RESTRICTED_VIEWER"');
+  });
+
+  it('DEV-002: parent-organization admins who can reach down are counted, and named', async () => {
+    const { prisma, redis, wsSigner } = makeMocks({
+      tenant: { ...{ panicLockdownPlaylistId: 'pl1' }, parentId: 'district' },
+      selfId: 't1',
+      ancestors: { district: null },
+      staff: 0,
+      parentStaff: 2,
+    });
+    const r = await new EmergencyReadinessService(prisma, redis, wsSigner).compute('t1');
+    const staff = r.items.find((i) => i.key === 'staff')!;
+    expect(staff.status).toBe('ok');
+    expect(staff.detail).toBe('2 people can trigger an alert (0 here, 2 from the parent organization).');
+    const parentWhere = (prisma.client.user.count as jest.Mock).mock.calls[1][0].where;
+    expect(parentWhere.tenantId).toEqual({ in: ['district'] });
+    expect(parentWhere.role.in).toEqual(['SUPER_ADMIN', 'DISTRICT_ADMIN']);
   });
 });

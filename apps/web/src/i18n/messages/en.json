@@ -940,7 +940,11 @@
           "lastExercisedBody": "The last time an alert was actually sent, from the audit log.",
           "health": "Delivery path",
           "healthHint": "The server's own check of the database, fan-out and message signer.",
-          "healthLink": "Run the check"
+          "healthLink": "Run the check",
+          "typeUnknown": "Unknown",
+          "drillContent": "Drill content",
+          "drillContentCount": "{count} of {total} types",
+          "drillContentBody": "Drill content is separate from live content and is not graded. A type with no drill content of its own drills with its live content, marked DRILL."
         },
         "search": {
           "enable": "Enable emergency alerts",

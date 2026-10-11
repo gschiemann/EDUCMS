@@ -3701,7 +3701,11 @@ export function useAddPanicAsset(kind: PanicKind, orientation: PanicOrientation 
   return useMutation({
     mutationFn: (body: { assetId: string; durationMs?: number }) =>
       apiFetch(`/panic-content/${kind}/assets?${panicContentQuery(orientation, mode)}`, { method: 'POST', body: JSON.stringify(body) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['panic-content', kind, orientation, mode] }),
+    // The readiness report counts these items (DEV-002) — re-ask it too.
+    onSuccess: () => Promise.all([
+      qc.invalidateQueries({ queryKey: ['panic-content', kind, orientation, mode] }),
+      qc.invalidateQueries({ queryKey: ['emergency-readiness'] }),
+    ]),
   });
 }
 export function useRemovePanicAsset(kind: PanicKind, orientation: PanicOrientation = 'landscape', mode: PanicMode = 'live') {
@@ -3709,7 +3713,10 @@ export function useRemovePanicAsset(kind: PanicKind, orientation: PanicOrientati
   return useMutation({
     mutationFn: (itemId: string) =>
       apiFetch(`/panic-content/${kind}/assets/${itemId}?${panicContentQuery(orientation, mode)}`, { method: 'DELETE' }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['panic-content', kind, orientation, mode] }),
+    onSuccess: () => Promise.all([
+      qc.invalidateQueries({ queryKey: ['panic-content', kind, orientation, mode] }),
+      qc.invalidateQueries({ queryKey: ['emergency-readiness'] }),
+    ]),
   });
 }
 

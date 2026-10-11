@@ -940,7 +940,11 @@
           "lastExercisedBody": "La última vez que se envió realmente una alerta, según el registro de auditoría.",
           "health": "Ruta de entrega",
           "healthHint": "La comprobación que hace el servidor de la base de datos, la difusión y la firma de mensajes.",
-          "healthLink": "Ejecutar la comprobación"
+          "healthLink": "Ejecutar la comprobación",
+          "typeUnknown": "Desconocido",
+          "drillContent": "Contenido de simulacro",
+          "drillContentCount": "{count} de {total} tipos",
+          "drillContentBody": "El contenido de simulacro es independiente del contenido real y no se califica. Un tipo sin contenido de simulacro propio usa su contenido real, marcado SIMULACRO."
         },
         "search": {
           "enable": "Activar las alertas de emergencia",

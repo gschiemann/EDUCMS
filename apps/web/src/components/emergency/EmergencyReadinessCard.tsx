@@ -37,6 +37,19 @@ export interface ReadinessReport {
   locked?: boolean;
   score: number;
   items: ReadinessItem[];
+  /**
+   * Per-type content from the same counts the `content` item is graded on
+   * (Muse beta DEV-002). Absent from an older API build.
+   */
+  contentByType?: Array<{
+    kind: string;
+    label: string;
+    required: boolean;
+    liveItems: number;
+    drillItems: number;
+  }>;
+  /** Drill content — its own line, never graded, never mixed with live. */
+  drillContent?: { typesWithDrillContent: number; typesTotal: number; detail: string };
   computedAt: string;
 }
 
@@ -187,6 +200,18 @@ export function EmergencyReadinessCard() {
             </li>
           );
         })}
+        {data.drillContent ? (
+          // Drill content is reported SEPARATELY and is not graded: a drill
+          // with no drill content of its own shows the live content, marked
+          // DRILL, so it can never make the live readiness look better.
+          <li className="py-2.5 flex items-start gap-2.5" data-testid="readiness-drill-line">
+            <span className="w-4 h-4 mt-0.5 shrink-0" aria-hidden="true" />
+            <div className="min-w-0 text-sm">
+              <span className="font-bold text-slate-800">Drill content (not graded):</span>{' '}
+              <span className="text-slate-600">{data.drillContent.detail}</span>
+            </div>
+          </li>
+        ) : null}
       </ul>
       )}
     </section>

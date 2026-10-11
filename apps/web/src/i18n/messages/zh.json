@@ -940,7 +940,11 @@
           "lastExercisedBody": "根据审计日志，上一次真正发送警报的时间。",
           "health": "下发链路",
           "healthHint": "服务器对数据库、消息广播和签名器的自检。",
-          "healthLink": "运行自检"
+          "healthLink": "运行自检",
+          "typeUnknown": "未知",
+          "drillContent": "演练内容",
+          "drillContentCount": "{total} 种中有 {count} 种",
+          "drillContentBody": "演练内容与正式内容分开，不计入评分。没有专属演练内容的类型会使用其正式内容进行演练，并标注“演练”。"
         },
         "search": {
           "enable": "开启紧急警报",
