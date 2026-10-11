@@ -195,8 +195,8 @@ android {
         // TO RELEASE, once the checklist has been run on real hardware and
         // the PASS rows are recorded:  scripts/release-apk.sh player 1.1.18
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        versionCode = 10126
-        versionName = "1.1.26"
+        versionCode = 10127
+        versionName = "1.1.27"
 
         // Manual field artifacts have their own higher install code and explicit prerelease name.
         // Default/tag builds retain the published literal version; never rebuild a stable version
