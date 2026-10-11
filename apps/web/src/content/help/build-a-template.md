@@ -15,7 +15,7 @@ Every ready-made template is a starting point — customizing it creates your ow
 
 1. Open **Templates** in the sidebar and browse or filter the gallery.
 2. Click a template to preview it full-screen, then click **Customize**.
-3. Edit anything you like in the builder, then click **Save to my templates** and give your copy a name (e.g. "Main Hallway — Fall").
+3. Edit anything you like in the builder, then click **Save to my templates** and give your copy a name (e.g. "Front Counter — Fall").
 
 The original stays pristine in the gallery; your copy lives in your template library.
 
@@ -51,7 +51,8 @@ Zones can overlap. Use **Bring to front** / **Send to back** in the right-click 
 ## Save and save-as-copy
 
 - Click **Save** (or press <kbd>Ctrl / ⌘ + S</kbd>) to persist your changes. The chip in the toolbar shows **Unsaved** while you have pending edits and **Saved Xs ago** after a successful save.
-- If you try to close the tab with unsaved edits, the browser warns you before leaving.
+- On **your own templates**, if you close or refresh the tab with unsaved edits the browser warns you before leaving, and the builder's Back button asks *Leave without saving?* first.
+- A **ready-made template** opened from the gallery is a draft: nothing is saved until you click **Save to my templates**, and leaving the builder discards your edits **without a warning**. Save your copy first if you want to keep your changes.
 - Click **Save as copy** (<kbd>Ctrl / ⌘ + Shift + S</kbd>) to fork — useful when you want to try a variant without losing the original.
 
 ## Publishing

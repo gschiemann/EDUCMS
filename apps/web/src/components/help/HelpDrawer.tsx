@@ -23,6 +23,7 @@ import {
   CreditCard,
 } from 'lucide-react';
 import type { HelpArticle } from '@/content/help/types';
+import { searchArticles } from '@/content/help/search';
 import { Markdown } from './Markdown';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
@@ -170,14 +171,7 @@ export function HelpDrawer() {
 
   const filtered = useMemo(() => {
     if (!articles) return [];
-    const needle = q.trim().toLowerCase();
-    if (!needle) return articles;
-    return articles.filter(
-      (a) =>
-        a.title.toLowerCase().includes(needle) ||
-        a.excerpt.toLowerCase().includes(needle) ||
-        a.body.toLowerCase().includes(needle),
-    );
+    return searchArticles(articles, q);
   }, [articles, q]);
 
   // Quick-action tiles — vertical-aware. Sports tenants get "Run a

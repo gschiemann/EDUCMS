@@ -47,5 +47,5 @@ From any playlist detail page, click **Preview** to see a 1:1 render of what the
 ## Scheduling tips
 
 - **Don't stack too many schedules** on one screen. If you have more than 3 overlapping schedules, it becomes hard to reason about what's showing. Consolidate into a single playlist with internal day-of-week rules instead.
-- **End-date everything**. Open-ended schedules accumulate over years and eventually confuse everyone. Use a one-school-year end date by default.
-- **Test schedules against a test screen group** before rolling out district-wide. Easy to get the time zone wrong.
+- **End-date everything**. Open-ended schedules accumulate over years and eventually confuse everyone. Use a one-season or one-year end date by default.
+- **Test schedules against a test screen group** before rolling out to every location. Easy to get the time zone wrong.

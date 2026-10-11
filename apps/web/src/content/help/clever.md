@@ -1,7 +1,7 @@
 ---
 title: Connecting Clever for rostering
 category: Clever
-updated: 2026-09-08
+updated: 2026-10-11
 excerpt: Auto-sync staff, classrooms, and bell schedules from your SIS via Clever's secure data API.
 ---
 
@@ -12,7 +12,7 @@ Clever is the most common way US K-12 districts share SIS data with edtech vendo
 ## What we sync
 
 - **Staff users** — email, name, role (mapped from Clever's job title)
-- **Schools** — each Clever school becomes a child tenant of your district
+- **Schools** — each Clever school becomes a child location of your district
 - **Sections / classrooms** — powers the Class Schedule Board template
 - **Bell schedules** — where available in Clever; otherwise we use your manually entered schedule
 - **Terms / grading periods** — for countdowns and term-based scheduling
@@ -21,7 +21,7 @@ We do **not** sync student PII. Student data is scoped to the Clever `students` 
 
 ## Connecting your district
 
-1. In the VenueOS dashboard, go to **Settings → Integrations → Clever**.
+1. In the VenueOS dashboard, as a **Super Admin**, go to **Settings → Integrations → Clever**.
 2. Click **Connect via Clever OAuth**.
 3. A Clever-hosted consent screen opens. Log in as a Clever district admin and approve the data scopes we request.
 4. You'll be redirected back and the first sync kicks off automatically. Initial syncs for a 10-school district take about 5 minutes.
@@ -34,10 +34,10 @@ Clever pushes deltas to us via webhook as changes happen, plus a full reconcilia
 
 | Clever job title | VenueOS role |
 |---|---|
-| District Administrator | DISTRICT_ADMIN |
-| School Administrator / Principal | SCHOOL_ADMIN |
-| Teacher, Staff | CONTRIBUTOR |
-| (anything else) | RESTRICTED_VIEWER |
+| District Administrator | Super Admin |
+| School Administrator / Principal | Admin |
+| Teacher, Staff | Editor |
+| (anything else) | Viewer |
 
 You can override individual users after they're created — the sync won't overwrite manual role changes.
 

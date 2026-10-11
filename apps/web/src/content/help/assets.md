@@ -1,7 +1,7 @@
 ---
 title: Uploading and organizing assets
 category: Templates
-updated: 2026-04-16
+updated: 2026-10-11
 excerpt: Manage images, videos, and documents with folders, approval workflows, and file-size best practices.
 ---
 
@@ -13,45 +13,34 @@ Assets are the images, videos, and documents that fill your templates and playli
 
 From **Assets → Upload**, drag-and-drop files or pick them from your computer. Supported formats:
 
-- **Images**: JPG, PNG, WebP, SVG (up to 20 MB each)
-- **Videos**: MP4 (H.264), WebM (up to 500 MB each)
-- **Documents**: PDF (we render the first page, up to 50 MB)
+- **Images**: JPG, PNG, WebP, GIF, BMP, ICO and HEIC (iPhone photos) — up to **25 MB** each. HEIC photos are converted to JPEG on upload.
+- **Videos**: MP4, M4V and WebM play as they are. MOV, AVI, MKV, WMV, MPG, 3GP and TS/MTS are accepted too and converted to MP4 after upload. Up to **2 GB** per file.
+- **Audio**: MP3, WAV, OGG and M4A — up to **25 MB** each.
+- **Documents**: PDF — up to **25 MB** each.
 
-We automatically generate thumbnails and multiple sizes for performance. Originals are retained for 90 days in case you need to re-export.
+Every file is checked by its contents, not its name: a file that is damaged, cut off, or not what its name says is refused with a plain-words reason. We also optimize pictures for screens and prepare video for the screens that will play it; a video that a screen could not play is converted automatically. The Media Library shows when a file is still being prepared, and your total storage allowance grows with the number of screens you have — the Media Library shows how much you have used.
 
 ## Folders
 
-Organize with folders (**Assets → New folder**). Folders can be nested up to 5 levels deep. A few common patterns:
+Organize with folders (**Assets → New folder**). A few common patterns:
 
 - `/Announcements/2026-Spring/`
-- `/Photos/Graduation/`
-- `/Logos/District-Brand/`
+- `/Photos/Events/`
+- `/Logos/Brand/`
 - `/Staff-Spotlights/`
-
-Permissions are inherited — anyone with access to a folder can access everything in it.
 
 ## Approval workflow
 
-Enabled by default on District plan. Non-admin users upload assets in **Pending Approval** state. An admin reviews them under **Assets → Pending** and either approves or rejects with a reason. Approved assets appear in template and playlist pickers; pending ones are hidden.
+Approval is available on every plan and is a switch you control: **Require approval before content goes live** on **Settings → People & access**. When it is on, an Editor's publish is sent to the review queue instead of going live, and Admins publish directly. Reviewers approve or reject (with a note) from **Reviews** in the sidebar, and approved content can then go live.
 
-This workflow exists because student-facing content in a public hallway deserves a second set of eyes.
+This workflow exists because content on a public screen — a lobby, a hallway, a storefront — deserves a second set of eyes.
 
 ## Size + performance tips
 
-- Target image files **under 500 KB** for hallway displays. A 5 MB hero photo will drop frame rate on older Chromeboxes.
-- Videos should be **1080p max** and encoded with a target bitrate of 4–8 Mbps for H.264.
-- **SVGs** are great for logos and line art — they scale forever without quality loss.
+- Target image files **under 500 KB** for displays. A 5 MB hero photo will drop frame rate on older Chromeboxes.
+- Videos play best as H.264 MP4 at 1080p or 4K, 30 fps or less. You don't have to prepare them yourself: VenueOS converts what a screen couldn't play and makes screen-sized copies for 1080p displays.
 - **PNG with transparency** beats JPG when you need to layer content over a background.
-
-## Bulk download / export
-
-For audits or migration, **Settings → Data Export → Assets** generates a ZIP of every asset in your tenant. Large exports are emailed as a download link when ready (usually within 10 minutes).
 
 ## Deleting
 
-Deleting an asset that's used in a live playlist or schedule shows a confirmation dialog listing every reference. You can either:
-
-- Cancel and remove the references first, or
-- **Hard delete** — removes the asset and creates fallback placeholders in any playlist item that used it (so screens don't go blank).
-
-Deleted assets move to **Trash** for 30 days before permanent removal.
+Deleting an asset that is used in a live playlist asks you to confirm first, and the warning lists where it is used. If you confirm, the asset is removed from every playlist that used it; a playlist left empty is turned off, and screens fall back to their default content so they don't go blank. Content that is part of an emergency alert cannot be deleted this way.

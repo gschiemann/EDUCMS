@@ -1,7 +1,7 @@
 ---
 title: Inviting staff and assigning roles
 category: Getting Started
-updated: 2026-04-16
+updated: 2026-10-11
 excerpt: Bring your team into VenueOS, give them the right permissions, and revoke access cleanly when someone leaves.
 ---
 
@@ -11,48 +11,52 @@ Every VenueOS account starts with one user — the person who created the accoun
 
 ## Role overview
 
+These are the names you see in the product (on **Settings → People & access**):
+
 | Role | Can do |
 |---|---|
-| **SUPER_ADMIN** | Manage every tenant in the system. Only VenueOS staff have this. |
-| **DISTRICT_ADMIN** | Manage schools, users, and branding for the whole district. |
-| **SCHOOL_ADMIN** | Manage screens, playlists, staff, and settings within one school. |
-| **CONTRIBUTOR** | Upload assets, build templates, create schedules. Cannot manage users or settings. |
-| **RESTRICTED_VIEWER** | Read-only — can preview dashboards and playlists, but not change anything. |
+| **Super Admin** | Organization-wide administration: locations, people, branding, billing and sign-in settings. This is the person who created the account. |
+| **Admin** | Runs one location: screens, playlists, content, and the staff at that location. |
+| **Editor** | Uploads and edits content, builds templates, and manages schedules. Cannot manage people or settings. |
+| **Viewer** | Read-only — can look at dashboards and playlists, but not change anything. |
+
+VenueOS support staff have a separate **Platform Admin** role. It is never assignable from your dashboard.
+
+You can only give roles below your own. Triggering emergency alerts is a separate permission — see [panic delegation](/help/panic-delegation).
 
 ## Inviting a user
 
-1. Go to **Settings → Users → Invite user**.
-2. Enter the person's email address and pick a role (default: CONTRIBUTOR).
-3. Optionally tick **Can trigger emergency alerts** if this person should have panic-button access. See [panic delegation](/help/panic-delegation).
-4. Click **Send invite**. They'll receive a signed, single-use link valid for 7 days.
+1. Go to **Settings → People & access** and click **Invite user**.
+2. Enter the person's email address, optionally their first and last name, and pick a **role**.
+3. Choose how they get in:
+   - **Email invite link** — we generate a single-use link and email it. The recipient sets their own password from it, so you never see it. The link is valid for 7 days. If email isn't configured, the page shows the link so you can send it yourself.
+   - **Set password now** — you create the account immediately with a temporary password (at least 8 characters) and hand it over in person or over chat. They can change it after first sign-in.
+4. Click **Send invitation** (or **Create user**).
 
-If you have SSO enabled, invited users can sign in with their district account directly — they don't need to set a separate password.
+Invited people appear under **Pending invitations** until they first sign in.
 
-## Bulk invites
+If you have SSO enabled, invited users can sign in with their organization account directly — they don't need a separate password. See [the SSO guide](/help/sso).
 
-For more than about 10 users at once, use **Settings → Users → Bulk invite** and paste a CSV:
+## Inviting many people
 
-```
-email,role,canTriggerPanic
-alice@lincolnusd.org,SCHOOL_ADMIN,true
-bob@lincolnusd.org,CONTRIBUTOR,false
-```
+The People & access page invites one person at a time; there is no CSV invite import. Two ways to onboard many people:
 
-Rows with invalid emails or unknown roles are skipped and reported after upload.
+- **SSO** — turn on [single sign-on](/help/sso) and set the default role for new accounts; people are created the first time they sign in.
+- **Many locations at once** — for a multi-location rollout, the **First sign-in links** section of People & access downloads one CSV of one-time sign-in links, one per location, for accounts still on provisioning credentials.
 
 ## Changing roles
 
-Admins can change any user's role from that user's profile page. The change is audit-logged. Downgrading a user from SCHOOL_ADMIN to CONTRIBUTOR takes effect on their next page load.
+Admins can change a person's role from the **Role** dropdown on their row in **Settings → People & access**. The change is audit-logged. A downgrade signs the person out, so the lower access applies immediately.
 
 ## Revoking access
 
-Two ways to remove a user:
+Two ways to cut a user off:
 
-- **Disable** — preserves their history (audit log entries still show their name) but immediately kicks them out. Good for short leaves.
-- **Delete** — permanent, strips personal info from audit entries (replaced with "former user"). Good for terminations.
+- **Disable** — signs them out now and blocks sign-in until you enable them again. Nothing is deleted, and their history stays in the audit log. Good for short leaves.
+- **Remove user** — takes the account away. You can invite the person again later. Good for people who have left.
 
-Disabling is reversible; deleting is not.
+Disabling is reversible; removing is not.
 
-## When someone leaves the district
+## When someone leaves
 
-If you use SSO, de-provisioning from your IdP (Google Workspace, Entra, Clever) automatically blocks login. We recommend **also** disabling the user in VenueOS to revoke any active sessions and API tokens.
+If you use SSO, de-provisioning from your identity provider (Google Workspace, Entra, Clever) blocks login. We recommend **also** disabling the user in VenueOS to end any active sessions and API tokens.
