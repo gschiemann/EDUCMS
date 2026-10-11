@@ -105,6 +105,13 @@ export interface PlaylistWorkspaceProps {
   onPauseEverywhere: () => void;
   onResumeEverywhere: () => void;
   pausePending: boolean;
+  /**
+   * Which way the in-flight request goes (DEV-025, Muse beta). The pending
+   * label follows the REQUEST, not the button on screen: an optimistic
+   * PAUSED→ACTIVE flip swaps the buttons mid-request, which is how "Play
+   * everywhere" ended up reading "Pausing…".
+   */
+  pauseDirection?: 'pause' | 'resume' | null;
   onRefreshScreen: (screenId: string) => void;
   refreshingScreenId: string | null;
   onOpenScreen: (screenId: string) => void;
@@ -231,6 +238,8 @@ export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
     );
   }
 
+  // DEV-025: the pending word names the request in flight, whichever button is showing.
+  const pendingLabel = props.pauseDirection === 'resume' ? 'Starting…' : props.pauseDirection === 'pause' ? 'Pausing…' : row?.scheduleState === 'PAUSED' ? 'Starting…' : 'Pausing…';
   return (
     <div className="space-y-4">
       {/* ── §12 header. No global on/off switch lives here. ── */}
@@ -306,7 +315,7 @@ export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
                 className="inline-flex items-center gap-1.5 h-10 px-4 rounded-full border border-slate-200 bg-white text-[13px] font-bold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
               >
                 <PlayCircle className="w-4 h-4" aria-hidden />
-                {props.pausePending ? 'Starting…' : 'Play everywhere'}
+                {props.pausePending ? pendingLabel : 'Play everywhere'}
               </button>
             ) : (
               <button
@@ -316,7 +325,7 @@ export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
                 className="inline-flex items-center gap-1.5 h-10 px-4 rounded-full border border-slate-200 bg-white text-[13px] font-bold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
               >
                 <PauseCircle className="w-4 h-4" aria-hidden />
-                {props.pausePending ? 'Pausing…' : row?.statusLabel === 'PREPARING 1080P' ? t('playlistsPage.stopCancelPublish') : 'Pause everywhere'}
+                {props.pausePending ? pendingLabel : row?.statusLabel === 'PREPARING 1080P' ? t('playlistsPage.stopCancelPublish') : 'Pause everywhere'}
               </button>
             )
           )}

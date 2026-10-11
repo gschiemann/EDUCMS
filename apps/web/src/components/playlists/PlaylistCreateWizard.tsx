@@ -67,6 +67,7 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslations } from 'next-intl';
+import { clampItemSeconds, MAX_ITEM_SECONDS, MIN_ITEM_SECONDS } from '@/lib/duration-clamp';
 import {
   X,
   Play,
@@ -988,7 +989,7 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
           ? // clamp to 1s..600s — anything below 1s flickers, anything
             // above 600s is almost certainly a typo and the editor caps
             // there too. Default to 10s if NaN sneaks through.
-            { ...i, durationMs: Math.max(1, Math.min(600, isFinite(seconds) ? seconds : 10)) * 1000 }
+            { ...i, durationMs: clampItemSeconds(seconds).seconds * 1000 }
           : i,
       ),
     );
@@ -998,7 +999,7 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
   // 2026-05-27 — NOT useCallback. See probeVideoDuration above for
   // the hook-count rationale (lives below the early return).
   const setAllDurations = (seconds: number) => {
-    const clamped = Math.max(1, Math.min(600, isFinite(seconds) ? seconds : 10));
+    const clamped = clampItemSeconds(seconds).seconds;
     const lib = (assets as any[]) || [];
     setSelectedAssetItems((prev) =>
       prev.map((i) => {
@@ -2177,7 +2178,7 @@ function Step2Media({
  * The body div above shrinks to fit, drawer is fixed-height (capped
  * via max-h on inner ol), footer below stays put.
  */
-function SelectedMediaDrawer({
+export function SelectedMediaDrawer({
   items,
   allAssets,
   onReorder,
@@ -2195,6 +2196,16 @@ function SelectedMediaDrawer({
   // Bulk-set input state. Default 10 (image default); operator can
   // type any value 1-600 then hit Apply.
   const [bulkSeconds, setBulkSeconds] = useState<number>(10);
+  // DEV-026 (Muse beta): a duration outside 1–600 s used to be clamped
+  // silently. The clamp stays; now it is SAID, next to the inputs.
+  const tDur = useTranslations('playlistsPage');
+  const [clampNote, setClampNote] = useState<string | null>(null);
+  const noteClamp = (raw: number) => {
+    const r = clampItemSeconds(raw);
+    setClampNote(r.clamped ? tDur('durationClamped', { min: MIN_ITEM_SECONDS, max: MAX_ITEM_SECONDS, seconds: r.seconds }) : null);
+    return r.seconds;
+  };
+  const onRowDuration = (assetId: string, raw: number) => onDuration(assetId, noteClamp(raw));
 
   // Sensors mirror the main editor (page.tsx:1069). 2026-05-29 — this used
   // to be a single PointerSensor, which on iOS loses the race against
@@ -2244,7 +2255,7 @@ function SelectedMediaDrawer({
             value={bulkSeconds}
             onChange={(e) => {
               const n = parseInt(e.target.value, 10);
-              if (!isNaN(n)) setBulkSeconds(Math.max(1, Math.min(600, n)));
+              if (!isNaN(n)) setBulkSeconds(noteClamp(n));
             }}
             aria-label="Set duration for every selected item"
             className="w-14 text-xs text-right px-1.5 py-0.5 border border-slate-200 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
@@ -2263,6 +2274,12 @@ function SelectedMediaDrawer({
         </div>
       </div>
 
+      {clampNote && (
+        <p role="status" data-testid="duration-clamp-note" className="mb-1.5 text-[11px] font-semibold text-amber-700">
+          {clampNote}
+        </p>
+      )}
+
       {/* dnd-kit sortable list — capped height with internal scroll
           so 20+ items don't push the picker grid off the modal. */}
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onReorder}>
@@ -2277,7 +2294,7 @@ function SelectedMediaDrawer({
                   index={idx}
                   item={sel}
                   asset={a}
-                  onDuration={onDuration}
+                  onDuration={onRowDuration}
                   onRemove={onRemove}
                   onPreview={() => setPreviewId(a.id)}
                 />

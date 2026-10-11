@@ -636,3 +636,19 @@ describe('screen delivery startup labels', () => {
     expect(screen.queryByText('Sending update')).not.toBeInTheDocument();
   });
 });
+
+// Muse beta DEV-025: Resume read "Pausing…" because one pending flag served
+// both directions and the optimistic flip swapped the buttons mid-request.
+describe('pending label follows the request, not the button (DEV-025)', () => {
+  it('resuming, after the row already flipped to ACTIVE: says Starting…, never Pausing…', () => {
+    mount({ pausePending: true, pauseDirection: 'resume' });
+    expect(screen.getByRole('button', { name: /Starting…/ })).toBeDisabled();
+    expect(screen.queryByText('Pausing…')).toBeNull();
+  });
+
+  it('pausing, after the row already flipped to PAUSED: says Pausing…, never Starting…', () => {
+    mount({ row: { ...ROW, scheduleState: 'PAUSED', statusLabel: 'PAUSED' }, pausePending: true, pauseDirection: 'pause' });
+    expect(screen.getByRole('button', { name: /Pausing…/ })).toBeDisabled();
+    expect(screen.queryByText('Starting…')).toBeNull();
+  });
+});

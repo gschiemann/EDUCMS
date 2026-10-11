@@ -2543,7 +2543,8 @@
     "resumeScheduleOn": "{count, plural, =0 {} other {在 # 块屏幕上}}恢复此排期",
     "usbExportOff": "此组织已关闭 USB 导出。请联系管理员开启。",
     "usbExportOffAdmin": "此组织已关闭 USB 导出。",
-    "usbExportOpenSettings": "在设置中开启 USB 导出"
+    "usbExportOpenSettings": "在设置中开启 USB 导出",
+    "durationClamped": "时长范围为 {min} 到 {max} 秒，已设为 {seconds}。"
   },
   "brandingCard": {
     "loading": "加载中…",

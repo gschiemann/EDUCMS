@@ -2543,7 +2543,8 @@
     "resumeScheduleOn": "Resume this schedule{count, plural, =0 {} one { on # screen} other { on # screens}}",
     "usbExportOff": "USB export is turned off for this organization. Ask an admin to turn it on.",
     "usbExportOffAdmin": "USB export is turned off for this organization.",
-    "usbExportOpenSettings": "Turn on USB export in Settings"
+    "usbExportOpenSettings": "Turn on USB export in Settings",
+    "durationClamped": "Durations run from {min} to {max} seconds — set to {seconds}."
   },
   "brandingCard": {
     "loading": "Loading…",

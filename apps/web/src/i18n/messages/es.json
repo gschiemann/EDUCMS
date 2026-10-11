@@ -2543,7 +2543,8 @@
     "resumeScheduleOn": "Reanudar esta programación{count, plural, =0 {} one { en # pantalla} other { en # pantallas}}",
     "usbExportOff": "La exportación por USB está desactivada para esta organización. Pida a un administrador que la active.",
     "usbExportOffAdmin": "La exportación por USB está desactivada para esta organización.",
-    "usbExportOpenSettings": "Activar la exportación por USB en Configuración"
+    "usbExportOpenSettings": "Activar la exportación por USB en Configuración",
+    "durationClamped": "La duración va de {min} a {max} segundos; se ajustó a {seconds}."
   },
   "brandingCard": {
     "loading": "Cargando…",

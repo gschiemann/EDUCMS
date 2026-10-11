@@ -441,3 +441,19 @@ it('hides the SSO subsection from a caller who cannot read the SSO config', asyn
   await screen.findByText('jr@x.edu');
   expect(screen.queryByRole('link', { name: 'Manage SSO' })).toBeNull();
 });
+
+// Muse beta DEV-013: "0 of 0 accounts" while the roster was loading.
+it('the two-factor count says Loading — never "0 of 0" — until the roster arrives', async () => {
+  let release!: (v: unknown) => void;
+  apiFetch.mockImplementation((path: string) => {
+    if (path === '/users') return new Promise((r) => { release = r; });
+    if (path === '/tenants/me/content-approval') return Promise.resolve({ enabled: false });
+    return Promise.resolve({});
+  });
+  renderEditor();
+  const count = await screen.findByTestId('people-mfa-count');
+  expect(count).toHaveTextContent('Loading');
+  expect(count).not.toHaveTextContent('0 of 0');
+  release([ME, PEER]);
+  await waitFor(() => expect(screen.getByTestId('people-mfa-count')).toHaveTextContent('1 of 2 accounts'));
+});
