@@ -2260,6 +2260,64 @@
         "noLiveConnection": "no live connection right now — try again once it reconnects",
         "error": "something went wrong"
       }
+    },
+    "sleepWake": {
+      "title": "Sleep & wake",
+      "android": "Android {release}",
+      "mech": {
+        "device-admin": "Turns the panel off for real (Android lock).",
+        "accessibility": "Turns the panel off for real (VenueOS sleep service), the way its power button does.",
+        "vendor": "Turns the panel off with this model's own command.",
+        "screen-timeout": "Turns off through Android's screen-off timer. Some TV-type boxes show a screensaver instead; the player checks and reports which.",
+        "screensaver": "This box shows a screensaver instead of turning off, so the player uses a black screen (the backlight stays on). For a real off, turn on VenueOS sleep under Accessibility at the panel.",
+        "black-only": "Can only cover the screen with black. The backlight stays on.",
+        "unknown": "Not reported yet."
+      },
+      "blankNote": "Blank and the on/off schedule cover the screen with black on every screen. They never cut power.",
+      "now": {
+        "asleep": "Asleep now: Android reports the panel off.",
+        "asleepSince": "Asleep now: Android reports the panel off since {since}.",
+        "on": "On now: Android reports the panel on."
+      },
+      "row": {
+        "alert": "An alert wakes it when it is off",
+        "turnOn": "Turn panel on reaches it when it is off",
+        "backToOff": "Goes back off after an all-clear"
+      },
+      "support": {
+        "yes": "Yes",
+        "needs": "Needs player {version}+",
+        "unknown": "Unknown"
+      },
+      "outcome": {
+        "off": "turned off (seen)",
+        "on": "stayed on",
+        "dream": "a screensaver started instead",
+        "black": "black screen, backlight on",
+        "pending": "being checked",
+        "unknown": "could not tell",
+        "kept-on": "left on",
+        "failed": "could not turn off"
+      },
+      "decision": {
+        "RESTORE": "it was off before the alert",
+        "WAKE_COMMAND_DURING_ALERT": "someone turned it on during the alert",
+        "SCHEDULE_ON_AFTER_OFF": "its schedule turned it on",
+        "REBOOTED": "it restarted during the alert",
+        "STILL_HELD": "another alert was still active",
+        "NOTHING_INTERRUPTED": "it was on before the alert",
+        "OTHER": "no reason reported"
+      },
+      "proof": {
+        "lastSleep": "Last turn-off: {outcome} ({ago}).",
+        "lastRestore": "Last all-clear: {outcome}, because {reason} ({ago})."
+      },
+      "turnOn": {
+        "confirmed": "Last Turn panel on ({ago}): confirmed by the player.",
+        "waiting": "Last Turn panel on ({ago}): waiting for the player to confirm.",
+        "notConfirmed": "Last Turn panel on ({ago}): not confirmed by the player."
+      },
+      "noEvidence": "This player version does not report what it saw. Update it to see proof here."
     }
   },
   "selection": {

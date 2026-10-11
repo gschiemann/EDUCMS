@@ -58,6 +58,7 @@ import {
 } from '@/hooks/use-api';
 import { ScreenDisplayControls } from '@/components/screens/ScreenDisplayControls';
 import { ScreenSetupSection } from '@/components/screens/ScreenSetupSection';
+import { ScreenSleepWakeSection } from '@/components/screens/ScreenSleepWakeSection';
 import { clampPopoverAnchor } from '@/lib/clamp-popover-anchor';
 
 /**
@@ -1300,6 +1301,11 @@ export function ScreenSettingsSections({
         displayCapabilitiesAt: fullRow.displayCapabilitiesAt,
         hardwareModel: (screen as any).hardwareModel ?? fullRow.hardwareModel ?? null,
         config: (screen as any).config ?? fullRow.config ?? null,
+        // 2026-10-11 — the native heartbeat's power/sleep evidence, for the
+        // Sleep & wake section; group rows whitelist it away too.
+        nativeRuntimeReport: (screen as any).nativeRuntimeReport ?? fullRow.nativeRuntimeReport ?? null,
+        nativeRuntimeReportAt: (screen as any).nativeRuntimeReportAt ?? fullRow.nativeRuntimeReportAt ?? null,
+        nativePowerOnAt: (screen as any).nativePowerOnAt ?? fullRow.nativePowerOnAt ?? null,
       }
     : screen;
 
@@ -1612,6 +1618,12 @@ export function ScreenSettingsSections({
             browserPlayer={isBrowserPlayer}
             onOpenSchedule={() => { onClose?.(); onOpenDisplaySchedule(); }}
           />
+
+          {/* 2026-10-11 — how THIS screen turns off, what wakes it, and
+              what its Android player last proved (native heartbeat report).
+              Never says "off" for a black overlay. An Android concern, so a
+              browser player shows nothing. */}
+          {!isBrowserPlayer && <ScreenSleepWakeSection screen={s} />}
 
           {/* 2026-08-25 (v1.1.6) — first-boot permission state + the
               cable-free way back into it. Renders NOTHING when this panel

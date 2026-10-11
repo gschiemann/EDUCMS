@@ -2260,6 +2260,64 @@
         "noLiveConnection": "当前没有实时连接 — 重新连接后再试",
         "error": "出现问题"
       }
+    },
+    "sleepWake": {
+      "title": "休眠与唤醒",
+      "android": "Android {release}",
+      "mech": {
+        "device-admin": "真正关闭面板（Android 锁定）。",
+        "accessibility": "真正关闭面板（VenueOS 休眠服务），与按电源键相同。",
+        "vendor": "使用此型号自带的命令关闭面板。",
+        "screen-timeout": "通过 Android 的屏幕关闭计时器关闭。部分电视类设备会改为显示屏保；播放器会检查并报告实际情况。",
+        "screensaver": "此设备会显示屏保而不是关闭，因此播放器改用黑屏（背光仍然亮着）。如需真正关闭，请在面板上的“无障碍”中开启 VenueOS 休眠。",
+        "black-only": "只能用黑色覆盖屏幕。背光仍然亮着。",
+        "unknown": "尚未报告。"
+      },
+      "blankNote": "“黑屏”和开关机时间表在所有屏幕上都只是用黑色覆盖屏幕，从不切断电源。",
+      "now": {
+        "asleep": "当前已休眠：Android 报告面板已关闭。",
+        "asleepSince": "当前已休眠：Android 报告面板自{since}起关闭。",
+        "on": "当前已开启：Android 报告面板已开启。"
+      },
+      "row": {
+        "alert": "关闭时警报可将其唤醒",
+        "turnOn": "关闭时“开启面板”可送达",
+        "backToOff": "警报解除后恢复关闭"
+      },
+      "support": {
+        "yes": "是",
+        "needs": "需要播放器 {version} 或更高版本",
+        "unknown": "未知"
+      },
+      "outcome": {
+        "off": "已关闭（已确认）",
+        "on": "仍然开启",
+        "dream": "改为启动了屏保",
+        "black": "黑屏，背光开启",
+        "pending": "正在检查",
+        "unknown": "无法确定",
+        "kept-on": "保持开启",
+        "failed": "无法关闭"
+      },
+      "decision": {
+        "RESTORE": "警报前它处于关闭状态",
+        "WAKE_COMMAND_DURING_ALERT": "警报期间有人将其开启",
+        "SCHEDULE_ON_AFTER_OFF": "其时间表将其开启",
+        "REBOOTED": "警报期间它重启了",
+        "STILL_HELD": "另一个警报仍在进行",
+        "NOTHING_INTERRUPTED": "警报前它处于开启状态",
+        "OTHER": "未报告原因"
+      },
+      "proof": {
+        "lastSleep": "上次关闭：{outcome}（{ago}）。",
+        "lastRestore": "上次警报解除：{outcome}，因为{reason}（{ago}）。"
+      },
+      "turnOn": {
+        "confirmed": "上次“开启面板”（{ago}）：播放器已确认。",
+        "waiting": "上次“开启面板”（{ago}）：正在等待播放器确认。",
+        "notConfirmed": "上次“开启面板”（{ago}）：播放器未确认。"
+      },
+      "noEvidence": "此播放器版本不会报告其观察结果。更新后即可在此查看确认信息。"
     }
   },
   "selection": {

@@ -2260,6 +2260,64 @@
         "noLiveConnection": "sin conexión en vivo ahora — inténtelo cuando se vuelva a conectar",
         "error": "algo salió mal"
       }
+    },
+    "sleepWake": {
+      "title": "Apagado y encendido",
+      "android": "Android {release}",
+      "mech": {
+        "device-admin": "Apaga el panel de verdad (bloqueo de Android).",
+        "accessibility": "Apaga el panel de verdad (servicio de reposo de VenueOS), igual que su botón de encendido.",
+        "vendor": "Apaga el panel con el comando propio de este modelo.",
+        "screen-timeout": "Se apaga con el temporizador de pantalla de Android. Algunos equipos tipo TV muestran un protector de pantalla en su lugar; el reproductor lo comprueba e informa.",
+        "screensaver": "Este equipo muestra un protector de pantalla en lugar de apagarse, así que el reproductor usa una pantalla negra (la retroiluminación sigue encendida). Para apagarlo de verdad, active el reposo de VenueOS en Accesibilidad en el panel.",
+        "black-only": "Solo puede cubrir la pantalla de negro. La retroiluminación sigue encendida.",
+        "unknown": "Aún no se ha informado."
+      },
+      "blankNote": "Oscurecer y el horario de encendido/apagado cubren la pantalla de negro en todas las pantallas. Nunca cortan la energía.",
+      "now": {
+        "asleep": "En reposo ahora: Android informa que el panel está apagado.",
+        "asleepSince": "En reposo ahora: Android informa que el panel está apagado desde {since}.",
+        "on": "Encendido ahora: Android informa que el panel está encendido."
+      },
+      "row": {
+        "alert": "Una alerta la enciende cuando está apagada",
+        "turnOn": "Encender panel le llega cuando está apagada",
+        "backToOff": "Vuelve a apagarse tras el fin de la alerta"
+      },
+      "support": {
+        "yes": "Sí",
+        "needs": "Requiere reproductor {version}+",
+        "unknown": "Desconocido"
+      },
+      "outcome": {
+        "off": "se apagó (comprobado)",
+        "on": "siguió encendida",
+        "dream": "se inició un protector de pantalla",
+        "black": "pantalla negra, retroiluminación encendida",
+        "pending": "en comprobación",
+        "unknown": "no se pudo saber",
+        "kept-on": "se dejó encendida",
+        "failed": "no se pudo apagar"
+      },
+      "decision": {
+        "RESTORE": "estaba apagada antes de la alerta",
+        "WAKE_COMMAND_DURING_ALERT": "alguien la encendió durante la alerta",
+        "SCHEDULE_ON_AFTER_OFF": "su horario la encendió",
+        "REBOOTED": "se reinició durante la alerta",
+        "STILL_HELD": "otra alerta seguía activa",
+        "NOTHING_INTERRUPTED": "estaba encendida antes de la alerta",
+        "OTHER": "no se informó el motivo"
+      },
+      "proof": {
+        "lastSleep": "Último apagado: {outcome} ({ago}).",
+        "lastRestore": "Último fin de alerta: {outcome}, porque {reason} ({ago})."
+      },
+      "turnOn": {
+        "confirmed": "Último Encender panel ({ago}): confirmado por el reproductor.",
+        "waiting": "Último Encender panel ({ago}): esperando la confirmación del reproductor.",
+        "notConfirmed": "Último Encender panel ({ago}): el reproductor no lo confirmó."
+      },
+      "noEvidence": "Esta versión del reproductor no informa lo que observó. Actualícela para ver la comprobación aquí."
     }
   },
   "selection": {
