@@ -119,3 +119,5 @@ Exact follow-up source/report files:
 - docs/research/2026-10-10-template-flagship-refresh/healthcare-fashion-veterinary.md
 
 The source retains its existing shim/media companion. Shared V15 regeneration, API exemplars, generated posters, integration, live deployment proof and managed-worktree cleanup remain with the lead. The prior six-board commit is `02aabad42a3c0472289787eed7c8124d3a9303f1`, integrated by the lead as `45c13052`; this follow-up does not redo those boards.
+
+Lead integration follow-up: replaced the default unverified dental-prevention claim with an editable invitation to ask the clinical team about a dental-care routine. The `tip.text` field and saved customer overrides are preserved. Shared V2 combined image/fit and important-logo overrides are covered by lead browser verification.

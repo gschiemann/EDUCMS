@@ -666,20 +666,31 @@ There are **three** template-editing architectures; do not confuse them:
 **The EXTERNAL_HTML shim does TWO jobs (since V5, 2026-06-07):** (a) apply overrides INBOUND (brand/text/image/styles), and (b) **report clicks OUTBOUND** — the "hot zones": click an element in the builder → the panel jumps to that element's field editor. The protocol the panel speaks: `educms-ready` (load) · `educms-edit-mode {on}` (panel→iframe, arms hover-outline + click-report; NEVER sent on the live player) · `educms-field-click {key,kind}` (iframe→panel, drives the jump). The walker keys off `data-field`/`data-imgslot`/`data-action` — so **every editable element needs one of those** (same contract as editability).
 
 **The shim is INJECTED, never hand-written.** Existing apply/click mechanisms:
-- `apps/web/scripts/inject-shim-v2.cjs` → bakes the current **EDUCMS-SHIM-V14** (apply + click-to-edit) into static boards, replacing every older marker (V12…V2, `EDUCMS-BRAND-SHIM`) in place. The version lives at `inject-shim-v2.cjs:66` — read it, don't trust this line (it said "V5" here until 2026-09-11). The subdirectory argument is **optional and scopes the walk**; with no argument it walks all of `public/templates`, which is what you normally want: `node apps/web/scripts/inject-shim-v2.cjs` (or `… school`, `… signage/qsr`, …).
+- `apps/web/scripts/inject-shim-v2.cjs` → bakes the current **EDUCMS-SHIM-V15** (apply + click-to-edit) into static boards, replacing every older marker (V14…V2, `EDUCMS-BRAND-SHIM`) in place. The version lives at `inject-shim-v2.cjs:66` — read it, don't trust this line (it said "V5" here until 2026-09-11). The subdirectory argument is **optional and scopes the walk**; with no argument it walks all of `public/templates`, which is what you normally want: `node apps/web/scripts/inject-shim-v2.cjs` (or `… school`, `… signage/qsr`, …).
 - `apps/web/scripts/inject-click-shim.cjs` → an **additive** click-only shim for the 30 `signage/{qsr,menus-pos,bar}` MENU boards, whose hand-crafted V5 carries `applyMenu()` (live per-location POS price + auto-86) that must NOT be clobbered. `node apps/web/scripts/inject-click-shim.cjs signage`.
 - Kiosks load the external `public/templates/kiosk/_edit-shim.js` (apply + click + kiosk engine-render hook). The injectors **skip** any file referencing it (no double-shim).
 
 **Shared media controls (2026-10-10).** `apps/web/scripts/board-media-controls.ts` is an
 additive companion, baked into all packaged boards by
-`node apps/web/scripts/inject-media-controls.cjs` (`EDUCMS-MEDIA-CONTROLS-V1`). Run it
+`node apps/web/scripts/inject-media-controls.cjs` (`EDUCMS-MEDIA-CONTROLS-V2`). Run it
 after adding a board or changing the companion; never hand-edit its generated script.
-It preserves the existing V14, menu/POS and kiosk shims. Advertised
+It preserves the existing generic, menu/POS and kiosk shims. The injector also
+walks all 58 holiday boards; their media overrides use the same saved controls. Advertised
 `educms-media-ready` slots use the editor's shared Replace / Fit / Rotate toolbar;
 their saved overrides live in `defaultConfig.mediaStyles`, `imageOverrides` and
 `videoOverrides`. Media changes use postMessage without reloading a kiosk's current
 screen. Embedded slots retain their authored frames; separately added Image / Video
 zones use the same insertion and gesture controls on blank and preset canvases.
+The companion applies saved Fit after legacy source painters finish and honors
+operator choices over older `!important` logo styles; clearing overrides restores
+authored fits. Its font companion (`board-font-controls.ts`) loads supported web
+fonts inside the sandbox for field and theme edits, including restored URL edits.
+Holiday media fields are discovered from the selected grade/design/orientation's
+actual source; `HolidayMediaFields.tsx` exposes Replace, Remove and Restore.
+Holiday text-field caches must include grade, variant, design and orientation.
+Keep normal default body text at least 60px and support text at least 50px on a
+3840px stage after automatic fitting; explicit operator font sizes remain absolute.
+Allocate room for longer copy instead of silently shrinking below those floors.
 The mounted bottom bar is **inside `BuilderShell.tsx`**, not `BottomToolbar.tsx`.
 Keep Image / Video / Text quick actions above search, everyday media first in
 the curated list, and Photos & video first in the full library. New media is
