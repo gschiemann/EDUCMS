@@ -72,6 +72,7 @@ import { StreamingModule } from './streaming/streaming.module';
 import { BillingModule } from './billing/billing.module';
 import { CustomersModule } from './customers/customers.module';
 import { SupportAccessModule } from './support-access/support-access.module';
+import { UserScopeModule } from './user-scope/user-scope.module';
 // 2026-05-03 — Sprint 8d POS catalog sync framework.
 import { PosModule } from './pos/pos.module';
 // 2026-05-03 — Sprint 8d ad-network monetization framework.
@@ -200,6 +201,9 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     // 2026-10-11 — customer-approved, time-boxed support access; replaces
     // VenueOS's standing reach into customer organisations (@Global gate).
     SupportAccessModule,
+    // 2026-10-11 — a person in more than one location, and limits to specific
+    // screens / screen groups (@Global gate, user-scope.interceptor.ts).
+    UserScopeModule,
     PosModule,
     AdsModule,
     SampleDataModule,

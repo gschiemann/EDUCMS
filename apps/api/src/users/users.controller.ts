@@ -2,6 +2,7 @@ import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request, Ba
 import { Throttle } from '@nestjs/throttler';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
+import { screenScopeOf } from '../user-scope/user-scope.context';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
@@ -215,7 +216,9 @@ export class UsersController {
         // toggle (PUT /:id/can-trigger-panic). Without it the control would
         // have no state to render, and the capability stays invisible.
         canTriggerPanic: true,
-        _count: { select: { passkeys: true } },
+        // 2026-10-11 — USER SCOPING: the People row says "3 locations" /
+        // "Limited to screens" without a second request. Counts only.
+        _count: { select: { passkeys: true, locationAccess: true, screenScopes: true } },
       } as any,
       orderBy: { createdAt: 'desc' },
     });
@@ -224,7 +227,13 @@ export class UsersController {
       const mfaMethods: Array<'totp' | 'passkey'> = [];
       if (mfaTotpVerifiedAt) mfaMethods.push('totp');
       if ((_count?.passkeys ?? 0) > 0) mfaMethods.push('passkey');
-      return { ...rest, mfaMethods, mfaEnrolled: mfaMethods.length > 0 };
+      return {
+        ...rest,
+        mfaMethods,
+        mfaEnrolled: mfaMethods.length > 0,
+        extraLocationCount: _count?.locationAccess ?? 0,
+        screenLimited: (_count?.screenScopes ?? 0) > 0,
+      };
     });
   }
 
@@ -274,8 +283,15 @@ export class UsersController {
           } as any,
         })
       : null;
+    // USER SCOPING (2026-10-11): `homeTenantId` is the person's own location
+    // (tenantId above is the ACTIVE one); `screenScope` says the person is
+    // limited to some screens here — set by UserScopeInterceptor, which runs
+    // on this route for every location role. Null for everyone else.
+    const scope = screenScopeOf(req);
     return {
       ...me,
+      homeTenantId: (me as any).tenantId,
+      screenScope: scope ? { screenCount: scope.screenIds.length, groupCount: scope.groupIds.length } : null,
       tenantId: activeTenantId,
       tenantVertical: (tenant as any)?.vertical || 'K12',
       tenantName: (tenant as any)?.name ?? null,

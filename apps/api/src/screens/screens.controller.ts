@@ -9,6 +9,7 @@ import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import type { Request as ExpressReq, Response } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
 import { withDbRetry } from '../prisma/with-db-retry';
+import { scopedScreenWhere } from '../user-scope/user-scope.context';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
@@ -2203,7 +2204,9 @@ export class ScreensController {
       res.setHeader('Pragma', 'no-cache');
     }
     const rows = await this.prisma.client.screen.findMany({
-      where: { tenantId: req.user.tenantId },
+      // USER SCOPING (2026-10-11): a screen-scoped person lists only their
+      // screens (`{}` for everyone else — unchanged).
+      where: { tenantId: req.user.tenantId, ...scopedScreenWhere(req) },
       // syncMode (2026-07-28): the list view badges frame-locked groups —
       // one extra scalar on an already-joined row, no new query.
       // address/latitude/longitude: the list's effective geo is screen > GROUP >

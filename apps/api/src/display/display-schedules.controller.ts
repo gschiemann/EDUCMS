@@ -47,6 +47,7 @@ import {
   type DisplayScheduleUpdateInput,
 } from '@cms/api-types';
 
+import { scopedTargetWhere } from '../user-scope/user-scope.context';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
@@ -78,7 +79,9 @@ export class DisplaySchedulesController {
     @Query('screenGroupId') screenGroupId?: string,
   ) {
     const tenantId = this.requireTenant(req);
-    const where: any = { tenantId };
+    // USER SCOPING (2026-10-11): a screen-scoped person lists only the power
+    // schedules on their screens / groups (`{}` for everyone else).
+    const where: any = { tenantId, ...scopedTargetWhere(req) };
     if (screenId) where.screenId = screenId;
     if (screenGroupId) where.screenGroupId = screenGroupId;
     return this.prisma.client.displaySchedule.findMany({

@@ -94,12 +94,52 @@ export class TenantsController {
       return { current: tenantId, tenants };
     }
 
-    // Single-school admins / contributors / viewers
-    const me = await this.prisma.client.tenant.findUnique({
-      where: { id: tenantId },
+    // Single-school admins / contributors / viewers: their HOME location plus
+    // every location they were given (USER SCOPING, 2026-10-11) — and nothing
+    // else. A person with no extra locations gets exactly the old answer.
+    const locationIds = await this.personLocationIds(req.user.userId ?? req.user.id);
+    const ids = [...new Set([tenantId, ...locationIds])];
+    if (ids.length === 1) {
+      const me = await this.prisma.client.tenant.findUnique({
+        where: { id: tenantId },
+        select: { id: true, name: true, slug: true, parentId: true },
+      });
+      return { current: tenantId, tenants: me ? [me] : [] };
+    }
+    const tenants = await this.prisma.client.tenant.findMany({
+      // The active tenant is listed even if archived (it is where the session
+      // is); every other location only while live.
+      where: { OR: [{ id: tenantId }, { id: { in: ids }, archivedAt: null }] },
       select: { id: true, name: true, slug: true, parentId: true },
+      orderBy: [{ parentId: 'asc' }, { name: 'asc' }],
     });
-    return { current: tenantId, tenants: me ? [me] : [] };
+    return { current: tenantId, tenants };
+  }
+
+  /**
+   * USER SCOPING (2026-10-11): the person's HOME tenant plus the locations
+   * they were given (`user_location_access`), read from the live rows — never
+   * from the token. Only the same organisation counts: a row pointing outside
+   * the home's organisation (which the People editor never writes) is ignored.
+   */
+  private async personLocationIds(userId: string | undefined): Promise<string[]> {
+    if (!userId) return [];
+    const client: any = this.prisma.client;
+    // ten-ok: identity SELF-lookup — id IS the authenticated JWT principal
+    const me = await client.user.findFirst({
+      where: { id: userId, deletedAt: null },
+      select: { tenantId: true, locationAccess: { select: { tenantId: true } } },
+    });
+    if (!me) return [];
+    const extra: string[] = (me.locationAccess ?? []).map((r: { tenantId: string }) => r.tenantId);
+    if (extra.length === 0) return [me.tenantId];
+    const home = await client.tenant.findUnique({ where: { id: me.tenantId }, select: { id: true, parentId: true } });
+    const rootId = home?.parentId ?? me.tenantId;
+    const sameOrg = await client.tenant.findMany({
+      where: { id: { in: extra }, OR: [{ id: rootId }, { parentId: rootId }] },
+      select: { id: true },
+    });
+    return [me.tenantId, ...sameOrg.map((t: { id: string }) => t.id)];
   }
 
   /**
@@ -307,6 +347,17 @@ export class TenantsController {
       });
       const districtId = callerTenant?.parentId ?? callerTenant?.id;
       authorized = target.id === districtId || target.parentId === districtId;
+    } else if (role === AppRole.SCHOOL_ADMIN || role === AppRole.CONTRIBUTOR || role === AppRole.RESTRICTED_VIEWER) {
+      // USER SCOPING (2026-10-11): a location role may switch between its HOME
+      // and the locations it was given — live rows, same organisation — and
+      // never into an archived one. Same role in each; the MFA policy of the
+      // TARGET still applies below.
+      const mine = await this.personLocationIds(req.user.userId ?? req.user.id);
+      const archived = await this.prisma.client.tenant.findFirst({
+        where: { id: target.id, archivedAt: { not: null } },
+        select: { id: true },
+      });
+      authorized = mine.includes(target.id) && !archived;
     }
     if (!authorized) {
       throw new HttpException({ code: 'TENANT_SWITCH_NOT_AUTHORIZED', message: 'You are not authorized to switch into that tenant' }, HttpStatus.FORBIDDEN);
