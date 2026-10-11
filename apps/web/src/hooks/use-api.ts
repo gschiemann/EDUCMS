@@ -3892,9 +3892,11 @@ export function useCompSeats() {
 //
 // When OFF (default), paired Android players DO NOT auto-update
 // even when a newer APK is published. Admins push individual
-// screens manually. When ON, kiosks pull updates on their 6h
-// cadence — same as pre-2026 behavior. Per-screen Push override
-// (forceApkUpdatePendingAt) works regardless of the flag.
+// screens manually. When ON (2026-10-11): a screen is offered an
+// update automatically ONLY if it can install silently and ONLY in
+// the off-hours window (org window, else 03:00–04:00 local). A
+// per-screen switch (useSetScreenAutoUpdate) overrides the org.
+// Per-screen Push (forceApkUpdatePendingAt) works regardless.
 export function useAutoUpdatePlayerConfig() {
   return useQuery<{ enabled: boolean }>({
     queryKey: ['auto-update-player-config'],
@@ -3915,7 +3917,66 @@ export function useToggleAutoUpdatePlayer() {
     onError: (_e, _v, ctx) => {
       if (ctx?.prev !== undefined) qc.setQueryData(['auto-update-player-config'], ctx.prev);
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: ['auto-update-player-config'] }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['auto-update-player-config'] });
+      qc.invalidateQueries({ queryKey: ['auto-update-readiness'] });
+      qc.invalidateQueries({ queryKey: ['screen-auto-update'] });
+    },
+  });
+}
+
+// ─── Automatic Player updates: per-screen view + switch (2026-10-11) ───
+export type AutoUpdateMode = 'on' | 'off' | 'inherit';
+export interface ScreenAutoUpdateInfo {
+  screenId: string;
+  name: string;
+  override: AutoUpdateMode;
+  enabled: boolean;
+  enabledSource: 'screen' | 'org';
+  readiness: 'silent' | 'needs-tap' | 'unknown';
+  readinessReason:
+    | 'armed' | 'no-report' | 'report-predates-install'
+    | 'android-too-old' | 'installed-by-another-app' | 'not-armed';
+  window: { start: string; end: string; timezone: string; hoursSource: 'org' | 'default'; zoneSource: 'org' | 'schedule' } | null;
+  willAutoUpdate: boolean;
+  inventoryReportedAt: string | null;
+}
+export interface AutoUpdateReadiness {
+  orgEnabled: boolean;
+  orgWindow: { start: string | null; end: string | null; timezone: string | null };
+  defaultWindow: { start: string; end: string };
+  screens: ScreenAutoUpdateInfo[];
+}
+
+/** Fleet view — read on demand by the Player settings page; never polled. */
+export function useAutoUpdateReadiness(enabled = true) {
+  return useQuery<AutoUpdateReadiness>({
+    queryKey: ['auto-update-readiness'],
+    queryFn: () => apiFetch('/tenants/me/auto-update-readiness'),
+    enabled,
+    staleTime: 60_000,
+  });
+}
+
+/** One screen — read while its settings are open; never polled. */
+export function useScreenAutoUpdate(screenId: string, enabled = true) {
+  return useQuery<ScreenAutoUpdateInfo & Pick<AutoUpdateReadiness, 'orgEnabled' | 'orgWindow' | 'defaultWindow'>>({
+    queryKey: ['screen-auto-update', screenId],
+    queryFn: () => apiFetch(`/screens/${screenId}/auto-update`),
+    enabled: enabled && !!screenId,
+    staleTime: 60_000,
+  });
+}
+
+export function useSetScreenAutoUpdate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { screenId: string; mode: AutoUpdateMode }) =>
+      apiFetch(`/screens/${args.screenId}/auto-update`, { method: 'PUT', body: JSON.stringify({ mode: args.mode }) }),
+    onSuccess: (data, args) => {
+      qc.setQueryData(['screen-auto-update', args.screenId], data);
+      qc.invalidateQueries({ queryKey: ['auto-update-readiness'] });
+    },
   });
 }
 

@@ -44,6 +44,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslations } from 'next-intl';
+import { AutoUpdateSection } from './AutoUpdateSection';
 import {
   AlertCircle, Check, CheckCircle2, ChevronDown, Copy, ExternalLink, Loader2,
   RefreshCw, Settings, WifiOff, X,
@@ -1588,6 +1589,10 @@ export function ScreenSettingsSections({
               standard LCD never sees LED-canvas or serial-console
               controls (2026-08-24: "there are LED poster settings in
               standard LCD screens"). */}
+          {/* 2026-10-11 — automatic APK updates, per screen (opt-in,
+              silent-only, off-hours). An Android app concern, so a plain
+              browser player never shows it. */}
+          {!isBrowserPlayer && s?.id && <AutoUpdateSection screenId={s.id} readOnly={displayReadOnly} />}
           <SidesSection screen={s} readOnly={displayReadOnly} />
           <OrientationSection screen={s} readOnly={displayReadOnly} />
           <LedCanvasSection screen={s} readOnly={displayReadOnly} />

@@ -38,6 +38,7 @@ import type { Request as ExpressReq, Response } from 'express';
 import { Readable } from 'node:stream';
 import { Throttle } from '@nestjs/throttler';
 import { PrismaService } from '../prisma/prisma.service';
+import { autoUpdateEnabledFor, decideAutomaticOffer, isValidTimeZone, resolveAutoUpdateWindow, type AutomaticOfferDecision } from './auto-update-policy';
 import { RedisService } from '../realtime/redis.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
@@ -337,6 +338,62 @@ export class PlayerOtaController {
     }
   }
 
+  /**
+   * Facts for an automatic offer (auto-update-policy.ts): the screen's latest
+   * device inventory and, when the org window has no timezone, the screen's
+   * own on/off schedule timezone. Any read failure → no automatic offer.
+   */
+  private async automaticOfferFor(
+    screen: any,
+    callerSource: string,
+    callerVc: number,
+  ): Promise<AutomaticOfferDecision> {
+    try {
+      // ten-ok: keyed by the screen row resolved from this device's own
+      // fingerprint above — the device is the principal, no narrower scope.
+      const inv = await (this.prisma.client as any).screenDeviceInventory.findUnique({
+        where: { screenId: screen.id },
+        select: { report: true },
+      });
+      const t = screen.tenant ?? {};
+      let scheduleTimezone: string | null = null;
+      if (!isValidTimeZone(t.otaWindowTimezone)) {
+        const rows = await this.prisma.client.displaySchedule.findMany({
+          where: {
+            tenantId: screen.tenantId,
+            isActive: true,
+            OR: [
+              { screenId: screen.id },
+              ...(screen.screenGroupId ? [{ screenGroupId: screen.screenGroupId }] : []),
+            ],
+          },
+          select: { timezone: true, screenId: true },
+          take: 10,
+        });
+        const own = rows.find((r: any) => r.screenId === screen.id && isValidTimeZone(r.timezone));
+        const group = rows.find((r: any) => isValidTimeZone(r.timezone));
+        scheduleTimezone = (own ?? group)?.timezone ?? null;
+      }
+      return decideAutomaticOffer({
+        orgEnabled: t.autoUpdatePlayerEnabled,
+        screenOverride: screen.autoUpdatePlayerOverride,
+        callerSource,
+        callerVersionCode: callerVc,
+        inventoryReport: inv?.report ?? null,
+        window: resolveAutoUpdateWindow({
+          orgStart: t.otaWindowStart,
+          orgEnd: t.otaWindowEnd,
+          orgTimezone: t.otaWindowTimezone,
+          scheduleTimezone,
+        }),
+        now: new Date(),
+      });
+    } catch (e: any) {
+      this.logger.warn(`[ota] auto-facts-failed screen=${screen?.id} err=${e?.message}`);
+      return { offer: false, reason: 'auto-facts-unavailable' };
+    }
+  }
+
   @Post('update-check')
   @Throttle({ default: { limit: 120, ttl: 60_000 } })
   async updateCheck(@Body() body: UpdateCheckBody, @Req() req?: ExpressReq) {
@@ -434,6 +491,8 @@ export class PlayerOtaController {
             name: true,
             forceApkUpdatePendingAt: true,
             forceApkUpdateOverrideWindow: true,
+            autoUpdatePlayerOverride: true,
+            screenGroupId: true,
             lastOtaState: true,
             lastOtaAt: true,
             tenant: {
@@ -472,13 +531,26 @@ export class PlayerOtaController {
         // players never send source='user' (no tap wiring until v1.1.5),
         // so this branch is inert for the current fleet and arms the
         // moment the tap-wired player ships.
+        // ── 2026-10-11 — AUTOMATIC offers are opt-in, silent-only, off-hours
+        // (auto-update-policy.ts). Was: `tenant-auto-on` offered every screen
+        // of the org at any hour — a panel that cannot install silently then
+        // showed Android's "Install?" prompt over live content. Facts are
+        // only read when the switch (screen override, else org) is ON, so
+        // the default fleet pays no extra query.
+        let autoDecision: AutomaticOfferDecision | null = null;
+        if (screen && !fieldTarget) {
+          const sw = autoUpdateEnabledFor(screen.tenant?.autoUpdatePlayerEnabled, screen.autoUpdatePlayerOverride);
+          autoDecision = sw.enabled
+            ? await this.automaticOfferFor(screen, callerSource, callerVc)
+            : { offer: false, reason: `auto-off-${sw.source}` };
+        }
         if (screen && deviceAuthenticated && callerSource === 'user' && !fieldTarget) {
           lookupScreenName = screen.name ?? null;
           allowUpdate = true;
           allowReason = 'panel-user-tap';
-        } else if (screen?.tenant?.autoUpdatePlayerEnabled && !fieldTarget) {
+        } else if (autoDecision?.offer) {
           allowUpdate = true;
-          allowReason = 'tenant-auto-on';
+          allowReason = autoDecision.reason;
         } else if (screen?.forceApkUpdatePendingAt) {
           const ageMs = Date.now() - new Date(screen.forceApkUpdatePendingAt).getTime();
 
@@ -568,7 +640,7 @@ export class PlayerOtaController {
               .catch(() => { /* swallow */ });
           }
         } else {
-          allowReason = screen ? 'no-force-flag' : 'no-screen-row';
+          allowReason = screen ? `no-force-flag-${autoDecision?.reason ?? 'auto-off'}` : 'no-screen-row';
         }
       } else {
         allowReason = 'no-fingerprint';

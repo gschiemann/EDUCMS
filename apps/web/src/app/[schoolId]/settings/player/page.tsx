@@ -22,10 +22,10 @@
  * ── Audit honesty ────────────────────────────────────────────────────
  * `PUT me/ota-window` and `PUT me/canary-rollout` write an AuditLog row
  * (OTA_WINDOW_UPDATED / CANARY_ROLLOUT_UPDATED — verified in
- * apps/api/src/tenants/tenants.controller.ts). `PUT me/auto-update-player`,
- * `PUT me/usb-ingest` and `POST me/usb-ingest/rotate-key` do NOT. The page
- * therefore claims an audit record only for the two that write one, and
- * stays silent for the rest rather than implying one exists.
+ * apps/api/src/tenants/tenants.controller.ts), and since 2026-10-11 so does
+ * `PUT me/auto-update-player` (AUTO_UPDATE_PLAYER_SET). `PUT me/usb-ingest`
+ * and `POST me/usb-ingest/rotate-key` do NOT. The page stays silent about
+ * audit records rather than implying one exists where it does not.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
@@ -66,6 +66,7 @@ import {
   type PlayerRolloutState,
   type RolloutScreen,
 } from '@/components/settings/player/playerRollout';
+import { AutoUpdateReadinessList } from '@/components/settings/player/AutoUpdateReadinessList';
 
 const ADMIN_ROLES = new Set(['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN']);
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -532,6 +533,15 @@ export default function PlayerSettingsPage() {
           {autoUpdateNote && <span className="text-[12px] text-slate-600" aria-live="polite">{autoUpdateNote}</span>}
         </div>
         <p className="mt-2.5 text-[12px] text-slate-500">{t('settings.cc.player.autoUpdatePerScreenNote')}</p>
+      </EditorSection>
+
+      {/* ── Which screens can update themselves (2026-10-11) ──────────── */}
+      <EditorSection
+        id="player-auto-ready"
+        title={t('settings.cc.player.autoReady.title')}
+        description={t('settings.cc.player.autoReady.description')}
+      >
+        <AutoUpdateReadinessList />
       </EditorSection>
 
       {/* ── Maintenance window ────────────────────────────────────────── */}

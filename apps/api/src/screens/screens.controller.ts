@@ -1,4 +1,5 @@
 import { nativeSharedVideoTarget, buildNativeSharedVideoDescriptor } from './native-shared-video';
+import { buildAutoUpdateReport, modeToOverride, overrideToMode } from '../player-ota/auto-update-report';
 import { Controller, Post, Get, Put, Delete, Body, Param, Query, Req, Res, UseGuards, Request, HttpException, HttpStatus } from '@nestjs/common';
 import { encodeTargetFromResolutions, pdfDelivery, withheldFromScreens } from '@cms/api-types';
 import { pdfPageBytes, pdfPageManifestItems, pdfScreenShape } from './pdf-page-items';
@@ -4354,6 +4355,60 @@ export class ScreensController {
   // (the bridge method didn't exist before that build); older installs
   // silently ignore the event and pick up the update on their next
   // 6h periodic poll instead.
+  // ─── Automatic Player updates for ONE screen (2026-10-11, owner decision) ───
+  // Opt-in, per screen: 'on' / 'off' override the organisation's setting,
+  // 'inherit' follows it. Automatic offers additionally require the off-hours
+  // window and a screen that installs silently (player-ota/auto-update-policy.ts);
+  // "Send update" (force-update below) is unaffected by any of this.
+  @UseGuards(JwtAuthGuard, RbacGuard)
+  @Get(':id/auto-update')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
+  async getAutoUpdate(@Request() req: any, @Param('id') id: string) {
+    const tenantId = req.user.tenantId;
+    const report = await buildAutoUpdateReport(this.prisma, tenantId, [id]);
+    const row = report.screens[0];
+    if (!row) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
+    return { ...row, orgEnabled: report.orgEnabled, orgWindow: report.orgWindow, defaultWindow: report.defaultWindow };
+  }
+
+  @UseGuards(JwtAuthGuard, RbacGuard)
+  @Put(':id/auto-update')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async setAutoUpdate(@Request() req: any, @Param('id') id: string, @Body() body: { mode?: string }) {
+    const tenantId = req.user.tenantId;
+    const next = modeToOverride(body?.mode);
+    if (next === undefined) {
+      throw new HttpException(
+        { code: 'SCREEN_AUTO_UPDATE_MODE_INVALID', message: 'mode must be "on", "off" or "inherit"' },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    const screen = await this.prisma.client.screen.findFirst({
+      where: { id, tenantId },
+      select: { id: true, name: true, autoUpdatePlayerOverride: true } as any,
+    }) as any;
+    if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
+    await this.prisma.client.screen.update({
+      where: { id, tenantId },
+      data: { autoUpdatePlayerOverride: next } as any,
+    });
+    await this.prisma.client.auditLog.create({
+      data: {
+        action: 'SCREEN_AUTO_UPDATE_SET',
+        targetType: 'screen',
+        targetId: id,
+        tenantId,
+        userId: req.user.id,
+        details: JSON.stringify({
+          screenName: screen.name,
+          from: overrideToMode(screen.autoUpdatePlayerOverride),
+          to: overrideToMode(next),
+        }),
+      },
+    });
+    return this.getAutoUpdate(req, id);
+  }
+
   @UseGuards(JwtAuthGuard, RbacGuard)
   @Post('force-update')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)

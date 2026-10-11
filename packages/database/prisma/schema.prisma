@@ -1551,6 +1551,13 @@ model Screen {
   // Cleared automatically alongside forceApkUpdatePendingAt when the
   // install completes (versionCode bump observed in heartbeat).
   forceApkUpdateOverrideWindow        Boolean      @default(false) @map("force_apk_update_override_window")
+  // 2026-10-11 (owner decision) — per-screen AUTOMATIC-update switch.
+  // NULL = inherit Tenant.autoUpdatePlayerEnabled; TRUE = on for this screen
+  // even when the org is off; FALSE = off for this screen even when the org
+  // is on. Automatic offers additionally require the off-hours window and a
+  // screen that installs silently (player-ota/auto-update-policy.ts). An
+  // operator's explicit "Send update" (forceApkUpdatePendingAt) ignores it.
+  autoUpdatePlayerOverride            Boolean?     @map("auto_update_player_override")
   // v1.0.12 — per-phase OTA progress reported by OtaUpdateWorker.
   // Lets the dashboard show a real progress bar grounded in device
   // truth instead of the time-based theater that was killing trust.
