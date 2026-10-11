@@ -2,6 +2,7 @@ import { FACE_STORAGE_SHIM } from './faceStorageShim';
 import type { Metadata, Viewport } from 'next';
 import { AppDialogHost } from '@/components/ui/app-dialog';
 import { LEGACY_POLYFILLS_JS } from './legacyPolyfills';
+import { UPDATE_COVER_INLINE_JS } from './updateCoverInline';
 
 // 2026-06-27 — LAUNCH-BLOCKING root cause of "deploys never reach the kiosk".
 // The /player route is a client app with no per-request data, so Next.js
@@ -173,7 +174,7 @@ if(typeof crypto!=='undefined'&&typeof crypto.randomUUID!=='function'&&typeof cr
           // The controller can't tell us LED dimensions — NovaStar's
           // tile mapping is hardware-level and not exposed to Android.
           // So the operator sets canvasW/canvasH once per screen via
-          // the player's info overlay ("Resize for LED" button), we
+          // the player's Back menu ("Resize LED area" button), we
           // persist to localStorage, and apply on every subsequent boot.
           var w=parseInt(p.get('w'),10);
           var h=parseInt(p.get('h'),10);
@@ -221,7 +222,7 @@ if(typeof crypto!=='undefined'&&typeof crypto.randomUUID!=='function'&&typeof cr
           var effH=canvasH>0?canvasH:(h>0?h:(typeof window!=='undefined'?window.innerHeight:0));
           // Operator escape hatch: ?narrow=1 forces narrow-stack mode
           // regardless of detected dimensions. Useful when the LED is
-          // narrow but you haven't run "Resize for LED" yet.
+          // narrow but you haven't run "Resize LED area" yet.
           var forceNarrow=(p.get('narrow')==='1');
           if(effW>0&&effH>0){
             var m=document.querySelector('meta[name="viewport"]');
@@ -274,7 +275,7 @@ if(typeof crypto!=='undefined'&&typeof crypto.randomUUID!=='function'&&typeof cr
             // Mark whether canvas params were operator-supplied vs
             // viewport-fallback. The diagnostic strip surfaces this so
             // the operator can tell at a glance whether they need to
-            // run "Resize for LED". cfg=Y means configured; cfg=N
+            // run "Resize LED area". cfg=Y means configured; cfg=N
             // means we're using the WebView viewport as a best guess.
             document.documentElement.setAttribute(
               'data-led-cfg',
@@ -291,6 +292,20 @@ if(typeof crypto!=='undefined'&&typeof crypto.randomUUID!=='function'&&typeof cr
           }
         }catch(e){}})();`,
         }}
+      />
+      {/* ── OFF-HOURS UPDATE COVER (2026-10-10) ──────────────────────────
+          When the player reloads itself onto a new web bundle (off-hours
+          background update, offHoursUpdate.ts) the OLD document leaves the
+          last frame it showed in sessionStorage. This paints that frame as
+          THIS document's very first frame — on <html>'s own background, with
+          the player root hidden by the two rules in the style block below —
+          so the reload never shows the connecting splash. The page takes it
+          down once operator content is on the glass (removeUpdateCover), or
+          the script itself after 60 s. Body + tests: updateCoverInline.ts.
+          Plain ES5; runs before any chunk. */}
+      <script
+        data-edu-shim="update-cover"
+        dangerouslySetInnerHTML={{ __html: UPDATE_COVER_INLINE_JS }}
       />
       {/* ── BOOT PROOF WATCHDOG (2026-09-01) ─────────────────────────────
           The splash's "Connecting to your CMS…" / "Online" are server-
@@ -344,6 +359,15 @@ document.body.appendChild(d);
           bottom: 0 !important;
           left: 0 !important;
         }
+
+        /* 2026-10-10 — off-hours update cover (updateCoverInline.ts). While
+           <html> carries data-edu-update-cover, the frame the previous
+           document captured is <html>'s background: the body must not paint
+           over it and the player root (the splash, then the content) stays
+           invisible until the page removes the mark. Two rules, no DOM node
+           — a node inserted before hydration is a React mismatch risk. */
+        html[data-edu-update-cover] body { background: transparent !important; }
+        html[data-edu-update-cover] .player-root-wrapper { visibility: hidden !important; }
 
         /* 2026-05-26 — The player-root-wrapper (a few lines below this
            style block) uses width:var(--led-w,100vw); height:var(--led-h,

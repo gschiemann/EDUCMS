@@ -194,6 +194,14 @@ export const ClearEmergencyInputSchema = z
   .object({
     scopeType: ScopeType,
     scopeId: Id,
+    /**
+     * 2026-10-10 — "end the DRILL" intent. `true` means this all-clear may
+     * end drill state only, never a live alert — even if the drill the
+     * operator is looking at was already ended by a live alert a moment ago
+     * (then it ends nothing). Absent = the request every surface sent before
+     * drills: ends whatever the target is in, drill or live.
+     */
+    isDrill: z.boolean().optional(),
   })
   .strict();
 export type ClearEmergencyInput = z.infer<typeof ClearEmergencyInputSchema>;
@@ -360,6 +368,9 @@ export const SignupInputSchema = z
     address: BoundedText(500).optional(),
     latitude: z.number().min(-90).max(90).optional(),
     longitude: z.number().min(-180).max(180).optional(),
+    // 2026-10-11 — the language the signup page was shown in; billing emails
+    // (trial reminders) are written in it. Unknown values are refused.
+    locale: z.enum(['en', 'es', 'zh']).optional(),
   })
   .passthrough();
 export type SignupInput = z.infer<typeof SignupInputSchema>;

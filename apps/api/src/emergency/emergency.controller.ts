@@ -35,7 +35,11 @@ import {
 // touch exactly ONE row + publish to exactly ONE channel, so a district
 // lockdown reached the district office and nothing else. See the module
 // header for the fan-out-vs-inheritance decision and its tradeoff.
-import { collectDescendantTenantIds, isDescendantTenant } from './tenant-hierarchy';
+import {
+  collectDescendantTenantIds,
+  collectOrganisationTenantIds,
+  isDescendantTenant,
+} from './tenant-hierarchy';
 // 2026-09-16 — double-sided displays. A device-scoped alert names ONE screen
 // id, and with faces that id is one PANE of a physical display. An alert that
 // lit the front while the back kept running the lunch menu is exactly the
@@ -63,10 +67,13 @@ import {
   DRILL_BLOCKED_CODE,
   DRILL_BLOCKED_MESSAGE,
   DRILL_CLEAR_ACTION,
+  DRILL_ENDED_BY_LIVE_ACTION,
   DRILL_TRIGGER_ACTION,
   drillTextBlob,
   liveAlertsBlockingDrill,
+  pickScreenDrillContent,
   pickTenantDrillPlaylists,
+  resolveScreenAlertContent,
   type TriggerPlaylists,
 } from './emergency-drill';
 import {
@@ -233,49 +240,193 @@ export class EmergencyController {
   }
 
   /**
-   * A DRILL must never replace or downgrade a LIVE alert (2026-10-10). Refuse
-   * with a plain-language 409 when a live alert is active anywhere the drill
-   * would reach: the targeted tenant subtree (tenant scope) or the owning
-   * tenant (group / device scope), any ANCESTOR whose live alert the screens
-   * inherit, and any override row on the affected screens that carries a
-   * live entry, shown or covered. The live path never calls this.
+   * "LIVE ALERTS ALWAYS WIN" (Greg, 2026-10-10) — rule (a). A DRILL is refused
+   * with a plain-language 409 while ANY live alert is active ANYWHERE in the
+   * same organisation: the top-level customer tenant and every location under
+   * it (`collectOrganisationTenantIds`), their tenant-wide alerts and every
+   * override row their screens hold, shown or covered. Which screens the
+   * drill would have overlapped is irrelevant. Checked BEFORE the fast-path
+   * dispatch and before any write, so a refused drill reaches no screen and
+   * leaves no row. The live path never calls this.
    */
-  private async refuseDrillOverLiveAlert(args: {
-    tenantIds: string[];
-    screenIds?: string[];
-  }): Promise<void> {
+  private async refuseDrillOverLiveAlert(args: { tenantId: string }): Promise<void> {
+    const organisationIds = await collectOrganisationTenantIds(
+      this.prisma.client.tenant as any,
+      args.tenantId,
+    );
     const tenantRows = await this.prisma.client.tenant.findMany({
-      where: { id: { in: args.tenantIds } },
-      select: { id: true, parentId: true, emergencyStatus: true, emergencyIsDrill: true, archivedAt: true } as any,
+      where: { id: { in: organisationIds } },
+      select: { id: true, emergencyStatus: true, emergencyIsDrill: true } as any,
     });
-    // Ancestors (bounded walk): a school drill while its district is in a
-    // live lockdown would overwrite the inherited alert on the school's row.
-    const ancestors: any[] = [];
-    const seen = new Set<string>(args.tenantIds);
-    let cursor = (tenantRows as any[]).find((t) => t.id === args.tenantIds[0])?.parentId ?? null;
-    for (let hop = 0; cursor && hop < 8 && !seen.has(cursor); hop++) {
-      seen.add(cursor);
-      const row: any = await this.prisma.client.tenant.findUnique({
-        where: { id: cursor },
-        select: { id: true, parentId: true, emergencyStatus: true, emergencyIsDrill: true, archivedAt: true } as any,
-      });
-      if (!row || row.archivedAt) break;
-      ancestors.push(row);
-      cursor = row.parentId ?? null;
-    }
-    const overrideRows = args.screenIds
-      ? await this.overrideRowsFor({ in: args.tenantIds }, args.screenIds)
-      : await this.overrideRowsFor({ in: args.tenantIds });
-    const blocking = liveAlertsBlockingDrill({
-      tenants: [...(tenantRows as any[]), ...ancestors],
-      overrideRows,
-    });
+    const overrideRows = await this.overrideRowsFor({ in: organisationIds });
+    const blocking = liveAlertsBlockingDrill({ tenants: tenantRows as any[], overrideRows });
     if (blocking.length > 0) {
       throw new ConflictException({
         code: DRILL_BLOCKED_CODE,
         message: DRILL_BLOCKED_MESSAGE,
         blocking,
       });
+    }
+  }
+
+  /**
+   * "LIVE ALERTS ALWAYS WIN" — rule (b). A LIVE alert anywhere in the
+   * organisation ENDS every running drill in it: tenant-wide drills on any
+   * tenant of the organisation, group / one-screen drill entries on any of
+   * its screens (shown or covered), and so the drills screens were inheriting.
+   *
+   * ORDER IS THE WHOLE POINT. This runs AFTER the live alert's own fast-path
+   * dispatch and AFTER its writes committed — the live path above is
+   * byte-for-byte what it was, and nothing here can delay or fail it: every
+   * error is reported and swallowed, and the screens that still carried a
+   * drill would pick up its end from their next manifest anyway (a drill row
+   * under a live tenant alert is already out-ranked on glass by the Tenant
+   * row only when no override row exists — which is exactly why the override
+   * drill entries must be removed here).
+   *
+   * Tenant rows written by the live trigger itself already read
+   * `emergencyIsDrill: false`, so the compare-and-set below never touches
+   * them. Audited `DRILL_ENDED_BY_LIVE_ALERT` once per tenant whose drill
+   * state changed; a signed ALL_CLEAR goes to every such tenant's channel and
+   * to the device channel of every screen whose row changed — the player
+   * answers ALL_CLEAR by re-reading its manifest, so a screen inside the live
+   * alert shows the live content and a screen outside it goes back to normal.
+   */
+  private async endDrillsForLiveAlert(args: {
+    tenantId: string;
+    liveOverrideId: string;
+    liveScopeType: string;
+    liveScopeId: string;
+    /** Tenants whose epoch the live trigger already moved with its raise descriptor. */
+    liveTenantIds: string[];
+    userId?: string;
+    userTenantId?: string;
+  }): Promise<{ tenantIds: string[]; screenIds: string[] } | null> {
+    try {
+      const organisationIds = await collectOrganisationTenantIds(
+        this.prisma.client.tenant as any,
+        args.tenantId,
+      );
+      const drillTenants = (await this.prisma.client.tenant.findMany({
+        where: { id: { in: organisationIds }, emergencyIsDrill: true } as any,
+        select: { id: true, emergencyStatus: true, emergencyIsDrill: true } as any,
+      })) as any[];
+      // Re-checked on the row (not only in the where-clause): only a tenant
+      // that is IN a drill right now is ended here, never a live one.
+      const drillTenantIds = drillTenants
+        .filter((t) => t.emergencyIsDrill === true && !!t.emergencyStatus && t.emergencyStatus !== 'INACTIVE')
+        .map((t) => t.id as string);
+
+      const rows = await this.overrideRowsFor({ in: organisationIds });
+      const endedDrillIds = new Set<string>();
+      for (const row of rows) {
+        for (const e of entriesOfRow(row)) if (e.isDrill && e.alertId) endedDrillIds.add(e.alertId);
+      }
+      const plan = this.planAllClear(rows, (_row, e) => e.isDrill === true);
+      const changedScreenIds = new Set<string>();
+      for (const row of rows) {
+        if (entriesOfRow(row).some((e) => e.isDrill)) changedScreenIds.add(row.screenId as string);
+      }
+      if (drillTenantIds.length === 0 && changedScreenIds.size === 0) return null;
+
+      // The tenant-wide drill's own id lives only in its audit row (the Tenant
+      // row has no alert-id column); read it so the drill log can close it.
+      for (const tid of drillTenantIds) {
+        try {
+          const started: any = await this.prisma.client.auditLog.findFirst({
+            where: { tenantId: tid, action: DRILL_TRIGGER_ACTION, targetType: 'tenant' },
+            orderBy: { createdAt: 'desc' },
+            select: { details: true },
+          });
+          const id = started?.details ? JSON.parse(started.details)?.overrideId : null;
+          if (typeof id === 'string' && id) endedDrillIds.add(id);
+        } catch {
+          // Forensics only — the drill still ends.
+        }
+      }
+
+      const affectedTenantIds = [
+        ...new Set<string>([
+          ...drillTenantIds,
+          ...rows.filter((r: any) => changedScreenIds.has(r.screenId)).map((r: any) => r.tenantId as string),
+        ]),
+      ];
+      const clearedState = {
+        emergencyStatus: 'INACTIVE',
+        emergencyType: null,
+        emergencyPlaylistId: null,
+        emergencyPortraitPlaylistId: null,
+        emergencyIsDrill: false,
+      } as any;
+      await this.prisma.client.$transaction([
+        ...(drillTenantIds.length > 0
+          ? [
+              this.prisma.client.tenant.updateMany({
+                // Compare-and-set: a tenant that went LIVE meanwhile is untouched.
+                where: { id: { in: drillTenantIds }, emergencyIsDrill: true } as any,
+                data: clearedState,
+              }),
+            ]
+          : []),
+        ...plan.ops,
+        ...affectedTenantIds.map((tid) =>
+          this.prisma.client.auditLog.create({
+            data: {
+              action: DRILL_ENDED_BY_LIVE_ACTION,
+              targetType: 'tenant',
+              targetId: tid,
+              tenantId: tid,
+              userId: args.userId,
+              details: JSON.stringify({
+                liveOverrideId: args.liveOverrideId,
+                liveScopeType: args.liveScopeType,
+                liveScopeId: args.liveScopeId,
+                endedTenantDrill: drillTenantIds.includes(tid),
+                endedDrillOverrideIds: [...endedDrillIds],
+                clearedScreenIds: rows
+                  .filter((r: any) => r.tenantId === tid && changedScreenIds.has(r.screenId))
+                  .map((r: any) => r.screenId),
+                triggeredByTenant: args.userTenantId,
+              }),
+            },
+          }),
+        ),
+      ]);
+
+      const liveSet = new Set(args.liveTenantIds);
+      for (const tid of affectedTenantIds) {
+        invalidateTenantState(tid);
+        if (drillTenantIds.includes(tid) && !liveSet.has(tid)) {
+          // The tenant-wide alert is over: drop any raise descriptor too.
+          bumpTenantEmergencyEpoch({ redis: this.redisService }, tid, { active: false, alert: null });
+        } else {
+          bumpTenantEmergencyEpoch({ redis: this.redisService }, tid);
+        }
+      }
+      const clearedBy = args.userId || 'admin_system';
+      const signed = this.signer.signMessage('ALL_CLEAR', {
+        overrideId: [...endedDrillIds][0] ?? `drill_ended_${args.liveOverrideId}`,
+        clearedBy,
+        endedByLiveAlert: args.liveOverrideId,
+      });
+      await this.dispatchEmergencyFanout(
+        [
+          ...drillTenantIds.map((tid) => `tenant:${tid}`),
+          ...[...changedScreenIds].map((sid) => `device:${sid}`),
+        ],
+        signed,
+        { scopeType: 'tenant', overrideId: args.liveOverrideId, userId: args.userId, action: 'drill-ended-by-live' },
+      );
+      return { tenantIds: affectedTenantIds, screenIds: [...changedScreenIds] };
+    } catch (error) {
+      Sentry.withScope((s) => {
+        s.setTag('emergency.action', 'trigger.end_drills');
+        s.setUser({ id: args.userId });
+        s.setExtra('liveOverrideId', args.liveOverrideId);
+        Sentry.captureException(error);
+      });
+      console.warn(`[Emergency] ending drills after a live alert failed (the live alert is unaffected): ${error}`);
+      return null;
     }
   }
 
@@ -386,9 +537,9 @@ export class EmergencyController {
       existingByScreen: Map<string, any>;
       sameTarget: (e: OverrideEntry) => boolean;
       // 2026-10-10 — drills. `panicSource: 'drill'` means the tenant pair is
-      // the type's DRILL content, which then beats the screen's per-type LIVE
-      // config (a drill should play drill content wherever it was set);
-      // 'live' keeps the exact precedence below.
+      // the type's DRILL content. Precedence is `resolveScreenAlertContent`
+      // (emergency-drill.ts): the screen's own DRILL content → the tenant's
+      // DRILL content → the exact live precedence; 'live' IS that precedence.
       isDrill?: boolean;
       panicSource?: 'live' | 'drill';
     },
@@ -396,7 +547,6 @@ export class EmergencyController {
     const typeKey = this.emergencyTypeKey(opts.overridePayload.type);
     const explicitPlaylistId = opts.overridePayload.playlistId || null;
     const isDrill = opts.isDrill === true;
-    const drillContentWins = isDrill && opts.panicSource === 'drill';
     const triggeredAt = new Date().toISOString();
     const expiresAt = this.emergencyExpiresAt(opts.overridePayload.expiresAt);
     const replacedAlertIds = new Set<string>();
@@ -406,14 +556,15 @@ export class EmergencyController {
       const tenantFallbackPlaylistId = isPortrait
         ? (opts.panicPortrait || opts.panicLandscape || null)
         : (opts.panicLandscape || opts.panicPortrait || null);
-      const playlistId =
-        explicitPlaylistId
-        || (drillContentWins ? tenantFallbackPlaylistId : null)
-        || screenContent.playlistId
-        || (screenContent.mediaUrl ? null : tenantFallbackPlaylistId);
-      const mediaUrl = playlistId
-        ? null
-        : (screenContent.mediaUrl || opts.overridePayload.mediaUrl || null);
+      const { playlistId, mediaUrl } = resolveScreenAlertContent({
+        isDrill,
+        tenantSource: opts.panicSource ?? 'live',
+        explicitPlaylistId,
+        screenLive: screenContent,
+        screenDrill: isDrill ? pickScreenDrillContent(screen, typeKey, isPortrait) : { playlistId: null, mediaUrl: null },
+        tenantPlaylistId: tenantFallbackPlaylistId,
+        payloadMediaUrl: opts.overridePayload.mediaUrl || null,
+      });
       const placed = placeAlert(
         opts.existingByScreen.get(screen.id) ?? null,
         {
@@ -860,10 +1011,10 @@ export class EmergencyController {
       );
       affectedTenantIds = [scopeId, ...descendantTenantIds];
 
-      // A drill never goes out over a live alert — anywhere in the subtree,
-      // on any screen in it, or inherited from above. Checked BEFORE the
-      // fast-path dispatch below so a refused drill reaches no screen.
-      if (isDrill) await this.refuseDrillOverLiveAlert({ tenantIds: affectedTenantIds });
+      // A drill never goes out while a live alert is active ANYWHERE in the
+      // organisation ("live alerts always win"). Checked BEFORE the fast-path
+      // dispatch below so a refused drill reaches no screen.
+      if (isDrill) await this.refuseDrillOverLiveAlert({ tenantId: scopeId });
 
       // Channels are known the instant the subtree is resolved — dispatch
       // now, in parallel with everything below. Cache invalidation rides
@@ -1021,16 +1172,20 @@ export class EmergencyController {
               locationSpecificCount += 1;
             }
 
-            // A drill with drill content plays it on every screen, ahead of the
-            // screen's per-type LIVE config; a drill with none keeps the live
-            // precedence (per-screen live content, then the live tenant pair).
-            const playlistId =
-              (isDrill && panicSource === 'drill' ? tenantFallbackPlaylistId : null)
-              || screenContent.playlistId
-              || (screenContent.mediaUrl ? null : tenantFallbackPlaylistId);
-            const mediaUrl = playlistId
-              ? null
-              : (screenContent.mediaUrl || (overridePayload.mediaUrl || null));
+            // One precedence for every path (emergency-drill.ts). Drill: the
+            // screen's own DRILL content → the tenant's DRILL content → the
+            // live precedence. Live: the screen's live content, then the
+            // tenant pair — exactly as before. (No `explicitPlaylistId` here:
+            // on this path an explicit playlist already rides inside
+            // `tenantFallbackPlaylistId`, as it always has.)
+            const { playlistId, mediaUrl } = resolveScreenAlertContent({
+              isDrill,
+              tenantSource: panicSource,
+              screenLive: screenContent,
+              screenDrill: isDrill ? pickScreenDrillContent(screen, typeKey, isPortrait) : { playlistId: null, mediaUrl: null },
+              tenantPlaylistId: tenantFallbackPlaylistId,
+              payloadMediaUrl: overridePayload.mediaUrl || null,
+            });
 
             // Same content as always; what changed (2026-10-05) is that the
             // row now records it belongs to THIS tenant-wide alert, and keeps
@@ -1152,17 +1307,10 @@ export class EmergencyController {
       // screen on a 304. `active` is deliberately NOT asserted here — a
       // group/device trigger does not put the TENANT into an alert, and the
       // per-screen record picks the real state up on the next manifest build.
-      // Drills (2026-10-10): the screens this alert reaches are resolved
-      // BEFORE the fast-path dispatch so a refused drill reaches no screen;
-      // the live path keeps its dispatch-first order below.
-      let drillScreens: any[] | null = null;
-      if (isDrill) {
-        drillScreens = await this.scopeScreens(scopeType, scopeId, ownedTenantId);
-        await this.refuseDrillOverLiveAlert({
-          tenantIds: [ownedTenantId],
-          screenIds: drillScreens.map((s) => s.id as string),
-        });
-      }
+      // Drills (2026-10-10): refused BEFORE the fast-path dispatch while a
+      // live alert is active anywhere in the organisation, so a refused drill
+      // reaches no screen; the live path keeps its dispatch-first order.
+      if (isDrill) await this.refuseDrillOverLiveAlert({ tenantId: ownedTenantId });
       bumpTenantEmergencyEpoch({ redis: this.redisService }, ownedTenantId);
       fanout = this.dispatchEmergencyFanout(
         [`${scopeType}:${scopeId}`],
@@ -1179,7 +1327,7 @@ export class EmergencyController {
       //
       // The query is tenant-scoped: `ownedTenantId` was verified above, and
       // an alert must never be able to reach a row outside it.
-      const affectedScreens: any[] = drillScreens ?? (await this.scopeScreens(scopeType, scopeId, ownedTenantId));
+      const affectedScreens: any[] = await this.scopeScreens(scopeType, scopeId, ownedTenantId);
 
       // Push to every pane the scope channel cannot reach. Device scope: the
       // OTHER sides of the named display. Group scope: a side that sits
@@ -1283,6 +1431,22 @@ export class EmergencyController {
     const channel = `${scopeType}:${scopeId}`;
     if (fanout) await fanout;
 
+    // ── "LIVE ALERTS ALWAYS WIN" (2026-10-10) ───────────────────────────
+    // A LIVE alert ends every running drill in the organisation — AFTER its
+    // own dispatch and writes, so the live alert's path and timing above are
+    // untouched; see `endDrillsForLiveAlert`. A drill never runs this.
+    const drillsEnded = isDrill
+      ? null
+      : await this.endDrillsForLiveAlert({
+          tenantId: ownedTenantId,
+          liveOverrideId: overrideId,
+          liveScopeType: scopeType,
+          liveScopeId: scopeId,
+          liveTenantIds: affectedTenantIds,
+          userId: req.user?.id,
+          userTenantId: req.user?.tenantId,
+        });
+
     // 2026-05-25 Developer area: outbound webhook on emergency.triggered.
     // Fire-and-forget; the response below is never blocked. Only fires
     // for tenant-scoped triggers (per-screen / per-group emergencies
@@ -1351,6 +1515,10 @@ export class EmergencyController {
       // Group / device scope: how many screens the alert took over, both
       // sides of a double-sided display counted. Absent for tenant scope.
       ...(affectedScreenCount !== undefined ? { affectedScreenCount } : {}),
+      // 2026-10-10 — the drills this LIVE alert ended across the organisation
+      // (tenants whose drill state changed, screens whose drill rows ended).
+      // Absent on a drill and when there was nothing to end.
+      ...(drillsEnded ? { drillsEnded } : {}),
       message:
         affectedTenantIds.length > 1
           ? `Emergency dispatched to ${channel} and ${affectedTenantIds.length - 1} child location(s)`
@@ -1402,8 +1570,12 @@ export class EmergencyController {
     // LIVE under a district drill keeps its live alert. Read before the
     // dispatch below; a read that fails reads as "live" (the wider clear),
     // which is the direction an all-clear has to fail.
-    let clearingDrill = false;
-    if (scopeType === 'tenant') {
+    // An explicit "end the DRILL" intent (`body.isDrill: true`) can only ever
+    // end drill state — if a live alert replaced the drill a moment ago, this
+    // all-clear ends nothing. Without it the state decides, as before.
+    const drillIntent = body.isDrill === true;
+    let clearingDrill = drillIntent;
+    if (scopeType === 'tenant' && !drillIntent) {
       try {
         const root: any = await this.prisma.client.tenant.findUnique({
           where: { id: scopeId },
@@ -1589,22 +1761,27 @@ export class EmergencyController {
       const matchedByAlert = tenantRows.some((r: any) =>
         entriesOfRow(r).some((e) => e.alertId === overrideId),
       );
-      const isCleared = matchedByAlert
+      const isTargeted = matchedByAlert
         ? (_row: any, e: OverrideEntry) => e.alertId === overrideId
         : (row: any, e: OverrideEntry) =>
             (e.scopeType === scopeType &&
               !!e.scopeId &&
               (scopeType === 'device' ? inScope.has(e.scopeId) : e.scopeId === scopeId)) ||
             (!e.alertId && inScope.has(row.screenId));
+      // 2026-10-10 — an explicit drill all-clear never matches a live entry.
+      const isCleared = drillIntent
+        ? (row: any, e: OverrideEntry) => e.isDrill === true && isTargeted(row, e)
+        : isTargeted;
       const plan = this.planAllClear(tenantRows, isCleared);
       changedScreenIds = plan.clearedScreenIds;
       // 2026-10-10 — the alert this all-clear ended was a drill iff every
       // entry it matched is one (an alert is one thing on every screen it is
-      // on). Nothing matched ⇒ reported as live, the wider reading.
+      // on). Nothing matched ⇒ reported as live, the wider reading — unless
+      // the caller said "drill", which is then what it was.
       const matchedEntries = tenantRows.flatMap((r: any) =>
         entriesOfRow(r).filter((e) => isCleared(r, e)),
       );
-      clearingDrill = matchedEntries.length > 0 && matchedEntries.every((e) => e.isDrill);
+      clearingDrill = drillIntent || (matchedEntries.length > 0 && matchedEntries.every((e) => e.isDrill));
 
       await this.prisma.client.$transaction([
         ...plan.ops,

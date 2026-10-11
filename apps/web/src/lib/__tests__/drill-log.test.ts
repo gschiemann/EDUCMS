@@ -29,6 +29,28 @@ describe('pairDrillLog', () => {
     expect(log[0]).toMatchObject({ type: 'HOLD', scopeType: 'group', scopeId: 'g1', endedAt: null });
   });
 
+  it('a drill a LIVE alert ended closes by its id, and a tenant-wide drill closes by the "ended tenant drill" row', () => {
+    const triggers = [
+      row('TRIGGER_EMERGENCY_DRILL', '2026-10-10T10:00:00.000Z', { overrideId: 'ovr_a', type: 'LOCKDOWN', isDrill: true }),
+      row('TRIGGER_EMERGENCY_DRILL', '2026-10-10T12:00:00.000Z', { overrideId: 'ovr_b', type: 'HOLD', isDrill: true }, { targetType: 'group', targetId: 'g1' }),
+      row('TRIGGER_EMERGENCY_DRILL', '2026-10-10T14:00:00.000Z', { type: 'HOLD', isDrill: true }, { details: '{not json' }),
+    ];
+    const endedByLive = [
+      row('DRILL_ENDED_BY_LIVE_ALERT', '2026-10-10T12:30:00.000Z', { liveOverrideId: 'ovr_live', endedTenantDrill: false, endedDrillOverrideIds: ['ovr_b'] }),
+      row('DRILL_ENDED_BY_LIVE_ALERT', '2026-10-10T14:20:00.000Z', { liveOverrideId: 'ovr_live2', endedTenantDrill: true, endedDrillOverrideIds: [] }),
+    ];
+    const log = pairDrillLog(triggers, [], endedByLive);
+    expect(log.map((e) => e.startedAt)).toEqual(['2026-10-10T14:00:00.000Z', '2026-10-10T12:00:00.000Z', '2026-10-10T10:00:00.000Z']);
+    expect(log[1]).toMatchObject({ overrideId: 'ovr_b', endedAt: '2026-10-10T12:30:00.000Z', endedBy: 'live-alert' });
+    // the tenant-wide drill with no readable id is closed by the tenant-drill end AFTER it, not the earlier one
+    expect(log[0]).toMatchObject({ overrideId: null, scopeType: 'tenant', endedAt: '2026-10-10T14:20:00.000Z', endedBy: 'live-alert' });
+    // ovr_a: nothing ended it (the tenant-drill end row was claimed by the newer drill)
+    expect(log[2]).toMatchObject({ overrideId: 'ovr_a', endedAt: null, endedBy: null });
+    // an operator's all-clear reads as such
+    const byClear = pairDrillLog([triggers[0]], [row('CLEAR_EMERGENCY_DRILL', '2026-10-10T10:05:00.000Z', { overrideId: 'ovr_a' })]);
+    expect(byClear[0]).toMatchObject({ endedAt: '2026-10-10T10:05:00.000Z', endedBy: 'all-clear' });
+  });
+
   it('tolerates unreadable details and a clear older than its start', () => {
     const triggers = [row('TRIGGER_EMERGENCY_DRILL', '2026-10-10T10:00:00.000Z', {}, { details: '{not json' })];
     const clears = [row('CLEAR_EMERGENCY_DRILL', '2026-10-09T10:00:00.000Z', { overrideId: 'x' })];

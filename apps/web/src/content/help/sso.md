@@ -20,9 +20,9 @@ VenueOS connects to any **OpenID Connect (OIDC)** identity provider. That covers
 ## Connect your identity provider
 
 1. In your IdP, create a new **OIDC web application**. Use the **redirect URI** shown on our settings page (step 2) — it must match exactly, including `https`.
-2. Open **Settings → SSO** in VenueOS. Your workspace's redirect URI and identifiers are there ready to copy.
+2. Open **Settings → People & access → Manage SSO** in VenueOS. Your workspace's redirect URI and identifiers are there ready to copy.
 3. Paste in from your IdP: the **Issuer URL**, **Client ID**, and **Client Secret**.
-4. Optionally restrict sign-ins to your email domain (e.g. `yourschool.org`) and choose the **default role** new SSO users receive.
+4. Optionally restrict sign-ins to your email domain (e.g. `yourcompany.com`) and choose the **default role** new SSO users receive.
 5. Save, then test it from the login page.
 
 ## How staff sign in
@@ -32,10 +32,10 @@ On the login page, staff click **Sign in with SSO** and enter your organization'
 ## Roles and provisioning
 
 - First-time SSO users are created automatically with the **default role** you chose. Prefer invite-only? Turn auto-provisioning off in the same settings.
-- Adjust any individual any time in **Settings → Team**.
+- Adjust any individual any time in **Settings → People & access**.
 
 ## Troubleshooting
 
 - **"SSO is not enabled" on the login page** — the organization short name was typed differently than your workspace's, or SSO hasn't been saved yet.
 - **Redirect error inside your IdP** — the redirect URI in the IdP app doesn't exactly match the one on our settings page.
-- **Signed in, wrong permissions** — check the default role under **Settings → SSO**, then adjust the person under **Settings → Team**.
+- **Signed in, wrong permissions** — check the default role under **Settings → People & access → Manage SSO**, then adjust the person on **Settings → People & access**.

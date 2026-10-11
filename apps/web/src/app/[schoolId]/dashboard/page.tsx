@@ -110,6 +110,7 @@ export default function DashboardPage() {
       CLEAR_EMERGENCY: 'Emergency all-clear sent',
       TRIGGER_EMERGENCY_DRILL: 'Emergency drill started',
       CLEAR_EMERGENCY_DRILL: 'Emergency drill ended',
+      DRILL_ENDED_BY_LIVE_ALERT: 'Emergency drill ended by a live alert',
       REFRESH_WEB: 'Screens told to resync',
       FORCE_APK_UPDATE: 'Player update pushed',
       SCHEDULE_CREATED: 'Schedule created',

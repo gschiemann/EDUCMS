@@ -2,13 +2,26 @@
  * The pure drill rules (emergency-drill.ts) — one case per guarantee.
  */
 import {
+  DRILL_BLOCKED_MESSAGE,
   DRILL_TEXT_PREFIX,
   drillTextBlob,
   liveAlertsBlockingDrill,
+  pickScreenDrillContent,
   pickTenantDrillPlaylists,
+  resolveScreenAlertContent,
+  tenantAlertPlaysDrillContent,
   tenantHasLiveAlert,
 } from './emergency-drill';
-import { TENANT_DRILL_PLAYLIST_FIELDS, TENANT_EMERGENCY_PLAYLIST_FIELDS } from './emergency-content-use';
+import {
+  SCREEN_DRILL_CONTENT_FIELDS,
+  SCREEN_DRILL_CONTENT_SELECT,
+  SCREEN_DRILL_MEDIA_URL_FIELDS,
+  SCREEN_DRILL_PLAYLIST_FIELDS,
+  SCREEN_EMERGENCY_MEDIA_URL_FIELDS,
+  SCREEN_EMERGENCY_PLAYLIST_FIELDS,
+  TENANT_DRILL_PLAYLIST_FIELDS,
+  TENANT_EMERGENCY_PLAYLIST_FIELDS,
+} from './emergency-content-use';
 import { entryFromRow, placeAlert, clearAlert, parseDisplaced } from './alert-stack';
 
 describe('drillTextBlob — the belt-and-braces mark for old player bundles', () => {
@@ -113,5 +126,88 @@ describe('drill playlists are emergency content for the deletion guard and the n
       expect(drillFields).toContain(`drill${k}PlaylistId`);
       expect(drillFields).toContain(`drill${k}PortraitPlaylistId`);
     }
+  });
+
+  it('the 24 per-screen drill columns are in the screen field lists the guard, the re-mux and the precache read', () => {
+    expect(SCREEN_DRILL_PLAYLIST_FIELDS).toHaveLength(12);
+    expect(SCREEN_DRILL_MEDIA_URL_FIELDS).toHaveLength(12);
+    expect(SCREEN_DRILL_CONTENT_FIELDS).toHaveLength(24);
+    expect(Object.keys(SCREEN_DRILL_CONTENT_SELECT)).toHaveLength(24);
+    expect(SCREEN_EMERGENCY_PLAYLIST_FIELDS).toHaveLength(24);
+    expect(SCREEN_EMERGENCY_MEDIA_URL_FIELDS).toHaveLength(24);
+    for (const k of ['Lockdown', 'Evacuate', 'Weather', 'Hold', 'Secure', 'Medical']) {
+      for (const f of [`drill${k}PlaylistId`, `drill${k}PortraitPlaylistId`]) {
+        expect(SCREEN_DRILL_PLAYLIST_FIELDS).toContain(f);
+        expect(SCREEN_EMERGENCY_PLAYLIST_FIELDS).toContain(f);
+        expect(SCREEN_EMERGENCY_PLAYLIST_FIELDS).toContain(f.replace('drill', 'emergency'));
+      }
+      for (const f of [`drill${k}AssetUrl`, `drill${k}PortraitAssetUrl`]) {
+        expect(SCREEN_DRILL_MEDIA_URL_FIELDS).toContain(f);
+        expect(SCREEN_EMERGENCY_MEDIA_URL_FIELDS).toContain(f);
+        expect(SCREEN_EMERGENCY_MEDIA_URL_FIELDS).toContain(f.replace('drill', 'emergency'));
+      }
+    }
+    // the 409 names the organisation, not a screen
+    expect(DRILL_BLOCKED_MESSAGE).toMatch(/organization/);
+  });
+});
+
+describe('pickScreenDrillContent — the screen\'s own drill content, orientation-aware', () => {
+  const screen = {
+    drillLockdownPlaylistId: 'ld',
+    drillLockdownPortraitPlaylistId: 'ld-p',
+    drillLockdownAssetUrl: 'https://cdn/ld.png',
+    drillEvacuatePortraitAssetUrl: 'https://cdn/ev-p.png',
+    drillHoldPlaylistId: 'hold',
+  };
+  it('picks the orientation\'s slot first and falls back to the other', () => {
+    expect(pickScreenDrillContent(screen, 'LOCKDOWN', false)).toEqual({ playlistId: 'ld', mediaUrl: 'https://cdn/ld.png' });
+    expect(pickScreenDrillContent(screen, 'LOCKDOWN', true)).toEqual({ playlistId: 'ld-p', mediaUrl: 'https://cdn/ld.png' });
+    expect(pickScreenDrillContent(screen, 'evacuate', false)).toEqual({ playlistId: null, mediaUrl: 'https://cdn/ev-p.png' });
+    expect(pickScreenDrillContent(screen, 'HOLD', true)).toEqual({ playlistId: 'hold', mediaUrl: null });
+  });
+  it('an unknown type, a missing screen, and the LIVE columns pick nothing', () => {
+    expect(pickScreenDrillContent(screen, 'CUSTOM', false)).toEqual({ playlistId: null, mediaUrl: null });
+    expect(pickScreenDrillContent(null, 'LOCKDOWN', false)).toEqual({ playlistId: null, mediaUrl: null });
+    expect(pickScreenDrillContent({ emergencyLockdownPlaylistId: 'live' }, 'LOCKDOWN', false)).toEqual({ playlistId: null, mediaUrl: null });
+  });
+});
+
+describe('resolveScreenAlertContent — one precedence for every trigger path', () => {
+  const none = { playlistId: null, mediaUrl: null };
+  const live = (over: Partial<typeof none> = {}) => ({ ...none, ...over });
+
+  it('LIVE: explicit > screen live playlist > (screen live media | tenant playlist); media only without a playlist', () => {
+    const base = { isDrill: false, tenantSource: 'live' as const, screenDrill: live({ playlistId: 'ignored-drill' }), tenantPlaylistId: 'tenant', payloadMediaUrl: 'https://cdn/payload.png' };
+    expect(resolveScreenAlertContent({ ...base, explicitPlaylistId: 'explicit', screenLive: live({ playlistId: 's' }) })).toEqual({ playlistId: 'explicit', mediaUrl: null });
+    expect(resolveScreenAlertContent({ ...base, screenLive: live({ playlistId: 's', mediaUrl: 'https://cdn/s.png' }) })).toEqual({ playlistId: 's', mediaUrl: null });
+    expect(resolveScreenAlertContent({ ...base, screenLive: live({ mediaUrl: 'https://cdn/s.png' }) })).toEqual({ playlistId: null, mediaUrl: 'https://cdn/s.png' });
+    expect(resolveScreenAlertContent({ ...base, screenLive: none })).toEqual({ playlistId: 'tenant', mediaUrl: null });
+    expect(resolveScreenAlertContent({ ...base, screenLive: none, tenantPlaylistId: null })).toEqual({ playlistId: null, mediaUrl: 'https://cdn/payload.png' });
+    expect(resolveScreenAlertContent({ ...base, screenLive: none, tenantPlaylistId: null, payloadMediaUrl: null })).toEqual({ playlistId: null, mediaUrl: null });
+  });
+
+  it('DRILL: explicit > screen drill playlist > screen drill media > tenant DRILL playlist > the live precedence', () => {
+    const base = { isDrill: true, tenantSource: 'drill' as const, screenLive: live({ playlistId: 'screen-live', mediaUrl: 'https://cdn/live.png' }), tenantPlaylistId: 'tenant-drill', payloadMediaUrl: null };
+    expect(resolveScreenAlertContent({ ...base, explicitPlaylistId: 'explicit', screenDrill: live({ playlistId: 'sd' }) })).toEqual({ playlistId: 'explicit', mediaUrl: null });
+    expect(resolveScreenAlertContent({ ...base, screenDrill: live({ playlistId: 'sd', mediaUrl: 'https://cdn/sd.png' }) })).toEqual({ playlistId: 'sd', mediaUrl: null });
+    expect(resolveScreenAlertContent({ ...base, screenDrill: live({ mediaUrl: 'https://cdn/sd.png' }) })).toEqual({ playlistId: null, mediaUrl: 'https://cdn/sd.png' });
+    expect(resolveScreenAlertContent({ ...base, screenDrill: none })).toEqual({ playlistId: 'tenant-drill', mediaUrl: null });
+    // no tenant drill content (the pair is the LIVE pair): the screen's live content comes first, then the tenant
+    expect(resolveScreenAlertContent({ ...base, tenantSource: 'live', tenantPlaylistId: 'tenant-live', screenDrill: none })).toEqual({ playlistId: 'screen-live', mediaUrl: null });
+    expect(resolveScreenAlertContent({ ...base, tenantSource: 'live', tenantPlaylistId: 'tenant-live', screenDrill: none, screenLive: none })).toEqual({ playlistId: 'tenant-live', mediaUrl: null });
+    expect(resolveScreenAlertContent({ ...base, tenantSource: 'live', tenantPlaylistId: 'tenant-live', screenDrill: none, screenLive: live({ mediaUrl: 'https://cdn/live.png' }) })).toEqual({ playlistId: null, mediaUrl: 'https://cdn/live.png' });
+  });
+});
+
+describe('tenantAlertPlaysDrillContent — is the tenant\'s active alert playlist its drill content?', () => {
+  const t = { emergencyIsDrill: true, emergencyType: 'LOCKDOWN', drillLockdownPlaylistId: 'd', drillLockdownPortraitPlaylistId: 'd-p', panicLockdownPlaylistId: 'l' };
+  it('true only for a drill whose pointer is one of the type\'s drill columns', () => {
+    expect(tenantAlertPlaysDrillContent({ ...t, emergencyPlaylistId: 'd' })).toBe(true);
+    expect(tenantAlertPlaysDrillContent({ ...t, emergencyPlaylistId: null, emergencyPortraitPlaylistId: 'd-p' })).toBe(true);
+    expect(tenantAlertPlaysDrillContent({ ...t, emergencyPlaylistId: 'l' })).toBe(false); // fell back to live content
+    expect(tenantAlertPlaysDrillContent({ ...t, emergencyIsDrill: false, emergencyPlaylistId: 'd' })).toBe(false);
+    expect(tenantAlertPlaysDrillContent({ ...t, emergencyType: 'HOLD', emergencyPlaylistId: 'd' })).toBe(false);
+    expect(tenantAlertPlaysDrillContent(null)).toBe(false);
   });
 });

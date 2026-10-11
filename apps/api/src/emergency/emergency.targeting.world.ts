@@ -158,6 +158,8 @@ export function makeWorld() {
           .filter((t) => (where?.parentId === undefined ? true : idMatches(t.parentId, where.parentId)))
           .filter((t) => (where?.id === undefined ? true : idMatches(t.id, where.id)))
           .filter((t) => (where?.archivedAt === null ? t.archivedAt === null : true))
+          // "Live alerts always win" (2026-10-10): the tenants in a drill.
+          .filter((t) => (where?.emergencyIsDrill === undefined ? true : (t.emergencyIsDrill === true) === where.emergencyIsDrill))
           .map((t) => ({ ...t })),
       ),
       update: jest.fn(async ({ where, data }: any) => {
@@ -289,8 +291,18 @@ export function makeWorld() {
     },
     auditLog: {
       create: jest.fn(async ({ data }: any) => {
-        auditLogs.push(data);
+        auditLogs.push({ ...data, createdAt: new Date(Date.now() + auditLogs.length) });
         return data;
+      }),
+      // The "ended by a live alert" pass reads the tenant-wide drill's own id
+      // back from its trigger row (2026-10-10). Newest first, like Prisma.
+      findFirst: jest.fn(async ({ where }: any = {}) => {
+        const rows = auditLogs
+          .filter((a) => idMatches(a.tenantId, where?.tenantId))
+          .filter((a) => idMatches(a.action, where?.action))
+          .filter((a) => idMatches(a.targetType, where?.targetType));
+        const row = rows[rows.length - 1];
+        return row ? { details: row.details } : null;
       }),
     },
     emergencyMessage: {

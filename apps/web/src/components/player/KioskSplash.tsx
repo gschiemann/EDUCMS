@@ -549,7 +549,7 @@ function KioskDiagnostics({
 
   // 2026-05-26 — operator: "how much fucking time do you need to get
   // this to work right". The orange banner was useless because the
-  // operator can't navigate to "Info → Resize for LED" from the
+  // operator can't navigate to "Back menu → Resize LED area" from the
   // splash itself. Clicking the banner now opens this inline setup
   // form. They type W + H + tap Apply. We write localStorage edu_
   // canvasW / edu_canvasH AND append the params to the URL so a
@@ -603,7 +603,7 @@ function KioskDiagnostics({
         ledH: style.getPropertyValue('--led-h').trim() || '—',
         narrow: root.hasAttribute('data-led-narrow'),
         // 2026-05-26 — track whether the operator has configured the
-        // LED canvas (via "Resize for LED"). When false, we use the
+        // LED canvas (via "Resize LED area"). When false, we use the
         // WebView viewport as a fallback — fine for landscape kiosks
         // but won't render correctly for narrow LEDs.
         cfg: root.getAttribute('data-led-cfg') === '1',
@@ -654,7 +654,7 @@ function KioskDiagnostics({
           the WebView viewport (usually 1920×1080 on a Taurus). If the
           LED's visible region is smaller than that, splash content
           falls off the edge. This banner tells the operator to run
-          "Resize for LED" + how to do it. Pairing/registering only;
+          "Resize LED area" + how to do it. Pairing/registering only;
           plays alongside the always-on tiny strip below.
           2026-05-27 — Gated on (a) hardware actually drives an LED
           canvas (not an LCD-direct box like the Goodview EP6N) and

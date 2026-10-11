@@ -10,7 +10,7 @@
  * updates, and nothing else in the suite would notice.
  */
 import {
-  buildInbox, categorize, relativeAge, CATEGORY_LABEL,
+  buildInbox, categorize, relativeAge, humanizeTimestamps, CATEGORY_LABEL,
   type InboxNotification,
 } from '../notificationInbox';
 
@@ -143,5 +143,18 @@ describe('relativeAge', () => {
 
   it('says nothing for an unparseable stamp', () => {
     expect(relativeAge('not-a-date', NOW)).toBeNull();
+  });
+});
+
+describe('humanizeTimestamps', () => {
+  it('replaces an embedded ISO time with a short local one', () => {
+    const out = humanizeTimestamps('No heartbeat since 2026-10-07T21:14:03.000Z.', 'en-US');
+    expect(out).not.toMatch(/\d{4}-\d{2}-\d{2}T/);
+    expect(out).toMatch(/^No heartbeat since [A-Z][a-z]{2} \d{1,2}, \d{1,2}:\d{2}\s?[AP]M\.$/);
+  });
+  it('leaves text without an ISO time exactly as it was', () => {
+    expect(humanizeTimestamps('No heartbeat since unknown.')).toBe('No heartbeat since unknown.');
+    expect(humanizeTimestamps('Seat 2026-10-07 only')).toBe('Seat 2026-10-07 only');
+    expect(humanizeTimestamps('')).toBe('');
   });
 });

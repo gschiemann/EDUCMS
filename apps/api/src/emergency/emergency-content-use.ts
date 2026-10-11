@@ -60,6 +60,55 @@ export const TENANT_DRILL_PLAYLIST_FIELDS = TENANT_EMERGENCY_PLAYLIST_FIELDS.fil
   f.startsWith('drill'),
 ) as ReadonlyArray<(typeof TENANT_EMERGENCY_PLAYLIST_FIELDS)[number]>;
 
+/**
+ * The twelve per-screen DRILL playlist columns (2026-10-10, "custom location
+ * content for drills too"). Drill content is emergency content: it rides the
+ * never-evict tier, the deletion guard and the re-mux guard exactly like the
+ * live columns below. Kept as their own list so the precache and the
+ * manifest can name them without filtering.
+ */
+export const SCREEN_DRILL_PLAYLIST_FIELDS = [
+  'drillLockdownPlaylistId',
+  'drillEvacuatePlaylistId',
+  'drillWeatherPlaylistId',
+  'drillHoldPlaylistId',
+  'drillSecurePlaylistId',
+  'drillMedicalPlaylistId',
+  'drillLockdownPortraitPlaylistId',
+  'drillEvacuatePortraitPlaylistId',
+  'drillWeatherPortraitPlaylistId',
+  'drillHoldPortraitPlaylistId',
+  'drillSecurePortraitPlaylistId',
+  'drillMedicalPortraitPlaylistId',
+] as const satisfies readonly (keyof Prisma.ScreenWhereInput)[];
+
+/** The twelve per-screen DRILL media-URL columns — same reasoning. */
+export const SCREEN_DRILL_MEDIA_URL_FIELDS = [
+  'drillLockdownAssetUrl',
+  'drillEvacuateAssetUrl',
+  'drillWeatherAssetUrl',
+  'drillHoldAssetUrl',
+  'drillSecureAssetUrl',
+  'drillMedicalAssetUrl',
+  'drillLockdownPortraitAssetUrl',
+  'drillEvacuatePortraitAssetUrl',
+  'drillWeatherPortraitAssetUrl',
+  'drillHoldPortraitAssetUrl',
+  'drillSecurePortraitAssetUrl',
+  'drillMedicalPortraitAssetUrl',
+] as const satisfies readonly (keyof Prisma.ScreenWhereInput)[];
+
+/** The 24 per-screen drill columns as one list, a key type, and a Prisma `select` of them. */
+export const SCREEN_DRILL_CONTENT_FIELDS = [
+  ...SCREEN_DRILL_PLAYLIST_FIELDS,
+  ...SCREEN_DRILL_MEDIA_URL_FIELDS,
+] as const;
+export type ScreenDrillContentField = (typeof SCREEN_DRILL_CONTENT_FIELDS)[number];
+export const SCREEN_DRILL_CONTENT_SELECT = Object.fromEntries(
+  SCREEN_DRILL_CONTENT_FIELDS.map((f) => [f, true]),
+) as Record<ScreenDrillContentField, true>;
+
+/** Every per-screen playlist column the alert pipeline reads: the 12 live + the 12 drill. */
 export const SCREEN_EMERGENCY_PLAYLIST_FIELDS = [
   'emergencyLockdownPlaylistId',
   'emergencyEvacuatePlaylistId',
@@ -73,8 +122,10 @@ export const SCREEN_EMERGENCY_PLAYLIST_FIELDS = [
   'emergencyHoldPortraitPlaylistId',
   'emergencySecurePortraitPlaylistId',
   'emergencyMedicalPortraitPlaylistId',
+  ...SCREEN_DRILL_PLAYLIST_FIELDS,
 ] as const satisfies readonly (keyof Prisma.ScreenWhereInput)[];
 
+/** Every per-screen media-URL column the alert pipeline reads: the 12 live + the 12 drill. */
 export const SCREEN_EMERGENCY_MEDIA_URL_FIELDS = [
   'emergencyLockdownAssetUrl',
   'emergencyEvacuateAssetUrl',
@@ -88,6 +139,7 @@ export const SCREEN_EMERGENCY_MEDIA_URL_FIELDS = [
   'emergencyHoldPortraitAssetUrl',
   'emergencySecurePortraitAssetUrl',
   'emergencyMedicalPortraitAssetUrl',
+  ...SCREEN_DRILL_MEDIA_URL_FIELDS,
 ] as const satisfies readonly (keyof Prisma.ScreenWhereInput)[];
 
 /** The slice of a Prisma client (or interactive transaction) these checks read. */
@@ -160,7 +212,8 @@ export async function playlistEmergencyUse(
 
 /**
  * Is this asset emergency content by ANY path the alert pipeline reads? Its
- * playlists (see playlistEmergencyUse), the 12 per-screen media URL columns,
+ * playlists (see playlistEmergencyUse), the 24 per-screen media URL columns
+ * (12 live + 12 drill),
  * live overrides pointing at the file, and live emergency messages carrying
  * it. A short label, or null.
  */

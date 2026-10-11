@@ -11,6 +11,7 @@ import { SampleDataService } from '../sample-data/sample-data.service';
 import { StarterBoardService } from './starter-board.service';
 import { AppRole } from '@cms/database';
 import { isReservedTenantSlug, isVertical } from '@cms/api-types';
+import { cardBillingReady, newTrialEndsAt, TRIAL_SCREENS } from '../billing/trial-policy';
 
 export const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;     // 1 hour
 export const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;    // 7 days
@@ -176,6 +177,7 @@ export class OnboardingService {
     address?: string;
     latitude?: number;
     longitude?: number;
+    locale?: string;
   }) {
     const districtName = (input.districtName || '').trim();
     const rawSlug = slugify(input.slug || districtName);
@@ -253,6 +255,37 @@ export class OnboardingService {
           phone,
         } as any,
       });
+      // 2026-10-11 — SELF-SERVE TRIAL (billing/trial-policy.ts). When card
+      // billing is live on this deploy, a new organisation starts a real
+      // 14-day / 3-screen trial: a License row with a clock, so the dashboard
+      // can say "12 days left · Add payment" and a card added later keeps the
+      // remaining days. When billing is NOT live nobody could pay, so signup
+      // stays exactly what it was (no License → the no-card pilot default).
+      if (cardBillingReady()) {
+        const trialEndsAt = newTrialEndsAt(new Date());
+        const license = await tx.license.create({
+          data: {
+            tenantId: tenant.id,
+            tier: 'FREE_TRIAL',
+            billingMode: 'CARD',
+            status: 'ACTIVE',
+            seatLimit: TRIAL_SCREENS,
+            monthlyPriceCents: 0,
+            trialEndsAt,
+            noticeLocale: input.locale && ['en', 'es', 'zh'].includes(input.locale) ? input.locale : 'en',
+          },
+        });
+        await tx.auditLog.create({
+          data: {
+            tenantId: tenant.id,
+            userId: user.id,
+            action: 'BILLING_TRIAL_STARTED',
+            targetType: 'License',
+            targetId: license.id,
+            details: JSON.stringify({ trialEndsAt: trialEndsAt.toISOString(), seatLimit: TRIAL_SCREENS }),
+          },
+        });
+      }
       await tx.auditLog.create({
         data: {
           tenantId: tenant.id,

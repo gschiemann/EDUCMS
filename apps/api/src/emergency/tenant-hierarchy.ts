@@ -109,6 +109,49 @@ export async function collectDescendantTenantIds(
 }
 
 /**
+ * Walk UP from `tenantId` to the TOP-LEVEL tenant — the organisation (the
+ * "customer": the district above its schools, the chain above its
+ * locations). A tenant with no parent is its own root. Used by the drill
+ * rules (2026-10-10, "live alerts always win"): a drill is refused while a
+ * live alert is active ANYWHERE in the organisation, and a live alert ends
+ * every drill in it — so both need the whole organisation, not the subtree
+ * the caller may target.
+ *
+ * Depth-bounded and cycle-guarded like the other walks. A lookup that
+ * cannot read a row stops at the last tenant it did read: the result is
+ * never wider than the tree, and never empty.
+ */
+export async function resolveRootTenantId(
+  tenant: TenantHierarchyDelegate,
+  tenantId: string,
+): Promise<string> {
+  let cursor = tenantId;
+  const seen = new Set<string>([tenantId]);
+  for (let hop = 0; hop < MAX_TENANT_TREE_DEPTH; hop++) {
+    const row = await tenant.findUnique({ where: { id: cursor }, select: { parentId: true } });
+    const parentId = row?.parentId ?? null;
+    if (!parentId || seen.has(parentId)) return cursor; // top, or a cycle
+    seen.add(parentId);
+    cursor = parentId;
+  }
+  return cursor;
+}
+
+/**
+ * Every non-archived tenant in `tenantId`'s ORGANISATION: the root plus all
+ * of its descendants (`collectDescendantTenantIds`). The root comes first.
+ */
+export async function collectOrganisationTenantIds(
+  tenant: TenantHierarchyDelegate,
+  tenantId: string,
+): Promise<string[]> {
+  if (!tenantId) return [];
+  const rootId = await resolveRootTenantId(tenant, tenantId);
+  const descendants = await collectDescendantTenantIds(tenant, rootId);
+  return [rootId, ...descendants.filter((id) => id !== rootId)];
+}
+
+/**
  * Walk UP from `candidateTenantId` and report whether `ancestorTenantId` is
  * one of its ancestors. Used by the emergency scope gate to let a district
  * admin act on a school INSIDE their own district without widening the

@@ -182,6 +182,31 @@ const nativeVideoSchema = z.strictObject({
   }).optional(),
 });
 
+/**
+ * Off-hours web-bundle update, applied (2026-10-10). The document that came
+ * up after the player reloaded itself onto a new bundle reports — ONCE, after
+ * operator content was back on its glass — which window applied it, the zone
+ * the window was read in, how the reload was covered, and the gaps it
+ * measured. The controller records it on the screen's timeline
+ * (`screen_events`, kind `update-applied`): one row per deploy per screen,
+ * no column.
+ *
+ * ⚠️ ROLLOUT ORDER — `strictObject`: this API must be live before a player
+ * bundle that sends it, or every report from that bundle is a 400.
+ */
+const updateAppliedSchema = z.strictObject({
+  fromBundleId: z.string().max(64).nullable(),
+  toBundleId: z.string().max(64).nullable(),
+  window: z.enum(['display-off', 'idle', 'nightly']),
+  boundary: z.enum(['now', 'item']),
+  zone: z.string().max(64),
+  zoneSource: z.enum(['schedule', 'device', 'utc']),
+  capture: z.enum(['live', 'refetch', 'color', 'none']),
+  blankMs: z.number().finite().min(0).max(86_400_000).nullable(),
+  coverMs: z.number().finite().min(0).max(86_400_000).nullable(),
+  converged: z.boolean(),
+});
+
 export const screenTelemetrySchema = z.strictObject({
   versions: z
     .strictObject({
@@ -225,6 +250,7 @@ export const screenTelemetrySchema = z.strictObject({
   video: videoSchema.optional(),
   nativeVideo: nativeVideoSchema.optional(),
   loop: loopBoundarySchema.optional(),
+  update: updateAppliedSchema.optional(),
 });
 
 export type ScreenTelemetryBody = z.infer<typeof screenTelemetrySchema>;

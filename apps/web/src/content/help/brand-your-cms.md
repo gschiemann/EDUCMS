@@ -28,6 +28,6 @@ No website yet? Skip the paste and set logo, colors, and fonts by hand in the sa
 
 Already built templates before branding? Use **Apply brand to templates** to sweep your palette across them in one pass — then spot-check each board, since hand-tuned colors are respected rather than bulldozed.
 
-## Districts and multi-location groups
+## Organizations with multiple locations
 
-Each location can carry its own branding (a district's schools each with their own mascot and colors), or inherit the parent's — set it per location in that location's Settings.
+Each location can carry its own branding (a chain's stores, or a district's schools, each with their own logo and colors), or inherit the parent's — set it per location in that location's Settings.

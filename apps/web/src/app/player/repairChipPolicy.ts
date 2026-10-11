@@ -15,7 +15,7 @@
  *
  *   • the dashboard chip (fleet UI, always on, never expires), and
  *   • the player's own operator surfaces — the pairing / registering
- *     splash, the paused state, the diagnostics card, the info overlay —
+ *     splash, the paused state, the diagnostics card —
  *     where the chip renders unconditionally, forever, for as long as the
  *     credential is unproven.
  *
@@ -57,8 +57,8 @@ export interface RepairChipPolicyInput {
   /**
    * TRUE when the surface underneath the chip is an operator/diagnostic view
    * — the registering or pairing splash, the paused state, the "Screen Paired
-   * Successfully" / "Content Unavailable" diagnostics card, or the info
-   * overlay. FALSE when live assigned content is on the glass for the public.
+   * Successfully" / "Content Unavailable" diagnostics card. FALSE when live
+   * assigned content is on the glass for the public.
    */
   onOperatorSurface: boolean;
   /** Milliseconds since this player page mounted. */

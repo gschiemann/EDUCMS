@@ -31,7 +31,14 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
-import { StripeService } from './stripe.service';
+import { SeatChangeError, StripeService } from './stripe.service';
+import {
+  billingStateOf,
+  cardBillingReady,
+  PRICE_ANNUAL_CENTS,
+  PRICE_MONTHLY_CENTS,
+  TRIAL_SCREENS,
+} from './trial-policy';
 import { LicenseService } from '../license/license.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AiAllowanceService } from '../ai/ai-allowance.service';
@@ -119,11 +126,18 @@ export class BillingController {
     const period = body?.billingPeriod === 'annual' ? 'annual' : 'monthly';
     const base = await this.billingUrl(req);
     try {
+      // Pre-fill Stripe's email with the person adding the card (first checkout only).
+      const me = req.user?.id
+        // ten-ok: identity SELF-lookup — the signed-in user's own email, nothing else.
+        ? await this.prisma.client.user.findUnique({ where: { id: req.user.id }, select: { email: true } })
+        : null;
+      const email = me?.email && !me.email.endsWith('.invalid') ? me.email : null;
       const { url } = await this.stripe.checkoutForTenant({
         tenantId: req.user.tenantId,
         period,
         successUrl: `${base}?checkout=success`,
         cancelUrl: `${base}?checkout=cancelled`,
+        customerEmail: email,
       });
       return { url };
     } catch (e) {
@@ -224,6 +238,93 @@ export class BillingController {
       });
     } catch (e) {
       throw new HttpException({ code: 'BILLING_CHECKOUT_FAILED', message: (e as Error).message }, HttpStatus.BAD_GATEWAY);
+    }
+  }
+
+  /**
+   * 2026-10-11 — THE one billing read the dashboard chrome makes: the trial /
+   * plan state for the trial banner, the Billing page's status card and the
+   * pairing dialog. Any signed-in person may read it (a contributor sees "ask
+   * an admin" instead of a button — `canManage`). One query per page load at
+   * most (the web caches it for 10 minutes and never polls). The state comes
+   * from trial-policy.ts — the same function that gates pairing and editing.
+   */
+  @Get('summary')
+  async summary(@Request() req: any) {
+    const ready = cardBillingReady();
+    const role = req.user?.role;
+    const canManage = (BILLING_ROLES as readonly string[]).includes(role);
+    const prices = { monthlyCents: PRICE_MONTHLY_CENTS, annualCents: PRICE_ANNUAL_CENTS };
+    if (req.user?.kind === 'device' || !req.user?.tenantId) {
+      return { state: 'none', billingReady: ready, canManage: false, prices };
+    }
+    const tenantId = req.user.tenantId;
+    const [account, own, seatsUsed] = await Promise.all([
+      this.license.orgAccount(tenantId),
+      this.prisma.client.license.findUnique({
+        where: { tenantId },
+        select: { tier: true, seatLimit: true, monthlyPriceCents: true, currentPeriodEnd: true, stripeSubscriptionId: true },
+      }),
+      this.license.usedSeats(tenantId),
+    ]);
+    const gov = account.governing as any;
+    const b = billingStateOf(gov, new Date(), ready);
+    const period = gov?.tier === 'ANNUAL' ? 'annual' : gov?.tier === 'MONTHLY' ? 'monthly' : null;
+    return {
+      state: b.state,
+      billingReady: ready,
+      canManage,
+      // Card checkout is offered only to a CARD (or no-license) organisation on
+      // a deploy where card billing is live — never to INVOICE / PO / COMP.
+      canCheckout: ready && canManage && cardCheckoutAllowed(gov) && (!b.cardOnFile || b.state === 'cancelled'),
+      cardOnFile: b.cardOnFile,
+      trialEndsAt: b.trialEndsAt ? b.trialEndsAt.toISOString() : null,
+      daysLeft: b.daysLeft,
+      graceEndsAt: b.graceEndsAt ? b.graceEndsAt.toISOString() : null,
+      pairingBlocked: b.pairingBlocked,
+      readOnly: b.readOnly,
+      period,
+      seatsUsed,
+      seatLimit: own?.seatLimit ?? (b.state === 'trial' ? TRIAL_SCREENS : null),
+      renewsAt: own?.currentPeriodEnd ? own.currentPeriodEnd.toISOString() : null,
+      prices,
+    };
+  }
+
+  /**
+   * 2026-10-11 — set the number of screens on the card plan (the pairing
+   * dialog's "Add 1 screen ($25/mo)" sends `{ add: 1 }`; `{ quantity }` sets
+   * it outright). Prorated onto the next invoice. Never below the screens
+   * already paired. Audited (BILLING_SEATS_CHANGED).
+   */
+  @Post('seats')
+  @RequireRoles(...BILLING_ROLES)
+  async seats(@Request() req: any, @Body() body: { add?: unknown; quantity?: unknown }) {
+    const tenantId = req.user.tenantId;
+    const account = await this.license.orgAccount(tenantId);
+    if (!cardCheckoutAllowed(account.governing)) throw notCardBilled(account.governing?.billingMode);
+    if (!this.stripe.enabled()) {
+      return { enabled: false, message: 'Online payments are not set up on this deployment yet.' };
+    }
+    let quantity: number;
+    if (body?.quantity !== undefined) {
+      quantity = Number(body.quantity);
+    } else {
+      const add = body?.add === undefined ? 1 : Number(body.add);
+      if (!Number.isInteger(add) || add < 1 || add > 100) {
+        throw new HttpException({ code: 'BILLING_SEATS_INVALID', message: 'Add between 1 and 100 screens.' }, HttpStatus.BAD_REQUEST);
+      }
+      const own = await this.prisma.client.license.findUnique({ where: { tenantId }, select: { seatLimit: true } });
+      quantity = (own?.seatLimit ?? 0) + add;
+    }
+    try {
+      const r = await this.stripe.setSeatQuantity({ tenantId, quantity, actorUserId: req.user.id ?? null });
+      return { ok: true, seatLimit: r.seatLimit, previous: r.previous };
+    } catch (e) {
+      if (e instanceof SeatChangeError) {
+        throw new HttpException({ code: e.code, message: e.message }, HttpStatus.CONFLICT);
+      }
+      throw new HttpException({ code: 'BILLING_SEATS_FAILED', message: (e as Error).message }, HttpStatus.BAD_GATEWAY);
     }
   }
 

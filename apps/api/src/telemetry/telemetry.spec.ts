@@ -491,6 +491,50 @@ describe('POST /screens/:id/telemetry', () => {
     expect(prisma.client.screenEvent.create).not.toHaveBeenCalled();
   });
 
+  // ── 2c. OFF-HOURS BUNDLE UPDATE (2026-10-10) ──────────────────────────
+  it('an `update` block lands on the timeline as update-applied, writes no Screen column, and busts nothing', async () => {
+    const update = {
+      fromBundleId: 'aaaa', toBundleId: 'bbbb', window: 'nightly', boundary: 'item', zone: 'America/Chicago',
+      zoneSource: 'schedule', capture: 'live', blankMs: 410, coverMs: 1800, converged: true,
+    };
+    const out = await controller.report(SCREEN_ID, makeReq(), {
+      versions: { bundleId: 'bbbb', bundleSha: 'deadbeefcafe' },
+      update,
+    } as never);
+    expect(out.ok).toBe(true);
+    expect(prisma.client.screenEvent.create).toHaveBeenCalledTimes(1);
+    expect(prisma.client.screenEvent.create.mock.calls[0][0].data).toMatchObject({
+      screenId: SCREEN_ID,
+      tenantId: 'tenant-xyz',
+      kind: 'update-applied',
+      detail: { ...update, runningBundleId: 'bbbb', runningBundleSha: 'deadbeefcafe' },
+    });
+    const keys = Object.keys(writtenData() ?? {});
+    expect(keys.filter((k) => !SCREEN_TELEMETRY_ONLY_FIELDS.has(k))).toEqual([]);
+    expect(shouldBumpManifestRev('Screen', 'update', keys)).toBe(false);
+  });
+
+  it('a timeline write that fails never fails the report', async () => {
+    prisma.client.screenEvent.create.mockRejectedValueOnce(new Error('db blip'));
+    const out = await controller.report(SCREEN_ID, makeReq(), {
+      update: {
+        fromBundleId: null, toBundleId: null, window: 'idle', boundary: 'now', zone: 'UTC',
+        zoneSource: 'utc', capture: 'none', blankMs: null, coverMs: null, converged: false,
+      },
+    } as never);
+    expect(out.ok).toBe(true);
+  });
+
+  it('an `update` block with a stray key or a bad window is a 400 (strict)', async () => {
+    const good = {
+      fromBundleId: 'a', toBundleId: 'b', window: 'nightly', boundary: 'now', zone: 'UTC',
+      zoneSource: 'device', capture: 'color', blankMs: 1, coverMs: 2, converged: true,
+    };
+    await expect(controller.report(SCREEN_ID, makeReq(), { update: { ...good, extra: 1 } } as never)).rejects.toMatchObject({ status: 400 });
+    await expect(controller.report(SCREEN_ID, makeReq(), { update: { ...good, window: 'lunch' } } as never)).rejects.toMatchObject({ status: 400 });
+    expect(prisma.client.screenEvent.create).not.toHaveBeenCalled();
+  });
+
   // ── 3. COLUMN PARITY with the endpoints this replaces ─────────────────
   it('writes the liveness columns the status heartbeat wrote', async () => {
     await controller.report(SCREEN_ID, makeReq(), {});

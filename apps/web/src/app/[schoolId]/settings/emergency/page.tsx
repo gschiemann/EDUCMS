@@ -674,9 +674,16 @@ function DrillLog() {
   const t = useTranslations();
   const triggers = useAuditLog({ action: 'TRIGGER_EMERGENCY_DRILL', limit: 50 });
   const clears = useAuditLog({ action: 'CLEAR_EMERGENCY_DRILL', limit: 200 });
+  // "Live alerts always win" (2026-10-10): a drill a live alert ended.
+  const endedByLive = useAuditLog({ action: 'DRILL_ENDED_BY_LIVE_ALERT', limit: 200 });
   const rows = useMemo(
-    () => pairDrillLog((triggers.data?.items ?? []) as AuditRow[], (clears.data?.items ?? []) as AuditRow[]),
-    [triggers.data, clears.data],
+    () =>
+      pairDrillLog(
+        (triggers.data?.items ?? []) as AuditRow[],
+        (clears.data?.items ?? []) as AuditRow[],
+        (endedByLive.data?.items ?? []) as AuditRow[],
+      ),
+    [triggers.data, clears.data, endedByLive.data],
   );
   const typeLabel = (apiType: string | null) => {
     const id = String(apiType ?? '').toLowerCase();
@@ -728,6 +735,11 @@ function DrillLog() {
                   <td className="py-1.5 pr-3 whitespace-nowrap">{new Date(e.startedAt).toLocaleString()}</td>
                   <td className="py-1.5 pr-3 whitespace-nowrap">
                     {e.endedAt ? new Date(e.endedAt).toLocaleString() : <span className="text-indigo-700 font-semibold">{t('settings.cc.emergency.drill.log.inProgress')}</span>}
+                    {e.endedBy === 'live-alert' && (
+                      <span className="ml-1.5 text-[10px] font-semibold text-red-700" data-testid="emergency-drill-log-ended-by-live">
+                        {t('settings.cc.emergency.drill.log.endedByLive')}
+                      </span>
+                    )}
                   </td>
                   <td className="py-1.5 whitespace-nowrap">{drillDuration(e.startedAt, e.endedAt) ?? '—'}</td>
                 </tr>

@@ -38,6 +38,7 @@ import {
 import { appAlert } from '@/components/ui/app-dialog';
 import { useRefreshAiBoards, useTenant } from '@/hooks/use-api';
 import { AiBoardsLeft } from '@/components/ai/AiBoardsLeft';
+import { BillingStatusCard } from '@/components/billing/BillingStatusCard';
 import { SettingsPageFrame } from '@/components/settings/shell/SettingsPageFrame';
 import {
   ContextModule,
@@ -252,7 +253,8 @@ export default function BillingPage() {
   const lic = license.data;
   const screens = lic?.seatsUsed ?? lic?.currentSeats ?? 0;
   const seatLimit = lic?.seatLimit ?? null;
-  const hasPaidPlan = !!lic && !lic.isPilot && lic.tier !== 'PILOT';
+  // 2026-10-11 — a FREE_TRIAL License is not a paid plan (no card, nothing billed).
+  const hasPaidPlan = !!lic && !lic.isPilot && lic.tier !== 'PILOT' && lic.tier !== 'FREE_TRIAL';
   // "Next invoice" is only a real date when a paid subscription is actually
   // being billed by a configured Stripe. Otherwise the rail says so.
   const nextInvoice =
@@ -319,15 +321,10 @@ export default function BillingPage() {
         description={t('settings.cc.billing.editorDesc')}
       />
 
-      {checkoutResult === 'success' && (
-        <div className="mb-5 rounded-[11px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-[13px] text-emerald-800 flex items-start gap-2" role="status">
-          <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0" aria-hidden />
-          <span>
-            <strong>{t('billingCommerce.subscriptionStarted')}</strong>{' '}
-            {t('billingCommerce.subscriptionStartedDetail')}
-          </span>
-        </div>
-      )}
+      {/* 2026-10-11 — where a self-serve customer stands + the one button that moves
+          them forward (trial days left · Add payment · "You're all set" on return
+          from Stripe · Update card). Nothing for invoice / PO / comp customers. */}
+      {!offline && <BillingStatusCard returnedFromCheckout={checkoutResult === 'success'} />}
       {checkoutResult === 'cancelled' && (
         <div className="mb-5 rounded-[11px] border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-800 flex items-start gap-2" role="status">
           <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" aria-hidden />
@@ -484,7 +481,8 @@ function CurrentPlanCard({
   const t = useTranslations();
   const status = license?.status || 'ACTIVE';
   const statusKind = status === 'ACTIVE' ? 'ready' : status === 'PAST_DUE' ? 'attention' : 'blocked';
-  const perScreen = license?.monthlyPriceCents ?? null;
+  // A trial's catalogue price is 0 — show "no charge" rather than "$0.00 per month".
+  const perScreen = license?.monthlyPriceCents || null;
   const monthlyCost = perScreen != null ? screens * perScreen : null;
   const seatLimit = license?.seatLimit ?? null;
   const seatPct = seatLimit && seatLimit > 0 ? Math.min(100, (screens / seatLimit) * 100) : null;
@@ -511,7 +509,7 @@ function CurrentPlanCard({
                 </span>
               </>
             ) : (
-              <>{t('billingCommerce.noChargeFreePilot')}</>
+              <>{license?.tier === 'FREE_TRIAL' ? t('billingTrial.status.noChargeTrial') : t('billingCommerce.noChargeFreePilot')}</>
             )}
           </div>
         </div>

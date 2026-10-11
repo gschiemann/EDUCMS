@@ -23,15 +23,21 @@ export interface DrillLogEntry {
   who: string | null;
   startedAt: string;
   endedAt: string | null;
+  /** How it ended: the operator's all-clear, or a LIVE alert ("live alerts always win"). */
+  endedBy: 'all-clear' | 'live-alert' | null;
 }
 
 /**
- * Pair TRIGGER_EMERGENCY_DRILL rows with their CLEAR_EMERGENCY_DRILL rows by
- * `overrideId` (in `details`), newest first. A district drill writes one row
- * per tenant; this list is one tenant's trail, so each start row is its own
- * drill. A start with no matching clear is "in progress". Pure.
+ * Pair TRIGGER_EMERGENCY_DRILL rows with the rows that ended them, newest
+ * first: CLEAR_EMERGENCY_DRILL by `overrideId` (in `details`), and
+ * DRILL_ENDED_BY_LIVE_ALERT (2026-10-10 — a live alert anywhere in the
+ * organisation ends every drill) by its `endedDrillOverrideIds`, or, for a
+ * tenant-wide drill whose id could not be read back, by `endedTenantDrill`
+ * closing the newest tenant-wide drill started before it. A district drill
+ * writes one row per tenant; this list is one tenant's trail, so each start
+ * row is its own drill. A start with no matching end is "in progress". Pure.
  */
-export function pairDrillLog(triggers: AuditRow[], clears: AuditRow[]): DrillLogEntry[] {
+export function pairDrillLog(triggers: AuditRow[], clears: AuditRow[], endedByLive: AuditRow[] = []): DrillLogEntry[] {
   const parse = (r: AuditRow): Record<string, unknown> => {
     try {
       const v = r.details ? JSON.parse(r.details) : null;
@@ -40,29 +46,51 @@ export function pairDrillLog(triggers: AuditRow[], clears: AuditRow[]): DrillLog
       return {};
     }
   };
-  const endedBy = new Map<string, string>();
+  const endedBy = new Map<string, { at: string; by: 'all-clear' | 'live-alert' }>();
   for (const c of clears) {
     const id = parse(c).overrideId;
-    if (typeof id === 'string' && !endedBy.has(id)) endedBy.set(id, c.createdAt);
+    if (typeof id === 'string' && !endedBy.has(id)) endedBy.set(id, { at: c.createdAt, by: 'all-clear' });
   }
-  return triggers
-    .map((r, i) => {
-      const d = parse(r);
-      const overrideId = typeof d.overrideId === 'string' ? d.overrideId : null;
-      const endedAt = overrideId ? endedBy.get(overrideId) ?? null : null;
-      return {
-        key: r.id ?? `${r.createdAt}-${i}`,
-        overrideId,
-        type: typeof d.type === 'string' ? d.type : null,
-        scopeType: r.targetType ?? (typeof d.scopeType === 'string' ? d.scopeType : null),
-        scopeId: r.targetId ?? (typeof d.scopeId === 'string' ? d.scopeId : null),
-        who: r.user?.email ?? null,
-        startedAt: r.createdAt,
-        // A clear that predates the start belongs to an earlier drill with a reused id; ignore it.
-        endedAt: endedAt && Date.parse(endedAt) >= Date.parse(r.createdAt) ? endedAt : null,
-      };
-    })
-    .sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt));
+  const tenantDrillEnds: string[] = [];
+  for (const e of endedByLive) {
+    const d = parse(e);
+    const ids = Array.isArray(d.endedDrillOverrideIds) ? d.endedDrillOverrideIds : [];
+    for (const id of ids) {
+      if (typeof id === 'string' && !endedBy.has(id)) endedBy.set(id, { at: e.createdAt, by: 'live-alert' });
+    }
+    if (d.endedTenantDrill === true) tenantDrillEnds.push(e.createdAt);
+  }
+  const entries: DrillLogEntry[] = triggers.map((r, i) => {
+    const d = parse(r);
+    const overrideId = typeof d.overrideId === 'string' ? d.overrideId : null;
+    let end = overrideId ? endedBy.get(overrideId) ?? null : null;
+    // A clear that predates the start belongs to an earlier drill with a reused id; ignore it.
+    if (end && Date.parse(end.at) < Date.parse(r.createdAt)) end = null;
+    return {
+      key: r.id ?? `${r.createdAt}-${i}`,
+      overrideId,
+      type: typeof d.type === 'string' ? d.type : null,
+      scopeType: r.targetType ?? (typeof d.scopeType === 'string' ? d.scopeType : null),
+      scopeId: r.targetId ?? (typeof d.scopeId === 'string' ? d.scopeId : null),
+      who: r.user?.email ?? null,
+      startedAt: r.createdAt,
+      endedAt: end?.at ?? null,
+      endedBy: end?.by ?? null,
+    };
+  });
+  // A tenant runs ONE tenant-wide drill at a time, so a "live alert ended the
+  // tenant drill" row closes the NEWEST tenant-wide drill started before it
+  // that is still open. Ends are applied oldest first.
+  for (const at of [...tenantDrillEnds].sort((a, b) => Date.parse(a) - Date.parse(b))) {
+    const open = entries
+      .filter((e) => e.scopeType === 'tenant' && !e.endedAt && Date.parse(e.startedAt) <= Date.parse(at))
+      .sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt))[0];
+    if (open) {
+      open.endedAt = at;
+      open.endedBy = 'live-alert';
+    }
+  }
+  return entries.sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt));
 }
 
 /** "4m 12s" / "1h 03m" — the drill's length, or null while it runs. */

@@ -7,19 +7,19 @@ excerpt: How to design signage that's readable from across the hall, not just ac
 
 # Template design best practices
 
-Digital signage has different constraints than a poster or a web page. Here's what we've learned from hundreds of K-12 deployments.
+Digital signage has different constraints than a poster or a web page. Here's what we've learned from real deployments across schools, venues, restaurants and offices.
 
 ## The 10-foot rule
 
-Most hallway displays are viewed from 10+ feet away while students are walking past. Your content has about **2 seconds** to communicate.
+Most displays are viewed from 10+ feet away by people walking past. Your content has about **2 seconds** to communicate.
 
 - **Body text**: minimum 48pt at 1080p.
 - **Headlines**: 80–120pt for real impact.
 - **Pictures > words** whenever possible.
 
-## Use templates consistently across a building
+## Use templates consistently across a location
 
-Pick one or two templates per building and stick with them. When students see the same layout every day, their eyes learn exactly where to look for bell schedules, the lunch menu, and announcements. Constant redesigns defeat the purpose.
+Pick one or two templates per location and stick with them. When people see the same layout every day, their eyes learn exactly where to look for the schedule, the menu, and announcements. Constant redesigns defeat the purpose.
 
 ## Color contrast
 
@@ -35,13 +35,13 @@ Avoid putting text on busy photographs without a semi-transparent overlay (`rgba
 
 ## Portrait vs landscape
 
-Portrait displays are great for bell schedules, staff spotlights, and wayfinding. Landscape is better for cafeteria menus, daily digests, and news tickers.
+Portrait displays are great for schedules, spotlights, and wayfinding. Landscape is better for menus, daily digests, and news tickers.
 
-Don't just rotate a landscape template — it'll look cramped. Use a portrait-first template (e.g. "Hallway Portrait Display") and redesign specifically for vertical space.
+Don't just rotate a landscape template — it'll look cramped. Use a portrait-first template and redesign specifically for vertical space.
 
 ## Emergency templates — don't customize the colors
 
-The Emergency Alert templates use specific red/amber/blue color codes tested against state alert standards. If you rebrand them with your school colors, you risk students ignoring them in a real event. Leave them alone.
+The Emergency Alert templates use specific red/amber/blue color codes tested against state alert standards. If you rebrand them with your own colors, you risk people ignoring them in a real event. Leave them alone.
 
 ## Accessibility reminders
 

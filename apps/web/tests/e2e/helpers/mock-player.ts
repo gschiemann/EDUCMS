@@ -311,9 +311,11 @@ export async function bootMockPlayer(page: Page, opts: BootOptions): Promise<Boo
   await page.route('**/api/v1/player/update-check', (route) => ok(route, { available: false }));
   await page.route('**/api/v1/security/**', (route) => route.fulfill({ status: 204, body: '' }));
   await page.route('**/api/v1/realtime/time*', (route) => ok(route, { serverNow: Date.now() }));
-  // Tiny real PNGs so every <img> decodes instantly.
+  // Tiny real PNGs so every <img> decodes instantly. CORS-readable, like
+  // Supabase storage: the off-hours update's cover frame re-fetches the
+  // active slide with `crossorigin` when the live canvas is tainted.
   await page.route('**/assets/slide-*.png', (route) =>
-    route.fulfill({ status: 200, contentType: 'image/png', body: PNG_1PX }),
+    route.fulfill({ status: 200, contentType: 'image/png', headers: { 'Access-Control-Allow-Origin': '*' }, body: PNG_1PX }),
   );
 
   // The clip, served with Range support (a <video> seeks and re-requests).

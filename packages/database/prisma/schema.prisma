@@ -813,6 +813,19 @@ model License {
   renewalDate              DateTime? @map("renewal_date")
   suspendedAt              DateTime? @map("suspended_at")
   suspendReason            String?   @map("suspend_reason")
+  // 2026-10-11 — SELF-SERVE TRIAL → PAID (apps/api/src/billing/trial-policy.ts).
+  // All additive. A row written before this reads exactly as before.
+  //  - trialEndsAt: when the free trial ends. Set at signup (tier FREE_TRIAL)
+  //    and, once a card is added, mirrored from the Stripe subscription's
+  //    `trial_end` so billing starts on the ORIGINAL trial end date.
+  //  - trialNoticeStage: which trial reminder email has been sent
+  //    (0 none · 1 seven days · 2 one day · 3 ended). Claimed atomically
+  //    before sending, so a reminder goes out at most once across replicas.
+  //  - noticeLocale: en | es | zh — the language the signup page was in;
+  //    billing emails are written in it.
+  trialEndsAt              DateTime? @map("trial_ends_at")
+  trialNoticeStage         Int       @default(0) @map("trial_notice_stage")
+  noticeLocale             String?   @map("notice_locale")
   createdAt                DateTime  @default(now()) @map("created_at")
   updatedAt                DateTime  @default(now()) @updatedAt @map("updated_at")
   tenant                   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -1579,6 +1592,38 @@ model Screen {
   emergencyHoldPortraitAssetUrl       String?      @map("emergency_hold_portrait_asset_url")
   emergencySecurePortraitAssetUrl     String?      @map("emergency_secure_portrait_asset_url")
   emergencyMedicalPortraitAssetUrl    String?      @map("emergency_medical_portrait_asset_url")
+  // 2026-10-10 — EMERGENCY DRILL content PER SCREEN (Greg: "custom location
+  // content available for drills too — duplicate everything for live
+  // emergencies to drill ones"). The exact mirror of the 24 emergency_*
+  // columns above, read by the same location-based gate. During a DRILL a
+  // screen plays: its own drill content for the type → the tenant's drill
+  // content → the live precedence above, always under the DRILL banner.
+  // NULL everywhere = "use the live precedence"; every existing screen
+  // reads NULL. Additive; migration 20261010210000_screen_drill_content.
+  drillLockdownPlaylistId             String?      @map("drill_lockdown_playlist_id")
+  drillEvacuatePlaylistId             String?      @map("drill_evacuate_playlist_id")
+  drillWeatherPlaylistId              String?      @map("drill_weather_playlist_id")
+  drillHoldPlaylistId                 String?      @map("drill_hold_playlist_id")
+  drillSecurePlaylistId               String?      @map("drill_secure_playlist_id")
+  drillMedicalPlaylistId              String?      @map("drill_medical_playlist_id")
+  drillLockdownAssetUrl               String?      @map("drill_lockdown_asset_url")
+  drillEvacuateAssetUrl               String?      @map("drill_evacuate_asset_url")
+  drillWeatherAssetUrl                String?      @map("drill_weather_asset_url")
+  drillHoldAssetUrl                   String?      @map("drill_hold_asset_url")
+  drillSecureAssetUrl                 String?      @map("drill_secure_asset_url")
+  drillMedicalAssetUrl                String?      @map("drill_medical_asset_url")
+  drillLockdownPortraitPlaylistId     String?      @map("drill_lockdown_portrait_playlist_id")
+  drillEvacuatePortraitPlaylistId     String?      @map("drill_evacuate_portrait_playlist_id")
+  drillWeatherPortraitPlaylistId      String?      @map("drill_weather_portrait_playlist_id")
+  drillHoldPortraitPlaylistId         String?      @map("drill_hold_portrait_playlist_id")
+  drillSecurePortraitPlaylistId       String?      @map("drill_secure_portrait_playlist_id")
+  drillMedicalPortraitPlaylistId      String?      @map("drill_medical_portrait_playlist_id")
+  drillLockdownPortraitAssetUrl       String?      @map("drill_lockdown_portrait_asset_url")
+  drillEvacuatePortraitAssetUrl       String?      @map("drill_evacuate_portrait_asset_url")
+  drillWeatherPortraitAssetUrl        String?      @map("drill_weather_portrait_asset_url")
+  drillHoldPortraitAssetUrl           String?      @map("drill_hold_portrait_asset_url")
+  drillSecurePortraitAssetUrl         String?      @map("drill_secure_portrait_asset_url")
+  drillMedicalPortraitAssetUrl        String?      @map("drill_medical_portrait_asset_url")
   // 2026-05-27 — player-hardware identification. One of the literals in
   // packages/api-types/src/hardware-models.ts HardwareModel union:
   //   goodview-ep6n | goodview-ecbox3576 | novastar-taurus | pi5 |

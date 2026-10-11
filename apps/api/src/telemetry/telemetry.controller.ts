@@ -556,6 +556,33 @@ export class TelemetryController {
       }
     }
 
+    // ── OFF-HOURS BUNDLE UPDATE, APPLIED (2026-10-10) ───────────────────
+    // The document that came up after the player reloaded itself onto a new
+    // bundle says so once (`update`): the window, the zone it was read in,
+    // the cover and the measured gaps. A timeline row, like the refresh
+    // ack — one per deploy per screen, never a Screen column, never on the
+    // manifest path. Best-effort for the same reason: evidence must not turn
+    // a healthy report into a 500 the player retries forever.
+    if (body.update && screen.tenantId) {
+      try {
+        await this.prisma.client.screenEvent.create({
+          data: {
+            screenId,
+            tenantId: screen.tenantId,
+            kind: 'update-applied',
+            detail: {
+              ...body.update,
+              // The bundle this report rode in on — the one now running.
+              runningBundleId: body.versions?.bundleId ?? null,
+              runningBundleSha: body.versions?.bundleSha ?? null,
+            },
+          },
+        });
+      } catch {
+        /* timeline best-effort */
+      }
+    }
+
     // ── RESPONSE: everything the retired GETs handed the player ─────────
     const forceAt = otaCleared ? null : screen.forceApkUpdatePendingAt;
     const FORCE_FRESH_MS = 24 * 60 * 60 * 1000;

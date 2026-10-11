@@ -50,8 +50,20 @@
  *         so the set-hash commits on the pass that finds everything cached.
  *   { type: 'PRECACHE_SHELL',     routes?: string[], extra?: string[] }
  *                                                     → PRECACHE_SHELL_DONE
+ *       — with a port (2026-10-10, off-hours update) also acks
+ *         { ok, count, added, failures }: `ok` only when the route document
+ *         was fetched and EVERY referenced chunk is on disk — the page's
+ *         proof that a reload onto the new bundle will be served from disk.
  *     `extra` = same-origin /_next/static paths the PAGE is running on but
  *     the route HTML does not name — i.e. dynamically imported chunks.
+ *   { type: 'SHELL_SWAP_ARM', ttlMs? }                 (port ack → { ok })
+ *       — the next NAVIGATION within ttlMs (default 2 min) is served from
+ *         the pinned shell document FIRST (network refresh afterwards),
+ *         instead of network-first. Armed right before the off-hours
+ *         reload so the new document comes from disk even on a slow link;
+ *         one-shot, and the pinned document is always the newest one
+ *         PRECACHE_SHELL fetched, so a swap can never serve an older build
+ *         than the network would.
  *   { type: 'PRECACHE_CHUNK', url, sha256, size, offset, chunkBytes, tier? } (port ack)
  *   { type: 'PRECACHE_VERIFY', url, sha256, tier? }     (port ack)
  *   { type: 'PRECACHE_ASSEMBLE', url, sha256, tier? }   (port ack)
@@ -139,6 +151,11 @@ const SIZE_META_PREFIX = '/__edu_meta_size__/';
 // generous: an over-kept hashed chunk costs storage, an under-kept one
 // costs a blank screen on the next offline boot.
 const SHELL_USE_PREFIX = '/__edu_shell_used__/';
+// One-shot "serve the next navigation from the pinned shell" flag (2026-10-10,
+// off-hours update). A META_CACHE entry (not worker memory): the worker may be
+// stopped between the arm and the navigation that consumes it.
+const SHELL_SWAP_KEY = '/__edu_shell_swap__';
+const SHELL_SWAP_DEFAULT_TTL_MS = 2 * 60 * 1000;
 const RUNTIME_KEEP_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 // Re-stamping on literally every asset hit would mean ~30 Cache writes per
 // boot. In-memory throttle: only write when our own last write for that URL
@@ -494,7 +511,14 @@ self.addEventListener('message', (event) => {
     const ackPort = (event.ports && event.ports[0]) || null;
     event.waitUntil(precacheEmergency(msg.assets || [], msg.setHash || '', ackPort));
   } else if (msg.type === 'PRECACHE_SHELL') {
-    event.waitUntil(precacheAppShell(msg.routes, msg.extra));
+    const ackPort = (event.ports && event.ports[0]) || null;
+    event.waitUntil(precacheAppShell(msg.routes, msg.extra, ackPort).catch((e) => {
+      if (ackPort) {
+        try { ackPort.postMessage({ ok: false, count: 0, added: 0, failures: 1, reason: (e && e.message) || 'error' }); } catch (_e) { /* page gone */ }
+      }
+    }));
+  } else if (msg.type === 'SHELL_SWAP_ARM') {
+    event.waitUntil(answerPort(event, () => armShellSwap(msg.ttlMs)));
   } else if (msg.type === 'PRECACHE_CHUNK' || msg.type === 'PRECACHE_VERIFY'
     || msg.type === 'PRECACHE_ASSEMBLE' || msg.type === 'PRECACHE_ADOPT') {
     // Large-asset staging (2026-09-26). Each of these is its OWN message
@@ -544,6 +568,18 @@ self.addEventListener('message', (event) => {
 async function shellNavigate(req) {
   const docKey = new Request(new URL(req.url).pathname, { credentials: 'same-origin' });
   const cache = await caches.open(SHELL_CACHE);
+  // Off-hours update (2026-10-10): the page armed a one-shot swap right
+  // before reloading onto the shell PRECACHE_SHELL just pinned. Serve that
+  // document from disk — the reload is then disk-fast and link-independent —
+  // and refresh the pin from the network in the background. A missing pin
+  // (nothing prepared) falls through to the normal network-first path.
+  if (await takeShellSwap()) {
+    const pinned = await cache.match(docKey);
+    if (pinned) {
+      fetch(req).then((res) => { if (res && res.ok) return cache.put(docKey, res.clone()); }).catch(() => {});
+      return pinned;
+    }
+  }
   try {
     const res = await fetch(req);
     if (res && res.ok) cache.put(docKey, res.clone()).catch(() => {});
@@ -669,9 +705,11 @@ async function recentRuntimeShellPaths() {
 // Enumerate the current build's shell by parsing the player route HTML,
 // fetch what's missing, prune what's no longer referenced. See the
 // header's STEP-3 GUARD before changing the prune rule.
-async function precacheAppShell(routes, extra) {
+async function precacheAppShell(routes, extra, ackPort) {
   const cache = await caches.open(SHELL_CACHE);
   const wanted = new Set();
+  let failures = 0;
+  let documents = 0;
   // Page-declared lazy chunks (P0-3). The HTML parse below cannot see a
   // dynamically imported chunk, and on a FIRST boot the SW may not have
   // claimed the client in time to capture it at runtime either — so the page
@@ -701,15 +739,18 @@ async function precacheAppShell(routes, extra) {
       // Pin the DOCUMENT alongside its chunks so a cold offline boot has a
       // complete shell. Route path goes into `wanted` so prune keeps it.
       await cache.put(new Request(route, { credentials: 'same-origin' }), resForCache);
+      documents += 1;
       wanted.add(route);
       for (const u of urls) wanted.add(u);
     } catch (e) {
       // Offline boot — keep whatever shell we already have; the page-side
       // idle retry will refresh once the network returns.
+      failures += 1;
     }
   }
   if (wanted.size === 0) {
     await broadcast({ type: 'PRECACHE_SHELL_DONE', count: 0, added: 0 });
+    ackShell(ackPort, { ok: false, count: 0, added: 0, failures: failures || 1 });
     return;
   }
   let added = 0;
@@ -722,10 +763,13 @@ async function precacheAppShell(routes, extra) {
       if (res && res.ok) {
         await cache.put(req, res.clone());
         added += 1;
+      } else {
+        failures += 1;
       }
     } catch (e) {
       // Partial shell is still strictly better than none — hashed URLs
       // mean whatever DID land stays valid forever.
+      failures += 1;
     }
   }
   // Prune entries the current build no longer references — EXCEPT anything
@@ -744,6 +788,40 @@ async function precacheAppShell(routes, extra) {
     } catch (e) { /* keep unparseable entries */ }
   }
   await broadcast({ type: 'PRECACHE_SHELL_DONE', count: wanted.size, added });
+  // `ok` is the whole-shell claim: the document landed AND nothing it
+  // references is missing. A partial shell still serves offline boots better
+  // than none (above), but it is not proof a reload will come from disk.
+  ackShell(ackPort, { ok: documents > 0 && failures === 0, count: wanted.size, added, failures });
+}
+
+function ackShell(port, reply) {
+  if (!port) return;
+  try { port.postMessage(reply); } catch (_e) { /* page may have reloaded */ }
+}
+
+// ─── Shell swap arm (2026-10-10, off-hours update) ─────────────────────────
+async function armShellSwap(ttlMs) {
+  const ttl = typeof ttlMs === 'number' && isFinite(ttlMs) && ttlMs > 0
+    ? Math.min(ttlMs, 10 * 60 * 1000)
+    : SHELL_SWAP_DEFAULT_TTL_MS;
+  const meta = await caches.open(META_CACHE);
+  await meta.put(new Request(SHELL_SWAP_KEY), new Response(String(Date.now() + ttl), { headers: { 'content-type': 'text/plain' } }));
+  return { ok: true, untilMs: Date.now() + ttl };
+}
+
+/** Consume the arm: true exactly once, while it has not expired. Never throws. */
+async function takeShellSwap() {
+  try {
+    const meta = await caches.open(META_CACHE);
+    const req = new Request(SHELL_SWAP_KEY);
+    const res = await meta.match(req);
+    if (!res) return false;
+    const until = parseInt(await res.text(), 10);
+    await meta.delete(req);
+    return isFinite(until) && Date.now() <= until;
+  } catch (e) {
+    return false;
+  }
 }
 
 // ─── Large-asset staging (2026-09-26 — the 4K cache-fill incident) ─────────

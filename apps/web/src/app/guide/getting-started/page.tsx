@@ -238,10 +238,10 @@ function Welcome() {
    ────────────────────────────────────────────────────────────────── */
 function TableOfContents() {
   const items = [
-    { n: 1, title: 'Connect your first screen', blurb: 'Pair a TV, Chromebook, or kiosk in under five minutes.', icon: Tv },
+    { n: 1, title: 'Connect your first screen', blurb: 'Pair a TV, media player, Chromebook, or kiosk in a few minutes.', icon: Tv },
     { n: 2, title: 'Upload your content', blurb: 'Drop images, videos, PDFs, or web links into your library.', icon: Upload },
     { n: 3, title: 'Build & publish a playlist', blurb: 'Choose what plays, when, and on which screen.', icon: CalendarDays },
-    { n: 4, title: 'Or skip the slideshow — pick a template', blurb: '60+ ready-to-go full-screen layouts. Same Publish flow, different content.', icon: Layers },
+    { n: 4, title: 'Or skip the slideshow — pick a template', blurb: '480+ ready-made layouts, with a gallery for your industry. Same Publish flow, different content.', icon: Layers },
     { n: 5, title: 'Emergency alerts', blurb: 'Lockdown, weather, fire / evacuation — wired to every screen.', icon: Shield },
   ];
   return (
@@ -275,7 +275,7 @@ function Chapter1Pair() {
     <section className="guide-page">
       <PageHeader chapter="Chapter 1" title="Connect your first screen" />
       <p className="guide-lede">
-        Any web browser becomes an VenueOS display. You don&rsquo;t need
+        Any web browser becomes a VenueOS display. You don&rsquo;t need
         special hardware — Smart TVs, Chromebooks on a wheeled cart, and
         existing wall-mounted kiosks all work the same way. <strong>Don&rsquo;t
         have a screen handy?</strong> Pair a browser tab as your first display
@@ -369,15 +369,19 @@ function Chapter2Upload() {
           for the preview.
         </Step>
         <Step n={4} title="What gets supported">
-          JPEG, PNG, WebP, GIF, MP4, WebM, MOV, MP3, PDF, and any HTTPS URL.
-          Up to 200 MB per file by default; ask support if you need bigger.
+          Images (JPG, PNG, WebP, GIF, HEIC) up to 25&nbsp;MB; videos
+          (MP4, WebM, MOV, AVI, MKV and more) up to 2&nbsp;GB, converted
+          automatically when a screen couldn&rsquo;t play them as they are;
+          audio and PDFs up to 25&nbsp;MB; and any HTTPS URL.
         </Step>
       </div>
 
       <Tip>
-        Need approvals? CONTRIBUTOR-role uploads land in a review queue
-        first; admins approve from the bell-icon notifications. Anything
-        admins upload publishes straight to the library.
+        Need approvals? Turn on <strong>Require approval before content goes
+        live</strong> under <strong>Settings &rarr; People &amp; access</strong>.
+        An Editor&rsquo;s publish then goes to the <strong>Reviews</strong>
+        queue for an Admin to approve; anything an Admin publishes goes
+        straight through.
       </Tip>
     </section>
   );
@@ -444,13 +448,14 @@ function Chapter4Templates() {
       <p className="guide-lede">
         A playlist of slides is one way to light up a screen. A
         <strong> template</strong> is the other. Templates are full-screen
-        layouts we&rsquo;ve already designed — a scoreboard lobby, a
-        cafeteria menu board, a hallway schedule — that you fill in with a
-        title, a subtitle, and a few photos.
+        layouts we&rsquo;ve already designed — a lobby welcome board, a
+        menu board, a schedule board — that you fill in with a title, a
+        subtitle, and a few photos. Each industry gets its own gallery, so
+        what you browse is built for your kind of venue.
       </p>
 
       <p className="guide-body">
-        Below are three working templates as they actually render on a
+        Below are three working examples from the school gallery as they actually render on a
         screen. Each covers the whole display; no slideshow, no
         per-slide durations. Pick the look, change the words, publish.
       </p>
@@ -485,13 +490,12 @@ function Chapter4Templates() {
           choose <em>From Template</em> instead of <em>Media Playlist</em>.
         </Step>
         <Step n={2} title="Pick the look">
-          Browse the gallery, filter by grade level (Elementary / Middle /
-          High / All ages) and category (Lobby, Cafeteria, Hallway,
-          etc.). Click a template to choose it.
+          Browse the gallery and filter by category. Click a template to
+          choose it.
         </Step>
         <Step n={3} title="Fill in the content">
           The template editor shows every field you can change —
-          headline, subtitle, announcement, teacher-of-the-week, ticker
+          headline, subtitle, announcement, spotlight, ticker
           messages, weather location. Save as you go.
         </Step>
         <Step n={4} title="Publish — same flow as Chapter 3">
@@ -527,27 +531,35 @@ function Chapter5Emergency() {
 
       <div className="guide-steps">
         <Step n={1} title="Set your emergency content">
-          From the dashboard, open <strong>Settings → Panic Button
-          Integrations</strong>. For each alert type (Lockdown, Fire /
-          Evacuate, Weather, All Clear) upload an image or video and short
-          text.
+          From the dashboard, open <strong>Settings &rarr; Emergency</strong>.
+          For each alert type (Lockdown, Fire / Evacuate, Medical, Secure,
+          Shelter, Hold) add an image or video and short text. The
+          Readiness panel on that page tells you exactly what is missing.
         </Step>
-        <Step n={2} title="Pick who can trigger">
-          Under <strong>Settings → Users</strong>, flip the
-          &ldquo;Can trigger panic&rdquo; capability on for the staff who
-          should have access. By default, only admins do.
+        <Step n={2} title="Know who can trigger">
+          By default, Admins and Super Admins can trigger and clear alerts
+          (Settings &rarr; People &amp; access shows who has which role).
+          Letting a non-admin trigger is a separate, per-person capability
+          &mdash; see the Delegating panic access help article.
         </Step>
-        <Step n={3} title="Test the drill flow">
-          Open the panic page on your phone (URL on Settings → Panic),
-          choose <em>Drill</em>, and hold the button for 3 seconds. Every
-          paired screen should flip to the message within 5 seconds. The
-          dashboard logs the trigger immutably.
+        <Step n={3} title="Run a drill first">
+          Click the <strong>Emergency</strong> button in the top bar (or open
+          <code> /panic</code> on your phone) and flip the
+          <strong> LIVE | DRILL</strong> switch to <strong>DRILL</strong>
+          &mdash; it always starts on LIVE. Pick a small target (a test group
+          or one screen), choose an alert type, then type the confirm word
+          or hold the button for 3 seconds. Targeted screens show your drill
+          content with a <strong>&ldquo;THIS IS A DRILL&rdquo;</strong>
+          banner within seconds, and the drill is recorded in the Drill log
+          on Settings &rarr; Emergency. End it with the all-clear. A live
+          alert always wins over a drill.
         </Step>
         <Step n={4} title="Verify your safety net">
-          On the Screens page, every kiosk shows a green
-          &ldquo;Emergency cache READY&rdquo; chip when its panic content
-          is downloaded to disk. No green chip = the screen will fetch
-          from the network during an alert (still works, but slower).
+          The Readiness panel on Settings &rarr; Emergency shows how many
+          screens have your alert content downloaded and ready. A screen
+          without it will fetch from the network during an alert (still
+          works, but slower), so fix any that are not ready before you
+          need them.
         </Step>
       </div>
 

@@ -104,9 +104,10 @@ test('Paused card on a 1920×1080 LCD fits the glass — nothing hidden behind a
   await page.goto(`/player?fp=${FP}&client=android&w=1920&h=1080&v=1.1.16&vc=10116`);
 
   // Content playing = mount effects have run (the Back listener is attached).
-  // The playback surface's own info toggle is the marker — it renders only
-  // once a playlist is on screen, whatever the widgets inside it say.
-  await expect(page.getByRole('button', { name: 'Toggle screen info overlay' })).toBeVisible({ timeout: 90_000 });
+  // The playback root is the marker — it renders only once the client has
+  // registered and a playlist is on screen, whatever the widgets inside it say.
+  // (2026-10-11: it is a passive container now — no role/button, no info card.)
+  await expect(page.locator('[data-edu-player-root]')).toBeVisible({ timeout: 90_000 });
 
   // The remote's Back key.
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('edu-show-stop-overlay')));
@@ -160,7 +161,7 @@ test('a panel with room to spare keeps its scale exactly — portrait 1080×1920
   const page = await ctx.newPage();
   await installMocks(page);
   await page.goto(`/player?fp=${FP}-portrait&client=android&w=1080&h=1920&v=1.1.16&vc=10116`);
-  await expect(page.getByRole('button', { name: 'Toggle screen info overlay' })).toBeVisible({ timeout: 90_000 });
+  await expect(page.locator('[data-edu-player-root]')).toBeVisible({ timeout: 90_000 });
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('edu-show-stop-overlay')));
   await expect(page.getByRole('heading', { name: 'Playback Paused' })).toBeVisible({ timeout: 10_000 });
   await page.waitForTimeout(3000);

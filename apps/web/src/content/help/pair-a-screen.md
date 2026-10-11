@@ -1,8 +1,8 @@
 ---
 title: How to pair a new screen
 category: Screens
-updated: 2026-04-16
-excerpt: Turn any Chromebook, smart TV, or kiosk into an VenueOS display in under 2 minutes.
+updated: 2026-10-11
+excerpt: Turn an Android display, media player, Chromebook, or any browser-capable screen into a VenueOS display in a few minutes.
 ---
 
 # How to pair a new screen
@@ -19,11 +19,12 @@ VenueOS doesn't require special hardware. Any device with a modern web browser c
 
 ## Pairing steps
 
-1. In the dashboard, go to **Screens → Add screen**. Give it a name (e.g. "Cafeteria TV") and optionally assign it to a screen group.
-2. Click **Generate pairing code**. You'll get a 6-character code like `A3F9K2` that expires in 10 minutes.
-3. On the physical display, open `https://venue-os.app/player` in a browser.
-4. Enter the pairing code on the player page. The display registers itself with your tenant and starts polling for assignments.
-5. The screen card in your dashboard flips from **Unpaired** to **Online** within a few seconds.
+The code is shown **on the screen**, and you enter it **in the dashboard**:
+
+1. **Start the player on the display.** On an Android display or a VenueOS media player, install and open the player app (the **Screens → Connect a screen** card has a download link and QR code). On a Chromebook, PC or smart TV with a browser, open `https://venue-os.app/player`. Either way the screen shows a 6-character pairing code and a QR code.
+2. **Pair it in the dashboard.** Go to **Screens** and click **Pair Screen**, then type the code from the screen — or scan the QR code on the screen with your phone and confirm there.
+3. Give the screen a name (for example "Front Entrance TV") and, optionally, a screen group, then click **Pair**.
+4. The display flips from the pairing code to a Connected splash, and its card in the dashboard goes **Online** within a few seconds.
 
 ## What gets sent back
 
@@ -31,13 +32,13 @@ When a screen comes online, it reports device metadata you can see in the dashbo
 
 - **Resolution** (e.g. 1920x1080)
 - **OS / browser info** (helps with troubleshooting)
-- **Last ping time** — the player heartbeats every 30 seconds
+- **Last check-in time** — the player checks in regularly
 
-If `lastPingAt` is more than 2 minutes old, the screen shows as **Offline** in red.
+A screen that stops checking in shows as **Offline** in the dashboard.
 
 ## Rotating displays (portrait mode)
 
-Some hallway displays are mounted in portrait orientation. In the screen's detail page, set **Orientation** to `portrait` and pick a portrait-first template (for example, "Hallway Portrait Display"). The player rotates the viewport automatically — you don't need to change anything at the OS level.
+Some displays are mounted in portrait orientation. In the screen's detail page, set **Orientation** to `portrait` and pick a portrait-first template. The player rotates the viewport automatically — you don't need to change anything at the OS level.
 
 ## Kiosk mode tips
 
@@ -45,6 +46,6 @@ For Chromebooks, we recommend setting up **Chrome OS managed kiosk mode** with t
 
 ## Troubleshooting
 
-- **Code doesn't work**: Codes expire after 10 minutes. Generate a new one.
+- **Code doesn't work**: Pairing codes are short-lived. Read the code that is on the screen right now (it can change if the player restarts) and enter that one.
 - **Screen shows "Unpaired"**: Network/firewall may be blocking WebSocket. We fall back to HTTP polling automatically, but double-check your content filter allows `venue-os.app` and `*.venue-os.app` on ports 443 and 80.
 - **Screen is blank**: No schedule applies right now. Assign a default template from the screen's detail page.

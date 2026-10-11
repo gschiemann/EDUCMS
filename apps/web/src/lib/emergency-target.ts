@@ -155,16 +155,24 @@ export function emergencyTriggerBody(payload: {
   };
 }
 
-/** The exact JSON body POSTed to /emergency/:overrideId/all-clear. Default: the whole tenant, as before. */
+/**
+ * The exact JSON body POSTed to /emergency/:overrideId/all-clear. Default: the
+ * whole tenant, as before. `isDrill: true` (2026-10-10, "live alerts always
+ * win") is the "End Drill" intent: the server then ends drill state only —
+ * never a live alert, even one that replaced the drill a moment ago. Absent
+ * on every live all-clear, so that body is byte-for-byte what it was.
+ */
 export function emergencyAllClearBody(payload: {
   schoolId: string;
   scopeType?: EmergencyScopeType;
   scopeId?: string;
-}): { scopeType: EmergencyScopeType; scopeId: string } {
+  isDrill?: boolean;
+}): { scopeType: EmergencyScopeType; scopeId: string; isDrill?: true } {
+  const drill = payload.isDrill === true ? { isDrill: true as const } : {};
   if (payload.scopeType && payload.scopeType !== 'tenant' && payload.scopeId) {
-    return { scopeType: payload.scopeType, scopeId: payload.scopeId };
+    return { scopeType: payload.scopeType, scopeId: payload.scopeId, ...drill };
   }
-  return { scopeType: 'tenant', scopeId: payload.schoolId };
+  return { scopeType: 'tenant', scopeId: payload.schoolId, ...drill };
 }
 
 /** Case- and accent-insensitive "does `query` occur in any of these fields". */

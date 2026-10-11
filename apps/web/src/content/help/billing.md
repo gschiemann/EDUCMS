@@ -17,13 +17,13 @@ VenueOS is priced **per screen** — you pay for each display you connect, and e
 
 Admin and operator logins are always **free and unlimited** — you're only billed for connected screens. Add or remove screens whenever you like and we prorate the change automatically.
 
-Larger districts, chains, and venues can also talk to us about a custom **Enterprise** volume agreement — see **Purchase orders and invoicing** below.
+Larger organizations, chains, and venues can also talk to us about a custom **Enterprise** volume agreement — see **Purchase orders and invoicing** below.
 
 ## Free trial
 
 Every new account starts with a **14-day free trial** — **no credit card required**. Connect up to **3 screens** and use every feature while you evaluate. Add a payment method whenever you're ready to go live or to connect more than three screens.
 
-Your billing status never gates an emergency alert. There is no seat check, licence check, or payment check anywhere on the emergency trigger path — an expired trial, a failed card, or a past-due invoice cannot stop a lockdown from dispatching. (Delivery to any individual screen still depends on that screen being powered on and reachable; see the *Emergency system overview*.)
+Your billing status never gates an emergency alert. There is no seat check, license check, or payment check anywhere on the emergency trigger path — an expired trial, a failed card, or a past-due invoice cannot stop a lockdown from dispatching. (Delivery to any individual screen still depends on that screen being powered on and reachable; see the *Emergency system overview*.)
 
 ## Paying by card (self-serve)
 

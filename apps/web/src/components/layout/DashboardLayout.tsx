@@ -18,6 +18,7 @@ import { ProfileHydrator } from './ProfileHydrator';
 import { useTenantStatus } from '@/hooks/use-api';
 import { AppDialogHost } from '@/components/ui/app-dialog';
 import { BrandStyleInjector } from '@/components/branding/BrandStyleInjector';
+import { TrialStatusBar } from '@/components/billing/TrialStatusBar';
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const t = useTranslations();
@@ -170,6 +171,10 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             left under the username"). The role indicator lives in the Sidebar
             user card; that badge now links to the Owner Console. */}
         <TopToolbar />
+        {/* 2026-10-11 — self-serve trial / billing line ("12 days left in your
+            free trial · Add payment"). Renders nothing for paying, invoice,
+            comp and legacy-pilot customers. One cached read, never polled. */}
+        <TrialStatusBar />
         <main
           id="main-content"
           tabIndex={-1}

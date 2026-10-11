@@ -101,7 +101,20 @@ import { resolvePlaybackConfig } from './playback-config';
 // cadence would read the entire healthy fleet as OFFLINE. See online-grace.ts
 // for the derivation and for the detection-speed cost it accepts.
 import { SCREEN_ONLINE_GRACE_MS } from '../telemetry/online-grace';
-import { TENANT_DRILL_PLAYLIST_FIELDS } from '../emergency/emergency-content-use';
+import {
+  SCREEN_DRILL_CONTENT_SELECT,
+  SCREEN_DRILL_MEDIA_URL_FIELDS,
+  SCREEN_DRILL_PLAYLIST_FIELDS,
+  TENANT_DRILL_PLAYLIST_FIELDS,
+  type ScreenDrillContentField,
+} from '../emergency/emergency-content-use';
+// 2026-10-10 — per-screen DRILL content precedence (the one rule the trigger
+// paths write and the manifest resolves for a screen with no override row).
+import {
+  pickScreenDrillContent,
+  resolveScreenAlertContent,
+  tenantAlertPlaysDrillContent,
+} from '../emergency/emergency-drill';
 import { sanitizeCacheReport } from '../telemetry/cache-report';
 // 2026-08-13 — display control. The manifest's `display` block carries the
 // on/off windows the player arms as LOCAL AlarmManager alarms (a screen with
@@ -4171,7 +4184,12 @@ export class ScreensController {
       holdPortraitAssetUrl?: string | null;
       securePortraitAssetUrl?: string | null;
       medicalPortraitAssetUrl?: string | null;
-    },
+      // 2026-10-10 — DRILL content for this screen: the exact mirror of the
+      // 24 keys above, keyed by the column name (`drillLockdownPlaylistId`,
+      // `drillLockdownAssetUrl`, `drillLockdownPortraitPlaylistId`, …). Same
+      // sanitizers, same tenant check. During a drill the screen plays this
+      // before the tenant's drill content and before any live content.
+    } & Partial<Record<ScreenDrillContentField, string | null>>,
   ) {
     const tenantId = req.user.tenantId;
     const screen = await this.prisma.client.screen.findFirst({ where: { id, tenantId } });
@@ -4185,6 +4203,7 @@ export class ScreensController {
       body.holdPlaylistId, body.securePlaylistId, body.medicalPlaylistId,
       body.lockdownPortraitPlaylistId, body.evacuatePortraitPlaylistId, body.weatherPortraitPlaylistId,
       body.holdPortraitPlaylistId, body.securePortraitPlaylistId, body.medicalPortraitPlaylistId,
+      ...SCREEN_DRILL_PLAYLIST_FIELDS.map((f) => body[f]),
     ].filter((v): v is string => typeof v === 'string' && v.length > 0);
     let validIds = new Set<string>();
     if (ids.length > 0) {
@@ -4237,6 +4256,13 @@ export class ScreensController {
     if (body.holdPortraitAssetUrl       !== undefined) data.emergencyHoldPortraitAssetUrl       = sanitizeUrl(body.holdPortraitAssetUrl);
     if (body.securePortraitAssetUrl     !== undefined) data.emergencySecurePortraitAssetUrl     = sanitizeUrl(body.securePortraitAssetUrl);
     if (body.medicalPortraitAssetUrl    !== undefined) data.emergencyMedicalPortraitAssetUrl    = sanitizeUrl(body.medicalPortraitAssetUrl);
+    // 2026-10-10 — drill content, keyed by column name. Same sanitizers.
+    for (const f of SCREEN_DRILL_PLAYLIST_FIELDS) {
+      if (body[f] !== undefined) data[f] = sanitize(body[f]);
+    }
+    for (const f of SCREEN_DRILL_MEDIA_URL_FIELDS) {
+      if (body[f] !== undefined) data[f] = sanitizeUrl(body[f]);
+    }
 
     const updated = await this.prisma.client.screen.update({
       // SEC-009: tenant predicate in the write. This row decides what a screen
@@ -4270,6 +4296,7 @@ export class ScreensController {
         emergencyHoldPortraitAssetUrl: true,
         emergencySecurePortraitAssetUrl: true,
         emergencyMedicalPortraitAssetUrl: true,
+        ...SCREEN_DRILL_CONTENT_SELECT,
       } as any,
     });
 
@@ -5187,6 +5214,22 @@ export class ScreensController {
     // the drill banner; inherited from an ancestor like the rest.
     emergencyIsDrill: true,
     locationBasedEmergencyEnabled: true,
+    // 2026-10-10 — the tenant's drill playlists, so the manifest can tell
+    // whether a drill's `emergencyPlaylistId` came from the drill columns
+    // (`tenantAlertPlaysDrillContent`): then it beats a screen's live
+    // per-type content; otherwise the screen's live content comes first.
+    drillLockdownPlaylistId: true,
+    drillEvacuatePlaylistId: true,
+    drillWeatherPlaylistId: true,
+    drillHoldPlaylistId: true,
+    drillSecurePlaylistId: true,
+    drillMedicalPlaylistId: true,
+    drillLockdownPortraitPlaylistId: true,
+    drillEvacuatePortraitPlaylistId: true,
+    drillWeatherPortraitPlaylistId: true,
+    drillHoldPortraitPlaylistId: true,
+    drillSecurePortraitPlaylistId: true,
+    drillMedicalPortraitPlaylistId: true,
   } as const;
 
   /**
@@ -5765,6 +5808,10 @@ export class ScreensController {
             emergencyPlaylistId: ancestor.emergencyPlaylistId,
             emergencyPortraitPlaylistId: ancestor.emergencyPortraitPlaylistId,
             emergencyIsDrill: ancestor.emergencyIsDrill === true,
+            // 2026-10-10 — whether the inherited drill's playlist is the
+            // ancestor's DRILL content, decided against the ANCESTOR's drill
+            // columns (the pointer is theirs, so the comparison must be too).
+            emergencyAlertPlaysDrillContent: tenantAlertPlaysDrillContent(ancestor),
             // NOT inherited: locationBasedEmergencyEnabled stays this
             // school's own opt-in, because the per-screen emergency config
             // it gates lives on THIS school's screens.
@@ -5959,16 +6006,54 @@ export class ScreensController {
         const effectivePerScreenPlaylist = locationModeOn ? perScreenForType : null;
         const effectivePerScreenAsset    = locationModeOn ? perScreenAssetForType : null;
 
+        // ── EMERGENCY DRILLS (2026-10-10) ──────────────────────────────────
+        // The alert this screen shows is a DRILL iff the row it is built from
+        // says so: the per-screen override when one is active (it wins the
+        // glass, so its flag wins too), else the tenant-wide alert's flag.
+        // Only the JSON literal `true` is a drill; every pre-drill row reads
+        // false. Emitted on every emergency manifest, inside the ETag-hashed
+        // payload (it is a stable fact of the alert, never volatile).
+        const isDrill: boolean = activeScreenOverride
+          ? activeScreenOverride.isDrill === true
+          : (tenant as any)?.emergencyIsDrill === true;
+        // The screen's OWN drill content for the type (same location-mode
+        // gate as the live columns), and whether the tenant's alert playlist
+        // is drill content — both only matter for a screen with NO override
+        // row (an inherited district drill, a screen paired mid-drill), since
+        // the trigger already wrote the resolved content into every row.
+        const drillPerScreen =
+          isDrill && locationModeOn
+            ? pickScreenDrillContent(screenAny, emergencyTypeKey, isPortrait)
+            : { playlistId: null, mediaUrl: null };
+        const tenantAlertIsDrillContent: boolean =
+          isDrill &&
+          (inheritedFromTenantId
+            ? (tenant as any)?.emergencyAlertPlaysDrillContent === true
+            : tenantAlertPlaysDrillContent(tenant));
+        const tenantAlertPlaylistId: string | null = isPortrait
+          ? (tenant?.emergencyPortraitPlaylistId || tenant?.emergencyPlaylistId || null)
+          : (tenant?.emergencyPlaylistId || tenant?.emergencyPortraitPlaylistId || null);
+
         // Pick the playlist for this screen's orientation. Graceful
         // fallback in BOTH directions: a portrait screen uses the
         // landscape playlist if no portrait was configured, and
         // vice-versa.
+        //
+        // DRILL precedence (between the override row and the live rule, and
+        // only on a drill): the screen's drill playlist → the screen's drill
+        // media (then no playlist at all) → the tenant's drill playlist →
+        // the live rule below.
         const chosenPlaylistId =
           activeScreenOverride?.playlistId ||                          // 1. manual trigger override (always honored)
-          effectivePerScreenPlaylist ||                                 // 2. per-screen config (gated by location mode)
-          (isPortrait                                                   // 3. tenant default
-            ? (tenant?.emergencyPortraitPlaylistId || tenant?.emergencyPlaylistId || null)
-            : (tenant?.emergencyPlaylistId || tenant?.emergencyPortraitPlaylistId || null));
+          (isDrill
+            ? (drillPerScreen.playlistId ||
+               (drillPerScreen.mediaUrl
+                 ? null
+                 : ((tenantAlertIsDrillContent ? tenantAlertPlaylistId : null) ||
+                    effectivePerScreenPlaylist ||
+                    tenantAlertPlaylistId)))
+            : (effectivePerScreenPlaylist ||                             // 2. per-screen config (gated by location mode)
+               tenantAlertPlaylistId));                                  // 3. tenant default
 
         if (chosenPlaylistId) {
           // ten-ok: `chosenPlaylistId` is not caller-supplied — it is read from
@@ -6024,8 +6109,11 @@ export class ScreensController {
         // same location-mode toggle as the playlist column above —
         // see `effectivePerScreenAsset` for rationale.
         const effectiveOverrideAsset = activeScreenOverride?.mediaUrl || null;
-        if (playlists.length === 0 && (effectiveOverrideAsset || effectivePerScreenAsset)) {
-          const url = (effectiveOverrideAsset || effectivePerScreenAsset)!;
+        // 2026-10-10 — on a drill the screen's own drill media comes before
+        // its live media (`drillPerScreen` is empty on a live alert).
+        const effectiveAsset = effectiveOverrideAsset || drillPerScreen.mediaUrl || effectivePerScreenAsset;
+        if (playlists.length === 0 && effectiveAsset) {
+          const url = effectiveAsset;
           const ext = (url.split('?')[0].split('#')[0].split('.').pop() || '').toLowerCase();
           const mime =
             ['mp4','mov','webm','m4v'].includes(ext) ? `video/${ext === 'mov' ? 'quicktime' : ext}` :
@@ -6063,16 +6151,8 @@ export class ScreensController {
           activeScreenOverride?.severity ||
           tenant?.emergencyStatus ||
           'HIGH';
-        // ── EMERGENCY DRILLS (2026-10-10) ──────────────────────────────────
-        // The alert this screen shows is a DRILL iff the row it is built from
-        // says so: the per-screen override when one is active (it wins the
-        // glass, so its flag wins too), else the tenant-wide alert's flag.
-        // Only the JSON literal `true` is a drill; every pre-drill row reads
-        // false. Emitted on every emergency manifest, inside the ETag-hashed
-        // payload (it is a stable fact of the alert, never volatile).
-        const isDrill: boolean = activeScreenOverride
-          ? activeScreenOverride.isDrill === true
-          : (tenant as any)?.emergencyIsDrill === true;
+        // (`isDrill` — the DRILL vs LIVE fact of this manifest — is computed
+        // above, before the content pick, since drill content depends on it.)
 
         // BULLETPROOF FALLBACK: If the admin failed to assign an emergency playlist or it was empty,
         // we MUST still lock the screen down to protect the school.
@@ -7472,6 +7552,9 @@ export class ScreensController {
         emergencyHoldPortraitAssetUrl: true,
         emergencySecurePortraitAssetUrl: true,
         emergencyMedicalPortraitAssetUrl: true,
+        // 2026-10-10 — the screen's own DRILL content joins the never-evict
+        // tier: a drill must play from local disk exactly like the real thing.
+        ...SCREEN_DRILL_CONTENT_SELECT,
         tenant: {
           select: {
             id: true,
@@ -7548,6 +7631,8 @@ export class ScreensController {
       (screen as any).emergencyHoldPortraitPlaylistId,
       (screen as any).emergencySecurePortraitPlaylistId,
       (screen as any).emergencyMedicalPortraitPlaylistId,
+      // 2026-10-10 — the screen's own drill playlists.
+      ...SCREEN_DRILL_PLAYLIST_FIELDS.map((f) => (screen as any)[f]),
     ].filter((x): x is string => !!x);
 
     const assets: Array<{ url: string; sha256: string | null; size: number; kind: string }> = [];
@@ -7607,6 +7692,8 @@ export class ScreensController {
       (screen as any).emergencyHoldPortraitAssetUrl,
       (screen as any).emergencySecurePortraitAssetUrl,
       (screen as any).emergencyMedicalPortraitAssetUrl,
+      // 2026-10-10 — the screen's own drill media.
+      ...SCREEN_DRILL_MEDIA_URL_FIELDS.map((f) => (screen as any)[f]),
     ].filter((url): url is string => typeof url === 'string' && url.trim().length > 0);
 
     // P0-1 (2026-05-28): per-screen emergency asset URLs (Sprint 8b scoped

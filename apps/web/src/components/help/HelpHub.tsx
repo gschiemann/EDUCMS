@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Search, ArrowRight, BookOpen, Mail, FileText, Sparkles, Printer } from 'lucide-react';
 import { HELP_CATEGORIES, type HelpArticle, type HelpCategory } from '@/content/help/types';
+import { searchArticles } from '@/content/help/search';
 
 /**
  * Help hub — compact header + featured guide card + category grid +
@@ -19,17 +20,9 @@ import { HELP_CATEGORIES, type HelpArticle, type HelpCategory } from '@/content/
 export function HelpHub({ articles }: { articles: HelpArticle[] }) {
   const [q, setQ] = useState('');
 
-  const filtered = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    if (!needle) return articles;
-    return articles.filter(
-      (a) =>
-        a.title.toLowerCase().includes(needle) ||
-        a.excerpt.toLowerCase().includes(needle) ||
-        a.body.toLowerCase().includes(needle) ||
-        a.category.toLowerCase().includes(needle),
-    );
-  }, [articles, q]);
+  // Word-wise search over titles, headings, excerpts and article bodies, with
+  // stemming + a few synonyms ("pairing"/"pair", "test"/"drill", "api key").
+  const filtered = useMemo(() => searchArticles(articles, q), [articles, q]);
 
   const byCategory = useMemo(() => {
     const m = new Map<HelpCategory, HelpArticle[]>();

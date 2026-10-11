@@ -82,6 +82,10 @@ export const LEASE = {
   PROOF_OF_PLAY_PURGE: 'proof-of-play:purge',
   PROOF_OF_PLAY_ROLLUP: 'proof-of-play:rollup',
   LICENSE_RECONCILE: 'billing:license-reconcile',
+  // 2026-10-11 — trial reminder emails. Each notice is already claimed
+  // atomically per license (at most once even without the lease); leasing
+  // keeps a second replica from scanning and racing the same claims.
+  TRIAL_REMINDERS: 'billing:trial-reminders',
   EFFICIENCY_ALERTING: 'efficiency:alerting',
   GEOCODE_AUTOHEAL: 'geocode:autoheal',
   CLEVER_SYNC: 'integrations:clever-sync',

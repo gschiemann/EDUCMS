@@ -591,6 +591,16 @@ export class EmailService {
   }
 
   /**
+   * 2026-10-11 — a billing notice (trial reminders). The caller writes the
+   * subject/body in the customer's language (billing/trial-emails.ts); this
+   * keeps the durable email_logs row + Resend dispatch in one place. Returns
+   * how the dispatch ended; throws only when the log row itself fails.
+   */
+  async sendBillingNotice(params: { to: string; subject: string; body: string; kind: string }): Promise<EmailDispatchStatus> {
+    return this.#enqueue(params);
+  }
+
+  /**
    * Dispatch an email via Resend. Swap-in target for the old stub.
    *
    * Config (all optional — unset = dev-mode logging only):

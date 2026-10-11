@@ -4,7 +4,7 @@ import { getAllArticles } from '@/content/help';
 
 export const metadata = {
   title: 'Help center — VenueOS',
-  description: 'Guides, how-tos, and answers for VenueOS admins, teachers, and district IT.',
+  description: 'Guides, how-tos, and answers for everyone who runs screens with VenueOS.',
 };
 
 export default function HelpPage() {

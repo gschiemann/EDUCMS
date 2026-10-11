@@ -107,8 +107,10 @@ if (!prebuilt && (forceRebuild || !haveBuild)) {
   }
 }
 
-log(`starting next start (NEXT_PUBLIC_API_URL=${API_URL})`);
-const server = spawn('pnpm', ['exec', 'next', 'start'], {
+// Opt-in port (playwright.config.ts `E2E_PORT`); default 3000 as always.
+const PORT = process.env.E2E_PORT || '3000';
+log(`starting next start on :${PORT} (NEXT_PUBLIC_API_URL=${API_URL})`);
+const server = spawn('pnpm', ['exec', 'next', 'start', '-p', PORT], {
   cwd: WEB_DIR,
   env,
   stdio: 'inherit',

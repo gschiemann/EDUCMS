@@ -180,6 +180,35 @@ export interface TelemetryDownloadReport {
 /** The server's cap is 256; the name is shown to an operator, 120 is plenty. */
 export const DOWNLOAD_FILE_MAX_CHARS = 120;
 
+/**
+ * Off-hours bundle update, applied (2026-10-10). Sent ONCE by the document
+ * that came up after the reload, once operator content was on its glass:
+ * which window applied it, the zone that window was read in (and where the
+ * zone came from), how the reload was covered, and the two gaps measured on
+ * the device. The server records it on the screen's timeline
+ * (`screen_events`, kind `update-applied`) — one row per deploy per screen,
+ * never a column.
+ *
+ * ⚠️ ROLLOUT ORDER — same rule as `loop` / `cache.downloading`: the body is a
+ * `strictObject`, so an API that does not know `update` answers 400 to the
+ * WHOLE report. This API ships before the player bundle that sends it, and
+ * the page drops the block for a while after a refusal (`updateReportRefused`).
+ */
+export interface TelemetryUpdateReport {
+  fromBundleId: string | null;
+  toBundleId: string | null;
+  window: 'display-off' | 'idle' | 'nightly';
+  boundary: 'now' | 'item';
+  zone: string;
+  zoneSource: 'schedule' | 'device' | 'utc';
+  capture: 'live' | 'refetch' | 'color' | 'none';
+  /** Last frame of the old document → the cover painted (the true blank), ms. */
+  blankMs: number | null;
+  /** Cover painted → operator content on the glass, ms. */
+  coverMs: number | null;
+  converged: boolean;
+}
+
 export interface TelemetryBody {
   versions?: {
     player?: string;
@@ -206,6 +235,7 @@ export interface TelemetryBody {
   nativeVideo?: NativeSharedVideoState;
   video?: TelemetryVideoReport;
   loop?: TelemetryLoopReport;
+  update?: TelemetryUpdateReport;
 }
 
 /**
@@ -420,6 +450,8 @@ export interface TelemetryBodyInput {
    * never carries a download without the counters it belongs beside.
    */
   download?: DownloadSnapshotInput | null;
+  /** The off-hours update this document came up from, once (2026-10-10). */
+  update?: TelemetryUpdateReport | null;
 }
 
 /** What the page knows about its download (its `largeDownload` state) + the hold. */
@@ -487,7 +519,47 @@ export function buildTelemetryBody(input: TelemetryBodyInput): TelemetryBody {
     if (l) body.loop = l;
   }
 
+  if (input.update) {
+    const u = updateReport(input.update);
+    if (u) body.update = u;
+  }
+
   return body;
+}
+
+const UPDATE_WINDOWS = new Set(['display-off', 'idle', 'nightly']);
+const UPDATE_ZONE_SOURCES = new Set(['schedule', 'device', 'utc']);
+const UPDATE_CAPTURES = new Set(['live', 'refetch', 'color', 'none']);
+const UPDATE_MAX_MS = 86_400_000;
+
+/** The update block exactly as the server's strict schema accepts it, or null. */
+function updateReport(u: TelemetryUpdateReport): TelemetryUpdateReport | null {
+  if (!UPDATE_WINDOWS.has(u.window) || !UPDATE_ZONE_SOURCES.has(u.zoneSource) || !UPDATE_CAPTURES.has(u.capture)) return null;
+  const id = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim().slice(0, 64) : null);
+  const ms = (v: unknown): number | null =>
+    typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.min(Math.floor(v), UPDATE_MAX_MS) : null;
+  return {
+    fromBundleId: id(u.fromBundleId),
+    toBundleId: id(u.toBundleId),
+    window: u.window,
+    boundary: u.boundary === 'item' ? 'item' : 'now',
+    zone: String(u.zone || 'UTC').trim().slice(0, 64) || 'UTC',
+    zoneSource: u.zoneSource,
+    capture: u.capture,
+    blankMs: ms(u.blankMs),
+    coverMs: ms(u.coverMs),
+    converged: u.converged === true,
+  };
+}
+
+/**
+ * Did the server refuse a report BECAUSE it carried the update block (an API
+ * from before the block existed)? The page then keeps the evidence and
+ * retries it on a later report, after `LOOP_REPORT_RETRY_MS` — the same
+ * ride-out-a-slow-deploy rule as the loop block.
+ */
+export function updateReportRefused(status: number | null, sent: TelemetryBody): boolean {
+  return status === 400 && !!sent.update;
 }
 
 /** The server's bounds on the loop-boundary numbers (`telemetry.schema.ts`). */

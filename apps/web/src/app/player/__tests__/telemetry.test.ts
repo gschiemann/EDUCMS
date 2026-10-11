@@ -528,3 +528,38 @@ describe('loop boundary block (2026-09-29)', () => {
     expect(loopReportRefused(200, withLoop)).toBe(false);
   });
 });
+
+describe('off-hours update block (2026-10-10)', () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { updateReportRefused } = require('../telemetry') as typeof import('../telemetry');
+  const evidence = {
+    fromBundleId: 'aaaa', toBundleId: 'bbbb', window: 'nightly' as const, boundary: 'item' as const,
+    zone: 'America/Chicago', zoneSource: 'schedule' as const, capture: 'live' as const,
+    blankMs: 412.7, coverMs: 1_830, converged: true,
+  };
+
+  it('carries the block exactly as the server accepts it — floors, caps, only the documented keys', () => {
+    const body = buildTelemetryBody({ update: evidence } as never);
+    expect(body.update).toEqual({ ...evidence, blankMs: 412 });
+    const capped = buildTelemetryBody({ update: { ...evidence, coverMs: 1e12, blankMs: -5, zone: 'Z'.repeat(80), fromBundleId: '' } } as never).update!;
+    expect(capped.coverMs).toBe(86_400_000);
+    expect(capped.blankMs).toBeNull();
+    expect(capped.zone).toHaveLength(64);
+    expect(capped.fromBundleId).toBeNull();
+  });
+
+  it('a block the server would refuse is dropped rather than 400-ing the whole report', () => {
+    expect('update' in buildTelemetryBody({ update: { ...evidence, window: 'lunch' } } as never)).toBe(false);
+    expect('update' in buildTelemetryBody({ update: { ...evidence, capture: 'screenshot' } } as never)).toBe(false);
+    expect('update' in buildTelemetryBody({ update: null } as never)).toBe(false);
+  });
+
+  it('updateReportRefused: only a 400 to a report that carried it', () => {
+    const withUpdate = buildTelemetryBody({ update: evidence } as never);
+    const without = buildTelemetryBody({} as never);
+    expect(updateReportRefused(400, withUpdate)).toBe(true);
+    expect(updateReportRefused(400, without)).toBe(false);
+    expect(updateReportRefused(500, withUpdate)).toBe(false);
+    expect(updateReportRefused(200, withUpdate)).toBe(false);
+  });
+});
