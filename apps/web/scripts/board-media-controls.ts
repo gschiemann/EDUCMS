@@ -36,7 +36,11 @@ function slots() {
 function rememberSources() {
   slots().forEach(el => {
     const key = keyOf(el);
-    if (sourceDefaults.has(key) || !el.getClientRects().length) return;
+    if (!el.getClientRects().length) return;
+    // A video has two distinct keys: its source and its poster image.
+    const posterKey = el.getAttribute('data-posterslot');
+    if (posterKey && !sourceDefaults.has(posterKey)) sourceDefaults.set(posterKey, el.getAttribute('poster') || '');
+    if (sourceDefaults.has(key)) return;
     const media = el.matches('img,video') ? el : el.querySelector('img,video');
     const slides = Array.from(document.querySelectorAll<HTMLElement>('[data-field]')).find(field => field.dataset.field === `media.${key}.slides`);
     if (slides) { try { sourceDefaults.set(key, JSON.parse(slides.textContent || '[]')); return; } catch { /* use the element's source */ } }
@@ -113,6 +117,13 @@ function readInitial() {
 function paintSources(data: { img?: Record<string, unknown>; video?: Record<string, unknown> }, newNodesOnly = false) {
   slots().forEach(el => {
     if (newNodesOnly && paintedSourceNodes.has(el)) return;
+    const posterKey = el.getAttribute('data-posterslot');
+    if (posterKey && data.img && posterKey in data.img) {
+      const posterValue = data.img[posterKey];
+      const poster = typeof posterValue === 'string' ? posterValue : Array.isArray(posterValue) && typeof posterValue[0] === 'string' ? posterValue[0] : '';
+      if (poster) el.setAttribute('poster', poster); else el.removeAttribute('poster');
+      paintedSourceNodes.add(el);
+    }
     const video = el.hasAttribute('data-videoslot');
     const map = video ? data.video : data.img;
     const key = keyOf(el);
