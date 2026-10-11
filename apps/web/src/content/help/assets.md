@@ -14,7 +14,7 @@ Assets are the images, videos, and documents that fill your templates and playli
 From **Assets → Upload**, drag-and-drop files or pick them from your computer. Supported formats:
 
 - **Images**: JPG, PNG, WebP, GIF, BMP, ICO and HEIC (iPhone photos) — up to **25 MB** each. HEIC photos are converted to JPEG on upload.
-- **Videos**: MP4, M4V and WebM play as they are. MOV, AVI, MKV, WMV, MPG, 3GP and TS/MTS are accepted too and converted to MP4 after upload. Up to **2 GB** per file.
+- **Videos**: MP4, M4V and WebM play as they are. MOV, AVI, MKV, WMV, MPG, 3GP and TS/MTS are accepted too and converted to MP4 after upload. Up to **500 MB** per file.
 - **Audio**: MP3, WAV, OGG and M4A — up to **25 MB** each.
 - **Documents**: PDF — up to **25 MB** each.
 

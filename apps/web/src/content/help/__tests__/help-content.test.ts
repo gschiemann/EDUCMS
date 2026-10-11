@@ -59,7 +59,7 @@ describe('help articles — copy that must stay true', () => {
   it('states the real upload limits in both the article and not the old ones', () => {
     const assets = articles.find((a) => a.slug === 'assets')!;
     expect(assets.body).toMatch(/25 MB/);
-    expect(assets.body).toMatch(/2 GB/);
+    expect(assets.body).toMatch(/500 MB/);
     expect(assets.body).not.toMatch(/up to (20|50|200) MB/i);
   });
 
