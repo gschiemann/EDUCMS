@@ -3553,7 +3553,8 @@
       "everything": "Se muestra todo lo de la lista",
       "restricted": "Las pantallas públicas muestran menos que la lista",
       "saving": "Guardando",
-      "error": "No se pudo guardar; inténtelo de nuevo"
+      "error": "No se pudo guardar; inténtelo de nuevo",
+      "checking": "Comprobando qué muestran las pantallas públicas"
     },
     "scope": {
       "tag": "Resultados",
@@ -3757,7 +3758,8 @@
       "adminOnly": "Solo un administrador puede registrar una autorización de foto o quitar una exclusión.",
       "optedOutNote": "Nunca se muestra en pantallas públicas",
       "policyNote": "La política de su escuela oculta los nombres y las fotos de los estudiantes en las pantallas públicas. Estos interruptores solo pueden ocultar más.",
-      "policyPhotosNote": "La política de su escuela oculta las fotos de los estudiantes en las pantallas públicas. Estos interruptores solo pueden ocultar más."
+      "policyPhotosNote": "La política de su escuela oculta las fotos de los estudiantes en las pantallas públicas. Estos interruptores solo pueden ocultar más.",
+      "policyNamesNote": "La política de su escuela oculta los nombres de los estudiantes en las pantallas públicas. Estos interruptores solo pueden ocultar más."
     },
     "typedNames": {
       "warning": "No escriba nombres de estudiantes aquí: su escuela no ha confirmado su política de información de directorio.",

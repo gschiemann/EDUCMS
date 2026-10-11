@@ -3553,7 +3553,8 @@
       "everything": "Showing everything on the roster",
       "restricted": "Public screens show less than the roster",
       "saving": "Saving",
-      "error": "Could not save — try again"
+      "error": "Could not save — try again",
+      "checking": "Checking what public screens show"
     },
     "scope": {
       "tag": "Results",
@@ -3757,7 +3758,8 @@
       "adminOnly": "Only an administrator can record a photo release or clear an opt-out.",
       "optedOutNote": "Never shown on public screens",
       "policyNote": "Your school's policy hides students' names and photos on public screens. These switches can only hide more.",
-      "policyPhotosNote": "Your school's policy hides students' photos on public screens. These switches can only hide more."
+      "policyPhotosNote": "Your school's policy hides students' photos on public screens. These switches can only hide more.",
+      "policyNamesNote": "Your school's policy hides students' names on public screens. These switches can only hide more."
     },
     "typedNames": {
       "warning": "Don't type student names here — your school hasn't confirmed its directory-information policy.",
