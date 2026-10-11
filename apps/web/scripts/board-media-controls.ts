@@ -5,14 +5,27 @@ installBoardFontControls();
 type MediaStyle = { fit?: string; rotation?: number; hidden?: boolean };
 export {};
 const selector = '[data-imgslot],[data-posterslot],[data-img],[data-widget="image-slot"],[data-videoslot]';
-const authored = new WeakMap<HTMLElement, { transform: string; priority: string; base: string; display: string; size: string; position: string; repeat: string }>();
-const originalFits = new WeakMap<HTMLElement, string>();
+const authored = new WeakMap<HTMLElement, { transform: string; priority: string; base: string; display: string; size: string; sizePriority: string; position: string; repeat: string }>();
+const originalFits = new WeakMap<HTMLElement, { value: string; priority: string }>();
 const sourceDefaults = new Map<string, string | string[]>();
 const paintedSourceNodes = new WeakSet<HTMLElement>();
 const seenSources = { img: new Set<string>(), video: new Set<string>() };
 let mediaStyles: Record<string, MediaStyle> = {};
 const currentSources: { img?: Record<string, unknown>; video?: Record<string, unknown> } = {};
 let editing = false;
+let reapplyQueued = false;
+function settleMedia() {
+  // WebKit may flush microtasks between capture and bubble listeners. A
+  // later legacy image painter can otherwise reset a saved contain fit to
+  // cover. Reapply after the whole message dispatch, using the latest state.
+  if (reapplyQueued) return;
+  reapplyQueued = true;
+  setTimeout(() => {
+    reapplyQueued = false;
+    paintSources(currentSources);
+    apply();
+  }, 0);
+}
 function keyOf(el: HTMLElement) {
   return el.getAttribute('data-videoslot') || el.getAttribute('data-imgslot') || el.getAttribute('data-posterslot') || el.getAttribute('data-slot') || el.getAttribute('data-img') || '';
 }
@@ -43,20 +56,28 @@ function apply() {
     const style = mediaStyles[keyOf(el)];
     const children = el.matches('img,video') ? [el] : Array.from(el.querySelectorAll<HTMLElement>('img,video'));
     if (!style && !authored.has(el)) return;
-    if (!authored.has(el)) authored.set(el, { transform: el.style.transform, priority: el.style.getPropertyPriority('transform'), base: getComputedStyle(el).transform, display: el.style.display, size: el.style.backgroundSize, position: el.style.backgroundPosition, repeat: el.style.backgroundRepeat });
+    if (!authored.has(el)) authored.set(el, { transform: el.style.transform, priority: el.style.getPropertyPriority('transform'), base: getComputedStyle(el).transform, display: el.style.display, size: el.style.backgroundSize, sizePriority: el.style.getPropertyPriority('background-size'), position: el.style.backgroundPosition, repeat: el.style.backgroundRepeat });
     const original = authored.get(el)!;
     const rotation = typeof style?.rotation === 'number' && Number.isFinite(style.rotation) ? ((style.rotation % 360) + 360) % 360 : 0;
     if (rotation) el.style.setProperty('transform', `${original.base === 'none' ? '' : original.base} rotate(${rotation}deg)`, 'important');
     else if (original.transform) el.style.setProperty('transform', original.transform, original.priority);
     else el.style.removeProperty('transform');
     if (style?.fit === 'contain' || style?.fit === 'cover' || style?.fit === 'fill') {
-      children.forEach(child => { if (!originalFits.has(child)) originalFits.set(child, child.style.objectFit); child.style.objectFit = style.fit!; });
-      el.style.backgroundSize = style.fit === 'fill' ? '100% 100%' : style.fit;
+      children.forEach(child => {
+        if (!originalFits.has(child)) originalFits.set(child, { value: child.style.objectFit, priority: child.style.getPropertyPriority('object-fit') });
+        child.style.setProperty('object-fit', style.fit!, 'important');
+      });
+      // Some legacy logo rules use !important. A saved operator choice must
+      // take precedence, while Undo restores the authored declaration.
+      el.style.setProperty('background-size', style.fit === 'fill' ? '100% 100%' : style.fit, 'important');
       el.style.backgroundRepeat = 'no-repeat';
       el.style.backgroundPosition = 'center';
     } else {
-      children.forEach(child => { if (originalFits.has(child)) child.style.objectFit = originalFits.get(child)!; });
-      el.style.backgroundSize = original.size; el.style.backgroundPosition = original.position; el.style.backgroundRepeat = original.repeat;
+      children.forEach(child => {
+        const fit = originalFits.get(child);
+        if (fit) child.style.setProperty('object-fit', fit.value, fit.priority);
+      });
+      el.style.setProperty('background-size', original.size, original.sizePriority); el.style.backgroundPosition = original.position; el.style.backgroundRepeat = original.repeat;
     }
     el.style.display = style?.hidden === true ? 'none' : original.display;
   });
@@ -112,6 +133,7 @@ addEventListener('message', event => {
     if (data.mediaStyles && typeof data.mediaStyles === 'object') mediaStyles = data.mediaStyles;
     apply();
     Promise.resolve().then(() => { paintSources(currentSources); apply(); }); // after legacy source painters
+    settleMedia();
   }
 }, true);
 // This runs before legacy element handlers. Keep their click-to-edit message
@@ -130,6 +152,7 @@ document.addEventListener('click', event => {
 function ready() {
   rememberSources(); readInitial(); paintSources(currentSources); apply(); announce();
   Promise.resolve().then(() => { paintSources(currentSources); apply(); });
+  settleMedia();
   // Kiosk screen swaps and native carousels create new media nodes later.
   new MutationObserver(() => {
     rememberSources();

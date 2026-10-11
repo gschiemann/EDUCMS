@@ -16,3 +16,6 @@ Required remaining work: integrate three agent verified commits after persisting
 Durable evidence/authoring/reports: /Users/gschiemann/Desktop/template-flagship-audit/. Lead authoring copied to lead-authoring/. Agent report copies in reports/. Never delete uncommitted agent output.
 
 Existing owned stash exact label: 'preserved corporate report before integrating matching commit'; tracked corporate.md already matches agent report byte-for-byte, can drop this stash only after confirmation. Other chat worktrees must remain untouched.
+
+
+2026-10-11 follow-up checkpoint: 282 gallery posters regenerated; combined image replacement / fit / rotation corpus found only hs/ath-gameday CSS !important precedence (678 pass, 2 fail). Shared companion now gives saved operator fit priority and restores the original inline priority on Undo. Full corpus rerun and final source/poster hash regeneration pending. Usage at 37% current window / 22% weekly. Veterinary final commit 54275b9f preserved and ready to integrate.

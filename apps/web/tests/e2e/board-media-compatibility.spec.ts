@@ -31,7 +31,9 @@ for (const url of corpus) {
     await expect.poll(() => page.evaluate(() => (window as unknown as { boardMediaSlots?: unknown }).boardMediaSlots)).toBeDefined();
     const key = await page.evaluate(() => (window as unknown as { boardMediaSlots: { key: string }[] }).boardMediaSlots[0]?.key);
     if (!key) return; // A board with no media still advertises its empty capability list.
-    await page.evaluate(key => window.postMessage({ type: 'educms-overrides', mediaStyles: { [key]: { rotation: 35, fit: 'contain' } } }, '*'), key);
+    const replacement = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"><rect width="200" height="100" fill="coral"/></svg>';
+    await page.evaluate(({ key, replacement }) => window.postMessage({ type: 'educms-overrides',
+      img: { [key]: replacement }, mediaStyles: { [key]: { rotation: 35, fit: 'contain' } } }, '*'), { key, replacement });
     await expect.poll(() => page.evaluate(key => {
       const nodes = document.querySelectorAll<HTMLElement>('[data-imgslot],[data-posterslot],[data-img],[data-widget="image-slot"],[data-videoslot]');
       const slot = Array.from(nodes).find(el => (el.getAttribute('data-videoslot') || el.getAttribute('data-imgslot') || el.getAttribute('data-posterslot') || el.getAttribute('data-slot') || el.getAttribute('data-img')) === key);

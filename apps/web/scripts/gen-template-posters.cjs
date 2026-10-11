@@ -17,12 +17,13 @@
  */
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { chromium } = require('@playwright/test');
 
 const BASE = process.argv[2] || 'http://localhost:8910';
 const ROOT = path.join(__dirname, '..', 'public', 'templates');
 const OUT = path.join(ROOT, '_thumbs');
-const SUBDIRS = ['hs', 'signage', 'fitness', 'school', 'kiosk'];
+const MANIFEST = path.join(OUT, 'poster-manifest.json');
 const W = 800, H = 450;            // 16:9 poster; ~30-45KB PNG each
 const CONCURRENCY = 4;
 
@@ -38,28 +39,41 @@ function listBoards(dir, rel = '') {
 }
 
 (async () => {
-  const boards = SUBDIRS.flatMap(s => {
-    const d = path.join(ROOT, s);
-    return fs.existsSync(d) ? listBoards(d, s) : [];
-  });
+  const boards = listBoards(ROOT);
   console.log(`Boards to capture: ${boards.length} (base ${BASE})`);
   const browser = await chromium.launch();
   let ok = 0, fail = 0;
   const queue = boards.slice();
+  const captured = {};
   async function worker(id) {
     const ctx = await browser.newContext({ viewport: { width: W, height: H } });
     while (queue.length) {
       const rel = queue.shift();
       const page = await ctx.newPage();
       try {
-        await page.goto(`${BASE}/templates/${rel}`, { waitUntil: 'domcontentloaded', timeout: 20000 });
-        await page.waitForTimeout(2600);                  // fonts + autofit + settle
-        await page.addStyleTag({ content: '*{animation:none!important;transition:none!important;}' });
-        await page.waitForTimeout(120);
-        const dest = path.join(OUT, rel.replace(/\.html$/, '.png'));
-        fs.mkdirSync(path.dirname(dest), { recursive: true });
-        await page.screenshot({ path: dest });
+        const portraitPoster = path.join(OUT, rel.replace(/\.html$/, '-portrait.png'));
+        let sourceHash;
+        for (const portrait of fs.existsSync(portraitPoster) ? [false, true] : [false]) {
+          await page.setViewportSize(portrait ? { width: H, height: W } : { width: W, height: H });
+          // The source runtime's explicit demo is for gallery captures only.
+          // Never generate an unconfigured-source error as a gallery poster.
+          const query = portrait ? '?orientation=portrait' : /^fitness\/gym-media-/.test(rel) ? '?freeze=1' : '';
+          const response = await page.goto(`${BASE}/templates/${rel}${query}`, { waitUntil: 'domcontentloaded', timeout: 20000 });
+          if (!response || !response.ok()) throw new Error('Board response was not successful');
+          const hash = crypto.createHash('sha256').update(await response.body()).digest('hex').slice(0, 16);
+          if (sourceHash && sourceHash !== hash) throw new Error('Board changed during its poster capture');
+          sourceHash = hash;
+          await page.evaluate(() => document.fonts.ready);
+          await page.waitForTimeout(2600);               // media + autofit + settle
+          await page.addStyleTag({ content: '*{animation:none!important;transition:none!important;}' });
+          await page.waitForTimeout(120);
+          const dest = path.join(OUT, rel.replace(/\.html$/, portrait ? '-portrait.png' : '.png'));
+          fs.mkdirSync(path.dirname(dest), { recursive: true });
+          await page.screenshot({ path: dest });
+        }
+        captured[rel.replace(/\.html$/, '')] = sourceHash;
         ok++;
+        if (ok % 25 === 0) console.log(`Captured ${ok}/${boards.length} boards`);
       } catch (e) {
         fail++; console.log(`  FAIL ${rel}: ${String(e.message).slice(0, 80)}`);
       } finally { await page.close(); }
@@ -68,5 +82,10 @@ function listBoards(dir, rel = '') {
   }
   await Promise.all(Array.from({ length: CONCURRENCY }, (_, i) => worker(i)));
   await browser.close();
+  let manifest = {};
+  try { manifest = JSON.parse(fs.readFileSync(MANIFEST, 'utf8')); } catch (_) { /* first capture */ }
+  Object.assign(manifest, captured);
+  fs.writeFileSync(MANIFEST, JSON.stringify(Object.fromEntries(Object.entries(manifest).sort()), null, 2) + '\n');
   console.log(`DONE — ${ok} posters written to public/templates/_thumbs/, ${fail} failed`);
+  if (fail) process.exitCode = 1;
 })();
