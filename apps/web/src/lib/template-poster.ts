@@ -19,7 +19,7 @@ export interface PosterZone {
 
 /** Bump on every poster regeneration so browsers/CDN refetch the new PNGs.
  *  Date-based; append a letter for multiple regens in one day (…24b). */
-export const POSTER_VERSION = '20261011a';
+export const POSTER_VERSION = '20261011b';
 
 /**
  * For a board preview (a single EXTERNAL_HTML zone), the path to its
@@ -55,7 +55,7 @@ export function templatePosterUrl(zones: PosterZone[] | null | undefined, opts?:
   // preset points at `...html?orientation=portrait`. Its poster is captured at
   // 9:16 beside the landscape one as `<name>-portrait.png` — without this the
   // stripped query would resolve a portrait card to the LANDSCAPE poster.
-  const isPortrait = /[?&]orientation=portrait\b/.test(url);
+  const isPortrait = /[?&](?:orientation|o)=portrait\b/.test(url);
   // Cache-bust: poster PNGs live at a stable URL, so a browser (and Vercel's
   // edge) hard-cache the OLD image after we regenerate a board's poster.
   return (

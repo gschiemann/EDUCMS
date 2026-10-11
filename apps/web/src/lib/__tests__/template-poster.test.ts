@@ -16,6 +16,15 @@ describe('templatePosterUrl', () => {
       .toBe(`/templates/_thumbs/signage/gym/leaderboard-v3-plate-stack-portrait-portrait.png?v=${POSTER_VERSION}`);
   });
 
+  it('resolves the short orientation parameter used by school and new workflow presets', () => {
+    expect(templatePosterUrl(board('/templates/school/commencement-guest-guide.html?o=portrait')))
+      .toBe(`/templates/_thumbs/school/commencement-guest-guide-portrait.png?v=${POSTER_VERSION}`);
+    expect(templatePosterUrl(board('/templates/school/campus-pulse/01-campus-magazine.html?brand=example&o=portrait')))
+      .toBe(`/templates/_thumbs/school/campus-pulse/01-campus-magazine-portrait.png?v=${POSTER_VERSION}`);
+    expect(templatePosterUrl(board('/templates/school/campus-pulse/01-campus-magazine.html?o=landscape')))
+      .toBe(`/templates/_thumbs/school/campus-pulse/01-campus-magazine.png?v=${POSTER_VERSION}`);
+  });
+
   it('parses a config that arrived as a JSON string', () => {
     const zones = [{ widgetType: 'EXTERNAL_HTML', defaultConfig: JSON.stringify({ url: '/templates/hs/a.html' }) }];
     expect(templatePosterUrl(zones)).toBe(`/templates/_thumbs/hs/a.png?v=${POSTER_VERSION}`);
