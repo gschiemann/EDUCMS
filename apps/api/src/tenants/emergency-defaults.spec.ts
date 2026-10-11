@@ -312,8 +312,23 @@ describe('Initial corporate emergency defaults', () => {
     ).toEqual({
       locationsEnabled: 1,
       locationsInitialized: 1,
-      defaultBucketsLoaded: 14,
+      // 14 live buckets + 12 DRILL buckets (2026-10-10: "duplicate everything
+      // for live emergencies to drill ones").
+      defaultBucketsLoaded: 26,
     });
+    for (const drillField of [
+      'drillLockdownPlaylistId',
+      'drillLockdownPortraitPlaylistId',
+      'drillMedicalPortraitPlaylistId',
+    ] as const) {
+      expect(f.tenants[1][drillField]).toBeTruthy();
+      expect(f.playlists.find((p) => p.id === f.tenants[1][drillField])).toMatchObject({
+        tenantId: 'empty',
+        isProtected: true,
+        protectedKind: EMERGENCY_DEFAULT_FIELDS[drillField],
+      });
+    }
+    expect(EMERGENCY_DEFAULT_FIELDS.drillLockdownPortraitPlaylistId).toBe('lockdown_drill_portrait');
     for (const [field, kind] of Object.entries(EMERGENCY_DEFAULT_FIELDS)) {
       expect(
         f.playlists.find((p) => p.id === f.tenants[1][field]),

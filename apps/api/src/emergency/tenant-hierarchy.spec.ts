@@ -9,8 +9,10 @@
  */
 import {
   collectDescendantTenantIds,
+  collectOrganisationTenantIds,
   isDescendantTenant,
   MAX_TENANT_TREE_DEPTH,
+  resolveRootTenantId,
 } from './tenant-hierarchy';
 
 /** Tiny in-memory tenant delegate over an id → {parentId, archived} table. */
@@ -168,5 +170,47 @@ describe('isDescendantTenant (the emergency scope gate)', () => {
       where.id === 'x' ? { parentId: 'y' } : { parentId: 'x' },
     );
     expect(await isDescendantTenant(d, 'x', 'unrelated')).toBe(false);
+  });
+});
+
+describe('resolveRootTenantId / collectOrganisationTenantIds — the ORGANISATION the drill rules read', () => {
+  const org = () =>
+    makeDelegate([
+      { id: 'district', parentId: null },
+      { id: 'a', parentId: 'district' },
+      { id: 'b', parentId: 'district' },
+      { id: 'annex', parentId: 'a' },
+      { id: 'retired', parentId: 'district', archived: true },
+      { id: 'other-district', parentId: null },
+      { id: 'other-school', parentId: 'other-district' },
+    ]);
+
+  it('walks up to the top-level tenant from any depth; a root is its own root', async () => {
+    expect(await resolveRootTenantId(org(), 'annex')).toBe('district');
+    expect(await resolveRootTenantId(org(), 'a')).toBe('district');
+    expect(await resolveRootTenantId(org(), 'district')).toBe('district');
+    expect(await resolveRootTenantId(org(), 'other-school')).toBe('other-district');
+  });
+
+  it('an unknown tenant resolves to itself (never wider than the tree, never empty)', async () => {
+    expect(await resolveRootTenantId(org(), 'ghost')).toBe('ghost');
+  });
+
+  it('the organisation is the root first, then every non-archived descendant — and nothing from another customer', async () => {
+    const ids = await collectOrganisationTenantIds(org(), 'annex');
+    expect(ids[0]).toBe('district');
+    expect([...ids].sort()).toEqual(['a', 'annex', 'b', 'district']);
+    expect(ids).not.toContain('retired');
+    expect(ids).not.toContain('other-district');
+    expect(await collectOrganisationTenantIds(org(), 'other-school')).toEqual(['other-district', 'other-school']);
+    expect(await collectOrganisationTenantIds(org(), '')).toEqual([]);
+  });
+
+  it('terminates on a parentId cycle', async () => {
+    const d = makeDelegate([]);
+    d.findUnique = jest.fn(async ({ where }: any) =>
+      where.id === 'x' ? { parentId: 'y' } : { parentId: 'x' },
+    );
+    await expect(resolveRootTenantId(d, 'x')).resolves.toMatch(/^[xy]$/);
   });
 });

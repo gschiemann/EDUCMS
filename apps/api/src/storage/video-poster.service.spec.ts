@@ -1112,14 +1112,22 @@ describe('the fast-start re-mux — an MP4 whose index sits at the tail', () => 
     // A district playlist can hold a school's asset: no tenant filter here.
     expect(tenantQuery.where).not.toHaveProperty('id');
     const screenPlaylists = w.db.screen.findFirst.mock.calls[0][0];
-    expect(orOf(screenPlaylists)).toHaveLength(12);
+    // 2026-10-10: 12 live + 12 per-screen DRILL playlist columns.
+    expect(orOf(screenPlaylists)).toHaveLength(24);
     expect(orOf(screenPlaylists)).toContainEqual({
       emergencyMedicalPortraitPlaylistId: { in: ['pl-1'] },
     });
+    expect(orOf(screenPlaylists)).toContainEqual({
+      drillMedicalPortraitPlaylistId: { in: ['pl-1'] },
+    });
     const screenMedia = w.db.screen.findFirst.mock.calls[1][0];
-    expect(orOf(screenMedia)).toHaveLength(12);
+    // 12 live + 12 per-screen DRILL media-URL columns.
+    expect(orOf(screenMedia)).toHaveLength(24);
     expect(orOf(screenMedia)).toContainEqual({
       emergencyLockdownAssetUrl: OLD_URL,
+    });
+    expect(orOf(screenMedia)).toContainEqual({
+      drillLockdownAssetUrl: OLD_URL,
     });
   });
 

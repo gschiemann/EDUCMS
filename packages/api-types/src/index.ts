@@ -194,6 +194,14 @@ export const ClearEmergencyInputSchema = z
   .object({
     scopeType: ScopeType,
     scopeId: Id,
+    /**
+     * 2026-10-10 — "end the DRILL" intent. `true` means this all-clear may
+     * end drill state only, never a live alert — even if the drill the
+     * operator is looking at was already ended by a live alert a moment ago
+     * (then it ends nothing). Absent = the request every surface sent before
+     * drills: ends whatever the target is in, drill or live.
+     */
+    isDrill: z.boolean().optional(),
   })
   .strict();
 export type ClearEmergencyInput = z.infer<typeof ClearEmergencyInputSchema>;

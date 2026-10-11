@@ -64,6 +64,9 @@ import { SupabaseStorageService } from '../storage/supabase-storage.service';
 // design import needs the same header read and two copies of a byte parser is
 // two places to fix a format bug (re-audit R7, 2026-09-16).
 import { probeImageDimensions } from '../storage/image-header';
+// 2026-10-10 — the drawer's per-screen emergency config has a Live | Drill
+// switch; the 24 drill columns ride the same select as the 24 live ones.
+import { SCREEN_DRILL_CONTENT_SELECT } from '../emergency/emergency-content-use';
 
 const ALLOWED_FLOOR_PLAN_MIMES = [
   'image/jpeg',
@@ -292,6 +295,7 @@ export class FloorPlansController {
             emergencyHoldPortraitAssetUrl: true,
             emergencySecurePortraitAssetUrl: true,
             emergencyMedicalPortraitAssetUrl: true,
+            ...SCREEN_DRILL_CONTENT_SELECT,
           },
         },
       },

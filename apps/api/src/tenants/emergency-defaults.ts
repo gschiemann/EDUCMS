@@ -19,6 +19,23 @@ export const EMERGENCY_DEFAULT_FIELDS = {
   panicMedicalPortraitPlaylistId: 'medical_portrait',
   emergencyPlaylistId: 'default',
   emergencyPortraitPlaylistId: 'default_portrait',
+  // 2026-10-10 — DRILL buckets copy exactly like the live ones (Greg:
+  // "duplicate everything for live emergencies to drill ones"). The kinds
+  // are the protected tags panic-content.controller gives drill buckets
+  // (`<kind>_drill` / `<kind>_drill_portrait`); `default` has no drill
+  // variant there, so none here either.
+  drillLockdownPlaylistId: 'lockdown_drill',
+  drillLockdownPortraitPlaylistId: 'lockdown_drill_portrait',
+  drillWeatherPlaylistId: 'weather_drill',
+  drillWeatherPortraitPlaylistId: 'weather_drill_portrait',
+  drillEvacuatePlaylistId: 'evacuate_drill',
+  drillEvacuatePortraitPlaylistId: 'evacuate_drill_portrait',
+  drillHoldPlaylistId: 'hold_drill',
+  drillHoldPortraitPlaylistId: 'hold_drill_portrait',
+  drillSecurePlaylistId: 'secure_drill',
+  drillSecurePortraitPlaylistId: 'secure_drill_portrait',
+  drillMedicalPlaylistId: 'medical_drill',
+  drillMedicalPortraitPlaylistId: 'medical_drill_portrait',
 } as const;
 const FIELDS = Object.keys(EMERGENCY_DEFAULT_FIELDS) as Array<
   keyof typeof EMERGENCY_DEFAULT_FIELDS
