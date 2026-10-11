@@ -686,7 +686,7 @@ operator choices over older `!important` logo styles; clearing overrides restore
 authored fits. Its font companion (`board-font-controls.ts`) loads supported web
 fonts inside the sandbox for field and theme edits, including restored URL edits.
 Holiday media fields are discovered from the selected grade/design/orientation's
-actual source; `HolidayMediaFields.tsx` exposes Replace, Remove and Restore.
+actual source; `HolidayMediaFields` in `PropertiesPanel.tsx` exposes Replace, Remove and Restore.
 Holiday text-field caches must include grade, variant, design and orientation.
 Keep normal default body text at least 60px and support text at least 50px on a
 3840px stage after automatic fitting; explicit operator font sizes remain absolute.
