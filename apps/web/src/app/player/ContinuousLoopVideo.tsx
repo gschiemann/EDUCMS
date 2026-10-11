@@ -15,12 +15,15 @@ import { retainVideoFrame, releaseVideoFrame, reportContinuousFailure, reportCon
 
 import { ContinuousPlaybackDiagnostics } from './continuousDiagnostics';
 import type { startContinuousLoop } from './continuousLoop';
+import { DEFAULT_PLAYLIST_MEDIA_FIT, mediaFitStyle, type MediaFit } from './mediaFit';
 
 const NATIVE_STARTUP_MS = 45_000;
 
 interface Props {
   src: string; sourceHash: string; videoKey: string; isActive: boolean; classes: string;
   onPlaying?: () => void; onError: () => void;
+  /** How the frame meets a screen of another shape (mediaFit.ts). Default: crop to fill. */
+  fit?: MediaFit;
 }
 
 function scopedStorage(hash: string): KV | null {
@@ -31,7 +34,7 @@ function scopedStorage(hash: string): KV | null {
   } catch { return null; }
 }
 
-export function ContinuousLoopVideo({ src, sourceHash, videoKey, isActive, classes, onPlaying, onError }: Props) {
+export function ContinuousLoopVideo({ src, sourceHash, videoKey, isActive, classes, onPlaying, onError, fit = DEFAULT_PLAYLIST_MEDIA_FIT }: Props) {
   const ref = useRef<HTMLVideoElement>(null);
   const frameRef = useRef<HTMLCanvasElement>(null);
   const callbacks = useRef({ onPlaying, onError });
@@ -265,8 +268,8 @@ export function ContinuousLoopVideo({ src, sourceHash, videoKey, isActive, class
 
   return <>
     <video ref={ref} src={src} className={classes} muted playsInline preload="auto"
-      style={{ objectFit: 'fill' }} data-loop-backend="preparing-continuous" />
+      style={mediaFitStyle(fit)} data-loop-backend="preparing-continuous" />
     <canvas ref={frameRef} aria-hidden="true" data-recovery-frame="true"
-      style={{ display: 'none', position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 11 }} />
+      style={{ display: 'none', position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', ...mediaFitStyle(fit), pointerEvents: 'none', zIndex: 11 }} />
   </>;
 }

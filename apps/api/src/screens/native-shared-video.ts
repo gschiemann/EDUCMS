@@ -16,6 +16,38 @@ export function nativeSharedVideoTarget(
     .includes(id);
 }
 
+/**
+ * How the native shared-video renderer meets a face of another shape
+ * (2026-10-11, owner decision: crop to fill, never stretch — the web player's
+ * playlist media is `object-fit: cover` since the same day, `mediaFit.ts`).
+ *
+ * The wire value is a CONTRACT with the APK: every native host shipped so far
+ * (`SharedVideoPolicy.kt`) refuses any descriptor whose `transform.fit` is not
+ * exactly `"fill"` (`descriptor-transform`), and so does the web player's own
+ * parser. Sending `"cover"` to those hosts would not crop — it would make both
+ * faces refuse the descriptor and drop the DH43 back to two HTML decoders on
+ * one rk3288. So `"cover"` is sent only when BOTH faces run a native build at
+ * or above this versionCode — the APK whose `SharedVideoRenderer` uses
+ * `VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING` and whose policy accepts
+ * `"cover"`. Null = no such APK yet → `"fill"`, exactly today's wire.
+ * Set it in the same commit that pins that APK as the fleet floor.
+ */
+export const NATIVE_SHARED_VIDEO_COVER_MIN_VERSION_CODE: number | null = null;
+
+export function nativeSharedVideoFit(
+  faces: Array<Record<string, any>>,
+  minVersionCode: number | null = NATIVE_SHARED_VIDEO_COVER_MIN_VERSION_CODE,
+): 'cover' | 'fill' {
+  if (minVersionCode === null) return 'fill';
+  return faces.every(
+    (f) =>
+      Number.isSafeInteger(f.playerVersionCode) &&
+      f.playerVersionCode >= minVersionCode,
+  )
+    ? 'cover'
+    : 'fill';
+}
+
 /** A native admission is opt-in, tenant-bound, and limited to one full-screen mirrored MP4.
  * Capability support is proved by both native hosts, never stale version telemetry in a cached preamble.
  * The optional field is absent on every other manifest; no new query on the default path.
@@ -26,6 +58,8 @@ export function buildNativeSharedVideoDescriptor(input: {
   manifest: Record<string, any>;
   asset: Record<string, any>;
   env?: NodeJS.ProcessEnv;
+  /** Test seam for NATIVE_SHARED_VIDEO_COVER_MIN_VERSION_CODE. */
+  coverMinVersionCode?: number | null;
 }): Record<string, any> | null {
   const { screen: s, peer: p, manifest: m, asset: a } = input;
   const env = input.env ?? process.env;
@@ -172,6 +206,15 @@ export function buildNativeSharedVideoDescriptor(input: {
     faceIndex: s.id === front.id ? 0 : 1,
     revision,
     asset,
-    transform: { orientation: m.orientation, rotation: 0, fit: 'fill' },
+    transform: {
+      orientation: m.orientation,
+      rotation: 0,
+      fit: nativeSharedVideoFit(
+        [s, p],
+        input.coverMinVersionCode === undefined
+          ? NATIVE_SHARED_VIDEO_COVER_MIN_VERSION_CODE
+          : input.coverMinVersionCode,
+      ),
+    },
   };
 }

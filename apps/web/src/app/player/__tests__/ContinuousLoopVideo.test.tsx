@@ -79,6 +79,24 @@ async function presentFrame() {
   await settle();
 }
 
+it('crops to fill by default — the video and its held recovery frame never stretch (2026-10-11)', () => {
+  const { video, container, unmount } = mount();
+  expect(video.style.objectFit).toBe('cover');
+  expect(video.style.objectPosition).toBe('50% 50%');
+  const frame = container.querySelector('canvas[data-recovery-frame]') as HTMLCanvasElement;
+  expect(frame.style.objectFit).toBe('cover');
+  unmount();
+});
+
+it('an explicit fit is honoured', () => {
+  const view = render(
+    <ContinuousLoopVideo src="https://media.invalid/clip.mp4" sourceHash={HASH} videoKey="item-1"
+      isActive classes="" onError={jest.fn()} fit="fill" />,
+  );
+  expect((view.container.querySelector('video') as HTMLVideoElement).style.objectFit).toBe('fill');
+  view.unmount();
+});
+
 it('keeps frame and stall evidence across frequent playing events after rebuffering', () => {
   let total = 0;
   let dropped = 0;

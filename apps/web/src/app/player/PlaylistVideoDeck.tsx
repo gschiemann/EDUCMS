@@ -6,6 +6,7 @@ import { decodedFrameCount } from './playbackSafety';
 import { createMediaStallDetector, setActiveMediaStalled } from './mediaStallWatchdog';
 import { videoQualityTracker } from './videoQuality';
 import { blockFor, markAlive, markStarted, markStopped } from './loopGuard';
+import { DEFAULT_PLAYLIST_MEDIA_FIT, mediaFitStyle, type MediaFit } from './mediaFit';
 
 export interface PlaylistVideoDeckProps {
   active: PlaylistVideoSource;
@@ -13,6 +14,8 @@ export interface PlaylistVideoDeckProps {
   onPlaying(): void;
   onEnded(id: string): void;
   onError(id: string): void;
+  /** How the frame meets a screen of another shape (mediaFit.ts). Default: crop to fill. */
+  fit?: MediaFit;
 }
 
 /** Mounted only for normal, unlocked video playlists. Emergency rendering and
@@ -107,7 +110,7 @@ export function PlaylistVideoDeck(props: PlaylistVideoDeckProps) {
     <div data-playlist-handoff="decoded-frame" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }}>
       {[first, second].map((ref, index) => (
         <video key={index} ref={ref} data-playlist-deck={index} preload="auto" playsInline muted
-          style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'fill', background: '#000' }} />
+          style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', ...mediaFitStyle(props.fit ?? DEFAULT_PLAYLIST_MEDIA_FIT), background: '#000' }} />
       ))}
     </div>
   );

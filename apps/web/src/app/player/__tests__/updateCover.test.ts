@@ -81,6 +81,38 @@ describe('captureCoverFrame', () => {
     expect(calls).toBe(2);
   });
 
+  it('a portrait slide drawn object-fit: cover on a taller panel captures only the region the glass shows (2026-10-11)', async () => {
+    const im = document.createElement('img');
+    im.setAttribute('data-slide-id', 'item-p');
+    im.src = 'http://api.invalid/assets/portrait.png';
+    im.style.objectFit = 'cover';
+    Object.defineProperty(im, 'complete', { value: true });
+    Object.defineProperty(im, 'naturalWidth', { value: 1080 });
+    Object.defineProperty(im, 'naturalHeight', { value: 1668 });
+    Object.defineProperty(im, 'clientWidth', { value: 1080 });
+    Object.defineProperty(im, 'clientHeight', { value: 1920 });
+    im.getBoundingClientRect = () => ({ width: 1080, height: 1920, top: 0, left: 0, right: 1080, bottom: 1920, x: 0, y: 0, toJSON() {} }) as DOMRect;
+    document.body.appendChild(im);
+    const crops: unknown[] = [];
+    const f = await captureCoverFrame(document, { render: (_s, w, h, _q, crop) => { crops.push({ w, h, crop }); return JPEG; } });
+    expect(f).toMatchObject({ kind: 'image', capture: 'live' });
+    // The captured picture has the PANEL's shape (9:16), not the file's.
+    expect(f.w / f.h).toBeCloseTo(1080 / 1920, 2);
+    const c = (crops[0] as { crop: { sx: number; sy: number; sw: number; sh: number } }).crop;
+    expect(c.sy).toBe(0);
+    expect(c.sh).toBe(1668);
+    expect(c.sw).toBeCloseTo(938.25, 2);
+    expect(c.sx).toBeCloseTo((1080 - 938.25) / 2, 2);
+  });
+
+  it('an object-fit: fill element (emergency playlist) captures the whole frame, no crop', async () => {
+    const im = slide();
+    im.style.objectFit = 'fill';
+    const crops: unknown[] = [];
+    await captureCoverFrame(document, { render: (_s, _w, _h, _q, crop) => { crops.push(crop); return JPEG; } });
+    expect(crops).toEqual([undefined]);
+  });
+
   it('a tainted canvas whose re-fetch fails falls back to the colour — never the splash', async () => {
     slide();
     document.body.style.backgroundColor = 'rgb(17, 34, 51)';

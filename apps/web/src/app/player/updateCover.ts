@@ -29,6 +29,7 @@ import {
   type UpdateAppliedRecord,
 } from './offHoursUpdate';
 import { UPDATE_COVER_ATTR } from './updateCoverInline';
+import { visibleSourceRect, type CropRect } from './mediaFit';
 
 export type CoverCapture = UpdateAppliedRecord['capture'];
 
@@ -53,8 +54,11 @@ export interface CaptureOptions {
   maxDataChars?: number;
   refetchBudgetMs?: number;
   fallbackColor?: string;
-  /** Draw `source` at w×h and return a JPEG data URL; throw on a tainted canvas. Injectable for tests. */
-  render?: (source: CanvasImageSource, w: number, h: number, quality: number) => string | null;
+  /**
+   * Draw `source` (or its `crop` region — what `object-fit: cover` shows) at
+   * w×h and return a JPEG data URL; throw on a tainted canvas. Injectable for tests.
+   */
+  render?: (source: CanvasImageSource, w: number, h: number, quality: number, crop?: CropRect) => string | null;
   /** Fetch an image URL with CORS and return a drawable, or null. Injectable for tests. */
   refetch?: (url: string, budgetMs: number) => Promise<CanvasImageSource | null>;
   nowMs?: () => number;
@@ -135,13 +139,14 @@ export function dominantColorOf(el: Element | null, fallback = '#000'): string {
   return fallback;
 }
 
-function defaultRender(source: CanvasImageSource, w: number, h: number, quality: number): string | null {
+function defaultRender(source: CanvasImageSource, w: number, h: number, quality: number, crop?: CropRect): string | null {
   const canvas = document.createElement('canvas');
   canvas.width = w;
   canvas.height = h;
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
-  ctx.drawImage(source, 0, 0, w, h);
+  if (crop) ctx.drawImage(source, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, w, h);
+  else ctx.drawImage(source, 0, 0, w, h);
   // Throws SecurityError on a tainted canvas — the caller treats that as "no frame".
   return canvas.toDataURL('image/jpeg', quality);
 }
@@ -177,6 +182,19 @@ function sourceSize(source: CoverSource): { w: number; h: number } {
   return { w: im.naturalWidth || im.clientWidth || 0, h: im.naturalHeight || im.clientHeight || 0 };
 }
 
+/** The cropped source region when the element is drawn `object-fit: cover` at another shape; else null. */
+function coverCropFor(source: CoverSource, size: { w: number; h: number }): CropRect | null {
+  let fit = '';
+  try { fit = getComputedStyle(source).objectFit || ''; } catch { return null; }
+  if (fit !== 'cover') return null;
+  const boxW = source.clientWidth;
+  const boxH = source.clientHeight;
+  const r = visibleSourceRect('cover', size.w, size.h, boxW, boxH);
+  if (r.sw === size.w && r.sh === size.h) return null;
+  if (!(r.sw >= 2) || !(r.sh >= 2)) return null;
+  return r;
+}
+
 /**
  * Capture the cover frame for the content on the glass. Never throws;
  * never takes longer than the refetch budget plus one draw.
@@ -195,9 +213,16 @@ export async function captureCoverFrame(doc: Document, opts: CaptureOptions = {}
 
   const size = sourceSize(source);
   if (size.w < 2 || size.h < 2) return { kind: 'color', color, capture: 'color', w: 0, h: 0 };
-  const scale = Math.min(1, maxWidth / size.w);
-  const w = Math.max(1, Math.round(size.w * scale));
-  const h = Math.max(1, Math.round(size.h * scale));
+  // 2026-10-11 — playlist media is drawn `object-fit: cover` (mediaFit.ts):
+  // the glass shows only the centred region of the frame that matches the
+  // element's shape. The cover is painted edge to edge on the next document,
+  // so it must hold exactly that region — the whole frame would show the
+  // trimmed edges squeezed back in for the seconds the cover is up.
+  const crop = coverCropFor(source, size);
+  const shown = crop ? { w: crop.sw, h: crop.sh } : size;
+  const scale = Math.min(1, maxWidth / shown.w);
+  const w = Math.max(1, Math.round(shown.w * scale));
+  const h = Math.max(1, Math.round(shown.h * scale));
 
   const accept = (data: string | null, capture: 'live' | 'refetch'): CoverFrame | null => {
     if (!data || data.indexOf('data:image/') !== 0 || data.length > maxChars) return null;
@@ -205,7 +230,7 @@ export async function captureCoverFrame(doc: Document, opts: CaptureOptions = {}
   };
 
   try {
-    const live = accept(render(source, w, h, quality), 'live');
+    const live = accept(crop ? render(source, w, h, quality, crop) : render(source, w, h, quality), 'live');
     if (live) return live;
   } catch {
     // Tainted canvas (cross-origin element without CORS) — try the CORS re-fetch below.
@@ -217,7 +242,7 @@ export async function captureCoverFrame(doc: Document, opts: CaptureOptions = {}
       try {
         const again = await refetch(url, opts.refetchBudgetMs ?? COVER_REFETCH_BUDGET_MS);
         if (again) {
-          const re = accept(render(again, w, h, quality), 'refetch');
+          const re = accept(crop ? render(again, w, h, quality, crop) : render(again, w, h, quality), 'refetch');
           if (re) return re;
         }
       } catch {
