@@ -99,6 +99,15 @@ model Tenant {
   cleverSyncLogs                  CleverSyncLog[]
   userInvites                     UserInvite[]
   customerInvoices                CustomerInvoice[]
+  // 2026-10-11 — CUSTOMER-APPROVED SUPPORT ACCESS. A VenueOS SUPER_ADMIN
+  // reaches a customer organisation's data only under an active
+  // SupportAccessGrant (apps/api/src/support-access). `isInternal` marks
+  // VenueOS's OWN organisations (VisionCore, the owner's test orgs): they are
+  // exempt from the gate so the owner can never lock himself out. Set by the
+  // migration for the known internal slugs and editable from the customer
+  // console; NEVER set it on a paying customer.
+  isInternal                      Boolean            @default(false) @map("is_internal")
+  supportAccessGrants             SupportAccessGrant[]
   // VenueOS Sports — Phase 2 persistent player-stats / records engine.
   // Back-relations for the tenant-owned persistent identity + aggregate
   // tables (see the Sports Phase 2 block near the end of this file).
@@ -862,6 +871,50 @@ model CustomerInvoice {
   @@index([tenantId, createdAt])
   @@index([status, dueAt])
   @@map("customer_invoices")
+}
+
+// 2026-10-11 — CUSTOMER-APPROVED, TIME-BOXED SUPPORT ACCESS.
+// VenueOS has NO standing access to a customer's data. A SUPER_ADMIN reaches a
+// customer organisation (switches into it, reads or changes its screens,
+// playlists, assets, schedules, people, alerts, settings, logs) only while one
+// of these rows is ACTIVE for that organisation and not expired. Two ways in:
+//   REQUEST     VenueOS asks from the customer console; the customer's admins
+//               approve (optionally shortening the duration) or deny.
+//   INVITE      the customer proactively gives access from their Settings.
+//   BREAK_GLASS incident path: audited reason, at most 60 minutes, the
+//               customer's admins are emailed at once, shown on their banner.
+// `tenantId` is ALWAYS the organisation ROOT (parentId IS NULL). An empty
+// `scopeTenantIds` means the whole organisation; otherwise only the listed
+// tenants (locations) are reachable — a sibling location is not.
+// Status: REQUESTED → ACTIVE | DENIED; ACTIVE → REVOKED | EXPIRED.
+// Every transition writes an AuditLog row on the customer's tenant.
+model SupportAccessGrant {
+  id                       String    @id @default(uuid())
+  tenantId                 String    @map("tenant_id")
+  kind                     String // REQUEST | INVITE | BREAK_GLASS
+  status                   String // REQUESTED | ACTIVE | DENIED | REVOKED | EXPIRED
+  reason                   String?
+  /// Free text the customer attached to an invite, approval or revocation.
+  note                     String?
+  scopeTenantIds           String[]  @default([]) @map("scope_tenant_ids")
+  requestedDurationMinutes Int       @map("requested_duration_minutes")
+  requestedByUserId        String?   @map("requested_by_user_id")
+  requestedByEmail         String?   @map("requested_by_email")
+  decidedByUserId          String?   @map("decided_by_user_id")
+  decidedByEmail           String?   @map("decided_by_email")
+  decidedAt                DateTime? @map("decided_at")
+  startsAt                 DateTime? @map("starts_at")
+  expiresAt                DateTime? @map("expires_at")
+  revokedByUserId          String?   @map("revoked_by_user_id")
+  revokedByEmail           String?   @map("revoked_by_email")
+  revokedAt                DateTime? @map("revoked_at")
+  createdAt                DateTime  @default(now()) @map("created_at")
+  updatedAt                DateTime  @default(now()) @updatedAt @map("updated_at")
+  tenant                   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status])
+  @@index([status, expiresAt])
+  @@map("support_access_grants")
 }
 
 // 2026-09-22 — AI usage ledger: one row per provider call — tokens, and the dollar cost at the
@@ -2106,6 +2159,13 @@ model AuditLog {
   /// String. Key rows are soft-revoked, never deleted, so the id stays
   /// resolvable.
   apiKeyId   String?  @map("api_key_id")
+  /// 2026-10-11 — WHICH SUPPORT GRANT a VenueOS SUPER_ADMIN acted under.
+  /// Stamped by the same ambient hook as `apiKeyId` (audit-actor.ts) on every
+  /// row written while a super admin works inside a customer organisation
+  /// under an active SupportAccessGrant, so the customer's own audit log says
+  /// "VenueOS support, under the access you approved on <date>". Plain column,
+  /// no FK, for the same cascade reasons as `apiKeyId`.
+  supportGrantId String? @map("support_grant_id")
   action     String
   targetType String   @map("target_type")
   targetId   String?  @map("target_id")
@@ -2124,6 +2184,8 @@ model AuditLog {
   // after a key leaks. Without it that is a full scan of the tenant's
   // history; audit_logs is one of the largest tables in the product.
   @@index([tenantId, apiKeyId, createdAt])
+  // "Everything VenueOS did under grant X" — the customer-facing receipt.
+  @@index([tenantId, supportGrantId, createdAt])
   @@map("audit_logs")
 }
 
