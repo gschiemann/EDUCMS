@@ -24,7 +24,7 @@ Each board now has a deliberate landscape and portrait composition, real CSS fon
 | 09-clinical-trial.html | Research invitation, compensation ribbon, study facts and contact details. ct.qr is a real optional upload slot with a neutral cross fallback. Existing study example, compensation and IRB copy retained. |
 | 10-thanks-leave.html | Large departure message, arched provider portrait and clear visit-summary/pharmacy/follow-up steps. Portrait rearranges the photo and next steps vertically. |
 
-All 174 original data-field keys in the original serialized HTML are retained, including existing advanced media controls; no old key was removed. The final files contain 429 field keys across the ten documents, including hidden theme/media fields, and 30 image/media slots including existing hidden advanced controls. The authored layouts account for 379 text/theme fields and 20 visible image/logo/QR slots. Clinical copy was reused from the existing examples rather than rewritten as new medical advice. Queues and study facts remain operator-configured examples, not fabricated connected records.
+All 134 original DOM data-field keys are retained; no old key was removed. The final files contain 379 real text/theme fields across the ten documents and 20 image/logo/QR slots. This count uses an HTML parser, excluding selector strings inside the injected scripts. Clinical copy was reused from the existing examples rather than rewritten as new medical advice. Queues and study facts remain operator-configured examples, not fabricated connected records.
 
 ## Runtime / editor compatibility
 
