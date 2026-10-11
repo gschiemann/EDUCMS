@@ -68,6 +68,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     let code = 'INTERNAL_ERROR';
     let message = 'Internal server error';
     let expose = false; // whether to send `message` through to client
+    let issues: unknown[] | undefined;
 
     // ── HttpException (NestJS) ──
     if (exception instanceof HttpException) {
@@ -86,6 +87,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
         const anyResp = resp as any;
         message = anyResp.message ?? exception.message;
         code = anyResp.code ?? anyResp.error ?? code;
+        // Field-level validation detail (ZodValidationPipe) rides through so
+        // a form can mark the field, not just show a banner.
+        if (status === 400 && Array.isArray(anyResp.issues)) issues = anyResp.issues.slice(0, 20);
       } else {
         message = exception.message;
       }
@@ -179,6 +183,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
       message: expose ? message : 'Internal server error',
     };
     if (traceId) body.traceId = traceId;
+    if (issues) body.issues = issues;
 
     if (res && !res.headersSent) {
       res.status(status).json(body);
