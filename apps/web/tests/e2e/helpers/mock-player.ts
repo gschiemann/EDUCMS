@@ -120,6 +120,20 @@ export interface BootOptions {
   videoMp4Fixture?: string;
   /** localStorage seeded BEFORE the page's scripts run (e.g. a persisted refresh ack). */
   storage?: Record<string, string>;
+  /**
+   * Advertise an APK bridge with exactly these methods (the document-start
+   * `__eduCmsNativeChannelMethods` manifest), e.g. `['checkForUpdates']` so a
+   * pushed CHECK_FOR_UPDATES raises the operator's update prompt. The website
+   * kind advertises its own set; this option is for every other kind.
+   */
+  nativeMethods?: string[];
+  /**
+   * `'fail'` makes every realtime WebSocket error+close instead of opening,
+   * so the page walks its fallback ladder onto the stubbed EventSource
+   * (three WS failures → SSE). A spec then delivers SSE events through
+   * `window.__eduTestSse.deliver(name, message)`. Default `'ok'`.
+   */
+  wsMode?: 'ok' | 'fail';
   /** Normal-playlist integration fixtures; defaults leave existing scenarios unchanged. */
   manifest?: ReturnType<typeof playerManifest>;
   videoFixtures?: Record<string, string>;
@@ -146,7 +160,7 @@ export async function bootMockPlayer(page: Page, opts: BootOptions): Promise<Boo
   const refreshAcks: BootedPlayer['refreshAcks'] = [];
 
   await page.addInitScript(
-    ({ deviceToken, fingerprint, native, storage }) => {
+    ({ deviceToken, fingerprint, native, storage, nativeMethods, wsFail }) => {
       try {
         localStorage.setItem('edu_device_token', deviceToken);
         localStorage.setItem('edu_device_fp', fingerprint);
@@ -159,10 +173,10 @@ export async function bootMockPlayer(page: Page, opts: BootOptions): Promise<Boo
 
       // The APK's native channel: only the website case needs it. The player asks
       // `nativeHas('showUrlOverlay')` and hands the URL to the app's own WebView.
-      if (native) {
+      if (native || nativeMethods) {
         const w = window as unknown as Record<string, unknown>;
         w.EduCmsNativeChannel = { postMessage: () => undefined };
-        w.__eduCmsNativeChannelMethods = ['showUrlOverlay', 'hideUrlOverlay', 'heartbeat'];
+        w.__eduCmsNativeChannelMethods = nativeMethods ?? ['showUrlOverlay', 'hideUrlOverlay', 'heartbeat'];
       }
 
       // Delegate every non-/realtime socket to the real WebSocket (Next dev HMR
@@ -178,7 +192,12 @@ export async function bootMockPlayer(page: Page, opts: BootOptions): Promise<Boo
           onmessage: null,
           onerror: null,
           onclose: null,
-          send() { /* nothing to answer */ },
+          // Test hook: every frame the page sends (HELLO / HEARTBEAT …), so a
+          // spec can read what a heartbeat carried — `window.__eduTestWsSent`.
+          send(data: unknown) {
+            const w = window as unknown as { __eduTestWsSent?: string[] };
+            (w.__eduTestWsSent ||= []).push(String(data));
+          },
           close() { inst.readyState = RealWS.CLOSED; },
           addEventListener() { /* unused */ },
           removeEventListener() { /* unused */ },
@@ -194,6 +213,16 @@ export async function bootMockPlayer(page: Page, opts: BootOptions): Promise<Boo
             );
           },
         };
+        if (wsFail) {
+          // A blocked upgrade: error, then a 1006 close — the page's
+          // reconnect/backoff path counts it and escalates to SSE.
+          setTimeout(() => {
+            inst.readyState = RealWS.CLOSED;
+            (inst.onerror as ((e: Event) => void) | null)?.call(null, new Event('error'));
+            (inst.onclose as ((e: { code: number; reason: string }) => void) | null)?.call(null, { code: 1006, reason: '' });
+          }, 5);
+          return inst;
+        }
         setTimeout(() => {
           inst.readyState = RealWS.OPEN;
           (inst.onopen as ((e: Event) => void) | null)?.call(null, new Event('open'));
@@ -227,13 +256,31 @@ export async function bootMockPlayer(page: Page, opts: BootOptions): Promise<Boo
       class StubEventSource {
         url: string;
         readyState = 0;
-        constructor(url: string) { this.url = url; }
-        addEventListener() { /* no-op */ }
-        close() { /* no-op */ }
+        onopen: ((e: Event) => void) | null = null;
+        onerror: ((e: Event) => void) | null = null;
+        private listeners: Record<string, Array<(e: { data: string }) => void>> = {};
+        constructor(url: string) {
+          this.url = url;
+          // Test hook: the most recent stream, so a spec can deliver a named
+          // SSE event exactly as the server would — `__eduTestSse.deliver`.
+          (window as unknown as { __eduTestSse?: unknown }).__eduTestSse = {
+            deliver: (name: string, message: unknown) => {
+              for (const fn of this.listeners[name] || []) fn({ data: JSON.stringify(message) });
+            },
+          };
+          setTimeout(() => { this.readyState = 1; this.onopen?.(new Event('open')); }, 5);
+        }
+        addEventListener(name: string, fn: (e: { data: string }) => void) {
+          (this.listeners[name] ||= []).push(fn);
+        }
+        removeEventListener(name: string, fn: (e: { data: string }) => void) {
+          this.listeners[name] = (this.listeners[name] || []).filter((f) => f !== fn);
+        }
+        close() { this.readyState = 2; }
       }
       (window as unknown as { EventSource: unknown }).EventSource = StubEventSource;
     },
-    { deviceToken: id.deviceToken, fingerprint: id.fingerprint, native: kind === 'website', storage: opts.storage || {} },
+    { deviceToken: id.deviceToken, fingerprint: id.fingerprint, native: kind === 'website', storage: opts.storage || {}, nativeMethods: opts.nativeMethods ?? null, wsFail: opts.wsMode === 'fail' },
   );
 
   // Catch-all FIRST (Playwright matches last-registered first).
