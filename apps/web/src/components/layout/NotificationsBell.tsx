@@ -4,6 +4,7 @@ import { Bell, Check, CheckCheck, AlertTriangle, ShieldAlert, WifiOff, Info, Use
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAppStore } from '@/lib/store';
+import { humanizeTimestamps } from '@/components/notifications/notificationInbox';
 import { useMobileShell } from '@/lib/mobile-shell-pref';
 import {
   useNotifications,
@@ -157,7 +158,7 @@ export function NotificationsBell() {
                       </p>
                       {!n.isRead && <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0 mt-1.5" />}
                     </div>
-                    {n.body && <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-2">{n.body}</p>}
+                    {n.body && <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-2">{humanizeTimestamps(n.body)}</p>}
                     <p className="text-[10px] text-slate-400 mt-1">{timeAgo(n.createdAt)}</p>
                   </div>
                   {!n.isRead && (

@@ -65,7 +65,7 @@ export const CATEGORY_LABEL: Record<InboxCategory, string> = {
 export const CATEGORY_BLURB: Record<InboxCategory, string> = {
   exceptions: 'Screens that stopped answering, and other delivery problems we noticed.',
   reviews: 'Work submitted for approval, and decisions on work you submitted.',
-  system: 'Account, licence and platform messages.',
+  system: 'Account, license and platform messages.',
 };
 
 /**
@@ -155,4 +155,26 @@ export function relativeAge(iso: string, now: number = Date.now()): string | nul
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h ago`;
   return `${Math.floor(h / 24)}d ago`;
+}
+
+/**
+ * Older server messages embed a machine timestamp in the text ("No heartbeat
+ * since 2026-10-07T21:14:03.000Z."). Operators should never read an ISO string:
+ * swap each one for a short local date and time in the viewer's own locale and
+ * time zone ("Oct 7, 2:14 PM"). Anything that is not a full ISO date-time is
+ * left exactly as it was.
+ */
+const ISO_IN_TEXT = /\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?/g;
+
+export function humanizeTimestamps(text: string, locale?: string): string {
+  if (!text) return text;
+  return text.replace(ISO_IN_TEXT, (iso) => {
+    const t = Date.parse(iso);
+    if (!Number.isFinite(t)) return iso;
+    try {
+      return new Date(t).toLocaleString(locale, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    } catch {
+      return iso;
+    }
+  });
 }

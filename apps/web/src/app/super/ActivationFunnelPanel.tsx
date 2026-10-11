@@ -158,8 +158,8 @@ export default function ActivationFunnelPanel() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <RateTile label="Activated (all-time)" stat={aggregate.activationRate.overall} accent />
           <RateTile label="Activated (last 30d signups)" stat={aggregate.activationRate.last30Days} />
-          <HoursTile label="Median hrs → published" hours={aggregate.medianHoursToMilestone.published} />
-          <HoursTile label="Median hrs → render-proven*" hours={aggregate.medianHoursToMilestone.renderProven} />
+          <HoursTile label="Median time → published" hours={aggregate.medianHoursToMilestone.published} />
+          <HoursTile label="Median time → render-proven*" hours={aggregate.medianHoursToMilestone.renderProven} />
         </div>
 
         {/* Stage bar chart — plain styled divs, no chart library */}

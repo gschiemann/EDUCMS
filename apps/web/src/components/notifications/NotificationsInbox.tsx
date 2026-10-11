@@ -5,7 +5,7 @@ import {
   Bell, CheckCheck, WifiOff, FileCheck2, Info, ChevronRight, Loader2, RefreshCw,
 } from 'lucide-react';
 import {
-  buildInbox, relativeAge, CATEGORY_BLURB,
+  buildInbox, relativeAge, humanizeTimestamps, CATEGORY_BLURB,
   type InboxCategory, type InboxNotification,
 } from './notificationInbox';
 import { cn } from '@/lib/utils';
@@ -236,7 +236,7 @@ export function NotificationsInbox({
                     </span>
                     {n.body && (
                       <span className="mt-0.5 block text-[12px] leading-snug text-slate-500 line-clamp-2">
-                        {n.body}
+                        {humanizeTimestamps(n.body)}
                       </span>
                     )}
                     <span className="mt-1 block text-[11px] text-slate-400">

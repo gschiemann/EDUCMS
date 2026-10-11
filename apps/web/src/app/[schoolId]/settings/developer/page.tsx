@@ -40,6 +40,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useUIStore } from '@/store/ui-store';
+import { useTenantCopy } from '@/hooks/use-tenant-copy';
 import {
   Code2,
   KeyRound,
@@ -382,12 +383,10 @@ function IntegrationCard({
 
 // ─── API Keys section ──────────────────────────────────────────
 
-const ALLOWED_API_KEY_ROLES = [
-  { value: 'DISTRICT_ADMIN', label: 'District admin' },
-  { value: 'SCHOOL_ADMIN', label: 'School admin' },
-  { value: 'CONTRIBUTOR', label: 'Contributor' },
-  { value: 'RESTRICTED_VIEWER', label: 'Read-only viewer' },
-] as const;
+// Role VALUES only — the visible names come from the same label map the People
+// page uses (tenantCopy.roleLabel: Super Admin / Admin / Editor / Viewer), so the
+// product speaks one role vocabulary (Muse beta DEV-012).
+const ALLOWED_API_KEY_ROLES = ['DISTRICT_ADMIN', 'SCHOOL_ADMIN', 'CONTRIBUTOR', 'RESTRICTED_VIEWER'] as const;
 
 /**
  * Human-readable expiry for a key row.
@@ -413,6 +412,7 @@ function expiryLabel(expiresAt: string | null): { text: string; cls: string } {
 
 function ApiKeysSection() {
   const t = useTranslations();
+  const tenantCopy = useTenantCopy();
   const { data: keys, isLoading } = useApiKeys();
   const { data: catalog } = useApiKeyScopeCatalog();
   const mint = useMintApiKey();
@@ -579,8 +579,8 @@ function ApiKeysSection() {
                 className="px-3 py-2 border border-slate-200 rounded-lg text-sm font-normal text-slate-800 bg-white"
               >
                 {ALLOWED_API_KEY_ROLES.map((r) => (
-                  <option key={r.value} value={r.value}>
-                    {r.label}
+                  <option key={r} value={r}>
+                    {tenantCopy.roleLabel(r)}
                   </option>
                 ))}
               </select>
@@ -712,7 +712,7 @@ function ApiKeysSection() {
                     {k.name}
                   </td>
                   <td className="py-2.5 font-mono text-slate-500">vos_{k.prefix}…</td>
-                  <td className="py-2.5 text-slate-600">{k.role}</td>
+                  <td className="py-2.5 text-slate-600">{tenantCopy.roleLabel(k.role)}</td>
                   <td className="py-2.5 max-w-[24ch]">
                     {k.scopes === null ? (
                       <span className="text-amber-600 font-semibold" title="Unrestricted — reaches every endpoint this role allows.">
