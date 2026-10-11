@@ -121,6 +121,7 @@ as PM (so `1:30` → 13:30). End time defaults to start + 50 min if only one tim
 <script>
 /* LIVE SCHEDULE ENGINE — ties each item's highlight to its period time. Standard across all scheduled boards. */
 (function(){
+  function setStatus(el,value){if(el&&el.textContent!==value)el.textContent=value;}
   function parseMin(t){if(!t)return null;t=(''+t).replace(/[–—]/g,'-');var m=t.match(/(\d{1,2}):(\d{2})/g);if(!m)return null;function toMin(s){var p=s.split(':'),h=+p[0],mm=+p[1];if(h<7)h+=12;return h*60+mm;}return{start:toMin(m[0]),end:m[1]?toMin(m[1]):toMin(m[0])+50};}
   function fmt(min){var h=Math.floor(min/60),m=min%60;var ap=h>=12?'p':'a';h=h%12;if(h===0)h=12;return h+':'+(m<10?'0':'')+m+ap;}
   function run(){document.querySelectorAll('[data-schedule]').forEach(function(box){
@@ -132,14 +133,14 @@ as PM (so `1:30` → 13:30). End time defaults to start + 50 min if only one tim
     if(demo!=null&&(!first||nowMin<first.start||(last&&nowMin>=last.end)))nowMin=+demo;
     var curIdx=-1;for(var i=0;i<periods.length;i++){if(periods[i]&&nowMin>=periods[i].start&&nowMin<periods[i].end){curIdx=i;break;}}
     var nextIdx=-1;if(curIdx<0){for(var j=0;j<periods.length;j++){if(periods[j]&&nowMin<periods[j].start){nextIdx=j;break;}}}else{nextIdx=curIdx+1;}
-    rows.forEach(function(r,i){var p=periods[i],s=statSel?r.querySelector(statSel):null;r.classList.remove(actCls,doneCls);if(!p){if(s)s.textContent='';return;}
-      if(i===curIdx){r.classList.add(actCls);if(s)s.textContent='● Now';}
-      else if(nowMin>=p.end){r.classList.add(doneCls);if(s)s.textContent='Done';}
-      else if(i===nextIdx){if(s)s.textContent='Up next';}
-      else{if(s)s.textContent='Starts '+fmt(p.start);}});
+    rows.forEach(function(r,i){var p=periods[i],s=statSel?r.querySelector(statSel):null;r.classList.remove(actCls,doneCls);if(!p){setStatus(s,'');return;}
+      if(i===curIdx){r.classList.add(actCls);setStatus(s,'● Now');}
+      else if(nowMin>=p.end){r.classList.add(doneCls);setStatus(s,'Done');}
+      else if(i===nextIdx){setStatus(s,'Up next');}
+      else{setStatus(s,'Starts '+fmt(p.start));}});
   });}
   run();setInterval(run,30000);
-  document.querySelectorAll('[data-schedule]').forEach(function(b){new MutationObserver(run).observe(b,{subtree:true,childList:true,characterData:true,attributes:true});});
+  document.querySelectorAll('[data-schedule]').forEach(function(b){new MutationObserver(run).observe(b,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['data-time','data-demo-min']});});
 })();
 </script>
 ```

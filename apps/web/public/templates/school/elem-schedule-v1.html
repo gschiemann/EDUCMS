@@ -12,11 +12,11 @@
   --bg:#ffd23f;--ink:#1a1633;--brand:#5b3df5;--brand2:#3a1fb8;--accent:#ff6b9d;--accent2:#2ad4c4;--pos:#1fb866;--neg:#ff5670;
   --f-display:'Nunito';--f-head:'Nunito';--f-body:'Nunito';--f-mono:'Fredoka';
   --scale:1;
-  --t-logo:calc(86px*var(--scale));--t-school:calc(70px*var(--scale));--t-sub:calc(40px*var(--scale));
-  --t-eyebrow:calc(46px*var(--scale));--t-title:calc(190px*var(--scale));--t-date:calc(58px*var(--scale));
-  --t-tilek:calc(36px*var(--scale));--t-tilev:calc(120px*var(--scale));--t-tileu:calc(40px*var(--scale));
-  --t-rowtime:calc(72px*var(--scale));--t-rowname:calc(96px*var(--scale));--t-rowmeta:calc(46px*var(--scale));--t-rowstat:calc(38px*var(--scale));
-  --t-ann:calc(62px*var(--scale));--t-anntag:calc(46px*var(--scale));
+  --t-logo:calc(86px*var(--scale));--t-school:calc(70px*var(--scale));--t-sub:calc(60px*var(--scale));
+  --t-eyebrow:calc(60px*var(--scale));--t-title:calc(190px*var(--scale));--t-date:calc(60px*var(--scale));
+  --t-tilek:calc(60px*var(--scale));--t-tilev:calc(120px*var(--scale));--t-tileu:calc(60px*var(--scale));
+  --t-rowtime:calc(72px*var(--scale));--t-rowname:calc(96px*var(--scale));--t-rowmeta:calc(60px*var(--scale));--t-rowstat:calc(60px*var(--scale));
+  --t-ann:calc(62px*var(--scale));--t-anntag:calc(60px*var(--scale));
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#0a0c11;color:var(--ink);font-family:var(--f-body),sans-serif}
@@ -60,7 +60,7 @@ html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#
 .tile .u{font-family:var(--f-display);font-weight:800;font-size:var(--t-tileu);color:#7a7596}
 .tile.weather .v{color:var(--accent2)}
 .tile.att .v{color:var(--pos)}
-.tile .ico{font-size:calc(54px*var(--scale));line-height:1}
+.tile .ico{font-size:calc(60px*var(--scale));line-height:1}
 
 /* SCHEDULE ROWS */
 .sched{flex:1;min-height:0;display:flex;flex-direction:column;gap:22px;padding-bottom:18px}
@@ -68,11 +68,11 @@ html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#
   padding:0 56px;box-shadow:0 10px 0 rgba(0,0,0,.1);transition:transform .2s ease}
 .row .dot{width:34px;height:34px;border-radius:50%;background:#d9d5ec;flex:none}
 .row .time{font-family:var(--f-display);font-weight:800;font-size:var(--t-rowtime);color:#5a5577;font-variant-numeric:tabular-nums;white-space:nowrap;min-width:380px}
-.row .nm{font-family:var(--f-display);font-weight:900;font-size:var(--t-rowname);line-height:.92;letter-spacing:-.015em;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .nm{font-family:var(--f-display);font-weight:900;font-size:var(--t-rowname);line-height:.92;letter-spacing:-.015em;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:clip}
 .row .meta{font-family:var(--f-mono);font-weight:600;font-size:var(--t-rowmeta);color:#7a7596;text-align:right;white-space:nowrap}
 .row .stat{display:none}
 /* DONE periods dim */
-.row.done{background:#fff7d6;opacity:.62}
+.row.done{background:#fff7d6;opacity:1}
 .row.done .dot{background:var(--pos)}
 /* the LIVE period — bold brand block, scaled up, pulsing dot */
 .row.now{background:var(--brand);box-shadow:0 14px 0 var(--brand2);transform:scale(1.015)}
@@ -87,8 +87,8 @@ html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#
 .ann{flex:none;height:150px;margin:0 -96px;background:var(--ink);display:flex;align-items:center;gap:40px;padding:0 96px}
 .ann .tag{flex:none;background:var(--accent);color:var(--ink);font-family:var(--f-display);font-weight:900;font-size:var(--t-anntag);
   letter-spacing:.02em;border-radius:99px;padding:16px 40px;display:flex;align-items:center;gap:16px}
-.ann .tag::before{content:'📣';font-size:calc(44px*var(--scale))}
-.ann .msg{font-family:var(--f-display);font-weight:800;font-size:var(--t-ann);color:#fff;line-height:1.05;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1}
+.ann .tag::before{content:'📣';font-size:calc(60px*var(--scale))}
+.ann .msg{font-family:var(--f-display);font-weight:800;font-size:var(--t-ann);color:#fff;line-height:1.05;white-space:nowrap;overflow:hidden;text-overflow:clip;min-width:0;flex:1}
 
 /* ═══ PORTRAIT ═══ */
 .stage[data-orient="port"]{padding:72px 72px 0}
@@ -101,8 +101,11 @@ html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#
 .stage[data-orient="port"] .row .meta{display:none}
 .stage[data-orient="port"] .row .time{min-width:300px}
 .stage[data-orient="port"] .ann{margin:0 -72px;padding:0 72px}
+
+/* Keep the bright bold identity while showing every room and fitting full announcements. */
+.stage [data-field]{line-height:1.35!important}.stage .head{height:200px}.stage .hero{grid-template-columns:1fr 1100px;gap:50px}.stage .tile{width:520px;padding:32px 40px}.stage .tile .k{color:var(--ink);line-height:1.3}.stage .tile .u{color:var(--ink)}.stage .tile .v{color:var(--brand2);line-height:1.2}.stage .row{grid-template-columns:38px 490px 1fr 200px;grid-template-rows:1fr 86px;gap:6px 36px;padding:16px 40px}.stage .row .dot{grid-column:1;grid-row:1/3}.stage .row .time{grid-column:2;grid-row:1/3;min-width:0;font-size:calc(72px*var(--scale))}.stage .row .nm{grid-column:3;grid-row:1;white-space:normal;height:120px;min-width:0;overflow:visible}.stage .row .meta{grid-column:3;grid-row:2;display:block;text-align:left;white-space:normal;font-size:calc(60px*var(--scale));height:85px;color:var(--ink)}.stage .row .stat{grid-column:4;grid-row:1/3;padding:18px 22px;font-size:calc(60px*var(--scale));letter-spacing:0}.stage .row.now{transform:none}.stage .row.now .meta,.stage .row.now .time{color:#fff}.stage .ann{height:205px}.stage .ann .msg{white-space:normal;overflow:visible;height:170px}.stage .ann .tag{font-size:calc(60px*var(--scale))}.stage[data-orient="port"] .hero{grid-template-columns:1fr;gap:28px}.stage[data-orient="port"] .tile{width:auto;flex:1}.stage[data-orient="port"] .row{grid-template-columns:34px 455px 1fr 195px;grid-template-rows:1fr 100px;gap:10px 25px;padding:24px 30px}.stage[data-orient="port"] .row .nm{height:200px}.stage[data-orient="port"] .row .meta{display:block;height:100px}.stage[data-orient="port"] .row .time{min-width:0;font-size:calc(66px*var(--scale))}.stage[data-orient="port"] .ann{height:250px;padding:24px 42px}.stage[data-orient="port"] .ann .msg{height:220px}
 </style>
-<script>/*EDUCMS-SHIM-V14*/(function(){try{
+<script>/*EDUCMS-SHIM-V15*/(function(){try{
 var editMode=false;
 function applyPosters(img){if(!img)return;Object.keys(img).forEach(function(k){var v=img[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\"');var safe=v.replace(/["'()\s]/g,'');var el=document.querySelector('[data-posterslot="'+esc+'"]');if(!el)return;if(safe)el.setAttribute('poster',safe);else el.removeAttribute('poster');el.setAttribute('data-has-image',safe?'true':'false');});}
 function applyVideos(video){if(!video)return;Object.keys(video).forEach(function(k){var v=video[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\"');var safe=v.replace(/["'()\s]/g,'');var el=document.querySelector('[data-videoslot="'+esc+'"]');if(!el)return;var owner=el.tagName==='VIDEO'?el:(el.closest?el.closest('video'):null);if(el.tagName==='VIDEO'||el.tagName==='SOURCE'){if(safe)el.setAttribute('src',safe);else el.removeAttribute('src');}else{el.setAttribute('data-video',safe);}el.setAttribute('data-has-video',safe?'true':'false');if(owner){try{owner.load();if(owner.autoplay&&safe){var play=owner.play();if(play&&play.catch)play.catch(function(){});}}catch(e){}}});}
@@ -128,7 +131,7 @@ function dec(p){if(!p)return null;try{var j=decodeURIComponent(Array.prototype.m
 function readParams(){var q=new URLSearchParams(location.search);return{brand:dec(q.get('brand'))||{},text:dec(q.get('text'))||{},styles:dec(q.get('textStyles'))||{},img:dec(q.get('img'))||{},video:dec(q.get('video'))||{},repeat:dec(q.get('repeat'))||{}};}
 var BRAND_MAP={background:['--bg','--brand-canvas','--brand-bg','--surface-canvas','--c-bg'],surface:['--paper','--brand-paper','--surface','--c-surface','--c-panel'],
 text:['--ink','--fg','--brand-ink','--brand-fg','--text','--c-ink'],muted:['--mute','--brand-mute','--text-muted','--c-ink2','--c-ink3'],
-primary:['--primary','--brand-primary','--color-primary','--c-us','--c-primary','--c-accent'],secondary:['--secondary','--brand-secondary','--brand2','--c-secondary'],accent:['--accent','--brand-accent','--brand-gold','--gold','--color-accent','--c-gold'],accent2:['--accent2','--brand-accent2','--c-accent2'],positive:['--positive','--pos','--brand-positive','--c-positive'],negative:['--negative','--neg','--brand-negative','--c-negative'],
+primary:['--primary','--brand','--brand-primary','--color-primary','--c-us','--c-primary','--c-accent'],secondary:['--secondary','--brand-secondary','--brand2','--c-secondary'],accent:['--accent','--brand-accent','--brand-gold','--gold','--color-accent','--c-gold'],accent2:['--accent2','--brand-accent2','--c-accent2'],positive:['--positive','--pos','--brand-positive','--c-positive'],negative:['--negative','--neg','--brand-negative','--c-negative'],
 fontDisplay:['--font-display','--font-headline','--f-display','--f-head'],fontBody:['--font-grotesk','--font-body','--font-sans','--f-body'],fontCondensed:['--font-condensed','--font-numeric','--f-mono']};
 function applyBrand(b){var r=document.documentElement.style;Object.keys(BRAND_MAP).forEach(function(k){if(b[k]){var val=/^font/i.test(k)?("'"+String(b[k]).replace(/^['"]|['"]$/g,'')+"'"):b[k];BRAND_MAP[k].forEach(function(v){r.setProperty(v,val);});}});}
 var _dEl=null;function dE(s){if(typeof s!=='string'||s.indexOf('&')===-1)return s;try{if(!_dEl)_dEl=document.createElement('textarea');_dEl.innerHTML=s;return _dEl.value;}catch(e){return s;}}
@@ -204,7 +207,7 @@ var _ckSamples=null,_ckTimer=null;
  * clock; two engines writing the same node would fight. */
 function _ckOwnEngine(){return !!document.querySelector('[data-field="clock.mode"]');}
 function startClock(text){
-  if(_ckOwnEngine())return;
+  if(_ckTimer){clearInterval(_ckTimer);_ckTimer=null;}
   var nodes=[];
   var all=document.querySelectorAll('[data-field]');
   for(var i=0;i<all.length;i++){
@@ -212,10 +215,12 @@ function startClock(text){
     if(!TIME_KEYS[k]&&!DATE_KEYS[k])continue;
     /* The operator typed something here — their words win over the wall
      * clock, exactly as for any other editable field. */
-    if(text&&typeof text[k]==='string')continue;
+    if(text&&typeof text[k]==='string'){if(!all[i].hasAttribute('data-pin')){all[i].setAttribute('data-pin','');all[i].__eduClockPinned=true;}continue;}
+    if(all[i].__eduClockPinned){all[i].removeAttribute('data-pin');all[i].__eduClockPinned=false;}
+    if(all[i].hasAttribute('data-pin'))continue;
     nodes.push({el:all[i],key:k,isTime:!!TIME_KEYS[k]});
   }
-  if(!nodes.length)return;
+  if(_ckOwnEngine()||!nodes.length)return;
   if(!_ckSamples){_ckSamples={};for(var j=0;j<nodes.length;j++)_ckSamples[nodes[j].key]=(nodes[j].el.textContent||'').trim();}
   var tz=_ckCfg('clock.timeZone','');
   var locale=_ckCfg('clock.locale','en-US');
@@ -254,7 +259,7 @@ addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='objec
       <div class="logo" data-imgslot="school.logo" data-field="school.initials">MV</div>
       <div class="who">
         <div class="name" data-fit="single" data-fit-min="60" data-fit-max="70" data-field="school.name">Maple View Elementary</div>
-        <div class="sub" data-fit="single" data-fit-min="60" data-fit-max="40" data-field="school.sub">Home of the Bluejays</div>
+        <div class="sub" data-fit="single" data-fit-min="60" data-fit-max="60" data-field="school.sub">Home of the Bluejays</div>
       </div>
     </div>
     <div class="clockpill"><div class="v" data-field="clock.time" data-live="clock">8:25</div></div>
@@ -262,79 +267,79 @@ addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='objec
 
   <section class="hero">
     <div class="titlewrap">
-      <div class="eyebrow" data-fit="single" data-fit-min="60" data-fit-max="46" data-field="hero.eyebrow">Good morning, Bluejays!</div>
+      <div class="eyebrow" data-fit="single" data-fit-min="60" data-fit-max="60" data-field="hero.eyebrow">Good morning, Bluejays!</div>
       <h1 data-fit="single" data-fit-min="90" data-fit-max="190"><span data-field="hero.t1">Today's </span><em data-field="hero.t2">Schedule</em></h1>
       <div class="datechip"><span data-field="today.date" data-live="today">Mon, Jun 8</span></div>
     </div>
     <div class="tiles">
       <div class="tile weather" data-widget="weather">
-        <div class="k"><span class="ico">☀️</span><span data-fit="single" data-fit-min="60" data-fit-max="36" data-field="weather.label">Outside</span></div>
+        <div class="k"><span class="ico">☀️</span><span data-fit="single" data-fit-min="60" data-fit-max="60" data-field="weather.label">Outside</span></div>
         <div class="vrow"><div class="v" data-field="weather.temp">72°</div></div>
-        <div class="k" style="margin-top:6px"><span data-fit="single" data-fit-min="60" data-fit-max="36" data-field="weather.cond">Sunny · recess yes!</span></div>
+        <div class="k" style="margin-top:6px"><span data-fit="single" data-fit-min="60" data-fit-max="60" data-field="weather.cond">Sunny · recess yes!</span></div>
       </div>
       <div class="tile att" data-widget="att">
-        <div class="k"><span class="ico">🙌</span><span data-fit="single" data-fit-min="60" data-fit-max="36" data-field="att.label">Here today</span></div>
+        <div class="k"><span class="ico">🙌</span><span data-fit="single" data-fit-min="60" data-fit-max="60" data-field="att.label">Here today</span></div>
         <div class="vrow"><div class="v" data-field="att.pct">96%</div></div>
-        <div class="k" style="margin-top:6px"><span data-fit="single" data-fit-min="60" data-fit-max="36" data-field="att.cap">Great job, everyone!</span></div>
+        <div class="k" style="margin-top:6px"><span data-fit="single" data-fit-min="60" data-fit-max="60" data-field="att.cap">Great job, everyone!</span></div>
       </div>
     </div>
   </section>
 
-  <section class="sched" data-schedule data-sched-item=".row" data-sched-time=".time" data-sched-active="now" data-sched-done="done" data-sched-status=".stat" data-demo-min="600">
+  <section class="sched" data-schedule data-sched-item=".row" data-sched-time=".time" data-sched-active="now" data-sched-done="done" data-sched-status=".stat">
     <div class="row" data-widget="p.0">
       <div class="dot"></div>
       <div class="time" data-field="p.0.time">7:50 – 8:35</div>
-      <div class="nm" data-fit="single" data-fit-min="60" data-fit-max="96" data-field="p.0.name">Homeroom &amp; Morning Meeting</div>
-      <div class="meta" data-fit="single" data-fit-min="60" data-fit-max="46" data-field="p.0.meta">Room 12 · Ms. Diaz</div>
+      <div class="nm" data-fit data-fit-min="60" data-fit-max="96" data-field="p.0.name">Homeroom &amp; Morning Meeting</div>
+      <div class="meta" data-fit data-fit-min="60" data-fit-max="60" data-field="p.0.meta">Room 12 · Ms. Diaz</div>
       <div class="stat"></div>
     </div>
     <div class="row" data-widget="p.1">
       <div class="dot"></div>
       <div class="time" data-field="p.1.time">8:35 – 9:30</div>
-      <div class="nm" data-fit="single" data-fit-min="60" data-fit-max="96" data-field="p.1.name">Math</div>
-      <div class="meta" data-fit="single" data-fit-min="60" data-fit-max="46" data-field="p.1.meta">Room 12 · Ms. Diaz</div>
+      <div class="nm" data-fit data-fit-min="60" data-fit-max="96" data-field="p.1.name">Math</div>
+      <div class="meta" data-fit data-fit-min="60" data-fit-max="60" data-field="p.1.meta">Room 12 · Ms. Diaz</div>
       <div class="stat"></div>
     </div>
     <div class="row" data-widget="p.2">
       <div class="dot"></div>
       <div class="time" data-field="p.2.time">9:30 – 10:25</div>
-      <div class="nm" data-fit="single" data-fit-min="60" data-fit-max="96" data-field="p.2.name">Reading &amp; Writing</div>
-      <div class="meta" data-fit="single" data-fit-min="60" data-fit-max="46" data-field="p.2.meta">Room 12 · Ms. Diaz</div>
+      <div class="nm" data-fit data-fit-min="60" data-fit-max="96" data-field="p.2.name">Reading &amp; Writing</div>
+      <div class="meta" data-fit data-fit-min="60" data-fit-max="60" data-field="p.2.meta">Room 12 · Ms. Diaz</div>
       <div class="stat"></div>
     </div>
     <div class="row" data-widget="p.3">
       <div class="dot"></div>
       <div class="time" data-field="p.3.time">10:25 – 11:10</div>
-      <div class="nm" data-fit="single" data-fit-min="60" data-fit-max="96" data-field="p.3.name">Science Lab</div>
-      <div class="meta" data-fit="single" data-fit-min="60" data-fit-max="46" data-field="p.3.meta">Room 8 · Mr. Park</div>
+      <div class="nm" data-fit data-fit-min="60" data-fit-max="96" data-field="p.3.name">Science Lab</div>
+      <div class="meta" data-fit data-fit-min="60" data-fit-max="60" data-field="p.3.meta">Room 8 · Mr. Park</div>
       <div class="stat"></div>
     </div>
     <div class="row" data-widget="p.4">
       <div class="dot"></div>
       <div class="time" data-field="p.4.time">11:10 – 11:55</div>
-      <div class="nm" data-fit="single" data-fit-min="60" data-fit-max="96" data-field="p.4.name">Lunch &amp; Recess</div>
-      <div class="meta" data-fit="single" data-fit-min="60" data-fit-max="46" data-field="p.4.meta">Cafeteria · Yard A</div>
+      <div class="nm" data-fit data-fit-min="60" data-fit-max="96" data-field="p.4.name">Lunch &amp; Recess</div>
+      <div class="meta" data-fit data-fit-min="60" data-fit-max="60" data-field="p.4.meta">Cafeteria · Yard A</div>
       <div class="stat"></div>
     </div>
     <div class="row" data-widget="p.5">
       <div class="dot"></div>
       <div class="time" data-field="p.5.time">12:00 – 12:50</div>
-      <div class="nm" data-fit="single" data-fit-min="60" data-fit-max="96" data-field="p.5.name">Art Studio</div>
-      <div class="meta" data-fit="single" data-fit-min="60" data-fit-max="46" data-field="p.5.meta">Room 5 · Ms. Lowe</div>
+      <div class="nm" data-fit data-fit-min="60" data-fit-max="96" data-field="p.5.name">Art Studio</div>
+      <div class="meta" data-fit data-fit-min="60" data-fit-max="60" data-field="p.5.meta">Room 5 · Ms. Lowe</div>
       <div class="stat"></div>
     </div>
   </section>
 
   <div class="ann" data-widget="ann">
     <div class="tag" data-field="ann.tag">Today</div>
-    <div class="msg" data-fit="single" data-fit-min="60" data-fit-max="62" data-field="ann.message">Picture day is Thursday — wear your best smile! Library books are due Friday.</div>
+    <div class="msg" data-fit data-fit-min="60" data-fit-max="62" data-field="ann.message">Picture day is Thursday — wear your best smile! Library books are due Friday.</div>
   </div>
 
 </div></div></div>
 
 <script>
 (function(){
-  var root=document.documentElement,stage=document.getElementById('stage');
+  var root=document.documentElement,stage=document.getElementById('stage');var explicitSizes={};try{var styleEnc=new URLSearchParams(location.search).get('textStyles');if(styleEnc)explicitSizes=JSON.parse(decodeURIComponent(escape(atob(styleEnc.replace(/-/g,'+').replace(/_/g,'/')))))||{};}catch(e){}addEventListener('message',function(e){if(e.source===parent&&e.data&&e.data.type==='educms-overrides'&&e.data.textStyles)explicitSizes=e.data.textStyles;});
   function orient(){var o=new URLSearchParams(location.search).get('o');var p=o?o==='portrait':window.innerHeight>window.innerWidth;stage.setAttribute('data-orient',p?'port':'land');root.style.setProperty('--stage-w',p?'2160px':'3840px');root.style.setProperty('--stage-h',p?'3840px':'2160px');fit();autofit();}
   function fit(){var c=getComputedStyle(root),w=parseFloat(c.getPropertyValue('--stage-w')),h=parseFloat(c.getPropertyValue('--stage-h')),k=Math.min(window.innerWidth/w,window.innerHeight/h);root.style.setProperty('--stage-scale',k);}
   window.addEventListener('resize',orient);window.addEventListener('load',orient);orient();setTimeout(orient,300);
@@ -342,18 +347,19 @@ addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='objec
   function applyTheme(){Object.keys(THEME).forEach(function(k){var el=document.querySelector('[data-field="theme.'+k+'"]');if(el&&el.textContent.trim()){var v=el.textContent.trim();root.style.setProperty(THEME[k],k.indexOf('f')===0?("'"+v+"'"):v);}});}
   applyTheme();new MutationObserver(applyTheme).observe(document.querySelector('[data-widget="theme"]'),{subtree:true,childList:true,characterData:true});
   document.querySelectorAll('[data-imgslot]').forEach(function(el){var v=el.getAttribute('data-img')||'';if(v){el.style.backgroundImage='url("'+v+'")';el.classList.add('has-img');}});
-  function fitOne(el){var single=el.getAttribute('data-fit')==='single';var min=+(el.getAttribute('data-fit-min')||60),max=+(el.getAttribute('data-fit-max')||300);if(single)el.style.whiteSpace='nowrap';var lo=min,hi=max,best=min;for(var i=0;i<16;i++){var mid=(lo+hi)/2;el.style.fontSize=mid+'px';var okW=el.scrollWidth<=el.clientWidth+1,okH=single?true:el.scrollHeight<=el.clientHeight+1;if(okW&&okH){best=mid;lo=mid;}else{hi=mid;}}el.style.fontSize=best+'px';}
-  function autofit(){if(/[?&]freeze=1\b/.test(location.search))return;document.querySelectorAll('[data-fit]').forEach(fitOne);}
+  function fitOne(el){if(explicitSizes[el.getAttribute('data-field')]&&explicitSizes[el.getAttribute('data-field')].fontSize!=null)return;var single=el.getAttribute('data-fit')==='single';var scale=parseFloat(getComputedStyle(root).getPropertyValue('--scale'))||1;var min=Math.max(50,+(el.getAttribute('data-fit-min')||50)*scale),max=Math.max(min,+(el.getAttribute('data-fit-max')||300)*scale);if(single)el.style.whiteSpace='nowrap';var lo=min,hi=max,best=min;for(var i=0;i<16;i++){var mid=(lo+hi)/2;el.style.fontSize=mid+'px';var okW=el.scrollWidth<=el.clientWidth+1,okH=el.scrollHeight<=el.clientHeight+1;if(okW&&okH){best=mid;lo=mid;}else{hi=mid;}}el.style.fontSize=best+'px';}
+  function autofit(){document.querySelectorAll('[data-fit]').forEach(fitOne);}
   setTimeout(autofit,120);setTimeout(autofit,500);if(document.fonts&&document.fonts.ready){document.fonts.ready.then(function(){autofit();setTimeout(autofit,60);});}
   if(!/[?&]freeze=1\b/.test(location.search))new MutationObserver(autofit).observe(document.querySelector('.stage'),{subtree:true,childList:true,characterData:true});
   function f12(d){var h=d.getHours()%12||12,m=d.getMinutes();return h+':'+(m<10?'0':'')+m+' '+(d.getHours()<12?'AM':'PM');}
-  function tick(){var now=new Date();document.querySelectorAll('[data-live="clock"]').forEach(function(el){el.textContent=f12(now);});}
+  function tick(){var now=new Date();document.querySelectorAll('[data-live="clock"]').forEach(function(el){if(!el.hasAttribute('data-pin'))el.textContent=f12(now);});}
   tick();setInterval(tick,15000);
 })();
 </script>
 <script>
 /* LIVE SCHEDULE ENGINE — ties each item's highlight to its period time. Standard across all scheduled boards. */
 (function(){
+  function setStatus(el,value){if(el&&el.textContent!==value)el.textContent=value;}
   function parseMin(t){if(!t)return null;t=(''+t).replace(/[–—]/g,'-');var m=t.match(/(\d{1,2}):(\d{2})/g);if(!m)return null;function toMin(s){var p=s.split(':'),h=+p[0],mm=+p[1];if(h<7)h+=12;return h*60+mm;}return{start:toMin(m[0]),end:m[1]?toMin(m[1]):toMin(m[0])+50};}
   function fmt(min){var h=Math.floor(min/60),m=min%60;var ap=h>=12?'p':'a';h=h%12;if(h===0)h=12;return h+':'+(m<10?'0':'')+m+ap;}
   function run(){document.querySelectorAll('[data-schedule]').forEach(function(box){
@@ -365,11 +371,11 @@ addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='objec
     if(demo!=null&&(!first||nowMin<first.start||(last&&nowMin>=last.end)))nowMin=+demo;
     var curIdx=-1;for(var i=0;i<periods.length;i++){if(periods[i]&&nowMin>=periods[i].start&&nowMin<periods[i].end){curIdx=i;break;}}
     var nextIdx=-1;if(curIdx<0){for(var j=0;j<periods.length;j++){if(periods[j]&&nowMin<periods[j].start){nextIdx=j;break;}}}else{nextIdx=curIdx+1;}
-    rows.forEach(function(r,i){var p=periods[i],s=statSel?r.querySelector(statSel):null;r.classList.remove(actCls,doneCls);if(!p){if(s)s.textContent='';return;}
-      if(i===curIdx){r.classList.add(actCls);if(s)s.textContent='● Now';}
-      else if(nowMin>=p.end){r.classList.add(doneCls);if(s)s.textContent='Done';}
-      else if(i===nextIdx){if(s)s.textContent='Up next';}
-      else{if(s)s.textContent='Starts '+fmt(p.start);}});
+    rows.forEach(function(r,i){var p=periods[i],s=statSel?r.querySelector(statSel):null;r.classList.remove(actCls,doneCls);if(!p){setStatus(s,'');return;}
+      if(i===curIdx){r.classList.add(actCls);setStatus(s,'● Now');}
+      else if(nowMin>=p.end){r.classList.add(doneCls);setStatus(s,'Done');}
+      else if(i===nextIdx){setStatus(s,'Up next');}
+      else{setStatus(s,'Starts '+fmt(p.start));}});
   });}
   var _so=[];function runSafe(){for(var i=0;i<_so.length;i++)_so[i].disconnect();try{run();}finally{for(var j=0;j<_so.length;j++)_so[j].observe(_so[j]._t,{subtree:true,childList:true,characterData:true});}}run();setInterval(runSafe,30000);
   if(!/[?&]freeze=1\b/.test(location.search))document.querySelectorAll('[data-schedule]').forEach(function(b){var o=new MutationObserver(runSafe);o._t=b;o.observe(b,{subtree:true,childList:true,characterData:true});_so.push(o);});

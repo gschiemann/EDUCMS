@@ -70,7 +70,7 @@ export interface CelBaseballStrikeoutCfg extends BaseCfg {
 export function CelBaseballStrikeoutWidget({ config, live = true, height = 480 }: WidgetProps<CelBaseballStrikeoutCfg>) {
   const c = config ?? {};
   const sample = useCelebrationSample();
-  const r = resolveStyle({ bgColor: '#0a0a0a', accentColor: '#dc2626', highlightColor: '#dc2626', ...c.style });
+  const r = resolveStyle({ bgColor: '#0a0a0a', textColor: '#fff', accentColor: '#dc2626', highlightColor: '#dc2626', ...c.style });
   const animOn = r.anim.on && live;
   const pitcher = sample(c.pitcher, 'PITCHER');
   const k = sample(c.kCount, 11);
@@ -176,7 +176,7 @@ export interface CelBaseballHomeRunCfg extends BaseCfg {
 export function CelBaseballHomeRunWidget({ config, live = true, height = 480 }: WidgetProps<CelBaseballHomeRunCfg>) {
   const c = config ?? {};
   const sample = useCelebrationSample();
-  const r = resolveStyle({ bgColor: '#ce1141', accentColor: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
+  const r = resolveStyle({ bgColor: '#ce1141', textColor: '#fff', accentColor: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
   const player = sample(c.player, 'PLAYER');
   const distance = sample(c.distance, '418 FT');
@@ -264,7 +264,7 @@ export interface CelBaseballGrandSlamCfg extends BaseCfg {
 export function CelBaseballGrandSlamWidget({ config, live = true, height = 480 }: WidgetProps<CelBaseballGrandSlamCfg>) {
   const c = config ?? {};
   const sample = useCelebrationSample();
-  const r = resolveStyle({ bgColor: '#5e0612', accentColor: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
+  const r = resolveStyle({ bgColor: '#5e0612', textColor: '#fff', accentColor: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
   const player = sample(c.player, 'PLAYER');
   const score = sample(c.score, '7-2');
@@ -350,7 +350,7 @@ export interface CelBaseballNoHitterCfg extends BaseCfg {
 export function CelBaseballNoHitterWidget({ config, live = true, height = 480 }: WidgetProps<CelBaseballNoHitterCfg>) {
   const c = config ?? {};
   const sample = useCelebrationSample();
-  const r = resolveStyle({ bgColor: '#0a0a0a', accentColor: '#22c55e', highlightColor: '#ffffff', ...c.style });
+  const r = resolveStyle({ bgColor: '#0a0a0a', textColor: '#fff', accentColor: '#22c55e', highlightColor: '#ffffff', ...c.style });
   const animOn = r.anim.on && live;
   const pitcher = sample(c.pitcher, 'PITCHER');
   const inning = sample(c.inning, 9);
@@ -420,7 +420,7 @@ export interface CelBaseballStolenBaseCfg extends BaseCfg {
 export function CelBaseballStolenBaseWidget({ config, live = true, height = 480 }: WidgetProps<CelBaseballStolenBaseCfg>) {
   const c = config ?? {};
   const sample = useCelebrationSample();
-  const r = resolveStyle({ bgColor: '#001a08', accentColor: '#22c55e', highlightColor: '#22c55e', ...c.style });
+  const r = resolveStyle({ bgColor: '#001a08', textColor: '#fff', accentColor: '#22c55e', highlightColor: '#22c55e', ...c.style });
   const animOn = r.anim.on && live;
   const runner = sample(c.runner, 'RUNNER');
   const base = sample(c.base, '2ND');
@@ -491,7 +491,7 @@ export interface CelBaseballDoublePlayCfg extends BaseCfg {
 export function CelBaseballDoublePlayWidget({ config, live = true, height = 480 }: WidgetProps<CelBaseballDoublePlayCfg>) {
   const c = config ?? {};
   const sample = useCelebrationSample();
-  const r = resolveStyle({ bgColor: '#0a1a30', accentColor: '#22d39b', highlightColor: '#22d39b', ...c.style });
+  const r = resolveStyle({ bgColor: '#0a1a30', textColor: '#fff', accentColor: '#22d39b', highlightColor: '#22d39b', ...c.style });
   const animOn = r.anim.on && live;
   const combo = sample(c.combo, '6-4-3');
   const players = sample(c.players, ['SS', '2B', '1B']);
@@ -565,7 +565,7 @@ export interface CelBaseballTriplePlayCfg extends BaseCfg {
 export function CelBaseballTriplePlayWidget({ config, live = true, height = 480 }: WidgetProps<CelBaseballTriplePlayCfg>) {
   const c = config ?? {};
   const sample = useCelebrationSample();
-  const r = resolveStyle({ bgColor: '#3a0008', accentColor: '#ffd23a', accentColor2: '#dc2626', highlightColor: '#ffd23a', ...c.style });
+  const r = resolveStyle({ bgColor: '#3a0008', textColor: '#fff', accentColor: '#ffd23a', accentColor2: '#dc2626', highlightColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
   const caption = sample(c.caption, '1st in 6 yrs');
   const burst = `${animDurationSec(r.anim.speed, 0.5)}s`;
@@ -636,7 +636,7 @@ export interface CelBaseballWalkOffCfg extends BaseCfg {
 export function CelBaseballWalkOffWidget({ config, live = true, height = 480 }: WidgetProps<CelBaseballWalkOffCfg>) {
   const c = config ?? {};
   const sample = useCelebrationSample();
-  const r = resolveStyle({ bgColor: '#dc2626', accentColor: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
+  const r = resolveStyle({ bgColor: '#dc2626', textColor: '#fff', accentColor: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
   const teamName = sample(c.teamName, 'HOME TEAM');
   const hero = sample(c.hero, 'PLAYER');

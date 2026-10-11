@@ -15,7 +15,7 @@
     .footer{position:absolute;left:58px;bottom:48px;width:1804px;height:92px;border-top:5px solid var(--ink);border-bottom:5px solid var(--ink);display:flex;align-items:center}.footer-title{width:236px;font:900 28px var(--font-display)}.fact{height:58px;width:330px;padding:5px 26px;border-left:2px solid var(--ink)}.fact b{display:block;font:700 13px var(--font-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--red)}.fact span{font:800 22px var(--font-body)}.allergen{margin-left:auto;width:430px;font:700 14px/1.35 var(--font-mono);text-transform:uppercase;text-align:right;color:var(--text-muted)}
     .is-portrait .top-rule{left:42px;top:36px;width:996px}.is-portrait .masthead{left:42px;top:60px;width:996px;height:248px}.is-portrait .logo{width:64px;height:64px;margin-right:14px;font-size:21px}.is-portrait .edition{width:150px;font-size:14px}.is-portrait .headline{position:absolute;left:0;top:82px;width:996px;font-size:77px}.is-portrait .headline small{font-size:13px}.is-portrait .school{width:280px;font-size:20px}.is-portrait .school .clock{font-size:32px}.is-portrait .lead{left:42px;top:346px;width:996px;height:690px;border-right:0;border-bottom:4px solid var(--ink)}.is-portrait .lead-photo{width:996px;height:424px}.is-portrait .lead-name{top:490px;width:930px;font-size:61px}.is-portrait .lead-kicker{top:458px}.is-portrait .lead-copy{top:606px;width:930px}.is-portrait .choices{left:42px;top:1080px;width:996px;height:555px}.is-portrait .choice{height:250px;padding-left:326px}.is-portrait .thumb{width:286px}.is-portrait .choice-name{font-size:47px}.is-portrait .footer{left:42px;bottom:38px;width:996px;height:202px;display:grid;grid-template-columns:200px 1fr 1fr}.is-portrait .footer-title{grid-row:1/3;width:200px}.is-portrait .fact{width:auto;height:70px;padding:8px 20px}.is-portrait .allergen{position:absolute;left:220px;bottom:7px;width:730px;text-align:left;font-size:12px}
   </style>
-<script>/*EDUCMS-SHIM-V14*/(function(){try{
+<script>/*EDUCMS-SHIM-V15*/(function(){try{
 var editMode=false;
 function applyPosters(img){if(!img)return;Object.keys(img).forEach(function(k){var v=img[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\"');var safe=v.replace(/["'()\s]/g,'');var el=document.querySelector('[data-posterslot="'+esc+'"]');if(!el)return;if(safe)el.setAttribute('poster',safe);else el.removeAttribute('poster');el.setAttribute('data-has-image',safe?'true':'false');});}
 function applyVideos(video){if(!video)return;Object.keys(video).forEach(function(k){var v=video[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\"');var safe=v.replace(/["'()\s]/g,'');var el=document.querySelector('[data-videoslot="'+esc+'"]');if(!el)return;var owner=el.tagName==='VIDEO'?el:(el.closest?el.closest('video'):null);if(el.tagName==='VIDEO'||el.tagName==='SOURCE'){if(safe)el.setAttribute('src',safe);else el.removeAttribute('src');}else{el.setAttribute('data-video',safe);}el.setAttribute('data-has-video',safe?'true':'false');if(owner){try{owner.load();if(owner.autoplay&&safe){var play=owner.play();if(play&&play.catch)play.catch(function(){});}}catch(e){}}});}
@@ -41,7 +41,7 @@ function dec(p){if(!p)return null;try{var j=decodeURIComponent(Array.prototype.m
 function readParams(){var q=new URLSearchParams(location.search);return{brand:dec(q.get('brand'))||{},text:dec(q.get('text'))||{},styles:dec(q.get('textStyles'))||{},img:dec(q.get('img'))||{},video:dec(q.get('video'))||{},repeat:dec(q.get('repeat'))||{}};}
 var BRAND_MAP={background:['--bg','--brand-canvas','--brand-bg','--surface-canvas','--c-bg'],surface:['--paper','--brand-paper','--surface','--c-surface','--c-panel'],
 text:['--ink','--fg','--brand-ink','--brand-fg','--text','--c-ink'],muted:['--mute','--brand-mute','--text-muted','--c-ink2','--c-ink3'],
-primary:['--primary','--brand-primary','--color-primary','--c-us','--c-primary','--c-accent'],secondary:['--secondary','--brand-secondary','--brand2','--c-secondary'],accent:['--accent','--brand-accent','--brand-gold','--gold','--color-accent','--c-gold'],accent2:['--accent2','--brand-accent2','--c-accent2'],positive:['--positive','--pos','--brand-positive','--c-positive'],negative:['--negative','--neg','--brand-negative','--c-negative'],
+primary:['--primary','--brand','--brand-primary','--color-primary','--c-us','--c-primary','--c-accent'],secondary:['--secondary','--brand-secondary','--brand2','--c-secondary'],accent:['--accent','--brand-accent','--brand-gold','--gold','--color-accent','--c-gold'],accent2:['--accent2','--brand-accent2','--c-accent2'],positive:['--positive','--pos','--brand-positive','--c-positive'],negative:['--negative','--neg','--brand-negative','--c-negative'],
 fontDisplay:['--font-display','--font-headline','--f-display','--f-head'],fontBody:['--font-grotesk','--font-body','--font-sans','--f-body'],fontCondensed:['--font-condensed','--font-numeric','--f-mono']};
 function applyBrand(b){var r=document.documentElement.style;Object.keys(BRAND_MAP).forEach(function(k){if(b[k]){var val=/^font/i.test(k)?("'"+String(b[k]).replace(/^['"]|['"]$/g,'')+"'"):b[k];BRAND_MAP[k].forEach(function(v){r.setProperty(v,val);});}});}
 var _dEl=null;function dE(s){if(typeof s!=='string'||s.indexOf('&')===-1)return s;try{if(!_dEl)_dEl=document.createElement('textarea');_dEl.innerHTML=s;return _dEl.value;}catch(e){return s;}}
@@ -117,7 +117,7 @@ var _ckSamples=null,_ckTimer=null;
  * clock; two engines writing the same node would fight. */
 function _ckOwnEngine(){return !!document.querySelector('[data-field="clock.mode"]');}
 function startClock(text){
-  if(_ckOwnEngine())return;
+  if(_ckTimer){clearInterval(_ckTimer);_ckTimer=null;}
   var nodes=[];
   var all=document.querySelectorAll('[data-field]');
   for(var i=0;i<all.length;i++){
@@ -125,10 +125,12 @@ function startClock(text){
     if(!TIME_KEYS[k]&&!DATE_KEYS[k])continue;
     /* The operator typed something here — their words win over the wall
      * clock, exactly as for any other editable field. */
-    if(text&&typeof text[k]==='string')continue;
+    if(text&&typeof text[k]==='string'){if(!all[i].hasAttribute('data-pin')){all[i].setAttribute('data-pin','');all[i].__eduClockPinned=true;}continue;}
+    if(all[i].__eduClockPinned){all[i].removeAttribute('data-pin');all[i].__eduClockPinned=false;}
+    if(all[i].hasAttribute('data-pin'))continue;
     nodes.push({el:all[i],key:k,isTime:!!TIME_KEYS[k]});
   }
-  if(!nodes.length)return;
+  if(_ckOwnEngine()||!nodes.length)return;
   if(!_ckSamples){_ckSamples={};for(var j=0;j<nodes.length;j++)_ckSamples[nodes[j].key]=(nodes[j].el.textContent||'').trim();}
   var tz=_ckCfg('clock.timeZone','');
   var locale=_ckCfg('clock.locale','en-US');

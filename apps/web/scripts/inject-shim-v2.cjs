@@ -63,7 +63,10 @@ const ROOT = path.resolve(__dirname, '../public/templates', SUBDIR);
 // Shared with PropertiesPanel — see the file's own comment. One list, so the
 // board half and the editor half cannot drift apart.
 const WALL_CLOCK_FIELDS = require('../src/lib/wall-clock-fields.json');
-const MARKER = 'EDUCMS-SHIM-V14';
+const MARKER = 'EDUCMS-SHIM-V15';
+// V15 (2026-10-10): canonical --brand follows the primary brand control.
+// Clock text overrides pin authored local-clock engines too, and clearing an
+// override stops the old timer before rebuilding its unpinned node list.
 // V14 (2026-09-12, M0-3) teaches `applyTextAndStyles` the BOOLEAN half of the
 // text-style contract. The builder's text bar writes `{bold:true, italic:true,
 // underline:true, strikethrough:true}` into the per-field `_styles` map; every
@@ -200,7 +203,7 @@ const MARKER = 'EDUCMS-SHIM-V14';
 // HTML-entity-decodes text overrides (so "Mix & Match" no longer renders the
 // literal "&amp;"). V5/V4/V3/V2/V1 are removed + replaced (pure superset — zero
 // regression for the live player, which never enters edit mode).
-const OLD_MARKERS = [...(process.argv.includes('--force') ? ['EDUCMS-SHIM-V14'] : []), 'EDUCMS-SHIM-V13', 'EDUCMS-SHIM-V12', 'EDUCMS-SHIM-V11', 'EDUCMS-SHIM-V10', 'EDUCMS-SHIM-V9', 'EDUCMS-SHIM-V8', 'EDUCMS-SHIM-V7', 'EDUCMS-SHIM-V6', 'EDUCMS-SHIM-V5', 'EDUCMS-SHIM-V4', 'EDUCMS-SHIM-V3', 'EDUCMS-SHIM-V2', 'EDUCMS-BRAND-SHIM'];
+const OLD_MARKERS = [...(process.argv.includes('--force') ? ['EDUCMS-SHIM-V15'] : []), 'EDUCMS-SHIM-V14', 'EDUCMS-SHIM-V13', 'EDUCMS-SHIM-V12', 'EDUCMS-SHIM-V11', 'EDUCMS-SHIM-V10', 'EDUCMS-SHIM-V9', 'EDUCMS-SHIM-V8', 'EDUCMS-SHIM-V7', 'EDUCMS-SHIM-V6', 'EDUCMS-SHIM-V5', 'EDUCMS-SHIM-V4', 'EDUCMS-SHIM-V3', 'EDUCMS-SHIM-V2', 'EDUCMS-BRAND-SHIM'];
 
 // Inline runtime — minified, runs at end of <head> before first paint.
 // Reads `brand`, `text`, `textStyles`, `img`, `video` from URL params; applies
@@ -245,7 +248,7 @@ function dec(p){if(!p)return null;try{var j=decodeURIComponent(Array.prototype.m
 function readParams(){var q=new URLSearchParams(location.search);return{brand:dec(q.get('brand'))||{},text:dec(q.get('text'))||{},styles:dec(q.get('textStyles'))||{},img:dec(q.get('img'))||{},video:dec(q.get('video'))||{},repeat:dec(q.get('repeat'))||{}};}
 var BRAND_MAP={background:['--bg','--brand-canvas','--brand-bg','--surface-canvas','--c-bg'],surface:['--paper','--brand-paper','--surface','--c-surface','--c-panel'],
 text:['--ink','--fg','--brand-ink','--brand-fg','--text','--c-ink'],muted:['--mute','--brand-mute','--text-muted','--c-ink2','--c-ink3'],
-primary:['--primary','--brand-primary','--color-primary','--c-us','--c-primary','--c-accent'],secondary:['--secondary','--brand-secondary','--brand2','--c-secondary'],accent:['--accent','--brand-accent','--brand-gold','--gold','--color-accent','--c-gold'],accent2:['--accent2','--brand-accent2','--c-accent2'],positive:['--positive','--pos','--brand-positive','--c-positive'],negative:['--negative','--neg','--brand-negative','--c-negative'],
+primary:['--primary','--brand','--brand-primary','--color-primary','--c-us','--c-primary','--c-accent'],secondary:['--secondary','--brand-secondary','--brand2','--c-secondary'],accent:['--accent','--brand-accent','--brand-gold','--gold','--color-accent','--c-gold'],accent2:['--accent2','--brand-accent2','--c-accent2'],positive:['--positive','--pos','--brand-positive','--c-positive'],negative:['--negative','--neg','--brand-negative','--c-negative'],
 fontDisplay:['--font-display','--font-headline','--f-display','--f-head'],fontBody:['--font-grotesk','--font-body','--font-sans','--f-body'],fontCondensed:['--font-condensed','--font-numeric','--f-mono']};
 function applyBrand(b){var r=document.documentElement.style;Object.keys(BRAND_MAP).forEach(function(k){if(b[k]){var val=/^font/i.test(k)?("'"+String(b[k]).replace(/^['"]|['"]$/g,'')+"'"):b[k];BRAND_MAP[k].forEach(function(v){r.setProperty(v,val);});}});}
 var _dEl=null;function dE(s){if(typeof s!=='string'||s.indexOf('&')===-1)return s;try{if(!_dEl)_dEl=document.createElement('textarea');_dEl.innerHTML=s;return _dEl.value;}catch(e){return s;}}
@@ -321,7 +324,7 @@ var _ckSamples=null,_ckTimer=null;
  * clock; two engines writing the same node would fight. */
 function _ckOwnEngine(){return !!document.querySelector('[data-field="clock.mode"]');}
 function startClock(text){
-  if(_ckOwnEngine())return;
+  if(_ckTimer){clearInterval(_ckTimer);_ckTimer=null;}
   var nodes=[];
   var all=document.querySelectorAll('[data-field]');
   for(var i=0;i<all.length;i++){
@@ -329,10 +332,12 @@ function startClock(text){
     if(!TIME_KEYS[k]&&!DATE_KEYS[k])continue;
     /* The operator typed something here — their words win over the wall
      * clock, exactly as for any other editable field. */
-    if(text&&typeof text[k]==='string')continue;
+    if(text&&typeof text[k]==='string'){if(!all[i].hasAttribute('data-pin')){all[i].setAttribute('data-pin','');all[i].__eduClockPinned=true;}continue;}
+    if(all[i].__eduClockPinned){all[i].removeAttribute('data-pin');all[i].__eduClockPinned=false;}
+    if(all[i].hasAttribute('data-pin'))continue;
     nodes.push({el:all[i],key:k,isTime:!!TIME_KEYS[k]});
   }
-  if(!nodes.length)return;
+  if(_ckOwnEngine()||!nodes.length)return;
   if(!_ckSamples){_ckSamples={};for(var j=0;j<nodes.length;j++)_ckSamples[nodes[j].key]=(nodes[j].el.textContent||'').trim();}
   var tz=_ckCfg('clock.timeZone','');
   var locale=_ckCfg('clock.locale','en-US');

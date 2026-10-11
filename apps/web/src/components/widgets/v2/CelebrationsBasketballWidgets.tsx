@@ -52,7 +52,7 @@ export interface CelBasketballThreeCfg extends BaseCfg {
 export function CelBasketballThreeWidget({ config, live = true, height = 480 }: WidgetProps<CelBasketballThreeCfg>) {
   const c = config ?? {};
   const sample = useCelebrationSample();
-  const r = resolveStyle({ bgColor: '#0b0c0e', accentColor: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
+  const r = resolveStyle({ bgColor: '#0b0c0e', textColor: '#fff', accentColor: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
   const player = sample(c.player, 'PLAYER');
   const threesTonight = sample(c.threesTonight, 7);
@@ -135,7 +135,7 @@ export interface CelBasketballDunkCfg extends BaseCfg {
 export function CelBasketballDunkWidget({ config, live = true, height = 480 }: WidgetProps<CelBasketballDunkCfg>) {
   const c = config ?? {};
   const sample = useCelebrationSample();
-  const r = resolveStyle({ bgColor: '#0a0a0a', accentColor: '#dc6a1d', highlightColor: '#dc6a1d', ...c.style });
+  const r = resolveStyle({ bgColor: '#0a0a0a', textColor: '#fff', accentColor: '#dc6a1d', highlightColor: '#dc6a1d', ...c.style });
   const animOn = r.anim.on && live;
   const player = sample(c.player, 'PLAYER');
   const kind = sample(c.kind, 'POSTER');
@@ -226,7 +226,7 @@ export interface CelBasketballBuzzerCfg extends BaseCfg {
 export function CelBasketballBuzzerWidget({ config, live = true, height = 480 }: WidgetProps<CelBasketballBuzzerCfg>) {
   const c = config ?? {};
   const sample = useCelebrationSample();
-  const r = resolveStyle({ bgColor: '#dc2626', accentColor: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
+  const r = resolveStyle({ bgColor: '#dc2626', textColor: '#fff', accentColor: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
   const player = sample(c.player, 'PLAYER');
   const clock = sample(c.clock, '0.4');
@@ -298,7 +298,7 @@ export interface CelBasketballBlockCfg extends BaseCfg {
 export function CelBasketballBlockWidget({ config, live = true, height = 480 }: WidgetProps<CelBasketballBlockCfg>) {
   const c = config ?? {};
   const sample = useCelebrationSample();
-  const r = resolveStyle({ bgColor: '#001a0a', accentColor: '#22c55e', highlightColor: '#22c55e', ...c.style });
+  const r = resolveStyle({ bgColor: '#001a0a', textColor: '#fff', accentColor: '#22c55e', highlightColor: '#22c55e', ...c.style });
   const animOn = r.anim.on && live;
   const player = sample(c.player, 'PLAYER');
   const blocks = sample(c.blocksTonight, 3);
@@ -377,7 +377,7 @@ export interface CelBasketballStealCfg extends BaseCfg {
 export function CelBasketballStealWidget({ config, live = true, height = 480 }: WidgetProps<CelBasketballStealCfg>) {
   const c = config ?? {};
   const sample = useCelebrationSample();
-  const r = resolveStyle({ bgColor: '#001a08', accentColor: '#22c55e', highlightColor: '#22c55e', ...c.style });
+  const r = resolveStyle({ bgColor: '#001a08', textColor: '#fff', accentColor: '#22c55e', highlightColor: '#22c55e', ...c.style });
   const animOn = r.anim.on && live;
   const player = sample(c.player, 'PLAYER');
   const steals = sample(c.stealsTonight, 4);
@@ -445,7 +445,7 @@ export interface CelBasketballAlleyOopCfg extends BaseCfg {
 export function CelBasketballAlleyOopWidget({ config, live = true, height = 480 }: WidgetProps<CelBasketballAlleyOopCfg>) {
   const c = config ?? {};
   const sample = useCelebrationSample();
-  const r = resolveStyle({ bgColor: '#0a0a0a', accentColor: '#dc6a1d', accentColor2: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
+  const r = resolveStyle({ bgColor: '#0a0a0a', textColor: '#fff', accentColor: '#dc6a1d', accentColor2: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
   const passer = sample(c.passer, 'PASSER');
   const dunker = sample(c.dunker, 'SHOOTER');
@@ -522,7 +522,7 @@ export interface CelBasketballAndOneCfg extends BaseCfg {
 export function CelBasketballAndOneWidget({ config, live = true, height = 480 }: WidgetProps<CelBasketballAndOneCfg>) {
   const c = config ?? {};
   const sample = useCelebrationSample();
-  const r = resolveStyle({ bgColor: '#1a0e00', accentColor: '#ffd23a', accentColor2: '#dc6a1d', highlightColor: '#dc6a1d', ...c.style });
+  const r = resolveStyle({ bgColor: '#1a0e00', textColor: '#fff', accentColor: '#ffd23a', accentColor2: '#dc6a1d', highlightColor: '#dc6a1d', ...c.style });
   const animOn = r.anim.on && live;
   const player = sample(c.player, 'PLAYER');
   const thump = `${animDurationSec(r.anim.speed, 0.5)}s`;
@@ -590,7 +590,7 @@ export interface CelBasketballTripleDoubleCfg extends BaseCfg {
 export function CelBasketballTripleDoubleWidget({ config, live = true, height = 480 }: WidgetProps<CelBasketballTripleDoubleCfg>) {
   const c = config ?? {};
   const sample = useCelebrationSample();
-  const r = resolveStyle({ bgColor: '#0d0820', accentColor: '#7c3aed', highlightColor: '#7c3aed', ...c.style });
+  const r = resolveStyle({ bgColor: '#0d0820', textColor: '#fff', accentColor: '#7c3aed', highlightColor: '#7c3aed', ...c.style });
   const animOn = r.anim.on && live;
   const player = sample(c.player, 'PLAYER');
   const line = sample(c.line, '24 PTS · 12 REB · 13 AST');

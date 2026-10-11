@@ -81,7 +81,7 @@ export interface CelFootballTouchdownCfg extends BaseCfg {
 export function CelFootballTouchdownWidget({ config, live = true, height = 480 }: WidgetProps<CelFootballTouchdownCfg>) {
   const c = config ?? {};
   const sample = useCelebrationSample();
-  const r = resolveStyle({ bgColor: '#003594', accentColor: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
+  const r = resolveStyle({ bgColor: '#003594', textColor: '#fff', accentColor: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
   const player = sample(c.player, 'PLAYER');
   const distance = sample(c.distance, '67 YD');
@@ -145,7 +145,7 @@ export interface CelFootballPickSixCfg extends BaseCfg {
 export function CelFootballPickSixWidget({ config, live = true, height = 480 }: WidgetProps<CelFootballPickSixCfg>) {
   const c = config ?? {};
   const sample = useCelebrationSample();
-  const r = resolveStyle({ bgColor: '#1a0008', accentColor: '#dc2626', highlightColor: '#dc2626', ...c.style });
+  const r = resolveStyle({ bgColor: '#1a0008', textColor: '#fff', accentColor: '#dc2626', highlightColor: '#dc2626', ...c.style });
   const animOn = r.anim.on && live;
   const player = sample(c.player, 'PLAYER');
   const distance = sample(c.distance, '42 YD RETURN');
@@ -206,7 +206,7 @@ export interface CelFootballFieldGoalCfg extends BaseCfg {
 export function CelFootballFieldGoalWidget({ config, live = true, height = 480 }: WidgetProps<CelFootballFieldGoalCfg>) {
   const c = config ?? {};
   const sample = useCelebrationSample();
-  const r = resolveStyle({ bgColor: '#0a1a14', accentColor: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
+  const r = resolveStyle({ bgColor: '#0a1a14', textColor: '#fff', accentColor: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
   const kicker = sample(c.kicker, 'KICKER');
   const distance = sample(c.distance, '52 YD');
@@ -282,7 +282,7 @@ export interface CelFootballSackCfg extends BaseCfg {
 export function CelFootballSackWidget({ config, live = true, height = 480 }: WidgetProps<CelFootballSackCfg>) {
   const c = config ?? {};
   const sample = useCelebrationSample();
-  const r = resolveStyle({ bgColor: '#1a0d0d', accentColor: '#dc2626', highlightColor: '#dc2626', ...c.style });
+  const r = resolveStyle({ bgColor: '#1a0d0d', textColor: '#fff', accentColor: '#dc2626', highlightColor: '#dc2626', ...c.style });
   const animOn = r.anim.on && live;
   const player = sample(c.player, 'PLAYER');
   const sacks = sample(c.sacks, 9.5);
@@ -352,7 +352,7 @@ export interface CelFootballFirstDownCfg extends BaseCfg {
 export function CelFootballFirstDownWidget({ config, live = true, height = 480 }: WidgetProps<CelFootballFirstDownCfg>) {
   const c = config ?? {};
   const sample = useCelebrationSample();
-  const r = resolveStyle({ bgColor: '#003594', accentColor: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
+  const r = resolveStyle({ bgColor: '#003594', textColor: '#fff', accentColor: '#ffd23a', highlightColor: '#ffd23a', ...c.style });
   const animOn = r.anim.on && live;
   const distance = sample(c.distance, '14 YD');
   const arrowDur = `${animDurationSec(r.anim.speed, 1.6)}s`;
@@ -403,7 +403,7 @@ export interface CelFootballInterceptionCfg extends BaseCfg {
 export function CelFootballInterceptionWidget({ config, live = true, height = 480 }: WidgetProps<CelFootballInterceptionCfg>) {
   const c = config ?? {};
   const sample = useCelebrationSample();
-  const r = resolveStyle({ bgColor: '#0a0008', accentColor: '#22c55e', highlightColor: '#22c55e', ...c.style });
+  const r = resolveStyle({ bgColor: '#0a0008', textColor: '#fff', accentColor: '#22c55e', highlightColor: '#22c55e', ...c.style });
   const animOn = r.anim.on && live;
   const player = sample(c.player, 'PLAYER');
   const count = sample(c.count, 5);
@@ -462,7 +462,7 @@ export interface CelFootballSafetyCfg extends BaseCfg {}
 
 export function CelFootballSafetyWidget({ config, live = true, height = 480 }: WidgetProps<CelFootballSafetyCfg>) {
   const c = config ?? {};
-  const r = resolveStyle({ bgColor: '#dc2626', accentColor: '#fff', highlightColor: '#fff', ...c.style });
+  const r = resolveStyle({ bgColor: '#dc2626', textColor: '#fff', accentColor: '#fff', highlightColor: '#fff', ...c.style });
   const animOn = r.anim.on && live;
   const thump = `${animDurationSec(r.anim.speed, 0.6)}s`;
   const shake = `${animDurationSec(r.anim.speed, 0.6)}s`;
@@ -511,7 +511,7 @@ export interface CelFootballFumbleCfg extends BaseCfg {
 export function CelFootballFumbleRecoveryWidget({ config, live = true, height = 480 }: WidgetProps<CelFootballFumbleCfg>) {
   const c = config ?? {};
   const sample = useCelebrationSample();
-  const r = resolveStyle({ bgColor: '#001a0a', accentColor: '#22c55e', highlightColor: '#22c55e', ...c.style });
+  const r = resolveStyle({ bgColor: '#001a0a', textColor: '#fff', accentColor: '#22c55e', highlightColor: '#22c55e', ...c.style });
   const animOn = r.anim.on && live;
   const player = sample(c.player, 'PLAYER');
   const arrowDur = `${animDurationSec(r.anim.speed, 1.8)}s`;
