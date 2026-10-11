@@ -1,5 +1,6 @@
 import { nativeSharedVideoTarget, buildNativeSharedVideoDescriptor } from './native-shared-video';
-import { buildAutoUpdateReport, modeToOverride, overrideToMode } from '../player-ota/auto-update-report';
+import { buildAutoUpdateReport, modeToOverride, type AutoUpdateOverride } from '../player-ota/auto-update-report';
+import { armScreenApkUpdate, publishScreenRefresh, setScreenAutoUpdateMode } from './screen-commands';
 import { Controller, Post, Get, Put, Delete, Body, Param, Query, Req, Res, UseGuards, Request, HttpException, HttpStatus } from '@nestjs/common';
 import { encodeTargetFromResolutions, pdfDelivery, withheldFromScreens } from '@cms/api-types';
 import { pdfPageBytes, pdfPageManifestItems, pdfScreenShape } from './pdf-page-items';
@@ -4379,36 +4380,20 @@ export class ScreensController {
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   async setAutoUpdate(@Request() req: any, @Param('id') id: string, @Body() body: { mode?: string }) {
     const tenantId = req.user.tenantId;
-    const next = modeToOverride(body?.mode);
-    if (next === undefined) {
+    if (modeToOverride(body?.mode) === undefined) {
       throw new HttpException(
         { code: 'SCREEN_AUTO_UPDATE_MODE_INVALID', message: 'mode must be "on", "off" or "inherit"' },
         HttpStatus.BAD_REQUEST,
       );
     }
-    const screen = await this.prisma.client.screen.findFirst({
-      where: { id, tenantId },
-      select: { id: true, name: true, autoUpdatePlayerOverride: true } as any,
-    }) as any;
-    if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
-    await this.prisma.client.screen.update({
-      where: { id, tenantId },
-      data: { autoUpdatePlayerOverride: next } as any,
+    // One implementation shared with the bulk endpoint (screen-commands.ts).
+    const done = await setScreenAutoUpdateMode(this.prisma, {
+      tenantId,
+      screenId: id,
+      mode: body.mode as AutoUpdateOverride,
+      userId: req.user.id,
     });
-    await this.prisma.client.auditLog.create({
-      data: {
-        action: 'SCREEN_AUTO_UPDATE_SET',
-        targetType: 'screen',
-        targetId: id,
-        tenantId,
-        userId: req.user.id,
-        details: JSON.stringify({
-          screenName: screen.name,
-          from: overrideToMode(screen.autoUpdatePlayerOverride),
-          to: overrideToMode(next),
-        }),
-      },
-    });
+    if (!done) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
     return this.getAutoUpdate(req, id);
   }
 
@@ -4488,43 +4473,20 @@ export class ScreensController {
       `requestedBy=${req.user.userId || req.user.id}`,
     );
 
-    // Set the per-screen force flag — the next update-check from
-    // this kiosk returns the latest APK (gated 30 min).
-    // Sprint 11 Phase A: overrideWindow=true bypasses the tenant's
-    // maintenance window for this one-shot push (emergency hotfix).
-    await this.prisma.client.screen.update({
-      // SEC-009: tenant predicate in the write, matching the read above.
-      where: { id, tenantId: req.user.tenantId },
-      data: {
-        forceApkUpdatePendingAt: new Date(),
-        forceApkUpdateOverrideWindow: overrideWindow,
-        // OTA-02: re-arming a push clears the sticky failure stamp.
-        lastOtaErrorAt: null,
-        lastOtaErrorMessage: null,
-        lastOtaErrorAuthenticated: false,
-      } as any,
-    }).catch((e) => {
-      console.warn(`[OTA ${corrId}] forceApkUpdatePendingAt write FAILED: ${(e as Error).message}`);
-    });
-    console.log(`[OTA ${corrId}] forceApkUpdatePendingAt SET (overrideWindow=${overrideWindow})`);
-
-    const signed = this.signer.signMessage('CHECK_FOR_UPDATES', {
-      scope: 'screen',
-      scopeId: id,
-      tenantId: screen.tenantId,
-      requestedBy: req.user.userId || req.user.id || null,
-      // Embed corrId in the WS payload so the kiosk can stamp it
-      // into ITS logs + later /ota-state POSTs. Closes the loop.
-      corrId,
-    });
-    // Publish on the tenant channel — all kiosks receive, but only the
-    // targeted screen acts on it (the payload includes scopeId).
-    try {
-      await this.redisService.publish(`tenant:${screen.tenantId}`, signed);
-      console.log(`[OTA ${corrId}] WS broadcast PUBLISHED on tenant:${screen.tenantId}`);
-    } catch (e) {
-      console.warn(`[OTA ${corrId}] redis publish FAILED: ${(e as Error).message}`);
-    }
+    // Set the per-screen force flag — the next update-check from this kiosk
+    // returns the latest APK (gated 30 min) — and nudge it over the realtime
+    // path. ONE implementation shared with the bulk endpoint
+    // (screen-commands.ts). Sprint 11 Phase A: overrideWindow=true bypasses
+    // the tenant's maintenance window for this one-shot push.
+    const pushed = await armScreenApkUpdate(
+      { prisma: this.prisma, signer: this.signer, redis: this.redisService },
+      { id, tenantId: screen.tenantId!, name: screen.name },
+      { requestedBy: req.user.userId || req.user.id || null, corrId, overrideWindow },
+    );
+    console.log(
+      `[OTA ${corrId}] forceApkUpdatePendingAt ${pushed.armed ? 'SET' : 'NOT SET'} (overrideWindow=${overrideWindow}) ` +
+      `WS ${pushed.published ? 'PUBLISHED' : 'NOT PUBLISHED'} on tenant:${screen.tenantId}`,
+    );
 
     await this.prisma.client.auditLog.create({
       data: {
@@ -4647,21 +4609,14 @@ export class ScreensController {
     if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
     const corrId = `rw-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     const value = new Date();
-    const signed = this.signer.signMessage('REFRESH_WEB', {
-      scope: 'screen',
-      scopeId: id,
-      tenantId: screen.tenantId,
-      requestedBy: req.user.userId || req.user.id || null,
-      // Single-screen refreshes don't need jitter — they're already
-      // a fleet-of-one. Snappy reload feedback for the operator.
-      jitterMs: 0,
-      corrId,
-    });
-    try {
-      await this.redisService.publish(`tenant:${screen.tenantId}`, signed);
-    } catch (e) {
-      console.warn(`[refresh-web ${corrId}] redis publish failed:`, (e as Error).message);
-    }
+    // ONE implementation shared with the bulk endpoint (screen-commands.ts).
+    // Single-screen refreshes don't need jitter — they're already a
+    // fleet-of-one. Snappy reload feedback for the operator.
+    await publishScreenRefresh(
+      { signer: this.signer, redis: this.redisService },
+      { id, tenantId: screen.tenantId!, name: screen.name },
+      { requestedBy: req.user.userId || req.user.id || null, corrId, jitterMs: 0 },
+    );
     // Same durable ride as the tenant-wide push above — see the long note
     // there. Best-effort; a bookkeeping failure never fails the click.
     await this.recordPushDeployment({

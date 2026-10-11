@@ -323,37 +323,16 @@ export class DisplayController {
       );
     }
 
-    // LIFE-SAFETY: resolve emergency state before dispatching anything that
-    // could darken the panel. Only read for the darkening direction — WAKE,
-    // volume and brightness raises must stay instant and must never depend on
-    // a DB read that could fail.
-    const emergencyHold = isDarkeningAction(body.action, body)
-      ? await resolveEmergencyHold(this.prisma, {
-          id: screen.id,
-          tenantId: screen.tenantId,
-        })
-      : { active: false, source: null };
-
     try {
-      return await this.display.applyAction({
-        screenId: screen.id,
-        tenantId: screen.tenantId,
-        userId: req.user?.id ?? req.user?.userId ?? null,
-        action: body.action,
-        percent: body.percent,
-        revertAfterMs: body.revertAfterMs,
-        allowBlack: body.allowBlack,
-        reason: body.reason,
-        powerTrial,
-        capabilities: screen.displayCapabilities ?? null,
-        // DELIVERY HONESTY (2026-08-25). Off the row we already loaded — no
-        // extra query. This is the server's only evidence that a WS/SSE
-        // channel exists for THIS screen; without it `delivered` could only
-        // ever report whether the SERVER's fan-out was up, which is what
-        // reported success for commands a poll-only panel never received.
-        lastPushConnectedAt: screen.lastPushConnectedAt ?? null,
-        emergencyHold,
-      });
+      // ONE implementation shared with the bulk power endpoint
+      // (screens-bulk.controller.ts) — the emergency interlock, the delivery
+      // honesty and the audit row are identical either way.
+      return await runDisplayControl(
+        { prisma: this.prisma, display: this.display },
+        screen,
+        { userId: req.user?.id ?? req.user?.userId ?? null },
+        { ...body, powerTrial },
+      );
     } catch (e) {
       if (e instanceof DisplayActionUnsupportedError) {
         // 409, not 400: the request is well-formed, it conflicts with the
@@ -400,4 +379,47 @@ export class DisplayController {
     await assertSupportReach(req.user, screen.tenantId); // SUPPORT ACCESS (2026-10-11)
     return screen;
   }
+}
+
+/**
+ * Run ONE display-control action on a screen the caller has ALREADY loaded
+ * through a tenant-scoped (and support-access-checked) read. Shared by
+ * `DisplayController.control` and the bulk power endpoint so neither can drift
+ * from the other.
+ *
+ * LIFE-SAFETY: emergency state is resolved before dispatching anything that
+ * could darken the panel. Only read for the darkening direction — WAKE,
+ * volume and brightness raises must stay instant and must never depend on a
+ * DB read that could fail.
+ *
+ * Throws `DisplayActionUnsupportedError` (the controller answers 409) when the
+ * hardware cannot do it or an emergency hold is active.
+ */
+export async function runDisplayControl(
+  deps: { prisma: PrismaService; display: Pick<DisplayService, 'applyAction'> },
+  screen: { id: string; tenantId: string; displayCapabilities?: unknown; lastPushConnectedAt?: Date | string | number | null },
+  actor: { userId: string | null },
+  body: DisplayControlActionInput & { powerTrial?: boolean },
+) {
+  const emergencyHold = isDarkeningAction(body.action, body)
+    ? await resolveEmergencyHold(deps.prisma, { id: screen.id, tenantId: screen.tenantId })
+    : { active: false, source: null };
+  return deps.display.applyAction({
+    screenId: screen.id,
+    tenantId: screen.tenantId,
+    userId: actor.userId,
+    action: body.action,
+    percent: body.percent,
+    revertAfterMs: body.revertAfterMs,
+    allowBlack: body.allowBlack,
+    reason: body.reason,
+    powerTrial: body.powerTrial === true,
+    capabilities: screen.displayCapabilities ?? null,
+    // DELIVERY HONESTY (2026-08-25). Off the row the caller already loaded —
+    // no extra query. This is the server's only evidence that a WS/SSE
+    // channel exists for THIS screen; without it `delivered` could only ever
+    // report whether the SERVER's fan-out was up.
+    lastPushConnectedAt: screen.lastPushConnectedAt ?? null,
+    emergencyHold,
+  });
 }

@@ -1857,7 +1857,7 @@ function pickApkAsset(
   );
 }
 
-async function resolveLatestReleaseInfo(callerAbi?: string): Promise<ReleaseInfo | null> {
+export async function resolveLatestReleaseInfo(callerAbi?: string): Promise<ReleaseInfo | null> {
   const now = Date.now();
 
   // Fetch + cache the raw release assets if the cache is stale.

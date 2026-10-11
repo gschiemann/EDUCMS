@@ -140,6 +140,9 @@ export const SCOPED_ROUTE_RULES: readonly ScopedRouteRule[] = [
   { methods: ANY, pattern: '/api/v1/screens/pair', check: DENY, why: 'pairing adds a screen outside their scope' },
   { methods: ANY, pattern: '/api/v1/screens/force-update', check: DENY, why: 'updates every screen in the location' },
   { methods: ANY, pattern: '/api/v1/screens/refresh-web', check: DENY, why: 'refreshes every screen in the location' },
+  // Bulk actions (2026-10-11): every screen / group the body names must be
+  // theirs — the controller narrows again per screen.
+  { methods: ['POST'], pattern: '/api/v1/screens/bulk/:action', check: { kind: 'body', requireTarget: true }, why: 'resync / update / power / auto-update for a selection of their screens' },
   { methods: ANY, pattern: '/api/v1/screens/:id/emergency-content', check: DENY, why: 'per-screen emergency content is an emergency setting' },
   { methods: ['PUT', 'DELETE'], pattern: '/api/v1/screens/:id', check: { kind: 'screen', param: 'id' }, why: 'rename / move / remove one of their screens' },
   { methods: ANY, pattern: '/api/v1/screens/:id/**', check: { kind: 'screen', param: 'id' }, why: 'status, power, refresh, content of one of their screens' },

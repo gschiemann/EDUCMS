@@ -62,6 +62,7 @@ import { AuditController } from '../audit/audit.controller';
 import { FleetPulseController } from '../screens/fleet-pulse.controller';
 import { PanicContentController } from '../panic-content/panic-content.controller';
 import { ScreensController } from '../screens/screens.controller';
+import { ScreensBulkController } from '../screens/bulk/screens-bulk.controller';
 import { SportsController } from '../sports/sports.controller';
 import { SportsService } from '../sports/sports.service';
 import { SponsorsService } from '../sports/sponsors.service';
@@ -931,6 +932,26 @@ const MATRIX: Case[] = [
     build: (p) => new ScreensController(p, stubRedis, stubSigner, stubLicense, stubStripe, stubMenu),
     invoke: (c, req) => c.remove(req, 'scr-b'),
   },
+
+  // ── Bulk screen actions (2026-10-11) ──────────────────────────────────
+  // A foreign screen id comes back `skipped: not-found` (the id the caller
+  // supplied is echoed in `screenId`, so the leak scan looks at everything
+  // else in each row); a foreign group is a 404. Nothing foreign is written.
+  ...(['resync', 'update', 'power', 'autoUpdate'] as const).flatMap((h): Case[] => [
+    {
+      name: `screens bulk ${h}: push to another tenant's screen`,
+      controller: ScreensBulkController, handler: h, op: 'write',
+      build: (p) => new ScreensBulkController(p, stubRedis, stubSigner, { applyAction: async () => ({ delivered: true }) } as any),
+      invoke: (c, req) => c[h](req, { screenIds: ['scr-b'], state: 'off', mode: 'on' }),
+      leakScan: (r: any) => (r?.results ?? []).map(({ screenId: _id, ...rest }: any) => rest),
+    },
+    {
+      name: `screens bulk ${h}: push to another tenant's screen group`,
+      controller: ScreensBulkController, handler: h, op: 'write',
+      build: (p) => new ScreensBulkController(p, stubRedis, stubSigner, { applyAction: async () => ({ delivered: true }) } as any),
+      invoke: (c, req) => c[h](req, { screenGroupId: 'grp-b', state: 'off', mode: 'on' }),
+    },
+  ]),
 
   // ── Sports (SEC-009 finish, 2026-09-05) ───────────────────────────────
   // Two of these mint CREDENTIALS rather than return data: `feedCredentials`
