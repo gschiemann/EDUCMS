@@ -4035,7 +4035,9 @@
     "holdingUntil": "屏幕保留至 {time}",
     "returnNow": "立即恢复屏幕",
     "returning": "正在恢复…",
-    "returnFailed": "无法恢复屏幕，请重试。"
+    "returnFailed": "无法恢复屏幕，请重试。",
+    "screensLoading": "正在加载屏幕…",
+    "screensLoadFailed": "无法加载您的屏幕，系统会自动重试。"
   },
   "sportsCelebrate": {
     "title": "自动庆祝",

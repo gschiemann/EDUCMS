@@ -7908,7 +7908,7 @@ function ScheduledAtField({
  * (React Query dedupes by key), the config query fetches once, and the
  * live bits (scheduledAt) ride the existing useGame 4s poll via props.
  */
-function AutoPushCard({
+export function AutoPushCard({
   gameId,
   scheduledAt,
 }: {
@@ -7916,7 +7916,9 @@ function AutoPushCard({
   scheduledAt: string | null;
 }) {
   const { data: cfg } = useAutoPush(gameId);
-  const { data: screens } = useGameScreens(gameId);
+  // DEV-029 (Muse beta): `[]` while the list was still loading read as "No
+  // paired screens yet". Loading and a failed read now say so instead.
+  const { data: screens, isLoading: screensLoading, isError: screensError } = useGameScreens(gameId);
   const set = useSetAutoPush(gameId);
 
   const tPost = useTranslations('sportsPostgame');
@@ -8030,7 +8032,15 @@ function AutoPushCard({
         </p>
       )}
 
-      {list.length === 0 ? (
+      {screensLoading && list.length === 0 ? (
+        <p className="text-xs text-slate-400 mt-2" role="status" data-testid="autopush-screens-loading">
+          {tPost('screensLoading')}
+        </p>
+      ) : screensError && list.length === 0 ? (
+        <p className="text-xs text-amber-700 mt-2" role="status" data-testid="autopush-screens-error">
+          {tPost('screensLoadFailed')}
+        </p>
+      ) : list.length === 0 ? (
         <p className="text-xs text-slate-400 mt-2">
           No paired screens yet — pair a display, then come back to schedule it.
         </p>

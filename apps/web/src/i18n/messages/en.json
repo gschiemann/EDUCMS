@@ -4035,7 +4035,9 @@
     "holdingUntil": "On screens until {time}",
     "returnNow": "Return screens now",
     "returning": "Returning…",
-    "returnFailed": "Couldn't return the screens. Try again."
+    "returnFailed": "Couldn't return the screens. Try again.",
+    "screensLoading": "Loading screens…",
+    "screensLoadFailed": "Couldn't load your screens. It retries on its own."
   },
   "sportsCelebrate": {
     "title": "Automatic celebrations",

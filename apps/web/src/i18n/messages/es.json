@@ -4035,7 +4035,9 @@
     "holdingUntil": "En pantallas hasta las {time}",
     "returnNow": "Devolver las pantallas ahora",
     "returning": "Devolviendo…",
-    "returnFailed": "No se pudieron devolver las pantallas. Inténtalo de nuevo."
+    "returnFailed": "No se pudieron devolver las pantallas. Inténtalo de nuevo.",
+    "screensLoading": "Cargando pantallas…",
+    "screensLoadFailed": "No se pudieron cargar sus pantallas. Se reintenta automáticamente."
   },
   "sportsCelebrate": {
     "title": "Celebraciones automáticas",
