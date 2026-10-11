@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { VERTICAL_ROLE_LABELS } from '@cms/api-types';
 // The sender-identity honesty gate now lives in ONE place (2026-08-03) so the
 // two background alerting services that POST to Resend directly —
 // StorageWatchdogService + EfficiencyAlertingService — apply the exact same
@@ -26,6 +27,11 @@ import {
  * three public helpers (`sendWelcome`, `sendPasswordReset`, `sendUserInvite`),
  * so no call-sites need to change.
  */
+/** Plain role name for mail ("Admin", "Editor") — never the raw enum. */
+export function friendlyRoleLabel(role: string): string {
+  return VERTICAL_ROLE_LABELS.CORPORATE[role] ?? role.toLowerCase().replace(/_/g, ' ');
+}
+
 /** How one dispatch ended — `SENT_UNVERIFIED` is the shared-sender case (see #dispatch). */
 export type EmailDispatchStatus = 'SENT' | 'SENT_UNVERIFIED' | 'FAILED';
 
@@ -46,8 +52,6 @@ export class EmailService {
       `Your VenueOS workspace for ${params.districtName} is ready.`,
       ``,
       `Sign in to get started: ${loginUrl}`,
-      ``,
-      `Tenant slug: ${params.tenantSlug}`,
       ``,
       `— The VenueOS team`,
     ].join('\n');
@@ -82,7 +86,7 @@ export class EmailService {
     const subject = `${params.inviterEmail} invited you to ${params.tenantName} on VenueOS`;
     const acceptUrl = `${this.appUrl}/accept-invite/${encodeURIComponent(params.inviteToken)}`;
     const body = [
-      `${params.inviterEmail} invited you to join ${params.tenantName} on VenueOS as ${params.role}.`,
+      `${params.inviterEmail} invited you to join ${params.tenantName} on VenueOS as ${friendlyRoleLabel(params.role)}.`,
       ``,
       `Accept your invitation and choose a password:`,
       acceptUrl,
@@ -441,17 +445,16 @@ export class EmailService {
   // points cover the lifecycle:
   //
   //   sendBugFiled       — "we got your report, here's the number"
-  //   sendBugFixProposed — "Claude found the cause + has a proposed fix"
-  //   sendBugFixShipped  — "the fix is approved + shipping"
+  //   sendBugFixShipped  — "it's fixed"
+  // (A proposed fix is an internal review step; the customer is never mailed it.)
   //
   // All three are best-effort: the caller MUST swallow errors so an
   // email outage never blocks the bug pipeline. Calls into the same
   // #enqueue that writes to email_logs + dispatches via Resend when
   // configured, otherwise logs.
   //
-  // Subject convention: "[VenueOS bug #abc12def] <action>" — the
-  // short ID is the first 8 chars of the bug UUID (unique enough at
-  // human scale, fits Mail.app subject preview).
+  // Customer copy is plain: no internal links, no diffs/PRs/CI, no AI
+  // wording. The ref is the first 8 chars of the bug UUID.
 
   async sendBugFiled(params: {
     to: string;
@@ -461,27 +464,18 @@ export class EmailService {
     tenantSlug: string | null;
   }): Promise<void> {
     const shortId = params.bugId.slice(0, 8);
-    const subject = `[VenueOS bug #${shortId}] We got your report`;
-    const reviewUrl = `${this.appUrl}/super/bugs/${params.bugId}`;
+    const subject = `Your VenueOS report (ref #${shortId}) — we received it`;
     const body = [
-      `Thanks for reporting that. Your bug is in the queue.`,
-      ``,
-      `Bug ID:   ${params.bugId}`,
-      params.tenantSlug ? `Tenant:   ${params.tenantSlug}` : '',
-      params.pathname ? `Page:     ${params.pathname}` : '',
+      `Thanks — we received your report (ref #${shortId}) and our team is on it.`,
       ``,
       params.description ? `What you wrote:` : '',
       params.description ? `> ${params.description}` : '',
       ``,
-      `We captured a screenshot, your recent actions, any console errors,`,
-      `and the relevant audit-log entries automatically. Review the full`,
-      `bundle here:`,
-      reviewUrl,
+      `We'll email you again when it's fixed. No action is needed from you.`,
       ``,
-      `You'll get another email when the fix is proposed, and a final one`,
-      `when it ships. No action required from you right now.`,
+      `Questions? Reply to this email or write to support@venue-os.app.`,
       ``,
-      `— VenueOS`,
+      `— The VenueOS team`,
     ]
       .filter((l) => l !== '')
       .join('\n');
@@ -594,60 +588,24 @@ export class EmailService {
     return this.#enqueue({ to: params.to, subject, body, kind: 'SUPPORT_ACCESS_BREAK_GLASS' });
   }
 
-  async sendBugFixProposed(params: {
-    to: string;
-    bugId: string;
-    rootCause: string;
-    confidence: number;
-    filesAffectedCount: number;
-  }): Promise<void> {
-    const shortId = params.bugId.slice(0, 8);
-    const subject = `[VenueOS bug #${shortId}] Fix proposed — please review`;
-    const reviewUrl = `${this.appUrl}/super/bugs/${params.bugId}`;
-    const trimmedCause =
-      params.rootCause.length > 600 ? params.rootCause.slice(0, 597) + '…' : params.rootCause;
-    const body = [
-      `We have a proposed fix for your bug.`,
-      ``,
-      `Root cause (${params.confidence}% confidence):`,
-      trimmedCause,
-      ``,
-      `Files affected: ${params.filesAffectedCount}`,
-      ``,
-      `Review the proposed diff and approve here:`,
-      reviewUrl,
-      ``,
-      `— VenueOS`,
-    ].join('\n');
-    await this.#enqueue({ to: params.to, subject, body, kind: 'BUG_FIX_PROPOSED' });
-  }
-
   async sendBugFixShipped(params: {
     to: string;
     bugId: string;
     description: string | null;
-    prUrl: string | null;
+    prUrl?: string | null;
   }): Promise<void> {
     const shortId = params.bugId.slice(0, 8);
-    const subject = `[VenueOS bug #${shortId}] Fix is shipping`;
-    const reviewUrl = `${this.appUrl}/super/bugs/${params.bugId}`;
+    const subject = `Your VenueOS report (ref #${shortId}) — it's fixed`;
     const body = [
-      `Your bug is fixed.`,
+      `Good news — the problem you reported (ref #${shortId}) is fixed.`,
       ``,
       params.description ? `What you reported:` : '',
       params.description ? `> ${params.description}` : '',
       ``,
-      params.prUrl ? `Pull request:` : '',
-      params.prUrl ? params.prUrl : '',
+      `Refresh the page and try again. If anything still looks wrong, reply to`,
+      `this email or write to support@venue-os.app and we'll look right away.`,
       ``,
-      `The fix is going through CI now. It will be live within a few`,
-      `minutes of the next deploy. Refresh the page once you see the new`,
-      `commit on /super and re-test.`,
-      ``,
-      `Full audit trail (capture bundle + AI analysis + your approval):`,
-      reviewUrl,
-      ``,
-      `— VenueOS`,
+      `— The VenueOS team`,
     ]
       .filter((l) => l !== '')
       .join('\n');

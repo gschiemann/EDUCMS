@@ -137,3 +137,81 @@ describe('EmailService — sign-in code + new sign-in notice', () => {
     expect(rows[0].kind).toBe('NEW_SIGN_IN');
   });
 });
+
+// 2026-10-11 - customer-facing mail must read like an established company:
+// no internal links, no dev/AI vocabulary, friendly role names.
+describe('EmailService - customer-facing copy', () => {
+  const saved = {
+    RESEND_API_KEY: process.env.RESEND_API_KEY,
+    EMAIL_FROM: process.env.EMAIL_FROM,
+    APP_PUBLIC_URL: process.env.APP_PUBLIC_URL,
+  };
+  let fetchMock: jest.Mock;
+
+  function service(): EmailService {
+    const prisma = {
+      client: {
+        emailLog: {
+          create: jest.fn(async ({ data }: any) => ({ id: 'log-1', ...data })),
+          update: jest.fn(async () => ({})),
+        },
+      },
+    };
+    return new EmailService(prisma as unknown as PrismaService);
+  }
+  const sent = () => JSON.parse((fetchMock.mock.calls[0] as any[])[1].body) as { subject: string; text: string };
+
+  beforeEach(() => {
+    process.env.RESEND_API_KEY = 're_test_not_real';
+    process.env.EMAIL_FROM = 'VenueOS <noreply@venueos.example>';
+    process.env.APP_PUBLIC_URL = 'https://app.example.test';
+    fetchMock = jest.fn(async () => ({ ok: true, text: async () => '' }));
+    (global as any).fetch = fetchMock;
+  });
+  afterEach(() => {
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+    delete (global as any).fetch;
+  });
+
+  const INTERNAL = /\/super\b|diff|pull request|\bPR\b|\bCI\b|approve|confidence|automated|Claude|\bAI\b/i;
+
+  it('bug received: a plain thank-you with the ref, and nothing internal', async () => {
+    await service().sendBugFiled({
+      to: 'a@b.test', bugId: 'abcdef12-0000', description: 'The page is blank', pathname: '/x', tenantSlug: 'acme',
+    });
+    const { subject, text } = sent();
+    expect(text).toContain('we received your report (ref #abcdef12) and our team is on it');
+    expect(text).toContain('The page is blank');
+    expect(subject + text).not.toMatch(INTERNAL);
+    expect(text).not.toContain('app.example.test');
+  });
+
+  it('bug fixed: says it is fixed, no PR link or internal vocabulary', async () => {
+    await service().sendBugFixShipped({
+      to: 'a@b.test', bugId: 'abcdef12-0000', description: 'The page is blank', prUrl: 'https://example.test/pull/1',
+    });
+    const { subject, text } = sent();
+    expect(subject).toContain("it's fixed");
+    expect(text).not.toContain('example.test/pull');
+    expect(subject + text).not.toMatch(INTERNAL);
+  });
+
+  it('invite shows a friendly role, not the enum', async () => {
+    await service().sendUserInvite({
+      to: 'a@b.test', inviterEmail: 'boss@b.test', tenantName: 'Acme', role: 'SCHOOL_ADMIN', inviteToken: 't',
+    });
+    const { text } = sent();
+    expect(text).toContain('as Admin.');
+    expect(text).not.toContain('SCHOOL_ADMIN');
+  });
+
+  it('welcome does not print the tenant slug', async () => {
+    await service().sendWelcome({ to: 'a@b.test', districtName: 'Acme', tenantSlug: 'acme-secret-slug' });
+    const { text } = sent();
+    expect(text).not.toMatch(/slug/i);
+    expect(text).not.toContain('acme-secret-slug');
+  });
+});

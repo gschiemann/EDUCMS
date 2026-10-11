@@ -94,7 +94,7 @@ export class MusicController {
     if (!teamId) {
       throw new ServiceUnavailableException({
         code: 'MUSIC_APPLE_NOT_CONFIGURED',
-        message: 'Apple Music for Business is not configured for this deploy. The partnership / developer-token signing chain is pending — contact sales@venueos.com for activation status.',
+        message: 'Apple Music for Business is not configured for this deploy. The partnership / developer-token signing chain is pending — contact sales@venue-os.app for activation status.',
       });
     }
     // Apple Music's developer-token flow is signed JWT not OAuth —

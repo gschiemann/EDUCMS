@@ -27,39 +27,21 @@ export interface BugFixProposedNotifyInput {
 }
 
 /**
- * Look up the reporter's email from their user row and send the
- * "fix proposed" notification. Fire-and-forget by design — never
- * awaited by callers in a way that can fail the caller's primary
- * operation (persisting the PROPOSED status). Swallows every error
- * itself (lookup failure, missing email, send failure) and logs via
- * the caller's Logger instance.
+ * Customer-facing "fix proposed" notification — intentionally sends nothing
+ * (2026-10-11): proposals are an internal review step. Never throws.
  */
 export function notifyBugFixProposed(
-  prisma: PrismaService,
-  email: EmailService,
+  _prisma: PrismaService,
+  _email: EmailService,
   logger: Logger,
   input: BugFixProposedNotifyInput,
 ): void {
-  if (!input.reporterUserId) return;
-  // ten-ok: `reporterUserId` is Bug.userId — a database foreign key to the account
-  // that filed the bug, and the read returns that account's email ONLY, to notify it.
-  // This is a fire-and-forget notifier with no request actor and no caller tenant;
-  // the id is never taken from a request.
-  prisma.client.user
-    .findUnique({ where: { id: input.reporterUserId }, select: { email: true } })
-    .then((reporter) => {
-      if (!reporter?.email) return;
-      return email.sendBugFixProposed({
-        to: reporter.email,
-        bugId: input.bugId,
-        rootCause: input.rootCause,
-        confidence: input.confidence,
-        filesAffectedCount: input.filesAffectedCount,
-      });
-    })
-    .catch((e: any) =>
-      logger.warn(
-        `[bug-email] sendBugFixProposed(${input.bugId}) failed: ${e?.message ?? e}`,
-      ),
-    );
+  // A proposed fix is an INTERNAL review step (root cause, confidence, diff).
+  // The reporting customer is told two things only: "we received your report"
+  // (sendBugFiled) and "it's fixed" (sendBugFixShipped). Owner alerts for
+  // proposals go through the SUPER_ADMIN paths, never this one. Kept as a
+  // named no-op so both call sites stay identical and the intent is explicit.
+  logger.debug(
+    `[bug-email] fix proposed for ${input.bugId}: reporter not emailed (internal review step)`,
+  );
 }

@@ -142,6 +142,9 @@ export function acceptMultipartFile(file: { originalname?: string; mimetype: str
 export const MAX_MULTIPART_FILE_SIZE = 500 * 1024 * 1024;
 export const MAX_DIRECT_FILE_SIZE = 2 * 1024 * 1024 * 1024 - 1;
 /** Kept for callers of the old name: the multipart (RAM-bound) ceiling. */
+/** What an operator reads when storage refuses a save. The raw storage error goes to the log only. */
+export const UPLOAD_SAVE_FAILED_MESSAGE =
+  "We couldn't save that file. Please try again, and contact support if it keeps happening.";
 const MAX_ASSET_FILE_SIZE = MAX_MULTIPART_FILE_SIZE;
 // Per-type caps (Supabase egress hardening 2026-05-23). Signage content
 // has a sweet spot — 1080p H.264 at 5 Mbps is broadcast-tier on a wall
@@ -1067,7 +1070,8 @@ export class AssetsController {
     try {
       fileUrl = await this.storage.upload(storagePath, safeBuffer, file.mimetype);
     } catch (err: any) {
-      throw new HttpException({ code: 'ASSET_EMERGENCY_UPLOAD_FAILED', message: `Emergency upload failed: ${err.message}` }, HttpStatus.INTERNAL_SERVER_ERROR);
+      this.logger.error(`emergency upload storage failure (ASSET_EMERGENCY_UPLOAD_FAILED): ${err?.message ?? err}`);
+      throw new HttpException({ code: 'ASSET_EMERGENCY_UPLOAD_FAILED', message: UPLOAD_SAVE_FAILED_MESSAGE }, HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
     const fileHash = createHash('sha256').update(safeBuffer).digest('hex');
@@ -1118,7 +1122,8 @@ export class AssetsController {
     try {
       signed = await this.storage.createSignedUploadUrl(storagePath);
     } catch (err: any) {
-      throw new HttpException({ code: 'ASSET_PRESIGN_FAILED', message: `Unable to prepare upload: ${err.message}` }, HttpStatus.INTERNAL_SERVER_ERROR);
+      this.logger.error(`prepare upload storage failure (ASSET_PRESIGN_FAILED): ${err?.message ?? err}`);
+      throw new HttpException({ code: 'ASSET_PRESIGN_FAILED', message: UPLOAD_SAVE_FAILED_MESSAGE }, HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
     // 2026-09-23 — RESUMABLE (TUS) upload for large files. The browser sends
@@ -1913,7 +1918,8 @@ export class AssetsController {
     try {
       fileUrl = await this.storage.upload(storagePath, uploadBuf, uploadMime);
     } catch (err: any) {
-      throw new HttpException({ code: 'ASSET_UPLOAD_FAILED', message: `Upload failed: ${err.message}` }, HttpStatus.INTERNAL_SERVER_ERROR);
+      this.logger.error(`upload storage failure (ASSET_UPLOAD_FAILED): ${err?.message ?? err}`);
+      throw new HttpException({ code: 'ASSET_UPLOAD_FAILED', message: UPLOAD_SAVE_FAILED_MESSAGE }, HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
     // SHA-256 hash so the offline-cache Service Worker can detect when an

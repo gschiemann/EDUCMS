@@ -20,6 +20,7 @@ import { HttpException, HttpStatus } from '@nestjs/common';
 import {
   AssetsController,
   COMPLETE_UPLOAD_REPLAY_WINDOW_MS,
+  UPLOAD_SAVE_FAILED_MESSAGE,
 } from './assets.controller';
 import {
   mintUploadRenewTicket,
@@ -173,6 +174,28 @@ describe('presign — resumable descriptor + renew ticket + per-type ceiling', (
     expect(typeof res.renewTicket).toBe('string');
     // The browser gets the one-object token — never a key.
     expect(JSON.stringify(res)).not.toMatch(/service_role|SUPABASE_SERVICE/i);
+  });
+
+  it('a storage failure at presign gives the operator a plain message, never the raw storage error (2026-10-11)', async () => {
+    const storage = makeStorage({
+      createSignedUploadUrl: jest.fn(async () => {
+        throw new Error('StorageApiError: bucket "assets" row-level security 403 at https://x.supabase.co');
+      }),
+    });
+    const { controller } = makeController(storage);
+    const err = await expectHttp(
+      () =>
+        controller.presignUpload(req() as any, {
+          filename: 'a.jpg',
+          contentType: 'image/jpeg',
+          size: 3 * MB,
+        }),
+      HttpStatus.INTERNAL_SERVER_ERROR,
+      'ASSET_PRESIGN_FAILED',
+    );
+    const message = String(err.getResponse().message);
+    expect(message).toBe(UPLOAD_SAVE_FAILED_MESSAGE);
+    expect(message).not.toMatch(/supabase|bucket|StorageApiError|row-level/i);
   });
 
   it('an image keeps its 25 MB ceiling in the response', async () => {
