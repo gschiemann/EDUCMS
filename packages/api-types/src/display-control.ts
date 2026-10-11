@@ -105,6 +105,8 @@ export type DisplayBrightnessMechanism =
 export type DisplayBlankMechanism =
   | 'vendor-recipe'
   | 'device-admin'
+  // The player's "VenueOS sleep" accessibility service (2026-10-11).
+  | 'accessibility-lock'
   | 'screen-timeout'
   | 'software-dim'
   | 'device-owner'
