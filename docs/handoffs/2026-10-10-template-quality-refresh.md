@@ -106,7 +106,11 @@ Detailed reports are committed under `docs/research/2026-10-10-template-flagship
 
 ## Release state
 
-Implementation is integrated locally on `codex/template-flagship-refresh`, including upstream master `1a7e2d16`. Not yet pushed or verified live. Final CI, deployment, commit and test status will be appended after verification. Earlier editor usability work is already live; this design refresh is a separate release.
+Implementation is integrated with upstream master 1a7e2d16. Final local verification: **752/752 production-build Chromium/WebKit cases pass**, comprising 686 discovered media compatibility cases, 40 real editor workflows, 10 font cases, 8 repeat-restoration and 8 source/crop/poster-restoration cases. Six new-source hot-zone checks pass. API catalog/exemplar suites pass 144/144; poster unit tests pass 8/8. Final pnpm preflight passes after the holiday-ready correction. All 285 actual gallery captures completed with zero failures; source provenance is fresh, all 58 registered portrait preview URLs have 450×800 captures, and all 343 HTML companions / 285 regular click bridges are present. Inset guard: zero confirmed landmines; unchanged 92 safe / 5 conservative review cases.
+
+An intermediate 750-case run passed 749 and exposed a holiday initial-image race. Repeated isolated flows passed, then the renderer was corrected to re-flush media on companion readiness. A delayed-companion regression case was added; the final 752-case run above passes against the rebuilt application. This failure is preserved in the evidence logs rather than called a clean run.
+
+Push/CI/production verification is the remaining release step. The earlier editor usability release is already live. Final release evidence will be recorded alongside this report after checking the deployed source assets and both platform health and CI status.
 
 ## Additional scope — catalog gaps (2026-10-11)
 
@@ -123,4 +127,3 @@ Distinct pairings: Barlow Condensed / Manrope / IBM Plex Mono for the service up
 Next evidence-backed template gaps, in priority order: Retail Collection & Returns / Service Desk; First Visit / Appointment Arrival Guide; Public Guest Essentials for hospitality (Wi-Fi, checkout, service/shuttle information and help). These differ from offered pickup menus, interactive kiosks, normal-hours boards and generic wayfinders. Additional candidates such as accessible museum visitor guides remain in the assessment reports. No missing workflow is called completed merely because a similar-looking template exists.
 
 Detailed domain assessments and final build reports are committed in docs/research/2026-10-11-template-gaps/. Agent findings are preserved as dated evidence; the care agent’s inherited one-row repeater finding is resolved by the subsequent lead integration. The Service Update report also identifies an existing media-focal-position gap: shared Fit/Rotate/Replace work, while arbitrary focal positioning is not currently wired. That separate enhancement remains open.
-
