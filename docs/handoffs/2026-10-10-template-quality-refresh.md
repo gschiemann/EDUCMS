@@ -1,6 +1,6 @@
 # Template quality refresh — Claude handoff
 
-Scope: a full template-library inventory and visual baseline, followed by a verified first release batch. This is not a claim that all 447 offered presets have been rebuilt. Real infrastructure, emergency, identity and billing audits are outside this template-design task. Use the Standard Audit Surface checklist in CLAUDE.md as the domain map; coverage below distinguishes the design, UX and functionality lenses.
+Scope: a full template-library inventory and visual baseline, followed by a verified first release batch. This is not a claim that all 453 offered presets have been rebuilt. Real infrastructure, emergency, identity and billing audits are outside this template-design task. Use the Standard Audit Surface checklist in CLAUDE.md as the domain map; coverage below distinguishes the design, UX and functionality lenses.
 
 ## Audit surface coverage
 
@@ -21,7 +21,7 @@ C = covered within this template batch. D = deferred because the domain is outsi
 | 11 Billing | D | D | D | Existing upstream work integrated, not authored here |
 | 12 Design imports | D | D | D | No import changes |
 | 13 Public alerts | D | D | D | No alert changes |
-| 14 Multi-vertical templates | C | C | C | All catalog families inventoried; 57 HTML boards rebuilt |
+| 14 Multi-vertical templates | C | C | C | All catalog families inventoried; 57 boards rebuilt and 3 new workflows |
 | 15 Browsers / Chromium 83 | C | C | P | Chromium/WebKit; compatible companion build, no physical hardware qualification |
 | 16 Forensic / audit | P | P | P | Durable reports and evidence; no privileged endpoint changes |
 | 17 Operations / DX | C | C | C | Worktree isolation, checkpoint commits, preview provenance and build checks |
@@ -57,9 +57,10 @@ All **1,802 original DOM text keys and 47 original image-slot keys** in the 57 r
 ## Editor and shared runtime cleanup
 
 - Image, Video and Text remain at the top of the quick actions and curated widget lists from the earlier shipped editor release. Blank and built-in templates use the same visible Replace / Fit / Rotate controls, natural source proportions, gestures, locks, Undo/Redo and save behavior.
-- All 282 regular and 58 holiday HTML sources have the additive V2 media companion. Replacing an image inside a child img now changes that image. Fit/rotation reapplies after legacy painters finish, including WebKit's message-listener ordering. Saved fits override legacy important logo rules; clearing them restores authored fit declarations.
+- All 285 regular and 58 holiday HTML sources have the additive V2 media companion. Replacing an image inside a child img now changes that image. Fit/rotation reapplies after legacy painters finish, including WebKit's message-listener ordering. Saved fits override legacy important logo rules; clearing them restores authored fit declarations.
 - The companion loads all 89 authored/toolbar Google-font families inside the sandbox when selected through field styles, theme edits or brand controls. Fonts loaded in the editor parent are not mistaken for iframe resources.
 - Holiday image slots are discovered from the selected grade/design/orientation. They now support the same media selection and replacement controls, removal/restoration, Undo/Redo, save and reload. Holiday field caches include grade, variant, design and orientation so alternates use their actual fields.
+- Repeating-list restoration now retains original row blueprints after shrinking to one row, restores distinct defaults and saved text when growing again, preserves the reduced-list layout on repeated updates, and attaches click-to-edit handlers to restored rows. Both the new care-services guide and an existing events board are covered in both browsers/orientations. Each board retains its authored row-capacity limit.
 - Generic V15 injection covers the full generic corpus, including canonical brand color aliases and local clock/date pinning. Menu/POS applyMenu and kiosk bridges are retained. Saved operator font sizes and brand colors survive local fitting/theme mutations.
 - School period-status updates no longer trigger a self-sustaining MutationObserver loop. Completed periods remain readable, and default fake period highlighting is removed.
 - Christmas counters use editable dates, validate actual calendar days, handle recurring leap days and local-day/DST boundaries, and honor manual pins. Older long saved ticker text gets bounded scrolling instead of tiny type or truncation.
@@ -70,7 +71,7 @@ All **1,802 original DOM text keys and 47 original image-slot keys** in the 57 r
 
 Handcrafted menu V5 applyMenu functions remain byte-identical. Six bar menu boards and the representative full-service/wine flows retain price and supported description updates, unavailable row treatment, readable sold-out labels and restock restoration. Existing description-key dialect limits remain: old .d/.desc bindings are supported; legacy .r/.nm/.pr conventions are not represented as newly completed provider integration. No fake POS data or prices were added to live provider widgets.
 
-Kiosk engines retain their current screen while media changes arrive through messages. Approved AI references remain the same 11 exemplars; new candidates were not registered as user-approved designs. Source hashes are regenerated after source changes. Gallery posters are regenerated from actual renders and recorded with source hashes, with a new poster cache version. The generator now recurses all six roots, including custom boards, and uses the gym runtime's documented preview mode.
+Kiosk engines retain their current screen while media changes arrive through messages. Approved AI references remain the same 11 exemplars; new candidates were not registered as user-approved designs. Source hashes are regenerated after source changes. Gallery posters are regenerated from actual renders and recorded with source hashes, with a new poster cache version. The generator recurses all six roots, including custom boards, uses the gym runtime's documented preview mode, and derives required portrait captures from the full preset registry. Poster lookup accepts both orientation=portrait and o=portrait. This closes 11 existing short-alias portrait preview gaps as well as supplying the new three portrait previews. Native portrait-only sources receive portrait-shaped base captures.
 
 ## Verification
 
@@ -87,13 +88,13 @@ Completed local evidence includes:
 - Christmas: 48 live, frozen, saved-edit and restored-old-copy cases, including dates, timers, fonts, colors, every media slot and click selection.
 - Holiday bridge 193 assertions, K-12 menu/backlog canaries and kiosk shim checks.
 - Full corpus media replacement/fit/rotation checks and font/editor E2E against the production build; final counts and status appended below.
-- Click-editability sweep: all 282 regular boards; inset serialization guard clean. Full `pnpm preflight` passes after refreshing local generated Prisma types to match upstream master and removing stale generated dev-route types from the audit fixture.
+- Click-editability sweep: all 285 regular boards; inset serialization guard clean. Full `pnpm preflight` passes after refreshing local generated Prisma types to match upstream master and removing stale generated dev-route types from the audit fixture.
 
 The wider repeating-list growth diagnostic reported **250 failures across 244 detected groups**. Its first 40 printed failures are in unchanged designs; the full set needs classification before attributing failures to this release. This result is retained as a library gap, and is not called a pass. This batch does not promise arbitrary extra rows will fit every layout. Default authored rows and supported field edits are the validated behavior.
 
 ## Remaining library work
 
-The inventory is 482 source presets, 19 retired and 16 quarantined, leaving 447 offered presets: 151 native and 296 external presets using 241 distinct HTML URLs. This release targets 57 source designs plus 24 celebration contrast variants. Remaining older native layouts, other holiday variants and unreworked industry boards need subsequent individual design passes. Repeating-list growth needs a dedicated compatibility pass. Retired/quarantined templates stay excluded until their defects are rebuilt and verified. Newly created source mockups are self-reviewed candidates, not user-approved flagship exemplars.
+The current inventory is 488 source presets, 19 retired and 16 quarantined, leaving 453 offered presets: 151 native and 302 external presets using 244 distinct HTML URLs. The previous inventory was 482/447 with 241 HTML URLs. This release rebuilds 57 existing source designs, creates three new source designs / six offered orientation presets, and repairs 24 celebration contrast variants. Remaining older native layouts, other holiday variants and unreworked industry boards need subsequent individual design passes. Arbitrary repeating-list growth beyond authored capacity still needs a dedicated compatibility pass; the one-row restoration defect is fixed in the shared generic runtime. Retired/quarantined templates stay excluded until their defects are rebuilt and verified. Newly created source mockups are self-reviewed candidates, not user-approved flagship exemplars.
 
 ## Durable evidence and recovery
 
@@ -103,8 +104,21 @@ Detailed reports are committed under `docs/research/2026-10-10-template-flagship
 
 ## Release state
 
-Implementation is integrated locally on `codex/template-flagship-refresh`, including upstream master `115d27b7`. Not yet pushed or verified live. Final CI, deployment, commit and test status will be appended after verification. Earlier editor usability work is already live; this design refresh is a separate release.
+Implementation is integrated locally on `codex/template-flagship-refresh`, including upstream master `1a7e2d16`. Not yet pushed or verified live. Final CI, deployment, commit and test status will be appended after verification. Earlier editor usability work is already live; this design refresh is a separate release.
 
 ## Additional scope — catalog gaps (2026-10-11)
 
-The user requested new templates for major missing workflows. Three domain assessments are underway, covering the offered native and HTML catalogs. New sources will receive both landscape and portrait preset registrations, real captures, and the same editable text/media/font contracts. This is additional work after the 57-board refresh; no new template has yet been registered.
+Compared offered native and HTML alternatives before adding these three workflows. Each has an independent portrait composition, large editable copy, four editable font roles, palette controls, logo and photo slots, and both gallery orientations. All nine concept studies, source authoring and browser evidence are preserved on Desktop.
+
+| New workflow | Preset IDs | Source | Use case |
+|---|---|---|---|
+| Service Update / Temporary Closure | preset-sig-corporate-20, plus -portrait | signage/corporate/20-service-update.html | Affected location, effective window, alternative route, reopening estimate, help and operator-set update time; offered across industries |
+| Care Services & Booking Guide | preset-sig-clinic-02, plus -portrait | signage/clinic/02-services-booking-guide.html | Service descriptions, duration, fee/qualifier, reception, phone and online booking instructions; healthcare gallery |
+| Graduation / Commencement Guest Guide | preset-school-commencement-guide, plus -portrait | school/commencement-guest-guide.html | Ceremony facts, four programme steps, guest parking, accessible entrance and programme address; school events |
+
+Distinct pairings: Barlow Condensed / Manrope / IBM Plex Mono for the service update, Lora / Manrope / IBM Plex Mono for care services, and DM Serif Display / Outfit / IBM Plex Mono for commencement. Body copy keeps its 60px floor and supporting copy its 50px floor after fitting; explicit operator font sizes remain absolute. The care guide intentionally caps at three rows. Manual fees, contact instructions, service statuses and programme times are operator-authored; no booking, payment, emergency or live service-status integration was invented.
+
+Next evidence-backed template gaps, in priority order: Retail Collection & Returns / Service Desk; First Visit / Appointment Arrival Guide; Public Guest Essentials for hospitality (Wi-Fi, checkout, service/shuttle information and help). These differ from offered pickup menus, interactive kiosks, normal-hours boards and generic wayfinders. Additional candidates such as accessible museum visitor guides remain in the assessment reports. No missing workflow is called completed merely because a similar-looking template exists.
+
+Detailed domain assessments and final build reports are committed in docs/research/2026-10-11-template-gaps/. Agent findings are preserved as dated evidence; the care agent’s inherited one-row repeater finding is resolved by the subsequent lead integration. The Service Update report also identifies an existing media-focal-position gap: shared Fit/Rotate/Replace work, while arbitrary focal positioning is not currently wired. That separate enhancement remains open.
+

@@ -233,7 +233,7 @@ rely on that value for anything reachable from the internet.
 | **Schedule** | When/where a playlist plays | `id`, `tenantId`, `playlistId`, `screenId|screenGroupId`, `startTime`/`endTime`, `daysOfWeek`, `timeStart`/`timeEnd`, `priority`, `isActive` |
 | **Asset** | Image, video, or document file | `id`, `tenantId`, `uploadedByUserId`, `folderId`, `fileUrl`, `mimeType`, `status` (PENDING_APPROVAL, APPROVED) |
 | **AssetFolder** | Hierarchical asset organization | `id`, `tenantId`, `parentId`, `name` |
-| **Template** | Screen layout (482 system presets + custom — see Template System for how to re-derive) | `id`, `name`, `description`, `isSystem`, `screenWidth`/`screenHeight`, `bgColor`/`bgGradient`/`bgImage`, `zones[]` (TemplateZone[]) |
+| **Template** | Screen layout (488 system presets + custom — see Template System for how to re-derive) | `id`, `name`, `description`, `isSystem`, `screenWidth`/`screenHeight`, `bgColor`/`bgGradient`/`bgImage`, `zones[]` (TemplateZone[]) |
 | **TemplateZone** | Widget region in a template | `id`, `templateId`, `name`, `widgetType`, `x`/`y`/`width`/`height` (% coords), `zIndex`, `defaultConfig` |
 | **AuditLog** | Immutable activity log | `id`, `tenantId`, `userId`, `action`, `targetType`, `targetId`, `details`, `createdAt` |
 
@@ -601,24 +601,26 @@ old blind 80 ms-lead seek looped forever on slow-seeking panels and froze them. 
 
 ## Template System
 
-Templates define screen layouts using **482 system presets** (re-derived 2026-10-04) plus custom operator-created templates.
+Templates define screen layouts using **488 system presets** (re-derived 2026-10-11) plus custom operator-created templates.
 
 ⚠️ **This file said "17 system presets" until 2026-09-11 — it was wrong by 27×, and it is the
 first thing every agent and every external auditor reads.** The 17 below are only the original
-K-12 core. The real catalogue is **SEVEN** preset files under `apps/api/src/templates/`, unioned
-into `ALL_PRESETS` by `ensure-system-presets.ts:19-27` — that union, not `system-presets.ts`
+K-12 core. The real catalogue uses **seven top-level preset packs** under `apps/api/src/templates/`,
+unioned into `ALL_PRESETS` by `ensure-system-presets.ts`. Two additional source files are
+spread into the system pack — that union, not `system-presets.ts`
 alone, is what seeds and what the gallery serves:
 
 | file | export | count |
 |---|---|---|
-| `system-presets.ts` | `SYSTEM_TEMPLATE_PRESETS` | **370** (includes the 14 below) |
-| `homebuilder-presets.ts` | `HOMEBUILDER_TEMPLATE_PRESETS` | 14 (spread into the line above) |
+| `system-presets.ts` | `SYSTEM_TEMPLATE_PRESETS` | **376** (includes the 14 Homebuilder and 6 workflow entries below) |
+| `homebuilder-presets.ts` | `HOMEBUILDER_TEMPLATE_PRESETS` | 14 (spread into the system pack) |
+| `gap-presets.ts` | `GAP_TEMPLATE_PRESETS` | 6 (three workflows × two orientations; spread into the system pack) |
 | `sports-presets.ts` | `SPORTS_TEMPLATE_PRESETS` | 44 |
 | `fitness-presets.ts` | `FITNESS_TEMPLATE_PRESETS` | 25 |
 | `restaurant-presets.ts` | `RESTAURANT_TEMPLATE_PRESETS` | 21 |
 | `retail-presets.ts` / `worship-presets.ts` | `RETAIL_` / `WORSHIP_TEMPLATE_PRESETS` | 8 each |
 | `bar-presets.ts` | `BAR_TEMPLATE_PRESETS` | 6 |
-| | **TOTAL (unique ids)** | **482** |
+| | **TOTAL (unique ids)** | **488** |
 
 **Re-derive it rather than trusting the table** — `SYSTEM_TEMPLATE_PRESETS` is a *computed*
 array (`system-presets.ts:3349` filters `RAW_SYSTEM_PRESETS` for retired widget types, then
@@ -637,8 +639,8 @@ for(const f of fs.readdirSync(dir).filter(f=>/-presets\.ts$/.test(f)&&!f.startsW
 }
 console.log(String(ids.size).padStart(4),"UNIQUE ids (the catalogue)");'
 ```
-(Count UNIQUE ids, not the sum: `HOMEBUILDER_TEMPLATE_PRESETS` is also spread into
-`SYSTEM_TEMPLATE_PRESETS`, so the per-file numbers add up to 14 more than the catalogue. The
+(Count UNIQUE ids, not the sum: Homebuilder and workflow arrays are also spread into
+`SYSTEM_TEMPLATE_PRESETS`, so the per-file numbers add up to 20 more than the catalogue. The
 previous form of this command compiled each file in isolation and broke on 2026-10-01 when
 `system-presets.ts` gained a runtime import — it printed 126.)
 
@@ -646,19 +648,19 @@ previous form of this command compiled each file in isolation and broke on 2026-
 
 There are **three** template-editing architectures; do not confuse them:
 1. **React-zone presets** — zones rendered by `WidgetRenderer`; edited field-by-field in `PropertiesPanel`.
-2. **EXTERNAL_HTML boards** — the **282** self-contained HTML files under `apps/web/public/templates/{custom,fitness,hs,kiosk,school,signage}/`. Each is a full 3840×2160 (or 1920×1080 kiosk) document rendered in a **null-origin sandboxed `src` iframe** (`allow-scripts`, NO `allow-same-origin`). Because React **cannot reach into that iframe**, all editing must go through a **shim baked into the HTML file**.
+2. **EXTERNAL_HTML boards** — the **285** self-contained HTML files under `apps/web/public/templates/{custom,fitness,hs,kiosk,school,signage}/`. Each is a full 3840×2160 (or 1920×1080 kiosk) document rendered in a **null-origin sandboxed `src` iframe** (`allow-scripts`, NO `allow-same-origin`). Because React **cannot reach into that iframe**, all editing must go through a **shim baked into the HTML file**.
 
    **This said "~107 … {hs,kiosk,signage,fitness}" until 2026-09-11** — low by 143 boards and
    missing `school/` entirely, which is exactly how the editability sweep below ended up
    skipping 59 boards. Re-derive with one command (it is just a file count — trust nothing):
    ```bash
-   find apps/web/public/templates -name '*.html' -not -path '*/_*' | wc -l          # 282
+   find apps/web/public/templates -name '*.html' -not -path '*/_*' | wc -l          # 285
    find apps/web/public/templates -name '*.html' -not -path '*/_*' | cut -d/ -f5 | sort | uniq -c
-   #   14 custom · 7 fitness · 30 hs · 19 kiosk · 40 school · 172 signage
+   #   14 custom · 7 fitness · 30 hs · 19 kiosk · 41 school · 174 signage
    ```
    `signage/` is itself 16 industry sub-folders (`qsr` 24, `worship` 24, `hospitality` 16, `bar`
-   13, `corporate` 12, `gym` 11, `church` 10, `fashion` 10, `healthcare` 10, `menus-pos` 10,
-   `retail` 8, `veterinary` 2, and `clinic`/`museum`/`office`/`real-estate` 1 each) — so any
+   13, `corporate` 13, `gym` 11, `church` 10, `fashion` 10, `healthcare` 10, `menus-pos` 10,
+   `retail` 8, `veterinary` 2, `clinic` 2, and `museum`/`office`/`real-estate` 1 each) — so any
    sweep must recurse, never list a fixed set of directories. `-not -path '*/_*'` skips
    `_thumbs/` and `_edit-shim.js`, the same "no `_`-prefixed path segment" rule the poster
    generator and `apps/web/tools/check-poster-freshness.cjs` use to decide what counts as a board.
@@ -706,6 +708,12 @@ Reset that measurement on an actual container resize, and still allow taller
 controls the room they need. Browser drag tests must wait for board fitting,
 use movement inside its bounds, and check the rendered position after Undo,
 Redo and reopening.
+Repeating rows retain the authored group and row blueprints before removal, so a
+saved one-row list can grow again and restore distinct original rows. Repeated updates
+keep the reduced-list layout; returning to the authored count restores its original
+layout. Newly restored rows receive click-to-edit listeners. Verify this with
+`board-repeat-restoration.spec.ts`; it does not guarantee arbitrary added rows fit every
+older composition. Respect each board’s `data-repeat-max` capacity.
 Regenerate affected gallery posters and their provenance, then bump `POSTER_VERSION`
 in `src/lib/template-poster.ts`. The behavioral coverage is
 `builder-media-editing.spec.ts` and the discovered full-corpus
@@ -713,7 +721,7 @@ in `src/lib/template-poster.ts`. The behavioral coverage is
 
 **⚠️ REDESIGN INVARIANT — the trap that caused the 2026-06-07 "none of the templates can be edited" fire:** when you edit/redesign an existing board, the OLD shim block stays baked in. A board left on the apply-only V4 shim is **un-editable by click**. So **after editing ANY `public/templates/**` board, re-run the injector for its subdir** (and `inject-click-shim.cjs` for menu boards). Confirm with the sweep + the real-browser tests:
 ```bash
-# Sweeps ALL 282 boards. The old form here named `hs signage fitness`, which
+# Sweeps ALL 285 boards. The old form here named `hs signage fitness`, which
 # silently covered only 191 — school/ (40) and kiosk/ (19) were never checked.
 cd apps/web/public/templates && for f in $(find . -name "*.html" -not -path "*/_*"); do \
   grep -qE "educms-field-click|src=[\"'][^\"']*_edit-shim" "$f" || echo "NO CLICK-TO-EDIT: ${f#./}"; done
@@ -727,7 +735,7 @@ Both alternations in that `grep` are load-bearing: 231 boards carry a **baked** 
 clean, so this closes a blind spot rather than a live breakage.
 Full conventions (editability contract, brand tokens, auto-fit ≥50px floor, live engines, build checklist) live in `.claude/agents/venueos-template-designer.md` + `docs/design/FLAGSHIP-TEMPLATE-STANDARDS.md` — the binding spec for any template work.
 
-### System Presets — the original K-12 core (17 of 482)
+### System Presets — the original K-12 core (17 of 488)
 
 ⚠️ **This list is NOT the catalogue.** It is the founding K-12 seventeen, kept because they are
 the presets most docs and tests reference by name. The other 442 — every `MODERN_SCHOOL_*`,

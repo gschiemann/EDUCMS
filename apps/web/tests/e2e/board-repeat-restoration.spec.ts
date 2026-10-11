@@ -8,6 +8,7 @@ for (const board of [
 ]) for (const portrait of [false, true]) {
   test(`rows restore after shrinking to one: ${board.url} ${portrait ? 'portrait' : 'landscape'}`, async ({ page, baseURL }) => {
     await page.route(/^https?:\/\//, route => new URL(route.request().url()).origin === new URL(baseURL!).origin ? route.continue() : route.abort());
+    await page.setViewportSize(portrait ? { width: 740, height: 1300 } : { width: 1300, height: 740 });
     const encoded = Buffer.from(JSON.stringify({ [board.group]: 1 })).toString('base64url');
     const url = `${board.url}?repeat=${encoded}${portrait ? '&o=portrait' : ''}`;
     await page.addInitScript(() => {

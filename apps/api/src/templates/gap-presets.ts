@@ -9,7 +9,7 @@ const WORKFLOWS = [
     description: 'Ordinary service interruptions: affected location, effective window, alternative route, reopening estimate and help contact. Every word, image, color and font is editable; status and timestamps are set by the operator.',
     category: 'INFO',
     url: '/templates/signage/corporate/20-service-update.html',
-    bgColor: '#f4f0e7',
+    bgColor: '#f7f4ed',
   },
   {
     id: 'preset-sig-clinic-02',
@@ -17,7 +17,7 @@ const WORKFLOWS = [
     description: 'A public service menu with editable service names, durations, fees, price qualifiers and reception or booking instructions. Replace the practice logo and hero photo and style every text field.',
     category: 'PATIENT',
     url: '/templates/signage/clinic/02-services-booking-guide.html',
-    bgColor: '#f5f1e9',
+    bgColor: '#f5f0e7',
   },
   {
     id: 'preset-school-commencement-guide',
