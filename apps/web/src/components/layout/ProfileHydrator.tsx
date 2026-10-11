@@ -42,6 +42,7 @@ import { useAppStore } from '@/lib/store';
 import { apiFetch } from '@/lib/api-client';
 import {
   profilePatch,
+  type MeResponse,
   shouldRecheckWorkspace,
   workspaceConfigChanged,
   WORKSPACE_CONFIG_QUERY_KEYS,
@@ -65,7 +66,7 @@ export function ProfileHydrator() {
     inFlight.current = true;
     lastCheckedAt.current = Date.now();
     try {
-      const me: any = await apiFetch('/users/me');
+      const me = await apiFetch<MeResponse & { id?: string; workspaceConfigVersion?: string | null }>('/users/me');
       const cur = useAppStore.getState().user;
       if (!cur || cur.id !== me?.id || cur.id !== id) return true;
 
@@ -75,7 +76,7 @@ export function ProfileHydrator() {
       const changed = workspaceConfigChanged(lastVersion.current, version);
       if (version) lastVersion.current = version;
 
-      const patch = profilePatch(cur as any, me);
+      const patch = profilePatch(cur as Parameters<typeof profilePatch>[0], me);
       if (Object.keys(patch).length > 0) {
         const nextUser = { ...cur, ...patch };
         useAppStore.setState({ user: nextUser });
@@ -87,7 +88,6 @@ export function ProfileHydrator() {
             }
           }
         } catch { /* sessionStorage unavailable — non-fatal */ }
-        // eslint-disable-next-line no-console
         console.log('[profile-hydrate] reconciled cached session with /users/me:', Object.keys(patch).join(', '));
       }
       if (changed || 'tenantVertical' in patch) {

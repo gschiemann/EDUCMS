@@ -44,7 +44,16 @@ type CachedUser = {
  * present value with a server null (except the boolean setup flag, which is
  * synced both ways).
  */
-export function profilePatch(cur: CachedUser, me: Record<string, any>): Record<string, unknown> {
+export interface MeResponse {
+  firstName?: string | null;
+  lastName?: string | null;
+  tenantVertical?: string | null;
+  tenantName?: string | null;
+  tenantSlug?: string | null;
+  mustSetupCredentials?: boolean | null;
+}
+
+export function profilePatch(cur: CachedUser, me: MeResponse): Record<string, unknown> {
   const patch: Record<string, unknown> = {};
   if (me.firstName != null && me.firstName !== cur.firstName) patch.firstName = me.firstName;
   if (me.lastName != null && me.lastName !== cur.lastName) patch.lastName = me.lastName;

@@ -31,8 +31,15 @@ export function TeamAbbrevFields({ gameId, game }: { gameId: string; game: TeamA
   const [dirty, setDirty] = useState<'home' | 'away' | null>(null);
 
   // Follow the server value unless that side is being edited.
-  useEffect(() => { if (dirty !== 'home') setHome(game.homeAbbrev ?? ''); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [game.homeAbbrev]);
-  useEffect(() => { if (dirty !== 'away') setAway(game.awayAbbrev ?? ''); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [game.awayAbbrev]);
+  // `dirty` is read, not depended on: only a SERVER change should re-sync.
+  useEffect(() => {
+    if (dirty !== 'home') setHome(game.homeAbbrev ?? '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [game.homeAbbrev]);
+  useEffect(() => {
+    if (dirty !== 'away') setAway(game.awayAbbrev ?? '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [game.awayAbbrev]);
 
   // What a board would show with the CURRENT drafts — the derived default
   // where a box is empty — so the collision warning is live while typing.
