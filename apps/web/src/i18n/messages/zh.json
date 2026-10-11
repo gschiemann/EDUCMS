@@ -1835,7 +1835,7 @@
     "step1": "打开播放器网址",
     "step1Sub": "在任意设备的浏览器中",
     "step2": "获取配对码",
-    "step2Sub": "屏幕上的 6 位数字",
+    "step2Sub": "屏幕上的 6 位字符",
     "step3": "在此完成配对",
     "step3Sub": "点击“配对屏幕”",
     "newGroup": "新建屏幕分组",
@@ -1888,7 +1888,7 @@
     "copyUrl": "复制网址",
     "copiedBang": "已复制！",
     "pairModalTitle": "配对屏幕",
-    "pairModalSubtitle": "请输入屏幕设备上显示的 6 位配对码。",
+    "pairModalSubtitle": "请输入屏幕设备上显示的 6 位字符配对码。",
     "pairing": "正在配对…",
     "hideQr": "隐藏二维码",
     "scanWithPhone": "改用手机扫码",
@@ -2876,8 +2876,7 @@
     "daysCount": "{days, plural, other {# 天}}",
     "proofOfPlayLoadError": "无法加载播放证明报告。请稍后重试。",
     "proofOfPlayNotOn": "播放证明尚未开启",
-    "proofOfPlayMigrationBefore": "分析数据表尚未在数据库中创建。请应用最新迁移 ",
-    "proofOfPlayMigrationAfter": " 后即会自动开始追踪——大约每 10 分钟从每块在线屏幕采样一次。",
+    "proofOfPlayNotReadyBody": "此账户尚未开启播放报告。开启后会自动开始追踪——大约每 10 分钟从每块在线屏幕采样一次。如果明天仍显示此消息，请联系支持团队。",
     "noPlaybackTitle": "尚未记录任何播放",
     "noPlaybackBody": "系统大约每 10 分钟从在线屏幕采样一次。当你的屏幕播放过排定的内容后，其展示时长就会显示在这里。",
     "screenHoursOfContent": "内容屏幕小时数",
@@ -3357,7 +3356,10 @@
       "opening": "正在打开…",
       "openFailed": "无法打开这批看板，请重试。",
       "untitled": "未命名批次"
-    }
+    },
+    "generateHint": "描述一个模板，然后从 2 份 AI 草稿中挑选",
+    "generateAdminOnly": "只有管理员可以用 AI 生成模板",
+    "includedFooter": "您的套餐已包含 AI"
   },
   "sportsTemplates": {
     "tier": {

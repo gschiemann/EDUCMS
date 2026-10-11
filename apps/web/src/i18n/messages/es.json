@@ -1835,7 +1835,7 @@
     "step1": "Abre la URL del reproductor",
     "step1Sub": "En el navegador de cualquier dispositivo",
     "step2": "Obtén el código de emparejamiento",
-    "step2Sub": "6 dígitos en pantalla",
+    "step2Sub": "6 caracteres en pantalla",
     "step3": "Vincúlala aquí",
     "step3Sub": "Pulsa “Vincular pantalla”",
     "newGroup": "Nuevo grupo de pantallas",
@@ -1888,7 +1888,7 @@
     "copyUrl": "Copiar URL",
     "copiedBang": "¡Copiado!",
     "pairModalTitle": "Vincular una pantalla",
-    "pairModalSubtitle": "Introduce el código de 6 dígitos que aparece en el dispositivo.",
+    "pairModalSubtitle": "Introduce el código de 6 caracteres que aparece en el dispositivo.",
     "pairing": "Vinculando...",
     "hideQr": "Ocultar el código QR",
     "scanWithPhone": "Escanear con el teléfono",
@@ -2876,8 +2876,7 @@
     "daysCount": "{days, plural, one {# día} other {# días}}",
     "proofOfPlayLoadError": "No se pudo cargar el informe de comprobante de reproducción. Inténtalo de nuevo en un momento.",
     "proofOfPlayNotOn": "El comprobante de reproducción aún no está activado",
-    "proofOfPlayMigrationBefore": "La tabla de analíticas aún no se ha creado en la base de datos. Aplica la última migración ",
-    "proofOfPlayMigrationAfter": " y el seguimiento comienza automáticamente: se toma una muestra de cada pantalla en línea aproximadamente cada 10 minutos.",
+    "proofOfPlayNotReadyBody": "Los informes de reproducción aún no están activados para esta cuenta. Cuando lo estén, el seguimiento comienza automáticamente: se toma una muestra de cada pantalla en línea aproximadamente cada 10 minutos. Si este mensaje sigue aquí mañana, contacta con soporte.",
     "noPlaybackTitle": "Aún no se ha registrado ninguna reproducción",
     "noPlaybackBody": "Se recopilan muestras de las pantallas en línea aproximadamente cada 10 minutos. Cuando tus pantallas hayan reproducido contenido programado, su tiempo en pantalla aparecerá aquí.",
     "screenHoursOfContent": "Horas-pantalla de contenido",
@@ -3357,7 +3356,10 @@
       "opening": "Abriendo…",
       "openFailed": "No se pudo abrir ese lote. Inténtalo de nuevo.",
       "untitled": "Lote sin título"
-    }
+    },
+    "generateHint": "Describe una plantilla y elige entre 2 borradores de IA",
+    "generateAdminOnly": "Solo un administrador puede generar plantillas con IA",
+    "includedFooter": "IA incluida en tu plan"
   },
   "sportsTemplates": {
     "tier": {

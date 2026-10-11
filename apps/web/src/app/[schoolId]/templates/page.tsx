@@ -2444,7 +2444,7 @@ export default function TemplatesPage() {
           <button
             onClick={() => { void openAiGenerate(); }}
             disabled={!isAdmin}
-            title={!isAdmin ? 'Only an admin can generate templates with AI' : 'Describe a template, pick from 3 AI drafts'}
+            title={!isAdmin ? tAi('generateAdminOnly') : tAi('generateHint')}
             className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg border bg-white px-3.5 text-[13px] font-semibold transition-colors hover:bg-indigo-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-9 motion-reduce:transition-none"
             style={{ borderColor: 'var(--brand-primary-soft, #cfc4ff)', color: 'var(--brand-primary, #4f46e5)' }}
           >
@@ -2557,7 +2557,7 @@ export default function TemplatesPage() {
             ) : null}
 
             {aiPhase === 'pick' ? (
-              /* ── PHASE 2: pick 1 of 3 AI drafts ── */
+              /* ── PHASE 2: pick 1 of the AI drafts (2 by default) ── */
               <>
                 {aiError && (
                   <div

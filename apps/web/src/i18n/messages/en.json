@@ -1835,7 +1835,7 @@
     "step1": "Open the Player URL",
     "step1Sub": "On any device browser",
     "step2": "Get Pairing Code",
-    "step2Sub": "6 digits on screen",
+    "step2Sub": "6 characters on screen",
     "step3": "Pair it Here",
     "step3Sub": "Click “Pair Screen”",
     "newGroup": "New Screen Group",
@@ -1888,7 +1888,7 @@
     "copyUrl": "Copy URL",
     "copiedBang": "Copied!",
     "pairModalTitle": "Pair a Screen",
-    "pairModalSubtitle": "Enter the 6-digit code shown on the screen device.",
+    "pairModalSubtitle": "Enter the 6-character code shown on the screen device.",
     "pairing": "Pairing...",
     "hideQr": "Hide QR code",
     "scanWithPhone": "Scan instead with phone",
@@ -2876,8 +2876,7 @@
     "daysCount": "{days, plural, one {# day} other {# days}}",
     "proofOfPlayLoadError": "Couldn't load the proof-of-play report. Try again shortly.",
     "proofOfPlayNotOn": "Proof-of-play isn't switched on yet",
-    "proofOfPlayMigrationBefore": "The analytics table hasn't been created on the database yet. Apply the latest migration ",
-    "proofOfPlayMigrationAfter": " and tracking starts automatically — a sample is taken from every online screen about every 10 minutes.",
+    "proofOfPlayNotReadyBody": "Play reports aren't switched on for this account yet. Once they are, tracking starts automatically — a sample is taken from every online screen about every 10 minutes. If this message is still here tomorrow, contact support.",
     "noPlaybackTitle": "No playback recorded yet",
     "noPlaybackBody": "Samples are collected from online screens about every 10 minutes. Once your screens have been playing scheduled content, their display time shows up here.",
     "screenHoursOfContent": "Screen-hours of content",
@@ -3357,7 +3356,10 @@
       "opening": "Opening…",
       "openFailed": "That batch couldn't be opened. Try again.",
       "untitled": "Untitled batch"
-    }
+    },
+    "generateHint": "Describe a template, then pick from 2 AI drafts",
+    "generateAdminOnly": "Only an admin can generate templates with AI",
+    "includedFooter": "AI included with your plan"
   },
   "sportsTemplates": {
     "tier": {

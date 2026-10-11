@@ -166,7 +166,9 @@ export default function AnalyticsPage() {
             {t('opsPages.proofOfPlayNotOn')}
           </h3>
           <p className="mx-auto mt-1 max-w-md text-sm text-slate-500">
-            {t('opsPages.proofOfPlayMigrationBefore')}(<code className="rounded bg-slate-100 px-1">pnpm db:push</code>){t('opsPages.proofOfPlayMigrationAfter')}
+            {/* 2026-10-11 — customer copy. This used to print a developer
+                command (`pnpm db:push`) to the customer. */}
+            {t('opsPages.proofOfPlayNotReadyBody')}
           </p>
         </div>
       ) : data && data.totalSamples === 0 ? (
