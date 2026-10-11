@@ -393,7 +393,7 @@ export class SupportAccessService {
           }),
         },
       });
-      return tx.supportAccessGrant.findUnique({ where: { id: grant.id } });
+      return tx.supportAccessGrant.findFirst({ where: { id: grant.id, tenantId: grant.tenantId } });
     });
     this.invalidate();
     if (approve) await this.notifyRequester(updated, 'approved');
@@ -487,7 +487,7 @@ export class SupportAccessService {
           details: JSON.stringify({ by: side, note, kind: grant.kind, expiresAt: grant.expiresAt }),
         },
       });
-      return tx.supportAccessGrant.findUnique({ where: { id: grant.id } });
+      return tx.supportAccessGrant.findFirst({ where: { id: grant.id, tenantId: grant.tenantId } });
     });
     this.invalidate();
     if (side === 'venueos' && !wasRequest) {
