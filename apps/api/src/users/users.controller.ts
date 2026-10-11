@@ -211,6 +211,10 @@ export class UsersController {
         // 2026-10-10 — still on its provisioning starter credentials? The
         // People page offers "Setup link" (one-time invite) for exactly these.
         mustSetupCredentials: true,
+        // 2026-10-11 — the People page's "Can trigger emergency alerts"
+        // toggle (PUT /:id/can-trigger-panic). Without it the control would
+        // have no state to render, and the capability stays invisible.
+        canTriggerPanic: true,
         _count: { select: { passkeys: true } },
       } as any,
       orderBy: { createdAt: 'desc' },

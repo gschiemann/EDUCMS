@@ -1220,7 +1220,7 @@
           "RESTRICTED_VIEWER": "对仪表板的只读访问。"
         },
         "rolesRankNote": "你只能分配低于自己的角色。",
-        "panicNote": "触发紧急警报与配置紧急警报是两种不同的能力：前者通过每人的 canTriggerPanic 权限授予，而不是本页面的角色。",
+        "panicNote": "触发紧急警报与配置紧急警报是两回事。管理员始终可以触发警报；若要让某位“编辑”角色的人员也能触发，请在上方该人员所在行开启“紧急警报”。",
         "mfaTitle": "双重验证策略",
         "mfaDescription": "本组织的双重身份验证策略。",
         "mfaCount": "{total} 个账户中有 {required} 个被要求使用双重验证。",
@@ -1356,7 +1356,17 @@
         "csvCurrentEmail": "当前登录邮箱",
         "csvRole": "角色",
         "csvLink": "设置链接",
-        "csvExpires": "失效日期"
+        "csvExpires": "失效日期",
+        "panicToggle": "紧急警报",
+        "panicHint": "可以触发紧急警报",
+        "panicAria": "{email} 是否可以触发紧急警报",
+        "panicOnTitle": "允许 {email} 触发紧急警报？",
+        "panicOnMessage": "对方将能够在您的屏幕上发起封锁、疏散或天气警报——可通过控制台或手机操作。请仅为受过培训的人员开启，例如前台或安保人员。对方发出的每条警报都会记录在活动日志中。下次登录时生效。",
+        "panicOnConfirm": "是，允许发出警报",
+        "panicOffTitle": "停止 {email} 触发紧急警报？",
+        "panicOffMessage": "对方将在所有设备上退出登录，使更改立即生效。之后可照常重新登录。",
+        "panicOffConfirm": "关闭",
+        "panicFailed": "无法更改紧急警报权限。"
       },
       "overview": {
         "readinessTitle": "配置就绪情况",

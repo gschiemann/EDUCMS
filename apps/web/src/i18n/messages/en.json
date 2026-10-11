@@ -1220,7 +1220,7 @@
           "RESTRICTED_VIEWER": "Read-only access to dashboards."
         },
         "rolesRankNote": "You can only give roles below your own.",
-        "panicNote": "Triggering an emergency is a separate capability from configuring one: it is granted per person by the canTriggerPanic flag, not by a role on this page.",
+        "panicNote": "Triggering an emergency is separate from configuring one. Admins can always trigger alerts; to let an Editor trigger them too, turn on \"Emergency alerts\" on that person's row above.",
         "mfaTitle": "MFA policy",
         "mfaDescription": "Organization policy for two-factor authentication.",
         "mfaCount": "{required} of {total} accounts are required to use two-factor authentication.",
@@ -1356,7 +1356,17 @@
         "csvCurrentEmail": "Current sign-in email",
         "csvRole": "Role",
         "csvLink": "Setup link",
-        "csvExpires": "Expires"
+        "csvExpires": "Expires",
+        "panicToggle": "Emergency alerts",
+        "panicHint": "Can trigger emergency alerts",
+        "panicAria": "Can {email} trigger emergency alerts",
+        "panicOnTitle": "Let {email} trigger emergency alerts?",
+        "panicOnMessage": "They will be able to start a lockdown, evacuation or weather alert on your screens — from the dashboard or their phone. Turn this on only for people trained to do it, like front office or security staff. Every alert they send is recorded in the activity log. It takes effect the next time they sign in.",
+        "panicOnConfirm": "Yes, allow alerts",
+        "panicOffTitle": "Stop {email} from triggering emergency alerts?",
+        "panicOffMessage": "They will be signed out on every device so the change takes effect right away. They can sign back in as usual.",
+        "panicOffConfirm": "Turn off",
+        "panicFailed": "Couldn't change emergency-alert access."
       },
       "overview": {
         "readinessTitle": "Configuration readiness",

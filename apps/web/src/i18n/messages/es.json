@@ -1220,7 +1220,7 @@
           "RESTRICTED_VIEWER": "Acceso de solo lectura a los paneles."
         },
         "rolesRankNote": "Solo puedes asignar roles inferiores al tuyo.",
-        "panicNote": "Activar una emergencia es una capacidad distinta de configurarla: se concede por persona mediante el permiso canTriggerPanic, no con un rol de esta página.",
+        "panicNote": "Activar una emergencia es distinto de configurarla. Los administradores siempre pueden activar alertas; para que un Editor también pueda, activa «Alertas de emergencia» en la fila de esa persona, arriba.",
         "mfaTitle": "Política de MFA",
         "mfaDescription": "Política de la organización para la autenticación en dos pasos.",
         "mfaCount": "{required} de {total} cuentas deben usar autenticación en dos pasos.",
@@ -1356,7 +1356,17 @@
         "csvCurrentEmail": "Correo de inicio de sesión actual",
         "csvRole": "Rol",
         "csvLink": "Enlace de configuración",
-        "csvExpires": "Caduca"
+        "csvExpires": "Caduca",
+        "panicToggle": "Alertas de emergencia",
+        "panicHint": "Puede activar alertas de emergencia",
+        "panicAria": "¿Puede {email} activar alertas de emergencia?",
+        "panicOnTitle": "¿Permitir que {email} active alertas de emergencia?",
+        "panicOnMessage": "Podrá iniciar una alerta de confinamiento, evacuación o clima en tus pantallas, desde el panel o su teléfono. Actívalo solo para personas capacitadas, como el personal de recepción o de seguridad. Cada alerta que envíe queda registrada en el registro de actividad. El cambio se aplica la próxima vez que inicie sesión.",
+        "panicOnConfirm": "Sí, permitir alertas",
+        "panicOffTitle": "¿Quitar a {email} el permiso para activar alertas de emergencia?",
+        "panicOffMessage": "Se cerrará su sesión en todos los dispositivos para que el cambio se aplique de inmediato. Puede volver a iniciar sesión como siempre.",
+        "panicOffConfirm": "Desactivar",
+        "panicFailed": "No se pudo cambiar el acceso a las alertas de emergencia."
       },
       "overview": {
         "readinessTitle": "Preparación de la configuración",

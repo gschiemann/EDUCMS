@@ -2863,6 +2863,12 @@ export type TeamUser = {
   status?: string;
   /** 2026-10-10 — still on its provisioning starter credentials (offer a setup link). Optional: older API. */
   mustSetupCredentials?: boolean;
+  /**
+   * 2026-10-11 — may fire emergency alerts without an admin role
+   * (`User.canTriggerPanic`). Optional: an older API build does not send it;
+   * the toggle then renders nothing rather than guessing "off".
+   */
+  canTriggerPanic?: boolean;
 };
 
 export function useUsers() {
@@ -2890,6 +2896,27 @@ export function useSetUserMfaRequired() {
       apiFetch(`/users/${id}/mfa-required`, {
         method: 'PUT',
         body: JSON.stringify({ mfaRequired }),
+      }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['users'] }); },
+  });
+}
+
+/**
+ * 2026-10-11 — the People page's "Can trigger emergency alerts" toggle: the
+ * first web caller of `PUT /users/:id/can-trigger-panic` (the writer existed
+ * since 2026-05-26; support had to flip it by hand). Server rules unchanged
+ * and authoritative: admin roles only, own tenant, strictly below the
+ * caller's rank, never a RESTRICTED_VIEWER, audited
+ * (USER_CAN_TRIGGER_PANIC_CHANGED), and turning it OFF burns the person's live
+ * sessions so the capability stops at once.
+ */
+export function useSetUserCanTriggerPanic() {
+  const qc = useQueryClient();
+  return useMutation<TeamUser, Error, { id: string; canTriggerPanic: boolean }>({
+    mutationFn: ({ id, canTriggerPanic }) =>
+      apiFetch(`/users/${id}/can-trigger-panic`, {
+        method: 'PUT',
+        body: JSON.stringify({ canTriggerPanic }),
       }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['users'] }); },
   });
