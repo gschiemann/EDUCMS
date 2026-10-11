@@ -4169,7 +4169,11 @@ export function useToggleUsbIngest() {
   return useMutation({
     mutationFn: (enabled: boolean) =>
       apiFetch('/tenants/me/usb-ingest', { method: 'PUT', body: JSON.stringify({ enabled }) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['usb-ingest-config'] }),
+    // ['tenant'] carries usbIngestEnabled for the playlists menu (DEV-024).
+    onSuccess: () => Promise.all([
+      qc.invalidateQueries({ queryKey: ['usb-ingest-config'] }),
+      qc.invalidateQueries({ queryKey: ['tenant'] }),
+    ]),
   });
 }
 export function useRotateUsbIngestKey() {

@@ -845,6 +845,10 @@ export class TenantsController {
         // tell "explicitly optional" from "never stated", and the resolved
         // answer it actually renders (`mfaEnforcedEffective` below).
         mfaEnforced: true,
+        // DEV-024 (Muse beta 2026-10-07): whether Export to USB is allowed,
+        // so the playlists menu can say so up front instead of 403-ing after
+        // the click. The boolean only — never the signing key.
+        usbIngestEnabled: true,
       } as any,
     });
     if (!tenant) return tenant;

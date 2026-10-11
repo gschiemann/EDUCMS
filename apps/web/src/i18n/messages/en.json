@@ -2540,7 +2540,10 @@
     "schedSoundHelp": "Every video on this schedule plays with sound.",
     "templateLayoutHelp": "This playlist uses a template layout. Use the Schedule tab to put it on screens.",
     "pauseScheduleOn": "Pause this schedule{count, plural, =0 {} one { on # screen} other { on # screens}}",
-    "resumeScheduleOn": "Resume this schedule{count, plural, =0 {} one { on # screen} other { on # screens}}"
+    "resumeScheduleOn": "Resume this schedule{count, plural, =0 {} one { on # screen} other { on # screens}}",
+    "usbExportOff": "USB export is turned off for this organization. Ask an admin to turn it on.",
+    "usbExportOffAdmin": "USB export is turned off for this organization.",
+    "usbExportOpenSettings": "Turn on USB export in Settings"
   },
   "brandingCard": {
     "loading": "Loading…",

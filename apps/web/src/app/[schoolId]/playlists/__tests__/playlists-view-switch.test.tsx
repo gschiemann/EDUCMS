@@ -42,6 +42,7 @@ jest.mock('@/hooks/use-api', () => ({
   useScreens: query(SCREENS),
   useScreenGroups: query([]),
   useTemplates: query([]),
+  useTenant: query(undefined),
   usePlaylistSummary: query(null),
   useFleet: query({ root: null, locations: [], stats: {}, screens: [] }),
   useDeletePlaylist: mutation,

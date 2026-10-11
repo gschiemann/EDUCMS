@@ -81,6 +81,13 @@ export interface PlaylistLibraryV1Props {
   onNew: () => void;
   onDuplicate: (id: string) => void;
   onExport: (id: string) => void;
+  /**
+   * DEV-024 (Muse beta 2026-10-07): when the organization's USB export is
+   * off, the menu item is shown DISABLED with this reason, instead of
+   * looking available and failing with a 403 afterwards. `onOpenSettings`
+   * (admins only) adds a way to the setting.
+   */
+  usbExportBlocked?: { reason: string; settingsLabel?: string; onOpenSettings?: () => void } | null;
   onRemove: (row: PlaylistSummaryRow) => void;
   /**
    * Remove several playlists at once (Greg, 2026-09-28: "the ability to check
@@ -1157,7 +1164,7 @@ function OverflowMenu({
   // Both were literally `openWorkspace(id)`. One door into the playlist, named
   // once. A contributor still gets their review hand-off, which is a genuinely
   // different action.
-  const items: Array<{ label: string; icon: typeof Eye; run: () => void; danger?: boolean; divider?: boolean }> = [
+  const items: Array<{ label: string; icon: typeof Eye; run: () => void; danger?: boolean; divider?: boolean; disabled?: boolean; hint?: string }> = [
     { label: 'Open', icon: Eye, run: () => p.onOpen(row.id) },
   ];
   if (!p.isViewer) {
@@ -1168,7 +1175,16 @@ function OverflowMenu({
   }
   // Named for what it produces: a signed bundle an Android player reads off a
   // USB stick. "Export for offline use" said neither USB nor player.
-  items.push({ label: 'Export to USB', icon: Usb, run: () => p.onExport(row.id) });
+  const usbBlocked = p.usbExportBlocked ?? null;
+  items.push({
+    label: 'Export to USB',
+    icon: Usb,
+    run: () => { if (!usbBlocked) p.onExport(row.id); },
+    ...(usbBlocked ? { disabled: true, hint: usbBlocked.reason } : {}),
+  });
+  if (usbBlocked?.onOpenSettings && usbBlocked.settingsLabel) {
+    items.push({ label: usbBlocked.settingsLabel, icon: SlidersHorizontal, run: usbBlocked.onOpenSettings });
+  }
   if (p.isHQ && p.onPublishToLocations && !p.isViewer && row.sourceOwnership === 'own') {
     // Carries the row's playlist so the sheet opens on it — it used to open
     // asking "Choose a playlist" no matter which row you came from.
@@ -1215,13 +1231,23 @@ function OverflowMenu({
               <button
                 type="button"
                 role="menuitem"
-                onClick={act(item.run)}
-                className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-[13px] font-medium hover:bg-slate-50 ${
-                  item.danger ? 'text-rose-700' : INK
+                onClick={item.disabled ? undefined : act(item.run)}
+                disabled={item.disabled}
+                aria-disabled={item.disabled || undefined}
+                aria-describedby={item.hint ? `${menuId}-${item.label.replace(/\W+/g, '-')}-hint` : undefined}
+                className={`w-full flex items-start gap-2.5 px-3 py-2.5 text-left text-[13px] font-medium ${
+                  item.disabled ? 'text-slate-400 cursor-not-allowed' : `hover:bg-slate-50 ${item.danger ? 'text-rose-700' : INK}`
                 }`}
               >
-                <item.icon className="w-4 h-4 shrink-0" aria-hidden />
-                {item.label}
+                <item.icon className="w-4 h-4 shrink-0 mt-0.5" aria-hidden />
+                <span className="min-w-0">
+                  <span className="block">{item.label}</span>
+                  {item.hint && (
+                    <span id={`${menuId}-${item.label.replace(/\W+/g, '-')}-hint`} className="block text-[11.5px] font-normal text-slate-500 leading-snug mt-0.5">
+                      {item.hint}
+                    </span>
+                  )}
+                </span>
               </button>
             </div>
           ))}
