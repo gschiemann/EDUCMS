@@ -55,8 +55,8 @@ mkdirSync(SHOTS, { recursive: true });
 // in Springfield (the seeded test district, marked internal so support-access
 // grants never apply); the other old demo orgs were archived.
 const TENANTS = [
-  { slug: 'springfield-district',   name: 'Springfield School District' },
-  { slug: 'springfield-elementary', name: 'Springfield Elementary' },
+  { slug: 'springfield-district',   name: 'VenueOS automated checks' },
+  { slug: 'springfield-elementary', name: 'VenueOS automated checks (location)' },
 ];
 // 2026-05-11 — Tenant concurrency dropped 6 → 3 → 1 after Supabase
 // pgbouncer pool flakiness. Even at concurrency 3, 1-of-3 random
