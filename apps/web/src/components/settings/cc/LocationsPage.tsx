@@ -45,6 +45,7 @@ import {
   PermissionDenied, ScopePath, SectionAction,
 } from '../shell/primitives';
 import { settingsHref } from '../shell/registry';
+import { nextAutoSlug } from '@/lib/location-slug';
 
 export function SettingsLocationsPage() {
   const t = useTranslations();
@@ -79,12 +80,15 @@ export function SettingsLocationsPage() {
 
   const rows = useMemo(() => children.data?.children ?? [], [children.data]);
 
+  // DEV-003: decided synchronously from the values at keystroke time — the
+  // old `setSlug(prev => …)` updater read the ref AFTER it had been moved on,
+  // so the slug froze at one letter and every create 400'd.
   const onNameChange = useCallback((v: string) => {
     setName(v);
-    const auto = v.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60);
-    setSlug((prev) => (!prev || prev === lastAutoSlug.current ? auto : prev));
-    lastAutoSlug.current = auto;
-  }, []);
+    const next = nextAutoSlug(slug, lastAutoSlug.current, v);
+    lastAutoSlug.current = next.lastAuto;
+    setSlug(next.slug);
+  }, [slug]);
 
   const resetForm = useCallback(() => {
     setAdding(false);

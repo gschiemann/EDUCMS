@@ -19,6 +19,7 @@ import { Building2, Plus, MonitorPlay, Users, ExternalLink, AlertTriangle, Loade
 import { useUIStore } from '@/store/ui-store';
 import { AddressAutocomplete } from '@/components/ui/AddressAutocomplete';
 import { getVerticalSample } from '@cms/api-types';
+import { nextAutoSlug } from '@/lib/location-slug';
 
 interface ChildTenant {
   id: string;
@@ -381,11 +382,9 @@ export function DistrictSchoolsCard() {
   const lastAutoSlug = useRef('');
   const onNameChange = (v: string) => {
     setName(v);
-    const auto = v.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60);
-    if (!slug || slug === lastAutoSlug.current) {
-      setSlug(auto);
-      lastAutoSlug.current = auto;
-    }
+    const next = nextAutoSlug(slug, lastAutoSlug.current, v);
+    lastAutoSlug.current = next.lastAuto;
+    setSlug(next.slug);
   };
 
   if (!visible) return null;
