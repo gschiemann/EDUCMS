@@ -12,8 +12,12 @@ describe('DISPLAY_POWER_TRIAL_ONCE', () => {
     }
   });
 
-  const build = (seen: unknown, screen: unknown) => {
-    const prisma = { client: { auditLog: { findFirst: jest.fn().mockResolvedValue(seen) }, screen: { findUnique: jest.fn().mockResolvedValue(screen) } } };
+  const build = (seen: unknown, screen: unknown, inventory: unknown = null) => {
+    const prisma = { client: {
+      auditLog: { findFirst: jest.fn().mockResolvedValue(seen) },
+      screen: { findUnique: jest.fn().mockResolvedValue(screen) },
+      screenDeviceInventory: { findFirst: jest.fn().mockResolvedValue(inventory) },
+    } };
     const display = { applyAction: jest.fn().mockResolvedValue({ success: true, mechanism: 'screen-timeout' }) };
     return { prisma, display, runner: new DisplayPowerTrialRunner(prisma as never, display as never) };
   };
@@ -55,5 +59,18 @@ describe('DISPLAY_POWER_TRIAL_ONCE', () => {
     const refused = build(null, row);
     refused.display.applyAction.mockRejectedValue(Object.assign(new Error('no'), { code: 'DISPLAY_POWER_TRIAL_REFUSED' }));
     await expect(refused.runner.runOnce(trial)).resolves.toBe('refused');
+  });
+
+  it('passes the Android level from the screen inventory (null when unknown)', async () => {
+    const a13 = build(null, row, { report: { app: { sdkInt: 33 } } });
+    await a13.runner.runOnce(trial);
+    expect(a13.display.applyAction.mock.calls[0][0].reportedSdkInt).toBe(33);
+    expect(a13.prisma.client.screenDeviceInventory.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { screenId: SCREEN, tenantId: 't1' },
+    }));
+    const unknown = build(null, row);
+    unknown.prisma.client.screenDeviceInventory.findFirst.mockRejectedValue(new Error('db'));
+    await unknown.runner.runOnce(trial);
+    expect(unknown.display.applyAction.mock.calls[0][0].reportedSdkInt).toBeNull();
   });
 });

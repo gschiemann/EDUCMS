@@ -302,6 +302,38 @@ describe('DisplayService', () => {
       expect(details).toMatchObject({ outcome: 'refused', trial: true });
     });
 
+    it('allows a lock-family trial on Android 13+ only (the player RestoreBlankPolicy line)', async () => {
+      const result = await apply({
+        action: 'POWER_OFF', capabilities: stored(G43_VERDICT), revertAfterMs: 180_000, powerTrial: true,
+        reportedSdkInt: 33,
+      });
+      expect(result.mechanism).toBe(G43_VERDICT.screenBlank);
+      expect(signer.signMessage.mock.calls[0][1]).toMatchObject({ action: 'BLANK', hard: true, revertAfterMs: 180_000 });
+    });
+
+    it.each([30, 32, null, undefined])('refuses a lock-family trial when the reported SDK is %s', async (reportedSdkInt) => {
+      await expect(
+        apply({
+          action: 'POWER_OFF', capabilities: stored(G43_VERDICT), revertAfterMs: 60_000, powerTrial: true,
+          reportedSdkInt,
+        }),
+      ).rejects.toMatchObject({ code: 'DISPLAY_POWER_TRIAL_REFUSED' });
+      expect(redis.publish).not.toHaveBeenCalled();
+    });
+
+    it('Android 13 does not lift the emergency interlock or the wake window', async () => {
+      await expect(
+        apply({ action: 'POWER_OFF', capabilities: stored(G43_VERDICT), revertAfterMs: 6 * 60_000, powerTrial: true, reportedSdkInt: 33 }),
+      ).rejects.toMatchObject({ code: 'DISPLAY_POWER_TRIAL_REFUSED' });
+      await expect(
+        apply({
+          action: 'POWER_OFF', capabilities: stored(G43_VERDICT), revertAfterMs: 60_000, powerTrial: true, reportedSdkInt: 33,
+          emergencyHold: { active: true, source: 'tenant' },
+        }),
+      ).rejects.toBeTruthy();
+      expect(redis.publish).not.toHaveBeenCalled();
+    });
+
     it.each([undefined, 5_000, 6 * 60_000])('refuses a trial whose wake-up window is %s ms', async (revertAfterMs) => {
       await expect(
         apply({ action: 'POWER_OFF', capabilities: stored(GUQ_VERDICT), revertAfterMs, powerTrial: true }),

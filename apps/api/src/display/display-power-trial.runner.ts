@@ -82,6 +82,19 @@ export class DisplayPowerTrialRunner implements OnApplicationBootstrap {
     if (seen) return 'already-ran';
 
     const emergencyHold = await resolveEmergencyHold(this.prisma, { id: screen.id, tenantId: screen.tenantId });
+    // The panel's own Android level decides whether a lock-family trial is
+    // allowed (DisplayService: Android 13+ only, 2026-10-11).
+    let inventory: any = null;
+    try {
+      inventory = await this.prisma.client.screenDeviceInventory.findFirst({
+        where: { screenId: screen.id, tenantId: screen.tenantId },
+        select: { report: true },
+      });
+    } catch {
+      inventory = null; // unknown Android level ⇒ no lock-family trial
+    }
+    const sdk = inventory?.report?.app?.sdkInt;
+    const reportedSdkInt = typeof sdk === 'number' ? sdk : null;
     try {
       const result = await this.display.applyAction({
         screenId: screen.id,
@@ -89,7 +102,7 @@ export class DisplayPowerTrialRunner implements OnApplicationBootstrap {
         userId: null,
         ...(trial.wakeAfterMs === null
           ? { action: 'POWER_ON' as const }
-          : { action: 'POWER_OFF' as const, revertAfterMs: trial.wakeAfterMs, powerTrial: true }),
+          : { action: 'POWER_OFF' as const, revertAfterMs: trial.wakeAfterMs, powerTrial: true, reportedSdkInt }),
         reason,
         capabilities: screen.displayCapabilities ?? null,
         lastPushConnectedAt: screen.lastPushConnectedAt ?? null,

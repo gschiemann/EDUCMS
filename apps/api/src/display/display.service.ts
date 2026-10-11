@@ -104,6 +104,17 @@ import type { EmergencyHoldResult } from './display-emergency-hold';
 
 /** The one mechanism a power trial may exercise: the OS's own screen-off timeout. */
 export const POWER_TRIAL_MECHANISM = 'screen-timeout';
+/**
+ * The lock family (the player's RestoreBlankPolicy.LOCK_FAMILY) may run a
+ * trial only from this Android SDK up (2026-10-11). Every latch on record
+ * was older; Android 13's L55VEC recovered from its lock round trip.
+ */
+export const POWER_TRIAL_LOCK_MECHANISMS: ReadonlySet<string> = new Set([
+  'device-admin',
+  'device-owner',
+  'accessibility-lock',
+]);
+export const POWER_TRIAL_LOCK_MIN_SDK = 33;
 /** A trial's dead-man wake window. Short enough to watch, long enough to really sleep. */
 export const POWER_TRIAL_MIN_REVERT_MS = 30_000;
 export const POWER_TRIAL_MAX_REVERT_MS = 5 * 60_000;
@@ -657,6 +668,16 @@ export class DisplayService {
      * block in the body). Only meaningful with action POWER_OFF.
      */
     powerTrial?: boolean;
+    /**
+     * 2026-10-11 — the Android SDK level from the screen's own latest
+     * inventory (`app.sdkInt`). The APK ignores the server's `mechanism`
+     * field and blanks through its OWN chain, so on a device-admin panel a
+     * trial IS a lockNow(). That family latched an Android 11 G43 and an
+     * Android 7.1 A-Frame on 2026-08-25 and is allowed for a trial only on
+     * Android 13+ — the same line the player's RestoreBlankPolicy draws
+     * (the L55VEC's lock round trip recovered there; no latch is on record).
+     */
+    reportedSdkInt?: number | null;
   }): Promise<ApplyActionResult> {
     const { screenId, tenantId, userId, action } = opts;
     const verdict = verdictFromStored(opts.capabilities);
@@ -751,7 +772,12 @@ export class DisplayService {
         typeof revert === 'number' &&
         revert >= POWER_TRIAL_MIN_REVERT_MS &&
         revert <= POWER_TRIAL_MAX_REVERT_MS;
-      if (verdict?.screenBlank !== POWER_TRIAL_MECHANISM || !windowOk) {
+      const lockTrialOk =
+        typeof verdict?.screenBlank === 'string' &&
+        POWER_TRIAL_LOCK_MECHANISMS.has(verdict.screenBlank) &&
+        typeof opts.reportedSdkInt === 'number' &&
+        opts.reportedSdkInt >= POWER_TRIAL_LOCK_MIN_SDK;
+      if ((verdict?.screenBlank !== POWER_TRIAL_MECHANISM && !lockTrialOk) || !windowOk) {
         await this.writeAudit({
           action: DISPLAY_AUDIT_ACTIONS.CONTROL,
           screenId,
@@ -769,7 +795,8 @@ export class DisplayService {
         });
         throw new DisplayActionUnsupportedError(
           DISPLAY_POWER_TRIAL_REFUSED_CODE,
-          `A power trial runs only on the ${POWER_TRIAL_MECHANISM} mechanism and must carry a wake-up window ` +
+          `A power trial runs only on the ${POWER_TRIAL_MECHANISM} mechanism (or a lock mechanism on Android ` +
+            `${POWER_TRIAL_LOCK_MIN_SDK}+) and must carry a wake-up window ` +
             `(revertAfterMs) between ${POWER_TRIAL_MIN_REVERT_MS / 1000} and ${POWER_TRIAL_MAX_REVERT_MS / 1000} seconds.`,
           { action, verdict },
         );
@@ -777,7 +804,13 @@ export class DisplayService {
     }
 
     const support: DisplayActionSupport = powerTrial
-      ? { supported: true, mechanism: POWER_TRIAL_MECHANISM, note: 'trial' }
+      ? {
+          supported: true,
+          // The mechanism the APK will actually use: its own preferred blank
+          // (the timeout, or — Android 13+ only — the lock family).
+          mechanism: verdict?.screenBlank ?? POWER_TRIAL_MECHANISM,
+          note: 'trial',
+        }
       : displayActionSupport(action, verdict, {
           percent: opts.percent,
           allowBlack: opts.allowBlack === true,
