@@ -8,69 +8,20 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
-<title>Today's Events</title>
+<title>The Marlowe · Daily Programme</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&amp;family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
 <style>
-  :root {
-    --brand-canvas:  #0d1117;
-    --brand-ink:     #f7f3ea;
-    --brand-mute:    #9aa3b2;
-    --brand-paper:   #161c25;
-    --brand-rule:    rgba(247,243,234,0.12);
-    --brand-primary: #d4a24c;     /* warm amber */
-    --brand-accent:  #46a08a;     /* muted teal */
-    --brand-live:    #e26a4f;     /* live red */
-    --font-display:  Georgia, "Times New Roman", serif;
-    --font-grotesk:  -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-    --font-mono:     "SF Mono", Menlo, Consolas, monospace;
-  }
-  *,*::before,*::after{box-sizing:border-box}
-  html,body{margin:0;padding:0;height:100%;width:100%;background:#000;overflow:hidden}
-  body{font-family:var(--font-grotesk);-webkit-font-smoothing:antialiased}
-  .stage{position:absolute;left:50%;top:50%;width:3840px;height:2160px;background:var(--brand-canvas);color:var(--brand-ink);transform:translate(-50%,-50%) scale(var(--scale,1));transform-origin:center center;overflow:hidden}
-  .frame{position:absolute;top:0;right:0;bottom:0;left:0;display:grid;grid-template-rows: 200px 1fr 180px;row-gap:32px;padding:60px 96px}
+.numberline{display:flex;gap:10px;align-items:baseline}.numberline>.ft-value,.numberline>.ft-v{width:190px;flex:none}.number-unit{font:500 calc(64px * var(--scale))/1.15 var(--font-grotesk);height:88px;min-width:60px}
+:root{--stage-w:3840px;--stage-h:2160px;--stage-scale:1;--scale:1;--bg:#f6f0e5;--ink:#252725;--brand:#264c43;--brand2:#18352e;--accent:#b08046;--accent2:#ded0b9;--pos:#2c6b50;--neg:#a94935;--f-display:'Fraunces';--f-body:'DM Sans';--f-mono:'JetBrains Mono';--font-display:var(--f-display);--font-grotesk:var(--f-body);--font-mono:var(--f-mono);--brand-primary:var(--brand);--brand-accent:var(--accent);--paper:var(--bg)}
+*,*::before,*::after{box-sizing:border-box}html,body{margin:0;padding:0;width:100%;height:100%;background:#101714;overflow:hidden}body{-webkit-font-smoothing:antialiased;font-family:var(--font-grotesk),sans-serif}
+.stage{position:absolute;left:50%;top:50%;width:var(--stage-w);height:var(--stage-h);transform:translate(-50%,-50%) scale(var(--stage-scale));transform-origin:center;background:var(--bg);color:var(--ink);overflow:hidden}
+[data-field]{min-width:0;overflow-wrap:break-word}[data-fit]{overflow:visible}.mark{width:140px;height:140px;border:3px solid var(--brand-primary);display:grid;place-items:center;background-size:contain;background-repeat:no-repeat;background-position:center}.mark .placeholder{width:100px;height:100px;text-align:center;padding-top:12px;font:600 calc(66px * var(--scale))/1 var(--font-display),serif;color:var(--brand-primary)}.mark.has-img .placeholder{display:none}.photo{background-size:cover;background-position:center}.photo.has-img .placeholder{display:none}.support{font:500 calc(56px * var(--scale))/1.2 var(--font-grotesk),sans-serif}.mono{font-family:var(--font-mono),monospace;font-variant-numeric:tabular-nums}
 
-  /* HEADER */
-  .header{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;border-bottom:2px solid var(--brand-rule);padding-bottom:24px}
-  .crest .name{font:600 80px/0.95 var(--font-display);letter-spacing:-0.02em}
-  .crest .sub{font:500 26px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--brand-mute);margin-top:10px;display:block}
-  .title-block{text-align:center}
-  .title-block .eye{font:600 28px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--brand-primary)}
-  .title-block .title{margin-top:14px;font:400 80px/0.95 var(--font-display);font-style:italic}
-  .clock{text-align:right}
-  .clock .k{font:600 24px/1 var(--font-grotesk);letter-spacing:.3em;text-transform:uppercase;color:var(--brand-mute);margin-bottom:8px}
-  .clock .v{font:500 76px/1 var(--font-display);letter-spacing:-0.02em;font-variant-numeric:tabular-nums}
-  .clock .v small{font:500 30px/1 var(--font-grotesk);color:var(--brand-mute);margin-left:10px;vertical-align:0.4em}
-
-  /* BOARD */
-  .board{display:grid;grid-template-rows: auto 1fr;gap:18px;min-height:0}
-  .colhead{display:grid;grid-template-columns: 240px 1.7fr 1fr 1fr 0.8fr 240px;gap:32px;padding:16px 24px;border-bottom:1px solid var(--brand-rule)}
-  .colhead div{font:700 26px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--brand-mute)}
-  .rows{display:grid;grid-template-rows:repeat(6,1fr);gap:14px;min-height:0}
-  .row{display:grid;grid-template-columns: 240px 1.7fr 1fr 1fr 0.8fr 240px;gap:32px;align-items:center;padding:24px;background:var(--brand-paper);border-left:6px solid transparent}
-  .row.live   { border-left-color: var(--brand-live); }
-  .row.next   { border-left-color: var(--brand-primary); }
-  .row.upcoming{ border-left-color: var(--brand-accent); }
-  .time{font:600 56px/1 var(--font-mono);letter-spacing:-.01em;font-variant-numeric:tabular-nums}
-  .event .name{font:600 56px/1 var(--font-display);letter-spacing:-.02em}
-  .event .org {margin-top:8px;font:400 28px/1.1 var(--font-grotesk);color:var(--brand-mute)}
-  .room{font:600 44px/1 var(--font-display)}
-  .head{font:600 28px/1.15 var(--font-grotesk);color:var(--brand-mute)}
-  .pax{font:600 48px/1 var(--font-display);font-variant-numeric:tabular-nums}
-  .status-cell{display:flex;justify-content:flex-end}
-  .status{display:inline-flex;align-items:center;gap:14px;padding:14px 24px;border-radius:6px;font:700 24px/1 var(--font-grotesk);letter-spacing:.28em;text-transform:uppercase}
-  .status.live{background:var(--brand-live);color:#fff}
-  .status.live .dot{width:14px;height:14px;border-radius:50%;background:#fff;animation:blink 1.2s infinite}
-  @keyframes blink{50%{opacity:.3}}
-  .status.next{background:transparent;border:2px solid var(--brand-primary);color:var(--brand-primary)}
-  .status.upcoming{background:transparent;border:2px solid var(--brand-mute);color:var(--brand-mute)}
-
-  /* FOOTER */
-  .footer{display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;gap:28px;border-top:2px solid var(--brand-rule);padding-top:24px}
-  .ft{padding:0 16px}
-  .ft + .ft{border-left:1px solid var(--brand-rule)}
-  .ft .k{font:600 24px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--brand-mute)}
-  .ft .v{margin-top:14px;font:500 48px/1 var(--font-display);letter-spacing:-.02em}
-  .ft.note .v{font-size:32px;font-style:italic;line-height:1.15;color:var(--brand-mute)}
+.frame{position:absolute;top:76px;left:108px;width:3624px;height:2008px;display:grid;grid-template-rows:180px 344px 1fr 268px;gap:16px}
+.top{display:grid;grid-template-columns:180px 1fr 720px;align-items:center;border-bottom:3px solid var(--ink);padding-bottom:24px;gap:30px}.brand-name{font:500 calc(88px * var(--scale))/1.1 var(--font-display),serif;height:106px}.brand-tag{font:500 calc(54px * var(--scale))/1.15 var(--font-grotesk);height:70px;color:var(--brand-primary)}.timebox{text-align:right}.clock-k{font:600 calc(50px * var(--scale))/1.1 var(--font-mono);height:74px;letter-spacing:.1em;color:var(--brand-primary)}.clockline{display:flex;justify-content:flex-end;align-items:baseline;gap:24px}.clock{font:500 calc(104px * var(--scale))/1.12 var(--font-display);height:124px}.ampm{font:500 calc(54px * var(--scale))/1.1 var(--font-mono);height:70px}
+.heading{display:grid;grid-template-columns:1fr 950px;gap:72px;align-items:center}.title{font:400 calc(206px * var(--scale))/1.04 var(--font-display);height:260px;letter-spacing:-.035em}.edition{height:84px;font:500 calc(68px * var(--scale))/1.2 var(--font-grotesk);color:var(--brand-primary)}.heading-note{font:400 calc(66px * var(--scale))/1.28 var(--font-display);height:260px;padding-left:62px;border-left:4px solid var(--accent)}
+.board{min-height:0;display:grid;grid-template-rows:88px 1fr}.colhead{display:grid;grid-template-columns:350px 1fr 1050px;gap:52px;border-bottom:4px solid var(--brand-primary);padding:8px 0 18px}.colhead>div{font:500 calc(52px * var(--scale))/1.1 var(--font-mono);height:74px;letter-spacing:.12em;text-transform:uppercase;color:var(--brand-primary)}.rows{display:grid;grid-template-rows:repeat(6,1fr);min-height:0}.row{display:grid;grid-template-columns:350px 1fr 1050px;gap:52px;align-items:center;border-bottom:2px solid var(--accent2);min-height:0;padding:8px 0}.time{font:500 calc(72px * var(--scale))/1.1 var(--font-mono);height:98px;color:var(--brand-primary)}.event{min-width:0}.event-name{height:96px;font:500 calc(80px * var(--scale))/1.14 var(--font-display);letter-spacing:-.025em}.org{height:68px;font:400 calc(56px * var(--scale))/1.15 var(--font-grotesk)}.location{display:grid;grid-template-columns:1fr 172px;gap:20px;align-items:center}.room{height:106px;font:500 calc(74px * var(--scale))/1.14 var(--font-display);color:var(--brand-primary)}.host{height:72px;font:400 calc(52px * var(--scale))/1.15 var(--font-grotesk)}.pax{text-align:center;border:2px solid var(--accent);height:100px;font:500 calc(64px * var(--scale))/1.4 var(--font-mono)}
+.footer{display:grid;grid-template-columns:1.35fr .55fr .8fr 1fr;gap:50px;border-top:4px solid var(--brand-primary);padding-top:30px}.ft{min-width:0}.ft+.ft{border-left:2px solid var(--accent2);padding-left:36px}.ft-k{font:500 calc(50px * var(--scale))/1.1 var(--font-mono);height:66px;text-transform:uppercase;letter-spacing:.06em;color:var(--brand-primary)}.ft-v{font:400 calc(66px * var(--scale))/1.2 var(--font-display);height:166px;margin-top:12px}.ft-value{height:132px;font:500 calc(110px * var(--scale))/1.04 var(--font-display)}.weatherline{display:flex;align-items:baseline;gap:16px}.weather-temp{font:500 calc(100px * var(--scale))/1.12 var(--font-display);height:122px}.weather-cond{font:400 calc(58px * var(--scale))/1.2 var(--font-grotesk);height:82px}
+.stage[data-orient="port"] .frame{top:92px;left:104px;width:1952px;height:3656px;grid-template-rows:230px 530px 1fr 520px;gap:36px}.stage[data-orient="port"] .top{grid-template-columns:150px 1fr 540px;gap:28px}.stage[data-orient="port"] .brand-name{font-size:calc(76px * var(--scale));height:96px}.stage[data-orient="port"] .brand-tag{height:104px;font-size:calc(54px * var(--scale))}.stage[data-orient="port"] .heading{grid-template-columns:1fr;gap:18px}.stage[data-orient="port"] .title{font-size:calc(182px * var(--scale));height:218px}.stage[data-orient="port"] .heading-note{height:200px;padding:18px 0 0;border-left:0;border-top:3px solid var(--accent);font-size:calc(64px * var(--scale))}.stage[data-orient="port"] .colhead{grid-template-columns:270px 1fr;gap:50px}.stage[data-orient="port"] .colhead .roomhead{display:none}.stage[data-orient="port"] .row{grid-template-columns:270px 1fr;gap:12px 50px;padding:14px 0;align-content:center}.stage[data-orient="port"] .event-name{height:108px;font-size:calc(86px * var(--scale))}.stage[data-orient="port"] .org{height:68px;font-size:calc(56px * var(--scale))}.stage[data-orient="port"] .location{grid-column:2;grid-template-columns:1fr 140px}.stage[data-orient="port"] .room{height:80px;font-size:calc(64px * var(--scale))}.stage[data-orient="port"] .host{height:68px;font-size:calc(56px * var(--scale))}.stage[data-orient="port"] .pax{font-size:calc(56px * var(--scale));height:94px}.stage[data-orient="port"] .footer{grid-template-columns:repeat(3,1fr);gap:20px 36px}.stage[data-orient="port"] .footer .ft.note{grid-column:1/4}.stage[data-orient="port"] .footer .ft.note .ft-v{height:166px}.stage[data-orient="port"] .time{font-size:calc(60px * var(--scale))}.stage[data-orient="port"] .ft+.ft{border-left:0;padding-left:0}.stage[data-orient="port"] .ft-v{height:148px;font-size:calc(66px * var(--scale))}
 </style>
 <script>/*EDUCMS-SHIM-V14*/(function(){try{
 var editMode=false;
@@ -209,107 +160,7 @@ try{parent.postMessage({type:'educms-ready'},'*');}catch(_){}
 addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='educms-overrides'){if(d.brand)applyBrand(d.brand);if(d.repeat)applyRepeat(d.repeat);applyTextAndStyles(d.text||{},d.textStyles||{});applyImages(d.img||{});applyPosters(d.img||{});applyVideos(d.video||{});startClock(d.text||{});}else if(d.type==='educms-edit-mode'){editMode=!!d.on;if(editMode){_unfreeze();armEdit();armMediaEdit();}}}catch(_){}});
 }catch(e){}})();</script>
 </head>
-<body>
-<div class="stage" id="stage"><div class="frame">
-
-  <header class="header">
-    <div class="crest" data-widget="logo">
-      <div class="name" data-field="brand.name">The Marlowe</div>
-      <div class="sub"  data-field="brand.tagline">Events &amp; Catering · Charleston</div>
-    </div>
-    <div class="title-block">
-      <div class="eye" data-field="board.eye">Saturday · May 9</div>
-      <div class="title" data-field="board.title">Today's events.</div>
-    </div>
-    <div class="clock" data-widget="clock" data-source="local-time" data-refresh="60s">
-      <div class="k">Now</div>
-      <div class="v"><span data-field="clock.hhmm">3:42</span><small data-field="clock.ampm">PM</small></div>
-    </div>
-  </header>
-
-  <section class="board" data-widget="event-feed" data-source="opera-pms" data-feed="/events/today" data-refresh="2m">
-    <div class="colhead">
-      <div>Time</div><div>Event</div><div>Room</div><div>Host</div><div>Pax</div><div></div>
-    </div>
-    <div class="rows">
-      <article class="row live">
-        <div class="time" data-field="events.0.time">3:00 PM</div>
-        <div class="event"><div class="name" data-field="events.0.name">Carolina Tech Summit · Day 2</div><div class="org" data-field="events.0.org">Carolina Tech Council</div></div>
-        <div class="room" data-field="events.0.room">Grand Ballroom</div>
-        <div class="head" data-field="events.0.host">Margaux Bell · BEO</div>
-        <div class="pax"  data-field="events.0.pax">420</div>
-        <div class="status-cell"><div class="status live"><span class="dot"></span>Live</div></div>
-      </article>
-
-      <article class="row next">
-        <div class="time" data-field="events.1.time">5:30 PM</div>
-        <div class="event"><div class="name" data-field="events.1.name">Hartwell &amp; Reyes · Cocktails</div><div class="org" data-field="events.1.org">Private wedding party</div></div>
-        <div class="room" data-field="events.1.room">Magnolia Garden</div>
-        <div class="head" data-field="events.1.host">David Liu</div>
-        <div class="pax"  data-field="events.1.pax">180</div>
-        <div class="status-cell"><div class="status next">Next · 1h 48m</div></div>
-      </article>
-
-      <article class="row upcoming">
-        <div class="time" data-field="events.2.time">6:30 PM</div>
-        <div class="event"><div class="name" data-field="events.2.name">Hartwell &amp; Reyes · Reception</div><div class="org" data-field="events.2.org">Private wedding party</div></div>
-        <div class="room" data-field="events.2.room">Grand Ballroom</div>
-        <div class="head" data-field="events.2.host">David Liu</div>
-        <div class="pax"  data-field="events.2.pax">180</div>
-        <div class="status-cell"><div class="status upcoming">6:30 PM</div></div>
-      </article>
-
-      <article class="row upcoming">
-        <div class="time" data-field="events.3.time">7:00 PM</div>
-        <div class="event"><div class="name" data-field="events.3.name">Yamamoto Foundation Dinner</div><div class="org" data-field="events.3.org">Charleston Symphony Gala</div></div>
-        <div class="room" data-field="events.3.room">Atlas Private Room</div>
-        <div class="head" data-field="events.3.host">Chef Okafor</div>
-        <div class="pax"  data-field="events.3.pax">42</div>
-        <div class="status-cell"><div class="status upcoming">7:00 PM</div></div>
-      </article>
-
-      <article class="row upcoming">
-        <div class="time" data-field="events.4.time">8:00 PM</div>
-        <div class="event"><div class="name" data-field="events.4.name">Magnolia Quartet · Live Jazz</div><div class="org" data-field="events.4.org">Open to all guests</div></div>
-        <div class="room" data-field="events.4.room">Magnolia Lounge</div>
-        <div class="head" data-field="events.4.host">F&amp;B</div>
-        <div class="pax"  data-field="events.4.pax">85</div>
-        <div class="status-cell"><div class="status upcoming">8:00 PM</div></div>
-      </article>
-
-      <article class="row upcoming">
-        <div class="time" data-field="events.5.time">9:00 PM</div>
-        <div class="event"><div class="name" data-field="events.5.name">Sundown Yoga · Rooftop</div><div class="org" data-field="events.5.org">Cypress Spa programming</div></div>
-        <div class="room" data-field="events.5.room">Rooftop Terrace</div>
-        <div class="head" data-field="events.5.host">Aria Patel</div>
-        <div class="pax"  data-field="events.5.pax">24</div>
-        <div class="status-cell"><div class="status upcoming">9:00 PM</div></div>
-      </article>
-    </div>
-  </section>
-
-  <footer class="footer">
-    <div class="ft note" data-widget="rich-text" data-source="cms">
-      <div class="k">For our guests</div>
-      <div class="v" data-field="note.text">Quiet hours after 11 PM. Wedding overflow parking via the Queen St lot.</div>
-    </div>
-    <div class="ft" data-widget="occupancy" data-source="opera-pms" data-feed="/property/occupancy">
-      <div class="k">Occupancy</div>
-      <div class="v"><span data-field="occupancy.percent">94</span>%</div>
-    </div>
-    <div class="ft" data-widget="weather" data-source="weatherapi" data-feed="/weather/now">
-      <div class="k">Outside</div>
-      <div class="v"><span data-field="weather.temp_f">76</span>° &amp; <span data-field="weather.cond">clear</span></div>
-    </div>
-    <div class="ft" data-widget="contact">
-      <div class="k">Banquet captain</div>
-      <div class="v" data-field="contact.line">ext. 7 · Margaux</div>
-    </div>
-  </footer>
-
-</div></div>
-
-<script type="application/json" id="signage-feed-defaults">
+<body><div hidden data-controls><span data-field="clock.mode">live</span></div><div data-widget="theme" hidden><span data-field="theme.bg">#f6f0e5</span><span data-field="theme.ink">#252725</span><span data-field="theme.brand">#264c43</span><span data-field="theme.brand2">#18352e</span><span data-field="theme.accent">#b08046</span><span data-field="theme.accent2">#ded0b9</span><span data-field="theme.pos">#2c6b50</span><span data-field="theme.neg">#a94935</span><span data-field="theme.fDisplay">Fraunces</span><span data-field="theme.fBody">DM Sans</span><span data-field="theme.fMono">JetBrains Mono</span><span data-field="theme.scale">1</span></div><main class="stage" id="stage"><div class="frame"><header class="top"><div class="mark" data-imgslot="brand.logo"><span class="placeholder" data-field="brand.monogram" data-fit="single" data-fit-min="50" data-fit-max="66">M</span></div><div><div class="brand-name" data-field="brand.name" data-fit="multi" data-fit-min="50" data-fit-max="88">The Marlowe</div><div class="brand-tag" data-field="brand.tagline" data-fit="multi" data-fit-min="50" data-fit-max="54">Events &amp; Catering · Charleston</div></div><div class="timebox"><div class="clock-k" data-field="clock.label" data-fit="multi" data-fit-min="50" data-fit-max="50">Local time</div><div class="clockline"><div class="clock" data-field="clock.hhmm" data-live="clock-part" data-fit="single" data-fit-min="50" data-fit-max="104">3:42</div><div class="ampm" data-field="clock.ampm" data-live="clock-ampm" data-fit="single" data-fit-min="50" data-fit-max="54">PM</div></div></div></header><section class="heading"><div><div class="title" data-field="board.title" data-fit="multi" data-fit-min="50" data-fit-max="206">Today’s events.</div><div class="edition" data-field="board.eye" data-fit="multi" data-fit-min="50" data-fit-max="68">The Marlowe · daily programme</div></div><div class="heading-note" data-field="board.note" data-fit="multi" data-fit-min="50" data-fit-max="66">Make an evening of it. Gather, celebrate, and find something worth staying for.</div></section><section class="board" data-widget="event-feed" data-source="cms"><div class="colhead"><div class="" data-field="columns.time" data-fit="multi" data-fit-min="50" data-fit-max="52">Time</div><div class="" data-field="columns.event" data-fit="multi" data-fit-min="50" data-fit-max="52">Event / host</div><div class="roomhead" data-field="columns.room" data-fit="multi" data-fit-min="50" data-fit-max="52">Location / guests</div></div><div class="rows" data-repeat-max="6"><article class="row"><div class="time" data-field="events.0.time" data-fit="multi" data-fit-min="50" data-fit-max="72">3:00 PM</div><div class="event"><div class="event-name" data-field="events.0.name" data-fit="multi" data-fit-min="50" data-fit-max="80">Carolina Tech Summit · Day 2</div><div class="org" data-field="events.0.org" data-fit="multi" data-fit-min="50" data-fit-max="56">Carolina Tech Council</div></div><div class="location"><div><div class="room" data-field="events.0.room" data-fit="multi" data-fit-min="50" data-fit-max="74">Grand Ballroom</div><div class="host" data-field="events.0.host" data-fit="multi" data-fit-min="50" data-fit-max="52">Margaux Bell · BEO</div></div><div class="pax" data-field="events.0.pax" data-fit="multi" data-fit-min="50" data-fit-max="64">420</div></div></article><article class="row"><div class="time" data-field="events.1.time" data-fit="multi" data-fit-min="50" data-fit-max="72">5:30 PM</div><div class="event"><div class="event-name" data-field="events.1.name" data-fit="multi" data-fit-min="50" data-fit-max="80">Hartwell &amp; Reyes · Cocktails</div><div class="org" data-field="events.1.org" data-fit="multi" data-fit-min="50" data-fit-max="56">Private wedding party</div></div><div class="location"><div><div class="room" data-field="events.1.room" data-fit="multi" data-fit-min="50" data-fit-max="74">Magnolia Garden</div><div class="host" data-field="events.1.host" data-fit="multi" data-fit-min="50" data-fit-max="52">David Liu</div></div><div class="pax" data-field="events.1.pax" data-fit="multi" data-fit-min="50" data-fit-max="64">180</div></div></article><article class="row"><div class="time" data-field="events.2.time" data-fit="multi" data-fit-min="50" data-fit-max="72">6:30 PM</div><div class="event"><div class="event-name" data-field="events.2.name" data-fit="multi" data-fit-min="50" data-fit-max="80">Hartwell &amp; Reyes · Reception</div><div class="org" data-field="events.2.org" data-fit="multi" data-fit-min="50" data-fit-max="56">Private wedding party</div></div><div class="location"><div><div class="room" data-field="events.2.room" data-fit="multi" data-fit-min="50" data-fit-max="74">Grand Ballroom</div><div class="host" data-field="events.2.host" data-fit="multi" data-fit-min="50" data-fit-max="52">David Liu</div></div><div class="pax" data-field="events.2.pax" data-fit="multi" data-fit-min="50" data-fit-max="64">180</div></div></article><article class="row"><div class="time" data-field="events.3.time" data-fit="multi" data-fit-min="50" data-fit-max="72">7:00 PM</div><div class="event"><div class="event-name" data-field="events.3.name" data-fit="multi" data-fit-min="50" data-fit-max="80">Yamamoto Foundation Dinner</div><div class="org" data-field="events.3.org" data-fit="multi" data-fit-min="50" data-fit-max="56">Charleston Symphony Gala</div></div><div class="location"><div><div class="room" data-field="events.3.room" data-fit="multi" data-fit-min="50" data-fit-max="74">Atlas Private Room</div><div class="host" data-field="events.3.host" data-fit="multi" data-fit-min="50" data-fit-max="52">Chef Okafor</div></div><div class="pax" data-field="events.3.pax" data-fit="multi" data-fit-min="50" data-fit-max="64">42</div></div></article><article class="row"><div class="time" data-field="events.4.time" data-fit="multi" data-fit-min="50" data-fit-max="72">8:00 PM</div><div class="event"><div class="event-name" data-field="events.4.name" data-fit="multi" data-fit-min="50" data-fit-max="80">Magnolia Quartet · Live Jazz</div><div class="org" data-field="events.4.org" data-fit="multi" data-fit-min="50" data-fit-max="56">Open to all guests</div></div><div class="location"><div><div class="room" data-field="events.4.room" data-fit="multi" data-fit-min="50" data-fit-max="74">Magnolia Lounge</div><div class="host" data-field="events.4.host" data-fit="multi" data-fit-min="50" data-fit-max="52">F&amp;B</div></div><div class="pax" data-field="events.4.pax" data-fit="multi" data-fit-min="50" data-fit-max="64">85</div></div></article><article class="row"><div class="time" data-field="events.5.time" data-fit="multi" data-fit-min="50" data-fit-max="72">9:00 PM</div><div class="event"><div class="event-name" data-field="events.5.name" data-fit="multi" data-fit-min="50" data-fit-max="80">Sundown Yoga · Rooftop</div><div class="org" data-field="events.5.org" data-fit="multi" data-fit-min="50" data-fit-max="56">Cypress Spa programming</div></div><div class="location"><div><div class="room" data-field="events.5.room" data-fit="multi" data-fit-min="50" data-fit-max="74">Rooftop Terrace</div><div class="host" data-field="events.5.host" data-fit="multi" data-fit-min="50" data-fit-max="52">Aria Patel</div></div><div class="pax" data-field="events.5.pax" data-fit="multi" data-fit-min="50" data-fit-max="64">24</div></div></article></div></section><footer class="footer"><div class="ft note"><div class="ft-k" data-field="note.label" data-fit="multi" data-fit-min="50" data-fit-max="50">For our guests</div><div class="ft-v" data-field="note.text" data-fit="multi" data-fit-min="50" data-fit-max="66">Quiet hours after 11 PM. Wedding overflow parking via the Queen St lot.</div></div><div class="ft"><div class="ft-k" data-field="occupancy.label" data-fit="multi" data-fit-min="50" data-fit-max="50">Occupancy</div><div class="numberline"><div class="ft-value" data-field="occupancy.percent" data-fit="multi" data-fit-min="50" data-fit-max="110">94</div><div class="number-unit" data-field="occupancy.unit" data-fit="multi" data-fit-min="50" data-fit-max="64">%</div></div></div><div class="ft"><div class="ft-k" data-field="weather.label" data-fit="multi" data-fit-min="50" data-fit-max="50">Outside</div><div class="weatherline"><div class="weather-temp" data-field="weather.temp_f" data-fit="multi" data-fit-min="50" data-fit-max="100">76</div><div class="number-unit" data-field="weather.unit" data-fit="multi" data-fit-min="50" data-fit-max="64">°</div><div class="weather-cond" data-field="weather.cond" data-fit="multi" data-fit-min="50" data-fit-max="58">clear</div></div></div><div class="ft"><div class="ft-k" data-field="contact.label" data-fit="multi" data-fit-min="50" data-fit-max="50">Banquet captain</div><div class="ft-v" data-field="contact.line" data-fit="multi" data-fit-min="50" data-fit-max="66">ext. 7 · Margaux</div></div></footer></div></main><script type="application/json" id="signage-feed-defaults">
 {
   "brand":{"name":"The Marlowe","tagline":"Events & Catering · Charleston"},
   "board":{"eye":"Saturday · May 9","title":"Today's events."},
@@ -328,7 +179,27 @@ addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='objec
   "contact":{"line":"ext. 7 · Margaux"}
 }
 </script>
-<script>(function(){var s=document.getElementById('stage');function fit(){s.style.setProperty('--scale',Math.min(innerWidth/3840,innerHeight/2160));}addEventListener('resize',fit);fit();})();</script>
+
+<script>
+/* Hospitality flagship scaffold: stage fitting, editable theme and minimum-size text. */
+(function(){
+  var root=document.documentElement,stage=document.getElementById('stage');
+  var THEME={bg:'--bg',ink:'--ink',brand:'--brand',brand2:'--brand2',accent:'--accent',accent2:'--accent2',pos:'--pos',neg:'--neg',fDisplay:'--f-display',fBody:'--f-body',fMono:'--f-mono',scale:'--scale'};
+  function applyTheme(){Object.keys(THEME).forEach(function(k){var el=document.querySelector('[data-field="theme.'+k+'"]');if(el&&el.textContent.trim()){var v=el.textContent.trim();root.style.setProperty(THEME[k],k.indexOf('f')===0?("'"+v+"'"):v);}});}
+  function fitOne(el){if(!el.getClientRects().length)return;var key=el.getAttribute('data-field');if(fixedSizes&&Object.prototype.hasOwnProperty.call(fixedSizes,key)){var v=fixedSizes[key];el.style.fontSize=typeof v==='number'?(v*(parseFloat(getComputedStyle(root).getPropertyValue('--scale'))||1)+'px'):v;return;}var scale=parseFloat(getComputedStyle(root).getPropertyValue('--scale'))||1;var min=+(el.getAttribute('data-fit-min')||50)*scale,max=+(el.getAttribute('data-fit-max')||80)*scale;var single=el.getAttribute('data-fit')==='single';if(single)el.style.whiteSpace='nowrap';var lo=min,hi=Math.max(min,max),best=min;for(var i=0;i<16;i++){var mid=(lo+hi)/2;el.style.fontSize=mid+'px';var ok=el.scrollWidth<=el.clientWidth+1&&el.scrollHeight<=el.clientHeight+1;if(ok){best=mid;lo=mid;}else hi=mid;}el.style.fontSize=best+'px';}
+  function autofit(){if(/[?&]freeze=1\b/.test(location.search))return;document.querySelectorAll('[data-fit]').forEach(fitOne);}
+  function orient(){var o=new URLSearchParams(location.search).get('o'),p=o?o==='portrait':innerHeight>innerWidth;stage.setAttribute('data-orient',p?'port':'land');root.style.setProperty('--stage-w',p?'2160px':'3840px');root.style.setProperty('--stage-h',p?'3840px':'2160px');root.style.setProperty('--stage-scale',Math.min(innerWidth/(p?2160:3840),innerHeight/(p?3840:2160)));autofit();}
+  applyTheme();new MutationObserver(function(){applyTheme();autofit();}).observe(document.querySelector('[data-widget="theme"]'),{subtree:true,childList:true,characterData:true});
+  document.querySelectorAll('[data-imgslot]').forEach(function(el){var v=el.getAttribute('data-img')||'';if(v){el.style.backgroundImage='url("'+v+'")';el.classList.add('has-img');}});
+  addEventListener('resize',orient);addEventListener('load',orient);orient();setTimeout(autofit,120);setTimeout(autofit,500);if(document.fonts&&document.fonts.ready)document.fonts.ready.then(autofit);
+  if(!/[?&]freeze=1\b/.test(location.search))new MutationObserver(autofit).observe(stage,{subtree:true,childList:true,characterData:true});
+  var pinned={},fixedSizes={};try{var p=new URLSearchParams(location.search).get('text');if(p){var overrides=JSON.parse(decodeURIComponent(escape(atob(p.replace(/-/g,'+').replace(/_/g,'/')))));Object.keys(overrides).forEach(function(k){pinned[k]=true;});}var z=new URLSearchParams(location.search).get('textStyles');if(z){var styleMap=JSON.parse(decodeURIComponent(escape(atob(z.replace(/-/g,'+').replace(/_/g,'/')))));Object.keys(styleMap).forEach(function(k){if(styleMap[k]&&styleMap[k].fontSize!=null)fixedSizes[k]=styleMap[k].fontSize;});}}catch(e){}
+  function syncPins(){document.querySelectorAll('[data-live]').forEach(function(el){if(pinned[el.getAttribute('data-field')]){el.setAttribute('data-pin','');el.__hospitalityPinned=true;}else if(el.__hospitalityPinned){el.removeAttribute('data-pin');el.__hospitalityPinned=false;}});}syncPins();addEventListener('message',function(e){if(e.data&&e.data.type==='educms-overrides'){if(e.data.text){pinned={};Object.keys(e.data.text).forEach(function(k){pinned[k]=true;});syncPins();}if(e.data.textStyles){fixedSizes={};Object.keys(e.data.textStyles).forEach(function(k){var v=e.data.textStyles[k];if(v&&v.fontSize!=null)fixedSizes[k]=v.fontSize;});}autofit();}});
+  function tick(){var mode=document.querySelector('[data-field="clock.mode"]');if(mode&&/^(manual|off|false|0)$/i.test(mode.textContent.trim()))return;var d=new Date(),h=d.getHours()%12||12,m=d.getMinutes(),hhmm=h+':'+(m<10?'0':'')+m;document.querySelectorAll('[data-live="clock-part"]').forEach(function(el){if(!el.hasAttribute('data-pin')&&!pinned[el.getAttribute('data-field')])el.textContent=hhmm;});document.querySelectorAll('[data-live="clock-ampm"]').forEach(function(el){if(!el.hasAttribute('data-pin')&&!pinned[el.getAttribute('data-field')])el.textContent=d.getHours()<12?'AM':'PM';});document.querySelectorAll('[data-live="clock-full"]').forEach(function(el){if(!el.hasAttribute('data-pin')&&!pinned[el.getAttribute('data-field')])el.textContent=hhmm+' '+(d.getHours()<12?'AM':'PM');});}
+  tick();setInterval(tick,15000);
+})();
+</script>
+
 <script>/*EDUCMS-MEDIA-CONTROLS-V1*/"use strict";(()=>{var M='[data-imgslot],[data-posterslot],[data-img],[data-widget="image-slot"],[data-videoslot]',y=new WeakMap,l=new WeakMap,p=new Map,h=new WeakSet,A={img:new Set,video:new Set},b={},c={},k=!1;function d(t){return t.getAttribute("data-videoslot")||t.getAttribute("data-imgslot")||t.getAttribute("data-posterslot")||t.getAttribute("data-slot")||t.getAttribute("data-img")||""}function f(){return Array.from(document.querySelectorAll(M)).filter(t=>d(t)&&!t.closest("#venueos-fields,[data-controls]"))}function S(){f().forEach(t=>{var i,s;let e=d(t);if(p.has(e)||!t.getClientRects().length)return;let o=t.matches("img,video")?t:t.querySelector("img,video"),r=Array.from(document.querySelectorAll("[data-field]")).find(n=>n.dataset.field==="media.".concat(e,".slides"));if(r)try{p.set(e,JSON.parse(r.textContent||"[]"));return}catch{}p.set(e,(o==null?void 0:o.getAttribute("src"))||((i=o==null?void 0:o.querySelector("source"))==null?void 0:i.getAttribute("src"))||((s=/url\(["']?([^"')]+)["']?\)/.exec(getComputedStyle(t).backgroundImage))==null?void 0:s[1])||"")})}function v(){parent.postMessage({type:"educms-media-ready",slots:f().map(t=>{var i;let e=t.hasAttribute("data-videoslot"),o=t.matches("img,video")?t:t.querySelector("img,video"),r=o?getComputedStyle(o).objectFit:getComputedStyle(t).backgroundSize;return{key:d(t),kind:e?"video":"image",defaultFit:r==="contain"?"contain":"cover",hasSource:!!(o!=null&&o.getAttribute("src")||(i=o==null?void 0:o.querySelector("source"))!=null&&i.getAttribute("src")||/url\(/.test(getComputedStyle(t).backgroundImage))}})},"*")}function m(){f().forEach(t=>{let e=b[d(t)],o=t.matches("img,video")?[t]:Array.from(t.querySelectorAll("img,video"));if(!e&&!y.has(t))return;y.has(t)||y.set(t,{transform:t.style.transform,priority:t.style.getPropertyPriority("transform"),base:getComputedStyle(t).transform,display:t.style.display,size:t.style.backgroundSize,position:t.style.backgroundPosition,repeat:t.style.backgroundRepeat});let r=y.get(t),i=typeof(e==null?void 0:e.rotation)=="number"&&Number.isFinite(e.rotation)?(e.rotation%360+360)%360:0;i?t.style.setProperty("transform","".concat(r.base==="none"?"":r.base," rotate(").concat(i,"deg)"),"important"):r.transform?t.style.setProperty("transform",r.transform,r.priority):t.style.removeProperty("transform"),(e==null?void 0:e.fit)==="contain"||(e==null?void 0:e.fit)==="cover"||(e==null?void 0:e.fit)==="fill"?(o.forEach(s=>{l.has(s)||l.set(s,s.style.objectFit),s.style.objectFit=e.fit}),t.style.backgroundSize=e.fit==="fill"?"100% 100%":e.fit,t.style.backgroundRepeat="no-repeat",t.style.backgroundPosition="center"):(o.forEach(s=>{l.has(s)&&(s.style.objectFit=l.get(s))}),t.style.backgroundSize=r.size,t.style.backgroundPosition=r.position,t.style.backgroundRepeat=r.repeat),t.style.display=(e==null?void 0:e.hidden)===!0?"none":r.display})}function L(){try{let t=new URLSearchParams(location.search);for(let e of["mediaStyles","img","video"]){let o=t.get(e);if(!o)continue;let r=JSON.parse(decodeURIComponent(escape(atob(o.replace(/-/g,"+").replace(/_/g,"/")))));!r||typeof r!="object"||Array.isArray(r)||(e==="mediaStyles"?b=r:c[e]=r)}}catch{}}function g(t,e=!1){f().forEach(o=>{if(e&&h.has(o))return;let r=o.hasAttribute("data-videoslot"),i=r?t.video:t.img,s=d(o);if(!i||!(s in i)||!r&&document.documentElement.dataset.nativeCarousels==="true")return;let n=i[s],a=typeof n=="string"?n:Array.isArray(n)&&typeof n[0]=="string"?n[0]:"",u=r?o.matches("video")?o:o.querySelector("video"):o.matches("img")?o:null;u?u.getAttribute("src")!==a&&(a?u.setAttribute("src",a):u.removeAttribute("src"),u instanceof HTMLVideoElement&&u.load()):r||(o.style.backgroundImage=a?"url(".concat(JSON.stringify(a),")"):""),r||(o.classList.toggle("has-img",!!a),a?o.setAttribute("data-has-image","true"):o.removeAttribute("data-has-image")),h.add(o)})}addEventListener("message",t=>{if(t.source!==parent||!t.data||typeof t.data!="object")return;let e=t.data;if(e.type==="educms-media-request"&&v(),e.type==="educms-edit-mode"&&(k=e.on===!0),e.type==="educms-overrides"){S();for(let o of["img","video"])if(!(!e[o]||typeof e[o]!="object")){Object.keys(e[o]).forEach(r=>A[o].add(r));for(let r of A[o])r in e[o]||(e[o][r]=p.get(r)||"");c[o]={...e[o]}}g(c),e.mediaStyles&&typeof e.mediaStyles=="object"&&(b=e.mediaStyles),m(),Promise.resolve().then(()=>{g(c),m()})}},!0);document.addEventListener("click",t=>{var r,i;if(!k)return;let e=(r=t.target)==null?void 0:r.closest(M);if(!e||!f().includes(e))return;let o=(i=t.target)==null?void 0:i.closest("[data-field],[data-action]");o&&o!==e&&e.contains(o)||(t.preventDefault(),t.stopImmediatePropagation(),parent.postMessage({type:"educms-media-select",key:d(e)},"*"),parent.postMessage({type:"educms-field-click",key:d(e),kind:e.hasAttribute("data-videoslot")?"video":"img"},"*"))},!0);function E(){S(),L(),g(c),m(),v(),Promise.resolve().then(()=>{g(c),m()}),new MutationObserver(()=>{S(),g(c,!0),Object.keys(b).length&&m(),k&&v()}).observe(document.body,{childList:!0,subtree:!0})}document.readyState==="loading"?document.addEventListener("DOMContentLoaded",E,!0):E();})();</script>
 </body>
 </html>
