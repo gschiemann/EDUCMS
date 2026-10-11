@@ -1,4 +1,4 @@
-import { PlayerLogsController } from './player-logs.controller';
+import { PlayerLogsController, RECOVERY_LINE } from './player-logs.controller';
 import { verifyDeviceForScreen } from '../screens/device-auth';
 import {
   MAX_AUDIT_ROWS_PER_SCREEN_HOUR,
@@ -122,6 +122,25 @@ test('a failed write gives its claim back, so the retry records the event', asyn
 test('oversized bodies are refused before authentication or storage', async () => {
   await expect(controller.ingestLog(screenId, request('x'.repeat(1_048_577)))).rejects.toThrow();
   expect(verify).not.toHaveBeenCalled();
+});
+test('the native alert watch, the wake timeline and a process start are recovery events (2026-10-11)', async () => {
+  // Each marker the player writes about an alert episode, a wake and a
+  // process start becomes one audit row — the forensic trail the 2026-10-11
+  // L55VEC drill did not have.
+  const lines = [
+    '2026-10-11T18:59:58.500Z [ERROR] DisplayEmergency: PLAYER_NATIVE_ALERT_RAISE face=0 heldBefore=false — the NATIVE watch is raising the hold',
+    '2026-10-11T19:00:01.000Z [ERROR] NativeAlertWatch: PLAYER_NATIVE_ALERT_CONFIRMED face=0 afterMs=2500 reloads=0 — the page raised the hold itself',
+    '2026-10-11T19:00:56.100Z [INFO] WakeRecovery: PLAYER_PROCESS_START pid=4242 uptimeMs=58000 bootCount=18 lastWake=emergency@1791688798500 resumed=0 out=pending',
+    '2026-10-11T19:00:56.200Z [ERROR] WakeRecovery: PLAYER_WAKE_PROCESS_RESTART src=emergency reqAt=1791688798500 sinceMs=57600 uptimeMs=58000',
+    '2026-10-11T19:00:59.000Z [INFO] WakeRecovery: PLAYER_WAKE_LANDED src=emergency sinceMs=60500 launches=0 pid=4242 — MainActivity resumed on the glass',
+    '2026-10-11T19:01:00.000Z [INFO] WakeRecovery: PLAYER_WAKE_LOG_UPLOAD reason=PROCESS_RESTART_AFTER_WAKE attributed=true',
+  ];
+  for (const line of lines) expect(RECOVERY_LINE.test(line)).toBe(true);
+  expect(RECOVERY_LINE.test('2026-10-11T19:01:04.000Z [INFO] HeartbeatService: native heartbeat pulled forward — activity-resumed')).toBe(false);
+  expect(await controller.ingestLog(screenId, request(lines.join('\n')))).toEqual({ stored: true, rows: lines.length });
+  const actions = created().map((d: any) => d.action);
+  expect(new Set(actions)).toEqual(new Set(['PLAYER_RECOVERY_EVENT']));
+  expect(loggedLines()).toEqual(lines);
 });
 test('retains each distinct renderer and decoder event in a bounded upload', async () => {
   const body = recovery + '\n2026-09-29T17:36:00Z PLAYER_PLAYBACK_FAILURE video stalled';

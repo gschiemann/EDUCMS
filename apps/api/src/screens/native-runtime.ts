@@ -55,6 +55,41 @@ const sleepSchema = z.object({
   attS: z.number().int().min(-1).max(999_999_999).optional(),
 });
 
+/**
+ * The last wake, step by step (2026-10-11, player `wake.WakeReport`). Wall
+ * ms from the device clock — compare with the server's own rows for the
+ * command that caused it. `src` names the wake path (`dead-man-revert`,
+ * `command`, `schedule-on`, `emergency`, `power-on`, `standby-end`,
+ * `screen-on`); `onAt` the first screen-on after it; `resAt` MainActivity's
+ * onResume; `loadAt` the page's next load start (a reload or a cold start);
+ * `n` launches of the existing Activity it spent; `out` what the bounded
+ * check concluded.
+ */
+export const NATIVE_WAKE_OUTCOMES = [
+  'pending',
+  'on-glass',
+  'dark',
+  'standby',
+  'install-prompt',
+  'setup',
+  'not-on-glass',
+] as const;
+const wakeSchema = z.object({
+  src: z.string().max(24).regex(/^[a-z0-9][a-z0-9/-]*$/),
+  reqAt: wallMs,
+  onAt: wallMs.optional(),
+  resAt: wallMs.optional(),
+  loadAt: wallMs.optional(),
+  n: z.number().int().min(0).max(9),
+  out: z.enum(NATIVE_WAKE_OUTCOMES),
+});
+/** THIS process: id, start (wall ms), the box's boot count. A new pid is a restart; a new boot count a reboot. */
+const procSchema = z.object({
+  pid: z.number().int().nonnegative().max(2_147_483_647),
+  at: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  boot: z.number().int().nonnegative().max(2_147_483_647).optional(),
+});
+
 const runtimeSchema = z.object({
   schema: z.literal(1),
   interactive: z.boolean().nullable(),
@@ -76,6 +111,9 @@ const runtimeSchema = z.object({
   // other malformed field.
   powerOnAttempts: z.number().int().min(0).max(9).optional(),
   sleep: sleepSchema.optional(),
+  // Additive (2026-10-11). Optional so every earlier report parses as before.
+  wake: wakeSchema.optional(),
+  proc: procSchema.optional(),
 });
 
 export type NativeRuntimeReport = z.infer<typeof runtimeSchema>;
@@ -123,7 +161,14 @@ export function nativePowerStateChanged(
     a.sleep?.a11y !== next.sleep?.a11y ||
     a.sleep?.admin !== next.sleep?.admin ||
     a.sleep?.offAt !== next.sleep?.offAt ||
-    a.sleep?.attS !== next.sleep?.attS
+    a.sleep?.attS !== next.sleep?.attS ||
+    // A wake step (requested, panel on, resumed, concluded) and a process
+    // restart are exactly the facts that must reach the row promptly.
+    a.wake?.reqAt !== next.wake?.reqAt ||
+    a.wake?.onAt !== next.wake?.onAt ||
+    a.wake?.resAt !== next.wake?.resAt ||
+    a.wake?.out !== next.wake?.out ||
+    a.proc?.pid !== next.proc?.pid
   );
 }
 

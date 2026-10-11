@@ -72,6 +72,20 @@ const CRASH_LINE =
 /** Newest recovery marker lines examined per upload. */
 const MAX_RECOVERY_CANDIDATES = 32;
 
+/**
+ * A line the player wrote about a recovery event — each becomes one
+ * immutable audit row (deduped, capped). 2026-10-11 added the native alert
+ * watch's markers (`PLAYER_NATIVE_ALERT_RAISE` / `_CONFIRMED` / `_RELOAD` /
+ * `_UNCONFIRMED` / `_RELAUNCH` / `_NOT_ON_GLASS` / `_PAGE_CLEARED` /
+ * `_BLIND`), the wake timeline's (`PLAYER_WAKE_REQUESTED` / `_LAUNCH` /
+ * `_LANDED` / `_NOT_ON_GLASS` / `_PANEL_DARK` / `_PROCESS_RESTART` /
+ * `_KEYGUARD*`) and `PLAYER_PROCESS_START` (pid, uptime, boot count — a
+ * new pid is a process restart, a new boot count a reboot). Exported for
+ * the spec; the player's markers are the contract.
+ */
+export const RECOVERY_LINE =
+  /PLAYER_RENDERER_TERMINATED|PLAYER_RENDERER_REPLACE_FAILED|PLAYER_PLAYBACK_FAILURE|PLAYER_PROCESS_EXIT|PLAYER_PROCESS_START|PLAYER_NATIVE_ALERT_[A-Z_]+|PLAYER_WAKE_[A-Z_]+/;
+
 @Controller('api/v1/player-logs')
 export class PlayerLogsController {
   private readonly logger = new Logger('PlayerLogs');
@@ -219,8 +233,7 @@ export class PlayerLogsController {
     // object storage (separate bucket, not AuditLog).
     // The JVM crash handler never sees an isolated WebView renderer death.
     // Native recovery writes these bounded, timestamped markers to disk.
-    const recoveryLines = rawBody.split('\n').filter(line =>
-      /PLAYER_RENDERER_TERMINATED|PLAYER_RENDERER_REPLACE_FAILED|PLAYER_PLAYBACK_FAILURE|PLAYER_PROCESS_EXIT/.test(line))
+    const recoveryLines = rawBody.split('\n').filter(line => RECOVERY_LINE.test(line))
       .slice(-MAX_RECOVERY_CANDIDATES);
     const looksLikeCrash = CRASH_LINE.test(rawBody);
 

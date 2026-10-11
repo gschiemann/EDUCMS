@@ -105,6 +105,53 @@ describe('native power evidence and command freshness', () => {
     }
     expect(parseNativeRuntime(JSON.stringify({ ...runtime, powerOnAttempts: 50 }))).toBeNull();
   });
+  // 2026-10-11 — the wake timeline and the reporting process (player WakeReport).
+  const wake = {
+    src: 'dead-man-revert',
+    reqAt: 1791688602995,
+    onAt: 1791688603400,
+    resAt: 1791688604100,
+    loadAt: 1791688660000,
+    n: 1,
+    out: 'on-glass',
+  };
+  const proc = { pid: 12345, at: 1791688000000, boot: 17 };
+  it('accepts the wake timeline and the process block, additively and partially', () => {
+    const full = { ...runtime, wake, proc };
+    expect(parseNativeRuntime(JSON.stringify(full))).toEqual(full);
+    expect(
+      parseNativeRuntime(JSON.stringify({ ...runtime, wake: { src: 'screen-on', reqAt: 1, n: 0, out: 'pending' } })),
+    ).toMatchObject({ wake: { src: 'screen-on', out: 'pending' } });
+    expect(parseNativeRuntime(JSON.stringify({ ...runtime, proc: { pid: 1, at: 1 } }))).toMatchObject({ proc: { pid: 1 } });
+  });
+  it('refuses a malformed wake or process block rather than storing a device-invented claim', () => {
+    for (const bad of [
+      { ...wake, out: 'definitely-on-glass' },
+      { ...wake, src: 'Not A Source!' },
+      { ...wake, src: 'x'.repeat(25) },
+      { ...wake, n: 10 },
+      { ...wake, reqAt: -1 },
+    ]) {
+      expect(parseNativeRuntime(JSON.stringify({ ...runtime, wake: bad }))).toBeNull();
+    }
+    expect(parseNativeRuntime(JSON.stringify({ ...runtime, proc: { pid: -1, at: 1 } }))).toBeNull();
+    expect(parseNativeRuntime(JSON.stringify({ ...runtime, proc: { pid: 'x', at: 1 } }))).toBeNull();
+  });
+  it('a wake step or a new process is a CHANGE; the same wake re-reported is not', () => {
+    const r = parseNativeRuntime(JSON.stringify({ ...runtime, wake, proc }))!;
+    expect(nativePowerStateChanged(r, { ...r, elapsedRealtimeMs: r.elapsedRealtimeMs + 60_000 })).toBe(false);
+    for (const next of [
+      { ...r, wake: { ...wake, reqAt: wake.reqAt + 1 } },
+      { ...r, wake: { ...wake, resAt: undefined } },
+      { ...r, wake: { ...wake, onAt: wake.onAt + 1 } },
+      { ...r, wake: { ...wake, out: 'not-on-glass' as const } },
+      { ...r, proc: { ...proc, pid: proc.pid + 1 } },
+    ]) {
+      expect(nativePowerStateChanged(r, next as typeof r)).toBe(true);
+    }
+    // The first report that carries a wake is a change against one that did not.
+    expect(nativePowerStateChanged({ ...runtime, sleep: undefined }, r)).toBe(true);
+  });
   it('a new sleep observation or capability is a CHANGE; an identical block is not', () => {
     const r = parseNativeRuntime(JSON.stringify({ ...runtime, sleep }))!;
     expect(nativePowerStateChanged(r, { ...r, elapsedRealtimeMs: r.elapsedRealtimeMs + 60_000 })).toBe(false);
