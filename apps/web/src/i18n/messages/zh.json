@@ -4123,7 +4123,14 @@
     "takeoverMessage": "{screen}正在为{game}读取控制台。移到这里后，那场比赛将不再收到控制台数据。",
     "takeoverConfirm": "移到这里",
     "errorTaken": "该屏幕现在正在为另一场比赛读取控制台——请重新选择。",
-    "goingLive": "正在开始直播…"
+    "goingLive": "正在开始直播…",
+    "abbrevTitle": "队伍缩写",
+    "abbrevHelp": "滚动条和比分条上显示的队伍名称。留空则使用建议值。",
+    "abbrevHome": "主队",
+    "abbrevAway": "客队",
+    "abbrevInvalid": "请使用 1 到 5 个字母或数字。",
+    "abbrevCollision": "两支队伍都会显示 {abbrev}，请为其中一队设置不同的缩写。",
+    "abbrevSaveFailed": "无法保存缩写，请重试。"
   },
   "consoleBridge": {
     "title": "记分牌控制台",

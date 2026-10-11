@@ -4123,7 +4123,14 @@
     "takeoverMessage": "{screen} reads the console for {game}. Moving it here stops that game's console data.",
     "takeoverConfirm": "Move it here",
     "errorTaken": "That screen now reads the console for another game — choose again.",
-    "goingLive": "Going live…"
+    "goingLive": "Going live…",
+    "abbrevTitle": "Team abbreviations",
+    "abbrevHelp": "What the ribbon and scorebug show for each team. Leave a box empty to use the suggestion.",
+    "abbrevHome": "Home",
+    "abbrevAway": "Away",
+    "abbrevInvalid": "Use 1 to 5 letters or digits.",
+    "abbrevCollision": "Both teams would show {abbrev} — give one of them a different abbreviation.",
+    "abbrevSaveFailed": "Couldn't save the abbreviation — try again."
   },
   "consoleBridge": {
     "title": "Scoreboard console",

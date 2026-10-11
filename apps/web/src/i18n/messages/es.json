@@ -4123,7 +4123,14 @@
     "takeoverMessage": "{screen} lee la consola para {game}. Si la mueves aquí, ese partido deja de recibir los datos de la consola.",
     "takeoverConfirm": "Moverla aquí",
     "errorTaken": "Esa pantalla ahora lee la consola para otro partido; elige de nuevo.",
-    "goingLive": "Iniciando en vivo…"
+    "goingLive": "Iniciando en vivo…",
+    "abbrevTitle": "Abreviaturas de los equipos",
+    "abbrevHelp": "Lo que muestran la cinta y el marcador para cada equipo. Deje un campo vacío para usar la sugerencia.",
+    "abbrevHome": "Local",
+    "abbrevAway": "Visitante",
+    "abbrevInvalid": "Use de 1 a 5 letras o dígitos.",
+    "abbrevCollision": "Ambos equipos mostrarían {abbrev}; asigne a uno de ellos otra abreviatura.",
+    "abbrevSaveFailed": "No se pudo guardar la abreviatura; inténtelo de nuevo."
   },
   "consoleBridge": {
     "title": "Consola del marcador",

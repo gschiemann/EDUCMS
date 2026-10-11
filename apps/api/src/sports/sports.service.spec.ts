@@ -3230,3 +3230,31 @@ describe('Inputs-wave GUIDED — mintFeedCredentials audit', () => {
     expect(auditLog.rows.filter((r: any) => r.action === 'SPORTS_FEED_TOKEN_MINTED')).toHaveLength(0);
   });
 });
+
+// Muse beta S-04 / DEV-028 — team abbreviations.
+describe('SportsService — team abbreviations', () => {
+  it('the public board carries de-collided derived abbreviations', async () => {
+    const { service } = setup();
+    const g = await service.createGame(TENANT, { sport: 'basketball', homeTeam: 'Muse Sports Test Home', awayTeam: 'Muse Sports Test Away' });
+    const board: any = await service.getBoard(g.id);
+    expect(board.homeAbbrev).toBe('MSTH');
+    expect(board.awayAbbrev).toBe('MSTA');
+  });
+
+  it('an operator abbreviation is saved normalized and wins on the board; empty clears it', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'basketball');
+    const edited: any = await service.updateGameDetails(TENANT, g.id, { homeAbbrev: ' lhs ' });
+    expect(edited.homeAbbrev).toBe('LHS');
+    expect(((await service.getBoard(g.id)) as any).homeAbbrev).toBe('LHS');
+    const cleared: any = await service.updateGameDetails(TENANT, g.id, { homeAbbrev: '' });
+    expect(cleared.homeAbbrev).toBeNull();
+  });
+
+  it('refuses an abbreviation that is not 1–5 letters or digits', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'basketball');
+    await expect(service.updateGameDetails(TENANT, g.id, { awayAbbrev: 'TOOLONG' })).rejects.toThrow(BadRequestException);
+    await expect(service.updateGameDetails(TENANT, g.id, { awayAbbrev: 'A-B' })).rejects.toThrow(BadRequestException);
+  });
+});

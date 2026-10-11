@@ -32,7 +32,7 @@
 import React from 'react';
 import { foulsReachBonus, shotClockDisplayLen, sportForGame, teamBonus } from '@cms/api-types';
 import { formatShotClockReading, SHOT_CLOCK_TENTHS_AT_MS } from '@/lib/game-clock-format';
-import { subClockMs, useGameState, useRenderSurface, type GameSnapshot } from './GameStateContext';
+import { subClockMs, teamAbbrevOf, useGameState, useRenderSurface, type GameSnapshot } from './GameStateContext';
 import { FitOneLine, FitBox } from './FitOneLine';
 import { deriveCtsField } from './cts-fields';
 import { sceneCss } from '../scene-css';
@@ -182,7 +182,11 @@ export function TeamAbbrWidget({ config }: { config: ElCfg }) {
   const t = teamOf(s?.snapshot, team);
   const override = typeof config.teamName === 'string' ? config.teamName.trim() : '';
   const name = override || t.name || (team === 'away' ? 'TIGERS' : 'EAGLES');
-  const abbr = name.trim().slice(0, 3).toUpperCase();
+  // Muse beta S-04: a typed override still abbreviates by its first letters;
+  // the live game uses the shared rule (operator value, else smart default).
+  const abbr = !override && s?.snapshot
+    ? teamAbbrevOf(s.snapshot, team === 'away' ? 'away' : 'home')
+    : name.trim().slice(0, 3).toUpperCase();
   return (
     <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent', overflow: 'hidden' }}>
       <FitOneLine

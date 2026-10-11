@@ -5002,6 +5002,8 @@ export function useUpdateGameDetails(gameId: string | undefined) {
       ribbonTemplateId?: string | null;
       scorebugTemplateId?: string | null;
       scheduledAt?: string | null;
+      homeAbbrev?: string | null;
+      awayAbbrev?: string | null;
     }) => apiFetch(`/sports/games/${gameId}`, { method: 'PATCH', body: JSON.stringify(data) }),
     onSuccess: (game: any) => {
       if (game?.id) qc.setQueryData(['sports-game', game.id], game);

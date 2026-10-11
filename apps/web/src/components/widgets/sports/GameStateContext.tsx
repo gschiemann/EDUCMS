@@ -116,7 +116,7 @@ import { applyCtsOverlay } from '@/lib/cts-merge';
 import { serverClock } from '@/lib/server-clock';
 import { acceptRevision, type LinkPhase } from '@/lib/sports-freshness';
 import { noteRevisionShown, useSportsLink } from '@/hooks/use-sports-link';
-import { overtimeLabel, projectCountdownMs, projectGameClockMs, sportForGame } from '@cms/api-types';
+import { overtimeLabel, projectCountdownMs, projectGameClockMs, resolveTeamAbbrevs, sportForGame } from '@cms/api-types';
 
 export interface GameSnapshot {
   id: string;
@@ -131,6 +131,9 @@ export interface GameSnapshot {
   awayColor: string | null;
   homeLogoUrl: string | null;
   awayLogoUrl: string | null;
+  /** Muse beta S-04: the abbreviation the board shows — operator's, else the smart default (server-resolved). */
+  homeAbbrev?: string | null;
+  awayAbbrev?: string | null;
   clockMs: number;
   clockRunning: boolean;
   clockUpdatedAt: string;
@@ -435,4 +438,20 @@ export function fmtSegment(sport: string, segment: number, rules?: unknown): str
     default:
       return `${name} ${segment}`;
   }
+}
+
+/**
+ * The abbreviation a surface shows for one side (Muse beta S-04 / DEV-028).
+ * The board payload already carries the server-resolved value; an older
+ * payload (or the builder's sample) falls back to the SAME shared rule, so
+ * no surface ever goes back to "first three letters".
+ */
+export function teamAbbrevOf(
+  snap: Pick<GameSnapshot, 'homeTeam' | 'awayTeam' | 'homeAbbrev' | 'awayAbbrev'> | null | undefined,
+  side: 'home' | 'away',
+): string {
+  if (!snap) return '';
+  const served = side === 'home' ? snap.homeAbbrev : snap.awayAbbrev;
+  if (typeof served === 'string' && served) return served;
+  return resolveTeamAbbrevs(snap)[side];
 }

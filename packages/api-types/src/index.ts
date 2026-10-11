@@ -1125,3 +1125,7 @@ export * from './student-name-fields';
 // read by the API's rename / add-a-location / signup paths and by the
 // dashboard's URL canonicalizer.
 export * from './tenant-slug';
+
+// Team abbreviations (Muse beta S-04, 2026-10-11) — operator value or the
+// smart default, one rule for the API, the console and every scoreboard.
+export * from './team-abbrev';

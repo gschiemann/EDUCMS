@@ -17,6 +17,7 @@
  * pre-game and between-game content that is rarely touched during play.
  */
 
+import { TeamAbbrevFields } from './TeamAbbrevFields';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { useQueryClient } from '@tanstack/react-query';
@@ -791,6 +792,7 @@ function GameControl() {
                 <span className="font-semibold text-slate-500">More → Set up game</span>.
               </p>
               <ScheduledAtField gameId={gameId} scheduledAt={g.scheduledAt ?? null} />
+              <TeamAbbrevFields gameId={gameId} game={g} />
               {/* K12-F01 / F27 — the rules this game is bound to, what they
                   were checked against, and (before it starts) the audited
                   switch. */}

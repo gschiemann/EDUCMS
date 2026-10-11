@@ -79,6 +79,10 @@ import {
   scoringPlaysOf,
   type CelebrationSettings,
   type ScoringPlay,
+  // Muse beta S-04 — team abbreviations (operator value or smart default).
+  isValidTeamAbbrevInput,
+  normalizeTeamAbbrev,
+  resolveTeamAbbrevs,
 } from '@cms/api-types';
 import type { RulesProfile, SportDefinition } from '@cms/api-types';
 import { SPONSOR_SPOT_SECONDS } from './sponsor.constants';
@@ -1593,6 +1597,7 @@ export class SportsService {
         id: true, tenantId: true, sport: true, status: true, segment: true,
         homeTeam: true, awayTeam: true, homeScore: true, awayScore: true,
         homeColor: true, awayColor: true, homeLogoUrl: true, awayLogoUrl: true,
+        homeAbbrev: true, awayAbbrev: true,
         clockMs: true, clockRunning: true, clockUpdatedAt: true,
         startedAt: true, stats: true, spotlight: true,
         // 2026-07-12 world-class audit (football P1) — the first-class
@@ -1806,6 +1811,12 @@ export class SportsService {
       awayColor: game.awayColor,
       homeLogoUrl: game.homeLogoUrl,
       awayLogoUrl: game.awayLogoUrl,
+      // Muse beta S-04 — the abbreviations EVERY surface shows: the
+      // operator's, else the smart default, de-collided. Static per game.
+      ...(() => {
+        const ab = resolveTeamAbbrevs(game as any);
+        return { homeAbbrev: ab.home, awayAbbrev: ab.away };
+      })(),
       clockMs: game.clockMs,
       clockRunning: game.clockRunning,
       clockUpdatedAt: game.clockUpdatedAt,
@@ -2320,6 +2331,8 @@ export class SportsService {
           awayColor: src.awayColor,
           homeLogoUrl: src.homeLogoUrl,
           awayLogoUrl: src.awayLogoUrl,
+          homeAbbrev: (src as any).homeAbbrev ?? null,
+          awayAbbrev: (src as any).awayAbbrev ?? null,
           screenGroupId: null, // never inherit the source's live screen binding
           status: 'SCHEDULED',
           segment: 1,
@@ -2512,6 +2525,10 @@ export class SportsService {
       // Sports Wave S4-1 (P1-8) — editable any time from Setup. `null`/`''`
       // clears it back to "no time set."
       scheduledAt?: string | null;
+      // Muse beta S-04 — operator-set team abbreviations ('' / null clears
+      // back to the smart default; otherwise 1–5 of A–Z / 0–9).
+      homeAbbrev?: string | null;
+      awayAbbrev?: string | null;
     },
     actor?: CommandInput,
   ) {
@@ -2533,6 +2550,16 @@ export class SportsService {
     if (dto.awayColor !== undefined) data.awayColor = dto.awayColor?.slice(0, 32) || null;
     if (dto.homeLogoUrl !== undefined) data.homeLogoUrl = this.cleanLogo(dto.homeLogoUrl);
     if (dto.awayLogoUrl !== undefined) data.awayLogoUrl = this.cleanLogo(dto.awayLogoUrl);
+    for (const side of ['homeAbbrev', 'awayAbbrev'] as const) {
+      if (dto[side] === undefined) continue;
+      if (!isValidTeamAbbrevInput(dto[side])) {
+        throw new BadRequestException({
+          code: 'SPORTS_TEAM_ABBREV_INVALID',
+          message: 'A team abbreviation is 1 to 5 letters or digits.',
+        });
+      }
+      data[side] = normalizeTeamAbbrev(dto[side]);
+    }
     // Sprint 13 — template reassignment. Empty string → clear (null).
     if (dto.scoreboardTemplateId !== undefined)
       data.scoreboardTemplateId = dto.scoreboardTemplateId || null;

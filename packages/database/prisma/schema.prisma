@@ -3337,6 +3337,13 @@ model Game {
   awayColor      String?   @map("away_color")
   homeLogoUrl    String?   @map("home_logo_url") // team brand mark on the scoreboard
   awayLogoUrl    String?   @map("away_logo_url")
+  // Muse beta S-04 / DEV-028 (2026-10-07): the ribbon/scorebug took the first
+  // three letters of each team name, so "Muse Sports Test Home" and "Muse
+  // Sports Test Away" both read MUS. An operator-set abbreviation (1–5 of
+  // A–Z / 0–9); NULL = derived from the name (`deriveTeamAbbrev` in
+  // @cms/api-types). Migration 20261011130000_game_team_abbreviations.
+  homeAbbrev     String?   @map("home_abbrev")
+  awayAbbrev     String?   @map("away_abbrev")
   startedAt      DateTime? @map("started_at")
   endedAt        DateTime? @map("ended_at")
   createdAt      DateTime  @default(now()) @map("created_at")
