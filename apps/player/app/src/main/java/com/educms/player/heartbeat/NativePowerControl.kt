@@ -8,6 +8,7 @@ import com.educms.player.MainActivity
 import com.educms.player.alertwatch.NativeAlertWatchPolicy
 import com.educms.player.display.DisplayAction
 import com.educms.player.display.DisplayControlRegistry
+import com.educms.player.display.SleepProof
 import com.educms.player.logging.PlayerLogger
 import com.educms.player.ota.RelaunchEscalation
 import com.educms.player.setup.SetupCeremony
@@ -24,16 +25,44 @@ object NativePowerControl {
     private const val STANDBY_AT_ATTEMPT = "native_power_on_standby_identity"
     private const val SUPPRESSED = "native_power_on_suppressed"
 
-    fun report(ctx: Context, prefs: SharedPreferences): String = JSONObject()
-        .put("schema", 1)
-        .put("interactive", runCatching {
-            (ctx.getSystemService(Context.POWER_SERVICE) as? PowerManager)?.isInteractive
-        }.getOrNull() ?: JSONObject.NULL)
-        .put("foreground", MainActivity.isInForeground)
-        .put("standbySinceMs", UserStandby.activeRecord(ctx)?.sinceWallMs ?: JSONObject.NULL)
-        .put("elapsedRealtimeMs", SystemClock.elapsedRealtime())
-        .put("powerOnAck", prefs.getString(ACK, null) ?: JSONObject.NULL)
-        .toString()
+    /**
+     * The native runtime report the heartbeat carries in [HEADER].
+     *
+     * Schema 1, extended additively on 2026-10-11 (every new field is optional
+     * on the server, so an old API simply drops them):
+     *  • `sleep` — what this panel can do to turn itself off and what the last
+     *    attempt PROVED ([SleepProof.reportJson]): the resolved blank
+     *    mechanism, whether a screensaver was seen to replace a sleep, whether
+     *    the accessibility sleep service is on, the last blank's observed
+     *    outcome, and the last after-alert restore. Evidence the dashboard
+     *    states as such — never content health, never a claim the glass is dark
+     *    beyond what `interactive` showed.
+     *  • `powerOnAttempts` — how many times the last power-on was applied.
+     * The whole header stays far below the server's 1 KiB parse limit.
+     */
+    fun report(ctx: Context, prefs: SharedPreferences): String {
+        val out = JSONObject()
+            .put("schema", 1)
+            .put("interactive", interactive(ctx) ?: JSONObject.NULL)
+            .put("foreground", MainActivity.isInForeground)
+            .put("standbySinceMs", UserStandby.activeRecord(ctx)?.sinceWallMs ?: JSONObject.NULL)
+            .put("elapsedRealtimeMs", SystemClock.elapsedRealtime())
+            .put("powerOnAck", prefs.getString(ACK, null) ?: JSONObject.NULL)
+        runCatching { out.put("powerOnAttempts", prefs.getInt(ATTEMPTS, 0).coerceIn(0, 9)) }
+        runCatching { SleepProof.reportJson(ctx)?.let { out.put("sleep", it) } }
+            .onFailure { PlayerLogger.w("NativePowerControl", "sleep facts unavailable: ${it.message}") }
+        return out.toString()
+    }
+
+    /**
+     * Is an applied power-on still waiting for its proof (Android interactive
+     * AND the player in front)? While it is, the heartbeat stays at full
+     * cadence — see [NativePowerOnPolicy.ACK_WINDOW_MS].
+     */
+    fun awaitingProof(ctx: Context): Boolean = runCatching {
+        val prefs = ctx.applicationContext.getSharedPreferences("edu_player", Context.MODE_PRIVATE)
+        NativePowerOnPolicy.awaitingProof(memory(prefs), SystemClock.elapsedRealtime()) != null
+    }.getOrDefault(false)
 
     @Synchronized
     fun accept(ctx: Context, prefs: SharedPreferences, reply: JSONObject) {
@@ -44,6 +73,12 @@ object NativePowerControl {
         val expected = NativeAlertWatchPolicy.screenIdOf(prefs.getString("device_token", null)) ?: return
         if (reply.optString("screenId") != expected) return
         val command = control.optString("powerOnRequestedAt", "").takeIf { it.isNotBlank() }
+        if (command == null) {
+            // The server stopped repeating the command (five-minute TTL), but
+            // this device may have applied it and not yet seen the proof.
+            acknowledgeIfObserved(ctx, prefs)
+            return
+        }
         if (!beginAttempt(ctx, prefs, command)) return
         val result = runCatching {
             DisplayControlRegistry.apply(ctx.applicationContext, DisplayAction.Wake, revertAfterMs = null)
@@ -73,29 +108,59 @@ object NativePowerControl {
         return beginAttempt(ctx, prefs, json.optString("nativePowerOnRequestedAt", ""))
     }
 
+    private fun memory(prefs: SharedPreferences) = NativePowerOnPolicy.Memory(
+        command = prefs.getString(COMMAND, null),
+        attempts = prefs.getInt(ATTEMPTS, 0),
+        lastAttemptElapsedMs = prefs.getLong(ATTEMPT_AT, 0L),
+        acknowledged = prefs.getString(ACK, null),
+        standbyIdentity = prefs.getString(STANDBY_AT_ATTEMPT, null),
+        suppressed = prefs.getString(SUPPRESSED, null),
+    )
+
+    private fun interactive(ctx: Context): Boolean? = runCatching {
+        (ctx.getSystemService(Context.POWER_SERVICE) as? PowerManager)?.isInteractive
+    }.getOrNull()
+
+    /** Compare event identity, never device wall-clock order — see [beginAttempt]. */
+    private fun standbyIdentity(ctx: Context): String? = UserStandby.activeRecord(ctx)?.let {
+        "${it.bootCount}:${it.sinceElapsedMs}:${it.sinceWallMs}"
+    }
+
+    /**
+     * ACK an already-applied command the server is no longer repeating. Never
+     * applies anything: it only records that the proof was observed. A newer
+     * physical OFF still cancels it, exactly as on the normal path.
+     */
+    private fun acknowledgeIfObserved(ctx: Context, prefs: SharedPreferences) {
+        val memory = memory(prefs)
+        val pending = NativePowerOnPolicy.awaitingProof(memory, SystemClock.elapsedRealtime()) ?: return
+        if (NativePowerOnPolicy.supersededByStandby(pending, memory, standbyIdentity(ctx))) {
+            prefs.edit().putString(SUPPRESSED, pending).commit()
+            PlayerLogger.i("NativePowerControl", "operator power-on id=$pending superseded by a later standby; no ACK")
+            return
+        }
+        if (NativePowerOnPolicy.mayAcknowledge(pending, memory, interactive(ctx), MainActivity.isInForeground) &&
+            prefs.edit().putString(ACK, pending).commit()
+        ) {
+            PlayerLogger.i(
+                "NativePowerControl",
+                "operator power-on id=$pending observed interactive and player foreground (after the server's TTL)",
+            )
+        }
+    }
+
     private fun beginAttempt(ctx: Context, prefs: SharedPreferences, command: String?): Boolean {
-        val memory = NativePowerOnPolicy.Memory(
-            command = prefs.getString(COMMAND, null),
-            attempts = prefs.getInt(ATTEMPTS, 0),
-            lastAttemptElapsedMs = prefs.getLong(ATTEMPT_AT, 0L),
-            acknowledged = prefs.getString(ACK, null),
-            standbyIdentity = prefs.getString(STANDBY_AT_ATTEMPT, null),
-            suppressed = prefs.getString(SUPPRESSED, null),
-        )
+        val memory = memory(prefs)
         // Compare event identity, never device wall-clock order. Including
         // boot count and both recorded times also distinguishes a NEW off
         // after reboot (elapsedRealtime alone would run backwards).
-        val standbyIdentity = UserStandby.activeRecord(ctx)?.let {
-            "${it.bootCount}:${it.sinceElapsedMs}:${it.sinceWallMs}"
-        }
+        val standbyIdentity = standbyIdentity(ctx)
         if (NativePowerOnPolicy.supersededByStandby(command, memory, standbyIdentity)) {
             prefs.edit().putString(SUPPRESSED, command).commit()
             PlayerLogger.i("NativePowerControl", "operator power-on id=$command superseded by a later standby; no retry")
             return false
         }
-        val interactive = runCatching {
-            (ctx.getSystemService(Context.POWER_SERVICE) as? PowerManager)?.isInteractive
-        }.getOrNull()
+        val interactive = interactive(ctx)
         // Check proof BEFORE the retry budget: the third attempt can finish
         // asynchronously. Its next heartbeat must still be able to ACK it.
         if (NativePowerOnPolicy.mayAcknowledge(command, memory, interactive, MainActivity.isInForeground)) {

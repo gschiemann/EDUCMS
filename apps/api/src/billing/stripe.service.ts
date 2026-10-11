@@ -29,6 +29,13 @@ import {
   type AiBoardPack,
 } from '../ai/ai-board-credits';
 import { checkoutTrialEnd, MAX_SELF_SERVE_SCREENS } from './trial-policy';
+import { DUNNING_CLEARED, dunningOnFailure } from './dunning-policy';
+
+/** Outcome of `retryAfterCardUpdate` — what the Billing page tells the customer. */
+export type RetryPaymentResult =
+  | { result: 'paid' } // the open invoice was charged (or nothing was owed) — "You're all set"
+  | { result: 'declined'; message: string } // the new card was declined too
+  | { result: 'not-applicable' }; // no card subscription / nothing to retry
 
 /** The Stripe SDK client instance type. `Stripe` is a value + a merged
  *  namespace, so the instance type must be taken via InstanceType. */
@@ -358,6 +365,30 @@ export class StripeService {
       // Checkout as a last resort rather than blocking the operator entirely.
     }
 
+    // 2026-10-11 — RESTART AFTER A CARD FAILURE. A CANCELLED license whose
+    // Stripe subscription still exists as `unpaid` (the dashboard's "if all
+    // retries fail" left on "mark as unpaid") must not end up with TWO
+    // subscriptions: cancel the dead one first. A subscription that is
+    // already `canceled` needs nothing. Best-effort — an unpaid subscription
+    // never charges again by itself, so a failure here cannot double-bill.
+    if (license?.stripeSubscriptionId && license.status === 'CANCELLED') {
+      try {
+        const old: any = await stripe.subscriptions.retrieve(license.stripeSubscriptionId);
+        if (old && ['unpaid', 'past_due', 'paused', 'incomplete'].includes(old.status)) {
+          await stripe.subscriptions.cancel(license.stripeSubscriptionId);
+          this.logger.log(
+            `checkout: cancelled leftover ${old.status} subscription ${license.stripeSubscriptionId} ` +
+              `for tenant ${opts.tenantId} before restarting the plan`,
+          );
+        }
+      } catch (e: any) {
+        this.logger.warn(
+          `checkout: could not check/cancel leftover subscription ${license.stripeSubscriptionId} ` +
+            `for tenant ${opts.tenantId}: ${e?.message ?? e}`,
+        );
+      }
+    }
+
     // 2026-10-11 — pre-filled and trial-preserving:
     //  - quantity = the screens they have paired (min 1), and ADJUSTABLE on
     //    Stripe's page (never below what is paired) so a customer about to
@@ -479,6 +510,14 @@ export class StripeService {
   async portalForTenant(
     tenantId: string,
     returnUrl: string,
+    /**
+     * 2026-10-11 — `updateCard`: open the portal straight on "update payment
+     * method" (Stripe's `payment_method_update` flow) and come back to
+     * `updateCard.completedUrl` when it is done — the Billing page then
+     * retries the open invoice and says "You're all set". One screen on
+     * Stripe instead of a menu to find the right button in.
+     */
+    opts: { updateCard?: { completedUrl: string } } = {},
   ): Promise<{ url: string } | { noSubscription: true }> {
     const stripe = this.getClient();
     if (!stripe) throw new Error('Stripe is not configured on this deployment.');
@@ -487,8 +526,77 @@ export class StripeService {
     const session = await stripe.billingPortal.sessions.create({
       customer: license.stripeCustomerId,
       return_url: returnUrl,
-    });
+      ...(opts.updateCard
+        ? {
+            flow_data: {
+              type: 'payment_method_update',
+              after_completion: { type: 'redirect', redirect: { return_url: opts.updateCard.completedUrl } },
+            },
+          }
+        : {}),
+    } as any);
     return { url: session.url };
+  }
+
+  /**
+   * 2026-10-11 — back from "Update card": charge the open invoice NOW with
+   * the card the customer just saved, instead of waiting days for Stripe's
+   * next scheduled retry — so the page can honestly say "You're all set"
+   * (or "that card was declined too"). User-initiated (a click on the
+   * Billing page), never from a webhook. The new card is the customer's
+   * default after the portal flow; it is passed explicitly because a
+   * Checkout-made subscription carries its OWN default (the old card).
+   *
+   * Applies the live subscription status straight away (audited) so the
+   * warning bar disappears on this page load; the `invoice.paid` webhook
+   * that follows writes the same status again.
+   */
+  async retryAfterCardUpdate(tenantId: string, actorUserId: string | null): Promise<RetryPaymentResult> {
+    const stripe = this.getClient();
+    if (!stripe) return { result: 'not-applicable' };
+    const license = await this.prisma.client.license.findUnique({ where: { tenantId } });
+    if (!license?.stripeSubscriptionId || !license.stripeCustomerId || license.billingMode !== 'CARD') {
+      return { result: 'not-applicable' };
+    }
+    const sub: any = await stripe.subscriptions.retrieve(license.stripeSubscriptionId, { expand: ['latest_invoice'] } as any);
+    const invoice: any = sub?.latest_invoice && typeof sub.latest_invoice === 'object' ? sub.latest_invoice : null;
+    let declined: string | null = null;
+    if (invoice && invoice.status === 'open') {
+      const customer: any = await stripe.customers.retrieve(license.stripeCustomerId);
+      const pm = customer?.invoice_settings?.default_payment_method;
+      const pmId = typeof pm === 'string' ? pm : pm?.id;
+      try {
+        await stripe.invoices.pay(invoice.id, pmId ? { payment_method: pmId } : {});
+      } catch (e: any) {
+        declined = e?.message || 'The card was declined.';
+      }
+    }
+    const live: any = declined ? sub : await stripe.subscriptions.retrieve(license.stripeSubscriptionId);
+    const status = this.mapSubscriptionStatus(live.status);
+    await this.prisma.client.$transaction(async (tx) => {
+      await tx.license.updateMany({
+        where: { id: license.id, tenantId },
+        data: { status, ...(status === 'ACTIVE' ? DUNNING_CLEARED : {}) },
+      });
+      await tx.auditLog.create({
+        data: {
+          tenantId,
+          userId: actorUserId,
+          action: 'BILLING_PAYMENT_RETRIED',
+          targetType: 'License',
+          targetId: license.id,
+          details: JSON.stringify({
+            invoiceId: invoice?.id ?? null,
+            invoiceStatus: invoice?.status ?? null,
+            outcome: declined ? 'declined' : 'paid',
+            fromStatus: license.status,
+            toStatus: status,
+          }),
+        },
+      });
+    });
+    if (declined) return { result: 'declined', message: declined };
+    return status === 'ACTIVE' ? { result: 'paid' } : { result: 'not-applicable' };
   }
 
   /** The tenant's invoices, newest first. Empty when Stripe is off or
@@ -773,8 +881,17 @@ export class StripeService {
     // including the Billing page the customer needs to fix their card — a
     // dead end. A billing problem is PAST_DUE: banner + "Update card",
     // pairing paused, screens and emergency untouched.
-    if (s === 'past_due' || s === 'incomplete' || s === 'unpaid' || s === 'paused') return 'PAST_DUE';
-    if (s === 'canceled' || s === 'incomplete_expired') return 'CANCELLED';
+    //
+    // 2026-10-11 (Greg's decision: "card failure ends in view-only, with
+    // help") — `unpaid` is what Stripe leaves behind when ALL retries failed
+    // and the dashboard's "if all retries fail" is set to "mark as unpaid"
+    // instead of "cancel the subscription". Either way the retries are over,
+    // so both land on CANCELLED = the view-only state (screens keep playing,
+    // emergency keeps working, Billing stays reachable to restart the plan).
+    // Checkout cancels a leftover `unpaid` subscription before opening a new
+    // one (checkoutForTenant), so a restart can never double-bill.
+    if (s === 'past_due' || s === 'incomplete' || s === 'paused') return 'PAST_DUE';
+    if (s === 'canceled' || s === 'incomplete_expired' || s === 'unpaid') return 'CANCELLED';
     return 'ACTIVE';
   }
 
@@ -947,6 +1064,8 @@ export class StripeService {
                 currentPeriodStart: periodStart,
                 currentPeriodEnd: periodEnd,
                 stripeLastEventCreatedAt: eventCreatedAt,
+                // A paying subscription has no card failure in progress.
+                ...(status === 'ACTIVE' ? DUNNING_CLEARED : {}),
               },
             });
             await tx.auditLog.create({
@@ -1183,11 +1302,37 @@ export class StripeService {
     // duplicate → a real payment_failed downgrade or payment_succeeded recovery
     // is permanently lost (unpaid tenant stays ACTIVE / paying customer stuck
     // PAST_DUE). Retrying the transient failure closes that window.
+    // 2026-10-11 — CARD FAILURE → VIEW-ONLY, WITH HELP (dunning-policy.ts).
+    // A failed payment stamps the failing invoice (a NEW invoice resets the
+    // email stage, so each email goes out at most once per invoice) and
+    // Stripe's next retry date; a payment that goes through clears it. The
+    // emails themselves are sent by the leader-leased BillingNoticeCron
+    // (trial-reminder.cron.ts), never from this webhook.
+    const failed = event.type === 'invoice.payment_failed' && status !== 'ACTIVE';
+    const recovered = event.type !== 'invoice.payment_failed' && status === 'ACTIVE';
     await withDbRetry(() =>
       this.prisma.client.$transaction(async (tx) => {
+        let dunning: Record<string, unknown> = {};
+        if (failed && typeof inv.id === 'string') {
+          const cur = await tx.license.findUnique({
+            where: { tenantId: license.tenantId },
+            select: { dunningInvoiceId: true, dunningFailedAt: true },
+          });
+          const stamp = dunningOnFailure({
+            invoiceId: inv.id,
+            nextPaymentAttempt: inv.next_payment_attempt,
+            eventCreated: event.created,
+          });
+          dunning =
+            cur?.dunningInvoiceId === inv.id
+              ? { dunningNextAttemptAt: stamp.dunningNextAttemptAt }
+              : { ...stamp, dunningNoticeStage: 0 };
+        } else if (recovered) {
+          dunning = { ...DUNNING_CLEARED };
+        }
         await tx.license.updateMany({
           where: { id: license.id, tenantId: license.tenantId },
-          data: { status, stripeLastEventCreatedAt: nextWatermark },
+          data: { status, stripeLastEventCreatedAt: nextWatermark, ...dunning },
         });
         await tx.auditLog.create({
           data: {

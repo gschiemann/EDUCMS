@@ -152,7 +152,7 @@ export class BillingController {
    */
   @Post('portal')
   @RequireRoles(...BILLING_ROLES)
-  async portal(@Request() req: any) {
+  async portal(@Request() req: any, @Body() body: { flow?: unknown } = {}) {
     if (!this.stripe.enabled()) {
       return {
         enabled: false,
@@ -160,9 +160,30 @@ export class BillingController {
       };
     }
     try {
-      return await this.stripe.portalForTenant(req.user.tenantId, await this.billingUrl(req));
+      const base = await this.billingUrl(req);
+      // 2026-10-11 — `{ flow: 'update-card' }` opens Stripe straight on
+      // "update payment method" and returns to `?card=updated`, where the
+      // Billing page retries the open invoice (POST /billing/retry-payment).
+      const updateCard = body?.flow === 'update-card' ? { completedUrl: `${base}?card=updated` } : undefined;
+      return await this.stripe.portalForTenant(req.user.tenantId, base, { updateCard });
     } catch (e) {
       throw new HttpException({ code: 'BILLING_PORTAL_FAILED', message: (e as Error).message }, HttpStatus.BAD_GATEWAY);
+    }
+  }
+
+  /**
+   * 2026-10-11 — back from "Update card": charge the open invoice now with the
+   * new card. `{ result: 'paid' | 'declined' | 'not-applicable' }`. Audited
+   * (BILLING_PAYMENT_RETRIED) inside StripeService.
+   */
+  @Post('retry-payment')
+  @RequireRoles(...BILLING_ROLES)
+  async retryPayment(@Request() req: any) {
+    if (!this.stripe.enabled()) return { result: 'not-applicable' as const };
+    try {
+      return await this.stripe.retryAfterCardUpdate(req.user.tenantId, req.user.id ?? null);
+    } catch (e) {
+      throw new HttpException({ code: 'BILLING_RETRY_FAILED', message: (e as Error).message }, HttpStatus.BAD_GATEWAY);
     }
   }
 
@@ -287,6 +308,13 @@ export class BillingController {
       seatsUsed,
       seatLimit: own?.seatLimit ?? (b.state === 'trial' ? TRIAL_SCREENS : null),
       renewsAt: own?.currentPeriodEnd ? own.currentPeriodEnd.toISOString() : null,
+      // 2026-10-11 — card failure (dunning-policy.ts): when the card first
+      // failed and when Stripe tries again (null after its last try). The
+      // warning bar's "what happened" sentence; `endedForNonPayment` lets the
+      // view-only state say WHY it is view-only.
+      paymentFailedAt: gov?.dunningFailedAt ? new Date(gov.dunningFailedAt).toISOString() : null,
+      nextPaymentAttemptAt: gov?.dunningNextAttemptAt ? new Date(gov.dunningNextAttemptAt).toISOString() : null,
+      endedForNonPayment: b.state === 'cancelled' && !!gov?.dunningFailedAt,
       prices,
     };
   }

@@ -27,7 +27,7 @@ export function LegalPage({
             <p className="font-semibold">Last updated: {updated}</p>
             <p className="mt-1">
               This document is boilerplate drafted for VenueOS and is <strong>not legal advice</strong>.
-              Review it with your own district or company&apos;s legal counsel before relying on it.
+              Review it with your own organization&apos;s legal counsel before relying on it.
             </p>
           </div>
         </div>

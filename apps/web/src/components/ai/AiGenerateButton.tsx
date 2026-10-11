@@ -25,6 +25,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { Sparkles, Loader2, X, RefreshCw, AlertCircle, Zap, Settings2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
@@ -234,6 +235,7 @@ function AiGenerateModal({
   onPick: (text: string) => void;
 }) {
   const tenantCopy = useTenantCopy();
+  const tAi = useTranslations('aiBoards');
   const [context, setContext] = useState(defaultContext ?? '');
   const [tone, setTone] = useState<'energetic' | 'elegant' | 'playful' | 'serious' | 'casual'>('casual');
   const [running, setRunning] = useState(false);
@@ -539,7 +541,9 @@ function AiGenerateModal({
           )}
 
           <p className="text-[10px] text-slate-400 text-center pt-2">
-            {usageBadgeText() || 'Powered by Claude · cap raises with paid tiers'}
+            {/* 2026-10-11 — vendor-neutral: AI is routed across several vendors
+                (apps/api/src/ai/ai-model-catalog.ts), so naming one was wrong. */}
+            {usageBadgeText() || tAi('includedFooter')}
           </p>
         </div>
 

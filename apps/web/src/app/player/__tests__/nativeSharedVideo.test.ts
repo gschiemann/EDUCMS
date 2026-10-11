@@ -53,6 +53,15 @@ const settle = async () => {
 describe("optional native output handoff", () => {
   beforeEach(() => jest.useFakeTimers());
   afterEach(() => jest.useRealTimers());
+  it("accepts fill and cover (2026-10-11 crop-to-fill), refuses any other fit", () => {
+    expect(readNativeSharedVideoDescriptor(descriptor)?.transform.fit).toBe("fill");
+    const cover = { ...descriptor, transform: { ...descriptor.transform, fit: "cover" } };
+    expect(readNativeSharedVideoDescriptor(cover)?.transform.fit).toBe("cover");
+    for (const fit of ["contain", "stretch", "", null])
+      expect(
+        readNativeSharedVideoDescriptor({ ...descriptor, transform: { ...descriptor.transform, fit } }),
+      ).toBeNull();
+  });
   it("accepts both reciprocal face identities, rejects invented parent/peer and unsafe media", () => {
     expect(readNativeSharedVideoDescriptor(descriptor)).not.toBeNull();
     const rear = {

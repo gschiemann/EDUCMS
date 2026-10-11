@@ -459,6 +459,7 @@ export default function SignupPage() {
           <span>&copy; {new Date().getFullYear()} VenueOS</span>
           <Link href="/terms" className="hover:text-slate-600">Terms</Link>
           <Link href="/privacy" className="hover:text-slate-600">Privacy</Link>
+          <Link href="/dpa" className="hover:text-slate-600">DPA</Link>
           <Link href="/ferpa" className="hover:text-slate-600">FERPA</Link>
           <Link href="/coppa" className="hover:text-slate-600">COPPA</Link>
         </div>

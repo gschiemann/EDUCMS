@@ -28,18 +28,21 @@ import {
 } from './loopGuard';
 import { createMediaStallDetector, setActiveMediaStalled } from './mediaStallWatchdog';
 import { videoQualityTracker } from './videoQuality';
+import { DEFAULT_PLAYLIST_MEDIA_FIT, mediaFitStyle, type MediaFit } from './mediaFit';
 
-const DECK_STYLE = {
+const DECK_BASE = {
   position: 'absolute' as const,
   top: 0,
   left: 0,
   width: '100%',
   height: '100%',
-  // The player's auto-fit: stretch the video to fill the screen (same as the
-  // single-element path).
-  objectFit: 'fill' as const,
   background: '#000',
 };
+
+/** Both decks take the slide's fit (mediaFit.ts) — the same as the single-element path. */
+function deckStyle(fit: MediaFit) {
+  return { ...DECK_BASE, ...mediaFitStyle(fit) };
+}
 
 /** Wait this long after the first frame before preparing the standby, so the
  *  active element's own buffering is not competing with a second 4K load. */
@@ -64,11 +67,14 @@ export interface SeamlessLoopVideoProps {
   onError: () => void;
   /** The two-deck path gave up on this device; the native loop carries on. */
   onFallback?: (reason: string) => void;
+  /** How the frame meets a screen of another shape. Default: crop to fill. */
+  fit?: MediaFit;
 }
 
 export function SeamlessLoopVideo({
-  src, isActive, classes, videoKey, onPlaying, onError, onFallback,
+  src, isActive, classes, videoKey, onPlaying, onError, onFallback, fit = DEFAULT_PLAYLIST_MEDIA_FIT,
 }: SeamlessLoopVideoProps) {
+  const DECK_STYLE = deckStyle(fit);
   const r0 = useRef<HTMLVideoElement>(null);
   const r1 = useRef<HTMLVideoElement>(null);
   const activeIdx = useRef<0 | 1>(0);

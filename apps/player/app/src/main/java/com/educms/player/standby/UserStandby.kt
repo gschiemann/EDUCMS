@@ -81,6 +81,15 @@ object UserStandby {
     private const val KEY_INT_BOOT_COUNT = "user_standby_interrupted_boot_count"
     private const val KEY_INT_AT_ELAPSED = "user_standby_interrupted_at_elapsed_ms"
 
+    /**
+     * 2026-10-11 — how long the box had seen no remote / touch input when the
+     * last "person's" standby began (ms; -1 = no input since process start),
+     * and when (wall ms). Evidence for telling Android's inactivity sleep
+     * from a real remote press; never read by any decision.
+     */
+    const val KEY_LAST_OFF_IDLE_MS = "user_standby_last_off_idle_ms"
+    const val KEY_LAST_OFF_AT_WALL = "user_standby_last_off_at_wall_ms"
+
     /** `elapsedRealtime` of the last WAKE COMMAND after that interruption (never the alert's own). */
     private const val KEY_WAKE_AFTER_INT = "user_standby_wake_after_interrupt_elapsed_ms"
 
@@ -120,6 +129,10 @@ object UserStandby {
             when (intent.action) {
                 Intent.ACTION_SCREEN_OFF -> onScreenOff(context)
                 Intent.ACTION_SCREEN_ON -> onScreenOn(context)
+                // 2026-10-11 — a screensaver is not a sleep (SleepProof).
+                Intent.ACTION_DREAMING_STARTED -> runCatching {
+                    com.educms.player.display.SleepProof.onDreamingStarted(context)
+                }.onFailure { PlayerLogger.w(TAG, "screensaver handling failed: ${it.message}") }
                 else -> Unit
             }
         }
@@ -143,8 +156,9 @@ object UserStandby {
             val filter = IntentFilter().apply {
                 addAction(Intent.ACTION_SCREEN_OFF)
                 addAction(Intent.ACTION_SCREEN_ON)
+                addAction(Intent.ACTION_DREAMING_STARTED)
             }
-            // Both actions are PROTECTED system broadcasts — only the system
+            // All three actions are PROTECTED system broadcasts — only the system
             // can send them — so EXPORTED grants nothing to other apps; it is
             // the flag that delivers them on every API level without the
             // compat permission shim.
@@ -195,6 +209,16 @@ object UserStandby {
         }
         cachedActive = true
         return record
+    }
+
+    /**
+     * Is the standby in force one WE put back after an alert's all-clear?
+     * [com.educms.player.display.SleepProof] covers such a panel with black
+     * when the restore blank did not turn it off.
+     */
+    fun restoredStandbyActive(ctx: Context): Boolean {
+        val app = ctx.applicationContext
+        return readRecord(app)?.restoredByUs == true && isActive(app)
     }
 
     /** What a relaunch path may do right now. Never throws. */
@@ -356,19 +380,49 @@ object UserStandby {
         clearInterrupted(app)
         if (decision != RestoreDecision.RESTORE) {
             PlayerLogger.i(TAG, "all-clear: not putting the panel back to sleep — $decision")
+            runCatching {
+                com.educms.player.display.SleepProof.noteRestoreDecision(
+                    app,
+                    decision.name,
+                    com.educms.player.display.SleepProofPolicy.OUTCOME_KEPT_ON,
+                )
+            }
             return
         }
         // Ours, recorded BEFORE the provider runs, so the screen-off it causes
         // is never read as a person's remote (the registry also does this).
         noteOwnBlank()
         val result = runCatching {
-            DisplayControlRegistry.apply(app, DisplayAction.Blank, revertAfterMs = null)
+            // 2026-10-11 — never a latch-prone lock on hardware where one has
+            // latched (RestoreBlankPolicy): the next alert must still be able
+            // to wake this panel.
+            DisplayControlRegistry.apply(app, DisplayAction.Blank, revertAfterMs = null, allowProvider = { id ->
+                RestoreBlankPolicy.allows(id, android.os.Build.VERSION.SDK_INT, android.os.Build.MODEL)
+            })
         }.getOrNull()
         if (result == null || !result.ok) {
             PlayerLogger.w(TAG, "all-clear: could not put the panel back to sleep ($result) — leaving it on")
+            runCatching {
+                com.educms.player.display.SleepProof.noteRestoreDecision(
+                    app,
+                    decision.name,
+                    com.educms.player.display.SleepProofPolicy.OUTCOME_FAILED,
+                )
+            }
             return
         }
         enterRestored(app, interrupted.record)
+        // 2026-10-11 — the blank reported Ok; whether the panel actually went
+        // off is checked after its settle window (SleepProof). If it did not
+        // (the X80: a screensaver, or something holding the screen on), the
+        // screen is covered with black — "back to black" is the most such a
+        // box can do without device admin or the VenueOS sleep service.
+        runCatching {
+            com.educms.player.display.SleepProof.markForRestore(
+                app,
+                (result as? com.educms.player.display.ActionResult.Ok)?.providerId,
+            )
+        }
         PlayerLogger.w(
             TAG,
             "all-clear: the panel a person had turned off is going back to sleep via " +
@@ -456,6 +510,8 @@ object UserStandby {
             sinceElapsedMs = nowElapsedMs,
             bootCount = bootCount(app),
         )
+        val lastInput = MainActivity.lastInputAtElapsedMs
+        val idleMs = if (lastInput > 0L && nowElapsedMs >= lastInput) nowElapsedMs - lastInput else -1L
         synchronized(lock) {
             val persisted = runCatching {
                 prefs(app).edit()
@@ -463,6 +519,8 @@ object UserStandby {
                     .putLong(KEY_SINCE_ELAPSED, record.sinceElapsedMs)
                     .putInt(KEY_BOOT_COUNT, record.bootCount)
                     .remove(KEY_RESTORED)
+                    .putLong(KEY_LAST_OFF_IDLE_MS, idleMs)
+                    .putLong(KEY_LAST_OFF_AT_WALL, record.sinceWallMs)
                     .commit()
             }.getOrDefault(false)
             cachedActive = true
@@ -470,7 +528,9 @@ object UserStandby {
                 TAG,
                 "USER STANDBY — the panel was turned off by something that is not us while the player " +
                     "was on the glass. It stays off until the power key, the schedule's ON trigger, a WAKE " +
-                    "command or an emergency alert (persisted=$persisted bootCount=${record.bootCount})",
+                    "command or an emergency alert (persisted=$persisted bootCount=${record.bootCount} " +
+                    "idleBeforeOffMs=$idleMs — no remote/touch input for that long; compare the box's " +
+                    "attentive timeout before blaming a person)",
             )
         }
         acquireCpuLock(app)

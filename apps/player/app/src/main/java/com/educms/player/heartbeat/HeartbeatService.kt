@@ -275,7 +275,30 @@ class HeartbeatService : Service() {
         nowMs = System.currentTimeMillis(),
         lastTickAtMs = prefs.getLong(KEY_LAST_TICK_AT, 0L),
         webTelemetryAtMs = prefs.getLong(KEY_WEB_TELEMETRY_AT, 0L),
+        nativeUrgent = nativeUrgent(),
     )
+
+    /**
+     * 2026-10-11 — the two states in which THIS channel, not the page, is the
+     * one that has to answer within a minute:
+     *  • the panel is not interactive. An operator's "Turn panel on" reaches
+     *    a dark panel only through this heartbeat (CLAUDE.md player rule 6),
+     *    and the server keeps it for five minutes — the same length as the
+     *    reduced cadence, so a page that kept reporting behind a dark panel
+     *    could let the command expire unseen;
+     *  • a power-on was applied and has not been proven yet
+     *    ([NativePowerControl.awaitingProof]) — VisionCore's X80 woke on
+     *    2026-10-09 and never acknowledged, because the next native tick came
+     *    after the server had stopped repeating the command.
+     * An unreadable power state counts as dark: ticking costs one request.
+     */
+    private fun nativeUrgent(): Boolean {
+        val ctx = applicationContext
+        val interactive = runCatching {
+            (ctx.getSystemService(Context.POWER_SERVICE) as? PowerManager)?.isInteractive
+        }.getOrNull()
+        return interactive != true || NativePowerControl.awaitingProof(ctx)
+    }
 
     private suspend fun tickWithWakeLock(apiRoot: String, fp: String, prefs: SharedPreferences) {
         val pm = applicationContext.getSystemService(Context.POWER_SERVICE) as PowerManager
@@ -496,9 +519,17 @@ class HeartbeatService : Service() {
          *      signalling required. Silence is the only message a dead page
          *      can still send.
          */
-        fun decideTick(nowMs: Long, lastTickAtMs: Long, webTelemetryAtMs: Long): Boolean {
+        fun decideTick(
+            nowMs: Long,
+            lastTickAtMs: Long,
+            webTelemetryAtMs: Long,
+            nativeUrgent: Boolean = false,
+        ): Boolean {
             if (nowMs < lastTickAtMs) return true                       // rule 2
             if (nowMs - lastTickAtMs >= WEB_REPORTING_FLOOR_MS) return true // rule 1
+            // Rule 4 (2026-10-11): the panel is dark, or a power-on awaits its
+            // proof — the page's freshness says nothing about either.
+            if (nativeUrgent) return true
             val webFresh = webTelemetryAtMs > 0L &&
                 nowMs >= webTelemetryAtMs &&
                 nowMs - webTelemetryAtMs < WEB_TELEMETRY_FRESH_MS

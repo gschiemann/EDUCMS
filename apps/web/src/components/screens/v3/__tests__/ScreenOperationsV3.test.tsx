@@ -71,6 +71,9 @@ jest.mock('@/hooks/use-api', () => ({
   useScreenFaces: () => ({ data: undefined, isLoading: false, refetch: jest.fn() }),
   useCreateScreenFace: () => ({ mutate: jest.fn(), isPending: false, isError: false }),
   useSetScreenFaceMode: () => ({ mutate: jest.fn(), isPending: false, isError: false }),
+  // 2026-10-11 — per-screen automatic-update switch (AutoUpdateSection).
+  useScreenAutoUpdate: () => ({ data: undefined, isLoading: false }),
+  useSetScreenAutoUpdate: () => ({ mutate: jest.fn(), isPending: false, isError: false }),
 }));
 jest.mock('@/hooks/use-overlay-lock', () => ({ useOverlayLock: () => {} }));
 // The drawer's Restore trust action posts directly (its only caller, so it

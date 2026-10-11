@@ -210,4 +210,22 @@ describe('explicit native mirrored-video admission', () => {
         }),
       ).toBeNull();
   });
+  it('fit stays "fill" — the only value shipped native hosts accept — until a cover-capable APK is on BOTH faces (2026-10-11)', () => {
+    const f = fixture();
+    expect(build(f)!.transform.fit).toBe('fill');
+    expect(build({ ...f, coverMinVersionCode: 10200 })!.transform.fit).toBe('fill');
+    const upgraded = { playerVersionCode: 10200 };
+    expect(
+      build({ ...f, screen: { ...f.screen, ...upgraded }, coverMinVersionCode: 10200 })!.transform.fit,
+    ).toBe('fill');
+    const both = build({
+      ...f,
+      screen: { ...f.screen, ...upgraded },
+      peer: { ...f.peer, ...upgraded },
+      coverMinVersionCode: 10200,
+    })!;
+    expect(both.transform.fit).toBe('cover');
+    // Same stable revision either way (fit is not part of the media identity).
+    expect(both.revision).toBe(build(f)!.revision);
+  });
 });

@@ -326,7 +326,7 @@ function ConnectSheet({
                 className="w-full px-2 py-1.5 rounded-md border border-slate-300 text-xs outline-none focus:ring-2 focus:ring-indigo-500"
               />
               <p className="text-[10px] leading-relaxed text-slate-500">
-                Your own feed, or one you hold a written licence to show. We check that the URL plays — that
+                Your own feed, or one you hold a written license to show. We check that the URL plays — that
                 check cannot tell us whether you are licensed, so that part is on you.
               </p>
             </>
@@ -345,7 +345,7 @@ function ConnectSheet({
             <input
               value={creds.licenseNumber || ''}
               onChange={(e) => setCreds({ ...creds, licenseNumber: e.target.value })}
-              placeholder="Commercial account / licence number"
+              placeholder="Commercial account / license number"
               className="w-full px-2 py-1.5 rounded-md border border-slate-300 text-xs outline-none focus:ring-2 focus:ring-indigo-500"
             />
           )}
@@ -353,7 +353,7 @@ function ConnectSheet({
           {picked.requiresVenueLicense && (
             <label className="flex items-start gap-2 text-[10px] leading-relaxed text-slate-600">
               <input type="checkbox" checked={attested} onChange={(e) => setAttested(e.target.checked)} className="mt-0.5" />
-              <span>This location holds a current commercial licence for this content.</span>
+              <span>This location holds a current commercial license for this content.</span>
             </label>
           )}
 

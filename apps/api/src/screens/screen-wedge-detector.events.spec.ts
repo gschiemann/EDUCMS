@@ -162,3 +162,39 @@ describe('retention sweep', () => {
     await expect(cron.sweep()).resolves.toMatchObject({ recovered: 1 });
   });
 });
+
+describe('a panel Android reports asleep is not a wedge (2026-10-11)', () => {
+  const asleep = {
+    schema: 1,
+    interactive: false,
+    foreground: false,
+    standbySinceMs: NOW - 3_600_000,
+    elapsedRealtimeMs: 1,
+    powerOnAck: null,
+  };
+
+  it('a fresh interactive:false native report skips the refresh entirely', async () => {
+    const { cron, prisma, redis } = makeCron([
+      candidate({ nativeRuntimeReport: asleep, nativeRuntimeReportAt: new Date(NOW - 30_000) }),
+    ]);
+    const out = await cron.sweep();
+    expect(out.recovered).toBe(0);
+    expect(prisma.client.screen.update).not.toHaveBeenCalled();
+    expect(redis.publish).not.toHaveBeenCalled();
+    expect(prisma.client.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('a stale, awake or unreadable report keeps today\'s recovery', async () => {
+    for (const over of [
+      { nativeRuntimeReport: asleep, nativeRuntimeReportAt: new Date(NOW - 10 * 60_000) },
+      { nativeRuntimeReport: { ...asleep, interactive: true }, nativeRuntimeReportAt: new Date(NOW - 30_000) },
+      { nativeRuntimeReport: { ...asleep, interactive: null }, nativeRuntimeReportAt: new Date(NOW - 30_000) },
+      { nativeRuntimeReport: 'garbage', nativeRuntimeReportAt: new Date(NOW - 30_000) },
+      { nativeRuntimeReport: null, nativeRuntimeReportAt: null },
+    ]) {
+      const { cron } = makeCron([candidate(over)]);
+      const out = await cron.sweep();
+      expect(out.recovered).toBe(1);
+    }
+  });
+});

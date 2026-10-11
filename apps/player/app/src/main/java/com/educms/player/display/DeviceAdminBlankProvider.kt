@@ -198,4 +198,7 @@ object DeviceAdminBlankProvider : DisplayControlProvider {
 
     /** Exposed for [DeviceOwnerRebootProvider], which needs the same component. */
     internal fun adminComponent(ctx: Context): ComponentName? = ourAdmin(ctx)
+
+    /** For the native runtime report ([SleepProof.reportJson]): is our own admin active? */
+    internal fun isOurAdminActive(ctx: Context): Boolean = ourAdmin(ctx) != null
 }

@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { scopedTargetWhere } from '../user-scope/user-scope.context';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
@@ -110,7 +111,9 @@ export class SchedulesController {
   async list(@Request() req: any) {
     const tenantId = req.user.tenantId;
     const rows = await this.prisma.client.schedule.findMany({
-      where: { tenantId },
+      // USER SCOPING (2026-10-11): a screen-scoped person lists only the
+      // schedules on their screens / groups (`{}` for everyone else).
+      where: { tenantId, ...scopedTargetWhere(req) },
       include: {
         playlist: { select: { id: true, name: true } },
         screenGroup: { select: { id: true, name: true } },

@@ -16,7 +16,7 @@ import com.educms.player.standby.UserStandby
  *
  * ```
  * BRIGHTNESS   NovaStarTaurus → VendorRecipe → SysfsBacklight → SettingsBrightness → SoftwareDim
- * BLANK / WAKE NovaStarTaurus → VendorRecipe → DeviceAdminBlank → ScreenTimeout → SoftwareDim
+ * BLANK / WAKE NovaStarTaurus → VendorRecipe → DeviceAdminBlank → AccessibilityLock → ScreenTimeout → SoftwareDim
  * VOLUME       AudioManager
  * REBOOT       DeviceOwnerReboot          (device owner only — no fallback exists)
  * ```
@@ -74,6 +74,7 @@ object DisplayControlRegistry {
             NovaStarTaurusProvider,
             VendorRecipeProvider,
             DeviceAdminBlankProvider,
+            AccessibilityLockProvider,
             ScreenTimeoutBlankProvider,
             SoftwareDimProvider,
         ),
@@ -81,6 +82,7 @@ object DisplayControlRegistry {
             NovaStarTaurusProvider,
             VendorRecipeProvider,
             DeviceAdminBlankProvider,
+            AccessibilityLockProvider,
             ScreenTimeoutBlankProvider,
             SoftwareDimProvider,
         ),
@@ -113,8 +115,20 @@ object DisplayControlRegistry {
      * @param revertAfterMs when non-null, a dead-man revert is armed
      *        BEFORE the action is applied. Operator TEST actions always
      *        pass one; scheduled actions never do.
+     * @param allowProvider (2026-10-11) when non-null, only providers whose
+     *        id it accepts may run — the resolved one is skipped for the
+     *        next accepted provider in the same chain, and the fall-through
+     *        skips the rest. The after-alert restore uses it so an
+     *        unattended darkening never takes a mechanism that has latched
+     *        panels into a vendor standby (see `standby.RestoreBlankPolicy`).
+     *        Null = the unchanged behaviour every other caller gets.
      */
-    fun apply(ctx: Context, rawAction: DisplayAction, revertAfterMs: Long? = null): ActionResult {
+    fun apply(
+        ctx: Context,
+        rawAction: DisplayAction,
+        revertAfterMs: Long? = null,
+        allowProvider: ((String) -> Boolean)? = null,
+    ): ActionResult {
         val app = ctx.applicationContext
         val action = DisplayLimits.normalize(rawAction)
         if (action != rawAction) {
@@ -142,6 +156,10 @@ object DisplayControlRegistry {
         // once is never mistaken for somebody's remote.
         when (action) {
             DisplayAction.Wake -> {
+                // 2026-10-11 — a blank still being checked is judged NOW,
+                // before this wake changes the answer (a dead-man revert or a
+                // Turn on can land inside the screen-timeout settle window).
+                runCatching { SleepProof.beforeWake(app) }
                 UserStandby.end(app, "a WAKE command")
                 // 1.1.23 — a WAKE COMMAND during an alert means the panel
                 // stays on after the all-clear (last command wins). The
@@ -154,7 +172,21 @@ object DisplayControlRegistry {
         }
 
         val chain = CHAINS[action.capability].orEmpty()
-        val provider = resolve(app)[action.capability]
+        val resolved = resolve(app)[action.capability]
+        val provider = (
+            if (allowProvider == null || resolved == null || allowProvider(resolved.id)) {
+                resolved
+            } else {
+                chain.firstOrNull { p ->
+                    p !== resolved && allowProvider(p.id) && action.capability in supportsQuietly(app, p)
+                }.also {
+                    PlayerLogger.i(
+                        TAG,
+                        "${action.describe()}: ${resolved.id} is not allowed for this caller — using ${it?.id ?: "nothing"}",
+                    )
+                }
+            }
+            )
             ?: return ActionResult.Unsupported("this device exposes no ${action.capability} control").also {
                 PlayerLogger.w(TAG, "REFUSED ${action.describe()} — no provider for ${action.capability}")
             }
@@ -201,6 +233,7 @@ object DisplayControlRegistry {
         if (!result.ok && fallsThroughOnFailure(action.capability)) {
             for (next in chain) {
                 if (next === provider) continue
+                if (allowProvider != null && !allowProvider(next.id)) continue
                 if (action.capability !in supportsQuietly(app, next)) continue
                 PlayerLogger.w(
                     TAG,
@@ -256,6 +289,16 @@ object DisplayControlRegistry {
         }
 
         if (result.ok) recordState(app, action)
+
+        // 2026-10-11 — a BLANK that claims a real sleep is CHECKED afterwards
+        // (SleepProof): did Android actually go non-interactive, or did a
+        // screensaver start instead? Bookkeeping only — it schedules a read
+        // and never drives the panel during an alert.
+        val blankedVia = (result as? ActionResult.Ok)?.providerId
+        if (action == DisplayAction.Blank && blankedVia != null) {
+            runCatching { SleepProof.expect(app, blankedVia) }
+                .onFailure { PlayerLogger.w(TAG, "sleep check could not be scheduled: ${it.message}") }
+        }
 
         // ── ⚠️ LIFE-SAFETY RE-ASSERT — the other half of the gate ──
         // The gate at the top is check-then-act across a thread boundary:

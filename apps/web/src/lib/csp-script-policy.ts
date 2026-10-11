@@ -67,6 +67,7 @@ export const CSP_UNNONCEABLE_PREFIXES = [
   '/pricing',
   '/coppa',
   '/ferpa',
+  '/dpa',
   '/panic',
   '/status',
   '/launch',

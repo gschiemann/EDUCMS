@@ -23,6 +23,7 @@ import { availableOrganizationSlug, TenantUrlClaimConflict } from './tenant-slug
 import { collectDescendantTenantIds } from '../emergency/tenant-hierarchy';
 import { initializeEmergencyLocations } from './emergency-defaults';
 import { SupportAccessService } from '../support-access/support-access.service';
+import { buildAutoUpdateReport } from '../player-ota/auto-update-report';
 import { assertSupportReach, currentSupportAccessFrame } from '../support-access/support-access.context';
 
 /** Transaction attempts for a rename that loses a race for its new URL. */
@@ -93,12 +94,52 @@ export class TenantsController {
       return { current: tenantId, tenants };
     }
 
-    // Single-school admins / contributors / viewers
-    const me = await this.prisma.client.tenant.findUnique({
-      where: { id: tenantId },
+    // Single-school admins / contributors / viewers: their HOME location plus
+    // every location they were given (USER SCOPING, 2026-10-11) — and nothing
+    // else. A person with no extra locations gets exactly the old answer.
+    const locationIds = await this.personLocationIds(req.user.userId ?? req.user.id);
+    const ids = [...new Set([tenantId, ...locationIds])];
+    if (ids.length === 1) {
+      const me = await this.prisma.client.tenant.findUnique({
+        where: { id: tenantId },
+        select: { id: true, name: true, slug: true, parentId: true },
+      });
+      return { current: tenantId, tenants: me ? [me] : [] };
+    }
+    const tenants = await this.prisma.client.tenant.findMany({
+      // The active tenant is listed even if archived (it is where the session
+      // is); every other location only while live.
+      where: { OR: [{ id: tenantId }, { id: { in: ids }, archivedAt: null }] },
       select: { id: true, name: true, slug: true, parentId: true },
+      orderBy: [{ parentId: 'asc' }, { name: 'asc' }],
     });
-    return { current: tenantId, tenants: me ? [me] : [] };
+    return { current: tenantId, tenants };
+  }
+
+  /**
+   * USER SCOPING (2026-10-11): the person's HOME tenant plus the locations
+   * they were given (`user_location_access`), read from the live rows — never
+   * from the token. Only the same organisation counts: a row pointing outside
+   * the home's organisation (which the People editor never writes) is ignored.
+   */
+  private async personLocationIds(userId: string | undefined): Promise<string[]> {
+    if (!userId) return [];
+    const client: any = this.prisma.client;
+    // ten-ok: identity SELF-lookup — id IS the authenticated JWT principal
+    const me = await client.user.findFirst({
+      where: { id: userId, deletedAt: null },
+      select: { tenantId: true, locationAccess: { select: { tenantId: true } } },
+    });
+    if (!me) return [];
+    const extra: string[] = (me.locationAccess ?? []).map((r: { tenantId: string }) => r.tenantId);
+    if (extra.length === 0) return [me.tenantId];
+    const home = await client.tenant.findUnique({ where: { id: me.tenantId }, select: { id: true, parentId: true } });
+    const rootId = home?.parentId ?? me.tenantId;
+    const sameOrg = await client.tenant.findMany({
+      where: { id: { in: extra }, OR: [{ id: rootId }, { parentId: rootId }] },
+      select: { id: true },
+    });
+    return [me.tenantId, ...sameOrg.map((t: { id: string }) => t.id)];
   }
 
   /**
@@ -306,6 +347,17 @@ export class TenantsController {
       });
       const districtId = callerTenant?.parentId ?? callerTenant?.id;
       authorized = target.id === districtId || target.parentId === districtId;
+    } else if (role === AppRole.SCHOOL_ADMIN || role === AppRole.CONTRIBUTOR || role === AppRole.RESTRICTED_VIEWER) {
+      // USER SCOPING (2026-10-11): a location role may switch between its HOME
+      // and the locations it was given — live rows, same organisation — and
+      // never into an archived one. Same role in each; the MFA policy of the
+      // TARGET still applies below.
+      const mine = await this.personLocationIds(req.user.userId ?? req.user.id);
+      const archived = await this.prisma.client.tenant.findFirst({
+        where: { id: target.id, archivedAt: { not: null } },
+        select: { id: true },
+      });
+      authorized = mine.includes(target.id) && !archived;
     }
     if (!authorized) {
       throw new HttpException({ code: 'TENANT_SWITCH_NOT_AUTHORIZED', message: 'You are not authorized to switch into that tenant' }, HttpStatus.FORBIDDEN);
@@ -1479,7 +1531,29 @@ export class TenantsController {
       where: { id: req.user.tenantId },
       data: { autoUpdatePlayerEnabled: !!body.enabled } as any,
     });
+    // 2026-10-11 — audited: this switch now decides which screens update
+    // themselves unattended (opt-in, silent-only, off-hours).
+    await this.prisma.client.auditLog.create({
+      data: {
+        action: 'AUTO_UPDATE_PLAYER_SET',
+        targetType: 'tenant',
+        targetId: req.user.tenantId,
+        tenantId: req.user.tenantId,
+        userId: req.user.id,
+        details: JSON.stringify({ enabled: !!body.enabled }),
+      },
+    }).catch(() => { /* audit best-effort, same as the other tenant policy writes */ });
     return { ok: true, enabled: !!body.enabled };
+  }
+
+  // 2026-10-11 — per-screen view of AUTOMATIC updates: which screens would
+  // take one silently in the off-hours window, which need someone on site to
+  // tap Install, which have not reported. Read-only; same decisions as the
+  // update-check gate (player-ota/auto-update-policy.ts).
+  @Get('me/auto-update-readiness')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
+  async getAutoUpdateReadiness(@Request() req: any) {
+    return buildAutoUpdateReport(this.prisma, req.user.tenantId);
   }
 
   // Sprint 11 Phase A — OTA maintenance window.

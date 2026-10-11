@@ -20,7 +20,7 @@ export const RESERVED_TENANT_SLUGS: ReadonlySet<string> = new Set([
   'console', 'connect', 'demo', 'auth', 'onboarding', 'invite', 'reset-password',
   'forgot-password', 'verify-email', 'privacy', 'terms', 'templates',
   'accept-invite', 'setup-account', 'assets', 'athlete', 'board', 'cdn', 'coppa', 'dashboard',
-  'dev', 'ferpa', 'guide', 'help', 'launch', 'overlay', 'panic', 'pricing',
+  'dev', 'dpa', 'ferpa', 'guide', 'help', 'launch', 'overlay', 'panic', 'pricing',
   'ribbon', 'schedules', 'scorebug', 'screens', 'status',
   // Customer console (2026-10-10): the owner-link landing + the suspended page.
   'claim-account', 'account-suspended',

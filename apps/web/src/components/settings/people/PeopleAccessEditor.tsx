@@ -29,11 +29,11 @@ import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import {
   UserPlus, Trash2, Loader2, ShieldCheck, ShieldOff, Ban, Lock, KeyRound,
-  Users as UsersIcon, MailCheck, Search, AtSign, Link2, Download,
+  Users as UsersIcon, MailCheck, Search, AtSign, Link2, Download, Siren, MapPin,
 } from 'lucide-react';
 import {
   useUsers, useInviteUser, useCreateUserDirect, useDeleteUser, useUpdateUserRole,
-  useSetUserMfaRequired, useSetUserDisabled, useResetUserMfa,
+  useSetUserMfaRequired, useSetUserDisabled, useResetUserMfa, useSetUserCanTriggerPanic,
   useContentApprovalConfig, useToggleContentApproval,
   useMfaEnforcement, useSetMfaEnforced,
   useSendEmailChangeCode, useChangeUserEmail, useCreateSetupLink,
@@ -46,6 +46,10 @@ import { canAssignRole } from '@/lib/role-assignment';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
 import { appConfirm } from '@/components/ui/app-dialog';
 import { EditorHead, EditorSection, StatusPill, ErrorSummary } from '@/components/settings/shell/primitives';
+import { PersonAccessPanel } from '@/components/settings/people/PersonAccessPanel';
+
+/** 2026-10-11 — user scoping applies to the location roles only (server: SCOPABLE_ROLES). */
+const SCOPABLE_ROLES = ['SCHOOL_ADMIN', 'CONTRIBUTOR', 'RESTRICTED_VIEWER'];
 
 const ROLES = ['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN', 'CONTRIBUTOR', 'RESTRICTED_VIEWER'] as const;
 
@@ -97,6 +101,7 @@ export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
   const deleteUser = useDeleteUser();
   const updateRole = useUpdateUserRole();
   const setMfaRequired = useSetUserMfaRequired();
+  const setCanTriggerPanic = useSetUserCanTriggerPanic();
   const setUserDisabled = useSetUserDisabled();
   const resetUserMfa = useResetUserMfa();
 
@@ -197,11 +202,13 @@ export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
 
   const closeEmailPanel = () => {
     setEmailFor(null); setEmailNew(''); setEmailPassword(''); setEmailCode('');
-    setEmailCodeSentTo(null); setEmailError(null);
+    setEmailCodeSentTo(null); setEmailError(null); setAccessFor(null);
   };
   const closeLinkPanel = () => {
-    setLinkFor(null); setLinkPassword(''); setLinkError(null); setLinkResult(null); setLinkCopied(false);
+    setLinkFor(null); setLinkPassword(''); setLinkError(null); setLinkResult(null); setLinkCopied(false); setAccessFor(null);
   };
+  // 2026-10-11 — "Locations & screens" (user scoping). The panel owns its own form state.
+  const [accessFor, setAccessFor] = useState<string | null>(null);
 
   /** One map from the server's structured codes to plain words — never the message text. */
   const adminErrorText = (err: unknown): string => {
@@ -712,9 +719,64 @@ export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
                           kind={methods.length > 0 ? 'ready' : (user.mfaRequired ? 'attention' : 'notConfigured')}
                           label={methodLabel(methods)}
                         />
+                        {/* 2026-10-11 — user scoping, from counts on the list (absent on an older API → nothing). */}
+                        {(user.extraLocationCount ?? 0) > 0 && (
+                          <StatusPill kind="ready" label={t('settings.cc.people.accessPillLocations', { count: user.extraLocationCount ?? 0 })} />
+                        )}
+                        {user.screenLimited && <StatusPill kind="attention" label={t('settings.cc.people.accessPillLimited')} />}
                       </Cell>
 
                       <Cell label={t('settings.cc.people.colActions')} className="flex flex-wrap items-center gap-1.5 md:justify-end">
+                        {/* 2026-10-11 — "Can trigger emergency alerts" (User.canTriggerPanic).
+                            Rendered only where it MEANS something and the server would
+                            accept it: a CONTRIBUTOR below my rank (admins hold the
+                            authority by role; a RESTRICTED_VIEWER can never receive it,
+                            so for one we only offer turning a stale flag OFF). Absent
+                            from an older API's payload → nothing rendered, never a guess. */}
+                        {manageable && !isPending && typeof user.canTriggerPanic === 'boolean' &&
+                          (user.role === 'CONTRIBUTOR' || (user.role === 'RESTRICTED_VIEWER' && user.canTriggerPanic)) && (
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={user.canTriggerPanic}
+                            onClick={async () => {
+                              const turningOn = !user.canTriggerPanic;
+                              const ok = await appConfirm({
+                                title: turningOn
+                                  ? t('settings.cc.people.panicOnTitle', { email: user.email })
+                                  : t('settings.cc.people.panicOffTitle', { email: user.email }),
+                                message: turningOn
+                                  ? t('settings.cc.people.panicOnMessage')
+                                  : t('settings.cc.people.panicOffMessage'),
+                                confirmLabel: turningOn
+                                  ? t('settings.cc.people.panicOnConfirm')
+                                  : t('settings.cc.people.panicOffConfirm'),
+                              });
+                              if (!ok) return;
+                              setRowError(null);
+                              setCanTriggerPanic.mutate({ id: user.id, canTriggerPanic: turningOn }, {
+                                onError: (err: Error) => setRowError(err?.message || t('settings.cc.people.panicFailed')),
+                              });
+                            }}
+                            disabled={setCanTriggerPanic.isPending}
+                            aria-label={t('settings.cc.people.panicAria', { email: user.email })}
+                            title={t('settings.cc.people.panicHint')}
+                            data-testid={`people-panic-${user.id}`}
+                            className={`inline-flex items-center gap-1.5 min-h-[34px] px-2 rounded-[8px] border text-[12px] font-medium disabled:opacity-50 ${user.canTriggerPanic ? 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+                          >
+                            <Siren className="w-3.5 h-3.5" aria-hidden />
+                            {t('settings.cc.people.panicToggle')}
+                            <span
+                              aria-hidden
+                              className={`relative inline-block w-7 h-4 rounded-full transition-colors ${user.canTriggerPanic ? 'bg-red-600' : 'bg-slate-300'}`}
+                            >
+                              <span
+                                className="absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-[left]"
+                                style={{ left: user.canTriggerPanic ? 14 : 2 }}
+                              />
+                            </span>
+                          </button>
+                        )}
                         {manageable && (
                           <button
                             type="button"
@@ -771,6 +833,25 @@ export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
                           >
                             <KeyRound className="w-3.5 h-3.5" aria-hidden />
                             {t('settings.cc.people.resetMfa')}
+                          </button>
+                        )}
+                        {manageable && SCOPABLE_ROLES.includes(user.role) && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setResetDone(null);
+                              closeEmailPanel();
+                              closeLinkPanel();
+                              setResetFor(null);
+                              setAccessFor(accessFor === user.id ? null : user.id);
+                            }}
+                            aria-expanded={accessFor === user.id}
+                            aria-controls={`people-access-${user.id}`}
+                            title={t('settings.cc.people.accessHint')}
+                            className="inline-flex items-center gap-1 min-h-[34px] px-2 rounded-[8px] border border-slate-200 bg-white text-[12px] font-medium text-slate-600 hover:bg-slate-50"
+                          >
+                            <MapPin className="w-3.5 h-3.5" aria-hidden />
+                            {t('settings.cc.people.accessButton')}
                           </button>
                         )}
                         {manageable && !isPending && !user.mustSetupCredentials && (
@@ -941,6 +1022,10 @@ export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
                             </button>
                           </div>
                         </form>
+                      )}
+
+                      {accessFor === user.id && (
+                        <PersonAccessPanel user={user} onClose={() => setAccessFor(null)} />
                       )}
 
                       {emailFor === user.id && (

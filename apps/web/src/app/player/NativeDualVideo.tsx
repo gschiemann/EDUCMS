@@ -8,6 +8,7 @@ import {
   sharedVideoIdentity,
   type NativeSharedVideoDescriptor,
 } from "./nativeSharedVideo";
+import { DEFAULT_PLAYLIST_MEDIA_FIT, mediaFitClass, mediaFitStyle, type MediaFit } from "./mediaFit";
 
 /** Keeps the existing player alive until both faces prepare; never leaves a hidden DOM decoder. */
 export function NativeDualVideo({
@@ -15,11 +16,14 @@ export function NativeDualVideo({
   children,
   classes,
   onPlaying,
+  fit = DEFAULT_PLAYLIST_MEDIA_FIT,
 }: {
   descriptor: NativeSharedVideoDescriptor | null;
   children: ReactNode;
   classes: string;
   onPlaying(): void;
+  /** The hold frame is drawn at the video's own size, so it takes the slide's fit (mediaFit.ts). */
+  fit?: MediaFit;
 }) {
   const identity = descriptor ? sharedVideoIdentity(descriptor) : "";
   const container = useRef<HTMLDivElement>(null);
@@ -123,8 +127,9 @@ export function NativeDualVideo({
       {stage === "browser" ? children : null}
       <canvas
         ref={canvas}
-        className="absolute top-0 left-0 w-full h-full object-fill"
+        className={`absolute top-0 left-0 w-full h-full ${mediaFitClass(fit)}`}
         style={{
+          ...mediaFitStyle(fit),
           display: stage === "handoff" ? "block" : "none",
           background: "#000",
         }}

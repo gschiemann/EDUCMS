@@ -108,6 +108,10 @@ model Tenant {
   // console; NEVER set it on a paying customer.
   isInternal                      Boolean            @default(false) @map("is_internal")
   supportAccessGrants             SupportAccessGrant[]
+  // 2026-10-11 — USER SCOPING. People from another location of the same
+  // organisation who may work in this one, and per-person screen limits here.
+  userLocationAccess              UserLocationAccess[]
+  userScreenScopes                UserScreenScope[]
   // VenueOS Sports — Phase 2 persistent player-stats / records engine.
   // Back-relations for the tenant-owned persistent identity + aggregate
   // tables (see the Sports Phase 2 block near the end of this file).
@@ -617,6 +621,11 @@ model User {
   notifications        Notification[]
   submissionsSubmitted Submission[]         @relation("SubmissionsSubmitted")
   submissionsDecided   Submission[]         @relation("SubmissionsDecided")
+  // 2026-10-11 — USER SCOPING (apps/api/src/user-scope). Extra locations this
+  // person may work in (besides `tenantId`, their HOME), and the screens /
+  // screen groups they are limited to in a location.
+  locationAccess       UserLocationAccess[]
+  screenScopes         UserScreenScope[]
 
   // 2026-05-09 — perf audit found every admin-broadcast feature
   // (asset upload notify, submission notify, user list, SUPER_ADMIN
@@ -835,7 +844,21 @@ model License {
   trialEndsAt              DateTime? @map("trial_ends_at")
   trialNoticeStage         Int       @default(0) @map("trial_notice_stage")
   noticeLocale             String?   @map("notice_locale")
-  createdAt                DateTime  @default(now()) @map("created_at")
+  // 2026-10-11 — CARD FAILURE → VIEW-ONLY, WITH HELP (apps/api/src/billing/dunning-policy.ts).
+  // All additive. Written by the Stripe webhook on `invoice.payment_failed`,
+  // cleared when a payment succeeds; read by the billing-notice cron.
+  //  - dunningInvoiceId: the Stripe invoice that is failing. A new invoice id
+  //    resets the notice stage, so each email goes out at most once PER INVOICE.
+  //  - dunningNoticeStage: 0 none · 1 card declined · 2 reminder before
+  //    view-only · 3 now view-only. Claimed atomically before sending.
+  //  - dunningFailedAt: when that invoice first failed.
+  //  - dunningNextAttemptAt: Stripe's next automatic retry (null after the
+  //    last one — the subscription is about to end).
+  dunningInvoiceId         String?   @map("dunning_invoice_id")
+  dunningNoticeStage       Int       @default(0) @map("dunning_notice_stage")
+  dunningFailedAt          DateTime? @map("dunning_failed_at")
+  dunningNextAttemptAt     DateTime? @map("dunning_next_attempt_at")
+  createdAt               DateTime  @default(now()) @map("created_at")
   updatedAt                DateTime  @default(now()) @updatedAt @map("updated_at")
   tenant                   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -915,6 +938,49 @@ model SupportAccessGrant {
   @@index([tenantId, status])
   @@index([status, expiresAt])
   @@map("support_access_grants")
+}
+
+// 2026-10-11 — USER SCOPING: MORE THAN ONE LOCATION (apps/api/src/user-scope).
+// `User.tenantId` stays the person's HOME location (back-compat: login lands
+// there, every existing query keeps working). A row here lets the person also
+// switch into another location of the SAME organisation and work there with
+// the SAME role. Org admins (DISTRICT_ADMIN) never need a row — they already
+// reach every location. Removing a row takes effect on the person's next
+// request (UserScopeInterceptor re-checks it, cached ≤ 10 s per replica).
+model UserLocationAccess {
+  id              String   @id @default(uuid())
+  userId          String   @map("user_id")
+  tenantId        String   @map("tenant_id")
+  grantedByUserId String?  @map("granted_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, tenantId])
+  @@index([tenantId])
+  @@map("user_location_access")
+}
+
+// 2026-10-11 — USER SCOPING: LIMITED TO SCREENS / SCREEN GROUPS.
+// ANY row for (userId, tenantId) makes the person SCREEN-SCOPED in that
+// location: they see and manage only the listed screens plus the screens in
+// the listed groups. Deliberately NO foreign key to screens / screen_groups:
+// a cascade would delete the last row when the lobby group is deleted and
+// silently turn a lobby-only person into a whole-location one. A row whose
+// screen or group no longer exists simply matches nothing — still scoped.
+model UserScreenScope {
+  id            String   @id @default(uuid())
+  userId        String   @map("user_id")
+  tenantId      String   @map("tenant_id")
+  screenId      String?  @map("screen_id")
+  screenGroupId String?  @map("screen_group_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([userId, tenantId])
+  @@index([tenantId])
+  @@map("user_screen_scopes")
 }
 
 // 2026-09-22 — AI usage ledger: one row per provider call — tokens, and the dollar cost at the
@@ -1537,6 +1603,13 @@ model Screen {
   // Cleared automatically alongside forceApkUpdatePendingAt when the
   // install completes (versionCode bump observed in heartbeat).
   forceApkUpdateOverrideWindow        Boolean      @default(false) @map("force_apk_update_override_window")
+  // 2026-10-11 (owner decision) — per-screen AUTOMATIC-update switch.
+  // NULL = inherit Tenant.autoUpdatePlayerEnabled; TRUE = on for this screen
+  // even when the org is off; FALSE = off for this screen even when the org
+  // is on. Automatic offers additionally require the off-hours window and a
+  // screen that installs silently (player-ota/auto-update-policy.ts). An
+  // operator's explicit "Send update" (forceApkUpdatePendingAt) ignores it.
+  autoUpdatePlayerOverride            Boolean?     @map("auto_update_player_override")
   // v1.0.12 — per-phase OTA progress reported by OtaUpdateWorker.
   // Lets the dashboard show a real progress bar grounded in device
   // truth instead of the time-based theater that was killing trust.

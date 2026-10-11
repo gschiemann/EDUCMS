@@ -64,6 +64,13 @@ const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null);
  * SuperCustomersController); every write is one transaction with its AuditLog
  * row, and every AuditLog row on a license carries `before` / `after` / `changed`.
  */
+/**
+ * Organisations that are never customers and never belong in the customer
+ * roster: the security-event sink and the "VenueOS automated checks" org the
+ * CI production smoke signs into (seeded as Springfield; renamed 2026-10-11).
+ */
+const NOT_CUSTOMER_SLUGS = new Set(['__system__', 'springfield-district']);
+
 @Injectable()
 export class CustomerConsoleService {
   private readonly logger = new Logger(CustomerConsoleService.name);
@@ -165,7 +172,7 @@ export class CustomerConsoleService {
     }
 
     return tenants
-      .filter((t) => !t.parentId)
+      .filter((t) => !t.parentId && !NOT_CUSTOMER_SLUGS.has(t.slug))
       .map((t): CustomerRow => {
         const lic = t.license ?? null;
         const inv = open.get(t.id) ?? { cents: 0, overdue: 0 };

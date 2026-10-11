@@ -331,6 +331,10 @@ export const PLAYER_RELEASE_SHA_PINS: Readonly<Record<string, string>> = {
   // v1.1.24 — native transport for explicit Power On while the WebView sleeps.
   // Signed GitHub release asset, captured after APK CI run 37930649497 passed.
   '1.1.24': 'b432e63cd575bfebb888d4afb2f9877bb470f66f9906a4a8b1a96ec6337ec168',
+  // v1.1.26 — sleep/wake: proven sleeps (X80 screensaver), no latch-prone lock
+  // restore below Android 13, 1-min dark heartbeat so Power On is acknowledged.
+  // Signed GitHub release asset, captured after APK CI run 38160508465 passed.
+  '1.1.26': 'aeb943eaccea60c3e0dc24da5118aca6e923bd5bd4cb5f7f096b95b4a570f78c',
 };
 
 /**

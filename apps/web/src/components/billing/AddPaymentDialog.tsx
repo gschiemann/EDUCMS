@@ -26,7 +26,10 @@ export function AddPaymentDialog({
   onClose: () => void;
 }) {
   const t = useTranslations('billingTrial');
-  const [period, setPeriod] = useState<'monthly' | 'annual'>('annual');
+  // A restart keeps the plan they had; everyone else starts on Annual (the saving).
+  const [period, setPeriod] = useState<'monthly' | 'annual'>(
+    summary.state === 'cancelled' && summary.period ? summary.period : 'annual',
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notSetUp, setNotSetUp] = useState(!summary.billingReady);
@@ -77,12 +80,33 @@ export function AddPaymentDialog({
         <div className="flex items-start justify-between gap-3 mb-4">
           <h2 id="add-payment-title" className="text-[17px] font-semibold text-slate-900 flex items-center gap-2">
             <CreditCard className="w-5 h-5" style={{ color: 'var(--brand-primary)' }} aria-hidden />
-            {notSetUp ? t('dialog.notSetUpTitle') : t('dialog.title')}
+            {notSetUp ? t('dialog.notSetUpTitle') : summary.state === 'cancelled' ? t('restart.title') : t('dialog.title')}
           </h2>
           <button type="button" onClick={onClose} aria-label={t('dialog.close')} className="text-slate-400 hover:text-slate-600 -m-1 p-1">
             <X className="w-5 h-5" aria-hidden />
           </button>
         </div>
+
+        {/* 2026-10-11 — restarting after the plan ended (view-only): say what
+            happened and the three steps before the plan choice. */}
+        {summary.state === 'cancelled' && !notSetUp && (
+          <div className="mb-4" data-testid="restart-guide">
+            <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-[14px] text-red-900">
+              <p className="font-medium">{summary.endedForNonPayment ? t('restart.whatHappenedCard') : t('restart.whatHappened')}</p>
+              <p className="mt-1">{t('status.stillWorks')}</p>
+            </div>
+            <ol className="mt-3 space-y-1.5 text-[13px] text-slate-700">
+              {[t('restart.step1'), t('restart.step2'), t('restart.step3')].map((step, i) => (
+                <li key={i} className="flex items-start gap-2">
+                  <span className="flex-shrink-0 w-5 h-5 rounded-full bg-slate-900 text-white text-[11px] font-semibold flex items-center justify-center" aria-hidden>
+                    {i + 1}
+                  </span>
+                  <span>{step}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
+        )}
 
         {notSetUp ? (
           <>

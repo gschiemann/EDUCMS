@@ -53,6 +53,9 @@ jest.mock('@/hooks/use-api', () => ({
   useScreenFaces: () => ({ data: undefined, isLoading: false, refetch: jest.fn() }),
   useCreateScreenFace: () => ({ mutate: jest.fn(), isPending: false, isError: false }),
   useSetScreenFaceMode: () => ({ mutate: jest.fn(), isPending: false, isError: false }),
+  // 2026-10-11 — per-screen automatic-update switch (AutoUpdateSection).
+  useScreenAutoUpdate: () => ({ data: undefined, isLoading: false }),
+  useSetScreenAutoUpdate: () => ({ mutate: jest.fn(), isPending: false, isError: false }),
 }));
 // Both panels have their own suites; here they only have to mount.
 jest.mock('@/components/screens/ScreenDisplayControls', () => ({

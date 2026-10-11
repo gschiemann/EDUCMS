@@ -242,12 +242,10 @@ export default function DeveloperSettingsPage() {
             icon={<BookOpen className="w-4 h-4" />}
           />
           <DocLink
-            href="https://docs.venue-os.app"
-            title="Documentation (coming soon)"
-            blurb="REST API reference, embed snippets, and SDK quickstarts. Hosted docs ship alongside the API-token feature."
+            href="/help/api-and-webhooks"
+            title={t('settings.cc.developer.apiDocsTitle')}
+            blurb={t('settings.cc.developer.apiDocsBlurb')}
             icon={<BookOpen className="w-4 h-4" />}
-            external
-            unavailable
           />
         </div>
       </EditorSection>

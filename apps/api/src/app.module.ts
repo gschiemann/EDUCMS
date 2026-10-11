@@ -72,6 +72,7 @@ import { StreamingModule } from './streaming/streaming.module';
 import { BillingModule } from './billing/billing.module';
 import { CustomersModule } from './customers/customers.module';
 import { SupportAccessModule } from './support-access/support-access.module';
+import { UserScopeModule } from './user-scope/user-scope.module';
 // 2026-05-03 — Sprint 8d POS catalog sync framework.
 import { PosModule } from './pos/pos.module';
 // 2026-05-03 — Sprint 8d ad-network monetization framework.
@@ -120,6 +121,7 @@ import { GpioModule } from './screens/gpio.module';
 // scheduled on-off windows that run ON DEVICE from the manifest, plus the
 // platform vendor-recipe catalog. See display/display.module.ts.
 import { DisplayModule } from './display/display.module';
+import { ScreensBulkModule } from './screens/bulk/screens-bulk.module';
 // 2026-05-27 — One-click Bug Reporter. BugsController is registered
 // in the `controllers` array below; BugsModule provides the
 // enrichment + AI analyzer services that back it. See bugs/*.ts and
@@ -200,6 +202,9 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     // 2026-10-11 — customer-approved, time-boxed support access; replaces
     // VenueOS's standing reach into customer organisations (@Global gate).
     SupportAccessModule,
+    // 2026-10-11 — a person in more than one location, and limits to specific
+    // screens / screen groups (@Global gate, user-scope.interceptor.ts).
+    UserScopeModule,
     PosModule,
     AdsModule,
     SampleDataModule,
@@ -218,6 +223,9 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     AnalyticsModule,
     GpioModule,
     DisplayModule,
+    // 2026-10-11 — select-all / select-group Resync, Send update, power,
+    // automatic updates (screens/bulk/screens-bulk.controller.ts).
+    ScreensBulkModule,
     BugsModule,
     EfficiencyModule,
     ActivationFunnelModule,

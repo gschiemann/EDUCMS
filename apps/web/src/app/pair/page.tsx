@@ -155,7 +155,7 @@ export default function PairPage() {
       <h1 className="text-2xl font-bold mt-6 mb-2">Pair a Screen</h1>
       <p className="text-sm text-slate-400 mb-6 text-center max-w-sm">
         Point your phone camera at the QR code shown on the screen device, or
-        type the 6-digit code.
+        type the 6-character code.
       </p>
 
       <div className="w-full max-w-sm bg-slate-900 rounded-2xl overflow-hidden border border-slate-800">

@@ -30,6 +30,7 @@ export function Footer() {
             { href: '/help/getting-started', label: 'Getting started' },
             { href: '/help/emergency-system', label: 'Emergency system' },
             { href: '/help/sso', label: 'SSO setup' },
+            { href: '/help/api-and-webhooks', label: 'API & webhooks' },
             { href: '/status', label: 'System status' },
           ]}
         />
@@ -38,6 +39,7 @@ export function Footer() {
           links={[
             { href: '/privacy', label: 'Privacy policy' },
             { href: '/terms', label: 'Terms of service' },
+            { href: '/dpa', label: 'Data processing addendum' },
             { href: '/ferpa', label: 'FERPA' },
             { href: '/coppa', label: 'COPPA' },
           ]}

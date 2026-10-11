@@ -50,6 +50,42 @@ class HeartbeatCadenceTest {
     }
 
     @Test
+    fun `a dark panel or an unproven power-on keeps the native tick every minute, page or no page`() {
+        // 2026-10-11 — an operator's Turn panel on reaches a dark panel only
+        // through this heartbeat and lives five minutes on the server: a page
+        // reporting behind a dark panel must not stretch this channel to the
+        // same five minutes.
+        assertTrue(
+            HeartbeatService.decideTick(
+                nowMs = now,
+                lastTickAtMs = now - 60_000,
+                webTelemetryAtMs = now - 30_000,
+                nativeUrgent = true,
+            ),
+        )
+        // The default keeps every pre-existing caller's behaviour.
+        assertFalse(
+            HeartbeatService.decideTick(nowMs = now, lastTickAtMs = now - 60_000, webTelemetryAtMs = now - 30_000),
+        )
+    }
+
+    @Test
+    fun `the urgent signal is the panel's power state and the unproven power-on, nothing else`() {
+        val src = File(
+            listOf("src/main", "app/src/main").map { File(it) }.firstOrNull { it.isDirectory } ?: File("x"),
+            "java/com/educms/player/heartbeat/HeartbeatService.kt",
+        )
+        Assume.assumeTrue("source not on disk", src.isFile)
+        val body = Regex("private fun nativeUrgent\\(\\)[\\s\\S]*?\\n    }").find(src.readText())?.value
+        Assume.assumeTrue("nativeUrgent() not found", body != null)
+        assertTrue(body!!.contains("isInteractive"))
+        assertTrue(body.contains("NativePowerControl.awaitingProof(ctx)"))
+        // It only ever asks to TICK; it never launches or wakes anything.
+        assertFalse(body.contains("DisplayControlRegistry"))
+        assertFalse(body.contains("launch"))
+    }
+
+    @Test
     fun `THE FLOOR IS ABSOLUTE — past 5 minutes we tick no matter what the page claims`() {
         // The independent proof that the ANDROID PROCESS is alive. If this
         // ever became "skip while the web is happy", a page that kept

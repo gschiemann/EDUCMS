@@ -42,7 +42,7 @@ Some displays are mounted in portrait orientation. In the screen's detail page, 
 
 ## Kiosk mode tips
 
-For Chromebooks, we recommend setting up **Chrome OS managed kiosk mode** with the URL set to your player + pre-baked pairing. See [the kiosk hardening guide](/help/kiosk-hardening) for full instructions.
+For Chromebooks and Chromeboxes, we recommend **Chrome OS managed kiosk mode** running the player web page, `https://venue-os.app/player`, as a kiosk web app — there is no separate Chrome app to install. Pair it once from the dashboard; the pairing survives restarts. See [the kiosk hardening guide](/help/kiosk-hardening) for full instructions.
 
 ## Troubleshooting
 

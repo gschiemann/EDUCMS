@@ -2863,7 +2863,63 @@ export type TeamUser = {
   status?: string;
   /** 2026-10-10 — still on its provisioning starter credentials (offer a setup link). Optional: older API. */
   mustSetupCredentials?: boolean;
+  /**
+   * 2026-10-11 — may fire emergency alerts without an admin role
+   * (`User.canTriggerPanic`). Optional: an older API build does not send it;
+   * the toggle then renders nothing rather than guessing "off".
+   */
+  canTriggerPanic?: boolean;
+  /** 2026-10-11 — USER SCOPING: how many locations besides home. Optional: older API. */
+  extraLocationCount?: number;
+  /** 2026-10-11 — USER SCOPING: limited to some screens in at least one location. Optional: older API. */
+  screenLimited?: boolean;
 };
+
+/**
+ * 2026-10-11 — USER SCOPING. What Settings → People → "Locations & screens"
+ * shows for one person (GET /users/:id/access).
+ */
+export interface UserAccessScope {
+  screenIds: string[];
+  screenGroupIds: string[];
+}
+export interface UserAccess {
+  user: { id: string; email: string; role: string; homeTenantId: string };
+  /** False for org admins: they already reach every location and screen. */
+  scopable: boolean;
+  /** Only an org admin may change which locations a person can use. */
+  canEditLocations: boolean;
+  locations: Array<{ id: string; name: string; isHome: boolean; granted: boolean; scopeEditable: boolean }>;
+  /** Per location id; absent = not limited there. */
+  screenScopes: Record<string, UserAccessScope>;
+  /** Choices per location the caller may limit. */
+  options: Record<string, { screens: Array<{ id: string; name: string; screenGroupId: string | null }>; groups: Array<{ id: string; name: string }> }>;
+}
+
+export function useUserAccess(userId: string | null) {
+  return useQuery<UserAccess>({
+    queryKey: ['users', userId, 'access'],
+    queryFn: () => apiFetch(`/users/${userId}/access`),
+    enabled: !!userId,
+    staleTime: 0,
+  });
+}
+
+export function useSetUserAccess() {
+  const qc = useQueryClient();
+  return useMutation<
+    { success: boolean; changed: boolean },
+    Error,
+    { id: string; locationIds: string[]; screenScopes: Record<string, UserAccessScope | null> }
+  >({
+    mutationFn: ({ id, locationIds, screenScopes }) =>
+      apiFetch(`/users/${id}/access`, { method: 'PUT', body: JSON.stringify({ locationIds, screenScopes }) }),
+    onSuccess: (_d, v) => {
+      qc.invalidateQueries({ queryKey: ['users'] });
+      qc.invalidateQueries({ queryKey: ['users', v.id, 'access'] });
+    },
+  });
+}
 
 export function useUsers() {
   return useQuery<TeamUser[]>({
@@ -2890,6 +2946,27 @@ export function useSetUserMfaRequired() {
       apiFetch(`/users/${id}/mfa-required`, {
         method: 'PUT',
         body: JSON.stringify({ mfaRequired }),
+      }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['users'] }); },
+  });
+}
+
+/**
+ * 2026-10-11 — the People page's "Can trigger emergency alerts" toggle: the
+ * first web caller of `PUT /users/:id/can-trigger-panic` (the writer existed
+ * since 2026-05-26; support had to flip it by hand). Server rules unchanged
+ * and authoritative: admin roles only, own tenant, strictly below the
+ * caller's rank, never a RESTRICTED_VIEWER, audited
+ * (USER_CAN_TRIGGER_PANIC_CHANGED), and turning it OFF burns the person's live
+ * sessions so the capability stops at once.
+ */
+export function useSetUserCanTriggerPanic() {
+  const qc = useQueryClient();
+  return useMutation<TeamUser, Error, { id: string; canTriggerPanic: boolean }>({
+    mutationFn: ({ id, canTriggerPanic }) =>
+      apiFetch(`/users/${id}/can-trigger-panic`, {
+        method: 'PUT',
+        body: JSON.stringify({ canTriggerPanic }),
       }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['users'] }); },
   });
@@ -3796,6 +3873,57 @@ export function useRefreshWeb() {
   });
 }
 
+// ─── Bulk screen actions (2026-10-11) ───
+// Greg: "allow me to do a select-all and push — by group at least". One POST
+// runs the SAME single-screen command for every screen server-side
+// (POST /screens/bulk/{resync|update|power|auto-update}) and answers every id:
+// sent / skipped (with a reason) / failed (with a reason). `dryRun: true`
+// returns the server's own plan for the confirm sheet and changes nothing.
+export type BulkScreenAction = 'resync' | 'update' | 'power' | 'auto-update';
+export type BulkScreenOutcome = 'sent' | 'skipped' | 'failed';
+export interface BulkScreenResult {
+  screenId: string;
+  name: string | null;
+  outcome: BulkScreenOutcome;
+  reason?: string;
+  code?: string;
+  message?: string;
+  installPrompt?: boolean;
+}
+export interface BulkScreenResponse {
+  action: BulkScreenAction;
+  dryRun: boolean;
+  corrId: string | null;
+  summary: { requested: number; sent: number; skipped: number; failed: number };
+  results: BulkScreenResult[];
+  latestPlayerVersion?: string | null;
+}
+export interface BulkScreenRequest {
+  action: BulkScreenAction;
+  screenIds?: string[];
+  screenGroupId?: string;
+  dryRun?: boolean;
+  /** power */
+  state?: 'on' | 'off';
+  /** auto-update */
+  mode?: 'on' | 'off' | 'inherit';
+}
+export function useBulkScreenAction() {
+  const qc = useQueryClient();
+  return useMutation({
+    // The sheet renders every outcome itself, per screen; a global toast would
+    // only repeat the failure without the names.
+    meta: { suppressGlobalError: true },
+    mutationFn: async ({ action, ...body }: BulkScreenRequest) =>
+      apiFetch<BulkScreenResponse>(`/screens/bulk/${action}`, { method: 'POST', body: JSON.stringify(body) }),
+    onSuccess: (res) => {
+      if (res?.dryRun) return;
+      // Resync mints a Deployment; update / auto-update change screen rows.
+      qc.invalidateQueries({ queryKey: ['screens'] });
+    },
+  });
+}
+
 // ─── License + billing (Sprint 7E) ───
 export type LicenseSummary = {
   tier: string;
@@ -3865,9 +3993,11 @@ export function useCompSeats() {
 //
 // When OFF (default), paired Android players DO NOT auto-update
 // even when a newer APK is published. Admins push individual
-// screens manually. When ON, kiosks pull updates on their 6h
-// cadence — same as pre-2026 behavior. Per-screen Push override
-// (forceApkUpdatePendingAt) works regardless of the flag.
+// screens manually. When ON (2026-10-11): a screen is offered an
+// update automatically ONLY if it can install silently and ONLY in
+// the off-hours window (org window, else 03:00–04:00 local). A
+// per-screen switch (useSetScreenAutoUpdate) overrides the org.
+// Per-screen Push (forceApkUpdatePendingAt) works regardless.
 export function useAutoUpdatePlayerConfig() {
   return useQuery<{ enabled: boolean }>({
     queryKey: ['auto-update-player-config'],
@@ -3888,7 +4018,66 @@ export function useToggleAutoUpdatePlayer() {
     onError: (_e, _v, ctx) => {
       if (ctx?.prev !== undefined) qc.setQueryData(['auto-update-player-config'], ctx.prev);
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: ['auto-update-player-config'] }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['auto-update-player-config'] });
+      qc.invalidateQueries({ queryKey: ['auto-update-readiness'] });
+      qc.invalidateQueries({ queryKey: ['screen-auto-update'] });
+    },
+  });
+}
+
+// ─── Automatic Player updates: per-screen view + switch (2026-10-11) ───
+export type AutoUpdateMode = 'on' | 'off' | 'inherit';
+export interface ScreenAutoUpdateInfo {
+  screenId: string;
+  name: string;
+  override: AutoUpdateMode;
+  enabled: boolean;
+  enabledSource: 'screen' | 'org';
+  readiness: 'silent' | 'needs-tap' | 'unknown';
+  readinessReason:
+    | 'armed' | 'no-report' | 'report-predates-install'
+    | 'android-too-old' | 'installed-by-another-app' | 'not-armed';
+  window: { start: string; end: string; timezone: string; hoursSource: 'org' | 'default'; zoneSource: 'org' | 'schedule' } | null;
+  willAutoUpdate: boolean;
+  inventoryReportedAt: string | null;
+}
+export interface AutoUpdateReadiness {
+  orgEnabled: boolean;
+  orgWindow: { start: string | null; end: string | null; timezone: string | null };
+  defaultWindow: { start: string; end: string };
+  screens: ScreenAutoUpdateInfo[];
+}
+
+/** Fleet view — read on demand by the Player settings page; never polled. */
+export function useAutoUpdateReadiness(enabled = true) {
+  return useQuery<AutoUpdateReadiness>({
+    queryKey: ['auto-update-readiness'],
+    queryFn: () => apiFetch('/tenants/me/auto-update-readiness'),
+    enabled,
+    staleTime: 60_000,
+  });
+}
+
+/** One screen — read while its settings are open; never polled. */
+export function useScreenAutoUpdate(screenId: string, enabled = true) {
+  return useQuery<ScreenAutoUpdateInfo & Pick<AutoUpdateReadiness, 'orgEnabled' | 'orgWindow' | 'defaultWindow'>>({
+    queryKey: ['screen-auto-update', screenId],
+    queryFn: () => apiFetch(`/screens/${screenId}/auto-update`),
+    enabled: enabled && !!screenId,
+    staleTime: 60_000,
+  });
+}
+
+export function useSetScreenAutoUpdate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { screenId: string; mode: AutoUpdateMode }) =>
+      apiFetch(`/screens/${args.screenId}/auto-update`, { method: 'PUT', body: JSON.stringify({ mode: args.mode }) }),
+    onSuccess: (data, args) => {
+      qc.setQueryData(['screen-auto-update', args.screenId], data);
+      qc.invalidateQueries({ queryKey: ['auto-update-readiness'] });
+    },
   });
 }
 

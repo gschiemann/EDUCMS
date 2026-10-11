@@ -12,6 +12,7 @@ import { stripScreenSecrets } from '../security/screen-secrets';
 // (plus the legacy group flag). Shared with screens.controller so the two
 // lists can never disagree about who is locked.
 import { readSyncActiveTargets, isScreenSyncActive } from '../screens/screen-sync';
+import { screenScopeOf } from '../user-scope/user-scope.context';
 import {
   ScreenGroupCreateSchema, type ScreenGroupCreateInput,
   ScreenGroupUpdateSchema, type ScreenGroupUpdateInput,
@@ -49,10 +50,25 @@ export class ScreenGroupsController {
       res.setHeader('Pragma', 'no-cache');
     }
     const tenantId = req.user.tenantId;
+    // USER SCOPING (2026-10-11): a screen-scoped person sees the groups they
+    // were given plus the groups that hold one of their screens — and inside
+    // every group ONLY their screens. Unscoped: unchanged.
+    const scope = screenScopeOf(req);
+    let groupFilter: Record<string, unknown> = {};
+    if (scope) {
+      const own = await this.prisma.client.screen.findMany({
+        where: { tenantId, id: { in: scope.screenIds } },
+        select: { screenGroupId: true },
+      });
+      const ids = new Set<string>(scope.groupIds);
+      for (const s of own as Array<{ screenGroupId: string | null }>) if (s.screenGroupId) ids.add(s.screenGroupId);
+      groupFilter = { id: { in: [...ids] } };
+    }
     const groups = await this.prisma.client.screenGroup.findMany({
-      where: { tenantId },
+      where: { tenantId, ...groupFilter },
       include: {
         screens: {
+          ...(scope ? { where: { id: { in: scope.screenIds } } } : {}),
           // BUG FIX 2026-04-27: this `select` was missing
           // `playerVersion` / `playerVersionCode` / `playerVersionAt`
           // / `forceApkUpdatePendingAt` / `userAgent`. Dashboard

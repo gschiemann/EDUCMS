@@ -19,7 +19,8 @@ export interface NativeSharedVideoDescriptor {
   transform: {
     orientation: "PORTRAIT" | "LANDSCAPE" | "AUTO";
     rotation: 0 | 90 | 180 | 270;
-    fit: "fill";
+    /** "fill" for every native host shipped so far; "cover" only once both faces run the APK that crops (API: nativeSharedVideoFit). */
+    fit: "fill" | "cover";
   };
 }
 
@@ -102,7 +103,7 @@ export function readNativeSharedVideoDescriptor(
     !["PORTRAIT", "LANDSCAPE", "AUTO"].includes(String(t.orientation)) ||
     typeof t.rotation !== "number" ||
     ![0, 90, 180, 270].includes(t.rotation) ||
-    t.fit !== "fill"
+    (t.fit !== "fill" && t.fit !== "cover")
   )
     return null;
   try {
@@ -143,7 +144,7 @@ export function readNativeSharedVideoDescriptor(
         t.orientation as NativeSharedVideoDescriptor["transform"]["orientation"],
       rotation:
         t.rotation as NativeSharedVideoDescriptor["transform"]["rotation"],
-      fit: "fill",
+      fit: t.fit === "cover" ? "cover" : "fill",
     },
   };
 }

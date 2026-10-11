@@ -19,9 +19,17 @@ VenueOS handles this with a per-person emergency capability, separate from roles
 
 ## How delegation works
 
-The capability is granted **per person**, not through a role. The People & access page says so: *triggering an emergency is a separate capability from configuring one*, so there is no role to pick for it there.
+The capability is granted **per person**, not through a role — triggering an emergency is a separate capability from configuring one.
 
-Today the capability is set for a named person by VenueOS support on request (email support@venue-os.app from an Admin or Super Admin account). Each grant and each revoke is audit-logged — who made it, for whom, and when.
+To turn it on:
+
+1. Go to **Settings → People & access**.
+2. Find the person's row. Each **Editor** you manage has an **Emergency alerts** switch.
+3. Tap the switch and confirm. The person can trigger alerts the next time they sign in.
+
+Only Admins and Super Admins see the switch, and only for people below their own role. Admins and Super Admins don't need the switch themselves — their role already lets them trigger alerts. Viewers can never be given it.
+
+Each grant and each revoke is audit-logged — who made it, for whom, and when.
 
 A person with the capability sees the Emergency button in their dashboard and can use the `/panic` page, but **does not** gain any other admin ability. They cannot:
 
@@ -40,6 +48,6 @@ A person with the capability sees the Emergency button in their dashboard and ca
 
 ## Revoking access
 
-Ask support to remove the capability from the same person. Revoking is more than hiding a button: the capability is carried inside the person's signed session, so revoking it also **ends that person's existing sessions**. A session still holding the old permission stops working instead of keeping it until it would have expired. The revoke is audit-logged, same as the grant.
+Turn the **Emergency alerts** switch off on the same person's row under **Settings → People & access**, and confirm. Revoking is more than hiding a button: the capability is carried inside the person's signed session, so revoking it also **ends that person's existing sessions**. A session still holding the old permission stops working instead of keeping it until it would have expired. The revoke is audit-logged, same as the grant.
 
 There is no organization-wide "revoke everyone's panic access" switch today. During a compromised-credentials incident, **Disable** the affected accounts under **Settings → People & access** — disabling signs them out immediately and preserves their audit history.

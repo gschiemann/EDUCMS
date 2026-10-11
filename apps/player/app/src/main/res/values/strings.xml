@@ -30,4 +30,8 @@
     <string name="device_admin_add_explanation">Lets your administrator turn this screen off on a schedule. Nothing else on this device changes.</string>
     <!-- Shown when somebody tries to deactivate it again. -->
     <string name="device_admin_disable_warning">Scheduled screen off will stop working. The screen will stay lit and only dim in software.</string>
+    <!-- 2026-10-11 — display.SleepAccessibilityService ("VenueOS sleep").
+         Shown in Settings → Accessibility where a person turns it on. -->
+    <string name="sleep_accessibility_label">VenueOS sleep</string>
+    <string name="sleep_accessibility_description">Lets VenueOS turn this screen off the same way the power button does — on its on/off schedule and after an emergency alert ends. It does not read anything on the screen.</string>
 </resources>

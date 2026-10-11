@@ -68,12 +68,30 @@ object ScreenTimeoutBlankProvider : DisplayControlProvider {
     /** Used when a wake finds no snapshot (we never blanked, or it was lost). */
     internal const val FALLBACK_TIMEOUT_MS = 30 * 60 * 1000
 
-    override fun supports(ctx: Context): Set<Capability> =
-        if (SettingsBrightnessProvider.canWrite(ctx)) {
-            setOf(Capability.BLANK, Capability.WAKE)
-        } else {
+    /**
+     * 2026-10-11 — ALSO declines once a screensaver has been SEEN to replace
+     * this mechanism's sleep ([SleepProof.timeoutBlankDeclined]). On an
+     * Android-TV-style box (`screensaver_activate_on_sleep = 1`,
+     * `sleep_timeout = -1`, e.g. the X80) the expired timeout starts a dream
+     * that never ends, so this "real screen-off" was a screensaver. Declining
+     * lets the chain fall through to what the box can really do, and the
+     * capability report tells the dashboard so.
+     *
+     * BLANK and WAKE are declined TOGETHER so they keep resolving to one
+     * provider: the software floor's WAKE is the only one that undoes its own
+     * blank's window dim. And because this provider's WAKE is the one that
+     * puts a shortened screen-off timeout back, a decline first restores any
+     * timeout still shortened (the screensaver path already did; this covers
+     * a process that died in between).
+     */
+    override fun supports(ctx: Context): Set<Capability> = when {
+        !SettingsBrightnessProvider.canWrite(ctx) -> emptySet()
+        SleepProof.timeoutBlankDeclined(ctx) -> {
+            if (DisplayPrefs.priorScreenOffTimeoutMs(ctx) != null) restoreTimeout(ctx)
             emptySet()
         }
+        else -> setOf(Capability.BLANK, Capability.WAKE)
+    }
 
     override fun apply(ctx: Context, action: DisplayAction): ActionResult = when (action) {
         DisplayAction.Blank -> blank(ctx)

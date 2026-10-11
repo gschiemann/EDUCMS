@@ -4,6 +4,57 @@ import { z } from 'zod';
 export const NATIVE_RUNTIME_HEADER = 'x-venueos-native-runtime';
 export const NATIVE_POWER_ON_TTL_MS = 5 * 60_000;
 
+const mechanismId = z
+  .string()
+  .max(32)
+  .regex(/^[a-z0-9][a-z0-9-]*$/);
+const wallMs = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
+
+/**
+ * What the player OBSERVED about sleeping (2026-10-11, player SleepProof).
+ * Evidence, stated as such on the dashboard — never content health and never
+ * "off" beyond what Android's own interactive flag showed.
+ *  • blank   — the BLANK mechanism the device resolved right now;
+ *  • dream   — a screensaver was SEEN replacing a screen-timeout sleep;
+ *  • a11y    — the "VenueOS sleep" accessibility service is on;
+ *  • admin   — the player is an active device admin;
+ *  • last    — the last native blank: mechanism, observed outcome, when;
+ *  • restore — the last after-alert restore: decision, outcome, when.
+ */
+export const NATIVE_SLEEP_OUTCOMES = [
+  'off',
+  'on',
+  'dream',
+  'black',
+  'pending',
+  'unknown',
+  'kept-on',
+  'failed',
+] as const;
+const sleepSchema = z.object({
+  blank: mechanismId.optional(),
+  dream: z.boolean().optional(),
+  a11y: z.boolean().optional(),
+  admin: z.boolean().optional(),
+  last: z
+    .object({ m: mechanismId, o: z.enum(NATIVE_SLEEP_OUTCOMES), at: wallMs })
+    .optional(),
+  restore: z
+    .object({
+      d: z.string().max(40).regex(/^[A-Z_]+$/),
+      o: z.enum(NATIVE_SLEEP_OUTCOMES),
+      at: wallMs,
+    })
+    .optional(),
+  // How long the box had seen no remote/touch input when its last "person's"
+  // standby began (s; -1 = none since the process started), when that was,
+  // and the box's own inactivity-sleep setting (`attentive_timeout`, s; -1 =
+  // off). Equal values point at Android's inactivity sleep, not a person.
+  offIdleS: z.number().int().min(-1).max(999_999_999).optional(),
+  offAt: wallMs.optional(),
+  attS: z.number().int().min(-1).max(999_999_999).optional(),
+});
+
 const runtimeSchema = z.object({
   schema: z.literal(1),
   interactive: z.boolean().nullable(),
@@ -20,6 +71,11 @@ const runtimeSchema = z.object({
     .nonnegative()
     .max(Number.MAX_SAFE_INTEGER),
   powerOnAck: z.string().datetime({ precision: 3 }).nullable(),
+  // Additive (player 1.1.25 candidate). Optional so a 1.1.24 report parses
+  // exactly as before; a malformed block drops the WHOLE report, like any
+  // other malformed field.
+  powerOnAttempts: z.number().int().min(0).max(9).optional(),
+  sleep: sleepSchema.optional(),
 });
 
 export type NativeRuntimeReport = z.infer<typeof runtimeSchema>;
@@ -56,7 +112,18 @@ export function nativePowerStateChanged(
     a.interactive !== next.interactive ||
     a.foreground !== next.foreground ||
     a.standbySinceMs !== next.standbySinceMs ||
-    a.powerOnAck !== next.powerOnAck
+    a.powerOnAck !== next.powerOnAck ||
+    // A new sleep observation (its timestamp moves only when the player
+    // records one) or a change in what the panel CAN do — both rare.
+    a.sleep?.last?.at !== next.sleep?.last?.at ||
+    a.sleep?.restore?.at !== next.sleep?.restore?.at ||
+    a.sleep?.restore?.o !== next.sleep?.restore?.o ||
+    a.sleep?.blank !== next.sleep?.blank ||
+    a.sleep?.dream !== next.sleep?.dream ||
+    a.sleep?.a11y !== next.sleep?.a11y ||
+    a.sleep?.admin !== next.sleep?.admin ||
+    a.sleep?.offAt !== next.sleep?.offAt ||
+    a.sleep?.attS !== next.sleep?.attS
   );
 }
 
@@ -68,4 +135,29 @@ export function pendingNativePowerOn(
   if (!value) return null;
   const age = nowMs - value.getTime();
   return age >= 0 && age < NATIVE_POWER_ON_TTL_MS ? value.toISOString() : null;
+}
+
+/** How fresh a native report must be to speak for the panel's power state now. */
+export const NATIVE_ASLEEP_FRESH_MS = 5 * 60_000;
+
+/**
+ * Does the ANDROID side say this panel is asleep right now? (2026-10-11)
+ *
+ * True only for a fresh, well-formed native report with `interactive:false`.
+ * A sleeping panel is not a wedged one: its page may be paused by the
+ * platform, and reloading it (the wedge detector's REFRESH_WEB) cannot bring
+ * a picture back — VisionCore's X80 collected 19 automatic refreshes while
+ * its panel was simply off. Unknown, stale or unreadable → false (the
+ * detector keeps its current behaviour).
+ */
+export function nativeReportsAsleep(
+  report: unknown,
+  reportAt: Date | null | undefined,
+  nowMs = Date.now(),
+): boolean {
+  if (!reportAt) return false;
+  const age = nowMs - reportAt.getTime();
+  if (!(age >= 0 && age <= NATIVE_ASLEEP_FRESH_MS)) return false;
+  const parsed = runtimeSchema.safeParse(report);
+  return parsed.success && parsed.data.interactive === false;
 }

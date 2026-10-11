@@ -4,6 +4,7 @@ import { readNativeSharedVideoDescriptor, sharedVideoEligible, nativeSharedVideo
 
 import { useState, useEffect, useCallback, useRef, useMemo, Component, Suspense, ReactNode } from 'react';
 import { PlaylistVideoDeck } from './PlaylistVideoDeck';
+import { DEFAULT_PLAYLIST_MEDIA_FIT, mediaFitClass, mediaFitStyle, playlistMediaFit, type MediaFit } from './mediaFit';
 import { fitSplashK } from './splashFit';
 import { healPatternCss } from '@/lib/pattern-css';
 // ⚠️ NOTHING in this file's STATIC import list may pull in the widget /
@@ -1677,8 +1678,11 @@ function PlayerVideoSlide({
   syncActiveRef,
   syncPosRef,
   syncItemCount,
+  fit = DEFAULT_PLAYLIST_MEDIA_FIT,
 }: {
   trackDecodedFrames?: boolean;
+  /** How the frame meets a screen of another shape (mediaFit.ts). */
+  fit?: MediaFit;
   src: string;
   isActive: boolean;
   classes: string;
@@ -2099,9 +2103,10 @@ function PlayerVideoSlide({
         top: 0, left: 0, right: 0, bottom: 0,
         width: '100%',
         height: '100%',
-        // 2026-06-26 — auto-fit: stretch the video to fill the screen (see the
-        // image render). Inline overrides the object-fill class.
-        objectFit: 'fill',
+        // 2026-10-11 (owner decision) — crop to fill, centred, never stretch
+        // (mediaFit.ts). Was `fill` (stretch) since 2026-06-26. Inline wins
+        // over the utility class on WebViews where Tailwind may not apply.
+        ...mediaFitStyle(fit),
         background: '#000',
       }}
       muted={isMuted}
@@ -11838,6 +11843,7 @@ function PlayerPage() {
         >
           {useVideoPlaylistDeck && currentItem ? (
             <PlaylistVideoDeck key={playlist?.id ?? 'video-playlist'} active={playlistVideoSource(currentItem)}
+              fit={playlistMediaFit(playlist?.isEmergency === true)}
               next={activeSlot.nextIndex !== null ? playlistVideoSource(sorted[activeSlot.nextIndex]) : null}
               onPlaying={markItemSucceeded}
               onEnded={() => { if (!syncActiveRef.current) advanceSlide(); }}
@@ -11909,7 +11915,10 @@ function PlayerPage() {
 
             // Compute physics class limits
             const trans = conservativeNormalPlayback || (isVid && !playlist?.isEmergency && !syncLocked) ? 'NONE' : item.transitionType || 'FADE';
-            let classes = "absolute top-0 right-0 bottom-0 left-0 w-full h-full object-fill transition-all duration-[1000ms] ease-in-out ";
+            // 2026-10-11 — crop-to-fill for normal content; an emergency
+            // playlist keeps its historical `fill` (mediaFit.ts).
+            const slideFit = playlistMediaFit(playlist?.isEmergency === true);
+            let classes = `absolute top-0 right-0 bottom-0 left-0 w-full h-full ${mediaFitClass(slideFit)} transition-all duration-[1000ms] ease-in-out `;
             if (trans === 'FADE') classes += isActive ? "opacity-100 z-10" : "opacity-0 z-0";
             else if (trans === 'SLIDE_LEFT') classes += isActive ? "translate-x-0 z-10" : "translate-x-full z-0";
             else if (trans === 'SLIDE_RIGHT') classes += isActive ? "translate-x-0 z-10" : "-translate-x-full z-0";
@@ -11966,11 +11975,11 @@ function PlayerPage() {
                 sync:syncConfigRef.current.enabled,preview:isPreviewMode(),
               });
               const wrapNative = (browser: React.ReactNode) => nativeEligible
-                ? <NativeDualVideo key={item.id} descriptor={nativeSharedDescriptor} classes={classes}
+                ? <NativeDualVideo key={item.id} descriptor={nativeSharedDescriptor} classes={classes} fit={slideFit}
                     onPlaying={markItemSucceeded}>{browser}</NativeDualVideo>
                 : browser;
               if (loopChoice.backend === 'continuous') {
-                return wrapNative(<ContinuousLoopVideo key={item.id} videoKey={item.id} src={videoSrc}
+                return wrapNative(<ContinuousLoopVideo key={item.id} videoKey={item.id} src={videoSrc} fit={slideFit}
                   sourceHash={item.asset.fileHash.toLowerCase()} isActive={isActive} classes={classes}
                   onPlaying={markItemSucceeded} onError={() => {
                     markItemFailed(item.id);
@@ -11983,6 +11992,7 @@ function PlayerPage() {
                     key={item.id}
                     videoKey={item.id}
                     src={videoSrc}
+                    fit={slideFit}
                     isActive={isActive}
                     classes={classes}
                     onPlaying={markItemSucceeded}
@@ -12029,6 +12039,7 @@ function PlayerPage() {
                   syncActiveRef={syncActiveRef}
                   syncPosRef={syncPosRef}
                   syncItemCount={sorted.length}
+                  fit={slideFit}
                 />
               );
             }
@@ -12160,18 +12171,18 @@ function PlayerPage() {
                 data-slide-id={String(item.id)}
                 alt=""
                 className={classes}
-                // 2026-06-26 — auto-fit: stretch the image to exactly fill the
-                // screen (object-fit: fill). A correctly-sized image looks
-                // perfect; a wrong aspect looks stretched/shrunk. No per-screen
-                // setting, no letterbox, no crop, no blur — the operator's model.
-                // Inline overrides the object-fill class; belt-and-suspenders
-                // for Taurus WebViews where Tailwind utilities may not apply.
+                // 2026-10-11 (owner decision) — crop to fill, centred, never
+                // stretch (mediaFit.ts). A correctly-sized image is
+                // pixel-identical to the old `fill`; a wrong aspect is now
+                // trimmed on its long axis instead of stretched. Emergency
+                // playlists keep `fill`. Inline wins over the utility class;
+                // belt-and-suspenders for Taurus WebViews.
                 style={{
                   position: 'absolute',
                   top: 0, left: 0, right: 0, bottom: 0,
                   width: '100%',
                   height: '100%',
-                  objectFit: 'fill',
+                  ...mediaFitStyle(slideFit),
                   opacity: isActive ? 1 : 0,
                   zIndex: isActive ? 10 : 0,
                   transition: trans === 'NONE' ? 'none' : 'opacity 1000ms ease-in-out',
