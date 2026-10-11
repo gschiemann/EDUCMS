@@ -21,7 +21,7 @@ for (const saved of [false, true]) {
     await send({ img: {}, mediaStyles: {} });
     await expect(slot).toHaveCSS('background-size', 'cover');
     await expect(slot).toHaveCSS('background-position', '50% 20%');
-    await expect.poll(() => slot.evaluate(el => getComputedStyle(el).backgroundImage)).toContain('/templates/school/assets/campuspulse-corridor.jpg');
+    await expect.poll(() => slot.evaluate(el => getComputedStyle(el).backgroundImage)).toContain('/templates/school/campus-pulse/assets/campus-pulse-hs-students-v1.jpg');
     await expect.poll(() => slot.evaluate(el => el.style.transform)).toBe('');
     // Keep the default crop after the deferred legacy painter reapplication.
     await page.waitForTimeout(100);

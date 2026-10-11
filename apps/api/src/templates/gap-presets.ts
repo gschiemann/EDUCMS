@@ -25,7 +25,7 @@ const WORKFLOWS = [
     description: 'Welcome ceremony guests with doors and start times, a four-step programme, parking and accessible entrance directions, programme details and replaceable class photography. All copy, media and styling remain editable.',
     category: 'EVENTS',
     url: '/templates/school/commencement-guest-guide.html',
-    bgColor: '#f5f1e9',
+    bgColor: '#f7f2e8',
   },
 ];
 
