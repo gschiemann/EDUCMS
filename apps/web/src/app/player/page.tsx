@@ -10691,8 +10691,11 @@ function PlayerPage() {
   // the media branch and the tile branch. top/right/bottom/left longhand,
   // not `inset` — Chromium-83 Taurus, CLAUDE.md #10.
   const updatePromptNode = showUpdatePrompt ? (
+    // role="presentation": this wrapper only CONTAINS clicks/keys so they never
+    // bubble into the canvas (info-card opener fix); its buttons are the controls.
     <div
       data-edu-update-prompt
+      role="presentation"
       onClick={e => e.stopPropagation()}
       onKeyDown={e => e.stopPropagation()}
       className="absolute bg-black/85 flex items-center justify-center z-[1000]"
