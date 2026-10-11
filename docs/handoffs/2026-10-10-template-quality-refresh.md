@@ -80,6 +80,7 @@ Completed local evidence includes:
 
 - 75 relevant Jest suites / 720 tests, plus 133 approved-AI-reference tests.
 - Chromium/WebKit default renders for the rebuilt families, loaded fonts, 60px/50px floors, editable visible copy, preserved fields and slots, and portrait/landscape geometry.
+- 712 production-build browser checks passed: 680 image/fit/rotation corpus cases, 26 builder media workflows and 6 font-restoration cases. The extended 10-case font suite also passed after adding brand-role font loading/alias coverage.
 - 120 lead saved-edit browser/orientation cases covering representative body edits, global type scaling, absolute 72px font choices, colors, clock pins and saved URL restoration. Targeted reruns replace the identified cocktail spacing and transient brunch-load failures; final aggregate is recorded separately.
 - Corporate/bar/QSR: 40 saved-edit cases, 8 actual QR matrix checks and 24 sold-out layout cases.
 - Fashion/clinic/adoption: 24 saved-edit/layout cases, plus four veterinary waiting-room and targeted font/control checks.
@@ -103,3 +104,7 @@ Detailed reports are committed under `docs/research/2026-10-10-template-flagship
 ## Release state
 
 Implementation is integrated locally on `codex/template-flagship-refresh`, including upstream master `115d27b7`. Not yet pushed or verified live. Final CI, deployment, commit and test status will be appended after verification. Earlier editor usability work is already live; this design refresh is a separate release.
+
+## Additional scope — catalog gaps (2026-10-11)
+
+The user requested new templates for major missing workflows. Three domain assessments are underway, covering the offered native and HTML catalogs. New sources will receive both landscape and portrait preset registrations, real captures, and the same editable text/media/font contracts. This is additional work after the 57-board refresh; no new template has yet been registered.
