@@ -1,0 +1,38 @@
+[
+  {
+    "url": "https://venue-os.app/templates/_thumbs/signage/corporate/20-service-update.png?v=20261011b",
+    "http": 200,
+    "contentType": "image/png",
+    "contentLength": "78203"
+  },
+  {
+    "url": "https://venue-os.app/templates/_thumbs/signage/corporate/20-service-update-portrait.png?v=20261011b",
+    "http": 200,
+    "contentType": "image/png",
+    "contentLength": "76519"
+  },
+  {
+    "url": "https://venue-os.app/templates/_thumbs/signage/clinic/02-services-booking-guide.png?v=20261011b",
+    "http": 200,
+    "contentType": "image/png",
+    "contentLength": "176836"
+  },
+  {
+    "url": "https://venue-os.app/templates/_thumbs/signage/clinic/02-services-booking-guide-portrait.png?v=20261011b",
+    "http": 200,
+    "contentType": "image/png",
+    "contentLength": "160180"
+  },
+  {
+    "url": "https://venue-os.app/templates/_thumbs/school/commencement-guest-guide.png?v=20261011b",
+    "http": 200,
+    "contentType": "image/png",
+    "contentLength": "143492"
+  },
+  {
+    "url": "https://venue-os.app/templates/_thumbs/school/commencement-guest-guide-portrait.png?v=20261011b",
+    "http": 200,
+    "contentType": "image/png",
+    "contentLength": "139756"
+  }
+]

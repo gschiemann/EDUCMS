@@ -28,7 +28,7 @@ C = covered within this template batch. D = deferred because the domain is outsi
 | 18 Accessibility | P | P | P | Readable type, contrast, existing keyboard controls; no full app accessibility audit |
 | 19 Template / widget editability | C | C | C | Preserved keys, media, fonts, saved edits and click bridges |
 | 20 Design / UX / functionality | C | C | C | Individual rendered design review and browser checks |
-| 21 Verification before claim | C | C | P | Local checks recorded below; final deployment state appended after release |
+| 21 Verification before claim | C | C | P | Local checks and production assets verified; corrected CI run pending |
 
 ## Delivered designs
 
@@ -110,7 +110,9 @@ Implementation is integrated with upstream master 1a7e2d16. Final local verifica
 
 An intermediate 750-case run passed 749 and exposed a holiday initial-image race. Repeated isolated flows passed, then the renderer was corrected to re-flush media on companion readiness. A delayed-companion regression case was added; the final 752-case run above passes against the rebuilt application. This failure is preserved in the evidence logs rather than called a clean run.
 
-Push/CI/production verification is the remaining release step. The earlier editor usability release is already live. Final release evidence will be recorded alongside this report after checking the deployed source assets and both platform health and CI status.
+Implementation commit `d095b22700fc97fb9371a53794bc7497f233aad2` was pushed to master. Vercel production deployment `educms-clq1bwzo1-gschiemann-2753s-projects.vercel.app` is READY. On 2026-10-11 at 21:18 UTC, all **344 packaged regular/holiday static HTML assets** fetched from venue-os.app matched the committed bytes (343 template companions plus the holiday overhaul gallery page). All six new gallery previews return HTTP 200 image/png. The API health response is healthy and now reports the test-correction commit `394779ef`; a read-only production query confirmed all six new system presets ACTIVE, with correct dimensions, orientations, URLs and industry tags.
+
+The initial CI API suite passed 9,672 tests and failed one catalog assertion that assumed no new cross-industry boards could gain SPORTS visibility. Test correction `394779efbd40eba61090b7f8b79c5f237eddf156` explicitly permits the two Service Update IDs and also verifies all-industry visibility for every permitted exception. The seven targeted tests and repeated pnpm preflight pass; the correction is pushed. The older failed run was cancelled so the corrected full CI run can proceed. Final corrected CI verdict is pending; this is not reported as green. The production implementation sources remain unchanged by the test-only correction.
 
 ## Additional scope — catalog gaps (2026-10-11)
 

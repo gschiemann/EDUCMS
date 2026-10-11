@@ -1,0 +1,68 @@
+[
+  {
+    "id": "preset-school-commencement-guide",
+    "status": "ACTIVE",
+    "orientation": "LANDSCAPE",
+    "vertical": "K12",
+    "screen_width": 3840,
+    "screen_height": 2160,
+    "default_config": {
+      "url": "/templates/school/commencement-guest-guide.html"
+    }
+  },
+  {
+    "id": "preset-school-commencement-guide-portrait",
+    "status": "ACTIVE",
+    "orientation": "PORTRAIT",
+    "vertical": "K12",
+    "screen_width": 2160,
+    "screen_height": 3840,
+    "default_config": {
+      "url": "/templates/school/commencement-guest-guide.html?o=portrait"
+    }
+  },
+  {
+    "id": "preset-sig-clinic-02",
+    "status": "ACTIVE",
+    "orientation": "LANDSCAPE",
+    "vertical": "HEALTHCARE",
+    "screen_width": 3840,
+    "screen_height": 2160,
+    "default_config": {
+      "url": "/templates/signage/clinic/02-services-booking-guide.html"
+    }
+  },
+  {
+    "id": "preset-sig-clinic-02-portrait",
+    "status": "ACTIVE",
+    "orientation": "PORTRAIT",
+    "vertical": "HEALTHCARE",
+    "screen_width": 2160,
+    "screen_height": 3840,
+    "default_config": {
+      "url": "/templates/signage/clinic/02-services-booking-guide.html?o=portrait"
+    }
+  },
+  {
+    "id": "preset-sig-corporate-20",
+    "status": "ACTIVE",
+    "orientation": "LANDSCAPE",
+    "vertical": "K12|GYM|RETAIL|CORPORATE|QSR|FASHION|BAR|HEALTHCARE|HOSPITALITY|RESTAURANT|SPORTS|WORSHIP",
+    "screen_width": 3840,
+    "screen_height": 2160,
+    "default_config": {
+      "url": "/templates/signage/corporate/20-service-update.html"
+    }
+  },
+  {
+    "id": "preset-sig-corporate-20-portrait",
+    "status": "ACTIVE",
+    "orientation": "PORTRAIT",
+    "vertical": "K12|GYM|RETAIL|CORPORATE|QSR|FASHION|BAR|HEALTHCARE|HOSPITALITY|RESTAURANT|SPORTS|WORSHIP",
+    "screen_width": 2160,
+    "screen_height": 3840,
+    "default_config": {
+      "url": "/templates/signage/corporate/20-service-update.html?o=portrait"
+    }
+  }
+]

@@ -1,0 +1,2417 @@
+{
+  "verifiedAt": "2026-10-11T21:18:14.215325+00:00",
+  "implementationCommit": "d095b22700fc97fb9371a53794bc7497f233aad2",
+  "domain": "https://venue-os.app",
+  "count": 344,
+  "matches": 344,
+  "sources": [
+    {
+      "path": "/templates/custom/brookfield/01-welcome-cinematic.html",
+      "http": 200,
+      "expectedSha256": "ee65ca9297801fbbaac3c3ce7a8797b4ed3839a621e47fd94a9596a1a7e83b56",
+      "actualSha256": "ee65ca9297801fbbaac3c3ce7a8797b4ed3839a621e47fd94a9596a1a7e83b56",
+      "matches": true
+    },
+    {
+      "path": "/templates/custom/brookfield/02-welcome-editorial.html",
+      "http": 200,
+      "expectedSha256": "12adeab78ee7d713ca66a87dcc51101d7b434e867ad82b9e84dfb0acdafd3fc8",
+      "actualSha256": "12adeab78ee7d713ca66a87dcc51101d7b434e867ad82b9e84dfb0acdafd3fc8",
+      "matches": true
+    },
+    {
+      "path": "/templates/custom/brookfield/03-welcome-gallery.html",
+      "http": 200,
+      "expectedSha256": "62116c74ac554685c523d30a708b61affd0c9b4b66c5f759b7b4a51d5589dda6",
+      "actualSha256": "62116c74ac554685c523d30a708b61affd0c9b4b66c5f759b7b4a51d5589dda6",
+      "matches": true
+    },
+    {
+      "path": "/templates/custom/brookfield/04-home-plan.html",
+      "http": 200,
+      "expectedSha256": "1d62f539ff24c8ebe51af77beb750c07e9879f5789268d4459ef82c9b44f1714",
+      "actualSha256": "1d62f539ff24c8ebe51af77beb750c07e9879f5789268d4459ef82c9b44f1714",
+      "matches": true
+    },
+    {
+      "path": "/templates/custom/brookfield/05-home-availability.html",
+      "http": 200,
+      "expectedSha256": "49d94ae186a76f95309c48318dd14e007db32a05bc3ac7b4c63a622b02081af7",
+      "actualSha256": "49d94ae186a76f95309c48318dd14e007db32a05bc3ac7b4c63a622b02081af7",
+      "matches": true
+    },
+    {
+      "path": "/templates/custom/brookfield/06-community-story.html",
+      "http": 200,
+      "expectedSha256": "91df768b5186d87a3989fdbdd81e91482fee28925569725c2dbe95602072155b",
+      "actualSha256": "91df768b5186d87a3989fdbdd81e91482fee28925569725c2dbe95602072155b",
+      "matches": true
+    },
+    {
+      "path": "/templates/custom/brookfield/07-tour-takeaway.html",
+      "http": 200,
+      "expectedSha256": "bd7f0bcb8580b33c7f4fbb7bba42799f3c5fa7f297f8fb06a11f078df42da323",
+      "actualSha256": "bd7f0bcb8580b33c7f4fbb7bba42799f3c5fa7f297f8fb06a11f078df42da323",
+      "matches": true
+    },
+    {
+      "path": "/templates/custom/brookfield/portrait/01-welcome-cinematic.html",
+      "http": 200,
+      "expectedSha256": "4da56b10aaf9e9fff1e2f4061383306e098bedbb7af8f211816180bfc3c5feb4",
+      "actualSha256": "4da56b10aaf9e9fff1e2f4061383306e098bedbb7af8f211816180bfc3c5feb4",
+      "matches": true
+    },
+    {
+      "path": "/templates/custom/brookfield/portrait/02-welcome-editorial.html",
+      "http": 200,
+      "expectedSha256": "e379bc8168291c44783b2ff2e12b56743ef161d16b0e013e0d73044c7201d568",
+      "actualSha256": "e379bc8168291c44783b2ff2e12b56743ef161d16b0e013e0d73044c7201d568",
+      "matches": true
+    },
+    {
+      "path": "/templates/custom/brookfield/portrait/03-welcome-gallery.html",
+      "http": 200,
+      "expectedSha256": "225927a90d005996d00f2c93b090721f7c8dd9e710879987fdbb319a01217b2d",
+      "actualSha256": "225927a90d005996d00f2c93b090721f7c8dd9e710879987fdbb319a01217b2d",
+      "matches": true
+    },
+    {
+      "path": "/templates/custom/brookfield/portrait/04-home-plan.html",
+      "http": 200,
+      "expectedSha256": "0f55731c3e52d4cedc226e54b9be340ff93d8295036d99bdc130e43fce4e0f4d",
+      "actualSha256": "0f55731c3e52d4cedc226e54b9be340ff93d8295036d99bdc130e43fce4e0f4d",
+      "matches": true
+    },
+    {
+      "path": "/templates/custom/brookfield/portrait/05-home-availability.html",
+      "http": 200,
+      "expectedSha256": "a49734a4b52034e9fca0fb669f2eb94179046f8ba5ab5ac57bd41c1e1522ebcc",
+      "actualSha256": "a49734a4b52034e9fca0fb669f2eb94179046f8ba5ab5ac57bd41c1e1522ebcc",
+      "matches": true
+    },
+    {
+      "path": "/templates/custom/brookfield/portrait/06-community-story.html",
+      "http": 200,
+      "expectedSha256": "330b3902e7111598e116860e5049a9e35a084d95d8bcc28d004c3905e4166adc",
+      "actualSha256": "330b3902e7111598e116860e5049a9e35a084d95d8bcc28d004c3905e4166adc",
+      "matches": true
+    },
+    {
+      "path": "/templates/custom/brookfield/portrait/07-tour-takeaway.html",
+      "http": 200,
+      "expectedSha256": "87a43c992dbaf27522a55e199ba14ac5380a26a9dd5568f746b7166101b52230",
+      "actualSha256": "87a43c992dbaf27522a55e199ba14ac5380a26a9dd5568f746b7166101b52230",
+      "matches": true
+    },
+    {
+      "path": "/templates/fitness/01-stadium.html",
+      "http": 200,
+      "expectedSha256": "9db3d695357bcf687b8453ca96580ab7db3bb0bbe44c941cddc829ac1cd5913f",
+      "actualSha256": "9db3d695357bcf687b8453ca96580ab7db3bb0bbe44c941cddc829ac1cd5913f",
+      "matches": true
+    },
+    {
+      "path": "/templates/fitness/gym-media-motion-studio-portrait.html",
+      "http": 200,
+      "expectedSha256": "dab4668cccd193e4383faeb4203e67053d030ec9a5438a1ee654d7ec5eeaba87",
+      "actualSha256": "dab4668cccd193e4383faeb4203e67053d030ec9a5438a1ee654d7ec5eeaba87",
+      "matches": true
+    },
+    {
+      "path": "/templates/fitness/gym-media-motion-studio.html",
+      "http": 200,
+      "expectedSha256": "b465f3905c5826e8f6768670db17321c01076061fb90762a6a1b71a3bd5df54c",
+      "actualSha256": "b465f3905c5826e8f6768670db17321c01076061fb90762a6a1b71a3bd5df54c",
+      "matches": true
+    },
+    {
+      "path": "/templates/fitness/gym-media-pulsecast-portrait.html",
+      "http": 200,
+      "expectedSha256": "4d8060ff60dc1f644a1396dab4ad27604880252f92e0ecaecb72422ba6b6670c",
+      "actualSha256": "4d8060ff60dc1f644a1396dab4ad27604880252f92e0ecaecb72422ba6b6670c",
+      "matches": true
+    },
+    {
+      "path": "/templates/fitness/gym-media-pulsecast.html",
+      "http": 200,
+      "expectedSha256": "5cd99d99652db865878c91bb46583a2f4f15101abf3fc4cc8e081ec3eb74b6a5",
+      "actualSha256": "5cd99d99652db865878c91bb46583a2f4f15101abf3fc4cc8e081ec3eb74b6a5",
+      "matches": true
+    },
+    {
+      "path": "/templates/fitness/gym-media-soundfloor-portrait.html",
+      "http": 200,
+      "expectedSha256": "635ba2dba26bd2a49d8f7fc1ed0b96bc1ad8f8dfd58dad880a3edd876920d793",
+      "actualSha256": "635ba2dba26bd2a49d8f7fc1ed0b96bc1ad8f8dfd58dad880a3edd876920d793",
+      "matches": true
+    },
+    {
+      "path": "/templates/fitness/gym-media-soundfloor.html",
+      "http": 200,
+      "expectedSha256": "1a689b2eca1c407abaea8a90600cf21c8e3d02cd88ef3ee049ed9403f14890ab",
+      "actualSha256": "1a689b2eca1c407abaea8a90600cf21c8e3d02cd88ef3ee049ed9403f14890ab",
+      "matches": true
+    },
+    {
+      "path": "/templates/hs/achievement-stage-call.html",
+      "http": 200,
+      "expectedSha256": "ea517b7f0ea7f504d2f041f1891fd6ddb446d9a9e4b8778e1482e7109f0caa21",
+      "actualSha256": "ea517b7f0ea7f504d2f041f1891fd6ddb446d9a9e4b8778e1482e7109f0caa21",
+      "matches": true
+    },
+    {
+      "path": "/templates/hs/achievement-victory-wall.html",
+      "http": 200,
+      "expectedSha256": "37f485d8e612c4d7f40f61df0cdb4c128940ce93aaef17670a2db13b4cd37ac5",
+      "actualSha256": "37f485d8e612c4d7f40f61df0cdb4c128940ce93aaef17670a2db13b4cd37ac5",
+      "matches": true
+    },
+    {
+      "path": "/templates/hs/achievement.html",
+      "http": 200,
+      "expectedSha256": "0ceb0cbfab8dc7f4df3a590c76f6aeaf39ad2e900e6405eb8dc1eb26115830b9",
+      "actualSha256": "0ceb0cbfab8dc7f4df3a590c76f6aeaf39ad2e900e6405eb8dc1eb26115830b9",
+      "matches": true
+    },
+    {
+      "path": "/templates/hs/ath-biggame.html",
+      "http": 200,
+      "expectedSha256": "62c12f43ad6a0cfc9707f172428e7fd2c05891f841d1b4f673e8a18003693c54",
+      "actualSha256": "62c12f43ad6a0cfc9707f172428e7fd2c05891f841d1b4f673e8a18003693c54",
+      "matches": true
+    },
+    {
+      "path": "/templates/hs/ath-broadcast.html",
+      "http": 200,
+      "expectedSha256": "c125f4b6d537f6f39c44954a0d1695bd8424a7e7dbbd925c5d7d23214d035974",
+      "actualSha256": "c125f4b6d537f6f39c44954a0d1695bd8424a7e7dbbd925c5d7d23214d035974",
+      "matches": true
+    },
+    {
+      "path": "/templates/hs/ath-gameday.html",
+      "http": 200,
+      "expectedSha256": "6cf18a522c9e4b8120b1be148180c9e540d31df07bb6ebff83f9527d59f2b297",
+      "actualSha256": "6cf18a522c9e4b8120b1be148180c9e540d31df07bb6ebff83f9527d59f2b297",
+      "matches": true
+    },
+    {
+      "path": "/templates/hs/ath-standings.html",
+      "http": 200,
+      "expectedSha256": "6a4a9f5c83d37cb22aeca1fc65453ef5e4fb2d781f654efaeceb8a08c4f64dad",
+      "actualSha256": "6a4a9f5c83d37cb22aeca1fc65453ef5e4fb2d781f654efaeceb8a08c4f64dad",
+      "matches": true
+    },
+    {
+      "path": "/templates/hs/bell-schedule-ledger.html",
+      "http": 200,
+      "expectedSha256": "df430d3a24301f607e3a8d6cb3312dfce5dd0e647512f09a52e805322760b400",
+      "actualSha256": "df430d3a24301f607e3a8d6cb3312dfce5dd0e647512f09a52e805322760b400",
+      "matches": true
+    },
+    {
+      "path": "/templates/hs/bell-schedule-orbit.html",
+      "http": 200,
+      "expectedSha256": "403821d4e5f7bd6af000edfcba2ee1b6ae1be61625f0ba770a3dcd45de052145",
+      "actualSha256": "403821d4e5f7bd6af000edfcba2ee1b6ae1be61625f0ba770a3dcd45de052145",
+      "matches": true
+    },
+    {
+      "path": "/templates/hs/bell-schedule.html",
+      "http": 200,
+      "expectedSha256": "ac85583b52b97a18c5a671d785331076b5815e33cd1afcabf7b1954299aa4e34",
+      "actualSha256": "ac85583b52b97a18c5a671d785331076b5815e33cd1afcabf7b1954299aa4e34",
+      "matches": true
+    },
+    {
+      "path": "/templates/hs/blueprint.html",
+      "http": 200,
+      "expectedSha256": "f6de808481b31218d0c756b86db738450c4a323935d8cbc863f26d9adaff4b5a",
+      "actualSha256": "f6de808481b31218d0c756b86db738450c4a323935d8cbc863f26d9adaff4b5a",
+      "matches": true
+    },
+    {
+      "path": "/templates/hs/broadcast.html",
+      "http": 200,
+      "expectedSha256": "e3453416402fffc427f7048d7de1dce63ce78e6e11beab0056a4640ea28ba9d2",
+      "actualSha256": "e3453416402fffc427f7048d7de1dce63ce78e6e11beab0056a4640ea28ba9d2",
+      "matches": true
+    },
+    {
+      "path": "/templates/hs/caf-counter.html",
+      "http": 200,
+      "expectedSha256": "686093ac6ced26dc9d3639b95f3a7bf612c5bc139ef5a2b3a75516b0087a9b84",
+      "actualSha256": "686093ac6ced26dc9d3639b95f3a7bf612c5bc139ef5a2b3a75516b0087a9b84",
+      "matches": true
+    },
+    {
+      "path": "/templates/hs/caf-market.html",
+      "http": 200,
+      "expectedSha256": "1602daa74eaa9268a50f9d7a66d5a986baa0da7d35e75573638c735eb2d2ded9",
+      "actualSha256": "1602daa74eaa9268a50f9d7a66d5a986baa0da7d35e75573638c735eb2d2ded9",
+      "matches": true
+    },
+    {
+      "path": "/templates/hs/caf-today.html",
+      "http": 200,
+      "expectedSha256": "202fae93990dbef0164d27072b91a977c762e84c8c98a50af2f265dcd7d5544f",
+      "actualSha256": "202fae93990dbef0164d27072b91a977c762e84c8c98a50af2f265dcd7d5544f",
+      "matches": true
+    },
+    {
+      "path": "/templates/hs/caf-week.html",
+      "http": 200,
+      "expectedSha256": "e6afad7b3a23292da372cc165cf25264ec4f05ab70ff3b58b4d01d9c64d30b96",
+      "actualSha256": "e6afad7b3a23292da372cc165cf25264ec4f05ab70ff3b58b4d01d9c64d30b96",
+      "matches": true
+    },
+    {
+      "path": "/templates/hs/class-nownext.html",
+      "http": 200,
+      "expectedSha256": "2c124c26d1fbc4688447ecf9c14c7bc97e5a1bfc5ef7470ebab127bd7e3dd83e",
+      "actualSha256": "2c124c26d1fbc4688447ecf9c14c7bc97e5a1bfc5ef7470ebab127bd7e3dd83e",
+      "matches": true
+    },
+    {
+      "path": "/templates/hs/class-subday.html",
+      "http": 200,
+      "expectedSha256": "f959d40444d170f33f95b70e504a70341e181f906dba983d0d561ffca399aea9",
+      "actualSha256": "f959d40444d170f33f95b70e504a70341e181f906dba983d0d561ffca399aea9",
+      "matches": true
+    },
+    {
+      "path": "/templates/hs/gallery.html",
+      "http": 200,
+      "expectedSha256": "4848a99d04b85213f6ff931a8d0736b4533508a669e9c23a8db4add0e2abb938",
+      "actualSha256": "4848a99d04b85213f6ff931a8d0736b4533508a669e9c23a8db4add0e2abb938",
+      "matches": true
+    },
+    {
+      "path": "/templates/hs/hall-bulletin.html",
+      "http": 200,
+      "expectedSha256": "b3da0dfde619879cc30081a83ee69e4cb5da407eaec934d96cca37832693582a",
+      "actualSha256": "b3da0dfde619879cc30081a83ee69e4cb5da407eaec934d96cca37832693582a",
+      "matches": true
+    },
+    {
+      "path": "/templates/hs/hall-wayfinder-campus-grid.html",
+      "http": 200,
+      "expectedSha256": "7efe76bd219d1efda9a6851b077ea7967902b64d0059382c4282344ea329ac66",
+      "actualSha256": "7efe76bd219d1efda9a6851b077ea7967902b64d0059382c4282344ea329ac66",
+      "matches": true
+    },
+    {
+      "path": "/templates/hs/hall-wayfinder-signal-stack.html",
+      "http": 200,
+      "expectedSha256": "d15c469af3da93544084309a0ba93a9aa419bd6afe6a8039f2be7c9e27fc63de",
+      "actualSha256": "d15c469af3da93544084309a0ba93a9aa419bd6afe6a8039f2be7c9e27fc63de",
+      "matches": true
+    },
+    {
+      "path": "/templates/hs/hall-wayfinder.html",
+      "http": 200,
+      "expectedSha256": "7045645269816580963564b90d4a87869b95d8b0ae5398d327f8c0f0eb6f7e7e",
+      "actualSha256": "7045645269816580963564b90d4a87869b95d8b0ae5398d327f8c0f0eb6f7e7e",
+      "matches": true
+    },
+    {
+      "path": "/templates/hs/morning-news-daily-cut.html",
+      "http": 200,
+      "expectedSha256": "7511780a9cb2aeb37ac76ed052b663b22f2544a11df4638f5496d1e16dbca479",
+      "actualSha256": "7511780a9cb2aeb37ac76ed052b663b22f2544a11df4638f5496d1e16dbca479",
+      "matches": true
+    },
+    {
+      "path": "/templates/hs/morning-news-rundown-desk.html",
+      "http": 200,
+      "expectedSha256": "8a2462cc4116b5f59954538e4aa833716a2576b8811bb30a2a2774ed737db858",
+      "actualSha256": "8a2462cc4116b5f59954538e4aa833716a2576b8811bb30a2a2774ed737db858",
+      "matches": true
+    },
+    {
+      "path": "/templates/hs/morning-news.html",
+      "http": 200,
+      "expectedSha256": "7f4406afd1896e3999f8dc0f259d26e34b93ce324324492467f7c535feb7c139",
+      "actualSha256": "7f4406afd1896e3999f8dc0f259d26e34b93ce324324492467f7c535feb7c139",
+      "matches": true
+    },
+    {
+      "path": "/templates/hs/terminal.html",
+      "http": 200,
+      "expectedSha256": "5a15d8f3492eccc7eabccc97b245c355f2b101f1fb58ce761c67dcd4ea7e95ca",
+      "actualSha256": "5a15d8f3492eccc7eabccc97b245c355f2b101f1fb58ce761c67dcd4ea7e95ca",
+      "matches": true
+    },
+    {
+      "path": "/templates/hs/varsity.html",
+      "http": 200,
+      "expectedSha256": "d336574659dba26f61e2852fadcf7a845c4df7e859733afb335f075c9bf2f310",
+      "actualSha256": "d336574659dba26f61e2852fadcf7a845c4df7e859733afb335f075c9bf2f310",
+      "matches": true
+    },
+    {
+      "path": "/templates/hs/yearbook.html",
+      "http": 200,
+      "expectedSha256": "4a3d9ee3a2010a156f787f6722b735418e9b4592554e3c976d24718acd81b499",
+      "actualSha256": "4a3d9ee3a2010a156f787f6722b735418e9b4592554e3c976d24718acd81b499",
+      "matches": true
+    },
+    {
+      "path": "/templates/hs/zine.html",
+      "http": 200,
+      "expectedSha256": "0c949d73e489623764192ef72e2d5f36a5080b9d425eebe77afce43ae2a22034",
+      "actualSha256": "0c949d73e489623764192ef72e2d5f36a5080b9d425eebe77afce43ae2a22034",
+      "matches": true
+    },
+    {
+      "path": "/templates/kiosk/bar-jukebox.html",
+      "http": 200,
+      "expectedSha256": "e997e7c9a6dd508bba16ca2117d3c34f33ca210fea86cc84e623159933cc47de",
+      "actualSha256": "e997e7c9a6dd508bba16ca2117d3c34f33ca210fea86cc84e623159933cc47de",
+      "matches": true
+    },
+    {
+      "path": "/templates/kiosk/bar.html",
+      "http": 200,
+      "expectedSha256": "a921e3dae1c53ce01afcbc2fc72062a5352e03d9052b5ea68bbdab90a18f20b8",
+      "actualSha256": "a921e3dae1c53ce01afcbc2fc72062a5352e03d9052b5ea68bbdab90a18f20b8",
+      "matches": true
+    },
+    {
+      "path": "/templates/kiosk/clinic.html",
+      "http": 200,
+      "expectedSha256": "60310589838eb85e732946d0ee4eeed34120070734f3feeedd0bd9fb3f36e200",
+      "actualSha256": "60310589838eb85e732946d0ee4eeed34120070734f3feeedd0bd9fb3f36e200",
+      "matches": true
+    },
+    {
+      "path": "/templates/kiosk/food-nutrition.html",
+      "http": 200,
+      "expectedSha256": "73f4631f6b0ffa616a125e17bc9c7f70964ed87ea307e889d57736bef9fe84cb",
+      "actualSha256": "73f4631f6b0ffa616a125e17bc9c7f70964ed87ea307e889d57736bef9fe84cb",
+      "matches": true
+    },
+    {
+      "path": "/templates/kiosk/food.html",
+      "http": 200,
+      "expectedSha256": "072eb1c6d72cb61fd47cf9302a20cdc2a3d38dde2b3a3515b6e99cfd1c8ef079",
+      "actualSha256": "072eb1c6d72cb61fd47cf9302a20cdc2a3d38dde2b3a3515b6e99cfd1c8ef079",
+      "matches": true
+    },
+    {
+      "path": "/templates/kiosk/gym-workout.html",
+      "http": 200,
+      "expectedSha256": "97189dc99e72966d61dc1ddd1886f5cb80e0be2a7dab70a1760e238a0accaabb",
+      "actualSha256": "97189dc99e72966d61dc1ddd1886f5cb80e0be2a7dab70a1760e238a0accaabb",
+      "matches": true
+    },
+    {
+      "path": "/templates/kiosk/gym.html",
+      "http": 200,
+      "expectedSha256": "cbf10e668cda5d38d404a46aa68651dbdf1096f3c8ad9de117e4032b1ff94920",
+      "actualSha256": "cbf10e668cda5d38d404a46aa68651dbdf1096f3c8ad9de117e4032b1ff94920",
+      "matches": true
+    },
+    {
+      "path": "/templates/kiosk/museum-quest.html",
+      "http": 200,
+      "expectedSha256": "a588e421ddd0805cbcb9aaa9f426f79551f8ab5aa2573d229f9bedf5cea407a8",
+      "actualSha256": "a588e421ddd0805cbcb9aaa9f426f79551f8ab5aa2573d229f9bedf5cea407a8",
+      "matches": true
+    },
+    {
+      "path": "/templates/kiosk/museum.html",
+      "http": 200,
+      "expectedSha256": "aebf90cb7dc7e84327958f3c69cde4e67855b255b15abcdc5411001cd30d2ff5",
+      "actualSha256": "aebf90cb7dc7e84327958f3c69cde4e67855b255b15abcdc5411001cd30d2ff5",
+      "matches": true
+    },
+    {
+      "path": "/templates/kiosk/office-room-panel.html",
+      "http": 200,
+      "expectedSha256": "2b0a2844c41406c8ca6cd47006716f2bd9049f41259ddd1f9f600a49937b4cdf",
+      "actualSha256": "2b0a2844c41406c8ca6cd47006716f2bd9049f41259ddd1f9f600a49937b4cdf",
+      "matches": true
+    },
+    {
+      "path": "/templates/kiosk/office.html",
+      "http": 200,
+      "expectedSha256": "355b98256deb342213d0fcfc4ff4884c428eae311405c7cf16ca07cfb09d916a",
+      "actualSha256": "355b98256deb342213d0fcfc4ff4884c428eae311405c7cf16ca07cfb09d916a",
+      "matches": true
+    },
+    {
+      "path": "/templates/kiosk/qsr-pickup.html",
+      "http": 200,
+      "expectedSha256": "8b243edaa0eb35e9e0981f994d8c6a671873caff36f97a70f6d9d345808823fb",
+      "actualSha256": "8b243edaa0eb35e9e0981f994d8c6a671873caff36f97a70f6d9d345808823fb",
+      "matches": true
+    },
+    {
+      "path": "/templates/kiosk/qsr.html",
+      "http": 200,
+      "expectedSha256": "7bae1fb60a82ca0e3c310692f5b683b39b6ba3ec9db8f766cf17fab21471eb76",
+      "actualSha256": "7bae1fb60a82ca0e3c310692f5b683b39b6ba3ec9db8f766cf17fab21471eb76",
+      "matches": true
+    },
+    {
+      "path": "/templates/kiosk/real-estate-models.html",
+      "http": 200,
+      "expectedSha256": "73719ca31978478614ac09a90275aa944c37b795a75af950325e9070f4225837",
+      "actualSha256": "73719ca31978478614ac09a90275aa944c37b795a75af950325e9070f4225837",
+      "matches": true
+    },
+    {
+      "path": "/templates/kiosk/real-estate-resident.html",
+      "http": 200,
+      "expectedSha256": "d42995a6d77a2978824365c8f6988b6928992a58cd1ed57cb5d663d927f67d55",
+      "actualSha256": "d42995a6d77a2978824365c8f6988b6928992a58cd1ed57cb5d663d927f67d55",
+      "matches": true
+    },
+    {
+      "path": "/templates/kiosk/real-estate.html",
+      "http": 200,
+      "expectedSha256": "102e1ff31b7f260fdb2b0fcc56c1eebec626c7302ecf8fcd64a8b779f9c1e564",
+      "actualSha256": "102e1ff31b7f260fdb2b0fcc56c1eebec626c7302ecf8fcd64a8b779f9c1e564",
+      "matches": true
+    },
+    {
+      "path": "/templates/kiosk/school-front-office.html",
+      "http": 200,
+      "expectedSha256": "6c145b321aec662ab60738770260d892801b247fec62d6896b51d13554525185",
+      "actualSha256": "6c145b321aec662ab60738770260d892801b247fec62d6896b51d13554525185",
+      "matches": true
+    },
+    {
+      "path": "/templates/kiosk/school.html",
+      "http": 200,
+      "expectedSha256": "74d69ced3e05bbca0ff4561759dfc46aa826b9d73870ea3046c13c65f1dc2163",
+      "actualSha256": "74d69ced3e05bbca0ff4561759dfc46aa826b9d73870ea3046c13c65f1dc2163",
+      "matches": true
+    },
+    {
+      "path": "/templates/kiosk/vet.html",
+      "http": 200,
+      "expectedSha256": "ea1cde459e245655c416974ca24bdd0d5430309d5b509f292d3b47083fe52cf7",
+      "actualSha256": "ea1cde459e245655c416974ca24bdd0d5430309d5b509f292d3b47083fe52cf7",
+      "matches": true
+    },
+    {
+      "path": "/templates/school/campus-pulse/01-campus-magazine.html",
+      "http": 200,
+      "expectedSha256": "a4339c78b19a2fb046f1984e17c9ce7ad6a7570e9cabedb598019f34ff92aab8",
+      "actualSha256": "a4339c78b19a2fb046f1984e17c9ce7ad6a7570e9cabedb598019f34ff92aab8",
+      "matches": true
+    },
+    {
+      "path": "/templates/school/campus-pulse/02-digital-signal.html",
+      "http": 200,
+      "expectedSha256": "8d461442541eceb8832498de2e950c90d23ad934e8d7459bfed8220410ede33e",
+      "actualSha256": "8d461442541eceb8832498de2e950c90d23ad934e8d7459bfed8220410ede33e",
+      "matches": true
+    },
+    {
+      "path": "/templates/school/campus-pulse/03-neo-yearbook.html",
+      "http": 200,
+      "expectedSha256": "be6ab8c4313503fd260822547b86c99feb5b82913a835ff8dd706f568aabade4",
+      "actualSha256": "be6ab8c4313503fd260822547b86c99feb5b82913a835ff8dd706f568aabade4",
+      "matches": true
+    },
+    {
+      "path": "/templates/school/campus-pulse/04-varsity-broadcast.html",
+      "http": 200,
+      "expectedSha256": "75703b7fa1990eae8c2bb97a11c3c55994bd9b129be822177b8dee72adcd3cc0",
+      "actualSha256": "75703b7fa1990eae8c2bb97a11c3c55994bd9b129be822177b8dee72adcd3cc0",
+      "matches": true
+    },
+    {
+      "path": "/templates/school/campus-pulse/05-metro-wayfinding.html",
+      "http": 200,
+      "expectedSha256": "a4f421a9cc04881d179e973dc6c0b3a10a949556ec1d74c0dd2588931e607e9a",
+      "actualSha256": "a4f421a9cc04881d179e973dc6c0b3a10a949556ec1d74c0dd2588931e607e9a",
+      "matches": true
+    },
+    {
+      "path": "/templates/school/campus-pulse/06-aurora-fold.html",
+      "http": 200,
+      "expectedSha256": "64e19f2591de06923ca0cb3efeb72c421f4910db600559fe47b9683781036344",
+      "actualSha256": "64e19f2591de06923ca0cb3efeb72c421f4910db600559fe47b9683781036344",
+      "matches": true
+    },
+    {
+      "path": "/templates/school/commencement-guest-guide.html",
+      "http": 200,
+      "expectedSha256": "6169ca1bd6f455318191b1d4b91e707eb6c140bf961d7d8bf2205f509b0e6e6c",
+      "actualSha256": "6169ca1bd6f455318191b1d4b91e707eb6c140bf961d7d8bf2205f509b0e6e6c",
+      "matches": true
+    },
+    {
+      "path": "/templates/school/elem-bell-color-hop.html",
+      "http": 200,
+      "expectedSha256": "39e63fee46ea7ee8b5d6542771dd42af176e529550a942713ad7b0d064dea105",
+      "actualSha256": "39e63fee46ea7ee8b5d6542771dd42af176e529550a942713ad7b0d064dea105",
+      "matches": true
+    },
+    {
+      "path": "/templates/school/elem-bell-daybook.html",
+      "http": 200,
+      "expectedSha256": "cdff8bac289fa157c178af4f9cdea1effbd5e1ed3e5d97afb4772c4ef7a4882d",
+      "actualSha256": "cdff8bac289fa157c178af4f9cdea1effbd5e1ed3e5d97afb4772c4ef7a4882d",
+      "matches": true
+    },
+    {
+      "path": "/templates/school/elem-bell-sun-clock.html",
+      "http": 200,
+      "expectedSha256": "aa3c2650ebed7b43d5710e5cc42c9e313e55b1e425ff274c368b309a827b1dcb",
+      "actualSha256": "aa3c2650ebed7b43d5710e5cc42c9e313e55b1e425ff274c368b309a827b1dcb",
+      "matches": true
+    },
+    {
+      "path": "/templates/school/elem-lunch-v1.html",
+      "http": 200,
+      "expectedSha256": "f8aa0ba66ec46a84f8e5070fcd66d31d0ce97bc792a746dffd990162dd9fec8c",
+      "actualSha256": "f8aa0ba66ec46a84f8e5070fcd66d31d0ce97bc792a746dffd990162dd9fec8c",
+      "matches": true
+    },
+    {
+      "path": "/templates/school/elem-lunch-v2.html",
+      "http": 200,
+      "expectedSha256": "da29c8c177f343edf83afa7136b194d1acffa1e4857657089e0eb31946df858f",
+      "actualSha256": "da29c8c177f343edf83afa7136b194d1acffa1e4857657089e0eb31946df858f",
+      "matches": true
+    },
+    {
+      "path": "/templates/school/elem-lunch-v3.html",
+      "http": 200,
+      "expectedSha256": "4694d94f95949d712aef37dc0a2432d50685e41c048d9e2c0672891421124a5d",
+      "actualSha256": "4694d94f95949d712aef37dc0a2432d50685e41c048d9e2c0672891421124a5d",
+      "matches": true
+    },
+    {
+      "path": "/templates/school/elem-lunch-v4-service-ticket.html",
+      "http": 200,
+      "expectedSha256": "ad9ff7f4d4302d522a2301fdb686cf0689518640462f22cb4f0c94c717ca6d9b",
+      "actualSha256": "ad9ff7f4d4302d522a2301fdb686cf0689518640462f22cb4f0c94c717ca6d9b",
+      "matches": true
+    },
+    {
+      "path": "/templates/school/elem-lunch-v5-fresh-counter.html",
+      "http": 200,
+      "expectedSha256": "0857ccaf070bfb2b490325f3992e34f3029102c9f00d425264996b8112849f10",
+      "actualSha256": "0857ccaf070bfb2b490325f3992e34f3029102c9f00d425264996b8112849f10",
+      "matches": true
+    },
+    {
+      "path": "/templates/school/elem-lunch-v6-menu-lab.html",
+      "http": 200,
+      "expectedSha256": "b9689250ab765df142060138dbf46001a874f68d3392b01c99caac52f4c1e1f7",
+      "actualSha256": "b9689250ab765df142060138dbf46001a874f68d3392b01c99caac52f4c1e1f7",
+      "matches": true
+    },
+    {
+      "path": "/templates/school/elem-lunch-v7-counter-windows.html",
+      "http": 200,
+      "expectedSha256": "2cd96f0b21bd46f2aadb551d7e0f242475979a6c62716751251adb803b6cfae8",
+      "actualSha256": "2cd96f0b21bd46f2aadb551d7e0f242475979a6c62716751251adb803b6cfae8",
+      "matches": true
+    },
+    {
+      "path": "/templates/school/elem-news-mailroom.html",
+      "http": 200,
+      "expectedSha256": "9b980cde0b0fe0f1378613903644019c0d64d49e9692787a5d659c7d7c201429",
+      "actualSha256": "9b980cde0b0fe0f1378613903644019c0d64d49e9692787a5d659c7d7c201429",
+      "matches": true
+    },
+    {
+      "path": "/templates/school/elem-news-storybook.html",
+      "http": 200,
+      "expectedSha256": "cc7ae8c085c251c31418d26793db4c0807c973838f5e8f474fd704b7e3d30eb3",
+      "actualSha256": "cc7ae8c085c251c31418d26793db4c0807c973838f5e8f474fd704b7e3d30eb3",
+      "matches": true
+    },
+    {
+      "path": "/templates/school/elem-news-tv-cart.html",
+      "http": 200,
+      "expectedSha256": "c0bb4029ef53e84e0c791bafc340e9eadfc4cbf0d7792c70fb9807b0744b9552",
+      "actualSha256": "c0bb4029ef53e84e0c791bafc340e9eadfc4cbf0d7792c70fb9807b0744b9552",
+      "matches": true
+    },
+    {
+      "path": "/templates/school/elem-schedule-v1.html",
+      "http": 200,
+      "expectedSha256": "ef0ca0615f0cf5e1e898432f07118e77f0806db289b7680778ecd8d41a241c52",
+      "actualSha256": "ef0ca0615f0cf5e1e898432f07118e77f0806db289b7680778ecd8d41a241c52",
+      "matches": true
+    },
+    {
+      "path": "/templates/school/elem-schedule-v2.html",
+      "http": 200,
+      "expectedSha256": "db085517a9c813f2d29fe7f7934f32d6f54a862322f36bc407e5e9b2646a9810",
+      "actualSha256": "db085517a9c813f2d29fe7f7934f32d6f54a862322f36bc407e5e9b2646a9810",
+      "matches": true
+    },
+    {
+      "path": "/templates/school/elem-schedule-v3.html",
+      "http": 200,
+      "expectedSha256": "5cb6d9628fa4ed2d6b6550c8d72e51ae8bf4a43816b0d99e3823b64f49539132",
+      "actualSha256": "5cb6d9628fa4ed2d6b6550c8d72e51ae8bf4a43816b0d99e3823b64f49539132",
+      "matches": true
+    },
+    {
+      "path": "/templates/school/elem-wayfinder-color-trail.html",
+      "http": 200,
+      "expectedSha256": "9e8263fe79d2ea2e8440ba1aceab663a7d06520f73129c7ee463ec30221d21fd",
+      "actualSha256": "9e8263fe79d2ea2e8440ba1aceab663a7d06520f73129c7ee463ec30221d21fd",
+      "matches": true
+    },
+    {
+      "path": "/templates/school/elem-wayfinder-mascot-signpost.html",
+      "http": 200,
+      "expectedSha256": "7417e772a7eaa4f2dad9db1faff8e0045cd05d632abba4314caa914538ca5623",
+      "actualSha256": "7417e772a7eaa4f2dad9db1faff8e0045cd05d632abba4314caa914538ca5623",
+      "matches": true
+    },
+    {
+      "path": "/templates/school/elem-wayfinder-neighborhood.html",
+      "http": 200,
+      "expectedSha256": "f9ce2a26bfc8e6257639313735e43df6a2ab72d4e428f6f0c22dea1724757aa9",
+      "actualSha256": "f9ce2a26bfc8e6257639313735e43df6a2ab72d4e428f6f0c22dea1724757aa9",
+      "matches": true
+    },
+    {
+      "path": "/templates/school/ms-bell-agenda-flip.html",
+      "http": 200,
+      "expectedSha256": "2a39cba65905f067bbd696fbe1d6b6aeb3b7108f1b112d20b0612554d9e73d91",
+      "actualSha256": "2a39cba65905f067bbd696fbe1d6b6aeb3b7108f1b112d20b0612554d9e73d91",
+      "matches": true
+    },
+    {
+      "path": "/templates/school/ms-bell-locker-line.html",
+      "http": 200,
+      "expectedSha256": "cdd259eb1da7429d208db2a0e85837aedbcba5eba40cdf2bbab247fe8a9e1ab3",
+      "actualSha256": "cdd259eb1da7429d208db2a0e85837aedbcba5eba40cdf2bbab247fe8a9e1ab3",
+      "matches": true
+    },
+    {
+      "path": "/templates/school/ms-bell-rotation-radar.html",
+      "http": 200,
+      "expectedSha256": "84731601c15769fe9d1f4b9b023baffea9ca7eb4bdaf4f1aadb1882345575d89",
+      "actualSha256": "84731601c15769fe9d1f4b9b023baffea9ca7eb4bdaf4f1aadb1882345575d89",
+      "matches": true
+    },
+    {
+      "path": "/templates/school/ms-lobby-v1.html",
+      "http": 200,
+      "expectedSha256": "dc27b887dbf1449d81cf0b9613473987f82f39c8a1edbcba4f0d86d7b638a863",
+      "actualSha256": "dc27b887dbf1449d81cf0b9613473987f82f39c8a1edbcba4f0d86d7b638a863",
+      "matches": true
+    },
+    {
+      "path": "/templates/school/ms-lobby-v2.html",
+      "http": 200,
+      "expectedSha256": "f3648c5abfbd9b41bf92fa7adabea471a4e255bc872dd6f428e9f7f6f49321af",
+      "actualSha256": "f3648c5abfbd9b41bf92fa7adabea471a4e255bc872dd6f428e9f7f6f49321af",
+      "matches": true
+    },
+    {
+      "path": "/templates/school/ms-lobby-v3.html",
+      "http": 200,
+      "expectedSha256": "bf3ea90a31f20ef594137ec6ca4677f07ce183eb0013df433495f5600498f6e0",
+      "actualSha256": "bf3ea90a31f20ef594137ec6ca4677f07ce183eb0013df433495f5600498f6e0",
+      "matches": true
+    },
+    {
+      "path": "/templates/school/ms-lunch-campus-lineup.html",
+      "http": 200,
+      "expectedSha256": "6fc32c1c11d0dbc7ea16dc7c8960f83df98105dc4d4e95fee5b140fe4fad4ec5",
+      "actualSha256": "6fc32c1c11d0dbc7ea16dc7c8960f83df98105dc4d4e95fee5b140fe4fad4ec5",
+      "matches": true
+    },
+    {
+      "path": "/templates/school/ms-lunch-poster-loop.html",
+      "http": 200,
+      "expectedSha256": "3ae4cf6decc30e5541ff27ba90482a2d1175e6d64d6500970b90616e284679c0",
+      "actualSha256": "3ae4cf6decc30e5541ff27ba90482a2d1175e6d64d6500970b90616e284679c0",
+      "matches": true
+    },
+    {
+      "path": "/templates/school/ms-lunch-signal-deck.html",
+      "http": 200,
+      "expectedSha256": "328dad119459270c2dea3bc75606a8b9f085782082b631823a41fe22c11bd43c",
+      "actualSha256": "328dad119459270c2dea3bc75606a8b9f085782082b631823a41fe22c11bd43c",
+      "matches": true
+    },
+    {
+      "path": "/templates/school/ms-news-locker-channel.html",
+      "http": 200,
+      "expectedSha256": "b0008115f473a50419e7e3b47448fb7412c332e5c77b2c18f66e653853591456",
+      "actualSha256": "b0008115f473a50419e7e3b47448fb7412c332e5c77b2c18f66e653853591456",
+      "matches": true
+    },
+    {
+      "path": "/templates/school/ms-news-notebook-cut.html",
+      "http": 200,
+      "expectedSha256": "9067fc08e6a20720bed15ca63215677e452f324f60bd5c7ce750283b84a3499e",
+      "actualSha256": "9067fc08e6a20720bed15ca63215677e452f324f60bd5c7ce750283b84a3499e",
+      "matches": true
+    },
+    {
+      "path": "/templates/school/ms-news-studio-switcher.html",
+      "http": 200,
+      "expectedSha256": "41c66f151439773ce2e9bcf388614167f760218aad2f1bb456a55ea5e45ec677",
+      "actualSha256": "41c66f151439773ce2e9bcf388614167f760218aad2f1bb456a55ea5e45ec677",
+      "matches": true
+    },
+    {
+      "path": "/templates/school/ms-wayfinder-courtline.html",
+      "http": 200,
+      "expectedSha256": "dd7dbf8d1ccfae87aaa1a8562bc59ca9f4d8453e5238fcee9570d0010cf8c12d",
+      "actualSha256": "dd7dbf8d1ccfae87aaa1a8562bc59ca9f4d8453e5238fcee9570d0010cf8c12d",
+      "matches": true
+    },
+    {
+      "path": "/templates/school/ms-wayfinder-locker-compass.html",
+      "http": 200,
+      "expectedSha256": "b223ac897f837a9f326b4d6d885f33cd8dd317b69f544d41a2e0197e7baee91a",
+      "actualSha256": "b223ac897f837a9f326b4d6d885f33cd8dd317b69f544d41a2e0197e7baee91a",
+      "matches": true
+    },
+    {
+      "path": "/templates/school/ms-wayfinder-patchboard.html",
+      "http": 200,
+      "expectedSha256": "dbf67d13e22abc7be2657a5873f1a7e591822d31a5acfaf2b1914f342884c4ae",
+      "actualSha256": "dbf67d13e22abc7be2657a5873f1a7e591822d31a5acfaf2b1914f342884c4ae",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/bar/01-tap-list-flagship.html",
+      "http": 200,
+      "expectedSha256": "4e6ca1034cdb2c6f2088aaf5ca03e1a9b7bf91bc972e4fff375efd6cca1099e8",
+      "actualSha256": "4e6ca1034cdb2c6f2088aaf5ca03e1a9b7bf91bc972e4fff375efd6cca1099e8",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/bar/02-cocktail-menu.html",
+      "http": 200,
+      "expectedSha256": "5132dfd73d1165e3db97f7581821526c526c900bb36cfb224b9cf16223ffdb51",
+      "actualSha256": "5132dfd73d1165e3db97f7581821526c526c900bb36cfb224b9cf16223ffdb51",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/bar/03-bottle-list.html",
+      "http": 200,
+      "expectedSha256": "5167ae9246a9df8625d6e1724e58e20dfd7de43a6acd91753e792e2345187985",
+      "actualSha256": "5167ae9246a9df8625d6e1724e58e20dfd7de43a6acd91753e792e2345187985",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/bar/04-happy-hour.html",
+      "http": 200,
+      "expectedSha256": "95b94fc07a730f843f763a35a602a895ce89131493c59c0a683f6c1884b79774",
+      "actualSha256": "95b94fc07a730f843f763a35a602a895ce89131493c59c0a683f6c1884b79774",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/bar/05-now-pouring.html",
+      "http": 200,
+      "expectedSha256": "96da309bde35c3f99c281c37f8d542a5eda37f0ebda09a681c2f92de7b7f0409",
+      "actualSha256": "96da309bde35c3f99c281c37f8d542a5eda37f0ebda09a681c2f92de7b7f0409",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/bar/06-tonight-live.html",
+      "http": 200,
+      "expectedSha256": "a2368b7fc4961a4eb3d146b33984b4b2bf0a540f3a41c11dc3751643ee8af160",
+      "actualSha256": "a2368b7fc4961a4eb3d146b33984b4b2bf0a540f3a41c11dc3751643ee8af160",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/bar/07-bottle-service.html",
+      "http": 200,
+      "expectedSha256": "aa776cd01f08286a47a8939c7f8227ad981f6451900202cbc79128c4a06fcd52",
+      "actualSha256": "aa776cd01f08286a47a8939c7f8227ad981f6451900202cbc79128c4a06fcd52",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/bar/08-game-day.html",
+      "http": 200,
+      "expectedSha256": "b8a922daf89de73afdca4dc004585d691aa5e0f66db3aa8c121c32e16c1ac137",
+      "actualSha256": "b8a922daf89de73afdca4dc004585d691aa5e0f66db3aa8c121c32e16c1ac137",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/bar/09-hours-location.html",
+      "http": 200,
+      "expectedSha256": "1be94bfadde233f2b976a7a47c3d9c509d850a99d222591c3178401759042495",
+      "actualSha256": "1be94bfadde233f2b976a7a47c3d9c509d850a99d222591c3178401759042495",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/bar/10-now-hiring.html",
+      "http": 200,
+      "expectedSha256": "61d2e099bea162e912111211b454e9f42ea51ae82a33e60fa6e3516bac29ee56",
+      "actualSha256": "61d2e099bea162e912111211b454e9f42ea51ae82a33e60fa6e3516bac29ee56",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/bar/redesign-tap-list-v1-copper-manifold.html",
+      "http": 200,
+      "expectedSha256": "d6748ff486b25660b9245b89024033c3e99a1ddd65b9cbd3c8394c0e392dd17e",
+      "actualSha256": "d6748ff486b25660b9245b89024033c3e99a1ddd65b9cbd3c8394c0e392dd17e",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/bar/redesign-tap-list-v2-cellar-index.html",
+      "http": 200,
+      "expectedSha256": "79d5c97c1378ce75563c2064cdce0a216bc899aacdcdac6d27f753d3993633e8",
+      "actualSha256": "79d5c97c1378ce75563c2064cdce0a216bc899aacdcdac6d27f753d3993633e8",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/bar/redesign-tap-list-v3-draft-lab.html",
+      "http": 200,
+      "expectedSha256": "a5cdf55a279ffade4588cd09d68f3a1844416cc9cc9c4ac892756b45280c96db",
+      "actualSha256": "a5cdf55a279ffade4588cd09d68f3a1844416cc9cc9c4ac892756b45280c96db",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/church/01-welcome-flagship.html",
+      "http": 200,
+      "expectedSha256": "46cbe34418e21c19b838989f84f530df5dbe6fa0c4fd09020e9b15f8fe82cae9",
+      "actualSha256": "46cbe34418e21c19b838989f84f530df5dbe6fa0c4fd09020e9b15f8fe82cae9",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/church/01-welcome-light.html",
+      "http": 200,
+      "expectedSha256": "9f2b49c4770948face8019d2355616f8dbd723b01c905f7f470aab9c985df8be",
+      "actualSha256": "9f2b49c4770948face8019d2355616f8dbd723b01c905f7f470aab9c985df8be",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/church/02-series-light.html",
+      "http": 200,
+      "expectedSha256": "51bab406c125b57d500a72b11f1e49eb236eef2ea4c2c861ada0b5ab5a3e08e2",
+      "actualSha256": "51bab406c125b57d500a72b11f1e49eb236eef2ea4c2c861ada0b5ab5a3e08e2",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/church/02-series.html",
+      "http": 200,
+      "expectedSha256": "c5a513c02a2efb303ef4a9f68448aad0d5f042207cb409cf5ecf9e08693f3749",
+      "actualSha256": "c5a513c02a2efb303ef4a9f68448aad0d5f042207cb409cf5ecf9e08693f3749",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/church/03-this-week-light.html",
+      "http": 200,
+      "expectedSha256": "d2021397873fa1b48e33a4a8e2eed4ff2d4fd657c29bdcff203cfcc3cef1868c",
+      "actualSha256": "d2021397873fa1b48e33a4a8e2eed4ff2d4fd657c29bdcff203cfcc3cef1868c",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/church/03-this-week.html",
+      "http": 200,
+      "expectedSha256": "94cdb0e3cffb2d5d9f5adaf7a6f8fa700a0c424f1f80c883b8a9459e3221c088",
+      "actualSha256": "94cdb0e3cffb2d5d9f5adaf7a6f8fa700a0c424f1f80c883b8a9459e3221c088",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/church/04-next-steps-give-light.html",
+      "http": 200,
+      "expectedSha256": "d275c8525f40a32643810afc629d22d04379d8695a35279dec2f132e41341f72",
+      "actualSha256": "d275c8525f40a32643810afc629d22d04379d8695a35279dec2f132e41341f72",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/church/04-next-steps-give.html",
+      "http": 200,
+      "expectedSha256": "6eddf2255692ae30d47d40c298df324c8b7b98367fc9d0c27f1ba5831a367c49",
+      "actualSha256": "6eddf2255692ae30d47d40c298df324c8b7b98367fc9d0c27f1ba5831a367c49",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/church/05-prayer-wall-light.html",
+      "http": 200,
+      "expectedSha256": "f42774061bea06a52e201f2420433d9ef8e475bf74aedbd03622c2f3a1542ec2",
+      "actualSha256": "f42774061bea06a52e201f2420433d9ef8e475bf74aedbd03622c2f3a1542ec2",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/church/05-prayer-wall.html",
+      "http": 200,
+      "expectedSha256": "34b9eb9545eec612f450161e4912732d5a7794edc9a4577ea579eb6db4cc9dd8",
+      "actualSha256": "34b9eb9545eec612f450161e4912732d5a7794edc9a4577ea579eb6db4cc9dd8",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/clinic/01-campaign-flagship.html",
+      "http": 200,
+      "expectedSha256": "60ed01219527e4a6bcb47babc0f64463f9c4789f45ba7e0ed52f39a3c3e9903c",
+      "actualSha256": "60ed01219527e4a6bcb47babc0f64463f9c4789f45ba7e0ed52f39a3c3e9903c",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/clinic/02-services-booking-guide.html",
+      "http": 200,
+      "expectedSha256": "1ecdaf0d18b933f2d629b47048781ba6e9a2ca3d6e1f6c055c0dea1a5f20bfb4",
+      "actualSha256": "1ecdaf0d18b933f2d629b47048781ba6e9a2ca3d6e1f6c055c0dea1a5f20bfb4",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/corporate/01-lobby-welcome-flagship.html",
+      "http": 200,
+      "expectedSha256": "aff93e4a1d468fdbc45ab101afdb353240a0dc481262a6e1ec60b2d1f05670fb",
+      "actualSha256": "aff93e4a1d468fdbc45ab101afdb353240a0dc481262a6e1ec60b2d1f05670fb",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/corporate/02-conference-room.html",
+      "http": 200,
+      "expectedSha256": "1b15480b15038c3e3213f036d59e406e33dc812069726dc7dab3db65ea33d562",
+      "actualSha256": "1b15480b15038c3e3213f036d59e406e33dc812069726dc7dab3db65ea33d562",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/corporate/03-kpi-dashboard.html",
+      "http": 200,
+      "expectedSha256": "27ede54226b3a25b09bae85f636dc717ac79b67b2bbda4dc871d0009aa05d8a9",
+      "actualSha256": "27ede54226b3a25b09bae85f636dc717ac79b67b2bbda4dc871d0009aa05d8a9",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/corporate/04-new-hires.html",
+      "http": 200,
+      "expectedSha256": "e6b4f6883bd2545fb8e09e9ea25935ff24aa3c56d410180583d4d3388c581584",
+      "actualSha256": "e6b4f6883bd2545fb8e09e9ea25935ff24aa3c56d410180583d4d3388c581584",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/corporate/05-floor-directory.html",
+      "http": 200,
+      "expectedSha256": "d23ef45edb7653d7f2ff017effc5240b2808f4ce9d446af489e1ff0b68c44655",
+      "actualSha256": "d23ef45edb7653d7f2ff017effc5240b2808f4ce9d446af489e1ff0b68c44655",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/corporate/06-all-hands.html",
+      "http": 200,
+      "expectedSha256": "9b7d38fb84a5246104c01efdf01113e41b78af03930a29bfdc92abe9b3c27ee4",
+      "actualSha256": "9b7d38fb84a5246104c01efdf01113e41b78af03930a29bfdc92abe9b3c27ee4",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/corporate/07-cafeteria.html",
+      "http": 200,
+      "expectedSha256": "fd734d5167a52d9bbc5d96642601a6288da593d4f7b4bc42fd19879a11874097",
+      "actualSha256": "fd734d5167a52d9bbc5d96642601a6288da593d4f7b4bc42fd19879a11874097",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/corporate/08-shuttle-board.html",
+      "http": 200,
+      "expectedSha256": "1ce453c773fa93a5f6bbf7ad273a84a8f36b1ccffd84858dbd64dcf96831c458",
+      "actualSha256": "1ce453c773fa93a5f6bbf7ad273a84a8f36b1ccffd84858dbd64dcf96831c458",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/corporate/09-events-week.html",
+      "http": 200,
+      "expectedSha256": "04fc484f4a3359e6fcad14f56018aecb29a1962b27103071610b977ed7d93c94",
+      "actualSha256": "04fc484f4a3359e6fcad14f56018aecb29a1962b27103071610b977ed7d93c94",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/corporate/10-emergency-info.html",
+      "http": 200,
+      "expectedSha256": "0f786d91a31919f1fed4f671d47726702305e66aa8239cb4f507dd40ee0778cd",
+      "actualSha256": "0f786d91a31919f1fed4f671d47726702305e66aa8239cb4f507dd40ee0778cd",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/corporate/11-corporate-signal.html",
+      "http": 200,
+      "expectedSha256": "590780d4a0ca2c64e613d73818ad9e3005beb034214b985a1c7167824c07812d",
+      "actualSha256": "590780d4a0ca2c64e613d73818ad9e3005beb034214b985a1c7167824c07812d",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/corporate/12-signal-ribbon.html",
+      "http": 200,
+      "expectedSha256": "be777d2b600c1e4d252249c36d5f94146c6f7e124b87a7af1247bf3f68e9e0e7",
+      "actualSha256": "be777d2b600c1e4d252249c36d5f94146c6f7e124b87a7af1247bf3f68e9e0e7",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/corporate/20-service-update.html",
+      "http": 200,
+      "expectedSha256": "8912482e4889ba23d61dba641095dfc4cc408965cc0ae073c53728400182f839",
+      "actualSha256": "8912482e4889ba23d61dba641095dfc4cc408965cc0ae073c53728400182f839",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/corporate/homebuilder/01-welcome-cinematic.html",
+      "http": 200,
+      "expectedSha256": "0abac3420515a24a42f90864ee7ce32ae63bd459427146913ba3dc62902a7a8a",
+      "actualSha256": "0abac3420515a24a42f90864ee7ce32ae63bd459427146913ba3dc62902a7a8a",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/corporate/homebuilder/02-welcome-editorial.html",
+      "http": 200,
+      "expectedSha256": "dea823cf98026f4ffcd9eb9ff6768e3063c079123ef87d8efabf87d790f57093",
+      "actualSha256": "dea823cf98026f4ffcd9eb9ff6768e3063c079123ef87d8efabf87d790f57093",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/corporate/homebuilder/03-welcome-gallery.html",
+      "http": 200,
+      "expectedSha256": "bd4dace259e849a095d4c266ddf4bd72c5224206ef3f416d3a8a36b5c364a4a6",
+      "actualSha256": "bd4dace259e849a095d4c266ddf4bd72c5224206ef3f416d3a8a36b5c364a4a6",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/corporate/homebuilder/04-home-plan.html",
+      "http": 200,
+      "expectedSha256": "184e560ca388d41bd7f9e1e9bd312eac5942720fa650de69051806a75b7c57bd",
+      "actualSha256": "184e560ca388d41bd7f9e1e9bd312eac5942720fa650de69051806a75b7c57bd",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/corporate/homebuilder/05-home-availability.html",
+      "http": 200,
+      "expectedSha256": "138b757b23672588607179a7efe9692f165d206b8b0f9f7107eb9efc6c1b1047",
+      "actualSha256": "138b757b23672588607179a7efe9692f165d206b8b0f9f7107eb9efc6c1b1047",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/corporate/homebuilder/06-community-story.html",
+      "http": 200,
+      "expectedSha256": "860cc180ebccf956271204361f45b44d069665c8f3012bf99522ca3fe944d8ad",
+      "actualSha256": "860cc180ebccf956271204361f45b44d069665c8f3012bf99522ca3fe944d8ad",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/corporate/homebuilder/07-tour-takeaway.html",
+      "http": 200,
+      "expectedSha256": "99e95d099490e8d7c2e474186353347fc5237969059edb8f5aafb102ee0a6442",
+      "actualSha256": "99e95d099490e8d7c2e474186353347fc5237969059edb8f5aafb102ee0a6442",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/corporate/homebuilder/portrait/01-welcome-cinematic.html",
+      "http": 200,
+      "expectedSha256": "4c5f10a12a621c01b21f3a9e4bfcb2aa9d2d156c43a32e2f8c0541b932fcc216",
+      "actualSha256": "4c5f10a12a621c01b21f3a9e4bfcb2aa9d2d156c43a32e2f8c0541b932fcc216",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/corporate/homebuilder/portrait/02-welcome-editorial.html",
+      "http": 200,
+      "expectedSha256": "4bff1dfdfd4dadda0fa01043bf3d64c1da01e34514e03399ec95098329d40ca6",
+      "actualSha256": "4bff1dfdfd4dadda0fa01043bf3d64c1da01e34514e03399ec95098329d40ca6",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/corporate/homebuilder/portrait/03-welcome-gallery.html",
+      "http": 200,
+      "expectedSha256": "ddf90b4bab171172145e5308ab77081638df044caf9eacebffd84dc24ba2f1fd",
+      "actualSha256": "ddf90b4bab171172145e5308ab77081638df044caf9eacebffd84dc24ba2f1fd",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/corporate/homebuilder/portrait/04-home-plan.html",
+      "http": 200,
+      "expectedSha256": "eb9d83aac93bf82c683a2f3a9aef15984b62862e5f1c33a4a6af25f37e75f2ad",
+      "actualSha256": "eb9d83aac93bf82c683a2f3a9aef15984b62862e5f1c33a4a6af25f37e75f2ad",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/corporate/homebuilder/portrait/05-home-availability.html",
+      "http": 200,
+      "expectedSha256": "ea7e83593e502d3f18dac836d19135c1fcb5c7738e076a2de9f59cdcaeffef27",
+      "actualSha256": "ea7e83593e502d3f18dac836d19135c1fcb5c7738e076a2de9f59cdcaeffef27",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/corporate/homebuilder/portrait/06-community-story.html",
+      "http": 200,
+      "expectedSha256": "8bf99ca4a12322f88358a2b64b6117cd9e554412a558dfc3cd72755bbdfff9c2",
+      "actualSha256": "8bf99ca4a12322f88358a2b64b6117cd9e554412a558dfc3cd72755bbdfff9c2",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/corporate/homebuilder/portrait/07-tour-takeaway.html",
+      "http": 200,
+      "expectedSha256": "0a36c598fb0cf84185140124af8be7f1870fa975dd4c2958970486992bc852cf",
+      "actualSha256": "0a36c598fb0cf84185140124af8be7f1870fa975dd4c2958970486992bc852cf",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/fashion/01-lookbook-flagship.html",
+      "http": 200,
+      "expectedSha256": "44d0cb9881ce00db220edb7fd967d31fa55fba52d3691acebe6206bf183c11ce",
+      "actualSha256": "44d0cb9881ce00db220edb7fd967d31fa55fba52d3691acebe6206bf183c11ce",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/fashion/02-editorial.html",
+      "http": 200,
+      "expectedSha256": "e93364ed0d3bfe0d2dc5da98ee545eadf5e7169a0f297181bd2591629b549f2d",
+      "actualSha256": "e93364ed0d3bfe0d2dc5da98ee545eadf5e7169a0f297181bd2591629b549f2d",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/fashion/03-sale.html",
+      "http": 200,
+      "expectedSha256": "766735bc594c4ad3b8894a8f274c4ea27832ec41ddf38874cb9a575900c1529e",
+      "actualSha256": "766735bc594c4ad3b8894a8f274c4ea27832ec41ddf38874cb9a575900c1529e",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/fashion/04-new-arrivals.html",
+      "http": 200,
+      "expectedSha256": "0fe02bcf0c1d4214b00abe77e2078866182027763eda43cae486f3230b58ca0d",
+      "actualSha256": "0fe02bcf0c1d4214b00abe77e2078866182027763eda43cae486f3230b58ca0d",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/fashion/05-event-trunkshow.html",
+      "http": 200,
+      "expectedSha256": "527fd2a521da88cc18f7d38a8a4a7543536fe45dd0b75b08fca1e7ce1f127906",
+      "actualSha256": "527fd2a521da88cc18f7d38a8a4a7543536fe45dd0b75b08fca1e7ce1f127906",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/fashion/06-fitting-room.html",
+      "http": 200,
+      "expectedSha256": "573730eab23ad82ce24f605a45ee74d91029691a8b1921ec5454f3dfdb7630d4",
+      "actualSha256": "573730eab23ad82ce24f605a45ee74d91029691a8b1921ec5454f3dfdb7630d4",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/fashion/07-shoppable-window.html",
+      "http": 200,
+      "expectedSha256": "83d0e8fafe8a9752fb5ae3251e4e3f48463bc5ad056619fb94108252e5193887",
+      "actualSha256": "83d0e8fafe8a9752fb5ae3251e4e3f48463bc5ad056619fb94108252e5193887",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/fashion/08-campaign.html",
+      "http": 200,
+      "expectedSha256": "bc06396aff091932c2f81751328b0cca4ffd73dcdc4dc8e2539f32ee5b775480",
+      "actualSha256": "bc06396aff091932c2f81751328b0cca4ffd73dcdc4dc8e2539f32ee5b775480",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/fashion/09-hours-story.html",
+      "http": 200,
+      "expectedSha256": "e2cf79126bbbf3ed747d65f0e7f92c270b029bbfa00484740c65a5cc9c3c16d5",
+      "actualSha256": "e2cf79126bbbf3ed747d65f0e7f92c270b029bbfa00484740c65a5cc9c3c16d5",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/fashion/10-loyalty-member.html",
+      "http": 200,
+      "expectedSha256": "bda808b12792d7ef1b68f39a24d2882933c8f974c34044d80c2ea43856fc0ad9",
+      "actualSha256": "bda808b12792d7ef1b68f39a24d2882933c8f974c34044d80c2ea43856fc0ad9",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/gym/01-floor-board-flagship.html",
+      "http": 200,
+      "expectedSha256": "bbaed35ced1bf85d1d248522422e186130cf4ec4fc217b5de7721de25d76e551",
+      "actualSha256": "bbaed35ced1bf85d1d248522422e186130cf4ec4fc217b5de7721de25d76e551",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/gym/02-leaderboard.html",
+      "http": 200,
+      "expectedSha256": "6448607254c4308b7b6e18f79fecc3c5d16581e07b3bf176bab53ea542230392",
+      "actualSha256": "6448607254c4308b7b6e18f79fecc3c5d16581e07b3bf176bab53ea542230392",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/gym/03-welcome-poster.html",
+      "http": 200,
+      "expectedSha256": "140fd3a0103b38f0f44aed3240de0bd42c00d5fff0a7afc7f077dc67fb798c5f",
+      "actualSha256": "140fd3a0103b38f0f44aed3240de0bd42c00d5fff0a7afc7f077dc67fb798c5f",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/gym/04-welcome-split-duo.html",
+      "http": 200,
+      "expectedSha256": "0ec4dca7973b5b1f2ead36761f94aec8d98af840c52dad60351b11db02c636e1",
+      "actualSha256": "0ec4dca7973b5b1f2ead36761f94aec8d98af840c52dad60351b11db02c636e1",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/gym/05-welcome-locker-room.html",
+      "http": 200,
+      "expectedSha256": "0ab1d7951be81a5686df08220548c4563218afab3ba6f6b4d479372ee570ce92",
+      "actualSha256": "0ab1d7951be81a5686df08220548c4563218afab3ba6f6b4d479372ee570ce92",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/gym/leaderboard-v1-champion-wall-landscape.html",
+      "http": 200,
+      "expectedSha256": "bf16de79be1ad7201742dce93011ca536d5b4570e783048232fb7cc7e0748a70",
+      "actualSha256": "bf16de79be1ad7201742dce93011ca536d5b4570e783048232fb7cc7e0748a70",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/gym/leaderboard-v1-champion-wall-portrait.html",
+      "http": 200,
+      "expectedSha256": "e903822861d41c9d0cf570440a7aa78b02d8ef821ec3deaf1f77e907168082ff",
+      "actualSha256": "e903822861d41c9d0cf570440a7aa78b02d8ef821ec3deaf1f77e907168082ff",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/gym/leaderboard-v2-finish-line-landscape.html",
+      "http": 200,
+      "expectedSha256": "c92bd15a0cfd6b2955066c9993ffde09a35aef45bcc9952d5abf8b9ff35556a3",
+      "actualSha256": "c92bd15a0cfd6b2955066c9993ffde09a35aef45bcc9952d5abf8b9ff35556a3",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/gym/leaderboard-v2-finish-line-portrait.html",
+      "http": 200,
+      "expectedSha256": "6ea2b06e4d091cd98af17343345418dd4fada0c73c6b96cf4e60433d4e67ed26",
+      "actualSha256": "6ea2b06e4d091cd98af17343345418dd4fada0c73c6b96cf4e60433d4e67ed26",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/gym/leaderboard-v3-plate-stack-landscape.html",
+      "http": 200,
+      "expectedSha256": "06240ba47f12eb5f2fc1526af94205e4f2ca377f22788121e41c8bdf2a1dea44",
+      "actualSha256": "06240ba47f12eb5f2fc1526af94205e4f2ca377f22788121e41c8bdf2a1dea44",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/gym/leaderboard-v3-plate-stack-portrait.html",
+      "http": 200,
+      "expectedSha256": "0fc1925c979c6ceb2e9992b5de39a8482245a949f54196d55119c30df1a959d0",
+      "actualSha256": "0fc1925c979c6ceb2e9992b5de39a8482245a949f54196d55119c30df1a959d0",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/healthcare/01-waiting-room-flagship.html",
+      "http": 200,
+      "expectedSha256": "1eb3cbbf00c787a69724c04d645bdb9bdb3ed2433a72e8feb0a2b43a5ef1de92",
+      "actualSha256": "1eb3cbbf00c787a69724c04d645bdb9bdb3ed2433a72e8feb0a2b43a5ef1de92",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/healthcare/02-physician-directory.html",
+      "http": 200,
+      "expectedSha256": "6ed123f6c3dd161ee4dac350f3d56c6df12ed50a0ddc138a87976648ac087733",
+      "actualSha256": "6ed123f6c3dd161ee4dac350f3d56c6df12ed50a0ddc138a87976648ac087733",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/healthcare/03-now-serving.html",
+      "http": 200,
+      "expectedSha256": "ec6251a3b76f4da3ae6358de182787e58105bcd2d31ad909ba1d6525c4a11fc1",
+      "actualSha256": "ec6251a3b76f4da3ae6358de182787e58105bcd2d31ad909ba1d6525c4a11fc1",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/healthcare/04-vaccine-clinic.html",
+      "http": 200,
+      "expectedSha256": "2e976df38ea38648aa0dd6097b5e033a4c781e7a6595130f8513e9bce71d2cf6",
+      "actualSha256": "2e976df38ea38648aa0dd6097b5e033a4c781e7a6595130f8513e9bce71d2cf6",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/healthcare/05-hours-closures.html",
+      "http": 200,
+      "expectedSha256": "dc4ac224c0fc6569a711999444e2541b965dd3c066ff43a00f87c345b6372103",
+      "actualSha256": "dc4ac224c0fc6569a711999444e2541b965dd3c066ff43a00f87c345b6372103",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/healthcare/06-patient-education.html",
+      "http": 200,
+      "expectedSha256": "7317d001a49b3e032c20e656022b494f5ec89d03516cf28ad9bc9a56f530aeeb",
+      "actualSha256": "7317d001a49b3e032c20e656022b494f5ec89d03516cf28ad9bc9a56f530aeeb",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/healthcare/07-mychart-signup.html",
+      "http": 200,
+      "expectedSha256": "ce84114d0fb93f89c5d3360e4981bde6b055ea5b7f351a8f134af38e5d5cc671",
+      "actualSha256": "ce84114d0fb93f89c5d3360e4981bde6b055ea5b7f351a8f134af38e5d5cc671",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/healthcare/08-pharmacy-pickup.html",
+      "http": 200,
+      "expectedSha256": "21815e051a4ec743c5c7ef303b83c00c368dfdf7ddc9721966290bb346427b68",
+      "actualSha256": "21815e051a4ec743c5c7ef303b83c00c368dfdf7ddc9721966290bb346427b68",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/healthcare/09-clinical-trial.html",
+      "http": 200,
+      "expectedSha256": "5d9777f9b658ac0e08cb84870e0011972d3dace58e97a0aff99a08ff714ad18c",
+      "actualSha256": "5d9777f9b658ac0e08cb84870e0011972d3dace58e97a0aff99a08ff714ad18c",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/healthcare/10-thanks-leave.html",
+      "http": 200,
+      "expectedSha256": "966a160fe53618e45c9c7549103811fce178b4053bf6117e96ed253d93c4a0f6",
+      "actualSha256": "966a160fe53618e45c9c7549103811fce178b4053bf6117e96ed253d93c4a0f6",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/hospitality/01-lobby-welcome-flagship.html",
+      "http": 200,
+      "expectedSha256": "dd339121b1b9f178af84f16b492f0829b14c41398b13ded89e79debf74953c30",
+      "actualSha256": "dd339121b1b9f178af84f16b492f0829b14c41398b13ded89e79debf74953c30",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/hospitality/02-concierge-board.html",
+      "http": 200,
+      "expectedSha256": "be2c8ce990626cd574ee74c4f2efa13551d613edc8770718e2a9d6979cef8a84",
+      "actualSha256": "be2c8ce990626cd574ee74c4f2efa13551d613edc8770718e2a9d6979cef8a84",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/hospitality/03-events-board.html",
+      "http": 200,
+      "expectedSha256": "72e01e0af202e8d5bfa19bc7cde160a45c0366e53bf6606366e5ed4ce1c0defa",
+      "actualSha256": "72e01e0af202e8d5bfa19bc7cde160a45c0366e53bf6606366e5ed4ce1c0defa",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/hospitality/04-pool-spa-day.html",
+      "http": 200,
+      "expectedSha256": "b397f92bd1a581022dd4f74bc41ba9061d6050410fc1299d6f82b647b8e4d10f",
+      "actualSha256": "b397f92bd1a581022dd4f74bc41ba9061d6050410fc1299d6f82b647b8e4d10f",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/hospitality/05-dining-tonight.html",
+      "http": 200,
+      "expectedSha256": "37847aac632ec8821fd0e2b93f495f060b73a7f663ae3bb532c60fcdfe9459c8",
+      "actualSha256": "37847aac632ec8821fd0e2b93f495f060b73a7f663ae3bb532c60fcdfe9459c8",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/hospitality/06-wayfinder.html",
+      "http": 200,
+      "expectedSha256": "520de0e2d045d45f3929ca0a472d7e6ca5e265b6bbfd0e832afb47bbd665851a",
+      "actualSha256": "520de0e2d045d45f3929ca0a472d7e6ca5e265b6bbfd0e832afb47bbd665851a",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/hospitality/07-group-welcome.html",
+      "http": 200,
+      "expectedSha256": "9a4998fdb01d77f83a6d395ca3292ecc3374ba93e3193af67aa10025c0e17b33",
+      "actualSha256": "9a4998fdb01d77f83a6d395ca3292ecc3374ba93e3193af67aa10025c0e17b33",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/hospitality/08-checkin-status.html",
+      "http": 200,
+      "expectedSha256": "6b8f5ad5a13135cbfe6003404e470ff86d68380ec4ed89d7e2f37f6a5353118f",
+      "actualSha256": "6b8f5ad5a13135cbfe6003404e470ff86d68380ec4ed89d7e2f37f6a5353118f",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/hospitality/09-outlook.html",
+      "http": 200,
+      "expectedSha256": "3b910b98381711b6f342f365df29a602b4d73ed539b4341595818091e531cd1d",
+      "actualSha256": "3b910b98381711b6f342f365df29a602b4d73ed539b4341595818091e531cd1d",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/hospitality/10-brand-story.html",
+      "http": 200,
+      "expectedSha256": "ad16df3df86113c5b79c004231dae386ec894cefe8e086f213840ac83c9c4c26",
+      "actualSha256": "ad16df3df86113c5b79c004231dae386ec894cefe8e086f213840ac83c9c4c26",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/hospitality/lobby-v1-arrival-atelier-landscape.html",
+      "http": 200,
+      "expectedSha256": "6feef3415f3a1bcc759dd2d71ee5c628eca56fcd12549ac4aec299ae0d40b7fe",
+      "actualSha256": "6feef3415f3a1bcc759dd2d71ee5c628eca56fcd12549ac4aec299ae0d40b7fe",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/hospitality/lobby-v1-arrival-atelier-portrait.html",
+      "http": 200,
+      "expectedSha256": "cd5e363249b7ea04026389974b81fa00099b4e7246df8b1d9084cc81c24045fa",
+      "actualSha256": "cd5e363249b7ea04026389974b81fa00099b4e7246df8b1d9084cc81c24045fa",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/hospitality/lobby-v2-resort-current-landscape.html",
+      "http": 200,
+      "expectedSha256": "466c6f1ff5c4202b7be3a66a2000392133920a4aa76941e1b255e4828eb6178c",
+      "actualSha256": "466c6f1ff5c4202b7be3a66a2000392133920a4aa76941e1b255e4828eb6178c",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/hospitality/lobby-v2-resort-current-portrait.html",
+      "http": 200,
+      "expectedSha256": "b4dc96fe9867cebb1a5200cd5077b6cf5c08950fb3336b19a7cffa93807ad5e6",
+      "actualSha256": "b4dc96fe9867cebb1a5200cd5077b6cf5c08950fb3336b19a7cffa93807ad5e6",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/hospitality/lobby-v3-grand-grid-landscape.html",
+      "http": 200,
+      "expectedSha256": "070125c2ea4b0cb5bc891b64521044e4bc0402a2dcbdd78044ad83947915ffe5",
+      "actualSha256": "070125c2ea4b0cb5bc891b64521044e4bc0402a2dcbdd78044ad83947915ffe5",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/hospitality/lobby-v3-grand-grid-portrait.html",
+      "http": 200,
+      "expectedSha256": "d07cee790feb184a3a49b989becb5da7b2228edf6e9a165617bab709ca3f6c76",
+      "actualSha256": "d07cee790feb184a3a49b989becb5da7b2228edf6e9a165617bab709ca3f6c76",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/menus-pos/01-fullservice-menu.html",
+      "http": 200,
+      "expectedSha256": "3a96cdf3d197a3b4be376411a3c0bac3d45737c913b929254e914af967cf930f",
+      "actualSha256": "3a96cdf3d197a3b4be376411a3c0bac3d45737c913b929254e914af967cf930f",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/menus-pos/02-wine-list.html",
+      "http": 200,
+      "expectedSha256": "bcc770c8240db6c1732caec226a283f6c590564c2f66d7dae1fdc22073807dc2",
+      "actualSha256": "bcc770c8240db6c1732caec226a283f6c590564c2f66d7dae1fdc22073807dc2",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/menus-pos/03-daily-special.html",
+      "http": 200,
+      "expectedSha256": "3c8ffb7fe8da1be9079f1affc2f80e12951ec21734b88867c32244dbd8eda9b3",
+      "actualSha256": "3c8ffb7fe8da1be9079f1affc2f80e12951ec21734b88867c32244dbd8eda9b3",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/menus-pos/04-cocktail-program.html",
+      "http": 200,
+      "expectedSha256": "08cb3882ad7ac2268c0b949145fea84563e1457dce2fcd976735a4f6267b6c51",
+      "actualSha256": "08cb3882ad7ac2268c0b949145fea84563e1457dce2fcd976735a4f6267b6c51",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/menus-pos/05-86-board.html",
+      "http": 200,
+      "expectedSha256": "951232bc644735cac39531f1bc6a94f3a5a133a525c511d659404b87502184cd",
+      "actualSha256": "951232bc644735cac39531f1bc6a94f3a5a133a525c511d659404b87502184cd",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/menus-pos/06-brunch.html",
+      "http": 200,
+      "expectedSha256": "e876c44b7e408f42ba3abc65bb1c6964406bcbde1f28343770ff2affe7871c47",
+      "actualSha256": "e876c44b7e408f42ba3abc65bb1c6964406bcbde1f28343770ff2affe7871c47",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/menus-pos/07-prix-fixe.html",
+      "http": 200,
+      "expectedSha256": "63544e6713b9af422f0a101a3b4e577e3106792eb82e98f95bd9fd73fd35e762",
+      "actualSha256": "63544e6713b9af422f0a101a3b4e577e3106792eb82e98f95bd9fd73fd35e762",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/menus-pos/08-tasting-progress.html",
+      "http": 200,
+      "expectedSha256": "29956c2f6c4cb77d9c94eaec2cdb938ac655e81416bff0cc8b6a3c3491e26274",
+      "actualSha256": "29956c2f6c4cb77d9c94eaec2cdb938ac655e81416bff0cc8b6a3c3491e26274",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/menus-pos/09-reservations.html",
+      "http": 200,
+      "expectedSha256": "eaf20df763c62c300f0bc77ff6546b5bfb302fe85a90378139be434c9f772193",
+      "actualSha256": "eaf20df763c62c300f0bc77ff6546b5bfb302fe85a90378139be434c9f772193",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/menus-pos/10-takeaway-pickup.html",
+      "http": 200,
+      "expectedSha256": "79c04bfbd56bf2a60aca928179d9f569efe44de975125151339a81ed06fef68c",
+      "actualSha256": "79c04bfbd56bf2a60aca928179d9f569efe44de975125151339a81ed06fef68c",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/museum/01-today-flagship.html",
+      "http": 200,
+      "expectedSha256": "4f8ffca46cd04c780e4a6c05e95f29f2e7ff1bfe3cc6442b28af03f333101f8b",
+      "actualSha256": "4f8ffca46cd04c780e4a6c05e95f29f2e7ff1bfe3cc6442b28af03f333101f8b",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/office/01-room-grid-flagship.html",
+      "http": 200,
+      "expectedSha256": "4445f23072f1404ca6f2e0a246cfe83e66dd460b9131f20081c11bed6af086aa",
+      "actualSha256": "4445f23072f1404ca6f2e0a246cfe83e66dd460b9131f20081c11bed6af086aa",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/qsr/01-drive-thru-flagship.html",
+      "http": 200,
+      "expectedSha256": "3955ff11d2010c759b4e6942c9e14bbc3e0c7a7d55ccb492fb7f74bcad932d6c",
+      "actualSha256": "3955ff11d2010c759b4e6942c9e14bbc3e0c7a7d55ccb492fb7f74bcad932d6c",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/qsr/02-counter-menu.html",
+      "http": 200,
+      "expectedSha256": "1b81ce076a27d35cf7a8c7516a1deb66198f8845eec718eddce29c3a26c1ddaf",
+      "actualSha256": "1b81ce076a27d35cf7a8c7516a1deb66198f8845eec718eddce29c3a26c1ddaf",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/qsr/03-order-ready.html",
+      "http": 200,
+      "expectedSha256": "11d5d133075554c0cdbe36c365a595b12bd0afadbd9c429fa0ed161cf0d54097",
+      "actualSha256": "11d5d133075554c0cdbe36c365a595b12bd0afadbd9c429fa0ed161cf0d54097",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/qsr/04-lto-promo.html",
+      "http": 200,
+      "expectedSha256": "ab15bf15e8bbf29d5094558e7c578532a2b9f682d1f113d3536347924765fbe1",
+      "actualSha256": "ab15bf15e8bbf29d5094558e7c578532a2b9f682d1f113d3536347924765fbe1",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/qsr/05-combos-deals.html",
+      "http": 200,
+      "expectedSha256": "43efad9ce36d7b0a9cf68021597c3e885381f543c891c33b407b21bc6fc6c673",
+      "actualSha256": "43efad9ce36d7b0a9cf68021597c3e885381f543c891c33b407b21bc6fc6c673",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/qsr/06-beverages.html",
+      "http": 200,
+      "expectedSha256": "7480b40b4792847e7d643e1afc0f900888ef6efa4f1ab799be922928694e2bc4",
+      "actualSha256": "7480b40b4792847e7d643e1afc0f900888ef6efa4f1ab799be922928694e2bc4",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/qsr/07-mobile-pickup.html",
+      "http": 200,
+      "expectedSha256": "e53bde0ce3e4e92b79f66cd2f4779ece3dadc3952f22ee72d07fda914d1ce8d8",
+      "actualSha256": "e53bde0ce3e4e92b79f66cd2f4779ece3dadc3952f22ee72d07fda914d1ce8d8",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/qsr/08-rewards.html",
+      "http": 200,
+      "expectedSha256": "c28745c600b05981d69d4e2c3da569ede2ed7b73c1391dde1d2e707838dd459c",
+      "actualSha256": "c28745c600b05981d69d4e2c3da569ede2ed7b73c1391dde1d2e707838dd459c",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/qsr/09-hours-location.html",
+      "http": 200,
+      "expectedSha256": "775b5e502941464b6d58fcb434b86a9c174f2c33d94afb4a2e188755b6df75fa",
+      "actualSha256": "775b5e502941464b6d58fcb434b86a9c174f2c33d94afb4a2e188755b6df75fa",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/qsr/10-now-hiring.html",
+      "http": 200,
+      "expectedSha256": "721f2d6fa3184faaf6ab8f509baa95c1fab0a6cb052270def57ced36e3e1ebb6",
+      "actualSha256": "721f2d6fa3184faaf6ab8f509baa95c1fab0a6cb052270def57ced36e3e1ebb6",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/qsr/11-dominos-pizza-board.html",
+      "http": 200,
+      "expectedSha256": "9d63a26c4eb8cdd9663d521e12af9c20d5d5dbb63db1e39365aa75bf83f3f624",
+      "actualSha256": "9d63a26c4eb8cdd9663d521e12af9c20d5d5dbb63db1e39365aa75bf83f3f624",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/qsr/24-super-taco-flagship.html",
+      "http": 200,
+      "expectedSha256": "8e1ff2c090a5396609cf81d8d1d221e703d59626dd20127bf30f9b1e2b716dae",
+      "actualSha256": "8e1ff2c090a5396609cf81d8d1d221e703d59626dd20127bf30f9b1e2b716dae",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/qsr/25-super-taco-tacos.html",
+      "http": 200,
+      "expectedSha256": "f2bbede1e9924dbad8c9fed3098130d7144943d61d0c46fc42976769e667b961",
+      "actualSha256": "f2bbede1e9924dbad8c9fed3098130d7144943d61d0c46fc42976769e667b961",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/qsr/26-super-taco-burritos.html",
+      "http": 200,
+      "expectedSha256": "cccb2475be2ecc99eeb3d75d776a32ba2c1b4ee079f56342c70149712a679ff5",
+      "actualSha256": "cccb2475be2ecc99eeb3d75d776a32ba2c1b4ee079f56342c70149712a679ff5",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/qsr/27-super-taco-combos.html",
+      "http": 200,
+      "expectedSha256": "ef8c2a5a79ca527b7346fdb95d48d697da0d7598fc9e3484d9ebc1bed21db01a",
+      "actualSha256": "ef8c2a5a79ca527b7346fdb95d48d697da0d7598fc9e3484d9ebc1bed21db01a",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/qsr/redesign-coffee-v1-roasters-ledger.html",
+      "http": 200,
+      "expectedSha256": "e14447a58895521ed40ddfec1422e3def88e05433f1c6bedf8f2bc71714bf84d",
+      "actualSha256": "e14447a58895521ed40ddfec1422e3def88e05433f1c6bedf8f2bc71714bf84d",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/qsr/redesign-coffee-v2-morning-window.html",
+      "http": 200,
+      "expectedSha256": "a5e3354ac6579598bd4d207c187861fdcce1aa3dae2547a9fc30940810567e8d",
+      "actualSha256": "a5e3354ac6579598bd4d207c187861fdcce1aa3dae2547a9fc30940810567e8d",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/qsr/redesign-coffee-v3-ceramic-shelf.html",
+      "http": 200,
+      "expectedSha256": "1639af341bfa8fc3b37d19038fec3fb2f4d3964a7f3ce8bcc462d548588ef3f7",
+      "actualSha256": "1639af341bfa8fc3b37d19038fec3fb2f4d3964a7f3ce8bcc462d548588ef3f7",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/qsr/redesign-counter-v1-the-pass.html",
+      "http": 200,
+      "expectedSha256": "fc47d3cb0f6e6192b8a3742ee0767f1b8458d5a13e7bfa3f63b7e4bda85c5559",
+      "actualSha256": "fc47d3cb0f6e6192b8a3742ee0767f1b8458d5a13e7bfa3f63b7e4bda85c5559",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/qsr/redesign-counter-v2-market-mosaic.html",
+      "http": 200,
+      "expectedSha256": "7b1d815e0f13399004f0b439aa2395ce337d073748df58fdc40718ee5fdf33b8",
+      "actualSha256": "7b1d815e0f13399004f0b439aa2395ce337d073748df58fdc40718ee5fdf33b8",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/qsr/redesign-counter-v3-menu-folio.html",
+      "http": 200,
+      "expectedSha256": "b5a697f89e3d55f58e484da763be0920f625d14165a1093007d4ea9f9dc98725",
+      "actualSha256": "b5a697f89e3d55f58e484da763be0920f625d14165a1093007d4ea9f9dc98725",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/qsr/redesign-drive-thru-v1-lane-one.html",
+      "http": 200,
+      "expectedSha256": "a87e69f7063168b8cf084b55531bc3fa0139d0582531d54872b59906ddb08d95",
+      "actualSha256": "a87e69f7063168b8cf084b55531bc3fa0139d0582531d54872b59906ddb08d95",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/qsr/redesign-drive-thru-v2-market-board.html",
+      "http": 200,
+      "expectedSha256": "4ba4ebde6b17dafda34d4da2b4dce80f76cf1be7fe61cd1ccb6f5f7b52370b43",
+      "actualSha256": "4ba4ebde6b17dafda34d4da2b4dce80f76cf1be7fe61cd1ccb6f5f7b52370b43",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/qsr/redesign-drive-thru-v3-order-logic.html",
+      "http": 200,
+      "expectedSha256": "6f538024b50ec0cbb22b3ef2c12186d525b4364df31eb8684c988896347b70ee",
+      "actualSha256": "6f538024b50ec0cbb22b3ef2c12186d525b4364df31eb8684c988896347b70ee",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/qsr/redesign-pizza-v1-slice-signal.html",
+      "http": 200,
+      "expectedSha256": "114d75ad3f3901b0f2fa3aada4e3d14f4df8f7ff625e37df22666a6e888fec67",
+      "actualSha256": "114d75ad3f3901b0f2fa3aada4e3d14f4df8f7ff625e37df22666a6e888fec67",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/qsr/redesign-pizza-v2-oven-no7.html",
+      "http": 200,
+      "expectedSha256": "c0227285262522d98d9a5b75e530248bcf914693376040e561de59a5a1f8c0d1",
+      "actualSha256": "c0227285262522d98d9a5b75e530248bcf914693376040e561de59a5a1f8c0d1",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/qsr/redesign-pizza-v3-house-press.html",
+      "http": 200,
+      "expectedSha256": "c287e164aa316d64ff89aa862a955e6751fe4047c8bfc276767598b2cd19852c",
+      "actualSha256": "c287e164aa316d64ff89aa862a955e6751fe4047c8bfc276767598b2cd19852c",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/qsr/redesign-sushi-ramen-after-dark.html",
+      "http": 200,
+      "expectedSha256": "2aa92dd2c0732e2e94958b01c738e593b99306090e9cabcac3094ca150198912",
+      "actualSha256": "2aa92dd2c0732e2e94958b01c738e593b99306090e9cabcac3094ca150198912",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/real-estate/01-availability-flagship.html",
+      "http": 200,
+      "expectedSha256": "2a2d833079e340b56f6a76929c54746c7135cf9f1daee584f05f20179108bf48",
+      "actualSha256": "2a2d833079e340b56f6a76929c54746c7135cf9f1daee584f05f20179108bf48",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/retail/01-storefront-gallery-threshold.html",
+      "http": 200,
+      "expectedSha256": "29984028be436b734c1f8aecf2259273533f6601ee234472c745e5f06f15ae09",
+      "actualSha256": "29984028be436b734c1f8aecf2259273533f6601ee234472c745e5f06f15ae09",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/retail/02-storefront-aperture.html",
+      "http": 200,
+      "expectedSha256": "bece179c6b66427bf6d942258b54aea151c89c2c812bcac9d8e846bc56040678",
+      "actualSha256": "bece179c6b66427bf6d942258b54aea151c89c2c812bcac9d8e846bc56040678",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/retail/03-endcap-kinetic.html",
+      "http": 200,
+      "expectedSha256": "abb887cbfacf09cff934cfca64f13547857f3a5eb1acb92264f2777ac6c96a64",
+      "actualSha256": "abb887cbfacf09cff934cfca64f13547857f3a5eb1acb92264f2777ac6c96a64",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/retail/04-endcap-object-study.html",
+      "http": 200,
+      "expectedSha256": "1096ae8fb2677a9d3732b7f4005e0b62004accc10fab551ee452e2346f72b0d6",
+      "actualSha256": "1096ae8fb2677a9d3732b7f4005e0b62004accc10fab551ee452e2346f72b0d6",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/retail/05-endcap-drop-signal.html",
+      "http": 200,
+      "expectedSha256": "3aa5e035d6c4d0d65f599eb694cf827b2cdf7234c06fe6556e1db62eb6fd3c07",
+      "actualSha256": "3aa5e035d6c4d0d65f599eb694cf827b2cdf7234c06fe6556e1db62eb6fd3c07",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/retail/06-wayfinding-signal.html",
+      "http": 200,
+      "expectedSha256": "b0a5fde90001249355b67ddd466a5fb56ae8ecfe9bf0459c8825c2a96825a49e",
+      "actualSha256": "b0a5fde90001249355b67ddd466a5fb56ae8ecfe9bf0459c8825c2a96825a49e",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/retail/07-wayfinding-daylight.html",
+      "http": 200,
+      "expectedSha256": "9fe7fab3f97478e867ef9e111422024207ff95e1839c0a78dfca7553aeeaec54",
+      "actualSha256": "9fe7fab3f97478e867ef9e111422024207ff95e1839c0a78dfca7553aeeaec54",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/retail/08-wayfinding-monolith.html",
+      "http": 200,
+      "expectedSha256": "8e469d1e8a794f49f7ec0ec3421cf0ae869cb2d666f0c7042310f851cc42c4da",
+      "actualSha256": "8e469d1e8a794f49f7ec0ec3421cf0ae869cb2d666f0c7042310f851cc42c4da",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/veterinary/01-waiting-room-flagship.html",
+      "http": 200,
+      "expectedSha256": "4264eed1df27a9070d7464f04ddad7588981355d3bc894dde6eeee8a08138f9a",
+      "actualSha256": "4264eed1df27a9070d7464f04ddad7588981355d3bc894dde6eeee8a08138f9a",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/veterinary/02-adopt-gallery.html",
+      "http": 200,
+      "expectedSha256": "745f4130eb885f1cab5beda147285a854fa267461e4f98fd27426038f9bedbf4",
+      "actualSha256": "745f4130eb885f1cab5beda147285a854fa267461e4f98fd27426038f9bedbf4",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/worship/giving-v1-measured-future.html",
+      "http": 200,
+      "expectedSha256": "7646690e1b87eceab8249cb3e9bde112687f76bfc69405e7fbe001d6b17787db",
+      "actualSha256": "7646690e1b87eceab8249cb3e9bde112687f76bfc69405e7fbe001d6b17787db",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/worship/giving-v2-light-window.html",
+      "http": 200,
+      "expectedSha256": "a3e2207ca784cb90ede6b45315fbb4f9320f6b9e7b812de567ab0667be18ae1b",
+      "actualSha256": "a3e2207ca784cb90ede6b45315fbb4f9320f6b9e7b812de567ab0667be18ae1b",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/worship/giving-v3-one-more-seat.html",
+      "http": 200,
+      "expectedSha256": "4354bf75ba9abb4d555f041d2499183c36d0f7aab0f49104bbeb75e431ac5cbb",
+      "actualSha256": "4354bf75ba9abb4d555f041d2499183c36d0f7aab0f49104bbeb75e431ac5cbb",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/worship/lobby-v1-foyer-edit.html",
+      "http": 200,
+      "expectedSha256": "9754b143378e04a89dbd6bddb8e8fe239f89f14c4175994315622937f7222ba1",
+      "actualSha256": "9754b143378e04a89dbd6bddb8e8fe239f89f14c4175994315622937f7222ba1",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/worship/lobby-v2-campus-line.html",
+      "http": 200,
+      "expectedSha256": "2e7c4ce9feaf9361d1230d9ce796aae18678945675c5109b98618d6690c20bdd",
+      "actualSha256": "2e7c4ce9feaf9361d1230d9ce796aae18678945675c5109b98618d6690c20bdd",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/worship/lobby-v3-live-commons.html",
+      "http": 200,
+      "expectedSha256": "97f5e2e1e6587cbe013734b9dff532b26671a57e4fb68dc7f80c1ad3ebe06e01",
+      "actualSha256": "97f5e2e1e6587cbe013734b9dff532b26671a57e4fb68dc7f80c1ad3ebe06e01",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/worship/sermon-v1-deep-root.html",
+      "http": 200,
+      "expectedSha256": "c71ad7a502985c9fca53012b863f7add681ec78a5d872b8d5a16e3d987ac972e",
+      "actualSha256": "c71ad7a502985c9fca53012b863f7add681ec78a5d872b8d5a16e3d987ac972e",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/worship/sermon-v2-field-notes.html",
+      "http": 200,
+      "expectedSha256": "433c2b7f7eb36018de53f0be78308668c8316af28522150d645b2211516c65b8",
+      "actualSha256": "433c2b7f7eb36018de53f0be78308668c8316af28522150d645b2211516c65b8",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/worship/sermon-v3-confluence.html",
+      "http": 200,
+      "expectedSha256": "c0e239175f44c1c6216bf2a80bedefb341ecd125a8f17db0f848003c40b604f4",
+      "actualSha256": "c0e239175f44c1c6216bf2a80bedefb341ecd125a8f17db0f848003c40b604f4",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/worship/service-v1-now-next.html",
+      "http": 200,
+      "expectedSha256": "ec70a04a8424f32b94a411cf89207ad468ecb7ef04b226259a792f4740d116af",
+      "actualSha256": "ec70a04a8424f32b94a411cf89207ad468ecb7ef04b226259a792f4740d116af",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/worship/service-v2-campus-threshold.html",
+      "http": 200,
+      "expectedSha256": "f727c4da5197b1ee2f73fff75f73c3d091f579d9409430a140f971c5baea6aec",
+      "actualSha256": "f727c4da5197b1ee2f73fff75f73c3d091f579d9409430a140f971c5baea6aec",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/worship/service-v3-ceremonial.html",
+      "http": 200,
+      "expectedSha256": "cfae54f6be2fea7153483f8afbab9b90535ef20fddd1082b4924344750d1bc53",
+      "actualSha256": "cfae54f6be2fea7153483f8afbab9b90535ef20fddd1082b4924344750d1bc53",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/worship/song-v1-sunday-record.html",
+      "http": 200,
+      "expectedSha256": "029ccb24a34ee37969e6ad81d140016cd38aef686488ea39f45f4d14e2137e18",
+      "actualSha256": "029ccb24a34ee37969e6ad81d140016cd38aef686488ea39f45f4d14e2137e18",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/worship/song-v2-new-hymnal.html",
+      "http": 200,
+      "expectedSha256": "ff3be026b39e111257184df4794c0b73ea103c6af33bb4a4d5269bee1e9b1bef",
+      "actualSha256": "ff3be026b39e111257184df4794c0b73ea103c6af33bb4a4d5269bee1e9b1bef",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/worship/song-v3-sacred-frequency.html",
+      "http": 200,
+      "expectedSha256": "d62e305a7a965173a1304a7fff2f9be8639598b5ad59e68e5f855f699ebb39e0",
+      "actualSha256": "d62e305a7a965173a1304a7fff2f9be8639598b5ad59e68e5f855f699ebb39e0",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/worship/verse-v1-daybreak.html",
+      "http": 200,
+      "expectedSha256": "408368953363c0a86ddfbf6979bb1208eb9c3cdf8c90c362e216cb13e56689be",
+      "actualSha256": "408368953363c0a86ddfbf6979bb1208eb9c3cdf8c90c362e216cb13e56689be",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/worship/verse-v2-word-stands.html",
+      "http": 200,
+      "expectedSha256": "e3c9b6e89f32f3924ff2528259b27f446755f99031275effca55957c4365f9e7",
+      "actualSha256": "e3c9b6e89f32f3924ff2528259b27f446755f99031275effca55957c4365f9e7",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/worship/verse-v3-open-sky.html",
+      "http": 200,
+      "expectedSha256": "92ddcb2bc6d9b92742541981418abd9045dc423fe666bda07d7242928633e520",
+      "actualSha256": "92ddcb2bc6d9b92742541981418abd9045dc423fe666bda07d7242928633e520",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/worship/weekly-v1-one-invitation.html",
+      "http": 200,
+      "expectedSha256": "6294432d0adc60a7335daf24e3c683cd6ce822c7b63b7ceb9b02c3f902deaa25",
+      "actualSha256": "6294432d0adc60a7335daf24e3c683cd6ce822c7b63b7ceb9b02c3f902deaa25",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/worship/weekly-v2-weekline.html",
+      "http": 200,
+      "expectedSha256": "29a452dd716e5c6360c7b6412b9e27f18d589251a8d56ac27200dcd18e09f849",
+      "actualSha256": "29a452dd716e5c6360c7b6412b9e27f18d589251a8d56ac27200dcd18e09f849",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/worship/weekly-v3-three-ways-in.html",
+      "http": 200,
+      "expectedSha256": "53198db7def6330447028e935fbda9d0d9ab88e5f5c60222e4fcd0f4ffc19552",
+      "actualSha256": "53198db7def6330447028e935fbda9d0d9ab88e5f5c60222e4fcd0f4ffc19552",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/worship/welcome-v1-common-ground.html",
+      "http": 200,
+      "expectedSha256": "96f47090cc9289db9eac39b13acdbba1a2b2d6504cc4bf8e0e8df1a1c8033495",
+      "actualSha256": "96f47090cc9289db9eac39b13acdbba1a2b2d6504cc4bf8e0e8df1a1c8033495",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/worship/welcome-v2-sacred-light.html",
+      "http": 200,
+      "expectedSha256": "d415fb657e2ee99ae465b56e79210b52b2a762a00be6a1abc65953dc160917f8",
+      "actualSha256": "d415fb657e2ee99ae465b56e79210b52b2a762a00be6a1abc65953dc160917f8",
+      "matches": true
+    },
+    {
+      "path": "/templates/signage/worship/welcome-v3-open-door.html",
+      "http": 200,
+      "expectedSha256": "97994a5c2711b67dd2464c44873e1cc098171188cd2263cb35ac54aafab685dc",
+      "actualSha256": "97994a5c2711b67dd2464c44873e1cc098171188cd2263cb35ac54aafab685dc",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/_overhaul-gallery.html",
+      "http": 200,
+      "expectedSha256": "15ecb59992d1155fc8a527ebded40528bc0fae92578ddb2992402f0209e3375a",
+      "actualSha256": "15ecb59992d1155fc8a527ebded40528bc0fae92578ddb2992402f0209e3375a",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/es-christmas-flagship.html",
+      "http": 200,
+      "expectedSha256": "307b431a3031ef892ca3fd77ee7909482b376ca60fddd02100f9bdb09580f53b",
+      "actualSha256": "307b431a3031ef892ca3fd77ee7909482b376ca60fddd02100f9bdb09580f53b",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/es-christmas-v2.html",
+      "http": 200,
+      "expectedSha256": "14538b9b19dcadb2390c8823a4c17f9daa2a6aff0ad3bafcba119366fda0dcad",
+      "actualSha256": "14538b9b19dcadb2390c8823a4c17f9daa2a6aff0ad3bafcba119366fda0dcad",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/es-christmas.html",
+      "http": 200,
+      "expectedSha256": "92688ee4d8d8e920fca6e370f804ab70a7620553a9d0b24d8a99edd899c3c45c",
+      "actualSha256": "92688ee4d8d8e920fca6e370f804ab70a7620553a9d0b24d8a99edd899c3c45c",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/es-easter-v2.html",
+      "http": 200,
+      "expectedSha256": "c3453c45a73fb43119cc82a2342cdfa8719c4caff39ad60164f74ebe57faa166",
+      "actualSha256": "c3453c45a73fb43119cc82a2342cdfa8719c4caff39ad60164f74ebe57faa166",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/es-easter.html",
+      "http": 200,
+      "expectedSha256": "257609f3ea5d9e6cc31b700b473eb4db84e83fd1a1fd3e53aa8ab6fc4d64df43",
+      "actualSha256": "257609f3ea5d9e6cc31b700b473eb4db84e83fd1a1fd3e53aa8ab6fc4d64df43",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/es-halloween-moonlight.html",
+      "http": 200,
+      "expectedSha256": "5083d6a3679e9fff5bed851b217972adf2459ec50d9fce3253f06b0021bf85b3",
+      "actualSha256": "5083d6a3679e9fff5bed851b217972adf2459ec50d9fce3253f06b0021bf85b3",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/es-halloween-parade.html",
+      "http": 200,
+      "expectedSha256": "cf8ce413adac71c4b87bf184ca29cefb51aefec52d0d0a158b6cb814e13522cc",
+      "actualSha256": "cf8ce413adac71c4b87bf184ca29cefb51aefec52d0d0a158b6cb814e13522cc",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/es-halloween-storybook.html",
+      "http": 200,
+      "expectedSha256": "e7e4f6efda106711861b13ebdf9027fe3374045c10a198d4eba1a58c2364f12c",
+      "actualSha256": "e7e4f6efda106711861b13ebdf9027fe3374045c10a198d4eba1a58c2364f12c",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/es-halloween-v2.html",
+      "http": 200,
+      "expectedSha256": "cfa63da56f6094190a640709447e82417f6d4f17c960a1d87d5f72a6ce6b39a2",
+      "actualSha256": "cfa63da56f6094190a640709447e82417f6d4f17c960a1d87d5f72a6ce6b39a2",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/es-halloween.html",
+      "http": 200,
+      "expectedSha256": "a7a0a2f5d5592d2120da72a12aa8c287b81fa3bb34c9a4f640bf9211c5f8a7f7",
+      "actualSha256": "a7a0a2f5d5592d2120da72a12aa8c287b81fa3bb34c9a4f640bf9211c5f8a7f7",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/es-stpatricks-v2.html",
+      "http": 200,
+      "expectedSha256": "680130886412968180ec61a39f7229820f12ebfaff1d61865115cccf783269fd",
+      "actualSha256": "680130886412968180ec61a39f7229820f12ebfaff1d61865115cccf783269fd",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/es-stpatricks.html",
+      "http": 200,
+      "expectedSha256": "3e83f4403c937acf186454e57b23be3a51bd268dc90460f1ab5e506d9a936199",
+      "actualSha256": "3e83f4403c937acf186454e57b23be3a51bd268dc90460f1ab5e506d9a936199",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/es-thanksgiving-v2.html",
+      "http": 200,
+      "expectedSha256": "338fbac8641b93b04aed291e6aba61fc35d77fef42d27fa3c48788c32bc90dcc",
+      "actualSha256": "338fbac8641b93b04aed291e6aba61fc35d77fef42d27fa3c48788c32bc90dcc",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/es-thanksgiving.html",
+      "http": 200,
+      "expectedSha256": "7241af897208577a4b74449661f314fb257e5314db17c1ea8347caf92fdce1f7",
+      "actualSha256": "7241af897208577a4b74449661f314fb257e5314db17c1ea8347caf92fdce1f7",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/es-valentines-v2.html",
+      "http": 200,
+      "expectedSha256": "27997cab9ee05120a3dd183271993d814140a6624aaf192c2001dae697451cd2",
+      "actualSha256": "27997cab9ee05120a3dd183271993d814140a6624aaf192c2001dae697451cd2",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/es-valentines.html",
+      "http": 200,
+      "expectedSha256": "e2abf0c34e2acb0a0af8a4f29f387f16e2ee107ce5c5e8e41d309e33fb2a1950",
+      "actualSha256": "e2abf0c34e2acb0a0af8a4f29f387f16e2ee107ce5c5e8e41d309e33fb2a1950",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/hs-christmas-flagship.html",
+      "http": 200,
+      "expectedSha256": "3f513547a3ff29bd0ebd7fe9e6972196f756a38e251ce88f51c005253597c36a",
+      "actualSha256": "3f513547a3ff29bd0ebd7fe9e6972196f756a38e251ce88f51c005253597c36a",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/hs-christmas-v2.html",
+      "http": 200,
+      "expectedSha256": "13e356d06408f7997eb385ec8a4b59074c8ff3c9cd7ee121fb99c23589f07ae7",
+      "actualSha256": "13e356d06408f7997eb385ec8a4b59074c8ff3c9cd7ee121fb99c23589f07ae7",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/hs-christmas.html",
+      "http": 200,
+      "expectedSha256": "13bd3db803282816a9198120d230ae1be2ce2bd4cdc6bb73f0f06bf461fd2335",
+      "actualSha256": "13bd3db803282816a9198120d230ae1be2ce2bd4cdc6bb73f0f06bf461fd2335",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/hs-easter-portrait.html",
+      "http": 200,
+      "expectedSha256": "cea836278ec2da8245d19d1f4974f5671b5cafbf02d7209e4f2150e1abeec5f7",
+      "actualSha256": "cea836278ec2da8245d19d1f4974f5671b5cafbf02d7209e4f2150e1abeec5f7",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/hs-easter-v2.html",
+      "http": 200,
+      "expectedSha256": "cea836278ec2da8245d19d1f4974f5671b5cafbf02d7209e4f2150e1abeec5f7",
+      "actualSha256": "cea836278ec2da8245d19d1f4974f5671b5cafbf02d7209e4f2150e1abeec5f7",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/hs-easter.html",
+      "http": 200,
+      "expectedSha256": "cea836278ec2da8245d19d1f4974f5671b5cafbf02d7209e4f2150e1abeec5f7",
+      "actualSha256": "cea836278ec2da8245d19d1f4974f5671b5cafbf02d7209e4f2150e1abeec5f7",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/hs-halloween-editorial-after-dark.html",
+      "http": 200,
+      "expectedSha256": "1c4894310e280f39f3796db15701cf0153b66c9499834081ee5c7f375736daef",
+      "actualSha256": "1c4894310e280f39f3796db15701cf0153b66c9499834081ee5c7f375736daef",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/hs-halloween-fright-night-cinema.html",
+      "http": 200,
+      "expectedSha256": "f498655c351d6245b7cffd2aef9882a9f546b2b8c8190e5fb2a2c60169812084",
+      "actualSha256": "f498655c351d6245b7cffd2aef9882a9f546b2b8c8190e5fb2a2c60169812084",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/hs-halloween-midnight-gallery.html",
+      "http": 200,
+      "expectedSha256": "57dd428c8c03bc2811d9c18ba65a3fe47c03d58aae7d177f8d3c26af7c541e77",
+      "actualSha256": "57dd428c8c03bc2811d9c18ba65a3fe47c03d58aae7d177f8d3c26af7c541e77",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/hs-halloween-portrait.html",
+      "http": 200,
+      "expectedSha256": "a763fe60039018ead46da5c100d58fa3e4edac0a30849d8f89af9da18d63cde4",
+      "actualSha256": "a763fe60039018ead46da5c100d58fa3e4edac0a30849d8f89af9da18d63cde4",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/hs-halloween-v2.html",
+      "http": 200,
+      "expectedSha256": "a763fe60039018ead46da5c100d58fa3e4edac0a30849d8f89af9da18d63cde4",
+      "actualSha256": "a763fe60039018ead46da5c100d58fa3e4edac0a30849d8f89af9da18d63cde4",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/hs-halloween.html",
+      "http": 200,
+      "expectedSha256": "a763fe60039018ead46da5c100d58fa3e4edac0a30849d8f89af9da18d63cde4",
+      "actualSha256": "a763fe60039018ead46da5c100d58fa3e4edac0a30849d8f89af9da18d63cde4",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/hs-stpatricks-portrait.html",
+      "http": 200,
+      "expectedSha256": "7613273d06cb2c2db5cd9ddb5be72de864e30284286bd5b6df22d9e6da65d0f2",
+      "actualSha256": "7613273d06cb2c2db5cd9ddb5be72de864e30284286bd5b6df22d9e6da65d0f2",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/hs-stpatricks-v2.html",
+      "http": 200,
+      "expectedSha256": "7613273d06cb2c2db5cd9ddb5be72de864e30284286bd5b6df22d9e6da65d0f2",
+      "actualSha256": "7613273d06cb2c2db5cd9ddb5be72de864e30284286bd5b6df22d9e6da65d0f2",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/hs-stpatricks.html",
+      "http": 200,
+      "expectedSha256": "7613273d06cb2c2db5cd9ddb5be72de864e30284286bd5b6df22d9e6da65d0f2",
+      "actualSha256": "7613273d06cb2c2db5cd9ddb5be72de864e30284286bd5b6df22d9e6da65d0f2",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/hs-thanksgiving-portrait.html",
+      "http": 200,
+      "expectedSha256": "62fd9ca57486b7a8dd37a7c214a56657dd02604d0d1c1f95d6fad8b3742bed3f",
+      "actualSha256": "62fd9ca57486b7a8dd37a7c214a56657dd02604d0d1c1f95d6fad8b3742bed3f",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/hs-thanksgiving-v2.html",
+      "http": 200,
+      "expectedSha256": "62fd9ca57486b7a8dd37a7c214a56657dd02604d0d1c1f95d6fad8b3742bed3f",
+      "actualSha256": "62fd9ca57486b7a8dd37a7c214a56657dd02604d0d1c1f95d6fad8b3742bed3f",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/hs-thanksgiving.html",
+      "http": 200,
+      "expectedSha256": "62fd9ca57486b7a8dd37a7c214a56657dd02604d0d1c1f95d6fad8b3742bed3f",
+      "actualSha256": "62fd9ca57486b7a8dd37a7c214a56657dd02604d0d1c1f95d6fad8b3742bed3f",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/hs-valentines-portrait.html",
+      "http": 200,
+      "expectedSha256": "a2fff4cc78c5f8842586ce8933eeabc3fb8e4c0cccd3b0a275feddff8046bc22",
+      "actualSha256": "a2fff4cc78c5f8842586ce8933eeabc3fb8e4c0cccd3b0a275feddff8046bc22",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/hs-valentines-v2.html",
+      "http": 200,
+      "expectedSha256": "a2fff4cc78c5f8842586ce8933eeabc3fb8e4c0cccd3b0a275feddff8046bc22",
+      "actualSha256": "a2fff4cc78c5f8842586ce8933eeabc3fb8e4c0cccd3b0a275feddff8046bc22",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/hs-valentines.html",
+      "http": 200,
+      "expectedSha256": "a2fff4cc78c5f8842586ce8933eeabc3fb8e4c0cccd3b0a275feddff8046bc22",
+      "actualSha256": "a2fff4cc78c5f8842586ce8933eeabc3fb8e4c0cccd3b0a275feddff8046bc22",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/ms-christmas-flagship.html",
+      "http": 200,
+      "expectedSha256": "ae0f1f69585a562402114d5ec68cc2d61908ffc7d5b1e21ae05e6861de63fa59",
+      "actualSha256": "ae0f1f69585a562402114d5ec68cc2d61908ffc7d5b1e21ae05e6861de63fa59",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/ms-christmas-v2.html",
+      "http": 200,
+      "expectedSha256": "04f8c010d82f4e1c149db91cc1395176ab3b0dcb55b3303a40722e40c429e3aa",
+      "actualSha256": "04f8c010d82f4e1c149db91cc1395176ab3b0dcb55b3303a40722e40c429e3aa",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/ms-christmas.html",
+      "http": 200,
+      "expectedSha256": "fb3089e46ea54063393371bff8a63ad1fb50f776a0acf874962752ad93bf1c88",
+      "actualSha256": "fb3089e46ea54063393371bff8a63ad1fb50f776a0acf874962752ad93bf1c88",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/ms-easter-portrait.html",
+      "http": 200,
+      "expectedSha256": "8e83076d8104e25e66e93f7012603250ca788ab88c8e49b684ca8dafbee63f11",
+      "actualSha256": "8e83076d8104e25e66e93f7012603250ca788ab88c8e49b684ca8dafbee63f11",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/ms-easter-v2.html",
+      "http": 200,
+      "expectedSha256": "8e83076d8104e25e66e93f7012603250ca788ab88c8e49b684ca8dafbee63f11",
+      "actualSha256": "8e83076d8104e25e66e93f7012603250ca788ab88c8e49b684ca8dafbee63f11",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/ms-easter.html",
+      "http": 200,
+      "expectedSha256": "8e83076d8104e25e66e93f7012603250ca788ab88c8e49b684ca8dafbee63f11",
+      "actualSha256": "8e83076d8104e25e66e93f7012603250ca788ab88c8e49b684ca8dafbee63f11",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/ms-halloween-midnight-broadcast.html",
+      "http": 200,
+      "expectedSha256": "0fb67d22280be6d297a883628ada98e0b3e8ded501736d3f35511d3cdc808ad0",
+      "actualSha256": "0fb67d22280be6d297a883628ada98e0b3e8ded501736d3f35511d3cdc808ad0",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/ms-halloween-neon-circuit.html",
+      "http": 200,
+      "expectedSha256": "2035922cab462da9ef1276234f8ff241322f63c5151505f1c0b9795cf4716c50",
+      "actualSha256": "2035922cab462da9ef1276234f8ff241322f63c5151505f1c0b9795cf4716c50",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/ms-halloween-portrait.html",
+      "http": 200,
+      "expectedSha256": "9ed88f262c583c7de9df40ab0ceede798c96c7f634c41ae41bdea606b02f2e93",
+      "actualSha256": "9ed88f262c583c7de9df40ab0ceede798c96c7f634c41ae41bdea606b02f2e93",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/ms-halloween-spirit-zine.html",
+      "http": 200,
+      "expectedSha256": "e813506ef5ed5a6ee942c815c5e30e7f46d10684dca2b93293ebf9ab512cee35",
+      "actualSha256": "e813506ef5ed5a6ee942c815c5e30e7f46d10684dca2b93293ebf9ab512cee35",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/ms-halloween-v2.html",
+      "http": 200,
+      "expectedSha256": "9ed88f262c583c7de9df40ab0ceede798c96c7f634c41ae41bdea606b02f2e93",
+      "actualSha256": "9ed88f262c583c7de9df40ab0ceede798c96c7f634c41ae41bdea606b02f2e93",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/ms-halloween.html",
+      "http": 200,
+      "expectedSha256": "9ed88f262c583c7de9df40ab0ceede798c96c7f634c41ae41bdea606b02f2e93",
+      "actualSha256": "9ed88f262c583c7de9df40ab0ceede798c96c7f634c41ae41bdea606b02f2e93",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/ms-stpatricks-portrait.html",
+      "http": 200,
+      "expectedSha256": "d41ed012aad27c2b29618b5139c1273ab554ac248199121f5d3ff29b6afead9c",
+      "actualSha256": "d41ed012aad27c2b29618b5139c1273ab554ac248199121f5d3ff29b6afead9c",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/ms-stpatricks-v2.html",
+      "http": 200,
+      "expectedSha256": "d41ed012aad27c2b29618b5139c1273ab554ac248199121f5d3ff29b6afead9c",
+      "actualSha256": "d41ed012aad27c2b29618b5139c1273ab554ac248199121f5d3ff29b6afead9c",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/ms-stpatricks.html",
+      "http": 200,
+      "expectedSha256": "d41ed012aad27c2b29618b5139c1273ab554ac248199121f5d3ff29b6afead9c",
+      "actualSha256": "d41ed012aad27c2b29618b5139c1273ab554ac248199121f5d3ff29b6afead9c",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/ms-thanksgiving-portrait.html",
+      "http": 200,
+      "expectedSha256": "2e1dcc3c0fef7ddf7907e147297add913b1bacd0578f7b26a88a2dfb36c6186d",
+      "actualSha256": "2e1dcc3c0fef7ddf7907e147297add913b1bacd0578f7b26a88a2dfb36c6186d",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/ms-thanksgiving-v2.html",
+      "http": 200,
+      "expectedSha256": "2e1dcc3c0fef7ddf7907e147297add913b1bacd0578f7b26a88a2dfb36c6186d",
+      "actualSha256": "2e1dcc3c0fef7ddf7907e147297add913b1bacd0578f7b26a88a2dfb36c6186d",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/ms-thanksgiving.html",
+      "http": 200,
+      "expectedSha256": "2e1dcc3c0fef7ddf7907e147297add913b1bacd0578f7b26a88a2dfb36c6186d",
+      "actualSha256": "2e1dcc3c0fef7ddf7907e147297add913b1bacd0578f7b26a88a2dfb36c6186d",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/ms-valentines-portrait.html",
+      "http": 200,
+      "expectedSha256": "9dd043f6431a408c8d09cc35d41a0936dbe93d56ca94e7575c7b5ac5a4d74747",
+      "actualSha256": "9dd043f6431a408c8d09cc35d41a0936dbe93d56ca94e7575c7b5ac5a4d74747",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/ms-valentines-v2.html",
+      "http": 200,
+      "expectedSha256": "9dd043f6431a408c8d09cc35d41a0936dbe93d56ca94e7575c7b5ac5a4d74747",
+      "actualSha256": "9dd043f6431a408c8d09cc35d41a0936dbe93d56ca94e7575c7b5ac5a4d74747",
+      "matches": true
+    },
+    {
+      "path": "/holiday-templates/ms-valentines.html",
+      "http": 200,
+      "expectedSha256": "9dd043f6431a408c8d09cc35d41a0936dbe93d56ca94e7575c7b5ac5a4d74747",
+      "actualSha256": "9dd043f6431a408c8d09cc35d41a0936dbe93d56ca94e7575c7b5ac5a4d74747",
+      "matches": true
+    }
+  ]
+}
