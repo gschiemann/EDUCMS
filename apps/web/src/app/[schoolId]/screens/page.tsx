@@ -35,6 +35,7 @@ import { ScreenLocationModal } from '@/components/screens/ScreenLocationModal';
 import type { DisplayScheduleTargetRef } from '@/components/screens/DisplayScheduleModal';
 import { ScreenOperationsV3, type ScreensViewMode } from '@/components/screens/v3/ScreenOperationsV3';
 import type { FilterKey, OpsScreen } from '@/components/screens/v3/screenOps';
+import { SeatLimitNotice, isPairBillingError, type PairBillingError } from '@/components/billing/SeatLimitNotice';
 
 /**
  */
@@ -202,6 +203,8 @@ export default function ScreensPage() {
   const [pairGroupId, setPairGroupId] = useState('');
   const [pairing, setPairing] = useState(false);
   const [pairError, setPairError] = useState('');
+  // 2026-10-11 — a billing limit on pairing (full plan / trial) gets a one-tap fix inline.
+  const [pairBillingError, setPairBillingError] = useState<PairBillingError | null>(null);
   const [showQrForScan, setShowQrForScan] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState('');
   useEffect(() => {
@@ -229,6 +232,7 @@ export default function ScreensPage() {
     if (!pairCode.trim()) return;
     setPairing(true);
     setPairError('');
+    setPairBillingError(null);
     try {
       await apiFetch('/screens/pair', {
         method: 'POST',
@@ -244,7 +248,8 @@ export default function ScreensPage() {
       setPairGroupId('');
       refetchAll();
     } catch (e: any) {
-      setPairError(e.message || 'Invalid pairing code');
+      if (isPairBillingError(e)) setPairBillingError({ code: e.code, body: e.body });
+      else setPairError(e.message || 'Invalid pairing code');
     } finally {
       setPairing(false);
     }
@@ -386,6 +391,7 @@ export default function ScreensPage() {
                   {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
                 </select>
               </div>
+              {pairBillingError && <SeatLimitNotice error={pairBillingError} onRetry={handlePairScreen} />}
               {pairError && (
                 <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2">
                   <p className="text-sm text-red-600 font-medium">{pairError}</p>

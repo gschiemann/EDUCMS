@@ -23,6 +23,7 @@ import { useUIStore } from '@/store/ui-store';
 import { VERTICALS, isVertical, type Vertical } from '@cms/api-types';
 import { BrandMark } from '@/components/marketing/BrandMark';
 import { AddressAutocomplete } from '@/components/ui/AddressAutocomplete';
+import { useLocaleSwitch } from '@/i18n/I18nProvider';
 
 const NAVY = '#070a14';
 
@@ -198,6 +199,9 @@ export default function SignupPage() {
   const [error, setError] = useState('');
   const login = useUIStore((s) => s.login);
   const router = useRouter();
+  // 2026-10-11 — the language this page is shown in; trial reminder emails
+  // are written in it (License.noticeLocale).
+  const { locale } = useLocaleSwitch();
   const v = vertical ? SIGNUP_VERTICALS[vertical] : DEFAULT_SIGNUP;
 
   // Preselect the vertical from ?vertical= — the landing-page industry
@@ -235,6 +239,7 @@ export default function SignupPage() {
           address: address.trim() || undefined,
           latitude: addressLat ?? undefined,
           longitude: addressLon ?? undefined,
+          locale,
         }),
       });
       const data = await res.json();

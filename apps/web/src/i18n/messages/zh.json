@@ -4563,5 +4563,70 @@
     "failed": "打开此链接时出错，请重试。",
     "unreachable": "无法连接服务器 {url}。",
     "goToSignIn": "前往登录"
+  },
+  "billingTrial": {
+    "bar": {
+      "trialDays": "免费试用还剩 {days, plural, other {# 天}}",
+      "trialLastDay": "您的免费试用将于 {date} 结束",
+      "trialEnded": "您的免费试用已结束——屏幕仍在正常播放。添加付款方式即可配对新屏幕（{date} 前仍可编辑）。",
+      "trialEndedNotSetUp": "您的免费试用已结束。屏幕仍在正常播放——我们的团队会联系您设置账单。",
+      "locked": "添加付款方式前，您的账户为只读。屏幕和紧急警报照常工作。",
+      "pastDue": "您最近一次付款未成功。",
+      "cancelled": "您的方案已结束——控制台为只读。屏幕和紧急警报照常工作。",
+      "addPayment": "添加付款方式",
+      "updateCard": "更新银行卡",
+      "restartPlan": "重新开通方案",
+      "askAdmin": "请联系管理员添加付款方式。",
+      "details": "详情",
+      "hideToday": "今天不再显示"
+    },
+    "dialog": {
+      "title": "添加付款方式",
+      "close": "关闭",
+      "planLabel": "计费周期",
+      "annual": "按年",
+      "monthly": "按月",
+      "perScreenYear": "每块屏幕每年 {price}",
+      "perScreenMonth": "每块屏幕每月 {price}",
+      "saveBadge": "每块屏幕节省 {amount}",
+      "totalAnnual": "{count, plural, other {# 块屏幕}} × {price} = 每年 {total}",
+      "totalMonthly": "{count, plural, other {# 块屏幕}} × {price} = 每月 {total}",
+      "trialKept": "{date} 之前不会扣款——试用天数一天都不会少。",
+      "chargedToday": "今天开始计费。",
+      "adjustNote": "您可以在下一页修改屏幕数量。",
+      "error": "无法打开结账页面。",
+      "continue": "前往安全结账",
+      "secure": "银行卡信息在 Stripe 安全页面填写——VenueOS 不会看到或保存。",
+      "notSetUpTitle": "账单尚未设置",
+      "notSetUpBody": "此账户尚未开通在线付款。请发邮件给我们，我们会帮您设置——在此期间屏幕照常播放。"
+    },
+    "status": {
+      "allSetTitle": "一切就绪",
+      "allSetTrial": "您的银行卡已保存。{date} 开始计费——试用天数一天都不会少。",
+      "allSetActive": "您的方案已生效。收据会通过邮件发送，并显示在“发票”中。",
+      "finishing": "正在与 Stripe 完成确认——需要几秒钟。",
+      "trialBody": "{date} 结束。已使用 {used} / {limit} 块屏幕。",
+      "prices": "每块屏幕每月 {monthly}，或每块屏幕每年 {annual}。",
+      "trialEndedTitle": "您的免费试用已结束",
+      "lockedTitle": "您的账户为只读",
+      "cancelledTitle": "您的方案已结束",
+      "stillWorks": "您的屏幕会继续播放内容，紧急警报也照常工作。",
+      "trialEndedLimits": "暂时无法配对新屏幕。请在 {date} 前添加付款方式以继续编辑。",
+      "lockedLimits": "您可以查看所有内容，但在添加付款方式前无法修改。",
+      "pastDueBody": "Stripe 会自动重试扣款。请更新银行卡以保持正常运行——屏幕无论如何都会继续播放。",
+      "noChargeTrial": "免费试用期间不收费。"
+    },
+    "pair": {
+      "planFullTitle": "您的方案包含 {count, plural, other {# 块屏幕}}",
+      "planFullBody": "再添加一块只需 {price}——按比例计入下一张发票。",
+      "addAndPair": "添加 1 块屏幕（{price}）并配对",
+      "pricePerMonth": "{price}/月",
+      "pricePerYear": "{price}/年",
+      "trialFullTitle": "免费试用包含 {count} 块屏幕",
+      "trialFullBody": "添加付款方式即可配对更多屏幕——试用结束前不会扣款。",
+      "trialEndedTitle": "您的免费试用已结束",
+      "trialEndedBody": "添加付款方式即可配对新屏幕。已有的屏幕会继续播放。",
+      "failed": "无法为您的方案添加屏幕。"
+    }
   }
 }

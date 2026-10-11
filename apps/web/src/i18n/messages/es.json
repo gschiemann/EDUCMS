@@ -4563,5 +4563,70 @@
     "failed": "Algo salió mal al abrir este enlace. Inténtalo de nuevo.",
     "unreachable": "No se puede conectar con el servidor en {url}.",
     "goToSignIn": "Ir a iniciar sesión"
+  },
+  "billingTrial": {
+    "bar": {
+      "trialDays": "{days, plural, one {Queda # día} other {Quedan # días}} de tu prueba gratuita",
+      "trialLastDay": "Tu prueba gratuita termina el {date}",
+      "trialEnded": "Tu prueba gratuita terminó: tus pantallas siguen funcionando. Agrega un pago para vincular pantallas nuevas (puedes editar hasta el {date}).",
+      "trialEndedNotSetUp": "Tu prueba gratuita terminó. Tus pantallas siguen funcionando; nuestro equipo te contactará para configurar la facturación.",
+      "locked": "Tu cuenta está en solo lectura hasta que agregues un pago. Las pantallas y las alertas de emergencia siguen funcionando.",
+      "pastDue": "Tu último pago no se pudo procesar.",
+      "cancelled": "Tu plan terminó: el panel está en solo lectura. Las pantallas y las alertas de emergencia siguen funcionando.",
+      "addPayment": "Agregar pago",
+      "updateCard": "Actualizar tarjeta",
+      "restartPlan": "Reactivar plan",
+      "askAdmin": "Pide a un administrador que agregue el pago.",
+      "details": "Detalles",
+      "hideToday": "Ocultar hasta mañana"
+    },
+    "dialog": {
+      "title": "Agregar pago",
+      "close": "Cerrar",
+      "planLabel": "Periodo de facturación",
+      "annual": "Anual",
+      "monthly": "Mensual",
+      "perScreenYear": "{price} por pantalla / año",
+      "perScreenMonth": "{price} por pantalla / mes",
+      "saveBadge": "Ahorra {amount} por pantalla",
+      "totalAnnual": "{count, plural, one {# pantalla} other {# pantallas}} × {price} = {total} al año",
+      "totalMonthly": "{count, plural, one {# pantalla} other {# pantallas}} × {price} = {total} al mes",
+      "trialKept": "No se te cobrará hasta el {date}: conservas todos los días de prueba.",
+      "chargedToday": "La facturación empieza hoy.",
+      "adjustNote": "Puedes cambiar el número de pantallas en la siguiente página.",
+      "error": "No se pudo abrir el pago.",
+      "continue": "Continuar al pago seguro",
+      "secure": "Tu tarjeta se ingresa en la página segura de Stripe; VenueOS nunca la ve ni la guarda.",
+      "notSetUpTitle": "La facturación aún no está configurada",
+      "notSetUpBody": "Los pagos en línea aún no están activados para esta cuenta. Escríbenos y te ayudamos; mientras tanto, tus pantallas siguen funcionando."
+    },
+    "status": {
+      "allSetTitle": "¡Todo listo!",
+      "allSetTrial": "Tu tarjeta quedó guardada. La facturación empieza el {date}: conservas todos los días de prueba.",
+      "allSetActive": "Tu plan está activo. Los recibos llegan por correo y aparecen en Facturas.",
+      "finishing": "Terminando con Stripe; tarda unos segundos.",
+      "trialBody": "Termina el {date}. {used} de {limit} pantallas en uso.",
+      "prices": "{monthly} por pantalla al mes, o {annual} por pantalla al año.",
+      "trialEndedTitle": "Tu prueba gratuita terminó",
+      "lockedTitle": "Tu cuenta está en solo lectura",
+      "cancelledTitle": "Tu plan terminó",
+      "stillWorks": "Tus pantallas siguen mostrando su contenido y las alertas de emergencia siguen funcionando.",
+      "trialEndedLimits": "No se pueden vincular pantallas nuevas. Agrega un pago antes del {date} para seguir editando.",
+      "lockedLimits": "Puedes ver todo, pero los cambios están en pausa hasta que agregues un pago.",
+      "pastDueBody": "Stripe volverá a intentarlo automáticamente. Actualiza tu tarjeta para que todo siga funcionando; tus pantallas siguen activas de todos modos.",
+      "noChargeTrial": "Sin cargo durante tu prueba gratuita."
+    },
+    "pair": {
+      "planFullTitle": "Tu plan cubre {count, plural, one {# pantalla} other {# pantallas}}",
+      "planFullBody": "Agrega una más por {price}, prorrateado en tu próxima factura.",
+      "addAndPair": "Agregar 1 pantalla ({price}) y vincular",
+      "pricePerMonth": "{price}/mes",
+      "pricePerYear": "{price}/año",
+      "trialFullTitle": "Tu prueba gratuita incluye {count} pantallas",
+      "trialFullBody": "Agrega un pago para vincular más; no se te cobrará hasta que termine tu prueba.",
+      "trialEndedTitle": "Tu prueba gratuita terminó",
+      "trialEndedBody": "Agrega un pago para vincular pantallas nuevas. Las que ya tienes siguen funcionando.",
+      "failed": "No se pudo agregar una pantalla a tu plan."
+    }
   }
 }

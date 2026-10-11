@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from 'react';
 import jsQR from 'jsqr';
 import { apiFetch } from '@/lib/api-client';
 import { clog } from '@/lib/client-logger';
+import { SeatLimitNotice, isPairBillingError, type PairBillingError } from '@/components/billing/SeatLimitNotice';
 
 type Phase = 'idle' | 'scanning' | 'pairing' | 'success' | 'error';
 
@@ -21,6 +22,8 @@ export default function PairPage() {
 
   const [phase, setPhase] = useState<Phase>('idle');
   const [error, setError] = useState<string>('');
+  // 2026-10-11 — a billing limit (full plan / trial) gets a one-tap fix inline.
+  const [billingError, setBillingError] = useState<{ err: PairBillingError; code: string } | null>(null);
   const [pairedName, setPairedName] = useState<string>('');
   const [manualCode, setManualCode] = useState<string>('');
 
@@ -42,6 +45,7 @@ export default function PairPage() {
   const submitPairingCode = async (code: string) => {
     setPhase('pairing');
     setError('');
+    setBillingError(null);
     clog.info('pair', 'Submitting pairing code', { code: code.trim().toUpperCase().slice(0, 6) });
     try {
       const res: any = await apiFetch('/screens/pair', {
@@ -53,7 +57,8 @@ export default function PairPage() {
       setPhase('success');
     } catch (e: any) {
       clog.error('pair', 'Pair failed', { message: e?.message });
-      setError(e?.message || 'Invalid pairing code');
+      if (isPairBillingError(e)) setBillingError({ err: { code: e.code, body: e.body }, code });
+      else setError(e?.message || 'Invalid pairing code');
       setPhase('error');
     }
   };
@@ -187,6 +192,9 @@ export default function PairPage() {
         </div>
 
         <div className="p-4 space-y-3">
+          {billingError && (
+            <SeatLimitNotice error={billingError.err} onRetry={() => submitPairingCode(billingError.code)} />
+          )}
           {error && (
             <div
               role="alert"
