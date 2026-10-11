@@ -81,7 +81,29 @@ import { otaCheckAnswered } from './otaAttempt';
 // person's refresh is always honoured; a SYSTEM refresh (wedge detector,
 // rendition swap) is declined by a screen that can prove it is painting and
 // fetching; a waiting web bundle is picked up only when nothing is on glass.
-import { admitRefresh, bundleReloadIdle, manifestRefreshOrigin, pushRefreshOrigin, type LiveEvidence, type RefreshAdmission, type RefreshOrigin } from './refreshAdmission';
+import { admitRefresh, manifestRefreshOrigin, pushRefreshOrigin, type LiveEvidence, type RefreshAdmission, type RefreshOrigin } from './refreshAdmission';
+// Off-hours background update (2026-10-10): a newer bundle is PREPARED while
+// content plays and APPLIED only in the screen's off-hours window, at an item
+// boundary, under the last frame. Decisions: offHoursUpdate.ts; cover frame:
+// updateCover.ts (+ the layout's inline first-paint script).
+import {
+  BOUNDARY_WAIT_CAP_MS,
+  PREPARE_MAX_ATTEMPTS,
+  UPDATE_COVER_KEY,
+  UPDATE_EVIDENCE_KEY,
+  UPDATE_TICK_MS,
+  buildUpdateEvidence,
+  convergenceHoldUntil as convergenceHoldUntilFn,
+  decideUpdateApply,
+  parseDisplayWindows,
+  parseUpdateAppliedRecord,
+  resolveUpdateZone,
+  type UpdateBoundary,
+  type UpdateEvidenceReport,
+  type UpdateWindowKind,
+} from './offHoursUpdate';
+import { captureCoverFrame, removeUpdateCover, writeUpdateCover } from './updateCover';
+import type { SoftWindow } from './softSchedule';
 import { createDeviceDiagnosticsUploader, installDeviceDiagnosticsUploader } from './deviceDiagnostics';
 import { createMediaStallDetector, setActiveMediaStalled, isActiveMediaStalled } from './mediaStallWatchdog';
 // 2026-08-30 deep audit B-P0-1/2/3 — wrap-aware schedule windows + the
@@ -123,6 +145,7 @@ import {
   downloadReportRefused,
   loopReportRefused,
   loopReportDue,
+  updateReportRefused,
   LOOP_REPORT_RETRY_MS,
   initialTelemetryDelayMs,
   nextTelemetryDelayMs,
@@ -171,6 +194,8 @@ import {
   precachePlaylist,
   lookupCached,
   precacheAppShell,
+  prepareShellForUpdate,
+  armShellSwap,
   precacheEmergency,
   getCacheStatus,
   formatBytes,
@@ -1034,6 +1059,26 @@ function cacheEmergency(payload: any | null) {
     }));
   } catch {}
 }
+/** sessionStorage, or null where reading it throws (Safari private mode, some WebViews). */
+function safeSessionStorage(): Storage | null {
+  try {
+    if (typeof window === 'undefined') return null;
+    const st = window.sessionStorage;
+    return st || null;
+  } catch {
+    return null;
+  }
+}
+
+/** The box's own IANA zone, when it can say — the off-hours update's fallback zone. */
+function deviceTimeZone(): string | null {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+  } catch {
+    return null;
+  }
+}
+
 function readCachedEmergency(): any | null {
   try {
     const raw = localStorage.getItem(LS_EMERGENCY_CACHE);
@@ -3426,6 +3471,8 @@ function PlayerPage() {
   }, []);
   const [pairingCode, setPairingCode] = useState<string | null>(null);
   const [screenId, setScreenId] = useState<string | null>(null);
+  const screenIdRef = useRef<string | null>(null);
+  useEffect(() => { screenIdRef.current = screenId; }, [screenId]);
   const [tenantId, setTenantId] = useState<string | null>(null);
   // Operator-facing tenant/account name — pulled from the manifest so
   // the player info overlay can show "paired with: <tenant>". The ID
@@ -3555,6 +3602,35 @@ function PlayerPage() {
     openInfoOverlay(source, input);
     return true;
   }, [openInfoOverlay]);
+  // ── Off-hours background update (2026-10-10) ────────────────────────────
+  // What the 15-min build-info check found, and how far the background
+  // preparation got. Read by the apply tick (the bundle-drift effect below)
+  // and by the item-boundary hook in `advanceSlide` / the heartbeat.
+  const pendingUpdateRef = useRef<{
+    mine: string; theirs: string; by: 'bundleId' | 'sha'; detectedAt: number;
+    prepared: boolean; prepareAttempts: number; preparing: boolean; boundaryArmedAt: number;
+  } | null>(null);
+  // Set when the window is open and the screen is waiting for the next item
+  // boundary; the advance path runs it INSTEAD of advancing (the reload lands
+  // where a cut would have been). Cleared by whoever consumes it.
+  const updateAtBoundaryRef = useRef<(() => void) | null>(null);
+  const updateApplyingRef = useRef(false);
+  // The screen's display windows (both arrays) from the last manifest that
+  // carried a `display` block — the zone and the display-OFF test read them.
+  const updateWindowsRef = useRef<SoftWindow[] | null>(null);
+  // The completed apply record from the PREVIOUS document (this one came up
+  // under its cover), until the telemetry POST has carried it.
+  const updateEvidenceRef = useRef<UpdateEvidenceReport | null>(null);
+  const updateReportBlockedUntilRef = useRef(0);
+  const updateLastDecisionRef = useRef<string>('');
+  /** Run the armed off-hours apply at this item boundary instead of advancing. True when it ran. */
+  const takeUpdateBoundary = (): boolean => {
+    const fn = updateAtBoundaryRef.current;
+    if (!fn) return false;
+    updateAtBoundaryRef.current = null;
+    fn();
+    return true;
+  };
   const [exitUnavailable, setExitUnavailable] = useState(false);
   // 2026-07-01 — LAUNCH-SPRINT player deep pass, blank-screen class (b):
   // "an asset URL 404s mid-playlist." A single broken item was already
@@ -5197,7 +5273,10 @@ function PlayerPage() {
   useEffect(() => { playableAtRef.current = playableAt; }, [playableAt]);
   /** Free-run advance to the next PLAYABLE slot; the same slot when nothing else is. */
   const advanceSlide = useCallback(() => {
+    // Off-hours update (2026-10-10): an armed apply takes this boundary.
+    if (takeUpdateBoundary()) return;
     setCurrentIndex((prev) => nextPlayableCounter(prev, sortedItemsRef.current.length, playableAtRef.current));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   // Signature of the current playlist items + template so applyManifest
   // can short-circuit when the manifest poll returned the same content
@@ -5536,6 +5615,21 @@ function PlayerPage() {
     const video = !emergencyOn && !(playlist as any)?.template && displayIndex !== null &&
       String(sorted[displayIndex]?.asset?.mimeType || '').startsWith('video/');
     renderStateRef.current = { rendering, sig: sig.slice(0, 128), kind, video };
+    // Off-hours update (2026-10-10): this document may have come up under the
+    // previous document's last frame. Content on the glass is the moment to
+    // take that cover down; the completed record becomes the `update` block
+    // of the next telemetry report. A no-op on every other render.
+    if (rendering && typeof document !== 'undefined') {
+      try {
+        const done = removeUpdateCover(document, safeSessionStorage(), Date.now());
+        if (done) {
+          const mine = readOwnBundleId() || readOwnBundleSha() || null;
+          updateEvidenceRef.current = buildUpdateEvidence(done, mine);
+          const e = updateEvidenceRef.current;
+          console.log(`[bundle-update] applied ${e.fromBundleId ?? '?'} → ${e.toBundleId ?? '?'} (${e.window} window, ${e.zone} from ${e.zoneSource}, cover ${e.capture}, blank ${e.blankMs ?? '?'} ms, covered ${e.coverMs ?? '?'} ms, converged=${e.converged})`);
+        }
+      } catch { /* cover bookkeeping must never touch playback */ }
+    }
   }, [phase, playlist, playbackStopped, activeEmergency, allAssetsFailed, normalFilesSetAside, allItemsUnplayable, mediaReady, activeSlot.waitingForDownload, displayIndex, sorted]);
   // An assignment still downloading must not replace the reboot fallback.
   // Persist the selected payload only once its media is ready on this page.
@@ -6711,6 +6805,13 @@ function PlayerPage() {
       } catch (e) {
         console.warn('[display] could not install soft schedule:', (e as Error)?.message);
       }
+      // Off-hours update (2026-10-10): BOTH display arrays, for the zone and
+      // the display-OFF test. An absent block (emergency manifest) keeps the
+      // last known windows — the same "absent changes nothing" rule.
+      try {
+        const windows = parseDisplayWindows(manifest.display);
+        if (windows !== null) updateWindowsRef.current = windows;
+      } catch { /* diagnostics only */ }
       if (cw && ch && typeof document !== 'undefined') {
         try {
           // Persist for the next boot — pin script reads this from
@@ -7705,6 +7806,9 @@ function PlayerPage() {
         // What this screen measured at a solo video's loop seam (2026-09-29);
         // sent only when a boundary was observed since the last report.
         loop: loopReportDue(nowMs, loopReportBlockedUntilRef.current) ? loopBoundaryTracker.take() : null,
+        // The off-hours update this document came up from, once (2026-10-10).
+        // Held back for a window after the API refused it (an older API).
+        update: nowMs >= updateReportBlockedUntilRef.current ? updateEvidenceRef.current : null,
         // The large file downloading right now, and whether the previous
         // content is held on glass meanwhile (2026-09-27). Rides inside the
         // cache block; the dashboard reads it as download progress.
@@ -7758,9 +7862,18 @@ function PlayerPage() {
         downloadReportAllowedRef.current = false;
         console.warn('[Player] the server refused the download progress report — not sending it again this session');
       }
+      if (updateReportRefused(status, body)) {
+        updateReportBlockedUntilRef.current = nowMs + LOOP_REPORT_RETRY_MS;
+        console.warn('[Player] the server refused the update-applied report — holding it back for 10 minutes');
+      }
       const outcome = outcomeFromStatus(status);
       if (outcome === 'ok') {
         telemetryLastPostAtRef.current = nowMs;
+        if (body.update) {
+          // Carried. One row per deploy per screen — never send it twice.
+          updateEvidenceRef.current = null;
+          try { safeSessionStorage()?.removeItem(UPDATE_EVIDENCE_KEY); } catch { /* best effort */ }
+        }
         // Commit the proof counters ONLY now — the server has it.
         if (proof) commitRenderProof(proof.block.frames, proof.isIdleLane, nowMs);
         if (data) handleHeartbeatOta(data, 'telemetry');
@@ -7995,11 +8108,143 @@ function PlayerPage() {
     if (!myShaShort && !myBundleId) return;
 
     let cancelled = false;
-    let scheduledReloadTimer: ReturnType<typeof setTimeout> | null = null;
+
+    // ── Off-hours background update (2026-10-10) ──────────────────────────
+    // Drift no longer schedules a reload. It PREPARES (the service worker
+    // pins the new document + chunks while content plays) and then a 30 s
+    // tick asks `decideUpdateApply` whether THIS moment is inside the
+    // screen's off-hours window: a scheduled display-OFF window or the soft
+    // blank, nothing on the glass (the idle rule), or 03:00–04:00 in the
+    // screen's zone — at the next item boundary, under the last frame
+    // (`captureCoverFrame` → sessionStorage → the layout's inline script
+    // paints it first in the new document). Never during an emergency, a
+    // large download, an operator pause or a sync-locked group; a missed
+    // window waits for the next one. The operator's Refresh is a separate
+    // path and still reloads at once.
+
+    // A document that came up from an applied update and STILL runs the old
+    // bundle (CDN skew, a build-info env that drifts) holds off for hours
+    // rather than reloading every night for nothing.
+    let convergenceHoldUntil = 0;
+    try {
+      const st = safeSessionStorage();
+      const applied = parseUpdateAppliedRecord(st?.getItem(UPDATE_EVIDENCE_KEY)) ?? parseUpdateAppliedRecord(st?.getItem(UPDATE_COVER_KEY));
+      convergenceHoldUntil = convergenceHoldUntilFn(applied, myBundleId || myShaShort || null);
+      if (convergenceHoldUntil > Date.now()) {
+        console.warn(`[bundle-update] this document still runs ${applied?.from ?? '?'} after an applied update — holding further updates for ${Math.round((convergenceHoldUntil - Date.now()) / 60000)} min`);
+      }
+    } catch { /* diagnostics only */ }
+
+    const prepareIfNeeded = async () => {
+      const p = pendingUpdateRef.current;
+      if (!p || p.prepared || p.preparing || cancelled) return;
+      if (cacheDriveRef.current === 'unavailable') return; // nothing to prepare with; the reload is network-served as always
+      if (p.prepareAttempts >= PREPARE_MAX_ATTEMPTS) return;
+      p.preparing = true;
+      p.prepareAttempts += 1;
+      try {
+        const r = await prepareShellForUpdate();
+        if (cancelled || pendingUpdateRef.current !== p) return;
+        if (r.unavailable) p.prepareAttempts = PREPARE_MAX_ATTEMPTS; // an older worker never answers — do not wait on it
+        p.prepared = r.ok;
+        console.log(`[bundle-update] shell ${r.ok ? 'prepared on disk' : 'NOT prepared'} (${r.count ?? 0} files, ${r.added ?? 0} added, ${r.failures ?? 0} failed, attempt ${p.prepareAttempts}/${PREPARE_MAX_ATTEMPTS})`);
+      } catch (e) {
+        console.warn('[bundle-update] shell preparation failed:', (e as Error)?.message);
+      } finally {
+        p.preparing = false;
+      }
+    };
+
+    const applyUpdate = async (windowKind: UpdateWindowKind, boundary: UpdateBoundary) => {
+      const p = pendingUpdateRef.current;
+      if (!p || cancelled || updateApplyingRef.current) return;
+      updateApplyingRef.current = true;
+      updateAtBoundaryRef.current = null;
+      try {
+        // The hard exclusions, re-checked at the moment of truth (a boundary
+        // can arrive minutes after it was armed).
+        const ev = liveEvidence();
+        if (ev.emergency || largeDownloadRef.current || playbackStoppedRef.current || (windowKind === 'nightly' && syncActiveRef.current)) {
+          console.log('[bundle-update] apply withdrawn at the boundary — state changed');
+          updateApplyingRef.current = false;
+          return;
+        }
+        const zone = resolveUpdateZone(updateWindowsRef.current, deviceTimeZone());
+        const frame = await captureCoverFrame(document);
+        if (cancelled) { updateApplyingRef.current = false; return; }
+        const navigatedAtMs = Date.now();
+        const st = safeSessionStorage();
+        if (st) {
+          writeUpdateCover(st, {
+            v: 1, from: p.mine, to: p.theirs, window: windowKind, boundary, zone: zone.zone, zoneSource: zone.source,
+            capture: frame.capture, navigatedAtMs, kind: frame.kind, data: frame.data, color: frame.color, w: frame.w, h: frame.h,
+          });
+        }
+        // The next navigation is served from the pinned shell (one-shot).
+        if (cacheDriveRef.current !== 'unavailable') await armShellSwap(120_000);
+        console.log(`[bundle-update] applying by=${p.by} ${p.mine} → ${p.theirs} — ${windowKind} window, at ${boundary}, zone ${zone.zone} (${zone.source}), cover ${frame.capture}`);
+        // Record BEFORE navigating so the floor holds even if the reload is async.
+        lastBundleReloadAtRef.current = Date.now();
+        hardCacheBustingReload();
+      } catch (e) {
+        updateApplyingRef.current = false;
+        console.warn('[bundle-update] apply failed; will retry on the next tick:', (e as Error)?.message);
+      }
+    };
+
+    const evaluate = () => {
+      const p = pendingUpdateRef.current;
+      if (!p || cancelled || updateApplyingRef.current) return;
+      const now = Date.now();
+      if (convergenceHoldUntil > now) return;
+      const ev = liveEvidence();
+      const zone = resolveUpdateZone(updateWindowsRef.current, deviceTimeZone());
+      const decision = decideUpdateApply({
+        pending: true,
+        prepared: p.prepared,
+        prepareAttempts: p.prepareAttempts,
+        cacheDrive: cacheDriveRef.current,
+        nowMs: now,
+        lastReloadAtMs: lastBundleReloadAtRef.current,
+        minReloadGapMs: MIN_BUNDLE_RELOAD_GAP_MS,
+        screenId: screenIdRef.current,
+        zone,
+        windows: updateWindowsRef.current,
+        softBlank: softBlankRef.current,
+        emergency: ev.emergency,
+        largeDownload: !!largeDownloadRef.current,
+        paused: playbackStoppedRef.current,
+        syncActive: syncActiveRef.current,
+        evidence: ev,
+        hasItemBoundary: sortedItemsRef.current.length > 1,
+      });
+      const label = decision.action === 'apply' ? `apply:${decision.window}:${decision.boundary}` : `wait:${decision.reason}`;
+      if (label !== updateLastDecisionRef.current) {
+        updateLastDecisionRef.current = label;
+        if (decision.action === 'wait') {
+          // "waiting for idle" is matched by the live-deployment spec — keep the phrase.
+          console.log(`[bundle-drift] content playing — waiting for idle or the off-hours window (${decision.reason}; zone ${zone.zone} from ${zone.source}; shell ${p.prepared ? 'prepared' : 'not prepared'})`);
+        }
+      }
+      if (decision.action === 'wait') {
+        if (updateAtBoundaryRef.current) { updateAtBoundaryRef.current = null; p.boundaryArmedAt = 0; }
+        return;
+      }
+      if (decision.boundary === 'now') { void applyUpdate(decision.window, 'now'); return; }
+      // Wait for the next item boundary, but not forever: a long clip or a
+      // stuck advance must not cost the night.
+      if (p.boundaryArmedAt && now - p.boundaryArmedAt >= BOUNDARY_WAIT_CAP_MS) { void applyUpdate(decision.window, 'now'); return; }
+      if (!updateAtBoundaryRef.current) {
+        p.boundaryArmedAt = now;
+        const windowKind = decision.window;
+        updateAtBoundaryRef.current = () => { void applyUpdate(windowKind, 'item'); };
+        console.log(`[bundle-update] ${windowKind} window open — applying at the next item boundary`);
+      }
+    };
 
     const sameOriginBuildInfoUrl = '/api/build-info?playerPolicy=idle';
     const check = async () => {
-      if (cancelled || scheduledReloadTimer) return;
+      if (cancelled) return;
       try {
         const res = await fetch(sameOriginBuildInfoUrl, { cache: 'no-store' });
         if (!res.ok) return;
@@ -8016,68 +8261,51 @@ function PlayerPage() {
         const mine = useBundleId ? myBundleId : myShaShort;
         const theirs = useBundleId ? serverBundleId : serverShaShort;
         if (!mine || !theirs) return;
-        if (theirs === mine) { bundleDriftSinceRef.current = null; return; }
-        const myShaShortLabel = mine;
-        const serverShaShortLabel = theirs;
+        if (theirs === mine) {
+          bundleDriftSinceRef.current = null;
+          if (pendingUpdateRef.current) console.log('[bundle-update] server converged on this bundle — nothing pending');
+          pendingUpdateRef.current = null;
+          updateAtBoundaryRef.current = null;
+          return;
+        }
         // Keep the first observation for diagnostics; elapsed time never
         // grants permission to interrupt playback.
         if (!bundleDriftSinceRef.current) bundleDriftSinceRef.current = Date.now();
-        // Mismatch — server has a different deployed SHA than us.
-        // Schedule a soft reload in 60-300s. The delay both spreads
-        // fleet load and gives the operator a chance to dismiss
-        // (future: a "Refresh queued in N s" toast with cancel).
-        const delay = 60_000 + Math.floor(Math.random() * 240_000);
         console.log(
-          `[bundle-drift] by=${useBundleId ? 'bundleId' : 'sha'} mine=${myShaShortLabel} server=${serverShaShortLabel} — checking for idle in ${Math.round(delay / 1000)}s`,
+          `[bundle-drift] by=${useBundleId ? 'bundleId' : 'sha'} mine=${mine} server=${theirs} — preparing in the background; applies in the off-hours window`,
         );
-        scheduledReloadTimer = setTimeout(() => {
-          // Re-let the next poll schedule its own timer once this one
-          // resolves (reload or defer). Cleared in every branch below.
-          const clearTimer = () => { scheduledReloadTimer = null; };
-
-          // Don't reload if there's an active emergency on screen —
-          // that override is more important than picking up a JS fix.
-          // The reloader will catch this on the next poll cycle.
-          const cachedEm = readCachedEmergency();
-          if (cachedEm) {
-            console.log('[bundle-drift] emergency active — deferring reload');
-            clearTimer();
-            return;
-          }
-          // Reload-loop floor (2026-06-27). If we already fired a
-          // bundle-drift reload very recently, do NOT fire again — the new
-          // bundle is presumably loading / just loaded and our baked-in SHA
-          // hasn't been refreshed in THIS still-running document. (After a
-          // successful reload the new document reads the new SHA and the
-          // drift clears.) This is the hard guarantee against a crash-loop
-          // if the server SHA never converges with ours (regional CDN skew,
-          // a build-info env var that drifts from the bundle's inlined SHA).
-          const sinceLastReload = Date.now() - lastBundleReloadAtRef.current;
-          if (lastBundleReloadAtRef.current && sinceLastReload < MIN_BUNDLE_RELOAD_GAP_MS) {
-            console.log('[bundle-drift] reloaded ' + Math.round(sinceLastReload / 1000) + 's ago — holding off (min gap ' + Math.round(MIN_BUNDLE_RELOAD_GAP_MS / 60000) + 'm)');
-            clearTimer();
-            return;
-          }
-          // Never-interrupt (2026-10-10): "idle" is decided by what is on the
-          // GLASS, not by the phase. Content playing, a file downloading or
-          // loading, an operator-paused screen: wait. The splash phases, a
-          // screen with nothing scheduled, the Content Unavailable card: the
-          // new bundle may be picked up — nothing visible is torn down.
-          if (!bundleReloadIdle(liveEvidence())) {
-            console.log('[bundle-drift] content playing — waiting for idle or an operator refresh');
-            clearTimer();
-            return;
-          }
-          // Record BEFORE we navigate away so the floor is honored even if
-          // the reload is async / the document survives momentarily.
-          lastBundleReloadAtRef.current = Date.now();
-          clearTimer();
-          hardCacheBustingReload();
-        }, delay);
+        const p = pendingUpdateRef.current;
+        if (!p || p.theirs !== theirs) {
+          pendingUpdateRef.current = {
+            mine, theirs, by: useBundleId ? 'bundleId' : 'sha', detectedAt: Date.now(),
+            prepared: false, prepareAttempts: 0, preparing: false, boundaryArmedAt: 0,
+          };
+          updateAtBoundaryRef.current = null;
+          updateLastDecisionRef.current = '';
+        }
+        await prepareIfNeeded();
+        evaluate();
       } catch {
         // Tolerated — /api/build-info will be re-polled on the next tick.
       }
     };
+
+    // Support/field observability, like __eduSyncState: what is pending, what
+    // the last decision was, and a way to run the check now.
+    try {
+      (window as unknown as { __eduBundleUpdate?: unknown }).__eduBundleUpdate = {
+        checkNow: () => check(),
+        evaluate: () => evaluate(),
+        state: () => ({
+          pending: pendingUpdateRef.current ? { ...pendingUpdateRef.current } : null,
+          lastDecision: updateLastDecisionRef.current,
+          boundaryArmed: !!updateAtBoundaryRef.current,
+          convergenceHoldUntil,
+          windows: (updateWindowsRef.current ?? []).length,
+          zone: resolveUpdateZone(updateWindowsRef.current, deviceTimeZone()),
+        }),
+      };
+    } catch { /* diagnostics only */ }
 
     // First check delayed 30s so initial boot/pairing isn't interrupted
     // by an immediate reload.
@@ -8088,18 +8316,20 @@ function PlayerPage() {
     // alone was ~432 k function invocations a month to read four
     // environment variables that cannot change for the life of a
     // deployment. THIS IS NOT AN EMERGENCY PATH: it is a stale-bundle
-    // detector whose own reload is delayed a further 60-300 s and waits
-    // until content stops. Widening the poll to 15 min is small next to the delay
-    // the mechanism already builds in on purpose, and the operator's direct
+    // detector whose own apply waits for the off-hours window. Widening the
+    // poll to 15 min is small next to that, and the operator's direct
     // lever (REFRESH_WEB push + the durable `pendingRefreshAt` manifest
     // field) remains the explicit activation and recovery path.
     const kickTimer = setTimeout(check, 30_000);
     const iv = setInterval(check, 15 * 60_000);
+    // The apply tick: cheap (refs + pure math), only acts while something is pending.
+    const evalIv = setInterval(evaluate, UPDATE_TICK_MS);
     return () => {
       cancelled = true;
       clearTimeout(kickTimer);
       clearInterval(iv);
-      if (scheduledReloadTimer) clearTimeout(scheduledReloadTimer);
+      clearInterval(evalIv);
+      updateAtBoundaryRef.current = null;
     };
   }, []);
 
@@ -9724,6 +9954,8 @@ function PlayerPage() {
       const duration = item.durationMs || 10000;
       const elapsed = Date.now() - slideStartedAtRef.current;
       if (elapsed >= duration) {
+        // Off-hours update (2026-10-10): an armed apply takes this boundary.
+        if (takeUpdateBoundary()) return;
         // A playlist wrap is still live playback. Keep the page, decoded
         // media and URL overlays alive when a newer bundle is available.
         // Next PLAYABLE slot — a file still downloading is stepped over,
