@@ -44,6 +44,18 @@ class SleepProofTest {
         assertEquals(SleepProofPolicy.IMMEDIATE_SETTLE_MS, SleepProofPolicy.settleMsFor("accessibility-lock"))
         // The software floor never sleeps anything: nothing to wait for.
         assertNull(SleepProofPolicy.settleMsFor("software-dim"))
+        assertEquals(SleepProofPolicy.OUTCOME_BLACK, SleepProofPolicy.immediateOutcomeFor("software-dim"))
+    }
+
+    @Test
+    fun `a vendor backlight command keeps Android awake by design — never reported as stayed on`() {
+        // e.g. rk3288 bl_power=4: the backlight is off, Android is interactive.
+        assertNull(SleepProofPolicy.settleMsFor("vendor-recipe"))
+        assertEquals(SleepProofPolicy.OUTCOME_UNKNOWN, SleepProofPolicy.immediateOutcomeFor("vendor-recipe"))
+        assertEquals(SleepProofPolicy.OUTCOME_UNKNOWN, SleepProofPolicy.immediateOutcomeFor("novastar-sdk"))
+        // Android sleeps are checked, not assumed.
+        assertNull(SleepProofPolicy.immediateOutcomeFor("device-admin"))
+        assertNull(SleepProofPolicy.immediateOutcomeFor("screen-timeout"))
     }
 
     // ─── after the all-clear ─────────────────────────────────────────────

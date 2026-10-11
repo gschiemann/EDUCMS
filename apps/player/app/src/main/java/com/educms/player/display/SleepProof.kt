@@ -90,11 +90,14 @@ object SleepProof {
      */
     fun expect(ctx: Context, providerId: String) {
         val app = ctx.applicationContext
+        val immediate = SleepProofPolicy.immediateOutcomeFor(providerId)
         val settle = SleepProofPolicy.settleMsFor(providerId)
-        if (settle == null) {
-            // The software floor never sleeps anything — it is a black view.
+        if (immediate != null || settle == null) {
+            // Nothing Android-visible to wait for: the software floor is a
+            // black view; a vendor command leaves Android interactive by
+            // design, so isInteractive cannot prove it either way.
             pending = null
-            record(app, providerId, SleepProofPolicy.OUTCOME_BLACK)
+            record(app, providerId, immediate ?: SleepProofPolicy.OUTCOME_UNKNOWN)
             return
         }
         val p = Pending(providerId, SystemClock.elapsedRealtime(), forRestore = false)
@@ -115,11 +118,11 @@ object SleepProof {
             p.forRestore = true
             recordRestore(app, "RESTORE", SleepProofPolicy.OUTCOME_PENDING)
         } else {
-            // The software floor: nothing to wait for.
+            // Nothing to wait for (see [expect]).
             recordRestore(
                 app,
                 "RESTORE",
-                if (providerId == SoftwareDimProvider.id) SleepProofPolicy.OUTCOME_BLACK else SleepProofPolicy.OUTCOME_UNKNOWN,
+                providerId?.let { SleepProofPolicy.immediateOutcomeFor(it) } ?: SleepProofPolicy.OUTCOME_UNKNOWN,
             )
         }
     }
@@ -349,9 +352,22 @@ object SleepProofPolicy {
     /** A lock or vendor command sleeps at once; the margin is for slow firmware. */
     const val IMMEDIATE_SETTLE_MS = 15_000L
 
-    /** How long to wait before asking; null = the mechanism never sleeps (record black at once). */
+    /**
+     * Mechanisms whose result `isInteractive` cannot judge, recorded at once:
+     * the software floor is a black view (black); a vendor command — a
+     * backlight write, a NovaStar blackout — leaves Android awake BY DESIGN,
+     * so "interactive" says nothing about the glass (unknown, never "on").
+     * Null = an Android sleep, checked after [settleMsFor].
+     */
+    fun immediateOutcomeFor(providerId: String): String? = when (providerId) {
+        "software-dim" -> OUTCOME_BLACK
+        "vendor-recipe", "novastar-sdk" -> OUTCOME_UNKNOWN
+        else -> null
+    }
+
+    /** How long to wait before asking; null = nothing to wait for ([immediateOutcomeFor]). */
     fun settleMsFor(providerId: String): Long? = when (providerId) {
-        "software-dim" -> null
+        "software-dim", "vendor-recipe", "novastar-sdk" -> null
         "screen-timeout" -> SCREEN_TIMEOUT_SETTLE_MS
         else -> IMMEDIATE_SETTLE_MS
     }
