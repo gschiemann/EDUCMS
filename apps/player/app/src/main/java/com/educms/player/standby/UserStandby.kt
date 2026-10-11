@@ -393,7 +393,12 @@ object UserStandby {
         // is never read as a person's remote (the registry also does this).
         noteOwnBlank()
         val result = runCatching {
-            DisplayControlRegistry.apply(app, DisplayAction.Blank, revertAfterMs = null)
+            // 2026-10-11 — never a latch-prone lock on hardware where one has
+            // latched (RestoreBlankPolicy): the next alert must still be able
+            // to wake this panel.
+            DisplayControlRegistry.apply(app, DisplayAction.Blank, revertAfterMs = null, allowProvider = { id ->
+                RestoreBlankPolicy.allows(id, android.os.Build.VERSION.SDK_INT, android.os.Build.MODEL)
+            })
         }.getOrNull()
         if (result == null || !result.ok) {
             PlayerLogger.w(TAG, "all-clear: could not put the panel back to sleep ($result) — leaving it on")
