@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { LegalPage } from '@/components/marketing/LegalPage';
-import { LEGAL_CONTACTS, LEGAL_ENTITY, LEGAL_LAST_UPDATED } from '@/lib/legal-entity';
+import { GOVERNING_STATE, LEGAL_CONTACTS, LEGAL_ENTITY, LEGAL_LAST_UPDATED } from '@/lib/legal-entity';
 
 export const metadata = { title: 'Terms of service — VenueOS' };
 
@@ -35,7 +35,11 @@ export default function TermsPage() {
         for the service, that agreement controls where it conflicts with these Terms. Our{' '}
         <Link href="/privacy">Privacy Policy</Link> and{' '}
         <Link href="/dpa">Data Processing Addendum</Link> form part of these Terms. Each person who
-        signs in also accepts the <Link href="/terms/eula">End User License Agreement</Link>.
+        signs in also accepts the <Link href="/terms/eula">End User License Agreement</Link>{' '}
+        (&quot;<strong>EULA</strong>&quot;), which covers the license to the software itself. Where
+        these documents conflict, they apply in this order: (1) a signed order form or Enterprise
+        agreement; (2) the Data Processing Addendum, for personal data; (3) these Terms; (4) the
+        EULA.
       </p>
 
       <h2>1. Definitions</h2>
@@ -194,9 +198,8 @@ export default function TermsPage() {
           <a href={`mailto:${LEGAL_CONTACTS.privacy}`}>{LEGAL_CONTACTS.privacy}</a>.
         </li>
         <li>
-          <strong>Public entities.</strong> Where a public Educational Customer is prohibited by law
-          from agreeing to a term in these Terms (for example, indemnification, governing law or
-          venue), that term applies only to the extent permitted by the law that applies to it.
+          <strong>Public entities.</strong> A public Educational Customer is covered by the
+          public-entity terms in section 15.
         </li>
       </ul>
 
@@ -239,14 +242,27 @@ export default function TermsPage() {
         of these Terms or, for us, a claim that the Service infringes a third party&apos;s
         intellectual-property rights, and, for the Customer, a claim arising from Customer Content —
         provided the defended party gives prompt notice and reasonable cooperation. This section is
-        subject to section 9 for public Educational Customers.
+        subject to section 15 for Public Entity Customers.
       </p>
 
-      <h2>15. Governing law and disputes</h2>
+      <h2>15. Governing law, disputes and public entities</h2>
       <p>
-        These Terms are governed by the laws of the state in which the Customer is located, without
-        regard to conflict-of-law principles, unless a signed agreement says otherwise. The parties will
-        first try to resolve any dispute through good-faith negotiation.
+        These Terms are governed by the laws of the State of {GOVERNING_STATE}, without regard to its
+        conflict-of-law rules, unless a signed agreement says otherwise. Before starting a lawsuit, a
+        party will give the other written notice of the dispute, and both will try in good faith to
+        resolve it for at least 30 days. A dispute that is not resolved will be heard by the state or
+        federal courts located in {GOVERNING_STATE}, and each party agrees to their jurisdiction.
+        Either party may ask any court for urgent relief to protect its confidential information or
+        intellectual property.
+      </p>
+      <p>
+        <strong>Public entities.</strong> Where the Customer is a public school, school district,
+        public college or university, or other government entity (a &quot;
+        <strong>Public Entity Customer</strong>&quot;) and the law that applies to it requires its
+        own state&apos;s law or courts, or does not allow it to agree to a term in these Terms (for
+        example, indemnification, limitation of liability, governing law or venue, or confidentiality
+        obligations that conflict with public-records laws), that term is changed only to the minimum
+        extent needed to comply with that law, and the rest of these Terms stays in effect.
       </p>
 
       <h2>16. General</h2>

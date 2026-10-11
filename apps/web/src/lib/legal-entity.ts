@@ -25,6 +25,19 @@ export const LEGAL_ENTITY = {
   productName: 'VenueOS',
 } as const;
 
+/**
+ * The state whose law governs the Terms of Service AND the EULA, and whose
+ * courts hear disputes: the state where the company is organized
+ * (owner decision, 2026-10-11). ONE source for both documents — never write a
+ * state name into either page. Public schools, districts, universities and
+ * other government customers get the public-entity exception written next to
+ * it on each page.
+ *
+ * ⚠️ PLACEHOLDER — set it to the state of organization (e.g. 'Delaware')
+ * before launch.
+ */
+export const GOVERNING_STATE = '[GOVERNING STATE]';
+
 export const LEGAL_CONTACTS = {
   legal: 'legal@venue-os.app',
   privacy: 'privacy@venue-os.app',
@@ -32,7 +45,7 @@ export const LEGAL_CONTACTS = {
   support: 'support@venue-os.app',
 } as const;
 
-/** Shown as "Last updated" on /terms, /privacy, /dpa, /ferpa and /coppa. */
+/** Shown as "Last updated" on /terms, /privacy, /dpa, /ferpa, /coppa and /terms/eula. */
 export const LEGAL_LAST_UPDATED = 'October 11, 2026';
 
 export interface Subprocessor {

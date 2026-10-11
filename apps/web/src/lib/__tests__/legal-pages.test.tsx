@@ -8,14 +8,15 @@ import PrivacyPage from '../../app/privacy/page';
 import DpaPage from '../../app/dpa/page';
 import FerpaPage from '../../app/ferpa/page';
 import CoppaPage from '../../app/coppa/page';
-import { LEGAL_CONTACTS, LEGAL_ENTITY, SUBPROCESSORS } from '../legal-entity';
+import EulaPage from '../../app/terms/eula/page';
+import { GOVERNING_STATE, LEGAL_CONTACTS, LEGAL_ENTITY, SUBPROCESSORS } from '../legal-entity';
 import { shouldEnforceScriptCsp } from '../csp-script-policy';
 
 jest.mock('@/components/marketing/PublicShell', () => ({
   PublicShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 
-const pages = { TermsPage, PrivacyPage, DpaPage, FerpaPage, CoppaPage };
+const pages = { TermsPage, PrivacyPage, DpaPage, FerpaPage, CoppaPage, EulaPage };
 const text = (C: () => React.ReactElement) => render(<C />).container.textContent ?? '';
 
 describe('public legal pages', () => {
@@ -62,5 +63,53 @@ describe('public legal pages', () => {
 
   it('/dpa is prerendered public content, outside the enforced nonce CSP', () => {
     expect(shouldEnforceScriptCsp('/dpa')).toBe(false);
+  });
+
+  describe('EULA consistent with the Terms (2026-10-11)', () => {
+    it('neither document has arbitration or a class-action waiver', () => {
+      for (const C of [TermsPage, EulaPage]) {
+        const t = text(C);
+        expect(t).not.toMatch(/arbitrat/i);
+        expect(t).not.toMatch(/class action|class-action|collective proceeding/i);
+        expect(t).not.toMatch(/Delaware/);
+      }
+    });
+
+    it('both use the ONE governing-state constant for law and courts, with the public-entity exception', () => {
+      expect(GOVERNING_STATE).toBe('[GOVERNING STATE]');
+      for (const C of [TermsPage, EulaPage]) {
+        const t = text(C);
+        expect(t).toContain(`governed by the laws of the State of ${GOVERNING_STATE}`);
+        expect(t).toContain(`courts located in ${GOVERNING_STATE}`);
+        expect(t).toMatch(/good faith[\s\S]*30 days/);
+        expect(t).toMatch(/public school, school district,\s+public college or university, or other government entity/);
+        expect(t).toMatch(/public-records laws/);
+        expect(t).toMatch(/minimum\s+extent/);
+      }
+      expect(text(TermsPage)).not.toMatch(/state in which the Customer is located/);
+    });
+
+    it('the EULA reuses the Terms liability cap and states the order of precedence', () => {
+      const cap = /fees paid or payable by the Customer\s+for the Service in the twelve \(12\) months/;
+      expect(text(TermsPage)).toMatch(cap);
+      const t = text(EulaPage);
+      expect(t).toMatch(cap);
+      expect(t).not.toMatch(/\$100|ONE HUNDRED/i);
+      expect(t).toMatch(/\(1\) a signed order form or Enterprise\s+agreement; \(2\) the DPA[\s\S]*\(3\) the Terms; \(4\) this\s+Agreement/);
+    });
+
+    it('the EULA covers the license scope, updates, open source and export, and keeps the counsel note', () => {
+      const t = text(EulaPage);
+      expect(t).toMatch(/install and run the screen player applications/);
+      expect(t).toMatch(/Reverse engineer/);
+      expect(t).toMatch(/automatic updates/);
+      expect(t).toMatch(/open-source components/i);
+      expect(t).toMatch(/sanctions/);
+      expect(t).toMatch(/ends automatically when\s+the subscription ends/);
+      expect(t).toMatch(/not legal advice/);
+      expect(t).toMatch(/not a substitute for/);
+      expect(t).toContain(LEGAL_ENTITY.companyLegalName);
+      expect(t).toContain(LEGAL_ENTITY.mailingAddress);
+    });
   });
 });
