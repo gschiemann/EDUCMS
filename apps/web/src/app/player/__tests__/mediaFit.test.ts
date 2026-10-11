@@ -12,11 +12,17 @@ import {
 } from '../mediaFit';
 
 describe('playlistMediaFit', () => {
-  it('normal content crops to fill; emergency keeps fill', () => {
+  it('normal content crops to fill; an emergency is shown whole (contain), never cropped or stretched', () => {
     expect(DEFAULT_PLAYLIST_MEDIA_FIT).toBe('cover');
-    expect(EMERGENCY_PLAYLIST_MEDIA_FIT).toBe('fill');
+    expect(EMERGENCY_PLAYLIST_MEDIA_FIT).toBe('contain');
     expect(playlistMediaFit(false)).toBe('cover');
-    expect(playlistMediaFit(true)).toBe('fill');
+    expect(playlistMediaFit(true)).toBe('contain');
+  });
+
+  it('contain keeps the whole source frame for the cover capture', () => {
+    expect(visibleSourceRect('contain', 1080, 1668, 1080, 1920)).toEqual({ sx: 0, sy: 0, sw: 1080, sh: 1668 });
+    expect(mediaFitStyle('contain')).toEqual({ objectFit: 'contain', objectPosition: '50% 50%' });
+    expect(mediaFitClass('contain')).toBe('object-contain');
   });
 
   it('style and class agree, centred', () => {

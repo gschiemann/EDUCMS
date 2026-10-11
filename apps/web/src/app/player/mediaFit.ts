@@ -36,13 +36,16 @@
  * fallback — and no `inset` shorthand is involved.
  */
 
-export type MediaFit = 'cover' | 'fill';
+export type MediaFit = 'cover' | 'contain' | 'fill';
 
 /** The default for full-screen playlist media: crop to fill, centred, never stretch. */
 export const DEFAULT_PLAYLIST_MEDIA_FIT: MediaFit = 'cover';
 
 /** An emergency playlist keeps the historical `fill` (no crop) pending owner sign-off. */
-export const EMERGENCY_PLAYLIST_MEDIA_FIT: MediaFit = 'fill';
+// 2026-10-11 (owner decision): an alert is shown WHOLE — fitted with bars where
+// the file's shape differs from the screen — never cropped (cropping can cut an
+// instruction off the edge) and never stretched (the old `fill`).
+export const EMERGENCY_PLAYLIST_MEDIA_FIT: MediaFit = 'contain';
 
 export function playlistMediaFit(isEmergency: boolean): MediaFit {
   return isEmergency ? EMERGENCY_PLAYLIST_MEDIA_FIT : DEFAULT_PLAYLIST_MEDIA_FIT;
@@ -54,8 +57,8 @@ export function mediaFitStyle(fit: MediaFit): { objectFit: MediaFit; objectPosit
 }
 
 /** Utility-class half, kept in agreement with the inline style. */
-export function mediaFitClass(fit: MediaFit): 'object-cover' | 'object-fill' {
-  return fit === 'cover' ? 'object-cover' : 'object-fill';
+export function mediaFitClass(fit: MediaFit): 'object-cover' | 'object-contain' | 'object-fill' {
+  return fit === 'cover' ? 'object-cover' : fit === 'contain' ? 'object-contain' : 'object-fill';
 }
 
 export interface CropRect { sx: number; sy: number; sw: number; sh: number }
