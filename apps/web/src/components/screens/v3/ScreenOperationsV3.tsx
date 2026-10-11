@@ -44,6 +44,9 @@ import {
 import { ExpectedThumb } from './ExpectedThumb';
 import { ScreenDetailDrawer, type DrawerTab } from './ScreenDetailDrawer';
 import { AddScreensToGroupDialog } from './AddScreensToGroupDialog';
+import { SelectionCheckbox, selectAllTitle } from '@/components/common/SelectionCheckbox';
+import { BulkActionBar, BulkActionSheet } from './BulkScreenActions';
+import { pruneTo, stateFor, toggleMany, toggleOne, type BulkKind } from './bulkSelection';
 
 /**
  * "Full settings" — the SAME popover the classic Screens page has always shown
@@ -285,6 +288,14 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
   const [howToOpen, setHowToOpen] = useState(false);
   // "Add screens…" picker for a group (2026-09-14, Greg).
   const [addTo, setAddTo] = useState<{ id: string; name: string } | null>(null);
+  // Bulk actions (2026-10-11, Greg: "allow me to do a select-all and push — by
+  // group at least"). The selection is ids; the sheet owns the request.
+  const [bulkSelected, setBulkSelected] = useState<Set<string>>(() => new Set());
+  const [bulkRun, setBulkRun] = useState<{ key: number; kind: BulkKind; screenIds: string[] } | null>(null);
+  const startBulk = useCallback((kind: BulkKind, screenIds: string[]) => {
+    if (screenIds.length === 0) return;
+    setBulkRun((prev) => ({ key: (prev?.key ?? 0) + 1, kind, screenIds }));
+  }, []);
   useEffect(() => {
     if (!howToOpen) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setHowToOpen(false); };
@@ -442,6 +453,44 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
   }, [viewMode, visibleGroups, manualExpand]);
 
   const visibleCount = visibleGroups.reduce((n, g) => n + g.rows.length, 0);
+
+  // ── Bulk selection ──────────────────────────────────────────────
+  // Only where every action is allowed (the same admin gate as every write
+  // here) and only on the list. What is checked is exactly what is sent: when
+  // a filter or search hides a screen, it leaves the selection.
+  const selectable = canControl && viewMode === 'list';
+  const visibleIds = useMemo(() => visibleGroups.flatMap((g) => g.rows.map((r) => r.screen.id)), [visibleGroups]);
+  useEffect(() => {
+    setBulkSelected((prev) => (prev.size === 0 ? prev : pruneTo(prev, selectable ? visibleIds : [])));
+  }, [visibleIds, selectable]);
+  const selectedIds = useMemo(() => visibleIds.filter((id) => bulkSelected.has(id)), [visibleIds, bulkSelected]);
+  const pageSelState = stateFor(bulkSelected, visibleIds);
+  /** Every screen in a group — unfiltered — for the group menu's shortcuts. */
+  const groupScreenIds = (groupId: string) => ops.groups.find((og) => og.id === groupId)?.rows.map((r) => r.screen.id) ?? [];
+  const groupBox = (g: OpsGroup, compact = true, suffix = '') => {
+    const ids = g.rows.map((r) => r.screen.id);
+    const st = stateFor(bulkSelected, ids);
+    return (
+      <SelectionCheckbox
+        compact={compact}
+        checked={st === 'all'}
+        indeterminate={st === 'some'}
+        label={t('screens.bulk.selectGroup', { name: g.name })}
+        title={selectAllTitle(st, t('screens.bulk.selectGroup', { name: g.name }), t('selection.clearSelection'))}
+        onChange={() => setBulkSelected((prev) => toggleMany(prev, ids))}
+        testId={`screens-select-group-${g.id}${suffix}`}
+      />
+    );
+  };
+  const rowBox = (s: OpsScreen, compact = true, suffix = '') => (
+    <SelectionCheckbox
+      compact={compact}
+      checked={bulkSelected.has(s.id)}
+      label={t('selection.selectItem', { name: s.name || t('screens.bulk.unnamed') })}
+      onChange={() => setBulkSelected((prev) => toggleOne(prev, s.id))}
+      testId={`screens-select-${s.id}${suffix}`}
+    />
+  );
   const selectedRow = selectedId ? ops.rows.find((r) => r.screen.id === selectedId) ?? null : null;
 
   const isExpanded = (g: OpsGroup) => {
@@ -533,6 +582,20 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
           className={`${item} border-t border-slate-100`}>
           Pair a screen here…
         </button>
+        {groupScreenIds(g.id).length > 0 && (
+          <>
+            <button type="button" disabled={!canControl}
+              onClick={() => { setGroupMenu(null); startBulk('resync', groupScreenIds(g.id)); }}
+              className={`${item} border-t border-slate-100`} data-testid={`group-resync-${g.id}`}>
+              {t('screens.bulk.resyncGroup')}
+            </button>
+            <button type="button" disabled={!canControl}
+              onClick={() => { setGroupMenu(null); startBulk('update', groupScreenIds(g.id)); }}
+              className={item} data-testid={`group-update-${g.id}`}>
+              {t('screens.bulk.updateGroup')}
+            </button>
+          </>
+        )}
         <button type="button" disabled={!canControl}
           onClick={() => { setGroupMenu(null); setAddTo({ id: g.id, name: g.name }); }}
           className={item}>
@@ -771,6 +834,33 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
             })}
           </div>
 
+          {/* ─── Bulk selection (2026-10-11) ─────────────────────
+              The heading box covers every screen SHOWN (filter + search);
+              the bar appears once something is checked. */}
+          {selectable && !isLoading && !isError && visibleCount > 0 && (
+            selectedIds.length > 0 ? (
+              <BulkActionBar
+                selectedCount={selectedIds.length}
+                visibleCount={visibleCount}
+                onSelectAll={() => setBulkSelected(new Set(visibleIds))}
+                onClear={() => setBulkSelected(new Set())}
+                onAction={(kind) => startBulk(kind, selectedIds)}
+              />
+            ) : (
+              <div className="flex items-center gap-1 -my-2 pl-1" data-testid="screens-select-heading">
+                <SelectionCheckbox
+                  checked={pageSelState === 'all'}
+                  indeterminate={pageSelState === 'some'}
+                  label={t('screens.bulk.selectAllShown')}
+                  title={selectAllTitle(pageSelState, t('screens.bulk.selectAllShown'), t('selection.clearSelection'))}
+                  onChange={() => setBulkSelected((prev) => toggleMany(prev, visibleIds))}
+                  testId="screens-select-all"
+                />
+                <span className="text-[12px] font-semibold text-slate-500">{t('screens.bulk.shownCount', { count: visibleCount })}</span>
+              </div>
+            )
+          )}
+
           {/* Map view — the same rows the list would show, as pins (§5). */}
           {viewMode === 'map' && renderMap?.(visibleGroups.flatMap((g) => g.rows.map((r) => r.screen)), { rows: visibleGroups.flatMap(g => g.rows), isFiltered: filtering, onOpenScreen: id => { setSelectedId(id); setDrawerTab('overview'); }, onList: () => onViewMode('list') })}
 
@@ -852,6 +942,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                         {/* ── Group bar ── */}
                         <div style={GROUP_ROW_STYLE} className="flex items-center gap-3 px-5 py-2.5">
                           <div className="flex items-center gap-2 min-w-0 flex-1">
+                              {selectable && groupBox(g)}
                               <button
                                 type="button"
                                 aria-expanded={expanded}
@@ -932,7 +1023,8 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                             </caption>
                             <thead>
                               <tr className="border-t border-slate-100">
-                                <th scope="col" className="text-left text-[10.5px] font-bold uppercase tracking-wider text-slate-400 px-5 pt-2.5 pb-1.5 w-[26%]">Screen</th>
+                                {selectable && <th scope="col" className="w-10 pl-5 pt-2.5 pb-1.5"><span className="sr-only">{t('screens.bulk.barLabel')}</span></th>}
+                                <th scope="col" className={`text-left text-[10.5px] font-bold uppercase tracking-wider text-slate-400 ${selectable ? 'px-3' : 'px-5'} pt-2.5 pb-1.5 w-[26%]`}>Screen</th>
                                 <th scope="col" className="text-left text-[10.5px] font-bold uppercase tracking-wider text-slate-400 px-3 pt-2.5 pb-1.5 w-[24%] hidden xl:table-cell">Content</th>
                                 <th scope="col" className="text-left text-[10.5px] font-bold uppercase tracking-wider text-slate-400 px-3 pt-2.5 pb-1.5 w-[22%]">Status</th>
                                 <th scope="col" className="text-left text-[10.5px] font-bold uppercase tracking-wider text-slate-400 px-3 pt-2.5 pb-1.5 w-[15%]">Last contact</th>
@@ -953,7 +1045,13 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                               className={`border-t border-slate-100 cursor-pointer hover:bg-slate-50/70 ${selected ? 'bg-slate-50' : ''}`}
                               style={selected ? { boxShadow: 'inset 3px 0 0 0 var(--brand-primary, #4f46e5)' } : undefined}
                             >
-                              <td className="px-5 py-3.5">
+                              {selectable && (
+                                // The box must not open the drawer: the row's own click does that.
+                                <td className="pl-5 py-3.5 w-10" onClick={(e) => e.stopPropagation()}>
+                                  {rowBox(s)}
+                                </td>
+                              )}
+                              <td className={`${selectable ? 'px-3' : 'px-5'} py-3.5`}>
                                 <div className="flex items-center gap-3 min-w-0">
                                   <Monitor className={`w-4 h-4 shrink-0 ${s.status === 'ONLINE' ? 'text-emerald-500' : 'text-slate-400'}`} aria-hidden />
                                   <span className="min-w-0">
@@ -1115,12 +1213,15 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                     const expanded = isExpanded(g);
                     return (
                       <li key={g.id} data-screen-group={g.id} className={GROUP_CARD_CLASS}>
+                        {/* The group box sits BESIDE the expand button, never inside it
+                            (a checkbox inside a button is two controls in one). */}
+                        <div style={GROUP_ROW_STYLE} className={`flex items-center ${selectable ? 'pl-1.5' : ''}`}>
+                        {selectable && groupBox(g, false, '-m')}
                         <button
                           type="button"
                           aria-expanded={expanded}
                           onClick={() => setManualExpand((m) => ({ ...m, [g.id]: !expanded }))}
-                          style={GROUP_ROW_STYLE}
-                          className="w-full min-h-11 px-4 py-3 flex items-center gap-2 text-left"
+                          className={`flex-1 min-w-0 min-h-11 ${selectable ? 'pl-1 pr-4' : 'px-4'} py-3 flex items-center gap-2 text-left`}
                         >
                           {expanded ? <ChevronDown className="w-4 h-4 text-slate-400" aria-hidden /> : <ChevronRight className="w-4 h-4 text-slate-400" aria-hidden />}
                           <span className="flex-1 min-w-0"><span className="block text-[13.5px] font-bold text-slate-800 truncate">{g.name}</span><GroupAddress address={groups.find(group => group.id === g.id)?.address} /></span>
@@ -1128,6 +1229,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                             {g.attention > 0 ? `${g.attention} need${g.attention === 1 ? 's' : ''} action` : 'All good'}
                           </span>
                         </button>
+                        </div>
                         {expanded && (
                           <ul>
                             {g.rows.map((row) => {
@@ -1138,14 +1240,15 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                                 <li
                                   key={s.id}
                                   ref={(el) => { mobileRowRefs.current[s.id] = el; }}
-                                  className="border-t border-slate-100"
+                                  className={`border-t border-slate-100 ${selectable ? 'flex items-start' : ''}`}
                                 >
+                                  {selectable && <div className="pl-1.5 pt-1">{rowBox(s, false, '-m')}</div>}
                                   <div
                                     role="button"
                                     tabIndex={0}
                                     onClick={() => { setSelectedId(s.id); setDrawerTab('overview'); }}
                                     onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedId(s.id); setDrawerTab('overview'); } }}
-                                    className="px-4 py-3 flex items-start gap-3"
+                                    className={`${selectable ? 'flex-1 min-w-0 pl-1 pr-4' : 'px-4'} py-3 flex items-start gap-3`}
                                   >
                                     <Monitor className={`w-4 h-4 mt-0.5 shrink-0 ${s.status === 'ONLINE' ? 'text-emerald-500' : 'text-slate-400'}`} aria-hidden />
                                     <div className="min-w-0 flex-1">
@@ -1217,6 +1320,17 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
             </p>
           )}
         </>
+      )}
+
+      {bulkRun && (
+        <BulkActionSheet
+          key={bulkRun.key}
+          kind={bulkRun.kind}
+          screenIds={bulkRun.screenIds}
+          onClose={() => setBulkRun(null)}
+          onRetry={(ids) => startBulk(bulkRun.kind, ids)}
+          onSent={() => { setBulkSelected(new Set()); onChanged(); }}
+        />
       )}
 
       {addTo && (

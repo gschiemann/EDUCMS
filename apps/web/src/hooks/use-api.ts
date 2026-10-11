@@ -3873,6 +3873,57 @@ export function useRefreshWeb() {
   });
 }
 
+// ─── Bulk screen actions (2026-10-11) ───
+// Greg: "allow me to do a select-all and push — by group at least". One POST
+// runs the SAME single-screen command for every screen server-side
+// (POST /screens/bulk/{resync|update|power|auto-update}) and answers every id:
+// sent / skipped (with a reason) / failed (with a reason). `dryRun: true`
+// returns the server's own plan for the confirm sheet and changes nothing.
+export type BulkScreenAction = 'resync' | 'update' | 'power' | 'auto-update';
+export type BulkScreenOutcome = 'sent' | 'skipped' | 'failed';
+export interface BulkScreenResult {
+  screenId: string;
+  name: string | null;
+  outcome: BulkScreenOutcome;
+  reason?: string;
+  code?: string;
+  message?: string;
+  installPrompt?: boolean;
+}
+export interface BulkScreenResponse {
+  action: BulkScreenAction;
+  dryRun: boolean;
+  corrId: string | null;
+  summary: { requested: number; sent: number; skipped: number; failed: number };
+  results: BulkScreenResult[];
+  latestPlayerVersion?: string | null;
+}
+export interface BulkScreenRequest {
+  action: BulkScreenAction;
+  screenIds?: string[];
+  screenGroupId?: string;
+  dryRun?: boolean;
+  /** power */
+  state?: 'on' | 'off';
+  /** auto-update */
+  mode?: 'on' | 'off' | 'inherit';
+}
+export function useBulkScreenAction() {
+  const qc = useQueryClient();
+  return useMutation({
+    // The sheet renders every outcome itself, per screen; a global toast would
+    // only repeat the failure without the names.
+    meta: { suppressGlobalError: true },
+    mutationFn: async ({ action, ...body }: BulkScreenRequest) =>
+      apiFetch<BulkScreenResponse>(`/screens/bulk/${action}`, { method: 'POST', body: JSON.stringify(body) }),
+    onSuccess: (res) => {
+      if (res?.dryRun) return;
+      // Resync mints a Deployment; update / auto-update change screen rows.
+      qc.invalidateQueries({ queryKey: ['screens'] });
+    },
+  });
+}
+
 // ─── License + billing (Sprint 7E) ───
 export type LicenseSummary = {
   tier: string;
