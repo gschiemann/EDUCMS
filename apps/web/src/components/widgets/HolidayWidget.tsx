@@ -273,6 +273,11 @@ export function HolidayWidget({ config }: { config: HolidayConfig }) {
         holidayLiveImageKeys.set(holidayCacheKey(variant, gradeLevel, design, portrait),
           new Set(d.slots.filter((slot: { key?: unknown }) => typeof slot?.key === 'string').map((slot: { key: string }) => slot.key)));
         window.dispatchEvent(new CustomEvent('holiday:fields-loaded', { detail: { zoneId: getZoneId(), variant, gradeLevel } }));
+        // The holiday field bridge can announce readiness before the additive
+        // media companion installs its listener. Re-flush saved media when
+        // that companion itself is ready, including after iframe reloads.
+        iframeRef.current?.contentWindow?.postMessage({ type: 'educms-overrides',
+          img: config.imageOverrides || {}, mediaStyles: config.mediaStyles || {} }, HOLIDAY_FRAME_TARGET_ORIGIN);
         return;
       }
       if (d.type === 'holiday:ready' && Array.isArray(d.fields)) {

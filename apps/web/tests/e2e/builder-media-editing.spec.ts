@@ -352,3 +352,17 @@ for (const portrait of [false, true]) {
     await expect(bar.getByRole('button', { name: 'Replace image', exact: true })).toHaveCount(0);
   });
 }
+
+test('holiday saved media applies when its companion initializes after the field bridge', async ({ page }) => {
+  const html = fs.readFileSync(path.join(__dirname, '../../public/holiday-templates/es-halloween-storybook.html'), 'utf8');
+  const delayed = html.replace(/<script>\/\*EDUCMS-MEDIA-CONTROLS-V2\*\/([\s\S]*?)<\/script>/,
+    '<script>setTimeout(function(){$1},800);</script>');
+  expect(delayed).not.toBe(html);
+  await page.route('**/holiday-templates/es-halloween-storybook.html*', route => route.fulfill({ contentType: 'text/html', body: delayed }));
+  await openEditor(page, true, [{ id: 'holiday', name: 'Holiday design', widgetType: 'HOLIDAY',
+    x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0,
+    defaultConfig: { variant: 'halloween', gradeLevel: 'es', design: 'storybook', portrait: true,
+      imageOverrides: { 'hero.media': media[0].fileUrl } } }]);
+  const slot = page.locator('[data-zone-id="holiday"] iframe').contentFrame().locator('[data-imgslot="hero.media"]');
+  await expect.poll(() => slot.evaluate(el => el.querySelector('img')?.getAttribute('src') || getComputedStyle(el).backgroundImage)).toContain('/landscape.png');
+});
