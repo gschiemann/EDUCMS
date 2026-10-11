@@ -787,6 +787,10 @@
         "sports": {
           "label": "Deportes",
           "description": "Día de partido, incluido lo que las pantallas públicas pueden mostrar sobre los estudiantes."
+        },
+        "supportAccess": {
+          "label": "Acceso de soporte de VenueOS",
+          "description": "Decide cuándo el soporte de VenueOS puede entrar en tu organización y termina el acceso cuando quieras."
         }
       },
       "scopePersonal": "Cuenta personal",
@@ -1665,6 +1669,29 @@
         "railBrowserSupport": "Este navegador",
         "railDirectToUsb": "Escribe directamente en la carpeta USB",
         "railZipFallback": "Descarga un ZIP firmado"
+      },
+      "supportAccess": {
+        "searchGive": "Dar acceso de soporte a VenueOS",
+        "railStateLabel": "Ahora mismo",
+        "railState": {
+          "active": "VenueOS tiene acceso",
+          "pending": "Solicitud pendiente",
+          "none": "Sin acceso",
+          "unknown": "Desconocido"
+        },
+        "railStateBody": {
+          "active": "El soporte de VenueOS puede ver y cambiar esta organización hasta la hora indicada. Puedes terminarlo en cualquier momento.",
+          "pending": "VenueOS está pidiendo acceso. No pasa nada hasta que un administrador lo apruebe.",
+          "none": "VenueOS no puede abrir tus pantallas, contenido, personas, alertas, ajustes ni registros.",
+          "unknown": "No se pudo leer el estado actual."
+        },
+        "railRuleLabel": "La regla",
+        "railRuleTitle": "Tu aprobación, tu reloj",
+        "railRuleBody": "VenueOS no tiene acceso permanente a tus datos. Cada permiso tiene un límite de tiempo, se aplica a toda la organización o a las ubicaciones que elijas, y todo lo que VenueOS hace con él queda en tu registro de auditoría.",
+        "editorTitle": "Acceso de soporte de VenueOS",
+        "editorDesc": "Aprueba o rechaza una solicitud de VenueOS, da acceso tú mismo cuando necesites ayuda y termínalo cuando quieras.",
+        "sectionTitle": "Acceso de soporte",
+        "sectionDesc": "Solo los administradores de tu organización pueden aprobar, dar o terminar el acceso."
       }
     }
   },
@@ -4541,6 +4568,35 @@
         "PAST_DUE": "Vencida",
         "VOID": "Anulada"
       }
+    },
+    "support": {
+      "title": "Acceso de soporte",
+      "explain": "VenueOS no tiene acceso permanente a los datos de un cliente. Entrar en esta organización y leer o cambiar sus pantallas, contenido, personas, alertas, ajustes o registros requiere un permiso activo aprobado por el cliente.",
+      "loadFailed": "No se pudo cargar el acceso de soporte.",
+      "genericError": "Algo salió mal. Inténtalo de nuevo.",
+      "internal": "Organización interna: siempre accesible, no requiere permiso.",
+      "active": "Acceso otorgado hasta {until}.",
+      "activeBreakGlass": "Acceso de emergencia abierto hasta {until}.",
+      "pending": "Solicitud enviada {on}: esperando a los administradores del cliente.",
+      "none": "Sin acceso ahora mismo. Pídeselo al cliente, o él puede darlo desde Ajustes → Acceso de soporte de VenueOS.",
+      "reason": "Motivo (el cliente lo verá)",
+      "reasonPlaceholder": "p. ej. Vídeo en bucle en la pantalla del vestíbulo: hay que revisar la lista",
+      "reasonRequired": "Se requiere un motivo.",
+      "ask": "Enviar solicitud",
+      "endNow": "Terminar nuestro acceso",
+      "endTitle": "¿Terminar el acceso de soporte?",
+      "endBody": "VenueOS perderá el acceso a {name} de inmediato.",
+      "withdraw": "Retirar solicitud",
+      "withdrawTitle": "¿Retirar esta solicitud?",
+      "withdrawBody": "El cliente dejará de verla.",
+      "breakGlass": "Acceso de emergencia (romper el cristal)",
+      "breakGlassExplain": "Para un incidente real cuando nadie del cliente responde: máximo una hora, motivo obligatorio, se envía un correo a todos sus administradores de inmediato y aparece en su banner.",
+      "breakGlassTitle": "¿Abrir acceso de emergencia a {name}?",
+      "breakGlassBody": "Queda auditado y los administradores del cliente reciben un correo de inmediato. El acceso termina automáticamente tras una hora. Describe el incidente.",
+      "breakGlassReason": "¿Cuál es el incidente?",
+      "breakGlassConfirm": "Abrir acceso de emergencia",
+      "history": "Historial ({count})",
+      "accessEnded": "VenueOS ya no tiene acceso a la organización en la que estabas trabajando. Pide acceso de soporte al cliente desde su página, o cambia a una organización interna."
     }
   },
   "credentialSetup": {
@@ -4664,5 +4720,74 @@
       "trialEndedBody": "Agrega un pago para vincular pantallas nuevas. Las que ya tienes siguen funcionando.",
       "failed": "No se pudo agregar una pantalla a tu plan."
     }
+  },
+  "supportAccess": {
+    "loading": "Cargando acceso de soporte…",
+    "loadFailed": "No se pudo cargar el acceso de soporte.",
+    "genericError": "Algo salió mal. Inténtalo de nuevo.",
+    "noneTitle": "VenueOS no tiene acceso",
+    "noneBody": "El soporte de VenueOS no puede abrir las pantallas, el contenido, las personas, las alertas, los ajustes ni los registros de esta organización. Cuando necesites ayuda, da acceso abajo o aprueba una solicitud.",
+    "pendingTitle": "VenueOS ({by}) está pidiendo acceso de soporte",
+    "pendingExplain": "No pasa nada hasta que decidas. Puedes aprobar por menos tiempo del solicitado.",
+    "adminsDecide": "Un administrador de tu organización puede aprobar o rechazar esto.",
+    "reason": "Motivo",
+    "note": "Nota",
+    "noteOptional": "Nota (opcional)",
+    "notePlaceholder": "¿Qué debe revisar VenueOS?",
+    "requestedFor": "Solicitado por",
+    "askedOn": "Solicitado el",
+    "approveFor": "Aprobar por",
+    "asRequested": "Como se solicitó ({duration})",
+    "approve": "Aprobar",
+    "deny": "Rechazar",
+    "scope": "Alcance",
+    "wholeOrg": "Toda la organización",
+    "specificLocations": "Ubicaciones específicas",
+    "pickLocation": "Elige al menos una ubicación.",
+    "activeTitle": "El soporte de VenueOS tiene acceso",
+    "activeBreakGlassTitle": "VenueOS abrió un acceso de soporte de emergencia",
+    "activeExplain": "Todo lo que VenueOS haga durante este tiempo queda en tu registro de auditoría bajo este acceso. Terminarlo tiene efecto inmediato.",
+    "until": "Hasta",
+    "how": "Cómo",
+    "inviteTitle": "Dar acceso de soporte a VenueOS",
+    "inviteBody": "Deja entrar al soporte de VenueOS en tu organización durante un tiempo definido, sin necesidad de solicitud. Puedes terminarlo en cualquier momento.",
+    "duration": "Duración",
+    "inviteSubmit": "Dar acceso",
+    "historyTitle": "Historial",
+    "historyEmpty": "VenueOS nunca ha tenido acceso a esta organización.",
+    "durations": {
+      "oneHour": "1 hora",
+      "oneDay": "24 horas",
+      "sevenDays": "7 días",
+      "days": "{count} días",
+      "hours": "{count} horas",
+      "minutes": "{count} minutos"
+    },
+    "kind": {
+      "REQUEST": "Solicitado por VenueOS, aprobado por ti",
+      "INVITE": "Otorgado por ti",
+      "BREAK_GLASS": "Acceso de emergencia abierto por VenueOS"
+    },
+    "status": {
+      "REQUESTED": "Pendiente",
+      "ACTIVE": "Activo",
+      "DENIED": "Rechazado",
+      "REVOKED": "Terminado",
+      "EXPIRED": "Caducado"
+    },
+    "banner": {
+      "active": "El soporte de VenueOS tiene acceso a esta organización hasta {until}.",
+      "breakGlass": "VenueOS abrió un acceso de soporte de emergencia a esta organización hasta {until}.",
+      "pending": "VenueOS ({by}) está pidiendo acceso de soporte.",
+      "details": "Detalles",
+      "review": "Revisar",
+      "endNow": "Terminar ahora",
+      "endConfirmTitle": "¿Terminar el acceso de soporte de VenueOS?",
+      "endConfirmBody": "VenueOS perderá el acceso a esta organización de inmediato. Puedes volver a darlo cuando quieras.",
+      "endFailed": "No se pudo terminar el acceso. Inténtalo de nuevo."
+    }
+  },
+  "switcher": {
+    "needsAccess": "Requiere aprobación del cliente"
   }
 }

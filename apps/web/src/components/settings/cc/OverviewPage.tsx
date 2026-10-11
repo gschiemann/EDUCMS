@@ -72,6 +72,8 @@ const IMPACT_RANK: Record<SettingsSectionId, number> = {
   developer: 8,
   security: 9,
   overview: 10,
+  // 2026-10-11 — VenueOS support access: account administration, never blocks content.
+  supportAccess: 11,
   // K-12 launch, lane B3 — student privacy on public screens.
   sports: 11,
 };

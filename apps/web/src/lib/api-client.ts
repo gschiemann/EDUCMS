@@ -408,6 +408,19 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
             window.location.assign('/account-suspended');
           }
         }
+        // SUPPORT ACCESS (2026-10-11) — a SUPER_ADMIN's session is stamped
+        // with a customer organisation VenueOS may no longer reach (the grant
+        // ended, or the session predates the gate). Every tenant-data call
+        // now 403s, so send them to the customer console — which is exempt —
+        // instead of a dashboard full of errors. The console's own routes and
+        // the switcher keep working, and switching to an internal org or the
+        // super admin's home always succeeds.
+        if (res.status === 403 && body?.code === 'SUPPORT_ACCESS_REQUIRED' && typeof window !== 'undefined') {
+          const here = window.location.pathname;
+          if (!here.startsWith('/super') && !here.startsWith('/panic') && !here.startsWith('/login')) {
+            window.location.assign('/super/customers?accessEnded=1');
+          }
+        }
         // 2026-05-25 (audit-W8) — attach status + code + body to the
         // thrown error so callers can branch on a STRUCTURED field
         // instead of regex-matching the message. Was a real defect

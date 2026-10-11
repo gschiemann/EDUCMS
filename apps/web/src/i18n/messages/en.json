@@ -787,6 +787,10 @@
         "sports": {
           "label": "Sports",
           "description": "Game day, including what public screens may show about students."
+        },
+        "supportAccess": {
+          "label": "VenueOS support access",
+          "description": "Decide when VenueOS support may reach your organization, and end it any time."
         }
       },
       "scopePersonal": "Personal account",
@@ -1665,6 +1669,29 @@
         "railBrowserSupport": "This browser",
         "railDirectToUsb": "Writes straight to the USB folder",
         "railZipFallback": "Downloads a signed ZIP"
+      },
+      "supportAccess": {
+        "searchGive": "Give VenueOS support access",
+        "railStateLabel": "Right now",
+        "railState": {
+          "active": "VenueOS has access",
+          "pending": "Request waiting",
+          "none": "No access",
+          "unknown": "Unknown"
+        },
+        "railStateBody": {
+          "active": "VenueOS support can see and change this organization until the time shown. You can end it at any moment.",
+          "pending": "VenueOS is asking for access. Nothing happens until an administrator approves it.",
+          "none": "VenueOS cannot open your screens, content, people, alerts, settings or logs.",
+          "unknown": "The current state could not be read."
+        },
+        "railRuleLabel": "The rule",
+        "railRuleTitle": "Your approval, your clock",
+        "railRuleBody": "VenueOS has no standing access to your data. Every grant is time-boxed, scoped to the whole organization or to the locations you pick, and everything VenueOS does under it is written to your audit log.",
+        "editorTitle": "VenueOS support access",
+        "editorDesc": "Approve or deny a request from VenueOS, give access yourself when you want help, and end it whenever you like.",
+        "sectionTitle": "Support access",
+        "sectionDesc": "Only your organization’s administrators can approve, give or end access."
       }
     }
   },
@@ -4541,6 +4568,35 @@
         "PAST_DUE": "Past due",
         "VOID": "Void"
       }
+    },
+    "support": {
+      "title": "Support access",
+      "explain": "VenueOS has no standing access to a customer’s data. Switching into this organization and reading or changing its screens, content, people, alerts, settings or logs needs an active grant the customer approved.",
+      "loadFailed": "Could not load support access.",
+      "genericError": "Something went wrong. Please try again.",
+      "internal": "Internal organization — always reachable, no grant needed.",
+      "active": "Access granted until {until}.",
+      "activeBreakGlass": "Emergency access open until {until}.",
+      "pending": "Request sent {on} — waiting for the customer’s administrators.",
+      "none": "No access right now. Ask the customer, or they can give access from Settings → VenueOS support access.",
+      "reason": "Reason (the customer sees this)",
+      "reasonPlaceholder": "e.g. Looping video on the lobby screen — need to check the playlist",
+      "reasonRequired": "A reason is required.",
+      "ask": "Send request",
+      "endNow": "End our access",
+      "endTitle": "End support access?",
+      "endBody": "VenueOS will lose access to {name} immediately.",
+      "withdraw": "Withdraw request",
+      "withdrawTitle": "Withdraw this request?",
+      "withdrawBody": "The customer will no longer see it.",
+      "breakGlass": "Emergency access (break glass)",
+      "breakGlassExplain": "For a genuine incident when nobody at the customer can answer: at most one hour, a mandatory reason, every administrator of theirs is emailed at once, and it shows on their banner.",
+      "breakGlassTitle": "Open emergency access to {name}?",
+      "breakGlassBody": "This is audited and the customer’s administrators are emailed immediately. Access ends automatically after one hour. Describe the incident.",
+      "breakGlassReason": "What is the incident?",
+      "breakGlassConfirm": "Open emergency access",
+      "history": "History ({count})",
+      "accessEnded": "VenueOS no longer has access to the organization you were working in. Ask the customer for support access from their page below, or switch to an internal organization."
     }
   },
   "credentialSetup": {
@@ -4664,5 +4720,74 @@
       "trialEndedBody": "Add payment to pair new screens. The screens you already have keep playing.",
       "failed": "Couldn't add a screen to your plan."
     }
+  },
+  "supportAccess": {
+    "loading": "Loading support access…",
+    "loadFailed": "Could not load support access.",
+    "genericError": "Something went wrong. Please try again.",
+    "noneTitle": "VenueOS does not have access",
+    "noneBody": "VenueOS support cannot open this organization’s screens, content, people, alerts, settings or logs. When you want help, give access below or approve a request.",
+    "pendingTitle": "VenueOS ({by}) is asking for support access",
+    "pendingExplain": "Nothing happens until you decide. You can approve for a shorter time than requested.",
+    "adminsDecide": "An administrator of your organization can approve or deny this.",
+    "reason": "Reason",
+    "note": "Note",
+    "noteOptional": "Note (optional)",
+    "notePlaceholder": "What should VenueOS look at?",
+    "requestedFor": "Requested for",
+    "askedOn": "Asked on",
+    "approveFor": "Approve for",
+    "asRequested": "As requested ({duration})",
+    "approve": "Approve",
+    "deny": "Deny",
+    "scope": "Scope",
+    "wholeOrg": "Whole organization",
+    "specificLocations": "Specific locations",
+    "pickLocation": "Pick at least one location.",
+    "activeTitle": "VenueOS support has access",
+    "activeBreakGlassTitle": "VenueOS opened emergency support access",
+    "activeExplain": "Everything VenueOS does during this time is written to your audit log under this access. Ending it takes effect immediately.",
+    "until": "Until",
+    "how": "How",
+    "inviteTitle": "Give VenueOS support access",
+    "inviteBody": "Let VenueOS support into your organization for a set time — no request needed. You can end it at any moment.",
+    "duration": "Duration",
+    "inviteSubmit": "Give access",
+    "historyTitle": "History",
+    "historyEmpty": "VenueOS has never had access to this organization.",
+    "durations": {
+      "oneHour": "1 hour",
+      "oneDay": "24 hours",
+      "sevenDays": "7 days",
+      "days": "{count} days",
+      "hours": "{count} hours",
+      "minutes": "{count} minutes"
+    },
+    "kind": {
+      "REQUEST": "Requested by VenueOS, approved by you",
+      "INVITE": "Given by you",
+      "BREAK_GLASS": "Emergency access opened by VenueOS"
+    },
+    "status": {
+      "REQUESTED": "Waiting",
+      "ACTIVE": "Active",
+      "DENIED": "Denied",
+      "REVOKED": "Ended",
+      "EXPIRED": "Expired"
+    },
+    "banner": {
+      "active": "VenueOS support has access to this organization until {until}.",
+      "breakGlass": "VenueOS opened emergency support access to this organization until {until}.",
+      "pending": "VenueOS ({by}) is asking for support access.",
+      "details": "Details",
+      "review": "Review",
+      "endNow": "End now",
+      "endConfirmTitle": "End VenueOS support access?",
+      "endConfirmBody": "VenueOS will lose access to this organization immediately. You can give it again at any time.",
+      "endFailed": "Could not end access. Please try again."
+    }
+  },
+  "switcher": {
+    "needsAccess": "Needs customer approval"
   }
 }

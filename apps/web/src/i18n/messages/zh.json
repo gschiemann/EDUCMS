@@ -787,6 +787,10 @@
         "sports": {
           "label": "体育",
           "description": "比赛日设置，包括公共屏幕可以显示哪些学生信息。"
+        },
+        "supportAccess": {
+          "label": "VenueOS 支持访问",
+          "description": "决定 VenueOS 支持何时可以进入你的组织，并可随时结束。"
         }
       },
       "scopePersonal": "个人账户",
@@ -1665,6 +1669,29 @@
         "railBrowserSupport": "当前浏览器",
         "railDirectToUsb": "直接写入 USB 文件夹",
         "railZipFallback": "下载签名 ZIP 文件"
+      },
+      "supportAccess": {
+        "searchGive": "授予 VenueOS 支持访问",
+        "railStateLabel": "当前状态",
+        "railState": {
+          "active": "VenueOS 已获访问",
+          "pending": "请求待处理",
+          "none": "无访问",
+          "unknown": "未知"
+        },
+        "railStateBody": {
+          "active": "VenueOS 支持可以在显示的时间之前查看和更改这个组织。你可以随时结束。",
+          "pending": "VenueOS 正在请求访问。在管理员批准之前不会发生任何事情。",
+          "none": "VenueOS 无法打开你的屏幕、内容、人员、警报、设置或日志。",
+          "unknown": "无法读取当前状态。"
+        },
+        "railRuleLabel": "规则",
+        "railRuleTitle": "你来批准，你来计时",
+        "railRuleBody": "VenueOS 对你的数据没有长期访问权。每次授权都有时限，范围为整个组织或你选择的场所，VenueOS 在此期间的所有操作都会写入你的审计日志。",
+        "editorTitle": "VenueOS 支持访问",
+        "editorDesc": "批准或拒绝 VenueOS 的请求，需要帮助时主动授予访问，并可随时结束。",
+        "sectionTitle": "支持访问",
+        "sectionDesc": "只有你组织的管理员可以批准、授予或结束访问。"
       }
     }
   },
@@ -4541,6 +4568,35 @@
         "PAST_DUE": "逾期",
         "VOID": "已作废"
       }
+    },
+    "support": {
+      "title": "支持访问",
+      "explain": "VenueOS 对客户数据没有长期访问权。切换到这个组织并读取或更改其屏幕、内容、人员、警报、设置或日志，需要客户批准的有效授权。",
+      "loadFailed": "无法加载支持访问。",
+      "genericError": "出了点问题，请重试。",
+      "internal": "内部组织：始终可访问，无需授权。",
+      "active": "访问已授予，截止 {until}。",
+      "activeBreakGlass": "紧急访问已开启，截止 {until}。",
+      "pending": "请求已于 {on} 发送，等待客户管理员处理。",
+      "none": "当前无访问权。向客户请求，或由客户在“设置 → VenueOS 支持访问”中授予。",
+      "reason": "原因（客户可见）",
+      "reasonPlaceholder": "例如：大厅屏幕视频循环异常，需要检查播放列表",
+      "reasonRequired": "必须填写原因。",
+      "ask": "发送请求",
+      "endNow": "结束我们的访问",
+      "endTitle": "结束支持访问？",
+      "endBody": "VenueOS 将立即失去对 {name} 的访问。",
+      "withdraw": "撤回请求",
+      "withdrawTitle": "撤回这个请求？",
+      "withdrawBody": "客户将不再看到它。",
+      "breakGlass": "紧急访问（破玉按钮）",
+      "breakGlassExplain": "仅用于客户无人响应的真实事故：最多一小时，必须填写原因，客户的所有管理员会立即收到邮件，并显示在他们的横幅上。",
+      "breakGlassTitle": "对 {name} 开启紧急访问？",
+      "breakGlassBody": "此操作会被审计，客户管理员会立即收到邮件。访问在一小时后自动结束。请描述事故。",
+      "breakGlassReason": "事故是什么？",
+      "breakGlassConfirm": "开启紧急访问",
+      "history": "历史记录（{count}）",
+      "accessEnded": "VenueOS 已不再拥有你刚才所在组织的访问权。请在下方客户页面向客户请求支持访问，或切换到内部组织。"
     }
   },
   "credentialSetup": {
@@ -4664,5 +4720,74 @@
       "trialEndedBody": "添加付款方式即可配对新屏幕。已有的屏幕会继续播放。",
       "failed": "无法为您的方案添加屏幕。"
     }
+  },
+  "supportAccess": {
+    "loading": "正在加载支持访问…",
+    "loadFailed": "无法加载支持访问。",
+    "genericError": "出了点问题，请重试。",
+    "noneTitle": "VenueOS 没有访问权",
+    "noneBody": "VenueOS 支持无法打开这个组织的屏幕、内容、人员、警报、设置或日志。需要帮助时，请在下方授予访问或批准请求。",
+    "pendingTitle": "VenueOS（{by}）正在请求支持访问",
+    "pendingExplain": "在你决定之前不会发生任何事情。你可以批准比请求更短的时间。",
+    "adminsDecide": "你组织的管理员可以批准或拒绝。",
+    "reason": "原因",
+    "note": "备注",
+    "noteOptional": "备注（可选）",
+    "notePlaceholder": "VenueOS 应该查看什么？",
+    "requestedFor": "请求时长",
+    "askedOn": "请求时间",
+    "approveFor": "批准时长",
+    "asRequested": "按请求（{duration}）",
+    "approve": "批准",
+    "deny": "拒绝",
+    "scope": "范围",
+    "wholeOrg": "整个组织",
+    "specificLocations": "指定场所",
+    "pickLocation": "请至少选择一个场所。",
+    "activeTitle": "VenueOS 支持已获访问",
+    "activeBreakGlassTitle": "VenueOS 开启了紧急支持访问",
+    "activeExplain": "VenueOS 在此期间的所有操作都会记录在你的审计日志中并归属于此次访问。结束立即生效。",
+    "until": "截止",
+    "how": "方式",
+    "inviteTitle": "授予 VenueOS 支持访问",
+    "inviteBody": "让 VenueOS 支持在设定的时间内进入你的组织，无需请求。你可以随时结束。",
+    "duration": "时长",
+    "inviteSubmit": "授予访问",
+    "historyTitle": "历史记录",
+    "historyEmpty": "VenueOS 从未访问过这个组织。",
+    "durations": {
+      "oneHour": "1 小时",
+      "oneDay": "24 小时",
+      "sevenDays": "7 天",
+      "days": "{count} 天",
+      "hours": "{count} 小时",
+      "minutes": "{count} 分钟"
+    },
+    "kind": {
+      "REQUEST": "VenueOS 请求，由你批准",
+      "INVITE": "由你授予",
+      "BREAK_GLASS": "VenueOS 开启的紧急访问"
+    },
+    "status": {
+      "REQUESTED": "待处理",
+      "ACTIVE": "生效中",
+      "DENIED": "已拒绝",
+      "REVOKED": "已结束",
+      "EXPIRED": "已过期"
+    },
+    "banner": {
+      "active": "VenueOS 支持可访问这个组织，截止 {until}。",
+      "breakGlass": "VenueOS 开启了对这个组织的紧急支持访问，截止 {until}。",
+      "pending": "VenueOS（{by}）正在请求支持访问。",
+      "details": "详情",
+      "review": "处理",
+      "endNow": "立即结束",
+      "endConfirmTitle": "结束 VenueOS 支持访问？",
+      "endConfirmBody": "VenueOS 将立即失去对这个组织的访问。你可以随时再次授予。",
+      "endFailed": "无法结束访问，请重试。"
+    }
+  },
+  "switcher": {
+    "needsAccess": "需要客户批准"
   }
 }

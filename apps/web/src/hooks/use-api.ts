@@ -3259,7 +3259,9 @@ export function useSetTenantPosterStandard() {
 
 // ─── Accessible Tenants (Multi-school Switcher) ───────────────
 export function useAccessibleTenants() {
-  return useQuery<{ current: string; tenants: Array<{ id: string; name: string; slug: string; parentId: string | null }> }>({
+  // `supportAccess` (2026-10-11, SUPER_ADMIN rows only): 'internal' | 'home' |
+  // 'grant' = the switch will succeed; null = needs the customer's approval.
+  return useQuery<{ current: string; tenants: Array<{ id: string; name: string; slug: string; parentId: string | null; supportAccess?: 'internal' | 'home' | 'grant' | null }> }>({
     queryKey: ['tenants', 'accessible'],
     queryFn: () => apiFetch('/tenants/accessible'),
     staleTime: 60_000,

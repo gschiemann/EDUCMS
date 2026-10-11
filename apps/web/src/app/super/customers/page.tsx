@@ -38,6 +38,15 @@ export default function CustomersPage() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
+  // SUPPORT ACCESS (2026-10-11): api-client sends a super admin here with
+  // ?accessEnded=1 when the organisation they were working in is no longer
+  // reachable. Read after mount — no useSearchParams Suspense boundary.
+  const [accessEnded, setAccessEnded] = useState(false);
+  useEffect(() => {
+    try {
+      if (new URLSearchParams(window.location.search).get('accessEnded') === '1') setAccessEnded(true);
+    } catch { /* nothing to read */ }
+  }, []);
   const [filters, setFilters] = useState<ListFilters>(DEFAULT_FILTERS);
   const [search, setSearch] = useState('');
   // Debounce the search box so typing is one request, not one per keystroke.
@@ -87,6 +96,9 @@ export default function CustomersPage() {
             <Plus className="w-4 h-4" aria-hidden /> {t('newCustomer')}
           </Link>
         </header>
+        {accessEnded && (
+          <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{t('support.accessEnded')}</p>
+        )}
 
         <section className="bg-white rounded-2xl border border-slate-200 p-3 space-y-3" aria-label={t('title')}>
           <label className="relative block">

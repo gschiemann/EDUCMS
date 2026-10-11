@@ -13,6 +13,7 @@ import { TopToolbar } from './TopToolbar';
 import { EmergencyOverlay } from './EmergencyOverlay';
 import { AuthExpirationGuard } from './AuthExpirationGuard';
 import { ApiStatusBanner } from './ApiStatusBanner';
+import { SupportAccessBanner } from '@/components/support-access/SupportAccessBanner';
 import { StaleBundleWatcher } from './StaleBundleWatcher';
 import { ProfileHydrator } from './ProfileHydrator';
 import { useTenantStatus } from '@/hooks/use-api';
@@ -93,6 +94,10 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           says "Connection trouble — reconnecting…" instead of letting an API
           outage read as "every click is broken." Renders null when idle. */}
       <ApiStatusBanner />
+      {/* 2026-10-11 — "VenueOS support has access until …, End now". Renders
+          null unless VenueOS currently has (or is asking for) access to this
+          organisation; never for a SUPER_ADMIN. */}
+      <SupportAccessBanner />
       {/* 2026-05-12 — operator hit "still shows gschiemann" because
           their tab was on a pre-deploy bundle. StaleBundleWatcher
           polls /api/build-info every 5 min and shows a "new version

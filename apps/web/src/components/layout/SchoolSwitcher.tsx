@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
-import { Building2, ChevronsUpDown, Check, Loader2, ChevronRight, ChevronDown } from 'lucide-react';
+import { Building2, ChevronsUpDown, Check, Loader2, ChevronRight, ChevronDown, Lock } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { useAccessibleTenants } from '@/hooks/use-api';
 import { useAppStore } from '@/lib/store';
 import { useTenantSwitch } from '@/hooks/use-tenant-switch';
@@ -36,6 +37,10 @@ export function SchoolSwitcher({ align = 'right' }: { align?: SchoolSwitcherAlig
   const tenants = useMemo(() => data?.tenants ?? [], [data]);
   const current = tenants.find((t) => t.slug === activeTenant || t.id === activeTenant);
   const copy = useTenantCopy();
+  // SUPPORT ACCESS (2026-10-11): a SUPER_ADMIN sees which customers VenueOS
+  // may enter right now; a locked row means "ask the customer first".
+  const tSwitch = useTranslations('switcher');
+  const needsAccess = (t: { supportAccess?: string | null }) => t.supportAccess === null;
 
   // Group child Locations under their Primary parent so the switcher reads as
   // a hierarchy. Children stay COLLAPSED under a per-company expand toggle so a
@@ -193,6 +198,7 @@ export function SchoolSwitcher({ align = 'right' }: { align?: SchoolSwitcherAlig
                       )}
                       <span className="truncate">{root.name}</span>
                       {hasKids && <span className="shrink-0 text-[10px] font-medium text-slate-400">({kids.length})</span>}
+                      {needsAccess(root) && <Lock className="w-3 h-3 shrink-0 text-slate-400" aria-label={tSwitch('needsAccess')} />}
                     </span>
                     {rootSwitching ? (
                       <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
@@ -219,6 +225,7 @@ export function SchoolSwitcher({ align = 'right' }: { align?: SchoolSwitcherAlig
                         <span className="truncate flex items-center gap-2">
                           <span className="text-slate-300" aria-hidden="true">└</span>
                           <span className="truncate">{k.name}</span>
+                          {needsAccess(k) && <Lock className="w-3 h-3 shrink-0 text-slate-400" aria-label={tSwitch('needsAccess')} />}
                         </span>
                         {kSwitching ? (
                           <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
