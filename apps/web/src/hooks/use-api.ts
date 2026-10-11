@@ -2869,7 +2869,57 @@ export type TeamUser = {
    * the toggle then renders nothing rather than guessing "off".
    */
   canTriggerPanic?: boolean;
+  /** 2026-10-11 — USER SCOPING: how many locations besides home. Optional: older API. */
+  extraLocationCount?: number;
+  /** 2026-10-11 — USER SCOPING: limited to some screens in at least one location. Optional: older API. */
+  screenLimited?: boolean;
 };
+
+/**
+ * 2026-10-11 — USER SCOPING. What Settings → People → "Locations & screens"
+ * shows for one person (GET /users/:id/access).
+ */
+export interface UserAccessScope {
+  screenIds: string[];
+  screenGroupIds: string[];
+}
+export interface UserAccess {
+  user: { id: string; email: string; role: string; homeTenantId: string };
+  /** False for org admins: they already reach every location and screen. */
+  scopable: boolean;
+  /** Only an org admin may change which locations a person can use. */
+  canEditLocations: boolean;
+  locations: Array<{ id: string; name: string; isHome: boolean; granted: boolean; scopeEditable: boolean }>;
+  /** Per location id; absent = not limited there. */
+  screenScopes: Record<string, UserAccessScope>;
+  /** Choices per location the caller may limit. */
+  options: Record<string, { screens: Array<{ id: string; name: string; screenGroupId: string | null }>; groups: Array<{ id: string; name: string }> }>;
+}
+
+export function useUserAccess(userId: string | null) {
+  return useQuery<UserAccess>({
+    queryKey: ['users', userId, 'access'],
+    queryFn: () => apiFetch(`/users/${userId}/access`),
+    enabled: !!userId,
+    staleTime: 0,
+  });
+}
+
+export function useSetUserAccess() {
+  const qc = useQueryClient();
+  return useMutation<
+    { success: boolean; changed: boolean },
+    Error,
+    { id: string; locationIds: string[]; screenScopes: Record<string, UserAccessScope | null> }
+  >({
+    mutationFn: ({ id, locationIds, screenScopes }) =>
+      apiFetch(`/users/${id}/access`, { method: 'PUT', body: JSON.stringify({ locationIds, screenScopes }) }),
+    onSuccess: (_d, v) => {
+      qc.invalidateQueries({ queryKey: ['users'] });
+      qc.invalidateQueries({ queryKey: ['users', v.id, 'access'] });
+    },
+  });
+}
 
 export function useUsers() {
   return useQuery<TeamUser[]>({
