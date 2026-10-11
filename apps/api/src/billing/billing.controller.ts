@@ -275,7 +275,7 @@ export class BillingController {
       canManage,
       // Card checkout is offered only to a CARD (or no-license) organisation on
       // a deploy where card billing is live — never to INVOICE / PO / COMP.
-      canCheckout: ready && canManage && cardCheckoutAllowed(gov) && !b.cardOnFile,
+      canCheckout: ready && canManage && cardCheckoutAllowed(gov) && (!b.cardOnFile || b.state === 'cancelled'),
       cardOnFile: b.cardOnFile,
       trialEndsAt: b.trialEndsAt ? b.trialEndsAt.toISOString() : null,
       daysLeft: b.daysLeft,

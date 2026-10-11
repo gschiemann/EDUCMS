@@ -101,6 +101,15 @@ describe('GET /billing/summary', () => {
   });
 });
 
+describe('GET /billing/summary — cancelled plan', () => {
+  it('a cancelled card plan may restart through checkout', async () => {
+    Object.assign(process.env, KEYS);
+    const { controller } = build({ tier: 'MONTHLY', status: 'CANCELLED', billingMode: 'CARD', stripeSubscriptionId: 'sub_1', seatLimit: 3 });
+    const s: any = await controller.summary(req());
+    expect(s).toMatchObject({ state: 'cancelled', readOnly: true, canCheckout: true });
+  });
+});
+
 describe('POST /billing/seats', () => {
   it('{ add: 1 } → seatLimit + 1 for the SESSION tenant', async () => {
     Object.assign(process.env, KEYS);
