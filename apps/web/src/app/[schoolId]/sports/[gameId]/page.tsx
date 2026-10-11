@@ -518,7 +518,11 @@ function GameControl() {
   // unified status mutation the old stepper used) THEN open Run; once live, it
   // just opens Run. Routing on mutation success so the operator never lands in
   // Run before the state actually flipped.
+  // S-02 (Muse beta): the status flips optimistically (useGameControl), so
+  // every label on this page reads LIVE the moment Go Live is tapped; a
+  // second tap while the request is in flight does nothing.
   const onLive = () => {
+    if (ctl.status.isPending) return;
     if (g.status === 'SCHEDULED' || g.status === 'PRE_GAME') {
       ctl.status.mutate({ status: 'LIVE' }, { onSuccess: () => setMode('run') });
     } else {
@@ -1050,7 +1054,7 @@ function GameControl() {
             {/* item A/0 — the checklist's single primary action. Go-Live runs
                 the Scheduled→LIVE transition via the same unified status
                 mutation, then opens Run. */}
-            <GoLiveBar g={g} onLive={onLive} />
+            <GoLiveBar g={g} onLive={onLive} pending={ctl.status.isPending} />
 
           </div>
         </div>
@@ -8304,7 +8308,8 @@ function RunStatusControl({
 /** item A/0 — the Setup checklist's single primary action. `onLive` (in the
  *  parent) performs the Scheduled→LIVE transition via the same unified mutation
  *  then routes to Run; once live it just opens Run. */
-function GoLiveBar({ g, onLive }: { g: any; onLive: () => void }) {
+function GoLiveBar({ g, onLive, pending = false }: { g: any; onLive: () => void; pending?: boolean }) {
+  const tSetup = useTranslations('sportsConsoleSetup');
   const status = String(g?.status || 'SCHEDULED');
   const pre = status === 'SCHEDULED' || status === 'PRE_GAME';
   return (
@@ -8322,9 +8327,11 @@ function GoLiveBar({ g, onLive }: { g: any; onLive: () => void }) {
       <button
         type="button"
         onClick={onLive}
-        className="min-h-[48px] px-6 py-2.5 rounded-xl text-base font-black bg-green-500 hover:bg-green-400 text-slate-900 shrink-0"
+        disabled={pending}
+        aria-busy={pending || undefined}
+        className="min-h-[48px] px-6 py-2.5 rounded-xl text-base font-black bg-green-500 hover:bg-green-400 text-slate-900 shrink-0 disabled:opacity-70 disabled:cursor-wait"
       >
-        {pre ? '● Go Live' : 'Open Run console →'}
+        {pending ? tSetup('goingLive') : pre ? '● Go Live' : 'Open Run console →'}
       </button>
     </div>
   );

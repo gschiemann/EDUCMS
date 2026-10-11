@@ -4116,7 +4116,8 @@
     "takeoverTitle": "Move this screen's console?",
     "takeoverMessage": "{screen} reads the console for {game}. Moving it here stops that game's console data.",
     "takeoverConfirm": "Move it here",
-    "errorTaken": "That screen now reads the console for another game — choose again."
+    "errorTaken": "That screen now reads the console for another game — choose again.",
+    "goingLive": "Going live…"
   },
   "consoleBridge": {
     "title": "Scoreboard console",

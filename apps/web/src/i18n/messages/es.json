@@ -4116,7 +4116,8 @@
     "takeoverTitle": "¿Mover la consola de esta pantalla?",
     "takeoverMessage": "{screen} lee la consola para {game}. Si la mueves aquí, ese partido deja de recibir los datos de la consola.",
     "takeoverConfirm": "Moverla aquí",
-    "errorTaken": "Esa pantalla ahora lee la consola para otro partido; elige de nuevo."
+    "errorTaken": "Esa pantalla ahora lee la consola para otro partido; elige de nuevo.",
+    "goingLive": "Iniciando en vivo…"
   },
   "consoleBridge": {
     "title": "Consola del marcador",

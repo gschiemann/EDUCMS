@@ -4116,7 +4116,8 @@
     "takeoverTitle": "要移动此屏幕的控制台吗？",
     "takeoverMessage": "{screen}正在为{game}读取控制台。移到这里后，那场比赛将不再收到控制台数据。",
     "takeoverConfirm": "移到这里",
-    "errorTaken": "该屏幕现在正在为另一场比赛读取控制台——请重新选择。"
+    "errorTaken": "该屏幕现在正在为另一场比赛读取控制台——请重新选择。",
+    "goingLive": "正在开始直播…"
   },
   "consoleBridge": {
     "title": "记分牌控制台",

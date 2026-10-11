@@ -5379,10 +5379,25 @@ export function useGameControl(gameId: string) {
       writeBack(game);
     },
   });
+  // S-02 (Muse beta 2026-10-07): Go Live waited a full round trip with no
+  // visible change, and the console kept saying SCHEDULED while the board
+  // already said LIVE. The status now flips in the cache the instant it is
+  // tapped (the server's answer stays authoritative via writeBack), and a
+  // refusal re-reads server truth — never a stale snapshot (see rollback).
   const status = useMutation({
     mutationFn: (body: { status: string }) =>
       sendGameCommand(`/sports/games/${gameId}/status`, 'PATCH', body),
-    onSuccess: writeBack,
+    onMutate: async (body) => {
+      await qc.cancelQueries({ queryKey: gameKey });
+      const prev = snapshotGame();
+      if (prev) qc.setQueryData(gameKey, (old: any) => (old ? { ...old, status: body.status } : old));
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => rollback(ctx),
+    onSuccess: (game: any) => {
+      writeBack(game);
+      qc.invalidateQueries({ queryKey: ['sports-games'] });
+    },
   });
   // K12-F13 (2026-09-26): a FINAL game is locked server-side; the audited
   // reopen (reason required) is the only way back to live scoring.
