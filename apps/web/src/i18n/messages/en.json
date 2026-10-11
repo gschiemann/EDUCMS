@@ -2311,7 +2311,10 @@
       },
       "proof": {
         "lastSleep": "Last turn-off: {outcome} ({ago}).",
-        "lastRestore": "Last all-clear: {outcome}, because {reason} ({ago})."
+        "lastRestore": "Last all-clear: {outcome}, because {reason} ({ago}).",
+        "lastOffIdle": "Last turned off {ago}, after {idle} without any remote input.",
+        "lastOffInactivity": "Last turned off {ago}, after exactly this box's own inactivity sleep ({idle} without remote input): Android turned it off, not a person.",
+        "lastOffNoInput": "Last turned off {ago}, with no remote input since the player started."
       },
       "turnOn": {
         "confirmed": "Last Turn panel on ({ago}): confirmed by the player.",

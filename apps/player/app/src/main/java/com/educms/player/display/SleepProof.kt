@@ -232,6 +232,18 @@ object SleepProof {
         if (lastAt > 0L && lastM != null && lastO != null) {
             out.put("last", JSONObject().put("m", lastM.take(32)).put("o", lastO.take(16)).put("at", lastAt))
         }
+        // How idle the box was when its last "person's" standby began, and
+        // its own inactivity-sleep setting — equal values mean Android, not
+        // a person, turned the panel off (seconds; -1 = unknown / disabled).
+        val offAt = p.getLong(com.educms.player.standby.UserStandby.KEY_LAST_OFF_AT_WALL, 0L)
+        if (offAt > 0L) {
+            val idle = p.getLong(com.educms.player.standby.UserStandby.KEY_LAST_OFF_IDLE_MS, -1L)
+            out.put("offIdleS", if (idle >= 0L) (idle / 1000L).coerceAtMost(999_999_999L) else -1L)
+            out.put("offAt", offAt)
+        }
+        secureInt(app, "attentive_timeout")?.let { ms ->
+            out.put("attS", if (ms > 0) (ms / 1000).coerceAtMost(999_999_999) else -1)
+        }
         val rAt = p.getLong(KEY_RESTORE_AT, 0L)
         val rD = p.getString(KEY_RESTORE_DECISION, null)
         val rO = p.getString(KEY_RESTORE_OUTCOME, null)

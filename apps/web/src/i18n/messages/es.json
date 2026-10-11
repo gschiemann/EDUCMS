@@ -2311,7 +2311,10 @@
       },
       "proof": {
         "lastSleep": "Último apagado: {outcome} ({ago}).",
-        "lastRestore": "Último fin de alerta: {outcome}, porque {reason} ({ago})."
+        "lastRestore": "Último fin de alerta: {outcome}, porque {reason} ({ago}).",
+        "lastOffIdle": "Se apagó por última vez {ago}, tras {idle} sin usar el control remoto.",
+        "lastOffInactivity": "Se apagó por última vez {ago}, justo al cumplirse el reposo por inactividad del propio equipo ({idle} sin usar el control remoto): lo apagó Android, no una persona.",
+        "lastOffNoInput": "Se apagó por última vez {ago}, sin usar el control remoto desde que se inició el reproductor."
       },
       "turnOn": {
         "confirmed": "Último Encender panel ({ago}): confirmado por el reproductor.",

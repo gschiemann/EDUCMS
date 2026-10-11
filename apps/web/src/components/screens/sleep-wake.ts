@@ -33,6 +33,9 @@ export const NATIVE_ALERT_WATCH_MIN = [1, 1, 22] as const;
 export const ALERT_RESTORE_MIN = [1, 1, 23] as const;
 export const NATIVE_POWER_ON_MIN = [1, 1, 24] as const;
 
+/** Idle-before-off within this of the box's attentive timeout = Android's inactivity sleep. */
+export const INACTIVITY_MATCH_S = 120;
+
 /** How old a native report may be before it says nothing about "now". */
 export const NATIVE_REPORT_FRESH_MS = 10 * 60_000;
 
@@ -88,6 +91,13 @@ export interface SleepWakeSummary {
   lastSleep: { mechanism: string; outcome: SleepOutcome; atMs: number } | null;
   /** The last after-alert restore. */
   lastRestore: { decision: string; outcome: SleepOutcome; atMs: number } | null;
+  /**
+   * The last "person's" standby: when, how long the box had seen no remote
+   * input before it, the box's own inactivity-sleep setting, and whether the
+   * two match (within [INACTIVITY_MATCH_S]) — i.e. Android, not a person,
+   * turned it off.
+   */
+  lastOff: { atMs: number; idleS: number | null; attentiveS: number | null; matchesInactivity: boolean } | null;
   /** True when the player reports nothing about sleep yet (older build). */
   noEvidence: boolean;
   /** Android release from the capability report's build block ("13"), or null. */
@@ -217,7 +227,22 @@ export function summarizeSleepWake(input: SleepWakeInput): SleepWakeSummary {
       ? { decision: restore.d, outcome: outcome(restore.o), atMs: restoreAt }
       : null;
 
+  const offAt = finite(sleep?.offAt);
+  const offIdle = finite(sleep?.offIdleS);
+  const att = finite(sleep?.attS);
+  const lastOff =
+    offAt !== null
+      ? {
+          atMs: offAt,
+          idleS: offIdle !== null && offIdle >= 0 ? offIdle : null,
+          attentiveS: att !== null && att > 0 ? att : null,
+          matchesInactivity:
+            offIdle !== null && offIdle >= 0 && att !== null && att > 0 && Math.abs(offIdle - att) <= INACTIVITY_MATCH_S,
+        }
+      : null;
+
   return {
+    lastOff,
     mechanism: mechanismKind(blank, screensaverSeen, (() => {
       const sdk = asObject(verdict?.build)?.sdk;
       return typeof sdk === 'number' && Number.isInteger(sdk) ? sdk : null;

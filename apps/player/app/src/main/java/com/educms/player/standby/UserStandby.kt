@@ -81,6 +81,15 @@ object UserStandby {
     private const val KEY_INT_BOOT_COUNT = "user_standby_interrupted_boot_count"
     private const val KEY_INT_AT_ELAPSED = "user_standby_interrupted_at_elapsed_ms"
 
+    /**
+     * 2026-10-11 — how long the box had seen no remote / touch input when the
+     * last "person's" standby began (ms; -1 = no input since process start),
+     * and when (wall ms). Evidence for telling Android's inactivity sleep
+     * from a real remote press; never read by any decision.
+     */
+    const val KEY_LAST_OFF_IDLE_MS = "user_standby_last_off_idle_ms"
+    const val KEY_LAST_OFF_AT_WALL = "user_standby_last_off_at_wall_ms"
+
     /** `elapsedRealtime` of the last WAKE COMMAND after that interruption (never the alert's own). */
     private const val KEY_WAKE_AFTER_INT = "user_standby_wake_after_interrupt_elapsed_ms"
 
@@ -496,6 +505,8 @@ object UserStandby {
             sinceElapsedMs = nowElapsedMs,
             bootCount = bootCount(app),
         )
+        val lastInput = MainActivity.lastInputAtElapsedMs
+        val idleMs = if (lastInput > 0L && nowElapsedMs >= lastInput) nowElapsedMs - lastInput else -1L
         synchronized(lock) {
             val persisted = runCatching {
                 prefs(app).edit()
@@ -503,6 +514,8 @@ object UserStandby {
                     .putLong(KEY_SINCE_ELAPSED, record.sinceElapsedMs)
                     .putInt(KEY_BOOT_COUNT, record.bootCount)
                     .remove(KEY_RESTORED)
+                    .putLong(KEY_LAST_OFF_IDLE_MS, idleMs)
+                    .putLong(KEY_LAST_OFF_AT_WALL, record.sinceWallMs)
                     .commit()
             }.getOrDefault(false)
             cachedActive = true
@@ -510,7 +523,9 @@ object UserStandby {
                 TAG,
                 "USER STANDBY — the panel was turned off by something that is not us while the player " +
                     "was on the glass. It stays off until the power key, the schedule's ON trigger, a WAKE " +
-                    "command or an emergency alert (persisted=$persisted bootCount=${record.bootCount})",
+                    "command or an emergency alert (persisted=$persisted bootCount=${record.bootCount} " +
+                    "idleBeforeOffMs=$idleMs — no remote/touch input for that long; compare the box's " +
+                    "attentive timeout before blaming a person)",
             )
         }
         acquireCpuLock(app)

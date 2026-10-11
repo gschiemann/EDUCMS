@@ -46,6 +46,13 @@ const sleepSchema = z.object({
       at: wallMs,
     })
     .optional(),
+  // How long the box had seen no remote/touch input when its last "person's"
+  // standby began (s; -1 = none since the process started), when that was,
+  // and the box's own inactivity-sleep setting (`attentive_timeout`, s; -1 =
+  // off). Equal values point at Android's inactivity sleep, not a person.
+  offIdleS: z.number().int().min(-1).max(999_999_999).optional(),
+  offAt: wallMs.optional(),
+  attS: z.number().int().min(-1).max(999_999_999).optional(),
 });
 
 const runtimeSchema = z.object({
@@ -114,7 +121,9 @@ export function nativePowerStateChanged(
     a.sleep?.blank !== next.sleep?.blank ||
     a.sleep?.dream !== next.sleep?.dream ||
     a.sleep?.a11y !== next.sleep?.a11y ||
-    a.sleep?.admin !== next.sleep?.admin
+    a.sleep?.admin !== next.sleep?.admin ||
+    a.sleep?.offAt !== next.sleep?.offAt ||
+    a.sleep?.attS !== next.sleep?.attS
   );
 }
 

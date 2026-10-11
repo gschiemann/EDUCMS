@@ -88,6 +88,22 @@ describe('<ScreenSleepWakeSection />', () => {
     expect(rtl.getByTestId('sleep-wake-now').textContent).toMatch(/^Asleep now: Android reports the panel off since /);
   });
 
+  it('names Android as the cause when the off matches the box inactivity sleep', () => {
+    render(
+      <ScreenSleepWakeSection
+        screen={{
+          ...base,
+          nativeRuntimeReport: {
+            ...base.nativeRuntimeReport,
+            sleep: { offAt: NOW - 3_600_000, offIdleS: 14_400, attS: 14_400 },
+          },
+        }}
+        nowMs={NOW}
+      />,
+    );
+    expect(rtl.getByTestId('sleep-wake-last-off').textContent).toMatch(/Android turned it off, not a person/);
+  });
+
   it('renders nothing without a screen', () => {
     const { container } = render(<ScreenSleepWakeSection screen={null} nowMs={NOW} />);
     expect(container.textContent).toBe('');

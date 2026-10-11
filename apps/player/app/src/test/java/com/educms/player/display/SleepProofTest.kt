@@ -190,6 +190,21 @@ class SleepProofTest {
     }
 
     @Test
+    fun `a person's standby records how idle the box was — evidence only`() {
+        val main = read("src/main/java/com/educms/player/MainActivity.kt")
+        val interaction = Regex("override fun onUserInteraction\\(\\)[\\s\\S]*?\\n    }").find(main)?.value
+        Assume.assumeTrue("onUserInteraction() not found", interaction != null)
+        assertTrue(interaction!!.contains("lastInputAtElapsedMs = lastLocalInputAtMs"))
+        val enter = Regex("private fun enter\\([\\s\\S]*?\\n    }").find(standby)?.value
+        Assume.assumeTrue("enter() not found", enter != null)
+        assertTrue(enter!!.contains(".putLong(KEY_LAST_OFF_IDLE_MS, idleMs)"))
+        // Never read by any decision: only the report reads it.
+        val decisions = standby.replace(enter, "")
+        assertFalse(decisions.contains("getLong(KEY_LAST_OFF_IDLE_MS"))
+        assertTrue(sleepProof.contains("UserStandby.KEY_LAST_OFF_IDLE_MS"))
+    }
+
+    @Test
     fun `the accessibility sleep tier sits after device admin and before the screen-off timeout`() {
         val chains = Regex(
             "DeviceAdminBlankProvider,\\s*AccessibilityLockProvider,\\s*ScreenTimeoutBlankProvider,\\s*SoftwareDimProvider",

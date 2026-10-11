@@ -78,6 +78,9 @@ describe('native power evidence and command freshness', () => {
     admin: false,
     last: { m: 'screen-timeout', o: 'dream', at: 1791688602995 },
     restore: { d: 'RESTORE', o: 'black', at: 1791688602995 },
+    offIdleS: 14_400,
+    offAt: 1791688602995,
+    attS: 14_400,
   };
   it('accepts the sleep evidence block and an attempt count, additively', () => {
     const full = { ...runtime, powerOnAttempts: 1, sleep };

@@ -738,6 +738,21 @@ class MainActivity : ComponentActivity() {
         var lastPausedBySleepAtMs: Long = 0L
             private set
 
+        /**
+         * 2026-10-11 — `elapsedRealtime` of the last remote / touch / key
+         * input this Activity saw, process-wide (0 = none since start).
+         * Evidence only: [com.educms.player.standby.UserStandby] records how
+         * long the box had been idle when a "person's" standby began, so an
+         * OS inactivity sleep (Android's attentive timeout, which turns a
+         * TV-class box off after hours without input whatever the app holds)
+         * can be told from a real remote press. The power key itself never
+         * reaches an app, so this can only ever ADD evidence.
+         */
+        @Volatile
+        @JvmStatic
+        var lastInputAtElapsedMs: Long = 0L
+            private set
+
         private val liveInstances = java.util.concurrent.atomic.AtomicInteger(0)
 
         /** Is a MainActivity instance alive (created, not yet destroyed)? */
@@ -899,6 +914,7 @@ class MainActivity : ComponentActivity() {
     override fun onUserInteraction() {
         super.onUserInteraction()
         lastLocalInputAtMs = android.os.SystemClock.elapsedRealtime()
+        lastInputAtElapsedMs = lastLocalInputAtMs
     }
 
     // ─── 2026-08-03: kiosk lock task mode ───────────────────────────

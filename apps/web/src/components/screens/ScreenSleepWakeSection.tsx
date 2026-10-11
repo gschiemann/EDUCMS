@@ -35,6 +35,19 @@ function relative(locale: string, atMs: number, nowMs: number): string {
   return rtf.format(Math.round(diffSec / 86_400), 'day');
 }
 
+/** "4 hr", "35 min", "50 sec" in the reader's language. */
+function duration(locale: string, seconds: number): string {
+  const [value, unit] =
+    seconds >= 3600 ? [Math.round((seconds / 3600) * 10) / 10, 'hour'] :
+    seconds >= 60 ? [Math.round(seconds / 60), 'minute'] :
+    [seconds, 'second'];
+  try {
+    return new Intl.NumberFormat(locale, { style: 'unit', unit, unitDisplay: 'short' }).format(value);
+  } catch {
+    return `${value} ${unit}`;
+  }
+}
+
 const KNOWN_DECISIONS = [
   'RESTORE',
   'WAKE_COMMAND_DURING_ALERT',
@@ -149,6 +162,15 @@ export function ScreenSleepWakeSection({
                 reason: t(`decision.${decisionKey}`),
                 ago: ago(s.lastRestore.atMs),
               })}
+            </p>
+          )}
+          {s.lastOff && (
+            <p className="text-[10px] text-slate-500 leading-snug" data-testid="sleep-wake-last-off">
+              {s.lastOff.matchesInactivity && s.lastOff.idleS !== null
+                ? t('proof.lastOffInactivity', { ago: ago(s.lastOff.atMs), idle: duration(locale, s.lastOff.idleS) })
+                : s.lastOff.idleS !== null
+                  ? t('proof.lastOffIdle', { ago: ago(s.lastOff.atMs), idle: duration(locale, s.lastOff.idleS) })
+                  : t('proof.lastOffNoInput', { ago: ago(s.lastOff.atMs) })}
             </p>
           )}
           {turnOnLine && <p className="text-[10px] text-slate-500 leading-snug">{turnOnLine}</p>}

@@ -2311,7 +2311,10 @@
       },
       "proof": {
         "lastSleep": "上次关闭：{outcome}（{ago}）。",
-        "lastRestore": "上次警报解除：{outcome}，因为{reason}（{ago}）。"
+        "lastRestore": "上次警报解除：{outcome}，因为{reason}（{ago}）。",
+        "lastOffIdle": "上次关闭于{ago}，此前{idle}内没有任何遥控器操作。",
+        "lastOffInactivity": "上次关闭于{ago}，恰好达到此设备自身的闲置休眠时间（{idle}无遥控器操作）：是 Android 关闭了它，而不是有人操作。",
+        "lastOffNoInput": "上次关闭于{ago}，自播放器启动以来没有任何遥控器操作。"
       },
       "turnOn": {
         "confirmed": "上次“开启面板”（{ago}）：播放器已确认。",

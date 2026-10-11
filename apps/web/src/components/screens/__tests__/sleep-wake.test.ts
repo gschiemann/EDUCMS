@@ -131,6 +131,23 @@ describe('sleep & wake — what each screen can do, and what it proved', () => {
     expect(s.noEvidence).toBe(false);
   });
 
+  it('an off that lands on the box\'s own inactivity sleep is Android, not a person', () => {
+    const at = NOW - 3_600_000;
+    const withOff = (offIdleS: number, attS: number) =>
+      summarizeSleepWake({
+        ...x80,
+        nativeRuntimeReport: { ...x80.nativeRuntimeReport, sleep: { offAt: at, offIdleS, attS } },
+      }).lastOff;
+    expect(withOff(14_400, 14_400)).toEqual({ atMs: at, idleS: 14_400, attentiveS: 14_400, matchesInactivity: true });
+    expect(withOff(14_400 + 119, 14_400)?.matchesInactivity).toBe(true);
+    expect(withOff(3_000, 14_400)?.matchesInactivity).toBe(false);
+    // Inactivity sleep switched off on the box (-1): never a match.
+    expect(withOff(14_400, -1)).toEqual({ atMs: at, idleS: 14_400, attentiveS: null, matchesInactivity: false });
+    // No input since the player started.
+    expect(withOff(-1, 14_400)?.idleS).toBeNull();
+    expect(summarizeSleepWake(x80).lastOff).toBeNull();
+  });
+
   it('an unrecognised outcome is "unknown", never passed through', () => {
     const s = summarizeSleepWake({
       ...x80,
