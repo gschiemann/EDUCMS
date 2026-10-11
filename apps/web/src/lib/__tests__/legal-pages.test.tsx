@@ -44,7 +44,9 @@ describe('public legal pages', () => {
     expect(t).toMatch(/Purchase orders, invoicing[\s\S]*Enterprise/);
   });
 
-  it('entity name and address come from ONE constant (placeholders until filled)', () => {
+  it('entity name and address come from ONE constant and are filled in', () => {
+    expect(LEGAL_ENTITY.companyLegalName).toBe('Twin Oaks Farm & Tech LLC');
+    expect(LEGAL_ENTITY.mailingAddress).not.toMatch(/\[/);
     for (const C of [TermsPage, PrivacyPage, DpaPage]) {
       const t = text(C);
       expect(t).toContain(LEGAL_ENTITY.companyLegalName);
@@ -76,7 +78,7 @@ describe('public legal pages', () => {
     });
 
     it('both use the ONE governing-state constant for law and courts, with the public-entity exception', () => {
-      expect(GOVERNING_STATE).toBe('[GOVERNING STATE]');
+      expect(GOVERNING_STATE).toBe('Alabama');
       for (const C of [TermsPage, EulaPage]) {
         const t = text(C);
         expect(t).toContain(`governed by the laws of the State of ${GOVERNING_STATE}`);

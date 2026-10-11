@@ -18,9 +18,9 @@
 
 export const LEGAL_ENTITY = {
   /** The contracting legal entity, e.g. "Example Signage, Inc." */
-  companyLegalName: '[COMPANY LEGAL NAME]',
+  companyLegalName: 'Twin Oaks Farm & Tech LLC',
   /** Postal address for legal notices. */
-  mailingAddress: '[MAILING ADDRESS]',
+  mailingAddress: '7575 State Highway 134 E., Columbia, AL 36319',
   /** The product / brand name used throughout the documents. */
   productName: 'VenueOS',
 } as const;
@@ -36,7 +36,7 @@ export const LEGAL_ENTITY = {
  * ⚠️ PLACEHOLDER — set it to the state of organization (e.g. 'Delaware')
  * before launch.
  */
-export const GOVERNING_STATE = '[GOVERNING STATE]';
+export const GOVERNING_STATE = 'Alabama';
 
 export const LEGAL_CONTACTS = {
   legal: 'legal@venue-os.app',
