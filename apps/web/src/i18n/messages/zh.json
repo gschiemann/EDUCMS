@@ -4672,7 +4672,9 @@
       "restartPlan": "重新开通方案",
       "askAdmin": "请联系管理员添加付款方式。",
       "details": "详情",
-      "hideToday": "今天不再显示"
+      "hideToday": "今天不再显示",
+      "pastDueNext": "您最近一次付款未能完成——Stripe 将于 {date} 再次尝试。",
+      "cancelledNonPayment": "您的银行卡无法扣款，因此控制台现为只读。屏幕和紧急警报仍正常工作。"
     },
     "dialog": {
       "title": "添加付款方式",
@@ -4721,6 +4723,29 @@
       "trialEndedTitle": "您的免费试用已结束",
       "trialEndedBody": "添加付款方式即可配对新屏幕。已有的屏幕会继续播放。",
       "failed": "无法为您的方案添加屏幕。"
+    },
+    "card": {
+      "title": "更新您的银行卡",
+      "whatHappened": "您的银行卡于 {date} 被拒。",
+      "nextTry": "Stripe 将于 {date} 再次尝试。如果扣款继续失败，控制台将变为只读。",
+      "lastTry": "Stripe 已没有更多自动重试。请立即更新银行卡，以免控制台变为只读。",
+      "step1": "点击下方的“更新银行卡”。",
+      "step2": "在 Stripe 安全页面输入新的银行卡。",
+      "step3": "返回此处——我们会完成扣款并确认一切就绪。",
+      "error": "无法打开 Stripe，请稍后再试。",
+      "checking": "正在用新银行卡扣款…",
+      "allSet": "新银行卡可用，付款已完成。一切恢复正常。",
+      "declined": "这张银行卡也被拒了。",
+      "tryAgain": "换一张银行卡",
+      "saved": "新银行卡已保存。Stripe 会在下次尝试时扣款，您无需再做任何操作。"
+    },
+    "restart": {
+      "title": "重新开通套餐",
+      "whatHappened": "您的套餐已结束，因此控制台为只读。",
+      "whatHappenedCard": "多次尝试后仍无法从您的银行卡扣款，因此套餐已结束。",
+      "step1": "在下方选择按月或按年。",
+      "step2": "在 Stripe 安全页面输入银行卡。",
+      "step3": "返回此处即可看到“一切就绪”——编辑功能立即恢复。"
     }
   },
   "supportAccess": {

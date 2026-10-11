@@ -11,26 +11,42 @@
  *   trial              days left, screens used, [Add payment]
  *   trial_card         card saved, first charge on {date}
  *   trial_ended/locked what still works, what is paused, [Add payment]
- *   past_due           [Update card] (Stripe Customer Portal)
+ *   past_due           what happened + Stripe's next try, [Update card] → the
+ *                      guided UpdateCardDialog → Stripe's "update payment
+ *                      method" → back here with `?card=updated`: the open
+ *                      invoice is charged once (POST /billing/retry-payment)
+ *                      and the card says "You're all set" or "declined too"
  *   cancelled          [Restart plan]
  *
  * Renders nothing for invoice / PO / comp (the page shows their own card),
  * legacy pilots and paying customers with nothing to say.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { AlertTriangle, CheckCircle2, Clock, CreditCard, ExternalLink, Loader2 } from 'lucide-react';
 import { AddPaymentDialog } from './AddPaymentDialog';
-import { dollars, fmtDay, goTo, openPortal, useBillingSummary, useRefreshBillingSummary } from './billing-summary';
+import { UpdateCardDialog } from './UpdateCardDialog';
+import { dollars, fmtDay, retryPayment, useBillingSummary, useRefreshBillingSummary } from './billing-summary';
 
 const RECHECK_MS = 4_000;
 
-export function BillingStatusCard({ returnedFromCheckout }: { returnedFromCheckout: boolean }) {
+type CardResult = 'checking' | 'paid' | 'declined' | 'saved';
+
+export function BillingStatusCard({
+  returnedFromCheckout,
+  returnedFromCardUpdate = false,
+}: {
+  returnedFromCheckout: boolean;
+  /** 2026-10-11 — back from Stripe's "update payment method" (`?card=updated`). */
+  returnedFromCardUpdate?: boolean;
+}) {
   const t = useTranslations('billingTrial');
   const { data } = useBillingSummary();
   const refresh = useRefreshBillingSummary();
   const [open, setOpen] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [cardOpen, setCardOpen] = useState(false);
+  const [cardResult, setCardResult] = useState<CardResult | null>(null);
+  const retried = useRef(false);
 
   // Back from Stripe: the webhook lands a few seconds after the redirect — read once more.
   useEffect(() => {
@@ -40,30 +56,32 @@ export function BillingStatusCard({ returnedFromCheckout }: { returnedFromChecko
     return () => window.clearTimeout(once);
   }, [returnedFromCheckout, refresh]);
 
+  // Back from "Update card": charge the open invoice with the new card ONCE
+  // (a ref, not a dependency — StrictMode double-mounts must not charge twice),
+  // then say plainly what happened. Step 3 of the guided path.
+  useEffect(() => {
+    if (!returnedFromCardUpdate || retried.current) return;
+    retried.current = true;
+    setCardResult('checking');
+    retryPayment()
+      .then((r) => setCardResult(r.result === 'paid' ? 'paid' : r.result === 'declined' ? 'declined' : 'saved'))
+      .catch(() => setCardResult('saved'))
+      .finally(() => refresh());
+  }, [returnedFromCardUpdate, refresh]);
+
   if (!data) return null;
   const s = data.state;
-
-  const portal = async () => {
-    setBusy(true);
-    try {
-      const r = await openPortal();
-      if (r.kind === 'redirect') goTo(r.url);
-    } finally {
-      setBusy(false);
-    }
-  };
 
   const primary = (label: string, onClick: () => void, testId: string, icon: React.ReactNode = <CreditCard className="w-4 h-4" aria-hidden />) =>
     data.canManage ? (
       <button
         type="button"
         onClick={onClick}
-        disabled={busy}
         className="mt-3 inline-flex items-center justify-center gap-2 min-h-[44px] w-full sm:w-auto px-5 rounded-xl text-[14px] font-semibold text-[var(--brand-primary-ink,#fff)] disabled:opacity-60"
         style={{ background: 'var(--brand-primary, #0f172a)' }}
         data-testid={testId}
       >
-        {busy ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden /> : icon}
+        {icon}
         {label}
       </button>
     ) : (
@@ -73,7 +91,44 @@ export function BillingStatusCard({ returnedFromCheckout }: { returnedFromChecko
   let body: React.ReactNode = null;
   let tone = 'border-slate-200 bg-white text-slate-800';
 
-  if (returnedFromCheckout && (s === 'trial_card' || s === 'active')) {
+  if (cardResult === 'checking') {
+    body = (
+      <div className="flex items-center gap-3" data-testid="billing-card-checking">
+        <Loader2 className="w-5 h-5 animate-spin text-slate-400" aria-hidden />
+        <p className="text-[14px]">{t('card.checking')}</p>
+      </div>
+    );
+  } else if (cardResult === 'paid' || (cardResult === 'saved' && s === 'active')) {
+    tone = 'border-emerald-200 bg-emerald-50 text-emerald-900';
+    body = (
+      <div className="flex items-start gap-3" data-testid="billing-all-set">
+        <CheckCircle2 className="w-6 h-6 flex-shrink-0 text-emerald-600" aria-hidden />
+        <div>
+          <p className="text-[17px] font-semibold">{t('status.allSetTitle')}</p>
+          <p className="mt-1 text-[14px]">{t('card.allSet')}</p>
+        </div>
+      </div>
+    );
+  } else if (cardResult === 'declined') {
+    tone = 'border-red-200 bg-red-50 text-red-900';
+    body = (
+      <div data-testid="billing-card-declined">
+        <div className="flex items-center gap-2 text-[16px] font-semibold">
+          <AlertTriangle className="w-5 h-5" aria-hidden />
+          {t('card.declined')}
+        </div>
+        <p className="mt-1 text-[14px]">{t('status.stillWorks')}</p>
+        {primary(t('card.tryAgain'), () => setCardOpen(true), 'billing-update-card', <ExternalLink className="w-4 h-4" aria-hidden />)}
+      </div>
+    );
+  } else if (cardResult === 'saved' && s === 'past_due') {
+    body = (
+      <div className="flex items-start gap-3" data-testid="billing-card-saved">
+        <CheckCircle2 className="w-5 h-5 flex-shrink-0 text-emerald-600" aria-hidden />
+        <p className="text-[14px]">{t('card.saved')}</p>
+      </div>
+    );
+  } else if (returnedFromCheckout && (s === 'trial_card' || s === 'active')) {
     tone = 'border-emerald-200 bg-emerald-50 text-emerald-900';
     body = (
       <div className="flex items-start gap-3" data-testid="billing-all-set">
@@ -127,7 +182,13 @@ export function BillingStatusCard({ returnedFromCheckout }: { returnedFromChecko
       <div data-testid={`billing-status-${s}`}>
         <div className="flex items-center gap-2 text-[16px] font-semibold">
           <AlertTriangle className="w-5 h-5" aria-hidden />
-          {s === 'trial_ended' ? t('status.trialEndedTitle') : s === 'locked' ? t('status.lockedTitle') : t('status.cancelledTitle')}
+          {s === 'trial_ended'
+            ? t('status.trialEndedTitle')
+            : s === 'locked'
+              ? t('status.lockedTitle')
+              : data.endedForNonPayment
+                ? t('restart.whatHappenedCard')
+                : t('status.cancelledTitle')}
         </div>
         <p className="mt-1 text-[14px]">{t('status.stillWorks')}</p>
         <p className="mt-1 text-[14px]">
@@ -148,10 +209,13 @@ export function BillingStatusCard({ returnedFromCheckout }: { returnedFromChecko
       <div data-testid="billing-status-past_due">
         <div className="flex items-center gap-2 text-[16px] font-semibold">
           <AlertTriangle className="w-5 h-5" aria-hidden />
-          {t('bar.pastDue')}
+          {data.paymentFailedAt ? t('card.whatHappened', { date: fmtDay(data.paymentFailedAt) }) : t('bar.pastDue')}
         </div>
-        <p className="mt-1 text-[14px]">{t('status.pastDueBody')}</p>
-        {primary(t('bar.updateCard'), portal, 'billing-update-card', <ExternalLink className="w-4 h-4" aria-hidden />)}
+        <p className="mt-1 text-[14px]">
+          {data.nextPaymentAttemptAt ? t('card.nextTry', { date: fmtDay(data.nextPaymentAttemptAt) }) : t('status.pastDueBody')}
+        </p>
+        <p className="mt-1 text-[14px]">{t('status.stillWorks')}</p>
+        {primary(t('bar.updateCard'), () => setCardOpen(true), 'billing-update-card', <ExternalLink className="w-4 h-4" aria-hidden />)}
       </div>
     );
   }
@@ -163,6 +227,7 @@ export function BillingStatusCard({ returnedFromCheckout }: { returnedFromChecko
         {body}
       </div>
       {open && <AddPaymentDialog summary={data} onClose={() => setOpen(false)} />}
+      {cardOpen && <UpdateCardDialog summary={data} onClose={() => setCardOpen(false)} />}
     </>
   );
 }

@@ -4672,7 +4672,9 @@
       "restartPlan": "Reactivar plan",
       "askAdmin": "Pide a un administrador que agregue el pago.",
       "details": "Detalles",
-      "hideToday": "Ocultar hasta mañana"
+      "hideToday": "Ocultar hasta mañana",
+      "pastDueNext": "Tu último pago no se completó — Stripe lo intentará de nuevo el {date}.",
+      "cancelledNonPayment": "No pudimos cobrar tu tarjeta, así que el panel está en solo lectura. Las pantallas y las alertas de emergencia siguen funcionando."
     },
     "dialog": {
       "title": "Agregar pago",
@@ -4721,6 +4723,29 @@
       "trialEndedTitle": "Tu prueba gratuita terminó",
       "trialEndedBody": "Agrega un pago para vincular pantallas nuevas. Las que ya tienes siguen funcionando.",
       "failed": "No se pudo agregar una pantalla a tu plan."
+    },
+    "card": {
+      "title": "Actualiza tu tarjeta",
+      "whatHappened": "Tu tarjeta fue rechazada el {date}.",
+      "nextTry": "Stripe lo intentará de nuevo el {date}. Si los cobros siguen fallando, el panel quedará en solo lectura.",
+      "lastTry": "Stripe ya no hará más intentos automáticos. Actualiza tu tarjeta ahora para que el panel no quede en solo lectura.",
+      "step1": "Toca «Actualizar tarjeta» abajo.",
+      "step2": "Ingresa tu nueva tarjeta en la página segura de Stripe.",
+      "step3": "Vuelves aquí: cobramos el pago y te confirmamos que todo está listo.",
+      "error": "No se pudo abrir Stripe. Inténtalo de nuevo en un momento.",
+      "checking": "Cobrando con tu nueva tarjeta…",
+      "allSet": "Tu nueva tarjeta funcionó y el pago se completó. Todo volvió a la normalidad.",
+      "declined": "Esa tarjeta también fue rechazada.",
+      "tryAgain": "Prueba otra tarjeta",
+      "saved": "Tu nueva tarjeta quedó guardada. Stripe la cobrará en su próximo intento; no tienes que hacer nada más."
+    },
+    "restart": {
+      "title": "Reinicia tu plan",
+      "whatHappened": "Tu plan terminó, así que el panel está en solo lectura.",
+      "whatHappenedCard": "No pudimos cobrar tu tarjeta después de varios intentos, así que el plan terminó.",
+      "step1": "Elige mensual o anual abajo.",
+      "step2": "Ingresa una tarjeta en la página segura de Stripe.",
+      "step3": "Vuelves aquí y verás «Todo listo»: la edición se reactiva de inmediato."
     }
   },
   "supportAccess": {

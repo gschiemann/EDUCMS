@@ -41,6 +41,11 @@ export interface BillingSummary {
   seatsUsed?: number;
   seatLimit?: number | null;
   renewsAt?: string | null;
+  /** 2026-10-11 — when the card first failed / Stripe's next retry (null after the last). */
+  paymentFailedAt?: string | null;
+  nextPaymentAttemptAt?: string | null;
+  /** The plan ended because the card could not be charged (vs a cancellation). */
+  endedForNonPayment?: boolean;
   prices: { monthlyCents: number; annualCents: number };
 }
 
@@ -90,9 +95,21 @@ export async function startCheckout(period: 'monthly' | 'annual'): Promise<
   return { kind: 'not-set-up', message: res?.message };
 }
 
-/** Opens the Stripe Customer Portal (card, invoices, plan, screens, cancel). */
-export async function openPortal(): Promise<{ kind: 'redirect'; url: string } | { kind: 'none' }> {
-  const res = await apiFetch<{ url?: string }>('/billing/portal', { method: 'POST' });
+/**
+ * Opens the Stripe Customer Portal (card, invoices, plan, screens, cancel).
+ * `'update-card'` opens it straight on "update payment method" and returns to
+ * the Billing page with `?card=updated` (2026-10-11).
+ */
+export async function openPortal(flow?: 'update-card'): Promise<{ kind: 'redirect'; url: string } | { kind: 'none' }> {
+  const res = await apiFetch<{ url?: string }>('/billing/portal', {
+    method: 'POST',
+    ...(flow ? { body: JSON.stringify({ flow }) } : {}),
+  });
   if (res?.url) return { kind: 'redirect', url: res.url };
   return { kind: 'none' };
+}
+
+/** Back from "Update card": charge the open invoice with the new card now. */
+export async function retryPayment(): Promise<{ result: 'paid' | 'declined' | 'not-applicable'; message?: string }> {
+  return apiFetch('/billing/retry-payment', { method: 'POST' });
 }

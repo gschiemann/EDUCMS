@@ -4672,7 +4672,9 @@
       "restartPlan": "Restart plan",
       "askAdmin": "Ask an admin to add payment.",
       "details": "Details",
-      "hideToday": "Hide until tomorrow"
+      "hideToday": "Hide until tomorrow",
+      "pastDueNext": "Your last payment didn't go through — Stripe tries again {date}.",
+      "cancelledNonPayment": "Your card couldn't be charged, so the dashboard is view-only. Screens and emergency alerts keep working."
     },
     "dialog": {
       "title": "Add payment",
@@ -4721,6 +4723,29 @@
       "trialEndedTitle": "Your free trial has ended",
       "trialEndedBody": "Add payment to pair new screens. The screens you already have keep playing.",
       "failed": "Couldn't add a screen to your plan."
+    },
+    "card": {
+      "title": "Update your card",
+      "whatHappened": "Your card was declined on {date}.",
+      "nextTry": "Stripe will try again on {date}. If payments keep failing, the dashboard becomes view-only.",
+      "lastTry": "Stripe has no more automatic retries. Update your card now so the dashboard doesn't become view-only.",
+      "step1": "Tap “Update card” below.",
+      "step2": "Enter your new card on Stripe's secure page.",
+      "step3": "You come back here — we charge the payment and confirm you're all set.",
+      "error": "Couldn't open Stripe. Try again in a moment.",
+      "checking": "Charging your new card…",
+      "allSet": "Your new card worked and the payment went through. Everything is back to normal.",
+      "declined": "That card was declined too.",
+      "tryAgain": "Try another card",
+      "saved": "Your new card is saved. Stripe will charge it on its next try — nothing else to do."
+    },
+    "restart": {
+      "title": "Restart your plan",
+      "whatHappened": "Your plan has ended, so the dashboard is view-only.",
+      "whatHappenedCard": "Your card couldn't be charged after several tries, so the plan ended.",
+      "step1": "Choose monthly or annual below.",
+      "step2": "Enter a card on Stripe's secure page.",
+      "step3": "You come back here to “You're all set” — editing is back on right away."
     }
   },
   "supportAccess": {

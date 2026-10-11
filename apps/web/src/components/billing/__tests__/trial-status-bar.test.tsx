@@ -9,6 +9,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 let summary: any = null;
+let retryAnswer: any = { result: 'paid' };
 const calls: Array<{ path: string; init?: any }> = [];
 const apiFetch = jest.fn(async (path: string, init?: any) => {
   calls.push({ path, init });
@@ -16,6 +17,7 @@ const apiFetch = jest.fn(async (path: string, init?: any) => {
   if (path === '/billing/checkout') return { url: 'https://checkout.stripe.test/s' };
   if (path === '/billing/portal') return { url: 'https://portal.stripe.test/p' };
   if (path === '/billing/seats') return { ok: true, seatLimit: 4 };
+  if (path === '/billing/retry-payment') return retryAnswer;
   throw new Error(`fake API: unexpected ${path}`);
 });
 jest.mock('@/lib/api-client', () => ({ apiFetch: (path: string, init?: any) => apiFetch(path, init) }));
@@ -23,6 +25,7 @@ jest.mock('next/navigation', () => ({ useParams: () => ({ schoolId: 'taco' }), u
 
 import { TrialStatusBar } from '../TrialStatusBar';
 import { SeatLimitNotice } from '../SeatLimitNotice';
+import { BillingStatusCard } from '../BillingStatusCard';
 
 const base = {
   billingReady: true,
@@ -91,17 +94,35 @@ describe('TrialStatusBar', () => {
     expect(screen.queryByTestId('trial-bar-add-payment')).toBeNull();
   });
 
-  it('trial ended: says screens keep playing; past due: Update card opens the Stripe portal', async () => {
+  it('trial ended: says screens keep playing; past due: Update card → what happened + 3 steps → Stripe on the card flow', async () => {
     summary = { ...base, state: 'trial_ended', daysLeft: 0, trialEndsAt: inDays(-1), graceEndsAt: inDays(6) };
     renderWithClient(<TrialStatusBar />);
     expect(await screen.findByTestId('trial-status-bar')).toHaveTextContent('your screens keep playing');
     cleanup();
-    summary = { ...base, state: 'past_due', cardOnFile: true };
+    summary = { ...base, state: 'past_due', cardOnFile: true, paymentFailedAt: inDays(-1), nextPaymentAttemptAt: inDays(2) };
     renderWithClient(<TrialStatusBar />);
+    expect(await screen.findByTestId('trial-status-bar')).toHaveTextContent('Stripe tries again');
+    fireEvent.click(await screen.findByTestId('trial-bar-update-card'));
+    const dialog = await screen.findByTestId('update-card-dialog');
+    expect(screen.getByTestId('update-card-what-happened')).toHaveTextContent('Your card was declined on');
+    expect(screen.getByTestId('update-card-what-happened')).toHaveTextContent('Stripe will try again on');
+    expect(dialog).toHaveTextContent('emergency alerts keep working');
+    expect(screen.getByTestId('update-card-steps').querySelectorAll('li')).toHaveLength(3);
     await act(async () => {
-      fireEvent.click(await screen.findByRole('button', { name: 'Update card' }));
+      fireEvent.click(screen.getByTestId('update-card-continue'));
     });
     await waitFor(() => expect(hrefSetter).toHaveBeenCalledWith('https://portal.stripe.test/p'));
+    const portal = calls.find((c) => c.path === '/billing/portal')!;
+    expect(JSON.parse(portal.init.body)).toEqual({ flow: 'update-card' });
+  });
+
+  it('view-only after a card failure: says why, and Restart plan opens the sheet with what happened + 3 steps', async () => {
+    summary = { ...base, state: 'cancelled', cardOnFile: true, endedForNonPayment: true, period: 'monthly' };
+    renderWithClient(<TrialStatusBar />);
+    expect(await screen.findByTestId('trial-status-bar')).toHaveTextContent("Your card couldn't be charged");
+    fireEvent.click(screen.getByTestId('trial-bar-add-payment'));
+    expect(await screen.findByTestId('restart-guide')).toHaveTextContent('after several tries');
+    expect(screen.getByRole('radio', { name: /Monthly/ })).toHaveAttribute('aria-checked', 'true');
   });
 
   it('nothing for paying, invoice-billed or legacy pilot customers', async () => {
@@ -121,6 +142,25 @@ describe('TrialStatusBar', () => {
     expect(await screen.findByTestId('trial-status-bar')).toBeInTheDocument();
     expect(screen.queryByTestId('trial-bar-add-payment')).toBeNull();
     expect(screen.getByText('Details')).toBeInTheDocument();
+  });
+});
+
+describe('BillingStatusCard — back from "Update card"', () => {
+  it('charges the open invoice ONCE and says "You\'re all set"', async () => {
+    summary = { ...base, state: 'past_due', cardOnFile: true };
+    retryAnswer = { result: 'paid' };
+    renderWithClient(<BillingStatusCard returnedFromCheckout={false} returnedFromCardUpdate />);
+    expect(await screen.findByTestId('billing-all-set')).toHaveTextContent("You're all set");
+    expect(calls.filter((c) => c.path === '/billing/retry-payment')).toHaveLength(1);
+  });
+
+  it('a declined new card says so and offers another try', async () => {
+    summary = { ...base, state: 'past_due', cardOnFile: true };
+    retryAnswer = { result: 'declined', message: 'Your card was declined.' };
+    renderWithClient(<BillingStatusCard returnedFromCheckout={false} returnedFromCardUpdate />);
+    expect(await screen.findByTestId('billing-card-declined')).toHaveTextContent('That card was declined too.');
+    fireEvent.click(screen.getByTestId('billing-update-card'));
+    expect(await screen.findByTestId('update-card-dialog')).toBeInTheDocument();
   });
 });
 

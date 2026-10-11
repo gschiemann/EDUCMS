@@ -165,15 +165,17 @@ describe('Webhook — trial → active → past_due → cancelled', () => {
     expect(audit.some((a) => a.action === 'STRIPE_WEBHOOK_CUSTOMER_SUBSCRIPTION_CREATED')).toBe(true);
   });
 
-  it('past_due and unpaid both land on PAST_DUE (fixable from Billing) — never the owner SUSPENDED lock', async () => {
+  it('past_due lands on PAST_DUE (fixable from Billing); unpaid (all retries failed) on CANCELLED = view-only — never the owner SUSPENDED lock', async () => {
     withBilling();
     const { prisma, licenses } = fakePrisma({ licenses: [trialLicense(10)] });
     const svc = new StripeService(prisma);
     jest.spyOn(svc, 'getClient').mockReturnValue({} as any);
     await svc.handleWebhookEvent(evt('customer.subscription.updated', sub('past_due'), 2000) as any);
     expect(licenses[0].status).toBe('PAST_DUE');
+    // Greg 2026-10-11: card failure ends in view-only. `unpaid` = the dashboard's
+    // "mark as unpaid" after the last retry — same outcome as "cancel".
     await svc.handleWebhookEvent(evt('customer.subscription.updated', sub('unpaid'), 3000) as any);
-    expect(licenses[0].status).toBe('PAST_DUE');
+    expect(licenses[0].status).toBe('CANCELLED');
     await svc.handleWebhookEvent(evt('customer.subscription.updated', sub('active'), 4000) as any);
     expect(licenses[0].status).toBe('ACTIVE');
   });

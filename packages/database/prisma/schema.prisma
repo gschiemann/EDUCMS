@@ -835,7 +835,21 @@ model License {
   trialEndsAt              DateTime? @map("trial_ends_at")
   trialNoticeStage         Int       @default(0) @map("trial_notice_stage")
   noticeLocale             String?   @map("notice_locale")
-  createdAt                DateTime  @default(now()) @map("created_at")
+  // 2026-10-11 — CARD FAILURE → VIEW-ONLY, WITH HELP (apps/api/src/billing/dunning-policy.ts).
+  // All additive. Written by the Stripe webhook on `invoice.payment_failed`,
+  // cleared when a payment succeeds; read by the billing-notice cron.
+  //  - dunningInvoiceId: the Stripe invoice that is failing. A new invoice id
+  //    resets the notice stage, so each email goes out at most once PER INVOICE.
+  //  - dunningNoticeStage: 0 none · 1 card declined · 2 reminder before
+  //    view-only · 3 now view-only. Claimed atomically before sending.
+  //  - dunningFailedAt: when that invoice first failed.
+  //  - dunningNextAttemptAt: Stripe's next automatic retry (null after the
+  //    last one — the subscription is about to end).
+  dunningInvoiceId         String?   @map("dunning_invoice_id")
+  dunningNoticeStage       Int       @default(0) @map("dunning_notice_stage")
+  dunningFailedAt          DateTime? @map("dunning_failed_at")
+  dunningNextAttemptAt     DateTime? @map("dunning_next_attempt_at")
+  createdAt               DateTime  @default(now()) @map("created_at")
   updatedAt                DateTime  @default(now()) @updatedAt @map("updated_at")
   tenant                   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 

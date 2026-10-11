@@ -7,8 +7,11 @@
  *   trial         "12 days left in your free trial · Add payment"   (quiet; hide-for-today)
  *   trial_ended   "Your free trial ended — screens keep playing · Add payment"
  *   locked        "View-only until payment is added — screens and alerts keep working · Add payment"
- *   past_due      "Your last payment didn't go through · Update card"
- *   cancelled     "Your plan has ended — view-only · Restart plan"
+ *   past_due      "Your last payment didn't go through — Stripe tries again {date} · Update card"
+ *                 → UpdateCardDialog: what happened → Update card → Stripe → "You're all set"
+ *   cancelled     "Your plan has ended — view-only · Restart plan" (after a card
+ *                 failure: "Your card couldn't be charged, so …") → the Add
+ *                 payment sheet, which opens with what happened + the 3 steps
  *
  * Nothing renders for a paying customer, an invoice / PO / comp customer, a
  * legacy pilot, or while the summary is unknown. A person who cannot manage
@@ -22,8 +25,9 @@ import Link from 'next/link';
 import { useParams, usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { AlertTriangle, Clock, X } from 'lucide-react';
-import { useBillingSummary, fmtDay, goTo, openPortal } from './billing-summary';
+import { useBillingSummary, fmtDay } from './billing-summary';
 import { AddPaymentDialog } from './AddPaymentDialog';
+import { UpdateCardDialog } from './UpdateCardDialog';
 
 const DISMISS_KEY = 'venueos.trialBar.hiddenOn';
 
@@ -43,7 +47,7 @@ export function TrialStatusBar() {
   const { data } = useBillingSummary();
   const [open, setOpen] = useState(false);
   const [dismissed, setDismissed] = useState(() => (typeof window === 'undefined' ? false : hiddenToday()));
-  const [portalBusy, setPortalBusy] = useState(false);
+  const [cardOpen, setCardOpen] = useState(false);
 
   if (!data) return null;
   // The Billing page has its own, fuller status card.
@@ -73,27 +77,25 @@ export function TrialStatusBar() {
         : s === 'locked'
           ? t('bar.locked')
           : s === 'past_due'
-            ? t('bar.pastDue')
-            : t('bar.cancelled');
-
-  const portal = async () => {
-    setPortalBusy(true);
-    try {
-      const r = await openPortal();
-      if (r.kind === 'redirect') goTo(r.url);
-    } catch {
-      /* the Billing page explains; nothing to do here */
-    } finally {
-      setPortalBusy(false);
-    }
-  };
+            ? data.nextPaymentAttemptAt
+              ? t('bar.pastDueNext', { date: fmtDay(data.nextPaymentAttemptAt) })
+              : t('bar.pastDue')
+            : data.endedForNonPayment
+              ? t('bar.cancelledNonPayment')
+              : t('bar.cancelled');
 
   let action: React.ReactNode = null;
   if (!data.canManage) {
     action = <span className="text-[12px] opacity-80">{t('bar.askAdmin')}</span>;
   } else if (s === 'past_due') {
+    // 2026-10-11 — the guided path: what happened → Update card → Stripe → "You're all set".
     action = (
-      <button type="button" onClick={portal} disabled={portalBusy} className="font-semibold underline underline-offset-2 whitespace-nowrap min-h-[32px]">
+      <button
+        type="button"
+        onClick={() => setCardOpen(true)}
+        data-testid="trial-bar-update-card"
+        className="font-semibold underline underline-offset-2 whitespace-nowrap min-h-[32px]"
+      >
         {t('bar.updateCard')}
       </button>
     );
@@ -146,6 +148,7 @@ export function TrialStatusBar() {
         )}
       </div>
       {open && <AddPaymentDialog summary={data} onClose={() => setOpen(false)} />}
+      {cardOpen && <UpdateCardDialog summary={data} onClose={() => setCardOpen(false)} />}
     </>
   );
 }

@@ -120,10 +120,13 @@ export default function BillingPage() {
   // 2026-09-23 — the AI board packs' checkout returns here too (`?boards=success|cancelled`;
   // BillingController.aiPackCheckout's success/cancel URLs).
   const [boardsResult, setBoardsResult] = useState<string | null>(null);
+  // 2026-10-11 — back from Stripe's "update payment method" (`?card=updated`).
+  const [cardResult, setCardResult] = useState<string | null>(null);
   useEffect(() => {
     const qs = new URLSearchParams(window.location.search);
     setCheckoutResult(qs.get('checkout'));
     setBoardsResult(qs.get('boards'));
+    setCardResult(qs.get('card'));
   }, []);
   // Back from paying for a pack: the boards line below reads the allowance fresh, but Stripe's
   // webhook credits the pack a few seconds after the redirect — so ONE more read shortly after.
@@ -324,7 +327,7 @@ export default function BillingPage() {
       {/* 2026-10-11 — where a self-serve customer stands + the one button that moves
           them forward (trial days left · Add payment · "You're all set" on return
           from Stripe · Update card). Nothing for invoice / PO / comp customers. */}
-      {!offline && <BillingStatusCard returnedFromCheckout={checkoutResult === 'success'} />}
+      {!offline && <BillingStatusCard returnedFromCheckout={checkoutResult === 'success'} returnedFromCardUpdate={cardResult === 'updated'} />}
       {checkoutResult === 'cancelled' && (
         <div className="mb-5 rounded-[11px] border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-800 flex items-start gap-2" role="status">
           <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" aria-hidden />
