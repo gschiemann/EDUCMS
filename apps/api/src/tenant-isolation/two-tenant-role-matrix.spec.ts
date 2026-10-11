@@ -1292,6 +1292,8 @@ describe('SEC-009 — two-tenant × every-role isolation matrix', () => {
     'tenants.controller.ts': 'Dedicated suites: tenants.controller.spec.ts + usb-ingest-authz.spec.ts.',
     'users.controller.ts': 'Dedicated suites: users.controller.lifecycle.spec.ts (demote / disable / delete) and users.controller.mfa-reset.spec.ts (2026-09-21 — POST :id/mfa/reset carries its own two-tenant x every-role matrix, because its scope miss answers 404 rather than 403 and a generic row would assert the wrong code).',
     'usb-export.controller.ts': 'Streams a ZIP to an express Response; asserted by usb-export.behavior.spec.ts (now including the tenant-scoped hash self-heal).',
+    'billing.controller.ts':
+      'SESSION-SCOPED, NO FOREIGN ID ACCEPTED (2026-10-11 trial → paid). Every read/write is keyed on req.user.tenantId (License by tenantId, seats, checkout) or req.user.id (the checkout email pre-fill) — no route takes a tenant, license or user id from the path or body, so a two-tenant matrix row would have nothing to aim. Covered by billing.controller.trial.spec.ts (session tenant used, invoice/PO/comp refused) and billing.controller.ai-packs.spec.ts ("never one named in the body").',
     'bugs.controller.ts': 'Bug.tenantId is NULLABLE by design (SUPER_ADMIN triage of orphaned reports), so a two-tenant fixture models it wrongly; covered by the bugs specs.',
 
     // ── The 2026-09-04 dated TODOs. Analytics, branding, sample-data and
