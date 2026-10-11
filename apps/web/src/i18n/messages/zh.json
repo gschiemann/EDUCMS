@@ -1966,7 +1966,14 @@
       "connectingDetail": "屏幕已开启，仍在获取排程，因此暂时显示等待画面。",
       "syncing": "正在同步",
       "syncingEvidence": "更新已发送 — 等待屏幕确认",
-      "syncingDetail": "正在等待屏幕确认你的更新，通常只需几秒。"
+      "syncingDetail": "正在等待屏幕确认你的更新，通常只需几秒。",
+      "needsRepair": "设备无法上报（需要重新配对）",
+      "needsRepairDetail": "服务器拒绝了此屏幕的凭据，因此它无法上报正在显示的内容。请打开“操作”并点按“恢复信任”。",
+      "game": "比赛：{game}",
+      "gameDetail": "此屏幕已分配一场直播比赛，因此显示比赛而不是其排程的播放列表。",
+      "gameNotConfirmed": "已分配比赛：{game} · 尚未确认",
+      "gameNotConfirmedDetail": "此屏幕已分配一场直播比赛，但尚未确认画面。",
+      "liveGameAssigned": "已分配直播比赛"
     },
     "atlas": {
       "filterAria": "筛选地图上的地点",

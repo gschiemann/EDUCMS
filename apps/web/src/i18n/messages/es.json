@@ -1966,7 +1966,14 @@
       "connectingDetail": "La pantalla está encendida y todavía está obteniendo su programación, así que por ahora muestra su pantalla de espera.",
       "syncing": "Sincronizando",
       "syncingEvidence": "Actualización enviada — esperando la confirmación de la pantalla",
-      "syncingDetail": "Esperando a que la pantalla confirme tu actualización; suele tardar unos segundos."
+      "syncingDetail": "Esperando a que la pantalla confirme tu actualización; suele tardar unos segundos.",
+      "needsRepair": "El dispositivo no puede informar (hay que volver a emparejarlo)",
+      "needsRepairDetail": "El servidor rechazó la credencial de esta pantalla, así que no puede informar qué muestra. Abra Acciones y toque Restaurar confianza.",
+      "game": "Partido: {game}",
+      "gameDetail": "Hay un partido en vivo asignado a esta pantalla, así que muestra el partido en lugar de su lista programada.",
+      "gameNotConfirmed": "Partido asignado: {game} · aún sin confirmar",
+      "gameNotConfirmedDetail": "Hay un partido en vivo asignado a esta pantalla. Todavía no ha confirmado que lo muestre.",
+      "liveGameAssigned": "Partido en vivo asignado"
     },
     "atlas": {
       "filterAria": "Filtrar ubicaciones en el mapa",

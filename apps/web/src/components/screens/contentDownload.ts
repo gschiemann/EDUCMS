@@ -216,6 +216,15 @@ export const DOWNLOAD_COPY_EN = {
   'screens.contentState.syncingEvidence': 'Update sent — waiting for the screen to confirm',
   'screens.contentState.syncingDetail':
     'Waiting for the screen to confirm your update — usually a few seconds.',
+  'screens.contentState.needsRepair': 'Device can’t report (needs re-pair)',
+  'screens.contentState.needsRepairDetail':
+    'The server refused this screen’s credential, so it cannot report what it is showing. Open Actions and tap Restore trust.',
+  'screens.contentState.game': 'Game: {game}',
+  'screens.contentState.gameDetail':
+    'A live game is assigned to this screen, so it shows the game instead of its scheduled playlist.',
+  'screens.contentState.gameNotConfirmed': 'Game assigned: {game} · not confirmed yet',
+  'screens.contentState.gameNotConfirmedDetail':
+    'A live game is assigned to this screen. It has not confirmed a picture of it yet.',
   'playlistsPage.deliveryDownloadOne': '{name} · {percent}% of {size}',
   'playlistsPage.deliveryDownloadOneSoFar': '{name} · {loaded} so far',
   'playlistsPage.deliveryHeldOne': '{name} · new content {percent}% of {size}',

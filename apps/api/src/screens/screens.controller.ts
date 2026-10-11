@@ -2528,6 +2528,25 @@ export class ScreensController {
         ? await this.readFleetOperations(tenantIds)
         : null;
 
+    // DEV-004 (Muse beta 2026-10-07): a screen a live game was pushed to
+    // shows the GAME (the manifest's scoreboard branch returns before the
+    // schedule), so "current content" must name the game, not the playlist.
+    // ONE batched read, and the same tenant rule as the manifest: a game
+    // belonging to another tenant is ignored there, so it is ignored here.
+    const gameById = new Map<string, { id: string; tenantId: string; homeTeam: string; awayTeam: string; status: string; sport: string }>();
+    if (operations) {
+      const gameIds = Array.from(
+        new Set(rows.map((r) => (r as any).activeBoardGameId as string | null).filter((v): v is string => !!v)),
+      );
+      if (gameIds.length) {
+        const games = await this.prisma.client.game.findMany({
+          where: { id: { in: gameIds }, tenantId: { in: tenantIds } },
+          select: { id: true, tenantId: true, homeTeam: true, awayTeam: true, status: true, sport: true },
+        });
+        for (const g of games) gameById.set(g.id, g as any);
+      }
+    }
+
     // Live status from lastPingAt recency — MUST mirror list()'s rule
     // (35s = 30s heartbeat + grace). Keep in sync with the GET / mapper.
     const STALE_MS = SCREEN_ONLINE_GRACE_MS;
@@ -2601,6 +2620,12 @@ export class ScreensController {
               lastCrashVersion: s.lastCrashVersion,
               pendingRefreshAt: s.pendingRefreshAt,
               lastPushConnectedAt: s.lastPushConnectedAt,
+              activeBoardGame: (() => {
+                const g = (s as any).activeBoardGameId ? gameById.get((s as any).activeBoardGameId) : undefined;
+                return g && g.tenantId === s.tenantId
+                  ? { id: g.id, homeTeam: g.homeTeam, awayTeam: g.awayTeam, status: g.status, sport: g.sport }
+                  : null;
+              })(),
               // A child live preview needs its owning session. Do not hand out
               // child pairing identifiers or weaken the player manifest guard.
               ...(s.tenantId === req.user.tenantId &&

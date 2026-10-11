@@ -1966,7 +1966,14 @@
       "connectingDetail": "The screen is on and still fetching its schedule, so it shows its waiting screen for now.",
       "syncing": "Syncing",
       "syncingEvidence": "Update sent — waiting for the screen to confirm",
-      "syncingDetail": "Waiting for the screen to confirm your update — usually a few seconds."
+      "syncingDetail": "Waiting for the screen to confirm your update — usually a few seconds.",
+      "needsRepair": "Device can’t report (needs re-pair)",
+      "needsRepairDetail": "The server refused this screen’s credential, so it cannot report what it is showing. Open Actions and tap Restore trust.",
+      "game": "Game: {game}",
+      "gameDetail": "A live game is assigned to this screen, so it shows the game instead of its scheduled playlist.",
+      "gameNotConfirmed": "Game assigned: {game} · not confirmed yet",
+      "gameNotConfirmedDetail": "A live game is assigned to this screen. It has not confirmed a picture of it yet.",
+      "liveGameAssigned": "Live game assigned"
     },
     "atlas": {
       "filterAria": "Filter locations on the map",

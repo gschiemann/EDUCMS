@@ -1520,3 +1520,63 @@ it('company expected content ignores a schedule from another owning tenant', () 
   const expected = deriveExpectedContent(screen, [{ id: 'foreign', tenantId: 'b', screenGroupId: 'group-a', isActive: true, playlist: { id: 'p', name: 'Other location' } }], new Map(), NOW);
   expect(expected.name).toBeNull();
 });
+
+// ═══════════════════════════════════════════════════════════════════
+// Muse beta DEV-004 (2026-10-07): current content ignored a live game
+// assignment and a device that cannot report.
+// ═══════════════════════════════════════════════════════════════════
+describe('current content truth — live game + device that cannot report (DEV-004)', () => {
+  const playlist: OpsPlaylist = {
+    id: 'pl-v', name: 'GGP Website',
+    items: [{ id: 'item-1', sequenceOrder: 0, durationMs: 10_000, asset: { fileUrl: '/a.png', mimeType: 'image/png' } }],
+  };
+  const byId = new Map([[playlist.id, playlist]]);
+  const schedule: OpsSchedule = {
+    id: 'sc', playlistId: 'pl-v', screenId: 'scr-1', isActive: true, mode: 'replace', priority: 0,
+    startTime: new Date(NOW - 3600_000).toISOString(), playlist: { id: 'pl-v', name: 'GGP Website' },
+  };
+  const game = { id: 'g1', homeTeam: 'Lions', awayTeam: 'Tigers', status: 'LIVE' };
+
+  it('a pushed game outranks the schedule in the expected content', () => {
+    const e = deriveExpectedContent(scr({ activeBoardGame: game }), [schedule], byId, NOW);
+    expect(e.name).toBe('Lions vs Tigers');
+    expect(e.game).toEqual({ id: 'g1', label: 'Lions vs Tigers', status: 'LIVE' });
+    expect(e.playlistId).toBeNull();
+    expect(e.renderSignature).toBeNull();
+  });
+
+  it('a board proof on a game-owned screen reads as the game, never "not the scheduled board"', () => {
+    const screen = scr({ activeBoardGame: game, lastRenderedHash: 'tpl:scoreboard:abc' });
+    const e = deriveExpectedContent(screen, [schedule], byId, NOW);
+    const r = deriveReportedContent(screen, SHA, NOW, undefined, e);
+    expect(r.state).toBe('playing');
+    expect(r.line).toBe('Game: Lions vs Tigers');
+    expect(r.messages?.line).toEqual({ key: 'screens.contentState.game', values: { game: 'Lions vs Tigers' } });
+  });
+
+  it('no picture proof yet → the game is assigned but not confirmed', () => {
+    const screen = scr({ activeBoardGame: game, lastRenderedHash: 'idle:playing', lastRenderedAt: null });
+    const e = deriveExpectedContent(screen, [schedule], byId, NOW);
+    const r = deriveReportedContent(screen, SHA, NOW, undefined, e);
+    expect(r.state).toBe('unknown');
+    expect(r.line).toBe('Game assigned: Lions vs Tigers · not confirmed yet');
+  });
+
+  it('without a game the schedule is still the expected content', () => {
+    const e = deriveExpectedContent(scr({ activeBoardGame: null }), [schedule], byId, NOW);
+    expect(e.name).toBe('GGP Website');
+    expect(e.game).toBeUndefined();
+  });
+
+  it('a refused credential says the device cannot report — never replays stale proof as current', () => {
+    const SIG = 'pl:0|10000|item-1';
+    const screen = scr({ authState: 'REPAIR_REQUIRED', lastRenderedHash: SIG });
+    const e = deriveExpectedContent(screen, [schedule], byId, NOW);
+    const r = deriveReportedContent(screen, SHA, NOW, undefined, e);
+    expect(r.state).toBe('unknown');
+    expect(r.line).toBe('Device can’t report (needs re-pair)');
+    // Also when the screen is offline.
+    expect(deriveReportedContent(scr({ authState: 'REPAIR_REQUIRED', status: 'OFFLINE' }), SHA, NOW).line)
+      .toBe('Device can’t report (needs re-pair)');
+  });
+});
