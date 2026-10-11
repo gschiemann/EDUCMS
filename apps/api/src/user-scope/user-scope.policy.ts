@@ -150,8 +150,8 @@ export const SCOPED_ROUTE_RULES: readonly ScopedRouteRule[] = [
   // ── Schedules (what plays where) ────────────────────────────────────────
   { methods: R, pattern: '/api/v1/schedules', check: FILTER, why: 'schedules on their screens / groups only' },
   { methods: ['POST'], pattern: '/api/v1/schedules', check: { kind: 'body', requireTarget: true }, why: 'publish to one of their screens / groups' },
-  { methods: ANY, pattern: '/api/v1/schedules/:id/**', check: { kind: 'schedule', param: 'id' }, why: 'change a schedule on their screens' },
-  { methods: ANY, pattern: '/api/v1/schedules/:id', check: { kind: 'schedule', param: 'id' }, why: 'change a schedule on their screens' },
+  // `/:id/**` also matches `/:id` itself (`**` is zero or more segments).
+  { methods: ANY, pattern: '/api/v1/schedules/:id/**', check: { kind: 'schedule', param: 'id' }, why: 'change / pause / delete a schedule on their screens' },
 
   // ── On/off (power) schedules ────────────────────────────────────────────
   { methods: R, pattern: '/api/v1/display-schedules', check: FILTER, why: 'power schedules on their screens / groups only' },

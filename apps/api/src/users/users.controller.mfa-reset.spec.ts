@@ -941,7 +941,8 @@ describe('GET /users — mfaMethods', () => {
     // NO N+1: the passkey count rides the list query.
     expect(prisma.client.user.findMany).toHaveBeenCalledTimes(1);
     const select = prisma.client.user.findMany.mock.calls[0][0].select;
-    expect(select._count).toEqual({ select: { passkeys: true } });
+    // (2026-10-11 — the user-scoping counts ride the same query.)
+    expect(select._count).toEqual({ select: { passkeys: true, locationAccess: true, screenScopes: true } });
 
     // The raw enrollment timestamp still never leaves the API, and neither
     // does the internal `_count` shape.
