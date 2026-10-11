@@ -1739,7 +1739,7 @@ function BuilderBottomBar() {
   }, [selectedZone?.id]);
 
   const activeFieldName = storeActiveFieldName;
-  const activeMediaField = wt === 'EXTERNAL_HTML' && storeActiveMediaField?.zoneId === selectedZone?.id ? storeActiveMediaField : null;
+  const activeMediaField = ['EXTERNAL_HTML', 'HOLIDAY'].includes(wt) && storeActiveMediaField?.zoneId === selectedZone?.id ? storeActiveMediaField : null;
   // Per-field UX is offered for any selected widget that already
   // supports the `_styles` schema OR is an HS template (consumes the
   // same schema once we strip the legacy __styles path). Mirrors the
@@ -2356,7 +2356,7 @@ function BuilderBottomBar() {
             </>
           )}
 
-          {wt !== 'EMPTY' && wt !== 'EXTERNAL_HTML' && <RotationControls zone={selectedZone} />}
+          {wt !== 'EMPTY' && wt !== 'EXTERNAL_HTML' && !activeMediaField && <RotationControls zone={selectedZone} />}
           {/* Generic zone actions — always when a zone is selected */}
           {zoneActions}
 

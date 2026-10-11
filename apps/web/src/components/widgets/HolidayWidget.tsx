@@ -105,6 +105,9 @@ export interface HolidayConfig {
    * the iframe via postMessage on every change.
    */
   fields?: Record<string, string>;
+  /** Sources/styles use the same transport as built-in HTML boards. */
+  imageOverrides?: Record<string, string | string[]>;
+  mediaStyles?: Record<string, { fit?: string; rotation?: number; hidden?: boolean }>;
   /** Canonical per-field style map written by BuilderBottomBar. */
   _styles?: HolidayTextStyleMap;
   /**
@@ -157,12 +160,28 @@ export interface HolidayFieldSchema {
  * first paint before any board iframe has reported in.
  */
 const holidayLiveFieldCache = new Map<string, HolidayFieldSchema[]>();
+const holidayLiveImageKeys = new Map<string, Set<string>>();
+const holidayCacheKey = (variant: string, gradeLevel: string, design?: string, portrait = false) =>
+  `${gradeLevel}-${variant}-${design || 'canonical'}-${portrait ? 'portrait' : 'landscape'}`;
+
+export function holidaySourceFor(config: HolidayConfig): string {
+  const variant = config.variant || 'christmas';
+  const gradeLevel = config.gradeLevel || 'es';
+  const portrait = !!config.portrait;
+  return resolveHolidayDesignSource({ variant, gradeLevel, design: config.design, portrait })
+    ?? resolveHolidayTemplateSource({ variant, gradeLevel, portrait }).src;
+}
 
 export function getHolidayLiveFields(
   variant: string,
   gradeLevel: string,
+  design?: string,
+  portrait = false,
 ): HolidayFieldSchema[] | null {
-  return holidayLiveFieldCache.get(`${gradeLevel}-${variant}`) ?? null;
+  const key = holidayCacheKey(variant, gradeLevel, design, portrait);
+  const fields = holidayLiveFieldCache.get(key);
+  const images = holidayLiveImageKeys.get(key);
+  return fields?.filter(field => !images?.has(field.key)) ?? null;
 }
 
 export const HOLIDAY_VARIANTS: Array<{
@@ -218,8 +237,7 @@ export function HolidayWidget({ config }: { config: HolidayConfig }) {
   // routing untouched, so saved templates are unaffected.
   const design = (config.design as string | undefined) || undefined;
   const src = useMemo(() => {
-    return resolveHolidayDesignSource({ variant, gradeLevel, design, portrait })
-      ?? resolveHolidayTemplateSource({ variant, gradeLevel, portrait }).src;
+    return holidaySourceFor({ variant, gradeLevel, design, portrait });
   }, [variant, gradeLevel, design, portrait]);
 
   // ── Bridge: listen for messages FROM the iframe ─────────────
@@ -251,6 +269,12 @@ export function HolidayWidget({ config }: { config: HolidayConfig }) {
       // and a genuinely foreign origin is still rejected.
       if (e.origin && e.origin !== 'null' && e.origin !== window.location.origin) return;
       const d: any = e.data;
+      if (d.type === 'educms-media-ready' && Array.isArray(d.slots)) {
+        holidayLiveImageKeys.set(holidayCacheKey(variant, gradeLevel, design, portrait),
+          new Set(d.slots.filter((slot: { key?: unknown }) => typeof slot?.key === 'string').map((slot: { key: string }) => slot.key)));
+        window.dispatchEvent(new CustomEvent('holiday:fields-loaded', { detail: { zoneId: getZoneId(), variant, gradeLevel } }));
+        return;
+      }
       if (d.type === 'holiday:ready' && Array.isArray(d.fields)) {
         // Cache the board's live fields keyed by variant+gradeLevel so
         // PropertiesPanel renders the REAL board fields (and the
@@ -259,7 +283,7 @@ export function HolidayWidget({ config }: { config: HolidayConfig }) {
         // panel's refresh-on-event read sees fresh data.
         try {
           holidayLiveFieldCache.set(
-            `${gradeLevel}-${variant}`,
+            holidayCacheKey(variant, gradeLevel, design, portrait),
             (d.fields as HolidayFieldSchema[]).filter(
               (x) => x && typeof x.key === 'string',
             ),
@@ -295,6 +319,11 @@ export function HolidayWidget({ config }: { config: HolidayConfig }) {
             HOLIDAY_FRAME_TARGET_ORIGIN,
           );
         } catch { /* swallow */ }
+        try {
+          iframeRef.current?.contentWindow?.postMessage({ type: 'educms-overrides',
+            img: config.imageOverrides || {}, mediaStyles: config.mediaStyles || {} }, HOLIDAY_FRAME_TARGET_ORIGIN);
+          iframeRef.current?.contentWindow?.postMessage({ type: 'educms-media-request' }, HOLIDAY_FRAME_TARGET_ORIGIN);
+        } catch { /* iframe may be reloading */ }
         // Re-flush hotspot state — iframe (re)load resets the bridge to
         // hotspots-off; without this, selecting a zone before the iframe
         // is ready then settling means the overlays never appear.
@@ -323,7 +352,10 @@ export function HolidayWidget({ config }: { config: HolidayConfig }) {
         // widget.
         const zoneId = getZoneId();
         if (zoneId) {
-          try { useBuilderStore.getState().select(zoneId); } catch { /* swallow */ }
+          try {
+            useBuilderStore.getState().select(zoneId);
+            useBuilderStore.getState().setActiveFieldName(d.key);
+          } catch { /* swallow */ }
         }
         // Same event the themed widgets dispatch — PropertiesPanel
         // tries fieldKey first then sectionKey.
@@ -336,7 +368,12 @@ export function HolidayWidget({ config }: { config: HolidayConfig }) {
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [config.fields, styleOverrides]);
+  }, [config.fields, config.imageOverrides, config.mediaStyles, styleOverrides, variant, gradeLevel, design, portrait]);
+
+  useEffect(() => {
+    iframeRef.current?.contentWindow?.postMessage({ type: 'educms-overrides',
+      img: config.imageOverrides || {}, mediaStyles: config.mediaStyles || {} }, HOLIDAY_FRAME_TARGET_ORIGIN);
+  }, [config.imageOverrides, config.mediaStyles, src]);
 
   // ── Push field updates DOWN to the iframe whenever they change.
   // We do this in an effect (not on the iframe element) so even the

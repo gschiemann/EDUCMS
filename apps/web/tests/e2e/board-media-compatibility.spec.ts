@@ -2,7 +2,6 @@ import { test, expect } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const root = path.resolve(__dirname, '../../public/templates');
 function boards(dir: string): string[] {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
     if (entry.name.startsWith('_')) return [];
@@ -13,8 +12,11 @@ function boards(dir: string): string[] {
 
 // Discover the full corpus so new template families cannot silently miss the
 // media companion. Run each real board with its original apply/POS/kiosk shim.
-for (const file of boards(root)) {
-  const url = `/templates/${path.relative(root, file).split(path.sep).join('/')}`;
+const corpus = ['templates', 'holiday-templates'].flatMap(directory => {
+  const root = path.resolve(__dirname, '../../public', directory);
+  return boards(root).map(file => `/${directory}/${path.relative(root, file).split(path.sep).join('/')}`);
+});
+for (const url of corpus) {
   test(`packaged media controls load and apply: ${url}`, async ({ page, baseURL }) => {
     await page.route(/^https?:\/\//, route => new URL(route.request().url()).origin === new URL(baseURL!).origin ? route.continue() : route.abort());
     await page.addInitScript(() => {

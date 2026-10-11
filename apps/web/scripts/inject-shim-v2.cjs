@@ -329,13 +329,14 @@ function startClock(text){
   var all=document.querySelectorAll('[data-field]');
   for(var i=0;i<all.length;i++){
     var k=all[i].getAttribute('data-field');
-    if(!TIME_KEYS[k]&&!DATE_KEYS[k])continue;
+    var localLive=all[i].getAttribute('data-live');
+    if(!TIME_KEYS[k]&&!DATE_KEYS[k]&&!/^(clock|today|dayname)$/.test(localLive||''))continue;
     /* The operator typed something here — their words win over the wall
      * clock, exactly as for any other editable field. */
     if(text&&typeof text[k]==='string'){if(!all[i].hasAttribute('data-pin')){all[i].setAttribute('data-pin','');all[i].__eduClockPinned=true;}continue;}
     if(all[i].__eduClockPinned){all[i].removeAttribute('data-pin');all[i].__eduClockPinned=false;}
     if(all[i].hasAttribute('data-pin'))continue;
-    nodes.push({el:all[i],key:k,isTime:!!TIME_KEYS[k]});
+    if(TIME_KEYS[k]||DATE_KEYS[k])nodes.push({el:all[i],key:k,isTime:!!TIME_KEYS[k]});
   }
   if(_ckOwnEngine()||!nodes.length)return;
   if(!_ckSamples){_ckSamples={};for(var j=0;j<nodes.length;j++)_ckSamples[nodes[j].key]=(nodes[j].el.textContent||'').trim();}

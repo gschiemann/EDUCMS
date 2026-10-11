@@ -214,7 +214,7 @@ function gradeBoard(file) {
     detail = `${shim} loads but only ${hotZones} editable element(s) (need ${MIN_HOT_ZONES})`;
   }
 
-  if (!reason && (!html.includes('EDUCMS-MEDIA-CONTROLS-V1') || !html.includes('educms-media-ready'))) {
+  if (!reason && (!html.includes('EDUCMS-MEDIA-CONTROLS-V2') || !html.includes('educms-media-ready'))) {
     reason = 'NO_MEDIA_CONTROLS';
     detail = 'missing shared media controls; run node apps/web/scripts/inject-media-controls.cjs';
   }

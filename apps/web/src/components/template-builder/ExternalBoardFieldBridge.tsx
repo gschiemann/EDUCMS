@@ -70,7 +70,7 @@ export function ExternalBoardFieldBridge() {
       const frame = frames().find(f => f.contentWindow === source);
       const id = frame?.closest<HTMLElement>("[data-zone-id]")?.dataset.zoneId;
       const zone = useBuilderStore.getState().zones.find(z => z.id === id);
-      return frame && zone?.widgetType === "EXTERNAL_HTML" ? { frame, zone } : null;
+      return frame && zone && ["EXTERNAL_HTML", "HOLIDAY"].includes(zone.widgetType) ? { frame, zone } : null;
     }
     function arm(frame: HTMLIFrameElement, locked: boolean) {
       frame.contentWindow?.postMessage({ type: "educms-layout-mode", on: !locked && !useBuilderStore.getState().previewMode }, "*");
@@ -148,7 +148,7 @@ export function ExternalBoardFieldBridge() {
     document.querySelectorAll<HTMLIFrameElement>("[data-template-canvas] [data-zone-id] iframe").forEach(frame => {
       const id = frame.closest<HTMLElement>("[data-zone-id]")?.dataset.zoneId;
       const zone = zones.find(z => z.id === id);
-      if (zone?.widgetType !== "EXTERNAL_HTML") return;
+      if (!zone || !["EXTERNAL_HTML", "HOLIDAY"].includes(zone.widgetType)) return;
       frame.contentWindow?.postMessage({ type: "educms-layout-request" }, "*");
       frame.contentWindow?.postMessage({ type: "educms-media-request" }, "*");
       frame.contentWindow?.postMessage({ type: 'educms-edit-mode', on: !zone.locked && !previewMode }, '*');

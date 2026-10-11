@@ -8,7 +8,7 @@ export function mediaRecord(value: unknown): Record<string, unknown> {
 export function patchBoardMedia(zoneId: string, key: string, patch: { fit?: string; rotation?: number; hidden?: boolean }) {
   const st = useBuilderStore.getState();
   const zone = st.zones.find(z => z.id === zoneId);
-  if (zone?.widgetType !== 'EXTERNAL_HTML' || zone.locked || st.previewMode) return;
+  if (!zone || !['EXTERNAL_HTML', 'HOLIDAY'].includes(zone.widgetType) || zone.locked || st.previewMode) return;
   const cfg = zone.defaultConfig || {};
   const styles = mediaRecord(cfg.mediaStyles);
   const mediaStyles = { ...styles, [key]: { ...mediaRecord(styles[key]), ...patch } };
@@ -18,7 +18,7 @@ export function patchBoardMedia(zoneId: string, key: string, patch: { fit?: stri
 export function replaceBoardMedia(zoneId: string, key: string, kind: MediaKind, url: string) {
   const st = useBuilderStore.getState();
   const zone = st.zones.find(z => z.id === zoneId);
-  if (zone?.widgetType !== 'EXTERNAL_HTML' || zone.locked || st.previewMode) return;
+  if (!zone || !['EXTERNAL_HTML', 'HOLIDAY'].includes(zone.widgetType) || zone.locked || st.previewMode) return;
   const cfg = zone.defaultConfig || {};
   const map = kind === 'video' ? 'videoOverrides' : 'imageOverrides';
   const sources = mediaRecord(cfg[map]);

@@ -1,5 +1,7 @@
 // Additive companion to all three packaged-board shims. No changes to a
 // board's layout or playback until the operator saves a media style override.
+import { installBoardFontControls } from './board-font-controls';
+installBoardFontControls();
 type MediaStyle = { fit?: string; rotation?: number; hidden?: boolean };
 export {};
 const selector = '[data-imgslot],[data-posterslot],[data-img],[data-widget="image-slot"],[data-videoslot]';
@@ -83,7 +85,7 @@ function paintSources(data: { img?: Record<string, unknown>; video?: Record<stri
     if (!video && document.documentElement.dataset.nativeCarousels === 'true') return;
     const value = map[key];
     const source = typeof value === 'string' ? value : Array.isArray(value) && typeof value[0] === 'string' ? value[0] : '';
-    const media = video ? (el.matches('video') ? el as HTMLVideoElement : el.querySelector('video')) : el.matches('img') ? el as HTMLImageElement : null;
+    const media = video ? (el.matches('video') ? el as HTMLVideoElement : el.querySelector('video')) : el.matches('img') ? el as HTMLImageElement : el.querySelector('img');
     if (media) {
       if (media.getAttribute('src') !== source) { if (source) media.setAttribute('src', source); else media.removeAttribute('src'); if (media instanceof HTMLVideoElement) media.load(); }
     } else if (!video) el.style.backgroundImage = source ? `url(${JSON.stringify(source)})` : '';

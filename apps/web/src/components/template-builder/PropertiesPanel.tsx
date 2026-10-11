@@ -191,6 +191,8 @@ import { SIGNAGE_TEMPLATES, SELECTABLE_SIGNAGE_TEMPLATES } from '@/components/wi
 import {
   holidayFieldSchemaFor,
   getHolidayLiveFields,
+  holidaySourceFor,
+  type HolidayConfig,
   type HolidayVariant,
   type HolidayGradeLevel,
 } from '@/components/widgets/HolidayWidget';
@@ -4697,11 +4699,14 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       // "this has no hot spot at all" on HS Thanksgiving 2026-05-07).
       // setField writes to cfg.fields[key] which HolidayWidget then
       // posts to the iframe — the iframe's bridge updates textContent.
+      fields.push(<HolidayMediaFields key="holiday-media" config={cfg as HolidayConfig} onChange={setField} />);
       fields.push(
         <HolidayPanelExtras
           key="holiday-extras"
           variant={(cfg.variant || 'christmas') as HolidayVariant}
           gradeLevel={(cfg.gradeLevel || 'es') as HolidayGradeLevel}
+          design={typeof cfg.design === 'string' ? cfg.design : undefined}
+          portrait={!!cfg.portrait}
           values={(cfg.fields || {}) as Record<string, string>}
           onFieldChange={(key, value) => {
             const next = { ...(cfg.fields || {}), [key]: value };
@@ -9246,6 +9251,52 @@ function TextAreaField({ label, value, placeholder, onChange, rows = 3, onFocus 
   );
 }
 
+/** Discover real slots from the selected holiday board, including alternates. */
+function HolidayMediaFields({ config, onChange }: { config: HolidayConfig; onChange: (patch: Partial<HolidayConfig>) => void }) {
+  const src = holidaySourceFor(config);
+  const [slots, setSlots] = useState<Array<{ key: string; source: string }> | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    const controller = new AbortController();
+    setSlots(null); setFailed(false);
+    fetch(src, { signal: controller.signal }).then(response => {
+      if (!response.ok) throw new Error('Holiday board unavailable');
+      return response.text();
+    }).then(html => {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const found = new Map<string, { key: string; source: string }>();
+      doc.querySelectorAll('[data-imgslot],[data-posterslot],[data-img],[data-widget="image-slot"]').forEach(el => {
+        const key = el.getAttribute('data-imgslot') || el.getAttribute('data-posterslot') || el.getAttribute('data-slot') || el.getAttribute('data-img');
+        if (!key || found.has(key)) return;
+        const image = el.matches('img') ? el : el.querySelector('img');
+        const source = image?.getAttribute('src') || /url\(["']?([^"')]+)["']?\)/.exec(el.getAttribute('style') || '')?.[1] || '';
+        found.set(key, { key, source });
+      });
+      if (!controller.signal.aborted) setSlots([...found.values()]);
+    }).catch(() => { if (!controller.signal.aborted) { setSlots([]); setFailed(true); } });
+    return () => controller.abort();
+  }, [src]);
+  if (failed) return <p className="text-xs text-slate-500">Images will be available when this holiday template loads.</p>;
+  if (!slots) return <p className="text-xs text-slate-500">Loading template images…</p>;
+  if (!slots.length) return null;
+  return <div className="space-y-3 border-t border-slate-100 pt-3">
+    <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Images</div>
+    {slots.map(slot => {
+      const overrides = config.imageOverrides || {};
+      const current = slot.key in overrides ? overrides[slot.key] : slot.source;
+      const value = Array.isArray(current) ? current[0] || '' : current;
+      return <div key={slot.key} data-edit-img={slot.key} data-field-section={slot.key}>
+        <AssetPickerField label={prettyFieldLabel(slot.key)} value={value} kind="image"
+          onChange={url => onChange({ imageOverrides: { ...overrides, [slot.key]: url } })} />
+        {slot.key in overrides && <button type="button" className="mt-1 text-xs font-semibold text-indigo-600" onClick={() => {
+          const next = { ...overrides }; delete next[slot.key];
+          onChange({ imageOverrides: Object.keys(next).length ? next : undefined });
+        }}>Restore template image</button>}
+      </div>;
+    })}
+  </div>;
+}
+
 /**
  * HolidayPanelExtras — renders the editable text fields for a HOLIDAY
  * widget. Schema is the static map exported by HolidayWidget
@@ -9274,6 +9325,8 @@ function TextAreaField({ label, value, placeholder, onChange, rows = 3, onFocus 
 function HolidayPanelExtras({
   variant,
   gradeLevel,
+  design,
+  portrait = false,
   values,
   onFieldChange,
   styles,
@@ -9281,6 +9334,8 @@ function HolidayPanelExtras({
 }: {
   variant: HolidayVariant;
   gradeLevel: HolidayGradeLevel;
+  design?: string;
+  portrait?: boolean;
   values: Record<string, string>;
   onFieldChange: (key: string, value: string) => void;
   /** Per-data-field style overrides (font size + color + weight),
@@ -9301,14 +9356,14 @@ function HolidayPanelExtras({
   // map no longer matched, so panel sections + click-to-edit targets
   // were stale.
   const [liveSchema, setLiveSchema] = useState<ReturnType<typeof getHolidayLiveFields>>(
-    () => getHolidayLiveFields(variant, gradeLevel),
+    () => getHolidayLiveFields(variant, gradeLevel, design, portrait),
   );
   useEffect(() => {
-    const refresh = () => setLiveSchema(getHolidayLiveFields(variant, gradeLevel));
+    const refresh = () => setLiveSchema(getHolidayLiveFields(variant, gradeLevel, design, portrait));
     refresh(); // sync re-read on variant / grade change
     window.addEventListener('holiday:fields-loaded', refresh);
     return () => window.removeEventListener('holiday:fields-loaded', refresh);
-  }, [variant, gradeLevel]);
+  }, [variant, gradeLevel, design, portrait]);
 
   // theme.* is the hidden brand-token block at the END of every board —
   // edited via the brand palette, never as raw hex/font text fields, so

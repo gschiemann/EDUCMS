@@ -3,7 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { buildSync } = require('esbuild');
-const marker = 'EDUCMS-MEDIA-CONTROLS-V1';
+const marker = 'EDUCMS-MEDIA-CONTROLS-V2';
 const code = buildSync({ entryPoints: [path.join(__dirname, 'board-media-controls.ts')], bundle: true, minify: true,
   format: 'iife', target: ['chrome83', 'safari12'], write: false }).outputFiles[0].text.trim();
 const script = `<script>/*${marker}*/${code}</script>`;
@@ -21,4 +21,5 @@ function walk(dir) {
   }
 }
 walk(path.join(__dirname, '../public/templates'));
+walk(path.join(__dirname, '../public/holiday-templates'));
 console.log(`${marker}: updated ${changed} boards`);

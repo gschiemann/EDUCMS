@@ -20,7 +20,7 @@ export type HolidaySourceVariant =
 export type HolidaySourceGradeLevel = 'es' | 'ms' | 'hs';
 
 /** Bump when any canonical or portrait holiday HTML changes. */
-export const HOLIDAY_HTML_CONTENT_VERSION = '20260821-routing-2';
+export const HOLIDAY_HTML_CONTENT_VERSION = '20261011-flagship-1';
 
 /**
  * Version already carried by every holiday HTML request for the shared style

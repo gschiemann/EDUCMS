@@ -302,3 +302,47 @@ test('the full widget list leads with everyday media and understands plural sear
   await page.locator('[data-builder-bottom-bar]').getByRole('button', { name: /Undo/ }).click();
   await expect(page.locator('[data-zone-id="blank"]')).toHaveCount(1);
 });
+for (const portrait of [false, true]) {
+  test(`holiday photos replace, rotate, restore, undo and save (${portrait ? 'portrait' : 'landscape'})`, async ({ page }, testInfo) => {
+    test.setTimeout(120_000);
+    const key = 'hero.media';
+    const state = await openEditor(page, portrait, [{ id: 'holiday', name: 'Holiday design', widgetType: 'HOLIDAY',
+      x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0,
+      defaultConfig: { variant: 'halloween', gradeLevel: 'es', design: 'storybook', portrait,
+        fields: { 'school.name': 'Our own school' }, imageOverrides: { [key]: media[0].fileUrl } } }]);
+    const frame = page.locator('[data-zone-id="holiday"] iframe').contentFrame();
+    const slot = frame.locator(`[data-imgslot="${key}"]`);
+    const source = () => slot.evaluate(el => el.querySelector('img')?.getAttribute('src') || getComputedStyle(el).backgroundImage);
+    await expect.poll(source).toContain('/landscape.png');
+    await slot.click();
+    const bar = page.locator('[data-builder-bottom-bar]');
+    await expect(bar.getByRole('button', { name: 'Replace image', exact: true })).toBeVisible();
+    await expect(page.locator(`[data-edit-img="${key}"]`)).toHaveCount(1);
+    await bar.getByRole('combobox', { name: 'Media fit' }).selectOption('contain');
+    await bar.getByRole('button', { name: 'Rotate right 90°', exact: true }).click();
+    await expect(slot).toHaveCSS('transform', /matrix\(0, 1, -1, 0,/);
+    await bar.getByRole('button', { name: 'Replace image', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'portrait.png', exact: true }).click();
+    await expect.poll(source).toContain('/portrait.png');
+    await bar.getByRole('button', { name: /Undo/ }).click();
+    await expect.poll(source).toContain('/landscape.png');
+    await bar.getByRole('button', { name: /Redo/ }).click();
+    await page.locator(`[data-edit-img="${key}"]`).getByRole('button', { name: 'Restore template image' }).click();
+    await expect.poll(source).not.toContain('/test-media/');
+    await bar.getByRole('button', { name: /Undo/ }).click();
+    await expect.poll(source).toContain('/portrait.png');
+    await page.getByRole('button', { name: /^Save$/ }).click();
+    await expect.poll(() => state.saved().zones[0]?.defaultConfig?.imageOverrides?.[key]).toBe(media[1].fileUrl);
+    expect(state.saved().zones[0].defaultConfig.mediaStyles?.[key]?.rotation).toBe(90);
+    expect(state.saved().zones[0].defaultConfig.fields).toEqual({ 'school.name': 'Our own school' });
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    const savedSlot = page.locator('[data-zone-id] iframe').contentFrame().locator(`[data-imgslot="${key}"]`);
+    await expect.poll(() => savedSlot.evaluate(el => el.querySelector('img')?.getAttribute('src') || getComputedStyle(el).backgroundImage)).toContain('/portrait.png');
+    await expect(savedSlot).toHaveCSS('transform', /matrix\(0, 1, -1, 0,/);
+    await savedSlot.click();
+    await expect(bar.getByRole('combobox', { name: 'Media fit' })).toHaveValue('contain');
+    await page.screenshot({ path: testInfo.outputPath('holiday-media-edited.png') });
+    await page.locator('[data-zone-id] iframe').contentFrame().locator('[data-field="school.name"]').click({ force: true });
+    await expect(bar.getByRole('button', { name: 'Replace image', exact: true })).toHaveCount(0);
+  });
+}
