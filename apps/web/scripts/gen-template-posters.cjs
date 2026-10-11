@@ -27,6 +27,43 @@ const MANIFEST = path.join(OUT, 'poster-manifest.json');
 const W = 800, H = 450;            // 16:9 poster; ~30-45KB PNG each
 const CONCURRENCY = 4;
 
+// The registry, rather than already-existing PNGs, determines which portrait
+// captures are needed. Otherwise the first capture of a new portrait preset
+// never creates its preview. Type-only preset modules have no service deps.
+function registeredOrientations() {
+  const ts = require('typescript');
+  const previous = require.extensions['.ts'];
+  const catalog = path.resolve(__dirname, '../../api/src/templates');
+  const orientations = new Map();
+  require.extensions['.ts'] = (module, filename) => module._compile(
+    ts.transpileModule(fs.readFileSync(filename, 'utf8'), {
+      compilerOptions: { module: ts.ModuleKind.CommonJS, esModuleInterop: true },
+    }).outputText, filename,
+  );
+  try {
+    for (const file of fs.readdirSync(catalog).filter(name => /-presets\.ts$/.test(name) && !name.startsWith('ensure-'))) {
+      for (const [name, presets] of Object.entries(require(path.join(catalog, file)))) {
+        if (!Array.isArray(presets) || !/_TEMPLATE_PRESETS$/.test(name)) continue;
+        for (const preset of presets) for (const zone of preset.zones || []) {
+          const url = zone.widgetType === 'EXTERNAL_HTML' && zone.defaultConfig?.url;
+          if (typeof url !== 'string' || !url.startsWith('/templates/')) continue;
+          const rel = url.split(/[?#]/)[0].slice('/templates/'.length);
+          const entry = orientations.get(rel) || { landscape: false, portrait: false, portraitQuery: false };
+          const portraitQuery = /[?&](?:orientation|o)=portrait\b/.test(url);
+          if (preset.orientation === 'PORTRAIT' || portraitQuery) entry.portrait = true;
+          else entry.landscape = true;
+          entry.portraitQuery ||= portraitQuery;
+          orientations.set(rel, entry);
+        }
+      }
+    }
+  } finally {
+    if (previous) require.extensions['.ts'] = previous;
+    else delete require.extensions['.ts'];
+  }
+  return orientations;
+}
+
 function listBoards(dir, rel = '') {
   const out = [];
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -40,6 +77,7 @@ function listBoards(dir, rel = '') {
 
 (async () => {
   const boards = listBoards(ROOT);
+  const orientations = registeredOrientations();
   console.log(`Boards to capture: ${boards.length} (base ${BASE})`);
   const browser = await chromium.launch();
   let ok = 0, fail = 0;
@@ -52,8 +90,14 @@ function listBoards(dir, rel = '') {
       const page = await ctx.newPage();
       try {
         const portraitPoster = path.join(OUT, rel.replace(/\.html$/, '-portrait.png'));
+        const registered = orientations.get(rel);
+        const nativePortrait = registered?.portrait && !registered.landscape && !registered.portraitQuery;
+        const captures = [{ portrait: !!nativePortrait, suffix: false }];
+        if (registered?.portraitQuery || (registered?.portrait && registered.landscape) || fs.existsSync(portraitPoster)) {
+          captures.push({ portrait: true, suffix: true });
+        }
         let sourceHash;
-        for (const portrait of fs.existsSync(portraitPoster) ? [false, true] : [false]) {
+        for (const { portrait, suffix } of captures) {
           await page.setViewportSize(portrait ? { width: H, height: W } : { width: W, height: H });
           // The source runtime's explicit demo is for gallery captures only.
           // Never generate an unconfigured-source error as a gallery poster.
@@ -67,7 +111,7 @@ function listBoards(dir, rel = '') {
           await page.waitForTimeout(2600);               // media + autofit + settle
           await page.addStyleTag({ content: '*{animation:none!important;transition:none!important;}' });
           await page.waitForTimeout(120);
-          const dest = path.join(OUT, rel.replace(/\.html$/, portrait ? '-portrait.png' : '.png'));
+          const dest = path.join(OUT, rel.replace(/\.html$/, suffix ? '-portrait.png' : '.png'));
           fs.mkdirSync(path.dirname(dest), { recursive: true });
           await page.screenshot({ path: dest });
         }
