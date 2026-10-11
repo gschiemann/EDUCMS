@@ -1,21 +1,70 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"/><title>Events</title><link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet"><style>
-:root{--bg:#eef1f7;--fg:#0e1626;--mute:#8a93a8;--paper:#ffffff;--rule:#e3e8f1;--primary:#3551e6;--accent:#15b59a;--gold:#e0a020;--danger:#e2533d;--font-display:'Space Grotesk',system-ui,sans-serif;--font-grotesk:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;--font-condensed:"Arial Narrow","Helvetica Neue",Impact,sans-serif;--font-mono:"SF Mono",Menlo,Consolas,monospace}
-*,*::before,*::after{box-sizing:border-box}html,body{margin:0;padding:0;height:100%;width:100%;background:#000;overflow:hidden;font-family:var(--font-grotesk)}
-.stage{position:absolute;left:50%;top:50%;width:3840px;height:2160px;background:var(--bg);color:var(--fg);transform:translate(-50%,-50%) scale(var(--scale,1));transform-origin:center;overflow:hidden}
-.frame{position:absolute;top:0;right:0;bottom:0;left:0;display:grid;padding:80px;row-gap:40px}
-.top{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid var(--rule);padding-bottom:24px}
-.logo{font:700 88px/.95 var(--font-display);letter-spacing:-.02em}
-.tag{font:500 36px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--mute);margin-left:32px}
-.live{display:inline-flex;align-items:center;gap:16px;font:700 32px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--accent);margin-left:24px}
-.live::before{content:"";width:18px;height:18px;border-radius:50%;background:var(--accent);animation:p 1.6s infinite}
-@keyframes p{0%{box-shadow:0 0 0 0 rgba(16,185,129,.7)}70%{box-shadow:0 0 0 18px rgba(16,185,129,0)}100%{box-shadow:0 0 0 0 rgba(16,185,129,0)}}
-.clock{font:600 88px/1 var(--font-grotesk);font-variant-numeric:tabular-nums}
-.foot{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:32px;border-top:2px solid var(--rule);padding-top:24px}
-.fc{border:3px solid var(--rule);border-radius:32px;padding:24px 44px;display:flex;flex-direction:column;gap:8px}
-.fc.accent{background:linear-gradient(135deg,var(--primary) 0%,#1d4ed8 100%);border:none}
-.fc.accent .l{color:rgba(255,255,255,.85)}.fc.accent .v{color:#fff}
-.fc .l{font:600 32px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--mute)}
-.fc .v{font:700 72px/.92 var(--font-condensed);letter-spacing:-.02em}
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Corporate · Week Planner</title><link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet"><style>
+:root{--stage-w:3840px;--stage-h:2160px;--stage-scale:1;--scale:1;--bg:#f4f0e8;--ink:#151f2c;--brand:#254fdc;--brand2:#102a76;--accent:#dbf675;--accent2:#ffffff;--pos:#146943;--neg:#b53138;--f-display:'Space Grotesk';--f-body:'Hanken Grotesk';--f-mono:'JetBrains Mono';--primary:var(--brand);--primary2:var(--brand2);--paper:var(--accent2);--mute:color-mix(in srgb,var(--ink) 76%,var(--bg));--rule:color-mix(in srgb,var(--ink) 22%,var(--bg));}
+
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#111820;color:var(--ink);font-family:var(--f-body),sans-serif}
+.viewport{position:fixed;top:0;right:0;bottom:0;left:0;display:grid;place-items:center;overflow:hidden}
+.stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
+.stage{position:relative;width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;background:var(--bg);overflow:hidden}
+[data-field]{overflow-wrap:break-word;min-width:0}
+[data-imgslot]{background-position:center;background-size:cover;background-repeat:no-repeat}
+.has-img>.placeholder{display:none}
+.logo{width:130px;height:130px;flex-shrink:0;background:var(--primary);color:var(--paper);display:grid;place-items:center}
+.logo .placeholder{font:700 calc(64px*var(--scale))/1 var(--f-display)}
+.overline{font:600 calc(58px*var(--scale))/1.2 var(--f-mono);letter-spacing:.08em;text-transform:uppercase}
+.display{font-family:var(--f-display);font-weight:700;letter-spacing:-.045em}
+.body{font:500 calc(72px*var(--scale))/1.22 var(--f-body)}
+.header{display:flex;align-items:center;gap:34px}
+.brand-name{font:700 calc(84px*var(--scale))/1.1 var(--f-display);height:104px;max-width:1300px}
+.brand-tag{font:500 calc(58px*var(--scale))/1.2 var(--f-body);height:76px;color:var(--mute)}
+.clock{font:600 calc(84px*var(--scale))/1.1 var(--f-mono);margin-left:auto;width:530px;height:110px;text-align:right}
+.footer{display:grid;grid-template-columns:1.4fr 1fr 1fr;border-top:4px solid var(--ink)}
+.footer-item{padding:26px 42px 0 0;min-width:0}
+.footer-item+.footer-item{padding-left:42px;border-left:3px solid var(--rule)}
+.footer-label{font:600 calc(52px*var(--scale))/1.2 var(--f-mono);height:66px;text-transform:uppercase;color:var(--mute)}
+.footer-value{font:600 calc(72px*var(--scale))/1.15 var(--f-display);height:150px;margin-top:14px}
+
+
+.week-frame{position:absolute;top:80px;left:100px;right:100px;bottom:70px;display:grid;grid-template-rows:190px 350px 1fr 245px;gap:46px}
+.header{padding-bottom:30px;border-bottom:4px solid var(--ink)}
+.week-heading{display:flex;align-items:center;gap:60px}
+.week-title{font:700 calc(260px*var(--scale))/1.04 var(--f-display);height:310px;width:2490px;letter-spacing:-.06em}
+.week-date{margin-left:auto;border-left:4px solid var(--ink);padding-left:48px;min-width:630px}
+.week-date-label{font:600 calc(58px*var(--scale))/1.15 var(--f-mono);height:85px;text-transform:uppercase}
+.week-date-value{font:700 calc(130px*var(--scale))/1.04 var(--f-display);height:175px;color:var(--primary)}
+.week-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:0;min-height:0;border-top:5px solid var(--ink);border-bottom:5px solid var(--ink)}
+.event{position:relative;padding:38px 34px 32px;display:grid;grid-template-rows:180px 1fr 235px 140px;gap:22px;border-left:3px solid var(--ink);background:var(--paper)}
+.event:first-child{border-left:0}
+.event:nth-child(even){background:var(--bg)}
+.event.today{background:var(--accent)}
+.event-day{font:700 calc(140px*var(--scale))/1.04 var(--f-display);height:180px;letter-spacing:-.05em;color:var(--primary);border-bottom:4px solid var(--primary)}
+.event-title{font:700 calc(118px*var(--scale))/1.1 var(--f-display);height:430px;letter-spacing:-.035em;padding-top:16px}
+.event-where{font:500 calc(72px*var(--scale))/1.18 var(--f-body);height:235px;color:var(--mute)}
+.event-rsvp{font:600 calc(56px*var(--scale))/1.1 var(--f-mono);height:120px;border-top:3px solid var(--rule);padding-top:22px;color:var(--primary);text-transform:uppercase}
+.footer{border:0}
+.footer-item:first-child{background:var(--primary);color:var(--paper);padding:25px 38px}
+.footer-item:first-child .footer-label{color:var(--paper)}
+.footer-item:first-child .footer-value{height:120px}
+.stage[data-orient=portrait] .week-frame{top:80px;left:100px;right:100px;bottom:80px;grid-template-rows:205px 440px 1fr 580px;gap:46px}
+.stage[data-orient=portrait] .week-title{width:1250px;height:410px;font-size:calc(225px*var(--scale))}
+.stage[data-orient=portrait] .week-date{min-width:640px;padding-left:28px}
+.stage[data-orient=portrait] .week-grid{grid-template-columns:1fr;grid-template-rows:repeat(5,1fr)}
+.stage[data-orient=portrait] .event{border-left:0;border-top:3px solid var(--ink);padding:35px 40px;display:grid;grid-template-columns:300px 1fr 240px;grid-template-rows:220px 1fr;column-gap:45px;row-gap:4px}
+.stage[data-orient=portrait] .event:first-child{border-top:0}
+.stage[data-orient=portrait] .event-day{grid-row:1/3;height:230px;border-bottom:0;align-self:center}
+.stage[data-orient=portrait] .event-title{height:220px;padding-top:0;font-size:calc(116px*var(--scale))}
+.stage[data-orient=portrait] .event-where{grid-column:2;height:160px;font-size:calc(66px*var(--scale))}
+.stage[data-orient=portrait] .event-rsvp{grid-column:3;grid-row:1/3;border-top:0;border-left:3px solid var(--rule);height:200px;padding-left:24px;padding-top:62px;align-self:center}
+.stage[data-orient=portrait] .footer{grid-template-columns:1fr 1fr;row-gap:20px}
+.stage[data-orient=portrait] .footer-item:first-child{grid-column:1/3}
+.stage[data-orient=portrait] .footer-item:nth-child(2){border-left:0;padding-left:0}
+
+.week-title{color:var(--primary)}
+.event{background:var(--bg)}
+.event:nth-child(even){background:var(--paper)}
+.event-day{background:var(--primary);color:var(--paper);padding:20px}
+.event.today{background:var(--accent)}
+#stage [data-fit]{line-height:1.2}
 </style><script>/*EDUCMS-SHIM-V14*/(function(){try{
 var editMode=false;
 function applyPosters(img){if(!img)return;Object.keys(img).forEach(function(k){var v=img[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\"');var safe=v.replace(/["'()\s]/g,'');var el=document.querySelector('[data-posterslot="'+esc+'"]');if(!el)return;if(safe)el.setAttribute('poster',safe);else el.removeAttribute('poster');el.setAttribute('data-has-image',safe?'true':'false');});}
@@ -152,37 +201,118 @@ if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded'
 try{parent.postMessage({type:'educms-ready'},'*');}catch(_){}
 addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='educms-overrides'){if(d.brand)applyBrand(d.brand);if(d.repeat)applyRepeat(d.repeat);applyTextAndStyles(d.text||{},d.textStyles||{});applyImages(d.img||{});applyPosters(d.img||{});applyVideos(d.video||{});startClock(d.text||{});}else if(d.type==='educms-edit-mode'){editMode=!!d.on;if(editMode){_unfreeze();armEdit();armMediaEdit();}}}catch(_){}});
 }catch(e){}})();</script>
-</head><body><div class="stage" id="stage"><div class="frame" style="async function readFile(path) {
-    return rpc({ op: 'readFile', path: String(path) });
-  }"><header class="top"><div><span class="logo" data-field="brand.name">NORTH STAR</span><span class="tag" data-field="brand.tag">Office events · this week</span></div><div class="clock" data-source="local-time"><span data-field="clock.hhmm">9:42 AM</span></div></header>
-<main style="display:grid;grid-template-rows:repeat(5,1fr);gap:16px;min-height:0">
-
-<article style="display:grid;grid-template-columns:200px 1fr auto;gap:48px;align-items:center;padding:28px 56px;background:var(--paper);color:var(--fg);border-radius:24px;border:3px solid var(--rule)">
-<div data-field="e.0.day" style="font:700 96px/1 var(--font-condensed);color:var(--primary);letter-spacing:-.02em">MON</div>
-<div><div data-field="e.0.title" style="font:600 64px/1 var(--font-display);letter-spacing:-.02em">Coffee with the CFO</div><div data-field="e.0.where" style="margin-top:10px;font:500 32px/1.2 var(--font-grotesk);color:var(--mute)">Cafeteria · 9 AM · all welcome</div></div>
-<div style="font:600 28px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--accent);padding:12px 22px;background:rgba(16,185,129,.16);border-radius:999px" data-field="e.0.rsvp">RSVP</div>
+</head>
+<body>
+<div data-widget="theme" hidden>
+<span data-field="theme.brand">#b7412c</span>
+<span data-field="theme.brand2">#6d2418</span>
+<span data-field="theme.accent">#ffd34f</span>
+<span data-field="theme.accent2">#ffffff</span>
+<span data-field="theme.ink">#151f2c</span>
+<span data-field="theme.bg">#fff5e7</span>
+<span data-field="theme.pos">#146943</span>
+<span data-field="theme.neg">#b53138</span>
+<span data-field="theme.fDisplay">Space Grotesk</span>
+<span data-field="theme.fBody">Hanken Grotesk</span>
+<span data-field="theme.fMono">JetBrains Mono</span>
+<span data-field="theme.scale">1</span>
+</div>
+<div class="viewport">
+<div class="stage-outer">
+<div class="stage" id="stage">
+<div class="week-frame">
+<header class="header"><div class="logo" data-imgslot="brand.logo"><span class="placeholder">NS</span></div>
+<div class="brand">
+<div class="brand-name" data-field="brand.name" data-fit data-fit-min="50" data-fit-max="84" >North Star</div>
+<div class="brand-tag" data-field="brand.tag" data-fit data-fit-min="50" data-fit-max="58" >Office events · this week</div>
+</div>
+<div class="clock" data-field="clock.hhmm" data-fit data-fit-min="50" data-fit-max="84" data-live="clock">9:42 AM</div>
+</header>
+<div class="week-heading">
+<div class="week-title" data-field="week.title" data-fit data-fit-min="50" data-fit-max="260" >This week.</div>
+<div class="week-date">
+<div class="week-date-label" data-field="week.label" data-fit data-fit-min="50" data-fit-max="58" >Week of</div>
+<div class="week-date-value" data-field="week.date" data-fit data-fit-min="50" data-fit-max="130" data-live="weekof">Oct 5</div>
+</div>
+</div>
+<main class="week-grid">
+<article class="event" data-weekday="1">
+<div class="event-day" data-field="e.0.day" data-fit data-fit-min="50" data-fit-max="140" >MON</div>
+<div class="event-title" data-field="e.0.title" data-fit data-fit-min="50" data-fit-max="118" >Coffee with the CFO</div>
+<div class="event-where" data-field="e.0.where" data-fit data-fit-min="50" data-fit-max="72" >Cafeteria · 9 AM · all welcome</div>
+<div class="event-rsvp" data-field="e.0.rsvp" data-fit data-fit-min="50" data-fit-max="56" >RSVP</div>
 </article>
-<article style="display:grid;grid-template-columns:200px 1fr auto;gap:48px;align-items:center;padding:28px 56px;background:var(--paper);color:var(--fg);border-radius:24px;border:3px solid var(--rule)">
-<div data-field="e.1.day" style="font:700 96px/1 var(--font-condensed);color:var(--primary);letter-spacing:-.02em">TUE</div>
-<div><div data-field="e.1.title" style="font:600 64px/1 var(--font-display);letter-spacing:-.02em">Lunch &amp; Learn: Vector DBs</div><div data-field="e.1.where" style="margin-top:10px;font:500 32px/1.2 var(--font-grotesk);color:var(--mute)">Theater · noon · with the data team</div></div>
-<div style="font:600 28px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--accent);padding:12px 22px;background:rgba(16,185,129,.16);border-radius:999px" data-field="e.1.rsvp">RSVP</div>
+<article class="event" data-weekday="2">
+<div class="event-day" data-field="e.1.day" data-fit data-fit-min="50" data-fit-max="140" >TUE</div>
+<div class="event-title" data-field="e.1.title" data-fit data-fit-min="50" data-fit-max="118" >Lunch &amp; Learn: Vector DBs</div>
+<div class="event-where" data-field="e.1.where" data-fit data-fit-min="50" data-fit-max="72" >Theater · noon · with the data team</div>
+<div class="event-rsvp" data-field="e.1.rsvp" data-fit data-fit-min="50" data-fit-max="56" >RSVP</div>
 </article>
-<article style="display:grid;grid-template-columns:200px 1fr auto;gap:48px;align-items:center;padding:28px 56px;background:var(--primary);color:#fff;border-radius:24px;border:none">
-<div data-field="e.2.day" style="font:700 96px/1 var(--font-condensed);color:#fff;letter-spacing:-.02em">WED</div>
-<div><div data-field="e.2.title" style="font:600 64px/1 var(--font-display);letter-spacing:-.02em">Q2 town hall</div><div data-field="e.2.where" style="margin-top:10px;font:500 32px/1.2 var(--font-grotesk);color:rgba(255,255,255,.82)">Theater · 10 AM · streamed all offices</div></div>
-<div style="font:600 28px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:#fff;padding:12px 22px;background:rgba(255,255,255,.18);border-radius:999px" data-field="e.2.rsvp">RSVP</div>
+<article class="event" data-weekday="3">
+<div class="event-day" data-field="e.2.day" data-fit data-fit-min="50" data-fit-max="140" >WED</div>
+<div class="event-title" data-field="e.2.title" data-fit data-fit-min="50" data-fit-max="118" >Q2 town hall</div>
+<div class="event-where" data-field="e.2.where" data-fit data-fit-min="50" data-fit-max="72" >Theater · 10 AM · streamed all offices</div>
+<div class="event-rsvp" data-field="e.2.rsvp" data-fit data-fit-min="50" data-fit-max="56" >RSVP</div>
 </article>
-<article style="display:grid;grid-template-columns:200px 1fr auto;gap:48px;align-items:center;padding:28px 56px;background:var(--paper);color:var(--fg);border-radius:24px;border:3px solid var(--rule)">
-<div data-field="e.3.day" style="font:700 96px/1 var(--font-condensed);color:var(--primary);letter-spacing:-.02em">THU</div>
-<div><div data-field="e.3.title" style="font:600 64px/1 var(--font-display);letter-spacing:-.02em">Yoga in the park</div><div data-field="e.3.where" style="margin-top:10px;font:500 32px/1.2 var(--font-grotesk);color:var(--mute)">Mission Dolores · noon · bring a mat</div></div>
-<div style="font:600 28px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--accent);padding:12px 22px;background:rgba(16,185,129,.16);border-radius:999px" data-field="e.3.rsvp">RSVP</div>
+<article class="event" data-weekday="4">
+<div class="event-day" data-field="e.3.day" data-fit data-fit-min="50" data-fit-max="140" >THU</div>
+<div class="event-title" data-field="e.3.title" data-fit data-fit-min="50" data-fit-max="118" >Yoga in the park</div>
+<div class="event-where" data-field="e.3.where" data-fit data-fit-min="50" data-fit-max="72" >Mission Dolores · noon · bring a mat</div>
+<div class="event-rsvp" data-field="e.3.rsvp" data-fit data-fit-min="50" data-fit-max="56" >RSVP</div>
 </article>
-<article style="display:grid;grid-template-columns:200px 1fr auto;gap:48px;align-items:center;padding:28px 56px;background:var(--paper);color:var(--fg);border-radius:24px;border:3px solid var(--rule)">
-<div data-field="e.4.day" style="font:700 96px/1 var(--font-condensed);color:var(--primary);letter-spacing:-.02em">FRI</div>
-<div><div data-field="e.4.title" style="font:600 64px/1 var(--font-display);letter-spacing:-.02em">Office happy hour</div><div data-field="e.4.where" style="margin-top:10px;font:500 32px/1.2 var(--font-grotesk);color:var(--mute)">Rooftop · 4 PM · drinks &amp; small bites</div></div>
-<div style="font:600 28px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--accent);padding:12px 22px;background:rgba(16,185,129,.16);border-radius:999px" data-field="e.4.rsvp">RSVP</div>
+<article class="event" data-weekday="5">
+<div class="event-day" data-field="e.4.day" data-fit data-fit-min="50" data-fit-max="140" >FRI</div>
+<div class="event-title" data-field="e.4.title" data-fit data-fit-min="50" data-fit-max="118" >Office happy hour</div>
+<div class="event-where" data-field="e.4.where" data-fit data-fit-min="50" data-fit-max="72" >Rooftop · 4 PM · drinks &amp; small bites</div>
+<div class="event-rsvp" data-field="e.4.rsvp" data-fit data-fit-min="50" data-fit-max="56" >RSVP</div>
 </article>
 </main>
-<footer class="foot"><div class="fc accent"><div class="l">Add to calendar</div><div class="v" style="font-size:48px">Outlook · Google</div></div><div class="fc"><div class="l">RSVP</div><div class="v" style="font-size:48px">Slack #events</div></div><div class="fc"><div class="l">Volunteer</div><div class="v" style="font-size:48px">#culture-club</div></div></footer>
-</div></div><script>(function(){var s=document.getElementById('stage');function fit(){s.style.setProperty('--scale',Math.min(innerWidth/3840,innerHeight/2160));}addEventListener('resize',fit);fit();})();</script><script>/*EDUCMS-MEDIA-CONTROLS-V1*/"use strict";(()=>{var M='[data-imgslot],[data-posterslot],[data-img],[data-widget="image-slot"],[data-videoslot]',y=new WeakMap,l=new WeakMap,p=new Map,h=new WeakSet,A={img:new Set,video:new Set},b={},c={},k=!1;function d(t){return t.getAttribute("data-videoslot")||t.getAttribute("data-imgslot")||t.getAttribute("data-posterslot")||t.getAttribute("data-slot")||t.getAttribute("data-img")||""}function f(){return Array.from(document.querySelectorAll(M)).filter(t=>d(t)&&!t.closest("#venueos-fields,[data-controls]"))}function S(){f().forEach(t=>{var i,s;let e=d(t);if(p.has(e)||!t.getClientRects().length)return;let o=t.matches("img,video")?t:t.querySelector("img,video"),r=Array.from(document.querySelectorAll("[data-field]")).find(n=>n.dataset.field==="media.".concat(e,".slides"));if(r)try{p.set(e,JSON.parse(r.textContent||"[]"));return}catch{}p.set(e,(o==null?void 0:o.getAttribute("src"))||((i=o==null?void 0:o.querySelector("source"))==null?void 0:i.getAttribute("src"))||((s=/url\(["']?([^"')]+)["']?\)/.exec(getComputedStyle(t).backgroundImage))==null?void 0:s[1])||"")})}function v(){parent.postMessage({type:"educms-media-ready",slots:f().map(t=>{var i;let e=t.hasAttribute("data-videoslot"),o=t.matches("img,video")?t:t.querySelector("img,video"),r=o?getComputedStyle(o).objectFit:getComputedStyle(t).backgroundSize;return{key:d(t),kind:e?"video":"image",defaultFit:r==="contain"?"contain":"cover",hasSource:!!(o!=null&&o.getAttribute("src")||(i=o==null?void 0:o.querySelector("source"))!=null&&i.getAttribute("src")||/url\(/.test(getComputedStyle(t).backgroundImage))}})},"*")}function m(){f().forEach(t=>{let e=b[d(t)],o=t.matches("img,video")?[t]:Array.from(t.querySelectorAll("img,video"));if(!e&&!y.has(t))return;y.has(t)||y.set(t,{transform:t.style.transform,priority:t.style.getPropertyPriority("transform"),base:getComputedStyle(t).transform,display:t.style.display,size:t.style.backgroundSize,position:t.style.backgroundPosition,repeat:t.style.backgroundRepeat});let r=y.get(t),i=typeof(e==null?void 0:e.rotation)=="number"&&Number.isFinite(e.rotation)?(e.rotation%360+360)%360:0;i?t.style.setProperty("transform","".concat(r.base==="none"?"":r.base," rotate(").concat(i,"deg)"),"important"):r.transform?t.style.setProperty("transform",r.transform,r.priority):t.style.removeProperty("transform"),(e==null?void 0:e.fit)==="contain"||(e==null?void 0:e.fit)==="cover"||(e==null?void 0:e.fit)==="fill"?(o.forEach(s=>{l.has(s)||l.set(s,s.style.objectFit),s.style.objectFit=e.fit}),t.style.backgroundSize=e.fit==="fill"?"100% 100%":e.fit,t.style.backgroundRepeat="no-repeat",t.style.backgroundPosition="center"):(o.forEach(s=>{l.has(s)&&(s.style.objectFit=l.get(s))}),t.style.backgroundSize=r.size,t.style.backgroundPosition=r.position,t.style.backgroundRepeat=r.repeat),t.style.display=(e==null?void 0:e.hidden)===!0?"none":r.display})}function L(){try{let t=new URLSearchParams(location.search);for(let e of["mediaStyles","img","video"]){let o=t.get(e);if(!o)continue;let r=JSON.parse(decodeURIComponent(escape(atob(o.replace(/-/g,"+").replace(/_/g,"/")))));!r||typeof r!="object"||Array.isArray(r)||(e==="mediaStyles"?b=r:c[e]=r)}}catch{}}function g(t,e=!1){f().forEach(o=>{if(e&&h.has(o))return;let r=o.hasAttribute("data-videoslot"),i=r?t.video:t.img,s=d(o);if(!i||!(s in i)||!r&&document.documentElement.dataset.nativeCarousels==="true")return;let n=i[s],a=typeof n=="string"?n:Array.isArray(n)&&typeof n[0]=="string"?n[0]:"",u=r?o.matches("video")?o:o.querySelector("video"):o.matches("img")?o:null;u?u.getAttribute("src")!==a&&(a?u.setAttribute("src",a):u.removeAttribute("src"),u instanceof HTMLVideoElement&&u.load()):r||(o.style.backgroundImage=a?"url(".concat(JSON.stringify(a),")"):""),r||(o.classList.toggle("has-img",!!a),a?o.setAttribute("data-has-image","true"):o.removeAttribute("data-has-image")),h.add(o)})}addEventListener("message",t=>{if(t.source!==parent||!t.data||typeof t.data!="object")return;let e=t.data;if(e.type==="educms-media-request"&&v(),e.type==="educms-edit-mode"&&(k=e.on===!0),e.type==="educms-overrides"){S();for(let o of["img","video"])if(!(!e[o]||typeof e[o]!="object")){Object.keys(e[o]).forEach(r=>A[o].add(r));for(let r of A[o])r in e[o]||(e[o][r]=p.get(r)||"");c[o]={...e[o]}}g(c),e.mediaStyles&&typeof e.mediaStyles=="object"&&(b=e.mediaStyles),m(),Promise.resolve().then(()=>{g(c),m()})}},!0);document.addEventListener("click",t=>{var r,i;if(!k)return;let e=(r=t.target)==null?void 0:r.closest(M);if(!e||!f().includes(e))return;let o=(i=t.target)==null?void 0:i.closest("[data-field],[data-action]");o&&o!==e&&e.contains(o)||(t.preventDefault(),t.stopImmediatePropagation(),parent.postMessage({type:"educms-media-select",key:d(e)},"*"),parent.postMessage({type:"educms-field-click",key:d(e),kind:e.hasAttribute("data-videoslot")?"video":"img"},"*"))},!0);function E(){S(),L(),g(c),m(),v(),Promise.resolve().then(()=>{g(c),m()}),new MutationObserver(()=>{S(),g(c,!0),Object.keys(b).length&&m(),k&&v()}).observe(document.body,{childList:!0,subtree:!0})}document.readyState==="loading"?document.addEventListener("DOMContentLoaded",E,!0):E();})();</script>
-</body></html>
+<footer class="footer">
+<div class="footer-item">
+<div class="footer-label" data-field="calendar.label" data-fit data-fit-min="50" data-fit-max="52" >Add to calendar</div>
+<div class="footer-value" data-field="calendar.value" data-fit data-fit-min="50" data-fit-max="72" >Outlook · Google</div>
+</div>
+<div class="footer-item">
+<div class="footer-label" data-field="rsvp.label" data-fit data-fit-min="50" data-fit-max="52" >RSVP</div>
+<div class="footer-value" data-field="rsvp.value" data-fit data-fit-min="50" data-fit-max="72" >Slack #events</div>
+</div>
+<div class="footer-item">
+<div class="footer-label" data-field="volunteer.label" data-fit data-fit-min="50" data-fit-max="52" >Volunteer</div>
+<div class="footer-value" data-field="volunteer.value" data-fit data-fit-min="50" data-fit-max="72" >#culture-club</div>
+</div>
+</footer>
+</div>
+</div>
+</div>
+</div>
+<script>
+/* Corporate flagship layout engine: fixed canvas, canonical theme, editable text. */
+(function(){var root=document.documentElement,stage=document.getElementById('stage');
+function fit(){var q=new URLSearchParams(location.search),o=q.get('o'),p=o?o==='portrait':innerHeight>innerWidth;stage.setAttribute('data-orient',p?'portrait':'landscape');var w=p?2160:3840,h=p?3840:2160;root.style.setProperty('--stage-w',w+'px');root.style.setProperty('--stage-h',h+'px');root.style.setProperty('--stage-scale',Math.min(innerWidth/w,innerHeight/h));autofit();}
+var THEME={brand:'--brand',brand2:'--brand2',accent:'--accent',accent2:'--accent2',ink:'--ink',bg:'--bg',pos:'--pos',neg:'--neg',fDisplay:'--f-display',fBody:'--f-body',fMono:'--f-mono',scale:'--scale'};
+function applyTheme(){Object.keys(THEME).forEach(function(k){var e=document.querySelector('[data-field="theme.'+k+'"]');if(e&&e.textContent.trim())root.style.setProperty(THEME[k],k.indexOf('f')===0?"'"+e.textContent.trim()+"'":e.textContent.trim());});}
+applyTheme();new MutationObserver(function(){applyTheme();autofit();}).observe(document.querySelector('[data-widget="theme"]'),{childList:true,subtree:true,characterData:true});
+function fitOne(e){if(!e.clientWidth||!e.clientHeight)return;var min=+(e.getAttribute('data-fit-min')||50),max=+(e.getAttribute('data-fit-max')||100),sc=+getComputedStyle(root).getPropertyValue('--scale')||1;min=Math.max(50,min*sc);max*=sc;var single=e.getAttribute('data-fit')==='single';e.style.whiteSpace=single?'nowrap':'normal';var lo=min,hi=Math.max(min,max),best=min;for(var i=0;i<16;i++){var mid=(lo+hi)/2;e.style.fontSize=mid+'px';if(e.scrollWidth<=e.clientWidth+1&&e.scrollHeight<=e.clientHeight+1){best=mid;lo=mid;}else hi=mid;}e.style.fontSize=best+'px';}
+function autofit(){document.querySelectorAll('.stage [data-fit]').forEach(fitOne);}
+document.querySelectorAll('[data-imgslot]').forEach(function(e){var v=e.getAttribute('data-img');if(v){e.style.backgroundImage='url("'+v+'")';e.classList.add('has-img');}});
+function tick(){var d=new Date(),text={};try{var z=new URLSearchParams(location.search).get('text');if(z)text=JSON.parse(decodeURIComponent(escape(atob(z.replace(/-/g,'+').replace(/_/g,'/')))));}catch(_){}document.querySelectorAll('[data-live="clock"]').forEach(function(e){if(e.hasAttribute('data-pin')||typeof text[e.getAttribute('data-field')]==='string')return;e.textContent=d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});});}
+try{var qtext=new URLSearchParams(location.search).get('text'),ptext=qtext?JSON.parse(decodeURIComponent(escape(atob(qtext.replace(/-/g,'+').replace(/_/g,'/'))))):{};Object.keys(ptext).forEach(function(k){document.querySelectorAll('[data-live][data-field="'+k+'"]').forEach(function(n){n.setAttribute('data-pin','');});});}catch(_){}
+addEventListener('message',function(e){var d=e.data;if(d&&d.type==='educms-overrides'&&d.text)Object.keys(d.text).forEach(function(k){document.querySelectorAll('[data-live][data-field="'+k+'"] ').forEach(function(n){n.setAttribute('data-pin','');});});});
+addEventListener('message',function(e){if(e.data&&e.data.type==='educms-overrides'&&e.data.img)setTimeout(function(){document.querySelectorAll('.placeholder[data-fit]').forEach(fitOne);},0);});
+addEventListener('resize',fit);addEventListener('load',fit);fit();tick();setInterval(tick,15000);setTimeout(autofit,120);setTimeout(autofit,600);if(document.fonts&&document.fonts.ready)document.fonts.ready.then(autofit);new MutationObserver(autofit).observe(stage,{childList:true,subtree:true,characterData:true});
+})();
+</script><script>
+(function(){
+  var DMON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  function fmtD(d){return DMON[d.getMonth()]+' '+d.getDate();}
+  function mondayOf(d){var x=new Date(d),g=x.getDay();x.setDate(x.getDate()+(g===0?-6:1-g));x.setHours(0,0,0,0);return x;}
+  function fillDates(){var wk=document.querySelector('[data-demo-dow],.week'),demo=wk&&wk.getAttribute('data-demo-dow');
+    var base=new Date();if(demo!=null){base=mondayOf(base);base.setDate(base.getDate()+((+demo||1)-1));}
+    var mon=mondayOf(base);
+    document.querySelectorAll('[data-live="weekof"]').forEach(function(el){if(!el.hasAttribute('data-pin'))el.textContent=fmtD(mon);});
+    document.querySelectorAll('[data-live="today"]').forEach(function(el){if(!el.hasAttribute('data-pin'))el.textContent=fmtD(base);});
+    document.querySelectorAll('[data-weekday]').forEach(function(c){var wd=+c.getAttribute('data-weekday'),dt=new Date(mon);dt.setDate(mon.getDate()+(wd-1));var el=c.querySelector('[data-live="weekdate"]');if(el&&!el.hasAttribute('data-pin'))el.textContent=fmtD(dt);
+      c.classList.toggle('today',wd===(demo!=null?+demo:new Date().getDay()));});}
+  fillDates();setInterval(fillDates,600000);
+})();
+</script><script>/*EDUCMS-MEDIA-CONTROLS-V1*/"use strict";(()=>{var M='[data-imgslot],[data-posterslot],[data-img],[data-widget="image-slot"],[data-videoslot]',y=new WeakMap,l=new WeakMap,p=new Map,h=new WeakSet,A={img:new Set,video:new Set},b={},c={},k=!1;function d(t){return t.getAttribute("data-videoslot")||t.getAttribute("data-imgslot")||t.getAttribute("data-posterslot")||t.getAttribute("data-slot")||t.getAttribute("data-img")||""}function f(){return Array.from(document.querySelectorAll(M)).filter(t=>d(t)&&!t.closest("#venueos-fields,[data-controls]"))}function S(){f().forEach(t=>{var i,s;let e=d(t);if(p.has(e)||!t.getClientRects().length)return;let o=t.matches("img,video")?t:t.querySelector("img,video"),r=Array.from(document.querySelectorAll("[data-field]")).find(n=>n.dataset.field==="media.".concat(e,".slides"));if(r)try{p.set(e,JSON.parse(r.textContent||"[]"));return}catch{}p.set(e,(o==null?void 0:o.getAttribute("src"))||((i=o==null?void 0:o.querySelector("source"))==null?void 0:i.getAttribute("src"))||((s=/url\(["']?([^"')]+)["']?\)/.exec(getComputedStyle(t).backgroundImage))==null?void 0:s[1])||"")})}function v(){parent.postMessage({type:"educms-media-ready",slots:f().map(t=>{var i;let e=t.hasAttribute("data-videoslot"),o=t.matches("img,video")?t:t.querySelector("img,video"),r=o?getComputedStyle(o).objectFit:getComputedStyle(t).backgroundSize;return{key:d(t),kind:e?"video":"image",defaultFit:r==="contain"?"contain":"cover",hasSource:!!(o!=null&&o.getAttribute("src")||(i=o==null?void 0:o.querySelector("source"))!=null&&i.getAttribute("src")||/url\(/.test(getComputedStyle(t).backgroundImage))}})},"*")}function m(){f().forEach(t=>{let e=b[d(t)],o=t.matches("img,video")?[t]:Array.from(t.querySelectorAll("img,video"));if(!e&&!y.has(t))return;y.has(t)||y.set(t,{transform:t.style.transform,priority:t.style.getPropertyPriority("transform"),base:getComputedStyle(t).transform,display:t.style.display,size:t.style.backgroundSize,position:t.style.backgroundPosition,repeat:t.style.backgroundRepeat});let r=y.get(t),i=typeof(e==null?void 0:e.rotation)=="number"&&Number.isFinite(e.rotation)?(e.rotation%360+360)%360:0;i?t.style.setProperty("transform","".concat(r.base==="none"?"":r.base," rotate(").concat(i,"deg)"),"important"):r.transform?t.style.setProperty("transform",r.transform,r.priority):t.style.removeProperty("transform"),(e==null?void 0:e.fit)==="contain"||(e==null?void 0:e.fit)==="cover"||(e==null?void 0:e.fit)==="fill"?(o.forEach(s=>{l.has(s)||l.set(s,s.style.objectFit),s.style.objectFit=e.fit}),t.style.backgroundSize=e.fit==="fill"?"100% 100%":e.fit,t.style.backgroundRepeat="no-repeat",t.style.backgroundPosition="center"):(o.forEach(s=>{l.has(s)&&(s.style.objectFit=l.get(s))}),t.style.backgroundSize=r.size,t.style.backgroundPosition=r.position,t.style.backgroundRepeat=r.repeat),t.style.display=(e==null?void 0:e.hidden)===!0?"none":r.display})}function L(){try{let t=new URLSearchParams(location.search);for(let e of["mediaStyles","img","video"]){let o=t.get(e);if(!o)continue;let r=JSON.parse(decodeURIComponent(escape(atob(o.replace(/-/g,"+").replace(/_/g,"/")))));!r||typeof r!="object"||Array.isArray(r)||(e==="mediaStyles"?b=r:c[e]=r)}}catch{}}function g(t,e=!1){f().forEach(o=>{if(e&&h.has(o))return;let r=o.hasAttribute("data-videoslot"),i=r?t.video:t.img,s=d(o);if(!i||!(s in i)||!r&&document.documentElement.dataset.nativeCarousels==="true")return;let n=i[s],a=typeof n=="string"?n:Array.isArray(n)&&typeof n[0]=="string"?n[0]:"",u=r?o.matches("video")?o:o.querySelector("video"):o.matches("img")?o:null;u?u.getAttribute("src")!==a&&(a?u.setAttribute("src",a):u.removeAttribute("src"),u instanceof HTMLVideoElement&&u.load()):r||(o.style.backgroundImage=a?"url(".concat(JSON.stringify(a),")"):""),r||(o.classList.toggle("has-img",!!a),a?o.setAttribute("data-has-image","true"):o.removeAttribute("data-has-image")),h.add(o)})}addEventListener("message",t=>{if(t.source!==parent||!t.data||typeof t.data!="object")return;let e=t.data;if(e.type==="educms-media-request"&&v(),e.type==="educms-edit-mode"&&(k=e.on===!0),e.type==="educms-overrides"){S();for(let o of["img","video"])if(!(!e[o]||typeof e[o]!="object")){Object.keys(e[o]).forEach(r=>A[o].add(r));for(let r of A[o])r in e[o]||(e[o][r]=p.get(r)||"");c[o]={...e[o]}}g(c),e.mediaStyles&&typeof e.mediaStyles=="object"&&(b=e.mediaStyles),m(),Promise.resolve().then(()=>{g(c),m()})}},!0);document.addEventListener("click",t=>{var r,i;if(!k)return;let e=(r=t.target)==null?void 0:r.closest(M);if(!e||!f().includes(e))return;let o=(i=t.target)==null?void 0:i.closest("[data-field],[data-action]");o&&o!==e&&e.contains(o)||(t.preventDefault(),t.stopImmediatePropagation(),parent.postMessage({type:"educms-media-select",key:d(e)},"*"),parent.postMessage({type:"educms-field-click",key:d(e),kind:e.hasAttribute("data-videoslot")?"video":"img"},"*"))},!0);function E(){S(),L(),g(c),m(),v(),Promise.resolve().then(()=>{g(c),m()}),new MutationObserver(()=>{S(),g(c,!0),Object.keys(b).length&&m(),k&&v()}).observe(document.body,{childList:!0,subtree:!0})}document.readyState==="loading"?document.addEventListener("DOMContentLoaded",E,!0):E();})();</script></body></html>
