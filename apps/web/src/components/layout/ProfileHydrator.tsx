@@ -21,62 +21,62 @@
  * cache got wrong — names AND tenant vertical / name / slug. No manual
  * re-login required; the UI corrects itself on the next dashboard mount.
  *
- * Cost: exactly one `/users/me` per session boot per user (guarded by a
+ * Cost: one `/users/me` per session boot per user (guarded by a
  * sessionStorage sentinel so remounts don't refire). On a transient
  * failure the sentinel isn't set, so it retries on the next mount.
+ *
+ * 2026-10-11 — Muse beta DEV-005 / S-01: once per session was not enough.
+ * An admin changed the industry in one session and every OTHER open session
+ * kept the old industry and module set until logout. It now ALSO re-checks
+ * on window focus, on visibility return and on navigation — at most once per
+ * WORKSPACE_RECHECK_MIN_MS (60 s), and never while the page is hidden (no
+ * timers, no polling: mobile-perf rule 1). `/users/me` carries
+ * `workspaceConfigVersion`; when it moves, the workspace-config queries
+ * (`['tenant']` & co.) are re-read so module gates follow immediately.
  */
 
-import { useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
+import { usePathname } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAppStore } from '@/lib/store';
 import { apiFetch } from '@/lib/api-client';
+import {
+  profilePatch,
+  shouldRecheckWorkspace,
+  workspaceConfigChanged,
+  WORKSPACE_CONFIG_QUERY_KEYS,
+} from '@/lib/workspace-config-refresh';
+
+function isVisible(): boolean {
+  if (typeof document === 'undefined') return false;
+  return document.visibilityState !== 'hidden';
+}
 
 export function ProfileHydrator() {
   const user = useAppStore((s) => s.user);
   const userId = user?.id;
+  const pathname = usePathname();
+  const qc = useQueryClient();
+  const lastCheckedAt = useRef(0);
+  const inFlight = useRef(false);
+  const lastVersion = useRef<string | null>(null);
 
-  useEffect(() => {
-    if (!userId) return;
-
-    const sentinelKey = `edu_cms_hydrated:${userId}`;
+  const reconcile = useCallback(async (id: string): Promise<boolean> => {
+    inFlight.current = true;
+    lastCheckedAt.current = Date.now();
     try {
-      if (typeof window !== 'undefined' && window.sessionStorage?.getItem(sentinelKey)) return;
-    } catch { /* sessionStorage unavailable — proceed without the guard */ }
+      const me: any = await apiFetch('/users/me');
+      const cur = useAppStore.getState().user;
+      if (!cur || cur.id !== me?.id || cur.id !== id) return true;
 
-    let cancelled = false;
-    (async () => {
-      try {
-        const me: any = await apiFetch('/users/me');
-        if (cancelled) return;
-        const cur = useAppStore.getState().user;
-        if (!cur || cur.id !== me?.id) return;
+      // Workspace config fingerprint: the first sighting is the baseline;
+      // a later difference means another session changed the setup.
+      const version = typeof me.workspaceConfigVersion === 'string' ? me.workspaceConfigVersion : null;
+      const changed = workspaceConfigChanged(lastVersion.current, version);
+      if (version) lastVersion.current = version;
 
-        // Mark reconciled FIRST (on a successful fetch) so we don't refire
-        // this session even when nothing needed patching. A thrown fetch
-        // skips this and retries next mount.
-        try { window.sessionStorage?.setItem(sentinelKey, '1'); } catch { /* non-fatal */ }
-
-        // Patch ONLY fields the server actually has AND that differ from
-        // the cache — never clobber a present value with a server null.
-        const patch: Record<string, unknown> = {};
-        if (me.firstName != null && me.firstName !== cur.firstName) patch.firstName = me.firstName;
-        if (me.lastName != null && me.lastName !== cur.lastName) patch.lastName = me.lastName;
-        if (me.tenantVertical && me.tenantVertical !== (cur as any).tenantVertical) patch.tenantVertical = me.tenantVertical;
-        if (me.tenantName != null && me.tenantName !== (cur as any).tenantName) patch.tenantName = me.tenantName;
-        if (me.tenantSlug && me.tenantSlug !== cur.tenantSlug) patch.tenantSlug = me.tenantSlug;
-        // 2026-09-03 — FIRST-LOGIN CREDENTIAL SETUP. `/users/me` is one of the
-        // three routes the API leaves open to a gated account, so this is the
-        // FIRST signal a session cached before the flag existed can get: it
-        // flips the layout to the setup screen before the dashboard's other
-        // queries start 403ing. A boolean, so the "never clobber with a server
-        // null" rule above doesn't apply — sync it in both directions.
-        if (
-          typeof me.mustSetupCredentials === 'boolean' &&
-          me.mustSetupCredentials !== !!cur.mustSetupCredentials
-        ) {
-          patch.mustSetupCredentials = me.mustSetupCredentials;
-        }
-        if (Object.keys(patch).length === 0) return;
-
+      const patch = profilePatch(cur as any, me);
+      if (Object.keys(patch).length > 0) {
         const nextUser = { ...cur, ...patch };
         useAppStore.setState({ user: nextUser });
         try {
@@ -89,13 +89,67 @@ export function ProfileHydrator() {
         } catch { /* sessionStorage unavailable — non-fatal */ }
         // eslint-disable-next-line no-console
         console.log('[profile-hydrate] reconciled cached session with /users/me:', Object.keys(patch).join(', '));
-      } catch {
-        // Tolerated — a transient 401/500 just means we try again on the
-        // next layout mount (the sentinel was not set on the throw path).
       }
-    })();
+      if (changed || 'tenantVertical' in patch) {
+        await Promise.all(
+          WORKSPACE_CONFIG_QUERY_KEYS.map((queryKey) => qc.invalidateQueries({ queryKey: [...queryKey] })),
+        );
+      }
+      return true;
+    } catch {
+      // Tolerated — a transient 401/500 just means we try again on the
+      // next trigger (boot sentinel not set; the 60 s gate still applies).
+      return false;
+    } finally {
+      inFlight.current = false;
+    }
+  }, [qc]);
+
+  // Boot: once per session per user (sentinel), exactly as before.
+  useEffect(() => {
+    if (!userId) return;
+    const sentinelKey = `edu_cms_hydrated:${userId}`;
+    try {
+      if (typeof window !== 'undefined' && window.sessionStorage?.getItem(sentinelKey)) return;
+    } catch { /* sessionStorage unavailable — proceed without the guard */ }
+    let cancelled = false;
+    void reconcile(userId).then((ok) => {
+      if (cancelled || !ok) return;
+      try { window.sessionStorage?.setItem(sentinelKey, '1'); } catch { /* non-fatal */ }
+    });
     return () => { cancelled = true; };
-  }, [userId]);
+  }, [userId, reconcile]);
+
+  // Bounded re-check: focus, visibility return, navigation. ≥ 60 s apart,
+  // never while hidden, never overlapping.
+  const maybeRecheck = useCallback(() => {
+    if (!userId) return;
+    if (!shouldRecheckWorkspace({
+      now: Date.now(),
+      lastCheckedAt: lastCheckedAt.current,
+      visible: isVisible(),
+      inFlight: inFlight.current,
+    })) return;
+    void reconcile(userId);
+  }, [userId, reconcile]);
+
+  useEffect(() => {
+    if (!userId || typeof window === 'undefined') return;
+    const onVisibility = () => { if (isVisible()) maybeRecheck(); };
+    window.addEventListener('focus', maybeRecheck);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('focus', maybeRecheck);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [userId, maybeRecheck]);
+
+  // Navigation is a trigger too (same 60 s gate). The first render is the
+  // boot path above, which stamps lastCheckedAt, so this is a no-op then.
+  useEffect(() => {
+    maybeRecheck();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
 
   return null;
 }

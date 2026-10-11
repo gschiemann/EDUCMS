@@ -20,6 +20,7 @@ import { SessionRefreshService } from '../auth/session-refresh.service';
 import { EmailService } from '../email/email.service';
 import { clientIpFromRequest } from '../security/client-ip';
 import { loadManageableTarget as loadManageableTargetShared } from './manageable-target';
+import { workspaceConfigVersion } from './workspace-config-version';
 
 function isValidEmail(email: string): boolean {
   // 254 is the longest valid address; the bound keeps this pattern linear
@@ -258,7 +259,14 @@ export class UsersController {
     const tenant = activeTenantId
       ? await this.prisma.client.tenant.findUnique({
           where: { id: activeTenantId },
-          select: { vertical: true, name: true, slug: true } as any,
+          // The config-bearing columns feed `workspaceConfigVersion` (DEV-005):
+          // a short fingerprint the dashboard compares on focus / navigation
+          // to know when another session changed the workspace setup.
+          select: {
+            vertical: true, name: true, slug: true,
+            emergencyEnabled: true, locationBasedEmergencyEnabled: true,
+            mfaEnforced: true, usbIngestEnabled: true, requireContentApproval: true,
+          } as any,
         })
       : null;
     return {
@@ -267,6 +275,7 @@ export class UsersController {
       tenantVertical: (tenant as any)?.vertical || 'K12',
       tenantName: (tenant as any)?.name ?? null,
       tenantSlug: (tenant as any)?.slug ?? activeTenantId,
+      workspaceConfigVersion: tenant ? workspaceConfigVersion(tenant as any) : null,
     };
   }
 
