@@ -124,6 +124,8 @@ export async function allClearEmergency(payload: {
    */
   scopeType?: 'tenant' | 'group' | 'device';
   scopeId?: string;
+  /** 2026-10-10 — "End Drill": the server may end drill state only, never a live alert. */
+  isDrill?: boolean;
 }) {
   const API_URL = process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
 

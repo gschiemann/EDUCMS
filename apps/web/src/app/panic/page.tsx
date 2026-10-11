@@ -296,6 +296,9 @@ export default function MobilePanicPage() {
       // Its own scope — or, if that target was deleted mid-alert, the scope
       // the server says still reaches it.
       ...allClearScopeOf(alert),
+      // Ending a DRILL may end drill state only — never a live alert that
+      // replaced it between this list's reads.
+      ...(alert.isDrill === true ? { isDrill: true } : {}),
     });
     if (!result?.success) {
       const raw = result?.error || '';

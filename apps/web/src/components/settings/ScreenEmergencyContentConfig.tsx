@@ -30,8 +30,11 @@ import {
   // Replaced 🔒 / 🚪 / ✋ / 🛡️ / 🌪️ / 🚑 / 📺 / 📱 with the same
   // monochrome lucide icons used everywhere else in the chrome.
   Lock, Flame, Hand, ShieldCheck, Tornado, Ambulance, Monitor, Smartphone,
+  // 2026-10-10 — the Live | Drill switch (same icons as Settings → Emergency).
+  FlaskConical, ShieldAlert,
   type LucideIcon,
 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import {
   useUpdateScreenEmergencyContent,
   type FloorPlanScreen,
@@ -75,6 +78,55 @@ export const EMERGENCY_TYPES: EmergencyTypeRow[] = [
 ];
 
 type Orient = 'landscape' | 'portrait';
+/**
+ * 2026-10-10 — LIVE or DRILL content for this screen (Greg: "custom location
+ * content available for drills too"). The drill slots are the exact mirror
+ * of the live ones on the Screen row (`drill<Type>[Portrait]{PlaylistId,
+ * AssetUrl}`); during a drill the screen plays them before the organisation's
+ * drill content and before any live content.
+ */
+export type ScreenContentMode = 'live' | 'drill';
+
+const TYPE_COLUMN: Record<EmergencyTypeRow['short'], string> = {
+  lockdown: 'Lockdown',
+  evacuate: 'Evacuate',
+  hold: 'Hold',
+  secure: 'Secure',
+  weather: 'Weather',
+  medical: 'Medical',
+};
+
+/** The API body keys for one (type, orientation) slot in the given mode. */
+export function screenContentApiKeys(
+  type: EmergencyTypeRow['short'],
+  orient: Orient,
+  mode: ScreenContentMode,
+): { playlist: string; asset: string } {
+  if (mode === 'drill') {
+    const base = `drill${TYPE_COLUMN[type]}${orient === 'portrait' ? 'Portrait' : ''}`;
+    return { playlist: `${base}PlaylistId`, asset: `${base}AssetUrl` };
+  }
+  if (orient === 'landscape') {
+    return { playlist: `${type}PlaylistId`, asset: `${type}AssetUrl` };
+  }
+  return { playlist: `${type}PortraitPlaylistId`, asset: `${type}PortraitAssetUrl` };
+}
+
+/** The Screen row keys the same slot is read from. */
+export function screenContentRowKeys(
+  type: EmergencyTypeRow,
+  orient: Orient,
+  mode: ScreenContentMode,
+): { playlist: keyof FloorPlanScreen; asset: keyof FloorPlanScreen } {
+  if (mode === 'drill') {
+    const k = screenContentApiKeys(type.short, orient, 'drill');
+    return { playlist: k.playlist as keyof FloorPlanScreen, asset: k.asset as keyof FloorPlanScreen };
+  }
+  if (orient === 'landscape') {
+    return { playlist: type.playlistKey, asset: type.assetKey };
+  }
+  return { playlist: type.portraitPlaylistKey, asset: type.portraitAssetKey };
+}
 
 function getAssetPreviewKind(url: string): 'image' | 'video' | 'pdf' | 'file' {
   const clean = url.split('?')[0].split('#')[0].toLowerCase();
@@ -118,10 +170,15 @@ export function ScreenEmergencyContentConfig({
   const [uploadError, setUploadError] = useState<string | null>(null);
   const problemText = useUploadProblemText();
   const [localScreenPatch, setLocalScreenPatch] = useState<Partial<FloorPlanScreen>>({});
+  // Live | Drill — authoring only. Opens on LIVE for every screen; nothing
+  // here triggers anything.
+  const [mode, setMode] = useState<ScreenContentMode>('live');
+  const tr = useTranslations();
 
   useEffect(() => {
     setLocalScreenPatch({});
     setUploadError(null);
+    setMode('live');
   }, [screenId]);
 
   const displayScreen = useMemo(
@@ -129,19 +186,8 @@ export function ScreenEmergencyContentConfig({
     [screen, localScreenPatch],
   );
 
-  const apiKeys = (type: EmergencyTypeRow, orient: Orient) => {
-    if (orient === 'landscape') {
-      return { playlist: `${type.short}PlaylistId`, asset: `${type.short}AssetUrl` };
-    }
-    return { playlist: `${type.short}PortraitPlaylistId`, asset: `${type.short}PortraitAssetUrl` };
-  };
-
-  const screenKeys = (type: EmergencyTypeRow, orient: Orient) => {
-    if (orient === 'landscape') {
-      return { playlist: type.playlistKey, asset: type.assetKey };
-    }
-    return { playlist: type.portraitPlaylistKey, asset: type.portraitAssetKey };
-  };
+  const apiKeys = (type: EmergencyTypeRow, orient: Orient) => screenContentApiKeys(type.short, orient, mode);
+  const screenKeys = (type: EmergencyTypeRow, orient: Orient) => screenContentRowKeys(type, orient, mode);
 
   const onUploadCustom = async (type: EmergencyTypeRow, orient: Orient, file: File) => {
     setUploadError(null);
@@ -158,7 +204,7 @@ export function ScreenEmergencyContentConfig({
       setUploadError(problemText(problem, file));
       return;
     }
-    setUploadingType(`${type.short}-${orient}`);
+    setUploadingType(`${mode}-${type.short}-${orient}`);
     const k = apiKeys(type, orient);
     const screenK = screenKeys(type, orient);
     try {
@@ -242,8 +288,44 @@ export function ScreenEmergencyContentConfig({
     }
   };
 
+  const isDrillMode = mode === 'drill';
+
   return (
-    <section>
+    <section data-testid="screen-emergency-content" data-mode={mode}>
+      <div
+        role="radiogroup"
+        aria-label={tr('settings.cc.emergency.drill.screenAriaLabel')}
+        data-testid="screen-emergency-mode-tabs"
+        className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 mb-2"
+      >
+        {(['live', 'drill'] as const).map((m) => {
+          const on = mode === m;
+          const Icon = m === 'drill' ? FlaskConical : ShieldAlert;
+          return (
+            <button
+              key={m}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              data-testid={`screen-emergency-mode-tab-${m}`}
+              onClick={() => { setMode(m); setUploadError(null); }}
+              className={`inline-flex items-center gap-1.5 rounded-md px-2.5 h-7 text-[11px] font-bold uppercase tracking-wide transition-colors ${
+                on
+                  ? m === 'drill'
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-rose-600 text-white'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <Icon className="w-3.5 h-3.5" aria-hidden />
+              {tr(`settings.cc.emergency.drill.tabs.${m}`)}
+            </button>
+          );
+        })}
+      </div>
+      <p className="text-[11px] text-slate-500 leading-relaxed mb-3" data-testid="screen-emergency-mode-note">
+        {isDrillMode ? tr('settings.cc.emergency.drill.screenDrillNote') : tr('settings.cc.emergency.drill.screenLiveNote')}
+      </p>
       <p className="text-[11px] text-slate-500 leading-relaxed mb-3 flex flex-wrap items-center gap-1">
         <span>Upload the content that plays on <span className="font-semibold text-slate-700">this screen only</span> for each emergency type.</span>
         <span className="inline-flex items-center gap-1 font-semibold text-slate-700">
@@ -263,10 +345,13 @@ export function ScreenEmergencyContentConfig({
           ];
 
           return (
-            <div key={t.short} className="rounded-lg border border-slate-200 p-2.5 bg-slate-50/60">
+            <div key={`${mode}-${t.short}`} className={`rounded-lg border p-2.5 ${isDrillMode ? 'border-indigo-200 bg-indigo-50/40' : 'border-slate-200 bg-slate-50/60'}`}>
               <div className="flex items-center gap-2 mb-2">
-                <div className="shrink-0 w-9 h-9 rounded-lg bg-rose-50 border border-rose-200 flex items-center justify-center shadow-sm" title={t.description}>
-                  <t.Icon className="w-4 h-4 text-rose-600" aria-hidden />
+                <div
+                  className={`shrink-0 w-9 h-9 rounded-lg border flex items-center justify-center shadow-sm ${isDrillMode ? 'bg-indigo-50 border-indigo-200' : 'bg-rose-50 border-rose-200'}`}
+                  title={t.description}
+                >
+                  <t.Icon className={`w-4 h-4 ${isDrillMode ? 'text-indigo-600' : 'text-rose-600'}`} aria-hidden />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-[12px] font-bold text-slate-700">{t.label}</div>
@@ -281,7 +366,7 @@ export function ScreenEmergencyContentConfig({
                   const hasCustomAsset = !!assetUrl;
                   const filename = hasCustomAsset ? getAssetFilename(assetUrl) : '';
                   const previewKind = hasCustomAsset ? getAssetPreviewKind(assetUrl) : 'file';
-                  const uploadKey = `${t.short}-${orient}`;
+                  const uploadKey = `${mode}-${t.short}-${orient}`;
                   const isUploadingThis = uploadingType === uploadKey;
 
                   return (

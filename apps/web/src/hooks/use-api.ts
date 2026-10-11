@@ -4421,6 +4421,33 @@ export interface FloorPlanScreen {
   emergencyHoldPortraitAssetUrl?: string | null;
   emergencySecurePortraitAssetUrl?: string | null;
   emergencyMedicalPortraitAssetUrl?: string | null;
+  // 2026-10-10 — per-screen DRILL content: the exact mirror of the 24 keys
+  // above. During a drill this screen plays it before the tenant's drill
+  // content and before any live content. Null = no drill content of its own.
+  drillLockdownPlaylistId?: string | null;
+  drillEvacuatePlaylistId?: string | null;
+  drillWeatherPlaylistId?: string | null;
+  drillHoldPlaylistId?: string | null;
+  drillSecurePlaylistId?: string | null;
+  drillMedicalPlaylistId?: string | null;
+  drillLockdownAssetUrl?: string | null;
+  drillEvacuateAssetUrl?: string | null;
+  drillWeatherAssetUrl?: string | null;
+  drillHoldAssetUrl?: string | null;
+  drillSecureAssetUrl?: string | null;
+  drillMedicalAssetUrl?: string | null;
+  drillLockdownPortraitPlaylistId?: string | null;
+  drillEvacuatePortraitPlaylistId?: string | null;
+  drillWeatherPortraitPlaylistId?: string | null;
+  drillHoldPortraitPlaylistId?: string | null;
+  drillSecurePortraitPlaylistId?: string | null;
+  drillMedicalPortraitPlaylistId?: string | null;
+  drillLockdownPortraitAssetUrl?: string | null;
+  drillEvacuatePortraitAssetUrl?: string | null;
+  drillWeatherPortraitAssetUrl?: string | null;
+  drillHoldPortraitAssetUrl?: string | null;
+  drillSecurePortraitAssetUrl?: string | null;
+  drillMedicalPortraitAssetUrl?: string | null;
 }
 
 export interface FloorPlanZone {
@@ -4691,6 +4718,31 @@ export interface ScreenEmergencyContent {
   holdPortraitAssetUrl?: string | null;
   securePortraitAssetUrl?: string | null;
   medicalPortraitAssetUrl?: string | null;
+  // 2026-10-10 — the 24 DRILL keys, named exactly like the Screen columns.
+  drillLockdownPlaylistId?: string | null;
+  drillEvacuatePlaylistId?: string | null;
+  drillWeatherPlaylistId?: string | null;
+  drillHoldPlaylistId?: string | null;
+  drillSecurePlaylistId?: string | null;
+  drillMedicalPlaylistId?: string | null;
+  drillLockdownAssetUrl?: string | null;
+  drillEvacuateAssetUrl?: string | null;
+  drillWeatherAssetUrl?: string | null;
+  drillHoldAssetUrl?: string | null;
+  drillSecureAssetUrl?: string | null;
+  drillMedicalAssetUrl?: string | null;
+  drillLockdownPortraitPlaylistId?: string | null;
+  drillEvacuatePortraitPlaylistId?: string | null;
+  drillWeatherPortraitPlaylistId?: string | null;
+  drillHoldPortraitPlaylistId?: string | null;
+  drillSecurePortraitPlaylistId?: string | null;
+  drillMedicalPortraitPlaylistId?: string | null;
+  drillLockdownPortraitAssetUrl?: string | null;
+  drillEvacuatePortraitAssetUrl?: string | null;
+  drillWeatherPortraitAssetUrl?: string | null;
+  drillHoldPortraitAssetUrl?: string | null;
+  drillSecurePortraitAssetUrl?: string | null;
+  drillMedicalPortraitAssetUrl?: string | null;
 }
 
 export function useUpdateScreenEmergencyContent() {

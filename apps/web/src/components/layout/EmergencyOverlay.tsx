@@ -159,11 +159,15 @@ export function EmergencyOverlay() {
                 // Its own scope — or, if that target was deleted mid-alert, the
                 // scope the server says still reaches it.
                 ...allClearScopeOf(target),
+                // "End Drill" may end drill state only — never a live alert
+                // that replaced the drill while this overlay was open.
+                ...(target.isDrill === true ? { isDrill: true } : {}),
               }
             : {
                 schoolId: user?.tenantId || 'global',
                 token: token || undefined,
                 overrideId: activeOverrideId || undefined,
+                ...(drillOnly ? { isDrill: true } : {}),
               },
         );
         // LIFE-SAFETY: the action reports failure in its RESULT. It used to

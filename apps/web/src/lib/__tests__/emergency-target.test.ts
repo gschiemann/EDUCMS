@@ -95,6 +95,10 @@ describe('"All screens" sends exactly what was sent before targeting existed', (
     // A tenant-scoped clear with a scopeId (a district admin ending one
     // school's alert) is passed as schoolId by the caller, never lost.
     expect(emergencyAllClearBody({ schoolId: 'school-b', scopeType: 'tenant', scopeId: 'school-b' })).toEqual({ scopeType: 'tenant', scopeId: 'school-b' });
+    // 2026-10-10 — "End Drill" carries the drill intent; a live all-clear body has no such key.
+    expect(emergencyAllClearBody({ schoolId: 't1', isDrill: true })).toEqual({ scopeType: 'tenant', scopeId: 't1', isDrill: true });
+    expect(emergencyAllClearBody({ schoolId: 't1', scopeType: 'group', scopeId: 'g-gym', isDrill: true })).toEqual({ scopeType: 'group', scopeId: 'g-gym', isDrill: true });
+    expect('isDrill' in emergencyAllClearBody({ schoolId: 't1', isDrill: false })).toBe(false);
   });
 });
 
