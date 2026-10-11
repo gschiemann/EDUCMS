@@ -1136,7 +1136,9 @@
         "backToDeveloper": "Back to Developer & audit",
         "revokeKeyTitle": "Revoke API key?",
         "revokeKeyMessage": "“{label}” will stop working right away. This can't be undone.",
-        "revokeKeyConfirm": "Revoke"
+        "revokeKeyConfirm": "Revoke",
+        "apiDocsTitle": "REST API and webhooks",
+        "apiDocsBlurb": "Authentication, scopes, endpoints with examples, rate limits, and how to verify webhook signatures."
       },
       "security": {
         "editorTitle": "Your account security",

@@ -55,6 +55,7 @@ const SLUG_ORDER = [
   'sports-ribbon',
   'sports-screens',
   'menu-boards-pos',
+  'api-and-webhooks',
   'sso',
   'clever',
   'billing',

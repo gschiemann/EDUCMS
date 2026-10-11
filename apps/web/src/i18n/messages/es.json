@@ -1136,7 +1136,9 @@
         "backToDeveloper": "Volver a Desarrollo y auditoría",
         "revokeKeyTitle": "¿Revocar la clave de API?",
         "revokeKeyMessage": "«{label}» dejará de funcionar de inmediato. No se puede deshacer.",
-        "revokeKeyConfirm": "Revocar"
+        "revokeKeyConfirm": "Revocar",
+        "apiDocsTitle": "API REST y webhooks",
+        "apiDocsBlurb": "Autenticación, permisos, endpoints con ejemplos, límites de uso y cómo verificar la firma de los webhooks."
       },
       "security": {
         "editorTitle": "La seguridad de tu cuenta",

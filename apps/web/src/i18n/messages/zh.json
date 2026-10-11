@@ -1136,7 +1136,9 @@
         "backToDeveloper": "返回开发与审计",
         "revokeKeyTitle": "撤销 API 密钥？",
         "revokeKeyMessage": "“{label}”将立即停止工作。此操作无法撤销。",
-        "revokeKeyConfirm": "撤销"
+        "revokeKeyConfirm": "撤销",
+        "apiDocsTitle": "REST API 与 Webhook",
+        "apiDocsBlurb": "身份验证、权限范围、带示例的接口、速率限制，以及如何验证 Webhook 签名。"
       },
       "security": {
         "editorTitle": "你的账号安全",

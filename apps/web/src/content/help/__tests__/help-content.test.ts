@@ -63,6 +63,24 @@ describe('help articles — copy that must stay true', () => {
     expect(assets.body).not.toMatch(/up to (20|50|200) MB/i);
   });
 
+  it('API docs match what the API really does (2026-10-11)', () => {
+    const api = articles.find((a) => a.slug === 'api-and-webhooks')!;
+    // Scopes = API_KEY_SCOPES in apps/api/src/api-keys/api-key-scopes.ts.
+    for (const s of ['content:read', 'content:write', 'screens:read', 'screens:write', 'sports:read', 'sports:write', 'integrations:read', 'integrations:write', 'analytics:read']) {
+      expect(api.body).toContain(`\`${s}\``);
+    }
+    expect(api.body).not.toMatch(/analytics:write/);
+    expect(api.body).toMatch(/Authorization: Bearer vos_/);
+    expect(api.body).toMatch(/90 days/);
+    expect(api.body).toMatch(/365 days/);
+    // Signature = HMAC-SHA256(secret, `${timestamp}.${body}`) — webhook-dispatch.service.ts.
+    expect(api.body).toMatch(/X-VenueOS-Signature/);
+    expect(api.body).toMatch(/\$\{ts\}\.\$\{req\.body/);
+    // emergency.cleared is subscribable but never dispatched: the docs must say so.
+    expect(api.body).toMatch(/`emergency\.cleared`[^\n]*not delivered yet/);
+    expect(api.body).toMatch(/cannot be sent with an API key/i);
+  });
+
   it('does not promise a "17 system templates" gallery', () => {
     for (const a of articles) expect(a.body).not.toMatch(/\b17 system templates\b/);
   });
