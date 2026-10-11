@@ -1,82 +1,90 @@
+import Link from 'next/link';
 import { LegalPage } from '@/components/marketing/LegalPage';
+import { LEGAL_CONTACTS, LEGAL_ENTITY, LEGAL_LAST_UPDATED } from '@/lib/legal-entity';
 
 export const metadata = { title: 'COPPA statement — VenueOS' };
 
+/** School-customer statement (2026-10-11). Needs attorney review before launch. */
 export default function CoppaPage() {
+  const { productName } = LEGAL_ENTITY;
   return (
     <LegalPage
       title="COPPA statement"
-      subtitle="How VenueOS complies with the Children's Online Privacy Protection Act."
-      updated="April 16, 2026"
+      subtitle="How VenueOS handles information about children under 13."
+      updated={LEGAL_LAST_UPDATED}
     >
-      <h2>Our product is designed for schools, not children</h2>
+      <h2>A service for organizations, not children</h2>
       <p>
-        VenueOS is a business-to-business (B2B) service sold to K-12 school districts. We are not
-        directed to children, and we do not knowingly collect personal information directly from
-        children under 13. Administrative users — teachers, principals, district IT staff — are always
-        adults.
+        {productName} is a business-to-business service sold to organizations — schools and
+        districts, sports venues, businesses and others. It is not directed to children, and we do not
+        knowingly collect personal information directly from children under 13. The people who sign
+        in to {productName} are adults authorized by the customer.
       </p>
 
       <h2>School-authorized consent</h2>
       <p>
-        Under the Children&apos;s Online Privacy Protection Act (COPPA), a school can provide consent on
-        behalf of parents for the collection of personal information from children under 13, but only for
-        the use and benefit of the school and for no other commercial purpose. Where your district uses
-        VenueOS features that touch information about students under 13, we rely on this
-        school-authorized consent, consistent with FTC guidance.
+        This section applies when the customer is a school or district. Under the Children&apos;s
+        Online Privacy Protection Act (COPPA), a school may consent on behalf of parents to the
+        collection of personal information from students under 13, but only for the use and benefit of
+        the school and for no other commercial purpose. Where a school uses {productName} features that
+        involve information about students under 13, we rely on that school-authorized consent,
+        consistent with FTC guidance. As a condition of using those features, the school represents
+        that:
       </p>
-      <p>As a condition of the service, your district represents that:</p>
       <ul>
-        <li>It has the authority to provide consent for its students in lieu of parental consent, as permitted under COPPA.</li>
-        <li>It has posted appropriate notices to parents describing how student data is used.</li>
-        <li>It provides parents with a mechanism to review or request deletion of their child&apos;s information.</li>
+        <li>It has the authority to provide consent for its students in place of parental consent, as COPPA permits.</li>
+        <li>It has given parents appropriate notice of how student information is used.</li>
+        <li>It provides parents a way to review or request deletion of their child&apos;s information.</li>
       </ul>
 
       <h2>What we collect</h2>
       <p>
-        VenueOS&apos;s core product does not collect personal information from students under 13. If
-        your district enables optional features (for example, a student-portal kiosk or an interactive
-        classroom display that shows individual student names), we process only the minimum information
-        necessary to deliver that feature and only as instructed by your district.
+        The core product does not collect personal information from students. If a school enables
+        features that show student information — for example athlete names on a sports scoreboard —
+        we process only what the school provides and only to deliver that feature. Student names and
+        photos stay hidden on public sports screens until a school administrator confirms its
+        directory-information and photo-release policies, and a family&apos;s opt-out always hides
+        that student. Customers that are not schools but whose content involves minors (for example a
+        youth sports venue) can mark that their athletes include minors.
       </p>
 
       <h2>What we never do</h2>
       <ul>
-        <li>We do not require or collect more information from a child than is reasonably necessary to participate in an activity.</li>
-        <li>We do not use children&apos;s personal information for behavioral advertising.</li>
-        <li>We do not sell or rent children&apos;s personal information.</li>
-        <li>We do not use children&apos;s personal information to train AI models.</li>
+        <li>Collect more information about a child than is reasonably necessary for the feature the school uses.</li>
+        <li>Use children&apos;s personal information for behavioral or targeted advertising.</li>
+        <li>Sell or rent children&apos;s personal information.</li>
+        <li>Use children&apos;s personal information to train artificial-intelligence models.</li>
       </ul>
 
       <h2>Parental rights</h2>
       <p>
-        Parents have the right to review the personal information we have about their child, refuse
-        further collection or use, and request deletion. Because we act on behalf of the school, these
-        requests are normally routed through your district&apos;s records office. Parents who have been
-        directed to contact us can email{' '}
-        <a href="mailto:coppa@venue-os.app">coppa@venue-os.app</a> and we will coordinate with the
-        district.
+        Parents may review the personal information about their child, refuse further collection or
+        use, and request deletion. Because we act on behalf of the school, these requests normally go
+        through the school or district. Parents who have been directed to contact us can email{' '}
+        <a href={`mailto:${LEGAL_CONTACTS.privacy}`}>{LEGAL_CONTACTS.privacy}</a> and we will coordinate
+        with the school.
       </p>
 
-      <h2>Data retention and deletion</h2>
+      <h2>Retention and deletion</h2>
       <p>
-        We retain student information only as long as needed to provide the service or as otherwise
-        required by law. On termination of a district&apos;s subscription, we delete student information
-        within 90 days of the grace period ending, unless retention is required for legal or safety
-        reasons (for example, audit logs of emergency events).
+        We keep student information only as long as needed to provide the service. A school can remove
+        student information from {productName} at any time. When a school&apos;s subscription ends,
+        student information is deleted with the rest of its data as described in our{' '}
+        <Link href="/dpa">Data Processing Addendum</Link>; encrypted backup copies expire within 30
+        days.
       </p>
 
       <h2>Security</h2>
       <p>
-        See the security section of our <a href="/privacy">privacy policy</a> for full details. In short:
-        TLS 1.2+ in transit, AES-256 at rest, role-based access control, Argon2id password hashing,
-        signed emergency broadcasts, and immutable audit logs.
+        See the security section of our <Link href="/privacy">Privacy Policy</Link>: encryption in
+        transit and at rest, role-based access control, multi-factor sign-in for administrators,
+        signed emergency alerts and immutable audit records.
       </p>
 
       <h2>Contact</h2>
       <p>
-        For COPPA-related questions, contact{' '}
-        <a href="mailto:coppa@venue-os.app">coppa@venue-os.app</a>.
+        COPPA questions:{' '}
+        <a href={`mailto:${LEGAL_CONTACTS.privacy}`}>{LEGAL_CONTACTS.privacy}</a>.
       </p>
     </LegalPage>
   );

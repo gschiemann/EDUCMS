@@ -15,6 +15,7 @@
  */
 
 import Link from 'next/link';
+import { LEGAL_CONTACTS, LEGAL_ENTITY } from '@/lib/legal-entity';
 
 export default function EulaPage() {
   return (
@@ -31,7 +32,7 @@ export default function EulaPage() {
 
       <p className="mt-10 text-xs text-slate-500 border-t border-slate-200 pt-6">
         Questions about this EULA? Contact{' '}
-        <a href="mailto:legal@educms.example" className="text-indigo-600">legal@educms.example</a>.
+        <a href={`mailto:${LEGAL_CONTACTS.legal}`} className="text-indigo-600">{LEGAL_CONTACTS.legal}</a>.
       </p>
     </main>
   );
@@ -56,13 +57,13 @@ export function EulaBody() {
       </p>
       <ul className="list-disc pl-6 space-y-1">
         <li>
-          &quot;<strong>Service</strong>&quot; means the EDU CMS software-as-a-service
+          &quot;<strong>Service</strong>&quot; means the {LEGAL_ENTITY.productName} software-as-a-service
           product, including the web dashboard, mobile panic interface, Android
           kiosk player application, APIs, and any bundled documentation.
         </li>
         <li>
-          &quot;<strong>Licensor</strong>&quot;, &quot;<strong>we</strong>&quot;, and &quot;<strong>us</strong>&quot; mean the
-          operator of the Service.
+          &quot;<strong>Licensor</strong>&quot;, &quot;<strong>we</strong>&quot;, and &quot;<strong>us</strong>&quot; mean{' '}
+          {LEGAL_ENTITY.companyLegalName}, the operator of the Service.
         </li>
         <li>
           &quot;<strong>You</strong>&quot;, &quot;<strong>your</strong>&quot;, and &quot;<strong>Customer</strong>&quot; mean the

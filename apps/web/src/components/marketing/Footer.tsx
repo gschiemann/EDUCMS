@@ -38,6 +38,7 @@ export function Footer() {
           links={[
             { href: '/privacy', label: 'Privacy policy' },
             { href: '/terms', label: 'Terms of service' },
+            { href: '/dpa', label: 'Data processing addendum' },
             { href: '/ferpa', label: 'FERPA' },
             { href: '/coppa', label: 'COPPA' },
           ]}
