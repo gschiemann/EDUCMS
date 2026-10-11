@@ -1,6 +1,7 @@
 'use client';
 import { NativeDualVideo } from './NativeDualVideo';
 import { useInfoOverlayTimeout } from './useInfoOverlayTimeout';
+import { createInfoOverlayEvidence, infoInputTarget, infoOpenDecision, INFO_CONTAINED_TARGETS, type EventLike, type InfoOpenSource } from './infoOverlayEvidence';
 import { readNativeSharedVideoDescriptor, sharedVideoEligible, nativeSharedVideoEvidence, type NativeSharedVideoDescriptor } from './nativeSharedVideo';
 
 import { useState, useEffect, useCallback, useRef, useMemo, Component, Suspense, ReactNode } from 'react';
@@ -3449,9 +3450,44 @@ function PlayerPage() {
   const [error, setError] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<string | null>(null);
   const [showOverlay, setShowOverlay] = useState(false);
+  const showOverlayRef = useRef(false);
+  showOverlayRef.current = showOverlay;
+  // Opener journal (infoOverlayEvidence.ts — read its header). Keyed on the
+  // screen identity ALONE, deliberately: the tenant id only arrives with the
+  // first manifest, and the pre-content connecting hero — exactly where a
+  // stray Enter/click used to open the card — happens before that. The row
+  // holds nothing tenant-specific (enums, numbers, booleans; 24 h bound), and
+  // `localStorage` here is already the per-face facade (faceStorageShim.ts),
+  // so a second face never reads the front's journal.
+  const infoEvidenceRef = useRef<ReturnType<typeof createInfoOverlayEvidence> | null>(null);
+  useEffect(() => {
+    if (!screenId) return;
+    let evidence: ReturnType<typeof createInfoOverlayEvidence>;
+    try {
+      evidence = createInfoOverlayEvidence(localStorage, `edu_info_input_v1:${screenId}`, readOwnBundleId() ?? 'dev');
+    } catch {
+      // Some kiosk storage policies throw even when obtaining localStorage.
+      evidence = createInfoOverlayEvidence({ getItem: () => null, setItem: () => undefined }, '', readOwnBundleId() ?? 'dev');
+    }
+    infoEvidenceRef.current = evidence;
+    // Passive capture observers: they never preventDefault, never move focus,
+    // never synthesize input — a stray `.input()` throw cannot reach playback.
+    const observe = (event: Event) => { try { evidence.input(event); } catch { /* observation only */ } };
+    const types = ['keydown', 'keyup', 'pointerdown', 'pointerup', 'mousedown', 'mouseup', 'touchstart', 'touchend'];
+    types.forEach(type => window.addEventListener(type, observe, { capture: true, passive: true }));
+    return () => {
+      types.forEach(type => window.removeEventListener(type, observe, true));
+      if (infoEvidenceRef.current === evidence) infoEvidenceRef.current = null;
+    };
+  }, [screenId]);
   const closeInfoOverlay = useCallback(() => setShowOverlay(false), []);
-  const openInfoOverlay = useCallback((source: string, input: { isTrusted: boolean; key?: string }) => {
+  // The ONLY writer of `showOverlay = true`. Nothing calls this directly —
+  // every opener goes through `requestInfoOverlay` below, which is the one
+  // policy gate (infoOverlayEvidence.ts). Keep it that way: a second writer
+  // is a second way for the card to appear over content nobody touched.
+  const openInfoOverlay = useCallback((source: InfoOpenSource, input: EventLike) => {
     // Record the actual opener without device credentials or content URLs.
+    infoEvidenceRef.current?.opened(source, input);
     console.warn('[Player] screen information opened', { source, key: input.key ?? null, trusted: input.isTrusted });
     setShowOverlay(true);
   }, []);
@@ -3489,6 +3525,36 @@ function PlayerPage() {
   // the splash then switches to a "use your remote's HOME button"
   // hint so the operator isn't left poking a broken Exit button.
   const [playbackStopped, setPlaybackStopped] = useState(false);
+  const playbackStoppedRef = useRef(false);
+  playbackStoppedRef.current = playbackStopped;
+  /**
+   * THE one open gate for the screen-information card (2026-10-10, the
+   * Vision Core "card over unattended video" bug). Every opener — the global
+   * Home/i/I shortcut, the root's Enter/Space, a root click — asks
+   * `infoOpenDecision` with the LIVE refs (never a render closure) and either
+   * opens or records why it did not. The policy: content on the glass
+   * (`playing` / `offline` phase — the connecting hero, registering and
+   * pairing splashes are NOT content), not BLANK, not deliberately stopped,
+   * not already open, an unmodified key, and an input that did not start on
+   * a control / typing / status / prompt surface. Closing is deliberately
+   * ungated so Back and the root toggle always get the operator out.
+   *
+   * Returns true when the card opened, so a key handler can decide whether
+   * to `preventDefault` — a refused `i` inside a text field keeps typing.
+   */
+  const requestInfoOverlay = useCallback((source: InfoOpenSource, input: EventLike): boolean => {
+    const phase = phaseRef.current;
+    const verdict = infoOpenDecision(
+      { phase, blank: softBlankRef.current, stopped: playbackStoppedRef.current, open: showOverlayRef.current },
+      input,
+    );
+    if (verdict !== 'open') {
+      infoEvidenceRef.current?.refused(verdict, source, input, phase);
+      return false;
+    }
+    openInfoOverlay(source, input);
+    return true;
+  }, [openInfoOverlay]);
   const [exitUnavailable, setExitUnavailable] = useState(false);
   // 2026-07-01 — LAUNCH-SPRINT player deep pass, blank-screen class (b):
   // "an asset URL 404s mid-playlist." A single broken item was already
@@ -4417,9 +4483,12 @@ function PlayerPage() {
       }
       // Home or remote OK from playback (no overlay) → bring up info
       // overlay so the operator can reach Sync / Exit / Unpair.
-      if ((key === 'Home' || key === 'i' || key === 'I') && !showOverlay && !playbackStopped) {
-        e.preventDefault();
-        openInfoOverlay('remote-key', e);
+      // 2026-10-10 — through the ONE policy gate (`requestInfoOverlay`): a
+      // Home/i latched during the connecting hero, typed into the canvas
+      // editor, or sent as Ctrl/Alt/Meta+i no longer opens the card; a
+      // refused key keeps its default so typing is unaffected.
+      if (key === 'Home' || key === 'i' || key === 'I') {
+        if (requestInfoOverlay('remote-key', e)) e.preventDefault();
         return;
       }
     };
@@ -4429,7 +4498,7 @@ function PlayerPage() {
       window.removeEventListener('edu-show-stop-overlay', onShowStop as EventListener);
       window.removeEventListener('keydown', onKey, true);
     };
-  }, [playbackStopped, showOverlay, openInfoOverlay]);
+  }, [playbackStopped, showOverlay, requestInfoOverlay]);
 
   // Latest published APK version — fetched once at boot, used by the
   // post-pair splash to show "Update available" + Install button.
@@ -8633,7 +8702,9 @@ function PlayerPage() {
           ws.send(JSON.stringify({ event: 'HELLO', data: { token: tok } }));
           heartbeatRef.current = setInterval(() => {
             if (ws.readyState === WebSocket.OPEN) {
-              ws.send(JSON.stringify({ event: 'HEARTBEAT' }));
+              ws.send(JSON.stringify({ event: 'HEARTBEAT', data: {
+                metrics: { playerInfo: infoEvidenceRef.current?.snapshot(showOverlayRef.current) ?? null },
+              } }));
               // Dead-connection detector: if we haven't heard ANYTHING (incl
               // pong) in 60s, force a reconnect. Some proxies silently drop.
               if (Date.now() - lastWsMessageAtRef.current > 60_000) {
@@ -10621,6 +10692,9 @@ function PlayerPage() {
   // not `inset` — Chromium-83 Taurus, CLAUDE.md #10.
   const updatePromptNode = showUpdatePrompt ? (
     <div
+      data-edu-update-prompt
+      onClick={e => e.stopPropagation()}
+      onKeyDown={e => e.stopPropagation()}
       className="absolute bg-black/85 flex items-center justify-center z-[1000]"
       style={{ top: 0, right: 0, bottom: 0, left: 0 }}
     >
@@ -10740,6 +10814,8 @@ function PlayerPage() {
     return (
       <div
         className="fixed z-[9998] px-5 py-4 rounded-2xl bg-slate-900/95 text-white shadow-2xl border border-slate-700 backdrop-blur-md flex flex-wrap items-center justify-center [&>*+*]:ml-3"
+        onClick={e => e.stopPropagation()}
+        onKeyDown={e => e.stopPropagation()}
         // 2026-09-01 (Android-9 Taurus "Connecting…" field find): this toast
         // was placed against the LAYOUT VIEWPORT (`bottom-40 left-4 right-4
         // mx-auto`). On an LED poster the document is pinned to 320×1080
@@ -10834,6 +10910,7 @@ function PlayerPage() {
   // Chromium-83-hostile `inset` shorthand (CLAUDE.md rule #10, 3rd variant).
   const unsignedWsBanner = unsignedWsTokenWarning ? (
     <div
+      data-edu-player-control-surface
       className="fixed bottom-6 right-6 z-[10001] max-w-md px-5 py-4 rounded-2xl bg-amber-500 text-amber-950 shadow-2xl border border-amber-300 flex items-start [&>*+*]:ml-3"
       role="alert"
       aria-live="assertive"
@@ -10892,6 +10969,7 @@ function PlayerPage() {
   // case; this one is "paired but trust expired").
   const repairRequiredChipNode = (
     <div
+      data-edu-player-control-surface
       className="fixed top-6 right-6 z-[10001] max-w-sm px-4 py-3 rounded-xl bg-amber-500/95 text-amber-950 shadow-xl border border-amber-300 flex items-start [&>*+*]:ml-2.5"
       role="alert"
       aria-live="polite"
@@ -11051,6 +11129,8 @@ function PlayerPage() {
     (softBlank || softDim > 0) && !activeEmergency && !pushedEmergencyMessage ? (
       <div
         data-edu-soft-blank={softBlank ? '1' : undefined}
+        onClick={e => e.stopPropagation()}
+        onKeyDown={e => e.stopPropagation()}
         data-edu-soft-dim={!softBlank && softDim > 0 ? String(softDim) : undefined}
         ref={softBlankNodeRef}
         aria-hidden="true"
@@ -11431,8 +11511,13 @@ function PlayerPage() {
         tabIndex={isInteractive ? -1 : 0}
         aria-label={isInteractive ? undefined : 'Toggle screen info overlay'}
         onClick={isInteractive ? undefined : e => {
-          if (e.target instanceof Element && e.target.closest('[data-edu-player-info-panel]')) return;
-          if (showOverlay) closeInfoOverlay(); else openInfoOverlay('template-click', e);
+          // 2026-10-10 — a click that started on a control, a typing field,
+          // the update prompt or the card itself is never a canvas toggle
+          // (either direction). CLOSE stays ungated; OPEN goes through the
+          // one policy gate (phase / BLANK / stopped / modifiers).
+          if (INFO_CONTAINED_TARGETS.includes(infoInputTarget(e.target))) return;
+          if (showOverlay) { if (!softBlankRef.current) closeInfoOverlay(); return; }
+          requestInfoOverlay('template-click', e);
         }}
         onKeyDown={e => {
           // Only toggle on direct-target keypresses. Without this
@@ -11444,7 +11529,8 @@ function PlayerPage() {
           if (e.repeat || e.target !== e.currentTarget) return;
           if (!isInteractive && (e.key === 'Enter' || e.key === ' ')) {
             e.preventDefault();
-            if (showOverlay) closeInfoOverlay(); else openInfoOverlay('template-key', e);
+            if (showOverlay) { if (!softBlankRef.current) closeInfoOverlay(); return; }
+            requestInfoOverlay('template-key', e);
           }
         }}
         data-edu-player-root="template"
@@ -12053,8 +12139,14 @@ function PlayerPage() {
       tabIndex={isPlaylistInteractive ? -1 : 0}
       aria-label={isPlaylistInteractive ? undefined : 'Toggle screen info overlay'}
       onClick={isPlaylistInteractive ? undefined : e => {
-        if (e.target instanceof Element && e.target.closest('[data-edu-player-info-panel]')) return;
-        if (showOverlay) closeInfoOverlay(); else openInfoOverlay('media-click', e);
+        // 2026-10-10 — same contract as the template root: contained
+        // surfaces never toggle, CLOSE is ungated, OPEN is the one policy
+        // gate. The connecting hero, the paused card and the "Content
+        // Unavailable" diagnostics all render INSIDE this root, so a click
+        // on them used to reach this toggle (the phase gap the review found).
+        if (INFO_CONTAINED_TARGETS.includes(infoInputTarget(e.target))) return;
+        if (showOverlay) { if (!softBlankRef.current) closeInfoOverlay(); return; }
+        requestInfoOverlay('media-click', e);
       }}
       onKeyDown={e => {
         // Same target-check as the template path above — keeps
@@ -12062,7 +12154,8 @@ function PlayerPage() {
         if (e.repeat || e.target !== e.currentTarget) return;
         if (!isPlaylistInteractive && (e.key === 'Enter' || e.key === ' ')) {
           e.preventDefault();
-          if (showOverlay) closeInfoOverlay(); else openInfoOverlay('media-key', e);
+          if (showOverlay) { if (!softBlankRef.current) closeInfoOverlay(); return; }
+          requestInfoOverlay('media-key', e);
         }
       }}
     >
