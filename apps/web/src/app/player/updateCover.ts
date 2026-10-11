@@ -155,7 +155,12 @@ function defaultRefetch(url: string, budgetMs: number): Promise<CanvasImageSourc
       im.crossOrigin = 'anonymous';
       im.onload = () => finish(im);
       im.onerror = () => finish(null);
-      im.src = url;
+      // A fresh cache key: the same URL just loaded WITHOUT CORS, and the
+      // browser's memory cache would answer this CORS request with that
+      // header-less entry and fail it.
+      const u = new URL(url, window.location.href);
+      u.searchParams.set('edu_cover', '1');
+      im.src = u.toString();
       setTimeout(() => finish(null), budgetMs);
     } catch {
       finish(null);
