@@ -1,5 +1,6 @@
 import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { billingStateOf, cardBillingReady, isFreeTrialTier } from '../billing/trial-policy';
 
 /**
  * Per-tenant license enforcement.
@@ -71,6 +72,11 @@ export class LicenseService {
     status: string;
     expiresAt: Date | null;
     isPilot: boolean;
+    /** 2026-10-11 — a self-serve free trial (no card yet). */
+    isTrial?: boolean;
+    /** 2026-10-11 — a live Stripe card subscription bills these seats (one tap adds another). */
+    cardSubscription?: boolean;
+    monthlyPriceCents?: number | null;
   }> {
     const client = tx ?? this.prisma.client;
     const lic = await client.license.findUnique({ where: { tenantId } });
@@ -83,12 +89,18 @@ export class LicenseService {
         isPilot: true,
       };
     }
+    const isTrial = isFreeTrialTier(lic.tier) && !lic.stripeSubscriptionId;
     return {
       tier: lic.tier,
-      seatLimit: lic.seatLimit,
+      // A trial's 3-screen cap only binds while a customer could pay to lift it.
+      seatLimit: isTrial && !cardBillingReady() ? Math.max(lic.seatLimit, LicenseService.PILOT_SEAT_LIMIT) : lic.seatLimit,
       status: lic.status,
       expiresAt: lic.expiresAt ?? lic.currentPeriodEnd ?? null,
       isPilot: false,
+      isTrial,
+      cardSubscription:
+        !!lic.stripeSubscriptionId && (lic.billingMode ?? 'CARD') === 'CARD' && lic.status !== 'CANCELLED',
+      monthlyPriceCents: lic.monthlyPriceCents ?? null,
     };
   }
 
@@ -115,7 +127,7 @@ export class LicenseService {
     suspended: boolean;
   }> {
     const client = tx ?? this.prisma.client;
-    const lic = { select: { tenantId: true, tier: true, status: true, billingMode: true, poNumber: true, renewalDate: true, currentPeriodEnd: true, expiresAt: true, seatLimit: true, monthlyPriceCents: true, stripeSubscriptionId: true } };
+    const lic = { select: { tenantId: true, tier: true, status: true, billingMode: true, poNumber: true, renewalDate: true, currentPeriodEnd: true, expiresAt: true, seatLimit: true, monthlyPriceCents: true, stripeSubscriptionId: true, trialEndsAt: true } };
     const row = await client.tenant.findUnique({
       where: { id: tenantId },
       select: {
@@ -192,6 +204,23 @@ export class LicenseService {
         HttpStatus.PAYMENT_REQUIRED,
       );
     }
+    // 2026-10-11 — SELF-SERVE TRIAL. A trial that ended with no card (or a
+    // grace period that ran out) pairs no NEW screens until a card is added —
+    // the organisation's own trial or its parent's. Screens already paired keep
+    // playing. Never enforced while card billing is not live (trial-policy.ts).
+    const billing = billingStateOf(org.governing as any, new Date(), cardBillingReady());
+    if ((billing.state === 'trial_ended' || billing.state === 'locked') && billing.pairingBlocked) {
+      throw new HttpException(
+        {
+          code: 'TRIAL_ENDED',
+          message:
+            'Your free trial has ended. Add a payment method to pair more screens — the screens you already have keep playing.',
+          canUpgrade: true,
+          trialEndsAt: billing.trialEndsAt,
+        },
+        HttpStatus.PAYMENT_REQUIRED,
+      );
+    }
     const eff = await this.getEffective(tenantId, tx);
     if (eff.status !== 'ACTIVE') {
       throw new HttpException(
@@ -221,15 +250,27 @@ export class LicenseService {
     }
     const used = await this.usedSeats(tenantId, tx);
     if (used >= eff.seatLimit) {
+      // 2026-10-11 — never a dead end. The payload says what ONE tap fixes it:
+      //  - a card subscriber adds a screen to the plan (POST /billing/seats,
+      //    prorated) — `canAddSeat` + the per-screen price;
+      //  - a trial adds a payment method (trial days are kept) — `canUpgrade`.
+      const canAddSeat = !!eff.cardSubscription && cardBillingReady();
+      const canUpgrade = !!eff.isTrial && cardBillingReady();
       throw new HttpException(
         {
           code: 'LICENSE_EXHAUSTED',
           message: eff.isPilot
             ? `You've reached the Pilot tier limit of ${eff.seatLimit} screens. Upgrade to add more.`
-            : `Your ${eff.tier} license includes ${eff.seatLimit} screens; you've claimed ${used}. Upgrade or unpair an existing screen first.`,
+            : canAddSeat
+              ? `Your plan covers ${eff.seatLimit} screen${eff.seatLimit === 1 ? '' : 's'}. Add a screen to your plan to pair this one.`
+              : canUpgrade
+                ? `Your free trial includes ${eff.seatLimit} screens. Add a payment method to pair more — you still won't be charged until your trial ends.`
+                : `Your ${eff.tier} license includes ${eff.seatLimit} screens; you've claimed ${used}. Upgrade or unpair an existing screen first.`,
           tier: eff.tier,
           seatLimit: eff.seatLimit,
           seatsUsed: used,
+          ...(canAddSeat ? { canAddSeat: true, perScreenMonthlyCents: eff.monthlyPriceCents ?? null } : {}),
+          ...(canUpgrade ? { canUpgrade: true } : {}),
         },
         HttpStatus.PAYMENT_REQUIRED,
       );

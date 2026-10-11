@@ -368,6 +368,9 @@ export const SignupInputSchema = z
     address: BoundedText(500).optional(),
     latitude: z.number().min(-90).max(90).optional(),
     longitude: z.number().min(-180).max(180).optional(),
+    // 2026-10-11 — the language the signup page was shown in; billing emails
+    // (trial reminders) are written in it. Unknown values are refused.
+    locale: z.enum(['en', 'es', 'zh']).optional(),
   })
   .passthrough();
 export type SignupInput = z.infer<typeof SignupInputSchema>;

@@ -19,8 +19,16 @@ function createInMemoryPrisma() {
   const resets: Row[] = [];
   const invites: Row[] = [];
   const emailLogs: Row[] = [];
+  const licenses: Row[] = [];
 
   const client: any = {
+    license: {
+      create: async ({ data }: any) => {
+        const row = { id: `lic-${licenses.length + 1}`, createdAt: new Date(), ...data };
+        licenses.push(row);
+        return row;
+      },
+    },
     tenant: {
       findUnique: async ({ where }: any) =>
         tenants.find((t) => (where.id && t.id === where.id) || (where.slug && t.slug === where.slug)) || null,
@@ -124,7 +132,7 @@ function createInMemoryPrisma() {
     $transaction: async (cb: any) => cb(client),
   };
 
-  return { client, state: { tenants, users, resets, invites, auditLogs, emailLogs } };
+  return { client, state: { tenants, users, resets, invites, auditLogs, emailLogs, licenses } };
 }
 
 describe('OnboardingService', () => {
@@ -168,6 +176,32 @@ describe('OnboardingService', () => {
     service = module.get(OnboardingService);
     emailService = module.get(EmailService);
     prisma = module.get(PrismaService);
+  });
+
+  describe('signup — self-serve trial (2026-10-11)', () => {
+    const KEYS = ['STRIPE_SECRET_KEY', 'STRIPE_PRICE_MONTHLY', 'STRIPE_PRICE_ANNUAL'] as const;
+    afterEach(() => KEYS.forEach((k) => delete process.env[k]));
+
+    it('card billing live: starts a 14-day / 3-screen FREE_TRIAL License in the signup language, audited', async () => {
+      process.env.STRIPE_SECRET_KEY = 'sk_test_x';
+      process.env.STRIPE_PRICE_MONTHLY = 'price_m';
+      process.env.STRIPE_PRICE_ANNUAL = 'price_a';
+      const before = Date.now();
+      await service.signup({ districtName: 'Taco Town', adminEmail: 'o@taco.test', password: 'correct-horse-battery', locale: 'es' });
+      expect(state.licenses).toHaveLength(1);
+      const lic = state.licenses[0];
+      expect(lic).toMatchObject({ tier: 'FREE_TRIAL', billingMode: 'CARD', status: 'ACTIVE', seatLimit: 3, noticeLocale: 'es' });
+      const days = (lic.trialEndsAt.getTime() - before) / 86_400_000;
+      expect(days).toBeGreaterThan(13.99);
+      expect(days).toBeLessThan(14.01);
+      expect(state.auditLogs.some((a) => a.action === 'BILLING_TRIAL_STARTED')).toBe(true);
+    });
+
+    it('card billing NOT live (production today): no License — the signup is exactly what it was', async () => {
+      await service.signup({ districtName: 'Taco Town', adminEmail: 'o@taco.test', password: 'correct-horse-battery' });
+      expect(state.licenses).toHaveLength(0);
+      expect(state.auditLogs.some((a) => a.action === 'BILLING_TRIAL_STARTED')).toBe(false);
+    });
   });
 
   describe('signup', () => {

@@ -13,8 +13,8 @@
  * Env vars (all set by the operator from their Stripe dashboard —
  * test keys first, live keys at go-live):
  *   STRIPE_SECRET_KEY      sk_test_… / sk_live_…
- *   STRIPE_PRICE_MONTHLY   the $15/screen/mo recurring Price id
- *   STRIPE_PRICE_ANNUAL    the $150/screen/yr recurring Price id
+ *   STRIPE_PRICE_MONTHLY   the $25/screen/mo recurring Price id
+ *   STRIPE_PRICE_ANNUAL    the $240/screen/yr recurring Price id
  *   STRIPE_WEBHOOK_SECRET  whsec_…  (used by the webhook controller)
  */
 import { Injectable, Logger } from '@nestjs/common';
@@ -28,6 +28,7 @@ import {
   boardPackById,
   type AiBoardPack,
 } from '../ai/ai-board-credits';
+import { checkoutTrialEnd, MAX_SELF_SERVE_SCREENS } from './trial-policy';
 
 /** The Stripe SDK client instance type. `Stripe` is a value + a merged
  *  namespace, so the instance type must be taken via InstanceType. */
@@ -107,12 +108,26 @@ export interface SyncQuantityResult {
   to?: number;
 }
 
-/** A paid per-screen subscription has no hard seat cap — the tenant
- *  pays for whatever they pair. Set the License seatLimit far above
- *  any real fleet so seat enforcement never blocks a paying tenant.
- *  (Keeping the subscription quantity in lockstep with live usage —
- *  auto-prorate on add/remove — is a tracked follow-up.) */
-const PAID_SEAT_LIMIT = 100_000;
+/**
+ * SEATS = THE STRIPE QUANTITY (2026-10-11). A card subscriber pays for N
+ * screens and License.seatLimit mirrors that N, so the bill never changes
+ * behind the customer's back. Pairing screen N+1 answers 402
+ * LICENSE_EXHAUSTED with `canAddSeat`, and the dashboard offers
+ * "Add 1 screen ($25/mo)" inline -> `setSeatQuantity` (prorated) -> the pair
+ * retries. Lowering the count is the customer's choice, in the Customer
+ * Portal. (Before this, seatLimit was 100,000 and the quantity silently
+ * followed every pair/unpair — no dead end, but a bill that moved without
+ * the customer ever being told.)
+ */
+const seatsFromQuantity = (q: unknown): number =>
+  Math.max(1, Math.min(MAX_SELF_SERVE_SCREENS * 100, Number.isInteger(q) ? (q as number) : 1));
+
+/** A refused seat change — the controller maps `code` to a 4xx the dashboard can show. */
+export class SeatChangeError extends Error {
+  constructor(public readonly code: string, message: string) {
+    super(message);
+  }
+}
 
 @Injectable()
 export class StripeService {
@@ -154,10 +169,13 @@ export class StripeService {
   }
 
   /**
-   * Re-sync a tenant's Stripe subscription quantity to its live
-   * paired-screen count. Stripe prorates the change automatically, so
-   * the bill always tracks real usage — add a screen, the next
-   * invoice reflects it; unpair one, a proration credit lands.
+   * Make sure a tenant's Stripe subscription covers every screen it has
+   * paired. RAISE-ONLY since 2026-10-11 (seats = quantity, see
+   * seatsFromQuantity): pairing is gated on License.seatLimit, so paired >
+   * quantity only happens on drift (a legacy auto-tracked subscription, a
+   * missed webhook) and is corrected up — prorated — with seatLimit
+   * mirrored. A quantity ABOVE the paired count is the customer's own
+   * choice (pre-bought seats) and is never lowered here.
    *
    * Best-effort and idempotent. It is a NO-OP when:
    *   - Stripe is unconfigured on this deploy,
@@ -203,20 +221,88 @@ export class StripeService {
     }
     const item = sub.items?.data?.[0];
     if (!item?.id) return { status: 'skipped', reason: 'no-subscription-item' };
-    const quantity = Math.max(1, await this.seatCount(tenantId));
+    const paired = Math.max(1, await this.seatCount(tenantId));
     const current: number = item.quantity ?? 0;
-    if (current === quantity) {
-      return { status: 'in-sync', from: current, to: quantity }; // already in lockstep
+    if (current >= paired) {
+      return { status: 'in-sync', from: current, to: current }; // covers every paired screen
     }
 
     await stripe.subscriptionItems.update(item.id, {
-      quantity,
+      quantity: paired,
       proration_behavior: 'create_prorations',
     });
+    await this.prisma.client.license.updateMany({
+      where: { id: license.id, tenantId },
+      data: { seatLimit: paired },
+    });
     this.logger.log(
-      `billing: tenant ${tenantId} subscription quantity ${current} → ${quantity}`,
+      `billing: tenant ${tenantId} subscription quantity ${current} → ${paired} (raised to cover paired screens)`,
     );
-    return { status: 'corrected', from: current, to: quantity };
+    return { status: 'corrected', from: current, to: paired };
+  }
+
+  /**
+   * One tap from the pairing dialog: set the number of screens on a card
+   * subscription (2026-10-11). Stripe prorates the change onto the next
+   * invoice (`create_prorations` — no surprise immediate charge). The
+   * License seatLimit is written at once so the pair that triggered this can
+   * retry immediately; the webhook that follows writes the same number.
+   * Never below the screens already paired (unpair first). Audited.
+   */
+  async setSeatQuantity(opts: {
+    tenantId: string;
+    quantity: number;
+    actorUserId: string | null;
+  }): Promise<{ seatLimit: number; previous: number }> {
+    const stripe = this.getClient();
+    if (!stripe) throw new SeatChangeError('BILLING_NOT_CONFIGURED', 'Online payments are not set up on this deployment yet.');
+    const license = await this.prisma.client.license.findUnique({ where: { tenantId: opts.tenantId } });
+    if (
+      !license?.stripeSubscriptionId ||
+      (license.billingMode ?? 'CARD') !== 'CARD' ||
+      license.status === 'CANCELLED'
+    ) {
+      throw new SeatChangeError('BILLING_NO_SUBSCRIPTION', 'Add a payment method first — then you can add screens to your plan.');
+    }
+    if (license.status !== 'ACTIVE') {
+      throw new SeatChangeError('BILLING_PAST_DUE', 'Your last payment did not go through. Update your card, then add screens.');
+    }
+    const paired = await this.seatCount(opts.tenantId);
+    const min = Math.max(1, paired);
+    if (!Number.isInteger(opts.quantity) || opts.quantity < min || opts.quantity > MAX_SELF_SERVE_SCREENS) {
+      throw new SeatChangeError(
+        'BILLING_SEATS_INVALID',
+        `Choose between ${min} and ${MAX_SELF_SERVE_SCREENS} screens (you have ${paired} paired).`,
+      );
+    }
+    const sub: Record<string, any> = await stripe.subscriptions.retrieve(license.stripeSubscriptionId);
+    const item = sub.items?.data?.[0];
+    if (!item?.id) throw new SeatChangeError('BILLING_NO_SUBSCRIPTION', 'Your subscription has no plan item — contact support.');
+    const previous: number = item.quantity ?? license.seatLimit;
+    if (previous !== opts.quantity) {
+      await stripe.subscriptionItems.update(item.id, {
+        quantity: opts.quantity,
+        proration_behavior: 'create_prorations',
+      });
+    }
+    await this.prisma.client.$transaction(async (tx) => {
+      await tx.license.updateMany({
+        where: { id: license.id, tenantId: opts.tenantId },
+        data: { seatLimit: opts.quantity },
+      });
+      await tx.auditLog.create({
+        data: {
+          tenantId: opts.tenantId,
+          userId: opts.actorUserId,
+          action: 'BILLING_SEATS_CHANGED',
+          targetType: 'License',
+          targetId: license.id,
+          details: JSON.stringify({ from: previous, to: opts.quantity, paired, proration: 'create_prorations' }),
+        },
+      });
+    });
+    this.logger.log(`billing: tenant ${opts.tenantId} seats ${previous} → ${opts.quantity} (customer-initiated)`);
+    return { seatLimit: opts.quantity, previous };
   }
 
   /**
@@ -230,6 +316,9 @@ export class StripeService {
     period: 'monthly' | 'annual';
     successUrl: string;
     cancelUrl: string;
+    /** Pre-fills Stripe's email field for a first-time customer. */
+    customerEmail?: string | null;
+    now?: Date;
   }): Promise<{ url: string; existing?: boolean }> {
     const stripe = this.getClient();
     if (!stripe) throw new Error('Stripe is not configured on this deployment.');
@@ -269,16 +358,47 @@ export class StripeService {
       // Checkout as a last resort rather than blocking the operator entirely.
     }
 
-    const quantity = Math.max(1, await this.seatCount(opts.tenantId));
+    // 2026-10-11 — pre-filled and trial-preserving:
+    //  - quantity = the screens they have paired (min 1), and ADJUSTABLE on
+    //    Stripe's page (never below what is paired) so a customer about to
+    //    install more can buy them in the same step;
+    //  - a card added DURING the free trial bills from the trial's ORIGINAL
+    //    end date (`trial_end`), so paying early never costs trial days;
+    //  - the card is collected now either way (`payment_method_collection:
+    //    always`) — conversion at trial end is automatic;
+    //  - card entry stays on Stripe's hosted page (PCI SAQ-A).
+    const paired = Math.max(1, await this.seatCount(opts.tenantId));
+    const trialEnd = checkoutTrialEnd(license as any, opts.now ?? new Date());
+    const metadata: Record<string, string> = {
+      tenantId: opts.tenantId,
+      period: opts.period,
+      ...(trialEnd ? { trialConversion: '1' } : {}),
+    };
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
-      line_items: [{ price, quantity }],
+      line_items: [
+        {
+          price,
+          quantity: paired,
+          adjustable_quantity: { enabled: true, minimum: paired, maximum: MAX_SELF_SERVE_SCREENS },
+        },
+      ],
       client_reference_id: opts.tenantId,
-      ...(license?.stripeCustomerId ? { customer: license.stripeCustomerId } : {}),
+      ...(license?.stripeCustomerId
+        ? { customer: license.stripeCustomerId }
+        : opts.customerEmail
+          ? { customer_email: opts.customerEmail }
+          : {}),
       success_url: opts.successUrl,
       cancel_url: opts.cancelUrl,
-      metadata: { tenantId: opts.tenantId, period: opts.period },
-      subscription_data: { metadata: { tenantId: opts.tenantId, period: opts.period } },
+      metadata,
+      payment_method_collection: 'always',
+      billing_address_collection: 'auto',
+      locale: 'auto',
+      subscription_data: {
+        metadata,
+        ...(trialEnd ? { trial_end: trialEnd } : {}),
+      },
       allow_promotion_codes: true,
     });
     if (!session.url) throw new Error('Stripe did not return a Checkout URL.');
@@ -648,8 +768,12 @@ export class StripeService {
   /** Map a Stripe subscription status onto the License status enum. */
   private mapSubscriptionStatus(s: string): string {
     if (s === 'active' || s === 'trialing') return 'ACTIVE';
-    if (s === 'past_due' || s === 'incomplete') return 'PAST_DUE';
-    if (s === 'unpaid' || s === 'paused') return 'SUSPENDED';
+    // 2026-10-11 — `unpaid` / `paused` were SUSPENDED, which is the OWNER's
+    // suspension: it locks the whole dashboard (OrgSuspensionInterceptor),
+    // including the Billing page the customer needs to fix their card — a
+    // dead end. A billing problem is PAST_DUE: banner + "Update card",
+    // pairing paused, screens and emergency untouched.
+    if (s === 'past_due' || s === 'incomplete' || s === 'unpaid' || s === 'paused') return 'PAST_DUE';
     if (s === 'canceled' || s === 'incomplete_expired') return 'CANCELLED';
     return 'ACTIVE';
   }
@@ -746,6 +870,12 @@ export class StripeService {
     const monthlyPriceCents =
       unit == null ? null : interval === 'year' ? Math.round(unit / 12) : unit;
     const status = this.mapSubscriptionStatus(sub.status);
+    // 2026-10-11 — seats = the subscription quantity; trialEndsAt mirrors the
+    // subscription's trial_end (a card added during the free trial bills from
+    // the trial's original end date — the dashboard says when).
+    const seatLimit = seatsFromQuantity(sub.items?.data?.[0]?.quantity);
+    const trialEndsAt =
+      typeof sub.trial_end === 'number' && sub.trial_end > 0 ? new Date(sub.trial_end * 1000) : null;
     // current_period_start/end moved off the top-level Subscription onto
     // each SubscriptionItem in the pinned API version — see
     // subscriptionPeriod() for why.
@@ -796,8 +926,9 @@ export class StripeService {
                 tier,
                 billingMode: 'CARD',
                 status,
-                seatLimit: PAID_SEAT_LIMIT,
+                seatLimit,
                 monthlyPriceCents,
+                ...(trialEndsAt ? { trialEndsAt } : {}),
                 stripeCustomerId: customerId,
                 stripeSubscriptionId: sub.id,
                 currentPeriodStart: periodStart,
@@ -808,7 +939,9 @@ export class StripeService {
                 tier,
                 billingMode: 'CARD',
                 status,
+                seatLimit,
                 monthlyPriceCents,
+                ...(trialEndsAt ? { trialEndsAt } : {}),
                 stripeCustomerId: customerId,
                 stripeSubscriptionId: sub.id,
                 currentPeriodStart: periodStart,
@@ -834,6 +967,8 @@ export class StripeService {
                   fromTier,
                   toTier: tier,
                   monthlyPriceCents,
+                  seatLimit,
+                  trialEndsAt: trialEndsAt?.toISOString() ?? null,
                 }),
               },
             });
