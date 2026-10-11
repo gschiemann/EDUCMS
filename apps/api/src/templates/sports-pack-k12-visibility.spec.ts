@@ -75,10 +75,20 @@ describe('sports pack — visible to K-12 as well as SPORTS', () => {
 
   it('nothing outside the pack changed tag because of it', () => {
     const pack = new Set(SPORTS_PACK_PRESET_IDS);
-    // Website Tabs (2026-09-28) is deliberately tagged with EVERY vertical —
-    // a decision of its own, not a side effect of the sports pack. Exempted
-    // by id so any OTHER preset gaining SPORTS still fails here.
-    const deliberatelyEveryVertical = new Set(['preset-kiosk-website-tabs']);
+    // Website Tabs and Service Update are deliberately offered to every
+    // vertical. Keep the exception explicit so an unrelated preset gaining
+    // SPORTS still fails this isolation check.
+    const deliberatelyEveryVertical = new Set([
+      'preset-kiosk-website-tabs',
+      'preset-sig-corporate-20',
+      'preset-sig-corporate-20-portrait',
+    ]);
+    for (const id of deliberatelyEveryVertical) {
+      const tag = resolvePresetVerticalTag(id);
+      for (const vertical of ['K12', 'SPORTS', ...OTHER_VERTICALS]) {
+        expect(visibleTo(tag, vertical)).toBe(true);
+      }
+    }
     const leaked = ALL_PRESETS.map((p) => p.id)
       .filter((id) => !pack.has(id) && !deliberatelyEveryVertical.has(id))
       .filter((id) =>
