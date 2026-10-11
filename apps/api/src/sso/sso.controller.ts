@@ -22,6 +22,7 @@ import { RequireRoles } from '../auth/roles.decorator';
 import { ZodValidationPipe } from '../security/zod-validation.pipe';
 import { SsoConfigSchema } from './sso.types';
 import type { SsoConfigDto } from './sso.types';
+import { assertSupportReach } from '../support-access/support-access.context';
 
 /**
  * SSO endpoints — SAML + OIDC scaffold.
@@ -295,6 +296,7 @@ export class SsoController {
     }
 
     if (user.role === 'SUPER_ADMIN') {
+      await assertSupportReach(user, target.id); // SUPPORT ACCESS (2026-10-11)
       return target;
     }
     if (user.tenantId && target.id === user.tenantId) {

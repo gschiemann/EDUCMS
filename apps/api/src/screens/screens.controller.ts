@@ -186,6 +186,7 @@ import { ADMIN_ROLES_FOR_SCREEN_SECRETS } from '../security/screen-secrets';
 // screen when the school's student-privacy policy hides it — B3's rule, the
 // shared list of typed-name fields.
 import { redactTypedStudentNames } from '../sports/typed-student-names';
+import { assertSupportReach, hasSupportReach } from '../support-access/support-access.context';
 
 const PAIRING_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
@@ -4662,6 +4663,7 @@ export class ScreensController {
       select: { id: true, name: true, tenantId: true, credentialEpoch: true } as any,
     });
     if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
+    await assertSupportReach(req.user, (screen as any).tenantId); // SUPPORT ACCESS (2026-10-11)
 
     const { credentialEpoch } = await revokeScreenCredentials(
       { prisma: this.prisma, redis: this.redisService },
@@ -5749,6 +5751,9 @@ export class ScreensController {
         if (!screen.tenantId || screen.tenantId !== callerTenantId) {
           return res.status(404).json({ error: 'Screen not found' }); // 404 not 403 to avoid existence-leak
         }
+      } else if (!(await hasSupportReach(u, screen.tenantId))) {
+        // SUPPORT ACCESS (2026-10-11): a super admin reads a customer's manifest only under a grant.
+        return res.status(403).json({ code: 'SUPPORT_ACCESS_REQUIRED', error: 'VenueOS support does not currently have access to this organization.' });
       }
     }
 

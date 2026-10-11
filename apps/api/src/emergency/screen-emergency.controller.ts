@@ -79,6 +79,7 @@ import { assertAllowedEmergencyMediaUrl } from './media-url-guard';
 // 2026-09-02 (efficiency P0-2) — the cheap emergency-revision token the player
 // polls instead of re-fetching the whole manifest every 10 s.
 import { bumpTenantEmergencyEpoch } from '../screens/emergency-rev';
+import { assertSupportReach } from '../support-access/support-access.context';
 
 const ALLOWED_TYPES = new Set([
   'LOCKDOWN', 'EVACUATE', 'WEATHER', 'HOLD', 'SECURE', 'MEDICAL', 'CUSTOM',
@@ -202,7 +203,7 @@ export class ScreenEmergencyController {
    * caller's token — keeping audit forensics correct regardless of
    * which admin fired the trigger.
    */
-  private async resolveScreen(screenId: string, callerTenantId: string | null) {
+  private async resolveScreen(screenId: string, callerTenantId: string | null, reqUser?: any) {
     if (callerTenantId === null) {
       // SUPER_ADMIN path — look up by id only. No cross-tenant leak
       // possible because only SUPER_ADMIN reaches this branch (see
@@ -214,6 +215,8 @@ export class ScreenEmergencyController {
       if (!screen) {
         throw new HttpException('Screen not found', HttpStatus.NOT_FOUND);
       }
+      // SUPPORT ACCESS (2026-10-11): cross-tenant only under a grant.
+      await assertSupportReach(reqUser, screen.tenantId);
       return screen;
     }
     if (typeof callerTenantId !== 'string' || callerTenantId.trim().length === 0) {
@@ -382,7 +385,7 @@ export class ScreenEmergencyController {
   ) {
     // emergency-004 fix: refuse missing-tenantId tokens before any DB call.
     const tenantId = this.requireTenantId(req);
-    const screen = await this.resolveScreen(screenId, tenantId);
+    const screen = await this.resolveScreen(screenId, tenantId, req.user);
     const override = this.validateOverride(body);
     // SECURITY (Lane-1 re-audit P0): verify any operator-supplied playlistId
     // belongs to the screen's tenant. Same shape as the panic-settings fix.
@@ -423,7 +426,7 @@ export class ScreenEmergencyController {
     // by the same operator-set.
     // emergency-004 fix: refuse missing-tenantId tokens before any DB call.
     const tenantId = this.requireTenantId(req);
-    const screen = await this.resolveScreen(screenId, tenantId);
+    const screen = await this.resolveScreen(screenId, tenantId, req.user);
     const existing = await (this.prisma.client as any).screenEmergencyOverride.findUnique({
       where: { screenId: screen.id },
     });
@@ -509,7 +512,7 @@ export class ScreenEmergencyController {
   async getOverride(@Req() req: any, @Param('screenId') screenId: string) {
     // emergency-004 fix: refuse missing-tenantId tokens before any DB call.
     const tenantId = this.requireTenantId(req);
-    await this.resolveScreen(screenId, tenantId);
+    await this.resolveScreen(screenId, tenantId, req.user);
     const override = await (this.prisma.client as any).screenEmergencyOverride.findUnique({
       where: { screenId },
     });

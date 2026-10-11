@@ -21,6 +21,7 @@ import { EmailService } from '../email/email.service';
 import { clientIpFromRequest } from '../security/client-ip';
 import { loadManageableTarget as loadManageableTargetShared } from './manageable-target';
 import { workspaceConfigVersion } from './workspace-config-version';
+import { assertSupportReach } from '../support-access/support-access.context';
 
 function isValidEmail(email: string): boolean {
   // 254 is the longest valid address; the bound keeps this pattern linear
@@ -520,6 +521,7 @@ export class UsersController {
     if (!isSuper && (target as any).tenantId !== callerTenantId) {
       throw new ForbiddenException({ code: 'USER_NOT_IN_TENANT', message: 'Target user is not in your tenant.' });
     }
+    await assertSupportReach(req.user, (target as any).tenantId); // SUPPORT ACCESS (2026-10-11)
 
     // RANK GATE (2026-08-04). This was the last endpoint in the user family
     // that scoped by tenant but NOT by rank — so a SCHOOL_ADMIN could grant
@@ -652,6 +654,7 @@ export class UsersController {
     if (!isSuper && (target as any).tenantId !== callerTenantId) {
       throw new ForbiddenException({ code: 'USER_NOT_IN_TENANT', message: 'Target user is not in your tenant.' });
     }
+    await assertSupportReach(req.user, (target as any).tenantId); // SUPPORT ACCESS (2026-10-11)
 
     // Rank gate. Throws 403 naming both roles, which is the message the UI
     // surfaces — so an admin who tries it on a peer learns why in one read.

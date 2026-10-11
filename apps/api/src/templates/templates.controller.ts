@@ -1107,8 +1107,10 @@ export class TemplatesController {
       }
       scopeTenantId = screen.tenantId ?? null;
     } else if (u.role === AppRole.SUPER_ADMIN) {
-      // SUPER_ADMIN sees every tenant's templates — leave scope open.
-      scopeTenantId = null;
+      // SUPPORT ACCESS (2026-10-11): a super admin is scoped to the workspace
+      // their session is stamped with (which the global gate has already
+      // proved reachable) — never "every tenant's templates".
+      scopeTenantId = u.tenantId || u.schoolId || u.districtId || '__no_tenant__';
     } else {
       scopeTenantId = u.schoolId || u.tenantId || u.districtId || null;
       if (!scopeTenantId) {

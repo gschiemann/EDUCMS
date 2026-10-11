@@ -67,6 +67,7 @@ import {
   normalizeCapabilityReport,
   verdictFromStored,
 } from './display.service';
+import { assertSupportReach } from '../support-access/support-access.context';
 
 @Controller('api/v1/screens')
 export class DisplayController {
@@ -396,6 +397,7 @@ export class DisplayController {
         message: 'Screen not found',
       });
     }
+    await assertSupportReach(req.user, screen.tenantId); // SUPPORT ACCESS (2026-10-11)
     return screen;
   }
 }

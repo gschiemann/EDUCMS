@@ -90,6 +90,7 @@ import type {
   BroadcastInput,
   MediaAlertInput,
 } from '@cms/api-types';
+import { assertSupportReach } from '../support-access/support-access.context';
 
 @Controller('api/v1/emergency')
 @UseGuards(JwtAuthGuard, RbacGuard)
@@ -861,6 +862,10 @@ export class EmergencyController {
         );
       }
     }
+    // SUPPORT ACCESS (2026-10-11): a VenueOS super admin NEVER triggers or
+    // clears a customer's alert without an active, customer-approved grant
+    // covering the owning tenant. 403 SUPPORT_ACCESS_REQUIRED otherwise.
+    await assertSupportReach(reqUser, owningTenantId);
 
     return owningTenantId;
   }
@@ -2287,6 +2292,7 @@ export class EmergencyController {
         'You do not have permission to clear emergency messages for this scope.',
       );
     }
+    await assertSupportReach(user, existing.tenantId); // SUPPORT ACCESS (2026-10-11)
 
     // Atomic clear + audit — if audit fails we must not leave the
     // message marked cleared with no trail of who did it.
@@ -2685,6 +2691,7 @@ export class EmergencyController {
     if (!tenantId) {
       return { active: [], tenantId: null };
     }
+    if (isSuper) await assertSupportReach(req.user, tenantId); // SUPPORT ACCESS (2026-10-11)
 
     const now = new Date();
     const where: any = {

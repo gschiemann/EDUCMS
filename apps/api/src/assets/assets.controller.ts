@@ -2780,7 +2780,12 @@ export class AssetsController {
       }
       scopeTenantId = screen.tenantId ?? null;
     } else if (u.role === AppRole.SUPER_ADMIN) {
-      scopeTenantId = null;
+      // SUPPORT ACCESS (2026-10-11): scoped to the active workspace, which the
+      // global gate has already proved reachable — never cross-tenant.
+      scopeTenantId = u.tenantId || u.schoolId || u.districtId || null;
+      if (!scopeTenantId) {
+        throw new HttpException({ code: 'ASSET_NOT_FOUND', message: 'Asset not found' }, HttpStatus.NOT_FOUND);
+      }
     } else {
       scopeTenantId = u.schoolId || u.tenantId || u.districtId || null;
       if (!scopeTenantId) {

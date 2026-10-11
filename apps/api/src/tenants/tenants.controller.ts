@@ -1,4 +1,4 @@
-import { Controller, Get, Put, Post, Patch, Delete, Body, Param, UseGuards, Request, HttpException, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Put, Post, Patch, Delete, Body, Param, UseGuards, Request, HttpException, HttpStatus, Optional } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
@@ -22,6 +22,8 @@ import { randomBytes, createHash, createHmac, timingSafeEqual } from 'crypto';
 import { availableOrganizationSlug, TenantUrlClaimConflict } from './tenant-slug';
 import { collectDescendantTenantIds } from '../emergency/tenant-hierarchy';
 import { initializeEmergencyLocations } from './emergency-defaults';
+import { SupportAccessService } from '../support-access/support-access.service';
+import { assertSupportReach, currentSupportAccessFrame } from '../support-access/support-access.context';
 
 /** Transaction attempts for a rename that loses a race for its new URL. */
 const ORGANIZATION_RENAME_ATTEMPTS = 3;
@@ -35,6 +37,11 @@ export class TenantsController {
     // ACC-05 — archiving a tenant must also END its users' live sessions.
     // RealtimeModule is @Global so this resolves without an extra import.
     private readonly redis: RedisService,
+    // SUPPORT ACCESS (2026-10-11) — @Global SupportAccessModule. Optional so the
+    // many specs that build this controller by hand keep compiling; in the
+    // running app it is always injected, and the request frame (opened by the
+    // global interceptor) is the fallback (support-access.context.ts).
+    @Optional() private readonly supportAccess?: SupportAccessService,
   ) {}
 
   /**
@@ -51,10 +58,23 @@ export class TenantsController {
     if (role === AppRole.SUPER_ADMIN) {
       const all = await this.prisma.client.tenant.findMany({
         where: { archivedAt: null }, // archived (retired/test) tenants hidden from the switcher
-        select: { id: true, name: true, slug: true, parentId: true },
+        select: { id: true, name: true, slug: true, parentId: true, isInternal: true } as any,
         orderBy: [{ parentId: 'asc' }, { name: 'asc' }],
       });
-      return { current: tenantId, tenants: all };
+      // SUPPORT ACCESS (2026-10-11): names are console metadata and stay
+      // listed; `supportAccess` says whether the switch would succeed —
+      // 'internal' | 'home' | 'grant' | null (ask the customer first).
+      const basis = this.supportAccess ? await this.supportAccess.reachableBasisBulk(req.user, all as any) : null;
+      return {
+        current: tenantId,
+        tenants: all.map((t: any) => ({
+          id: t.id,
+          name: t.name,
+          slug: t.slug,
+          parentId: t.parentId,
+          supportAccess: basis ? (basis.get(t.id) ?? null) : 'internal',
+        })),
+      };
     }
 
     if (role === AppRole.DISTRICT_ADMIN) {
@@ -260,7 +280,22 @@ export class TenantsController {
 
     // Authorization
     let authorized = false;
+    let supportGrantId: string | null = null;
+    let supportBasis: string | null = null;
     if (role === AppRole.SUPER_ADMIN) {
+      // SUPPORT ACCESS (2026-10-11): "SUPER_ADMIN can switch into any tenant"
+      // is over. A VenueOS super admin enters an internal organisation or
+      // their own home freely; a CUSTOMER organisation only under an active,
+      // customer-approved SupportAccessGrant that covers the target
+      // (`SupportAccessService.reach`). Otherwise 403 SUPPORT_ACCESS_REQUIRED
+      // — the console is where to ask. The grant id rides into the audit row.
+      const access = this.supportAccess ?? currentSupportAccessFrame()?.service ?? null;
+      if (access) {
+        const decision = await access.reach(req.user, target.id);
+        if (!decision.allowed) throw SupportAccessService.refusal();
+        supportGrantId = decision.grantId;
+        supportBasis = decision.basis;
+      }
       authorized = true;
     } else if (role === AppRole.DISTRICT_ADMIN) {
       // Allow if target is the caller's own tenant, the caller's parent,
@@ -380,8 +415,14 @@ export class TenantsController {
         action: 'TENANT_SWITCH',
         targetType: 'Tenant',
         targetId: target.id,
-        details: JSON.stringify({ fromTenantId: callerTenantId, toTenantId: target.id, slug: target.slug }),
-      },
+        ...(supportGrantId ? { supportGrantId } : {}),
+        details: JSON.stringify({
+          fromTenantId: callerTenantId,
+          toTenantId: target.id,
+          slug: target.slug,
+          ...(supportBasis ? { supportAccess: supportBasis, supportGrantId } : {}),
+        }),
+      } as any,
     }).catch(() => { /* don't fail the switch on audit write */ });
 
     return {
@@ -556,6 +597,8 @@ export class TenantsController {
       select: { id: true, name: true, slug: true, parentId: true, emergencyStatus: true },
     });
     if (!target) throw new HttpException({ code: 'TENANT_NOT_FOUND', message: 'Tenant not found' }, HttpStatus.NOT_FOUND);
+    // SUPPORT ACCESS (2026-10-11): a super admin deletes a customer's location only under a grant.
+    await assertSupportReach(req.user, target.id);
 
     // Authorization — only SUPER_ADMIN or DISTRICT_ADMIN of the parent
     if (req.user.role !== AppRole.SUPER_ADMIN) {
@@ -651,6 +694,8 @@ export class TenantsController {
       select: { id: true, name: true, slug: true, parentId: true, emergencyStatus: true, archivedAt: true },
     });
     if (!target) throw new HttpException({ code: 'TENANT_NOT_FOUND', message: 'Tenant not found' }, HttpStatus.NOT_FOUND);
+    // SUPPORT ACCESS (2026-10-11): archiving a customer's location needs a grant too.
+    await assertSupportReach(reqUser, target.id);
     // Scope (2026-08-30 — operator: "once I add a location I have no way to
     // delete it"): DISTRICT_ADMIN may archive/unarchive ONLY a direct child
     // of their own tenant. SUPER_ADMIN keeps the global reach. Never
@@ -1806,7 +1851,9 @@ export class TenantsController {
       throw new HttpException({ code: 'TENANT_USB_INGEST_DISABLED', message: 'USB ingest is disabled for this tenant' }, HttpStatus.FORBIDDEN);
     }
     // DT-07, operator leg: a roled user may only write into their OWN
-    // tenant's ingest trail. SUPER_ADMIN is cross-tenant by design.
+    // tenant's ingest trail. SUPER_ADMIN reaches another tenant only under a
+    // support grant (2026-10-11).
+    await assertSupportReach(principal, screen.tenantId);
     if (principal.kind !== 'device' && principal.role !== AppRole.SUPER_ADMIN) {
       const callerTenantId = principal.tenantId || principal.schoolId || principal.districtId || null;
       if (!callerTenantId || callerTenantId !== screen.tenantId) {

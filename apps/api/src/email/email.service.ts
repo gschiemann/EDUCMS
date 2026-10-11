@@ -530,6 +530,70 @@ export class EmailService {
     await this.#enqueue({ to: params.to, subject, body, kind: 'BUG_FILED_OWNER' });
   }
 
+  /**
+   * SUPPORT ACCESS (2026-10-11) — VenueOS asked a customer for time-boxed
+   * access. One mail per deciding admin of the organisation.
+   */
+  async sendSupportAccessRequested(params: {
+    to: string;
+    orgName: string;
+    tenantSlug: string;
+    requestedBy: string;
+    reason: string;
+    durationLabel: string;
+    scoped: boolean;
+  }): Promise<EmailDispatchStatus> {
+    const subject = `VenueOS is asking for support access to ${params.orgName}`;
+    const url = `${this.appUrl}/${encodeURIComponent(params.tenantSlug)}/settings/support-access`;
+    const body = [
+      `${params.requestedBy} at VenueOS is asking for access to ${params.orgName} for ${params.durationLabel}` +
+        (params.scoped ? ` (specific locations only).` : `.`),
+      ``,
+      `Reason: ${params.reason}`,
+      ``,
+      `Nothing happens until you decide. VenueOS cannot open your organization's screens, content,`,
+      `people, alerts, settings or logs without your approval. You can approve for a shorter time,`,
+      `deny, and end the access at any moment.`,
+      ``,
+      `Approve or deny here: ${url}`,
+      ``,
+      `— The VenueOS team`,
+    ].join('\n');
+    return this.#enqueue({ to: params.to, subject, body, kind: 'SUPPORT_ACCESS_REQUESTED' });
+  }
+
+  /**
+   * SUPPORT ACCESS (2026-10-11) — the break-glass path was used. Sent to
+   * every deciding admin the moment it opens; the banner shows it too.
+   */
+  async sendSupportAccessBreakGlass(params: {
+    to: string;
+    orgName: string;
+    tenantSlug: string;
+    openedBy: string;
+    reason: string;
+    expiresAt: Date | string | null;
+  }): Promise<EmailDispatchStatus> {
+    const until = params.expiresAt
+      ? new Date(params.expiresAt).toISOString().replace('T', ' ').slice(0, 16) + ' UTC'
+      : 'one hour from now';
+    const subject = `VenueOS opened emergency support access to ${params.orgName}`;
+    const url = `${this.appUrl}/${encodeURIComponent(params.tenantSlug)}/settings/support-access`;
+    const body = [
+      `${params.openedBy} at VenueOS opened EMERGENCY support access to ${params.orgName}.`,
+      ``,
+      `Reason: ${params.reason}`,
+      `Ends automatically: ${until} (at most one hour).`,
+      ``,
+      `This path exists for a genuine incident when nobody at your organization can answer.`,
+      `Everything VenueOS does during it is written to your audit log under this access.`,
+      `You can end it right now: ${url}`,
+      ``,
+      `— The VenueOS team`,
+    ].join('\n');
+    return this.#enqueue({ to: params.to, subject, body, kind: 'SUPPORT_ACCESS_BREAK_GLASS' });
+  }
+
   async sendBugFixProposed(params: {
     to: string;
     bugId: string;

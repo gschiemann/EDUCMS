@@ -42,6 +42,14 @@ export interface AuditActorFields {
   userId: string | null;
   /** The tenant API key, or null when the actor is a human. */
   apiKeyId: string | null;
+  /**
+   * 2026-10-11 — the SupportAccessGrant a VenueOS SUPER_ADMIN is acting under
+   * inside a customer organisation, or absent/null for everyone else. Set by
+   * SupportAccessInterceptor; stamped onto `AuditLog.supportGrantId` by the
+   * same hook that stamps `apiKeyId`, so the customer's audit log attributes
+   * every row to the access they approved.
+   */
+  supportGrantId?: string | null;
 }
 
 /**
@@ -111,12 +119,13 @@ export function applyAuditActorToPrismaArgs(params: {
   if (params?.model !== 'AuditLog') return;
   if (params.action !== 'create' && params.action !== 'createMany') return;
   const actor = currentAuditActor();
-  if (!actor?.apiKeyId) return;
+  if (!actor?.apiKeyId && !actor?.supportGrantId) return;
 
   const stamp = (row: unknown) => {
     if (!row || typeof row !== 'object' || Array.isArray(row)) return;
     const r = row as Record<string, unknown>;
-    if (r.apiKeyId === undefined) r.apiKeyId = actor.apiKeyId;
+    if (actor.apiKeyId && r.apiKeyId === undefined) r.apiKeyId = actor.apiKeyId;
+    if (actor.supportGrantId && r.supportGrantId === undefined) r.supportGrantId = actor.supportGrantId;
   };
 
   const data = params.args?.data;
