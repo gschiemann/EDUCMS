@@ -3,14 +3,46 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { nativeCall, nativeFire, nativeHas } from "./nativeBridge";
 import {
+  blockNativeVideo,
+  NATIVE_VIDEO_MAX_ATTEMPTS,
+  NATIVE_VIDEO_RETRY_MS,
+  NATIVE_VIDEO_TRANSIENT_REASONS,
   nativeSharedVideoEvidence,
   SharedVideoController,
   sharedVideoIdentity,
-  type NativeSharedVideoDescriptor,
+  type AnyNativeVideoDescriptor,
 } from "./nativeSharedVideo";
 import { DEFAULT_PLAYLIST_MEDIA_FIT, mediaFitClass, mediaFitStyle, type MediaFit } from "./mediaFit";
 
-/** Keeps the existing player alive until both faces prepare; never leaves a hidden DOM decoder. */
+/**
+ * What a native end means for the NEXT attempt (protocol 2 only; protocol 1
+ * keeps its one-attempt-per-identity rule unchanged):
+ *  • a transient end (paused, emergency, content changed, page lease…) or no
+ *    reason at all → try native again in 30 s, at most 20 times per identity;
+ *  • a native fault of this file on this box (codec failed/stalled, no
+ *    hardware decoder, digest mismatch…) → web for this file for 24 h.
+ * Pure, exported for the test.
+ */
+export function nativeVideoNext(
+  protocol: 1 | 2,
+  reason: string | undefined,
+  attempt: number,
+): "retry" | "block" | "stay" {
+  if (protocol !== 2) return "stay";
+  if (!reason || NATIVE_VIDEO_TRANSIENT_REASONS.has(reason))
+    return attempt + 1 < NATIVE_VIDEO_MAX_ATTEMPTS ? "retry" : "stay";
+  return "block";
+}
+
+function localStore(): Storage | null {
+  try {
+    return typeof window !== "undefined" ? window.localStorage : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Keeps the existing player alive until native is ready; never leaves a hidden DOM decoder. */
 export function NativeDualVideo({
   descriptor,
   children,
@@ -18,14 +50,18 @@ export function NativeDualVideo({
   onPlaying,
   fit = DEFAULT_PLAYLIST_MEDIA_FIT,
 }: {
-  descriptor: NativeSharedVideoDescriptor | null;
+  descriptor: AnyNativeVideoDescriptor | null;
   children: ReactNode;
   classes: string;
   onPlaying(): void;
   /** The hold frame is drawn at the video's own size, so it takes the slide's fit (mediaFit.ts). */
   fit?: MediaFit;
 }) {
-  const identity = descriptor ? sharedVideoIdentity(descriptor) : "";
+  const baseIdentity = descriptor ? sharedVideoIdentity(descriptor) : "";
+  // A protocol-2 retry is a NEW attempt identity, so the effect below re-runs.
+  const [attempt, setAttempt] = useState<{ base: string; n: number }>({ base: "", n: 0 });
+  const attemptN = attempt.base === baseIdentity ? attempt.n : 0;
+  const identity = baseIdentity ? `${baseIdentity}#${attemptN}` : "";
   const container = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const playing = useRef(onPlaying);
@@ -42,6 +78,7 @@ export function NativeDualVideo({
     const owner = {};
     let alive = true;
     let playingReported = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
     const c = new SharedVideoController(
       descriptor,
       {
@@ -96,10 +133,18 @@ export function NativeDualVideo({
                 : p,
             );
         },
-        fallback: () => {
+        fallback: (reason) => {
           if (!alive) return;
           nativeSharedVideoEvidence.clear(owner);
+          // The browser subtree remounts and plays the same verified file.
           setPhase({ identity, stage: "browser" });
+          const next = nativeVideoNext(descriptor.version === 2 ? 2 : 1, reason, attemptN);
+          if (next === "block")
+            blockNativeVideo(localStore(), descriptor.asset.sha256, descriptor.faceIndex, Date.now());
+          else if (next === "retry")
+            retryTimer = setTimeout(() => {
+              if (alive) setAttempt({ base: baseIdentity, n: attemptN + 1 });
+            }, NATIVE_VIDEO_RETRY_MS);
         },
       },
     );
@@ -108,6 +153,7 @@ export function NativeDualVideo({
     // A failed attempt is not retried on re-renders/manifest polls with the same identity.
     return () => {
       alive = false;
+      if (retryTimer !== null) clearTimeout(retryTimer);
       c.stop();
       nativeSharedVideoEvidence.clear(owner);
       if (controller.current === c) controller.current = null;
@@ -117,8 +163,8 @@ export function NativeDualVideo({
   }, [identity]);
 
   useEffect(() => {
-    // This effect runs after the browser subtree has unmounted. Native starts the direct output decoders only
-    // when BOTH pages have surrendered and committed; its first output remains behind our hold.
+    // This effect runs after the browser subtree has unmounted. Native starts its decoder only
+    // after this page has surrendered its own; its first output remains behind our hold.
     if (stage === "handoff") controller.current?.commit();
   }, [stage, identity]);
 

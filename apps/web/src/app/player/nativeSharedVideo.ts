@@ -149,6 +149,212 @@ export function readNativeSharedVideoDescriptor(
   };
 }
 
+/**
+ * PROTOCOL 2 — the per-face native video engine (2026-10-12; API
+ * `native-video.ts`, APK `FaceVideoPolicy.kt`). One descriptor per SCREEN
+ * (= per face): no peer, no pairing, so a double-sided unit can run any
+ * combination — the same file, a different file per face, or video on one
+ * face and a template on the other — and a single-sided screen can use it
+ * too. It rides the same four bridge methods; the APK proves it has it with
+ * `protocol: 2` on `sharedVideoState`, and until it does this is inert.
+ */
+export interface NativeVideoDescriptor {
+  version: 2;
+  screenId: string;
+  tenantId: string;
+  faceIndex: number;
+  revision: string;
+  asset: NativeSharedVideoDescriptor["asset"];
+  transform: {
+    orientation: "PORTRAIT" | "LANDSCAPE" | "AUTO";
+    fit: "cover" | "contain" | "fill";
+  };
+}
+
+export type AnyNativeVideoDescriptor =
+  | NativeSharedVideoDescriptor
+  | NativeVideoDescriptor;
+
+const STORAGE_HOST = "bhdaxzfalaycfopvcopm.supabase.co";
+
+function safeMediaUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return !(
+      u.protocol !== "https:" ||
+      u.hostname !== STORAGE_HOST ||
+      u.username ||
+      u.password ||
+      u.hash ||
+      (u.port && u.port !== "443") ||
+      !/^\/storage\/v1\/object\/(public|sign)\/assets\//.test(u.pathname) ||
+      /[%\\]/.test(u.pathname)
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function readNativeVideoDescriptor(
+  value: unknown,
+): NativeVideoDescriptor | null {
+  if (
+    !record(value) ||
+    value.version !== 2 ||
+    !uuid(value.screenId) ||
+    !uuid(value.tenantId) ||
+    !count(value.faceIndex) ||
+    value.faceIndex > 1 ||
+    !text(value.revision)
+  )
+    return null;
+  const a = value.asset,
+    t = value.transform;
+  if (
+    !record(a) ||
+    !uuid(a.id) ||
+    !text(a.url, 4096) ||
+    !/^[a-f0-9]{64}$/i.test(String(a.sha256)) ||
+    !count(a.size) ||
+    a.size === 0 ||
+    a.size > 512 * 1024 * 1024 ||
+    !count(a.width) ||
+    a.width < 16 ||
+    a.width > 4096 ||
+    !count(a.height) ||
+    a.height < 16 ||
+    a.height > 4096 ||
+    !positive(a.fps) ||
+    a.fps > 30 ||
+    !record(t) ||
+    !["PORTRAIT", "LANDSCAPE", "AUTO"].includes(String(t.orientation)) ||
+    !["cover", "contain", "fill"].includes(String(t.fit)) ||
+    !safeMediaUrl(a.url)
+  )
+    return null;
+  return {
+    version: 2,
+    screenId: value.screenId,
+    tenantId: value.tenantId,
+    faceIndex: value.faceIndex,
+    revision: value.revision,
+    asset: {
+      id: a.id,
+      url: a.url,
+      sha256: String(a.sha256).toLowerCase(),
+      size: a.size,
+      width: a.width,
+      height: a.height,
+      fps: a.fps,
+    },
+    transform: {
+      orientation: t.orientation as NativeVideoDescriptor["transform"]["orientation"],
+      fit: t.fit as NativeVideoDescriptor["transform"]["fit"],
+    },
+  };
+}
+
+/**
+ * Which protocol the APK speaks, from one `sharedVideoState` reply: 2 when it
+ * says so, 1 for any other well-formed state (the 1.1.25–1.1.28 field
+ * builds), null when there is no usable answer (no bridge, refused, garbage).
+ */
+export function readNativeVideoProtocol(raw: unknown): 1 | 2 | null {
+  let v: unknown = raw;
+  try {
+    if (typeof raw === "string") {
+      if (raw.length > 4096) return null;
+      v = JSON.parse(raw);
+    }
+  } catch {
+    return null;
+  }
+  if (!record(v) || v.version !== 1) return null;
+  if (v.protocol === 2) return 2;
+  return readNativeSharedVideoState(v) ? 1 : null;
+}
+
+/**
+ * The one native path a document may use, or null (web). Protocol 2 needs an
+ * APK that proved it; otherwise the protocol-1 pair descriptor (the explicitly
+ * enrolled field pair, `PLAYER_NATIVE_DUAL_VIDEO`) keeps working exactly as it
+ * did. Unknown protocol = wait (web plays meanwhile).
+ */
+export function pickNativeVideo(input: {
+  v2: NativeVideoDescriptor | null;
+  v1: NativeSharedVideoDescriptor | null;
+  protocol: 1 | 2 | null;
+  v2Blocked: boolean;
+}): AnyNativeVideoDescriptor | null {
+  if (input.protocol === null) return null;
+  if (input.v2 && input.protocol === 2 && !input.v2Blocked) return input.v2;
+  return input.v1;
+}
+
+/**
+ * End reasons that say nothing about THIS file on THIS box — the page tries
+ * native again later. Must match `FaceVideoPolicy.transient` in the APK.
+ */
+export const NATIVE_VIDEO_TRANSIENT_REASONS: ReadonlySet<string> = new Set([
+  "emergency-held",
+  "activity-paused",
+  "host-detached",
+  "document-retired",
+  "content-changed",
+  "peer-stopped",
+  "page-stopped",
+  "engine-switched",
+  "page-lease-expired",
+]);
+export const NATIVE_VIDEO_RETRY_MS = 30_000;
+export const NATIVE_VIDEO_MAX_ATTEMPTS = 20;
+/** A file that faults native on this box stays on the web engine for a day. */
+export const NATIVE_VIDEO_BLOCK_MS = 24 * 60 * 60 * 1000;
+const BLOCK_KEY = "edu.nativeVideo.block.v1";
+
+type BlockStore = Pick<Storage, "getItem" | "setItem">;
+export function nativeVideoBlocked(
+  store: BlockStore | null,
+  sha256: string,
+  faceIndex: number,
+  now: number,
+): boolean {
+  if (!store) return false;
+  try {
+    const all = JSON.parse(store.getItem(BLOCK_KEY) || "{}");
+    const until = record(all) ? all[`${sha256.toLowerCase()}:${faceIndex}`] : 0;
+    return typeof until === "number" && until > now;
+  } catch {
+    return false;
+  }
+}
+export function blockNativeVideo(
+  store: BlockStore | null,
+  sha256: string,
+  faceIndex: number,
+  now: number,
+): void {
+  if (!store) return;
+  try {
+    let all: Record<string, unknown> = {};
+    try {
+      const parsed = JSON.parse(store.getItem(BLOCK_KEY) || "{}");
+      if (record(parsed)) all = parsed;
+    } catch {
+      /* corrupt store: start over */
+    }
+    const kept: Record<string, number> = {};
+    for (const [k, v] of Object.entries(all))
+      if (typeof v === "number" && v > now) kept[k] = v;
+    kept[`${sha256.toLowerCase()}:${faceIndex}`] = now + NATIVE_VIDEO_BLOCK_MS;
+    // Bounded: the newest 32 entries.
+    const entries = Object.entries(kept).sort((x, y) => y[1] - x[1]).slice(0, 32);
+    store.setItem(BLOCK_KEY, JSON.stringify(Object.fromEntries(entries)));
+  } catch {
+    /* storage unavailable: no block, native is simply tried again */
+  }
+}
+
 /** Copy only bounded native facts; a bridge response cannot inject arbitrary fields into telemetry. */
 export function readNativeSharedVideoState(
   raw: unknown,
@@ -238,7 +444,7 @@ export function readNativeSharedVideoState(
 }
 
 export function sharedVideoEligible(
-  d: NativeSharedVideoDescriptor | null,
+  d: AnyNativeVideoDescriptor | null,
   context: {
     screenId: string | null;
     tenantId: string | null;
@@ -251,7 +457,7 @@ export function sharedVideoEligible(
     sync: boolean;
     preview: boolean;
   },
-): d is NativeSharedVideoDescriptor {
+): d is AnyNativeVideoDescriptor {
   return (
     !!d &&
     d.screenId === context.screenId &&
@@ -267,8 +473,9 @@ export function sharedVideoEligible(
   );
 }
 
-export function sharedVideoIdentity(d: NativeSharedVideoDescriptor): string {
+export function sharedVideoIdentity(d: AnyNativeVideoDescriptor): string {
   return JSON.stringify([
+    d.version,
     d.screenId,
     d.tenantId,
     d.revision,
@@ -302,13 +509,15 @@ export class SharedVideoController {
   private commitAt = 0;
   private lastFrames = 0;
   private lastAdvance = 0;
+  private lastReason: string | undefined;
   constructor(
-    private descriptor: NativeSharedVideoDescriptor,
+    private descriptor: AnyNativeVideoDescriptor,
     private bridge: SharedVideoBridge,
     private callbacks: {
       ready(): void;
       update(state: NativeSharedVideoState, fresh: boolean): void;
-      fallback(): void;
+      /** `reason` is the native end code when there is one (never free text). */
+      fallback(reason?: string): void;
     },
     private now: () => number = () => performance.now(),
   ) {
@@ -324,12 +533,22 @@ export class SharedVideoController {
     if (
       !this.bridge.fire(
         "sharedVideoPrepare",
-        JSON.stringify({
-          version: 1,
-          screenId: d.screenId,
-          revision: d.revision,
-          sha256: d.asset.sha256,
-        }),
+        JSON.stringify(
+          d.version === 2
+            ? {
+                version: 2,
+                screenId: d.screenId,
+                revision: d.revision,
+                sha256: d.asset.sha256,
+                assetId: d.asset.id,
+              }
+            : {
+                version: 1,
+                screenId: d.screenId,
+                revision: d.revision,
+                sha256: d.asset.sha256,
+              },
+        ),
       )
     ) {
       this.fail();
@@ -350,10 +569,10 @@ export class SharedVideoController {
     if (this.timer !== null) clearTimeout(this.timer);
     if (this.session) this.bridge.fire("sharedVideoStop", this.session);
   }
-  private fail(): void {
+  private fail(reason?: string): void {
     if (this.cancelled) return;
     this.stop();
-    this.callbacks.fallback();
+    this.callbacks.fallback(reason ?? this.lastReason);
   }
   private async poll(): Promise<void> {
     let timeout: ReturnType<typeof setTimeout> | undefined;
@@ -394,9 +613,10 @@ export class SharedVideoController {
       return;
     }
     if (s.sessionId) this.session = s.sessionId;
+    this.lastReason = s.reason;
     if (s.state === "failed") {
       this.callbacks.update(s, false);
-      this.fail();
+      this.fail(s.reason ?? "failed");
       return;
     }
     const now = this.now();
@@ -430,8 +650,15 @@ export class SharedVideoController {
       this.lastFrames > 0 &&
       now - this.lastAdvance <= 2500;
     this.callbacks.update(s, fresh);
+    // Protocol 2 downloads + verifies the file natively first; while it says
+    // `caching` the web keeps playing, for up to three hours (a large 4K
+    // file on a slow venue link), never forever.
+    const prepareBudget =
+      this.descriptor.version === 2 && s.reason === "caching"
+        ? 3 * 60 * 60 * 1000
+        : 330000;
     if (
-      (!this.committed && now - this.startedAt > 330000) ||
+      (!this.committed && now - this.startedAt > prepareBudget) ||
       (this.committed &&
         !fresh &&
         now - (this.lastAdvance || this.commitAt) > 5000)

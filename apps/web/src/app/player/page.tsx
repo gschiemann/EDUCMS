@@ -1,6 +1,6 @@
 'use client';
 import { NativeDualVideo } from './NativeDualVideo';
-import { readNativeSharedVideoDescriptor, sharedVideoEligible, nativeSharedVideoEvidence, type NativeSharedVideoDescriptor } from './nativeSharedVideo';
+import { readNativeSharedVideoDescriptor, readNativeVideoDescriptor, readNativeVideoProtocol, pickNativeVideo, nativeVideoBlocked, sharedVideoEligible, nativeSharedVideoEvidence, type NativeSharedVideoDescriptor, type NativeVideoDescriptor } from './nativeSharedVideo';
 
 import { useState, useEffect, useCallback, useRef, useMemo, Component, Suspense, ReactNode } from 'react';
 import { PlaylistVideoDeck } from './PlaylistVideoDeck';
@@ -2868,6 +2868,27 @@ function PlayerPage() {
   // PORTRAIT-preview-mode users (?orientation=portrait in URL) bypass
   // this and use the existing previewOrientation path.
   const [nativeSharedDescriptor, setNativeSharedDescriptor] = useState<NativeSharedVideoDescriptor | null>(null);
+  // 2026-10-12 — per-face native video engine (protocol 2, nativeSharedVideo.ts).
+  // The descriptor is per SCREEN; the protocol is what this APK proved it speaks.
+  const [nativeVideoDescriptor, setNativeVideoDescriptor] = useState<NativeVideoDescriptor | null>(null);
+  const [nativeVideoProtocol, setNativeVideoProtocol] = useState<1 | 2 | null>(null);
+  useEffect(() => {
+    // One question at boot (plus one retry): does this APK run independent
+    // per-face native sessions? No bridge / no answer = web, as today.
+    if (!nativeHas('sharedVideoState')) return;
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const ask = (retry: boolean) => {
+      nativeCall('sharedVideoState').then(raw => {
+        if (!alive) return;
+        const p = readNativeVideoProtocol(raw);
+        if (p !== null) setNativeVideoProtocol(p);
+        else if (retry) timer = setTimeout(() => ask(false), 5000);
+      }, () => { if (alive && retry) timer = setTimeout(() => ask(false), 5000); });
+    };
+    ask(true);
+    return () => { alive = false; if (timer !== null) clearTimeout(timer); };
+  }, []);
   const [manifestOrientation, setManifestOrientation] = useState<'LANDSCAPE' | 'PORTRAIT' | 'AUTO' | null>(null);
 
   // 2026-05-26 — content tile-repeat for LED ribbons. Operator picks
@@ -3751,6 +3772,7 @@ function PlayerPage() {
             manifestEtagRef.current = null;
             try { clearOfflineManifests(localStorage); } catch {}
             setNativeSharedDescriptor(null);
+            setNativeVideoDescriptor(null);
             setPlaylist(null);
             setManifestPlaylists([]);
             setTenantId(null);
@@ -6327,6 +6349,7 @@ function PlayerPage() {
       void preloadPlayerRenderer();
 
       setNativeSharedDescriptor(em || cachedNormalWouldClearLiveAlert ? null : readNativeSharedVideoDescriptor(manifest.nativeSharedVideo));
+      setNativeVideoDescriptor(em || cachedNormalWouldClearLiveAlert ? null : readNativeVideoDescriptor(manifest.nativeVideo));
       if (manifest.tenantId) setTenantId(manifest.tenantId);
       if (manifest.tenantName !== undefined) setTenantName(manifest.tenantName);
 
@@ -12311,14 +12334,22 @@ function PlayerPage() {
                 blocked: (() => { try { return loopIsBlocked(window.localStorage, Date.now()); } catch { return false; } })(),
                 isPreview: isPreviewMode(),
               });
-              const nativeEligible = sharedVideoEligible(nativeSharedDescriptor, {
+              const nativeChoice = pickNativeVideo({
+                v2: nativeVideoDescriptor,
+                v1: nativeSharedDescriptor,
+                protocol: nativeVideoProtocol,
+                v2Blocked: !!nativeVideoDescriptor && (() => {
+                  try { return nativeVideoBlocked(window.localStorage, nativeVideoDescriptor.asset.sha256, nativeVideoDescriptor.faceIndex, Date.now()); } catch { return false; }
+                })(),
+              });
+              const nativeEligible = sharedVideoEligible(nativeChoice, {
                 screenId,tenantId,assetId:item.asset.id,sha256:item.asset.fileHash ?? '',
                 solo:isSoloPlaylist && sorted.length === 1,muted:(item as {muted?:boolean|null}).muted !== false,
                 active:isActive,emergency:!!activeEmergency || playlist?.isEmergency === true,
                 sync:syncConfigRef.current.enabled,preview:isPreviewMode(),
               });
               const wrapNative = (browser: React.ReactNode) => nativeEligible
-                ? <NativeDualVideo key={slideKey(item)} descriptor={nativeSharedDescriptor} classes={classes} fit={slideFit}
+                ? <NativeDualVideo key={slideKey(item)} descriptor={nativeChoice} classes={classes} fit={slideFit}
                     onPlaying={markItemSucceeded}>{browser}</NativeDualVideo>
                 : browser;
               if (loopChoice.backend === 'continuous') {
