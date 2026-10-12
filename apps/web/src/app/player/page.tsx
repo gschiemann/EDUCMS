@@ -770,9 +770,16 @@ export function dispatchTouchAction(
       const body = (action.body as string) || 'A kiosk visitor tapped “request help.”';
       const title = (action.target as string) || 'Visitor needs assistance';
       try {
+        // The endpoint requires this screen's device credential (security
+        // audit V-6, 2026-10-11) — without it anyone who knew a screen id
+        // could post a notice into the tenant.
+        const helpToken = getDeviceToken();
         fetch(`${getApiRoot()}/api/v1/notifications/help`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...(helpToken ? { Authorization: `Bearer ${helpToken}` } : {}),
+          },
           body: JSON.stringify({
             screenId: ctx.screenId,
             tenantId: ctx.tenantId,
