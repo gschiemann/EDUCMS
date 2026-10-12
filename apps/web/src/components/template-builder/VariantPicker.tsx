@@ -267,8 +267,28 @@ export function VariantPicker({ replaceZoneId }: VariantPickerProps = {}) {
     [tenantCopy.vertical],
   );
 
-  const styleOptions = useMemo(() => deriveStyleOptions(visible), [visible]);
-  const placeOptions = useMemo(() => derivePlaceOptions(visible), [visible]);
+  // Faceted filters (owner 2026-10-12): each axis only offers values that
+  // still have widgets given the OTHER axes, so no option can lead to
+  // "Nothing matches". The current value always stays listed.
+  const inCategory = (v: WidgetVariant) => category === 'ALL' || categoryForType(String(v.widgetType)) === category;
+  const inStyle = (v: WidgetVariant) => style === 'ALL' || matchesStyle(v, style);
+  const inPlace = (v: WidgetVariant) => place === 'ALL' || matchesPlace(v, place);
+  const styleOptions = useMemo(() => {
+    const opts = deriveStyleOptions(visible.filter(v => inCategory(v) && inPlace(v)));
+    return style !== 'ALL' && !opts.some(o => o.id === style) ? [...opts, ...deriveStyleOptions(visible).filter(o => o.id === style)] : opts;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, category, place, style]);
+  const placeOptions = useMemo(() => {
+    const opts = derivePlaceOptions(visible.filter(v => inCategory(v) && inStyle(v)));
+    return place !== 'ALL' && !opts.some(o => o.id === place) ? [...opts, ...derivePlaceOptions(visible).filter(o => o.id === place)] : opts;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, category, style, place]);
+  const categoryIdsWithItems = useMemo(() => {
+    const ids = new Set<string>();
+    for (const v of visible) if (inStyle(v) && inPlace(v)) ids.add(categoryForType(String(v.widgetType)));
+    return ids;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, style, place]);
 
   const activeFilters =
     (category !== 'ALL' ? 1 : 0) +
@@ -416,7 +436,7 @@ export function VariantPicker({ replaceZoneId }: VariantPickerProps = {}) {
               label="Category"
               value={category}
               onChange={(v) => { setCategory(v); setTypeFilter(null); }}
-              options={rows.map(r => ({ id: r.cat.id, label: r.cat.label }))}
+              options={rows.filter(r => r.cat.id === category || categoryIdsWithItems.has(r.cat.id)).map(r => ({ id: r.cat.id, label: r.cat.label }))}
               allLabel="Everything"
             />
             {styleOptions.length > 1 && (
