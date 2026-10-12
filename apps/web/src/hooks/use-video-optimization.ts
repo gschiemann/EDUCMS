@@ -43,8 +43,12 @@ export function optimizationOf(
   live?: Map<string, VideoOptimization>,
 ): VideoOptimization | null {
   const fromLive = asset?.id ? live?.get(asset.id) : undefined;
-  if (fromLive) return fromLive;
   const j = asset?.transcodeJob;
+  // A FINISHED job on the asset itself always wins over a poll answer: the poll
+  // stops once the list says done, so its last ("running") answer used to pin
+  // the card on "Checking screen compatibility…" until a page reload (2026-10-12).
+  const listTerminal = !!j && typeof j === 'object' && (j.status === 'done' || j.status === 'skipped' || j.status === 'failed');
+  if (fromLive && !(listTerminal && isOptimizing(fromLive))) return fromLive;
   if (!j || typeof j !== 'object' || typeof j.status !== 'string') return null;
   return {
     status: j.status as OptimizationStatus,
