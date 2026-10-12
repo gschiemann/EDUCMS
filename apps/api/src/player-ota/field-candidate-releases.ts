@@ -50,4 +50,13 @@ export const FIELD_CANDIDATE_RELEASES: Readonly<
     size: 2387603,
     sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/38263856359',
   },
+  // Signed CI run 38315564358 (native: solo video above the page — Rockchip white-glass fix).
+  // Mirror read back + verified; certificate e45adf50…3d1897 = installed fleet.
+  '1.1.33-field.1': {
+    versionName: '1.1.33-field.1',
+    versionCode: 10133,
+    sha256: 'bb1b2202212ede7632c9421457e404471193bcd35025ad40cac829797d0a5c14',
+    size: 2387599,
+    sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/38315564358',
+  },
 };
