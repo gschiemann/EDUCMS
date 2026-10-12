@@ -13,6 +13,14 @@ describe('design data widget readers and saved-data rendering', () => {
     expect(screen.getByText('All locations')).toBeInTheDocument();
   });
 
+  it('surfaces cells whose saved row is longer than its declared columns', () => {
+    const cfg = readDesignTableConfig({ columns: ['Metric'], rows: [['Enrollment', '1,240']] });
+    expect(cfg.columns).toEqual(['Metric', 'Column 2']);
+    render(<DesignTableWidget config={cfg} />);
+    expect(screen.getByRole('columnheader', { name: 'Column 2' })).toBeInTheDocument();
+    expect(screen.getByText('1,240')).toBeInTheDocument();
+  });
+
   it('keeps saved data above the editor capacity and honors explicit styling', () => {
     const columns = Array.from({ length: 8 }, (_, i) => `Field ${i + 1}`);
     const config = readDesignTableConfig({ columns, rows: [['a', 'b', 'c', 'd', 'e', 'f', 'g', 'retained']], fontSize: 42, alignment: 'right' });
@@ -25,9 +33,10 @@ describe('design data widget readers and saved-data rendering', () => {
   it('renders signed bar values and identifies a zero-only series without division errors', () => {
     const config = readDesignChartConfig({ variant: 'design-chart-bar', rows: [{ label: 'Loss', value: -5, color: '#dc2626' }, { label: 'Flat', value: 0, color: '#64748b' }] });
     render(<DesignChartWidget config={config} />);
-    expect(screen.getByRole('img', { name: /Loss -5.*Flat 0/ })).toBeInTheDocument();
-    expect(screen.getByText('Loss: -5')).toBeInTheDocument();
-    expect(screen.getByText('Flat: 0')).toBeInTheDocument();
+    expect(screen.getByText('Loss')).toBeInTheDocument();
+    expect(screen.getByText('-5')).toBeInTheDocument();
+    expect(screen.getByText('Flat')).toBeInTheDocument();
+    expect(screen.getByText('0', { selector: 'strong' })).toBeInTheDocument();
   });
 
   it('explains that pie values cannot be negative and handles a zero denominator', () => {

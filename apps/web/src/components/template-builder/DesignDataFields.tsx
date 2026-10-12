@@ -3,7 +3,7 @@
 import React from 'react';
 import { DATA_CHART_MAX_ROWS, DATA_TABLE_MAX_COLUMNS, DATA_TABLE_MAX_ROWS, DEFAULT_DESIGN_CHART, DEFAULT_DESIGN_TABLE, readDesignChartConfig, readDesignTableConfig } from '@/components/widgets/DesignDataWidgets';
 
-type Props = { config: Record<string, any>; onChange: (patch: Record<string, unknown>) => void };
+type Props = { config: Record<string, unknown>; onChange: (patch: Record<string, unknown>) => void };
 const fieldStyle: React.CSSProperties = { display: 'grid', gap: 5, marginBottom: 12, fontSize: 12, color: '#dbe4f0' };
 const inputStyle: React.CSSProperties = { boxSizing: 'border-box', width: '100%', minHeight: 34, padding: '7px 9px', border: '1px solid #475569', borderRadius: 6, background: '#111827', color: '#f8fafc', font: 'inherit' };
 const buttonStyle: React.CSSProperties = { minHeight: 32, padding: '5px 9px', border: '1px solid #64748b', borderRadius: 6, background: '#1e293b', color: '#f8fafc', cursor: 'pointer', fontSize: 12 };
@@ -41,7 +41,7 @@ export function DesignDataFields({ config, onChange }: Props) {
       {c.rows.map((row, ri) => <fieldset key={ri} style={{ border: '1px solid #334155', borderRadius: 7, padding: 9, margin: '0 0 10px' }}>
         <legend>Row {ri + 1}</legend>
         {c.columns.map((_, ci) => <TextInput key={ci} label={`${c.columns[ci] || `Column ${ci + 1}`} · row ${ri + 1}`} value={row[ci] ?? ''} onChange={v => setCell(ri, ci, v)} />)}
-        <button type="button" style={buttonStyle} onClick={() => removeRow(ri)}>Remove row</button>
+        <button type="button" style={buttonStyle} aria-label={`Remove row ${ri + 1}`} onClick={() => removeRow(ri)}>Remove row</button>
       </fieldset>)}
       <button type="button" style={buttonStyle} disabled={c.rows.length >= DATA_TABLE_MAX_ROWS} onClick={addRow}>Add row</button>
       <div style={{ fontWeight: 700, margin: '18px 0 8px' }}>Appearance</div>
@@ -73,7 +73,7 @@ export function DesignDataFields({ config, onChange }: Props) {
         <TextInput label={`Label · row ${i + 1}`} value={row.label} onChange={label => setRow(i, { label })} />
         <TextInput label={`Value · row ${i + 1}`} type="number" value={row.value} onChange={v => setRow(i, { value: Number(v) })} />
         <ColorInput label={`Color · row ${i + 1}`} value={row.color} onChange={color => setRow(i, { color })} />
-        <button type="button" style={buttonStyle} onClick={() => removeRow(i)}>Remove row</button>
+        <button type="button" style={buttonStyle} aria-label={`Remove data row ${i + 1}`} onClick={() => removeRow(i)}>Remove row</button>
       </fieldset>)}
       <button type="button" style={buttonStyle} disabled={c.rows.length >= DATA_CHART_MAX_ROWS} onClick={addRow}>Add data row</button>
       <div style={{ fontWeight: 700, margin: '18px 0 8px' }}>Appearance</div>

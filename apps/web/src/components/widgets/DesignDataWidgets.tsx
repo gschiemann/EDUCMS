@@ -69,6 +69,10 @@ const asSize = (v: unknown, fallback: number) => typeof v === 'number' && Number
 export function readDesignTableConfig(config: Record<string, unknown> = {}): DesignTableConfig {
   const columns = Array.isArray(config.columns) ? config.columns.map((x) => asText(x)) : DEFAULT_COLUMNS.slice();
   const rows = Array.isArray(config.rows) ? config.rows.map((row) => Array.isArray(row) ? row.map((x) => asText(x)) : []) : DEFAULT_ROWS.map((r) => r.slice());
+  // Malformed/older configs can contain cells beyond the declared headers.
+  // Surface each one under an editable generated heading instead of hiding it.
+  const widestRow = rows.reduce((widest, row) => Math.max(widest, row.length), 0);
+  while (columns.length < widestRow) columns.push(`Column ${columns.length + 1}`);
   return {
     variant: 'design-table', heading: asText(config.heading, DEFAULT_DESIGN_TABLE.heading), caption: asText(config.caption),
     columns, rows, textColor: asColor(config.textColor, DEFAULT_DESIGN_TABLE.textColor),
@@ -154,7 +158,7 @@ export function DesignChartWidget({ config = {} }: ThemeWidgetProps) {
     {c.caption && <p style={{ margin: '0 0 0.5em', fontSize: `${c.fontSize * 0.72}px`, overflowWrap: 'anywhere' }}>{c.caption}</p>}
     {c.rows.length === 0 ? <p role="status">Add a data row to begin this chart.</p> : pie?.invalid ? <p role="status">{pie.invalid}</p> : c.variant === 'design-chart-pie' && pie ? <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: '1em', minHeight: '65%' }}>
       <svg role="img" aria-label={`Pie chart: ${c.rows.map((r) => `${r.label || 'Unlabeled'} ${r.value}`).join(', ')}`} viewBox="0 0 100 100" style={{ width: 'min(58%, 42vh)', maxHeight: '100%', aspectRatio: '1', flex: '0 1 260px' }}>
-        {pie.segments.map((segment, i) => segment.path ? <path key={i} d={segment.path} fill={segment.color} stroke={c.backgroundColor} strokeWidth="1" /> : <circle key={i} cx="50" cy="50" r="45" fill={segment.color} />)}
+        {(pie.segments ?? []).map((segment, i) => segment.path ? <path key={i} d={segment.path} fill={segment.color} stroke={c.backgroundColor} strokeWidth="1" /> : <circle key={i} cx="50" cy="50" r="45" fill={segment.color} />)}
       </svg>
       {c.showLegend && <ul style={{ listStyle: 'none', padding: 0, margin: 0, fontSize: labelSize }}>{c.rows.map((row, i) => <li key={i} style={{ display: 'flex', gap: '0.45em', alignItems: 'baseline', marginBottom: '0.3em', overflowWrap: 'anywhere' }}><span aria-hidden="true" style={{ display: 'inline-block', width: '0.75em', height: '0.75em', background: row.color, flex: '0 0 auto' }} />{row.label}: {row.value} ({pie.total ? Math.round(row.value / pie.total * 100) : 0}%)</li>)}</ul>}
     </div> : c.variant === 'design-chart-line' ? <div style={{ minHeight: '68%', display: 'flex', flexDirection: 'column' }}>
