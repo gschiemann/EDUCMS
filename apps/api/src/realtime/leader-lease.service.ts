@@ -119,6 +119,10 @@ export const LEASE = {
   // every candidate costs a Chromium job and two replicas would render the same
   // document twice and race the same row's processingMeta.
   PDF_PAGES_SWEEP: 'storage:pdf-pages-sweep',
+  // 2026-10-12 — hourly capacity sampler + alert. Leased because it WRITES one sample set per hour
+  // and SENDS EMAIL: two replicas would double both. (Process-level metrics — RSS, event-loop lag —
+  // describe the leader's own container; fine at one replica, see capacity-watch.service.ts.)
+  CAPACITY_WATCH: 'capacity:watch',
 } as const;
 
 export type LeaseName = (typeof LEASE)[keyof typeof LEASE];

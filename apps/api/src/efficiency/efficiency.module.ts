@@ -4,6 +4,8 @@ import { EfficiencyInterceptor } from './efficiency.interceptor';
 import { SlowQueryMiddleware } from './slow-query.middleware';
 import { EfficiencyAlertingService } from './efficiency-alerting.service';
 import { EfficiencyController } from './efficiency.controller';
+import { CapacityWatchService } from '../capacity/capacity-watch.service';
+import { CapacityController } from '../capacity/capacity.controller';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AuthModule } from '../auth/auth.module';
 import { EmailModule } from '../email/email.module';
@@ -32,8 +34,9 @@ import { EmailModule } from '../email/email.module';
     EfficiencyInterceptor,
     SlowQueryMiddleware,
     EfficiencyAlertingService,
+    CapacityWatchService,
   ],
-  controllers: [EfficiencyController],
+  controllers: [EfficiencyController, CapacityController],
   exports: [EfficiencyMetricsService, EfficiencyInterceptor],
 })
 export class EfficiencyModule {}

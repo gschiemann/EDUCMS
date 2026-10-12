@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Loader2, AlertTriangle, CheckCircle2, TrendingUp, Database, Zap, Activity } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import { apiFetch } from '@/lib/api-client';
+import { CapacityCard } from './CapacityCard';
 
 interface RouteRow {
   route: string;
@@ -176,6 +177,8 @@ export default function EfficiencyPage() {
             Refresh
           </button>
         </div>
+
+        <CapacityCard />
 
         {/* Alert banner */}
         {data?.banner?.active && data.banner.message && (

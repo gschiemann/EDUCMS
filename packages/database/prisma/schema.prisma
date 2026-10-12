@@ -4644,3 +4644,32 @@ model ImportJob {
   @@index([status, expiresAt])
   @@map("import_jobs")
 }
+
+// 2026-10-12 — capacity early-warning (owner: "upgrade before any degradation").
+// Platform-wide (NOT tenant-owned): one hourly sample per measured metric, written by the
+// leader-leased CapacityWatchService and read only by the SUPER_ADMIN capacity card.
+// Small by design: ~10 metrics x 24 rows/day, purged after 35 days.
+model CapacitySample {
+  id         String   @id @default(uuid())
+  metric     String
+  // Raw measured value in the metric's own unit (bytes / count / ms). DOUBLE: 100 GB fits exactly.
+  value      Float
+  // The limit in force when sampled (null = informational metric with no limit).
+  limitValue Float?   @map("limit_value")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([metric, createdAt])
+  @@index([createdAt])
+  @@map("capacity_samples")
+}
+
+// Per-metric alert memory, so the once-per-day / hysteresis rule survives the ~16 deploys a day.
+model CapacityAlertState {
+  metric      String    @id
+  // 'ok' | 'warn' | 'critical' — the level we last decided on (after hysteresis).
+  level       String    @default("ok")
+  lastAlertAt DateTime? @map("last_alert_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@map("capacity_alert_state")
+}
