@@ -76,8 +76,8 @@ describe('AssetLibraryModal — videos converted after upload', () => {
     await choose(new File(['x'], 'IMG_0042.MOV', { type: 'video/quicktime' }));
     expect(uploadAssetDirect).toHaveBeenCalledTimes(1);
     expect(waitForScreenVersion).toHaveBeenCalledWith('new-1', expect.objectContaining({ signal: expect.any(AbortSignal) }));
-    expect(onPick).toHaveBeenCalledWith(NEW_MP4);
-    expect(onPick).not.toHaveBeenCalledWith(NEW_MOV);
+    expect(onPick.mock.calls.map((c: unknown[]) => c[0])).toEqual([NEW_MP4]);
+    expect(onPick.mock.calls.map((c: unknown[]) => c[0])).not.toContain(NEW_MOV);
   });
 
   it('a conversion that fails is said in plain words, and nothing is picked', async () => {
@@ -97,7 +97,7 @@ describe('AssetLibraryModal — videos converted after upload', () => {
     render(<AssetLibraryModal kind="video" onPick={onPick} onClose={jest.fn()} />);
     await choose(new File(['x'], 'gym.mp4', { type: 'video/mp4' }));
     expect(waitForScreenVersion).not.toHaveBeenCalled();
-    expect(onPick).toHaveBeenCalledWith(MP4_TILE);
+    expect(onPick.mock.calls.map((c: unknown[]) => c[0])).toEqual([MP4_TILE]);
   });
 
   it('a library tile still stored as QuickTime cannot be picked yet; the MP4 tile can', () => {
@@ -111,7 +111,7 @@ describe('AssetLibraryModal — videos converted after upload', () => {
     expect(onPick).not.toHaveBeenCalledWith(MOV_TILE);
     const mp4Tile = tiles.find((b) => b !== movTile && !b.hasAttribute('disabled'));
     fireEvent.click(mp4Tile!);
-    expect(onPick).toHaveBeenCalledWith(MP4_TILE);
+    expect(onPick.mock.calls.map((c: unknown[]) => c[0])).toEqual([MP4_TILE]);
   });
 
   it('the video chooser offers MOV & co. — and no pictures, no SVG', () => {

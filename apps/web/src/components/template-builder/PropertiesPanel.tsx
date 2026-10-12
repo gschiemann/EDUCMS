@@ -26,7 +26,7 @@ import { useBuilderStore } from './useBuilderStore';
 import { MakeItLive } from './MakeItLive';
 import { fitHeightGeometry } from './zone-geometry';
 import { mediaSourcePatch } from './media-source';
-import { readMediaDimensions, type MediaKind } from './media-sizing';
+import { assetMetaDimensions, readMediaDimensions, type MediaDimensions, type MediaKind } from './media-sizing';
 import { widgetLabel } from './constants';
 import { transformedImageUrl } from '@/lib/asset-image';
 import { ALL_V2_WIDGETS } from '@/components/widgets/v2/registry';
@@ -11313,7 +11313,10 @@ export function AssetLibraryModal({
   onPickMulti,
 }: {
   kind: 'image' | 'video';
-  onPick: (url: string) => void;
+  /** `dimensions`: the picked file's own size when it is already known (the
+   *  library's server-measured `processingMeta`, or the local file read
+   *  before an upload) — lets the caller frame it tightly without a fetch. */
+  onPick: (url: string, dimensions?: MediaDimensions | null) => void;
   onClose: () => void;
   /** When true, library tiles become checkboxes instead of single-pick.
    *  Operator selects N, hits "Add N selected", and the parent receives
@@ -11416,6 +11419,12 @@ export function AssetLibraryModal({
       // for large files (a 4K video survives a dropped connection), up to the
       // storage limit (500 MB today — direct-upload.ts videoUploadLimitBytes),
       // with real progress; the API never holds the bytes.
+      // The picture's own size, read from the LOCAL file while it uploads
+      // (no network) — so the new zone hugs it the moment it lands.
+      const localUrl = typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function' ? URL.createObjectURL(file) : null;
+      const localDims = localUrl
+        ? readMediaDimensions(localUrl, kind).finally(() => URL.revokeObjectURL(localUrl))
+        : Promise.resolve(null);
       const completed = await uploadAssetDirect(file, {
         folderId: null,
         onProgress: (p) => setUploadPct(Math.round(p.fraction * 100)),
@@ -11456,7 +11465,7 @@ export function AssetLibraryModal({
       if (multi) {
         setPicked((prev) => new Set(prev).add(finalUrl));
       } else {
-        onPick(finalUrl);
+        onPick(finalUrl, assetMetaDimensions(completed) ?? await localDims);
       }
     } catch (e: any) {
       // Console too — Vercel/Sentry won't capture these errors otherwise.
@@ -11627,7 +11636,7 @@ export function AssetLibraryModal({
                       return next;
                     });
                   } else {
-                    onPick(url);
+                    onPick(url, assetMetaDimensions(a));
                   }
                 };
                 return (
