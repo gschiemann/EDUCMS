@@ -30,7 +30,7 @@ it.each(['live', 'drill'] as const)('every %s card shares one neutral style; onl
   const { container } = render(
     <>
       {TYPES.map(([kind, accent]) => (
-        <PanicContentEditor key={kind} kind={kind as any} mode={mode} accent={accent} label={kind} />
+        <PanicContentEditor key={kind} kind={kind} mode={mode} accent={accent} label={kind} />
       ))}
     </>,
   );

@@ -14,6 +14,7 @@
  * per-screen render-trust grade the "Need attention" card uses. Nothing is
  * fetched and nothing is guessed: a count we cannot back is simply absent.
  */
+import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { ArrowRight, CheckCircle2 } from 'lucide-react';
 import type { LocationRow } from './fleetCommand';
@@ -106,18 +107,27 @@ export function FleetLiveSummary({
   onFilter,
   onSelectLocation,
   className,
-  now = Date.now(),
+  now,
 }: {
   summary: LiveSummary;
   filter: string;
   onFilter: (key: LiveSummaryFilter | 'all') => void;
   onSelectLocation: (tenantId: string) => void;
   className?: string;
+  /** Fixed clock for tests; live it is read when the summary changes. */
   now?: number;
 }) {
   const t = useTranslations('dashboard.liveSummary');
   const ago = useAgo();
-  const since = summary.offline > 0 ? ago(summary.offlineSinceMs, now) : null;
+  // The clock is read when the data changes (the fleet poll), never on a
+  // timer of its own — no new background work on the dashboard.
+  const [clock, setClock] = useState(() => Date.now());
+  useEffect(() => {
+    if (now != null) return;
+    const id = requestAnimationFrame(() => setClock(Date.now()));
+    return () => cancelAnimationFrame(id);
+  }, [summary, now]);
+  const since = summary.offline > 0 ? ago(summary.offlineSinceMs, now ?? clock) : null;
 
   const chips: Array<{ key: LiveSummaryFilter; n: number; label: string; dot: string }> = [
     { key: 'offline', n: summary.offline, label: since ? t('offlineSince', { count: summary.offline, since }) : t('offline', { count: summary.offline }), dot: '#f43f5e' },
