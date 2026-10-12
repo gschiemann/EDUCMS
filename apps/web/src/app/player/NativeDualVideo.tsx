@@ -42,6 +42,9 @@ export function nativeVideoNext(
   return "block";
 }
 
+/** Longest wait for the web clip's loop point before handing over anyway. */
+export const NATIVE_HANDOFF_BOUNDARY_WAIT_MS = 60_000;
+
 function localStore(): Storage | null {
   try {
     return typeof window !== "undefined" ? window.localStorage : null;
@@ -89,6 +92,41 @@ export function NativeDualVideo({
     // How far this attempt got, for the fallback log line only.
     let seen: "preparing" | "ready" | "presenting" = "preparing";
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let waitingForBoundary = false;
+    let boundaryTimer: ReturnType<typeof setTimeout> | null = null;
+    const handOver = () => {
+      if (!alive) return;
+      const videos = container.current?.querySelectorAll("video");
+      const current = videos
+        ? Array.from(videos).find((v) => !v.paused && v.readyState >= 2)
+        : undefined;
+      // Retain the last frame locally. No export/readback, even for cross-origin sources.
+      if (current && canvas.current) {
+        try {
+          canvas.current.width = current.videoWidth;
+          canvas.current.height = current.videoHeight;
+          canvas.current.getContext("2d")?.drawImage(current, 0, 0);
+        } catch {
+          /* The opaque hold remains if this WebView cannot draw the frame. */
+        }
+      }
+      // Release every deck/MSE decoder BEFORE React removes its subtree and BEFORE commit.
+      videos?.forEach((v) => {
+        try {
+          v.pause();
+          v.removeAttribute("src");
+          v.querySelectorAll("source").forEach((s) =>
+            s.removeAttribute("src"),
+          );
+          v.load();
+        } catch {
+          /* unmount cleanup follows */
+        }
+      });
+      nativeSharedVideoEvidence.select(owner);
+      seen = "ready";
+      setPhase({ identity, stage: "handoff" });
+    };
     const c = new SharedVideoController(
       descriptor,
       {
@@ -98,37 +136,36 @@ export function NativeDualVideo({
       },
       {
         ready: () => {
-          if (!alive) return;
-          const videos = container.current?.querySelectorAll("video");
-          const current = videos
-            ? Array.from(videos).find((v) => !v.paused && v.readyState >= 2)
+          if (!alive || waitingForBoundary) return;
+          // Hand over at the web clip's own loop point: native starts from frame
+          // 0, so switching mid-clip showed as a jump back to the start (owner,
+          // VisionCore 2026-10-12). Bounded; the controller keeps polling, so
+          // native's lease stays alive while we wait.
+          const playingNow = container.current
+            ? Array.from(container.current.querySelectorAll("video")).find((v) => !v.paused && v.readyState >= 2)
             : undefined;
-          // Retain the last frame locally. No export/readback, even for cross-origin sources.
-          if (current && canvas.current) {
-            try {
-              canvas.current.width = current.videoWidth;
-              canvas.current.height = current.videoHeight;
-              canvas.current.getContext("2d")?.drawImage(current, 0, 0);
-            } catch {
-              /* The opaque hold remains if this WebView cannot draw the frame. */
-            }
+          if (playingNow && playingNow.currentTime > 0.25 && !playingNow.ended) {
+            waitingForBoundary = true;
+            let last = playingNow.currentTime;
+            const go = () => {
+              playingNow.removeEventListener("educms-loop-boundary", go);
+              playingNow.removeEventListener("timeupdate", onTime);
+              playingNow.removeEventListener("ended", go);
+              if (boundaryTimer !== null) { clearTimeout(boundaryTimer); boundaryTimer = null; }
+              handOver();
+            };
+            const onTime = () => {
+              const t = playingNow.currentTime;
+              if (t < last - 0.25) go();
+              last = t;
+            };
+            playingNow.addEventListener("educms-loop-boundary", go);
+            playingNow.addEventListener("timeupdate", onTime);
+            playingNow.addEventListener("ended", go);
+            boundaryTimer = setTimeout(go, NATIVE_HANDOFF_BOUNDARY_WAIT_MS);
+            return;
           }
-          // Release every deck/MSE decoder BEFORE React removes its subtree and BEFORE commit.
-          videos?.forEach((v) => {
-            try {
-              v.pause();
-              v.removeAttribute("src");
-              v.querySelectorAll("source").forEach((s) =>
-                s.removeAttribute("src"),
-              );
-              v.load();
-            } catch {
-              /* unmount cleanup follows */
-            }
-          });
-          nativeSharedVideoEvidence.select(owner);
-          seen = "ready";
-          setPhase({ identity, stage: "handoff" });
+          handOver();
         },
         update: (state, fresh) => {
           if (!alive) return;
@@ -167,6 +204,7 @@ export function NativeDualVideo({
     return () => {
       alive = false;
       if (retryTimer !== null) clearTimeout(retryTimer);
+      if (boundaryTimer !== null) clearTimeout(boundaryTimer);
       c.stop();
       nativeSharedVideoEvidence.clear(owner);
       if (controller.current === c) controller.current = null;

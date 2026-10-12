@@ -156,7 +156,12 @@ export function ContinuousLoopVideo({ src, sourceHash, videoKey, isActive, class
       if (!firstFrameSeen) { firstFrameSeen = true; resolveFirstFrame(); }
       if (heldFrame && replacementLoaded && video.readyState >= 2) releaseFrame();
       const event = continuous ? continuous.onFrame(meta) : native.onFrame(meta, video.duration);
-      if (event) loopBoundaryTracker.record(event);
+      if (event) {
+        loopBoundaryTracker.record(event);
+        // The native engine hands over exactly here, so its restart from frame 0
+        // lands on the clip's own loop point (owner 2026-10-12: no visible reset).
+        try { video.dispatchEvent(new Event('educms-loop-boundary')); } catch { /* old WebView */ }
+      }
       frameId = video.requestVideoFrameCallback?.(onFrame);
     };
     frameId = video.requestVideoFrameCallback?.(onFrame);
