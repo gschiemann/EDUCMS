@@ -147,3 +147,17 @@ export const BRAND_ICONS: Record<string, (props: BrandIconProps) => React.JSX.El
   'facebook-page': FacebookIcon,
   instagram: InstagramIcon,
 };
+
+/** Official brand colours for the tiles (2026-10-12: the library painted every logo grey). */
+export const BRAND_COLORS: Record<string, string> = {
+  youtube: '#FF0000',
+  vimeo: '#1AB7EA',
+  twitch: '#9146FF',
+  'google-slides': '#F4B400',
+  'google-sheets': '#0F9D58',
+  'google-maps': '#4285F4',
+  calendar: '#4285F4',
+  canva: '#00C4CC',
+  'facebook-page': '#1877F2',
+  instagram: '#E4405F',
+};

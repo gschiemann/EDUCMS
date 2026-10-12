@@ -45,6 +45,7 @@ import {
   type SuggestedApp,
 } from './concierge-map';
 import { ConciergeSuggestionRow, ConciergeDescribeIntake, AppIcon } from './ConciergeAppSuggestions';
+import { BRAND_COLORS } from './brand-icons';
 import { useAppStore } from '@/lib/store';
 import {
   useTenantBranding, useDiscoverIntegrations, useDescribeBusiness,
@@ -459,7 +460,7 @@ function AppCard({ app, onClick }: { app: AppDefinition; onClick: (trigger: HTML
         className="group relative w-full rounded-xl border-2 border-slate-200 hover:border-indigo-300 transition-all overflow-hidden bg-white shadow-sm hover:shadow-lg text-left flex flex-col focus:outline-none focus:ring-2 focus:ring-indigo-400"
       >
         <div className="w-full bg-slate-100 flex items-center justify-center" style={{ aspectRatio: '16 / 10' }}>
-          <AppIcon appId={app.id} name={app.icon} className="w-8 h-8 text-slate-400 group-hover:text-indigo-500 transition-colors" />
+          <span style={BRAND_COLORS[app.id] ? { color: BRAND_COLORS[app.id] } : undefined} className={BRAND_COLORS[app.id] ? "" : "text-slate-400 group-hover:text-indigo-500 transition-colors"}><AppIcon appId={app.id} name={app.icon} className="w-10 h-10" /></span>
         </div>
         <div className="px-2.5 py-2 border-t border-slate-100 bg-white flex-1 flex flex-col gap-1">
           <div className="text-[11px] font-bold text-slate-700 truncate">{app.name}</div>
