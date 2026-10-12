@@ -63,6 +63,7 @@ import { FleetPulseController } from '../screens/fleet-pulse.controller';
 import { PanicContentController } from '../panic-content/panic-content.controller';
 import { ScreensController } from '../screens/screens.controller';
 import { ScreensBulkController } from '../screens/bulk/screens-bulk.controller';
+import { PlaybackCapabilityController } from '../telemetry/playback-capability.controller';
 import { SportsController } from '../sports/sports.controller';
 import { SportsService } from '../sports/sports.service';
 import { SponsorsService } from '../sports/sponsors.service';
@@ -225,6 +226,46 @@ function dataset(): Dataset {
       floorX: 1,
       floorY: 1,
       deviceFingerprint: `fp-print-${s}`,
+    })),
+    // 2026-10-11 — per-file playback evidence + declared decode capability
+    // (video guarantee). One row per screen × file digest / per screen.
+    screenFilePlayback: pair((tenantId, s) => ({
+      id: `sfp-${s}`,
+      screenId: `scr-${s}`,
+      fileSha256: s.repeat(64),
+      tenantId,
+      deviceClass: 'acme/box/x/sdk30',
+      fileUrl: `https://cdn.test/${s}.mp4`,
+      width: 1920,
+      height: 1080,
+      samples: 4,
+      settledSamples: 3,
+      frames: 5400,
+      dropped: 0,
+      stalls: 0,
+      stalledMs: 0,
+      consecutiveGood: 3,
+      consecutiveBad: 0,
+      worstPct: 0,
+      lastPct: 0,
+      lastGrade: 'smooth',
+      lastSettled: true,
+      engine: 'continuous',
+      concurrentMax: 1,
+      unitConcurrentMax: 1,
+      playerVersionCode: 1,
+      webviewMajor: 95,
+      verdict: 'smooth',
+      firstAt: new Date('2026-10-11T00:00:00Z'),
+      lastAt: new Date('2026-10-11T01:00:00Z'),
+    })),
+    screenMediaCapabilities: pair((tenantId, s) => ({
+      id: `smc-${s}`,
+      screenId: `scr-${s}`,
+      tenantId,
+      webviewMajor: 95,
+      report: { configs: [] },
+      reportedAt: new Date('2026-10-11T00:00:00Z'),
     })),
     screenGroup: pair((tenantId, s) => ({
       id: `grp-${s}`,
@@ -931,6 +972,21 @@ const MATRIX: Case[] = [
     controller: ScreensController, handler: 'remove', op: 'delete',
     build: (p) => new ScreensController(p, stubRedis, stubSigner, stubLicense, stubStripe, stubMenu),
     invoke: (c, req) => c.remove(req, 'scr-b'),
+  },
+  // 2026-10-11 — the read-only video playback evidence (video guarantee
+  // step 4). Same-model evidence from other locations is aggregated in SQL
+  // ($queryRaw), so no foreign ROW is read through the model API at all.
+  {
+    name: 'screens: read another tenant\'s video playback evidence',
+    controller: PlaybackCapabilityController, handler: 'get', op: 'read',
+    build: (p) => new PlaybackCapabilityController(p),
+    invoke: (c, req) => c.get('scr-b', req),
+  },
+  {
+    name: 'screens: own video playback evidence never carries another tenant\'s rows',
+    controller: PlaybackCapabilityController, handler: 'get', op: 'read',
+    build: (p) => new PlaybackCapabilityController(p),
+    invoke: (c, req) => c.get('scr-a', req),
   },
 
   // ── Bulk screen actions (2026-10-11) ──────────────────────────────────

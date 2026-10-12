@@ -42,19 +42,21 @@ const row = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-function setup(over: { screen?: any; rows?: any[]; classRows?: any[]; caps?: any; assets?: any[]; renditions?: any[] } = {}) {
+function setup(over: { screen?: any; rows?: any[]; classGroups?: any[]; caps?: any; assets?: any[]; renditions?: any[]; children?: string[] } = {}) {
   const screen = over.screen === undefined
     ? { id: 'scr-1', tenantId: 't1', playerVersionCode: 1126, displayCapabilities: { build: { manufacturer: 'Goodview', model: 'M65GUQ-BOP382D-C', device: 'T982', sdk: 30 } } }
     : over.screen;
   const prisma: any = {
     client: {
+      tenant: { findMany: jest.fn(async () => (over.children ?? []).map((id) => ({ id }))) },
       screen: { findFirst: jest.fn(async () => screen) },
-      screenFilePlayback: {
-        findMany: jest.fn(async (args: any) => (args.where.deviceClass ? over.classRows ?? [] : over.rows ?? [])),
-      },
+      screenFilePlayback: { findMany: jest.fn(async () => over.rows ?? []) },
       screenMediaCapabilities: { findFirst: jest.fn(async () => over.caps ?? null) },
       asset: { findMany: jest.fn(async () => over.assets ?? []) },
-      $queryRaw: jest.fn(async () => over.renditions ?? []),
+      // Two raw reads: the class aggregate (screen_file_playback) and the
+      // 1080p-copy name lookup (assets). Told apart by their SQL.
+      $queryRaw: jest.fn(async (strings: TemplateStringsArray) =>
+        strings.join('?').includes('FROM screen_file_playback') ? over.classGroups ?? [] : over.renditions ?? []),
     },
   };
   return { prisma, controller: new PlaybackCapabilityController(prisma) };
@@ -63,11 +65,18 @@ function setup(over: { screen?: any; rows?: any[]; classRows?: any[]; caps?: any
 const user = (over: Record<string, unknown> = {}) => ({ user: { id: 'u1', role: 'SCHOOL_ADMIN', tenantId: 't1', ...over } });
 
 describe('GET /screens/:id/playback-capability', () => {
-  it('scopes the screen read to the caller tenant and 404s otherwise', async () => {
-    const { prisma, controller } = setup({ screen: null });
+  it('scopes the screen read to the active workspace + its child locations and 404s otherwise', async () => {
+    const { prisma, controller } = setup({ screen: null, children: ['t1-school'] });
     await expect(controller.get('scr-x', user())).rejects.toBeInstanceOf(NotFoundException);
-    expect(prisma.client.screen.findFirst.mock.calls[0][0].where).toEqual({ id: 'scr-x', tenantId: 't1' });
+    expect(prisma.client.tenant.findMany.mock.calls[0][0].where).toEqual({ parentId: 't1', archivedAt: null });
+    expect(prisma.client.screen.findFirst.mock.calls[0][0].where).toEqual({ id: 'scr-x', tenantId: { in: ['t1', 't1-school'] } });
     expect(prisma.client.screenFilePlayback.findMany).not.toHaveBeenCalled();
+  });
+
+  it('a SUPER_ADMIN is scoped to the workspace too — never an unscoped read', async () => {
+    const { prisma, controller } = setup();
+    await controller.get('scr-1', user({ role: 'SUPER_ADMIN' }));
+    expect(prisma.client.screen.findFirst.mock.calls[0][0].where).toEqual({ id: 'scr-1', tenantId: { in: ['t1'] } });
   });
 
   it('a caller with no tenant gets a 404 without any read', async () => {
@@ -111,15 +120,18 @@ describe('GET /screens/:id/playback-capability', () => {
     expect(out.files[0]).toMatchObject({ name: 'clip one.mp4', assetId: null, copy: null });
   });
 
-  it('same-model evidence from other screens is read by class (any location) and leaves only as an aggregate', async () => {
-    const other = (screenId: string) => ({ screenId, width: 2160, height: 3338, verdict: 'smooth', unitConcurrentMax: 1, lastAt: new Date('2026-10-11T19:00:00Z'), playerVersionCode: 1126, webviewMajor: 95 });
-    const { prisma, controller } = setup({ classRows: [other('elsewhere-1'), other('elsewhere-2')] });
+  it('same-model evidence from other locations arrives as SQL aggregates only — no foreign row is ever read', async () => {
+    const { prisma, controller } = setup({
+      // A 4K-panel screen that only ever played 1080p here, and its model smooth at 4K on 3 other screens.
+      rows: [row({ width: 1080, height: 1920, deviceClass: 'acme/box-9/x/sdk30' })],
+      classGroups: [{ verdict: 'smooth', se: 2160, unit: 1, at: new Date('2026-10-11T19:00:00Z'), screens: 3 }],
+    });
     const out = await controller.get('scr-1', user());
-    const classQuery = prisma.client.screenFilePlayback.findMany.mock.calls.find((c: any[]) => c[0].where.deviceClass)[0];
-    expect(classQuery.where).toEqual({ deviceClass: 'goodview/m65guq-bop382d-c/t982/sdk30', screenId: { not: 'scr-1' }, verdict: { in: ['smooth', 'stuttering'] } });
-    expect(classQuery.select).not.toHaveProperty('tenantId');
-    expect(classQuery.select).not.toHaveProperty('fileUrl');
-    expect(out.capability).toMatchObject({ evidence: 'measured-class', classScreens: 2 });
-    expect(JSON.stringify(out)).not.toContain('elsewhere-');
+    const raw = prisma.client.$queryRaw.mock.calls.find((c: any[]) => c[0].join('?').includes('FROM screen_file_playback'));
+    expect(raw).toBeDefined();
+    expect(raw.slice(1)).toEqual(['acme/box-9/x/sdk30', 'scr-1', 200]);
+    // The class query never goes through the model API (which returns rows).
+    for (const c of prisma.client.screenFilePlayback.findMany.mock.calls) expect(c[0].where).toEqual({ screenId: 'scr-1', tenantId: 't1' });
+    expect(out.capability).toMatchObject({ maxShortEdge: 2160, evidence: 'measured-class', classScreens: 3 });
   });
 });

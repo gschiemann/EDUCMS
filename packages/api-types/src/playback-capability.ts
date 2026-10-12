@@ -471,54 +471,77 @@ export interface CapabilityInput {
   screenRecords: readonly CapabilityRecordInput[];
   /** Records from OTHER screens of the same device class (any tenant; only aggregates leave). */
   classRecords?: readonly CapabilityRecordInput[];
+  /**
+   * Distinct other screens behind `classRecords`, when the caller passes
+   * pre-aggregated rows (the API aggregates class evidence in SQL so no
+   * other-location row ever leaves the database). Default: distinct screenIds.
+   */
+  classScreenCount?: number;
   declared?: MediaCapsReport | null;
   /** The screen's current player identity, to mark its own evidence stale. */
   current?: { playerVersionCode?: number | null; webviewMajor?: number | null };
 }
 
 /**
- * The profile. Each fact is taken from the most authoritative source that has
- * it: measured on this screen → measured on its model (≥ 2 other screens) →
- * declared by its WebView (size only) → the class table → unknown. A measured
- * stutter caps anything a LESS authoritative source claims; a smooth result on
+ * The profile, by precedence: measured on this screen → measured on its model
+ * (≥ 2 other screens) → declared by its WebView (size only) → the class table
+ * → unknown. A measured smooth size is a FLOOR (smooth on the 1080p copy says
+ * nothing against 4K); a measured stutter removes every claim at or above its
+ * size from a source no more authoritative than itself; a smooth result on
  * this very screen is not overruled by its model's stutter elsewhere.
+ * Concurrency comes from measurement, else the class table — never declared.
  */
 export function computePlaybackCapability(input: CapabilityInput): PlaybackCapability {
   const own = measure(input.screenRecords);
   const classRecs = (input.classRecords ?? []).filter((r) => r.verdict === 'smooth' || r.verdict === 'stuttering');
-  const classScreens = new Set(classRecs.map((r) => r.screenId)).size;
+  const classScreens = typeof input.classScreenCount === 'number' && input.classScreenCount >= 0
+    ? Math.floor(input.classScreenCount)
+    : new Set(classRecs.map((r) => r.screenId)).size;
   const cls: Measured = classScreens >= CLASS_EVIDENCE_MIN_SCREENS ? measure(classRecs) : { smoothShortEdge: null, stuttersAt: null, maxUnit: null, at: null };
   const declared = declaredMaxShortEdge(input.declared ?? null);
   const def = playbackClassDefault(input.deviceClass);
 
-  // Size: first source that has a smooth answer.
-  const sizeCandidates: Array<{ value: 1080 | 2160; source: PlaybackEvidence; at: string | null }> = [];
-  if (own.smoothShortEdge !== null) sizeCandidates.push({ value: shortEdgeTier(own.smoothShortEdge), source: 'measured-screen', at: own.at });
-  if (cls.smoothShortEdge !== null) sizeCandidates.push({ value: shortEdgeTier(cls.smoothShortEdge), source: 'measured-class', at: cls.at });
-  if (declared !== null) sizeCandidates.push({ value: declared, source: 'declared', at: null });
-  if (def) sizeCandidates.push({ value: def.maxShortEdge, source: 'class-default', at: null });
-  const pick = sizeCandidates[0] ?? null;
+  // Size. A MEASURED smooth result is a floor, not a ceiling: playing the
+  // 1080p copy smoothly says nothing against 4K (a GUQ that has only ever
+  // been handed 1080p copies is still a 4K box). A CLAIM — the WebView's own
+  // declaration, else the class table — is taken from the first source that
+  // has one. The answer is the largest of these, ties to the more
+  // authoritative source.
+  type Candidate = { value: 1080 | 2160; source: PlaybackEvidence; at: string | null };
+  const candidates: Candidate[] = [];
+  if (own.smoothShortEdge !== null) candidates.push({ value: shortEdgeTier(own.smoothShortEdge), source: 'measured-screen', at: own.at });
+  if (cls.smoothShortEdge !== null) candidates.push({ value: shortEdgeTier(cls.smoothShortEdge), source: 'measured-class', at: cls.at });
+  if (declared !== null) candidates.push({ value: declared, source: 'declared', at: null });
+  else if (def) candidates.push({ value: def.maxShortEdge, source: 'class-default', at: null });
 
-  // A measured stutter (this screen first, then its model).
-  const stutter =
-    own.stuttersAt !== null ? { value: own.stuttersAt, source: 'measured-screen' as const, at: own.at }
-    : cls.stuttersAt !== null ? { value: cls.stuttersAt, source: 'measured-class' as const, at: cls.at }
+  // A measured stutter (this screen first, then its model) removes every
+  // candidate at or above its size from a source no more authoritative than
+  // itself — a smooth 4K result on THIS screen survives its model's stutter
+  // elsewhere; a class table or a browser's claim does not survive either.
+  const stutter: { value: number; source: PlaybackEvidence; at: string | null } | null =
+    own.stuttersAt !== null ? { value: own.stuttersAt, source: 'measured-screen', at: own.at }
+    : cls.stuttersAt !== null ? { value: cls.stuttersAt, source: 'measured-class', at: cls.at }
     : null;
+  const surviving = stutter
+    ? candidates.filter((c) => !(c.value >= stutter.value && EVIDENCE_RANK[c.source] >= EVIDENCE_RANK[stutter.source]))
+    : candidates;
+  const pick = surviving.reduce<Candidate | null>(
+    (best, c) => (!best || c.value > best.value || (c.value === best.value && EVIDENCE_RANK[c.source] < EVIDENCE_RANK[best.source]) ? c : best),
+    null,
+  );
 
   let maxShortEdge: 1080 | 2160 | null = pick?.value ?? null;
   let evidence: PlaybackEvidence = pick?.source ?? 'unknown';
   let evidenceAt: string | null = pick?.at ?? null;
   let stuttersAtShortEdge: number | null = null;
-  if (stutter) {
-    const outranks = !pick || EVIDENCE_RANK[stutter.source] <= EVIDENCE_RANK[pick.source];
-    if (outranks) {
-      stuttersAtShortEdge = stutter.value;
-      if (maxShortEdge === null || stutter.value <= maxShortEdge) {
-        // Smooth only BELOW the stutter: 2160 bad → 1080 (if anything said ≥ 1080), 1080 bad → nothing.
-        maxShortEdge = stutter.value > 1080 && pick ? 1080 : null;
-        evidence = stutter.source;
-        evidenceAt = stutter.at;
-      }
+  if (stutter && !(pick && pick.value >= stutter.value)) {
+    stuttersAtShortEdge = stutter.value;
+    if (!pick) {
+      // Smooth only BELOW the stutter: 2160 bad → 1080 when anything had
+      // claimed at least that much; 1080 bad → no size at all.
+      maxShortEdge = stutter.value > 1080 && candidates.length > 0 ? 1080 : null;
+      evidence = stutter.source;
+      evidenceAt = stutter.at;
     }
   }
 

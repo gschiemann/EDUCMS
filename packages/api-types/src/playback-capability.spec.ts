@@ -210,9 +210,32 @@ describe('computePlaybackCapability — precedence', () => {
     expect(cap).toMatchObject({ evidence: 'unknown', classScreens: 0 });
   });
 
+  it('pre-aggregated class rows carry their own distinct-screen count', () => {
+    const agg = [rec({ screenId: 'class-0' })];
+    expect(computePlaybackCapability({ deviceClass: null, screenRecords: [], classRecords: agg, classScreenCount: 4 }))
+      .toMatchObject({ evidence: 'measured-class', classScreens: 4 });
+    expect(computePlaybackCapability({ deviceClass: null, screenRecords: [], classRecords: agg, classScreenCount: 1 }))
+      .toMatchObject({ evidence: 'unknown', classScreens: 0 });
+  });
+
   it('measured on this screen beats everything, and a 2160 proof covers 1080', () => {
     const cap = computePlaybackCapability({ deviceClass: RK, screenRecords: [rec()] });
     expect(cap).toMatchObject({ maxShortEdge: 2160, evidence: 'measured-screen', evidenceAt: '2026-10-11T19:35:00.000Z' });
+  });
+
+  it('measured smooth is a floor: a 4K model that only ever played its 1080p copy is still a 4K box', () => {
+    const cap = computePlaybackCapability({ deviceClass: GUQ, screenRecords: [rec({ width: 1080, height: 1920 })] });
+    expect(cap).toMatchObject({ maxShortEdge: 2160, evidence: 'class-default', stuttersAtShortEdge: null });
+    // …and a tie goes to the more authoritative source.
+    expect(computePlaybackCapability({ deviceClass: GUQ, screenRecords: [rec()] }).evidence).toBe('measured-screen');
+  });
+
+  it('stutters at 4K but smooth on the 1080p copy → 1080, measured here, with the 4K stutter named', () => {
+    const cap = computePlaybackCapability({
+      deviceClass: GUQ,
+      screenRecords: [rec({ verdict: 'stuttering' }), rec({ width: 1080, height: 1920 })],
+    });
+    expect(cap).toMatchObject({ maxShortEdge: 1080, stuttersAtShortEdge: 2160, evidence: 'measured-screen' });
   });
 
   it('insufficient / hitching records are not evidence', () => {

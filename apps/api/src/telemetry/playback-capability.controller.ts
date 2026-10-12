@@ -43,8 +43,8 @@ import { recordFromRow } from './file-playback';
 
 /** The newest files shown per screen. */
 export const PLAYBACK_FILES_LIMIT = 20;
-/** Records read from same-model screens to build class evidence (aggregate only). */
-export const PLAYBACK_CLASS_RECORDS_LIMIT = 500;
+/** Upper bound on the aggregate groups read for class evidence (verdict × short edge × alone/with company). */
+export const PLAYBACK_CLASS_GROUPS_LIMIT = 200;
 
 export interface ScreenFilePlaybackView {
   sha256: string;
@@ -102,12 +102,19 @@ export class PlaybackCapabilityController {
     AppRole.CONTRIBUTOR,
   )
   async get(@Param('id') screenId: string, @Req() req: any): Promise<ScreenPlaybackCapabilityResponse> {
-    const isSuper = req.user?.role === AppRole.SUPER_ADMIN;
+    // Same reach as the drawer's other per-screen reads (ScreensController):
+    // the ACTIVE workspace plus its direct, non-archived child locations —
+    // a SUPER_ADMIN included (support access governs which workspace that is).
     const callerTenantId: string | null = req.user?.tenantId || req.user?.schoolId || req.user?.districtId || null;
-    if (!isSuper && !callerTenantId) throw new NotFoundException({ code: 'SCREEN_NOT_FOUND', message: 'Screen not found' });
+    if (!callerTenantId) throw new NotFoundException({ code: 'SCREEN_NOT_FOUND', message: 'Screen not found' });
+    const children = await this.prisma.client.tenant.findMany({
+      where: { parentId: callerTenantId, archivedAt: null },
+      select: { id: true },
+    });
+    const readable = [callerTenantId, ...children.map((c) => c.id)];
 
     const screen = (await this.prisma.client.screen.findFirst({
-      where: isSuper ? { id: screenId } : { id: screenId, tenantId: callerTenantId as string },
+      where: { id: screenId, tenantId: { in: readable } },
       select: { id: true, tenantId: true, playerVersionCode: true, displayCapabilities: true },
     })) as { id: string; tenantId: string | null; playerVersionCode: number | null; displayCapabilities: any } | null;
     if (!screen || !screen.tenantId) throw new NotFoundException({ code: 'SCREEN_NOT_FOUND', message: 'Screen not found' });
@@ -120,24 +127,22 @@ export class PlaybackCapabilityController {
       orderBy: { lastAt: 'desc' },
       take: PLAYBACK_FILES_LIMIT,
     });
-    const capsRow = await db.screenMediaCapabilities.findFirst({ where: { screenId: screen.id } });
+    const capsRow = await db.screenMediaCapabilities.findFirst({ where: { screenId: screen.id, tenantId } });
     const declared = (capsRow?.report ?? null) as MediaCapsReport | null;
 
     const deviceClass: string | null =
       rows.find((r) => typeof r.deviceClass === 'string' && r.deviceClass)?.deviceClass ??
       playbackDeviceClass(screen.displayCapabilities?.build ?? null);
 
-    // Evidence from OTHER screens of the same model, in any location. Only an
-    // aggregate leaves this function (a size, a concurrency, a screen count) —
-    // never a screen, file, name or tenant from another location.
-    const classRows: any[] = deviceClass
-      ? await db.screenFilePlayback.findMany({
-          where: { deviceClass, screenId: { not: screen.id }, verdict: { in: ['smooth', 'stuttering'] } },
-          select: { screenId: true, width: true, height: true, verdict: true, unitConcurrentMax: true, lastAt: true, playerVersionCode: true, webviewMajor: true },
-          orderBy: { lastAt: 'desc' },
-          take: PLAYBACK_CLASS_RECORDS_LIMIT,
-        })
-      : [];
+    // Evidence from OTHER screens of the same model, in ANY location, so a new
+    // unit is "proven" on day one by the units of its model already in the
+    // field. AGGREGATED IN SQL: what leaves the database is a handful of
+    // (verdict, short edge, concurrency, newest date) groups and one count of
+    // distinct screens — never a row, screen id, file, name or tenant from
+    // another location (the two-tenant matrix forbids reading foreign rows).
+    const { classRecords, classScreenCount } = deviceClass
+      ? await this.classEvidence(deviceClass, screen.id)
+      : { classRecords: [] as CapabilityRecordInput[], classScreenCount: 0 };
 
     const toInput = (r: any): CapabilityRecordInput => ({
       screenId: r.screenId,
@@ -153,7 +158,8 @@ export class PlaybackCapabilityController {
     const capability = computePlaybackCapability({
       deviceClass,
       screenRecords: rows.map(toInput),
-      classRecords: classRows.map(toInput),
+      classRecords,
+      classScreenCount,
       declared,
       current: { playerVersionCode: screen.playerVersionCode ?? null, webviewMajor: currentWebview },
     });
@@ -191,6 +197,41 @@ export class PlaybackCapabilityController {
         ? { reportedAt: isoOf(capsRow.reportedAt), maxShortEdge: declaredMaxShortEdge(declared), webviewMajor: capsRow.webviewMajor ?? null }
         : null,
       files,
+    };
+  }
+
+  /** Same-model evidence from other screens, as SQL aggregates only (see the call site). */
+  private async classEvidence(
+    deviceClass: string,
+    excludeScreenId: string,
+  ): Promise<{ classRecords: CapabilityRecordInput[]; classScreenCount: number }> {
+    const groups = await this.prisma.client.$queryRaw<
+      Array<{ verdict: string; se: number | null; unit: number | null; at: Date | null; screens: number | bigint | null }>
+    >`
+      WITH c AS (
+        SELECT screen_id, verdict, LEAST(width, height) AS se, unit_concurrent_max AS u, last_at
+        FROM screen_file_playback
+        WHERE device_class = ${deviceClass}
+          AND screen_id <> ${excludeScreenId}
+          AND verdict IN ('smooth', 'stuttering')
+          AND width IS NOT NULL AND height IS NOT NULL
+      )
+      SELECT verdict, se, max(u)::int AS unit, max(last_at) AS at,
+             (SELECT count(DISTINCT screen_id)::int FROM c) AS screens
+      FROM c
+      GROUP BY verdict, se, (u > 1)
+      LIMIT ${PLAYBACK_CLASS_GROUPS_LIMIT}`;
+    const list = Array.isArray(groups) ? groups : [];
+    return {
+      classScreenCount: list.length ? Number(list[0].screens ?? 0) : 0,
+      classRecords: list.map((g, i) => ({
+        screenId: `class-${i}`,
+        width: g.se ?? null,
+        height: g.se ?? null,
+        verdict: g.verdict === 'stuttering' ? 'stuttering' : 'smooth',
+        unitConcurrentMax: Number(g.unit ?? 1) || 1,
+        lastAt: g.at ?? new Date(0),
+      })),
     };
   }
 
