@@ -335,6 +335,7 @@ export const PLAYER_RELEASE_SHA_PINS: Readonly<Record<string, string>> = {
   // restore below Android 13, 1-min dark heartbeat so Power On is acknowledged.
   // Signed GitHub release asset, captured after APK CI run 38160508465 passed.
   '1.1.26': 'aeb943eaccea60c3e0dc24da5118aca6e923bd5bd4cb5f7f096b95b4a570f78c',
+  '1.1.27': '89e29135728b21cdbbfbc6c32087655e03ff5a0de8c982b79d006912f1992322',
 };
 
 /**
