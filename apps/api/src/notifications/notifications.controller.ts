@@ -94,7 +94,10 @@ export class NotificationsPublicController {
     }
     // V-6: the screen must prove it is that screen. The verifier also resolves
     // the tenant from the live screen row; the body's tenantId is ignored.
-    const auth = await verifyDeviceForScreen({ prisma: this.prisma as any, redis: (this.redis ?? null) as any }, req as any, screenId);
+    const auth = await verifyDeviceForScreen({ prisma: this.prisma as any, redis: (this.redis ?? null) as any }, req as any, screenId, {
+      // Paired screens only: an unpaired screen has no tenant to notify.
+      allowUnpaired: false,
+    });
     if (!auth.ok || !auth.tenantId) {
       throw new HttpException({ code: 'NOTIFICATIONS_DEVICE_AUTH_REQUIRED', message: 'This screen is not signed in.' }, HttpStatus.UNAUTHORIZED);
     }

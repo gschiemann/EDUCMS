@@ -210,6 +210,14 @@ const DEVICE_AUTH_SITES: DeviceAuthSite[] = [
     why: 'Clears Screen.pendingRefreshAt — the durable "reload yourself" command — on the strength of the screen saying it ran it. A credential minted from a fingerprint alone could otherwise cancel a recovery command a wedged screen never received (the dashboard would then show it as confirmed).',
   },
   {
+    file: 'notifications/notifications.controller.ts',
+    fn: 'requestHelp',
+    routes: ['POST /api/v1/notifications/help'],
+    unpaired: 'refused',
+    unprovenAllowed: false,
+    why: 'V-6 (2026-10-11): writes an admin-inbox notification for the screen\'s tenant. Anonymous callers who knew a screen id used to drop arbitrary text there (a phishing lure); only the paired, proven screen itself may ask for help now, and its wording is stripped of links.',
+  },
+  {
     file: 'player-logs/player-logs.controller.ts',
     fn: 'verifyDevice',
     routes: ['POST /api/v1/player-logs/:screenId'],
