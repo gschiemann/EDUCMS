@@ -142,6 +142,18 @@ test('the native alert watch, the wake timeline and a process start are recovery
   expect(new Set(actions)).toEqual(new Set(['PLAYER_RECOVERY_EVENT']));
   expect(loggedLines()).toEqual(lines);
 });
+test('emergency enforce steps and the boot reason are recovery events (2026-10-12)', async () => {
+  const lines = [
+    '2026-10-12T00:09:04.100Z [ERROR] EmergencyBrightness: PLAYER_EMERGENCY_ENFORCE_STEP step=start sinceWakeMs=0 interactive=false quiet=false held=true',
+    '2026-10-12T00:09:12.300Z [ERROR] EmergencyBrightness: PLAYER_EMERGENCY_ENFORCE_STEP step=hw-brightness-write sinceWakeMs=8200 provider=sysfs-backlight raw=120 target=255',
+    '2026-10-12T00:10:02.950Z [INFO] BootReason: PLAYER_BOOT_REASON uptimeMs=43310 ro.boot.bootreason=unset sys.boot.reason=watchdog',
+    '2026-10-12T00:10:02.960Z [INFO] BootReason: PLAYER_BOOT_REASON prevExit=none — the OS recorded no exit for the previous process',
+  ];
+  for (const line of lines) expect(RECOVERY_LINE.test(line)).toBe(true);
+  expect(RECOVERY_LINE.test('2026-10-12T00:09:04.200Z [INFO] DisplayControl: SET_BRIGHTNESS(100) via sysfs-backlight → Ok')).toBe(false);
+  expect(await controller.ingestLog(screenId, request(lines.join('\n')))).toEqual({ stored: true, rows: lines.length });
+  expect(loggedLines()).toEqual(lines);
+});
 test('retains each distinct renderer and decoder event in a bounded upload', async () => {
   const body = recovery + '\n2026-09-29T17:36:00Z PLAYER_PLAYBACK_FAILURE video stalled';
   expect(await controller.ingestLog(screenId, request(body))).toEqual({ stored: true, rows: 2 });

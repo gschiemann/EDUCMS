@@ -80,11 +80,15 @@ const MAX_RECOVERY_CANDIDATES = 32;
  * `_BLIND`), the wake timeline's (`PLAYER_WAKE_REQUESTED` / `_LAUNCH` /
  * `_LANDED` / `_NOT_ON_GLASS` / `_PANEL_DARK` / `_PROCESS_RESTART` /
  * `_KEYGUARD*`) and `PLAYER_PROCESS_START` (pid, uptime, boot count — a
- * new pid is a process restart, a new boot count a reboot). Exported for
+ * new pid is a process restart, a new boot count a reboot). 2026-10-12 added
+ * `PLAYER_EMERGENCY_ENFORCE_STEP` (each step of an emergency enforce near a
+ * wake, fsync'd before the hardware brightness write) and
+ * `PLAYER_BOOT_REASON` (the bootloader/init boot reason and the previous
+ * process's exit) — the L55VEC rebooted after an alert wake. Exported for
  * the spec; the player's markers are the contract.
  */
 export const RECOVERY_LINE =
-  /PLAYER_RENDERER_TERMINATED|PLAYER_RENDERER_REPLACE_FAILED|PLAYER_PLAYBACK_FAILURE|PLAYER_PROCESS_EXIT|PLAYER_PROCESS_START|PLAYER_NATIVE_ALERT_[A-Z_]+|PLAYER_WAKE_[A-Z_]+/;
+  /PLAYER_RENDERER_TERMINATED|PLAYER_RENDERER_REPLACE_FAILED|PLAYER_PLAYBACK_FAILURE|PLAYER_PROCESS_EXIT|PLAYER_PROCESS_START|PLAYER_NATIVE_ALERT_[A-Z_]+|PLAYER_WAKE_[A-Z_]+|PLAYER_EMERGENCY_ENFORCE_STEP|PLAYER_BOOT_REASON/;
 
 @Controller('api/v1/player-logs')
 export class PlayerLogsController {
