@@ -82,6 +82,20 @@ describe('backfillManagedAssetHashes', () => {
     expect(prisma.client.asset.updateMany).not.toHaveBeenCalled();
   });
 
+  // H-7 (2026-10-11): a stored URL must not bounce this job anywhere else.
+  it('never follows redirects, and skips a look-alike origin', async () => {
+    global.fetch = jest.fn(async () => streamingResponse([Buffer.from('x')])) as any;
+    const prisma = prismaWith([
+      { id: 'a1', fileUrl: `${SUPA}.evil.example/x/1.mp4` },
+      { id: 'a2', fileUrl: `${SUPA}/x/2.mp4` },
+    ]);
+    await backfillManagedAssetHashes(prisma, logger);
+    const calls = (global.fetch as jest.Mock).mock.calls;
+    expect(calls).toHaveLength(1);
+    expect(calls[0][0]).toBe(`${SUPA}/x/2.mp4`);
+    expect(calls[0][1]).toMatchObject({ redirect: 'error' });
+  });
+
   it('EMERGENCY_HASH_BACKFILL=off still disables it entirely', async () => {
     process.env.EMERGENCY_HASH_BACKFILL = 'off';
     const prisma = prismaWith([{ id: 'a1', fileUrl: `${SUPA}/x/1.mp4` }]);

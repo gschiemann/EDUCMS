@@ -439,6 +439,25 @@ describe('complete-upload — the STORED content type must be allowed', () => {
     expect(res.mimeType).toBe('video/mp4');
     expect(storage.delete).not.toHaveBeenCalled();
   });
+
+  // H-8 (2026-10-11): an ALLOWED type that is not the format presign minted
+  // (the path's extension) is refused and deleted too.
+  it.each(['application/pdf', 'image/jpeg', 'video/quicktime'])(
+    'REFUSES (415) and DELETES an .mp4 path stored as %s (not the minted format)',
+    async (storedType) => {
+      const storage = makeStorage({
+        getObjectInfo: jest.fn(async () => ({ size: 900 * MB, contentType: storedType })),
+      });
+      const { controller, prisma } = makeController(storage);
+      await expectHttp(
+        () => controller.completeUpload(req() as any, { ...body }),
+        HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+        'ASSET_STORED_TYPE_MISMATCH',
+      );
+      expect(storage.delete).toHaveBeenCalledWith(PATH);
+      expect(prisma.client.asset.create).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe('complete-upload — idempotent replay for the uploader’s own retry', () => {

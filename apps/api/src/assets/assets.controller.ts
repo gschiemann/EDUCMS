@@ -1423,6 +1423,27 @@ export class AssetsController {
         HttpStatus.UNSUPPORTED_MEDIA_TYPE,
       );
     }
+    // H-8 (2026-10-11 launch security re-audit): the stored type must also be
+    // the format /presign MINTED. The minted format is carried by the path's
+    // extension (`<tenant>/<uuid><ext>`, ext chosen from the presign type), and
+    // the dashboard PUTs exactly presign's `mimeType`. Relying on the bucket's
+    // MIME list alone let a client mint a JPEG path and land a PDF (or any
+    // other allowed type) under it — the URL's extension, which the manifest
+    // and player read, would then lie about the bytes.
+    {
+      const mintedFormat = resolveUploadFormat(storagePath, '').format;
+      const storedFormat = storedMime ? uploadFormatForType(storedMime) : null;
+      if (storedFormat && mintedFormat && storedFormat !== mintedFormat) {
+        await this.storage.delete(storagePath).catch(() => undefined);
+        throw new HttpException(
+          {
+            code: 'ASSET_STORED_TYPE_MISMATCH',
+            message: `This upload was started as ${mintedFormat.label} but stored as ${storedFormat.label}. Upload the file again.`,
+          },
+          HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+        );
+      }
+    }
     // `let`: a HEIC photo's JPEG replaces both (image branch below).
     let realMime = storedMime || mimeType;
     let realSize = info?.size ?? Number(body.size);

@@ -32,11 +32,39 @@ const GLOBAL = 1000;
 // distributed abuse across many IPs hitting the demo).
 const DEMO_HOURLY = 50;
 const DEMO_BUCKET = '__demo__';
+// H-12 (2026-10-11 launch security re-audit): the anonymous demo scrape was a
+// free public-internet fetcher at 5/min/IP — 300/hour from ONE address, bounded
+// only by the shared 50/hour demo pool (which one address could then drain for
+// everybody else). A per-address HOURLY ceiling keeps one visitor to a handful
+// of tries; the shared pool remains the wall against many addresses.
+const DEMO_PER_IP_HOURLY = 8;
 
 @Injectable()
 export class BrandingRateLimiter {
   private tenantHits = new Map<string, number[]>();
   private globalHits: number[] = [];
+
+  private demoIpHits = new Map<string, number[]>();
+
+  /** H-12: the anonymous demo's per-address hourly ceiling. Call BEFORE `check('__demo__')`. */
+  checkDemoIp(ip: string | null): void {
+    const now = Date.now();
+    const key = ip || 'unknown';
+    const hits = (this.demoIpHits.get(key) || []).filter((t) => t >= now - HOUR);
+    if (hits.length >= DEMO_PER_IP_HOURLY) {
+      const resetInMin = Math.ceil((hits[0] + HOUR - now) / 60000);
+      throw new HttpException(
+        {
+          message: `Demo branding-scrape limit reached. Try again in ${resetInMin} minutes, or sign in to use the full feature.`,
+          code: 'BRANDING_RATE_LIMIT_DEMO',
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+    hits.push(now);
+    if (this.demoIpHits.size > 10_000) this.demoIpHits.clear();
+    this.demoIpHits.set(key, hits);
+  }
 
   check(tenantId: string): void {
     const now = Date.now();

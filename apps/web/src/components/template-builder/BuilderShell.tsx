@@ -71,6 +71,7 @@ import {
   updateHolidayStyleToggle,
 } from '@/components/widgets/holiday-style-contract';
 import type { Template, Zone } from './types';
+import { isFromDocumentFrame } from '@/lib/board-message-source';
 
 interface Props {
   template: Template;
@@ -1164,6 +1165,9 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
   // message once that panel has mounted.
   useEffect(() => {
     const onMsg = (e: MessageEvent) => {
+      // H-9 (2026-10-11): a board click comes from a board iframe in this
+      // document — never from another window.
+      if (!isFromDocumentFrame(e)) return;
       const d = e.data as { type?: string; __replayed?: boolean } | null;
       if (!d || typeof d !== 'object') return;
       if (d.type !== 'educms-field-click' || d.__replayed) return;

@@ -52,6 +52,13 @@ export interface SsoConfigSafe {
   defaultRole: string;
   allowedEmailDomain?: string | null;
   autoProvision: boolean;
+  /** V-2 (2026-10-11): the claimed domain routes sign-in only once verified. */
+  domainVerification?: {
+    domain: string;
+    txtRecord: string | null;
+    verifiedAt: string | null;
+    method: 'dns' | 'manual' | null;
+  } | null;
 }
 
 interface SpMeta {
@@ -270,6 +277,42 @@ export function SsoSettingsEditor() {
     setError(null);
   }, [baseline]);
 
+  // V-2 (2026-10-11) — prove the saved email domain (DNS TXT), or, for VenueOS
+  // support only, record a manual verification with a reason. The server is
+  // the authority; this only reports what it answered.
+  const [verifying, setVerifying] = useState(false);
+  const [verifyNote, setVerifyNote] = useState<{ ok: boolean; message: string } | null>(null);
+  const [manualReason, setManualReason] = useState('');
+  const handleVerifyDomain = async (manual: boolean) => {
+    setVerifying(true);
+    setVerifyNote(null);
+    try {
+      const res = await fetch(`${API_URL}/tenants/${schoolId}/sso/domain/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+        body: JSON.stringify(manual ? { manual: true, reason: manualReason } : {}),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setVerifyNote({
+          ok: false,
+          message: data?.code === 'SSO_DOMAIN_VERIFIED_ELSEWHERE'
+            ? t('settings.cc.people.ssoDomainTakenElsewhere')
+            : (data?.message || `HTTP ${res.status}`),
+        });
+        return;
+      }
+      setVerifyNote(data?.verified
+        ? { ok: true, message: t('settings.cc.people.ssoDomainVerifiedNow') }
+        : { ok: false, message: t('settings.cc.people.ssoDomainRecordNotFound') });
+      if (data?.verified) await loadConfig();
+    } catch (e) {
+      setVerifyNote({ ok: false, message: (e as Error).message });
+    } finally {
+      setVerifying(false);
+    }
+  };
+
   const handleTest = async () => {
     setTesting(true);
     setTestResult(null);
@@ -483,6 +526,68 @@ export function SsoSettingsEditor() {
               />
               {t('streamingSso.autoCreateAccounts')}
             </label>
+
+            {config?.domainVerification && form.allowedEmailDomain.trim().toLowerCase() === config.domainVerification.domain && (
+              <div className="mt-4 rounded-[10px] border border-slate-200 p-3 space-y-3" aria-labelledby="sso-domain-verify-title">
+                <div className="flex items-center justify-between gap-2">
+                  <p id="sso-domain-verify-title" className="text-[13px] font-semibold text-slate-800">
+                    {t('settings.cc.people.ssoDomainVerifyTitle', { domain: config.domainVerification.domain })}
+                  </p>
+                  {config.domainVerification.verifiedAt ? (
+                    <span className="inline-flex items-center gap-1 text-[12px] font-medium text-emerald-700">
+                      <CheckCircle2 className="w-4 h-4" aria-hidden /> {t('settings.cc.people.ssoDomainVerified')}
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-[12px] font-medium text-amber-700">
+                      <AlertCircle className="w-4 h-4" aria-hidden /> {t('settings.cc.people.ssoDomainNotVerified')}
+                    </span>
+                  )}
+                </div>
+                {!config.domainVerification.verifiedAt && (
+                  <>
+                    <p className="text-[12px] text-slate-600">{t('settings.cc.people.ssoDomainVerifyHelp')}</p>
+                    {config.domainVerification.txtRecord && (
+                      <CopyField label={t('settings.cc.people.ssoDomainTxtRecord')} value={config.domainVerification.txtRecord} />
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleVerifyDomain(false)}
+                      disabled={verifying}
+                      className="inline-flex items-center gap-1.5 min-h-[42px] px-4 rounded-[10px] border border-slate-200 bg-white text-[13px] font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                    >
+                      {verifying ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden /> : null}
+                      {t('settings.cc.people.ssoDomainCheckDns')}
+                    </button>
+                    {role === 'SUPER_ADMIN' && (
+                      <div className="pt-2 border-t border-slate-100 space-y-2">
+                        <label htmlFor="sso-domain-manual-reason" className="block text-[12px] font-medium text-slate-700">
+                          {t('settings.cc.people.ssoDomainManualReason')}
+                        </label>
+                        <input
+                          id="sso-domain-manual-reason"
+                          value={manualReason}
+                          onChange={(e) => setManualReason(e.target.value)}
+                          className="w-full min-h-[42px] px-3 rounded-[9px] border border-slate-300 bg-white text-[13px]"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleVerifyDomain(true)}
+                          disabled={verifying || manualReason.trim().length < 5}
+                          className="inline-flex items-center gap-1.5 min-h-[42px] px-4 rounded-[10px] border border-slate-200 bg-white text-[13px] font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                        >
+                          {t('settings.cc.people.ssoDomainManualVerify')}
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
+                {verifyNote && (
+                  <p role="status" className={`text-[12px] font-medium ${verifyNote.ok ? 'text-emerald-700' : 'text-amber-800'}`}>
+                    {verifyNote.message}
+                  </p>
+                )}
+              </div>
+            )}
           </EditorSection>
 
           <EditorSection

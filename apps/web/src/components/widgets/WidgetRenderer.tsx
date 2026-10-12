@@ -4470,6 +4470,8 @@ function ExternalHtmlWidget({ config, freeze }: { config: any; freeze?: boolean 
     // The board also announces `educms-media-ready`, because the snapshot
     // can resolve before the frame finishes loading (and vice versa).
     const onReady = (e: MessageEvent) => {
+      // H-9 (2026-10-11): only THIS board's frame may ask for the snapshot.
+      if (e?.source !== el.contentWindow) return;
       if (e?.data && (e.data as { type?: string }).type === 'educms-media-ready') postGymMedia();
     };
     el.addEventListener('load', postGymMedia);

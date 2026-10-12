@@ -346,7 +346,11 @@ describe('POST /assets/complete-upload (presign) — poster generation', () => {
     });
     const { controller, videoPoster } = makeController({ storage });
 
-    await controller.completeUpload(adminReq as any, body);
+    // H-8 (2026-10-11): the stored type must match the format presign MINTED
+    // (the path's extension), so the minted path here is a .webm one; the
+    // client's claimed `contentType` still says mp4 and must still lose.
+    const webmPath = body.storagePath.replace(/\.mp4$/, '.webm');
+    await controller.completeUpload(adminReq as any, { ...body, storagePath: webmPath });
 
     expect(videoPoster.kickOff.mock.calls[0][0].mimeType).toBe('video/webm');
   });

@@ -14,3 +14,9 @@ pnpm-debug.log*
 tests/
 docs/
 *.md
+
+# H-11 (2026-10-11): env files at ANY depth (apps/*/.env, packages/*/.env.local …),
+# not just the root. The committed example files stay in.
+**/.env
+**/.env.*
+!**/.env.example

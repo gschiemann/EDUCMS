@@ -49,7 +49,11 @@ export async function backfillManagedAssetHashes(
   let hashed = 0;
   for (const a of rows) {
     try {
-      const res = await fetch(a.fileUrl, { redirect: 'follow' });
+      // H-7 (2026-10-11): only our own bucket origin (with a path boundary, so
+      // `<origin>.evil.example` cannot pass the prefix match) and NO redirects —
+      // a stored URL must not be able to bounce this boot job anywhere else.
+      if (!a.fileUrl.startsWith(`${supabaseOrigin}/`)) continue;
+      const res = await fetch(a.fileUrl, { redirect: 'error' });
       if (!res.ok || !res.body) continue;
       // 2026-09-23 — HASH AS IT STREAMS. This used to be `Buffer.from(await
       // res.arrayBuffer())`: the whole object in the API's heap. Direct uploads

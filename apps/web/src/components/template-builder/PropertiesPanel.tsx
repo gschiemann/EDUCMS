@@ -199,6 +199,7 @@ import {
 import { mergeHolidayTextStyleMaps } from '@/components/widgets/holiday-style-contract';
 import { DateField } from '@/components/ui/date-field';
 import { TimeField } from '@/components/ui/time-field';
+import { isFromDocumentFrame } from '@/lib/board-message-source';
 
 /* ── Date / time entry in this panel ──────────────────────────────────
  *
@@ -8011,6 +8012,9 @@ function ExternalHtmlTextEditor({
       } catch { /* no-op */ }
     };
     const onMsg = (e: MessageEvent) => {
+      // H-9 (2026-10-11): only a frame in THIS document (or the builder's own
+      // replay) — never another window that holds a reference to ours.
+      if (!isFromDocumentFrame(e)) return;
       const d = e.data as { type?: string; key?: string; kind?: string } | null;
       if (!d || typeof d !== 'object') return;
       if (d.type === 'educms-ready') {

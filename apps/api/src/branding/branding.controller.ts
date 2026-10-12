@@ -38,6 +38,7 @@ import { SupabaseStorageService } from '../storage/supabase-storage.service';
 
 import { BrandingScraperService, BrandingPreview, sanitizeFontFamilyName } from './branding-scraper.service';
 import { BrandingRateLimiter } from './branding-rate-limiter';
+import { clientIpFromRequest } from '../security/client-ip';
 import { safeFetch, SsrfError } from './safe-fetch';
 import { derivePalette, parseColor, ensureContrast, contrastRatio, bestTextOn, deriveReadableShades, readableShadeAdjustments, ContrastReport } from './color-utils';
 import { sanitizeLogoSvg } from './sanitize-svg';
@@ -75,10 +76,12 @@ export class BrandingController {
   // ── Public demo scrape: aggressive throttle, no persistence ─────
   @Post('demo/scrape')
   @Throttle({ default: { ttl: 60_000, limit: 5 } })
-  async demoScrape(@Body() body: { url: string }) {
+  async demoScrape(@Body() body: { url: string }, @Request() req: any) {
     if (!body?.url) throw new HttpException({ code: 'BRANDING_URL_REQUIRED', message: 'url is required' }, HttpStatus.BAD_REQUEST);
     try {
-      // Use the special "demo" bucket in the rate limiter
+      // H-12 (2026-10-11): per-address hourly ceiling first, then the shared
+      // "demo" bucket. Signed-in onboarding uses /branding/scrape, untouched.
+      this.limiter.checkDemoIp(clientIpFromRequest(req));
       this.limiter.check('__demo__');
       const preview = await this.scraper.scrape(body.url);
       // Sanitize: strip the heavy rawSnapshot for public demo to reduce
