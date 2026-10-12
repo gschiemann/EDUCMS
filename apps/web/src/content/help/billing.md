@@ -3,7 +3,7 @@ title: Billing and invoicing
 category: Billing
 updated: 2026-09-08
 excerpt: How per-screen pricing works, the free trial, paying by card, and how to change or cancel.
-<!-- SUPPORT DOMAIN NOTE — confirm venue-os.app vs venueos.app before launch. That split is config-gated and still unresolved; this article uses venue-os.app to stay consistent with /terms, /privacy, and the other live help pages. This line lives in the frontmatter block, which the loader strips, so it never renders. -->
+<!-- SUPPORT DOMAIN NOTE — all customer mail uses venue-os.app. This article uses it to stay consistent with /terms, /privacy, and the other live help pages. This line lives in the frontmatter block, which the loader strips, so it never renders. -->
 ---
 
 # Billing and invoicing

@@ -68,7 +68,7 @@ export class MusicController {
     if (!clientId) {
       throw new ServiceUnavailableException({
         code: 'MUSIC_SPOTIFY_NOT_CONFIGURED',
-        message: 'Spotify for Business OAuth not configured. Set SPOTIFY_BUSINESS_CLIENT_ID and SPOTIFY_BUSINESS_CLIENT_SECRET to enable.',
+        message: 'Spotify for Business is not available on this account. Contact support@venue-os.app.',
       });
     }
     // Placeholder — real OAuth flow lands when commercial agreement
@@ -94,7 +94,7 @@ export class MusicController {
     if (!teamId) {
       throw new ServiceUnavailableException({
         code: 'MUSIC_APPLE_NOT_CONFIGURED',
-        message: 'Apple Music for Business is not configured for this deploy. The partnership / developer-token signing chain is pending — contact sales@venue-os.app for activation status.',
+        message: 'Apple Music for Business is not available on this account. Contact support@venue-os.app.',
       });
     }
     // Apple Music's developer-token flow is signed JWT not OAuth —
@@ -103,7 +103,7 @@ export class MusicController {
     // light it up. Kept as placeholder.
     throw new ServiceUnavailableException({
       code: 'MUSIC_APPLE_ACTIVATION_PENDING',
-      message: 'Apple Music for Business activation in progress — sales is finalizing the agreement.',
+      message: 'Apple Music for Business is not available on this account. Contact support@venue-os.app.',
     });
   }
 }

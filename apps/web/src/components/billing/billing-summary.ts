@@ -50,7 +50,7 @@ export interface BillingSummary {
 }
 
 export const BILLING_SUMMARY_KEY = ['billing', 'summary'] as const;
-export const SALES_EMAIL = 'sales@venueos.app';
+export const SALES_EMAIL = 'sales@venue-os.app';
 
 export function useBillingSummary(enabled = true) {
   return useQuery<BillingSummary | null>({

@@ -89,7 +89,7 @@ it('a bound verified feed says a live claim is possible; a pending adapter says 
   await waitFor(() => expect(screen.getByText('Verified')).toBeInTheDocument());
   expect(screen.getByText(/shows LIVE once the screen reports it playing/)).toBeInTheDocument();
 
-  expect(screen.getByText('Adapter pending')).toBeInTheDocument();
+  expect(screen.getByText('Setting up')).toBeInTheDocument();
   expect(screen.getByText(/cannot drive the screen yet/)).toBeInTheDocument();
 });
 
@@ -123,31 +123,15 @@ it('a source their terms will never allow is not in the picker at all', async ()
   expect(screen.queryByText(/A consumer subscription is not a venue license/)).not.toBeInTheDocument();
 });
 
-it('a real service we have not finished wiring reads “coming soon”, not “blocked”', async () => {
+it('services we have not finished wiring are hidden, not labelled', async () => {
   mountPicker();
   await openConnectSheet();
 
-  expect(screen.getByText('Coming soon')).toBeInTheDocument();
-  // Rockbot (OAuth unfinished) and IPTV M3U (no playlist parser yet).
-  expect(screen.getByText('Rockbot')).toBeInTheDocument();
-  expect(screen.getByText('IPTV M3U Playlist')).toBeInTheDocument();
-  expect(screen.getByText(/They’ll move up to the list above when they’re ready/)).toBeInTheDocument();
-  // Listed, not offered — no Connect affordance for them.
-  expect(screen.queryByRole('button', { name: /^Rockbot/ })).not.toBeInTheDocument();
-});
-
-it('a provider that ships its own player is framed as one — and does not claim a switch we cannot do', async () => {
-  mountPicker();
-  await openConnectSheet();
-
-  expect(screen.getByText('Runs on its own box')).toBeInTheDocument();
-  expect(screen.getByText('Atmosphere TV')).toBeInTheDocument();
-  // Forward-looking about the input switch, explicit that it is not ready.
-  expect(screen.getByText(/hands the screen over to it on a schedule/)).toBeInTheDocument();
-  expect(screen.getByText(/isn’t ready yet, so nothing here connects today/)).toBeInTheDocument();
-  // No paragraph about our missing adapter.
-  expect(screen.queryByText(/Atmosphere uses its own managed player/)).not.toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: /^Atmosphere TV/ })).not.toBeInTheDocument();
+  expect(screen.queryByText(/coming soon/i)).not.toBeInTheDocument();
+  expect(screen.queryByText('Rockbot')).not.toBeInTheDocument();
+  expect(screen.queryByText('IPTV M3U Playlist')).not.toBeInTheDocument();
+  expect(screen.queryByText('Runs on its own box')).not.toBeInTheDocument();
+  expect(screen.queryByText('Atmosphere TV')).not.toBeInTheDocument();
 });
 
 it('the connectable set still matches exactly what the API will accept', () => {

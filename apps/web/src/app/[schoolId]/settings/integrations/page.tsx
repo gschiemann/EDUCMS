@@ -48,7 +48,6 @@ const STATE_FILTERS: readonly IntegrationStateFilter[] = [
   'attention',
   'available',
   'external',
-  'planned',
 ];
 
 export default function SettingsIntegrationsPage() {

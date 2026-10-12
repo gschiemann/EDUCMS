@@ -227,20 +227,7 @@ export default function StreamingSettingsPage() {
               if (hls) setConnectModalProvider(hls);
             }}
           />
-          {/* 2. Business music — documented provider APIs, adapter pending. */}
-          <QuickStartCard
-            tone="violet"
-            icon={<Music className="w-5 h-5" />}
-            badge={t('streamingSso.badgeComingSoon')}
-            title={t('streamingSso.backgroundMusicTitle')}
-            blurb={t('streamingSso.backgroundMusicBlurb')}
-            cta={t('streamingSso.comingSoonContactSales')}
-            onClick={() => {
-              const soundtrack = providers.data?.find((p) => p.id === 'soundtrack');
-              if (soundtrack) setPendingProvider(soundtrack);
-            }}
-          />
-          {/* 3. Consumer entertainment services are explicitly blocked. */}
+          {/* 2. Consumer entertainment services are explicitly blocked. */}
           <QuickStartCard
             tone="amber"
             icon={<Lock className="w-5 h-5" />}
@@ -619,12 +606,6 @@ function ConnectModal({ provider, onClose, onConnected }: { provider: Provider; 
           {provider.auth === 'iframeOnly' && (
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
               {t('streamingSso.iframeNoCreds')}
-            </div>
-          )}
-
-          {provider.auth === 'oauth2' && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700">
-              {t('streamingSso.oauthNotImplemented', { provider: provider.name })}
             </div>
           )}
 
@@ -1150,7 +1131,7 @@ function PartnerAdapterPendingModal({ provider, onClose }: { provider: Provider;
             </a>
           )}
           <a
-            href={`mailto:sales@venueos.com?subject=${encodeURIComponent(`${provider.name} VenueOS adapter request`)}`}
+            href={`mailto:sales@venue-os.app?subject=${encodeURIComponent(`${provider.name} VenueOS adapter request`)}`}
             className="px-4 py-2 text-sm font-bold rounded-lg bg-violet-600 text-white hover:bg-violet-700 inline-flex items-center gap-2"
           >
             Request adapter

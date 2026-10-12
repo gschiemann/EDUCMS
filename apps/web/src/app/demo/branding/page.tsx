@@ -23,7 +23,7 @@ export default function DemoBrandingPage() {
         <Link href="/" className="font-bold text-lg">VenueOS</Link>
         <div className="flex gap-2 text-sm items-center">
           <span className="text-slate-500">Try the live demo</span>
-          <Link href="/signup" className="bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700">Start a pilot</Link>
+          <Link href="/signup" className="bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700">Start free trial</Link>
         </div>
       </header>
 

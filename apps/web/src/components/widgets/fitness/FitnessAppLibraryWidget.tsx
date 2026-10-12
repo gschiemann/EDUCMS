@@ -204,7 +204,16 @@ export function FitnessAppLibraryWidget({
 
   // Build category rows — stable reference so the tile animation
   // delays don't randomize on every render.
-  const byCategory = useMemo(() => sourcesByCategory(), []);
+  // Sources that are not built yet ('COMING') are left out entirely rather
+  // than shown with a label.
+  const byCategory = useMemo(() => {
+    const all = sourcesByCategory();
+    const out = {} as typeof all;
+    for (const k of Object.keys(all) as SourceCategory[]) {
+      out[k] = all[k].filter((src) => src.status !== 'COMING');
+    }
+    return out;
+  }, []);
 
   const visibleCategories: SourceCategory[] = useMemo(() => {
     const allCats: SourceCategory[] = [

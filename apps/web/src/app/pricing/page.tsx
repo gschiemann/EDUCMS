@@ -107,6 +107,7 @@ export default function PricingPage() {
           <p className="mt-6 text-base md:text-lg text-slate-400 leading-relaxed max-w-xl mx-auto">
             Every feature on every plan — signage, kiosks, live scoreboards, and
             emergency alerts. $25 per screen monthly, or $20 when you pay yearly.
+            Start with a 14-day free trial — no credit card.
           </p>
         </div>
       </section>
@@ -148,7 +149,7 @@ export default function PricingPage() {
                     : 'bg-slate-900 hover:bg-slate-800 text-white'
                 }`}
               >
-                Start free <ArrowRight className="w-4 h-4" />
+                Start 14-day free trial <ArrowRight className="w-4 h-4" />
               </Link>
             </div>
           ))}
@@ -172,7 +173,7 @@ export default function PricingPage() {
               dedicated point of contact.
             </p>
             <Link
-              href="/help"
+              href="mailto:sales@venue-os.app"
               className="mt-6 inline-flex items-center justify-center gap-2 px-5 py-3 rounded-lg text-sm font-semibold bg-white border border-slate-300 text-slate-900 hover:border-slate-400 transition-colors"
             >
               Contact us <ArrowRight className="w-4 h-4" />

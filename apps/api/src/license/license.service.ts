@@ -260,7 +260,7 @@ export class LicenseService {
         {
           code: 'LICENSE_EXHAUSTED',
           message: eff.isPilot
-            ? `You've reached the Pilot tier limit of ${eff.seatLimit} screens. Upgrade to add more.`
+            ? `You've reached the free-trial limit of ${eff.seatLimit} screens. Choose a plan to add more.`
             : canAddSeat
               ? `Your plan covers ${eff.seatLimit} screen${eff.seatLimit === 1 ? '' : 's'}. Add a screen to your plan to pair this one.`
               : canUpgrade

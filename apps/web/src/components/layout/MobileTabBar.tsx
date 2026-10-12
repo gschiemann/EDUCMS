@@ -50,8 +50,11 @@ import { useMobileShell, type MobileShell } from '@/lib/mobile-shell-pref';
  */
 export function MobileTabBar() {
   const { shell, loaded, setShell } = useMobileShell();
+  const role = useAppStore((s) => s.user?.role);
   if (!loaded) return null;
-  if (shell === 'v1') return <MobileNavV1 onSwitchShell={setShell} />;
+  // The classic bar is a support/rollback tool for platform staff. A customer
+  // whose browser stored the old preference still gets the current navigation.
+  if (shell === 'v1' || role !== 'SUPER_ADMIN') return <MobileNavV1 onSwitchShell={setShell} />;
   return <ClassicMobileTabBar onSwitchShell={setShell} />;
 }
 
@@ -268,16 +271,18 @@ function ClassicMobileTabBar({ onSwitchShell }: { onSwitchShell: (v: MobileShell
             {/* The return leg of the rollback contract: an operator who
                 switched to classic must be able to get back without knowing
                 a localStorage key exists. */}
-            <div className="px-4 pb-2 pt-1 border-t border-slate-100">
-              <button
-                type="button"
-                data-testid="switch-new-nav"
-                onClick={() => { setMoreOpen(false); onSwitchShell('v1'); }}
-                className="w-full flex items-center justify-center min-h-[44px] rounded-xl text-[11px] font-bold text-slate-400 hover:text-slate-700 hover:bg-slate-50"
-              >
-                {t('toolbar.newNavigation')}
-              </button>
-            </div>
+            {user?.role === 'SUPER_ADMIN' && (
+              <div className="px-4 pb-2 pt-1 border-t border-slate-100">
+                <button
+                  type="button"
+                  data-testid="switch-new-nav"
+                  onClick={() => { setMoreOpen(false); onSwitchShell('v1'); }}
+                  className="w-full flex items-center justify-center min-h-[44px] rounded-xl text-[11px] font-bold text-slate-400 hover:text-slate-700 hover:bg-slate-50"
+                >
+                  {t('toolbar.newNavigation')}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

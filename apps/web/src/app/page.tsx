@@ -98,7 +98,7 @@ function Hero() {
           </Link>
         </div>
         <p className="mt-5 text-sm text-slate-500">
-          No credit card · Free pilot, any industry · Up and running in 10 minutes
+          No credit card · 14-day free trial, any industry · Up and running in 10 minutes
         </p>
       </div>
     </section>
@@ -504,7 +504,7 @@ function CTA() {
               Put it on every screen.
             </h2>
             <p className="mt-4 text-slate-400 text-base md:text-lg max-w-xl mx-auto">
-              Free pilot, any industry. Up and running in under ten minutes — no card,
+              14-day free trial, any industry. Up and running in under ten minutes — no card,
               no hardware, no sales call.
             </p>
             <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">

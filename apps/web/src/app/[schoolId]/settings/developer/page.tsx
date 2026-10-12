@@ -180,11 +180,6 @@ export default function DeveloperSettingsPage() {
             href={`/${schoolId}/settings/pos`}
           />
           <IntegrationCard
-            name="Ad networks"
-            blurb="House ads + future ad-network OAuth."
-            href={`/${schoolId}/settings/monetize`}
-          />
-          <IntegrationCard
             name="SSO / SAML / OIDC"
             blurb="District directory integration for staff login."
             href={`/${schoolId}/settings/sso`}

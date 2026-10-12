@@ -261,7 +261,14 @@ describe('§6.2 / §15 — the sheet behaves like a sheet', () => {
 });
 
 describe('rollback contract', () => {
-  it('a stored "classic" preference draws the classic bar, and v1 never appears', () => {
+  it('a customer with a stored "classic" preference still gets the current navigation', () => {
+    window.localStorage.setItem(MOBILE_SHELL_KEY, 'classic');
+    render(<MobileTabBar />);
+    expect(screen.getByTestId('mobile-tabbar-v1')).toBeInTheDocument();
+  });
+
+  it('a stored "classic" preference draws the classic bar for platform staff, and v1 never appears', () => {
+    seedUser('SUPER_ADMIN');
     window.localStorage.setItem(MOBILE_SHELL_KEY, 'classic');
     render(<MobileTabBar />);
     expect(screen.queryByTestId('mobile-tabbar-v1')).not.toBeInTheDocument();
@@ -269,7 +276,15 @@ describe('rollback contract', () => {
     expect(nav).toHaveTextContent('Assets'); // the classic label
   });
 
+  it('customers never see the navigation switch; only platform staff do', async () => {
+    render(<MobileTabBar />);
+    fireEvent.click(screen.getByRole('button', { name: /More/ }));
+    await screen.findByTestId('more-sheet');
+    expect(screen.queryByTestId('switch-classic-nav')).not.toBeInTheDocument();
+  });
+
   it('switching from the v1 sheet persists classic and swaps the bar in place', async () => {
+    seedUser('SUPER_ADMIN');
     render(<MobileTabBar />);
     fireEvent.click(screen.getByRole('button', { name: /More/ }));
     await screen.findByTestId('more-sheet');
@@ -281,6 +296,7 @@ describe('rollback contract', () => {
   });
 
   it('switching back from the classic sheet returns to v1', async () => {
+    seedUser('SUPER_ADMIN');
     window.localStorage.setItem(MOBILE_SHELL_KEY, 'classic');
     render(<MobileTabBar />);
     fireEvent.click(screen.getByRole('button', { name: /More/ }));

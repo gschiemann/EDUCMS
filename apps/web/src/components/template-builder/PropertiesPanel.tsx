@@ -5850,8 +5850,6 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
             ['npr', 'NPR Live — local station by lat/lng'],
             ['nts', 'NTS Radio (free, 2 channels)'],
             ['custom-stream', 'Custom stream URL (Icecast / Shoutcast / m3u8)'],
-            ['apple-business', 'Apple Music for Business (coming soon)'],
-            ['spotify-business', 'Spotify for Business (coming soon)'],
           ]}
           onChange={(v) => setField({ source: v })}
         />,

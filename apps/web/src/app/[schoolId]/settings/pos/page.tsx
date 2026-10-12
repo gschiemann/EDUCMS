@@ -496,7 +496,7 @@ function ConnectModal({ provider, onClose, onConnected }: { provider: PosProvide
               </p>
               <p className="text-amber-700">
                 {t('billingCommerce.wantThisPrioritized')}{' '}
-                <a href="mailto:sales@venueos.com" className="font-bold underline">sales@venueos.com</a>{' '}
+                <a href="mailto:sales@venue-os.app" className="font-bold underline">sales@venue-os.app</a>{' '}
                 {t('billingCommerce.fastTrackIt')}{' '}
                 <strong>Custom Webhook</strong> {t('billingCommerce.webhookWorksToday')}
               </p>

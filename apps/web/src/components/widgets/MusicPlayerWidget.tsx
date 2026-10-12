@@ -13,10 +13,8 @@
  *   1. SomaFM      — free, embeddable, dozens of stations. Works today.
  *   2. NPR Live    — local-station finder by tenant lat/lng. Free.
  *   3. NTS Radio   — free, public, embeddable. Works today.
- *   4. Apple Music for Business — needs commercial agreement; widget
- *      renders a "Coming soon — Notify me" CTA with a mailto: link.
- *   5. Spotify for Business — same. Spotify locks venue use behind
- *      Soundtrack Your Brand (already in the streaming hub).
+ *   4. Apple Music / Spotify for Business — not offered in the picker; a
+ *      legacy saved source shows the neutral "pick a station" state.
  *   6. Custom stream URL (Icecast / Shoutcast / m3u8 audio) — paste
  *      your own stream URL. Works today.
  *
@@ -135,7 +133,7 @@ function isWithinBusinessHours(bh?: MusicPlayerConfig['businessHours']): boolean
   return nowMin >= startMin || nowMin <= endMin;
 }
 
-function resolveStreamUrl(c: MusicPlayerConfig): { url: string | null; sourceLabel: string; comingSoon?: boolean } {
+function resolveStreamUrl(c: MusicPlayerConfig): { url: string | null; sourceLabel: string } {
   const src = c.source || 'somafm';
   switch (src) {
     case 'somafm': {
@@ -161,10 +159,11 @@ function resolveStreamUrl(c: MusicPlayerConfig): { url: string | null; sourceLab
     }
     case 'custom-stream':
       return { url: c.customStreamUrl || null, sourceLabel: 'Custom stream' };
+    // Legacy saved sources with no playable stream: show the neutral
+    // "pick a station" state, never a label about a future release.
     case 'apple-business':
-      return { url: null, sourceLabel: 'Apple Music for Business', comingSoon: true };
     case 'spotify-business':
-      return { url: null, sourceLabel: 'Spotify for Business', comingSoon: true };
+      return { url: null, sourceLabel: 'Music' };
     default:
       return { url: null, sourceLabel: src };
   }
@@ -183,7 +182,7 @@ export function MusicPlayerWidget({
   const [needsTap, setNeedsTap] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { url, sourceLabel, comingSoon } = useMemo(() => resolveStreamUrl(c), [c]);
+  const { url, sourceLabel } = useMemo(() => resolveStreamUrl(c), [c]);
   const withinHours = useMemo(() => isWithinBusinessHours(c.businessHours), [c.businessHours]);
 
   // Emergency awareness — the player wraps templates in a provider
@@ -208,7 +207,7 @@ export function MusicPlayerWidget({
 
   // Auto-start playback when live + URL resolved + not silenced.
   useEffect(() => {
-    if (!isLive || !url || comingSoon || silenced || !withinHours) return;
+    if (!isLive || !url || silenced || !withinHours) return;
     const audio = audioRef.current;
     if (!audio) return;
     audio.volume = Math.max(0, Math.min(1, (c.defaultVolume ?? 70) / 100));
@@ -225,7 +224,7 @@ export function MusicPlayerWidget({
     return () => {
       try { audio.pause(); audio.src = ''; } catch { /* ignore */ }
     };
-  }, [isLive, url, comingSoon, silenced, withinHours, c.defaultVolume]);
+  }, [isLive, url, silenced, withinHours, c.defaultVolume]);
 
   // Auto-resume — persist the last source + station so a player
   // reload picks up where it left off without operator intervention.
@@ -259,31 +258,6 @@ export function MusicPlayerWidget({
           <div style={{ fontSize: '0.85em', lineHeight: 1.4 }}>
             Will resume automatically once all-clear is received.
           </div>
-        </div>
-      </PlayerShell>
-    );
-  }
-
-  // ─── Coming-soon (Apple / Spotify) ──────────────────────────
-  if (comingSoon) {
-    const mailto = `mailto:sales@venueos.com?subject=${encodeURIComponent(`Notify me when ${sourceLabel} is live`)}`;
-    return (
-      <PlayerShell zoneLabel={c.zoneLabel} sourceLabel={sourceLabel}>
-        <div style={{ textAlign: 'center', color: '#cbd5e1', maxWidth: 360 }}>
-          <div style={{ fontSize: '2em', marginBottom: 6 }}>🎶</div>
-          <div style={{ fontWeight: 700, color: '#f8fafc', marginBottom: 4 }}>{sourceLabel} — coming soon</div>
-          <div style={{ fontSize: '0.85em', lineHeight: 1.5, marginBottom: 10 }}>
-            We're finalizing the commercial agreement. In the meantime, try SomaFM, NPR Live, NTS Radio, or paste your own stream URL.
-          </div>
-          {!isLive && (
-            <a
-              href={mailto}
-              className="text-emerald-600 hover:underline"
-              style={{ fontSize: '0.85em', fontWeight: 600 }}
-            >
-              Notify me when ready
-            </a>
-          )}
         </div>
       </PlayerShell>
     );

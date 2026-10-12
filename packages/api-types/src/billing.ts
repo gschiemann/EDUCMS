@@ -87,7 +87,7 @@ export const LICENSE_TIERS: ReadonlyArray<LicenseTier> = [
     features: [
       'Per-screen billing',
       'Full template library',
-      'All integrations (streaming, POS, ads)',
+      'All integrations (streaming, POS, AI)',
       'Emergency alerts',
       'Email + chat support',
       'Cancel any time',
@@ -117,7 +117,7 @@ export const LICENSE_TIERS: ReadonlyArray<LicenseTier> = [
       'Per-screen billing',
       'Save 20% vs monthly ($20/mo effective)',
       'Full template library',
-      'All integrations (streaming, POS, ads)',
+      'All integrations (streaming, POS, AI)',
       'Emergency alerts',
       'Priority support',
     ],

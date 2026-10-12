@@ -11,7 +11,7 @@ import { useTranslations } from 'next-intl';
 import { PauseCircle, Siren } from 'lucide-react';
 import { useUIStore } from '@/store/ui-store';
 
-const SUPPORT_EMAIL = 'sales@venueos.app';
+const SUPPORT_EMAIL = 'sales@venue-os.app';
 
 export default function AccountSuspendedPage() {
   const t = useTranslations('customerConsole.suspended');

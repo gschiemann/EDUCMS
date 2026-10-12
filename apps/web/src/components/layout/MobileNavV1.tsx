@@ -260,20 +260,24 @@ export function MobileNavV1({ onSwitchShell }: { onSwitchShell: (v: MobileShell)
               </button>
             </div>
             {/* ROLLBACK CONTRACT — one tap back to the previous mobile
-                navigation, persisted in this browser, no deploy. */}
-            <div
-              className="px-4 pb-[calc(16px+env(safe-area-inset-bottom))] pt-1"
-            >
-              <button
-                type="button"
-                data-testid="switch-classic-nav"
-                onClick={() => { setMoreOpen(false); onSwitchShell('classic'); }}
-                className="w-full flex items-center justify-center gap-2 min-h-[44px] rounded-xl text-[12px] font-bold text-slate-500 hover:text-slate-800 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                navigation, persisted in this browser, no deploy. A SUPPORT
+                tool: customers never see two navigation versions, so the
+                switch is shown to platform staff only. */}
+            {user?.role === 'SUPER_ADMIN' && (
+              <div
+                className="px-4 pb-[calc(16px+env(safe-area-inset-bottom))] pt-1"
               >
-                <RotateCcw className="w-3.5 h-3.5" aria-hidden />
-                {t('nav.classicNavigation')}
-              </button>
-            </div>
+                <button
+                  type="button"
+                  data-testid="switch-classic-nav"
+                  onClick={() => { setMoreOpen(false); onSwitchShell('classic'); }}
+                  className="w-full flex items-center justify-center gap-2 min-h-[44px] rounded-xl text-[12px] font-bold text-slate-500 hover:text-slate-800 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" aria-hidden />
+                  {t('nav.classicNavigation')}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

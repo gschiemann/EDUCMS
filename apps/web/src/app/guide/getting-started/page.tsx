@@ -582,7 +582,7 @@ function SupportPage() {
     <section className="guide-page">
       <PageHeader chapter="Support" title="Need a hand?" />
       <p className="guide-lede">
-        We&rsquo;re a phone call away. Pilot customers get direct access to
+        We&rsquo;re a phone call away. Every customer gets direct access to
         the engineering team — most replies under an hour during business
         hours.
       </p>
@@ -604,7 +604,7 @@ function SupportPage() {
           <p className="guide-support-link">venue-os.app/status</p>
         </div>
         <div className="guide-support-card">
-          <h3>Pilot Concierge</h3>
+          <h3>Customer Onboarding</h3>
           <p>Dedicated onboarding manager during your first 90 days. Direct line on your welcome packet.</p>
           <p className="guide-support-link">In your welcome email</p>
         </div>

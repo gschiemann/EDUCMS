@@ -84,7 +84,6 @@ export const INTEGRATION_FAMILIES: readonly IntegrationFamily[] = [
   'clever',
   'streaming',
   'pos',
-  'monetization',
 ];
 
 export const FAMILY_ROUTES: Record<IntegrationFamily, string> = {
@@ -519,13 +518,14 @@ export function buildCatalog(input: CatalogInputs): IntegrationCatalogEntry[] {
     );
   }
 
-  for (const n of input.adNetworks ?? []) {
-    rows.push(
-      adNetworkEntry(n, input.adsReachable ? firstConnection(input.adConnections, 'networkId', n.id) : undefined),
-    );
-  }
+  // Ad-network monetization is not built (no inventory delivery), so it has no
+  // row here at all — a catalog entry for something that cannot work reads as
+  // an unfinished product. `adNetworkEntry` stays for when delivery ships.
 
-  return rows;
+  // A `planned` provider has no connector yet: nothing to configure, so it is
+  // hidden rather than shown with a label. A provider with a connection is
+  // never `planned`, so this cannot hide anything an operator set up.
+  return rows.filter((r) => r.state !== 'planned');
 }
 
 /** Rows whose §11 state means an operator has something to fix right now. */

@@ -28,13 +28,13 @@
  *                   never becomes connectable, so it is not in the UI at
  *                   all. The refusal stays ENFORCED (server-side, and in
  *                   `dispositionOf` below); it just stops being a pitch.
- *   COMING SOON   — a real business service with a real API that we have
- *                   not finished connecting. Listed, badged, not clickable.
+ *   COMING SOON   — a real service we have not finished connecting. HIDDEN
+ *                   (2026-10-11): an unbuilt entry is not shown at all, not
+ *                   shown with a label.
  *   OWN BOX       — the provider ships its own licensed player. Different
- *                   integration shape entirely: the box plays, and VenueOS
- *                   switches the screen to it. We cannot do that switch
- *                   yet, so it is badged COMING SOON too — see the note on
- *                   `runsOnProviderDevice` in packages/api-types/streaming.
+ *                   integration shape entirely, not connectable from here,
+ *                   so it is hidden too — see `runsOnProviderDevice` in
+ *                   packages/api-types/streaming.
  *
  * Capability comes from the server (`mediaRole` on the connection DTO) and
  * `runsOnProviderDevice` from the provider catalog. The editor deliberately
@@ -105,7 +105,7 @@ export function dispositionOf(p: ProviderLite): SourceDisposition {
 function StatusPill({ c }: { c: ConnectionLite }) {
   const map: Record<string, { label: string; cls: string; Icon: typeof CheckCircle2 }> = {
     ACTIVE: { label: 'Verified', cls: 'text-emerald-700 bg-emerald-50 border-emerald-200', Icon: CheckCircle2 },
-    PENDING: { label: 'Adapter pending', cls: 'text-amber-700 bg-amber-50 border-amber-200', Icon: Clock },
+    PENDING: { label: 'Setting up', cls: 'text-amber-700 bg-amber-50 border-amber-200', Icon: Clock },
     ERROR: { label: 'Not reachable', cls: 'text-rose-700 bg-rose-50 border-rose-200', Icon: AlertCircle },
     EXPIRED: { label: 'Expired', cls: 'text-rose-700 bg-rose-50 border-rose-200', Icon: AlertCircle },
     REVOKED: { label: 'Revoked', cls: 'text-rose-700 bg-rose-50 border-rose-200', Icon: AlertCircle },
@@ -195,38 +195,6 @@ function Slot({
   );
 }
 
-/**
- * A named group of sources that are not connectable YET.
- *
- * Deliberately shaped like the connectable tiles above it — same icon, same
- * name, same weight — so the operator reads "these are coming" rather than
- * "here is a list of our shortcomings". One short note for the group; no
- * per-provider paragraph about what we haven't built. Matches the honest
- * tiering the POS settings page uses (grey/amber pill in the tile corner).
- */
-function SoonGroup({ title, note, providers }: { title: string; note: string; providers: ProviderLite[] }) {
-  return (
-    <div className="rounded-md border border-slate-200 bg-white/70 p-2 space-y-1.5">
-      <div className="flex items-center gap-1.5">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">{title}</span>
-        <span className="text-[10px] text-slate-400">· {providers.length}</span>
-      </div>
-      <ul className="space-y-1">
-        {providers.map((p) => (
-          <li key={p.id} className="flex items-center gap-2">
-            <span className="text-sm">{p.iconEmoji || '📺'}</span>
-            <span className="text-[11px] font-semibold text-slate-700">{p.name}</span>
-            <span className="ml-auto inline-flex items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-700">
-              <Clock className="w-2.5 h-2.5" /> Soon
-            </span>
-          </li>
-        ))}
-      </ul>
-      <p className="text-[10px] leading-relaxed text-slate-500">{note}</p>
-    </div>
-  );
-}
-
 /** Inline connect sheet — the whole point of this component. */
 function ConnectSheet({
   providers, onClose, onConnected,
@@ -242,8 +210,6 @@ function ConnectSheet({
   const [err, setErr] = useState<string | null>(null);
 
   const connectable = providers.filter((p) => dispositionOf(p) === 'connectable');
-  const comingSoon = providers.filter((p) => dispositionOf(p) === 'coming-soon');
-  const ownBox = providers.filter((p) => dispositionOf(p) === 'own-box');
 
   const save = useMutation({
     mutationFn: async () => {
@@ -283,22 +249,6 @@ function ConnectSheet({
               <p className="mt-0.5 text-[10px] leading-relaxed text-slate-500">{p.blurb}</p>
             </button>
           ))}
-
-          {comingSoon.length > 0 && (
-            <SoonGroup
-              title="Coming soon"
-              note="Real business services we’re still finishing the connection for. They’ll move up to the list above when they’re ready."
-              providers={comingSoon}
-            />
-          )}
-
-          {ownBox.length > 0 && (
-            <SoonGroup
-              title="Runs on its own box"
-              note="These come with their own player, already licensed for your venue. We’re building the switch that hands the screen over to it on a schedule and takes it back — that isn’t ready yet, so nothing here connects today."
-              providers={ownBox}
-            />
-          )}
         </div>
       ) : (
         <div className="space-y-2">

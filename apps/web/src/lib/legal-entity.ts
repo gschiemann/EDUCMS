@@ -2,11 +2,9 @@
  * ONE place for the facts the public legal pages (/terms, /privacy, /dpa,
  * /ferpa, /coppa, /terms/eula) state about the company itself.
  *
- * ⚠️ PLACEHOLDERS — fill these in before launch (2026-10-11). The legal
- * entity name and mailing address were not known when the pages were
- * rewritten for every vertical; every page reads them from here, so changing
- * the two strings below updates every document at once. Do not hard-code the
- * entity or address into a page.
+ * Every page reads the legal entity name and mailing address from here, so
+ * changing the strings below updates every document at once. Do not hard-code
+ * the entity or address into a page.
  *
  * The contact addresses: privacy@, security@ and support@ are forwarded
  * (Forward Email, 2026-10-10). legal@ was NOT among the forwarded aliases
@@ -43,6 +41,7 @@ export const LEGAL_CONTACTS = {
   privacy: 'privacy@venue-os.app',
   security: 'security@venue-os.app',
   support: 'support@venue-os.app',
+  sales: 'sales@venue-os.app',
 } as const;
 
 /** Shown as "Last updated" on /terms, /privacy, /dpa, /ferpa, /coppa and /terms/eula. */

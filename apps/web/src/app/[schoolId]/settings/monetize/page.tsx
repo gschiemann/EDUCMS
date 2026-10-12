@@ -164,25 +164,6 @@ export default function MonetizeSettingsPage() {
         description="Opt your screens into a programmatic ad network and earn per impression. You set the content controls; we route the inventory and pay you the rev share."
       />
 
-      {/* 2026-05-04 — pre-demo honesty banner. Operator pointed out
-          (correctly) that the connect flows are brochure-only — they
-          save credentials but the per-network creative-fetch loop
-          ships in v1.1. Surface that here so the demo conversation
-          is "we already partnered with 11 networks, here's the dial
-          for content controls, inventory delivery is coming next
-          quarter" — instead of an embarrassing silent gap. */}
-      <div className="rounded-xl border-2 border-amber-300 bg-amber-50 p-4">
-        <div className="flex items-start gap-3">
-          <div className="w-9 h-9 rounded-full bg-amber-200 text-amber-800 flex items-center justify-center flex-shrink-0 font-bold text-xs">v1.1</div>
-          <div className="text-sm text-amber-900">
-            <div className="font-bold">Beta — connections save your preferences. Inventory delivery rolls out v1.1.</div>
-            <div className="text-xs text-amber-800 mt-1 leading-relaxed">
-              You can connect a network and configure content controls (blocked categories, dayparts, emergency-pause) today. Per-network creative fetch + impression tracking on the player ships in v1.1, alongside the first revenue payout cycle. Talk to sales for early access if your venue is ready to start serving inventory now.
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* Earnings summary */}
       <section>
         <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Earnings</h2>
@@ -361,7 +342,7 @@ function NetworkTile({ network, connected, onConnect }: { network: AdNetwork; co
       const url = network.docsUrl || network.websiteUrl;
       trackMonetizeClick(network.id, 'apply-partnership', url);
       if (url) window.open(url, '_blank', 'noopener,noreferrer');
-      else window.location.href = `mailto:partners@venueos.com?subject=${encodeURIComponent(`Partnership inquiry — ${network.name}`)}`;
+      else window.location.href = `mailto:sales@venue-os.app?subject=${encodeURIComponent(`Partnership inquiry — ${network.name}`)}`;
       return;
     }
     trackMonetizeClick(network.id, 'open-connect-modal');
@@ -383,11 +364,7 @@ function NetworkTile({ network, connected, onConnect }: { network: AdNetwork; co
         <div className="flex items-center gap-1">
           {connected && <CheckCircle2 className="w-5 h-5 text-emerald-600" />}
           {isClosed && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 uppercase tracking-wider">Info only</span>}
-          {/* 2026-05-25 monetize-audit — PARTNER networks have a real
-              API but require partnership sign-off; surface that as
-              "Coming soon" so the operator sees the gap honestly
-              instead of expecting an instant on-button activation. */}
-          {isPartner && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 uppercase tracking-wider">Coming soon</span>}
+          {isPartner && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 uppercase tracking-wider">Partner</span>}
           {network.integrationTier === 'DIRECT' && !connected && (
             <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 uppercase tracking-wider">Self-serve</span>
           )}
@@ -490,11 +467,6 @@ function ConnectModal({ network, onClose, onConnected }: { network: AdNetwork; o
           )}
           {network.auth === 'partnerKey' && (
             <Field label="Partner key" placeholder="..." value={credentials.partnerKey || ''} onChange={(v) => setCredentials({ ...credentials, partnerKey: v })} />
-          )}
-          {network.auth === 'oauth2' && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700">
-              OAuth flow not yet implemented for {network.name}. Save the row now — the OAuth callback ships in a follow-up release.
-            </div>
           )}
         </div>
 

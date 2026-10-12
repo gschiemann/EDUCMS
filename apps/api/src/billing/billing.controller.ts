@@ -395,7 +395,7 @@ export class BillingController {
       // null expiry = perpetual (the pilot/free tier doesn't expire).
       expiresAt: eff.expiresAt,
       message: eff.isPilot
-        ? `You're already on the free ${eff.tier} tier — pair up to ${eff.seatLimit} screen(s) with no card. ` +
+        ? `You're on the free trial — pair up to ${eff.seatLimit} screen(s) with no card. ` +
           'Pick a paid plan above whenever you are ready.'
         : `Your tenant is on the ${eff.tier} plan (${eff.seatLimit} seats). Manage it via the Customer Portal above.`,
     };

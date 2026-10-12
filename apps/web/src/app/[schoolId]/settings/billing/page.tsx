@@ -47,7 +47,7 @@ import {
   StatusPill,
 } from '@/components/settings/shell/primitives';
 
-const SALES_EMAIL = 'sales@venueos.app';
+const SALES_EMAIL = 'sales@venue-os.app';
 /** How long after the return from a board-pack checkout the allowance is read once more. */
 const BOARDS_RECHECK_MS = 5_000;
 
