@@ -5,7 +5,7 @@
  * response; 422 VIDEO_SCREEN_CANNOT_PLAY from `playbackCannotPlayRefusal`) in
  * apps/api/src/schedules/playback-gate.service.ts.
  */
-import { useTranslations } from 'next-intl';
+import { createTestTranslator } from '../../../test-mocks/next-intl';
 import {
   playbackGateErrorText,
   playbackWarningText,
@@ -19,7 +19,7 @@ jest.mock('sonner', () => ({ toast: { warning: jest.fn() } }));
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { toast } = require('sonner') as { toast: { warning: jest.Mock } };
 
-const t = useTranslations('playbackGate');
+const t = createTestTranslator('playbackGate');
 
 const MAY_STUTTER = {
   code: 'VIDEO_MAY_STUTTER',

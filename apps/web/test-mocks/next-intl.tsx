@@ -118,7 +118,8 @@ function interpolate(msg: string, values?: Values): string {
   return out;
 }
 
-export function useTranslations(namespace?: string) {
+/** Hook-free catalog translator for pure unit tests outside a React render. */
+export function createTestTranslator(namespace?: string) {
   const full = (key: string) => (namespace ? `${namespace}.${key}` : key);
   const t = (key: string, values?: Values): string => {
     const raw = resolve(full(key));
@@ -134,6 +135,8 @@ export function useTranslations(namespace?: string) {
   t.has = (key: string) => resolve(full(key)) !== undefined;
   return t;
 }
+
+export const useTranslations = createTestTranslator;
 
 export function useLocale() {
   return 'en';

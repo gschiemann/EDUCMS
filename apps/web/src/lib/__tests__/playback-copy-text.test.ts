@@ -7,7 +7,7 @@
 import en from '@/i18n/messages/en.json';
 import es from '@/i18n/messages/es.json';
 import zh from '@/i18n/messages/zh.json';
-import { useTranslations } from 'next-intl';
+import { createTestTranslator } from '../../../test-mocks/next-intl';
 import {
   playbackCopyErrorText,
   playbackCopyFileList,
@@ -17,7 +17,7 @@ import {
 } from '../playback-copy-text';
 
 // The jest stand-in for next-intl resolves the real en.json (with ICU plurals).
-const t = useTranslations('playbackCopy');
+const t = createTestTranslator('playbackCopy');
 
 /** What api-client throws for a refused publish: message + `code` + the whole `body`. */
 function apiError(body: Record<string, unknown>): Error & { code?: unknown; body?: unknown } {

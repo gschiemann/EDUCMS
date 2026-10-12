@@ -12,10 +12,10 @@ import {
   screenFailureReason,
   screenReadinessOf,
 } from '../screen-readiness-copy';
-import { useTranslations } from 'next-intl';
+import { createTestTranslator } from '../../../test-mocks/next-intl';
 import type { VideoOptimization } from '@/hooks/use-video-optimization';
 
-const t = useTranslations();
+const t = createTestTranslator();
 
 const video = (screen: unknown, extra: Record<string, unknown> = {}) => ({
   mimeType: 'video/mp4',
