@@ -55,7 +55,11 @@ describe('gradePlaybackSample (the one definition, moved from screenOps)', () =>
 
 describe('isSettledSample — only decode evidence counts', () => {
   it('a full cached minute is settled', () => expect(isSettledSample(settled())).toBe(true));
-  it('fewer than 1,500 frames is not', () => expect(isSettledSample(settled({ totalFrames: 1499 }))).toBe(false));
+  it('fewer than 840 frames is not', () => expect(isSettledSample(settled({ totalFrames: 839 }))).toBe(false));
+  it('a full minute of 24 fps (1,440 frames) and of 15 fps (900) is', () => {
+    expect(isSettledSample(settled({ totalFrames: 1440 }))).toBe(true);
+    expect(isSettledSample(settled({ totalFrames: 900 }))).toBe(true);
+  });
   it('the first stretch after activation is not', () => expect(isSettledSample(settled({ first: true }))).toBe(false));
   it('an uncached sample never is — whatever happened was delivery', () => {
     expect(isSettledSample(settled({ cached: false, stalls: 0 }))).toBe(false);

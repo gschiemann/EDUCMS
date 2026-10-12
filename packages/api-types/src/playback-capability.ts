@@ -103,8 +103,14 @@ export function gradePlaybackSample(s: PlaybackSampleCounters): PlaybackSampleGr
 
 // ── Settled samples + the per-(screen, file) record ────────────────────────
 
-/** A sample must cover at least this many frames to be decode evidence (~50 s at 30 fps). */
-export const SETTLED_MIN_FRAMES = 1_500;
+/**
+ * A sample must cover at least this many frames to be decode evidence. The
+ * player reports ~60 s windows, so this only excludes short/partial samples:
+ * 840 = 56 s at 15 fps. It was 1 500 (50 s at 30 fps), which a 24 fps or
+ * 15 fps video could never reach — those files could never be judged
+ * (2026-10-12).
+ */
+export const SETTLED_MIN_FRAMES = 840;
 /** Consecutive settled samples that make a verdict. */
 export const VERDICT_STREAK = 3;
 

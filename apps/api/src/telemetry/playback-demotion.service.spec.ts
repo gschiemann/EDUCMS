@@ -298,7 +298,7 @@ describe('ingest → evaluate: only VISIBLE stutter, 3 in a row', () => {
     await go(db, sample({ droppedFrames: 900 }));
     expect((await go(db, sample({ cached: false, droppedFrames: 1800, stalls: 9, stalledMs: 30_000 })))!.visibleBadStreak).toBe(1);
     expect((await go(db, sample({ first: true, droppedFrames: 900 })))!.visibleBadStreak).toBe(1);
-    expect((await go(db, sample({ totalFrames: 900, droppedFrames: 900 })))!.visibleBadStreak).toBe(1);
+    expect((await go(db, sample({ totalFrames: 800, droppedFrames: 800 })))!.visibleBadStreak).toBe(1);
     expect((await go(db, sample({ totalFrames: 2000, droppedFrames: 98 })))!).toMatchObject({ visibleClass: 'good', visibleBadStreak: 0 });
   });
 });

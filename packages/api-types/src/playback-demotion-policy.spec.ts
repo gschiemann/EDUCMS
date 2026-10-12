@@ -59,7 +59,7 @@ describe('classifyVisibleStutterSample (only what a viewer would see)', () => {
   });
   it('startup, short, uncached and unknown-cache samples are IGNORED', () => {
     expect(classifyVisibleStutterSample(sample({ first: true, droppedFrames: 900 }))).toBe('ignored');
-    expect(classifyVisibleStutterSample(sample({ totalFrames: 1499, droppedFrames: 900 }))).toBe('ignored');
+    expect(classifyVisibleStutterSample(sample({ totalFrames: 839, droppedFrames: 500 }))).toBe('ignored');
     expect(classifyVisibleStutterSample(sample({ cached: false, droppedFrames: 900 }))).toBe('ignored');
     expect(classifyVisibleStutterSample(sample({ cached: null, droppedFrames: 900 }))).toBe('ignored');
     expect(classifyVisibleStutterSample(sample({ cached: undefined, droppedFrames: 900 }))).toBe('ignored');
