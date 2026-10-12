@@ -1,0 +1,285 @@
+{
+  "date": "2026-10-12",
+  "scope": "Bounded inventory of documented template refresh waves and additive editor elements; not all offered presets.",
+  "method": "Pure read-only report/handoff/git-history review; no app, build, browser, or tests.",
+  "authorship": {
+    "refresh_html": "Luna attribution by wave context only; durable reports identify commits/worktrees but do not prove model authorship. Uncertain.",
+    "new_workflows": "Three Oct 11 sources listed; model author not explicitly identified in source reports.",
+    "additive_editor": "Handoff explicitly says Luna components merged in 31dcc19e, 4c034ede, b32639db; lead corrections also documented.",
+    "astra_retail": "Retail Service Counter is Astra work; excluded from Luna count."
+  },
+  "counts": {
+    "existing_refreshed_html": 57,
+    "new_workflow_html": 3,
+    "astra_retail_html_excluded": 1,
+    "luna_editor_variants": 10
+  },
+  "existing_refreshed_sources": {
+    "school": [
+      "apps/web/public/templates/school/elem-schedule-v1.html",
+      "apps/web/public/templates/school/elem-schedule-v2.html",
+      "apps/web/public/templates/school/elem-schedule-v3.html",
+      "apps/web/public/templates/school/ms-lobby-v1.html",
+      "apps/web/public/templates/school/ms-lobby-v2.html",
+      "apps/web/public/templates/school/ms-lobby-v3.html"
+    ],
+    "corporate": [
+      "apps/web/public/templates/signage/corporate/01-lobby-welcome-flagship.html",
+      "apps/web/public/templates/signage/corporate/02-conference-room.html",
+      "apps/web/public/templates/signage/corporate/03-kpi-dashboard.html",
+      "apps/web/public/templates/signage/corporate/04-new-hires.html",
+      "apps/web/public/templates/signage/corporate/05-floor-directory.html",
+      "apps/web/public/templates/signage/corporate/06-all-hands.html",
+      "apps/web/public/templates/signage/corporate/08-shuttle-board.html",
+      "apps/web/public/templates/signage/corporate/09-events-week.html"
+    ],
+    "healthcare": [
+      "apps/web/public/templates/signage/healthcare/01-waiting-room-flagship.html",
+      "apps/web/public/templates/signage/healthcare/02-physician-directory.html",
+      "apps/web/public/templates/signage/healthcare/03-now-serving.html",
+      "apps/web/public/templates/signage/healthcare/04-vaccine-clinic.html",
+      "apps/web/public/templates/signage/healthcare/05-hours-closures.html",
+      "apps/web/public/templates/signage/healthcare/06-patient-education.html",
+      "apps/web/public/templates/signage/healthcare/07-mychart-signup.html",
+      "apps/web/public/templates/signage/healthcare/08-pharmacy-pickup.html",
+      "apps/web/public/templates/signage/healthcare/09-clinical-trial.html",
+      "apps/web/public/templates/signage/healthcare/10-thanks-leave.html"
+    ],
+    "hospitality": [
+      "apps/web/public/templates/signage/hospitality/03-events-board.html",
+      "apps/web/public/templates/signage/hospitality/06-wayfinder.html",
+      "apps/web/public/templates/signage/hospitality/08-checkin-status.html",
+      "apps/web/public/templates/signage/hospitality/09-outlook.html"
+    ],
+    "fashion": [
+      "apps/web/public/templates/signage/fashion/02-editorial.html",
+      "apps/web/public/templates/signage/fashion/03-sale.html",
+      "apps/web/public/templates/signage/fashion/05-event-trunkshow.html",
+      "apps/web/public/templates/signage/fashion/06-fitting-room.html"
+    ],
+    "veterinary": [
+      "apps/web/public/templates/signage/veterinary/01-waiting-room-flagship.html",
+      "apps/web/public/templates/signage/veterinary/02-adopt-gallery.html"
+    ],
+    "clinic": [
+      "apps/web/public/templates/signage/clinic/01-campaign-flagship.html"
+    ],
+    "menus_pos": [
+      "apps/web/public/templates/signage/menus-pos/01-fullservice-menu.html",
+      "apps/web/public/templates/signage/menus-pos/02-wine-list.html",
+      "apps/web/public/templates/signage/menus-pos/04-cocktail-program.html",
+      "apps/web/public/templates/signage/menus-pos/05-86-board.html",
+      "apps/web/public/templates/signage/menus-pos/06-brunch.html",
+      "apps/web/public/templates/signage/menus-pos/07-prix-fixe.html",
+      "apps/web/public/templates/signage/menus-pos/08-tasting-progress.html",
+      "apps/web/public/templates/signage/menus-pos/09-reservations.html",
+      "apps/web/public/templates/signage/menus-pos/10-takeaway-pickup.html"
+    ],
+    "bar": [
+      "apps/web/public/templates/signage/bar/01-tap-list-flagship.html",
+      "apps/web/public/templates/signage/bar/02-cocktail-menu.html",
+      "apps/web/public/templates/signage/bar/03-bottle-list.html",
+      "apps/web/public/templates/signage/bar/04-happy-hour.html",
+      "apps/web/public/templates/signage/bar/06-tonight-live.html",
+      "apps/web/public/templates/signage/bar/07-bottle-service.html",
+      "apps/web/public/templates/signage/bar/08-game-day.html"
+    ],
+    "qsr": [
+      "apps/web/public/templates/signage/qsr/08-rewards.html",
+      "apps/web/public/templates/signage/qsr/09-hours-location.html",
+      "apps/web/public/templates/signage/qsr/10-now-hiring.html"
+    ],
+    "christmas": [
+      "apps/web/public/holiday-templates/es-christmas.html",
+      "apps/web/public/holiday-templates/ms-christmas.html",
+      "apps/web/public/holiday-templates/hs-christmas.html"
+    ]
+  },
+  "new_workflows": [
+    {
+      "path": "apps/web/public/templates/signage/corporate/20-service-update.html",
+      "name": "Service Update / Temporary Closure",
+      "presets": [
+        "preset-sig-corporate-20",
+        "preset-sig-corporate-20-portrait"
+      ],
+      "model_authorship": "uncertain"
+    },
+    {
+      "path": "apps/web/public/templates/signage/clinic/02-services-booking-guide.html",
+      "name": "Care Services & Booking Guide",
+      "presets": [
+        "preset-sig-clinic-02",
+        "preset-sig-clinic-02-portrait"
+      ],
+      "model_authorship": "uncertain"
+    },
+    {
+      "path": "apps/web/public/templates/school/commencement-guest-guide.html",
+      "name": "Commencement Guest Guide",
+      "presets": [
+        "preset-school-commencement-guide",
+        "preset-school-commencement-guide-portrait"
+      ],
+      "model_authorship": "uncertain"
+    }
+  ],
+  "astra_individual_followup": {
+    "sources": [
+      "apps/web/public/templates/school/elem-schedule-v1.html",
+      "apps/web/public/templates/school/elem-schedule-v3.html",
+      "apps/web/public/templates/signage/clinic/02-services-booking-guide.html"
+    ],
+    "evidence_directory": "/Users/gschiemann/Desktop/template-flagship-audit/astra-polish/final/",
+    "screenshots": "12 PNGs: each source \u00d7 Chromium/WebKit \u00d7 landscape/portrait",
+    "scope_note": "Astra reviewed all 57 refreshed sources and 3 new designs as coverage, but only the three named sources received the individual final fix/review cycle."
+  },
+  "astra_retail_excluded": {
+    "path": "apps/web/public/templates/signage/retail/09-service-counter.html",
+    "evidence_directory": "/Users/gschiemann/Desktop/template-flagship-audit/retail-service-counter/",
+    "status": "Astra redesigned; final visual/widget review still pending per Oct 12 handoff."
+  },
+  "luna_editor_variants": {
+    "count": 10,
+    "canonical_types": [
+      "IMAGE",
+      "IMAGE_CAROUSEL",
+      "CHART"
+    ],
+    "variant_names": "Not enumerated in handoff",
+    "commits": [
+      "31dcc19e",
+      "4c034ede",
+      "b32639db"
+    ],
+    "handoff": "docs/handoffs/2026-10-11-additive-editor-elements.md"
+  },
+  "audit_surface": [
+    {
+      "section": 1,
+      "design": "Deferred",
+      "ux": "Deferred",
+      "functionality": "Deferred"
+    },
+    {
+      "section": 2,
+      "design": "Partial",
+      "ux": "Partial",
+      "functionality": "Deferred"
+    },
+    {
+      "section": 3,
+      "design": "Deferred",
+      "ux": "Deferred",
+      "functionality": "Deferred"
+    },
+    {
+      "section": 4,
+      "design": "Partial",
+      "ux": "Partial",
+      "functionality": "Deferred"
+    },
+    {
+      "section": 5,
+      "design": "Deferred",
+      "ux": "Deferred",
+      "functionality": "Deferred"
+    },
+    {
+      "section": 6,
+      "design": "Deferred",
+      "ux": "Deferred",
+      "functionality": "Deferred"
+    },
+    {
+      "section": 7,
+      "design": "Partial",
+      "ux": "Partial",
+      "functionality": "Deferred"
+    },
+    {
+      "section": 8,
+      "design": "Partial",
+      "ux": "Partial",
+      "functionality": "Deferred"
+    },
+    {
+      "section": 9,
+      "design": "Deferred",
+      "ux": "Deferred",
+      "functionality": "Deferred"
+    },
+    {
+      "section": 10,
+      "design": "Deferred",
+      "ux": "Deferred",
+      "functionality": "Deferred"
+    },
+    {
+      "section": 11,
+      "design": "Deferred",
+      "ux": "Deferred",
+      "functionality": "Deferred"
+    },
+    {
+      "section": 12,
+      "design": "Deferred",
+      "ux": "Deferred",
+      "functionality": "Deferred"
+    },
+    {
+      "section": 13,
+      "design": "Deferred",
+      "ux": "Deferred",
+      "functionality": "Deferred"
+    },
+    {
+      "section": 14,
+      "design": "Partial",
+      "ux": "Partial",
+      "functionality": "Deferred"
+    },
+    {
+      "section": 15,
+      "design": "Partial",
+      "ux": "Partial",
+      "functionality": "Deferred"
+    },
+    {
+      "section": 16,
+      "design": "Deferred",
+      "ux": "Deferred",
+      "functionality": "Deferred"
+    },
+    {
+      "section": 17,
+      "design": "Partial",
+      "ux": "Partial",
+      "functionality": "Deferred"
+    },
+    {
+      "section": 18,
+      "design": "Partial",
+      "ux": "Partial",
+      "functionality": "Deferred"
+    },
+    {
+      "section": 19,
+      "design": "Partial",
+      "ux": "Partial",
+      "functionality": "Partial"
+    },
+    {
+      "section": 20,
+      "design": "Covered",
+      "ux": "Covered",
+      "functionality": "Partial"
+    },
+    {
+      "section": 21,
+      "design": "Covered",
+      "ux": "Covered",
+      "functionality": "Covered"
+    }
+  ]
+}
