@@ -9,6 +9,8 @@
  * Output: apps/web/public/templates/_thumbs/<same-rel-path>.png
  * Re-run after editing any board:  node scripts/gen-template-posters.cjs http://localhost:8910
  * (start a static server first:     python3 -m http.server 8910 --directory apps/web/public)
+ * Append relative HTML paths to refresh only those boards and their registered
+ * portrait previews, e.g. ... http://localhost:8910 school/elem-schedule-v1.html
  *
  * Capture is done with the REAL board JS running (autofit fits the text), then
  * animations are frozen one frame before the shot so the poster matches the
@@ -76,7 +78,11 @@ function listBoards(dir, rel = '') {
 }
 
 (async () => {
-  const boards = listBoards(ROOT);
+  const allBoards = listBoards(ROOT);
+  const requested = [...new Set(process.argv.slice(3))];
+  const unknown = requested.filter(rel => !allBoards.includes(rel));
+  if (unknown.length) throw new Error(`Unknown board paths: ${unknown.join(', ')}`);
+  const boards = requested.length ? requested : allBoards;
   const orientations = registeredOrientations();
   console.log(`Boards to capture: ${boards.length} (base ${BASE})`);
   const browser = await chromium.launch();

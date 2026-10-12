@@ -1,0 +1,17 @@
+[
+  {
+    "source": "school/elem-schedule-v1.html",
+    "keysPreserved": 54,
+    "shimBytesIdentical": true
+  },
+  {
+    "source": "school/elem-schedule-v3.html",
+    "keysPreserved": 55,
+    "shimBytesIdentical": true
+  },
+  {
+    "source": "signage/clinic/02-services-booking-guide.html",
+    "keysPreserved": 55,
+    "shimBytesIdentical": true
+  }
+]
