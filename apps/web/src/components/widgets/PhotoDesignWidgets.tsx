@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { ThemeWidgetProps } from "./themes/registry";
 import { useDesignFont } from "./use-design-font";
 
@@ -102,7 +102,7 @@ function PhotoSurface({
   showCaption = true,
   captionColor = "#fff",
   captionFont,
-  captionFontSize = 60,
+  captionFontSize = 80,
 }: {
   photo: PhotoDesignPhoto;
   alt: string;
@@ -111,6 +111,18 @@ function PhotoSurface({
   captionFont?: string;
   captionFontSize?: number;
 }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(800);
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    const measure = () => setWidth(node.clientWidth);
+    measure();
+    if (typeof ResizeObserver === 'undefined') { window.addEventListener('resize', measure); return () => window.removeEventListener('resize', measure); }
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
   const [failedUrl, setFailedUrl] = useState("");
   const src = photo.url || "";
   const valid = src.length > 0 && failedUrl !== src;
@@ -119,7 +131,7 @@ function PhotoSurface({
   const y = clamp(photo.focalY, 0, 100, 50);
   const zoom = clamp(photo.zoom, 1, 3, 1);
   return (
-    <div style={{ position: "relative", width: "100%", height: "100%", minHeight: 0, overflow: "hidden", background: "#e2e8f0" }}>
+    <div ref={ref} style={{ position: "relative", width: "100%", height: "100%", minHeight: 0, overflow: "hidden", background: "#e2e8f0" }}>
       {valid ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
@@ -150,7 +162,7 @@ function PhotoSurface({
             padding: "0.65em 0.8em",
             color: captionColor,
             fontFamily: captionFont || "inherit",
-            fontSize: captionFontSize,
+            fontSize: captionFontSize * width / 800,
             lineHeight: 1.2,
             fontWeight: 650,
             overflowWrap: "anywhere",
@@ -203,7 +215,7 @@ function FrameWidget({ config, shape = "rounded" }: ThemeWidgetProps & { shape?:
   return (
     <div data-photo-frame={shape} style={style}>
       <div style={{ width: "100%", height: "100%", overflow: "hidden", borderRadius: "inherit" }}>
-        <PhotoSurface photo={photo} alt={c.caption || "Framed photo"} captionFont={c.captionFont} captionFontSize={config?._thumb ? 8 : clamp(c.captionFontSize, 12, 240, 60)} />
+        <PhotoSurface photo={photo} alt={c.caption || "Framed photo"} captionFont={c.captionFont} captionFontSize={clamp(c.captionFontSize, 12, 240, 80)} />
       </div>
     </div>
   );
@@ -265,7 +277,7 @@ export function PhotoCollageWidget({ config }: ThemeWidgetProps) {
             ...(index === featureIndex ? { gridRow: `1 / span ${Math.max(1, photos.length - 1)}` } : {}),
           }}
         >
-          <PhotoSurface photo={photo} alt={photo.caption || `Collage photo ${index + 1}`} showCaption={c.showCaptions !== false} captionColor={c.captionColor || "#fff"} captionFont={c.captionFont} captionFontSize={config?._thumb ? 8 : clamp(c.captionFontSize, 12, 240, 60)} />
+          <PhotoSurface photo={photo} alt={photo.caption || `Collage photo ${index + 1}`} showCaption={c.showCaptions !== false} captionColor={c.captionColor || "#fff"} captionFont={c.captionFont} captionFontSize={clamp(c.captionFontSize, 12, 240, 80)} />
         </div>
       ))}
     </div>

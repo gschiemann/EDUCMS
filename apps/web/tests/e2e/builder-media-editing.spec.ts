@@ -207,6 +207,8 @@ for (const [board, key, portrait = false] of [
   ['/templates/signage/qsr/01-drive-thru-flagship.html', 'hero'],
   ['/templates/kiosk/school.html', 'staff.reyes.photo'],
   ['/templates/custom/brookfield/07-tour-takeaway.html', 'tour.image'],
+  ['/templates/signage/retail/09-service-counter.html', 'collection.parcel', false],
+  ['/templates/signage/retail/09-service-counter.html', 'collection.parcel', true],
   ['/templates/signage/corporate/20-service-update.html', 'hero.photo', false],
   ['/templates/signage/corporate/20-service-update.html', 'hero.photo', true],
   ['/templates/signage/clinic/02-services-booking-guide.html', 'hero.photo', false],

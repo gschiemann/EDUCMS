@@ -20,6 +20,14 @@ const WORKFLOWS = [
     bgColor: '#f5f0e7',
   },
   {
+    id: 'preset-sig-retail-09',
+    name: 'Service Counter · Collection & Returns',
+    description: 'Guide customers to collection and returns with editable steps, required items, desk location, service hours and help. Replace the store mark and service illustrations; edit every word, font and color. Policies are supplied by the operator.',
+    category: 'INFO',
+    url: '/templates/signage/retail/09-service-counter.html',
+    bgColor: '#f5f0e7',
+  },
+  {
     id: 'preset-school-commencement-guide',
     name: 'Graduation · Ceremony Guest Guide',
     description: 'Welcome ceremony guests with doors and start times, a four-step programme, parking and accessible entrance directions, programme details and replaceable class photography. All copy, media and styling remain editable.',

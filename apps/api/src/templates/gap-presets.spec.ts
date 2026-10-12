@@ -4,7 +4,7 @@ import { ALL_PRESETS, QUARANTINED_PRESET_IDS, resolvePresetVerticalTag, vertical
 
 describe('new workflow gallery availability', () => {
   it('offers each workflow in both orientations with unique, registered ids', () => {
-    expect(GAP_TEMPLATE_PRESETS).toHaveLength(6);
+    expect(GAP_TEMPLATE_PRESETS).toHaveLength(8);
     const ids = ALL_PRESETS.map((preset) => preset.id);
     for (const preset of GAP_TEMPLATE_PRESETS) {
       expect(ids.filter((id) => id === preset.id)).toHaveLength(1);
@@ -20,6 +20,15 @@ describe('new workflow gallery availability', () => {
       for (const vertical of VERTICALS) {
         expect(verticalTagIncludes(resolvePresetVerticalTag(id), vertical)).toBe(true);
       }
+    }
+  });
+
+  it('offers collection and returns to Retail and Fashion without leaking to schools', () => {
+    for (const suffix of ['', '-portrait']) {
+      const tag = resolvePresetVerticalTag('preset-sig-retail-09' + suffix);
+      expect(verticalTagIncludes(tag, 'RETAIL')).toBe(true);
+      expect(verticalTagIncludes(tag, 'FASHION')).toBe(true);
+      expect(verticalTagIncludes(tag, 'K12')).toBe(false);
     }
   });
 

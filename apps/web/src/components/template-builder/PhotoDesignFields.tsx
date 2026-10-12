@@ -11,8 +11,8 @@ export interface PhotoAssetPickerProps {
 }
 
 export interface PhotoDesignFieldsProps {
-  config: PhotoFrameConfig | PhotoCollageConfig | Record<string, any>;
-  onChange: (patch: Record<string, any>) => void;
+  config: PhotoFrameConfig | PhotoCollageConfig | Record<string, unknown>;
+  onChange: (patch: Record<string, unknown>) => void;
   /** Render the existing asset library/picker here; users should never need to paste URLs. */
   renderAssetPicker?: (props: PhotoAssetPickerProps) => ReactNode;
   /** Inject the existing shared font selector instead of maintaining a second catalog. */

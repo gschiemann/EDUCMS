@@ -21,6 +21,8 @@ export const SIGNAGE_TEMPLATES: SignageTemplate[] = [
   { id: 'preset-sig-corporate-20-portrait', name: 'Service Update · Temporary Closure — Portrait', group: 'Shared · Service Updates', url: '/templates/signage/corporate/20-service-update.html?o=portrait' },
   { id: 'preset-sig-clinic-02', name: 'Care Services · Services & Booking Guide', group: 'Clinic', url: '/templates/signage/clinic/02-services-booking-guide.html' },
   { id: 'preset-sig-clinic-02-portrait', name: 'Care Services · Services & Booking Guide — Portrait', group: 'Clinic', url: '/templates/signage/clinic/02-services-booking-guide.html?o=portrait' },
+  { id: 'preset-sig-retail-09', name: 'Service Counter · Collection & Returns', group: 'Retail · Customer Services', url: '/templates/signage/retail/09-service-counter.html' },
+  { id: 'preset-sig-retail-09-portrait', name: 'Service Counter · Collection & Returns — Portrait', group: 'Retail · Customer Services', url: '/templates/signage/retail/09-service-counter.html?o=portrait' },
   { id: 'preset-school-commencement-guide', name: 'Graduation · Ceremony Guest Guide', group: 'School · Events', url: '/templates/school/commencement-guest-guide.html' },
   { id: 'preset-school-commencement-guide-portrait', name: 'Graduation · Ceremony Guest Guide — Portrait', group: 'School · Events', url: '/templates/school/commencement-guest-guide.html?o=portrait' },
   {"id": "preset-sig-corporate-13", "name": "Corporate \u00b7 Homebuilder \u00b7 Welcome \u00b7 Cinematic", "url": "/templates/signage/corporate/homebuilder/01-welcome-cinematic.html", "group": "Corporate"},
