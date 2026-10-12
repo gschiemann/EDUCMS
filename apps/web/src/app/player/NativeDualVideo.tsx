@@ -45,6 +45,21 @@ export function nativeVideoNext(
 /** Longest wait for the web clip's loop point before handing over anyway. */
 export const NATIVE_HANDOFF_BOUNDARY_WAIT_MS = 60_000;
 
+/**
+ * A native fallback line, plus ONE diagnostics upload (≤ every 10 min). The APK
+ * only ships its log on playback trouble, so a screen that falls back to a
+ * smooth web player never sent the reason (VisionCore, 2026-10-12).
+ */
+let lastNativeLogUpload = 0;
+export function reportNativeFallback(line: string): void {
+  console.warn(line);
+  const now = Date.now();
+  if (now - lastNativeLogUpload < 10 * 60_000 || !nativeHas("uploadDiagnostics")) return;
+  lastNativeLogUpload = now;
+  // Let the WebView persist the console line first.
+  setTimeout(() => { void nativeCall("uploadDiagnostics").catch(() => undefined); }, 3_000);
+}
+
 function localStore(): Storage | null {
   try {
     return typeof window !== "undefined" ? window.localStorage : null;
@@ -188,7 +203,7 @@ export function NativeDualVideo({
           // The browser subtree remounts and plays the same verified file.
           setPhase({ identity, stage: "browser" });
           const next = nativeVideoNext(descriptor.version === 2 ? 2 : 1, reason, attemptN, seen === "ready" || seen === "presenting");
-          console.warn(nativeVideoFallbackLine({ reason, next, attempt: attemptN, protocol: descriptor.version === 2 ? 2 : 1, faceIndex: descriptor.faceIndex, sha256: descriptor.asset.sha256, stage: seen }));
+          reportNativeFallback(nativeVideoFallbackLine({ reason, next, attempt: attemptN, protocol: descriptor.version === 2 ? 2 : 1, faceIndex: descriptor.faceIndex, sha256: descriptor.asset.sha256, stage: seen }));
           if (next === "block")
             blockNativeVideo(localStore(), descriptor.asset.sha256, descriptor.faceIndex, Date.now());
           else if (next === "retry")

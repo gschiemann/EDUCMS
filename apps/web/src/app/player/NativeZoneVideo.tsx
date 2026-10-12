@@ -1,5 +1,6 @@
 "use client";
 
+import { reportNativeFallback } from "./NativeDualVideo";
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { nativeCall, nativeFire, nativeHas } from "./nativeBridge";
 import {
@@ -181,7 +182,7 @@ export function NativeZoneVideo({
       setPhase({ identity, stage: "browser" });
       if (r.skipped) return; // this showing deliberately stayed web; a new mount retries
       const next = nativeZoneNext(reason, attempt, r.played);
-      console.warn(nativeVideoFallbackLine({ reason, next, attempt, protocol: 3, faceIndex: descriptor.faceIndex, sha256: item.asset.sha256, stage: "zone" }));
+      reportNativeFallback(nativeVideoFallbackLine({ reason, next, attempt, protocol: 3, faceIndex: descriptor.faceIndex, sha256: item.asset.sha256, stage: "zone" }));
       if (next === "block") blockNativeVideo(localStore(), item.asset.sha256, descriptor.faceIndex, Date.now());
       else if (next === "retry")
         startTimer = setTimeout(() => {
