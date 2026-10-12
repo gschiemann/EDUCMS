@@ -452,6 +452,11 @@ export default function BillingPage() {
               <label
                 className={`mb-4 flex items-start gap-3 rounded-[13px] border p-4 cursor-pointer ${includeAi ? 'border-violet-300 bg-violet-50/50' : 'border-slate-200 bg-white'}`}
                 data-testid="plans-include-ai"
+                aria-label={t('billingAi.includeAi', {
+                      price: fmtWhole(
+                        (billingSummary.data?.aiPrices?.monthlyCents ?? 2500) - (billingSummary.data?.prices.monthlyCents ?? 2000),
+                      ),
+                    })}
               >
                 <input
                   type="checkbox"

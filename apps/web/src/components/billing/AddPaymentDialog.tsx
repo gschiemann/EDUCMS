@@ -158,6 +158,7 @@ export function AddPaymentDialog({
               <label
                 className={`mt-3 flex items-start gap-3 rounded-xl border p-3 cursor-pointer ${ai ? 'border-violet-400 bg-violet-50/60' : 'border-slate-200 bg-white'}`}
                 data-testid="add-payment-ai"
+                aria-label={t('dialog.aiLabel', { price: dollars(addon) })}
               >
                 <input
                   type="checkbox"

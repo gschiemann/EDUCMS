@@ -212,7 +212,7 @@ function LicenseCard({ c }: { c: CustomerDetail }) {
           </select>
         </label>
       </div>
-      <label className="mt-3 flex items-start gap-2.5" data-testid="customer-ai-toggle">
+      <label className="mt-3 flex items-start gap-2.5" data-testid="customer-ai-toggle" aria-label={t('detail.aiIncluded')}>
         <input
           type="checkbox"
           className="mt-0.5 h-4 w-4 accent-violet-600"
