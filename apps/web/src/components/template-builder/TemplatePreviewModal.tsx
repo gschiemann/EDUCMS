@@ -205,6 +205,18 @@ export function TemplatePreviewModal({
                   width: `${zone.width}%`,
                   height: `${zone.height}%`,
                   zIndex: zone.zIndex || 0,
+                  // Zone rotation + opacity, exactly as BuilderZone and the
+                  // player apply them (2026-10-12: Preview ignored a rotated
+                  // video carousel, so it was not a preview of the design).
+                  ...(() => {
+                    const c = (zone.defaultConfig || {}) as Record<string, unknown>;
+                    const rot = typeof c._zoneRotation === 'number' ? c._zoneRotation : 0;
+                    const opa = typeof c._zoneOpacity === 'number' ? c._zoneOpacity : 1;
+                    const extra: React.CSSProperties = {};
+                    if (rot) extra.transform = `rotate(${rot}deg)`;
+                    if (opa < 1) extra.opacity = opa;
+                    return extra;
+                  })(),
                 }}
               >
                 <WidgetErrorBoundary resetKey={zone.id} widgetLabel={zone.widgetType}>

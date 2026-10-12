@@ -3611,7 +3611,14 @@ function VideoCarouselWidget({ config, live }: { config: any; live?: boolean }) 
         // playlist still trigger a remount.
         key={idx}
         mediaKind="video"
-        url={resolveUrl(urls[idx])}
+        // In the editor (not live) the clip is paused with preload=metadata,
+        // which Safari paints as a black box. A `#t=0.1` media fragment makes
+        // every engine paint that frame, so the editor shows the real video
+        // (2026-10-12). Live playback keeps the plain URL.
+        url={(() => {
+          const u = resolveUrl(urls[idx]);
+          return !live && typeof u === 'string' && u && !u.includes('#') ? `${u}#t=0.1` : u;
+        })()}
         fitMode={fitMode}
         transition={transition}
         videoProps={{
