@@ -26,6 +26,12 @@ describe('DesignDataFields', () => {
     expect(onChange).toHaveBeenLastCalledWith({ rows: [['Ava', '9'], ['', '']] });
   });
 
+  it('writes a missing saved cell instead of silently ignoring the edit', () => {
+    const { onChange } = setup({ variant: 'design-table', columns: ['Name', 'Score'], rows: [['Ava']] });
+    fireEvent.change(screen.getByLabelText('Score · row 1'), { target: { value: '12' } });
+    expect(onChange).toHaveBeenLastCalledWith({ rows: [['Ava', '12']] });
+  });
+
   it('disables additions at the declared table capacity while allowing removal', () => {
     const columns = Array.from({ length: 6 }, (_, i) => `C${i + 1}`);
     const rows = Array.from({ length: 8 }, () => Array(6).fill(''));

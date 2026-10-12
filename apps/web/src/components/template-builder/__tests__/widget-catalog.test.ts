@@ -102,17 +102,17 @@ describe('categories — a widget can never become unreachable', () => {
   });
 
   it('media and the everyday design categories lead the full library', () => {
-    expect(WIDGET_CATEGORIES.slice(0, 4).map(c => c.id)).toEqual(['media', 'words', 'design', 'brand']);
+    expect(WIDGET_CATEGORIES.slice(0, 4).map(c => c.id)).toEqual(['media', 'words', 'design', 'layouts']);
     const all = listVariants();
     const ordered = orderWidgetVariants(all);
-    expect(ordered.slice(0, 7).map(v => String(v.widgetType))).toEqual(EVERYDAY_WIDGET_TYPES);
+    expect(ordered.slice(0, EVERYDAY_WIDGET_TYPES.length).map(v => String(v.widgetType))).toEqual(EVERYDAY_WIDGET_TYPES);
     expect(ordered.slice(0, 2).map(v => v.id)).toEqual(['image-basic', 'video-basic']);
     expect(ordered.map(v => v.id).sort()).toEqual(all.map(v => v.id).sort());
   });
 
-  it('ships between 8 and 12 named rows — a chip rail is not a category list', () => {
+  it('ships between 8 and 14 named rows — a chip rail is not a category list', () => {
     expect(WIDGET_CATEGORIES.length).toBeGreaterThanOrEqual(8);
-    expect(WIDGET_CATEGORIES.length).toBeLessThanOrEqual(12);
+    expect(WIDGET_CATEGORIES.length).toBeLessThanOrEqual(14);
   });
 
   it('every category label and blurb is human, not an enum', () => {
@@ -130,7 +130,7 @@ describe('the curated default — 8-12 flagships, never the whole catalogue', ()
     '%s gets a non-empty curated set capped at the limit',
     (vertical) => {
       const picks = curatedFlagships(all, vertical);
-      expect(picks.slice(0, 7).map(v => String(v.widgetType))).toEqual(EVERYDAY_WIDGET_TYPES);
+      expect(picks.slice(0, EVERYDAY_WIDGET_TYPES.length).map(v => String(v.widgetType))).toEqual(EVERYDAY_WIDGET_TYPES);
       expect(picks.length).toBeGreaterThan(0);
       expect(picks.length).toBeLessThanOrEqual(CURATED_LIMIT);
       // One tile per widget type — a "start here" row of twelve clocks helps

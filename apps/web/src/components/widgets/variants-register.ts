@@ -479,6 +479,34 @@ registerVariant({
 // tenant, an hourly post cache the screens read) and a real renderer, so it
 // is registered below with the rest. If that connector is ever removed, take
 // the tile with it.
+// General design elements supplement the venue-specific catalogue. Their real
+// renderers are lazy, so adding tools to the picker does not load every family.
+const loadDesignDataWidgets = () => import('./DesignDataWidgets') as Promise<Record<string, unknown>>;
+const loadPhotoDesignWidgets = () => import('./PhotoDesignWidgets') as Promise<Record<string, unknown>>;
+for (const [id, name, exportName] of [
+  ['design-table', 'Table', 'DesignTableWidget'],
+  ['design-chart-bar', 'Bar chart', 'DesignChartWidget'],
+  ['design-chart-line', 'Line chart', 'DesignChartWidget'],
+  ['design-chart-pie', 'Pie chart', 'DesignChartWidget'],
+]) registerVariant({
+  id, name, widgetType: 'CHART', category: 'MODERN',
+  description: id === 'design-table' ? 'Editable headers and cells. Add rows and columns, choose fonts and colors.' : 'Your own labels, values and colors. Switch between bar, line and pie.',
+  render: lazyWidget(loadDesignDataWidgets, exportName),
+  defaultConfig: { variant: id },
+});
+for (const [shape, name] of [['rounded', 'Rounded photo frame'], ['circle', 'Circle photo frame'], ['arch', 'Arch photo frame']]) registerVariant({
+  id: `photo-frame-${shape}`, name, widgetType: 'IMAGE', category: 'MODERN',
+  description: 'Frame your own photo. Replace, fit, reposition and zoom with editable framing controls.',
+  render: lazyWidget(loadPhotoDesignWidgets, 'PhotoFrameWidget'),
+  defaultConfig: { frameShape: shape, fit: 'cover', borderWidth: 0, borderColor: '#d4af72', focalX: 50, focalY: 50, zoom: 1, captionFont: 'Inter, sans-serif', captionFontSize: 60 },
+});
+for (const [layout, name, count] of [['pair', 'Photo pair', 2], ['featured', 'Featured photo collage', 3], ['grid', 'Photo grid', 4]] as const) registerVariant({
+  id: `photo-collage-${layout}`, name, widgetType: 'IMAGE_CAROUSEL', category: 'MODERN',
+  description: 'Static collage: all photos together. Replace, reorder, caption and frame each photo.',
+  render: lazyWidget(loadPhotoDesignWidgets, 'PhotoCollageWidget'),
+  defaultConfig: { layout, photos: Array.from({ length: count }, () => ({ url: '', caption: '', fit: 'cover', focalX: 50, focalY: 50, zoom: 1 })), spacing: 16, captionFont: 'Inter, sans-serif', captionFontSize: 60 },
+});
+
 const loadRendererWidgets = () => import('./WidgetRenderer') as Promise<Record<string, unknown>>;
 const loadFamilyWidgets = () => import('./widget-families') as Promise<Record<string, unknown>>;
 

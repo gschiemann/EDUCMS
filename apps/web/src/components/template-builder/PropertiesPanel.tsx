@@ -52,6 +52,7 @@ import {
 import { FanCamTextField } from './FanCamTextField';
 import { WebsiteTabsEditor } from './WebsiteTabsEditor';
 import { DesignDataFields } from './DesignDataFields';
+import { PhotoDesignFields } from './PhotoDesignFields';
 // K-12 sports launch, lane B4 — "don't type student names here" on the fields
 // whose typed names the API blanks on screens while a school's names are hidden.
 import { StudentNameNotice, studentNameNoticePlacer } from './StudentNameNotice';
@@ -2745,7 +2746,15 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
   // General data widgets own their full editor so structured cells and chart rows
   // never fall through the generic config fields (which cannot edit nested data).
   if (zone.widgetType === 'CHART' && ['design-table', 'design-chart-bar', 'design-chart-line', 'design-chart-pie'].includes(String(cfg.variant || ''))) {
-    return <DesignDataFields config={cfg} onChange={setField} />;
+    return <DesignDataFields config={cfg} onChange={setField} renderFontPicker={props => <FontFamilyField {...props} />} />;
+  }
+
+  if ((zone.widgetType === 'IMAGE' && String(cfg.variant || '').startsWith('photo-frame-')) ||
+      (zone.widgetType === 'IMAGE_CAROUSEL' && String(cfg.variant || '').startsWith('photo-collage-'))) {
+    return <PhotoDesignFields config={cfg} mode={zone.widgetType === 'IMAGE' ? 'frame' : 'collage'}
+      onChange={patch => setField({ ...patch, ...(Array.isArray(patch.photos) ? { urls: patch.photos.map((photo: { url: string }) => photo.url), assetUrls: patch.photos.map((photo: { url: string }) => photo.url) } : {}), ...(patch.fit ? { fitMode: patch.fit } : {}) })}
+      renderAssetPicker={props => <AssetPickerField {...props} kind="image" />}
+      renderFontPicker={props => <FontFamilyField {...props} />} />;
   }
 
   // Shape-based themes bake their own palette + typography and ignore

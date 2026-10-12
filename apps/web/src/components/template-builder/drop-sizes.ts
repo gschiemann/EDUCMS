@@ -23,6 +23,16 @@ export interface DropSize {
 
 /** Per-variant overrides — checked before the widgetType map. */
 const VARIANT_DROP_SIZE: Record<string, DropSize> = {
+  'design-table': { w: 60, h: 60 },
+  'design-chart-bar': { w: 55, h: 55 },
+  'design-chart-line': { w: 55, h: 55 },
+  'design-chart-pie': { w: 55, h: 55 },
+  'photo-frame-rounded': { w: 36, h: 55 },
+  'photo-frame-circle': { w: 30, h: 53.33 },
+  'photo-frame-arch': { w: 30, h: 65 },
+  'photo-collage-pair': { w: 60, h: 55 },
+  'photo-collage-featured': { w: 60, h: 60 },
+  'photo-collage-grid': { w: 60, h: 60 },
   // SHAPE primitives (B2): wide-short strips for line/arrow, compact
   // blocks for the filled shapes.
   'shape-line': { w: 40, h: 4 },
@@ -78,7 +88,12 @@ const WIDGET_TYPE_DROP_SIZE: Record<string, DropSize> = {
 export function resolveDropSize(
   widgetType: string | undefined,
   variantId?: string,
+  canvas?: { width: number; height: number },
 ): DropSize | undefined {
+  if (variantId === 'photo-frame-circle' && canvas && canvas.width > 0 && canvas.height > 0) {
+    const h = Math.min(60, 30 * canvas.width / canvas.height);
+    return { w: h * canvas.height / canvas.width, h };
+  }
   if (variantId && VARIANT_DROP_SIZE[variantId]) return VARIANT_DROP_SIZE[variantId];
   if (widgetType && WIDGET_TYPE_DROP_SIZE[widgetType]) return WIDGET_TYPE_DROP_SIZE[widgetType];
   return undefined;

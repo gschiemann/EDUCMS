@@ -60,7 +60,7 @@ import { WidgetErrorBoundary } from '@/components/widgets/WidgetErrorBoundary';
 import { resolveDropSize } from './drop-sizes';
 import { openMediaPicker } from './media-sizing';
 import {
-  WIDGET_CATEGORIES, OTHER_CATEGORY, categoryForType,
+  WIDGET_CATEGORIES, OTHER_CATEGORY, categoryForVariant,
   friendlyTypeLabel, friendlyVariantName,
   deriveStyleOptions, derivePlaceOptions, matchesStyle, matchesPlace,
   curatedFlagships, CURATED_LIMIT,
@@ -270,7 +270,7 @@ export function VariantPicker({ replaceZoneId }: VariantPickerProps = {}) {
   // Faceted filters (owner 2026-10-12): each axis only offers values that
   // still have widgets given the OTHER axes, so no option can lead to
   // "Nothing matches". The current value always stays listed.
-  const inCategory = (v: WidgetVariant) => category === 'ALL' || categoryForType(String(v.widgetType)) === category;
+  const inCategory = (v: WidgetVariant) => category === 'ALL' || categoryForVariant(v) === category;
   const inStyle = (v: WidgetVariant) => style === 'ALL' || matchesStyle(v, style);
   const inPlace = (v: WidgetVariant) => place === 'ALL' || matchesPlace(v, place);
   const styleOptions = useMemo(() => {
@@ -285,7 +285,7 @@ export function VariantPicker({ replaceZoneId }: VariantPickerProps = {}) {
   }, [visible, category, style, place]);
   const categoryIdsWithItems = useMemo(() => {
     const ids = new Set<string>();
-    for (const v of visible) if (inStyle(v) && inPlace(v)) ids.add(categoryForType(String(v.widgetType)));
+    for (const v of visible) if (inStyle(v) && inPlace(v)) ids.add(categoryForVariant(v));
     return ids;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, style, place]);
@@ -308,7 +308,7 @@ export function VariantPicker({ replaceZoneId }: VariantPickerProps = {}) {
   const results = useMemo(() => {
     let list = visible;
     if (typeFilter) list = list.filter(v => v.widgetType === typeFilter);
-    if (category !== 'ALL') list = list.filter(v => categoryForType(String(v.widgetType)) === category);
+    if (category !== 'ALL') list = list.filter(v => categoryForVariant(v) === category);
     if (style !== 'ALL') list = list.filter(v => matchesStyle(v, style));
     if (place !== 'ALL') list = list.filter(v => matchesPlace(v, place));
     if (isK12 && level !== 'ALL') {
@@ -336,7 +336,7 @@ export function VariantPicker({ replaceZoneId }: VariantPickerProps = {}) {
   const rows = useMemo(() => {
     const buckets = new Map<string, WidgetVariant[]>();
     for (const v of visible) {
-      const cid = categoryForType(String(v.widgetType));
+      const cid = categoryForVariant(v);
       const arr = buckets.get(cid);
       if (arr) arr.push(v); else buckets.set(cid, [v]);
     }
@@ -372,7 +372,7 @@ export function VariantPicker({ replaceZoneId }: VariantPickerProps = {}) {
     // same gesture and silently overwrote whatever happened to be selected.
     // Wave B / editor-crush B6a (2026-07-02): smart drop size so a LOGO, a
     // TICKER and a divider line land at their natural footprint.
-    const id = addZone(String(v.widgetType), undefined, resolveDropSize(String(v.widgetType), v.id), { replacePlaceholder: true });
+    const id = addZone(String(v.widgetType), undefined, resolveDropSize(String(v.widgetType), v.id, { width: useBuilderStore.getState().meta.screenWidth, height: useBuilderStore.getState().meta.screenHeight }), { replacePlaceholder: true });
     updateZone(id, {
       // Seed first so a widget whose variant config omits its content key
       // (TEXT without `content`, WEBPAGE without `url`) still renders

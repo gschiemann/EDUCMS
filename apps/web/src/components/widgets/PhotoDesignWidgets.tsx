@@ -2,6 +2,7 @@
 
 import { useState, type CSSProperties } from "react";
 import type { ThemeWidgetProps } from "./themes/registry";
+import { useDesignFont } from "./use-design-font";
 
 export type PhotoFit = "cover" | "contain";
 
@@ -15,6 +16,8 @@ export interface PhotoDesignPhoto {
 }
 
 export interface PhotoFrameConfig {
+  captionFont?: string;
+  captionFontSize?: number;
   frameShape?: "rounded" | "circle" | "arch";
   assetUrl?: string;
   imageUrl?: string;
@@ -31,6 +34,7 @@ export interface PhotoFrameConfig {
 }
 
 export interface PhotoCollageConfig {
+  captionFontSize?: number;
   photos?: PhotoDesignPhoto[];
   urls?: string[];
   layout?: "pair" | "featured" | "grid" | string;
@@ -98,12 +102,14 @@ function PhotoSurface({
   showCaption = true,
   captionColor = "#fff",
   captionFont,
+  captionFontSize = 60,
 }: {
   photo: PhotoDesignPhoto;
   alt: string;
   showCaption?: boolean;
   captionColor?: string;
   captionFont?: string;
+  captionFontSize?: number;
 }) {
   const [failedUrl, setFailedUrl] = useState("");
   const src = photo.url || "";
@@ -144,7 +150,7 @@ function PhotoSurface({
             padding: "0.65em 0.8em",
             color: captionColor,
             fontFamily: captionFont || "inherit",
-            fontSize: "clamp(12px, 1.7em, 30px)",
+            fontSize: captionFontSize,
             lineHeight: 1.2,
             fontWeight: 650,
             overflowWrap: "anywhere",
@@ -161,6 +167,7 @@ function PhotoSurface({
 
 function FrameWidget({ config, shape = "rounded" }: ThemeWidgetProps & { shape?: "rounded" | "circle" | "arch" }) {
   const c: PhotoFrameConfig = config || {};
+  useDesignFont(c.captionFont);
   const configuredShape = (config as PhotoFrameConfig | undefined)?.frameShape;
   if (configuredShape === "rounded" || configuredShape === "circle" || configuredShape === "arch") shape = configuredShape;
   const src = c.assetUrl || c.imageUrl || "";
@@ -177,26 +184,26 @@ function FrameWidget({ config, shape = "rounded" }: ThemeWidgetProps & { shape?:
     focalX,
     focalY,
     zoom,
-    fit: c.fit === "contain" || c.fitMode === "contain" ? "contain" : "cover",
+    fit: (c.fit || c.fitMode) === "contain" ? "contain" : "cover",
   };
   const style: CSSProperties = {
     width: "100%",
     height: "100%",
     minWidth: 0,
     minHeight: 0,
-    padding: width,
+
     opacity,
     borderRadius: radius,
     border: `${width}px solid ${c.borderColor || "#d4af72"}`,
     background: "#f7f1e7",
-    boxShadow: "0 10px 26px rgba(27, 31, 39, .2), inset 0 0 0 1px rgba(255,255,255,.85)",
+
     boxSizing: "border-box",
     overflow: "hidden",
   };
   return (
     <div data-photo-frame={shape} style={style}>
-      <div style={{ width: "100%", height: "100%", overflow: "hidden", borderRadius: `max(0px, calc(${typeof radius === "number" ? `${radius}px` : radius} - ${width}px))` }}>
-        <PhotoSurface photo={photo} alt={c.caption || "Framed photo"} />
+      <div style={{ width: "100%", height: "100%", overflow: "hidden", borderRadius: "inherit" }}>
+        <PhotoSurface photo={photo} alt={c.caption || "Framed photo"} captionFont={c.captionFont} captionFontSize={config?._thumb ? 8 : clamp(c.captionFontSize, 12, 240, 60)} />
       </div>
     </div>
   );
@@ -216,6 +223,7 @@ export function PhotoFrameArchWidget(props: ThemeWidgetProps) {
 
 export function PhotoCollageWidget({ config }: ThemeWidgetProps) {
   const c: PhotoCollageConfig = config || {};
+  useDesignFont(c.captionFont);
   const photos = normalizePhotoList(c);
   const layout = c.layout === "featured" || c.layout === "grid" ? c.layout : "pair";
   const gap = clamp(c.spacing, 0, 64, 12);
@@ -231,13 +239,13 @@ export function PhotoCollageWidget({ config }: ThemeWidgetProps) {
     overflow: "hidden",
     background: c.backgroundColor || "#f3eee5",
   };
-  let gridStyle: CSSProperties = { ...base, gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gridTemplateRows: "repeat(auto-fit, minmax(0, 1fr))" };
+  let gridStyle: CSSProperties = { ...base, gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gridTemplateRows: `repeat(${Math.max(1, Math.ceil(photos.length / 2))}, minmax(0, 1fr))` };
   let featureIndex = -1;
   if (layout === "featured" && photos.length > 1) {
     featureIndex = 0;
-    gridStyle = { ...base, gridTemplateColumns: "minmax(0, 1.25fr) minmax(0, 1fr)", gridTemplateRows: `repeat(${Math.max(1, Math.ceil((photos.length - 1) / 2))}, minmax(0, 1fr))` };
+    gridStyle = { ...base, gridTemplateColumns: "minmax(0, 1.25fr) minmax(0, 1fr)", gridTemplateRows: `repeat(${Math.max(1, photos.length - 1)}, minmax(0, 1fr))` };
   } else if (layout === "grid") {
-    gridStyle = { ...base, gridTemplateColumns: "repeat(auto-fit, minmax(min(44%, 180px), 1fr))", gridTemplateRows: "repeat(auto-fit, minmax(0, 1fr))" };
+    gridStyle = { ...base, gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gridTemplateRows: `repeat(${Math.max(1, Math.ceil(photos.length / 2))}, minmax(0, 1fr))` };
   }
   return (
     <div data-photo-collage data-layout={layout} data-photo-count={photos.length} style={gridStyle}>
@@ -254,10 +262,10 @@ export function PhotoCollageWidget({ config }: ThemeWidgetProps) {
             borderRadius: 7,
             background: "#e2e8f0",
             boxShadow: "0 3px 12px rgba(18, 25, 38, .14)",
-            ...(index === featureIndex ? { gridRow: "1 / span 2" } : {}),
+            ...(index === featureIndex ? { gridRow: `1 / span ${Math.max(1, photos.length - 1)}` } : {}),
           }}
         >
-          <PhotoSurface photo={photo} alt={photo.caption || `Collage photo ${index + 1}`} showCaption={c.showCaptions !== false} captionColor={c.captionColor || "#fff"} captionFont={c.captionFont} />
+          <PhotoSurface photo={photo} alt={photo.caption || `Collage photo ${index + 1}`} showCaption={c.showCaptions !== false} captionColor={c.captionColor || "#fff"} captionFont={c.captionFont} captionFontSize={config?._thumb ? 8 : clamp(c.captionFontSize, 12, 240, 60)} />
         </div>
       ))}
     </div>

@@ -1166,7 +1166,7 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
         return;
       }
 
-      const id = addZone(type, dropAt, resolveDropSize(type, variantId));
+      const id = addZone(type, dropAt, resolveDropSize(type, variantId, { width: st.meta.screenWidth, height: st.meta.screenHeight }));
       // If dragged from the variant picker (no swap target), also seed
       // the variant + its defaultConfig on the new zone.
       if (isVariantTile && variantId) {
