@@ -193,6 +193,10 @@ describe("what a native end means next", () => {
     expect(NATIVE_VIDEO_TRANSIENT_REASONS.has("emergency-held")).toBe(true);
     // Field 2026-10-12: a token renewal during prepare blocked M43 + L55VEC for a day.
     expect(nativeVideoNext(2, "credential-changed", 0)).toBe("retry");
+    // Never flip back and forth: once native was on the glass, a transient end stays web.
+    expect(nativeVideoNext(2, "credential-changed", 0, true)).toBe("stay");
+    expect(nativeVideoNext(2, undefined, 0, true)).toBe("stay");
+    expect(nativeVideoNext(2, "codec-failed", 0, true)).toBe("block");
   });
   it("a block is per file per face, expires after a day, and survives a broken store", () => {
     const mem = new Map<string, string>();

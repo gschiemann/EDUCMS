@@ -180,7 +180,7 @@ export function NativeZoneVideo({
       // The web element remounts and plays the same verified file.
       setPhase({ identity, stage: "browser" });
       if (r.skipped) return; // this showing deliberately stayed web; a new mount retries
-      const next = nativeZoneNext(reason, attempt);
+      const next = nativeZoneNext(reason, attempt, r.played);
       console.warn(nativeVideoFallbackLine({ reason, next, attempt, protocol: 3, faceIndex: descriptor.faceIndex, sha256: item.asset.sha256, stage: "zone" }));
       if (next === "block") blockNativeVideo(localStore(), item.asset.sha256, descriptor.faceIndex, Date.now());
       else if (next === "retry")

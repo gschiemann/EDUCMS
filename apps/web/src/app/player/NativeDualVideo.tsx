@@ -28,8 +28,15 @@ export function nativeVideoNext(
   protocol: 1 | 2,
   reason: string | undefined,
   attempt: number,
+  /** Native already took the glass (the browser player was handed off). */
+  wasOnGlass = false,
 ): "retry" | "block" | "stay" {
   if (protocol !== 2) return "stay";
+  // Owner rule 2026-10-12: content must never flip web → native → web → native.
+  // A retry is invisible only while the browser is still the picture; once
+  // native has been on the glass and ended, this content stays on the browser
+  // player until it changes or the page reloads (a fault still blocks).
+  if (wasOnGlass && (!reason || NATIVE_VIDEO_TRANSIENT_REASONS.has(reason))) return "stay";
   if (!reason || NATIVE_VIDEO_TRANSIENT_REASONS.has(reason))
     return attempt + 1 < NATIVE_VIDEO_MAX_ATTEMPTS ? "retry" : "stay";
   return "block";
@@ -143,7 +150,7 @@ export function NativeDualVideo({
           nativeSharedVideoEvidence.clear(owner);
           // The browser subtree remounts and plays the same verified file.
           setPhase({ identity, stage: "browser" });
-          const next = nativeVideoNext(descriptor.version === 2 ? 2 : 1, reason, attemptN);
+          const next = nativeVideoNext(descriptor.version === 2 ? 2 : 1, reason, attemptN, seen === "ready" || seen === "presenting");
           console.warn(nativeVideoFallbackLine({ reason, next, attempt: attemptN, protocol: descriptor.version === 2 ? 2 : 1, faceIndex: descriptor.faceIndex, sha256: descriptor.asset.sha256, stage: seen }));
           if (next === "block")
             blockNativeVideo(localStore(), descriptor.asset.sha256, descriptor.faceIndex, Date.now());

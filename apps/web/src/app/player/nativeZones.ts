@@ -509,7 +509,10 @@ export const NATIVE_ZONE_TRANSIENT_REASONS: ReadonlySet<string> = new Set([
   "superseded",
 ]);
 
-export function nativeZoneNext(reason: string | undefined, attempt: number): "retry" | "block" | "stay" {
+export function nativeZoneNext(reason: string | undefined, attempt: number, wasOnGlass = false): "retry" | "block" | "stay" {
+  // Owner rule 2026-10-12: never flip web ↔ native on the glass. Once a slot was
+  // presenting and ended, it stays web until the content changes / page reloads.
+  if (wasOnGlass && (!reason || NATIVE_ZONE_TRANSIENT_REASONS.has(reason))) return "stay";
   if (!reason || NATIVE_ZONE_TRANSIENT_REASONS.has(reason))
     return attempt + 1 < NATIVE_VIDEO_MAX_ATTEMPTS ? "retry" : "stay";
   return "block";
