@@ -12,13 +12,26 @@
  * (`screen_file_playback`), not one sample — and copy states only that
  * (Player Reliability rule 10): we never see the glass.
  *
- * Nothing here blocks or changes anything; the publish gate is a later,
- * deliberate step. Fetched once when the Overview is open — never polled
- * (mobile-perf standard). Dashboard surface, so CSS gap is fine.
+ * 2026-10-12 (owner decision A): when the screen proved it visibly stutters
+ * on a file and was moved to that file's 1080p copy, the card says so in
+ * plain words and offers ONE action to admins — "Try full quality again"
+ * (the API enforces the role; the button is hidden for others). Fetched once
+ * when the Overview is open — never polled (mobile-perf standard). Dashboard
+ * surface, so CSS gap is fine.
  */
 
-import { useTranslations } from 'next-intl';
-import { useScreenPlaybackCapability, type ScreenPlaybackCapabilityResponse, type ScreenPlaybackFile } from '@/hooks/use-api';
+import { useState } from 'react';
+import { useLocale, useTranslations } from 'next-intl';
+import {
+  useClearPlaybackDemotion,
+  useScreenPlaybackCapability,
+  type ScreenPlaybackCapabilityResponse,
+  type ScreenPlaybackDemotion,
+  type ScreenPlaybackFile,
+} from '@/hooks/use-api';
+import { RoleGate } from '@/components/RoleGate';
+
+const ADMIN_ROLES = ['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN'];
 
 type Tone = 'good' | 'warn' | 'bad' | 'neutral';
 const TONE: Record<Tone, { wrap: string; ink: string; chip: string }> = {
@@ -60,6 +73,53 @@ export function capabilityKey(cap: ScreenPlaybackCapabilityResponse['capability'
   if (cap.maxShortEdge === 2160) return 'cap2160';
   if (cap.maxShortEdge === 1080) return 'cap1080';
   return cap.evidence === 'unknown' ? null : 'capNone';
+}
+
+/** One demotion: what happened, in plain words, and the one way back. */
+function DemotionNotice({ screenId, demotion }: { screenId: string; demotion: ScreenPlaybackDemotion }) {
+  const t = useTranslations('screens.playback');
+  const locale = useLocale();
+  const clear = useClearPlaybackDemotion(screenId);
+  const [outcome, setOutcome] = useState<'done' | 'failed' | null>(null);
+  let since = '';
+  try {
+    since = new Date(demotion.since).toLocaleDateString(locale, { month: 'short', day: 'numeric' });
+  } catch {
+    since = '';
+  }
+  return (
+    <div className="mt-2 rounded-lg border border-sky-200 bg-sky-50/70 px-2.5 py-2" data-testid="screen-playback-demotion" data-demotion-id={demotion.id}>
+      <p className="text-[12px] font-bold leading-snug text-sky-900">{t('demotedTitle')}</p>
+      <p className="mt-0.5 text-[10.5px] font-semibold leading-snug text-sky-800 break-words">
+        {t('demotedBody', { file: demotion.name ?? t('demotedUnknownFile') })}
+      </p>
+      {since && <p className="mt-0.5 text-[10.5px] font-semibold leading-snug text-sky-700/80">{t('demotedSince', { date: since })}</p>}
+      {outcome === 'done' ? (
+        <p className="mt-1.5 text-[10.5px] font-semibold leading-snug text-emerald-800" role="status">{t('tryFullQualityDone')}</p>
+      ) : (
+        <RoleGate allowedRoles={ADMIN_ROLES} fallback={null}>
+          <button
+            type="button"
+            className="mt-1.5 inline-flex min-h-[32px] items-center rounded-md border border-sky-300 bg-white px-2.5 text-[11px] font-bold text-sky-900 hover:bg-sky-100 disabled:opacity-60"
+            disabled={clear.isPending}
+            data-testid="screen-playback-try-full-quality"
+            onClick={() => {
+              setOutcome(null);
+              clear.mutate(demotion.id, {
+                onSuccess: () => setOutcome('done'),
+                onError: () => setOutcome('failed'),
+              });
+            }}
+          >
+            {clear.isPending ? t('tryingFullQuality') : t('tryFullQuality')}
+          </button>
+        </RoleGate>
+      )}
+      {outcome === 'failed' && (
+        <p className="mt-1 text-[10.5px] font-semibold leading-snug text-rose-700" role="alert">{t('tryFullQualityFailed')}</p>
+      )}
+    </div>
+  );
 }
 
 export function ScreenPlaybackCard({ screenId, enabled }: { screenId: string; enabled: boolean }) {
@@ -105,6 +165,9 @@ export function ScreenPlaybackCard({ screenId, enabled }: { screenId: string; en
         )}
         {cap.stale && <p className="mt-0.5 text-[10.5px] font-semibold text-slate-500 leading-snug">{t('stale')}</p>}
       </div>
+      {(data.demotions ?? []).map((d) => (
+        <DemotionNotice key={d.id} screenId={screenId} demotion={d} />
+      ))}
       {data.files.length > 0 && (
         <ul className="mt-2 flex flex-col gap-1.5" data-testid="screen-playback-files">
           {data.files.map((f) => {

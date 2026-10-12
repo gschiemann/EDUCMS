@@ -2404,7 +2404,15 @@
       "copy1080": "1080p 副本",
       "bothSides": "两面同时在播放视频",
       "note": "以上为播放器的测量结果，我们无法看到屏幕本身。",
-      "loadFailed": "无法加载播放记录。"
+      "loadFailed": "无法加载播放记录。",
+      "demotedTitle": "正在播放更轻量的副本",
+      "demotedBody": "这块屏幕播放「{file}」时出现卡顿，现已改为播放 1080p 副本。您无需任何操作。",
+      "demotedUnknownFile": "一个视频",
+      "demotedSince": "自 {date} 起",
+      "tryFullQuality": "再次尝试完整画质",
+      "tryingFullQuality": "正在切换回去…",
+      "tryFullQualityDone": "已恢复完整画质。屏幕会在完整文件下载完成后、在视频播放结束时切换；如果再次卡顿，会自动改回更轻量的副本。",
+      "tryFullQualityFailed": "无法切换回去，请一分钟后再试。"
     }
   },
   "selection": {
@@ -5141,5 +5149,19 @@
     "locked": "错误次数过多，请重新发送验证码。",
     "unreachable": "无法连接服务器，请检查网络后重试。",
     "signOut": "不是您？退出登录"
+  },
+  "playbackGate": {
+    "quoted": "「{name}」",
+    "separator": "、",
+    "andMore": "{names}等另外 {count} 块",
+    "fallback": "「{file}」在某些屏幕上可能会卡顿。",
+    "previousStays": "之前的内容会继续显示。",
+    "reason": {
+      "capability": "「{file}」在 {screens} 上可能会卡顿。如果出现卡顿，我们会自动将{count, plural, other {相应屏幕}}切换到 1080p 副本。",
+      "two-sided": "「{file}」在 {screens} 上可能会卡顿：这台显示器的两面暂时还无法同时流畅播放视频。视频会继续播放。",
+      "concurrency": "「{file}」在 {screens} 上可能会卡顿：它会同时播放 {demand} 个视频，而{count, plural, other {相应屏幕}}最多只能流畅播放 {max} 个。视频会继续播放。",
+      "measured-stutter": "「{file}」在 {screens} 上可能会卡顿：即使使用更轻量的副本，{count, plural, other {相应屏幕}}之前播放这种尺寸的视频时也出现过卡顿。视频会继续播放。",
+      "over-capability": "「{file}」在 {screens} 上可能会卡顿：{count, plural, other {相应屏幕}}最高只能播放每秒 {max} 帧的视频。视频会继续播放。"
+    }
   }
 }

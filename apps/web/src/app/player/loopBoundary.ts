@@ -208,7 +208,36 @@ export class LoopBoundaryTracker {
     this.fresh = 0; this.total = 0; this.swaps = 0; this.fallbacks = 0; this.reason = undefined;
   }
 
+  /**
+   * Monotonic count of loop wraps this page has seen — NEVER reset by
+   * `startSession` — and who wants to hear about them. The seamless file swap
+   * (renditionSwap.ts, 2026-10-12) waits on it: a swapped video on glass
+   * changes file only at its next wrap, never mid-lap. No timer, no work
+   * when nobody listens.
+   */
+  private seq = 0;
+  private listeners = new Set<() => void>();
+
+  get sequence(): number {
+    return this.seq;
+  }
+
+  onBoundary(cb: () => void): () => void {
+    this.listeners.add(cb);
+    return () => {
+      this.listeners.delete(cb);
+    };
+  }
+
   record(e: BoundaryEvent): void {
+    this.seq += 1;
+    for (const cb of [...this.listeners]) {
+      try {
+        cb();
+      } catch {
+        /* a listener must never break the probe */
+      }
+    }
     this.backend = e.backend;
     this.holds.push(Math.max(0, e.holdMs));
     this.skips.push(Math.max(0, e.skipMs));

@@ -18,6 +18,8 @@ import type {
 import { apiFetch } from '@/lib/api-client';
 import { useTranslations } from 'next-intl';
 import { translateFailedPublications, withPlaybackCopyText } from '@/lib/playback-copy-text';
+import { withPlaybackGateText } from '@/lib/playback-warning-text';
+import { showPlaybackWarnings } from '@/lib/playback-warning-toast';
 import { removePlaylistsSequentially, type PlaylistSummaryRow } from '@/components/playlists/v1/playlistOps';
 import { API_URL } from '@/lib/api-url';
 // The job poll's "this id is gone" rule (the page settles on the same rule).
@@ -719,6 +721,19 @@ export interface ScreenPlaybackCapabilityResponse {
   };
   declared: { reportedAt: string; maxShortEdge: 1080 | 2160 | null; webviewMajor: number | null } | null;
   files: ScreenPlaybackFile[];
+  /**
+   * 2026-10-12 (owner decision A) — files this screen now plays the 1080p
+   * copy of, because it visibly stuttered on the original. Absent on an
+   * older API; empty for nearly every screen.
+   */
+  demotions?: ScreenPlaybackDemotion[];
+}
+export interface ScreenPlaybackDemotion {
+  id: string;
+  sha256: string;
+  assetId: string | null;
+  name: string | null;
+  since: string;
 }
 export function useScreenPlaybackCapability(screenId: string, enabled: boolean) {
   return useQuery<ScreenPlaybackCapabilityResponse>({
@@ -728,6 +743,22 @@ export function useScreenPlaybackCapability(screenId: string, enabled: boolean) 
     staleTime: 60 * 1000,
     refetchOnWindowFocus: false,
     retry: false,
+  });
+}
+
+/**
+ * 2026-10-12 — "Try full quality again": clear one demotion. The screen goes
+ * back to the original file — downloaded whole and verified on the screen
+ * before it plays, swapped at the end of a loop or item, never mid-play.
+ */
+export function useClearPlaybackDemotion(screenId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (demotionId: string) =>
+      apiFetch(`/screens/${screenId}/playback-demotions/${encodeURIComponent(demotionId)}/clear`, { method: 'POST' }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['screen-playback-capability', screenId] });
+    },
   });
 }
 
@@ -1284,14 +1315,19 @@ export function useSetPlaylistSync() {
 export function useSetPlaylistScreenActive() {
   const qc = useQueryClient();
   const tCopy = useTranslations('playbackCopy');
+  const tGate = useTranslations('playbackGate');
   return useMutation({
     mutationFn: ({ playlistId, screenId, active }: { playlistId: string; screenId: string; active: boolean }) =>
       apiFetch(`/playlists/${playlistId}/screens/${screenId}/active`, {
         method: 'PUT',
         body: JSON.stringify({ active }),
-      }).catch((e: unknown) => {
+      }).then((data: unknown) => {
+        // The video gate's warnings (2026-10-12): the switch went through.
+        showPlaybackWarnings(tGate, data);
+        return data;
+      }, (e: unknown) => {
         // A screen whose 1080p copy cannot be made names the files (2026-10-05).
-        throw withPlaybackCopyText(tCopy, e);
+        throw withPlaybackGateText(tGate, withPlaybackCopyText(tCopy, e));
       }),
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ['schedules'] });
@@ -1315,13 +1351,17 @@ export function useRemovePlaylistScreen() {
 export function useSetPlaylistActive() {
   const qc = useQueryClient();
   const tCopy = useTranslations('playbackCopy');
+  const tGate = useTranslations('playbackGate');
   return useMutation({
     mutationFn: ({ id, active }: { id: string; active: boolean }) =>
       apiFetch(`/playlists/${id}/active`, {
         method: 'PUT',
         body: JSON.stringify({ active }),
-      }).catch((e: unknown) => {
-        throw withPlaybackCopyText(tCopy, e);
+      }).then((data: unknown) => {
+        showPlaybackWarnings(tGate, data);
+        return data;
+      }, (e: unknown) => {
+        throw withPlaybackGateText(tGate, withPlaybackCopyText(tCopy, e));
       }),
     onMutate: async ({ id, active }) => {
       await Promise.all([
@@ -1380,6 +1420,7 @@ export function useSchedules(opts?: { enabled?: boolean }) {
 export function useCreateSchedule() {
   const qc = useQueryClient();
   const tCopy = useTranslations('playbackCopy');
+  const tGate = useTranslations('playbackGate');
   return useMutation({
     mutationFn: (data: {
       playlistId: string;
@@ -1402,10 +1443,15 @@ export function useCreateSchedule() {
       // stage a schedule without flipping any screens.
       isActive?: boolean;
     }) =>
-      apiFetch('/schedules', { method: 'POST', body: JSON.stringify(data) }).catch((e: unknown) => {
+      apiFetch('/schedules', { method: 'POST', body: JSON.stringify(data) }).then((res: unknown) => {
+        // The video gate (2026-10-12): the publish went through; say which
+        // screen(s) a video may stutter on, in plain words.
+        showPlaybackWarnings(tGate, res);
+        return res;
+      }, (e: unknown) => {
         // A refused publish names the files it could not prepare (2026-10-05);
         // every caller shows err.message, so the words change here once.
-        throw withPlaybackCopyText(tCopy, e);
+        throw withPlaybackGateText(tGate, withPlaybackCopyText(tCopy, e));
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['schedules'] });
@@ -1417,10 +1463,14 @@ export function useCreateSchedule() {
 export function useUpdateSchedule() {
   const qc = useQueryClient();
   const tCopy = useTranslations('playbackCopy');
+  const tGate = useTranslations('playbackGate');
   return useMutation({
     mutationFn: ({ id, ...data }: { id: string; screenGroupId?: string; screenId?: string; daysOfWeek?: string | null; timeStart?: string | null; timeEnd?: string | null; priority?: number; mutedOverride?: boolean | null }) =>
-      apiFetch(`/schedules/${id}`, { method: 'PUT', body: JSON.stringify(data) }).catch((e: unknown) => {
-        throw withPlaybackCopyText(tCopy, e);
+      apiFetch(`/schedules/${id}`, { method: 'PUT', body: JSON.stringify(data) }).then((res: unknown) => {
+        showPlaybackWarnings(tGate, res);
+        return res;
+      }, (e: unknown) => {
+        throw withPlaybackGateText(tGate, withPlaybackCopyText(tCopy, e));
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['schedules'] });
@@ -1432,10 +1482,14 @@ export function useUpdateSchedule() {
 export function useToggleSchedule() {
   const qc = useQueryClient();
   const tCopy = useTranslations('playbackCopy');
+  const tGate = useTranslations('playbackGate');
   return useMutation({
     mutationFn: (id: string) =>
-      apiFetch(`/schedules/${id}/toggle`, { method: 'PUT' }).catch((e: unknown) => {
-        throw withPlaybackCopyText(tCopy, e);
+      apiFetch(`/schedules/${id}/toggle`, { method: 'PUT' }).then((res: unknown) => {
+        showPlaybackWarnings(tGate, res);
+        return res;
+      }, (e: unknown) => {
+        throw withPlaybackGateText(tGate, withPlaybackCopyText(tCopy, e));
       }),
     onMutate: async (id) => {
       await qc.cancelQueries({ queryKey: ['schedules'] });

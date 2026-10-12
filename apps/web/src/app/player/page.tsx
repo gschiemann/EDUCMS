@@ -254,6 +254,9 @@ import {
 import { itemContentSigInput } from './contentSig';
 import { nativeWebsiteTarget, publishDisplayBlank } from './displayBlankSignal';
 import { loopBoundaryTracker, NativeWrapDetector, type FrameMeta, type RvfcVideoElement } from './loopBoundary';
+// Seamless file swaps under the same items (2026-10-12, video guarantee):
+// a demotion to the 1080p copy, or "Try full quality again", never shows.
+import { decideRenditionSwap, renditionSwapIds, swapFilesReady } from './renditionSwap';
 import { ContinuousLoopVideo } from './ContinuousLoopVideo';
 import { SeamlessLoopVideo } from './SeamlessLoopVideo';
 import { pickLoopBackend } from './loopEligibility';
@@ -4800,8 +4803,18 @@ function PlayerPage() {
     isEmergency: boolean;
     readiness: ReadinessItem[];
     manifest: { m: any; fromCache: boolean };
+    /**
+     * A PURE file swap of what is on glass (renditionSwap.ts, 2026-10-12): the
+     * items whose video file changes, and — once every new file is on disk —
+     * the item on glass and the loop-boundary sequence at that moment. The
+     * current files keep playing until then, and the swap lands at the next
+     * natural boundary, never mid-play.
+     */
+    swap?: { ids: Set<string>; armed: { activeItemId: string | null; boundarySeq: number } | null };
   };
   const pendingPlaylistCommitRef = useRef<PendingPlaylistCommit | null>(null);
+  // Re-evaluates a held file swap when a loop wraps (no timer).
+  const [swapEpoch, setSwapEpoch] = useState(0);
 
   // Memoized sorted playlist + item-validity check.
   const isTemplate = !!playlist?.template;
@@ -7027,6 +7040,26 @@ function PlayerPage() {
           // commits the deferred playlist then. An emergency playlist is
           // never deferred (rule 11), and emergency content on glass is never
           // kept in place of an all-clear's regular content.
+          // ── Seamless file swap (2026-10-12, video guarantee) ─────────────
+          // The server moved this screen to a video's 1080p copy (proven,
+          // visible stutter) or back ("Try full quality again"): same items,
+          // only a video file changes. Keep playing what is on glass until the
+          // new file is on disk and verified, then swap at a natural boundary
+          // (the readiness effect below). Never for an emergency, never when
+          // an emergency is on glass.
+          const swapIds = !isEmergencyContent && !contentIsEmergencyRef.current && currentPlaylistSigRef.current !== ''
+            ? renditionSwapIds(Array.isArray(playlistRef.current?.items) ? playlistRef.current.items : null, combinedItems, stableManifestUrlKey)
+            : null;
+          if (swapIds) {
+            const prev = pendingPlaylistCommitRef.current;
+            commit.swap = { ids: swapIds, armed: prev?.sig === newSig && prev.swap ? prev.swap.armed : null };
+            if (prev?.sig !== newSig) {
+              console.log(`[Player] a new copy of ${swapIds.size} video(s) is coming — the current file keeps playing until it is downloaded, then switches at the end of the video`);
+            }
+            pendingPlaylistCommitRef.current = commit;
+            setSwapEpoch((n) => n + 1);
+            return true;
+          }
           const decision = decidePlaylistCommit({
             isEmergency: isEmergencyContent,
             anyReady: readyItemIds(commit.readiness, cacheDriveRef.current, cachedMediaKeysRef.current).size > 0,
@@ -10499,11 +10532,38 @@ function PlayerPage() {
   useEffect(() => {
     const pending = pendingPlaylistCommitRef.current;
     if (!pending) return;
+    if (pending.swap) {
+      // A held file swap (renditionSwap.ts): every new file on disk first,
+      // then the next natural boundary — the item changed, or the video on
+      // glass wrapped its loop since the files became ready.
+      const ready = readyItemIds(pending.readiness, cacheDrive, cachedMediaKeys);
+      const activeItemId = displayedItemIdRef.current;
+      if (!pending.swap.armed && swapFilesReady(pending.swap.ids, ready)) {
+        pending.swap.armed = { activeItemId, boundarySeq: loopBoundaryTracker.sequence };
+      }
+      const decision = decideRenditionSwap({
+        swapIds: pending.swap.ids,
+        readyIds: ready,
+        activeItemId,
+        armed: pending.swap.armed,
+        boundarySeq: loopBoundaryTracker.sequence,
+        isEmergency: pending.isEmergency,
+      });
+      if (decision === 'hold') return;
+      pendingPlaylistCommitRef.current = null;
+      console.log('[Player] the new copy is on disk and verified — switching at a natural boundary');
+      commitMediaPlaylist(pending);
+      return;
+    }
     if (readyItemIds(pending.readiness, cacheDrive, cachedMediaKeys).size === 0) return;
     pendingPlaylistCommitRef.current = null;
     console.log('[Player] a file of the deferred playlist is ready — putting it on glass');
     commitMediaPlaylist(pending);
-  }, [cacheDrive, cachedMediaKeys, commitMediaPlaylist]);
+  }, [cacheDrive, cachedMediaKeys, commitMediaPlaylist, displayIndex, swapEpoch]);
+  // A loop wrap of the video on glass is the boundary a held swap waits for.
+  useEffect(() => loopBoundaryTracker.onBoundary(() => {
+    if (pendingPlaylistCommitRef.current?.swap?.armed) setSwapEpoch((n) => n + 1);
+  }), []);
 
   // The retry tick — deliberately independent of manifest applies: an
   // unchanged manifest poll is a 304 and never re-enters applyManifest, which

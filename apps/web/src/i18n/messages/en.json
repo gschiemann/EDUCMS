@@ -2404,7 +2404,15 @@
       "copy1080": "1080p copy",
       "bothSides": "video was playing on both sides",
       "note": "As measured by the player — we can’t see the panel itself.",
-      "loadFailed": "Couldn’t load playback history."
+      "loadFailed": "Couldn’t load playback history.",
+      "demotedTitle": "Playing a lighter copy",
+      "demotedBody": "This screen stuttered on “{file}”, so it now plays the 1080p copy. Nothing for you to do.",
+      "demotedUnknownFile": "a video",
+      "demotedSince": "Since {date}",
+      "tryFullQuality": "Try full quality again",
+      "tryingFullQuality": "Switching back…",
+      "tryFullQualityDone": "Full quality is back. The screen switches when the full file has downloaded, at the end of the video — and back to the lighter copy if it stutters again.",
+      "tryFullQualityFailed": "Couldn’t switch back. Try again in a minute."
     }
   },
   "selection": {
@@ -5141,5 +5149,19 @@
     "locked": "Too many wrong codes. Send a new one.",
     "unreachable": "Can't reach the server. Check your connection and try again.",
     "signOut": "Not you? Sign out"
+  },
+  "playbackGate": {
+    "quoted": "“{name}”",
+    "separator": ", ",
+    "andMore": "{names} and {count} more",
+    "fallback": "“{file}” may stutter on some screens.",
+    "previousStays": "The previous content stays on screen.",
+    "reason": {
+      "capability": "“{file}” may stutter on {screens}. If it does, we will switch {count, plural, one {that screen} other {those screens}} to the 1080p copy automatically.",
+      "two-sided": "“{file}” may stutter on {screens}: both sides of this display can’t play video smoothly at the same time yet. It will keep playing.",
+      "concurrency": "“{file}” may stutter on {screens}: it would play {demand} videos at once, and {count, plural, one {this screen plays} other {these screens play}} {max} smoothly. It will keep playing.",
+      "measured-stutter": "“{file}” may stutter on {screens}: {count, plural, one {this screen} other {these screens}} stuttered on video this size before, even with the lighter copy. It will keep playing.",
+      "over-capability": "“{file}” may stutter on {screens}: {count, plural, one {this screen plays} other {these screens play}} video up to {max} frames per second. It will keep playing."
+    }
   }
 }

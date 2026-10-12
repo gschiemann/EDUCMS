@@ -2,16 +2,30 @@
  * ScreenPlaybackCard (2026-10-11, video guarantee step 4) — the read-only
  * "plays smoothly / stutters / not checked yet" surface in the screen drawer.
  */
-import { render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { ScreenPlaybackCapabilityResponse } from '@/hooks/use-api';
 
 let state: { data?: ScreenPlaybackCapabilityResponse; isError?: boolean } = {};
 const calls: Array<[string, boolean]> = [];
+const clears: Array<[string, string]> = [];
+let clearFails = false;
+let role = 'SCHOOL_ADMIN';
 jest.mock('@/hooks/use-api', () => ({
   useScreenPlaybackCapability: (id: string, enabled: boolean) => {
     calls.push([id, enabled]);
     return { data: state.data, isError: !!state.isError, isLoading: false };
   },
+  useClearPlaybackDemotion: (screenId: string) => ({
+    isPending: false,
+    mutate: (id: string, opts: { onSuccess?: () => void; onError?: () => void }) => {
+      clears.push([screenId, id]);
+      if (clearFails) opts.onError?.();
+      else opts.onSuccess?.();
+    },
+  }),
+}));
+jest.mock('@/lib/store', () => ({
+  useAppStore: (sel: (s: any) => any) => sel({ user: { id: 'u1', role } }),
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -54,6 +68,9 @@ const file = (over: Partial<ScreenPlaybackCapabilityResponse['files'][number]> =
 beforeEach(() => {
   state = {};
   calls.length = 0;
+  clears.length = 0;
+  clearFails = false;
+  role = 'SCHOOL_ADMIN';
 });
 
 describe('ScreenPlaybackCard', () => {
@@ -124,5 +141,49 @@ describe('ScreenPlaybackCard', () => {
     expect(capabilityKey(cap({ maxShortEdge: 1080 }))).toBe('cap1080');
     expect(capabilityKey(cap({ evidence: 'measured-screen' }))).toBe('capNone');
     expect(capabilityKey(cap())).toBeNull();
+  });
+
+  describe('a demoted screen (owner decision A, 2026-10-12)', () => {
+    const demoted = (): ScreenPlaybackCapabilityResponse => ({
+      screenId: 's',
+      summary: 'stutters',
+      capability: cap({ maxShortEdge: 2160, evidence: 'class-default' }),
+      declared: null,
+      files: [file({ verdict: 'stuttering' })],
+      demotions: [{ id: 'dem-1', sha256: 'a'.repeat(64), assetId: 'asset-1', name: 'Fall promo.mp4', since: '2026-10-12T10:00:00Z' }],
+    });
+
+    it('says what happened in plain words; an admin gets ONE action that clears it', async () => {
+      state.data = demoted();
+      render(<ScreenPlaybackCard screenId="s" enabled />);
+      expect(screen.getByText('Playing a lighter copy')).toBeTruthy();
+      expect(screen.getByText(/stuttered on “Fall promo.mp4”, so it now plays the 1080p copy/)).toBeTruthy();
+      await act(async () => {});
+      fireEvent.click(screen.getByTestId('screen-playback-try-full-quality'));
+      expect(clears).toEqual([['s', 'dem-1']]);
+      expect(screen.getByText(/Full quality is back/)).toBeTruthy();
+      expect(screen.queryByTestId('screen-playback-try-full-quality')).toBeNull();
+    });
+
+    it('a failure says so; a contributor sees the notice but no button', async () => {
+      state.data = demoted();
+      clearFails = true;
+      const { unmount } = render(<ScreenPlaybackCard screenId="s" enabled />);
+      await act(async () => {});
+      fireEvent.click(screen.getByTestId('screen-playback-try-full-quality'));
+      expect(screen.getByRole('alert').textContent).toMatch(/Couldn’t switch back/);
+      unmount();
+      role = 'CONTRIBUTOR';
+      render(<ScreenPlaybackCard screenId="s" enabled />);
+      await act(async () => {});
+      expect(screen.getByText('Playing a lighter copy')).toBeTruthy();
+      expect(screen.queryByTestId('screen-playback-try-full-quality')).toBeNull();
+    });
+
+    it('no demotions (or an older API without the field) → no notice', () => {
+      state.data = { ...demoted(), demotions: undefined };
+      render(<ScreenPlaybackCard screenId="s" enabled />);
+      expect(screen.queryByTestId('screen-playback-demotion')).toBeNull();
+    });
   });
 });

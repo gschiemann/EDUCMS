@@ -25,10 +25,11 @@
  *   • `computePlaybackCapability` — the profile, by precedence:
  *       measured on this screen → measured on the same model → declared by the
  *       WebView → class default → unknown.
- *   • `decidePlayback` + `unitConcurrentVideos` — the per-screen decision a
- *     future publish gate will use. NOTHING CALLS `decidePlayback` TO CHANGE
- *     BEHAVIOUR YET: steps 5–8 (gate, demotion) ship deliberately, behind a
- *     flag, with the owner's sign-off (Player Reliability rule 12).
+ *   • `decidePlayback` + `unitConcurrentVideos` — the per-screen decision the
+ *     publish gate uses (step 5, 2026-10-12, `VIDEO_PLAYBACK_GATE`, default
+ *     warn), plus — at the bottom of this file — the visible-stutter rule and
+ *     the closed-loop decision (`decideStutterAction`, `VIDEO_PLAYBACK_DEMOTION`),
+ *     signed off by the owner 2026-10-12 (Player Reliability rule 12).
  *
  * ── Emergency content is never evaluated here ─────────────────────────────
  * No emergency code path may import this module; an alert is never refused,

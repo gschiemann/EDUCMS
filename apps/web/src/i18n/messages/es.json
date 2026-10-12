@@ -2404,7 +2404,15 @@
       "copy1080": "copia 1080p",
       "bothSides": "había video en los dos lados",
       "note": "Según lo medido por el reproductor; no podemos ver el panel.",
-      "loadFailed": "No se pudo cargar el historial de reproducción."
+      "loadFailed": "No se pudo cargar el historial de reproducción.",
+      "demotedTitle": "Reproduciendo una copia más ligera",
+      "demotedBody": "Esta pantalla se entrecortaba con «{file}», así que ahora reproduce la copia 1080p. No tiene que hacer nada.",
+      "demotedUnknownFile": "un video",
+      "demotedSince": "Desde {date}",
+      "tryFullQuality": "Probar de nuevo la calidad completa",
+      "tryingFullQuality": "Volviendo…",
+      "tryFullQualityDone": "Se restableció la calidad completa. La pantalla cambiará cuando el archivo completo se haya descargado, al final del video, y volverá a la copia más ligera si se vuelve a entrecortar.",
+      "tryFullQualityFailed": "No se pudo volver. Inténtelo de nuevo en un minuto."
     }
   },
   "selection": {
@@ -5141,5 +5149,19 @@
     "locked": "Demasiados códigos incorrectos. Envía uno nuevo.",
     "unreachable": "No se puede conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.",
     "signOut": "¿No eres tú? Cerrar sesión"
+  },
+  "playbackGate": {
+    "quoted": "«{name}»",
+    "separator": ", ",
+    "andMore": "{names} y {count} más",
+    "fallback": "«{file}» podría entrecortarse en algunas pantallas.",
+    "previousStays": "El contenido anterior sigue en pantalla.",
+    "reason": {
+      "capability": "«{file}» podría entrecortarse en {screens}. Si ocurre, cambiaremos {count, plural, one {esa pantalla} other {esas pantallas}} a la copia 1080p automáticamente.",
+      "two-sided": "«{file}» podría entrecortarse en {screens}: los dos lados de esta pantalla todavía no pueden reproducir video con fluidez al mismo tiempo. Seguirá reproduciéndose.",
+      "concurrency": "«{file}» podría entrecortarse en {screens}: reproduciría {demand} videos a la vez y {count, plural, one {esta pantalla reproduce} other {estas pantallas reproducen}} {max} con fluidez. Seguirá reproduciéndose.",
+      "measured-stutter": "«{file}» podría entrecortarse en {screens}: {count, plural, one {esta pantalla se entrecortó} other {estas pantallas se entrecortaron}} antes con videos de este tamaño, incluso con la copia más ligera. Seguirá reproduciéndose.",
+      "over-capability": "«{file}» podría entrecortarse en {screens}: {count, plural, one {esta pantalla reproduce} other {estas pantallas reproducen}} video de hasta {max} fotogramas por segundo. Seguirá reproduciéndose."
+    }
   }
 }
