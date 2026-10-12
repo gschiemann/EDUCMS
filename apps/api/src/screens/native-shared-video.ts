@@ -104,7 +104,57 @@ export function buildNativeSharedVideoDescriptor(input: {
     pl.items.length !== 1
   )
     return null;
-  const item = pl.items[0];
+  const asset = nativeVideoAsset(pl.items[0], a, env);
+  if (!asset) return null;
+  // Same stable revision for both faces. Each face's independent orientation remains separate.
+  const revision = createHash('sha256')
+    .update(JSON.stringify([s.tenantId, front.id, rear.id, pl.id, asset]))
+    .digest('hex');
+  return {
+    version: 1,
+    screenId: s.id,
+    tenantId: s.tenantId,
+    primaryScreenId: front.id,
+    peerScreenId: p.id,
+    faceIndex: s.id === front.id ? 0 : 1,
+    revision,
+    asset,
+    transform: {
+      orientation: m.orientation,
+      rotation: 0,
+      fit: nativeSharedVideoFit(
+        [s, p],
+        input.coverMinVersionCode === undefined
+          ? NATIVE_SHARED_VIDEO_COVER_MIN_VERSION_CODE
+          : input.coverMinVersionCode,
+      ),
+    },
+  };
+}
+
+/**
+ * The ONE file native may play for a playlist item, or null. Shared by both
+ * native engines (the protocol-1 mirrored pair and the protocol-2 per-face
+ * engine, native-video.ts) so they can never disagree about what is safe:
+ * a muted H.264 / yuv420p MP4 with no rotation, <= 30 fps, <= 4096 px,
+ * <= 512 MiB, from this deploy's own storage, and the url/hash/size of the
+ * item matched AS ONE UNIT to either the original or one validated rendition
+ * (never the original's dimensions borrowed for a rendition).
+ */
+export function nativeVideoAsset(
+  item: Record<string, any> | null | undefined,
+  a: Record<string, any> | null | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): {
+  id: string;
+  url: string;
+  sha256: string;
+  size: number;
+  width: number;
+  height: number;
+  fps: number;
+} | null {
+  if (!obj(item) || !obj(a)) return null;
   if (
     item.mime_type !== 'video/mp4' ||
     item.muted !== true ||
@@ -184,37 +234,13 @@ export function buildNativeSharedVideoDescriptor(input: {
     fps > 30
   )
     return null;
-  const asset = {
+  return {
     id: a.id,
     url: item.url,
     sha256: item.asset_hash,
     size: item.asset_size,
-    width: w,
-    height: h,
+    width: w as number,
+    height: h as number,
     fps,
-  };
-  // Same stable revision for both faces. Each face's independent orientation remains separate.
-  const revision = createHash('sha256')
-    .update(JSON.stringify([s.tenantId, front.id, rear.id, pl.id, asset]))
-    .digest('hex');
-  return {
-    version: 1,
-    screenId: s.id,
-    tenantId: s.tenantId,
-    primaryScreenId: front.id,
-    peerScreenId: p.id,
-    faceIndex: s.id === front.id ? 0 : 1,
-    revision,
-    asset,
-    transform: {
-      orientation: m.orientation,
-      rotation: 0,
-      fit: nativeSharedVideoFit(
-        [s, p],
-        input.coverMinVersionCode === undefined
-          ? NATIVE_SHARED_VIDEO_COVER_MIN_VERSION_CODE
-          : input.coverMinVersionCode,
-      ),
-    },
   };
 }

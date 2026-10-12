@@ -1,4 +1,5 @@
 import { nativeSharedVideoTarget, buildNativeSharedVideoDescriptor } from './native-shared-video';
+import { buildNativeVideoDescriptor, nativeVideoCandidate, nativeVideoEnrolled } from './native-video';
 import { buildAutoUpdateReport, modeToOverride, type AutoUpdateOverride } from '../player-ota/auto-update-report';
 import { armScreenApkUpdate, publishScreenRefresh, setScreenAutoUpdateMode } from './screen-commands';
 import { Controller, Post, Get, Put, Delete, Body, Param, Query, Req, Res, UseGuards, Request, HttpException, HttpStatus } from '@nestjs/common';
@@ -7190,6 +7191,30 @@ export class ScreensController {
       if (peers.length === 1 && asset) {
         const native = buildNativeSharedVideoDescriptor({screen,peer:peers[0],manifest:manifestPayload,asset});
         if (native) manifestPayload.nativeSharedVideo = native;
+      }
+    }
+
+    // 2026-10-12 — per-face native video engine (protocol 2, native-video.ts).
+    // Only a solo-video manifest is even considered, so every other screen
+    // pays nothing; the back-face count runs only for a primary under the
+    // default `faces` rollout. Built before the hash: deterministic per
+    // (screen, schedule, asset, env), so it rides the ETag + hot cache like
+    // `playback`. Any failure leaves the screen on the web path.
+    if (screen.tenantId && nativeVideoCandidate(manifestPayload)) {
+      try {
+        const enrolled = await nativeVideoEnrolled(screen as any, async () =>
+          (await this.prisma.client.screen.count({
+            where: { tenantId: screen.tenantId as string, faceOfScreenId: screen.id },
+          })) > 0,
+        );
+        if (enrolled) {
+          const item = dynamicPlaylists[0]?.items[0];
+          const asset = item && schedules.flatMap((s: any) => s.playlist.items).find((pi: any) => pi.assetId === item.asset_id)?.asset;
+          const native = buildNativeVideoDescriptor({ screen, manifest: manifestPayload, asset });
+          if (native) manifestPayload.nativeVideo = native;
+        }
+      } catch {
+        // Never fail a manifest over an optional renderer.
       }
     }
 
