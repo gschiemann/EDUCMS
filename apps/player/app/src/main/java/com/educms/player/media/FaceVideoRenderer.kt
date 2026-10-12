@@ -22,6 +22,15 @@ import java.util.concurrent.atomic.AtomicBoolean
  * extractor rewinds and the next lap is queued on a continuing timeline
  * ([LoopTimeline]). Any exception ends the session; the page then plays the
  * same file in the browser (automatic fallback).
+ *
+ * Protocol 3 (2026-10-12) adds two modes on the same decoder loop:
+ *  • [holdFirst]: the first picture is rendered at once and HELD — the clock
+ *    does not start until [release] (the page's `play`), so a pre-rolled
+ *    next slide waits behind the page with its first frame already on its
+ *    surface, and the hand-off costs no decode latency;
+ *  • [loop] = false: the clip plays ONCE; at end-of-stream [ended] fires and
+ *    the decoder is kept idle (not released) so the surface keeps the LAST
+ *    picture until the session is stopped — the next slide fades in over it.
  */
 internal class FaceVideoRenderer(
     private val file: File,
@@ -33,9 +42,14 @@ internal class FaceVideoRenderer(
     private val rendered: (Long, Long) -> Unit,
     private val looped: () -> Unit,
     private val dropped: () -> Unit,
+    private val loop: Boolean = true,
+    private val holdFirst: Boolean = false,
+    private val firstFrame: () -> Unit = {},
+    private val ended: () -> Unit = {},
 ) {
     private val stopped = AtomicBoolean(false)
     private val started = AtomicBoolean(false)
+    @Volatile private var released = !holdFirst
     private val callbacks = Handler(Looper.getMainLooper())
     var codecName: String? = null; private set
     /** The decoder's own advertised concurrent-instance limit (0 = unknown). */
@@ -65,7 +79,10 @@ internal class FaceVideoRenderer(
         Thread({ decode() }, "native-video-face-${d.faceIndex}").apply { isDaemon = true; start() }
     }
 
-    fun stop() { stopped.set(true) }
+    /** Protocol 3: let a held first frame go — the clock starts now. */
+    fun release() { released = true }
+
+    fun stop() { stopped.set(true); released = true }
 
     private fun videoTrack(e: MediaExtractor): Int = (0 until e.trackCount).firstOrNull {
         e.getTrackFormat(it).getString(MediaFormat.KEY_MIME) == "video/avc"
@@ -87,25 +104,34 @@ internal class FaceVideoRenderer(
             val format = extractor.getTrackFormat(track); validate(format)
             // Clockwise output rotation onto THIS face's physical panel.
             format.setInteger(MediaFormat.KEY_ROTATION, degrees)
-            val c = MediaCodec.createByCodecName(codecName ?: error("codec-not-prepared")); codec = c
-            c.configure(format, surface, null, 0)
-            c.setOnFrameRenderedListener({ own, pts, nanos ->
-                if (own === c && !stopped.get() && current() && surface.isValid) rendered(nanos, pts)
-            }, callbacks)
-            c.start(); c.setVideoScalingMode(FaceVideoPolicy.scalingMode(d.fit))
+            // A decoder the box cannot open right now (another session holds
+            // the hardware, a transient OMX refusal) is not a fault of the file.
+            val c = try {
+                MediaCodec.createByCodecName(codecName ?: error("codec-not-prepared")).also { codec = it }
+            } catch (e: IllegalStateException) { throw IllegalStateException("decoder-unavailable", e) }
+                catch (e: java.io.IOException) { throw IllegalStateException("decoder-unavailable", e) }
+            try {
+                c.configure(format, surface, null, 0)
+                c.setOnFrameRenderedListener({ own, pts, nanos ->
+                    if (own === c && !stopped.get() && current() && surface.isValid) rendered(nanos, pts)
+                }, callbacks)
+                c.start(); c.setVideoScalingMode(FaceVideoPolicy.scalingMode(d.fit))
+            } catch (e: MediaCodec.CodecException) { throw IllegalStateException(if (e.isTransient || e.isRecoverable) "decoder-unavailable" else "codec-failed", e) }
+                catch (e: IllegalStateException) { throw IllegalStateException("decoder-unavailable", e) }
             val frameUs = (1_000_000.0 / d.fps).toLong().coerceAtLeast(1)
             val frameNs = frameUs * 1000
             val timeline = LoopTimeline(frameUs)
             val info = MediaCodec.BufferInfo()
             var originNs = 0L; var firstPts = 0L; var previousDropped = false
+            var inputDone = false; var heldOnce = false
             var lastProgress = SystemClock.elapsedRealtime()
             while (!stopped.get() && current()) {
                 require(surface.isValid) { "output-detached" }
-                val input = c.dequeueInputBuffer(10_000)
+                val input = if (inputDone) -1 else c.dequeueInputBuffer(10_000)
                 if (input >= 0) {
                     val buffer = c.getInputBuffer(input) ?: error("codec-input")
                     var size = extractor.readSampleData(buffer, 0)
-                    if (size < 0) {
+                    if (size < 0 && loop) {
                         // End of this lap on INPUT: rewind and keep feeding.
                         require(timeline.wrap()) { "empty-lap" }
                         extractor.seekTo(0, MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
@@ -113,24 +139,48 @@ internal class FaceVideoRenderer(
                         size = extractor.readSampleData(buffer, 0)
                         require(size >= 0) { "empty-lap" }
                     }
-                    c.queueInputBuffer(input, 0, size, timeline.queue(extractor.sampleTime), 0)
-                    extractor.advance()
+                    if (size < 0) {
+                        // Play once: tell the decoder the clip is over, then drain.
+                        c.queueInputBuffer(input, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                        inputDone = true
+                    } else {
+                        c.queueInputBuffer(input, 0, size, timeline.queue(extractor.sampleTime), 0)
+                        extractor.advance()
+                    }
                 }
                 val index = c.dequeueOutputBuffer(info, 10_000)
                 if (index >= 0) {
+                    val eos = info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0
                     if (SharedVideoCodecPolicy.render(info.size, info.flags)) {
-                        if (originNs == 0L) { originNs = System.nanoTime(); firstPts = info.presentationTimeUs }
-                        val due = originNs + (info.presentationTimeUs - firstPts) * 1000
-                        while (!stopped.get() && current() && due - System.nanoTime() > 2_000_000L) Thread.sleep(1)
-                        check(!stopped.get() && current()) { "session-retired" }
-                        val now = System.nanoTime()
-                        if (FaceVideoPolicy.shouldDrop(now - due, frameNs, previousDropped)) {
-                            c.releaseOutputBuffer(index, false); previousDropped = true; dropped()
+                        if (holdFirst && !heldOnce) {
+                            // First picture: show it now, then wait for the page's `play`.
+                            heldOnce = true
+                            c.releaseOutputBuffer(index, true)
+                            firstFrame()
+                            while (!released && !stopped.get() && current()) Thread.sleep(5)
+                            check(!stopped.get() && current()) { "session-retired" }
+                            originNs = System.nanoTime(); firstPts = info.presentationTimeUs
+                            lastProgress = SystemClock.elapsedRealtime()
                         } else {
-                            c.releaseOutputBuffer(index, maxOf(due, now)); previousDropped = false
+                            if (originNs == 0L) { originNs = System.nanoTime(); firstPts = info.presentationTimeUs }
+                            val due = originNs + (info.presentationTimeUs - firstPts) * 1000
+                            while (!stopped.get() && current() && due - System.nanoTime() > 2_000_000L) Thread.sleep(1)
+                            check(!stopped.get() && current()) { "session-retired" }
+                            val now = System.nanoTime()
+                            if (FaceVideoPolicy.shouldDrop(now - due, frameNs, previousDropped)) {
+                                c.releaseOutputBuffer(index, false); previousDropped = true; dropped()
+                            } else {
+                                c.releaseOutputBuffer(index, maxOf(due, now)); previousDropped = false
+                            }
+                            lastProgress = SystemClock.elapsedRealtime()
                         }
-                        lastProgress = SystemClock.elapsedRealtime()
                     } else c.releaseOutputBuffer(index, false)
+                    if (eos) {
+                        // The last picture stays on the surface; the decoder idles until stop.
+                        ended()
+                        while (!stopped.get() && current()) Thread.sleep(50)
+                        return
+                    }
                 }
                 require(SystemClock.elapsedRealtime() - lastProgress < 15_000) { "codec-stalled" }
             }

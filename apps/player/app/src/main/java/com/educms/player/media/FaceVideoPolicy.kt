@@ -141,6 +141,180 @@ internal object FaceVideoPolicy {
         "content-changed", "peer-stopped", "page-stopped", "engine-switched", "page-lease-expired")
 }
 
+/*
+ * PROTOCOL 3 — positioned slots (2026-10-12). Design + hardware matrix:
+ * docs/research/2026-10-12-native-video/02-protocol-3.md.
+ *
+ * Protocol 2 plays ONE solo video full-face. Protocol 3 adds SLOTS, each an
+ * independent session with its own surface at a rect the PAGE measured:
+ *  • `item:<id>` — a video inside a mixed playlist. The page prepares it as
+ *    the hidden next-up; `commit` renders the first frame and HOLDS it on a
+ *    surface PARKED OFF-SCREEN (so it can never show before its turn);
+ *    `play` moves the surface onto its rect and releases the clip, which
+ *    plays ONCE and keeps its last frame (`ended`) until the page stops it.
+ *  • `zone:<id>` — a template VIDEO zone: same hold/play hand-off, loops.
+ *
+ * Same four bridge methods: a `version: 3` message on sharedVideoPrepare
+ * carries an `op` (prepare / layout / play); commit / stop address the
+ * session id; state adds `protocolMax: 3` + `sessions[]` and keeps its
+ * protocol-2 top level for older web bundles. No bridge method was added.
+ */
+
+/** CSS-px rect in the page's layout viewport; native scales it to the WebView's own size. */
+internal data class FaceZoneLayout(val x: Int, val y: Int, val w: Int, val h: Int, val vw: Int, val vh: Int, val degrees: Int, val fit: String) {
+    companion object {
+        fun parse(j: JSONObject): FaceZoneLayout {
+            val l = FaceZoneLayout(j.getInt("x"), j.getInt("y"), j.getInt("w"), j.getInt("h"), j.getInt("vw"), j.getInt("vh"),
+                j.getInt("degrees"), j.getString("fit"))
+            require(l.x >= 0 && l.y >= 0 && l.w >= 2 && l.h >= 2 && l.vw > 0 && l.vh > 0 && l.vw <= 16384 && l.vh <= 16384 &&
+                l.x + l.w <= l.vw && l.y + l.h <= l.vh) { "layout-rect" }
+            require(l.degrees in setOf(0, 90, 180, 270) && l.fit in FaceVideoDescriptor.FITS) { "layout-transform" }
+            return l
+        }
+    }
+}
+
+/** A protocol-3 prepare: identity + slot + layout — never a URL, never a token. */
+internal data class FaceZoneRequest(
+    val screenId: String, val revision: String, val slot: String, val sha256: String, val assetId: String,
+    val loop: Boolean, val layout: FaceZoneLayout,
+) {
+    /** What makes two requests the SAME session (the layout may move without a restart). */
+    val identity: List<String> get() = listOf(screenId, revision, slot, sha256, assetId, loop.toString())
+}
+
+/** Every version-3 message the page may send on sharedVideoPrepare. */
+internal sealed class FaceZoneMessage {
+    data class Prepare(val request: FaceZoneRequest) : FaceZoneMessage()
+    data class Layout(val sessionId: String, val layout: FaceZoneLayout) : FaceZoneMessage()
+    data class Play(val sessionId: String) : FaceZoneMessage()
+
+    companion object {
+        private val uuid = Regex("[a-fA-F0-9]{8}(?:-[a-fA-F0-9]{4}){3}-[a-fA-F0-9]{12}")
+        val SLOT = Regex("(item|zone):[A-Za-z0-9_-]{1,64}")
+        /** Null for anything that is not a well-formed protocol-3 message (protocol 1/2 flow elsewhere). */
+        fun parse(json: String): FaceZoneMessage? = runCatching {
+            require(json.length <= 2048)
+            val j = JSONObject(json)
+            require(j.getInt("version") == 3)
+            when (j.getString("op")) {
+                "prepare" -> {
+                    val r = FaceZoneRequest(j.getString("screenId"), j.getString("revision"), j.getString("slot"),
+                        j.getString("sha256").lowercase(), j.getString("assetId"), j.getBoolean("loop"),
+                        FaceZoneLayout.parse(j.getJSONObject("layout")))
+                    require(uuid.matches(r.screenId) && uuid.matches(r.assetId) && SLOT.matches(r.slot))
+                    require(r.revision.length in 1..128 && Regex("[a-f0-9]{64}").matches(r.sha256))
+                    Prepare(r)
+                }
+                "layout" -> Layout(j.getString("sessionId").also { require(uuid.matches(it)) }, FaceZoneLayout.parse(j.getJSONObject("layout")))
+                "play" -> Play(j.getString("sessionId").also { require(uuid.matches(it)) })
+                else -> error("op")
+            }
+        }.getOrNull()
+    }
+}
+
+/**
+ * The server's protocol-3 list for ONE face (`nativeVideoItems` in that face's
+ * own authenticated manifest): the files native may play, by slot. A page
+ * request must name a listed slot whose file identity matches exactly.
+ */
+internal data class FaceVideoItems(
+    val screenId: String, val tenantId: String, val faceIndex: Int, val revision: String, val orientation: String,
+    val items: List<FaceVideoItem>,
+) {
+    fun find(r: FaceZoneRequest): FaceVideoItem? = items.firstOrNull {
+        it.slot == r.slot && it.sha256 == r.sha256 && it.assetId == r.assetId && it.loop == r.loop
+    }?.takeIf { r.screenId == screenId && r.revision == revision }
+
+    /** The per-session descriptor the renderer validates the file against; the fit is the page's. */
+    fun descriptor(item: FaceVideoItem, fit: String) = FaceVideoDescriptor(
+        screenId, tenantId, faceIndex, revision, item.assetId, item.url, item.sha256, item.size,
+        item.width, item.height, item.fps, orientation, fit,
+    )
+
+    companion object {
+        private val uuid = Regex("[a-fA-F0-9]{8}(?:-[a-fA-F0-9]{4}){3}-[a-fA-F0-9]{12}")
+        fun parse(j: JSONObject): FaceVideoItems {
+            require(j.getInt("version") == 3) { "descriptor-version" }
+            fun id(key: String): String = j.getString(key).also { require(uuid.matches(it)) { "descriptor-identity" } }
+            val arr = j.getJSONArray("items")
+            require(arr.length() in 1..64) { "descriptor-items" }
+            val items = (0 until arr.length()).map { i ->
+                val e = arr.getJSONObject(i)
+                val a = e.getJSONObject("asset")
+                val it = FaceVideoItem(e.getString("slot"), e.getBoolean("loop"), a.getString("id"), a.getString("url"),
+                    a.getString("sha256"), a.getLong("size"), a.getInt("width"), a.getInt("height"), a.getDouble("fps"))
+                require(FaceZoneMessage.SLOT.matches(it.slot) && uuid.matches(it.assetId)) { "descriptor-slot" }
+                require(Regex("[a-f0-9]{64}").matches(it.sha256)) { "descriptor-digest" }
+                require(it.size in 1..SharedVideoSourcePolicy.MAX_BYTES && it.width in 16..4096 && it.height in 16..4096 &&
+                    it.fps.isFinite() && it.fps > 0 && it.fps <= 30) { "descriptor-format" }
+                require(SharedVideoSourcePolicy.allowed(it.url)) { "media-origin" }
+                it
+            }
+            require(items.map { it.slot }.toSet().size == items.size) { "descriptor-slot" }
+            val d = FaceVideoItems(id("screenId"), id("tenantId"), j.getInt("faceIndex"), j.getString("revision"), j.getString("orientation"), items)
+            require(d.faceIndex in 0..1) { "descriptor-face" }
+            require(d.revision.length in 1..128 && d.orientation in setOf("PORTRAIT", "LANDSCAPE", "AUTO")) { "descriptor-revision" }
+            return d
+        }
+    }
+}
+
+internal data class FaceVideoItem(
+    val slot: String, val loop: Boolean, val assetId: String, val url: String, val sha256: String,
+    val size: Long, val width: Int, val height: Int, val fps: Double,
+)
+
+internal object FaceZonePolicy {
+    /**
+     * Decoders a box may run across every face under protocol 3: a playing
+     * slot plus one pre-rolled next slot per face of a double-sided unit
+     * (four), lowered by the codec's own advertised instance limit. A pre-roll
+     * is refused one decoder earlier than playback, so the picture on glass
+     * always wins the last decoder. A codec that still cannot be created ends
+     * the session with the TRANSIENT `decoder-unavailable`, never a 24 h block.
+     */
+    const val MAX_DECODERS = 4
+    /** When the codec advertises nothing: a playing + a pre-rolled slot on one face, a playing slot on the other. */
+    const val UNKNOWN_DECODERS = 3
+    fun decoderAllowed(activeElsewhere: Int, advertisedInstances: Int, preroll: Boolean): Boolean {
+        val cap = minOf(MAX_DECODERS, if (advertisedInstances > 0) advertisedInstances else UNKNOWN_DECODERS)
+        return activeElsewhere < (if (preroll) cap - 1 else cap)
+    }
+
+    /** A held first frame may wait this long for the glass before the session is retired (`hold-expired`). */
+    const val HOLD_MAX_MS = 10 * 60 * 1000L
+
+    /**
+     * The page's CSS-px rect → this WebView's px, as [left, top, width,
+     * height], scaled by the WebView's size over the page's layout viewport
+     * (that ratio is the device pixel ratio, whatever the ROM reports) and
+     * clamped inside the WebView. Empty when nothing is left on glass.
+     */
+    fun rect(l: FaceZoneLayout, outW: Int, outH: Int): IntArray {
+        if (outW <= 0 || outH <= 0) return intArrayOf(0, 0, 0, 0)
+        val sx = outW.toDouble() / l.vw
+        val sy = outH.toDouble() / l.vh
+        val x0 = Math.round(l.x * sx).toInt().coerceIn(0, outW)
+        val y0 = Math.round(l.y * sy).toInt().coerceIn(0, outH)
+        val x1 = Math.round((l.x + l.w) * sx).toInt().coerceIn(0, outW)
+        val y1 = Math.round((l.y + l.h) * sy).toInt().coerceIn(0, outH)
+        return intArrayOf(x0, y0, maxOf(0, x1 - x0), maxOf(0, y1 - y0))
+    }
+
+    /** Where a pre-rolled surface waits: entirely to the right of the WebView, same size, never on glass. */
+    fun parked(rect: IntArray, outW: Int): IntArray = intArrayOf(outW, rect[1], rect[2], rect[3])
+
+    /** Do two [rect]s share any pixel? (Which on-glass session a `play` supersedes.) */
+    fun overlaps(a: IntArray, b: IntArray): Boolean =
+        a[2] > 0 && a[3] > 0 && b[2] > 0 && b[3] > 0 &&
+            a[0] < b[0] + b[2] && b[0] < a[0] + a[2] && a[1] < b[1] + b[3] && b[1] < a[1] + a[3]
+
+    /** A session may move its surface; a change of rotation or fit needs a new decoder (restart). */
+    fun moveOnly(old: FaceZoneLayout, new: FaceZoneLayout): Boolean = old.degrees == new.degrees && old.fit == new.fit
+}
+
 /**
  * Seamless loop timeline. A looping session never sends end-of-stream and
  * never flushes the codec (the flush + re-prime is the visible hitch at the

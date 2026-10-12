@@ -42,24 +42,35 @@ class SharedVideoHost private constructor(internal val face: Int, internal val w
     internal var startedAt = 0L
     @Volatile internal var detached = false
 
-    // -- Protocol 2: this face's own independent session (FaceVideoBox) --
-    /** Created on the UI thread with the host; in the view tree only while a session runs. */
-    internal val faceContainer = FrameLayout(web.context)
-    internal val faceSurface = SurfaceView(web.context)
-    internal var face2: FaceVideoSession? = null
+    // -- Protocol 2/3: this face's own independent sessions (FaceVideoBox) --
+    /** By slot: "" is the protocol-2 solo; `item:<id>` / `zone:<id>` are protocol-3 slots. Guarded by FaceVideoBox. */
+    internal val faceSessions = LinkedHashMap<String, FaceVideoSession>()
     /** Which engine this face last used: the one `sharedVideoState` reports. */
     @Volatile internal var engine = ENGINE_SHARED
 
-    /** `version: 2` selects the per-face engine; anything else is the protocol-1 pair engine, unchanged. */
+    /**
+     * `version: 3` (an op on a positioned slot) and `version: 2` (the solo)
+     * select the per-face engine; anything else is the protocol-1 pair
+     * engine, unchanged.
+     */
     fun prepare(json: String) {
-        if (FaceVideoRequest.parse(json) != null) FaceVideoBox.prepare(this,json)
-        else if (!FaceVideoBox.anyActive()) { engine = ENGINE_SHARED; SharedVideoBox.prepare(this,json) }
+        when (val m = FaceZoneMessage.parse(json)) {
+            is FaceZoneMessage.Prepare -> FaceVideoBox.prepare(this, m.request)
+            is FaceZoneMessage.Layout -> FaceVideoBox.layout(this, m.sessionId, m.layout)
+            is FaceZoneMessage.Play -> FaceVideoBox.play(this, m.sessionId)
+            null -> if (FaceVideoRequest.parse(json) != null) FaceVideoBox.prepare(this,json)
+                else if (!FaceVideoBox.anyActive()) { engine = ENGINE_SHARED; SharedVideoBox.prepare(this,json) }
+        }
     }
     fun commit(id: String) = if (engine == ENGINE_FACE) FaceVideoBox.commit(this,id) else SharedVideoBox.commit(this,id)
     fun stop(id: String) = if (engine == ENGINE_FACE) FaceVideoBox.stop(this,id) else SharedVideoBox.stop(this,id)
-    /** Always carries `protocol: 2`, so the page can tell this APK runs independent per-face sessions. */
+    /**
+     * Always carries `protocol: 2` (independent per-face sessions) exactly as
+     * 1.1.29 did, so an older web bundle sees what it saw; `protocolMax: 3`
+     * and `sessions[]` (FaceVideoBox.state) prove the positioned-slot engine.
+     */
     fun stateJson(): String {
-        val j = if (engine == ENGINE_FACE) FaceVideoBox.state(this) else JSONObject(SharedVideoBox.state(this))
+        val j = if (engine == ENGINE_FACE) FaceVideoBox.state(this) else JSONObject(SharedVideoBox.state(this)).put("protocolMax", FaceVideoBox.PROTOCOL_MAX)
         return j.put("protocol",2).toString()
     }
     fun invalidate() { SharedVideoBox.invalidate(this,"document-retired"); FaceVideoBox.invalidate(this,"document-retired") }
@@ -69,8 +80,6 @@ class SharedVideoHost private constructor(internal val face: Int, internal val w
         (surfaceView.parent as? ViewGroup)?.removeView(surfaceView)
         SharedVideoBox.detach(this)
         FaceVideoBox.detach(this)
-        (faceSurface.parent as? ViewGroup)?.removeView(faceSurface)
-        (faceContainer.parent as? ViewGroup)?.removeView(faceContainer)
     }
 
     companion object {
@@ -87,11 +96,7 @@ class SharedVideoHost private constructor(internal val face: Int, internal val w
                 override fun surfaceChanged(holder: SurfaceHolder,format: Int,w: Int,h: Int) { SharedVideoBox.surfaceReady() }
                 override fun surfaceDestroyed(holder: SurfaceHolder) { if (host.attached) host.invalidate() }
             })
-            host.faceSurface.holder.addCallback(object : SurfaceHolder.Callback {
-                override fun surfaceCreated(holder: SurfaceHolder) { FaceVideoBox.surfaceReady(host) }
-                override fun surfaceChanged(holder: SurfaceHolder,format: Int,w: Int,h: Int) { FaceVideoBox.surfaceReady(host) }
-                override fun surfaceDestroyed(holder: SurfaceHolder) { FaceVideoBox.invalidate(host,"output-detached") }
-            })
+            // Per-face sessions (FaceVideoBox) create their own SurfaceViews, each with its own holder callback.
             return host
         }
         /** Called by the native hold path; it never releases or changes an emergency hold. */
