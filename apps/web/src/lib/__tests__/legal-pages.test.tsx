@@ -39,8 +39,11 @@ describe('public legal pages', () => {
 
   it('terms state the real pricing and put purchase orders on Enterprise plans', () => {
     const t = text(TermsPage);
+    // 2026-10-12 pricing: VenueOS $20 / $200, VenueOS + AI $25 / $250 per Screen.
+    expect(t).toMatch(/\$20 per Screen per month/);
+    expect(t).toMatch(/\$200 per Screen per year/);
     expect(t).toMatch(/\$25 per Screen per month/);
-    expect(t).toMatch(/\$240 per Screen per year/);
+    expect(t).toMatch(/\$250 per Screen per year/);
     expect(t).toMatch(/Purchase orders, invoicing[\s\S]*Enterprise/);
   });
 

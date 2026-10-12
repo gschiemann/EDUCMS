@@ -22,6 +22,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Sparkles, Loader2, Check, X, Wand2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
+import { AI_PLAN_REQUIRED_EN } from '@/lib/ai-plan';
 import { getAiStatusSource } from '@/components/ai/AiGenerateButton';
 import { fetchExternalChatFields } from '@/components/ai/external-chat-fields';
 
@@ -60,6 +61,7 @@ function friendlyChatError(e: any): string {
     return e?.body?.message || 'I couldn’t turn that into an edit — try naming the change (e.g. “make the title bigger”).';
   }
   if (code === 'AI_PROVIDER_OUT_OF_CREDIT') return e?.body?.message || 'Your AI provider is out of credit.';
+  if (code === 'AI_PLAN_REQUIRED') return AI_PLAN_REQUIRED_EN;
   if (code === 'AI_CAP_REACHED' || status === 402) return "This month's included AI is used up — add your own AI key in Settings → AI.";
   if (code === 'AI_FAILURE_CAP_REACHED') return 'Too many failed AI requests this hour. Try again later.';
   if (raw.includes('not configured')) return 'AI isn’t enabled — ask your admin to add a provider key.';

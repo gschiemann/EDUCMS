@@ -3594,7 +3594,9 @@
       "reasons": {
         "NO_PLATFORM_KEY": "AI runs on your own key — add it in Settings → AI provider.",
         "OWN_KEY": "Your boards run on your own AI key, with no limit here — there is nothing to buy.",
-        "STRIPE_NOT_CONFIGURED": "Buying more boards isn't set up on this deployment yet."
+        "STRIPE_NOT_CONFIGURED": "Buying more boards isn't set up on this deployment yet.",
+        "AI_PLAN_REQUIRED": "Add VenueOS AI for $5/screen/month — or connect your own AI key for free (Settings → AI).",
+        "TRIAL": "Your free trial includes a set number of AI boards. Buying more opens with the VenueOS + AI plan."
       },
       "capBuyMore": "Buy more boards",
       "capAddKey": "Add your own AI key",
@@ -3620,7 +3622,8 @@
         "success": "Payment received.",
         "successDetail": "Your boards are added as soon as Stripe confirms the payment — usually within a minute.",
         "cancelled": "Checkout was cancelled — you weren't charged."
-      }
+      },
+      "leftTrial": "{left} of {total} AI boards left in your free trial"
     },
     "history": {
       "open": "History",
@@ -4804,7 +4807,10 @@
       "activitySection": "Recent changes",
       "noActivity": "No changes yet.",
       "loadFailed": "Couldn't load this customer.",
-      "genericError": "Something went wrong."
+      "genericError": "Something went wrong.",
+      "aiIncluded": "AI included (VenueOS + AI)",
+      "aiIncludedHint": "AI on VenueOS's keys for this customer and all its locations, within the AI-plan limits.",
+      "aiIncludedStripe": "A card customer's AI comes from their Stripe plan — they switch it on the Billing page."
     },
     "create": {
       "title": "New customer",
@@ -4987,7 +4993,9 @@
       "continue": "Continue to secure checkout",
       "secure": "Your card is entered on Stripe's secure page — VenueOS never sees or stores it.",
       "notSetUpTitle": "Billing isn't set up yet",
-      "notSetUpBody": "Online payments aren't switched on for this account yet. Email us and we'll get you set up — your screens keep playing in the meantime."
+      "notSetUpBody": "Online payments aren't switched on for this account yet. Email us and we'll get you set up — your screens keep playing in the meantime.",
+      "aiLabel": "Include AI (+{price} per screen a month)",
+      "aiBody": "AI board designs, images and writing help on VenueOS's AI. Or use your own AI key on any plan."
     },
     "status": {
       "allSetTitle": "You're all set",
@@ -5003,7 +5011,8 @@
       "trialEndedLimits": "New screens can't be paired. Add payment before {date} to keep editing.",
       "lockedLimits": "You can see everything, but changes are paused until payment is added.",
       "pastDueBody": "Stripe will try again automatically. Update your card to keep everything running — screens keep playing either way.",
-      "noChargeTrial": "No charge during your free trial."
+      "noChargeTrial": "No charge during your free trial.",
+      "pricesWithAi": "{monthly} per screen a month or {annual} a year — {aiMonthly} / {aiAnnual} with AI."
     },
     "pair": {
       "planFullTitle": "Your plan covers {count, plural, one {# screen} other {# screens}}",
@@ -5163,5 +5172,53 @@
       "measured-stutter": "“{file}” may stutter on {screens}: {count, plural, one {this screen} other {these screens}} stuttered on video this size before, even with the lighter copy. It will keep playing.",
       "over-capability": "“{file}” may stutter on {screens}: {count, plural, one {this screen plays} other {these screens play}} video up to {max} frames per second. It will keep playing."
     }
+  },
+  "aiPlan": {
+    "upsell": {
+      "title": "AI isn't on your plan",
+      "body": "Add VenueOS AI for {price}/screen/month — or connect your own AI key for free (Settings → AI).",
+      "addAi": "Add AI ({price}/screen/month)",
+      "addAiShort": "Add AI",
+      "ownKey": "Connect my own AI key (free)",
+      "ownKeyNote": "With your own key you pay your AI provider directly, with no limit in VenueOS."
+    },
+    "imagesLeft": "{left} of {total} AI images left this month · resets {date}",
+    "imagesLeftTrial": "{left} of {total} AI images left in your free trial",
+    "limit": {
+      "images": "You've used all your AI images this month. Add your own AI key in Settings → AI provider to keep going, or contact us for more.",
+      "imagesTrial": "You've used all the AI images in your free trial. Add your own AI key in Settings → AI provider, or choose VenueOS + AI in Settings → Billing.",
+      "boardsTrial": "You've used all the AI board designs in your free trial. Add your own AI key in Settings → AI provider, or choose VenueOS + AI in Settings → Billing."
+    }
+  },
+  "billingAi": {
+    "sectionTitle": "AI",
+    "sectionDesc": "AI on VenueOS's own AI — board designs, images and writing help.",
+    "includeAi": "Include AI (+{price} per screen a month)",
+    "includeAiBody": "Each paid screen adds 10 AI board designs and 20 AI images a month, shared across your locations. Your own AI key works on every plan.",
+    "withAiBadge": "+ AI",
+    "onTitle": "AI is on your plan",
+    "onBody": "Board designs, images and writing help run on VenueOS's AI, shared across all your locations.",
+    "offTitle": "AI isn't on your plan",
+    "offBody": "Add AI for {price} per screen a month — 10 board designs and 20 images per screen every month. Prorated on your next invoice.",
+    "offOfflineBody": "Your plan is billed by invoice. Contact your VenueOS account manager to add AI.",
+    "offNotSoldBody": "The VenueOS + AI plan isn't available on this account yet.",
+    "trialTitle": "AI is included in your free trial",
+    "trialBody": "Try board designs, images and writing help. To keep AI after the trial, choose VenueOS + AI (+{price} per screen a month).",
+    "ownKeyNote": "Prefer your own AI account? Your own key works on every plan.",
+    "ownKeyLink": "Settings → AI provider",
+    "addAi": "Add AI (+{price}/screen/month)",
+    "turnOff": "Turn off AI",
+    "cancel": "Cancel",
+    "ok": "OK",
+    "confirmOnTitle": "Add AI to your plan?",
+    "confirmOnBody": "Your plan goes up by {price} per screen a month, prorated on your next invoice. AI is ready right away.",
+    "confirmOffTitle": "Turn off AI?",
+    "confirmOffBody": "AI on VenueOS's AI stops right away and your plan goes down, prorated on your next invoice. Your own AI key, if you add one, still works.",
+    "doneOnTitle": "AI is on",
+    "doneOnBody": "Board designs, images and writing help are ready.",
+    "doneOffTitle": "AI is off",
+    "doneOffBody": "Your plan no longer includes AI. You can turn it back on here any time.",
+    "failedTitle": "Couldn't change your plan",
+    "failedBody": "Try again, or contact us if it keeps happening."
   }
 }

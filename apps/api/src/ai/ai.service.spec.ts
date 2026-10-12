@@ -3369,7 +3369,7 @@ describe('AiService — the AI plan gate (AI plan / trial / no AI / own key)', (
     expect(err.getStatus()).toBe(402);
     expect(err.getResponse()).toMatchObject({ code: 'AI_PLAN_REQUIRED', aiAddonMonthlyCents: 500, byokAvailable: true });
     expect(err.getResponse().message).toContain('$5/screen/month');
-    expect(err.getResponse().message).toContain('your own AI key');
+    expect(err.getResponse().message).toContain('connect your own AI key for free (Settings → AI)');
     expect(dispatchMock).not.toHaveBeenCalled();
     // the board designer refuses at the same door
     const board = await service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'coffee menu' }).catch((e) => e);
@@ -3386,6 +3386,82 @@ describe('AiService — the AI plan gate (AI plan / trial / no AI / own key)', (
     await service.generate({ tenantId: 't1', intent: 'announcement', context: 'sale' });
     expect(dispatchMock.mock.calls[0][1]).toMatchObject({ apiKey: 'sk-openai-tenant' });
     expect(allowance.entitlement).not.toHaveBeenCalled();
+  });
+
+  // ── Owner confirmation (2026-10-12): the $20/$200 plan WITHOUT AI + the customer's OWN key →
+  // EVERY AI feature works, free, with no upsell wall and no VenueOS counter consumed (only the
+  // existing per-tenant hourly / abuse caps apply to BYOK). ──
+  describe('no AI plan + their OWN key → every AI feature, counters untouched', () => {
+    function byok(provider: 'openai' | 'anthropic' = 'openai') {
+      tenantsById.set('t1', { id: 't1', parentId: null, aiProvider: provider, aiKeyEncrypted: 'enc', aiModel: 'standard' });
+      jest.spyOn(require('./ai-key-cipher'), 'openAiKey').mockReturnValue(provider === 'openai' ? 'sk-openai-tenant' : 'sk-ant-tenant');
+    }
+    /** A no-AI-plan allowance whose every counter/assert is a spy that must never be reached. */
+    function noAiPlan() {
+      return {
+        ...allowanceFor('none'),
+        snapshot: jest.fn(async () => {
+          throw new Error('the dollar allowance must not be read on their own key');
+        }),
+        assertImagesAvailable: jest.fn(async () => {
+          throw new Error('the image counter must not be consulted on their own key');
+        }),
+        assertBoardsAvailable: jest.fn(async () => {
+          throw new Error('the board counter must not be consulted on their own key');
+        }),
+      };
+    }
+
+    it('TEXT (sparkle): answered on their key; no 402, no allowance read, metered as the tenant\'s', async () => {
+      byok();
+      dispatchMock.mockResolvedValue({ raw: JSON.stringify([{ text: 'ok' }]), model: 'gpt-5.6-luna', usage: { inputTokens: 10, outputTokens: 10 } });
+      const allowance = noAiPlan();
+      const { service, meter } = buildService(makeFakeRedisClient(), undefined, undefined, undefined, allowance);
+      await service.generate({ tenantId: 't1', intent: 'announcement', context: 'sale' });
+      expect(dispatchMock.mock.calls[0][1]).toMatchObject({ apiKey: 'sk-openai-tenant' });
+      expect(allowance.entitlement).not.toHaveBeenCalled();
+      expect(allowance.snapshot).not.toHaveBeenCalled();
+      for (const c of meter.record.mock.calls) expect(c[0].source).toBe('tenant');
+    });
+
+    it('BOARDS (the Designer): drawn on their key; the board counter is never consulted, every ledger row is the tenant\'s', async () => {
+      byok();
+      const board = '<!doctype html><html><head><style>.stage{width:1920px;height:1080px;position:absolute;top:0;left:0;background:#23282f;color:#fff}</style></head>'
+        + '<body><div class="stage"><h1 data-field="headline">Chrome Coffee</h1><p data-field="sub">Espresso bar and bakery, open daily</p></div></body></html>';
+      dispatchMock.mockImplementation(async (_p: any, input: any) =>
+        input.maxTokens === 500 ? { raw: '{}', model: input.model } : { raw: board, model: input.model, usage: { inputTokens: 12_000, outputTokens: 10_000 } },
+      );
+      const allowance = noAiPlan();
+      const { service, meter } = buildService(makeFakeRedisClient(), undefined, undefined, undefined, allowance);
+      const out = await service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'coffee menu' });
+      expect(out.candidates).toHaveLength(2);
+      expect(allowance.assertBoardsAvailable).not.toHaveBeenCalled();
+      expect(allowance.entitlement).not.toHaveBeenCalled();
+      expect(dispatchMock.mock.calls.every((c) => c[1].apiKey === 'sk-openai-tenant')).toBe(true);
+      expect(meter.record.mock.calls.length).toBeGreaterThan(0);
+      for (const c of meter.record.mock.calls) expect(c[0].source).toBe('tenant');
+    });
+
+    it('IMAGES: generated on their OpenAI key; the image counter and the platform meter are never touched', async () => {
+      byok();
+      fetchSpy.mockResolvedValue(okJson({ data: [{ b64_json: IMG_B64 }] }));
+      const allowance = noAiPlan();
+      const { service, meter } = buildService(makeFakeRedisClient(), undefined, undefined, undefined, allowance);
+      const res = await service.generateImage({ tenantId: 't1', role: 'SCHOOL_ADMIN', prompt: 'a lion' });
+      expect(res).toMatchObject({ provider: 'openai' });
+      expect(fetchSpy.mock.calls[0][1].headers.authorization).toBe('Bearer sk-openai-tenant');
+      expect(allowance.assertImagesAvailable).not.toHaveBeenCalled();
+      expect(allowance.snapshot).not.toHaveBeenCalled();
+      expect(meter.recordFixed).not.toHaveBeenCalled();
+      const audit = JSON.parse(auditRows.find((r) => r.action === 'AI_IMAGE_GENERATED').details);
+      expect(audit).toMatchObject({ source: 'tenant' });
+    });
+
+    it('getUsage on their key: unlimited here — no upsell flag', async () => {
+      byok('anthropic');
+      const { service } = buildService(makeFakeRedisClient(), undefined, undefined, undefined, noAiPlan());
+      await expect(service.getUsage('t1')).resolves.toEqual({ source: 'tenant', used: 0, cap: null, resetAt: null });
+    });
   });
 
   it('getUsage without the AI plan: source none + planRequired (the upsell), not "AI is not configured"', async () => {

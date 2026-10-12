@@ -24,8 +24,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { Sparkles, Loader2, X, AlertCircle, ImagePlus, Settings2 } from 'lucide-react';
-import { getAiStatusSource } from './AiGenerateButton';
-import { useGenerateImage } from '@/hooks/use-api';
+import { useTranslations } from 'next-intl';
+import { aiStatusPlanRequired, getAiStatusSource } from './AiGenerateButton';
+import { AiPlanUpsell } from './AiPlanUpsell';
+import { AiImagesLeft } from './AiBoardsLeft';
+import { useAiAllowance, useGenerateImage } from '@/hooks/use-api';
+import { aiPaywallText, isAiPlanRequired, needsAiPlan } from '@/lib/ai-plan';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
 import type { Vertical } from '@cms/api-types';
 
@@ -80,7 +84,8 @@ export function useAiImageAvailable(): boolean | null {
     return () => { alive = false; };
   }, []);
   if (aiSource === null) return null;
-  return aiSource !== 'none';
+  // 2026-10-12 — held back only by the plan: the affordance stays, and the modal shows the upsell.
+  return aiSource !== 'none' || aiStatusPlanRequired();
 }
 
 /**
@@ -148,6 +153,12 @@ export function AiImageModal({
   const [error, setError] = useState<string | null>(null);
   const [needsImageProvider, setNeedsImageProvider] = useState(false);
   const generate = useGenerateImage();
+  // 2026-10-12 — the VenueOS + AI plan: "N images left" under Generate, and the upsell instead of
+  // the form when the organisation is not on the AI plan (from the status, or a 402 on submit).
+  const tPlan = useTranslations('aiPlan');
+  const allowance = useAiAllowance();
+  const [planRequired, setPlanRequired] = useState(false);
+  const showUpsell = planRequired || needsAiPlan(allowance.data);
 
   // Vertical-aware prompt example — Sports tenants get a game-day banner,
   // QSR a menu hero, etc., instead of the K-12 "back-to-school" default.
@@ -205,6 +216,16 @@ export function AiImageModal({
       const code = String(e?.code || '');
       const status = Number(e?.status || 0);
       const msg = String(e?.message || e || '');
+      if (isAiPlanRequired(e)) {
+        setPlanRequired(true);
+        setError(null);
+        return;
+      }
+      const paywall = aiPaywallText(tPlan as any, e);
+      if (paywall) {
+        setError(paywall);
+        return;
+      }
       if (code === 'AI_IMAGE_UNAVAILABLE') {
         // Graceful: provider can't do images (Anthropic / platform key).
         // Show the friendly "add an OpenAI or Google key" message + CTA.
@@ -252,7 +273,9 @@ export function AiImageModal({
         </div>
 
         <div className="p-6 space-y-4">
-          {needsImageProvider ? (
+          {showUpsell ? (
+            <AiPlanUpsell addonCents={allowance.data?.aiAddonMonthlyCents} />
+          ) : needsImageProvider ? (
             <div className="rounded-xl bg-amber-50 border border-amber-200 p-4 text-center">
               <div className="w-12 h-12 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 mx-auto flex items-center justify-center text-white mb-3">
                 <Settings2 className="w-6 h-6" />
@@ -318,6 +341,7 @@ export function AiImageModal({
                 {running ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
                 {running ? 'Generating image…' : 'Generate image'}
               </button>
+              <AiImagesLeft className="text-center" />
 
               {running && (
                 <p className="text-[10px] text-slate-400 text-center">

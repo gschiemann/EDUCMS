@@ -21,6 +21,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Sparkles, Loader2, Wand2, Scissors, Maximize2, X, RefreshCw, Zap, Languages, Pencil, Check, MoreHorizontal } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
+import { AI_PLAN_REQUIRED_EN } from '@/lib/ai-plan';
 import { getTextFieldDescriptor } from '@cms/api-types';
 import { getAiStatusSource } from '@/components/ai/AiGenerateButton';
 
@@ -53,6 +54,7 @@ function friendlyRewriteError(e: any): string {
   const status = Number(e?.status || 0);
   const raw = (e?.message || '').toLowerCase();
   if (code === 'AI_PROVIDER_OUT_OF_CREDIT') return e?.body?.message || e?.message || 'Your AI provider is out of credit.';
+  if (code === 'AI_PLAN_REQUIRED') return AI_PLAN_REQUIRED_EN;
   if (code === 'AI_CAP_REACHED' || status === 402) return "This month's included AI is used up — add your own AI key in Settings → AI.";
   if (code === 'AI_FAILURE_CAP_REACHED') return 'Too many failed AI requests this hour. Try again later.';
   if (raw.includes('not configured')) return 'AI isn’t enabled — ask your admin to add a provider key.';

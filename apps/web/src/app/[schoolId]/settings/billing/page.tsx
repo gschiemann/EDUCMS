@@ -39,6 +39,8 @@ import { appAlert } from '@/components/ui/app-dialog';
 import { useRefreshAiBoards, useTenant } from '@/hooks/use-api';
 import { AiBoardsLeft } from '@/components/ai/AiBoardsLeft';
 import { BillingStatusCard } from '@/components/billing/BillingStatusCard';
+import { AiPlanCard } from '@/components/billing/AiPlanCard';
+import { useBillingSummary } from '@/components/billing/billing-summary';
 import { SettingsPageFrame } from '@/components/settings/shell/SettingsPageFrame';
 import {
   ContextModule,
@@ -78,6 +80,9 @@ interface TierCard {
   blurb: string;
   monthlyPriceCents: number | null;
   annualPriceCents: number | null;
+  /** 2026-10-12 — the same tier WITH AI (VenueOS + AI). */
+  aiMonthlyPriceCents?: number | null;
+  aiAnnualPriceCents?: number | null;
   features: string[];
   recommended: boolean;
 }
@@ -184,13 +189,19 @@ export default function BillingPage() {
         : null;
 
   const [busy, setBusy] = useState<string | null>(null);
+  // 2026-10-12 — VenueOS or VenueOS + AI. The AI option exists only when the deploy sells it
+  // (`aiPrices` on the billing summary); it starts ON (the plan most customers are trying).
+  const billingSummary = useBillingSummary();
+  const aiOffered = !!billingSummary.data?.aiPrices;
+  const [includeAi, setIncludeAi] = useState(true);
+  const checkoutWithAi = aiOffered && includeAi;
 
   const startCheckout = async (period: 'monthly' | 'annual') => {
     setBusy(period);
     try {
       const res: any = await apiFetch('/billing/checkout', {
         method: 'POST',
-        body: JSON.stringify({ billingPeriod: period }),
+        body: JSON.stringify(checkoutWithAi ? { billingPeriod: period, ai: true } : { billingPeriod: period }),
       });
       if (res?.url) {
         window.location.href = res.url;
@@ -268,6 +279,7 @@ export default function BillingPage() {
       { label: t('settings.cc.billing.searchPlan'), anchor: 'bill-plan', keywords: ['plan', 'tier', 'license', 'subscription'] },
       { label: t('settings.cc.billing.searchSeats'), anchor: 'bill-plan', keywords: ['seats', 'screens', 'usage', 'limit'] },
       { label: t('settings.cc.billing.searchInvoices'), anchor: 'bill-invoices', keywords: ['invoice', 'receipt', 'payment', 'pdf'] },
+      { label: t('billingAi.sectionTitle'), anchor: 'bill-ai', keywords: ['ai', 'artificial intelligence', 'images', 'boards', 'designer'] },
     ],
     [t],
   );
@@ -396,6 +408,15 @@ export default function BillingPage() {
         </p>
       </EditorSection>
 
+      {/* ── AI on this plan (2026-10-12 — VenueOS + AI) ─────────── */}
+      <EditorSection
+        id="bill-ai"
+        title={t('billingAi.sectionTitle')}
+        description={t('billingAi.sectionDesc')}
+      >
+        <AiPlanCard />
+      </EditorSection>
+
       {/* ── Invoices + Plans: card billing only ───────────────── */}
       {!offline && (<>
       <EditorSection
@@ -427,6 +448,29 @@ export default function BillingPage() {
           <CardSpinner />
         ) : (
           <>
+            {aiOffered && (
+              <label
+                className={`mb-4 flex items-start gap-3 rounded-[13px] border p-4 cursor-pointer ${includeAi ? 'border-violet-300 bg-violet-50/50' : 'border-slate-200 bg-white'}`}
+                data-testid="plans-include-ai"
+              >
+                <input
+                  type="checkbox"
+                  checked={includeAi}
+                  onChange={(e) => setIncludeAi(e.target.checked)}
+                  className="mt-0.5 h-5 w-5 accent-violet-600"
+                />
+                <span className="text-[13px] leading-[19px] text-slate-700">
+                  <span className="block font-medium text-slate-900">
+                    {t('billingAi.includeAi', {
+                      price: fmtWhole(
+                        (billingSummary.data?.aiPrices?.monthlyCents ?? 2500) - (billingSummary.data?.prices.monthlyCents ?? 2000),
+                      ),
+                    })}
+                  </span>
+                  <span className="block text-slate-500">{t('billingAi.includeAiBody')}</span>
+                </span>
+              </label>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {(tiers.data || []).map((tier) => (
                 <TierTile
@@ -436,6 +480,7 @@ export default function BillingPage() {
                   busy={busy}
                   onChoose={startCheckout}
                   checkoutAvailable={stripeEnabled === true}
+                  withAi={checkoutWithAi}
                 />
               ))}
             </div>
@@ -688,19 +733,25 @@ function TierTile({
   busy,
   onChoose,
   checkoutAvailable,
+  withAi = false,
 }: {
   tier: TierCard;
   currentTier?: string;
   busy: string | null;
   onChoose: (period: 'monthly' | 'annual') => void;
   checkoutAvailable: boolean;
+  /** 2026-10-12 — show (and buy) the VenueOS + AI price of this tier. */
+  withAi?: boolean;
 }) {
   const t = useTranslations();
   const isCurrent = currentTier === tier.id;
   const isPaid = tier.id === 'MONTHLY' || tier.id === 'ANNUAL';
   const period: 'monthly' | 'annual' = tier.id === 'ANNUAL' ? 'annual' : 'monthly';
+  const ai = withAi && isPaid;
   const price =
-    tier.id === 'ANNUAL' ? fmtWhole(tier.annualPriceCents) : fmtWhole(tier.monthlyPriceCents);
+    tier.id === 'ANNUAL'
+      ? fmtWhole(ai && tier.aiAnnualPriceCents != null ? tier.aiAnnualPriceCents : tier.annualPriceCents)
+      : fmtWhole(ai && tier.aiMonthlyPriceCents != null ? tier.aiMonthlyPriceCents : tier.monthlyPriceCents);
   const cadence =
     tier.id === 'FREE_TRIAL'
       ? t('billingCommerce.fourteenDays')
@@ -731,7 +782,10 @@ function TierTile({
           <CheckCircle2 className="w-2.5 h-2.5" aria-hidden /> {t('billingCommerce.yourPlan')}
         </div>
       )}
-      <div className="font-medium text-slate-900 text-[15px]">{tier.name}</div>
+      <div className="font-medium text-slate-900 text-[15px]">
+        {tier.name}
+        {ai && <span className="ml-1.5 text-[11px] font-semibold text-violet-700">{t('billingAi.withAiBadge')}</span>}
+      </div>
       <p className="text-[12px] text-slate-500 leading-snug mt-0.5 mb-4">{tier.blurb}</p>
       <div className="mb-4">
         <span className="text-[26px] font-medium text-slate-900">{price}</span>

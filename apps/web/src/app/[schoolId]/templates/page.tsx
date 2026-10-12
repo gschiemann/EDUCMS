@@ -55,6 +55,8 @@ import { DesignerHistory } from '@/components/templates/DesignerHistory';
 import { AiBoardsLeft, AiCapActions } from '@/components/ai/AiBoardsLeft';
 import { BuyBoardsSheet } from '@/components/ai/BuyBoardsSheet';
 import { isAiCapError } from '@/lib/ai-boards';
+import { isAiPlanRequired } from '@/lib/ai-plan';
+import { AiPlanUpsell } from '@/components/ai/AiPlanUpsell';
 import { toast } from 'sonner';
 import { ERROR_TOAST_DURATION_MS, MUTATION_ERROR_TOAST_ID, humanizeMutationError } from '@/lib/mutation-error-toast';
 // E3 (CRUSH Wave E, 2026-07-03) — shared "Put on a screen" express lane,
@@ -788,6 +790,19 @@ export default function TemplatesPage() {
   // exactly that message and go away with it.
   const [buyBoardsOpen, setBuyBoardsOpen] = useState(false);
   const [aiCapError, setAiCapError] = useState<string | null>(null);
+  // 2026-10-12 — a generation refused because the organisation is not on the VenueOS + AI plan
+  // (402 AI_PLAN_REQUIRED): the localized upsell sits under that message (AiPlanUpsell).
+  const tPlan = useTranslations('aiPlan');
+  const [aiPlanError, setAiPlanError] = useState<string | null>(null);
+  const notePlanRequired = useCallback(
+    (e: unknown) => {
+      if (!isAiPlanRequired(e)) return;
+      const m = tPlan('upsell.title');
+      setAiError(m);
+      setAiPlanError(m);
+    },
+    [tPlan],
+  );
   // CC-1 (2026-06-27) — canvas size for the AI generate request. Without this
   // every board was generated at 1920×1080 and CLIPPED on a real screen of a
   // different aspect (the live LED is 960×1080 portrait). { w, h } is forwarded
@@ -1135,6 +1150,7 @@ export default function TemplatesPage() {
     setHistoryOpenError(null);
     pickFromHistoryRef.current = false;
     setAiCapError(null);
+    setAiPlanError(null);
     setBuyBoardsOpen(false);
   }, []);
 
@@ -1317,6 +1333,7 @@ export default function TemplatesPage() {
         setAiError(message);
         // Refused for want of boards (the 402): Buy more / Add your own key go right under it.
         if (isAiCapError(err)) setAiCapError(message);
+        notePlanRequired(err);
         toastGenerationError(err);
         return;
       }
@@ -1523,6 +1540,7 @@ export default function TemplatesPage() {
           const message = designerJobStartError(e, tAi);
           setAiError(message);
           if (isAiCapError(e)) setAiCapError(message);
+          notePlanRequired(e);
         }
         return;
       }
@@ -1668,6 +1686,7 @@ export default function TemplatesPage() {
           const message = designerJobStartError(e, tAi);
           setAiError(message);
           if (isAiCapError(e)) setAiCapError(message);
+          notePlanRequired(e);
           toastGenerationError(e);
           return;
         }
@@ -1960,6 +1979,7 @@ export default function TemplatesPage() {
         setAiCapError(message);
         refreshAiBoards();
       }
+      notePlanRequired(e);
     } finally {
       setAiRefiningIdx(null);
     }
@@ -2397,7 +2417,9 @@ export default function TemplatesPage() {
   // names the numbers. Right under THAT message (and gone with it): Buy more, when a pack can be
   // bought, and Add your own key (Settings → AI provider).
   const aiCapActions =
-    aiError && aiCapError === aiError ? (
+    aiError && aiPlanError === aiError ? (
+      <AiPlanUpsell compact addonCents={aiAllowance.data?.aiAddonMonthlyCents} />
+    ) : aiError && aiCapError === aiError ? (
       <AiCapActions
         canBuy={aiAllowance.data?.source === 'platform' && aiAllowance.data.purchaseEnabled === true}
         onBuy={() => setBuyBoardsOpen(true)}

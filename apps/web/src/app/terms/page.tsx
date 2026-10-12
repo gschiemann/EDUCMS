@@ -119,8 +119,9 @@ export default function TermsPage() {
       <h2>7. Fees, billing and trials</h2>
       <ul>
         <li>
-          Standard pricing is <strong>$25 per Screen per month</strong>, or{' '}
-          <strong>$240 per Screen per year</strong> billed annually ($20 per Screen per month). Current
+          Standard pricing is <strong>$20 per Screen per month</strong>, or{' '}
+          <strong>$200 per Screen per year</strong> billed annually; the plan with AI is{' '}
+          <strong>$25 per Screen per month</strong> or <strong>$250 per Screen per year</strong>. Current
           prices are on our <Link href="/pricing">pricing page</Link>. Authorized User accounts are not
           charged separately.
         </li>

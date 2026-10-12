@@ -33,7 +33,8 @@ const base = {
   canCheckout: true,
   seatsUsed: 2,
   seatLimit: 3,
-  prices: { monthlyCents: 2500, annualCents: 24000 },
+  // 2026-10-12 pricing: VenueOS $20 / $200 per screen (no AI prices on this deploy unless a test adds them).
+  prices: { monthlyCents: 2000, annualCents: 20000 },
 };
 const inDays = (d: number) => new Date(Date.now() + d * 86_400_000).toISOString();
 
@@ -62,11 +63,13 @@ describe('TrialStatusBar', () => {
     expect(await screen.findByText('12 days left in your free trial')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('trial-bar-add-payment'));
     const dialog = await screen.findByTestId('add-payment-dialog');
-    expect(dialog).toHaveTextContent('Save $60 per screen');
-    expect(screen.getByTestId('add-payment-total')).toHaveTextContent('2 screens × $240 = $480 per year');
+    expect(dialog).toHaveTextContent('Save $40 per screen');
+    expect(screen.getByTestId('add-payment-total')).toHaveTextContent('2 screens × $200 = $400 per year');
+    // no AI plan on this deploy → no AI option at all
+    expect(screen.queryByTestId('add-payment-ai')).toBeNull();
     expect(screen.getByTestId('add-payment-total')).toHaveTextContent("You won't be charged until");
     fireEvent.click(screen.getByRole('radio', { name: /Monthly/ }));
-    expect(screen.getByTestId('add-payment-total')).toHaveTextContent('2 screens × $25 = $50 per month');
+    expect(screen.getByTestId('add-payment-total')).toHaveTextContent('2 screens × $20 = $40 per month');
     await act(async () => {
       fireEvent.click(screen.getByTestId('add-payment-continue'));
     });
@@ -161,6 +164,45 @@ describe('BillingStatusCard — back from "Update card"', () => {
     expect(await screen.findByTestId('billing-card-declined')).toHaveTextContent('That card was declined too.');
     fireEvent.click(screen.getByTestId('billing-update-card'));
     expect(await screen.findByTestId('update-card-dialog')).toBeInTheDocument();
+  });
+});
+
+describe('Add payment — VenueOS + AI (2026-10-12)', () => {
+  const withAi = { ...base, aiPrices: { monthlyCents: 2500, annualCents: 25000 } };
+
+  it('a trial is offered AI, ON by default: the AI prices, and checkout asks for the AI plan', async () => {
+    summary = { ...withAi, state: 'trial', daysLeft: 12, trialEndsAt: inDays(12), aiPlan: 'trial' };
+    renderWithClient(<TrialStatusBar />);
+    fireEvent.click(await screen.findByTestId('trial-bar-add-payment'));
+    const ai = await screen.findByTestId('add-payment-ai');
+    expect(ai).toHaveTextContent('Include AI (+$5 per screen a month)');
+    expect(screen.getByTestId('add-payment-total')).toHaveTextContent('2 screens × $250 = $500 per year');
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('add-payment-continue'));
+    });
+    const co = calls.find((c) => c.path === '/billing/checkout')!;
+    expect(JSON.parse(co.init.body)).toEqual({ billingPeriod: 'annual', ai: true });
+  });
+
+  it('…one tap turns AI off: the prices drop and checkout asks for the plan without AI', async () => {
+    summary = { ...withAi, state: 'trial', daysLeft: 12, trialEndsAt: inDays(12), aiPlan: 'trial' };
+    renderWithClient(<TrialStatusBar />);
+    fireEvent.click(await screen.findByTestId('trial-bar-add-payment'));
+    const box = (await screen.findByTestId('add-payment-ai')).querySelector('input')!;
+    fireEvent.click(box);
+    fireEvent.click(screen.getByRole('radio', { name: /Monthly/ }));
+    expect(screen.getByTestId('add-payment-total')).toHaveTextContent('2 screens × $20 = $40 per month');
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('add-payment-continue'));
+    });
+    const co = calls.find((c) => c.path === '/billing/checkout')!;
+    expect(JSON.parse(co.init.body)).toEqual({ billingPeriod: 'monthly' });
+  });
+
+  it('a full AI plan: one more screen costs the AI price', async () => {
+    summary = { ...withAi, state: 'active', period: 'monthly', cardOnFile: true, aiIncluded: true };
+    renderWithClient(<SeatLimitNotice error={{ code: 'LICENSE_EXHAUSTED', body: { canAddSeat: true, seatLimit: 3 } }} onRetry={jest.fn()} />);
+    await waitFor(() => expect(screen.getByTestId('seat-add-and-pair')).toHaveTextContent('$25/month'));
   });
 });
 

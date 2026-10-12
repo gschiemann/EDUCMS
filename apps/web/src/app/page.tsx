@@ -468,8 +468,8 @@ function PricingTeaser() {
           Simple per-screen pricing.
         </h2>
         <p className="mt-3 text-base md:text-lg text-slate-600">
-          $25 per screen per month — or $20 when you pay yearly. Every feature on every
-          plan, unlimited users, no add-ons.
+          $20 per screen per month, or $200 a year — $25 / $250 with AI. Signage and
+          emergency alerts on every plan, unlimited users.
         </p>
         <div className="mt-7">
           <Link

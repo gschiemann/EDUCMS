@@ -46,7 +46,24 @@ export interface BillingSummary {
   nextPaymentAttemptAt?: string | null;
   /** The plan ended because the card could not be charged (vs a cancellation). */
   endedForNonPayment?: boolean;
+  /** VenueOS (no AI) per-screen prices. */
   prices: { monthlyCents: number; annualCents: number };
+  /**
+   * 2026-10-12 — VenueOS + AI per-screen prices, or null when this deploy does not offer the AI
+   * plan (the dashboard then hides every AI-plan option).
+   */
+  aiPrices?: { monthlyCents: number; annualCents: number } | null;
+  /** The license pays for AI on VenueOS's keys (the VenueOS + AI plan). */
+  aiIncluded?: boolean;
+  /** What AI on our keys runs on right now: 'ai', 'trial' (a free trial gets AI), or 'none'. */
+  aiPlan?: 'ai' | 'trial' | 'none';
+  /** What AI adds per screen per month, cents. */
+  aiAddonMonthlyCents?: number;
+}
+
+/** The per-screen prices of the plan this customer is on (or choosing): with AI or without. */
+export function planPrices(summary: Pick<BillingSummary, 'prices' | 'aiPrices'>, ai: boolean): { monthlyCents: number; annualCents: number } {
+  return ai && summary.aiPrices ? summary.aiPrices : summary.prices;
 }
 
 export const BILLING_SUMMARY_KEY = ['billing', 'summary'] as const;
@@ -83,13 +100,16 @@ export function goTo(url: string): void {
   window.location.href = url;
 }
 
-/** Opens Stripe Checkout (card entry happens there only — PCI SAQ-A). */
-export async function startCheckout(period: 'monthly' | 'annual'): Promise<
+/**
+ * Opens Stripe Checkout (card entry happens there only — PCI SAQ-A). `ai` = the VenueOS + AI
+ * plan (2026-10-12); sent only when true, so an API that predates it sees the same body as before.
+ */
+export async function startCheckout(period: 'monthly' | 'annual', ai = false): Promise<
   { kind: 'redirect'; url: string } | { kind: 'not-set-up'; message?: string }
 > {
   const res = await apiFetch<{ url?: string; message?: string }>('/billing/checkout', {
     method: 'POST',
-    body: JSON.stringify({ billingPeriod: period }),
+    body: JSON.stringify(ai ? { billingPeriod: period, ai: true } : { billingPeriod: period }),
   });
   if (res?.url) return { kind: 'redirect', url: res.url };
   return { kind: 'not-set-up', message: res?.message };
@@ -107,6 +127,14 @@ export async function openPortal(flow?: 'update-card'): Promise<{ kind: 'redirec
   });
   if (res?.url) return { kind: 'redirect', url: res.url };
   return { kind: 'none' };
+}
+
+/**
+ * 2026-10-12 — switch AI on or off on the card plan (POST /billing/ai-plan). Stripe prorates the
+ * change onto the next invoice; AI works (or stops) on the next request.
+ */
+export async function setAiPlan(ai: boolean): Promise<{ ok?: boolean; aiIncluded?: boolean; changed?: boolean; enabled?: false; message?: string }> {
+  return apiFetch('/billing/ai-plan', { method: 'POST', body: JSON.stringify({ ai }) });
 }
 
 /** Back from "Update card": charge the open invoice with the new card now. */

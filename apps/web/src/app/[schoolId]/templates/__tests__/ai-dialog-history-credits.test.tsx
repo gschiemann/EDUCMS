@@ -26,7 +26,9 @@ import {
   apiFetchError,
   boardsCapReachedError,
   designerOutput,
+  httpException,
   menuBindingIncompleteError,
+  producedError,
   producedResult,
   type ProducedError,
 } from '../../../../../tests/fixtures/designer-job';
@@ -578,6 +580,20 @@ describe('A generation refused for want of boards (the 402)', () => {
     const offers = screen.getByTestId('ai-cap-actions');
     expect(within(offers).queryByRole('button', { name: 'Buy more boards' })).toBeNull();
     expect(within(offers).getByRole('link', { name: 'Add your own AI key' })).toBeInTheDocument();
+  });
+
+  it('2026-10-12 — not on the VenueOS + AI plan: the AI plan upsell (Add AI · own key), never Buy more boards', async () => {
+    failWith(producedError(httpException({ code: 'AI_PLAN_REQUIRED', message: 'AI on VenueOS is part of the VenueOS + AI plan.' }, 402)));
+    await openDialog();
+    fireEvent.click(screen.getByRole('button', { name: 'stub-generate' }));
+    await tick();
+    await tick();
+    await tick(DESIGNER_JOB_POLL_MS);
+    expect(screen.getByRole('alert')).toHaveTextContent("AI isn't on your plan");
+    const upsell = screen.getByTestId('ai-plan-upsell');
+    expect(within(upsell).getByRole('link', { name: /Add AI/ })).toHaveAttribute('href', '/super-taco/settings/billing#bill-plans');
+    expect(within(upsell).getByRole('link', { name: 'Connect my own AI key (free)' })).toBeInTheDocument();
+    expect(screen.queryByTestId('ai-cap-actions')).toBeNull();
   });
 
   it('an edit with words refused the same way offers the same ways forward', async () => {

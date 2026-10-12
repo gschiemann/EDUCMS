@@ -37,7 +37,8 @@ describe('prices', () => {
     expect(PLAN_PRICES).toEqual({ monthlyCents: 2000, annualCents: 20000, monthlyAiCents: 2500, annualAiCents: 25000 });
     expect(AI_ADDON_MONTHLY_CENTS).toBe(500);
     expect(aiPlanRequiredMessage()).toContain('$5/screen/month');
-    expect(aiPlanRequiredMessage()).toContain('your own AI key');
+    expect(aiPlanRequiredMessage()).toContain('Add VenueOS AI for $5/screen/month');
+    expect(aiPlanRequiredMessage()).toContain('connect your own AI key for free (Settings → AI)');
   });
 
   it('reads the four price ids from env (trimmed; empty = unset)', () => {

@@ -458,6 +458,36 @@ describe('AiAltTextService (P1-2)', () => {
     }
   });
 
+  it('2026-10-12 — no VenueOS + AI plan + their OWN key: alt text runs on their key; no plan check, no allowance read', async () => {
+    process.env.OPENAI_API_KEY = 'sk-openai-platform';
+    tenantsById.set('tenant-1', { id: 'tenant-1', parentId: null, aiProvider: 'openai', aiKeyEncrypted: sealAiKey('sk-openai-OWNKEY-1234567890'), aiModel: 'standard' });
+    const entitlement = jest.fn(async () => ({ plan: 'none' }));
+    const snapshot = jest.fn(async () => ({ usedMicros: 0, includedMicros: 0 }));
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        AiAltTextService,
+        { provide: PrismaService, useValue: prismaMock },
+        { provide: RedisService, useValue: { publisher: null } },
+        { provide: AiAllowanceService, useValue: { entitlement, snapshot } },
+      ],
+    }).compile();
+    service = module.get(AiAltTextService);
+    let capturedInit: any = null;
+    fetchMock.mockImplementation(async (_url: string, init: any) => {
+      capturedInit = init;
+      return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: 'A lion.' } }] }) };
+    });
+    try {
+      const result = await service.generateImageAltText({ tenantId: 'tenant-1', imageBuffer: Buffer.from([0xff, 0xd8, 0xff]), mimeType: 'image/jpeg' });
+      expect(result).toMatchObject({ altText: 'A lion.' });
+      expect(capturedInit.headers.authorization).toBe('Bearer sk-openai-OWNKEY-1234567890');
+      expect(entitlement).not.toHaveBeenCalled();
+      expect(snapshot).not.toHaveBeenCalled();
+    } finally {
+      delete process.env.OPENAI_API_KEY;
+    }
+  });
+
   // ── 2026-05-29 audit §3/§4 — Google/Gemini vision alt-text ──────────
 
   it('uses Google/Gemini vision for a Google-BYOK tenant — valid request shape + caption parse', async () => {

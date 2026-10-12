@@ -28,6 +28,8 @@ import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Sparkles, Loader2, X, RefreshCw, AlertCircle, Zap, Settings2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
+import { AiPlanUpsell } from './AiPlanUpsell';
+import { billingPlansHref, isAiPlanRequired } from '@/lib/ai-plan';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
 
 // 2026-05-04 — usage snapshot returned by both /ai/key (status) and
@@ -42,6 +44,9 @@ interface AiUsage {
   cap: number | null;
   resetAt: string | null;
   unit?: 'credits';
+  /** 2026-10-12 — our key exists but needs the VenueOS + AI plan: show "Add AI", not "Set up AI". */
+  planRequired?: boolean;
+  aiAddonMonthlyCents?: number;
 }
 
 export type AiIntent =
@@ -80,9 +85,18 @@ interface AiOption { text: string; tag?: string }
 // admin enables/disables AI in another tab) is a 60s window where the
 // button is hidden/shown incorrectly — the next mount refreshes.
 type AiStatusSource = 'platform' | 'tenant' | 'none';
-let __aiStatusCache: { source: AiStatusSource; fetchedAt: number } | null = null;
+let __aiStatusCache: { source: AiStatusSource; planRequired: boolean; fetchedAt: number } | null = null;
 let __aiStatusInflight: Promise<AiStatusSource> | null = null;
 const AI_STATUS_TTL_MS = 60_000;
+
+/**
+ * 2026-10-12 — after getAiStatusSource() resolves: is AI on our key held back only by the plan
+ * (source 'none' + planRequired)? Read from the same cached status, so no extra request.
+ */
+export function aiStatusPlanRequired(): boolean {
+  return !!__aiStatusCache?.planRequired;
+}
+
 export async function getAiStatusSource(): Promise<AiStatusSource> {
   const now = Date.now();
   if (__aiStatusCache && now - __aiStatusCache.fetchedAt < AI_STATUS_TTL_MS) {
@@ -93,7 +107,7 @@ export async function getAiStatusSource(): Promise<AiStatusSource> {
     try {
       const r = await apiFetch<{ usage?: AiUsage }>('/ai/key');
       const src = (r?.usage?.source as AiStatusSource) || 'none';
-      __aiStatusCache = { source: src, fetchedAt: Date.now() };
+      __aiStatusCache = { source: src, planRequired: src === 'none' && r?.usage?.planRequired === true, fetchedAt: Date.now() };
       return src;
     } catch {
       // 2026-05-29 audit §3 — reconcile the old FAIL-OPEN quirk. The
@@ -179,6 +193,23 @@ export function AiGenerateButton({
   // Loading — don't flash anything.
   if (aiSource === null) return null;
 
+  // 2026-10-12 — our key exists, but this organisation is not on the VenueOS + AI plan: the same
+  // subtle link, to Settings → Billing where AI is added ("Add AI"). Never calls /ai/generate.
+  if (aiSource === 'none' && aiStatusPlanRequired()) {
+    return (
+      <a
+        href={billingPlansHref(schoolId)}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-1 text-[10px] font-semibold text-violet-500 hover:text-violet-700 px-1.5 py-0.5 rounded hover:bg-violet-50 transition-colors"
+        title="Add AI to your plan — or use your own AI key"
+        data-testid="ai-plan-affordance"
+      >
+        <Sparkles className="w-3 h-3" /> Add AI
+      </a>
+    );
+  }
+
   // No AI configured — show the discoverable "Set up AI" link. It is a
   // real <a> (keyboard-focusable, opens settings in a new tab) styled
   // subtly so it doesn't compete with the operator's content fields.
@@ -246,6 +277,8 @@ function AiGenerateModal({
   // completes.
   const [usage, setUsage] = useState<AiUsage | null>(null);
   const [capHit, setCapHit] = useState(false);
+  // 2026-10-12 — refused with AI_PLAN_REQUIRED: the AI plan upsell replaces the form.
+  const [planRequired, setPlanRequired] = useState(false);
 
   // Resolve the tenant-scoped schoolId from the dynamic route so the
   // cap-reached overlay's "Open Settings" link lands on the REAL
@@ -395,6 +428,9 @@ function AiGenerateModal({
       // operator at THEIR provider (BYOK) or escalate to admin (platform).
       if (code === 'AI_PROVIDER_OUT_OF_CREDIT') {
         setError(e?.body?.message || msg || 'Your AI provider is out of credit. Add credits with your provider and try again.');
+      } else if (isAiPlanRequired(e)) {
+        setPlanRequired(true);
+        setError(null);
       } else if (code === 'AI_CAP_REACHED' || status === 402) {
         setCapHit(true);
         setError(null);
@@ -555,6 +591,18 @@ function AiGenerateModal({
           paste flow. RESTRICTED_VIEWER + CONTRIBUTOR can't reach
           that page so they see only the wait-message.
         */}
+        {planRequired && (
+          <div className="absolute top-0 right-0 bottom-0 left-0 bg-white rounded-2xl flex flex-col items-center justify-center p-6" data-testid="ai-plan-overlay">
+            <AiPlanUpsell addonCents={usage?.aiAddonMonthlyCents} className="max-w-md w-full" />
+            <button
+              onClick={onClose}
+              type="button"
+              className="mt-3 px-4 py-2 rounded-lg bg-slate-100 text-slate-700 text-sm font-bold hover:bg-slate-200"
+            >
+              {tAi('credits.sheet.close')}
+            </button>
+          </div>
+        )}
         {capHit && (
           <div className="absolute inset-0 bg-white/95 backdrop-blur-sm rounded-2xl flex flex-col items-center justify-center p-6 text-center">
             <div className="w-16 h-16 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white mb-4">

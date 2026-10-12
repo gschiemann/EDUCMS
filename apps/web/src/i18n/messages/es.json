@@ -3594,7 +3594,9 @@
       "reasons": {
         "NO_PLATFORM_KEY": "La IA funciona con tu propia clave — agrégala en Ajustes → Proveedor de IA.",
         "OWN_KEY": "Tus tableros usan tu propia clave de IA, sin límite aquí — no hay nada que comprar.",
-        "STRIPE_NOT_CONFIGURED": "La compra de más tableros todavía no está disponible en esta instalación."
+        "STRIPE_NOT_CONFIGURED": "La compra de más tableros todavía no está disponible en esta instalación.",
+        "AI_PLAN_REQUIRED": "Agrega la IA de VenueOS por $5/pantalla/mes, o conecta tu propia clave de IA gratis (Configuración → IA).",
+        "TRIAL": "Tu prueba gratuita incluye una cantidad fija de diseños con IA. Comprar más se habilita con el plan VenueOS + IA."
       },
       "capBuyMore": "Comprar más tableros",
       "capAddKey": "Agregar tu propia clave de IA",
@@ -3620,7 +3622,8 @@
         "success": "Pago recibido.",
         "successDetail": "Tus tableros se añaden en cuanto Stripe confirma el pago; normalmente en menos de un minuto.",
         "cancelled": "Se canceló el pago; no se te cobró nada."
-      }
+      },
+      "leftTrial": "Te quedan {left} de {total} diseños con IA en tu prueba gratuita"
     },
     "history": {
       "open": "Historial",
@@ -4804,7 +4807,10 @@
       "activitySection": "Cambios recientes",
       "noActivity": "Aún no hay cambios.",
       "loadFailed": "No se pudo cargar este cliente.",
-      "genericError": "Algo salió mal."
+      "genericError": "Algo salió mal.",
+      "aiIncluded": "IA incluida (VenueOS + IA)",
+      "aiIncludedHint": "IA con las claves de VenueOS para este cliente y todas sus sedes, dentro de los límites del plan con IA.",
+      "aiIncludedStripe": "La IA de un cliente con tarjeta depende de su plan en Stripe; la cambia en la página de Facturación."
     },
     "create": {
       "title": "Nuevo cliente",
@@ -4987,7 +4993,9 @@
       "continue": "Continuar al pago seguro",
       "secure": "Tu tarjeta se ingresa en la página segura de Stripe; VenueOS nunca la ve ni la guarda.",
       "notSetUpTitle": "La facturación aún no está configurada",
-      "notSetUpBody": "Los pagos en línea aún no están activados para esta cuenta. Escríbenos y te ayudamos; mientras tanto, tus pantallas siguen funcionando."
+      "notSetUpBody": "Los pagos en línea aún no están activados para esta cuenta. Escríbenos y te ayudamos; mientras tanto, tus pantallas siguen funcionando.",
+      "aiLabel": "Incluir IA (+{price} por pantalla al mes)",
+      "aiBody": "Diseños, imágenes y ayuda para redactar con la IA de VenueOS. O usa tu propia clave de IA en cualquier plan."
     },
     "status": {
       "allSetTitle": "¡Todo listo!",
@@ -5003,7 +5011,8 @@
       "trialEndedLimits": "No se pueden vincular pantallas nuevas. Agrega un pago antes del {date} para seguir editando.",
       "lockedLimits": "Puedes ver todo, pero los cambios están en pausa hasta que agregues un pago.",
       "pastDueBody": "Stripe volverá a intentarlo automáticamente. Actualiza tu tarjeta para que todo siga funcionando; tus pantallas siguen activas de todos modos.",
-      "noChargeTrial": "Sin cargo durante tu prueba gratuita."
+      "noChargeTrial": "Sin cargo durante tu prueba gratuita.",
+      "pricesWithAi": "{monthly} por pantalla al mes o {annual} al año; con IA, {aiMonthly} / {aiAnnual}."
     },
     "pair": {
       "planFullTitle": "Tu plan cubre {count, plural, one {# pantalla} other {# pantallas}}",
@@ -5163,5 +5172,53 @@
       "measured-stutter": "«{file}» podría entrecortarse en {screens}: {count, plural, one {esta pantalla se entrecortó} other {estas pantallas se entrecortaron}} antes con videos de este tamaño, incluso con la copia más ligera. Seguirá reproduciéndose.",
       "over-capability": "«{file}» podría entrecortarse en {screens}: {count, plural, one {esta pantalla reproduce} other {estas pantallas reproducen}} video de hasta {max} fotogramas por segundo. Seguirá reproduciéndose."
     }
+  },
+  "aiPlan": {
+    "upsell": {
+      "title": "La IA no está en tu plan",
+      "body": "Agrega la IA de VenueOS por {price}/pantalla/mes, o conecta tu propia clave de IA gratis (Configuración → IA).",
+      "addAi": "Agregar IA ({price}/pantalla/mes)",
+      "addAiShort": "Agregar IA",
+      "ownKey": "Conectar mi propia clave de IA (gratis)",
+      "ownKeyNote": "Con tu propia clave pagas directamente a tu proveedor de IA, sin límite en VenueOS."
+    },
+    "imagesLeft": "Te quedan {left} de {total} imágenes con IA este mes · se renuevan el {date}",
+    "imagesLeftTrial": "Te quedan {left} de {total} imágenes con IA en tu prueba gratuita",
+    "limit": {
+      "images": "Usaste todas tus imágenes con IA de este mes. Agrega tu propia clave de IA en Configuración → Proveedor de IA para continuar, o contáctanos para obtener más.",
+      "imagesTrial": "Usaste todas las imágenes con IA de tu prueba gratuita. Agrega tu propia clave de IA en Configuración → Proveedor de IA, o elige VenueOS + IA en Configuración → Facturación.",
+      "boardsTrial": "Usaste todos los diseños con IA de tu prueba gratuita. Agrega tu propia clave de IA en Configuración → Proveedor de IA, o elige VenueOS + IA en Configuración → Facturación."
+    }
+  },
+  "billingAi": {
+    "sectionTitle": "IA",
+    "sectionDesc": "IA con la IA de VenueOS: diseños de pantallas, imágenes y ayuda para redactar.",
+    "includeAi": "Incluir IA (+{price} por pantalla al mes)",
+    "includeAiBody": "Cada pantalla pagada suma 10 diseños con IA y 20 imágenes con IA al mes, compartidos entre tus sedes. Tu propia clave de IA funciona en todos los planes.",
+    "withAiBadge": "+ IA",
+    "onTitle": "La IA está en tu plan",
+    "onBody": "Los diseños, las imágenes y la ayuda para redactar usan la IA de VenueOS, compartida entre todas tus sedes.",
+    "offTitle": "La IA no está en tu plan",
+    "offBody": "Agrega IA por {price} por pantalla al mes: 10 diseños y 20 imágenes por pantalla cada mes. Se prorratea en tu próxima factura.",
+    "offOfflineBody": "Tu plan se factura por factura. Contacta a tu gerente de cuenta de VenueOS para agregar IA.",
+    "offNotSoldBody": "El plan VenueOS + IA aún no está disponible en esta cuenta.",
+    "trialTitle": "La IA está incluida en tu prueba gratuita",
+    "trialBody": "Prueba los diseños, las imágenes y la ayuda para redactar. Para seguir con IA después de la prueba, elige VenueOS + IA (+{price} por pantalla al mes).",
+    "ownKeyNote": "¿Prefieres tu propia cuenta de IA? Tu propia clave funciona en todos los planes.",
+    "ownKeyLink": "Configuración → Proveedor de IA",
+    "addAi": "Agregar IA (+{price}/pantalla/mes)",
+    "turnOff": "Desactivar IA",
+    "cancel": "Cancelar",
+    "ok": "Aceptar",
+    "confirmOnTitle": "¿Agregar IA a tu plan?",
+    "confirmOnBody": "Tu plan sube {price} por pantalla al mes, prorrateado en tu próxima factura. La IA queda lista de inmediato.",
+    "confirmOffTitle": "¿Desactivar la IA?",
+    "confirmOffBody": "La IA de VenueOS se detiene de inmediato y tu plan baja, prorrateado en tu próxima factura. Tu propia clave de IA, si agregas una, sigue funcionando.",
+    "doneOnTitle": "La IA está activada",
+    "doneOnBody": "Los diseños, las imágenes y la ayuda para redactar están listos.",
+    "doneOffTitle": "La IA está desactivada",
+    "doneOffBody": "Tu plan ya no incluye IA. Puedes volver a activarla aquí cuando quieras.",
+    "failedTitle": "No se pudo cambiar tu plan",
+    "failedBody": "Inténtalo de nuevo o contáctanos si sigue pasando."
   }
 }

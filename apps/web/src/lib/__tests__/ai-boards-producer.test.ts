@@ -74,6 +74,13 @@ describe('GET /ai/allowance', () => {
       'reason',
       'reasonCode',
       'degraded',
+      // 2026-10-12 — the VenueOS + AI plan: which allowance, the image counts, the upsell price.
+      'plan',
+      'period',
+      'imagesIncluded',
+      'imagesUsed',
+      'imagesLeft',
+      'aiAddonMonthlyCents',
       'boardCostUsdTrailing',
     ]);
     const fields = new Set(interfaceFields(service, 'AiAllowanceView'));

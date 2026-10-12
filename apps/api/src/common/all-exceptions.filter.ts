@@ -45,6 +45,20 @@ function codeForStatus(status: number): string {
   return STATUS_CODE_LABELS[status] ?? (status >= 500 ? 'INTERNAL_ERROR' : 'ERROR');
 }
 
+/** The facts a 402 may carry to the dashboard (see the 402 branch below). Never ids, never keys. */
+const PAYMENT_REQUIRED_FIELDS = [
+  'unit',
+  'plan',
+  'resetAt',
+  'cap',
+  'used',
+  'boardsLeft',
+  'boardsNeeded',
+  'purchaseEnabled',
+  'aiAddonMonthlyCents',
+  'byokAvailable',
+] as const;
+
 /**
  * Global exception filter.
  *
@@ -69,6 +83,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     let message = 'Internal server error';
     let expose = false; // whether to send `message` through to client
     let issues: unknown[] | undefined;
+    const paymentFacts: Record<string, unknown> = {};
 
     // ── HttpException (NestJS) ──
     if (exception instanceof HttpException) {
@@ -90,6 +105,15 @@ export class AllExceptionsFilter implements ExceptionFilter {
         // Field-level validation detail (ZodValidationPipe) rides through so
         // a form can mark the field, not just show a banner.
         if (status === 400 && Array.isArray(anyResp.issues)) issues = anyResp.issues.slice(0, 20);
+        // 2026-10-12 — a 402 PAYMENT_REQUIRED (the AI plan / AI limit refusals) carries the facts the
+        // dashboard words it from (which unit ran out, on which plan, when it resets). Only these
+        // named, author-set PRIMITIVE fields, only on 402 — every other error keeps the envelope.
+        if (status === HttpStatus.PAYMENT_REQUIRED) {
+          for (const k of PAYMENT_REQUIRED_FIELDS) {
+            const v = anyResp[k];
+            if (v === null || ['string', 'number', 'boolean'].includes(typeof v)) paymentFacts[k] = v;
+          }
+        }
       } else {
         message = exception.message;
       }
@@ -184,6 +208,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     };
     if (traceId) body.traceId = traceId;
     if (issues) body.issues = issues;
+    Object.assign(body, paymentFacts);
 
     if (res && !res.headersSent) {
       res.status(status).json(body);

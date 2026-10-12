@@ -3594,7 +3594,9 @@
       "reasons": {
         "NO_PLATFORM_KEY": "AI 使用你自己的密钥 — 请在 设置 → AI 服务商 中添加。",
         "OWN_KEY": "你的看板使用你自己的 AI 密钥，这里没有数量限制 — 无需购买。",
-        "STRIPE_NOT_CONFIGURED": "此部署尚未开通购买更多看板。"
+        "STRIPE_NOT_CONFIGURED": "此部署尚未开通购买更多看板。",
+        "AI_PLAN_REQUIRED": "每块屏幕每月 $5 添加 VenueOS AI，或免费连接您自己的 AI 密钥（设置 → AI）。",
+        "TRIAL": "免费试用包含固定数量的 AI 设计。选择 VenueOS + AI 套餐后即可购买更多。"
       },
       "capBuyMore": "购买更多看板",
       "capAddKey": "添加你自己的 AI 密钥",
@@ -3620,7 +3622,8 @@
         "success": "已收到付款。",
         "successDetail": "Stripe 确认付款后，看板会立即添加 — 通常在一分钟内。",
         "cancelled": "结账已取消 — 未产生任何扣费。"
-      }
+      },
+      "leftTrial": "免费试用还剩 {left}/{total} 个 AI 设计"
     },
     "history": {
       "open": "历史记录",
@@ -4804,7 +4807,10 @@
       "activitySection": "最近更改",
       "noActivity": "暂无更改。",
       "loadFailed": "无法加载此客户。",
-      "genericError": "出了点问题。"
+      "genericError": "出了点问题。",
+      "aiIncluded": "包含 AI（VenueOS + AI）",
+      "aiIncludedHint": "该客户及其所有分店可在 AI 套餐额度内使用 VenueOS 的 AI 密钥。",
+      "aiIncludedStripe": "刷卡客户的 AI 由其 Stripe 套餐决定——客户可在账单页面自行切换。"
     },
     "create": {
       "title": "新建客户",
@@ -4987,7 +4993,9 @@
       "continue": "前往安全结账",
       "secure": "银行卡信息在 Stripe 安全页面填写——VenueOS 不会看到或保存。",
       "notSetUpTitle": "账单尚未设置",
-      "notSetUpBody": "此账户尚未开通在线付款。请发邮件给我们，我们会帮您设置——在此期间屏幕照常播放。"
+      "notSetUpBody": "此账户尚未开通在线付款。请发邮件给我们，我们会帮您设置——在此期间屏幕照常播放。",
+      "aiLabel": "包含 AI（每块屏幕每月 +{price}）",
+      "aiBody": "使用 VenueOS 的 AI 进行设计、生成图片和撰写文案。也可在任何套餐中使用您自己的 AI 密钥。"
     },
     "status": {
       "allSetTitle": "一切就绪",
@@ -5003,7 +5011,8 @@
       "trialEndedLimits": "暂时无法配对新屏幕。请在 {date} 前添加付款方式以继续编辑。",
       "lockedLimits": "您可以查看所有内容，但在添加付款方式前无法修改。",
       "pastDueBody": "Stripe 会自动重试扣款。请更新银行卡以保持正常运行——屏幕无论如何都会继续播放。",
-      "noChargeTrial": "免费试用期间不收费。"
+      "noChargeTrial": "免费试用期间不收费。",
+      "pricesWithAi": "每块屏幕每月 {monthly} 或每年 {annual}；含 AI 为 {aiMonthly} / {aiAnnual}。"
     },
     "pair": {
       "planFullTitle": "您的方案包含 {count, plural, other {# 块屏幕}}",
@@ -5163,5 +5172,53 @@
       "measured-stutter": "「{file}」在 {screens} 上可能会卡顿：即使使用更轻量的副本，{count, plural, other {相应屏幕}}之前播放这种尺寸的视频时也出现过卡顿。视频会继续播放。",
       "over-capability": "「{file}」在 {screens} 上可能会卡顿：{count, plural, other {相应屏幕}}最高只能播放每秒 {max} 帧的视频。视频会继续播放。"
     }
+  },
+  "aiPlan": {
+    "upsell": {
+      "title": "您的套餐不含 AI",
+      "body": "每块屏幕每月 {price} 添加 VenueOS AI，或免费连接您自己的 AI 密钥（设置 → AI）。",
+      "addAi": "添加 AI（每块屏幕每月 {price}）",
+      "addAiShort": "添加 AI",
+      "ownKey": "连接我自己的 AI 密钥（免费）",
+      "ownKeyNote": "使用自己的密钥时，您直接向 AI 服务商付费，VenueOS 不设上限。"
+    },
+    "imagesLeft": "本月还剩 {left}/{total} 张 AI 图片 · {date} 重置",
+    "imagesLeftTrial": "免费试用还剩 {left}/{total} 张 AI 图片",
+    "limit": {
+      "images": "本月的 AI 图片已用完。请在“设置 → AI 服务商”中添加您自己的 AI 密钥继续使用，或联系我们获取更多额度。",
+      "imagesTrial": "免费试用中的 AI 图片已用完。请在“设置 → AI 服务商”中添加您自己的 AI 密钥，或在“设置 → 账单”中选择 VenueOS + AI。",
+      "boardsTrial": "免费试用中的 AI 设计已用完。请在“设置 → AI 服务商”中添加您自己的 AI 密钥，或在“设置 → 账单”中选择 VenueOS + AI。"
+    }
+  },
+  "billingAi": {
+    "sectionTitle": "AI",
+    "sectionDesc": "使用 VenueOS 自己的 AI——屏幕设计、图片和文案助手。",
+    "includeAi": "包含 AI（每块屏幕每月 +{price}）",
+    "includeAiBody": "每块付费屏幕每月增加 10 个 AI 设计和 20 张 AI 图片，所有分店共享。您自己的 AI 密钥在所有套餐中均可使用。",
+    "withAiBadge": "+ AI",
+    "onTitle": "您的套餐已包含 AI",
+    "onBody": "设计、图片和文案助手均使用 VenueOS 的 AI，所有分店共享。",
+    "offTitle": "您的套餐不含 AI",
+    "offBody": "每块屏幕每月加 {price} 即可添加 AI——每块屏幕每月 10 个设计和 20 张图片。费用按比例计入下一张账单。",
+    "offOfflineBody": "您的套餐按发票结算。如需添加 AI，请联系您的 VenueOS 客户经理。",
+    "offNotSoldBody": "此账户暂不提供 VenueOS + AI 套餐。",
+    "trialTitle": "免费试用已包含 AI",
+    "trialBody": "试用设计、图片和文案助手。试用结束后如需继续使用 AI，请选择 VenueOS + AI（每块屏幕每月 +{price}）。",
+    "ownKeyNote": "想用自己的 AI 账户？您自己的密钥在所有套餐中均可使用。",
+    "ownKeyLink": "设置 → AI 服务商",
+    "addAi": "添加 AI（每块屏幕每月 +{price}）",
+    "turnOff": "关闭 AI",
+    "cancel": "取消",
+    "ok": "确定",
+    "confirmOnTitle": "为您的套餐添加 AI？",
+    "confirmOnBody": "您的套餐将每块屏幕每月增加 {price}，按比例计入下一张账单。AI 立即可用。",
+    "confirmOffTitle": "关闭 AI？",
+    "confirmOffBody": "VenueOS 的 AI 将立即停止，套餐费用降低，按比例计入下一张账单。如果您添加了自己的 AI 密钥，仍可继续使用。",
+    "doneOnTitle": "AI 已开启",
+    "doneOnBody": "设计、图片和文案助手已就绪。",
+    "doneOffTitle": "AI 已关闭",
+    "doneOffBody": "您的套餐不再包含 AI。您可以随时在此重新开启。",
+    "failedTitle": "无法更改您的套餐",
+    "failedBody": "请重试；如果问题持续，请联系我们。"
   }
 }

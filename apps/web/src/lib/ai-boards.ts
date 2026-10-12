@@ -26,7 +26,7 @@ import type {
 
 type Translate = (key: string, values?: Record<string, string | number>) => string;
 
-const REASON_CODES: readonly AiBoardsReasonCode[] = ['NO_PLATFORM_KEY', 'OWN_KEY', 'STRIPE_NOT_CONFIGURED'];
+const REASON_CODES: readonly AiBoardsReasonCode[] = ['NO_PLATFORM_KEY', 'OWN_KEY', 'STRIPE_NOT_CONFIGURED', 'AI_PLAN_REQUIRED', 'TRIAL'];
 
 /**
  * Why boards cannot be bought, in the operator's language (namespace: aiBoards). The allowance
@@ -65,6 +65,8 @@ export interface BoardsLine {
   canBuy: boolean;
   /** Our key and no board left: the line reads as a warning. */
   out: boolean;
+  /** 2026-10-12 — not on the VenueOS + AI plan: the surface offers "Add AI" (Settings → Billing). */
+  upsell?: boolean;
 }
 
 /** GET /ai/allowance → the one line every surface shows (null: nothing to show yet). */
@@ -77,6 +79,7 @@ export function boardsLine(t: Translate, locale: string, a: AiAllowance | null |
       note: null,
       canBuy: false,
       out: false,
+      ...(a.reasonCode === 'AI_PLAN_REQUIRED' ? { upsell: true } : {}),
     };
   }
   if (a.source !== 'platform' || typeof a.boardsLeft !== 'number' || !Number.isFinite(a.boardsLeft)) return null;
@@ -88,14 +91,18 @@ export function boardsLine(t: Translate, locale: string, a: AiAllowance | null |
       ? Math.max(0, Math.floor(a.boardsPurchasedRemaining))
       : 0;
   const date = boardsResetDay(a.resetAt, locale);
+  // 2026-10-12 — a free trial's boards are one total for the whole trial, not a monthly allowance.
   const text =
-    bought > 0
-      ? t('credits.leftWithBought', { left, total, bought, date })
-      : t('credits.left', { left, total, date });
+    a.period === 'trial'
+      ? t('credits.leftTrial', { left, total })
+      : bought > 0
+        ? t('credits.leftWithBought', { left, total, bought, date })
+        : t('credits.left', { left, total, date });
   const canBuy = a.purchaseEnabled === true;
   return {
     text,
-    note: canBuy ? null : boardsReason(t, { code: a.reasonCode, text: a.reason }),
+    // On a trial, the "why no packs" note would only distract from the trial line itself.
+    note: canBuy || a.period === 'trial' ? null : boardsReason(t, { code: a.reasonCode, text: a.reason }),
     canBuy,
     out: left === 0,
   };
@@ -176,5 +183,7 @@ export function historyWhen(iso: string, locale: string): string {
  */
 export function isAiCapError(e: unknown): boolean {
   const x = e as { code?: unknown; status?: unknown } | null | undefined;
+  // 2026-10-12 — a 402 AI_PLAN_REQUIRED is not "used up": it is the AI plan upsell (lib/ai-plan.ts).
+  if (x?.code === 'AI_PLAN_REQUIRED') return false;
   return x?.code === 'AI_CAP_REACHED' || x?.status === 402;
 }

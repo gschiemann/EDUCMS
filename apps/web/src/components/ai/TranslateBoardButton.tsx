@@ -21,6 +21,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Languages, Loader2, Check, ChevronDown } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
+import { AI_PLAN_REQUIRED_EN } from '@/lib/ai-plan';
 import { getAiStatusSource } from '@/components/ai/AiGenerateButton';
 import type { ChatEditZone, ChatDiffEntry } from '@/components/ai/ChatToEditBox';
 
@@ -58,6 +59,7 @@ function friendlyErr(e: any): string {
   const code = String(e?.code || '');
   const status = Number(e?.status || 0);
   const raw = (e?.message || '').toLowerCase();
+  if (code === 'AI_PLAN_REQUIRED') return AI_PLAN_REQUIRED_EN;
   if (code === 'AI_CAP_REACHED' || status === 402) return "This month's included AI is used up — add your own AI key in Settings → AI.";
   if (code === 'AI_FAILURE_CAP_REACHED') return 'Too many failed AI requests this hour. Try again later.';
   if (status === 400 || raw.includes('no editable text')) return e?.body?.message || 'Nothing to translate on this board.';

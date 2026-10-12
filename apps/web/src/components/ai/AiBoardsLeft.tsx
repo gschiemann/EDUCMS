@@ -23,10 +23,12 @@
  * tab, and when something that spends boards finishes (mobile-perf standard).
  */
 import Link from 'next/link';
-import { KeyRound, ShoppingCart } from 'lucide-react';
+import { useParams } from 'next/navigation';
+import { KeyRound, ShoppingCart, Sparkles } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { useAiAllowance } from '@/hooks/use-api';
 import { boardsLine } from '@/lib/ai-boards';
+import { aiAddonPrice, billingPlansHref, imagesLine } from '@/lib/ai-plan';
 
 export interface AiBoardsLeftProps {
   /** Opens the pack sheet. Without it the line never offers "Buy more". */
@@ -36,10 +38,29 @@ export interface AiBoardsLeftProps {
 
 export function AiBoardsLeft({ onBuy, className = '' }: AiBoardsLeftProps) {
   const t = useTranslations('aiBoards');
+  const tPlan = useTranslations('aiPlan');
   const locale = useLocale();
+  const params = useParams<{ schoolId?: string | string[] }>();
+  const schoolId = Array.isArray(params?.schoolId) ? params.schoolId[0] : params?.schoolId;
   const { data } = useAiAllowance();
   const line = boardsLine(t, locale, data);
   if (!line) return null;
+  // 2026-10-12 — not on the VenueOS + AI plan: the line says so, with ONE link to add it.
+  if (line.upsell) {
+    return (
+      <div data-testid="ai-boards-left" className={`flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500 ${className}`}>
+        <span>{tPlan('upsell.body', { price: aiAddonPrice(data, locale) })}</span>{' '}
+        <Link
+          href={billingPlansHref(schoolId)}
+          data-testid="ai-plan-upsell-add"
+          className="inline-flex min-h-11 items-center gap-1 rounded-lg px-2 text-xs font-bold text-violet-700 underline-offset-2 transition-colors hover:bg-violet-50 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 sm:min-h-8 motion-reduce:transition-none"
+        >
+          <Sparkles className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          {tPlan('upsell.addAiShort')}
+        </Link>
+      </div>
+    );
+  }
   return (
     <div
       data-testid="ai-boards-left"
@@ -62,6 +83,26 @@ export function AiBoardsLeft({ onBuy, className = '' }: AiBoardsLeftProps) {
         </button>
       )}
     </div>
+  );
+}
+
+/**
+ * "14 of 20 AI images left this month · resets Nov 1" (2026-10-12) — the image allowance on our key,
+ * under the image generator. Renders nothing on the tenant's own key or before the answer is in.
+ */
+export function AiImagesLeft({ className = '' }: { className?: string }) {
+  const t = useTranslations('aiPlan');
+  const locale = useLocale();
+  const { data } = useAiAllowance();
+  const line = imagesLine(t, locale, data);
+  if (!line) return null;
+  return (
+    <p
+      data-testid="ai-images-left"
+      className={`text-xs ${line.out ? 'font-semibold text-amber-700' : 'text-slate-500'} ${className}`}
+    >
+      {line.text}
+    </p>
   );
 }
 

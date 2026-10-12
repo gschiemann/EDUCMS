@@ -82,6 +82,8 @@ export interface CustomerDetail {
     suspendedAt: string | null;
     suspendReason: string | null;
     stripeManaged: boolean;
+    /** 2026-10-12 — AI on VenueOS's keys (VenueOS + AI). Toggled here for invoice / PO / comp. */
+    aiIncluded?: boolean;
   } | null;
   cardCheckout: boolean;
   locations: Array<{ id: string; name: string; slug: string; archived: boolean; seatsUsed: number }>;

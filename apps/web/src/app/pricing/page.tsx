@@ -1,29 +1,32 @@
 import Link from 'next/link';
-import { Check, ArrowRight } from 'lucide-react';
+import { Check, ArrowRight, Sparkles } from 'lucide-react';
 import { PublicShell } from '@/components/marketing/PublicShell';
 
 export const metadata = {
   title: 'Pricing — VenueOS',
   description:
-    'Simple per-screen pricing for VenueOS — $25 per screen per month, or $20 per screen per month when billed annually. Every feature included: signage, kiosks, live scoreboards, and emergency alerts.',
+    'Simple per-screen pricing for VenueOS — $20 per screen per month or $200 per screen per year, and $25 / $250 with AI. Signage, kiosks, live scoreboards and emergency alerts on every plan.',
 };
 
 const NAVY = '#070a14';
 
 /**
- * Two per-screen SKUs — the exact plans the billing catalog
- * (packages/api-types/src/billing.ts) charges, so the page and the
- * checkout never disagree:
- *   - Monthly: $25 / screen / month.
- *   - Annual:  $240 / screen / year = $20 / screen / month, save 20%.
+ * Per-screen plans — the exact prices the billing catalog
+ * (packages/api-types/src/billing.ts) and Stripe checkout charge, so the
+ * page and the checkout never disagree (owner pricing decision, 2026-10-12):
+ *   - VenueOS:       $20 / screen / month · $200 / screen / year
+ *   - VenueOS + AI:  $25 / screen / month · $250 / screen / year
  * Enterprise is a custom volume agreement (sales-led, not self-serve).
  *
- * No feature gating between plans — every plan ships the whole product.
- * The only thing that changes is the billing cadence.
+ * Every plan ships the whole signage + emergency product. AI on VenueOS's
+ * own AI is the one add-on (+$5 / screen / month); a customer's OWN AI key
+ * works on every plan.
  */
 const TIERS: {
   name: string;
-  monthly: number;
+  price: number;
+  per: string;
+  aiPrice: number;
   sub: string;
   range: string;
   blurb: string;
@@ -31,7 +34,9 @@ const TIERS: {
 }[] = [
   {
     name: 'Monthly',
-    monthly: 25,
+    price: 20,
+    per: '/ screen / month',
+    aiPrice: 25,
     sub: 'Billed monthly — cancel anytime',
     range: 'Pay as you go',
     blurb: 'Everything VenueOS does, billed per screen you connect. No commitment.',
@@ -39,12 +44,22 @@ const TIERS: {
   },
   {
     name: 'Annual',
-    monthly: 20,
-    sub: '$240 / screen billed yearly — save 20%',
+    price: 200,
+    per: '/ screen / year',
+    aiPrice: 250,
+    sub: 'Billed yearly — two months free',
     range: 'Best value',
-    blurb: 'Same product, billed once a year. Two-and-a-half months free vs monthly.',
+    blurb: 'Same product, billed once a year. Twelve months for the price of ten.',
     featured: true,
   },
+];
+
+/** What "with AI" adds, per paid screen, pooled across your locations. */
+const AI_INCLUDES = [
+  '10 AI board designs per screen, every month',
+  '20 AI images per screen, every month',
+  'AI writing help: announcements, menus, translations',
+  'Shared across all your locations',
 ];
 
 const INCLUDED = [
@@ -61,7 +76,15 @@ const INCLUDED = [
 const FAQ = [
   {
     q: 'How does per-screen pricing work?',
-    a: "You're billed for each screen you connect to VenueOS — $25 per screen per month, or $20 per screen per month when you pay annually. Add or remove screens anytime; we prorate the change.",
+    a: "You're billed for each screen you connect to VenueOS — $20 per screen per month, or $200 per screen per year. With AI it's $25 a month or $250 a year. Add or remove screens anytime; we prorate the change.",
+  },
+  {
+    q: 'What does the AI plan add?',
+    a: 'VenueOS + AI includes, for every paid screen each month, 10 AI board designs and 20 AI images on our AI, plus writing help for announcements, menus and translations — shared across all your locations. Need more? Add your own AI key or contact us.',
+  },
+  {
+    q: 'Can we use our own AI key instead?',
+    a: 'Yes, on every plan. Add your own OpenAI, Anthropic or Google key in Settings → AI provider and you pay your AI provider directly, with no VenueOS limit.',
   },
   {
     q: 'What counts as a screen?',
@@ -69,11 +92,11 @@ const FAQ = [
   },
   {
     q: 'Can we try it before we pay?',
-    a: 'Yes. Start a free 14-day trial with no credit card — connect up to 3 screens and use every feature. Add billing when you’re ready to go live.',
+    a: 'Yes. Start a free 14-day trial with no credit card — connect up to 3 screens, use every feature, and try the AI (10 board designs and 10 images). Add billing when you’re ready to go live.',
   },
   {
     q: 'Is annual billing cheaper?',
-    a: 'Yes — pay annually and every screen is $240 per year, which works out to $20 per screen per month. That’s 20% off the monthly rate.',
+    a: 'Yes — pay annually and every screen is $200 per year ($250 with AI): twelve months for the price of ten.',
   },
   {
     q: 'Do you take purchase orders or invoices?',
@@ -105,9 +128,9 @@ export default function PricingPage() {
             you run.
           </h1>
           <p className="mt-6 text-base md:text-lg text-slate-400 leading-relaxed max-w-xl mx-auto">
-            Every feature on every plan — signage, kiosks, live scoreboards, and
-            emergency alerts. $25 per screen monthly, or $20 when you pay yearly.
-            Start with a 14-day free trial — no credit card.
+            Signage, kiosks, live scoreboards and emergency alerts on every plan —
+            $20 per screen a month, or $200 a year. Add AI for $5 more per screen.
+            Start with a 14-day free trial, AI included — no credit card.
           </p>
         </div>
       </section>
@@ -134,10 +157,13 @@ export default function PricingPage() {
               </h2>
               <div className="mt-4 flex items-baseline gap-1.5">
                 <span className="text-5xl font-semibold tracking-tight text-slate-900">
-                  ${t.monthly}
+                  ${t.price}
                 </span>
-                <span className="text-sm text-slate-500">/ screen / month</span>
+                <span className="text-sm text-slate-500">{t.per}</span>
               </div>
+              <p className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-violet-700">
+                <Sparkles className="w-4 h-4" aria-hidden /> ${t.aiPrice} {t.per} with AI
+              </p>
               <p className="mt-1.5 text-xs text-slate-500">{t.sub}</p>
               <p className="mt-4 text-sm font-semibold text-slate-900">{t.range}</p>
               <p className="mt-1 text-sm text-slate-600 leading-relaxed flex-1">{t.blurb}</p>
@@ -183,8 +209,37 @@ export default function PricingPage() {
 
         <p className="mt-8 text-center text-xs text-slate-500 max-w-xl mx-auto px-6">
           Prices in USD. Screens are billed as you connect them — add or remove anytime,
-          and we prorate the change. Pay yearly to lock in the $20/screen rate.
+          and we prorate the change. Turn AI on or off from your Billing page whenever you like.
         </p>
+      </section>
+
+      {/* ── the AI add-on ─────────────────────────────────────── */}
+      <section className="pb-16 md:pb-20">
+        <div className="max-w-6xl mx-auto px-6">
+          <div className="rounded-2xl border border-violet-200 bg-violet-50/50 p-7 md:p-9 grid gap-8 md:grid-cols-2">
+            <div>
+              <p className="text-xs font-semibold tracking-[0.14em] uppercase text-violet-700">
+                VenueOS + AI · +$5 / screen / month
+              </p>
+              <h2 className="mt-3 text-2xl md:text-3xl font-semibold tracking-tight text-slate-900">
+                AI that designs, writes and illustrates for you.
+              </h2>
+              <p className="mt-3 text-sm md:text-base text-slate-600 leading-relaxed">
+                Describe a board and get finished designs, generate on-brand images, and
+                write copy in seconds — on our AI, with nothing to set up. Prefer your own
+                AI account? Add your own key on any plan and pay your provider directly.
+              </p>
+            </div>
+            <ul className="space-y-3 self-center">
+              {AI_INCLUDES.map((f) => (
+                <li key={f} className="flex items-start gap-2.5">
+                  <Check className="w-4 h-4 text-violet-600 shrink-0 mt-0.5" strokeWidth={3} />
+                  <span className="text-sm text-slate-700 leading-relaxed">{f}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
       </section>
 
       {/* ── everything included ───────────────────────────────── */}
@@ -192,14 +247,15 @@ export default function PricingPage() {
         <div className="max-w-6xl mx-auto px-6">
           <div className="max-w-2xl">
             <p className="text-xs font-semibold tracking-[0.14em] uppercase text-indigo-600">
-              No feature gating
+              On every plan
             </p>
             <h2 className="mt-3 text-3xl md:text-4xl font-semibold tracking-tight text-slate-900">
               Every plan is the whole product.
             </h2>
             <p className="mt-3 text-base md:text-lg text-slate-600">
-              We don’t lock features behind a higher tier. Whether you run one screen or a
-              thousand, you get all of it.
+              Signage, emergency alerts and live sports are never locked behind a higher
+              tier. Whether you run one screen or a thousand, you get all of it — AI is the
+              one optional add-on.
             </p>
           </div>
           <div className="mt-10 grid gap-x-8 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">

@@ -138,6 +138,8 @@ function LicenseCard({ c }: { c: CustomerDetail }) {
   const [renewal, setRenewal] = useState(toDateInput(lic?.contractRenewalDate ?? null));
   const [po, setPo] = useState(lic?.poNumber ?? '');
   const [notes, setNotes] = useState(lic?.notes ?? '');
+  // 2026-10-12 — the enterprise AI toggle (VenueOS + AI on an invoice / PO / comp license).
+  const [aiIncluded, setAiIncluded] = useState<boolean>(!!lic?.aiIncluded);
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
   const stripe = !!lic?.stripeManaged;
@@ -155,6 +157,8 @@ function LicenseCard({ c }: { c: CustomerDetail }) {
       body.monthlyPriceCents = cents;
       body.plan = plan;
       body.billingMode = billingMode;
+      // A card customer's AI comes from their Stripe price; the API refuses a toggle there.
+      if (aiIncluded !== !!lic?.aiIncluded) body.aiIncluded = aiIncluded;
     }
     if (lic?.status !== 'SUSPENDED') body.status = status;
     try {
@@ -208,6 +212,19 @@ function LicenseCard({ c }: { c: CustomerDetail }) {
           </select>
         </label>
       </div>
+      <label className="mt-3 flex items-start gap-2.5" data-testid="customer-ai-toggle">
+        <input
+          type="checkbox"
+          className="mt-0.5 h-4 w-4 accent-violet-600"
+          checked={aiIncluded}
+          disabled={stripe}
+          onChange={(e) => setAiIncluded(e.target.checked)}
+        />
+        <span className="text-sm">
+          <span className="font-medium text-slate-900">{t('detail.aiIncluded')}</span>
+          <span className="block text-slate-500">{stripe ? t('detail.aiIncludedStripe') : t('detail.aiIncludedHint')}</span>
+        </span>
+      </label>
       <label className="block mt-3"><span className={LABEL}>{t('detail.notes')}</span>
         <textarea className={`${INPUT} py-2 min-h-20`} value={notes} onChange={(e) => setNotes(e.target.value)} />
       </label>

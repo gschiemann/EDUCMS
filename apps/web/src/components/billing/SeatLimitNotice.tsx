@@ -17,7 +17,7 @@ import { useTranslations } from 'next-intl';
 import { CreditCard, Loader2, Plus } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { AddPaymentDialog } from './AddPaymentDialog';
-import { dollars, useBillingSummary, useRefreshBillingSummary } from './billing-summary';
+import { dollars, planPrices, useBillingSummary, useRefreshBillingSummary } from './billing-summary';
 
 export interface PairBillingError {
   code?: string;
@@ -61,9 +61,11 @@ export function SeatLimitNotice({ error, onRetry }: { error: PairBillingError; o
   };
 
   const annual = summary?.period === 'annual';
+  // 2026-10-12 — a screen costs what the customer's plan costs: VenueOS or VenueOS + AI.
+  const prices = summary ? planPrices(summary, !!summary.aiIncluded) : null;
   const price = annual
-    ? t('pair.pricePerYear', { price: dollars(summary?.prices.annualCents ?? 24000) })
-    : t('pair.pricePerMonth', { price: dollars(error.body?.perScreenMonthlyCents || summary?.prices.monthlyCents || 2500) });
+    ? t('pair.pricePerYear', { price: dollars(prices?.annualCents ?? 20000) })
+    : t('pair.pricePerMonth', { price: dollars(error.body?.perScreenMonthlyCents || prices?.monthlyCents || 2000) });
 
   return (
     <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-900" data-testid="seat-limit-notice">

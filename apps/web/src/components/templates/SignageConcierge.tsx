@@ -49,6 +49,7 @@ import { referenceMenuItemCount } from './conciergeMenuContent';
 // 2026-09-22 — the POS card: "Use your Toast menu?" / "Which POS do you use?".
 import { ConciergePosPanel } from './ConciergePosCard';
 import { looksLikeMenuBoard } from './conciergePos';
+import { AI_PLAN_REQUIRED_EN } from '@/lib/ai-plan';
 
 // ── friendly error mapping ──────────────────────────────────────────────
 // Mirrors friendlyAiError() in templates/page.tsx so chat speaks the same
@@ -88,6 +89,7 @@ function friendlyConciergeError(err: unknown): string {
   if (code === 'AI_PROVIDER_OUT_OF_CREDIT') {
     return bodyMsg || msg || 'Your AI provider is out of credit. Add credits with your provider and try again.';
   }
+  if (code === 'AI_PLAN_REQUIRED') return AI_PLAN_REQUIRED_EN;
   if (code === 'AI_CAP_REACHED' || status === 402) {
     return "This month's included AI is used up. Add your own AI key in Settings → AI provider to keep going, or wait for it to reset next month.";
   }

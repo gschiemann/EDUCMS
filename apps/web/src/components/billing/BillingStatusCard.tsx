@@ -164,7 +164,14 @@ export function BillingStatusCard({
           })}
         </p>
         <p className="mt-1 text-[13px] text-slate-500">
-          {t('status.prices', { monthly: dollars(data.prices.monthlyCents), annual: dollars(data.prices.annualCents) })}
+          {data.aiPrices
+            ? t('status.pricesWithAi', {
+                monthly: dollars(data.prices.monthlyCents),
+                annual: dollars(data.prices.annualCents),
+                aiMonthly: dollars(data.aiPrices.monthlyCents),
+                aiAnnual: dollars(data.aiPrices.annualCents),
+              })
+            : t('status.prices', { monthly: dollars(data.prices.monthlyCents), annual: dollars(data.prices.annualCents) })}
         </p>
         {data.billingReady ? primary(t('bar.addPayment'), () => setOpen(true), 'billing-add-payment') : null}
       </div>

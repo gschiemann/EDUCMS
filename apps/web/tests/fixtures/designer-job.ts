@@ -267,7 +267,9 @@ export function boardsCapReachedError(o: BoardsCapOptions = {}): ProducedError {
     ...o,
   });
   const svc = fs.readFileSync(path.join(API_SRC, 'ai', 'ai-allowance.service.ts'), 'utf8');
-  const m = /async assertBoardsAvailable\([\s\S]*?message: boardsCapMessage\([\s\S]*?code: 'AI_CAP_REACHED',[\s\S]*?HttpStatus\.([A-Z_]+)/.exec(svc);
+  // 2026-10-12 — a free trial answers with its own trial wording (aiLimitMessage); the AI plan's
+  // monthly boards still answer boardsCapMessage, which is what this fixture produces.
+  const m = /async assertBoardsAvailable\([\s\S]*?message:[\s\S]*?boardsCapMessage\([\s\S]*?code: 'AI_CAP_REACHED',[\s\S]*?HttpStatus\.([A-Z_]+)/.exec(svc);
   if (!m) throw new Error('designer-job fixture: assertBoardsAvailable no longer throws where this fixture reads it');
   const status = nest<Record<string, number>>('HttpStatus')[m[1]];
   return producedError(httpException({ message, code: 'AI_CAP_REACHED', unit: 'boards' }, status));

@@ -16,7 +16,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { CreditCard, Loader2, Lock, X } from 'lucide-react';
-import { dollars, fmtDay, goTo, SALES_EMAIL, startCheckout, type BillingSummary } from './billing-summary';
+import { dollars, fmtDay, goTo, planPrices, SALES_EMAIL, startCheckout, type BillingSummary } from './billing-summary';
 
 export function AddPaymentDialog({
   summary,
@@ -30,6 +30,11 @@ export function AddPaymentDialog({
   const [period, setPeriod] = useState<'monthly' | 'annual'>(
     summary.state === 'cancelled' && summary.period ? summary.period : 'annual',
   );
+  // 2026-10-12 — VenueOS or VenueOS + AI. Offered only when the deploy sells the AI plan
+  // (`aiPrices`). A restart keeps the AI choice it had; a trial (which has been using AI) starts
+  // with AI on — one tap turns it off.
+  const aiOffered = !!summary.aiPrices;
+  const [ai, setAi] = useState<boolean>(aiOffered && (summary.state === 'cancelled' ? !!summary.aiIncluded : true));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notSetUp, setNotSetUp] = useState(!summary.billingReady);
@@ -45,16 +50,18 @@ export function AddPaymentDialog({
   }, [onClose]);
 
   const screens = Math.max(1, summary.seatsUsed ?? 0);
-  const m = summary.prices.monthlyCents;
-  const y = summary.prices.annualCents;
+  const chosen = planPrices(summary, ai && aiOffered);
+  const m = chosen.monthlyCents;
+  const y = chosen.annualCents;
   const saving = m * 12 - y;
+  const addon = summary.aiPrices ? summary.aiPrices.monthlyCents - summary.prices.monthlyCents : 0;
   const inTrial = summary.state === 'trial' && !!summary.trialEndsAt;
 
   const go = async () => {
     setBusy(true);
     setError('');
     try {
-      const r = await startCheckout(period);
+      const r = await startCheckout(period, ai && aiOffered);
       if (r.kind === 'redirect') {
         goTo(r.url);
         return;
@@ -146,6 +153,24 @@ export function AddPaymentDialog({
                 );
               })}
             </div>
+
+            {aiOffered && (
+              <label
+                className={`mt-3 flex items-start gap-3 rounded-xl border p-3 cursor-pointer ${ai ? 'border-violet-400 bg-violet-50/60' : 'border-slate-200 bg-white'}`}
+                data-testid="add-payment-ai"
+              >
+                <input
+                  type="checkbox"
+                  checked={ai}
+                  onChange={(e) => setAi(e.target.checked)}
+                  className="mt-0.5 h-5 w-5 accent-violet-600"
+                />
+                <span className="text-[13px] leading-[19px] text-slate-700">
+                  <span className="block font-semibold text-slate-900">{t('dialog.aiLabel', { price: dollars(addon) })}</span>
+                  <span className="block text-slate-500">{t('dialog.aiBody')}</span>
+                </span>
+              </label>
+            )}
 
             <div className="mt-4 rounded-xl bg-slate-50 border border-slate-200 px-4 py-3 text-[13px] text-slate-700" data-testid="add-payment-total">
               <div className="font-medium tabular-nums">

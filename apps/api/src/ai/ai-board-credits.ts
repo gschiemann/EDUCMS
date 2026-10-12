@@ -286,7 +286,7 @@ export function boardPurchaseAvailability(
       enabled: false,
       reasonCode: 'AI_PLAN_REQUIRED',
       reason:
-        'AI is part of the VenueOS + AI plan — add it for $5/screen/month in Settings → Billing, or use your own AI key (it works on every plan).',
+        'Add VenueOS AI for $5/screen/month — or connect your own AI key for free (Settings → AI).',
     };
   }
   if (source === 'none' || !platformDesignRouteAvailable()) {

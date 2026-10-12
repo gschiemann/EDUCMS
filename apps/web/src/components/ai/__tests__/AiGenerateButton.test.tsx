@@ -155,4 +155,42 @@ describe('AiGenerateButton — discoverability (§3)', () => {
     expect(settingsLink).toHaveAttribute('target', '_blank');
     expect(settingsLink).toHaveAttribute('rel', 'noopener noreferrer');
   });
+
+  it('(e) 2026-10-12 — our key exists but no VenueOS + AI plan → an "Add AI" link to the billing plans, never /ai/generate', async () => {
+    apiFetch.mockImplementation((path: string) => {
+      if (path === '/ai/key') {
+        return Promise.resolve({ usage: { source: 'none', used: 0, cap: null, resetAt: null, planRequired: true, aiAddonMonthlyCents: 500 } });
+      }
+      return Promise.resolve(null);
+    });
+    await renderButton();
+    const link = await screen.findByTestId('ai-plan-affordance');
+    expect(link).toHaveTextContent(/Add AI/);
+    expect(link).toHaveAttribute('href', '/school-1/settings/billing#bill-plans');
+    expect(screen.queryByTestId('ai-setup-affordance')).toBeNull();
+    expect(apiFetch.mock.calls.some(([p]) => p === '/ai/generate')).toBe(false);
+  });
+
+  it('(f) a generate refused with AI_PLAN_REQUIRED → the AI plan upsell, not "used up"', async () => {
+    apiFetch.mockImplementation((path: string) => {
+      if (path === '/ai/key') return Promise.resolve({ usage: { source: 'platform', used: 0, cap: 500, resetAt: null } });
+      if (path === '/ai/generate') {
+        return Promise.reject(Object.assign(new Error('AI on VenueOS is part of the VenueOS + AI plan.'), { code: 'AI_PLAN_REQUIRED', status: 402 }));
+      }
+      return Promise.resolve(null);
+    });
+    await renderButton();
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('button', { name: /AI/i }));
+    });
+    await act(async () => {
+      fireEvent.change(await screen.findByRole('textbox'), { target: { value: 'Fall festival this Friday' } });
+    });
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('button', { name: /Generate 3 options/i }));
+    });
+    const overlay = await screen.findByTestId('ai-plan-overlay');
+    expect(overlay).toHaveTextContent("AI isn't on your plan");
+    expect(screen.queryByText(/included AI is used up/i)).toBeNull();
+  });
 });

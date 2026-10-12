@@ -1747,7 +1747,11 @@ export function useGenerateImage() {
         '/ai/image',
         { method: 'POST', body: JSON.stringify(data) },
       ),
-    onSuccess: () => invalidateAssetLibrary(qc),
+    onSuccess: () => {
+      invalidateAssetLibrary(qc);
+      // 2026-10-12 — an image on our key counts against "N images left" (GET /ai/allowance).
+      void qc.invalidateQueries({ queryKey: ['ai-allowance'] });
+    },
   });
 }
 
@@ -7213,7 +7217,14 @@ export function useDesignerJobHistory(enabled = true) {
 // (apps/api/src/ai/ai-allowance.service.ts) and BillingController.aiPacks.
 
 /** Why a pack cannot be bought (the allowance's `reasonCode`; ai-packs calls it `reason`). */
-export type AiBoardsReasonCode = 'NO_PLATFORM_KEY' | 'OWN_KEY' | 'STRIPE_NOT_CONFIGURED';
+export type AiBoardsReasonCode =
+  | 'NO_PLATFORM_KEY'
+  | 'OWN_KEY'
+  | 'STRIPE_NOT_CONFIGURED'
+  /** 2026-10-12 — not on the VenueOS + AI plan: show the upsell ("Add AI for $5/screen/month"). */
+  | 'AI_PLAN_REQUIRED'
+  /** 2026-10-12 — a free trial: a fixed AI allowance; packs open with the AI plan. */
+  | 'TRIAL';
 
 export interface AiBoardPack {
   id: string;
@@ -7242,6 +7253,16 @@ export interface AiAllowance {
   degraded?: true;
   /** SUPER_ADMIN only — our cost per board. Never shown to anyone. */
   boardCostUsdTrailing?: number | null;
+  /** 2026-10-12 — 'ai' (VenueOS + AI), 'trial', or 'none' (apps/api/src/billing/ai-plan.ts). */
+  plan?: 'ai' | 'trial' | 'none';
+  /** 'month' resets at `resetAt`; 'trial' is one total for the whole trial (ends at `resetAt`). */
+  period?: 'month' | 'trial';
+  /** AI images on our key (null on the tenant's own key or without the AI plan). */
+  imagesIncluded?: number | null;
+  imagesUsed?: number | null;
+  imagesLeft?: number | null;
+  /** What AI adds per screen per month (the upsell price), cents. */
+  aiAddonMonthlyCents?: number;
 }
 
 /**
