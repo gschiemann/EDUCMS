@@ -29,6 +29,13 @@
 .stage[data-orient="port"] .guide-lead .eyebrow{flex-shrink:0;margin-bottom:32px}
 .stage[data-orient="port"] .guide-lead .hero-title{flex-shrink:0;height:280px;line-height:1.15}
 .stage[data-orient="port"] .guide-note{margin-top:12px}
+
+/* Keep guide numerals in a reserved row instead of allowing flex shrink into titles. */
+.stage:not([data-orient="port"]) .guide{padding:40px;gap:35px}
+.stage:not([data-orient="port"]) .guide-number{height:150px;flex-shrink:0}
+.stage:not([data-orient="port"]) .guide-title{height:150px}
+.stage:not([data-orient="port"]) .guide-desc{height:170px}
+.stage:not([data-orient="port"]) .guide-action{height:70px;flex-shrink:0}
 </style><script>/*EDUCMS-SHIM-V15*/(function(){try{
 var editMode=false;
 function applyPosters(img){if(!img)return;Object.keys(img).forEach(function(k){var v=img[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\"');var safe=v.replace(/["'()\s]/g,'');var el=document.querySelector('[data-posterslot="'+esc+'"]');if(!el)return;if(safe)el.setAttribute('poster',safe);else el.removeAttribute('poster');el.setAttribute('data-has-image',safe?'true':'false');});}
