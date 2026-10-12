@@ -6,6 +6,7 @@ import { ArrowLeft } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useAppStore } from '@/lib/store';
 import { MobileTabBar } from '@/components/layout/MobileTabBar';
+import { AppDialogHost } from '@/components/ui/app-dialog';
 
 /** Standalone owner pages still need an exit and the phone's primary navigation. */
 export default function SuperLayout({ children }: { children: React.ReactNode }) {
@@ -25,6 +26,10 @@ export default function SuperLayout({ children }: { children: React.ReactNode })
         </div>
       )}
       {children}
+      {/* 2026-10-12 — every Comp seats / Standard / Enterprise / storage button
+          awaits appConfirm/appPrompt; without the host mounted here those
+          dialogs never rendered and the buttons silently did nothing. */}
+      <AppDialogHost />
       {mounted && user && <MobileTabBar />}
     </div>
   );
