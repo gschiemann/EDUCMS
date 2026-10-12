@@ -63,10 +63,23 @@ internal class FaceVideoRenderer(
             extractor.setDataSource(file.absolutePath)
             val format = extractor.getTrackFormat(videoTrack(extractor))
             validate(format)
-            val info = MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.firstOrNull { info ->
+            val hardwareAvc = MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.filter { info ->
                 !info.isEncoder && SharedVideoCodecPolicy.hardwareName(info.name) &&
-                    info.supportedTypes.any { it.equals("video/avc", true) } &&
-                    runCatching { info.getCapabilitiesForType("video/avc").isFormatSupported(format) }.getOrDefault(false)
+                    info.supportedTypes.any { it.equals("video/avc", true) }
+            }
+            // Strict first. Then the size-and-rate check in EITHER orientation:
+            // Amlogic decoders advertise landscape sizes (≤ 4096×2304) and fail
+            // isFormatSupported for a portrait 2160×3338 stream that the very same
+            // decoder plays in the WebView (field 2026-10-12, M43 + L55VEC). A real
+            // decode failure still ends the session; the page then stays on web.
+            val fps = d.fps.toDouble()
+            val info = hardwareAvc.firstOrNull { info ->
+                runCatching { info.getCapabilitiesForType("video/avc").isFormatSupported(format) }.getOrDefault(false)
+            } ?: hardwareAvc.firstOrNull { info ->
+                runCatching {
+                    val v = info.getCapabilitiesForType("video/avc").videoCapabilities
+                    v.areSizeAndRateSupported(d.width, d.height, fps) || v.areSizeAndRateSupported(d.height, d.width, fps)
+                }.getOrDefault(false)
             } ?: error("hardware-codec-unavailable")
             codecName = info.name
             advertisedInstances = runCatching { info.getCapabilitiesForType("video/avc").maxSupportedInstances }.getOrDefault(0)
