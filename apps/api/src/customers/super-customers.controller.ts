@@ -80,6 +80,6 @@ export class SuperCustomersController {
   @Post(':id/starter-link')
   @Throttle({ default: { ttl: 60_000, limit: 20 } })
   starterLink(@Param('id', new ParseUUIDPipe()) id: string, @Req() req: any) {
-    return this.customers.issueStarterLink(id, actorOf(req));
+    return this.customers.issueStarterLink(id, actorOf(req), req?.user ?? null);
   }
 }

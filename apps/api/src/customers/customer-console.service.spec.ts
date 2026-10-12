@@ -317,6 +317,63 @@ describe('CustomerConsoleService.createCustomer + the single-use owner link', ()
     expect(db.s.audit.find((a) => a.action === 'CUSTOMER_STARTER_LINK_ISSUED')).toMatchObject({ tenantId: out.id, userId: SUPER });
   });
 
+  // V-4 (2026-10-11 launch security re-audit): once a customer owns its
+  // organisation, a new owner link is a support action like any other.
+  describe('V-4 — starter link into a CLAIMED organisation needs support access', () => {
+    function withSupport(allowed: boolean) {
+      const ctx = setup();
+      const supportAccess = {
+        reach: jest.fn(async () =>
+          allowed
+            ? { allowed: true, basis: 'grant', grantId: 'grant-1', rootTenantId: 'x' }
+            : { allowed: false, basis: null, grantId: null, rootTenantId: 'x' },
+        ),
+      };
+      const notifications = { notify: jest.fn(async () => undefined) };
+      const prisma = { client: ctx.db.client } as any;
+      const svc = new CustomerConsoleService(
+        prisma, ctx.auth as any, new LicenseService(prisma), ctx.gate, undefined, undefined,
+        supportAccess as any, notifications as any,
+      );
+      return { ...ctx, svc, supportAccess, notifications };
+    }
+    const superPrincipal = { id: SUPER, role: 'SUPER_ADMIN' };
+
+    async function claimedOrg(ctx: ReturnType<typeof withSupport>) {
+      const out = await ctx.svc.createCustomer(body, SUPER);
+      const owner = ctx.db.s.users.find((u) => u.tenantId === out.id)!;
+      owner.mustSetupCredentials = false;
+      owner.status = 'ACTIVE';
+      owner.email = 'owner@riverside.example';
+      return out;
+    }
+
+    it('without a grant: 403 SUPPORT_ACCESS_REQUIRED, no new user, the refusal is audited', async () => {
+      const ctx = withSupport(false);
+      const out = await claimedOrg(ctx);
+      const usersBefore = ctx.db.s.users.length;
+      expect(await code(ctx.svc.issueStarterLink(out.id, SUPER, superPrincipal))).toEqual({ status: 403, code: 'SUPPORT_ACCESS_REQUIRED' });
+      expect(ctx.db.s.users.length).toBe(usersBefore);
+      expect(ctx.db.s.audit.some((a) => a.action === 'CUSTOMER_STARTER_LINK_DENIED')).toBe(true);
+    });
+
+    it('with a grant: issued, the audit row carries supportGrantId, the customer is notified', async () => {
+      const ctx = withSupport(true);
+      const out = await claimedOrg(ctx);
+      await expect(ctx.svc.issueStarterLink(out.id, SUPER, superPrincipal)).resolves.toHaveProperty('url');
+      const row = ctx.db.s.audit.filter((a) => a.action === 'CUSTOMER_STARTER_LINK_ISSUED').pop()!;
+      expect(row.supportGrantId).toBe('grant-1');
+      expect(ctx.notifications.notify).toHaveBeenCalledWith(expect.objectContaining({ tenantId: out.id }));
+    });
+
+    it('an organisation with no finished owner stays open (brand-new provisioning)', async () => {
+      const ctx = withSupport(false);
+      const out = await ctx.svc.createCustomer(body, SUPER);
+      await expect(ctx.svc.issueStarterLink(out.id, SUPER, superPrincipal)).resolves.toHaveProperty('url');
+      expect(ctx.supportAccess.reach).not.toHaveBeenCalled();
+    });
+  });
+
   it('an expired link cannot be claimed', async () => {
     const { svc, db } = setup();
     const out = await svc.createCustomer(body, SUPER);

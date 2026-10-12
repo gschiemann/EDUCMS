@@ -10,6 +10,8 @@ import { StarterBoardService } from '../onboarding/starter-board.service';
 import { hashToken, INVITE_TTL_MS } from '../onboarding/onboarding.service';
 import { derivePalette } from '../branding/color-utils';
 import { OrgSuspensionGate } from './org-suspension.interceptor';
+import { SupportAccessService, type Principal } from '../support-access/support-access.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import {
   assertPatchAllowed,
   cardCheckoutAllowed,
@@ -82,6 +84,8 @@ export class CustomerConsoleService {
     private readonly gate: OrgSuspensionGate,
     @Optional() private readonly sampleData?: SampleDataService,
     @Optional() private readonly starterBoard?: StarterBoardService,
+    @Optional() private readonly supportAccess?: SupportAccessService,
+    @Optional() private readonly notifications?: NotificationsService,
   ) {}
 
   // ─── List ────────────────────────────────────────────────────────────────
@@ -657,9 +661,46 @@ export class CustomerConsoleService {
    * (and expires every earlier link for it), or — for an organisation that has none, e.g. one
    * that signed up on its own and lost its admin — creates a new starter owner.
    */
-  async issueStarterLink(id: string, actorId: string | null) {
+  async issueStarterLink(id: string, actorId: string | null, actor?: Principal | null) {
+    // ── V-4 (2026-10-11 launch security re-audit) ─────────────────────────
+    // A starter link mints a session as an ORG ADMIN. `/api/v1/super/**` is
+    // exempt from the support-access gate, so without this check a super admin
+    // could walk into any customer that has already claimed its organisation
+    // without the customer's approval. Once an owner has finished setup, a new
+    // link needs the same thing every other support action needs: an active
+    // grant (or break-glass, or an internal org). Brand-new provisioning and
+    // an organisation with no working admin stay open — that is the console's
+    // job. The decision is audited either way.
+    const claimedOwner = await this.prisma.client.user.findFirst({
+      where: { tenantId: id, role: AppRole.DISTRICT_ADMIN, deletedAt: null, mustSetupCredentials: false, status: 'ACTIVE' },
+      select: { id: true },
+    });
+    let supportGrantId: string | null = null;
+    let supportBasis: string | null = null;
+    if (claimedOwner) {
+      const decision = this.supportAccess && actor ? await this.supportAccess.reach(actor, id) : null;
+      if (!decision?.allowed) {
+        await this.prisma.client.auditLog
+          .create({
+            data: {
+              tenantId: id,
+              userId: actorId,
+              action: 'CUSTOMER_STARTER_LINK_DENIED',
+              targetType: 'Tenant',
+              targetId: id,
+              details: JSON.stringify({ reason: 'claimed-org-without-support-access' }),
+            },
+          })
+          .catch(() => undefined);
+        throw SupportAccessService.refusal();
+      }
+      supportGrantId = decision.grantId;
+      supportBasis = decision.basis;
+    }
+
     const token = randomBytes(32).toString('base64url');
     const expiresAt = new Date(Date.now() + INVITE_TTL_MS);
+    let issuedOwnerId = '';
     await this.prisma.client.$transaction(async (tx: any) => {
       await this.loadOrg(id, tx);
       const pending = await tx.user.findFirst({
@@ -691,6 +732,7 @@ export class CustomerConsoleService {
       } else {
         ownerId = (await this.createStarterOwner(tx, id, token, expiresAt, actorId, {})).id;
       }
+      issuedOwnerId = ownerId;
       await tx.auditLog.create({
         data: {
           tenantId: id,
@@ -698,10 +740,31 @@ export class CustomerConsoleService {
           action: 'CUSTOMER_STARTER_LINK_ISSUED',
           targetType: 'User',
           targetId: ownerId,
-          details: JSON.stringify({ reissued, expiresAt: expiresAt.toISOString() }),
+          ...(supportGrantId ? { supportGrantId } : {}),
+          details: JSON.stringify({
+            reissued,
+            expiresAt: expiresAt.toISOString(),
+            claimedOrg: !!claimedOwner,
+            supportBasis,
+            supportGrantId,
+          }),
         },
       });
     });
+    // V-4: an already-claimed organisation hears about it — a new admin-level
+    // sign-in link exists. Best-effort; never blocks the link.
+    if (claimedOwner && this.notifications) {
+      await this.notifications
+        .notify({
+          tenantId: id,
+          kind: 'INFO',
+          title: 'VenueOS support created an owner sign-in link',
+          body: 'A one-time sign-in link for a new organization owner was issued under your support access approval. If you did not expect this, revoke support access in Settings.',
+          link: '/settings/people',
+          dedupeKey: `starter-link:${issuedOwnerId}:${expiresAt.getTime()}`,
+        })
+        .catch(() => undefined);
+    }
     return { url: claimUrlFor(token), expiresAt: expiresAt.toISOString() };
   }
 
