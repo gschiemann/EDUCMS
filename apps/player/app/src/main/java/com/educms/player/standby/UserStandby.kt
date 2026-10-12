@@ -497,10 +497,16 @@ object UserStandby {
         // about the power state now rather than on the next periodic tick.
         runCatching { com.educms.player.wake.WakeRecovery.onScreenOff(app) }
             .onFailure { PlayerLogger.w(TAG, "wake bookkeeping on screen-off failed: ${it.message}") }
+        // 2026-10-12 — the emergency's hardware brightness write waits for a
+        // settled panel; a screen-off breaks the settle.
+        runCatching { com.educms.player.display.EmergencyBrightness.noteScreenOff() }
     }
 
     internal fun onScreenOn(ctx: Context) {
         val app = ctx.applicationContext
+        // 2026-10-12 — FIRST, and bookkeeping only: the emergency's hardware
+        // brightness write settles from the moment the panel came on.
+        runCatching { com.educms.player.display.EmergencyBrightness.noteScreenOn() }
         // Any screen-on ends it: the person pressed power, or one of the
         // deliberate wakes (alert, schedule ON, WAKE command) already did.
         end(app, "the panel was turned on")

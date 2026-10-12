@@ -95,6 +95,23 @@ object SysfsBacklightProvider : DisplayControlProvider {
         }
     }
 
+    /**
+     * The node's current raw value, or null when it cannot be read. A READ
+     * only — never a write (2026-10-12: the emergency path skips its write
+     * when the backlight already reads at the target).
+     */
+    fun currentRaw(): Int? {
+        val n = node() ?: return null
+        val canonical = RecipeAllowlist.canonicalSysfsPath(n.classPath) ?: return null
+        return readInt(File(canonical))
+    }
+
+    /** The raw value [apply] would write for [percent], or null when there is no node. */
+    fun targetRaw(percent: Int): Int? {
+        val n = node() ?: return null
+        return DisplayLimits.scaleBrightnessPerceptual(percent, 0, n.max).coerceAtLeast(1)
+    }
+
     fun invalidate() {
         cached = null
         scanned = false

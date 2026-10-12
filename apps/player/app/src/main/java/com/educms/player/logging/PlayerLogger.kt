@@ -90,6 +90,14 @@ object PlayerLogger {
     fun w(tag: String, msg: String, throwable: Throwable? = null) { writeLine("WARN", tag, msg, throwable) }
     fun e(tag: String, msg: String, throwable: Throwable? = null) { writeLine("ERROR", tag, msg, throwable) }
 
+    /**
+     * A line that is on DISK (fsync'd) when this returns — for markers
+     * written right before something that may reset the box (2026-10-12).
+     * fsync flushes the whole file, so earlier lines are saved with it.
+     * Costs one fsync: a handful of lines, never in a loop.
+     */
+    fun durable(level: String, tag: String, msg: String) { writeLine(level, tag, msg, null, durable = true) }
+
     fun readRecent(maxLines: Int = 500): String {
         val dir = logDir ?: return "(logger not initialised)"
         return LogFileOps.readRecent(dir, maxLines)
@@ -116,7 +124,7 @@ object PlayerLogger {
         return sdf.format(Date())
     }
 
-    private fun writeLine(level: String, tag: String, msg: String, throwable: Throwable?) {
+    private fun writeLine(level: String, tag: String, msg: String, throwable: Throwable?, durable: Boolean = false) {
         // Logcat first — always works regardless of init state.
         if (throwable != null) {
             when (level) {
@@ -153,6 +161,6 @@ object PlayerLogger {
         // Delegate the file write + rotation to Java. The Kotlin 1.9.24
         // compile issue that broke every Kotlin-side rotation attempt
         // doesn't affect Java.
-        LogFileOps.append(dir, line)
+        LogFileOps.append(dir, line, durable)
     }
 }

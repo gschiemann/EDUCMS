@@ -89,6 +89,10 @@ class PlayerApp : Application() {
         // the one fact the 2026-10-11 L55VEC drill could not show.
         runCatching { com.educms.player.wake.WakeRecovery.onProcessStart(this) }
             .onFailure { PlayerLogger.w("PlayerApp", "wake process-start bookkeeping failed: ${it.message}") }
+        // 2026-10-12 — PLAYER_BOOT_REASON: the bootloader/init's reason for the
+        // last boot and the previous process's exit, so a reset after an
+        // emergency wake names its cause. Never throws.
+        BootReasonDiagnostics.record(this)
         scheduleOtaWorker()
         startManagerHeartbeat()
         installCrashHandler()

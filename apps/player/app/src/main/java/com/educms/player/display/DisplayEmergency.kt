@@ -101,7 +101,7 @@ object DisplayEmergency {
     private const val TAG = "DisplayEmergency"
 
     /** Brightness we drive to while an alert is up. */
-    private const val EMERGENCY_BRIGHTNESS = 100
+    private const val EMERGENCY_BRIGHTNESS = EmergencyBrightness.TARGET_PERCENT
 
     /** The Activity's own pane. A single-sided screen is always this. */
     const val PRIMARY_FACE = 0
@@ -670,9 +670,29 @@ object DisplayEmergency {
      *        needs to see.
      */
     fun enforceNow(ctx: Context, quiet: Boolean = false) {
-        // Normal video yields; this observer never acquires/releases a hold.
-        if (isHeld(ctx)) runCatching { com.educms.player.media.SharedVideoHost.suppressForEmergency() }
         val app = ctx.applicationContext
+        // 2026-10-12 — FORENSICS FIRST. Is the panel asleep right now (so this
+        // enforce is a WAKE)? Recorded before anything is driven, and the
+        // markers below are bounded to enforces near a wake (or loud ones), so
+        // a long alert's per-poll re-raise does not flood the log.
+        val interactiveAtStart = runCatching {
+            (app.getSystemService(Context.POWER_SERVICE) as? PowerManager)?.isInteractive
+        }.getOrNull()
+        if (interactiveAtStart != true) EmergencyBrightness.noteWakeRequested()
+        val steps = EmergencyBrightnessPolicy.logSteps(quiet, EmergencyBrightness.sinceWakeMs())
+        // Durable: if anything below resets the box, this line is on disk.
+        if (steps) {
+            EmergencyBrightness.step(
+                "start",
+                "interactive=$interactiveAtStart quiet=$quiet held=${isHeld(app)}",
+                durable = true,
+            )
+        }
+        // Normal video yields; this observer never acquires/releases a hold.
+        if (isHeld(ctx)) {
+            if (steps) EmergencyBrightness.step("shared-video-suppress")
+            runCatching { com.educms.player.media.SharedVideoHost.suppressForEmergency() }
+        }
         // ⚠️ USER STANDBY (2026-10-03) — AN ALERT OUTRANKS THE REMOTE. A person
         // may have powered this panel off; the alert ends that standby FIRST,
         // which re-arms MainActivity's wake flags before the hooks below run.
@@ -684,6 +704,7 @@ object DisplayEmergency {
         // gates — the very next line ends the standby either way.
         runCatching { com.educms.player.standby.UserStandby.rememberForAlertRestore(app) }
             .onFailure { PlayerLogger.w(TAG, "could not remember the standby for the all-clear: ${it.message}") }
+        if (steps) EmergencyBrightness.step("standby-end")
         runCatching { com.educms.player.standby.UserStandby.end(app, "an emergency alert") }
             .onFailure { PlayerLogger.e(TAG, "could not end a user standby for the alert", it) }
         // Read the mirror BEFORE we correct it: this is the only place
@@ -693,6 +714,9 @@ object DisplayEmergency {
         val wasDimmed = DisplayPrefs.brightnessPercent(app) < EMERGENCY_BRIGHTNESS
         val corrected = wasBlanked || wasDimmed
 
+        if (steps) EmergencyBrightness.step("window-hooks", "blackout=off windowBrightness=1.0 keepScreenOn=on wake")
+        // Window brightness 1.0 is what makes the alert FULL BRIGHTNESS on the
+        // glass, at once, on every box — it stays immediate.
         val attached = DisplayWindowBridge.withHooks { h ->
             h.setBlackout(false)
             h.setWindowBrightness(1f)
@@ -702,20 +726,44 @@ object DisplayEmergency {
         // A screen already asleep (screen-timeout blank, device-admin
         // lockNow) has no window to re-flag — this is what actually turns
         // the panel back on from a Context.
+        if (steps) EmergencyBrightness.step("poke", "attached=$attached")
         ScreenWakeLock.pokeScreen(app)
+
+        val brightnessProvider = runCatching {
+            DisplayControlRegistry.providerFor(app, Capability.BRIGHTNESS)?.id
+        }.getOrNull()
+        val deferHardware = EmergencyBrightnessPolicy.providerDefers(brightnessProvider)
 
         runCatching {
             // The ALERT's own wake — not a person's command, so it must not
             // cancel the all-clear restore (1.1.23; see UserStandby.noteDeliberateWake).
             com.educms.player.standby.UserStandby.duringOwnWake {
+                if (steps) EmergencyBrightness.step("registry-wake", durable = true)
                 DisplayControlRegistry.apply(app, DisplayAction.Wake, revertAfterMs = null, wakeSource = "emergency")
-                DisplayControlRegistry.apply(
-                    app,
-                    DisplayAction.SetBrightness(EMERGENCY_BRIGHTNESS),
-                    revertAfterMs = null,
-                )
+                if (!deferHardware) {
+                    // Software floor (window only): nothing to wait for.
+                    if (steps) EmergencyBrightness.step("brightness-immediate", "provider=$brightnessProvider")
+                    DisplayControlRegistry.apply(
+                        app,
+                        DisplayAction.SetBrightness(EMERGENCY_BRIGHTNESS),
+                        revertAfterMs = null,
+                    )
+                }
             }
         }.onFailure { PlayerLogger.e(TAG, "emergency wake through the registry failed", it) }
+
+        if (deferHardware) {
+            // ⚠️ 2026-10-12 — THE HARDWARE WRITE WAITS FOR A SETTLED PANEL
+            // (EmergencyBrightnessPolicy: the L55VEC rebooted ≈13 s after an
+            // alert wrote its sysfs backlight while waking from lockNow()).
+            // The MIRROR moves to full NOW, so the registry gate refuses every
+            // lowering during the settle window exactly as strictly as when
+            // the write was immediate; the release path restores the
+            // operator's level from the pre-hold snapshot either way.
+            if (isHeld(app)) DisplayPrefs.setBrightnessPercent(app, EMERGENCY_BRIGHTNESS)
+            if (steps) EmergencyBrightness.step("brightness-deferred", "provider=$brightnessProvider")
+            EmergencyBrightness.request(app, if (interactiveAtStart == true) "re-assert" else "wake")
+        }
 
         DisplayPrefs.setBlanked(app, false)
         val where = if (attached) "attached" else "detached"

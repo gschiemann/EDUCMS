@@ -53,13 +53,33 @@ public final class LogFileOps {
      * rotation file (if any) is dropped.
      */
     public static void append(File dir, String line) {
+        append(dir, line, false);
+    }
+
+    /**
+     * As {@link #append(File, String)}, and when {@code durable} is true the
+     * file is fsync'd before this returns (2026-10-12). A kernel reset — the
+     * L55VEC rebooted ≈13 s after an emergency wake — loses every line still
+     * in the page cache, so a marker written right BEFORE a risky hardware
+     * write must reach the disk before that write runs. fsync flushes the
+     * whole file, so every earlier, non-durable line is saved with it.
+     */
+    public static void append(File dir, String line, boolean durable) {
         if (dir == null || line == null) return;
         synchronized (LOCK) {
             try {
                 File active = new File(dir, LOG_FILE);
-                try (OutputStream out = new FileOutputStream(active, true);
+                try (FileOutputStream out = new FileOutputStream(active, true);
                      Writer w = new OutputStreamWriter(out, StandardCharsets.UTF_8)) {
                     w.write(line);
+                    if (durable) {
+                        w.flush();
+                        try {
+                            out.getFD().sync();
+                        } catch (IOException syncEx) {
+                            Log.w(TAG, "fsync failed: " + syncEx.getMessage());
+                        }
+                    }
                 }
                 if (active.length() >= MAX_BYTES) {
                     rotate(dir);
