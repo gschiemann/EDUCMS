@@ -47,6 +47,8 @@ import { BoardMediaControls, MediaQuickControls, RotationControls } from './Sele
 // RSS_FEED/CALENDAR/CLOCK/COUNTDOWN/TOUCH_POINT-qr) — see
 // docs/research/2026-06-30-app-library/00-SYNTHESIS.md.
 import { AppLibraryPanel } from '../apps/AppLibraryPanel';
+import { addAppZone } from '../apps/app-zone';
+import { getApp } from '../apps/app-registry';
 import { LayersPanel } from './LayersPanel';
 import { ScenesPanel } from './ScenesPanel';
 import { PropertiesPanel } from './PropertiesPanel';
@@ -1069,7 +1071,7 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
 
   const handleDragStart = (event: any) => {
     const { active } = event;
-    if (active.data.current?.type === 'widget-palette-item' || active.data.current?.type === 'variant-tile') {
+    if (active.data.current?.type === 'widget-palette-item' || active.data.current?.type === 'variant-tile' || active.data.current?.type === 'app-tile') {
       setActiveDragType(active.data.current.widgetType);
     }
   };
@@ -1118,6 +1120,14 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
           x: ((cx - overRect.left) / overRect.width) * 100,
           y: ((cy - overRect.top) / overRect.height) * 100,
         };
+      }
+      // 2026-10-12 (owner) — an Apps tile drags exactly like a widget tile:
+      // dropped on the canvas it lands where it was let go, as a "Set up
+      // <App>" zone whose setup opens in Properties (app-zone.ts).
+      if (active.data.current?.type === 'app-tile') {
+        const app = getApp(String(active.data.current?.appId || ''));
+        if (app) addAppZone(app, { dropAt });
+        return;
       }
       // Wave B / editor-crush B6a (2026-07-02): thread the smart drop size
       // so dragged tiles land at their natural footprint (LOGO small,

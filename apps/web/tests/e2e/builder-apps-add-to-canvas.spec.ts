@@ -126,6 +126,34 @@ test.describe('builder — Apps tab → app on the board', () => {
     await expect(page.locator('[data-app-change="youtube"]')).toBeVisible();
   });
 
+  test('an app tile DRAGS onto the canvas like a widget and lands where it was dropped', async ({ page }) => {
+    const card = await openBlankBuilder(page);
+    await card.scrollIntoViewIfNeeded();
+    const from = await card.boundingBox();
+    const canvas = await page.locator('[data-template-canvas]').first().boundingBox();
+    expect(from && canvas).toBeTruthy();
+    // Cross the 8 px activation distance, pause, travel, drop (see
+    // builder-tile-click-adds-widget.spec.ts for why each step is needed).
+    await page.mouse.move(from!.x + 30, from!.y + 30);
+    await page.mouse.down();
+    await page.mouse.move(from!.x + 50, from!.y + 50, { steps: 5 });
+    await page.waitForTimeout(300);
+    const dropX = canvas!.x + canvas!.width * 0.7;
+    const dropY = canvas!.y + canvas!.height * 0.6;
+    await page.mouse.move(dropX, dropY, { steps: 30 });
+    await page.waitForTimeout(400);
+    await page.mouse.up();
+
+    const zone = youtubeZones(page).first();
+    await expect(zone).toBeVisible({ timeout: 15_000 });
+    await expect(setupCards(page)).toBeVisible();
+    // It landed on the right-hand side of the canvas, where it was let go —
+    // not at the click-to-add default top-left slot.
+    const box = await zone.boundingBox();
+    expect(box!.x + box!.width / 2).toBeGreaterThan(canvas!.x + canvas!.width * 0.5);
+    await expect(page.getByLabel(/YouTube link/i)).toBeVisible();
+  });
+
   test('the canvas "Set up" button re-opens the setup from another tab', async ({ page }) => {
     const card = await openBlankBuilder(page);
     await card.click();

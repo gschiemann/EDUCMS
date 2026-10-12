@@ -41,7 +41,8 @@ import {
 } from './app-registry';
 import { detectApp } from './url-transforms';
 import { AppConfigForm } from './AppConfigForm';
-import { addAppZone } from './app-zone';
+import { addAppZone, appWidgetType } from './app-zone';
+import { useDraggable } from '@dnd-kit/core';
 import {
   resolveConciergeSuggestions, readOnboardingConciergeSuggestions,
   type SuggestedApp,
@@ -456,7 +457,23 @@ function FrictionBadge({ tier }: { tier: AppDefinition['frictionTier'] }) {
 }
 
 function AppCard({ app, onClick }: { app: AppDefinition; onClick: (trigger: HTMLButtonElement) => void }) {
-  const ref = useRef<HTMLButtonElement>(null);
+  const ref = useRef<HTMLButtonElement | null>(null);
+  // 2026-10-12 (owner) — apps drag onto the canvas exactly like widget tiles:
+  // the SAME DndContext + 'builder-canvas' droppable, handled in
+  // BuilderShell.handleDragEnd ('app-tile'). The 8 px activation distance on
+  // the builder's PointerSensor keeps a click a click. Keyboard drag is left
+  // off so Enter / Space stay the button's own "add" (the a11y path).
+  // Coming-soon tiles do not drag: nothing they add would show.
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `app-${app.id}`,
+    disabled: !!app.comingSoon,
+    data: { type: 'app-tile', appId: app.id, widgetType: appWidgetType(app) },
+  });
+  const { onKeyDown: _dragKeyDown, ...pointerListeners } = (listeners ?? {}) as Record<string, (e: unknown) => void>;
+  void _dragKeyDown;
+  // The button keeps its own role / focusability / name.
+  const { role: _role, tabIndex: _tabIndex, 'aria-pressed': _pressed, ...dragAttributes } = attributes;
+  void _role; void _tabIndex; void _pressed;
   return (
     // The interactive element itself (button) keeps its native role; the
     // `listitem` semantics live on this non-interactive wrapper instead of
@@ -464,11 +481,14 @@ function AppCard({ app, onClick }: { app: AppDefinition; onClick: (trigger: HTML
     // interactive element's implicit role with a non-interactive one).
     <div role="listitem">
       <button
-        ref={ref}
+        ref={(node) => { ref.current = node; setNodeRef(node); }}
         type="button"
+        {...dragAttributes}
+        {...pointerListeners}
         onClick={() => onClick(ref.current!)}
         title={app.blurb}
-        className="group relative w-full rounded-xl border-2 border-slate-200 hover:border-indigo-300 transition-all overflow-hidden bg-white shadow-sm hover:shadow-lg text-left flex flex-col focus:outline-none focus:ring-2 focus:ring-indigo-400"
+        data-app-tile={app.id}
+        className={`group relative w-full rounded-xl border-2 border-slate-200 hover:border-indigo-300 transition-all overflow-hidden bg-white shadow-sm hover:shadow-lg text-left flex flex-col focus:outline-none focus:ring-2 focus:ring-indigo-400 ${app.comingSoon ? '' : 'cursor-grab active:cursor-grabbing'} ${isDragging ? 'opacity-40 scale-95' : ''}`}
       >
         <div className="w-full bg-slate-100 flex items-center justify-center" style={{ aspectRatio: '16 / 10' }}>
           <span style={BRAND_COLORS[app.id] ? { color: BRAND_COLORS[app.id] } : undefined} className={BRAND_COLORS[app.id] ? "" : "text-slate-400 group-hover:text-indigo-500 transition-colors"}><AppIcon appId={app.id} name={app.icon} className="w-10 h-10" /></span>
