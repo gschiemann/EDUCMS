@@ -51,6 +51,7 @@ import {
 } from './sports-venue-editor';
 import { FanCamTextField } from './FanCamTextField';
 import { WebsiteTabsEditor } from './WebsiteTabsEditor';
+import { DesignDataFields } from './DesignDataFields';
 // K-12 sports launch, lane B4 — "don't type student names here" on the fields
 // whose typed names the API blanks on screens while a school's names are hidden.
 import { StudentNameNotice, studentNameNoticePlacer } from './StudentNameNotice';
@@ -2740,6 +2741,12 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
     w: Math.round(((Number(zone.width) || 0) / 100) * (canvasW || 1920)),
     h: Math.round(((Number(zone.height) || 0) / 100) * (canvasH || 1080)),
   };
+
+  // General data widgets own their full editor so structured cells and chart rows
+  // never fall through the generic config fields (which cannot edit nested data).
+  if (zone.widgetType === 'CHART' && ['design-table', 'design-chart-bar', 'design-chart-line', 'design-chart-pie'].includes(String(cfg.variant || ''))) {
+    return <DesignDataFields config={cfg} onChange={setField} />;
+  }
 
   // Shape-based themes bake their own palette + typography and ignore
   // generic style knobs like text color, font size, and background.
