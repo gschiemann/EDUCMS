@@ -48,6 +48,10 @@ export type AppBuildOutcome =
       code: AppBuildErrorCode;
       /** Plain English, specific to what went wrong. Shown to the operator. */
       reason: string;
+      /** A `builderApps` message key for the same sentence, when the app
+       *  supplied a translated one (`expects.explainKey`). The form shows the
+       *  translation; `reason` stays the English fallback. */
+      reasonKey?: string;
       /**
        * What `build()` produced, for DRAWING THE CONFIG-FORM PREVIEW ONLY
        * while the operator is still filling the form. NEVER write this to a
@@ -84,6 +88,12 @@ function notWhatWeExpected(app: AppDefinition, values: Record<string, string>): 
   return `That doesn’t look like ${what}.${hint ? ` ${hint}` : ''}`;
 }
 
+/** The translated-sentence key for an unrecognised paste, if the app has one. */
+function explainKeyFor(app: AppDefinition, values: Record<string, string>): { reasonKey?: string } {
+  const key = app.expects?.explainKey?.(values);
+  return key ? { reasonKey: key } : {};
+}
+
 export function buildApp(app: AppDefinition, values: Record<string, string>): AppBuildOutcome {
   if (app.comingSoon) {
     return {
@@ -116,13 +126,13 @@ export function buildApp(app: AppDefinition, values: Record<string, string>): Ap
   }
 
   if (!built) {
-    return { ok: false, code: 'invalid', reason: notWhatWeExpected(app, values) };
+    return { ok: false, code: 'invalid', reason: notWhatWeExpected(app, values), ...explainKeyFor(app, values) };
   }
 
   // The app's own "is this really my service's content?" check. A transform
   // that passed an unrecognised URL straight through lands here.
   if (app.expects?.recognises && !app.expects.recognises(built)) {
-    return { ok: false, code: 'invalid', reason: notWhatWeExpected(app, values), preview: built };
+    return { ok: false, code: 'invalid', reason: notWhatWeExpected(app, values), ...explainKeyFor(app, values), preview: built };
   }
 
   // Generic structural check on the BUILT output.
@@ -130,7 +140,7 @@ export function buildApp(app: AppDefinition, values: Record<string, string>): Ap
   if (urlField) {
     const url = built.defaultConfig[urlField];
     if (typeof url !== 'string' || !isUsableWebUrl(url)) {
-      return { ok: false, code: 'invalid', reason: notWhatWeExpected(app, values), preview: built };
+      return { ok: false, code: 'invalid', reason: notWhatWeExpected(app, values), ...explainKeyFor(app, values), preview: built };
     }
     // STREAMING zones are framed only if the host is on the player's embed
     // allowlist (streaming-hosts.ts) — off it, the widget renders its
@@ -138,7 +148,7 @@ export function buildApp(app: AppDefinition, values: Record<string, string>): Ap
     if (built.widgetType === 'STREAMING') {
       const parsed = parseWebUrl(url);
       if (!parsed || !isAllowedStreamingHost(parsed.hostname)) {
-        return { ok: false, code: 'invalid', reason: notWhatWeExpected(app, values), preview: built };
+        return { ok: false, code: 'invalid', reason: notWhatWeExpected(app, values), ...explainKeyFor(app, values), preview: built };
       }
     }
   }

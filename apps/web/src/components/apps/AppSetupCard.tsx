@@ -6,13 +6,15 @@
  *
  * 2026-10-12 (owner): "an app zone that is not configured shows a clear
  * 'Set up <App>' state on the canvas (button that opens the same setup)
- * instead of an empty box." The button selects the zone, which the builder's
- * selection subscription answers by opening Properties on the app's setup.
+ * instead of an empty box." The button selects the zone (the builder's
+ * selection subscription opens Properties on it) AND focuses the app's first
+ * field — selecting an already-selected zone changed nothing on screen, which
+ * is what "i click setup and nothing happens" was (2026-10-12).
  */
 import { useTranslations } from 'next-intl';
-import { useBuilderStore } from '@/components/template-builder/useBuilderStore';
 import { AppIcon } from './ConciergeAppSuggestions';
 import { BRAND_COLORS } from './brand-icons';
+import { openAppSetup } from './app-zone';
 
 export function AppSetupCard({ zoneId, appId, appName, icon }: { zoneId: string; appId: string; appName: string; icon: string }) {
   const t = useTranslations('builderApps');
@@ -30,7 +32,7 @@ export function AppSetupCard({ zoneId, appId, appName, icon }: { zoneId: string;
         type="button"
         onClick={(e) => {
           e.stopPropagation();
-          useBuilderStore.getState().select(zoneId);
+          openAppSetup(zoneId);
         }}
         className="mt-2 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-bold shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-400"
       >

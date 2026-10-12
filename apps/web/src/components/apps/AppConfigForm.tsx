@@ -54,7 +54,17 @@ import { useTenantCopy } from '@/hooks/use-tenant-copy';
 import { getAiStatusSource } from '@/components/ai/AiGenerateButton';
 import type { AppDefinition, AppFieldSchema, AppStarterLayout } from './app-registry';
 import { buildApp } from './build-app';
-import { appDefaultValues, applyAppToZone, removeAppZone, WIDGET_TYPE_DEFAULT_SIZE } from './app-zone';
+import {
+  appDefaultValues,
+  applyAppToZone,
+  applyStarterLayout,
+  planStarterLayout,
+  removeAppZone,
+  takeAppSetupFocus,
+  APP_SETUP_FOCUS_EVENT,
+  WIDGET_TYPE_DEFAULT_SIZE,
+} from './app-zone';
+import { AppIcon } from './ConciergeAppSuggestions';
 import { isUsableWebUrl } from './url-transforms';
 import {
   fetchGoogleReviewsStatus,
@@ -97,13 +107,45 @@ export function AppConfigForm({
   const [values, setValues] = useState<Record<string, string>>(() => defaultValues(app, initialValues));
   const [touched, setTouched] = useState(false);
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const formRef = useRef<HTMLDivElement>(null);
+  const [flashField, setFlashField] = useState<string | null>(null);
 
   // a11y — focus the form heading on open so a keyboard/SR user's reading
   // position isn't orphaned on a card that just unmounted (2026-07-01
-  // discovery/mobile/a11y workstream).
+  // discovery/mobile/a11y workstream). NOT in Properties (embedded): that
+  // form mounts whenever a pending app zone is merely SELECTED, and taking
+  // focus there would steal the canvas's keyboard (Delete, arrow nudges).
   useEffect(() => {
-    headingRef.current?.focus();
+    if (!embedded) headingRef.current?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // "Set up <App>" (canvas card), a fresh drop, or a finished layout asks for
+  // the caret in the app's first field — scrolled into view and briefly
+  // highlighted, so the click visibly lands somewhere (2026-10-12: "i click
+  // setup and nothing happens").
+  const focusKey = (app.configSchema.find((f) => f.required) ?? app.configSchema[0])?.key;
+  useEffect(() => {
+    if (!zoneId || !focusKey) return;
+    const focusFirstField = () => {
+      const wrap = formRef.current?.querySelector<HTMLElement>(`[data-app-field="${focusKey}"]`);
+      if (!wrap) return;
+      wrap.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      const target = wrap.querySelector<HTMLElement>('input, select, textarea, button');
+      target?.focus({ preventScroll: true });
+      setFlashField(focusKey);
+      window.setTimeout(() => setFlashField(null), 1600);
+    };
+    if (takeAppSetupFocus(zoneId)) window.setTimeout(focusFirstField, 0);
+    const onRequest = (e: Event) => {
+      const detail = (e as CustomEvent<{ zoneId?: string }>).detail;
+      if (detail?.zoneId !== zoneId) return;
+      takeAppSetupFocus(zoneId);
+      focusFirstField();
+    };
+    window.addEventListener(APP_SETUP_FOCUS_EVENT, onRequest);
+    return () => window.removeEventListener(APP_SETUP_FOCUS_EVENT, onRequest);
+  }, [zoneId, focusKey]);
 
   const setField = (key: string, v: string) => setValues((prev) => ({ ...prev, [key]: v }));
 
@@ -143,13 +185,16 @@ export function AppConfigForm({
   /** The one sentence that explains why Add is disabled, when the operator
    *  has actually typed something. 'missing' keeps the form's existing
    *  "Paste your X to continue" copy; 'coming-soon' has its own panel. */
-  const blockingReason = !outcome.ok && outcome.code === 'invalid' ? outcome.reason : null;
+  const blockingReason =
+    !outcome.ok && outcome.code === 'invalid'
+      ? (outcome.reasonKey ? tApps(outcome.reasonKey) : outcome.reason)
+      : null;
   /** What the preview pane says when there is nothing truthful to draw.
    *  Only read when `built` is null. */
   const previewNotice: { text: string; tone: 'calm' | 'warn' } =
     outcome.ok || outcome.code === 'missing'
       ? { text: 'Paste a link above to preview it here.', tone: 'calm' }
-      : { text: outcome.reason, tone: 'warn' };
+      : { text: blockingReason ?? outcome.reason, tone: 'warn' };
 
   // Live-preview truthfulness — for WEBPAGE-backed apps (Slides, Sheets,
   // Canva, PowerPoint, Maps, Calendar, Web URL) the config-form preview used
@@ -215,29 +260,14 @@ export function AppConfigForm({
   // mean "this app's own widget here" — in which case it gets the app's
   // live `built` config (so the operator's already-typed URL/location/etc.
   // rides straight into the layout, exactly like plain "Add to canvas").
-  const applyStarterLayout = (layout: AppStarterLayout) => {
-    // Same boundary rule as handleConfirm — this writes zones too.
-    const fresh = buildApp(app, values);
-    if (!fresh.ok) { setTouched(true); return; }
-    // From a zone's setup card the layout REPLACES the pending zone.
-    if (zoneId) removeAppZone(zoneId);
-    let firstId: string | null = null;
-    for (const z of layout.zones) {
-      const widgetType = z.widgetType ?? fresh.widgetType;
-      const isAppsOwnZone = !z.widgetType || z.widgetType === fresh.widgetType;
-      const id = addZone(widgetType, undefined, { w: z.width, h: z.height });
-      updateZone(id, {
-        x: z.x,
-        y: z.y,
-        width: z.width,
-        height: z.height,
-        zIndex: z.zIndex ?? 1,
-        defaultConfig: isAppsOwnZone ? { ...fresh.defaultConfig, ...z.defaultConfig } : z.defaultConfig,
-      });
-      if (!firstId) firstId = id;
-    }
-    if (firstId) select(firstId);
-    onDone();
+  // 2026-10-12 (owner: "the full bleed settings in the side bar … dont do
+  // anything"). The cards were DISABLED until a valid link was typed, so a
+  // click on them did nothing at all. A layout now always builds: with a
+  // link the app is live in it; without one its slot is a "Set up <App>"
+  // zone and the caret lands in the link field. One undo step (app-zone.ts).
+  const handleStarterLayout = (layout: AppStarterLayout) => {
+    const id = applyStarterLayout(app, layout, values, zoneId ? { replaceZoneId: zoneId } : undefined);
+    if (id) onDone();
   };
 
   // ── Tier 2: "Design one with AI" ────────────────────────────────────────
@@ -288,6 +318,7 @@ export function AppConfigForm({
 
   return (
     <div
+      ref={formRef}
       className={embedded ? 'flex flex-col rounded-xl border-2 border-indigo-200 bg-white overflow-hidden' : 'flex flex-col h-full min-h-0 overflow-hidden'}
       data-app-setup={zoneId ? app.id : undefined}
     >
@@ -371,28 +402,32 @@ export function AppConfigForm({
           <div className="p-3 border-b border-slate-100 space-y-2">
             {app.starterLayouts && app.starterLayouts.length > 0 && (
               <div>
-                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-                  Finished layouts
+                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                  {tApps('layoutsHeading')}
                 </div>
+                <p className="text-[11px] text-slate-500 leading-snug mb-2">
+                  {canConfirm ? tApps('layoutsHintReady') : tApps('layoutsHintNoLink')}
+                </p>
                 <div className="grid grid-cols-2 gap-2">
-                  {app.starterLayouts.map((layout) => (
-                    <button
-                      key={layout.id}
-                      type="button"
-                      onClick={() => applyStarterLayout(layout)}
-                      disabled={!canConfirm}
-                      title={!canConfirm ? (blockingReason ?? 'Fill in the required field above first') : `Add "${layout.name}"`}
-                      className={`group text-left rounded-lg border-2 overflow-hidden transition-colors ${
-                        canConfirm ? 'border-slate-200 hover:border-indigo-300 cursor-pointer' : 'border-slate-100 opacity-50 cursor-not-allowed'
-                      }`}
-                    >
-                      <StarterLayoutThumbnail layout={layout} />
-                      <div className="px-2 py-1.5 bg-white border-t border-slate-100 flex items-center gap-1">
-                        <LayoutTemplate className="w-3 h-3 text-slate-400 shrink-0" aria-hidden />
-                        <span className="text-[10px] font-semibold text-slate-600 truncate">{layout.name}</span>
-                      </div>
-                    </button>
-                  ))}
+                  {app.starterLayouts.map((layout) => {
+                    const name = layout.nameKey ? tApps(layout.nameKey) : layout.name;
+                    return (
+                      <button
+                        key={layout.id}
+                        type="button"
+                        data-app-layout={layout.id}
+                        onClick={() => handleStarterLayout(layout)}
+                        aria-label={tApps('layoutApply', { name })}
+                        className="group text-left rounded-lg border-2 overflow-hidden transition-colors border-slate-200 hover:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer"
+                      >
+                        <StarterLayoutThumbnail app={app} plan={planStarterLayout(app, layout, values)} />
+                        <div className="px-2 py-1.5 bg-white border-t border-slate-100 flex items-center gap-1">
+                          <LayoutTemplate className="w-3 h-3 text-slate-400 shrink-0" aria-hidden />
+                          <span className="text-[10px] font-semibold text-slate-600 leading-tight">{name}</span>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -475,18 +510,23 @@ export function AppConfigForm({
               )}
 
               {app.configSchema.map((field) => (
-                <AppField
+                <div
                   key={field.key}
-                  field={field}
-                  value={values[field.key] ?? ''}
-                  onChange={(v) => setField(field.key, v)}
-                  // `google-place` writes TWO keys at once (the opaque id plus
-                  // the human name the board's header shows), which a single
-                  // string `onChange` cannot express.
-                  onChangeMany={(patch) => setValues((prev) => ({ ...prev, ...patch }))}
-                  pickedLabel={field.type === 'google-place' ? (values.placeName ?? '') : ''}
-                  showError={!!(touched && field.required && !values[field.key]?.trim())}
-                />
+                  data-app-field={field.key}
+                  className={`rounded-lg transition-shadow duration-300 ${flashField === field.key ? 'ring-4 ring-indigo-300 ring-offset-2' : ''}`}
+                >
+                  <AppField
+                    field={field}
+                    value={values[field.key] ?? ''}
+                    onChange={(v) => setField(field.key, v)}
+                    // `google-place` writes TWO keys at once (the opaque id plus
+                    // the human name the board's header shows), which a single
+                    // string `onChange` cannot express.
+                    onChangeMany={(patch) => setValues((prev) => ({ ...prev, ...patch }))}
+                    pickedLabel={field.type === 'google-place' ? (values.placeName ?? '') : ''}
+                    showError={!!(touched && field.required && !values[field.key]?.trim())}
+                  />
+                </div>
               ))}
 
               {app.taurusNote && (
@@ -540,34 +580,51 @@ export function AppConfigForm({
 }
 
 /**
- * A cheap, static-CSS scaled mock-up of a starter layout's zone rects —
- * NOT a live WidgetPreview per zone (that would mean rendering up to 3
- * real widgets, incl. an iframe-based WEBPAGE/STREAMING preview, per
- * thumbnail, per app, every time the config form opens — a mobile-perf
- * cost with no payoff since the operator is choosing a LAYOUT, not
- * previewing live content here). Each zone renders as a plain colored
- * block sized/positioned from its percentages, giving an honest at-a-
- * glance sense of the composition. Complementary zones (title bar, clock,
- * accent strip) get a brand-tinted block; the app's own zone (the
- * majority of the canvas) gets a neutral placeholder block.
+ * A layout card's picture, drawn from `planStarterLayout` — the SAME plan
+ * `applyStarterLayout` builds — so what the card shows is what lands
+ * (2026-10-12). Static CSS, no live widgets: the operator is choosing a
+ * composition here, and a real iframe per card per app would be a mobile-perf
+ * cost for nothing. The app's slot shows the app's mark, a title zone shows
+ * its words on the brand colour, a clock panel shows a time and date line.
  */
-function StarterLayoutThumbnail({ layout }: { layout: AppStarterLayout }) {
+function StarterLayoutThumbnail({ app, plan }: { app: AppDefinition; plan: ReturnType<typeof planStarterLayout> }) {
   return (
-    <div className="relative w-full bg-slate-100" style={{ aspectRatio: '16 / 9' }}>
-      {layout.zones.map((z, i) => {
-        const isComplementary = !!z.widgetType;
-        return (
-          <div
-            key={i}
-            className={`absolute rounded-[1px] ${isComplementary ? 'bg-[var(--brand-primary,#4f46e5)]/70' : 'bg-slate-300'}`}
-            style={{
-              left: `${z.x}%`,
-              top: `${z.y}%`,
-              width: `${z.width}%`,
-              height: `${z.height}%`,
-            }}
-          />
-        );
+    <div className="relative w-full bg-slate-100 overflow-hidden" style={{ aspectRatio: '16 / 9' }} aria-hidden>
+      {plan.map((z, i) => {
+        const box = { left: `${z.x}%`, top: `${z.y}%`, width: `${z.width}%`, height: `${z.height}%` } as const;
+        if (z.role === 'app') {
+          return (
+            <div key={i} className="absolute flex items-center justify-center bg-slate-800 text-slate-200" style={box}>
+              <AppIcon appId={app.id} name={app.icon} className="w-4 h-4 opacity-80" />
+            </div>
+          );
+        }
+        if (z.role === 'title') {
+          return (
+            <div
+              key={i}
+              className="absolute flex items-center justify-center overflow-hidden px-0.5"
+              style={{ ...box, background: 'var(--brand-primary, #4f46e5)', color: 'var(--brand-primary-ink, #fff)' }}
+            >
+              <span className="text-[7px] font-bold leading-none truncate" style={{ fontFamily: 'var(--brand-font-heading)' }}>
+                {String(z.defaultConfig.content ?? '')}
+              </span>
+            </div>
+          );
+        }
+        if (z.role === 'clock') {
+          return (
+            <div
+              key={i}
+              className="absolute flex flex-col items-center justify-center"
+              style={{ ...box, background: 'var(--brand-primary, #4f46e5)', color: 'var(--brand-primary-ink, #fff)' }}
+            >
+              <span className="text-[8px] font-extrabold leading-none tabular-nums">10:42</span>
+              <span className="mt-0.5 block h-[2px] w-1/2 rounded bg-current opacity-50" />
+            </div>
+          );
+        }
+        return <div key={i} className="absolute bg-slate-300" style={box} />;
       })}
     </div>
   );
@@ -611,6 +668,8 @@ function SocialConnectionField({
   }>({ phase: 'loading', missing: [], connections: [] });
   const [connecting, setConnecting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const tApps = useTranslations('builderApps');
 
   useEffect(() => {
     let cancelled = false;
@@ -635,7 +694,7 @@ function SocialConnectionField({
       }
     })();
     return () => { cancelled = true; };
-  }, [provider]);
+  }, [provider, attempt]);
 
   const startConnect = async () => {
     setConnecting(true);
@@ -667,9 +726,18 @@ function SocialConnectionField({
       )}
 
       {state.phase === 'error' && (
-        <p className="text-[11px] text-slate-500">
-          Couldn’t check your connected accounts just now. Try again in a moment.
-        </p>
+        <div className="flex items-center gap-2">
+          <p className="text-[11px] text-slate-500 flex-1">
+            Couldn’t check your connected accounts just now. Try again in a moment.
+          </p>
+          <button
+            type="button"
+            onClick={() => { setState({ phase: 'loading', missing: [], connections: [] }); setAttempt((n) => n + 1); }}
+            className="shrink-0 px-2.5 py-1 text-[11px] font-bold rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50"
+          >
+            {tApps('retry')}
+          </button>
+        </div>
       )}
 
       {state.phase === 'ready' && state.connections.length === 0 && (
@@ -729,6 +797,7 @@ function AppField({
   pickedLabel?: string;
   showError: boolean;
 }) {
+  const tApps = useTranslations('builderApps');
   const labelId = `app-field-${field.key}`;
   if (field.type === 'google-place') {
     return (
@@ -796,9 +865,9 @@ function AppField({
           className={`w-full px-2.5 py-1.5 text-xs border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-400 ${showError ? 'border-rose-400' : 'border-slate-200'}`}
         />
       )}
-      {field.help && field.type !== 'checkbox' && (
-        <p className="mt-1 text-[10px] text-slate-400 leading-snug flex items-start gap-1">
-          {field.help}
+      {(field.helpKey || field.help) && field.type !== 'checkbox' && (
+        <p className="mt-1 text-[11px] text-slate-500 leading-snug flex items-start gap-1">
+          {field.helpKey ? tApps(field.helpKey) : field.help}
         </p>
       )}
       {showError && (

@@ -16,35 +16,37 @@
  */
 
 import { isSocialWallHost } from './social-wall-hosts';
+import {
+  parseYoutubeUrl,
+  parseVimeoUrl,
+  youtubeCanonicalUrl,
+  vimeoCanonicalUrl,
+} from '@/components/widgets/streaming-url-parse';
 
 /** Extract a YouTube video ID from any common share-URL shape. */
 export function youtubeVideoId(input: string): string | null {
-  const u = (input || '').trim();
-  if (!u) return null;
-  const patterns = [
-    /(?:youtube\.com\/watch\?v=|youtube\.com\/shorts\/|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/live\/)([\w-]{6,})/i,
-  ];
-  for (const re of patterns) {
-    const m = u.match(re);
-    if (m) return m[1];
-  }
-  return null;
+  const ref = parseYoutubeUrl(input);
+  return ref?.kind === 'video' ? ref.id : null;
 }
 
-/** YouTube watch/share URL -> canonical watch URL (StreamingWidget embeds it at render time). */
+/**
+ * Any YouTube share link -> the canonical link we store (watch?v=, playlist,
+ * channel live). The player re-reads it with the SAME parser
+ * (`streaming-url-parse.ts`) to build its embed, so add-time and play-time
+ * cannot disagree. An unrecognised paste passes through untouched; the
+ * YouTube app's `expects.recognises` refuses it.
+ */
 export function toYoutubeCanonicalUrl(input: string): string {
-  const id = youtubeVideoId(input);
-  if (id) return `https://www.youtube.com/watch?v=${id}`;
-  // Channel "live" URLs (youtube.com/@handle/live) — pass through, the
-  // StreamingWidget's normalizeEmbedUrl already special-cases these.
-  return (input || '').trim();
+  const ref = parseYoutubeUrl(input);
+  return ref ? youtubeCanonicalUrl(ref) : (input || '').trim();
 }
 
-/** Vimeo share URL -> canonical vimeo.com/<id> URL. */
+/** Any Vimeo link (plain, unlisted with its privacy hash, player, channel,
+ *  group, showcase, live event) -> the canonical link we store. Keeps the
+ *  hash: without it an unlisted video does not play. */
 export function toVimeoCanonicalUrl(input: string): string {
-  const u = (input || '').trim();
-  const m = u.match(/vimeo\.com\/(?:video\/)?(\d+)/);
-  return m ? `https://vimeo.com/${m[1]}` : u;
+  const ref = parseVimeoUrl(input);
+  return ref ? vimeoCanonicalUrl(ref) : (input || '').trim();
 }
 
 /**
@@ -214,11 +216,11 @@ export function detectApp(input: string): DetectedApp | null {
   if (!raw) return null;
 
   // YouTube — watch/shorts/youtu.be/embed/live, or a bare @handle/live URL.
-  if (youtubeVideoId(raw) || /youtube\.com\/(@[\w-]+\/live|live\/)/i.test(raw)) {
+  if (parseYoutubeUrl(raw)) {
     return { appId: 'youtube', prefill: { url: raw } };
   }
   // Vimeo
-  if (/vimeo\.com\/(?:video\/)?\d+/i.test(raw)) {
+  if (parseVimeoUrl(raw)) {
     return { appId: 'vimeo', prefill: { url: raw } };
   }
   // Twitch — full URL only for auto-detect (a bare word is too ambiguous to

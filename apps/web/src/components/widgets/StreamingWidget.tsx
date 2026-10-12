@@ -44,6 +44,7 @@
  *   • Streaming widget needs its own renderer-error fallback so a
  *     dropped stream doesn't blank the screen.
  */
+import { parseYoutubeUrl, parseVimeoUrl, youtubeEmbedSrc, vimeoEmbedSrc } from './streaming-url-parse';
 import { useEffect, useRef, useState } from 'react';
 // 2026-05-03 — capability layer integration. The widget reads the
 // detected device caps so it can:
@@ -343,26 +344,13 @@ export { STREAMING_EMBED_HOSTS, isAllowedStreamingHost } from './streaming-hosts
 export function normalizeEmbedUrl(input: string, opts: { muted: boolean; autoplay: boolean }): string {
   if (!input) return '';
   const u = input.trim();
-  // YouTube watch URL → embed URL.
-  const ytMatch = u.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/live\/)([\w-]+)/);
-  if (ytMatch) {
-    const id = ytMatch[1];
-    const params = new URLSearchParams({
-      autoplay: opts.autoplay ? '1' : '0',
-      mute: opts.muted ? '1' : '0',
-      controls: '0',
-      modestbranding: '1',
-      rel: '0',
-      playsinline: '1',
-    });
-    return `https://www.youtube.com/embed/${id}?${params.toString()}`;
-  }
-  // YouTube channel live → use channel param
-  const ytChannelMatch = u.match(/youtube\.com\/(?:c|channel|user|@)([\w-]+)\/live/i);
-  if (ytChannelMatch) {
-    const handle = ytChannelMatch[1];
-    return `https://www.youtube.com/embed/live_stream?channel=${handle}&autoplay=${opts.autoplay ? 1 : 0}&mute=${opts.muted ? 1 : 0}`;
-  }
+  // YouTube + Vimeo: one shared parser (streaming-url-parse.ts) so the
+  // App Library and the screen agree on every link shape — unlisted Vimeo
+  // hashes, channels/showcases/events, YouTube Shorts/live/playlists.
+  const yt = parseYoutubeUrl(u);
+  if (yt) return youtubeEmbedSrc(yt, opts);
+  const vimeo = parseVimeoUrl(u);
+  if (vimeo) return vimeoEmbedSrc(vimeo, opts);
   // Twitch login → embed.
   const twitchMatch = u.match(/twitch\.tv\/([\w-]+)/);
   if (twitchMatch) {
@@ -371,12 +359,6 @@ export function normalizeEmbedUrl(input: string, opts: { muted: boolean; autopla
     // current host at call time so this works on localhost + production.
     const parent = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
     return `https://player.twitch.tv/?channel=${channel}&parent=${parent}&muted=${opts.muted}&autoplay=${opts.autoplay}`;
-  }
-  // Vimeo video → embed.
-  const vimeoMatch = u.match(/vimeo\.com\/(?:video\/)?(\d+)/);
-  if (vimeoMatch) {
-    const id = vimeoMatch[1];
-    return `https://player.vimeo.com/video/${id}?autoplay=${opts.autoplay ? 1 : 0}&muted=${opts.muted ? 1 : 0}&controls=0`;
   }
   // ─── FALL-THROUGH: allowlist, don't assume (INJ-006) ────────────────
   // Previously: "assume the URL is already an embed URL; return u". That
