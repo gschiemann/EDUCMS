@@ -10,6 +10,7 @@ import android.view.SurfaceHolder
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebView
+import android.widget.FrameLayout
 import com.educms.player.alertwatch.NativeAlertWatchPolicy
 import com.educms.player.display.DisplayEmergency
 import com.educms.player.face.FaceTokenStore
@@ -39,18 +40,37 @@ class SharedVideoHost private constructor(internal val face: Int, internal val w
     internal var codecName: String? = null
     internal var loops = 0L
     internal var startedAt = 0L
-    internal var detached = false
+    @Volatile internal var detached = false
 
-    fun prepare(json: String) = SharedVideoBox.prepare(this,json)
-    fun commit(id: String) = SharedVideoBox.commit(this,id)
-    fun stop(id: String) = SharedVideoBox.stop(this,id)
-    fun stateJson(): String = SharedVideoBox.state(this)
-    fun invalidate() = SharedVideoBox.invalidate(this,"document-retired")
+    // -- Protocol 2: this face's own independent session (FaceVideoBox) --
+    /** Created on the UI thread with the host; in the view tree only while a session runs. */
+    internal val faceContainer = FrameLayout(web.context)
+    internal val faceSurface = SurfaceView(web.context)
+    internal var face2: FaceVideoSession? = null
+    /** Which engine this face last used: the one `sharedVideoState` reports. */
+    @Volatile internal var engine = ENGINE_SHARED
+
+    /** `version: 2` selects the per-face engine; anything else is the protocol-1 pair engine, unchanged. */
+    fun prepare(json: String) {
+        if (FaceVideoRequest.parse(json) != null) FaceVideoBox.prepare(this,json)
+        else if (!FaceVideoBox.anyActive()) { engine = ENGINE_SHARED; SharedVideoBox.prepare(this,json) }
+    }
+    fun commit(id: String) = if (engine == ENGINE_FACE) FaceVideoBox.commit(this,id) else SharedVideoBox.commit(this,id)
+    fun stop(id: String) = if (engine == ENGINE_FACE) FaceVideoBox.stop(this,id) else SharedVideoBox.stop(this,id)
+    /** Always carries `protocol: 2`, so the page can tell this APK runs independent per-face sessions. */
+    fun stateJson(): String {
+        val j = if (engine == ENGINE_FACE) FaceVideoBox.state(this) else JSONObject(SharedVideoBox.state(this))
+        return j.put("protocol",2).toString()
+    }
+    fun invalidate() { SharedVideoBox.invalidate(this,"document-retired"); FaceVideoBox.invalidate(this,"document-retired") }
     fun detach() {
         SharedVideoBox.invalidate(this,"host-detached")
         synchronized(SharedVideoBox) { detached = true }
         (surfaceView.parent as? ViewGroup)?.removeView(surfaceView)
         SharedVideoBox.detach(this)
+        FaceVideoBox.detach(this)
+        (faceSurface.parent as? ViewGroup)?.removeView(faceSurface)
+        (faceContainer.parent as? ViewGroup)?.removeView(faceContainer)
     }
 
     companion object {
@@ -58,6 +78,7 @@ class SharedVideoHost private constructor(internal val face: Int, internal val w
         fun attach(face: Int, web: WebView): SharedVideoHost {
             val host = SharedVideoHost(face,web)
             SharedVideoBox.attach(host)
+            FaceVideoBox.attach(host)
             val parent = web.parent as? ViewGroup
             if (parent == null || face !in 0..1) { host.detached = true; return host }
             // No default-fleet surface allocation. Attach only after authenticated descriptors agree.
@@ -66,11 +87,18 @@ class SharedVideoHost private constructor(internal val face: Int, internal val w
                 override fun surfaceChanged(holder: SurfaceHolder,format: Int,w: Int,h: Int) { SharedVideoBox.surfaceReady() }
                 override fun surfaceDestroyed(holder: SurfaceHolder) { if (host.attached) host.invalidate() }
             })
+            host.faceSurface.holder.addCallback(object : SurfaceHolder.Callback {
+                override fun surfaceCreated(holder: SurfaceHolder) { FaceVideoBox.surfaceReady(host) }
+                override fun surfaceChanged(holder: SurfaceHolder,format: Int,w: Int,h: Int) { FaceVideoBox.surfaceReady(host) }
+                override fun surfaceDestroyed(holder: SurfaceHolder) { FaceVideoBox.invalidate(host,"output-detached") }
+            })
             return host
         }
         /** Called by the native hold path; it never releases or changes an emergency hold. */
-        fun suppressForEmergency() = SharedVideoBox.suppress("emergency-held")
-        fun suspendAll() = SharedVideoBox.suppress("activity-paused")
+        fun suppressForEmergency() { SharedVideoBox.suppress("emergency-held"); FaceVideoBox.suppress("emergency-held") }
+        fun suspendAll() { SharedVideoBox.suppress("activity-paused"); FaceVideoBox.suppress("activity-paused") }
+        internal const val ENGINE_SHARED = "shared"
+        internal const val ENGINE_FACE = "face"
     }
 }
 

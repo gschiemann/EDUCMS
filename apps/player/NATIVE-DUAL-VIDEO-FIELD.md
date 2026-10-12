@@ -20,3 +20,7 @@ Run the existing Android Player APK workflow manually with `playerFieldCandidate
 6. If the comparison fails or ends, audit and clear the exact field flag. Confirm normal manifests, continuing browser output, and unchanged stable release catalogue. A device running a higher private candidate cannot ordinarily downgrade to 1.1.24; disabling the optional renderer restores its normal browser behavior without a downgrade.
 
 `native.output` is evidence from Android's own Surface render callbacks, not a photograph or proof that the physical display is illuminated. No REQUIRED hardware qualification row may be marked PASS from mocks, CI, or these counters alone.
+
+## Protocol 2 — per-face engine (2026-10-12)
+
+The pair engine above plays only ONE mirrored file on both faces. Protocol 2 (`media/FaceVideo*.kt`, API `native-video.ts`, env `PLAYER_NATIVE_VIDEO`) gives every face an independent session, so the DH43 can run any combination: the same file, a different file per face, or video on one face and a template on the other. It rides the same four bridge methods (`version: 2` request, `protocol: 2` on the state reply), so no bridge contract changed. The page prefers protocol 2 when the APK proves it and the manifest carries `nativeVideo`; otherwise this pair engine behaves exactly as before. The same evidence rules apply: per-face `lastVideoReport.native.output.uniqueFrames` deltas against elapsed time, watched on the glass, before any PASS row.
