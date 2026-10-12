@@ -47,7 +47,11 @@ internal class SharedVideoSource(private val ctx: Context) {
                 out.toByteArray()
             }
         }
-        require(FaceTokenStore.read(ctx, face) == token) { "credential-changed" }
+        // The credential must still belong to THIS screen after the fetch (a
+        // re-pair or revoke mid-request is refused). It is NOT compared byte for
+        // byte: the page renews its token constantly, so an exact match failed
+        // every attempt on the field units (2026-10-12, M43 + L55VEC).
+        require(NativeAlertWatchPolicy.screenIdOf(FaceTokenStore.read(ctx, face)) == expectedScreen) { "credential-changed" }
         return JSONObject(String(bytes, Charsets.UTF_8))
     }
 
