@@ -238,12 +238,16 @@ describe('MFA step — passkey as the second factor', () => {
     await waitFor(() => { expect(useUIStore.getState().token).toBe('tok-passkey'); });
     expect(push).toHaveBeenCalledWith('/lincoln/dashboard');
 
-    // The exact contract.
-    expect(calls[1].url).toBe(`${API_URL}/auth/mfa/challenge/passkey/options`);
-    expect(calls[1].body).toEqual({ mfaToken: 'mfa-1' });
+    // The exact contract. (Step 1's "Sign in with a passkey" link prefetches
+    // its own options, so the second-factor calls are found by URL.)
+    const after = calls.slice(calls.findIndex((c) => c.url.endsWith('/auth/login')) + 1);
+    expect(after.map((c) => c.url)).toEqual([
+      `${API_URL}/auth/mfa/challenge/passkey/options`,
+      `${API_URL}/auth/mfa/challenge/passkey`,
+    ]);
+    expect(after[0].body).toEqual({ mfaToken: 'mfa-1' });
     expect(startAuthentication).toHaveBeenCalledWith({ optionsJSON: GET_OPTIONS });
-    expect(calls[2].url).toBe(`${API_URL}/auth/mfa/challenge/passkey`);
-    expect(calls[2].body).toEqual({ mfaToken: 'mfa-1', response: ASSERTION });
+    expect(after[1].body).toEqual({ mfaToken: 'mfa-1', response: ASSERTION });
   });
 
   it('a 401 says the passkey was not accepted and leaves the step usable', async () => {
@@ -538,6 +542,191 @@ describe('Sign-in form — passwordless passkey', () => {
     // The way in is untouched: the email, then Continue.
     expect(screen.getByLabelText('Email')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Continue$/i })).toBeInTheDocument();
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────
+// SAFARI USER GESTURE — options fetched BEFORE the tap (2026-10-11)
+// ───────────────────────────────────────────────────────────────────────
+// Owner, Safari on a Mac: "Use your passkey" periodically opened nothing.
+// Safari runs navigator.credentials.get() only inside the tap's transient
+// user activation; the old handler awaited the options request first, so a
+// slow request spent the activation. The proof here is SYNCHRONOUS: right
+// after the click event returns — before any promise could have settled —
+// the ceremony has already been called, and no new request was made.
+describe('passkey buttons start the ceremony inside the tap', () => {
+  /** Like mockFetchByPath, but a route may answer a SEQUENCE (last one repeats). */
+  function mockFetchSeq(routes: Record<string, Reply | Reply[]>) {
+    const calls: Array<{ url: string; body: Record<string, unknown> | undefined }> = [];
+    const served: Record<string, number> = {};
+    (globalThis as unknown as { fetch: unknown }).fetch = jest.fn((url: string, init?: RequestInit) => {
+      if (!String(url).endsWith('/auth/sign-in-options')) calls.push({ url: String(url), body: init?.body ? JSON.parse(String(init.body)) : undefined });
+      // Longest match first, so a route can never be shadowed by a shorter one.
+      const key = Object.keys(routes).sort((a, b) => b.length - a.length).find((k) => String(url).endsWith(k));
+      let r: Reply = { ok: false, status: 404, body: {} };
+      if (key) {
+        const v = routes[key];
+        if (Array.isArray(v)) {
+          const i = served[key] ?? 0;
+          served[key] = i + 1;
+          r = v[Math.min(i, v.length - 1)];
+        } else r = v;
+      }
+      return Promise.resolve({ ok: r.ok ?? true, status: r.status ?? 200, json: () => Promise.resolve(r.body ?? {}) });
+    });
+    return calls;
+  }
+  const mfaOptionCalls = (calls: Array<{ url: string }>) =>
+    calls.filter((c) => c.url.endsWith('/auth/mfa/challenge/passkey/options'));
+  const notAllowed = () => {
+    const e = new Error('The operation either timed out or was not allowed.');
+    e.name = 'NotAllowedError';
+    return e;
+  };
+  afterEach(() => { jest.restoreAllMocks(); });
+
+  it('second factor: prefetched options → the tap calls get() synchronously, with no fetch first', async () => {
+    const calls = mockFetchSeq({
+      '/auth/login': { body: { mfaRequired: true, mfaToken: 'mfa-1', mfaMethods: ['passkey'] } },
+      '/auth/mfa/challenge/passkey/options': { body: { options: GET_OPTIONS } },
+      '/auth/mfa/challenge/passkey': { body: SESSION },
+    });
+    startAuthentication.mockResolvedValue(ASSERTION);
+    await act(async () => { render(<LoginPage />); });
+    await signInWithPassword();
+    const btn = await screen.findByRole('button', { name: /Use your passkey/i });
+    // Fetched when the step came on screen — and no ceremony yet.
+    await waitFor(() => { expect(mfaOptionCalls(calls)).toHaveLength(1); });
+    expect(startAuthentication).not.toHaveBeenCalled();
+    const before = calls.length;
+
+    act(() => { fireEvent.click(btn); });
+    // SYNCHRONOUS: inside the click, before anything could be awaited.
+    expect(startAuthentication).toHaveBeenCalledWith({ optionsJSON: GET_OPTIONS });
+    expect(calls.length).toBe(before);
+
+    await waitFor(() => { expect(useUIStore.getState().token).toBe('tok-passkey'); });
+    // Signed in: nothing re-fetched.
+    expect(mfaOptionCalls(calls)).toHaveLength(1);
+  });
+
+  it('options are one-time: after a cancel they are fetched AGAIN, so the next tap is synchronous too', async () => {
+    const OPT2 = { challenge: 'c2Vjb25k', rpId: 'venueos.app' };
+    const calls = mockFetchSeq({
+      '/auth/login': { body: { mfaRequired: true, mfaToken: 'mfa-1', mfaMethods: ['passkey'] } },
+      '/auth/mfa/challenge/passkey/options': [{ body: { options: GET_OPTIONS } }, { body: { options: OPT2 } }],
+      '/auth/mfa/challenge/passkey': { body: SESSION },
+    });
+    startAuthentication.mockRejectedValueOnce(notAllowed()).mockResolvedValueOnce(ASSERTION);
+    await act(async () => { render(<LoginPage />); });
+    await signInWithPassword();
+    const btn = await screen.findByRole('button', { name: /Use your passkey/i });
+    await waitFor(() => { expect(mfaOptionCalls(calls)).toHaveLength(1); });
+
+    await act(async () => { fireEvent.click(btn); });
+    // A cancel on the PREFETCHED path keeps today's calm handling.
+    expect(await screen.findByTestId('passkey-elsewhere-note')).toBeInTheDocument();
+    expect(screen.queryByText(/Tap the passkey button again/i)).not.toBeInTheDocument();
+    // Re-fetched once the ceremony settled (never while it was open).
+    await waitFor(() => { expect(mfaOptionCalls(calls)).toHaveLength(2); });
+
+    const before = calls.length;
+    act(() => { fireEvent.click(screen.getByRole('button', { name: /Try your passkey again/i })); });
+    expect(startAuthentication).toHaveBeenCalledTimes(2);
+    expect(startAuthentication).toHaveBeenLastCalledWith({ optionsJSON: OPT2 });
+    expect(calls.length).toBe(before);
+    await waitFor(() => { expect(useUIStore.getState().token).toBe('tok-passkey'); });
+  });
+
+  it('STALE options (older than 4 min) are never used: the tap fetches fresh ones first', async () => {
+    const OPT2 = { challenge: 'ZnJlc2g', rpId: 'venueos.app' };
+    const calls = mockFetchSeq({
+      '/auth/login': { body: { mfaRequired: true, mfaToken: 'mfa-1', mfaMethods: ['passkey'] } },
+      '/auth/mfa/challenge/passkey/options': [{ body: { options: GET_OPTIONS } }, { body: { options: OPT2 } }],
+      '/auth/mfa/challenge/passkey': { body: SESSION },
+    });
+    startAuthentication.mockResolvedValue(ASSERTION);
+    await act(async () => { render(<LoginPage />); });
+    await signInWithPassword();
+    const btn = await screen.findByRole('button', { name: /Use your passkey/i });
+    await waitFor(() => { expect(mfaOptionCalls(calls)).toHaveLength(1); });
+
+    // Five minutes on the step (the server's challenge has expired).
+    const real = Date.now();
+    jest.spyOn(Date, 'now').mockImplementation(() => real + 5 * 60_000);
+
+    act(() => { fireEvent.click(btn); });
+    expect(startAuthentication).not.toHaveBeenCalled(); // NOT the expired challenge
+    await waitFor(() => { expect(startAuthentication).toHaveBeenCalledWith({ optionsJSON: OPT2 }); });
+    expect(mfaOptionCalls(calls)).toHaveLength(2);
+    await waitFor(() => { expect(useUIStore.getState().token).toBe('tok-passkey'); });
+  });
+
+  it('coming back to the tab with stale options refreshes them on demand (no timer)', async () => {
+    const calls = mockFetchSeq({
+      '/auth/login': { body: { mfaRequired: true, mfaToken: 'mfa-1', mfaMethods: ['passkey'] } },
+      '/auth/mfa/challenge/passkey/options': { body: { options: GET_OPTIONS } },
+    });
+    await act(async () => { render(<LoginPage />); });
+    await signInWithPassword();
+    await screen.findByRole('button', { name: /Use your passkey/i });
+    await waitFor(() => { expect(mfaOptionCalls(calls)).toHaveLength(1); });
+    // Fresh: focus changes nothing.
+    await act(async () => { window.dispatchEvent(new Event('focus')); });
+    expect(mfaOptionCalls(calls)).toHaveLength(1);
+    // Stale: focus re-fetches.
+    const real = Date.now();
+    jest.spyOn(Date, 'now').mockImplementation(() => real + 5 * 60_000);
+    await act(async () => { window.dispatchEvent(new Event('focus')); });
+    expect(mfaOptionCalls(calls)).toHaveLength(2);
+  });
+
+  it('no prefetched options + Safari refuses at once → "tap again", and the next tap goes straight to the device', async () => {
+    const calls = mockFetchSeq({
+      '/auth/login': { body: { mfaRequired: true, mfaToken: 'mfa-1', mfaMethods: ['passkey'] } },
+      // The prefetch fails (a blip); the tap's own fetch and the re-prefetch succeed.
+      '/auth/mfa/challenge/passkey/options': [
+        { ok: false, status: 503, body: {} },
+        { body: { options: GET_OPTIONS } },
+      ],
+      '/auth/mfa/challenge/passkey': { body: SESSION },
+    });
+    startAuthentication.mockRejectedValueOnce(notAllowed()).mockResolvedValueOnce(ASSERTION);
+    await act(async () => { render(<LoginPage />); });
+    await signInWithPassword();
+    const btn = await screen.findByRole('button', { name: /Use your passkey/i });
+    await waitFor(() => { expect(mfaOptionCalls(calls)).toHaveLength(1); });
+
+    // Fallback path: fetch, THEN get() — which "Safari" refuses immediately.
+    await act(async () => { fireEvent.click(btn); });
+    expect(await screen.findByText(/Tap the passkey button again/i)).toBeInTheDocument();
+    // Not treated as "your passkey is on another device".
+    expect(screen.queryByTestId('passkey-elsewhere-note')).not.toBeInTheDocument();
+    await waitFor(() => { expect(mfaOptionCalls(calls)).toHaveLength(3); });
+
+    const before = calls.length;
+    act(() => { fireEvent.click(screen.getByRole('button', { name: /Use your passkey/i })); });
+    expect(startAuthentication).toHaveBeenCalledTimes(2);
+    expect(calls.length).toBe(before);
+    await waitFor(() => { expect(useUIStore.getState().token).toBe('tok-passkey'); });
+  });
+
+  it('passwordless link: prefetched → the tap calls get() synchronously', async () => {
+    const calls = mockFetchSeq({
+      '/auth/passkeys/login/options': { body: { options: GET_OPTIONS, challengeId: 'ch-9' } },
+      '/auth/passkeys/login/verify': { body: SESSION },
+    });
+    startAuthentication.mockResolvedValue(ASSERTION);
+    await act(async () => { render(<LoginPage />); });
+    const link = await screen.findByRole('button', { name: /Sign in with a passkey/i });
+    await waitFor(() => { expect(calls).toHaveLength(1); });
+
+    act(() => { fireEvent.click(link); });
+    expect(startAuthentication).toHaveBeenCalledWith({ optionsJSON: GET_OPTIONS });
+    expect(calls).toHaveLength(1);
+
+    await waitFor(() => { expect(useUIStore.getState().token).toBe('tok-passkey'); });
+    expect(calls[1].body).toEqual({ challengeId: 'ch-9', response: ASSERTION, rememberMe: false });
   });
 });
 

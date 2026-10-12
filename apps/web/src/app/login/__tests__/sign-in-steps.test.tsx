@@ -176,7 +176,11 @@ describe('STEP 1 — one field', () => {
     const calls = mockFetchByPath({});
     await renderPage();
     await act(async () => { fireEvent.submit(screen.getByTestId('sign-in-step-email')); });
-    expect(calls).toHaveLength(0);
+    // The only request is the "Sign in with a passkey" link's options,
+    // fetched when step 1 renders so a tap can open Safari's sheet at once
+    // (2026-10-11) — the same anonymous request for every visitor. Continue
+    // itself asked nobody anything.
+    expect(calls.filter((c) => !c.url.endsWith('/auth/passkeys/login/options'))).toHaveLength(0);
     expect(screen.getByLabelText('Email')).toBeInTheDocument();
   });
 
@@ -858,7 +862,9 @@ describe('passkeys — from the email field, never in the way', () => {
     // Low emphasis: a text link, not a second boxed button — and no explainer.
     expect(link.className).not.toMatch(/\bborder\b|bg-indigo-600/);
     expect(screen.queryByText(/No passkey on this device/i)).not.toBeInTheDocument();
-    expect(calls).toHaveLength(0);
+    // The link's options are fetched ahead of the tap (Safari user gesture,
+    // 2026-10-11) — ONE request, and NO ceremony pending.
+    await waitFor(() => { expect(calls.map((c) => c.url)).toEqual([`${API_URL}/auth/passkeys/login/options`]); });
     expect(startAuthentication).not.toHaveBeenCalled();
     // Still exactly one primary action.
     expect(document.querySelectorAll('button[type="submit"]')).toHaveLength(1);

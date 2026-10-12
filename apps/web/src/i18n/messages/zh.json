@@ -385,6 +385,7 @@
     "useAnotherWay": "使用其他方式",
     "passkeyElsewhereNote": "你的通行密钥可能在另一台设备上。请在这台设备上用其他方式登录：",
     "passkeyTryAgain": "再次尝试通行密钥",
+    "passkeyTapAgain": "你的浏览器没有打开通行密钥提示。请再点一次通行密钥按钮，现在已准备就绪。",
     "otherWaysLabel": "其他登录方式",
     "otherWayAuthenticator": "输入身份验证器应用中的验证码",
     "otherWayEmail": "通过邮件发送验证码给我",

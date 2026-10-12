@@ -238,7 +238,8 @@ test.describe('step 1 — one field', () => {
       await expect(link).toHaveCount(0);
     } else if (support === 'modal-only') {
       await expect(link).toBeVisible();
-      expect(a.passkeyOptionCalls).toBe(0);
+      // The link's options are fetched ahead of the tap (Safari gesture, 2026-10-11): ONE request.
+      await expect.poll(() => a.passkeyOptionCalls).toBe(1);
     } else {
       await expect(link).toHaveCount(0);
       expect(a.passkeyOptionCalls).toBe(0);

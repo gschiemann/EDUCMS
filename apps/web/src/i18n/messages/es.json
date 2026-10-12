@@ -385,6 +385,7 @@
     "useAnotherWay": "Usar otro método",
     "passkeyElsewhereNote": "Es posible que tu clave de acceso esté en otro dispositivo. Inicia sesión de otra forma en este:",
     "passkeyTryAgain": "Volver a intentar con tu clave de acceso",
+    "passkeyTapAgain": "Tu navegador no abrió la ventana de la clave de acceso. Vuelve a tocar el botón de la clave de acceso; ya está lista.",
     "otherWaysLabel": "Otras formas de iniciar sesión",
     "otherWayAuthenticator": "Introducir un código de tu aplicación de autenticación",
     "otherWayEmail": "Enviarme un código por correo",

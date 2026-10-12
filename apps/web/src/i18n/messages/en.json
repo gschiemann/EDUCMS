@@ -385,6 +385,7 @@
     "useAnotherWay": "Use another way",
     "passkeyElsewhereNote": "Your passkey may be on another device. Sign in another way on this one:",
     "passkeyTryAgain": "Try your passkey again",
+    "passkeyTapAgain": "Your browser didn't open the passkey prompt. Tap the passkey button again — it's ready now.",
     "otherWaysLabel": "Other ways to sign in",
     "otherWayAuthenticator": "Enter a code from your authenticator app",
     "otherWayEmail": "Email me a code",

@@ -260,6 +260,34 @@ describe('the operator is offered a passkey first', () => {
     expect(startRegistration).toHaveBeenCalledWith({ optionsJSON: CREATE_OPTIONS });
     expect(calls.filter((c) => c.url.endsWith('/auth/mfa/required/passkey/options')).length).toBe(optionFetches);
   });
+
+  it('after a cancelled sheet the options are fetched again, so the SECOND tap is straight to the device too', async () => {
+    // 2026-10-11: the prefetched options used to be spent by the first tap and
+    // never replaced, so a second tap went back to fetch-then-create — the
+    // exact order Safari refuses.
+    const calls = mockFetchByPath({
+      '/auth/login': ENROLL_REQUIRED,
+      '/auth/mfa/required/passkey/options': { body: { options: CREATE_OPTIONS } },
+      '/auth/mfa/required/passkey/verify': SESSION_WITH_CODES,
+    });
+    const cancelled = new Error('The operation either timed out or was not allowed.');
+    cancelled.name = 'NotAllowedError';
+    startRegistration.mockRejectedValueOnce(cancelled).mockResolvedValueOnce(CREDENTIAL);
+    const optionCalls = () => calls.filter((c) => c.url.endsWith('/auth/mfa/required/passkey/options')).length;
+
+    await act(async () => { render(<LoginPage />); });
+    await signIn();
+    const button = await screen.findByRole('button', { name: /Use Face ID/i });
+    await waitFor(() => { expect(optionCalls()).toBe(1); });
+
+    await act(async () => { fireEvent.click(button); });
+    await waitFor(() => { expect(optionCalls()).toBe(2); });
+
+    const before = calls.length;
+    act(() => { fireEvent.click(screen.getByRole('button', { name: /Use Face ID/i })); });
+    expect(startRegistration).toHaveBeenCalledTimes(2);
+    expect(calls.length).toBe(before);
+  });
 });
 
 describe('a browser that never opens its passkey sheet', () => {

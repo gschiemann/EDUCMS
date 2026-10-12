@@ -206,9 +206,11 @@ describe('on a phone, the passkey step starts with two EQUAL choices', () => {
     expect(setUp.className).toBe(use.className);
     // What the second choice will do first, tied to the button for a screen reader.
     expect(setUp).toHaveAccessibleDescription("We'll email you a code first, to make sure it's you.");
-    // Nothing has happened yet: no sheet (no QR code), no options fetched, no mail sent.
+    // Nothing has happened yet: no sheet (no QR code), no mail sent. The only
+    // requests besides the sign-in are the passkey buttons' OPTIONS, fetched
+    // ahead of the tap so Safari can open its sheet inside it (2026-10-11).
     expect(startAuthentication).not.toHaveBeenCalled();
-    expect(calls.map((c) => c.url)).toEqual([`${API_URL}/auth/login`]);
+    expect(calls.map((c) => c.url).filter((u) => !u.endsWith('/options'))).toEqual([`${API_URL}/auth/login`]);
     // Focus is on the first choice; "Use another way" and Back are still there.
     expect(document.activeElement).toBe(use);
     expect(screen.getByRole('button', { name: /^Use another way$/ })).toBeInTheDocument();

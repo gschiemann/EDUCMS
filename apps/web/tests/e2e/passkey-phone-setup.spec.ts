@@ -296,8 +296,9 @@ test.describe('set up a passkey on this phone', () => {
 
       await signInWithPassword(page);
       const { setUp } = await assertTwoEqualChoices(page);
-      // Nothing started before a choice: no sheet, no QR code.
-      expect(a.passkeyOptionCalls).toBe(0);
+      // Nothing started before a choice: no sheet, no QR code. (At most ONE options request:
+      // "Use your passkey" fetches its options ahead of the tap — Safari gesture, 2026-10-11.)
+      expect(a.passkeyOptionCalls).toBeLessThanOrEqual(1);
       await shot(page, '1-choices');
 
       // ONE tap sends the code — no "Email me a code" in between.
@@ -315,8 +316,9 @@ test.describe('set up a passkey on this phone', () => {
       const { credentials } = await cdp.send('WebAuthn.getCredentials', { authenticatorId });
       expect(credentials).toHaveLength(1);
       expect(credentials[0].rpId).toBe('localhost');
-      // Never the QR code on this path: no sign-in ceremony was ever asked for.
-      expect(a.passkeyOptionCalls).toBe(0);
+      // Never the QR code on this path: no sign-in ceremony was ever asked for — at most the
+      // "Use your passkey" button's prefetched options, never a second (consumed) set.
+      expect(a.passkeyOptionCalls).toBeLessThanOrEqual(1);
       // This device remembers (an opaque tag — never the address).
       const memory = await page.evaluate(() => localStorage.getItem('venueos_passkey_on_device.v1'));
       expect(JSON.parse(memory || '[]')).toHaveLength(1);
@@ -362,7 +364,7 @@ test.describe('set up a passkey on this phone', () => {
       const { credentials } = await cdp.send('WebAuthn.getCredentials', { authenticatorId });
       expect(credentials).toHaveLength(0);
       expect(a.regVerifyCalls).toHaveLength(0);
-      expect(a.passkeyOptionCalls).toBe(0);
+      expect(a.passkeyOptionCalls).toBeLessThanOrEqual(1); // the prefetch only — no sign-in ceremony
       expect(await page.evaluate(() => localStorage.getItem('venueos_passkey_on_device.v1'))).toBeNull();
       await shot(page, '4-cancelled');
 

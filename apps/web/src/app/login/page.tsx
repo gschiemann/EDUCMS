@@ -39,6 +39,12 @@ import {
 } from '@/lib/passkeys';
 import { passkeyRememberedOnDevice, rememberPasskeyOnDevice } from '@/lib/passkey-on-device';
 import {
+  createPasskeyOptionsCache,
+  isLikelyExpiredActivation,
+  type PasskeyOptionsCache,
+  type PasskeyOptionsReply,
+} from '@/lib/passkey-options-prefetch';
+import {
   emailCodeSendErrorKey,
   emailCodeVerifyError,
   otherWaysFor,
@@ -163,6 +169,47 @@ const OFFER_PREPARE_TIMEOUT_MS = 8_000;
 /** How long the required passkey set-up waits for the browser's sheet before handing the choice back. */
 const REQUIRED_PASSKEY_STALL_MS = 15_000;
 
+/**
+ * POST for passkey ceremony options. Resolves with the reply whatever its
+ * status (the caller maps refusals to copy); rejects only when the API is
+ * unreachable. Used by the prefetch caches AND the tap's fallback path.
+ */
+async function postPasskeyOptions(path: string, body: Record<string, unknown>): Promise<PasskeyOptionsReply> {
+  const res = await fetch(`${API_URL}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  return { ok: res.ok, status: res.status, data };
+}
+
+/**
+ * Keep a passkey button's options ready while its step is on screen: fetch
+ * when `key` appears, refresh ON DEMAND when the page comes back into view
+ * with options older than the cache's limit, forget them when the step goes.
+ * Event listeners only — no interval timer (mobile-perf standard).
+ */
+function usePasskeyOptionsPrefetch(cache: PasskeyOptionsCache, key: string | null) {
+  useEffect(() => {
+    if (!key) {
+      cache.reset();
+      return;
+    }
+    cache.prefetch(key);
+    const refresh = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      cache.refreshIfStale(key);
+    };
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, [cache, key]);
+}
+
 export default function LoginPage() {
   return (
     <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-[#fafbfc]"><Loader2 className="w-8 h-8 text-indigo-500 animate-spin" /></div>}>
@@ -274,6 +321,45 @@ function LoginContent() {
   const [codeFormOpen, setCodeFormOpen] = useState(false);
   const [passkeyBusy, setPasskeyBusy] = useState(false);
   const passkeyStepBtnRef = useRef<HTMLButtonElement>(null);
+
+  // ── Ceremony options fetched BEFORE the tap (2026-10-11) ────────────
+  // Safari runs navigator.credentials.get()/create() only inside the tap's
+  // transient user activation. Every passkey button used to fetch its options
+  // AFTER the tap, so a slow request spent the activation and the sheet
+  // never opened — "Use your passkey periodically does nothing" (owner,
+  // Safari on a Mac). Each button's options are now fetched when its step
+  // comes on screen; the tap starts the ceremony synchronously with them.
+  // See `lib/passkey-options-prefetch.ts` for the rules (one-time, ≤ 4 min
+  // old, never refreshed while a ceremony is open, on-demand refresh only).
+  const [mfaPasskeyOpts] = useState(() =>
+    createPasskeyOptionsCache((mfaToken) => postPasskeyOptions('/auth/mfa/challenge/passkey/options', { mfaToken })),
+  );
+  const [requiredPasskeyOpts] = useState(() =>
+    createPasskeyOptionsCache((mfaToken) => postPasskeyOptions('/auth/mfa/required/passkey/options', { mfaToken })),
+  );
+  const [passwordlessPasskeyOpts] = useState(() =>
+    createPasskeyOptionsCache(() => postPasskeyOptions('/auth/passkeys/login/options', {})),
+  );
+  /** The one key the passwordless cache uses — there is no account yet. */
+  const PASSWORDLESS_KEY = 'passwordless';
+  /** A passkey ceremony ended without a credential — the client log, with the error name. */
+  const logCeremonyFailure = (
+    stage: 'mfa' | 'passwordless' | 'required-create',
+    err: unknown,
+    usedPrefetched: boolean,
+    elapsedMs: number,
+  ) => {
+    clog.warn('auth', 'Passkey ceremony failed', {
+      stage,
+      errorName: passkeyErrorName(err) || 'unknown',
+      usedPrefetched,
+      // How long the sheet was up (or not): a refusal in a few ms is the
+      // browser's, not the person's.
+      elapsedMs,
+      visibility: typeof document !== 'undefined' ? document.visibilityState : null,
+      focused: typeof document !== 'undefined' && typeof document.hasFocus === 'function' ? document.hasFocus() : null,
+    });
+  };
 
   /** Show the passkey button on the challenge step? */
   const passkeyStepAvailable = mfaMethods.includes('passkey') && passkeyCapable;
@@ -440,30 +526,20 @@ function LoginContent() {
   // fetched as the choice screen opens and the tap goes straight to the
   // device. The server's challenge lives 5 minutes; anything older, or a
   // fetch that has not landed, falls back to the fetch-then-create path.
-  const requiredPasskeyOptsRef = useRef<{ token: string; options: any; at: number } | null>(null);
-  useEffect(() => {
-    requiredPasskeyOptsRef.current = null;
-    if (!mfaToken || !enrollRequired || enrollMethod !== 'choice') return;
-    let live = true;
-    (async () => {
-      try {
-        const res = await fetch(`${API_URL}/auth/mfa/required/passkey/options`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mfaToken }),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (live && res.ok && data?.options) {
-          requiredPasskeyOptsRef.current = { token: mfaToken, options: data.options, at: Date.now() };
-        }
-      } catch {
-        /* the tap fetches them itself */
-      }
-    })();
-    return () => {
-      live = false;
-    };
-  }, [mfaToken, enrollRequired, enrollMethod]);
+  //
+  // Since 2026-10-11 this is the shared options cache (`requiredPasskeyOpts`),
+  // which also RE-fetches after a ceremony ends without a credential — the
+  // old one-shot ref was spent by the first tap, so a second tap after a
+  // cancel went back to fetch-then-create and met the same Safari refusal.
+  usePasskeyOptionsPrefetch(
+    requiredPasskeyOpts,
+    mfaToken && enrollRequired && enrollMethod === 'choice' ? mfaToken : null,
+  );
+  // The second-factor step's "Use your passkey" — same rule.
+  usePasskeyOptionsPrefetch(
+    mfaPasskeyOpts,
+    mfaToken && passkeyStepAvailable && !enrollRequired ? mfaToken : null,
+  );
 
   // Render the otpauth URL into a QR the moment the provisional secret
   // arrives. `qrcode` is imported lazily so the login bundle — the first
@@ -1072,30 +1148,57 @@ function LoginContent() {
   const handlePasskeyChallenge = async () => {
     if (!mfaToken) return;
     const token = mfaToken;
+    // SAFARI USER GESTURE (2026-10-11): with options prefetched, the ceremony
+    // starts HERE, synchronously, before anything is awaited — inside the
+    // tap's user activation. Only without them does the tap fetch first
+    // (today's path), and a refusal there gets "tap again" (see below).
+    const ready = mfaPasskeyOpts.take(token);
+    const ticket = mfaPasskeyOpts.begin();
+    let ceremony: Promise<Awaited<ReturnType<typeof getPasskey>>> | null = null;
+    if (ready) {
+      try {
+        ceremony = getPasskey(ready.data.options);
+      } catch (syncErr) {
+        ceremony = Promise.reject(syncErr);
+      }
+    }
+    const usedPrefetched = ceremony !== null;
+    let ceremonyAt = Date.now();
+    let attemptOver = false;
     setError('');
     setPasskeyBusy(true);
     try {
-      const optRes = await fetch(`${API_URL}/auth/mfa/challenge/passkey/options`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mfaToken }),
-      });
-      const optData = await optRes.json().catch(() => ({}));
-      if (!optRes.ok || !optData?.options) {
-        if (optData?.code === 'MFA_TOKEN_INVALID') {
-          cancelMfa();
-          setError(t('mfaSetupTimedOut'));
+      if (!ceremony) {
+        const opt = await mfaPasskeyOpts.acquire(token);
+        const optData = opt.data;
+        if (!opt.ok || !optData?.options) {
+          if (optData?.code === 'MFA_TOKEN_INVALID') {
+            attemptOver = true;
+            cancelMfa();
+            setError(t('mfaSetupTimedOut'));
+            return;
+          }
+          setError(passkeyHttpError(opt.status, optData));
+          setOtherWaysOpen(true);
           return;
         }
-        setError(passkeyHttpError(optRes.status, optData));
-        setOtherWaysOpen(true);
-        return;
+        ceremonyAt = Date.now();
+        ceremony = getPasskey(optData.options);
       }
 
       let assertion;
       try {
-        assertion = await getPasskey(optData.options);
+        assertion = await ceremony;
       } catch (ceremonyErr) {
+        logCeremonyFailure('mfa', ceremonyErr, usedPrefetched, Date.now() - ceremonyAt);
+        if (isLikelyExpiredActivation(passkeyErrorName(ceremonyErr), usedPrefetched, Date.now() - ceremonyAt)) {
+          // The tap had to wait for the network and Safari refused the late
+          // ceremony. The options are being fetched again right now (finally
+          // below), so the NEXT tap goes straight to the device.
+          if (mfaTokenRef.current !== token) return;
+          setError(t('passkeyTapAgain'));
+          return;
+        }
         // NEVER A DEAD END (2026-10-05). Cancelled, timed out, "no passkey
         // here" (iOS's cross-device QR code dismissed) — the browser reports
         // them all alike, and the likeliest story on a phone is that the
@@ -1117,12 +1220,14 @@ function LoginContent() {
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data?.access_token) {
+        attemptOver = true;
         // The passkey works from THIS device — next time, only "Use your passkey".
         await rememberPasskeyOnDevice(email);
         await completeLogin(data);
         return;
       }
       if (data?.code === 'MFA_TOKEN_INVALID') {
+        attemptOver = true;
         cancelMfa();
         setError(t('mfaSetupTimedOut'));
         return;
@@ -1134,6 +1239,11 @@ function LoginContent() {
       setError(t('mfaVerifyUnreachable'));
     } finally {
       setPasskeyBusy(false);
+      // The challenge is spent (or the attempt is over): unlock, and — still
+      // on this step, not signed in — have fresh options ready for the next
+      // tap. Never earlier: a new options request replaces the per-user
+      // challenge the open sheet / the verify above is answering.
+      if (mfaPasskeyOpts.end(ticket) && !attemptOver && mfaTokenRef.current === token) mfaPasskeyOpts.prefetch(token);
     }
   };
 
@@ -1267,12 +1377,14 @@ function LoginContent() {
    * Shared by BOTH ways an assertion can arrive: the email field's autofill
    * (conditional mediation) and the "Sign in with a passkey" link. The verify
    * response is fed through applyLoginResponse, because it can still be a
-   * second step. Returns nothing; every outcome is a state change.
+   * second step. Every outcome is a state change; the result says whether the
+   * verify was ACCEPTED (a session or a next step), so the passkey link knows
+   * whether to have fresh options ready for another tap.
    */
   const verifyPasswordlessAssertion = async (
     challengeId: unknown,
     assertion: unknown,
-  ): Promise<void> => {
+  ): Promise<boolean> => {
     // Step 1 has no "Keep me signed in" checkbox. The assertion carries the
     // account's opaque user handle, so the choice that account last made on
     // this browser can travel WITH the verify request (the server stamps the
@@ -1289,13 +1401,15 @@ function LoginContent() {
       if (!res.ok) {
         clog.warn('auth', 'Passkey sign-in rejected', { status: res.status, code: data?.code });
         setError(passkeyHttpError(res.status, data));
-        return;
+        return false;
       }
       await applyLoginResponse(res, data, 'passkey', t('passkeyRejected'));
+      return true;
     } catch {
       setError(
         isLikelyMisconfigured() ? t('serverMissingApiUrl') : t('serverUnreachableAt', { url: API_URL }),
       );
+      return false;
     }
   };
 
@@ -1320,23 +1434,52 @@ function LoginContent() {
     setPasskeyHint(null);
     setPasskeyBusy(true);
     warnIfMisconfigured();
-    clog.info('auth', 'Passwordless passkey attempt', { redirectTarget });
+    // SAFARI USER GESTURE (2026-10-11): prefetched options → the ceremony
+    // starts now, synchronously, inside the tap. See handlePasskeyChallenge.
+    const ready = passwordlessPasskeyOpts.take(PASSWORDLESS_KEY);
+    const ticket = passwordlessPasskeyOpts.begin();
+    let ceremony: Promise<Awaited<ReturnType<typeof getPasskey>>> | null = null;
+    if (ready) {
+      try {
+        ceremony = getPasskey(ready.data.options);
+      } catch (syncErr) {
+        ceremony = Promise.reject(syncErr);
+      }
+    }
+    const usedPrefetched = ceremony !== null;
+    let ceremonyAt = Date.now();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the raw options body (see PasskeyOptionsReply)
+    let optData: any = ready?.data ?? null;
+    /** The verify answered — a session or a next step; nothing to re-arm. */
+    let advanced = false;
+    setError('');
+    setPasskeyHint(null);
+    setPasskeyBusy(true);
+    warnIfMisconfigured();
+    clog.info('auth', 'Passwordless passkey attempt', { redirectTarget, usedPrefetched });
     try {
-      const optRes = await fetch(`${API_URL}/auth/passkeys/login/options`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      });
-      const optData = await optRes.json().catch(() => ({}));
-      if (!optRes.ok || !optData?.options) {
-        setError(passkeyHttpError(optRes.status, optData));
-        return;
+      if (!ceremony) {
+        const opt = await passwordlessPasskeyOpts.acquire(PASSWORDLESS_KEY);
+        optData = opt.data;
+        if (!opt.ok || !optData?.options) {
+          setError(passkeyHttpError(opt.status, optData));
+          return;
+        }
+        ceremonyAt = Date.now();
+        ceremony = getPasskey(optData.options);
       }
 
       let assertion;
       try {
-        assertion = await getPasskey(optData.options);
+        assertion = await ceremony;
       } catch (ceremonyErr) {
+        logCeremonyFailure('passwordless', ceremonyErr, usedPrefetched, Date.now() - ceremonyAt);
+        if (isLikelyExpiredActivation(passkeyErrorName(ceremonyErr), usedPrefetched, Date.now() - ceremonyAt)) {
+          // Safari refused a ceremony that had to wait for the network; the
+          // next tap has options in hand (re-fetched in finally below).
+          setError(t('passkeyTapAgain'));
+          return;
+        }
         // No account is known yet on this path, so `accountHasPasskeys` is null.
         logPasskeyMiss('passwordless', ceremonyErr, null);
         const described = reportPasskeyCeremonyError(ceremonyErr);
@@ -1353,13 +1496,15 @@ function LoginContent() {
         return;
       }
 
-      await verifyPasswordlessAssertion(optData.challengeId, assertion);
+      advanced = await verifyPasswordlessAssertion(optData.challengeId, assertion);
     } catch {
       setError(
         isLikelyMisconfigured() ? t('serverMissingApiUrl') : t('serverUnreachableAt', { url: API_URL }),
       );
     } finally {
       setPasskeyBusy(false);
+      // Still on step 1 with no session: fresh options for the next tap.
+      if (passwordlessPasskeyOpts.end(ticket) && !advanced && !sessionStartedRef.current) passwordlessPasskeyOpts.prefetch(PASSWORDLESS_KEY);
     }
   };
 
@@ -1407,6 +1552,13 @@ function LoginContent() {
   // set-up that hung on the required 2-step screen (2026-10-05).
   const autofillOff = searchParams.get('autofill') === 'off';
   const conditionalArmed = onEmailStep && conditionalAvailable === true && eulaOnDevice && !autofillOff;
+  // The "Sign in with a passkey" link (shown only where the autofill is not
+  // available) keeps its options ready while it is on screen — same Safari
+  // user-gesture rule as the second-factor button.
+  usePasskeyOptionsPrefetch(
+    passwordlessPasskeyOpts,
+    onEmailStep && passkeyCapable && conditionalAvailable === false && eulaOnDevice ? PASSWORDLESS_KEY : null,
+  );
 
   useEffect(() => {
     if (!conditionalArmed) return;
@@ -1573,37 +1725,42 @@ function LoginContent() {
 
   const handleRequiredPasskeyEnroll = async () => {
     if (!mfaToken) return;
+    const token = mfaToken;
+    // Options already fetched when this screen opened: go STRAIGHT to the
+    // device, with nothing awaited first (see `requiredPasskeyOpts`).
+    const ready = requiredPasskeyOpts.take(token);
+    const ticket = requiredPasskeyOpts.begin();
+    let ceremony: Promise<any> | null = null;
+    if (ready) {
+      try {
+        ceremony = createPasskey(ready.data.options);
+      } catch (syncErr) {
+        ceremony = Promise.reject(syncErr);
+      }
+    }
+    const usedPrefetched = ceremony !== null;
+    let ceremonyAt = Date.now();
+    /** Signed in, codes on screen, or sent back to the password: nothing to re-arm. */
+    let attemptOver = false;
     setError('');
     setPasskeyBusy(true);
     try {
-      // Options already fetched when this screen opened: go STRAIGHT to the
-      // device, with nothing awaited first (see the effect above).
-      const ready = requiredPasskeyOptsRef.current;
-      requiredPasskeyOptsRef.current = null;
-      let creationOptions: any = null;
-      let ceremony: Promise<any> | null = null;
-      if (ready && ready.token === mfaToken && Date.now() - ready.at < 4 * 60_000) {
-        creationOptions = ready.options;
-        ceremony = createPasskey(creationOptions);
-      } else {
-        const optRes = await fetch(`${API_URL}/auth/mfa/required/passkey/options`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mfaToken }),
-        });
-        const optData = await optRes.json().catch(() => ({}));
-        if (!optRes.ok || !optData?.options) {
+      if (!ceremony) {
+        const opt = await requiredPasskeyOpts.acquire(token);
+        const optData = opt.data;
+        if (!opt.ok || !optData?.options) {
           if (optData?.code === 'MFA_TOKEN_INVALID') {
+            attemptOver = true;
             cancelMfa();
             setError(t('mfaSetupTimedOut'));
             return;
           }
-          clog.warn('auth', 'Required-MFA passkey options rejected', { status: optRes.status, code: optData?.code });
-          setError(passkeyEnrollHttpError(optRes.status, optData));
+          clog.warn('auth', 'Required-MFA passkey options rejected', { status: opt.status, code: optData?.code });
+          setError(passkeyEnrollHttpError(opt.status, optData));
           return;
         }
-        creationOptions = optData.options;
-        ceremony = createPasskey(creationOptions);
+        ceremonyAt = Date.now();
+        ceremony = createPasskey(optData.options);
       }
 
       clearRequiredPasskeyStallTimer();
@@ -1627,6 +1784,13 @@ function LoginContent() {
         clearRequiredPasskeyStallTimer();
       } catch (ceremonyErr) {
         clearRequiredPasskeyStallTimer();
+        logCeremonyFailure('required-create', ceremonyErr, usedPrefetched, Date.now() - ceremonyAt);
+        if (isLikelyExpiredActivation(passkeyErrorName(ceremonyErr), usedPrefetched, Date.now() - ceremonyAt)) {
+          // Safari refused a create() that had to wait for the network; the
+          // next tap has options in hand (re-fetched in finally below).
+          setError(t('passkeyTapAgain'));
+          return;
+        }
         // A dismissed Face ID sheet is a DECISION. Quiet, and the operator is
         // back on the choice with both options still open.
         reportPasskeyCeremonyError(ceremonyErr, 'create');
@@ -1642,6 +1806,7 @@ function LoginContent() {
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data?.access_token) {
+        attemptOver = true;
         if (Array.isArray(data.backupCodes) && data.backupCodes.length) {
           // Park the session and show the codes FIRST. Redirecting past them
           // would silently throw away the only recovery path this account has
@@ -1654,6 +1819,7 @@ function LoginContent() {
         return;
       }
       if (data?.code === 'MFA_TOKEN_INVALID') {
+        attemptOver = true;
         cancelMfa();
         setError(t('mfaSetupTimedOut'));
         return;
@@ -1664,6 +1830,12 @@ function LoginContent() {
       setError(t('mfaSetupUnreachable'));
     } finally {
       setPasskeyBusy(false);
+      // Unlock and — only if this was the latest tap and the screen is still
+      // open — have fresh options ready for the next one (never earlier: a
+      // new options request replaces the challenge the sheet is answering).
+      if (requiredPasskeyOpts.end(ticket) && !attemptOver && mfaTokenRef.current === token) {
+        requiredPasskeyOpts.prefetch(token);
+      }
     }
   };
 
