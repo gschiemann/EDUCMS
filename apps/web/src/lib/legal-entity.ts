@@ -15,7 +15,13 @@
  */
 
 export const LEGAL_ENTITY = {
-  /** The contracting legal entity, e.g. "Example Signage, Inc." */
+  /**
+   * The contracting legal entity. Owner rule (2026-10-11): customers see
+   * "VenueOS" everywhere; this name appears ONCE per legal document, in the
+   * clause that names the parties (required for an enforceable contract and
+   * for identifying the data controller). Never in footers, emails, invoices
+   * or contact blocks.
+   */
   companyLegalName: 'Twin Oaks Farm & Tech LLC',
   /** Postal address for legal notices. */
   mailingAddress: '7575 State Highway 134 E., Columbia, AL 36319',
@@ -30,9 +36,6 @@ export const LEGAL_ENTITY = {
  * state name into either page. Public schools, districts, universities and
  * other government customers get the public-entity exception written next to
  * it on each page.
- *
- * ⚠️ PLACEHOLDER — set it to the state of organization (e.g. 'Delaware')
- * before launch.
  */
 export const GOVERNING_STATE = 'Alabama';
 

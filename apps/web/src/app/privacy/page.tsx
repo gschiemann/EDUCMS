@@ -169,7 +169,7 @@ export default function PrivacyPage() {
 
       <h2>12. Contact</h2>
       <p>
-        {companyLegalName}
+        {productName}
         <br />
         {mailingAddress}
         <br />

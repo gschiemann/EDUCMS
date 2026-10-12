@@ -258,7 +258,7 @@ export function EulaBody() {
         <li>Assignment follows the Terms: neither party may assign this Agreement without the other&apos;s consent, except to a successor in a merger or sale of substantially all of its business.</li>
         <li>If a provision is unenforceable, the rest of this Agreement stays in effect. Not enforcing a provision is not a waiver of it.</li>
         <li>
-          Notices: {companyLegalName}, {mailingAddress}, and{' '}
+          Notices: {productName}, {mailingAddress}, and{' '}
           <a href={`mailto:${LEGAL_CONTACTS.legal}`}>{LEGAL_CONTACTS.legal}</a>.
         </li>
       </ul>

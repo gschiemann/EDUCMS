@@ -211,7 +211,7 @@ export default function DpaPage() {
 
       <h2>Contact</h2>
       <p>
-        {companyLegalName}
+        {productName}
         <br />
         {mailingAddress}
         <br />

@@ -275,7 +275,7 @@ export default function TermsPage() {
 
       <h2>17. Contact and notices</h2>
       <p>
-        {companyLegalName}
+        {productName}
         <br />
         {mailingAddress}
       </p>
