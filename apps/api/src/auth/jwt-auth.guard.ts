@@ -123,6 +123,21 @@ export const SETUP_REQUIRED_ALLOWED_ROUTES: readonly { method: string; path: str
 ];
 
 /**
+ * SELF-SIGNUP EMAIL VERIFICATION (2026-10-11, launch security re-audit) — the
+ * ONLY routes an account whose `User.emailVerificationPending` is true may
+ * reach. A public self-signup admin has typed an address nobody has proven;
+ * until the emailed code proves it, the account can verify, sign out and read
+ * who it is — nothing else (no SSO / POS / invite / API-key / content routes).
+ * Exact method + path, like SETUP_REQUIRED_ALLOWED_ROUTES.
+ */
+export const EMAIL_VERIFICATION_ALLOWED_ROUTES: readonly { method: string; path: string }[] = [
+  { method: 'POST', path: '/api/v1/auth/verify-email/send' },
+  { method: 'POST', path: '/api/v1/auth/verify-email/confirm' },
+  { method: 'POST', path: '/api/v1/auth/logout' },
+  { method: 'GET', path: '/api/v1/users/me' },
+];
+
+/**
  * How long a user's `mustSetupCredentials` state is cached in-process (ms).
  *
  * Only ever consulted on the FALLBACK path — a token carrying no `msc` claim.
@@ -156,6 +171,12 @@ export class JwtAuthGuard implements CanActivate {
    * state adds zero round-trips to the hot auth path.
    */
   private setupCache = new Map<string, { mustSetup: boolean; at: number }>();
+
+  /**
+   * `userId → emailVerificationPending`, consulted when the token does not
+   * carry `evv: true` (see assertEmailVerified). Same TTL / cap as setupCache.
+   */
+  private verifyCache = new Map<string, { pending: boolean; at: number }>();
 
   constructor(
     private jwtService: JwtService,
@@ -287,6 +308,8 @@ export class JwtAuthGuard implements CanActivate {
      * that doesn't stamp it); the gate then verifies against the live row.
      */
     let setupClaim: boolean | undefined;
+    /** `evv` = email verified (self-signup verification). Only `true` skips the lookup. */
+    let verifiedClaim: boolean | undefined;
 
     try {
       // Decode header WITHOUT verifying to learn which secret to use.
@@ -485,6 +508,7 @@ export class JwtAuthGuard implements CanActivate {
         // FIRST-LOGIN CREDENTIAL SETUP — read the claim here, act on it after
         // the try/catch (see the `setupClaim` declaration for why).
         setupClaim = typeof payload.msc === 'boolean' ? payload.msc : undefined;
+        verifiedClaim = typeof payload.evv === 'boolean' ? payload.evv : undefined;
       }
     } catch (error) {
       // Catching the specific error allows us to see if it was a token issue or a Redis crash
@@ -499,6 +523,7 @@ export class JwtAuthGuard implements CanActivate {
     // SETUP_REQUIRED_ALLOWED_ROUTES until it has claimed its own credentials.
     // Runs BEFORE the archive check so a gated request never pays that lookup.
     await this.assertCredentialSetupComplete(request, setupClaim);
+    await this.assertEmailVerified(request, verifiedClaim);
 
     // ACC-05 — an ARCHIVED tenant must not be able to fire a life-safety
     // action. Login is already blocked for archived tenants and archiving
@@ -700,6 +725,58 @@ export class JwtAuthGuard implements CanActivate {
       message:
         'Finish setting up your account — add your work email and a new password — before ' +
         'using VenueOS.',
+    });
+  }
+
+  /**
+   * SELF-SIGNUP EMAIL VERIFICATION (2026-10-11) — refuse everything but
+   * EMAIL_VERIFICATION_ALLOWED_ROUTES while the account's email is unproven.
+   *
+   * Only a token carrying `evv: false` (minted while the email was unproven)
+   * costs a lookup — against the live row, cached SETUP_CHECK_TTL_MS, so the
+   * gate lifts within that window of the code being confirmed even before the
+   * token is replaced. `evv: true` and an absent claim pass with NO database
+   * work: only a public self-signup is ever pending, and every path that can
+   * mint a session for one stamps the claim (see `emailVerifiedClaim`). A
+   * FAILED lookup ALLOWS and logs (same availability note as the setup gate).
+   */
+  private async assertEmailVerified(request: Request, verifiedClaim: boolean | undefined): Promise<void> {
+    const user = (request as any).user;
+    if (!user || user.kind === 'device' || user.kind === 'api-key') return;
+    const userId: string | undefined = user.id ?? user.userId;
+    if (!userId) return;
+    if (verifiedClaim !== false) return;
+    if (!this.prisma) return;
+
+    let pending: boolean;
+    const cached = this.verifyCache.get(userId);
+    if (cached && Date.now() - cached.at < SETUP_CHECK_TTL_MS) {
+      pending = cached.pending;
+    } else {
+      try {
+        // ten-ok: identity SELF-lookup — id IS the authenticated JWT principal
+        const row = await this.prisma.client.user.findUnique({
+          where: { id: userId },
+          select: { emailVerificationPending: true },
+        });
+        pending = !!row?.emailVerificationPending;
+        if (this.verifyCache.size >= SETUP_CACHE_MAX_ENTRIES) this.verifyCache.clear();
+        this.verifyCache.set(userId, { pending, at: Date.now() });
+      } catch (e) {
+        this.guardLogger.error(
+          `Email-verification check failed for user ${userId} (ALLOWING): ${e instanceof Error ? e.message : e}`,
+        );
+        return;
+      }
+    }
+    if (!pending) return;
+
+    const path = this.requestPath(request);
+    const method = String((request as any)?.method || 'GET').toUpperCase();
+    if (EMAIL_VERIFICATION_ALLOWED_ROUTES.some((r) => r.method === method && r.path === path)) return;
+    throw new ForbiddenException({
+      code: 'EMAIL_VERIFICATION_REQUIRED',
+      message: 'Confirm your email address with the code we sent before using VenueOS.',
     });
   }
 

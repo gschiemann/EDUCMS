@@ -24,6 +24,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { clientIpFromRequest } from '../security/client-ip';
 import { evaluateMfaPolicy } from './mfa-policy';
 import { tenantMfaEnforced } from './tenant-mfa-enforcement';
+import { emailVerifiedClaim } from './auth.service';
 
 /**
  * SEC-010 (2026-09-05) — HttpOnly refresh-credential endpoints.
@@ -321,6 +322,7 @@ export class SessionController {
         canTriggerPanic: !!u.canTriggerPanic,
         origIat: rotated.origIat,
         msc: !!u.mustSetupCredentials,
+        ...emailVerifiedClaim(u),
         // Still the remember class — the Bearer sliding path stays available
         // to this token and stays capped at origIat + 30d, unchanged.
         rm: true,
@@ -360,6 +362,7 @@ export class SessionController {
         tenantVertical: u.tenant?.vertical || 'K12',
         canTriggerPanic: u.canTriggerPanic,
         mustSetupCredentials: !!u.mustSetupCredentials,
+        emailVerificationPending: !!(u as any).emailVerificationPending,
       },
     };
   }

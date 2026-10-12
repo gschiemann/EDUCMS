@@ -204,6 +204,30 @@ describe('OnboardingService', () => {
     });
   });
 
+  // 2026-10-11 (launch security re-audit): self-signup stays open, but the
+  // typed address must be proven before the admin can use anything.
+  describe('signup — email verification pending (SETUP_EMAIL_VERIFICATION)', () => {
+    const prev = process.env.SETUP_EMAIL_VERIFICATION;
+    afterEach(() => {
+      if (prev === undefined) delete process.env.SETUP_EMAIL_VERIFICATION;
+      else process.env.SETUP_EMAIL_VERIFICATION = prev;
+    });
+
+    it('required: the new admin is created pending and the session says so', async () => {
+      process.env.SETUP_EMAIL_VERIFICATION = 'required';
+      const result: any = await service.signup({ districtName: 'Taco Town', adminEmail: 'o@taco.test', password: 'correct-horse-battery' });
+      expect(state.users[0].emailVerificationPending).toBe(true);
+      expect(result.user.emailVerificationPending).toBe(true);
+    });
+
+    it('off: nothing changes (no gate)', async () => {
+      process.env.SETUP_EMAIL_VERIFICATION = 'off';
+      const result: any = await service.signup({ districtName: 'Taco Town', adminEmail: 'o@taco.test', password: 'correct-horse-battery' });
+      expect(!!state.users[0].emailVerificationPending).toBe(false);
+      expect(result.user.emailVerificationPending).toBe(false);
+    });
+  });
+
   describe('signup', () => {
     it('creates a tenant + DISTRICT_ADMIN and returns an auth token (happy path)', async () => {
       const result = await service.signup({

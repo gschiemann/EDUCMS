@@ -159,6 +159,10 @@ interface AppState {
      *  session blob cached by an older bundle won't carry it — absent is
      *  treated as false, and the API is the real gate either way. */
     mustSetupCredentials?: boolean;
+    /** 2026-10-11 — a self-signup whose email is not proven yet. The layouts
+     *  render EmailVerificationGate instead of the app; the API refuses
+     *  everything but verify-email / logout / me. Absent = false. */
+    emailVerificationPending?: boolean;
   } | null;
 
   // UI state

@@ -398,6 +398,14 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
             useUIStore.getState().setUser({ ...cur, mustSetupCredentials: true });
           }
         }
+        // SELF-SIGNUP EMAIL VERIFICATION (2026-10-11) — same self-heal for a
+        // session whose cached blob does not know the email is unproven.
+        if (res.status === 403 && body?.code === 'EMAIL_VERIFICATION_REQUIRED') {
+          const cur = useUIStore.getState().user;
+          if (cur && !cur.emailVerificationPending) {
+            useUIStore.getState().setUser({ ...cur, emailVerificationPending: true });
+          }
+        }
         // CUSTOMER CONSOLE (2026-10-10) — the organisation is suspended
         // (OrgSuspensionInterceptor). Every dashboard call now 403s, so show the
         // page that says why instead of a dashboard full of errors. Never from

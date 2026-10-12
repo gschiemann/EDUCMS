@@ -7,6 +7,7 @@ import { TenantUrlCanonicalizer } from '@/components/layout/TenantUrlCanonicaliz
 import { useAppStore } from '@/lib/store';
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
+import { EmailVerificationGate } from '@/components/auth/EmailVerificationGate';
 
 // 2026-05-26 — every /[schoolId]/* route was returning HTTP 500 from
 // Vercel SSR (browser content still rendered, but uptime monitors,
@@ -64,6 +65,8 @@ export default function SchoolLayout({
   // 2026-09-03 — FIRST-LOGIN CREDENTIAL SETUP. True while this account still
   // holds the placeholder email + starter password it was provisioned with.
   const mustSetupCredentials = useAppStore((state) => !!state.user?.mustSetupCredentials);
+  // 2026-10-11 — a self-signup admin must prove the email first.
+  const emailVerificationPending = useAppStore((state) => !!state.user?.emailVerificationPending);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => { setMounted(true); }, []);
@@ -98,6 +101,9 @@ export default function SchoolLayout({
   // ever — the dashboard is never shown, not even for a frame.
   if (mustSetupCredentials) {
     return <CredentialSetupGate />;
+  }
+  if (emailVerificationPending) {
+    return <EmailVerificationGate />;
   }
 
   return (

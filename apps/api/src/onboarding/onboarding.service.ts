@@ -13,6 +13,7 @@ import { AppRole } from '@cms/database';
 import { isReservedTenantSlug, isVertical } from '@cms/api-types';
 import { cardBillingReady, newTrialEndsAt, TRIAL_SCREENS } from '../billing/trial-policy';
 import { assertSupportReach } from '../support-access/support-access.context';
+import { emailOwnershipProofRequired } from '../auth/setup-email-verification';
 
 export const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;     // 1 hour
 export const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;    // 7 days
@@ -233,6 +234,7 @@ export class OnboardingService {
     if (existingUser) throw new ConflictException('An account with that email already exists.');
 
     const passwordHash = await this.authService.hashPassword(input.password);
+    const emailVerificationPending = emailOwnershipProofRequired(this.emailService);
 
     const { tenant, user } = await this.prisma.client.$transaction(async (tx) => {
       const tenant = await tx.tenant.create({
@@ -254,6 +256,12 @@ export class OnboardingService {
           firstName,
           lastName,
           phone,
+          // 2026-10-11 (launch security re-audit): self-signup stays open, but
+          // the typed address must be PROVEN before this admin can do anything
+          // but verify it (JwtAuthGuard + auth/verify-email.controller.ts).
+          // Only when this deploy can deliver mail to arbitrary recipients —
+          // the SETUP_EMAIL_VERIFICATION rule — or nobody could ever finish.
+          emailVerificationPending,
         } as any,
       });
       // 2026-10-11 — SELF-SERVE TRIAL (billing/trial-policy.ts). When card

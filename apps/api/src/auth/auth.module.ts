@@ -14,6 +14,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { JwtStrategy } from './jwt.strategy';
 import { PrismaModule } from '../prisma/prisma.module';
 import { requireSecret } from '../security/required-secret';
+import { VerifyEmailController } from './verify-email.controller';
 
 // @Global so JwtService (re-exported via JwtModule) is available
 // everywhere JwtAuthGuard is used. Pairs with the @Global on
@@ -43,6 +44,8 @@ import { requireSecret } from '../security/required-secret';
     SessionController,
     // One-time account setup links, the public half (2026-10-10).
     AccountSetupLinkController,
+    // Self-signup email verification (2026-10-11).
+    VerifyEmailController,
   ],
   exports: [AuthService, JwtModule, SessionRefreshService],
 })

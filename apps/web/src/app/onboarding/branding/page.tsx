@@ -16,6 +16,7 @@ import { useAppStore } from '@/lib/store';
 import { useTenant } from '@/hooks/use-api';
 import Link from 'next/link';
 import { Check } from 'lucide-react';
+import { EmailVerificationGate } from '@/components/auth/EmailVerificationGate';
 
 export default function OnboardingBrandingPage() {
   const t = useTranslations();
@@ -33,6 +34,9 @@ export default function OnboardingBrandingPage() {
     if (typeof window === 'undefined') return;
     if (!user) router.replace('/login?next=/onboarding/branding');
   }, [user, router]);
+
+  // 2026-10-11 — a fresh self-signup proves its email before anything else.
+  if (user?.emailVerificationPending) return <EmailVerificationGate />;
 
   return (
     <div className="min-h-screen">

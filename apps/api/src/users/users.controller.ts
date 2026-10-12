@@ -259,6 +259,9 @@ export class UsersController {
         // live row, so a session whose cached user blob predates the flag
         // self-heals on the next ProfileHydrator reconcile.
         mustSetupCredentials: true,
+        // SELF-SIGNUP EMAIL VERIFICATION (2026-10-11) — same idea: how the shell
+        // learns to render the verify-email screen instead of the app.
+        emailVerificationPending: true,
       } as any,
     });
     if (!me) throw new HttpException({ code: 'USER_NOT_FOUND', message: 'User not found' }, HttpStatus.NOT_FOUND);

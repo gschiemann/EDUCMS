@@ -49,6 +49,7 @@ import {
 } from '@/components/apps/concierge-map';
 import { ConciergeSuggestionRow, ConciergeDescribeIntake } from '@/components/apps/ConciergeAppSuggestions';
 import type { AppDefinition } from '@/components/apps/app-registry';
+import { EmailVerificationGate } from '@/components/auth/EmailVerificationGate';
 
 export default function OnboardingAppsPage() {
   const t = useTranslations();
@@ -155,6 +156,9 @@ export default function OnboardingAppsPage() {
 
   const stillWorking = brandingLoading || (!discoverDone && !!sourceUrl);
   const hasAnyDiscoverSuggestions = visibleSuggestions.length > 0 || pickedApps.length > 0;
+
+  // 2026-10-11 — a fresh self-signup proves its email before anything else.
+  if (user?.emailVerificationPending) return <EmailVerificationGate />;
 
   return (
     <div className="min-h-screen">

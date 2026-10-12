@@ -607,6 +607,13 @@ model User {
   //     cannot outlive the handover.
   // Defaulted false so every existing row is untouched (V1 additive-only rule).
   mustSetupCredentials Boolean              @default(false) @map("must_setup_credentials")
+  // 2026-10-11 (launch security re-audit, self-signup hardening): a PUBLIC
+  // self-signup admin has typed an email nobody has proven. While this is true
+  // JwtAuthGuard admits only the verify-email / logout / me routes (the `evv`
+  // claim + EMAIL_VERIFICATION_ALLOWED_ROUTES). Set at signup only when this
+  // deploy can deliver mail (SETUP_EMAIL_VERIFICATION semantics). Default
+  // false: every existing row is untouched.
+  emailVerificationPending Boolean          @default(false) @map("email_verification_pending")
   canTriggerPanic      Boolean              @default(false) @map("can_trigger_panic")
   status               String               @default("ACTIVE")
   createdAt            DateTime             @default(now()) @map("created_at")

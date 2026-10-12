@@ -37,6 +37,7 @@ type CachedUser = {
   tenantName?: string | null;
   tenantSlug?: string | null;
   mustSetupCredentials?: boolean | null;
+  emailVerificationPending?: boolean | null;
 };
 
 /**
@@ -51,6 +52,7 @@ export interface MeResponse {
   tenantName?: string | null;
   tenantSlug?: string | null;
   mustSetupCredentials?: boolean | null;
+  emailVerificationPending?: boolean | null;
 }
 
 export function profilePatch(cur: CachedUser, me: MeResponse): Record<string, unknown> {
@@ -62,6 +64,9 @@ export function profilePatch(cur: CachedUser, me: MeResponse): Record<string, un
   if (me.tenantSlug && me.tenantSlug !== cur.tenantSlug) patch.tenantSlug = me.tenantSlug;
   if (typeof me.mustSetupCredentials === 'boolean' && me.mustSetupCredentials !== !!cur.mustSetupCredentials) {
     patch.mustSetupCredentials = me.mustSetupCredentials;
+  }
+  if (typeof me.emailVerificationPending === 'boolean' && me.emailVerificationPending !== !!cur.emailVerificationPending) {
+    patch.emailVerificationPending = me.emailVerificationPending;
   }
   return patch;
 }

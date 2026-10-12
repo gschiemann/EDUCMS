@@ -126,6 +126,20 @@ const DUMMY_HASH_PROMISE: Promise<string> = argon2.hash(DUMMY_PASSWORD_FOR_TIMIN
   parallelism: cryptoPlatformConfig.parallelism,
 });
 
+/**
+ * `evv` claim (2026-10-11, self-signup email verification). Stamped ONLY from
+ * a live user row that carries `emailVerificationPending`. `evv: false` (the
+ * email is still unproven) makes JwtAuthGuard check the row — cached — so the
+ * gate lifts as soon as the code is confirmed. `true` / absent cost nothing:
+ * only a public self-signup is ever pending, and every path that can mint for
+ * one (signup, password / passkey sign-in, both refreshes) stamps the claim —
+ * `login()` reads the column when its caller did not pass it.
+ */
+export function emailVerifiedClaim(user: { emailVerificationPending?: unknown } | null | undefined): { evv?: boolean } {
+  const v = user?.emailVerificationPending;
+  return typeof v === 'boolean' ? { evv: !v } : {};
+}
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -335,6 +349,8 @@ export class AuthService {
       canTriggerPanic?: boolean;
       /** FIRST-LOGIN CREDENTIAL SETUP — see the `msc` claim below. */
       mustSetupCredentials?: boolean;
+      /** SELF-SIGNUP EMAIL VERIFICATION — see `emailVerifiedClaim`. */
+      emailVerificationPending?: boolean;
     },
     // SEC-010 — `rememberMe` used to be accepted here and meant "sign a
     // 30-day token". No caller ever passed it (change-password and
@@ -357,6 +373,7 @@ export class AuthService {
         // authoritative; a token WITHOUT it makes the guard verify against the
         // database instead of trusting silence (the fail-safe direction).
         msc: !!user.mustSetupCredentials,
+        ...emailVerifiedClaim(user),
         iat: opts.iatSeconds,
       },
       // SEC-010 — `rememberMe` no longer buys a longer ACCESS token. It marks
@@ -418,6 +435,21 @@ export class AuthService {
   }
 
   async login(user: any, rememberMe?: boolean, opts: LoginOptions = {}) {
+    // SELF-SIGNUP EMAIL VERIFICATION (2026-10-11): the `evv` claim must come
+    // from the live row. Several callers pass a curated user object without
+    // the column — read it then, so no mint path can drop a pending flag.
+    if (user && typeof user.emailVerificationPending !== 'boolean' && typeof user.id === 'string') {
+      try {
+        // ten-ok: identity SELF-lookup — id IS the user being signed in
+        const row = await this.prisma.client.user.findUnique({
+          where: { id: user.id },
+          select: { emailVerificationPending: true },
+        });
+        user = { ...user, emailVerificationPending: !!row?.emailVerificationPending };
+      } catch {
+        /* the guard's own lookup still covers an `evv`-less token */
+      }
+    }
     // P0-4 (audit 2026-05-27) — if MFA is enabled on this user we
     // STOP the normal session creation here and return a short-lived
     // challenge token. The client trades the challenge token + a
@@ -556,6 +588,7 @@ export class AuthService {
       // starter password down to the setup / logout / me routes without a
       // database round-trip on every request.
       msc: !!user.mustSetupCredentials,
+      ...emailVerifiedClaim(user as any),
       ...(rememberMe ? { rm: true } : {}),
     };
     return {
@@ -597,6 +630,7 @@ export class AuthService {
         // setup screen INSTEAD of the app — it must arrive with the login
         // response, or the app paints for a frame before the gate appears.
         mustSetupCredentials: !!user.mustSetupCredentials,
+        emailVerificationPending: !!(user as any).emailVerificationPending,
       }
     };
   }
@@ -803,6 +837,7 @@ export class AuthService {
       // other claim here, so a flag set (or cleared) since login lands at the
       // next refresh rather than riding the stale claim to expiry.
       msc: !!u.mustSetupCredentials,
+      ...emailVerifiedClaim(u as any),
       ...(rememberClass ? { rm: true } : {}),
     };
     return {
@@ -828,6 +863,7 @@ export class AuthService {
         tenantVertical: u.tenant?.vertical || 'K12',
         canTriggerPanic: u.canTriggerPanic,
         mustSetupCredentials: !!u.mustSetupCredentials,
+        emailVerificationPending: !!(u as any).emailVerificationPending,
       },
     };
   }
