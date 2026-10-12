@@ -278,6 +278,13 @@ export function MusicPlayerWidget({
     );
   }
 
+  // ─── Hidden (audio only) — owner 2026-10-12: background music should not
+  // sit on top of the content. Plays the audio, paints nothing (except the
+  // one-time "tap to start" button a browser may demand).
+  if ((c as { hideOnScreen?: boolean }).hideOnScreen && !needsTap) {
+    return <audio ref={audioRef} preload="none" crossOrigin="anonymous" style={{ display: 'none' }} />;
+  }
+
   // ─── Live audio render ──────────────────────────────────────
   return (
     <PlayerShell zoneLabel={c.zoneLabel} sourceLabel={sourceLabel}>

@@ -5917,6 +5917,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
         setField({ defaultVolume: Math.max(0, Math.min(100, n)) });
       }} />);
       fields.push(<ToggleField key="autoResume" label="Auto-resume on player reload" value={cfg.autoResume !== false} onChange={(v) => setField({ autoResume: v })} />);
+      fields.push(<ToggleField key="hideOnScreen" label="Hide on screen (audio only)" value={cfg.hideOnScreen === true} onChange={(v) => setField({ hideOnScreen: v })} />);
       fields.push(<ToggleField key="pauseDuringEmergency" label="Silence during emergency (recommended)" value={cfg.pauseDuringEmergency !== false} onChange={(v) => setField({ pauseDuringEmergency: v })} />);
       // Business-hours editor — structured start/end time + day-of-week
       // toggles (no raw JSON; §19 P3). Blank = plays 24/7. Overnight
