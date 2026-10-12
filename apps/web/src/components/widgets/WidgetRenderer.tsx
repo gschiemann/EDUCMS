@@ -3546,7 +3546,8 @@ function VideoCarouselWidget({ config, live }: { config: any; live?: boolean }) 
   const urls: string[] = config.assetUrls || config.urls || [];
   const shouldAutoplay = live && (config.autoplay !== false);
   const shouldMute = config.muted !== false;
-  const fitMode: 'contain' | 'cover' | 'fill' = config.fitMode || 'contain';
+  // Default 'cover' (owner 2026-10-12): a video stretched over the canvas must fill it, not letterbox with black bars. An explicit Fit choice still wins.
+  const fitMode: 'contain' | 'cover' | 'fill' = config.fitMode || 'cover';
   const transition: TransitionKind = config.transition || 'fade';
 
   const [idx, setIdx] = useState(0);
