@@ -45,7 +45,7 @@
  */
 
 import { useMemo, useState, useEffect, type ReactNode } from 'react';
-import { Search, X, SlidersHorizontal, ChevronRight, RotateCcw, Image as ImageIcon, Video, Type } from 'lucide-react';
+import { Search, X, SlidersHorizontal, ChevronRight, RotateCcw, } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
 import '@/components/widgets/variants-register'; // boot-time registration
 import {
@@ -372,7 +372,7 @@ export function VariantPicker({ replaceZoneId }: VariantPickerProps = {}) {
     // same gesture and silently overwrote whatever happened to be selected.
     // Wave B / editor-crush B6a (2026-07-02): smart drop size so a LOGO, a
     // TICKER and a divider line land at their natural footprint.
-    const id = addZone(String(v.widgetType), undefined, resolveDropSize(String(v.widgetType), v.id));
+    const id = addZone(String(v.widgetType), undefined, resolveDropSize(String(v.widgetType), v.id), { replacePlaceholder: true });
     updateZone(id, {
       // Seed first so a widget whose variant config omits its content key
       // (TEXT without `content`, WEBPAGE without `url`) still renders
@@ -388,17 +388,7 @@ export function VariantPicker({ replaceZoneId }: VariantPickerProps = {}) {
     <div className="flex flex-col h-full min-h-0 overflow-hidden">
       {/* ── Header: ONE search field + ONE filter button ──────────────── */}
       <div className="px-4 py-3 border-b border-slate-100 shrink-0 space-y-2">
-        <div className="grid grid-cols-3 gap-2" role="group" aria-label="Add to your design">
-          <button type="button" onClick={() => openMediaPicker({ kind: 'image' })} className="flex flex-col items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-3 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 focus-visible:outline-2 focus-visible:outline-indigo-500">
-            <ImageIcon className="h-5 w-5" aria-hidden /> Image
-          </button>
-          <button type="button" onClick={() => openMediaPicker({ kind: 'video' })} className="flex flex-col items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-3 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 focus-visible:outline-2 focus-visible:outline-indigo-500">
-            <Video className="h-5 w-5" aria-hidden /> Video
-          </button>
-          <button type="button" onClick={() => { addZone('TEXT', undefined, resolveDropSize('TEXT'), { replacePlaceholder: true }); }} className="flex flex-col items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2 py-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-indigo-500">
-            <Type className="h-5 w-5" aria-hidden /> Text
-          </button>
-        </div>
+        {/* Image / Video / Text are the first tiles of the list below (EVERYDAY_WIDGET_TYPES) — no duplicate buttons (owner 2026-10-12). */}
         <div className="flex items-center gap-2">
           <div className="relative flex-1 min-w-0">
             <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden />

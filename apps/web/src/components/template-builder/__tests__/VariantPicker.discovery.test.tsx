@@ -261,15 +261,9 @@ describe('ADD and REPLACE are different gestures', () => {
   });
 });
 
-it('the quick Text action replaces the empty starter and undoes in one step', () => {
-  setZones([PLACEHOLDER_ZONE], [PLACEHOLDER_ZONE.id]);
-  mountPicker();
-  fireEvent.click(within(screen.getByRole('group', { name: 'Add to your design' })).getByRole('button', { name: /^Text$/ }));
-  expect(useBuilderStore.getState().zones).toHaveLength(1);
-  expect(useBuilderStore.getState().zones[0].widgetType).toBe('TEXT');
-  expect(useBuilderStore.getState().zones[0].width).toBeLessThan(100);
-  act(() => useBuilderStore.getState().undo());
-  expect(useBuilderStore.getState().zones).toEqual([PLACEHOLDER_ZONE]);
+it('has no duplicate Image / Video / Text buttons above the list — they are the first tiles (owner 2026-10-12)', () => {
+  render(<VariantPicker />);
+  expect(screen.queryByRole('group', { name: 'Add to your design' })).toBeNull();
 });
 
 describe('industry chrome never leaks from an inferred vertical', () => {
