@@ -341,7 +341,7 @@ export const NATIVE_VIDEO_MAX_ATTEMPTS = 20;
 export const NATIVE_VIDEO_BLOCK_MS = 24 * 60 * 60 * 1000;
 // v2 (2026-10-12): drops every block written while transient reasons
 // (`caching`, `credential-changed`) were mis-graded as file faults.
-const BLOCK_KEY = "edu.nativeVideo.block.v2";
+const BLOCK_KEY = "edu.nativeVideo.block.v3"; // v3: reset after the decoder-check fix (1.1.32)
 
 /**
  * The APK build a block was earned under: `EduCmsPlayer/<version>` from the

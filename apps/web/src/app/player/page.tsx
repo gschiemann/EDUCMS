@@ -1,5 +1,5 @@
 'use client';
-import { NativeDualVideo } from './NativeDualVideo';
+import { NativeDualVideo, reportNativeFallback } from './NativeDualVideo';
 import { NativeZoneVideo, nativeZoneTelemetryRows } from './NativeZoneVideo';
 import { holeClipPath, nativeZoneEligible, nativeZoneItemFor, readNativeVideoItems, templateZoneConfigEligible, templateZoneFit, templateZoneLocalRect, zoneDegrees, zoneLayout, type NativeVideoItemsDescriptor, type Rect as NativeHoleRect } from './nativeZones';
 import { readNativeSharedVideoDescriptor, readNativeVideoDescriptor, readNativeVideoProtocol, pickNativeVideo, nativeVideoBlocked, nativeVideoBlockedNoted, sharedVideoEligible, nativeSharedVideoEvidence, type NativeSharedVideoDescriptor, type NativeVideoDescriptor } from './nativeSharedVideo';
@@ -12573,7 +12573,7 @@ function PlayerPage() {
                 v1: nativeSharedDescriptor,
                 protocol: nativeVideoProtocol,
                 v2Blocked: !!nativeVideoDescriptor && (() => {
-                  try { return nativeVideoBlockedNoted(window.localStorage, nativeVideoDescriptor.asset.sha256, nativeVideoDescriptor.faceIndex, Date.now()); } catch { return false; }
+                  try { return nativeVideoBlockedNoted(window.localStorage, nativeVideoDescriptor.asset.sha256, nativeVideoDescriptor.faceIndex, Date.now(), undefined, reportNativeFallback); } catch { return false; }
                 })(),
               });
               const nativeEligible = sharedVideoEligible(nativeChoice, {
